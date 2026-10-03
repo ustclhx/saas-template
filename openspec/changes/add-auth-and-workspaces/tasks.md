@@ -2,12 +2,12 @@
 
 ## 1. 数据模型
 
-- [ ] 1.1 用 Better Auth CLI 生成 schema，id 与外键列改为 `uuid`，补充扩展字段（`user.locale` / `timezone`），验证迁移在本地执行成功且 `generateId` 生成的 UUIDv7 能写入
-- [ ] 1.2 新增 `organization`（`is_personal`、`deleted_at`）、`member`（唯一约束）、`invitation`、`audit_log`、`notification` 表及 `(ws, id desc)` 索引，所有外键 `on delete restrict`，验证迁移成功且删除被引用的 user 行会被数据库拒绝
+- [x] 1.1 用 Better Auth CLI 生成 schema，id 与外键列改为 `uuid`，补充扩展字段（`user.locale` / `timezone`），验证迁移在本地执行成功且 `generateId` 生成的 UUIDv7 能写入
+- [x] 1.2 新增 `organization`（`is_personal`、`deleted_at`）、`member`（唯一约束）、`invitation`、`audit_log`、`notification` 表及 `(ws, id desc)` 索引，所有外键 `on delete restrict`，验证迁移成功且删除被引用的 user 行会被数据库拒绝
 
 ## 2. Better Auth 接入
 
-- [ ] 2.1 在 `packages/auth` 实现 `createAuth(env, db)`，按模板配置启用邮箱密码、`emailOTP`、`magicLink`、OAuth、`twoFactor`，验证关闭某方式时对应接口返回错误（集成测试）
+- [x] 2.1 在 `packages/auth` 实现 `createAuth(env, db)`，按模板配置启用邮箱密码、`emailOTP`、`magicLink`、OAuth、`twoFactor`，验证关闭某方式时对应接口返回错误（集成测试）
 - [ ] 2.2 配置会话三层（cookieCache → KV secondaryStorage → 数据库），验证测试：KV 有会话时不查库；数据库删除会话后旧 Cookie 在缓存过期后失效
 - [ ] 2.3 实现 `requireFreshSession` 守卫（直接查库校验会话与 `banned`），验证被封禁用户 10 秒内访问受保护接口被拒绝
 - [ ] 2.4 实测注册 / 登录的 CPU 时间并记录到 `docs/04-auth-and-tenancy.md`，超过阈值时改用 PBKDF2 hasher，验证测试环境中注册、登录、修改密码均成功

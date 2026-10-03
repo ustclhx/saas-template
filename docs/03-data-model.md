@@ -11,7 +11,7 @@
 | `account` | id, user_id, provider_id, account_id, password(hash), access_token... | 邮箱密码与 OAuth 账号 |
 | `verification` | id, identifier, value, expires_at | 邮箱验证、OTP、重置密码 |
 | `two_factor` | user_id, secret, backup_codes | 可选 |
-| `apikey` | id, user_id, name, key(hash), prefix, enabled, expires_at, rate_limit..., **metadata**(含 workspace_id) | api-key 插件；按 workspace 使用 |
+| `apikey` | id, reference_id, name, key(hash), prefix, enabled, expires_at, rate_limit..., **metadata**(含 workspace_id) | api-key 插件（`@better-auth/api-key`，`references: 'user'`，`reference_id` 指向 user）；按 workspace 使用 |
 
 > 字段名以 Better Auth 生成的 schema 为准（`npx @better-auth/cli generate`），上表只列出需要关注或扩展的字段。
 
