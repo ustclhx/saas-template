@@ -31,9 +31,13 @@ if pg_available; then
   else
     echo "[orca-setup] 数据库 $db 已存在，保留"
   fi
-  # 应用账号存在时授予权限（账号由 infra/local 的初始化脚本创建）
-  if [[ "$(pg_exec "SELECT 1 FROM pg_roles WHERE rolname = '$PG_APP_USER'")" == "1" ]]; then
-    pg_exec "GRANT ALL PRIVILEGES ON DATABASE \"$db\" TO \"$PG_APP_USER\""
+  # 账号存在时按 infra/local 的约定设置权限（app 只有 DML，DDL 归 migrator）
+  if [[ "$(pg_exec "SELECT count(*) FROM pg_roles WHERE rolname IN ('$PG_APP_USER', '$PG_MIGRATOR_USER')")" == "2" \
+    && -f "$PG_DB_GRANTS_SQL" ]]; then
+    pg_exec_file "$db" "$PG_DB_GRANTS_SQL"
+    echo "[orca-setup] 已设置数据库 $db 的账号权限"
+  else
+    echo "[orca-setup] 未找到账号 $PG_APP_USER / $PG_MIGRATOR_USER 或 $PG_DB_GRANTS_SQL，跳过授权" >&2
   fi
 else
   echo "[orca-setup] 本地 Postgres 容器 $PG_CONTAINER 未运行，跳过建库（启动后重新运行 bash scripts/orca/setup.sh）" >&2
@@ -41,10 +45,12 @@ fi
 
 # 3. 端口与连接串
 db_url="postgres://$PG_APP_USER:$PG_APP_PASSWORD@localhost:$PG_HOST_PORT/$db"
+migrate_url="postgres://$PG_MIGRATOR_USER:$PG_MIGRATOR_PASSWORD@localhost:$PG_HOST_PORT/$db"
 cat > .env.worktree <<EOF
 # 由 scripts/orca/setup.sh 生成，勿提交。
 WORKTREE_NAME=$name
 DATABASE_URL=$db_url
+MIGRATION_DATABASE_URL=$migrate_url
 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=$db_url
 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_CACHED=$db_url
 WEB_PORT=$base
