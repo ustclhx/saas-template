@@ -63,8 +63,8 @@ P0 实现时必须遵守的约定（setup 脚本依赖它们）：
 
 ### P0 `setup-scaffold-and-infra`
 - W0：`p0-scaffold`（1.1–1.4）在 main 上串行完成
-- W1：`p0-config`（2.1, 2.2, 6.1） ∥ `p0-db`（3.1–3.3, 2.3） ∥ `p0-web`（4.1, 4.3）
-- W2：`p0-runtime`（4.2, 4.4, 4.5）；CI 部署 6.2、6.3 由 decision gate 阻塞，直到人工完成 5.4–5.6
+- W1：`p0-config`（2.1, 2.2, 6.1） ∥ `p0-db`（3.1–3.3, 2.3） ∥ `p0-web`（4.1）
+- W2：`p0-runtime`（4.2, 4.3, 4.4, 4.5；4.3 依赖 `p0-config` 的 2.2，因此不能放在 W1）；CI 部署 6.2、6.3 由 decision gate 阻塞，直到人工完成 5.4–5.6
 - W3：实测 `p0-probe-locks`（7.1） ∥ `p0-probe-workflow`（7.2） ∥ `p0-probe-stream`（7.3） ∥ `p0-probe-latency`（7.4） ∥ `p0-probe-tunnel`（7.5）→ `p0-findings`（7.6）
 
 ### P1 `add-auth-and-workspaces`
