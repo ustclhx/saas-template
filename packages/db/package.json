@@ -5,7 +5,10 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./schema": "./src/schema/index.ts"
+    "./schema": "./src/schema/index.ts",
+    "./test/global-setup": "./test/global-setup.ts",
+    "./worktree-env": "./worktree-env.ts",
+    "./test/postgres-socket-rejection": "./test/postgres-socket-rejection.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p tsconfig.node.json",

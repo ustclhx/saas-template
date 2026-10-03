@@ -12,8 +12,39 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+
+    # 集成测试（@saas/db、@saas/web、@saas/jobs 的 vitest-pool-workers 项目）使用的本地 Postgres，
+    # 账号与权限按 infra/local/initdb 的约定在下面的步骤中初始化。
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: saas_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d saas_ci"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    env:
+      # 设置后各包的 vitest.config.ts 才会运行集成测试（CI 中缺省时跳过）
+      CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: postgres://app:app@localhost:5432/saas_ci
+      MIGRATION_DATABASE_URL: postgres://migrator:migrator@localhost:5432/saas_ci
+
     steps:
       - uses: actions/checkout@v7
+
+      # 与 infra/local/docker-compose.yml 的容器初始化相同：集群级账号 + 单库权限
+      - name: Initialize database roles
+        env:
+          PGURL: postgres://postgres:postgres@localhost:5432/saas_ci
+        run: |
+          psql "$PGURL" -v ON_ERROR_STOP=1 -f infra/local/initdb/01-roles.sql
+          psql "$PGURL" -v ON_ERROR_STOP=1 -f infra/local/initdb/02-db-grants.sql
 
       # 版本取自根 package.json 的 packageManager
       - uses: pnpm/action-setup@v6
