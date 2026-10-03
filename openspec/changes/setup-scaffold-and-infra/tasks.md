@@ -38,7 +38,7 @@
 
 ## 6. CI / CD
 
-- [ ] 6.1 GitHub Actions PR 流水线：install → biome → typecheck → vitest → build，验证一个故意引入类型错误的 PR 失败
+- [x] 6.1 GitHub Actions PR 流水线：install → biome → typecheck → vitest → build，验证一个故意引入类型错误的 PR 失败
 - [ ] 6.2 main 流水线：经 `cloudflared access tcp` 以 `migrator` 执行 staging 迁移 → 部署 jobs → 部署 web，验证合并后 staging 上的版本号更新
 - [ ] 6.3 tag 流水线：生产迁移 → jobs → web → 调用 `/api/health` 冒烟测试，验证冒烟失败时流水线标红
 
