@@ -32,7 +32,7 @@
 - [x] 本机两个 `cloudflared` 副本，停掉其中一个时 Hyperdrive 查询不中断——会自动切换，但有约 5–10 秒卡顿与少量失败，不是无感（`07` §2）
 - [x] `template.config.ts` + env Zod 校验
 
-**验收**：staging（`*.workers.dev`）首页 SSR 正常；`/api/health` 返回 DB 往返耗时；jobs 的 Cron 能写库。——已通过（2026-10-03，`web-staging.saas-jobs.workers.dev`）。未完成：CI 自动部署 staging（P0 任务 6.2，待配置 Cloudflare API Token）。
+**验收**：staging（`*.workers.dev`）首页 SSR 正常；`/api/health` 返回 DB 往返耗时；jobs 的 Cron 能写库。——已通过（2026-10-03，`web-staging.saas-jobs.workers.dev`）。CI 自动部署 staging（原任务 6.2）已移到下文「CI 能力建设（待办）」。
 
 **Phase 0 实测对后续阶段的影响**：
 - P3（文本对话）：客户端断开后服务端只能再运行 30 秒，长回复可能来不及结算；已决定采用「用量检查点」（`06` §3，已写入 `add-ai-text-chat`），兜底按检查点用量而不是最低费用结算。
@@ -76,6 +76,15 @@
 - [ ] 权益检查与 AI 限流
 
 **验收**：流式对话可用；积分流水与 AI Gateway 的 token 统计一致；中断、错误均正确结算。
+
+## CI 能力建设（待办）
+
+从 Phase 0 移出（原 `setup-scaffold-and-infra` 任务 6.2），在专门建设 CI 时补齐：
+
+- [ ] main 流水线自动部署 staging：部署 jobs → 部署 web（`*.workers.dev`），验证合并后 staging 上的版本号更新。前置：在 Cloudflare 创建 API Token（至少 Workers Scripts 编辑权限，按需加 Queues、Workflows、Hyperdrive 读取），存入 GitHub Actions Secrets；CI 不能使用 wrangler 的 OAuth 登录。
+- [ ] 阶段一 staging 迁移仍由开发者在本机执行（`docs/07` §5）；阶段二再让 CI 经 Tunnel 执行迁移（见下文「生产迁移」）。
+
+在此之前，staging 由开发者在本机执行 `pnpm --filter @saas/jobs deploy:staging` 与 `pnpm --filter @saas/web deploy:staging` 部署。
 
 ## 生产迁移 · 进入阶段二（最小原型完成后）
 

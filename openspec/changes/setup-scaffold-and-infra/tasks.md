@@ -39,8 +39,7 @@
 ## 6. CI / CD
 
 - [x] 6.1 GitHub Actions PR 流水线：install → biome → typecheck → vitest → build，验证一个故意引入类型错误的 PR 失败
-- [ ] 6.2 main 流水线：部署 jobs → 部署 web 到 staging（`*.workers.dev`），验证合并后 staging 上的版本号更新；staging 迁移在阶段一由开发者在本机执行（docs/07 §5），CI 经 Tunnel 执行迁移留到阶段二
-  - 待办（用户在 CI 能力建设时补齐）：需要一个 Cloudflare API Token（至少 Workers Scripts 编辑权限）存入 GitHub Actions Secrets；CI 不能使用 wrangler 的 OAuth 登录。在此之前 staging 由开发者在本机执行 `pnpm --filter @saas/jobs deploy:staging` 与 `pnpm --filter @saas/web deploy:staging` 部署
+> 6.2（main 流水线自动部署 staging）移到 `docs/08-roadmap.md`「CI 能力建设（待办）」，不在本 change 范围内；阶段一 staging 由开发者在本机执行 `deploy:staging` 部署（docs/runbooks/hyperdrive-tunnel.md）。
 
 > 6.3（tag 流水线：生产迁移 → 部署 → 冒烟测试）推迟到阶段二，已移入 `docs/08-roadmap.md`「生产迁移」。
 

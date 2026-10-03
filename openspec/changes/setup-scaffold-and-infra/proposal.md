@@ -11,7 +11,7 @@
 - `packages/db`：Drizzle + postgres.js、按请求创建的 `createDb()`、UUIDv7 生成、第一个迁移（仅含 `setting` 表与健康检查所需内容）。
 - `/api/health`：返回数据库往返耗时与版本信息。
 - `apps/jobs`：导出一个空 Workflow、一个 Queue 消费者、一个 Cron，web 能通过绑定启动 Workflow 并投递消息，Cron 能写库。
-- 基础设施（阶段一，见 `docs/07` §0）：本机 Docker PG 启用 TLS，本机 `cloudflared` → Tunnel → Workers VPC 服务 → Hyperdrive（开/关缓存两个配置）；staging 部署到 `*.workers.dev`；生产服务器用的 `infra/postgres` compose 作为模板编写并在本机验证；GitHub Actions CI（PR 检查与 staging 部署）。生产服务器、备份与恢复演练、自定义域名、CI 经 Tunnel 迁移属于阶段二，不在本 change 范围内。
+- 基础设施（阶段一，见 `docs/07` §0）：本机 Docker PG 启用 TLS，本机 `cloudflared` → Tunnel → Workers VPC 服务 → Hyperdrive（开/关缓存两个配置）；staging 部署到 `*.workers.dev`；生产服务器用的 `infra/postgres` compose 作为模板编写并在本机验证；GitHub Actions CI（PR 检查；staging 自动部署移到 `docs/08`「CI 能力建设（待办）」）。生产服务器、备份与恢复演练、自定义域名、CI 经 Tunnel 迁移属于阶段二，不在本 change 范围内。
 - 平台能力实测：事务 + `FOR UPDATE` + `pg_advisory_xact_lock`、跨 Worker `sendEvent` 与事件早到缓存、流式响应断开后 `waitUntil(consumeStream())`、Smart Placement 延迟基线、单个 `cloudflared` 宕机时的连通性。实测结论回写到 `docs/`。
 - 决定待决事项 Q1（表单库）。
 
