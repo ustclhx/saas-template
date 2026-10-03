@@ -16,6 +16,7 @@
 | [06-ai.md](./06-ai.md) | 文本 / 图片 / 视频生成、任务模型、Provider 适配、计费结算 |
 | [07-infrastructure.md](./07-infrastructure.md) | 自建 Postgres、Hyperdrive + Tunnel、备份、环境、部署、CI |
 | [08-roadmap.md](./08-roadmap.md) | 分阶段开发计划与验收标准、待决事项 |
+| [09-parallel-plan.md](./09-parallel-plan.md) | 用 Orca 并行开发：worktree 隔离、共享文件规则、并行波次与合并流程 |
 
 ## 已确定的关键决策
 

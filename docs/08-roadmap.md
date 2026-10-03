@@ -15,6 +15,8 @@
 | Phase 6 | `add-marketing-i18n-seo` |
 | Phase 7 | `add-observability-and-optional-features` |
 
+各阶段之间与阶段内部的并行拆分见 [09-parallel-plan.md](./09-parallel-plan.md)。
+
 ## Phase 0 · 脚手架与基础设施验证（技术风险最高，优先做）
 
 - [ ] pnpm monorepo、Biome、TypeScript、Vitest 基础配置
