@@ -21,7 +21,7 @@
 
 ## 4. Web 与 Jobs Worker
 
-- [ ] 4.1 创建 `apps/web`（TanStack Start + Cloudflare Vite 插件 + `nodejs_compat`），首页 SSR 输出版本号，验证 `vite dev` 在 workerd 下可访问首页
+- [x] 4.1 创建 `apps/web`（TanStack Start + Cloudflare Vite 插件 + `nodejs_compat`），首页 SSR 输出版本号，验证 `vite dev` 在 workerd 下可访问首页
 - [ ] 4.2 实现 `GET /api/health`（数据库往返耗时、版本、`jobs.lastCronAt`；数据库不可达返回 503），验证集成测试覆盖 200 与 503 两种情况
 - [ ] 4.3 在请求入口接入环境变量校验，验证缺少必需变量时请求返回 5xx 且日志只含变量名
 - [ ] 4.4 创建 `apps/jobs`：导出空 `AiMediaWorkflow`（示例 step + `waitForEvent`）、`EMAIL_QUEUE` 消费者（只打日志）、每 5 分钟的 Cron（写 `jobs.lastCronAt`），验证本地 `wrangler dev` 下 Cron 触发后健康检查中的时间更新
