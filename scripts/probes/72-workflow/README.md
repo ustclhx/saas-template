@@ -1,6 +1,6 @@
 # 7.2 探针：跨 Worker Workflow 与事件缓冲
 
-`openspec/changes/setup-scaffold-and-infra/tasks.md` 7.2 的可重复实测。结论见 `docs/06-ai.md` §4「Workflow」下的实测记录。
+`openspec/changes/archive/2026-10-04-setup-scaffold-and-infra/tasks.md` 7.2 的可重复实测。结论见 `docs/06-ai.md` §4「Workflow」下的实测记录。
 
 | 文件 | 作用 |
 |---|---|

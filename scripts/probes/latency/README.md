@@ -1,6 +1,6 @@
 # 7.4 延迟基线探针
 
-`openspec/changes/setup-scaffold-and-infra/tasks.md` 7.4 的可重复实测。结论见 `docs/07-infrastructure.md` §8。
+`openspec/changes/archive/2026-10-04-setup-scaffold-and-infra/tasks.md` 7.4 的可重复实测。结论见 `docs/07-infrastructure.md` §8。
 
 > 阶段一的数据库在开发者本机（docs/07 §0），本探针的数据只证明链路可用，不代表生产延迟。
 
