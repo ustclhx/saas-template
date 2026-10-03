@@ -10,6 +10,10 @@
     },
     "test": {
       "dependsOn": ["^typecheck"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
     }
   }
 }

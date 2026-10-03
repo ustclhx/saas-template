@@ -3,5 +3,5 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "include": ["*.ts", "test/global-setup.ts"]
+  "include": ["*.ts", "test/global-setup.ts", "test/postgres-socket-rejection.ts"]
 }

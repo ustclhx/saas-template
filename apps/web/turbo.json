@@ -1,0 +1,22 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "test": {
+      // web 与 jobs 的集成测试读写同一个 jobs.lastCronAt 键，串行运行避免互相覆盖
+      "dependsOn": ["$TURBO_EXTENDS$", "@saas/jobs#test"],
+      "cache": false,
+      "passThroughEnv": [
+        "CI",
+        "CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE",
+        "MIGRATION_DATABASE_URL"
+      ]
+    },
+    "dev": {
+      "passThroughEnv": [
+        "CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE",
+        "CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_CACHED"
+      ]
+    }
+  }
+}

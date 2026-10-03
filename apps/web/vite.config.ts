@@ -15,6 +15,13 @@ const worktreeEnv = loadEnv('worktree', repoRoot, '')
 const port = Number(worktreeEnv.WEB_PORT ?? 3000)
 const inspectorPort = Number(worktreeEnv.WEB_INSPECTOR_PORT ?? 9229)
 
+// Hyperdrive 本地连接：wrangler 优先读取这两个环境变量，其次是 wrangler.jsonc 中的 localConnectionString。
+for (const binding of ['HYPERDRIVE', 'HYPERDRIVE_CACHED']) {
+  const name = `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_${binding}`
+  const value = worktreeEnv[name]
+  if (value && !process.env[name]) process.env[name] = value
+}
+
 export default defineConfig({
   server: { port, strictPort: true },
   preview: { port, strictPort: true },
