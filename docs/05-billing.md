@@ -227,7 +227,7 @@ INSERT INTO credit_hold (...), credit_hold_allocation (...);
 
 | ref_type | `expires_at` | 超时处理 |
 |---|---|---|
-| `ai_message` | 创建后 10 分钟（流式请求不可能更久） | 视为结算丢失，按计费方式兜底：按 token → **按最低费用 capture**（输入 token 计费或 `minCharge`），余量退回；按次 → 消息已有输出（或 `chargeOn='any_output'` 且上游已调用）时 capture 全额，否则 release。全额 release 会让中断请求变成免费使用 |
+| `ai_message` | 创建后 10 分钟（流式请求不可能更久） | 视为结算丢失，按计费方式兜底：按 token → **有用量检查点时按检查点用量 capture**（06-ai §3「用量检查点」），没有检查点才按最低费用（输入 token 计费或 `minCharge`），余量退回；按次 → 消息已有输出（或 `chargeOn='any_output'` 且上游已调用）时 capture 全额，否则 release。全额 release 会让中断请求变成免费使用 |
 | `ai_task` | 不设（`null`），生命周期跟随任务 | 不由 hold 超时触发；由「卡住任务回收」Cron 查询 Workflow 实例状态：实例已结束但 hold 仍为 held → 按任务结果补做 capture / release；实例仍在运行且超过任务硬超时（如 2 小时）→ 先 `terminate` 实例，再将任务标记 failed 并 release |
 
 因为 capture / release 都有状态机校验，Cron 与 Workflow 即使同时结算同一个 hold，也只有一方生效。

@@ -23,13 +23,16 @@
 4. **最低费用（Q7）**：按 token 计费结算丢失时，按估算输入 token 计费，且不低于模型的 `minCharge`；`minCharge` 默认 1 积分。
 5. **超额额度（Q10）**：沿用 `billing.overage` 默认值（单次 20% / 50 积分、空间每日 200 积分），本 change 上线后观察两周 `overage_absorbed` 再调整。
 6. **流式与结算解耦**：`streamText` 返回后立即 `ctx.waitUntil(result.consumeStream())`，`onFinish` 中结算并更新消息状态；前端停止按钮调用 `POST /api/ai/chat/:messageId/stop`，服务端通过 `AbortController` 中止并按已产生用量结算。
-7. **超时兜底处理器**：向 `registerHoldSweeper('ai_message', handler)` 注册：读取消息的定价快照，按 token → 最低费用；按次 → 消息有输出则全额、否则释放；并把消息标记为 `failed`。
+7. **超时兜底处理器**：向 `registerHoldSweeper('ai_message', handler)` 注册：读取消息的定价快照，按 token → 有用量检查点时按检查点用量结算，没有才收最低费用；按次 → 消息有输出（或有检查点）则全额、否则释放；并把消息标记为 `failed`（有部分内容时标记为未完成）。
 8. **AI Gateway**：AI SDK provider 的 baseURL 指向 Gateway 的各家兼容端点；Gateway 开启鉴权时带 `AI_GATEWAY_TOKEN`。
 9. **对话隐私**：对话只对创建者可见，`ai_conversation` 查询在 `scoped(ws)` 之上再加 `user_id` 过滤。
+10. **用量检查点**（Phase 0 实测 7.3 后采纳）：平台在客户端断开后只允许 `waitUntil` 再运行 30 秒，超时静默取消，`onFinish` 不会执行。因此在 `waitUntil` 中读模型流的同一个读取器里，每 5 秒或每 200 个输出 token（先到者）执行一次 `UPDATE ai_message SET usage_checkpoint = {inputTokens, outputTokens, at}, parts = <已生成内容>`。服务商通常只在流结束时返回 usage，所以检查点中的输出 token 按已生成文本估算（与输入估算用同一个估算器）；被取消时实际产生的输出不少于检查点，按检查点结算不会多收。备选「断开约 25 秒后主动中止生成、在时限内按已产生用量结算」被否决：它会截断用户的回复，且中止后服务商不一定返回 usage。
 
 ## Risks / Trade-offs
 
-- [`waitUntil` 有时间上限，超长输出可能来不及结算] → 由超时兜底处理器按最低费用结算；在 `docs/06-ai.md` 中注明这一取舍。
+- [`waitUntil` 有时间上限，超长输出可能来不及结算] → 用量检查点（决策 10）让兜底按已记录的用量结算，而不是最低费用。
+- [断开超过 30 秒后服务商仍在继续生成] → 这部分输出服务商照常计费、平台无法向用户收取；属已接受的取舍（不截断回复）。通过监控「被取消的回复」数量与检查点之后的估算损失评估影响，必要时再引入主动中止或 Durable Object 承载生成。
+- [检查点写库增加数据库负载] → 每条回复每 5 秒最多一次 UPDATE，按主键更新，开销可忽略；写入失败只记录日志，不影响生成。
 - [输入估算系数偏低导致平台持续承担超额] → 每日按模型统计 `overage_absorbed`，超过阈值告警。
 - [AI Gateway 与服务商的 token 统计口径不一致] → 结算以 AI SDK 返回的 usage 为准；阶段验收时对比两边统计，差异超过 1% 时调查。
 
