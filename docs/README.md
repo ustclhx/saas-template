@@ -24,7 +24,7 @@
 |---|---|---|
 | D1 | 运行平台以 **Cloudflare** 为主（Workers / R2 / KV / Queues / Workflows / AI Gateway） | 成本低、全球边缘、服务齐全 |
 | D2 | 框架使用 **TanStack Start**（非 Next.js） | 对 Workers 一等支持，本地开发即 workerd 运行时，包体更小 |
-| D3 | 数据库使用 **自建 Postgres**，经 **Hyperdrive + Cloudflare Tunnel** 访问，ORM 为 **Drizzle** | D1 能力不足；Tunnel 避免数据库暴露公网；只用标准 PG 以便迁移到托管服务 |
+| D3 | 数据库使用 **自建 Postgres**，经 **Hyperdrive + Cloudflare Tunnel（Workers VPC）** 访问，ORM 为 **Drizzle**；最小原型前数据库在本机，之后迁移到生产服务器（`07` §0） | D1 能力不足；Tunnel 避免数据库暴露公网；只用标准 PG 以便迁移到托管服务 |
 | D4 | 模板**不绑定地区与时区**：数据库地区为部署参数，时间一律 UTC 存储，展示时按用户时区换算 | 面向不同应用需求 |
 | D5 | 支付先接 **Stripe + PayPal**，通过 `PaymentProvider` 抽象，后续扩展 MoR（Creem / Paddle / Polar）；不做中国大陆境内支付 | 暂无主体；PayPal 可个人跨境收款，Stripe 先做测试模式开发 |
 | D6 | **多租户为可选项**，采用「个人空间」模型：所有数据归属 Workspace，开关只控制是否允许团队 Workspace | 一套代码适配 B2C / B2B |

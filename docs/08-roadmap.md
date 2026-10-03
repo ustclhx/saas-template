@@ -17,20 +17,22 @@
 
 各阶段之间与阶段内部的并行拆分见 [09-parallel-plan.md](./09-parallel-plan.md)。
 
+**基础设施节奏**（`docs/07` §0）：Phase 0–3 在**阶段一**完成——数据库在开发者本机，staging 部署到 `*.workers.dev`，不需要域名，不做备份。Phase 3 完成即达到**最小原型**（可注册登录、开通套餐或购买积分、进行一次计费正确的 AI 对话），之后执行下文的「生产迁移」进入阶段二，再继续 Phase 4 及以后。
+
 ## Phase 0 · 脚手架与基础设施验证（技术风险最高，优先做）
 
-- [ ] pnpm monorepo、Biome、TypeScript、Vitest 基础配置
-- [ ] `apps/web`：TanStack Start 跑在 workerd（Cloudflare Vite 插件），本地 + 部署各一次
-- [ ] `apps/jobs`：导出一个空 Workflow + Queue consumer + Cron，web 能通过绑定调用
-- [ ] 本地 Docker PG + Drizzle + 第一个迁移
-- [ ] VPS PG + Tunnel + Access + Hyperdrive，线上 Worker 查询成功；记录延迟基线（开/关 Smart Placement 对比）
+- [x] pnpm monorepo、Biome、TypeScript、Vitest 基础配置
+- [ ] `apps/web`：TanStack Start 跑在 workerd（Cloudflare Vite 插件），本地 + 部署各一次（本地已完成，部署待 staging）
+- [x] `apps/jobs`：导出一个空 Workflow + Queue consumer + Cron，web 能通过绑定调用
+- [x] 本地 Docker PG + Drizzle + 第一个迁移
+- [ ] 本机 PG（TLS）+ `cloudflared` + Tunnel + Workers VPC + Hyperdrive，部署到 `*.workers.dev` 的 Worker 查询成功；记录延迟基线（开/关 Smart Placement 对比，仅验证链路）
 - [ ] 验证 Hyperdrive 下的事务 + `SELECT ... FOR UPDATE` + `pg_advisory_xact_lock`
 - [ ] 验证跨 Worker（`script_name`）的 Workflow 绑定与 `sendEvent`；确认 Workflow 尚未执行到 `waitForEvent` 时收到的事件是否被缓存
 - [ ] 验证流式响应中客户端断开后，`waitUntil(consumeStream())` 能否完成结算
-- [ ] VPS 上两个 `cloudflared` 副本，停掉其中一个时 Hyperdrive 查询不中断
-- [ ] `template.config.ts` + env Zod 校验
+- [ ] 本机两个 `cloudflared` 副本，停掉其中一个时 Hyperdrive 查询不中断
+- [x] `template.config.ts` + env Zod 校验
 
-**验收**：线上首页 SSR 正常；`/api/health` 返回 DB 往返耗时；jobs 的 Cron 能写库。
+**验收**：staging（`*.workers.dev`）首页 SSR 正常；`/api/health` 返回 DB 往返耗时；jobs 的 Cron 能写库。
 
 ## Phase 1 · 认证与 Workspace
 
@@ -69,6 +71,21 @@
 - [ ] 权益检查与 AI 限流
 
 **验收**：流式对话可用；积分流水与 AI Gateway 的 token 统计一致；中断、错误均正确结算。
+
+## 生产迁移 · 进入阶段二（最小原型完成后）
+
+暂不建 OpenSpec change，先在这里登记，进入阶段二时再拆成 change：
+
+- [ ] 生产服务器：按 `infra/postgres` 部署 PG 17 + 两个 `cloudflared` 副本，Workers VPC 指向新服务器，证书改为受信任并开启校验
+- [ ] 备份（原 P0 任务 5.3）：WAL-G 基础备份与 WAL 归档到 R2（需先开通 R2，开启 Bucket Lock）
+- [ ] 异地第二副本（待办）：每日同步到非 Cloudflare 对象存储（存储选型待定）
+- [ ] 恢复演练（原 P0 任务 5.4）：在临时实例恢复到指定时间点并跑校验脚本，写 `docs/runbooks/restore.md`，核对 RTO
+- [ ] 域名：staging 与 production 绑定自定义域名（可先用已有 Zone 的子域名，如 `ezarouter.cc` 的子域）
+- [ ] CI 迁移：为 PG 配置公网主机名 + Access（或 SSH），main 流水线执行 staging 迁移
+- [ ] tag 流水线（原 P0 任务 6.3）：生产迁移 → 部署 jobs → 部署 web → `/api/health` 冒烟测试
+- [ ] 在生产服务器上重测 P0 的延迟基线与 `cloudflared` 副本切换
+
+**验收**：production 绑定域名可访问；备份可恢复；从 staging 合并到 tag 发布的全流程自动化。
 
 ## Phase 4 · AI 图片 / 视频
 

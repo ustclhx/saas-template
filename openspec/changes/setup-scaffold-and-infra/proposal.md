@@ -11,7 +11,7 @@
 - `packages/db`：Drizzle + postgres.js、按请求创建的 `createDb()`、UUIDv7 生成、第一个迁移（仅含 `setting` 表与健康检查所需内容）。
 - `/api/health`：返回数据库往返耗时与版本信息。
 - `apps/jobs`：导出一个空 Workflow、一个 Queue 消费者、一个 Cron，web 能通过绑定启动 Workflow 并投递消息，Cron 能写库。
-- 基础设施：本地 Docker PG；VPS 上的 PG 17 + 两个 `cloudflared` 副本 + WAL-G 备份到 R2（及异地副本）；Access + Hyperdrive（开/关缓存两个配置）；staging 环境；GitHub Actions CI（含经 Access 执行迁移）。
+- 基础设施（阶段一，见 `docs/07` §0）：本机 Docker PG 启用 TLS，本机 `cloudflared` → Tunnel → Workers VPC 服务 → Hyperdrive（开/关缓存两个配置）；staging 部署到 `*.workers.dev`；生产服务器用的 `infra/postgres` compose 作为模板编写并在本机验证；GitHub Actions CI（PR 检查与 staging 部署）。生产服务器、备份与恢复演练、自定义域名、CI 经 Tunnel 迁移属于阶段二，不在本 change 范围内。
 - 平台能力实测：事务 + `FOR UPDATE` + `pg_advisory_xact_lock`、跨 Worker `sendEvent` 与事件早到缓存、流式响应断开后 `waitUntil(consumeStream())`、Smart Placement 延迟基线、单个 `cloudflared` 宕机时的连通性。实测结论回写到 `docs/`。
 - 决定待决事项 Q1（表单库）。
 
@@ -27,5 +27,5 @@
 ## Impact
 
 - 新增：根目录工程配置、`apps/web`、`apps/jobs`、`packages/{config,db,shared}`、`infra/postgres`、`infra/local`、`.github/workflows/`、`docs/runbooks/`。
-- 外部依赖：Cloudflare 账号（Workers Paid、Hyperdrive、R2、KV、Queues、Workflows、Zero Trust）、一台 VPS、一个非 Cloudflare 的对象存储（备份异地副本）。
+- 外部依赖：Cloudflare 账号（Workers Paid、Hyperdrive、Workers VPC、KV、Queues、Workflows、Tunnel）。阶段二另需一台生产服务器、R2 与一个非 Cloudflare 的对象存储（备份异地副本）、一个域名。
 - 之后所有 change（auth、billing、AI 等）都建立在本 change 的工程结构和实测结论之上；若实测推翻某项「待验证」假设，需先修订 `docs/` 再继续后续 change。

@@ -64,7 +64,8 @@ P0 实现时必须遵守的约定（setup 脚本依赖它们）：
 ### P0 `setup-scaffold-and-infra`
 - W0：`p0-scaffold`（1.1–1.4）在 main 上串行完成
 - W1：`p0-config`（2.1, 2.2, 6.1） ∥ `p0-db`（3.1–3.3, 2.3） ∥ `p0-web`（4.1）
-- W2：`p0-runtime`（4.2, 4.3, 4.4, 4.5；4.3 依赖 `p0-config` 的 2.2，因此不能放在 W1）；CI 部署 6.2、6.3 由 decision gate 阻塞，直到人工完成 5.4–5.6
+- W2：`p0-runtime`（4.2, 4.3, 4.4, 4.5；4.3 依赖 `p0-config` 的 2.2，因此不能放在 W1）
+- 基础设施（阶段一，协调者在主 checkout 执行，需要 Cloudflare 账号）：5.1、5.2 → 5.5 → 5.6；CI 部署 6.2 在 5.5 之后；5.3、5.4、6.3 已移到「生产迁移」
 - W3：实测 `p0-probe-locks`（7.1） ∥ `p0-probe-workflow`（7.2） ∥ `p0-probe-stream`（7.3） ∥ `p0-probe-latency`（7.4） ∥ `p0-probe-tunnel`（7.5）→ `p0-findings`（7.6）
 
 ### P1 `add-auth-and-workspaces`
@@ -131,7 +132,8 @@ P0 实现时必须遵守的约定（setup 脚本依赖它们）：
 4. 推送 main，然后把依赖该任务的后续任务从 blocked 放行（新 worktree 才能从包含该成果的 main 分出）。
 
 **decision gate 清单**（需要人工完成后放行）：
-- P0：VPS 与 Postgres 就绪、Tunnel + Access + Hyperdrive 配置完成、GitHub Actions Secrets 配置完成
+- P0：Cloudflare 登录 / API Token、本机 `cloudflared` 与 Tunnel、Workers VPC 与 Hyperdrive 配置完成、GitHub Actions Secrets（staging 部署用）配置完成
+- 生产迁移（阶段二）：生产服务器、R2 开通、域名与 DNS 权限、异地备份存储
 - P1：Google / GitHub OAuth 应用、Resend 域名验证、Turnstile 站点
 - P2：Stripe 测试账号、PayPal 沙箱账号与 webhook
 - P3：AI Gateway 与至少一家 LLM 服务商的 API Key

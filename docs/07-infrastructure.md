@@ -1,6 +1,22 @@
 # 07 · 基础设施、环境与部署
 
-## 1. 自建 Postgres
+## 0. 部署阶段
+
+模板按两个阶段推进基础设施，避免在原型尚未成形时就投入生产服务器的运维：
+
+| 阶段 | 时间 | 数据库 | 连接方式 | Worker 部署 | 域名 | 备份 |
+|---|---|---|---|---|---|---|
+| **阶段一：本机开发测试**（当前） | 从 Phase 0 到完成最小原型 | 开发者本机 Docker 中的 PG（`infra/local`），staging 使用其中的 `saas_staging` 库 | 本机 `cloudflared` → Tunnel → Workers VPC 服务 → Hyperdrive（§2） | staging 部署到 `*.workers.dev` | 不需要 | 不做 |
+| **阶段二：生产服务器测试** | 完成最小原型之后 | 生产服务器上的 PG（§1，`infra/postgres`） | 同阶段一，或公网主机名 + Access（§2 备选） | staging / production，绑定自定义域名 | 需要（可先用已有 Zone 的子域名） | 必须（§1「备份与恢复」） |
+
+**最小原型**指 Phase 0–3 完成：可以注册登录、开通套餐或购买积分、进行一次计费正确的 AI 对话（见 `docs/08-roadmap.md`）。
+
+阶段一的限制：
+- 部署后的 staging Worker 访问数据库时，开发者本机必须开机且 `cloudflared` 在运行。
+- 请求从 Cloudflare 边缘绕回开发者本机网络，延迟不能代表生产环境；Phase 0 记录的延迟基线只用于验证链路可用。
+- 本机 PG 不做备份，staging 数据可随时重建。
+
+## 1. 自建 Postgres（阶段二）
 
 ### 部署形态
 一台 VPS（地区按具体应用的主要用户选择，模板不限定），Docker Compose 运行：
@@ -21,7 +37,10 @@
 | `migrator` | DDL | 仅 CI / 迁移使用 |
 | `readonly` | SELECT | 数据分析、排查 |
 
-### 备份与恢复（必须）
+### 备份与恢复（阶段二必须；阶段一不做）
+
+> 状态：推迟到阶段二实施。R2 主备份与异地第二副本均为待办（`docs/08-roadmap.md`「生产迁移」）。
+
 - 每日基础备份 + 持续 WAL 归档到独立的 R2 桶（开启 Bucket Lock 保留规则，防误删）。
 - **异地第二副本**：每日基础备份与 `pg_dump` 再同步一份到**非 Cloudflare 账号**下的对象存储（如 Backblaze B2，使用独立凭证）。业务和主备份都在同一个 Cloudflare 账号下，账号被盗、被封或误操作时会一起丢失。
 - 保留策略：7 天每日 + 4 周每周（可调）。
@@ -47,13 +66,22 @@
 
 ## 2. Hyperdrive + Cloudflare Tunnel
 
-配置步骤（在 `docs/runbooks/` 中细化，待实测）：
-1. 在 Zero Trust 创建 Tunnel，VPS 上运行 `cloudflared`，为 PG 配置一个 TCP 类型的公共主机名（如 `pg.example.com`）。
-2. 为该主机名创建 Cloudflare Access 应用，并创建 Service Token。
-3. 创建两个 Hyperdrive 配置，指向该主机名，带上 Access 的 client id / secret：
+### 默认方式：Workers VPC（阶段一、阶段二通用）
+
+Hyperdrive 通过 Workers VPC 服务经 Tunnel 访问私有数据库，**不需要公网主机名、DNS 记录、Access 应用或 Service Token**。链路：Worker → Hyperdrive → Workers VPC 服务（TCP）→ Tunnel → `cloudflared` → Postgres。
+
+步骤（在 `docs/runbooks/hyperdrive-tunnel.md` 中细化）：
+1. 创建一个专用 Tunnel，在数据库所在机器上运行 `cloudflared`（阶段一为 `infra/local` 中的可选 `cloudflared` 服务，阶段二为 `infra/postgres`）。
+2. Postgres 必须启用 TLS（Workers VPC 的要求）；阶段一使用自签证书，VPC 服务设置为不校验证书。
+3. `wrangler vpc service create <name> --type tcp --tcp-port 5432 --app-protocol postgresql --tunnel-id <tunnel-id> --hostname <cloudflared 可达的数据库主机名>`（或 `--ipv4`）；阶段一的自签证书加 `--cert-verification-mode disabled`。
+4. 创建两个 Hyperdrive 配置，指向该 VPC 服务（`wrangler hyperdrive create <name> --service-id <id> --database ... --user app ...`）：
    - `app-db`：**关闭缓存**
    - `app-db-cached`：开启缓存（max_age 按需要，如 60s）
-4. 在 `apps/web`、`apps/jobs` 的 wrangler 配置中绑定为 `HYPERDRIVE`、`HYPERDRIVE_CACHED`。
+5. 在 `apps/web`、`apps/jobs` 的 wrangler 配置中绑定为 `HYPERDRIVE`、`HYPERDRIVE_CACHED`。
+
+### 备选方式：公网主机名 + Access（阶段二可选）
+
+为 PG 配置 TCP 类型的公共主机名（如 `pg.example.com`），为其创建 Access 应用与 Service Token，Hyperdrive 带 Access 的 client id / secret 连接。需要域名与 DNS 编辑权限；优点是 CI 可以经 `cloudflared access tcp` 直接连库执行迁移（见 §5）。
 
 连接代码：
 
@@ -80,8 +108,8 @@ export function createDb(hd: Hyperdrive) {
 |---|---|---|---|---|
 | local | `wrangler dev` / `vite dev`（workerd） | 本地 Docker PG | Stripe test / PayPal sandbox | Hyperdrive 使用 `localConnectionString` 直连本地 PG；R2/KV/Queues 由 Miniflare 模拟 |
 | preview | 每个 PR 一个 Worker 预览版本 | staging 库（**只读 schema**） | 测试模式 | 可选；PR 不得对 staging 库执行迁移，含 schema 变更的 PR 不部署预览（或改用本地验证） |
-| staging | `*.staging.example.com` | staging 库（同一台 VPS 的独立 database 或独立实例） | 测试模式 | |
-| production | 自定义域名 | 生产库 | 正式 | |
+| staging | 阶段一：`*.workers.dev`；阶段二：`*.staging.<域名>` | 阶段一：本机 PG 的 `saas_staging` 库（经 Workers VPC）；阶段二：生产服务器上的独立 database 或独立实例 | 测试模式 | |
+| production | 自定义域名（阶段二） | 生产库 | 正式 | 阶段一不部署 |
 
 Wrangler 使用 `env.staging` / `env.production` 区分绑定与变量。
 
@@ -146,7 +174,9 @@ main:  以上 + 数据库迁移(staging) → 部署 staging → e2e (Playwright)
 tag:   数据库迁移(production) → wrangler deploy (jobs 先于 web) → 冒烟测试
 ```
 
-**数据库迁移如何访问私有 PG**：CI 中运行 `cloudflared access tcp`（使用 Access Service Token）在本地开一个转发端口，再执行 `drizzle-kit migrate`。备选：通过 SSH 在 VPS 上执行迁移。
+**数据库迁移如何访问私有 PG**：
+- 阶段一：数据库在开发者本机，CI 无法访问。staging 的迁移由开发者在本机以 `migrator` 账号执行（`pnpm --filter @saas/db db:migrate`，连接 `saas_staging`），CI 的 main 流水线只部署 Worker。
+- 阶段二：CI 中运行 `cloudflared access tcp`（需要 §2 的公网主机名 + Access 备选方式）在本地开一个转发端口，再执行 `drizzle-kit migrate`；或通过 SSH 在生产服务器上执行迁移。
 
 **迁移原则**：只做向后兼容的变更（先加字段/表 → 部署代码 → 再删旧字段），保证 web/jobs 滚动发布期间新旧代码都能运行。
 
@@ -160,7 +190,7 @@ tag:   数据库迁移(production) → wrangler deploy (jobs 先于 web) → 冒
 - R2 桶不公开；下载经鉴权签发短期 URL。
 - 服务端下载外部 URL 时限制域名白名单、大小与超时（防 SSRF）。
 - 管理后台操作写 `audit_log`；模拟登录有明显提示并记录。
-- 数据库最小权限账号；Tunnel + Access，PG 端口不对公网开放。
+- 数据库最小权限账号；PG 只经 Tunnel（Workers VPC 或 Access）访问，端口不对公网开放。
 - 依赖更新：Renovate / Dependabot。
 
 ## 7. 可观测性

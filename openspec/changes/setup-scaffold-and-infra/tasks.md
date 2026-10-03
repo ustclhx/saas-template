@@ -27,26 +27,27 @@
 - [x] 4.4 创建 `apps/jobs`：导出空 `AiMediaWorkflow`（示例 step + `waitForEvent`）、`EMAIL_QUEUE` 消费者（只打日志）、每 5 分钟的 Cron（写 `jobs.lastCronAt`），验证本地 `wrangler dev` 下 Cron 触发后健康检查中的时间更新
 - [x] 4.5 在 `apps/web` 配置 Workflow（`script_name: jobs`）与 Queue producer 绑定，新增仅限开发环境的调试路由启动 Workflow、投递消息，验证本地两个 Worker 联调时 jobs 收到消息并启动实例
 
-## 5. 生产基础设施
+## 5. 本机测试基础设施（阶段一，见 docs/07 §0）
 
-- [ ] 5.1 编写 `infra/postgres/docker-compose.yml`（PG 17、两个 `cloudflared` 副本、WAL-G、可选 exporter）与 `postgresql.conf`（含 `archive_timeout = 60s`），验证在 VPS 上启动后 PG 只监听内网
-- [ ] 5.2 配置 Tunnel + Access 应用 + Service Token，创建 `app-db`（关缓存）与 `app-db-cached`（开缓存）两个 Hyperdrive 配置，验证部署后的 Worker 通过两个绑定都能查询成功
-- [ ] 5.3 配置 WAL-G 基础备份与 WAL 归档到 R2（开启 Bucket Lock），以及每日同步到非 Cloudflare 对象存储的异地副本，验证 R2 与异地存储中都出现当日备份
-- [ ] 5.4 完成一次恢复演练：在新实例上恢复到指定时间点并跑校验脚本，记录实际耗时，验证结果写入 `docs/runbooks/restore.md` 且 RTO 与 `docs/07-infrastructure.md` 一致（不一致则更新文档）
-- [ ] 5.5 配置 staging 环境（独立 database、`env.staging` 绑定与变量），验证 staging 上 `/api/health` 返回 200
-- [ ] 5.6 编写 `docs/runbooks/hyperdrive-tunnel.md`（Tunnel、Access、Hyperdrive 配置步骤），验证按文档能从零重建 staging 的数据库连接
+- [ ] 5.1 编写 `infra/postgres/docker-compose.yml`（PG 17、两个 `cloudflared` 副本、可选 exporter；WAL-G 备份留到阶段二）与 `postgresql.conf`（含 `archive_timeout = 60s`、TLS），作为阶段二生产服务器的模板，验证在本机用它启动后 PG 只在 compose 内网监听且 TLS 可用
+- [ ] 5.2 本机 PG（`infra/local`）启用 TLS（自签证书）并新增可选的 `cloudflared` 服务；创建专用 Tunnel、Workers VPC TCP 服务，以及指向它的 `app-db`（关缓存）与 `app-db-cached`（开缓存）两个 Hyperdrive 配置，验证部署后的 Worker 通过两个绑定都能查询本机 `saas_staging` 库
+- [ ] 5.5 配置 staging 环境：本机 `saas_staging` 库（`migrator` 执行迁移）、`env.staging` 的绑定与变量、Queues 等资源，jobs 与 web 部署到 `*.workers.dev`，验证 staging 上 `/api/health` 返回 200 且 `jobs.lastCronAt` 随 Cron 更新
+- [ ] 5.6 编写 `docs/runbooks/hyperdrive-tunnel.md`（本机 TLS、`cloudflared`、Tunnel、Workers VPC 服务、Hyperdrive、staging 部署步骤），验证按文档能从零重建 staging 的数据库连接
+
+> 5.3（WAL-G 备份到 R2 与异地副本）与 5.4（恢复演练）推迟到阶段二，已移入 `docs/08-roadmap.md`「生产迁移」，不在本 change 范围内。
 
 ## 6. CI / CD
 
-- [ ] 6.1 GitHub Actions PR 流水线：install → biome → typecheck → vitest → build，验证一个故意引入类型错误的 PR 失败
-- [ ] 6.2 main 流水线：经 `cloudflared access tcp` 以 `migrator` 执行 staging 迁移 → 部署 jobs → 部署 web，验证合并后 staging 上的版本号更新
-- [ ] 6.3 tag 流水线：生产迁移 → jobs → web → 调用 `/api/health` 冒烟测试，验证冒烟失败时流水线标红
+- [x] 6.1 GitHub Actions PR 流水线：install → biome → typecheck → vitest → build，验证一个故意引入类型错误的 PR 失败
+- [ ] 6.2 main 流水线：部署 jobs → 部署 web 到 staging（`*.workers.dev`），验证合并后 staging 上的版本号更新；staging 迁移在阶段一由开发者在本机执行（docs/07 §5），CI 经 Tunnel 执行迁移留到阶段二
+
+> 6.3（tag 流水线：生产迁移 → 部署 → 冒烟测试）推迟到阶段二，已移入 `docs/08-roadmap.md`「生产迁移」。
 
 ## 7. 平台能力实测（结论回写 docs）
 
 - [ ] 7.1 实测 Hyperdrive 下事务 + `SELECT ... FOR UPDATE` + `pg_advisory_xact_lock`：两个并发请求争同一把锁，验证后到者等待先到者提交；结论写入 `docs/07-infrastructure.md`
 - [ ] 7.2 实测跨 Worker Workflow：web 启动 jobs 的实例并 `sendEvent`；以及实例尚未执行到 `waitForEvent` 时先发送的事件是否被保留，验证结论写入 `docs/06-ai.md` 的「待验证」注释处
 - [ ] 7.3 实测流式响应：服务端用 `waitUntil` 读完一个模拟的长流，客户端中途断开，验证流读完后的回调仍写库成功；结论写入 `docs/06-ai.md`
-- [ ] 7.4 记录延迟基线：同一查询在开/关 Smart Placement 下从至少两个地区访问的 p50/p95，验证数据写入 `docs/07-infrastructure.md`
-- [ ] 7.5 停掉一个 `cloudflared` 副本期间持续请求 `/api/health`，验证没有失败请求（或记录中断时长）
+- [ ] 7.4 记录延迟基线：同一查询在开/关 Smart Placement 下从至少两个地区访问的 p50/p95，验证数据写入 `docs/07-infrastructure.md`（阶段一的数据库在本机，结果只用于验证链路，需在文档中注明不代表生产延迟）
+- [ ] 7.5 本机同时运行两个 `cloudflared` 副本，停掉其中一个期间持续请求 staging 的 `/api/health`，验证没有失败请求（或记录中断时长）
 - [ ] 7.6 根据 7.1–7.5 的结论更新 `docs/08-roadmap.md` 的 Phase 0 勾选状态与 `docs/README.md` 中受影响的「待验证」标注，验证 docs 中不再有已实测项仍标为待验证
