@@ -9,8 +9,8 @@
 
 ## 2. 配置与环境变量
 
-- [ ] 2.1 在 `packages/config` 实现 `defineTemplateConfig` 与按 `docs/02-project-structure.md` 草案定义的类型和默认值，验证省略可选项时得到默认值、非法取值时 typecheck 失败（类型测试）
-- [ ] 2.2 实现环境变量 Zod schema 与 `loadEnv(env)`，缺失项报出变量名但不输出值，验证对应单元测试覆盖「缺失」「格式非法」「齐全」三种情况
+- [x] 2.1 在 `packages/config` 实现 `defineTemplateConfig` 与按 `docs/02-project-structure.md` 草案定义的类型和默认值，验证省略可选项时得到默认值、非法取值时 typecheck 失败（类型测试）
+- [x] 2.2 实现环境变量 Zod schema 与 `loadEnv(env)`，缺失项报出变量名但不输出值，验证对应单元测试覆盖「缺失」「格式非法」「齐全」三种情况
 - [ ] 2.3 实现运行时设置读取 `getSetting(key)`：读 `setting` 表（KV 缓存），缺失回退代码默认值，验证单元测试覆盖「表中存在」「表中缺失」两种情况
 
 ## 3. 数据库

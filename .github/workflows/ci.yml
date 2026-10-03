@@ -28,3 +28,5 @@ jobs:
       - run: pnpm check
       - run: pnpm typecheck
       - run: pnpm test
+      # turbo run build：没有 build 脚本的包会被跳过
+      - run: pnpm build
