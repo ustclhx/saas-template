@@ -38,7 +38,7 @@
 |---|---|---|
 | 语言 | TypeScript（strict） | |
 | 包管理 | pnpm workspaces（+ Turborepo 可选） | |
-| Web 框架 | TanStack Start（Router + Server Functions） | 通过 Cloudflare 官方 Vite 插件运行在 workerd（待验证具体配置） |
+| Web 框架 | TanStack Start（Router + Server Functions） | 已实测可用（P0 4.1）：`@cloudflare/vite-plugin` 置于 `tanstackStart()` 之前并设 `viteEnvironment: { name: 'ssr' }`，`wrangler.jsonc` 的 `main` 指向 `@tanstack/react-start/server-entry`、开 `nodejs_compat`；`vite dev` 与 `vite preview` 的 SSR 均在 workerd 中执行，`vite build` 产出 `dist/server/wrangler.json` 供部署。注意：pnpm 需在 `allowBuilds` 中放行 `workerd`、`esbuild` 的安装脚本；`routeTree.gen.ts` 不提交，typecheck 前用 `vite.resolveConfig()` 触发 Start 插件生成（`tsr generate` 缺少 Start 的 `Register` 声明） |
 | 数据请求 | TanStack Query | |
 | 表单 | TanStack Form 或 react-hook-form + Zod | 脚手架阶段二选一 |
 | 校验 | Zod | 前后端共享 schema |
