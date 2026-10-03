@@ -48,7 +48,7 @@
 
 - [x] 7.1 实测 Hyperdrive 下事务 + `SELECT ... FOR UPDATE` + `pg_advisory_xact_lock`：两个并发请求争同一把锁，验证后到者等待先到者提交；结论写入 `docs/07-infrastructure.md`
 - [ ] 7.2 实测跨 Worker Workflow：web 启动 jobs 的实例并 `sendEvent`；以及实例尚未执行到 `waitForEvent` 时先发送的事件是否被保留，验证结论写入 `docs/06-ai.md` 的「待验证」注释处
-- [ ] 7.3 实测流式响应：服务端用 `waitUntil` 读完一个模拟的长流，客户端中途断开，验证流读完后的回调仍写库成功；结论写入 `docs/06-ai.md`
+- [x] 7.3 实测流式响应：服务端用 `waitUntil` 读完一个模拟的长流，客户端中途断开，验证流读完后的回调仍写库成功；结论写入 `docs/06-ai.md`
 - [ ] 7.4 记录延迟基线：同一查询在开/关 Smart Placement 下从至少两个地区访问的 p50/p95，验证数据写入 `docs/07-infrastructure.md`（阶段一的数据库在本机，结果只用于验证链路，需在文档中注明不代表生产延迟）
 - [ ] 7.5 本机同时运行两个 `cloudflared` 副本，停掉其中一个期间持续请求 staging 的 `/api/health`，验证没有失败请求（或记录中断时长）
 - [ ] 7.6 根据 7.1–7.5 的结论更新 `docs/08-roadmap.md` 的 Phase 0 勾选状态与 `docs/README.md` 中受影响的「待验证」标注，验证 docs 中不再有已实测项仍标为待验证
