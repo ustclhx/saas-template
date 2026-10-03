@@ -3,6 +3,8 @@
 #
 # 本地开发约定（P0 任务 3.1 的 infra/local/docker-compose.yml 必须与此一致）：
 #   - 本地 Postgres 容器名 saas-template-pg，超级用户 postgres，宿主机端口 5432
+#   - 账号 app（DML）/ migrator（DDL）/ readonly（SELECT），本地密码与账号名相同
+#   - 单库权限由 infra/local/initdb/02-db-grants.sql 设置，setup 对每个 worktree 库执行一次
 #   - 主 checkout 使用数据库 saas_dev；每个 Orca worktree 使用独立数据库 saas_wt_<名称>
 #   - 每个 worktree 的数据库名与端口写入 .env.worktree（已 gitignore），由 vite / wrangler 配置读取
 
@@ -10,6 +12,9 @@ PG_CONTAINER="${SAAS_PG_CONTAINER:-saas-template-pg}"
 PG_HOST_PORT="${SAAS_PG_PORT:-5432}"
 PG_APP_USER="${SAAS_PG_APP_USER:-app}"
 PG_APP_PASSWORD="${SAAS_PG_APP_PASSWORD:-app}"
+PG_MIGRATOR_USER="${SAAS_PG_MIGRATOR_USER:-migrator}"
+PG_MIGRATOR_PASSWORD="${SAAS_PG_MIGRATOR_PASSWORD:-migrator}"
+PG_DB_GRANTS_SQL="infra/local/initdb/02-db-grants.sql"
 
 worktree_name() {
   # Orca 传入 ORCA_WORKSPACE_NAME；手动运行时退回到目录名
@@ -38,4 +43,9 @@ pg_available() {
 
 pg_exec() {
   docker exec -i "$PG_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -tAc "$1"
+}
+
+pg_exec_file() {
+  # 以超级用户在指定数据库中执行宿主机上的 SQL 文件：pg_exec_file <db> <file>
+  docker exec -i "$PG_CONTAINER" psql -v ON_ERROR_STOP=1 -q -U postgres -d "$1" < "$2"
 }

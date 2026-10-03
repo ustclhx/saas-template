@@ -11,13 +11,13 @@
 
 - [x] 2.1 在 `packages/config` 实现 `defineTemplateConfig` 与按 `docs/02-project-structure.md` 草案定义的类型和默认值，验证省略可选项时得到默认值、非法取值时 typecheck 失败（类型测试）
 - [x] 2.2 实现环境变量 Zod schema 与 `loadEnv(env)`，缺失项报出变量名但不输出值，验证对应单元测试覆盖「缺失」「格式非法」「齐全」三种情况
-- [ ] 2.3 实现运行时设置读取 `getSetting(key)`：读 `setting` 表（KV 缓存），缺失回退代码默认值，验证单元测试覆盖「表中存在」「表中缺失」两种情况
+- [x] 2.3 实现运行时设置读取 `getSetting(key)`：读 `setting` 表（KV 缓存），缺失回退代码默认值，验证单元测试覆盖「表中存在」「表中缺失」两种情况
 
 ## 3. 数据库
 
-- [ ] 3.1 编写 `infra/local/docker-compose.yml`（PG 17）与初始化脚本（创建 `app` / `migrator` / `readonly` 账号及权限），验证 `docker compose up` 后三个账号可登录且 `app` 不能执行 DDL
-- [ ] 3.2 在 `packages/db` 实现 `createDb(hyperdrive)` 与 Drizzle 配置，创建第一个迁移（`setting` 表，`id`/外键约定为 `uuid`），验证 `drizzle-kit migrate` 在本地执行成功
-- [ ] 3.3 配置 vitest-pool-workers 使用本地 PG（Hyperdrive `localConnectionString`），验证一个读写 `setting` 表的集成测试通过
+- [x] 3.1 编写 `infra/local/docker-compose.yml`（PG 17）与初始化脚本（创建 `app` / `migrator` / `readonly` 账号及权限），验证 `docker compose up` 后三个账号可登录且 `app` 不能执行 DDL
+- [x] 3.2 在 `packages/db` 实现 `createDb(hyperdrive)` 与 Drizzle 配置，创建第一个迁移（`setting` 表，`id`/外键约定为 `uuid`），验证 `drizzle-kit migrate` 在本地执行成功
+- [x] 3.3 配置 vitest-pool-workers 使用本地 PG（Hyperdrive `localConnectionString`），验证一个读写 `setting` 表的集成测试通过
 
 ## 4. Web 与 Jobs Worker
 
@@ -38,7 +38,7 @@
 
 ## 6. CI / CD
 
-- [x] 6.1 GitHub Actions PR 流水线：install → biome → typecheck → vitest → build，验证一个故意引入类型错误的 PR 失败
+- [ ] 6.1 GitHub Actions PR 流水线：install → biome → typecheck → vitest → build，验证一个故意引入类型错误的 PR 失败
 - [ ] 6.2 main 流水线：经 `cloudflared access tcp` 以 `migrator` 执行 staging 迁移 → 部署 jobs → 部署 web，验证合并后 staging 上的版本号更新
 - [ ] 6.3 tag 流水线：生产迁移 → jobs → web → 调用 `/api/health` 冒烟测试，验证冒烟失败时流水线标红
 

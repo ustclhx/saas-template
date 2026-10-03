@@ -1,0 +1,31 @@
+# 本地开发 Postgres。约定（scripts/orca/lib.sh 与 docs/09-parallel-plan.md §2 依赖它们）：
+#   - 容器名 saas-template-pg，超级用户 postgres，宿主机端口 5432
+#   - 主 checkout 使用数据库 saas_dev；Orca worktree 由 scripts/orca/setup.sh 另建 saas_wt_<名称>
+#   - 初始化脚本创建 app（DML）/ migrator（DDL）/ readonly（SELECT）三个账号，本地密码与账号名相同
+# 启动：docker compose -f infra/local/docker-compose.yml up -d
+# 初始化脚本只在数据卷为空时执行；修改后需 down -v 重建。
+# 健康检查走 TCP：初始化期间的临时实例只监听 unix socket，避免过早报告就绪。
+name: saas-template
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: saas-template-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: saas_dev
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U postgres -d saas_dev']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pg-data:
