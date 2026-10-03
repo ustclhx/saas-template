@@ -102,6 +102,46 @@ export function createDb(hd: Hyperdrive) {
 // 每个请求调用一次 createDb(env.HYPERDRIVE)，不要缓存到模块作用域
 ```
 
+### 事务与锁（7.1 实测，2026-10-03）
+
+**结论：可用。** 经 Hyperdrive（关缓存）时，显式事务内的 `SELECT ... FOR UPDATE` 与 `pg_advisory_xact_lock` 都能让并发请求串行执行；事务提交、回滚，以及 Worker 中途结束导致事务被丢弃，三种情况下锁都会释放，连接池中不残留锁或未结束的事务。`docs/04`、`docs/06` 中「先取空间级 `pg_advisory_xact_lock` 再检查并写入」的写法保持不变，不需要改用 design.md 风险条目中「锁 workspace 行」的替代写法。
+
+**测试方法**（`scripts/probes/71-locks/`，可重复执行）：
+- 临时 Worker `probe-71-locks` 绑定 `saas-template-staging`（关缓存），连接参数与 `createDb()` 相同（postgres.js 3.4.9，`max: 5`、`prepare: true`、`fetch_types: false`），用 `sql.begin()` 开显式事务。
+- 请求 A 取锁后读计数器、`pg_sleep(3s)`、写回 +1；800 ms 后请求 B 争同一把锁（持锁 0.5 s 后提交）。行锁为 `setting` 表中 `probe.7.1.row` 一行的 `FOR UPDATE`，advisory lock 为 `pg_advisory_xact_lock(710001)`（与 `hashtextextended(...)` 生成的 bigint 键同一函数）。A 分别以提交、回滚（回调中抛错）、丢弃（拿到锁后立即返回响应，事务不结束）三种方式结束；另有不加锁的对照组。
+- 时间点都取数据库时钟 `clock_timestamp()`，A、B 可直接比较。每个场景后在新事务中串行 5 次 `pg_try_advisory_xact_lock` + `FOR UPDATE NOWAIT`，并查 `pg_locks` 与 `pg_stat_activity`。
+- 共 3 轮 × 7 个场景，全部判定通过。
+
+**关键数据**（第 1 轮原始时间，相对 A 开始事务，单位 ms）：
+
+| 场景 | A 拿到锁 | B 开始事务 | A 持锁结束 | B 拿到锁 | 说明 |
+|---|---|---|---|---|---|
+| 行锁 / A 提交 | 630 | 1304 | 5358（发出 COMMIT 前） | 5673 | B 读到 A 提交后的计数器（1 → 2） |
+| advisory / A 被丢弃 | 640 | 788 | 1450（A 已返回响应） | 1613 | B 读到原值，A 的事务被回滚 |
+| 对照组（不加锁） | 324 | 964 | 4938 | 1446 | B 不等待、读到旧值，两次 +1 后计数器只 +1（丢失更新） |
+
+3 轮汇总（ms）：
+
+| 场景 | A 持锁时长 | B 等待时长 | B 在 A 释放后多久拿到锁 |
+|---|---|---|---|
+| 行锁 / 提交 | 4141–4984 | 3359–4694 | 164–360 |
+| 行锁 / 回滚 | 4118–4730 | 3783–4883 | 160–332 |
+| 行锁 / 丢弃 | 649–790 | 630–762 | 160–443 |
+| advisory / 提交 | 4734–4871 | 4835–5086 | 312–371 |
+| advisory / 回滚 | 4732–4910 | 4877–5188 | 313–336 |
+| advisory / 丢弃 | 631–810 | 640–825 | 163–192 |
+| 对照组（不加锁） | 4581–4617 | 470–489 | 不等待（B 在 A 释放前 3.5–3.8 s 已拿到） |
+
+- 「B 在 A 释放后多久拿到锁」约为一次 Worker ↔ 本机数据库的往返（A 的 `COMMIT` / `ROLLBACK` 送达数据库所需时间）；阶段一每条语句往返约 160–500 ms，持锁时长因此比 `pg_sleep` 多出 1–2 s，不代表生产延迟（§0）。
+- A 被丢弃时，Hyperdrive 在客户端断开后回滚该事务，约一次往返内释放锁；该后端连接（如 pid 8725）随后被其他请求复用，未被关闭。
+- 全部场景结束后，在本机以超级用户查看 `saas_staging`：`pg_locks` 中没有 advisory lock，`pg_stat_activity` 中所有 `app` 连接都是 `idle`（无 `idle in transaction`）。
+
+**对设计的影响 / 使用约束**（建议，供 `docs/04`、`docs/06` 后续实现遵守）：
+- 只用事务级的 `pg_advisory_xact_lock`，且必须放在显式事务（`db.transaction()`）中；不在事务中的单条 `SELECT pg_advisory_xact_lock(...)` 在语句结束时即释放，起不到互斥作用。
+- 不使用会话级的 `pg_advisory_lock` / `pg_advisory_unlock`：Hyperdrive 以事务为单位复用连接，会话级锁会留在被其他请求复用的连接上（本次未实测，属于事务模式连接池的已知限制）。
+- 在取锁的事务中 `SET LOCAL lock_timeout`（如 5s），避免排队过久超出 Worker 请求时长；超时报 `55P03`，按「稍后重试」处理。
+- 持锁期间只做数据库操作，不调用外部 API（AI 供应商、支付等）；等待中的请求也各占一条 Hyperdrive 连接。
+
 ## 3. 环境
 
 | 环境 | Web | 数据库 | 支付 | 说明 |
