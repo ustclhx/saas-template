@@ -1,0 +1,52 @@
+# Tasks
+
+## 1. 工程骨架
+
+- [ ] 1.1 初始化 pnpm workspace（`apps/*`、`packages/*`）、根 `package.json`、`pnpm-workspace.yaml`、`turbo.json`、`.gitignore`（含 `.dev.vars`），验证 `pnpm install` 成功
+- [ ] 1.2 配置 TypeScript strict 基础配置（`tsconfig.base.json`）与 Biome，验证 `pnpm typecheck` 与 `pnpm biome check` 在空包上通过
+- [ ] 1.3 创建 `packages/shared`（`AppError`、UUIDv7 生成、UTC 时间工具）并写单元测试，验证 UUIDv7 按生成顺序单调递增的测试通过
+- [ ] 1.4 创建 `packages/{auth,billing,credits,entitlements,ai,storage,email,ui}` 空壳包（只含 `package.json` 与入口），验证依赖方向检查脚本（禁止业务包依赖 `apps`、禁止非 `ui` 包依赖 React）在 CI 中运行并通过
+
+## 2. 配置与环境变量
+
+- [ ] 2.1 在 `packages/config` 实现 `defineTemplateConfig` 与按 `docs/02-project-structure.md` 草案定义的类型和默认值，验证省略可选项时得到默认值、非法取值时 typecheck 失败（类型测试）
+- [ ] 2.2 实现环境变量 Zod schema 与 `loadEnv(env)`，缺失项报出变量名但不输出值，验证对应单元测试覆盖「缺失」「格式非法」「齐全」三种情况
+- [ ] 2.3 实现运行时设置读取 `getSetting(key)`：读 `setting` 表（KV 缓存），缺失回退代码默认值，验证单元测试覆盖「表中存在」「表中缺失」两种情况
+
+## 3. 数据库
+
+- [ ] 3.1 编写 `infra/local/docker-compose.yml`（PG 17）与初始化脚本（创建 `app` / `migrator` / `readonly` 账号及权限），验证 `docker compose up` 后三个账号可登录且 `app` 不能执行 DDL
+- [ ] 3.2 在 `packages/db` 实现 `createDb(hyperdrive)` 与 Drizzle 配置，创建第一个迁移（`setting` 表，`id`/外键约定为 `uuid`），验证 `drizzle-kit migrate` 在本地执行成功
+- [ ] 3.3 配置 vitest-pool-workers 使用本地 PG（Hyperdrive `localConnectionString`），验证一个读写 `setting` 表的集成测试通过
+
+## 4. Web 与 Jobs Worker
+
+- [ ] 4.1 创建 `apps/web`（TanStack Start + Cloudflare Vite 插件 + `nodejs_compat`），首页 SSR 输出版本号，验证 `vite dev` 在 workerd 下可访问首页
+- [ ] 4.2 实现 `GET /api/health`（数据库往返耗时、版本、`jobs.lastCronAt`；数据库不可达返回 503），验证集成测试覆盖 200 与 503 两种情况
+- [ ] 4.3 在请求入口接入环境变量校验，验证缺少必需变量时请求返回 5xx 且日志只含变量名
+- [ ] 4.4 创建 `apps/jobs`：导出空 `AiMediaWorkflow`（示例 step + `waitForEvent`）、`EMAIL_QUEUE` 消费者（只打日志）、每 5 分钟的 Cron（写 `jobs.lastCronAt`），验证本地 `wrangler dev` 下 Cron 触发后健康检查中的时间更新
+- [ ] 4.5 在 `apps/web` 配置 Workflow（`script_name: jobs`）与 Queue producer 绑定，新增仅限开发环境的调试路由启动 Workflow、投递消息，验证本地两个 Worker 联调时 jobs 收到消息并启动实例
+
+## 5. 生产基础设施
+
+- [ ] 5.1 编写 `infra/postgres/docker-compose.yml`（PG 17、两个 `cloudflared` 副本、WAL-G、可选 exporter）与 `postgresql.conf`（含 `archive_timeout = 60s`），验证在 VPS 上启动后 PG 只监听内网
+- [ ] 5.2 配置 Tunnel + Access 应用 + Service Token，创建 `app-db`（关缓存）与 `app-db-cached`（开缓存）两个 Hyperdrive 配置，验证部署后的 Worker 通过两个绑定都能查询成功
+- [ ] 5.3 配置 WAL-G 基础备份与 WAL 归档到 R2（开启 Bucket Lock），以及每日同步到非 Cloudflare 对象存储的异地副本，验证 R2 与异地存储中都出现当日备份
+- [ ] 5.4 完成一次恢复演练：在新实例上恢复到指定时间点并跑校验脚本，记录实际耗时，验证结果写入 `docs/runbooks/restore.md` 且 RTO 与 `docs/07-infrastructure.md` 一致（不一致则更新文档）
+- [ ] 5.5 配置 staging 环境（独立 database、`env.staging` 绑定与变量），验证 staging 上 `/api/health` 返回 200
+- [ ] 5.6 编写 `docs/runbooks/hyperdrive-tunnel.md`（Tunnel、Access、Hyperdrive 配置步骤），验证按文档能从零重建 staging 的数据库连接
+
+## 6. CI / CD
+
+- [ ] 6.1 GitHub Actions PR 流水线：install → biome → typecheck → vitest → build，验证一个故意引入类型错误的 PR 失败
+- [ ] 6.2 main 流水线：经 `cloudflared access tcp` 以 `migrator` 执行 staging 迁移 → 部署 jobs → 部署 web，验证合并后 staging 上的版本号更新
+- [ ] 6.3 tag 流水线：生产迁移 → jobs → web → 调用 `/api/health` 冒烟测试，验证冒烟失败时流水线标红
+
+## 7. 平台能力实测（结论回写 docs）
+
+- [ ] 7.1 实测 Hyperdrive 下事务 + `SELECT ... FOR UPDATE` + `pg_advisory_xact_lock`：两个并发请求争同一把锁，验证后到者等待先到者提交；结论写入 `docs/07-infrastructure.md`
+- [ ] 7.2 实测跨 Worker Workflow：web 启动 jobs 的实例并 `sendEvent`；以及实例尚未执行到 `waitForEvent` 时先发送的事件是否被保留，验证结论写入 `docs/06-ai.md` 的「待验证」注释处
+- [ ] 7.3 实测流式响应：服务端用 `waitUntil` 读完一个模拟的长流，客户端中途断开，验证流读完后的回调仍写库成功；结论写入 `docs/06-ai.md`
+- [ ] 7.4 记录延迟基线：同一查询在开/关 Smart Placement 下从至少两个地区访问的 p50/p95，验证数据写入 `docs/07-infrastructure.md`
+- [ ] 7.5 停掉一个 `cloudflared` 副本期间持续请求 `/api/health`，验证没有失败请求（或记录中断时长）
+- [ ] 7.6 根据 7.1–7.5 的结论更新 `docs/08-roadmap.md` 的 Phase 0 勾选状态与 `docs/README.md` 中受影响的「待验证」标注，验证 docs 中不再有已实测项仍标为待验证
