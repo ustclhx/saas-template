@@ -1,0 +1,13 @@
+{
+  "startedAt": "2026-10-03T15:51:27.829Z",
+  "URL_": "https://web-staging.saas-jobs.workers.dev/api/health",
+  "C1": "saas-template-cloudflared-1",
+  "C2": "saas-template-cloudflared-2",
+  "INTERVAL_MS": 300,
+  "TIMEOUT_MS": 20000,
+  "BASELINE_MS": 30000,
+  "HOLD_MS": 60000,
+  "BOTH_HOLD_MS": 30000,
+  "SETTLE_MS": 45000,
+  "FINAL_MS": 60000
+}
