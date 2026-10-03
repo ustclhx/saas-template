@@ -2,7 +2,7 @@
   "name": "saas-template",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.34.6",
+  "packageManager": "pnpm@12.8.1",
   "engines": {
     "node": ">=22"
   },
