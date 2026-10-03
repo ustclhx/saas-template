@@ -2,9 +2,9 @@
 
 ## 1. 工程骨架
 
-- [ ] 1.1 初始化 pnpm workspace（`apps/*`、`packages/*`）、根 `package.json`、`pnpm-workspace.yaml`、`turbo.json`、`.gitignore`（含 `.dev.vars`），验证 `pnpm install` 成功
-- [ ] 1.2 配置 TypeScript strict 基础配置（`tsconfig.base.json`）与 Biome，验证 `pnpm typecheck` 与 `pnpm biome check` 在空包上通过
-- [ ] 1.3 创建 `packages/shared`（`AppError`、UUIDv7 生成、UTC 时间工具）并写单元测试，验证 UUIDv7 按生成顺序单调递增的测试通过
+- [x] 1.1 初始化 pnpm workspace（`apps/*`、`packages/*`）、根 `package.json`、`pnpm-workspace.yaml`、`turbo.json`、`.gitignore`（含 `.dev.vars`），验证 `pnpm install` 成功
+- [x] 1.2 配置 TypeScript strict 基础配置（`tsconfig.base.json`）与 Biome，验证 `pnpm typecheck` 与 `pnpm biome check` 在空包上通过
+- [x] 1.3 创建 `packages/shared`（`AppError`、UUIDv7 生成、UTC 时间工具）并写单元测试，验证 UUIDv7 按生成顺序单调递增的测试通过
 - [ ] 1.4 创建 `packages/{auth,billing,credits,entitlements,ai,storage,email,ui}` 空壳包（只含 `package.json` 与入口），验证依赖方向检查脚本（禁止业务包依赖 `apps`、禁止非 `ui` 包依赖 React）在 CI 中运行并通过
 
 ## 2. 配置与环境变量
