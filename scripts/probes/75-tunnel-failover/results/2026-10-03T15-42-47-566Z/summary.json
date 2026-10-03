@@ -1,0 +1,183 @@
+[
+  {
+    "id": "S0",
+    "label": "基线（两个副本都在运行）",
+    "requests": 98,
+    "failed": 0,
+    "failureKinds": {},
+    "okLatency": {
+      "p50": 654,
+      "p95": 1913,
+      "max": 2762
+    },
+    "stopTookMs": {},
+    "registered": {}
+  },
+  {
+    "id": "S1",
+    "label": "docker stop saas-template-cloudflared-1，保持 60s，再启动",
+    "requests": 362,
+    "failed": 5,
+    "failureKinds": {
+      "503/down": 5
+    },
+    "okLatency": {
+      "p50": 657,
+      "p95": 1149,
+      "max": 4475
+    },
+    "stopTookMs": {
+      "saas-template-cloudflared-1": 1125
+    },
+    "registered": {
+      "saas-template-cloudflared-1": [1411, 2114]
+    },
+    "firstFailureStart": 581,
+    "lastFailureStart": 6281,
+    "recoveredStart": 6581,
+    "outageMs": 6000,
+    "failedMs": {
+      "min": 5159,
+      "max": 5661
+    },
+    "afterStop": {
+      "failed": 5,
+      "slowOk": 1,
+      "firstStart": 581,
+      "lastStart": 6281,
+      "lastEnd": 11448
+    },
+    "startAt": 61126,
+    "afterStart": {
+      "failed": 0,
+      "slowOk": 0
+    },
+    "firstOkAfterStartMs": 55
+  },
+  {
+    "id": "S2",
+    "label": "docker stop saas-template-cloudflared-2，保持 60s，再启动",
+    "requests": 360,
+    "failed": 7,
+    "failureKinds": {
+      "503/down": 7
+    },
+    "okLatency": {
+      "p50": 644,
+      "p95": 1147,
+      "max": 5620
+    },
+    "stopTookMs": {
+      "saas-template-cloudflared-2": 1129
+    },
+    "registered": {
+      "saas-template-cloudflared-2": [871, 1628]
+    },
+    "firstFailureStart": 667,
+    "lastFailureStart": 4268,
+    "recoveredStart": 4566,
+    "outageMs": 3899,
+    "failedMs": {
+      "min": 5161,
+      "max": 5693
+    },
+    "afterStop": {
+      "failed": 7,
+      "slowOk": 7,
+      "firstStart": 667,
+      "lastStart": 4866,
+      "lastEnd": 9961
+    },
+    "startAt": 61130,
+    "afterStart": {
+      "failed": 0,
+      "slowOk": 0
+    },
+    "firstOkAfterStartMs": 137
+  },
+  {
+    "id": "S3",
+    "label": "docker kill saas-template-cloudflared-1，保持 60s，再启动",
+    "requests": 356,
+    "failed": 8,
+    "failureKinds": {
+      "503/down": 8
+    },
+    "okLatency": {
+      "p50": 649,
+      "p95": 680,
+      "max": 5424
+    },
+    "stopTookMs": {},
+    "registered": {
+      "saas-template-cloudflared-1": [892, 1579]
+    },
+    "firstFailureStart": -211,
+    "lastFailureStart": 2789,
+    "recoveredStart": 3089,
+    "outageMs": 3300,
+    "failedMs": {
+      "min": 5161,
+      "max": 5679
+    },
+    "afterStop": {
+      "failed": 8,
+      "slowOk": 8,
+      "firstStart": -211,
+      "lastStart": 4287,
+      "lastEnd": 9373
+    },
+    "startAt": 60112,
+    "afterStart": {
+      "failed": 0,
+      "slowOk": 0
+    },
+    "firstOkAfterStartMs": 276
+  },
+  {
+    "id": "S4",
+    "label": "两个副本同时 docker stop，保持 30s，再全部启动",
+    "requests": 313,
+    "failed": 106,
+    "failureKinds": {
+      "503/down": 106
+    },
+    "okLatency": {
+      "p50": 658,
+      "p95": 2429,
+      "max": 4561
+    },
+    "stopTookMs": {
+      "saas-template-cloudflared-1": 286,
+      "saas-template-cloudflared-2": 1135
+    },
+    "registered": {
+      "saas-template-cloudflared-1": [946, 1669],
+      "saas-template-cloudflared-2": [883, 1690]
+    },
+    "firstFailureStart": 852,
+    "lastFailureStart": 32353,
+    "recoveredStart": 32653,
+    "outageMs": 31801,
+    "failedMs": {
+      "min": 175,
+      "max": 5163
+    },
+    "afterStop": {
+      "failed": 101,
+      "slowOk": 0,
+      "firstStart": 852,
+      "lastStart": 30852,
+      "lastEnd": 31037
+    },
+    "startAt": 31137,
+    "afterStart": {
+      "failed": 5,
+      "slowOk": 0,
+      "firstStart": 15,
+      "lastStart": 1216,
+      "lastEnd": 6379
+    },
+    "firstOkAfterStartMs": 1516
+  }
+]

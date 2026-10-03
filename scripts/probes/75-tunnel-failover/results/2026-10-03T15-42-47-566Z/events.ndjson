@@ -1,0 +1,25 @@
+{"t":67,"at":"2026-10-03T15:42:47.633Z","type":"scenario","id":"S0","label":"基线（两个副本都在运行）"}
+{"t":30068,"at":"2026-10-03T15:43:17.634Z","type":"scenario","id":"S1","label":"docker stop saas-template-cloudflared-1，保持 60s，再启动"}
+{"t":30068,"at":"2026-10-03T15:43:17.634Z","type":"stop","container":"saas-template-cloudflared-1"}
+{"t":31193,"at":"2026-10-03T15:43:18.759Z","type":"stopped","container":"saas-template-cloudflared-1","tookMs":1125,"ref":30068}
+{"t":91194,"at":"2026-10-03T15:44:18.760Z","type":"start","container":"saas-template-cloudflared-1"}
+{"t":93581,"at":"2026-10-03T15:44:21.147Z","type":"registered","container":"saas-template-cloudflared-1","ref":91194,"regs":[{"afterStartMs":1411,"location":"lax01","connIndex":"0"},{"afterStartMs":2114,"location":"lax05","connIndex":"1"}]}
+{"t":138582,"at":"2026-10-03T15:45:06.148Z","type":"scenario","id":"S2","label":"docker stop saas-template-cloudflared-2，保持 60s，再启动"}
+{"t":138582,"at":"2026-10-03T15:45:06.148Z","type":"stop","container":"saas-template-cloudflared-2"}
+{"t":139711,"at":"2026-10-03T15:45:07.277Z","type":"stopped","container":"saas-template-cloudflared-2","tookMs":1129,"ref":138582}
+{"t":199712,"at":"2026-10-03T15:46:07.278Z","type":"start","container":"saas-template-cloudflared-2"}
+{"t":201557,"at":"2026-10-03T15:46:09.123Z","type":"registered","container":"saas-template-cloudflared-2","ref":199712,"regs":[{"afterStartMs":871,"location":"lax05","connIndex":"0"},{"afterStartMs":1628,"location":"lax13","connIndex":"1"}]}
+{"t":246559,"at":"2026-10-03T15:46:54.125Z","type":"scenario","id":"S3","label":"docker kill saas-template-cloudflared-1，保持 60s，再启动"}
+{"t":246560,"at":"2026-10-03T15:46:54.126Z","type":"kill","container":"saas-template-cloudflared-1"}
+{"t":246682,"at":"2026-10-03T15:46:54.248Z","type":"killed","container":"saas-template-cloudflared-1","tookMs":122}
+{"t":306672,"at":"2026-10-03T15:47:54.238Z","type":"start","container":"saas-template-cloudflared-1"}
+{"t":308496,"at":"2026-10-03T15:47:56.062Z","type":"registered","container":"saas-template-cloudflared-1","ref":306672,"regs":[{"afterStartMs":892,"location":"lax09","connIndex":"0"},{"afterStartMs":1579,"location":"lax01","connIndex":"1"}]}
+{"t":353496,"at":"2026-10-03T15:48:41.062Z","type":"scenario","id":"S4","label":"两个副本同时 docker stop，保持 30s，再全部启动"}
+{"t":353497,"at":"2026-10-03T15:48:41.063Z","type":"stop","container":"saas-template-cloudflared-1"}
+{"t":353498,"at":"2026-10-03T15:48:41.064Z","type":"stop","container":"saas-template-cloudflared-2"}
+{"t":353783,"at":"2026-10-03T15:48:41.349Z","type":"stopped","container":"saas-template-cloudflared-1","tookMs":286,"ref":353497}
+{"t":354633,"at":"2026-10-03T15:48:42.199Z","type":"stopped","container":"saas-template-cloudflared-2","tookMs":1135,"ref":353498}
+{"t":384634,"at":"2026-10-03T15:49:12.200Z","type":"start","container":"saas-template-cloudflared-1"}
+{"t":384637,"at":"2026-10-03T15:49:12.203Z","type":"start","container":"saas-template-cloudflared-2"}
+{"t":386508,"at":"2026-10-03T15:49:14.074Z","type":"registered","container":"saas-template-cloudflared-1","ref":384634,"regs":[{"afterStartMs":946,"location":"lax07","connIndex":"0"},{"afterStartMs":1669,"location":"lax13","connIndex":"1"}]}
+{"t":386510,"at":"2026-10-03T15:49:14.076Z","type":"registered","container":"saas-template-cloudflared-2","ref":384637,"regs":[{"afterStartMs":883,"location":"lax13","connIndex":"0"},{"afterStartMs":1690,"location":"lax09","connIndex":"1"}]}
