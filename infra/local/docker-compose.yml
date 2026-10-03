@@ -5,6 +5,10 @@
 # 启动：docker compose -f infra/local/docker-compose.yml up -d
 # 初始化脚本只在数据卷为空时执行；修改后需 down -v 重建。
 # 健康检查走 TCP：初始化期间的临时实例只监听 unix socket，避免过早报告就绪。
+# TLS：pg-tls-entrypoint.sh 首次启动时生成自签证书并开启 ssl（Workers VPC 要求，docs/07 §2）。
+# Tunnel（可选，阶段一 staging 用）：在 infra/local/.env 写入 CLOUDFLARE_TUNNEL_TOKEN 后
+#   docker compose -f infra/local/docker-compose.yml --profile tunnel up -d
+#   两个 cloudflared 副本连接同一 Tunnel，经 compose 内网以主机名 postgres 访问数据库。
 name: saas-template
 
 services:
@@ -12,6 +16,8 @@ services:
     image: postgres:17
     container_name: saas-template-pg
     restart: unless-stopped
+    entrypoint: ['/usr/local/bin/pg-tls-entrypoint.sh']
+    command: ['postgres']
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -21,11 +27,25 @@ services:
     volumes:
       - pg-data:/var/lib/postgresql/data
       - ./initdb:/docker-entrypoint-initdb.d:ro
+      - ./pg-tls-entrypoint.sh:/usr/local/bin/pg-tls-entrypoint.sh:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U postgres -d saas_dev']
       interval: 2s
       timeout: 3s
       retries: 30
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.9.3
+    profiles: ['tunnel']
+    restart: unless-stopped
+    command: ['tunnel', '--no-autoupdate', 'run']
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-} # 在 infra/local/.env 中设置；为空时 cloudflared 启动失败
+    deploy:
+      replicas: 2
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   pg-data:

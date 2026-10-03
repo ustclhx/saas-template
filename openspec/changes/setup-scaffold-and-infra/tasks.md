@@ -29,10 +29,10 @@
 
 ## 5. 本机测试基础设施（阶段一，见 docs/07 §0）
 
-- [ ] 5.1 编写 `infra/postgres/docker-compose.yml`（PG 17、两个 `cloudflared` 副本、可选 exporter；WAL-G 备份留到阶段二）与 `postgresql.conf`（含 `archive_timeout = 60s`、TLS），作为阶段二生产服务器的模板，验证在本机用它启动后 PG 只在 compose 内网监听且 TLS 可用
-- [ ] 5.2 本机 PG（`infra/local`）启用 TLS（自签证书）并新增可选的 `cloudflared` 服务；创建专用 Tunnel、Workers VPC TCP 服务，以及指向它的 `app-db`（关缓存）与 `app-db-cached`（开缓存）两个 Hyperdrive 配置，验证部署后的 Worker 通过两个绑定都能查询本机 `saas_staging` 库
-- [ ] 5.5 配置 staging 环境：本机 `saas_staging` 库（`migrator` 执行迁移）、`env.staging` 的绑定与变量、Queues 等资源，jobs 与 web 部署到 `*.workers.dev`，验证 staging 上 `/api/health` 返回 200 且 `jobs.lastCronAt` 随 Cron 更新
-- [ ] 5.6 编写 `docs/runbooks/hyperdrive-tunnel.md`（本机 TLS、`cloudflared`、Tunnel、Workers VPC 服务、Hyperdrive、staging 部署步骤），验证按文档能从零重建 staging 的数据库连接
+- [x] 5.1 编写 `infra/postgres/docker-compose.yml`（PG 17、两个 `cloudflared` 副本、可选 exporter；WAL-G 备份留到阶段二）与 `postgresql.conf`（含 `archive_timeout = 60s`、TLS），作为阶段二生产服务器的模板，验证在本机用它启动后 PG 只在 compose 内网监听且 TLS 可用
+- [x] 5.2 本机 PG（`infra/local`）启用 TLS（自签证书）并新增可选的 `cloudflared` 服务；创建专用 Tunnel、Workers VPC TCP 服务，以及指向它的 `app-db`（关缓存）与 `app-db-cached`（开缓存）两个 Hyperdrive 配置，验证部署后的 Worker 通过两个绑定都能查询本机 `saas_staging` 库
+- [x] 5.5 配置 staging 环境：本机 `saas_staging` 库（`migrator` 执行迁移）、`env.staging` 的绑定与变量、Queues 等资源，jobs 与 web 部署到 `*.workers.dev`，验证 staging 上 `/api/health` 返回 200 且 `jobs.lastCronAt` 随 Cron 更新
+- [x] 5.6 编写 `docs/runbooks/hyperdrive-tunnel.md`（本机 TLS、`cloudflared`、Tunnel、Workers VPC 服务、Hyperdrive、staging 部署步骤），验证按文档能从零重建 staging 的数据库连接
 
 > 5.3（WAL-G 备份到 R2 与异地副本）与 5.4（恢复演练）推迟到阶段二，已移入 `docs/08-roadmap.md`「生产迁移」，不在本 change 范围内。
 

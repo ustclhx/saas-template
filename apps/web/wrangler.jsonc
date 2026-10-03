@@ -8,7 +8,7 @@
   // 本地开发时 localConnectionString 指向主 checkout 的 saas_dev；
   // Orca worktree 中由 vite.config.ts 从 .env.worktree 读取
   // CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE(_CACHED) 覆盖。
-  // id 为占位值，staging / production 的配置见 tasks 5.2、5.5。
+  // 顶层 id 为占位值，只用于本地开发；staging 见 env.staging（阶段一，docs/07 §0）。
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
@@ -33,5 +33,28 @@
   // web 为 producer，apps/jobs 为 consumer
   "queues": {
     "producers": [{ "binding": "EMAIL_QUEUE", "queue": "email" }]
+  },
+  // hyperdrive / workflows / queues 不会从顶层继承，每个环境都要重新声明。
+  // 构建时用 CLOUDFLARE_ENV=staging 选择该环境（见 package.json 的 deploy:staging）。
+  "env": {
+    "staging": {
+      "name": "web-staging",
+      "hyperdrive": [
+        // 本机 PG 的 saas_staging 库，经 Tunnel saas-template-local → Workers VPC 服务 saas-template-local-pg（docs/07 §2）
+        { "binding": "HYPERDRIVE", "id": "c4b28441aeaf49c3853a321a39cf8ec4" },
+        { "binding": "HYPERDRIVE_CACHED", "id": "1b360caddf134503af774993499bdc4e" }
+      ],
+      "workflows": [
+        {
+          "name": "ai-media-staging",
+          "binding": "AI_MEDIA_WORKFLOW",
+          "class_name": "AiMediaWorkflow",
+          "script_name": "jobs-staging"
+        }
+      ],
+      "queues": {
+        "producers": [{ "binding": "EMAIL_QUEUE", "queue": "email-staging" }]
+      }
+    }
   }
 }

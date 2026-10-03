@@ -22,7 +22,7 @@
 ## Phase 0 · 脚手架与基础设施验证（技术风险最高，优先做）
 
 - [x] pnpm monorepo、Biome、TypeScript、Vitest 基础配置
-- [ ] `apps/web`：TanStack Start 跑在 workerd（Cloudflare Vite 插件），本地 + 部署各一次（本地已完成，部署待 staging）
+- [x] `apps/web`：TanStack Start 跑在 workerd（Cloudflare Vite 插件），本地 + 部署各一次（staging：`web-staging.saas-jobs.workers.dev`）
 - [x] `apps/jobs`：导出一个空 Workflow + Queue consumer + Cron，web 能通过绑定调用
 - [x] 本地 Docker PG + Drizzle + 第一个迁移
 - [ ] 本机 PG（TLS）+ `cloudflared` + Tunnel + Workers VPC + Hyperdrive，部署到 `*.workers.dev` 的 Worker 查询成功；记录延迟基线（开/关 Smart Placement 对比，仅验证链路）
