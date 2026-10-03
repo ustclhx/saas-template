@@ -1,0 +1,703 @@
+{
+  "at": "2026-10-03T15:27:41.179Z",
+  "results": [
+    {
+      "worker": "smart",
+      "prepare": true,
+      "via": null,
+      "requests": 60,
+      "requestColo": {
+        "LAX": 60
+      },
+      "executionColo": {
+        "LAX": 60
+      },
+      "placement": {
+        "local-": 60
+      },
+      "firstMs": {
+        "count": 60,
+        "p50": 484,
+        "p95": 638,
+        "min": 318,
+        "max": 658
+      },
+      "reusedMs": {
+        "count": 300,
+        "p50": 162,
+        "p95": 209,
+        "min": 156,
+        "max": 329
+      },
+      "clientMs": {
+        "count": 60,
+        "p50": 1470,
+        "p95": 1794,
+        "min": 1279,
+        "max": 2112
+      },
+      "samples": [
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 479,
+          "reusedMs": [158, 161, 158, 159, 159],
+          "found": true,
+          "clientMs": 2010
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 481,
+          "reusedMs": [157, 158, 158, 157, 159],
+          "found": true,
+          "clientMs": 1439
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 477,
+          "reusedMs": [160, 159, 159, 164, 159],
+          "found": true,
+          "clientMs": 1450
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 475,
+          "reusedMs": [158, 159, 158, 159, 159],
+          "found": true,
+          "clientMs": 1439
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 488,
+          "reusedMs": [161, 165, 165, 165, 164],
+          "found": true,
+          "clientMs": 1475
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 473,
+          "reusedMs": [159, 158, 158, 157, 157],
+          "found": true,
+          "clientMs": 1430
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 484,
+          "reusedMs": [157, 160, 158, 159, 159],
+          "found": true,
+          "clientMs": 1442
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 474,
+          "reusedMs": [158, 158, 158, 158, 158],
+          "found": true,
+          "clientMs": 1433
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 490,
+          "reusedMs": [163, 163, 161, 166, 164],
+          "found": true,
+          "clientMs": 1476
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 638,
+          "reusedMs": [162, 164, 162, 165, 163],
+          "found": true,
+          "clientMs": 1622
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 490,
+          "reusedMs": [168, 162, 165, 162, 163],
+          "found": true,
+          "clientMs": 1481
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 482,
+          "reusedMs": [157, 159, 160, 158, 157],
+          "found": true,
+          "clientMs": 1440
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 480,
+          "reusedMs": [165, 160, 157, 158, 164],
+          "found": true,
+          "clientMs": 1450
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 320,
+          "reusedMs": [160, 158, 158, 158, 159],
+          "found": true,
+          "clientMs": 1279
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 329,
+          "reusedMs": [314, 157, 160, 158, 159],
+          "found": true,
+          "clientMs": 1445
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 321,
+          "reusedMs": [160, 160, 163, 161, 159],
+          "found": true,
+          "clientMs": 1295
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 492,
+          "reusedMs": [164, 162, 163, 162, 163],
+          "found": true,
+          "clientMs": 1473
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 489,
+          "reusedMs": [163, 162, 162, 313, 162],
+          "found": true,
+          "clientMs": 1622
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 487,
+          "reusedMs": [163, 164, 164, 162, 163],
+          "found": true,
+          "clientMs": 1470
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 498,
+          "reusedMs": [165, 163, 164, 163, 164],
+          "found": true,
+          "clientMs": 1486
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 494,
+          "reusedMs": [162, 163, 165, 162, 162],
+          "found": true,
+          "clientMs": 1478
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 493,
+          "reusedMs": [165, 162, 163, 163, 162],
+          "found": true,
+          "clientMs": 1477
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 493,
+          "reusedMs": [163, 162, 163, 165, 162],
+          "found": true,
+          "clientMs": 1476
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 483,
+          "reusedMs": [158, 158, 159, 157, 158],
+          "found": true,
+          "clientMs": 1442
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 473,
+          "reusedMs": [157, 157, 159, 159, 160],
+          "found": true,
+          "clientMs": 1433
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 478,
+          "reusedMs": [159, 160, 162, 158, 158],
+          "found": true,
+          "clientMs": 1443
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 478,
+          "reusedMs": [156, 321, 162, 164, 163],
+          "found": true,
+          "clientMs": 1614
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 480,
+          "reusedMs": [156, 159, 156, 160, 158],
+          "found": true,
+          "clientMs": 1436
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 501,
+          "reusedMs": [165, 166, 161, 165, 163],
+          "found": true,
+          "clientMs": 1491
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 492,
+          "reusedMs": [166, 166, 164, 164, 163],
+          "found": true,
+          "clientMs": 1483
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 492,
+          "reusedMs": [162, 163, 164, 164, 163],
+          "found": true,
+          "clientMs": 1477
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 495,
+          "reusedMs": [165, 161, 315, 158, 163],
+          "found": true,
+          "clientMs": 1624
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 478,
+          "reusedMs": [161, 158, 159, 158, 158],
+          "found": true,
+          "clientMs": 1440
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 489,
+          "reusedMs": [166, 162, 157, 157, 160],
+          "found": true,
+          "clientMs": 1461
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 474,
+          "reusedMs": [174, 158, 158, 162, 157],
+          "found": true,
+          "clientMs": 1449
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 332,
+          "reusedMs": [162, 162, 163, 162, 164],
+          "found": true,
+          "clientMs": 1313
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 501,
+          "reusedMs": [271, 166, 311, 165, 164],
+          "found": true,
+          "clientMs": 1749
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 640,
+          "reusedMs": [158, 157, 157, 162, 159],
+          "found": true,
+          "clientMs": 1598
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 490,
+          "reusedMs": [163, 163, 162, 163, 162],
+          "found": true,
+          "clientMs": 1470
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 487,
+          "reusedMs": [315, 158, 156, 160, 159],
+          "found": true,
+          "clientMs": 1601
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 479,
+          "reusedMs": [158, 162, 160, 158, 158],
+          "found": true,
+          "clientMs": 1442
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 492,
+          "reusedMs": [323, 162, 162, 163, 164],
+          "found": true,
+          "clientMs": 2112
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 330,
+          "reusedMs": [162, 163, 167, 168, 162],
+          "found": true,
+          "clientMs": 1323
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 318,
+          "reusedMs": [323, 156, 157, 162, 162],
+          "found": true,
+          "clientMs": 1444
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 489,
+          "reusedMs": [162, 165, 158, 159, 159],
+          "found": true,
+          "clientMs": 1458
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 478,
+          "reusedMs": [157, 159, 323, 165, 165],
+          "found": true,
+          "clientMs": 1615
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 474,
+          "reusedMs": [160, 158, 160, 160, 160],
+          "found": true,
+          "clientMs": 1443
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 489,
+          "reusedMs": [162, 163, 163, 161, 163],
+          "found": true,
+          "clientMs": 1471
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 477,
+          "reusedMs": [159, 157, 157, 158, 158],
+          "found": true,
+          "clientMs": 1435
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 329,
+          "reusedMs": [162, 158, 159, 161, 160],
+          "found": true,
+          "clientMs": 1298
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 492,
+          "reusedMs": [163, 313, 162, 209, 159],
+          "found": true,
+          "clientMs": 1667
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 629,
+          "reusedMs": [164, 157, 158, 158, 159],
+          "found": true,
+          "clientMs": 1592
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 325,
+          "reusedMs": [321, 164, 162, 161, 161],
+          "found": true,
+          "clientMs": 1463
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 650,
+          "reusedMs": [165, 322, 161, 166, 163],
+          "found": true,
+          "clientMs": 1794
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 488,
+          "reusedMs": [163, 162, 165, 163, 162],
+          "found": true,
+          "clientMs": 1973
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 658,
+          "reusedMs": [164, 162, 164, 163, 164],
+          "found": true,
+          "clientMs": 1641
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 491,
+          "reusedMs": [164, 164, 163, 163, 165],
+          "found": true,
+          "clientMs": 1481
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 493,
+          "reusedMs": [164, 162, 162, 324, 162],
+          "found": true,
+          "clientMs": 1636
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 324,
+          "reusedMs": [329, 162, 165, 162, 165],
+          "found": true,
+          "clientMs": 1476
+        },
+        {
+          "placement": "local-",
+          "worker": "probe-74-latency-smart",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "prepare": true,
+          "firstMs": 476,
+          "reusedMs": [157, 159, 160, 159, 158],
+          "found": true,
+          "clientMs": 1436
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1915 @@
+{
+  "at": "2026-10-03T14:43:41.607Z",
+  "results": [
+    {
+      "worker": "off",
+      "requests": 60,
+      "requestColo": {
+        "LAX": 60
+      },
+      "executionColo": {
+        "LAX": 60
+      },
+      "placement": {
+        "(none)": 60
+      },
+      "firstMs": {
+        "count": 60,
+        "p50": 320,
+        "p95": 1576,
+        "min": 313,
+        "max": 2390
+      },
+      "reusedMs": {
+        "count": 300,
+        "p50": 159,
+        "p95": 166,
+        "min": 155,
+        "max": 1460
+      },
+      "clientMs": {
+        "count": 60,
+        "p50": 1279,
+        "p95": 2831,
+        "min": 1256,
+        "max": 3338
+      },
+      "samples": [
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 324,
+          "reusedMs": [160, 161, 157, 160, 156],
+          "found": true,
+          "clientMs": 1802,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 2390,
+          "reusedMs": [160, 156, 156, 156, 155],
+          "found": true,
+          "clientMs": 3338,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 1612,
+          "reusedMs": [225, 158, 351, 159, 155],
+          "found": true,
+          "clientMs": 2831,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 1576,
+          "reusedMs": [157, 155, 156, 155, 157],
+          "found": true,
+          "clientMs": 2519,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 2279,
+          "reusedMs": [155, 162, 155, 166, 161],
+          "found": true,
+          "clientMs": 3239,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 320,
+          "reusedMs": [161, 156, 160, 157, 159],
+          "found": true,
+          "clientMs": 1274,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 326,
+          "reusedMs": [160, 160, 159, 160, 160],
+          "found": true,
+          "clientMs": 1287,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 320,
+          "reusedMs": [156, 160, 155, 160, 260],
+          "found": true,
+          "clientMs": 1374,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 319,
+          "reusedMs": [155, 161, 163, 160, 156],
+          "found": true,
+          "clientMs": 1279,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 317,
+          "reusedMs": [156, 158, 155, 156, 156],
+          "found": true,
+          "clientMs": 1261,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 316,
+          "reusedMs": [156, 157, 156, 156, 157],
+          "found": true,
+          "clientMs": 1260,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 316,
+          "reusedMs": [155, 160, 155, 159, 155],
+          "found": true,
+          "clientMs": 1262,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 323,
+          "reusedMs": [160, 155, 161, 155, 160],
+          "found": true,
+          "clientMs": 1275,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 313,
+          "reusedMs": [155, 156, 159, 159, 156],
+          "found": true,
+          "clientMs": 1261,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 319,
+          "reusedMs": [155, 159, 156, 162, 156],
+          "found": true,
+          "clientMs": 1270,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 316,
+          "reusedMs": [157, 157, 158, 157, 156],
+          "found": true,
+          "clientMs": 1264,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 325,
+          "reusedMs": [155, 162, 155, 159, 158],
+          "found": true,
+          "clientMs": 1277,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 319,
+          "reusedMs": [159, 156, 165, 158, 159],
+          "found": true,
+          "clientMs": 1278,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 319,
+          "reusedMs": [160, 156, 160, 1460, 165],
+          "found": true,
+          "clientMs": 2943,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 334,
+          "reusedMs": [161, 156, 162, 161, 156],
+          "found": true,
+          "clientMs": 1295,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 316,
+          "reusedMs": [158, 156, 155, 156, 156],
+          "found": true,
+          "clientMs": 1260,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 317,
+          "reusedMs": [156, 157, 174, 159, 162],
+          "found": true,
+          "clientMs": 1288,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 320,
+          "reusedMs": [159, 156, 157, 160, 224],
+          "found": true,
+          "clientMs": 1410,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 347,
+          "reusedMs": [161, 162, 161, 163, 164],
+          "found": true,
+          "clientMs": 1321,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 321,
+          "reusedMs": [156, 1453, 162, 168, 162],
+          "found": true,
+          "clientMs": 2583,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 326,
+          "reusedMs": [186, 160, 163, 159, 160],
+          "found": true,
+          "clientMs": 1316,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 328,
+          "reusedMs": [162, 162, 160, 160, 162],
+          "found": true,
+          "clientMs": 1297,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 320,
+          "reusedMs": [157, 160, 157, 186, 156],
+          "found": true,
+          "clientMs": 1299,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 318,
+          "reusedMs": [156, 161, 157, 157, 156],
+          "found": true,
+          "clientMs": 1270,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 322,
+          "reusedMs": [157, 163, 157, 165, 163],
+          "found": true,
+          "clientMs": 1291,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 320,
+          "reusedMs": [159, 156, 160, 156, 160],
+          "found": true,
+          "clientMs": 1273,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 324,
+          "reusedMs": [162, 157, 166, 157, 159],
+          "found": true,
+          "clientMs": 1291,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 318,
+          "reusedMs": [162, 155, 166, 156, 160],
+          "found": true,
+          "clientMs": 1279,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 320,
+          "reusedMs": [160, 159, 159, 156, 161],
+          "found": true,
+          "clientMs": 1276,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 319,
+          "reusedMs": [160, 156, 161, 156, 161],
+          "found": true,
+          "clientMs": 1275,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 322,
+          "reusedMs": [156, 161, 156, 160, 162],
+          "found": true,
+          "clientMs": 1281,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 316,
+          "reusedMs": [155, 156, 156, 156, 155],
+          "found": true,
+          "clientMs": 1257,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 326,
+          "reusedMs": [157, 160, 156, 161, 157],
+          "found": true,
+          "clientMs": 1279,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 319,
+          "reusedMs": [159, 164, 165, 159, 161],
+          "found": true,
+          "clientMs": 1288,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 318,
+          "reusedMs": [155, 160, 156, 160, 155],
+          "found": true,
+          "clientMs": 1267,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 326,
+          "reusedMs": [159, 162, 162, 159, 163],
+          "found": true,
+          "clientMs": 1294,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 321,
+          "reusedMs": [156, 155, 156, 156, 159],
+          "found": true,
+          "clientMs": 1266,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 319,
+          "reusedMs": [157, 159, 156, 159, 158],
+          "found": true,
+          "clientMs": 1273,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 319,
+          "reusedMs": [156, 159, 155, 159, 156],
+          "found": true,
+          "clientMs": 1264,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 662,
+          "reusedMs": [163, 160, 160, 160, 160],
+          "found": true,
+          "clientMs": 1628,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 321,
+          "reusedMs": [161, 157, 160, 156, 161],
+          "found": true,
+          "clientMs": 1281,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 316,
+          "reusedMs": [157, 159, 156, 155, 156],
+          "found": true,
+          "clientMs": 1261,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 315,
+          "reusedMs": [157, 155, 155, 155, 156],
+          "found": true,
+          "clientMs": 1256,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 321,
+          "reusedMs": [160, 160, 160, 161, 160],
+          "found": true,
+          "clientMs": 1286,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 315,
+          "reusedMs": [156, 156, 158, 156, 159],
+          "found": true,
+          "clientMs": 1265,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 318,
+          "reusedMs": [157, 156, 155, 155, 156],
+          "found": true,
+          "clientMs": 1261,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 320,
+          "reusedMs": [156, 164, 157, 160, 157],
+          "found": true,
+          "clientMs": 1277,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 320,
+          "reusedMs": [155, 160, 156, 161, 158],
+          "found": true,
+          "clientMs": 1274,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 320,
+          "reusedMs": [156, 162, 157, 158, 156],
+          "found": true,
+          "clientMs": 1272,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 323,
+          "reusedMs": [163, 163, 162, 162, 162],
+          "found": true,
+          "clientMs": 1298,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 325,
+          "reusedMs": [160, 159, 160, 163, 160],
+          "found": true,
+          "clientMs": 1291,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 326,
+          "reusedMs": [163, 162, 170, 162, 160],
+          "found": true,
+          "clientMs": 1312,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 320,
+          "reusedMs": [164, 157, 344, 155, 160],
+          "found": true,
+          "clientMs": 1464,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 336,
+          "reusedMs": [160, 160, 160, 161, 163],
+          "found": true,
+          "clientMs": 1301,
+          "placement": null
+        },
+        {
+          "worker": "probe-74-latency-off",
+          "requestColo": "LAX",
+          "executionColo": "LAX",
+          "firstMs": 324,
+          "reusedMs": [160, 161, 161, 310, 162],
+          "found": true,
+          "clientMs": 1441,
+          "placement": null
+        }
+      ]
+    },
+    {
+      "worker": "eu",
+      "requests": 60,
+      "requestColo": {
+        "LAX": 60
+      },
+      "executionColo": {
+        "FRA": 60
+      },
+      "placement": {
+        "remote-FRA": 39,
+        "remote-": 21
+      },
+      "firstMs": {
+        "count": 60,
+        "p50": 704,
+        "p95": 911,
+        "min": 613,
+        "max": 1033
+      },
+      "reusedMs": {
+        "count": 300,
+        "p50": 312,
+        "p95": 398,
+        "min": 300,
+        "max": 667
+      },
+      "clientMs": {
+        "count": 60,
+        "p50": 2650,
+        "p95": 3142,
+        "min": 2470,
+        "max": 4150
+      },
+      "samples": [
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 795,
+          "reusedMs": [313, 307, 307, 309, 308],
+          "found": true,
+          "clientMs": 3228,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 630,
+          "reusedMs": [309, 310, 312, 310, 311],
+          "found": true,
+          "clientMs": 2538,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 627,
+          "reusedMs": [305, 309, 311, 316, 309],
+          "found": true,
+          "clientMs": 2506,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 780,
+          "reusedMs": [308, 310, 309, 309, 309],
+          "found": true,
+          "clientMs": 2659,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 622,
+          "reusedMs": [308, 311, 306, 308, 309],
+          "found": true,
+          "clientMs": 2497,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 646,
+          "reusedMs": [320, 319, 323, 318, 320],
+          "found": true,
+          "clientMs": 2574,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 690,
+          "reusedMs": [321, 320, 318, 319, 319],
+          "found": true,
+          "clientMs": 2620,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 628,
+          "reusedMs": [345, 309, 310, 310, 310],
+          "found": true,
+          "clientMs": 2540,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 638,
+          "reusedMs": [313, 314, 319, 315, 315],
+          "found": true,
+          "clientMs": 2538,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 632,
+          "reusedMs": [318, 314, 315, 316, 314],
+          "found": true,
+          "clientMs": 2539,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 788,
+          "reusedMs": [309, 312, 311, 310, 309],
+          "found": true,
+          "clientMs": 2664,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 648,
+          "reusedMs": [322, 321, 321, 321, 320],
+          "found": true,
+          "clientMs": 2578,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 647,
+          "reusedMs": [479, 324, 327, 325, 331],
+          "found": true,
+          "clientMs": 3133,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 624,
+          "reusedMs": [310, 310, 310, 309, 308],
+          "found": true,
+          "clientMs": 2506,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 636,
+          "reusedMs": [316, 313, 315, 315, 314],
+          "found": true,
+          "clientMs": 2534,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 635,
+          "reusedMs": [316, 316, 313, 314, 471],
+          "found": true,
+          "clientMs": 2690,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 614,
+          "reusedMs": [306, 305, 306, 306, 304],
+          "found": true,
+          "clientMs": 2470,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 818,
+          "reusedMs": [310, 310, 311, 311, 314],
+          "found": true,
+          "clientMs": 2707,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 775,
+          "reusedMs": [308, 308, 312, 310, 308],
+          "found": true,
+          "clientMs": 2650,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 778,
+          "reusedMs": [310, 309, 310, 308, 312],
+          "found": true,
+          "clientMs": 2649,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 987,
+          "reusedMs": [555, 495, 667, 381, 527],
+          "found": true,
+          "clientMs": 4150,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 1033,
+          "reusedMs": [329, 321, 394, 334, 321],
+          "found": true,
+          "clientMs": 3142,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 634,
+          "reusedMs": [311, 310, 310, 332, 312],
+          "found": true,
+          "clientMs": 2536,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 647,
+          "reusedMs": [398, 334, 318, 398, 332],
+          "found": true,
+          "clientMs": 2831,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 911,
+          "reusedMs": [339, 313, 393, 337, 311],
+          "found": true,
+          "clientMs": 2927,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 630,
+          "reusedMs": [504, 334, 309, 313, 309],
+          "found": true,
+          "clientMs": 2723,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 634,
+          "reusedMs": [395, 337, 316, 400, 333],
+          "found": true,
+          "clientMs": 2736,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 721,
+          "reusedMs": [308, 311, 311, 312, 332],
+          "found": true,
+          "clientMs": 2623,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 724,
+          "reusedMs": [310, 311, 307, 310, 333],
+          "found": true,
+          "clientMs": 2622,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 728,
+          "reusedMs": [320, 389, 335, 318, 397],
+          "found": true,
+          "clientMs": 2827,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 704,
+          "reusedMs": [339, 309, 310, 316, 311],
+          "found": true,
+          "clientMs": 2623,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 801,
+          "reusedMs": [312, 304, 316, 333, 308],
+          "found": true,
+          "clientMs": 2727,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 638,
+          "reusedMs": [314, 314, 314, 326, 314],
+          "found": true,
+          "clientMs": 2619,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 627,
+          "reusedMs": [304, 306, 329, 329, 304],
+          "found": true,
+          "clientMs": 2609,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 785,
+          "reusedMs": [345, 340, 309, 310, 310],
+          "found": true,
+          "clientMs": 2725,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 635,
+          "reusedMs": [396, 333, 317, 395, 339],
+          "found": true,
+          "clientMs": 2741,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 717,
+          "reusedMs": [306, 307, 308, 320, 335],
+          "found": true,
+          "clientMs": 2628,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 707,
+          "reusedMs": [311, 311, 315, 312, 326],
+          "found": true,
+          "clientMs": 2606,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 738,
+          "reusedMs": [318, 385, 332, 316, 400],
+          "found": true,
+          "clientMs": 2836,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 704,
+          "reusedMs": [338, 322, 401, 326, 323],
+          "found": true,
+          "clientMs": 2815,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 836,
+          "reusedMs": [312, 398, 340, 310, 311],
+          "found": true,
+          "clientMs": 2839,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 635,
+          "reusedMs": [318, 384, 519, 529, 523],
+          "found": true,
+          "clientMs": 3256,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 1032,
+          "reusedMs": [309, 309, 310, 311, 311],
+          "found": true,
+          "clientMs": 2915,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 776,
+          "reusedMs": [305, 305, 307, 305, 305],
+          "found": true,
+          "clientMs": 2624,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 630,
+          "reusedMs": [313, 314, 314, 464, 310],
+          "found": true,
+          "clientMs": 2671,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 764,
+          "reusedMs": [307, 307, 308, 302, 301],
+          "found": true,
+          "clientMs": 2628,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 620,
+          "reusedMs": [312, 307, 309, 307, 308],
+          "found": true,
+          "clientMs": 2692,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 787,
+          "reusedMs": [314, 313, 313, 315, 313],
+          "found": true,
+          "clientMs": 2686,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 791,
+          "reusedMs": [312, 318, 318, 319, 318],
+          "found": true,
+          "clientMs": 2697,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 779,
+          "reusedMs": [312, 311, 312, 311, 311],
+          "found": true,
+          "clientMs": 2662,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 792,
+          "reusedMs": [315, 316, 315, 317, 315],
+          "found": true,
+          "clientMs": 2701,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 808,
+          "reusedMs": [306, 309, 311, 310, 309],
+          "found": true,
+          "clientMs": 2681,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 776,
+          "reusedMs": [312, 309, 309, 309, 310],
+          "found": true,
+          "clientMs": 2652,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 768,
+          "reusedMs": [302, 303, 303, 303, 302],
+          "found": true,
+          "clientMs": 2613,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 639,
+          "reusedMs": [318, 316, 316, 317, 315],
+          "found": true,
+          "clientMs": 2550,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 762,
+          "reusedMs": [302, 302, 300, 301, 304],
+          "found": true,
+          "clientMs": 2598,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 779,
+          "reusedMs": [312, 309, 312, 309, 309],
+          "found": true,
+          "clientMs": 2663,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 632,
+          "reusedMs": [313, 313, 313, 311, 315],
+          "found": true,
+          "clientMs": 2523,
+          "placement": "remote-FRA"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 645,
+          "reusedMs": [320, 320, 319, 318, 319],
+          "found": true,
+          "clientMs": 2572,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-eu",
+          "requestColo": "LAX",
+          "executionColo": "FRA",
+          "firstMs": 613,
+          "reusedMs": [303, 309, 307, 306, 303],
+          "found": true,
+          "clientMs": 2479,
+          "placement": "remote-"
+        }
+      ]
+    },
+    {
+      "worker": "ap",
+      "requests": 60,
+      "requestColo": {
+        "LAX": 60
+      },
+      "executionColo": {
+        "NRT": 60
+      },
+      "placement": {
+        "remote-NRT": 36,
+        "remote-": 24
+      },
+      "firstMs": {
+        "count": 60,
+        "p50": 670,
+        "p95": 705,
+        "min": 515,
+        "max": 714
+      },
+      "reusedMs": {
+        "count": 300,
+        "p50": 262,
+        "p95": 272,
+        "min": 254,
+        "max": 428
+      },
+      "clientMs": {
+        "count": 60,
+        "p50": 2224,
+        "p95": 2351,
+        "min": 2065,
+        "max": 2756
+      },
+      "samples": [
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 685,
+          "reusedMs": [262, 261, 260, 261, 261],
+          "found": true,
+          "clientMs": 2756,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 685,
+          "reusedMs": [262, 262, 262, 263, 262],
+          "found": true,
+          "clientMs": 2265,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 522,
+          "reusedMs": [262, 260, 259, 260, 260],
+          "found": true,
+          "clientMs": 2091,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 534,
+          "reusedMs": [267, 266, 267, 267, 266],
+          "found": true,
+          "clientMs": 2140,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 672,
+          "reusedMs": [256, 254, 255, 255, 257],
+          "found": true,
+          "clientMs": 2216,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 673,
+          "reusedMs": [257, 257, 256, 257, 256],
+          "found": true,
+          "clientMs": 2229,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 517,
+          "reusedMs": [257, 257, 255, 256, 256],
+          "found": true,
+          "clientMs": 2065,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 674,
+          "reusedMs": [255, 261, 258, 258, 259],
+          "found": true,
+          "clientMs": 2231,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 527,
+          "reusedMs": [262, 263, 261, 260, 265],
+          "found": true,
+          "clientMs": 2105,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 528,
+          "reusedMs": [262, 262, 263, 261, 262],
+          "found": true,
+          "clientMs": 2115,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 684,
+          "reusedMs": [262, 263, 261, 262, 262],
+          "found": true,
+          "clientMs": 2270,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 687,
+          "reusedMs": [268, 267, 262, 264, 264],
+          "found": true,
+          "clientMs": 2282,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 530,
+          "reusedMs": [261, 262, 262, 263, 264],
+          "found": true,
+          "clientMs": 2110,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 527,
+          "reusedMs": [261, 261, 263, 268, 263],
+          "found": true,
+          "clientMs": 2109,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 700,
+          "reusedMs": [268, 270, 269, 270, 269],
+          "found": true,
+          "clientMs": 2319,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 685,
+          "reusedMs": [264, 263, 264, 416, 265],
+          "found": true,
+          "clientMs": 2431,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 524,
+          "reusedMs": [261, 262, 418, 265, 260],
+          "found": true,
+          "clientMs": 2264,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 544,
+          "reusedMs": [267, 265, 265, 268, 267],
+          "found": true,
+          "clientMs": 2141,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 699,
+          "reusedMs": [266, 266, 265, 268, 268],
+          "found": true,
+          "clientMs": 2305,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 697,
+          "reusedMs": [266, 267, 266, 266, 266],
+          "found": true,
+          "clientMs": 2292,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 681,
+          "reusedMs": [260, 259, 259, 260, 257],
+          "found": true,
+          "clientMs": 2252,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 712,
+          "reusedMs": [269, 269, 269, 272, 272],
+          "found": true,
+          "clientMs": 2337,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 683,
+          "reusedMs": [260, 260, 262, 261, 260],
+          "found": true,
+          "clientMs": 2253,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 524,
+          "reusedMs": [262, 262, 262, 260, 261],
+          "found": true,
+          "clientMs": 2099,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 527,
+          "reusedMs": [259, 261, 261, 259, 260],
+          "found": true,
+          "clientMs": 2095,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 698,
+          "reusedMs": [265, 265, 266, 266, 266],
+          "found": true,
+          "clientMs": 2294,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 685,
+          "reusedMs": [265, 265, 262, 264, 262],
+          "found": true,
+          "clientMs": 2276,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 671,
+          "reusedMs": [255, 257, 255, 255, 254],
+          "found": true,
+          "clientMs": 2212,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 521,
+          "reusedMs": [257, 257, 255, 257, 255],
+          "found": true,
+          "clientMs": 2077,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 527,
+          "reusedMs": [261, 262, 260, 260, 420],
+          "found": true,
+          "clientMs": 2258,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 714,
+          "reusedMs": [275, 275, 272, 274, 275],
+          "found": true,
+          "clientMs": 2351,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 527,
+          "reusedMs": [263, 261, 262, 261, 261],
+          "found": true,
+          "clientMs": 2103,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 702,
+          "reusedMs": [423, 262, 264, 264, 263],
+          "found": true,
+          "clientMs": 2446,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 669,
+          "reusedMs": [256, 256, 256, 257, 256],
+          "found": true,
+          "clientMs": 2221,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 674,
+          "reusedMs": [256, 257, 256, 256, 258],
+          "found": true,
+          "clientMs": 2224,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 533,
+          "reusedMs": [264, 263, 263, 264, 267],
+          "found": true,
+          "clientMs": 2125,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 540,
+          "reusedMs": [267, 269, 267, 268, 269],
+          "found": true,
+          "clientMs": 2148,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 518,
+          "reusedMs": [260, 258, 259, 257, 257],
+          "found": true,
+          "clientMs": 2080,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 540,
+          "reusedMs": [271, 266, 268, 265, 272],
+          "found": true,
+          "clientMs": 2155,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 545,
+          "reusedMs": [269, 268, 271, 270, 269],
+          "found": true,
+          "clientMs": 2160,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 670,
+          "reusedMs": [255, 259, 256, 256, 257],
+          "found": true,
+          "clientMs": 2222,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 689,
+          "reusedMs": [266, 264, 264, 267, 265],
+          "found": true,
+          "clientMs": 2284,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 526,
+          "reusedMs": [260, 261, 261, 261, 263],
+          "found": true,
+          "clientMs": 2099,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 693,
+          "reusedMs": [266, 265, 262, 262, 261],
+          "found": true,
+          "clientMs": 2278,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 705,
+          "reusedMs": [266, 266, 268, 269, 268],
+          "found": true,
+          "clientMs": 2312,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 711,
+          "reusedMs": [263, 264, 261, 263, 261],
+          "found": true,
+          "clientMs": 2301,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 693,
+          "reusedMs": [266, 260, 261, 263, 263],
+          "found": true,
+          "clientMs": 2272,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 521,
+          "reusedMs": [258, 261, 257, 256, 256],
+          "found": true,
+          "clientMs": 2084,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 538,
+          "reusedMs": [267, 269, 268, 428, 268],
+          "found": true,
+          "clientMs": 2304,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 521,
+          "reusedMs": [255, 257, 257, 256, 261],
+          "found": true,
+          "clientMs": 2078,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 515,
+          "reusedMs": [255, 260, 256, 257, 257],
+          "found": true,
+          "clientMs": 2066,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 695,
+          "reusedMs": [266, 267, 266, 278, 277],
+          "found": true,
+          "clientMs": 2316,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 518,
+          "reusedMs": [258, 255, 260, 256, 255],
+          "found": true,
+          "clientMs": 2069,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 693,
+          "reusedMs": [268, 265, 267, 268, 265],
+          "found": true,
+          "clientMs": 2301,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 544,
+          "reusedMs": [272, 271, 269, 269, 271],
+          "found": true,
+          "clientMs": 2163,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 532,
+          "reusedMs": [265, 263, 264, 265, 264],
+          "found": true,
+          "clientMs": 2122,
+          "placement": "remote-"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 519,
+          "reusedMs": [257, 257, 259, 259, 257],
+          "found": true,
+          "clientMs": 2079,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 704,
+          "reusedMs": [273, 271, 268, 269, 267],
+          "found": true,
+          "clientMs": 2320,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 693,
+          "reusedMs": [260, 261, 261, 261, 262],
+          "found": true,
+          "clientMs": 2264,
+          "placement": "remote-NRT"
+        },
+        {
+          "worker": "probe-74-latency-ap",
+          "requestColo": "LAX",
+          "executionColo": "NRT",
+          "firstMs": 685,
+          "reusedMs": [260, 259, 261, 260, 260],
+          "found": true,
+          "clientMs": 2250,
+          "placement": "remote-NRT"
+        }
+      ]
+    }
+  ]
+}
