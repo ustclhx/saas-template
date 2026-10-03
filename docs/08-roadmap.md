@@ -25,14 +25,19 @@
 - [x] `apps/web`：TanStack Start 跑在 workerd（Cloudflare Vite 插件），本地 + 部署各一次（staging：`web-staging.saas-jobs.workers.dev`）
 - [x] `apps/jobs`：导出一个空 Workflow + Queue consumer + Cron，web 能通过绑定调用
 - [x] 本地 Docker PG + Drizzle + 第一个迁移
-- [ ] 本机 PG（TLS）+ `cloudflared` + Tunnel + Workers VPC + Hyperdrive，部署到 `*.workers.dev` 的 Worker 查询成功；记录延迟基线（开/关 Smart Placement 对比，仅验证链路）
-- [ ] 验证 Hyperdrive 下的事务 + `SELECT ... FOR UPDATE` + `pg_advisory_xact_lock`
-- [ ] 验证跨 Worker（`script_name`）的 Workflow 绑定与 `sendEvent`；确认 Workflow 尚未执行到 `waitForEvent` 时收到的事件是否被缓存
-- [ ] 验证流式响应中客户端断开后，`waitUntil(consumeStream())` 能否完成结算
-- [ ] 本机两个 `cloudflared` 副本，停掉其中一个时 Hyperdrive 查询不中断
+- [x] 本机 PG（TLS）+ `cloudflared` + Tunnel + Workers VPC + Hyperdrive，部署到 `*.workers.dev` 的 Worker 查询成功；记录延迟基线（开/关 Smart Placement 对比，仅验证链路）——复用连接约 160 ms（LAX），Smart Placement 无效果（`07` §8）
+- [x] 验证 Hyperdrive 下的事务 + `SELECT ... FOR UPDATE` + `pg_advisory_xact_lock`——可用，锁在提交 / 回滚 / Worker 中断后都释放（`07` §2）
+- [x] 验证跨 Worker（`script_name`）的 Workflow 绑定与 `sendEvent`；确认 Workflow 尚未执行到 `waitForEvent` 时收到的事件是否被缓存——可用，提前发出的事件至少保留 60 分钟；事件类型不能含 `.`（`06` §4）
+- [x] 验证流式响应中客户端断开后，`waitUntil(consumeStream())` 能否完成结算——可以，但限于断开后 30 秒，超时静默取消（`06` §3，P3 需按建议处理）
+- [x] 本机两个 `cloudflared` 副本，停掉其中一个时 Hyperdrive 查询不中断——会自动切换，但有约 5–10 秒卡顿与少量失败，不是无感（`07` §2）
 - [x] `template.config.ts` + env Zod 校验
 
-**验收**：staging（`*.workers.dev`）首页 SSR 正常；`/api/health` 返回 DB 往返耗时；jobs 的 Cron 能写库。
+**验收**：staging（`*.workers.dev`）首页 SSR 正常；`/api/health` 返回 DB 往返耗时；jobs 的 Cron 能写库。——已通过（2026-10-03，`web-staging.saas-jobs.workers.dev`）。未完成：CI 自动部署 staging（P0 任务 6.2，待配置 Cloudflare API Token）。
+
+**Phase 0 实测对后续阶段的影响**：
+- P3（文本对话）：客户端断开后服务端只能再运行 30 秒，长回复可能来不及结算；采用 `06` §3 的建议（推荐流中定期写累计 usage，供兜底按实际用量结算）。
+- P4（媒体）：事件类型改用 `media-done` 常量（已改示意代码）；`check-callback` 可删去，保留 `recheck-callback`（`06` §4）。
+- 阶段二（生产迁移）：`cloudflared` 副本分故障域部署、告警阈值与重试策略按 `07` §2 的建议；在生产服务器上重测延迟基线与副本切换；评估显式放置替代 Smart Placement。
 
 ## Phase 1 · 认证与 Workspace
 

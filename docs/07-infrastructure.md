@@ -24,7 +24,7 @@
 | 服务 | 说明 |
 |---|---|
 | `postgres` | Postgres 17，数据卷挂载本地 SSD；只监听 Docker 内网 / localhost |
-| `cloudflared` ×2 | Cloudflare Tunnel，把 PG 暴露给 Hyperdrive（不开放公网端口）；同一 Tunnel 运行**两个副本**（Tunnel 原生支持多个连接器），单个进程崩溃或升级时不中断数据库访问 |
+| `cloudflared` ×2 | Cloudflare Tunnel，把 PG 暴露给 Hyperdrive（不开放公网端口）；同一 Tunnel 运行**两个副本**（Tunnel 原生支持多个连接器），单个进程崩溃或升级时会自动切换到另一个副本，但切换期间数据库访问会卡住约 5–10 秒、少量请求失败（7.5 实测，见 §2「cloudflared 副本切换」）；副本应放在不同故障域，计划内重启逐个进行 |
 | `walg` / `pgbackrest` | 基础备份 + WAL 归档到 R2（S3 兼容） |
 | （可选）`postgres-exporter` | 指标给 Grafana / 监控平台 |
 

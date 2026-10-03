@@ -53,7 +53,7 @@ saas-template/
 
 ## 2. 为什么拆 `apps/jobs`
 
-- Workflow 类必须由某个 Worker 导出；与 TanStack Start 的入口混在一起会增加耦合（待验证可行性，但拆开更清晰）。
+- Workflow 类必须由某个 Worker 导出；与 TanStack Start 的入口混在一起会增加耦合。已实测：web 经 `script_name` 绑定 jobs 中定义的 Workflow，创建实例、查询状态、`sendEvent` 均可用（Phase 0 任务 4.5、7.2）。
 - 后台任务的 CPU / 依赖 / 发布节奏与 Web 不同，拆开后互不影响包体与稳定性。
 - `apps/web` 通过 Workflow 绑定（`script_name: jobs`）启动工作流、通过 Queue 投递消息；需要同步调用时用 Service Binding。
 

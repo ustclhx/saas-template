@@ -86,7 +86,7 @@
 | 需开启 `nodejs_compat` | postgres.js、Better Auth 依赖部分 Node API |
 | **DB 客户端不能跨请求复用** | 每个请求创建 Drizzle 实例（Hyperdrive 负责真正的连接池） |
 | 请求有墙钟/CPU 限制 | 长任务一律进 Workflows / Queues，不在请求里同步等待 |
-| 边缘到数据库有网络延迟 | 开启 **Smart Placement**；合并查询；营销页预渲染；可缓存的读走 `HYPERDRIVE_CACHED` |
+| 边缘到数据库有网络延迟 | 合并查询、减少请求内串行查询；保持 `prepare: true`；营销页预渲染；可缓存的读走 `HYPERDRIVE_CACHED`。**不依赖 Smart Placement**：实测它不会因 Hyperdrive 访问而把 Worker 移到数据库附近（7.4，`docs/07` §8），阶段二按需评估显式放置 |
 
 ## 5. 数据库访问策略
 
