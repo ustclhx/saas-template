@@ -243,3 +243,49 @@ tag:   数据库迁移(production) → wrangler deploy (jobs 先于 web) → 冒
 | AI | AI Gateway 仪表盘 |
 | 业务指标 | 管理后台：注册、付费转化、MRR、积分消耗、任务成功率 |
 | 数据库 | pg_stat_statements、导出器指标、备份状态 |
+
+## 8. 延迟基线（Phase 0 实测 7.4，2026-10-03）
+
+> **阶段一的数据库在开发者本机（§0），以下数据只证明「Worker → Hyperdrive → Workers VPC → Tunnel → 本机 PG」链路可用，不代表生产延迟。** 生产延迟在阶段二部署生产服务器后重新测量。
+
+### 测试方法
+
+可重复执行的探针在 `scripts/probes/latency/`（部署、运行、清理步骤见其 README）：
+
+- 临时 Worker `probe-74-latency-{off,smart,eu,ap}`，代码相同，只有放置方式不同：关闭放置、Smart Placement、显式放置 `aws:eu-central-1`（实际执行于 FRA）、显式放置 `aws:ap-northeast-1`（实际执行于 NRT）。都绑定 `saas-template-staging`（关缓存）。
+- 每个 HTTP 请求新建一个 postgres.js 客户端（选项同 `createDb`：`max: 5`、`fetch_types: false`、`prepare: true`），对 `setting` 表顺序执行同一查询 `select value from setting where key = $1` 共 6 次，在 Worker 内计时：第 1 次为**首次建连**（新连接 + prepare），后 5 次为**复用连接**。
+- 记录 `request.cf.colo`（入口机房）、Worker 内请求 `cloudflare.com/cdn-cgi/trace` 得到的 `colo`（实际执行机房）、响应头 `cf-placement`。
+- **两个以上地区**：本机（经代理出口在美国西部）直接请求时入口固定为 LAX；另用两种方式让 Worker 在其他地区执行：① 显式放置（targeted placement）；② 由显式放置在 FRA / NRT 的探针 Worker 经 `/relay` 转发请求，使 off / smart 两个 Worker 的入口机房分别为 FRA、NRT。
+- 每组 60 个请求（60 个首次建连样本、300 个复用连接样本），顺序执行。原始数据在 `scripts/probes/latency/results/`。
+
+本机环境：两个 `cloudflared` 副本的 Tunnel 连接都注册在 LAX（`lax01/08/10/13`），即从 Cloudflare 看，数据库「位于」LAX；每次数据库往返都包含 LAX ↔ 开发者本机（经本机代理）这一段。
+
+### 结果（Worker 内测得的数据库往返，单位 ms，p50 / p95）
+
+| 入口机房 | 执行机房 | 放置 | `cf-placement` | 首次建连 | 复用连接 |
+|---|---|---|---|---|---|
+| LAX | LAX | 关 | — | 320 / 1576（第 1 轮）；482 / 501（第 2 轮） | 159 / 166；161 / 167 |
+| LAX | LAX | Smart | `local-LAX` | 479 / 501 | 162 / 166 |
+| LAX | FRA | 显式 `aws:eu-central-1` | `remote-FRA` | 704 / 911 | 312 / 398 |
+| LAX | NRT | 显式 `aws:ap-northeast-1` | `remote-NRT` | 670 / 705 | 262 / 272 |
+| FRA（经 relay） | FRA | 关 | — | 782 / 889 | 312 / 458 |
+| FRA（经 relay） | FRA | Smart | `local-FRA` | 786 / 938 | 314 / 323 |
+| NRT（经 relay） | NRT | 关 | — | 695 / 851 | 264 / 281 |
+| NRT（经 relay） | NRT | Smart | `local-NRT` | 694 / 726 | 264 / 277 |
+
+对照组（`prepare: false`）：LAX 执行时首次 323 / 377、复用 319 / 347；FRA 执行时首次 630 / 727、复用 621 / 719。
+
+所有测量与预热（Smart Placement 预热约 3,500 个请求）中没有失败请求。
+
+### 结论
+
+1. **链路可用**：LAX、FRA、NRT 三个执行位置经 Hyperdrive（关缓存）查询本机 `saas_staging` 均成功。
+2. **单次往返由「执行机房 → Tunnel 接入点（LAX）→ 本机」决定**：LAX 执行约 160 ms（几乎全部是 LAX ↔ 本机），FRA 约 310 ms，NRT 约 265 ms；不同执行位置之间的差值（约 +150 / +105 ms）就是执行机房到 LAX 的距离。
+3. **Smart Placement 在本场景下没有效果**：入口为 LAX 时决定为 `local-LAX`（本来就在 Tunnel 接入点，合理）；入口为 FRA / NRT 时，在约 70 分钟、约 3,000 个请求后仍为 `local-FRA` / `local-NRT`，没有把 Worker 移到 LAX，延迟与关闭时相同。原因未查实，可能是：Smart Placement 主要依据 `fetch` 子请求的耗时，而 Hyperdrive 走的是 TCP socket；探针每个请求还有一次发往本地机房的 `fetch`（trace），可能把判断拉向「留在本地」；流量规模较小。
+4. **首次建连的额外开销来自 prepare，而不是与 Hyperdrive 建连**：`prepare: true` 时首次查询约 2–3 次往返、之后每次 1 次往返；`prepare: false` 时每次查询都是约 2 次往返。首次查询是 2 次还是 3 次往返在两轮测量之间不同（LAX 第 1 轮 320、第 2 轮 482），原因未查实（可能与 Hyperdrive 到源站的连接池状态有关）。
+
+### 对设计的影响（建议）
+
+- 保持 `createDb` 的 `prepare: true`（§2）：同一请求内的重复查询只需 1 次往返；改为 `false` 会让每次查询多一次往返。
+- 请求内顺序执行的查询次数直接放大延迟（阶段一每次约 160–310 ms）。后续 change 应尽量合并查询（CTE、`returning`、一个事务内少次往返），避免在一个请求中串行多次读库；这一点在阶段二数据库离用户较远时同样适用。
+- 不依赖 Smart Placement 把访问数据库的 Worker 移到数据库附近。阶段二若用户与数据库不在同一地区，建议对以数据库为主的 Worker 评估显式放置（`placement.mode = "targeted"`，`region` 或 `host` 指向数据库所在地区），并在阶段二重新测量本基线后再决定。
