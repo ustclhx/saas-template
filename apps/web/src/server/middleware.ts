@@ -49,7 +49,8 @@ export const withSession = createMiddleware({ type: 'function' }).server(async (
 })
 
 /** server function 的输入来自客户端，按形状校验；是否有权访问由下方查库判断 */
-const workspaceInput = z.object({
+// Preserve action fields until the server function validates its full input.
+const workspaceInput = z.looseObject({
   /** URL 中的 `$slug`；省略时解析 `/app` 的默认空间（活跃空间 → 个人空间） */
   slug: z.string().min(1).max(64).optional(),
 })
