@@ -162,7 +162,7 @@ Creem / Paddle / Polar 各实现一个 Provider，`capabilities.merchantOfRecord
 - `plan.credits` 表示**每月**积分；年付付款成功时只发首月（`n=0`）。
 - **平台字段缺失**：未付款订阅的服务周期允许为空，未确认周期前不授予付费权益；付款快照仍必须给出可验证的付款周期。平台不提供累计部分退款金额时，Provider 返回 `null`，业务层按唯一平台退款 ID 累计本地已验证退款，不把未知值当作零。
 - **付款来源保存**：入账时保存付款对应的 `plan_price_id` 与服务周期（一次性付款无周期），后续换套餐或续费不会改写历史付款的年付发放依据。每个已验证退款记录到 `payment_refund`，以平台退款 ID 去重后累计，跨回调与人工审核使用同一身份。
-- Cron `subscription-grants`（每小时）：对 `status IN ('active','trialing')` 且 `plan_price.interval='year'` 的订阅，计算自 `current_period_start` 起已经过的月数 `n`，补发所有缺失的 `{payment.id}:{k}`（k ≤ n）。`unique(source, source_ref)` 保证重复执行无副作用。
+- Cron `subscription-grants`（每小时）：使用已付款的历史 `payment.plan_price_id` 与 `period_start/end` 作为年付依据，按原 UTC 月日锚点计算 n=0..11。active/trialing 与仍在已付周期内的周期末取消订阅均继续发放；暂停、欠费、立即取消、已退款或空间删除时停止。补发缺失的 `{payment.id}:{k}`，迟到月份保留原失效时间并在同一事务中过期，`unique(source, source_ref)` 保证幂等。
 - 订阅取消（周期末生效）期间照常按月发放，进入终止状态后停止；退款时按 §「退款与争议」回收该 `payment.id` 下所有批次的剩余积分。
 
 ### 注册赠送防刷
@@ -247,7 +247,7 @@ INSERT INTO credit_hold (...), credit_hold_allocation (...);
 模板**默认不主动退款**（包括取消订阅和删除账号），用户如有诉求通过退款申请提出，管理员审核通过后才退款：
 
 1. **发起**：账单页的「申请退款」入口，以及删除账号流程中的提醒（见 04-auth-and-tenancy「删除账号」）。用户选择要申诉的付款（只列出 `refundWindowDays` 内、状态为 `succeeded` 的 `payment`），填写理由，创建 `refund_request(status='pending')`。同一笔付款同时只能有一个 pending 申请。
-2. **审核**（`/admin/billing/refunds`）：页面展示该付款对应批次的已用 / 剩余积分，供管理员参考。
+2. **审核**（`/admin/billing/refunds`）：页面展示该付款对应批次的原始 / 剩余积分，供管理员参考；两者之差包含预扣、过期或收回，不能直接当作已消费用量。
    - 管理员决定全额或部分退款金额；通过后调用 `provider.refund(paymentId, amount)`（`capabilities.refundsViaApi=false` 的平台转为线下处理并手动标记）。
    - 驳回需填写原因。
    - 两种结果都写 `audit_log`，并邮件通知申请人。
@@ -309,4 +309,19 @@ INSERT INTO credit_hold (...), credit_hold_allocation (...);
 - `/pricing`：订阅套餐 + 积分包，选择支付方式（按 `billing.providers` 展示）。
 - `/app/$slug/billing`：当前套餐、下次扣费、积分余额与批次明细、账单记录、取消/恢复、（Stripe）打开门户。
 - `/app/$slug/usage`：积分流水、按模型/成员的用量统计。
-- `/admin/billing`：订单、订阅、Webhook 事件（可重放）、手动调积分。
+- `/admin/billing`：付款、订阅、Webhook 事件（可重放）；手动调积分和完整管理能力在 P5。
+
+## P2 离线开发与联通边界（2026-10-04）
+
+当前实现不需要支付密钥。缺失凭据或未同步价格时，定价和账单页面显示支付不可用，不能伪装支付成功。Stripe 使用 SDK 23.0.0 与固定 API 版本 `2026-09-30.endive`；PayPal 工厂固定 sandbox，token 缓存到 CACHE KV。当前事件映射仅由离线 HTTP 夹具验证，不代表真实平台录制或 staging 验收通过。
+
+- 公开入口：`POST /api/billing/webhooks/{stripe|paypal}` 保留原始请求体验签；无效签名返回 400，业务或远端暂时失败返回 500，已提交的付款在队列投递失败时仍返回 200，由 Jobs 扫描持久化记录恢复通知。错误诊断会去除凭据、URL 与控制字符。
+- 后台：`/admin/billing` 列表与 failed 回调重放，`/admin/billing/refunds` 全额/部分审核、驳回与独立邮件重试。所有 server function 均重新验证平台 admin。审批或平台 API 响应不等于退款最终入账，只有匹配的已验证退款 ID 才完成申请和积分回收。
+- 并发订阅：事务回滚后持久化 `billing_compensation`，取消后到订阅并退款，租约/稳定幂等键允许重试。删除后的迟到订阅回调写入取消任务，保留真实付款凭据、禁止积分和权益恢复，并且不自动退款。
+- 删除：认证每次请求注入 billing 删除步骤；取消已知订阅在数据库事务外执行，剩余积分收回与账号/空间匿名化共享原事务。退款使用申请时保存的联系邮箱，删号后仍可审核和通知；驳回或已确认退款 30 天后清理，pending/approved 不清理。
+- Jobs：每小时过期和年付发放，每 10 分钟预扣回收框架、回调通知恢复、订阅补偿及退款邮件恢复，每日订阅/积分对账与联系邮箱清理。未注册的 AI 预扣处理器明确告警并保留预扣，P3/P4 注册相应处理器。
+- 队列：web 为 EVENTS_QUEUE producer，jobs 消费 events（staging 为 events-staging），仅发送持久化回调 UUID，不传原始载荷或支付密钥。失败重试和 Cron 从库恢复不重新入账。
+
+`pnpm billing:seed` 只写当前数据库的示例套餐，未同步价格保持 inactive。示例金额与积分量并非最终商业定价；AI 模型价格仍由 P3 定义。`pnpm billing:sync` 要求显式 `BILLING_SYNC_MODE=test`、Stripe 测试凭据与 PayPal 沙箱凭据，仅在下一联通阶段执行。Web/Jobs 的运行时凭据与同步脚本的环境变量名见各脚本；密钥不进入模板配置、Git 或日志。
+
+下一联通阶段才完成：两平台价格同步及幂等复验、真实回调录制并核对事件映射、Stripe 测试卡/测试时钟与 PayPal 沙箱订阅/购买/退款、staging 迁移/队列资源/部署和对账。OpenSpec 的 1.3、3.2、3.3、10.1、10.4、11.1 在这些条件满足前保持未勾选。

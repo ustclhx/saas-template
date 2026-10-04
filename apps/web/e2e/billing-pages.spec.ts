@@ -31,6 +31,7 @@ test('ordinary members see their own ledger without workspace credits or billing
   const sql = fixtureDb()
   const email = `billing-member-${randomUUID()}@example.com`
   const workspaceId = randomUUID()
+  const usageRef = randomUUID()
   const slug = `billing-${workspaceId}`
   try {
     await simulateClientIp(page)
@@ -55,7 +56,7 @@ test('ordinary members see their own ledger without workspace credits or billing
         userId: String(account.id),
         amount: 2,
         refType: 'ai_message',
-        refId: 'own-usage-reference',
+        refId: usageRef,
       })
       await capture(db, { workspaceId, holdId: reservation.id, actualAmount: 2 })
     } finally {
@@ -63,7 +64,7 @@ test('ordinary members see their own ledger without workspace credits or billing
     }
     await page.goto(`/app/${slug}/usage`)
     await expect(page.getByText('Your own credit activity is shown below.')).toBeVisible()
-    await expect(page.getByText('ai_message · own-usage-reference')).toBeVisible()
+    await expect(page.getByText(`ai_message · ${usageRef}`)).toBeVisible()
     expect(await page.content()).not.toContain('workspace-private-reference')
     await expect(page.getByRole('heading', { name: 'Credit batches' })).toHaveCount(0)
     await page.goto(`/app/${slug}/billing`)
