@@ -7,6 +7,8 @@ import { loadEnv } from 'vite'
 const repoRoot = new URL('../../', import.meta.url).pathname
 const worktreeEnv = loadEnv('worktree', repoRoot, '')
 const webPort = Number(worktreeEnv.WEB_PORT ?? 3000)
+const authLogPath = process.env.E2E_AUTH_LOG ?? '/tmp/p1-phase-e2e-auth.log'
+const quotedAuthLogPath = `'${authLogPath.replaceAll("'", "'\\''")}'`
 
 export default defineConfig({
   testDir: './e2e',
@@ -22,7 +24,7 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
-      command: 'pnpm dev',
+      command: `pnpm dev > ${quotedAuthLogPath} 2>&1`,
       url: `http://localhost:${webPort}/api/health`,
       reuseExistingServer: true,
       timeout: 120_000,

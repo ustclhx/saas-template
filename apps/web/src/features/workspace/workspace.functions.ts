@@ -50,7 +50,7 @@ export const getWorkspacePage = createServerFn({ method: 'GET' })
           ? await workspaceInvitations(db, workspace.id)
           : [],
       memberCount: members.length,
-      maxSeats: await resolveWorkspaceMaxSeats(workspace.id),
+      maxSeats: await resolveWorkspaceMaxSeats(workspace.id, db.$client),
     }
   })
 
