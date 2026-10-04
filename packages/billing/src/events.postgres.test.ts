@@ -1,6 +1,7 @@
 import { capture, hold, release } from '@saas/credits'
 import {
   auditLog,
+  billingCompensation,
   billingCustomer,
   createDb,
   creditDebt,
@@ -178,6 +179,7 @@ afterEach(async () => {
   await db.delete(creditHold).where(inArray(creditHold.workspaceId, w))
   await db.delete(creditGrant).where(inArray(creditGrant.workspaceId, w))
   await db.delete(creditDebt).where(inArray(creditDebt.workspaceId, w))
+  await db.delete(billingCompensation).where(inArray(billingCompensation.workspaceId, w))
   await db.delete(refundRequest).where(inArray(refundRequest.workspaceId, w))
   await db.delete(paymentRefund).where(inArray(paymentRefund.workspaceId, w))
   await db.delete(payment).where(inArray(payment.workspaceId, w))
@@ -590,11 +592,23 @@ describe('billing event consumer on PostgreSQL', () => {
     expect(await payments()).toHaveLength(1)
     expect(await grants()).toEqual([])
   })
+  it('invalid deleted-workspace payment rolls back its cancellation job and receipt together', async () => {
+    await db.update(organization).set({ deletedAt: now }).where(eq(organization.id, ws))
+    await expect(apply([paid({ amount: 999 })])).rejects.toThrow('price mismatch')
+    expect(await subs()).toEqual([])
+    expect(await payments()).toEqual([])
+    expect(
+      await db.select().from(billingCompensation).where(eq(billingCompensation.workspaceId, ws)),
+    ).toEqual([])
+  })
   it('deleted workspace receipt is preserved without grants; non-member repair is rejected', async () => {
     await db.update(organization).set({ deletedAt: now }).where(eq(organization.id, ws))
     await apply([paid()])
     expect(await payments()).toHaveLength(1)
     expect(await grants()).toEqual([])
+    expect(
+      await db.select().from(billingCompensation).where(eq(billingCompensation.workspaceId, ws)),
+    ).toMatchObject([{ key: `deleted:stripe:${subId}`, payload: { reason: 'workspace_deleted' } }])
     subId = `sub-${id()}`
     snapshot = {
       ...snapshot,

@@ -14,10 +14,9 @@ import {
 import type { JsonValue, PaymentProviderId } from './billing.ts'
 import { organization } from './tenancy.ts'
 
-export interface SubscriptionCompensationPayload {
+interface SubscriptionCompensationDetails {
   provider: PaymentProviderId
   providerSubscriptionId: string
-  winnerSubscriptionId: string
   planId: string
   planPriceId: string
   payment?: {
@@ -32,6 +31,12 @@ export interface SubscriptionCompensationPayload {
     raw: JsonValue
   }
 }
+
+export type SubscriptionCompensationPayload = SubscriptionCompensationDetails &
+  (
+    | { reason?: 'subscription_conflict'; winnerSubscriptionId: string }
+    | { reason: 'workspace_deleted'; winnerSubscriptionId?: never; payment?: never }
+  )
 
 /** Durable cancel/refund retry after a competing-subscription transaction rolls back. */
 export const billingCompensation = pgTable(

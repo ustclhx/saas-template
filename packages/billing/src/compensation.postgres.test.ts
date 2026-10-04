@@ -207,6 +207,98 @@ async function deliver(event: NormalizedEvent, deliveryId = id()) {
 const jobs = () =>
   db.select().from(billingCompensation).where(eq(billingCompensation.workspaceId, ws))
 describe('durable concurrent subscription compensation', () => {
+  it.each(['activation', 'payment'] as const)(
+    'deleted workspace %s queues one cancel-only job, retries and never revives or refunds on late payments',
+    async (first) => {
+      await db.update(organization).set({ deletedAt: now }).where(eq(organization.id, ws))
+      await db.delete(member).where(eq(member.organizationId, ws))
+      const activation: NormalizedEvent = {
+        provider: 'stripe',
+        type: 'subscription.activated',
+        occurredAt: now,
+        raw: {},
+        subscription: snapshot,
+      }
+      const event = first === 'activation' ? activation : paid()
+      const initial = await deliver(event)
+      expect(initial.result.status).toBe('processed')
+      expect((await deliver(event, initial.deliveryId)).result.status).toBe('duplicate')
+      expect((await deliver(event)).result.status).toBe('processed')
+      const [job] = await jobs()
+      expect(await jobs()).toHaveLength(1)
+      expect(job).toMatchObject({
+        key: `deleted:stripe:${subId}`,
+        payload: { reason: 'workspace_deleted', providerSubscriptionId: subId },
+      })
+      expect(job?.payload).not.toHaveProperty('winnerSubscriptionId')
+      expect(job?.payload).not.toHaveProperty('payment')
+      vi.mocked(provider.cancelSubscription).mockRejectedValueOnce(new Error('cancel unavailable'))
+      expect(await runPendingCompensations({ db, providers: { stripe: provider } })).toMatchObject({
+        failed: 1,
+        completed: 0,
+      })
+      expect((await jobs())[0]).toMatchObject({
+        status: 'pending',
+        attempts: 1,
+        error: 'cancel unavailable',
+      })
+      expect(await runPendingCompensations({ db, providers: { stripe: provider } })).toMatchObject({
+        completed: 1,
+        failed: 0,
+      })
+      expect(provider.cancelSubscription).toHaveBeenLastCalledWith(subId, { atPeriodEnd: false })
+      const renewal = paid({ kind: 'renewal', refundedAmount: 200 })
+      expect((await deliver(renewal)).result.status).toBe('processed')
+      expect((await deliver(renewal)).result.status).toBe('processed')
+      expect((await deliver(activation)).result.status).toBe('processed')
+      expect(await jobs()).toHaveLength(1)
+      expect(await runPendingCompensations({ db, providers: { stripe: provider } })).toMatchObject({
+        claimed: 0,
+      })
+      expect(provider.refund).not.toHaveBeenCalled()
+      expect(await grants()).toEqual([])
+      expect(await subs()).toMatchObject([
+        { status: 'canceled', cancelAtPeriodEnd: false, currentPeriodEnd: null, raw: snapshot.raw },
+      ])
+      expect(await payments()).toHaveLength(first === 'payment' ? 2 : 1)
+      expect((await payments()).find((p) => p.kind === 'renewal')).toMatchObject({
+        amount: 1000,
+        refundedAmount: 200,
+      })
+      expect((await jobs())[0]).toMatchObject({
+        status: 'completed',
+        attempts: 2,
+        cancelCompleted: true,
+        providerRefundId: null,
+      })
+    },
+  )
+  it.each(['SUSPENDED', 'CANCELLED', 'EXPIRED'])(
+    'deleted PayPal subscription checks real %s status before immediate cancellation',
+    async (remoteStatus) => {
+      await db.update(organization).set({ deletedAt: now }).where(eq(organization.id, ws))
+      await db.update(planPrice).set({ provider: 'paypal' }).where(eq(planPrice.id, priceId))
+      provider = { ...provider, id: 'paypal' }
+      snapshot = { ...snapshot, status: 'canceled', remoteStatus }
+      await apply([
+        {
+          provider: 'paypal',
+          type: 'subscription.activated',
+          occurredAt: now,
+          raw: snapshot.raw,
+          subscription: snapshot,
+        },
+      ])
+      expect(await runPendingCompensations({ db, providers: { paypal: provider } })).toMatchObject({
+        completed: 1,
+      })
+      expect(provider.getSubscription).toHaveBeenCalledTimes(1)
+      if (remoteStatus === 'SUSPENDED')
+        expect(provider.cancelSubscription).toHaveBeenCalledWith(subId, { atPeriodEnd: false })
+      else expect(provider.cancelSubscription).not.toHaveBeenCalled()
+      expect(provider.refund).not.toHaveBeenCalled()
+    },
+  )
   it('concurrent winner/loser preserves winner, refunds actual payment once and webhook settles without loser grants', async () => {
     const first = paid()
     const secondId = `sub-${id()}`

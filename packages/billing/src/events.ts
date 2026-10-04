@@ -52,7 +52,10 @@ export interface BillingEventOptions {
 export class RenewingSubscriptionConflict extends Error {
   readonly code = 'RENEWING_SUBSCRIPTION_CONFLICT'
   constructor(
-    public readonly compensation: SubscriptionCompensationPayload & { workspaceId: string },
+    public readonly compensation: Exclude<
+      SubscriptionCompensationPayload,
+      { reason: 'workspace_deleted' }
+    > & { workspaceId: string },
   ) {
     super('RENEWING_SUBSCRIPTION_CONFLICT')
     this.name = 'RenewingSubscriptionConflict'
@@ -216,6 +219,7 @@ export async function prepareBillingEvents(
               and(
                 sql`${billingCompensation.payload}->>'provider' = ${event.provider}`,
                 sql`${billingCompensation.payload}->>'providerSubscriptionId' = ${id}`,
+                sql`coalesce(${billingCompensation.payload}->>'reason', '') <> 'workspace_deleted'`,
               ),
             )
             .limit(1)
@@ -273,7 +277,11 @@ export async function prepareBillingEvents(
     )
       throw new Error('Checkout metadata repair mismatch')
     try {
-      await validateMetadata(db, metadata, event.type === 'payment.succeeded')
+      await validateMetadata(
+        db,
+        metadata,
+        kind === 'subscription' || event.type === 'payment.succeeded',
+      )
     } catch (error) {
       await db.insert(auditLog).values({
         action: 'billing.association_failed',
@@ -676,12 +684,14 @@ export async function applyBillingEvent(
         eq(billingCompensation.workspaceId, a.workspaceId),
         sql`${billingCompensation.payload}->>'provider' = ${event.provider}`,
         sql`${billingCompensation.payload}->>'providerSubscriptionId' = ${id}`,
+        sql`coalesce(${billingCompensation.payload}->>'reason', '') <> 'workspace_deleted'`,
       ),
     )
   const existingCompensation = jobs[0]
   const compensated = !oneTime && Boolean(existingCompensation)
   if (
     existingCompensation &&
+    existingCompensation.payload.reason !== 'workspace_deleted' &&
     !oneTime &&
     event.type === 'payment.succeeded' &&
     event.payment.kind !== 'one_time' &&
@@ -750,7 +760,7 @@ export async function applyBillingEvent(
     if (sub && sub.workspaceId !== a.workspaceId)
       throw new Error('Subscription workspace association changed')
     if (!sub) {
-      if (!compensated) await validateMetadata(tx, a.metadata, event.type === 'payment.succeeded')
+      if (!compensated) await validateMetadata(tx, a.metadata, deleted)
       const snapshot = a.snapshot
       if (!snapshot || !('providerSubscriptionId' in snapshot))
         throw new Error('Missing subscription repair snapshot')
@@ -777,6 +787,35 @@ export async function applyBillingEvent(
         .returning()
     }
     if (!sub) throw new Error('Subscription insert failed')
+    if (deleted) {
+      const [job] = await tx
+        .insert(billingCompensation)
+        .values({
+          workspaceId: a.workspaceId,
+          key: `deleted:${event.provider}:${id}`,
+          payload: {
+            reason: 'workspace_deleted',
+            provider: event.provider,
+            providerSubscriptionId: id,
+            planId: a.plan.id,
+            planPriceId: a.price.id,
+          },
+        })
+        .onConflictDoNothing({ target: billingCompensation.key })
+        .returning()
+      if (job)
+        await tx.insert(auditLog).values({
+          workspaceId: a.workspaceId,
+          action: 'billing.subscription_compensation_required',
+          targetType: 'billing_compensation',
+          targetId: job.id,
+          meta: {
+            reason: 'workspace_deleted',
+            provider: event.provider,
+            providerSubscriptionId: id,
+          },
+        })
+    }
     if (compensated || deleted)
       await tx
         .update(subscription)

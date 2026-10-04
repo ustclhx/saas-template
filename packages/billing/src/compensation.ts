@@ -206,7 +206,11 @@ export async function runPendingCompensations(options: {
         const remote = await provider.getSubscription(job.payload.providerSubscriptionId)
         if (remote.providerSubscriptionId !== job.payload.providerSubscriptionId)
           throw new Error('Compensation remote subscription mismatch')
-        if (!['canceled', 'expired'].includes(remote.status))
+        const terminal =
+          provider.id === 'paypal'
+            ? ['CANCELLED', 'EXPIRED'].includes(remote.remoteStatus.toUpperCase())
+            : ['canceled', 'expired'].includes(remote.status)
+        if (!terminal)
           await provider.cancelSubscription(job.payload.providerSubscriptionId, {
             atPeriodEnd: false,
           })
@@ -217,8 +221,9 @@ export async function runPendingCompensations(options: {
           .returning()
         if (!saved.length) continue
       }
-      await recordLosingReceipt(db, job)
-      const receipt = job.payload.payment
+      const deletionOnly = job.payload.reason === 'workspace_deleted'
+      if (!deletionOnly) await recordLosingReceipt(db, job)
+      const receipt = deletionOnly ? undefined : job.payload.payment
       if (receipt && !job.providerRefundId) {
         if (!provider.capabilities.refundsViaApi || !provider.refund)
           throw new Error('Compensation refund adapter unavailable')
@@ -284,7 +289,9 @@ export async function runPendingCompensations(options: {
             action: 'billing.subscription_compensated',
             targetType: 'billing_compensation',
             targetId: job.id,
-            meta: { settlement: 'awaiting_verified_webhook' },
+            meta: deletionOnly
+              ? { reason: 'workspace_deleted', settlement: 'canceled_without_refund' }
+              : { settlement: 'awaiting_verified_webhook' },
           })
           completed++
         }
