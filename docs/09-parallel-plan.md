@@ -44,7 +44,7 @@ P0 实现时必须遵守的约定（setup 脚本依赖它们）：
 
 ## 4. 阶段之间的波次
 
-主线 P0 → P1 → P2 → P3 → P4 是硬依赖；P5、P6、P7 按依赖拆开，跟随主线提前进行。每一波最多同时运行 4 个 agent（瓶颈是人工审阅与合并）。
+主线 P0 → P1 → P2 → P3 → P4 是硬依赖；P5、P6、P7 按依赖拆开，跟随主线提前进行。并发上限遵守当前运行时和配置；当前 4 个槽位包含协调者，因此每波最多 3 个 executor。
 
 | 波次 | 主线 | 并行支线 |
 |---|---|---|
@@ -66,7 +66,7 @@ P0 实现时必须遵守的约定（setup 脚本依赖它们）：
 - W0：`p0-scaffold`（1.1–1.4）在 main 上串行完成
 - W1：`p0-config`（2.1, 2.2, 6.1） ∥ `p0-db`（3.1–3.3, 2.3） ∥ `p0-web`（4.1）
 - W2：`p0-runtime`（4.2, 4.3, 4.4, 4.5；4.3 依赖 `p0-config` 的 2.2，因此不能放在 W1）
-- 基础设施（阶段一，协调者在主 checkout 执行，需要 Cloudflare 账号）：5.1、5.2 → 5.5 → 5.6；CI 部署 6.2 在 5.5 之后；5.3、5.4、6.3 已移到「生产迁移」
+- 基础设施（阶段一，协调者在主 checkout 执行，需要 Cloudflare 账号）：5.1、5.2 → 5.5 → 5.6；CI 部署已移到路线图独立待办；5.3、5.4、6.3 已移到「生产迁移」
 - W3：实测 `p0-probe-locks`（7.1） ∥ `p0-probe-workflow`（7.2） ∥ `p0-probe-stream`（7.3） ∥ `p0-probe-latency`（7.4） ∥ `p0-probe-tunnel`（7.5）→ `p0-findings`（7.6）
 
 ### P1 `add-auth-and-workspaces`
@@ -78,7 +78,8 @@ P0 实现时必须遵守的约定（setup 脚本依赖它们）：
 ### P2 `add-billing-and-credits`
 - `p2-schema`（1.1, 1.2, 3.1）
 - → `p2-ledger`（2.1–2.7） ∥ `p2-stripe`（3.2） ∥ `p2-paypal`（3.3） ∥ `p2-entitlements`（6.1, 6.2）
-  - `p2-stripe` / `p2-paypal` 由 decision gate 阻塞，直到 Stripe 测试账号与 PayPal 沙箱就绪
+  - 2026-10-04 执行约束：先完成 Provider、管线与本地行为验证，不配置支付凭据，不请求真实平台。真实回调录制、平台同步与 staging 支付验收保留 decision gate，到支付联通阶段再配置；没有满足全部验收条件的任务不得提前勾选。
+  - 依赖任务可从包含已审阅成果的集成分支创建一层堆叠；每波 executor 数量遵守当前运行时。
 - → `p2-webhooks`（4.1–4.3） ∥ `p2-seed-sync`（1.3）
 - → `p2-subscriptions`（5.1–5.5） ∥ `p2-signup-bonus`（8.1）
 - → `p2-refunds`（7.1–7.4） ∥ `p2-crons`（9.1） ∥ `p2-pages`（10.1, 10.2）
