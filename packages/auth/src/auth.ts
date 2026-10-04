@@ -27,6 +27,13 @@ export interface CreateAuthDeps {
   /** 认证邮件的发送点；由调用方注入（后续接 EMAIL_QUEUE），测试中用假实现 */
   readonly sendEmail: SendAuthEmail
   readonly resolveMaxSeats?: ResolveMaxSeats
+  /** Runs after verification is persisted, or after an already-verified registration's personal workspace.
+   * Errors propagate; the caller must provide an idempotent callback and a claim endpoint for retries.
+   */
+  readonly onEmailVerified?: (user: {
+    readonly id: string
+    readonly email: string
+  }) => Promise<unknown>
 }
 
 /**
@@ -42,6 +49,7 @@ export interface CreateAuthDeps {
 export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
   const { config, sendEmail } = deps
   const vars = parseAuthEnv(env, config)
+  const workspaceHooks = personalWorkspaceHooks(db)
 
   return betterAuth({
     appName: config.app.name,
@@ -56,7 +64,25 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
       database: { generateId: () => newId() },
     },
     // 注册即创建个人空间，新会话默认以个人空间为活跃空间（personal-workspace.ts）
-    databaseHooks: personalWorkspaceHooks(db),
+    databaseHooks: {
+      ...workspaceHooks,
+      user: {
+        create: {
+          after: async (user) => {
+            await workspaceHooks.user.create.after(user)
+            // Better Auth defers create.after until registration commits. Keep the
+            // injected callback outside the workspace hook's best-effort catch.
+            if (user.emailVerified && deps.onEmailVerified) {
+              const personal = await db.query.organization.findFirst({
+                where: (o, { and, eq, isNull }) =>
+                  and(eq(o.id, user.id), eq(o.isPersonal, true), isNull(o.deletedAt)),
+              })
+              if (personal) await deps.onEmailVerified({ id: user.id, email: user.email })
+            }
+          },
+        },
+      },
+    },
     user: {
       deleteUser: { enabled: false },
       // 用户设置中的语言与时区（tasks.md 5.2），取值由校验器限定
@@ -75,7 +101,15 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
         },
       }),
     },
-    emailVerification: emailVerificationOptions(config, sendEmail),
+    emailVerification: {
+      ...emailVerificationOptions(config, sendEmail),
+      // Installed Better Auth names the post-update hook afterEmailVerification.
+      // Verification remains committed if this callback fails: retry via the
+      // authenticated claim entry, since replaying a verified link skips this hook.
+      afterEmailVerification: async (user) => {
+        await deps.onEmailVerified?.({ id: user.id, email: user.email })
+      },
+    },
     socialProviders: socialProviders(config, vars),
     plugins: [
       // 认证入口防刷：RL_AUTH 限流 + Turnstile（protection.ts）
