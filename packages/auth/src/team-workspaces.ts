@@ -255,10 +255,15 @@ export function teamWorkspaces(
                 if (invite?.status !== 'pending' || new Date(invite.expires_at) <= new Date())
                   deny('INVITATION_INVALID', 'Invitation expired or unavailable')
                 const [recipient] = await sql<
-                  { email: string }[]
-                >`select email from "user" where id=${user.id}`
+                  { email: string; email_verified: boolean }[]
+                >`select email,email_verified from "user" where id=${user.id}`
                 if (invite.email.toLowerCase() !== recipient?.email.toLowerCase())
                   deny('INVITATION_RECIPIENT', 'Invitation belongs to another email')
+                if (!recipient?.email_verified)
+                  deny(
+                    'INVITATION_EMAIL_UNVERIFIED',
+                    'Verify your email before accepting an invitation',
+                  )
                 if (actor) deny('ALREADY_MEMBER', 'Already a member')
                 if (invite.role === 'owner') {
                   const [inviter] =

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { cookieHeader, setup, signUpBody, testUsers } from './helpers.ts'
+import { cookieHeader, PASSWORD, setup, signUpBody, testUsers } from './helpers.ts'
 
 const users = testUsers('teams')
 beforeAll(() => users.start())
@@ -9,6 +9,8 @@ async function actor(app: ReturnType<typeof setup>, name: string) {
   const response = await app.post('/sign-up/email', signUpBody(address))
   expect(response.status).toBe(200)
   const { user } = (await response.json()) as { user: { id: string } }
+  // Role/seat tests seed verified recipients; signup cookies still contain emailVerified=false.
+  await app.db.$client`update "user" set email_verified=true where id=${user.id}`
   return { id: user.id, email: address, cookie: cookieHeader(response) }
 }
 async function team(app: ReturnType<typeof setup>, cookie: string, suffix: string) {
@@ -23,6 +25,145 @@ async function team(app: ReturnType<typeof setup>, cookie: string, suffix: strin
   return body.id
 }
 describe('native organization admission', () => {
+  it('blocks owner invitation impersonation via native listing until actual mailbox verification', async () => {
+    const app = setup({ config: { auth: { turnstile: false }, tenancy: { multiTenant: true } } })
+    const owner = await actor(app, 'mailbox-owner')
+    const member = await actor(app, 'mailbox-member')
+    const organizationId = await team(app, owner.cookie, 'mailbox')
+    expect(
+      (
+        await app.post(
+          '/organization/add-member',
+          { organizationId, userId: member.id, role: 'member' },
+          { cookie: owner.cookie },
+        )
+      ).status,
+    ).toBe(200)
+    const address = users.email('impersonated-recipient')
+    const invitation = await app.post(
+      '/organization/invite-member',
+      { organizationId, email: address, role: 'owner' },
+      { cookie: owner.cookie },
+    )
+    expect(invitation.status).toBe(200)
+    const listing = await app.get(
+      `/organization/list-invitations?organizationId=${organizationId}`,
+      {
+        cookie: member.cookie,
+      },
+    )
+    expect(listing.status).toBe(200)
+    const pending = ((await listing.json()) as { id: string; email: string; role: string }[]).find(
+      (i) => i.email === address,
+    )
+    expect(pending).toMatchObject({ role: 'owner' })
+    const signup = await app.post('/sign-up/email', signUpBody(address))
+    expect(signup.status).toBe(200)
+    const { user: recipient } = (await signup.json()) as {
+      user: { id: string; emailVerified: boolean }
+    }
+    expect(recipient.emailVerified).toBe(false)
+    const login = await app.post('/sign-in/email', { email: address, password: PASSWORD })
+    expect(login.status).toBe(200)
+    const cookie = cookieHeader(login)
+    const before = await app.db.query.member.findMany({
+      where: (m, { eq }) => eq(m.organizationId, organizationId),
+    })
+    const invitationBefore = await app.db.query.invitation.findFirst({
+      where: (i, { eq }) => eq(i.id, pending?.id ?? ''),
+    })
+    const denied = await app.post(
+      '/organization/accept-invitation',
+      { invitationId: pending?.id },
+      { cookie },
+    )
+    expect(denied.status).toBe(403)
+    expect(await denied.json()).toMatchObject({
+      code: 'INVITATION_EMAIL_UNVERIFIED',
+      message: 'Verify your email before accepting an invitation',
+    })
+    expect(
+      await app.db.query.member.findMany({
+        where: (m, { eq }) => eq(m.organizationId, organizationId),
+      }),
+    ).toEqual(before)
+    expect(
+      await app.db.query.invitation.findFirst({
+        where: (i, { eq }) => eq(i.id, pending?.id ?? ''),
+      }),
+    ).toEqual(invitationBefore)
+    expect(
+      (
+        await app.post(
+          '/send-verification-email',
+          { email: address, callbackURL: '/app' },
+          { cookie },
+        )
+      ).status,
+    ).toBe(200)
+    const mail = app.sent.find((m) => m.type === 'verify-email' && m.to === address)
+    expect(mail?.type).toBe('verify-email')
+    if (mail?.type !== 'verify-email') throw new Error('Verification email missing')
+    expect((await app.get(mail.url)).status).toBe(302)
+    // The original signed cookie still claims an unverified email; DB verification permits admission.
+    const accepted = await app.post(
+      '/organization/accept-invitation',
+      { invitationId: pending?.id },
+      { cookie },
+    )
+    expect(accepted.status).toBe(200)
+    expect(await accepted.json()).toMatchObject({
+      member: { userId: recipient.id, role: 'owner' },
+      invitation: { status: 'accepted' },
+    })
+  })
+
+  it.each(['member', 'admin', 'owner'] as const)(
+    'requires current DB verification for %s admission despite a verified signed cookie',
+    async (role) => {
+      const app = setup({ config: { auth: { turnstile: false }, tenancy: { multiTenant: true } } })
+      const owner = await actor(app, `cached-${role}-owner`)
+      const guest = await actor(app, `cached-${role}-guest`)
+      const organizationId = await team(app, owner.cookie, `cached-${role}`)
+      const login = await app.post('/sign-in/email', { email: guest.email, password: PASSWORD })
+      expect(login.status).toBe(200)
+      expect(await login.clone().json()).toMatchObject({ user: { emailVerified: true } })
+      const verifiedCookie = cookieHeader(login)
+      expect(verifiedCookie).toContain('session_data=')
+      const invitation = await app.post(
+        '/organization/invite-member',
+        { organizationId, email: guest.email, role },
+        { cookie: owner.cookie },
+      )
+      expect(invitation.status).toBe(200)
+      const { id } = (await invitation.json()) as { id: string }
+      await app.db.$client`update "user" set email_verified=false where id=${guest.id}`
+      const denied = await app.post(
+        '/organization/accept-invitation',
+        { invitationId: id },
+        { cookie: verifiedCookie },
+      )
+      expect(denied.status).toBe(403)
+      expect(await denied.json()).toMatchObject({ code: 'INVITATION_EMAIL_UNVERIFIED' })
+      expect(
+        await app.db.query.member.findMany({
+          where: (m, { eq }) => eq(m.organizationId, organizationId),
+        }),
+      ).toHaveLength(1)
+      expect(
+        await app.db.query.invitation.findFirst({ where: (i, { eq }) => eq(i.id, id) }),
+      ).toMatchObject({ status: 'pending' })
+      await app.db.$client`update "user" set email_verified=true where id=${guest.id}`
+      const accepted = await app.post(
+        '/organization/accept-invitation',
+        { invitationId: id },
+        { cookie: guest.cookie },
+      )
+      expect(accepted.status).toBe(200)
+      expect(await accepted.json()).toMatchObject({ member: { role } })
+    },
+  )
+
   it('disables every team write while preserving existing team reads', async () => {
     const app = setup({ config: { auth: { turnstile: false }, tenancy: { multiTenant: true } } })
     const owner = await actor(app, 'owner')
