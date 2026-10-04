@@ -31,7 +31,7 @@ export interface PayPalPlanPayload {
   billing_cycles: {
     tenure_type: string
     frequency: { interval_unit: string; interval_count: number }
-    pricing_scheme: { fixed_price?: Money }
+    pricing_scheme: { fixed_price?: Money; version?: number }
     total_cycles: number
   }[]
   payment_preferences?: { setup_fee?: Money }
@@ -155,7 +155,7 @@ async function subscription(transport: PayPalTransport, subId: string) {
 async function frequency(
   transport: PayPalTransport,
   sub: PayPalSubscriptionPayload,
-): Promise<'MONTH' | 'YEAR'> {
+): Promise<{ unit: 'MONTH' | 'YEAR'; amount: number }> {
   if (sub.plan_overridden || (sub.quantity !== undefined && sub.quantity !== '1'))
     throw new PayPalSnapshotCapabilityError(
       'Overridden or quantity subscription is outside template scope',
@@ -166,6 +166,10 @@ async function frequency(
     sub.plan_id,
   )
   const cycle = plan.billing_cycles?.[0]
+  if (cycle?.pricing_scheme?.version !== undefined && cycle.pricing_scheme.version !== 1)
+    throw new PayPalSnapshotCapabilityError(
+      'Revised PayPal pricing scheme cannot prove historical periods',
+    )
   if (
     plan.billing_cycles?.length !== 1 ||
     !cycle ||
@@ -180,7 +184,10 @@ async function frequency(
     throw new PayPalSnapshotCapabilityError(
       'Expected one fixed USD REGULAR monthly/yearly cycle without trial or setup fee',
     )
-  return cycle.frequency.interval_unit as 'MONTH' | 'YEAR'
+  return {
+    unit: cycle.frequency.interval_unit as 'MONTH' | 'YEAR',
+    amount: cents(cycle.pricing_scheme.fixed_price),
+  }
 }
 function advance(anchor: Date, unit: 'MONTH' | 'YEAR', count = 1): Date {
   const result = new Date(anchor)
@@ -211,18 +218,14 @@ async function getSubscription(
   const sub = await subscription(transport, subId)
   const status = statuses[sub.status]
   if (!status) throw new Error('Unsupported PayPal subscription status')
-  if (!sub.billing_info?.last_payment)
-    throw new PayPalSnapshotCapabilityError(
-      'SubscriptionSnapshot requires a paid period; unpaid PayPal subscriptions have none',
-    )
-  if (cents(sub.billing_info.last_payment.amount) <= 0)
-    throw new PayPalSnapshotCapabilityError('A nonzero actual subscription payment is required')
-  const start = payPalDate(sub.billing_info.last_payment.time)
-  const end =
-    sub.billing_info.next_billing_time === undefined
-      ? advance(start, await frequency(transport, sub))
+  const last = sub.billing_info?.last_payment
+  const start = last && cents(last.amount) > 0 ? payPalDate(last.time) : null
+  const end = start
+    ? sub.billing_info?.next_billing_time === undefined
+      ? advance(start, (await frequency(transport, sub)).unit)
       : payPalDate(sub.billing_info.next_billing_time)
-  period(start, end)
+    : null
+  if (start && end) period(start, end)
   return {
     providerSubscriptionId: sub.id,
     providerPriceId: id(sub.plan_id),
@@ -285,13 +288,10 @@ function orderSnapshot(value: PayPalOrderPayload): OrderSnapshot {
   }
 }
 /** GET Capture/Sale has no documented cumulative partial-refund amount. Never substitute a refund delta. */
-export function payPalRefundedAmount(status: string, amount: number): number {
+export function payPalRefundedAmount(status: string, amount: number): number | null {
   if (status === 'COMPLETED' || status === 'completed') return 0
   if (status === 'REFUNDED' || status === 'refunded') return amount
-  if (status === 'PARTIALLY_REFUNDED' || status === 'partially_refunded')
-    throw new PayPalSnapshotCapabilityError(
-      'Cumulative partial refunds require verified refund history; Capture/Sale GET does not expose it',
-    )
+  if (status === 'PARTIALLY_REFUNDED' || status === 'partially_refunded') return null
   throw new Error('PayPal payment is not successfully paid')
 }
 function relatedOrder(capture: PayPalCapturePayload): string {
@@ -302,13 +302,15 @@ function relatedOrder(capture: PayPalCapturePayload): string {
     const url = new URL(link.href)
     const match = /^\/v2\/checkout\/orders\/([A-Za-z0-9_-]+)$/.exec(url.pathname)
     if (
-      url.protocol === 'https:' &&
       [
-        'api-m.paypal.com',
-        'api-m.sandbox.paypal.com',
-        'api.paypal.com',
-        'api.sandbox.paypal.com',
-      ].includes(url.hostname) &&
+        'https://api-m.paypal.com',
+        'https://api-m.sandbox.paypal.com',
+        'https://api.paypal.com',
+        'https://api.sandbox.paypal.com',
+      ].includes(url.origin) &&
+      !url.username &&
+      !url.password &&
+      !url.hash &&
       !url.search &&
       match?.[1]
     )
@@ -316,36 +318,77 @@ function relatedOrder(capture: PayPalCapturePayload): string {
   }
   throw new Error('PayPal Capture lacks order association')
 }
-async function classify(
+async function paidHistory(
   transport: PayPalTransport,
   sale: PayPalSalePayload,
   sub: PayPalSubscriptionPayload,
-): Promise<'initial' | 'renewal'> {
+) {
   const start = payPalDate(sub.start_time)
   const end = payPalDate(sale.create_time)
   if (end < start) throw new Error('Sale precedes subscription start')
-  const history = await transport.request<Transactions>(
-    'GET',
-    `/v1/billing/subscriptions/${id(sub.id)}/transactions?start_time=${encodeURIComponent(start.toISOString())}&end_time=${encodeURIComponent(end.toISOString())}`,
-  )
-  payPalRaw(history)
+  const pathname = `/v1/billing/subscriptions/${id(sub.id)}/transactions`
+  let path = `${pathname}?start_time=${encodeURIComponent(start.toISOString())}&end_time=${encodeURIComponent(end.toISOString())}`
+  const seen = new Set<string>()
+  const unique = new Map<string, Transactions['transactions'][number]>()
+  let expectedItems: number | undefined
+  let expectedPages: number | undefined
+  while (true) {
+    if (seen.has(path)) throw new Error('Cyclic PayPal history pagination')
+    seen.add(path)
+    const page = await transport.request<Transactions>('GET', path)
+    payPalRaw(page)
+    if (!Array.isArray(page.transactions)) throw new Error('Malformed PayPal history')
+    for (const total of [page.total_items, page.total_pages])
+      if (total !== undefined && (!Number.isSafeInteger(total) || total < 0))
+        throw new Error('Malformed PayPal history totals')
+    if (
+      (expectedItems !== undefined &&
+        page.total_items !== undefined &&
+        expectedItems !== page.total_items) ||
+      (expectedPages !== undefined &&
+        page.total_pages !== undefined &&
+        expectedPages !== page.total_pages)
+    )
+      throw new Error('PayPal history totals changed during pagination')
+    expectedItems ??= page.total_items
+    expectedPages ??= page.total_pages
+    for (const tx of page.transactions) {
+      const key = id(tx.id)
+      const previous = unique.get(key)
+      if (previous && JSON.stringify(previous) !== JSON.stringify(tx))
+        throw new Error('Conflicting PayPal history transaction')
+      unique.set(key, tx)
+    }
+    const next = page.links?.find((link) => link.rel === 'next')
+    if (!next) break
+    const url = new URL(next.href)
+    if (
+      url.origin !== transport.apiOrigin ||
+      url.username ||
+      url.password ||
+      url.hash ||
+      url.pathname !== pathname ||
+      url.searchParams.get('start_time') !== start.toISOString() ||
+      url.searchParams.get('end_time') !== end.toISOString()
+    )
+      throw new Error('Unsafe PayPal history pagination link')
+    path = `${url.pathname}${url.search}`
+  }
   if (
-    !Array.isArray(history.transactions) ||
-    (history.total_pages !== undefined && history.total_pages > 1) ||
-    (history.total_items !== undefined && history.total_items !== history.transactions.length) ||
-    history.links?.some((link) => link.rel === 'next')
+    (expectedItems !== undefined && expectedItems !== unique.size) ||
+    (expectedPages !== undefined && expectedPages > seen.size)
   )
     throw new PayPalSnapshotCapabilityError(
-      'Complete subscription transaction history is required to classify the first payment',
+      'Complete history unavailable: transactions API documents only start_time/end_time; truncated response has no usable next link or documented paging/range limit',
     )
+  const history = { transactions: [...unique.values()] }
   if (
     history.transactions.some(
       (tx) =>
         !['COMPLETED', 'REFUNDED', 'PARTIALLY_REFUNDED', 'PENDING', 'DECLINED', 'FAILED'].includes(
           tx.status,
         ),
-    ) ||
-    new Set(history.transactions.map((tx) => id(tx.id))).size !== history.transactions.length
+    )
   )
     throw new Error('Malformed subscription transaction history')
   for (const tx of history.transactions) {
@@ -365,14 +408,19 @@ async function classify(
   )
     throw new Error('Sale absent or inconsistent in verified subscription history')
   for (const tx of paid) {
-    id(tx.id)
-    cents(tx.amount_with_breakdown.gross_amount)
     const time = payPalDate(tx.time)
-    if (time < start || time > end) throw new Error('Transaction outside requested history')
     if (tx.id !== sale.id && time.getTime() === end.getTime())
       throw new PayPalSnapshotCapabilityError('Ambiguous first payment timestamp')
   }
-  return paid.some((tx) => payPalDate(tx.time) < end) ? 'renewal' : 'initial'
+  return paid.sort((a, b) => payPalDate(a.time).getTime() - payPalDate(b.time).getTime())
+}
+async function classify(
+  transport: PayPalTransport,
+  sale: PayPalSalePayload,
+  sub: PayPalSubscriptionPayload,
+) {
+  const paid = await paidHistory(transport, sale, sub)
+  return paid[0]?.id === sale.id ? ('initial' as const) : ('renewal' as const)
 }
 /** Reusable by webhook normalization; uses remote history, never delivery order or local presence. */
 export async function classifyPayPalSale(
@@ -392,35 +440,26 @@ async function salePeriod(
   transport: PayPalTransport,
   sale: PayPalSalePayload,
   sub: PayPalSubscriptionPayload,
+  paidHistory: Transactions['transactions'],
 ) {
-  const paid = payPalDate(sale.create_time)
-  const last = sub.billing_info?.last_payment
-  if (
-    last &&
-    payPalDate(last.time).getTime() === paid.getTime() &&
-    sub.billing_info?.next_billing_time !== undefined
-  )
-    return period(paid, payPalDate(sub.billing_info.next_billing_time))
-  const unit = await frequency(transport, sub)
+  const { unit, amount } = await frequency(transport, sub)
   const anchor = payPalDate(sub.start_time)
-  const months =
-    (paid.getUTCFullYear() - anchor.getUTCFullYear()) * 12 +
-    paid.getUTCMonth() -
-    anchor.getUTCMonth()
-  const count = unit === 'YEAR' ? months / 12 : months
-  if (
-    !Number.isInteger(count) ||
-    count < 0 ||
-    advance(anchor, unit, count).getTime() !== paid.getTime()
-  )
-    throw new PayPalSnapshotCapabilityError(
-      'Historical Sale is off schedule; API provides no historical billing-cycle boundaries',
-    )
-  return period(paid, advance(anchor, unit, count + 1))
+  for (const [index, tx] of paidHistory.entries()) {
+    const start = advance(anchor, unit, index)
+    const end = advance(anchor, unit, index + 1)
+    const paid = payPalDate(tx.time)
+    if (paid < start || paid >= end || cents(tx.amount_with_breakdown.gross_amount) !== amount)
+      throw new PayPalSnapshotCapabilityError(
+        'Unprovable billing-cycle gap or revised charge in verified paid history',
+      )
+    if (tx.id === sale.id) return period(start, end)
+  }
+  throw new Error('Sale absent from verified paid history')
 }
 async function getPayment(
   transport: PayPalTransport,
   reference: PaymentReference,
+  checkKind = true,
 ): Promise<PaymentSnapshot> {
   const paymentId = id(reference.providerPaymentId)
   if (reference.kind === 'adjustment') throw new Error('PayPal adjustment payments are unsupported')
@@ -449,7 +488,12 @@ async function getPayment(
       currency: 'USD',
       paidAt: payPalDate(capture.create_time),
       refundedAmount,
-      status: refundedAmount === 0 ? 'succeeded' : 'refunded',
+      status:
+        refundedAmount === null
+          ? 'partially_refunded'
+          : refundedAmount === 0
+            ? 'succeeded'
+            : 'refunded',
       metadata: snapshot.metadata,
       raw: payPalRaw(capture),
     }
@@ -464,19 +508,25 @@ async function getPayment(
   const amount = fromPayPalDecimal(sale.amount.total, sale.amount.currency)
   const refundedAmount = payPalRefundedAmount(sale.state, amount)
   const sub = await subscription(transport, id(sale.billing_agreement_id))
-  const kind = await classify(transport, sale, sub)
-  if (kind !== reference.kind) throw new Error('PayPal Sale kind mismatch')
+  const history = await paidHistory(transport, sale, sub)
+  const kind = history[0]?.id === sale.id ? 'initial' : 'renewal'
+  if (checkKind && kind !== reference.kind) throw new Error('PayPal Sale kind mismatch')
   return {
     kind,
     providerPaymentId: sale.id,
     providerSubscriptionId: sub.id,
-    period: await salePeriod(transport, sale, sub),
+    period: await salePeriod(transport, sale, sub, history),
     providerCustomerId: customer(sub.subscriber?.payer_id),
     amount,
     currency: 'USD',
     paidAt: payPalDate(sale.create_time),
     refundedAmount,
-    status: refundedAmount === 0 ? 'succeeded' : 'refunded',
+    status:
+      refundedAmount === null
+        ? 'partially_refunded'
+        : refundedAmount === 0
+          ? 'succeeded'
+          : 'refunded',
     metadata: kind === 'initial' ? metadata(sub.custom_id) : null,
     raw: payPalRaw(sale),
   }
@@ -487,4 +537,12 @@ export function createPayPalSnapshots(transport: PayPalTransport): PayPalSnapsho
     getOrder: async (orderId) => orderSnapshot(await order(transport, orderId)),
     getPayment: (reference) => getPayment(transport, reference),
   }
+}
+
+/** For verified Sale events; classification always comes from complete remote history. */
+export async function getPayPalSalePayment(
+  transport: PayPalTransport,
+  saleId: string,
+): Promise<PaymentSnapshot> {
+  return getPayment(transport, { providerPaymentId: saleId, kind: 'initial' }, false)
 }

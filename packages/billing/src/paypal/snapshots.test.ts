@@ -111,9 +111,13 @@ describe('PayPal snapshots via offline HTTP', () => {
     })
     h.done()
   })
-  it('rejects unpaid subscriptions instead of fabricating dates', async () => {
+  it('returns null periods for unpaid subscriptions', async () => {
     const h = harness([['/v1/billing/subscriptions/I-SUB', { ...sub, billing_info: {} }]])
-    await expect(h.snapshots.getSubscription('I-SUB')).rejects.toThrow('unpaid')
+    expect(await h.snapshots.getSubscription('I-SUB')).toMatchObject({
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      remoteStatus: 'ACTIVE',
+    })
     h.done()
   })
   it('uses a fixed yearly plan when the next billing date is absent', async () => {
@@ -216,7 +220,7 @@ describe('PayPal snapshots via offline HTTP', () => {
     ).rejects.toThrow('adjustment')
     h.done()
   })
-  it('uses full-refund remote state and reports partial-refund capability gap', async () => {
+  it('uses full-refund totals and nullable partial-refund totals', async () => {
     const full = { ...capture, status: 'REFUNDED' }
     const h = harness([
       ['/v2/payments/captures/CAPTURE', full],
@@ -228,13 +232,14 @@ describe('PayPal snapshots via offline HTTP', () => {
         },
       ],
       ['/v2/payments/captures/CAPTURE', { ...capture, status: 'PARTIALLY_REFUNDED' }],
+      ['/v2/checkout/orders/ORDER', order],
     ])
     expect(
       await h.snapshots.getPayment({ kind: 'one_time', providerPaymentId: 'CAPTURE' }),
     ).toMatchObject({ status: 'refunded', refundedAmount: 1234 })
-    await expect(
-      h.snapshots.getPayment({ kind: 'one_time', providerPaymentId: 'CAPTURE' }),
-    ).rejects.toThrow('Cumulative partial refunds')
+    expect(
+      await h.snapshots.getPayment({ kind: 'one_time', providerPaymentId: 'CAPTURE' }),
+    ).toMatchObject({ status: 'partially_refunded', refundedAmount: null })
     h.done()
   })
   it('maps a historical initial Sale to its own cycle, not current last_payment', async () => {
@@ -259,6 +264,7 @@ describe('PayPal snapshots via offline HTTP', () => {
       ['/v1/payments/sale/SALE', { ...sale, create_time: feb }],
       ['/v1/billing/subscriptions/I-SUB', { ...sub, custom_id: undefined }],
       [historyPath(feb), { transactions: [tx('FIRST', jan, 'REFUNDED'), tx('SALE', feb)] }],
+      ['/v1/billing/plans/P-PLAN', plan],
     ])
     expect(
       await h.snapshots.getPayment({ kind: 'renewal', providerPaymentId: 'SALE' }),
@@ -298,7 +304,7 @@ describe('PayPal snapshots via offline HTTP', () => {
     await expect(classifyPayPalSale(h.transport, 'SALE')).rejects.toThrow('Complete')
     h.done()
   })
-  it('rejects an off-schedule historical Sale instead of inventing a cycle', async () => {
+  it('uses calendar boundaries for a historical Sale with processing delay', async () => {
     const late = '2026-01-02T00:00:00.000Z'
     const h = harness([
       ['/v1/payments/sale/SALE', { ...sale, create_time: late }],
@@ -306,9 +312,12 @@ describe('PayPal snapshots via offline HTTP', () => {
       [historyPath(late), { transactions: [tx('SALE', late)] }],
       ['/v1/billing/plans/P-PLAN', plan],
     ])
-    await expect(
-      h.snapshots.getPayment({ kind: 'initial', providerPaymentId: 'SALE' }),
-    ).rejects.toThrow('off schedule')
+    expect(
+      await h.snapshots.getPayment({ kind: 'initial', providerPaymentId: 'SALE' }),
+    ).toMatchObject({
+      period: { start: new Date(jan), end: new Date(feb) },
+      paidAt: new Date(late),
+    })
     h.done()
   })
   it('rejects malformed metadata and remote ID mismatch', async () => {
@@ -331,10 +340,15 @@ describe('PayPal snapshots via offline HTTP', () => {
     h.done()
   })
   it('reports Sale partial refunds without returning zero', async () => {
-    const h = harness([['/v1/payments/sale/SALE', { ...sale, state: 'partially_refunded' }]])
-    await expect(
-      h.snapshots.getPayment({ kind: 'initial', providerPaymentId: 'SALE' }),
-    ).rejects.toThrow('Cumulative partial refunds')
+    const h = harness([
+      ['/v1/payments/sale/SALE', { ...sale, state: 'partially_refunded' }],
+      ['/v1/billing/subscriptions/I-SUB', sub],
+      [historyPath(), { transactions: [tx('SALE', jan, 'PARTIALLY_REFUNDED')] }],
+      ['/v1/billing/plans/P-PLAN', plan],
+    ])
+    expect(
+      await h.snapshots.getPayment({ kind: 'initial', providerPaymentId: 'SALE' }),
+    ).toMatchObject({ status: 'partially_refunded', refundedAmount: null })
     h.done()
   })
   it('rejects unsupported trial plans for period fallback', async () => {
@@ -349,6 +363,83 @@ describe('PayPal snapshots via offline HTTP', () => {
       ],
     ])
     await expect(h.snapshots.getSubscription('I-SUB')).rejects.toThrow('REGULAR')
+    h.done()
+  })
+  it('follows verified next links and merges overlapping transaction IDs', async () => {
+    const next = `${historyPath(feb)}&page=2`
+    const h = harness([
+      ['/v1/payments/sale/SALE', { ...sale, create_time: feb }],
+      ['/v1/billing/subscriptions/I-SUB', sub],
+      [
+        historyPath(feb),
+        {
+          transactions: [tx('FIRST', jan)],
+          total_items: 2,
+          total_pages: 2,
+          links: [{ rel: 'next', href: `https://api-m.sandbox.paypal.com${next}` }],
+        },
+      ],
+      [next, { transactions: [tx('FIRST', jan), tx('SALE', feb)], total_items: 2, total_pages: 2 }],
+    ])
+    expect(await classifyPayPalSale(h.transport, 'SALE')).toBe('renewal')
+    h.done()
+  })
+  it('rejects pagination links outside the configured API origin', async () => {
+    const h = harness([
+      ['/v1/payments/sale/SALE', sale],
+      ['/v1/billing/subscriptions/I-SUB', sub],
+      [
+        historyPath(),
+        {
+          transactions: [tx('SALE', jan)],
+          links: [{ rel: 'next', href: `https://attacker.example${historyPath()}&page=2` }],
+        },
+      ],
+    ])
+    await expect(classifyPayPalSale(h.transport, 'SALE')).rejects.toThrow('Unsafe')
+    h.done()
+  })
+  it('rejects paid history spanning a missing cycle', async () => {
+    const h = harness([
+      ['/v1/payments/sale/SALE', { ...sale, create_time: mar }],
+      ['/v1/billing/subscriptions/I-SUB', sub],
+      [historyPath(mar), { transactions: [tx('FIRST', jan), tx('SALE', mar)] }],
+      ['/v1/billing/plans/P-PLAN', plan],
+    ])
+    await expect(
+      h.snapshots.getPayment({ kind: 'renewal', providerPaymentId: 'SALE' }),
+    ).rejects.toThrow('gap')
+    h.done()
+  })
+  it('rejects overridden plans before deriving Sale periods', async () => {
+    const h = harness([
+      ['/v1/payments/sale/SALE', sale],
+      ['/v1/billing/subscriptions/I-SUB', { ...sub, plan_overridden: true }],
+      [historyPath(), { transactions: [tx('SALE', jan)] }],
+    ])
+    await expect(
+      h.snapshots.getPayment({ kind: 'initial', providerPaymentId: 'SALE' }),
+    ).rejects.toThrow('Overridden')
+    h.done()
+  })
+  it('rejects revised pricing schemes for historical payment periods', async () => {
+    const h = harness([
+      ['/v1/payments/sale/SALE', sale],
+      ['/v1/billing/subscriptions/I-SUB', sub],
+      [historyPath(), { transactions: [tx('SALE', jan)] }],
+      [
+        '/v1/billing/plans/P-PLAN',
+        {
+          ...plan,
+          billing_cycles: [
+            { ...plan.billing_cycles[0], pricing_scheme: { fixed_price: money, version: 2 } },
+          ],
+        },
+      ],
+    ])
+    await expect(
+      h.snapshots.getPayment({ kind: 'initial', providerPaymentId: 'SALE' }),
+    ).rejects.toThrow('Revised')
     h.done()
   })
   it('rejects impossible external dates and non-JSON raw values', () => {

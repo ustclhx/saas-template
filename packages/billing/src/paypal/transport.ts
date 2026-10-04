@@ -18,6 +18,7 @@ export interface PayPalRequestOptions {
 }
 
 export interface PayPalTransport {
+  readonly apiOrigin: string
   request<T>(
     method: 'GET' | 'POST' | 'PATCH',
     path: string,
@@ -126,6 +127,7 @@ export function createPayPalTransport(options: PayPalTransportOptions): PayPalTr
   }
 
   return {
+    apiOrigin: base,
     async request<T>(
       method: 'GET' | 'POST' | 'PATCH',
       path: string,
