@@ -43,6 +43,13 @@
       "when": 1791120115927,
       "tag": "0005_flippant_garia",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791122425993,
+      "tag": "0006_sour_rictor",
+      "breakpoints": true
     }
   ]
 }
