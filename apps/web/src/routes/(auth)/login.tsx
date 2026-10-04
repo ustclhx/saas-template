@@ -2,7 +2,7 @@ import { Button, Separator, useAppForm } from '@saas/ui'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { z } from 'zod'
-import { authClient, goToApp } from '../../features/auth/auth-client.ts'
+import { authClient, goToApp, signInCallbackURL } from '../../features/auth/auth-client.ts'
 import { AuthLayout, FormAlert, StatusAlert } from '../../features/auth/auth-layout.tsx'
 import { authErrorMessage } from '../../features/auth/errors.ts'
 import { getAuthUiOptions } from '../../features/auth/options.functions.ts'
@@ -47,7 +47,7 @@ type Mode = keyof typeof COPY.modes
 
 export const Route = createFileRoute('/(auth)/login')({
   // OAuth / 魔法链接失败时 Better Auth 把错误码放在 ?error= 中带回登录页
-  validateSearch: z.object({ error: z.string().optional() }),
+  validateSearch: z.object({ error: z.string().optional(), redirect: z.string().optional() }),
   loader: () => getAuthUiOptions(),
   head: () => ({ meta: [{ title: COPY.metaTitle }] }),
   component: LoginPage,
@@ -132,8 +132,8 @@ function PasswordSignIn({ siteKey }: { siteKey: string | null }) {
       const data = await run((headers) =>
         authClient().signIn.email({
           ...value,
-          // 只用作验证邮件的回跳地址（强制验证邮箱时登录被拒会重发验证邮件）；成功后由 goToApp 跳转
-          callbackURL: '/verify-email',
+          // Verification links and successful sign-in resume the same local destination.
+          callbackURL: signInCallbackURL(),
           fetchOptions: { headers },
         }),
       )
@@ -280,7 +280,7 @@ function MagicLinkSignIn({ siteKey }: { siteKey: string | null }) {
       const data = await run((headers) =>
         authClient().signIn.magicLink({
           email: value.email,
-          callbackURL: '/app',
+          callbackURL: signInCallbackURL(),
           errorCallbackURL: '/login',
           fetchOptions: { headers },
         }),
@@ -311,10 +311,10 @@ function OAuthButton({ provider }: { provider: AuthUiOptions['oauth'][number] })
   const onClick = async () => {
     setPending(true)
     setError(null)
-    // OAuth 发起接口不在 Turnstile 保护范围内（protection.ts）；回调成功后由 Better Auth 跳到 /app
+    // OAuth callbacks use the same validated destination as password and OTP sign-in.
     const { data, error } = await authClient().signIn.social({
       provider,
-      callbackURL: '/app',
+      callbackURL: signInCallbackURL(),
       errorCallbackURL: '/login',
     })
     if (data?.url) {

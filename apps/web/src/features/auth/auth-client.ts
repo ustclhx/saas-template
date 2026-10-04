@@ -42,14 +42,23 @@ export function authClient() {
 /** 登录成功后的去处；/app 再重定向到当前空间（docs/04-auth-and-tenancy.md §3） */
 export const AFTER_SIGN_IN_PATH = '/app'
 
+/** Only these local destinations may be resumed after authentication. */
+export function signInDestination(search: string): string {
+  const redirect = new URLSearchParams(search).get('redirect')
+  return redirect &&
+    (redirect === '/account' ||
+      /^\/accept-invitation\?id=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        redirect,
+      ))
+    ? redirect
+    : AFTER_SIGN_IN_PATH
+}
+
+export function signInCallbackURL() {
+  return signInDestination(window.location.search)
+}
+
 /** 整页跳转：让服务端以新的会话 Cookie 渲染应用区 */
 export function goToApp() {
-  const invitationRedirect = new URLSearchParams(window.location.search).get('redirect')
-  const validInvitation =
-    /^\/accept-invitation\?id=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-  window.location.assign(
-    invitationRedirect && validInvitation.test(invitationRedirect)
-      ? invitationRedirect
-      : AFTER_SIGN_IN_PATH,
-  )
+  window.location.assign(signInCallbackURL())
 }
