@@ -93,11 +93,11 @@ describe('toTemplate', () => {
       {
         template: 'workspace-invitation',
         props: {
-          url: `${APP_URL}/accept-invitation/inv-1`,
+          url: `${APP_URL}/accept-invitation?id=inv-1`,
           workspaceName: 'Acme',
           inviterName: 'Alice',
           role: 'admin',
-          expiresInDays: 2,
+          expiresInDays: 7,
         },
       },
     ],
@@ -112,12 +112,12 @@ describe('toTemplate', () => {
       invitationId: 'inv-1',
       workspaceName: 'Acme',
       inviterName: 'Alice',
-      role: 'owner',
+      role: 'unknown',
     }
-    expect(() => toTemplate(email, APP_URL)).toThrow('Unsupported invitation role: owner')
+    expect(() => toTemplate(email, APP_URL)).toThrow('Unsupported invitation role: unknown')
   })
 
   it('邀请链接对 ID 编码', () => {
-    expect(invitationUrl(`${APP_URL}/`, 'a/b')).toBe(`${APP_URL}/accept-invitation/a%2Fb`)
+    expect(invitationUrl(`${APP_URL}/`, 'a/b')).toBe(`${APP_URL}/accept-invitation?id=a%2Fb`)
   })
 })

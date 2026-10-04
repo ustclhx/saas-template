@@ -45,7 +45,7 @@
   "vars": { "APP_URL": "http://localhost:3000", "TURNSTILE_SITE_KEY": "1x00000000000000000000AA" },
   // hyperdrive / workflows / queues / kv_namespaces / ratelimits / vars 不会从顶层继承，每个环境都要重新声明。
   // staging 认证使用独立 KV、限流命名空间和官方 Turnstile 测试 key。
-  // TODO: 通过 wrangler secret bulk 配置认证 secrets；测试阶段 OAuth 使用 mock，真实联调前替换。
+  // staging 测试认证 secrets 已通过 wrangler secret bulk 配置；OAuth 使用 mock，真实联调前替换。
   // 构建时用 CLOUDFLARE_ENV=staging 选择该环境（见 package.json 的 deploy:staging）。
   "env": {
     "staging": {

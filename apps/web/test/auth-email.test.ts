@@ -4,7 +4,7 @@ import { defineTemplateConfig } from '@saas/config'
 import { createDb } from '@saas/db'
 import { type EmailQueueMessage, parseEmailQueueMessage } from '@saas/email/queue'
 import { newId } from '@saas/shared'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueueAuthEmailSender, userLocaleByEmail } from '../src/server/auth-email.ts'
 
 // tasks.md 3.2：认证邮件只入队，用户请求不受邮件服务影响（specs/user-auth「邮件服务暂时不可用」）。
@@ -17,7 +17,7 @@ const testEnv = {
   APP_URL,
 }
 const EMAIL_DOMAIN = `${newId()}.web-email-test.example`
-let startedAt = new Date()
+const createdOrgs: string[] = []
 
 function setup() {
   const db = createDb(env.HYPERDRIVE)
@@ -27,6 +27,7 @@ function setup() {
       app: { name: 'TestApp', url: APP_URL, supportEmail: 'support@example.test' },
       // 本测试只验证邮件入队；Turnstile 与限流由 packages/auth 的 protection 测试覆盖
       auth: { oauth: [], turnstile: false },
+      tenancy: { multiTenant: true },
     }),
     sendEmail: createQueueAuthEmailSender({
       queue: {
@@ -39,20 +40,16 @@ function setup() {
       resolveLocale: userLocaleByEmail(db),
     }),
   })
-  const post = (path: string, body: unknown) =>
+  const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
     auth.handler(
       new Request(`${APP_URL}/api/auth${path}`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', origin: APP_URL },
+        headers: { 'content-type': 'application/json', origin: APP_URL, ...headers },
         body: JSON.stringify(body),
       }),
     )
   return { db, queued, post }
 }
-
-beforeAll(() => {
-  startedAt = new Date()
-})
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -64,12 +61,15 @@ afterAll(async () => {
     { id: string }[]
   >`select id from "user" where email like ${`%@${EMAIL_DOMAIN}`}`
   const ids = users.map((u) => u.id)
-  await sql`delete from verification where created_at >= ${startedAt.toISOString()}`
+  await sql`delete from verification where identifier like ${`%@${EMAIL_DOMAIN}%`} or value like ${`%@${EMAIL_DOMAIN}%`}`
+  if (ids.length) await sql`delete from verification where value in ${sql(ids)}`
   if (ids.length === 0) return
   await sql`delete from session where user_id in ${sql(ids)}`
-  // 注册时创建的个人空间（id 即用户 id）
-  await sql`delete from member where user_id in ${sql(ids)}`
-  await sql`delete from organization where id in ${sql(ids)}`
+  // 只清理本套件创建的个人空间和团队空间
+  const orgs = [...ids, ...createdOrgs]
+  await sql`delete from invitation where organization_id in ${sql(orgs)} or inviter_id in ${sql(ids)}`
+  await sql`delete from member where organization_id in ${sql(orgs)} or user_id in ${sql(ids)}`
+  await sql`delete from organization where id in ${sql(orgs)}`
   await sql`delete from account where user_id in ${sql(ids)}`
   await sql`delete from "user" where id in ${sql(ids)}`
 })
@@ -104,6 +104,59 @@ describe('认证邮件入队', () => {
       appName: 'TestApp',
       props: { url: expect.stringContaining(`${APP_URL}/api/auth/reset-password/`) },
     })
+  })
+
+  it('owner 邀请经真实认证端点入队，链接与七天有效期一致', async () => {
+    const { db, queued, post } = setup()
+    const signUp = await post('/sign-up/email', {
+      email: `owner-${newId()}@${EMAIL_DOMAIN}`,
+      password: 'correct-horse-battery-staple',
+      name: 'Owner',
+    })
+    expect(signUp.status).toBe(200)
+    const cookie = signUp.headers
+      .getSetCookie()
+      .map((value) => value.split(';')[0])
+      .join('; ')
+    const created = await post(
+      '/organization/create',
+      { name: 'Team', slug: `email-${newId()}` },
+      { cookie },
+    )
+    expect(created.status).toBe(200)
+    const { id: organizationId } = (await created.json()) as { id: string }
+    createdOrgs.push(organizationId)
+    queued.length = 0
+    const address = `guest-${newId()}@${EMAIL_DOMAIN}`
+    const before = Date.now()
+    const response = await post(
+      '/organization/invite-member',
+      { organizationId, email: address, role: 'owner' },
+      { cookie },
+    )
+    const after = Date.now()
+    expect(response.status).toBe(200)
+    const { id } = (await response.json()) as { id: string }
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+    expect(queued).toHaveLength(1)
+    const [message] = queued
+    expect(parseEmailQueueMessage(message)).toEqual(message)
+    expect(message).toMatchObject({
+      template: 'workspace-invitation',
+      to: address,
+      props: { role: 'owner', expiresInDays: 7 },
+    })
+    if (message?.template !== 'workspace-invitation') throw new Error('Invitation email missing')
+    const url = new URL(message.props.url)
+    expect(url.origin).toBe(APP_URL)
+    expect(url.pathname).toBe('/accept-invitation')
+    expect([...url.searchParams]).toEqual([['id', id]])
+    const invitation = await db.query.invitation.findFirst({ where: (i, { eq }) => eq(i.id, id) })
+    expect(invitation).toMatchObject({ role: 'owner', organizationId, email: address })
+    const expiry = invitation?.expiresAt.getTime() ?? 0
+    const lifetime = message.props.expiresInDays * 86400000
+    expect(expiry).toBeGreaterThanOrEqual(before + lifetime)
+    expect(expiry).toBeLessThanOrEqual(after + lifetime)
   })
 
   it('未注册的收件人语言为 null', async () => {

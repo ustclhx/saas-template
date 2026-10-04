@@ -24,8 +24,8 @@ export type EmailTemplateName = keyof EmailTemplateProps
 
 /** 与 Better Auth emailOTP 插件 `sendVerificationOTP` 的 `type` 一致 */
 export type OtpPurpose = 'sign-in' | 'email-verification' | 'forget-password'
-/** 邀请时可选的空间角色（owner 只能转让，不能邀请） */
-export type InvitationRole = 'admin' | 'member'
+/** 自定义团队后端支持的邀请角色 */
+export type InvitationRole = 'owner' | 'admin' | 'member'
 
 /** 所有模板共用的上下文 */
 export interface CopyContext {
@@ -126,7 +126,7 @@ const en: CopyBuilders = {
     heading: `Join ${workspaceName}`,
     greeting: greetingEn(recipientName),
     paragraphs: [
-      `${inviterName} has invited you to join the ${workspaceName} workspace on ${appName} as ${role === 'admin' ? 'an admin' : 'a member'}.`,
+      `${inviterName} has invited you to join the ${workspaceName} workspace on ${appName} as ${{ owner: 'an owner', admin: 'an admin', member: 'a member' }[role]}.`,
       `This invitation expires in ${daysEn(expiresInDays)}.`,
     ],
     action: { label: 'Accept invitation', url },
@@ -194,7 +194,7 @@ const zh: CopyBuilders = {
     heading: `加入 ${workspaceName}`,
     greeting: greetingZh(recipientName),
     paragraphs: [
-      `${inviterName} 邀请你以${role === 'admin' ? '管理员' : '成员'}身份加入 ${appName} 上的 ${workspaceName} 空间。`,
+      `${inviterName} 邀请你以${{ owner: '所有者', admin: '管理员', member: '成员' }[role]}身份加入 ${appName} 上的 ${workspaceName} 空间。`,
       `邀请 ${expiresInDays} 天内有效。`,
     ],
     action: { label: '接受邀请', url },
