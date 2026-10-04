@@ -25,7 +25,8 @@ function setup() {
   const auth = createAuth(testEnv, db, {
     config: defineTemplateConfig({
       app: { name: 'TestApp', url: APP_URL, supportEmail: 'support@example.test' },
-      auth: { oauth: [] },
+      // 本测试只验证邮件入队；Turnstile 与限流由 packages/auth 的 protection 测试覆盖
+      auth: { oauth: [], turnstile: false },
     }),
     sendEmail: createQueueAuthEmailSender({
       queue: {
