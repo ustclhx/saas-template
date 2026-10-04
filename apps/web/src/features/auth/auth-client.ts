@@ -1,5 +1,10 @@
-import { emailOTPClient, magicLinkClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/client'
+import {
+  emailOTPClient,
+  inferAdditionalFields,
+  magicLinkClient,
+  twoFactorClient,
+} from 'better-auth/client/plugins'
 
 /**
  * 浏览器端的 Better Auth 客户端（接口挂在同源的 /api/auth/*）。
@@ -10,7 +15,17 @@ function create() {
   return createAuthClient({
     basePath: '/api/auth',
     disableDefaultFetchPlugins: true,
-    plugins: [emailOTPClient(), magicLinkClient()],
+    plugins: [
+      emailOTPClient(),
+      magicLinkClient(),
+      twoFactorClient(),
+      inferAdditionalFields({
+        user: {
+          locale: { type: 'string', required: false },
+          timezone: { type: 'string', required: false },
+        },
+      }),
+    ],
   })
 }
 

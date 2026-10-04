@@ -61,7 +61,9 @@ describe('SSR', () => {
       </Card>,
     )
     expect(html).toMatch(/<div data-slot="card" class="[^"]*rounded-xl[^"]*bg-card/)
-    expect(html).toMatch(/<div data-slot="card-title" class="[^"]*font-semibold[^"]*"><h2>Title<\/h2>/)
+    expect(html).toMatch(
+      /<div data-slot="card-title" class="[^"]*font-semibold[^"]*"><h2>Title<\/h2>/,
+    )
     expect(html).toMatch(/<label[^>]*class="[^"]*text-sm[^"]*"[^>]*for="email"/)
     expect(html).toMatch(/<input[^>]*type="email"[^>]*class="[^"]*border-input/)
     expect(html).toMatch(/data-slot="separator"[^>]*class="[^"]*bg-border/)

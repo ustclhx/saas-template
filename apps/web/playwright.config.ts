@@ -1,13 +1,12 @@
 import { defineConfig, devices } from '@playwright/test'
 import { loadEnv } from 'vite'
 
-// 认证页面的 e2e（tasks.md 7.2）：在本地 `vite dev`（web）+ `wrangler dev`（jobs）上运行，
+// 认证页面的 e2e（tasks.md 7.2）：在本地 `vite dev`（web）上运行；默认注册无需邮件消费者，
 // 端口取自 Orca worktree 的 .env.worktree（docs/09-parallel-plan.md §2），不存在时用默认端口。
 // 已在运行的 dev 进程直接复用；否则由 Playwright 启动，结束后只停止它自己启动的进程。
 const repoRoot = new URL('../../', import.meta.url).pathname
 const worktreeEnv = loadEnv('worktree', repoRoot, '')
 const webPort = Number(worktreeEnv.WEB_PORT ?? 3000)
-const jobsPort = Number(worktreeEnv.JOBS_PORT ?? 8788)
 
 export default defineConfig({
   testDir: './e2e',
@@ -25,13 +24,6 @@ export default defineConfig({
     {
       command: 'pnpm dev',
       url: `http://localhost:${webPort}/api/health`,
-      reuseExistingServer: true,
-      timeout: 120_000,
-    },
-    {
-      // EMAIL_QUEUE 的消费者（log 通道，不调用外部服务）
-      command: 'pnpm --filter @saas/jobs dev',
-      port: jobsPort,
       reuseExistingServer: true,
       timeout: 120_000,
     },

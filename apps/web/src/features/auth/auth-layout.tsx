@@ -1,5 +1,14 @@
-import { Alert, AlertDescription, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@saas/ui'
-import type { ReactNode } from 'react'
+import {
+  Alert,
+  AlertDescription,
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@saas/ui'
+import { type ReactNode, useEffect, useState } from 'react'
 
 /** 认证页面的公共外框：居中卡片 + 标题 / 说明 / 页脚链接 */
 export function AuthLayout({
@@ -13,6 +22,8 @@ export function AuthLayout({
   footer?: ReactNode
   children: ReactNode
 }) {
+  const [hydrated, setHydrated] = useState(false)
+  useEffect(() => setHydrated(true), [])
   return (
     <main className="flex min-h-svh items-center justify-center bg-muted/40 px-4 py-12">
       <Card className="w-full max-w-sm">
@@ -22,7 +33,12 @@ export function AuthLayout({
           </CardTitle>
           {description ? <CardDescription>{description}</CardDescription> : null}
         </CardHeader>
-        <CardContent className="grid gap-6">{children}</CardContent>
+        <CardContent>
+          {/* SSR controls stay disabled until event handlers are attached. */}
+          <fieldset disabled={!hydrated} className="grid min-w-0 gap-6">
+            {children}
+          </fieldset>
+        </CardContent>
         {footer ? (
           <CardFooter className="justify-center text-muted-foreground text-sm">{footer}</CardFooter>
         ) : null}

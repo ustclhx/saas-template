@@ -2,8 +2,8 @@ import { Button, Separator, useAppForm } from '@saas/ui'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { z } from 'zod'
-import { AuthLayout, FormAlert, StatusAlert } from '../../features/auth/auth-layout.tsx'
 import { authClient, goToApp } from '../../features/auth/auth-client.ts'
+import { AuthLayout, FormAlert, StatusAlert } from '../../features/auth/auth-layout.tsx'
 import { authErrorMessage } from '../../features/auth/errors.ts'
 import { getAuthUiOptions } from '../../features/auth/options.functions.ts'
 import type { AuthUiOptions } from '../../features/auth/options.ts'
@@ -123,7 +123,10 @@ function PasswordSignIn({ siteKey }: { siteKey: string | null }) {
   const form = useAppForm({
     defaultValues: { email: '', password: '' },
     validators: {
-      onSubmit: z.object({ email: emailSchema, password: z.string().min(1, COPY.passwordRequired) }),
+      onSubmit: z.object({
+        email: emailSchema,
+        password: z.string().min(1, COPY.passwordRequired),
+      }),
     },
     onSubmit: async ({ value }) => {
       const data = await run((headers) =>
@@ -146,7 +149,11 @@ function PasswordSignIn({ siteKey }: { siteKey: string | null }) {
         </form.AppField>
         <form.AppField name="password">
           {(field) => (
-            <field.TextField label={COPY.password} type="password" autoComplete="current-password" />
+            <field.TextField
+              label={COPY.password}
+              type="password"
+              autoComplete="current-password"
+            />
           )}
         </form.AppField>
         <div className="-mt-2 flex justify-end">

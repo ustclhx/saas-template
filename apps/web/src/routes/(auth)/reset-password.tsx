@@ -2,8 +2,8 @@ import { Button, useAppForm } from '@saas/ui'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { z } from 'zod'
-import { AuthLayout, FormAlert, StatusAlert } from '../../features/auth/auth-layout.tsx'
 import { authClient } from '../../features/auth/auth-client.ts'
+import { AuthLayout, FormAlert, StatusAlert } from '../../features/auth/auth-layout.tsx'
 import { AUTH_ERROR_MESSAGES, authErrorMessage } from '../../features/auth/errors.ts'
 
 /** 页面文案（英文硬编码，P6 接 Paraglide） */

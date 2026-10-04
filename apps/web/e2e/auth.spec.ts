@@ -5,7 +5,7 @@ import { DUMMY_TURNSTILE_TOKEN, stubTurnstile } from './turnstile.ts'
 /**
  * tasks.md 7.2 的 e2e：
  * - 登录页只显示模板配置中启用的登录方式（默认配置关闭魔法链接）；
- * - 注册 → 进入 /app；退出后用邮箱密码登录 → 进入 /app（/app 由 p1-workspace 实现，未合并时以发起跳转为准）；
+ * - 注册 → 进入 /app；退出后用邮箱密码登录 → 进入 /app（个人空间）；
  * - 认证请求带 Turnstile 令牌，接口错误按错误码提示。
  */
 
@@ -13,7 +13,7 @@ const { auth } = templateConfig
 const PASSWORD = 'correct-horse-battery'
 
 /** 跳到 /app（p1-workspace 合并后会再重定向到 /app/<slug>） */
-const APP_URL = /\/app(\/|$)/
+const APP_URL = /\/app\/u-[a-z0-9]+\/?$/
 
 test.beforeEach(async ({ page }) => {
   await stubTurnstile(page)
@@ -79,6 +79,8 @@ test('注册 → 进入 /app；退出后登录 → 进入 /app', async ({ page, 
     }
   }
   await expect(page).toHaveURL(APP_URL)
+  await expect(page.getByTestId('current-user')).toContainText(email)
+  await expect(page.getByText('Personal workspace', { exact: true })).toBeVisible()
 
   // 已登录：会话 Cookie 存在
   const cookies = await context.cookies()
@@ -87,9 +89,11 @@ test('注册 → 进入 /app；退出后登录 → 进入 /app', async ({ page, 
   await context.clearCookies()
   await signIn(page, email, PASSWORD)
   await expect(page).toHaveURL(APP_URL)
+  await expect(page.getByTestId('current-user')).toContainText(email)
+  await expect(page.getByText('Personal workspace', { exact: true })).toBeVisible()
 })
 
-test('错误按错误码提示：密码错误、重复注册', async ({ page }) => {
+test('错误按错误码提示：密码错误', async ({ page }) => {
   test.skip(!auth.emailPassword, '模板配置关闭了邮箱密码')
   await signIn(page, uniqueEmail(), 'wrong-password-123')
   await expect(page.getByRole('alert')).toHaveText('Incorrect email or password.')
@@ -121,8 +125,6 @@ test('邮箱验证结果页与重置密码页按错误码提示', async ({ page 
   await expect(page.getByRole('heading', { name: 'Email verified' })).toBeVisible()
 
   await page.goto('/reset-password?error=INVALID_TOKEN')
-  await expect(page.getByRole('alert')).toHaveText(
-    'This link is invalid or has already been used.',
-  )
+  await expect(page.getByRole('alert')).toHaveText('This link is invalid or has already been used.')
   await expect(page.getByRole('link', { name: 'Request a new link' })).toBeVisible()
 })

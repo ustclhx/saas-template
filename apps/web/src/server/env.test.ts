@@ -94,7 +94,13 @@ describe('checkEnv（请求入口的环境校验）', () => {
     const logged = error.mock.calls.flat().join(' ')
     expect(JSON.parse(logged)).toEqual({
       event: 'env.invalid',
-      missing: ['BETTER_AUTH_SECRET', 'CACHE', 'GITHUB_CLIENT_SECRET', 'RL_AUTH', 'TURNSTILE_SITE_KEY'],
+      missing: [
+        'BETTER_AUTH_SECRET',
+        'CACHE',
+        'GITHUB_CLIENT_SECRET',
+        'RL_AUTH',
+        'TURNSTILE_SITE_KEY',
+      ],
       invalid: ['TURNSTILE_SECRET_KEY'],
     })
     expect(logged).not.toContain('google-secret')
