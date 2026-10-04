@@ -211,7 +211,7 @@ Wrangler 使用 `env.staging` / `env.production` 区分绑定与变量。
 - web 的 `AI_MEDIA_WORKFLOW`（`script_name: "jobs"`）能创建 jobs 中定义的 Workflow 实例并查询状态；
 - web 的 `EMAIL_QUEUE` producer 投递的消息由 jobs 的消费者处理；
 - 手动触发 Cron：`curl "http://localhost:$JOBS_PORT/__scheduled?cron=*/5+*+*+*+*"`。
-- 调试路由（仅 `vite dev`，生产构建返回 404）：`POST /api/dev/workflow` 启动实例、`GET /api/dev/workflow?id=` 查询状态、`POST /api/dev/email` 投递消息。
+- 调试路由（仅 `vite dev`，生产构建返回 404）：`POST /api/dev/workflow` 启动实例、`GET /api/dev/workflow?id=` 查询状态、`POST /api/dev/email` 投递一封验证邮件（jobs 默认以 log 通道处理，只打日志）。
 
 备选：Vite 插件的 `auxiliaryWorkers: [{ configPath: '../jobs/wrangler.jsonc' }]` 在单进程内同时运行两个 Worker，Workflow、Queue、Cron（经 `/cdn-cgi/local/explorer/api/local/scheduled?worker=jobs`）同样可用；未采用的原因是 jobs 会改由 web 的 Vite 构建并出现在 web 的构建产物中，与 jobs 独立部署（`wrangler deploy`）的方式不一致。
 
@@ -225,7 +225,7 @@ BETTER_AUTH_SECRET
 GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
 GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET
 TURNSTILE_SECRET_KEY
-RESEND_API_KEY
+RESEND_API_KEY                # jobs；仅 EMAIL_TRANSPORT=resend 时必填
 STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET
 PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET / PAYPAL_WEBHOOK_ID
 AI_GATEWAY_TOKEN(若启用鉴权)
@@ -243,7 +243,12 @@ PAYPAL_ENV=sandbox|live
 AI_GATEWAY_ACCOUNT_ID / AI_GATEWAY_ID
 R2_ACCOUNT_ID / R2_FILES_BUCKET   # 拼接 S3 兼容端点
 TURNSTILE_SITE_KEY(前端公开)
+EMAIL_TRANSPORT=log|resend        # jobs 的邮件发送通道，默认 log：只记录收件人与模板名、不调用外部服务（无 Resend 凭据时使用）
+EMAIL_FROM                        # jobs；EMAIL_TRANSPORT=resend 时必填，如 `MyApp <noreply@example.com>`，域名需在 Resend 验证
+EMAIL_REPLY_TO                    # jobs，可选；默认回复地址（通常为 app.supportEmail）
 ```
+
+jobs 侧的邮件变量由 `@saas/config` 的 `withEmailEnv()` 校验（`apps/jobs/src/env.ts`），`resend` 通道缺少 `RESEND_API_KEY` / `EMAIL_FROM` 时消费者拒绝处理消息（消息留在队列中重试）。
 
 ### Bindings
 ```
