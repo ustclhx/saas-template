@@ -387,6 +387,65 @@ describe('billing event consumer on PostgreSQL', () => {
       ),
     ).rejects.toThrow('not eligible')
   })
+  it('scheduled annual cancellation keeps prepaid monthly grants until termination', async () => {
+    await db.update(planPrice).set({ interval: 'year' }).where(eq(planPrice.id, priceId))
+    await apply([paid({ period: { start: now, end: new Date('2031-01-31T12:00:00Z') } })])
+    const [p] = await payments()
+    const [price] = await db.select().from(planPrice).where(eq(planPrice.id, priceId))
+    const [selected] = await db.select().from(plan).where(eq(plan.id, planId))
+    if (!p || !price || !selected) throw new Error('Missing provenance')
+    await db
+      .update(subscription)
+      .set({ status: 'canceled', cancelAtPeriodEnd: true })
+      .where(eq(subscription.workspaceId, ws))
+    await db.transaction((tx) =>
+      grantSubscriptionMonth(tx, p, price, selected, 1, subscriptionMonthAnchor(now, 1)),
+    )
+    expect(await grants()).toHaveLength(2)
+    await db
+      .update(subscription)
+      .set({ cancelAtPeriodEnd: false })
+      .where(eq(subscription.workspaceId, ws))
+    await expect(
+      db.transaction((tx) =>
+        grantSubscriptionMonth(tx, p, price, selected, 2, subscriptionMonthAnchor(now, 2)),
+      ),
+    ).rejects.toThrow('no longer eligible')
+  })
+  it('a PayPal wallet may pay multiple workspaces and a workspace may change payer', async () => {
+    await db.update(planPrice).set({ provider: 'paypal' }).where(eq(planPrice.id, priceId))
+    await db
+      .insert(member)
+      .values({ id: id(), organizationId: otherWs, userId: uid, role: 'owner' })
+    const activate = (): NormalizedEvent => ({
+      provider: 'paypal',
+      type: 'subscription.activated',
+      subscription: snapshot,
+      occurredAt: now,
+      raw: {},
+    })
+    await apply([activate()])
+    snapshot = {
+      ...snapshot,
+      providerSubscriptionId: id(),
+      metadata: { ...metadata(), workspaceId: otherWs },
+    }
+    await apply([activate()])
+    snapshot = { ...snapshot, providerCustomerId: 'another-wallet' }
+    await apply([
+      {
+        ...activate(),
+        type: 'subscription.updated',
+        occurredAt: new Date('2030-02-01'),
+      } as NormalizedEvent,
+    ])
+    const mappings = await db
+      .select()
+      .from(billingCustomer)
+      .where(inArray(billingCustomer.workspaceId, [ws, otherWs]))
+    expect(mappings).toHaveLength(2)
+    expect(mappings.every((row) => row.providerCustomerId === null)).toBe(true)
+  })
   it('unique partial refund IDs avoid cumulative overcount and snapshot cannot erase local refund', async () => {
     const event = paid()
     await apply([event])

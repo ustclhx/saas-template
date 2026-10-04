@@ -342,12 +342,21 @@ importers:
 
   packages/billing:
     dependencies:
+      '@saas/config':
+        specifier: workspace:*
+        version: link:../config
       '@saas/credits':
         specifier: workspace:*
         version: link:../credits
       '@saas/db':
         specifier: workspace:*
         version: link:../db
+      '@saas/entitlements':
+        specifier: workspace:*
+        version: link:../entitlements
+      '@saas/shared':
+        specifier: workspace:*
+        version: link:../shared
       drizzle-orm:
         specifier: ^0.45.3
         version: 0.45.3(@cloudflare/workers-types@5.20261002.1)(kysely@0.29.6)(postgres@3.4.9)

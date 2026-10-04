@@ -1,3 +1,5 @@
+export * from './catalog.ts'
+export * from './events.ts'
 export {
   createPayPalProvider,
   createPayPalWebhookNormalizer,
@@ -21,6 +23,7 @@ export type {
   SubscriptionSnapshot,
   VerifiedWebhook,
 } from './provider.ts'
+export * from './signup.ts'
 export {
   createStripeProvider,
   createStripeWebhookNormalizer,

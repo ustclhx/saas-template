@@ -286,6 +286,8 @@ async function customer(
   provider: PaymentProviderId,
   customerId: string | null,
 ) {
+  // PayPal payer IDs identify wallets, not workspace-specific customers.
+  if (provider === 'paypal') customerId = null
   if (customerId)
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${`billing-customer:${provider}:${customerId}`}, 0))`,
@@ -415,7 +417,17 @@ export async function grantSubscriptionMonth(
         eq(subscription.workspaceId, current.workspaceId),
       ),
     )
-  if (month > 0 && (!sub || !['active', 'trialing'].includes(sub.status)))
+  if (
+    month > 0 &&
+    (!sub ||
+      (!['active', 'trialing'].includes(sub.status) &&
+        !(
+          sub.status === 'canceled' &&
+          sub.cancelAtPeriodEnd &&
+          sub.currentPeriodEnd &&
+          now < sub.currentPeriodEnd
+        )))
+  )
     throw new Error('Subscription no longer eligible for monthly grants')
   if (selectedPlan.credits === 0) return
   const end =

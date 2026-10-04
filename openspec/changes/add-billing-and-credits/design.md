@@ -25,7 +25,7 @@
 6. **事件映射与发积分时机**：Stripe 订阅付款统一走 `invoice.paid`（`subscription_create` / `subscription_cycle`），`checkout.session.completed` 只做关联；Stripe API 版本在 SDK 初始化时锁定，`provider_payment_id` 取 PaymentIntent ID。PayPal 一次性付款以 `PAYMENT.CAPTURE.COMPLETED` 为准，capture 接口只推进状态。
 7. **订阅唯一性**：部分唯一索引 `unique(ws) where status in (...) and cancel_at_period_end = false`；撞上索引时（并发结账）由处理逻辑捕获唯一冲突，执行「取消后到者 + 全额退款 + 告警」。
 8. **年付按月发放**：Cron `subscription-grants` 每小时运行，用 `source_ref = {payment.id}:{n}` 的唯一约束保证幂等；`plan.credits` 定义为每月发放量。
-9. **注册赠送**：在 Better Auth 的 `emailVerification.onEmailVerification`（或 OAuth 已验证邮箱的注册钩子）中发放；`source_ref = sha256(规范化邮箱)`；一次性邮箱黑名单存在 `setting` 表。
+9. **注册赠送**：在 Better Auth 的 `emailVerification.afterEmailVerification`（或 OAuth 已验证邮箱的注册钩子）中发放；`source_ref = sha256(规范化邮箱)`；一次性邮箱黑名单存在 `setting` 表。
 10. **权益读取时计算**：`getEntitlements(ws)` 查询该空间所有订阅，按 spec 规则过滤生效者，取 `plan.sort` 最高者；结果在请求内缓存，不跨请求缓存。
 11. **超时回收按类型注册处理器**：本 change 只实现扫描与分发框架 `registerHoldSweeper(refType, handler)`；按计费方式兜底的对话处理器由 `add-ai-text-chat` 注册，查询 Workflow 状态的任务处理器由 `add-ai-media-generation` 注册，避免本 change 依赖尚不存在的定价与任务模型。
 12. **删除钩子**：向 auth change 的 `registerDeletionStep` 注册「订阅立即取消（不退款）」「退款提醒数据」「收回剩余积分」。

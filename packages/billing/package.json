@@ -8,13 +8,18 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "seed": "node --experimental-transform-types scripts/seed.ts",
+    "sync": "node --experimental-transform-types scripts/sync.ts"
   },
   "dependencies": {
     "@saas/db": "workspace:*",
     "stripe": "23.0.0",
     "drizzle-orm": "^0.45.3",
-    "@saas/credits": "workspace:*"
+    "@saas/credits": "workspace:*",
+    "@saas/config": "workspace:*",
+    "@saas/shared": "workspace:*",
+    "@saas/entitlements": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^4.1.11"

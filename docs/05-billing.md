@@ -166,7 +166,7 @@ Creem / Paddle / Polar 各实现一个 Provider，`capabilities.merchantOfRecord
 - 订阅取消（周期末生效）期间照常按月发放，进入终止状态后停止；退款时按 §「退款与争议」回收该 `payment.id` 下所有批次的剩余积分。
 
 ### 注册赠送防刷
-- **领取触发验证**：注册时不强制验证邮箱（04-auth「登录方式」）。未验证的用户在应用内看到「验证邮箱领取 N 积分」入口，点击后发送验证邮件；在**邮箱验证完成**时发放（Better Auth `emailVerification.onEmailVerification`）。OAuth 账号的邮箱已验证时，注册后直接发放，无需领取。站点开启 `auth.requireEmailVerification` 时，注册即验证，验证完成后直接发放。
+- **领取触发验证**：注册时不强制验证邮箱（04-auth「登录方式」）。未验证的用户在应用内看到「验证邮箱领取 N 积分」入口，点击后发送验证邮件；在**邮箱验证完成**时发放（Better Auth `emailVerification.afterEmailVerification`）。OAuth 账号的邮箱已验证时，注册后直接发放，无需领取。站点开启 `auth.requireEmailVerification` 时，注册即验证，验证完成后直接发放。
 - 一次性邮箱域名黑名单（`setting` 表可维护），命中则不发赠送积分（仍允许注册）。
 - 同一邮箱规范化（小写、去掉 Gmail 的 `.` 与 `+tag`）后只发一次：`source_ref` 使用规范化邮箱的哈希而非 `user.id`，删号重注册不会再次领取。
 
