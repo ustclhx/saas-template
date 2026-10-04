@@ -9,10 +9,12 @@ import { setting } from './schema/platform.ts'
 export interface SettingValues {
   /** 是否开放注册 */
   'auth.signupEnabled': boolean
+  'billing.signupBonusDomainBlacklist': string[]
 }
 
 export const settingDefaults: SettingValues = {
   'auth.signupEnabled': true,
+  'billing.signupBonusDomainBlacklist': [],
 }
 
 export type SettingKey = keyof SettingValues

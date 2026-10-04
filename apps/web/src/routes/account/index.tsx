@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
+import { SignupBonusSection } from '../../features/billing/signup-section.tsx'
 import { DeletionSection } from '../../features/deletion/deletion-section.tsx'
 import { getAccount } from '../../features/settings/account.functions.ts'
 import {
@@ -30,6 +31,11 @@ function AccountPage() {
       <ProfileSection user={user} />
       <PreferencesSection user={user} locales={account.locales} />
       <EmailVerificationSection user={user} callbackError={error} />
+      <SignupBonusSection
+        email={user.email}
+        verified={user.emailVerified}
+        credits={account.signupBonusCredits}
+      />
       <PasswordSection hasPassword={account.hasPassword} />
       {account.twoFactorAvailable && (
         <TwoFactorSection user={user} hasPassword={account.hasPassword} />

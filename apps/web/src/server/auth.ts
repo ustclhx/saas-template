@@ -1,4 +1,5 @@
 import { type AuthEmail, createAuth, type SendAuthEmail } from '@saas/auth'
+import { grantSignupBonus } from '@saas/billing'
 import { createDb, type Database } from '@saas/db'
 import { createQueueAuthEmailSender, userLocaleByEmail } from './auth-email.ts'
 import { templateConfig } from './template-config.ts'
@@ -28,5 +29,7 @@ export function getAuth(env: Cloudflare.Env, db: Database = createDb(env.HYPERDR
     config: templateConfig,
     sendEmail,
     resolveMaxSeats: resolveWorkspaceMaxSeats,
+    onEmailVerified: (user) =>
+      grantSignupBonus({ db, userId: user.id, config: templateConfig.billing }),
   })
 }

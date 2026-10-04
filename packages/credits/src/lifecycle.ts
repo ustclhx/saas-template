@@ -45,10 +45,12 @@ export async function expireWorkspaceCredits(
   db: Database,
   workspaceId: string,
   tx?: CreditsTransaction,
+  now?: Date,
 ) {
+  if (now && !Number.isFinite(now.getTime())) throw new Error('Invalid credit expiration time')
   return withCreditsTransaction(db, tx, async (tx) => {
     await lockWorkspaceCredits(tx, workspaceId)
-    return cancelGrants(tx, workspaceId, 'expired', lte(creditGrant.expiresAt, sql`now()`))
+    return cancelGrants(tx, workspaceId, 'expired', lte(creditGrant.expiresAt, now ?? sql`now()`))
   })
 }
 

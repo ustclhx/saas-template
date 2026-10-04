@@ -66,6 +66,8 @@ export async function grantSignupBonus(input: {
       throw new AppError('PERSONAL_WORKSPACE_REQUIRED', 'Personal workspace unavailable', {
         status: 403,
       })
+    if (account.banned)
+      throw new AppError('ACCOUNT_UNAVAILABLE', 'Account unavailable', { status: 403 })
     if (!account.emailVerified) return { status: 'unverified' }
     const normalized = normalizeSignupEmail(account.email)
     const [persisted] = await tx

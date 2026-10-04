@@ -24,6 +24,7 @@ export const getAccount = createServerFn({ method: 'GET' }).handler(async () => 
     return {
       ...(await loadAccount(db, user, templateConfig)),
       supportEmail: templateConfig.app.supportEmail,
+      signupBonusCredits: templateConfig.billing.signupBonusCredits,
     }
   } catch (error) {
     if (error instanceof AppError) throw redirect({ href: ACCOUNT_LOGIN_HREF })
