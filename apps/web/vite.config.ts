@@ -22,7 +22,7 @@ for (const binding of ['HYPERDRIVE', 'HYPERDRIVE_CACHED']) {
   if (value && !process.env[name]) process.env[name] = value
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   server: { port, strictPort: true },
   preview: { port, strictPort: true },
   define: {
@@ -30,8 +30,13 @@ export default defineConfig({
   },
   plugins: [
     // SSR 由 workerd 执行：Cloudflare 插件接管 Vite 的 ssr 环境
-    cloudflare({ viteEnvironment: { name: 'ssr' }, inspectorPort }),
+    cloudflare({
+      viteEnvironment: { name: 'ssr' },
+      inspectorPort,
+      // 本地开发时 Better Auth 的 baseURL 跟随实际端口（worktree 各不相同）；构建产物沿用 wrangler.jsonc
+      ...(command === 'serve' && { config: { vars: { APP_URL: `http://localhost:${port}` } } }),
+    }),
     tanstackStart(),
     viteReact(),
   ],
-})
+}))

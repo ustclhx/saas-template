@@ -34,7 +34,17 @@
   "queues": {
     "producers": [{ "binding": "EMAIL_QUEUE", "queue": "email" }]
   },
-  // hyperdrive / workflows / queues 不会从顶层继承，每个环境都要重新声明。
+  // Better Auth 会话的 secondaryStorage（packages/auth/src/session.ts）；本地由 Miniflare 模拟，id 为占位值
+  "kv_namespaces": [{ "binding": "CACHE", "id": "00000000000000000000000000000002" }],
+  // 认证入口按 IP + 邮箱限流（packages/auth/src/protection.ts）：每个 key 每 60 秒 10 次；本地由 Miniflare 模拟
+  "ratelimits": [
+    { "name": "RL_AUTH", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }
+  ],
+  // 本地开发的站点地址；`vite dev` 时由 vite.config.ts 按 .env.worktree 的端口覆盖
+  "vars": { "APP_URL": "http://localhost:3000" },
+  // hyperdrive / workflows / queues / kv_namespaces / ratelimits / vars 不会从顶层继承，每个环境都要重新声明。
+  // TODO(协调者)：env.staging 需补 CACHE（KV namespace）、RL_AUTH、APP_URL，以及 secrets
+  // BETTER_AUTH_SECRET、TURNSTILE_SECRET_KEY、GOOGLE_* / GITHUB_*，否则 checkEnv 会让所有请求返回 500。
   // 构建时用 CLOUDFLARE_ENV=staging 选择该环境（见 package.json 的 deploy:staging）。
   "env": {
     "staging": {

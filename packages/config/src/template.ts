@@ -30,6 +30,11 @@ export interface TemplateConfig<L extends string = string> {
   }
   readonly auth: {
     readonly emailPassword: boolean
+    /**
+     * 邮箱密码注册是否必须先验证邮箱才能登录。默认否：注册不发验证邮件，
+     * 由用户在账号设置或领取注册赠送积分时主动发起验证（docs/04-auth-and-tenancy.md §1）
+     */
+    readonly requireEmailVerification: boolean
     /** 邮箱验证码登录（emailOTP 插件） */
     readonly emailOtp: boolean
     /** 魔法链接登录（magicLink 插件） */
@@ -104,6 +109,7 @@ export const templateConfigDefaults = {
   tenancy: { multiTenant: false, maxWorkspacesPerUser: 5 },
   auth: {
     emailPassword: true,
+    requireEmailVerification: false,
     emailOtp: true,
     magicLink: false,
     oauth: ['google', 'github'],

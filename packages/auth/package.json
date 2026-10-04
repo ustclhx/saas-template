@@ -8,7 +8,8 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p tsconfig.node.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "probe:cpu": "AUTH_CPU_PROBE=1 vitest run --project probe --silent=false --reporter=verbose"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",

@@ -3,13 +3,22 @@ import { checkEnv } from './env.ts'
 
 const SECRET = 'postgres://app:super-secret@db.internal.example:5432/app'
 
-/** 齐全的 env：Hyperdrive 加上形状正确的 Workflow / Queue 绑定 */
+/** 齐全的 env：Hyperdrive、形状正确的 Workflow / Queue / KV / Rate Limiting 绑定，以及模板配置要求的认证变量 */
 function completeEnv() {
   const fn = () => undefined
   return {
     HYPERDRIVE: { connectionString: SECRET },
     AI_MEDIA_WORKFLOW: { create: fn, get: fn },
     EMAIL_QUEUE: { send: fn },
+    CACHE: { get: fn, put: fn, delete: fn },
+    RL_AUTH: { limit: fn },
+    APP_URL: 'http://localhost:3000',
+    BETTER_AUTH_SECRET: 'x'.repeat(32),
+    TURNSTILE_SECRET_KEY: 'turnstile-secret',
+    GOOGLE_CLIENT_ID: 'google-id',
+    GOOGLE_CLIENT_SECRET: 'google-secret',
+    GITHUB_CLIENT_ID: 'github-id',
+    GITHUB_CLIENT_SECRET: 'github-secret',
   }
 }
 
@@ -59,13 +68,34 @@ describe('checkEnv（请求入口的环境校验）', () => {
 
   it('缺少 Workflow / Queue 绑定时返回 500 并列出绑定名', () => {
     const error = captureErrors()
-    const response = checkEnv({ HYPERDRIVE: { connectionString: SECRET }, EMAIL_QUEUE: {} })
+    const { AI_MEDIA_WORKFLOW: _, ...env } = completeEnv()
+    const response = checkEnv({ ...env, EMAIL_QUEUE: {} })
     expect(response?.status).toBe(500)
     expect(JSON.parse(error.mock.calls.flat().join(' '))).toEqual({
       event: 'env.invalid',
       missing: ['AI_MEDIA_WORKFLOW'],
       invalid: ['EMAIL_QUEUE'],
     })
+  })
+
+  it('缺少 KV / Rate Limiting 绑定与认证变量时一并列出（按模板配置要求）', () => {
+    const error = captureErrors()
+    const {
+      CACHE: _c,
+      RL_AUTH: _r,
+      BETTER_AUTH_SECRET: _s,
+      GITHUB_CLIENT_SECRET: _g,
+      ...env
+    } = completeEnv()
+    const response = checkEnv({ ...env, TURNSTILE_SECRET_KEY: '' })
+    expect(response?.status).toBe(500)
+    const logged = error.mock.calls.flat().join(' ')
+    expect(JSON.parse(logged)).toEqual({
+      event: 'env.invalid',
+      missing: ['BETTER_AUTH_SECRET', 'CACHE', 'GITHUB_CLIENT_SECRET', 'RL_AUTH'],
+      invalid: ['TURNSTILE_SECRET_KEY'],
+    })
+    expect(logged).not.toContain('google-secret')
   })
 
   it('配置齐全时放行', () => {

@@ -4,6 +4,8 @@
 
 ### 登录方式（由 `template.config.ts` 开关）
 - 邮箱 + 密码。**默认不强制验证邮箱**（`auth.requireEmailVerification = false`）：注册后即可登录使用，注册时不发送验证邮件；用户领取注册赠送积分时才触发验证（发送验证邮件，验证完成后发放，见 05-billing §4「注册赠送防刷」），也可以在账号设置中主动验证。设为 `true` 时注册即发送验证邮件，未验证不能登录。OAuth 提供方返回已验证邮箱的账号直接视为已验证。
+  - 「发送验证邮件」入口：`POST /api/auth/send-verification-email`（`{ email, callbackURL }`，客户端为 `authClient.sendVerificationEmail`），账号设置与领取注册赠送积分都用它；已登录时只能为自己的邮箱发送，免 Turnstile，但与其他发信入口一样按 IP + 邮箱限流。
+  - 强制验证时，未验证账号的密码登录返回 403 `EMAIL_NOT_VERIFIED`，并自动重发一封验证邮件（`sendOnSignIn`）；点击链接后自动登录。实现见 `packages/auth/src/email-verification.ts`。
 - 邮箱验证码（`emailOTP` 插件，开关 `auth.emailOtp`）
 - 魔法链接（`magicLink` 插件，开关 `auth.magicLink`）；两者可同时开启
 - OAuth：Google、GitHub（可扩展其他 provider）
@@ -21,18 +23,51 @@
 
 ### Workers 适配要点
 - 每个请求创建 `auth` 实例（`createAuth(env)`），内部用该请求的 Drizzle 实例（Drizzle adapter，provider `pg`）。
-- **会话读取的分层**：
-  1. `session.cookieCache`（签名 Cookie，短 `maxAge` 如 5 分钟）：绝大多数请求不读 KV 也不查库。
-  2. `secondaryStorage` 接 KV：cookie 缓存过期后读 KV，减少跨地域查库。
+- **会话读取的分层**（`packages/auth/src/session.ts`）：
+  1. `session.cookieCache`（签名 Cookie，`maxAge` 5 分钟）：绝大多数请求不读 KV 也不查库。
+  2. `secondaryStorage` 接 KV（绑定 `CACHE`，键前缀 `auth:`）：cookie 缓存过期后读 KV，减少跨地域查库；KV 未命中时回退查库。
   3. 同时保留数据库中的 session 表（`session.storeSessionInDatabase`），作为吊销与审计的事实来源。
+  - 吊销必须经 Better Auth（退出登录、撤销会话、封禁、改密码等），它同时删除数据库行与 KV 副本。只在数据库中删除会话行（如手写 SQL）不会删除 KV 副本，KV 中的会话会一直有效到其 TTL（会话过期时间）；运维脚本需同时删除 `auth:<token>`。
+  - 验证码、验证链接等验证值同时写 KV 与数据库（`verification.storeInDatabase`）：KV 跨节点最终一致，在另一节点校验时可能读不到；一次性消费在数据库中原子完成。
+  - KV 的 `expirationTtl` 最少 60 秒，适配层把更短的 TTL 提升到 60 秒。
+  - Better Auth 自带的 rateLimit 改用 isolate 内存，不存 KV：每个请求写同一个键会触发 KV「同一键每秒最多写 1 次」的限制，且计数最终一致。认证入口的限流以 `RL_AUTH` 为准（见下文）。
 - **吊销不是即时的**：KV 的写入和删除传播到所有边缘节点最多约 60 秒，再叠加 cookie 缓存的 `maxAge`，改密码 / 封禁 / 踢下线后，旧会话最长可能还有效「cookieCache maxAge + 约 60 秒」。可接受的场景照常使用；以下**敏感操作不走缓存，直接查库**校验会话与 `user.banned`：
   - 修改密码 / 邮箱 / 2FA、删除账号
   - 计费操作（结账、取消订阅、门户）、成员与角色管理、创建 API Key
   - `/admin` 下的所有请求
-- 密码哈希在 Paid 套餐下可接受；若实测 CPU 偏高，可替换为 Web Crypto 的 PBKDF2 自定义 hasher（待验证）。
+- **实时校验的实现**（`packages/auth/src/fresh-session.ts`）：`requireFreshSession({ auth, db, headers })` 只从签名 Cookie 取会话 token（校验 HMAC 签名），会话与用户直接查库；会话不存在或已过期返回 401 `SESSION_REQUIRED`，用户被封禁（`banned` 且 `banExpires` 为空或未到）返回 403 `USER_BANNED`。业务代码（计费、`/admin`、成员管理的 server function 等）在 handler 开头调用它。Better Auth 自带的敏感接口（`/change-password`、`/change-email`、`/two-factor/*`、`/delete-user`、`/revoke-*`、`/admin/*`、`/api-key/create`、organization 的成员与邀请管理）由同文件中的插件在执行前做同样的校验——Better Auth 的 `sensitiveSessionMiddleware` 只绕过 Cookie 缓存，仍会读 KV。
+
+### 密码哈希（2.4 实测，2026-10-04）
+
+**结论：改用 PBKDF2。** Better Auth 默认的 scrypt（N=16384、r=16、p=1，workerd 中走 `node:crypto` 原生实现）在本地 workerd 中单次约 36 ms，注册 / 登录约 47–49 ms（p95 超过 50 ms），修改密码要算两次，约 81 ms，超过 design.md 设定的 50 ms 阈值。改为 Web Crypto 的 PBKDF2-HMAC-SHA256（100,000 次迭代，`packages/auth/src/password.ts`）后，注册 / 登录 / 修改密码约 16–21 ms。哈希格式为 `pbkdf2-sha256$<迭代次数>$<salt>$<hash>`，校验时兼容 scrypt 格式的旧哈希。
+
+测量方法：`pnpm --filter @saas/auth probe:cpu`（`packages/auth/probe/`），在 vitest-pool-workers 的 workerd 中经 `auth.handler` 执行完整流程，每项 20 次（另有 3 次预热），共 3 轮；关闭 Turnstile 与 RL_AUTH。单位 ms，三轮 p50 的范围（p95 的范围）：
+
+| 项目 | scrypt | PBKDF2（100k） |
+|---|---|---|
+| 哈希原语 | 37（39–45） | 7（7–8） |
+| 校验原语 | 37（38–52） | 6–7（7） |
+| 注册 | 49–71（54–95） | 16–21（22–25） |
+| 登录 | 47–64（51–91） | 16–25（27–41） |
+| 登录（密码错误） | 42–61（44–71） | 11–13（12–15） |
+| 修改密码 | 81–84（90–117） | 20–24（22–28） |
+
+对照：绕过 Cookie 缓存的 `get-session`（KV 命中）与单次 `select 1` 的 p50 均为 0 ms（p95 ≤ 7 ms），因此流程耗时几乎全是 CPU，可作为本地 CPU 时间的上限。第 2 轮整体偏高，是本机同时有其他负载。
+
+**本地测量与线上的差异**：
+- 本地 workerd 的时钟在纯计算期间会推进，可以在 Worker 内计时；线上 Workers 的时钟只在 I/O 后推进，Worker 内无法这样测 CPU 时间，需看 Workers 日志 / Tail 的 `cpuTime`。
+- 本机为 Apple M4，线上边缘服务器单核性能通常更低，同样的哈希会更慢；scrypt 本地已超阈值，线上只会更高。
+- 计时是墙钟时间，含本地 PG 与 Miniflare KV 往返（对照组显示不到 1 ms）；线上 CPU 时间不含 I/O 等待。
+- Cloudflare 文档规定 Workers 的 PBKDF2 最多 100,000 次迭代，本地 workerd 并不限制（实测 100,001 次被接受），因此迭代次数取 100,000，不随本地结果调高。100,000 次低于 OWASP 对 PBKDF2-SHA256 的建议（600,000），是 Workers 平台上限下的折中；迭代次数随哈希保存，平台放宽后可调高，已有哈希不受影响。
+- 部署到 staging 后，应从 Workers 日志确认注册 / 登录的 `cpuTime`，结果补在本节。
 - Cookie：`SameSite=Lax`、`Secure`；使用自定义域名，web 与 API 同源，避免跨站 Cookie 问题。
-- Turnstile：注册、登录、发送验证码、找回密码四个入口校验 token。
-- 限流：Rate Limiting 绑定按 IP + 邮箱维度限制认证接口；Better Auth 自带 rateLimit 使用 secondaryStorage。注意 Rate Limiting 绑定的计数是**按 Cloudflare 数据中心分别统计、最终一致**的，不是全局精确计数，只用来防刷和削峰。
+- **防刷**（`packages/auth/src/protection.ts`）：注册（`/sign-up/email`）、登录（`/sign-in/email`、`/sign-in/email-otp`、`/sign-in/magic-link`）、发送验证码（`/email-otp/send-verification-otp`）、找回密码（`/request-password-reset`、`/forget-password/email-otp`、`/email-otp/request-password-reset`）以及发送验证邮件（`/send-verification-email`）在接口执行前依次检查：
+  1. `RL_AUTH` 按 IP（`cf-connecting-ip`）限流；
+  2. Turnstile（`auth.turnstile=true` 时）：请求头 `x-turnstile-token`，服务端调用 siteverify（带 `remoteip`），缺失、无效或 siteverify 不可达都返回 403 `TURNSTILE_FAILED`；已登录用户调用 `/send-verification-email` 时免检；
+  3. `RL_AUTH` 按邮箱（规范化后 SHA-256）限流。
+  超限返回 429 `RATE_LIMITED`。不通过时接口本身不执行，不会创建用户或发送邮件；服务端直接调用 `auth.api.*` 不经过这些检查。限额在 `wrangler.jsonc` 的 `ratelimits` 中配置（当前每个 key 每 60 秒 10 次）。
+- 本地开发与测试：Turnstile 使用 Cloudflare 官方测试 secret（`1x0000000000000000000000000000000AA` 始终通过、`2x0000000000000000000000000000000AA` 始终失败，见 `apps/web/.dev.vars.example`）；集成测试按官方文档的行为模拟 siteverify，不访问外部服务。`CACHE` 与 `RL_AUTH` 由 Miniflare 模拟。
+- 注意 Rate Limiting 绑定的计数是**按 Cloudflare 数据中心分别统计、最终一致**的，不是全局精确计数，只用来防刷和削峰。
 
 ### 邮件
 验证邮件、OTP、重置密码、邀请邮件均通过 `EMAIL_QUEUE` 异步发送；OTP 类邮件若对时效敏感也可同步直发（Resend HTTP API）。

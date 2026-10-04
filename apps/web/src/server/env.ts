@@ -1,5 +1,7 @@
+import { parseAuthEnv } from '@saas/auth'
 import { EnvValidationError, envSchema, loadEnv } from '@saas/config'
 import { z } from 'zod'
+import { templateConfig } from './template-config.ts'
 
 /** 绑定对象上必须存在的方法（只检查形状，不读取任何取值） */
 const bindingWith = <T>(...methods: string[]) =>
@@ -14,7 +16,29 @@ const bindingWith = <T>(...methods: string[]) =>
 export const webEnvSchema = envSchema.extend({
   AI_MEDIA_WORKFLOW: bindingWith<Cloudflare.Env['AI_MEDIA_WORKFLOW']>('create', 'get'),
   EMAIL_QUEUE: bindingWith<Cloudflare.Env['EMAIL_QUEUE']>('send'),
+  CACHE: bindingWith<Cloudflare.Env['CACHE']>('get', 'put', 'delete'),
+  RL_AUTH: bindingWith<Cloudflare.Env['RL_AUTH']>('limit'),
 })
+
+/** 绑定（webEnvSchema）与认证所需的变量（按模板配置，@saas/auth 的 parseAuthEnv）一起校验，合并报告 */
+function validate(env: unknown): EnvValidationError | null {
+  const missing = new Set<string>()
+  const invalid = new Set<string>()
+  for (const check of [
+    () => loadEnv(env, webEnvSchema),
+    () => parseAuthEnv((env ?? {}) as Parameters<typeof parseAuthEnv>[0], templateConfig),
+  ]) {
+    try {
+      check()
+    } catch (error) {
+      if (!(error instanceof EnvValidationError)) throw error
+      for (const key of error.missing) missing.add(key)
+      for (const key of error.invalid) invalid.add(key)
+    }
+  }
+  if (missing.size === 0 && invalid.size === 0) return null
+  return new EnvValidationError([...missing].sort(), [...invalid].sort())
+}
 
 /** 已校验通过的 env 对象；env 在一个 isolate 内不变，校验一次即可。 */
 const validated = new WeakSet<object>()
@@ -25,10 +49,8 @@ const validated = new WeakSet<object>()
  */
 export function checkEnv(env: unknown): Response | null {
   if (typeof env === 'object' && env !== null && validated.has(env)) return null
-  try {
-    loadEnv(env, webEnvSchema)
-  } catch (error) {
-    if (!(error instanceof EnvValidationError)) throw error
+  const error = validate(env)
+  if (error) {
     console.error(
       JSON.stringify({ event: 'env.invalid', missing: error.missing, invalid: error.invalid }),
     )
