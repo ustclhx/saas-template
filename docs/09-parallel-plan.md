@@ -70,7 +70,8 @@ P0 实现时必须遵守的约定（setup 脚本依赖它们）：
 
 ### P1 `add-auth-and-workspaces`
 - `p1-schema`（1.1, 1.2, 2.1） ∥ `p1-email-templates`（3.1）
-- → `p1-session`（2.2–2.6） ∥ `p1-email-queue`（3.2） ∥ `p1-workspace`（4.1–4.3） ∥ `p1-admin-settings`（5.1, 5.2）
+- → `p1-session`（2.2–2.6，另负责把 Better Auth 挂到 `apps/web` 的 `/api/auth/*` 并新增 `template.config.ts`） ∥ `p1-email-queue`（3.2） ∥ `p1-scoped`（4.3）
+- → `p1-workspace`（4.1, 4.2） ∥ `p1-admin-settings`（5.1, 5.2）：都依赖 `p1-session` 的认证挂载与 `requireFreshSession`，在它合并后开始
 - → `p1-teams`（4.4–4.6）→ `p1-deletion`（6.1–6.4）→ `p1-e2e`（7.1）
 
 ### P2 `add-billing-and-credits`
