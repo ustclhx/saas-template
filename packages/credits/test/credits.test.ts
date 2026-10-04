@@ -1,0 +1,310 @@
+import {
+  creditDebt,
+  creditGrant,
+  creditHold,
+  creditHoldAllocation,
+  creditLedger,
+  member,
+  organization,
+  user,
+} from '@saas/db'
+import * as schema from '@saas/db/schema'
+import { newId } from '@saas/shared'
+import { eq, inArray } from 'drizzle-orm'
+import { drizzle } from 'drizzle-orm/postgres-js'
+import postgres from 'postgres'
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { type CreditsTransaction, grant, hold } from '../src/index.ts'
+
+const url = process.env.CREDITS_TEST_DATABASE_URL
+if (!url) throw new Error('Missing isolated test database')
+const client = postgres(url, { max: 5 })
+const db = drizzle(client, { schema })
+let ws: string
+let otherWs: string
+let userId: string
+const grantInput = (amount = 10, sourceRef = newId()) => ({
+  workspaceId: ws,
+  source: 'admin' as const,
+  sourceRef,
+  amount,
+})
+const holdInput = (amount = 8) => ({
+  workspaceId: ws,
+  userId,
+  amount,
+  refType: 'ai_message' as const,
+  refId: newId(),
+})
+
+beforeEach(async () => {
+  ws = newId()
+  otherWs = newId()
+  userId = newId()
+  await db.insert(user).values({ id: userId, name: 'Credits', email: `${userId}@example.test` })
+  await db.insert(organization).values([
+    { id: ws, name: 'Credits', slug: ws },
+    { id: otherWs, name: 'Other', slug: otherWs },
+  ])
+  await db.insert(member).values({ id: newId(), organizationId: ws, userId, role: 'owner' })
+})
+
+afterEach(async () => {
+  const workspaces = [ws, otherWs]
+  const holds = await db
+    .select({ id: creditHold.id })
+    .from(creditHold)
+    .where(inArray(creditHold.workspaceId, workspaces))
+  if (holds.length)
+    await db.delete(creditHoldAllocation).where(
+      inArray(
+        creditHoldAllocation.holdId,
+        holds.map((h) => h.id),
+      ),
+    )
+  await db.delete(creditLedger).where(inArray(creditLedger.workspaceId, workspaces))
+  await db.delete(creditHold).where(inArray(creditHold.workspaceId, workspaces))
+  await db.delete(creditGrant).where(inArray(creditGrant.workspaceId, workspaces))
+  await db.delete(creditDebt).where(inArray(creditDebt.workspaceId, workspaces))
+  await db.delete(member).where(inArray(member.organizationId, workspaces))
+  await db.delete(organization).where(inArray(organization.id, workspaces))
+  await db.delete(user).where(eq(user.id, userId))
+})
+
+afterAll(() => client.end())
+
+async function debt(amount: number, workspaceId = ws) {
+  await db.insert(creditDebt).values({ workspaceId, amount })
+  await db.insert(creditLedger).values({ workspaceId, type: 'debt', delta: -amount })
+}
+
+async function assertInvariant() {
+  const grants = await db.select().from(creditGrant).where(eq(creditGrant.workspaceId, ws))
+  const holds = await db.select().from(creditHold).where(eq(creditHold.workspaceId, ws))
+  const debts = await db.select().from(creditDebt).where(eq(creditDebt.workspaceId, ws))
+  const ledger = await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws))
+  expect(ledger.reduce((sum, row) => sum + row.delta, 0)).toBe(
+    grants.filter((g) => g.status === 'active').reduce((sum, g) => sum + g.remaining, 0) +
+      holds.filter((h) => h.status === 'held').reduce((sum, h) => sum + h.amount, 0) -
+      debts.reduce((sum, d) => sum + d.amount, 0),
+  )
+}
+
+describe('grant and hold on PostgreSQL', () => {
+  it('repeated/concurrent grant repays debt once and emits one grant ledger', async () => {
+    await debt(20)
+    const input = grantInput(100)
+    const [first, replay] = await Promise.all([grant(db, input), grant(db, input)])
+    expect(first.id).toBe(replay.id)
+    expect(first.remaining).toBe(80)
+    expect(await grant(db, input)).toEqual(first)
+    expect(
+      (await db.select().from(creditDebt).where(eq(creditDebt.workspaceId, ws)))[0]?.amount,
+    ).toBe(0)
+    const ledger = await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws))
+    expect(ledger.filter((l) => l.type === 'grant').map((l) => l.delta)).toEqual([100])
+    expect(ledger.filter((l) => l.type === 'debt_repay')).toEqual([
+      expect.objectContaining({ delta: 0, note: 'Repaid 20 credits of debt' }),
+    ])
+    await assertInvariant()
+  })
+
+  it('smaller grant entirely repays debt and debt still prevents hold', async () => {
+    await debt(20)
+    expect((await grant(db, grantInput(10))).remaining).toBe(0)
+    expect(
+      (await db.select().from(creditDebt).where(eq(creditDebt.workspaceId, ws)))[0]?.amount,
+    ).toBe(10)
+    await expect(hold(db, holdInput(1))).rejects.toMatchObject({ code: 'CREDIT_DEBT' })
+    await assertInvariant()
+  })
+
+  it('global duplicate in another workspace reveals no grant and leaves its debt untouched', async () => {
+    await debt(20, otherWs)
+    const input = grantInput(10)
+    await grant(db, input)
+    await expect(grant(db, { ...input, workspaceId: otherWs })).rejects.toMatchObject({
+      code: 'SOURCE_ALREADY_GRANTED',
+      message: 'SOURCE_ALREADY_GRANTED',
+    })
+    expect(await db.select().from(creditGrant).where(eq(creditGrant.workspaceId, otherWs))).toEqual(
+      [],
+    )
+    expect(
+      (await db.select().from(creditDebt).where(eq(creditDebt.workspaceId, otherWs)))[0]?.amount,
+    ).toBe(20)
+    expect(
+      (await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, otherWs))).map(
+        (l) => l.type,
+      ),
+    ).toEqual(['debt'])
+  })
+
+  it('concurrent global source claim in different workspaces grants only once', async () => {
+    await debt(20)
+    await debt(20, otherWs)
+    const input = grantInput(10)
+    const results = await Promise.allSettled([
+      grant(db, input),
+      grant(db, { ...input, workspaceId: otherWs }),
+    ])
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter((r) => r.status === 'rejected')).toEqual([
+      expect.objectContaining({
+        reason: expect.objectContaining({ code: 'SOURCE_ALREADY_GRANTED' }),
+      }),
+    ])
+    const debts = await db
+      .select()
+      .from(creditDebt)
+      .where(inArray(creditDebt.workspaceId, [ws, otherWs]))
+    expect(debts.map((d) => d.amount).sort()).toEqual([10, 20])
+  })
+
+  it('balance 10 with two concurrent holds of 8 has exactly one success', async () => {
+    const batch = await grant(db, grantInput(10))
+    const results = await Promise.allSettled([hold(db, holdInput()), hold(db, holdInput())])
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter((r) => r.status === 'rejected')).toEqual([
+      expect.objectContaining({
+        reason: expect.objectContaining({ code: 'INSUFFICIENT_CREDITS' }),
+      }),
+    ])
+    expect(
+      (await db.select().from(creditGrant).where(eq(creditGrant.id, batch.id)))[0]?.remaining,
+    ).toBe(2)
+    expect(await db.select().from(creditHoldAllocation)).toContainEqual(
+      expect.objectContaining({ grantId: batch.id, amount: 8 }),
+    )
+    const ledger = await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws))
+    expect(ledger.map((l) => l.type)).toEqual(['grant'])
+    await assertInvariant()
+  })
+
+  it('uses expiry, creation, id order, skips expired/revoked and uses never-expiring last', async () => {
+    const expiry = new Date(Date.now() + 86_400_000)
+    const permanent = await grant(db, grantInput(4))
+    const later = await grant(db, {
+      ...grantInput(4),
+      expiresAt: new Date(expiry.getTime() + 86_400_000),
+    })
+    const early1 = await grant(db, { ...grantInput(3), expiresAt: expiry })
+    const early2 = await grant(db, { ...grantInput(3), expiresAt: expiry })
+    const expired = await grant(db, { ...grantInput(9), expiresAt: new Date(0) })
+    const revoked = await grant(db, grantInput(9))
+    await db.update(creditGrant).set({ status: 'revoked' }).where(eq(creditGrant.id, revoked.id))
+    await db
+      .update(creditGrant)
+      .set({ createdAt: new Date(0) })
+      .where(inArray(creditGrant.id, [early1.id, early2.id]))
+    const older = await grant(db, { ...grantInput(2), expiresAt: expiry })
+    await db
+      .update(creditGrant)
+      .set({ createdAt: new Date(-1000) })
+      .where(eq(creditGrant.id, older.id))
+    const oldest = await hold(db, holdInput(2))
+    expect(
+      await db
+        .select()
+        .from(creditHoldAllocation)
+        .where(eq(creditHoldAllocation.holdId, oldest.id)),
+    ).toEqual([expect.objectContaining({ grantId: older.id, amount: 2 })])
+    const tied = await hold(db, holdInput(2))
+    expect(
+      await db.select().from(creditHoldAllocation).where(eq(creditHoldAllocation.holdId, tied.id)),
+    ).toEqual([expect.objectContaining({ grantId: [early1.id, early2.id].sort()[0], amount: 2 })])
+    const reservation = await hold(db, holdInput(6))
+    const allocations = await db
+      .select()
+      .from(creditHoldAllocation)
+      .where(eq(creditHoldAllocation.holdId, reservation.id))
+    expect(allocations.map((a) => [a.grantId, a.amount]).sort()).toEqual(
+      [
+        [early1.id, early1.id < early2.id ? 1 : 3],
+        [early2.id, early2.id < early1.id ? 1 : 3],
+        [later.id, 2],
+      ].sort(),
+    )
+    const rows = await db.select().from(creditGrant).where(eq(creditGrant.workspaceId, ws))
+    expect(rows.find((r) => r.id === permanent.id)?.remaining).toBe(4)
+    expect(rows.find((r) => r.id === expired.id)?.remaining).toBe(9)
+    expect(rows.find((r) => r.id === revoked.id)?.remaining).toBe(9)
+  })
+
+  it('insufficiency writes nothing even when caught in an external transaction', async () => {
+    const batch = await grant(db, grantInput(10))
+    await db.transaction(async (tx) => {
+      await expect(hold(db, holdInput(11), tx)).rejects.toMatchObject({
+        code: 'INSUFFICIENT_CREDITS',
+      })
+    })
+    expect(
+      (await db.select().from(creditGrant).where(eq(creditGrant.id, batch.id)))[0]?.remaining,
+    ).toBe(10)
+    expect(await db.select().from(creditHold).where(eq(creditHold.workspaceId, ws))).toEqual([])
+    await assertInvariant()
+  })
+
+  it('external transaction rollback undoes grant, debt repayment, hold, allocation and ledger together', async () => {
+    await debt(20)
+    const input = grantInput(100)
+    await expect(
+      db.transaction(async (tx) => {
+        await tx.update(organization).set({ name: 'Changed' }).where(eq(organization.id, ws))
+        await grant(db, input, tx)
+        await hold(db, holdInput(30), tx)
+        throw new Error('rollback caller')
+      }),
+    ).rejects.toThrow('rollback caller')
+    expect(await db.select().from(creditGrant).where(eq(creditGrant.workspaceId, ws))).toEqual([])
+    expect(await db.select().from(creditHold).where(eq(creditHold.workspaceId, ws))).toEqual([])
+    expect(
+      (await db.select().from(creditDebt).where(eq(creditDebt.workspaceId, ws)))[0]?.amount,
+    ).toBe(20)
+    expect(
+      (await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws))).map(
+        (l) => l.type,
+      ),
+    ).toEqual(['debt'])
+    expect((await db.select().from(organization).where(eq(organization.id, ws)))[0]?.name).toBe(
+      'Credits',
+    )
+    await assertInvariant()
+  })
+
+  it('raw postgres transaction adapter participates without beginning a nested transaction', async () => {
+    await expect(
+      client.begin(async (rawTx) => {
+        // Installed Drizzle requires client.options; TransactionSql omits it at runtime.
+        const adapter = drizzle(
+          Object.assign(rawTx, { options: client.options }) as unknown as postgres.Sql,
+          { schema },
+        ) as unknown as CreditsTransaction
+        await grant(db, grantInput(10), adapter)
+        await hold(db, holdInput(8), adapter)
+        await rawTx`update organization set name='Raw changed' where id=${ws}`
+        throw new Error('rollback raw caller')
+      }),
+    ).rejects.toThrow('rollback raw caller')
+    expect(await db.select().from(creditGrant).where(eq(creditGrant.workspaceId, ws))).toEqual([])
+    expect(await db.select().from(creditHold).where(eq(creditHold.workspaceId, ws))).toEqual([])
+    expect(await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws))).toEqual([])
+    expect((await db.select().from(organization).where(eq(organization.id, ws)))[0]?.name).toBe(
+      'Credits',
+    )
+  })
+
+  it('rejects unsafe amounts and workspace-mismatched users at exported boundaries', async () => {
+    for (const amount of [0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1]) {
+      await expect(grant(db, grantInput(amount))).rejects.toMatchObject({
+        code: 'INVALID_CREDIT_AMOUNT',
+      })
+      await expect(hold(db, holdInput(amount))).rejects.toMatchObject({
+        code: 'INVALID_CREDIT_AMOUNT',
+      })
+    }
+    await expect(hold(db, { ...holdInput(1), workspaceId: otherWs })).rejects.toMatchObject({
+      code: 'WORKSPACE_RESOURCE_NOT_FOUND',
+    })
+  })
+})
