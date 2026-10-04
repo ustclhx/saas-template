@@ -15,6 +15,13 @@ export interface WebhookContext<Prepared = undefined> {
   prepared: Prepared
 }
 
+export interface WebhookFailure<Prepared> {
+  cause: unknown
+  delivery: WebhookEvent
+  events: readonly NormalizedEvent[]
+  prepared: Prepared | undefined
+}
+
 export interface WebhookNotification {
   delivery: WebhookEvent
   events: readonly NormalizedEvent[]
@@ -39,6 +46,8 @@ export interface WebhookProcessingOptions<Prepared = undefined> {
   ): Promise<void>
   /** Runs outside the processing transaction; return data for the database-only handler. */
   prepare?(events: readonly NormalizedEvent[], delivery: WebhookEvent): Promise<Prepared>
+  /** Runs only after business rollback and the independent failed marker commit. */
+  onFailure?(failure: WebhookFailure<Prepared>): Promise<void>
   /** EVENTS_QUEUE adapter. Rejection is observable without changing successful DB status. */
   notify?(notification: WebhookNotification): Promise<void>
 }
@@ -138,8 +147,9 @@ async function processRegistered<Prepared>(
     return { status: replay ? 'not_replayable' : 'duplicate', delivery }
   if (replay && delivery.status !== 'failed') return { status: 'not_replayable', delivery }
   let committed: WebhookEvent
+  let prepared: Prepared | undefined
   try {
-    const prepared = options.prepare
+    prepared = options.prepare
       ? await options.prepare(normalized.events, delivery)
       : (undefined as Prepared)
     const result = await options.db.transaction(async (tx) => {
@@ -157,7 +167,7 @@ async function processRegistered<Prepared>(
       if (replay && current.status !== 'failed')
         return { status: 'not_replayable' as const, delivery: current }
       for (const event of normalized.events)
-        await options.handler(tx, event, { delivery: current, prepared })
+        await options.handler(tx, event, { delivery: current, prepared: prepared as Prepared })
       const [updated] = await tx
         .update(webhookEvent)
         .set({
@@ -174,7 +184,9 @@ async function processRegistered<Prepared>(
     committed = result.delivery
   } catch (cause) {
     const error = errorMessage(cause)
-    return { status: 'failed', error, delivery: await markFailed(options.db, delivery.id, error) }
+    const failed = await markFailed(options.db, delivery.id, error)
+    await options.onFailure?.({ cause, delivery: failed, events: normalized.events, prepared })
+    return { status: 'failed', error, delivery: failed }
   }
   let notification: Extract<WebhookResult, { notification: unknown }>['notification'] = {
     status: 'not_requested',

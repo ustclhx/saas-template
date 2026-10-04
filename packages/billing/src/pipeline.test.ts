@@ -262,4 +262,31 @@ describe('webhook pipeline on PostgreSQL', () => {
     })
     expect(await effects()).toHaveLength(1)
   })
+  it('failure hook sees original cause and prepared context after rollback and failed marker commit', async () => {
+    const opts = input(2)
+    const cause = new Error('domain conflict')
+    const prepared = { immutable: 'receipt' }
+    const hook = vi.fn(async (failure) => {
+      expect(failure.cause).toBe(cause)
+      expect(failure.prepared).toBe(prepared)
+      expect(failure.events).toBe(opts.normalized.events)
+      expect(failure.delivery.status).toBe('failed')
+      expect((await row(opts.normalized.providerEventId)).status).toBe('failed')
+      expect(await effects()).toEqual([])
+    })
+    expect(
+      (
+        await processWebhook({
+          ...opts,
+          prepare: async () => prepared,
+          onFailure: hook,
+          handler: async (tx, event) => {
+            await effect(tx, event)
+            throw cause
+          },
+        })
+      ).status,
+    ).toBe('failed')
+    expect(hook).toHaveBeenCalledTimes(1)
+  })
 })

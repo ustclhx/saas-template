@@ -1,6 +1,7 @@
 import { grant, revokePaymentCredits } from '@saas/credits'
 import {
   auditLog,
+  billingCompensation,
   billingCustomer,
   type Database,
   member,
@@ -14,7 +15,9 @@ import {
   plan,
   planPrice,
   purchase,
+  refundRequest,
   type Subscription,
+  type SubscriptionCompensationPayload,
   subscription,
   user,
 } from '@saas/db'
@@ -49,16 +52,7 @@ export interface BillingEventOptions {
 export class RenewingSubscriptionConflict extends Error {
   readonly code = 'RENEWING_SUBSCRIPTION_CONFLICT'
   constructor(
-    public readonly compensation: {
-      workspaceId: string
-      provider: PaymentProviderId
-      providerSubscriptionId: string
-      providerPaymentId?: string
-      kind?: 'initial' | 'renewal' | 'adjustment'
-      amount?: number
-      currency?: string
-      winnerSubscriptionId: string
-    },
+    public readonly compensation: SubscriptionCompensationPayload & { workspaceId: string },
   ) {
     super('RENEWING_SUBSCRIPTION_CONFLICT')
     this.name = 'RenewingSubscriptionConflict'
@@ -110,12 +104,20 @@ async function priceFor(
 async function validateMetadata(
   db: Database | WebhookTransaction,
   metadata: CheckoutMetadata | null,
+  allowDeletedReceipt = false,
 ) {
   if (
     !metadata ||
     ![metadata.workspaceId, metadata.userId, metadata.planPriceId].every((id) => uuid.test(id))
   )
     throw new Error('Missing or invalid billing metadata')
+  if (allowDeletedReceipt) {
+    const [workspace] = await db
+      .select()
+      .from(organization)
+      .where(eq(organization.id, metadata.workspaceId))
+    if (workspace?.deletedAt) return
+  }
   const [owned] = await db
     .select({ email: user.email, banned: user.banned })
     .from(member)
@@ -199,21 +201,53 @@ export async function prepareBillingEvents(
       }
       prepared.associations.set(associationKey, {
         workspaceId: local.workspaceId,
-        ...(await priceFor(
-          db,
-          priceId,
-          event.provider,
-          providerPriceId,
-          undefined,
-          !(
-            recordedPrice ||
-            (event.type === 'payment.succeeded' &&
-              event.payment.kind === 'renewal' &&
-              providerPriceId)
-          ),
-        )),
+        ...(await priceFor(db, priceId, event.provider, providerPriceId, undefined, false)),
         metadata: null,
         snapshot,
+      })
+      continue
+    }
+    const [compensation] =
+      kind === 'subscription'
+        ? await db
+            .select()
+            .from(billingCompensation)
+            .where(
+              and(
+                sql`${billingCompensation.payload}->>'provider' = ${event.provider}`,
+                sql`${billingCompensation.payload}->>'providerSubscriptionId' = ${id}`,
+              ),
+            )
+            .limit(1)
+        : []
+    if (compensation) {
+      const payload = compensation.payload
+      prepared.associations.set(associationKey, {
+        workspaceId: compensation.workspaceId,
+        ...(await priceFor(
+          db,
+          payload.planPriceId,
+          event.provider,
+          undefined,
+          payload.planId,
+          false,
+        )),
+        metadata: null,
+        snapshot: {
+          providerSubscriptionId: id,
+          providerCustomerId: null,
+          providerPriceId: '',
+          status: 'canceled',
+          remoteStatus: 'canceled',
+          currentPeriodStart: null,
+          currentPeriodEnd: null,
+          cancelAtPeriodEnd: false,
+          canceledAt: null,
+          trialEnd: null,
+          pastDueSince: null,
+          metadata: null,
+          raw: {},
+        },
       })
       continue
     }
@@ -239,7 +273,7 @@ export async function prepareBillingEvents(
     )
       throw new Error('Checkout metadata repair mismatch')
     try {
-      await validateMetadata(db, metadata)
+      await validateMetadata(db, metadata, event.type === 'payment.succeeded')
     } catch (error) {
       await db.insert(auditLog).values({
         action: 'billing.association_failed',
@@ -276,6 +310,7 @@ export async function prepareBillingEvents(
   return prepared
 }
 export async function lockWorkspaceBilling(tx: WebhookTransaction, workspaceId: string) {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`ws:${workspaceId}`}, 0))`)
   await tx.execute(
     sql`select pg_advisory_xact_lock(hashtextextended(${`billing:${workspaceId}`}, 0))`,
   )
@@ -351,16 +386,39 @@ async function checkWinner(
       provider: event.provider,
       providerSubscriptionId: id,
       winnerSubscriptionId: winner.id,
-      ...(event.type === 'payment.succeeded' && event.payment.kind !== 'one_time'
-        ? {
-            providerPaymentId: event.payment.providerPaymentId,
-            kind: event.payment.kind,
-            amount: event.payment.amount,
-            currency: event.payment.currency,
-          }
-        : {}),
+      planId: a.plan.id,
+      planPriceId: a.price.id,
+      ...conflictPayment(event, a),
     })
 }
+function conflictPayment(event: NormalizedEvent, a: Association) {
+  if (event.type !== 'payment.succeeded' || event.payment.kind === 'one_time') return {}
+  const p = event.payment
+  money(p.amount, p.currency)
+  if (
+    (p.kind !== 'adjustment' && p.amount !== a.price.amount) ||
+    p.currency.toUpperCase() !== a.price.currency.toUpperCase()
+  )
+    throw new Error('Payment price mismatch')
+  if (!p.period || !(p.period.start < p.period.end) || !Number.isFinite(p.paidAt.getTime()))
+    throw new Error('Invalid payment period')
+  if (p.refundedAmount !== null) money(p.refundedAmount, p.currency)
+  if ((p.refundedAmount ?? 0) > p.amount) throw new Error('Payment refund exceeds gross')
+  return {
+    payment: {
+      providerPaymentId: p.providerPaymentId,
+      kind: p.kind,
+      amount: p.amount,
+      currency: p.currency.toUpperCase(),
+      paidAt: p.paidAt.toISOString(),
+      periodStart: p.period.start.toISOString(),
+      periodEnd: p.period.end.toISOString(),
+      refundedAmount: p.refundedAmount,
+      raw: p.raw,
+    },
+  }
+}
+
 /** UTC calendar arithmetic always derives from the original anchor (Jan 31 -> Feb 28 -> Mar 31). */
 export function subscriptionMonthAnchor(anchor: Date, month: number) {
   const d = new Date(anchor)
@@ -381,6 +439,11 @@ export async function grantSubscriptionMonth(
   graceHours = 24,
 ) {
   await lockWorkspaceBilling(tx, paid.workspaceId)
+  const [workspace] = await tx
+    .select()
+    .from(organization)
+    .where(eq(organization.id, paid.workspaceId))
+  if (workspace?.deletedAt) return
   const [current] = await tx
     .select()
     .from(payment)
@@ -549,6 +612,18 @@ export async function applyBillingEvent(
               : 'partially_refunded',
       })
       .where(eq(payment.id, paid.id))
+    await tx
+      .update(refundRequest)
+      .set({ status: 'refunded', updatedAt: options.now?.() ?? new Date() })
+      .where(
+        and(
+          eq(refundRequest.workspaceId, paid.workspaceId),
+          eq(refundRequest.paymentId, paid.id),
+          eq(refundRequest.status, 'approved'),
+          eq(refundRequest.providerRefundId, event.providerRefundId),
+          eq(refundRequest.approvedAmount, event.amount),
+        ),
+      )
     if (paid.purchaseId)
       await tx
         .update(purchase)
@@ -591,6 +666,53 @@ export async function applyBillingEvent(
   const a = prepared.associations.get(event)
   if (!a) throw new Error('Billing event was not prepared')
   await lockWorkspaceBilling(tx, a.workspaceId)
+  const [workspace] = await tx.select().from(organization).where(eq(organization.id, a.workspaceId))
+  const deleted = Boolean(workspace?.deletedAt)
+  const jobs = await tx
+    .select()
+    .from(billingCompensation)
+    .where(
+      and(
+        eq(billingCompensation.workspaceId, a.workspaceId),
+        sql`${billingCompensation.payload}->>'provider' = ${event.provider}`,
+        sql`${billingCompensation.payload}->>'providerSubscriptionId' = ${id}`,
+      ),
+    )
+  const existingCompensation = jobs[0]
+  const compensated = !oneTime && Boolean(existingCompensation)
+  if (
+    existingCompensation &&
+    !oneTime &&
+    event.type === 'payment.succeeded' &&
+    event.payment.kind !== 'one_time' &&
+    !jobs.some((job) => job.payload.payment?.providerPaymentId === event.payment.providerPaymentId)
+  ) {
+    throw new RenewingSubscriptionConflict({
+      workspaceId: a.workspaceId,
+      provider: event.provider,
+      providerSubscriptionId: id,
+      winnerSubscriptionId: existingCompensation.payload.winnerSubscriptionId,
+      planId: a.plan.id,
+      planPriceId: a.price.id,
+      ...conflictPayment(event, a),
+    })
+  }
+  if (compensated && event.type === 'payment.succeeded') {
+    const p = event.payment
+    const receipt = jobs.find(
+      (job) => job.payload.payment?.providerPaymentId === p.providerPaymentId,
+    )?.payload.payment
+    if (
+      !receipt ||
+      receipt.kind !== p.kind ||
+      receipt.amount !== p.amount ||
+      receipt.currency !== p.currency.toUpperCase() ||
+      receipt.paidAt !== p.paidAt.toISOString() ||
+      receipt.periodStart !== p.period?.start.toISOString() ||
+      receipt.periodEnd !== p.period?.end.toISOString()
+    )
+      throw new Error('Compensation payment replay provenance mismatch')
+  }
   const customerId =
     event.type === 'payment.succeeded'
       ? (event.payment.providerCustomerId ?? a.snapshot?.providerCustomerId ?? null)
@@ -604,7 +726,7 @@ export async function applyBillingEvent(
     if (existing && existing.workspaceId !== a.workspaceId)
       throw new Error('Order workspace association changed')
     if (!existing) {
-      await validateMetadata(tx, a.metadata)
+      await validateMetadata(tx, a.metadata, event.type === 'payment.succeeded')
       if (!a.metadata || a.plan.type !== 'credit_pack') throw new Error('Missing purchase metadata')
       ;[existing] = await tx
         .insert(purchase)
@@ -628,11 +750,12 @@ export async function applyBillingEvent(
     if (sub && sub.workspaceId !== a.workspaceId)
       throw new Error('Subscription workspace association changed')
     if (!sub) {
-      await validateMetadata(tx, a.metadata)
+      if (!compensated) await validateMetadata(tx, a.metadata, event.type === 'payment.succeeded')
       const snapshot = a.snapshot
       if (!snapshot || !('providerSubscriptionId' in snapshot))
         throw new Error('Missing subscription repair snapshot')
-      await checkWinner(tx, a, event, id, snapshot.status, snapshot.cancelAtPeriodEnd)
+      if (!compensated && !deleted)
+        await checkWinner(tx, a, event, id, snapshot.status, snapshot.cancelAtPeriodEnd)
       ;[sub] = await tx
         .insert(subscription)
         .values({
@@ -641,9 +764,9 @@ export async function applyBillingEvent(
           planPriceId: a.price.id,
           provider: event.provider,
           providerSubscriptionId: id,
-          status: snapshot.status,
+          status: compensated || deleted ? 'canceled' : snapshot.status,
           currentPeriodStart: snapshot.currentPeriodStart,
-          currentPeriodEnd: snapshot.currentPeriodEnd,
+          currentPeriodEnd: compensated || deleted ? null : snapshot.currentPeriodEnd,
           cancelAtPeriodEnd: snapshot.cancelAtPeriodEnd,
           canceledAt: snapshot.canceledAt,
           trialEnd: snapshot.trialEnd,
@@ -654,6 +777,11 @@ export async function applyBillingEvent(
         .returning()
     }
     if (!sub) throw new Error('Subscription insert failed')
+    if (compensated || deleted)
+      await tx
+        .update(subscription)
+        .set({ status: 'canceled', cancelAtPeriodEnd: false, currentPeriodEnd: null })
+        .where(eq(subscription.id, sub.id))
   }
   await customer(tx, a.workspaceId, event.provider, customerId)
   if (event.type === 'payment.succeeded') {
@@ -739,6 +867,8 @@ export async function applyBillingEvent(
         )
     if (
       sub &&
+      !compensated &&
+      !deleted &&
       p.period &&
       p.kind !== 'adjustment' &&
       event.occurredAt >= sub.lastEventAt &&
@@ -765,6 +895,7 @@ export async function applyBillingEvent(
       )
       return
     }
+    if (compensated || deleted) return
     if (p.kind === 'initial' || p.kind === 'renewal')
       await grantSubscriptionMonth(
         tx,
@@ -795,6 +926,8 @@ export async function applyBillingEvent(
   }
   if (
     !sub ||
+    compensated ||
+    deleted ||
     event.occurredAt < sub.lastEventAt ||
     event.type === 'checkout.completed' ||
     event.type === 'subscription.renewed'

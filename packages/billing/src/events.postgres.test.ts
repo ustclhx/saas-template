@@ -15,6 +15,7 @@ import {
   plan,
   planPrice,
   purchase,
+  refundRequest,
   subscription,
   user,
   webhookEvent,
@@ -177,6 +178,7 @@ afterEach(async () => {
   await db.delete(creditHold).where(inArray(creditHold.workspaceId, w))
   await db.delete(creditGrant).where(inArray(creditGrant.workspaceId, w))
   await db.delete(creditDebt).where(inArray(creditDebt.workspaceId, w))
+  await db.delete(refundRequest).where(inArray(refundRequest.workspaceId, w))
   await db.delete(paymentRefund).where(inArray(paymentRefund.workspaceId, w))
   await db.delete(payment).where(inArray(payment.workspaceId, w))
   await db.delete(purchase).where(inArray(purchase.workspaceId, w))
@@ -529,8 +531,9 @@ describe('billing event consumer on PostgreSQL', () => {
     expect(failed.reason).toBeInstanceOf(RenewingSubscriptionConflict)
     expect(failed.reason.compensation).toMatchObject({
       workspaceId: ws,
-      amount: 1000,
-      currency: 'USD',
+      planId,
+      planPriceId: priceId,
+      payment: { amount: 1000, currency: 'USD' },
     })
     expect(await payments()).toHaveLength(1)
     expect(await subs()).toHaveLength(1)
@@ -587,11 +590,17 @@ describe('billing event consumer on PostgreSQL', () => {
     expect(await payments()).toHaveLength(1)
     expect(await grants()).toEqual([])
   })
-  it('deleted workspace and non-member repair are rejected and audited', async () => {
+  it('deleted workspace receipt is preserved without grants; non-member repair is rejected', async () => {
     await db.update(organization).set({ deletedAt: now }).where(eq(organization.id, ws))
-    await expect(apply([paid()])).rejects.toThrow('ineligible')
-    expect(await payments()).toEqual([])
-    snapshot = { ...snapshot, metadata: { ...metadata(), workspaceId: otherWs } }
+    await apply([paid()])
+    expect(await payments()).toHaveLength(1)
+    expect(await grants()).toEqual([])
+    subId = `sub-${id()}`
+    snapshot = {
+      ...snapshot,
+      providerSubscriptionId: subId,
+      metadata: { ...metadata(), workspaceId: otherWs },
+    }
     await expect(apply([paid()])).rejects.toThrow('ineligible')
   })
   it('price amount mismatch rolls back and disputes revoke once', async () => {
@@ -618,5 +627,88 @@ describe('billing event consumer on PostgreSQL', () => {
         (l) => l.type === 'revoke',
       ),
     ).toHaveLength(1)
+  })
+  it('refund callback settles only approved exact identity and amount, preserving review/contact', async () => {
+    await apply([paid()])
+    const [p] = await payments()
+    if (!p) throw new Error('Missing payment')
+    const reviewedAt = new Date('2029-12-01')
+    const [request] = await db
+      .insert(refundRequest)
+      .values({
+        workspaceId: ws,
+        userId: uid,
+        paymentId: p.id,
+        reason: 'refund',
+        contactEmail: 'receipt@example.test',
+        status: 'approved',
+        approvedAmount: 200,
+        providerRefundId: 'approved-refund',
+        reviewedAt,
+      })
+      .returning()
+    if (!request) throw new Error('Missing request')
+    const r: NormalizedEvent = {
+      type: 'payment.refunded',
+      provider: 'stripe',
+      providerPaymentId: p.providerPaymentId,
+      providerRefundId: 'unrelated-refund',
+      amount: 200,
+      currency: 'USD',
+      refundedAmount: null,
+      occurredAt: now,
+      raw: {},
+    }
+    await apply([r])
+    expect(
+      (await db.select().from(refundRequest).where(eq(refundRequest.id, request.id)))[0]?.status,
+    ).toBe('approved')
+    await apply([{ ...r, providerRefundId: 'approved-refund' }])
+    await apply([{ ...r, providerRefundId: 'approved-refund' }])
+    expect(
+      (await db.select().from(refundRequest).where(eq(refundRequest.id, request.id)))[0],
+    ).toMatchObject({
+      status: 'refunded',
+      contactEmail: 'receipt@example.test',
+      reviewedAt,
+      updatedAt: now,
+    })
+  })
+  it('an unknown refund before the paid receipt remains explicitly retryable', async () => {
+    await expect(
+      apply([
+        {
+          type: 'payment.refunded',
+          provider: 'stripe',
+          providerPaymentId: 'unknown',
+          providerRefundId: id(),
+          amount: 100,
+          currency: 'USD',
+          refundedAmount: null,
+          occurredAt: now,
+          raw: {},
+        },
+      ]),
+    ).rejects.toThrow('Payment association not found')
+  })
+  it('retired stable price still records renewal; deleted workspace stops annual primitive', async () => {
+    await apply([paid()])
+    await db
+      .update(planPrice)
+      .set({ active: false, interval: 'year' })
+      .where(eq(planPrice.id, priceId))
+    await apply([paid({ kind: 'renewal' })])
+    expect(await payments()).toHaveLength(2)
+    await db.update(organization).set({ deletedAt: now }).where(eq(organization.id, ws))
+    const [p] = await payments()
+    const [price] = await db.select().from(planPrice).where(eq(planPrice.id, priceId))
+    const [selected] = await db.select().from(plan).where(eq(plan.id, planId))
+    if (!p || !price || !selected) throw new Error('Missing provenance')
+    const previous = await grants()
+    await db.transaction((tx) => grantSubscriptionMonth(tx, p, price, selected, 0, now))
+    expect(await grants()).toHaveLength(previous.length)
+    await apply([paid({ kind: 'renewal' })])
+    expect(await payments()).toHaveLength(3)
+    expect(await grants()).toHaveLength(previous.length)
   })
 })
