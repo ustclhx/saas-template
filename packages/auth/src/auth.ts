@@ -1,0 +1,138 @@
+import { apiKey } from '@better-auth/api-key'
+import type { TemplateConfig } from '@saas/config'
+import type { Database } from '@saas/db'
+import * as schema from '@saas/db/schema'
+import { newId } from '@saas/shared'
+import { betterAuth } from 'better-auth'
+import { drizzleAdapter } from 'better-auth/adapters/drizzle'
+import { admin, emailOTP, magicLink, organization, twoFactor } from 'better-auth/plugins'
+import type { SendAuthEmail } from './email.ts'
+import { type AuthEnv, parseAuthEnv } from './env.ts'
+
+export interface CreateAuthDeps {
+  /** 模板配置（`template.config.ts`），决定启用哪些登录方式与插件 */
+  readonly config: TemplateConfig
+  /** 认证邮件的发送点；由调用方注入（后续接 EMAIL_QUEUE），测试中用假实现 */
+  readonly sendEmail: SendAuthEmail
+}
+
+/**
+ * 按请求创建 Better Auth 实例（design.md 决策 1）：每个请求传入该请求的 env 与 `createDb()` 实例，
+ * 不要缓存到模块作用域。
+ *
+ * 登录方式按 `config.auth` 开关（specs/user-auth「可配置的登录方式」）：
+ * - 邮箱密码关闭时注册 / 登录 / 找回密码接口返回错误；
+ * - `emailOTP`、`magicLink`、`twoFactor` 关闭时不注册对应插件，其接口不存在（404）；
+ * - 未启用的 OAuth 提供方不注册，以它发起登录会返回错误。
+ * 数据库 schema 始终包含全部插件的表与字段（packages/db/src/schema/auth.ts），开关只影响接口。
+ */
+export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
+  const { config, sendEmail } = deps
+  const vars = parseAuthEnv(env, config)
+
+  return betterAuth({
+    appName: config.app.name,
+    baseURL: vars.APP_URL,
+    basePath: '/api/auth',
+    secret: vars.BETTER_AUTH_SECRET,
+    database: drizzleAdapter(db, { provider: 'pg', schema }),
+    advanced: {
+      // 主键统一为 UUIDv7（design.md 决策 2），列类型为 uuid
+      database: { generateId: () => newId() },
+    },
+    user: {
+      additionalFields: {
+        locale: { type: 'string', required: false },
+        timezone: { type: 'string', required: false },
+      },
+    },
+    emailAndPassword: {
+      enabled: config.auth.emailPassword,
+      // 不提供 sendResetPassword 时找回密码接口返回错误；关闭邮箱密码时找回密码一并关闭
+      ...(config.auth.emailPassword && {
+        sendResetPassword: async ({ user, url }) => {
+          await sendEmail({ type: 'reset-password', to: user.email, url })
+        },
+      }),
+    },
+    emailVerification: {
+      sendOnSignUp: config.auth.emailPassword,
+      sendVerificationEmail: async ({ user, url }) => {
+        await sendEmail({ type: 'verify-email', to: user.email, url })
+      },
+    },
+    socialProviders: socialProviders(config, vars),
+    plugins: [
+      organization({
+        // 团队空间的创建准入由 multiTenant 决定；个人空间由服务端创建（tasks.md 4.1）
+        allowUserToCreateOrganization: config.tenancy.multiTenant,
+        // organization 只软删、从不物理删除（docs/03-data-model.md §7）
+        disableOrganizationDeletion: true,
+        schema: {
+          organization: {
+            additionalFields: {
+              isPersonal: { type: 'boolean', required: true, defaultValue: false, input: false },
+              deletedAt: { type: 'date', required: false, input: false },
+            },
+          },
+        },
+        sendInvitationEmail: async ({ email, id, role, organization, inviter }) => {
+          await sendEmail({
+            type: 'invitation',
+            to: email,
+            invitationId: id,
+            workspaceName: organization.name,
+            inviterName: inviter.user.name,
+            role,
+          })
+        },
+      }),
+      admin(),
+      ...(config.auth.emailOtp
+        ? [
+            emailOTP({
+              sendVerificationOTP: async ({ email, otp, type }) => {
+                await sendEmail({ type: 'otp', to: email, otp, purpose: type })
+              },
+            }),
+          ]
+        : []),
+      ...(config.auth.magicLink
+        ? [
+            magicLink({
+              sendMagicLink: async ({ email, url }) => {
+                await sendEmail({ type: 'magic-link', to: email, url })
+              },
+            }),
+          ]
+        : []),
+      ...(config.auth.twoFactor ? [twoFactor({ issuer: config.app.name })] : []),
+      // 公开 API 的密钥按用户归属，workspace 记在 metadata 中（docs/03-data-model.md §1）
+      ...(config.features.publicApi ? [apiKey({ references: 'user' })] : []),
+    ],
+  })
+}
+
+export type Auth = ReturnType<typeof createAuth>
+
+function socialProviders(config: TemplateConfig, vars: ReturnType<typeof parseAuthEnv>) {
+  const providers: {
+    google?: { clientId: string; clientSecret: string }
+    github?: { clientId: string; clientSecret: string }
+  } = {}
+  for (const provider of config.auth.oauth) {
+    if (provider === 'google' && vars.GOOGLE_CLIENT_ID && vars.GOOGLE_CLIENT_SECRET) {
+      providers.google = {
+        clientId: vars.GOOGLE_CLIENT_ID,
+        clientSecret: vars.GOOGLE_CLIENT_SECRET,
+      }
+    }
+    if (provider === 'github' && vars.GITHUB_CLIENT_ID && vars.GITHUB_CLIENT_SECRET) {
+      providers.github = {
+        clientId: vars.GITHUB_CLIENT_ID,
+        clientSecret: vars.GITHUB_CLIENT_SECRET,
+      }
+    }
+  }
+  return providers
+}
