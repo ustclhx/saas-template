@@ -1,0 +1,29 @@
+import { env } from 'cloudflare:workers'
+import { requireFreshSession } from '@saas/auth'
+import { createDb } from '@saas/db'
+import { AppError } from '@saas/shared'
+import { redirect } from '@tanstack/react-router'
+import { createServerFn } from '@tanstack/react-start'
+import { getRequest } from '@tanstack/react-start/server'
+import { getAuth } from '../../server/auth.ts'
+import { templateConfig } from '../../server/template-config.ts'
+import { loadAccount } from './account.ts'
+
+/** 未登录时跳转的登录页（/login 由认证页面提供，登录后回到 /account） */
+export const ACCOUNT_LOGIN_HREF = `/login?redirect=${encodeURIComponent('/account')}`
+
+/**
+ * 设置页数据：会话与封禁状态以数据库为准（requireFreshSession），未登录或已失效时跳转登录页。
+ * 修改操作直接调用 Better Auth 的接口（/api/auth/*），其中修改密码、两步验证同样按数据库实时校验。
+ */
+export const getAccount = createServerFn({ method: 'GET' }).handler(async () => {
+  const db = createDb(env.HYPERDRIVE)
+  const auth = getAuth(env, db)
+  try {
+    const { user } = await requireFreshSession({ auth, db, headers: getRequest().headers })
+    return await loadAccount(db, user, templateConfig)
+  } catch (error) {
+    if (error instanceof AppError) throw redirect({ href: ACCOUNT_LOGIN_HREF })
+    throw error
+  }
+})
