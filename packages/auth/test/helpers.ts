@@ -51,15 +51,12 @@ export function mockTurnstile() {
 /** 每个测试文件一个邮箱域名，结束时按域名清理 */
 export function testUsers(prefix: string) {
   const domain = `${newId()}.${prefix}.auth-test.example`
-  // verification 行（OTP、魔法链接、OAuth state、重置密码）不一定带邮箱，按创建时间清理
-  // （在 beforeAll 中取值：workerd 在模块顶层不推进时钟）
-  let startedAt = new Date()
   const createdOrgs: string[] = []
   return {
     email: (name: string) => `${name}-${newId()}@${domain}`,
     createdOrgs,
     start() {
-      startedAt = new Date()
+      // Retained for existing test lifecycle callers; cleanup is scoped by ownership.
     },
     // 清理用原始 SQL：本包不直接依赖 drizzle-orm（better-auth 会引入另一个带 kysely 的 drizzle-orm 变体，
     // 两者的 SQL 类型不兼容），查询断言用 @saas/db 实例自带的 relational query API。
@@ -69,7 +66,9 @@ export function testUsers(prefix: string) {
         { id: string }[]
       >`select id from "user" where email like ${`%@${domain}`}`
       const ids = users.map((u) => u.id)
-      await sql`delete from verification where created_at >= ${startedAt.toISOString()}`
+      // Each file owns a unique domain. Never erase challenges/manifests from parallel files.
+      await sql`delete from verification where identifier like ${`%@${domain}%`} or value like ${`%@${domain}%`}`
+      if (ids.length) await sql`delete from verification where value in ${sql(ids)}`
       if (ids.length === 0) return
       await sql`delete from session where user_id in ${sql(ids)}`
       // 个人空间的 id 即用户 id（personal-workspace.ts）
