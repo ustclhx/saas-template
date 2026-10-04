@@ -28,14 +28,16 @@
   // max_retries 与 src/queues/email.ts 的 EMAIL_MAX_ATTEMPTS（首次 + 5 次重试）一致；
   // 不配置死信队列：最后一次投递仍失败时由消费者确认并记录 email.dropped（原因见该文件注释）。
   "queues": {
+    "producers": [{ "queue": "email", "binding": "EMAIL_QUEUE" }],
     "consumers": [
-      { "queue": "email", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 5 }
+      { "queue": "email", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 5 },
+      { "queue": "events", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 5 }
     ]
   },
   "kv_namespaces": [{ "binding": "CACHE", "id": "00000000000000000000000000000002" }],
   "triggers": {
     // 心跳：写 setting 表的 jobs.lastCronAt（src/cron/heartbeat.ts）
-    "crons": ["*/5 * * * *", "0 3 * * *"]
+    "crons": ["*/5 * * * *", "0 3 * * *", "0 * * * *", "*/10 * * * *", "0 4 * * *"]
   },
   // hyperdrive / workflows / queues 不会从顶层继承，每个环境都要重新声明。
   // 资源名带 -staging 后缀，避免与以后的 production 冲突。
@@ -56,16 +58,25 @@
         }
       ],
       "queues": {
+        "producers": [{ "queue": "email-staging", "binding": "EMAIL_QUEUE" }],
         "consumers": [
           {
             "queue": "email-staging",
             "max_batch_size": 10,
             "max_batch_timeout": 5,
             "max_retries": 5
+          },
+          {
+            "queue": "events-staging",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5
           }
         ]
       },
-      "triggers": { "crons": ["*/5 * * * *", "0 3 * * *"] }
+      "triggers": {
+        "crons": ["*/5 * * * *", "0 3 * * *", "0 * * * *", "*/10 * * * *", "0 4 * * *"]
+      }
     }
   }
 }

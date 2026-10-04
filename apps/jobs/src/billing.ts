@@ -1,0 +1,169 @@
+// biome-ignore-all lint/plugin: Cross-workspace system audit markers have no workspace owner.
+import {
+  clearResolvedRefundContacts,
+  createTestPaymentRuntime,
+  flushRefundNotifications,
+  type PaymentRuntimeEnv,
+  runAnnualGrants,
+  runCreditExpiration,
+  runCreditReconciliation,
+  runHoldSweep,
+  runPendingCompensations,
+  runSubscriptionReconciliation,
+} from '@saas/billing'
+import type { Env } from '@saas/config'
+import { auditLog, createDb, type Database, webhookEvent } from '@saas/db'
+import type { EmailQueueMessage } from '@saas/email/queue'
+import { and, asc, eq, inArray, notExists, sql } from 'drizzle-orm'
+import templateConfig from '../../../template.config.ts'
+
+export const BILLING_HOURLY_CRON = '0 * * * *'
+export const BILLING_RETRY_CRON = '*/10 * * * *'
+export const BILLING_DAILY_CRON = '0 4 * * *'
+export const BILLING_POSTPROCESS_ACTION = 'billing.webhook_postprocessed'
+export const BILLING_RECOVERY_LIMIT = 100
+export type BillingEnv = Env &
+  PaymentRuntimeEnv & {
+    CACHE: KVNamespace
+    EMAIL_QUEUE: {
+      send(message: EmailQueueMessage, options: { contentType: 'json' }): Promise<unknown>
+    }
+  }
+
+// Bindings and database clients belong to each invocation, never to module state.
+export function createBillingContext(env: BillingEnv) {
+  const db = createDb(env.HYPERDRIVE)
+  const { providers } = createTestPaymentRuntime(env, templateConfig.billing.providers, {
+    cache: env.CACHE,
+  })
+  return {
+    db,
+    providers,
+    mail: {
+      db,
+      queue: {
+        async send(message: EmailQueueMessage, options: { contentType: 'json' }) {
+          await env.EMAIL_QUEUE.send(message, options)
+        },
+      },
+      appName: templateConfig.app.name,
+      supportEmail: templateConfig.app.supportEmail,
+    },
+  }
+}
+type BillingContext = ReturnType<typeof createBillingContext>
+type JobResult = { failures?: readonly unknown[]; failed?: number } | { cleared: number }
+
+/** Attempt independent jobs even if one fails; expose only job names and failure counts. */
+export async function runBillingJobs(jobs: readonly [string, () => Promise<JobResult>][]) {
+  const failures: string[] = []
+  for (const [name, run] of jobs) {
+    try {
+      const result = await run()
+      const count = ('failures' in result ? result.failures?.length : 0) ?? 0
+      const failed = ('failed' in result ? result.failed : 0) ?? 0
+      if (count + failed > 0) failures.push(`${name} (${count + failed})`)
+    } catch {
+      failures.push(name)
+    }
+  }
+  if (failures.length) throw new Error(`Billing jobs failed: ${failures.join(', ')}`)
+}
+
+async function completed(db: Database, deliveryId: string) {
+  const [marker] = await db
+    .select({ id: auditLog.id })
+    .from(auditLog)
+    .where(and(eq(auditLog.targetId, deliveryId), eq(auditLog.action, BILLING_POSTPROCESS_ACTION)))
+  return Boolean(marker)
+}
+
+/** Read committed deliveries only: no normalization, webhook replay, payment or credit writes. */
+export async function postprocessBillingDelivery(context: BillingContext, deliveryId: string) {
+  const [delivery] = await context.db
+    .select()
+    .from(webhookEvent)
+    .where(eq(webhookEvent.id, deliveryId))
+  if (!delivery || !['processed', 'ignored'].includes(delivery.status))
+    throw new Error('Billing delivery is not committed')
+  if (await completed(context.db, deliveryId)) return
+  // Queue acceptance must precede the marker; failed external sends remain recoverable.
+  await runBillingJobs([
+    ['refund_notifications', () => flushRefundNotifications(context.mail)],
+    ['compensation', () => runPendingCompensations(context)],
+  ])
+  await context.db.insert(auditLog).values({
+    action: BILLING_POSTPROCESS_ACTION,
+    targetType: 'webhook_event',
+    targetId: deliveryId,
+  })
+}
+
+export async function recoverBillingDeliveries(context: BillingContext) {
+  const rows = await context.db
+    .select({ id: webhookEvent.id })
+    .from(webhookEvent)
+    .where(
+      and(
+        inArray(webhookEvent.status, ['processed', 'ignored']),
+        notExists(
+          context.db
+            .select({ id: auditLog.id })
+            .from(auditLog)
+            .where(
+              and(
+                eq(auditLog.targetId, sql`${webhookEvent.id}::text`),
+                eq(auditLog.action, BILLING_POSTPROCESS_ACTION),
+              ),
+            ),
+        ),
+      ),
+    )
+    .orderBy(asc(webhookEvent.processedAt), asc(webhookEvent.id))
+    .limit(BILLING_RECOVERY_LIMIT)
+  const failures: string[] = []
+  for (const row of rows) {
+    try {
+      await postprocessBillingDelivery(context, row.id)
+    } catch {
+      failures.push(row.id)
+    }
+  }
+  return { failures }
+}
+
+export async function runBillingSchedule(cron: string, env: BillingEnv) {
+  const context = createBillingContext(env)
+  const now = new Date()
+  switch (cron) {
+    case BILLING_HOURLY_CRON:
+      return runBillingJobs([
+        ['credit_expiration', () => runCreditExpiration(context.db, now)],
+        [
+          'annual_grants',
+          () =>
+            runAnnualGrants(context.db, now, {
+              subscriptionCreditGraceHours: templateConfig.billing.subscriptionCreditGraceHours,
+            }),
+        ],
+      ])
+    case BILLING_RETRY_CRON:
+      return runBillingJobs([
+        ['hold_sweep', () => runHoldSweep(context.db, now)],
+        ['delivery_recovery', () => recoverBillingDeliveries(context)],
+        ['compensation', () => runPendingCompensations(context)],
+        ['refund_notifications', () => flushRefundNotifications(context.mail)],
+      ])
+    case BILLING_DAILY_CRON:
+      return runBillingJobs([
+        [
+          'subscription_reconciliation',
+          () => runSubscriptionReconciliation(context.db, context.providers),
+        ],
+        ['credit_reconciliation', () => runCreditReconciliation(context.db)],
+        ['refund_contact_cleanup', () => clearResolvedRefundContacts(context.db, now)],
+      ])
+    default:
+      throw new Error('Unknown billing cron')
+  }
+}
