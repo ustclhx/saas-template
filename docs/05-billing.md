@@ -160,6 +160,7 @@ Creem / Paddle / Polar 各实现一个 Provider，`capabilities.merchantOfRecord
 
 ### 年付按月发放
 - `plan.credits` 表示**每月**积分；年付付款成功时只发首月（`n=0`）。
+- **平台字段缺失**：未付款订阅的服务周期允许为空，未确认周期前不授予付费权益；付款快照仍必须给出可验证的付款周期。平台不提供累计部分退款金额时，Provider 返回 `null`，业务层按唯一平台退款 ID 累计本地已验证退款，不把未知值当作零。
 - Cron `subscription-grants`（每小时）：对 `status IN ('active','trialing')` 且 `plan_price.interval='year'` 的订阅，计算自 `current_period_start` 起已经过的月数 `n`，补发所有缺失的 `{payment.id}:{k}`（k ≤ n）。`unique(source, source_ref)` 保证重复执行无副作用。
 - 订阅取消（周期末生效）期间照常按月发放，进入终止状态后停止；退款时按 §「退款与争议」回收该 `payment.id` 下所有批次的剩余积分。
 
@@ -203,6 +204,7 @@ release(holdId): Promise<void>                      // 全额退回
   - 按次计费：不会超额。
   - 按 token 计费：输出被 `maxOutputTokens` 硬性限制，只有输入估算会偏差，估算宁高勿低（见 06-ai §3）。
   - 按用量单位计费：预扣按请求参数计算（张数、时长），服务商回报的 usage 超出参数上限时按参数上限结算，并记录异常。
+- **每日承担额度**：按 captured 预扣的结算 `updated_at` 在 UTC 自然日内汇总；创建于昨天、今天结算的预扣计入今天，结算与汇总使用同一事务的 SQL `now()`，同一空间锁保证并发不超额。
 - **监控**：`credit_hold` 记录 `overage_absorbed` / `overage_debited` / `overage_debt`；管理后台按模型统计平台承担的总量，持续偏高说明该模型的 `estimateCredits` 需要调整。
 
 `hold` 的实现（单事务）：
@@ -217,7 +219,7 @@ UPDATE credit_grant SET remaining = remaining - $x WHERE id = ...;   -- 每个�
 INSERT INTO credit_hold (...), credit_hold_allocation (...);
 ```
 
-- `capture`：hold 置为 captured，写 `credit_ledger(type='consume', delta=-captured)`（按 allocation 拆分多条或一条汇总，实现时确定）；差额按 allocation 逆序退回对应批次（退回规则同 `release`）。
+- `capture`：hold 置为 captured，写 `credit_ledger(type='consume', delta=-(captured + debited))`（一条汇总）；`captured` 是预扣内消费量，`absorbed` / `debited` / `debt` 为互斥的超额分量，四项之和等于实际消费量。差额按 allocation 消费顺序退回对应批次（退回规则同 `release`）。
 - `release`：按 allocation 原路退回 `remaining`。
 - **退回到非 active 批次**：若被退回的批次已是 `expired` / `revoked`（或 `expires_at <= now()`），不改动其 `remaining`，而是在同一事务内立即写一条 `credit_ledger(type='expire' 或 'revoke', delta=-退回量, grant_id=该批次)` 抵消。
   - 原因：过期 / 收回任务只处理 `status='active'` 的批次，若把积分加回已失效批次的 `remaining`，就再也不会有对应的 expire 流水，`credit_ledger` 与批次余额会永久对不上。

@@ -39,6 +39,10 @@ const select = (subs: EntitlementSubscription[], grace?: number) =>
   })
 
 describe('read-time subscription selection', () => {
+  it('does not grant a paid plan before a confirmed service period exists', () => {
+    expect(select([sub('active', pro, { currentPeriodEnd: null })])).toBe(free)
+  })
+
   it('expires past-due entitlements at the grace boundary without cron', () => {
     expect(select([sub('past_due')])).toBe(pro)
     expect(select([sub('past_due', pro, { pastDueSince: at(-7) })])).toBe(free)

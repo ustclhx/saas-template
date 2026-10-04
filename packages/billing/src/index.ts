@@ -14,3 +14,5 @@ export type {
   SubscriptionSnapshot,
   VerifiedWebhook,
 } from './provider.ts'
+
+export { createStripeProvider, type StripeProviderOptions } from './stripe/adapter.ts'

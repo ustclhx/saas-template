@@ -27,7 +27,7 @@ export interface Entitlements {
 export interface EntitlementSubscription {
   readonly status: SubscriptionStatus
   readonly pastDueSince: Date | string | null
-  readonly currentPeriodEnd: Date | string
+  readonly currentPeriodEnd: Date | string | null
   readonly plan: Entitlements
 }
 
@@ -43,6 +43,8 @@ export function selectEntitlements(
 ): Entitlements {
   let highest: Entitlements | undefined
   for (const sub of subscriptions) {
+    // A provider activation without a confirmed period grants no paid entitlement.
+    if (sub.currentPeriodEnd === null) continue
     let effective: boolean
     switch (sub.status) {
       case 'trialing':
