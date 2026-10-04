@@ -1,5 +1,7 @@
 # Tasks
 
+执行约束（2026-10-04）：先完成开发，再配置 Stripe 测试与 PayPal 沙箱凭据。Provider 与管线先用本地测试夹具/模拟 HTTP 验证，禁止请求真实平台或写入真实 secrets。真实回调录制、平台价格同步、真实支付 e2e 与 staging 验收留到联通阶段；未满足原任务全部验收条件时保持未勾选，并记录已完成实现与剩余验证。
+
 ## 1. 数据模型与种子数据
 
 - [ ] 1.1 新增计费表 `plan`、`plan_price`、`billing_customer`、`subscription`（含部分唯一索引）、`purchase`、`payment`、`refund_request`（pending 部分唯一索引）、`webhook_event`，验证迁移成功且同一空间插入两个 `cancel_at_period_end=false` 的有效订阅被数据库拒绝

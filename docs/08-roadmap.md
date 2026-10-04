@@ -6,8 +6,8 @@
 
 | 阶段 | OpenSpec change |
 |---|---|
-| Phase 0 | `setup-scaffold-and-infra` |
-| Phase 1 | `add-auth-and-workspaces` |
+| Phase 0 | `setup-scaffold-and-infra`（已归档） |
+| Phase 1 | `add-auth-and-workspaces`（已归档：`archive/2026-10-04-add-auth-and-workspaces`） |
 | Phase 2 | `add-billing-and-credits` |
 | Phase 3 | `add-ai-text-chat` |
 | Phase 4 | `add-ai-media-generation` |
@@ -52,6 +52,8 @@
 
 **验收进度（2026-10-04）**：本地两种开关模式下的注册 → 邮箱验证 → 登录 → 邀请 → 切换空间流程均通过 e2e，包含团队删除、账号匿名化和旧会话吊销；关闭团队为 12 passed / 1 skipped（魔法链接关闭），开启团队与魔法链接为 13 passed。staging 已完成现有认证迁移、测试密钥上传与 web / jobs 部署；线上认证 / 模拟 OAuth 回调为 9 passed / 1 skipped，log 邮件队列、新 Cron 与删除后旧会话拒绝均已验证。邀请邮件队列接线回归也已通过，OpenSpec 为 25/25。OAuth 入口与回调策略通过模拟外部交换验证，尚未使用真实提供方凭据验收。
 
+**P1 阶段边界与后续接入**：三项正式规格已同步，25/25 任务已归档。真实 OAuth 与 Resend 发送暂保持 mock/log；P2 接入套餐席位、验证赠送、删号退款提醒、订阅取消与积分收回；P3/P4 接入 AI 内容与存储清理。CI 自动部署 staging 仍是单列待办，当前继续手动部署。
+
 ## Phase 2 · 计费与积分
 
 - [ ] `plan` / `plan_price` 种子数据与同步脚本（Stripe、PayPal）
@@ -61,7 +63,7 @@
 - [ ] Webhook 通用管线（按投递去重、登记/处理分事务、失败记录、重放）
 - [ ] 权益 `can()` / `limit()`（读取时计算生效状态）；free 档与注册赠送（验证后发放、防刷）
 - [ ] 结账前置检查；换套餐 / 换平台的订阅重叠期
-- [ ] 超额容忍与欠费（`credit_debt`）；三种计费方式的 estimate / actual
+- [ ] 超额容忍与欠费（`credit_debt`）；只处理积分数量，AI 的 estimate / actual 在 P3 实现
 - [ ] 退款申请：用户发起、后台审核、调用平台退款、Webhook 回收积分
 - [ ] Cron：积分过期、年付按月发放、hold 超时回收、订阅对账、积分对账不变式校验
 - [ ] 页面：定价页、账单页、用量页
@@ -70,7 +72,7 @@
 
 ## Phase 3 · AI 文本
 
-- [ ] AI Gateway 接入；`ai_model` 注册表与后台编辑
+- [ ] AI Gateway 接入；`ai_model` 注册表与后台编辑；三种计费方式的 estimate / actual
 - [ ] `/api/ai/chat` 流式 + hold/capture；按余额压低 maxOutputTokens；定价快照；中断结算
 - [ ] 对话列表、对话页（`useChat`）、模型选择
 - [ ] 权益检查与 AI 限流
@@ -140,12 +142,12 @@
 
 | # | 问题 | 选项 | 何时决定 |
 |---|---|---|---|
-| Q1 | 表单库 | TanStack Form / react-hook-form | Phase 0 |
+| Q1 | 表单库 | 已决定并接入：TanStack Form + Zod | Phase 1（已决定） |
 | Q2 | 内容方案 | Fumadocs / content-collections | Phase 6 前 |
 | Q3 | 产品分析 | PostHog / Umami / 不做 | Phase 7 |
-| Q4 | 订阅积分是否结转 | 按套餐配置（默认不结转） | Phase 2 |
-| Q5 | 升级时是否立即补发积分差额 | 配置项，默认否 | Phase 2 |
-| Q6 | 退款时已消费积分的处理 | 默认不追溯 | Phase 2 |
+| Q4 | 订阅积分是否结转 | 已按设计确定：按套餐配置，默认不结转 | Phase 2（待实测） |
+| Q5 | 升级时是否立即补发积分差额 | 已按设计确定：默认不立即补发 | Phase 2（待实测） |
+| Q6 | 退款时已消费积分的处理 | 已按设计确定：默认不追溯 | Phase 2（待实测） |
 | Q7 | 文本中断时的最低计费 | 按输入 token / 固定最低值（仅在结算丢失且没有用量检查点时使用；有检查点按检查点结算，正常中断按完整 usage 结算） | Phase 3 |
 | Q8 | 是否启用 RLS 加固 | 已决定：默认否；P1 使用 scoped() + lint + 实时成员校验 | Phase 1（已决定） |
 | Q9 | Stripe 正式收款所需主体 | 注册海外主体 / 仅 PayPal 上线 / 接 MoR | 上线前 |
