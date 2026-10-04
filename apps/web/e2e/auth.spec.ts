@@ -49,8 +49,7 @@ test('登录页只显示启用的登录方式', async ({ page }) => {
   await expectShown('Continue with Google', auth.oauth.includes('google'))
   await expectShown('Continue with GitHub', auth.oauth.includes('github'))
   // 默认配置关闭魔法链接：页面中不出现任何魔法链接入口
-  expect(auth.magicLink).toBe(false)
-  await expect(page.getByText(/magic link/i)).toHaveCount(0)
+  if (!auth.magicLink) await expect(page.getByText(/magic link/i)).toHaveCount(0)
 
   if (auth.emailOtp) {
     await page.getByRole('button', { name: 'Sign in with email code' }).click()

@@ -34,13 +34,19 @@ export async function userWorkspaces(db: Database, userId: string) {
     o && !o.deletedAt ? [{ id: o.id, name: o.name, slug: o.slug, isPersonal: o.isPersonal }] : [],
   )
 }
-export async function recipientInvitation(db: Database, id: string, email: string) {
+export async function recipientInvitation(
+  db: Database,
+  id: string,
+  email: string,
+  emailVerified: boolean,
+) {
   const invite = await db.query.invitation.findFirst({ where: (i, { eq }) => eq(i.id, id) })
   if (!invite) return { error: 'INVITATION_INVALID' } as const
   if (invite.email.toLowerCase() !== email.toLowerCase())
     return { error: 'INVITATION_RECIPIENT' } as const
   if (invite.status !== 'pending' || invite.expiresAt <= new Date())
     return { error: 'INVITATION_INVALID' } as const
+  if (!emailVerified) return { verifyRequired: true, email, id: invite.id } as const
   const workspace = await db.query.organization.findFirst({
     where: (o, { eq }) => eq(o.id, invite.organizationId),
   })

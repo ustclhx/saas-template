@@ -12,6 +12,7 @@ const errors: Record<string, string> = {
   LAST_OWNER: 'Transfer ownership before removing or demoting the last owner.',
   INVITATION_INVALID: 'This invitation has expired or is no longer available.',
   INVITATION_RECIPIENT: 'Sign in with the email address that received this invitation.',
+  INVITATION_EMAIL_UNVERIFIED: 'Verify your email address before accepting this invitation.',
   INVITATION_EXISTS: 'A pending invitation already exists for this email.',
   ALREADY_MEMBER: 'This account is already a workspace member.',
   SESSION_REQUIRED: 'Your session has expired. Sign in again.',

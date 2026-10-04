@@ -65,7 +65,7 @@ export const getInvitationPage = createServerFn({ method: 'GET' })
         headers: getRequest().headers,
       })
       return {
-        ...(await recipientInvitation(db, data.id, user.email)),
+        ...(await recipientInvitation(db, data.id, user.email, user.emailVerified)),
         multiTenant: templateConfig.tenancy.multiTenant,
       }
     } catch (error) {

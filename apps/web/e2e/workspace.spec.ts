@@ -1,12 +1,21 @@
 import { randomUUID } from 'node:crypto'
 import { expect, test } from '@playwright/test'
 import templateConfig from '../../../template.config.ts'
-import { APP_URL, emailCode, emailLink, fixtureDb, login } from './fixtures.ts'
+import {
+  APP_URL,
+  emailLink,
+  fixtureDb,
+  login,
+  loginOtp,
+  simulateClientIp,
+  verifyInvitation,
+} from './fixtures.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 test('workspace creation, invitation entry and personal switching obey tenancy flag', async ({
   page,
 }) => {
+  await simulateClientIp(page)
   await stubTurnstile(page)
   await page.goto('/register')
   const form = page.getByRole('form', { name: 'Create an account' })
@@ -95,16 +104,12 @@ test('workspace creation, invitation entry and personal switching obey tenancy f
   await expect(page).toHaveURL(/\/login\?redirect=/)
   await login(page, `invite-${key}@example.com`, page.url())
   await expect(page).toHaveURL(new RegExp(`/accept-invitation\\?id=${invitationId}$`))
+  await verifyInvitation(page, `invite-${key}@example.com`, invitationId, 'Browser Team')
   if (templateConfig.auth.emailOtp) {
     await page.context().clearCookies()
     await page.goto(`/accept-invitation?id=${invitationId}`)
     await expect(page).toHaveURL(/\/login\?redirect=/)
-    await page.getByRole('button', { name: 'Sign in with email code' }).click()
-    await page.getByLabel('Email', { exact: true }).fill(`invite-${key}@example.com`)
-    await page.getByRole('button', { name: 'Send code' }).click()
-    await expect(page.getByLabel('Verification code')).toBeVisible()
-    await page.getByLabel('Verification code').fill(await emailCode(`invite-${key}@example.com`))
-    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await loginOtp(page, `invite-${key}@example.com`, page.url())
     await expect(page).toHaveURL(new RegExp(`/accept-invitation\\?id=${invitationId}$`))
   }
   await page.getByRole('button', { name: 'Accept invitation' }).click()
@@ -132,7 +137,9 @@ test('workspace creation, invitation entry and personal switching obey tenancy f
   ).toBeVisible()
   await expect(page.getByRole('button', { name: 'Transfer ownership' })).toHaveCount(0)
   await page.context().clearCookies()
-  await login(page, `invite-${key}@example.com`)
+  await simulateClientIp(page)
+  if (templateConfig.auth.emailOtp) await loginOtp(page, `invite-${key}@example.com`)
+  else await login(page, `invite-${key}@example.com`)
   await page.goto(teamSettings)
   const oldOwner = page.getByRole('listitem').filter({ hasText: ownerEmail })
   await oldOwner.getByRole('button', { name: 'Remove', exact: true }).click()

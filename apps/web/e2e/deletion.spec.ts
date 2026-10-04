@@ -1,7 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import { expect, type Page, test } from '@playwright/test'
 import templateConfig from '../../../template.config.ts'
-import { APP_URL, emailLink, fixtureDb, PASSWORD, register } from './fixtures.ts'
+import {
+  APP_URL,
+  emailLink,
+  fixtureDb,
+  PASSWORD,
+  register,
+  simulateClientIp,
+  verifyInvitation,
+} from './fixtures.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 const key = () => `${Date.now()}-${randomUUID().slice(0, 8)}`
@@ -24,6 +32,7 @@ async function expectWorkspaceMissing(page: Page, path: string) {
 }
 
 test.beforeEach(async ({ page }) => {
+  await simulateClientIp(page)
   await stubTurnstile(page)
 })
 
@@ -139,8 +148,10 @@ test('team deletion is owner-only, blocks sole-owner account deletion and revoke
       await sql`select i.id from invitation i join organization o on o.id = i.organization_id where i.email = ${memberEmail} and o.slug = ${slug}`
     if (!invitation) throw new Error('UI-created invitation missing from isolated database')
     await stubTurnstile(memberPage)
+    await simulateClientIp(memberPage)
     await register(memberPage, memberEmail, 'Deletion Member')
     await memberPage.goto(`/accept-invitation?id=${invitation.id}`)
+    await verifyInvitation(memberPage, memberEmail, String(invitation.id), teamName)
     await memberPage.getByRole('button', { name: 'Accept invitation' }).click()
     await expect(memberPage).toHaveURL(new RegExp(`/app/${slug}$`))
     const memberCookies = await memberContext.cookies()

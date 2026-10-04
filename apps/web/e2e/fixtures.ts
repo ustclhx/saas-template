@@ -34,6 +34,47 @@ export async function login(page: Page, email: string, path = '/login') {
   await form.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page).not.toHaveURL(/\/login(?:\?|$)/)
 }
+/** Local workerd honors this header; separate simulated clients retain real 10/min limits. */
+export async function simulateClientIp(page: Page) {
+  await page.context().setExtraHTTPHeaders({
+    'cf-connecting-ip': `192.0.2.${1 + Math.floor(Math.random() * 254)}`,
+  })
+}
+
+export async function verifyInvitation(
+  page: Page,
+  email: string,
+  id: string,
+  workspaceName: string,
+) {
+  await expect(page.getByText(workspaceName, { exact: false })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Accept invitation', exact: true })).toHaveCount(0)
+  const request = page.waitForRequest('**/api/auth/send-verification-email')
+  await page.getByRole('button', { name: 'Send verification email' }).click()
+  expect((await request).postDataJSON()).toEqual({
+    email,
+    callbackURL: `/accept-invitation?id=${id}`,
+  })
+  await expect(
+    page.getByText('Verification email sent. Check your inbox and open the link.'),
+  ).toBeVisible()
+  await page.goto(await emailLink(email))
+  await expect(page).toHaveURL(new RegExp(`/accept-invitation\\?id=${id}$`))
+  await expect(
+    page.getByText(`You are invited to ${workspaceName}`, { exact: false }),
+  ).toBeVisible()
+}
+
+export async function loginOtp(page: Page, email: string, path = '/login') {
+  await page.goto(path)
+  await page.getByRole('button', { name: 'Sign in with email code' }).click()
+  await page.getByLabel('Email', { exact: true }).fill(email)
+  await page.getByRole('button', { name: 'Send code' }).click()
+  await expect(page.getByLabel('Verification code')).toBeVisible()
+  await page.getByLabel('Verification code').fill(await emailCode(email))
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/)
+}
 /** Consume only the existing local-development email logger, never forge a token. */
 export async function emailLink(email: string, type = 'verify-email') {
   let link = ''
