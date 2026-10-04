@@ -194,6 +194,15 @@ it('enforces roles, recipient identity, cancellation, last-owner and atomic tran
   expect(
     (
       await app.post(
+        '/organization/add-member',
+        { organizationId, userId: outsider.id, role: 'member' },
+        { cookie: member.cookie },
+      )
+    ).status,
+  ).toBe(403)
+  expect(
+    (
+      await app.post(
         '/organization/remove-member',
         { organizationId, memberIdOrEmail: memberRow?.id },
         { cookie: member.cookie },
@@ -315,4 +324,262 @@ it('rejects expired invitations and server-only native admission bypasses', asyn
       body: { name: 'Bypass', slug: 'bypass-team', userId: owner.id },
     }),
   ).rejects.toMatchObject({ status: 'FORBIDDEN' })
+})
+
+it('serializes add-member against acceptance and rejects unauthenticated or protected admission', async () => {
+  const app = setup({
+    config: { auth: { turnstile: false }, tenancy: { multiTenant: true } },
+    maxSeats: 2,
+  })
+  const owner = await actor(app, 'mixed-owner')
+  const added = await actor(app, 'mixed-added')
+  const invited = await actor(app, 'mixed-invited')
+  const organizationId = await team(app, owner.cookie, 'mixed')
+  const invitation = await app.post(
+    '/organization/invite-member',
+    { organizationId, email: invited.email, role: 'member' },
+    { cookie: owner.cookie },
+  )
+  const { id } = (await invitation.json()) as { id: string }
+  const body = { organizationId, userId: added.id, role: 'member' }
+  expect((await app.post('/organization/add-member', body)).status).toBe(401)
+  expect(
+    (
+      await app.post(
+        '/organization/add-member',
+        { ...body, organizationId: owner.id },
+        { cookie: owner.cookie },
+      )
+    ).status,
+  ).toBe(403)
+  const off = setup({ config: { auth: { turnstile: false }, tenancy: { multiTenant: false } } })
+  expect((await off.post('/organization/add-member', body, { cookie: owner.cookie })).status).toBe(
+    403,
+  )
+  const results = await Promise.all([
+    app.post('/organization/add-member', body, { cookie: owner.cookie }),
+    app.post('/organization/accept-invitation', { invitationId: id }, { cookie: invited.cookie }),
+  ])
+  expect(results.map((r) => r.status).sort()).toEqual([200, 403])
+  const members = await app.db.query.member.findMany({
+    where: (m, { eq }) => eq(m.organizationId, organizationId),
+  })
+  expect(members).toHaveLength(2)
+})
+
+it('allows additional owners while enforcing grantor role and new-owner workspace limits', async () => {
+  const app = setup({
+    config: { auth: { turnstile: false }, tenancy: { multiTenant: true, maxWorkspacesPerUser: 1 } },
+  })
+  const owner = await actor(app, 'grant-owner')
+  const admin = await actor(app, 'grant-admin')
+  const guest = await actor(app, 'grant-guest')
+  const limited = await actor(app, 'grant-limited')
+  const extra = await actor(app, 'grant-extra')
+  const organizationId = await team(app, owner.cookie, 'grant')
+  await team(app, limited.cookie, 'limited')
+  expect(
+    (
+      await app.post(
+        '/organization/add-member',
+        { organizationId, userId: extra.id, role: 'owner' },
+        { cookie: owner.cookie },
+      )
+    ).status,
+  ).toBe(200)
+  const add = await app.post(
+    '/organization/add-member',
+    { organizationId, userId: admin.id, role: 'admin' },
+    { cookie: owner.cookie },
+  )
+  expect(add.status).toBe(200)
+  const { member } = (await add.json()) as { member: { id: string } }
+  expect(
+    (
+      await app.post(
+        '/organization/add-member',
+        { organizationId, userId: guest.id, role: 'owner' },
+        { cookie: admin.cookie },
+      )
+    ).status,
+  ).toBe(403)
+  expect(
+    (
+      await app.post(
+        '/organization/invite-member',
+        { organizationId, email: guest.email, role: 'owner' },
+        { cookie: admin.cookie },
+      )
+    ).status,
+  ).toBe(403)
+  expect(
+    (
+      await app.post(
+        '/organization/add-member',
+        { organizationId, userId: limited.id, role: 'owner' },
+        { cookie: owner.cookie },
+      )
+    ).status,
+  ).toBe(403)
+  expect(
+    (
+      await app.post(
+        '/organization/update-member-role',
+        { organizationId, memberId: member.id, role: 'owner' },
+        { cookie: owner.cookie },
+      )
+    ).status,
+  ).toBe(200)
+  const invitation = await app.post(
+    '/organization/invite-member',
+    { organizationId, email: guest.email, role: 'owner' },
+    { cookie: owner.cookie },
+  )
+  expect(invitation.status).toBe(200)
+  const { id } = (await invitation.json()) as { id: string }
+  const ownerRow = await app.db.query.member.findFirst({
+    where: (m, { and, eq }) => and(eq(m.organizationId, organizationId), eq(m.userId, owner.id)),
+  })
+  expect(
+    (
+      await app.post(
+        '/organization/update-member-role',
+        { organizationId, memberId: ownerRow?.id, role: 'admin' },
+        { cookie: admin.cookie },
+      )
+    ).status,
+  ).toBe(200)
+  expect(
+    (
+      await app.post(
+        '/organization/accept-invitation',
+        { invitationId: id },
+        { cookie: guest.cookie },
+      )
+    ).status,
+  ).toBe(403)
+  const replacement = await app.post(
+    '/organization/invite-member',
+    { organizationId, email: limited.email, role: 'owner' },
+    { cookie: admin.cookie },
+  )
+  const replacementId = ((await replacement.json()) as { id: string }).id
+  expect(
+    (
+      await app.post(
+        '/organization/accept-invitation',
+        { invitationId: replacementId },
+        { cookie: limited.cookie },
+      )
+    ).status,
+  ).toBe(403)
+  expect(
+    (
+      await app.post(
+        '/organization/cancel-invitation',
+        { invitationId: id },
+        { cookie: admin.cookie },
+      )
+    ).status,
+  ).toBe(200)
+  const granted = await app.post(
+    '/organization/invite-member',
+    { organizationId, email: guest.email, role: 'owner' },
+    { cookie: admin.cookie },
+  )
+  const grantedId = ((await granted.json()) as { id: string }).id
+  expect(
+    (
+      await app.post(
+        '/organization/accept-invitation',
+        { invitationId: grantedId },
+        { cookie: guest.cookie },
+      )
+    ).status,
+  ).toBe(200)
+})
+
+it('updates personal settings with tenancy off and checks slug uniqueness under the update lock', async () => {
+  const app = setup({ config: { auth: { turnstile: false }, tenancy: { multiTenant: false } } })
+  const owner = await actor(app, 'profile-owner')
+  const other = await actor(app, 'profile-other')
+  const slug = `personal-${Date.now()}`
+  const response = await app.post(
+    '/organization/update',
+    { organizationId: owner.id, data: { name: 'Renamed', slug, metadata: { color: 'blue' } } },
+    { cookie: owner.cookie },
+  )
+  expect(response.status).toBe(200)
+  expect(await response.json()).toMatchObject({
+    id: owner.id,
+    name: 'Renamed',
+    slug,
+    metadata: { color: 'blue' },
+  })
+  expect(
+    (
+      await app.post(
+        '/organization/update',
+        { organizationId: other.id, data: { slug } },
+        { cookie: other.cookie },
+      )
+    ).status,
+  ).toBe(400)
+  expect(
+    (
+      await app.post(
+        '/organization/update',
+        { organizationId: owner.id, data: { slug: 'admin' } },
+        { cookie: owner.cookie },
+      )
+    ).status,
+  ).toBe(400)
+  expect(
+    (
+      await app.post(
+        '/organization/update',
+        { organizationId: owner.id, data: { name: 'Stolen' } },
+        { cookie: other.cookie },
+      )
+    ).status,
+  ).toBe(404)
+})
+
+it('set-active uses current membership, soft deletion and database session despite cookie cache', async () => {
+  const app = setup({ config: { auth: { turnstile: false }, tenancy: { multiTenant: true } } })
+  const owner = await actor(app, 'active-owner')
+  const guest = await actor(app, 'active-guest')
+  const organizationId = await team(app, owner.cookie, 'active')
+  expect(
+    (
+      await app.post(
+        '/organization/add-member',
+        { organizationId, userId: guest.id, role: 'member' },
+        { cookie: owner.cookie },
+      )
+    ).status,
+  ).toBe(200)
+  const active = await app.post(
+    '/organization/set-active',
+    { organizationId },
+    { cookie: guest.cookie },
+  )
+  expect(active.status).toBe(200)
+  expect(await active.json()).toMatchObject({ id: organizationId })
+  const cached = cookieHeader(active)
+  await app.db
+    .$client`delete from member where organization_id=${organizationId} and user_id=${guest.id}`
+  expect(
+    (await app.post('/organization/set-active', { organizationId }, { cookie: cached })).status,
+  ).toBe(404)
+  await app.db.$client`update organization set deleted_at=now() where id=${organizationId}`
+  expect(
+    (await app.post('/organization/set-active', { organizationId }, { cookie: owner.cookie }))
+      .status,
+  ).toBe(404)
+  await app.db.$client`delete from session where user_id=${guest.id}`
+  expect(
+    (await app.post('/organization/set-active', { organizationId: guest.id }, { cookie: cached }))
+      .status,
+  ).toBe(401)
 })
