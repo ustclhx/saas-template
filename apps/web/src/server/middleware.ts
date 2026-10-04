@@ -1,6 +1,11 @@
 import { env } from 'cloudflare:workers'
 import { type FreshSession, requireFreshSession } from '@saas/auth'
-import { createDb } from '@saas/db'
+import { createDb, type Database } from '@saas/db'
+import {
+  type EntitlementRequirement,
+  getEntitlements,
+  requireEntitlement,
+} from '@saas/entitlements'
 import { AppError } from '@saas/shared'
 import { notFound, redirect } from '@tanstack/react-router'
 import { createMiddleware } from '@tanstack/react-start'
@@ -12,7 +17,7 @@ import { resolveDefaultWorkspace, resolveWorkspaceBySlug } from './workspace-con
 
 /**
  * 服务端入口的中间件链（design.md 决策 6）：`withSession → withWorkspace → withEntitlement → handler`。
- * 本文件实现前两个；`withEntitlement` 由计费 change 提供。
+ * `withEntitlement` 继承 `withWorkspace`，成员关系仍在每次请求时读取。
  *
  * 用法：在 server function 上 `.middleware([withWorkspace])`，handler 的 `context` 中即有
  * `{ db, user, session, workspace, member }`；`withWorkspace` 已包含 `withSession`。
@@ -71,3 +76,43 @@ export const withWorkspace = createMiddleware({ type: 'function' })
       },
     })
   })
+
+/**
+ * `.middleware([withEntitlement({ capability: 'ai.useModel', modelKey: 'pro-model' })])`.
+ * Limits accept a requested total, or a callback using validated input and fresh context.
+ * Mutations reject read-only team workspaces; read operations opt in with `access: 'read'`.
+ */
+export function withEntitlement(
+  requirement:
+    | EntitlementRequirement
+    | ((ctx: {
+        db: Database
+        workspaceId: string
+        userId: string
+        data: { slug?: string | undefined }
+      }) => EntitlementRequirement | Promise<EntitlementRequirement>),
+  { access = 'write' }: { access?: 'read' | 'write' } = {},
+) {
+  return createMiddleware({ type: 'function' })
+    .middleware([withWorkspace])
+    .server(async ({ context, data, next }) => {
+      if (access === 'write' && context.workspaceReadOnly)
+        throw new AppError('WORKSPACE_READ_ONLY', 'Team workspace writes are disabled', {
+          status: 403,
+        })
+      const entitlements = await getEntitlements(context.db, context.workspace.id, {
+        pastDueGraceDays: templateConfig.billing.pastDueGraceDays,
+      })
+      const required =
+        typeof requirement === 'function'
+          ? await requirement({
+              db: context.db,
+              workspaceId: context.workspace.id,
+              userId: context.user.id,
+              data,
+            })
+          : requirement
+      requireEntitlement(entitlements, required)
+      return next({ context: { entitlements } })
+    })
+}
