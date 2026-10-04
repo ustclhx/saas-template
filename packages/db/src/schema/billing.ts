@@ -271,6 +271,7 @@ export const refundRequest = pgTable(
       .default('pending'),
     requestedAmount: integer('requested_amount'),
     approvedAmount: integer('approved_amount'),
+    providerRefundId: text('provider_refund_id'),
     reviewerId: uuid('reviewer_id').references(() => user.id, { onDelete: 'restrict' }),
     reviewNote: text('review_note'),
     reviewedAt: timestamp('reviewed_at', { withTimezone: true }),

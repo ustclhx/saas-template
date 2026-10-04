@@ -7,6 +7,7 @@ import {
   organization,
   type Payment,
   payment,
+  paymentRefund,
   type RefundRequest,
   refundRequest,
   user,
@@ -71,7 +72,11 @@ async function owner(tx: WebhookTransaction, userId: string, workspaceId: string
 }
 async function admin(tx: WebhookTransaction, userId: string) {
   const [account] = await tx.select().from(user).where(eq(user.id, userId)).for('share')
-  if (account?.role !== 'admin' || account.banned || account.email === `deleted+${userId}@invalid`)
+  if (
+    !(account?.role ?? '').split(',').some((role) => role.trim() === 'admin') ||
+    account.banned ||
+    account.email === `deleted+${userId}@invalid`
+  )
     fail('ADMIN_REQUIRED', 'An active administrator is required', 403)
 }
 async function lockedRequest(tx: WebhookTransaction, id: string) {
@@ -335,7 +340,28 @@ export async function reviewRefundRequest(
         if (!result.providerRefundId.trim())
           throw new Error('Provider returned an empty refund identity')
         await options.db.transaction(async (tx) => {
-          const { request } = await lockedRequest(tx, saved.request.id)
+          const { request, paid } = await lockedRequest(tx, saved.request.id)
+          if (request.providerRefundId && request.providerRefundId !== result.providerRefundId)
+            throw new Error('Refund acknowledgment identity changed')
+          const [settled] = await tx
+            .select()
+            .from(paymentRefund)
+            .where(
+              and(
+                eq(paymentRefund.paymentId, paid.id),
+                eq(paymentRefund.provider, paid.provider),
+                eq(paymentRefund.providerRefundId, result.providerRefundId),
+              ),
+            )
+          if (settled && settled.amount !== request.approvedAmount)
+            throw new Error('Refund acknowledgment amount mismatch')
+          await tx
+            .update(refundRequest)
+            .set({
+              providerRefundId: result.providerRefundId,
+              ...(settled ? { status: 'refunded' as const } : {}),
+            })
+            .where(eq(refundRequest.id, request.id))
           const [recorded] = await tx
             .select()
             .from(auditLog)
@@ -353,8 +379,13 @@ export async function reviewRefundRequest(
       }
     }
   }
-  await notify(options, saved.request)
-  return saved.request
+  const [current] = await options.db
+    .select()
+    .from(refundRequest)
+    .where(eq(refundRequest.id, saved.request.id))
+  if (!current) throw new Error('Refund request disappeared')
+  await notify(options, current)
+  return current
 }
 
 /** Retry delivery independently of money movement after an observable mail failure. */

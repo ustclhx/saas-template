@@ -50,6 +50,13 @@
       "when": 1791122425993,
       "tag": "0006_sour_rictor",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791122507446,
+      "tag": "0007_rare_moonstone",
+      "breakpoints": true
     }
   ]
 }
