@@ -125,20 +125,19 @@
 
 财务与审计数据必须保留，因此删除一律是「软删 + 匿名化」，不物理删除 `user` / `organization` 行（外键策略见 03-data-model §7）。
 
-**删除空间**（仅团队空间，owner 操作）：
-1. 前置条件：没有「会续费的」订阅（需先取消），没有运行中的 AI 任务。
-2. 置 `organization.deleted_at`，撤销所有邀请，移除所有成员关系，作废该空间的 API Key。
-3. 剩余积分批次写 `revoke` 流水并置为 `revoked`。
-4. 内容数据（对话、任务、文件及 R2 对象）在保留期（如 30 天）后由 Cron 物理删除；保留期内可由平台管理员恢复。
+应用页面的 `withSession` 也直接调用 `requireFreshSession` 后再解析空间；上文缓存延迟仅适用于普通 Better Auth `getSession` 读取。个人空间补建在 owner 锁内检查封禁与软删，不会重新加入已删除空间。
 
-**删除账号**（用户本人，需近期重新验证身份）：
-1. 前置条件：用户不是任何团队空间的唯一 owner（需先转让或删除这些空间）。
-2. **退款提醒**：确认删除前，若个人空间有生效中的订阅或 `refundWindowDays` 内的付款，页面明确提示「删除账号默认不退款」，并提供「先申请退款」入口（创建 `refund_request`，见 05-billing「退款申请」）。用户可以先申请再删号，也可以直接删号；删号不会撤销已提交的申请，审核结果发到申请时填写的联系邮箱。
-3. 个人空间按「删除空间」流程处理：订阅改为**立即取消，不退款**；如申请审核通过，再按审核金额退款。
-4. 退出所有团队空间。
-5. 匿名化 `user`：`email` 改为 `deleted+{id}@invalid`，清空 `name` / `image` / `locale` / `timezone`，删除 `account`（密码哈希与 OAuth 令牌）、`session`（含 KV 中的副本）、`two_factor`、`apikey`、`verification`；置 `banned=true` 防止登录。
-6. 写 `audit_log`。`credit_ledger`、`payment`、`audit_log` 中对该用户的引用保持不变，指向已匿名化的行。
-7. 同一邮箱可重新注册（新的 user 行）；注册赠送积分按规范化邮箱哈希去重，不会再次发放。
+**P1 已实现的删除流程**（`packages/auth/src/deletion.ts`）：
+- `POST /api/auth/deletion/workspace` 仅允许团队 owner；实时查库验证会话、权限和空间状态，在事务中软删空间、取消 pending 邀请、移除全部成员、禁用空间 API Key，并清空指向该空间的活跃会话。`workspace.deleted` 审计记录保存 `originalOwnerUserIds`。
+- `POST /api/auth/deletion/account` 要求十分钟内的真实登录；用户仍是团队唯一 owner 时拒绝并返回空间列表。个人空间软删、退出团队，用户邮箱改为 `deleted+{id}@invalid`，清空姓名、头像、语言和时区，删除密码/OAuth、会话、2FA、API Key 和属于该用户的验证值，永久封禁匿名账号。同一邮箱可重新注册全新账号。
+- 删除钩子 `registerDeletionStep` 分为事务前的外部检查与事务内数据库执行；失败不会绕过检查，事务内失败回滚数据库变更。审计和财务引用继续指向原 user/organization 行。
+
+**P1 恢复与到期清理**（`packages/auth/src/workspace-lifecycle.ts`）：
+- `workspaceLifecyclePlugin(db, config.tenancy.maxWorkspacesPerUser)` 单独导出，由应用挂载后提供 `POST /api/auth/admin/restore-workspace`（`{ workspaceId }`）；函数 `restoreWorkspace` 同样使用签名 Cookie 的数据库会话。仅当前平台 admin 可以恢复，拒绝模拟登录；事务内再次校验并锁住管理员会话和用户行，封禁、吊销或降权立即生效。
+- 默认保留 30 天，期限从 `organization.deleted_at` 计算；到期即拒绝恢复，即使每日清理还未运行。按排序后的原 owner ID 获取 owner 锁，再获取空间锁。只恢复删除审计中仍有效的原 owner；已匿名化、永久封禁或仍在临时封禁期的 owner 不恢复，没有有效 owner 则拒绝。团队恢复遵循 `maxWorkspacesPerUser`，任何有效原 owner 达到上限时整体拒绝；个人空间不计团队上限。其他成员须重新邀请，旧邀请、API Key 和活跃会话不会恢复。
+- jobs 每天 03:00 UTC（北京时间 11:00）执行 `cleanupExpiredWorkspaces`；每五分钟健康心跳保持独立。P1 实际存在的空间内容表只有 `notification` 与 `invitation`，到期后删除这两类记录，永久保留 user、organization、全部 audit_log。事务内 `workspace.cleanup.completed` 审计关联本次 `workspace.deleted` 的 ID，重复运行不重复清理，已经清理的删除周期不能恢复。
+
+**退款决策与后续阶段**：删除默认不退款。P1 删除确认文案说明默认不退款，并通过配置的支持邮箱引导用户联系客服；P1 没有付款查询或 `refund_request` 创建接口。P2 在 billing change 中实现续费订阅检查、个人订阅立即取消、积分 revoke 流水、按 `refundWindowDays` 提示先申请退款及 `refund_request`；已提交申请须继续保留并使用申请时的联系邮箱。注册赠送积分的邮箱哈希去重也属于 P2。P3/P4 在实际新增对话、AI 任务、文件和 R2 对象后接入运行中任务检查与到期内容清理，P1 不操作尚未存在的表或存储对象。
 
 ## 5. 后续扩展
 - 租户自定义域名：Cloudflare for SaaS（Custom Hostnames）。
