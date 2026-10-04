@@ -391,6 +391,100 @@ describe('Stripe payment associations', () => {
     ).rejects.toThrow('period')
     mock.complete()
   })
+
+  it('records an adjustment against its positive target proration period, excluding unused credit', async () => {
+    const proration = {
+      ...line,
+      metadata,
+      period: { start: start + 100, end },
+      parent: {
+        ...line.parent,
+        subscription_item_details: { ...line.parent.subscription_item_details, proration: true },
+      },
+    }
+    const target = {
+      ...invoice,
+      billing_reason: 'subscription_update',
+      lines: {
+        ...invoice.lines,
+        data: [
+          { ...proration, id: 'il_credit', amount: -500 },
+          { ...proration, amount: 2500 },
+        ],
+      },
+    }
+    const mock = mockStripe([
+      ...invoiceReplies(target),
+      { path: '/v1/prices/price_test', body: { id: 'price_test', metadata } },
+    ])
+    expect(
+      await mock.snapshots.getPayment({ providerPaymentId: 'pi_test', kind: 'adjustment' }),
+    ).toMatchObject({
+      kind: 'adjustment',
+      providerSubscriptionId: 'sub_test',
+      period: { start: new Date((start + 100) * 1000), end: new Date(end * 1000) },
+    })
+    mock.complete()
+  })
+  it.each(['negative_only', 'ambiguous', 'foreign_subscription', 'invalid_period'] as const)(
+    'rejects adjustment period %s',
+    async (condition) => {
+      const positive = {
+        ...line,
+        metadata,
+        parent: {
+          ...line.parent,
+          subscription_item_details: {
+            ...line.parent.subscription_item_details,
+            proration: true,
+            subscription: condition === 'foreign_subscription' ? 'sub_other' : 'sub_test',
+          },
+        },
+        amount: condition === 'negative_only' ? -500 : 2500,
+        period: condition === 'invalid_period' ? { start: end, end: start } : line.period,
+      }
+      const mock = mockStripe(
+        invoiceReplies({
+          ...invoice,
+          billing_reason: 'subscription_update',
+          lines: {
+            ...invoice.lines,
+            data:
+              condition === 'ambiguous' ? [positive, { ...positive, id: 'il_other' }] : [positive],
+          },
+        }),
+      )
+      await expect(
+        mock.snapshots.getPayment({ providerPaymentId: 'pi_test', kind: 'adjustment' }),
+      ).rejects.toThrow('period')
+      mock.complete()
+    },
+  )
+  it('rejects an adjustment whose remote price disagrees with the invoice target metadata', async () => {
+    const positive = {
+      ...line,
+      metadata,
+      parent: {
+        ...line.parent,
+        subscription_item_details: { ...line.parent.subscription_item_details, proration: true },
+      },
+    }
+    const mock = mockStripe([
+      ...invoiceReplies({
+        ...invoice,
+        billing_reason: 'subscription_update',
+        lines: { ...invoice.lines, data: [positive] },
+      }),
+      {
+        path: '/v1/prices/price_test',
+        body: { id: 'price_test', metadata: { planPriceId: 'other' } },
+      },
+    ])
+    await expect(
+      mock.snapshots.getPayment({ providerPaymentId: 'pi_test', kind: 'adjustment' }),
+    ).rejects.toThrow('target metadata')
+    mock.complete()
+  })
   it('propagates SDK errors and rejects unexpected HTTP attempts offline', async () => {
     const missing = mockStripe([
       {

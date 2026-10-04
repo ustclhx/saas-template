@@ -96,17 +96,25 @@ export function stripeInvoicePeriod(
     throw new Error('Invoice period requires complete line items')
   }
   const subscriptionId = stripeInvoiceSubscription(invoice)
+  const adjustment = classifyStripeBillingReason(invoice.billing_reason) === 'adjustment'
+  const metadata = parseStripeMetadata(invoice.parent?.subscription_details?.metadata)
   const relevant = lines.filter((line) => {
     const details = line.parent?.subscription_item_details
     return (
       line.parent?.type === 'subscription_item_details' &&
       details?.subscription === subscriptionId &&
-      !details?.proration
+      (adjustment ? details?.proration && line.amount > 0 : !details?.proration)
     )
   })
   const line = relevant[0]
   if (!subscriptionId || !line || relevant.length !== 1 || line.period.end <= line.period.start) {
     throw new Error('Invoice requires one unambiguous recurring subscription period')
+  }
+  if (
+    adjustment &&
+    (!metadata || line.pricing?.type !== 'price_details' || !line.pricing.price_details?.price)
+  ) {
+    throw new Error('Adjustment requires an unambiguous metadata target price')
   }
   return { start: stripeDate(line.period.start), end: stripeDate(line.period.end) }
 }
@@ -223,22 +231,41 @@ export async function getStripePayment(
     const subscriptionId = stripeInvoiceSubscription(invoice)
     if (subscriptionId) {
       const kind = classifyStripeBillingReason(invoice.billing_reason)
-      if (kind !== 'initial' && kind !== 'renewal') {
+      if (kind !== 'initial' && kind !== 'renewal' && kind !== 'adjustment') {
         throw new Error(`Unsupported subscription payment classification: ${kind}`)
       }
       if (reference.kind !== kind)
-        throw new Error('Payment kind does not match invoice billing reason')
+        throw new Error(`Payment kind does not match invoice billing reason: ${kind}`)
       if (invoice.status !== 'paid' || invoicePayment.status_transitions.paid_at === null) {
         throw new Error('Subscription invoice is not paid')
       }
       const lines = invoice.lines.has_more
         ? await stripe.invoices.listLineItems(invoice.id).autoPagingToArray({ limit: 100 })
         : invoice.lines.data
+      const period = stripeInvoicePeriod(invoice, lines)
+      if (kind === 'adjustment') {
+        const target = lines.find(
+          (line) =>
+            line.amount > 0 &&
+            line.parent?.type === 'subscription_item_details' &&
+            line.parent.subscription_item_details?.subscription === subscriptionId &&
+            line.parent.subscription_item_details.proration,
+        )
+        const targetPriceId = stripeObjectId(target?.pricing?.price_details?.price ?? null)
+        if (!targetPriceId) throw new Error('Adjustment has no target price')
+        const targetPrice = await stripe.prices.retrieve(targetPriceId)
+        if (
+          targetPrice.metadata.planPriceId !==
+          invoice.parent?.subscription_details?.metadata?.planPriceId
+        ) {
+          throw new Error('Adjustment price does not match invoice target metadata')
+        }
+      }
       return {
         ...paid,
         kind,
         providerSubscriptionId: subscriptionId,
-        period: stripeInvoicePeriod(invoice, lines),
+        period,
         paidAt: stripeDate(invoicePayment.status_transitions.paid_at),
         metadata: parseStripeMetadata(invoice.parent?.subscription_details?.metadata),
         raw: stripeRaw({ paymentIntent: intent, invoicePayment, invoice }),
