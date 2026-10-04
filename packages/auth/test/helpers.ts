@@ -74,6 +74,7 @@ export function testUsers(prefix: string) {
       await sql`delete from session where user_id in ${sql(ids)}`
       // 个人空间的 id 即用户 id（personal-workspace.ts）
       const orgs = [...ids, ...createdOrgs]
+      await sql`delete from invitation where organization_id in ${sql(orgs)} or inviter_id in ${sql(ids)}`
       await sql`delete from member where organization_id in ${sql(orgs)} or user_id in ${sql(ids)}`
       await sql`delete from organization where id in ${sql(orgs)}`
       await sql`delete from account where user_id in ${sql(ids)}`
@@ -90,6 +91,7 @@ export interface SetupOptions {
   readonly config?: Omit<TemplateConfigInput, 'app'>
   readonly env?: Partial<AuthEnv>
   readonly db?: Database
+  readonly maxSeats?: number
 }
 
 /**
@@ -104,6 +106,7 @@ export function setup(options: SetupOptions = {}) {
     db,
     {
       config: defineTemplateConfig({ app, ...options.config }),
+      resolveMaxSeats: async () => options.maxSeats ?? null,
       sendEmail: async (message) => {
         sent.push(message)
       },

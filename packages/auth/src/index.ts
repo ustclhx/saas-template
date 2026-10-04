@@ -17,3 +17,5 @@ export {
 } from './personal-workspace.ts'
 export { type RateLimiter, TURNSTILE_TOKEN_HEADER } from './protection.ts'
 export { type KvStore, SESSION_COOKIE_CACHE_MAX_AGE } from './session.ts'
+
+export type { ResolveMaxSeats } from './team-workspaces.ts'
