@@ -19,7 +19,8 @@
     "@saas/credits": "workspace:*",
     "@saas/config": "workspace:*",
     "@saas/shared": "workspace:*",
-    "@saas/entitlements": "workspace:*"
+    "@saas/entitlements": "workspace:*",
+    "@saas/auth": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^4.1.11"

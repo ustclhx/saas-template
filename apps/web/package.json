@@ -28,7 +28,8 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "zod": "^4.6.5",
-    "@saas/billing": "workspace:*"
+    "@saas/billing": "workspace:*",
+    "@saas/credits": "workspace:*"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.62.4",

@@ -224,6 +224,9 @@ importers:
       '@saas/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@saas/credits':
+        specifier: workspace:*
+        version: link:../../packages/credits
       '@saas/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -345,6 +348,9 @@ importers:
 
   packages/billing:
     dependencies:
+      '@saas/auth':
+        specifier: workspace:*
+        version: link:../auth
       '@saas/config':
         specifier: workspace:*
         version: link:../config
