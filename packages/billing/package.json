@@ -11,7 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@saas/db": "workspace:*"
+    "@saas/db": "workspace:*",
+    "stripe": "23.0.0"
   },
   "devDependencies": {
     "vitest": "^4.1.11"
