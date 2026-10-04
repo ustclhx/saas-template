@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { authClient } from '../auth/auth-client.ts'
 import { removeAccount, removeWorkspace } from './deletion.functions.ts'
 
 export function DeletionSection({ workspace }: { workspace?: { id: string; name: string } }) {
   const [confirmation, setConfirmation] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [completed, setCompleted] = useState(false)
   const [blocked, setBlocked] = useState<{ id: string; name: string; slug: string }[]>([])
   const label = workspace ? workspace.name : 'DELETE'
   async function submit() {
@@ -18,11 +20,27 @@ export function DeletionSection({ workspace }: { workspace?: { id: string; name:
         window.location.assign(workspace ? '/app' : '/login')
         return
       }
-      setError(result.message)
+      setCompleted(result.deletionCompleted)
+      setError(
+        result.deletionCompleted
+          ? 'Deletion completed. Access has been removed; cached credentials are awaiting automatic cleanup.'
+          : result.message,
+      )
       setBlocked(result.workspaces)
     } catch {
       setError('Deletion could not be completed. Please try again.')
     } finally {
+      setBusy(false)
+    }
+  }
+  async function signInAgain() {
+    setBusy(true)
+    try {
+      const result = await authClient().signOut()
+      if (result.error) throw new Error(result.error.message)
+      window.location.assign('/login?redirect=%2Faccount')
+    } catch {
+      setError('Could not sign out. Please try again before signing in.')
       setBusy(false)
     }
   }
@@ -41,9 +59,14 @@ export function DeletionSection({ workspace }: { workspace?: { id: string; name:
         release; contact the service support team before deleting if you need help with a payment.
       </p>
       {!workspace && (
-        <a className="underline" href="/login?redirect=%2Faccount">
-          Sign in again
-        </a>
+        <button
+          type="button"
+          className="underline text-left"
+          disabled={busy || completed}
+          onClick={signInAgain}
+        >
+          Sign out and sign in again
+        </button>
       )}
       <label className="grid gap-2">
         Type {label} to confirm
@@ -55,6 +78,11 @@ export function DeletionSection({ workspace }: { workspace?: { id: string; name:
         />
       </label>
       {error && <p role="alert">{error}</p>}
+      {completed && (
+        <a className="underline" href={workspace ? '/app' : '/login'}>
+          Continue
+        </a>
+      )}
       {blocked.length > 0 && (
         <ul>
           {blocked.map((item) => (
@@ -70,7 +98,7 @@ export function DeletionSection({ workspace }: { workspace?: { id: string; name:
       <button
         type="button"
         className="rounded bg-destructive p-2 text-destructive-foreground disabled:opacity-50"
-        disabled={busy || confirmation !== label}
+        disabled={busy || completed || confirmation !== label}
         onClick={() => void submit()}
       >
         {busy ? 'Deleting…' : workspace ? 'Delete workspace' : 'Delete account'}

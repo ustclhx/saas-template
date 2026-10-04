@@ -1,14 +1,23 @@
 import { env } from 'cloudflare:workers'
+import { newId } from '@saas/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { deleteAccount, deleteTeamWorkspace, registerDeletionStep } from '../src/deletion.ts'
+import {
+  DELETION_CLEANUP_PREFIX,
+  deleteAccount,
+  deleteTeamWorkspace,
+  registerDeletionStep,
+  retryDeletionCleanup,
+} from '../src/deletion.ts'
 import { requireFreshSession } from '../src/fresh-session.ts'
 import { cookieHeader, PASSWORD, setup, signUpBody, testUsers } from './helpers.ts'
 
 const users = testUsers('deletion')
 const deleted: { id: string; email: string }[] = []
+const apiKeys: string[] = []
 beforeAll(() => users.start())
 afterAll(async () => {
   const sql = setup().db.$client
+  for (const id of apiKeys) await sql`delete from apikey where id=${id}`
   for (const user of deleted) {
     await sql`delete from audit_log where actor_user_id=${user.id} or workspace_id=${user.id}`
     await sql`update "user" set email=${users.email('cleanup')} where id=${user.id}`
@@ -49,6 +58,11 @@ describe('atomic deletion in workerd', () => {
   it('requires a DB session and recent real login, ignoring updated_at', async () => {
     const a = app()
     const owner = await actor(a, 'old')
+    await a.db.$client`update session set impersonated_by=${owner.id} where user_id=${owner.id}`
+    await expect(deleteAccount(owner.options)).rejects.toMatchObject({
+      code: 'REAUTHENTICATION_REQUIRED',
+    })
+    await a.db.$client`update session set impersonated_by=null where user_id=${owner.id}`
     await a.db
       .$client`update session set created_at=now()-interval '1 day',updated_at=now() where user_id=${owner.id}`
     await expect(deleteAccount(owner.options)).rejects.toMatchObject({
@@ -65,8 +79,17 @@ describe('atomic deletion in workerd', () => {
       code: 'SOLE_WORKSPACE_OWNER',
       details: { workspaces: [{ id }] },
     })
+    const invite = newId()
+    const key = newId()
+    apiKeys.push(key)
+    await a.db
+      .$client`insert into invitation (id,organization_id,email,role,status,expires_at,inviter_id) values (${invite},${id},${users.email('invite')},'member','pending',now()+interval '1 day',${owner.id})`
+    await a.db
+      .$client`insert into apikey (id,config_id,key,reference_id,metadata) values (${key},'default',${newId()},${owner.id},${JSON.stringify({ workspace_id: id })})`
     await a.db.$client`update session set active_organization_id=${id} where user_id=${owner.id}`
-    await deleteTeamWorkspace({ ...owner.options, workspaceId: id })
+    expect(
+      (await a.post('/deletion/workspace', { workspaceId: id }, { cookie: owner.cookie })).status,
+    ).toBe(200)
     expect(
       await a.db.query.member.findFirst({ where: (m, { eq }) => eq(m.organizationId, id) }),
     ).toBeUndefined()
@@ -77,6 +100,12 @@ describe('atomic deletion in workerd', () => {
       (await a.db.query.session.findFirst({ where: (s, { eq }) => eq(s.userId, owner.id) }))
         ?.activeOrganizationId,
     ).toBeNull()
+    expect(
+      (await a.db.query.invitation.findFirst({ where: (i, { eq }) => eq(i.id, invite) }))?.status,
+    ).toBe('canceled')
+    expect(
+      (await a.db.query.apikey.findFirst({ where: (k, { eq }) => eq(k.id, key) }))?.enabled,
+    ).toBe(false)
     await expect(deleteTeamWorkspace({ ...owner.options, workspaceId: id })).rejects.toMatchObject({
       status: 404,
     })
@@ -94,7 +123,7 @@ describe('atomic deletion in workerd', () => {
     await a.post('/email-otp/send-verification-otp', { email: other.email, type: 'sign-in' })
     const verification = await a.db.query.verification.findMany()
     deleted.push(owner)
-    await deleteAccount(owner.options)
+    expect((await a.post('/deletion/account', {}, { cookie: owner.cookie })).status).toBe(200)
     const row = await a.db.query.user.findFirst({ where: (u, { eq }) => eq(u.id, owner.id) })
     expect(row).toMatchObject({
       email: `deleted+${owner.id}@invalid`,
@@ -136,7 +165,11 @@ describe('atomic deletion in workerd', () => {
       (v) => v.identifier === `sign-in-otp-${other.email}`,
     )
     expect(otherVerification).toBeTruthy()
-    expect(await env.CACHE.get(`auth:verification:${otherVerification?.identifier}`)).not.toBeNull()
+    expect(
+      await a.db.query.verification.findFirst({
+        where: (v, { eq }) => eq(v.id, otherVerification?.id ?? ''),
+      }),
+    ).toBeTruthy()
   })
   it('lets one of multiple owners leave without deleting the team', async () => {
     const a = app()
@@ -181,5 +214,165 @@ describe('atomic deletion in workerd', () => {
     expect(
       (await a.db.query.organization.findFirst({ where: (o, { eq }) => eq(o.id, id) }))?.deletedAt,
     ).toBeNull()
+  })
+  it('keeps native deletion disabled and enforces owner, personal and tenancy boundaries', async () => {
+    const a = app()
+    const owner = await actor(a, 'boundaries')
+    const other = await actor(a, 'not-owner')
+    const id = await team(a, owner)
+    expect(
+      (await a.post('/deletion/workspace', { workspaceId: id }, { cookie: other.cookie })).status,
+    ).toBe(403)
+    expect(
+      (await a.post('/deletion/workspace', { workspaceId: owner.id }, { cookie: owner.cookie }))
+        .status,
+    ).toBe(403)
+    expect((await a.post('/delete-user', {}, { cookie: owner.cookie })).status).not.toBe(200)
+    expect(
+      (await a.post('/organization/delete', { organizationId: id }, { cookie: owner.cookie }))
+        .status,
+    ).not.toBe(200)
+    const off = setup({
+      db: a.db,
+      env: { RL_AUTH: { limit: async () => ({ success: true }) } },
+      config: { auth: { turnstile: false }, tenancy: { multiTenant: false } },
+    })
+    expect(
+      (await off.post('/deletion/workspace', { workspaceId: id }, { cookie: owner.cookie })).status,
+    ).toBe(403)
+    await expect(
+      deleteTeamWorkspace({ ...owner.options, workspaceId: id, multiTenant: false }),
+    ).rejects.toMatchObject({ code: 'TEAM_WORKSPACES_DISABLED' })
+    deleted.push(other)
+    expect((await off.post('/deletion/account', {}, { cookie: other.cookie })).status).toBe(200)
+  })
+  it('persists failed invalidation, rejects stale challenges and preserves replacement challenges on retry', async () => {
+    let fail = false
+    const kv = {
+      get: (key: string) => env.CACHE.get(key),
+      put: (key: string, value: string, options?: { expirationTtl?: number }) =>
+        env.CACHE.put(key, value, options),
+      delete: async (key: string) => {
+        if (fail) throw new Error('KV unavailable')
+        await env.CACHE.delete(key)
+      },
+    }
+    const a = setup({
+      env: { CACHE: kv, RL_AUTH: { limit: async () => ({ success: true }) } },
+      config: { auth: { turnstile: false, magicLink: true }, tenancy: { multiTenant: true } },
+    })
+    const owner = await actor(a, 'retry')
+    await a.post('/email-otp/send-verification-otp', { email: owner.email, type: 'sign-in' })
+    await a.post('/sign-in/magic-link', { email: owner.email, callbackURL: '/account' })
+    await a.post('/request-password-reset', { email: owner.email, redirectTo: '/reset-password' })
+    const otp = a.sent.find((mail) => mail.type === 'otp')
+    const magic = a.sent.find((mail) => mail.type === 'magic-link')
+    const reset = a.sent.find((mail) => mail.type === 'reset-password')
+    expect(otp?.type).toBe('otp')
+    expect(magic?.type).toBe('magic-link')
+    expect(reset?.type).toBe('reset-password')
+    const oldRows = await a.db.query.verification.findMany()
+    for (const row of oldRows)
+      await env.CACHE.put(`auth:verification:${row.identifier}`, JSON.stringify(row))
+    deleted.push(owner)
+    fail = true
+    const response = await a.post('/deletion/account', {}, { cookie: owner.cookie })
+    expect(response.status).toBe(503)
+    expect(await response.json()).toMatchObject({ deletionCompleted: true })
+    expect(
+      (await a.db.query.verification.findMany()).some((v) =>
+        v.identifier.startsWith(DELETION_CLEANUP_PREFIX),
+      ),
+    ).toBe(true)
+    expect(await retryDeletionCleanup(a.db, kv)).toMatchObject({ failed: 1 })
+    expect((await a.post('/sign-up/email', signUpBody(owner.email))).status).toBe(200)
+    if (otp?.type === 'otp')
+      expect(
+        (await a.post('/sign-in/email-otp', { email: owner.email, otp: otp.otp })).status,
+      ).not.toBe(200)
+    if (magic?.type === 'magic-link')
+      expect((await a.get(magic.url)).headers.get('location')).toContain('error=')
+    if (reset?.type === 'reset-password')
+      expect(
+        (
+          await a.post('/reset-password', {
+            token: new URL(reset.url).pathname.split('/').at(-1),
+            newPassword: 'ChangedPassword123!',
+          })
+        ).status,
+      ).not.toBe(200)
+    await a.post('/send-verification-email', { email: owner.email, callbackURL: '/account' })
+    const emailProof = a.sent.find((mail) => mail.type === 'verify-email')
+    expect(emailProof?.type).toBe('verify-email')
+    if (emailProof?.type === 'verify-email')
+      expect((await a.get(emailProof.url)).status).toBeLessThan(400)
+    await a.post('/email-otp/send-verification-otp', { email: owner.email, type: 'sign-in' })
+    const replacement = a.sent.filter((mail) => mail.type === 'otp').at(-1)
+    const row = await a.db.query.verification.findFirst({
+      where: (v, { eq }) => eq(v.identifier, `sign-in-otp-${owner.email}`),
+    })
+    expect(row).toBeTruthy()
+    // Simulate a newer cached value. Retry must never delete this reusable email key.
+    await env.CACHE.put(`auth:verification:${row?.identifier}`, JSON.stringify(row))
+    fail = false
+    expect(await retryDeletionCleanup(a.db, kv)).toEqual({ completed: 1, failed: 0 })
+    expect(await env.CACHE.get(`auth:verification:${row?.identifier}`)).not.toBeNull()
+    expect(await retryDeletionCleanup(a.db, kv)).toEqual({ completed: 0, failed: 0 })
+    if (replacement?.type === 'otp')
+      expect(
+        (await a.post('/sign-in/email-otp', { email: owner.email, otp: replacement.otp })).status,
+      ).toBe(200)
+  })
+  it('refuses before hooks without invoking execution or changing workspace', async () => {
+    const a = app()
+    const owner = await actor(a, 'before-hook')
+    const id = await team(a, owner)
+    let executed = false
+    const dispose = registerDeletionStep('workspace', {
+      before: async () => {
+        throw new Error('provider refused')
+      },
+      execute: async () => {
+        executed = true
+      },
+    })
+    try {
+      await expect(deleteTeamWorkspace({ ...owner.options, workspaceId: id })).rejects.toThrow(
+        'provider refused',
+      )
+    } finally {
+      dispose()
+    }
+    expect(executed).toBe(false)
+    expect(
+      (await a.db.query.organization.findFirst({ where: (o, { eq }) => eq(o.id, id) }))?.deletedAt,
+    ).toBeNull()
+  })
+  it('serializes ownership grant against account deletion', async () => {
+    const a = app()
+    const owner = await actor(a, 'race-owner')
+    const target = await actor(a, 'race-target')
+    const id = await team(a, owner)
+    const memberId = newId()
+    await a.db
+      .$client`insert into member (id,organization_id,user_id,role) values (${memberId},${id},${target.id},'member')`
+    const [grant, deletion] = await Promise.all([
+      a.post(
+        '/organization/transfer-owner',
+        { organizationId: id, memberId, role: 'owner' },
+        { cookie: owner.cookie },
+      ),
+      a.post('/deletion/account', {}, { cookie: target.cookie }),
+    ])
+    expect(grant.status === 200 && deletion.status === 200).toBe(false)
+    if (deletion.status === 200) {
+      deleted.push(target)
+      expect(
+        await a.db.query.member.findFirst({ where: (m, { eq }) => eq(m.userId, target.id) }),
+      ).toBeUndefined()
+    } else {
+      expect(grant.status).toBe(200)
+      expect(await deletion.json()).toMatchObject({ code: 'SOLE_WORKSPACE_OWNER' })
+    }
   })
 })
