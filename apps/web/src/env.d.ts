@@ -12,5 +12,18 @@ declare namespace Cloudflare {
     AI_MEDIA_WORKFLOW: Workflow<{ taskId: string }>
     /** 邮件队列 producer，apps/jobs 消费（消息格式见 @saas/email/queue） */
     EMAIL_QUEUE: Queue<import('@saas/email/queue').EmailQueueMessage>
+    /** KV：Better Auth 会话的 secondaryStorage（packages/auth/src/session.ts） */
+    CACHE: KVNamespace
+    /** Rate Limiting：认证入口按 IP + 邮箱限流（packages/auth/src/protection.ts） */
+    RL_AUTH: RateLimit
+    /** 站点地址（vars；`vite dev` 时由 vite.config.ts 按端口覆盖） */
+    APP_URL: string
+    // 以下为 secrets（wrangler secret / .dev.vars），按模板配置在 checkEnv 中校验
+    BETTER_AUTH_SECRET?: string
+    TURNSTILE_SECRET_KEY?: string
+    GOOGLE_CLIENT_ID?: string
+    GOOGLE_CLIENT_SECRET?: string
+    GITHUB_CLIENT_ID?: string
+    GITHUB_CLIENT_SECRET?: string
   }
 }

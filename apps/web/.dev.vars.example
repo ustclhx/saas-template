@@ -1,0 +1,10 @@
+# 本地开发密钥模板：复制为 .dev.vars（已 gitignore）后填写。这里只放假值与公开的测试值。
+# Better Auth 签名密钥，至少 32 个字符：openssl rand -base64 32
+BETTER_AUTH_SECRET=
+# Cloudflare 官方 Turnstile 测试 secret（始终通过）；始终失败为 2x0000000000000000000000000000000AA
+TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+# template.config.ts 启用的 OAuth 提供方必须有凭据；本地不测 OAuth 时填假值即可
+GOOGLE_CLIENT_ID=fake-google-client-id
+GOOGLE_CLIENT_SECRET=fake-google-client-secret
+GITHUB_CLIENT_ID=fake-github-client-id
+GITHUB_CLIENT_SECRET=fake-github-client-secret

@@ -40,6 +40,12 @@ describe('defineTemplateConfig', () => {
     })
   })
 
+  it('does not require email verification by default', () => {
+    expect(defineTemplateConfig({ app }).auth.requireEmailVerification).toBe(false)
+    const strict = defineTemplateConfig({ app, auth: { requireEmailVerification: true } })
+    expect(strict.auth).toMatchObject({ requireEmailVerification: true, emailPassword: true })
+  })
+
   it('replaces arrays instead of merging them', () => {
     const config = defineTemplateConfig({ app, auth: { oauth: ['github'] } })
     expect(config.auth.oauth).toEqual(['github'])

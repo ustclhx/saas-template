@@ -21,6 +21,14 @@ if (integration) {
   console.warn(`[@saas/auth] 未配置 ${HYPERDRIVE_ENV}，跳过集成测试`)
 }
 
+/** 集成测试与 probe 共用的 workerd 环境（test/wrangler.jsonc） */
+const workers = () =>
+  cloudflareTest({
+    wrangler: { configPath: './test/wrangler.jsonc' },
+    // 端口 1 上没有服务：连接立即被拒绝
+    miniflare: { hyperdrives: { HYPERDRIVE_REFUSED: 'postgres://app:app@127.0.0.1:1/db' } },
+  })
+
 export default defineConfig({
   test: {
     // postgres.js 在 workerd 中连接失败 / 断开时内部未处理的 rejection，见该函数注释
@@ -32,10 +40,23 @@ export default defineConfig({
       ...(integration
         ? [
             {
-              plugins: [cloudflareTest({ wrangler: { configPath: './test/wrangler.jsonc' } })],
+              plugins: [workers()],
               test: {
                 name: 'integration',
                 include: ['test/**/*.test.ts'],
+                globalSetup: ['@saas/db/test/global-setup'],
+              },
+            },
+          ]
+        : []),
+      // 2.4 的 CPU 时间测量（probe/README.md），只在 `pnpm probe:cpu` 时运行
+      ...(integration && process.env.AUTH_CPU_PROBE
+        ? [
+            {
+              plugins: [workers()],
+              test: {
+                name: 'probe',
+                include: ['probe/**/*.probe.ts'],
                 globalSetup: ['@saas/db/test/global-setup'],
               },
             },

@@ -169,6 +169,9 @@ importers:
       '@biomejs/biome':
         specifier: 2.5.15
         version: 2.5.15
+      '@saas/config':
+        specifier: workspace:*
+        version: link:packages/config
       turbo:
         specifier: ^2.11.7
         version: 2.11.7

@@ -7,7 +7,12 @@ import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { admin, emailOTP, magicLink, organization, twoFactor } from 'better-auth/plugins'
 import type { SendAuthEmail } from './email.ts'
+import { emailVerificationOptions } from './email-verification.ts'
 import { type AuthEnv, parseAuthEnv } from './env.ts'
+import { freshSessionGuard } from './fresh-session.ts'
+import { passwordHasher } from './password.ts'
+import { authProtection } from './protection.ts'
+import { sessionStorageOptions } from './session.ts'
 
 export interface CreateAuthDeps {
   /** 模板配置（`template.config.ts`），决定启用哪些登录方式与插件 */
@@ -36,6 +41,8 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
     basePath: '/api/auth',
     secret: vars.BETTER_AUTH_SECRET,
     database: drizzleAdapter(db, { provider: 'pg', schema }),
+    // 会话三层：Cookie 缓存 → KV → 数据库（session.ts）
+    ...sessionStorageOptions(env.CACHE),
     advanced: {
       // 主键统一为 UUIDv7（design.md 决策 2），列类型为 uuid
       database: { generateId: () => newId() },
@@ -48,6 +55,8 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
     },
     emailAndPassword: {
       enabled: config.auth.emailPassword,
+      requireEmailVerification: config.auth.requireEmailVerification,
+      password: passwordHasher,
       // 不提供 sendResetPassword 时找回密码接口返回错误；关闭邮箱密码时找回密码一并关闭
       ...(config.auth.emailPassword && {
         sendResetPassword: async ({ user, url }) => {
@@ -55,14 +64,16 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
         },
       }),
     },
-    emailVerification: {
-      sendOnSignUp: config.auth.emailPassword,
-      sendVerificationEmail: async ({ user, url }) => {
-        await sendEmail({ type: 'verify-email', to: user.email, url })
-      },
-    },
+    emailVerification: emailVerificationOptions(config, sendEmail),
     socialProviders: socialProviders(config, vars),
     plugins: [
+      // 认证入口防刷：RL_AUTH 限流 + Turnstile（protection.ts）
+      authProtection({
+        rateLimiter: env.RL_AUTH,
+        turnstileSecret: config.auth.turnstile ? (vars.TURNSTILE_SECRET_KEY ?? null) : null,
+      }),
+      // 敏感接口按数据库实时校验会话与封禁（fresh-session.ts）
+      freshSessionGuard(db),
       organization({
         // 团队空间的创建准入由 multiTenant 决定；个人空间由服务端创建（tasks.md 4.1）
         allowUserToCreateOrganization: config.tenancy.multiTenant,
