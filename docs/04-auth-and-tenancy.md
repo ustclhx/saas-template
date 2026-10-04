@@ -81,7 +81,8 @@
 
 ### 数据隔离
 - **共享库 + 共享表 + `workspace_id` 列**。
-- `scoped(db, workspaceId)` 返回预绑定过滤条件的查询工具；代码审查与 lint 规则禁止绕过（可在 Biome/自定义脚本中检测直接 `db.select().from(ai_task)` 之类用法）。
+- `scoped(db, workspaceId)`（`@saas/db`）返回预绑定过滤条件的查询工具：`select` / `count` / `findById` / `insert`（自动填入空间 id）/ `update` / `delete` / `updateById` / `deleteById` / `transaction`；按 id 访问其他空间的记录与访问不存在的记录一样抛出 `NOT_FOUND`（404），不泄露记录是否存在。
+- 禁止绕过：Biome GritQL 插件 `packages/db/lint/no-unscoped-workspace-query.grit` 在 `apps/web/src/features/**` 与 `apps/jobs/src/**`（不含测试）中拦截对带空间列的表的直接 `db.select().from(t)` / `insert` / `update` / `delete` / `db.query.t`，随 `pnpm check` 在 CI 中执行。新增带 `workspace_id` 的表时须同步插件中的表清单（有测试对照 schema 校验）。确需跨空间的系统任务用 `// biome-ignore lint/plugin: <理由>` 显式豁免。
 - Postgres RLS 作为**可选加固**：事务内 `SET LOCAL app.workspace_id = ...` + 策略。Hyperdrive 以事务为单位复用连接，`SET LOCAL` 在事务内安全（待验证）；默认不启用以降低复杂度。
 - R2 对象 key 以 `ws/{workspaceId}/...` 为前缀，下载一律经服务端鉴权后签发短期 URL。
 

@@ -25,7 +25,11 @@ export default defineConfig({
   test: {
     projects: [
       {
-        test: { name: 'unit', include: ['src/**/*.test.ts'], environment: 'node' },
+        test: {
+          name: 'unit',
+          include: ['src/**/*.test.ts', 'lint/**/*.test.ts'],
+          environment: 'node',
+        },
       },
       ...(integration
         ? [
