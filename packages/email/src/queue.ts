@@ -29,7 +29,7 @@ const templatePropsSchemas = {
     url,
     workspaceName: z.string().min(1),
     inviterName: z.string(),
-    role: z.enum(['admin', 'member']),
+    role: z.enum(['owner', 'admin', 'member']),
     expiresInDays: z.number().int().positive(),
   }),
 } satisfies { [N in EmailTemplateName]: z.ZodType<EmailTemplateProps[N]> }

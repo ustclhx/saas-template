@@ -22,18 +22,18 @@ describe('parseEmailQueueMessage', () => {
       ...valid,
       template: 'workspace-invitation',
       props: {
-        url: 'https://example.com/accept-invitation/1',
+        url: 'https://example.com/accept-invitation?id=1',
         workspaceName: 'Acme',
         inviterName: 'Alice',
-        role: 'admin',
-        expiresInDays: 2,
+        role: 'owner',
+        expiresInDays: 7,
       },
     }
     expect(parseEmailQueueMessage(invitation)).toEqual(invitation)
     // reset-password 的 props 放到 invitation 模板下
     expect(parseEmailQueueMessage({ ...valid, template: 'workspace-invitation' })).toBeNull()
     expect(
-      parseEmailQueueMessage({ ...invitation, props: { ...invitation.props, role: 'owner' } }),
+      parseEmailQueueMessage({ ...invitation, props: { ...invitation.props, role: 'unknown' } }),
     ).toBeNull()
   })
 

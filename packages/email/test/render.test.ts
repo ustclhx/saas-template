@@ -28,6 +28,25 @@ describe('renderEmail', () => {
     expect(none.subject).toBe(fr.subject)
   })
 
+  it.each([
+    ['en', 'as an owner', '7 days'],
+    ['zh', '以所有者身份', '7 天'],
+  ] as const)('renders owner invitations in %s', async (locale, roleCopy, expiryCopy) => {
+    const email = await renderEmail(
+      'workspace-invitation',
+      {
+        url: 'https://acme.test/accept-invitation?id=1',
+        workspaceName: 'Team',
+        inviterName: 'Ada',
+        role: 'owner',
+        expiresInDays: 7,
+      },
+      { locale, appName: APP_NAME },
+    )
+    expect(email.text).toContain(roleCopy)
+    expect(email.text).toContain(expiryCopy)
+  })
+
   it('escapes user-controlled text', async () => {
     const email = await renderEmail(
       'workspace-invitation',

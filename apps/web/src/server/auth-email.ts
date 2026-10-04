@@ -28,7 +28,7 @@ import { newId } from '@saas/shared'
  * ```
  */
 
-/** 邮件文案中的有效期，与 Better Auth 的默认值一致（createAuth 未覆盖这些选项） */
+/** 邮件文案中的有效期，与认证后端一致 */
 export const AUTH_EMAIL_EXPIRY = {
   /** emailOTP 插件 `expiresIn` 默认 300 秒 */
   otpMinutes: 5,
@@ -36,13 +36,15 @@ export const AUTH_EMAIL_EXPIRY = {
   magicLinkMinutes: 5,
   /** `emailAndPassword.resetPasswordTokenExpiresIn` 默认 3600 秒 */
   resetPasswordMinutes: 60,
-  /** organization 插件 `invitationExpiresIn` 默认 48 小时 */
-  invitationDays: 2,
+  /** 自定义团队后端 team-workspaces.ts 的邀请有效期为 7 天 */
+  invitationDays: 7,
 } as const
 
 /** 接受邀请页面的地址（页面在 tasks.md 4.5 实现） */
 export function invitationUrl(appUrl: string, invitationId: string): string {
-  return new URL(`/accept-invitation/${encodeURIComponent(invitationId)}`, appUrl).toString()
+  const url = new URL('/accept-invitation', appUrl)
+  url.searchParams.set('id', invitationId)
+  return url.toString()
 }
 
 export interface QueueAuthEmailSenderOptions {
@@ -110,8 +112,8 @@ export function toTemplate(email: AuthEmail, appUrl: string): TemplateMessage {
         },
       }
     case 'invitation': {
-      // owner 只能转让、不能邀请（tasks.md 4.5）；其他角色不发邀请邮件，避免文案与实际角色不符
-      if (email.role !== 'admin' && email.role !== 'member') {
+      // 与自定义团队后端支持的角色一致；未知角色不发邀请邮件
+      if (email.role !== 'owner' && email.role !== 'admin' && email.role !== 'member') {
         throw new TypeError(`Unsupported invitation role: ${email.role}`)
       }
       return {
