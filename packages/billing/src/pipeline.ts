@@ -6,6 +6,7 @@ import {
   webhookEvent,
 } from '@saas/db'
 import { and, eq, sql } from 'drizzle-orm'
+import { billingErrorMessage } from './errors.ts'
 import type { NormalizedEvent, PaymentProvider, VerifiedWebhook } from './provider.ts'
 
 export type WebhookTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
@@ -50,17 +51,6 @@ export interface WebhookProcessingOptions<Prepared = undefined> {
   onFailure?(failure: WebhookFailure<Prepared>): Promise<void>
   /** EVENTS_QUEUE adapter. Rejection is observable without changing successful DB status. */
   notify?(notification: WebhookNotification): Promise<void>
-}
-
-function errorMessage(error: unknown): string {
-  return (error instanceof Error ? error.message : 'Webhook processing failed')
-    .replace(/\p{Cc}/gu, ' ')
-    .replace(
-      /(bearer\s+|(?:authorization|password|secret|token|api[_-]?key)\s*[:=]\s*)\S+/gi,
-      '$1[redacted]',
-    )
-    .replace(/https?:\/\/\S+/gi, '[url]')
-    .slice(0, 500)
 }
 
 function validate(normalized: VerifiedWebhook, provider: PaymentProviderId) {
@@ -183,7 +173,7 @@ async function processRegistered<Prepared>(
     if (result.status !== 'committed') return result
     committed = result.delivery
   } catch (cause) {
-    const error = errorMessage(cause)
+    const error = billingErrorMessage(cause)
     const failed = await markFailed(options.db, delivery.id, error)
     await options.onFailure?.({ cause, delivery: failed, events: normalized.events, prepared })
     return { status: 'failed', error, delivery: failed }
@@ -196,7 +186,7 @@ async function processRegistered<Prepared>(
       await options.notify({ delivery: committed, events: normalized.events })
       notification = { status: 'sent' }
     } catch (cause) {
-      notification = { status: 'failed', error: errorMessage(cause) }
+      notification = { status: 'failed', error: billingErrorMessage(cause) }
     }
   }
   return {

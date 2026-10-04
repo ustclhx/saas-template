@@ -38,7 +38,11 @@ export async function handleBillingWebhook(
       provider,
       request,
       rawBody,
-      ...createBillingEventHandler({ db: options.db, providers: options.providers }),
+      ...createBillingEventHandler({
+        db: options.db,
+        providers: options.providers,
+        subscriptionCreditGraceHours: options.subscriptionCreditGraceHours,
+      }),
       onFailure: createCompensationFailureHandler(options.db),
       notify: async ({ delivery }) => {
         await options.queue.send({ v: 1, deliveryId: delivery.id }, { contentType: 'json' })

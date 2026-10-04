@@ -170,8 +170,8 @@ const zh: CopyBuilders = {
     { status, amount, currency, note, supportEmail },
     { appName, recipientName },
   ) => ({
-    subject: `Your ${appName} refund request: ${status}`,
-    preview: `Your refund request is ${status}.`,
+    subject: `${appName} 退款申请：${{ approved: '已批准', rejected: '已驳回', refunded: '已退款' }[status]}`,
+    preview: `退款申请${{ approved: '已批准，待平台确认', rejected: '已驳回', refunded: '已由平台确认退款' }[status]}。`,
     heading: '退款申请进度',
     greeting: greetingZh(recipientName),
     paragraphs: [
@@ -180,9 +180,9 @@ const zh: CopyBuilders = {
         : status === 'refunded'
           ? '支付平台已确认退款。'
           : '退款申请已驳回。',
-      ...(amount === null ? [] : [`Amount: ${(amount / 100).toFixed(2)} ${currency}.`]),
+      ...(amount === null ? [] : [`金额：${(amount / 100).toFixed(2)} ${currency}。`]),
       ...(note ? [note] : []),
-      `For help, contact ${supportEmail}.`,
+      `如需帮助，请联系 ${supportEmail}。`,
     ],
     linkHint: '',
     footer: '删除账号后，退款结果仍会发送至申请时保存的联系邮箱。',

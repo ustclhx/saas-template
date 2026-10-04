@@ -15,7 +15,8 @@ const mocks = vi.hoisted(() => ({
   workspace: vi.fn(),
   deletion: vi.fn(),
 }))
-vi.mock('@saas/billing', () => ({
+vi.mock('@saas/billing', async (original) => ({
+  ...(await original<typeof import('@saas/billing')>()),
   createTestPaymentRuntime: mocks.runtime,
   flushRefundNotifications: mocks.flush,
   runPendingCompensations: mocks.compensation,

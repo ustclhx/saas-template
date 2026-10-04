@@ -35,6 +35,8 @@ export default defineConfig({
             {
               test: {
                 name: 'postgres',
+                // Maintenance jobs scan all workspaces; serialize fixtures in the shared isolated database.
+                fileParallelism: false,
                 environment: 'node',
                 include: ['src/pipeline.test.ts', 'src/**/*.postgres.test.ts'],
                 globalSetup: ['@saas/db/test/global-setup'],

@@ -126,6 +126,17 @@ function BillingPage() {
       <Link to="/app/$slug/usage" params={{ slug }} className="underline">
         Credit balance and usage
       </Link>
+      {page.subscriptions.filter(
+        (sub) =>
+          sub.currentPeriodEnd &&
+          new Date(sub.currentPeriodEnd) > new Date() &&
+          ['active', 'trialing', 'canceled', 'expired', 'past_due'].includes(sub.status),
+      ).length > 1 && (
+        <p>
+          Paid subscription periods overlap. Your access uses the highest eligible plan; each paid
+          subscription grants its own credits until its paid period ends.
+        </p>
+      )}
       {page.subscriptions.map((sub) => (
         <section key={sub.id} className="grid gap-3 rounded-xl border p-6">
           <h3 className="font-semibold">{sub.name}</h3>

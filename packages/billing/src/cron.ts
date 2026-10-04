@@ -18,6 +18,7 @@ import {
   subscription,
 } from '@saas/db'
 import { and, eq, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm'
+import { billingErrorMessage } from './errors.ts'
 import {
   applyBillingEvent,
   type BillingProviders,
@@ -51,7 +52,7 @@ async function failed(
   targetId: string,
   error: unknown,
 ) {
-  const failure = { job, workspaceId, targetId, error: String(error) }
+  const failure = { job, workspaceId, targetId, error: billingErrorMessage(error) }
   result.failures.push(failure)
   await db.insert(auditLog).values({
     workspaceId,

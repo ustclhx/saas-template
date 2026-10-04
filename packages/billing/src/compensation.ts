@@ -7,6 +7,7 @@ import {
   subscription,
 } from '@saas/db'
 import { and, asc, eq, isNull, lte, or, sql } from 'drizzle-orm'
+import { billingErrorMessage } from './errors.ts'
 import {
   type BillingProviders,
   lockWorkspaceBilling,
@@ -297,15 +298,7 @@ export async function runPendingCompensations(options: {
         }
       })
     } catch (cause) {
-      const error =
-        cause instanceof Error
-          ? cause.message
-              .replace(
-                /https?:\/\/\S+|(?:secret|token|authorization|password)\s*[:=]\s*\S+/gi,
-                '[redacted]',
-              )
-              .slice(0, 500)
-          : 'Compensation failed'
+      const error = billingErrorMessage(cause, 'Compensation failed')
       await db.transaction(async (tx) => {
         const saved = await tx
           .update(billingCompensation)
