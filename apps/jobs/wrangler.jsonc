@@ -34,7 +34,7 @@
   },
   "triggers": {
     // 心跳：写 setting 表的 jobs.lastCronAt（src/cron/heartbeat.ts）
-    "crons": ["*/5 * * * *"]
+    "crons": ["*/5 * * * *", "0 3 * * *"]
   },
   // hyperdrive / workflows / queues 不会从顶层继承，每个环境都要重新声明。
   // 资源名带 -staging 后缀，避免与以后的 production 冲突。
@@ -63,7 +63,7 @@
           }
         ]
       },
-      "triggers": { "crons": ["*/5 * * * *"] }
+      "triggers": { "crons": ["*/5 * * * *", "0 3 * * *"] }
     }
   }
 }

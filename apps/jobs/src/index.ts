@@ -1,6 +1,7 @@
 // 后台 Worker 入口：导出 Workflow 类与 fetch / queue / scheduled 处理器（docs/02-project-structure.md）。
 import { emailTransportConfig } from '@saas/config'
 import { HEARTBEAT_CRON, runHeartbeat } from './cron/heartbeat.ts'
+import { runWorkspaceCleanup, WORKSPACE_CLEANUP_CRON } from './cron/workspace-cleanup.ts'
 import { requireEnv } from './env.ts'
 import { handleEmailBatch } from './queues/email.ts'
 
@@ -28,6 +29,8 @@ export default {
   async scheduled(controller, env) {
     const validEnv = requireEnv(env)
     switch (controller.cron) {
+      case WORKSPACE_CLEANUP_CRON:
+        return runWorkspaceCleanup(validEnv)
       case HEARTBEAT_CRON:
         return runHeartbeat(validEnv)
       default:
