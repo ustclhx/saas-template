@@ -7,6 +7,22 @@ export {
 } from './heartbeat.ts'
 export * from './schema/index.ts'
 export {
+  NOT_FOUND_CODE,
+  notFound,
+  type Scoped,
+  type ScopedDeleteQuery,
+  type ScopedInsert,
+  type ScopedInsertQuery,
+  type ScopedSelect,
+  type ScopedSelectFields,
+  type ScopedUpdate,
+  type ScopedUpdateQuery,
+  scoped,
+  type WorkspaceTable,
+  type WorkspaceTableWithId,
+  workspaceColumnOf,
+} from './scoped.ts'
+export {
   dbSettingStore,
   getSetting,
   SETTING_CACHE_TTL_SECONDS,
