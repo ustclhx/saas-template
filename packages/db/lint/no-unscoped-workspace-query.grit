@@ -14,9 +14,18 @@ language js
 pattern workspace_table() {
   or {
     `auditLog`,
+    `billingCustomer`,
+    `creditDebt`,
+    `creditGrant`,
+    `creditHold`,
+    `creditLedger`,
     `invitation`,
     `member`,
-    `notification`
+    `notification`,
+    `payment`,
+    `purchase`,
+    `refundRequest`,
+    `subscription`
   }
 }
 
