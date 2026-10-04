@@ -67,6 +67,9 @@ afterAll(async () => {
   await sql`delete from verification where created_at >= ${startedAt.toISOString()}`
   if (ids.length === 0) return
   await sql`delete from session where user_id in ${sql(ids)}`
+  // 注册时创建的个人空间（id 即用户 id）
+  await sql`delete from member where user_id in ${sql(ids)}`
+  await sql`delete from organization where id in ${sql(ids)}`
   await sql`delete from account where user_id in ${sql(ids)}`
   await sql`delete from "user" where id in ${sql(ids)}`
 })

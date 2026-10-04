@@ -11,6 +11,7 @@ import { emailVerificationOptions } from './email-verification.ts'
 import { type AuthEnv, parseAuthEnv } from './env.ts'
 import { freshSessionGuard } from './fresh-session.ts'
 import { passwordHasher } from './password.ts'
+import { personalWorkspaceHooks } from './personal-workspace.ts'
 import { authProtection } from './protection.ts'
 import { sessionStorageOptions } from './session.ts'
 
@@ -47,6 +48,8 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
       // 主键统一为 UUIDv7（design.md 决策 2），列类型为 uuid
       database: { generateId: () => newId() },
     },
+    // 注册即创建个人空间，新会话默认以个人空间为活跃空间（personal-workspace.ts）
+    databaseHooks: personalWorkspaceHooks(db),
     user: {
       additionalFields: {
         locale: { type: 'string', required: false },
