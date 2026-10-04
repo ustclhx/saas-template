@@ -49,7 +49,7 @@ saas-template/
 └─ CLAUDE.md / AGENTS.md          # AI 编码助手约定
 ```
 
-**依赖方向**：`apps/*` → `packages/*`；packages 之间只允许 `shared` ← `config` ← `db` ← 业务包（billing/credits/ai/…）。业务包不得依赖 `apps`，不得依赖 React（`ui` 除外）。
+**依赖方向**：`apps/*` → `packages/*`；packages 之间只允许 `shared` ← `config` ← `db` ← 业务包（billing/credits/ai/…）。业务包不得依赖 `apps`，不得依赖 React（`ui` 除外）。例外：`email` 用 React Email 在服务端渲染邮件，允许依赖 `react` / `react-dom` 与 React Email（`react-email`、`@react-email/*`），但不得依赖 `ui`；其他包依赖 React Email 同样视为依赖 React。以上规则由 `pnpm check:deps`（`scripts/check-deps.mjs`）检查。
 
 ## 2. 为什么拆 `apps/jobs`
 

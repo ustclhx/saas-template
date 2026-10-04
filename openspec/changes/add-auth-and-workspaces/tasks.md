@@ -15,7 +15,7 @@
 
 ## 3. 邮件
 
-- [ ] 3.1 在 `packages/email` 实现 `EmailSender` 接口与 Resend 实现、React Email 模板（验证、验证码、魔法链接、重置密码、邀请），验证模板渲染快照测试通过
+- [x] 3.1 在 `packages/email` 实现 `EmailSender` 接口与 Resend 实现、React Email 模板（验证、验证码、魔法链接、重置密码、邀请），验证模板渲染快照测试通过
 - [ ] 3.2 认证邮件改为投递 `EMAIL_QUEUE`，`apps/jobs` 消费并发送，失败时由队列重试，验证模拟 Resend 5xx 时用户请求仍成功、消息重试后发送
 
 ## 4. 空间与中间件

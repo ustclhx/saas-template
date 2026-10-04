@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // 依赖方向检查（docs/02-project-structure.md「依赖方向」）：
 //   1. packages/* 不得依赖 apps/*
-//   2. 除 @saas/ui 外的包不得依赖 React（含 @saas/ui 本身）
+//   2. 除 @saas/ui 外的包不得依赖 React（含 @saas/ui 本身与 React Email）；
+//      例外：@saas/email 在服务端用 React Email 渲染邮件，可以依赖 React 与 React Email，但不得依赖 @saas/ui
 //   3. 基础包分层：shared 不依赖其他内部包；config 只依赖 shared；db 只依赖 shared、config
 // 同时检查 package.json 中声明的依赖与 src 中实际的 import，任一违规即以非零码退出。
 
@@ -16,8 +17,14 @@ const REACT_PACKAGES = new Set([
   'react-dom',
   '@types/react',
   '@types/react-dom',
+  'react-email',
   UI_PACKAGE,
 ])
+const REACT_SCOPES = ['@react-email/']
+// 按包放开的 React 依赖：函数返回 true 表示允许依赖该包（@saas/ui 不受 React 规则限制）
+const REACT_EXCEPTIONS = {
+  '@saas/email': (dep) => dep !== UI_PACKAGE,
+}
 const LAYERS = {
   '@saas/shared': [],
   '@saas/config': ['@saas/shared'],
@@ -69,12 +76,24 @@ const appNames = new Set(apps.map((a) => a.manifest.name))
 const appDirs = apps.map((a) => a.path + sep)
 const violations = []
 
+function isReactPackage(dep) {
+  return REACT_PACKAGES.has(dep) || REACT_SCOPES.some((scope) => dep.startsWith(scope))
+}
+
+function reactAllowed(pkgName, dep) {
+  return pkgName === UI_PACKAGE || REACT_EXCEPTIONS[pkgName]?.(dep) === true
+}
+
 function checkDependency(pkgName, dep, where) {
   if (appNames.has(dep)) {
     violations.push(`${pkgName} → ${dep}（${where}）：packages 不得依赖 apps`)
   }
-  if (pkgName !== UI_PACKAGE && REACT_PACKAGES.has(dep)) {
-    violations.push(`${pkgName} → ${dep}（${where}）：只有 ${UI_PACKAGE} 可以依赖 React`)
+  if (isReactPackage(dep) && !reactAllowed(pkgName, dep)) {
+    const rule =
+      pkgName in REACT_EXCEPTIONS
+        ? `${pkgName} 只能依赖 React 与 React Email，不得依赖 ${UI_PACKAGE}`
+        : `只有 ${UI_PACKAGE}（及用 React Email 渲染邮件的 @saas/email）可以依赖 React`
+    violations.push(`${pkgName} → ${dep}（${where}）：${rule}`)
   }
   const allowed = LAYERS[pkgName]
   if (allowed && dep.startsWith(SCOPE) && dep !== pkgName && !allowed.includes(dep)) {
