@@ -1,3 +1,4 @@
+import { type TemplateConfig, templateConfigDefaults } from '@saas/config'
 import {
   type CreditGrant,
   type CreditHold,
@@ -20,7 +21,7 @@ export type CreditsErrorCode =
   | 'INSUFFICIENT_CREDITS'
   | 'WORKSPACE_RESOURCE_NOT_FOUND'
   | 'HOLD_NOT_ACTIVE'
-  | 'OVERAGE_NOT_SUPPORTED'
+  | 'INVALID_OVERAGE_POLICY'
 
 export class CreditsError extends Error {
   constructor(public readonly code: CreditsErrorCode) {
@@ -211,8 +212,11 @@ export interface ReleaseInput {
   holdId: string
 }
 
+export type OveragePolicy = TemplateConfig['billing']['overage']
+
 export interface CaptureInput extends ReleaseInput {
   actualAmount: number
+  overage?: Partial<OveragePolicy>
 }
 
 export interface CaptureResult {
@@ -227,7 +231,8 @@ async function settle(
   tx: CreditsTransaction,
   input: ReleaseInput,
   actualAmount: number | undefined,
-): Promise<void> {
+  policy: OveragePolicy = templateConfigDefaults.billing.overage,
+): Promise<CaptureResult> {
   await lockWorkspaceCredits(tx, input.workspaceId)
   const ownedHold = and(
     eq(creditHold.id, input.holdId),
@@ -236,26 +241,69 @@ async function settle(
   const [reservation] = await tx.select().from(creditHold).where(ownedHold)
   if (!reservation) throw new CreditsError('WORKSPACE_RESOURCE_NOT_FOUND')
   if (reservation.status !== 'held') throw new CreditsError('HOLD_NOT_ACTIVE')
-  // Task 2.5 adds overage handling. Reject before writing even if the caller
-  // catches this error inside its transaction.
-  if (actualAmount !== undefined && actualAmount > reservation.amount) {
-    throw new CreditsError('OVERAGE_NOT_SUPPORTED')
+  const captured = Math.min(actualAmount ?? 0, reservation.amount)
+  const excess = Math.max(0, (actualAmount ?? 0) - reservation.amount)
+  // SQL now() is stable for the transaction: UTC budget boundaries and the
+  // settlement timestamp use the same date even across a midnight wait.
+  const dayStart = sql`date_trunc('day', now() at time zone 'UTC') at time zone 'UTC'`
+  const [daily] =
+    excess > 0
+      ? await tx
+          .select({ amount: sql<number>`coalesce(sum(${creditHold.overageAbsorbed}), 0)::float8` })
+          .from(creditHold)
+          .where(
+            and(
+              eq(creditHold.workspaceId, input.workspaceId),
+              eq(creditHold.status, 'captured'),
+              sql`${creditHold.updatedAt} >= ${dayStart}`,
+              sql`${creditHold.updatedAt} < ${dayStart} + interval '24 hours'`,
+            ),
+          )
+      : []
+  const absorbed = Math.min(
+    excess,
+    Math.floor(Math.min(reservation.amount * policy.maxRatio, policy.maxCredits)),
+    Math.max(0, policy.dailyBudgetPerWorkspace - (daily?.amount ?? 0)),
+  )
+  const supplemental =
+    excess > absorbed
+      ? await tx
+          .select({
+            grant: creditGrant,
+            expired: sql<boolean>`${creditGrant.expiresAt} is not null and ${creditGrant.expiresAt} <= now()`,
+          })
+          .from(creditGrant)
+          .where(
+            and(
+              eq(creditGrant.workspaceId, input.workspaceId),
+              eq(creditGrant.status, 'active'),
+              gt(creditGrant.remaining, 0),
+            ),
+          )
+          .orderBy(
+            sql`${creditGrant.expiresAt} asc nulls last`,
+            asc(creditGrant.createdAt),
+            asc(creditGrant.id),
+          )
+          .for('update')
+      : []
+  const debited = Math.min(
+    excess - absorbed,
+    supplemental.filter((b) => !b.expired).reduce((total, b) => total + b.grant.remaining, 0),
+  )
+  const debt = excess - absorbed - debited
+  const [existingDebt] =
+    debt > 0
+      ? await tx
+          .select()
+          .from(creditDebt)
+          .where(eq(creditDebt.workspaceId, input.workspaceId))
+          .for('update')
+      : []
+  // Check int4 bounds before the state gate, including for caller-owned txs.
+  if ((existingDebt?.amount ?? 0) + debt > 2_147_483_647) {
+    throw new CreditsError('INVALID_CREDIT_AMOUNT')
   }
-  const captured = actualAmount ?? 0
-  // The first mutation is the state gate; nothing touches balances on a loss.
-  const [settled] = await tx
-    .update(creditHold)
-    .set({
-      status: actualAmount === undefined ? 'released' : 'captured',
-      capturedAmount: captured,
-      overageAbsorbed: 0,
-      overageDebited: 0,
-      overageDebt: 0,
-    })
-    .where(and(ownedHold, eq(creditHold.status, 'held')))
-    .returning()
-  if (!settled) throw new CreditsError('HOLD_NOT_ACTIVE')
-
   const allocations = await tx
     .select({
       grant: creditGrant,
@@ -266,7 +314,7 @@ async function settle(
     .innerJoin(creditGrant, eq(creditGrant.id, creditHoldAllocation.grantId))
     .where(
       and(
-        eq(creditHoldAllocation.holdId, settled.id),
+        eq(creditHoldAllocation.holdId, reservation.id),
         eq(creditGrant.workspaceId, input.workspaceId),
       ),
     )
@@ -276,6 +324,21 @@ async function settle(
       asc(creditGrant.id),
     )
     .for('update', { of: creditGrant })
+
+  // The first mutation is the state gate; all plans and validation precede it.
+  const [settled] = await tx
+    .update(creditHold)
+    .set({
+      status: actualAmount === undefined ? 'released' : 'captured',
+      capturedAmount: captured,
+      overageAbsorbed: absorbed,
+      overageDebited: debited,
+      overageDebt: debt,
+      updatedAt: sql`now()`,
+    })
+    .where(and(ownedHold, eq(creditHold.status, 'held')))
+    .returning()
+  if (!settled) throw new CreditsError('HOLD_NOT_ACTIVE')
 
   let toConsume = captured
   for (const allocation of allocations) {
@@ -319,19 +382,67 @@ async function settle(
         .where(batchScope)
     }
   }
+  let toDebit = debited
+  const allocatedIds = new Set(allocations.map((a) => a.grant.id))
+  for (const item of supplemental) {
+    const batch = item.grant
+    const batchScope = and(
+      eq(creditGrant.id, batch.id),
+      eq(creditGrant.workspaceId, input.workspaceId),
+    )
+    if (item.expired) {
+      // Allocated expired batches were already canceled by the loop above.
+      if (!allocatedIds.has(batch.id)) {
+        await tx.update(creditGrant).set({ remaining: 0, status: 'expired' }).where(batchScope)
+        await tx.insert(creditLedger).values({
+          workspaceId: input.workspaceId,
+          grantId: batch.id,
+          type: 'expire',
+          delta: -batch.remaining,
+        })
+      }
+      continue
+    }
+    const amount = Math.min(toDebit, batch.remaining)
+    if (amount > 0) {
+      await tx
+        .update(creditGrant)
+        .set({ remaining: batch.remaining - amount })
+        .where(batchScope)
+      toDebit -= amount
+    }
+  }
+  if (debt > 0) {
+    await tx
+      .insert(creditDebt)
+      .values({ workspaceId: input.workspaceId, amount: debt })
+      .onConflictDoUpdate({
+        target: creditDebt.workspaceId,
+        set: { amount: sql`${creditDebt.amount} + ${debt}` },
+      })
+    await tx.insert(creditLedger).values({
+      workspaceId: input.workspaceId,
+      userId: settled.userId,
+      type: 'debt',
+      delta: -debt,
+      refType: settled.refType,
+      refId: settled.refId,
+    })
+  }
   if (actualAmount !== undefined) {
     await tx.insert(creditLedger).values({
       workspaceId: input.workspaceId,
       userId: settled.userId,
       type: 'consume',
-      delta: -captured,
+      delta: -(captured + debited),
       refType: settled.refType,
       refId: settled.refId,
     })
   }
+  return { captured, absorbed, debited, debt }
 }
 
-/** Capture within the reservation; unused allocations return to their batches. */
+/** Capture held credits, absorb limited overage, then debit balance or record debt. */
 export async function capture(
   db: Database,
   input: CaptureInput,
@@ -344,8 +455,17 @@ export async function capture(
   ) {
     throw new CreditsError('INVALID_CREDIT_AMOUNT')
   }
-  await withCreditsTransaction(db, tx, (tx) => settle(tx, input, input.actualAmount))
-  return { captured: input.actualAmount, absorbed: 0, debited: 0, debt: 0 }
+  const policy = { ...templateConfigDefaults.billing.overage, ...input.overage }
+  if (
+    !Number.isFinite(policy.maxRatio) ||
+    policy.maxRatio < 0 ||
+    ![policy.maxCredits, policy.dailyBudgetPerWorkspace].every(
+      (value) => Number.isSafeInteger(value) && value >= 0 && value <= 2_147_483_647,
+    )
+  ) {
+    throw new CreditsError('INVALID_OVERAGE_POLICY')
+  }
+  return withCreditsTransaction(db, tx, (tx) => settle(tx, input, input.actualAmount, policy))
 }
 
 /** Release the full reservation without consuming credits. */

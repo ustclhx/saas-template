@@ -10,7 +10,7 @@ import {
 } from '@saas/db'
 import * as schema from '@saas/db/schema'
 import { newId } from '@saas/shared'
-import { eq, inArray } from 'drizzle-orm'
+import { eq, inArray, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -524,7 +524,7 @@ describe('capture and release on PostgreSQL', () => {
     await assertInvariant()
   })
 
-  it('invalid actual amounts and intermediate overage rejection do not settle a hold in a caller transaction', async () => {
+  it('invalid actual amounts and overage policy rejection do not settle a hold in a caller transaction', async () => {
     await grant(db, grantInput(10))
     const reservation = await hold(db, holdInput(8))
     const input = { workspaceId: ws, holdId: reservation.id }
@@ -534,14 +534,249 @@ describe('capture and release on PostgreSQL', () => {
           code: 'INVALID_CREDIT_AMOUNT',
         })
       }
-      await expect(capture(db, { ...input, actualAmount: 9 }, tx)).rejects.toMatchObject({
-        code: 'OVERAGE_NOT_SUPPORTED',
+      await expect(
+        capture(db, { ...input, actualAmount: 9, overage: { maxRatio: -1 } }, tx),
+      ).rejects.toMatchObject({
+        code: 'INVALID_OVERAGE_POLICY',
       })
     })
     expect(
       (await db.select().from(creditHold).where(eq(creditHold.id, reservation.id)))[0]?.status,
     ).toBe('held')
     await release(db, input)
+    await assertInvariant()
+  })
+})
+
+describe('overage capture on PostgreSQL', () => {
+  it.each([
+    { balance: 100, actual: 110, absorbed: 10, debited: 0, debt: 0 },
+    { balance: 150, actual: 150, absorbed: 20, debited: 30, debt: 0 },
+    { balance: 110, actual: 150, absorbed: 20, debited: 10, debt: 20 },
+  ])('settles the specified scenario $balance -> $actual', async (scenario) => {
+    await grant(db, grantInput(scenario.balance))
+    const reservation = await hold(db, holdInput(100))
+    const result = await capture(db, {
+      workspaceId: ws,
+      holdId: reservation.id,
+      actualAmount: scenario.actual,
+    })
+    expect(result).toEqual({
+      captured: 100,
+      absorbed: scenario.absorbed,
+      debited: scenario.debited,
+      debt: scenario.debt,
+    })
+    expect(Object.values(result).reduce((sum, value) => sum + value, 0)).toBe(scenario.actual)
+    expect(
+      (await db.select().from(creditHold).where(eq(creditHold.id, reservation.id)))[0],
+    ).toMatchObject({
+      capturedAmount: 100,
+      overageAbsorbed: scenario.absorbed,
+      overageDebited: scenario.debited,
+      overageDebt: scenario.debt,
+    })
+    const ledger = await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws))
+    expect(ledger.filter((l) => l.type === 'consume').map((l) => l.delta)).toEqual([
+      -(100 + scenario.debited),
+    ])
+    expect(ledger.filter((l) => l.type === 'debt').map((l) => l.delta)).toEqual(
+      scenario.debt ? [-scenario.debt] : [],
+    )
+    await assertInvariant()
+    if (scenario.debt) {
+      await expect(hold(db, holdInput(1))).rejects.toMatchObject({ code: 'CREDIT_DEBT' })
+      const input = grantInput(30)
+      const results = await Promise.all([grant(db, input), grant(db, input)])
+      expect(results.map((r) => r.remaining)).toEqual([10, 10])
+      expect(results[0]?.id).toBe(results[1]?.id)
+      expect(
+        (await db.select().from(creditDebt).where(eq(creditDebt.workspaceId, ws)))[0]?.amount,
+      ).toBe(0)
+      await assertInvariant()
+    }
+  })
+
+  it('serializes daily absorption at exactly 200, including prior-day holds settling today', async () => {
+    await grant(db, grantInput(1600))
+    const reservations = []
+    for (let i = 0; i < 6; i++) reservations.push(await hold(db, holdInput(250)))
+    await db
+      .update(creditHold)
+      .set({ createdAt: new Date(0), updatedAt: new Date(0) })
+      .where(
+        inArray(
+          creditHold.id,
+          reservations.map((r) => r.id),
+        ),
+      )
+    const first = await capture(db, {
+      workspaceId: ws,
+      holdId: reservations[0]?.id ?? '',
+      actualAmount: 300,
+    })
+    expect(first.absorbed).toBe(50)
+    const results = await Promise.all(
+      reservations.slice(1).map((r) =>
+        capture(db, {
+          workspaceId: ws,
+          holdId: r.id,
+          actualAmount: 300,
+        }),
+      ),
+    )
+    expect(first.absorbed + results.reduce((sum, r) => sum + r.absorbed, 0)).toBe(200)
+    expect(results.reduce((sum, r) => sum + r.debited, 0)).toBe(100)
+    const [{ count } = { count: 0 }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(creditHold)
+      .where(sql`${creditHold.workspaceId} = ${ws} and
+        ${creditHold.updatedAt} >= (date_trunc('day', now() at time zone 'UTC') at time zone 'UTC')`)
+    expect(count).toBe(6)
+    await assertInvariant()
+  })
+
+  it.each([
+    { held: 1000, actual: 1200, absorbed: 50, debt: 150 },
+    { held: 8, actual: 10, absorbed: 1, debt: 1 },
+  ])('caps and floors single-capture absorption for held $held', async (scenario) => {
+    await grant(db, grantInput(scenario.held))
+    const reservation = await hold(db, holdInput(scenario.held))
+    expect(
+      await capture(db, { workspaceId: ws, holdId: reservation.id, actualAmount: scenario.actual }),
+    ).toEqual({
+      captured: scenario.held,
+      absorbed: scenario.absorbed,
+      debited: 0,
+      debt: scenario.debt,
+    })
+    await assertInvariant()
+  })
+
+  it('yesterday settlement does not consume today budget and pre-existing holds accumulate debt', async () => {
+    await grant(db, grantInput(300))
+    const first = await hold(db, holdInput(100))
+    const second = await hold(db, holdInput(100))
+    const third = await hold(db, holdInput(100))
+    await capture(db, { workspaceId: ws, holdId: first.id, actualAmount: 120 })
+    await db
+      .update(creditHold)
+      .set({ updatedAt: new Date(0) })
+      .where(eq(creditHold.id, first.id))
+    const overage = { dailyBudgetPerWorkspace: 20 }
+    expect(
+      await capture(db, { workspaceId: ws, holdId: second.id, actualAmount: 150, overage }),
+    ).toEqual({ captured: 100, absorbed: 20, debited: 0, debt: 30 })
+    expect(
+      await capture(db, { workspaceId: ws, holdId: third.id, actualAmount: 150, overage }),
+    ).toEqual({ captured: 100, absorbed: 0, debited: 0, debt: 50 })
+    expect(
+      (await db.select().from(creditDebt).where(eq(creditDebt.workspaceId, ws)))[0]?.amount,
+    ).toBe(80)
+    await assertInvariant()
+  })
+
+  it('supplementary debit uses expiry/creation/id order and lazily cancels expired remaining', async () => {
+    const initial = await grant(db, grantInput(100))
+    const reservation = await hold(db, holdInput(100))
+    const stale = await grant(db, grantInput(9))
+    await db
+      .update(creditGrant)
+      .set({ expiresAt: new Date(0) })
+      .where(eq(creditGrant.id, stale.id))
+    const permanent = await grant(db, grantInput(20))
+    const expiry = new Date(Date.now() + 86_400_000)
+    const older = await grant(db, { ...grantInput(5), expiresAt: expiry })
+    const tied1 = await grant(db, { ...grantInput(5), expiresAt: expiry })
+    const tied2 = await grant(db, { ...grantInput(5), expiresAt: expiry })
+    await db
+      .update(creditGrant)
+      .set({ createdAt: new Date(0) })
+      .where(inArray(creditGrant.id, [tied1.id, tied2.id]))
+    await db
+      .update(creditGrant)
+      .set({ createdAt: new Date(-1000) })
+      .where(eq(creditGrant.id, older.id))
+    expect(
+      await capture(db, {
+        workspaceId: ws,
+        holdId: reservation.id,
+        actualAmount: 108,
+        overage: { maxCredits: 0 },
+      }),
+    ).toEqual({ captured: 100, absorbed: 0, debited: 8, debt: 0 })
+    const rows = await db.select().from(creditGrant).where(eq(creditGrant.workspaceId, ws))
+    expect(Object.fromEntries(rows.map((r) => [r.id, r.remaining]))).toEqual({
+      [initial.id]: 0,
+      [stale.id]: 0,
+      [permanent.id]: 20,
+      [older.id]: 0,
+      [tied1.id < tied2.id ? tied1.id : tied2.id]: 2,
+      [tied1.id < tied2.id ? tied2.id : tied1.id]: 5,
+    })
+    expect(rows.find((r) => r.id === stale.id)?.status).toBe('expired')
+    await assertInvariant()
+  })
+
+  it('overage capture/release race applies only one settlement', async () => {
+    await grant(db, grantInput(110))
+    const reservation = await hold(db, holdInput(100))
+    const input = { workspaceId: ws, holdId: reservation.id }
+    const results = await Promise.allSettled([
+      capture(db, { ...input, actualAmount: 150 }),
+      release(db, input),
+    ])
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter((r) => r.status === 'rejected')).toEqual([
+      expect.objectContaining({ reason: expect.objectContaining({ code: 'HOLD_NOT_ACTIVE' }) }),
+    ])
+    await assertInvariant()
+  })
+
+  it('caller rollback restores overage, supplementary debit, debt, and ledger together', async () => {
+    const batch = await grant(db, grantInput(110))
+    const reservation = await hold(db, holdInput(100))
+    await expect(
+      db.transaction(async (tx) => {
+        expect(
+          await capture(db, { workspaceId: ws, holdId: reservation.id, actualAmount: 150 }, tx),
+        ).toEqual({ captured: 100, absorbed: 20, debited: 10, debt: 20 })
+        throw new Error('rollback overage')
+      }),
+    ).rejects.toThrow('rollback overage')
+    expect(
+      (await db.select().from(creditHold).where(eq(creditHold.id, reservation.id)))[0],
+    ).toMatchObject({
+      status: 'held',
+      capturedAmount: 0,
+      overageAbsorbed: 0,
+      overageDebited: 0,
+      overageDebt: 0,
+    })
+    expect(
+      (await db.select().from(creditGrant).where(eq(creditGrant.id, batch.id)))[0]?.remaining,
+    ).toBe(10)
+    expect(await db.select().from(creditDebt).where(eq(creditDebt.workspaceId, ws))).toEqual([])
+    expect(
+      (await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws))).map(
+        (l) => l.type,
+      ),
+    ).toEqual(['grant'])
+    await assertInvariant()
+  })
+
+  it('debt overflow caught by a caller leaves the state gate and all balances untouched', async () => {
+    await grant(db, grantInput(100))
+    const reservation = await hold(db, holdInput(100))
+    await debt(2_147_483_647)
+    await db.transaction(async (tx) => {
+      await expect(
+        capture(db, { workspaceId: ws, holdId: reservation.id, actualAmount: 150 }, tx),
+      ).rejects.toMatchObject({ code: 'INVALID_CREDIT_AMOUNT' })
+    })
+    expect(
+      (await db.select().from(creditHold).where(eq(creditHold.id, reservation.id)))[0]?.status,
+    ).toBe('held')
     await assertInvariant()
   })
 })

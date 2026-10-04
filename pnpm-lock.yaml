@@ -365,6 +365,9 @@ importers:
 
   packages/credits:
     dependencies:
+      '@saas/config':
+        specifier: workspace:*
+        version: link:../config
       '@saas/db':
         specifier: workspace:*
         version: link:../db
