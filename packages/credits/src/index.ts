@@ -476,3 +476,6 @@ export async function release(
 ): Promise<void> {
   await withCreditsTransaction(db, tx, (tx) => settle(tx, input, undefined))
 }
+
+export * from './lifecycle.ts'
+export * from './queries.ts'
