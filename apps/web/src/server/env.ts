@@ -20,12 +20,21 @@ export const webEnvSchema = envSchema.extend({
   RL_AUTH: bindingWith<Cloudflare.Env['RL_AUTH']>('limit'),
 })
 
+/**
+ * 认证页面需要的公开变量：启用 Turnstile 时，登录 / 注册等页面要用 site key 渲染小组件
+ * （features/auth/options.ts），缺失会让这些表单无法提交。
+ */
+const authUiEnvSchema = z.object({
+  TURNSTILE_SITE_KEY: templateConfig.auth.turnstile ? z.string().min(1) : z.string().optional(),
+})
+
 /** 绑定（webEnvSchema）与认证所需的变量（按模板配置，@saas/auth 的 parseAuthEnv）一起校验，合并报告 */
 function validate(env: unknown): EnvValidationError | null {
   const missing = new Set<string>()
   const invalid = new Set<string>()
   for (const check of [
     () => loadEnv(env, webEnvSchema),
+    () => loadEnv(env, authUiEnvSchema),
     () => parseAuthEnv((env ?? {}) as Parameters<typeof parseAuthEnv>[0], templateConfig),
   ]) {
     try {

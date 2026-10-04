@@ -1,8 +1,8 @@
-import { useForm } from '@tanstack/react-form'
+import { Button, Input, Label, useAppForm } from '@saas/ui'
 import { useRouter } from '@tanstack/react-router'
 import { type ReactNode, useId, useState } from 'react'
+import { authClient } from '../auth/auth-client.ts'
 import type { AccountView } from './account.ts'
-import { authClient } from './auth-client.ts'
 import { ACCOUNT_COPY, errorMessage } from './copy.ts'
 import {
   changePasswordFormSchema,
@@ -13,8 +13,7 @@ import {
   totpCodeFormSchema,
 } from './schemas.ts'
 
-// 设置页的各个区块：不带样式的骨架（语义化 HTML），样式在 p1-auth-ui 合并后统一补。
-// 表单用 TanStack Form + Zod；合并后换成 packages/ui 的表单封装。
+// 设置业务沿用原有 TanStack Form + Zod 校验，共享 UI 基础组件与认证客户端。
 
 type User = AccountView['user']
 type Status = { readonly kind: 'success' | 'error'; readonly message: string } | null
@@ -46,8 +45,13 @@ function FieldErrors({ id, errors }: { readonly id: string; readonly errors: rea
 function Section({ title, children }: { readonly title: string; readonly children: ReactNode }) {
   const id = useId()
   return (
-    <section aria-labelledby={id}>
-      <h2 id={id}>{title}</h2>
+    <section
+      aria-labelledby={id}
+      className="rounded-xl border bg-card p-6 shadow-sm [&_form]:grid [&_form]:gap-4 [&_form_p]:grid [&_form_p]:gap-2"
+    >
+      <h2 id={id} className="mb-4 font-semibold text-lg">
+        {title}
+      </h2>
       {children}
     </section>
   )
@@ -62,7 +66,7 @@ const submitHandler = (submit: () => unknown) => (e: React.FormEvent) => {
 export function ProfileSection({ user }: { readonly user: User }) {
   const router = useRouter()
   const [status, setStatus] = useState<Status>(null)
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: { name: user.name, image: user.image ?? '' },
     validators: { onSubmit: profileFormSchema },
     onSubmit: async ({ value }) => {
@@ -86,8 +90,8 @@ export function ProfileSection({ user }: { readonly user: User }) {
         <form.Field name="name">
           {(field) => (
             <p>
-              <label htmlFor={field.name}>{copy.name}</label>
-              <input
+              <Label htmlFor={field.name}>{copy.name}</Label>
+              <Input
                 id={field.name}
                 name={field.name}
                 autoComplete="name"
@@ -102,8 +106,8 @@ export function ProfileSection({ user }: { readonly user: User }) {
         <form.Field name="image">
           {(field) => (
             <p>
-              <label htmlFor={field.name}>{copy.image}</label>
-              <input
+              <Label htmlFor={field.name}>{copy.image}</Label>
+              <Input
                 id={field.name}
                 name={field.name}
                 type="url"
@@ -119,9 +123,9 @@ export function ProfileSection({ user }: { readonly user: User }) {
         </form.Field>
         <form.Subscribe selector={(s) => s.isSubmitting}>
           {(submitting) => (
-            <button type="submit" disabled={submitting}>
+            <Button type="submit" disabled={submitting}>
               {submitting ? ACCOUNT_COPY.saving : copy.submit}
-            </button>
+            </Button>
           )}
         </form.Subscribe>
       </form>
@@ -139,7 +143,7 @@ export function PreferencesSection({
 }) {
   const router = useRouter()
   const [status, setStatus] = useState<Status>(null)
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: { locale: user.locale ?? '', timezone: user.timezone ?? '' },
     validators: { onSubmit: preferencesFormSchema(locales) },
     onSubmit: async ({ value }) => {
@@ -160,7 +164,7 @@ export function PreferencesSection({
         <form.Field name="locale">
           {(field) => (
             <p>
-              <label htmlFor={field.name}>{copy.locale}</label>
+              <Label htmlFor={field.name}>{copy.locale}</Label>
               <select
                 id={field.name}
                 name={field.name}
@@ -182,20 +186,20 @@ export function PreferencesSection({
         <form.Field name="timezone">
           {(field) => (
             <p>
-              <label htmlFor={field.name}>{copy.timezone}</label>
-              <input
+              <Label htmlFor={field.name}>{copy.timezone}</Label>
+              <Input
                 id={field.name}
                 name={field.name}
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
               />
-              <button
+              <Button
                 type="button"
                 onClick={() => field.handleChange(Intl.DateTimeFormat().resolvedOptions().timeZone)}
               >
                 {copy.useBrowserTimezone}
-              </button>
+              </Button>
               <small>{copy.timezoneHint}</small>
               <FieldErrors id={`${field.name}-errors`} errors={field.state.meta.errors} />
             </p>
@@ -203,9 +207,9 @@ export function PreferencesSection({
         </form.Field>
         <form.Subscribe selector={(s) => s.isSubmitting}>
           {(submitting) => (
-            <button type="submit" disabled={submitting}>
+            <Button type="submit" disabled={submitting}>
               {submitting ? ACCOUNT_COPY.saving : copy.submit}
-            </button>
+            </Button>
           )}
         </form.Subscribe>
       </form>
@@ -254,9 +258,9 @@ export function EmailVerificationSection({
   return (
     <Section title={copy.heading}>
       <p>{copy.unverified}</p>
-      <button type="button" onClick={send} disabled={sending}>
+      <Button type="button" onClick={send} disabled={sending}>
         {copy.send}
-      </button>
+      </Button>
       <StatusMessage status={status} />
     </Section>
   )
@@ -264,7 +268,7 @@ export function EmailVerificationSection({
 
 export function PasswordSection({ hasPassword }: { readonly hasPassword: boolean }) {
   const [status, setStatus] = useState<Status>(null)
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: { currentPassword: '', newPassword: '', confirmPassword: '' },
     validators: { onSubmit: changePasswordFormSchema },
     onSubmit: async ({ value, formApi }) => {
@@ -300,8 +304,8 @@ export function PasswordSection({ hasPassword }: { readonly hasPassword: boolean
           <form.Field key={name} name={name}>
             {(field) => (
               <p>
-                <label htmlFor={field.name}>{label}</label>
-                <input
+                <Label htmlFor={field.name}>{label}</Label>
+                <Input
                   id={field.name}
                   name={field.name}
                   type="password"
@@ -317,9 +321,9 @@ export function PasswordSection({ hasPassword }: { readonly hasPassword: boolean
         ))}
         <form.Subscribe selector={(s) => s.isSubmitting}>
           {(submitting) => (
-            <button type="submit" disabled={submitting}>
+            <Button type="submit" disabled={submitting}>
               {submitting ? ACCOUNT_COPY.saving : copy.submit}
-            </button>
+            </Button>
           )}
         </form.Subscribe>
       </form>
@@ -342,7 +346,7 @@ export function TwoFactorSection({
   const [setup, setSetup] = useState<{ totpURI: string; backupCodes: string[] } | null>(null)
   const copy = ACCOUNT_COPY.twoFactor
 
-  const passwordForm = useForm({
+  const passwordForm = useAppForm({
     defaultValues: { password: '' },
     validators: { onSubmit: passwordOnlyFormSchema },
     onSubmit: async ({ value, formApi }) => {
@@ -365,7 +369,7 @@ export function TwoFactorSection({
     },
   })
 
-  const codeForm = useForm({
+  const codeForm = useAppForm({
     defaultValues: { code: '' },
     validators: { onSubmit: totpCodeFormSchema },
     onSubmit: async ({ value }) => {
@@ -407,8 +411,8 @@ export function TwoFactorSection({
             <codeForm.Field name="code">
               {(field) => (
                 <p>
-                  <label htmlFor="totp-code">{copy.code}</label>
-                  <input
+                  <Label htmlFor="totp-code">{copy.code}</Label>
+                  <Input
                     id="totp-code"
                     name={field.name}
                     inputMode="numeric"
@@ -421,7 +425,7 @@ export function TwoFactorSection({
                 </p>
               )}
             </codeForm.Field>
-            <button type="submit">{copy.verify}</button>
+            <Button type="submit">{copy.verify}</Button>
           </form>
         </div>
       ) : (
@@ -429,8 +433,8 @@ export function TwoFactorSection({
           <passwordForm.Field name="password">
             {(field) => (
               <p>
-                <label htmlFor="two-factor-password">{copy.password}</label>
-                <input
+                <Label htmlFor="two-factor-password">{copy.password}</Label>
+                <Input
                   id="two-factor-password"
                   name={field.name}
                   type="password"
@@ -443,7 +447,7 @@ export function TwoFactorSection({
               </p>
             )}
           </passwordForm.Field>
-          <button type="submit">{user.twoFactorEnabled ? copy.disable : copy.enable}</button>
+          <Button type="submit">{user.twoFactorEnabled ? copy.disable : copy.enable}</Button>
         </form>
       )}
       <StatusMessage status={status} />
