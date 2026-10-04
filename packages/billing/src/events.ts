@@ -286,6 +286,10 @@ async function customer(
   provider: PaymentProviderId,
   customerId: string | null,
 ) {
+  if (customerId)
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${`billing-customer:${provider}:${customerId}`}, 0))`,
+    )
   const [existing] = await tx
     .select()
     .from(billingCustomer)
