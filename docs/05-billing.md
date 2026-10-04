@@ -161,6 +161,7 @@ Creem / Paddle / Polar 各实现一个 Provider，`capabilities.merchantOfRecord
 ### 年付按月发放
 - `plan.credits` 表示**每月**积分；年付付款成功时只发首月（`n=0`）。
 - **平台字段缺失**：未付款订阅的服务周期允许为空，未确认周期前不授予付费权益；付款快照仍必须给出可验证的付款周期。平台不提供累计部分退款金额时，Provider 返回 `null`，业务层按唯一平台退款 ID 累计本地已验证退款，不把未知值当作零。
+- **付款来源保存**：入账时保存付款对应的 `plan_price_id` 与服务周期（一次性付款无周期），后续换套餐或续费不会改写历史付款的年付发放依据。每个已验证退款记录到 `payment_refund`，以平台退款 ID 去重后累计，跨回调与人工审核使用同一身份。
 - Cron `subscription-grants`（每小时）：对 `status IN ('active','trialing')` 且 `plan_price.interval='year'` 的订阅，计算自 `current_period_start` 起已经过的月数 `n`，补发所有缺失的 `{payment.id}:{k}`（k ≤ n）。`unique(source, source_ref)` 保证重复执行无副作用。
 - 订阅取消（周期末生效）期间照常按月发放，进入终止状态后停止；退款时按 §「退款与争议」回收该 `payment.id` 下所有批次的剩余积分。
 

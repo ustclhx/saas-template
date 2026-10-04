@@ -195,6 +195,10 @@ export const payment = pgTable(
     }),
     purchaseId: uuid('purchase_id').references(() => purchase.id, { onDelete: 'restrict' }),
     kind: text('kind').$type<PaymentKind>().notNull(),
+    // Immutable purchase provenance, retained when the subscription later changes.
+    planPriceId: uuid('plan_price_id').references(() => planPrice.id, { onDelete: 'restrict' }),
+    periodStart: timestamp('period_start', { withTimezone: true }),
+    periodEnd: timestamp('period_end', { withTimezone: true }),
     amount: integer('amount').notNull(),
     currency: text('currency').notNull(),
     status: text('status', { enum: ['succeeded', 'refunded', 'partially_refunded', 'disputed'] })
@@ -209,6 +213,10 @@ export const payment = pgTable(
     index('payment_workspace_id_id_idx').on(t.workspaceId, t.id.desc()),
     check('payment_amount_nonnegative', sql`${t.amount} >= 0`),
     check(
+      'payment_period_pair',
+      sql`(${t.periodStart} is null and ${t.periodEnd} is null) or (${t.periodStart} is not null and ${t.periodEnd} is not null and ${t.periodEnd} > ${t.periodStart})`,
+    ),
+    check(
       'payment_refunded_amount_bounds',
       sql`${t.refundedAmount} >= 0 and ${t.refundedAmount} <= ${t.amount}`,
     ),
@@ -216,6 +224,30 @@ export const payment = pgTable(
       'payment_kind_reference',
       sql`(${t.kind} = 'one_time' and ${t.purchaseId} is not null and ${t.subscriptionId} is null) or (${t.kind} in ('initial', 'renewal', 'adjustment') and ${t.subscriptionId} is not null and ${t.purchaseId} is null)`,
     ),
+  ],
+)
+
+/** One verified refund identity across webhook deliveries and review retries. */
+export const paymentRefund = pgTable(
+  'payment_refund',
+  {
+    id: uuid('id').primaryKey().$defaultFn(newId),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'restrict' }),
+    paymentId: uuid('payment_id')
+      .notNull()
+      .references(() => payment.id, { onDelete: 'restrict' }),
+    provider: text('provider').$type<PaymentProviderId>().notNull(),
+    providerRefundId: text('provider_refund_id').notNull(),
+    amount: integer('amount').notNull(),
+    currency: text('currency').notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    unique('payment_refund_provider_refund_unique').on(t.provider, t.providerRefundId),
+    index('payment_refund_workspace_id_id_idx').on(t.workspaceId, t.id.desc()),
+    check('payment_refund_amount_positive', sql`${t.amount} > 0`),
   ],
 )
 
@@ -285,5 +317,6 @@ export type BillingCustomer = typeof billingCustomer.$inferSelect
 export type Subscription = typeof subscription.$inferSelect
 export type Purchase = typeof purchase.$inferSelect
 export type Payment = typeof payment.$inferSelect
+export type PaymentRefund = typeof paymentRefund.$inferSelect
 export type RefundRequest = typeof refundRequest.$inferSelect
 export type WebhookEvent = typeof webhookEvent.$inferSelect

@@ -16,3 +16,4 @@ export type {
 } from './provider.ts'
 
 export { createStripeProvider, type StripeProviderOptions } from './stripe/adapter.ts'
+export * from './pipeline.ts'

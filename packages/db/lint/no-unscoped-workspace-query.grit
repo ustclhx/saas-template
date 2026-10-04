@@ -23,6 +23,7 @@ pattern workspace_table() {
     `member`,
     `notification`,
     `payment`,
+    `paymentRefund`,
     `purchase`,
     `refundRequest`,
     `subscription`
