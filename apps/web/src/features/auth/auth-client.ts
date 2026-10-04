@@ -3,6 +3,7 @@ import {
   emailOTPClient,
   inferAdditionalFields,
   magicLinkClient,
+  organizationClient,
   twoFactorClient,
 } from 'better-auth/client/plugins'
 
@@ -16,6 +17,7 @@ function create() {
     basePath: '/api/auth',
     disableDefaultFetchPlugins: true,
     plugins: [
+      organizationClient(),
       emailOTPClient(),
       magicLinkClient(),
       twoFactorClient(),
@@ -42,5 +44,12 @@ export const AFTER_SIGN_IN_PATH = '/app'
 
 /** 整页跳转：让服务端以新的会话 Cookie 渲染应用区 */
 export function goToApp() {
-  window.location.assign(AFTER_SIGN_IN_PATH)
+  const invitationRedirect = new URLSearchParams(window.location.search).get('redirect')
+  const validInvitation =
+    /^\/accept-invitation\?id=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  window.location.assign(
+    invitationRedirect && validInvitation.test(invitationRedirect)
+      ? invitationRedirect
+      : AFTER_SIGN_IN_PATH,
+  )
 }

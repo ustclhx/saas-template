@@ -1,75 +1,56 @@
-import { createFileRoute, Outlet } from '@tanstack/react-router'
-import { createServerFn } from '@tanstack/react-start'
-import { withWorkspace } from '../../../server/middleware.ts'
-
-// 空间页面的骨架（tasks.md 4.2）：不带样式，样式在 UI 基础合并后统一补。
-// 文案先用英文硬编码，P6 接入 Paraglide。
-const COPY = {
-  title: (name: string) => `${name} · Workspace`,
-  workspace: 'Workspace',
-  personal: 'Personal workspace',
-  team: 'Team workspace',
-  role: 'Your role',
-  signedInAs: 'Signed in as',
-  notFoundTitle: 'Workspace not found',
-  notFoundBody: 'This workspace does not exist or you do not have access to it.',
-  backToApp: 'Go to my workspace',
-} as const
-
-// 每次进入（含客户端导航）都经 withWorkspace 在服务端查库校验成员身份；不是成员返回 404
-const getWorkspace = createServerFn({ method: 'GET' })
-  .middleware([withWorkspace])
-  .handler(({ context: { user, workspace, member } }) => ({
-    user: { id: user.id, name: user.name, email: user.email },
-    workspace: {
-      id: workspace.id,
-      name: workspace.name,
-      slug: workspace.slug,
-      isPersonal: workspace.isPersonal,
-    },
-    member: { role: member.role },
-  }))
+import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
+import { WorkspaceSwitcher } from '../../../features/workspace/components.tsx'
+import { getWorkspacePage } from '../../../features/workspace/workspace.functions.ts'
 
 export const Route = createFileRoute('/app/$slug')({
-  loader: ({ params }) => getWorkspace({ data: { slug: params.slug } }),
+  beforeLoad: async ({ params }) => ({
+    workspacePage: await getWorkspacePage({ data: { slug: params.slug } }),
+  }),
+  loader: ({ context }) => context.workspacePage,
+  staleTime: 0,
   head: ({ loaderData }) => ({
-    meta: loaderData ? [{ title: COPY.title(loaderData.workspace.name) }] : [],
+    meta: loaderData ? [{ title: `${loaderData.workspace.name} · Workspace` }] : [],
   }),
   component: WorkspaceLayout,
-  notFoundComponent: WorkspaceNotFound,
+  notFoundComponent: () => (
+    <main>
+      <h1>Workspace not found</h1>
+      <p>This workspace does not exist or you do not have access to it.</p>
+      <a href="/app">Go to my workspace</a>
+    </main>
+  ),
 })
 
 function WorkspaceLayout() {
-  const { user, workspace, member } = Route.useLoaderData()
+  const page = Route.useLoaderData()
   return (
-    <>
-      <header>
-        <p>{COPY.workspace}</p>
-        <h1 data-testid="workspace-name">{workspace.name}</h1>
-        <dl>
-          <dt>{workspace.isPersonal ? COPY.personal : COPY.team}</dt>
-          <dd>{workspace.slug}</dd>
-          <dt>{COPY.role}</dt>
-          <dd>{member.role}</dd>
-          <dt>{COPY.signedInAs}</dt>
-          <dd data-testid="current-user">
-            {user.name} ({user.email})
-          </dd>
-        </dl>
+    <div className="mx-auto grid max-w-4xl gap-8 p-6">
+      <header className="grid gap-4">
+        <h1 data-testid="workspace-name" className="text-2xl font-semibold">
+          {page.workspace.name}
+        </h1>
+        <p>{page.workspace.isPersonal ? 'Personal workspace' : 'Team workspace'}</p>
+        <p>Your role: {page.role}</p>
+        <p data-testid="current-user">
+          {page.user.name} ({page.user.email})
+        </p>
+        {page.readOnly ? (
+          <p role="status">Team features are disabled. This workspace is read-only.</p>
+        ) : null}
+        <WorkspaceSwitcher page={page} />
+        <nav>
+          <Link
+            to="/app/$slug/settings"
+            params={{ slug: page.workspace.slug }}
+            className="underline"
+          >
+            Workspace settings
+          </Link>
+        </nav>
       </header>
       <main>
         <Outlet />
       </main>
-    </>
-  )
-}
-
-function WorkspaceNotFound() {
-  return (
-    <main>
-      <h1>{COPY.notFoundTitle}</h1>
-      <p>{COPY.notFoundBody}</p>
-      <a href="/app">{COPY.backToApp}</a>
-    </main>
+    </div>
   )
 }
