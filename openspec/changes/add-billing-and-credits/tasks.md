@@ -4,8 +4,8 @@
 
 ## 1. 数据模型与种子数据
 
-- [ ] 1.1 新增计费表 `plan`、`plan_price`、`billing_customer`、`subscription`（含部分唯一索引）、`purchase`、`payment`、`refund_request`（pending 部分唯一索引）、`webhook_event`，验证迁移成功且同一空间插入两个 `cancel_at_period_end=false` 的有效订阅被数据库拒绝
-- [ ] 1.2 新增积分表 `credit_grant`（`unique(source, source_ref)`）、`credit_hold`（含三个 overage 字段）、`credit_hold_allocation`、`credit_ledger`、`credit_debt`，验证迁移成功
+- [x] 1.1 新增计费表 `plan`、`plan_price`、`billing_customer`、`subscription`（含部分唯一索引）、`purchase`、`payment`、`refund_request`（pending 部分唯一索引）、`webhook_event`，验证迁移成功且同一空间插入两个 `cancel_at_period_end=false` 的有效订阅被数据库拒绝
+- [x] 1.2 新增积分表 `credit_grant`（`unique(source, source_ref)`）、`credit_hold`（含三个 overage 字段）、`credit_hold_allocation`、`credit_ledger`、`credit_debt`，验证迁移成功
 - [ ] 1.3 编写 `plan` / `plan_price` 种子数据（free、pro、team、积分包）与 `pnpm billing:sync`（同步到 Stripe 测试模式与 PayPal 沙箱），验证执行后两个平台出现对应价格且重复执行不重复创建
 
 ## 2. 积分账本 `packages/credits`
