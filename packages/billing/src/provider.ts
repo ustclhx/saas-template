@@ -71,11 +71,15 @@ export interface PaymentReference {
 
 export type PaymentAssociation =
   | { kind: 'one_time'; providerOrderId: string; providerSubscriptionId?: never }
-  | { kind: 'initial' | 'renewal'; providerSubscriptionId: string; providerOrderId?: never }
+  | {
+      kind: 'initial' | 'renewal' | 'adjustment'
+      providerSubscriptionId: string
+      providerOrderId?: never
+    }
 
 export type PaymentSnapshot = (
   | (Extract<PaymentAssociation, { kind: 'one_time' }> & { period: null })
-  | (Extract<PaymentAssociation, { kind: 'initial' | 'renewal' }> & {
+  | (Extract<PaymentAssociation, { kind: 'initial' | 'renewal' | 'adjustment' }> & {
       period: { start: Date; end: Date }
     })
 ) & {

@@ -52,7 +52,7 @@ type NormalizedEvent =
   | { type: 'subscription.renewed'; paymentId; periodStart; periodEnd; ... }
   | { type: 'subscription.past_due'; ... }
   | { type: 'subscription.canceled'; ... }       // 进入终止状态
-  | { type: 'payment.succeeded'; kind: 'one_time' | 'initial' | 'renewal'; ... }
+  | { type: 'payment.succeeded'; kind: 'one_time' | 'initial' | 'renewal' | 'adjustment'; ... }
   | { type: 'payment.refunded'; ... }
   | { type: 'payment.disputed'; ... }
 ```
@@ -81,7 +81,7 @@ type NormalizedEvent =
 
 > 事件名在实现时以两家最新文档为准（待验证）；PayPal 的订阅续费事件在不同 API 版本下有差异，需要用沙箱实测。
 
-**订阅积分只由「付款成功」事件发放**：首付与续费都走 `payment.succeeded(initial|renewal)`，`checkout.session.completed` 只负责关联 workspace 与平台客户/订阅，从而避免首付被发两次积分。Stripe 中 `billing_reason=subscription_update`（升级按比例补差价）默认不发积分，见 §6。
+**订阅积分只由「付款成功」事件发放**：首付与续费都走 `payment.succeeded(initial|renewal)`，`checkout.session.completed` 只负责关联 workspace 与平台客户/订阅，从而避免首付被发两次积分。Stripe 中 `billing_reason=subscription_update`（升级按比例补差价）记为 `payment.kind='adjustment'`，关联原订阅并保留实际付款和退款记录，不发积分；只有 `initial` / `renewal` 付款发放订阅积分，见 §6。
 
 **`payment.provider_payment_id` 的取值**（退款/争议事件靠它找回原付款）：
 

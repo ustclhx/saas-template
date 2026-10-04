@@ -24,7 +24,7 @@ export type SubscriptionStatus =
   | 'canceled'
   | 'expired'
   | 'paused'
-export type PaymentKind = 'initial' | 'renewal' | 'one_time'
+export type PaymentKind = 'initial' | 'renewal' | 'adjustment' | 'one_time'
 export type JsonValue =
   | null
   | boolean
@@ -214,7 +214,7 @@ export const payment = pgTable(
     ),
     check(
       'payment_kind_reference',
-      sql`(${t.kind} = 'one_time' and ${t.purchaseId} is not null and ${t.subscriptionId} is null) or (${t.kind} in ('initial', 'renewal') and ${t.subscriptionId} is not null and ${t.purchaseId} is null)`,
+      sql`(${t.kind} = 'one_time' and ${t.purchaseId} is not null and ${t.subscriptionId} is null) or (${t.kind} in ('initial', 'renewal', 'adjustment') and ${t.subscriptionId} is not null and ${t.purchaseId} is null)`,
     ),
   ],
 )

@@ -199,6 +199,25 @@ describe('billing and credit schema constraints on isolated Postgres', () => {
     await db.insert(creditGrant).values({ ...grant, sourceRef: `${f.paymentId}:1` })
   })
 
+  it('subscription adjustments require a subscription association', async () => {
+    const db = open()
+    await db.insert(payment).values({
+      ...f.pay,
+      kind: 'adjustment',
+      providerPaymentId: newId(),
+    })
+    expect(
+      await pgCode(
+        db.insert(payment).values({
+          ...f.pay,
+          kind: 'adjustment',
+          providerPaymentId: newId(),
+          subscriptionId: null,
+        }),
+      ),
+    ).toBe('23514')
+  })
+
   it('deduplicates customer, price and one-time order mappings', async () => {
     const db = open()
     const customer = { workspaceId: f.ws, provider: 'stripe' as const, providerCustomerId: f.ws }
