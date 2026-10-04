@@ -38,13 +38,23 @@ function WorkspaceLayout() {
           <p role="status">Team features are disabled. This workspace is read-only.</p>
         ) : null}
         <WorkspaceSwitcher page={page} />
-        <nav>
+        <nav className="flex gap-4">
           <Link
             to="/app/$slug/settings"
             params={{ slug: page.workspace.slug }}
             className="underline"
           >
             Workspace settings
+          </Link>
+          <Link
+            to="/app/$slug/billing"
+            params={{ slug: page.workspace.slug }}
+            className="underline"
+          >
+            Billing
+          </Link>
+          <Link to="/app/$slug/usage" params={{ slug: page.workspace.slug }} className="underline">
+            Usage
           </Link>
         </nav>
       </header>
