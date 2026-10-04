@@ -246,16 +246,14 @@ describe('billing deletion in caller PostgreSQL transaction', () => {
   })
   it('preserves an existing refund contact instead of replacing it with the account email', async () => {
     const rid = id()
-    await db
-      .insert(refundRequest)
-      .values({
-        id: rid,
-        workspaceId: ws,
-        paymentId: pid,
-        userId: uid,
-        reason: 'Please refund',
-        contactEmail: 'saved-contact@example.test',
-      })
+    await db.insert(refundRequest).values({
+      id: rid,
+      workspaceId: ws,
+      paymentId: pid,
+      userId: uid,
+      reason: 'Please refund',
+      contactEmail: 'saved-contact@example.test',
+    })
     const step = make()
     await step.before?.(context)
     await execute(step)

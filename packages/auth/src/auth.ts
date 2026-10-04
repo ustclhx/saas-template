@@ -8,7 +8,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError } from 'better-auth/api'
 import { admin, emailOTP, magicLink, organization, twoFactor } from 'better-auth/plugins'
 import { accountSettings, userSettingsFields } from './account-settings.ts'
-import { deletionPlugin } from './deletion.ts'
+import { type DeletionStep, deletionPlugin } from './deletion.ts'
 import type { SendAuthEmail } from './email.ts'
 import { emailVerificationOptions } from './email-verification.ts'
 import { type AuthEnv, parseAuthEnv } from './env.ts'
@@ -22,6 +22,7 @@ import { verificationReservation } from './verification-reservation.ts'
 import { workspaceLifecyclePlugin } from './workspace-lifecycle.ts'
 
 export interface CreateAuthDeps {
+  readonly deletionSteps?: readonly DeletionStep[]
   /** 模板配置（`template.config.ts`），决定启用哪些登录方式与插件 */
   readonly config: TemplateConfig
   /** 认证邮件的发送点；由调用方注入（后续接 EMAIL_QUEUE），测试中用假实现 */
@@ -119,7 +120,7 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
       }),
       // 敏感接口按数据库实时校验会话与封禁（fresh-session.ts）
       freshSessionGuard(db),
-      deletionPlugin(db, env.CACHE, config.tenancy.multiTenant),
+      deletionPlugin(db, env.CACHE, config.tenancy.multiTenant, deps.deletionSteps),
       verificationReservation(db),
       workspaceLifecyclePlugin(db, config.tenancy.maxWorkspacesPerUser),
       teamWorkspaces(db, config, sendEmail, deps.resolveMaxSeats),

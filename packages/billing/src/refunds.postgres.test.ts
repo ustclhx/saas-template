@@ -15,6 +15,7 @@ import {
 } from '@saas/db'
 import { eq, inArray } from 'drizzle-orm'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushRefundNotifications, notifyRefundRequest } from './notifications.ts'
 import type { PaymentProvider, RefundInput } from './provider.ts'
 import {
   listRefundablePayments,
@@ -158,6 +159,43 @@ afterEach(async () => {
 afterAll(() => db.$client.end())
 
 describe('trusted refund service on PostgreSQL', () => {
+  it('recovers committed review mail after queue failure without repeating payment or leaking deleted email', async () => {
+    const request = await submit()
+    await approve(request.id, 200)
+    await db
+      .update(user)
+      .set({ email: `deleted+${uid}@invalid`, banned: true })
+      .where(eq(user.id, uid))
+    const queue = { send: vi.fn(async () => {}) }
+    const mail = { db, queue, appName: 'Tests', supportEmail: 'support@example.test' }
+    queue.send.mockRejectedValueOnce(new Error('queue unavailable'))
+    const [saved] = await db.select().from(refundRequest).where(eq(refundRequest.id, request.id))
+    if (!saved) throw new Error('Missing reviewed fixture')
+    await expect(
+      notifyRefundRequest(mail, {
+        request: saved,
+        contactEmail: 'saved@example.test',
+        idempotencyKey: 'ignored',
+      }),
+    ).rejects.toThrow('queue unavailable')
+    expect(await flushRefundNotifications(mail, { requestId: request.id })).toEqual({
+      queued: 1,
+      failures: [],
+    })
+    expect(await flushRefundNotifications(mail, { requestId: request.id })).toEqual({
+      queued: 0,
+      failures: [],
+    })
+    expect(queue.send).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        to: 'saved@example.test',
+        idempotencyKey: `refund-notification:${request.id}:approved`,
+        template: 'refund-update',
+      }),
+      { contentType: 'json' },
+    )
+    expect(remote).toHaveBeenCalledTimes(1)
+  })
   it('lists and requests only active owner payments inside the configured window', async () => {
     expect(await listRefundablePayments(options, { userId: uid, workspaceId: ws })).toMatchObject([
       { id: pid, remainingRefundable: 1000 },

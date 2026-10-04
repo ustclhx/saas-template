@@ -5,12 +5,18 @@ import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { z } from 'zod'
-import { getAuth } from '../../server/auth.ts'
+import { billingDeletionSteps, getAuth } from '../../server/auth.ts'
 import { templateConfig } from '../../server/template-config.ts'
 
 async function remove(workspaceId?: string) {
   const db = createDb(env.HYPERDRIVE)
-  const options = { db, auth: getAuth(env, db), headers: getRequest().headers, kv: env.CACHE }
+  const options = {
+    db,
+    auth: getAuth(env, db),
+    headers: getRequest().headers,
+    kv: env.CACHE,
+    additionalSteps: billingDeletionSteps(env),
+  }
   try {
     if (workspaceId)
       await deleteTeamWorkspace({

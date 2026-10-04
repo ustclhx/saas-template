@@ -20,7 +20,8 @@
     "@saas/config": "workspace:*",
     "@saas/shared": "workspace:*",
     "@saas/entitlements": "workspace:*",
-    "@saas/auth": "workspace:*"
+    "@saas/auth": "workspace:*",
+    "@saas/email": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^4.1.11"

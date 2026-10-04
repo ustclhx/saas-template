@@ -1,6 +1,9 @@
 export * from './catalog.ts'
+export * from './compensation.ts'
 export * from './cron.ts'
+export * from './deletion.ts'
 export * from './events.ts'
+export * from './notifications.ts'
 export {
   createPayPalProvider,
   createPayPalWebhookNormalizer,

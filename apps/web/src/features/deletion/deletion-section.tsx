@@ -5,9 +5,11 @@ import { removeAccount, removeWorkspace } from './deletion.functions.ts'
 export function DeletionSection({
   workspace,
   supportEmail,
+  refundReminder,
 }: {
   workspace?: { id: string; name: string }
   supportEmail: string
+  refundReminder?: { eligibleCount: number; pendingCount: number; billingHref: string }
 }) {
   const [hydrated, setHydrated] = useState(false)
   useEffect(() => setHydrated(true), [])
@@ -63,13 +65,23 @@ export function DeletionSection({
           : 'Your personal workspace will be deleted and your identity and sign-in credentials removed. Sign out and sign in again within ten minutes before deleting.'}
       </p>
       <p>
-        Deletion does not issue a refund by default. Refund requests are not available in this
-        release;{' '}
+        Deletion cancels subscriptions immediately without issuing a refund. Review refundable
+        payments before deleting; pending requests remain reviewable using their saved contact
+        email.
         <a className="underline" href={`mailto:${supportEmail}`}>
           contact support
         </a>{' '}
         before deleting if you need help with a payment.
       </p>
+      {refundReminder && (
+        <p>
+          {refundReminder.eligibleCount} payments in the refund window;{' '}
+          {refundReminder.pendingCount} pending requests.{' '}
+          <a className="underline" href={refundReminder.billingHref}>
+            Review billing and refund requests
+          </a>
+        </p>
+      )}
       {!workspace && (
         <button
           type="button"

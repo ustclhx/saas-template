@@ -17,6 +17,13 @@ const minutes = z.number().int().positive()
 
 /** 各模板 props 的运行时校验，与 `EmailTemplateProps` 保持一致（类型不一致时编译报错）。 */
 const templatePropsSchemas = {
+  'refund-update': z.object({
+    status: z.enum(['approved', 'rejected', 'refunded']),
+    amount: z.number().int().positive().nullable(),
+    currency: z.literal('USD'),
+    note: z.string().max(2000),
+    supportEmail: z.email(),
+  }),
   'verify-email': z.object({ url }),
   otp: z.object({
     otp: z.string().min(1),
