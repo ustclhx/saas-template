@@ -80,6 +80,9 @@ afterAll(async () => {
   if (ids.length === 0) return
   await sql`delete from session where user_id in ${sql(ids)}`
   await sql`delete from account where user_id in ${sql(ids)}`
+  // 注册会创建个人空间（id 与用户 id 相同，PR #16），外键为 restrict，需先删成员与空间
+  await sql`delete from member where user_id in ${sql(ids)}`
+  await sql`delete from organization where id in ${sql(ids)}`
   await sql`delete from "user" where id in ${sql(ids)}`
 })
 
