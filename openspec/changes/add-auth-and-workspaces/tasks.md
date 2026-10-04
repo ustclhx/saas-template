@@ -47,6 +47,6 @@
 
 ## 8. 阶段验收
 
-- [ ] 8.1 Playwright e2e：在 `multiTenant=false` 与 `true` 两种配置下分别走通「注册 → 邮箱验证 → 登录 → 创建团队空间（仅 true）→ 邀请 → 接受 → 切换空间」，验证两套配置的 e2e 均通过并部署到 staging
+- [x] 8.1 Playwright e2e：在 `multiTenant=false` 与 `true` 两种配置下分别走通「注册 → 邮箱验证 → 登录 → 创建团队空间（仅 true）→ 邀请 → 接受 → 切换空间」，验证两套配置的 e2e 均通过并部署到 staging
 
-8.1 本地验收（2026-10-04）：默认 `multiTenant=false` 为 12 passed / 1 skipped（关闭的魔法链接）；临时 `multiTenant=true`、`magicLink=true` 为 13 passed，包含真实邮箱验证、密码 / OTP 登录、邀请接受、成员管理、切换空间与删除吊销。两次均在 Orca 独立数据库运行，配置逐字节恢复。完整仓库 check / deps / singletons / dedupe / typecheck / test（273 项）/ build 通过。staging 认证迁移、密钥上传与 web / jobs 发布仍待授权，因此 8.1 保持未完成。
+8.1 本地验收（2026-10-04）：默认 `multiTenant=false` 为 12 passed / 1 skipped（关闭的魔法链接）；临时 `multiTenant=true`、`magicLink=true` 为 13 passed，包含真实邮箱验证、密码 / OTP 登录、邀请接受、成员管理、切换空间与删除吊销。两次均在 Orca 独立数据库运行，配置逐字节恢复。完整仓库 check / deps / singletons / dedupe / typecheck / test（273 项）/ build 通过。用户批准后，已执行 staging 的已有 `0001_auth_and_tenancy` 迁移、上传六项测试认证密钥并发布 web / jobs。线上真实 Turnstile 认证与模拟 OAuth 回调为 9 passed / 1 skipped；验证邮件以 log 通道消费成功，删除账号后旧 Cookie 被拒，新 Cron 心跳正常。随后修复真实邀请邮件队列的 query URL、owner 角色与七天有效期接线，完整仓库测试更新为 276 项通过。最终 web 版本 `11a49d58-c083-483c-a4b4-eab4671fffae`，jobs 版本 `b34c122d-d064-47fb-aa5b-f4b6018fab81`。OAuth 与邮件保持 mock/log；真实提供方交换与外部邮件投递不在本次验收声明内。

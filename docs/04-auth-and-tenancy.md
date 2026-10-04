@@ -60,7 +60,7 @@
 - 本机为 Apple M4，线上边缘服务器单核性能通常更低，同样的哈希会更慢；scrypt 本地已超阈值，线上只会更高。
 - 计时是墙钟时间，含本地 PG 与 Miniflare KV 往返（对照组显示不到 1 ms）；线上 CPU 时间不含 I/O 等待。
 - Cloudflare 文档规定 Workers 的 PBKDF2 最多 100,000 次迭代，本地 workerd 并不限制（实测 100,001 次被接受），因此迭代次数取 100,000，不随本地结果调高。100,000 次低于 OWASP 对 PBKDF2-SHA256 的建议（600,000），是 Workers 平台上限下的折中；迭代次数随哈希保存，平台放宽后可调高，已有哈希不受影响。
-- 部署到 staging 后，应从 Workers 日志确认注册 / 登录的 `cpuTime`，结果补在本节。
+- staging 实测（2026-10-04，Wrangler tail 的单次样本，非 p95）：成功注册 `cpuTime` 为 85 / 54 ms、墙钟为 6966 / 5347 ms；成功密码登录为 40 ms / 2682 ms，错误密码登录为 60 ms / 390 ms。已使用 PBKDF2；注册 CPU 仍高于本地测量，样本不足以作为稳定基准。远程浏览器验收将等待预算设为 30 秒，避免沿用本地 5 秒断言时截断尚未完成的跨地域请求；业务断言不变。
 - Cookie：`SameSite=Lax`、`Secure`；使用自定义域名，web 与 API 同源，避免跨站 Cookie 问题。
 - **防刷**（`packages/auth/src/protection.ts`）：注册（`/sign-up/email`）、登录（`/sign-in/email`、`/sign-in/email-otp`、`/sign-in/magic-link`）、发送验证码（`/email-otp/send-verification-otp`）、找回密码（`/request-password-reset`、`/forget-password/email-otp`、`/email-otp/request-password-reset`）以及发送验证邮件（`/send-verification-email`）在接口执行前依次检查：
   1. `RL_AUTH` 按 IP（`cf-connecting-ip`）限流；
