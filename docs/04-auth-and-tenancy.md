@@ -22,13 +22,14 @@
 | `twoFactor` | 可选 |
 
 ### Workers 适配要点
-- 每个请求创建 `auth` 实例（`createAuth(env)`），内部用该请求的 Drizzle 实例（Drizzle adapter，provider `pg`）。
+- 每个请求创建 `auth` 实例（`createAuth(env, db)`），内部用该请求的 Drizzle 实例（Drizzle adapter，provider `pg`）。
 - **会话读取的分层**（`packages/auth/src/session.ts`）：
   1. `session.cookieCache`（签名 Cookie，`maxAge` 5 分钟）：普通 Better Auth 会话读取可不读 KV、不查库；应用页面使用下述实时守卫。
   2. `secondaryStorage` 接 KV（绑定 `CACHE`，键前缀 `auth:`）：cookie 缓存过期后读 KV，减少跨地域查库；KV 未命中时回退查库。
   3. 同时保留数据库中的 session 表（`session.storeSessionInDatabase`），作为吊销与审计的事实来源。
   - 吊销必须经 Better Auth（退出登录、撤销会话、封禁、改密码等），它同时删除数据库行与 KV 副本。只在数据库中删除会话行（如手写 SQL）不会删除 KV 副本，KV 中的会话会一直有效到其 TTL（会话过期时间）；运维脚本需同时删除 `auth:<token>`。
   - 验证码、魔法链接、重置密码等验证值只从数据库签发、读取并原子消费（`verification.storeInDatabase`）。删除插件排除 secondaryStorage 的 `verification:` 键，防止旧缓存验证码绑定到同邮箱重新注册的账号；历史 KV 验证值不再读取，按原 TTL 到期。会话缓存仍保留。
+  - Better Auth 1.7.7 的 OTP / 魔法链接单次消费预留使用非 UUID 主键，不能直接写入本项目的 UUID 列。`verificationReservation` 在请求执行前替换内部预留方法：按原始 identifier 获取事务锁，未过期预留只允许一个请求成功，新行用 UUIDv7；过期预留可重新使用。真实未验证邮箱的 OTP / 魔法链接登录保留 Better Auth 的凭据清理行为，不通过预先设置已验证来绕过。
   - KV 的 `expirationTtl` 最少 60 秒，适配层把更短的 TTL 提升到 60 秒。
   - Better Auth 自带的 rateLimit 改用 isolate 内存，不存 KV：每个请求写同一个键会触发 KV「同一键每秒最多写 1 次」的限制，且计数最终一致。认证入口的限流以 `RL_AUTH` 为准（见下文）。
 - **吊销不是即时的**：KV 的写入和删除传播到所有边缘节点最多约 60 秒，再叠加 cookie 缓存的 `maxAge`，改密码 / 封禁 / 踢下线后，旧会话最长可能还有效「cookieCache maxAge + 约 60 秒」。可接受的场景照常使用；以下**敏感操作不走缓存，直接查库**校验会话与 `user.banned`：
@@ -106,12 +107,18 @@
 
 **URL 统一为 `/app/$slug/...`**：个人空间注册时自动生成 slug（如 `u-` + 短随机串，用户可改）。不为 `multiTenant=false` 单独做一套不带 slug 的路由——两套路由会让「代码路径完全一致」不成立，而且中途打开开关会让已分享出去的链接全部失效。`/app` 本身只做重定向：跳到 `active_organization_id` 对应空间（没有则跳个人空间）。
 
+### 团队准入与邀请（P1）
+- `teamWorkspaces` 对原生 organization 写接口统一校验数据库会话、成员角色和开关；owner 锁按用户 ID 排序，再取空间事务锁。创建与转让均检查团队 owner 数量上限，团队 slug 不能使用保留字或个人空间的 `u-` 前缀。关闭多租户后团队只读，个人空间仍可修改名称。
+- owner / admin 可以邀请和管理普通成员，授予或撤销 owner 角色仅允许 owner；不能移除、退出或降级最后一个 owner。转让先把目标设为 owner，再把发起者降为 admin。个人空间的成员关系不可修改。
+- 接受邀请必须匹配当前数据库中的收件邮箱，并且该邮箱已经验证；全局允许未验证邮箱登录不等于允许接受邀请。未验证收件人返回 403 `INVITATION_EMAIL_UNVERIFIED`，成员和邀请不发生变更；签名 Cookie 中旧的验证状态不能覆盖数据库。邀请页面在验证前不展示空间名称或角色，提供真实验证邮件入口并回到原邀请 URL。
+
 ### 当前空间的解析
 - 优先级：URL 中的 `$slug` → session.active_organization_id → 用户的个人空间（后两者只用于 `/app` 的重定向）。
 - `withWorkspace` 中间件解析后**每次请求查库**校验成员身份（不使用会话缓存中的数据，避免被移出的成员在缓存有效期内仍可访问），把 `{ workspace, member }` 注入上下文。
 
 ### 席位
 - 接受邀请、新增成员时与 AI 任务提交一样，先取空间级事务锁 `pg_advisory_xact_lock(hashtextextended('ws:' || $ws, 0))`，再在同一事务内检查 `count(member) < maxSeats` 并插入，避免并发接受邀请导致超员。
+- P1 的 `ResolveMaxSeats(workspaceId, sql)` 提供同一事务读取本地权益的接入点；web 共用 `resolveWorkspaceMaxSeats`，当前返回 `null`（不限席位），有限套餐数据由 P2 接入。接受邀请与直接新增成员共用锁和计数，测试验证最后一个席位并发时仅一人成功。
 - 降级到席位更少的套餐时不自动移除成员：超员期间禁止新增成员，并在空间设置页提示 owner 处理。
 
 ### 数据隔离
@@ -135,7 +142,7 @@
 删除事务同时把待失效的会话键写入专用 `verification.identifier=deletion-cleanup:<id>` 临时清理记录，保留 24 小时。KV 操作在事务提交后执行；失败明确返回 `deletionCompleted=true`，不会把已经完成的删除误报为回滚。jobs 的 `CACHE` 与 web 共用命名空间，五分钟内重试；成功移除记录，过期记录丢弃，缓存本身按会话 TTL 到期。原会话在数据库已吊销，应用和敏感操作始终拒绝。清理记录不含验证码键，不影响同邮箱新账号的验证值，也不写入永久审计日志。
 
 **P1 恢复与到期清理**（`packages/auth/src/workspace-lifecycle.ts`）：
-- `workspaceLifecyclePlugin(db, config.tenancy.maxWorkspacesPerUser)` 单独导出，由应用挂载后提供 `POST /api/auth/admin/restore-workspace`（`{ workspaceId }`）；函数 `restoreWorkspace` 同样使用签名 Cookie 的数据库会话。仅当前平台 admin 可以恢复，拒绝模拟登录；事务内再次校验并锁住管理员会话和用户行，封禁、吊销或降权立即生效。
+- `workspaceLifecyclePlugin(db, config.tenancy.maxWorkspacesPerUser)` 由 `createAuth` 挂载，提供 `POST /api/auth/admin/restore-workspace`（`{ workspaceId }`）；函数 `restoreWorkspace` 同样使用签名 Cookie 的数据库会话。仅当前平台 admin 可以恢复，拒绝模拟登录；事务内再次校验并锁住管理员会话和用户行，封禁、吊销或降权立即生效。
 - 默认保留 30 天，期限从 `organization.deleted_at` 计算；到期即拒绝恢复，即使每日清理还未运行。按排序后的原 owner ID 获取 owner 锁，再获取空间锁。只恢复删除审计中仍有效的原 owner；已匿名化、永久封禁或仍在临时封禁期的 owner 不恢复，没有有效 owner 则拒绝。团队恢复遵循 `maxWorkspacesPerUser`，任何有效原 owner 达到上限时整体拒绝；个人空间不计团队上限。其他成员须重新邀请，旧邀请、API Key 和活跃会话不会恢复。
 - jobs 每天 03:00 UTC（北京时间 11:00）执行 `cleanupExpiredWorkspaces`；每五分钟心跳先重试删除后的凭据缓存失效，再记录健康时间；失败会保留工作并在下一次心跳重试。P1 实际存在的空间内容表只有 `notification` 与 `invitation`，到期后删除这两类记录，永久保留 user、organization、全部 audit_log。事务内 `workspace.cleanup.completed` 审计关联本次 `workspace.deleted` 的 ID，重复运行不重复清理，已经清理的删除周期不能恢复。
 

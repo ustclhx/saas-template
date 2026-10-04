@@ -41,16 +41,16 @@
 
 ## Phase 1 · 认证与 Workspace
 
-- [ ] Better Auth：邮箱密码、邮箱验证、找回密码、Google/GitHub OAuth、Turnstile
-- [ ] KV secondaryStorage；认证接口限流
-- [ ] Resend + React Email + EMAIL_QUEUE
-- [ ] 注册自动创建个人空间；`withSession` / `withWorkspace` 中间件；`scoped()` 查询工具
-- [ ] `multiTenant` 开关：团队空间创建、邀请、成员角色、空间切换器
-- [ ] 平台 admin 角色与 `/admin` 入口骨架
-- [ ] 用户设置：资料、语言、时区、修改密码、删除账号（软删 + 匿名化 + 退款申请提醒）
-- [ ] 敏感操作直接查库校验会话；席位上限的并发控制
+- [x] Better Auth：邮箱密码、邮箱验证、找回密码、Google/GitHub OAuth、Turnstile
+- [x] KV secondaryStorage；认证接口限流
+- [x] Resend + React Email + EMAIL_QUEUE
+- [x] 注册自动创建个人空间；`withSession` / `withWorkspace` 中间件；`scoped()` 查询工具
+- [x] `multiTenant` 开关：团队空间创建、邀请、成员角色、空间切换器
+- [x] 平台 admin 角色与 `/admin` 入口骨架
+- [x] 用户设置：资料、语言、时区、修改密码、删除账号（软删 + 匿名化；默认不退款与客服入口，退款申请提醒在 P2 接入）
+- [x] 敏感操作直接查库校验会话；席位上限的并发控制
 
-**验收**：两种开关模式下的注册 → 登录 → 邀请 → 切换空间流程均通过 e2e。
+**验收进度（2026-10-04）**：本地两种开关模式下的注册 → 邮箱验证 → 登录 → 邀请 → 切换空间流程均通过 e2e，包含团队删除、账号匿名化和旧会话吊销；关闭团队为 12 passed / 1 skipped（魔法链接关闭），开启团队与魔法链接为 13 passed。实现任务已完成，staging 认证迁移、测试密钥上传与 web / jobs 部署仍待授权，OpenSpec 8.1 保持未完成。OAuth 入口与回调策略通过模拟外部交换验证，尚未使用真实提供方凭据验收。
 
 ## Phase 2 · 计费与积分
 
