@@ -1,4 +1,15 @@
 export { type Auth, type CreateAuthDeps, createAuth } from './auth.ts'
+export {
+  DELETION_CLEANUP_PREFIX,
+  type DeletionContext,
+  type DeletionStep,
+  type DeletionTransaction,
+  deleteAccount,
+  deleteTeamWorkspace,
+  deletionPlugin,
+  registerDeletionStep,
+  retryDeletionCleanup,
+} from './deletion.ts'
 export type { AuthEmail, SendAuthEmail } from './email.ts'
 export { type AuthEnv, parseAuthEnv } from './env.ts'
 export {
@@ -17,3 +28,10 @@ export {
 } from './personal-workspace.ts'
 export { type RateLimiter, TURNSTILE_TOKEN_HEADER } from './protection.ts'
 export { type KvStore, SESSION_COOKIE_CACHE_MAX_AGE } from './session.ts'
+export type { ResolveMaxSeats } from './team-workspaces.ts'
+export {
+  cleanupExpiredWorkspaces,
+  restoreWorkspace,
+  WORKSPACE_RETENTION_DAYS,
+  workspaceLifecyclePlugin,
+} from './workspace-lifecycle.ts'

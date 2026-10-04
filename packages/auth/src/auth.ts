@@ -5,8 +5,10 @@ import * as schema from '@saas/db/schema'
 import { newId } from '@saas/shared'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
+import { APIError } from 'better-auth/api'
 import { admin, emailOTP, magicLink, organization, twoFactor } from 'better-auth/plugins'
 import { accountSettings, userSettingsFields } from './account-settings.ts'
+import { deletionPlugin } from './deletion.ts'
 import type { SendAuthEmail } from './email.ts'
 import { emailVerificationOptions } from './email-verification.ts'
 import { type AuthEnv, parseAuthEnv } from './env.ts'
@@ -15,12 +17,16 @@ import { passwordHasher } from './password.ts'
 import { personalWorkspaceHooks } from './personal-workspace.ts'
 import { authProtection } from './protection.ts'
 import { sessionStorageOptions } from './session.ts'
+import { type ResolveMaxSeats, teamWorkspaces } from './team-workspaces.ts'
+import { verificationReservation } from './verification-reservation.ts'
+import { workspaceLifecyclePlugin } from './workspace-lifecycle.ts'
 
 export interface CreateAuthDeps {
   /** 模板配置（`template.config.ts`），决定启用哪些登录方式与插件 */
   readonly config: TemplateConfig
   /** 认证邮件的发送点；由调用方注入（后续接 EMAIL_QUEUE），测试中用假实现 */
   readonly sendEmail: SendAuthEmail
+  readonly resolveMaxSeats?: ResolveMaxSeats
 }
 
 /**
@@ -52,6 +58,7 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
     // 注册即创建个人空间，新会话默认以个人空间为活跃空间（personal-workspace.ts）
     databaseHooks: personalWorkspaceHooks(db),
     user: {
+      deleteUser: { enabled: false },
       // 用户设置中的语言与时区（tasks.md 5.2），取值由校验器限定
       additionalFields: userSettingsFields(config),
     },
@@ -78,6 +85,10 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
       }),
       // 敏感接口按数据库实时校验会话与封禁（fresh-session.ts）
       freshSessionGuard(db),
+      deletionPlugin(db, env.CACHE, config.tenancy.multiTenant),
+      verificationReservation(db),
+      workspaceLifecyclePlugin(db, config.tenancy.maxWorkspacesPerUser),
+      teamWorkspaces(db, config, sendEmail, deps.resolveMaxSeats),
       // 用户设置：资料校验、修改密码时吊销其他会话（account-settings.ts）
       accountSettings(),
       organization({
@@ -85,6 +96,21 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
         allowUserToCreateOrganization: config.tenancy.multiTenant,
         // organization 只软删、从不物理删除（docs/03-data-model.md §7）
         disableOrganizationDeletion: true,
+        organizationHooks: {
+          beforeCreateOrganization: async () => {
+            throw APIError.from('FORBIDDEN', {
+              code: 'USE_WORKSPACE_CREATION',
+              message: 'Use authenticated workspace creation',
+            })
+          },
+          // Native server-only addMember cannot skip workspace admission.
+          beforeAddMember: async () => {
+            throw APIError.from('FORBIDDEN', {
+              code: 'USE_WORKSPACE_INVITATION',
+              message: 'Use the workspace invitation flow',
+            })
+          },
+        },
         schema: {
           organization: {
             additionalFields: {

@@ -3,6 +3,8 @@ declare namespace Cloudflare {
   interface Env {
     /** 不带查询缓存（app-db）：Cron 写库 */
     HYPERDRIVE: Hyperdrive
+    /** 与 web 共享认证缓存，用于删除后的失效重试。 */
+    CACHE: KVNamespace
     /** 带查询缓存（app-db-cached） */
     HYPERDRIVE_CACHED: Hyperdrive
     AI_MEDIA_WORKFLOW: Workflow<import('./workflows/ai-media.ts').AiMediaParams>

@@ -3,5 +3,12 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "vitest.config.ts", "scripts", "test/global-setup.ts"]
+  "include": [
+    "vite.config.ts",
+    "vitest.config.ts",
+    "playwright.config.ts",
+    "scripts",
+    "test/global-setup.ts",
+    "e2e"
+  ]
 }

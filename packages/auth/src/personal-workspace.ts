@@ -1,5 +1,5 @@
-import { type Database, member, type Organization, organization, scoped } from '@saas/db'
-import { newId } from '@saas/shared'
+import type { Database, Organization } from '@saas/db'
+import { AppError, newId } from '@saas/shared'
 import type { BetterAuthOptions } from 'better-auth'
 
 /**
@@ -44,48 +44,37 @@ export async function findPersonalWorkspace(
   })
 }
 
-/** Postgres 唯一约束冲突中的 slug 冲突（organization_slug_unique） */
-function isSlugConflict(error: unknown): boolean {
-  for (let e: unknown = error; e; e = (e as { cause?: unknown }).cause) {
-    const { code, constraint_name } = e as { code?: string; constraint_name?: string }
-    if (code === '23505' && constraint_name === 'organization_slug_unique') return true
-  }
-  return false
-}
-
 /**
- * 确保用户有个人空间且是其 owner，返回该空间。可重复、并发调用：
- * 空间已存在时不改动它，成员行已存在时不重复插入。
+ * 幂等补建个人空间；与删号使用相同的 owner 锁，已删除空间从不重新添加成员。
  */
 export async function ensurePersonalWorkspace(
   db: Database,
   user: { readonly id: string },
 ): Promise<Organization> {
-  let workspace = await findPersonalWorkspace(db, user.id)
-  for (let attempt = 1; !workspace; attempt++) {
-    try {
-      await db
-        .insert(organization)
-        .values({
-          id: user.id,
-          name: PERSONAL_WORKSPACE_NAME,
-          slug: personalSlug(),
-          isPersonal: true,
-        })
-        // 并发创建时另一方已插入：保留先插入的那个
-        .onConflictDoNothing({ target: organization.id })
-    } catch (error) {
-      if (!isSlugConflict(error) || attempt >= SLUG_ATTEMPTS) throw error
-      continue
+  return db.$client.begin(async (sql) => {
+    await sql`select pg_advisory_xact_lock(hashtextextended(${`owner:${user.id}`}, 0))`
+    const [available] = await sql`select id from "user" where id=${user.id}
+      and not (coalesce(banned,false) and (ban_expires is null or ban_expires>now()))`
+    if (!available) throw new AppError('USER_BANNED', 'Account unavailable', { status: 403 })
+    const read = async () => {
+      const [workspace] = await sql<Organization[]>`select id,name,slug,logo,metadata,
+        created_at as "createdAt",updated_at as "updatedAt",is_personal as "isPersonal",deleted_at as "deletedAt"
+        from organization where id=${user.id} and is_personal=true`
+      return workspace
     }
-    workspace = await findPersonalWorkspace(db, user.id)
-    // id 被一个非个人空间占用：UUIDv7 不会碰撞，出现即为数据错误
-    if (!workspace) throw new Error(`organization ${user.id} exists but is not personal`)
-  }
-  await scoped(db, workspace.id)
-    .insert(member, { id: newId(), userId: user.id, role: 'owner' })
-    .onConflictDoNothing()
-  return workspace
+    let workspace = await read()
+    for (let attempt = 0; !workspace && attempt < SLUG_ATTEMPTS; attempt++) {
+      await sql`insert into organization (id,name,slug,is_personal)
+        values (${user.id},${PERSONAL_WORKSPACE_NAME},${personalSlug()},true) on conflict do nothing`
+      workspace = await read()
+    }
+    if (!workspace) throw new Error('Unable to create personal workspace')
+    if (!workspace.deletedAt) {
+      await sql`insert into member (id,organization_id,user_id,role)
+        values (${newId()},${workspace.id},${user.id},'owner') on conflict do nothing`
+    }
+    return workspace
+  })
 }
 
 /**

@@ -21,7 +21,10 @@ export const getAccount = createServerFn({ method: 'GET' }).handler(async () => 
   const auth = getAuth(env, db)
   try {
     const { user } = await requireFreshSession({ auth, db, headers: getRequest().headers })
-    return await loadAccount(db, user, templateConfig)
+    return {
+      ...(await loadAccount(db, user, templateConfig)),
+      supportEmail: templateConfig.app.supportEmail,
+    }
   } catch (error) {
     if (error instanceof AppError) throw redirect({ href: ACCOUNT_LOGIN_HREF })
     throw error

@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
+import { DeletionSection } from '../../features/deletion/deletion-section.tsx'
 import { getAccount } from '../../features/settings/account.functions.ts'
 import {
   EmailVerificationSection,
@@ -24,8 +25,8 @@ function AccountPage() {
   const { error } = Route.useSearch()
   const { user } = account
   return (
-    <main>
-      <h1>{ACCOUNT_COPY.heading}</h1>
+    <main className="mx-auto grid max-w-2xl gap-6 px-4 py-12">
+      <h1 className="font-semibold text-3xl">{ACCOUNT_COPY.heading}</h1>
       <ProfileSection user={user} />
       <PreferencesSection user={user} locales={account.locales} />
       <EmailVerificationSection user={user} callbackError={error} />
@@ -33,6 +34,7 @@ function AccountPage() {
       {account.twoFactorAvailable && (
         <TwoFactorSection user={user} hasPassword={account.hasPassword} />
       )}
+      <DeletionSection supportEmail={account.supportEmail} />
     </main>
   )
 }

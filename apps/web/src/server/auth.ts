@@ -2,6 +2,7 @@ import { type AuthEmail, createAuth, type SendAuthEmail } from '@saas/auth'
 import { createDb, type Database } from '@saas/db'
 import { createQueueAuthEmailSender, userLocaleByEmail } from './auth-email.ts'
 import { templateConfig } from './template-config.ts'
+import { resolveWorkspaceMaxSeats } from './workspace-data.ts'
 
 /**
  * 按请求创建 Better Auth 实例（design.md 决策 1）：每个请求使用该请求的数据库客户端，
@@ -23,5 +24,9 @@ export function getAuth(env: Cloudflare.Env, db: Database = createDb(env.HYPERDR
         await queued(email)
       }
     : queued
-  return createAuth(env, db, { config: templateConfig, sendEmail })
+  return createAuth(env, db, {
+    config: templateConfig,
+    sendEmail,
+    resolveMaxSeats: resolveWorkspaceMaxSeats,
+  })
 }

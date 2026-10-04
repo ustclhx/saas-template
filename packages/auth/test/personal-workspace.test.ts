@@ -138,3 +138,18 @@ describe('注册即创建个人空间', () => {
     expect(await membersOf(s, u.userId)).toHaveLength(1)
   })
 })
+
+it('does not repair membership or create a personal workspace for a deleted account', async () => {
+  const s = setup()
+  const u = await signUp(s, 'deleted')
+  await s.db.$client`update organization set deleted_at=now() where id=${u.userId}`
+  await s.db.$client`delete from member where organization_id=${u.userId}`
+  const existing = await ensurePersonalWorkspace(s.db, { id: u.userId })
+  expect(existing.deletedAt).not.toBeNull()
+  expect(await membersOf(s, u.userId)).toHaveLength(0)
+  await s.db.$client`update "user" set banned=true,ban_expires=null where id=${u.userId}`
+  await expect(ensurePersonalWorkspace(s.db, { id: u.userId })).rejects.toMatchObject({
+    code: 'USER_BANNED',
+  })
+  expect(await membersOf(s, u.userId)).toHaveLength(0)
+})
