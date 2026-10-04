@@ -8,5 +8,19 @@ export const Route = createFileRoute('/app/$slug/settings')({
   }),
   loader: ({ context }) => context.workspacePage,
   staleTime: 0,
-  component: () => <WorkspaceSettings page={Route.useLoaderData()} />,
+  component: WorkspaceSettingsPage,
 })
+
+function WorkspaceSettingsPage() {
+  const page = Route.useLoaderData()
+  return (
+    <>
+      <WorkspaceSettings page={page} />
+      {!page.workspace.isPersonal && !page.readOnly && page.role === 'owner' ? (
+        <a className="text-destructive underline" href={`/app/${page.workspace.slug}/delete`}>
+          Delete team workspace
+        </a>
+      ) : null}
+    </>
+  )
+}

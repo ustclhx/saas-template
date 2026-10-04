@@ -1,5 +1,7 @@
 import { env } from 'cloudflare:workers'
+import { type FreshSession, requireFreshSession } from '@saas/auth'
 import { createDb } from '@saas/db'
+import { AppError } from '@saas/shared'
 import { notFound, redirect } from '@tanstack/react-router'
 import { createMiddleware } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
@@ -21,13 +23,23 @@ export const LOGIN_PATH = '/login'
 
 /**
  * 读取会话并注入 `{ db, user, session }`；未登录重定向到 `/login`。
- * 会话按三层读取（Cookie 缓存 → KV → 数据库），吊销有「缓存时长 + KV 传播」的延迟，
- * 空间访问权另由 `withWorkspace` 实时查库校验；敏感操作仍须调用 `requireFreshSession`。
+ * 应用页面按数据库校验有效会话与封禁，防止删号后的缓存 Cookie 触发个人空间补建。
+ * Better Auth 的普通会话接口仍使用 Cookie / KV 缓存；空间成员身份由 `withWorkspace` 查库。
  */
 export const withSession = createMiddleware({ type: 'function' }).server(async ({ next }) => {
   const db = createDb(env.HYPERDRIVE)
-  const result = await getAuth(env, db).api.getSession({ headers: getRequest().headers })
-  if (!result) throw redirect({ href: LOGIN_PATH })
+  let result: FreshSession
+  try {
+    result = await requireFreshSession({
+      auth: getAuth(env, db),
+      db,
+      headers: getRequest().headers,
+    })
+  } catch (error) {
+    if (error instanceof AppError && (error.status === 401 || error.status === 403))
+      throw redirect({ href: LOGIN_PATH })
+    throw error
+  }
   return next({ context: { db, user: result.user, session: result.session } })
 })
 
