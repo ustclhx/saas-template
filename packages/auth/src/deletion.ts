@@ -53,18 +53,47 @@ async function freshInTransaction(sql: DeletionTransaction, token: string, recen
     fail('REAUTHENTICATION_REQUIRED', 'Sign out and sign in again within ten minutes')
   return row
 }
-async function clearKv(kv: KvStore | undefined, keys: readonly string[]) {
-  if (!kv) return
-  const results = await Promise.allSettled(
-    [...new Set(keys)].map((key) => kv.delete(`auth:${key}`)),
-  )
-  if (results.some((result) => result.status === 'rejected'))
-    fail(
-      'DELETION_CLEANUP_FAILED',
-      'Deletion completed; credential cache cleanup needs retry',
-      503,
-      { deletionCompleted: true },
-    )
+/** Reserved exclusively for short-lived deletion credentials; never audit storage. */
+export const DELETION_CLEANUP_PREFIX = 'deletion-cleanup:'
+async function saveCleanup(sql: DeletionTransaction, keys: readonly string[], kv?: KvStore) {
+  if (!kv || !keys.length) return null
+  const id = newId()
+  await sql`insert into verification (id,identifier,value,expires_at,created_at,updated_at)
+    values (${id},${DELETION_CLEANUP_PREFIX + id},${JSON.stringify([...new Set(keys)])},now()+interval '24 hours',now(),now())`
+  return id
+}
+async function runCleanup(db: Database, kv: KvStore, id: string, keys: readonly string[]) {
+  const results = await Promise.allSettled(keys.map((key) => kv.delete(`auth:${key}`)))
+  if (results.some((result) => result.status === 'rejected')) return false
+  await db.$client`delete from verification where id=${id} and identifier=${DELETION_CLEANUP_PREFIX + id}`
+  return true
+}
+/** Retry only reserved manifests. No KV/network operations occur inside a DB transaction. */
+export async function retryDeletionCleanup(db: Database, kv: KvStore) {
+  await db.$client`delete from verification where identifier like ${`${DELETION_CLEANUP_PREFIX}%`} and expires_at<=now()`
+  const rows = await db.$client<{ id: string; value: string }[]>`
+    select id,value from verification where identifier like ${`${DELETION_CLEANUP_PREFIX}%`} and expires_at>now()`
+  let completed = 0
+  let failed = 0
+  for (const row of rows) {
+    if (await runCleanup(db, kv, row.id, JSON.parse(row.value))) completed++
+    else failed++
+  }
+  return { completed, failed }
+}
+async function finishCleanup(db: Database, kv: KvStore | undefined, id: string | null) {
+  if (!kv || !id) return
+  try {
+    const [row] = await db.$client<
+      { value: string }[]
+    >`select value from verification where id=${id}`
+    if (!row || (await runCleanup(db, kv, id, JSON.parse(row.value)))) return
+  } catch {
+    // The deletion transaction already committed; storage failure cannot undo it.
+  }
+  fail('DELETION_CLEANUP_FAILED', 'Deletion completed; credential cache cleanup needs retry', 503, {
+    deletionCompleted: true,
+  })
 }
 async function softDelete(sql: DeletionTransaction, id: string, actorId: string) {
   const owners = await sql<
@@ -95,8 +124,12 @@ async function softDelete(sql: DeletionTransaction, id: string, actorId: string)
     values (${newId()},${actorId},${id},'workspace.deleted','organization',${id},${JSON.stringify({ originalOwnerUserIds: owners.map((owner) => owner.user_id) })}::jsonb)`
   return sessions.map((session) => session.token)
 }
-export async function deleteTeamWorkspace(options: Options & { readonly workspaceId: string }) {
+export async function deleteTeamWorkspace(
+  options: Options & { readonly workspaceId: string; readonly multiTenant?: boolean },
+) {
   const fresh = await requireFreshSession(options)
+  if (options.multiTenant === false)
+    fail('TEAM_WORKSPACES_DISABLED', 'Team workspaces are read-only')
   const workspaceId = z.uuid().parse(options.workspaceId)
   const workspace = await options.db.query.organization.findFirst({
     where: (o, { eq, and, isNull }) => and(eq(o.id, workspaceId), isNull(o.deletedAt)),
@@ -125,9 +158,10 @@ export async function deleteTeamWorkspace(options: Options & { readonly workspac
     if (workspace.role !== 'owner')
       fail('WORKSPACE_PERMISSION', 'Only owners can delete a team workspace')
     for (const step of registered) await step.execute?.(context, sql)
-    return softDelete(sql, workspaceId, fresh.user.id)
+    const keys = await softDelete(sql, workspaceId, fresh.user.id)
+    return saveCleanup(sql, keys, options.kv)
   })
-  await clearKv(options.kv, keys)
+  await finishCleanup(options.db, options.kv, keys)
   return { deleted: true }
 }
 /** Installed Better Auth 1.7.7 uses plain verification identifiers by default. */
@@ -189,7 +223,7 @@ export async function deleteAccount(options: Options) {
     const owned = verification.filter((row) => belongsToUser(row, current.id, current.email))
     for (const row of owned) {
       await sql`delete from verification where id=${row.id}`
-      cacheKeys.push(`verification:${row.identifier}`)
+      // Verification is database-only; reusable email keys must never be deleted in KV.
     }
     await sql`delete from account where user_id=${current.id}`
     await sql`delete from two_factor where user_id=${current.id}`
@@ -198,13 +232,13 @@ export async function deleteAccount(options: Options) {
     await sql`update invitation set status='canceled',updated_at=now() where status='pending' and (inviter_id=${current.id} or lower(email)=lower(${current.email}))`
     await sql`update "user" set email=${`deleted+${current.id}@invalid`},name='',image=null,locale=null,timezone=null,email_verified=false,two_factor_enabled=false,banned=true,ban_reason='Account deleted',ban_expires=null,updated_at=now() where id=${current.id}`
     await sql`insert into audit_log (id,actor_user_id,action,target_type,target_id) values (${newId()},${current.id},'account.deleted','user',${current.id})`
-    return cacheKeys
+    return saveCleanup(sql, cacheKeys, options.kv)
   })
-  await clearKv(options.kv, keys)
+  await finishCleanup(options.db, options.kv, keys)
   return { deleted: true }
 }
 /** Mount before the native organization plugin. The HTTP endpoints validate signed cookies in DB. */
-export function deletionPlugin(db: Database, kv?: KvStore) {
+export function deletionPlugin(db: Database, kv?: KvStore, multiTenant = true) {
   const endpoint = (kind: DeletionKind) =>
     createAuthEndpoint(
       `/deletion/${kind}`,
@@ -226,6 +260,7 @@ export function deletionPlugin(db: Database, kv?: KvStore) {
               ? await deleteAccount(options)
               : await deleteTeamWorkspace({
                   ...options,
+                  multiTenant,
                   workspaceId: (ctx.body as unknown as { workspaceId: string }).workspaceId,
                 }),
           )
@@ -248,6 +283,28 @@ export function deletionPlugin(db: Database, kv?: KvStore) {
     )
   return {
     id: 'deletion',
+    init(ctx) {
+      const storage = ctx.options.secondaryStorage
+      if (!storage) return
+      // Installed Better Auth reads some OTP challenges cache-first. DB-only verification
+      // prevents stale challenges being rebound to a new account with the same email.
+      // KV has no compare-and-delete, so do not touch reusable verification cache keys.
+      return {
+        options: {
+          secondaryStorage: {
+            ...storage,
+            get: (key) =>
+              key.startsWith('verification:') ? Promise.resolve(null) : storage.get(key),
+            getAndDelete: (key) =>
+              key.startsWith('verification:') ? Promise.resolve(null) : storage.getAndDelete(key),
+            set: (key, value, ttl) =>
+              key.startsWith('verification:') ? Promise.resolve() : storage.set(key, value, ttl),
+            delete: (key) =>
+              key.startsWith('verification:') ? Promise.resolve() : storage.delete(key),
+          },
+        },
+      }
+    },
     endpoints: { deleteAccount: endpoint('account'), deleteWorkspace: endpoint('workspace') },
   } satisfies BetterAuthPlugin
 }

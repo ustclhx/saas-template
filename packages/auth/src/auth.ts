@@ -8,6 +8,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError } from 'better-auth/api'
 import { admin, emailOTP, magicLink, organization, twoFactor } from 'better-auth/plugins'
 import { accountSettings, userSettingsFields } from './account-settings.ts'
+import { deletionPlugin } from './deletion.ts'
 import type { SendAuthEmail } from './email.ts'
 import { emailVerificationOptions } from './email-verification.ts'
 import { type AuthEnv, parseAuthEnv } from './env.ts'
@@ -55,6 +56,7 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
     // 注册即创建个人空间，新会话默认以个人空间为活跃空间（personal-workspace.ts）
     databaseHooks: personalWorkspaceHooks(db),
     user: {
+      deleteUser: { enabled: false },
       // 用户设置中的语言与时区（tasks.md 5.2），取值由校验器限定
       additionalFields: userSettingsFields(config),
     },
@@ -81,6 +83,7 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
       }),
       // 敏感接口按数据库实时校验会话与封禁（fresh-session.ts）
       freshSessionGuard(db),
+      deletionPlugin(db, env.CACHE, config.tenancy.multiTenant),
       teamWorkspaces(db, config, sendEmail, deps.resolveMaxSeats),
       // 用户设置：资料校验、修改密码时吊销其他会话（account-settings.ts）
       accountSettings(),
