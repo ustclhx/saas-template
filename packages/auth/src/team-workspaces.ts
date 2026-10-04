@@ -3,12 +3,16 @@ import type { Database } from '@saas/db'
 import { newId } from '@saas/shared'
 import type { BetterAuthPlugin } from 'better-auth'
 import { APIError, createAuthEndpoint, createAuthMiddleware } from 'better-auth/api'
+import { setSessionCookie } from 'better-auth/cookies'
 import { z } from 'zod'
 import type { SendAuthEmail } from './email.ts'
 import { checkSessionInDatabase } from './fresh-session.ts'
 
-/** P2 supplies the current entitlement; absence means unlimited seats. */
-export type ResolveMaxSeats = (workspaceId: string) => Promise<number | null>
+/** Resolve only from local DB using the supplied transaction; never perform network I/O. */
+export type ResolveMaxSeats = (
+  workspaceId: string,
+  sql: Pick<Database['$client'], 'unsafe'>,
+) => Promise<number | null>
 const roles = z.enum(['owner', 'admin', 'member'])
 const uuid = z.uuid()
 const slug = z
@@ -60,7 +64,8 @@ const mutations = new Set([
   'leave',
 ])
 const transferInput = z.object({ organizationId: uuid, memberId: uuid })
-const readPosts = new Set(['set-active', 'check-slug', 'has-permission'])
+const readPosts = new Set(['check-slug', 'has-permission'])
+const addInput = z.object({ organizationId: uuid, userId: uuid, role: roles.default('member') })
 
 /** Native organization HTTP writes use the same admission checks and SQL transaction. */
 export function teamWorkspaces(
@@ -72,6 +77,11 @@ export function teamWorkspaces(
   return {
     id: 'team-workspaces',
     endpoints: {
+      addWorkspaceMember: createAuthEndpoint(
+        '/organization/add-member',
+        { method: 'POST', body: addInput, requireHeaders: true },
+        async (ctx) => ctx.json({}),
+      ),
       transferWorkspaceOwner: createAuthEndpoint(
         '/organization/transfer-owner',
         { method: 'POST', body: transferInput, requireHeaders: true },
@@ -87,7 +97,7 @@ export function teamWorkspaces(
             if (action === 'check-slug') validSlug(ctx.body?.slug)
             const write = ctx.method === 'POST' && !readPosts.has(action)
             if (!write) return
-            if (!config.tenancy.multiTenant)
+            if (!config.tenancy.multiTenant && action !== 'update' && action !== 'set-active')
               deny('WORKSPACE_READ_ONLY', 'Team workspace writes are disabled')
             const token = await ctx.getSignedCookie(
               ctx.context.authCookies.sessionToken.name,
@@ -101,6 +111,18 @@ export function teamWorkspaces(
               })
             const { user, session } = fresh.value
             const body = ctx.body ?? {}
+            // Recheck session and ban state after admission locks, using this transaction.
+            const checkFresh = async (sql: Pick<Database['$client'], 'unsafe'>) => {
+              const rows = await sql.unsafe(
+                'select s.id from session s join "user" u on u.id=s.user_id where s.token=$1 and s.user_id=$2 and s.expires_at>now() and not (coalesce(u.banned,false) and (u.ban_expires is null or u.ban_expires>now()))',
+                [token, user.id],
+              )
+              if (!rows.length)
+                throw APIError.from('UNAUTHORIZED', {
+                  code: 'SESSION_REQUIRED',
+                  message: 'Sign in required',
+                })
+            }
             if (action === 'create') {
               const input = parse(
                 z.object({ name: z.string().trim().min(1).max(100), slug: z.string() }),
@@ -109,6 +131,7 @@ export function teamWorkspaces(
               const requestedSlug = validSlug(input.slug)
               const result = await db.$client.begin(async (sql) => {
                 await sql`select pg_advisory_xact_lock(hashtextextended(${`owner:${user.id}`}, 0))`
+                await checkFresh(sql)
                 const [count] = await sql<
                   { total: number }[]
                 >`select count(*)::int as total from member m join organization o on o.id=m.organization_id where m.user_id=${user.id} and m.role='owner' and not o.is_personal and o.deleted_at is null`
@@ -139,9 +162,49 @@ export function teamWorkspaces(
               if (!invitation) missing()
               workspaceId = invitation.organizationId
             }
+            if (action === 'set-active' && body.organizationId === null) {
+              await db.$client.begin(async (sql) => {
+                await sql`select pg_advisory_xact_lock(hashtextextended(${`owner:${user.id}`}, 0))`
+                await checkFresh(sql)
+                await sql`update session set active_organization_id=null,updated_at=now() where id=${session.id}`
+              })
+              await ctx.context.options.secondaryStorage?.delete(session.token)
+              await setSessionCookie(ctx, {
+                session: { ...session, activeOrganizationId: null },
+                user,
+              })
+              return ctx.json(null)
+            }
+            if (action === 'set-active' && body.organizationSlug && !body.organizationId) {
+              const org = await db.query.organization.findFirst({
+                where: (o, { eq }) => eq(o.slug, body.organizationSlug),
+              })
+              if (!org) missing()
+              workspaceId = org.id
+            }
             workspaceId = parse(uuid, workspaceId)
+            // Preliminary target lookup only selects lock keys. Authorization is repeated under locks.
+            let targetUserId: string | undefined
+            if (action === 'add-member') targetUserId = parse(addInput, body).userId
+            if (
+              action === 'transfer-owner' ||
+              action === 'update-member-role' ||
+              action === 'remove-member'
+            ) {
+              const targetKey = body.memberId ?? body.memberIdOrEmail
+              const [target] = await db.$client<
+                { user_id: string }[]
+              >`select m.user_id from member m join "user" u on u.id=m.user_id where m.organization_id=${workspaceId} and (m.id::text=${targetKey ?? ''} or lower(u.email)=lower(${targetKey ?? ''}))`
+              targetUserId = target?.user_id
+            }
             const result = await db.$client.begin(async (sql) => {
+              for (const id of [
+                ...new Set([user.id, targetUserId].filter((id): id is string => !!id)),
+              ].sort()) {
+                await sql`select pg_advisory_xact_lock(hashtextextended(${`owner:${id}`}, 0))`
+              }
               await sql`select pg_advisory_xact_lock(hashtextextended(${`ws:${workspaceId}`}, 0))`
+              await checkFresh(sql)
               const [workspace] = await sql<
                 { id: string; name: string; isPersonal: boolean; deletedAt: string | null }[]
               >`select id,name,is_personal as "isPersonal",deleted_at as "deletedAt" from organization where id=${workspaceId}`
@@ -150,27 +213,59 @@ export function teamWorkspaces(
                 { id: string; role: string }[]
               >`select id,role from member where organization_id=${workspaceId} and user_id=${user.id}`
               if (action !== 'accept-invitation' && !actor) missing()
-              if (workspace.isPersonal && action !== 'update')
+              if (!config.tenancy.multiTenant && !workspace.isPersonal && action !== 'set-active')
+                deny('WORKSPACE_READ_ONLY', 'Team workspace writes are disabled')
+              if (workspace.isPersonal && action !== 'update' && action !== 'set-active')
                 deny('PERSONAL_WORKSPACE', 'Personal workspace membership cannot change')
               const checkSeats = async () => {
-                const limit = await resolveMaxSeats(workspaceId)
+                const limit = await resolveMaxSeats(workspaceId, sql)
                 const [count] = await sql<
                   { total: number }[]
                 >`select count(*)::int as total from member where organization_id=${workspaceId}`
                 if (limit !== null && (count?.total ?? 0) >= limit)
                   deny('SEATS_FULL', 'Workspace seats are full')
               }
+              const checkOwned = async (id: string) => {
+                const [available] =
+                  await sql`select id from "user" where id=${id} and not (coalesce(banned,false) and (ban_expires is null or ban_expires>now()))`
+                if (!available) deny('INVALID_MEMBER', 'User unavailable')
+                const [owned] = await sql<
+                  { total: number }[]
+                >`select count(*)::int as total from member m join organization o on o.id=m.organization_id where m.user_id=${id} and m.role='owner' and not o.is_personal and o.deleted_at is null`
+                if ((owned?.total ?? 0) >= config.tenancy.maxWorkspacesPerUser)
+                  deny('WORKSPACE_LIMIT', 'New owner workspace limit reached')
+              }
+              if (action === 'set-active') {
+                await sql`update session set active_organization_id=${workspaceId},updated_at=now() where id=${session.id}`
+                const [org] =
+                  await sql`select id,name,slug,logo,metadata,is_personal as "isPersonal",deleted_at as "deletedAt",created_at as "createdAt",updated_at as "updatedAt" from organization where id=${workspaceId}`
+                return { ...org, metadata: org?.metadata ? JSON.parse(org.metadata) : null }
+              }
               if (action === 'accept-invitation') {
                 const [invite] = await sql<
-                  { id: string; email: string; role: string; status: string; expires_at: string }[]
+                  {
+                    id: string
+                    email: string
+                    role: string
+                    status: string
+                    expires_at: string
+                    inviter_id: string
+                  }[]
                 >`select * from invitation where id=${body.invitationId} and organization_id=${workspaceId}`
                 if (invite?.status !== 'pending' || new Date(invite.expires_at) <= new Date())
                   deny('INVITATION_INVALID', 'Invitation expired or unavailable')
-                if (invite.email.toLowerCase() !== user.email.toLowerCase())
+                const [recipient] = await sql<
+                  { email: string }[]
+                >`select email from "user" where id=${user.id}`
+                if (invite.email.toLowerCase() !== recipient?.email.toLowerCase())
                   deny('INVITATION_RECIPIENT', 'Invitation belongs to another email')
                 if (actor) deny('ALREADY_MEMBER', 'Already a member')
-                if (invite.role === 'owner')
-                  deny('USE_OWNER_TRANSFER', 'Use transfer ownership to grant ownership')
+                if (invite.role === 'owner') {
+                  const [inviter] =
+                    await sql`select id from member where organization_id=${workspaceId} and user_id=${invite.inviter_id} and role='owner'`
+                  if (!inviter) deny('WORKSPACE_PERMISSION', 'Inviter is no longer an owner')
+                  await checkOwned(user.id)
+                }
                 await checkSeats()
                 const [member] =
                   await sql`insert into member (id,organization_id,user_id,role) values (${newId()},${workspaceId},${user.id},${parse(roles, invite.role)}) returning id,organization_id as "organizationId",user_id as "userId",role,created_at as "createdAt"`
@@ -184,28 +279,44 @@ export function teamWorkspaces(
                 const input = parse(transferInput, body)
                 const [target] = await sql<
                   { id: string; user_id: string }[]
-                >`select id,user_id from member where id=${input.memberId} and organization_id=${workspaceId}`
+                >`select m.id,m.user_id from member m join "user" u on u.id=m.user_id where m.id=${input.memberId} and m.organization_id=${workspaceId} and not (coalesce(u.banned,false) and (u.ban_expires is null or u.ban_expires>now()))`
                 if (!target || target.id === actor.id)
                   deny('INVALID_TRANSFER', 'Choose another member')
-                await sql`select pg_advisory_xact_lock(hashtextextended(${`owner:${target.user_id}`}, 0))`
-                const [owned] = await sql<
-                  { total: number }[]
-                >`select count(*)::int as total from member m join organization o on o.id=m.organization_id where m.user_id=${target.user_id} and m.role='owner' and not o.is_personal and o.deleted_at is null`
-                if ((owned?.total ?? 0) >= config.tenancy.maxWorkspacesPerUser)
-                  deny('WORKSPACE_LIMIT', 'New owner workspace limit reached')
+                if (target.user_id !== targetUserId) missing()
+                const [currentTarget] = await sql`select role from member where id=${target.id}`
+                if (currentTarget?.role !== 'owner') await checkOwned(target.user_id)
                 await sql`update member set role='owner',updated_at=now() where id=${target.id}`
                 await sql`update member set role='admin',updated_at=now() where id=${actor.id}`
                 return { status: true }
               }
               if (action !== 'leave' && actor?.role !== 'owner' && actor?.role !== 'admin')
                 deny('WORKSPACE_PERMISSION', 'Member management requires admin or owner')
+              if (action === 'add-member') {
+                const input = parse(addInput, body)
+                if (input.role === 'owner' && actor?.role !== 'owner')
+                  deny('WORKSPACE_PERMISSION', 'Only owners can grant ownership')
+                const [target] =
+                  await sql`select id from "user" where id=${input.userId} and not coalesce(banned,false)`
+                if (!target) deny('INVALID_MEMBER', 'User unavailable')
+                if (
+                  (
+                    await sql`select id from member where organization_id=${workspaceId} and user_id=${input.userId}`
+                  ).length
+                )
+                  deny('ALREADY_MEMBER', 'Already a member')
+                if (input.role === 'owner') await checkOwned(input.userId)
+                await checkSeats()
+                const [member] =
+                  await sql`insert into member (id,organization_id,user_id,role) values (${newId()},${workspaceId},${input.userId},${input.role}) returning id,organization_id as "organizationId",user_id as "userId",role,created_at as "createdAt"`
+                return { member }
+              }
               if (action === 'invite-member') {
                 const input = parse(
                   z.object({ email: z.email(), role: roles.default('member') }),
                   body,
                 )
-                if (input.role === 'owner')
-                  deny('WORKSPACE_PERMISSION', 'Use transfer ownership to grant ownership')
+                if (input.role === 'owner' && actor?.role !== 'owner')
+                  deny('WORKSPACE_PERMISSION', 'Only owners can grant ownership')
                 await checkSeats()
                 const [existing] =
                   await sql`select m.id from member m join "user" u on u.id=m.user_id where m.organization_id=${workspaceId} and lower(u.email)=lower(${input.email})`
@@ -218,6 +329,10 @@ export function teamWorkspaces(
                 return { invitation, workspace }
               }
               if (action === 'cancel-invitation') {
+                const [pending] =
+                  await sql`select role from invitation where id=${body.invitationId} and organization_id=${workspaceId}`
+                if (pending?.role === 'owner' && actor?.role !== 'owner')
+                  deny('WORKSPACE_PERMISSION', 'Only owners can manage ownership')
                 const [invitation] =
                   await sql`update invitation set status='canceled',updated_at=now() where id=${body.invitationId} and organization_id=${workspaceId} and status='pending' returning id,organization_id as "organizationId",email,role,status,expires_at as "expiresAt"`
                 if (!invitation) deny('INVITATION_INVALID', 'Invitation unavailable')
@@ -231,8 +346,8 @@ export function teamWorkspaces(
                 const targetId =
                   action === 'leave' ? actor?.id : (body.memberId ?? body.memberIdOrEmail)
                 const [target] = await sql<
-                  { id: string; role: string }[]
-                >`select m.id,m.role from member m join "user" u on u.id=m.user_id where m.organization_id=${workspaceId} and (m.id::text=${targetId ?? ''} or lower(u.email)=lower(${targetId ?? ''}))`
+                  { id: string; role: string; user_id: string }[]
+                >`select m.id,m.role,m.user_id from member m join "user" u on u.id=m.user_id where m.organization_id=${workspaceId} and (m.id::text=${targetId ?? ''} or lower(u.email)=lower(${targetId ?? ''}))`
                 if (!target) missing()
                 const newRole = action === 'update-member-role' ? parse(roles, body.role) : null
                 if (
@@ -248,8 +363,8 @@ export function teamWorkspaces(
                   if ((owners?.total ?? 0) <= 1)
                     deny('LAST_OWNER', 'The last owner cannot leave or be demoted')
                 }
-                if (newRole === 'owner' && target.role !== 'owner')
-                  deny('USE_OWNER_TRANSFER', 'Use transfer ownership to grant ownership')
+                if (action !== 'leave' && target.user_id !== targetUserId) missing()
+                if (newRole === 'owner' && target.role !== 'owner') await checkOwned(target.user_id)
                 if (newRole) {
                   const [member] =
                     await sql`update member set role=${newRole},updated_at=now() where id=${target.id} returning id,organization_id as "organizationId",user_id as "userId",role`
@@ -258,15 +373,56 @@ export function teamWorkspaces(
                 await sql`delete from member where id=${target.id}`
                 return { member: target }
               }
-              // Native organization metadata updates retain BA validation/response behavior.
               if (action === 'update') {
-                if (body.data?.slug !== undefined) validSlug(body.data.slug)
-                return null
+                if (actor?.role !== 'owner')
+                  deny('WORKSPACE_PERMISSION', 'Only owners can update workspace settings')
+                const data = parse(
+                  z
+                    .object({
+                      name: z.string().trim().min(1).max(100).optional(),
+                      slug: z.string().optional(),
+                      logo: z.string().nullable().optional(),
+                      metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+                    })
+                    .strict(),
+                  body.data,
+                )
+                if (data.slug !== undefined) {
+                  validSlug(data.slug)
+                  await sql`select pg_advisory_xact_lock(hashtextextended(${`slug:${data.slug}`}, 0))`
+                  if (
+                    (
+                      await sql`select id from organization where slug=${data.slug} and id<>${workspaceId}`
+                    ).length
+                  )
+                    throw APIError.from('BAD_REQUEST', {
+                      code: 'SLUG_TAKEN',
+                      message: 'Slug already in use',
+                    })
+                }
+                const changes: Record<string, string | null> = {
+                  updated_at: new Date().toISOString(),
+                }
+                if (data.name !== undefined) changes.name = data.name
+                if (data.slug !== undefined) changes.slug = data.slug
+                if (data.logo !== undefined) changes.logo = data.logo
+                if (data.metadata !== undefined)
+                  changes.metadata = data.metadata === null ? null : JSON.stringify(data.metadata)
+                const [org] =
+                  await sql`update organization set ${sql(changes)} where id=${workspaceId} returning id,name,slug,logo,metadata,is_personal as "isPersonal",deleted_at as "deletedAt",created_at as "createdAt",updated_at as "updatedAt"`
+                return { ...org, metadata: org?.metadata ? JSON.parse(org.metadata) : null }
               }
               if (!mutations.has(action))
                 deny('WORKSPACE_OPERATION_DISABLED', 'Unsupported workspace mutation')
               return null
             })
+            if (action === 'set-active') {
+              await ctx.context.options.secondaryStorage?.delete(session.token)
+              await setSessionCookie(ctx, {
+                session: { ...session, activeOrganizationId: workspaceId },
+                user,
+              })
+            }
             if (result && 'workspace' in result && 'invitation' in result) {
               const invitation = result.invitation as { id: string; email: string; role: string }
               await sendEmail({
