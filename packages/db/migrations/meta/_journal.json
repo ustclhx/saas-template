@@ -15,6 +15,13 @@
       "when": 1791045884914,
       "tag": "0001_auth_and_tenancy",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791116783675,
+      "tag": "0002_graceful_stryfe",
+      "breakpoints": true
     }
   ]
 }

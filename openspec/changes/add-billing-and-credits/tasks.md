@@ -4,8 +4,8 @@
 
 ## 1. 数据模型与种子数据
 
-- [ ] 1.1 新增计费表 `plan`、`plan_price`、`billing_customer`、`subscription`（含部分唯一索引）、`purchase`、`payment`、`refund_request`（pending 部分唯一索引）、`webhook_event`，验证迁移成功且同一空间插入两个 `cancel_at_period_end=false` 的有效订阅被数据库拒绝
-- [ ] 1.2 新增积分表 `credit_grant`（`unique(source, source_ref)`）、`credit_hold`（含三个 overage 字段）、`credit_hold_allocation`、`credit_ledger`、`credit_debt`，验证迁移成功
+- [x] 1.1 新增计费表 `plan`、`plan_price`、`billing_customer`、`subscription`（含部分唯一索引）、`purchase`、`payment`、`refund_request`（pending 部分唯一索引）、`webhook_event`，验证迁移成功且同一空间插入两个 `cancel_at_period_end=false` 的有效订阅被数据库拒绝
+- [x] 1.2 新增积分表 `credit_grant`（`unique(source, source_ref)`）、`credit_hold`（含三个 overage 字段）、`credit_hold_allocation`、`credit_ledger`、`credit_debt`，验证迁移成功
 - [ ] 1.3 编写 `plan` / `plan_price` 种子数据（free、pro、team、积分包）与 `pnpm billing:sync`（同步到 Stripe 测试模式与 PayPal 沙箱），验证执行后两个平台出现对应价格且重复执行不重复创建
 
 ## 2. 积分账本 `packages/credits`
@@ -20,7 +20,7 @@
 
 ## 3. 支付平台
 
-- [ ] 3.1 在 `packages/billing` 定义 `PaymentProvider` 接口、`NormalizedEvent` 类型与平台能力标记，验证类型测试通过
+- [x] 3.1 在 `packages/billing` 定义 `PaymentProvider` 接口、`NormalizedEvent` 类型与平台能力标记，验证类型测试通过
 - [ ] 3.2 实现 Stripe Provider（fetch http client、锁定 API 版本、`constructEventAsync` 验签、订阅与一次性结账、Portal、取消 / 恢复、退款），用录制的回调夹具验证事件映射测试通过
 - [ ] 3.3 实现 PayPal Provider（OAuth token 缓存到 KV、Orders v2 capture、Subscriptions v1、webhook 验签接口、取消 / 恢复、退款），用沙箱录制的回调夹具验证事件映射测试通过，并把实测的事件名差异回写 `docs/05-billing.md`
 
