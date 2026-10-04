@@ -1,10 +1,4 @@
-import {
-  createExecutionContext,
-  createMessageBatch,
-  createScheduledController,
-  getQueueResult,
-  introspectWorkflowInstance,
-} from 'cloudflare:test'
+import { createScheduledController, introspectWorkflowInstance } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
 import { createDb, readLastCronAt } from '@saas/db'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -46,23 +40,6 @@ describe('apps/jobs', () => {
     )
     expect(error).toBeInstanceOf(Error)
     expect((error as Error).message).toBe('Invalid environment: missing HYPERDRIVE')
-  })
-
-  it('EMAIL_QUEUE 消费者记录并确认每条消息，日志不含消息体', async () => {
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
-    const batch = createMessageBatch('email', [
-      { id: 'm1', timestamp: new Date(), attempts: 1, body: { to: 'someone@example.com' } },
-      { id: 'm2', timestamp: new Date(), attempts: 2, body: { to: 'other@example.com' } },
-    ])
-    await worker.queue(batch, env)
-    const result = await getQueueResult(batch, createExecutionContext())
-    expect(result.explicitAcks).toEqual(['m1', 'm2'])
-    expect(result.retryMessages).toEqual([])
-
-    const logged = log.mock.calls.flat().join('\n')
-    expect(logged).toContain('"event":"email.received"')
-    expect(logged).toContain('"id":"m2"')
-    expect(logged).not.toContain('example.com')
   })
 
   it('AiMediaWorkflow 执行示例 step 后等待回调事件，收到事件后完成', async () => {

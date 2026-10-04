@@ -24,9 +24,13 @@
   "workflows": [
     { "name": "ai-media", "binding": "AI_MEDIA_WORKFLOW", "class_name": "AiMediaWorkflow" }
   ],
-  // web 为 producer（apps/web/wrangler.jsonc），jobs 为 consumer
+  // web 为 producer（apps/web/wrangler.jsonc），jobs 为 consumer。
+  // max_retries 与 src/queues/email.ts 的 EMAIL_MAX_ATTEMPTS（首次 + 5 次重试）一致；
+  // 不配置死信队列：最后一次投递仍失败时由消费者确认并记录 email.dropped（原因见该文件注释）。
   "queues": {
-    "consumers": [{ "queue": "email", "max_batch_size": 10, "max_batch_timeout": 5 }]
+    "consumers": [
+      { "queue": "email", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 5 }
+    ]
   },
   "triggers": {
     // 心跳：写 setting 表的 jobs.lastCronAt（src/cron/heartbeat.ts）
@@ -50,7 +54,14 @@
         }
       ],
       "queues": {
-        "consumers": [{ "queue": "email-staging", "max_batch_size": 10, "max_batch_timeout": 5 }]
+        "consumers": [
+          {
+            "queue": "email-staging",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5
+          }
+        ]
       },
       "triggers": { "crons": ["*/5 * * * *"] }
     }

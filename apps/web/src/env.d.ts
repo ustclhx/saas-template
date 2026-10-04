@@ -10,7 +10,7 @@ declare namespace Cloudflare {
     HYPERDRIVE_CACHED: Hyperdrive
     /** 定义在 apps/jobs 的 AiMediaWorkflow（script_name: jobs）；参数类型在 P4 移入 packages/ai */
     AI_MEDIA_WORKFLOW: Workflow<{ taskId: string }>
-    /** 邮件队列 producer，apps/jobs 消费 */
-    EMAIL_QUEUE: Queue<unknown>
+    /** 邮件队列 producer，apps/jobs 消费（消息格式见 @saas/email/queue） */
+    EMAIL_QUEUE: Queue<import('@saas/email/queue').EmailQueueMessage>
   }
 }

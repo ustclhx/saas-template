@@ -1,4 +1,12 @@
 export {
+  EMAIL_TRANSPORTS,
+  type EmailTransport,
+  type EmailTransportConfig,
+  emailEnvShape,
+  emailTransportConfig,
+  withEmailEnv,
+} from './email-env.ts'
+export {
   type Env,
   EnvValidationError,
   envSchema,
