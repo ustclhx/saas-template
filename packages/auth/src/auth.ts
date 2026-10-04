@@ -18,6 +18,7 @@ import { personalWorkspaceHooks } from './personal-workspace.ts'
 import { authProtection } from './protection.ts'
 import { sessionStorageOptions } from './session.ts'
 import { type ResolveMaxSeats, teamWorkspaces } from './team-workspaces.ts'
+import { verificationReservation } from './verification-reservation.ts'
 
 export interface CreateAuthDeps {
   /** 模板配置（`template.config.ts`），决定启用哪些登录方式与插件 */
@@ -84,6 +85,7 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
       // 敏感接口按数据库实时校验会话与封禁（fresh-session.ts）
       freshSessionGuard(db),
       deletionPlugin(db, env.CACHE, config.tenancy.multiTenant),
+      verificationReservation(db),
       teamWorkspaces(db, config, sendEmail, deps.resolveMaxSeats),
       // 用户设置：资料校验、修改密码时吊销其他会话（account-settings.ts）
       accountSettings(),
