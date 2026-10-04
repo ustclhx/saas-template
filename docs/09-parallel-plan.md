@@ -40,6 +40,7 @@ P0 实现时必须遵守的约定（setup 脚本依赖它们）：
 4. **`pnpm-lock.yaml`**：冲突时不手工合并，rebase 后在 main 的依赖基础上重新 `pnpm install` 生成，再执行 `pnpm dedupe`。增量 `pnpm add` 可能让带可选 peer 的包（如 drizzle-orm）出现多个实例，CI 用 `pnpm dedupe --check` 与 `pnpm check:singletons` 拦截。
 5. **文案文件**：`apps/web/messages/<locale>/<feature>.json` 按功能拆分，避免多条线同时改一个大文件。
 6. **OpenSpec `tasks.md`**：worker 只勾选分配给自己的任务编号；change 的归档（`/opsx:archive`）只在 main 上、该 change 全部任务合并后进行。
+7. **进程管理**：只结束自己启动的进程（按记录的 PID，或按本 worktree `.env.worktree` 中的端口：`lsof -ti :<端口> | xargs kill`）。**禁止 `pkill -f` / `killall` 等按名称或模式匹配结束进程**：Orca 以 `claude "<任务说明>"` 启动 agent，命令行里含任务说明全文，`pkill -f "vite dev"` 曾误杀其他 worktree 的 agent（P1 W5b）。
 
 ## 4. 阶段之间的波次
 

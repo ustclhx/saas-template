@@ -20,7 +20,7 @@
 1. **Better Auth 实例按请求创建**：`createAuth(env, db, { config, sendEmail })`（实现时增加了依赖参数：模板配置与发信函数由调用方注入，便于测试切换配置、注入假的发信实现；邮件发送在 3.2 接入 `EMAIL_QUEUE`），Drizzle adapter（`pg`）。插件：`organization`、`admin`、`emailOTP`、`magicLink`、`twoFactor`，`apiKey` 预先接入但由 `features.publicApi` 控制是否启用。
 2. **ID 与列类型**：通过 `advanced.database.generateId` 生成 UUIDv7；对 Better Auth CLI 生成的 schema 手动把 id / 外键列改为 `uuid`。若某插件内部假设 id 为字符串格式导致失败，退路是 Better Auth 表保留 `text`、业务表用 `uuid`，并在 `docs/02-project-structure.md` 记录例外。
 3. **会话三层**：`session.cookieCache`（maxAge 5 分钟）→ `secondaryStorage`（KV）→ 数据库（`storeSessionInDatabase`）。敏感操作通过一个 `requireFreshSession(ctx)` 守卫绕过前两层直接查库，守卫的适用范围以 `specs/user-auth` 中的列表为准。
-4. **个人空间创建**放在 `databaseHooks.user.create.after`，与用户创建不在同一事务中；为防止钩子失败导致「有用户无空间」，`withWorkspace` 在找不到个人空间时补建（幂等，依赖 `member` 唯一约束）。备选是自定义注册接口在一个事务内完成两者，但会绕开 Better Auth 的注册流程与插件钩子。
+4. **个人空间创建**放在 `databaseHooks.user.create.after`，与用户创建不在同一事务中；为防止钩子失败导致「有用户无空间」，`withWorkspace` 在找不到个人空间时补建（幂等，依赖 `member` 唯一约束）。备选是自定义注册接口在一个事务内完成两者，但会绕开 Better Auth 的注册流程与插件钩子。 实现中发现仅靠 `member` 唯一约束不能防止并发补建出两个个人空间，因此**个人空间的 id 等于用户 id**（都是 UUIDv7）：空间插入用 `on conflict (id) do nothing`，成员插入依赖 `(organization_id, user_id)` 唯一约束，并发补建也只会得到同一个空间。
 5. **slug 生成**：个人空间用 `u-` + 8 位随机 base36，冲突时重试；团队空间由用户填写，校验唯一与保留字（`admin`、`api`、`app` 等）。
 6. **中间件链**：`withSession → withWorkspace → withEntitlement → handler`。本 change 实现前两个，`withEntitlement` 先放一个始终通过的占位，由 billing change 替换。
 7. **`scoped(db, workspaceId)`**：返回只暴露带 ws 过滤的查询方法的包装对象；配合 Biome GritQL 插件（或独立脚本）禁止在 `apps/web/src/features/**` 中直接调用 `db.select().from(<带 ws 的表>)`。

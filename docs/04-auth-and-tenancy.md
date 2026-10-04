@@ -88,7 +88,7 @@
 
 ### 核心规则
 1. **所有业务数据归属 Workspace**（`organization`），从不直接归属用户。
-2. 用户注册成功后（Better Auth `databaseHooks.user.create.after`）自动创建个人空间：`is_personal=true`，用户为 `owner`，并设为 `active_organization_id`。
+2. 用户注册成功后（Better Auth `databaseHooks.user.create.after`）自动创建个人空间：`is_personal=true`，用户为 `owner`，并设为 `active_organization_id`。 个人空间的 id 与用户 id 相同，使补建在并发下保持幂等。
 3. 计费主体是 Workspace：订阅、积分、订单都挂在 Workspace 上；积分流水额外记录 `user_id`。
 
 ### 开关行为
