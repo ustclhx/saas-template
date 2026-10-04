@@ -1,6 +1,6 @@
 import type Stripe from 'stripe'
 import { describe, expect, it } from 'vitest'
-import { createStripeProvider } from './adapter.ts'
+import { createStripeProvider, createStripeWebhookNormalizer } from './adapter.ts'
 import { STRIPE_API_VERSION } from './client.ts'
 
 // Synthetic current-API fixtures, not recorded Stripe deliveries.
@@ -217,6 +217,21 @@ function paymentReplies(invoiceBody?: unknown) {
   ]
 }
 describe('Stripe adapter with cryptographically signed synthetic fixtures', () => {
+  it('replays trusted persisted payloads with the same identity and normalization', async () => {
+    const payload = await signed('customer.subscription.updated', subscription)
+    const verified = await mockProvider().provider.verifyWebhook(payload.request, payload.rawBody)
+    const replay = createStripeWebhookNormalizer({
+      secretKey: 'sk_test_offline_only',
+      fetch: async () => {
+        throw new Error('Replay must not fetch this event')
+      },
+    })
+    expect(await replay(JSON.parse(payload.rawBody))).toEqual(verified)
+    await expect(
+      replay({ ...JSON.parse(payload.rawBody), api_version: 'unknown' }),
+    ).rejects.toThrow('Invalid stored Stripe event')
+  })
+
   it('composes the full typed provider contract', () => {
     const { provider } = mockProvider()
     expect(provider.id).toBe('stripe')

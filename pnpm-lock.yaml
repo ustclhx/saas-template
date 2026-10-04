@@ -342,6 +342,9 @@ importers:
 
   packages/billing:
     dependencies:
+      '@saas/credits':
+        specifier: workspace:*
+        version: link:../credits
       '@saas/db':
         specifier: workspace:*
         version: link:../db

@@ -1,3 +1,9 @@
+export {
+  createPayPalProvider,
+  createPayPalWebhookNormalizer,
+  type PayPalProviderOptions,
+  type PayPalTokenCache,
+} from './paypal/index.ts'
 export * from './pipeline.ts'
 export type {
   CheckoutInput,
@@ -15,4 +21,8 @@ export type {
   SubscriptionSnapshot,
   VerifiedWebhook,
 } from './provider.ts'
-export { createStripeProvider, type StripeProviderOptions } from './stripe/adapter.ts'
+export {
+  createStripeProvider,
+  createStripeWebhookNormalizer,
+  type StripeProviderOptions,
+} from './stripe/adapter.ts'

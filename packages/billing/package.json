@@ -13,7 +13,8 @@
   "dependencies": {
     "@saas/db": "workspace:*",
     "stripe": "23.0.0",
-    "drizzle-orm": "^0.45.3"
+    "drizzle-orm": "^0.45.3",
+    "@saas/credits": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^4.1.11"

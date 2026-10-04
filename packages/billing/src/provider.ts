@@ -85,6 +85,8 @@ export type PaymentSnapshot = (
     })
 ) & {
   providerPaymentId: string
+  /** Actual historical price, independent of the current mutable subscription. */
+  providerPriceId?: string | null
   providerCustomerId: string | null
   amount: number
   currency: string

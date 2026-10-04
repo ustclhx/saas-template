@@ -1,3 +1,4 @@
+import type { JsonValue } from '@saas/db/schema'
 import Stripe from 'stripe'
 import type { NormalizedEvent, PaymentProvider, VerifiedWebhook } from '../provider.ts'
 import { createStripeClient, STRIPE_API_VERSION } from './client.ts'
@@ -222,5 +223,24 @@ export function createStripeProvider(options: StripeProviderOptions): PaymentPro
       }
       return normalizeStripeEvent(stripe, event)
     },
+  }
+}
+
+/** Trusted persisted-payload replay only; HTTP ingress always uses verifyWebhook. */
+export function createStripeWebhookNormalizer(
+  options: Pick<StripeProviderOptions, 'secretKey' | 'fetch'>,
+) {
+  const stripe = createStripeClient(options.secretKey, options.fetch)
+  return async (payload: JsonValue): Promise<VerifiedWebhook> => {
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      Array.isArray(payload) ||
+      typeof payload.id !== 'string' ||
+      typeof payload.type !== 'string' ||
+      payload.api_version !== STRIPE_API_VERSION
+    )
+      throw new Error('Invalid stored Stripe event')
+    return normalizeStripeEvent(stripe, payload as unknown as Stripe.Event)
   }
 }

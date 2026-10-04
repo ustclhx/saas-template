@@ -243,6 +243,19 @@ export async function getStripePayment(
         ? await stripe.invoices.listLineItems(invoice.id).autoPagingToArray({ limit: 100 })
         : invoice.lines.data
       const period = stripeInvoicePeriod(invoice, lines)
+      const priceLines = lines.filter(
+        (line) =>
+          line.amount > 0 &&
+          line.parent?.type === 'subscription_item_details' &&
+          line.parent.subscription_item_details?.subscription === subscriptionId &&
+          line.parent.subscription_item_details.proration === (kind === 'adjustment'),
+      )
+      const priceIds = new Set(
+        priceLines.map((line) => stripeObjectId(line.pricing?.price_details?.price ?? null)),
+      )
+      if (priceIds.size !== 1 || priceIds.has(null))
+        throw new Error('Payment requires one historical subscription price')
+      const providerPriceId = [...priceIds][0] as string
       if (kind === 'adjustment') {
         const target = lines.find(
           (line) =>
@@ -265,6 +278,7 @@ export async function getStripePayment(
         ...paid,
         kind,
         providerSubscriptionId: subscriptionId,
+        providerPriceId,
         period,
         paidAt: stripeDate(invoicePayment.status_transitions.paid_at),
         metadata: parseStripeMetadata(invoice.parent?.subscription_details?.metadata),
