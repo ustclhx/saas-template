@@ -5,6 +5,7 @@ import { createMiddleware } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import { getAuth } from './auth.ts'
+import { templateConfig } from './template-config.ts'
 import { resolveDefaultWorkspace, resolveWorkspaceBySlug } from './workspace-context.ts'
 
 /**
@@ -51,5 +52,10 @@ export const withWorkspace = createMiddleware({ type: 'function' })
         ? await resolveDefaultWorkspace(db, user, session.activeOrganizationId)
         : await resolveWorkspaceBySlug(db, user.id, data.slug)
     if (!resolved) throw notFound()
-    return next({ context: resolved })
+    return next({
+      context: {
+        ...resolved,
+        workspaceReadOnly: !templateConfig.tenancy.multiTenant && !resolved.workspace.isPersonal,
+      },
+    })
   })
