@@ -72,10 +72,10 @@ export function testUsers(prefix: string) {
       await sql`delete from verification where created_at >= ${startedAt.toISOString()}`
       if (ids.length === 0) return
       await sql`delete from session where user_id in ${sql(ids)}`
-      if (createdOrgs.length > 0) {
-        await sql`delete from member where organization_id in ${sql(createdOrgs)}`
-        await sql`delete from organization where id in ${sql(createdOrgs)}`
-      }
+      // 个人空间的 id 即用户 id（personal-workspace.ts）
+      const orgs = [...ids, ...createdOrgs]
+      await sql`delete from member where organization_id in ${sql(orgs)} or user_id in ${sql(ids)}`
+      await sql`delete from organization where id in ${sql(orgs)}`
       await sql`delete from account where user_id in ${sql(ids)}`
       await sql`delete from "user" where id in ${sql(ids)}`
     },
