@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
+import { DeletionSection } from '../../features/deletion/deletion-section.tsx'
 import { getAccount } from '../../features/settings/account.functions.ts'
 import {
   EmailVerificationSection,
@@ -33,6 +34,7 @@ function AccountPage() {
       {account.twoFactorAvailable && (
         <TwoFactorSection user={user} hasPassword={account.hasPassword} />
       )}
+      <DeletionSection />
     </main>
   )
 }
