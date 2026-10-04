@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { cloudflare } from '@cloudflare/vite-plugin'
+import tailwindcss from '@tailwindcss/vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import { defineConfig, loadEnv } from 'vite'
@@ -36,6 +37,7 @@ export default defineConfig(({ command }) => ({
       // 本地开发时 Better Auth 的 baseURL 跟随实际端口（worktree 各不相同）；构建产物沿用 wrangler.jsonc
       ...(command === 'serve' && { config: { vars: { APP_URL: `http://localhost:${port}` } } }),
     }),
+    tailwindcss(),
     tanstackStart(),
     viteReact(),
   ],

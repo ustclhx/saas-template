@@ -15,6 +15,7 @@ function completeEnv() {
     APP_URL: 'http://localhost:3000',
     BETTER_AUTH_SECRET: 'x'.repeat(32),
     TURNSTILE_SECRET_KEY: 'turnstile-secret',
+    TURNSTILE_SITE_KEY: 'turnstile-site-key',
     GOOGLE_CLIENT_ID: 'google-id',
     GOOGLE_CLIENT_SECRET: 'google-secret',
     GITHUB_CLIENT_ID: 'github-id',
@@ -85,6 +86,7 @@ describe('checkEnv（请求入口的环境校验）', () => {
       RL_AUTH: _r,
       BETTER_AUTH_SECRET: _s,
       GITHUB_CLIENT_SECRET: _g,
+      TURNSTILE_SITE_KEY: _k,
       ...env
     } = completeEnv()
     const response = checkEnv({ ...env, TURNSTILE_SECRET_KEY: '' })
@@ -92,7 +94,7 @@ describe('checkEnv（请求入口的环境校验）', () => {
     const logged = error.mock.calls.flat().join(' ')
     expect(JSON.parse(logged)).toEqual({
       event: 'env.invalid',
-      missing: ['BETTER_AUTH_SECRET', 'CACHE', 'GITHUB_CLIENT_SECRET', 'RL_AUTH'],
+      missing: ['BETTER_AUTH_SECRET', 'CACHE', 'GITHUB_CLIENT_SECRET', 'RL_AUTH', 'TURNSTILE_SITE_KEY'],
       invalid: ['TURNSTILE_SECRET_KEY'],
     })
     expect(logged).not.toContain('google-secret')
