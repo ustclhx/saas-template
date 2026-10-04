@@ -14,7 +14,7 @@ import { eq, inArray } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { type CreditsTransaction, grant, hold } from '../src/index.ts'
+import { type CreditsTransaction, capture, grant, hold, release } from '../src/index.ts'
 
 const url = process.env.CREDITS_TEST_DATABASE_URL
 if (!url) throw new Error('Missing isolated test database')
@@ -29,6 +29,7 @@ const grantInput = (amount = 10, sourceRef = newId()) => ({
   sourceRef,
   amount,
 })
+
 const holdInput = (amount = 8) => ({
   workspaceId: ws,
   userId,
@@ -306,5 +307,241 @@ describe('grant and hold on PostgreSQL', () => {
     await expect(hold(db, { ...holdInput(1), workspaceId: otherWs })).rejects.toMatchObject({
       code: 'WORKSPACE_RESOURCE_NOT_FOUND',
     })
+  })
+})
+
+describe('capture and release on PostgreSQL', () => {
+  it('concurrent capture/release has one winner and repeated settlement writes nothing', async () => {
+    const batch = await grant(db, grantInput(10))
+    const reservation = await hold(db, holdInput(8))
+    const input = { workspaceId: ws, holdId: reservation.id }
+    const results = await Promise.allSettled([
+      capture(db, { ...input, actualAmount: 3 }),
+      release(db, input),
+    ])
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter((r) => r.status === 'rejected')).toEqual([
+      expect.objectContaining({ reason: expect.objectContaining({ code: 'HOLD_NOT_ACTIVE' }) }),
+    ])
+    const [settled] = await db.select().from(creditHold).where(eq(creditHold.id, reservation.id))
+    const remaining = settled?.status === 'captured' ? 7 : 10
+    expect(
+      (await db.select().from(creditGrant).where(eq(creditGrant.id, batch.id)))[0]?.remaining,
+    ).toBe(remaining)
+    const before = await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws))
+    await expect(capture(db, { ...input, actualAmount: 3 })).rejects.toMatchObject({
+      code: 'HOLD_NOT_ACTIVE',
+    })
+    await expect(release(db, input)).rejects.toMatchObject({ code: 'HOLD_NOT_ACTIVE' })
+    expect(await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws))).toEqual(
+      before,
+    )
+    expect(
+      (await db.select().from(creditGrant).where(eq(creditGrant.id, batch.id)))[0]?.remaining,
+    ).toBe(remaining)
+    expect(
+      await db
+        .select()
+        .from(creditHoldAllocation)
+        .where(eq(creditHoldAllocation.holdId, reservation.id)),
+    ).toEqual([expect.objectContaining({ grantId: batch.id, amount: 8 })])
+    await assertInvariant()
+  })
+
+  it('partial capture consumes expiry/creation/id order and returns the unused tail', async () => {
+    const expiry = new Date(Date.now() + 86_400_000)
+    const permanent = await grant(db, grantInput(4))
+    const later = await grant(db, {
+      ...grantInput(4),
+      expiresAt: new Date(expiry.getTime() + 1000),
+    })
+    const tied1 = await grant(db, { ...grantInput(4), expiresAt: expiry })
+    const tied2 = await grant(db, { ...grantInput(4), expiresAt: expiry })
+    const older = await grant(db, { ...grantInput(4), expiresAt: expiry })
+    await db
+      .update(creditGrant)
+      .set({ createdAt: new Date(0) })
+      .where(inArray(creditGrant.id, [tied1.id, tied2.id]))
+    await db
+      .update(creditGrant)
+      .set({ createdAt: new Date(-1000) })
+      .where(eq(creditGrant.id, older.id))
+    const reservation = await hold(db, holdInput(20))
+    expect(await capture(db, { workspaceId: ws, holdId: reservation.id, actualAmount: 7 })).toEqual(
+      { captured: 7, absorbed: 0, debited: 0, debt: 0 },
+    )
+    const rows = await db.select().from(creditGrant).where(eq(creditGrant.workspaceId, ws))
+    const firstTie = tied1.id < tied2.id ? tied1.id : tied2.id
+    const secondTie = tied1.id < tied2.id ? tied2.id : tied1.id
+    expect(Object.fromEntries(rows.map((r) => [r.id, r.remaining]))).toEqual({
+      [older.id]: 0,
+      [firstTie]: 1,
+      [secondTie]: 4,
+      [later.id]: 4,
+      [permanent.id]: 4,
+    })
+    expect(
+      (await db.select().from(creditHold).where(eq(creditHold.id, reservation.id)))[0],
+    ).toMatchObject({
+      status: 'captured',
+      capturedAmount: 7,
+      overageAbsorbed: 0,
+      overageDebited: 0,
+      overageDebt: 0,
+    })
+    expect(
+      (await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws))).filter(
+        (l) => l.type === 'consume',
+      ),
+    ).toEqual([expect.objectContaining({ delta: -7, userId })])
+    await assertInvariant()
+  })
+
+  it.each([undefined, 0, 3, 8])(
+    'settles expired reservations with actual %s before expiry cron without resurrection',
+    async (actualAmount) => {
+      const batch = await grant(db, grantInput(10))
+      const reservation = await hold(db, holdInput(8))
+      await db
+        .update(creditGrant)
+        .set({ expiresAt: new Date(0) })
+        .where(eq(creditGrant.id, batch.id))
+      const input = { workspaceId: ws, holdId: reservation.id }
+      if (actualAmount === undefined) await release(db, input)
+      else await capture(db, { ...input, actualAmount })
+      expect(
+        (await db.select().from(creditGrant).where(eq(creditGrant.id, batch.id)))[0],
+      ).toMatchObject({ remaining: 0, status: 'expired' })
+      const ledger = await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws))
+      expect(ledger.filter((l) => l.type === 'expire').reduce((sum, l) => sum + l.delta, 0)).toBe(
+        -(10 - (actualAmount ?? 0)),
+      )
+      expect(ledger.filter((l) => l.type === 'consume').map((l) => l.delta)).toEqual(
+        actualAmount === undefined ? [] : [actualAmount === 0 ? 0 : -actualAmount],
+      )
+      await expect(hold(db, holdInput(1))).rejects.toMatchObject({ code: 'INSUFFICIENT_CREDITS' })
+      await assertInvariant()
+    },
+  )
+
+  it('two holds touching an expired grant cancel its unreserved remainder exactly once', async () => {
+    const batch = await grant(db, grantInput(10))
+    const first = await hold(db, holdInput(3))
+    const second = await hold(db, holdInput(3))
+    await db
+      .update(creditGrant)
+      .set({ expiresAt: new Date(0) })
+      .where(eq(creditGrant.id, batch.id))
+    await release(db, { workspaceId: ws, holdId: first.id })
+    await assertInvariant()
+    await capture(db, { workspaceId: ws, holdId: second.id, actualAmount: 2 })
+    const ledger = await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws))
+    expect(
+      ledger
+        .filter((l) => l.type === 'expire')
+        .map((l) => l.delta)
+        .sort((a, b) => a - b),
+    ).toEqual([-4, -3, -1])
+    await assertInvariant()
+  })
+
+  it.each(['expired', 'revoked'] as const)(
+    'returns to a previously %s grant through cancellation ledger only',
+    async (status) => {
+      const batch = await grant(db, grantInput(10))
+      const reservation = await hold(db, holdInput(8))
+      await db.update(creditGrant).set({ status, remaining: 0 }).where(eq(creditGrant.id, batch.id))
+      await db.insert(creditLedger).values({
+        workspaceId: ws,
+        grantId: batch.id,
+        type: status === 'revoked' ? 'revoke' : 'expire',
+        delta: -2,
+      })
+      await capture(db, { workspaceId: ws, holdId: reservation.id, actualAmount: 3 })
+      const ledger = await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws))
+      expect(
+        ledger
+          .filter((l) => l.type === (status === 'revoked' ? 'revoke' : 'expire'))
+          .map((l) => l.delta)
+          .sort((a, b) => a - b),
+      ).toEqual([-5, -2])
+      expect(
+        (await db.select().from(creditGrant).where(eq(creditGrant.id, batch.id)))[0]?.remaining,
+      ).toBe(0)
+      await assertInvariant()
+    },
+  )
+
+  it.each(['capture', 'release'] as const)(
+    'caller rollback undoes %s, returns and expiry/consume ledger together',
+    async (operation) => {
+      const batch = await grant(db, grantInput(10))
+      const reservation = await hold(db, holdInput(8))
+      await db
+        .update(creditGrant)
+        .set({ expiresAt: new Date(0) })
+        .where(eq(creditGrant.id, batch.id))
+      await expect(
+        db.transaction(async (tx) => {
+          const input = { workspaceId: ws, holdId: reservation.id }
+          if (operation === 'capture') await capture(db, { ...input, actualAmount: 3 }, tx)
+          else await release(db, input, tx)
+          await tx.update(organization).set({ name: 'Changed' }).where(eq(organization.id, ws))
+          throw new Error('rollback settlement caller')
+        }),
+      ).rejects.toThrow('rollback settlement caller')
+      expect(
+        (await db.select().from(creditHold).where(eq(creditHold.id, reservation.id)))[0]?.status,
+      ).toBe('held')
+      expect(
+        (await db.select().from(creditGrant).where(eq(creditGrant.id, batch.id)))[0],
+      ).toMatchObject({ remaining: 2, status: 'active' })
+      expect(
+        (await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws))).map(
+          (l) => l.type,
+        ),
+      ).toEqual(['grant'])
+      expect((await db.select().from(organization).where(eq(organization.id, ws)))[0]?.name).toBe(
+        'Credits',
+      )
+    },
+  )
+
+  it('workspace mismatch reveals no hold and leaves balances and ledger untouched', async () => {
+    await grant(db, grantInput(10))
+    const reservation = await hold(db, holdInput(8))
+    const input = { workspaceId: otherWs, holdId: reservation.id }
+    await expect(capture(db, { ...input, actualAmount: 3 })).rejects.toMatchObject({
+      code: 'WORKSPACE_RESOURCE_NOT_FOUND',
+    })
+    await expect(release(db, input)).rejects.toMatchObject({ code: 'WORKSPACE_RESOURCE_NOT_FOUND' })
+    expect(
+      (await db.select().from(creditHold).where(eq(creditHold.id, reservation.id)))[0]?.status,
+    ).toBe('held')
+    expect(
+      await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, otherWs)),
+    ).toEqual([])
+    await assertInvariant()
+  })
+
+  it('invalid actual amounts and intermediate overage rejection do not settle a hold in a caller transaction', async () => {
+    await grant(db, grantInput(10))
+    const reservation = await hold(db, holdInput(8))
+    const input = { workspaceId: ws, holdId: reservation.id }
+    await db.transaction(async (tx) => {
+      for (const actualAmount of [-1, 1.5, Number.NaN, 2_147_483_648]) {
+        await expect(capture(db, { ...input, actualAmount }, tx)).rejects.toMatchObject({
+          code: 'INVALID_CREDIT_AMOUNT',
+        })
+      }
+      await expect(capture(db, { ...input, actualAmount: 9 }, tx)).rejects.toMatchObject({
+        code: 'OVERAGE_NOT_SUPPORTED',
+      })
+    })
+    expect(
+      (await db.select().from(creditHold).where(eq(creditHold.id, reservation.id)))[0]?.status,
+    ).toBe('held')
+    await release(db, input)
+    await assertInvariant()
   })
 })

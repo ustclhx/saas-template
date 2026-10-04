@@ -19,6 +19,8 @@ export type CreditsErrorCode =
   | 'CREDIT_DEBT'
   | 'INSUFFICIENT_CREDITS'
   | 'WORKSPACE_RESOURCE_NOT_FOUND'
+  | 'HOLD_NOT_ACTIVE'
+  | 'OVERAGE_NOT_SUPPORTED'
 
 export class CreditsError extends Error {
   constructor(public readonly code: CreditsErrorCode) {
@@ -202,4 +204,155 @@ export async function hold(
     // Held credits remain in the reconciliation invariant; consume is settlement-only.
     return created
   })
+}
+
+export interface ReleaseInput {
+  workspaceId: string
+  holdId: string
+}
+
+export interface CaptureInput extends ReleaseInput {
+  actualAmount: number
+}
+
+export interface CaptureResult {
+  captured: number
+  absorbed: number
+  debited: number
+  debt: number
+}
+
+/** Settle once, preserving the original allocations as an audit trail. */
+async function settle(
+  tx: CreditsTransaction,
+  input: ReleaseInput,
+  actualAmount: number | undefined,
+): Promise<void> {
+  await lockWorkspaceCredits(tx, input.workspaceId)
+  const ownedHold = and(
+    eq(creditHold.id, input.holdId),
+    eq(creditHold.workspaceId, input.workspaceId),
+  )
+  const [reservation] = await tx.select().from(creditHold).where(ownedHold)
+  if (!reservation) throw new CreditsError('WORKSPACE_RESOURCE_NOT_FOUND')
+  if (reservation.status !== 'held') throw new CreditsError('HOLD_NOT_ACTIVE')
+  // Task 2.5 adds overage handling. Reject before writing even if the caller
+  // catches this error inside its transaction.
+  if (actualAmount !== undefined && actualAmount > reservation.amount) {
+    throw new CreditsError('OVERAGE_NOT_SUPPORTED')
+  }
+  const captured = actualAmount ?? 0
+  // The first mutation is the state gate; nothing touches balances on a loss.
+  const [settled] = await tx
+    .update(creditHold)
+    .set({
+      status: actualAmount === undefined ? 'released' : 'captured',
+      capturedAmount: captured,
+      overageAbsorbed: 0,
+      overageDebited: 0,
+      overageDebt: 0,
+    })
+    .where(and(ownedHold, eq(creditHold.status, 'held')))
+    .returning()
+  if (!settled) throw new CreditsError('HOLD_NOT_ACTIVE')
+
+  const allocations = await tx
+    .select({
+      grant: creditGrant,
+      amount: creditHoldAllocation.amount,
+      expired: sql<boolean>`${creditGrant.expiresAt} is not null and ${creditGrant.expiresAt} <= now()`,
+    })
+    .from(creditHoldAllocation)
+    .innerJoin(creditGrant, eq(creditGrant.id, creditHoldAllocation.grantId))
+    .where(
+      and(
+        eq(creditHoldAllocation.holdId, settled.id),
+        eq(creditGrant.workspaceId, input.workspaceId),
+      ),
+    )
+    .orderBy(
+      sql`${creditGrant.expiresAt} asc nulls last`,
+      asc(creditGrant.createdAt),
+      asc(creditGrant.id),
+    )
+    .for('update', { of: creditGrant })
+
+  let toConsume = captured
+  for (const allocation of allocations) {
+    const batch = allocation.grant
+    const consumed = Math.min(toConsume, allocation.amount)
+    const returned = allocation.amount - consumed
+    toConsume -= consumed
+    const batchScope = and(
+      eq(creditGrant.id, batch.id),
+      eq(creditGrant.workspaceId, input.workspaceId),
+    )
+    const invalid = batch.status !== 'active' || allocation.expired
+    // Expiry cron may not have run yet. Cancel the unreserved remainder once
+    // and mark expired so later settlements/cron cannot expire it again.
+    if (batch.status === 'active' && allocation.expired) {
+      await tx.update(creditGrant).set({ remaining: 0, status: 'expired' }).where(batchScope)
+      if (batch.remaining > 0) {
+        await tx.insert(creditLedger).values({
+          workspaceId: input.workspaceId,
+          grantId: batch.id,
+          type: 'expire',
+          delta: -batch.remaining,
+        })
+      }
+    }
+    if (returned === 0) continue
+    if (invalid) {
+      await tx.insert(creditLedger).values({
+        workspaceId: input.workspaceId,
+        userId: settled.userId,
+        grantId: batch.id,
+        type: batch.status === 'revoked' ? 'revoke' : 'expire',
+        delta: -returned,
+        refType: settled.refType,
+        refId: settled.refId,
+      })
+    } else {
+      await tx
+        .update(creditGrant)
+        .set({ remaining: batch.remaining + returned })
+        .where(batchScope)
+    }
+  }
+  if (actualAmount !== undefined) {
+    await tx.insert(creditLedger).values({
+      workspaceId: input.workspaceId,
+      userId: settled.userId,
+      type: 'consume',
+      delta: -captured,
+      refType: settled.refType,
+      refId: settled.refId,
+    })
+  }
+}
+
+/** Capture within the reservation; unused allocations return to their batches. */
+export async function capture(
+  db: Database,
+  input: CaptureInput,
+  tx?: CreditsTransaction,
+): Promise<CaptureResult> {
+  if (
+    !Number.isSafeInteger(input.actualAmount) ||
+    input.actualAmount < 0 ||
+    input.actualAmount > 2_147_483_647
+  ) {
+    throw new CreditsError('INVALID_CREDIT_AMOUNT')
+  }
+  await withCreditsTransaction(db, tx, (tx) => settle(tx, input, input.actualAmount))
+  return { captured: input.actualAmount, absorbed: 0, debited: 0, debt: 0 }
+}
+
+/** Release the full reservation without consuming credits. */
+export async function release(
+  db: Database,
+  input: ReleaseInput,
+  tx?: CreditsTransaction,
+): Promise<void> {
+  await withCreditsTransaction(db, tx, (tx) => settle(tx, input, undefined))
 }
