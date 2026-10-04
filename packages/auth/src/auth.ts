@@ -19,6 +19,7 @@ import { authProtection } from './protection.ts'
 import { sessionStorageOptions } from './session.ts'
 import { type ResolveMaxSeats, teamWorkspaces } from './team-workspaces.ts'
 import { verificationReservation } from './verification-reservation.ts'
+import { workspaceLifecyclePlugin } from './workspace-lifecycle.ts'
 
 export interface CreateAuthDeps {
   /** 模板配置（`template.config.ts`），决定启用哪些登录方式与插件 */
@@ -86,6 +87,7 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
       freshSessionGuard(db),
       deletionPlugin(db, env.CACHE, config.tenancy.multiTenant),
       verificationReservation(db),
+      workspaceLifecyclePlugin(db, config.tenancy.maxWorkspacesPerUser),
       teamWorkspaces(db, config, sendEmail, deps.resolveMaxSeats),
       // 用户设置：资料校验、修改密码时吊销其他会话（account-settings.ts）
       accountSettings(),

@@ -56,10 +56,13 @@ describe('workspace lifecycle in workerd', () => {
       values (${newId()},${id},'former@example.test',${owner.id},'canceled',now()+interval '1 day')`
     await a.db
       .$client`insert into notification (id,user_id,workspace_id,type,title) values (${newId()},${other.id},${id},'test','retained')`
-    expect(await restoreWorkspace({ ...admin.options, workspaceId: id })).toEqual({
-      restored: true,
-      ownerUserIds: [owner.id],
-    })
+    const restored = await a.post(
+      '/admin/restore-workspace',
+      { workspaceId: id },
+      { cookie: admin.options.headers.get('cookie') ?? '' },
+    )
+    expect(restored.status).toBe(200)
+    expect(await restored.json()).toEqual({ restored: true, ownerUserIds: [owner.id] })
     expect(
       await a.db.query.member.findMany({ where: (m, { eq }) => eq(m.organizationId, id) }),
     ).toMatchObject([{ userId: owner.id, role: 'owner' }])
