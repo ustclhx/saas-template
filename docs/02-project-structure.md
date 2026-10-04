@@ -81,6 +81,7 @@ export default defineTemplateConfig({
   },
   auth: {
     emailPassword: true,
+    requireEmailVerification: false, // 邮箱密码注册是否必须先验证邮箱才能登录；默认否，领取注册赠送积分时才要求验证
     emailOtp: true,              // 邮箱验证码登录（emailOTP 插件）
     magicLink: false,            // 魔法链接登录（magicLink 插件）
     oauth: ['google', 'github'],
@@ -90,7 +91,7 @@ export default defineTemplateConfig({
   billing: {
     providers: ['stripe', 'paypal'],   // 结账页展示顺序
     currency: 'usd',
-    signupBonusCredits: 100,           // 邮箱验证后发放
+    signupBonusCredits: 100,           // 用户领取时触发邮箱验证，验证完成后发放
     pastDueGraceDays: 7,               // past_due 期间保留权益的天数
     subscriptionCreditGraceHours: 24,  // 订阅积分批次在周期末之后的额外有效期
     overage: {                         // 实际消耗超出预扣时平台承担的上限，超出部分从余额补扣 / 记欠费

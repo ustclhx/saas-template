@@ -12,6 +12,7 @@
 - [ ] 2.3 实现 `requireFreshSession` 守卫（直接查库校验会话与 `banned`），验证被封禁用户 10 秒内访问受保护接口被拒绝
 - [ ] 2.4 实测注册 / 登录的 CPU 时间并记录到 `docs/04-auth-and-tenancy.md`，超过阈值时改用 PBKDF2 hasher，验证测试环境中注册、登录、修改密码均成功
 - [ ] 2.5 Turnstile 校验与 `RL_AUTH` 限流（IP + 邮箱）接入注册、登录、发送验证码、找回密码，验证缺失令牌被拒绝、超限返回 429 且不发邮件
+- [ ] 2.6 在 `@saas/config` 的 `auth` 中加 `requireEmailVerification`（默认 `false`）并接入 `createAuth`：默认注册不发验证邮件、未验证可登录；提供「发送验证邮件」入口供账号设置与领取积分使用；开启后注册即发验证邮件、未验证不能登录，验证两种配置下的集成测试
 
 ## 3. 邮件
 

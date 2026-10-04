@@ -4,7 +4,7 @@
 
 - **订阅套餐**（`plan.type='subscription'`）：按月/年付费，**每月**发放一批积分（年付也按月发放，见 §4「年付按月发放」），并解锁一组权益（可用模型、并发数、席位等）。
 - **积分包**（`plan.type='credit_pack'`）：一次性购买，发放一批有效期较长的积分，不改变权益（或只附加少量权益）。
-- **免费档**：`plan.key='free'`，无需支付记录；注册赠送积分 `signupBonusCredits`（邮箱验证后才发放，见 §4「注册赠送防刷」）。
+- **免费档**：`plan.key='free'`，无需支付记录；注册赠送积分 `signupBonusCredits`（用户领取时触发邮箱验证，验证完成后才发放，见 §4「注册赠送防刷」）。
 - 币种：模板默认单币种（`billing.currency`），多币种作为后续扩展（`plan_price` 已按 currency 建模）。
 
 ## 2. 支付 Provider 抽象
@@ -150,7 +150,7 @@ Creem / Paddle / Polar 各实现一个 Provider，`capabilities.merchantOfRecord
 | 年付：首月 | `subscription` | `{payment.id}:0` | 发放日 + 1 个月 + 宽限（`rollover=false`） |
 | 年付：第 2–12 月 | `subscription` | `{payment.id}:{n}`（n=1..11） | 同上；由 Cron 发放 |
 | 购买积分包 | `purchase` | `payment.id` | `credit_expiry_days`（如 365 天）或永久 |
-| 注册赠送 | `signup` | `sha256(规范化邮箱)` | 配置项；邮箱验证后发放到个人空间 |
+| 注册赠送 | `signup` | `sha256(规范化邮箱)` | 配置项；领取并完成邮箱验证后发放到个人空间 |
 | 管理员调整 | `admin` | `audit_log.id` | 管理员指定 |
 | 退款返还（AI 失败以外的人工返还） | `refund` | 关联 id | 同原批次 |
 
@@ -164,7 +164,7 @@ Creem / Paddle / Polar 各实现一个 Provider，`capabilities.merchantOfRecord
 - 订阅取消（周期末生效）期间照常按月发放，进入终止状态后停止；退款时按 §「退款与争议」回收该 `payment.id` 下所有批次的剩余积分。
 
 ### 注册赠送防刷
-- 在**邮箱验证完成**时发放（Better Auth `emailVerification.onEmailVerification`；OAuth 账号的邮箱已验证时在注册时发放），而不是在用户创建时发放。
+- **领取触发验证**：注册时不强制验证邮箱（04-auth「登录方式」）。未验证的用户在应用内看到「验证邮箱领取 N 积分」入口，点击后发送验证邮件；在**邮箱验证完成**时发放（Better Auth `emailVerification.onEmailVerification`）。OAuth 账号的邮箱已验证时，注册后直接发放，无需领取。站点开启 `auth.requireEmailVerification` 时，注册即验证，验证完成后直接发放。
 - 一次性邮箱域名黑名单（`setting` 表可维护），命中则不发赠送积分（仍允许注册）。
 - 同一邮箱规范化（小写、去掉 Gmail 的 `.` 与 `+tag`）后只发一次：`source_ref` 使用规范化邮箱的哈希而非 `user.id`，删号重注册不会再次领取。
 

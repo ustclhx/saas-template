@@ -3,7 +3,7 @@
 ## 1. 认证（Better Auth）
 
 ### 登录方式（由 `template.config.ts` 开关）
-- 邮箱 + 密码（注册需邮箱验证，可配置是否强制）
+- 邮箱 + 密码。**默认不强制验证邮箱**（`auth.requireEmailVerification = false`）：注册后即可登录使用，注册时不发送验证邮件；用户领取注册赠送积分时才触发验证（发送验证邮件，验证完成后发放，见 05-billing §4「注册赠送防刷」），也可以在账号设置中主动验证。设为 `true` 时注册即发送验证邮件，未验证不能登录。OAuth 提供方返回已验证邮箱的账号直接视为已验证。
 - 邮箱验证码（`emailOTP` 插件，开关 `auth.emailOtp`）
 - 魔法链接（`magicLink` 插件，开关 `auth.magicLink`）；两者可同时开启
 - OAuth：Google、GitHub（可扩展其他 provider）
