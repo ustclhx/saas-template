@@ -43,12 +43,20 @@
   // 本地开发的站点地址；`vite dev` 时由 vite.config.ts 按 .env.worktree 的端口覆盖
   "vars": { "APP_URL": "http://localhost:3000" },
   // hyperdrive / workflows / queues / kv_namespaces / ratelimits / vars 不会从顶层继承，每个环境都要重新声明。
-  // TODO(协调者)：env.staging 需补 CACHE（KV namespace）、RL_AUTH、APP_URL，以及 secrets
-  // BETTER_AUTH_SECRET、TURNSTILE_SECRET_KEY、GOOGLE_* / GITHUB_*，否则 checkEnv 会让所有请求返回 500。
+  // staging 认证使用独立 KV、限流命名空间和官方 Turnstile 测试 key。
+  // secrets 通过 wrangler secret bulk 配置；OAuth 当前为 mock 凭据，真实联调前替换。
   // 构建时用 CLOUDFLARE_ENV=staging 选择该环境（见 package.json 的 deploy:staging）。
   "env": {
     "staging": {
       "name": "web-staging",
+      "vars": {
+        "APP_URL": "https://web-staging.saas-jobs.workers.dev",
+        "TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
+      },
+      "kv_namespaces": [{ "binding": "CACHE", "id": "f4d49b7c082b4f01ae20335683d3a21b" }],
+      "ratelimits": [
+        { "name": "RL_AUTH", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } }
+      ],
       "hyperdrive": [
         // 本机 PG 的 saas_staging 库，经 Tunnel saas-template-local → Workers VPC 服务 saas-template-local-pg（docs/07 §2）
         { "binding": "HYPERDRIVE", "id": "c4b28441aeaf49c3853a321a39cf8ec4" },
