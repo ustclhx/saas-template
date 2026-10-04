@@ -27,7 +27,7 @@ export default defineConfig({
           name: 'offline',
           environment: 'node',
           include: ['src/**/*.test.ts'],
-          exclude: ['src/pipeline.test.ts'],
+          exclude: ['src/pipeline.test.ts', 'src/**/*.postgres.test.ts'],
         },
       },
       ...(integration
@@ -36,7 +36,7 @@ export default defineConfig({
               test: {
                 name: 'postgres',
                 environment: 'node',
-                include: ['src/pipeline.test.ts'],
+                include: ['src/pipeline.test.ts', 'src/**/*.postgres.test.ts'],
                 globalSetup: ['@saas/db/test/global-setup'],
               },
             },
