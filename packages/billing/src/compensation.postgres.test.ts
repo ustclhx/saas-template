@@ -438,6 +438,62 @@ describe('durable concurrent subscription compensation', () => {
     expect((await deliver(event)).result.status).toBe('processed')
     expect(await grants()).toHaveLength(1)
   })
+  it('recovers a lost refund response before the identity checkpoint from a fresh remote snapshot', async () => {
+    await apply([paid()])
+    const winner = (await subs())[0]
+    subId = `sub-${id()}`
+    snapshot = { ...snapshot, providerSubscriptionId: subId }
+    const event = paid()
+    if (event.type !== 'payment.succeeded') throw new Error('Missing payment')
+    expect((await deliver(event)).result.status).toBe('failed')
+    let externallyRefunded = 0
+    provider.getPayment = vi.fn(
+      async (): Promise<PaymentSnapshot> => ({
+        ...event.payment,
+        refundedAmount: externallyRefunded,
+        status: externallyRefunded ? 'refunded' : 'succeeded',
+      }),
+    )
+    if (!provider.refund) throw new Error('Missing refund adapter')
+    vi.mocked(provider.refund).mockImplementationOnce(async (input) => {
+      expect(input.amount).toBe(1000)
+      externallyRefunded = 1000
+      throw new Error('response lost after provider settlement')
+    })
+    expect(await runPendingCompensations({ db, providers: { stripe: provider } })).toMatchObject({
+      failed: 1,
+      completed: 0,
+    })
+    const [job] = await jobs()
+    if (!job) throw new Error('Missing compensation')
+    expect(job).toMatchObject({ status: 'pending', providerRefundId: null, cancelCompleted: true })
+    expect(externallyRefunded).toBe(1000)
+    expect(await runPendingCompensations({ db, providers: { stripe: provider } })).toMatchObject({
+      completed: 1,
+      failed: 0,
+    })
+    expect(provider.getPayment).toHaveBeenCalledTimes(2)
+    expect(provider.refund).toHaveBeenCalledTimes(1)
+    expect((await jobs())[0]).toMatchObject({ status: 'completed', providerRefundId: null })
+    // Remote recovery completes compensation, but only a verified refund event settles locally.
+    expect(
+      (await payments()).find((p) => p.providerPaymentId === event.payment.providerPaymentId),
+    ).toMatchObject({ status: 'succeeded', refundedAmount: 0 })
+    expect(await db.select().from(paymentRefund).where(eq(paymentRefund.workspaceId, ws))).toEqual(
+      [],
+    )
+    expect((await deliver(event)).result.status).toBe('processed')
+    expect(await grants()).toHaveLength(1)
+    expect((await subs()).find((s) => s.id === winner?.id)).toMatchObject({ status: 'active' })
+    expect((await subs()).find((s) => s.providerSubscriptionId === subId)).toMatchObject({
+      status: 'canceled',
+      currentPeriodEnd: null,
+    })
+    expect(await runPendingCompensations({ db, providers: { stripe: provider } })).toMatchObject({
+      claimed: 0,
+    })
+    expect(provider.refund).toHaveBeenCalledTimes(1)
+  })
   it('expired crash lease is atomically reclaimed and durable API identity prevents another refund', async () => {
     await apply([paid()])
     subId = `sub-${id()}`

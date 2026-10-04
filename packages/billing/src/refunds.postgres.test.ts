@@ -15,8 +15,9 @@ import {
 } from '@saas/db'
 import { eq, inArray } from 'drizzle-orm'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { applyBillingEvent, prepareBillingEvents } from './events.ts'
 import { flushRefundNotifications, notifyRefundRequest } from './notifications.ts'
-import type { PaymentProvider, RefundInput } from './provider.ts'
+import type { NormalizedEvent, PaymentProvider, RefundInput } from './provider.ts'
 import {
   listRefundablePayments,
   listRefundRequests,
@@ -159,6 +160,69 @@ afterEach(async () => {
 afterAll(() => db.$client.end())
 
 describe('trusted refund service on PostgreSQL', () => {
+  it('settles a verified callback committed before the pending provider refund returns', async () => {
+    await db.insert(creditGrant).values({
+      workspaceId: ws,
+      source: 'purchase',
+      sourceRef: pid,
+      paymentId: pid,
+      amount: 10,
+      remaining: 7,
+      expiresAt: null,
+    })
+    const request = await submit()
+    const callback: NormalizedEvent = {
+      provider: 'stripe',
+      type: 'payment.refunded',
+      providerPaymentId: pid,
+      providerRefundId: `refund-${pid}`,
+      amount: 400,
+      refundedAmount: 400,
+      currency: 'USD',
+      occurredAt: now,
+      raw: {},
+    }
+    const deliverCallback = async () => {
+      const prepared = await prepareBillingEvents([callback], db, options.providers)
+      await db.transaction((tx) => applyBillingEvent(tx, callback, prepared, { now: () => now }))
+    }
+    remote.mockImplementationOnce(async () => {
+      // The review transaction has committed, but the API acknowledgment has not.
+      await deliverCallback()
+      expect(
+        (await db.select().from(refundRequest).where(eq(refundRequest.id, request.id)))[0],
+      ).toMatchObject({ status: 'approved', providerRefundId: null })
+      return { providerRefundId: `refund-${pid}` }
+    })
+    expect(await approve(request.id, 400)).toMatchObject({
+      status: 'refunded',
+      approvedAmount: 400,
+      providerRefundId: `refund-${pid}`,
+      reviewerId: adminId,
+      contactEmail: 'saved@example.test',
+    })
+    await approve(request.id)
+    await deliverCallback()
+    expect(remote).toHaveBeenCalledTimes(1)
+    expect((await db.select().from(payment).where(eq(payment.id, pid)))[0]).toMatchObject({
+      status: 'partially_refunded',
+      refundedAmount: 400,
+    })
+    expect(
+      await db.select().from(paymentRefund).where(eq(paymentRefund.paymentId, pid)),
+    ).toHaveLength(1)
+    expect(
+      (await db.select().from(creditGrant).where(eq(creditGrant.paymentId, pid)))[0],
+    ).toMatchObject({ remaining: 0, status: 'revoked' })
+    expect(
+      await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws)),
+    ).toMatchObject([{ type: 'revoke', delta: -7 }])
+    expect(
+      notify.mock.calls.every(
+        ([notification]) => notification.contactEmail === 'saved@example.test',
+      ),
+    ).toBe(true)
+  })
   it('recovers committed review mail after queue failure without repeating payment or leaking deleted email', async () => {
     const request = await submit()
     await approve(request.id, 200)

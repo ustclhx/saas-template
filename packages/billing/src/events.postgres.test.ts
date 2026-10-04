@@ -199,6 +199,51 @@ const grants = () => db.select().from(creditGrant).where(eq(creditGrant.workspac
 const payments = () => db.select().from(payment).where(eq(payment.workspaceId, ws))
 const subs = () => db.select().from(subscription).where(eq(subscription.workspaceId, ws))
 describe('billing event consumer on PostgreSQL', () => {
+  it.each([0, 48])(
+    'webhook processing honors %s hours of subscription credit grace',
+    async (graceHours) => {
+      const event = paid()
+      const deliveryId = id()
+      const queue = vi.fn(async () => {})
+      provider.verifyWebhook = vi.fn(async () => ({
+        providerEventId: deliveryId,
+        type: 'invoice.paid',
+        events: [event],
+      }))
+      const handler = createBillingEventHandler({
+        db,
+        providers: { stripe: provider },
+        subscriptionCreditGraceHours: graceHours,
+        now: () => now,
+      })
+      try {
+        const request = () =>
+          processWebhook({
+            ...handler,
+            db,
+            provider,
+            request: new Request('https://example.test'),
+            rawBody: '{}',
+            notify: queue,
+          })
+        expect(await request()).toMatchObject({ status: 'processed' })
+        expect(await request()).toMatchObject({ status: 'duplicate' })
+        const [paidReceipt] = await payments()
+        expect(await grants()).toMatchObject([
+          {
+            amount: 10,
+            remaining: 10,
+            paymentId: paidReceipt?.id,
+            expiresAt: new Date(new Date('2030-02-28T12:00:00Z').getTime() + graceHours * 3600000),
+          },
+        ])
+        expect(await grants()).toHaveLength(1)
+        expect(queue).toHaveBeenCalledTimes(1)
+      } finally {
+        await db.delete(webhookEvent).where(eq(webhookEvent.providerEventId, deliveryId))
+      }
+    },
+  )
   it('distinct webhook deliveries for one payment grant once, checkout does not grant', async () => {
     await apply([await checkout()])
     expect(await grants()).toHaveLength(0)
