@@ -73,7 +73,8 @@ async function owner(tx: WebhookTransaction, userId: string, workspaceId: string
 async function admin(tx: WebhookTransaction, userId: string) {
   const [account] = await tx.select().from(user).where(eq(user.id, userId)).for('share')
   if (
-    !(account?.role ?? '').split(',').some((role) => role.trim() === 'admin') ||
+    !account ||
+    !(account.role ?? '').split(',').some((role) => role.trim() === 'admin') ||
     account.banned ||
     account.email === `deleted+${userId}@invalid`
   )
