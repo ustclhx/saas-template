@@ -13,7 +13,8 @@
     "test": "turbo run test",
     "check": "biome check .",
     "check:fix": "biome check --write .",
-    "check:deps": "node scripts/check-deps.mjs"
+    "check:deps": "node scripts/check-deps.mjs",
+    "check:singletons": "node scripts/check-singletons.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

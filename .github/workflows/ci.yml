@@ -55,6 +55,9 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+      # lockfile 必须已去重，且 drizzle-orm / react 只有一个实例（scripts/check-singletons.mjs 说明了原因）
+      - run: pnpm dedupe --check
+      - run: pnpm check:singletons
       - run: pnpm check:deps
       - run: pnpm check
       - run: pnpm typecheck

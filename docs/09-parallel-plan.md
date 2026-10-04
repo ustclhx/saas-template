@@ -37,7 +37,7 @@ P0 实现时必须遵守的约定（setup 脚本依赖它们）：
 1. **数据库迁移**：worker 在自己的 worktree 中用 `drizzle-kit push` 把 schema 直接同步到自己的数据库，**不提交迁移 SQL**。分支合并到 main 后，由协调者在 main 上统一 `drizzle-kit generate` 生成迁移并提交。理由：drizzle 迁移带序号和元数据文件，两个分支各自生成必然冲突。
 2. **schema 按领域分文件**：`packages/db/src/schema/{auth,tenancy,billing,credits,ai,files,platform}.ts`，每条并行线只改自己领域的文件；汇总导出文件冲突时直接合并两边的导出行。
 3. **`routeTree.gen.ts`**：已 gitignore，构建时生成。
-4. **`pnpm-lock.yaml`**：冲突时不手工合并，rebase 后在 main 的依赖基础上重新 `pnpm install` 生成。
+4. **`pnpm-lock.yaml`**：冲突时不手工合并，rebase 后在 main 的依赖基础上重新 `pnpm install` 生成，再执行 `pnpm dedupe`。增量 `pnpm add` 可能让带可选 peer 的包（如 drizzle-orm）出现多个实例，CI 用 `pnpm dedupe --check` 与 `pnpm check:singletons` 拦截。
 5. **文案文件**：`apps/web/messages/<locale>/<feature>.json` 按功能拆分，避免多条线同时改一个大文件。
 6. **OpenSpec `tasks.md`**：worker 只勾选分配给自己的任务编号；change 的归档（`/opsx:archive`）只在 main 上、该 change 全部任务合并后进行。
 
