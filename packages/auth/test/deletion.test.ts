@@ -301,11 +301,10 @@ describe('atomic deletion in workerd', () => {
           })
         ).status,
       ).not.toBe(200)
-    await a.post('/send-verification-email', { email: owner.email, callbackURL: '/account' })
-    const emailProof = a.sent.find((mail) => mail.type === 'verify-email')
-    expect(emailProof?.type).toBe('verify-email')
-    if (emailProof?.type === 'verify-email')
-      expect((await a.get(emailProof.url)).status).toBeLessThan(400)
+    expect(
+      (await a.db.query.user.findFirst({ where: (u, { eq }) => eq(u.email, owner.email) }))
+        ?.emailVerified,
+    ).toBe(false)
     await a.post('/email-otp/send-verification-otp', { email: owner.email, type: 'sign-in' })
     const replacement = a.sent.filter((mail) => mail.type === 'otp').at(-1)
     const row = await a.db.query.verification.findFirst({
