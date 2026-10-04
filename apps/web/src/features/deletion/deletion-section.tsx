@@ -1,8 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { authClient } from '../auth/auth-client.ts'
 import { removeAccount, removeWorkspace } from './deletion.functions.ts'
 
-export function DeletionSection({ workspace }: { workspace?: { id: string; name: string } }) {
+export function DeletionSection({
+  workspace,
+  supportEmail,
+}: {
+  workspace?: { id: string; name: string }
+  supportEmail: string
+}) {
+  const [hydrated, setHydrated] = useState(false)
+  useEffect(() => setHydrated(true), [])
   const [confirmation, setConfirmation] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -56,13 +64,17 @@ export function DeletionSection({ workspace }: { workspace?: { id: string; name:
       </p>
       <p>
         Deletion does not issue a refund by default. Refund requests are not available in this
-        release; contact the service support team before deleting if you need help with a payment.
+        release;{' '}
+        <a className="underline" href={`mailto:${supportEmail}`}>
+          contact support
+        </a>{' '}
+        before deleting if you need help with a payment.
       </p>
       {!workspace && (
         <button
           type="button"
           className="underline text-left"
-          disabled={busy || completed}
+          disabled={!hydrated || busy || completed}
           onClick={signInAgain}
         >
           Sign out and sign in again
@@ -75,6 +87,7 @@ export function DeletionSection({ workspace }: { workspace?: { id: string; name:
           value={confirmation}
           onChange={(event) => setConfirmation(event.target.value)}
           autoComplete="off"
+          disabled={!hydrated || busy || completed}
         />
       </label>
       {error && <p role="alert">{error}</p>}
@@ -98,7 +111,7 @@ export function DeletionSection({ workspace }: { workspace?: { id: string; name:
       <button
         type="button"
         className="rounded bg-destructive p-2 text-destructive-foreground disabled:opacity-50"
-        disabled={busy || completed || confirmation !== label}
+        disabled={!hydrated || busy || completed || confirmation !== label}
         onClick={() => void submit()}
       >
         {busy ? 'Deleting…' : workspace ? 'Delete workspace' : 'Delete account'}

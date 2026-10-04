@@ -1,5 +1,6 @@
 // 后台 Worker 入口：导出 Workflow 类与 fetch / queue / scheduled 处理器（docs/02-project-structure.md）。
 import { emailTransportConfig } from '@saas/config'
+import { runDeletionCleanup } from './cron/deletion-cleanup.ts'
 import { HEARTBEAT_CRON, runHeartbeat } from './cron/heartbeat.ts'
 import { runWorkspaceCleanup, WORKSPACE_CLEANUP_CRON } from './cron/workspace-cleanup.ts'
 import { requireEnv } from './env.ts'
@@ -32,6 +33,7 @@ export default {
       case WORKSPACE_CLEANUP_CRON:
         return runWorkspaceCleanup(validEnv)
       case HEARTBEAT_CRON:
+        await runDeletionCleanup({ ...validEnv, CACHE: env.CACHE })
         return runHeartbeat(validEnv)
       default:
         throw new Error(`Unknown cron: ${controller.cron}`)

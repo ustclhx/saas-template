@@ -24,11 +24,11 @@
 ### Workers 适配要点
 - 每个请求创建 `auth` 实例（`createAuth(env)`），内部用该请求的 Drizzle 实例（Drizzle adapter，provider `pg`）。
 - **会话读取的分层**（`packages/auth/src/session.ts`）：
-  1. `session.cookieCache`（签名 Cookie，`maxAge` 5 分钟）：绝大多数请求不读 KV 也不查库。
+  1. `session.cookieCache`（签名 Cookie，`maxAge` 5 分钟）：普通 Better Auth 会话读取可不读 KV、不查库；应用页面使用下述实时守卫。
   2. `secondaryStorage` 接 KV（绑定 `CACHE`，键前缀 `auth:`）：cookie 缓存过期后读 KV，减少跨地域查库；KV 未命中时回退查库。
   3. 同时保留数据库中的 session 表（`session.storeSessionInDatabase`），作为吊销与审计的事实来源。
   - 吊销必须经 Better Auth（退出登录、撤销会话、封禁、改密码等），它同时删除数据库行与 KV 副本。只在数据库中删除会话行（如手写 SQL）不会删除 KV 副本，KV 中的会话会一直有效到其 TTL（会话过期时间）；运维脚本需同时删除 `auth:<token>`。
-  - 验证码、验证链接等验证值同时写 KV 与数据库（`verification.storeInDatabase`）：KV 跨节点最终一致，在另一节点校验时可能读不到；一次性消费在数据库中原子完成。
+  - 验证码、魔法链接、重置密码等验证值只从数据库签发、读取并原子消费（`verification.storeInDatabase`）。删除插件排除 secondaryStorage 的 `verification:` 键，防止旧缓存验证码绑定到同邮箱重新注册的账号；历史 KV 验证值不再读取，按原 TTL 到期。会话缓存仍保留。
   - KV 的 `expirationTtl` 最少 60 秒，适配层把更短的 TTL 提升到 60 秒。
   - Better Auth 自带的 rateLimit 改用 isolate 内存，不存 KV：每个请求写同一个键会触发 KV「同一键每秒最多写 1 次」的限制，且计数最终一致。认证入口的限流以 `RL_AUTH` 为准（见下文）。
 - **吊销不是即时的**：KV 的写入和删除传播到所有边缘节点最多约 60 秒，再叠加 cookie 缓存的 `maxAge`，改密码 / 封禁 / 踢下线后，旧会话最长可能还有效「cookieCache maxAge + 约 60 秒」。可接受的场景照常使用；以下**敏感操作不走缓存，直接查库**校验会话与 `user.banned`：
@@ -132,10 +132,12 @@
 - `POST /api/auth/deletion/account` 要求十分钟内的真实登录；用户仍是团队唯一 owner 时拒绝并返回空间列表。个人空间软删、退出团队，用户邮箱改为 `deleted+{id}@invalid`，清空姓名、头像、语言和时区，删除密码/OAuth、会话、2FA、API Key 和属于该用户的验证值，永久封禁匿名账号。同一邮箱可重新注册全新账号。
 - 删除钩子 `registerDeletionStep` 分为事务前的外部检查与事务内数据库执行；失败不会绕过检查，事务内失败回滚数据库变更。审计和财务引用继续指向原 user/organization 行。
 
+删除事务同时把待失效的会话键写入专用 `verification.identifier=deletion-cleanup:<id>` 临时清理记录，保留 24 小时。KV 操作在事务提交后执行；失败明确返回 `deletionCompleted=true`，不会把已经完成的删除误报为回滚。jobs 的 `CACHE` 与 web 共用命名空间，五分钟内重试；成功移除记录，过期记录丢弃，缓存本身按会话 TTL 到期。原会话在数据库已吊销，应用和敏感操作始终拒绝。清理记录不含验证码键，不影响同邮箱新账号的验证值，也不写入永久审计日志。
+
 **P1 恢复与到期清理**（`packages/auth/src/workspace-lifecycle.ts`）：
 - `workspaceLifecyclePlugin(db, config.tenancy.maxWorkspacesPerUser)` 单独导出，由应用挂载后提供 `POST /api/auth/admin/restore-workspace`（`{ workspaceId }`）；函数 `restoreWorkspace` 同样使用签名 Cookie 的数据库会话。仅当前平台 admin 可以恢复，拒绝模拟登录；事务内再次校验并锁住管理员会话和用户行，封禁、吊销或降权立即生效。
 - 默认保留 30 天，期限从 `organization.deleted_at` 计算；到期即拒绝恢复，即使每日清理还未运行。按排序后的原 owner ID 获取 owner 锁，再获取空间锁。只恢复删除审计中仍有效的原 owner；已匿名化、永久封禁或仍在临时封禁期的 owner 不恢复，没有有效 owner 则拒绝。团队恢复遵循 `maxWorkspacesPerUser`，任何有效原 owner 达到上限时整体拒绝；个人空间不计团队上限。其他成员须重新邀请，旧邀请、API Key 和活跃会话不会恢复。
-- jobs 每天 03:00 UTC（北京时间 11:00）执行 `cleanupExpiredWorkspaces`；每五分钟健康心跳保持独立。P1 实际存在的空间内容表只有 `notification` 与 `invitation`，到期后删除这两类记录，永久保留 user、organization、全部 audit_log。事务内 `workspace.cleanup.completed` 审计关联本次 `workspace.deleted` 的 ID，重复运行不重复清理，已经清理的删除周期不能恢复。
+- jobs 每天 03:00 UTC（北京时间 11:00）执行 `cleanupExpiredWorkspaces`；每五分钟心跳先重试删除后的凭据缓存失效，再记录健康时间；失败会保留工作并在下一次心跳重试。P1 实际存在的空间内容表只有 `notification` 与 `invitation`，到期后删除这两类记录，永久保留 user、organization、全部 audit_log。事务内 `workspace.cleanup.completed` 审计关联本次 `workspace.deleted` 的 ID，重复运行不重复清理，已经清理的删除周期不能恢复。
 
 **退款决策与后续阶段**：删除默认不退款。P1 删除确认文案说明默认不退款，并通过配置的支持邮箱引导用户联系客服；P1 没有付款查询或 `refund_request` 创建接口。P2 在 billing change 中实现续费订阅检查、个人订阅立即取消、积分 revoke 流水、按 `refundWindowDays` 提示先申请退款及 `refund_request`；已提交申请须继续保留并使用申请时的联系邮箱。注册赠送积分的邮箱哈希去重也属于 P2。P3/P4 在实际新增对话、AI 任务、文件和 R2 对象后接入运行中任务检查与到期内容清理，P1 不操作尚未存在的表或存储对象。
 

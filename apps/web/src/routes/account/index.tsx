@@ -34,7 +34,7 @@ function AccountPage() {
       {account.twoFactorAvailable && (
         <TwoFactorSection user={user} hasPassword={account.hasPassword} />
       )}
-      <DeletionSection />
+      <DeletionSection supportEmail={account.supportEmail} />
     </main>
   )
 }

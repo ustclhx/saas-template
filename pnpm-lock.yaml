@@ -181,6 +181,9 @@ importers:
 
   apps/jobs:
     dependencies:
+      '@saas/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@saas/config':
         specifier: workspace:*
         version: link:../../packages/config

@@ -67,3 +67,23 @@ describe('apps/jobs', () => {
     }
   })
 })
+
+it('heartbeat retries committed deletion invalidation using the shared CACHE binding', async () => {
+  const db = createDb(env.HYPERDRIVE)
+  const id = crypto.randomUUID()
+  const key = `revoked-${id}`
+  vi.spyOn(console, 'log').mockImplementation(() => {})
+  await env.CACHE.put(`auth:${key}`, 'stale-session')
+  await db.$client`insert into verification (id,identifier,value,expires_at,created_at,updated_at)
+    values (${id},${`deletion-cleanup:${id}`},${JSON.stringify([key])},now()+interval '1 hour',now(),now())`
+  try {
+    await worker.scheduled(createScheduledController({ cron: HEARTBEAT_CRON }), env)
+    expect(await env.CACHE.get(`auth:${key}`)).toBeNull()
+    expect(
+      await db.query.verification.findFirst({ where: (v, { eq }) => eq(v.id, id) }),
+    ).toBeUndefined()
+  } finally {
+    await env.CACHE.delete(`auth:${key}`)
+    await db.$client`delete from verification where id=${id}`
+  }
+})

@@ -9,12 +9,16 @@ const getDeletionWorkspace = createServerFn({ method: 'GET' })
   .handler(({ context: { workspace, member } }) => {
     if (workspace.isPersonal || member.role !== 'owner' || !templateConfig.tenancy.multiTenant)
       throw notFound()
-    return { id: workspace.id, name: workspace.name }
+    return {
+      workspace: { id: workspace.id, name: workspace.name },
+      supportEmail: templateConfig.app.supportEmail,
+    }
   })
 export const Route = createFileRoute('/app/$slug/delete')({
   loader: ({ params }) => getDeletionWorkspace({ data: { slug: params.slug } }),
   component: DeleteWorkspacePage,
 })
 function DeleteWorkspacePage() {
-  return <DeletionSection workspace={Route.useLoaderData()} />
+  const data = Route.useLoaderData()
+  return <DeletionSection workspace={data.workspace} supportEmail={data.supportEmail} />
 }

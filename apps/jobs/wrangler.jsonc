@@ -32,6 +32,7 @@
       { "queue": "email", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 5 }
     ]
   },
+  "kv_namespaces": [{ "binding": "CACHE", "id": "00000000000000000000000000000002" }],
   "triggers": {
     // 心跳：写 setting 表的 jobs.lastCronAt（src/cron/heartbeat.ts）
     "crons": ["*/5 * * * *", "0 3 * * *"]
@@ -41,6 +42,7 @@
   "env": {
     "staging": {
       "name": "jobs-staging",
+      "kv_namespaces": [{ "binding": "CACHE", "id": "f4d49b7c082b4f01ae20335683d3a21b" }],
       "hyperdrive": [
         // 本机 PG 的 saas_staging 库，经 Tunnel saas-template-local → Workers VPC 服务 saas-template-local-pg（docs/07 §2）
         { "binding": "HYPERDRIVE", "id": "c4b28441aeaf49c3853a321a39cf8ec4" },
