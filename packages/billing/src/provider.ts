@@ -7,6 +7,9 @@ import type {
   SubscriptionStatus,
 } from '@saas/db/schema'
 
+/** Invalid delivery authentication; transport/enrichment failures remain retryable errors. */
+export class WebhookVerificationError extends Error {}
+
 export type { PaymentProviderId } from '@saas/db/schema'
 
 export interface ProviderCapabilities {

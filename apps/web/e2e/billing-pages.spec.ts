@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { expect, test } from '@playwright/test'
+import { capture, grant, hold } from '@saas/credits'
+import { createDb } from '@saas/db'
+import { readLocalEnv } from '@saas/db/worktree-env'
 import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
 import { stubTurnstile } from './turnstile.ts'
 
@@ -37,8 +40,27 @@ test('ordinary members see their own ledger without workspace credits or billing
     if (!account) throw new Error('Missing registered fixture')
     await sql`insert into organization (id,name,slug) values (${workspaceId},'Billing privacy fixture',${slug})`
     await sql`insert into member (id,organization_id,user_id,role) values (${randomUUID()},${workspaceId},${account.id},'member')`
-    await sql`insert into credit_ledger (id,workspace_id,user_id,type,delta,ref_type,ref_id) values (${randomUUID()},${workspaceId},${account.id},'consume',-2,'ai_message','own-usage-reference')`
-    await sql`insert into credit_ledger (id,workspace_id,type,delta,ref_type,ref_id) values (${randomUUID()},${workspaceId},'adjust',100,'admin','workspace-private-reference')`
+    const url = readLocalEnv('DATABASE_URL')
+    if (!url) throw new Error('Missing isolated worktree database')
+    const db = createDb({ connectionString: url })
+    try {
+      await grant(db, {
+        workspaceId,
+        source: 'admin',
+        sourceRef: `workspace-private-reference:${workspaceId}`,
+        amount: 100,
+      })
+      const reservation = await hold(db, {
+        workspaceId,
+        userId: String(account.id),
+        amount: 2,
+        refType: 'ai_message',
+        refId: 'own-usage-reference',
+      })
+      await capture(db, { workspaceId, holdId: reservation.id, actualAmount: 2 })
+    } finally {
+      await db.$client.end()
+    }
     await page.goto(`/app/${slug}/usage`)
     await expect(page.getByText('Your own credit activity is shown below.')).toBeVisible()
     await expect(page.getByText('ai_message · own-usage-reference')).toBeVisible()

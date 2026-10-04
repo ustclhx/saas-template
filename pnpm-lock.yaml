@@ -184,6 +184,9 @@ importers:
       '@saas/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@saas/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
       '@saas/config':
         specifier: workspace:*
         version: link:../../packages/config

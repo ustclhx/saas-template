@@ -14,7 +14,8 @@
     "@saas/auth": "workspace:*",
     "@saas/config": "workspace:*",
     "@saas/db": "workspace:*",
-    "@saas/email": "workspace:*"
+    "@saas/email": "workspace:*",
+    "@saas/billing": "workspace:*"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",

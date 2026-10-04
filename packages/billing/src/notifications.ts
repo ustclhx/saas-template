@@ -5,7 +5,7 @@ import type { RefundNotification } from './refunds.ts'
 
 export interface RefundMailOptions {
   db: Database
-  queue: { send(message: EmailQueueMessage, options: { contentType: 'json' }): Promise<void> }
+  queue: { send(message: EmailQueueMessage, options: { contentType: 'json' }): Promise<unknown> }
   appName: string
   supportEmail: string
 }

@@ -1,5 +1,9 @@
 import type { JsonValue } from '@saas/db/schema'
-import type { NormalizedEvent, VerifiedWebhook } from '../provider.ts'
+import {
+  type NormalizedEvent,
+  type VerifiedWebhook,
+  WebhookVerificationError,
+} from '../provider.ts'
 import { fromPayPalDecimal } from './money.ts'
 import { createPayPalSnapshots, getPayPalSalePayment, payPalDate, payPalRaw } from './snapshots.ts'
 import {
@@ -263,7 +267,8 @@ export async function verifyPayPalWebhook(
   const body: Record<string, unknown> = { webhook_id: webhookId }
   for (const [field, header] of Object.entries(fields)) {
     const value = req.headers.get(header)
-    if (!value?.trim()) throw new Error(`Missing PayPal transmission header: ${header}`)
+    if (!value?.trim())
+      throw new WebhookVerificationError(`Missing PayPal transmission header: ${header}`)
     body[field] = value
   }
   const payload = parsePayload(rawBody)
@@ -274,6 +279,6 @@ export async function verifyPayPalWebhook(
     { body },
   )
   if (result?.verification_status !== 'SUCCESS')
-    throw new Error('PayPal webhook signature verification failed')
+    throw new WebhookVerificationError('PayPal webhook signature verification failed')
   return normalize(payload)
 }

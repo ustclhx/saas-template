@@ -27,6 +27,8 @@ export type {
   SubscriptionSnapshot,
   VerifiedWebhook,
 } from './provider.ts'
+export { WebhookVerificationError } from './provider.ts'
+export * from './queue.ts'
 export * from './refunds.ts'
 export * from './runtime.ts'
 export * from './services.ts'

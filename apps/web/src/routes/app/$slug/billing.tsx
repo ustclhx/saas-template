@@ -6,9 +6,17 @@ import {
   getCustomerBilling,
   manageCustomerSubscription,
 } from '../../../features/billing/customer.functions.ts'
+import { getCustomerRefunds } from '../../../features/billing/refund.functions.ts'
+import { RefundSection } from '../../../features/billing/refund-section.tsx'
 
 export const Route = createFileRoute('/app/$slug/billing')({
-  loader: ({ params }) => getCustomerBilling({ data: { slug: params.slug } }),
+  loader: async ({ params }) => {
+    const [billing, refunds] = await Promise.all([
+      getCustomerBilling({ data: { slug: params.slug } }),
+      getCustomerRefunds({ data: { slug: params.slug } }),
+    ])
+    return { ...billing, refundView: refunds }
+  },
   staleTime: 0,
   component: BillingPage,
 })
@@ -133,8 +141,7 @@ function BillingPage() {
               <Button
                 disabled={
                   disabled ||
-                  !page.catalog.providers.some((p) => p.id === sub.provider && p.available) ||
-                  (sub.cancelAtPeriodEnd && sub.provider !== 'stripe')
+                  !page.catalog.providers.some((p) => p.id === sub.provider && p.available)
                 }
                 onClick={() => void manage(sub.id, sub.cancelAtPeriodEnd ? 'resume' : 'cancel')}
               >
@@ -231,6 +238,12 @@ function BillingPage() {
         </section>
       )}
       {message && <p role="status">{message}</p>}
+      <RefundSection
+        slug={slug}
+        page={page.refundView}
+        readOnly={page.readOnly}
+        pendingPayments={page.refunds.filter((r) => r.status === 'pending').map((r) => r.paymentId)}
+      />
       {owner && (
         <section className="grid gap-3">
           <h3 className="font-semibold">Payment history</h3>

@@ -32,7 +32,10 @@
   ],
   // web 为 producer，apps/jobs 为 consumer
   "queues": {
-    "producers": [{ "binding": "EMAIL_QUEUE", "queue": "email" }]
+    "producers": [
+      { "binding": "EMAIL_QUEUE", "queue": "email" },
+      { "binding": "EVENTS_QUEUE", "queue": "events" }
+    ]
   },
   // Better Auth 会话的 secondaryStorage（packages/auth/src/session.ts）；本地由 Miniflare 模拟，id 为占位值
   "kv_namespaces": [{ "binding": "CACHE", "id": "00000000000000000000000000000002" }],
@@ -72,7 +75,10 @@
         }
       ],
       "queues": {
-        "producers": [{ "binding": "EMAIL_QUEUE", "queue": "email-staging" }]
+        "producers": [
+          { "binding": "EMAIL_QUEUE", "queue": "email-staging" },
+          { "binding": "EVENTS_QUEUE", "queue": "events-staging" }
+        ]
       }
     }
   }

@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { expect, test } from '@playwright/test'
+import { capture, grant, hold } from '@saas/credits'
+import { createDb } from '@saas/db'
+import { readLocalEnv } from '@saas/db/worktree-env'
 import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
 import { stubTurnstile } from './turnstile.ts'
 
@@ -34,7 +37,32 @@ test('fresh platform admin can list and reject without payment credentials', asy
     await sql`insert into purchase(id,workspace_id,user_id,plan_id,plan_price_id,provider,provider_order_id,status,amount,currency) values(${purchase},${workspace.id},${account.id},${plan},${price},'stripe',${purchase},'paid',1234,'USD')`
     await sql`insert into payment(id,workspace_id,provider,provider_payment_id,purchase_id,kind,amount,currency,paid_at) values(${payment},${workspace.id},'stripe',${payment},${purchase},'one_time',1234,'USD',now())`
     await sql`insert into refund_request(id,workspace_id,user_id,payment_id,reason,contact_email,requested_amount) values(${id},${workspace.id},${account.id},${payment},'Fixture refund request',${email},500)`
-    await sql`insert into credit_grant(id,workspace_id,source,source_ref,payment_id,amount,remaining) values(${randomUUID()},${workspace.id},'purchase',${payment},${payment},100,60)`
+    const url = readLocalEnv('DATABASE_URL')
+    if (!url) throw new Error('Missing isolated worktree database')
+    const db = createDb({ connectionString: url })
+    try {
+      await grant(db, {
+        workspaceId: String(workspace.id),
+        source: 'purchase',
+        sourceRef: payment,
+        paymentId: payment,
+        amount: 100,
+      })
+      const reserved = await hold(db, {
+        workspaceId: String(workspace.id),
+        userId: String(account.id),
+        amount: 40,
+        refType: 'ai_message',
+        refId: randomUUID(),
+      })
+      await capture(db, {
+        workspaceId: String(workspace.id),
+        holdId: reserved.id,
+        actualAmount: 40,
+      })
+    } finally {
+      await db.$client.end()
+    }
     await page.goto('/admin/billing/refunds')
     const card = page.getByRole('article', { name: `Refund ${id}` })
     await expect(card).toContainText('Requested: $5.00')

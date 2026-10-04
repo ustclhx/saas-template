@@ -1,6 +1,11 @@
 import type { JsonValue } from '@saas/db/schema'
 import Stripe from 'stripe'
-import type { NormalizedEvent, PaymentProvider, VerifiedWebhook } from '../provider.ts'
+import {
+  type NormalizedEvent,
+  type PaymentProvider,
+  type VerifiedWebhook,
+  WebhookVerificationError,
+} from '../provider.ts'
 import { createStripeClient, STRIPE_API_VERSION } from './client.ts'
 import { parseStripeMetadata } from './metadata.ts'
 import { createStripeOperations } from './operations.ts'
@@ -210,14 +215,21 @@ export function createStripeProvider(options: StripeProviderOptions): PaymentPro
     ...createStripeSnapshots(stripe),
     async verifyWebhook(request, rawBody) {
       const signature = request.headers.get('stripe-signature')
-      if (!signature) throw new Error('Missing Stripe-Signature header')
-      const event = await stripe.webhooks.constructEventAsync(
-        rawBody,
-        signature,
-        options.webhookSecret,
-        undefined,
-        cryptoProvider,
-      )
+      if (!signature) throw new WebhookVerificationError('Missing Stripe-Signature header')
+      let event: Stripe.Event
+      try {
+        event = await stripe.webhooks.constructEventAsync(
+          rawBody,
+          signature,
+          options.webhookSecret,
+          undefined,
+          cryptoProvider,
+        )
+      } catch (error) {
+        if (error instanceof Stripe.errors.StripeSignatureVerificationError)
+          throw new WebhookVerificationError('Invalid Stripe webhook signature')
+        throw error
+      }
       if (event.api_version !== STRIPE_API_VERSION) {
         throw new Error(`Incompatible Stripe event API version: ${event.api_version}`)
       }
