@@ -111,12 +111,8 @@
           "name": "account_user_id_user_id_fk",
           "tableFrom": "account",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -324,12 +320,8 @@
           "name": "apikey_reference_id_user_id_fk",
           "tableFrom": "apikey",
           "tableTo": "user",
-          "columnsFrom": [
-            "reference_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["reference_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -429,12 +421,8 @@
           "name": "session_user_id_user_id_fk",
           "tableFrom": "session",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -442,12 +430,8 @@
           "name": "session_active_organization_id_organization_id_fk",
           "tableFrom": "session",
           "tableTo": "organization",
-          "columnsFrom": [
-            "active_organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["active_organization_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -455,12 +439,8 @@
           "name": "session_impersonated_by_user_id_fk",
           "tableFrom": "session",
           "tableTo": "user",
-          "columnsFrom": [
-            "impersonated_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["impersonated_by"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -470,9 +450,7 @@
         "session_token_unique": {
           "name": "session_token_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token"
-          ]
+          "columns": ["token"]
         }
       },
       "policies": {},
@@ -579,12 +557,8 @@
           "name": "two_factor_user_id_user_id_fk",
           "tableFrom": "two_factor",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -696,9 +670,7 @@
         "user_email_unique": {
           "name": "user_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {},
@@ -843,12 +815,8 @@
           "name": "billing_customer_workspace_id_organization_id_fk",
           "tableFrom": "billing_customer",
           "tableTo": "organization",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -858,10 +826,7 @@
         "billing_customer_workspace_provider_unique": {
           "name": "billing_customer_workspace_provider_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "workspace_id",
-            "provider"
-          ]
+          "columns": ["workspace_id", "provider"]
         }
       },
       "policies": {},
@@ -1007,12 +972,8 @@
           "name": "payment_workspace_id_organization_id_fk",
           "tableFrom": "payment",
           "tableTo": "organization",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1020,12 +981,8 @@
           "name": "payment_subscription_id_subscription_id_fk",
           "tableFrom": "payment",
           "tableTo": "subscription",
-          "columnsFrom": [
-            "subscription_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["subscription_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1033,12 +990,8 @@
           "name": "payment_purchase_id_purchase_id_fk",
           "tableFrom": "payment",
           "tableTo": "purchase",
-          "columnsFrom": [
-            "purchase_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["purchase_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1046,12 +999,8 @@
           "name": "payment_plan_price_id_plan_price_id_fk",
           "tableFrom": "payment",
           "tableTo": "plan_price",
-          "columnsFrom": [
-            "plan_price_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["plan_price_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1061,10 +1010,7 @@
         "payment_provider_payment_unique": {
           "name": "payment_provider_payment_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "provider",
-            "provider_payment_id"
-          ]
+          "columns": ["provider", "provider_payment_id"]
         }
       },
       "policies": {},
@@ -1177,12 +1123,8 @@
           "name": "payment_refund_workspace_id_organization_id_fk",
           "tableFrom": "payment_refund",
           "tableTo": "organization",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1190,12 +1132,8 @@
           "name": "payment_refund_payment_id_payment_id_fk",
           "tableFrom": "payment_refund",
           "tableTo": "payment",
-          "columnsFrom": [
-            "payment_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["payment_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1205,10 +1143,7 @@
         "payment_refund_provider_refund_unique": {
           "name": "payment_refund_provider_refund_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "provider",
-            "provider_refund_id"
-          ]
+          "columns": ["provider", "provider_refund_id"]
         }
       },
       "policies": {},
@@ -1309,9 +1244,7 @@
         "plan_key_unique": {
           "name": "plan_key_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "key"
-          ]
+          "columns": ["key"]
         }
       },
       "policies": {},
@@ -1401,12 +1334,8 @@
           "name": "plan_price_plan_id_plan_id_fk",
           "tableFrom": "plan_price",
           "tableTo": "plan",
-          "columnsFrom": [
-            "plan_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["plan_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1416,10 +1345,7 @@
         "plan_price_provider_price_unique": {
           "name": "plan_price_provider_price_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "provider",
-            "provider_price_id"
-          ]
+          "columns": ["provider", "provider_price_id"]
         }
       },
       "policies": {},
@@ -1551,12 +1477,8 @@
           "name": "purchase_workspace_id_organization_id_fk",
           "tableFrom": "purchase",
           "tableTo": "organization",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1564,12 +1486,8 @@
           "name": "purchase_user_id_user_id_fk",
           "tableFrom": "purchase",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1577,12 +1495,8 @@
           "name": "purchase_plan_id_plan_id_fk",
           "tableFrom": "purchase",
           "tableTo": "plan",
-          "columnsFrom": [
-            "plan_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["plan_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1590,12 +1504,8 @@
           "name": "purchase_plan_price_id_plan_price_id_fk",
           "tableFrom": "purchase",
           "tableTo": "plan_price",
-          "columnsFrom": [
-            "plan_price_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["plan_price_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1605,10 +1515,7 @@
         "purchase_provider_order_unique": {
           "name": "purchase_provider_order_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "provider",
-            "provider_order_id"
-          ]
+          "columns": ["provider", "provider_order_id"]
         }
       },
       "policies": {},
@@ -1756,12 +1663,8 @@
           "name": "refund_request_workspace_id_organization_id_fk",
           "tableFrom": "refund_request",
           "tableTo": "organization",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1769,12 +1672,8 @@
           "name": "refund_request_user_id_user_id_fk",
           "tableFrom": "refund_request",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1782,12 +1681,8 @@
           "name": "refund_request_payment_id_payment_id_fk",
           "tableFrom": "refund_request",
           "tableTo": "payment",
-          "columnsFrom": [
-            "payment_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["payment_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1795,12 +1690,8 @@
           "name": "refund_request_reviewer_id_user_id_fk",
           "tableFrom": "refund_request",
           "tableTo": "user",
-          "columnsFrom": [
-            "reviewer_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["reviewer_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1970,12 +1861,8 @@
           "name": "subscription_workspace_id_organization_id_fk",
           "tableFrom": "subscription",
           "tableTo": "organization",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1983,12 +1870,8 @@
           "name": "subscription_plan_id_plan_id_fk",
           "tableFrom": "subscription",
           "tableTo": "plan",
-          "columnsFrom": [
-            "plan_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["plan_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1996,12 +1879,8 @@
           "name": "subscription_plan_price_id_plan_price_id_fk",
           "tableFrom": "subscription",
           "tableTo": "plan_price",
-          "columnsFrom": [
-            "plan_price_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["plan_price_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -2011,10 +1890,7 @@
         "subscription_provider_subscription_unique": {
           "name": "subscription_provider_subscription_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "provider",
-            "provider_subscription_id"
-          ]
+          "columns": ["provider", "provider_subscription_id"]
         }
       },
       "policies": {},
@@ -2110,10 +1986,7 @@
         "webhook_event_provider_event_unique": {
           "name": "webhook_event_provider_event_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "provider",
-            "provider_event_id"
-          ]
+          "columns": ["provider", "provider_event_id"]
         }
       },
       "policies": {},
@@ -2163,12 +2036,8 @@
           "name": "credit_debt_workspace_id_organization_id_fk",
           "tableFrom": "credit_debt",
           "tableTo": "organization",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -2313,12 +2182,8 @@
           "name": "credit_grant_workspace_id_organization_id_fk",
           "tableFrom": "credit_grant",
           "tableTo": "organization",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -2326,12 +2191,8 @@
           "name": "credit_grant_payment_id_payment_id_fk",
           "tableFrom": "credit_grant",
           "tableTo": "payment",
-          "columnsFrom": [
-            "payment_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["payment_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -2341,10 +2202,7 @@
         "credit_grant_source_ref_unique": {
           "name": "credit_grant_source_ref_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "source",
-            "source_ref"
-          ]
+          "columns": ["source", "source_ref"]
         }
       },
       "policies": {},
@@ -2484,12 +2342,8 @@
           "name": "credit_hold_workspace_id_organization_id_fk",
           "tableFrom": "credit_hold",
           "tableTo": "organization",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -2497,12 +2351,8 @@
           "name": "credit_hold_user_id_user_id_fk",
           "tableFrom": "credit_hold",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -2577,12 +2427,8 @@
           "name": "credit_hold_allocation_hold_id_credit_hold_id_fk",
           "tableFrom": "credit_hold_allocation",
           "tableTo": "credit_hold",
-          "columnsFrom": [
-            "hold_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["hold_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -2590,12 +2436,8 @@
           "name": "credit_hold_allocation_grant_id_credit_grant_id_fk",
           "tableFrom": "credit_hold_allocation",
           "tableTo": "credit_grant",
-          "columnsFrom": [
-            "grant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["grant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -2603,10 +2445,7 @@
       "compositePrimaryKeys": {
         "credit_hold_allocation_hold_id_grant_id_pk": {
           "name": "credit_hold_allocation_hold_id_grant_id_pk",
-          "columns": [
-            "hold_id",
-            "grant_id"
-          ]
+          "columns": ["hold_id", "grant_id"]
         }
       },
       "uniqueConstraints": {},
@@ -2713,12 +2552,8 @@
           "name": "credit_ledger_workspace_id_organization_id_fk",
           "tableFrom": "credit_ledger",
           "tableTo": "organization",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -2726,12 +2561,8 @@
           "name": "credit_ledger_user_id_user_id_fk",
           "tableFrom": "credit_ledger",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -2739,12 +2570,8 @@
           "name": "credit_ledger_grant_id_credit_grant_id_fk",
           "tableFrom": "credit_ledger",
           "tableTo": "credit_grant",
-          "columnsFrom": [
-            "grant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["grant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -2864,12 +2691,8 @@
           "name": "audit_log_actor_user_id_user_id_fk",
           "tableFrom": "audit_log",
           "tableTo": "user",
-          "columnsFrom": [
-            "actor_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["actor_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -2877,12 +2700,8 @@
           "name": "audit_log_workspace_id_organization_id_fk",
           "tableFrom": "audit_log",
           "tableTo": "organization",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -3009,12 +2828,8 @@
           "name": "notification_user_id_user_id_fk",
           "tableFrom": "notification",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -3022,12 +2837,8 @@
           "name": "notification_workspace_id_organization_id_fk",
           "tableFrom": "notification",
           "tableTo": "organization",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -3082,9 +2893,7 @@
         "setting_key_unique": {
           "name": "setting_key_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "key"
-          ]
+          "columns": ["key"]
         }
       },
       "policies": {},
@@ -3196,12 +3005,8 @@
           "name": "invitation_organization_id_organization_id_fk",
           "tableFrom": "invitation",
           "tableTo": "organization",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -3209,12 +3014,8 @@
           "name": "invitation_inviter_id_user_id_fk",
           "tableFrom": "invitation",
           "tableTo": "user",
-          "columnsFrom": [
-            "inviter_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["inviter_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -3312,12 +3113,8 @@
           "name": "member_organization_id_organization_id_fk",
           "tableFrom": "member",
           "tableTo": "organization",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -3325,12 +3122,8 @@
           "name": "member_user_id_user_id_fk",
           "tableFrom": "member",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -3340,10 +3133,7 @@
         "member_organization_id_user_id_unique": {
           "name": "member_organization_id_user_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "organization_id",
-            "user_id"
-          ]
+          "columns": ["organization_id", "user_id"]
         }
       },
       "policies": {},
@@ -3419,9 +3209,7 @@
         "organization_slug_unique": {
           "name": "organization_slug_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "slug"
-          ]
+          "columns": ["slug"]
         }
       },
       "policies": {},

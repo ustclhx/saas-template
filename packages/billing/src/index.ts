@@ -1,3 +1,4 @@
+export * from './pipeline.ts'
 export type {
   CheckoutInput,
   CheckoutMetadata,
@@ -14,6 +15,4 @@ export type {
   SubscriptionSnapshot,
   VerifiedWebhook,
 } from './provider.ts'
-
 export { createStripeProvider, type StripeProviderOptions } from './stripe/adapter.ts'
-export * from './pipeline.ts'
