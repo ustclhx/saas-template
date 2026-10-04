@@ -30,14 +30,14 @@ export async function seedWorkspaceSeats(slug: string) {
     const priceId = newId()
     const features = JSON.stringify({ ...DEFAULT_FREE_FEATURES, maxSeats: 5 })
     await sql`insert into plan (id,key,name,type,credits,features,sort,active)
-      values (${planId},${'e2e-seats-' + planId},'E2E seats','subscription',0,${features}::jsonb,1000,false)`
+      values (${planId},${`e2e-seats-${planId}`},'E2E seats','subscription',0,${features}::jsonb,1000,false)`
     await sql`insert into plan_price (id,plan_id,provider,provider_price_id,interval,amount,currency,active)
-      values (${priceId},${planId},'stripe',${'e2e:' + priceId},'month',0,'usd',false)`
+      values (${priceId},${planId},'stripe',${`e2e:${priceId}`},'month',0,'usd',false)`
     // A canceled subscription still carries its paid period; deletion needs no remote call.
     await sql`insert into subscription (id,workspace_id,plan_id,plan_price_id,provider,
       provider_subscription_id,status,current_period_start,current_period_end,
       cancel_at_period_end,canceled_at,last_event_at)
-      values (${newId()},${workspace.id},${planId},${priceId},'stripe',${'e2e:' + planId},
+      values (${newId()},${workspace.id},${planId},${priceId},'stripe',${`e2e:${planId}`},
         'canceled',now(),now()+interval '1 day',true,now(),now())`
   } finally {
     await sql.end()
