@@ -184,6 +184,9 @@ importers:
       '@saas/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@saas/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
       '@saas/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -218,15 +221,24 @@ importers:
       '@saas/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@saas/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
       '@saas/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@saas/credits':
+        specifier: workspace:*
+        version: link:../../packages/credits
       '@saas/db':
         specifier: workspace:*
         version: link:../../packages/db
       '@saas/email':
         specifier: workspace:*
         version: link:../../packages/email
+      '@saas/entitlements':
+        specifier: workspace:*
+        version: link:../../packages/entitlements
       '@saas/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -339,9 +351,33 @@ importers:
 
   packages/billing:
     dependencies:
+      '@saas/auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@saas/config':
+        specifier: workspace:*
+        version: link:../config
+      '@saas/credits':
+        specifier: workspace:*
+        version: link:../credits
       '@saas/db':
         specifier: workspace:*
         version: link:../db
+      '@saas/email':
+        specifier: workspace:*
+        version: link:../email
+      '@saas/entitlements':
+        specifier: workspace:*
+        version: link:../entitlements
+      '@saas/shared':
+        specifier: workspace:*
+        version: link:../shared
+      drizzle-orm:
+        specifier: ^0.45.3
+        version: 0.45.3(@cloudflare/workers-types@5.20261002.1)(kysely@0.29.6)(postgres@3.4.9)
+      stripe:
+        specifier: 23.0.0
+        version: 23.0.0(@types/node@22.20.5)
     devDependencies:
       vitest:
         specifier: ^4.1.11
@@ -357,7 +393,30 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@22.20.5)(happy-dom@20.14.5)(vite@8.3.2(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
 
-  packages/credits: {}
+  packages/credits:
+    dependencies:
+      '@saas/config':
+        specifier: workspace:*
+        version: link:../config
+      '@saas/db':
+        specifier: workspace:*
+        version: link:../db
+      drizzle-orm:
+        specifier: ^0.45.3
+        version: 0.45.3(@cloudflare/workers-types@5.20261002.1)(kysely@0.29.6)(postgres@3.4.9)
+    devDependencies:
+      '@saas/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@types/node':
+        specifier: ^22.20.5
+        version: 22.20.5
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@22.20.5)(happy-dom@20.14.5)(vite@8.3.2(@types/node@22.20.5)(esbuild@0.28.2))
 
   packages/db:
     dependencies:
@@ -427,7 +486,21 @@ importers:
         specifier: ^4.146.0
         version: 4.146.0(@cloudflare/workers-types@5.20261002.1)(@types/node@22.20.5)
 
-  packages/entitlements: {}
+  packages/entitlements:
+    dependencies:
+      '@saas/db':
+        specifier: workspace:*
+        version: link:../db
+      '@saas/shared':
+        specifier: workspace:*
+        version: link:../shared
+      drizzle-orm:
+        specifier: ^0.45.3
+        version: 0.45.3(@cloudflare/workers-types@5.20261002.1)(kysely@0.29.6)(postgres@3.4.9)
+    devDependencies:
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@22.20.5)(happy-dom@20.14.5)(vite@8.3.2(@types/node@22.20.5)(esbuild@0.28.2))
 
   packages/shared:
     dependencies:
@@ -4181,6 +4254,15 @@ packages:
     resolution: {integrity: sha512-vavAMRXOgBVNF6nyEEmL3DBK19iRpDcoIwW+swQ+CbGiu7lju6t+JklA1MHweoWtadgt4ISVUsXLyDq34ddcwA==}
     engines: {node: '>=4'}
 
+  stripe@23.0.0:
+    resolution: {integrity: sha512-MDE2A5ZVVluYURORaZEVghSmnLJc3w6aHAlZSxDQMsOjOb3V0O6ro/CiaeFlJS4N7uIVmsg98ocRsPmUK6YfyA==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@types/node': '>=20'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
+
   stubborn-fs@2.0.0:
     resolution: {integrity: sha512-Y0AvSwDw8y+nlSNFXMm2g6L51rBGdAQT20J3YSOqxC53Lo3bjWRtr2BKcfYoAf352WYpsZSTURrA0tqhfgudPA==}
 
@@ -7797,6 +7879,10 @@ snapshots:
   std-env@4.3.0: {}
 
   strip-bom@3.0.0: {}
+
+  stripe@23.0.0(@types/node@22.20.5):
+    optionalDependencies:
+      '@types/node': 22.20.5
 
   stubborn-fs@2.0.0:
     dependencies:

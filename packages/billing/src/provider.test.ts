@@ -34,7 +34,7 @@ function narrowEvent(event: NormalizedEvent) {
       break
     case 'payment.refunded':
       expectTypeOf(event.providerRefundId).toEqualTypeOf<string>()
-      expectTypeOf(event.refundedAmount).toEqualTypeOf<number>()
+      expectTypeOf(event.refundedAmount).toEqualTypeOf<number | null>()
       break
     case 'subscription.renewed':
     case 'subscription.past_due':

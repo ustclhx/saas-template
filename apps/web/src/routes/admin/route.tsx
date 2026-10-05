@@ -24,6 +24,16 @@ function AdminLayout() {
             <li>
               <Link to="/admin">{ADMIN_COPY.nav.overview}</Link>
             </li>
+            <li>
+              <Link to="/admin/billing" search={{ offset: 0 }}>
+                Billing
+              </Link>
+            </li>
+            <li>
+              <Link to="/admin/billing/refunds" search={{ offset: 0 }}>
+                Refund reviews
+              </Link>
+            </li>
           </ul>
         </nav>
       </header>

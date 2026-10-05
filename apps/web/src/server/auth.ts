@@ -1,4 +1,9 @@
 import { type AuthEmail, createAuth, type SendAuthEmail } from '@saas/auth'
+import {
+  createBillingDeletionStep,
+  createTestPaymentRuntime,
+  grantSignupBonus,
+} from '@saas/billing'
 import { createDb, type Database } from '@saas/db'
 import { createQueueAuthEmailSender, userLocaleByEmail } from './auth-email.ts'
 import { templateConfig } from './template-config.ts'
@@ -26,7 +31,22 @@ export function getAuth(env: Cloudflare.Env, db: Database = createDb(env.HYPERDR
     : queued
   return createAuth(env, db, {
     config: templateConfig,
+    deletionSteps: billingDeletionSteps(env),
     sendEmail,
     resolveMaxSeats: resolveWorkspaceMaxSeats,
+    onEmailVerified: (user) =>
+      grantSignupBonus({ db, userId: user.id, config: templateConfig.billing }),
   })
+}
+
+export function billingDeletionSteps(env: Cloudflare.Env) {
+  const { providers } = createTestPaymentRuntime(env, templateConfig.billing.providers, {
+    cache: env.CACHE,
+  })
+  return [
+    createBillingDeletionStep({
+      providers,
+      refundWindowDays: templateConfig.billing.refundWindowDays,
+    }),
+  ]
 }

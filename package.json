@@ -11,10 +11,12 @@
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "check": "biome check .",
+    "check": "biome check . && node scripts/check-credit-writes.mjs",
     "check:fix": "biome check --write .",
     "check:deps": "node scripts/check-deps.mjs",
-    "check:singletons": "node scripts/check-singletons.mjs"
+    "check:singletons": "node scripts/check-singletons.mjs",
+    "billing:seed": "pnpm --filter @saas/billing seed",
+    "billing:sync": "pnpm --filter @saas/billing sync"
   },
   "devDependencies": {
     "@saas/config": "workspace:*",

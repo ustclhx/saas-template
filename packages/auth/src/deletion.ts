@@ -29,6 +29,7 @@ export function registerDeletionStep(kind: DeletionKind, step: DeletionStep): ()
   }
 }
 interface Options {
+  readonly additionalSteps?: readonly DeletionStep[]
   readonly auth: AuthContextSource
   readonly db: Database
   readonly headers: Headers
@@ -143,7 +144,7 @@ export async function deleteTeamWorkspace(
   )
     fail('WORKSPACE_PERMISSION', 'Only owners can delete a team workspace')
   const context = { db: options.db, actorUserId: fresh.user.id, workspaceIds: [workspaceId] }
-  const registered = [...steps.workspace]
+  const registered = [...steps.workspace, ...(options.additionalSteps ?? [])]
   for (const step of registered) await step.before?.(context)
   const keys = await options.db.$client.begin(async (sql) => {
     await sql`select pg_advisory_xact_lock(hashtextextended(${`owner:${fresh.user.id}`},0))`
@@ -188,7 +189,7 @@ export async function deleteAccount(options: Options) {
   if (fresh.session.impersonatedBy || Date.now() - fresh.session.createdAt.getTime() > 600000)
     fail('REAUTHENTICATION_REQUIRED', 'Sign out and sign in again within ten minutes')
   const context = { db: options.db, actorUserId: fresh.user.id, workspaceIds: [fresh.user.id] }
-  const registered = [...steps.account]
+  const registered = [...steps.account, ...(options.additionalSteps ?? [])]
   for (const step of registered) await step.before?.(context)
   const keys = await options.db.$client.begin(async (sql) => {
     await sql`select pg_advisory_xact_lock(hashtextextended(${`owner:${fresh.user.id}`},0))`
@@ -238,7 +239,12 @@ export async function deleteAccount(options: Options) {
   return { deleted: true }
 }
 /** Mount before the native organization plugin. The HTTP endpoints validate signed cookies in DB. */
-export function deletionPlugin(db: Database, kv?: KvStore, multiTenant = true) {
+export function deletionPlugin(
+  db: Database,
+  kv?: KvStore,
+  multiTenant = true,
+  additionalSteps?: readonly DeletionStep[],
+) {
   const endpoint = (kind: DeletionKind) =>
     createAuthEndpoint(
       `/deletion/${kind}`,
@@ -252,6 +258,7 @@ export function deletionPlugin(db: Database, kv?: KvStore, multiTenant = true) {
           const options = {
             db,
             kv,
+            ...(additionalSteps ? { additionalSteps } : {}),
             headers: ctx.headers,
             auth: { $context: Promise.resolve(ctx.context) },
           }

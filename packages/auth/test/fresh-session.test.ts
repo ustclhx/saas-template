@@ -74,7 +74,10 @@ describe('requireFreshSession', () => {
       401,
     )
     // 换一个 token、保留原签名
-    const forged = u.cookie.replace(u.token, `${u.token.slice(0, -1)}x`)
+    const forged = u.cookie.replace(
+      u.token,
+      `${u.token.slice(0, -1)}${u.token.endsWith('x') ? 'y' : 'x'}`,
+    )
     await expectRejected(
       requireFreshSession({ auth: s.auth, db: s.db, headers: headersOf(forged) }),
       SESSION_REQUIRED,

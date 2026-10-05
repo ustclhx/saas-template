@@ -2,6 +2,14 @@ import type { EmailLocale } from './locale.ts'
 
 /** 各模板的输入（必须可 JSON 序列化：3.2 会把它放进 EMAIL_QUEUE 消息）。 */
 export interface EmailTemplateProps {
+  'refund-update': {
+    readonly status: 'approved' | 'rejected' | 'refunded'
+    readonly amount: number | null
+    readonly currency: string
+    readonly note: string
+    readonly supportEmail: string
+  }
+
   /** 注册后的邮箱验证 */
   'verify-email': { readonly url: string }
   /** 邮箱验证码（emailOTP 插件），用途决定文案 */
@@ -60,6 +68,28 @@ const minutesEn = (n: number) => (n === 1 ? '1 minute' : `${n} minutes`)
 const daysEn = (n: number) => (n === 1 ? '1 day' : `${n} days`)
 
 const en: CopyBuilders = {
+  'refund-update': (
+    { status, amount, currency, note, supportEmail },
+    { appName, recipientName },
+  ) => ({
+    subject: `Your ${appName} refund request: ${status}`,
+    preview: `Your refund request is ${status}.`,
+    heading: 'Refund request update',
+    greeting: greetingEn(recipientName),
+    paragraphs: [
+      status === 'approved'
+        ? 'Your request was approved. The refund is not yet confirmed by the payment provider.'
+        : status === 'refunded'
+          ? 'The payment provider has confirmed your refund.'
+          : 'Your refund request was rejected.',
+      ...(amount === null ? [] : [`Amount: ${(amount / 100).toFixed(2)} ${currency}.`]),
+      ...(note ? [note] : []),
+      `For help, contact ${supportEmail}.`,
+    ],
+    linkHint: '',
+    footer: 'This update remains available by email if you have deleted your account.',
+  }),
+
   'verify-email': ({ url }, { appName, recipientName }) => ({
     subject: `Verify your email for ${appName}`,
     preview: `Confirm your email address to finish setting up your ${appName} account.`,
@@ -136,6 +166,28 @@ const en: CopyBuilders = {
 }
 
 const zh: CopyBuilders = {
+  'refund-update': (
+    { status, amount, currency, note, supportEmail },
+    { appName, recipientName },
+  ) => ({
+    subject: `${appName} 退款申请：${{ approved: '已批准', rejected: '已驳回', refunded: '已退款' }[status]}`,
+    preview: `退款申请${{ approved: '已批准，待平台确认', rejected: '已驳回', refunded: '已由平台确认退款' }[status]}。`,
+    heading: '退款申请进度',
+    greeting: greetingZh(recipientName),
+    paragraphs: [
+      status === 'approved'
+        ? '申请已批准，退款尚待支付平台确认。'
+        : status === 'refunded'
+          ? '支付平台已确认退款。'
+          : '退款申请已驳回。',
+      ...(amount === null ? [] : [`金额：${(amount / 100).toFixed(2)} ${currency}。`]),
+      ...(note ? [note] : []),
+      `如需帮助，请联系 ${supportEmail}。`,
+    ],
+    linkHint: '',
+    footer: '删除账号后，退款结果仍会发送至申请时保存的联系邮箱。',
+  }),
+
   'verify-email': ({ url }, { appName, recipientName }) => ({
     subject: `验证你的 ${appName} 邮箱`,
     preview: `确认邮箱地址，完成 ${appName} 账号注册。`,

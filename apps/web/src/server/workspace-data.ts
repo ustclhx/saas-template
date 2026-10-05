@@ -1,9 +1,30 @@
 import type { ResolveMaxSeats } from '@saas/auth'
 import { type Database, invitation, member, scoped, user } from '@saas/db'
+import {
+  type EntitlementSubscription,
+  type Entitlements,
+  selectEntitlements,
+} from '@saas/entitlements'
 import { eq } from 'drizzle-orm'
+import { templateConfig } from './template-config.ts'
 
-/** P2 replaces this resolver with persisted entitlements; null means unlimited. */
-export const resolveWorkspaceMaxSeats: ResolveMaxSeats = async () => null
+/** Reads through the caller's transaction, preserving the auth workspace lock. */
+export const resolveWorkspaceMaxSeats: ResolveMaxSeats = async (workspaceId, sql) => {
+  const now = new Date()
+  const subscriptions = await sql.unsafe<EntitlementSubscription[]>(
+    `select s.status, s.past_due_since as "pastDueSince", s.current_period_end as "currentPeriodEnd",
+      jsonb_build_object('key', p.key, 'sort', p.sort, 'features', p.features) as plan
+     from subscription s join plan p on p.id = s.plan_id where s.workspace_id = $1`,
+    [workspaceId],
+  )
+  const [free] = await sql.unsafe<Entitlements[]>(
+    `select key, sort, features from plan where key = 'free'`,
+  )
+  return selectEntitlements(subscriptions, free, {
+    now,
+    pastDueGraceDays: templateConfig.billing.pastDueGraceDays,
+  }).features.maxSeats
+}
 
 export async function workspaceMembers(db: Database, workspaceId: string) {
   return scoped(db, workspaceId)

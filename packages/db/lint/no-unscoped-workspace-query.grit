@@ -15,6 +15,7 @@ pattern workspace_table() {
   or {
     `auditLog`,
     `billingCustomer`,
+    `billingCompensation`,
     `creditDebt`,
     `creditGrant`,
     `creditHold`,
@@ -23,6 +24,7 @@ pattern workspace_table() {
     `member`,
     `notification`,
     `payment`,
+    `paymentRefund`,
     `purchase`,
     `refundRequest`,
     `subscription`

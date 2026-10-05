@@ -7,6 +7,9 @@ import type {
   SubscriptionStatus,
 } from '@saas/db/schema'
 
+/** Invalid delivery authentication; transport/enrichment failures remain retryable errors. */
+export class WebhookVerificationError extends Error {}
+
 export type { PaymentProviderId } from '@saas/db/schema'
 
 export interface ProviderCapabilities {
@@ -42,8 +45,9 @@ export interface SubscriptionSnapshot {
   status: SubscriptionStatus
   /** Preserve the actual remote status for reconciliation (e.g. PayPal SUSPENDED). */
   remoteStatus: string
-  currentPeriodStart: Date
-  currentPeriodEnd: Date
+  /** Unpaid remote subscriptions may have no service period. */
+  currentPeriodStart: Date | null
+  currentPeriodEnd: Date | null
   cancelAtPeriodEnd: boolean
   canceledAt: Date | null
   trialEnd: Date | null
@@ -71,20 +75,27 @@ export interface PaymentReference {
 
 export type PaymentAssociation =
   | { kind: 'one_time'; providerOrderId: string; providerSubscriptionId?: never }
-  | { kind: 'initial' | 'renewal'; providerSubscriptionId: string; providerOrderId?: never }
+  | {
+      kind: 'initial' | 'renewal' | 'adjustment'
+      providerSubscriptionId: string
+      providerOrderId?: never
+    }
 
 export type PaymentSnapshot = (
   | (Extract<PaymentAssociation, { kind: 'one_time' }> & { period: null })
-  | (Extract<PaymentAssociation, { kind: 'initial' | 'renewal' }> & {
+  | (Extract<PaymentAssociation, { kind: 'initial' | 'renewal' | 'adjustment' }> & {
       period: { start: Date; end: Date }
     })
 ) & {
   providerPaymentId: string
+  /** Actual historical price, independent of the current mutable subscription. */
+  providerPriceId?: string | null
   providerCustomerId: string | null
   amount: number
   currency: string
   paidAt: Date
-  refundedAmount: number
+  /** null means the provider does not expose a cumulative total; preserve local refunds. */
+  refundedAmount: number | null
   status: 'succeeded' | 'refunded' | 'partially_refunded' | 'disputed'
   metadata: CheckoutMetadata | null
   raw: JsonValue
@@ -134,7 +145,7 @@ export type NormalizedEvent = EventBase &
         providerSubscriptionId: string
         status: 'canceled' | 'expired'
         canceledAt: Date
-        currentPeriodEnd: Date
+        currentPeriodEnd: Date | null
       }
     | {
         type: 'payment.succeeded'
@@ -147,7 +158,7 @@ export type NormalizedEvent = EventBase &
         amount: number
         currency: string
         /** Cumulative refunded amount, not this refund's delta. */
-        refundedAmount: number
+        refundedAmount: number | null
       }
     | {
         type: 'payment.disputed'

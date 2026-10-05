@@ -85,3 +85,13 @@ describe('renderEmail', () => {
     expect(email.text).toContain('重置 Acme 密码')
   })
 })
+
+it('distinguishes approved refunds from verified completion in email', async () => {
+  const props = { amount: 400, currency: 'USD', note: '', supportEmail: 'support@example.test' }
+  const context = { locale: 'en', appName: APP_NAME }
+  const approved = await renderEmail('refund-update', { ...props, status: 'approved' }, context)
+  const completed = await renderEmail('refund-update', { ...props, status: 'refunded' }, context)
+  expect(approved.text).toContain('not yet confirmed')
+  expect(completed.text).toContain('provider has confirmed')
+  expect(approved.text).toContain('4.00 USD')
+})

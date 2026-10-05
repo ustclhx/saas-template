@@ -12,6 +12,7 @@ import {
   creditLedger,
   organization,
   payment,
+  paymentRefund,
   plan,
   planPrice,
   purchase,
@@ -127,6 +128,7 @@ afterEach(async () => {
   await db.delete(creditDebt).where(eq(creditDebt.workspaceId, f.ws))
   await db.delete(creditGrant).where(eq(creditGrant.workspaceId, f.ws))
   await db.delete(refundRequest).where(eq(refundRequest.workspaceId, f.ws))
+  await db.delete(paymentRefund).where(eq(paymentRefund.workspaceId, f.ws))
   await db.delete(payment).where(eq(payment.workspaceId, f.ws))
   await db.delete(purchase).where(eq(purchase.workspaceId, f.ws))
   await db.delete(subscription).where(eq(subscription.workspaceId, f.ws))
@@ -140,6 +142,44 @@ afterEach(async () => {
 })
 
 describe('billing and credit schema constraints on isolated Postgres', () => {
+  it('deduplicates refund identity across deliveries but permits a second partial refund', async () => {
+    const db = open()
+    const refund = {
+      workspaceId: f.ws,
+      paymentId: f.paymentId,
+      provider: 'stripe' as const,
+      providerRefundId: newId(),
+      amount: 100,
+      currency: 'usd',
+    }
+    await db.insert(paymentRefund).values(refund)
+    expect(await pgCode(db.insert(paymentRefund).values(refund))).toBe('23505')
+    await db.insert(paymentRefund).values({ ...refund, providerRefundId: newId() })
+    expect(await scoped(db, f.ws).count(paymentRefund)).toBe(2)
+  })
+
+  it('retains historical payment periods and rejects incomplete or reversed periods', async () => {
+    const db = open()
+    const historical = {
+      ...f.pay,
+      providerPaymentId: newId(),
+      planPriceId: f.priceId,
+      periodStart: now,
+      periodEnd,
+    }
+    await db.insert(payment).values(historical)
+    expect(
+      await pgCode(
+        db.insert(payment).values({ ...historical, providerPaymentId: newId(), periodEnd: null }),
+      ),
+    ).toBe('23514')
+    expect(
+      await pgCode(
+        db.insert(payment).values({ ...historical, providerPaymentId: newId(), periodEnd: now }),
+      ),
+    ).toBe('23514')
+  })
+
   it('blocks a second renewing subscription across all renewable statuses, allows paid-period overlap', async () => {
     const db = open()
     for (const status of ['trialing', 'active', 'past_due', 'paused'] as const) {
@@ -197,6 +237,25 @@ describe('billing and credit schema constraints on isolated Postgres', () => {
     await db.insert(creditGrant).values(grant)
     expect(await pgCode(db.insert(creditGrant).values(grant))).toBe('23505')
     await db.insert(creditGrant).values({ ...grant, sourceRef: `${f.paymentId}:1` })
+  })
+
+  it('subscription adjustments require a subscription association', async () => {
+    const db = open()
+    await db.insert(payment).values({
+      ...f.pay,
+      kind: 'adjustment',
+      providerPaymentId: newId(),
+    })
+    expect(
+      await pgCode(
+        db.insert(payment).values({
+          ...f.pay,
+          kind: 'adjustment',
+          providerPaymentId: newId(),
+          subscriptionId: null,
+        }),
+      ),
+    ).toBe('23514')
   })
 
   it('deduplicates customer, price and one-time order mappings', async () => {

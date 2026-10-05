@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { expect, type Page } from '@playwright/test'
 import type { Database } from '@saas/db'
+import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
+import { newId } from '@saas/shared'
 import { loadEnv } from 'vite'
 
 export const PASSWORD = 'correct-horse-battery'
@@ -10,13 +12,38 @@ const env = loadEnv('worktree', new URL('../../../', import.meta.url).pathname, 
 const require = createRequire(new URL('../../../packages/db/package.json', import.meta.url))
 // Never fall back to a shared checkout database.
 export function fixtureDb() {
-  if (!env.DATABASE_URL) throw new Error('E2E requires .env.worktree DATABASE_URL')
+  if (!env.DATABASE_URL || !new URL(env.DATABASE_URL).pathname.startsWith('/saas_wt_'))
+    throw new Error('E2E fixtures require an isolated worktree DATABASE_URL')
   const postgres = require('postgres') as (
     url: string,
     options: { max: number },
   ) => Database['$client']
   return postgres(env.DATABASE_URL, { max: 1 })
 }
+/** Paid-period fixture admits members without contacting a payment platform. */
+export async function seedWorkspaceSeats(slug: string) {
+  const sql = fixtureDb()
+  try {
+    const [workspace] = await sql`select id from organization where slug=${slug}`
+    if (!workspace) throw new Error('Workspace fixture is missing')
+    const planId = newId()
+    const priceId = newId()
+    const features = JSON.stringify({ ...DEFAULT_FREE_FEATURES, maxSeats: 5 })
+    await sql`insert into plan (id,key,name,type,credits,features,sort,active)
+      values (${planId},${`e2e-seats-${planId}`},'E2E seats','subscription',0,${features}::jsonb,1000,false)`
+    await sql`insert into plan_price (id,plan_id,provider,provider_price_id,interval,amount,currency,active)
+      values (${priceId},${planId},'stripe',${`e2e:${priceId}`},'month',0,'usd',false)`
+    // A canceled subscription still carries its paid period; deletion needs no remote call.
+    await sql`insert into subscription (id,workspace_id,plan_id,plan_price_id,provider,
+      provider_subscription_id,status,current_period_start,current_period_end,
+      cancel_at_period_end,canceled_at,last_event_at)
+      values (${newId()},${workspace.id},${planId},${priceId},'stripe',${`e2e:${planId}`},
+        'canceled',now(),now()+interval '1 day',true,now(),now())`
+  } finally {
+    await sql.end()
+  }
+}
+
 export async function register(page: Page, email: string, name = 'Workspace Owner') {
   await page.goto('/register')
   const form = page.getByRole('form', { name: 'Create an account' })

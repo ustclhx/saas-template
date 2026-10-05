@@ -17,6 +17,7 @@
     "@saas/config": "workspace:*",
     "@saas/db": "workspace:*",
     "@saas/email": "workspace:*",
+    "@saas/entitlements": "workspace:*",
     "@saas/shared": "workspace:*",
     "@saas/ui": "workspace:*",
     "@tanstack/react-form": "^1.33.5",
@@ -26,7 +27,9 @@
     "drizzle-orm": "^0.45.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "@saas/billing": "workspace:*",
+    "@saas/credits": "workspace:*"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.62.4",

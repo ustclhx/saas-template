@@ -27,25 +27,29 @@ export default defineConfig({
   test: {
     // postgres.js 在 workerd 中连接失败 / 断开时内部未处理的 rejection，见该函数注释
     onUnhandledError: (error) => !isPostgresSocketRejection(error),
-    projects: integration
-      ? [
-          {
-            plugins: [
-              cloudflareTest({
-                // 直接使用部署配置（Workflow、Queue consumer、Cron、Hyperdrive）；
-                // compatibility_date 受限于 vitest-pool-workers 自带的 workerd 版本
-                wrangler: { configPath: './wrangler.jsonc' },
-                miniflare: { compatibilityDate: '2026-08-01' },
-              }),
-            ],
-            test: {
-              name: 'integration',
-              include: ['test/**/*.test.ts'],
-              globalSetup: ['@saas/db/test/global-setup'],
+    projects: [
+      { test: { name: 'unit', include: ['test/**/*.unit.test.ts'] } },
+      ...(integration
+        ? [
+            {
+              plugins: [
+                cloudflareTest({
+                  // 直接使用部署配置（Workflow、Queue consumer、Cron、Hyperdrive）；
+                  // compatibility_date 受限于 vitest-pool-workers 自带的 workerd 版本
+                  wrangler: { configPath: './wrangler.jsonc' },
+                  miniflare: { compatibilityDate: '2026-08-01' },
+                }),
+              ],
+              test: {
+                name: 'integration',
+                include: ['test/**/*.test.ts'],
+                exclude: ['test/**/*.unit.test.ts'],
+                globalSetup: ['@saas/db/test/global-setup'],
+              },
             },
-          },
-        ]
-      : [],
+          ]
+        : []),
+    ],
     passWithNoTests: true,
   },
 })

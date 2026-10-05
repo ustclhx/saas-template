@@ -7,6 +7,7 @@ import {
   fixtureDb,
   PASSWORD,
   register,
+  seedWorkspaceSeats,
   simulateClientIp,
   verifyInvitation,
 } from './fixtures.ts'
@@ -140,6 +141,7 @@ test('team deletion is owner-only, blocks sole-owner account deletion and revoke
     await page.getByLabel('Workspace URL', { exact: true }).fill(slug)
     await page.getByRole('button', { name: 'Create team', exact: true }).click()
     await expect(page).toHaveURL(new RegExp(`/app/${slug}$`))
+    await seedWorkspaceSeats(slug)
     await page.goto(`/app/${slug}/settings`)
     await page.getByLabel('Invite email').fill(memberEmail)
     await page.getByRole('button', { name: 'Send invitation' }).click()

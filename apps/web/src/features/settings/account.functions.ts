@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers'
 import { requireFreshSession } from '@saas/auth'
+import { listDeletionRefundReminders } from '@saas/billing'
 import { createDb } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { redirect } from '@tanstack/react-router'
@@ -21,9 +22,23 @@ export const getAccount = createServerFn({ method: 'GET' }).handler(async () => 
   const auth = getAuth(env, db)
   try {
     const { user } = await requireFreshSession({ auth, db, headers: getRequest().headers })
+    const reminders = await listDeletionRefundReminders(
+      { db, actorUserId: user.id, workspaceIds: [user.id] },
+      templateConfig.billing.refundWindowDays,
+    )
+    const personal = await db.query.organization.findFirst({
+      where: (o, { eq }) => eq(o.id, user.id),
+      columns: { slug: true },
+    })
     return {
+      deletionRefunds: {
+        eligibleCount: reminders.eligiblePaymentIds.length,
+        pendingCount: reminders.pendingRequests.length,
+        billingHref: personal ? `/app/${personal.slug}/billing` : '/app',
+      },
       ...(await loadAccount(db, user, templateConfig)),
       supportEmail: templateConfig.app.supportEmail,
+      signupBonusCredits: templateConfig.billing.signupBonusCredits,
     }
   } catch (error) {
     if (error instanceof AppError) throw redirect({ href: ACCOUNT_LOGIN_HREF })

@@ -7,6 +7,7 @@ import {
   fixtureDb,
   login,
   loginOtp,
+  seedWorkspaceSeats,
   simulateClientIp,
   verifyInvitation,
 } from './fixtures.ts'
@@ -72,6 +73,7 @@ test('workspace creation, invitation entry and personal switching obey tenancy f
   await page.getByLabel('Workspace URL', { exact: true }).fill(`browser-${key}`)
   await page.getByRole('button', { name: 'Create team', exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/app/browser-${key}$`))
+  await seedWorkspaceSeats(`browser-${key}`)
   await page.getByRole('link', { name: 'Workspace settings' }).click()
   await page.getByLabel('Invite email').fill(`invite-${key}@example.com`)
   let invitationId = ''
