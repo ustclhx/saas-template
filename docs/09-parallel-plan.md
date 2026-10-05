@@ -31,7 +31,7 @@ P0 实现时必须遵守的约定（setup 脚本依赖它们）：
 - `infra/local/docker-compose.yml` 的容器名为 `saas-template-pg`，超级用户 `postgres`，映射宿主机 `5432`，初始化脚本创建 `app` 账号（本地密码 `app`，只有 DML）以及 `migrator`（DDL）、`readonly`（SELECT）；单库权限由 `infra/local/initdb/02-db-grants.sql` 设置，setup 脚本对每个 worktree 库执行一次。
 - `apps/web` 的 vite 配置与 `apps/{web,jobs}` 的 wrangler 本地开发配置，在 `.env.worktree` 存在时读取其中的端口与连接串，不存在时使用默认值（主 checkout）。
 
-离线 Playwright 的 dev 子进程显式清空五项支付绑定，且不复用已有服务，避免混入联通账号的配置；运行测试的父进程也不能注入支付凭据。当前离线测试不替代真实 test/sandbox 联通。
+离线 Playwright 的 dev 子进程显式清空五项支付绑定，且不复用已有服务，避免混入联通账号的配置；运行测试的父进程也不能注入支付凭据；先停止本 worktree 已有的 dev 进程，再让 Playwright 自动启动独立服务。当前离线测试不替代真实 test/sandbox 联通。
 
 ## 3. 共享文件规则
 

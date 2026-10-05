@@ -229,7 +229,7 @@ Wrangler 使用 `env.staging` / `env.production` 区分绑定与变量。
 - Orca：`.env.local` 不自动复制到子 worktree，每个 worktree 独立配置；数据库/端口仍用生成的 `.env.worktree`。
 - 线上：`.env.local` 不自动上传，分别为 web/jobs 的 staging 环境配置 Cloudflare secrets。
 
-构建/部署不执行支付同步，也不会把根 dotenv 真值注入前端代码或 Wrangler vars。Cloudflare Vite 插件会把 **已有 app `.dev.vars`** 复制到 SSR 构建目录的 `.dev.vars`，供本地 `vite preview` 使用；该文件也是被忽略的本地密钥文件，整个 `dist` 目录不应作为可公开分享的纯静态产物。`vite preview` 使用构建时的密钥快照，并非直接读取最新根 dotenv。配置详情见 [支付联通 runbook](./runbooks/p2-payment-integration.md)。
+构建/部署不执行支付同步，也不会把根 dotenv 真值注入前端代码或 Wrangler vars。Cloudflare Vite 插件会把 **已有 app `.dev.vars`** 复制到 SSR 构建目录的 `.dev.vars`，供本地 `vite preview` 使用；该文件也是被忽略的本地密钥文件，Web 的 Turbo build 排除它以防共享缓存携带本地密钥；整个 `dist` 目录不应作为可公开分享的纯静态产物。`vite preview` 使用构建时的密钥快照，并非直接读取最新根 dotenv。配置详情见 [支付联通 runbook](./runbooks/p2-payment-integration.md)。
 
 ```
 BETTER_AUTH_SECRET

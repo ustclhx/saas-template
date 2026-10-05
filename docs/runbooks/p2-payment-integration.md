@@ -39,7 +39,7 @@ chmod 600 .env.local
 
 离线 Playwright 的 dev 子进程把五项支付变量设为空，并强制启动独立服务；不会复用先前启用真实凭据的 Worker。测试父进程仍不得注入支付凭据。该套离线测试不能用于声明真实支付端到端通过。
 
-构建/部署不调用 dotenv 同步；但 Cloudflare Vite 插件会把 app 已有 `.dev.vars` 复制到 SSR 构建目录，供 `vite preview` 读取构建时快照。此文件被 Git 和前端资源忽略；不要把整个 `dist` 当作不含密钥的可分享产物。修改根 `.env.local` 后应重启 dev；只修改根文件不会更新既有 preview 快照。
+构建/部署不调用 dotenv 同步；但 Cloudflare Vite 插件会把 app 已有 `.dev.vars` 复制到 SSR 构建目录，供 `vite preview` 读取构建时快照。此文件被 Git 和前端资源忽略，Web 的 Turbo build 也不缓存该密钥快照；不要把整个 `dist` 当作不含密钥的可分享产物。修改根 `.env.local` 后应重启 dev；只修改根文件不会更新既有 preview 快照。
 
 由操作者在 Cloudflare Dashboard 分别选择 `web-staging`、`jobs-staging` → Settings → Variables and Secrets，按上表录入五个运行时名字。也可从对应 app 目录逐项执行交互式命令（值在提示中输入，不拼进命令）；例如在 `apps/web` 和 `apps/jobs` 各执行一次：
 
