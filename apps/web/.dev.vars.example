@@ -1,4 +1,5 @@
-# 本地开发密钥模板：复制为 .dev.vars（已 gitignore）后填写。这里只放假值与公开的测试值。
+# 支付五项凭据使用仓库根目录 .env.example / .env.local；不要在这里重复填写。
+# 本地认证密钥模板：复制为 .dev.vars（已 gitignore）后填写。这里只放假值与公开的测试值。
 # Better Auth 签名密钥，至少 32 个字符：openssl rand -base64 32
 BETTER_AUTH_SECRET=
 # Cloudflare 官方 Turnstile 测试 secret（始终通过）；始终失败为 2x0000000000000000000000000000000AA

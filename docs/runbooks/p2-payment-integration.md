@@ -33,9 +33,13 @@ chmod 600 .env.local
 
 `pnpm billing:seed`、`pnpm billing:sync` 自动读取根目录 `.env.local`，进程环境优先；数据库连接未填写时回退到 `.env.worktree`。同步 staging 前必须明确填写或注入目标 staging 的 app 连接，核对库名后再执行。每个 Orca worktree 单独创建自己的 `.env.local`；该文件不通过 `.worktreeinclude` 自动复制，避免把 staging 数据库连接带入开发分支。数据库和端口继续由 `.env.worktree` 隔离。
 
-`pnpm --filter @saas/web dev` 与 `pnpm --filter @saas/jobs dev` 启动时，将五个支付变量写入对应 app 已忽略的 `.dev.vars` 管理区块，供 Cloudflare 本地运行时读取；原有认证配置保留。只需维护根目录 `.env.local`，不需要手动重复填写两个 app。进程环境覆盖本地文件；留空会清除旧的管理区块值，删除 `.env.local` 后再次启动会移除该区块。构建/部署不执行此同步，也不会自动上传本地凭据。OAuth mock 与邮件 log 设置保持原配置。
+`pnpm --filter @saas/web dev` 与 `pnpm --filter @saas/jobs dev` 启动时，将五个支付变量写入对应 app 已忽略的 `.dev.vars` 管理区块，供 Cloudflare 本地运行时读取；原有认证配置保留。只需维护根目录 `.env.local`，不需要手动重复填写两个 app。进程环境覆盖本地文件；留空会清除旧的管理区块值，删除 `.env.local` 且未显式设置任何支付进程变量时，再次启动会移除该区块。构建/部署不执行此同步，也不会自动上传本地凭据。OAuth mock 与邮件 log 设置保持原配置。
 
 两 Worker 都调用 `createTestPaymentRuntime`；PayPal 还要求 `CACHE` KV。`docs/07` 中的通用 `PAYPAL_ENV` 不控制当前 P2 工厂，设置 live 不会使其变为 live。staging 仍使用下面的 Cloudflare secrets 配置入口。
+
+离线 Playwright 的 dev 子进程把五项支付变量设为空，并强制启动独立服务；不会复用先前启用真实凭据的 Worker。测试父进程仍不得注入支付凭据。该套离线测试不能用于声明真实支付端到端通过。
+
+构建/部署不调用 dotenv 同步；但 Cloudflare Vite 插件会把 app 已有 `.dev.vars` 复制到 SSR 构建目录，供 `vite preview` 读取构建时快照。此文件被 Git 和前端资源忽略；不要把整个 `dist` 当作不含密钥的可分享产物。修改根 `.env.local` 后应重启 dev；只修改根文件不会更新既有 preview 快照。
 
 由操作者在 Cloudflare Dashboard 分别选择 `web-staging`、`jobs-staging` → Settings → Variables and Secrets，按上表录入五个运行时名字。也可从对应 app 目录逐项执行交互式命令（值在提示中输入，不拼进命令）；例如在 `apps/web` 和 `apps/jobs` 各执行一次：
 

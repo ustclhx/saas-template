@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { pathToFileURL } from 'node:url'
 import { parseEnv } from 'node:util'
-import { syncLocalPaymentEnv } from './local-payment-env.mjs'
+import { paymentKeys, syncLocalPaymentEnv } from './local-payment-env.mjs'
 
 test('local payment overlay preserves auth, clears missing payment values and is removable', () => {
   const directory = mkdtempSync(join(tmpdir(), 'payment-env-'))
@@ -13,13 +13,7 @@ test('local payment overlay preserves auth, clears missing payment values and is
   const local = pathToFileURL(join(directory, '.env.local'))
   const target = join(directory, '.dev.vars')
   const environment = process.env
-  const keys = [
-    'STRIPE_SECRET_KEY',
-    'STRIPE_WEBHOOK_SECRET',
-    'PAYPAL_CLIENT_ID',
-    'PAYPAL_CLIENT_SECRET',
-    'PAYPAL_WEBHOOK_ID',
-  ]
+  const keys = paymentKeys
   const saved = Object.fromEntries(keys.map((key) => [key, environment[key]]))
   for (const key of keys) delete environment[key]
   const auth = '# existing auth\nBETTER_AUTH_SECRET="auth-with-$-and-#-characters"\n'
@@ -51,9 +45,44 @@ test('local payment overlay preserves auth, clears missing payment values and is
     )
     rmSync(local)
     syncLocalPaymentEnv(app, local)
+    assert.equal(
+      parseEnv(readFileSync(target, 'utf8')).STRIPE_SECRET_KEY,
+      'sk_test_process_override',
+    )
+    delete environment[stripeKey]
+    syncLocalPaymentEnv(app, local)
     assert.equal(readFileSync(target, 'utf8'), auth)
   } finally {
     for (const key of keys) {
+      if (saved[key] === undefined) delete environment[key]
+      else environment[key] = saved[key]
+    }
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('offline dev clears legacy payment bindings without a root dotenv file', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'payment-env-offline-'))
+  const target = join(directory, '.dev.vars')
+  const environment = process.env
+  const saved = Object.fromEntries(paymentKeys.map((key) => [key, environment[key]]))
+  const auth = 'BETTER_AUTH_SECRET=auth-fixture\n'
+  try {
+    writeFileSync(
+      target,
+      auth + paymentKeys.map((key) => `${key}=legacy-payment-fixture`).join('\n'),
+    )
+    for (const key of paymentKeys) environment[key] = ''
+    syncLocalPaymentEnv(
+      pathToFileURL(`${directory}/`),
+      pathToFileURL(join(directory, '.env.local')),
+    )
+    const output = readFileSync(target, 'utf8')
+    const bindings = parseEnv(output)
+    assert.ok(output.startsWith(auth))
+    for (const key of paymentKeys) assert.equal(bindings[key], '')
+  } finally {
+    for (const key of paymentKeys) {
       if (saved[key] === undefined) delete environment[key]
       else environment[key] = saved[key]
     }

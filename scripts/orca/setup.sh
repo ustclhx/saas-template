@@ -60,7 +60,11 @@ JOBS_INSPECTOR_PORT=$((base + 3))
 EOF
 echo "[orca-setup] 已写入 .env.worktree"
 
-# 4. 本地密钥
+# 4. 本地认证配置（支付另用各 worktree 的根 .env.local，不自动复制）
 if [[ ! -f .dev.vars && ! -f apps/web/.dev.vars ]]; then
-  echo "[orca-setup] 未找到 .dev.vars（在主 checkout 中创建后会通过 .worktreeinclude 复制到新 worktree）"
+  echo "[orca-setup] 未找到认证 .dev.vars（参照 apps/web/.dev.vars.example；主 checkout 中配置后经 .worktreeinclude 复制）"
+fi
+
+if [[ ! -f .env.local && -f .env.example ]]; then
+  echo "[orca-setup] 支付配置可按根 .env.example 自建 .env.local；勿复制 staging 连接，离线测试无需支付凭据"
 fi

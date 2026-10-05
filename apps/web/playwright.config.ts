@@ -1,9 +1,11 @@
 import { defineConfig, devices } from '@playwright/test'
 import { loadEnv } from 'vite'
+import { paymentKeys } from '../../scripts/local-payment-env.mjs'
 
 // 认证页面的 e2e（tasks.md 7.2）：在本地 `vite dev`（web）上运行；默认注册无需邮件消费者，
 // 端口取自 Orca worktree 的 .env.worktree（docs/09-parallel-plan.md §2），不存在时用默认端口。
-// 已在运行的 dev 进程直接复用；否则由 Playwright 启动，结束后只停止它自己启动的进程。
+// 离线 suite 使用独立 dev 子进程并清空支付绑定，避免读取根 dotenv 真值或复用旧 Worker。
+// 测试结束后只停止 Playwright 自己启动的进程。
 const repoRoot = new URL('../../', import.meta.url).pathname
 const worktreeEnv = loadEnv('worktree', repoRoot, '')
 const webPort = Number(worktreeEnv.WEB_PORT ?? 3000)
@@ -26,7 +28,8 @@ export default defineConfig({
     {
       command: `pnpm dev > ${quotedAuthLogPath} 2>&1`,
       url: `http://localhost:${webPort}/api/health`,
-      reuseExistingServer: true,
+      reuseExistingServer: false,
+      env: Object.fromEntries(paymentKeys.map((key) => [key, ''])),
       timeout: 120_000,
     },
   ],

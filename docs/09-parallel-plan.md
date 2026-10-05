@@ -23,12 +23,15 @@
 | 本地数据库 | 所有 worktree 共用一个本地 PG 容器 `saas-template-pg`；每个 worktree 使用独立数据库 `saas_wt_<worktree 名>`，setup 时创建、archive 时删除。主 checkout 使用 `saas_dev` |
 | 端口 | 按 worktree 名哈希分配 `20000–29990` 中一个 10 个端口的段，写入 `.env.worktree`（`WEB_PORT`、`JOBS_PORT`、两个 inspector 端口） |
 | Hyperdrive 本地连接 | `.env.worktree` 中的 `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE(_CACHED)` 指向该 worktree 的数据库（`app` 账号）；`MIGRATION_DATABASE_URL` 为同一库的 `migrator` 账号，供 drizzle-kit 使用 |
-| 本地密钥 | `.dev.vars` 只放在主 checkout，经 `.worktreeinclude` 复制到每个新 worktree |
+| 本地认证配置 | 主 checkout 的 app `.dev.vars` 经 `.worktreeinclude` 复制，认证模板为 `apps/web/.dev.vars.example` |
+| 本地支付配置 | 根 `.env.example` 提交占位符；各 worktree 自行创建被忽略的 `.env.local`，不自动复制，避免携带 staging 数据库连接。dev 入口生成/更新 app `.dev.vars` 支付区块，认证配置保留 |
 | Miniflare 状态 | `.wrangler/state` 位于各 worktree 目录内，天然隔离 |
 
 P0 实现时必须遵守的约定（setup 脚本依赖它们）：
 - `infra/local/docker-compose.yml` 的容器名为 `saas-template-pg`，超级用户 `postgres`，映射宿主机 `5432`，初始化脚本创建 `app` 账号（本地密码 `app`，只有 DML）以及 `migrator`（DDL）、`readonly`（SELECT）；单库权限由 `infra/local/initdb/02-db-grants.sql` 设置，setup 脚本对每个 worktree 库执行一次。
 - `apps/web` 的 vite 配置与 `apps/{web,jobs}` 的 wrangler 本地开发配置，在 `.env.worktree` 存在时读取其中的端口与连接串，不存在时使用默认值（主 checkout）。
+
+离线 Playwright 的 dev 子进程显式清空五项支付绑定，且不复用已有服务，避免混入联通账号的配置；运行测试的父进程也不能注入支付凭据。当前离线测试不替代真实 test/sandbox 联通。
 
 ## 3. 共享文件规则
 

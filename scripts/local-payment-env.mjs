@@ -1,7 +1,7 @@
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { parseEnv } from 'node:util'
 
-const paymentKeys = [
+export const paymentKeys = [
   'STRIPE_SECRET_KEY',
   'STRIPE_WEBHOOK_SECRET',
   'PAYPAL_CLIENT_ID',
@@ -23,8 +23,9 @@ export function syncLocalPaymentEnv(
   const original = existsSync(target) ? readFileSync(target, 'utf8') : ''
   const unmanaged = original.replace(managedBlock, '')
   let next = unmanaged
-  if (existsSync(localFile)) {
-    const local = parseEnv(readFileSync(localFile, 'utf8'))
+  const hasLocalFile = existsSync(localFile)
+  if (hasLocalFile || paymentKeys.some((key) => process.env[key] !== undefined)) {
+    const local = hasLocalFile ? parseEnv(readFileSync(localFile, 'utf8')) : {}
     const bindings = paymentKeys.map((key) => {
       const value = process.env[key] ?? local[key] ?? ''
       return `${key}=${JSON.stringify(value)}`

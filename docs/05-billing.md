@@ -322,6 +322,6 @@ INSERT INTO credit_hold (...), credit_hold_allocation (...);
 - Jobs：每小时过期和年付发放，每 10 分钟预扣回收框架、回调通知恢复、订阅补偿及退款邮件恢复，每日订阅/积分对账与联系邮箱清理。未注册的 AI 预扣处理器明确告警并保留预扣，P3/P4 注册相应处理器。
 - 队列：web 为 EVENTS_QUEUE producer，jobs 消费 events（staging 为 events-staging），仅发送持久化回调 UUID，不传原始载荷或支付密钥。失败重试和 Cron 从库恢复不重新入账。
 
-`pnpm billing:seed` 只写当前数据库的示例套餐，未同步价格保持 inactive。示例金额与积分量并非最终商业定价；AI 模型价格仍由 P3 定义。`pnpm billing:sync` 要求显式 `BILLING_SYNC_MODE=test`、Stripe 测试凭据与 PayPal 沙箱凭据，仅在下一联通阶段执行。Web/Jobs 的运行时凭据与同步脚本的环境变量名见各脚本；密钥不进入模板配置、Git 或日志。
+`pnpm billing:seed` 只写当前数据库的示例套餐，未同步价格保持 inactive。示例金额与积分量并非最终商业定价；AI 模型价格仍由 P3 定义。`pnpm billing:sync` 要求显式 `BILLING_SYNC_MODE=test`、Stripe 测试凭据与 PayPal 沙箱凭据，仅在下一联通阶段执行。Web/Jobs 与同步脚本共用根目录 `.env.local` 的五项支付变量名，参照已提交的 `.env.example`；`seed` / `sync` 自动读取该文件，进程环境优先、未指定数据库时回退到 `.env.worktree`。本地 dev 入口生成 app `.dev.vars` 支付管理区块，线上仍使用 Cloudflare secrets。离线 Playwright 会清空五项支付绑定并启动独立服务，不使用真实支付凭据。密钥不进入模板配置、Git 或日志；完整配置与联通步骤见 [支付联通 runbook](./runbooks/p2-payment-integration.md)。
 
 下一联通阶段才完成：两平台价格同步及幂等复验、真实回调录制并核对事件映射、Stripe 测试卡/测试时钟与 PayPal 沙箱订阅/购买/退款、staging 迁移/队列资源/部署和对账。OpenSpec 的 1.3、3.2、3.3、10.1、10.4、11.1 在这些条件满足前保持未勾选。

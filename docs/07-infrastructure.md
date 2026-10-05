@@ -219,7 +219,18 @@ Wrangler 使用 `env.staging` / `env.production` 区分绑定与变量。
 
 ## 4. 环境变量与绑定清单
 
-### Secrets（`wrangler secret put`，本地放 `.dev.vars`）
+### Secrets（线上 Wrangler secrets；本地支付 `.env.local`）
+
+本地支付入口是根目录 `.env.example` / `.env.local`：提交的模板仅含键和占位符，本地文件放真值且已 gitignore。当前只加载 Stripe/PayPal 五项支付凭据、billing CLI 的 test 开关与可选数据库连接。
+
+- Web / Jobs：通过 `pnpm dev` 或 app 的 `dev` 脚本启动时，把五项支付变量同步到该 app 的 `.dev.vars` 管理区块；进程环境优先，原有认证配置保留。直接调用 `wrangler dev` 会绕过此同步，应使用项目脚本。
+- billing seed / sync：Node 内置 dotenv 入口读取根 `.env.local`，共用同样的支付变量名；显式进程环境优先，空数据库值回退到 `.env.worktree`。同步 staging 时须明确指定 staging app 连接并核对库名。
+- 认证：仍按 `apps/web/.dev.vars.example` 配置 app `.dev.vars`，OAuth mock 与邮件 log 保持原配置；下方未来 AI 等密钥清单不代表根 dotenv 入口已支持这些功能。
+- Orca：`.env.local` 不自动复制到子 worktree，每个 worktree 独立配置；数据库/端口仍用生成的 `.env.worktree`。
+- 线上：`.env.local` 不自动上传，分别为 web/jobs 的 staging 环境配置 Cloudflare secrets。
+
+构建/部署不执行支付同步，也不会把根 dotenv 真值注入前端代码或 Wrangler vars。Cloudflare Vite 插件会把 **已有 app `.dev.vars`** 复制到 SSR 构建目录的 `.dev.vars`，供本地 `vite preview` 使用；该文件也是被忽略的本地密钥文件，整个 `dist` 目录不应作为可公开分享的纯静态产物。`vite preview` 使用构建时的密钥快照，并非直接读取最新根 dotenv。配置详情见 [支付联通 runbook](./runbooks/p2-payment-integration.md)。
+
 ```
 BETTER_AUTH_SECRET
 GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
@@ -239,7 +250,7 @@ SENTRY_DSN
 ### Vars（非敏感）
 ```
 APP_URL
-PAYPAL_ENV=sandbox|live
+PAYPAL_ENV=sandbox|live          # 规划项；当前 P2 工厂固定 sandbox，不读取该变量
 AI_GATEWAY_ACCOUNT_ID / AI_GATEWAY_ID
 R2_ACCOUNT_ID / R2_FILES_BUCKET   # 拼接 S3 兼容端点
 TURNSTILE_SITE_KEY(前端公开)
@@ -282,7 +293,7 @@ tag:   数据库迁移(production) → wrangler deploy (jobs 先于 web) → 冒
 ## 6. 安全清单
 
 - 所有 Webhook 验签；回调 URL 带 HMAC；验签失败记录并告警。
-- Secrets 只存 Wrangler secrets，不进代码仓库；`.dev.vars` 加入 `.gitignore`。
+- 线上 Secrets 存 Wrangler secrets；本地真值文件 `.env.local`、app `.dev.vars` 与 SSR 预览 `.dev.vars` 均被忽略，不进 Git、前端资源或公开日志。只提交不含真值的 `.env.example` / `.dev.vars.example`。
 - Turnstile + Rate Limiting 保护认证与 AI 接口。
 - R2 桶不公开；下载经鉴权签发短期 URL。
 - 服务端下载外部 URL 时限制域名白名单、大小与超时（防 SSRF）。
