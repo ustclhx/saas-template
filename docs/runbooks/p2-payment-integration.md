@@ -18,11 +18,24 @@
 | web、jobs 运行时 | `STRIPE_WEBHOOK_SECRET` | staging Stripe endpoint 的 `whsec_…`；不是 CLI 本地 listener secret |
 | web、jobs 运行时 | `PAYPAL_CLIENT_ID`、`PAYPAL_CLIENT_SECRET` | sandbox REST App；工厂固定 sandbox |
 | web、jobs 运行时 | `PAYPAL_WEBHOOK_ID` | 同一 App、同一 staging URL 的已注册 Webhook ID，不是事件 ID |
-| 本机 sync CLI | `BILLING_SYNC_MODE=test`、`STRIPE_TEST_SECRET_KEY` | 测试开关与同一 Stripe 测试环境的 secret key |
-| 本机 sync CLI | `PAYPAL_SANDBOX_CLIENT_ID`、`PAYPAL_SANDBOX_CLIENT_SECRET` | 同一 PayPal sandbox App；CLI 不要求 Webhook ID |
+| 本机 sync CLI | `BILLING_SYNC_MODE=test`、`STRIPE_SECRET_KEY` | 测试开关与同一 Stripe 测试环境的 secret key |
+| 本机 sync CLI | `PAYPAL_CLIENT_ID`、`PAYPAL_CLIENT_SECRET` | 同一 PayPal sandbox App；CLI 不要求 Webhook ID |
 | 本机 seed / sync CLI | `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` | 直连目标 staging 的 **app** DML 连接，不能误用本 worktree 开发库或生产库 |
 
-运行时和 CLI 的名字不同，不能只设置其中一组。两 Worker 都调用 `createTestPaymentRuntime`；PayPal 还要求 `CACHE` KV。`docs/07` 中的通用 `PAYPAL_ENV` 不控制当前 P2 工厂，设置 live 不会使其变为 live。同步脚本通过 `readLocalEnv` 先读进程环境、后读 `.env.worktree`，不自动读 Worker `.dev.vars`；秘密通过本机秘密管理器注入进程环境，勿写入 worktree 配置。
+运行时和 CLI 共用同一套支付变量名。在仓库根目录复制模板后，只在本地文件填入真值：
+
+```sh
+cp .env.example .env.local
+chmod 600 .env.local
+```
+
+根目录 [.env.example](../../.env.example) 只含键和空占位符；`.env.local` 已被 `.gitignore` 忽略。填写五个支付变量，保留 `BILLING_SYNC_MODE=test`。无需 Stripe publishable key：当前结账使用服务端创建的托管 Checkout。PayPal 买家密码只用于沙箱登录，不填入 Worker 配置。Webhook secret / ID 必须对应实际接收 URL：本地 Stripe CLI listener 的 secret 与 staging endpoint 的 secret 不能混用。
+
+`pnpm billing:seed`、`pnpm billing:sync` 自动读取根目录 `.env.local`，进程环境优先；数据库连接未填写时回退到 `.env.worktree`。同步 staging 前必须明确填写或注入目标 staging 的 app 连接，核对库名后再执行。每个 Orca worktree 单独创建自己的 `.env.local`；该文件不通过 `.worktreeinclude` 自动复制，避免把 staging 数据库连接带入开发分支。数据库和端口继续由 `.env.worktree` 隔离。
+
+`pnpm --filter @saas/web dev` 与 `pnpm --filter @saas/jobs dev` 启动时，将五个支付变量写入对应 app 已忽略的 `.dev.vars` 管理区块，供 Cloudflare 本地运行时读取；原有认证配置保留。只需维护根目录 `.env.local`，不需要手动重复填写两个 app。进程环境覆盖本地文件；留空会清除旧的管理区块值，删除 `.env.local` 后再次启动会移除该区块。构建/部署不执行此同步，也不会自动上传本地凭据。OAuth mock 与邮件 log 设置保持原配置。
+
+两 Worker 都调用 `createTestPaymentRuntime`；PayPal 还要求 `CACHE` KV。`docs/07` 中的通用 `PAYPAL_ENV` 不控制当前 P2 工厂，设置 live 不会使其变为 live。staging 仍使用下面的 Cloudflare secrets 配置入口。
 
 由操作者在 Cloudflare Dashboard 分别选择 `web-staging`、`jobs-staging` → Settings → Variables and Secrets，按上表录入五个运行时名字。也可从对应 app 目录逐项执行交互式命令（值在提示中输入，不拼进命令）；例如在 `apps/web` 和 `apps/jobs` 各执行一次：
 
@@ -97,7 +110,7 @@ CUSTOMER.DISPUTE.CREATED
 
 ## 4. 价格同步与幂等复验（1.3）
 
-先用已授权的连接核对 `current_database()` / `current_user` 是目标 staging / app，并保存原报价快照。以下命令在仓库根目录执行，前提是上述 CLI 环境变量已通过安全方式注入；本 runbook 没有执行它们：
+先用已授权的连接核对 `current_database()` / `current_user` 是目标 staging / app，并保存原报价快照。以下命令在仓库根目录执行，前提是上述 CLI 变量已在根目录 `.env.local` 配置，或通过安全方式注入进程环境；本 runbook 没有执行它们：
 
 ```sh
 # 当前 staging 已 seed；仅重建验收库时才需这一条。

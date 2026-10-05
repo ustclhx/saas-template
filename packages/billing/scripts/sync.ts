@@ -8,9 +8,9 @@ import { createStripeProvider } from '../src/stripe/adapter.ts'
 // This CLI has no production/live path. Credentials are supplied only at the later gate.
 if (readLocalEnv('BILLING_SYNC_MODE') !== 'test')
   throw new Error('BILLING_SYNC_MODE=test is required; live/production sync is forbidden')
-const secretKey = readLocalEnv('STRIPE_TEST_SECRET_KEY')
-const clientId = readLocalEnv('PAYPAL_SANDBOX_CLIENT_ID')
-const clientSecret = readLocalEnv('PAYPAL_SANDBOX_CLIENT_SECRET')
+const secretKey = readLocalEnv('STRIPE_SECRET_KEY')
+const clientId = readLocalEnv('PAYPAL_CLIENT_ID')
+const clientSecret = readLocalEnv('PAYPAL_CLIENT_SECRET')
 if (!secretKey?.startsWith('sk_test_') || !clientId || !clientSecret)
   throw new Error('Explicit Stripe test and PayPal sandbox credentials are required')
 const url = readLocalEnv('CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE')

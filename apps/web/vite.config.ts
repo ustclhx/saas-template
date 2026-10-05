@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import { defineConfig, loadEnv } from 'vite'
+import { syncLocalPaymentEnv } from '../../scripts/local-payment-env.mjs'
 
 const repoRoot = new URL('../../', import.meta.url).pathname
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
@@ -23,22 +24,25 @@ for (const binding of ['HYPERDRIVE', 'HYPERDRIVE_CACHED']) {
   if (value && !process.env[name]) process.env[name] = value
 }
 
-export default defineConfig(({ command }) => ({
-  server: { port, strictPort: true },
-  preview: { port, strictPort: true },
-  define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
-  },
-  plugins: [
-    // SSR 由 workerd 执行：Cloudflare 插件接管 Vite 的 ssr 环境
-    cloudflare({
-      viteEnvironment: { name: 'ssr' },
-      inspectorPort,
-      // 本地开发时 Better Auth 的 baseURL 跟随实际端口（worktree 各不相同）；构建产物沿用 wrangler.jsonc
-      ...(command === 'serve' && { config: { vars: { APP_URL: `http://localhost:${port}` } } }),
-    }),
-    tailwindcss(),
-    tanstackStart(),
-    viteReact(),
-  ],
-}))
+export default defineConfig(({ command }) => {
+  if (command === 'serve') syncLocalPaymentEnv(new URL('./', import.meta.url))
+  return {
+    server: { port, strictPort: true },
+    preview: { port, strictPort: true },
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version),
+    },
+    plugins: [
+      // SSR 由 workerd 执行：Cloudflare 插件接管 Vite 的 ssr 环境
+      cloudflare({
+        viteEnvironment: { name: 'ssr' },
+        inspectorPort,
+        // 本地开发时 Better Auth 的 baseURL 跟随实际端口（worktree 各不相同）；构建产物沿用 wrangler.jsonc
+        ...(command === 'serve' && { config: { vars: { APP_URL: `http://localhost:${port}` } } }),
+      }),
+      tailwindcss(),
+      tanstackStart(),
+      viteReact(),
+    ],
+  }
+})
