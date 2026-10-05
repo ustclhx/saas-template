@@ -58,6 +58,8 @@
 
 **开发进度（2026-10-04）**：OpenSpec 已验收 28/34。数据模型、积分账本与不变式、Stripe/PayPal 离线适配器、Webhook 事务管线及后台重放、结账/换套餐/并发补偿、退款与删除钩子、权益/席位、验证赠送和 Jobs 均已实现。客户与最小后台页面的离线浏览器组合验收已通过；真实支付平台尚未联通。按授权继续保持 OAuth mock、邮件 log，Stripe/PayPal 凭据为空；平台价格同步、回调录制、测试卡支付及 staging 验收留到开发全部完成后的联通阶段。
 
+**联通进度（2026-10-05）**：PR #24 已合并、main CI 通过；staging 已应用 0002–0007、初始化测试报价目录、创建事件队列并按 jobs → web 发布，健康检查和无凭据支付入口验证通过。两个平台的支付凭据尚待提供，10 条报价仍未同步且 inactive，未进行真实支付或回调验收；OpenSpec 仍为 28/34，详见 `runbooks/p2-staging-preparation.md` 与 `runbooks/p2-payment-integration.md`。
+
 - [ ] `plan` / `plan_price` 种子数据与同步脚本（Stripe、PayPal）
 - [x] `packages/credits`：grant / hold / capture / release / expire，含并发测试
 - [ ] Stripe Provider：订阅 + 积分包 Checkout、Webhook、Portal
