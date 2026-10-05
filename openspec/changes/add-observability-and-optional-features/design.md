@@ -23,7 +23,7 @@
 4. **内部通知**：`EVENTS_QUEUE` 消费者把指定事件格式化后发到 Telegram Bot API 或 Discord Webhook（`setting` 表配置渠道），失败由队列重试，最终失败只记日志。
 5. **公开 API**：Better Auth `apiKey` 插件，Key 的 metadata 记录 workspaceId；`/api/v1` 中间件把 Key 解析为与站内相同的 `{ workspace, member }` 上下文（member 取创建者），然后调用与站内同一个对话 / 任务服务函数。流式响应转换为 OpenAI SSE 格式。
 6. **Newsletter 存储**：新增 `newsletter_subscriber`（email、status、confirm_token、confirmed_at、unsubscribed_at）；确认与退订链接使用签名令牌；可选同步到 Resend Audiences。
-7. **创建脚本**：Node 脚本（`scripts/create-project`），交互式输入后复制工作树（排除 `.git`、`.dev.vars`、`openspec/changes/`、`node_modules`），替换占位符，生成配置与 `.dev.vars.example`，最后运行 typecheck 与单元测试自检。
+7. **创建脚本**：Node 脚本（`scripts/create-project`），交互式输入后复制工作树（排除 `.git`、`openspec/changes/`、`node_modules`，以及根目录与各子目录的 `.env.local`、`.env.worktree`、`.dev.vars` 真值文件），替换占位符，生成配置、根目录 `.env.example` 与 app 认证用 `.dev.vars.example`；配置模板只含键名、占位符或非敏感默认值，不从本地真值文件生成。最后运行 typecheck 与单元测试自检。
 
 ## Risks / Trade-offs
 

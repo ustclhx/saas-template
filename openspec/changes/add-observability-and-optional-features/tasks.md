@@ -27,7 +27,7 @@
 ## 5. 项目约定与创建脚本
 
 - [ ] 5.1 编写根目录 `CLAUDE.md` 与 `AGENTS.md`（模块职责、依赖方向、编码约定、常用命令、OpenSpec 工作流），验证文档中列出的命令都能执行成功
-- [ ] 5.2 实现 `scripts/create-project`（交互输入、复制并排除 `.git` / `.dev.vars` / `openspec/changes` / `node_modules`、替换占位符、生成配置与 `.dev.vars.example`、输出基础设施与密钥清单），验证在临时目录生成的项目中不含模板原名称且 typecheck 与单元测试通过
+- [ ] 5.2 实现 `scripts/create-project`（交互输入、复制并排除 `.git` / `openspec/changes` / `node_modules` 及根目录与各子目录的 `.env.local` / `.env.worktree` / `.dev.vars` 真值文件、替换占位符、生成配置及无真值的根目录 `.env.example` 与 app 认证用 `.dev.vars.example`、输出基础设施与密钥清单），验证模板存在上述本地文件时生成项目不包含这些文件及其真值，保留的配置模板只含键名、占位符或非敏感默认值，项目不含模板原名称且 typecheck 与单元测试通过
 - [ ] 5.3 更新 `docs/08-roadmap.md` 中 Q3 的决定与 `docs/README.md` 的状态说明，验证文档与实现一致
 
 ## 6. 阶段验收
