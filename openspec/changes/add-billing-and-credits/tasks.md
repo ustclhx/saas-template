@@ -1,6 +1,8 @@
 # Tasks
 
-执行约束（2026-10-04）：先完成开发，再配置 Stripe 测试与 PayPal 沙箱凭据。Provider 与管线先用本地测试夹具/模拟 HTTP 验证，禁止请求真实平台或写入真实 secrets。真实回调录制、平台价格同步、真实支付 e2e 与 staging 验收留到联通阶段；未满足原任务全部验收条件时保持未勾选，并记录已完成实现与剩余验证。
+离线开发约束（2026-10-04）：先完成开发，再配置 Stripe 测试与 PayPal 沙箱凭据。Provider 与管线先用本地测试夹具/模拟 HTTP 验证，禁止请求真实平台或写入真实 secrets。真实回调录制、平台价格同步、真实支付 e2e 与 staging 验收留到联通阶段；未满足原任务全部验收条件时保持未勾选，并记录已完成实现与剩余验证。
+
+联通阶段（2026-10-05）：用户已授权进入 Stripe 测试模式 / PayPal 沙箱联通；PR #24 已合并，staging 迁移、报价种子、事件队列和 jobs → web 发布已完成。当前支付凭据尚待提供，未执行平台价格同步、真实付款或回调录制；六项待办保持未勾选。只使用测试/沙箱，不配置 live/production；OAuth 与邮件继续 mock/log。部署证据见 `docs/runbooks/p2-staging-preparation.md`，执行步骤见 `docs/runbooks/p2-payment-integration.md`。
 
 ## 1. 数据模型与种子数据
 
@@ -69,4 +71,4 @@
 
 - [ ] 11.1 在 staging 用 Stripe 测试时钟与 PayPal 沙箱走完：月付与年付订阅、续费、取消、换套餐重叠期、积分包购买、退款申请与平台退款；重复投递回调，验证积分不重复发放、无负余额、对账不变式成立
 
-离线验收记录见 `docs/runbooks/p2-offline-acceptance.md`。剩余六项在真实支付联通阶段完成，当前不配置凭据、不请求真实平台、不部署 P2 staging。
+离线验收记录见 `docs/runbooks/p2-offline-acceptance.md`。剩余六项在真实支付联通阶段完成，离线验收时未配置凭据、请求真实平台或部署 P2 staging；2026-10-05 已进入上述联通阶段。
