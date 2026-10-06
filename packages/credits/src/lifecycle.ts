@@ -1,7 +1,8 @@
-import { creditGrant, creditLedger, type Database, payment } from '@saas/db'
+import { creditGrant, creditLedger, payment } from '@saas/db'
 import { and, eq, lte, type SQL, sql } from 'drizzle-orm'
 import {
   CreditsError,
+  type CreditsExecutor,
   type CreditsTransaction,
   lockWorkspaceCredits,
   withCreditsTransaction,
@@ -42,7 +43,7 @@ async function cancelGrants(
 
 /** Marks elapsed active grants expired, including fully reserved/consumed grants. */
 export async function expireWorkspaceCredits(
-  db: Database,
+  db: CreditsExecutor,
   workspaceId: string,
   tx?: CreditsTransaction,
   now?: Date,
@@ -61,7 +62,7 @@ export interface RevokePaymentCreditsInput {
 
 /** Covers every linked monthly grant already present, without chasing consumed credits. */
 export async function revokePaymentCredits(
-  db: Database,
+  db: CreditsExecutor,
   input: RevokePaymentCreditsInput,
   tx?: CreditsTransaction,
 ) {
@@ -83,7 +84,7 @@ export async function revokePaymentCredits(
 
 /** Deletion prerequisite: cancel all active grants, preserving holds and existing debt. */
 export async function revokeWorkspaceCredits(
-  db: Database,
+  db: CreditsExecutor,
   workspaceId: string,
   tx?: CreditsTransaction,
 ) {

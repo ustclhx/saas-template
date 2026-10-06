@@ -113,6 +113,7 @@ export function createBillingDeletionStep(options: BillingDeletionOptions): Dele
       const version = prepared.get(context)
       if (version === undefined) retry()
       // Wrap the caller's raw transaction; never start or replace a transaction here.
+      // Cast kept: drizzle() over TransactionSql types as a database, not PgTransaction, so pass it as credits' explicit tx.
       const tx = drizzle(
         Object.assign(client, {
           options: context.db.$client.options,
