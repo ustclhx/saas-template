@@ -1,5 +1,7 @@
+import { themeInitScript } from '@saas/ui'
 import { createRootRoute, HeadContent, Outlet, Scripts } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
+import { ThemeToggle } from '../features/theme/theme-toggle.tsx'
 import { getLocale } from '../paraglide/runtime.js'
 import appCss from '../styles/app.css?url'
 
@@ -12,6 +14,8 @@ export const Route = createRootRoute({
     ],
     // 全局样式（Tailwind + @saas/ui 主题），SSR 输出的 <head> 中直接引用，避免首屏无样式闪烁
     links: [{ rel: 'stylesheet', href: appCss }],
+    // 首屏前按偏好（未设置时跟随系统）给 <html> 设置 dark 类：<head> 内同步执行，避免刷新时先浅后深的闪烁
+    scripts: [{ children: themeInitScript() }],
   }),
   component: RootComponent,
 })
@@ -26,12 +30,14 @@ function RootComponent() {
 
 function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang={getLocale()}>
+    // 主题类名由下方内联脚本在水合前写到 <html> 上，与服务端输出不一致属预期
+    <html lang={getLocale()} suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
       <body>
         {children}
+        <ThemeToggle className="fixed right-4 bottom-4" />
         <Scripts />
       </body>
     </html>

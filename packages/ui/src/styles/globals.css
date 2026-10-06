@@ -1,7 +1,8 @@
 /*
  * @saas/ui 的全局样式：Tailwind CSS v4 + shadcn/ui 主题变量（neutral 基色）。
  * 应用在自己的入口 CSS 中 `@import "@saas/ui/globals.css";`，再用 `@source` 声明应用自身的源码目录。
- * 暗色模式：给 <html> 加 `dark` 类即切换到 `.dark` 中的变量；切换功能在 P6（add-marketing-i18n-seo）实现。
+ * 暗色模式：给 <html> 加 `dark` 类即切换到 `.dark` 中的变量，由 components/theme.tsx 的内联脚本与 ThemeToggle 切换。
+ * 新站点只需改这里的变量即可换主题；组件中不写死颜色。
  */
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -11,7 +12,9 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* color-scheme 让原生控件（select、滚动条等）跟随主题 */
 :root {
+  color-scheme: light;
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -35,6 +38,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
