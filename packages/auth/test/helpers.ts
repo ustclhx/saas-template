@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers'
 import { defineTemplateConfig, type TemplateConfigInput } from '@saas/config'
 import { createDb, type Database } from '@saas/db'
 import { newId } from '@saas/shared'
-import { vi } from 'vitest'
+import { onTestFinished, vi } from 'vitest'
 import { type AuthEmail, type AuthEnv, createAuth } from '../src/index.ts'
 import { TURNSTILE_SITEVERIFY_URL, TURNSTILE_TOKEN_HEADER } from '../src/protection.ts'
 
@@ -46,6 +46,21 @@ export function mockTurnstile() {
       success ? { success: true } : { success: false, 'error-codes': ['invalid-input-response'] },
     )
   })
+}
+
+/**
+ * 静音当前测试中预期出现的错误日志（Better Auth 的 ERROR 日志、better-call 的 SERVER_ERROR）。
+ * 只吞掉与任一 pattern 匹配的 `console.error`，其他错误照常输出，不会掩盖非预期错误；
+ * 不改变生产代码的日志行为。spy 在当前测试结束时还原。
+ */
+export function silenceExpectedErrors(...patterns: RegExp[]) {
+  const original = console.error
+  const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+    const text = args.map((a) => (a instanceof Error ? `${a.name}: ${a.message}` : String(a)))
+    if (!patterns.some((p) => p.test(text.join(' ')))) original(...args)
+  })
+  onTestFinished(() => spy.mockRestore())
+  return spy
 }
 
 /** 每个测试文件一个邮箱域名，结束时按域名清理 */
