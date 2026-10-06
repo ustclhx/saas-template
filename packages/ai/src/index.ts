@@ -12,3 +12,4 @@ export {
   type PricingErrorCode,
   parsePricing,
 } from './pricing.ts'
+export * from './text/index.ts'

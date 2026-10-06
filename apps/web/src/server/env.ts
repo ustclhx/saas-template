@@ -18,6 +18,7 @@ export const webEnvSchema = envSchema.extend({
   EMAIL_QUEUE: bindingWith<Cloudflare.Env['EMAIL_QUEUE']>('send'),
   CACHE: bindingWith<Cloudflare.Env['CACHE']>('get', 'put', 'delete'),
   RL_AUTH: bindingWith<Cloudflare.Env['RL_AUTH']>('limit'),
+  RL_AI: bindingWith<Cloudflare.Env['RL_AI']>('limit'),
 })
 
 /**

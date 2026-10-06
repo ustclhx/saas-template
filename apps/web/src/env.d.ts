@@ -18,6 +18,8 @@ declare namespace Cloudflare {
     CACHE: KVNamespace
     /** Rate Limiting：认证入口按 IP + 邮箱限流（packages/auth/src/protection.ts） */
     RL_AUTH: RateLimit
+    /** Rate Limiting：AI 接口按空间 + 用户限流（features/ai/chat.ts），只用于防刷 */
+    RL_AI: RateLimit
     /** 站点地址（vars；`vite dev` 时由 vite.config.ts 按端口覆盖） */
     APP_URL: string
     /** Turnstile site key（vars，前端公开）；模板配置启用 Turnstile 时必填 */
@@ -29,5 +31,9 @@ declare namespace Cloudflare {
     GOOGLE_CLIENT_SECRET?: string
     GITHUB_CLIENT_ID?: string
     GITHUB_CLIENT_SECRET?: string
+    /** AI Gateway 端点与鉴权（@saas/ai 的 TextModelEnv），由模型工厂读取 */
+    AI_GATEWAY_ACCOUNT_ID?: string
+    AI_GATEWAY_ID?: string
+    AI_GATEWAY_TOKEN?: string
   }
 }

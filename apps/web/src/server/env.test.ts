@@ -12,6 +12,7 @@ function completeEnv() {
     EMAIL_QUEUE: { send: fn },
     CACHE: { get: fn, put: fn, delete: fn },
     RL_AUTH: { limit: fn },
+    RL_AI: { limit: fn },
     APP_URL: 'http://localhost:3000',
     BETTER_AUTH_SECRET: 'x'.repeat(32),
     TURNSTILE_SECRET_KEY: 'turnstile-secret',
@@ -84,6 +85,7 @@ describe('checkEnv（请求入口的环境校验）', () => {
     const {
       CACHE: _c,
       RL_AUTH: _r,
+      RL_AI: _a,
       BETTER_AUTH_SECRET: _s,
       GITHUB_CLIENT_SECRET: _g,
       TURNSTILE_SITE_KEY: _k,
@@ -98,6 +100,7 @@ describe('checkEnv（请求入口的环境校验）', () => {
         'BETTER_AUTH_SECRET',
         'CACHE',
         'GITHUB_CLIENT_SECRET',
+        'RL_AI',
         'RL_AUTH',
         'TURNSTILE_SITE_KEY',
       ],
