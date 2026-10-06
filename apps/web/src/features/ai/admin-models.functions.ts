@@ -1,0 +1,135 @@
+import { env } from 'cloudflare:workers'
+import { defaultPricing, invalidateModelCache, modelValues, PricingError } from '@saas/ai'
+import { aiModel, auditLog } from '@saas/db'
+import { AppError } from '@saas/shared'
+import { createServerFn } from '@tanstack/react-start'
+import { asc, eq } from 'drizzle-orm'
+import { z } from 'zod'
+import { templateConfig } from '../../server/template-config.ts'
+import { adminMiddleware } from '../admin/admin.functions.ts'
+
+// 后台最小模型编辑（tasks.md 1.4）：新增、编辑价格与计费方式、启用 / 停用。
+// 计费方式由 @saas/ai 的 parsePricing 校验（按次文本模型缺 token 上限时拒绝保存）；
+// 保存后使 KV 中的模型列表缓存失效，并写 audit_log。
+
+const kinds = ['text', 'image', 'video'] as const
+
+const modelInput = z.object({
+  key: z
+    .string()
+    .trim()
+    .regex(/^[a-z0-9][a-z0-9._-]{0,63}$/),
+  kind: z.enum(kinds),
+  provider: z.string().trim().min(1).max(64),
+  providerModelId: z.string().trim().min(1).max(200),
+  pricing: z.unknown(),
+  tags: z.array(z.string().trim().max(64)).max(50),
+  enabled: z.boolean(),
+  sort: z.number().int().min(-1_000_000).max(1_000_000),
+})
+
+type Json = string | number | boolean | null | Json[] | { [key: string]: Json }
+
+type Result = { ok: true; id: string } | { ok: false; error: string }
+
+/** 违反唯一约束（重复的模型 key）：postgres.js 的错误经 drizzle 包装后在 cause 中 */
+function isUniqueViolation(error: unknown): boolean {
+  const cause = (error as { cause?: { code?: string } }).cause
+  return cause?.code === '23505'
+}
+
+async function safe(action: () => Promise<string>): Promise<Result> {
+  try {
+    const id = await action()
+    await invalidateModelCache(env.CACHE)
+    return { ok: true, id }
+  } catch (error) {
+    if (error instanceof PricingError) return { ok: false, error: error.code }
+    if (error instanceof AppError) return { ok: false, error: error.code }
+    if (isUniqueViolation(error)) return { ok: false, error: 'MODEL_KEY_TAKEN' }
+    throw error
+  }
+}
+
+export const getAdminModels = createServerFn({ method: 'GET' })
+  .middleware([adminMiddleware])
+  .handler(async ({ context }) => {
+    const rows = await context.db
+      .select({
+        id: aiModel.id,
+        key: aiModel.key,
+        kind: aiModel.kind,
+        provider: aiModel.provider,
+        providerModelId: aiModel.providerModelId,
+        pricing: aiModel.pricing,
+        tags: aiModel.minPlanFeatures,
+        enabled: aiModel.enabled,
+        sort: aiModel.sort,
+      })
+      .from(aiModel)
+      .orderBy(asc(aiModel.sort), asc(aiModel.key))
+    const modes = templateConfig.ai.defaultPricingMode
+    return {
+      // pricing 列来自 JSON，按 JSON 类型返回给页面
+      models: rows.map((row) => ({ ...row, pricing: row.pricing as { [key: string]: Json } })),
+      defaults: Object.fromEntries(kinds.map((kind) => [kind, defaultPricing(kind, modes)])),
+    }
+  })
+
+export const saveAdminModel = createServerFn({ method: 'POST' })
+  .middleware([adminMiddleware])
+  .inputValidator(modelInput.extend({ id: z.uuid().optional() }))
+  .handler(({ context, data }) =>
+    safe(() =>
+      context.db.transaction(async (tx) => {
+        const values = modelValues(data)
+        const [saved] = data.id
+          ? await tx.update(aiModel).set(values).where(eq(aiModel.id, data.id)).returning()
+          : await tx.insert(aiModel).values(values).returning()
+        if (!saved) throw new AppError('NOT_FOUND', 'Model not found', { status: 404 })
+        await tx
+          // biome-ignore lint/plugin: Platform-admin model audit has no workspace.
+          .insert(auditLog)
+          .values({
+            actorUserId: context.admin.id,
+            action: data.id ? 'ai.model_updated' : 'ai.model_created',
+            targetType: 'ai_model',
+            targetId: saved.id,
+            meta: {
+              key: saved.key,
+              kind: saved.kind,
+              pricing: saved.pricing,
+              enabled: saved.enabled,
+            },
+          })
+        return saved.id
+      }),
+    ),
+  )
+
+export const setAdminModelEnabled = createServerFn({ method: 'POST' })
+  .middleware([adminMiddleware])
+  .inputValidator(z.object({ id: z.uuid(), enabled: z.boolean() }))
+  .handler(({ context, data }) =>
+    safe(() =>
+      context.db.transaction(async (tx) => {
+        const [saved] = await tx
+          .update(aiModel)
+          .set({ enabled: data.enabled })
+          .where(eq(aiModel.id, data.id))
+          .returning({ id: aiModel.id, key: aiModel.key })
+        if (!saved) throw new AppError('NOT_FOUND', 'Model not found', { status: 404 })
+        await tx
+          // biome-ignore lint/plugin: Platform-admin model audit has no workspace.
+          .insert(auditLog)
+          .values({
+            actorUserId: context.admin.id,
+            action: data.enabled ? 'ai.model_enabled' : 'ai.model_disabled',
+            targetType: 'ai_model',
+            targetId: saved.id,
+            meta: { key: saved.key },
+          })
+        return saved.id
+      }),
+    ),
+  )
