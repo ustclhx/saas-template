@@ -24,4 +24,13 @@ export {
 export { Input } from './components/input.tsx'
 export { Label } from './components/label.tsx'
 export { Separator } from './components/separator.tsx'
+export {
+  THEME_STORAGE_KEY,
+  THEMES,
+  type Theme,
+  ThemeToggle,
+  type ThemeToggleProps,
+  themeInitScript,
+  useTheme,
+} from './components/theme.tsx'
 export { cn } from './lib/utils.ts'
