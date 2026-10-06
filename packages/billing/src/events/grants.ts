@@ -1,6 +1,5 @@
 import { grant } from '@saas/credits'
 import {
-  type Database,
   organization,
   type Payment,
   type Plan,
@@ -100,16 +99,12 @@ export async function grantSubscriptionMonth(
       ? null
       : new Date(start.getTime() + selectedPlan.creditExpiryDays * 86_400_000)
     : new Date(end.getTime() + graceHours * 3_600_000)
-  return grant(
-    tx as unknown as Database,
-    {
-      workspaceId: current.workspaceId,
-      source: 'subscription',
-      sourceRef: `${current.id}:${month}`,
-      paymentId: current.id,
-      amount: selectedPlan.credits,
-      expiresAt,
-    },
-    tx,
-  )
+  return grant(tx, {
+    workspaceId: current.workspaceId,
+    source: 'subscription',
+    sourceRef: `${current.id}:${month}`,
+    paymentId: current.id,
+    amount: selectedPlan.credits,
+    expiresAt,
+  })
 }
