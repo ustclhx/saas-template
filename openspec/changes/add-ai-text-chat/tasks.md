@@ -3,7 +3,7 @@
 ## 1. 模型注册表与计费方式
 
 - [ ] 1.1 新增 `ai_model`、`ai_conversation`、`ai_message`（含 `pricing` 快照、`status` 与 `usage_checkpoint`）表，验证迁移成功
-- [ ] 1.2 在 `packages/ai/pricing` 实现 `Pricing` 类型校验（按次文本模型必须带 token 上限）、`estimateCredits`、`actualCredits`（按次加权倍率、按 token、按用量），验证单元测试覆盖三种方式与倍率相乘
+- [x] 1.2 在 `packages/ai/pricing` 实现 `Pricing` 类型校验（按次文本模型必须带 token 上限）、`estimateCredits`、`actualCredits`（按次加权倍率、按 token、按用量），验证单元测试覆盖三种方式与倍率相乘
 - [ ] 1.3 实现模型列表读取（KV 缓存、按空间权益与启用状态过滤）与新建模型时按 `ai.defaultPricingMode` 预填计费方式，验证停用模型不出现在列表且调用被拒绝
 - [ ] 1.4 后台最小模型编辑页（新增、编辑价格与计费方式、启用 / 停用），验证保存缺少 token 上限的按次文本模型被拒绝
 
