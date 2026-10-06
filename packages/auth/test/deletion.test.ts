@@ -9,7 +9,14 @@ import {
   retryDeletionCleanup,
 } from '../src/deletion.ts'
 import { requireFreshSession } from '../src/fresh-session.ts'
-import { cookieHeader, PASSWORD, setup, signUpBody, testUsers } from './helpers.ts'
+import {
+  cookieHeader,
+  PASSWORD,
+  setup,
+  signUpBody,
+  silenceExpectedErrors,
+  testUsers,
+} from './helpers.ts'
 
 const users = testUsers('deletion')
 const deleted: { id: string; email: string }[] = []
@@ -216,6 +223,7 @@ describe('atomic deletion in workerd', () => {
     ).toBeNull()
   })
   it('keeps native deletion disabled and enforces owner, personal and tenancy boundaries', async () => {
+    silenceExpectedErrors(/Delete user is disabled/)
     const a = app()
     const owner = await actor(a, 'boundaries')
     const other = await actor(a, 'not-owner')

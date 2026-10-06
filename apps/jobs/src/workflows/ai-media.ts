@@ -1,14 +1,13 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers'
+import { MEDIA_DONE_EVENT } from '@saas/shared'
 
 /** 启动参数（P4 媒体生成时扩展） */
 export interface AiMediaParams {
   taskId: string
 }
 
-/** 外部服务商回调后由 web 通过 `instance.sendEvent` 发送的事件 */
-export const PROVIDER_CALLBACK_EVENT = 'provider-callback'
-
-export interface ProviderCallbackPayload {
+/** 外部服务商回调后由 web 通过 `instance.sendEvent` 发送的 `MEDIA_DONE_EVENT` 事件负载 */
+export interface MediaDonePayload {
   status: 'succeeded' | 'failed'
 }
 
@@ -23,13 +22,10 @@ export class AiMediaWorkflow extends WorkflowEntrypoint<Cloudflare.Env, AiMediaP
       return { submittedAt: new Date().toISOString() }
     })
 
-    const callback = await step.waitForEvent<ProviderCallbackPayload>(
-      'wait for provider callback',
-      {
-        type: PROVIDER_CALLBACK_EVENT,
-        timeout: '1 hour',
-      },
-    )
+    const callback = await step.waitForEvent<MediaDonePayload>('wait for media done', {
+      type: MEDIA_DONE_EVENT,
+      timeout: '1 hour',
+    })
 
     return { taskId: event.payload.taskId, ...submitted, status: callback.payload.status }
   }

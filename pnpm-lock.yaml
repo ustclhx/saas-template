@@ -196,6 +196,9 @@ importers:
       '@saas/email':
         specifier: workspace:*
         version: link:../../packages/email
+      '@saas/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.22.0
