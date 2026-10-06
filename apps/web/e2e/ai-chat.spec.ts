@@ -261,12 +261,13 @@ test('stop button calls the stop endpoint with the streaming message id', async 
   await register(page, `chat-stop-${randomUUID()}@example.com`)
   const slug = slugOf(page)
   const model = await seedChatModel(slug)
-  const messageId = newId()
+  const messageIds = [newId(), newId()]
   try {
     // 模拟一条不会自行结束的流：发出 start 与第一段文本后保持打开，直到请求被中止
     await page.addInitScript(
-      ({ messageId }) => {
+      ({ messageIds }) => {
         const original = window.fetch
+        let calls = 0
         window.fetch = (input, init) => {
           const url =
             typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
@@ -274,6 +275,7 @@ test('stop button calls the stop endpoint with the streaming message id', async 
           const encoder = new TextEncoder()
           const send = (chunk: object) => encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`)
           const body = JSON.parse(String(init?.body)) as { conversationId: string }
+          const messageId = messageIds[calls++ % messageIds.length]
           const stream = new ReadableStream({
             start(controller) {
               const metadata = { conversationId: body.conversationId, messageId }
@@ -296,12 +298,17 @@ test('stop button calls the stop endpoint with the streaming message id', async 
           )
         }
       },
-      { messageId },
+      { messageIds },
     )
-    const stopRequests: unknown[] = []
-    await page.route(`**/api/ai/chat/${messageId}/stop`, async (route) => {
-      stopRequests.push(route.request().postDataJSON())
-      await route.fulfill({ status: 200, json: { status: 'aborted' } })
+    // 第一条回复停止成功；第二条在停止前已因出错结束，接口幂等返回 failed
+    const stopRequests: { path: string; body: unknown }[] = []
+    await page.route('**/api/ai/chat/*/stop', async (route) => {
+      const request = route.request()
+      stopRequests.push({ path: new URL(request.url()).pathname, body: request.postDataJSON() })
+      await route.fulfill({
+        status: 200,
+        json: { status: stopRequests.length === 1 ? 'aborted' : 'failed' },
+      })
     })
 
     await newConversation(page, slug)
@@ -317,16 +324,26 @@ test('stop button calls the stop endpoint with the streaming message id', async 
     await page.getByLabel('Model').selectOption(model.modelId)
     await page.getByLabel('Message', { exact: true }).fill('Write a long story')
     await page.getByRole('button', { name: 'Send' }).click()
-    const reply = page.getByRole('list', { name: 'Messages' }).getByRole('listitem', {
+    const replies = page.getByRole('list', { name: 'Messages' }).getByRole('listitem', {
       name: 'Assistant',
     })
-    await expect(reply).toContainText('Partial answer')
+    await expect(replies.first()).toContainText('Partial answer')
 
     await page.getByRole('button', { name: 'Stop' }).click()
-    await expect.poll(() => stopRequests).toEqual([{ slug }])
-    await expect(reply).toContainText('Stopped')
+    await expect
+      .poll(() => stopRequests)
+      .toEqual([{ path: `/api/ai/chat/${messageIds[0]}/stop`, body: { slug } }])
+    await expect(replies.first()).toContainText('Stopped')
     await expect(page.getByRole('button', { name: 'Send' })).toBeVisible()
     await expect(page.getByRole('alert')).toHaveCount(0)
+
+    await page.getByLabel('Message', { exact: true }).fill('Try again')
+    await page.getByRole('button', { name: 'Send' }).click()
+    await expect(replies.nth(1)).toContainText('Partial answer')
+    await page.getByRole('button', { name: 'Stop' }).click()
+    await expect(replies.nth(1)).toContainText('This reply failed.')
+    expect(stopRequests[1]).toEqual({ path: `/api/ai/chat/${messageIds[1]}/stop`, body: { slug } })
+    await expect(replies.nth(1)).not.toContainText('Stopped')
   } finally {
     await removeModel(model.modelId)
   }

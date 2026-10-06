@@ -125,5 +125,8 @@ export function chatErrorCode(error: unknown): string | undefined {
   }
 }
 
-/** 停止接口（`POST /api/ai/chat/:messageId/stop`）的响应 */
-export const stopResponseSchema = z.object({ status: z.enum(['aborted', 'completed']) })
+/**
+ * 停止接口（`POST /api/ai/chat/:messageId/stop`）的响应：已结束的消息幂等返回当前状态，
+ * 先前已因出错结束时为 `failed`
+ */
+export const stopResponseSchema = z.object({ status: z.enum(['aborted', 'completed', 'failed']) })

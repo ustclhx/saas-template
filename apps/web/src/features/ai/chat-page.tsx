@@ -7,6 +7,7 @@ import { useMemo, useRef, useState } from 'react'
 import { FormAlert } from '../auth/auth-layout.tsx'
 import { HydratedControls } from '../workspace/components.tsx'
 import {
+  type ChatMessageStatus,
   type ChatUIMessage,
   chatErrorCode,
   chatErrorMessage,
@@ -46,7 +47,8 @@ export function ChatPage({
   const [modelId, setModelId] = useState(models[0]?.id)
   const [input, setInput] = useState('')
   const [title, setTitle] = useState(conversation.title)
-  const [stopped, setStopped] = useState<Record<string, true>>({})
+  // 停止接口返回的消息状态，覆盖流中的状态显示
+  const [ended, setEnded] = useState<Record<string, ChatMessageStatus>>({})
   const [stopError, setStopError] = useState<string | null>(null)
   // transport 只创建一次，发送时读取当前选择的模型
   const modelRef = useRef(modelId)
@@ -119,7 +121,8 @@ export function ChatPage({
       const response = await request
       const parsed = stopResponseSchema.safeParse(await response.json())
       if (!response.ok || !parsed.success) throw new Error('stop failed')
-      if (parsed.data.status === 'aborted') setStopped((old) => ({ ...old, [messageId]: true }))
+      const status = parsed.data.status
+      setEnded((old) => ({ ...old, [messageId]: status }))
     } catch {
       setStopError('Could not stop the reply on the server. It may continue in the background.')
     }
@@ -140,7 +143,7 @@ export function ChatPage({
           <ChatMessage
             key={message.id}
             message={message}
-            stopped={stopped[message.id] === true}
+            status={ended[message.id] ?? message.metadata?.status}
             live={busy && message === messages.at(-1)}
           />
         ))}
@@ -204,19 +207,18 @@ export function ChatPage({
 
 function ChatMessage({
   message,
-  stopped,
+  status,
   live,
 }: {
   message: ChatUIMessage
-  stopped: boolean
+  status: ChatMessageStatus | undefined
   live: boolean
 }) {
-  const status = message.metadata?.status
   const note =
-    stopped || status === 'aborted'
+    status === 'aborted'
       ? 'Stopped'
       : status === 'failed'
-        ? 'Failed'
+        ? 'This reply failed. Please try again.'
         : status === 'streaming' && !live
           ? 'Incomplete'
           : null
