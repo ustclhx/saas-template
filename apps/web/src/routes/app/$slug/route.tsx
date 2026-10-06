@@ -39,6 +39,9 @@ function WorkspaceLayout() {
         ) : null}
         <WorkspaceSwitcher page={page} />
         <nav className="flex gap-4">
+          <Link to="/app/$slug/chat" params={{ slug: page.workspace.slug }} className="underline">
+            Chat
+          </Link>
           <Link
             to="/app/$slug/settings"
             params={{ slug: page.workspace.slug }}

@@ -1,4 +1,4 @@
-import { estimateCredits, type Pricing } from '@saas/ai'
+import { estimateCredits, type Pricing } from '@saas/ai/client'
 
 /**
  * 预计消耗（docs/06-ai.md §2「展示」）：按次显示确定值，按 token 显示「约 X–Y」区间。
