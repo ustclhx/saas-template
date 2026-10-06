@@ -13,8 +13,9 @@ import { newId } from '@saas/shared'
 import { eq, inArray, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
-import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type CreditsTransaction, capture, grant, hold, release } from '../src/index.ts'
+import { getCreditBalance } from '../src/queries.ts'
 
 const url = process.env.CREDITS_TEST_DATABASE_URL
 if (!url) throw new Error('Missing isolated test database')
@@ -293,6 +294,44 @@ describe('grant and hold on PostgreSQL', () => {
     expect((await db.select().from(organization).where(eq(organization.id, ws)))[0]?.name).toBe(
       'Credits',
     )
+  })
+
+  it('a transaction passed as the executor is joined directly and rolled back by its caller', async () => {
+    await expect(
+      db.transaction(async (tx) => {
+        const nested = vi.spyOn(tx, 'transaction')
+        await tx.update(organization).set({ name: 'Changed' }).where(eq(organization.id, ws))
+        await grant(tx, grantInput(10))
+        const reservation = await hold(tx, holdInput(8))
+        await capture(tx, { workspaceId: ws, holdId: reservation.id, actualAmount: 3 })
+        await release(tx, { workspaceId: ws, holdId: (await hold(tx, holdInput(2))).id })
+        expect(await getCreditBalance(tx, ws)).toEqual({ available: 7, held: 0, debt: 0 })
+        // Uncommitted: other connections cannot see the caller's writes yet.
+        expect(await getCreditBalance(db, ws)).toEqual({ available: 0, held: 0, debt: 0 })
+        expect(nested).not.toHaveBeenCalled()
+        throw new Error('rollback executor caller')
+      }),
+    ).rejects.toThrow('rollback executor caller')
+    expect(await db.select().from(creditGrant).where(eq(creditGrant.workspaceId, ws))).toEqual([])
+    expect(await db.select().from(creditHold).where(eq(creditHold.workspaceId, ws))).toEqual([])
+    expect(await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws))).toEqual([])
+    expect((await db.select().from(organization).where(eq(organization.id, ws)))[0]?.name).toBe(
+      'Credits',
+    )
+  })
+
+  it('a transaction passed as the executor commits only when its caller commits', async () => {
+    const reservation = await db.transaction(async (tx) => {
+      const nested = vi.spyOn(tx, 'transaction')
+      await grant(tx, grantInput(10))
+      const created = await hold(tx, holdInput(8))
+      expect(nested).not.toHaveBeenCalled()
+      return created
+    })
+    expect(await getCreditBalance(db, ws)).toEqual({ available: 2, held: 8, debt: 0 })
+    await capture(db, { workspaceId: ws, holdId: reservation.id, actualAmount: 8 })
+    expect(await getCreditBalance(db, ws)).toEqual({ available: 2, held: 0, debt: 0 })
+    await assertInvariant()
   })
 
   it('rejects unsafe amounts and workspace-mismatched users at exported boundaries', async () => {

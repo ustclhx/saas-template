@@ -11,9 +11,12 @@ import {
   member,
   payment,
 } from '@saas/db'
-import { and, asc, eq, gt, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, eq, gt, is, isNull, or, sql } from 'drizzle-orm'
+import { PgTransaction } from 'drizzle-orm/pg-core'
 
 export type CreditsTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
+/** A database opens its own transaction; a transaction is joined directly. */
+export type CreditsExecutor = Database | CreditsTransaction
 export type CreditsErrorCode =
   | 'INVALID_CREDIT_AMOUNT'
   | 'SOURCE_ALREADY_GRANTED'
@@ -44,13 +47,21 @@ export async function lockWorkspaceCredits(tx: CreditsTransaction, workspaceId: 
   )
 }
 
-/** A supplied transaction participates directly; its caller owns commit/rollback. */
+function isCreditsTransaction(db: CreditsExecutor): db is CreditsTransaction {
+  return is(db, PgTransaction)
+}
+
+/**
+ * A supplied transaction (explicit `tx`, or `db` itself) participates directly,
+ * without a savepoint; its caller owns commit/rollback.
+ */
 export async function withCreditsTransaction<T>(
-  db: Database,
+  db: CreditsExecutor,
   tx: CreditsTransaction | undefined,
   operation: (tx: CreditsTransaction) => Promise<T>,
 ): Promise<T> {
-  return tx ? operation(tx) : db.transaction(operation)
+  const joined = tx ?? (isCreditsTransaction(db) ? db : undefined)
+  return joined ? operation(joined) : db.transaction(operation)
 }
 
 export interface GrantInput {
@@ -64,7 +75,7 @@ export interface GrantInput {
 
 /** Replays return the existing workspace-owned grant without changing debt or ledger. */
 export async function grant(
-  db: Database,
+  db: CreditsExecutor,
   input: GrantInput,
   tx?: CreditsTransaction,
 ): Promise<CreditGrant> {
@@ -149,7 +160,7 @@ export interface HoldInput {
 }
 
 export async function hold(
-  db: Database,
+  db: CreditsExecutor,
   input: HoldInput,
   tx?: CreditsTransaction,
 ): Promise<CreditHold> {
@@ -444,7 +455,7 @@ async function settle(
 
 /** Capture held credits, absorb limited overage, then debit balance or record debt. */
 export async function capture(
-  db: Database,
+  db: CreditsExecutor,
   input: CaptureInput,
   tx?: CreditsTransaction,
 ): Promise<CaptureResult> {
@@ -470,7 +481,7 @@ export async function capture(
 
 /** Release the full reservation without consuming credits. */
 export async function release(
-  db: Database,
+  db: CreditsExecutor,
   input: ReleaseInput,
   tx?: CreditsTransaction,
 ): Promise<void> {
