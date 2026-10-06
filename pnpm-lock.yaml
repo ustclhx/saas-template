@@ -181,6 +181,9 @@ importers:
 
   apps/jobs:
     dependencies:
+      '@saas/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@saas/auth':
         specifier: workspace:*
         version: link:../../packages/auth
@@ -206,6 +209,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^5.20261002.1
         version: 5.20261002.1
+      '@saas/credits':
+        specifier: workspace:*
+        version: link:../../packages/credits
       '@types/node':
         specifier: ^22.20.5
         version: 22.20.5
@@ -330,6 +336,9 @@ importers:
       '@saas/config':
         specifier: workspace:*
         version: link:../config
+      '@saas/credits':
+        specifier: workspace:*
+        version: link:../credits
       '@saas/db':
         specifier: workspace:*
         version: link:../db
