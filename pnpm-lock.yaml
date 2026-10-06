@@ -221,6 +221,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@saas/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@saas/auth':
         specifier: workspace:*
         version: link:../../packages/auth
@@ -318,6 +321,18 @@ importers:
       '@saas/config':
         specifier: workspace:*
         version: link:../config
+      '@saas/db':
+        specifier: workspace:*
+        version: link:../db
+      '@saas/entitlements':
+        specifier: workspace:*
+        version: link:../entitlements
+      '@saas/shared':
+        specifier: workspace:*
+        version: link:../shared
+      drizzle-orm:
+        specifier: ^0.45.3
+        version: 0.45.3(@cloudflare/workers-types@5.20261002.1)(kysely@0.29.6)(postgres@3.4.9)
       zod:
         specifier: ^4.6.5
         version: 4.6.5

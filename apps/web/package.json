@@ -13,6 +13,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@saas/ai": "workspace:*",
     "@saas/auth": "workspace:*",
     "@saas/config": "workspace:*",
     "@saas/db": "workspace:*",

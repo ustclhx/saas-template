@@ -34,6 +34,9 @@ function AdminLayout() {
                 Refund reviews
               </Link>
             </li>
+            <li>
+              <Link to="/admin/models">Models</Link>
+            </li>
           </ul>
         </nav>
       </header>
