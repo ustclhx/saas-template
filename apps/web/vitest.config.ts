@@ -34,7 +34,7 @@ export default defineConfig({
         plugins: [i18nMessages({ i18n: templateConfig.i18n, appAreaPrefixes: APP_AREA_PREFIXES })],
         test: {
           name: 'unit',
-          include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
+          include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts'],
           environment: 'node',
         },
       },

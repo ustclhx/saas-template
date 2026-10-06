@@ -1,0 +1,30 @@
+import { env } from 'cloudflare:workers'
+import { dbModelStore, listAvailableModels } from '@saas/ai'
+import { getEntitlements } from '@saas/entitlements'
+import { createServerFn } from '@tanstack/react-start'
+import { z } from 'zod'
+import { withWorkspace } from '../../server/middleware.ts'
+import { templateConfig } from '../../server/template-config.ts'
+
+// 模型选择器的数据（tasks.md 3.2）：当前空间权益允许且已启用的模型，经 KV 缓存读取。
+// 只返回选择与预计消耗所需的字段，不暴露服务商与服务商侧的模型 id。
+
+export const getPickerModels = createServerFn({ method: 'GET' })
+  .middleware([withWorkspace])
+  .inputValidator(
+    z.object({
+      slug: z.string().min(1).max(64),
+      kind: z.enum(['text', 'image', 'video']).default('text'),
+    }),
+  )
+  .handler(async ({ context, data }) => {
+    const entitlements = await getEntitlements(context.db, context.workspace.id, {
+      pastDueGraceDays: templateConfig.billing.pastDueGraceDays,
+    })
+    const models = await listAvailableModels(
+      { store: dbModelStore(context.db), cache: env.CACHE },
+      entitlements,
+      { kind: data.kind },
+    )
+    return models.map(({ id, key, kind, pricing }) => ({ id, key, kind, pricing }))
+  })
