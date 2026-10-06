@@ -1,22 +1,36 @@
 import {
-  actualCredits,
+  CHAT_HOLD_TTL_MS,
+  type CheckpointScheduleOptions,
+  checkpointSchedule,
   dbModelStore,
   defaultLanguageModelFactory,
   estimateInputTokens,
   estimateTextTokens,
   type LanguageModelFactory,
   MODEL_UNAVAILABLE,
+  messageText,
   type Pricing,
   planTextBudget,
   requireAvailableModel,
+  settleChatMessage,
+  settleFromCheckpoint,
+  settleInterruptedChatMessage,
   type TextModelEnv,
   textModelConfig,
   truncateHistory,
+  writeUsageCheckpoint,
 } from '@saas/ai'
 import { type RateLimiter, requireFreshSession } from '@saas/auth'
 import type { OveragePolicy } from '@saas/credits'
-import { CreditsError, capture, getCreditBalance, hold } from '@saas/credits'
-import { type AiPricingJson, aiConversation, aiMessage, type Database, scoped } from '@saas/db'
+import { CreditsError, getCreditBalance, hold } from '@saas/credits'
+import {
+  type AiMessage,
+  type AiPricingJson,
+  aiConversation,
+  aiMessage,
+  type Database,
+  scoped,
+} from '@saas/db'
 import { type Entitlements, getEntitlements } from '@saas/entitlements'
 import { AppError, newId, toErrorResponse } from '@saas/shared'
 import { convertToModelMessages, type LanguageModelUsage, streamText, type UIMessage } from 'ai'
@@ -32,7 +46,7 @@ import { resolveWorkspaceBySlug } from '../../server/workspace-context.ts'
  * 响应使用 AI SDK 的 UI message 流协议，前端用 `useChat`（请求体见 `chatRequestSchema`）。
  *
  * 服务端以数据库中的历史为准，客户端只提交本轮的用户消息；对话只对创建者可见（scoped(ws) + user_id）。
- * 停止接口、用量检查点与出错结算在后续任务（tasks 2.4–2.6）中补充；出错时预扣留给超时兜底处理。
+ * 读流过程中写用量检查点；停止见 `handleChatStopRequest`，进程中断时由 apps/jobs 的兜底处理器结算。
  */
 
 export interface ChatDeps {
@@ -50,6 +64,8 @@ export interface ChatDeps {
   readonly entitlements?: (db: Database, workspaceId: string) => Promise<Entitlements>
   /** 默认取模板配置 `billing.overage` */
   readonly overage?: OveragePolicy
+  /** 用量检查点节奏，默认每 5 秒或每 200 个输出 token；测试可调 */
+  readonly checkpoint?: CheckpointScheduleOptions
 }
 
 const textPart = z.object({ type: z.literal('text'), text: z.string().min(1).max(100_000) })
@@ -76,6 +92,17 @@ export interface ChatMessageMetadata {
 }
 
 const CONVERSATION_TITLE_LENGTH = 80
+
+/**
+ * 本 isolate 中进行中的回复：停止请求落在同一 isolate 时直接中止上游生成，并等待按内存中的完整
+ * 已生成内容结算。Workers 不保证停止请求与原请求在同一 isolate，见 `handleChatStopRequest`。
+ */
+interface ActiveChat {
+  abort(): void
+  /** 读流与结算完成 */
+  readonly done: Promise<void>
+}
+const activeChats = new Map<string, ActiveChat>()
 
 export async function handleChatRequest(request: Request, deps: ChatDeps): Promise<Response> {
   try {
@@ -105,18 +132,6 @@ async function readRequest(request: Request): Promise<ChatRequest> {
   if (!parsed.success) throw new AppError('INVALID_REQUEST', 'Invalid chat request')
   return parsed.data
 }
-
-const textOf = (parts: readonly unknown[]) =>
-  parts
-    .flatMap((part) =>
-      typeof part === 'object' &&
-      part !== null &&
-      (part as { type?: unknown }).type === 'text' &&
-      typeof (part as { text?: unknown }).text === 'string'
-        ? [(part as { text: string }).text]
-        : [],
-    )
-    .join('')
 
 async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
   const { db } = deps
@@ -175,7 +190,7 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
       })
       .orderBy(asc(aiMessage.id))
     history = rows.flatMap((row) => {
-      const text = textOf(row.parts)
+      const text = messageText(row.parts)
       return text && (row.role === 'user' || row.role === 'assistant')
         ? [{ role: row.role, text }]
         : []
@@ -224,6 +239,7 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
       amount: budget.holdAmount,
       refType: 'ai_message',
       refId: assistantId,
+      expiresAt: new Date(Date.now() + CHAT_HOLD_TTL_MS),
     })
     await t.insert(aiMessage, {
       id: assistantId,
@@ -233,6 +249,8 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
       modelKey: model.key,
       pricing: pricing as AiPricingJson,
       status: 'streaming',
+      // 结算前存放输入估算：兜底处理器在没有检查点时据此收最低费用（design 决策 4）
+      inputTokens,
       holdId: reservation.id,
     })
     return reservation.id
@@ -247,46 +265,100 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
     role: message.role,
     parts: [{ type: 'text', text: message.text }],
   }))
-  let settled!: () => void
-  const settlement = new Promise<void>((resolve) => {
-    settled = resolve
-  })
+  const overage = deps.overage ?? templateConfig.billing.overage
+  const controller = new AbortController()
+  const schedule = checkpointSchedule(deps.checkpoint)
+  let text = ''
+  let end:
+    | { text: string; usage: Pick<LanguageModelUsage, 'inputTokens' | 'outputTokens'> }
+    | undefined
+  let checkpoints: Promise<unknown> = Promise.resolve()
+  const outputTokensOf = (value: string) => estimateTextTokens(value, tokensPerChar)
   const result = streamText({
     model: languageModel,
     messages: await convertToModelMessages(uiMessages),
     maxOutputTokens: budget.maxOutputTokens,
-    onEnd: async (event) => {
-      try {
-        await settleChatMessage(db, {
-          workspaceId,
-          messageId: assistantId,
-          holdId,
-          pricing,
-          text: event.text,
-          usage: event.totalUsage,
-          estimatedInputTokens: inputTokens,
-          tokensPerChar,
-          overage: deps.overage ?? templateConfig.billing.overage,
-        })
-      } catch (error) {
-        // 结算失败时预扣保持 held，由超时兜底处理器结算
-        console.error(
-          JSON.stringify({ event: 'ai.chat.settle_failed', messageId: assistantId }),
-          error,
-        )
-      } finally {
-        settled()
-      }
+    abortSignal: controller.signal,
+    // 用量检查点（tasks 2.5）：不阻塞读流，写入串行；写入失败只记日志。
+    // 消息已被停止接口或兜底处理器结束（其他 isolate）时中止上游生成
+    onChunk: ({ chunk }) => {
+      if (chunk.type !== 'text-delta') return
+      text += chunk.text
+      const outputTokens = outputTokensOf(text)
+      if (!schedule.due(outputTokens)) return
+      const snapshot = text
+      checkpoints = checkpoints.then(async () => {
+        try {
+          const streaming = await writeUsageCheckpoint(db, {
+            workspaceId,
+            messageId: assistantId,
+            inputTokens,
+            outputTokens,
+            text: snapshot,
+          })
+          if (!streaming) controller.abort('settled')
+        } catch (error) {
+          console.error(
+            JSON.stringify({ event: 'ai.chat.checkpoint_failed', messageId: assistantId }),
+            error,
+          )
+        }
+      })
+    },
+    onEnd: (event) => {
+      end = { text: event.text, usage: event.totalUsage }
     },
     onError: ({ error }) => {
       console.error(
         JSON.stringify({ event: 'ai.chat.stream_error', messageId: assistantId }),
         error,
       )
-      settled()
     },
   })
-  deps.waitUntil(Promise.all([result.consumeStream(), settlement]))
+
+  // 读完模型流后结算：完成 → 按实际用量；停止 → aborted、出错 → failed，均按已产生用量。
+  // 结算失败时预扣保持 held，由超时兜底处理器结算；已被另一方结算时不重复结算
+  const done = (async () => {
+    // 中止与服务商错误已由 onError / 中止原因处理，这里只读完流
+    await result.consumeStream({ onError: () => {} })
+    await checkpoints
+    try {
+      if (end) {
+        await settleChatMessage(db, {
+          workspaceId,
+          messageId: assistantId,
+          holdId,
+          pricing,
+          text: end.text,
+          inputTokens: end.usage.inputTokens ?? inputTokens,
+          outputTokens: end.usage.outputTokens ?? outputTokensOf(end.text),
+          overage,
+        })
+      } else {
+        await settleInterruptedChatMessage(db, {
+          workspaceId,
+          messageId: assistantId,
+          holdId,
+          pricing,
+          overage,
+          status: controller.signal.aborted ? 'aborted' : 'failed',
+          text,
+          inputTokens,
+          outputTokens: outputTokensOf(text),
+          hasOutput: text !== '',
+        })
+      }
+    } catch (error) {
+      console.error(
+        JSON.stringify({ event: 'ai.chat.settle_failed', messageId: assistantId }),
+        error,
+      )
+    } finally {
+      activeChats.delete(assistantId)
+    }
+  })()
+  activeChats.set(assistantId, { abort: () => controller.abort('stop'), done })
+  deps.waitUntil(done)
 
   return result.toUIMessageStreamResponse({
     generateMessageId: () => assistantId,
@@ -295,44 +367,98 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
   })
 }
 
-export interface SettleChatInput {
-  readonly workspaceId: string
-  readonly messageId: string
-  readonly holdId: string
-  /** 消息上的定价快照 */
-  readonly pricing: Pricing
-  readonly text: string
-  readonly usage: Pick<LanguageModelUsage, 'inputTokens' | 'outputTokens'>
-  /** 服务商未返回 usage 时的回退 */
-  readonly estimatedInputTokens: number
-  readonly tokensPerChar: number
-  readonly overage: OveragePolicy
+export interface ChatStopDeps {
+  readonly db: Database
+  readonly auth: Parameters<typeof requireFreshSession>[0]['auth']
+  /** 默认取模板配置 `billing.overage` */
+  readonly overage?: OveragePolicy
+  /** 默认本 isolate 的进行中回复；测试传入空表模拟停止请求落在其他 isolate */
+  readonly activeChats?: ReadonlyMap<string, ActiveChat>
+}
+
+const stopRequestSchema = z.object({ slug: z.string().min(1).max(64) })
+
+/** 停止接口的响应：消息当前（结束后）的状态 */
+export interface ChatStopResponse {
+  readonly status: 'aborted' | 'completed' | 'failed'
 }
 
 /**
- * 正常完成时的结算（specs/ai-chat「按实际用量结算」）：按快照与实际 usage 计算结算额，
- * 超出预扣的部分按 `billing.overage` 处理（不截断输出）；同一事务内把消息标记为 completed。
- * 消息上的 `credits` 为空间实际支付的积分（不含平台承担的超额）。
+ * `POST /api/ai/chat/:messageId/stop`（design 决策 6，specs/ai-chat「主动停止」）：请求体 `{ slug }`，
+ * 只能停止自己对话中的回复；他人消息或不存在返回 404，已结束的消息幂等返回当前状态。
+ *
+ * - 原请求在本 isolate：中止上游生成，按已生成内容（按 token 以文本估算输出用量）结算并标记 aborted。
+ * - 原请求在其他 isolate（拿不到 AbortController）：按已持久化的最后一个检查点结算并标记 aborted；
+ *   原请求在下次写检查点时发现消息已结束即中止生成，结束时的结算因预扣已结算而跳过，不重复结算。
  */
-export async function settleChatMessage(db: Database, input: SettleChatInput) {
-  const inputTokens = input.usage.inputTokens ?? input.estimatedInputTokens
-  const outputTokens =
-    input.usage.outputTokens ?? estimateTextTokens(input.text, input.tokensPerChar)
-  const actualAmount = actualCredits(input.pricing, { inputTokens, outputTokens })
-  return db.transaction(async (tx) => {
-    const settlement = await capture(tx, {
-      workspaceId: input.workspaceId,
-      holdId: input.holdId,
-      actualAmount,
-      overage: input.overage,
-    })
-    await scoped(tx, input.workspaceId).updateById(aiMessage, input.messageId, {
-      status: 'completed',
-      parts: input.text ? [{ type: 'text', text: input.text }] : [],
-      inputTokens,
-      outputTokens,
-      credits: settlement.captured + settlement.debited,
-    })
-    return settlement
-  })
+export async function handleChatStopRequest(
+  request: Request,
+  messageId: string,
+  deps: ChatStopDeps,
+): Promise<Response> {
+  try {
+    return Response.json(await stopChat(request, messageId, deps))
+  } catch (error) {
+    if (!(error instanceof AppError)) console.error(error)
+    const { status, body } = toErrorResponse(error)
+    return Response.json(body, { status })
+  }
+}
+
+async function stopChat(
+  request: Request,
+  messageId: string,
+  deps: ChatStopDeps,
+): Promise<ChatStopResponse> {
+  const { db } = deps
+  const { user } = await requireFreshSession({ auth: deps.auth, db, headers: request.headers })
+  const parsed = stopRequestSchema.safeParse(await request.json().catch(() => undefined))
+  if (!parsed.success) throw new AppError('INVALID_REQUEST', 'Invalid stop request')
+  const notFound = () => new AppError('NOT_FOUND', 'Not found', { status: 404 })
+  const resolved = await resolveWorkspaceBySlug(db, user.id, parsed.data.slug)
+  if (!resolved || !z.uuid().safeParse(messageId).success) throw notFound()
+  const s = scoped(db, resolved.workspace.id)
+
+  // 只认创建者自己对话中的回复
+  const load = async () => {
+    const [row] = await s
+      .select(aiMessage, {
+        where: and(
+          eq(aiMessage.id, messageId),
+          eq(aiMessage.role, 'assistant'),
+          inArray(
+            aiMessage.conversationId,
+            s.select(aiConversation, {
+              where: eq(aiConversation.userId, user.id),
+              fields: { id: aiConversation.id },
+            }),
+          ),
+        ) as SQL,
+      })
+      .limit(1)
+    if (!row) throw notFound()
+    return row
+  }
+  const ended = (status: AiMessage['status']) =>
+    status === 'streaming' ? null : { status: status as ChatStopResponse['status'] }
+
+  let message = await load()
+  const local = (deps.activeChats ?? activeChats).get(messageId)
+  if (message.status === 'streaming' && local) {
+    local.abort()
+    await local.done
+    message = await load()
+  }
+  // 已结束（含本 isolate 刚结算完）；本地结算失败时仍为 streaming，继续按检查点结算
+  const result = ended(message.status)
+  if (result) return result
+  if (!message.holdId || !message.pricing) throw notFound()
+  const settled = await settleFromCheckpoint(
+    db,
+    { ...message, holdId: message.holdId, pricing: message.pricing as Pricing },
+    { status: 'aborted', overage: deps.overage ?? templateConfig.billing.overage },
+  )
+  if (settled) return { status: 'aborted' }
+  // 并发的另一方（原请求或兜底处理器）先结算
+  return ended((await load()).status) ?? { status: 'aborted' }
 }

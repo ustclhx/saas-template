@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@saas/config": "workspace:*",
+    "@saas/credits": "workspace:*",
     "@saas/db": "workspace:*",
     "@saas/entitlements": "workspace:*",
     "@saas/shared": "workspace:*",

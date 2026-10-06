@@ -1,5 +1,6 @@
 // 后台 Worker 入口：导出 Workflow 类与 fetch / queue / scheduled 处理器（docs/02-project-structure.md）。
 import { emailTransportConfig } from '@saas/config'
+import './ai.ts'
 import {
   BILLING_DAILY_CRON,
   BILLING_HOURLY_CRON,
