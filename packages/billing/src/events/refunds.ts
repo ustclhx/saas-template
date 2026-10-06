@@ -1,5 +1,5 @@
 import { revokePaymentCredits } from '@saas/credits'
-import { auditLog, type Database, payment, paymentRefund, purchase, refundRequest } from '@saas/db'
+import { auditLog, payment, paymentRefund, purchase, refundRequest } from '@saas/db'
 import { and, eq, sql } from 'drizzle-orm'
 import type { WebhookTransaction } from '../pipeline.ts'
 import type { NormalizedEvent } from '../provider.ts'
@@ -40,11 +40,7 @@ export async function applyPaymentDisputed(
   const paid = await lockReversedPayment(tx, event)
   if (paid.status !== 'disputed') {
     await tx.update(payment).set({ status: 'disputed' }).where(eq(payment.id, paid.id))
-    await revokePaymentCredits(
-      tx as unknown as Database,
-      { workspaceId: paid.workspaceId, paymentId: paid.id },
-      tx,
-    )
+    await revokePaymentCredits(tx, { workspaceId: paid.workspaceId, paymentId: paid.id })
     await tx.insert(auditLog).values({
       workspaceId: paid.workspaceId,
       action: 'billing.payment_disputed',
@@ -122,11 +118,7 @@ export async function applyPaymentRefunded(
       .update(purchase)
       .set({ status: 'refunded' })
       .where(and(eq(purchase.id, paid.purchaseId), eq(purchase.workspaceId, paid.workspaceId)))
-  await revokePaymentCredits(
-    tx as unknown as Database,
-    { workspaceId: paid.workspaceId, paymentId: paid.id },
-    tx,
-  )
+  await revokePaymentCredits(tx, { workspaceId: paid.workspaceId, paymentId: paid.id })
   if (claimed)
     await tx.insert(auditLog).values({
       workspaceId: paid.workspaceId,

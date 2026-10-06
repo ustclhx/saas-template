@@ -1,5 +1,5 @@
 import { grant, revokePaymentCredits } from '@saas/credits'
-import { type Database, payment, purchase, subscription } from '@saas/db'
+import { payment, purchase, subscription } from '@saas/db'
 import { and, eq } from 'drizzle-orm'
 import type { WebhookTransaction } from '../pipeline.ts'
 import type { NormalizedEvent } from '../provider.ts'
@@ -117,11 +117,7 @@ export async function applyPaymentSucceeded(
       .where(and(eq(subscription.id, sub.id), eq(subscription.workspaceId, a.workspaceId)))
   }
   if (status !== 'succeeded' || refunded > 0) {
-    await revokePaymentCredits(
-      tx as unknown as Database,
-      { workspaceId: paid.workspaceId, paymentId: paid.id },
-      tx,
-    )
+    await revokePaymentCredits(tx, { workspaceId: paid.workspaceId, paymentId: paid.id })
     return
   }
   if (compensated || deleted) return
@@ -136,19 +132,15 @@ export async function applyPaymentSucceeded(
       options.subscriptionCreditGraceHours ?? 24,
     )
   else if (p.kind === 'one_time' && a.plan.credits > 0)
-    await grant(
-      tx as unknown as Database,
-      {
-        workspaceId: a.workspaceId,
-        source: 'purchase',
-        sourceRef: paid.id,
-        paymentId: paid.id,
-        amount: a.plan.credits,
-        expiresAt:
-          a.plan.creditExpiryDays === null
-            ? null
-            : new Date(paid.paidAt.getTime() + a.plan.creditExpiryDays * 86_400_000),
-      },
-      tx,
-    )
+    await grant(tx, {
+      workspaceId: a.workspaceId,
+      source: 'purchase',
+      sourceRef: paid.id,
+      paymentId: paid.id,
+      amount: a.plan.credits,
+      expiresAt:
+        a.plan.creditExpiryDays === null
+          ? null
+          : new Date(paid.paidAt.getTime() + a.plan.creditExpiryDays * 86_400_000),
+    })
 }
