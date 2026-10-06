@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { TURNSTILE_TOKEN_HEADER } from '../src/index.ts'
 import {
   cookieHeader,
+  countingRateLimiter,
   mockTurnstile,
   nextIp,
   PASSWORD,
@@ -13,7 +14,9 @@ import {
 
 // 认证入口防刷（tasks.md 2.5，specs/user-auth「认证入口防刷」）：
 // Turnstile 用 Cloudflare 官方测试 secret（siteverify 由 mockTurnstile 按其文档行为模拟），
-// RL_AUTH 为 Miniflare 模拟的 Rate Limiting 绑定（test/wrangler.jsonc：每个 key 每 60 秒 5 次）。
+// RL_AUTH 默认为 Miniflare 模拟的 Rate Limiting 绑定（test/wrangler.jsonc：每个 key 每 60 秒 5 次）。
+// 该绑定的窗口按墙钟整分钟对齐，测试跨过边界时计数会被清零；因此断言精确放行次数的限流测试
+// 注入与时间无关的 countingRateLimiter（同样每个 key 5 次），真实绑定只做与窗口无关的接线检查。
 
 const users = testUsers('protection')
 let siteverify: ReturnType<typeof mockTurnstile>
@@ -115,7 +118,7 @@ describe('Turnstile', () => {
 
 describe('RL_AUTH 限流', () => {
   it('同一邮箱连续发送验证码超过限额后返回 429，且不再发送邮件', async () => {
-    const s = setup()
+    const s = setup({ env: { RL_AUTH: countingRateLimiter() } })
     const address = users.email('otp-flood')
     const statuses: number[] = []
     for (let i = 0; i < 7; i++) {
@@ -133,7 +136,7 @@ describe('RL_AUTH 限流', () => {
   })
 
   it('邮箱大小写与首尾空格不同视为同一邮箱', async () => {
-    const s = setup()
+    const s = setup({ env: { RL_AUTH: countingRateLimiter() } })
     const address = users.email('case')
     const variants = [address, address.toUpperCase(), ` ${address} `]
     const statuses: number[] = []
@@ -149,7 +152,7 @@ describe('RL_AUTH 限流', () => {
   })
 
   it('同一 IP 超过限额后返回 429（找回密码不发邮件、注册不创建用户）', async () => {
-    const s = setup()
+    const s = setup({ env: { RL_AUTH: countingRateLimiter() } })
     const address = users.email('ip-flood')
     expect((await s.post('/sign-up/email', signUpBody(address))).status).toBe(200)
     for (let i = 0; i < 4; i++) {
@@ -170,7 +173,7 @@ describe('RL_AUTH 限流', () => {
   })
 
   it('服务端直接调用 auth.api 不经过限流与 Turnstile', async () => {
-    const s = setup()
+    const s = setup({ env: { RL_AUTH: countingRateLimiter() } })
     const address = users.email('server-call')
     for (let i = 0; i < 7; i++) {
       await s.auth.api.sendVerificationOTP({ body: { email: address, type: 'sign-in' } })
@@ -180,7 +183,7 @@ describe('RL_AUTH 限流', () => {
   })
 
   it('已登录用户主动发送验证邮件不要求 Turnstile，但同样限流', async () => {
-    const s = setup()
+    const s = setup({ env: { RL_AUTH: countingRateLimiter() } })
     const address = users.email('verify-entry')
     const signUp = await s.post('/sign-up/email', signUpBody(address))
     const cookie = cookieHeader(signUp)
@@ -202,5 +205,23 @@ describe('RL_AUTH 限流', () => {
     // 未登录时同一接口要求 Turnstile
     const anonymous = await s.post('/send-verification-email', { email: address }, noToken)
     expect(anonymous.status).toBe(403)
+  })
+
+  it('Miniflare 的 RL_AUTH 绑定接入后同样拦截超限请求（与窗口边界无关）', async () => {
+    const s = setup()
+    const address = users.email('binding')
+    const statuses: number[] = []
+    // 每个 key 每窗口 5 次，11 个请求最多跨过一次窗口边界、至多放行 10 次，必然出现 429
+    for (let i = 0; i < 11; i++) {
+      const res = await s.post(
+        '/email-otp/send-verification-otp',
+        { email: address, type: 'sign-in' },
+        { 'cf-connecting-ip': nextIp() },
+      )
+      statuses.push(res.status)
+    }
+    expect(statuses).toContain(429)
+    expect(statuses.every((status) => status === 200 || status === 429)).toBe(true)
+    expect(s.sent).toHaveLength(statuses.filter((status) => status === 200).length)
   })
 })
