@@ -101,6 +101,23 @@ let ipCounter = 0
 /** 每次调用返回一个新的客户端 IP，避免不同场景共用 RL_AUTH 的 IP 计数 */
 export const nextIp = () => `198.51.100.${(ipCounter++ % 250) + 1}`
 
+/**
+ * 与时间无关的 RL_AUTH 替身：每个 key 最多放行 `limit` 次，此后一律拒绝，计数永不重置。
+ * Miniflare 模拟的 Rate Limiting 绑定按墙钟对齐固定窗口（`floor(Date.now() / period)`），
+ * 测试若跨过整分钟边界，计数会被清零、结果整体偏移；需要断言精确放行次数的测试改用本替身。
+ */
+export function countingRateLimiter(limit = 5) {
+  const counts = new Map<string, number>()
+  return {
+    async limit({ key }: { key: string }) {
+      const count = counts.get(key) ?? 0
+      if (count >= limit) return { success: false }
+      counts.set(key, count + 1)
+      return { success: true }
+    },
+  }
+}
+
 export interface SetupOptions {
   readonly config?: Omit<TemplateConfigInput, 'app'>
   readonly env?: Partial<AuthEnv>
