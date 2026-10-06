@@ -57,6 +57,13 @@
       "when": 1791122507446,
       "tag": "0007_rare_moonstone",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791295865022,
+      "tag": "0008_public_sister_grimm",
+      "breakpoints": true
     }
   ]
 }
