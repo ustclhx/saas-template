@@ -161,6 +161,7 @@ PR 已合并、合并时已删除远端分支，说明该 worktree 中没有需�
    orca worktree rm --worktree path:<worktree 路径> --run-hooks --json
    ```
    Orca 默认跳过 `orca.yaml` 的 archive hook，不带 `--run-hooks` 时 worktree 被删除，但 `saas_wt_<名称>` 数据库会残留。Orca 会一并删除可证明已合并的本地分支；squash 合并无法自动证明时，用 `git branch -D <分支>` 手动删除。
+   实测（2026-10-06）：PR 合并、远端分支删除后，Orca 往往会**自动**移除该 worktree 与本地分支，且同样不运行 archive hook。因此即使第 3 步发现 worktree 已不存在，也必须执行第 4 步的数据库核对与补删。
 4. 核对：`git worktree list` 中已无该 worktree，`docker exec saas-template-pg psql -U postgres -tAc "select datname from pg_database where datname like 'saas_wt_%'"` 中已无对应的数据库。worktree 已被其他途径删除而数据库残留时，在主 checkout 执行 `ORCA_WORKTREE_PATH=$PWD ORCA_WORKSPACE_NAME=<名称> bash scripts/orca/archive.sh` 补删（脚本只删除 `saas_wt_` 前缀的库）。
 
 **decision gate 清单**（需要人工完成后放行）：
