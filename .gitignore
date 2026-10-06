@@ -22,6 +22,10 @@ dist/
 # TanStack Router 生成文件（构建时生成，避免并行分支冲突）
 routeTree.gen.ts
 
+# Paraglide：inlang 项目由 apps/web/scripts/i18n-project.ts 按模板配置生成，编译产物构建时生成
+apps/web/project.inlang/
+apps/web/src/paraglide/
+
 # 测试与工具
 coverage/
 playwright-report/

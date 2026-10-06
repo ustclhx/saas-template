@@ -4,6 +4,9 @@ import tailwindcss from '@tailwindcss/vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import { defineConfig, loadEnv } from 'vite'
+import templateConfig from '../../template.config.ts'
+import { i18nMessages } from './scripts/i18n-project.ts'
+import { APP_AREA_PREFIXES } from './src/features/i18n/app-area.ts'
 
 const repoRoot = new URL('../../', import.meta.url).pathname
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
@@ -38,6 +41,8 @@ export default defineConfig(({ command }) => ({
       ...(command === 'serve' && { config: { vars: { APP_URL: `http://localhost:${port}` } } }),
     }),
     tailwindcss(),
+    // 编译 messages/ 下的文案到 src/paraglide（已 gitignore），语言列表取自模板配置
+    i18nMessages({ i18n: templateConfig.i18n, appAreaPrefixes: APP_AREA_PREFIXES }),
     tanstackStart(),
     viteReact(),
   ],

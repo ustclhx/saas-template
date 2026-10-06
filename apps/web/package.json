@@ -8,14 +8,16 @@
     "build": "vite build",
     "deploy:staging": "CLOUDFLARE_ENV=staging vite build && wrangler deploy",
     "preview": "vite preview",
-    "typecheck": "node scripts/generate-route-tree.mjs && tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p tsconfig.node.json",
+    "typecheck": "node scripts/generate-route-tree.mjs && node scripts/compile-messages.mjs && tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p tsconfig.node.json",
     "test": "vitest run",
     "test:e2e": "playwright test"
   },
   "dependencies": {
     "@saas/ai": "workspace:*",
     "@saas/auth": "workspace:*",
+    "@saas/billing": "workspace:*",
     "@saas/config": "workspace:*",
+    "@saas/credits": "workspace:*",
     "@saas/db": "workspace:*",
     "@saas/email": "workspace:*",
     "@saas/entitlements": "workspace:*",
@@ -28,14 +30,14 @@
     "drizzle-orm": "^0.45.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "zod": "^4.6.5",
-    "@saas/billing": "workspace:*",
-    "@saas/credits": "workspace:*"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.62.4",
     "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "^5.20261002.1",
+    "@inlang/paraglide-js": "^2.25.4",
+    "@inlang/plugin-message-format": "^4.4.4",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^22.20.5",

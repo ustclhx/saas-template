@@ -20,7 +20,7 @@ saas-template/
 │  │  │  ├─ lib/                  # 前端工具
 │  │  │  └─ styles/
 │  │  ├─ content/                 # MDX：博客、文档、法律页
-│  │  ├─ messages/                # Paraglide 文案（en.json, zh.json ...）
+│  │  ├─ messages/                # Paraglide 文案，按功能拆分：<locale>/<feature>.json
 │  │  └─ wrangler.jsonc
 │  └─ jobs/                       # 纯 Worker：Workflows / Queue 消费者 / Cron
 │     ├─ src/

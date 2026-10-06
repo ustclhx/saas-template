@@ -1,5 +1,6 @@
 import { createRootRoute, HeadContent, Outlet, Scripts } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
+import { getLocale } from '../paraglide/runtime.js'
 import appCss from '../styles/app.css?url'
 
 export const Route = createRootRoute({
@@ -25,7 +26,7 @@ function RootComponent() {
 
 function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang={getLocale()}>
       <head>
         <HeadContent />
       </head>
