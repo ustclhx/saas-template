@@ -62,15 +62,60 @@ test('platform admin can create, edit, disable and enable a model', async ({ pag
     await expect(card.getByRole('button', { name: 'Disable' })).toBeVisible()
 
     const audits =
-      await sql`select action from audit_log where target_type='ai_model' and target_id=${String(saved?.id)} order by id`
+      await sql`select action, meta from audit_log where target_type='ai_model' and target_id=${String(saved?.id)} order by id`
     expect(audits.map((row) => row.action)).toEqual([
       'ai.model_created',
       'ai.model_updated',
       'ai.model_disabled',
       'ai.model_enabled',
     ])
+    expect(audits.find((row) => row.action === 'ai.model_updated')?.meta).toMatchObject({
+      oldPricing: {
+        mode: 'per_call',
+        credits: 2,
+        limits: { maxInputTokens: 8000, maxOutputTokens: 2000 },
+      },
+      newPricing: {
+        mode: 'per_call',
+        credits: 3,
+        limits: { maxInputTokens: 8000, maxOutputTokens: 2000 },
+      },
+    })
+
+    // 复制已保存值，新副本停用，并保留参数 schema。
+    await sql`update ai_model set params_schema=${JSON.stringify({ quality: ['standard', 'hd'] })}::jsonb where key=${key}`
+    await card.getByLabel('Copy key').fill(`${key}-copy`)
+    await card.getByRole('button', { name: 'Copy model', exact: true }).click()
+    const copy = page.getByRole('article', { name: `Model ${key}-copy` })
+    await expect(copy).toBeVisible()
+    await expect(copy.getByRole('heading')).toContainText('(disabled)')
+    const [cloned] =
+      await sql`select id, pricing, params_schema, provider_model_id from ai_model where key=${`${key}-copy`}`
+    expect(cloned).toMatchObject({
+      pricing: saved?.pricing,
+      params_schema: { quality: ['standard', 'hd'] },
+      provider_model_id: 'gpt-fixture',
+    })
+    const [copyAudit] =
+      await sql`select meta from audit_log where action='ai.model_copied' and target_id=${String(cloned?.id)}`
+    expect(copyAudit?.meta).toMatchObject({ sourceId: saved?.id, sourceKey: key })
+
+    await page.getByLabel('Model type').selectOption('image')
+    await page.getByRole('button', { name: 'Apply', exact: true }).click()
+    await expect(card).toHaveCount(0)
+    await expect(copy).toHaveCount(0)
+    await expect(page).toHaveURL(/kind=image/)
+    await page.getByLabel('Model type').selectOption('text')
+    await page.getByLabel('Order models').selectOption('key_desc')
+    await page.getByRole('button', { name: 'Apply', exact: true }).click()
+    await expect(copy).toBeVisible()
+    const keys = await page
+      .getByRole('table', { name: 'AI models' })
+      .getByRole('link')
+      .allTextContents()
+    expect(keys).toEqual([...keys].sort().reverse())
   } finally {
-    await sql`delete from ai_model where key=${key}`
+    await sql`delete from ai_model where key in ${sql([key, `${key}-copy`])}`
     await sql.end()
   }
 })

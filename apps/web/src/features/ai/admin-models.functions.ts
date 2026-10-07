@@ -3,13 +3,14 @@ import { defaultPricing, invalidateModelCache, modelValues, PricingError } from 
 import { aiModel } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
-import { asc, eq } from 'drizzle-orm'
+import { asc, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { templateConfig } from '../../server/template-config.ts'
 import { withAdminAction } from '../admin/action.server.ts'
 import { adminMiddleware } from '../admin/admin.functions.ts'
+import { ADMIN_PAGE_SIZE, adminListSearch } from '../admin/list.ts'
 
-// 后台最小模型编辑（tasks.md 1.4）：新增、编辑价格与计费方式、启用 / 停用。
+// 模型管理：服务端分页、类型筛选与排序；新增、编辑、复制、启用 / 停用。
 // 计费方式由 @saas/ai 的 parsePricing 校验（按次文本模型缺 token 上限时拒绝保存）；
 // 保存经 adminAction 包装（add-admin-console 1.1），审计与写入同事务；提交后使 KV 中的模型列表缓存失效。
 
@@ -54,7 +55,23 @@ async function safe(action: () => Promise<string>): Promise<Result> {
 
 export const getAdminModels = createServerFn({ method: 'GET' })
   .middleware([adminMiddleware])
-  .handler(async ({ context }) => {
+  .inputValidator(
+    z.object({
+      offset: z.number().int().min(0).max(100_000),
+      kind: z.string().max(200).optional(),
+      order: z.string().max(200).optional(),
+    }),
+  )
+  .handler(async ({ context, data }) => {
+    const { offset, kind, order } = adminListSearch(['kind', 'order'])(data)
+    const ordering =
+      order === 'key'
+        ? [asc(aiModel.key)]
+        : order === 'key_desc'
+          ? [desc(aiModel.key)]
+          : order === 'sort_desc'
+            ? [desc(aiModel.sort), asc(aiModel.key)]
+            : [asc(aiModel.sort), asc(aiModel.key)]
     const rows = await context.db
       .select({
         id: aiModel.id,
@@ -68,11 +85,21 @@ export const getAdminModels = createServerFn({ method: 'GET' })
         sort: aiModel.sort,
       })
       .from(aiModel)
-      .orderBy(asc(aiModel.sort), asc(aiModel.key))
+      .where(
+        kind && kinds.includes(kind as (typeof kinds)[number])
+          ? eq(aiModel.kind, kind as (typeof kinds)[number])
+          : undefined,
+      )
+      .orderBy(...ordering)
+      .offset(offset)
+      .limit(ADMIN_PAGE_SIZE + 1)
     const modes = templateConfig.ai.defaultPricingMode
     return {
       // pricing 列来自 JSON，按 JSON 类型返回给页面
-      models: rows.map((row) => ({ ...row, pricing: row.pricing as { [key: string]: Json } })),
+      hasMore: rows.length > ADMIN_PAGE_SIZE,
+      models: rows
+        .slice(0, ADMIN_PAGE_SIZE)
+        .map((row) => ({ ...row, pricing: row.pricing as { [key: string]: Json } })),
       defaults: Object.fromEntries(kinds.map((kind) => [kind, defaultPricing(kind, modes)])),
     }
   })
@@ -84,6 +111,15 @@ export const saveAdminModel = createServerFn({ method: 'POST' })
     safe(() =>
       withAdminAction(context, 'ai.model_save', async ({ tx, audit }) => {
         const values = modelValues(data)
+        // 锁住旧行，保证并发改价时审计中的旧价格是本次实际覆盖的价格。
+        const [before] = data.id
+          ? await tx
+              .select({ pricing: aiModel.pricing })
+              .from(aiModel)
+              .where(eq(aiModel.id, data.id))
+              .for('update')
+          : []
+        if (data.id && !before) throw new AppError('NOT_FOUND', 'Model not found', { status: 404 })
         const [saved] = data.id
           ? await tx.update(aiModel).set(values).where(eq(aiModel.id, data.id)).returning()
           : await tx.insert(aiModel).values(values).returning()
@@ -96,6 +132,8 @@ export const saveAdminModel = createServerFn({ method: 'POST' })
             key: saved.key,
             kind: saved.kind,
             pricing: saved.pricing,
+            oldPricing: before?.pricing ?? null,
+            newPricing: saved.pricing,
             enabled: saved.enabled,
           },
         })
@@ -121,6 +159,43 @@ export const setAdminModelEnabled = createServerFn({ method: 'POST' })
           targetType: 'ai_model',
           targetId: saved.id,
           meta: { key: saved.key },
+        })
+        return saved.id
+      }),
+    ),
+  )
+
+/** 复制已保存的模型，包括媒体参数；副本先停用，审核后再启用。 */
+export const copyAdminModel = createServerFn({ method: 'POST' })
+  .middleware([adminMiddleware])
+  .inputValidator(z.object({ id: z.uuid(), key: modelInput.shape.key }))
+  .handler(({ context, data }) =>
+    safe(() =>
+      withAdminAction(context, 'ai.model_copy', async ({ tx, audit }) => {
+        const [source] = await tx.select().from(aiModel).where(eq(aiModel.id, data.id)).for('share')
+        if (!source) throw new AppError('NOT_FOUND', 'Model not found', { status: 404 })
+        const values = modelValues({
+          ...source,
+          key: data.key,
+          tags: source.minPlanFeatures,
+          enabled: false,
+        })
+        const [saved] = await tx
+          .insert(aiModel)
+          .values({ ...values, paramsSchema: source.paramsSchema })
+          .returning()
+        if (!saved) throw new AppError('NOT_FOUND', 'Model not found', { status: 404 })
+        await audit({
+          action: 'ai.model_copied',
+          targetType: 'ai_model',
+          targetId: saved.id,
+          meta: {
+            sourceId: source.id,
+            sourceKey: source.key,
+            key: saved.key,
+            pricing: saved.pricing,
+            enabled: saved.enabled,
+          },
         })
         return saved.id
       }),

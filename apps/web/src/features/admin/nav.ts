@@ -33,6 +33,13 @@ export const ADMIN_NAV = linkOptions([
     activeOptions: { includeSearch: false },
   },
   {
+    to: '/admin/models',
+    search: { offset: 0 },
+    label: ADMIN_COPY.nav.models,
+    activeOptions: { includeSearch: false },
+  },
+  { to: '/admin/settings', label: 'Settings' },
+  {
     to: '/admin/credits',
     search: { offset: 0 },
     label: 'Credit adjustments',
@@ -56,7 +63,6 @@ export const ADMIN_NAV = linkOptions([
     label: 'Webhook events',
     activeOptions: { includeSearch: false },
   },
-  { to: '/admin/models', label: ADMIN_COPY.nav.models },
   ...(templateConfig.features.waitlist
     ? [{ to: '/admin/waitlist' as const, search: { offset: 0 }, label: 'Waitlist' }]
     : []),
