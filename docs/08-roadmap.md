@@ -155,7 +155,7 @@
 |---|---|---|---|
 | Q1 | 表单库 | 已决定并接入：TanStack Form + Zod | Phase 1（已决定） |
 | Q2 | 内容方案 | Fumadocs / content-collections | Phase 6 前 |
-| Q3 | 产品分析 | PostHog / Umami / 不做 | Phase 7 |
+| Q3 | 产品分析 | 已决定并接入（#56）：默认只用无 Cookie 的 Cloudflare Web Analytics（配置公开 token 后在公开页面加载）；PostHog 为可选接入点，由 `features.analytics` 控制且默认关闭，开启后须用户同意（`saas.analytics.consent`）并尊重 DNT，后台不加载；不做 Umami | Phase 7（已决定） |
 | Q4 | 订阅积分是否结转 | 已按设计确定：按套餐配置，默认不结转 | Phase 2（离线验证通过，待真实平台验收） |
 | Q5 | 升级时是否立即补发积分差额 | 已按设计确定：默认不立即补发 | Phase 2（离线验证通过，待真实平台验收） |
 | Q6 | 退款时已消费积分的处理 | 已按设计确定：默认不追溯 | Phase 2（离线验证通过，待真实平台验收） |

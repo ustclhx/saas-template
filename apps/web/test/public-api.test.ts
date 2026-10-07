@@ -9,6 +9,8 @@ import { simulateReadableStream } from 'ai'
 import { MockLanguageModelV4 } from 'ai/test'
 import OpenAI from 'openai'
 import { afterAll, describe, expect, it } from 'vitest'
+import enApiDoc from '../content/docs/en/public-api.mdx?raw'
+import zhApiDoc from '../content/docs/zh/public-api.mdx?raw'
 import { handleCompletions } from '../src/features/api-keys/completions.ts'
 import {
   type ApiKeyDeps,
@@ -362,4 +364,29 @@ describe('官方 OpenAI Node SDK 与共用积分结算', () => {
     expect(mock.doStreamCalls).toHaveLength(0)
     expect(await sql`select 1 from credit_hold where workspace_id = ${who.id}`).toHaveLength(0)
   })
+  // 公开 API 文档（tasks.md 3.4）：文档中的示例请求体原样可用，避免文档与实现脱节
+  for (const [locale, doc] of [
+    ['en', enApiDoc],
+    ['zh', zhApiDoc],
+  ] as const) {
+    it(`${locale} 文档中的示例请求体可直接调用并返回兼容格式`, async () => {
+      const block = /```json\n([\s\S]*?)\n```/.exec(doc)?.[1]
+      if (!block) throw new Error('Missing JSON example in public API docs')
+      const example = JSON.parse(block) as { model: string }
+      expect(example.model).toBe('your-model-key')
+      const who = await owner()
+      const key = await textModel({ mode: 'token', inputPer1k: 1, outputPer1k: 10 })
+      const { apiDeps, settled } = client(who.key.key)
+      const response = await handleCompletions(
+        request(who.key.key, { ...example, model: key }),
+        apiDeps,
+      )
+      expect(response.status).toBe(200)
+      expect(await response.json()).toMatchObject({
+        object: 'chat.completion',
+        choices: [{ message: { role: 'assistant' } }],
+      })
+      await settled()
+    })
+  }
 })
