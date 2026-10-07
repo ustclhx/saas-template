@@ -1,12 +1,16 @@
-import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
-import { useState } from 'react'
-import { getAdminBilling, replayAdminWebhook } from '../../../features/billing/admin.functions.ts'
+import { DataTable } from '@saas/ui'
+import { createFileRoute } from '@tanstack/react-router'
+import {
+  adminListPage,
+  adminListSearch,
+  filtersToSearch,
+  offsetOfPage,
+} from '../../../features/admin/list.ts'
+import { getAdminBilling } from '../../../features/billing/admin.functions.ts'
 import { adminMoney } from '../../../features/billing/admin-display.ts'
 
 export const Route = createFileRoute('/admin/billing/')({
-  validateSearch: (search: Record<string, unknown>) => ({
-    offset: Math.min(100_000, Math.max(0, Number(search.offset) || 0)),
-  }),
+  validateSearch: (search: Record<string, unknown>) => adminListSearch(['workspaceId'])(search),
   loaderDeps: ({ search }) => search,
   loader: ({ deps }) => getAdminBilling({ data: deps }),
   errorComponent: () => <p role="alert">Billing data is unavailable. Please reload.</p>,
@@ -14,29 +18,11 @@ export const Route = createFileRoute('/admin/billing/')({
 })
 function BillingAdmin() {
   const data = Route.useLoaderData()
-  const { offset } = Route.useSearch()
-  const router = useRouter()
-  const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState('')
-  async function replay(id: string) {
-    setBusy(true)
-    try {
-      const result = await replayAdminWebhook({ data: { webhookEventId: id } })
-      setMessage(result.ok ? result.status : `Replay unavailable (${result.error}).`)
-      await router.invalidate()
-    } catch {
-      setMessage('Replay unavailable. Reload to check the saved record.')
-    } finally {
-      setBusy(false)
-    }
-  }
+  const search = Route.useSearch()
+  const navigate = Route.useNavigate()
   return (
-    <section>
-      <h2>Billing administration</h2>
-      <Link to="/admin/billing/refunds" search={{ offset: 0 }}>
-        Refund reviews
-      </Link>
-      <p role="status">{message || 'Each list shows at most 50 records per page.'}</p>
+    <section className="grid gap-5">
+      <h2 className="font-semibold text-xl">Billing administration</h2>
       <ul>
         {data.readiness.map((item) => (
           <li key={item.id}>
@@ -44,101 +30,32 @@ function BillingAdmin() {
           </li>
         ))}
       </ul>
-      <h3>Payments</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Workspace</th>
-            <th>Provider</th>
-            <th>Amount</th>
-            <th>Refunded</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.payments.map((row) => (
-            <tr key={row.id}>
-              <td>{row.workspaceId}</td>
-              <td>{row.provider}</td>
-              <td>{adminMoney(row.amount, row.currency)}</td>
-              <td>{adminMoney(row.refundedAmount, row.currency)}</td>
-              <td>{row.status}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <h3>Subscriptions</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Workspace</th>
-            <th>Provider</th>
-            <th>Status</th>
-            <th>Cancellation</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.subscriptions.map((row) => (
-            <tr key={row.id}>
-              <td>{row.workspaceId}</td>
-              <td>{row.provider}</td>
-              <td>{row.status}</td>
-              <td>{row.cancelAtPeriodEnd ? 'At period end' : 'None scheduled'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <h3>Webhook events</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Provider</th>
-            <th>Event</th>
-            <th>Type</th>
-            <th>Status</th>
-            <th>Attempts</th>
-            <th>Replay</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.webhooks.map((row) => (
-            <tr key={row.id}>
-              <td>{row.provider}</td>
-              <td>{row.providerEventId}</td>
-              <td>{row.type}</td>
-              <td>{row.status}</td>
-              <td>{row.attempts}</td>
-              <td>
-                {row.status === 'failed' ? (
-                  <button
-                    type="button"
-                    disabled={busy || !row.replayAvailable}
-                    onClick={() => replay(row.id)}
-                  >
-                    {row.replayAvailable
-                      ? 'Replay failed event'
-                      : 'Replay unavailable — provider not configured'}
-                  </button>
-                ) : (
-                  'Only failed events can be replayed'
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <nav aria-label="Billing pages">
-        {offset > 0 && (
-          <Link to="/admin/billing" search={{ offset: Math.max(0, offset - 50) }}>
-            Previous
-          </Link>
-        )}{' '}
-        {data.hasMore && offset < 100_000 && (
-          <Link to="/admin/billing" search={{ offset: Math.min(100_000, offset + 50) }}>
-            Next
-          </Link>
-        )}
-      </nav>
+      <DataTable
+        label="Payments"
+        rows={data.rows}
+        getRowId={(row) => row.id}
+        columns={[
+          { id: 'workspace', header: 'Workspace', cell: (row) => row.workspaceId },
+          { id: 'provider', header: 'Provider', cell: (row) => row.provider },
+          { id: 'amount', header: 'Amount', cell: (row) => adminMoney(row.amount, row.currency) },
+          {
+            id: 'refunded',
+            header: 'Refunded',
+            cell: (row) => adminMoney(row.refundedAmount, row.currency),
+          },
+          { id: 'status', header: 'Status', cell: (row) => row.status },
+          { id: 'kind', header: 'Kind', cell: (row) => row.kind },
+        ]}
+        page={adminListPage(search.offset, data)}
+        filters={[{ id: 'workspaceId', label: 'Workspace ID' }]}
+        filterValues={{ workspaceId: search.workspaceId }}
+        onPageChange={(page) =>
+          void navigate({ search: { ...search, offset: offsetOfPage(page) } })
+        }
+        onFiltersChange={(values) =>
+          void navigate({ search: filtersToSearch(['workspaceId'], values) })
+        }
+      />
     </section>
   )
 }
