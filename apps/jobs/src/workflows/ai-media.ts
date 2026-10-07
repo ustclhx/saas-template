@@ -1,9 +1,12 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers'
 import { MEDIA_DONE_EVENT } from '@saas/shared'
+import { log, newRequestId, withLogContext } from '@saas/shared/log'
 
 /** 启动参数（P4 媒体生成时扩展） */
 export interface AiMediaParams {
   taskId: string
+  /** 启动该实例的请求 ID（日志关联）；旧实例的参数中没有 */
+  requestId?: string
 }
 
 /** 外部服务商回调后由 web 通过 `instance.sendEvent` 发送的 `MEDIA_DONE_EVENT` 事件负载 */
@@ -16,9 +19,17 @@ export interface MediaDonePayload {
  * 业务逻辑在 P4（add-ai-media-generation）实现。
  */
 export class AiMediaWorkflow extends WorkflowEntrypoint<Cloudflare.Env, AiMediaParams> {
-  override async run(event: WorkflowEvent<AiMediaParams>, step: WorkflowStep) {
+  override run(event: WorkflowEvent<AiMediaParams>, step: WorkflowStep) {
+    const context = {
+      requestId: event.payload.requestId ?? newRequestId(),
+      taskId: event.payload.taskId,
+    }
+    return withLogContext(context, () => this.steps(event, step))
+  }
+
+  private async steps(event: WorkflowEvent<AiMediaParams>, step: WorkflowStep) {
     const submitted = await step.do('submit', async () => {
-      console.log(JSON.stringify({ event: 'ai_media.submit', taskId: event.payload.taskId }))
+      log.info('ai_media.submit')
       return { submittedAt: new Date().toISOString() }
     })
 

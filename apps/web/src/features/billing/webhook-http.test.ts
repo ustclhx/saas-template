@@ -14,6 +14,7 @@ vi.mock('@saas/billing', async (importOriginal) => {
 })
 
 import { WebhookVerificationError } from '@saas/billing'
+import { newRequestId, withLogContext } from '@saas/shared/log'
 import { handleBillingWebhook } from './webhook-http.ts'
 
 const options = {
@@ -59,4 +60,27 @@ it('acknowledges committed payments even when post-commit queue delivery needs r
   const response = await handleBillingWebhook(request(), 'stripe', options)
   expect(response.status).toBe(200)
   expect(await response.json()).toEqual({ received: true })
+})
+it('enqueues the post-commit message with the request ID that its logs carry', async () => {
+  const requestId = newRequestId()
+  const send = vi.fn()
+  const info = vi.spyOn(console, 'log').mockImplementation(() => {})
+  process.mockImplementationOnce(async ({ notify }) => {
+    await notify({ delivery: { id: 'delivery-1' } })
+    return { status: 'processed', delivery: { id: 'delivery-1' }, notification: { status: 'sent' } }
+  })
+  const response = await withLogContext({ requestId }, () =>
+    handleBillingWebhook(request(), 'stripe', { ...options, queue: { send } }),
+  )
+  expect(response.status).toBe(200)
+  expect(send).toHaveBeenCalledWith(
+    { v: 1, deliveryId: 'delivery-1', requestId },
+    { contentType: 'json' },
+  )
+  expect(JSON.parse(String(info.mock.calls[0]?.[0]))).toMatchObject({
+    event: 'billing.webhook_processed',
+    requestId,
+    deliveryId: 'delivery-1',
+  })
+  info.mockRestore()
 })
