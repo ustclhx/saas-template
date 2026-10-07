@@ -11,7 +11,7 @@ import {
 } from './billing.ts'
 import { runDeletionCleanup } from './cron/deletion-cleanup.ts'
 import { HEARTBEAT_CRON, runHeartbeat } from './cron/heartbeat.ts'
-import { METRICS_DAILY_CRON, runMetricsDaily } from './cron/metrics-daily.ts'
+import { runMetricsDaily } from './cron/metrics-daily.ts'
 import { runWorkspaceCleanup, WORKSPACE_CLEANUP_CRON } from './cron/workspace-cleanup.ts'
 import { requireEnv } from './env.ts'
 import { handleBillingBatch } from './queues/billing.ts'
@@ -59,10 +59,21 @@ async function schedule(controller: ScheduledController, env: Cloudflare.Env) {
     case BILLING_RETRY_CRON:
     case BILLING_DAILY_CRON:
       return runBillingSchedule(controller.cron, { ...validEnv, ...env })
-    case METRICS_DAILY_CRON:
-      return runMetricsDaily(validEnv, controller.scheduledTime)
-    case WORKSPACE_CLEANUP_CRON:
-      return runWorkspaceCleanup(validEnv)
+    // METRICS_DAILY_CRON 与 WORKSPACE_CLEANUP_CRON 是同一个触发器：两项任务独立执行，
+    // 任一失败不影响另一项，但仍让本次 Cron 标记为失败。
+    case WORKSPACE_CLEANUP_CRON: {
+      const results = await Promise.allSettled([
+        runWorkspaceCleanup(validEnv),
+        runMetricsDaily(validEnv, controller.scheduledTime),
+      ])
+      const failed = results.filter((result) => result.status === 'rejected')
+      if (failed.length)
+        throw new AggregateError(
+          failed.map((result) => result.reason),
+          'Daily maintenance cron failed',
+        )
+      return
+    }
     case HEARTBEAT_CRON:
       await runDeletionCleanup({ ...validEnv, CACHE: env.CACHE })
       return runHeartbeat(validEnv)

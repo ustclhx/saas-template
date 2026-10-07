@@ -38,6 +38,7 @@ vi.mock('../src/cron/heartbeat.ts', () => ({
   runHeartbeat: vi.fn(),
 }))
 vi.mock('../src/cron/deletion-cleanup.ts', () => ({ runDeletionCleanup: vi.fn() }))
+vi.mock('../src/cron/metrics-daily.ts', () => ({ runMetricsDaily: vi.fn() }))
 vi.mock('../src/cron/workspace-cleanup.ts', () => ({
   WORKSPACE_CLEANUP_CRON: '0 3 * * *',
   runWorkspaceCleanup: vi.fn(),
@@ -55,6 +56,7 @@ import {
 } from '../src/billing.ts'
 import { runDeletionCleanup } from '../src/cron/deletion-cleanup.ts'
 import { runHeartbeat } from '../src/cron/heartbeat.ts'
+import { runMetricsDaily } from '../src/cron/metrics-daily.ts'
 import { runWorkspaceCleanup } from '../src/cron/workspace-cleanup.ts'
 import worker from '../src/index.ts'
 import { handleBillingBatch } from '../src/queues/billing.ts'
@@ -179,6 +181,8 @@ it('preserves P1 dispatcher schedules and routes both billing queues', async () 
   expect(runHeartbeat).toHaveBeenCalledOnce()
   await worker.scheduled({ cron: '0 3 * * *' } as ScheduledController, bindings)
   expect(runWorkspaceCleanup).toHaveBeenCalledOnce()
+  // 每日指标汇总与空间清理共用 03:00 触发器
+  expect(runMetricsDaily).toHaveBeenCalledOnce()
   await worker.scheduled({ cron: BILLING_HOURLY_CRON } as ScheduledController, bindings)
   expect(mocks.annual).toHaveBeenCalledOnce()
   for (const queue of ['events', 'events-staging']) {
