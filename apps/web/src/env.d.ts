@@ -12,7 +12,10 @@ declare namespace Cloudflare {
     /** 定义在 apps/jobs 的 AiMediaWorkflow（script_name: jobs）；参数类型在 P4 移入 packages/ai */
     AI_MEDIA_WORKFLOW: Workflow<{ taskId: string }>
     /** 邮件队列 producer，apps/jobs 消费（消息格式见 @saas/email/queue） */
-    EVENTS_QUEUE: Queue<import('@saas/billing').BillingQueueMessage>
+    EVENTS_QUEUE: Queue<
+      | import('@saas/billing').BillingQueueMessage
+      | import('./features/notifications/operations.ts').OperationsQueueMessage
+    >
     EMAIL_QUEUE: Queue<import('@saas/email/queue').EmailQueueMessage>
     /** KV：Better Auth 会话的 secondaryStorage（packages/auth/src/session.ts） */
     CACHE: KVNamespace

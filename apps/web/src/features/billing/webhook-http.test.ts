@@ -84,3 +84,53 @@ it('enqueues the post-commit message with the request ID that its logs carry', a
   })
   info.mockRestore()
 })
+
+it('adds payment operations only after commit and leaves failed callback responses unchanged when enqueue fails', async () => {
+  const send = vi.fn()
+  process.mockImplementationOnce(async ({ notify }) => {
+    await notify({
+      delivery: { id: 'delivery-2' },
+      events: [
+        {
+          type: 'payment.succeeded',
+          provider: 'stripe',
+          payment: {
+            providerPaymentId: 'pi_123',
+            amount: 1000,
+            currency: 'USD',
+            metadata: { workspaceId: 'workspace-1' },
+          },
+        },
+      ],
+    })
+    return { status: 'processed' }
+  })
+  expect(
+    (await handleBillingWebhook(request(), 'stripe', { ...options, queue: { send } })).status,
+  ).toBe(200)
+  expect(send.mock.calls[0]?.[0]).toMatchObject({
+    v: 1,
+    deliveryId: 'delivery-2',
+    operations: [
+      {
+        event: 'payment.succeeded',
+        sourceId: 'stripe:pi_123',
+        workspaceId: 'workspace-1',
+        amount: 1000,
+        currency: 'USD',
+      },
+    ],
+  })
+  process.mockResolvedValueOnce({
+    status: 'failed',
+    delivery: { id: 'failed-delivery', attempts: 2 },
+  })
+  send.mockRejectedValueOnce(new Error('Queue unavailable'))
+  expect(
+    (await handleBillingWebhook(request(), 'stripe', { ...options, queue: { send } })).status,
+  ).toBe(500)
+  expect(send.mock.calls[1]?.[0]).toMatchObject({
+    v: 1,
+    operations: [{ event: 'webhook.failed', sourceId: 'failed-delivery:2' }],
+  })
+})

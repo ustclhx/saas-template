@@ -9,6 +9,10 @@ export const REDACTED = '[REDACTED]'
 /** 整个字段视为敏感的名称（归一化后精确匹配） */
 const SENSITIVE_KEYS = new Set([
   'authorization',
+  'discordwebhookurl',
+  'operations.discordwebhookurl',
+  'telegrambottoken',
+  'operations.telegrambottoken',
   'proxyauthorization',
   'cookie',
   'setcookie',
