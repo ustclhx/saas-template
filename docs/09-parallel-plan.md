@@ -143,11 +143,19 @@ P0 实现时必须遵守的约定（setup 脚本依赖它们）：
    orca orchestration worker-start --run <run_id> --task <task_id> --terminal <handle> --worktree path:<worktree 路径> --json
    ```
    首次用 `--spec` 而不是 `--task` 也可以。重试失败的任务时加 `--retry-of <dispatch_id>`，且必须是该任务**最新**一次已结束的 dispatch（用 `orca orchestration dispatch-show --task <task_id>` 查）；之前的 dispatch 若为 `reclaimable`，先 `worker-release`。
+4. **让用户看到进度**：建 worktree 时加 `--activate`（否则 worktree 留在后台、界面中看不到）；task spec 中要求 worker 在每个检查点执行
+   `orca worktree set --worktree path:<worktree 路径> --workspace-status in-progress|in-review --comment "<一句中文进度>"`，进度显示在工作区卡片上；阻塞时写 `阻塞：<原因>`，开完 PR 后改为 `in-review`。
+5. **使用 Codex 作为 worker**（协调者仍由 Claude 担任，负责 spec、答复 ask、审阅、合并与清理）：第 2 步的命令换成
+   ```
+   codex -m gpt-6.1-sol -c model_reasoning_effort=high -c service_tier=priority --dangerously-bypass-approvals-and-sandbox
+   ```
+   `service_tier=priority` 即该模型的 Fast 档位（约 2 倍速度、用量更高）。Codex 不支持 `/opsx:apply` 斜杠命令，spec 中改为「按 `.agents/skills/openspec-apply-change/SKILL.md` 的流程实施」。
+6. macOS 默认 shell 为 zsh：批量启动脚本用 `bash` 执行——zsh 中 `for n in $NAMES` 不按空格拆分，`$B:apps/...` 会被当成路径修饰符。
 
 **合并流程**（协调者执行，一次只合并一个分支）：
 1. 分支 rebase 到最新 `origin/main`，冲突按 §3 处理。
 2. CI 通过、人工审阅 diff 后合并 PR。
-3. 若该分支改了 schema：在 main 上 `drizzle-kit generate` 生成迁移、在本地 `saas_dev` 验证后提交。
+3. 若该分支改了 schema：在 main 上 `drizzle-kit generate` 生成迁移、在本地 `saas_dev` 验证后提交。若该分支的集成测试依赖新表（CI 按迁移建库，否则报 `relation ... does not exist`），改为在合并前于该 PR 分支上生成迁移并推送，CI 通过后再合并；同一波次只允许一个分支携带迁移，避免序号冲突。生成的 `meta/*.json` 提交前先 `biome check --write` 格式化。
 4. 推送 main，然后把依赖该任务的后续任务从 blocked 放行（新 worktree 才能从包含该成果的 main 分出）。
 
 **合并后清理 worktree**（协调者执行，不必再询问）：
