@@ -34,7 +34,7 @@ import {
 import { type Entitlements, getEntitlements } from '@saas/entitlements'
 import { AppError, newId, toErrorResponse } from '@saas/shared'
 import { log, setLogContext } from '@saas/shared/log'
-import { convertToModelMessages, type LanguageModelUsage, streamText, type UIMessage } from 'ai'
+import { type LanguageModelUsage, streamText } from 'ai'
 import { and, asc, eq, inArray, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
 import { templateConfig } from '../../server/template-config.ts'
@@ -110,12 +110,12 @@ export async function handleChatRequest(request: Request, deps: ChatDeps): Promi
     return await startChat(request, deps)
   } catch (error) {
     if (!(error instanceof AppError)) log.error('ai.chat.failed', { error })
-    const { status, body } = toErrorResponse(toAppError(error))
+    const { status, body } = toErrorResponse(chatAppError(error))
     return Response.json(body, { status })
   }
 }
 
-function toAppError(error: unknown): unknown {
+export function chatAppError(error: unknown): unknown {
   if (!(error instanceof CreditsError)) return error
   switch (error.code) {
     case 'CREDIT_DEBT':
@@ -144,6 +144,32 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
   setLogContext({ workspaceId, userId: user.id })
   if (!templateConfig.tenancy.multiTenant && !resolved.workspace.isPersonal)
     throw new AppError('WORKSPACE_READ_ONLY', 'Team workspace writes are disabled', { status: 403 })
+  const started = await startWorkspaceChat(input, { workspaceId, userId: user.id }, deps)
+  return started.result.toUIMessageStreamResponse({
+    generateMessageId: () => started.metadata.messageId,
+    messageMetadata: ({ part }) => (part.type === 'start' ? started.metadata : undefined),
+    headers: { 'x-conversation-id': started.metadata.conversationId },
+  })
+}
+
+export type WorkspaceChatDeps = Omit<ChatDeps, 'auth' | 'rateLimiter'> & {
+  readonly rateLimiter?: RateLimiter | undefined
+}
+
+/** 已鉴权入口共用预扣、定价快照、检查点与结算；公开 API 仅转换请求和响应协议。 */
+export async function startWorkspaceChat(
+  input: ChatRequest,
+  context: {
+    workspaceId: string
+    userId: string
+    prompt?: { role: 'system' | 'user' | 'assistant'; text: string }[]
+    maxOutputTokens?: number | undefined
+    temperature?: number | undefined
+  },
+  deps: WorkspaceChatDeps,
+) {
+  const { db } = deps
+  const { workspaceId, userId } = context
   const s = scoped(db, workspaceId)
 
   // 1. 权益：模型已启用且当前套餐允许；取定价快照
@@ -164,7 +190,10 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
   const pricing = model.pricing
 
   // 2. 限流（按数据中心计数，只用于防刷）
-  if (!(await deps.rateLimiter.limit({ key: `ai:${workspaceId}:${user.id}` })).success)
+  if (
+    deps.rateLimiter &&
+    !(await deps.rateLimiter.limit({ key: `ai:${workspaceId}:${userId}` })).success
+  )
     throw new AppError('RATE_LIMITED', 'Too many requests, please try again later', { status: 429 })
 
   const languageModel = (deps.languageModelFactory ?? defaultLanguageModelFactory)(model, deps.env)
@@ -175,10 +204,7 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
   if (conversationId !== undefined) {
     const [conversation] = await s
       .select(aiConversation, {
-        where: and(
-          eq(aiConversation.id, conversationId),
-          eq(aiConversation.userId, user.id),
-        ) as SQL,
+        where: and(eq(aiConversation.id, conversationId), eq(aiConversation.userId, userId)) as SQL,
       })
       .limit(1)
     if (!conversation) throw new AppError('NOT_FOUND', 'Not found', { status: 404 })
@@ -200,7 +226,7 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
   }
   const userText = input.message.parts.map((part) => part.text).join('')
   const { tokensPerChar, maxOutputTokens: modelMaxOutput } = textModelConfig(model)
-  let prompt = [...history, { role: 'user' as const, text: userText }]
+  let prompt = context.prompt ?? [...history, { role: 'user' as const, text: userText }]
   if (pricing.mode === 'per_call' && pricing.limits?.maxInputTokens !== undefined) {
     prompt = truncateHistory(prompt, pricing.limits.maxInputTokens, tokensPerChar)
   }
@@ -214,7 +240,10 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
     pricing,
     inputTokens,
     balance: balance.available,
-    maxOutputTokens: modelMaxOutput,
+    maxOutputTokens: Math.min(modelMaxOutput, context.maxOutputTokens ?? modelMaxOutput),
+    ...(context.maxOutputTokens === undefined
+      ? {}
+      : { minOutputTokens: Math.min(256, context.maxOutputTokens) }),
   })
 
   // 5. 同一事务：对话、用户消息、预扣、带定价快照的 streaming 消息
@@ -225,7 +254,7 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
       conversationId = newId()
       await t.insert(aiConversation, {
         id: conversationId,
-        userId: user.id,
+        userId,
         title: userText.slice(0, CONVERSATION_TITLE_LENGTH),
         modelKey: model.key,
       })
@@ -237,7 +266,7 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
     })
     const reservation = await hold(tx, {
       workspaceId,
-      userId: user.id,
+      userId,
       amount: budget.holdAmount,
       refType: 'ai_message',
       refId: assistantId,
@@ -263,10 +292,6 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
   }
 
   // 6. 流式调用；结算与客户端连接解耦
-  const uiMessages: Omit<UIMessage, 'id'>[] = prompt.map((message) => ({
-    role: message.role,
-    parts: [{ type: 'text', text: message.text }],
-  }))
   const overage = deps.overage ?? templateConfig.billing.overage
   const controller = new AbortController()
   const schedule = checkpointSchedule(deps.checkpoint)
@@ -278,8 +303,13 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
   const outputTokensOf = (value: string) => estimateTextTokens(value, tokensPerChar)
   const result = streamText({
     model: languageModel,
-    messages: await convertToModelMessages(uiMessages),
-    maxOutputTokens: budget.maxOutputTokens,
+    allowSystemInMessages: true,
+    messages: prompt.map((message) => ({ role: message.role, content: message.text })),
+    ...(context.temperature === undefined ? {} : { temperature: context.temperature }),
+    maxOutputTokens: Math.min(
+      budget.maxOutputTokens,
+      context.maxOutputTokens ?? budget.maxOutputTokens,
+    ),
     abortSignal: controller.signal,
     // 用量检查点（tasks 2.5）：不阻塞读流，写入串行；写入失败只记日志。
     // 消息已被停止接口或兜底处理器结束（其他 isolate）时中止上游生成
@@ -353,11 +383,7 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
   activeChats.set(assistantId, { abort: () => controller.abort('stop'), done })
   deps.waitUntil(done)
 
-  return result.toUIMessageStreamResponse({
-    generateMessageId: () => assistantId,
-    messageMetadata: ({ part }) => (part.type === 'start' ? metadata : undefined),
-    headers: { 'x-conversation-id': metadata.conversationId },
-  })
+  return { result, metadata, done }
 }
 
 export interface ChatStopDeps {

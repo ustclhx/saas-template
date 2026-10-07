@@ -23,6 +23,8 @@ declare namespace Cloudflare {
     RL_AUTH: RateLimit
     /** Rate Limiting：AI 接口按空间 + 用户限流（features/ai/chat.ts），只用于防刷 */
     RL_AI: RateLimit
+    /** 公开 API 按 Key 和空间限流 */
+    RL_API: RateLimit
     /** 站点地址（vars；`vite dev` 时由 vite.config.ts 按端口覆盖） */
     APP_URL: string
     /** Turnstile site key（vars，前端公开）；模板配置启用 Turnstile 时必填 */

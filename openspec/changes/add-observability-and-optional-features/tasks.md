@@ -5,7 +5,7 @@
 - [x] 1.1 请求 ID 生成与贯穿（日志上下文、队列消息、Workflow 参数），结构化 JSON 日志，验证测试：一次结账请求与其后续队列消息的日志带同一请求 ID
 - [ ] 1.2 接入 `@sentry/cloudflare`（web + jobs）、release 与 source map 上传（CI），验证在 staging 触发一个测试异常后 Sentry 中出现可读堆栈
 - [x] 1.3 统一脱敏过滤器（日志与 Sentry），验证单元测试：带 Authorization 头与对话内容的错误事件中这些字段被移除
-- [ ] 1.4 接入 Cloudflare Web Analytics，以及 `features.analytics` 控制的可选 PostHog 接入点（默认关闭），验证默认配置下页面不加载 PostHog 脚本
+- [x] 1.4 接入 Cloudflare Web Analytics，以及 `features.analytics` 控制的可选 PostHog 接入点（默认关闭），验证默认配置下页面不加载 PostHog 脚本
 
 ## 2. 通知
 
@@ -14,8 +14,8 @@
 
 ## 3. 公开 API
 
-- [ ] 3.1 API Key 管理页（owner / admin；创建时显示一次完整值、命名、过期、撤销）与 `/api/v1` 鉴权中间件（Key → 空间上下文、权益检查、按 Key 限流），验证撤销后调用返回 401、`features.publicApi=false` 时返回 404
-- [ ] 3.2 `POST /api/v1/chat/completions`（非流式与流式 SSE），复用站内对话服务，验证用 OpenAI 官方 Node 与 Python SDK 的集成测试通过且积分按模型计费方式扣除
+- [x] 3.1 API Key 管理页（owner / admin；创建时显示一次完整值、命名、过期、撤销）与 `/api/v1` 鉴权中间件（Key → 空间上下文、权益检查、按 Key 限流），验证撤销后调用返回 401、`features.publicApi=false` 时返回 404
+- [x] 3.2 `POST /api/v1/chat/completions`（非流式与流式 SSE），复用站内对话服务，验证用 OpenAI 官方 Node 与 Python SDK 的集成测试通过且积分按模型计费方式扣除
 - [ ] 3.3 `POST /api/v1/tasks` 与 `GET /api/v1/tasks/:id`，复用站内任务服务，结果返回短期下载地址，验证通过 API 生成一张图片的集成测试
 - [ ] 3.4 编写公开 API 文档页（受 `features.docs` 与 `features.publicApi` 控制），验证文档中的示例请求可直接运行
 
