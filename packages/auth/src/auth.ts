@@ -57,6 +57,14 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
     appName: config.app.name,
     baseURL: vars.APP_URL,
     basePath: '/api/auth',
+    // 空间绑定与角色校验只经应用管理入口；原生 HTTP 接口不能绕过。
+    disabledPaths: [
+      '/api-key/create',
+      '/api-key/update',
+      '/api-key/delete',
+      '/api-key/get',
+      '/api-key/list',
+    ],
     secret: vars.BETTER_AUTH_SECRET,
     database: drizzleAdapter(db, { provider: 'pg', schema }),
     // 会话三层：Cookie 缓存 → KV → 数据库（session.ts）
@@ -195,7 +203,16 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
         : []),
       ...(config.auth.twoFactor ? [twoFactor({ issuer: config.app.name })] : []),
       // 公开 API 的密钥按用户归属，workspace 记在 metadata 中（docs/03-data-model.md §1）
-      ...(config.features.publicApi ? [apiKey({ references: 'user' })] : []),
+      ...(config.features.publicApi
+        ? [
+            apiKey({
+              references: 'user',
+              enableMetadata: true,
+              rateLimit: { enabled: false },
+              keyExpiration: { minExpiresIn: 1 / 1440 },
+            }),
+          ]
+        : []),
     ],
   })
 }

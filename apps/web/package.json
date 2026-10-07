@@ -51,6 +51,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "cf-workers-og": "3.0.1",
     "esbuild": "^0.28.2",
+    "openai": "^7.28.0",
     "tailwindcss": "^4.3.3",
     "vite": "^8.3.2",
     "vitest": "^4.1.11",

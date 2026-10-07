@@ -336,6 +336,9 @@ importers:
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
+      openai:
+        specifier: ^7.28.0
+        version: 7.28.0(undici@7.29.1)(ws@8.21.0)(zod@4.6.5)
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
@@ -4886,6 +4889,30 @@ packages:
   obug@2.2.1:
     resolution: {integrity: sha512-XrsrhT5sybtKI6wakr2SPOlGZWWYbUXZ7a0jT8/QOeAPau+1X/bSegNe5YR75oJmEZQbKningirmGOEJCIk61Q==}
     engines: {node: '>=12.20.0'}
+
+  openai@7.28.0:
+    resolution: {integrity: sha512-HSY4fFLflQGYe2kvO0atm6/GzhD61gpyiOZZUvO4nptMUhuB1to2K3wwFpFqc5gfEK0SxyIIFiu1yE2MtygWcA==}
+    engines: {node: '>=22.0.0'}
+    peerDependencies:
+      '@aws-sdk/credential-provider-node': '>=3.972.0 <4'
+      '@smithy/hash-node': '>=4.3.0 <5'
+      '@smithy/signature-v4': '>=5.4.0 <6'
+      undici: '>=5 <9'
+      ws: ^8.21.0
+      zod: ^3.25 || ^4.0
+    peerDependenciesMeta:
+      '@aws-sdk/credential-provider-node':
+        optional: true
+      '@smithy/hash-node':
+        optional: true
+      '@smithy/signature-v4':
+        optional: true
+      undici:
+        optional: true
+      ws:
+        optional: true
+      zod:
+        optional: true
 
   oxc-minify@0.136.0:
     resolution: {integrity: sha512-u9UvPFTYVwQ/i1kpp/c20S/SbvLaLV0Ngzyhgi0YV4B1SlxM7RgnnePl4vY9N3Z9sTRcozL1MRStI3PlUN9RFA==}
@@ -9631,6 +9658,12 @@ snapshots:
   object-assign@4.1.1: {}
 
   obug@2.2.1: {}
+
+  openai@7.28.0(undici@7.29.1)(ws@8.21.0)(zod@4.6.5):
+    optionalDependencies:
+      undici: 7.29.1
+      ws: 8.21.0
+      zod: 4.6.5
 
   oxc-minify@0.136.0:
     optionalDependencies:

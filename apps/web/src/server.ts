@@ -7,9 +7,15 @@
 import { log, newRequestId, withLogContext } from '@saas/shared/log'
 import handler from '@tanstack/react-start/server-entry'
 import { gateAdminRequest } from './features/admin/gate.ts'
+import {
+  gatePublicApiRequest,
+  isPublicApiPath,
+  normalizePublicApiNotFound,
+} from './features/api-keys/gate.ts'
 import { gateLocaleRequest } from './features/i18n/gate.ts'
 import { localizeRequest } from './features/i18n/request.server.ts'
 import { checkEnv } from './server/env.ts'
+import { templateConfig } from './server/template-config.ts'
 
 export default {
   fetch(request, env) {
@@ -20,6 +26,7 @@ export default {
         request,
         async () =>
           checkEnv(env) ??
+          gatePublicApiRequest(request, templateConfig) ??
           (await localized(gateLocaleRequest(await gateAdminRequest(request, env)), env)),
       ),
     )
@@ -32,7 +39,8 @@ async function logged(request: Request, handle: () => Promise<Response>): Promis
   const { method } = request
   const path = new URL(request.url).pathname
   try {
-    const response = await handle()
+    const handled = await handle()
+    const response = isPublicApiPath(path) ? await normalizePublicApiNotFound(handled) : handled
     log.info('http.request', {
       method,
       path,
