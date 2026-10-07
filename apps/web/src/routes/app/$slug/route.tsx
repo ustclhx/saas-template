@@ -2,6 +2,7 @@ import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
 import { WorkspaceSwitcher } from '../../../features/workspace/components.tsx'
 import { getWorkspacePage } from '../../../features/workspace/workspace.functions.ts'
 import { m } from '../../../paraglide/messages.js'
+import { templateConfig } from '../../../server/template-config.ts'
 
 export const Route = createFileRoute('/app/$slug')({
   beforeLoad: async ({ params }) => ({
@@ -38,6 +39,16 @@ function WorkspaceLayout() {
         {page.readOnly ? <p role="status">{m.app_readonly()}</p> : null}
         <WorkspaceSwitcher page={page} />
         <nav className="flex gap-4">
+          {templateConfig.features.publicApi && (page.role === 'owner' || page.role === 'admin') ? (
+            <Link
+              to="/app/$slug/api-keys"
+              search={{ page: 0 }}
+              params={{ slug: page.workspace.slug }}
+              className="underline"
+            >
+              API Keys
+            </Link>
+          ) : null}
           <Link to="/app/$slug/chat" params={{ slug: page.workspace.slug }} className="underline">
             {m.app_chat()}
           </Link>

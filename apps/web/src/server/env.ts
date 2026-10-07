@@ -19,6 +19,9 @@ export const webEnvSchema = envSchema.extend({
   CACHE: bindingWith<Cloudflare.Env['CACHE']>('get', 'put', 'delete'),
   RL_AUTH: bindingWith<Cloudflare.Env['RL_AUTH']>('limit'),
   RL_AI: bindingWith<Cloudflare.Env['RL_AI']>('limit'),
+  RL_API: templateConfig.features.publicApi
+    ? bindingWith<Cloudflare.Env['RL_API']>('limit')
+    : bindingWith<Cloudflare.Env['RL_API']>('limit').optional(),
 })
 
 /**
