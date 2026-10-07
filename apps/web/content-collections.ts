@@ -44,11 +44,12 @@ function plainText(html: string): string {
 }
 
 /**
- * 法律页中的 `{{key}}` 占位符按模板配置替换（站点名称、支持邮箱、可申请退款的天数），
+ * 法律页与文档中的 `{{key}}` 占位符按模板配置替换（站点名称与地址、支持邮箱、可申请退款的天数），
  * 新站点改配置即可，不必逐页修改文案。
  */
 const legalPlaceholders: Record<string, string> = {
   appName: templateConfig.app.name,
+  appUrl: templateConfig.app.url.replace(/\/+$/, ''),
   supportEmail: templateConfig.app.supportEmail,
   refundWindowDays: String(templateConfig.billing.refundWindowDays),
 }
@@ -113,13 +114,17 @@ const docs = defineCollection({
     /** 侧边导航中的分组；order 为全站顺序，分组按其第一篇出现的位置排列 */
     section: z.string(),
     order: z.number().default(0),
+    /** 依赖的功能开关：对应开关关闭时该页不进入构建产物（如公开 API 文档依赖 features.publicApi） */
+    requires: z.enum(['publicApi']).optional(),
     content: z.string(),
   }),
   transform: async (document, context) => {
     // 文档站关闭时内容不进入构建产物，路由同时返回 404（tasks.md 3.4）
     if (!templateConfig.features.docs) return context.skip('features.docs=false')
-    const { content, ...data } = document
-    const html = await renderMdx(context, document)
+    if (document.requires && !templateConfig.features[document.requires])
+      return context.skip(`features.${document.requires}=false`)
+    const { content, requires: _requires, ...data } = document
+    const html = await renderMdx(context, { ...document, content: fillPlaceholders(content) })
     // 构建期生成的搜索文本，客户端按它做全文匹配（design.md 决策 1）
     return { ...data, ...localeAndSlug(document._meta), html, searchText: plainText(html) }
   },

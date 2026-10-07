@@ -1,0 +1,112 @@
+---
+title: Public API
+description: Call {{appName}} models from your own code with an OpenAI-compatible API.
+section: API
+order: 10
+requires: publicApi
+---
+
+{{appName}} exposes an OpenAI-compatible Chat Completions endpoint. Existing OpenAI SDKs work by
+pointing their base URL at `{{appUrl}}/api/v1`. Calls are billed in credits exactly like chats in
+the app, against the workspace that owns the key.
+
+## Create an API key
+
+1. Sign in, open your workspace and go to **API keys**. Only workspace owners and admins can manage
+   keys, and the feature must be included in your plan.
+2. Create a key, optionally with an expiry date. The full key (`sk_…`) is shown **once**; store it
+   in a secret manager.
+3. Revoke a key at any time from the same page. Revoked or expired keys get `401` immediately.
+
+A key keeps working only while its creator is still an owner or admin of the workspace.
+
+## Authentication
+
+Send the key as a Bearer token. Cookies are never used for API authentication.
+
+```text
+Authorization: Bearer sk_your_key
+```
+
+## Create a chat completion
+
+`POST {{appUrl}}/api/v1/chat/completions`
+
+Request body:
+
+```json
+{
+  "model": "your-model-key",
+  "messages": [
+    { "role": "system", "content": "You are a helpful assistant." },
+    { "role": "user", "content": "Say hello in one sentence." }
+  ]
+}
+```
+
+- `model`: the model key shown in the model picker (set by your administrator).
+- `messages`: `system`, `user` and `assistant` messages with text content. The API is stateless:
+  send the whole conversation each time. At least one `user` message is required.
+- Optional: `stream`, `stream_options.include_usage`, `max_tokens` (or `max_completion_tokens`),
+  `temperature` (0–2), `n` (only `1`). Unknown fields are rejected with `400`.
+
+The response follows the OpenAI format (`object: "chat.completion"`, `choices[0].message.content`,
+`usage`). With `"stream": true` the response is Server-Sent Events of `chat.completion.chunk`
+objects ending with `data: [DONE]`; set `"stream_options": { "include_usage": true }` to receive a
+final chunk with token usage.
+
+### curl
+
+```bash
+curl {{appUrl}}/api/v1/chat/completions \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"your-model-key","messages":[{"role":"user","content":"Say hello in one sentence."}]}'
+```
+
+### Node.js (official OpenAI SDK)
+
+```ts
+import OpenAI from 'openai'
+
+const client = new OpenAI({ apiKey: process.env.API_KEY, baseURL: '{{appUrl}}/api/v1' })
+const completion = await client.chat.completions.create({
+  model: 'your-model-key',
+  messages: [{ role: 'user', content: 'Say hello in one sentence.' }],
+})
+console.log(completion.choices[0]?.message.content)
+```
+
+### Python (official OpenAI SDK)
+
+```python
+import os
+from openai import OpenAI
+
+client = OpenAI(api_key=os.environ["API_KEY"], base_url="{{appUrl}}/api/v1")
+completion = client.chat.completions.create(
+    model="your-model-key",
+    messages=[{"role": "user", "content": "Say hello in one sentence."}],
+)
+print(completion.choices[0].message.content)
+```
+
+## Billing
+
+Each request reserves credits up front based on the model's pricing and your balance, then settles
+the actual usage when the reply finishes. The maximum output length is capped by what your balance
+can pay for. Closing the connection mid-stream does not cancel billing for the tokens generated.
+
+## Errors
+
+Errors use the OpenAI error structure: `{ "error": { "message", "type", "code", "param" } }`.
+Every response includes an `x-request-id` header; quote it when contacting support.
+
+| Status | `code` | Meaning |
+|---|---|---|
+| 400 | `INVALID_REQUEST` | Malformed or unsupported request body |
+| 401 | `INVALID_API_KEY` | Missing, revoked or expired key |
+| 402 | `INSUFFICIENT_CREDITS` / `CREDIT_DEBT` | Not enough credits, or unpaid credit debt |
+| 403 | `UPGRADE_REQUIRED` | Your plan does not include the API or this model |
+| 404 | `MODEL_UNAVAILABLE` | Unknown or disabled model |
+| 429 | `RATE_LIMITED` | Too many requests for this key or workspace; retry after `Retry-After` seconds |

@@ -1,0 +1,104 @@
+---
+title: 公开 API
+description: 用兼容 OpenAI 的接口在自己的代码中调用 {{appName}} 的模型。
+section: API
+order: 10
+requires: publicApi
+---
+
+{{appName}} 提供兼容 OpenAI 的 Chat Completions 接口。现有的 OpenAI SDK 只需把 base URL 指向
+`{{appUrl}}/api/v1` 即可使用。调用按积分计费，规则与应用内对话相同，从密钥所属空间扣除。
+
+## 创建 API Key
+
+1. 登录后进入空间的 **API keys** 页面。只有空间 owner 与 admin 可以管理密钥，且当前套餐需包含该功能。
+2. 创建密钥时可设置到期时间。完整密钥（`sk_…`）**只显示一次**，请保存到密钥管理工具中。
+3. 可随时在同一页面撤销。被撤销或过期的密钥会立即返回 `401`。
+
+只有当创建者仍是该空间的 owner 或 admin 时，密钥才继续有效。
+
+## 鉴权
+
+以 Bearer 令牌发送密钥。API 鉴权不使用 Cookie。
+
+```text
+Authorization: Bearer sk_your_key
+```
+
+## 创建对话补全
+
+`POST {{appUrl}}/api/v1/chat/completions`
+
+请求体：
+
+```json
+{
+  "model": "your-model-key",
+  "messages": [
+    { "role": "system", "content": "You are a helpful assistant." },
+    { "role": "user", "content": "Say hello in one sentence." }
+  ]
+}
+```
+
+- `model`：模型选择器中显示的模型 key（由管理员配置）。
+- `messages`：`system`、`user`、`assistant` 三种角色的文本消息。接口无状态，每次需发送完整对话，且至少包含一条 `user` 消息。
+- 可选：`stream`、`stream_options.include_usage`、`max_tokens`（或 `max_completion_tokens`）、`temperature`（0–2）、`n`（仅支持 `1`）。未知字段返回 `400`。
+
+响应遵循 OpenAI 格式（`object: "chat.completion"`、`choices[0].message.content`、`usage`）。设置
+`"stream": true` 时以 Server-Sent Events 返回 `chat.completion.chunk`，以 `data: [DONE]` 结束；设置
+`"stream_options": { "include_usage": true }` 可在最后收到包含 token 用量的数据块。
+
+### curl
+
+```bash
+curl {{appUrl}}/api/v1/chat/completions \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"your-model-key","messages":[{"role":"user","content":"Say hello in one sentence."}]}'
+```
+
+### Node.js（OpenAI 官方 SDK）
+
+```ts
+import OpenAI from 'openai'
+
+const client = new OpenAI({ apiKey: process.env.API_KEY, baseURL: '{{appUrl}}/api/v1' })
+const completion = await client.chat.completions.create({
+  model: 'your-model-key',
+  messages: [{ role: 'user', content: 'Say hello in one sentence.' }],
+})
+console.log(completion.choices[0]?.message.content)
+```
+
+### Python（OpenAI 官方 SDK）
+
+```python
+import os
+from openai import OpenAI
+
+client = OpenAI(api_key=os.environ["API_KEY"], base_url="{{appUrl}}/api/v1")
+completion = client.chat.completions.create(
+    model="your-model-key",
+    messages=[{"role": "user", "content": "Say hello in one sentence."}],
+)
+print(completion.choices[0].message.content)
+```
+
+## 计费
+
+每次请求先按模型计费方式与余额预扣积分，回复结束后按实际用量结算；最大输出长度受余额限制。流式输出中途断开连接不会取消已生成部分的计费。
+
+## 错误
+
+错误采用 OpenAI 的错误结构：`{ "error": { "message", "type", "code", "param" } }`。每个响应都带
+`x-request-id` 头，联系支持时请提供。
+
+| 状态码 | `code` | 含义 |
+|---|---|---|
+| 400 | `INVALID_REQUEST` | 请求体格式错误或不受支持 |
+| 401 | `INVALID_API_KEY` | 缺少密钥，或密钥已撤销 / 过期 |
+| 402 | `INSUFFICIENT_CREDITS` / `CREDIT_DEBT` | 积分不足，或存在未偿还的欠费 |
+| 403 | `UPGRADE_REQUIRED` | 当前套餐不包含 API 或该模型 |
+| 404 | `MODEL_UNAVAILABLE` | 模型不存在或已停用 |
+| 429 | `RATE_LIMITED` | 该密钥或空间请求过多，按 `Retry-After` 秒数后重试 |
