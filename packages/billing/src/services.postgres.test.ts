@@ -1,4 +1,5 @@
 import {
+  auditLog,
   billingCustomer,
   createDb,
   creditGrant,
@@ -35,6 +36,7 @@ if (
 )
   throw new Error('Services tests require an isolated billing database')
 const db = createDb({ connectionString: url })
+const migrator = createDb({ connectionString: process.env.MIGRATION_DATABASE_URL ?? '' })
 const id = () => crypto.randomUUID()
 let ws: string, uid: string, pid: string, sp: string, pp: string, sid: string
 let ctx: BillingServiceContext
@@ -183,12 +185,16 @@ afterEach(async () => {
   await db.delete(subscription).where(eq(subscription.workspaceId, ws))
   await db.delete(billingCustomer).where(eq(billingCustomer.workspaceId, ws))
   await db.delete(member).where(eq(member.organizationId, ws))
+  await migrator.delete(auditLog).where(eq(auditLog.workspaceId, ws))
   await db.delete(organization).where(eq(organization.id, ws))
   await db.delete(user).where(eq(user.id, uid))
   await db.delete(planPrice).where(inArray(planPrice.planId, [pid, ...extraPlans]))
   await db.delete(plan).where(inArray(plan.id, [pid, ...extraPlans]))
 })
-afterAll(() => db.$client.end())
+afterAll(async () => {
+  await migrator.$client.end()
+  await db.$client.end()
+})
 async function seedSub(provider: 'stripe' | 'paypal' = 'stripe') {
   await db.insert(subscription).values({
     id: sid,

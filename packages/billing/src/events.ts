@@ -13,6 +13,7 @@ import { applyPaymentDisputed, applyPaymentRefunded } from './events/refunds.ts'
 import {
   type BillingEventOptions,
   type BillingProviders,
+  lockWorkspaceBilling,
   money,
   orderScope,
   type PreparedBillingEvents,
@@ -25,6 +26,7 @@ import { applySubscriptionChange } from './events/subscriptions.ts'
 import { resolveBillingTarget } from './events/target.ts'
 import type { WebhookContext, WebhookTransaction } from './pipeline.ts'
 import type { NormalizedEvent, OrderSnapshot, SubscriptionSnapshot } from './provider.ts'
+import { auditSubscriptionChange } from './subscription-audit.ts'
 
 export { grantSubscriptionMonth, subscriptionMonthAnchor } from './events/grants.ts'
 export {
@@ -224,9 +226,27 @@ export async function applyBillingEvent(
 ): Promise<void> {
   if (event.type === 'payment.disputed') return applyPaymentDisputed(tx, event)
   if (event.type === 'payment.refunded') return applyPaymentRefunded(tx, event, options)
+  const association = prepared.associations.get(event)
+  if (association) await lockWorkspaceBilling(tx, association.workspaceId)
+  const before = association
+    ? await tx
+        .select()
+        .from(subscription)
+        .where(eq(subscription.workspaceId, association.workspaceId))
+    : []
   const target = await resolveBillingTarget(tx, event, prepared)
-  if (event.type === 'payment.succeeded') return applyPaymentSucceeded(tx, event, target, options)
-  return applySubscriptionChange(tx, event, target)
+  if (event.type === 'payment.succeeded') await applyPaymentSucceeded(tx, event, target, options)
+  else await applySubscriptionChange(tx, event, target)
+  if (target.sub) {
+    const [after] = await tx.select().from(subscription).where(eq(subscription.id, target.sub.id))
+    if (after)
+      await auditSubscriptionChange(
+        tx,
+        before.find((row) => row.id === after.id),
+        after,
+        event.type,
+      )
+  }
 }
 export function createBillingEventHandler(options: BillingEventOptions) {
   return {

@@ -60,6 +60,7 @@ const submit = (overrides: Partial<Parameters<typeof submitRefundRequest>[1]> = 
 const approve = (requestId: string, approvedAmount?: number) =>
   reviewRefundRequest(options, {
     userId: adminId,
+    ip: '203.0.113.17',
     requestId,
     decision: 'approve',
     ...(approvedAmount === undefined ? {} : { approvedAmount }),
@@ -333,6 +334,11 @@ describe('trusted refund service on PostgreSQL', () => {
       'succeeded',
     )
     const logs = await db.select().from(auditLog).where(eq(auditLog.targetId, request.id))
+    expect(logs.find((log) => log.action === 'billing.refund_approved')).toMatchObject({
+      actorUserId: adminId,
+      ip: '203.0.113.17',
+      meta: { oldStatus: 'pending', newStatus: 'approved' },
+    })
     expect(logs.map((log) => log.action).sort()).toEqual([
       'billing.refund_api_acknowledged',
       'billing.refund_approved',

@@ -334,6 +334,17 @@ describe('billing event consumer on PostgreSQL', () => {
     })
     expect(await payments()).toHaveLength(2)
     expect(await grants()).toHaveLength(2)
+    const logs = await db.select().from(auditLog).where(eq(auditLog.workspaceId, ws))
+    const changes = logs.filter((row) => row.action === 'billing.subscription_changed')
+    // 创建 + 取消两次关键变更；旧事件与不改变周期的付款不会产生重复审计。
+    expect(changes).toHaveLength(2)
+    expect(
+      changes.find((row) => (row.meta as { source: string }).source === 'subscription.canceled')
+        ?.meta,
+    ).toMatchObject({
+      before: { status: 'active' },
+      after: { status: 'canceled' },
+    })
   })
   it('late verified invoice uses historical provider price after the local subscription changed price', async () => {
     await apply([paid()])

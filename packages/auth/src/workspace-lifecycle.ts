@@ -79,8 +79,8 @@ export async function restoreWorkspace(options: {
     for (const id of valid)
       await sql`insert into member (id,organization_id,user_id,role) values (${newId()},${workspaceId},${id},'owner')`
     await sql`update organization set deleted_at=null,updated_at=now() where id=${workspaceId}`
-    await sql`insert into audit_log (id,actor_user_id,workspace_id,action,target_type,target_id,meta)
-      values (${newId()},${fresh.user.id},${workspaceId},'workspace.restored','organization',${workspaceId},${JSON.stringify({ deletionAuditId: deletion.id, ownerUserIds: valid })}::jsonb)`
+    await sql`insert into audit_log (id,actor_user_id,workspace_id,action,target_type,target_id,ip,meta)
+      values (${newId()},${fresh.user.id},${workspaceId},'workspace.restored','organization',${workspaceId},${options.headers.get('cf-connecting-ip')},${JSON.stringify({ deletionAuditId: deletion.id, ownerUserIds: valid })}::jsonb)`
     return { restored: true, ownerUserIds: valid }
   })
 }

@@ -1,7 +1,11 @@
 import type { TemplateConfig } from '@saas/config'
+import type { Database } from '@saas/db'
+import { newId } from '@saas/shared'
 import type { BetterAuthPlugin } from 'better-auth'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
+import { setSessionCookie } from 'better-auth/cookies'
 import { z } from 'zod'
+import { checkSessionInDatabase } from './fresh-session.ts'
 import {
   localeSchema,
   profileImageSchema,
@@ -37,7 +41,7 @@ const profileBody = z.looseObject({
   image: profileImageSchema.optional(),
 })
 
-export function accountSettings() {
+export function accountSettings(db: Database, config: TemplateConfig) {
   return {
     id: 'account-settings',
     hooks: {
@@ -51,6 +55,51 @@ export function accountSettings() {
                 code: 'VALIDATION_ERROR',
                 message: result.error.issues[0]?.message ?? 'Invalid profile',
               })
+            }
+            const token = await ctx.getSignedCookie(
+              ctx.context.authCookies.sessionToken.name,
+              ctx.context.secret,
+            )
+            const fresh = token ? await checkSessionInDatabase(db, token) : null
+            if (fresh?.ok && fresh.value.session.impersonatedBy) {
+              const parsed = profileBody
+                .extend({
+                  locale: localeSchema(config).optional(),
+                  timezone: timezoneSchema.optional(),
+                })
+                .strict()
+                .safeParse(ctx.body)
+              if (!parsed.success)
+                throw APIError.from('BAD_REQUEST', {
+                  code: 'VALIDATION_ERROR',
+                  message: parsed.error.issues[0]?.message ?? 'Invalid profile',
+                })
+              const changes = parsed.data
+              const actor = fresh.value
+              await db.$client.begin(async (sql) => {
+                const [before] =
+                  await sql`select name,image,locale,timezone from "user" where id=${actor.user.id} for update`
+                const [live] =
+                  await sql`select id from session where id=${actor.session.id} and expires_at>now()`
+                if (!live)
+                  throw APIError.from('UNAUTHORIZED', {
+                    code: 'SESSION_REQUIRED',
+                    message: 'Session expired',
+                  })
+                if (Object.keys(changes).length) {
+                  await sql`update "user" set ${sql({ ...changes, updated_at: new Date().toISOString() })} where id=${actor.user.id}`
+                  await sql`insert into audit_log (id,actor_user_id,action,target_type,target_id,ip,meta)
+                    values (${newId()},${actor.user.id},'user.profile_updated','user',${actor.user.id},
+                    ${ctx.headers?.get('cf-connecting-ip') ?? null},${JSON.stringify({ before, after: changes, impersonatedBy: actor.session.impersonatedBy })}::jsonb)`
+                }
+              })
+              // 清除被模拟用户的会话缓存，下次读取数据库中的新资料。
+              await ctx.context.options.secondaryStorage?.delete(actor.session.token)
+              const updated = await db.query.user.findFirst({
+                where: (u, { eq }) => eq(u.id, actor.user.id),
+              })
+              if (updated) await setSessionCookie(ctx, { session: actor.session, user: updated })
+              return ctx.json({ status: true })
             }
             // 去掉首尾空白后的名字
             if (result.data.name !== undefined) {

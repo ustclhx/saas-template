@@ -68,6 +68,9 @@ afterAll(async () => {
   await sql`delete from session where user_id in ${sql(ids)}`
   // 只清理本套件创建的个人空间和团队空间
   const orgs = [...ids, ...createdOrgs]
+  // 成员审计只追加，测试夹具由 migrator 清理审计外键。
+  await createDb(env.HYPERDRIVE_MIGRATOR)
+    .$client`delete from audit_log where actor_user_id in ${sql(ids)} or workspace_id in ${sql(orgs)}`
   await sql`delete from invitation where organization_id in ${sql(orgs)} or inviter_id in ${sql(ids)}`
   await sql`delete from member where organization_id in ${sql(orgs)} or user_id in ${sql(ids)}`
   await sql`delete from organization where id in ${sql(orgs)}`

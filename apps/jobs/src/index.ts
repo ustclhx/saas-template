@@ -11,6 +11,7 @@ import {
 } from './billing.ts'
 import { runDeletionCleanup } from './cron/deletion-cleanup.ts'
 import { HEARTBEAT_CRON, runHeartbeat } from './cron/heartbeat.ts'
+import { METRICS_DAILY_CRON, runMetricsDaily } from './cron/metrics-daily.ts'
 import { runWorkspaceCleanup, WORKSPACE_CLEANUP_CRON } from './cron/workspace-cleanup.ts'
 import { requireEnv } from './env.ts'
 import { handleBillingBatch } from './queues/billing.ts'
@@ -58,6 +59,8 @@ async function schedule(controller: ScheduledController, env: Cloudflare.Env) {
     case BILLING_RETRY_CRON:
     case BILLING_DAILY_CRON:
       return runBillingSchedule(controller.cron, { ...validEnv, ...env })
+    case METRICS_DAILY_CRON:
+      return runMetricsDaily(validEnv, controller.scheduledTime)
     case WORKSPACE_CLEANUP_CRON:
       return runWorkspaceCleanup(validEnv)
     case HEARTBEAT_CRON:

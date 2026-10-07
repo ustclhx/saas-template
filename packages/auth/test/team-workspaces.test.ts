@@ -409,6 +409,26 @@ it('enforces roles, recipient identity, cancellation, last-owner and atomic tran
   })
   expect(transferred.find((m) => m.userId === owner.id)?.role).toBe('admin')
   expect(transferred.find((m) => m.userId === admin.id)?.role).toBe('owner')
+  const audits = await app.db.query.auditLog.findMany({
+    where: (a, { eq }) => eq(a.workspaceId, organizationId),
+  })
+  expect(audits.map((a) => a.action)).toEqual(
+    expect.arrayContaining([
+      'workspace.member_added',
+      'workspace.member_invited',
+      'workspace.invitation_canceled',
+      'workspace.member_role_changed',
+    ]),
+  )
+  const promoted = audits.find(
+    (a) => a.targetId === adminMember?.id && a.action === 'workspace.member_role_changed',
+  )
+  expect(promoted).toMatchObject({
+    actorUserId: owner.id,
+    ip: app.ip,
+    meta: { targetUserId: admin.id, oldRole: 'admin', newRole: 'owner' },
+  })
+
   expect(
     (
       await app.post(
@@ -418,6 +438,14 @@ it('enforces roles, recipient identity, cancellation, last-owner and atomic tran
       )
     ).status,
   ).toBe(200)
+  expect(
+    await app.db.query.auditLog.findMany({
+      where: (a, { and, eq }) =>
+        and(eq(a.workspaceId, organizationId), eq(a.action, 'workspace.member_removed')),
+    }),
+  ).toMatchObject([
+    { actorUserId: admin.id, targetId: memberRow?.id, meta: { oldRole: 'member', newRole: null } },
+  ])
   expect(
     (
       await app.get(`/organization/get-full-organization?organizationId=${organizationId}`, {

@@ -11,6 +11,7 @@ import {
 import { createDb } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
+import { getRequest } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import { withRealSession, withWorkspace } from '../../server/middleware.ts'
 import { templateConfig } from '../../server/template-config.ts'
@@ -96,6 +97,7 @@ export const checkoutCustomer = createServerFn({ method: 'POST' })
   .handler(({ context, data }) =>
     safe(context.workspaceReadOnly, async () => {
       const result = await createCheckout(service(context.db), {
+        ip: getRequest().headers.get('cf-connecting-ip'),
         provider: data.provider,
         planPriceId: data.planPriceId,
         idempotencyKey: data.idempotencyKey,
@@ -124,6 +126,7 @@ export const manageCustomerSubscription = createServerFn({ method: 'POST' })
     safe(context.workspaceReadOnly, async () => {
       const ctx = service(context.db)
       const input = {
+        ip: getRequest().headers.get('cf-connecting-ip'),
         subscriptionId: data.subscriptionId,
         workspaceId: context.workspace.id,
         userId: context.user.id,
