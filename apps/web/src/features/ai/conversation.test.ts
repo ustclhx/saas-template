@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { baseLocale, overwriteGetLocale } from '../../paraglide/runtime.js'
 import {
   CHAT_ERROR_FALLBACK,
   type ChatUIMessage,
@@ -9,6 +10,9 @@ import {
   titleFromText,
   toChatMessages,
 } from './conversation.ts'
+
+beforeEach(() => overwriteGetLocale(() => 'en'))
+afterEach(() => overwriteGetLocale(() => baseLocale))
 
 const id = (n: number) => `00000000-0000-4000-8000-00000000000${n}`
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { getLocale } from '../../paraglide/runtime.js'
+import { baseLocale, getLocale } from '../../paraglide/runtime.js'
 import { languageUrl, preferredLocale } from './preference.ts'
 import { localizeRequest } from './request.server.ts'
 import { readRequestSession, withSessionCache } from './session.server.ts'
@@ -98,6 +98,6 @@ describe('首次访问建议', () => {
     expect(preferredLocale('fr,zh-CN;q=0.8,en;q=0.2')).toBe('zh')
     expect(preferredLocale('zh;q=0,en;q=0.9')).toBe('en')
     expect(preferredLocale('en-US;q=0.9,zh;q=0.8')).toBe('en')
-    expect(preferredLocale('zh;q=oops,fr')).toBe('en')
+    expect(preferredLocale('zh;q=oops,fr')).toBe(baseLocale)
   })
 })
