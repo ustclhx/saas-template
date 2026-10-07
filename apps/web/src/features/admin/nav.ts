@@ -32,7 +32,13 @@ export const ADMIN_NAV = linkOptions([
     label: 'Workspaces',
     activeOptions: { includeSearch: false },
   },
-  { to: '/admin/models', label: ADMIN_COPY.nav.models },
+  {
+    to: '/admin/models',
+    search: { offset: 0 },
+    label: ADMIN_COPY.nav.models,
+    activeOptions: { includeSearch: false },
+  },
+  { to: '/admin/settings', label: 'Settings' },
   ...(templateConfig.features.waitlist
     ? [{ to: '/admin/waitlist' as const, search: { offset: 0 }, label: 'Waitlist' }]
     : []),

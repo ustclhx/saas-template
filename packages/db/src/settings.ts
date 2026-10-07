@@ -9,11 +9,14 @@ import { setting } from './schema/platform.ts'
 export interface SettingValues {
   /** 是否开放注册 */
   'auth.signupEnabled': boolean
+  /** 空字符串表示不显示公告 */
+  'site.announcement': string
   'billing.signupBonusDomainBlacklist': string[]
 }
 
 export const settingDefaults: SettingValues = {
   'auth.signupEnabled': true,
+  'site.announcement': '',
   'billing.signupBonusDomainBlacklist': [],
 }
 

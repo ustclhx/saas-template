@@ -3,12 +3,17 @@ import { createRootRoute, HeadContent, Outlet, Scripts } from '@tanstack/react-r
 import type { ReactNode } from 'react'
 import { getImpersonation } from '../features/admin/impersonation.functions.ts'
 import { ImpersonationBanner } from '../features/admin/impersonation-banner.tsx'
+import { getAnnouncement } from '../features/admin/settings-announcement.functions.ts'
+import { AnnouncementBanner } from '../features/admin/settings-announcement-banner.tsx'
 import { ThemeToggle } from '../features/theme/theme-toggle.tsx'
 import { getLocale } from '../paraglide/runtime.js'
 import appCss from '../styles/app.css?url'
 
 export const Route = createRootRoute({
-  loader: () => getImpersonation(),
+  loader: async () => {
+    const [impersonation, announcement] = await Promise.all([getImpersonation(), getAnnouncement()])
+    return { impersonation, announcement }
+  },
   staleTime: Infinity,
   head: () => ({
     meta: [
@@ -25,10 +30,11 @@ export const Route = createRootRoute({
 })
 
 function RootComponent() {
-  const impersonation = Route.useLoaderData()
+  const { impersonation, announcement } = Route.useLoaderData()
   return (
     <RootDocument>
       <ImpersonationBanner viewer={impersonation} />
+      <AnnouncementBanner initial={announcement} />
       <Outlet />
     </RootDocument>
   )

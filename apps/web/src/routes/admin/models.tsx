@@ -1,13 +1,23 @@
+import { DataTable } from '@saas/ui'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import {
+  adminListPage,
+  adminListSearch,
+  filtersToSearch,
+  offsetOfPage,
+} from '../../features/admin/list.ts'
+import {
+  copyAdminModel,
   getAdminModels,
   saveAdminModel,
   setAdminModelEnabled,
 } from '../../features/ai/admin-models.functions.ts'
 
 export const Route = createFileRoute('/admin/models')({
-  loader: () => getAdminModels(),
+  validateSearch: (search: Record<string, unknown>) => adminListSearch(['kind', 'order'])(search),
+  loaderDeps: ({ search }) => search,
+  loader: ({ deps }) => getAdminModels({ data: deps }),
   errorComponent: () => <p role="alert">Model data is unavailable. Please reload.</p>,
   component: Models,
 })
@@ -127,7 +137,10 @@ function pricingOf(draft: Draft): unknown {
 }
 
 function Models() {
-  const { models, defaults } = Route.useLoaderData()
+  const data = Route.useLoaderData()
+  const { models, defaults } = data
+  const search = Route.useSearch()
+  const navigate = Route.useNavigate()
   return (
     <section>
       <h2>AI models</h2>
@@ -135,6 +148,62 @@ function Models() {
         Disabled models are hidden from model pickers and calls to them are rejected. Price changes
         apply to calls started after saving.
       </p>
+      <DataTable
+        label="AI models"
+        rows={models}
+        getRowId={(row) => row.id}
+        columns={[
+          {
+            id: 'key',
+            header: 'Key',
+            cell: (row) => (
+              <a href={`#model-${row.id}`} className="underline">
+                {row.key}
+              </a>
+            ),
+          },
+          { id: 'kind', header: 'Type', cell: (row) => row.kind },
+          { id: 'provider', header: 'Provider', cell: (row) => row.provider },
+          { id: 'pricing', header: 'Pricing', cell: (row) => String(row.pricing.mode) },
+          { id: 'sort', header: 'Sort', cell: (row) => row.sort },
+          {
+            id: 'enabled',
+            header: 'Status',
+            cell: (row) => (row.enabled ? 'Enabled' : 'Disabled'),
+          },
+        ]}
+        page={adminListPage(search.offset, data)}
+        filters={[
+          {
+            id: 'kind',
+            label: 'Model type',
+            type: 'select',
+            options: [
+              { value: 'text', label: 'Text' },
+              { value: 'image', label: 'Image' },
+              { value: 'video', label: 'Video' },
+            ],
+          },
+          {
+            id: 'order',
+            label: 'Order models',
+            type: 'select',
+            options: [
+              { value: 'sort', label: 'Sort ascending' },
+              { value: 'sort_desc', label: 'Sort descending' },
+              { value: 'key', label: 'Key ascending' },
+              { value: 'key_desc', label: 'Key descending' },
+            ],
+          },
+        ]}
+        filterValues={{ kind: search.kind, order: search.order }}
+        onPageChange={(page) =>
+          void navigate({ search: { ...search, offset: offsetOfPage(page) } })
+        }
+        onFiltersChange={(values) =>
+          void navigate({ search: filtersToSearch(['kind', 'order'], values) })
+        }
+      />
       <ModelEditor key="new" initial={newDraft(defaults)} defaults={defaults} />
       {models.length === 0 && <p>No models yet.</p>}
       {models.map((model) => (
@@ -157,6 +226,7 @@ function ModelEditor({
   const [draft, setDraft] = useState(initial)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [copyKey, setCopyKey] = useState(model ? `${model.key.slice(0, 59)}-copy` : '')
   const set = (patch: Partial<Draft>) => setDraft((current) => ({ ...current, ...patch }))
   const field = (name: keyof Draft) => ({
     value: String(draft[name]),
@@ -201,7 +271,7 @@ function ModelEditor({
 
   const title = model ? `Model ${model.key}` : 'New model'
   return (
-    <article aria-label={title}>
+    <article aria-label={title} id={model ? `model-${model.id}` : undefined}>
       <h3>
         {title}
         {model && !model.enabled && ' (disabled)'}
@@ -335,6 +405,26 @@ function ModelEditor({
         >
           {model.enabled ? 'Disable' : 'Enable'}
         </button>
+      )}
+      {model && (
+        <fieldset disabled={busy}>
+          <legend>Copy saved model</legend>
+          <label>
+            Copy key{' '}
+            <input
+              value={copyKey}
+              maxLength={64}
+              onChange={(event) => setCopyKey(event.target.value)}
+            />
+          </label>{' '}
+          <button
+            type="button"
+            onClick={() => act(() => copyAdminModel({ data: { id: model.id, key: copyKey } }))}
+          >
+            Copy model
+          </button>
+          <p>The copy is disabled until you enable it.</p>
+        </fieldset>
       )}
       <p role="status">{message}</p>
     </article>
