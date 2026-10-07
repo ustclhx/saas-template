@@ -7,6 +7,7 @@
 import { z } from 'zod'
 import type { EmailTemplateName, EmailTemplateProps } from './messages.ts'
 
+export { EMAIL_LOCALES } from './locale.ts'
 export type { EmailTemplateName, EmailTemplateProps } from './messages.ts'
 
 /** 消息格式版本：字段不兼容地变化时递增，消费端拒绝无法识别的版本。 */
@@ -53,7 +54,7 @@ const base = {
   /** 收件人（单个地址） */
   to: z.email(),
   /** 收件人的 `user.locale`；未知时为 null，渲染时回退到默认语言 */
-  locale: z.string().max(35).nullable(),
+  locale: z.string().max(35).nullable().optional(),
   /** 产品名（`template.config.ts` 的 `app.name`），用于邮件主题与正文 */
   appName: z.string().min(1),
   /** 投递时生成、重试时不变，作为服务商的幂等键（Resend 24 小时内去重） */
@@ -82,7 +83,10 @@ const messageSchema = z.discriminatedUnion(
   ) as unknown as [z.ZodObject, ...z.ZodObject[]],
 )
 
-type MessageBase = { readonly [K in keyof typeof base]: z.output<(typeof base)[K]> } & {
+type MessageBase = {
+  readonly [K in Exclude<keyof typeof base, 'locale'>]: z.output<(typeof base)[K]>
+} & {
+  readonly locale?: string | null
   readonly requestId?: string
 }
 

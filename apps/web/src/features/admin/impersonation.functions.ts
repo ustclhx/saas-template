@@ -1,16 +1,16 @@
 import { env } from 'cloudflare:workers'
-import { requireFreshSession } from '@saas/auth'
 import { createDb } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest, setResponseHeader } from '@tanstack/react-start/server'
 import { getAuth } from '../../server/auth.ts'
+import { readRequestSession } from '../i18n/session.server.ts'
 import { executeAdminAuthAction } from './impersonation.server.ts'
 
 export const getImpersonation = createServerFn({ method: 'GET' }).handler(async () => {
   const db = createDb(env.HYPERDRIVE)
   try {
-    const fresh = await requireFreshSession({
+    const fresh = await readRequestSession({
       auth: getAuth(env, db),
       db,
       headers: getRequest().headers,

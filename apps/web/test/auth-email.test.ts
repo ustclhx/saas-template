@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers'
 import { createAuth } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
 import { createDb } from '@saas/db'
+import { renderEmail } from '@saas/email'
 import { type EmailQueueMessage, parseEmailQueueMessage } from '@saas/email/queue'
 import { newId } from '@saas/shared'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
@@ -104,6 +105,15 @@ describe('认证邮件入队', () => {
       appName: 'TestApp',
       props: { url: expect.stringContaining(`${APP_URL}/api/auth/reset-password/`) },
     })
+    if (message?.template !== 'reset-password') throw new Error('Reset email missing')
+    const rendered = await renderEmail(message.template, message.props, {
+      locale: message.locale,
+      appName: message.appName,
+    })
+    expect(rendered.locale).toBe('zh')
+    expect(rendered.subject).toBe('重置你的 TestApp 密码')
+    expect(rendered.html).toContain('重置密码')
+    expect(rendered.text).toContain('链接 60 分钟内有效')
   })
 
   it('owner 邀请经真实认证端点入队，链接与七天有效期一致', async () => {

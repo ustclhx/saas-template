@@ -5,6 +5,7 @@ import { EMAIL_QUEUE_MESSAGE_VERSION, type EmailQueueMessage } from '@saas/email
 import { AppError, newId } from '@saas/shared'
 import { getLogContext, log } from '@saas/shared/log'
 import { and, eq, inArray } from 'drizzle-orm'
+import { userLocaleByEmail } from '../../server/auth-email.ts'
 import type { AdminActionScope } from '../admin/action.ts'
 import { signGrowthToken, verifyGrowthToken } from './tokens.ts'
 
@@ -20,12 +21,12 @@ export function requireGrowthFeature(config: TemplateConfig, feature: 'waitlist'
   if (!config.features[feature]) throw new AppError('NOT_FOUND', 'Not found', { status: 404 })
 }
 
-function base(ctx: GrowthContext, to: string, idempotencyKey: string) {
+async function base(ctx: GrowthContext, to: string, idempotencyKey: string) {
   const requestId = getLogContext()?.requestId
   return {
     v: EMAIL_QUEUE_MESSAGE_VERSION as typeof EMAIL_QUEUE_MESSAGE_VERSION,
     to,
-    locale: ctx.config.i18n.defaultLocale,
+    locale: (await userLocaleByEmail(ctx.db)(to)) ?? ctx.config.i18n.defaultLocale,
     appName: ctx.config.app.name,
     idempotencyKey,
     ...(requestId ? { requestId } : {}),
@@ -79,7 +80,7 @@ export async function sendWaitlistInvitations(
     const url = new URL('/api/waitlist/invitation', ctx.appUrl)
     url.searchParams.set('token', token)
     await ctx.queue.send({
-      ...base(ctx, row.email, `waitlist:${row.id}:${row.invitationNonce}`),
+      ...(await base(ctx, row.email, `waitlist:${row.id}:${row.invitationNonce}`)),
       template: 'waitlist-invitation',
       props: { url: url.href },
     })
@@ -150,7 +151,7 @@ export async function subscribeNewsletter(ctx: GrowthContext, email: string) {
   const url = new URL('/api/newsletter/confirm', ctx.appUrl)
   url.searchParams.set('token', token)
   await ctx.queue.send({
-    ...base(ctx, row.email, `newsletter-confirm:${row.id}:${row.confirmToken}`),
+    ...(await base(ctx, row.email, `newsletter-confirm:${row.id}:${row.confirmToken}`)),
     template: 'newsletter-confirmation',
     props: { url: url.href },
   })

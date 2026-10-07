@@ -15,6 +15,7 @@ export interface RenderContext {
   readonly locale: string | null | undefined
   /** `template.config.ts` 的 `app.name` */
   readonly appName: string
+  readonly defaultLocale?: string
   readonly recipientName?: string | undefined
 }
 
@@ -32,7 +33,7 @@ export async function renderEmail<N extends EmailTemplateName>(
   props: EmailTemplateProps[N],
   context: RenderContext,
 ): Promise<RenderedEmail> {
-  const locale = resolveEmailLocale(context.locale)
+  const locale = resolveEmailLocale(context.locale, context.defaultLocale)
   // 按模板名索引后 TS 无法把 N 与对应的 props 类型关联起来，这里收窄一次
   const build = copies[locale][template] as (
     props: EmailTemplateProps[N],

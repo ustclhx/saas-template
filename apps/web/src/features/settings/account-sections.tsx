@@ -1,7 +1,9 @@
 import { Button, Input, Label, useAppForm } from '@saas/ui'
 import { useRouter } from '@tanstack/react-router'
 import { type ReactNode, useId, useState } from 'react'
+import { baseLocale, isLocale } from '../../paraglide/runtime.js'
 import { authClient } from '../auth/auth-client.ts'
+import { rememberLocale } from '../i18n/preference.ts'
 import type { AccountView } from './account.ts'
 import { ACCOUNT_COPY, errorMessage } from './copy.ts'
 import {
@@ -141,7 +143,6 @@ export function PreferencesSection({
   readonly user: User
   readonly locales: readonly string[]
 }) {
-  const router = useRouter()
   const [status, setStatus] = useState<Status>(null)
   const form = useAppForm({
     defaultValues: { locale: user.locale ?? '', timezone: user.timezone ?? '' },
@@ -153,8 +154,8 @@ export function PreferencesSection({
         timezone: emptyToNull(value.timezone),
       })
       if (error) return setStatus({ kind: 'error', message: errorMessage(error) })
-      setStatus({ kind: 'success', message: ACCOUNT_COPY.preferences.saved })
-      await router.invalidate()
+      rememberLocale(isLocale(value.locale) ? value.locale : baseLocale)
+      window.location.reload()
     },
   })
   const copy = ACCOUNT_COPY.preferences

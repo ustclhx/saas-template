@@ -104,6 +104,14 @@ describe('EMAIL_QUEUE 消费者：resend 通道', () => {
     expect(logged()).not.toContain('secret-token')
   })
 
+  it('旧消息不带 locale 时按默认语言发送并确认', async () => {
+    const { locale: _locale, ...legacy } = message
+    fetchMock.mockResolvedValueOnce(resendReply(200, { id: 'legacy-sent' }))
+    expect((await consume([legacy], { env: resendEnv })).explicitAcks).toEqual(['m1'])
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
+    expect(body.subject).toBe('Reset your TestApp password')
+  })
+
   it('网络错误与 429 同样重试，延迟按投递次数指数增长', async () => {
     fetchMock.mockRejectedValueOnce(new TypeError('network down'))
     expect((await consume([message], { env: resendEnv })).retryMessages).toEqual([{ msgId: 'm1' }])

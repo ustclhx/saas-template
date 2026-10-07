@@ -1,73 +1,186 @@
-// /account 的界面文案（英文硬编码，P6 接入 Paraglide 时替换）
+import { m } from '../../paraglide/messages.js'
+
+// 按当前页面语言惰性取文案，避免模块初始化时固定为默认语言。
 export const ACCOUNT_COPY = {
-  title: 'Account settings',
-  heading: 'Account settings',
-  saving: 'Saving…',
+  get title() {
+    return m.account_title()
+  },
+  get heading() {
+    return m.account_heading()
+  },
+  get saving() {
+    return m.account_saving()
+  },
   profile: {
-    heading: 'Profile',
-    name: 'Name',
-    image: 'Avatar URL',
-    imageHint: 'Leave empty to remove your avatar.',
-    email: 'Email',
-    submit: 'Save profile',
-    saved: 'Profile saved.',
+    get heading() {
+      return m.account_profile_heading()
+    },
+    get name() {
+      return m.account_profile_name()
+    },
+    get image() {
+      return m.account_profile_image()
+    },
+    get imageHint() {
+      return m.account_profile_imagehint()
+    },
+    get email() {
+      return m.account_profile_email()
+    },
+    get submit() {
+      return m.account_profile_submit()
+    },
+    get saved() {
+      return m.account_profile_saved()
+    },
   },
   preferences: {
-    heading: 'Language and time zone',
-    locale: 'Language',
-    localeDefault: 'Default',
-    timezone: 'Time zone',
-    timezoneHint: 'IANA name such as Europe/Berlin. Leave empty to use your browser time zone.',
-    useBrowserTimezone: 'Use browser time zone',
-    submit: 'Save preferences',
-    saved: 'Preferences saved.',
+    get heading() {
+      return m.account_preferences_heading()
+    },
+    get locale() {
+      return m.account_preferences_locale()
+    },
+    get localeDefault() {
+      return m.account_preferences_localedefault()
+    },
+    get timezone() {
+      return m.account_preferences_timezone()
+    },
+    get timezoneHint() {
+      return m.account_preferences_timezonehint()
+    },
+    get useBrowserTimezone() {
+      return m.account_preferences_usebrowsertimezone()
+    },
+    get submit() {
+      return m.account_preferences_submit()
+    },
+    get saved() {
+      return m.account_preferences_saved()
+    },
   },
   verification: {
-    heading: 'Email verification',
-    verified: 'Your email address is verified.',
-    unverified: 'Your email address is not verified yet.',
-    send: 'Send verification email',
-    sent: 'Verification email sent. Check your inbox and open the link.',
-    callbackFailed: 'The verification link is invalid or has expired. Send a new one.',
+    get heading() {
+      return m.account_verification_heading()
+    },
+    get verified() {
+      return m.account_verification_verified()
+    },
+    get unverified() {
+      return m.account_verification_unverified()
+    },
+    get send() {
+      return m.account_verification_send()
+    },
+    get sent() {
+      return m.account_verification_sent()
+    },
+    get callbackFailed() {
+      return m.account_verification_callbackfailed()
+    },
   },
   password: {
-    heading: 'Password',
-    current: 'Current password',
-    next: 'New password',
-    confirm: 'Confirm new password',
-    mismatch: 'Passwords do not match',
-    submit: 'Change password',
-    changed: 'Password changed. You have been signed out on all other devices.',
-    noPassword: 'You signed up with a social account, so there is no password to change.',
+    get heading() {
+      return m.account_password_heading()
+    },
+    get current() {
+      return m.account_password_current()
+    },
+    get next() {
+      return m.account_password_next()
+    },
+    get confirm() {
+      return m.account_password_confirm()
+    },
+    get mismatch() {
+      return m.account_password_mismatch()
+    },
+    get submit() {
+      return m.account_password_submit()
+    },
+    get changed() {
+      return m.account_password_changed()
+    },
+    get noPassword() {
+      return m.account_password_nopassword()
+    },
   },
   twoFactor: {
-    heading: 'Two-factor authentication',
-    enabled: 'Two-factor authentication is on.',
-    disabled: 'Two-factor authentication is off.',
-    needsPassword: 'Set a password first to use two-factor authentication.',
-    password: 'Password',
-    enable: 'Turn on',
-    disable: 'Turn off',
-    setupIntro:
-      'Add this key to your authenticator app, then enter the 6-digit code it shows to finish.',
-    totpUri: 'Setup key (otpauth URI)',
-    backupCodes: 'Backup codes — store them somewhere safe. Each code works once.',
-    code: 'Authentication code',
-    verify: 'Verify and turn on',
-    turnedOn: 'Two-factor authentication is now on.',
-    turnedOff: 'Two-factor authentication is now off.',
+    get heading() {
+      return m.account_twofactor_heading()
+    },
+    get enabled() {
+      return m.account_twofactor_enabled()
+    },
+    get disabled() {
+      return m.account_twofactor_disabled()
+    },
+    get needsPassword() {
+      return m.account_twofactor_needspassword()
+    },
+    get password() {
+      return m.account_twofactor_password()
+    },
+    get enable() {
+      return m.account_twofactor_enable()
+    },
+    get disable() {
+      return m.account_twofactor_disable()
+    },
+    get setupIntro() {
+      return m.account_twofactor_setupintro()
+    },
+    get totpUri() {
+      return m.account_twofactor_totpuri()
+    },
+    get backupCodes() {
+      return m.account_twofactor_backupcodes()
+    },
+    get code() {
+      return m.account_twofactor_code()
+    },
+    get verify() {
+      return m.account_twofactor_verify()
+    },
+    get turnedOn() {
+      return m.account_twofactor_turnedon()
+    },
+    get turnedOff() {
+      return m.account_twofactor_turnedoff()
+    },
   },
   errors: {
-    INVALID_PASSWORD: 'The password is incorrect.',
-    PASSWORD_TOO_SHORT: 'The new password is too short.',
-    PASSWORD_TOO_LONG: 'The new password is too long.',
-    VALIDATION_ERROR: 'Some values are invalid.',
-    INVALID_CODE: 'The code is incorrect.',
-    INVALID_TWO_FACTOR_AUTHENTICATION: 'The code is incorrect.',
-    SESSION_REQUIRED: 'Your session has expired. Sign in again.',
-    USER_BANNED: 'Your account is suspended.',
-    RATE_LIMITED: 'Too many attempts. Try again in a minute.',
-    unknown: 'Something went wrong. Try again.',
+    get INVALID_PASSWORD() {
+      return m.account_errors_invalid_password()
+    },
+    get PASSWORD_TOO_SHORT() {
+      return m.account_errors_password_too_short()
+    },
+    get PASSWORD_TOO_LONG() {
+      return m.account_errors_password_too_long()
+    },
+    get VALIDATION_ERROR() {
+      return m.account_errors_validation_error()
+    },
+    get INVALID_CODE() {
+      return m.account_errors_invalid_code()
+    },
+    get INVALID_TWO_FACTOR_AUTHENTICATION() {
+      return m.account_errors_invalid_two_factor_authentication()
+    },
+    get SESSION_REQUIRED() {
+      return m.account_errors_session_required()
+    },
+    get USER_BANNED() {
+      return m.account_errors_user_banned()
+    },
+    get RATE_LIMITED() {
+      return m.account_errors_rate_limited()
+    },
+    get unknown() {
+      return m.account_errors_unknown()
+    },
   } as Record<string, string>,
 } as const
 

@@ -3,6 +3,7 @@ import { createRootRoute, HeadContent, Outlet, Scripts } from '@tanstack/react-r
 import type { ReactNode } from 'react'
 import { getImpersonation } from '../features/admin/impersonation.functions.ts'
 import { ImpersonationBanner } from '../features/admin/impersonation-banner.tsx'
+import { LanguageControls } from '../features/i18n/language-controls.tsx'
 import { ThemeToggle } from '../features/theme/theme-toggle.tsx'
 import { getLocale } from '../paraglide/runtime.js'
 import appCss from '../styles/app.css?url'
@@ -29,6 +30,7 @@ function RootComponent() {
   return (
     <RootDocument>
       <ImpersonationBanner viewer={impersonation} />
+      <LanguageControls />
       <Outlet />
     </RootDocument>
   )
