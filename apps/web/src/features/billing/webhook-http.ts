@@ -62,19 +62,12 @@ export async function handleBillingWebhook(
               ]
             : [],
         )
-        try {
-          await options.queue.send(
-            withRequestId({
-              v: 1,
-              deliveryId: delivery.id,
-              ...(operations.length ? { operations } : {}),
-            }),
-            { contentType: 'json' },
-          )
-        } catch (error) {
-          log.warn('operations.enqueue_failed', { deliveryId: delivery.id })
-          throw error // 保留原有管线的投递失败状态与恢复机制。
-        }
+        // 计费后处理消息保持原样，投递失败沿用原有管线的失败状态与恢复机制。
+        await options.queue.send(withRequestId({ v: 1, deliveryId: delivery.id }), {
+          contentType: 'json',
+        })
+        // 运营通知单独成消息：投递或推送失败只记日志 / 按自身重试，不影响计费后处理与回调结果。
+        for (const operation of operations) await enqueueOperations(options.queue, operation)
       },
     })
     // DB failure must trigger platform retry. Queue failure is recovered from the durable row by Jobs.
