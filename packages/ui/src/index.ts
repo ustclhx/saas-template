@@ -9,6 +9,16 @@ export {
   CardTitle,
 } from './components/card.tsx'
 export {
+  DataTable,
+  type DataTableColumn,
+  type DataTableFilter,
+  type DataTableLabels,
+  type DataTablePage,
+  type DataTableProps,
+  type DetailField,
+  DetailList,
+} from './components/data-table.tsx'
+export {
   errorMessages,
   FieldErrors,
   Form,

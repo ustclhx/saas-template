@@ -64,6 +64,13 @@
       "when": 1791295865022,
       "tag": "0008_public_sister_grimm",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791314964173,
+      "tag": "0009_audit_log_append_only",
+      "breakpoints": true
     }
   ]
 }

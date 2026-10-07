@@ -9,19 +9,20 @@ import { isAdminNotFound, requireAdmin } from './guard.ts'
 /**
  * `/admin` 下所有 server function 都必须挂这个中间件（路由的 `beforeLoad` 只管页面，
  * server function 可以被直接调用）。不满足条件时抛出路由的 notFound，页面与直接调用都得到 404。
+ * 写操作再经 action.server.ts 的 adminAction 包装（add-admin-console tasks.md 1.1）。
  */
 export const adminMiddleware = createMiddleware({ type: 'function' }).server(async ({ next }) => {
   const db = createDb(env.HYPERDRIVE)
-  const admin = await requireAdmin({
-    auth: getAuth(env, db),
-    db,
-    headers: getRequest().headers,
-  }).catch((error: unknown) => {
-    if (isAdminNotFound(error)) throw notFound()
-    throw error
-  })
-  return next({ context: { admin: admin.user, db } })
+  const headers = getRequest().headers
+  const admin = await requireAdmin({ auth: getAuth(env, db), db, headers }).catch(rethrowNotFound)
+  // 只信任 Cloudflare 设置的 cf-connecting-ip（与 @saas/auth 的限流一致）
+  return next({ context: { admin: admin.user, db, ip: headers.get('cf-connecting-ip') } })
 })
+
+function rethrowNotFound(error: unknown): never {
+  if (isAdminNotFound(error)) throw notFound()
+  throw error
+}
 
 /** 后台布局使用的当前管理员信息 */
 export const getAdminViewer = createServerFn({ method: 'GET' })

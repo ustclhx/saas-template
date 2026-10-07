@@ -37,7 +37,11 @@ export default defineConfig({
                   // 直接使用部署配置（Workflow、Queue consumer、Cron、Hyperdrive）；
                   // compatibility_date 受限于 vitest-pool-workers 自带的 workerd 版本
                   wrangler: { configPath: './wrangler.jsonc' },
-                  miniflare: { compatibilityDate: '2026-08-01' },
+                  miniflare: {
+                    compatibilityDate: '2026-08-01',
+                    // audit_log 对 app 只追加（@saas/db 迁移 0009），清理审计行改用 migrator
+                    hyperdrives: { HYPERDRIVE_MIGRATOR: migratorUrl },
+                  },
                 }),
               ],
               test: {

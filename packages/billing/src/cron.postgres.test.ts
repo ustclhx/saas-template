@@ -31,10 +31,13 @@ import {
 import { subscriptionMonthAnchor } from './events.ts'
 import type { PaymentProvider, SubscriptionSnapshot } from './provider.ts'
 
-const url = (globalThis as unknown as { process: { env: Record<string, string | undefined> } })
-  .process.env.BILLING_TEST_DATABASE_URL
+const testEnv = (globalThis as unknown as { process: { env: Record<string, string | undefined> } })
+  .process.env
+const url = testEnv.BILLING_TEST_DATABASE_URL
 if (!url) throw new Error('Missing isolated billing test database')
 const db = createDb({ connectionString: url })
+// audit_log 对 app 只追加（@saas/db 迁移 0009），审计行由 migrator 清理
+const migrator = createDb({ connectionString: testEnv.MIGRATION_DATABASE_URL ?? '' })
 const id = () => crypto.randomUUID()
 let ws: string, uid: string, pid: string, price: string, sid: string, paid: string
 let now: Date, start: Date, end: Date
@@ -125,16 +128,16 @@ afterEach(async () => {
     payment,
     subscription,
     billingCustomer,
-    auditLog,
   ])
     await db.delete(table).where(eq(table.workspaceId, ws))
+  await migrator.delete(auditLog).where(eq(auditLog.workspaceId, ws))
   await db.delete(member).where(eq(member.organizationId, ws))
   await db.delete(organization).where(eq(organization.id, ws))
   await db.delete(user).where(eq(user.id, uid))
   await db.delete(planPrice).where(eq(planPrice.planId, pid))
   await db.delete(plan).where(eq(plan.id, pid))
 })
-afterAll(() => db.$client.end())
+afterAll(() => Promise.all([db.$client.end(), migrator.$client.end()]))
 const grants = () => db.select().from(creditGrant).where(eq(creditGrant.workspaceId, ws))
 const ledger = () => db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws))
 const scopedFailures = (result: { failures: { workspaceId: string }[] }) =>

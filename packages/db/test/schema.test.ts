@@ -47,7 +47,10 @@ async function seed(db: Database) {
 /** 按外键依赖倒序清理（所有外键都是 on delete restrict，必须先删引用方）。 */
 async function cleanup(db: Database, userIds: string[], orgIds: string[]) {
   await db.delete(notification).where(inArray(notification.userId, userIds))
-  await db.delete(auditLog).where(inArray(auditLog.actorUserId, userIds))
+  // audit_log 对 app 只追加（迁移 0009），审计行由 migrator 清理
+  await createDb(env.HYPERDRIVE_MIGRATOR)
+    .delete(auditLog)
+    .where(inArray(auditLog.actorUserId, userIds))
   await db.delete(invitation).where(inArray(invitation.organizationId, orgIds))
   await db.delete(session).where(inArray(session.userId, userIds))
   await db.delete(member).where(inArray(member.organizationId, orgIds))
@@ -106,7 +109,9 @@ describe('认证与租户表（Hyperdrive → 本地 Postgres）', () => {
       await db.delete(session).where(eq(session.userId, userId))
       await db.insert(auditLog).values({ actorUserId: userId, workspaceId: orgId, action: 'test' })
       expect((await pgError(db.delete(user).where(eq(user.id, userId)))).code).toBe('23503')
-      await db.delete(auditLog).where(eq(auditLog.actorUserId, userId))
+      await createDb(env.HYPERDRIVE_MIGRATOR)
+        .delete(auditLog)
+        .where(eq(auditLog.actorUserId, userId))
       await db.insert(notification).values({ userId, type: 'test', title: 't' })
       expect((await pgError(db.delete(user).where(eq(user.id, userId)))).code).toBe('23503')
 
