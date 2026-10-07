@@ -56,6 +56,9 @@ export default defineConfig({
               ],
               test: {
                 name: 'integration',
+                // 多个测试会改写全局运行时设置（如 auth.signupEnabled 关闭注册），与并行运行的
+                // 注册类测试共享同一个隔离库会偶发 403；与 @saas/billing 的 postgres 项目一样串行执行。
+                fileParallelism: false,
                 include: ['test/**/*.test.ts'],
                 globalSetup: ['./test/global-setup.ts'],
               },
