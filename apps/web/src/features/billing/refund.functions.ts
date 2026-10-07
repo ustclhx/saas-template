@@ -8,7 +8,7 @@ import {
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
-import { withWorkspace } from '../../server/middleware.ts'
+import { withRealSession, withWorkspace } from '../../server/middleware.ts'
 import { templateConfig } from '../../server/template-config.ts'
 
 const workspace = z.object({ slug: z.string().min(1).max(64) })
@@ -53,7 +53,7 @@ export const getCustomerRefunds = createServerFn({ method: 'GET' })
     }
   })
 export const requestCustomerRefund = createServerFn({ method: 'POST' })
-  .middleware([withWorkspace])
+  .middleware([withWorkspace, withRealSession])
   .inputValidator(
     workspace.extend({
       paymentId: z.uuid(),

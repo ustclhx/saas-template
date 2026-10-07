@@ -12,7 +12,7 @@ import { createDb } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
-import { withWorkspace } from '../../server/middleware.ts'
+import { withRealSession, withWorkspace } from '../../server/middleware.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import {
   creditPageSchema,
@@ -83,7 +83,7 @@ export const getCustomerUsage = createServerFn({ method: 'GET' })
     ),
   )
 export const checkoutCustomer = createServerFn({ method: 'POST' })
-  .middleware([withWorkspace])
+  .middleware([withWorkspace, withRealSession])
   .inputValidator(
     workspace.extend({
       provider,
@@ -112,7 +112,7 @@ export const checkoutCustomer = createServerFn({ method: 'POST' })
     }),
   )
 export const manageCustomerSubscription = createServerFn({ method: 'POST' })
-  .middleware([withWorkspace])
+  .middleware([withWorkspace, withRealSession])
   .inputValidator(
     workspace.extend({
       subscriptionId: z.uuid(),
@@ -149,7 +149,7 @@ export const manageCustomerSubscription = createServerFn({ method: 'POST' })
     }),
   )
 export const confirmCustomerCheckout = createServerFn({ method: 'POST' })
-  .middleware([withWorkspace])
+  .middleware([withWorkspace, withRealSession])
   .inputValidator(workspace.extend({ provider, providerRef: z.string().min(1).max(255) }))
   .handler(({ context, data }) =>
     safe(context.workspaceReadOnly, async () => {

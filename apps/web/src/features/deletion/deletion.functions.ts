@@ -6,6 +6,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import { billingDeletionSteps, getAuth } from '../../server/auth.ts'
+import { withRealSession } from '../../server/middleware.ts'
 import { templateConfig } from '../../server/template-config.ts'
 
 async function remove(workspaceId?: string) {
@@ -37,7 +38,10 @@ async function remove(workspaceId?: string) {
     }
   }
 }
-export const removeAccount = createServerFn({ method: 'POST' }).handler(() => remove())
+export const removeAccount = createServerFn({ method: 'POST' })
+  .middleware([withRealSession])
+  .handler(() => remove())
 export const removeWorkspace = createServerFn({ method: 'POST' })
+  .middleware([withRealSession])
   .validator(z.object({ workspaceId: z.uuid() }))
   .handler(({ data }) => remove(data.workspaceId))

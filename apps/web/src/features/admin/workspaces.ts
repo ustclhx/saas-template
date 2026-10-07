@@ -1,0 +1,63 @@
+import { getCreditBalance, getCreditBatches, getCreditLedger } from '@saas/credits'
+import { type Database, member, organization, plan, scoped, subscription, user } from '@saas/db'
+import { getEntitlements } from '@saas/entitlements'
+import { AppError } from '@saas/shared'
+import { and, desc, eq, ilike, isNotNull, isNull, or, sql } from 'drizzle-orm'
+import { ADMIN_PAGE_SIZE, adminListSearch } from './list.ts'
+
+export async function listAdminWorkspaces(
+  db: Database,
+  input: { offset?: number; q?: string | undefined; status?: string | undefined },
+) {
+  const { offset, q, status } = adminListSearch(['q', 'status'])(input)
+  const rows = await db
+    .select()
+    .from(organization)
+    .where(
+      and(
+        q
+          ? or(
+              ilike(organization.name, `%${q}%`),
+              ilike(organization.slug, `%${q}%`),
+              ilike(sql`${organization.id}::text`, `%${q}%`),
+            )
+          : undefined,
+        status === 'deleted'
+          ? isNotNull(organization.deletedAt)
+          : status === 'active'
+            ? isNull(organization.deletedAt)
+            : undefined,
+      ),
+    )
+    .orderBy(desc(organization.createdAt), desc(organization.id))
+    .offset(offset)
+    .limit(ADMIN_PAGE_SIZE + 1)
+  return { rows: rows.slice(0, ADMIN_PAGE_SIZE), hasMore: rows.length > ADMIN_PAGE_SIZE }
+}
+
+export async function adminWorkspaceDetail(db: Database, id: string, pastDueGraceDays: number) {
+  const [workspace] = await db.select().from(organization).where(eq(organization.id, id))
+  if (!workspace) throw new AppError('NOT_FOUND', 'Workspace not found', { status: 404 })
+  const members = await scoped(db, id)
+    .select(member, {
+      fields: {
+        id: member.id,
+        role: member.role,
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+      },
+    })
+    .innerJoin(user, eq(member.userId, user.id))
+  const subscriptions = await scoped(db, id)
+    .select(subscription, { fields: { subscription, planName: plan.name } })
+    .innerJoin(plan, eq(subscription.planId, plan.id))
+    .orderBy(desc(subscription.currentPeriodEnd), desc(subscription.id))
+  const [balance, batches, ledger, entitlements] = await Promise.all([
+    getCreditBalance(db, id),
+    getCreditBatches(db, id),
+    getCreditLedger(db, id),
+    getEntitlements(db, id, { pastDueGraceDays }),
+  ])
+  return { workspace, members, subscriptions, balance, batches, ledger, entitlements }
+}

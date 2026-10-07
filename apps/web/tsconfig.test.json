@@ -1,7 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["vite/client", "@cloudflare/workers-types", "@cloudflare/vitest-pool-workers/types"]
+    "types": ["vite/client", "@cloudflare/workers-types", "@cloudflare/vitest-pool-workers/types"],
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"]
   },
   "include": ["test", "src/env.d.ts"],
   "exclude": ["test/global-setup.ts"]
