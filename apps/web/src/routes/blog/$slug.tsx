@@ -3,16 +3,26 @@ import { formatDate, TagLinks } from '../../features/marketing/blog/post-list.ts
 import { getBlogPost } from '../../features/marketing/content.functions.ts'
 import { MarketingShell } from '../../features/marketing/marketing-shell.tsx'
 import { RichContent } from '../../features/marketing/rich-content.tsx'
+import { originFromMatches, pageHead } from '../../features/seo/metadata.ts'
+import { articleData } from '../../features/seo/structured-data.ts'
 import { m } from '../../paraglide/messages.js'
 import { getLocale } from '../../paraglide/runtime.js'
 
 export const Route = createFileRoute('/blog/$slug')({
   loader: ({ params }) => getBlogPost({ data: { locale: getLocale(), slug: params.slug } }),
-  head: ({ loaderData }) => ({
-    meta: loaderData
-      ? [{ title: loaderData.title }, { name: 'description', content: loaderData.summary }]
-      : [],
-  }),
+  head: ({ loaderData, params, matches }) => {
+    if (!loaderData) return {}
+    const page = {
+      path: `/blog/${encodeURIComponent(params.slug)}`,
+      locale: getLocale(),
+      title: loaderData.title,
+      description: loaderData.summary,
+      cover: loaderData.cover,
+      date: loaderData.date,
+    }
+    const appUrl = originFromMatches(matches)
+    return pageHead(page, appUrl, [articleData(page, appUrl)])
+  },
   component: BlogPostPage,
 })
 

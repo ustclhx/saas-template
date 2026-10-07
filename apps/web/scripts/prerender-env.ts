@@ -19,11 +19,23 @@ export function prerenderEnvFallback(root = WEB_ROOT): Plugin {
     applyToEnvironment: (environment) => environment.name === 'ssr',
     generateBundle(_options, bundle) {
       const example = join(root, '.dev.vars.example')
-      if ('.dev.vars' in bundle || !existsSync(example)) return
-      const source = readFileSync(example, 'utf8').replace(
+      if ('.dev.vars' in bundle) {
+        const asset = bundle['.dev.vars']
+        if (process.env.APP_URL && asset.type === 'asset') {
+          asset.source = String(asset.source).replace(
+            /^APP_URL=.*$/m,
+            `APP_URL=${process.env.APP_URL}`,
+          )
+        }
+        return
+      }
+      if (!existsSync(example)) return
+      let source = readFileSync(example, 'utf8').replace(
         /^BETTER_AUTH_SECRET=.*$/m,
         `BETTER_AUTH_SECRET=${randomBytes(32).toString('base64')}`,
       )
+      if (process.env.APP_URL)
+        source = source.replace(/^APP_URL=.*$/m, `APP_URL=${process.env.APP_URL}`)
       this.emitFile({ type: 'asset', fileName: '.dev.vars', source })
     },
   }

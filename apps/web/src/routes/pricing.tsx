@@ -2,11 +2,19 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { getMarketingPricing } from '../features/marketing/pricing.functions.ts'
 import { PRICING_TTL_MS } from '../features/marketing/pricing-data.ts'
+import { originFromMatches, pageHead, staticPage } from '../features/seo/metadata.ts'
+import { pricingData } from '../features/seo/structured-data.ts'
+import { getLocale } from '../paraglide/runtime.js'
 
 export const Route = createFileRoute('/pricing')({
   loader: () => getMarketingPricing(),
   component: PricingPage,
-  head: () => ({ meta: [{ title: 'Pricing' }] }),
+  head: ({ matches, loaderData }) =>
+    pageHead(
+      staticPage('/pricing', getLocale()),
+      originFromMatches(matches),
+      loaderData ? pricingData(loaderData, originFromMatches(matches), getLocale()) : [],
+    ),
 })
 function PricingPage() {
   const initialCatalog = Route.useLoaderData()

@@ -7,6 +7,7 @@ import viteReact from '@vitejs/plugin-react'
 import { defineConfig, loadEnv } from 'vite'
 import templateConfig from '../../template.config.ts'
 import { i18nMessages } from './scripts/i18n-project.ts'
+import { ogImages } from './scripts/og-images.ts'
 import { prerenderEnvFallback } from './scripts/prerender-env.ts'
 import { pricingSnapshotPlugin } from './scripts/pricing-snapshot.ts'
 import { APP_AREA_PREFIXES } from './src/features/i18n/app-area.ts'
@@ -38,12 +39,15 @@ export default defineConfig(({ command }) => ({
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
   plugins: [
+    ogImages(),
     // SSR 由 workerd 执行：Cloudflare 插件接管 Vite 的 ssr 环境
     cloudflare({
       viteEnvironment: { name: 'ssr' },
       inspectorPort,
       // 本地开发时 Better Auth 的 baseURL 跟随实际端口（worktree 各不相同）；构建产物沿用 wrangler.jsonc
-      ...(command === 'serve' && { config: { vars: { APP_URL: `http://localhost:${port}` } } }),
+      ...((command === 'serve' || process.env.APP_URL) && {
+        config: { vars: { APP_URL: process.env.APP_URL ?? `http://localhost:${port}` } },
+      }),
     }),
     // 没有 .dev.vars 时（CI）预渲染用的 preview 改用 .dev.vars.example 的假值通过启动校验
     prerenderEnvFallback(),
