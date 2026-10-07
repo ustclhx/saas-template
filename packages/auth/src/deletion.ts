@@ -10,6 +10,7 @@ export type DeletionKind = 'account' | 'workspace'
 export type DeletionTransaction = Parameters<Parameters<Database['$client']['begin']>[1]>[0]
 export interface DeletionContext {
   readonly actorUserId: string
+  readonly ip?: string | null
   readonly workspaceIds: readonly string[]
   readonly db: Database
 }
@@ -96,7 +97,12 @@ async function finishCleanup(db: Database, kv: KvStore | undefined, id: string |
     deletionCompleted: true,
   })
 }
-async function softDelete(sql: DeletionTransaction, id: string, actorId: string) {
+async function softDelete(
+  sql: DeletionTransaction,
+  id: string,
+  actorId: string,
+  ip: string | null,
+) {
   const owners = await sql<
     { user_id: string }[]
   >`select user_id from member where organization_id=${id} and role='owner'`
@@ -121,8 +127,8 @@ async function softDelete(sql: DeletionTransaction, id: string, actorId: string)
     { token: string }[]
   >`update session set active_organization_id=null,updated_at=now() where active_organization_id=${id} returning token`
   await sql`delete from member where organization_id=${id}`
-  await sql`insert into audit_log (id,actor_user_id,workspace_id,action,target_type,target_id,meta)
-    values (${newId()},${actorId},${id},'workspace.deleted','organization',${id},${JSON.stringify({ originalOwnerUserIds: owners.map((owner) => owner.user_id) })}::jsonb)`
+  await sql`insert into audit_log (id,actor_user_id,workspace_id,action,target_type,target_id,ip,meta)
+    values (${newId()},${actorId},${id},'workspace.deleted','organization',${id},${ip},${JSON.stringify({ originalOwnerUserIds: owners.map((owner) => owner.user_id) })}::jsonb)`
   return sessions.map((session) => session.token)
 }
 export async function deleteTeamWorkspace(
@@ -143,7 +149,12 @@ export async function deleteTeamWorkspace(
     !workspace.members.some((member) => member.userId === fresh.user.id && member.role === 'owner')
   )
     fail('WORKSPACE_PERMISSION', 'Only owners can delete a team workspace')
-  const context = { db: options.db, actorUserId: fresh.user.id, workspaceIds: [workspaceId] }
+  const context = {
+    ip: options.headers.get('cf-connecting-ip'),
+    db: options.db,
+    actorUserId: fresh.user.id,
+    workspaceIds: [workspaceId],
+  }
   const registered = [...steps.workspace, ...(options.additionalSteps ?? [])]
   for (const step of registered) await step.before?.(context)
   const keys = await options.db.$client.begin(async (sql) => {
@@ -159,7 +170,12 @@ export async function deleteTeamWorkspace(
     if (workspace.role !== 'owner')
       fail('WORKSPACE_PERMISSION', 'Only owners can delete a team workspace')
     for (const step of registered) await step.execute?.(context, sql)
-    const keys = await softDelete(sql, workspaceId, fresh.user.id)
+    const keys = await softDelete(
+      sql,
+      workspaceId,
+      fresh.user.id,
+      options.headers.get('cf-connecting-ip'),
+    )
     return saveCleanup(sql, keys, options.kv)
   })
   await finishCleanup(options.db, options.kv, keys)
@@ -188,7 +204,12 @@ export async function deleteAccount(options: Options) {
   const fresh = await requireFreshSession(options)
   if (fresh.session.impersonatedBy || Date.now() - fresh.session.createdAt.getTime() > 600000)
     fail('REAUTHENTICATION_REQUIRED', 'Sign out and sign in again within ten minutes')
-  const context = { db: options.db, actorUserId: fresh.user.id, workspaceIds: [fresh.user.id] }
+  const context = {
+    ip: options.headers.get('cf-connecting-ip'),
+    db: options.db,
+    actorUserId: fresh.user.id,
+    workspaceIds: [fresh.user.id],
+  }
   const registered = [...steps.account, ...(options.additionalSteps ?? [])]
   for (const step of registered) await step.before?.(context)
   const keys = await options.db.$client.begin(async (sql) => {
@@ -213,7 +234,14 @@ export async function deleteAccount(options: Options) {
     >`select o.id from organization o join member m on m.organization_id=o.id where m.user_id=${current.id} and o.is_personal and o.deleted_at is null`
     const cacheKeys: string[] = [`active-sessions-${current.id}`]
     for (const workspace of personal)
-      cacheKeys.push(...(await softDelete(sql, workspace.id, current.id)))
+      cacheKeys.push(
+        ...(await softDelete(
+          sql,
+          workspace.id,
+          current.id,
+          options.headers.get('cf-connecting-ip'),
+        )),
+      )
     const sessions = await sql<
       { token: string }[]
     >`delete from session where user_id=${current.id} returning token`
@@ -229,10 +257,16 @@ export async function deleteAccount(options: Options) {
     await sql`delete from account where user_id=${current.id}`
     await sql`delete from two_factor where user_id=${current.id}`
     await sql`delete from apikey where reference_id=${current.id}`
-    await sql`delete from member where user_id=${current.id}`
+    const memberships = await sql<
+      { id: string; organization_id: string; role: string }[]
+    >`delete from member where user_id=${current.id} returning id,organization_id,role`
+    for (const membership of memberships)
+      await sql`insert into audit_log (id,actor_user_id,workspace_id,action,target_type,target_id,ip,meta)
+      values (${newId()},${current.id},${membership.organization_id},'workspace.member_removed','member',${membership.id},
+      ${options.headers.get('cf-connecting-ip')},${JSON.stringify({ targetUserId: current.id, oldRole: membership.role, newRole: null, reason: 'account_deleted' })}::jsonb)`
     await sql`update invitation set status='canceled',updated_at=now() where status='pending' and (inviter_id=${current.id} or lower(email)=lower(${current.email}))`
     await sql`update "user" set email=${`deleted+${current.id}@invalid`},name='',image=null,locale=null,timezone=null,email_verified=false,two_factor_enabled=false,banned=true,ban_reason='Account deleted',ban_expires=null,updated_at=now() where id=${current.id}`
-    await sql`insert into audit_log (id,actor_user_id,action,target_type,target_id) values (${newId()},${current.id},'account.deleted','user',${current.id})`
+    await sql`insert into audit_log (id,actor_user_id,action,target_type,target_id,ip,meta) values (${newId()},${current.id},'account.deleted','user',${current.id},${options.headers.get('cf-connecting-ip')},${JSON.stringify({ anonymized: true, deletedPersonalWorkspaceIds: personal.map((workspace) => workspace.id) })}::jsonb)`
     return saveCleanup(sql, cacheKeys, options.kv)
   })
   await finishCleanup(options.db, options.kv, keys)

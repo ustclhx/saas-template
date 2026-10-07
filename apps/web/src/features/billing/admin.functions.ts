@@ -11,7 +11,7 @@ import {
   reviewRefundRequest,
 } from '@saas/billing'
 import { EnvValidationError } from '@saas/config'
-import { type Database, webhookEvent } from '@saas/db'
+import { type Database, refundRequest, webhookEvent } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { withRequestId } from '@saas/shared/log'
 import { isNotFound } from '@tanstack/react-router'
@@ -208,6 +208,7 @@ export const reviewAdminRefund = createServerFn({ method: 'POST' })
           (
             await reviewRefundRequest(refundOptions(db), {
               requestId: data.requestId,
+              ip: context.ip,
               decision: data.decision,
               reviewNote: data.reviewNote,
               ...(data.approvedAmount === undefined ? {} : { approvedAmount: data.approvedAmount }),
@@ -231,7 +232,13 @@ export const completeAdminRefund = createServerFn({ method: 'POST' })
       withDelegatedAdminAction(
         context,
         async (db) =>
-          (await markManualRefund(refundOptions(db), { ...data, userId: context.admin.id })).status,
+          (
+            await markManualRefund(refundOptions(db), {
+              ...data,
+              userId: context.admin.id,
+              ip: context.ip,
+            })
+          ).status,
       ),
     ),
   )
@@ -242,6 +249,26 @@ export const retryAdminRefundEmail = createServerFn({ method: 'POST' })
   .handler(({ context, data }) =>
     safe(async () =>
       withDelegatedAdminAction(context, async (db) => {
+        await withAdminAction(
+          context,
+          'billing.refund_notification_retry_requested',
+          async ({ tx, audit }) => {
+            const [request] = await tx
+              .select()
+              // biome-ignore lint/plugin: 实时管理员守卫已通过，按退款申请 ID 获取明确空间再记录重试审计。
+              .from(refundRequest)
+              .where(eq(refundRequest.id, data.requestId))
+            if (!request)
+              throw new AppError('NOT_FOUND', 'Refund request unavailable', { status: 404 })
+            await audit({
+              workspaceId: request.workspaceId,
+              action: 'billing.refund_notification_retry_requested',
+              targetType: 'refund_request',
+              targetId: request.id,
+              meta: { status: request.status },
+            })
+          },
+        )
         await retryRefundNotification(refundOptions(db), { ...data, userId: context.admin.id })
         return 'Email queued or already delivered'
       }),

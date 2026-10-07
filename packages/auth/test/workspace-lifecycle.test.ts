@@ -68,6 +68,12 @@ describe('workspace lifecycle in workerd', () => {
     expect(restored.status).toBe(200)
     expect(await restored.json()).toEqual({ restored: true, ownerUserIds: [owner.id] })
     expect(
+      await a.db.query.auditLog.findMany({
+        where: (log, { and, eq }) =>
+          and(eq(log.workspaceId, id), eq(log.action, 'workspace.restored')),
+      }),
+    ).toMatchObject([{ actorUserId: admin.id, ip: a.ip, meta: { ownerUserIds: [owner.id] } }])
+    expect(
       await a.db.query.member.findMany({ where: (m, { eq }) => eq(m.organizationId, id) }),
     ).toMatchObject([{ userId: owner.id, role: 'owner' }])
     expect(

@@ -38,6 +38,18 @@ export const ADMIN_NAV = linkOptions([
     label: ADMIN_COPY.nav.models,
     activeOptions: { includeSearch: false },
   },
+  {
+    to: '/admin/audit',
+    search: { offset: 0 },
+    label: 'Audit log',
+    activeOptions: { includeSearch: false },
+  },
+  {
+    to: '/admin/metrics',
+    search: { offset: 0 },
+    label: 'Metrics',
+    activeOptions: { includeSearch: false },
+  },
   { to: '/admin/settings', label: 'Settings' },
   {
     to: '/admin/credits',

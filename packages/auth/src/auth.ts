@@ -134,7 +134,7 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
       workspaceLifecyclePlugin(db, config.tenancy.maxWorkspacesPerUser),
       teamWorkspaces(db, config, sendEmail, deps.resolveMaxSeats),
       // 用户设置：资料校验、修改密码时吊销其他会话（account-settings.ts）
-      accountSettings(),
+      accountSettings(db, config),
       organization({
         // 团队空间的创建准入由 multiTenant 决定；个人空间由服务端创建（tasks.md 4.1）
         allowUserToCreateOrganization: config.tenancy.multiTenant,

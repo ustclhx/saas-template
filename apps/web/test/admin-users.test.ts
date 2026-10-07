@@ -4,6 +4,7 @@ import { defineTemplateConfig } from '@saas/config'
 import { createDb } from '@saas/db'
 import { newId } from '@saas/shared'
 import { afterAll, describe, expect, it } from 'vitest'
+import { listAuditLogs } from '../src/features/admin/audit.ts'
 import { requireAdmin } from '../src/features/admin/guard.ts'
 import { executeAdminAuthAction } from '../src/features/admin/impersonation.server.ts'
 import { assertRealSession } from '../src/features/admin/impersonation.ts'
@@ -226,6 +227,45 @@ describe('用户与空间后台', () => {
       expect(result.status).toBe(403)
       expect(await result.json()).toMatchObject({ code: 'IMPERSONATION_FORBIDDEN' })
     }
+    headers.set('cf-connecting-ip', '203.0.113.9')
+    const invalid = await handleAuthRequest(
+      new Request(`${APP_URL}/api/auth/update-user`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ timezone: 'Invalid/Timezone' }),
+      }),
+      testEnv,
+    )
+    expect(invalid.status).toBe(400)
+
+    const updated = await handleAuthRequest(
+      new Request(`${APP_URL}/api/auth/update-user`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name: 'Audited profile' }),
+      }),
+      testEnv,
+    )
+    expect(updated.status).toBe(200)
+    const profileAudit = await listAuditLogs(db, {
+      offset: 0,
+      actor: admin.id,
+      action: 'user.profile_updated',
+    })
+    expect(profileAudit.rows).toMatchObject([
+      {
+        log: {
+          actorUserId: target.id,
+          targetId: target.id,
+          ip: '203.0.113.9',
+          meta: {
+            impersonatedBy: admin.id,
+            before: { name: 'Searchable user' },
+            after: { name: 'Audited profile' },
+          },
+        },
+      },
+    ])
     const stopHeaders = new Headers(headers)
     stopHeaders.delete('content-type')
     const ended = await handleAuthRequest(
@@ -239,7 +279,7 @@ describe('用户与空间后台', () => {
     headers.set('cookie', cookies(ended, headers.get('cookie') ?? ''))
     expect((await requireAdmin({ db, auth, headers })).user.id).toBe(admin.id)
     const audit =
-      await db.$client`select actor_user_id,action,meta from audit_log where target_id=${target.id} order by created_at`
+      await db.$client`select actor_user_id,action,meta from audit_log where target_id=${target.id} and action like 'user.impersonation.%' order by created_at`
     expect(audit).toMatchObject([
       {
         actor_user_id: admin.id,

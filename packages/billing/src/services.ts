@@ -16,6 +16,7 @@ import { and, eq, inArray, isNull, or } from 'drizzle-orm'
 import { type BillingProviders, lockWorkspaceBilling } from './events.ts'
 import type { WebhookTransaction } from './pipeline.ts'
 import type { SubscriptionSnapshot } from './provider.ts'
+import { auditSubscriptionChange } from './subscription-audit.ts'
 
 export interface BillingServiceContext {
   db: Database
@@ -25,6 +26,7 @@ export interface BillingServiceContext {
 export interface BillingActor {
   workspaceId: string
   userId: string
+  ip?: string | null
 }
 export interface SubscriptionInput extends BillingActor {
   subscriptionId: string
@@ -187,6 +189,9 @@ async function persistSnapshot(
           : {}),
       })
       .where(and(eq(subscription.id, sub.id), eq(subscription.workspaceId, actor.workspaceId)))
+    const after = await reload(tx, sub)
+    if (after)
+      await auditSubscriptionChange(tx, sub, after, operation, actor.userId, actor.ip ?? null)
   })
 }
 
@@ -291,6 +296,9 @@ export async function cancelSubscription(ctx: BillingServiceContext, input: Subs
           lastEventAt: new Date(),
         })
         .where(and(eq(subscription.id, sub.id), eq(subscription.workspaceId, input.workspaceId)))
+      const after = await reload(tx, sub)
+      if (after)
+        await auditSubscriptionChange(tx, sub, after, 'cancel', input.userId, input.ip ?? null)
     })
   } else
     await persistSnapshot(
