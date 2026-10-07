@@ -79,7 +79,12 @@ describe('公开套餐数据库读取', () => {
       expect((await cached(read)).prices.find((p) => p.id === priceId)?.amount).toBe(2900)
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
       now += PRICING_TTL_MS
-      expect(await cached(() => readPricingCatalog(env.HYPERDRIVE_REFUSED))).toEqual(snapshot)
+      // 数据库不可达时继续展示上次成功读取的价格，不退回构建快照
+      expect(
+        (await cached(() => readPricingCatalog(env.HYPERDRIVE_REFUSED))).prices.find(
+          (p) => p.id === priceId,
+        )?.amount,
+      ).toBe(2900)
       warn.mockRestore()
     } finally {
       await db.delete(planPrice).where(eq(planPrice.planId, planId))

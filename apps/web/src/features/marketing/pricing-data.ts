@@ -24,8 +24,13 @@ export interface PricingPlan {
 
 export type PricingCatalog = Awaited<ReturnType<typeof customerCatalog>>
 export const PRICING_TTL_MS = 60 * 60 * 1000
+/** 读取失败后的重试间隔：数据库短暂不可达时不应锁定一小时的降级数据 */
+export const PRICING_RETRY_MS = 60 * 1000
 
-/** 只保存普通数据；Worker 的数据库客户端和 I/O Promise 不跨请求复用。 */
+/**
+ * 只保存普通数据；Worker 的数据库客户端和 I/O Promise 不跨请求复用。
+ * 读取失败时沿用上一次成功读取的数据（没有时才用构建快照），并在 `PRICING_RETRY_MS` 后重试。
+ */
 export function createPricingCache(snapshot: PricingCatalog, now = Date.now) {
   let catalog = snapshot
   let expiresAt = 0
@@ -33,10 +38,10 @@ export function createPricingCache(snapshot: PricingCatalog, now = Date.now) {
     if (now() < expiresAt) return catalog
     try {
       catalog = await read()
+      expiresAt = now() + PRICING_TTL_MS
     } catch {
-      catalog = snapshot
+      expiresAt = now() + PRICING_RETRY_MS
     }
-    expiresAt = now() + PRICING_TTL_MS
     return catalog
   }
 }
