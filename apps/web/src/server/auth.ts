@@ -1,10 +1,13 @@
-import { type AuthEmail, createAuth, type SendAuthEmail } from '@saas/auth'
+import { type AuthEmail, createAuth, parseAuthEnv, type SendAuthEmail } from '@saas/auth'
 import {
   createBillingDeletionStep,
   createTestPaymentRuntime,
   grantSignupBonus,
 } from '@saas/billing'
 import { createDb, type Database } from '@saas/db'
+import { AppError } from '@saas/shared'
+import { APIError } from 'better-auth/api'
+import { assertSignupAdmission } from '../features/growth/service.ts'
 import { createQueueAuthEmailSender, userLocaleByEmail } from './auth-email.ts'
 import { templateConfig } from './template-config.ts'
 import { resolveWorkspaceMaxSeats } from './workspace-data.ts'
@@ -31,6 +34,25 @@ export function getAuth(env: Cloudflare.Env, db: Database = createDb(env.HYPERDR
     : queued
   return createAuth(env, db, {
     config: templateConfig,
+    beforeUserCreate: async (user, headers) => {
+      try {
+        await assertSignupAdmission(
+          {
+            db,
+            config: templateConfig,
+            secret: parseAuthEnv(env, templateConfig).BETTER_AUTH_SECRET,
+            appUrl: env.APP_URL,
+            queue: env.EMAIL_QUEUE,
+          },
+          user.email,
+          headers,
+        )
+      } catch (error) {
+        if (error instanceof AppError)
+          throw APIError.from('FORBIDDEN', { code: error.code, message: error.message })
+        throw error
+      }
+    },
     deletionSteps: billingDeletionSteps(env),
     sendEmail,
     resolveMaxSeats: resolveWorkspaceMaxSeats,

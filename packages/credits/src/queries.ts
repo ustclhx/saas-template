@@ -1,6 +1,11 @@
-import { creditDebt, creditGrant, creditHold, creditLedger, type Database } from '@saas/db'
+import { creditDebt, creditGrant, creditHold, creditLedger } from '@saas/db'
 import { and, desc, eq, lt, or, sql } from 'drizzle-orm'
-import { type CreditsTransaction, lockWorkspaceCredits, withCreditsTransaction } from './index.ts'
+import {
+  type CreditsExecutor,
+  type CreditsTransaction,
+  lockWorkspaceCredits,
+  withCreditsTransaction,
+} from './index.ts'
 
 export interface CreditCursor {
   /** Exact PostgreSQL timestamp, including microseconds, to avoid dropping tied rows. */
@@ -30,7 +35,11 @@ function validatePage(input: CreditPageInput) {
 }
 
 /** A single statement gives available/held/debt a consistent read snapshot. */
-export async function getCreditBalance(db: Database, workspaceId: string, tx?: CreditsTransaction) {
+export async function getCreditBalance(
+  db: CreditsExecutor,
+  workspaceId: string,
+  tx?: CreditsTransaction,
+) {
   const [balance] = await (tx ?? db)
     .select({
       available: sql<number>`(select coalesce(sum(${creditGrant.remaining}), 0)::float8 from ${creditGrant}
@@ -48,7 +57,7 @@ export async function getCreditBalance(db: Database, workspaceId: string, tx?: C
 
 /** All grant statuses are visible as batch history, newest first. */
 export async function getCreditBatches(
-  db: Database,
+  db: CreditsExecutor,
   workspaceId: string,
   input: CreditPageInput = {},
   tx?: CreditsTransaction,
@@ -88,7 +97,7 @@ export async function getCreditBatches(
 
 /** Member callers must supply their authenticated userId; never accept another user's ID. */
 export async function getCreditLedger(
-  db: Database,
+  db: CreditsExecutor,
   workspaceId: string,
   input: CreditPageInput & { userId?: string } = {},
   tx?: CreditsTransaction,
@@ -133,7 +142,7 @@ export async function getCreditLedger(
  * mismatch before the expiry mutation has appended its matching ledger entry.
  */
 export async function reconcileWorkspaceCredits(
-  db: Database,
+  db: CreditsExecutor,
   workspaceId: string,
   tx?: CreditsTransaction,
 ) {

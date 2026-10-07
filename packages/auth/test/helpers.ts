@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers'
 import { defineTemplateConfig, type TemplateConfigInput } from '@saas/config'
 import { createDb, type Database } from '@saas/db'
 import { newId } from '@saas/shared'
-import { vi } from 'vitest'
+import { onTestFinished, vi } from 'vitest'
 import { type AuthEmail, type AuthEnv, createAuth } from '../src/index.ts'
 import { TURNSTILE_SITEVERIFY_URL, TURNSTILE_TOKEN_HEADER } from '../src/protection.ts'
 
@@ -48,6 +48,21 @@ export function mockTurnstile() {
   })
 }
 
+/**
+ * 静音当前测试中预期出现的错误日志（Better Auth 的 ERROR 日志、better-call 的 SERVER_ERROR）。
+ * 只吞掉与任一 pattern 匹配的 `console.error`，其他错误照常输出，不会掩盖非预期错误；
+ * 不改变生产代码的日志行为。spy 在当前测试结束时还原。
+ */
+export function silenceExpectedErrors(...patterns: RegExp[]) {
+  const original = console.error
+  const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+    const text = args.map((a) => (a instanceof Error ? `${a.name}: ${a.message}` : String(a)))
+    if (!patterns.some((p) => p.test(text.join(' ')))) original(...args)
+  })
+  onTestFinished(() => spy.mockRestore())
+  return spy
+}
+
 /** 每个测试文件一个邮箱域名，结束时按域名清理 */
 export function testUsers(prefix: string) {
   const domain = `${newId()}.${prefix}.auth-test.example`
@@ -73,6 +88,8 @@ export function testUsers(prefix: string) {
       await sql`delete from session where user_id in ${sql(ids)}`
       // 个人空间的 id 即用户 id（personal-workspace.ts）
       const orgs = [...ids, ...createdOrgs]
+      await createDb(env.HYPERDRIVE_MIGRATOR)
+        .$client`delete from audit_log where actor_user_id in ${sql(ids)} or workspace_id in ${sql(orgs)}`
       await sql`delete from invitation where organization_id in ${sql(orgs)} or inviter_id in ${sql(ids)}`
       await sql`delete from member where organization_id in ${sql(orgs)} or user_id in ${sql(ids)}`
       await sql`delete from organization where id in ${sql(orgs)}`
@@ -85,6 +102,23 @@ export function testUsers(prefix: string) {
 let ipCounter = 0
 /** 每次调用返回一个新的客户端 IP，避免不同场景共用 RL_AUTH 的 IP 计数 */
 export const nextIp = () => `198.51.100.${(ipCounter++ % 250) + 1}`
+
+/**
+ * 与时间无关的 RL_AUTH 替身：每个 key 最多放行 `limit` 次，此后一律拒绝，计数永不重置。
+ * Miniflare 模拟的 Rate Limiting 绑定按墙钟对齐固定窗口（`floor(Date.now() / period)`），
+ * 测试若跨过整分钟边界，计数会被清零、结果整体偏移；需要断言精确放行次数的测试改用本替身。
+ */
+export function countingRateLimiter(limit = 5) {
+  const counts = new Map<string, number>()
+  return {
+    async limit({ key }: { key: string }) {
+      const count = counts.get(key) ?? 0
+      if (count >= limit) return { success: false }
+      counts.set(key, count + 1)
+      return { success: true }
+    },
+  }
+}
 
 export interface SetupOptions {
   readonly config?: Omit<TemplateConfigInput, 'app'>

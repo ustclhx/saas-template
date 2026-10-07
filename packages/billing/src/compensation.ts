@@ -15,6 +15,7 @@ import {
   RenewingSubscriptionConflict,
 } from './events.ts'
 import type { WebhookFailure } from './pipeline.ts'
+import { auditSubscriptionChange } from './subscription-audit.ts'
 
 /** Only a known domain conflict can create a durable compensation after rollback. */
 export async function persistCompensation(db: Database, cause: unknown) {
@@ -57,6 +58,15 @@ async function recordLosingReceipt(db: Database, job: BillingCompensation) {
   const p = job.payload
   await db.transaction(async (tx) => {
     await lockWorkspaceBilling(tx, job.workspaceId)
+    const [before] = await tx
+      .select()
+      .from(subscription)
+      .where(
+        and(
+          eq(subscription.provider, p.provider),
+          eq(subscription.providerSubscriptionId, p.providerSubscriptionId),
+        ),
+      )
     await tx
       .insert(subscription)
       .values({
@@ -93,6 +103,8 @@ async function recordLosingReceipt(db: Database, job: BillingCompensation) {
         currentPeriodEnd: null,
       })
       .where(eq(subscription.id, sub.id))
+    const [after] = await tx.select().from(subscription).where(eq(subscription.id, sub.id))
+    if (after) await auditSubscriptionChange(tx, before, after, 'compensation')
     if (!p.payment) return
     const receipt = p.payment
     await tx

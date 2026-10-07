@@ -1,3 +1,4 @@
+import { withLogContext } from '@saas/shared/log'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { checkEnv } from './env.ts'
 
@@ -12,6 +13,7 @@ function completeEnv() {
     EMAIL_QUEUE: { send: fn },
     CACHE: { get: fn, put: fn, delete: fn },
     RL_AUTH: { limit: fn },
+    RL_AI: { limit: fn },
     APP_URL: 'http://localhost:3000',
     BETTER_AUTH_SECRET: 'x'.repeat(32),
     TURNSTILE_SECRET_KEY: 'turnstile-secret',
@@ -35,7 +37,9 @@ describe('checkEnv（请求入口的环境校验）', () => {
   it('缺少必需绑定时返回 500，日志只含变量名', async () => {
     const error = captureErrors()
     const { HYPERDRIVE: _, ...env } = completeEnv()
-    const response = checkEnv({ ...env, OTHER_SECRET: SECRET })
+    const response = withLogContext({ requestId: 'env-request' }, () =>
+      checkEnv({ ...env, OTHER_SECRET: SECRET }),
+    )
     expect(response?.status).toBe(500)
     const body = await response?.text()
     expect(body).toBe('Internal Server Error')
@@ -43,7 +47,9 @@ describe('checkEnv（请求入口的环境校验）', () => {
     expect(error).toHaveBeenCalledTimes(1)
     const logged = error.mock.calls.flat().join(' ')
     expect(JSON.parse(logged)).toEqual({
+      level: 'error',
       event: 'env.invalid',
+      requestId: 'env-request',
       missing: ['HYPERDRIVE'],
       invalid: [],
     })
@@ -60,6 +66,7 @@ describe('checkEnv（请求入口的环境校验）', () => {
     expect(response?.status).toBe(500)
     const logged = error.mock.calls.flat().join(' ')
     expect(JSON.parse(logged)).toEqual({
+      level: 'error',
       event: 'env.invalid',
       missing: [],
       invalid: ['HYPERDRIVE'],
@@ -73,6 +80,7 @@ describe('checkEnv（请求入口的环境校验）', () => {
     const response = checkEnv({ ...env, EMAIL_QUEUE: {} })
     expect(response?.status).toBe(500)
     expect(JSON.parse(error.mock.calls.flat().join(' '))).toEqual({
+      level: 'error',
       event: 'env.invalid',
       missing: ['AI_MEDIA_WORKFLOW'],
       invalid: ['EMAIL_QUEUE'],
@@ -84,6 +92,7 @@ describe('checkEnv（请求入口的环境校验）', () => {
     const {
       CACHE: _c,
       RL_AUTH: _r,
+      RL_AI: _a,
       BETTER_AUTH_SECRET: _s,
       GITHUB_CLIENT_SECRET: _g,
       TURNSTILE_SITE_KEY: _k,
@@ -93,11 +102,13 @@ describe('checkEnv（请求入口的环境校验）', () => {
     expect(response?.status).toBe(500)
     const logged = error.mock.calls.flat().join(' ')
     expect(JSON.parse(logged)).toEqual({
+      level: 'error',
       event: 'env.invalid',
       missing: [
         'BETTER_AUTH_SECRET',
         'CACHE',
         'GITHUB_CLIENT_SECRET',
+        'RL_AI',
         'RL_AUTH',
         'TURNSTILE_SITE_KEY',
       ],

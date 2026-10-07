@@ -13,6 +13,9 @@ describe('defineTemplateConfig', () => {
   it('fills every omitted option with the documented default', () => {
     const config = defineTemplateConfig({ app })
     expect(config).toEqual({ app, ...templateConfigDefaults })
+    expect(config.features.analytics).toBe(false)
+    expect(config.analytics.cloudflareToken).toBe('')
+    expect(config.analytics.posthogKey).toBe('')
     expect(config.billing.overage).toEqual({
       maxRatio: 0.2,
       maxCredits: 50,
@@ -25,6 +28,8 @@ describe('defineTemplateConfig', () => {
       app,
       billing: { overage: { maxCredits: 10 } },
       ai: { video: false, defaultPricingMode: { video: 'per_unit' } },
+      features: { analytics: 'posthog' },
+      analytics: { posthogKey: 'public-project-key' },
     })
     expect(config.billing.overage).toEqual({
       maxRatio: 0.2,
@@ -32,6 +37,11 @@ describe('defineTemplateConfig', () => {
       dailyBudgetPerWorkspace: 200,
     })
     expect(config.billing.refundWindowDays).toBe(30)
+    expect(config.analytics).toEqual({
+      cloudflareToken: '',
+      posthogKey: 'public-project-key',
+      posthogHost: 'https://us.i.posthog.com',
+    })
     expect(config.ai).toEqual({
       text: true,
       image: true,
@@ -88,6 +98,8 @@ describe('defineTemplateConfig types', () => {
       defineTemplateConfig({ app, billing: { providers: ['alipay'] } }),
       // @ts-expect-error 未知的配置项
       defineTemplateConfig({ app, billing: { overage: { maxPercent: 10 } } }),
+      // @ts-expect-error 未支持的产品分析服务
+      defineTemplateConfig({ app, features: { analytics: 'unknown' } }),
       // @ts-expect-error 类型错误的取值
       defineTemplateConfig({ app, tenancy: { multiTenant: 'yes' } }),
       // @ts-expect-error defaultLocale 不在 locales 中

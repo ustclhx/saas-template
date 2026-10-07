@@ -30,7 +30,7 @@ export async function requireAdmin(options: {
     if (error instanceof AppError) throw notFound()
     throw error
   }
-  if (!isPlatformAdmin(fresh.user.role)) throw notFound()
+  if (fresh.session.impersonatedBy || !isPlatformAdmin(fresh.user.role)) throw notFound()
   return fresh
 }
 

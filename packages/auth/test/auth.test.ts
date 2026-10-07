@@ -10,6 +10,7 @@ import {
   mockTurnstile,
   type SetupOptions,
   signUpBody,
+  silenceExpectedErrors,
   testEnv,
   testUsers,
 } from './helpers.ts'
@@ -79,6 +80,7 @@ describe('邮箱密码', () => {
   })
 
   it('关闭时注册、登录、找回密码接口都返回错误，不创建用户也不发邮件', async () => {
+    silenceExpectedErrors(/Reset password isn't enabled/, /Email and password is not enabled/)
     // 先在开启时注册一个已有账号，确认关闭后找回密码也不会给已有账号发邮件
     const existing = email('existing')
     expect((await setup().post('/sign-up/email', signUpBody(existing))).status).toBe(200)
@@ -155,6 +157,7 @@ describe('邮箱验证码', () => {
 
 describe('OAuth', () => {
   it('只启用配置中的提供方：启用的返回授权 URL，未启用的返回错误', async () => {
+    silenceExpectedErrors(/Provider not found/)
     const { post } = setup({ auth: { oauth: ['google'] } })
     const google = await post('/sign-in/social', { provider: 'google', disableRedirect: true })
     expect(google.status).toBe(200)
@@ -167,6 +170,7 @@ describe('OAuth', () => {
   })
 
   it('全部关闭时任何提供方都返回错误', async () => {
+    silenceExpectedErrors(/Provider not found/)
     const { post } = setup({ auth: { oauth: [] } })
     for (const provider of ['google', 'github']) {
       const res = await post('/sign-in/social', { provider, disableRedirect: true })

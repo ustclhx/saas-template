@@ -8,8 +8,9 @@ import {
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
-import { withWorkspace } from '../../server/middleware.ts'
+import { withRealSession, withWorkspace } from '../../server/middleware.ts'
 import { templateConfig } from '../../server/template-config.ts'
+import { enqueueRefundOperations } from '../notifications/operations.ts'
 
 const workspace = z.object({ slug: z.string().min(1).max(64) })
 function options(db: Parameters<typeof listRefundablePayments>[0]['db']) {
@@ -53,7 +54,7 @@ export const getCustomerRefunds = createServerFn({ method: 'GET' })
     }
   })
 export const requestCustomerRefund = createServerFn({ method: 'POST' })
-  .middleware([withWorkspace])
+  .middleware([withWorkspace, withRealSession])
   .inputValidator(
     workspace.extend({
       paymentId: z.uuid(),
@@ -72,6 +73,7 @@ export const requestCustomerRefund = createServerFn({ method: 'POST' })
         reason: data.reason,
         contactEmail: data.contactEmail,
       })
+      await enqueueRefundOperations(context.db, env.EVENTS_QUEUE, request)
       return { ok: true as const, id: request.id }
     } catch (error) {
       return {

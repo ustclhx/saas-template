@@ -39,10 +39,13 @@ import type {
   SubscriptionSnapshot,
 } from './provider.ts'
 
-const url = (globalThis as unknown as { process: { env: Record<string, string | undefined> } })
-  .process.env.BILLING_TEST_DATABASE_URL
+const testEnv = (globalThis as unknown as { process: { env: Record<string, string | undefined> } })
+  .process.env
+const url = testEnv.BILLING_TEST_DATABASE_URL
 if (!url) throw new Error('Missing isolated billing test database')
 const db = createDb({ connectionString: url })
+// audit_log 对 app 只追加（@saas/db 迁移 0009），审计行由 migrator 清理
+const migrator = createDb({ connectionString: testEnv.MIGRATION_DATABASE_URL ?? '' })
 const id = () => crypto.randomUUID()
 const now = new Date('2030-01-31T12:00:00Z')
 let ws: string,
@@ -186,15 +189,15 @@ afterEach(async () => {
   await db.delete(purchase).where(inArray(purchase.workspaceId, w))
   await db.delete(subscription).where(inArray(subscription.workspaceId, w))
   await db.delete(billingCustomer).where(inArray(billingCustomer.workspaceId, w))
-  await db.delete(auditLog).where(inArray(auditLog.workspaceId, w))
-  await db.delete(auditLog).where(eq(auditLog.targetId, subId))
+  await migrator.delete(auditLog).where(inArray(auditLog.workspaceId, w))
+  await migrator.delete(auditLog).where(eq(auditLog.targetId, subId))
   await db.delete(member).where(inArray(member.organizationId, w))
   await db.delete(organization).where(inArray(organization.id, w))
   await db.delete(user).where(eq(user.id, uid))
   await db.delete(planPrice).where(eq(planPrice.planId, planId))
   await db.delete(plan).where(eq(plan.id, planId))
 })
-afterAll(() => db.$client.end())
+afterAll(() => Promise.all([db.$client.end(), migrator.$client.end()]))
 const grants = () => db.select().from(creditGrant).where(eq(creditGrant.workspaceId, ws))
 const payments = () => db.select().from(payment).where(eq(payment.workspaceId, ws))
 const subs = () => db.select().from(subscription).where(eq(subscription.workspaceId, ws))
@@ -331,6 +334,17 @@ describe('billing event consumer on PostgreSQL', () => {
     })
     expect(await payments()).toHaveLength(2)
     expect(await grants()).toHaveLength(2)
+    const logs = await db.select().from(auditLog).where(eq(auditLog.workspaceId, ws))
+    const changes = logs.filter((row) => row.action === 'billing.subscription_changed')
+    // 创建 + 取消两次关键变更；旧事件与不改变周期的付款不会产生重复审计。
+    expect(changes).toHaveLength(2)
+    expect(
+      changes.find((row) => (row.meta as { source: string }).source === 'subscription.canceled')
+        ?.meta,
+    ).toMatchObject({
+      before: { status: 'active' },
+      after: { status: 'canceled' },
+    })
   })
   it('late verified invoice uses historical provider price after the local subscription changed price', async () => {
     await apply([paid()])

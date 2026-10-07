@@ -103,10 +103,12 @@ async function audit(
   actorUserId: string,
   action: string,
   meta: Record<string, string | number | null> = {},
+  ip: string | null = null,
 ) {
   await tx.insert(auditLog).values({
     workspaceId: request.workspaceId,
     actorUserId,
+    ip,
     action,
     targetType: 'refund_request',
     targetId: request.id,
@@ -259,6 +261,7 @@ export async function reviewRefundRequest(
   options: RefundServiceOptions,
   input: {
     userId: string
+    ip?: string | null
     requestId: string
     decision: 'approve' | 'reject'
     approvedAmount?: number
@@ -313,7 +316,14 @@ export async function reviewRefundRequest(
       .where(eq(refundRequest.id, request.id))
       .returning()
     if (!updated) throw new Error('Refund decision disappeared')
-    await audit(tx, updated, input.userId, `billing.refund_${status}`)
+    await audit(
+      tx,
+      updated,
+      input.userId,
+      `billing.refund_${status}`,
+      { oldStatus: request.status, newStatus: status },
+      input.ip ?? null,
+    )
     return { request: updated, paid }
   })
   if (saved.request.status === 'approved') {
@@ -373,9 +383,16 @@ export async function reviewRefundRequest(
               ),
             )
           if (!recorded)
-            await audit(tx, request, input.userId, 'billing.refund_api_acknowledged', {
-              providerRefundId: result.providerRefundId,
-            })
+            await audit(
+              tx,
+              request,
+              input.userId,
+              'billing.refund_api_acknowledged',
+              {
+                providerRefundId: result.providerRefundId,
+              },
+              input.ip ?? null,
+            )
         })
       }
     }
@@ -409,6 +426,7 @@ export async function markManualRefund(
   options: RefundServiceOptions,
   input: {
     userId: string
+    ip?: string | null
     requestId: string
     providerRefundId: string
     proof: string
@@ -461,10 +479,17 @@ export async function markManualRefund(
       .where(eq(refundRequest.id, request.id))
       .returning()
     if (!updated) throw new Error('Refund disappeared')
-    await audit(tx, updated, input.userId, 'billing.refund_manual_confirmed', {
-      providerRefundId,
-      proof,
-    })
+    await audit(
+      tx,
+      updated,
+      input.userId,
+      'billing.refund_manual_confirmed',
+      {
+        providerRefundId,
+        proof,
+      },
+      input.ip ?? null,
+    )
     return updated
   })
   await notify(options, request)

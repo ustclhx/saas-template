@@ -6,6 +6,7 @@ import { AppError } from '@saas/shared'
 import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import { type BillingProviders, lockWorkspaceBilling } from './events.ts'
+import { auditSubscriptionChange } from './subscription-audit.ts'
 
 export interface BillingDeletionOptions {
   providers: BillingProviders
@@ -113,6 +114,7 @@ export function createBillingDeletionStep(options: BillingDeletionOptions): Dele
       const version = prepared.get(context)
       if (version === undefined) retry()
       // Wrap the caller's raw transaction; never start or replace a transaction here.
+      // Cast kept: drizzle() over TransactionSql types as a database, not PgTransaction, so pass it as credits' explicit tx.
       const tx = drizzle(
         Object.assign(client, {
           options: context.db.$client.options,
@@ -127,6 +129,7 @@ export function createBillingDeletionStep(options: BillingDeletionOptions): Dele
       await client`update refund_request r set contact_email=u.email from "user" u
         where r.user_id=u.id and r.user_id=${context.actorUserId} and r.status='pending'
         and r.contact_email is null and u.email<>${`deleted+${context.actorUserId}@invalid`}`
+      const before = await subscriptions(tx, context)
       for (const workspaceId of [...new Set(context.workspaceIds)].sort()) {
         await tx
           .update(subscription)
@@ -134,6 +137,15 @@ export function createBillingDeletionStep(options: BillingDeletionOptions): Dele
           .where(eq(subscription.workspaceId, workspaceId))
         await revokeWorkspaceCredits(context.db, workspaceId, tx)
       }
+      for (const after of await subscriptions(tx, context))
+        await auditSubscriptionChange(
+          tx,
+          before.find((row) => row.id === after.id),
+          after,
+          'deletion',
+          context.actorUserId,
+          context.ip ?? null,
+        )
       prepared.delete(context)
     },
   }

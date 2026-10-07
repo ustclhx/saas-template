@@ -8,16 +8,19 @@ import {
   type EmailTemplateName,
   type EmailTemplateProps,
 } from './messages.ts'
+import type { EmailHeaders } from './sender.ts'
 
 export interface RenderContext {
   /** 收件人的 `user.locale`；邀请未注册用户时可传邀请人的语言或不传 */
   readonly locale: string | null | undefined
   /** `template.config.ts` 的 `app.name` */
   readonly appName: string
+  readonly defaultLocale?: string
   readonly recipientName?: string | undefined
 }
 
 export interface RenderedEmail {
+  readonly headers?: EmailHeaders
   readonly locale: EmailLocale
   readonly subject: string
   readonly html: string
@@ -30,7 +33,7 @@ export async function renderEmail<N extends EmailTemplateName>(
   props: EmailTemplateProps[N],
   context: RenderContext,
 ): Promise<RenderedEmail> {
-  const locale = resolveEmailLocale(context.locale)
+  const locale = resolveEmailLocale(context.locale, context.defaultLocale)
   // 按模板名索引后 TS 无法把 N 与对应的 props 类型关联起来，这里收窄一次
   const build = copies[locale][template] as (
     props: EmailTemplateProps[N],
@@ -44,7 +47,14 @@ export async function renderEmail<N extends EmailTemplateName>(
     render(element),
     render(element, { plainText: true, htmlToTextOptions: { selectors: plainTextHeadings } }),
   ])
-  return { locale, subject: copy.subject, html, text }
+  const headers: EmailHeaders | undefined =
+    template === 'newsletter'
+      ? {
+          'List-Unsubscribe': `<${(props as EmailTemplateProps['newsletter']).unsubscribeUrl}>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        }
+      : undefined
+  return { locale, subject: copy.subject, html, text, ...(headers ? { headers } : {}) }
 }
 
 // html-to-text 默认把标题转成大写，会改写空间名等用户输入

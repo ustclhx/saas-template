@@ -74,11 +74,20 @@ export interface TemplateConfig<L extends string = string> {
     readonly defaultPricingMode: { readonly [M in AiModality]: PricingMode }
   }
   readonly features: {
+    /** 产品分析仅在显式开启、用户同意且未设置 DNT 时加载 */
+    readonly analytics: 'posthog' | false
     /** API Key 调用 /api/v1 */
     readonly publicApi: boolean
     readonly blog: boolean
     readonly docs: boolean
     readonly waitlist: boolean
+    readonly newsletter: boolean
+  }
+  /** 这些值会发送到浏览器，只能填写公开的站点 token / 项目 key。 */
+  readonly analytics: {
+    readonly cloudflareToken: string
+    readonly posthogKey: string
+    readonly posthogHost: string
   }
 }
 
@@ -101,6 +110,7 @@ export interface TemplateConfigInput<L extends string = DefaultLocale> {
     defaultPricingMode?: Partial<Section<'ai'>['defaultPricingMode']>
   }
   features?: Partial<Section<'features'>>
+  analytics?: Partial<Section<'analytics'>>
 }
 
 /** 除 `app` 外的默认值，与 docs/02-project-structure.md §3 草案一致。 */
@@ -131,7 +141,15 @@ export const templateConfigDefaults = {
     video: true,
     defaultPricingMode: { text: 'token', image: 'per_call', video: 'per_call' },
   },
-  features: { publicApi: false, blog: true, docs: false, waitlist: false },
+  features: {
+    analytics: false,
+    publicApi: false,
+    blog: true,
+    docs: false,
+    waitlist: false,
+    newsletter: false,
+  },
+  analytics: { cloudflareToken: '', posthogKey: '', posthogHost: 'https://us.i.posthog.com' },
 } as const satisfies Omit<TemplateConfig<DefaultLocale>, 'app'>
 
 /** 合并用户配置与默认值；数组整体替换，不与默认值合并。 */
@@ -165,5 +183,6 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
       defaultPricingMode: { ...d.ai.defaultPricingMode, ...input.ai?.defaultPricingMode },
     },
     features: { ...d.features, ...input.features },
+    analytics: { ...d.analytics, ...input.analytics },
   }
 }

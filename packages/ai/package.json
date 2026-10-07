@@ -4,9 +4,24 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@saas/config": "workspace:*",
+    "@saas/credits": "workspace:*",
+    "@saas/db": "workspace:*",
+    "@saas/entitlements": "workspace:*",
+    "@saas/shared": "workspace:*",
+    "ai": "^7.0.127",
+    "drizzle-orm": "^0.45.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.3"
   }
 }

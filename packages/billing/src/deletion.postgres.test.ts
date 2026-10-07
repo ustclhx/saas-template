@@ -21,10 +21,13 @@ import { createBillingDeletionStep, listDeletionRefundReminders } from './deleti
 import type { PaymentProvider, SubscriptionSnapshot } from './provider.ts'
 import { listRefundRequests, reviewRefundRequest } from './refunds.ts'
 
-const url = (globalThis as unknown as { process: { env: Record<string, string | undefined> } })
-  .process.env.BILLING_TEST_DATABASE_URL
+const testEnv = (globalThis as unknown as { process: { env: Record<string, string | undefined> } })
+  .process.env
+const url = testEnv.BILLING_TEST_DATABASE_URL
 if (!url) throw new Error('Missing isolated billing test database')
 const db = createDb({ connectionString: url })
+// audit_log 对 app 只追加（@saas/db 迁移 0009），审计行由 migrator 清理
+const migrator = createDb({ connectionString: testEnv.MIGRATION_DATABASE_URL ?? '' })
 const id = () => crypto.randomUUID()
 const now = new Date('2030-03-01T12:00:00Z')
 let uid: string,
@@ -146,7 +149,7 @@ beforeEach(async () => {
   })
 })
 afterEach(async () => {
-  await db.$client`delete from audit_log where workspace_id=${ws}`
+  await migrator.$client`delete from audit_log where workspace_id=${ws}`
   await db
     .delete(creditHoldAllocation)
     .where(
@@ -167,7 +170,7 @@ afterEach(async () => {
   await db.delete(planPrice).where(eq(planPrice.id, priceId))
   await db.delete(plan).where(eq(plan.id, planId))
 })
-afterAll(() => db.$client.end())
+afterAll(() => Promise.all([db.$client.end(), migrator.$client.end()]))
 
 describe('billing deletion in caller PostgreSQL transaction', () => {
   it('immediately cancels without refunds, preserves payment periods and prevents held credit resurrection', async () => {

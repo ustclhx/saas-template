@@ -131,11 +131,49 @@ P0 实现时必须遵守的约定（setup 脚本依赖它们）：
 完成后发送 worker_done（outcome=succeeded|failed），失败时说明阻塞原因。
 ```
 
+**启动 worker**（协调者执行）：
+
+`worker-start --agent claude` 启动的 Claude 没有跳过权限确认，worker 会停在等待人工批准的状态，`worker-start` 在 `agent_readiness` 阶段超时失败。新 worktree 的 setup（`pnpm install`、建库）在 `wait-for-setup` 下也会拉长就绪时间。已授权 worker 以 bypass 模式运行，按以下步骤启动：
+
+1. 建 worktree：`orca worktree create`（或 `worker-start --worktree new-top-level --name <名称> --base-branch origin/main --setup run`），等 worktree 中出现 `.env.worktree` 与 `node_modules`，表示 setup 已完成。
+2. 在该 worktree 中开 bypass 终端并等待就绪：
+   ```
+   orca terminal create --worktree path:<worktree 路径> --title <名称> --command "claude --dangerously-skip-permissions --model <模型 id>" --json
+   orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 30000 --json
+   ```
+3. 把任务绑定到该终端，worker 仍受 orchestration 监管（heartbeat、`worker_done`、release 照常）：
+   ```
+   orca orchestration worker-start --run <run_id> --task <task_id> --terminal <handle> --worktree path:<worktree 路径> --json
+   ```
+   首次用 `--spec` 而不是 `--task` 也可以。重试失败的任务时加 `--retry-of <dispatch_id>`，且必须是该任务**最新**一次已结束的 dispatch（用 `orca orchestration dispatch-show --task <task_id>` 查）；之前的 dispatch 若为 `reclaimable`，先 `worker-release`。
+4. **让用户看到进度**：建 worktree 时加 `--activate`（否则 worktree 留在后台、界面中看不到）；task spec 中要求 worker 在每个检查点执行
+   `orca worktree set --worktree path:<worktree 路径> --workspace-status in-progress|in-review --comment "<一句中文进度>"`，进度显示在工作区卡片上；阻塞时写 `阻塞：<原因>`，开完 PR 后改为 `in-review`。
+5. **使用 Codex 作为 worker**（协调者仍由 Claude 担任，负责 spec、答复 ask、审阅、合并与清理）：第 2 步的命令换成
+   ```
+   codex -m gpt-6.1-sol -c model_reasoning_effort=high -c service_tier=priority --dangerously-bypass-approvals-and-sandbox
+   ```
+   `service_tier=priority` 即该模型的 Fast 档位（约 2 倍速度、用量更高）。Codex 不支持 `/opsx:apply` 斜杠命令，spec 中改为「按 `.agents/skills/openspec-apply-change/SKILL.md` 的流程实施」。
+6. macOS 默认 shell 为 zsh：批量启动脚本用 `bash` 执行——zsh 中 `for n in $NAMES` 不按空格拆分，`$B:apps/...` 会被当成路径修饰符。
+
 **合并流程**（协调者执行，一次只合并一个分支）：
 1. 分支 rebase 到最新 `origin/main`，冲突按 §3 处理。
 2. CI 通过、人工审阅 diff 后合并 PR。
-3. 若该分支改了 schema：在 main 上 `drizzle-kit generate` 生成迁移、在本地 `saas_dev` 验证后提交。
+3. 若该分支改了 schema：在 main 上 `drizzle-kit generate` 生成迁移、在本地 `saas_dev` 验证后提交。若该分支的集成测试依赖新表（CI 按迁移建库，否则报 `relation ... does not exist`），改为在合并前于该 PR 分支上生成迁移并推送，CI 通过后再合并；同一波次只允许一个分支携带迁移，避免序号冲突。生成的 `meta/*.json` 提交前先 `biome check --write` 格式化。
 4. 推送 main，然后把依赖该任务的后续任务从 blocked 放行（新 worktree 才能从包含该成果的 main 分出）。
+
+**合并后清理 worktree**（协调者执行，不必再询问）：
+
+PR 已合并、合并时已删除远端分支，说明该 worktree 中没有需要保留的内容，直接清理：
+
+1. 确认可以清理：PR 状态为 merged，`git ls-remote --heads origin <分支>` 无结果，且 `git -C <worktree 路径> status --porcelain` 为空。任一条件不满足（如有未提交改动）时先停下，向用户确认。
+2. 对已结束的 worker 执行 `orca orchestration worker-release --dispatch <dispatch_id>`；`worker-list --run <run_id> --terminal-state reclaimable` 应返回空。
+3. 删除 worktree，**必须带 `--run-hooks`**：
+   ```
+   orca worktree rm --worktree path:<worktree 路径> --run-hooks --json
+   ```
+   Orca 默认跳过 `orca.yaml` 的 archive hook，不带 `--run-hooks` 时 worktree 被删除，但 `saas_wt_<名称>` 数据库会残留。Orca 会一并删除可证明已合并的本地分支；squash 合并无法自动证明时，用 `git branch -D <分支>` 手动删除。
+   实测（2026-10-06）：PR 合并、远端分支删除后，Orca 往往会**自动**移除该 worktree 与本地分支，且同样不运行 archive hook。因此即使第 3 步发现 worktree 已不存在，也必须执行第 4 步的数据库核对与补删。
+4. 核对：`git worktree list` 中已无该 worktree，`docker exec saas-template-pg psql -U postgres -tAc "select datname from pg_database where datname like 'saas_wt_%'"` 中已无对应的数据库。worktree 已被其他途径删除而数据库残留时，在主 checkout 执行 `ORCA_WORKTREE_PATH=$PWD ORCA_WORKSPACE_NAME=<名称> bash scripts/orca/archive.sh` 补删（脚本只删除 `saas_wt_` 前缀的库）。
 
 **decision gate 清单**（需要人工完成后放行）：
 - P0：Cloudflare 登录 / API Token、本机 `cloudflared` 与 Tunnel、Workers VPC 与 Hyperdrive 配置完成、GitHub Actions Secrets（staging 部署用）配置完成

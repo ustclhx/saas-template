@@ -3,9 +3,13 @@ export const ADMIN_COPY = {
   title: 'Admin',
   heading: 'Admin',
   signedInAs: 'Signed in as',
+  backToApp: 'Back to app',
   nav: {
     label: 'Admin sections',
     overview: 'Overview',
+    billing: 'Billing',
+    refunds: 'Refund reviews',
+    models: 'Models',
   },
   overview: {
     heading: 'Overview',

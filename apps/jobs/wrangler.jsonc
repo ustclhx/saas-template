@@ -24,11 +24,14 @@
   "workflows": [
     { "name": "ai-media", "binding": "AI_MEDIA_WORKFLOW", "class_name": "AiMediaWorkflow" }
   ],
-  // web 为 producer（apps/web/wrangler.jsonc），jobs 为 consumer。
+  // web 投递业务事件，jobs 消费并从 Cron 投递对账告警。
   // max_retries 与 src/queues/email.ts 的 EMAIL_MAX_ATTEMPTS（首次 + 5 次重试）一致；
   // 不配置死信队列：最后一次投递仍失败时由消费者确认并记录 email.dropped（原因见该文件注释）。
   "queues": {
-    "producers": [{ "queue": "email", "binding": "EMAIL_QUEUE" }],
+    "producers": [
+      { "queue": "email", "binding": "EMAIL_QUEUE" },
+      { "queue": "events", "binding": "EVENTS_QUEUE" }
+    ],
     "consumers": [
       { "queue": "email", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 5 },
       { "queue": "events", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 5 }
@@ -58,7 +61,10 @@
         }
       ],
       "queues": {
-        "producers": [{ "queue": "email-staging", "binding": "EMAIL_QUEUE" }],
+        "producers": [
+          { "queue": "email-staging", "binding": "EMAIL_QUEUE" },
+          { "queue": "events-staging", "binding": "EVENTS_QUEUE" }
+        ],
         "consumers": [
           {
             "queue": "email-staging",

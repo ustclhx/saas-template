@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { stripVTControlCharacters } from 'node:util'
 import { expect, type Page } from '@playwright/test'
 import type { Database } from '@saas/db'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
@@ -102,14 +103,24 @@ export async function loginOtp(page: Page, email: string, path = '/login') {
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page).not.toHaveURL(/\/login(?:\?|$)/)
 }
+/**
+ * Auth emails printed by the local-development logger. The dev server may colorize
+ * `console.log` output (util.inspect colors, FORCE_COLOR), so ANSI sequences are stripped
+ * before matching regardless of the environment.
+ */
+function authEmails() {
+  const log = readFileSync(process.env.E2E_AUTH_LOG ?? '/tmp/p1-phase-e2e-auth.log', 'utf8')
+  return stripVTControlCharacters(log).match(/\[dev\] auth email \{[\s\S]*?\n\}/g) ?? []
+}
+
 /** Consume only the existing local-development email logger, never forge a token. */
 export async function emailLink(email: string, type = 'verify-email') {
   let link = ''
   await expect
     .poll(() => {
-      const log = readFileSync(process.env.E2E_AUTH_LOG ?? '/tmp/p1-phase-e2e-auth.log', 'utf8')
-      const messages = log.match(/\[dev\] auth email \{[\s\S]*?\n\}/g) ?? []
-      const message = messages.findLast((entry) => entry.includes(email) && entry.includes(type))
+      const message = authEmails().findLast(
+        (entry) => entry.includes(email) && entry.includes(type),
+      )
       link = message?.match(/url: ['"]([^'"]+)['"]/)?.[1] ?? ''
       return link
     })
@@ -121,9 +132,9 @@ export async function emailCode(email: string) {
   let code = ''
   await expect
     .poll(() => {
-      const log = readFileSync(process.env.E2E_AUTH_LOG ?? '/tmp/p1-phase-e2e-auth.log', 'utf8')
-      const messages = log.match(/\[dev\] auth email \{[\s\S]*?\n\}/g) ?? []
-      const message = messages.findLast((entry) => entry.includes(email) && entry.includes('otp'))
+      const message = authEmails().findLast(
+        (entry) => entry.includes(email) && entry.includes('otp'),
+      )
       code = message?.match(/otp: ['"](\d{6})['"]/)?.[1] ?? ''
       return code
     })

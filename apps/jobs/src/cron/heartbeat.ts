@@ -1,5 +1,6 @@
 import type { Env } from '@saas/config'
 import { createDb, recordLastCronAt } from '@saas/db'
+import { log } from '@saas/shared/log'
 
 /** 每 5 分钟的心跳 Cron（wrangler.jsonc 的 triggers.crons） */
 export const HEARTBEAT_CRON = '*/5 * * * *'
@@ -13,5 +14,5 @@ export const HEARTBEAT_CRON = '*/5 * * * *'
  */
 export async function runHeartbeat(env: Env, now: Date = new Date()): Promise<void> {
   await recordLastCronAt(createDb(env.HYPERDRIVE), now)
-  console.log(JSON.stringify({ event: 'cron.heartbeat', at: now.toISOString() }))
+  log.info('cron.heartbeat', { at: now.toISOString() })
 }

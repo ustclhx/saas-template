@@ -36,7 +36,7 @@
 
 **Phase 0 实测对后续阶段的影响**：
 - P3（文本对话）：客户端断开后服务端只能再运行 30 秒，长回复可能来不及结算；已决定采用「用量检查点」（`06` §3，已写入 `add-ai-text-chat`），兜底按检查点用量而不是最低费用结算。
-- P4（媒体）：事件类型改用 `media-done` 常量（已改示意代码）；`check-callback` 可删去，保留 `recheck-callback`（`06` §4）。
+- P4（媒体）：事件类型改用 `@saas/shared` 导出的常量 `MEDIA_DONE_EVENT = 'media-done'`（已改示意代码，`apps/jobs` 的 Workflow 空壳已改用）；`check-callback` 可删去，保留 `recheck-callback`（`06` §4）。
 - 阶段二（生产迁移）：`cloudflared` 副本分故障域部署、告警阈值与重试策略按 `07` §2 的建议；在生产服务器上重测延迟基线与副本切换；评估显式放置替代 Smart Placement。
 
 ## Phase 1 · 认证与 Workspace
@@ -91,6 +91,13 @@
 - [ ] 阶段一 staging 迁移仍由开发者在本机执行（`docs/07` §5）；阶段二再让 CI 经 Tunnel 执行迁移（见下文「生产迁移」）。
 
 在此之前，staging 由开发者在本机执行 `pnpm --filter @saas/jobs deploy:staging` 与 `pnpm --filter @saas/web deploy:staging` 部署。
+
+## 框架完成后的修补（待办）
+
+开发中发现、但不阻塞当前阶段的缺口，先在这里登记，整体框架完成后统一处理：
+
+- [ ] CI 不跑 Playwright e2e：`.github/workflows/ci.yml` 只跑 lint / typecheck / 单元与集成测试 / build，e2e 目前只在本机执行。待整体框架完成后，在 CI 中至少加入一组冒烟 e2e（注册登录、开通套餐或购买积分等主流程）。
+- [ ] 支付运行时仍是测试专用：Webhook 路由（`apps/web/src/routes/api/billing/webhooks/$provider.ts`）、`apps/jobs/src/billing.ts`、`apps/web/src/features/billing/{admin,customer,refund}.functions.ts`（以及 `apps/web/src/server/auth.ts`）均直接调用 `createTestPaymentRuntime`，它强制 Stripe 密钥为 `sk_test_`。上线前需提供按环境切换 test / live 的运行时工厂，并让上述入口改用它（关联上文「生产迁移」与待决事项 Q9）。
 
 ## 生产迁移 · 进入阶段二（最小原型完成后）
 
@@ -148,7 +155,7 @@
 |---|---|---|---|
 | Q1 | 表单库 | 已决定并接入：TanStack Form + Zod | Phase 1（已决定） |
 | Q2 | 内容方案 | Fumadocs / content-collections | Phase 6 前 |
-| Q3 | 产品分析 | PostHog / Umami / 不做 | Phase 7 |
+| Q3 | 产品分析 | 已决定并接入（#56）：默认只用无 Cookie 的 Cloudflare Web Analytics（配置公开 token 后在公开页面加载）；PostHog 为可选接入点，由 `features.analytics` 控制且默认关闭，开启后须用户同意（`saas.analytics.consent`）并尊重 DNT，后台不加载；不做 Umami | Phase 7（已决定） |
 | Q4 | 订阅积分是否结转 | 已按设计确定：按套餐配置，默认不结转 | Phase 2（离线验证通过，待真实平台验收） |
 | Q5 | 升级时是否立即补发积分差额 | 已按设计确定：默认不立即补发 | Phase 2（离线验证通过，待真实平台验收） |
 | Q6 | 退款时已消费积分的处理 | 已按设计确定：默认不追溯 | Phase 2（离线验证通过，待真实平台验收） |

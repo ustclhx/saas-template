@@ -12,12 +12,19 @@ declare namespace Cloudflare {
     /** 定义在 apps/jobs 的 AiMediaWorkflow（script_name: jobs）；参数类型在 P4 移入 packages/ai */
     AI_MEDIA_WORKFLOW: Workflow<{ taskId: string }>
     /** 邮件队列 producer，apps/jobs 消费（消息格式见 @saas/email/queue） */
-    EVENTS_QUEUE: Queue<import('@saas/billing').BillingQueueMessage>
+    EVENTS_QUEUE: Queue<
+      | import('@saas/billing').BillingQueueMessage
+      | import('./features/notifications/operations.ts').OperationsQueueMessage
+    >
     EMAIL_QUEUE: Queue<import('@saas/email/queue').EmailQueueMessage>
     /** KV：Better Auth 会话的 secondaryStorage（packages/auth/src/session.ts） */
     CACHE: KVNamespace
     /** Rate Limiting：认证入口按 IP + 邮箱限流（packages/auth/src/protection.ts） */
     RL_AUTH: RateLimit
+    /** Rate Limiting：AI 接口按空间 + 用户限流（features/ai/chat.ts），只用于防刷 */
+    RL_AI: RateLimit
+    /** 公开 API 按 Key 和空间限流 */
+    RL_API: RateLimit
     /** 站点地址（vars；`vite dev` 时由 vite.config.ts 按端口覆盖） */
     APP_URL: string
     /** Turnstile site key（vars，前端公开）；模板配置启用 Turnstile 时必填 */
@@ -29,5 +36,9 @@ declare namespace Cloudflare {
     GOOGLE_CLIENT_SECRET?: string
     GITHUB_CLIENT_ID?: string
     GITHUB_CLIENT_SECRET?: string
+    /** AI Gateway 端点与鉴权（@saas/ai 的 TextModelEnv），由模型工厂读取 */
+    AI_GATEWAY_ACCOUNT_ID?: string
+    AI_GATEWAY_ID?: string
+    AI_GATEWAY_TOKEN?: string
   }
 }

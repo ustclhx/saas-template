@@ -7,6 +7,8 @@ import {
   WebhookVerificationError,
 } from '@saas/billing'
 import type { Database, PaymentProviderId } from '@saas/db'
+import { log, withRequestId } from '@saas/shared/log'
+import { enqueueOperations } from '../notifications/operations.ts'
 
 export async function handleBillingWebhook(
   request: Request,
@@ -44,14 +46,55 @@ export async function handleBillingWebhook(
         subscriptionCreditGraceHours: options.subscriptionCreditGraceHours,
       }),
       onFailure: createCompensationFailureHandler(options.db),
-      notify: async ({ delivery }) => {
-        await options.queue.send({ v: 1, deliveryId: delivery.id }, { contentType: 'json' })
+      notify: async ({ delivery, events }) => {
+        const operations = (events ?? []).flatMap((event) =>
+          event.type === 'payment.succeeded'
+            ? [
+                {
+                  event: 'payment.succeeded' as const,
+                  sourceId: `${event.provider}:${event.payment.providerPaymentId}`,
+                  ...(event.payment.metadata
+                    ? { workspaceId: event.payment.metadata.workspaceId }
+                    : {}),
+                  amount: event.payment.amount,
+                  currency: event.payment.currency,
+                },
+              ]
+            : [],
+        )
+        // 计费后处理消息保持原样，投递失败沿用原有管线的失败状态与恢复机制。
+        await options.queue.send(withRequestId({ v: 1, deliveryId: delivery.id }), {
+          contentType: 'json',
+        })
+        // 运营通知单独成消息：投递或推送失败只记日志 / 按自身重试，不影响计费后处理与回调结果。
+        for (const operation of operations) await enqueueOperations(options.queue, operation)
       },
     })
     // DB failure must trigger platform retry. Queue failure is recovered from the durable row by Jobs.
-    if (result.status === 'failed') return new Response('Processing failed', { status: 500 })
+    if (result.status === 'failed') {
+      log.error('billing.webhook_failed', {
+        provider: providerId,
+        deliveryId: result.delivery?.id,
+        error: result.error,
+      })
+      if (result.delivery)
+        await enqueueOperations(options.queue, {
+          event: 'webhook.failed',
+          sourceId: `${result.delivery.id}:${result.delivery.attempts}`,
+        })
+      return new Response('Processing failed', { status: 500 })
+    }
+    log.info('billing.webhook_processed', {
+      provider: providerId,
+      deliveryId: result.delivery?.id,
+      status: result.status,
+      ...('notification' in result ? { notification: result.notification?.status } : {}),
+    })
     return Response.json({ received: true })
   } catch (error) {
+    if (error instanceof WebhookVerificationError)
+      log.warn('billing.webhook_rejected', { provider: providerId, error })
+    else log.error('billing.webhook_failed', { provider: providerId, error })
     return new Response(
       error instanceof WebhookVerificationError ? 'Invalid signature' : 'Processing failed',
       { status: error instanceof WebhookVerificationError ? 400 : 500 },

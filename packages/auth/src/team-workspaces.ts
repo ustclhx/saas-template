@@ -111,6 +111,27 @@ export function teamWorkspaces(
               })
             const { user, session } = fresh.value
             const body = ctx.body ?? {}
+            const auditMember = async (
+              sql: Pick<Database['$client'], 'unsafe'>,
+              workspaceId: string,
+              action: string,
+              targetId: string,
+              meta: Record<string, unknown>,
+            ) => {
+              await sql.unsafe(
+                'insert into audit_log (id,actor_user_id,workspace_id,action,target_type,target_id,ip,meta) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)',
+                [
+                  newId(),
+                  user.id,
+                  workspaceId,
+                  action,
+                  'member',
+                  targetId,
+                  ctx.headers?.get('cf-connecting-ip') ?? null,
+                  JSON.stringify({ ...meta, impersonatedBy: session.impersonatedBy ?? null }),
+                ],
+              )
+            }
             // Recheck session and ban state after admission locks, using this transaction.
             const checkFresh = async (sql: Pick<Database['$client'], 'unsafe'>) => {
               const rows = await sql.unsafe(
@@ -149,6 +170,11 @@ export function teamWorkspaces(
                   await sql`insert into organization (id,name,slug,is_personal) values (${id},${input.name},${requestedSlug},false) returning id,name,slug,logo,metadata,is_personal as "isPersonal",deleted_at as "deletedAt",created_at as "createdAt",updated_at as "updatedAt"`
                 const [member] =
                   await sql`insert into member (id,organization_id,user_id,role) values (${newId()},${id},${user.id},'owner') returning id,organization_id as "organizationId",user_id as "userId",role,created_at as "createdAt"`
+                await auditMember(sql, id, 'workspace.member_added', String(member?.id), {
+                  targetUserId: user.id,
+                  oldRole: null,
+                  newRole: 'owner',
+                })
                 return { ...org, members: [member] }
               })
               return ctx.json(result)
@@ -276,6 +302,12 @@ export function teamWorkspaces(
                   await sql`insert into member (id,organization_id,user_id,role) values (${newId()},${workspaceId},${user.id},${parse(roles, invite.role)}) returning id,organization_id as "organizationId",user_id as "userId",role,created_at as "createdAt"`
                 const [invitation] =
                   await sql`update invitation set status='accepted',updated_at=now() where id=${invite.id} returning id,organization_id as "organizationId",email,role,status,expires_at as "expiresAt"`
+                await auditMember(sql, workspaceId, 'workspace.member_added', String(member?.id), {
+                  targetUserId: user.id,
+                  oldRole: null,
+                  newRole: invite.role,
+                  invitationId: invite.id,
+                })
                 return { member, invitation }
               }
               if (action === 'transfer-owner') {
@@ -292,6 +324,16 @@ export function teamWorkspaces(
                 if (currentTarget?.role !== 'owner') await checkOwned(target.user_id)
                 await sql`update member set role='owner',updated_at=now() where id=${target.id}`
                 await sql`update member set role='admin',updated_at=now() where id=${actor.id}`
+                await auditMember(sql, workspaceId, 'workspace.member_role_changed', target.id, {
+                  targetUserId: target.user_id,
+                  oldRole: currentTarget?.role,
+                  newRole: 'owner',
+                })
+                await auditMember(sql, workspaceId, 'workspace.member_role_changed', actor.id, {
+                  targetUserId: user.id,
+                  oldRole: actor.role,
+                  newRole: 'admin',
+                })
                 return { status: true }
               }
               if (action !== 'leave' && actor?.role !== 'owner' && actor?.role !== 'admin')
@@ -313,6 +355,11 @@ export function teamWorkspaces(
                 await checkSeats()
                 const [member] =
                   await sql`insert into member (id,organization_id,user_id,role) values (${newId()},${workspaceId},${input.userId},${input.role}) returning id,organization_id as "organizationId",user_id as "userId",role,created_at as "createdAt"`
+                await auditMember(sql, workspaceId, 'workspace.member_added', String(member?.id), {
+                  targetUserId: input.userId,
+                  oldRole: null,
+                  newRole: input.role,
+                })
                 return { member }
               }
               if (action === 'invite-member') {
@@ -331,6 +378,13 @@ export function teamWorkspaces(
                 if (pending) deny('INVITATION_EXISTS', 'A pending invitation already exists')
                 const [invitation] =
                   await sql`insert into invitation (id,organization_id,email,role,inviter_id,expires_at) values (${newId()},${workspaceId},${input.email.toLowerCase()},${input.role},${user.id},${(new Date(Date.now() + 7 * 86400000)).toISOString()}) returning id,organization_id as "organizationId",email,role,status,inviter_id as "inviterId",expires_at as "expiresAt"`
+                await auditMember(
+                  sql,
+                  workspaceId,
+                  'workspace.member_invited',
+                  String(invitation?.id),
+                  { email: input.email, newRole: input.role },
+                )
                 return { invitation, workspace }
               }
               if (action === 'cancel-invitation') {
@@ -341,6 +395,13 @@ export function teamWorkspaces(
                 const [invitation] =
                   await sql`update invitation set status='canceled',updated_at=now() where id=${body.invitationId} and organization_id=${workspaceId} and status='pending' returning id,organization_id as "organizationId",email,role,status,expires_at as "expiresAt"`
                 if (!invitation) deny('INVITATION_INVALID', 'Invitation unavailable')
+                await auditMember(
+                  sql,
+                  workspaceId,
+                  'workspace.invitation_canceled',
+                  String(invitation?.id),
+                  { oldRole: pending?.role },
+                )
                 return { invitation }
               }
               if (
@@ -373,9 +434,19 @@ export function teamWorkspaces(
                 if (newRole) {
                   const [member] =
                     await sql`update member set role=${newRole},updated_at=now() where id=${target.id} returning id,organization_id as "organizationId",user_id as "userId",role`
+                  await auditMember(sql, workspaceId, 'workspace.member_role_changed', target.id, {
+                    targetUserId: target.user_id,
+                    oldRole: target.role,
+                    newRole,
+                  })
                   return { member }
                 }
                 await sql`delete from member where id=${target.id}`
+                await auditMember(sql, workspaceId, 'workspace.member_removed', target.id, {
+                  targetUserId: target.user_id,
+                  oldRole: target.role,
+                  newRole: null,
+                })
                 return { member: target }
               }
               if (action === 'update') {

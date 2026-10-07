@@ -5,7 +5,15 @@ import { newId } from '@saas/shared'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type CreateAuthDeps, createAuth } from '../src/auth.ts'
 import type { AuthEmail } from '../src/email.ts'
-import { APP_URL, app, cookieHeader, signUpBody, testEnv, testUsers } from './helpers.ts'
+import {
+  APP_URL,
+  app,
+  cookieHeader,
+  signUpBody,
+  silenceExpectedErrors,
+  testEnv,
+  testUsers,
+} from './helpers.ts'
 
 const users = testUsers('signup-bonus-hook')
 afterEach(() => vi.restoreAllMocks())
@@ -99,6 +107,7 @@ describe('injected signup bonus hook', () => {
     expect(callback).toHaveBeenCalledTimes(1)
   })
   it('propagates grant failures after verification remains committed for an authenticated claim retry', async () => {
+    silenceExpectedErrors(/Grant database unavailable/)
     const callback = vi.fn(async () => {
       throw new Error('Grant database unavailable')
     })

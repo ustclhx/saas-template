@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:workers'
+import { createDb } from '@saas/db'
 import { newId } from '@saas/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
@@ -9,7 +10,14 @@ import {
   retryDeletionCleanup,
 } from '../src/deletion.ts'
 import { requireFreshSession } from '../src/fresh-session.ts'
-import { cookieHeader, PASSWORD, setup, signUpBody, testUsers } from './helpers.ts'
+import {
+  cookieHeader,
+  PASSWORD,
+  setup,
+  signUpBody,
+  silenceExpectedErrors,
+  testUsers,
+} from './helpers.ts'
 
 const users = testUsers('deletion')
 const deleted: { id: string; email: string }[] = []
@@ -17,12 +25,14 @@ const apiKeys: string[] = []
 beforeAll(() => users.start())
 afterAll(async () => {
   const sql = setup().db.$client
+  // audit_log 对 app 只追加，审计行由 migrator 清理
+  const migrator = createDb(env.HYPERDRIVE_MIGRATOR).$client
   for (const id of apiKeys) await sql`delete from apikey where id=${id}`
   for (const user of deleted) {
-    await sql`delete from audit_log where actor_user_id=${user.id} or workspace_id=${user.id}`
+    await migrator`delete from audit_log where actor_user_id=${user.id} or workspace_id=${user.id}`
     await sql`update "user" set email=${users.email('cleanup')} where id=${user.id}`
   }
-  for (const id of users.createdOrgs) await sql`delete from audit_log where workspace_id=${id}`
+  for (const id of users.createdOrgs) await migrator`delete from audit_log where workspace_id=${id}`
   await users.cleanup()
 })
 const app = () =>
@@ -216,6 +226,7 @@ describe('atomic deletion in workerd', () => {
     ).toBeNull()
   })
   it('keeps native deletion disabled and enforces owner, personal and tenancy boundaries', async () => {
+    silenceExpectedErrors(/Delete user is disabled/)
     const a = app()
     const owner = await actor(a, 'boundaries')
     const other = await actor(a, 'not-owner')

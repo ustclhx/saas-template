@@ -34,7 +34,13 @@ export default defineConfig({
       ...(integration
         ? [
             {
-              plugins: [cloudflareTest({ wrangler: { configPath: './test/wrangler.jsonc' } })],
+              plugins: [
+                cloudflareTest({
+                  wrangler: { configPath: './test/wrangler.jsonc' },
+                  // audit_log 对 app 只追加（迁移 0009），清理审计行改用 migrator
+                  miniflare: { hyperdrives: { HYPERDRIVE_MIGRATOR: migratorUrl } },
+                }),
+              ],
               test: {
                 name: 'integration',
                 include: ['test/**/*.test.ts'],

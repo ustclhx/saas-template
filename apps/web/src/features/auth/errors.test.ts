@@ -1,9 +1,18 @@
 import { TURNSTILE_TOKEN_HEADER as SERVER_HEADER } from '@saas/auth'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import { baseLocale, overwriteGetLocale } from '../../paraglide/runtime.js'
 import { AUTH_ERROR_MESSAGES, authErrorMessage } from './errors.ts'
 import { TURNSTILE_TOKEN_HEADER } from './turnstile.tsx'
 
 describe('authErrorMessage（按错误码提示）', () => {
+  afterEach(() => overwriteGetLocale(() => baseLocale))
+
+  it('按调用时的语言显示认证错误，未知错误仍显示本地化通用提示', () => {
+    overwriteGetLocale(() => 'zh')
+    expect(authErrorMessage('INVALID_EMAIL_OR_PASSWORD')).toBe('邮箱或密码不正确。')
+    expect(authErrorMessage('UNRECOGNIZED')).toBe('操作失败，请重试。')
+  })
+
   it('429 一律提示限流', () => {
     expect(authErrorMessage({ status: 429 })).toBe(AUTH_ERROR_MESSAGES.RATE_LIMITED)
     expect(authErrorMessage({ status: 429, code: 'RATE_LIMITED' })).toBe(

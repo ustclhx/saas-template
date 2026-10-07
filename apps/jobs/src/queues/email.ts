@@ -8,6 +8,8 @@ import {
   renderEmail,
 } from '@saas/email'
 import { type EmailQueueMessage, parseEmailQueueMessage } from '@saas/email/queue'
+import { log, newRequestId, withLogContext } from '@saas/shared/log'
+import templateConfig from '../../../../template.config.ts'
 
 /**
  * EMAIL_QUEUE 消费者（tasks.md 3.2，specs/user-auth「认证邮件异步发送」）：
@@ -23,6 +25,7 @@ import { type EmailQueueMessage, parseEmailQueueMessage } from '@saas/email/queu
  *
  * 日志只记录消息 ID、模板名、投递次数与错误摘要，不记录邮件内容；
  * 只有 log 通道会记录收件人（替代真实发送，供本地开发核对）。
+ * 消息带有投递时的请求 ID，处理时恢复到日志上下文；不带该字段的旧消息生成新的请求 ID。
  */
 
 /** 首次投递 + 重试次数；与 wrangler.jsonc 中 consumer 的 `max_retries`（5）一致 */
@@ -44,9 +47,7 @@ type Deliver = (message: EmailQueueMessage, rendered: RenderedEmail) => Promise<
 function createDeliver(transport: EmailTransportConfig): Deliver {
   if (transport.transport === 'log') {
     return async (message) => {
-      console.log(
-        JSON.stringify({ event: 'email.logged', template: message.template, to: message.to }),
-      )
+      log.info('email.logged', { template: message.template, to: message.to })
       return null
     }
   }
@@ -61,6 +62,7 @@ function createDeliver(transport: EmailTransportConfig): Deliver {
       subject: rendered.subject,
       html: rendered.html,
       text: rendered.text,
+      ...(rendered.headers ? { headers: rendered.headers } : {}),
       idempotencyKey: message.idempotencyKey,
     })
     return result.id
@@ -72,7 +74,11 @@ function render(message: EmailQueueMessage): Promise<RenderedEmail> {
   return renderEmail(
     message.template as EmailTemplateName,
     message.props as EmailTemplateProps[EmailTemplateName],
-    { locale: message.locale, appName: message.appName },
+    {
+      locale: message.locale,
+      appName: message.appName,
+      defaultLocale: templateConfig.i18n.defaultLocale,
+    },
   )
 }
 
@@ -93,27 +99,39 @@ async function handleMessage(
   const meta = { id: message.id, attempts: message.attempts }
   const email = parseEmailQueueMessage(message.body)
   if (email === null) {
-    console.warn(JSON.stringify({ event: 'email.invalid', ...meta }))
+    log.warn('email.invalid', meta)
     message.ack()
     return
   }
 
+  await withLogContext({ requestId: email.requestId ?? newRequestId() }, () =>
+    deliverMessage(message, email, deliver, transport),
+  )
+}
+
+async function deliverMessage(
+  message: Message<unknown>,
+  email: EmailQueueMessage,
+  deliver: Deliver,
+  transport: EmailTransportConfig,
+): Promise<void> {
+  const meta = { id: message.id, attempts: message.attempts }
   const context = { ...meta, template: email.template, transport: transport.transport }
   try {
     const providerId = await deliver(email, await render(email))
-    console.log(JSON.stringify({ event: 'email.sent', ...context, providerId }))
+    log.info('email.sent', { ...context, providerId })
     message.ack()
   } catch (error) {
     const failure = describeError(error)
     if (!failure.retryable) {
-      console.warn(JSON.stringify({ event: 'email.failed', ...context, ...failure }))
+      log.warn('email.failed', { ...context, ...failure })
       message.ack()
     } else if (message.attempts >= EMAIL_MAX_ATTEMPTS) {
-      console.error(JSON.stringify({ event: 'email.dropped', ...context, ...failure }))
+      log.error('email.dropped', { ...context, ...failure })
       message.ack()
     } else {
       const delaySeconds = emailRetryDelaySeconds(message.attempts)
-      console.warn(JSON.stringify({ event: 'email.retry', ...context, ...failure, delaySeconds }))
+      log.warn('email.retry', { ...context, ...failure, delaySeconds })
       message.retry({ delaySeconds })
     }
   }

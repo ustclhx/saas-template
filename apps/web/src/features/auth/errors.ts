@@ -1,38 +1,94 @@
+import { m } from '../../paraglide/messages.js'
+
 /**
- * 认证接口错误码 → 提示文案（英文硬编码，P6 接 Paraglide）。
+ * 认证接口错误码 → 提示文案（按当前请求 / 页面语言显示）。
  * 错误码来自 Better Auth（BASE_ERROR_CODES 与插件）以及本项目的 @saas/auth（protection.ts、fresh-session.ts）。
  */
 export const AUTH_ERROR_MESSAGES = {
-  RATE_LIMITED: 'Too many attempts. Please wait a minute and try again.',
-  TURNSTILE_FAILED: 'Human verification failed. Please complete the check and try again.',
-  TURNSTILE_PENDING: 'Please complete the human verification first.',
-  EMAIL_NOT_VERIFIED:
-    'Please verify your email address first. We have sent you a new verification link.',
-  INVALID_EMAIL_OR_PASSWORD: 'Incorrect email or password.',
-  INVALID_EMAIL: 'Enter a valid email address.',
-  INVALID_PASSWORD: 'Incorrect password.',
-  PASSWORD_TOO_SHORT: 'Password is too short.',
-  PASSWORD_TOO_LONG: 'Password is too long.',
-  USER_ALREADY_EXISTS: 'An account with this email already exists. Try signing in instead.',
-  USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL:
-    'An account with this email already exists. Try signing in instead.',
-  BANNED_USER: 'This account has been suspended.',
-  USER_BANNED: 'This account has been suspended.',
-  INVALID_OTP: 'The code is incorrect.',
-  OTP_EXPIRED: 'The code has expired. Request a new one.',
-  TOO_MANY_ATTEMPTS: 'Too many incorrect codes. Request a new one.',
-  INVALID_TOKEN: 'This link is invalid or has already been used.',
-  TOKEN_EXPIRED: 'This link has expired.',
-  EXPIRED_TOKEN: 'This link has expired.',
-  USER_NOT_FOUND: 'We could not find an account for this link.',
-  INVALID_USER: 'This link belongs to a different account.',
-  ATTEMPTS_EXCEEDED: 'This link has already been used.',
-  NOT_FOUND: 'This sign-in method is not available.',
-  // OAuth 回调失败时 Better Auth 附加到 errorCallbackURL 的错误
-  ACCESS_DENIED: 'Sign-in was cancelled.',
-  STATE_MISMATCH: 'Sign-in failed. Please try again.',
-  UNABLE_TO_GET_USER_INFO: 'Could not read your account details from the provider.',
-  UNKNOWN: 'Something went wrong. Please try again.',
+  get SIGNUP_DISABLED() {
+    return m.auth_error_signup_disabled()
+  },
+  get RATE_LIMITED() {
+    return m.auth_error_rate_limited()
+  },
+  get TURNSTILE_FAILED() {
+    return m.auth_error_turnstile_failed()
+  },
+  get TURNSTILE_PENDING() {
+    return m.auth_error_turnstile_pending()
+  },
+  get EMAIL_NOT_VERIFIED() {
+    return m.auth_error_email_not_verified()
+  },
+  get INVALID_EMAIL_OR_PASSWORD() {
+    return m.auth_error_invalid_email_or_password()
+  },
+  get INVALID_EMAIL() {
+    return m.auth_error_invalid_email()
+  },
+  get INVALID_PASSWORD() {
+    return m.auth_error_invalid_password()
+  },
+  get PASSWORD_TOO_SHORT() {
+    return m.auth_error_password_too_short()
+  },
+  get PASSWORD_TOO_LONG() {
+    return m.auth_error_password_too_long()
+  },
+  get USER_ALREADY_EXISTS() {
+    return m.auth_error_user_already_exists()
+  },
+  get USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL() {
+    return m.auth_error_user_already_exists_use_another_email()
+  },
+  get BANNED_USER() {
+    return m.auth_error_banned_user()
+  },
+  get USER_BANNED() {
+    return m.auth_error_user_banned()
+  },
+  get INVALID_OTP() {
+    return m.auth_error_invalid_otp()
+  },
+  get OTP_EXPIRED() {
+    return m.auth_error_otp_expired()
+  },
+  get TOO_MANY_ATTEMPTS() {
+    return m.auth_error_too_many_attempts()
+  },
+  get INVALID_TOKEN() {
+    return m.auth_error_invalid_token()
+  },
+  get TOKEN_EXPIRED() {
+    return m.auth_error_token_expired()
+  },
+  get EXPIRED_TOKEN() {
+    return m.auth_error_expired_token()
+  },
+  get USER_NOT_FOUND() {
+    return m.auth_error_user_not_found()
+  },
+  get INVALID_USER() {
+    return m.auth_error_invalid_user()
+  },
+  get ATTEMPTS_EXCEEDED() {
+    return m.auth_error_attempts_exceeded()
+  },
+  get NOT_FOUND() {
+    return m.auth_error_not_found()
+  },
+  get ACCESS_DENIED() {
+    return m.auth_error_access_denied()
+  },
+  get STATE_MISMATCH() {
+    return m.auth_error_state_mismatch()
+  },
+  get UNABLE_TO_GET_USER_INFO() {
+    return m.auth_error_unable_to_get_user_info()
+  },
+  get UNKNOWN() {
+    return m.auth_error_unknown()
+  },
 } as const
 
 export type AuthErrorCode = keyof typeof AUTH_ERROR_MESSAGES

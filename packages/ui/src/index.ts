@@ -9,6 +9,16 @@ export {
   CardTitle,
 } from './components/card.tsx'
 export {
+  DataTable,
+  type DataTableColumn,
+  type DataTableFilter,
+  type DataTableLabels,
+  type DataTablePage,
+  type DataTableProps,
+  type DetailField,
+  DetailList,
+} from './components/data-table.tsx'
+export {
   errorMessages,
   FieldErrors,
   Form,
@@ -24,4 +34,13 @@ export {
 export { Input } from './components/input.tsx'
 export { Label } from './components/label.tsx'
 export { Separator } from './components/separator.tsx'
+export {
+  THEME_STORAGE_KEY,
+  THEMES,
+  type Theme,
+  ThemeToggle,
+  type ThemeToggleProps,
+  themeInitScript,
+  useTheme,
+} from './components/theme.tsx'
 export { cn } from './lib/utils.ts'

@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers'
 import { createAuth } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
 import { createDb } from '@saas/db'
+import { renderEmail } from '@saas/email'
 import { type EmailQueueMessage, parseEmailQueueMessage } from '@saas/email/queue'
 import { newId } from '@saas/shared'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
@@ -67,6 +68,9 @@ afterAll(async () => {
   await sql`delete from session where user_id in ${sql(ids)}`
   // 只清理本套件创建的个人空间和团队空间
   const orgs = [...ids, ...createdOrgs]
+  // 成员审计只追加，测试夹具由 migrator 清理审计外键。
+  await createDb(env.HYPERDRIVE_MIGRATOR)
+    .$client`delete from audit_log where actor_user_id in ${sql(ids)} or workspace_id in ${sql(orgs)}`
   await sql`delete from invitation where organization_id in ${sql(orgs)} or inviter_id in ${sql(ids)}`
   await sql`delete from member where organization_id in ${sql(orgs)} or user_id in ${sql(ids)}`
   await sql`delete from organization where id in ${sql(orgs)}`
@@ -104,6 +108,15 @@ describe('认证邮件入队', () => {
       appName: 'TestApp',
       props: { url: expect.stringContaining(`${APP_URL}/api/auth/reset-password/`) },
     })
+    if (message?.template !== 'reset-password') throw new Error('Reset email missing')
+    const rendered = await renderEmail(message.template, message.props, {
+      locale: message.locale,
+      appName: message.appName,
+    })
+    expect(rendered.locale).toBe('zh')
+    expect(rendered.subject).toBe('重置你的 TestApp 密码')
+    expect(rendered.html).toContain('重置密码')
+    expect(rendered.text).toContain('链接 60 分钟内有效')
   })
 
   it('owner 邀请经真实认证端点入队，链接与七天有效期一致', async () => {

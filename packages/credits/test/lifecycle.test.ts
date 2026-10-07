@@ -17,7 +17,7 @@ import { newId } from '@saas/shared'
 import { eq, inArray } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
-import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { capture, grant, hold, release } from '../src/index.ts'
 
 const url = process.env.CREDITS_TEST_DATABASE_URL
@@ -84,6 +84,7 @@ afterAll(() => client.end())
 
 import {
   expireWorkspaceCredits,
+  revokeGrant,
   revokePaymentCredits,
   revokeWorkspaceCredits,
 } from '../src/lifecycle.ts'
@@ -155,6 +156,28 @@ async function annualPayment() {
 }
 
 describe('credits lifecycle on PostgreSQL', () => {
+  it('revokes only the selected batch once and never restores held credits', async () => {
+    const batch = await grant(db, grantInput(10))
+    const reservation = await hold(db, holdInput(8))
+    const other = await grant(db, grantInput(7))
+    await expect(
+      revokeGrant(db, { workspaceId: otherWs, grantId: batch.id }),
+    ).rejects.toMatchObject({ code: 'WORKSPACE_RESOURCE_NOT_FOUND' })
+    const results = await Promise.all([
+      revokeGrant(db, { workspaceId: ws, grantId: batch.id }),
+      revokeGrant(db, { workspaceId: ws, grantId: batch.id }),
+    ])
+    expect(results.reduce((sum, r) => sum + r.canceled, 0)).toBe(2)
+    expect(await getCreditBalance(db, ws)).toEqual({ available: 7, held: 8, debt: 0 })
+    await invariant()
+    await release(db, { workspaceId: ws, holdId: reservation.id })
+    expect(await getCreditBalance(db, ws)).toEqual({ available: 7, held: 0, debt: 0 })
+    expect(
+      (await db.select().from(creditGrant).where(eq(creditGrant.id, other.id)))[0]?.remaining,
+    ).toBe(7)
+    await invariant()
+  })
+
   it('expires zero-remaining grants and appends only unreserved loss once', async () => {
     const full = await grant(db, grantInput(8))
     const reserved = await hold(db, holdInput(8))
@@ -261,6 +284,43 @@ describe('credits lifecycle on PostgreSQL', () => {
     await release(db, { workspaceId: ws, holdId: reservation.id })
     expect((await getCreditBalance(db, ws)).available).toBe(0)
     expect((await getCreditBalance(db, otherWs)).available).toBe(9)
+    await invariant()
+  })
+
+  it('lifecycle operations join a transaction passed as the executor', async () => {
+    const paid = await annualPayment()
+    const expiring = await grant(db, grantInput(5))
+    await grant(db, {
+      ...grantInput(10, `${paid.id}:0`),
+      source: 'subscription',
+      paymentId: paid.id,
+    })
+    await grant(db, grantInput(3))
+    await db
+      .update(creditGrant)
+      .set({ expiresAt: new Date(0) })
+      .where(eq(creditGrant.id, expiring.id))
+    await expect(
+      db.transaction(async (tx) => {
+        const nested = vi.spyOn(tx, 'transaction')
+        expect(await expireWorkspaceCredits(tx, ws)).toEqual({ grants: 1, canceled: 5 })
+        expect(await revokePaymentCredits(tx, { workspaceId: ws, paymentId: paid.id })).toEqual({
+          grants: 1,
+          canceled: 10,
+        })
+        expect(await revokeWorkspaceCredits(tx, ws)).toEqual({ grants: 1, canceled: 3 })
+        expect(await getCreditBalance(tx, ws)).toEqual({ available: 0, held: 0, debt: 0 })
+        expect(await reconcileWorkspaceCredits(tx, ws)).toMatchObject({ consistent: true })
+        expect(nested).not.toHaveBeenCalled()
+        throw new Error('rollback lifecycle executor')
+      }),
+    ).rejects.toThrow('rollback lifecycle executor')
+    expect(await getCreditBalance(db, ws)).toEqual({ available: 13, held: 0, debt: 0 })
+    expect(
+      (await db.select().from(creditGrant).where(eq(creditGrant.workspaceId, ws))).every(
+        (g) => g.status === 'active',
+      ),
+    ).toBe(true)
     await invariant()
   })
 

@@ -22,6 +22,7 @@ import { verificationReservation } from './verification-reservation.ts'
 import { workspaceLifecyclePlugin } from './workspace-lifecycle.ts'
 
 export interface CreateAuthDeps {
+  readonly beforeUserCreate?: (user: { readonly email: string }, headers?: Headers) => Promise<void>
   readonly deletionSteps?: readonly DeletionStep[]
   /** 模板配置（`template.config.ts`），决定启用哪些登录方式与插件 */
   readonly config: TemplateConfig
@@ -56,6 +57,14 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
     appName: config.app.name,
     baseURL: vars.APP_URL,
     basePath: '/api/auth',
+    // 空间绑定与角色校验只经应用管理入口；原生 HTTP 接口不能绕过。
+    disabledPaths: [
+      '/api-key/create',
+      '/api-key/update',
+      '/api-key/delete',
+      '/api-key/get',
+      '/api-key/list',
+    ],
     secret: vars.BETTER_AUTH_SECRET,
     database: drizzleAdapter(db, { provider: 'pg', schema }),
     // 会话三层：Cookie 缓存 → KV → 数据库（session.ts）
@@ -69,6 +78,14 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
       ...workspaceHooks,
       user: {
         create: {
+          ...(deps.beforeUserCreate && {
+            before: async (
+              user: { email: string },
+              context: { headers?: Headers | undefined; request?: Request | undefined } | null,
+            ) => {
+              await deps.beforeUserCreate?.(user, context?.request?.headers ?? context?.headers)
+            },
+          }),
           after: async (user) => {
             await workspaceHooks.user.create.after(user)
             // Better Auth defers create.after until registration commits. Keep the
@@ -125,7 +142,7 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
       workspaceLifecyclePlugin(db, config.tenancy.maxWorkspacesPerUser),
       teamWorkspaces(db, config, sendEmail, deps.resolveMaxSeats),
       // 用户设置：资料校验、修改密码时吊销其他会话（account-settings.ts）
-      accountSettings(),
+      accountSettings(db, config),
       organization({
         // 团队空间的创建准入由 multiTenant 决定；个人空间由服务端创建（tasks.md 4.1）
         allowUserToCreateOrganization: config.tenancy.multiTenant,
@@ -186,7 +203,16 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
         : []),
       ...(config.auth.twoFactor ? [twoFactor({ issuer: config.app.name })] : []),
       // 公开 API 的密钥按用户归属，workspace 记在 metadata 中（docs/03-data-model.md §1）
-      ...(config.features.publicApi ? [apiKey({ references: 'user' })] : []),
+      ...(config.features.publicApi
+        ? [
+            apiKey({
+              references: 'user',
+              enableMetadata: true,
+              rateLimit: { enabled: false },
+              keyExpiration: { minExpiresIn: 1 / 1440 },
+            }),
+          ]
+        : []),
     ],
   })
 }

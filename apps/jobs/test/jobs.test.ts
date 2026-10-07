@@ -1,10 +1,10 @@
 import { createScheduledController, introspectWorkflowInstance } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
 import { createDb, readLastCronAt } from '@saas/db'
+import { MEDIA_DONE_EVENT } from '@saas/shared'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HEARTBEAT_CRON } from '../src/cron/heartbeat.ts'
 import worker from '../src/index.ts'
-import { PROVIDER_CALLBACK_EVENT } from '../src/workflows/ai-media.ts'
 
 describe('apps/jobs', () => {
   afterEach(() => {
@@ -48,7 +48,7 @@ describe('apps/jobs', () => {
     const instance = await introspectWorkflowInstance(env.AI_MEDIA_WORKFLOW, id)
     try {
       await instance.modify(async (m) => {
-        await m.mockEvent({ type: PROVIDER_CALLBACK_EVENT, payload: { status: 'succeeded' } })
+        await m.mockEvent({ type: MEDIA_DONE_EVENT, payload: { status: 'succeeded' } })
       })
 
       await env.AI_MEDIA_WORKFLOW.create({ id, params: { taskId: 'task-1' } })

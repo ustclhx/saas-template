@@ -29,10 +29,13 @@ import {
   submitRefundRequest,
 } from './refunds.ts'
 
-const url = (globalThis as unknown as { process: { env: Record<string, string | undefined> } })
-  .process.env.BILLING_TEST_DATABASE_URL
+const testEnv = (globalThis as unknown as { process: { env: Record<string, string | undefined> } })
+  .process.env
+const url = testEnv.BILLING_TEST_DATABASE_URL
 if (!url) throw new Error('Missing isolated billing test database')
 const db = createDb({ connectionString: url })
+// audit_log 对 app 只追加（@saas/db 迁移 0009），审计行由 migrator 清理
+const migrator = createDb({ connectionString: testEnv.MIGRATION_DATABASE_URL ?? '' })
 const id = () => crypto.randomUUID()
 const now = new Date('2030-03-01T12:00:00Z')
 let uid: string,
@@ -57,6 +60,7 @@ const submit = (overrides: Partial<Parameters<typeof submitRefundRequest>[1]> = 
 const approve = (requestId: string, approvedAmount?: number) =>
   reviewRefundRequest(options, {
     userId: adminId,
+    ip: '203.0.113.17',
     requestId,
     decision: 'approve',
     ...(approvedAmount === undefined ? {} : { approvedAmount }),
@@ -146,7 +150,7 @@ afterEach(async () => {
   const spaces = [ws, other]
   await db.delete(creditLedger).where(inArray(creditLedger.workspaceId, spaces))
   await db.delete(creditGrant).where(inArray(creditGrant.workspaceId, spaces))
-  await db.delete(auditLog).where(inArray(auditLog.workspaceId, spaces))
+  await migrator.delete(auditLog).where(inArray(auditLog.workspaceId, spaces))
   await db.delete(refundRequest).where(inArray(refundRequest.workspaceId, spaces))
   await db.delete(paymentRefund).where(inArray(paymentRefund.workspaceId, spaces))
   await db.delete(payment).where(inArray(payment.workspaceId, spaces))
@@ -157,7 +161,7 @@ afterEach(async () => {
   await db.delete(planPrice).where(eq(planPrice.id, priceId))
   await db.delete(plan).where(eq(plan.id, planId))
 })
-afterAll(() => db.$client.end())
+afterAll(() => Promise.all([db.$client.end(), migrator.$client.end()]))
 
 describe('trusted refund service on PostgreSQL', () => {
   it('settles a verified callback committed before the pending provider refund returns', async () => {
@@ -330,6 +334,11 @@ describe('trusted refund service on PostgreSQL', () => {
       'succeeded',
     )
     const logs = await db.select().from(auditLog).where(eq(auditLog.targetId, request.id))
+    expect(logs.find((log) => log.action === 'billing.refund_approved')).toMatchObject({
+      actorUserId: adminId,
+      ip: '203.0.113.17',
+      meta: { oldStatus: 'pending', newStatus: 'approved' },
+    })
     expect(logs.map((log) => log.action).sort()).toEqual([
       'billing.refund_api_acknowledged',
       'billing.refund_approved',

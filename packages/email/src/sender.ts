@@ -3,7 +3,13 @@
  * `EmailSender`，不直接调用 Resend 等第三方服务。
  */
 
+export type EmailHeaders = Readonly<
+  Partial<Record<'List-Unsubscribe' | 'List-Unsubscribe-Post', string>>
+>
+
 export interface EmailMessage {
+  readonly headers?: EmailHeaders
+
   /** 收件人，单个地址或地址列表 */
   readonly to: string | readonly string[]
   readonly subject: string

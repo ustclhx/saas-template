@@ -14,6 +14,7 @@ import {
 import type { Env } from '@saas/config'
 import { auditLog, createDb, type Database, webhookEvent } from '@saas/db'
 import type { EmailQueueMessage } from '@saas/email/queue'
+import { log, withRequestId } from '@saas/shared/log'
 import { and, asc, eq, inArray, notExists, sql } from 'drizzle-orm'
 import templateConfig from '../../../template.config.ts'
 
@@ -24,6 +25,7 @@ export const BILLING_POSTPROCESS_ACTION = 'billing.webhook_postprocessed'
 export const BILLING_RECOVERY_LIMIT = 100
 export type BillingEnv = Env &
   PaymentRuntimeEnv & {
+    EVENTS_QUEUE?: { send(message: unknown, options: { contentType: 'json' }): Promise<unknown> }
     CACHE: KVNamespace
     EMAIL_QUEUE: {
       send(message: EmailQueueMessage, options: { contentType: 'json' }): Promise<unknown>
@@ -135,6 +137,29 @@ export async function recoverBillingDeliveries(context: BillingContext) {
 export async function runBillingSchedule(cron: string, env: BillingEnv) {
   const context = createBillingContext(env)
   const now = new Date()
+  const alert = async (failure: { job: string; workspaceId: string; targetId: string }) => {
+    try {
+      if (!env.EVENTS_QUEUE) throw new Error('Events queue unavailable')
+      await env.EVENTS_QUEUE.send(
+        withRequestId({
+          v: 1,
+          operations: [
+            {
+              event: 'reconciliation.failed',
+              sourceId: `${failure.job}:${failure.targetId}:${now.getTime()}`,
+              workspaceId: failure.workspaceId,
+            },
+          ],
+        }),
+        { contentType: 'json' },
+      )
+    } catch {
+      log.warn('operations.enqueue_failed', {
+        event: 'reconciliation.failed',
+        workspaceId: failure.workspaceId,
+      })
+    }
+  }
   switch (cron) {
     case BILLING_HOURLY_CRON:
       return runBillingJobs([
@@ -158,9 +183,9 @@ export async function runBillingSchedule(cron: string, env: BillingEnv) {
       return runBillingJobs([
         [
           'subscription_reconciliation',
-          () => runSubscriptionReconciliation(context.db, context.providers),
+          () => runSubscriptionReconciliation(context.db, context.providers, { alert }),
         ],
-        ['credit_reconciliation', () => runCreditReconciliation(context.db)],
+        ['credit_reconciliation', () => runCreditReconciliation(context.db, { alert })],
         ['refund_contact_cleanup', () => clearResolvedRefundContacts(context.db, now)],
       ])
     default:
