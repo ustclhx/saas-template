@@ -1,9 +1,13 @@
 import type { Env } from '@saas/config'
 import { createDb, type Database } from '@saas/db'
 import { log } from '@saas/shared/log'
+import { WORKSPACE_CLEANUP_CRON } from './workspace-cleanup.ts'
 
-/** UTC 00:15 汇总前一日，避开计费与清理 Cron。 */
-export const METRICS_DAILY_CRON = '15 0 * * *'
+/**
+ * 与每日空间清理共用 UTC 03:00 触发器汇总前一日（Cloudflare 免费版每账号最多 5 个 Cron 触发器，
+ * 不再单独占用一个）；两项任务互不影响，见 src/index.ts。
+ */
+export const METRICS_DAILY_CRON = WORKSPACE_CLEANUP_CRON
 
 /** 同一快照内聚合并覆盖写；重复运行不会累计。订阅为运行时观察到的日末有效状态。 */
 export async function summarizeDailyMetrics(db: Database, day: string) {
