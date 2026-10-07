@@ -26,7 +26,13 @@ const workers = () =>
   cloudflareTest({
     wrangler: { configPath: './test/wrangler.jsonc' },
     // 端口 1 上没有服务：连接立即被拒绝
-    miniflare: { hyperdrives: { HYPERDRIVE_REFUSED: 'postgres://app:app@127.0.0.1:1/db' } },
+    // audit_log 对 app 只追加（@saas/db 迁移 0009），清理审计行改用 migrator
+    miniflare: {
+      hyperdrives: {
+        HYPERDRIVE_REFUSED: 'postgres://app:app@127.0.0.1:1/db',
+        ...(migratorUrl ? { HYPERDRIVE_MIGRATOR: migratorUrl } : {}),
+      },
+    },
   })
 
 export default defineConfig({

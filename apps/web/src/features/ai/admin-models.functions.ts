@@ -1,16 +1,17 @@
 import { env } from 'cloudflare:workers'
 import { defaultPricing, invalidateModelCache, modelValues, PricingError } from '@saas/ai'
-import { aiModel, auditLog } from '@saas/db'
+import { aiModel } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { templateConfig } from '../../server/template-config.ts'
+import { withAdminAction } from '../admin/action.server.ts'
 import { adminMiddleware } from '../admin/admin.functions.ts'
 
 // 后台最小模型编辑（tasks.md 1.4）：新增、编辑价格与计费方式、启用 / 停用。
 // 计费方式由 @saas/ai 的 parsePricing 校验（按次文本模型缺 token 上限时拒绝保存）；
-// 保存后使 KV 中的模型列表缓存失效，并写 audit_log。
+// 保存经 adminAction 包装（add-admin-console 1.1），审计与写入同事务；提交后使 KV 中的模型列表缓存失效。
 
 const kinds = ['text', 'image', 'video'] as const
 
@@ -81,27 +82,23 @@ export const saveAdminModel = createServerFn({ method: 'POST' })
   .inputValidator(modelInput.extend({ id: z.uuid().optional() }))
   .handler(({ context, data }) =>
     safe(() =>
-      context.db.transaction(async (tx) => {
+      withAdminAction(context, 'ai.model_save', async ({ tx, audit }) => {
         const values = modelValues(data)
         const [saved] = data.id
           ? await tx.update(aiModel).set(values).where(eq(aiModel.id, data.id)).returning()
           : await tx.insert(aiModel).values(values).returning()
         if (!saved) throw new AppError('NOT_FOUND', 'Model not found', { status: 404 })
-        await tx
-          // biome-ignore lint/plugin: Platform-admin model audit has no workspace.
-          .insert(auditLog)
-          .values({
-            actorUserId: context.admin.id,
-            action: data.id ? 'ai.model_updated' : 'ai.model_created',
-            targetType: 'ai_model',
-            targetId: saved.id,
-            meta: {
-              key: saved.key,
-              kind: saved.kind,
-              pricing: saved.pricing,
-              enabled: saved.enabled,
-            },
-          })
+        await audit({
+          action: data.id ? 'ai.model_updated' : 'ai.model_created',
+          targetType: 'ai_model',
+          targetId: saved.id,
+          meta: {
+            key: saved.key,
+            kind: saved.kind,
+            pricing: saved.pricing,
+            enabled: saved.enabled,
+          },
+        })
         return saved.id
       }),
     ),
@@ -112,23 +109,19 @@ export const setAdminModelEnabled = createServerFn({ method: 'POST' })
   .inputValidator(z.object({ id: z.uuid(), enabled: z.boolean() }))
   .handler(({ context, data }) =>
     safe(() =>
-      context.db.transaction(async (tx) => {
+      withAdminAction(context, 'ai.model_set_enabled', async ({ tx, audit }) => {
         const [saved] = await tx
           .update(aiModel)
           .set({ enabled: data.enabled })
           .where(eq(aiModel.id, data.id))
           .returning({ id: aiModel.id, key: aiModel.key })
         if (!saved) throw new AppError('NOT_FOUND', 'Model not found', { status: 404 })
-        await tx
-          // biome-ignore lint/plugin: Platform-admin model audit has no workspace.
-          .insert(auditLog)
-          .values({
-            actorUserId: context.admin.id,
-            action: data.enabled ? 'ai.model_enabled' : 'ai.model_disabled',
-            targetType: 'ai_model',
-            targetId: saved.id,
-            meta: { key: saved.key },
-          })
+        await audit({
+          action: data.enabled ? 'ai.model_enabled' : 'ai.model_disabled',
+          targetType: 'ai_model',
+          targetId: saved.id,
+          meta: { key: saved.key },
+        })
         return saved.id
       }),
     ),

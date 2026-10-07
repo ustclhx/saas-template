@@ -74,10 +74,12 @@ async function state(reply: { ws: string; messageId: string; holdId: string }) {
 }
 
 afterAll(async () => {
+  // audit_log 对 app 只追加，审计行由 migrator 清理
+  const migrator = createDb(env.HYPERDRIVE_MIGRATOR).$client
   for (const ws of workspaces) {
     await sql`delete from ai_message where workspace_id = ${ws}`
     await sql`delete from ai_conversation where workspace_id = ${ws}`
-    await sql`delete from audit_log where workspace_id = ${ws}`
+    await migrator`delete from audit_log where workspace_id = ${ws}`
     await sql`delete from credit_hold_allocation where hold_id in
       (select id from credit_hold where workspace_id = ${ws})`
     await sql`delete from credit_ledger where workspace_id = ${ws}`

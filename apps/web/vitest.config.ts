@@ -48,6 +48,8 @@ export default defineConfig({
                     hyperdrives: {
                       HYPERDRIVE_HANGING: `postgres://app:app@127.0.0.1:${inject('hangingDbPort')}/db`,
                       HYPERDRIVE_REFUSED: `postgres://app:app@127.0.0.1:${inject('refusedDbPort')}/db`,
+                      // audit_log 对 app 只追加（@saas/db 迁移 0009），清理审计行改用 migrator
+                      HYPERDRIVE_MIGRATOR: migratorUrl,
                     },
                   },
                 })),

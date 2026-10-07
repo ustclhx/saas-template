@@ -73,7 +73,10 @@ async function cleanup(db: Database, fixtures: Fixture[]) {
   const userIds = fixtures.flatMap((f) => [f.ownerId, f.otherId])
   const wsIds = fixtures.map((f) => f.wsId)
   await db.delete(notification).where(inArray(notification.userId, userIds))
-  await db.delete(auditLog).where(inArray(auditLog.actorUserId, userIds))
+  // audit_log 对 app 只追加（迁移 0009），审计行由 migrator 清理
+  await createDb(env.HYPERDRIVE_MIGRATOR)
+    .delete(auditLog)
+    .where(inArray(auditLog.actorUserId, userIds))
   await db.delete(invitation).where(inArray(invitation.organizationId, wsIds))
   await db.delete(member).where(inArray(member.organizationId, wsIds))
   await db.delete(organization).where(inArray(organization.id, wsIds))
@@ -150,7 +153,6 @@ describe('scoped(db, workspaceId)', () => {
     await expectNotFound(s.updateById(member, b.otherMemberId, { role: 'admin' }))
     await expectNotFound(s.updateById(invitation, b.invitationId, { status: 'canceled' }))
     await expectNotFound(s.deleteById(notification, b.notificationId))
-    await expectNotFound(s.deleteById(auditLog, b.auditId))
 
     // 条件式写入：条件命中的是 B 的行，但空间过滤使其影响 0 行
     expect(

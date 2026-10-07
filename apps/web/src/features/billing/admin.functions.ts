@@ -12,7 +12,6 @@ import {
 } from '@saas/billing'
 import { EnvValidationError } from '@saas/config'
 import {
-  auditLog,
   creditGrant,
   type Database,
   payment,
@@ -21,10 +20,12 @@ import {
   webhookEvent,
 } from '@saas/db'
 import { AppError } from '@saas/shared'
+import { isNotFound } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { desc, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { templateConfig } from '../../server/template-config.ts'
+import { withAdminAction, withDelegatedAdminAction } from '../admin/action.server.ts'
 import { adminMiddleware } from '../admin/admin.functions.ts'
 
 const page = z.object({ offset: z.number().int().min(0).max(100_000).default(0) })
@@ -67,6 +68,8 @@ async function safe(action: () => Promise<string>) {
   try {
     return { ok: true as const, status: await action() }
   } catch (error) {
+    // 写事务内发现管理员已失效：与守卫一样返回 404，不当作业务失败
+    if (isNotFound(error)) throw error
     return {
       ok: false as const,
       error: error instanceof AppError ? error.code : 'BILLING_UNAVAILABLE',
@@ -200,24 +203,31 @@ export const replayAdminWebhook = createServerFn({ method: 'POST' })
   .inputValidator(z.object({ webhookEventId: z.uuid() }))
   .handler(({ context, data }) =>
     safe(async () => {
-      const [delivery] = await context.db
-        .select({ provider: webhookEvent.provider, status: webhookEvent.status })
-        .from(webhookEvent)
-        .where(eq(webhookEvent.id, data.webhookEventId))
-      if (delivery?.status !== 'failed')
-        throw new AppError('WEBHOOK_NOT_REPLAYABLE', 'Only failed records can be replayed')
       const current = runtime()
+      // 校验与「已请求重放」审计同事务提交；重放本身在提交后执行（自行管理事务与队列通知），
+      // 重放失败记录在回调事件上，可再次重试
+      const delivery = await withAdminAction(
+        context,
+        'billing.webhook_replay',
+        async ({ tx, audit }) => {
+          const [found] = await tx
+            .select({ provider: webhookEvent.provider, status: webhookEvent.status })
+            .from(webhookEvent)
+            .where(eq(webhookEvent.id, data.webhookEventId))
+          if (found?.status !== 'failed')
+            throw new AppError('WEBHOOK_NOT_REPLAYABLE', 'Only failed records can be replayed')
+          if (!current.normalizers[found.provider])
+            throw new AppError('BILLING_PROVIDER_UNAVAILABLE', 'Provider unavailable')
+          await audit({
+            action: 'billing.webhook_replay_requested',
+            targetType: 'webhook_event',
+            targetId: data.webhookEventId,
+          })
+          return found
+        },
+      )
       const normalize = current.normalizers[delivery.provider]
       if (!normalize) throw new AppError('BILLING_PROVIDER_UNAVAILABLE', 'Provider unavailable')
-      await context.db
-        // biome-ignore lint/plugin: Authorized platform-admin replay audit has no caller-selected workspace.
-        .insert(auditLog)
-        .values({
-          actorUserId: context.admin.id,
-          action: 'billing.webhook_replay_requested',
-          targetType: 'webhook_event',
-          targetId: data.webhookEventId,
-        })
       const result = await replayWebhook({
         db: context.db,
         webhookEventId: data.webhookEventId,
@@ -245,6 +255,8 @@ export const replayAdminWebhook = createServerFn({ method: 'POST' })
     }),
   )
 
+// 退款审核 / 手动退款 / 重发通知：@saas/billing 在自己的决策事务内写审计，并在提交后才调用支付平台与邮件队列，
+// 因此只经 adminAction 的实时角色校验（withDelegatedAdminAction），不包进外层事务
 export const reviewAdminRefund = createServerFn({ method: 'POST' })
   .middleware([adminMiddleware])
   .inputValidator(
@@ -255,17 +267,20 @@ export const reviewAdminRefund = createServerFn({ method: 'POST' })
     }),
   )
   .handler(({ context, data }) =>
-    safe(
-      async () =>
-        (
-          await reviewRefundRequest(refundOptions(context.db), {
-            requestId: data.requestId,
-            decision: data.decision,
-            reviewNote: data.reviewNote,
-            ...(data.approvedAmount === undefined ? {} : { approvedAmount: data.approvedAmount }),
-            userId: context.admin.id,
-          })
-        ).status,
+    safe(async () =>
+      withDelegatedAdminAction(
+        context,
+        async (db) =>
+          (
+            await reviewRefundRequest(refundOptions(db), {
+              requestId: data.requestId,
+              decision: data.decision,
+              reviewNote: data.reviewNote,
+              ...(data.approvedAmount === undefined ? {} : { approvedAmount: data.approvedAmount }),
+              userId: context.admin.id,
+            })
+          ).status,
+      ),
     ),
   )
 
@@ -278,10 +293,12 @@ export const completeAdminRefund = createServerFn({ method: 'POST' })
     }),
   )
   .handler(({ context, data }) =>
-    safe(
-      async () =>
-        (await markManualRefund(refundOptions(context.db), { ...data, userId: context.admin.id }))
-          .status,
+    safe(async () =>
+      withDelegatedAdminAction(
+        context,
+        async (db) =>
+          (await markManualRefund(refundOptions(db), { ...data, userId: context.admin.id })).status,
+      ),
     ),
   )
 
@@ -289,11 +306,10 @@ export const retryAdminRefundEmail = createServerFn({ method: 'POST' })
   .middleware([adminMiddleware])
   .inputValidator(request)
   .handler(({ context, data }) =>
-    safe(async () => {
-      await retryRefundNotification(refundOptions(context.db), {
-        ...data,
-        userId: context.admin.id,
-      })
-      return 'Email queued or already delivered'
-    }),
+    safe(async () =>
+      withDelegatedAdminAction(context, async (db) => {
+        await retryRefundNotification(refundOptions(db), { ...data, userId: context.admin.id })
+        return 'Email queued or already delivered'
+      }),
+    ),
   )
