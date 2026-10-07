@@ -1,11 +1,15 @@
 import { themeInitScript } from '@saas/ui'
 import { createRootRoute, HeadContent, Outlet, Scripts } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
+import { getImpersonation } from '../features/admin/impersonation.functions.ts'
+import { ImpersonationBanner } from '../features/admin/impersonation-banner.tsx'
 import { ThemeToggle } from '../features/theme/theme-toggle.tsx'
 import { getLocale } from '../paraglide/runtime.js'
 import appCss from '../styles/app.css?url'
 
 export const Route = createRootRoute({
+  loader: () => getImpersonation(),
+  staleTime: Infinity,
   head: () => ({
     meta: [
       { charSet: 'utf-8' },
@@ -21,8 +25,10 @@ export const Route = createRootRoute({
 })
 
 function RootComponent() {
+  const impersonation = Route.useLoaderData()
   return (
     <RootDocument>
+      <ImpersonationBanner viewer={impersonation} />
       <Outlet />
     </RootDocument>
   )

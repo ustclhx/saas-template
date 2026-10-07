@@ -20,6 +20,18 @@ export const ADMIN_NAV = linkOptions([
     label: ADMIN_COPY.nav.refunds,
     activeOptions: { includeSearch: false },
   },
+  {
+    to: '/admin/users',
+    search: { offset: 0 },
+    label: 'Users',
+    activeOptions: { includeSearch: false },
+  },
+  {
+    to: '/admin/workspaces',
+    search: { offset: 0 },
+    label: 'Workspaces',
+    activeOptions: { includeSearch: false },
+  },
   { to: '/admin/models', label: ADMIN_COPY.nav.models },
   ...(templateConfig.features.waitlist
     ? [{ to: '/admin/waitlist' as const, search: { offset: 0 }, label: 'Waitlist' }]
