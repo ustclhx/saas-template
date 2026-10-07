@@ -2,12 +2,13 @@ import { createFileRoute } from '@tanstack/react-router'
 import { PostList, TagLinks } from '../../features/marketing/blog/post-list.tsx'
 import { getBlogIndex } from '../../features/marketing/content.functions.ts'
 import { MarketingShell } from '../../features/marketing/marketing-shell.tsx'
+import { originFromMatches, pageHead, staticPage } from '../../features/seo/metadata.ts'
 import { m } from '../../paraglide/messages.js'
 import { getLocale } from '../../paraglide/runtime.js'
 
 export const Route = createFileRoute('/blog/')({
   loader: () => getBlogIndex({ data: { locale: getLocale() } }),
-  head: () => ({ meta: [{ title: m.marketing_blog_title() }] }),
+  head: ({ matches }) => pageHead(staticPage('/blog', getLocale()), originFromMatches(matches)),
   component: BlogIndexPage,
 })
 

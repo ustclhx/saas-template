@@ -1,26 +1,32 @@
 import { themeInitScript } from '@saas/ui'
 import { createRootRoute, HeadContent, Outlet, Scripts } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
-import { getImpersonation } from '../features/admin/impersonation.functions.ts'
 import { ImpersonationBanner } from '../features/admin/impersonation-banner.tsx'
 import { getAnnouncement } from '../features/admin/settings-announcement.functions.ts'
 import { AnnouncementBanner } from '../features/admin/settings-announcement-banner.tsx'
 import { LanguageControls } from '../features/i18n/language-controls.tsx'
+import { privateMeta } from '../features/seo/metadata.ts'
+import { getSafeImpersonation, getSeoOrigin } from '../features/seo/origin.functions.ts'
 import { ThemeToggle } from '../features/theme/theme-toggle.tsx'
 import { getLocale } from '../paraglide/runtime.js'
 import appCss from '../styles/app.css?url'
 
 export const Route = createRootRoute({
   loader: async () => {
-    const [impersonation, announcement] = await Promise.all([getImpersonation(), getAnnouncement()])
-    return { impersonation, announcement }
+    const [impersonation, announcement, appUrl] = await Promise.all([
+      getSafeImpersonation(),
+      getAnnouncement(),
+      getSeoOrigin(),
+    ])
+    return { impersonation, announcement, appUrl }
   },
   staleTime: Infinity,
-  head: () => ({
+  head: ({ matches }) => ({
     meta: [
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       { title: 'SaaS Template' },
+      ...privateMeta(matches.at(-1)?.pathname ?? '/'),
     ],
     // 全局样式（Tailwind + @saas/ui 主题），SSR 输出的 <head> 中直接引用，避免首屏无样式闪烁
     links: [{ rel: 'stylesheet', href: appCss }],

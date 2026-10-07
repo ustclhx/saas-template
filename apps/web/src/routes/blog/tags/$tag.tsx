@@ -2,12 +2,22 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { PostList } from '../../../features/marketing/blog/post-list.tsx'
 import { getBlogIndex } from '../../../features/marketing/content.functions.ts'
 import { MarketingShell } from '../../../features/marketing/marketing-shell.tsx'
+import { originFromMatches, pageHead } from '../../../features/seo/metadata.ts'
 import { m } from '../../../paraglide/messages.js'
 import { getLocale } from '../../../paraglide/runtime.js'
 
 export const Route = createFileRoute('/blog/tags/$tag')({
   loader: ({ params }) => getBlogIndex({ data: { locale: getLocale(), tag: params.tag } }),
-  head: ({ params }) => ({ meta: [{ title: m.marketing_blog_tag_title({ tag: params.tag }) }] }),
+  head: ({ params, matches }) =>
+    pageHead(
+      {
+        path: `/blog/tags/${encodeURIComponent(params.tag)}`,
+        locale: getLocale(),
+        title: m.marketing_blog_tag_title({ tag: params.tag }),
+        description: `${m.marketing_blog_subtitle()} · ${params.tag}`,
+      },
+      originFromMatches(matches),
+    ),
   component: BlogTagPage,
 })
 
