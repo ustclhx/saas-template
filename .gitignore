@@ -26,6 +26,9 @@ routeTree.gen.ts
 apps/web/project.inlang/
 apps/web/src/paraglide/
 
+# content-collections 生成的类型化内容（构建时生成）
+.content-collections/
+
 # 测试与工具
 coverage/
 playwright-report/
