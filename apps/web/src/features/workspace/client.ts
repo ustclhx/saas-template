@@ -1,26 +1,26 @@
 import { z } from 'zod'
+import { m } from '../../paraglide/messages.js'
 
-const errors: Record<string, string> = {
-  WORKSPACE_READ_ONLY: 'Team workspaces are read-only while team features are disabled.',
-  INVALID_WORKSPACE_SLUG:
-    'Use 3–64 lowercase letters, numbers and hyphens. This slug may be reserved.',
-  SLUG_TAKEN: 'This workspace URL is already in use.',
-  WORKSPACE_LIMIT: 'The workspace ownership limit has been reached.',
-  WORKSPACE_PERMISSION: 'You do not have permission to manage these members.',
-  PERSONAL_WORKSPACE: 'Personal workspace membership cannot change.',
-  SEATS_FULL: 'All seats are in use. Ask the owner to increase the limit or remove a member.',
-  LAST_OWNER: 'Transfer ownership before removing or demoting the last owner.',
-  INVITATION_INVALID: 'This invitation has expired or is no longer available.',
-  INVITATION_RECIPIENT: 'Sign in with the email address that received this invitation.',
-  INVITATION_EMAIL_UNVERIFIED: 'Verify your email address before accepting this invitation.',
-  INVITATION_EXISTS: 'A pending invitation already exists for this email.',
-  ALREADY_MEMBER: 'This account is already a workspace member.',
-  SESSION_REQUIRED: 'Your session has expired. Sign in again.',
-  USER_BANNED: 'Your account cannot perform this action.',
-  USE_OWNER_TRANSFER: 'Use Transfer ownership to assign a new owner.',
+const errors: Record<string, () => string> = {
+  WORKSPACE_READ_ONLY: () => m.workspace_error_workspace_read_only(),
+  INVALID_WORKSPACE_SLUG: () => m.workspace_error_invalid_workspace_slug(),
+  SLUG_TAKEN: () => m.workspace_error_slug_taken(),
+  WORKSPACE_LIMIT: () => m.workspace_error_workspace_limit(),
+  WORKSPACE_PERMISSION: () => m.workspace_error_workspace_permission(),
+  PERSONAL_WORKSPACE: () => m.workspace_error_personal_workspace(),
+  SEATS_FULL: () => m.workspace_error_seats_full(),
+  LAST_OWNER: () => m.workspace_error_last_owner(),
+  INVITATION_INVALID: () => m.workspace_error_invitation_invalid(),
+  INVITATION_RECIPIENT: () => m.workspace_error_invitation_recipient(),
+  INVITATION_EMAIL_UNVERIFIED: () => m.workspace_error_invitation_email_unverified(),
+  INVITATION_EXISTS: () => m.workspace_error_invitation_exists(),
+  ALREADY_MEMBER: () => m.workspace_error_already_member(),
+  SESSION_REQUIRED: () => m.workspace_error_session_required(),
+  USER_BANNED: () => m.workspace_error_user_banned(),
+  USE_OWNER_TRANSFER: () => m.workspace_error_use_owner_transfer(),
 }
 export function workspaceError(code: string) {
-  return errors[code] ?? 'The workspace action failed. Please try again.'
+  return errors[code]?.() ?? m.workspace_error_unknown()
 }
 const responseError = z.object({
   code: z.string().optional(),

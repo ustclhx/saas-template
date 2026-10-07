@@ -1,6 +1,7 @@
 import { Button } from '@saas/ui'
 import { useRouter } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import { m } from '../../paraglide/messages.js'
 import { type getCustomerRefunds, requestCustomerRefund } from './refund.functions.ts'
 
 export function RefundSection({
@@ -36,8 +37,8 @@ export function RefundSection({
         result.ok
           ? 'Refund request submitted. The decision will be sent to your contact email.'
           : result.error === 'REFUND_ALREADY_PENDING'
-            ? 'This payment already has a pending refund request.'
-            : 'Unable to request a refund. Reload and try again.',
+            ? m.refund_error_pending()
+            : m.refund_error_reload(),
       )
       if (result.ok) {
         setPaymentId('')
@@ -45,7 +46,7 @@ export function RefundSection({
         await router.invalidate()
       }
     } catch {
-      setMessage('Unable to request a refund. Please try again.')
+      setMessage(m.refund_error_unknown())
     } finally {
       setBusy(false)
     }

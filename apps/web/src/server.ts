@@ -8,7 +8,7 @@ import { log, newRequestId, withLogContext } from '@saas/shared/log'
 import handler from '@tanstack/react-start/server-entry'
 import { gateAdminRequest } from './features/admin/gate.ts'
 import { gateLocaleRequest } from './features/i18n/gate.ts'
-import { paraglideMiddleware } from './paraglide/server.js'
+import { localizeRequest } from './features/i18n/request.server.ts'
 import { checkEnv } from './server/env.ts'
 
 export default {
@@ -20,7 +20,7 @@ export default {
         request,
         async () =>
           checkEnv(env) ??
-          (await localized(gateLocaleRequest(await gateAdminRequest(request, env)))),
+          (await localized(gateLocaleRequest(await gateAdminRequest(request, env)), env)),
       ),
     )
   },
@@ -53,6 +53,6 @@ async function logged(request: Request, handle: () => Promise<Response>): Promis
 }
 
 // 交给 TanStack Start 的仍是原始地址，语言前缀由路由器的 rewrite 去掉（与 SSR 后的客户端一致）
-function localized(request: Request): Promise<Response> {
-  return paraglideMiddleware(request, () => handler.fetch(request))
+function localized(request: Request, env: Cloudflare.Env): Promise<Response> {
+  return localizeRequest(request, env, () => handler.fetch(request))
 }

@@ -84,6 +84,7 @@ afterAll(() => client.end())
 
 import {
   expireWorkspaceCredits,
+  revokeGrant,
   revokePaymentCredits,
   revokeWorkspaceCredits,
 } from '../src/lifecycle.ts'
@@ -155,6 +156,28 @@ async function annualPayment() {
 }
 
 describe('credits lifecycle on PostgreSQL', () => {
+  it('revokes only the selected batch once and never restores held credits', async () => {
+    const batch = await grant(db, grantInput(10))
+    const reservation = await hold(db, holdInput(8))
+    const other = await grant(db, grantInput(7))
+    await expect(
+      revokeGrant(db, { workspaceId: otherWs, grantId: batch.id }),
+    ).rejects.toMatchObject({ code: 'WORKSPACE_RESOURCE_NOT_FOUND' })
+    const results = await Promise.all([
+      revokeGrant(db, { workspaceId: ws, grantId: batch.id }),
+      revokeGrant(db, { workspaceId: ws, grantId: batch.id }),
+    ])
+    expect(results.reduce((sum, r) => sum + r.canceled, 0)).toBe(2)
+    expect(await getCreditBalance(db, ws)).toEqual({ available: 7, held: 8, debt: 0 })
+    await invariant()
+    await release(db, { workspaceId: ws, holdId: reservation.id })
+    expect(await getCreditBalance(db, ws)).toEqual({ available: 7, held: 0, debt: 0 })
+    expect(
+      (await db.select().from(creditGrant).where(eq(creditGrant.id, other.id)))[0]?.remaining,
+    ).toBe(7)
+    await invariant()
+  })
+
   it('expires zero-remaining grants and appends only unreserved loss once', async () => {
     const full = await grant(db, grantInput(8))
     const reserved = await hold(db, holdInput(8))

@@ -60,6 +60,23 @@ export interface RevokePaymentCreditsInput {
   paymentId: string
 }
 
+/** 收回指定空间的单一批次；预扣分配仍由 capture / release 结算，不会复活。 */
+export async function revokeGrant(
+  db: CreditsExecutor,
+  input: { workspaceId: string; grantId: string },
+  tx?: CreditsTransaction,
+) {
+  return withCreditsTransaction(db, tx, async (tx) => {
+    await lockWorkspaceCredits(tx, input.workspaceId)
+    const [owned] = await tx
+      .select({ id: creditGrant.id })
+      .from(creditGrant)
+      .where(and(eq(creditGrant.workspaceId, input.workspaceId), eq(creditGrant.id, input.grantId)))
+    if (!owned) throw new CreditsError('WORKSPACE_RESOURCE_NOT_FOUND')
+    return cancelGrants(tx, input.workspaceId, 'revoked', eq(creditGrant.id, input.grantId))
+  })
+}
+
 /** Covers every linked monthly grant already present, without chasing consumed credits. */
 export async function revokePaymentCredits(
   db: CreditsExecutor,

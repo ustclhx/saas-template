@@ -250,6 +250,25 @@ describe('Waitlist', () => {
   })
 })
 
+describe('增长邮件收件人语言', () => {
+  it('已注册中文收件人的 waitlist 邀请和 newsletter 确认均以账号语言入队', async () => {
+    const address = email()
+    await db.insert(user).values({ id: newId(), name: '中文订阅者', email: address, locale: 'zh' })
+    await invite(address)
+    expect(messages.at(-1)).toMatchObject({
+      template: 'waitlist-invitation',
+      locale: 'zh',
+      to: address,
+    })
+    await subscribeNewsletter(ctx, address)
+    expect(messages.at(-1)).toMatchObject({
+      template: 'newsletter-confirmation',
+      locale: 'zh',
+      to: address,
+    })
+  })
+})
+
 describe('Newsletter', () => {
   it('excludes pending and unsubscribed addresses, requires fresh confirmation after resubscription, and accepts one-click POST', async () => {
     const address = email()

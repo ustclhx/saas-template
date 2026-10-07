@@ -1,5 +1,12 @@
+import { DataTable } from '@saas/ui'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
+import {
+  adminListPage,
+  adminListSearch,
+  filtersToSearch,
+  offsetOfPage,
+} from '../../../features/admin/list.ts'
 import {
   completeAdminRefund,
   getAdminRefunds,
@@ -9,9 +16,7 @@ import {
 import { adminMoney } from '../../../features/billing/admin-display.ts'
 
 export const Route = createFileRoute('/admin/billing/refunds')({
-  validateSearch: (search: Record<string, unknown>) => ({
-    offset: Math.min(100_000, Math.max(0, Number(search.offset) || 0)),
-  }),
+  validateSearch: (search: Record<string, unknown>) => adminListSearch(['workspaceId'])(search),
   loaderDeps: ({ search }) => search,
   loader: ({ deps }) => getAdminRefunds({ data: deps }),
   errorComponent: () => <p role="alert">Refund data is unavailable. Please reload.</p>,
@@ -19,7 +24,8 @@ export const Route = createFileRoute('/admin/billing/refunds')({
 })
 function Refunds() {
   const { rows, hasMore } = Route.useLoaderData()
-  const { offset } = Route.useSearch()
+  const search = Route.useSearch()
+  const navigate = Route.useNavigate()
   return (
     <section>
       <h2>Refund reviews</h2>
@@ -30,22 +36,21 @@ function Refunds() {
         Original and remaining credits include held or revoked credits in their difference; that
         difference is not consumed usage.
       </p>
-      {rows.length === 0 && <p>No refund requests.</p>}
-      {rows.map((row) => (
-        <Refund key={row.id} row={row} />
-      ))}
-      <nav aria-label="Refund pages">
-        {offset > 0 && (
-          <Link to="/admin/billing/refunds" search={{ offset: Math.max(0, offset - 50) }}>
-            Previous
-          </Link>
-        )}{' '}
-        {hasMore && offset < 100_000 && (
-          <Link to="/admin/billing/refunds" search={{ offset: Math.min(100_000, offset + 50) }}>
-            Next
-          </Link>
-        )}
-      </nav>
+      <DataTable
+        label="Refund requests"
+        rows={rows}
+        getRowId={(row) => row.id}
+        columns={[{ id: 'review', header: 'Refund review', cell: (row) => <Refund row={row} /> }]}
+        page={adminListPage(search.offset, { hasMore })}
+        filters={[{ id: 'workspaceId', label: 'Workspace ID' }]}
+        filterValues={{ workspaceId: search.workspaceId }}
+        onPageChange={(page) =>
+          void navigate({ search: { ...search, offset: offsetOfPage(page) } })
+        }
+        onFiltersChange={(values) =>
+          void navigate({ search: filtersToSearch(['workspaceId'], values) })
+        }
+      />
     </section>
   )
 }

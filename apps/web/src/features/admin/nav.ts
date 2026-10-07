@@ -11,7 +11,7 @@ export const ADMIN_NAV = linkOptions([
   {
     to: '/admin/billing',
     search: { offset: 0 },
-    label: ADMIN_COPY.nav.billing,
+    label: 'Payments',
     activeOptions: { exact: true, includeSearch: false },
   },
   {
@@ -39,6 +39,30 @@ export const ADMIN_NAV = linkOptions([
     activeOptions: { includeSearch: false },
   },
   { to: '/admin/settings', label: 'Settings' },
+  {
+    to: '/admin/credits',
+    search: { offset: 0 },
+    label: 'Credit adjustments',
+    activeOptions: { includeSearch: false },
+  },
+  {
+    to: '/admin/billing/subscriptions',
+    search: { offset: 0 },
+    label: 'Subscriptions',
+    activeOptions: { includeSearch: false },
+  },
+  {
+    to: '/admin/billing/purchases',
+    search: { offset: 0 },
+    label: 'One-time purchases',
+    activeOptions: { includeSearch: false },
+  },
+  {
+    to: '/admin/billing/webhooks',
+    search: { offset: 0 },
+    label: 'Webhook events',
+    activeOptions: { includeSearch: false },
+  },
   ...(templateConfig.features.waitlist
     ? [{ to: '/admin/waitlist' as const, search: { offset: 0 }, label: 'Waitlist' }]
     : []),

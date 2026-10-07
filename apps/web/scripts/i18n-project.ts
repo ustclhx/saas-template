@@ -6,6 +6,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { type CompilerOptions, compile, paraglideVitePlugin } from '@inlang/paraglide-js'
+import { EMAIL_LOCALES } from '@saas/email/queue'
 import type { Plugin } from 'vite'
 
 export interface I18nConfig {
@@ -73,7 +74,7 @@ export function paraglideOptions(
     strategy: ['url', 'baseLocale'],
     // 与路由器一致：去掉末尾的 `/`（否则 `/zh` 会被本地化为 `/zh/`，再被路由器 307 回来）
     trailingSlash: 'never',
-    routeStrategies: appAreaPrefixes.map((prefix) => ({
+    routeStrategies: [...appAreaPrefixes, '/_serverFn'].map((prefix) => ({
       match: `${prefix}/:path(.*)?`,
       strategy: ['cookie', 'baseLocale'],
     })),
@@ -129,6 +130,10 @@ export function i18nMessages({
   readonly i18n: I18nConfig
   readonly appAreaPrefixes: readonly string[]
 }): Plugin[] {
+  const unsupported = i18n.locales.filter(
+    (locale) => !(EMAIL_LOCALES as readonly string[]).includes(locale),
+  )
+  if (unsupported.length) throw new Error(`[i18n] 邮件模板缺少语言：${unsupported.join(', ')}`)
   writeInlangProject(i18n)
   const options = paraglideOptions(appAreaPrefixes)
   let reported = false
