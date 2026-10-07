@@ -1,23 +1,41 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { getPublicPricing } from '../features/billing/customer.functions.ts'
+import { getMarketingPricing } from '../features/marketing/pricing.functions.ts'
+import { PRICING_TTL_MS } from '../features/marketing/pricing-data.ts'
 
 export const Route = createFileRoute('/pricing')({
-  loader: () => getPublicPricing(),
+  loader: () => getMarketingPricing(),
   component: PricingPage,
   head: () => ({ meta: [{ title: 'Pricing' }] }),
 })
 function PricingPage() {
-  const catalog = Route.useLoaderData()
+  const initialCatalog = Route.useLoaderData()
+  const [catalog, setCatalog] = useState(initialCatalog)
   const [ready, setReady] = useState(false)
   const [provider, setProvider] = useState(
     catalog.providers.find((p) => p.available)?.id ?? catalog.providers[0]?.id ?? '',
   )
   useEffect(() => setReady(true), [])
+  useEffect(() => {
+    setCatalog(initialCatalog)
+    let active = true
+    const timer = window.setInterval(async () => {
+      try {
+        const refreshed = await getMarketingPricing()
+        if (active) setCatalog(refreshed)
+      } catch {
+        // 网络不可达时保留当前展示；结账入口始终重新读取服务端价格。
+      }
+    }, PRICING_TTL_MS)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [initialCatalog])
   return (
     <main className="mx-auto grid max-w-4xl gap-6 p-6">
       <h1 className="text-2xl font-semibold">Pricing</h1>
-      <p>Choose a subscription or buy extra credits. Plans shown here are template examples.</p>
+      <p>Choose a subscription or buy extra credits.</p>
       <label>
         Payment method{' '}
         <select

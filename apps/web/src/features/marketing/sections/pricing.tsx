@@ -9,32 +9,19 @@ import {
   cn,
 } from '@saas/ui'
 import { Link } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { m } from '../../../paraglide/messages.js'
 import { getLocale } from '../../../paraglide/runtime.js'
+import { getMarketingPricing } from '../pricing.functions.ts'
+import {
+  type BillingInterval,
+  marketingPlans,
+  PRICING_TTL_MS,
+  type PricingPlan,
+} from '../pricing-data.ts'
 import { Section } from './section.tsx'
 
-export type BillingInterval = 'month' | 'year'
-
-/**
- * 定价区块展示的套餐，字段对应 `plan` 与 `plan_price`（金额为最小货币单位）。
- * 数据由调用方传入：当前为静态占位数据（pricing-placeholder.ts），tasks.md 3.2 接入真实套餐数据。
- */
-export interface PricingPlan {
-  readonly key: string
-  readonly name: string
-  readonly type: 'subscription' | 'credit_pack'
-  readonly credits: number
-  readonly creditExpiryDays: number | null
-  readonly maxSeats: number | null
-  readonly storageGb: number | null
-  readonly highlighted?: boolean
-  readonly prices: readonly {
-    readonly interval: BillingInterval | null
-    readonly amount: number
-    readonly currency: string
-  }[]
-}
+export type { BillingInterval, PricingPlan } from '../pricing-data.ts'
 
 export function formatPrice(amount: number, currency: string, locale: string): string {
   return new Intl.NumberFormat(locale, {
@@ -44,8 +31,26 @@ export function formatPrice(amount: number, currency: string, locale: string): s
   }).format(amount / 100)
 }
 
-export function Pricing({ plans }: { plans: readonly PricingPlan[] }) {
+export function Pricing({ plans: initialPlans }: { plans: readonly PricingPlan[] }) {
+  const [plans, setPlans] = useState(initialPlans)
   const [interval, setInterval] = useState<BillingInterval>('month')
+  useEffect(() => {
+    let active = true
+    const refresh = async () => {
+      try {
+        const catalog = await getMarketingPricing()
+        if (active) setPlans(marketingPlans(catalog))
+      } catch {
+        // 网络不可达时保留首屏快照。
+      }
+    }
+    void refresh()
+    const timer = window.setInterval(refresh, PRICING_TTL_MS)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [])
   const hasYearly = plans.some((plan) => plan.prices.some((price) => price.interval === 'year'))
   return (
     <Section
@@ -115,7 +120,11 @@ function PlanCard({ plan, interval }: { plan: PricingPlan; interval: BillingInte
       <CardContent className="grid gap-4">
         <p>
           <span className="font-semibold text-3xl">
-            {formatPrice(price?.amount ?? 0, price?.currency ?? 'usd', locale)}
+            {price
+              ? formatPrice(price.amount, price.currency, locale)
+              : plan.key === 'free'
+                ? formatPrice(0, 'usd', locale)
+                : '—'}
           </span>{' '}
           {price && <span className="text-muted-foreground text-sm">{suffix}</span>}
         </p>
