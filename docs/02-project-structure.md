@@ -21,6 +21,7 @@ saas-template/
 │  │  │  └─ styles/
 │  │  ├─ content/                 # MDX：博客、文档、法律页
 │  │  ├─ messages/                # Paraglide 文案，按功能拆分：<locale>/<feature>.json
+│  │  ├─ .dev.vars.example       # 本地认证模板；支付配置使用根目录 .env.example
 │  │  └─ wrangler.jsonc
 │  └─ jobs/                       # 纯 Worker：Workflows / Queue 消费者 / Cron
 │     ├─ src/
@@ -45,6 +46,8 @@ saas-template/
 │  ├─ postgres/                   # VPS 上的 docker-compose（PG + cloudflared + WAL-G）
 │  └─ local/                      # 本地开发 docker-compose
 ├─ docs/
+├─ .env.example                 # 本地支付配置模板（只含键与占位符）
+├─ .env.local                   # 本地真值，已 gitignore
 ├─ biome.json  package.json  pnpm-workspace.yaml  turbo.json
 └─ CLAUDE.md / AGENTS.md          # AI 编码助手约定
 ```
@@ -63,9 +66,11 @@ saas-template/
 
 | 层 | 位置 | 内容 | 修改方式 |
 |---|---|---|---|
-| 密钥 | Wrangler secrets / `.dev.vars` | API Key、Webhook secret、Auth secret | `wrangler secret put` |
+| 密钥 | 线上 Wrangler secrets；本地支付 `.env.local`、认证 app `.dev.vars` | API Key、Webhook secret、Auth secret | 本地按模板填写；线上 `wrangler secret put` |
 | 运行时设置 | 数据库 `setting` 表（KV 缓存） | 可在后台修改的项：模型定价、公告、注册开关 | 管理后台 |
 | 模板配置 | `template.config.ts`（代码） | 功能开关与产品形态 | 改代码、重新部署 |
+
+本地支付统一使用仓库根目录 `.env.example` / `.env.local`；Web、Jobs 与 billing seed/sync 共用 `STRIPE_SECRET_KEY`、`STRIPE_WEBHOOK_SECRET`、`PAYPAL_CLIENT_ID`、`PAYPAL_CLIENT_SECRET`、`PAYPAL_WEBHOOK_ID`，进程环境优先。本地 dev 入口只把这五项同步到对应 app 已忽略的 `.dev.vars` 管理区块，保留认证配置；其他认证/未来 AI 密钥不由这套支付入口加载。`.env.worktree` 继续负责 Orca 数据库与端口，不写支付密钥。线上不读取本机 `.env.local`，仍需分别配置 Worker secrets。步骤与本地预览构建边界见 [07 §4](./07-infrastructure.md#4-环境变量与绑定清单)。
 
 归属原则：泄露有风险的放密钥；需要不发版就能改的放运行时设置；决定代码路径和产品形态的（是否多租户、启用哪些登录方式）放模板配置。运行时设置在代码里必须有默认值，`setting` 表中缺失时回退到默认值，而不是去读另外两层。
 

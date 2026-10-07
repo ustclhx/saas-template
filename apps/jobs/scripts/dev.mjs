@@ -4,6 +4,9 @@
 // --test-scheduled 暴露 /__scheduled?cron=...，用于手动触发 Cron。额外参数原样传给 wrangler。
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
+import { syncLocalPaymentEnv } from '../../../scripts/local-payment-env.mjs'
+
+syncLocalPaymentEnv(new URL('../', import.meta.url))
 
 const file = new URL('../../../.env.worktree', import.meta.url)
 const worktreeEnv = existsSync(file)

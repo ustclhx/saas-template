@@ -18,6 +18,10 @@
 | [08-roadmap.md](./08-roadmap.md) | 分阶段开发计划与验收标准、待决事项 |
 | [09-parallel-plan.md](./09-parallel-plan.md) | 用 Orca 并行开发：worktree 隔离、共享文件规则、并行波次与合并流程 |
 
+## 本地配置入口
+
+支付配置使用根目录 [.env.example](../.env.example) / `.env.local`：前者提交占位符，后者填写真值且被 Git 忽略。Web、Jobs 和 billing seed/sync 共用五项支付变量名，配置步骤见 [支付联通 runbook](./runbooks/p2-payment-integration.md)。认证仍使用 `apps/web/.dev.vars.example` / app `.dev.vars`；Orca 数据库与端口使用生成的 `.env.worktree`。线上继续用 Cloudflare secrets，不自动上传本地文件。
+
 ## 已确定的关键决策
 
 | # | 决策 | 理由 |
