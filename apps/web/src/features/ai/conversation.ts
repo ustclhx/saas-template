@@ -1,5 +1,6 @@
 import type { UIMessage } from 'ai'
 import { z } from 'zod'
+import { m } from '../../paraglide/messages.js'
 import type { ChatRequest } from './chat.ts'
 
 /**
@@ -93,23 +94,23 @@ export function streamingMessageId(messages: readonly ChatUIMessage[]): string |
   return last?.role === 'assistant' ? last.metadata?.messageId : undefined
 }
 
-const CHAT_ERRORS: Record<string, string> = {
-  INSUFFICIENT_CREDITS: 'Not enough credits for this message. Top up your credits to continue.',
-  CREDIT_DEBT: 'Your workspace has unpaid credit debt. Settle it on the Billing page to continue.',
-  RATE_LIMITED: 'Too many messages. Please wait a moment and try again.',
-  UPGRADE_REQUIRED: 'This model is not included in your plan. Upgrade to use it.',
-  MODEL_UNAVAILABLE: 'This model is not available. Choose another model.',
-  AI_PROVIDER_NOT_CONFIGURED: 'AI replies are not set up on this server yet. Please try later.',
-  INPUT_TOO_LONG: 'This message is too long for the selected model.',
-  WORKSPACE_READ_ONLY: 'This workspace is read-only.',
-  NOT_FOUND: 'This conversation is no longer available.',
-  INVALID_REQUEST: 'This message could not be sent. Check it and try again.',
+const CHAT_ERRORS: Record<string, () => string> = {
+  INSUFFICIENT_CREDITS: () => m.chat_error_insufficient_credits(),
+  CREDIT_DEBT: () => m.chat_error_credit_debt(),
+  RATE_LIMITED: () => m.chat_error_rate_limited(),
+  UPGRADE_REQUIRED: () => m.chat_error_upgrade_required(),
+  MODEL_UNAVAILABLE: () => m.chat_error_model_unavailable(),
+  AI_PROVIDER_NOT_CONFIGURED: () => m.chat_error_ai_provider_not_configured(),
+  INPUT_TOO_LONG: () => m.chat_error_input_too_long(),
+  WORKSPACE_READ_ONLY: () => m.chat_error_workspace_read_only(),
+  NOT_FOUND: () => m.chat_error_not_found(),
+  INVALID_REQUEST: () => m.chat_error_invalid_request(),
 }
 
 export const CHAT_ERROR_FALLBACK = 'Something went wrong. Please try again.'
 
 export function chatErrorMessage(code: string | undefined): string {
-  return (code && CHAT_ERRORS[code]) || CHAT_ERROR_FALLBACK
+  return (code && CHAT_ERRORS[code]?.()) || m.chat_error_unknown()
 }
 
 const errorBody = z.object({ error: z.object({ code: z.string() }) })

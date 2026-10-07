@@ -8,6 +8,7 @@ import {
 } from '../../../features/billing/customer.functions.ts'
 import { getCustomerRefunds } from '../../../features/billing/refund.functions.ts'
 import { RefundSection } from '../../../features/billing/refund-section.tsx'
+import { m } from '../../../paraglide/messages.js'
 
 export const Route = createFileRoute('/app/$slug/billing')({
   loader: async ({ params }) => {
@@ -295,11 +296,11 @@ function BillingPage() {
   )
 }
 function errorMessage(code: string) {
-  if (code === 'WORKSPACE_READ_ONLY') return 'This workspace is read-only.'
-  if (code === 'BILLING_OWNER_REQUIRED') return 'Only the workspace owner can manage billing.'
+  if (code === 'WORKSPACE_READ_ONLY') return m.billing_error_readonly()
+  if (code === 'BILLING_OWNER_REQUIRED') return m.billing_error_owner()
   if (code === 'BILLING_PROVIDER_DISABLED' || code === 'BILLING_PRICE_UNAVAILABLE')
-    return 'This payment option is unavailable.'
+    return m.billing_error_unavailable()
   if (code === 'BILLING_SUBSCRIPTION_CHANGED' || code === 'BILLING_SWITCH_CONFIRMATION_REQUIRED')
-    return 'Your subscription changed. Reload and confirm your choice.'
-  return 'Unable to update billing. Please try again.'
+    return m.billing_error_changed()
+  return m.billing_error_unknown()
 }

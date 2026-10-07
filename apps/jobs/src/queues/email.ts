@@ -9,6 +9,7 @@ import {
 } from '@saas/email'
 import { type EmailQueueMessage, parseEmailQueueMessage } from '@saas/email/queue'
 import { log, newRequestId, withLogContext } from '@saas/shared/log'
+import templateConfig from '../../../../template.config.ts'
 
 /**
  * EMAIL_QUEUE 消费者（tasks.md 3.2，specs/user-auth「认证邮件异步发送」）：
@@ -73,7 +74,11 @@ function render(message: EmailQueueMessage): Promise<RenderedEmail> {
   return renderEmail(
     message.template as EmailTemplateName,
     message.props as EmailTemplateProps[EmailTemplateName],
-    { locale: message.locale, appName: message.appName },
+    {
+      locale: message.locale,
+      appName: message.appName,
+      defaultLocale: templateConfig.i18n.defaultLocale,
+    },
   )
 }
 

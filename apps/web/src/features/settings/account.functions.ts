@@ -1,5 +1,4 @@
 import { env } from 'cloudflare:workers'
-import { requireFreshSession } from '@saas/auth'
 import { listDeletionRefundReminders } from '@saas/billing'
 import { createDb } from '@saas/db'
 import { AppError } from '@saas/shared'
@@ -8,6 +7,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { getAuth } from '../../server/auth.ts'
 import { templateConfig } from '../../server/template-config.ts'
+import { readRequestSession } from '../i18n/session.server.ts'
 import { loadAccount } from './account.ts'
 
 /** 未登录时跳转的登录页（/login 由认证页面提供，登录后回到 /account） */
@@ -21,7 +21,7 @@ export const getAccount = createServerFn({ method: 'GET' }).handler(async () => 
   const db = createDb(env.HYPERDRIVE)
   const auth = getAuth(env, db)
   try {
-    const { user } = await requireFreshSession({ auth, db, headers: getRequest().headers })
+    const { user } = await readRequestSession({ auth, db, headers: getRequest().headers })
     const reminders = await listDeletionRefundReminders(
       { db, actorUserId: user.id, workspaceIds: [user.id] },
       templateConfig.billing.refundWindowDays,

@@ -1,6 +1,7 @@
 import { Button, Input, Label } from '@saas/ui'
 import { Link, useNavigate, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
+import { m } from '../../paraglide/messages.js'
 import { FormAlert } from '../auth/auth-layout.tsx'
 import { HydratedControls } from '../workspace/components.tsx'
 import { CONVERSATION_TITLE_LENGTH, conversationTitle } from './conversation.ts'
@@ -14,12 +15,11 @@ import {
 type ConversationListPage = Awaited<ReturnType<typeof listConversations>>
 type ConversationItem = ConversationListPage['active'][number]
 
-const LIST_ERRORS: Record<string, string> = {
-  WORKSPACE_READ_ONLY: 'This workspace is read-only.',
-  NOT_FOUND: 'This conversation is no longer available.',
+const LIST_ERRORS: Record<string, () => string> = {
+  WORKSPACE_READ_ONLY: () => m.conversation_error_workspace_read_only(),
+  NOT_FOUND: () => m.conversation_error_not_found(),
 }
-const listError = (code: string) =>
-  LIST_ERRORS[code] ?? 'The conversation could not be updated. Please try again.'
+const listError = (code: string) => LIST_ERRORS[code]?.() ?? m.conversation_error_unknown()
 
 /** 对话列表（tasks.md 3.1）：新建、重命名、归档 / 取消归档；只列出当前用户自己的对话 */
 export function ConversationList({ slug, page }: { slug: string; page: ConversationListPage }) {

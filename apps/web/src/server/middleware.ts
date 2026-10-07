@@ -12,6 +12,7 @@ import { createMiddleware } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import { assertRealSession } from '../features/admin/impersonation.ts'
+import { readRequestSession } from '../features/i18n/session.server.ts'
 import { getAuth } from './auth.ts'
 import { templateConfig } from './template-config.ts'
 import { resolveDefaultWorkspace, resolveWorkspaceBySlug } from './workspace-context.ts'
@@ -36,7 +37,7 @@ export const withSession = createMiddleware({ type: 'function' }).server(async (
   const db = createDb(env.HYPERDRIVE)
   let result: FreshSession
   try {
-    result = await requireFreshSession({
+    result = await readRequestSession({
       auth: getAuth(env, db),
       db,
       headers: getRequest().headers,
@@ -53,8 +54,14 @@ export const withSession = createMiddleware({ type: 'function' }).server(async (
 export const withRealSession = createMiddleware({ type: 'function' })
   .middleware([withSession])
   .server(async ({ context, next }) => {
-    assertRealSession(context.session)
-    return next()
+    // 敏感入口独立实时校验，不复用语言 / 只读页面缓存。
+    const fresh = await requireFreshSession({
+      auth: getAuth(env, context.db),
+      db: context.db,
+      headers: getRequest().headers,
+    })
+    assertRealSession(fresh.session)
+    return next({ context: fresh })
   })
 
 /** server function 的输入来自客户端，按形状校验；是否有权访问由下方查库判断 */
