@@ -22,6 +22,7 @@ import { verificationReservation } from './verification-reservation.ts'
 import { workspaceLifecyclePlugin } from './workspace-lifecycle.ts'
 
 export interface CreateAuthDeps {
+  readonly beforeUserCreate?: (user: { readonly email: string }, headers?: Headers) => Promise<void>
   readonly deletionSteps?: readonly DeletionStep[]
   /** 模板配置（`template.config.ts`），决定启用哪些登录方式与插件 */
   readonly config: TemplateConfig
@@ -69,6 +70,14 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
       ...workspaceHooks,
       user: {
         create: {
+          ...(deps.beforeUserCreate && {
+            before: async (
+              user: { email: string },
+              context: { headers?: Headers | undefined; request?: Request | undefined } | null,
+            ) => {
+              await deps.beforeUserCreate?.(user, context?.request?.headers ?? context?.headers)
+            },
+          }),
           after: async (user) => {
             await workspaceHooks.user.create.after(user)
             // Better Auth defers create.after until registration commits. Keep the

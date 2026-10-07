@@ -17,6 +17,13 @@ const minutes = z.number().int().positive()
 
 /** 各模板 props 的运行时校验，与 `EmailTemplateProps` 保持一致（类型不一致时编译报错）。 */
 const templatePropsSchemas = {
+  'waitlist-invitation': z.object({ url }),
+  'newsletter-confirmation': z.object({ url }),
+  newsletter: z.object({
+    subject: z.string().min(1).max(200),
+    body: z.string().min(1).max(50000),
+    unsubscribeUrl: url,
+  }),
   'refund-update': z.object({
     status: z.enum(['approved', 'rejected', 'refunded']),
     amount: z.number().int().positive().nullable(),

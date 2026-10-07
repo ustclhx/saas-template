@@ -2,6 +2,10 @@ import type { EmailLocale } from './locale.ts'
 
 /** 各模板的输入（必须可 JSON 序列化：3.2 会把它放进 EMAIL_QUEUE 消息）。 */
 export interface EmailTemplateProps {
+  'waitlist-invitation': { readonly url: string }
+  'newsletter-confirmation': { readonly url: string }
+  newsletter: { readonly subject: string; readonly body: string; readonly unsubscribeUrl: string }
+
   'refund-update': {
     readonly status: 'approved' | 'rejected' | 'refunded'
     readonly amount: number | null
@@ -68,6 +72,41 @@ const minutesEn = (n: number) => (n === 1 ? '1 minute' : `${n} minutes`)
 const daysEn = (n: number) => (n === 1 ? '1 day' : `${n} days`)
 
 const en: CopyBuilders = {
+  'waitlist-invitation': ({ url }, { appName, recipientName }) => ({
+    subject: `You are invited to ${appName}`,
+    preview: 'Your registration invitation is ready.',
+    heading: 'You are invited',
+    greeting: greetingEn(recipientName),
+    paragraphs: [
+      'Use this link to create your account, even while registration is closed. This invitation expires in 7 days.',
+    ],
+    action: { label: 'Create account', url },
+    linkHint: 'Copy this link if the button does not work:',
+    footer: 'If you did not join the waitlist, ignore this email.',
+  }),
+  'newsletter-confirmation': ({ url }, { appName, recipientName }) => ({
+    subject: `Confirm your ${appName} subscription`,
+    preview: 'Confirm to receive our newsletter.',
+    heading: 'Confirm your subscription',
+    greeting: greetingEn(recipientName),
+    paragraphs: [
+      'Click below to subscribe. You will only receive newsletters after confirming. This link expires in 24 hours.',
+    ],
+    action: { label: 'Confirm subscription', url },
+    linkHint: 'Copy this link if the button does not work:',
+    footer: 'If you did not subscribe, ignore this email.',
+  }),
+  newsletter: ({ subject, body, unsubscribeUrl }, { recipientName }) => ({
+    subject,
+    preview: subject,
+    heading: subject,
+    greeting: greetingEn(recipientName),
+    paragraphs: [body],
+    action: { label: 'Unsubscribe', url: unsubscribeUrl },
+    linkHint: 'You can unsubscribe with this link:',
+    footer: 'You received this email because you confirmed your subscription.',
+  }),
+
   'refund-update': (
     { status, amount, currency, note, supportEmail },
     { appName, recipientName },
@@ -166,6 +205,37 @@ const en: CopyBuilders = {
 }
 
 const zh: CopyBuilders = {
+  'waitlist-invitation': ({ url }, { appName, recipientName }) => ({
+    subject: `邀请你注册 ${appName}`,
+    preview: '你的注册邀请已就绪。',
+    heading: '注册邀请',
+    greeting: greetingZh(recipientName),
+    paragraphs: ['即使注册尚未开放，你也可以通过此链接创建账号。邀请 7 天内有效。'],
+    action: { label: '创建账号', url },
+    linkHint: '如果按钮无法点击，请复制此链接：',
+    footer: '如果你没有加入等候名单，请忽略这封邮件。',
+  }),
+  'newsletter-confirmation': ({ url }, { appName, recipientName }) => ({
+    subject: `确认订阅 ${appName} 通讯`,
+    preview: '确认后才能收到邮件通讯。',
+    heading: '确认订阅',
+    greeting: greetingZh(recipientName),
+    paragraphs: ['请点击下方按钮确认订阅。确认后才会收到通讯邮件。链接 24 小时内有效。'],
+    action: { label: '确认订阅', url },
+    linkHint: '如果按钮无法点击，请复制此链接：',
+    footer: '如果你没有订阅，请忽略这封邮件。',
+  }),
+  newsletter: ({ subject, body, unsubscribeUrl }, { recipientName }) => ({
+    subject,
+    preview: subject,
+    heading: subject,
+    greeting: greetingZh(recipientName),
+    paragraphs: [body],
+    action: { label: '退订', url: unsubscribeUrl },
+    linkHint: '你可以通过此链接退订：',
+    footer: '你收到此邮件是因为已确认订阅。',
+  }),
+
   'refund-update': (
     { status, amount, currency, note, supportEmail },
     { appName, recipientName },

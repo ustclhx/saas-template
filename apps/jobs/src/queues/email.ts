@@ -61,6 +61,7 @@ function createDeliver(transport: EmailTransportConfig): Deliver {
       subject: rendered.subject,
       html: rendered.html,
       text: rendered.text,
+      ...(rendered.headers ? { headers: rendered.headers } : {}),
       idempotencyKey: message.idempotencyKey,
     })
     return result.id

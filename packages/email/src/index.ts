@@ -18,6 +18,7 @@ export {
   type ResendSenderOptions,
 } from './resend.ts'
 export {
+  type EmailHeaders,
   type EmailMessage,
   EmailSendError,
   type EmailSender,

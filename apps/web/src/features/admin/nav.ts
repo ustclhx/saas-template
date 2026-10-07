@@ -1,4 +1,5 @@
 import { linkOptions } from '@tanstack/react-router'
+import { templateConfig } from '../../server/template-config.ts'
 import { ADMIN_COPY } from './copy.ts'
 
 /**
@@ -20,4 +21,7 @@ export const ADMIN_NAV = linkOptions([
     activeOptions: { includeSearch: false },
   },
   { to: '/admin/models', label: ADMIN_COPY.nav.models },
+  ...(templateConfig.features.waitlist
+    ? [{ to: '/admin/waitlist' as const, search: { offset: 0 }, label: 'Waitlist' }]
+    : []),
 ])

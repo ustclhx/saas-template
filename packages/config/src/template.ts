@@ -79,6 +79,7 @@ export interface TemplateConfig<L extends string = string> {
     readonly blog: boolean
     readonly docs: boolean
     readonly waitlist: boolean
+    readonly newsletter: boolean
   }
 }
 
@@ -131,7 +132,7 @@ export const templateConfigDefaults = {
     video: true,
     defaultPricingMode: { text: 'token', image: 'per_call', video: 'per_call' },
   },
-  features: { publicApi: false, blog: true, docs: false, waitlist: false },
+  features: { publicApi: false, blog: true, docs: false, waitlist: false, newsletter: false },
 } as const satisfies Omit<TemplateConfig<DefaultLocale>, 'app'>
 
 /** 合并用户配置与默认值；数组整体替换，不与默认值合并。 */
