@@ -5,7 +5,7 @@
 - [x] 1.1 请求 ID 生成与贯穿（日志上下文、队列消息、Workflow 参数），结构化 JSON 日志，验证测试：一次结账请求与其后续队列消息的日志带同一请求 ID
 - [ ] 1.2 接入 `@sentry/cloudflare`（web + jobs）、release 与 source map 上传（CI），验证在 staging 触发一个测试异常后 Sentry 中出现可读堆栈
 - [x] 1.3 统一脱敏过滤器（日志与 Sentry），验证单元测试：带 Authorization 头与对话内容的错误事件中这些字段被移除
-- [ ] 1.4 接入 Cloudflare Web Analytics，以及 `features.analytics` 控制的可选 PostHog 接入点（默认关闭），验证默认配置下页面不加载 PostHog 脚本
+- [x] 1.4 接入 Cloudflare Web Analytics，以及 `features.analytics` 控制的可选 PostHog 接入点（默认关闭），验证默认配置下页面不加载 PostHog 脚本
 
 ## 2. 通知
 

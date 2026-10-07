@@ -1,3 +1,4 @@
+import { withLogContext } from '@saas/shared/log'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { checkEnv } from './env.ts'
 
@@ -36,7 +37,9 @@ describe('checkEnv（请求入口的环境校验）', () => {
   it('缺少必需绑定时返回 500，日志只含变量名', async () => {
     const error = captureErrors()
     const { HYPERDRIVE: _, ...env } = completeEnv()
-    const response = checkEnv({ ...env, OTHER_SECRET: SECRET })
+    const response = withLogContext({ requestId: 'env-request' }, () =>
+      checkEnv({ ...env, OTHER_SECRET: SECRET }),
+    )
     expect(response?.status).toBe(500)
     const body = await response?.text()
     expect(body).toBe('Internal Server Error')
@@ -44,7 +47,9 @@ describe('checkEnv（请求入口的环境校验）', () => {
     expect(error).toHaveBeenCalledTimes(1)
     const logged = error.mock.calls.flat().join(' ')
     expect(JSON.parse(logged)).toEqual({
+      level: 'error',
       event: 'env.invalid',
+      requestId: 'env-request',
       missing: ['HYPERDRIVE'],
       invalid: [],
     })
@@ -61,6 +66,7 @@ describe('checkEnv（请求入口的环境校验）', () => {
     expect(response?.status).toBe(500)
     const logged = error.mock.calls.flat().join(' ')
     expect(JSON.parse(logged)).toEqual({
+      level: 'error',
       event: 'env.invalid',
       missing: [],
       invalid: ['HYPERDRIVE'],
@@ -74,6 +80,7 @@ describe('checkEnv（请求入口的环境校验）', () => {
     const response = checkEnv({ ...env, EMAIL_QUEUE: {} })
     expect(response?.status).toBe(500)
     expect(JSON.parse(error.mock.calls.flat().join(' '))).toEqual({
+      level: 'error',
       event: 'env.invalid',
       missing: ['AI_MEDIA_WORKFLOW'],
       invalid: ['EMAIL_QUEUE'],
@@ -95,6 +102,7 @@ describe('checkEnv（请求入口的环境校验）', () => {
     expect(response?.status).toBe(500)
     const logged = error.mock.calls.flat().join(' ')
     expect(JSON.parse(logged)).toEqual({
+      level: 'error',
       event: 'env.invalid',
       missing: [
         'BETTER_AUTH_SECRET',
