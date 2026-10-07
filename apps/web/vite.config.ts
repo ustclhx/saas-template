@@ -8,6 +8,7 @@ import { defineConfig, loadEnv } from 'vite'
 import templateConfig from '../../template.config.ts'
 import { i18nMessages } from './scripts/i18n-project.ts'
 import { prerenderEnvFallback } from './scripts/prerender-env.ts'
+import { pricingSnapshotPlugin } from './scripts/pricing-snapshot.ts'
 import { APP_AREA_PREFIXES } from './src/features/i18n/app-area.ts'
 import { isPrerenderedPath, prerenderEntryPages } from './src/features/marketing/prerender.ts'
 
@@ -46,6 +47,9 @@ export default defineConfig(({ command }) => ({
     }),
     // 没有 .dev.vars 时（CI）预渲染用的 preview 改用 .dev.vars.example 的假值通过启动校验
     prerenderEnvFallback(),
+    pricingSnapshotPlugin(
+      process.env.CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_CACHED,
+    ),
     tailwindcss(),
     // 编译 messages/ 下的文案到 src/paraglide（已 gitignore），语言列表取自模板配置
     i18nMessages({ i18n, appAreaPrefixes: APP_AREA_PREFIXES }),
