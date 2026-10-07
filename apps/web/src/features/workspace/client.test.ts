@@ -1,8 +1,13 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
+import { baseLocale, overwriteGetLocale } from '../../paraglide/runtime.js'
 import { activateWorkspace, workspaceAction } from './client.ts'
 
-afterEach(() => vi.unstubAllGlobals())
+beforeEach(() => overwriteGetLocale(() => 'en'))
+afterEach(() => {
+  vi.unstubAllGlobals()
+  overwriteGetLocale(() => baseLocale)
+})
 
 describe('workspace actions', () => {
   it('renders the business error code instead of exposing backend text', async () => {
