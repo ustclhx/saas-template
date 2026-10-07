@@ -3,6 +3,7 @@
  * 错误码来自 Better Auth（BASE_ERROR_CODES 与插件）以及本项目的 @saas/auth（protection.ts、fresh-session.ts）。
  */
 export const AUTH_ERROR_MESSAGES = {
+  SIGNUP_DISABLED: 'Registration is closed. Use the invitation link sent to your email.',
   RATE_LIMITED: 'Too many attempts. Please wait a minute and try again.',
   TURNSTILE_FAILED: 'Human verification failed. Please complete the check and try again.',
   TURNSTILE_PENDING: 'Please complete the human verification first.',

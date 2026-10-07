@@ -8,6 +8,7 @@ import {
   type EmailTemplateName,
   type EmailTemplateProps,
 } from './messages.ts'
+import type { EmailHeaders } from './sender.ts'
 
 export interface RenderContext {
   /** 收件人的 `user.locale`；邀请未注册用户时可传邀请人的语言或不传 */
@@ -18,6 +19,7 @@ export interface RenderContext {
 }
 
 export interface RenderedEmail {
+  readonly headers?: EmailHeaders
   readonly locale: EmailLocale
   readonly subject: string
   readonly html: string
@@ -44,7 +46,14 @@ export async function renderEmail<N extends EmailTemplateName>(
     render(element),
     render(element, { plainText: true, htmlToTextOptions: { selectors: plainTextHeadings } }),
   ])
-  return { locale, subject: copy.subject, html, text }
+  const headers: EmailHeaders | undefined =
+    template === 'newsletter'
+      ? {
+          'List-Unsubscribe': `<${(props as EmailTemplateProps['newsletter']).unsubscribeUrl}>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        }
+      : undefined
+  return { locale, subject: copy.subject, html, text, ...(headers ? { headers } : {}) }
 }
 
 // html-to-text 默认把标题转成大写，会改写空间名等用户输入

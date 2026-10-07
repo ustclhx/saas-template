@@ -25,12 +25,21 @@ export function createResendSender(options: ResendSenderOptions): EmailSender {
   return {
     async send(message: EmailMessage): Promise<SendResult> {
       const replyTo = message.replyTo ?? options.replyTo
+      const mailHeaders: Record<string, string> = {}
+      for (const name of ['List-Unsubscribe', 'List-Unsubscribe-Post'] as const) {
+        const value = message.headers?.[name]
+        if (value !== undefined) {
+          if (/[\r\n]/.test(value)) throw new TypeError('Invalid email header')
+          mailHeaders[name] = value
+        }
+      }
       const body = {
         from: options.from,
         to: typeof message.to === 'string' ? [message.to] : [...message.to],
         subject: message.subject,
         html: message.html,
         text: message.text,
+        ...(Object.keys(mailHeaders).length ? { headers: mailHeaders } : {}),
         ...(replyTo === undefined ? {} : { reply_to: replyTo }),
       }
       const headers: Record<string, string> = {
