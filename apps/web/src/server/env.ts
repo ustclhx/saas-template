@@ -1,5 +1,6 @@
 import { parseAuthEnv } from '@saas/auth'
 import { EnvValidationError, envSchema, loadEnv } from '@saas/config'
+import { log } from '@saas/shared/log'
 import { z } from 'zod'
 import { templateConfig } from './template-config.ts'
 
@@ -61,9 +62,7 @@ export function checkEnv(env: unknown): Response | null {
   if (typeof env === 'object' && env !== null && validated.has(env)) return null
   const error = validate(env)
   if (error) {
-    console.error(
-      JSON.stringify({ event: 'env.invalid', missing: error.missing, invalid: error.invalid }),
-    )
+    log.error('env.invalid', { missing: error.missing, invalid: error.invalid })
     return new Response('Internal Server Error', {
       status: 500,
       headers: { 'content-type': 'text/plain; charset=utf-8' },
