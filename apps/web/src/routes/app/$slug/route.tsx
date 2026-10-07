@@ -1,4 +1,5 @@
 import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
+import { NotificationCenter } from '../../../features/notifications/center.tsx'
 import { WorkspaceSwitcher } from '../../../features/workspace/components.tsx'
 import { getWorkspacePage } from '../../../features/workspace/workspace.functions.ts'
 import { m } from '../../../paraglide/messages.js'
@@ -38,6 +39,7 @@ function WorkspaceLayout() {
         </p>
         {page.readOnly ? <p role="status">{m.app_readonly()}</p> : null}
         <WorkspaceSwitcher page={page} />
+        <NotificationCenter key={page.workspace.slug} slug={page.workspace.slug} />
         <nav className="flex gap-4">
           {templateConfig.features.publicApi && (page.role === 'owner' || page.role === 'admin') ? (
             <Link

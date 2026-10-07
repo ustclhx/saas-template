@@ -5,6 +5,7 @@ export {
   readLastCronAt,
   recordLastCronAt,
 } from './heartbeat.ts'
+export { notificationLink, writeNotification } from './notifications.ts'
 export * from './schema/index.ts'
 export {
   NOT_FOUND_CODE,

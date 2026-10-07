@@ -33,7 +33,7 @@ export async function writeRuntimeSettings(
   { tx, audit }: AdminActionScope,
   input: RuntimeSettingsInput,
 ) {
-  const values: SettingValues = {
+  const values: Pick<SettingValues, (typeof RUNTIME_SETTING_KEYS)[number]> = {
     'auth.signupEnabled': input.signupEnabled,
     'site.announcement': input.announcement,
     'billing.signupBonusDomainBlacklist': input.signupBonusDomainBlacklist,

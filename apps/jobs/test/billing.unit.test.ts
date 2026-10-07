@@ -206,3 +206,26 @@ it('missing payment credentials keep both providers unavailable without remote r
   ])
   expect(remote).not.toHaveBeenCalled()
 })
+
+it('enqueues reconciliation failures after the existing durable audit and preserves cron failure reporting', async () => {
+  const send = vi.fn().mockRejectedValue(new Error('queue offline'))
+  const workspaceId = '93f577ac-e28b-4ca3-9768-05d4e2aa5649'
+  mocks.credits.mockImplementationOnce(async (_db, { alert }) => {
+    await alert({
+      job: 'credit_reconciliation',
+      workspaceId,
+      targetId: workspaceId,
+      error: 'private',
+    })
+    return { processed: 0, failures: [{ workspaceId }] }
+  })
+  await expect(
+    runBillingSchedule(BILLING_DAILY_CRON, { ...env, EVENTS_QUEUE: { send } }),
+  ).rejects.toThrow('credit_reconciliation (1)')
+  expect(send.mock.calls[0]?.[0]).toMatchObject({
+    v: 1,
+    operations: [{ event: 'reconciliation.failed', workspaceId }],
+  })
+  expect(JSON.stringify(send.mock.calls)).not.toContain('private')
+  expect(mocks.cleanup).toHaveBeenCalledOnce()
+})
