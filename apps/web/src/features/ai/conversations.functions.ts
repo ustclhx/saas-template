@@ -1,5 +1,6 @@
 import { aiConversation, aiMessage, type Database, scoped } from '@saas/db'
 import { AppError } from '@saas/shared'
+import { log } from '@saas/shared/log'
 import { notFound } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { and, asc, desc, eq, inArray, type SQL } from 'drizzle-orm'
@@ -36,7 +37,7 @@ async function mutation<T>(
       })
     return { ok: true, result: await action() }
   } catch (error) {
-    if (!(error instanceof AppError)) console.error(error)
+    if (!(error instanceof AppError)) log.error('ai.conversation.failed', { error })
     return { ok: false, error: error instanceof AppError ? error.code : 'CONVERSATION_FAILED' }
   }
 }

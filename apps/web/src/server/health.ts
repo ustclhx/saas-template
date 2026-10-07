@@ -5,6 +5,7 @@ import {
   pingDatabase,
   readLastCronAt,
 } from '@saas/db'
+import { log } from '@saas/shared/log'
 
 /** 数据库探测超过该时间视为不可达（specs/system-health） */
 export const HEALTH_DB_TIMEOUT_MS = 5_000
@@ -59,7 +60,7 @@ export async function healthResponse({
     }
     return Response.json(body, { headers })
   } catch (error) {
-    console.error(JSON.stringify({ event: 'health.db_down', reason: describe(error) }))
+    log.error('health.db_down', { reason: describe(error) })
     const body: HealthBody = { status: 'error', version, db: { status: 'down' } }
     return Response.json(body, { status: 503, headers })
   }

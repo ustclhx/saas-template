@@ -53,14 +53,31 @@ const base = {
   idempotencyKey: z.string().min(1).max(256),
 }
 
+/**
+ * 投递该消息的请求 ID，消费端恢复到日志上下文（specs/observability「结构化日志」）。
+ * 可选且不参与版本判断：旧消息不带该字段；格式不对时丢弃该字段而不是拒绝整条消息。
+ */
+const requestId = z
+  .string()
+  .regex(/^[\w-]{1,64}$/)
+  .optional()
+  .catch(undefined)
+
 const messageSchema = z.discriminatedUnion(
   'template',
   (Object.keys(templatePropsSchemas) as EmailTemplateName[]).map((template) =>
-    z.object({ ...base, template: z.literal(template), props: templatePropsSchemas[template] }),
+    z.object({
+      ...base,
+      requestId,
+      template: z.literal(template),
+      props: templatePropsSchemas[template],
+    }),
   ) as unknown as [z.ZodObject, ...z.ZodObject[]],
 )
 
-type MessageBase = { readonly [K in keyof typeof base]: z.output<(typeof base)[K]> }
+type MessageBase = { readonly [K in keyof typeof base]: z.output<(typeof base)[K]> } & {
+  readonly requestId?: string
+}
 
 /** 队列消息：按模板名区分 props 的类型。 */
 export type EmailQueueMessage = {
@@ -76,5 +93,8 @@ export type EmailQueueMessage = {
  */
 export function parseEmailQueueMessage(body: unknown): EmailQueueMessage | null {
   const result = messageSchema.safeParse(body)
-  return result.success ? (result.data as EmailQueueMessage) : null
+  if (!result.success) return null
+  const { requestId, ...message } = result.data as EmailQueueMessage
+  // exactOptionalPropertyTypes：不带请求 ID 时不出现该键
+  return (requestId === undefined ? message : { ...message, requestId }) as EmailQueueMessage
 }

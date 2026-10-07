@@ -33,6 +33,7 @@ import {
 } from '@saas/db'
 import { type Entitlements, getEntitlements } from '@saas/entitlements'
 import { AppError, newId, toErrorResponse } from '@saas/shared'
+import { log, setLogContext } from '@saas/shared/log'
 import { convertToModelMessages, type LanguageModelUsage, streamText, type UIMessage } from 'ai'
 import { and, asc, eq, inArray, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
@@ -108,7 +109,7 @@ export async function handleChatRequest(request: Request, deps: ChatDeps): Promi
   try {
     return await startChat(request, deps)
   } catch (error) {
-    if (!(error instanceof AppError)) console.error(error)
+    if (!(error instanceof AppError)) log.error('ai.chat.failed', { error })
     const { status, body } = toErrorResponse(toAppError(error))
     return Response.json(body, { status })
   }
@@ -140,6 +141,7 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
   const resolved = await resolveWorkspaceBySlug(db, user.id, input.slug)
   if (!resolved) throw new AppError('NOT_FOUND', 'Not found', { status: 404 })
   const workspaceId = resolved.workspace.id
+  setLogContext({ workspaceId, userId: user.id })
   if (!templateConfig.tenancy.multiTenant && !resolved.workspace.isPersonal)
     throw new AppError('WORKSPACE_READ_ONLY', 'Team workspace writes are disabled', { status: 403 })
   const s = scoped(db, workspaceId)
@@ -298,10 +300,7 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
           })
           if (!streaming) controller.abort('settled')
         } catch (error) {
-          console.error(
-            JSON.stringify({ event: 'ai.chat.checkpoint_failed', messageId: assistantId }),
-            error,
-          )
+          log.error('ai.chat.checkpoint_failed', { messageId: assistantId, error })
         }
       })
     },
@@ -309,10 +308,7 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
       end = { text: event.text, usage: event.totalUsage }
     },
     onError: ({ error }) => {
-      console.error(
-        JSON.stringify({ event: 'ai.chat.stream_error', messageId: assistantId }),
-        error,
-      )
+      log.error('ai.chat.stream_error', { messageId: assistantId, error })
     },
   })
 
@@ -349,10 +345,7 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
         })
       }
     } catch (error) {
-      console.error(
-        JSON.stringify({ event: 'ai.chat.settle_failed', messageId: assistantId }),
-        error,
-      )
+      log.error('ai.chat.settle_failed', { messageId: assistantId, error })
     } finally {
       activeChats.delete(assistantId)
     }
@@ -399,7 +392,7 @@ export async function handleChatStopRequest(
   try {
     return Response.json(await stopChat(request, messageId, deps))
   } catch (error) {
-    if (!(error instanceof AppError)) console.error(error)
+    if (!(error instanceof AppError)) log.error('ai.chat.stop_failed', { error })
     const { status, body } = toErrorResponse(error)
     return Response.json(body, { status })
   }
@@ -417,6 +410,7 @@ async function stopChat(
   const notFound = () => new AppError('NOT_FOUND', 'Not found', { status: 404 })
   const resolved = await resolveWorkspaceBySlug(db, user.id, parsed.data.slug)
   if (!resolved || !z.uuid().safeParse(messageId).success) throw notFound()
+  setLogContext({ workspaceId: resolved.workspace.id, userId: user.id })
   const s = scoped(db, resolved.workspace.id)
 
   // 只认创建者自己对话中的回复

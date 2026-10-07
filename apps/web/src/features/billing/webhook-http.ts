@@ -7,6 +7,7 @@ import {
   WebhookVerificationError,
 } from '@saas/billing'
 import type { Database, PaymentProviderId } from '@saas/db'
+import { log, withRequestId } from '@saas/shared/log'
 
 export async function handleBillingWebhook(
   request: Request,
@@ -45,13 +46,31 @@ export async function handleBillingWebhook(
       }),
       onFailure: createCompensationFailureHandler(options.db),
       notify: async ({ delivery }) => {
-        await options.queue.send({ v: 1, deliveryId: delivery.id }, { contentType: 'json' })
+        await options.queue.send(withRequestId({ v: 1, deliveryId: delivery.id }), {
+          contentType: 'json',
+        })
       },
     })
     // DB failure must trigger platform retry. Queue failure is recovered from the durable row by Jobs.
-    if (result.status === 'failed') return new Response('Processing failed', { status: 500 })
+    if (result.status === 'failed') {
+      log.error('billing.webhook_failed', {
+        provider: providerId,
+        deliveryId: result.delivery?.id,
+        error: result.error,
+      })
+      return new Response('Processing failed', { status: 500 })
+    }
+    log.info('billing.webhook_processed', {
+      provider: providerId,
+      deliveryId: result.delivery?.id,
+      status: result.status,
+      ...('notification' in result ? { notification: result.notification?.status } : {}),
+    })
     return Response.json({ received: true })
   } catch (error) {
+    if (error instanceof WebhookVerificationError)
+      log.warn('billing.webhook_rejected', { provider: providerId, error })
+    else log.error('billing.webhook_failed', { provider: providerId, error })
     return new Response(
       error instanceof WebhookVerificationError ? 'Invalid signature' : 'Processing failed',
       { status: error instanceof WebhookVerificationError ? 400 : 500 },

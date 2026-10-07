@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:workers'
+import { withRequestId } from '@saas/shared/log'
 import { createFileRoute } from '@tanstack/react-router'
 import { devOnly } from '../../../server/dev-only.ts'
 
@@ -9,7 +10,7 @@ export const Route = createFileRoute('/api/dev/workflow')({
       POST: () =>
         devOnly(async () => {
           const taskId = crypto.randomUUID()
-          const instance = await env.AI_MEDIA_WORKFLOW.create({ params: { taskId } })
+          const instance = await env.AI_MEDIA_WORKFLOW.create({ params: withRequestId({ taskId }) })
           return Response.json({ id: instance.id, taskId, status: await instance.status() })
         }),
       GET: ({ request }) =>

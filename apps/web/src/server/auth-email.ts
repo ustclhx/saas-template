@@ -8,6 +8,7 @@ import {
   parseEmailQueueMessage,
 } from '@saas/email/queue'
 import { newId } from '@saas/shared'
+import { withRequestId } from '@saas/shared/log'
 
 /**
  * 认证邮件的发送函数（tasks.md 3.2）：把 `createAuth` 发出的 `AuthEmail` 转成 EMAIL_QUEUE 消息，
@@ -78,7 +79,7 @@ export function createQueueAuthEmailSender(options: QueueAuthEmailSenderOptions)
     if (parseEmailQueueMessage(message) === null) {
       throw new TypeError(`Invalid ${template} email message`)
     }
-    await options.queue.send(message, { contentType: 'json' })
+    await options.queue.send(withRequestId(message), { contentType: 'json' })
   }
 }
 
