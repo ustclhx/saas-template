@@ -11,26 +11,38 @@ const worktreeEnv = loadEnv('worktree', repoRoot, '')
 const webPort = Number(worktreeEnv.WEB_PORT ?? 3000)
 const authLogPath = process.env.E2E_AUTH_LOG ?? '/tmp/p1-phase-e2e-auth.log'
 const quotedAuthLogPath = `'${authLogPath.replaceAll("'", "'\\''")}'`
+const stagingURL = process.env.STAGING_URL
 
 export default defineConfig({
   testDir: './e2e',
+  ...(!stagingURL && { testIgnore: '**/staging/**' }),
   // 认证入口按 IP 限流（RL_AUTH 每分钟 10 次），串行执行避免并发请求触发 429
   workers: 1,
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   reporter: process.env.CI ? 'github' : 'list',
   use: {
-    baseURL: `http://localhost:${webPort}`,
+    baseURL: stagingURL || `http://localhost:${webPort}`,
     trace: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
-  webServer: [
-    {
-      command: `pnpm dev > ${quotedAuthLogPath} 2>&1`,
-      url: `http://localhost:${webPort}/api/health`,
-      reuseExistingServer: false,
-      env: Object.fromEntries(paymentKeys.map((key) => [key, ''])),
-      timeout: 120_000,
-    },
-  ],
+  projects: stagingURL
+    ? [
+        {
+          name: 'staging',
+          testDir: './e2e/staging',
+          use: { ...devices['Desktop Chrome'] },
+        },
+      ]
+    : [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  ...(!stagingURL && {
+    webServer: [
+      {
+        command: `pnpm dev > ${quotedAuthLogPath} 2>&1`,
+        url: `http://localhost:${webPort}/api/health`,
+        reuseExistingServer: false,
+        env: Object.fromEntries(paymentKeys.map((key) => [key, ''])),
+        timeout: 120_000,
+      },
+    ],
+  }),
 })

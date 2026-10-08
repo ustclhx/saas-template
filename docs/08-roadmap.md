@@ -83,14 +83,14 @@
 
 **验收**：流式对话可用；积分流水与 AI Gateway 的 token 统计一致；中断、错误均正确结算。
 
-## CI 能力建设（待办）
+## CI 能力建设
 
-从 Phase 0 移出（原 `setup-scaffold-and-infra` 任务 6.2），在专门建设 CI 时补齐：
+从 Phase 0 移出（原 `setup-scaffold-and-infra` 任务 6.2），由 `add-cloud-staging-neon` 建设：
 
-- [ ] main 流水线自动部署 staging：部署 jobs → 部署 web（`*.workers.dev`），验证合并后 staging 上的版本号更新。前置：在 Cloudflare 创建 API Token（至少 Workers Scripts 编辑权限，按需加 Queues、Workflows、Hyperdrive 读取），存入 GitHub Actions Secrets；CI 不能使用 wrangler 的 OAuth 登录。
-- [ ] 阶段一 staging 迁移仍由开发者在本机执行（`docs/07` §5）；阶段二再让 CI 经 Tunnel 执行迁移（见下文「生产迁移」）。
+- [ ] main 上 CI 成功后自动部署 staging：`deploy-staging.yml` 按迁移 → jobs → web → 版本健康检查 → Chromium 冒烟的顺序执行；代码已准备，待 staging environment 凭据及首次合并后自动发布验收（任务 7.2、7.4）。
+- [ ] staging 迁移通过 Neon 直连以 `migrator` 自动执行；待 Neon 建库、权限与迁移实测及切换验收。阶段二生产私有 PG 的 CI 迁移仍见下文「生产迁移」。
 
-在此之前，staging 由开发者在本机执行 `pnpm --filter @saas/jobs deploy:staging` 与 `pnpm --filter @saas/web deploy:staging` 部署。
+发布使用 GitHub `staging` environment 的三个 secrets，PR CI 不获取这些凭据；发布串行且不取消进行中的运行。操作与验收进度见 [Neon staging runbook](./runbooks/staging-neon.md)。切换前继续手动按 jobs → web 部署。
 
 ## 框架完成后的修补（待办）
 

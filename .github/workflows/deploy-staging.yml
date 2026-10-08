@@ -1,0 +1,73 @@
+name: Deploy staging
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # workflow_run 也可来自 PR；只接受本仓库 main 的 push 检查结果。
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      STAGING_URL: https://web-staging.saas-jobs.workers.dev
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Migrate staging database
+        env:
+          MIGRATION_DATABASE_URL: ${{ secrets.STAGING_MIGRATION_DATABASE_URL }}
+        run: pnpm --filter @saas/db db:migrate
+
+      - name: Deploy jobs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm --filter @saas/jobs deploy:staging
+
+      - name: Deploy web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          APP_VERSION: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: pnpm --filter @saas/web deploy:staging
+
+      - name: Confirm deployment health and version
+        run: node scripts/staging/wait-healthy.mjs "$STAGING_URL/api/health" "$DEPLOY_SHA"
+
+      - name: Install Chromium
+        run: pnpm --filter @saas/web exec playwright install --with-deps chromium
+
+      - name: Smoke test staging
+        env:
+          APP_VERSION: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: pnpm --filter @saas/web exec playwright test --project staging

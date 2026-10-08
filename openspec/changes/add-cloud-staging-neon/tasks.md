@@ -4,7 +4,7 @@
 
 ## 0. 前置
 
-- [ ] 0.1 把分支 `chore/cloudflared-http2` 上 `infra/local/docker-compose.yml` 的 `--protocol http2` 改动提交并合入 main（独立 PR），验证 `docker compose --profile tunnel config` 输出的 cloudflared 命令包含 `--protocol http2`
+- [x] 0.1 把分支 `chore/cloudflared-http2` 上 `infra/local/docker-compose.yml` 的 `--protocol http2` 改动提交并合入 main（独立 PR），验证 `docker compose --profile tunnel config` 输出的 cloudflared 命令包含 `--protocol http2`
 
 ## 1. Neon 数据库
 
@@ -22,17 +22,17 @@
 
 ## 3. 版本标识
 
-- [ ] 3.1 在 `apps/web/vite.config.ts` 中按 `APP_VERSION` 环境变量 → `git rev-parse --short HEAD` → `pkg.version` 的顺序确定 `__APP_VERSION__`（git 不可用时不报错），验证 `APP_VERSION=test-sha pnpm --filter @saas/web build` 后产物中包含 `test-sha`、不设置时包含当前短 SHA
-- [ ] 3.2 为 `healthResponse` 增加单元测试：传入的 `version` 在 200 与 503 响应中原样返回，验证 `pnpm --filter @saas/web test` 通过
+- [x] 3.1 在 `apps/web/vite.config.ts` 中按 `APP_VERSION` 环境变量 → `git rev-parse --short HEAD` → `pkg.version` 的顺序确定 `__APP_VERSION__`（git 不可用时不报错），验证 `APP_VERSION=test-sha pnpm --filter @saas/web build` 后产物中包含 `test-sha`、不设置时包含当前短 SHA
+- [x] 3.2 为 `healthResponse` 增加单元测试：传入的 `version` 在 200 与 503 响应中原样返回，验证 `pnpm --filter @saas/web test` 通过
 
 ## 4. 缺凭据告警
 
-- [ ] 4.1 在 `packages/billing/src/runtime.ts` 中，已启用的服务商因凭据缺失被跳过时调用告警回调（默认 `log.warn('billing.provider_unconfigured', { provider, missing })`，每个 isolate 每个服务商一次，只含变量名）；验证新增单元测试覆盖：缺 Stripe 全部凭据、PayPal 只有 `CLIENT_ID`、凭据齐全不告警、同一服务商重复构造只告警一次、日志中不出现任何凭据值
-- [ ] 4.2 确认 web 的 7 个调用方与 `apps/jobs/src/billing.ts` 不需改动即获得该告警（或补上必要的注入），验证 `pnpm typecheck` 与 `pnpm test` 通过
+- [x] 4.1 在 `packages/billing/src/runtime.ts` 中，已启用的服务商因凭据缺失被跳过时调用告警回调（默认 `log.warn('billing.provider_unconfigured', { provider, missing })`，每个 isolate 每个服务商一次，只含变量名）；验证新增单元测试覆盖：缺 Stripe 全部凭据、PayPal 只有 `CLIENT_ID`、凭据齐全不告警、同一服务商重复构造只告警一次、日志中不出现任何凭据值
+- [x] 4.2 确认 web 的 7 个调用方与 `apps/jobs/src/billing.ts` 不需改动即获得该告警（或补上必要的注入），验证 `pnpm typecheck` 与 `pnpm test` 通过
 
 ## 5. staging 配置与密钥
 
-- [ ] 5.1 新增 `scripts/staging/check-secrets.mjs`（design 决策 8 的名单；调用 `wrangler secret list --env staging`；只输出缺失项名称；有必需项缺失时退出码 1），并在根 `package.json` 增加 `staging:check-secrets`；验证当前环境运行时列出 jobs 缺少 Stripe / PayPal 五项、web 缺少 `PAYPAL_CLIENT_SECRET` 与 `PAYPAL_WEBHOOK_ID`
+- [x] 5.1 新增 `scripts/staging/check-secrets.mjs`（design 决策 8 的名单；调用 `wrangler secret list --env staging`；只输出缺失项名称；有必需项缺失时退出码 1），并在根 `package.json` 增加 `staging:check-secrets`；验证当前环境运行时列出 jobs 缺少 Stripe / PayPal 五项、web 缺少 `PAYPAL_CLIENT_SECRET` 与 `PAYPAL_WEBHOOK_ID`
 - [ ] 5.2【人工】为 `jobs-staging` 配置 Stripe / PayPal 测试凭据，为 `web-staging` 补齐 PayPal 两项（`wrangler secret bulk --env staging`，从本机文件读入后删除该文件），验证 `pnpm staging:check-secrets` 退出码 0
 - [ ] 5.3【人工】在 Stripe 测试模式与 PayPal 沙箱登记 webhook：`https://web-staging.saas-jobs.workers.dev/api/billing/webhooks/stripe` 与 `/paypal`（事件按 `docs/runbooks/p2-payment-integration.md`），验证 Stripe 控制台「发送测试事件」后 `webhook_event` 表出现一条已验签记录
 - [ ] 5.4【人工】创建 AI Gateway `saas-staging`；实施者把 `AI_GATEWAY_ACCOUNT_ID`、`AI_GATEWAY_ID` 写入 `apps/web/wrangler.jsonc` 的 `env.staging.vars`（若开启 Gateway 鉴权，`AI_GATEWAY_TOKEN` 走 secret），验证部署后 `pnpm staging:check-secrets` 通过且 web 启动校验无报错
@@ -41,14 +41,14 @@
 
 ## 6. staging 冒烟用例
 
-- [ ] 6.1 修改 `apps/web/playwright.config.ts`：存在 `STAGING_URL` 时使用其为 `baseURL`、不启动 webServer、只运行 `e2e/staging/`；否则保持现有行为并忽略 `e2e/staging/`；验证本地 `pnpm --filter @saas/web exec playwright test --list` 的用例清单与改动前一致
+- [x] 6.1 修改 `apps/web/playwright.config.ts`：存在 `STAGING_URL` 时使用其为 `baseURL`、不启动 webServer、只运行 `e2e/staging/`；否则保持现有行为并忽略 `e2e/staging/`；验证本地 `pnpm --filter @saas/web exec playwright test --list` 的用例清单与改动前一致
 - [ ] 6.2 新增 `apps/web/e2e/staging/smoke.spec.ts`（首页、定价页、随机邮箱注册并进入个人空间，共注册 1 次），验证本机 `STAGING_URL=https://web-staging.saas-jobs.workers.dev pnpm --filter @saas/web exec playwright test` 全部通过
 
 ## 7. 自动发布流水线
 
 - [ ] 7.1 新增 `scripts/staging/wait-healthy.mjs`（参数：URL、期望版本；每 5 秒轮询、最长 3 分钟；成功条件 200 + `db.status=up` + `version` 相等；失败时只打印状态码与 `version`），验证对当前 staging 以正确版本运行退出码 0、以错误版本运行约 3 分钟后退出码 1
 - [ ] 7.2【人工】在 Cloudflare 创建 API Token（Workers Scripts 编辑；Workers KV、Queues、Hyperdrive、Workflows 读取；Account Settings 读取），在 GitHub 创建 environment `staging` 并存入 `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`STAGING_MIGRATION_DATABASE_URL`，验证 `gh secret list --env staging` 列出三项
-- [ ] 7.3 新增 `.github/workflows/deploy-staging.yml`（design 决策 6：`workflow_run` 于 main 上 CI 成功 + `workflow_dispatch`；`environment: staging`；`concurrency` 不取消；迁移 → jobs → web（`APP_VERSION=<sha>`）→ wait-healthy → Playwright staging，安装 chromium），验证 `actionlint`（或 `gh workflow view`）无错误，且 `ci.yml` 未获得任何 staging secret
+- [x] 7.3 新增 `.github/workflows/deploy-staging.yml`（design 决策 6：`workflow_run` 于 main 上 CI 成功 + `workflow_dispatch`；`environment: staging`；`concurrency` 不取消；迁移 → jobs → web（`APP_VERSION=<sha>`）→ wait-healthy → Playwright staging，安装 chromium），验证 `actionlint`（或 `gh workflow view`）无错误，且 `ci.yml` 未获得任何 staging secret
 - [ ] 7.4 合并本 change 的代码后，验证首次自动发布成功：Actions 中 `deploy-staging` 全部步骤通过，`/api/health` 的 `version` 等于该合并提交的 SHA
 
 ## 8. 文档
