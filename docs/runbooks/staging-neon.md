@@ -23,8 +23,8 @@
 set -a
 . ./.env.staging-neon
 set +a
-# libpq 从环境读取，命令参数不包含连接串。
-PGDATABASE="$NEON_MIGRATOR_URL" psql -X -v ON_ERROR_STOP=1 \
+# 引用已加载的变量，不把连接串真值写入命令历史或输出。
+psql "$NEON_MIGRATOR_URL" -X -v ON_ERROR_STOP=1 \
   -c 'select current_user, current_database()'
 ```
 
@@ -35,11 +35,11 @@ PGDATABASE="$NEON_MIGRATOR_URL" psql -X -v ON_ERROR_STOP=1 \
 不在 Neon 执行含本地密码的 `01-roles.sql`。以 migrator 执行现有权限脚本：
 
 ```sh
-PGDATABASE="$NEON_MIGRATOR_URL" psql -X -v ON_ERROR_STOP=1 \
+psql "$NEON_MIGRATOR_URL" -X -v ON_ERROR_STOP=1 \
   -f infra/local/initdb/02-db-grants.sql
-PGDATABASE="$NEON_MIGRATOR_URL" psql -X -c '\dn+ public'
+psql "$NEON_MIGRATOR_URL" -X -c '\dn+ public'
 MIGRATION_DATABASE_URL="$NEON_MIGRATOR_URL" pnpm --filter @saas/db db:migrate
-PGDATABASE="$NEON_MIGRATOR_URL" psql -X \
+psql "$NEON_MIGRATOR_URL" -X \
   -c 'select count(*) from drizzle.__drizzle_migrations'
 ```
 
@@ -52,7 +52,7 @@ PGDATABASE="$NEON_MIGRATOR_URL" psql -X \
 ```sh
 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="$NEON_APP_URL" pnpm billing:seed
 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="$NEON_APP_URL" pnpm billing:seed
-PGDATABASE="$NEON_APP_URL" psql -X -c 'select key from plan order by key'
+psql "$NEON_APP_URL" -X -c 'select key from plan order by key'
 ```
 
 应为 free / pro / team / credit_pack 四套餐，两次执行行数不变；seed 不是平台价格同步，真实购买前按 [P2 支付联通](./p2-payment-integration.md) 同步测试报价。
