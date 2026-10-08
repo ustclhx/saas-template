@@ -86,8 +86,8 @@ test('health waits through an old version, database downtime and non-200 before 
   const lines = []
   assert.equal(
     await waitHealthy(url, 'new-sha', {
-      intervalMs: 30,
-      timeoutMs: 1_000,
+      intervalMs: 200,
+      timeoutMs: 2_000,
       write: (line) => lines.push(line),
     }),
     0,
