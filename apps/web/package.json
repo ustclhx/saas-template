@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "node scripts/generate-route-tree.mjs && node scripts/compile-messages.mjs && node scripts/build-content.mjs && tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p tsconfig.node.json",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:stripe": "playwright test -c playwright.stripe.config.ts"
   },
   "dependencies": {
     "@ai-sdk/react": "^4.0.130",
