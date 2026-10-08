@@ -7,8 +7,10 @@
     "vite.config.ts",
     "vitest.config.ts",
     "playwright.config.ts",
+    "playwright.stripe.config.ts",
     "scripts",
     "test/global-setup.ts",
-    "e2e"
+    "e2e",
+    "e2e-live"
   ]
 }

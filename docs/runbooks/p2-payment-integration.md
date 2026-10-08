@@ -142,6 +142,13 @@ seed 会 upsert 示例套餐，不能当成不会覆盖配置的只读操作。�
 | 退款申请与平台退款 | 用户申请、admin 部分审核，分别验证 Stripe、PayPal Capture 与 PayPal Sale 退款路径；另取付款做平台侧全额退款。审核/API 响应不能代替回调最终入账，见下一节。 |
 | 重复/迟到回调 | 同一首付、续费、退款平台事件分别重投至少两次；记录每次状态。付款、退款身份、批次和流水不能增量重复；新旧事件 ID 与相同业务对象的重复也须按业务幂等处理。旧状态回调不能回退较新状态。 |
 
+### Stripe 首付自动化用例（10.1）
+
+`apps/web/e2e-live/` 是真实 Stripe 测试模式的 Playwright 用例（`playwright.stripe.config.ts`），覆盖上表「首付与回跳」的 Stripe 月付：从 `/pricing` 进入、托管结账页测试卡付款、回跳，并核对付款 `initial:succeeded`、唯一的订阅积分批次与订阅 active。托管结账页的操作封装在 `e2e-live/stripe-checkout.ts`，其他 Stripe 场景复用。
+
+- 本地：在 Orca worktree 中执行 `pnpm --filter @saas/web test:e2e:stripe`。需要根目录 `.env.local` 的测试凭据和已登录的 Stripe CLI，`STRIPE_WEBHOOK_SECRET` 与 `stripe listen --print-secret` 一致；只连接 worktree 隔离库。
+- staging：设置 `STAGING_URL` 与 `STAGING_READONLY_DATABASE_URL`（必须是 `readonly` 账号）后执行同一命令。不启动本地服务和 `stripe listen`，回调由 Stripe 投递到 staging 登记的 webhook；用例只读核对数据库。
+
 ### 续费与时间约束
 
 Stripe 当前官方把 Test Clocks 呈现为 **Simulations**。先由本应用 Checkout 建立订阅与本地关联，再在测试 Dashboard 选择该订阅 → Run simulation → Advance time，推进至下一账期并等 simulation 完成与真实签名回调。每次推进遵守官方最多两周期规则；若账号界面或客户不符合条件，记录原因，由 supervisor 安排支持的 clock customer/订阅测试方式并确保绑定真实 workspace/报价，不能把无关联的 Dashboard 订阅当本应用端到端成功。见 [Simulations](https://docs.stripe.com/billing/testing/test-clocks)、[模拟订阅步骤](https://docs.stripe.com/billing/testing/test-clocks/simulate-subscriptions)。
