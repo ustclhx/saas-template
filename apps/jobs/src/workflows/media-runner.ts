@@ -167,9 +167,25 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
   const task = JSON.parse(snapshot) as AiTask
   const now = deps.now ?? Date.now
   const deadline = new Date(task.deadlineAt).getTime()
-  const active = async () => {
+  let currentStatus = task.status
+  let cancellationAttempted = false
+  const stopIfTerminal = async () => {
     const fresh = await scoped(deps.db, task.workspaceId).findById(aiTask, task.id)
-    if (terminal(fresh)) return false
+    currentStatus = fresh.status
+    if (!terminal(fresh)) return false
+    if (fresh.providerJobId && !cancellationAttempted) {
+      cancellationAttempted = true
+      try {
+        await deps.provider(fresh).cancel?.(fresh.providerJobId)
+      } catch {
+        log.warn('ai.media.terminal_cancel_failed', { taskId, status: fresh.status })
+      }
+    }
+    return true
+  }
+  const stopped = () => ({ taskId, status: currentStatus })
+  const active = async () => {
+    if (await stopIfTerminal()) return false
     if (now() >= deadline) throw new AppError('MEDIA_TIMEOUT', 'Media generation timed out')
     return true
   }
@@ -177,6 +193,8 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
     (await scoped(deps.db, task.workspaceId).findById(aiTask, task.id))
       .callbackPayload as Callback | null
   try {
+    // 持久步骤可能直接返回缓存，外围自检也必须执行，避免晚到重放继续业务步骤。
+    if (!(await active())) return stopped()
     const submitted = await step.do(
       'submit',
       { retries: { limit: 3, delay: '10 seconds', backoff: 'exponential' }, timeout: '2 minutes' },
@@ -185,11 +203,16 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
         return submitMediaOnce(task, deps)
       },
     )
-    if (submitted.stopped) return { taskId, status: 'canceled' }
+    if (submitted.stopped) {
+      await stopIfTerminal()
+      return stopped()
+    }
+    if (!(await active())) return stopped()
     let callback: Callback | null = submitted.sync
       ? { jobId: submitted.jobId, result: submitted.sync }
-      : await step.do('check-callback', readCallback)
+      : await step.do('check-callback', async () => ((await active()) ? readCallback() : null))
     if (!callback?.result && !callback?.error) {
+      if (!(await active())) return stopped()
       if (!callback)
         await step
           .waitForEvent('wait-media-done', {
@@ -197,21 +220,26 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
             timeout: Math.max(1, Math.min(15 * 60_000, deadline - now())),
           })
           .catch(() => null)
-      callback = await step.do('recheck-callback', readCallback)
+      if (!(await active())) return stopped()
+      callback = await step.do('recheck-callback', async () =>
+        (await active()) ? readCallback() : null,
+      )
     }
     let poll = 0
     let delay = 30_000
     while (!callback?.result && !callback?.error) {
+      if (!(await active())) return stopped()
       const status = await step.do(`poll-${poll}`, async () => {
         if (!(await active())) return { status: 'stopped' } as const
         return deps.provider(task).getStatus(submitted.jobId)
       })
-      if (status.status === 'stopped') return { taskId, status: 'canceled' }
+      if (status.status === 'stopped') return stopped()
       if (status.status === 'succeeded')
         callback = { jobId: submitted.jobId, result: status.result }
       else if (status.status === 'failed')
         callback = { jobId: submitted.jobId, error: status.error }
       else {
+        if (!(await active())) return stopped()
         const remaining = deadline - now()
         if (remaining <= 0) throw new AppError('MEDIA_TIMEOUT', 'Media generation timed out')
         await step.sleep(`poll-delay-${poll}`, Math.min(delay, remaining))
@@ -219,6 +247,7 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
         poll++
       }
     }
+    if (!(await active())) return stopped()
     if (callback.error) throw new AppError(callback.error.code, callback.error.message)
     const result = callback.result as MediaResult
     const files = await step.do(
@@ -236,9 +265,10 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
         return files
       },
     )
-    if (!files) return { taskId, status: 'canceled' }
+    if (!files) return stopped()
+    if (!(await active())) return stopped()
     const status = await step.do('settle-and-notify', async () => {
-      if (!(await active())) return 'canceled'
+      if (!(await active())) return currentStatus
       return (
         await settleMediaTask(deps.db, {
           workspaceId: task.workspaceId,
@@ -251,18 +281,19 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
     })
     return { taskId, status }
   } catch (error) {
-    const status = await step.do(
-      'fail-and-notify',
-      async () =>
-        (
-          await settleMediaTask(deps.db, {
-            workspaceId: task.workspaceId,
-            taskId,
-            outcome: 'failed',
-            error: errorOf(error),
-          })
-        ).status,
-    )
+    if (await stopIfTerminal()) return stopped()
+    const status = await step.do('fail-and-notify', async () => {
+      if (await stopIfTerminal()) return currentStatus
+      return (
+        await settleMediaTask(deps.db, {
+          workspaceId: task.workspaceId,
+          taskId,
+          outcome: 'failed',
+          error: errorOf(error),
+        })
+      ).status
+    })
+    await stopIfTerminal()
     return { taskId, status }
   }
 }

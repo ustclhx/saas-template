@@ -51,20 +51,18 @@ describe('apps/jobs', () => {
       .insert(user)
       .values({ id, name: 'Workflow', email: `${id}@workflow-smoke.example.test` })
     await db.insert(organization).values({ id, name: 'Workflow', slug: id })
-    await db
-      .insert(aiTask)
-      .values({
-        id,
-        workspaceId: id,
-        userId: id,
-        kind: 'image',
-        modelKey: 'fixture',
-        provider: 'fake',
-        providerRequestKey: id,
-        input: {},
-        pricing: { mode: 'per_call', credits: 1 },
-        deadlineAt: new Date(Date.now() + 7200000),
-      })
+    await db.insert(aiTask).values({
+      id,
+      workspaceId: id,
+      userId: id,
+      kind: 'image',
+      modelKey: 'fixture',
+      provider: 'fake',
+      providerRequestKey: id,
+      input: {},
+      pricing: { mode: 'per_call', credits: 1 },
+      deadlineAt: new Date(Date.now() + 7200000),
+    })
     const result = {
       outputs: [{ url: 'https://v3.fal.media/files/fixture.png', mime: 'image/png' }],
     }

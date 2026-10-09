@@ -6,7 +6,18 @@ import {
   release,
   withCreditsTransaction,
 } from '@saas/credits'
-import { type AiTask, aiTask, file, notFound, notification, organization, scoped } from '@saas/db'
+import {
+  type AiTask,
+  aiTask,
+  type CreditHold,
+  creditHold,
+  type Database,
+  file,
+  notFound,
+  notification,
+  organization,
+  scoped,
+} from '@saas/db'
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import { and, eq, isNull, sql } from 'drizzle-orm'
@@ -15,6 +26,7 @@ import type { MediaTaskInput } from './input.ts'
 import type { MediaError, MediaResult } from './provider.ts'
 
 export const MEDIA_TASK_TTL_MS = 2 * 60 * 60 * 1000
+export const MEDIA_HOLD_SWEEP_BUFFER_MS = 10 * 60 * 1000
 
 export interface MediaTaskFile {
   id: string
@@ -81,8 +93,9 @@ export interface SettleMediaTaskInput {
 }
 
 /**
- * 统一锁顺序：credits → ws → task；转存持有 ws → task 且不操作积分，避免与回收器反序死锁。
- * 终态是结算与通知的幂等门；状态、账本、通知及失败产出的软删除在同一事务提交。
+ * 与 billing 回收器统一锁顺序：ws → credits → task；转存只持有 ws → task 且不操作积分。
+ * 终态不再迁移或通知；仅在预扣仍 held 时按已存结果补结算，忽略晚到输入。
+ * 状态、账本、通知及失败产出的软删除在同一事务提交。
  */
 export function settleMediaTask(
   db: CreditsExecutor,
@@ -90,14 +103,32 @@ export function settleMediaTask(
   tx?: CreditsTransaction,
 ): Promise<AiTask> {
   return withCreditsTransaction(db, tx, async (tx) => {
-    await lockWorkspaceCredits(tx, input.workspaceId)
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${`ws:${input.workspaceId}`}, 0))`,
     )
+    await lockWorkspaceCredits(tx, input.workspaceId)
     const tenant = scoped(tx, input.workspaceId)
     const [task] = await tenant.select(aiTask, { where: eq(aiTask.id, input.taskId) }).for('update')
     if (!task) throw notFound()
     if (task.status === 'succeeded' || task.status === 'failed' || task.status === 'canceled') {
+      if (!task.holdId) return task
+      const [reservation] = await tenant.select(creditHold, {
+        where: eq(creditHold.id, task.holdId),
+      })
+      if (reservation?.status !== 'held') return task
+      if (task.status === 'succeeded') {
+        const result = task.output?.result as MediaResult | undefined
+        if (!result)
+          throw new AppError('INVALID_MEDIA_RESULT', 'Completed task has no stored result')
+        const charged = mediaTaskCredits(task, result)
+        await capture(
+          tx,
+          { workspaceId: task.workspaceId, holdId: task.holdId, actualAmount: charged },
+          tx,
+        )
+        return tenant.updateById(aiTask, task.id, { creditsCharged: charged })
+      }
+      await release(tx, { workspaceId: task.workspaceId, holdId: task.holdId }, tx)
       return task
     }
 
@@ -154,4 +185,48 @@ export function settleMediaTask(
     }
     return settled
   })
+}
+
+/** 回收器事务只访问数据库；外部作业由 Workflow 的终态自检尽力取消。 */
+export function mediaTaskHoldSweeper() {
+  return async ({
+    db,
+    tx,
+    hold: reservation,
+    now,
+  }: {
+    db: Database
+    tx: CreditsTransaction
+    hold: CreditHold
+    now: Date
+  }): Promise<void> => {
+    const [task] = await scoped(tx, reservation.workspaceId)
+      .select(aiTask, { where: eq(aiTask.holdId, reservation.id) })
+      .limit(1)
+    if (!task) {
+      await release(tx, { workspaceId: reservation.workspaceId, holdId: reservation.id }, tx)
+      return
+    }
+    if (task.status === 'succeeded' || task.status === 'failed' || task.status === 'canceled') {
+      await settleMediaTask(
+        db,
+        { workspaceId: task.workspaceId, taskId: task.id, outcome: task.status },
+        tx,
+      )
+    } else if (task.deadlineAt <= now) {
+      await settleMediaTask(
+        db,
+        {
+          workspaceId: task.workspaceId,
+          taskId: task.id,
+          outcome: 'failed',
+          error: {
+            code: 'MEDIA_DEADLINE_EXCEEDED',
+            message: 'Media generation exceeded its deadline',
+          },
+        },
+        tx,
+      )
+    }
+  }
 }

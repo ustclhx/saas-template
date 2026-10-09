@@ -2,6 +2,7 @@ import {
   createTaskMediaProvider,
   dbModelStore,
   estimateCredits,
+  MEDIA_HOLD_SWEEP_BUFFER_MS,
   MEDIA_TASK_TTL_MS,
   type MediaProvider,
   type MediaWebhook,
@@ -138,11 +139,11 @@ export function handleMediaSubmit(request: Request, deps: MediaHttpDeps): Promis
     if (!modelRow)
       throw new AppError('MODEL_UNAVAILABLE', 'Model is not available', { status: 404 })
     const task = await deps.db.transaction(async (tx) => {
-      // 结算与回收器也按 credits → ws → task 加锁，防止锁顺序反转。
-      await lockWorkspaceCredits(tx, input.workspaceId)
+      // 与 billing 回收器统一为 ws → credits → task，防止锁顺序反转。
       await tx.execute(
         sql`select pg_advisory_xact_lock(hashtextextended(${`ws:${input.workspaceId}`}, 0))`,
       )
+      await lockWorkspaceCredits(tx, input.workspaceId)
       const current = await entitlements(deps, tx, input.workspaceId)
       const model = await requireAvailableModel(
         { store: dbModelStore(tx as unknown as Database) },
@@ -207,7 +208,7 @@ export function handleMediaSubmit(request: Request, deps: MediaHttpDeps): Promis
         amount,
         refType: 'ai_task',
         refId: taskId,
-        expiresAt: null,
+        expiresAt: new Date(created.deadlineAt.getTime() + MEDIA_HOLD_SWEEP_BUFFER_MS),
       })
       return tenant.updateById(aiTask, taskId, { holdId: reservation.id })
     })

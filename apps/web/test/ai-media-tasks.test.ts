@@ -1,5 +1,10 @@
 import { env } from 'cloudflare:workers'
-import { type MediaProvider, type MediaWebhook, mediaCallbackUrl } from '@saas/ai'
+import {
+  MEDIA_HOLD_SWEEP_BUFFER_MS,
+  type MediaProvider,
+  type MediaWebhook,
+  mediaCallbackUrl,
+} from '@saas/ai'
 import { createAuth } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
 import { getCreditBalance, grant } from '@saas/credits'
@@ -209,9 +214,15 @@ describe('media tasks API', () => {
     const [task] = await scoped(db, who.workspaceId).select(aiTask)
     expect(task?.input.callbackOrigin).toBe(APP_URL)
     expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 94, held: 6 })
-    const [row] =
-      await sql`select count(*)::int as count from credit_hold where workspace_id=${who.workspaceId} and status='held' and expires_at is null`
-    expect(row?.count).toBe(2)
+    const reservations = await sql<{ expires_at: string; deadline_at: string }[]>`
+      select h.expires_at, t.deadline_at from credit_hold h
+      join ai_task t on t.hold_id=h.id
+      where h.workspace_id=${who.workspaceId} and h.status='held'`
+    expect(reservations).toHaveLength(2)
+    for (const reservation of reservations)
+      expect(new Date(reservation.expires_at).getTime()).toBe(
+        new Date(reservation.deadline_at).getTime() + MEDIA_HOLD_SWEEP_BUFFER_MS,
+      )
   })
 
   it('rejects invalid parameters and pending file references before reserving credits', async () => {
