@@ -453,7 +453,7 @@ describe('Stripe adapter with cryptographically signed synthetic fixtures', () =
     })
     mock.complete()
   })
-  it('multiple successful refunds carry unique IDs and the same cumulative refunded amount on replay', async () => {
+  it('complete signed refunds carry unique IDs and the same cumulative refunded amount on replay', async () => {
     const mock = mockProvider()
     const refund = {
       id: 're_first',
@@ -469,7 +469,7 @@ describe('Stripe adapter with cryptographically signed synthetic fixtures', () =
       amount_refunded: 500,
       refunds: {
         ...charge.refunds,
-        has_more: true,
+        has_more: false,
         data: [
           refund,
           { ...refund, id: 're_second', amount: 300 },
@@ -492,6 +492,88 @@ describe('Stripe adapter with cryptographically signed synthetic fixtures', () =
       refundedAmount: 500,
     })
     expect(await mock.verify('charge.refunded', payload)).toEqual(first)
+    mock.complete()
+  })
+  it.each(['missing', 'truncated'] as const)(
+    'paginates $kind refunds on an old event without pairing newer refunds with its signed total',
+    async (embedded) => {
+      const refund = {
+        id: 're_first',
+        object: 'refund',
+        charge: 'ch_test',
+        payment_intent: 'pi_test',
+        status: 'succeeded',
+        amount: 200,
+        currency: 'usd',
+      }
+      const mock = mockProvider([
+        {
+          path: '/v1/refunds',
+          body: list(
+            [refund, { ...refund, id: 're_failed', status: 'failed' }],
+            '/v1/refunds',
+            true,
+          ),
+        },
+        {
+          path: '/v1/refunds',
+          body: list([refund, { ...refund, id: 're_newer', amount: 300 }], '/v1/refunds'),
+        },
+      ])
+      const result = await mock.verify('charge.refunded', {
+        ...charge,
+        amount_refunded: 200,
+        refunds:
+          embedded === 'missing' ? undefined : list([refund], '/v1/charges/ch_test/refunds', true),
+      })
+      expect(result.events).toMatchObject([
+        {
+          type: 'payment.refunded',
+          providerPaymentId: 'pi_test',
+          providerRefundId: 're_first',
+          amount: 200,
+          refundedAmount: null,
+        },
+        {
+          type: 'payment.refunded',
+          providerPaymentId: 'pi_test',
+          providerRefundId: 're_newer',
+          amount: 300,
+          refundedAmount: null,
+        },
+      ])
+      expect(mock.requests.map((url) => Object.fromEntries(url.searchParams))).toEqual([
+        { charge: 'ch_test', limit: '100' },
+        { charge: 'ch_test', limit: '100', starting_after: 're_failed' },
+      ])
+      mock.complete()
+    },
+  )
+  it.each([
+    { charge: 'ch_other', payment_intent: 'pi_test' },
+    { charge: 'ch_test', payment_intent: 'pi_other' },
+  ])('rejects API refunds with a mismatched association: %j', async (association) => {
+    const mock = mockProvider([
+      {
+        path: '/v1/refunds',
+        body: list(
+          [
+            {
+              id: 're_mismatched',
+              object: 'refund',
+              ...association,
+              status: 'succeeded',
+              amount: 200,
+              currency: 'usd',
+            },
+          ],
+          '/v1/refunds',
+        ),
+      },
+    ])
+    await expect(
+      mock.verify('charge.refunded', { ...charge, amount_refunded: 200, refunds: undefined }),
+    ).rejects.toThrow('Refund does not match its charge and PaymentIntent')
     mock.complete()
   })
   it('disputes preserve PaymentIntent and dispute IDs', async () => {

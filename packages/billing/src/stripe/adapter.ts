@@ -154,11 +154,13 @@ async function normalizeStripeEvent(stripe: Stripe, event: Stripe.Event): Promis
       const charge = event.data.object
       const intentId = stripeObjectId(charge.payment_intent)
       if (!intentId) throw new Error('Refunded charge has no stable PaymentIntent')
-      // Keep IDs and cumulative amount from the same signed charge snapshot. Fetching
-      // current refunds on an old replay could pair newer refunds with an older total.
-      const refunds = charge.refunds?.data ?? []
+      const completeSnapshot = charge.refunds && !charge.refunds.has_more ? charge.refunds : null
+      // 新版事件省略列表，截断列表也需经认证 API 补齐；SDK 迭代器读取全部分页。
+      const refunds = completeSnapshot
+        ? completeSnapshot.data
+        : stripe.refunds.list({ charge: charge.id, limit: 100 })
       const seen = new Set<string>()
-      for (const refund of refunds) {
+      for await (const refund of refunds) {
         if (refund.status !== 'succeeded' || !refund.id || seen.has(refund.id)) continue
         if (
           stripeObjectId(refund.charge) !== charge.id ||
@@ -174,7 +176,8 @@ async function normalizeStripeEvent(stripe: Stripe, event: Stripe.Event): Promis
           providerRefundId: refund.id,
           amount: refund.amount,
           currency: refund.currency,
-          refundedAmount: charge.amount_refunded,
+          // API 可能返回较新的退款，不能搭配旧事件累计额；业务层按退款身份累计。
+          refundedAmount: completeSnapshot ? charge.amount_refunded : null,
         })
       }
       break
