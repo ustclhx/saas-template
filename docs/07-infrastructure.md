@@ -282,9 +282,13 @@ main:  以上 + 数据库迁移(staging) → 部署 staging → e2e (Playwright)
 tag:   数据库迁移(production) → wrangler deploy (jobs 先于 web) → 冒烟测试
 ```
 
-**数据库迁移如何访问私有 PG**：
-- 阶段一：数据库在开发者本机，CI 无法访问。staging 的迁移由开发者在本机以 `migrator` 账号执行（`pnpm --filter @saas/db db:migrate`，连接 `saas_staging`），CI 的 main 流水线只部署 Worker。
-- 阶段二：CI 中运行 `cloudflared access tcp`（需要 §2 的公网主机名 + Access 备选方式）在本地开一个转发端口，再执行 `drizzle-kit migrate`；或通过 SSH 在生产服务器上执行迁移。
+**staging 自动发布**：`.github/workflows/deploy-staging.yml` 跟随 main 上成功的 `CI`，检出该次 CI 的提交；也可在 main 上手动触发 `workflow_dispatch`。发布使用 GitHub `staging` environment，`staging-deploy` concurrency 串行执行且不取消进行中的运行。PR 的 `ci.yml` 不引用 staging secrets，只操作临时 CI 数据库。
+
+发布顺序为 install → Neon 迁移 → jobs → web（`APP_VERSION` 为完整提交 SHA）→ 健康检查 → Playwright `staging` 项目。迁移通过 environment 的 `STAGING_MIGRATION_DATABASE_URL` 直连 Neon，以 `migrator` 执行；Cloudflare 认证使用 `CLOUDFLARE_API_TOKEN` 与 `CLOUDFLARE_ACCOUNT_ID`。健康检查每 5 秒轮询、最多 3 分钟，要求 200、`db.status=up`、`version` 等于目标 SHA；之后用 Chromium 检查首页、定价与一次随机邮箱注册。任一步失败即停止发布。
+
+此流水线代码随 `add-cloud-staging-neon` PR 2 提交；Neon 切换、environment secrets 与首次自动发布仍待 PR 3 验收。现有 staging 在切换前仍按 §0 的本机链路运行。操作与回滚见 [Neon staging runbook](./runbooks/staging-neon.md)。
+
+**阶段二私有 PG 迁移**：CI 可运行 `cloudflared access tcp`（需要 §2 的公网主机名 + Access 备选方式）在本地开转发端口，再执行迁移；或通过 SSH 在生产服务器上执行迁移。
 
 **迁移原则**：只做向后兼容的变更（先加字段/表 → 部署代码 → 再删旧字段），保证 web/jobs 滚动发布期间新旧代码都能运行。
 

@@ -79,6 +79,8 @@ async function lock(env: Env, params: URLSearchParams) {
     // 持锁期间读-改-写计数器：锁有效时并发请求不会丢失更新
     const [row] = await tx`select (value->>'counter')::int as c from setting where key = ${ROW_KEY}`
     out.counterBefore = row?.c ?? null
+    // abandon 也先按 hold 持锁，让晚发的 B 在 A 返回前真正争锁。
+    if (end === 'abandon') await tx`select pg_sleep(${hold / 1000})`
     signalAcquired()
     if (end === 'abandon') {
       // 不提交也不回滚：响应返回后 Worker 结束，客户端连接被丢弃

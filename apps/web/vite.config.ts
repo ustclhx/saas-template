@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { cloudflare } from '@cloudflare/vite-plugin'
 import contentCollections from '@content-collections/vite'
@@ -19,6 +20,21 @@ const { i18n } = templateConfig
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
   version: string
 }
+const appVersion = (() => {
+  if (process.env.APP_VERSION) return process.env.APP_VERSION
+  try {
+    return (
+      execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim() || pkg.version
+    )
+  } catch {
+    // 源码归档或无 git 的构建环境仍可构建，包版本作为最后回退。
+    return pkg.version
+  }
+})()
 
 // Orca worktree 的端口写在仓库根目录的 .env.worktree（docs/09-parallel-plan.md §2）；
 // 文件不存在时（主 checkout）使用默认端口。
@@ -40,7 +56,7 @@ export default defineConfig(({ command }) => {
     server: { port, strictPort: true },
     preview: { port, strictPort: true },
     define: {
-      __APP_VERSION__: JSON.stringify(pkg.version),
+      __APP_VERSION__: JSON.stringify(appVersion),
     },
     plugins: [
       ogImages(),

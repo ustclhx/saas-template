@@ -11,7 +11,7 @@
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "check": "biome check . && node scripts/check-credit-writes.mjs && node --test scripts/local-payment-env.test.mjs",
+    "check": "biome check . && node scripts/check-credit-writes.mjs && node --test scripts/local-payment-env.test.mjs && node --test scripts/staging/staging.test.mjs",
     "check:fix": "biome check --write .",
     "check:deps": "node scripts/check-deps.mjs",
     "check:singletons": "node scripts/check-singletons.mjs",
@@ -19,7 +19,8 @@
     "billing:sync": "pnpm --filter @saas/billing sync",
     "create-project": "node scripts/create-project",
     "test:create-project": "node --test scripts/create-project.test.mjs",
-    "test:create-project:verify": "node --test scripts/create-project.verify.test.mjs"
+    "test:create-project:verify": "node --test scripts/create-project.verify.test.mjs",
+    "staging:check-secrets": "node scripts/staging/check-secrets.mjs"
   },
   "devDependencies": {
     "@saas/config": "workspace:*",

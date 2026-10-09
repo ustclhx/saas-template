@@ -44,6 +44,8 @@ export async function createStripeCheckout(stripe: Stripe, input: CheckoutInput)
   const session = await stripe.checkout.sessions.create(
     {
       mode: input.mode === 'one_time' ? 'payment' : 'subscription',
+      // 模板不由 Stripe 代销，避免账户默认的 Managed Payments 改变结算模式。
+      managed_payments: { enabled: false },
       line_items: [{ price: priceId(input.price), quantity: 1 }],
       success_url: input.successUrl,
       cancel_url: input.cancelUrl,
