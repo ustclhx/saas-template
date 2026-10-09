@@ -13,7 +13,7 @@
 
 ## 3. 媒体服务商
 
-- [ ] 3.1 在 `packages/ai/media` 定义 `MediaProvider` 接口（含 `idempotentSubmit` 能力标记）与 `MediaResult` 类型，验证类型测试通过
+- [x] 3.1 在 `packages/ai/media` 定义 `MediaProvider` 接口（含 `idempotentSubmit` 能力标记）与 `MediaResult` 类型，验证类型测试通过
 - [ ] 3.2 实现 fal.ai Provider（提交带 webhook、查询状态、解析回调与验签、取消），核实其是否支持幂等提交并设置能力标记，验证用录制的响应与回调夹具的单元测试通过
 
 ## 4. 任务提交与 Workflow
