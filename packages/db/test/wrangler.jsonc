@@ -1,4 +1,4 @@
-// 仅供 vitest-pool-workers 集成测试使用的 Worker 配置。
+// 仅供 vitest-plugin 集成测试使用的 Worker 配置。
 // HYPERDRIVE 的本地连接串由 vitest.config.ts 通过
 // CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE 提供（取自 .env.worktree）。
 {

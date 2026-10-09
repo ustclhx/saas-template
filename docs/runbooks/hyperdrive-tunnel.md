@@ -1,6 +1,6 @@
 # Runbook · 本机数据库经 Tunnel 接入 Hyperdrive（历史链路与回滚）
 
-> 历史记录：本文保存 Neon 切换前的阶段一配置与命令，仅用于核对旧链路或经用户确认的回滚。当前 staging 目标、迁移与发布流程见 [Neon runbook](staging-neon.md)；main 已自动发布到 Neon staging，当前完整代码版本 `ce623cab63a99d6eee8c8ba67eeb09e564f97779`；[run 37894416572](https://github.com/ustclhx/saas-template/actions/runs/37894416572)（2026-10-09 06:36:31–06:38:28 UTC）迁移、jobs → web、版本探活与三项冒烟均 success。Neon change 最终为 28/29，仅七天观察（9.2）未完成；以 2026-10-09 03:38 UTC 切换为基线，最早 2026-10-16 同时刻完成，旧资源继续保留。下文“每次合并后手动迁移”等说明属于历史流程，不适用于 Neon 自动发布。
+> 历史记录：本文保存 Neon 切换前的阶段一配置与命令，仅用于核对旧链路或经用户确认的回滚。当前 staging 目标、迁移与发布流程见 [Neon runbook](staging-neon.md)；main 已自动发布到 Neon staging，当前完整代码版本 `ce623cab63a99d6eee8c8ba67eeb09e564f97779`；[run 37894416572](https://github.com/ustclhx/saas-template/actions/runs/37894416572)（2026-10-09 06:36:31–06:38:28 UTC）迁移、jobs → web、版本探活与三项冒烟均 success。Neon change 最终为 28/29，仅24 小时观察（9.2）未完成；以 2026-10-09 03:38 UTC 切换为基线，最早 2026-10-16 同时刻完成，旧资源继续保留。下文“每次合并后手动迁移”等说明属于历史流程，不适用于 Neon 自动发布。
 
 把开发者本机 Docker 中的 Postgres 接到 Cloudflare 上的 staging Worker：
 
@@ -139,7 +139,7 @@ curl -s https://web-staging.saas-jobs.workers.dev/api/health   # 期望 200，db
 
 ## 四、历史整套链路删除参考（当前不执行）
 
-以下是删除整套旧 staging 的历史命令，其中 Worker、Queue 仍为 Neon staging 共用，不能作为七天观察后的旧 Hyperdrive 清理步骤执行。任务 9.2 未完成，不删除旧资源；观察满七天后按 [Neon runbook §6](staging-neon.md#6-七天观察任务-92-保持未完成) 由用户决定旧 Hyperdrive、Tunnel 与 VPC 的去留。
+以下是删除整套旧 staging 的历史命令，其中 Worker、Queue 仍为 Neon staging 共用，不能作为24 小时观察后的旧 Hyperdrive 清理步骤执行。任务 9.2 未完成，不删除旧资源；观察满 24 小时后按 [Neon runbook §6](staging-neon.md#6-24-小时观察任务-92-保持未完成) 由用户决定旧 Hyperdrive、Tunnel 与 VPC 的去留。
 
 ```bash
 pnpm --dir apps/web exec wrangler delete web-staging

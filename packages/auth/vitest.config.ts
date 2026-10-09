@@ -1,4 +1,4 @@
-import { cloudflareTest } from '@cloudflare/vitest-pool-workers'
+import { cloudflareTest } from '@cloudflare/vitest-plugin'
 import { isPostgresSocketRejection } from '@saas/db/test/postgres-socket-rejection'
 import { readLocalEnv } from '@saas/db/worktree-env'
 import { defineConfig } from 'vitest/config'

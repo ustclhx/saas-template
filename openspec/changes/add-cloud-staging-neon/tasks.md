@@ -61,4 +61,4 @@
 ## 9. 集成验收与收尾
 
 - [x] 9.1 在 staging 手工走一遍：注册 → 定价页显示 Stripe / PayPal 可选 → Stripe 测试卡购买一个积分包 → 余额增加；验证 `webhook_event` 中该事件只处理一次，jobs 心跳持续更新（本项只验证环境可用，P2 的完整验收仍在 `add-billing-and-credits` 11.1）
-- [ ] 9.2【人工】观察 7 天后在 Neon 控制台记录计算与存储用量，决定是否升级计划；删除旧 Hyperdrive 配置 `c4b28441aeaf49c3853a321a39cf8ec4` / `1b360caddf134503af774993499bdc4e`，并决定 Tunnel `saas-template-local` 与 Workers VPC 服务的去留；验证结论写入 `docs/runbooks/staging-neon.md`
+- [ ] 9.2【人工】观察 24 小时后（2026-10-09 用户决定由 7 天缩短：Cron 每 5 分钟唤醒，计算基本常驻，一天用量即可推算月度；回滚窗口不再需要）在 Neon 控制台记录计算与存储用量，决定是否升级计划；删除旧 Hyperdrive 配置 `c4b28441aeaf49c3853a321a39cf8ec4` / `1b360caddf134503af774993499bdc4e`，并决定 Tunnel `saas-template-local` 与 Workers VPC 服务的去留；验证结论写入 `docs/runbooks/staging-neon.md`

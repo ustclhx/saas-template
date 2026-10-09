@@ -1,4 +1,4 @@
-import { cloudflareTest } from '@cloudflare/vitest-pool-workers'
+import { cloudflareTest } from '@cloudflare/vitest-plugin'
 import { isPostgresSocketRejection } from '@saas/db/test/postgres-socket-rejection'
 import { readLocalEnv } from '@saas/db/worktree-env'
 import { defineConfig } from 'vitest/config'
@@ -35,7 +35,7 @@ export default defineConfig({
               plugins: [
                 cloudflareTest({
                   // 直接使用部署配置（Workflow、Queue consumer、Cron、Hyperdrive）；
-                  // compatibility_date 受限于 vitest-pool-workers 自带的 workerd 版本
+                  // compatibility_date 受限于 vitest-plugin 自带的 workerd 版本
                   wrangler: { configPath: './wrangler.jsonc' },
                   miniflare: {
                     compatibilityDate: '2026-08-01',

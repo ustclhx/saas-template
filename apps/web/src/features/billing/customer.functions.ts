@@ -10,6 +10,7 @@ import {
 } from '@saas/billing'
 import { createDb } from '@saas/db'
 import { AppError } from '@saas/shared'
+import { log } from '@saas/shared/log'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { z } from 'zod'
@@ -42,6 +43,8 @@ async function safe<T>(readOnly: boolean, action: () => Promise<T>) {
       throw new AppError('WORKSPACE_READ_ONLY', 'Workspace is read-only', { status: 403 })
     return { ok: true as const, result: await action() }
   } catch (error) {
+    // 非业务错误（服务商拒绝、网络等）对用户只显示 BILLING_UNAVAILABLE，原因需留在日志中排查
+    if (!(error instanceof AppError)) log.error('billing.action_failed', { error })
     return {
       ok: false as const,
       error: error instanceof AppError ? error.code : 'BILLING_UNAVAILABLE',

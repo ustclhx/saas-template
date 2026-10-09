@@ -42,7 +42,7 @@
 
 **结论：改用 PBKDF2。** Better Auth 默认的 scrypt（N=16384、r=16、p=1，workerd 中走 `node:crypto` 原生实现）在本地 workerd 中单次约 36 ms，注册 / 登录约 47–49 ms（p95 超过 50 ms），修改密码要算两次，约 81 ms，超过 design.md 设定的 50 ms 阈值。改为 Web Crypto 的 PBKDF2-HMAC-SHA256（100,000 次迭代，`packages/auth/src/password.ts`）后，注册 / 登录 / 修改密码约 16–21 ms。哈希格式为 `pbkdf2-sha256$<迭代次数>$<salt>$<hash>`，校验时兼容 scrypt 格式的旧哈希。
 
-测量方法：`pnpm --filter @saas/auth probe:cpu`（`packages/auth/probe/`），在 vitest-pool-workers 的 workerd 中经 `auth.handler` 执行完整流程，每项 20 次（另有 3 次预热），共 3 轮；关闭 Turnstile 与 RL_AUTH。单位 ms，三轮 p50 的范围（p95 的范围）：
+测量方法：`pnpm --filter @saas/auth probe:cpu`（`packages/auth/probe/`），在 vitest-plugin 的 workerd 中经 `auth.handler` 执行完整流程，每项 20 次（另有 3 次预热），共 3 轮；关闭 Turnstile 与 RL_AUTH。单位 ms，三轮 p50 的范围（p95 的范围）：
 
 | 项目 | scrypt | PBKDF2（100k） |
 |---|---|---|

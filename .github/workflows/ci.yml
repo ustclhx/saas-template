@@ -13,7 +13,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
 
-    # 集成测试（@saas/db、@saas/web、@saas/jobs 的 vitest-pool-workers 项目）使用的本地 Postgres，
+    # 集成测试（@saas/db、@saas/web、@saas/jobs 的 vitest-plugin 项目）使用的本地 Postgres，
     # 账号与权限按 infra/local/initdb 的约定在下面的步骤中初始化。
     services:
       postgres:

@@ -83,7 +83,7 @@
 2. 新建两个 Hyperdrive 配置，修改 wrangler staging ID，本机按 jobs → web 手动部署一次；`/api/health` 返回 `db: up`，并重跑 71-locks 探针。
 3. 补齐 secrets 与 vars，核对脚本通过；重新登记 Stripe / PayPal 测试 webhook 地址（如已登记，地址不变则跳过）。
 4. 合入版本注入、告警与流水线；首次 main 合并触发自动发布并通过冒烟。
-5. 观察 7 天：Neon 计算用量、健康检查与 Cron 心跳。之后停止本机 `cloudflared` 的 staging 用途，删除旧 Hyperdrive 配置 `c4b28441…` / `1b360cad…`（Workers VPC 服务与 Tunnel 保留给阶段二或一并删除，由用户决定）。
+5. 观察 24 小时（2026-10-09 由 7 天缩短）：Neon 计算用量、健康检查与 Cron 心跳。之后停止本机 `cloudflared` 的 staging 用途，删除旧 Hyperdrive 配置 `c4b28441…` / `1b360cad…`（Workers VPC 服务与 Tunnel 保留给阶段二或一并删除，由用户决定）。
 
 **回滚**：把 `env.staging.hyperdrive` 的 ID 还原为旧值、启动本机 cloudflared 后重新部署；流水线可通过禁用 `deploy-staging.yml` 停止。
 

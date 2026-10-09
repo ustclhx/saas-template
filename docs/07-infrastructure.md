@@ -11,15 +11,15 @@
 
 **最小原型**指 Phase 0–3 完成：可以注册登录、开通套餐或购买积分、进行一次计费正确的 AI 对话（见 `docs/08-roadmap.md`）。
 
-截至 2026-10-09 UTC，staging 已由 main 自动按迁移 → jobs → web 发布到 Neon，当前版本为 `ce623cab63a99d6eee8c8ba67eeb09e564f97779`，两个新 Hyperdrive 绑定已随 PR #62 合入 main。最小权限、12 条迁移、幂等 seed、锁探针一轮七场景/49 断言及独立空库重建已通过；自动发布的健康检查为 200、db.up、完整 SHA 匹配，三项冒烟全部通过，Cron 心跳已推进。两平台报价同步与 Stripe Test webhook 验签已有证据，固定一小时支付缺凭据告警检索为 0 条。Stripe Sandbox $10 积分包购买成功，UI 余额 0 → 1000，付款与唯一积分批次关联一致；Checkout Managed Payments 与重复投递修复已随 PR #62 合并，同一原始事件重投返回 200，付款、积分批次、事件与余额不再增加，购买任务 9.1 已通过。Neon change 当前 28/29，仅 9.2 七天观察未完成；P2 完整订阅、退款与 PayPal 场景仍待核验，11.1 保持未完成。PR #61、#62、#64 均已合并，本 PR3 只补文档、runbook 与验收记录，见 [Neon staging 操作与证据](./runbooks/staging-neon.md)。不迁移旧 staging 数据，本地 worktree 与阶段二生产方案保持现状。
+截至 2026-10-09 UTC，staging 已由 main 自动按迁移 → jobs → web 发布到 Neon，当前版本为 `ce623cab63a99d6eee8c8ba67eeb09e564f97779`，两个新 Hyperdrive 绑定已随 PR #62 合入 main。最小权限、12 条迁移、幂等 seed、锁探针一轮七场景/49 断言及独立空库重建已通过；自动发布的健康检查为 200、db.up、完整 SHA 匹配，三项冒烟全部通过，Cron 心跳已推进。两平台报价同步与 Stripe Test webhook 验签已有证据，固定一小时支付缺凭据告警检索为 0 条。Stripe Sandbox $10 积分包购买成功，UI 余额 0 → 1000，付款与唯一积分批次关联一致；Checkout Managed Payments 与重复投递修复已随 PR #62 合并，同一原始事件重投返回 200，付款、积分批次、事件与余额不再增加，购买任务 9.1 已通过。Neon change 当前 28/29，仅 9.2 24 小时观察未完成；P2 完整订阅、退款与 PayPal 场景仍待核验，11.1 保持未完成。PR #61、#62、#64 均已合并，本 PR3 只补文档、runbook 与验收记录，见 [Neon staging 操作与证据](./runbooks/staging-neon.md)。不迁移旧 staging 数据，本地 worktree 与阶段二生产方案保持现状。
 
-自动发布 [run 37894416572](https://github.com/ustclhx/saas-template/actions/runs/37894416572) 于 `2026-10-09T06:36:31Z` 开始、`06:38:28Z` 完成；jobs / web Worker version 分别为 `38ec01c5-8ced-4173-b478-e2e4f1dc9139` / `7281e552-88c9-4c40-bfb9-b3ae0c69c83d`。`2026-10-09T06:41:05.684100Z` 健康观测为 200、db.up、匹配上述完整 SHA，`jobs.lastCronAt = 2026-10-09T06:40:35.438Z`。原 `433e737` 手动部署与购买证据作为历史记录保留在 runbook；固定一小时 5.6 结果与七天观察起点不因修复重部署重置。
+自动发布 [run 37894416572](https://github.com/ustclhx/saas-template/actions/runs/37894416572) 于 `2026-10-09T06:36:31Z` 开始、`06:38:28Z` 完成；jobs / web Worker version 分别为 `38ec01c5-8ced-4173-b478-e2e4f1dc9139` / `7281e552-88c9-4c40-bfb9-b3ae0c69c83d`。`2026-10-09T06:41:05.684100Z` 健康观测为 200、db.up、匹配上述完整 SHA，`jobs.lastCronAt = 2026-10-09T06:40:35.438Z`。原 `433e737` 手动部署与购买证据作为历史记录保留在 runbook；固定一小时 5.6 结果与24 小时观察起点不因修复重部署重置。
 
 Phase 0 本机链路的历史实测条件与当前观察范围：
 
 - 切换前 staging 访问旧数据库要求开发者本机与 `cloudflared` 在线；当前线上 Neon 链路已解除此依赖，回滚到旧库前仍需确认两者可用。
 - Phase 0 请求绕回本机，其延迟基线只验证原链路可用，不能代表 Neon 或生产环境。
-- 本机 PG 不做备份；Neon staging 为可重建测试数据，Free 用量与休眠影响仍待七天观察，不替代阶段二备份方案。观察期保留旧 Hyperdrive、Tunnel 与 Workers VPC 资源。
+- 本机 PG 不做备份；Neon staging 为可重建测试数据，Free 用量与休眠影响仍待24 小时观察，不替代阶段二备份方案。观察期保留旧 Hyperdrive、Tunnel 与 Workers VPC 资源。
 
 ## 1. 自建 Postgres（阶段二）
 
@@ -224,7 +224,7 @@ export function createDb(hd: Hyperdrive) {
 |---|---|---|---|---|
 | local | `wrangler dev` / `vite dev`（workerd） | 本地 Docker PG | Stripe test / PayPal sandbox | Hyperdrive 使用 `localConnectionString` 直连本地 PG；R2/KV/Queues 由 Miniflare 模拟 |
 | preview | 每个 PR 一个 Worker 预览版本 | staging 库（**只读 schema**） | 测试模式 | 可选；PR 不得对 staging 库执行迁移，含 schema 变更的 PR 不部署预览（或改用本地验证） |
-| staging | 阶段一：`*.workers.dev`；阶段二：`*.staging.<域名>` | 阶段一线上：Neon `saas_staging`；阶段二：生产服务器上的独立 database 或独立实例 | 测试模式 | main 自动发布已验收；七天观察见 Neon runbook |
+| staging | 阶段一：`*.workers.dev`；阶段二：`*.staging.<域名>` | 阶段一线上：Neon `saas_staging`；阶段二：生产服务器上的独立 database 或独立实例 | 测试模式 | main 自动发布已验收；24 小时观察见 Neon runbook |
 | production | 自定义域名（阶段二） | 生产库 | 正式 | 阶段一不部署 |
 
 Wrangler 使用 `env.staging` / `env.production` 区分绑定与变量。
@@ -300,7 +300,7 @@ AI                                (Workers AI，可选)
 ## 5. 部署与 CI（GitHub Actions）
 
 ```
-PR:    install → biome check → typecheck → unit test (vitest-pool-workers) → build
+PR:    install → biome check → typecheck → unit test (vitest-plugin) → build
        → （可选，且 PR 不含新迁移时）部署预览版本
 main:  以上 + 数据库迁移(staging) → 部署 staging → e2e (Playwright) 
 tag:   数据库迁移(production) → wrangler deploy (jobs 先于 web) → 冒烟测试
@@ -310,7 +310,7 @@ tag:   数据库迁移(production) → wrangler deploy (jobs 先于 web) → 冒
 
 发布顺序为 install → Neon 迁移 → jobs → web（`APP_VERSION` 为完整提交 SHA）→ 健康检查 → Playwright `staging` 项目。迁移通过 environment 的 `STAGING_MIGRATION_DATABASE_URL` 直连 Neon，以 `migrator` 执行；Cloudflare 认证使用 `CLOUDFLARE_API_TOKEN` 与 `CLOUDFLARE_ACCOUNT_ID`。健康检查每 5 秒轮询、最多 3 分钟，要求 200、`db.status=up`、`version` 等于目标 SHA；之后用 Chromium 检查首页、定价与一次随机邮箱注册。任一步失败即停止发布。
 
-GitHub `staging` environment 三项 secrets（`CLOUDFLARE_ACCOUNT_ID`、`STAGING_MIGRATION_DATABASE_URL`、`CLOUDFLARE_API_TOKEN`）已配置，CI token 已验证 active 与当前 account。PR #62 合并为 `ad1b5da` 后的首次自动发布在 web 预渲染阶段失败：本地 Hyperdrive 缺少模拟连接串，迁移与 jobs 已成功。PR #64 合并为 `ce623ca`，在 Deploy web 的环境变量中为两个 Hyperdrive 绑定设置不可达的本地占位连接；仅使预渲染 preview 能启动，快照按既有设计降级为示例数据，绝不连接真实库。其触发的 [Deploy staging run 37894416572](https://github.com/ustclhx/saas-template/actions/runs/37894416572) 于 `2026-10-09T06:36:31Z–06:38:28Z` 全部成功：Neon 迁移 → jobs → web → 版本健康检查 → staging 冒烟（`3 passed (10.0s)`）。健康检查匹配完整 `ce623cab63a99d6eee8c8ba67eeb09e564f97779` 且 `db.status=up`，任务 7.4 已验收；本机原三项冒烟（6.2）亦已通过，断言与超时未改。PR3 仅补齐文档与任务记录，9.2 七天观察保留未完成。操作与回滚见 [Neon staging runbook](./runbooks/staging-neon.md)。
+GitHub `staging` environment 三项 secrets（`CLOUDFLARE_ACCOUNT_ID`、`STAGING_MIGRATION_DATABASE_URL`、`CLOUDFLARE_API_TOKEN`）已配置，CI token 已验证 active 与当前 account。PR #62 合并为 `ad1b5da` 后的首次自动发布在 web 预渲染阶段失败：本地 Hyperdrive 缺少模拟连接串，迁移与 jobs 已成功。PR #64 合并为 `ce623ca`，在 Deploy web 的环境变量中为两个 Hyperdrive 绑定设置不可达的本地占位连接；仅使预渲染 preview 能启动，快照按既有设计降级为示例数据，绝不连接真实库。其触发的 [Deploy staging run 37894416572](https://github.com/ustclhx/saas-template/actions/runs/37894416572) 于 `2026-10-09T06:36:31Z–06:38:28Z` 全部成功：Neon 迁移 → jobs → web → 版本健康检查 → staging 冒烟（`3 passed (10.0s)`）。健康检查匹配完整 `ce623cab63a99d6eee8c8ba67eeb09e564f97779` 且 `db.status=up`，任务 7.4 已验收；本机原三项冒烟（6.2）亦已通过，断言与超时未改。PR3 仅补齐文档与任务记录，9.2 24 小时观察保留未完成。操作与回滚见 [Neon staging runbook](./runbooks/staging-neon.md)。
 
 **阶段二私有 PG 迁移**：CI 可运行 `cloudflared access tcp`（需要 §2 的公网主机名 + Access 备选方式）在本地开转发端口，再执行迁移；或通过 SSH 在生产服务器上执行迁移。
 

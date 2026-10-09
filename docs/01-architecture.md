@@ -56,7 +56,7 @@
 | 邮件 | Resend + React Email | 通过 Queue 异步发送 |
 | 人机验证 | Cloudflare Turnstile | |
 | 监控 | Sentry（`@sentry/cloudflare`）、Workers Logs、Web Analytics | PostHog 可选 |
-| 测试 | Vitest（`@cloudflare/vitest-pool-workers`）、Playwright | |
+| 测试 | Vitest（`@cloudflare/vitest-plugin`）、Playwright | |
 | 代码规范 | Biome | |
 
 ## 3. Cloudflare 服务用途
