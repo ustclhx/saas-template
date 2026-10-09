@@ -15,6 +15,7 @@ pattern workspace_table() {
   or {
     `aiConversation`,
     `aiMessage`,
+    `aiTask`,
     `auditLog`,
     `billingCustomer`,
     `billingCompensation`,
@@ -22,6 +23,7 @@ pattern workspace_table() {
     `creditGrant`,
     `creditHold`,
     `creditLedger`,
+    `file`,
     `invitation`,
     `member`,
     `notification`,

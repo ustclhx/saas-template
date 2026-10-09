@@ -9,3 +9,10 @@ GOOGLE_CLIENT_ID=fake-google-client-id
 GOOGLE_CLIENT_SECRET=fake-google-client-secret
 GITHUB_CLIENT_ID=fake-github-client-id
 GITHUB_CLIENT_SECRET=fake-github-client-secret
+
+# 文件直传需要 FILES 桶的 S3 凭据；本地 R2 binding 是 Miniflare 模拟，
+# 预签名仍指向 S3 端点，只能用对应独立开发桶验证直传，不能指向 staging。
+# R2_FILES_BUCKET 由 wrangler vars 配置，账号 ID 与该桶所属账号一致。
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=

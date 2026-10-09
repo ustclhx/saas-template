@@ -40,6 +40,8 @@ test('optional secrets do not block an otherwise configured staging environment'
     'web optional: RESEND_API_KEY',
     'web optional: AI_GATEWAY_TOKEN',
     'web optional: SENTRY_DSN',
+    'web optional: R2_ACCESS_KEY_ID',
+    'web optional: R2_SECRET_ACCESS_KEY',
     'jobs optional: RESEND_API_KEY',
     'jobs optional: AI_GATEWAY_TOKEN',
     'jobs optional: SENTRY_DSN',
