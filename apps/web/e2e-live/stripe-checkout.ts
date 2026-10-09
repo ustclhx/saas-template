@@ -28,10 +28,10 @@ export async function payOnStripeCheckout(
   email: string,
   card: string = STRIPE_TEST_CARDS.success,
 ) {
-  await page
-    .getByLabel('Email')
-    .fill(email)
-    .catch(() => {})
+  // 已有 Stripe Customer 时邮箱只读展示、没有输入框；fill 会一直等到用例超时
+  await page.getByPlaceholder('1234 1234 1234 1234').waitFor()
+  const emailBox = page.getByRole('textbox', { name: 'Email' })
+  if (await emailBox.isVisible().catch(() => false)) await emailBox.fill(email)
   await page.getByPlaceholder('1234 1234 1234 1234').fill(card)
   await page.getByPlaceholder('MM / YY').fill('12 / 34')
   await page.getByPlaceholder('CVC').fill('123')
@@ -41,6 +41,9 @@ export async function payOnStripeCheckout(
     .catch(() => {})
   const zip = page.getByPlaceholder(/ZIP|Postal/i)
   if (await zip.isVisible().catch(() => false)) await zip.fill('94103')
+  // Link「保存信息」默认勾选时要求手机号，测试中取消勾选
+  const saveInfo = page.getByRole('checkbox', { name: /Save my information/i })
+  if (await saveInfo.isChecked().catch(() => false)) await saveInfo.uncheck()
   await page.getByTestId('hosted-payment-submit-button').click()
 }
 

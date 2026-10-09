@@ -6,7 +6,7 @@ P2 离线基线：PR #24 / `458fafdef81cf30cc41516eec15fc4d1e7122725`，2026-10-
 
 2026-10-05 本机旧 staging 历史记录：已应用 0002–0007（累计 8 条迁移），seed 为 4 套餐、10 报价且当时全部 inactive；`events-staging` 已有 1 producer / 1 consumer。发布版本：jobs `91bdd92a-1ffd-4fc8-9672-ecec303045f0`，web `6c9cf30a-05fa-4e28-8ab4-976424fee830`；健康检查、定价页和未配置支付时 503 已核验。上述 inactive 与缺少凭据均为历史状态。
 
-当前线上 staging 已由 main 自动部署代码 `ce623cab63a99d6eee8c8ba67eeb09e564f97779`，两个新 Hyperdrive 均连接 Neon `saas_staging`，不再依赖本机 PG 或 cloudflared。受限角色、12 条迁移、两轮四套餐 seed 与锁探针七场景/49 断言已通过；健康检查 200、db.up、完整 SHA 匹配，Cron 心跳在 10 分钟内更新。Stripe Sandbox account 与 PayPal Sandbox OAuth 已核验，所需 staging secrets 已配置；`staging:check-secrets` 退出 0。两平台价格同步两次成功、10 项映射 active，Stripe Test endpoint 验签通过；原三项 staging 冒烟（6.2）在本机现有 HTTP 代理下退出 0、3 passed、20.2 秒，临时等效配置未改断言或超时，未使用 mock、伪造 Turnstile token 或修改系统设置。版本探活（7.1）正确版本退出 0，错误版本 36 轮约 180 秒后退出 1。Neon change 最终为 28/29，仅七天观察（9.2）保持未完成；Stripe Sandbox 小额积分包已付款、余额增加，最小修复后同一原始事件重投返回 200 且无重复入账，购买（9.1）已通过；退款、订阅、PayPal 购买与完整业务回调验收仍待完成。PR #61、#62、#64 均已合并，Neon Hyperdrive、AI Gateway vars 与 observability 配置已在 main；本 PR 3 仅更新文档与任务记录。新旧库为独立数据集，不搬迁旧测试数据；支付验收须匹配实际 Worker 绑定与目标库，计费读写使用不缓存的 `HYPERDRIVE`。无需重做已完成迁移；资源或代码变化后的部署顺序仍是 jobs → web。见 [基础设施](../07-infrastructure.md) 与 [Neon staging 操作记录](staging-neon.md)。
+当前线上 staging 已由 main 自动部署代码 `ce623cab63a99d6eee8c8ba67eeb09e564f97779`，两个新 Hyperdrive 均连接 Neon `saas_staging`，不再依赖本机 PG 或 cloudflared。受限角色、12 条迁移、两轮四套餐 seed 与锁探针七场景/49 断言已通过；健康检查 200、db.up、完整 SHA 匹配，Cron 心跳在 10 分钟内更新。Stripe Sandbox account 与 PayPal Sandbox OAuth 已核验，所需 staging secrets 已配置；`staging:check-secrets` 退出 0。两平台价格同步两次成功、10 项映射 active，Stripe Test endpoint 验签通过；原三项 staging 冒烟（6.2）在本机现有 HTTP 代理下退出 0、3 passed、20.2 秒，临时等效配置未改断言或超时，未使用 mock、伪造 Turnstile token 或修改系统设置。版本探活（7.1）正确版本退出 0，错误版本 36 轮约 180 秒后退出 1。Neon change 最终为 28/29，仅24 小时观察（9.2）保持未完成；Stripe Sandbox 小额积分包已付款、余额增加，最小修复后同一原始事件重投返回 200 且无重复入账，购买（9.1）已通过；退款、订阅、PayPal 购买与完整业务回调验收仍待完成。PR #61、#62、#64 均已合并，Neon Hyperdrive、AI Gateway vars 与 observability 配置已在 main；本 PR 3 仅更新文档与任务记录。新旧库为独立数据集，不搬迁旧测试数据；支付验收须匹配实际 Worker 绑定与目标库，计费读写使用不缓存的 `HYPERDRIVE`。无需重做已完成迁移；资源或代码变化后的部署顺序仍是 jobs → web。见 [基础设施](../07-infrastructure.md) 与 [Neon staging 操作记录](staging-neon.md)。
 
 自动发布（7.4）由 [run 37894416572](https://github.com/ustclhx/saas-template/actions/runs/37894416572) 验收：2026-10-09 06:36:31–06:38:28 UTC，completed/success，head 为上述完整 SHA，迁移 → jobs → web → 版本探活 → 三项冒烟均 success（3 passed，10.0 秒）。jobs Worker version `38ec01c5-8ced-4173-b478-e2e4f1dc9139`，web `7281e552-88c9-4c40-bfb9-b3ae0c69c83d`；06:41:05.684100 UTC 健康为 ok、db.up、完整 SHA 匹配，`jobs.lastCronAt = 2026-10-09T06:40:35.438Z`。PR #62 初次运行 [37892016841](https://github.com/ustclhx/saas-template/actions/runs/37892016841) 在 web 预渲染失败；#64 仅在 Deploy web step 设置两个不可达的 local Hyperdrive 占位连接，构建沿用已有 pricing fallback，不连接真实数据库。成功验收来自补正后的运行，手动部署记录见 §5。
 
@@ -168,7 +168,9 @@ STAGING_URL=https://web-staging.saas-jobs.workers.dev \
   pnpm --filter @saas/web test:e2e:stripe
 ```
 
-用例代码与配置的存在不代表 Stripe 月付自动化用例（10.1）已经通过；本轮实际执行的是人工 Stripe Sandbox 积分包购买。凭据与价格同步已有证据。
+**10.1 已通过（2026-10-09 07:4x UTC，staging `ce623ca`）**：上面的命令对 Neon staging 执行 1 passed（35.3 秒）——新用户从 `/pricing` 选 Stripe Pro 月付 → 托管结账页 4242 测试卡 → billing-return，readonly 核对付款 `initial:succeeded:1900`、唯一 `subscription:1000` 积分批次与 active 订阅。首次运行暴露两处 Stripe 页面差异并已在 `stripe-checkout.ts` 处理：已有 Customer 时邮箱只读（不再等待输入框），Link「保存信息」默认勾选时要求手机号（取消勾选）。
+
+**1.3 已通过（同日）**：Codex 两轮 `billing:sync` 均退出 0、映射 ID 稳定、无新增；随后用 readonly 读取 staging `plan_price` 的 10 条映射，逐条经 Stripe `GET /v1/prices/:id` 与 PayPal `GET /v1/billing/plans/:id` 核对，金额、币种、周期与 active 状态全部一致。PayPal 积分包为一次性订单，没有远端 Plan，仅保留本地映射。
 
 Stripe Checkout 首次返回 `BILLING_UNAVAILABLE`，Workbench 400 确认账户默认 Managed Payments 要求 product tax code。用户已批准每次创建 Checkout Session 显式设置 `managed_payments.enabled=false` 的两文件三行补正，已应用为提交 `ab9dc21274291a82a22da67aaa776c6a779dafef`；Stripe operations 回归由 RED（2 fail）转为 GREEN（20 passed）。根目录 `check`、`check:deps`、`check:singletons`、`typecheck`、`test`、`build` 六项均退出 0，日志为 `/tmp/cloud-staging-neon-managed-{check,check-deps,check-singletons,typecheck,test,build}.log`。
 
@@ -180,7 +182,7 @@ Stripe Checkout 首次返回 `BILLING_UNAVAILABLE`，Workbench 400 确认账户�
 
 历史去重补正后已按 jobs → web 手动部署完整代码 `433e737b517733553537cfdb7ed9bb9fad6dbe4e`，jobs Worker version `e60c6ed2-0f59-4bf8-b245-98e018096bd6`、web `5bfb1235-9cf6-4558-9b88-802938dcfb05`。部署精确时间未留证；`2026-10-09T05:11:05.853Z` 健康观测为 200、status ok、db.up、完整 SHA 匹配，`jobs.lastCronAt` 从 `2026-10-09T05:00:53.721Z` 推进至 `2026-10-09T05:10:39.639Z`。该历史提交的 [CI run 37887162498](https://github.com/ustclhx/saas-template/actions/runs/37887162498) 已全部通过，head SHA 为上述完整 `433e737b517733553537cfdb7ed9bb9fad6dbe4e`；CI 通过不代替首次 main 自动发布验收。
 
-修复部署后，使用受保护的测试 key 经 Stripe CLI 重投同一原始购买事件 `evt_1UOVuiL3UTpBAoXom7S1Ate2`；Stripe Workbench 的 `2026-10-09T05:11:10Z` Manual retry 明确返回 200 OK。重投后 readonly 核对付款、积分批次、事件与初始快照完全 deepEqual：各一条，付款仍为 `one_time / succeeded / 1000 USD`（最小货币单位），唯一 `purchase` 批次 `amount = remaining = 1000` 且关联原付款，事件仍 `processed / attempts = 1 / processed_at = 2026-10-09T05:00:14.299Z`；UI 余额仍为 1000。小额测试积分包购买、同事件去重及 Cron 心跳三项均通过，Neon 任务 9.1 已完成，Neon change 最终为 28/29，仅七天观察（9.2）保持未完成。
+修复部署后，使用受保护的测试 key 经 Stripe CLI 重投同一原始购买事件 `evt_1UOVuiL3UTpBAoXom7S1Ate2`；Stripe Workbench 的 `2026-10-09T05:11:10Z` Manual retry 明确返回 200 OK。重投后 readonly 核对付款、积分批次、事件与初始快照完全 deepEqual：各一条，付款仍为 `one_time / succeeded / 1000 USD`（最小货币单位），唯一 `purchase` 批次 `amount = remaining = 1000` 且关联原付款，事件仍 `processed / attempts = 1 / processed_at = 2026-10-09T05:00:14.299Z`；UI 余额仍为 1000。小额测试积分包购买、同事件去重及 Cron 心跳三项均通过，Neon 任务 9.1 已完成，Neon change 最终为 28/29，仅24 小时观察（9.2）保持未完成。
 
 验收汇总为 `/tmp/cloud-staging-neon-purchase-acceptance.json`，只读前后快照为 `/tmp/cloud-staging-neon-payment-before-resend.json`、`/tmp/cloud-staging-neon-payment-result.json`，CLI 重投提交记录为 `/tmp/cloud-staging-neon-stripe-resend-result.json`，当时健康记录为 `/tmp/cloud-staging-neon-final-health.json`。CLI 退出 0 仅证明提交成功；endpoint 200 由 Workbench 独立观测确认。以上证据仅含公开 ID 与测试数据。
 
@@ -239,18 +241,18 @@ WHERE workspace_id = :'workspace_id' AND remaining < 0;
 
 `ledger = expected`、negative_grants 为 0；同一 `(provider, provider_event_id)`、付款身份、退款身份和 `(source, source_ref)` 不重复。以实际事件 ID 定位 `webhook_event` 的 status/attempts/error/processed_at，以实际目标 ID 定位 `audit_log`；事件表没有 workspace_id，不能套用空间过滤。记录退款申请 status/approved_amount/provider_refund_id 与 `billing.payment_refunded`、`billing.webhook_postprocessed` 审计。Cron 为 UTC 每小时、每 10 分钟、每日 04:00；daily 对账结果需真实观测，不能靠 HTTP 200 推断。邮件保持 log 时只验队列和模板处理，不声明邮件已送达。
 
-## 7. 剩余六项的完成门槛
+## 7. 六项的完成门槛（1.3、10.1 已通过）
 
 | Task | 完成标准 / 必须留下的证据 |
 |---|---|
-| 1.3 | 两平台真实 test/sandbox sync 两轮成功，10 个有效本地映射、远端对应金额/周期一致、重复执行无新增；说明 PayPal 积分包无远端 Plan。 |
+| 1.3（已通过） | 两平台真实 test/sandbox sync 两轮成功，10 个有效本地映射、远端对应金额/周期一致、重复执行无新增；说明 PayPal 积分包无远端 Plan。 |
 | 3.2 | 当前锁定版本真实 Stripe 结账、门户、取消/恢复、退款及首付/续费/一次性回调录制；录制夹具映射测试通过，验签与 invoicePayments → PaymentIntent 关联有真实证据，版本差异已处理。 |
 | 3.3 | 当前 sandbox App 的 Orders capture、Subscriptions、KV OAuth、远端验签、取消/恢复、Sale/Capture 退款真实成功；录制首付/续费/退款等夹具映射通过，Sale 历史/周期与弃用 API 可用性验证；实际事件差异回写 docs/05。 |
-| 10.1 | 从 `/pricing` 经真实 Stripe 测试卡付款到 billing-return 的端到端记录/断言，数据库付款与唯一积分批次一致；现有 Playwright mock e2e 不抵充。 |
+| 10.1（已通过） | 从 `/pricing` 经真实 Stripe 测试卡付款到 billing-return 的端到端记录/断言，数据库付款与唯一积分批次一致；现有 Playwright mock e2e 不抵充。 |
 | 10.4 | 联通结论回写 docs/05，docs/08 的 Q4 默认不结转、Q5 升级不补发、Q6 已消费不追溯状态按实际证据更新；标明仍待项，不删除已确认的不确定性。 |
 | 11.1 | staging 两平台月付/年付、真实续费、取消/恢复/到期、重叠期、积分包、申请/平台全额与部分退款、重复回调矩阵全部验收；无重复发放/负余额、对账成立，应用时间与平台 clock 验证区分明确，所有失败修复后重验。 |
 
-上述六项在完整门槛核验前保持未完成；已有的同步和 Stripe Test 验签证据见 §3–4，不能据此宣布完整支付验收通过。本文件不勾选 tasks，后续 supervisor 按完整门槛结项。PayPal Sale API/历史形状、沙箱续费时间及应用到期验证方案仍须在联通过程中解决。Neon 注册冒烟（6.2）与版本探活（7.1）已通过，证据分别为 `/tmp/cloud-staging-neon-proxy-evidence.txt` 与 `/tmp/cloud-staging-neon-wrong-timed.log`。自动发布（7.4）已通过，文档与路线图最终结项（8.2）在本 PR 3 完成；七天观察（9.2）沿用 2026-10-09 03:38 UTC 切换基线，最早 2026-10-16 同时刻完成，保持未完成；小额测试积分包购买（9.1）已通过；jobs 已仅在 staging 开启日志、采样率 100%、traces 关闭并按 jobs → web 完成重部署。一小时支付日志（5.6）已通过：2026-10-09 03:39–04:39 UTC，48 条 scheduled 记录、13 条心跳、缺凭据告警 0 条；观察期不删除旧资源。
+3.2、3.3、10.4、11.1 在完整门槛核验前保持未完成；已有的同步和 Stripe Test 验签证据见 §3–4，不能据此宣布完整支付验收通过。本文件不勾选 tasks，后续 supervisor 按完整门槛结项。PayPal Sale API/历史形状、沙箱续费时间及应用到期验证方案仍须在联通过程中解决。Neon 注册冒烟（6.2）与版本探活（7.1）已通过，证据分别为 `/tmp/cloud-staging-neon-proxy-evidence.txt` 与 `/tmp/cloud-staging-neon-wrong-timed.log`。自动发布（7.4）已通过，文档与路线图最终结项（8.2）在本 PR 3 完成；24 小时观察（9.2）沿用 2026-10-09 03:38 UTC 切换基线，最早 2026-10-16 同时刻完成，保持未完成；小额测试积分包购买（9.1）已通过；jobs 已仅在 staging 开启日志、采样率 100%、traces 关闭并按 jobs → web 完成重部署。一小时支付日志（5.6）已通过：2026-10-09 03:39–04:39 UTC，48 条 scheduled 记录、13 条心跳、缺凭据告警 0 条；观察期不删除旧资源。
 
 ## 8. 代码核对索引
 

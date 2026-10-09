@@ -27,4 +27,10 @@ test('随机邮箱注册后进入个人空间', async ({ page }) => {
   await expect(page).toHaveURL(/\/app\/u-[a-z0-9]+\/?$/)
   await expect(page.getByTestId('current-user')).toContainText(email)
   await expect(page.getByText('Personal workspace', { exact: true })).toBeVisible()
+
+  // 每次发布都会注册一个用户；走真实的注销流程删除，避免 staging 库中冒烟账号累积
+  await page.goto('/account')
+  await page.getByLabel('Type DELETE to confirm').fill('DELETE')
+  await page.getByRole('button', { name: 'Delete account' }).click()
+  await expect(page).toHaveURL(/\/login(\?|$)/)
 })

@@ -4,7 +4,7 @@
 
 ## 当前进度与证据（2026-10-09 UTC）
 
-**main 已自动发布到 Neon staging，迁移、jobs → web、完整版本探活与注册冒烟均通过。** 当前线上代码为 `ce623cab63a99d6eee8c8ba67eeb09e564f97779`。Neon change 最终完成 28/29，仅七天观察（9.2）保持未完成；新旧数据库是独立数据集。本 PR 3 仅更新文档与任务记录，配置已随 PR #62 合入 main。
+**main 已自动发布到 Neon staging，迁移、jobs → web、完整版本探活与注册冒烟均通过。** 当前线上代码为 `ce623cab63a99d6eee8c8ba67eeb09e564f97779`。Neon change 最终完成 28/29，仅24 小时观察（9.2）保持未完成；新旧数据库是独立数据集。本 PR 3 仅更新文档与任务记录，配置已随 PR #62 合入 main。
 
 - 前置 HTTP/2 PR [#61](https://github.com/ustclhx/saas-template/pull/61) 已合并；compose 命令包含 `--protocol http2` 已验证。
 - PR 2 [#62](https://github.com/ustclhx/saas-template/pull/62) 已 squash 合并为 `ad1b5dafce6d3007c9409e0e0e9032437474eb7a`，包含 Neon Hyperdrive 绑定、AI Gateway vars 与 staging observability 配置；历史任务记录提交 `a876735` 的 CI run `37882993185` 已全部通过。随后 [#64](https://github.com/ustclhx/saas-template/pull/64) 已 squash 合并为当前 main `ce623cab63a99d6eee8c8ba67eeb09e564f97779`，修复 CI web 预渲染的本地 Hyperdrive 配置。
@@ -30,9 +30,9 @@
 - 已在明确的 Stripe Sandbox 中用官方 `4242` 测试卡购买一次 $10 积分包，空间 `u-4py7aicz` 的 UI 余额从 0 增至 1000。`checkout.session.completed` 事件 `evt_1UOVuiL3UTpBAoXom7S1Ate2` 在 `2026-10-09T05:00:14.299Z` 验签处理成功，API 版本为 `2026-09-30.endive`、`status = processed`、`attempts = 1`；付款 `01a11f08-8359-71e9-813e-64beae2501f9` 关联 `pi_3UOVugL3UTpBAoXo0hPVnZJQ`，`one_time / succeeded / 1000 USD`（最小货币单位）。唯一积分批次 `01a11f08-83f6-750c-b841-c10649a02cdd` 为 `purchase`、`amount = remaining = 1000`，`source_ref` 与 `payment_id` 均匹配该付款。
 - 已修复的重投诊断历史：Workbench 原始投递为 200，`05:00:46` 与 `05:01:03` UTC 两次手动投递均为 500；`05:03:19` UTC 的第三次重投在 live tail 中报 `billing.webhook_failed` / `Webhook delivery association mismatch`。当时 `assertAssociation` 比较完整 event payload，已存与重投的顶层 `pending_webhooks` 从 3 变为 1，导致关联检查失败；三次失败均未重复入账。用户已授权最小修复，提交 `433e737b517733553537cfdb7ed9bb9fad6dbe4e` 仅在 Stripe 已存事件与入站事件的关联比较中忽略顶层 `pending_webhooks`；当前投递原始字节的签名验证、业务 payload 及 PayPal 比较仍严格校验。真实 worktree PG 管线回归由 RED 转为 GREEN（10 passed）；根目录六项检查全部退出 0，`typecheck` 13/13、`test` 22/22（802 passed、2 个既有 skip，其中 billing 247 passed）、`build` 2/2。日志为 `/tmp/cloud-staging-neon-duplicate-{check,check-deps,check-singletons,typecheck,test,build}.log`。
 - 历史去重补正后已按 jobs → web 手动部署完整代码 `433e737b517733553537cfdb7ed9bb9fad6dbe4e`，jobs Worker version `e60c6ed2-0f59-4bf8-b245-98e018096bd6`、web `5bfb1235-9cf6-4558-9b88-802938dcfb05`。部署精确时间未留证；`2026-10-09T05:11:05.853Z` 健康观测为 200、status ok、db.up、完整 SHA 匹配，`jobs.lastCronAt` 从 `2026-10-09T05:00:53.721Z` 推进至 `2026-10-09T05:10:39.639Z`。该历史提交的 [CI run 37887162498](https://github.com/ustclhx/saas-template/actions/runs/37887162498) 已全部通过，head SHA 为上述完整 `433e737b517733553537cfdb7ed9bb9fad6dbe4e`；CI 通过不代替首次 main 自动发布验收。
-- 修复部署后，使用受保护的测试 key 经 Stripe CLI 重投同一原始购买事件 `evt_1UOVuiL3UTpBAoXom7S1Ate2`；Stripe Workbench 的 `2026-10-09T05:11:10Z` Manual retry 明确返回 200 OK。重投后 readonly 核对付款、积分批次、事件与初始快照完全 deepEqual：各一条，付款仍为 `one_time / succeeded / 1000 USD`（最小货币单位），唯一 `purchase` 批次 `amount = remaining = 1000` 且关联原付款，事件仍 `processed / attempts = 1 / processed_at = 2026-10-09T05:00:14.299Z`；UI 余额仍为 1000。小额测试积分包购买、同事件去重及 Cron 心跳三项均通过，Neon 任务 9.1 已完成，Neon change 最终为 28/29，仅七天观察（9.2）保持未完成。
+- 修复部署后，使用受保护的测试 key 经 Stripe CLI 重投同一原始购买事件 `evt_1UOVuiL3UTpBAoXom7S1Ate2`；Stripe Workbench 的 `2026-10-09T05:11:10Z` Manual retry 明确返回 200 OK。重投后 readonly 核对付款、积分批次、事件与初始快照完全 deepEqual：各一条，付款仍为 `one_time / succeeded / 1000 USD`（最小货币单位），唯一 `purchase` 批次 `amount = remaining = 1000` 且关联原付款，事件仍 `processed / attempts = 1 / processed_at = 2026-10-09T05:00:14.299Z`；UI 余额仍为 1000。小额测试积分包购买、同事件去重及 Cron 心跳三项均通过，Neon 任务 9.1 已完成，Neon change 最终为 28/29，仅24 小时观察（9.2）保持未完成。
 - 验收汇总为 `/tmp/cloud-staging-neon-purchase-acceptance.json`，只读前后快照为 `/tmp/cloud-staging-neon-payment-before-resend.json`、`/tmp/cloud-staging-neon-payment-result.json`，CLI 重投提交记录为 `/tmp/cloud-staging-neon-stripe-resend-result.json`，当时健康记录为 `/tmp/cloud-staging-neon-final-health.json`。CLI 退出 0 仅证明提交成功；endpoint 200 由 Workbench 独立观测确认。以上证据仅含公开 ID 与测试数据。
-- 一小时日志验收（5.6）已通过：2026-10-09 03:39–04:39 UTC，账户级 Workers 数据集限定 jobs-staging，48 条 scheduled 记录、0 条错误；`event = "cron.heartbeat"` 为 13 条，确认结构化字段可检索；`event = "billing.provider_unconfigured"` 为 0 条。该窗口在日志启用后的部署之后，涵盖小时、每日和十分钟计费 Cron。jobs 仅 staging 开启日志、采样率 100%、traces 关闭。自动发布（7.4）已通过；七天观察（9.2）仍待完成。
+- 一小时日志验收（5.6）已通过：2026-10-09 03:39–04:39 UTC，账户级 Workers 数据集限定 jobs-staging，48 条 scheduled 记录、0 条错误；`event = "cron.heartbeat"` 为 13 条，确认结构化字段可检索；`event = "billing.provider_unconfigured"` 为 0 条。该窗口在日志启用后的部署之后，涵盖小时、每日和十分钟计费 Cron。jobs 仅 staging 开启日志、采样率 100%、traces 关闭。自动发布（7.4）已通过；24 小时观察（9.2）仍待完成。
 
 以上为非敏感准备记录。后续实测需补 UTC、完整提交 SHA、两 Worker version、运行链接、退出码和关键结果；不记录密码、连接串、token 或 API key。
 
@@ -172,15 +172,15 @@ jobs 已仅在 staging 开启日志、采样率 100%、traces 关闭，并按 jo
 
 回滚前由用户确认本机旧 staging PG 与 cloudflared 可用。把两个 app 的 staging ID 还原为 §3 旧值，按 jobs → web 发布；确认健康与心跳。必要时由协调者禁用 `deploy-staging.yml`，避免自动发布覆盖回滚。Neon 新库与本机旧库是独立数据集，回滚不复制测试数据。
 
-## 6. 七天观察（任务 9.2 保持未完成）
+## 6. 24 小时观察（任务 9.2 保持未完成）
 
-记录切换日期后观察满七天。每日检查 /api/health、Cron 心跳、错误率；Neon Dashboard 查看计算小时与存储占用，记录 Free 配额、使用量和预计耗尽时间。jobs 高频 Cron 可能使计算无法休眠；不更改 Cron 频率来节省用量。需要升级/关闭 scale-to-zero 时交给用户决定。
+记录切换日期后观察 24 小时（2026-10-09 用户决定由七天缩短：jobs Cron 每 5 分钟运行，计算基本不休眠，一天用量乘 30 即为月度估算）。每日检查 /api/health、Cron 心跳、错误率；Neon Dashboard 查看计算小时与存储占用，记录 Free 配额、使用量和预计耗尽时间。jobs 高频 Cron 可能使计算无法休眠；不更改 Cron 频率来节省用量。需要升级/关闭 scale-to-zero 时交给用户决定。
 
-观察基线（2026-10-09 04:04 UTC）：Neon 项目 `saas-staging` 控制台仍为 Free；项目 Usage（Since Oct 8）显示 compute 3.05 CU-hrs、storage 40.38 MB、history 320.17 kB、network transfer 699.2 kB。这是包含两个分支的项目级统计，不能归因于主分支；控制台提示统计可延迟一小时。以本轮可核验的 2026-10-09 03:38 UTC 发布作为观察起点，七天检查最早在 2026-10-16 同时刻完成；不据当前短窗口推算耗尽日期。
+观察基线（2026-10-09 04:04 UTC）：Neon 项目 `saas-staging` 控制台仍为 Free；项目 Usage（Since Oct 8）显示 compute 3.05 CU-hrs、storage 40.38 MB、history 320.17 kB、network transfer 699.2 kB。这是包含两个分支的项目级统计，不能归因于主分支；控制台提示统计可延迟一小时。以本轮可核验的 2026-10-09 03:38 UTC 发布作为观察起点，观察在 2026-10-10 03:38 UTC 后完成，以 24 小时 compute CU-hrs × 30 估算月度用量并对照 Free 配额。
 
 | 每日 UTC | compute CU-hrs | storage | health / SHA | Cron / 错误率 | 配额与预计耗尽时间 |
 |---|---:|---|---|---|---|
-| 2026-10-09 04:04（基线） | 3.05 | 40.38 MB | 200 / 7a229ce… | 心跳已验证；持续观察 | 七天后核对，暂不外推 |
-| 后续每天 | 待记录 | 待记录 | 待记录 | 待记录 | 待记录 |
+| 2026-10-09 04:04（基线） | 3.05 | 40.38 MB | 200 / 7a229ce… | 心跳已验证；持续观察 | 24 小时后 ×30 外推 |
+| 2026-10-10 ~03:40（24 小时） | 待记录 | 待记录 | 待记录 | 待记录 | 待记录 |
 
-七天后由用户决定是否删除旧 Hyperdrive、保留 Tunnel `saas-template-local` 与 Workers VPC 服务供阶段二使用。本次不执行删除、不提前勾选 9.2。**用量与去留结论：待观察后填写。**
+24 小时后由用户决定是否删除旧 Hyperdrive、保留 Tunnel `saas-template-local` 与 Workers VPC 服务供阶段二使用。本次不执行删除、不提前勾选 9.2。**用量与去留结论：待观察后填写。**

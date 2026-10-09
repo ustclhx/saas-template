@@ -11,7 +11,7 @@ PROBE_ROUNDS=50 pnpm --filter @saas/auth probe:cpu
 
 ## 测什么
 
-`auth-cpu.probe.ts` 在 vitest-pool-workers 的 workerd 中运行（与集成测试同一个 `test/wrangler.jsonc`，Miniflare 模拟 KV），用 `performance.now()` 计时：
+`auth-cpu.probe.ts` 在 vitest-plugin 的 workerd 中运行（与集成测试同一个 `test/wrangler.jsonc`，Miniflare 模拟 KV），用 `performance.now()` 计时：
 
 1. 本地 workerd 的时钟在纯计算期间是否推进（线上 Workers 的时钟只在 I/O 后推进，Worker 内无法这样计时）；
 2. 哈希原语：scrypt（`better-auth/crypto`，workerd 中走 `node:crypto` 原生实现，N=16384、r=16、p=1）与 PBKDF2-HMAC-SHA256（`src/password.ts`，100,000 次迭代）的哈希 / 校验；
