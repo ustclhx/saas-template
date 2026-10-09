@@ -32,5 +32,13 @@ test('随机邮箱注册后进入个人空间', async ({ page }) => {
   await page.goto('/account')
   await page.getByLabel('Type DELETE to confirm').fill('DELETE')
   await page.getByRole('button', { name: 'Delete account' }).click()
+  // 注销经多次跨区数据库往返，刚发布后可能超过默认 5 秒；失败时带出页面提示便于定位
+  const alert = page.getByRole('alert')
+  await Promise.race([
+    page.waitForURL(/\/login(\?|$)/, { timeout: 30_000 }).catch(() => {}),
+    alert.waitFor({ timeout: 30_000 }).catch(() => {}),
+  ])
+  if (await alert.isVisible())
+    throw new Error(`Account deletion failed: ${await alert.textContent()}`)
   await expect(page).toHaveURL(/\/login(\?|$)/)
 })
