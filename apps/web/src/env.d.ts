@@ -5,7 +5,8 @@ declare const __APP_VERSION__: string
 declare namespace Cloudflare {
   type PaymentEnv = import('@saas/billing').PaymentRuntimeEnv
   type StorageEnv = import('@saas/storage').StorageEnv
-  interface Env extends PaymentEnv, StorageEnv {
+  type MediaEnv = import('@saas/ai').MediaRuntimeEnv
+  interface Env extends PaymentEnv, StorageEnv, MediaEnv {
     /** 不带查询缓存（app-db）：健康检查与写操作 */
     HYPERDRIVE: Hyperdrive
     /** 带查询缓存（app-db-cached）：可容忍短暂旧数据的读 */

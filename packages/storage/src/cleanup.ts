@@ -1,7 +1,7 @@
 import { WORKSPACE_RETENTION_DAYS } from '@saas/auth'
 import { type Database, file, organization, scoped } from '@saas/db'
 import { log } from '@saas/shared/log'
-import { and, eq, lt, type SQL, sql } from 'drizzle-orm'
+import { and, eq, isNotNull, lt, type SQL, sql } from 'drizzle-orm'
 
 const PENDING_RETENTION_MS = 60 * 60 * 1000
 
@@ -18,10 +18,32 @@ export async function cleanupFiles(
     select distinct f.workspace_id from file f join organization o on o.id=f.workspace_id
     where (f.status='pending' and f.created_at<${pendingBefore.toISOString()})
       or o.deleted_at<=${workspaceBefore.toISOString()}
+      or (f.purpose='ai_output' and f.status='ready' and f.deleted_at is not null)
     order by f.workspace_id`
   let deleted = 0
   let failed = 0
   for (const { workspace_id: workspaceId } of workspaces) {
+    const tenant = scoped(db, workspaceId)
+    // 失败/取消的 ready 产出不会再复活；先删对象再删墓碑，中断后可安全重试。
+    const abandoned = await tenant.select(file, {
+      where: and(
+        eq(file.purpose, 'ai_output'),
+        eq(file.status, 'ready'),
+        isNotNull(file.deletedAt),
+      ) as SQL,
+    })
+    for (const candidate of abandoned) {
+      try {
+        await bucket.delete(candidate.r2Key)
+        const removed = await tenant
+          .delete(file, and(eq(file.id, candidate.id), isNotNull(file.deletedAt)))
+          .returning({ id: file.id })
+        deleted += removed.length
+      } catch {
+        failed++
+        log.warn('storage.cleanup.object_failed', { workspaceId, fileId: candidate.id })
+      }
+    }
     const result = await db.transaction(async (tx) => {
       // 与上传确认及 restoreWorkspace 共用锁，避免候选读取后文件被确认或空间被恢复。
       await tx.execute(
