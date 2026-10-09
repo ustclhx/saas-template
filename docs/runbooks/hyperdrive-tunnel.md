@@ -1,4 +1,6 @@
-# Runbook · 本机数据库经 Tunnel 接入 Hyperdrive（阶段一 staging）
+# Runbook · 本机数据库经 Tunnel 接入 Hyperdrive（历史链路与回滚）
+
+> 历史记录：本文保存 Neon 切换前的阶段一配置与命令，仅用于核对旧链路或经用户确认的回滚。当前 staging 目标、迁移与发布流程见 [Neon runbook](staging-neon.md)；main 已自动发布到 Neon staging，当前完整代码版本 `ce623cab63a99d6eee8c8ba67eeb09e564f97779`；[run 37894416572](https://github.com/ustclhx/saas-template/actions/runs/37894416572)（2026-10-09 06:36:31–06:38:28 UTC）迁移、jobs → web、版本探活与三项冒烟均 success。Neon change 最终为 28/29，仅七天观察（9.2）未完成；以 2026-10-09 03:38 UTC 切换为基线，最早 2026-10-16 同时刻完成，旧资源继续保留。下文“每次合并后手动迁移”等说明属于历史流程，不适用于 Neon 自动发布。
 
 把开发者本机 Docker 中的 Postgres 接到 Cloudflare 上的 staging Worker：
 
@@ -8,14 +10,14 @@ Worker（*.workers.dev）→ Hyperdrive → Workers VPC 服务（TCP）→ Tunne
 
 不需要域名、DNS 记录、Access 应用或 Service Token。背景与取舍见 `docs/07-infrastructure.md` §0、§2。
 
-## 当前资源（账号 `170a06d37ad50396b19943eb6b77a21d`）
+## 旧链路保留资源（账号 `170a06d37ad50396b19943eb6b77a21d`）
 
 | 资源 | 名称 | ID |
 |---|---|---|
 | Tunnel | `saas-template-local` | `1fad053b-8b3b-4dde-a8aa-7ddf524847a3` |
 | Workers VPC 服务 | `saas-template-local-pg`（主机名 `postgres`，端口 5432，不校验证书） | `01a10214-295e-78c1-b8db-506adb15ef2a` |
-| Hyperdrive（关缓存） | `saas-template-staging` → 绑定 `HYPERDRIVE` | `c4b28441aeaf49c3853a321a39cf8ec4` |
-| Hyperdrive（开缓存，max_age 60s） | `saas-template-staging-cached` → 绑定 `HYPERDRIVE_CACHED` | `1b360caddf134503af774993499bdc4e` |
+| 旧 Hyperdrive（关缓存） | `saas-template-staging`（历史 `HYPERDRIVE` 绑定） | `c4b28441aeaf49c3853a321a39cf8ec4` |
+| 旧 Hyperdrive（开缓存，max_age 60s） | `saas-template-staging-cached`（历史 `HYPERDRIVE_CACHED` 绑定） | `1b360caddf134503af774993499bdc4e` |
 | Queue | `email-staging` | — |
 | Workflow | `ai-media-staging`（定义在 `jobs-staging`） | — |
 | Worker | `jobs-staging`、`web-staging` | `https://web-staging.saas-jobs.workers.dev` |
@@ -45,7 +47,7 @@ curl -s https://web-staging.saas-jobs.workers.dev/api/health
 docker compose -f infra/local/docker-compose.yml --profile tunnel stop cloudflared
 ```
 
-本机关机或 cloudflared 停止时，staging 的 `/api/health` 返回 503，属预期行为。
+历史本机链路下，本机关机或 cloudflared 停止会使 staging 的 `/api/health` 返回 503。当前 Neon staging 不依赖这条链路，停用 cloudflared 不影响其数据库连接。
 
 ## 二、从零重建
 
@@ -66,7 +68,7 @@ docker exec -i saas-template-pg psql -v ON_ERROR_STOP=1 -q -U postgres -d saas_s
 MIGRATION_DATABASE_URL=postgres://migrator:migrator@localhost:5432/saas_staging pnpm --filter @saas/db db:migrate
 ```
 
-之后每次合并含迁移的改动，都要在本机对 `saas_staging` 重新执行最后一条命令（阶段一 CI 不执行迁移，docs/07 §5）。
+历史流程要求每次合并含迁移的改动后，在本机对 `saas_staging` 重新执行最后一条命令。当前 main 流水线自动迁移 Neon，此命令仅用于经确认的旧链路重建/回滚。
 
 ### 3. Tunnel 与 cloudflared
 
@@ -135,7 +137,9 @@ curl -s https://web-staging.saas-jobs.workers.dev/api/health   # 期望 200，db
 | 表不存在 | 本机是否对 `saas_staging` 执行了最新迁移 |
 | 延迟波动大（160 ms – 2.5 s） | 阶段一请求要绕回开发者本机网络，新建连接时明显变慢；不代表生产延迟（docs/07 §0） |
 
-## 四、删除（停用阶段一 staging）
+## 四、历史整套链路删除参考（当前不执行）
+
+以下是删除整套旧 staging 的历史命令，其中 Worker、Queue 仍为 Neon staging 共用，不能作为七天观察后的旧 Hyperdrive 清理步骤执行。任务 9.2 未完成，不删除旧资源；观察满七天后按 [Neon runbook §6](staging-neon.md#6-七天观察任务-92-保持未完成) 由用户决定旧 Hyperdrive、Tunnel 与 VPC 的去留。
 
 ```bash
 pnpm --dir apps/web exec wrangler delete web-staging
