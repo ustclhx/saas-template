@@ -59,6 +59,10 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           APP_VERSION: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # 预渲染只需本地 Hyperdrive 能启动；快照按既有设计降级为示例数据。
+          # 使用不可达的本地占位连接，绝不指向真实数据库。
+          CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: 'postgres://app:app@127.0.0.1:1/unused'
+          CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_CACHED: 'postgres://app:app@127.0.0.1:1/unused'
         run: pnpm --filter @saas/web deploy:staging
 
       - name: Confirm deployment health and version
