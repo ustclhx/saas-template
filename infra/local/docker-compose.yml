@@ -38,7 +38,9 @@ services:
     image: cloudflare/cloudflared:2026.9.3
     profiles: ['tunnel']
     restart: unless-stopped
-    command: ['tunnel', '--no-autoupdate', 'run']
+    # 使用 HTTP/2（TCP）而不是默认的 QUIC（UDP）连接 Cloudflare 边缘：本机若有 TUN / fake-ip 模式的代理
+    # （Clash、Surge 等），QUIC 常被阻断，表现为 "failed to dial to edge with quic"，Hyperdrive 随之报数据库不可达。
+    command: ['tunnel', '--no-autoupdate', '--protocol', 'http2', 'run']
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-} # 在 infra/local/.env 中设置；为空时 cloudflared 启动失败
     deploy:
