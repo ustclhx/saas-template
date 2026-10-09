@@ -168,7 +168,9 @@ STAGING_URL=https://web-staging.saas-jobs.workers.dev \
   pnpm --filter @saas/web test:e2e:stripe
 ```
 
-用例代码与配置的存在不代表 Stripe 月付自动化用例（10.1）已经通过；本轮实际执行的是人工 Stripe Sandbox 积分包购买。凭据与价格同步已有证据。
+**10.1 已通过（2026-10-09 07:4x UTC，staging `ce623ca`）**：上面的命令对 Neon staging 执行 1 passed（35.3 秒）——新用户从 `/pricing` 选 Stripe Pro 月付 → 托管结账页 4242 测试卡 → billing-return，readonly 核对付款 `initial:succeeded:1900`、唯一 `subscription:1000` 积分批次与 active 订阅。首次运行暴露两处 Stripe 页面差异并已在 `stripe-checkout.ts` 处理：已有 Customer 时邮箱只读（不再等待输入框），Link「保存信息」默认勾选时要求手机号（取消勾选）。
+
+**1.3 已通过（同日）**：Codex 两轮 `billing:sync` 均退出 0、映射 ID 稳定、无新增；随后用 readonly 读取 staging `plan_price` 的 10 条映射，逐条经 Stripe `GET /v1/prices/:id` 与 PayPal `GET /v1/billing/plans/:id` 核对，金额、币种、周期与 active 状态全部一致。PayPal 积分包为一次性订单，没有远端 Plan，仅保留本地映射。
 
 Stripe Checkout 首次返回 `BILLING_UNAVAILABLE`，Workbench 400 确认账户默认 Managed Payments 要求 product tax code。用户已批准每次创建 Checkout Session 显式设置 `managed_payments.enabled=false` 的两文件三行补正，已应用为提交 `ab9dc21274291a82a22da67aaa776c6a779dafef`；Stripe operations 回归由 RED（2 fail）转为 GREEN（20 passed）。根目录 `check`、`check:deps`、`check:singletons`、`typecheck`、`test`、`build` 六项均退出 0，日志为 `/tmp/cloud-staging-neon-managed-{check,check-deps,check-singletons,typecheck,test,build}.log`。
 
@@ -239,18 +241,18 @@ WHERE workspace_id = :'workspace_id' AND remaining < 0;
 
 `ledger = expected`、negative_grants 为 0；同一 `(provider, provider_event_id)`、付款身份、退款身份和 `(source, source_ref)` 不重复。以实际事件 ID 定位 `webhook_event` 的 status/attempts/error/processed_at，以实际目标 ID 定位 `audit_log`；事件表没有 workspace_id，不能套用空间过滤。记录退款申请 status/approved_amount/provider_refund_id 与 `billing.payment_refunded`、`billing.webhook_postprocessed` 审计。Cron 为 UTC 每小时、每 10 分钟、每日 04:00；daily 对账结果需真实观测，不能靠 HTTP 200 推断。邮件保持 log 时只验队列和模板处理，不声明邮件已送达。
 
-## 7. 剩余六项的完成门槛
+## 7. 六项的完成门槛（1.3、10.1 已通过）
 
 | Task | 完成标准 / 必须留下的证据 |
 |---|---|
-| 1.3 | 两平台真实 test/sandbox sync 两轮成功，10 个有效本地映射、远端对应金额/周期一致、重复执行无新增；说明 PayPal 积分包无远端 Plan。 |
+| 1.3（已通过） | 两平台真实 test/sandbox sync 两轮成功，10 个有效本地映射、远端对应金额/周期一致、重复执行无新增；说明 PayPal 积分包无远端 Plan。 |
 | 3.2 | 当前锁定版本真实 Stripe 结账、门户、取消/恢复、退款及首付/续费/一次性回调录制；录制夹具映射测试通过，验签与 invoicePayments → PaymentIntent 关联有真实证据，版本差异已处理。 |
 | 3.3 | 当前 sandbox App 的 Orders capture、Subscriptions、KV OAuth、远端验签、取消/恢复、Sale/Capture 退款真实成功；录制首付/续费/退款等夹具映射通过，Sale 历史/周期与弃用 API 可用性验证；实际事件差异回写 docs/05。 |
-| 10.1 | 从 `/pricing` 经真实 Stripe 测试卡付款到 billing-return 的端到端记录/断言，数据库付款与唯一积分批次一致；现有 Playwright mock e2e 不抵充。 |
+| 10.1（已通过） | 从 `/pricing` 经真实 Stripe 测试卡付款到 billing-return 的端到端记录/断言，数据库付款与唯一积分批次一致；现有 Playwright mock e2e 不抵充。 |
 | 10.4 | 联通结论回写 docs/05，docs/08 的 Q4 默认不结转、Q5 升级不补发、Q6 已消费不追溯状态按实际证据更新；标明仍待项，不删除已确认的不确定性。 |
 | 11.1 | staging 两平台月付/年付、真实续费、取消/恢复/到期、重叠期、积分包、申请/平台全额与部分退款、重复回调矩阵全部验收；无重复发放/负余额、对账成立，应用时间与平台 clock 验证区分明确，所有失败修复后重验。 |
 
-上述六项在完整门槛核验前保持未完成；已有的同步和 Stripe Test 验签证据见 §3–4，不能据此宣布完整支付验收通过。本文件不勾选 tasks，后续 supervisor 按完整门槛结项。PayPal Sale API/历史形状、沙箱续费时间及应用到期验证方案仍须在联通过程中解决。Neon 注册冒烟（6.2）与版本探活（7.1）已通过，证据分别为 `/tmp/cloud-staging-neon-proxy-evidence.txt` 与 `/tmp/cloud-staging-neon-wrong-timed.log`。自动发布（7.4）已通过，文档与路线图最终结项（8.2）在本 PR 3 完成；24 小时观察（9.2）沿用 2026-10-09 03:38 UTC 切换基线，最早 2026-10-16 同时刻完成，保持未完成；小额测试积分包购买（9.1）已通过；jobs 已仅在 staging 开启日志、采样率 100%、traces 关闭并按 jobs → web 完成重部署。一小时支付日志（5.6）已通过：2026-10-09 03:39–04:39 UTC，48 条 scheduled 记录、13 条心跳、缺凭据告警 0 条；观察期不删除旧资源。
+3.2、3.3、10.4、11.1 在完整门槛核验前保持未完成；已有的同步和 Stripe Test 验签证据见 §3–4，不能据此宣布完整支付验收通过。本文件不勾选 tasks，后续 supervisor 按完整门槛结项。PayPal Sale API/历史形状、沙箱续费时间及应用到期验证方案仍须在联通过程中解决。Neon 注册冒烟（6.2）与版本探活（7.1）已通过，证据分别为 `/tmp/cloud-staging-neon-proxy-evidence.txt` 与 `/tmp/cloud-staging-neon-wrong-timed.log`。自动发布（7.4）已通过，文档与路线图最终结项（8.2）在本 PR 3 完成；24 小时观察（9.2）沿用 2026-10-09 03:38 UTC 切换基线，最早 2026-10-16 同时刻完成，保持未完成；小额测试积分包购买（9.1）已通过；jobs 已仅在 staging 开启日志、采样率 100%、traces 关闭并按 jobs → web 完成重部署。一小时支付日志（5.6）已通过：2026-10-09 03:39–04:39 UTC，48 条 scheduled 记录、13 条心跳、缺凭据告警 0 条；观察期不删除旧资源。
 
 ## 8. 代码核对索引
 
