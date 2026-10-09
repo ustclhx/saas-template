@@ -54,6 +54,15 @@ function WorkspaceLayout() {
           <Link to="/app/$slug/chat" params={{ slug: page.workspace.slug }} className="underline">
             {m.app_chat()}
           </Link>
+          {templateConfig.ai.image || templateConfig.ai.video ? (
+            <Link
+              to="/app/$slug/media/new"
+              params={{ slug: page.workspace.slug }}
+              className="underline"
+            >
+              {m.media_title()}
+            </Link>
+          ) : null}
           <Link
             to="/app/$slug/settings"
             params={{ slug: page.workspace.slug }}
