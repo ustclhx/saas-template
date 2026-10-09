@@ -46,11 +46,16 @@ function offlineFetch(
   return { fetch, complete: () => expect(requests).toBe(replies.length) }
 }
 
-const subscriptionId = 'sub_1UOYdgL3UTpBAoXoZxQZO7Ti'
-const monthlyMetadata = {
-  workspaceId: '01a11fa8-08da-71f1-9c8d-a0ab10568800',
-  userId: '01a11fa8-08da-71f1-9c8d-a0ab10568800',
-  planPriceId: '01a11bac-8a18-7786-a6cf-d84dd209ef99',
+const monthlySubscription = {
+  subscriptionId: 'sub_1UOYdgL3UTpBAoXoZxQZO7Ti',
+  customerId: 'cus_VPNOl9hPPPmDPj',
+  priceId: 'price_1UOSygL3UTpBAoXoQKRdSIBc',
+  amount: 1900,
+  metadata: {
+    workspaceId: '01a11fa8-08da-71f1-9c8d-a0ab10568800',
+    userId: '01a11fa8-08da-71f1-9c8d-a0ab10568800',
+    planPriceId: '01a11bac-8a18-7786-a6cf-d84dd209ef99',
+  },
 }
 
 describe('Stripe adapter with recorded test-platform fixtures', () => {
@@ -79,8 +84,37 @@ describe('Stripe adapter with recorded test-platform fixtures', () => {
     mock.complete()
   })
 
+  it('maps recorded cumulative partial refunds to both identities without treating the charge total as either refund', async () => {
+    const mock = offlineFetch([provenance['platform-partial-recovery-refunds']])
+    const payload = fixturePayload('platform-partial-recovery-event.json')
+    const normalize = createStripeWebhookNormalizer({
+      secretKey: 'sk_test_offline_only',
+      fetch: mock.fetch,
+    })
+    const result = await normalize(payload)
+    expect(result.providerEventId).toBe('evt_3UOYjIL3UTpBAoXo1APsl6Oi')
+    expect(result.type).toBe('charge.refunded')
+    expect(result.events).toMatchObject([
+      { providerRefundId: 're_3UOYjIL3UTpBAoXo1O6Tc6or', amount: 200 },
+      { providerRefundId: 're_3UOYjIL3UTpBAoXo1qqwZkZA', amount: 400 },
+    ])
+    for (const event of result.events) {
+      expect(event).toMatchObject({
+        type: 'payment.refunded',
+        provider: 'stripe',
+        providerPaymentId: 'pi_3UOYjIL3UTpBAoXo1gvunegg',
+        currency: 'usd',
+        refundedAmount: null,
+        occurredAt: new Date('2026-10-09T11:13:30.000Z'),
+        raw: payload,
+      })
+    }
+    mock.complete()
+  })
+
   it.each([
     {
+      ...monthlySubscription,
       kind: 'initial',
       recording: 'monthly-initial',
       eventId: 'evt_1UOYdhL3UTpBAoXoDzgAEbGZ',
@@ -91,6 +125,7 @@ describe('Stripe adapter with recorded test-platform fixtures', () => {
       periodEnd: '2026-11-09T07:54:46.000Z',
     },
     {
+      ...monthlySubscription,
       kind: 'renewal',
       recording: 'monthly-renewal',
       eventId: 'evt_1UOYf4L3UTpBAoXoqVeBpjfd',
@@ -100,8 +135,27 @@ describe('Stripe adapter with recorded test-platform fixtures', () => {
       periodStart: '2026-11-09T07:54:46.000Z',
       periodEnd: '2026-12-09T07:54:46.000Z',
     },
+    {
+      kind: 'renewal',
+      recording: 'yearly-renewal',
+      eventId: 'evt_1UObl2L3UTpBAoXoIhWrCL6T',
+      paymentId: 'pi_3UObkxL3UTpBAoXo0sXqeehl',
+      subscriptionId: 'sub_1UOYigL3UTpBAoXoRZmjmg7x',
+      customerId: 'cus_VPNTGGkltwSblW',
+      priceId: 'price_1UOSyiL3UTpBAoXoQVYU90Yt',
+      amount: 19000,
+      metadata: {
+        workspaceId: '01a11fac-af11-72da-ad52-0869ceb1c9c9',
+        userId: '01a11fac-af11-72da-ad52-0869ceb1c9c9',
+        planPriceId: '01a11bac-8d09-77ec-97df-634cef2f887e',
+      },
+      occurredAt: '2026-10-09T11:14:35.000Z',
+      paidAt: '2027-10-09T08:59:55.000Z',
+      periodStart: '2027-10-09T07:59:55.000Z',
+      periodEnd: '2028-10-09T07:59:55.000Z',
+    },
   ] as const)(
-    'replays recorded monthly $kind with its historical service period and PaymentIntent identity',
+    'replays recorded $recording with its historical service period and PaymentIntent identity',
     async (recorded) => {
       const mock = offlineFetch([
         provenance[`${recorded.recording}-invoice-payments`],
@@ -109,7 +163,7 @@ describe('Stripe adapter with recorded test-platform fixtures', () => {
         provenance[`${recorded.recording}-intent-invoices`],
         provenance[`${recorded.recording}-invoice`],
       ])
-      // 这些完整 event 来自已验签的 staging JSONB；此处重放可信存储，不伪造原 HTTP 签名。
+      // 完整 event 来自已验签的 staging JSONB 或 CLI 镜像；此处重放录制正文。
       const payload = fixturePayload(`${recorded.recording}-event.json`)
       const normalize = createStripeWebhookNormalizer({
         secretKey: 'sk_test_offline_only',
@@ -132,22 +186,22 @@ describe('Stripe adapter with recorded test-platform fixtures', () => {
         payment: {
           kind: recorded.kind,
           providerPaymentId: recorded.paymentId,
-          providerSubscriptionId: subscriptionId,
-          providerCustomerId: 'cus_VPNOl9hPPPmDPj',
-          providerPriceId: 'price_1UOSygL3UTpBAoXoQKRdSIBc',
-          amount: 1900,
+          providerSubscriptionId: recorded.subscriptionId,
+          providerCustomerId: recorded.customerId,
+          providerPriceId: recorded.priceId,
+          amount: recorded.amount,
           currency: 'usd',
           status: 'succeeded',
           refundedAmount: 0,
           paidAt: new Date(recorded.paidAt),
           period,
-          metadata: monthlyMetadata,
+          metadata: recorded.metadata,
         },
       })
       if (recorded.kind === 'renewal') {
         expect(result.events[1]).toMatchObject({
           type: 'subscription.renewed',
-          providerSubscriptionId: subscriptionId,
+          providerSubscriptionId: recorded.subscriptionId,
           providerPaymentId: recorded.paymentId,
           periodStart: period.start,
           periodEnd: period.end,

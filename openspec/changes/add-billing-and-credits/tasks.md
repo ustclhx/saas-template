@@ -23,7 +23,7 @@
 ## 3. 支付平台
 
 - [x] 3.1 在 `packages/billing` 定义 `PaymentProvider` 接口、`NormalizedEvent` 类型与平台能力标记，验证类型测试通过
-- [ ] 3.2 实现 Stripe Provider（fetch http client、锁定 API 版本、`constructEventAsync` 验签、订阅与一次性结账、Portal、取消 / 恢复、退款），用录制的回调夹具验证事件映射测试通过
+- [x] 3.2 实现 Stripe Provider（fetch http client、锁定 API 版本、`constructEventAsync` 验签、订阅与一次性结账、Portal、取消 / 恢复、退款），用录制的回调夹具验证事件映射测试通过
 - [ ] 3.3 实现 PayPal Provider（OAuth token 缓存到 KV、Orders v2 capture、Subscriptions v1、webhook 验签接口、取消 / 恢复、退款），用沙箱录制的回调夹具验证事件映射测试通过，并把实测的事件名差异回写 `docs/05-billing.md`
 
 ## 4. Webhook 管线
