@@ -61,7 +61,8 @@ export async function grantSubscriptionMonth(
   if (!Number.isFinite(graceHours) || graceHours < 0)
     throw new Error('Invalid subscription credit grace')
   const start = subscriptionMonthAnchor(current.periodStart, month)
-  if (start > now || start >= current.periodEnd)
+  // 首月以已验证的成功付款为准：平台测试时钟或提前付款可领先应用时间，年付后续月仍按应用时间发放。
+  if ((month > 0 && start > now) || start >= current.periodEnd)
     throw new Error('Subscription grant month is not due')
   const [sub] = await tx
     .select()

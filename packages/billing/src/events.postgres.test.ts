@@ -299,6 +299,71 @@ describe('billing event consumer on PostgreSQL', () => {
     )
     expect(await grants()).toHaveLength(2)
   })
+  it('verified renewal ahead of application time records payment and grants its first month once', async () => {
+    await apply([paid()])
+    const periodStart = new Date('2030-02-28T12:00:00Z')
+    const periodEnd = new Date('2030-03-31T12:00:00Z')
+    const event = {
+      ...paid({
+        kind: 'renewal',
+        period: { start: periodStart, end: periodEnd },
+        paidAt: periodStart,
+      }),
+      occurredAt: periodStart,
+    }
+    const firstDelivery = id()
+    const secondDelivery = id()
+    const handler = createBillingEventHandler({
+      db,
+      providers: { stripe: provider },
+      now: () => now,
+    })
+    const request = (deliveryId: string) =>
+      processWebhook({
+        ...handler,
+        db,
+        provider: {
+          ...provider,
+          verifyWebhook: async () => ({
+            providerEventId: deliveryId,
+            type: 'invoice.paid',
+            events: [event],
+          }),
+        },
+        request: new Request('https://example.test'),
+        rawBody: '{}',
+      })
+    try {
+      expect(await request(firstDelivery)).toMatchObject({
+        status: 'processed',
+        delivery: { status: 'processed', error: null },
+      })
+      expect(await request(firstDelivery)).toMatchObject({ status: 'duplicate' })
+      expect(await request(secondDelivery)).toMatchObject({ status: 'processed' })
+      const receipts = await payments()
+      expect(receipts).toHaveLength(2)
+      const renewal = receipts.find((p) => p.kind === 'renewal')
+      expect(renewal).toMatchObject({ status: 'succeeded', periodStart, periodEnd })
+      const credited = await grants()
+      expect(credited).toHaveLength(2)
+      expect(credited.filter((g) => g.paymentId === renewal?.id)).toMatchObject([
+        {
+          sourceRef: `${renewal?.id}:0`,
+          amount: 10,
+          remaining: 10,
+          expiresAt: new Date('2030-04-01T12:00:00Z'),
+        },
+      ])
+      expect((await subs())[0]).toMatchObject({
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+      })
+    } finally {
+      await db
+        .delete(webhookEvent)
+        .where(inArray(webhookEvent.providerEventId, [firstDelivery, secondDelivery]))
+    }
+  })
   it('older state is ignored but independently valid older payment records without regressing paid period', async () => {
     await apply([paid()])
     await apply([
