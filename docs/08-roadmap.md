@@ -17,7 +17,7 @@
 
 各阶段之间与阶段内部的并行拆分见 [09-parallel-plan.md](./09-parallel-plan.md)。
 
-**基础设施节奏**（`docs/07` §0）：Phase 0–3 在**阶段一**完成——数据库在开发者本机，staging 部署到 `*.workers.dev`，不需要域名，不做备份。Phase 3 完成即达到**最小原型**（可注册登录、开通套餐或购买积分、进行一次计费正确的 AI 对话），之后执行下文的「生产迁移」进入阶段二，再继续 Phase 4 及以后。
+**基础设施节奏**（`docs/07` §0）：Phase 0–3 在**阶段一**完成——本地开发使用各自 Docker PG，线上 staging 使用 Neon 并部署到 `*.workers.dev`，不需要域名，不做备份。Phase 3 完成即达到**最小原型**（可注册登录、开通套餐或购买积分、进行一次计费正确的 AI 对话），之后执行下文的「生产迁移」进入阶段二，再继续 Phase 4 及以后。
 
 ## Phase 0 · 脚手架与基础设施验证（技术风险最高，优先做）
 
@@ -32,7 +32,7 @@
 - [x] 本机两个 `cloudflared` 副本，停掉其中一个时 Hyperdrive 查询不中断——会自动切换，但有约 5–10 秒卡顿与少量失败，不是无感（`07` §2）
 - [x] `template.config.ts` + env Zod 校验
 
-**验收**：staging（`*.workers.dev`）首页 SSR 正常；`/api/health` 返回 DB 往返耗时；jobs 的 Cron 能写库。——已通过（2026-10-03，`web-staging.saas-jobs.workers.dev`）。CI 自动部署 staging（原任务 6.2）已移到下文「CI 能力建设（待办）」。
+**验收**：staging（`*.workers.dev`）首页 SSR 正常；`/api/health` 返回 DB 往返耗时；jobs 的 Cron 能写库。——已通过（2026-10-03，`web-staging.saas-jobs.workers.dev`）。CI 自动部署 staging（原任务 6.2）已移到下文「CI 能力建设」。
 
 **Phase 0 实测对后续阶段的影响**：
 - P3（文本对话）：客户端断开后服务端只能再运行 30 秒，长回复可能来不及结算；已决定采用「用量检查点」（`06` §3，已写入 `add-ai-text-chat`），兜底按检查点用量而不是最低费用结算。
@@ -52,7 +52,7 @@
 
 **验收进度（2026-10-04）**：本地两种开关模式下的注册 → 邮箱验证 → 登录 → 邀请 → 切换空间流程均通过 e2e，包含团队删除、账号匿名化和旧会话吊销；关闭团队为 12 passed / 1 skipped（魔法链接关闭），开启团队与魔法链接为 13 passed。staging 已完成现有认证迁移、测试密钥上传与 web / jobs 部署；线上认证 / 模拟 OAuth 回调为 9 passed / 1 skipped，log 邮件队列、新 Cron 与删除后旧会话拒绝均已验证。邀请邮件队列接线回归也已通过，OpenSpec 为 25/25。OAuth 入口与回调策略通过模拟外部交换验证，尚未使用真实提供方凭据验收。
 
-**P1 阶段边界与后续接入**：三项正式规格已同步，25/25 任务已归档。真实 OAuth 与 Resend 发送暂保持 mock/log；P2 接入套餐席位、验证赠送、删号退款提醒、订阅取消与积分收回；P3/P4 接入 AI 内容与存储清理。CI 自动部署 staging 仍是单列待办，当前继续手动部署。
+**P1 阶段边界与后续接入**：三项正式规格已同步，25/25 任务已归档。真实 OAuth 与 Resend 发送暂保持 mock/log；P2 接入套餐席位、验证赠送、删号退款提醒、订阅取消与积分收回；P3/P4 接入 AI 内容与存储清理。当时 CI 自动部署 staging 仍是单列待办，采用手动部署；当前完成情况见下文「CI 能力建设」。
 
 ## Phase 2 · 计费与积分
 
@@ -87,10 +87,10 @@
 
 从 Phase 0 移出（原 `setup-scaffold-and-infra` 任务 6.2），由 `add-cloud-staging-neon` 建设：
 
-- [ ] main 上 CI 成功后自动部署 staging：`deploy-staging.yml` 按迁移 → jobs → web → 版本健康检查 → Chromium 冒烟的顺序执行；代码已准备，待 staging environment 凭据及首次合并后自动发布验收（任务 7.2、7.4）。
-- [ ] staging 迁移通过 Neon 直连以 `migrator` 自动执行；待 Neon 建库、权限与迁移实测及切换验收。阶段二生产私有 PG 的 CI 迁移仍见下文「生产迁移」。
+- [x] main 上 CI 成功后自动部署 staging：`deploy-staging.yml` 按迁移 → jobs → web → 版本健康检查 → Chromium 冒烟的顺序执行；PR #62 与预渲染补正 PR #64 已合并，[Deploy staging run 37894416572](https://github.com/ustclhx/saas-template/actions/runs/37894416572) 全部成功，健康版本匹配 `ce623cab63a99d6eee8c8ba67eeb09e564f97779`、数据库正常、三项冒烟通过，任务 7.4 已验收。
+- [x] staging 迁移通过 Neon 直连以 `migrator` 自动执行；Neon 建库、受限角色与权限、12 条迁移实测及切换已完成，GitHub staging 三项 secrets 已配置；上述成功自动发布已验证迁移后按 jobs → web 发布。阶段二生产私有 PG 的 CI 迁移仍见下文「生产迁移」。
 
-发布使用 GitHub `staging` environment 的三个 secrets，PR CI 不获取这些凭据；发布串行且不取消进行中的运行。操作与验收进度见 [Neon staging runbook](./runbooks/staging-neon.md)。切换前继续手动按 jobs → web 部署。
+发布使用 GitHub `staging` environment 的三个 secrets，PR CI 不获取这些凭据；发布串行且不取消进行中的运行。Neon change 当前 28/29，自动发布已验收，仅任务 9.2 七天 Free 用量与休眠观察未完成，观察期保留旧 Hyperdrive、Tunnel 与 Workers VPC。操作与验收证据见 [Neon staging runbook](./runbooks/staging-neon.md)。
 
 ## 框架完成后的修补（待办）
 
