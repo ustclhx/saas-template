@@ -93,7 +93,12 @@ export function handleFileDownload(
     if (!parsed.success) throw fileNotFound()
     const input = parsed.data
     await requireFileWorkspace({ ...deps, headers: request.headers, ...input })
-    return redirectDownload(await getFileDownload(deps.db, deps.env, input))
+    return redirectDownload(
+      await getFileDownload(deps.db, deps.env, {
+        ...input,
+        ...(new URL(request.url).searchParams.get('download') === '1' ? { download: true } : {}),
+      }),
+    )
   })
 }
 

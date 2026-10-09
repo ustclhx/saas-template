@@ -6,6 +6,7 @@ import { getAuth } from '../../server/auth.ts'
 import { fileWorkspaceInput, requireFileWorkspace } from './access.ts'
 
 // 以 workspaceId 定位文件空间；普通页面的 withWorkspace 使用 slug，且未登录会跳转。
+// 中间件声明供 RPC 客户端使用；权限与环境读取留在 .server 回调，由 Start 从浏览器产物剥离。
 export const withFileWorkspace = createMiddleware({ type: 'function' })
   .validator(fileWorkspaceInput.loose())
   .server(async ({ data, next }) => {

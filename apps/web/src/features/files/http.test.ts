@@ -92,6 +92,20 @@ it('redirects current members to the signed URL without caching authorization', 
   expect(mocks.download).toHaveBeenCalledWith(deps.db, deps.env, { workspaceId, fileId })
 })
 
+it('requests an attachment signature for explicit downloads after checking membership', async () => {
+  const response = await handleFileDownload(
+    new Request(`${request().url}&download=1`),
+    fileId,
+    deps,
+  )
+  expect(response.status).toBe(302)
+  expect(mocks.download).toHaveBeenCalledWith(deps.db, deps.env, {
+    workspaceId,
+    fileId,
+    download: true,
+  })
+})
+
 it('reads public shares on every request and returns 404 as soon as storage reports revocation', async () => {
   const token = '019bb460-a610-7000-8000-000000000004'
   const first = await handleSharedFileDownload(token, deps)

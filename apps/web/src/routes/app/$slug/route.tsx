@@ -40,7 +40,7 @@ function WorkspaceLayout() {
         {page.readOnly ? <p role="status">{m.app_readonly()}</p> : null}
         <WorkspaceSwitcher page={page} />
         <NotificationCenter key={page.workspace.slug} slug={page.workspace.slug} />
-        <nav className="flex gap-4">
+        <nav className="flex flex-wrap gap-4">
           {templateConfig.features.publicApi && (page.role === 'owner' || page.role === 'admin') ? (
             <Link
               to="/app/$slug/api-keys"
@@ -54,6 +54,15 @@ function WorkspaceLayout() {
           <Link to="/app/$slug/chat" params={{ slug: page.workspace.slug }} className="underline">
             {m.app_chat()}
           </Link>
+          {templateConfig.ai.image || templateConfig.ai.video ? (
+            <Link
+              to="/app/$slug/tasks"
+              params={{ slug: page.workspace.slug }}
+              className="underline"
+            >
+              {m.media_tasks_title()}
+            </Link>
+          ) : null}
           {templateConfig.ai.image || templateConfig.ai.video ? (
             <Link
               to="/app/$slug/media/new"

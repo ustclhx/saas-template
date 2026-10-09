@@ -40,6 +40,7 @@ export const getMediaSubmitPage = createServerFn({ method: 'GET' })
       .orderBy(desc(file.id))
     return {
       workspaceId: context.workspace.id,
+      workspaceSlug: context.workspace.slug,
       readOnly: context.workspaceReadOnly,
       models,
       files,

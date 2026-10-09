@@ -149,10 +149,10 @@ export async function completeUpload(
 export async function getFileDownload(
   db: Database,
   env: StorageEnv,
-  input: { workspaceId: string; fileId: string },
+  input: { workspaceId: string; fileId: string; download?: boolean },
 ) {
   const row = await visibleFile(db, input.workspaceId, input.fileId, true)
-  return presignDownload(env, row.r2Key)
+  return presignDownload(env, row.r2Key, input.download)
 }
 
 async function ownedFile(
