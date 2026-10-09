@@ -2,7 +2,7 @@
 
 ## 1. 数据模型
 
-- [ ] 1.1 新增 `ai_task`（定价快照、`provider_request_key`、`callback_payload`、`workflow_instance_id`、`deadline_at`，索引 `(ws, id desc)`、`(status, updated_at)`）与 `file`（`status`、`public_token` 唯一）表，验证迁移成功
+- [x] 1.1 新增 `ai_task`（定价快照、`provider_request_key`、`callback_payload`、`workflow_instance_id`、`deadline_at`，索引 `(ws, id desc)`、`(status, updated_at)`）与 `file`（`status`、`public_token` 唯一）表，验证迁移成功
 
 ## 2. 文件存储
 
