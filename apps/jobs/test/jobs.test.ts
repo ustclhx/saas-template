@@ -1,6 +1,6 @@
 import { createScheduledController, introspectWorkflowInstance } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
-import { createDb, readLastCronAt } from '@saas/db'
+import { aiTask, createDb, organization, readLastCronAt, user } from '@saas/db'
 import { MEDIA_DONE_EVENT } from '@saas/shared'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HEARTBEAT_CRON } from '../src/cron/heartbeat.ts'
@@ -42,28 +42,59 @@ describe('apps/jobs', () => {
     expect((error as Error).message).toBe('Invalid environment: missing HYPERDRIVE')
   })
 
-  it('AiMediaWorkflow 执行示例 step 后等待回调事件，收到事件后完成', async () => {
+  it('AiMediaWorkflow 跨绑定等待媒体事件，并读取落库回调进入转存与结算步骤', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {})
     const id = crypto.randomUUID()
     const instance = await introspectWorkflowInstance(env.AI_MEDIA_WORKFLOW, id)
+    const db = createDb(env.HYPERDRIVE)
+    await db
+      .insert(user)
+      .values({ id, name: 'Workflow', email: `${id}@workflow-smoke.example.test` })
+    await db.insert(organization).values({ id, name: 'Workflow', slug: id })
+    await db.insert(aiTask).values({
+      id,
+      workspaceId: id,
+      userId: id,
+      kind: 'image',
+      modelKey: 'fixture',
+      provider: 'fake',
+      providerRequestKey: id,
+      input: {},
+      pricing: { mode: 'per_call', credits: 1 },
+      deadlineAt: new Date(Date.now() + 7200000),
+    })
+    const result = {
+      outputs: [{ url: 'https://v3.fal.media/files/fixture.png', mime: 'image/png' }],
+    }
     try {
       await instance.modify(async (m) => {
-        await m.mockEvent({ type: MEDIA_DONE_EVENT, payload: { status: 'succeeded' } })
+        await m.mockStepResult(
+          { name: 'submit' },
+          { jobId: 'fixture-job', sync: null, stopped: false },
+        )
+        await m.mockEvent({ type: MEDIA_DONE_EVENT, payload: { taskId: id } })
+        await m.mockStepResult({ name: 'recheck-callback' }, { jobId: 'fixture-job', result })
+        await m.mockStepResult({ name: 'persist' }, [{ id, mime: 'image/png', size: 8 }])
+        await m.mockStepResult({ name: 'settle-and-notify' }, 'succeeded')
       })
 
-      await env.AI_MEDIA_WORKFLOW.create({ id, params: { taskId: 'task-1' } })
+      await env.AI_MEDIA_WORKFLOW.create({ id, params: { taskId: id } })
 
       expect(await instance.waitForStepResult({ name: 'submit' })).toEqual({
-        submittedAt: expect.any(String),
+        jobId: 'fixture-job',
+        sync: null,
+        stopped: false,
       })
       await instance.waitForStatus('complete')
       expect(await instance.getOutput()).toEqual({
-        taskId: 'task-1',
-        submittedAt: expect.any(String),
+        taskId: id,
         status: 'succeeded',
       })
     } finally {
       await instance.dispose()
+      await db.$client`delete from ai_task where id=${id}`
+      await db.$client`delete from organization where id=${id}`
+      await db.$client`delete from "user" where id=${id}`
     }
   })
 })

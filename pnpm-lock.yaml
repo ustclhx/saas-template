@@ -199,6 +199,9 @@ importers:
       '@saas/email':
         specifier: workspace:*
         version: link:../../packages/email
+      '@saas/entitlements':
+        specifier: workspace:*
+        version: link:../../packages/entitlements
       '@saas/shared':
         specifier: workspace:*
         version: link:../../packages/shared

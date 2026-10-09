@@ -1,0 +1,425 @@
+import {
+  createTaskMediaProvider,
+  dbModelStore,
+  estimateCredits,
+  MEDIA_HOLD_SWEEP_BUFFER_MS,
+  MEDIA_TASK_TTL_MS,
+  type MediaProvider,
+  type MediaWebhook,
+  requireAvailableModel,
+  settleMediaTask,
+  validateMediaParams,
+  verifyMediaCallbackSignature,
+} from '@saas/ai'
+import { type AuthContextSource, type RateLimiter, requireFreshSession } from '@saas/auth'
+import { CreditsError, hold, lockWorkspaceCredits } from '@saas/credits'
+import {
+  type AiTask,
+  aiTask,
+  type Database,
+  file,
+  member,
+  notFound,
+  organization,
+  scoped,
+} from '@saas/db'
+import { type Entitlements, getEntitlements, requireEntitlement } from '@saas/entitlements'
+import { AppError, MEDIA_DONE_EVENT, newId, toErrorResponse } from '@saas/shared'
+import { log, setLogContext } from '@saas/shared/log'
+import { getStorageUsage } from '@saas/storage'
+import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm'
+import { z } from 'zod'
+import { templateConfig } from '../../server/template-config.ts'
+
+export interface MediaHttpEnv {
+  FAL_KEY?: string
+  MEDIA_WEBHOOK_SECRET?: string
+  APP_URL?: string | undefined
+}
+export interface MediaHttpDeps {
+  db: Database
+  auth: AuthContextSource
+  env: MediaHttpEnv
+  workflow: Pick<Workflow<{ taskId: string }>, 'create' | 'get'>
+  rateLimiter: RateLimiter
+  providerFactory?: (env: MediaHttpEnv, task: AiTask) => MediaProvider
+  entitlements?: (
+    db: Database | Parameters<Parameters<Database['transaction']>[0]>[0],
+    workspaceId: string,
+  ) => Promise<Entitlements>
+}
+
+const workspaceInput = z.object({ workspaceId: z.uuid() })
+const submitInput = workspaceInput.extend({
+  modelKey: z.string().min(1).max(128),
+  params: z.record(z.string(), z.unknown()),
+})
+const terminal = (task: AiTask) => !['queued', 'running'].includes(task.status)
+const invalid = () => new AppError('INVALID_REQUEST', 'Invalid media task request')
+
+async function response(action: () => Promise<Response>) {
+  try {
+    const result = await action()
+    result.headers.set('cache-control', 'no-store')
+    return result
+  } catch (error) {
+    let mapped = error
+    if (
+      error instanceof CreditsError &&
+      ['CREDIT_DEBT', 'INSUFFICIENT_CREDITS'].includes(error.code)
+    )
+      mapped = new AppError(
+        error.code,
+        error.code === 'CREDIT_DEBT' ? 'Workspace has unpaid credit debt' : 'Insufficient credits',
+        { status: 402 },
+      )
+    if (!(mapped instanceof AppError)) log.error('ai.media.request_failed', { error: mapped })
+    const result = toErrorResponse(mapped)
+    return Response.json(result.body, {
+      status: result.status,
+      headers: { 'cache-control': 'no-store' },
+    })
+  }
+}
+
+async function context(request: Request, workspaceId: string, deps: MediaHttpDeps, write = false) {
+  const fresh = await requireFreshSession({
+    auth: deps.auth,
+    db: deps.db,
+    headers: request.headers,
+  })
+  const workspace = await deps.db.query.organization.findFirst({
+    where: eq(organization.id, workspaceId),
+  })
+  if (!workspace || workspace.deletedAt) throw notFound()
+  const [membership] = await scoped(deps.db, workspaceId)
+    .select(member, { where: eq(member.userId, fresh.user.id) })
+    .limit(1)
+  if (!membership) throw notFound()
+  if (write && !templateConfig.tenancy.multiTenant && !workspace.isPersonal)
+    throw new AppError('WORKSPACE_READ_ONLY', 'Team workspace writes are disabled', { status: 403 })
+  setLogContext({ workspaceId, userId: fresh.user.id })
+  return fresh
+}
+
+const entitlements = (
+  deps: MediaHttpDeps,
+  db: Parameters<NonNullable<MediaHttpDeps['entitlements']>>[0],
+  workspaceId: string,
+) =>
+  deps.entitlements
+    ? deps.entitlements(db, workspaceId)
+    : getEntitlements(db, workspaceId, {
+        pastDueGraceDays: templateConfig.billing.pastDueGraceDays,
+      })
+
+export function handleMediaSubmit(request: Request, deps: MediaHttpDeps): Promise<Response> {
+  return response(async () => {
+    const parsed = submitInput.safeParse(await request.json().catch(() => undefined))
+    if (!parsed.success) throw invalid()
+    const input = parsed.data
+    // jobs 不绑定站点 URL；由请求入口冻结可信服务端 origin，供回调签名使用。
+    const callbackOrigin = new URL(deps.env.APP_URL ?? request.url).origin
+    const { user } = await context(request, input.workspaceId, deps, true)
+    if (!deps.env.MEDIA_WEBHOOK_SECRET)
+      throw new AppError('MEDIA_WEBHOOK_NOT_CONFIGURED', 'Media callback is not configured', {
+        status: 503,
+      })
+    if (!deps.providerFactory && !deps.env.FAL_KEY)
+      throw new AppError('AI_PROVIDER_NOT_CONFIGURED', 'fal.ai API key is not configured', {
+        status: 503,
+      })
+    if (!(await deps.rateLimiter.limit({ key: `ai:${input.workspaceId}:${user.id}` })).success)
+      throw new AppError('RATE_LIMITED', 'Too many requests, please try again later', {
+        status: 429,
+      })
+    const modelRow = await deps.db.query.aiModel.findFirst({
+      where: (model, { eq }) => eq(model.key, input.modelKey),
+    })
+    if (!modelRow)
+      throw new AppError('MODEL_UNAVAILABLE', 'Model is not available', { status: 404 })
+    const task = await deps.db.transaction(async (tx) => {
+      // 与 billing 回收器统一为 ws → credits → task，防止锁顺序反转。
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${`ws:${input.workspaceId}`}, 0))`,
+      )
+      await lockWorkspaceCredits(tx, input.workspaceId)
+      const current = await entitlements(deps, tx, input.workspaceId)
+      const model = await requireAvailableModel(
+        { store: dbModelStore(tx as unknown as Database) },
+        current,
+        modelRow.id,
+      )
+      if (model.kind === 'text' || model.provider !== 'fal' || !templateConfig.ai[model.kind])
+        throw new AppError('MODEL_UNAVAILABLE', 'Model is not available', { status: 404 })
+      if (model.pricing.mode === 'token')
+        throw new AppError('MEDIA_PRICING_INVALID', 'Media model pricing is not supported', {
+          status: 503,
+        })
+      const validated = validateMediaParams(model.paramsSchema, input.params, model.kind)
+      const tenant = scoped(tx, input.workspaceId)
+      const [workspace] = await tx
+        .select({ id: organization.id })
+        .from(organization)
+        .where(and(eq(organization.id, input.workspaceId), isNull(organization.deletedAt)))
+      if (!workspace) throw notFound()
+      requireEntitlement(current, {
+        limit: 'maxConcurrentTasks',
+        value: (await tenant.count(aiTask, inArray(aiTask.status, ['queued', 'running']))) + 1,
+      })
+      const storageBytes = Math.floor(current.features.storageGb * 1024 ** 3)
+      if ((await getStorageUsage(tx, input.workspaceId)) >= storageBytes)
+        throw new AppError('STORAGE_QUOTA_EXCEEDED', 'Workspace storage quota is full', {
+          status: 403,
+        })
+      for (const name of validated.fileParams) {
+        const uploaded = await tenant.findById(file, validated.params[name] as string)
+        if (uploaded.status !== 'ready' || uploaded.deletedAt)
+          throw new AppError('FILE_NOT_READY', 'Input file is not confirmed')
+      }
+      const taskId = newId()
+      const amount = estimateCredits(model.pricing, {
+        params: validated.params,
+        units: validated.unitsLimit,
+      })
+      const [created] = await tenant
+        .insert(aiTask, {
+          id: taskId,
+          userId: user.id,
+          kind: model.kind,
+          modelKey: model.key,
+          provider: model.provider,
+          pricing: model.pricing,
+          providerRequestKey: taskId,
+          workflowInstanceId: taskId,
+          deadlineAt: new Date(Date.now() + MEDIA_TASK_TTL_MS),
+          input: {
+            ...validated,
+            providerModelId: model.providerModelId,
+            storageBytes,
+            callbackOrigin,
+          },
+        })
+        .returning()
+      if (!created) throw new Error('Media task insert returned no row')
+      const reservation = await hold(tx, {
+        workspaceId: input.workspaceId,
+        userId: user.id,
+        amount,
+        refType: 'ai_task',
+        refId: taskId,
+        expiresAt: new Date(created.deadlineAt.getTime() + MEDIA_HOLD_SWEEP_BUFFER_MS),
+      })
+      return tenant.updateById(aiTask, taskId, { holdId: reservation.id })
+    })
+    try {
+      await deps.workflow.create({ id: task.id, params: { taskId: task.id } })
+    } catch {
+      await settleMediaTask(deps.db, {
+        workspaceId: task.workspaceId,
+        taskId: task.id,
+        outcome: 'failed',
+        error: { code: 'MEDIA_WORKFLOW_START_FAILED', message: 'Media task could not start' },
+      })
+      throw new AppError(
+        'MEDIA_WORKFLOW_START_FAILED',
+        'Media task could not start; credits were returned',
+        { status: 503 },
+      )
+    }
+    return Response.json({ taskId: task.id, status: task.status }, { status: 202 })
+  })
+}
+
+function publicTask(task: AiTask, userId: string) {
+  const output = task.output as { files?: Record<string, unknown>[] } | null
+  return {
+    id: task.id,
+    workspaceId: task.workspaceId,
+    userId: task.userId,
+    kind: task.kind,
+    modelKey: task.modelKey,
+    status: task.status,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+    startedAt: task.startedAt,
+    finishedAt: task.finishedAt,
+    deadlineAt: task.deadlineAt,
+    creditsCharged: task.creditsCharged,
+    errorCode: task.errorCode,
+    errorMessage: task.errorMessage,
+    params: task.input.params,
+    files: (output?.files ?? []).map((item) => ({
+      id: item.id,
+      mime: item.mime,
+      size: item.size,
+      width: item.width ?? null,
+      height: item.height ?? null,
+      duration: item.duration ?? null,
+      downloadUrl: `/api/files/${encodeURIComponent(String(item.id))}?workspaceId=${task.workspaceId}`,
+    })),
+    canCancel: task.userId === userId && !terminal(task),
+  }
+}
+
+export function handleMediaList(request: Request, deps: MediaHttpDeps): Promise<Response> {
+  return response(async () => {
+    const query = Object.fromEntries(new URL(request.url).searchParams)
+    const parsed = workspaceInput
+      .extend({
+        cursor: z.uuid().optional(),
+        limit: z.coerce.number().int().min(1).max(100).default(30),
+      })
+      .safeParse(query)
+    if (!parsed.success) throw invalid()
+    const { user } = await context(request, parsed.data.workspaceId, deps)
+    const rows = await scoped(deps.db, parsed.data.workspaceId)
+      .select(aiTask, parsed.data.cursor ? { where: lt(aiTask.id, parsed.data.cursor) } : {})
+      .orderBy(desc(aiTask.id))
+      .limit(parsed.data.limit + 1)
+    const more = rows.length > parsed.data.limit
+    const page = rows.slice(0, parsed.data.limit)
+    return Response.json({
+      items: page.map((task) => publicTask(task, user.id)),
+      nextCursor: more ? page.at(-1)?.id : null,
+    })
+  })
+}
+
+export function handleMediaDetail(
+  request: Request,
+  taskId: string,
+  deps: MediaHttpDeps,
+): Promise<Response> {
+  return response(async () => {
+    const parsed = workspaceInput.safeParse(Object.fromEntries(new URL(request.url).searchParams))
+    if (!parsed.success) throw notFound()
+    const { user } = await context(request, parsed.data.workspaceId, deps)
+    const task = await scoped(deps.db, parsed.data.workspaceId).findById(aiTask, taskId)
+    return Response.json({ task: publicTask(task, user.id) })
+  })
+}
+
+export function handleMediaCancel(
+  request: Request,
+  taskId: string,
+  deps: MediaHttpDeps,
+): Promise<Response> {
+  return response(async () => {
+    const parsed = workspaceInput.safeParse(await request.json().catch(() => undefined))
+    if (!parsed.success) throw invalid()
+    const { user } = await context(request, parsed.data.workspaceId, deps, true)
+    const initial = await scoped(deps.db, parsed.data.workspaceId).findById(aiTask, taskId)
+    if (initial.userId !== user.id) throw notFound()
+    if (terminal(initial) && initial.errorCode !== 'MEDIA_CANCEL_PENDING')
+      return Response.json({ taskId, status: initial.status, cancellationPending: false })
+    const task = await settleMediaTask(deps.db, {
+      workspaceId: initial.workspaceId,
+      taskId,
+      outcome: 'canceled',
+      error: {
+        code: 'MEDIA_CANCEL_PENDING',
+        message: 'Credits returned; external cancellation needs retry',
+      },
+    })
+    if (task.status !== 'canceled')
+      return Response.json({ taskId, status: task.status, cancellationPending: false })
+    let pending = false
+    // 积分释放已持久化；外部取消失败记可重试标记，同一取消接口重试不会再次退款。
+    for (const action of [
+      async () => {
+        if (task.providerJobId)
+          await (deps.providerFactory ?? createTaskMediaProvider)(deps.env, task).cancel?.(
+            task.providerJobId,
+          )
+      },
+      async () => {
+        if (task.workflowInstanceId) {
+          const instance = await deps.workflow.get(task.workflowInstanceId)
+          if (['queued', 'running', 'paused', 'waiting'].includes((await instance.status()).status))
+            await instance.terminate()
+        }
+      },
+    ]) {
+      try {
+        await action()
+      } catch {
+        pending = true
+        log.warn('ai.media.cancel_pending', { taskId })
+      }
+    }
+    // 提交可能在取消期间才返回 jobId，不能据旧快照清除恢复标记。
+    const latest = await scoped(deps.db, task.workspaceId).findById(aiTask, task.id)
+    if (latest.providerJobId && latest.providerJobId !== task.providerJobId) {
+      try {
+        await (deps.providerFactory ?? createTaskMediaProvider)(deps.env, latest).cancel?.(
+          latest.providerJobId,
+        )
+      } catch {
+        pending = true
+        log.warn('ai.media.cancel_pending', { taskId })
+      }
+    }
+    if (latest.output?.submissionAttempted && !latest.providerJobId) pending = true
+    await scoped(deps.db, task.workspaceId).updateById(aiTask, task.id, {
+      errorCode: pending ? 'MEDIA_CANCEL_PENDING' : null,
+      errorMessage: pending ? 'Credits returned; external cancellation needs retry' : null,
+    })
+    return Response.json(
+      { taskId, status: task.status, cancellationPending: pending },
+      { status: pending ? 202 : 200 },
+    )
+  })
+}
+
+export function handleMediaWebhook(
+  request: Request,
+  providerId: string,
+  deps: MediaHttpDeps,
+): Promise<Response> {
+  return response(async () => {
+    const url = new URL(request.url)
+    const taskId = url.searchParams.get('task')
+    if (!taskId || !z.uuid().safeParse(taskId).success) throw invalid()
+    if (!deps.env.MEDIA_WEBHOOK_SECRET)
+      throw new AppError('MEDIA_WEBHOOK_NOT_CONFIGURED', 'Media callback is not configured', {
+        status: 503,
+      })
+    if (
+      !(await verifyMediaCallbackSignature(
+        deps.env.MEDIA_WEBHOOK_SECRET,
+        taskId,
+        url.searchParams.get('sig') ?? '',
+      ))
+    )
+      throw new AppError('MEDIA_WEBHOOK_INVALID', 'Invalid media callback signature')
+    // 已验任务专属签名后，先定位空间，再让 scoped 执行所有业务写入。
+    // biome-ignore lint/plugin: 任务专属 HMAC 已通过，仅按其 taskId 定位租户，后续业务访问全部 scoped。
+    const located = await deps.db.query.aiTask.findFirst({ where: eq(aiTask.id, taskId) })
+    if (!located || located.provider !== providerId) throw notFound()
+    const provider = (deps.providerFactory ?? createTaskMediaProvider)(deps.env, located)
+    const payload: MediaWebhook = await provider.parseWebhook(request, await request.text())
+    await deps.db.transaction(async (tx) => {
+      const tenant = scoped(tx, located.workspaceId)
+      const [task] = await tenant.select(aiTask, { where: eq(aiTask.id, taskId) }).for('update')
+      if (!task) throw notFound()
+      if (task.providerJobId && task.providerJobId !== payload.jobId)
+        throw new AppError('MEDIA_WEBHOOK_INVALID', 'Callback does not match the task job')
+      await tenant.update(
+        aiTask,
+        { callbackPayload: payload },
+        and(eq(aiTask.id, taskId), isNull(aiTask.callbackPayload)),
+      )
+    })
+    try {
+      if (located.workflowInstanceId)
+        await (await deps.workflow.get(located.workflowInstanceId)).sendEvent({
+          type: MEDIA_DONE_EVENT,
+          payload: { taskId },
+        })
+    } catch {
+      log.warn('ai.media.callback_event_failed', { taskId })
+    }
+    return Response.json({ ok: true })
+  })
+}

@@ -13,6 +13,7 @@ export {
   type HyperdriveBinding,
   loadEnv,
 } from './env.ts'
+export * from './media.ts'
 export {
   type AiModality,
   type DefaultLocale,
