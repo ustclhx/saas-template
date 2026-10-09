@@ -47,11 +47,17 @@
   "env": {
     "staging": {
       "name": "jobs-staging",
+      // 计费 Cron 验收需要查询一小时内的完整日志，仅 staging 开启日志采集。
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+        "traces": { "enabled": false }
+      },
       "kv_namespaces": [{ "binding": "CACHE", "id": "f4d49b7c082b4f01ae20335683d3a21b" }],
       "hyperdrive": [
-        // 本机 PG 的 saas_staging 库，经 Tunnel saas-template-local → Workers VPC 服务 saas-template-local-pg（docs/07 §2）
-        { "binding": "HYPERDRIVE", "id": "c4b28441aeaf49c3853a321a39cf8ec4" },
-        { "binding": "HYPERDRIVE_CACHED", "id": "1b360caddf134503af774993499bdc4e" }
+        // Neon saas_staging，app 非 pooled TLS 直连；分别关闭缓存与缓存 60 秒（docs/07 §2）
+        { "binding": "HYPERDRIVE", "id": "b3a797e705e849a196a4f7fcaf887293" },
+        { "binding": "HYPERDRIVE_CACHED", "id": "ad4f2267382b427fbdd2ffe60d3a64de" }
       ],
       "workflows": [
         {
