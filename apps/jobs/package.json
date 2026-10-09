@@ -11,18 +11,19 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@saas/ai": "workspace:*",
     "@saas/auth": "workspace:*",
+    "@saas/billing": "workspace:*",
     "@saas/config": "workspace:*",
     "@saas/db": "workspace:*",
     "@saas/email": "workspace:*",
-    "@saas/billing": "workspace:*",
     "@saas/shared": "workspace:*",
-    "@saas/ai": "workspace:*"
+    "@saas/storage": "workspace:*"
   },
   "devDependencies": {
-    "@saas/credits": "workspace:*",
     "@cloudflare/vitest-plugin": "1.3.5",
     "@cloudflare/workers-types": "^5.20261002.1",
+    "@saas/credits": "workspace:*",
     "@types/node": "^22.20.5",
     "drizzle-orm": "^0.45.3",
     "vitest": "^4.1.11",

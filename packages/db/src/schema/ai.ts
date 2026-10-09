@@ -119,7 +119,54 @@ export const aiMessage = pgTable(
   ],
 )
 
+/** 图片与视频任务；定价快照用于整个异步链路的预扣与结算。 */
+export const aiTask = pgTable(
+  'ai_task',
+  {
+    id: uuid('id').primaryKey().$defaultFn(newId),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'restrict' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'restrict' }),
+    kind: text('kind', { enum: ['image', 'video'] }).notNull(),
+    modelKey: text('model_key').notNull(),
+    pricing: jsonb('pricing').$type<AiPricingJson>().notNull(),
+    status: text('status', { enum: ['queued', 'running', 'succeeded', 'failed', 'canceled'] })
+      .notNull()
+      .default('queued'),
+    input: jsonb('input').$type<Record<string, unknown>>().notNull(),
+    output: jsonb('output').$type<Record<string, unknown>>(),
+    provider: text('provider').notNull(),
+    providerJobId: text('provider_job_id'),
+    providerRequestKey: text('provider_request_key').notNull(),
+    callbackPayload: jsonb('callback_payload').$type<Record<string, unknown>>(),
+    workflowInstanceId: text('workflow_instance_id'),
+    holdId: uuid('hold_id').references(() => creditHold.id, { onDelete: 'restrict' }),
+    creditsCharged: integer('credits_charged').notNull().default(0),
+    errorCode: text('error_code'),
+    errorMessage: text('error_message'),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    deadlineAt: timestamp('deadline_at', { withTimezone: true }).notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    index('ai_task_workspace_id_id_idx').on(t.workspaceId, t.id.desc()),
+    index('ai_task_status_updated_at_idx').on(t.status, t.updatedAt),
+    check('ai_task_kind_valid', sql`${t.kind} in ('image', 'video')`),
+    check(
+      'ai_task_status_valid',
+      sql`${t.status} in ('queued', 'running', 'succeeded', 'failed', 'canceled')`,
+    ),
+    check('ai_task_credits_charged_nonnegative', sql`${t.creditsCharged} >= 0`),
+  ],
+)
+
 export type AiModel = typeof aiModel.$inferSelect
 export type NewAiModel = typeof aiModel.$inferInsert
 export type AiConversation = typeof aiConversation.$inferSelect
 export type AiMessage = typeof aiMessage.$inferSelect
+export type AiTask = typeof aiTask.$inferSelect
+export type NewAiTask = typeof aiTask.$inferInsert

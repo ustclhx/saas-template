@@ -5,6 +5,8 @@
   "main": "./src/server.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
+  // FILES 专用私有桶；顶层由 Miniflare 模拟，预签名配置必须与绑定一致。
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "files" }],
   // 本地开发时 localConnectionString 指向主 checkout 的 saas_dev；
   // Orca worktree 中由 vite.config.ts 从 .env.worktree 读取
   // CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE(_CACHED) 覆盖。
@@ -48,7 +50,11 @@
   ],
   // 本地开发的站点地址；`vite dev` 时由 vite.config.ts 按 .env.worktree 的端口覆盖。
   // TURNSTILE_SITE_KEY 为 Cloudflare 官方测试 site key（始终通过），与 .dev.vars 中的测试 secret 配对
-  "vars": { "APP_URL": "http://localhost:3000", "TURNSTILE_SITE_KEY": "1x00000000000000000000AA" },
+  "vars": {
+    "APP_URL": "http://localhost:3000",
+    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
+    "R2_FILES_BUCKET": "files"
+  },
   // hyperdrive / workflows / queues / kv_namespaces / ratelimits / vars 不会从顶层继承，每个环境都要重新声明。
   // staging 认证使用独立 KV、限流命名空间和官方 Turnstile 测试 key。
   // staging 测试认证 secrets 已通过 wrangler secret bulk 配置；OAuth 使用 mock，真实联调前替换。
@@ -56,11 +62,14 @@
   "env": {
     "staging": {
       "name": "web-staging",
+      "r2_buckets": [{ "binding": "FILES", "bucket_name": "files-staging" }],
       "vars": {
         "APP_URL": "https://web-staging.saas-jobs.workers.dev",
         "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
         "AI_GATEWAY_ACCOUNT_ID": "170a06d37ad50396b19943eb6b77a21d",
-        "AI_GATEWAY_ID": "saas-staging"
+        "AI_GATEWAY_ID": "saas-staging",
+        "R2_ACCOUNT_ID": "170a06d37ad50396b19943eb6b77a21d",
+        "R2_FILES_BUCKET": "files-staging"
       },
       "kv_namespaces": [{ "binding": "CACHE", "id": "f4d49b7c082b4f01ae20335683d3a21b" }],
       "ratelimits": [

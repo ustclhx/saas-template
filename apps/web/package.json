@@ -24,6 +24,7 @@
     "@saas/email": "workspace:*",
     "@saas/entitlements": "workspace:*",
     "@saas/shared": "workspace:*",
+    "@saas/storage": "workspace:*",
     "@saas/ui": "workspace:*",
     "@tanstack/react-form": "^1.33.5",
     "@tanstack/react-router": "^1.170.41",

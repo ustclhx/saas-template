@@ -4,6 +4,7 @@ declare global {
   /** wrangler.jsonc 中声明的绑定（`import { env } from 'cloudflare:workers'` 与各 handler 的 env 类型） */
   declare namespace Cloudflare {
     interface Env extends PaymentRuntimeEnv {
+      FILES: R2Bucket
       EVENTS_QUEUE: Queue<
         | import('@saas/billing').BillingQueueMessage
         | import('./notifications/operations.ts').OperationsQueueMessage

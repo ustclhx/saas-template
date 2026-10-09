@@ -2,14 +2,14 @@
 
 ## 1. 数据模型
 
-- [ ] 1.1 新增 `ai_task`（定价快照、`provider_request_key`、`callback_payload`、`workflow_instance_id`、`deadline_at`，索引 `(ws, id desc)`、`(status, updated_at)`）与 `file`（`status`、`public_token` 唯一）表，验证迁移成功
+- [x] 1.1 新增 `ai_task`（定价快照、`provider_request_key`、`callback_payload`、`workflow_instance_id`、`deadline_at`，索引 `(ws, id desc)`、`(status, updated_at)`）与 `file`（`status`、`public_token` 唯一）表，验证迁移成功
 
 ## 2. 文件存储
 
-- [ ] 2.1 在 `packages/storage` 实现 R2 预签名上传 / 下载（`aws4fetch`，限定 `FILES` 桶），验证单元测试检查签名包含 `Content-Type` 且有效期符合设计
-- [ ] 2.2 实现上传三步：声明（类型白名单、单文件上限、配额检查、插入 pending 记录）→ 直传 → 确认（`R2.head()` 校验真实大小与类型，不符则删除），验证测试：实际大小超过声明时确认失败且对象被删除
-- [ ] 2.3 实现文件访问（成员校验后 302 到短期下载地址）、公开分享链接的生成与撤销、存储配额计算，验证非成员访问返回 404、撤销后分享链接立即 404
-- [ ] 2.4 实现清理 Cron：超过 1 小时的 pending 记录与对象、软删空间保留期后的文件，验证到期记录与对象被删除
+- [x] 2.1 在 `packages/storage` 实现 R2 预签名上传 / 下载（`aws4fetch`，限定 `FILES` 桶），验证单元测试检查签名包含 `Content-Type` 且有效期符合设计
+- [x] 2.2 实现上传三步：声明（类型白名单、单文件上限、配额检查、插入 pending 记录）→ 直传 → 确认（`R2.head()` 校验真实大小与类型，不符则删除），验证测试：实际大小超过声明时确认失败且对象被删除
+- [x] 2.3 实现文件访问（成员校验后 302 到短期下载地址）、公开分享链接的生成与撤销、存储配额计算，验证非成员访问返回 404、撤销后分享链接立即 404
+- [x] 2.4 实现清理 Cron：超过 1 小时的 pending 记录与对象、软删空间保留期后的文件，验证到期记录与对象被删除
 
 ## 3. 媒体服务商
 

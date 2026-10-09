@@ -202,6 +202,9 @@ importers:
       '@saas/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@saas/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
     devDependencies:
       '@cloudflare/vitest-plugin':
         specifier: 1.3.5
@@ -257,6 +260,9 @@ importers:
       '@saas/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@saas/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       '@saas/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -583,7 +589,42 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@22.20.5)(happy-dom@20.14.5)(vite@8.3.2(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
 
-  packages/storage: {}
+  packages/storage:
+    dependencies:
+      '@saas/auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@saas/db':
+        specifier: workspace:*
+        version: link:../db
+      '@saas/entitlements':
+        specifier: workspace:*
+        version: link:../entitlements
+      '@saas/shared':
+        specifier: workspace:*
+        version: link:../shared
+      aws4fetch:
+        specifier: ^1.0.20
+        version: 1.0.20
+      drizzle-orm:
+        specifier: ^0.45.3
+        version: 0.45.3(@cloudflare/workers-types@5.20261002.1)(kysely@0.29.6)(postgres@3.4.9)
+    devDependencies:
+      '@cloudflare/vitest-plugin':
+        specifier: 1.3.5
+        version: 1.3.5(@cloudflare/workers-types@5.20261002.1)(@types/node@22.20.5)(@vitest/runner@4.1.11)(@vitest/snapshot@4.1.11)(vitest@4.1.11(@types/node@22.20.5)(happy-dom@20.14.5)(vite@8.3.2(@types/node@22.20.5)(esbuild@0.28.2)))
+      '@cloudflare/workers-types':
+        specifier: ^5.20261002.1
+        version: 5.20261002.1
+      '@types/node':
+        specifier: ^22.20.5
+        version: 22.20.5
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@22.20.5)(happy-dom@20.14.5)(vite@8.3.2(@types/node@22.20.5)(esbuild@0.28.2))
+      wrangler:
+        specifier: ^4.146.0
+        version: 4.146.0(@cloudflare/workers-types@5.20261002.1)(@types/node@22.20.5)
 
   packages/ui:
     dependencies:
@@ -3555,6 +3596,9 @@ packages:
 
   atomically@2.1.1:
     resolution: {integrity: sha512-P4w9o2dqARji6P7MHprklbfiArZAWvo07yW7qs3pdljb3BWr12FIB7W+p0zJiuiVsUpRO0iZn1kFFcpPegg0tQ==}
+
+  aws4fetch@1.0.20:
+    resolution: {integrity: sha512-/djoAN709iY65ETD6LKCtyyEI04XIBP5xVvfmNxsEP0uJB5tyaGBztSryRr4HqMStr9R06PisQE7m9zDTXKu6g==}
 
   babel-dead-code-elimination@1.0.12:
     resolution: {integrity: sha512-GERT7L2TiYcYDtYk1IpD+ASAYXjKbLTDPhBtYj7X1NuRMDTMtAx9kyBenub1Ev41lo91OHCKdmP+egTDmfQ7Ig==}
@@ -8070,6 +8114,8 @@ snapshots:
     dependencies:
       stubborn-fs: 2.0.0
       when-exit: 2.1.5
+
+  aws4fetch@1.0.20: {}
 
   babel-dead-code-elimination@1.0.12(supports-color@10.2.2):
     dependencies:

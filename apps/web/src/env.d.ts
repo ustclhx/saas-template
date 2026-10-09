@@ -4,7 +4,8 @@ declare const __APP_VERSION__: string
 /** wrangler.jsonc 中声明的绑定（`import { env } from 'cloudflare:workers'` 的类型） */
 declare namespace Cloudflare {
   type PaymentEnv = import('@saas/billing').PaymentRuntimeEnv
-  interface Env extends PaymentEnv {
+  type StorageEnv = import('@saas/storage').StorageEnv
+  interface Env extends PaymentEnv, StorageEnv {
     /** 不带查询缓存（app-db）：健康检查与写操作 */
     HYPERDRIVE: Hyperdrive
     /** 带查询缓存（app-db-cached）：可容忍短暂旧数据的读 */
