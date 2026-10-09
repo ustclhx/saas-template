@@ -81,6 +81,20 @@ function samePayload(a: JsonValue, b: JsonValue): boolean {
   )
 }
 
+// Stripe 的 pending_webhooks 随投递成功而变化，不属于事件的业务身份。
+function associationPayload(provider: PaymentProviderId, payload: JsonValue): JsonValue {
+  if (
+    provider !== 'stripe' ||
+    payload === null ||
+    typeof payload !== 'object' ||
+    Array.isArray(payload)
+  )
+    return payload
+  const association = { ...payload }
+  delete association.pending_webhooks
+  return association
+}
+
 function assertAssociation(
   delivery: WebhookEvent,
   normalized: VerifiedWebhook,
@@ -92,8 +106,11 @@ function assertAssociation(
     delivery.provider !== provider ||
     delivery.providerEventId !== normalized.providerEventId ||
     delivery.type !== normalized.type ||
-    !samePayload(delivery.payload, payload) ||
-    normalized.events.some((event) => !samePayload(event.raw, delivery.payload))
+    !samePayload(
+      associationPayload(provider, delivery.payload),
+      associationPayload(provider, payload),
+    ) ||
+    normalized.events.some((event) => !samePayload(event.raw, payload))
   ) {
     throw new Error('Webhook delivery association mismatch')
   }

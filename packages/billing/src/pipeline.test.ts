@@ -97,6 +97,60 @@ describe('webhook pipeline on PostgreSQL', () => {
     expect((await row(opts.normalized.providerEventId)).attempts).toBe(1)
   })
 
+  it('acknowledges Stripe redeliveries when only pending_webhooks changes and rejects changed business data', async () => {
+    const opts = input()
+    const originalPayload = { ...JSON.parse(opts.rawBody), pending_webhooks: 3 }
+    opts.rawBody = JSON.stringify(originalPayload)
+    for (const event of opts.normalized.events) event.raw = originalPayload
+    const prepare = vi.fn()
+    const notify = vi.fn()
+    expect((await processWebhook({ ...opts, prepare, notify })).status).toBe('processed')
+    const stored = await row(opts.normalized.providerEventId)
+
+    const redelivery = { ...originalPayload, pending_webhooks: 1 }
+    opts.rawBody = JSON.stringify(redelivery)
+    for (const event of opts.normalized.events) event.raw = redelivery
+    expect((await processWebhook({ ...opts, prepare, notify })).status).toBe('duplicate')
+    expect(await row(opts.normalized.providerEventId)).toEqual(stored)
+    expect(await effects()).toHaveLength(1)
+    expect(prepare).toHaveBeenCalledTimes(1)
+    expect(notify).toHaveBeenCalledTimes(1)
+
+    const substituted = { ...redelivery, resource: { retained: false } }
+    opts.rawBody = JSON.stringify(substituted)
+    for (const event of opts.normalized.events) event.raw = substituted
+    await expect(processWebhook(opts)).rejects.toThrow('association mismatch')
+    expect(await row(opts.normalized.providerEventId)).toEqual(stored)
+  })
+
+  it('retries failed Stripe deliveries when pending_webhooks changes without replacing the stored payload', async () => {
+    const opts = input()
+    const originalPayload = { ...JSON.parse(opts.rawBody), pending_webhooks: 3 }
+    opts.rawBody = JSON.stringify(originalPayload)
+    for (const event of opts.normalized.events) event.raw = originalPayload
+    expect(
+      (
+        await processWebhook({
+          ...opts,
+          handler: async () => {
+            throw new Error('temporary')
+          },
+        })
+      ).status,
+    ).toBe('failed')
+
+    const redelivery = { ...originalPayload, pending_webhooks: 1 }
+    opts.rawBody = JSON.stringify(redelivery)
+    for (const event of opts.normalized.events) event.raw = redelivery
+    expect((await processWebhook(opts)).status).toBe('processed')
+    expect(await row(opts.normalized.providerEventId)).toMatchObject({
+      payload: originalPayload,
+      status: 'processed',
+      attempts: 2,
+    })
+    expect(await effects()).toHaveLength(1)
+  })
+
   it('rolls back all multi-event effects, persists a bounded error, and retries successfully', async () => {
     const opts = input(2)
     let calls = 0
