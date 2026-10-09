@@ -46,7 +46,7 @@
 
 ## 7. 自动发布流水线
 
-- [ ] 7.1 新增 `scripts/staging/wait-healthy.mjs`（参数：URL、期望版本；每 5 秒轮询、最长 3 分钟；成功条件 200 + `db.status=up` + `version` 相等；失败时只打印状态码与 `version`），验证对当前 staging 以正确版本运行退出码 0、以错误版本运行约 3 分钟后退出码 1
+- [x] 7.1 新增 `scripts/staging/wait-healthy.mjs`（参数：URL、期望版本；每 5 秒轮询、最长 3 分钟；成功条件 200 + `db.status=up` + `version` 相等；失败时只打印状态码与 `version`），验证对当前 staging 以正确版本运行退出码 0、以错误版本运行约 3 分钟后退出码 1
 - [ ] 7.2【人工】在 Cloudflare 创建 API Token（Workers Scripts 编辑；Workers KV、Queues、Hyperdrive、Workflows 读取；Account Settings 读取），在 GitHub 创建 environment `staging` 并存入 `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`STAGING_MIGRATION_DATABASE_URL`，验证 `gh secret list --env staging` 列出三项
 - [x] 7.3 新增 `.github/workflows/deploy-staging.yml`（design 决策 6：`workflow_run` 于 main 上 CI 成功 + `workflow_dispatch`；`environment: staging`；`concurrency` 不取消；迁移 → jobs → web（`APP_VERSION=<sha>`）→ wait-healthy → Playwright staging，安装 chromium），验证 `actionlint`（或 `gh workflow view`）无错误，且 `ci.yml` 未获得任何 staging secret
 - [ ] 7.4 合并本 change 的代码后，验证首次自动发布成功：Actions 中 `deploy-staging` 全部步骤通过，`/api/health` 的 `version` 等于该合并提交的 SHA
