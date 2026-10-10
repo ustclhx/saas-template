@@ -16,7 +16,7 @@
 
 - [x] 3.1 API Key 管理页（owner / admin；创建时显示一次完整值、命名、过期、撤销）与 `/api/v1` 鉴权中间件（Key → 空间上下文、权益检查、按 Key 限流），验证撤销后调用返回 401、`features.publicApi=false` 时返回 404
 - [x] 3.2 `POST /api/v1/chat/completions`（非流式与流式 SSE），复用站内对话服务，验证用 OpenAI 官方 Node 与 Python SDK 的集成测试通过且积分按模型计费方式扣除
-- [ ] 3.3 `POST /api/v1/tasks` 与 `GET /api/v1/tasks/:id`，复用站内任务服务，结果返回短期下载地址，验证通过 API 生成一张图片的集成测试
+- [x] 3.3 `POST /api/v1/tasks` 与 `GET /api/v1/tasks/:id`，复用站内任务服务，结果返回短期下载地址，验证通过 API 生成一张图片的集成测试
 - [x] 3.4 编写公开 API 文档页（受 `features.docs` 与 `features.publicApi` 控制），验证文档中的示例请求可直接运行
 
 ## 4. Waitlist 与 Newsletter

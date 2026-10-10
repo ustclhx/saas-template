@@ -1,0 +1,110 @@
+import type { MediaTaskFile } from '@saas/ai'
+import type { RateLimiter } from '@saas/auth'
+import { AppError } from '@saas/shared'
+import { currentRequestId } from '@saas/shared/log'
+import { getFileDownload, type StorageEnv } from '@saas/storage'
+import { z } from 'zod'
+import {
+  getWorkspaceMediaTask,
+  type MediaHttpDeps,
+  submitWorkspaceMedia,
+} from '../ai/media-tasks.ts'
+import { apiError } from './completions.ts'
+import { type ApiKeyDeps, authenticateApiKey } from './service.ts'
+
+export type PublicMediaDeps = Omit<ApiKeyDeps, 'entitlements'> &
+  Omit<MediaHttpDeps, 'auth' | 'rateLimiter' | 'env'> & {
+    env: MediaHttpDeps['env'] & StorageEnv
+    rateLimiter: RateLimiter
+  }
+
+const inputSchema = z
+  .object({
+    model: z.string().min(1).max(128),
+    params: z.record(z.string(), z.unknown()),
+  })
+  .strict()
+
+function result(body: unknown, status = 200) {
+  return Response.json(body, {
+    status,
+    headers: { 'Cache-Control': 'no-store', 'x-request-id': currentRequestId() ?? '' },
+  })
+}
+
+export async function handlePublicMediaSubmit(request: Request, deps: PublicMediaDeps) {
+  try {
+    const context = await authenticateApiKey(request, deps)
+    const parsed = inputSchema.safeParse(await request.json().catch(() => undefined))
+    if (!parsed.success) throw new AppError('INVALID_REQUEST', 'Invalid media task request')
+    const task = await submitWorkspaceMedia(
+      { modelKey: parsed.data.model, params: parsed.data.params },
+      context,
+      {
+        ...deps,
+        // 公开入口已经按 Key 和空间限流；事务内仍实时读取模型权益与配额。
+        rateLimiter: undefined,
+        callbackOrigin: new URL(deps.env.APP_URL ?? request.url).origin,
+      },
+    )
+    return result(
+      { id: task.id, object: 'media.task', model: task.modelKey, status: task.status },
+      202,
+    )
+  } catch (error) {
+    return apiError(error)
+  }
+}
+
+export async function handlePublicMediaDetail(
+  request: Request,
+  taskId: string,
+  deps: PublicMediaDeps,
+) {
+  try {
+    const context = await authenticateApiKey(request, deps)
+    if (!z.uuid().safeParse(taskId).success)
+      throw new AppError('NOT_FOUND', 'Not found', { status: 404 })
+    const task = await getWorkspaceMediaTask(context, taskId, deps)
+    const output = task.output as { files?: MediaTaskFile[] } | null
+    const files = await Promise.all(
+      (task.status === 'succeeded' ? (output?.files ?? []) : []).map(async (file) => {
+        const downloadUrl = await getFileDownload(deps.db, deps.env, {
+          workspaceId: context.workspace.id,
+          fileId: file.id,
+        })
+        // 过期时间取签名本身，避免异步签名与响应时钟之间的偏差。
+        const signed = new URL(downloadUrl)
+        const date = signed.searchParams.get('X-Amz-Date') as string
+        const signedAt = Date.parse(
+          date.replace(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/, '$1-$2-$3T$4:$5:$6Z'),
+        )
+        return {
+          id: file.id,
+          mime: file.mime,
+          size: file.size,
+          width: file.width ?? null,
+          height: file.height ?? null,
+          duration: file.duration ?? null,
+          download_url: downloadUrl,
+          expires_at:
+            Math.floor(signedAt / 1000) + Number(signed.searchParams.get('X-Amz-Expires')),
+        }
+      }),
+    )
+    return result({
+      id: task.id,
+      object: 'media.task',
+      model: task.modelKey,
+      kind: task.kind,
+      status: task.status,
+      created: Math.floor(task.createdAt.getTime() / 1000),
+      finished_at: task.finishedAt ? Math.floor(task.finishedAt.getTime() / 1000) : null,
+      credits_charged: task.creditsCharged,
+      error: task.errorCode ? { code: task.errorCode, message: task.errorMessage } : null,
+      files,
+    })
+  } catch (error) {
+    return apiError(error)
+  }
+}

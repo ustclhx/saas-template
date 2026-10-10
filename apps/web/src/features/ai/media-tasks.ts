@@ -30,6 +30,7 @@ import { getStorageUsage } from '@saas/storage'
 import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { templateConfig } from '../../server/template-config.ts'
+import type { ResolvedWorkspace } from '../../server/workspace-context.ts'
 
 export interface MediaHttpEnv {
   FAL_KEY?: string
@@ -99,11 +100,11 @@ async function context(request: Request, workspaceId: string, deps: MediaHttpDep
   if (write && !templateConfig.tenancy.multiTenant && !workspace.isPersonal)
     throw new AppError('WORKSPACE_READ_ONLY', 'Team workspace writes are disabled', { status: 403 })
   setLogContext({ workspaceId, userId: fresh.user.id })
-  return fresh
+  return { ...fresh, workspace, member: membership }
 }
 
 const entitlements = (
-  deps: MediaHttpDeps,
+  deps: Pick<MediaHttpDeps, 'entitlements'>,
   db: Parameters<NonNullable<MediaHttpDeps['entitlements']>>[0],
   workspaceId: string,
 ) =>
@@ -120,115 +121,143 @@ export function handleMediaSubmit(request: Request, deps: MediaHttpDeps): Promis
     const input = parsed.data
     // jobs 不绑定站点 URL；由请求入口冻结可信服务端 origin，供回调签名使用。
     const callbackOrigin = new URL(deps.env.APP_URL ?? request.url).origin
-    const { user } = await context(request, input.workspaceId, deps, true)
-    if (!deps.env.MEDIA_WEBHOOK_SECRET)
-      throw new AppError('MEDIA_WEBHOOK_NOT_CONFIGURED', 'Media callback is not configured', {
-        status: 503,
-      })
-    if (!deps.providerFactory && !deps.env.FAL_KEY)
-      throw new AppError('AI_PROVIDER_NOT_CONFIGURED', 'fal.ai API key is not configured', {
-        status: 503,
-      })
-    if (!(await deps.rateLimiter.limit({ key: `ai:${input.workspaceId}:${user.id}` })).success)
-      throw new AppError('RATE_LIMITED', 'Too many requests, please try again later', {
-        status: 429,
-      })
-    const modelRow = await deps.db.query.aiModel.findFirst({
-      where: (model, { eq }) => eq(model.key, input.modelKey),
-    })
-    if (!modelRow)
-      throw new AppError('MODEL_UNAVAILABLE', 'Model is not available', { status: 404 })
-    const task = await deps.db.transaction(async (tx) => {
-      // 与 billing 回收器统一为 ws → credits → task，防止锁顺序反转。
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtextextended(${`ws:${input.workspaceId}`}, 0))`,
-      )
-      await lockWorkspaceCredits(tx, input.workspaceId)
-      const current = await entitlements(deps, tx, input.workspaceId)
-      const model = await requireAvailableModel(
-        { store: dbModelStore(tx as unknown as Database) },
-        current,
-        modelRow.id,
-      )
-      if (model.kind === 'text' || model.provider !== 'fal' || !templateConfig.ai[model.kind])
-        throw new AppError('MODEL_UNAVAILABLE', 'Model is not available', { status: 404 })
-      if (model.pricing.mode === 'token')
-        throw new AppError('MEDIA_PRICING_INVALID', 'Media model pricing is not supported', {
-          status: 503,
-        })
-      const validated = validateMediaParams(model.paramsSchema, input.params, model.kind)
-      const tenant = scoped(tx, input.workspaceId)
-      const [workspace] = await tx
-        .select({ id: organization.id })
-        .from(organization)
-        .where(and(eq(organization.id, input.workspaceId), isNull(organization.deletedAt)))
-      if (!workspace) throw notFound()
-      requireEntitlement(current, {
-        limit: 'maxConcurrentTasks',
-        value: (await tenant.count(aiTask, inArray(aiTask.status, ['queued', 'running']))) + 1,
-      })
-      const storageBytes = Math.floor(current.features.storageGb * 1024 ** 3)
-      if ((await getStorageUsage(tx, input.workspaceId)) >= storageBytes)
-        throw new AppError('STORAGE_QUOTA_EXCEEDED', 'Workspace storage quota is full', {
-          status: 403,
-        })
-      for (const name of validated.fileParams) {
-        const uploaded = await tenant.findById(file, validated.params[name] as string)
-        if (uploaded.status !== 'ready' || uploaded.deletedAt)
-          throw new AppError('FILE_NOT_READY', 'Input file is not confirmed')
-      }
-      const taskId = newId()
-      const amount = estimateCredits(model.pricing, {
-        params: validated.params,
-        units: validated.unitsLimit,
-      })
-      const [created] = await tenant
-        .insert(aiTask, {
-          id: taskId,
-          userId: user.id,
-          kind: model.kind,
-          modelKey: model.key,
-          provider: model.provider,
-          pricing: model.pricing,
-          providerRequestKey: taskId,
-          workflowInstanceId: taskId,
-          deadlineAt: new Date(Date.now() + MEDIA_TASK_TTL_MS),
-          input: {
-            ...validated,
-            providerModelId: model.providerModelId,
-            storageBytes,
-            callbackOrigin,
-          },
-        })
-        .returning()
-      if (!created) throw new Error('Media task insert returned no row')
-      const reservation = await hold(tx, {
-        workspaceId: input.workspaceId,
-        userId: user.id,
-        amount,
-        refType: 'ai_task',
-        refId: taskId,
-        expiresAt: new Date(created.deadlineAt.getTime() + MEDIA_HOLD_SWEEP_BUFFER_MS),
-      })
-      return tenant.updateById(aiTask, taskId, { holdId: reservation.id })
-    })
-    try {
-      await deps.workflow.create({ id: task.id, params: { taskId: task.id } })
-    } catch {
-      await settleMediaTask(deps.db, {
-        workspaceId: task.workspaceId,
-        taskId: task.id,
-        outcome: 'failed',
-        error: { code: 'MEDIA_WORKFLOW_START_FAILED', message: 'Media task could not start' },
-      })
-      throw new AppError(
-        'MEDIA_WORKFLOW_START_FAILED',
-        'Media task could not start; credits were returned',
-        { status: 503 },
-      )
-    }
+    const resolved = await context(request, input.workspaceId, deps, true)
+    const task = await submitWorkspaceMedia(input, resolved, { ...deps, callbackOrigin })
     return Response.json({ taskId: task.id, status: task.status }, { status: 202 })
   })
+}
+
+export type WorkspaceMediaDeps = Omit<MediaHttpDeps, 'auth' | 'rateLimiter'> & {
+  rateLimiter?: RateLimiter | undefined
+  callbackOrigin: string
+}
+
+/** 入口已解析空间及成员；计费、配额和任务创建由站内与公开 API 共用。 */
+export async function submitWorkspaceMedia(
+  input: { modelKey: string; params: Record<string, unknown> },
+  resolved: ResolvedWorkspace,
+  deps: WorkspaceMediaDeps,
+): Promise<AiTask> {
+  const callbackOrigin = deps.callbackOrigin
+  if (!deps.env.MEDIA_WEBHOOK_SECRET)
+    throw new AppError('MEDIA_WEBHOOK_NOT_CONFIGURED', 'Media callback is not configured', {
+      status: 503,
+    })
+  if (!deps.providerFactory && !deps.env.FAL_KEY)
+    throw new AppError('AI_PROVIDER_NOT_CONFIGURED', 'fal.ai API key is not configured', {
+      status: 503,
+    })
+  if (
+    deps.rateLimiter &&
+    !(
+      await deps.rateLimiter.limit({ key: `ai:${resolved.workspace.id}:${resolved.member.userId}` })
+    ).success
+  )
+    throw new AppError('RATE_LIMITED', 'Too many requests, please try again later', {
+      status: 429,
+    })
+  const modelRow = await deps.db.query.aiModel.findFirst({
+    where: (model, { eq }) => eq(model.key, input.modelKey),
+  })
+  if (!modelRow) throw new AppError('MODEL_UNAVAILABLE', 'Model is not available', { status: 404 })
+  const task = await deps.db.transaction(async (tx) => {
+    // 与 billing 回收器统一为 ws → credits → task，防止锁顺序反转。
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${`ws:${resolved.workspace.id}`}, 0))`,
+    )
+    await lockWorkspaceCredits(tx, resolved.workspace.id)
+    const current = await entitlements(deps, tx, resolved.workspace.id)
+    const model = await requireAvailableModel(
+      { store: dbModelStore(tx as unknown as Database) },
+      current,
+      modelRow.id,
+    )
+    if (model.kind === 'text' || model.provider !== 'fal' || !templateConfig.ai[model.kind])
+      throw new AppError('MODEL_UNAVAILABLE', 'Model is not available', { status: 404 })
+    if (model.pricing.mode === 'token')
+      throw new AppError('MEDIA_PRICING_INVALID', 'Media model pricing is not supported', {
+        status: 503,
+      })
+    const validated = validateMediaParams(model.paramsSchema, input.params, model.kind)
+    const tenant = scoped(tx, resolved.workspace.id)
+    const [workspace] = await tx
+      .select({ id: organization.id })
+      .from(organization)
+      .where(and(eq(organization.id, resolved.workspace.id), isNull(organization.deletedAt)))
+    if (!workspace) throw notFound()
+    requireEntitlement(current, {
+      limit: 'maxConcurrentTasks',
+      value: (await tenant.count(aiTask, inArray(aiTask.status, ['queued', 'running']))) + 1,
+    })
+    const storageBytes = Math.floor(current.features.storageGb * 1024 ** 3)
+    if ((await getStorageUsage(tx, resolved.workspace.id)) >= storageBytes)
+      throw new AppError('STORAGE_QUOTA_EXCEEDED', 'Workspace storage quota is full', {
+        status: 403,
+      })
+    for (const name of validated.fileParams) {
+      const uploaded = await tenant.findById(file, validated.params[name] as string)
+      if (uploaded.status !== 'ready' || uploaded.deletedAt)
+        throw new AppError('FILE_NOT_READY', 'Input file is not confirmed')
+    }
+    const taskId = newId()
+    const amount = estimateCredits(model.pricing, {
+      params: validated.params,
+      units: validated.unitsLimit,
+    })
+    const [created] = await tenant
+      .insert(aiTask, {
+        id: taskId,
+        userId: resolved.member.userId,
+        kind: model.kind,
+        modelKey: model.key,
+        provider: model.provider,
+        pricing: model.pricing,
+        providerRequestKey: taskId,
+        workflowInstanceId: taskId,
+        deadlineAt: new Date(Date.now() + MEDIA_TASK_TTL_MS),
+        input: {
+          ...validated,
+          providerModelId: model.providerModelId,
+          storageBytes,
+          callbackOrigin,
+        },
+      })
+      .returning()
+    if (!created) throw new Error('Media task insert returned no row')
+    const reservation = await hold(tx, {
+      workspaceId: resolved.workspace.id,
+      userId: resolved.member.userId,
+      amount,
+      refType: 'ai_task',
+      refId: taskId,
+      expiresAt: new Date(created.deadlineAt.getTime() + MEDIA_HOLD_SWEEP_BUFFER_MS),
+    })
+    return tenant.updateById(aiTask, taskId, { holdId: reservation.id })
+  })
+  try {
+    await deps.workflow.create({ id: task.id, params: { taskId: task.id } })
+  } catch {
+    await settleMediaTask(deps.db, {
+      workspaceId: task.workspaceId,
+      taskId: task.id,
+      outcome: 'failed',
+      error: { code: 'MEDIA_WORKFLOW_START_FAILED', message: 'Media task could not start' },
+    })
+    throw new AppError(
+      'MEDIA_WORKFLOW_START_FAILED',
+      'Media task could not start; credits were returned',
+      { status: 503 },
+    )
+  }
+  return task
+}
+
+export function getWorkspaceMediaTask(
+  resolved: ResolvedWorkspace,
+  taskId: string,
+  deps: Pick<MediaHttpDeps, 'db'>,
+): Promise<AiTask> {
+  return scoped(deps.db, resolved.workspace.id).findById(aiTask, taskId)
 }
 
 function publicTask(task: AiTask, userId: string) {
@@ -294,9 +323,9 @@ export function handleMediaDetail(
   return response(async () => {
     const parsed = workspaceInput.safeParse(Object.fromEntries(new URL(request.url).searchParams))
     if (!parsed.success) throw notFound()
-    const { user } = await context(request, parsed.data.workspaceId, deps)
-    const task = await scoped(deps.db, parsed.data.workspaceId).findById(aiTask, taskId)
-    return Response.json({ task: publicTask(task, user.id) })
+    const resolved = await context(request, parsed.data.workspaceId, deps)
+    const task = await getWorkspaceMediaTask(resolved, taskId, deps)
+    return Response.json({ task: publicTask(task, resolved.member.userId) })
   })
 }
 
