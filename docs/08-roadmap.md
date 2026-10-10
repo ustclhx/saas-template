@@ -154,7 +154,7 @@
 | # | 问题 | 选项 | 何时决定 |
 |---|---|---|---|
 | Q1 | 表单库 | 已决定并接入：TanStack Form + Zod | Phase 1（已决定） |
-| Q2 | 内容方案 | Fumadocs / content-collections | Phase 6 前 |
+| Q2 | 内容方案 | 已决定并接入（#44）：content-collections。博客、法律页与可选文档站都是 `apps/web/content/<集合>/<locale>/<slug>.mdx`，frontmatter 用 Zod 校验；MDX 在构建期渲染为静态 HTML（Worker 不允许执行 MDX 编译结果），文档搜索使用构建期生成的纯文本索引。不引入 Fumadocs：它的路由与 UI 体系对博客和法律页过重；个别站点需要重型文档站时再单独引入 | Phase 6（已决定） |
 | Q3 | 产品分析 | 已决定并接入（#56）：默认只用无 Cookie 的 Cloudflare Web Analytics（配置公开 token 后在公开页面加载）；PostHog 为可选接入点，由 `features.analytics` 控制且默认关闭，开启后须用户同意（`saas.analytics.consent`）并尊重 DNT，后台不加载；不做 Umami | Phase 7（已决定） |
 | Q4 | 订阅积分是否结转 | 已按设计确定：按套餐配置，默认不结转 | Phase 2（离线验证通过，待真实平台验收） |
 | Q5 | 升级时是否立即补发积分差额 | 已按设计确定：默认不立即补发 | Phase 2（离线验证通过，待真实平台验收） |

@@ -45,7 +45,7 @@
 | UI | Tailwind CSS v4 + shadcn/ui | 营销页动效参考 Aceternity / Magic UI，用 `motion` |
 | 表格 | TanStack Table | 管理后台 |
 | i18n | Paraglide JS | 编译期生成，按需打包 |
-| 内容 | MDX（Fumadocs 或 content-collections，待定） | 构建期编译 |
+| 内容 | MDX + content-collections | 博客、法律页、可选文档站；构建期校验 frontmatter 并渲染为静态 HTML，文档搜索索引也在构建期生成（Q2，`apps/web/content-collections.ts`） |
 | ORM | Drizzle ORM + drizzle-kit | |
 | DB 驱动 | postgres.js（`postgres`） | Cloudflare 推荐配合 Hyperdrive |
 | 认证 | Better Auth | organization / admin / api-key / two-factor 插件 |
