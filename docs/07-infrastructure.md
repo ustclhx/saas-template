@@ -19,7 +19,7 @@ Phase 0 本机链路的历史实测条件与当前观察范围：
 
 - 切换前 staging 访问旧数据库要求开发者本机与 `cloudflared` 在线；当前线上 Neon 链路已解除此依赖，回滚到旧库前仍需确认两者可用。
 - Phase 0 请求绕回本机，其延迟基线只验证原链路可用，不能代表 Neon 或生产环境。
-- 本机 PG 不做备份；Neon staging 为可重建测试数据，Free 用量与休眠影响仍待24 小时观察，不替代阶段二备份方案。观察期保留旧 Hyperdrive、Tunnel 与 Workers VPC 资源。
+- 本机 PG 不做备份；Neon staging 为可重建测试数据，24 小时观察显示 compute 常驻约 165 CU-hrs/月，超出 Free 100 CU-hrs；测试阶段仍用 Free，产品上线再升级（见 runbook staging-neon §6），不替代阶段二备份方案。阶段一的旧 Hyperdrive、Tunnel 与 Workers VPC 资源已于 2026-10-10 删除。
 
 ## 1. 自建 Postgres（阶段二）
 
