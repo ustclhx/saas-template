@@ -36,4 +36,15 @@ describe('FILES presigned URLs', () => {
       code: 'INVALID_FILE_KEY',
     })
   })
+
+  it('signs attachment disposition only for explicit downloads, preserving inline previews', async () => {
+    const inline = new URL(await presignDownload(env, key))
+    const attachment = new URL(await presignDownload(env, key, true))
+    expect(inline.searchParams.has('response-content-disposition')).toBe(false)
+    expect(attachment.searchParams.get('response-content-disposition')).toBe('attachment')
+    expect(attachment.searchParams.get('X-Amz-Expires')).toBe('300')
+    expect(attachment.searchParams.get('X-Amz-Signature')).not.toBe(
+      inline.searchParams.get('X-Amz-Signature'),
+    )
+  })
 })

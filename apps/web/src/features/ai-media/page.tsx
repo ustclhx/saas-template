@@ -1,4 +1,5 @@
 import { Button, Label } from '@saas/ui'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { FormAlert } from '../auth/auth-layout.tsx'
@@ -116,11 +117,17 @@ function ParameterForm({
   const [pending, setPending] = useState(false)
   const [uploading, setUploading] = useState<string>()
   const [taskId, setTaskId] = useState<string>()
+  const navigate = useNavigate()
   const busy = pending || uploading !== undefined
   let credits: number | undefined
   try {
-    if (validateMediaParams(schema, params, files).success)
-      credits = mediaCreditEstimate(model, schema, params)
+    const validated = validateMediaParams(
+      schema,
+      params,
+      files,
+      model.kind === 'image' ? 'image' : 'video',
+    )
+    if (validated.success) credits = mediaCreditEstimate(model, schema, validated.data)
   } catch {
     // 缺少计费用量或倍率配置不合法时不给出误导性的预计值。
   }
@@ -156,7 +163,12 @@ function ParameterForm({
   async function submit() {
     if (busy || page.readOnly || taskId) return
     setError(null)
-    const validated = validateMediaParams(schema, params, files)
+    const validated = validateMediaParams(
+      schema,
+      params,
+      files,
+      model.kind === 'image' ? 'image' : 'video',
+    )
     if (!validated.success) {
       const errors: Record<string, string[]> = {}
       for (const issue of validated.error.issues)
@@ -174,6 +186,10 @@ function ParameterForm({
         params: validated.data,
       })
       setTaskId(result.taskId)
+      await navigate({
+        to: '/app/$slug/tasks/$taskId',
+        params: { slug: page.workspaceSlug, taskId: result.taskId },
+      })
     } catch (cause) {
       setError(mediaErrorMessage(cause))
     } finally {
@@ -219,7 +235,15 @@ function ParameterForm({
         </Button>
       </HydratedControls>
       <FormAlert message={error} />
-      {taskId ? <p role="status">{m.media_success({ taskId })}</p> : null}
+      {taskId ? (
+        <Link
+          to="/app/$slug/tasks/$taskId"
+          params={{ slug: page.workspaceSlug, taskId }}
+          className="underline"
+        >
+          {m.media_tasks_detail()}
+        </Link>
+      ) : null}
     </form>
   )
 }

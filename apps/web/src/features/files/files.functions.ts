@@ -9,7 +9,7 @@ import {
 import { createServerFn } from '@tanstack/react-start'
 import { templateConfig } from '../../server/template-config.ts'
 import { fileInput, fileWorkspaceInput, requireFileWrite, uploadInput } from './access.ts'
-import { withFileWorkspace } from './middleware.server.ts'
+import { withFileWorkspace } from './middleware.ts'
 
 export const declareFileUpload = createServerFn({ method: 'POST' })
   .middleware([withFileWorkspace])

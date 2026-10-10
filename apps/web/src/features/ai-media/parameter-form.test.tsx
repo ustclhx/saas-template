@@ -1,3 +1,4 @@
+import { validateMediaParams as validateServerMediaParams } from '@saas/ai'
 import { renderToString } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fileUploadActions, type MediaFile, submitMediaTask, uploadMediaFile } from './client.ts'
@@ -94,8 +95,39 @@ describe('媒体 schema 参数组件', () => {
     expect(html).toContain('type="checkbox"')
     expect(validateMediaParams(schema, params, [ready]).success).toBe(true)
     const { duration: _duration, ...cleared } = params
-    expect(validateMediaParams(schema, cleared, [ready]).success).toBe(false)
+    const restored = validateMediaParams(schema, cleared, [ready])
+    expect(restored.success).toBe(true)
+    if (restored.success) expect(restored.data.duration).toBe(5)
     expect(validateMediaParams(schema, { ...params, prompt: '' }, [ready]).success).toBe(false)
+  })
+
+  it('表单与服务端对默认值、UUID、单位约束和未知参数保持一致', () => {
+    const raw = {
+      type: 'object',
+      properties: {
+        duration: { type: 'number', default: 5, minimum: 0, maximum: 10 },
+        count: { type: 'number', default: 2 },
+        prompt: { type: 'string', pattern: '^A', default: 'A forest' },
+        input: { type: 'string', format: 'file' },
+      },
+      required: ['input'],
+      'x-media': { unitsParam: 'count' },
+    }
+    const parsed = parseMediaSchema(raw)
+    for (const candidate of [
+      { input: ready.id },
+      { input: ready.id, count: 2.5 },
+      { input: ready.id, count: 0 },
+      { input: ready.id, prompt: 'forest' },
+      { input: ready.id, extra: true },
+      { input: 'invalid' },
+    ]) {
+      const form = validateMediaParams(parsed, candidate, [ready], 'image')
+      if (form.success)
+        expect(form.data).toEqual(validateServerMediaParams(raw, candidate, 'image').params)
+      else expect(() => validateServerMediaParams(raw, candidate, 'image')).toThrow()
+    }
+    expect(() => parseMediaSchema({ ...raw, 'x-media': { unitsParam: 'prompt' } })).toThrow()
   })
 
   it('切换模型时默认参数重新生成，文件默认值不能绕过确认', () => {

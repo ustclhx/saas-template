@@ -1,6 +1,7 @@
 import type { AiTask } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { z } from 'zod'
+import { createMediaParamsValidator, parseMediaSchema } from './params.ts'
 
 export interface MediaTaskInput {
   params: Record<string, unknown>
@@ -27,137 +28,27 @@ export function readMediaTaskInput(task: Pick<AiTask, 'input'>): MediaTaskInput 
   return parsed.data
 }
 
-const configurationError = () =>
-  new AppError('MEDIA_SCHEMA_INVALID', 'Media model parameter schema is not supported', {
-    status: 503,
-  })
-const rootKeys = new Set([
-  'type',
-  'properties',
-  'required',
-  'additionalProperties',
-  'title',
-  'description',
-  '$schema',
-  'x-media',
-])
-const fieldKeys = new Set([
-  'type',
-  'enum',
-  'minimum',
-  'maximum',
-  'exclusiveMinimum',
-  'exclusiveMaximum',
-  'multipleOf',
-  'minLength',
-  'maxLength',
-  'pattern',
-  'format',
-  'default',
-  'title',
-  'description',
-])
-const plainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-const fieldSchema = z.object({
-  type: z.enum(['string', 'number', 'integer', 'boolean']),
-  enum: z
-    .array(z.union([z.string(), z.number().finite(), z.boolean()]))
-    .min(1)
-    .optional(),
-  minimum: z.number().finite().optional(),
-  maximum: z.number().finite().optional(),
-  exclusiveMinimum: z.number().finite().optional(),
-  exclusiveMaximum: z.number().finite().optional(),
-  multipleOf: z.number().finite().positive().optional(),
-  minLength: z.number().int().nonnegative().optional(),
-  maxLength: z.number().int().nonnegative().optional(),
-  pattern: z.string().optional(),
-  format: z.enum(['file', 'uuid']).optional(),
-  title: z.string().optional(),
-  description: z.string().optional(),
-  default: z.unknown().optional(),
-})
-
-/** 首版表单只支持平面标量字段；未知校验关键字必须拒绝，不能静默忽略而放行。 */
+/** 模型参数解析与表单共用浏览器安全实现；数据库文件权限仍由提交事务检查。 */
 export function validateMediaParams(
   schema: Record<string, unknown> | null,
   params: Record<string, unknown>,
   kind: 'image' | 'video',
 ): { params: Record<string, unknown>; fileParams: string[]; unitsLimit: number } {
-  if (
-    schema?.type !== 'object' ||
-    !plainObject(schema.properties) ||
-    Object.keys(schema).some((key) => !rootKeys.has(key)) ||
-    (schema.additionalProperties !== undefined && schema.additionalProperties !== false) ||
-    (schema.required !== undefined &&
-      (!Array.isArray(schema.required) ||
-        schema.required.some(
-          (key) =>
-            typeof key !== 'string' ||
-            !Object.hasOwn(schema.properties as Record<string, unknown>, key),
-        )))
-  )
-    throw configurationError()
-  const properties: Record<string, Record<string, unknown>> = {}
-  const fileParams: string[] = []
-  for (const [name, field] of Object.entries(schema.properties)) {
-    if (
-      !plainObject(field) ||
-      !fieldSchema.safeParse(field).success ||
-      !['string', 'number', 'integer', 'boolean'].includes(String(field.type)) ||
-      Object.keys(field).some((key) => !fieldKeys.has(key)) ||
-      (field.format !== undefined && field.format !== 'file' && field.format !== 'uuid')
+  const mediaSchema = parseMediaSchema(schema)
+  const parsed = createMediaParamsValidator(mediaSchema, kind).safeParse(params)
+  if (!parsed.success)
+    throw new AppError(
+      'INVALID_PARAMS',
+      parsed.error.issues.find((issue) => issue.code === 'custom')?.message ??
+        'Invalid media model parameters',
     )
-      throw configurationError()
-    if (field.format === 'file') {
-      if (field.type !== 'string') throw configurationError()
-      fileParams.push(name)
-    }
-    properties[name] = { ...field, ...(field.format === 'file' ? { format: 'uuid' } : {}) }
-  }
-  const media = schema['x-media']
-  if (
-    media !== undefined &&
-    (!plainObject(media) ||
-      Object.keys(media).some((key) => key !== 'unitsParam') ||
-      (media.unitsParam !== undefined && typeof media.unitsParam !== 'string'))
-  )
-    throw configurationError()
   const unitsParam =
-    (plainObject(media) ? media.unitsParam : undefined) ??
-    (kind === 'image' ? 'num_images' : 'duration')
-  if (
-    plainObject(media) &&
-    media.unitsParam !== undefined &&
-    !['number', 'integer'].includes(String(properties[String(unitsParam)]?.type))
-  )
-    throw configurationError()
-  let validator: z.ZodType
-  try {
-    validator = z.fromJSONSchema({
-      ...schema,
-      properties,
-      additionalProperties: false,
-      'x-media': undefined,
-    } as Parameters<typeof z.fromJSONSchema>[0])
-  } catch {
-    throw configurationError()
-  }
-  const parsed = validator.safeParse(params)
-  if (!parsed.success) throw new AppError('INVALID_PARAMS', 'Invalid media model parameters')
-  const validated = parsed.data as Record<string, unknown>
-  const unitsLimit = validated[String(unitsParam)] ?? 1
-  if (
-    typeof unitsLimit !== 'number' ||
-    !Number.isFinite(unitsLimit) ||
-    unitsLimit <= 0 ||
-    (kind === 'image' && !Number.isSafeInteger(unitsLimit))
-  )
-    throw new AppError('INVALID_PARAMS', 'Media units must be positive')
+    mediaSchema['x-media']?.unitsParam ?? (kind === 'image' ? 'num_images' : 'duration')
   return {
-    params: validated,
-    fileParams: fileParams.filter((name) => validated[name] !== undefined),
-    unitsLimit,
+    params: parsed.data,
+    fileParams: Object.entries(mediaSchema.properties)
+      .filter(([name, field]) => field.format === 'file' && parsed.data[name] !== undefined)
+      .map(([name]) => name),
+    unitsLimit: (parsed.data[unitsParam] ?? 1) as number,
   }
 }

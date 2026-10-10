@@ -40,9 +40,12 @@ async function presign(
   method: 'GET' | 'PUT',
   expires: number,
   headers?: Record<string, string>,
+  attachment = false,
 ) {
   const url = objectUrl(env, key)
   url.searchParams.set('X-Amz-Expires', String(expires))
+  // 下载响应头必须参与签名；跨域重定向后浏览器不会采用链接上的 download 属性。
+  if (attachment) url.searchParams.set('response-content-disposition', 'attachment')
   const client = new AwsClient({
     accessKeyId: env.R2_ACCESS_KEY_ID as string,
     secretAccessKey: env.R2_SECRET_ACCESS_KEY as string,
@@ -67,6 +70,6 @@ export async function presignUpload(env: StorageEnv, key: string, mime: string) 
   }
 }
 
-export function presignDownload(env: StorageEnv, key: string) {
-  return presign(env, key, 'GET', DOWNLOAD_URL_TTL_SECONDS)
+export function presignDownload(env: StorageEnv, key: string, attachment = false) {
+  return presign(env, key, 'GET', DOWNLOAD_URL_TTL_SECONDS, undefined, attachment)
 }
