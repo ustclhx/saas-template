@@ -189,4 +189,4 @@ jobs 已仅在 staging 开启日志、采样率 100%、traces 关闭，并按 jo
 
 **结论**：jobs Cron 每 5 分钟唤醒，scale-to-zero 不会生效，Free 计划的 compute 在每个计费周期约第 18 天用尽，之后 staging 数据库不可用到下一周期。可选：升级 Launch（约 $18/月）；或保持 Free、接受月末中断。不建议为节省用量降低 Cron 频率（见本节开头）。
 
-24 小时后由用户决定是否删除旧 Hyperdrive、保留 Tunnel `saas-template-local` 与 Workers VPC 服务供阶段二使用。**去留与计划升级待用户决定，9.2 在决定并执行后勾选。**
+**决定与执行（2026-10-10，用户决定）**：测试阶段保持 Neon Free，接受计费周期后段 compute 暂停的风险，实际产品上线时再升级付费计划。已删除旧 Hyperdrive `c4b28441aeaf49c3853a321a39cf8ec4` / `1b360caddf134503af774993499bdc4e`、Workers VPC 服务 `01a10214-295e-78c1-b8db-506adb15ef2a` 与 Tunnel `saas-template-local`（`1fad053b-8b3b-4dde-a8aa-7ddf524847a3`），并停止本机 `cloudflared` 容器；删除后 staging `/api/health` 正常（`db.status=up`，Cron 心跳持续）。阶段二若仍采用 Tunnel 方案，按 [hyperdrive-tunnel.md](hyperdrive-tunnel.md) 重新创建资源。9.2 完成。
