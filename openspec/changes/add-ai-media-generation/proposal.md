@@ -7,6 +7,7 @@
 ## What Changes
 
 - `MediaProvider` 抽象与首个实现 fal.ai（队列 API + webhook）。
+- 媒体服务商注册表：任务按 `ai_model.provider` 选择服务商，`template.config.ts` 声明启用哪些服务商；新增服务商只需新增一个定义。第二个实现为 Workers AI 图片（同步产出，经 `AI` 绑定调用，无需外部账号）。
 - `AiMediaWorkflow`：幂等提交 → 检查已落库回调 → 等待回调（超时转轮询）→ 转存 R2（大文件分片）→ 结算 → 站内通知。
 - 媒体回调入口：自签 HMAC + 服务商签名校验，结果先落库再通知 Workflow。
 - 任务提交：同一事务内加空间锁、检查并发数、创建任务（含定价快照与幂等键）、预扣；之后启动 Workflow。
@@ -27,5 +28,5 @@
 
 - 依赖 `add-ai-text-chat`（模型注册表、计费方式）与 `add-billing-and-credits`（预扣、超时回收框架、权益）。
 - 新增表：`ai_task`、`file`。
-- 新增外部服务：fal.ai；R2 的 S3 兼容 API 令牌（`R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`）。
+- 新增外部服务（均可选，由模板配置启用）：fal.ai、Workers AI；R2 的 S3 兼容 API 令牌（`R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`）。
 - `apps/jobs` 中的 `AiMediaWorkflow` 从 Phase 0 的空实现变为正式实现。

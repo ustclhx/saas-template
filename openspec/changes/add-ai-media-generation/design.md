@@ -11,7 +11,7 @@
 - 文件上传与 AI 产出共用同一套 `file` 记录、配额与访问控制。
 
 **Non-Goals:**
-- 第二个媒体服务商（Replicate、Workers AI 等）：接口预留，按需在后续 change 加。
+- 第三个及以后的媒体服务商（Replicate、各厂商直连）：由注册表扩展，按需在后续 change 加。
 - 实时推送（Durable Objects + WebSocket）：首版轮询。
 - 内容审核：设计中为可选项，首版不做。
 
@@ -26,6 +26,10 @@
 7. **超时兜底处理器**：媒体预扣的 `expires_at` 设为 `deadline_at + 10 分钟`，让现有回收器扫描。向 `registerHoldSweeper('ai_task', handler)` 注册只读写数据库的处理器：任务已是终态而 hold 仍 held → 用共用 `settleMediaTask` 按已存任务结果补结算；任务未终态且超过 `deadline_at` → 标记失败（`MEDIA_DEADLINE_EXCEEDED`）并全额释放。回收器为 DB-only 事务，保持 billing 的注册与扫描接口，不查询或 terminate Workflow，也不在事务中取消服务商作业。Workflow 每个 step 前读取任务，发现终态时尽力取消服务商作业并直接退出，自检即可停止后续业务步骤；晚到 Workflow 不再结算，`settleMediaTask` 对已结算终态幂等，不重复账本或通知。10 分钟缓冲只影响回收扫描时间，Workflow 自身仍按 2 小时截止时间停止。
 8. **预签名**：用 `aws4fetch` 在 Worker 内对 R2 S3 端点签名，上传地址有效期 10 分钟并签入 `Content-Type`；下载地址有效期 5 分钟。确认接口用 `R2.head()` 获取真实大小与类型。
 9. **前端轮询**：任务详情页 2 秒起、指数退避到 10 秒，任务进入终态后停止。
+
+10. **服务商注册表**：`packages/ai/src/media/registry.ts` 登记每个服务商的定义：`id`、产出域名白名单、`isConfigured(env)`、`create(env, { modelId })`。任务运行时、提交校验与回调入口都按 `ai_model.provider` 查注册表，不再写死某个服务商；域名白名单随定义移出 `packages/config`。`template.config.ts` 的 `ai.mediaProviders` 列出启用的服务商，未启用或未配置的服务商的模型不可提交，项目生成器按启用列表输出所需密钥与资源。fal.ai 保留为异步服务商的参考实现。
+11. **同步产出的服务商**：Workers AI 等服务商直接返回图片字节而非地址。Workflow 的 step 返回值有大小上限，字节不能跨 step 传递，因此这类定义声明同步能力并提供 `run`：Workflow 的提交 step 调用 `run` 后在同一 step 内按确定性 key 写入 R2 并写 `file` 记录，只返回文件 ID，随后直接结算，不进入等待与轮询。重放该 step 只会重新推理并覆盖同一对象，不产生重复文件或重复扣费；失败按服务商失败处理并全额退回。
+12. **Workers AI 接入**：web 与 jobs 都声明 `AI` 绑定（web 仅用于判断已配置），不需要密钥，费用计入 Cloudflare 账号。本地与测试使用假绑定，`pnpm dev` 不因该绑定要求登录。
 
 ## Risks / Trade-offs
 
