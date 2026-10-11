@@ -1,0 +1,11 @@
+{
+  "runId": "local-rerun-1791747094484",
+  "target": "local-mocked",
+  "recordedAt": "2026-10-11T19:33:18.299Z",
+  "data": {
+    "userId": "01a12c73-538d-7295-b35b-c92f47251ba8",
+    "actorId": "01a12c73-3190-7146-ba2a-04d6f7ff7409",
+    "status": "admin-restored",
+    "auditId": "01a12c74-8cad-7651-b31a-d50a1aa06ea7"
+  }
+}

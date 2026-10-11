@@ -1,0 +1,14 @@
+{
+  "runId": "local-rerun-1791747094484",
+  "target": "local-mocked",
+  "recordedAt": "2026-10-11T19:33:18.532Z",
+  "data": {
+    "userId": "01a12c73-538d-7295-b35b-c92f47251ba8",
+    "workspaceId": "01a12c73-538d-7295-b35b-c92f47251ba8",
+    "auditId": "01a12c73-6539-771c-97de-e38c236a8ea8",
+    "adjustmentId": "01a12c73-6462-73bd-b3b4-e9aeac5958eb",
+    "grantId": "01a12c73-6535-7635-a494-8fcc4e25d689",
+    "amount": 25,
+    "status": "applied-once"
+  }
+}

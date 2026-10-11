@@ -1,0 +1,18 @@
+{
+  "runId": "local-rerun-1791747094484",
+  "target": "local-mocked",
+  "recordedAt": "2026-10-11T19:33:12.742Z",
+  "data": {
+    "modelId": "01a12c6f-db9d-7237-b9bf-cb5c71081f24",
+    "modelKey": "acceptance-deepseek-token",
+    "status": "verified-existing",
+    "pricing": {
+      "mode": "token",
+      "inputPer1k": 1,
+      "outputPer1k": 2,
+      "minCharge": 1
+    },
+    "auditIds": ["01a12c6f-db9f-7408-b19b-595e79bedc18"],
+    "parameterSchemaStatus": "not-required"
+  }
+}

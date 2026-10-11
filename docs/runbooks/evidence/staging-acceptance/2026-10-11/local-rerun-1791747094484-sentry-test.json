@@ -1,0 +1,10 @@
+{
+  "runId": "local-rerun-1791747094484",
+  "target": "local-mocked",
+  "recordedAt": "2026-10-11T19:33:31.509Z",
+  "data": {
+    "status": 503,
+    "requestId": "01a12c74-c0e2-71bc-8bd5-1da872bc9ea8",
+    "state": "local-sentry-disabled"
+  }
+}

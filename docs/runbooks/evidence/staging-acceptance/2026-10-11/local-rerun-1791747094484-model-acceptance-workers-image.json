@@ -1,0 +1,17 @@
+{
+  "runId": "local-rerun-1791747094484",
+  "target": "local-mocked",
+  "recordedAt": "2026-10-11T19:33:13.343Z",
+  "data": {
+    "modelId": "01a12c6f-d17c-76bc-9d69-7675d8d7c6d1",
+    "modelKey": "acceptance-workers-image",
+    "status": "verified-existing",
+    "pricing": {
+      "mode": "per_call",
+      "credits": 1,
+      "chargeOn": "success"
+    },
+    "auditIds": [],
+    "parameterSchemaStatus": "configured"
+  }
+}

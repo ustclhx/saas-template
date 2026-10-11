@@ -1,0 +1,40 @@
+{
+  "runId": "local-rerun-1791747094484",
+  "target": "local-mocked",
+  "recordedAt": "2026-10-11T19:33:25.084Z",
+  "data": {
+    "status": "completed",
+    "modelKey": "acceptance-deepseek-token",
+    "workspaceId": "01a12c73-37d8-75e5-ab45-916224b333aa",
+    "conversationId": "01a12c73-b703-71c6-9197-9dbd3dab934e",
+    "messageId": "01a12c73-bdd0-72b4-a4a9-4621a5df7889",
+    "generationStartedAt": "2026-10-11T19:32:25.16817+00:00",
+    "holdId": "01a12c73-bdd6-723b-a585-447cd1e770d0",
+    "reused": true,
+    "tailCompletionMs": 5908,
+    "inputTokens": 100,
+    "outputTokens": 100,
+    "checkpointInputTokens": 156,
+    "checkpointOutputTokens": 254,
+    "credits": 1,
+    "holdAmount": 9,
+    "capturedAmount": 1,
+    "ledger": [
+      {
+        "id": "01a12c73-d56e-7081-bc09-8ad625fcf5c3",
+        "type": "consume",
+        "delta": -1
+      }
+    ],
+    "reconciliation": {
+      "ledgerTotal": 88,
+      "activeRemaining": 88,
+      "held": 0,
+      "debt": 0,
+      "expectedTotal": 88,
+      "difference": 0,
+      "consistent": true
+    },
+    "gatewayComparisonStatus": "pending-log-read-token"
+  }
+}

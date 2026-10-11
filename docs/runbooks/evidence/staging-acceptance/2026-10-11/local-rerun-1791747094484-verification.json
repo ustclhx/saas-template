@@ -1,0 +1,26 @@
+{
+  "runId": "local-rerun-1791747094484",
+  "target": "local-mocked",
+  "recordedAt": "2026-10-11T19:34:03.514Z",
+  "data": {
+    "status": "passed-two-identical-runs",
+    "databaseSetup": "committed-migrations",
+    "passedPerRun": 13,
+    "manualSkippedPerRun": 1,
+    "counts": {
+      "conversations": 6,
+      "assistants": 6,
+      "media_tasks": 3,
+      "admin_grants": 1,
+      "admin_granted_credits": 25
+    },
+    "reusedAllPaidSteps": true,
+    "limitations": [
+      "media-schema-seeded-local-only",
+      "workers-provider-failure-manual",
+      "real-providers-not-tested",
+      "sentry-disabled-503",
+      "gateway-comparison-pending"
+    ]
+  }
+}
