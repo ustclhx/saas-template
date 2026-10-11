@@ -23,8 +23,9 @@
     "staging:check-secrets": "node scripts/staging/check-secrets.mjs"
   },
   "devDependencies": {
-    "@saas/config": "workspace:*",
     "@biomejs/biome": "2.5.15",
+    "@saas/config": "workspace:*",
+    "@sentry/cli": "^3.8.0",
     "turbo": "^2.11.7",
     "typescript": "^7.0.2"
   }

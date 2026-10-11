@@ -10,6 +10,7 @@ import {
 import { type EmailQueueMessage, parseEmailQueueMessage } from '@saas/email/queue'
 import { log, newRequestId, withLogContext } from '@saas/shared/log'
 import templateConfig from '../../../../template.config.ts'
+import { captureJobException } from '../sentry.ts'
 
 /**
  * EMAIL_QUEUE 消费者（tasks.md 3.2，specs/user-auth「认证邮件异步发送」）：
@@ -122,6 +123,7 @@ async function deliverMessage(
     log.info('email.sent', { ...context, providerId })
     message.ack()
   } catch (error) {
+    captureJobException(error)
     const failure = describeError(error)
     if (!failure.retryable) {
       log.warn('email.failed', { ...context, ...failure })

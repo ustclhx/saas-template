@@ -2,6 +2,7 @@
 // 队列消息的请求 ID 由各消费者按消息恢复（queues/*）；Cron 每次触发生成新的请求 ID。
 import { emailTransportConfig } from '@saas/config'
 import { newRequestId, withLogContext } from '@saas/shared/log'
+import { withSentry } from '@sentry/cloudflare'
 import './ai.ts'
 import {
   BILLING_DAILY_CRON,
@@ -17,6 +18,7 @@ import { runWorkspaceCleanup, WORKSPACE_CLEANUP_CRON } from './cron/workspace-cl
 import { requireEnv } from './env.ts'
 import { handleBillingBatch } from './queues/billing.ts'
 import { handleEmailBatch } from './queues/email.ts'
+import { sentryEnabled, sentryOptions, tagJobContext } from './sentry.ts'
 
 export { AiMediaWorkflow } from './workflows/ai-media.ts'
 
@@ -24,24 +26,49 @@ export { AiMediaWorkflow } from './workflows/ai-media.ts'
 const EMAIL_QUEUES = new Set(['email', 'email-staging'])
 const EVENTS_QUEUES = new Set(['events', 'events-staging'])
 
-export default {
+const handler = {
   // jobs 不对外提供 HTTP 接口
-  async fetch(_request, env) {
+  async fetch(_request, env, _ctx?: ExecutionContext) {
+    tagJobContext()
     requireEnv(env)
     return new Response('Not Found', { status: 404 })
   },
 
-  queue(batch, env) {
+  queue(batch, env, _ctx?: ExecutionContext) {
     return withLogContext({ queue: batch.queue }, () => consume(batch, env))
   },
 
-  scheduled(controller, env) {
-    const context = { requestId: newRequestId(), cron: controller.cron }
-    return withLogContext(context, () => schedule(controller, env))
+  scheduled(controller, env, _ctx?: ExecutionContext) {
+    return schedule(controller, env)
+  },
+} satisfies ExportedHandler<Cloudflare.Env>
+
+// SDK 会原地包装 handler；副本避免禁用路径也进入 SDK 初始化。
+const instrumented = withSentry(sentryOptions, { ...handler })
+
+export default {
+  fetch(request, env, ctx?: ExecutionContext) {
+    return withLogContext({ requestId: newRequestId() }, () => {
+      const active = sentryEnabled(env) ? instrumented : handler
+      return active.fetch(request, env, ctx)
+    })
+  },
+  queue(batch, env, ctx?: ExecutionContext) {
+    return withLogContext({ requestId: newRequestId(), queue: batch.queue }, () => {
+      const active = sentryEnabled(env) ? instrumented : handler
+      return active.queue(batch, env, ctx)
+    })
+  },
+  scheduled(controller, env, ctx?: ExecutionContext) {
+    return withLogContext({ requestId: newRequestId(), cron: controller.cron }, () => {
+      const active = sentryEnabled(env) ? instrumented : handler
+      return active.scheduled(controller, env, ctx)
+    })
   },
 } satisfies ExportedHandler<Cloudflare.Env>
 
 async function consume(batch: MessageBatch<unknown>, env: Cloudflare.Env) {
+  tagJobContext()
   const validEnv = requireEnv(env)
   if (EMAIL_QUEUES.has(batch.queue)) {
     return handleEmailBatch(batch, emailTransportConfig(validEnv))
@@ -54,6 +81,7 @@ async function consume(batch: MessageBatch<unknown>, env: Cloudflare.Env) {
 }
 
 async function schedule(controller: ScheduledController, env: Cloudflare.Env) {
+  tagJobContext()
   const validEnv = requireEnv(env)
   switch (controller.cron) {
     case BILLING_HOURLY_CRON:

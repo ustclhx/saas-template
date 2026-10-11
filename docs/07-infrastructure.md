@@ -276,6 +276,12 @@ SENTRY_DSN
 
 线上在 `apps/web` 目录通过 `pnpm exec wrangler secret put AI_GATEWAY_TOKEN --env staging` 交互输入 Gateway token；该命令会创建新 Worker 版本并立即部署。采用可选方式时，用同一命令分别配置实际使用的 Provider secret。生产环境改用 `--env production`，各环境独立配置。本地 `.dev.vars` 不会随部署上传；凭据只在交互输入或本地被忽略文件中填写，不出现在命令参数、提交或日志中。见 [Cloudflare Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/)。
 
+Sentry 的 `SENTRY_DSN` 仅供 web/jobs 服务端上报，两个 Worker 的 staging secret 分别配置；
+`SENTRY_AUTH_TOKEN`、`SENTRY_ORG`、`SENTRY_PROJECT` 只用于 GitHub `staging` environment 的
+source map 上传，不进入 Wrangler vars、Worker bundle 或浏览器。运行时必须同时有 DSN 与
+`SENTRY_ENVIRONMENT=staging|production` 才初始化 SDK；顶层 development 与测试默认不发送。
+本地一次真实事件的显式验证及凭据处理见 [Sentry runbook](./runbooks/sentry.md)。
+
 ### Vars（非敏感）
 ```
 APP_URL
@@ -286,6 +292,8 @@ TURNSTILE_SITE_KEY(前端公开)
 EMAIL_TRANSPORT=log|resend        # jobs 的邮件发送通道，默认 log：只记录收件人与模板名、不调用外部服务（无 Resend 凭据时使用）
 EMAIL_FROM                        # jobs；EMAIL_TRANSPORT=resend 时必填，如 `MyApp <noreply@example.com>`，域名需在 Resend 验证
 EMAIL_REPLY_TO                    # jobs，可选；默认回复地址（通常为 app.supportEmail）
+SENTRY_ENVIRONMENT=development|staging|production  # 服务端 SDK 开关；staging 在对应 Wrangler env 声明
+APP_VERSION                      # CI 完整提交 SHA；jobs 通过 --var 注入，web 在 Vite 构建时固化
 ```
 
 jobs 侧的邮件变量由 `@saas/config` 的 `withEmailEnv()` 校验（`apps/jobs/src/env.ts`），`resend` 通道缺少 `RESEND_API_KEY` / `EMAIL_FROM` 时消费者拒绝处理消息（消息留在队列中重试）。
@@ -313,7 +321,11 @@ tag:   数据库迁移(production) → wrangler deploy (jobs 先于 web) → 冒
 
 **staging 自动发布**：`.github/workflows/deploy-staging.yml` 跟随 main 上成功的 `CI`，检出该次 CI 的提交；也可在 main 上手动触发 `workflow_dispatch`。发布使用 GitHub `staging` environment，`staging-deploy` concurrency 串行执行且不取消进行中的运行。PR 的 `ci.yml` 不引用 staging secrets，只操作临时 CI 数据库。
 
-发布顺序为 install → Neon 迁移 → jobs → web（`APP_VERSION` 为完整提交 SHA）→ 健康检查 → Playwright `staging` 项目。迁移通过 environment 的 `STAGING_MIGRATION_DATABASE_URL` 直连 Neon，以 `migrator` 执行；Cloudflare 认证使用 `CLOUDFLARE_API_TOKEN` 与 `CLOUDFLARE_ACCOUNT_ID`。健康检查每 5 秒轮询、最多 3 分钟，要求 200、`db.status=up`、`version` 等于目标 SHA；之后用 Chromium 检查首页、定价与一次随机邮箱注册。任一步失败即停止发布。
+发布顺序为 install → Neon 迁移 → 构建 jobs 与 web → Sentry release / source map 上传 → 部署 jobs → 部署 web → 健康检查 → Playwright `staging` 项目 → finalize release。release 与两个 Worker 的 `APP_VERSION` 均为所检出提交的完整 SHA（`workflow_run.head_sha`，手动运行时为 `github.sha`），与 `/api/health.version` 一致。迁移通过 environment 的 `STAGING_MIGRATION_DATABASE_URL` 直连 Neon，以 `migrator` 执行；Cloudflare 认证使用 `CLOUDFLARE_API_TOKEN` 与 `CLOUDFLARE_ACCOUNT_ID`。健康检查每 5 秒轮询、最多 3 分钟，要求 200、`db.status=up`、`version` 等于目标 SHA；之后用 Chromium 检查首页、定价与一次随机邮箱注册。任一步失败即停止发布。
+
+jobs 用 `wrangler deploy --env staging --dry-run --outdir dist --var APP_VERSION:<SHA>` 构建；web 用 `CLOUDFLARE_ENV=staging APP_VERSION=<SHA> vite build`，两个不可达的 Hyperdrive 占位连接保留。构建后 `sentry-cli releases new` 创建 release，分别对 `apps/web/dist/server` 与 `apps/jobs/dist` 执行 `sourcemaps inject`，再以 `--release <SHA> --dist web|jobs --validate --strict --wait` 上传。web/jobs 的独立 dist 避免同名文件冲突，并与各自 SDK 配置一致。上传失败阻止部署；浏览器尚未接入 SDK，CI 在部署前删除 `dist/client` 下的全部 `.map`。SSR 与 jobs map 不在静态 assets 目录内。
+
+部署直接使用注入后的产物：jobs 指定 `dist/index.js --no-bundle` 并再次传入版本 var；web 指定 Vite 生成的 `dist/server/wrangler.json --no-bundle`（包含 staging 绑定与 client assets 路径）。CI 不调用会重新构建的 `deploy:staging` 脚本。Sentry 认证只在上传与 finalize 步骤从 environment secrets 读取，PR CI 不上传。验收与失败排查见 [Sentry runbook](./runbooks/sentry.md)。
 
 GitHub `staging` environment 三项 secrets（`CLOUDFLARE_ACCOUNT_ID`、`STAGING_MIGRATION_DATABASE_URL`、`CLOUDFLARE_API_TOKEN`）已配置，CI token 已验证 active 与当前 account。PR #62 合并为 `ad1b5da` 后的首次自动发布在 web 预渲染阶段失败：本地 Hyperdrive 缺少模拟连接串，迁移与 jobs 已成功。PR #64 合并为 `ce623ca`，在 Deploy web 的环境变量中为两个 Hyperdrive 绑定设置不可达的本地占位连接；仅使预渲染 preview 能启动，快照按既有设计降级为示例数据，绝不连接真实库。其触发的 [Deploy staging run 37894416572](https://github.com/ustclhx/saas-template/actions/runs/37894416572) 于 `2026-10-09T06:36:31Z–06:38:28Z` 全部成功：Neon 迁移 → jobs → web → 版本健康检查 → staging 冒烟（`3 passed (10.0s)`）。健康检查匹配完整 `ce623cab63a99d6eee8c8ba67eeb09e564f97779` 且 `db.status=up`，任务 7.4 已验收；本机原三项冒烟（6.2）亦已通过，断言与超时未改。PR3 仅补齐文档与任务记录，9.2 24 小时观察保留未完成。操作与回滚见 [Neon staging runbook](./runbooks/staging-neon.md)。
 
@@ -344,6 +356,13 @@ GitHub `staging` environment 三项 secrets（`CLOUDFLARE_ACCOUNT_ID`、`STAGING
 | AI | AI Gateway 仪表盘 |
 | 业务指标 | 管理后台：注册、付费转化、MRR、积分消耗、任务成功率 |
 | 数据库 | pg_stat_statements、导出器指标、备份状态 |
+
+Sentry 只在服务端启用，接入 web fetch 与 jobs fetch / Queue / Cron / Workflow；事件经统一
+`beforeSend` 脱敏过滤器处理，不采集邮箱、Authorization、Cookie、支付凭据或 AI 对话内容。
+事件 release 为完整部署 SHA，dist 为 `web` 或 `jobs`，request ID 标签用于关联 Workers Logs。
+管理员测试异常入口需新鲜的实时平台管理员会话、同源 POST 与后台审计；没有公开测试入口。
+本地真实事件与合并后 staging 可读堆栈的验收记录见 [Sentry runbook](./runbooks/sentry.md)，
+staging 尚未通过前不勾选 OpenSpec 1.2。
 
 ## 8. 延迟基线（Phase 0 实测 7.4，2026-10-03）
 
