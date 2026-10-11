@@ -26,7 +26,9 @@
 7. **超时兜底处理器**：向 `registerHoldSweeper('ai_message', handler)` 注册：读取消息的定价快照，按 token → 有用量检查点时按检查点用量结算，没有才收最低费用；按次 → 消息有输出（或有检查点）则全额、否则释放；并把消息标记为 `failed`（有部分内容时标记为未完成）。
 8. **AI Gateway**：AI SDK provider 的 baseURL 指向 Gateway 的各家兼容端点；Gateway 开启鉴权时带 `AI_GATEWAY_TOKEN`。
 9. **对话隐私**：对话只对创建者可见，`ai_conversation` 查询在 `scoped(ws)` 之上再加 `user_id` 过滤。
-10. **用量检查点**（Phase 0 实测 7.3 后采纳）：平台在客户端断开后只允许 `waitUntil` 再运行 30 秒，超时静默取消，`onFinish` 不会执行。因此在 `waitUntil` 中读模型流的同一个读取器里，每 5 秒或每 200 个输出 token（先到者）执行一次 `UPDATE ai_message SET usage_checkpoint = {inputTokens, outputTokens, at}, parts = <已生成内容>`。服务商通常只在流结束时返回 usage，所以检查点中的输出 token 按已生成文本估算（与输入估算用同一个估算器）；被取消时实际产生的输出不少于检查点，按检查点结算不会多收。备选「断开约 25 秒后主动中止生成、在时限内按已产生用量结算」被否决：它会截断用户的回复，且中止后服务商不一定返回 usage。
+10. **用量检查点**（Phase 0 实测 7.3 后采纳）：平台在客户端断开后只允许 `waitUntil` 再运行 30 秒，超时静默取消，`onFinish` 不会执行。因此在 `waitUntil` 中读模型流的同一个读取器里，每 5 秒或每 200 个输出 token（先到者）执行一次 `UPDATE ai_message SET usage_checkpoint = {inputTokens, outputTokens, at}, parts = <已生成内容>`。服务商通常只在流结束时返回 usage，所以检查点中的输出 token 按已生成文本估算（与输入估算用同一个估算器）；检查点只是估算，字符估算可能高于服务商实际分词数（英文约 4 倍），按检查点结算可能多收，由决策 11、12 约束。备选「断开约 25 秒后主动中止生成、在时限内按已产生用量结算」被否决：它会截断用户的回复，且中止后服务商不一定返回 usage。
+11. **估算结算不超过预扣**：停止、出错与超时兜底在拿不到服务商用量、改按估算结算时，金额 MUST 不超过该次预扣额（`min(估算金额, hold.amount)`），因此不触发超额容忍、不补扣余额、不产生欠费。预扣额已包含 `maxOutputTokens` 对应的输出费用，而服务商实际输出不会超过该上限，封顶不会让平台收得少于实际消耗。超额容忍只用于服务商报告的真实用量超出预扣（正常完成路径）。
+12. **实际用量优先，估算只作兜底**：生产环境的结算顺序为：服务商在流中返回的最终 usage → 中断时从 AI Gateway 取回的该请求实际用量 → 按决策 11 封顶的估算。每次经 AI Gateway 的调用带上可回查的请求标识（如 `cf-aig-metadata` 中的消息 ID），中断后按标识查询日志中的 token 数。AI Gateway 是否记录被中断流的用量、日志可查询的延迟，以及「中断时立即查询」还是「先按估算结算、再由 Cron 对账补差」，需在有真实凭据后验证再定（见 Open Questions、tasks 2.9）。
 
 ## Risks / Trade-offs
 
@@ -42,4 +44,4 @@
 
 ## Open Questions
 
-（无）
+- AI Gateway 日志能否提供被中断流的实际 token 数、可查询延迟多大；据此决定决策 12 采用即时查询还是延后对账补差（补差需要积分账本的调整分录）。由 2.9 在 staging 验证后定。
