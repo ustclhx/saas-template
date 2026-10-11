@@ -5,7 +5,14 @@ import {
   type OveragePolicy,
   release,
 } from '@saas/credits'
-import { type AiUsageCheckpoint, aiMessage, type CreditHold, type Database, scoped } from '@saas/db'
+import {
+  type AiUsageCheckpoint,
+  aiMessage,
+  type CreditHold,
+  creditHold,
+  type Database,
+  scoped,
+} from '@saas/db'
 import { and, eq, type SQL } from 'drizzle-orm'
 import { actualCredits, type Pricing } from '../pricing.ts'
 
@@ -110,6 +117,8 @@ interface SettleBase {
   /** 消息上的定价快照 */
   readonly pricing: Pricing
   readonly overage: OveragePolicy
+  /** 仅服务商或 Gateway 回报的完整用量为 actual；含估算的用量必须封顶。 */
+  readonly usageSource: 'actual' | 'estimated'
 }
 
 export interface SettleChatInput extends SettleBase {
@@ -133,9 +142,22 @@ async function once<T>(
   }
 }
 
+/** 估算先按快照计算（含 minCharge），再以同一事务中的预扣额封顶，避免估算触发超额。 */
+async function settlementAmount(tx: CreditsTransaction, input: SettleBase, amount: number) {
+  if (input.usageSource === 'actual') return amount
+  const [reservation] = await scoped(tx, input.workspaceId)
+    .select(creditHold, {
+      where: eq(creditHold.id, input.holdId),
+      fields: { amount: creditHold.amount },
+    })
+    .limit(1)
+  if (!reservation) throw new CreditsError('WORKSPACE_RESOURCE_NOT_FOUND')
+  return Math.min(amount, reservation.amount)
+}
+
 /**
- * 正常完成时的结算（specs/ai-chat「按实际用量结算」）：按快照与实际用量计算结算额，
- * 超出预扣的部分按 `billing.overage` 处理（不截断输出）；同一事务内把消息标记为 completed。
+ * 正常完成时按快照计算结算额，真实用量超出预扣的部分按 `billing.overage` 处理；
+ * 缺失用量时的估算以预扣额封顶。同一事务内把消息标记为 completed。
  * 消息上的 `credits` 为空间实际支付的积分（不含平台承担的超额）。
  * 预扣已被停止接口或兜底处理器结算时返回 null，不重复结算。
  */
@@ -151,7 +173,7 @@ export function settleChatMessage(
     const settlement = await capture(tx, {
       workspaceId: input.workspaceId,
       holdId: input.holdId,
-      actualAmount,
+      actualAmount: await settlementAmount(tx, input, actualAmount),
       overage: input.overage,
     })
     await scoped(tx, input.workspaceId).updateById(aiMessage, input.messageId, {
@@ -216,7 +238,11 @@ export function settleInterruptedChatMessage(
     else
       settlement = await capture(
         tx,
-        { ...reservation, actualAmount: amount, overage: input.overage },
+        {
+          ...reservation,
+          actualAmount: await settlementAmount(tx, input, amount),
+          overage: input.overage,
+        },
         tx,
       )
     const charged = amount !== undefined
@@ -254,6 +280,7 @@ export function settleFromCheckpoint(
       holdId: message.holdId,
       pricing: message.pricing,
       overage: options.overage,
+      usageSource: 'estimated',
       status: options.status,
       inputTokens: checkpoint?.inputTokens ?? message.inputTokens ?? 0,
       outputTokens,

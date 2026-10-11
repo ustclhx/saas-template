@@ -358,6 +358,10 @@ export async function startWorkspaceChat(
           text: end.text,
           inputTokens: end.usage.inputTokens ?? inputTokens,
           outputTokens: end.usage.outputTokens ?? outputTokensOf(end.text),
+          usageSource:
+            end.usage.inputTokens !== undefined && end.usage.outputTokens !== undefined
+              ? 'actual'
+              : 'estimated',
           overage,
         })
       } else {
@@ -372,6 +376,7 @@ export async function startWorkspaceChat(
           inputTokens,
           outputTokens: outputTokensOf(text),
           hasOutput: text !== '',
+          usageSource: 'estimated',
         })
       }
     } catch (error) {

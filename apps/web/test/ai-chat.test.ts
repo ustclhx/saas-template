@@ -1,13 +1,23 @@
 import { env } from 'cloudflare:workers'
-import type { LanguageModelFactory } from '@saas/ai'
+import { chatHoldSweeper, type LanguageModelFactory, settleInterruptedChatMessage } from '@saas/ai'
 import { createAuth } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
-import { getCreditBalance, grant } from '@saas/credits'
-import { type AiPricingJson, aiModel, createDb, member as memberTable } from '@saas/db'
+import { getCreditBalance, grant, hold } from '@saas/credits'
+import {
+  type AiPricingJson,
+  aiConversation,
+  aiMessage,
+  aiModel,
+  createDb,
+  creditHold,
+  member as memberTable,
+  scoped,
+} from '@saas/db'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import { newId } from '@saas/shared'
 import { simulateReadableStream } from 'ai'
 import { MockLanguageModelV4 } from 'ai/test'
+import { eq } from 'drizzle-orm'
 import { afterAll, describe, expect, it } from 'vitest'
 import {
   type ChatDeps,
@@ -84,7 +94,7 @@ async function textModel(pricing: AiPricingJson, maxOutputTokens?: number) {
 }
 
 /** 按块输出 `text`，结束时回报 usage（服务商通常只在流结束时返回 usage） */
-function mockModel(text: string, usage: { input: number; output: number }) {
+function mockModel(text: string, usage: { input: number | undefined; output: number | undefined }) {
   const chunks = text.match(/.{1,8}/gs) ?? []
   return new MockLanguageModelV4({
     doStream: async () => ({
@@ -218,6 +228,8 @@ async function assistantMessage(conversationId: string) {
       amount: number
       captured_amount: number
       overage_absorbed: number
+      overage_debited: number
+      overage_debt: number
       expires_at: Date | null
     }[]
   >`select * from credit_hold where id = ${row.hold_id}`
@@ -326,6 +338,7 @@ describe('POST /api/ai/chat 结算', () => {
       credits: 12,
     })
     expect((await getCreditBalance(db, me.workspaceId)).available).toBe(988)
+    await assertInvariant(me.workspaceId)
   })
 })
 
@@ -488,6 +501,177 @@ async function consumeLedger(workspaceId: string) {
   return sql<{ delta: number }[]>`
     select delta from credit_ledger where workspace_id = ${workspaceId} and type = 'consume'`
 }
+
+async function assertInvariant(workspaceId: string) {
+  const [ledger] = await sql<{ total: number }[]>`
+    select coalesce(sum(delta), 0)::int as total from credit_ledger
+    where workspace_id = ${workspaceId}`
+  const balance = await getCreditBalance(db, workspaceId)
+  expect(ledger?.total).toBe(balance.available + balance.held - balance.debt)
+}
+
+/** 封顶后只消费预扣，不额外吸收、补扣或产生欠费，余额与账本仍一致。 */
+async function assertCapped(workspaceId: string, conversationId: string, amount: number) {
+  const result = await assistantMessage(conversationId)
+  expect(result.message.credits).toBe(amount)
+  expect(result.hold).toMatchObject({
+    status: 'captured',
+    amount,
+    captured_amount: amount,
+    overage_absorbed: 0,
+    overage_debited: 0,
+    overage_debt: 0,
+  })
+  expect(await getCreditBalance(db, workspaceId)).toMatchObject({
+    available: 100 - amount,
+    held: 0,
+    debt: 0,
+  })
+  expect(await consumeLedger(workspaceId)).toEqual([{ delta: -amount }])
+  await assertInvariant(workspaceId)
+  return result
+}
+
+describe('估算结算封顶（tasks 2.8）', () => {
+  it('中断时显式提供真实 usage：保持超额承担与余额补扣规则', async () => {
+    const me = await member('interrupted-actual', 100)
+    const pricing = { mode: 'token' as const, inputPer1k: 10, outputPer1k: 10 }
+    const modelId = await textModel(pricing, 1000)
+    const gated = gatedModel({ chunks: 10, gates: [0] })
+    const { response, settled } = await begin(me, { modelId, text: 'hi' }, { mock: gated.model })
+    const conversationId = response.headers.get('x-conversation-id') as string
+    await gated.reached(0)
+    const { message } = await assistantMessage(conversationId)
+    const settlement = await settleInterruptedChatMessage(db, {
+      workspaceId: me.workspaceId,
+      messageId: message.id,
+      holdId: message.hold_id,
+      pricing,
+      overage: OVERAGE,
+      usageSource: 'actual',
+      status: 'failed',
+      inputTokens: 400,
+      outputTokens: 1000,
+      hasOutput: true,
+    })
+    // 真实金额 14、预扣 11：承担 2，补扣 1。后续原流结束不得改写先结算者的状态。
+    expect(settlement).toEqual({ captured: 11, absorbed: 2, debited: 1, debt: 0 })
+    gated.open(0)
+    await bodyText(response)
+    await settled()
+    expect((await assistantMessage(conversationId)).message).toMatchObject({
+      status: 'failed',
+      credits: 12,
+    })
+    expect(await getCreditBalance(db, me.workspaceId)).toMatchObject({ available: 88, debt: 0 })
+    await assertInvariant(me.workspaceId)
+  })
+
+  it.each(['local', 'remote', 'error'] as const)(
+    '%s：英文长回复估算高于预扣，仅扣预扣额',
+    async (path) => {
+      const me = await member(`cap-${path}`, 100)
+      // 预扣 ceil((10 + 256 × 10) / 1000) = 3；英文字符估算会超过真实 token 上限。
+      const modelId = await textModel({ mode: 'token', inputPer1k: 1, outputPer1k: 10 }, 256)
+      const gated = gatedModel({
+        chunks: 160,
+        gates: path === 'error' ? [] : [120],
+        ...(path === 'error' ? { failAfter: 120 } : {}),
+      })
+      const { response, settled } = await begin(me, { modelId, text: 'hi' }, { mock: gated.model })
+      const conversationId = response.headers.get('x-conversation-id') as string
+      if (path !== 'error') {
+        await gated.reached(120)
+        const message = await until(
+          async () => (await assistantMessage(conversationId)).message,
+          (m) => (m.usage_checkpoint?.outputTokens ?? 0) >= 800,
+        )
+        expect(
+          await stop(me, message.id, path === 'remote' ? { activeChats: new Map() } : {}),
+        ).toEqual({
+          status: 200,
+          body: { status: 'aborted' },
+        })
+        gated.open(120)
+      }
+      await bodyText(response)
+      await settled()
+      const { message } = await assertCapped(me.workspaceId, conversationId, 3)
+      expect(message.status).toBe(path === 'error' ? 'failed' : 'aborted')
+      expect(message.output_tokens).toBeGreaterThan(256)
+    },
+  )
+
+  it.each(['input', 'output'] as const)('正常结束缺少 %s usage 时仍是封顶估算', async (missing) => {
+    const me = await member(`cap-missing-${missing}`, 100)
+    const modelId = await textModel({ mode: 'token', inputPer1k: 1, outputPer1k: 10 }, 256)
+    const { response } = await send(
+      me,
+      { modelId, text: 'hi' },
+      {
+        mock: mockModel('abcdefgh'.repeat(120), {
+          input: missing === 'input' ? undefined : 10,
+          output: missing === 'output' ? undefined : 960,
+        }),
+      },
+    )
+    const { message } = await assertCapped(
+      me.workspaceId,
+      response.headers.get('x-conversation-id') as string,
+      3,
+    )
+    expect(message.status).toBe('completed')
+  })
+
+  it.each(['checkpoint', 'minimum'] as const)(
+    '超时兜底 %s：估算与 minCharge 均不超过预扣',
+    async (path) => {
+      const me = await member(`cap-sweep-${path}`, 100)
+      const conversationId = newId()
+      const messageId = newId()
+      const pricing = { mode: 'token' as const, inputPer1k: 1, outputPer1k: 10, minCharge: 5 }
+      const reservation = await hold(db, {
+        workspaceId: me.workspaceId,
+        userId: me.userId,
+        amount: 2,
+        refType: 'ai_message',
+        refId: messageId,
+        expiresAt: new Date(Date.now() - 1),
+      })
+      const s = scoped(db, me.workspaceId)
+      await s.insert(aiConversation, {
+        id: conversationId,
+        userId: me.userId,
+        title: 'timeout',
+        modelKey: 'mock-timeout',
+      })
+      await s.insert(aiMessage, {
+        id: messageId,
+        conversationId,
+        role: 'assistant',
+        status: 'streaming',
+        pricing,
+        inputTokens: 10,
+        holdId: reservation.id,
+        parts: path === 'checkpoint' ? [{ type: 'text', text: 'abcdefgh'.repeat(120) }] : [],
+        usageCheckpoint:
+          path === 'checkpoint'
+            ? { inputTokens: 10, outputTokens: 960, at: new Date().toISOString() }
+            : null,
+      })
+      await db.transaction(async (tx) => {
+        const [expired] = await scoped(tx, me.workspaceId)
+          .select(creditHold, { where: eq(creditHold.id, reservation.id) })
+          .limit(1)
+        if (!expired) throw new Error('hold missing')
+        await chatHoldSweeper({ overage: OVERAGE })({ db, tx, hold: expired })
+      })
+      const { message } = await assertCapped(me.workspaceId, conversationId, 2)
+      expect(message.status).toBe('failed')
+      expect(message.output_tokens).toBe(path === 'checkpoint' ? 960 : 0)
+    },
+  )
+})
 
 describe('用量检查点（tasks 2.5）', () => {
   it('长流每 200 个输出 token 写入检查点与已生成内容；正常完成时以最终 usage 结算', async () => {
