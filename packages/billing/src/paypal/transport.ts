@@ -45,6 +45,8 @@ export async function payPalRequestId(scope: string, key: string): Promise<strin
 
 /** Construction performs no credential checks or I/O. All HTTP uses the injected fetch. */
 export function createPayPalTransport(options: PayPalTransportOptions): PayPalTransport {
+  // 原生 fetch 不接受 options 作为 this，保持普通函数调用。
+  const { fetch } = options
   const base =
     options.environment === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com'
   const now = options.now ?? Date.now
@@ -78,7 +80,7 @@ export function createPayPalTransport(options: PayPalTransportOptions): PayPalTr
       }
     }
     const startedAt = now()
-    const response = await options.fetch(`${base}/v1/oauth2/token`, {
+    const response = await fetch(`${base}/v1/oauth2/token`, {
       method: 'POST',
       headers: {
         Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
@@ -145,7 +147,7 @@ export function createPayPalTransport(options: PayPalTransportOptions): PayPalTr
           request.idempotencyKey,
         )
       headers.Authorization = `Bearer ${await accessToken()}`
-      const response = await options.fetch(`${base}${path}`, {
+      const response = await fetch(`${base}${path}`, {
         method,
         headers,
         ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),

@@ -129,6 +129,31 @@ const remotePlan = () => ({
 })
 
 describe('PayPal transport', () => {
+  it('creates checkout with a native fetch receiver for both OAuth and the API request', async () => {
+    const paths: string[] = []
+    const fetchMock: typeof fetch = async function (this: unknown, input) {
+      // 模拟 Workers 原生 fetch：不能把 transport options 当作接收者。
+      if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation')
+      const path = new URL(String(input)).pathname
+      paths.push(path)
+      return Response.json(
+        path === '/v1/oauth2/token' ? { access_token: 'test-token', expires_in: 3600 } : approval,
+      )
+    }
+    const transport = createPayPalTransport({
+      environment: 'sandbox',
+      clientId: 'client',
+      clientSecret: 'secret',
+      fetch: fetchMock,
+      cache: { get: async () => null, put: async () => {} },
+    })
+
+    const result = await createPayPalOperations(transport).createCheckout(checkout)
+
+    expect(result.providerRef).toBe('I-TEST')
+    expect(paths).toEqual(['/v1/oauth2/token', '/v1/billing/subscriptions'])
+  })
+
   it('defers missing credentials until a call', async () => {
     let called = false
     const transport = createPayPalTransport({
