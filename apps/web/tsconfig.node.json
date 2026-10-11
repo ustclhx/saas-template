@@ -13,5 +13,6 @@
     "test/global-setup.ts",
     "e2e",
     "e2e-live"
-  ]
+  ],
+  "exclude": ["e2e/staging-acceptance/local-media.ts"]
 }
