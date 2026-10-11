@@ -63,6 +63,8 @@ export default defineConfig(({ command }) => {
       // SSR 由 workerd 执行：Cloudflare 插件接管 Vite 的 ssr 环境
       cloudflare({
         viteEnvironment: { name: 'ssr' },
+        // Workers AI 无本地模拟；开发与预览禁用远程绑定，避免启动时要求登录或真实推理。
+        remoteBindings: false,
         inspectorPort,
         // 本地开发时 Better Auth 的 baseURL 跟随实际端口（worktree 各不相同）；构建产物沿用 wrangler.jsonc
         ...((command === 'serve' || process.env.APP_URL) && {

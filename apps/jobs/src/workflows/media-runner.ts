@@ -1,11 +1,15 @@
 import type { WorkflowStep } from 'cloudflare:workers'
 import {
+  isSyncMediaProvider,
+  type MediaBinaryResult,
   type MediaError,
-  type MediaProvider,
   type MediaResult,
+  type MediaTaskFile,
   mediaCallbackUrl,
   readMediaTaskInput,
+  type SyncMediaProvider,
   settleMediaTask,
+  type TaskMediaProvider,
 } from '@saas/ai'
 import { type AiTask, aiTask, type Database, scoped } from '@saas/db'
 import { AppError, MEDIA_DONE_EVENT } from '@saas/shared'
@@ -14,13 +18,13 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 
 export interface MediaRunnerDeps {
   db: Database
-  provider(task: AiTask): MediaProvider
+  provider(task: AiTask): TaskMediaProvider
   params(task: AiTask): Promise<Record<string, unknown>>
   callbackOrigin: string
   callbackSecret: string
   persist(
     task: AiTask,
-    result: MediaResult,
+    result: MediaResult | MediaBinaryResult,
   ): Promise<
     {
       id: string
@@ -59,6 +63,8 @@ export async function submitMediaOnce(task: AiTask, deps: MediaRunnerDeps) {
       status: 503,
     })
   const provider = deps.provider(task)
+  if (isSyncMediaProvider(provider))
+    throw new AppError('INVALID_MEDIA_PROVIDER', 'Async submission requires an async provider')
   const fresh = await db.transaction(async (tx) => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${`ws:${task.workspaceId}`}, 0))`,
@@ -155,6 +161,43 @@ export async function submitMediaOnce(task: AiTask, deps: MediaRunnerDeps) {
   }
 }
 
+async function submitSynchronousMedia(
+  task: AiTask,
+  deps: MediaRunnerDeps,
+  provider: SyncMediaProvider,
+): Promise<string[]> {
+  const fresh = await scoped(deps.db, task.workspaceId).findById(aiTask, task.id)
+  if (terminal(fresh)) return []
+  await scoped(deps.db, task.workspaceId).update(
+    aiTask,
+    { status: 'running', startedAt: new Date() },
+    and(eq(aiTask.id, task.id), eq(aiTask.status, 'queued')),
+  )
+  const generated = await provider.run({
+    modelId: readMediaTaskInput(task).providerModelId,
+    params: await deps.params(task),
+    idempotencyKey: task.providerRequestKey,
+  })
+  const files = await deps.persist(task, generated)
+  // 字节不跨 step；保存可供现有结算及回收器使用的文件描述与用量。
+  const result: MediaResult = {
+    outputs: files.map((file) => ({
+      url: `/api/files/${file.id}`,
+      mime: file.mime,
+      ...(file.width != null ? { width: file.width } : {}),
+      ...(file.height != null ? { height: file.height } : {}),
+      ...(file.duration != null ? { durationSec: file.duration } : {}),
+    })),
+    ...(generated.usage ? { usage: generated.usage } : {}),
+  }
+  await scoped(deps.db, task.workspaceId).update(
+    aiTask,
+    { output: { files, result, usage: result.usage ?? null } },
+    and(eq(aiTask.id, task.id), inArray(aiTask.status, ['queued', 'running'])),
+  )
+  return files.map((file) => file.id)
+}
+
 /** 事件只唤醒，结果始终以先落库的 callback 为准；每次轮询使用独立持久步骤。 */
 export async function runMediaTask(taskId: string, step: WorkflowStep, deps: MediaRunnerDeps) {
   const snapshot = await step.do('load-task', async () => {
@@ -176,7 +219,8 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
     if (fresh.providerJobId && !cancellationAttempted) {
       cancellationAttempted = true
       try {
-        await deps.provider(fresh).cancel?.(fresh.providerJobId)
+        const provider = deps.provider(fresh)
+        if (!isSyncMediaProvider(provider)) await provider.cancel?.(fresh.providerJobId)
       } catch {
         log.warn('ai.media.terminal_cancel_failed', { taskId, status: fresh.status })
       }
@@ -195,6 +239,32 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
   try {
     // 持久步骤可能直接返回缓存，外围自检也必须执行，避免晚到重放继续业务步骤。
     if (!(await active())) return stopped()
+    const provider = deps.provider(task)
+    if (isSyncMediaProvider(provider)) {
+      const fileIds = await step.do(
+        'submit',
+        { retries: { limit: 0, delay: '10 seconds' }, timeout: '15 minutes' },
+        async () => ((await active()) ? submitSynchronousMedia(task, deps, provider) : []),
+      )
+      if (!(await active())) return stopped()
+      const status = await step.do('settle-and-notify', async () => {
+        if (!(await active())) return currentStatus
+        const fresh = await scoped(deps.db, task.workspaceId).findById(aiTask, task.id)
+        const stored = fresh.output as { result?: MediaResult; files?: MediaTaskFile[] } | null
+        if (!stored?.result || !stored.files || !fileIds.length)
+          throw new AppError('INVALID_MEDIA_RESULT', 'Synchronous task has no persisted result')
+        return (
+          await settleMediaTask(deps.db, {
+            workspaceId: task.workspaceId,
+            taskId,
+            outcome: 'succeeded',
+            result: stored.result,
+            files: stored.files,
+          })
+        ).status
+      })
+      return { taskId, status }
+    }
     const submitted = await step.do(
       'submit',
       { retries: { limit: 3, delay: '10 seconds', backoff: 'exponential' }, timeout: '2 minutes' },
@@ -231,7 +301,7 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
       if (!(await active())) return stopped()
       const status = await step.do(`poll-${poll}`, async () => {
         if (!(await active())) return { status: 'stopped' } as const
-        return deps.provider(task).getStatus(submitted.jobId)
+        return provider.getStatus(submitted.jobId)
       })
       if (status.status === 'stopped') return stopped()
       if (status.status === 'succeeded')

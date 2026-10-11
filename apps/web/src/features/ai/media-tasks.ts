@@ -2,12 +2,15 @@ import {
   createTaskMediaProvider,
   dbModelStore,
   estimateCredits,
+  getMediaProviderDefinition,
+  isSyncMediaProvider,
   MEDIA_HOLD_SWEEP_BUFFER_MS,
   MEDIA_TASK_TTL_MS,
-  type MediaProvider,
+  type MediaProviderEnv,
   type MediaWebhook,
   requireAvailableModel,
   settleMediaTask,
+  type TaskMediaProvider,
   validateMediaParams,
   verifyMediaCallbackSignature,
 } from '@saas/ai'
@@ -32,9 +35,7 @@ import { z } from 'zod'
 import { templateConfig } from '../../server/template-config.ts'
 import type { ResolvedWorkspace } from '../../server/workspace-context.ts'
 
-export interface MediaHttpEnv {
-  FAL_KEY?: string
-  MEDIA_WEBHOOK_SECRET?: string
+export interface MediaHttpEnv extends MediaProviderEnv {
   APP_URL?: string | undefined
 }
 export interface MediaHttpDeps {
@@ -43,7 +44,7 @@ export interface MediaHttpDeps {
   env: MediaHttpEnv
   workflow: Pick<Workflow<{ taskId: string }>, 'create' | 'get'>
   rateLimiter: RateLimiter
-  providerFactory?: (env: MediaHttpEnv, task: AiTask) => MediaProvider
+  providerFactory?: (env: MediaHttpEnv, task: AiTask) => TaskMediaProvider
   entitlements?: (
     db: Database | Parameters<Parameters<Database['transaction']>[0]>[0],
     workspaceId: string,
@@ -57,6 +58,31 @@ const submitInput = workspaceInput.extend({
 })
 const terminal = (task: AiTask) => !['queued', 'running'].includes(task.status)
 const invalid = () => new AppError('INVALID_REQUEST', 'Invalid media task request')
+
+function taskProvider(deps: MediaHttpDeps | WorkspaceMediaDeps, task: AiTask): TaskMediaProvider {
+  return deps.providerFactory
+    ? deps.providerFactory(deps.env, task)
+    : createTaskMediaProvider(deps.env, task, templateConfig.ai.mediaProviders)
+}
+
+function requireSubmissionProvider(providerId: string, kind: string, deps: WorkspaceMediaDeps) {
+  const definition = getMediaProviderDefinition(providerId)
+  if (
+    !definition ||
+    !templateConfig.ai.mediaProviders.some((id) => id === providerId) ||
+    !definition.supportedKinds.some((supported) => supported === kind)
+  )
+    throw new AppError('MODEL_UNAVAILABLE', 'Media provider is not enabled', { status: 404 })
+  // 测试与自托管调用可注入 Provider；生产入口始终按真实密钥 / 绑定检查。
+  if (!deps.providerFactory && !definition.isConfigured(deps.env))
+    throw new AppError('AI_PROVIDER_NOT_CONFIGURED', 'Media provider is not configured', {
+      status: 503,
+    })
+  if (!definition.synchronous && !deps.env.MEDIA_WEBHOOK_SECRET)
+    throw new AppError('MEDIA_WEBHOOK_NOT_CONFIGURED', 'Media callback is not configured', {
+      status: 503,
+    })
+}
 
 async function response(action: () => Promise<Response>) {
   try {
@@ -139,14 +165,6 @@ export async function submitWorkspaceMedia(
   deps: WorkspaceMediaDeps,
 ): Promise<AiTask> {
   const callbackOrigin = deps.callbackOrigin
-  if (!deps.env.MEDIA_WEBHOOK_SECRET)
-    throw new AppError('MEDIA_WEBHOOK_NOT_CONFIGURED', 'Media callback is not configured', {
-      status: 503,
-    })
-  if (!deps.providerFactory && !deps.env.FAL_KEY)
-    throw new AppError('AI_PROVIDER_NOT_CONFIGURED', 'fal.ai API key is not configured', {
-      status: 503,
-    })
   if (
     deps.rateLimiter &&
     !(
@@ -160,6 +178,7 @@ export async function submitWorkspaceMedia(
     where: (model, { eq }) => eq(model.key, input.modelKey),
   })
   if (!modelRow) throw new AppError('MODEL_UNAVAILABLE', 'Model is not available', { status: 404 })
+  requireSubmissionProvider(modelRow.provider, modelRow.kind, deps)
   const task = await deps.db.transaction(async (tx) => {
     // 与 billing 回收器统一为 ws → credits → task，防止锁顺序反转。
     await tx.execute(
@@ -172,8 +191,9 @@ export async function submitWorkspaceMedia(
       current,
       modelRow.id,
     )
-    if (model.kind === 'text' || model.provider !== 'fal' || !templateConfig.ai[model.kind])
+    if (model.kind === 'text' || !templateConfig.ai[model.kind])
       throw new AppError('MODEL_UNAVAILABLE', 'Model is not available', { status: 404 })
+    requireSubmissionProvider(model.provider, model.kind, deps)
     if (model.pricing.mode === 'token')
       throw new AppError('MEDIA_PRICING_INVALID', 'Media model pricing is not supported', {
         status: 503,
@@ -357,10 +377,10 @@ export function handleMediaCancel(
     // 积分释放已持久化；外部取消失败记可重试标记，同一取消接口重试不会再次退款。
     for (const action of [
       async () => {
-        if (task.providerJobId)
-          await (deps.providerFactory ?? createTaskMediaProvider)(deps.env, task).cancel?.(
-            task.providerJobId,
-          )
+        if (task.providerJobId) {
+          const provider = taskProvider(deps, task)
+          if (!isSyncMediaProvider(provider)) await provider.cancel?.(task.providerJobId)
+        }
       },
       async () => {
         if (task.workflowInstanceId) {
@@ -381,9 +401,8 @@ export function handleMediaCancel(
     const latest = await scoped(deps.db, task.workspaceId).findById(aiTask, task.id)
     if (latest.providerJobId && latest.providerJobId !== task.providerJobId) {
       try {
-        await (deps.providerFactory ?? createTaskMediaProvider)(deps.env, latest).cancel?.(
-          latest.providerJobId,
-        )
+        const provider = taskProvider(deps, latest)
+        if (!isSyncMediaProvider(provider)) await provider.cancel?.(latest.providerJobId)
       } catch {
         pending = true
         log.warn('ai.media.cancel_pending', { taskId })
@@ -407,6 +426,8 @@ export function handleMediaWebhook(
   deps: MediaHttpDeps,
 ): Promise<Response> {
   return response(async () => {
+    const definition = getMediaProviderDefinition(providerId)
+    if (!definition || definition.synchronous) throw notFound()
     const url = new URL(request.url)
     const taskId = url.searchParams.get('task')
     if (!taskId || !z.uuid().safeParse(taskId).success) throw invalid()
@@ -426,7 +447,8 @@ export function handleMediaWebhook(
     // biome-ignore lint/plugin: 任务专属 HMAC 已通过，仅按其 taskId 定位租户，后续业务访问全部 scoped。
     const located = await deps.db.query.aiTask.findFirst({ where: eq(aiTask.id, taskId) })
     if (!located || located.provider !== providerId) throw notFound()
-    const provider = (deps.providerFactory ?? createTaskMediaProvider)(deps.env, located)
+    const provider = taskProvider(deps, located)
+    if (isSyncMediaProvider(provider)) throw notFound()
     const payload: MediaWebhook = await provider.parseWebhook(request, await request.text())
     await deps.db.transaction(async (tx) => {
       const tenant = scoped(tx, located.workspaceId)

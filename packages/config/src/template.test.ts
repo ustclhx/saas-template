@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import {
   defineTemplateConfig,
+  type MediaProviderId,
   type PaymentProvider,
   type PricingMode,
   type TemplateConfig,
@@ -46,6 +47,7 @@ describe('defineTemplateConfig', () => {
       text: true,
       image: true,
       video: false,
+      mediaProviders: ['fal', 'workers-ai'],
       defaultPricingMode: { text: 'token', image: 'per_call', video: 'per_unit' },
     })
   })
@@ -57,7 +59,12 @@ describe('defineTemplateConfig', () => {
   })
 
   it('replaces arrays instead of merging them', () => {
-    const config = defineTemplateConfig({ app, auth: { oauth: ['github'] } })
+    const config = defineTemplateConfig({
+      app,
+      auth: { oauth: ['github'] },
+      ai: { mediaProviders: [] },
+    })
+    expect(config.ai.mediaProviders).toEqual([])
     expect(config.auth.oauth).toEqual(['github'])
     expect(config.auth.emailPassword).toBe(true)
   })
@@ -84,6 +91,7 @@ describe('defineTemplateConfig types', () => {
     expectTypeOf(config).toEqualTypeOf<TemplateConfig<'en' | 'zh'>>()
     expectTypeOf(config.billing.overage.maxRatio).toEqualTypeOf<number>()
     expectTypeOf(config.ai.defaultPricingMode.video).toEqualTypeOf<PricingMode>()
+    expectTypeOf(config.ai.mediaProviders).toEqualTypeOf<readonly MediaProviderId[]>()
     expectTypeOf(config.billing.providers).toEqualTypeOf<readonly PaymentProvider[]>()
   })
 
@@ -92,6 +100,8 @@ describe('defineTemplateConfig types', () => {
     const invalid = () => [
       // @ts-expect-error 未定义的计费方式
       defineTemplateConfig({ app, ai: { defaultPricingMode: { video: 'per_minute' } } }),
+      // @ts-expect-error 未支持的媒体服务商
+      defineTemplateConfig({ app, ai: { mediaProviders: ['replicate'] } }),
       // @ts-expect-error 未知的 OAuth 登录方式
       defineTemplateConfig({ app, auth: { oauth: ['google', 'facebook'] } }),
       // @ts-expect-error 未知的支付方式

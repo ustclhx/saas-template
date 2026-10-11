@@ -22,7 +22,7 @@ async function fixture(t) {
     app: { name: 'FixtureApp', url: 'https://fixture.example', supportEmail: 'support@fixture.example' },
     i18n: { locales: ['en', 'zh'], defaultLocale: 'en' },
     tenancy: { multiTenant: false }, auth: { oauth: ['google'], turnstile: true },
-    billing: { providers: ['stripe'] }, ai: { text: true, image: true, video: true },
+    billing: { providers: ['stripe'] }, ai: { text: true, image: true, video: true, mediaProviders: ['fal', 'workers-ai'] },
     features: { blog: true },
   })`,
   )
@@ -32,10 +32,17 @@ async function fixture(t) {
       `apps/${app}/wrangler.jsonc`,
       JSON.stringify({
         name: app,
+        ai: { binding: 'AI' },
         hyperdrive: [{ binding: 'HYPERDRIVE', id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }],
         workflows: [{ name: 'ai-media', script_name: 'jobs' }],
         queues: { producers: [{ queue: 'email' }] },
-        env: { staging: { name: `${app}-staging`, vars: { APP_URL: 'https://old.workers.dev' } } },
+        env: {
+          staging: {
+            name: `${app}-staging`,
+            ai: { binding: 'AI' },
+            vars: { APP_URL: 'https://old.workers.dev' },
+          },
+        },
       }),
     )
   }
@@ -125,6 +132,8 @@ test('生成副本改名与配置，排除各级密钥、链接和产物', async
   assert.equal(wrangler.hyperdrive[0].id, '00000000000000000000000000000000')
   assert.equal(wrangler.env.staging.vars.APP_URL, 'https://acme.example')
   assert.equal(wrangler.workflows, undefined)
+  assert.equal(wrangler.ai, undefined)
+  assert.equal(wrangler.env.staging.ai, undefined)
   assert.doesNotMatch(result.report, /FAL_KEY|Workflow：|STRIPE_SECRET|GOOGLE_CLIENT/)
   const example = await readFile(join(result.target, '.dev.vars.example'), 'utf8')
   for (const line of example.split('\n').filter((line) => line && !line.startsWith('#'))) {
@@ -168,6 +177,14 @@ test('拒绝覆盖、源树递归复制、非法名称和无效功能输入', as
   assert.throws(() => projectOptions({ ...f.input, name: '../escape' }), /名称/)
   assert.throws(() => projectOptions({ ...f.input, domain: 'acme.example/path' }), /域名/)
   assert.throws(() => projectOptions({ ...f.input, features: 'unknown' }), /features/)
+  assert.throws(
+    () => projectOptions({ ...f.input, 'media-providers': 'unknown' }),
+    /media-providers/,
+  )
+  assert.throws(
+    () => projectOptions({ ...f.input, 'media-providers': 'fal,fal' }),
+    /media-providers/,
+  )
   const result = spawnSync(process.execPath, ['scripts/create-project', '--name', 'acme'], {
     cwd: new URL('..', import.meta.url),
     encoding: 'utf8',
@@ -176,3 +193,27 @@ test('拒绝覆盖、源树递归复制、非法名称和无效功能输入', as
   assert.equal(result.status, 1)
   assert.match(result.stderr, /非交互模式/)
 })
+
+for (const providers of ['fal', 'workers-ai', '']) {
+  test(`媒体服务商 ${providers || 'empty'} 的配置、密钥和所有环境绑定一致`, async (t) => {
+    const f = await fixture(t)
+    const result = await createProject({ ...f.input, 'media-providers': providers }, f.source)
+    const config = await readFile(join(result.target, 'template.config.ts'), 'utf8')
+    const list = providers ? providers.split(',') : []
+    assert.ok(config.includes(`mediaProviders: ${JSON.stringify(list)}`))
+    const example = await readFile(join(result.target, '.dev.vars.example'), 'utf8')
+    assert.equal(example.includes('FAL_KEY='), list.includes('fal'))
+    assert.equal(example.includes('MEDIA_WEBHOOK_SECRET='), list.includes('fal'))
+    assert.equal(result.report.includes('fal.ai 账号'), list.includes('fal'))
+    assert.equal(result.report.includes('Workers AI：'), list.includes('workers-ai'))
+    assert.doesNotMatch(example, /(?:^|\n)AI=/)
+    for (const app of ['web', 'jobs']) {
+      const wrangler = JSON.parse(
+        await readFile(join(result.target, 'apps', app, 'wrangler.jsonc'), 'utf8'),
+      )
+      for (const env of [wrangler, wrangler.env.staging]) {
+        assert.deepEqual(env.ai, list.includes('workers-ai') ? { binding: 'AI' } : undefined)
+      }
+    }
+  })
+}

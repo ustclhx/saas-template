@@ -18,6 +18,7 @@ export {
   type AiModality,
   type DefaultLocale,
   defineTemplateConfig,
+  type MediaProviderId,
   type OAuthProvider,
   type PaymentProvider,
   type PricingMode,

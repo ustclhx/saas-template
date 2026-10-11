@@ -1,7 +1,7 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers'
 import { NonRetryableError } from 'cloudflare:workflows'
-import { createTaskMediaProvider, readMediaTaskInput } from '@saas/ai'
-import { MEDIA_MAX_FILE_BYTES, MEDIA_OUTPUT_HOSTS, MEDIA_OUTPUT_MIME_TYPES } from '@saas/config'
+import { createTaskMediaProvider, getMediaOutputHosts, readMediaTaskInput } from '@saas/ai'
+import { MEDIA_MAX_FILE_BYTES, MEDIA_OUTPUT_MIME_TYPES } from '@saas/config'
 import { createDb } from '@saas/db'
 import { getEntitlements } from '@saas/entitlements'
 import { newRequestId, withLogContext } from '@saas/shared/log'
@@ -24,7 +24,8 @@ export class AiMediaWorkflow extends WorkflowEntrypoint<Cloudflare.Env, AiMediaP
           db,
           callbackOrigin: templateConfig.app.url,
           callbackSecret: this.env.MEDIA_WEBHOOK_SECRET ?? '',
-          provider: (task) => createTaskMediaProvider(this.env, task),
+          provider: (task) =>
+            createTaskMediaProvider(this.env, task, templateConfig.ai.mediaProviders),
           params: async (task) => {
             const input = readMediaTaskInput(task)
             const params = { ...input.params }
@@ -48,7 +49,7 @@ export class AiMediaWorkflow extends WorkflowEntrypoint<Cloudflare.Env, AiMediaP
               result,
               limits: {
                 maxFileBytes: MEDIA_MAX_FILE_BYTES,
-                allowedHosts: MEDIA_OUTPUT_HOSTS[task.provider] ?? [],
+                allowedHosts: getMediaOutputHosts(task.provider),
                 allowedMimeTypes: MEDIA_OUTPUT_MIME_TYPES[task.kind],
                 storageBytes: Math.min(
                   readMediaTaskInput(task).storageBytes,
