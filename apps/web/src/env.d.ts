@@ -6,7 +6,8 @@ declare namespace Cloudflare {
   type PaymentEnv = import('@saas/billing').PaymentRuntimeEnv
   type StorageEnv = import('@saas/storage').StorageEnv
   type MediaEnv = import('@saas/ai').MediaRuntimeEnv
-  interface Env extends PaymentEnv, StorageEnv, MediaEnv {
+  type TextEnv = import('@saas/ai').TextModelEnv
+  interface Env extends PaymentEnv, StorageEnv, MediaEnv, TextEnv {
     /** 不带查询缓存（app-db）：健康检查与写操作 */
     HYPERDRIVE: Hyperdrive
     /** 带查询缓存（app-db-cached）：可容忍短暂旧数据的读 */
@@ -38,9 +39,5 @@ declare namespace Cloudflare {
     GOOGLE_CLIENT_SECRET?: string
     GITHUB_CLIENT_ID?: string
     GITHUB_CLIENT_SECRET?: string
-    /** AI Gateway 端点与鉴权（@saas/ai 的 TextModelEnv），由模型工厂读取 */
-    AI_GATEWAY_ACCOUNT_ID?: string
-    AI_GATEWAY_ID?: string
-    AI_GATEWAY_TOKEN?: string
   }
 }

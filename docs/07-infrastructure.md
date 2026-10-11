@@ -243,13 +243,14 @@ Wrangler 使用 `env.staging` / `env.production` 区分绑定与变量。
 
 ## 4. 环境变量与绑定清单
 
-### Secrets（线上 Wrangler secrets；本地支付 `.env.local`）
+### Secrets（线上 Wrangler secrets；本地 app `.dev.vars`，支付入口 `.env.local`）
 
 本地支付入口是根目录 `.env.example` / `.env.local`：提交的模板仅含键和占位符，本地文件放真值且已 gitignore。当前只加载 Stripe/PayPal 五项支付凭据、billing CLI 的 test 开关与可选数据库连接。
 
 - Web / Jobs：通过 `pnpm dev` 或 app 的 `dev` 脚本启动时，把五项支付变量同步到该 app 的 `.dev.vars` 管理区块；进程环境优先，原有认证配置保留。直接调用 `wrangler dev` 会绕过此同步，应使用项目脚本。
 - billing seed / sync：Node 内置 dotenv 入口读取根 `.env.local`，共用同样的支付变量名；显式进程环境优先，空数据库值回退到 `.env.worktree`。同步 staging 时须明确指定 staging app 连接并核对库名。
-- 认证：仍按 `apps/web/.dev.vars.example` 配置 app `.dev.vars`，OAuth mock 与邮件 log 保持原配置；下方未来 AI 等密钥清单不代表根 dotenv 入口已支持这些功能。
+- 认证：仍按 `apps/web/.dev.vars.example` 配置 app `.dev.vars`，OAuth mock 与邮件 log 保持原配置。
+- 文本 AI：默认 Provider 密钥存于 Cloudflare AI Gateway BYOK；本地手动把 `AI_GATEWAY_TOKEN` 写入 `apps/web/.dev.vars`，可选的 Provider 密钥也写入同一文件的支付管理区块之外。默认 dev 支付同步只管理五项支付变量，不会把根 `.env.local` 或 shell 中的 AI 密钥同步到 Worker；非敏感 `AI_GATEWAY_ACCOUNT_ID` / `AI_GATEWAY_ID` 配置在 web 的 Wrangler vars（本地使用顶层 `vars`，线上使用对应环境的 `vars`）。不要把 AI 真值写入 vars 或前端环境变量。
 - Orca：`.env.local` 不自动复制到子 worktree，每个 worktree 独立配置；数据库/端口仍用生成的 `.env.worktree`。
 - 线上：`.env.local` 不自动上传，分别为 web/jobs 的 staging 环境配置 Cloudflare secrets。
 
@@ -263,13 +264,17 @@ TURNSTILE_SECRET_KEY
 RESEND_API_KEY                # jobs；仅 EMAIL_TRANSPORT=resend 时必填
 STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET
 PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET / PAYPAL_WEBHOOK_ID
-AI_GATEWAY_TOKEN(若启用鉴权)
-OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_AI_API_KEY   # 或使用 AI Gateway 统一计费
+AI_GATEWAY_TOKEN             # 文本 AI 的 Gateway 鉴权；BYOK 必需
+OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY / DEEPSEEK_API_KEY   # 可选：Provider 密钥放 Worker 而非 BYOK
 FAL_KEY
 MEDIA_WEBHOOK_SECRET          # 回调 URL 的 HMAC
 R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY   # R2 S3 API 令牌，仅授权 FILES 桶，用于签发预签名上传/下载 URL
 SENTRY_DSN
 ```
+
+文本 AI 默认在 Cloudflare **AI > AI Gateway > 所用 Gateway > Provider Keys** 保存所用 Provider 的 API Key（`default` alias），并开启 Gateway 鉴权。Worker 端只保存 `AI_GATEWAY_TOKEN` secret 与下方 account/gateway vars；Gateway 在请求不含 Provider 授权头时注入 BYOK 密钥。可选地将 Provider 密钥存为对应 Worker secret，模型工厂再经 Gateway 传给 Provider；显式 Provider 授权头会优先于 BYOK。两种方式的 Gateway 鉴权均使用 `cf-aig-authorization: Bearer <AI_GATEWAY_TOKEN>`，token 需有 **AI Gateway Run** 权限。见 [Cloudflare BYOK](https://developers.cloudflare.com/ai-gateway/configuration/bring-your-own-keys/)、[Gateway 鉴权](https://developers.cloudflare.com/ai-gateway/configuration/authentication/) 与 [AI 配置说明](./06-ai.md#gateway-与密钥)。
+
+线上在 `apps/web` 目录通过 `pnpm exec wrangler secret put AI_GATEWAY_TOKEN --env staging` 交互输入 Gateway token；该命令会创建新 Worker 版本并立即部署。采用可选方式时，用同一命令分别配置实际使用的 Provider secret。生产环境改用 `--env production`，各环境独立配置。本地 `.dev.vars` 不会随部署上传；凭据只在交互输入或本地被忽略文件中填写，不出现在命令参数、提交或日志中。见 [Cloudflare Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/)。
 
 ### Vars（非敏感）
 ```
