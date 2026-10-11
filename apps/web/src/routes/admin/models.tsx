@@ -174,7 +174,7 @@ function ParamsSchemaEditor({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-      <label htmlFor={`${id}-template`}>插入参考模板</label>{' '}
+      <label htmlFor={`${id}-template`}>Insert reference template</label>{' '}
       <select
         id={`${id}-template`}
         value=""

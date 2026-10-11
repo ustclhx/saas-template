@@ -15,10 +15,10 @@ export function parseAdminParamsSchema(
   try {
     schema = JSON.parse(json)
   } catch {
-    throw new AppError('PARAMS_SCHEMA_INVALID', '参数 schema 必须是合法 JSON')
+    throw new AppError('PARAMS_SCHEMA_INVALID', 'Parameter schema must be valid JSON.')
   }
   if (typeof schema !== 'object' || schema === null || Array.isArray(schema)) {
-    throw new AppError('PARAMS_SCHEMA_INVALID', '参数 schema 必须是 JSON 对象')
+    throw new AppError('PARAMS_SCHEMA_INVALID', 'Parameter schema must be a JSON object.')
   }
   const paramsSchema = schema as Record<string, unknown>
   if (kind === 'text') {
@@ -29,7 +29,7 @@ export function parseAdminParamsSchema(
         const field = ['x-text', ...(issue?.path ?? [])].join('.')
         throw new AppError(
           'PARAMS_SCHEMA_INVALID',
-          `${field} 配置无效：tokensPerChar 必须为正数，maxOutputTokens 必须为正整数`,
+          `${field} is invalid: tokensPerChar must be positive and maxOutputTokens must be a positive integer.`,
         )
       }
     }
@@ -40,7 +40,7 @@ export function parseAdminParamsSchema(
       if (!(error instanceof AppError)) throw error
       throw new AppError(
         'PARAMS_SCHEMA_INVALID',
-        '媒体参数 schema 无效：请使用参考模板中的平面字段格式与支持的校验规则',
+        'Media parameter schema is invalid. Use the flat fields and supported validation rules in the reference templates.',
         { cause: error },
       )
     }
@@ -60,7 +60,7 @@ interface ParamsSchemaTemplate {
 export const PARAMS_SCHEMA_TEMPLATES: ParamsSchemaTemplate[] = [
   {
     id: 'text-defaults',
-    label: '文本 · x-text 默认值',
+    label: 'Text · x-text defaults',
     kind: 'text',
     provider: '*',
     providerModelId: '*',
@@ -80,8 +80,8 @@ export const PARAMS_SCHEMA_TEMPLATES: ParamsSchemaTemplate[] = [
     schema: {
       type: 'object',
       properties: {
-        prompt: { type: 'string', title: '提示词', minLength: 1, maxLength: 2048 },
-        steps: { type: 'integer', title: '推理步数', minimum: 1, maximum: 8, default: 4 },
+        prompt: { type: 'string', title: 'Prompt', minLength: 1, maxLength: 2048 },
+        steps: { type: 'integer', title: 'Steps', minimum: 1, maximum: 8, default: 4 },
       },
       required: ['prompt'],
       additionalProperties: false,
@@ -96,10 +96,10 @@ export const PARAMS_SCHEMA_TEMPLATES: ParamsSchemaTemplate[] = [
     schema: {
       type: 'object',
       properties: {
-        prompt: { type: 'string', title: '提示词', minLength: 1 },
+        prompt: { type: 'string', title: 'Prompt', minLength: 1 },
         image_size: {
           type: 'string',
-          title: '图片尺寸',
+          title: 'Image size',
           enum: [
             'square_hd',
             'square',
@@ -110,6 +110,28 @@ export const PARAMS_SCHEMA_TEMPLATES: ParamsSchemaTemplate[] = [
           ],
           default: 'landscape_4_3',
         },
+      },
+      required: ['prompt'],
+      additionalProperties: false,
+    },
+  },
+  {
+    id: 'fal-wan-turbo',
+    label: 'fal · Wan v2.2 turbo',
+    kind: 'video',
+    provider: 'fal',
+    providerModelId: 'fal-ai/wan/v2.2-a14b/text-to-video/turbo',
+    schema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', title: 'Prompt', minLength: 1 },
+        resolution: {
+          type: 'string',
+          title: 'Resolution',
+          enum: ['480p', '580p', '720p'],
+          default: '720p',
+        },
+        enable_prompt_expansion: { type: 'boolean', title: 'Expand prompt', default: false },
       },
       required: ['prompt'],
       additionalProperties: false,

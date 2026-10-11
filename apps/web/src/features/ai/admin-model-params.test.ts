@@ -1,6 +1,7 @@
 import { createMediaParamsValidator, parseMediaSchema } from '@saas/ai/client'
 import { AppError } from '@saas/shared'
 import { describe, expect, it } from 'vitest'
+import recorded from '../../../../../packages/ai/src/media/fixtures/fal.recorded.json'
 import { PARAMS_SCHEMA_TEMPLATES, parseAdminParamsSchema } from './admin-model-params.ts'
 
 describe('parseAdminParamsSchema', () => {
@@ -15,7 +16,7 @@ describe('parseAdminParamsSchema', () => {
     { type: 'object', properties: {}, required: ['prompt'] },
   ])('rejects unsupported media schemas: %j', (schema) => {
     expect(() => parseAdminParamsSchema('image', JSON.stringify(schema))).toThrow(
-      '媒体参数 schema 无效',
+      'Media parameter schema is invalid',
     )
   })
 
@@ -34,12 +35,12 @@ describe('parseAdminParamsSchema', () => {
 
   it('allows text defaults and preserves schema metadata', () => {
     expect(parseAdminParamsSchema('text', '{}')).toEqual({})
-    const schema = { title: '文本模型', 'x-text': { tokensPerChar: 1.5, maxOutputTokens: 2048 } }
+    const schema = { title: 'Text model', 'x-text': { tokensPerChar: 1.5, maxOutputTokens: 2048 } }
     expect(parseAdminParamsSchema('text', JSON.stringify(schema))).toEqual(schema)
   })
 
   it('preserves media schema content without inserting omitted fields', () => {
-    const schema = { type: 'object', title: '测试', properties: { prompt: { type: 'string' } } }
+    const schema = { type: 'object', title: 'Test', properties: { prompt: { type: 'string' } } }
     expect(parseAdminParamsSchema('image', JSON.stringify(schema))).toEqual(schema)
   })
 })
@@ -51,5 +52,16 @@ describe('parameter schema templates', () => {
       const validator = createMediaParamsValidator(parseMediaSchema(schema), kind)
       expect(validator.safeParse({ prompt: 'A red square' }).success).toBe(true)
     }
+  })
+
+  it('Wan turbo accepts the recorded request and rejects unsupported duration', () => {
+    const template = PARAMS_SCHEMA_TEMPLATES.find((item) => item.id === 'fal-wan-turbo')
+    if (!template) throw new Error('Wan turbo template missing')
+    const validator = createMediaParamsValidator(parseMediaSchema(template.schema), 'video')
+    const params = recorded.metadata.videoInput
+    expect(template.providerModelId).toBe(recorded.metadata.videoModel)
+    expect(validator.parse(params)).toEqual(params)
+    expect(validator.safeParse({ ...params, resolution: '1080p' }).success).toBe(false)
+    expect(validator.safeParse({ ...params, duration: 5 }).success).toBe(false)
   })
 })

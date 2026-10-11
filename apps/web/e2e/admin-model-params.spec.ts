@@ -41,13 +41,27 @@ test('saved media parameter schemas drive submit fields, defaults and validation
     const form = page.getByRole('article', { name: 'New model' })
     await expect
       .poll(async () => {
-        await form.getByRole('combobox', { name: 'Kind', exact: true }).selectOption('image')
+        await form.getByRole('combobox', { name: 'Kind', exact: true }).selectOption('video')
         return form
           .getByRole('combobox', { name: 'Provider', exact: true })
-          .locator('option[value="workers-ai"]')
+          .locator('option[value="fal"]')
           .count()
       })
       .toBe(1)
+    await form.getByRole('combobox', { name: 'Provider', exact: true }).selectOption('fal')
+    await form
+      .getByLabel('Insert reference template', { exact: true })
+      .selectOption('fal-wan-turbo')
+    const wanSchema = JSON.parse(
+      await form.getByLabel('Parameters schema (JSON)', { exact: true }).inputValue(),
+    )
+    expect(wanSchema.properties.resolution).toMatchObject({
+      title: 'Resolution',
+      enum: ['480p', '580p', '720p'],
+      default: '720p',
+    })
+    expect(wanSchema.properties).not.toHaveProperty('duration')
+    await form.getByRole('combobox', { name: 'Kind', exact: true }).selectOption('image')
     await form.getByRole('combobox', { name: 'Provider', exact: true }).selectOption('workers-ai')
     await form.getByLabel('Key', { exact: true }).fill(key)
     await form.getByLabel('Provider model ID').fill('@cf/black-forest-labs/flux-1-schnell')
@@ -64,7 +78,9 @@ test('saved media parameter schemas drive submit fields, defaults and validation
       await sql`select id from audit_log where actor_user_id=${actor.user_id} and target_type='ai_model'`,
     ).toHaveLength(0)
 
-    await form.getByLabel('插入参考模板', { exact: true }).selectOption('workers-ai-flux-schnell')
+    await form
+      .getByLabel('Insert reference template', { exact: true })
+      .selectOption('workers-ai-flux-schnell')
     const initialSchema = JSON.parse(
       await form.getByLabel('Parameters schema (JSON)', { exact: true }).inputValue(),
     )
