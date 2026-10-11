@@ -37,6 +37,7 @@ export function createBillingContext(env: BillingEnv) {
   const db = createDb(env.HYPERDRIVE)
   const { providers } = createTestPaymentRuntime(env, templateConfig.billing.providers, {
     cache: env.CACHE,
+    db,
   })
   return {
     db,

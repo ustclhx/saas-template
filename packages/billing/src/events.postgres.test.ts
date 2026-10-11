@@ -31,6 +31,7 @@ import {
   RenewingSubscriptionConflict,
   subscriptionMonthAnchor,
 } from './events.ts'
+import { encodePayPalMetadata } from './paypal/metadata.ts'
 import { processWebhook } from './pipeline.ts'
 import type {
   NormalizedEvent,
@@ -38,6 +39,7 @@ import type {
   PaymentSnapshot,
   SubscriptionSnapshot,
 } from './provider.ts'
+import { createTestPaymentRuntime } from './runtime.ts'
 
 const testEnv = (globalThis as unknown as { process: { env: Record<string, string | undefined> } })
   .process.env
@@ -202,6 +204,138 @@ const grants = () => db.select().from(creditGrant).where(eq(creditGrant.workspac
 const payments = () => db.select().from(payment).where(eq(payment.workspaceId, ws))
 const subs = () => db.select().from(subscription).where(eq(subscription.workspaceId, ws))
 describe('billing event consumer on PostgreSQL', () => {
+  it('keeps actual PayPal billing boundaries and full grace through renewal and old Sale replay', async () => {
+    await db
+      .update(planPrice)
+      .set({ provider: 'paypal', amount: 1900 })
+      .where(eq(planPrice.id, priceId))
+    await db.update(plan).set({ credits: 1000 }).where(eq(plan.id, planId))
+    const start = '2030-10-11T07:17:44.000Z'
+    const firstPaid = '2030-10-11T07:20:36.000Z'
+    const firstEnd = '2030-11-11T10:00:00.000Z'
+    const nextPaid = '2030-11-11T10:01:00.000Z'
+    const nextEnd = '2030-12-11T10:00:00.000Z'
+    const money = { value: '19.00', currency_code: 'USD' }
+    const sale = (key: string, time: string) => ({
+      id: key,
+      state: 'completed',
+      amount: { total: '19.00', currency: 'USD' },
+      create_time: time,
+      billing_agreement_id: subId,
+    })
+    const first = sale(`SALE-${id()}`, firstPaid)
+    const renewal = sale(`SALE-${id()}`, nextPaid)
+    let renewed = false
+    const runtime = createTestPaymentRuntime(
+      {
+        PAYPAL_CLIENT_ID: 'fixture',
+        PAYPAL_CLIENT_SECRET: 'fixture',
+        PAYPAL_WEBHOOK_ID: 'fixture',
+      },
+      ['paypal'],
+      {
+        db,
+        cache: {
+          get: async () => JSON.stringify({ accessToken: 'fixture', expiresAt: 9999999999999 }),
+          put: async () => {},
+        },
+        fetch: async (input) => {
+          const url = new URL(String(input))
+          let body: unknown
+          if (url.pathname === `/v1/payments/sale/${first.id}`) body = first
+          else if (url.pathname === `/v1/payments/sale/${renewal.id}`) body = renewal
+          else if (url.pathname === `/v1/billing/subscriptions/${subId}`)
+            body = {
+              id: subId,
+              plan_id: priceId,
+              status: 'ACTIVE',
+              start_time: start,
+              custom_id: encodePayPalMetadata(metadata()),
+              subscriber: { payer_id: `buyer-${ws}` },
+              billing_info: {
+                last_payment: { time: renewed ? nextPaid : firstPaid, amount: money },
+                next_billing_time: renewed ? nextEnd : firstEnd,
+              },
+            }
+          else if (url.pathname === `/v1/billing/subscriptions/${subId}/transactions`)
+            body = {
+              transactions: [
+                first,
+                ...(url.searchParams.get('end_time') === nextPaid ? [renewal] : []),
+              ].map((s) => ({
+                id: s.id,
+                time: s.create_time,
+                status: 'COMPLETED',
+                amount_with_breakdown: { gross_amount: money },
+              })),
+            }
+          else if (url.pathname === `/v1/billing/plans/${priceId}`)
+            body = {
+              id: priceId,
+              billing_cycles: [
+                {
+                  tenure_type: 'REGULAR',
+                  total_cycles: 0,
+                  frequency: { interval_unit: 'MONTH', interval_count: 1 },
+                  pricing_scheme: { fixed_price: money },
+                },
+              ],
+            }
+          else throw new Error(`Unexpected PayPal fixture request: ${url.pathname}`)
+          return Response.json(body)
+        },
+      },
+    )
+    const ingest = async (resource: typeof first) => {
+      const verified = await runtime.normalizers.paypal?.({
+        id: `EVENT-${id()}`,
+        event_type: 'PAYMENT.SALE.COMPLETED',
+        create_time: resource.create_time,
+        resource,
+      })
+      if (!verified) throw new Error('Missing PayPal normalizer')
+      const prepared = await prepareBillingEvents(verified.events, db, runtime.providers)
+      await db.transaction(async (tx) => {
+        for (const event of verified.events)
+          await applyBillingEvent(tx, event, prepared, {
+            now: () => new Date(resource.create_time),
+          })
+      })
+    }
+    await ingest(first)
+    const [initialPayment] = await payments()
+    expect(initialPayment).toMatchObject({
+      periodStart: new Date(start),
+      periodEnd: new Date(firstEnd),
+    })
+    expect(await grants()).toMatchObject([
+      { amount: 1000, expiresAt: new Date('2030-11-12T10:00:00.000Z') },
+    ])
+    renewed = true
+    await ingest(renewal)
+    await ingest(first)
+    await ingest(renewal)
+    const receipts = await payments()
+    expect(receipts).toHaveLength(2)
+    expect(receipts.find((p) => p.providerPaymentId === first.id)).toMatchObject({
+      periodStart: new Date(start),
+      periodEnd: new Date(firstEnd),
+    })
+    expect(receipts.find((p) => p.providerPaymentId === renewal.id)).toMatchObject({
+      periodStart: new Date(firstEnd),
+      periodEnd: new Date(nextEnd),
+    })
+    const batches = await grants()
+    expect(batches).toHaveLength(2)
+    expect(batches.map((g) => g.expiresAt?.toISOString()).sort()).toEqual([
+      '2030-11-12T10:00:00.000Z',
+      '2030-12-12T10:00:00.000Z',
+    ])
+    expect(batches.reduce((total, g) => total + g.amount, 0)).toBe(2000)
+    expect(
+      await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws)),
+    ).toHaveLength(2)
+  })
   it.each([0, 48])(
     'webhook processing honors %s hours of subscription credit grace',
     async (graceHours) => {

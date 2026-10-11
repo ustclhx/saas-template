@@ -36,9 +36,9 @@ const page = z.object({
 })
 const request = z.object({ requestId: z.uuid() })
 const eventsEnv = env as typeof env & { EVENTS_QUEUE?: Queue<{ v: 1; deliveryId: string }> }
-function runtime() {
+function runtime(db: Database) {
   try {
-    return createTestPaymentRuntime(env, templateConfig.billing.providers, { cache: env.CACHE })
+    return createTestPaymentRuntime(env, templateConfig.billing.providers, { cache: env.CACHE, db })
   } catch (error) {
     if (!(error instanceof EnvValidationError)) throw error
     return {
@@ -51,7 +51,7 @@ function runtime() {
 function refundOptions(db: Database): RefundServiceOptions {
   return {
     db,
-    providers: runtime().providers,
+    providers: runtime(db).providers,
     config: templateConfig.billing,
     notify: (notification) =>
       notifyRefundRequest(
@@ -87,7 +87,7 @@ export const getAdminBilling = createServerFn({ method: 'GET' })
   .inputValidator(page)
   .handler(async ({ context, data }) => ({
     ...(await listAdminPayments(context.db, data)),
-    readiness: runtime().readiness,
+    readiness: runtime(context.db).readiness,
   }))
 
 export const getAdminSubscriptions = createServerFn({ method: 'GET' })
@@ -105,7 +105,7 @@ export const getAdminWebhooks = createServerFn({ method: 'GET' })
   .inputValidator(page)
   .handler(async ({ context, data }) => {
     const result = await listAdminWebhooks(context.db, data)
-    const current = runtime()
+    const current = runtime(context.db)
     return {
       ...result,
       rows: result.rows.map((row) => ({
@@ -120,7 +120,7 @@ export const getAdminRefunds = createServerFn({ method: 'GET' })
   .inputValidator(page)
   .handler(async ({ context, data }) => {
     const result = await listAdminRefunds(context.db, data)
-    const providers = runtime().providers
+    const providers = runtime(context.db).providers
     return {
       ...result,
       rows: result.rows.map((row) => ({
@@ -138,7 +138,7 @@ export const replayAdminWebhook = createServerFn({ method: 'POST' })
   .inputValidator(z.object({ webhookEventId: z.uuid() }))
   .handler(({ context, data }) =>
     safe(async () => {
-      const current = runtime()
+      const current = runtime(context.db)
       // 校验与「已请求重放」审计同事务提交；重放本身在提交后执行（自行管理事务与队列通知），
       // 重放失败记录在回调事件上，可再次重试
       const delivery = await withAdminAction(

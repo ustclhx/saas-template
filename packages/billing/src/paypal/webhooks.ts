@@ -5,7 +5,13 @@ import {
   WebhookVerificationError,
 } from '../provider.ts'
 import { fromPayPalDecimal } from './money.ts'
-import { createPayPalSnapshots, getPayPalSalePayment, payPalDate, payPalRaw } from './snapshots.ts'
+import {
+  createPayPalSnapshots,
+  getPayPalSalePayment,
+  type PayPalSaleLookup,
+  payPalDate,
+  payPalRaw,
+} from './snapshots.ts'
 import {
   createPayPalTransport,
   type PayPalTransport,
@@ -67,8 +73,9 @@ function parsePayload(payload: unknown): ObjectPayload {
 export function payPalWebhookNormalizer(
   transport: PayPalTransport,
   environment: 'sandbox' | 'live',
+  lookupRecordedSale?: PayPalSaleLookup,
 ) {
-  const snapshots = createPayPalSnapshots(transport)
+  const snapshots = createPayPalSnapshots(transport, lookupRecordedSale)
   return async (payload: unknown): Promise<VerifiedWebhook> => {
     const envelope = parsePayload(payload)
     const raw = payPalRaw(envelope)
@@ -161,7 +168,7 @@ export function payPalWebhookNormalizer(
       const payment =
         type === 'PAYMENT.CAPTURE.COMPLETED'
           ? await snapshots.getPayment({ kind: 'one_time', providerPaymentId: paymentId })
-          : await getPayPalSalePayment(transport, paymentId)
+          : await getPayPalSalePayment(transport, paymentId, lookupRecordedSale)
       if (
         type === 'PAYMENT.SALE.COMPLETED' &&
         id(resource.billing_agreement_id) !== payment.providerSubscriptionId
@@ -244,9 +251,13 @@ export function payPalWebhookNormalizer(
 
 /** Only for raw payloads already verified at ingestion and stored in trusted persistence. */
 export function createPayPalWebhookNormalizer(
-  options: PayPalTransportOptions,
+  options: PayPalTransportOptions & { lookupRecordedSale?: PayPalSaleLookup },
 ): (payload: JsonValue | string) => Promise<VerifiedWebhook> {
-  return payPalWebhookNormalizer(createPayPalTransport(options), options.environment)
+  return payPalWebhookNormalizer(
+    createPayPalTransport(options),
+    options.environment,
+    options.lookupRecordedSale,
+  )
 }
 
 export async function verifyPayPalWebhook(

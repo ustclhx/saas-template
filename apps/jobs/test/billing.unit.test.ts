@@ -122,7 +122,7 @@ describe('billing jobs', () => {
     )
     expect(mocks.credits).toHaveBeenCalledOnce()
     expect(mocks.cleanup).toHaveBeenCalledOnce()
-    expect(mocks.runtime).toHaveBeenCalledWith(env, ['stripe', 'paypal'], { cache: env.CACHE })
+    expect(mocks.runtime).toHaveBeenCalledWith(env, ['stripe', 'paypal'], { cache: env.CACHE, db })
   })
   it('acks invalid envelopes without initializing providers or touching the database', async () => {
     const messages = [

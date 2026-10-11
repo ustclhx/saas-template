@@ -104,6 +104,8 @@ type NormalizedEvent =
 - 直接使用 REST（`fetch`），自封装：OAuth token（缓存到 KV，按 `expires_in` 过期）、Orders v2、Subscriptions v1、Webhook 验签。
 - 一次性付款：`POST /v2/checkout/orders`（intent=CAPTURE，`custom_id`=workspaceId）→ 用户批准后回到 `successUrl` → 服务端 `capture`（`confirmCheckout`）→ 以 `PAYMENT.CAPTURE.COMPLETED` Webhook 作为最终入账依据（capture 接口与 webhook 谁先到都要幂等）。
 - 订阅：预先在 PayPal 创建 Product + Plan（脚本 `pnpm billing:sync` 从 `plan` 表同步），`POST /v1/billing/subscriptions`（`custom_id`=workspaceId）。
+- Sale 周期：新付款必须匹配当前 `last_payment`，结束时间取实际 `next_billing_time`，不能用 `start_time + 月数` 推算。首付从 `start_time` 开始，续费从紧邻上一笔已入账付款的 `period_end` 开始。已入账 Sale 重放或退款核验复用原付款的不可变周期；竞争订阅尚未入账时可复用补偿任务保存的收据。缺少历史证据时明确失败，不用当前订阅快照猜测旧账期。HTTP、后台重放、退款与 jobs 入口使用同一数据库查询器。
+- 2026-10-11 沙箱首付发现账期推算偏差：订阅开始 `07:17:44 UTC`，实际下次扣款为次月 `10:00 UTC`；旧算法让月度积分宽限少 `2h42m16s`。修复不重写已有付款或积分记录；新收据按实际周期计算完整宽限。离线 API 夹具与隔离 PostgreSQL 联合回归覆盖首付、续费、重放及实际账期末加 24 小时，不能替代自然续费的沙箱验收。
 - 验签：调用 `POST /v1/notifications/verify-webhook-signature`（需 `webhook_id`），失败即拒绝。
 - 无客户门户：在「账单」页自建取消/恢复订阅；升降级走 `revise` 接口，首版可退化为「取消后重新订阅」（`capabilities.changePlan=false`），新旧订阅的重叠处理见 §6。
 

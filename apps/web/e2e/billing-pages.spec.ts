@@ -25,6 +25,34 @@ test('billing and usage require a fresh authenticated workspace session', async 
   await expect(page).toHaveURL(/\/login/)
 })
 
+test('PayPal return offers capture only for an uncanceled order', async ({ page }) => {
+  await simulateClientIp(page)
+  await stubTurnstile(page)
+  await register(page, `billing-return-${randomUUID()}@example.com`)
+  const workspacePath = new URL(page.url()).pathname.replace(/\/$/, '')
+  const confirmPayment = page.getByRole('button', { name: 'Confirm payment', exact: true })
+  for (const { name, query, canConfirm } of [
+    {
+      name: 'subscription',
+      query: 'provider=paypal&subscription_id=I-SUBSCRIPTION&ba_token=BA-TOKEN&token=8F-TOKEN',
+      canConfirm: false,
+    },
+    { name: 'order', query: 'provider=paypal&token=ORDER-TOKEN', canConfirm: true },
+    {
+      name: 'canceled order',
+      query: 'provider=paypal&token=ORDER-TOKEN&canceled=true',
+      canConfirm: false,
+    },
+  ]) {
+    await test.step(name, async () => {
+      await page.goto(`${workspacePath}/billing-return?${query}`)
+      await expect(page.getByRole('heading', { name: 'Checkout return' })).toBeVisible()
+      if (canConfirm) await expect(confirmPayment).toBeEnabled()
+      else await expect(confirmPayment).toHaveCount(0)
+    })
+  }
+})
+
 test('ordinary members see their own ledger without workspace credits or billing history', async ({
   page,
 }) => {

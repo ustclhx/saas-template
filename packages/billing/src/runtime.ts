@@ -1,6 +1,6 @@
 import type { TemplateConfig } from '@saas/config'
 import { EnvValidationError } from '@saas/config'
-import type { JsonValue, PaymentProviderId } from '@saas/db'
+import type { Database, JsonValue, PaymentProviderId } from '@saas/db'
 import { log } from '@saas/shared/log'
 import type { BillingProviders } from './events.ts'
 import {
@@ -8,6 +8,7 @@ import {
   createPayPalWebhookNormalizer,
   type PayPalTokenCache,
 } from './paypal/index.ts'
+import { createPayPalSaleLookup } from './paypal/recorded-sale.ts'
 import type { VerifiedWebhook } from './provider.ts'
 import { createStripeProvider, createStripeWebhookNormalizer } from './stripe/adapter.ts'
 
@@ -27,6 +28,7 @@ export function createTestPaymentRuntime(
   env: PaymentRuntimeEnv,
   enabled: TemplateConfig['billing']['providers'],
   options: {
+    db?: Database
     fetch?: typeof fetch
     cache?: PayPalTokenCache
     warn?: (provider: PaymentProviderId, missing: (keyof PaymentRuntimeEnv)[]) => void
@@ -75,6 +77,7 @@ export function createTestPaymentRuntime(
       webhookId: env.PAYPAL_WEBHOOK_ID,
       fetch: options.fetch ?? fetch,
       cache: options.cache,
+      ...(options.db && { lookupRecordedSale: createPayPalSaleLookup(options.db) }),
     }
     providers.paypal = createPayPalProvider(paypal)
     normalizers.paypal = createPayPalWebhookNormalizer(paypal)

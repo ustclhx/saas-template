@@ -9,11 +9,13 @@ export const Route = createFileRoute('/api/billing/webhooks/$provider')({
   server: {
     handlers: {
       POST: ({ request, params }) => {
+        const db = createDb(env.HYPERDRIVE)
         const runtime = createTestPaymentRuntime(env, templateConfig.billing.providers, {
           cache: env.CACHE,
+          db,
         })
         return handleBillingWebhook(request, params.provider, {
-          db: createDb(env.HYPERDRIVE),
+          db,
           providers: runtime.providers,
           queue: env.EVENTS_QUEUE,
           subscriptionCreditGraceHours: templateConfig.billing.subscriptionCreditGraceHours,

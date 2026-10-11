@@ -25,11 +25,15 @@ import {
 
 const workspace = z.object({ slug: z.string().min(1).max(64) })
 const provider = z.enum(['stripe', 'paypal', 'creem', 'paddle', 'polar'])
-function runtime() {
-  return createTestPaymentRuntime(env, templateConfig.billing.providers, { cache: env.CACHE })
+function runtime(db: ReturnType<typeof createDb>) {
+  return createTestPaymentRuntime(env, templateConfig.billing.providers, { cache: env.CACHE, db })
 }
 function service(db: ReturnType<typeof createDb>) {
-  return { db, providers: runtime().providers, enabledProviders: templateConfig.billing.providers }
+  return {
+    db,
+    providers: runtime(db).providers,
+    enabledProviders: templateConfig.billing.providers,
+  }
 }
 function returnUrl(slug: string, id: string, canceled = false) {
   const url = new URL(`/app/${encodeURIComponent(slug)}/billing-return`, env.APP_URL)
@@ -51,9 +55,10 @@ async function safe<T>(readOnly: boolean, action: () => Promise<T>) {
     }
   }
 }
-export const getPublicPricing = createServerFn({ method: 'GET' }).handler(() =>
-  customerCatalog(createDb(env.HYPERDRIVE), runtime().readiness),
-)
+export const getPublicPricing = createServerFn({ method: 'GET' }).handler(() => {
+  const db = createDb(env.HYPERDRIVE)
+  return customerCatalog(db, runtime(db).readiness)
+})
 export const getCustomerBilling = createServerFn({ method: 'GET' })
   .middleware([withWorkspace])
   .inputValidator(workspace)
@@ -64,7 +69,7 @@ export const getCustomerBilling = createServerFn({ method: 'GET' })
       context.member.role,
       templateConfig.billing.pastDueGraceDays,
     )),
-    catalog: await customerCatalog(context.db, runtime().readiness),
+    catalog: await customerCatalog(context.db, runtime(context.db).readiness),
     role: context.member.role,
     readOnly: context.workspaceReadOnly,
   }))
