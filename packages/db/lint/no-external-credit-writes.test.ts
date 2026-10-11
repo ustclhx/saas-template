@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -8,7 +8,7 @@ const checker = resolve(import.meta.dirname, '../../../scripts/check-credit-writ
 const fixtures = resolve(import.meta.dirname, 'fixtures')
 const temporary: string[] = []
 
-function check(targets: Array<[string, string]>) {
+function prepare(targets: Array<[string, string]>) {
   const root = mkdtempSync(join(tmpdir(), 'credit-writes-'))
   temporary.push(root)
   execFileSync('git', ['init', '--quiet', root])
@@ -17,7 +17,11 @@ function check(targets: Array<[string, string]>) {
     mkdirSync(resolve(target, '..'), { recursive: true })
     cpSync(join(fixtures, fixture), target)
   }
-  return spawnSync(process.execPath, [checker, root], { encoding: 'utf8' })
+  return root
+}
+
+function check(targets: Array<[string, string]>) {
+  return spawnSync(process.execPath, [checker, prepare(targets)], { encoding: 'utf8' })
 }
 
 afterEach(() => {
@@ -65,5 +69,33 @@ describe('production credit write ownership', () => {
     ])
     expect(result.stderr).toBe('')
     expect(result.status).toBe(0)
+  })
+
+  it('exits cleanly when independent credit checks run concurrently', async () => {
+    const root = prepare([
+      ['credit-reads.ts', 'apps/jobs/src/cron/credits.ts'],
+      ['credit-reads.ts', 'packages/billing/src/credits.ts'],
+    ])
+    // 同时关闭多个真实 API 子进程，覆盖短生命周期下的取消竞态。
+    const results = await Promise.all(
+      Array.from(
+        { length: 8 },
+        () =>
+          new Promise<{ status: number | null; stderr: string }>((done, reject) => {
+            const child = spawn(process.execPath, [checker, root])
+            child.stdout.resume()
+            let stderr = ''
+            child.stderr.setEncoding('utf8').on('data', (chunk) => {
+              stderr += chunk
+            })
+            child.on('error', reject)
+            child.on('close', (status) => done({ status, stderr }))
+          }),
+      ),
+    )
+    for (const result of results) {
+      expect(result.stderr).toBe('')
+      expect(result.status).toBe(0)
+    }
   })
 })

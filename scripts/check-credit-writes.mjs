@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as ast from 'typescript/unstable/ast'
-import { API, SymbolFlags } from 'typescript/unstable/sync'
+import { API, SymbolFlags } from 'typescript/unstable/async'
 
 const tables = new Map([
   ['creditGrant', 'credit_grant'],
@@ -63,7 +63,7 @@ function sqlWrites(text) {
   return [...found]
 }
 
-export function checkCreditWrites(root, paths) {
+export async function checkCreditWrites(root, paths) {
   const files = paths.filter((p) => !isExcluded(p) && /\.(?:[cm]?[jt]sx?|sql)$/.test(p))
   const configPath = resolve(root, '__credit_write_check__.json')
   const config = JSON.stringify({
@@ -78,6 +78,7 @@ export function checkCreditWrites(root, paths) {
     files: files.filter((p) => !p.endsWith('.sql')).map((p) => resolve(root, p)),
   })
   if (!files.length) return []
+  // 异步 API 关闭 stdin 让子进程正常 EOF 退出；同步 API 的 SIGTERM 会偶发输出 context canceled。
   const api = new API({
     cwd: root,
     fs: {
@@ -87,7 +88,7 @@ export function checkCreditWrites(root, paths) {
   })
   const diagnostics = []
   try {
-    const snapshot = api.updateSnapshot({ openProjects: [configPath] })
+    const snapshot = await api.updateSnapshot({ openProjects: [configPath] })
     const project = snapshot.getProject(configPath)
     if (!project) throw new Error('Credit checker could not load its TypeScript project')
     const checker = project.checker
@@ -102,31 +103,34 @@ export function checkCreditWrites(root, paths) {
           report(0, `Raw SQL write to ${table}`, '')
         continue
       }
-      const source = project.program.getSourceFile(resolve(root, path))
+      const source = await project.program.getSourceFile(resolve(root, path))
       if (!source) throw new Error(`Credit checker could not parse ${path}`)
       const bindings = new Map()
-      const visit = (node, fn) => {
-        fn(node)
+      const visit = async (node, fn) => {
+        await fn(node)
+        const children = []
         node.forEachChild((child) => {
-          visit(child, fn)
+          children.push(child)
         })
+        for (const child of children) await visit(child, fn)
       }
-      visit(source, (node) => {
+      await visit(source, async (node) => {
         if (ast.isImportSpecifier(node)) {
           const name = (node.propertyName ?? node.name).text
-          if (tables.has(name)) bindings.set(symbol(node.name)?.id, name)
+          if (tables.has(name)) bindings.set((await symbol(node.name))?.id, name)
         }
         if (ast.isVariableDeclaration(node) && node.initializer) {
-          if (ast.isIdentifier(node.name)) bindings.set(symbol(node.name)?.id, node.initializer)
+          if (ast.isIdentifier(node.name))
+            bindings.set((await symbol(node.name))?.id, node.initializer)
           else if (ast.isObjectBindingPattern(node.name)) {
             for (const element of node.name.elements) {
               const name = (element.propertyName ?? element.name).text
-              if (tables.has(name)) bindings.set(symbol(element.name)?.id, name)
+              if (tables.has(name)) bindings.set((await symbol(element.name))?.id, name)
             }
           }
         }
       })
-      const tableOf = (node, seen = new Set()) => {
+      const tableOf = async (node, seen = new Set()) => {
         if (!node) return undefined
         if (
           ast.isParenthesizedExpression(node) ||
@@ -143,19 +147,19 @@ export function checkCreditWrites(root, paths) {
           tables.has(node.argumentExpression.text)
         )
           return node.argumentExpression.text
-        const s = symbol(node)
+        const s = await symbol(node)
         if (s && !seen.has(s.id)) {
           seen.add(s.id)
           const binding = bindings.get(s.id)
           if (typeof binding === 'string') return binding
           if (binding) return tableOf(binding, seen)
-          const target = s.flags & SymbolFlags.Alias ? checker.getAliasedSymbol(s) : s
+          const target = s.flags & SymbolFlags.Alias ? await checker.getAliasedSymbol(s) : s
           if (tables.has(target.name)) return target.name
         }
         if (!s && ast.isIdentifier(node) && tables.has(node.text)) return node.text
         return undefined
       }
-      visit(source, (node) => {
+      await visit(source, async (node) => {
         if (ast.isCallExpression(node)) {
           const callee = node.expression
           const method = ast.isPropertyAccessExpression(callee)
@@ -165,7 +169,7 @@ export function checkCreditWrites(root, paths) {
               ? callee.argumentExpression.text
               : undefined
           const table = mutations.has(method)
-            ? (tableOf(node.arguments[0]) ?? tableOf(callee.expression))
+            ? ((await tableOf(node.arguments[0])) ?? (await tableOf(callee.expression)))
             : undefined
           if (table)
             report(
@@ -179,7 +183,7 @@ export function checkCreditWrites(root, paths) {
         if (ast.isTemplateExpression(node)) {
           sql = node.head.text
           for (const span of node.templateSpans)
-            sql += (tables.get(tableOf(span.expression)) ?? '__dynamic__') + span.literal.text
+            sql += (tables.get(await tableOf(span.expression)) ?? '__dynamic__') + span.literal.text
         }
         if (sql !== undefined)
           for (const table of sqlWrites(sql))
@@ -190,9 +194,9 @@ export function checkCreditWrites(root, paths) {
             )
       })
     }
-    snapshot.dispose()
+    await snapshot.dispose()
   } finally {
-    api.close()
+    await api.close()
   }
   return diagnostics
 }
@@ -209,7 +213,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         .filter(Boolean),
     ),
   ]
-  const diagnostics = checkCreditWrites(root, paths)
+  const diagnostics = await checkCreditWrites(root, paths)
   for (const d of diagnostics) console.error(`${d.path}:${d.line}: ${d.message}`)
   if (diagnostics.length) process.exitCode = 1
   else
