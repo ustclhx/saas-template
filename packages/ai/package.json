@@ -12,6 +12,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.78",
+    "@ai-sdk/deepseek": "^3.0.63",
+    "@ai-sdk/google": "^4.0.93",
+    "@ai-sdk/openai": "^4.0.91",
     "@saas/config": "workspace:*",
     "@saas/credits": "workspace:*",
     "@saas/db": "workspace:*",

@@ -45,3 +45,5 @@
 ## Open Questions
 
 - AI Gateway 日志能否提供被中断流的实际 token 数、可查询延迟多大；据此决定决策 12 采用即时查询还是延后对账补差（补差需要积分账本的调整分录）。由 2.9 在 staging 验证后定。
+  - 2026-10-12 本地探针：DeepSeek `deepseek-flash` 经 Gateway 托管密钥（BYOK，仅带 `cf-aig-authorization`，未传服务商 key）非流式调用成功，返回输入 7 / 输出 2 tokens。另一次流式请求带 `cf-aig-metadata`，读取 2 个文本块（2 个字符）后在约 1.8 秒 abort，响应 `cf-aig-log-id=01a12c2b-cf0e-74b0-ae84-7bd4b534532c`，中断前未收到最终 usage。
+  - 阻塞：需要 AI Gateway 日志读取权限的 token。现有 Gateway token 与已刷新的 Wrangler OAuth 查询日志列表均返回 403（Cloudflare 错误码 10000）；OAuth 按上述 log ID 查询详情也返回 403。本机未发现具备此权限的 Cloudflare API token，未创建新 token。因此无法判断 `tokens_in` / `tokens_out` 是否存在，也无法测量日志出现延迟；不据此选择即时查询或延后对账，不实现结算改动，2.9 与 staging 验收保持未完成。后续持有日志读取权限后按同样标识重测，所需字段见 [日志详情 API](https://developers.cloudflare.com/api/resources/ai_gateway/subresources/logs/methods/get/)。

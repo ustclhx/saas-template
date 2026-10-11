@@ -181,7 +181,7 @@ describe('按次计费的预算', () => {
 })
 
 describe('默认模型工厂', () => {
-  it('服务商未接入时抛出 503 AI_PROVIDER_NOT_CONFIGURED', () => {
+  it('Gateway 缺少配置时抛出 503 AI_PROVIDER_NOT_CONFIGURED', () => {
     const model = {
       id: 'm',
       key: 'gpt',

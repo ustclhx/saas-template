@@ -9,7 +9,7 @@
 
 ## 2. 文本调用链路
 
-- [ ] 2.1 在 `packages/ai/text` 按 `ai_model.provider` 构造经 AI Gateway 的 AI SDK 模型实例，验证本地对一个真实服务商发起一次调用成功（手动或带密钥的集成测试）
+- [x] 2.1 在 `packages/ai/text` 按 `ai_model.provider` 构造经 AI Gateway 的 AI SDK 模型实例，验证本地对一个真实服务商发起一次调用成功（手动或带密钥的集成测试）
 - [x] 2.2 实现输入 token 保守估算与按余额计算最大输出长度，验证单元测试：余额只够 1000 输出 token 时上限被压到约 1000、不足最小输出时报余额不足
 - [x] 2.3 实现 `POST /api/ai/chat`：权益 → `RL_AI` 限流 → 欠费 / 余额检查 → 保存定价快照 → 预扣 → 插入 streaming 消息 → `streamText` → `waitUntil(consumeStream())` → `onFinish` 结算，验证集成测试（模拟模型）覆盖正常完成、实际少于预扣、实际多于预扣三种结算
 - [x] 2.4 实现停止接口与出错处理（按 token 按已产生用量、按次有输出才扣费），验证测试覆盖停止与「无输出即出错」场景
