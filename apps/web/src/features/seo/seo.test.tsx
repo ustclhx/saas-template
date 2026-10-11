@@ -106,8 +106,10 @@ describe('公开页面 SEO（4.1–4.3）', () => {
 
   it('地图包含已发布文章的全部语言，排除草稿、未来文章与关闭的功能', () => {
     const xml = sitemap(pages, origin)
-    expect(xml).toContain(`<loc>${origin}/blog/published</loc>`)
-    expect(xml).toContain(`<loc>${origin}/zh/blog/published</loc>`)
+    for (const locale of templateConfig.i18n.locales) {
+      const prefix = locale === templateConfig.i18n.defaultLocale ? '' : `/${locale}`
+      expect(xml).toContain(`<loc>${origin}${prefix}/blog/published</loc>`)
+    }
     for (const path of [
       '/app',
       '/admin',
@@ -198,7 +200,7 @@ describe('公开页面 SEO（4.1–4.3）', () => {
       '@type': 'Offer',
       price: '23.45',
       priceCurrency: 'USD',
-      url: `${origin}/pricing`,
+      url: `${origin}${templateConfig.i18n.defaultLocale === 'en' ? '' : '/en'}/pricing`,
     })
     expect(articleData(article, origin).author.name).toBe(templateConfig.app.name)
     expect(
