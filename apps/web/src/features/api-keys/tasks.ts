@@ -67,12 +67,17 @@ export async function handlePublicMediaDetail(
       throw new AppError('NOT_FOUND', 'Not found', { status: 404 })
     const task = await getWorkspaceMediaTask(context, taskId, deps)
     const output = task.output as { files?: MediaTaskFile[] } | null
-    const files = await Promise.all(
+    const signedFiles = await Promise.all(
       (task.status === 'succeeded' ? (output?.files ?? []) : []).map(async (file) => {
+        // 产出文件被用户删除后只从列表中省略，任务本身仍可查询。
         const downloadUrl = await getFileDownload(deps.db, deps.env, {
           workspaceId: context.workspace.id,
           fileId: file.id,
+        }).catch((error: unknown) => {
+          if (error instanceof AppError && error.status === 404) return null
+          throw error
         })
+        if (!downloadUrl) return null
         // 过期时间取签名本身，避免异步签名与响应时钟之间的偏差。
         const signed = new URL(downloadUrl)
         const date = signed.searchParams.get('X-Amz-Date') as string
@@ -92,6 +97,7 @@ export async function handlePublicMediaDetail(
         }
       }),
     )
+    const files = signedFiles.filter((file) => file !== null)
     return result({
       id: task.id,
       object: 'media.task',
