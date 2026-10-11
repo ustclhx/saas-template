@@ -16,7 +16,7 @@ async function remove(workspaceId?: string) {
     auth: getAuth(env, db),
     headers: getRequest().headers,
     kv: env.CACHE,
-    additionalSteps: billingDeletionSteps(env),
+    additionalSteps: billingDeletionSteps(env, db),
   }
   try {
     if (workspaceId)

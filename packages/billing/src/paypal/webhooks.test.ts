@@ -6,6 +6,7 @@ import {
   type PayPalProviderOptions,
 } from './index.ts'
 import { encodePayPalMetadata } from './metadata.ts'
+import type { PayPalRecordedSale } from './snapshots.ts'
 
 const jan = '2026-01-01T00:00:00.000Z'
 const feb = '2026-02-01T00:00:00.000Z'
@@ -75,13 +76,15 @@ const request = (values = headers) =>
     body: 'DO NOT READ THIS BODY',
   })
 type Step = [string, string, unknown]
-function harness(steps: Step[]) {
+function harness(steps: Step[], records: PayPalRecordedSale[] = []) {
   const bodies: unknown[] = []
   const options: PayPalProviderOptions = {
     environment: 'sandbox',
     clientId: 'fixture',
     clientSecret: 'fixture',
     webhookId: 'WEBHOOK',
+    lookupRecordedSale: async (id) =>
+      records.find((record) => record.providerPaymentId === id) ?? null,
     cache: {
       get: async () => JSON.stringify({ accessToken: 'offline', expiresAt: 9999999999999 }),
       put: async () => {},
@@ -113,7 +116,17 @@ const verify: Step = [
 const subStep: Step = ['GET', '/v1/billing/subscriptions/I-SUB', sub]
 const saleSteps = (paidAt = jan, renewal = false): Step[] => [
   ['GET', '/v1/payments/sale/SALE', { ...sale, create_time: paidAt }],
-  subStep,
+  [
+    'GET',
+    '/v1/billing/subscriptions/I-SUB',
+    {
+      ...sub,
+      billing_info: {
+        last_payment: { time: paidAt, amount: money },
+        next_billing_time: renewal ? '2026-03-01T00:00:00.000Z' : feb,
+      },
+    },
+  ],
   [
     'GET',
     `/v1/billing/subscriptions/I-SUB/transactions?start_time=${encodeURIComponent(jan)}&end_time=${encodeURIComponent(paidAt)}`,
@@ -247,8 +260,33 @@ describe('PayPal verified webhook normalization', () => {
   })
   it('normalizes first Sale identically on verified delivery and trusted replay', async () => {
     const payload = event('PAYMENT.SALE.COMPLETED', sale)
-    const h = harness([verify, ...saleSteps(), ...saleSteps()])
+    const records: PayPalRecordedSale[] = []
+    const later = saleSteps()
+    later[1] = [
+      'GET',
+      '/v1/billing/subscriptions/I-SUB',
+      {
+        ...sub,
+        billing_info: {
+          last_payment: { time: feb, amount: money },
+          next_billing_time: '2026-03-01T00:00:00.000Z',
+        },
+      },
+    ]
+    const h = harness([verify, ...saleSteps(), ...later], records)
     const delivered = await h.provider.verifyWebhook(request(), JSON.stringify(payload))
+    records.push({
+      providerPaymentId: 'SALE',
+      providerSubscriptionId: 'I-SUB',
+      providerPriceId: 'P-PLAN',
+      workspaceId: meta.workspaceId,
+      planPriceId: meta.planPriceId,
+      kind: 'initial',
+      amount: 1234,
+      currency: 'USD',
+      paidAt: new Date(jan),
+      period: { start: new Date(jan), end: new Date(feb) },
+    })
     const replayed = await h.normalize(payload)
     expect(replayed).toEqual(delivered)
     expect(delivered.events.map((item) => item.type)).toEqual(['payment.succeeded'])
@@ -258,7 +296,20 @@ describe('PayPal verified webhook normalization', () => {
     h.done()
   })
   it('maps renewal using complete history and emits the paid period', async () => {
-    const h = harness(saleSteps(feb, true))
+    const h = harness(saleSteps(feb, true), [
+      {
+        providerPaymentId: 'FIRST',
+        providerSubscriptionId: 'I-SUB',
+        providerPriceId: 'P-PLAN',
+        workspaceId: meta.workspaceId,
+        planPriceId: meta.planPriceId,
+        kind: 'initial',
+        amount: 1234,
+        currency: 'USD',
+        paidAt: new Date(jan),
+        period: { start: new Date(jan), end: new Date(feb) },
+      },
+    ])
     const result = await h.normalize(event('PAYMENT.SALE.COMPLETED', { ...sale, create_time: feb }))
     expect(result.events.map((item) => item.type)).toEqual([
       'payment.succeeded',

@@ -16,8 +16,10 @@ const workspace = z.object({ slug: z.string().min(1).max(64) })
 function options(db: Parameters<typeof listRefundablePayments>[0]['db']) {
   return {
     db,
-    providers: createTestPaymentRuntime(env, templateConfig.billing.providers, { cache: env.CACHE })
-      .providers,
+    providers: createTestPaymentRuntime(env, templateConfig.billing.providers, {
+      cache: env.CACHE,
+      db,
+    }).providers,
     config: templateConfig.billing,
     notify: (notification: Parameters<typeof notifyRefundRequest>[1]) =>
       notifyRefundRequest(

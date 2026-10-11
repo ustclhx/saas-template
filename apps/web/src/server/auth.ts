@@ -53,7 +53,7 @@ export function getAuth(env: Cloudflare.Env, db: Database = createDb(env.HYPERDR
         throw error
       }
     },
-    deletionSteps: billingDeletionSteps(env),
+    deletionSteps: billingDeletionSteps(env, db),
     sendEmail,
     resolveMaxSeats: resolveWorkspaceMaxSeats,
     onEmailVerified: (user) =>
@@ -61,9 +61,10 @@ export function getAuth(env: Cloudflare.Env, db: Database = createDb(env.HYPERDR
   })
 }
 
-export function billingDeletionSteps(env: Cloudflare.Env) {
+export function billingDeletionSteps(env: Cloudflare.Env, db: Database) {
   const { providers } = createTestPaymentRuntime(env, templateConfig.billing.providers, {
     cache: env.CACHE,
+    db,
   })
   return [
     createBillingDeletionStep({

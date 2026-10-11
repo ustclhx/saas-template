@@ -12,6 +12,19 @@ import { fromPayPalDecimal } from './money.ts'
 import type { PayPalTransport } from './transport.ts'
 
 export type PayPalSnapshots = Pick<PaymentProvider, 'getSubscription' | 'getOrder' | 'getPayment'>
+export interface PayPalRecordedSale {
+  providerPaymentId: string
+  providerSubscriptionId: string
+  providerPriceId: string
+  workspaceId: string
+  planPriceId: string
+  kind: 'initial' | 'renewal'
+  amount: number
+  currency: string
+  paidAt: Date
+  period: { start: Date; end: Date }
+}
+export type PayPalSaleLookup = (saleId: string) => Promise<PayPalRecordedSale | null>
 type Money = { value: string; currency_code: string }
 type Link = { rel: string; href: string }
 export interface PayPalSubscriptionPayload {
@@ -436,30 +449,81 @@ export async function classifyPayPalSale(
     throw new Error('Sale is not paid')
   return classify(transport, sale, await subscription(transport, id(sale.billing_agreement_id)))
 }
+function verifyRecordedSale(
+  recorded: PayPalRecordedSale,
+  tx: Transactions['transactions'][number],
+  sub: PayPalSubscriptionPayload,
+  kind: 'initial' | 'renewal',
+) {
+  const checkout = metadata(sub.custom_id)
+  if (
+    recorded.providerPaymentId !== tx.id ||
+    recorded.providerSubscriptionId !== sub.id ||
+    recorded.providerPriceId !== sub.plan_id ||
+    recorded.kind !== kind ||
+    recorded.amount !== cents(tx.amount_with_breakdown.gross_amount) ||
+    recorded.currency !== tx.amount_with_breakdown.gross_amount.currency_code ||
+    recorded.paidAt.getTime() !== payPalDate(tx.time).getTime() ||
+    (checkout &&
+      (recorded.workspaceId !== checkout.workspaceId ||
+        recorded.planPriceId !== checkout.planPriceId))
+  )
+    throw new PayPalSnapshotCapabilityError('Recorded PayPal Sale identity mismatch')
+  return recorded.period
+}
 async function salePeriod(
   transport: PayPalTransport,
   sale: PayPalSalePayload,
   sub: PayPalSubscriptionPayload,
-  paidHistory: Transactions['transactions'],
+  history: Transactions['transactions'],
+  lookupRecordedSale?: PayPalSaleLookup,
 ) {
   const { unit, amount } = await frequency(transport, sub)
-  const anchor = payPalDate(sub.start_time)
-  for (const [index, tx] of paidHistory.entries()) {
-    const start = advance(anchor, unit, index)
-    const end = advance(anchor, unit, index + 1)
-    const paid = payPalDate(tx.time)
-    if (paid < start || paid >= end || cents(tx.amount_with_breakdown.gross_amount) !== amount)
-      throw new PayPalSnapshotCapabilityError(
-        'Unprovable billing-cycle gap or revised charge in verified paid history',
-      )
-    if (tx.id === sale.id) return period(start, end)
+  if (history.some((tx) => cents(tx.amount_with_breakdown.gross_amount) !== amount))
+    throw new PayPalSnapshotCapabilityError('Revised charge in verified paid history')
+  const targetIndex = history.findIndex((tx) => tx.id === sale.id)
+  const target = history[targetIndex]
+  if (!target) throw new Error('Sale absent from verified paid history')
+  const recorded = await lookupRecordedSale?.(sale.id)
+  if (recorded)
+    return verifyRecordedSale(recorded, target, sub, targetIndex === 0 ? 'initial' : 'renewal')
+  const paidAt = payPalDate(sale.create_time)
+  const last = sub.billing_info?.last_payment
+  if (
+    !last ||
+    payPalDate(last.time).getTime() !== paidAt.getTime() ||
+    cents(last.amount) !== amount ||
+    !sub.billing_info?.next_billing_time
+  )
+    throw new PayPalSnapshotCapabilityError(
+      'Historical PayPal Sale period unavailable without recorded evidence or current billing dates',
+    )
+  const end = payPalDate(sub.billing_info.next_billing_time)
+  let start: Date
+  if (targetIndex === 0) {
+    start = payPalDate(sub.start_time)
+  } else {
+    const previous = history[targetIndex - 1]
+    const recordedPrevious = previous && (await lookupRecordedSale?.(previous.id))
+    if (!previous || !recordedPrevious)
+      throw new PayPalSnapshotCapabilityError('Previous PayPal Sale period evidence unavailable')
+    start = verifyRecordedSale(
+      recordedPrevious,
+      previous,
+      sub,
+      targetIndex === 1 ? 'initial' : 'renewal',
+    ).end
   }
-  throw new Error('Sale absent from verified paid history')
+  // 日历运算仅用于拒绝跨过未付周期的扣款；权益边界必须来自真实账期证据。
+  if (paidAt < start || paidAt >= end || paidAt >= advance(start, unit))
+    throw new PayPalSnapshotCapabilityError('Unprovable billing-cycle gap in verified paid history')
+  return period(start, end)
 }
 async function getPayment(
   transport: PayPalTransport,
   reference: PaymentReference,
   checkKind = true,
+  lookupRecordedSale?: PayPalSaleLookup,
 ): Promise<PaymentSnapshot> {
   const paymentId = id(reference.providerPaymentId)
   if (reference.kind === 'adjustment') throw new Error('PayPal adjustment payments are unsupported')
@@ -517,7 +581,7 @@ async function getPayment(
     providerPaymentId: sale.id,
     providerSubscriptionId: sub.id,
     providerPriceId: sub.plan_id,
-    period: await salePeriod(transport, sale, sub, history),
+    period: await salePeriod(transport, sale, sub, history, lookupRecordedSale),
     providerCustomerId: customer(sub.subscriber?.payer_id),
     amount,
     currency: 'USD',
@@ -533,11 +597,14 @@ async function getPayment(
     raw: payPalRaw(sale),
   }
 }
-export function createPayPalSnapshots(transport: PayPalTransport): PayPalSnapshots {
+export function createPayPalSnapshots(
+  transport: PayPalTransport,
+  lookupRecordedSale?: PayPalSaleLookup,
+): PayPalSnapshots {
   return {
     getSubscription: (subId) => getSubscription(transport, subId),
     getOrder: async (orderId) => orderSnapshot(await order(transport, orderId)),
-    getPayment: (reference) => getPayment(transport, reference),
+    getPayment: (reference) => getPayment(transport, reference, true, lookupRecordedSale),
   }
 }
 
@@ -545,6 +612,12 @@ export function createPayPalSnapshots(transport: PayPalTransport): PayPalSnapsho
 export async function getPayPalSalePayment(
   transport: PayPalTransport,
   saleId: string,
+  lookupRecordedSale?: PayPalSaleLookup,
 ): Promise<PaymentSnapshot> {
-  return getPayment(transport, { providerPaymentId: saleId, kind: 'initial' }, false)
+  return getPayment(
+    transport,
+    { providerPaymentId: saleId, kind: 'initial' },
+    false,
+    lookupRecordedSale,
+  )
 }

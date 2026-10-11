@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { encodePayPalMetadata } from './metadata.ts'
-import { classifyPayPalSale, createPayPalSnapshots, payPalDate, payPalRaw } from './snapshots.ts'
+import {
+  classifyPayPalSale,
+  createPayPalSnapshots,
+  type PayPalRecordedSale,
+  payPalDate,
+  payPalRaw,
+} from './snapshots.ts'
 import { createPayPalTransport } from './transport.ts'
 
 const meta = {
@@ -63,7 +69,19 @@ const tx = (id: string, time: string, status = 'COMPLETED') => ({
 const historyPath = (end = jan) =>
   `/v1/billing/subscriptions/I-SUB/transactions?start_time=${encodeURIComponent(jan)}&end_time=${encodeURIComponent(end)}`
 type Step = [string, unknown]
-function harness(steps: Step[]) {
+const recordedSale: PayPalRecordedSale = {
+  providerPaymentId: 'SALE',
+  providerSubscriptionId: 'I-SUB',
+  providerPriceId: 'P-PLAN',
+  workspaceId: meta.workspaceId,
+  planPriceId: meta.planPriceId,
+  kind: 'initial',
+  amount: 1234,
+  currency: 'USD',
+  paidAt: new Date(jan),
+  period: { start: new Date(jan), end: new Date(feb) },
+}
+function harness(steps: Step[], records: PayPalRecordedSale[] = []) {
   const transport = createPayPalTransport({
     environment: 'sandbox',
     clientId: 'offline-fixture',
@@ -83,7 +101,10 @@ function harness(steps: Step[]) {
     },
   })
   return {
-    snapshots: createPayPalSnapshots(transport),
+    snapshots: createPayPalSnapshots(
+      transport,
+      async (id) => records.find((record) => record.providerPaymentId === id) ?? null,
+    ),
     transport,
     done: () => expect(steps).toHaveLength(0),
   }
@@ -242,39 +263,111 @@ describe('PayPal snapshots via offline HTTP', () => {
     ).toMatchObject({ status: 'partially_refunded', refundedAmount: null })
     h.done()
   })
-  it('maps a historical initial Sale to its own cycle, not current last_payment', async () => {
-    const h = harness([
-      ['/v1/payments/sale/SALE', sale],
-      ['/v1/billing/subscriptions/I-SUB', sub],
-      [historyPath(), { transactions: [tx('SALE', jan)], total_items: 1, total_pages: 1 }],
-      ['/v1/billing/plans/P-PLAN', plan],
-    ])
+  it('preserves an existing historical Sale period even when its old end was inaccurate', async () => {
+    const legacyEnd = new Date('2026-01-31T22:00:00.000Z')
+    const h = harness(
+      [
+        ['/v1/payments/sale/SALE', sale],
+        ['/v1/billing/subscriptions/I-SUB', sub],
+        [historyPath(), { transactions: [tx('SALE', jan)], total_items: 1, total_pages: 1 }],
+        ['/v1/billing/plans/P-PLAN', plan],
+      ],
+      [{ ...recordedSale, period: { start: new Date(jan), end: legacyEnd } }],
+    )
     expect(
       await h.snapshots.getPayment({ kind: 'initial', providerPaymentId: 'SALE' }),
     ).toMatchObject({
       kind: 'initial',
       providerSubscriptionId: 'I-SUB',
-      period: { start: new Date(jan), end: new Date(feb) },
+      period: { start: new Date(jan), end: legacyEnd },
       metadata: meta,
     })
     h.done()
   })
-  it('maps current renewal using real paid dates without requiring metadata', async () => {
+  it('preserves the actual next billing time for a current initial Sale', async () => {
+    // 沙箱首付的扣款时刻与下次扣款时刻不同，不能从 start_time 推算周期末。
+    const start = '2026-10-11T07:17:44.000Z'
+    const paidAt = '2026-10-11T07:20:36.000Z'
+    const nextBilling = '2026-11-11T10:00:00.000Z'
     const h = harness([
-      ['/v1/payments/sale/SALE', { ...sale, create_time: feb }],
-      ['/v1/billing/subscriptions/I-SUB', { ...sub, custom_id: undefined }],
-      [historyPath(feb), { transactions: [tx('FIRST', jan, 'REFUNDED'), tx('SALE', feb)] }],
+      ['/v1/payments/sale/SALE', { ...sale, create_time: paidAt }],
+      [
+        '/v1/billing/subscriptions/I-SUB',
+        {
+          ...sub,
+          start_time: start,
+          billing_info: {
+            last_payment: { time: paidAt, amount: money },
+            next_billing_time: nextBilling,
+          },
+        },
+      ],
+      [
+        `/v1/billing/subscriptions/I-SUB/transactions?start_time=${encodeURIComponent(start)}&end_time=${encodeURIComponent(paidAt)}`,
+        { transactions: [tx('SALE', paidAt)], total_items: 1, total_pages: 1 },
+      ],
       ['/v1/billing/plans/P-PLAN', plan],
     ])
+    const payment = await h.snapshots.getPayment({ kind: 'initial', providerPaymentId: 'SALE' })
+    expect(payment.period?.end).toEqual(new Date(nextBilling))
+    h.done()
+  })
+  it('maps current renewal using real paid dates without requiring metadata', async () => {
+    const previousEnd = new Date('2026-01-31T22:00:00.000Z')
+    const h = harness(
+      [
+        ['/v1/payments/sale/SALE', { ...sale, create_time: feb }],
+        ['/v1/billing/subscriptions/I-SUB', { ...sub, custom_id: undefined }],
+        [historyPath(feb), { transactions: [tx('FIRST', jan, 'REFUNDED'), tx('SALE', feb)] }],
+        ['/v1/billing/plans/P-PLAN', plan],
+      ],
+      [
+        {
+          ...recordedSale,
+          providerPaymentId: 'FIRST',
+          period: { start: new Date(jan), end: previousEnd },
+        },
+      ],
+    )
     expect(
       await h.snapshots.getPayment({ kind: 'renewal', providerPaymentId: 'SALE' }),
     ).toMatchObject({
       kind: 'renewal',
-      period: { start: new Date(feb), end: new Date(mar) },
+      period: { start: previousEnd, end: new Date(mar) },
       metadata: null,
     })
     h.done()
   })
+  it('rejects a current renewal without a recorded preceding period', async () => {
+    const h = harness([
+      ['/v1/payments/sale/SALE', { ...sale, create_time: feb }],
+      ['/v1/billing/subscriptions/I-SUB', sub],
+      [historyPath(feb), { transactions: [tx('FIRST', jan), tx('SALE', feb)] }],
+      ['/v1/billing/plans/P-PLAN', plan],
+    ])
+    await expect(
+      h.snapshots.getPayment({ kind: 'renewal', providerPaymentId: 'SALE' }),
+    ).rejects.toThrow('Previous')
+    h.done()
+  })
+  it.each(['providerSubscriptionId', 'workspaceId', 'planPriceId', 'providerPriceId'] as const)(
+    'rejects conflicting recorded Sale %s',
+    async (field) => {
+      const h = harness(
+        [
+          ['/v1/payments/sale/SALE', sale],
+          ['/v1/billing/subscriptions/I-SUB', sub],
+          [historyPath(), { transactions: [tx('SALE', jan)] }],
+          ['/v1/billing/plans/P-PLAN', plan],
+        ],
+        [{ ...recordedSale, [field]: 'OTHER' }],
+      )
+      await expect(
+        h.snapshots.getPayment({ kind: 'initial', providerPaymentId: 'SALE' }),
+      ).rejects.toThrow('identity mismatch')
+      h.done()
+    },
+  )
   it('classifies duplicate delivery of first actual Sale as initial', async () => {
     const h = harness([
       ['/v1/payments/sale/SALE', sale],
@@ -304,7 +397,7 @@ describe('PayPal snapshots via offline HTTP', () => {
     await expect(classifyPayPalSale(h.transport, 'SALE')).rejects.toThrow('Complete')
     h.done()
   })
-  it('uses calendar boundaries for a historical Sale with processing delay', async () => {
+  it('rejects an unrecorded historical Sale instead of inferring calendar boundaries', async () => {
     const late = '2026-01-02T00:00:00.000Z'
     const h = harness([
       ['/v1/payments/sale/SALE', { ...sale, create_time: late }],
@@ -312,12 +405,9 @@ describe('PayPal snapshots via offline HTTP', () => {
       [historyPath(late), { transactions: [tx('SALE', late)] }],
       ['/v1/billing/plans/P-PLAN', plan],
     ])
-    expect(
-      await h.snapshots.getPayment({ kind: 'initial', providerPaymentId: 'SALE' }),
-    ).toMatchObject({
-      period: { start: new Date(jan), end: new Date(feb) },
-      paidAt: new Date(late),
-    })
+    await expect(
+      h.snapshots.getPayment({ kind: 'initial', providerPaymentId: 'SALE' }),
+    ).rejects.toThrow('Historical')
     h.done()
   })
   it('rejects malformed metadata and remote ID mismatch', async () => {
@@ -340,12 +430,15 @@ describe('PayPal snapshots via offline HTTP', () => {
     h.done()
   })
   it('reports Sale partial refunds without returning zero', async () => {
-    const h = harness([
-      ['/v1/payments/sale/SALE', { ...sale, state: 'partially_refunded' }],
-      ['/v1/billing/subscriptions/I-SUB', sub],
-      [historyPath(), { transactions: [tx('SALE', jan, 'PARTIALLY_REFUNDED')] }],
-      ['/v1/billing/plans/P-PLAN', plan],
-    ])
+    const h = harness(
+      [
+        ['/v1/payments/sale/SALE', { ...sale, state: 'partially_refunded' }],
+        ['/v1/billing/subscriptions/I-SUB', sub],
+        [historyPath(), { transactions: [tx('SALE', jan, 'PARTIALLY_REFUNDED')] }],
+        ['/v1/billing/plans/P-PLAN', plan],
+      ],
+      [recordedSale],
+    )
     expect(
       await h.snapshots.getPayment({ kind: 'initial', providerPaymentId: 'SALE' }),
     ).toMatchObject({ status: 'partially_refunded', refundedAmount: null })
@@ -400,12 +493,24 @@ describe('PayPal snapshots via offline HTTP', () => {
     h.done()
   })
   it('rejects paid history spanning a missing cycle', async () => {
-    const h = harness([
-      ['/v1/payments/sale/SALE', { ...sale, create_time: mar }],
-      ['/v1/billing/subscriptions/I-SUB', sub],
-      [historyPath(mar), { transactions: [tx('FIRST', jan), tx('SALE', mar)] }],
-      ['/v1/billing/plans/P-PLAN', plan],
-    ])
+    const h = harness(
+      [
+        ['/v1/payments/sale/SALE', { ...sale, create_time: mar }],
+        [
+          '/v1/billing/subscriptions/I-SUB',
+          {
+            ...sub,
+            billing_info: {
+              last_payment: { time: mar, amount: money },
+              next_billing_time: '2026-04-01T00:00:00.000Z',
+            },
+          },
+        ],
+        [historyPath(mar), { transactions: [tx('FIRST', jan), tx('SALE', mar)] }],
+        ['/v1/billing/plans/P-PLAN', plan],
+      ],
+      [{ ...recordedSale, providerPaymentId: 'FIRST' }],
+    )
     await expect(
       h.snapshots.getPayment({ kind: 'renewal', providerPaymentId: 'SALE' }),
     ).rejects.toThrow('gap')
