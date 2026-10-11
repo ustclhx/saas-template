@@ -33,7 +33,7 @@ pnpm --filter @saas/web exec playwright test -c e2e/staging-acceptance/playwrigh
 
 同一用户、run ID 和步骤重跑会复用已有媒体任务或聊天会话。不要更换 run ID 作为故障恢复手段：新 ID 会产生新收费请求。提交结果不明确、已有用户消息却没有 assistant、重复任务、外部取消待确认会失败，先核对数据库证据与供应商作业再恢复。视频已完成时不能再证明取消退款。关页用例另存流中关页的动作证据；已有回复缺少对应动作证据时明确 skip、交给人工核验，不认证为关页成功。同 run ID 跨 UTC 日期恢复时，应将其动作证据复制到当日目录（保留原文件），否则同样 skip。
 
-证据写入 `docs/runbooks/evidence/staging-acceptance/<UTC日期>/<run-ID>-*.json`，只含 ID、状态、定价、用量、积分、账本和审计记录 ID，不含邮箱、对话内容、请求体、Cookie、下载签名或连接串。同 run ID 同步骤覆盖最新证据，不同 run ID 分开保留。默认 reporter 只输出步骤标题/状态/失败代码位置；自行使用 verbose reporter 或 trace 可能泄露认证页面数据，勿用于可分享日志。
+真实 staging 运行的证据写入 `docs/runbooks/evidence/staging-acceptance/<UTC日期>/<run-ID>-*.json`，只有这些真实证据可以提交仓库。本地假服务商证据写入仓库根目录下已被 git 忽略的 `test-results/staging-acceptance/<UTC日期>/<run-ID>-*.json`，不得提交。两种证据只含 ID、状态、定价、用量、积分、账本和审计记录 ID，不含邮箱、对话内容、请求体、Cookie、下载签名或连接串。同 run ID 同步骤覆盖最新证据，不同 run ID 分开保留。默认 reporter 只输出步骤标题/状态/失败代码位置；自行使用 verbose reporter 或 trace 可能泄露认证页面数据，勿用于可分享日志。
 
 ## 模型设置与当前阻塞
 
@@ -46,7 +46,7 @@ pnpm --filter @saas/web exec playwright test -c e2e/staging-acceptance/playwrigh
 | `acceptance-fal-video` | fal / `fal-ai/wan/v2.2-a14b/text-to-video/turbo` |
 | `acceptance-deepseek-token` / `acceptance-deepseek-call` | deepseek / `deepseek-flash` |
 
-**当前后台无法录入 `params_schema`，而媒体提交要求有效 schema。** 脚本在新建媒体模型前检查 `Parameter schema (JSON)` 字段，缺失则明确 skip，不创建不可用模型、不写 staging 库。模型完整定义及平面参数 schema 在 `models.ts`；需后续授权补齐管理员模型 schema 输入/保存能力，再运行新建媒体模型步骤。现有同 key 且 schema 正确的模型仍可验证。文本模型设置不依赖该字段。
+**当前后台无法录入 `params_schema`，而媒体提交要求有效 schema。** 脚本在新建媒体模型前检查 `Parameter schema (JSON)` 字段，缺失则明确 skip，不创建不可用模型、不写 staging 库。模型完整定义及平面参数 schema 在 `models.ts`；后台 schema 编辑能力由协调者另开任务，本 PR 不实现。该能力补齐后再运行新建媒体模型步骤。现有同 key 且 schema 正确的模型仍可验证。文本模型设置不依赖该字段。
 
 fal 图片尺寸采用官方 API 支持的平面枚举 `square`，避免当前 schema 不支持嵌套尺寸对象。参考 [fal FLUX schnell API](https://fal.ai/models/fal-ai/flux/schnell/api)。参数与价格都冻结在任务快照中。
 
@@ -63,6 +63,8 @@ pnpm --filter @saas/web exec playwright test -c e2e/staging-acceptance/local.con
 本地创建账号、晋升管理员、给普通空间配置这五个模型的测试权益并赠送 100 测试积分，采用现有 e2e 隔离库方式；这些写库动作只存在 `local-setup.ts`。媒体 schema 暂由本地种子提供，因此本地不证明后台 UI 能创建媒体 schema。本地配置注入文本假流、媒体假 Provider、简化 Workflow 调度和鉴权后的本地 R2 下载，业务提交/预扣/媒体 runner/转存/结算/账本仍走真实实现。视频保持 queued 供立即取消。无真实 AI/支付/Sentry 调用；Sentry 503 只证明禁用 gate，不能算错误上报验收。
 
 本地 config 自动生成仅驻留进程的账号密码。需要重跑同一账号时，将相同 run ID 和本地账号凭据放在忽略的 `.env.local`，按 `set -a; . ./.env.local; set +a` 导入，仍先 unset 远程目标变量。服务由 Playwright 启停，不复用现有 dev。
+
+本地关页动作证据的写入与重跑读取都使用 `test-results/staging-acceptance`，不会写入 staging 的证据目录。跨 UTC 日期重跑时，在这个本地目录内复制对应动作证据到当日子目录；不要将本地文件搬到 runbook 证据目录。
 
 ## 媒体人工故障验收（待执行）
 
