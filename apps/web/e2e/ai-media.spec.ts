@@ -87,7 +87,7 @@ async function seedMediaModel(workspaceId: string) {
         'canceled',now(),now()+interval '1 day',true,now(),now())`
     await sql`insert into ai_model (id,key,kind,provider,provider_model_id,pricing,
       min_plan_features,params_schema,sort)
-      values (${modelId},${key},'image','fal','fixture-only',
+      values (${modelId},${key},'image','workers-ai','@cf/black-forest-labs/flux-1-schnell',
         ${sql.json({ mode: 'per_call', credits: 2 })},${sql.json([key])},
         ${sql.json({ type: 'object', properties: { prompt: { type: 'string', title: 'Prompt', minLength: 1 } }, required: ['prompt'] })},-1000)`
   } finally {

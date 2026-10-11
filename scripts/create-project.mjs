@@ -19,6 +19,7 @@ import { parseArgs } from 'node:util'
 const root = resolve(import.meta.dirname, '..')
 const featureNames = ['publicApi', 'blog', 'docs', 'waitlist', 'newsletter']
 const aiNames = ['text', 'image', 'video']
+const mediaProviderNames = ['fal', 'workers-ai']
 const excluded = new Set([
   '.git',
   'node_modules',
@@ -106,6 +107,11 @@ export function projectOptions(input) {
     supportEmail,
     locale: input.locale ?? 'en',
     ai: list(input.ai ?? 'text,image,video', aiNames, 'ai'),
+    mediaProviders: list(
+      input['media-providers'] ?? 'fal,workers-ai',
+      mediaProviderNames,
+      'media-providers',
+    ),
     features: list(input.features ?? 'blog', featureNames, 'features'),
     billing: list(input.billing ?? 'stripe,paypal', ['stripe', 'paypal'], 'billing'),
     oauth: list(input.oauth ?? 'google,github', ['google', 'github'], 'oauth'),
@@ -129,6 +135,10 @@ function templateConfig(source, options) {
     .replace(/multiTenant:\s*(?:true|false)/, `multiTenant: ${options.multiTenant}`)
     .replace(/oauth:\s*\[[^\]]*\]/, `oauth: ${JSON.stringify(options.oauth)}`)
     .replace(/turnstile:\s*(?:true|false)/, `turnstile: ${options.turnstile}`)
+    .replace(
+      /mediaProviders:\s*\[[^\]]*\]/,
+      `mediaProviders: ${JSON.stringify(options.mediaProviders)}`,
+    )
     .replace(/providers:\s*\[[^\]]*\]/, `providers: ${JSON.stringify(options.billing)}`)
   for (const name of aiNames) {
     result = result.replace(
@@ -157,6 +167,9 @@ function wranglerConfig(source, options, app) {
     )
     .replace(/("id"\s*:\s*")[a-f0-9]{32}"/g, '$100000000000000000000000000000000"')
     .replace(/("APP_URL"\s*:\s*")https:[^"]+"/g, `$1${options.url}"`)
+  if (!media || !options.mediaProviders.includes('workers-ai')) {
+    result = result.replace(/"ai"\s*:\s*\{[^}]*\},?/g, '')
+  }
   if (!media) result = result.replace(/"workflows"\s*:\s*\[[\s\S]*?\],?/g, '')
   if (app === 'web' && !options.turnstile) {
     result = result.replace(/,?\s*"TURNSTILE_SITE_KEY"\s*:\s*"[^"]+"/g, '')
@@ -204,9 +217,15 @@ export function setupChecklist(options) {
     resources.push(
       `Workflow：${options.name}-ai-media（定义在 jobs，web 的 script_name 指向 jobs）`,
       'R2：FILES 桶（绑定与 CORS）及仅授权该桶的 S3 令牌',
-      'fal.ai 账号与回调地址',
     )
-    secrets.push('FAL_KEY', 'MEDIA_WEBHOOK_SECRET', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY')
+    secrets.push('R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY')
+    if (options.mediaProviders.includes('fal')) {
+      resources.push('fal.ai 账号与回调地址')
+      secrets.push('FAL_KEY', 'MEDIA_WEBHOOK_SECRET')
+    }
+    if (options.mediaProviders.includes('workers-ai')) {
+      resources.push('Workers AI：web 与 jobs 的 AI 绑定（含 staging），无需服务商密钥')
+    }
     vars.push('R2_ACCOUNT_ID', 'R2_FILES_BUCKET')
   }
   return { resources, secrets, vars }
@@ -337,7 +356,7 @@ export function verifyProject(target) {
   }
 }
 
-const help = `用法：pnpm create-project [参数]\n无参数时交互输入；非交互必须提供 --name 与 --domain。\n  --name acme --domain acme.example --target /tmp/acme\n  --locale en|zh --support-email support@acme.example\n  --ai text,image,video --features blog,docs,waitlist,newsletter,publicApi\n  --billing stripe,paypal --oauth google,github\n  --turnstile true|false --multi-tenant true|false\n列表参数传空字符串可关闭全部；默认 ai / billing / oauth 全开，features=blog。\n默认安装依赖并运行 typecheck 与单元测试；--skip-check 仅生成，随后必须自行验证。\n  --help 显示帮助\n`
+const help = `用法：pnpm create-project [参数]\n无参数时交互输入；非交互必须提供 --name 与 --domain。\n  --name acme --domain acme.example --target /tmp/acme\n  --locale en|zh --support-email support@acme.example\n  --ai text,image,video --features blog,docs,waitlist,newsletter,publicApi\n  --media-providers fal,workers-ai\n  --billing stripe,paypal --oauth google,github\n  --turnstile true|false --multi-tenant true|false\n列表参数传空字符串可关闭全部；默认 ai / billing / oauth 全开，features=blog。\n默认安装依赖并运行 typecheck 与单元测试；--skip-check 仅生成，随后必须自行验证。\n  --help 显示帮助\n`
 
 export async function main() {
   const { values } = parseArgs({
@@ -350,6 +369,7 @@ export async function main() {
           'locale',
           'support-email',
           'ai',
+          'media-providers',
           'features',
           'billing',
           'oauth',
@@ -372,6 +392,7 @@ export async function main() {
         ['target', '输出目录', values.name ?? ''],
         ['locale', '默认语言', 'en'],
         ['ai', 'AI 功能（逗号列表）', 'text,image,video'],
+        ['media-providers', '媒体服务商（逗号列表，- 关闭全部）', 'fal,workers-ai'],
         ['features', '可选功能（逗号列表，- 关闭全部）', 'blog'],
         ['billing', '支付（逗号列表，- 关闭全部）', 'stripe,paypal'],
         ['oauth', 'OAuth（逗号列表，- 关闭全部）', 'google,github'],

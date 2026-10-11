@@ -30,6 +30,7 @@ type Mode = 'per_call' | 'token' | 'per_unit'
 const ERRORS: Record<string, string> = {
   MISSING_TOKEN_LIMITS: 'Per-call text models require input and output token limits.',
   INVALID_PRICING: 'Pricing is invalid. Check the required fields for this pricing mode.',
+  MEDIA_PROVIDER_DISABLED: 'Choose an enabled media provider.',
   MODEL_KEY_TAKEN: 'Another model already uses this key.',
 }
 
@@ -138,7 +139,7 @@ function pricingOf(draft: Draft): unknown {
 
 function Models() {
   const data = Route.useLoaderData()
-  const { models, defaults } = data
+  const { models, defaults, mediaProviders } = data
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
@@ -204,10 +205,21 @@ function Models() {
           void navigate({ search: filtersToSearch(['kind', 'order'], values) })
         }
       />
-      <ModelEditor key="new" initial={newDraft(defaults)} defaults={defaults} />
+      <ModelEditor
+        key="new"
+        initial={newDraft(defaults)}
+        defaults={defaults}
+        mediaProviders={mediaProviders}
+      />
       {models.length === 0 && <p>No models yet.</p>}
       {models.map((model) => (
-        <ModelEditor key={model.id} model={model} initial={toDraft(model)} defaults={defaults} />
+        <ModelEditor
+          key={model.id}
+          model={model}
+          initial={toDraft(model)}
+          defaults={defaults}
+          mediaProviders={mediaProviders}
+        />
       ))}
     </section>
   )
@@ -217,10 +229,12 @@ function ModelEditor({
   model,
   initial,
   defaults,
+  mediaProviders,
 }: {
   model?: ModelRow
   initial: Draft
   defaults: Data['defaults']
+  mediaProviders: Data['mediaProviders']
 }) {
   const router = useRouter()
   const [draft, setDraft] = useState(initial)
@@ -292,6 +306,7 @@ function ModelEditor({
               setDraft((current) => ({
                 ...current,
                 kind,
+                provider: kind === 'text' ? '' : (mediaProviders[0] ?? ''),
                 ...pricingDraft(defaults[kind] as Record<string, unknown>),
               }))
             }}
@@ -301,8 +316,25 @@ function ModelEditor({
             <option value="video">Video</option>
           </select>
         </label>{' '}
-        <label>
-          Provider <input required maxLength={64} {...field('provider')} />
+        <label htmlFor={`${model?.id ?? 'new'}-provider`}>
+          Provider{' '}
+          {draft.kind === 'text' ? (
+            <input
+              id={`${model?.id ?? 'new'}-provider`}
+              required
+              maxLength={64}
+              {...field('provider')}
+            />
+          ) : (
+            <select id={`${model?.id ?? 'new'}-provider`} required {...field('provider')}>
+              <option value="">Choose a provider</option>
+              {mediaProviders.map((provider) => (
+                <option key={provider} value={provider}>
+                  {provider}
+                </option>
+              ))}
+            </select>
+          )}
         </label>{' '}
         <label>
           Provider model ID <input required maxLength={200} {...field('providerModelId')} />

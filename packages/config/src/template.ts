@@ -9,6 +9,7 @@ export type PaymentProvider = 'stripe' | 'paypal'
 /** 'per_call' 按次 | 'token' 按 token | 'per_unit' 按张/秒 */
 export type PricingMode = 'per_call' | 'token' | 'per_unit'
 export type AiModality = 'text' | 'image' | 'video'
+export type MediaProviderId = 'fal' | 'workers-ai'
 
 export type DefaultLocale = 'en' | 'zh'
 
@@ -70,6 +71,8 @@ export interface TemplateConfig<L extends string = string> {
     readonly text: boolean
     readonly image: boolean
     readonly video: boolean
+    /** 启用的媒体服务商；凭据与绑定仍由运行环境提供 */
+    readonly mediaProviders: readonly MediaProviderId[]
     /** 新建模型时的默认计费方式，后台可逐个模型修改 */
     readonly defaultPricingMode: { readonly [M in AiModality]: PricingMode }
   }
@@ -139,6 +142,7 @@ export const templateConfigDefaults = {
     text: true,
     image: true,
     video: true,
+    mediaProviders: ['fal', 'workers-ai'],
     defaultPricingMode: { text: 'token', image: 'per_call', video: 'per_call' },
   },
   features: {

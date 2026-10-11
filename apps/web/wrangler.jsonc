@@ -5,6 +5,7 @@
   "main": "./src/server.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
+  "ai": { "binding": "AI" },
   // FILES 专用私有桶；顶层由 Miniflare 模拟，预签名配置必须与绑定一致。
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "files" }],
   // 本地开发时 localConnectionString 指向主 checkout 的 saas_dev；
@@ -62,6 +63,7 @@
   "env": {
     "staging": {
       "name": "web-staging",
+      "ai": { "binding": "AI" },
       "r2_buckets": [{ "binding": "FILES", "bucket_name": "files-staging" }],
       "vars": {
         "APP_URL": "https://web-staging.saas-jobs.workers.dev",

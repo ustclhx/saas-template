@@ -26,6 +26,18 @@ export interface MediaCopyResult {
   }[]
 }
 
+/** 同步 Provider 的字节只在当前 step 内使用，不写入任务 JSON。 */
+export interface MediaBinaryCopyResult {
+  readonly outputs: readonly {
+    readonly body: Uint8Array | ReadableStream<Uint8Array>
+    readonly mime: string
+    readonly width?: number
+    readonly height?: number
+    readonly durationSec?: number
+  }[]
+}
+type MediaCopyOutput = (MediaCopyResult | MediaBinaryCopyResult)['outputs'][number]
+
 export interface MediaCopyLimits {
   readonly maxFileBytes: number
   readonly storageBytes: number
@@ -67,15 +79,27 @@ function checkSize(size: number, max: number) {
 async function copyOutput(
   bucket: MediaBucket,
   key: string,
-  output: MediaCopyResult['outputs'][number],
+  output: MediaCopyOutput,
   limits: MediaCopyLimits,
   fetcher: typeof fetch,
   makeFixedStream: FixedStreamFactory,
 ) {
-  const url = allowedUrl(output.url, limits.allowedHosts)
   if (!limits.allowedMimeTypes.includes(output.mime))
     throw new AppError('FILE_TYPE_NOT_ALLOWED', 'Media type is not allowed')
-  const response = await fetcher(url.toString(), { redirect: 'error' })
+  let response: Response
+  if ('url' in output) {
+    response = await fetcher(allowedUrl(output.url, limits.allowedHosts).toString(), {
+      redirect: 'error',
+    })
+  } else {
+    const body = output.body
+    if (body instanceof Uint8Array) {
+      checkSize(body.byteLength, limits.maxFileBytes)
+      await bucket.put(key, body, { httpMetadata: { contentType: output.mime } })
+      return { mime: output.mime, size: body.byteLength }
+    }
+    response = new Response(body, { headers: { 'Content-Type': output.mime } })
+  }
   try {
     if (!response.ok || response.redirected || !response.body)
       throw new AppError('MEDIA_DOWNLOAD_FAILED', 'Media download failed')
@@ -159,7 +183,7 @@ function describeFile(row: File): PersistedMediaFile {
 }
 
 /** 确定性对象 key 与唯一 file.r2Key 让 Workflow 步骤可安全重放。 */
-export async function persistMediaOutputs({
+async function persistMediaOutputsImpl({
   db,
   bucket,
   task,
@@ -171,14 +195,14 @@ export async function persistMediaOutputs({
   readonly db: Database
   readonly bucket: MediaBucket
   readonly task: Pick<AiTask, 'id' | 'workspaceId' | 'userId'>
-  readonly result: MediaCopyResult
+  readonly result: MediaCopyResult | MediaBinaryCopyResult
   readonly limits: MediaCopyLimits
   readonly fetch?: typeof fetch
   readonly fixedLengthStream?: FixedStreamFactory
 }): Promise<PersistedMediaFile[]> {
   // Workflow 同一实例的转存步骤串行重放；pending 记录作为中断后的清理线索。
   for (const output of result.outputs) {
-    allowedUrl(output.url, limits.allowedHosts)
+    if ('url' in output) allowedUrl(output.url, limits.allowedHosts)
     if (!limits.allowedMimeTypes.includes(output.mime))
       throw new AppError('FILE_TYPE_NOT_ALLOWED', 'Media type is not allowed')
   }
@@ -196,7 +220,7 @@ export async function persistMediaOutputs({
       .from(organization)
       .where(and(eq(organization.id, task.workspaceId), isNull(organization.deletedAt)))
     if (!workspace) throw notFound()
-    const entries: { row: File; output: MediaCopyResult['outputs'][number] }[] = []
+    const entries: { row: File; output: MediaCopyOutput }[] = []
     for (const [index, output] of result.outputs.entries()) {
       const key = `ws/${task.workspaceId}/ai/${task.id}/${index}`
       const [existing] = await tenant.select(file, { where: eq(file.r2Key, key) })
@@ -251,7 +275,9 @@ export async function persistMediaOutputs({
       const [current] = await tenant.select(aiTask, { where: eq(aiTask.id, task.id) }).for('update')
       if (!current) throw notFound()
       if (current.status === 'failed' || current.status === 'canceled')
-        throw new AppError('MEDIA_TASK_TERMINAL', 'Media task is no longer active', { status: 409 })
+        throw new AppError('MEDIA_TASK_TERMINAL', 'Media task is no longer active', {
+          status: 409,
+        })
       const [workspace] = await tx
         .select({ id: organization.id })
         .from(organization)
@@ -277,7 +303,9 @@ export async function persistMediaOutputs({
         addedBytes &&
         (await getStorageUsage(tx, task.workspaceId)) + addedBytes > limits.storageBytes
       )
-        throw new AppError('UPGRADE_REQUIRED', 'Workspace storage quota exceeded', { status: 403 })
+        throw new AppError('UPGRADE_REQUIRED', 'Workspace storage quota exceeded', {
+          status: 403,
+        })
       const files: PersistedMediaFile[] = []
       for (const row of rows) {
         const stored = copied.get(row.id)
@@ -333,5 +361,23 @@ export async function persistMediaOutputs({
       })
     }
     throw error
+  }
+}
+
+export async function persistMediaOutputs(
+  input: Parameters<typeof persistMediaOutputsImpl>[0],
+): Promise<PersistedMediaFile[]> {
+  try {
+    return await persistMediaOutputsImpl(input)
+  } finally {
+    // 已确认文件复用或校验失败时，同步产出流也必须释放上游 reader。
+    const unused = input.result.outputs.flatMap((output) =>
+      'body' in output && output.body instanceof ReadableStream && !output.body.locked
+        ? [output.body.cancel()]
+        : [],
+    )
+    const cleanup = await Promise.allSettled(unused)
+    if (cleanup.some((entry) => entry.status === 'rejected'))
+      log.warn('storage.media.stream_cancel_failed', { taskId: input.task.id })
   }
 }

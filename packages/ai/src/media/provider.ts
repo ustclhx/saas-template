@@ -45,3 +45,29 @@ export interface MediaProvider {
   /** 仅表示取消请求已被接受；已运行的作业可能仍完成。 */
   cancel?(jobId: string): Promise<void>
 }
+
+export interface MediaBinaryOutput {
+  body: ReadableStream<Uint8Array> | Uint8Array
+  mime: string
+  width?: number
+  height?: number
+  durationSec?: number
+}
+
+export interface MediaBinaryResult {
+  outputs: MediaBinaryOutput[]
+  usage?: MediaResult['usage']
+}
+
+/** 同步字节只能在同一 Workflow step 内转存，不能作为 step 返回值。 */
+export interface SyncMediaProvider {
+  readonly id: string
+  readonly capabilities: { readonly synchronous: true; readonly idempotentSubmit: boolean }
+  run(input: MediaSubmitInput): Promise<MediaBinaryResult>
+}
+
+export type TaskMediaProvider = MediaProvider | SyncMediaProvider
+
+export function isSyncMediaProvider(provider: TaskMediaProvider): provider is SyncMediaProvider {
+  return 'synchronous' in provider.capabilities && provider.capabilities.synchronous === true
+}

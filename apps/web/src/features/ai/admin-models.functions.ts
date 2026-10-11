@@ -9,6 +9,7 @@ import { templateConfig } from '../../server/template-config.ts'
 import { withAdminAction } from '../admin/action.server.ts'
 import { adminMiddleware } from '../admin/admin.functions.ts'
 import { ADMIN_PAGE_SIZE, adminListSearch } from '../admin/list.ts'
+import { assertModelProviderEnabled } from './admin-model-provider.ts'
 
 // 模型管理：服务端分页、类型筛选与排序；新增、编辑、复制、启用 / 停用。
 // 计费方式由 @saas/ai 的 parsePricing 校验（按次文本模型缺 token 上限时拒绝保存）；
@@ -100,6 +101,7 @@ export const getAdminModels = createServerFn({ method: 'GET' })
       models: rows
         .slice(0, ADMIN_PAGE_SIZE)
         .map((row) => ({ ...row, pricing: row.pricing as { [key: string]: Json } })),
+      mediaProviders: templateConfig.ai.mediaProviders,
       defaults: Object.fromEntries(kinds.map((kind) => [kind, defaultPricing(kind, modes)])),
     }
   })
@@ -110,6 +112,7 @@ export const saveAdminModel = createServerFn({ method: 'POST' })
   .handler(({ context, data }) =>
     safe(() =>
       withAdminAction(context, 'ai.model_save', async ({ tx, audit }) => {
+        assertModelProviderEnabled(data.kind, data.provider, templateConfig.ai.mediaProviders)
         const values = modelValues(data)
         // 锁住旧行，保证并发改价时审计中的旧价格是本次实际覆盖的价格。
         const [before] = data.id
@@ -174,6 +177,7 @@ export const copyAdminModel = createServerFn({ method: 'POST' })
       withAdminAction(context, 'ai.model_copy', async ({ tx, audit }) => {
         const [source] = await tx.select().from(aiModel).where(eq(aiModel.id, data.id)).for('share')
         if (!source) throw new AppError('NOT_FOUND', 'Model not found', { status: 404 })
+        assertModelProviderEnabled(source.kind, source.provider, templateConfig.ai.mediaProviders)
         const values = modelValues({
           ...source,
           key: data.key,

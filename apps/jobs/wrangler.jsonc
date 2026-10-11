@@ -4,6 +4,7 @@
   "main": "./src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
+  "ai": { "binding": "AI" },
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "files" }],
   // 本地开发时 localConnectionString 指向主 checkout 的 saas_dev；
   // Orca worktree 中由 scripts/dev.mjs（或 web 的 vite.config.ts）从 .env.worktree 读取
@@ -48,6 +49,7 @@
   "env": {
     "staging": {
       "name": "jobs-staging",
+      "ai": { "binding": "AI" },
       "r2_buckets": [{ "binding": "FILES", "bucket_name": "files-staging" }],
       // 计费 Cron 验收需要查询一小时内的完整日志，仅 staging 开启日志采集。
       "observability": {

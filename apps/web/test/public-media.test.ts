@@ -1,5 +1,10 @@
 import { env, type WorkflowStep } from 'cloudflare:workers'
-import { type MediaProvider, readMediaTaskInput } from '@saas/ai'
+import {
+  createTaskMediaProvider,
+  type MediaProvider,
+  readMediaTaskInput,
+  WORKERS_AI_IMAGE_MODEL,
+} from '@saas/ai'
 import { createAuth } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
 import { getCreditBalance, grant } from '@saas/credits'
@@ -78,13 +83,13 @@ async function owner(credits = 100) {
   return { id: user.id, slug: workspace.slug, headers, key }
 }
 
-async function model() {
+async function model(providerId = 'fal') {
   const key = `${prefix}${newId()}`
   await db.insert(aiModel).values({
     key,
     kind: 'image',
-    provider: 'fal',
-    providerModelId: 'fal-ai/fixture',
+    provider: providerId,
+    providerModelId: providerId === 'workers-ai' ? WORKERS_AI_IMAGE_MODEL : 'fal-ai/fixture',
     pricing: { mode: 'per_call', credits: 3 },
     paramsSchema: {
       type: 'object',
@@ -191,6 +196,67 @@ afterAll(async () => {
 })
 
 describe('公开 API 媒体任务与共用 Workflow', () => {
+  it('通过假 AI 绑定执行同步图片，公开 API 可查询真实 R2 文件且积分结算一次', async () => {
+    const who = await owner()
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])
+    const binding = { run: vi.fn(async () => ({ image: btoa(String.fromCharCode(...jpeg)) })) }
+    const deps = dependencies()
+    delete deps.providerFactory
+    const { MEDIA_WEBHOOK_SECRET: _secret, ...envWithoutCallback } = deps.env
+    deps.env = { ...envWithoutCallback, AI: binding }
+    const taskId = await accepted(who.key.key, await model('workers-ai'), deps)
+    const key = `ws/${who.id}/ai/${taskId}/0`
+    objectKeys.push(key)
+    const step = {
+      async do(_name: string, configOrCallback: unknown, callback?: () => Promise<unknown>) {
+        return ((callback ?? configOrCallback) as () => Promise<unknown>)()
+      },
+      waitForEvent: vi.fn(async () => {
+        throw new Error('Sync output must not wait for callbacks')
+      }),
+    } as unknown as WorkflowStep
+    const runnerDeps = {
+      db,
+      provider: (task: Parameters<typeof createTaskMediaProvider>[1]) =>
+        createTaskMediaProvider(deps.env, task),
+      params: async (task: Parameters<typeof readMediaTaskInput>[0]) =>
+        readMediaTaskInput(task).params,
+      callbackOrigin: url,
+      callbackSecret: '',
+      persist: (
+        task: Parameters<typeof persistMediaOutputs>[0]['task'],
+        result: Parameters<typeof persistMediaOutputs>[0]['result'],
+      ) =>
+        persistMediaOutputs({
+          db,
+          bucket: env.FILES,
+          task,
+          result,
+          limits: {
+            maxFileBytes: 1000,
+            storageBytes: 1000,
+            allowedMimeTypes: ['image/jpeg'],
+            allowedHosts: [],
+          },
+        }),
+      nonRetryable: (message: string) => new Error(message),
+    }
+    await runMediaTask(taskId, step, runnerDeps)
+    await runMediaTask(taskId, step, runnerDeps)
+    const response = await detail(who.key.key, taskId, deps)
+    expect(await response.json()).toMatchObject({
+      status: 'succeeded',
+      credits_charged: 3,
+      files: [{ mime: 'image/jpeg', size: jpeg.byteLength }],
+    })
+    expect(
+      new Uint8Array((await (await env.FILES.get(key))?.arrayBuffer()) as ArrayBuffer),
+    ).toEqual(jpeg)
+    expect(binding.run).toHaveBeenCalledTimes(1)
+    expect(step.waitForEvent).not.toHaveBeenCalled()
+    expect(await getCreditBalance(db, who.id)).toMatchObject({ available: 97, held: 0 })
+  })
+
   it('通过 Key 提交图片并轮询 queued/running/succeeded，真实转存和结算后返回五分钟下载地址', async () => {
     const mediaExample = (doc: string) => {
       const example = [...doc.matchAll(/```json\n([\s\S]*?)\n```/g)]

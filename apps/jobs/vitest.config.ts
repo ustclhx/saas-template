@@ -34,11 +34,15 @@ export default defineConfig({
             {
               plugins: [
                 cloudflareTest({
+                  // 所有推理由测试注入假绑定，禁止 AI 绑定建立远程连接。
+                  remoteBindings: false,
                   // 直接使用部署配置（Workflow、Queue consumer、Cron、Hyperdrive）；
                   // compatibility_date 受限于 vitest-plugin 自带的 workerd 版本
                   wrangler: { configPath: './wrangler.jsonc' },
                   miniflare: {
                     compatibilityDate: '2026-08-01',
+                    // 跨绑定 smoke 测试 mock 所有外部步骤，只需通过 Provider 的配置校验。
+                    bindings: { FAL_KEY: 'workflow-fixture-only' },
                     // audit_log 对 app 只追加（@saas/db 迁移 0009），清理审计行改用 migrator
                     hyperdrives: { HYPERDRIVE_MIGRATOR: migratorUrl },
                   },
