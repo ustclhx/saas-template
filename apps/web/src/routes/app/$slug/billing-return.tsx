@@ -8,8 +8,9 @@ export const Route = createFileRoute('/app/$slug/billing-return')({
   validateSearch: z.object({
     provider: z.enum(['stripe', 'paypal', 'creem', 'paddle', 'polar']).optional(),
     token: z.string().max(255).optional(),
+    subscription_id: z.string().max(255).optional(),
     providerRef: z.string().max(255).optional(),
-    canceled: z.string().optional(),
+    canceled: z.union([z.string(), z.boolean()]).transform(String).optional(),
   }),
   component: BillingReturnPage,
 })
@@ -22,8 +23,14 @@ function BillingReturnPage() {
   const [message, setMessage] = useState('')
   useEffect(() => setReady(true), [])
   const providerRef = search.providerRef ?? search.token
+  // PayPal 订阅回跳也携带 token，但只有一次性订单需要 capture。
+  const canConfirm =
+    search.provider === 'paypal' &&
+    search.canceled !== 'true' &&
+    search.subscription_id === undefined &&
+    Boolean(providerRef)
   async function confirm() {
-    if (!search.provider || !providerRef) return
+    if (!canConfirm || !search.provider || !providerRef) return
     setBusy(true)
     try {
       const result = await confirmCustomerCheckout({
@@ -49,7 +56,7 @@ function BillingReturnPage() {
           ? 'Checkout was canceled. You can return to billing to try again.'
           : 'Your plan and credits update after payment is verified. Returning here does not confirm that payment succeeded.'}
       </p>
-      {search.canceled !== 'true' && search.provider === 'paypal' && providerRef && (
+      {canConfirm && (
         <Button disabled={!ready || busy || confirmed} onClick={() => void confirm()}>
           Confirm payment
         </Button>
