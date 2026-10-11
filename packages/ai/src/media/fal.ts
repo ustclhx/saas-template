@@ -30,7 +30,7 @@ const webhookSchema = z.object({
   gateway_request_id: id.optional(),
   status: z.enum(['OK', 'ERROR']),
   payload: z.unknown().optional(),
-  error: z.string().optional(),
+  error: z.string().nullable().optional(),
   error_type: z.string().nullable().optional(),
   payload_error: z.string().optional(),
 })
@@ -222,7 +222,7 @@ export function createFalMediaProvider(options: FalMediaProviderOptions): MediaP
 
   return {
     id: 'fal',
-    // 官方文档仅定义服务端生成的 request_id，没有承诺客户端提交键去重；不自动重试。
+    // 2026-10-12 实测同一 Idempotency-Key 与请求体仍生成两个作业；证据见夹具 README。
     capabilities: { idempotentSubmit: false },
     async submit(input) {
       if (input.modelId !== options.modelId)

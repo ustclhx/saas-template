@@ -209,8 +209,11 @@ export function setupChecklist(options) {
     if (provider === 'paypal') vars.push('PAYPAL_ENV')
   }
   if (options.ai.includes('text')) {
-    resources.push('AI Gateway 与至少一家文本模型服务商；后台登记模型与价格')
-    secrets.push('AI_GATEWAY_TOKEN', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GOOGLE_AI_API_KEY')
+    // 服务商密钥默认存于 AI Gateway BYOK；放 Worker 的 OPENAI/ANTHROPIC/GOOGLE/DEEPSEEK_API_KEY 为可选。
+    resources.push(
+      'AI Gateway（开启鉴权，在 Provider Keys 保存所用文本服务商的密钥）；后台登记模型与价格',
+    )
+    secrets.push('AI_GATEWAY_TOKEN')
     vars.push('AI_GATEWAY_ACCOUNT_ID', 'AI_GATEWAY_ID')
   }
   if (media) {

@@ -2,21 +2,26 @@ import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { createFalMediaProvider, FalProviderError } from './fal.ts'
 import fixtures from './fixtures/fal.documented.json'
 import recordedJwks from './fixtures/fal.jwks.recorded.json'
+import recorded from './fixtures/fal.recorded.json'
 
 const modelId = 'fal-ai/flux/schnell'
 const jobId = fixtures.submit.request_id
+const recordedJobId = recorded.imageSubmit.body.request_id
 const now = 1_800_000_000_000
 const input = { modelId, params: { prompt: 'a red square' }, idempotencyKey: 'task-fixture' }
 const imageResult = {
-  outputs: [{ url: fixtures.image.images[0]?.url, mime: 'image/png', width: 512, height: 512 }],
+  outputs: [
+    { url: recorded.imageResult.body.images[0]?.url, mime: 'image/png', width: 512, height: 512 },
+  ],
   usage: { images: 1 },
 }
 function response(body: unknown, status = 200) {
   return Response.json(body, { status })
 }
-function setup(bodies: unknown[], model = modelId) {
+function setup(bodies: unknown[], model = modelId, statuses: number[] = []) {
   const fetch = vi.fn<typeof globalThis.fetch>()
-  for (const body of bodies) fetch.mockResolvedValueOnce(response(body))
+  for (const [index, body] of bodies.entries())
+    fetch.mockResolvedValueOnce(response(body, statuses[index] ?? 200))
   return {
     fetch,
     provider: createFalMediaProvider({
@@ -28,11 +33,13 @@ function setup(bodies: unknown[], model = modelId) {
   }
 }
 
-describe('fal queue（文档夹具，待真实录制）', () => {
+describe('fal queue（真实录制与未录制分支的文档补充）', () => {
   it('提交传递参数和完整 webhook URL，只返回持久 request_id，不声称幂等', async () => {
-    const { provider, fetch } = setup([fixtures.submit])
+    const { provider, fetch } = setup([recorded.imageSubmit.body], modelId, [
+      recorded.imageSubmit.httpStatus,
+    ])
     const webhookUrl = 'https://example.com/webhook?task=task-fixture&sig=test-placeholder'
-    expect(await provider.submit({ ...input, webhookUrl })).toEqual({ jobId })
+    expect(await provider.submit({ ...input, webhookUrl })).toEqual({ jobId: recordedJobId })
     expect(provider.capabilities.idempotentSubmit).toBe(false)
     const [url, init] = fetch.mock.calls[0] ?? []
     expect(new URL(String(url)).searchParams.get('fal_webhook')).toBe(webhookUrl)
@@ -46,20 +53,25 @@ describe('fal queue（文档夹具，待真实录制）', () => {
     expect(new Headers(init?.headers).has('idempotency-key')).toBe(false)
   })
 
-  it('新实例只凭持久 jobId 查询排队、运行和图片结果，使用去掉子路径的队列端点', async () => {
-    const { provider, fetch } = setup([
-      fixtures.queued,
-      fixtures.running,
-      fixtures.completed,
-      fixtures.image,
-    ])
-    expect(await provider.getStatus(jobId)).toEqual({ status: 'queued' })
-    expect(await provider.getStatus(jobId)).toEqual({ status: 'running' })
-    expect(await provider.getStatus(jobId)).toEqual({ status: 'succeeded', result: imageResult })
-    expect(fetch.mock.calls[0]?.[0]).toBe(
-      `https://queue.fal.run/fal-ai/flux/requests/${jobId}/status`,
+  it('新实例用录制的 202 运行状态与 200 图片结果，使用去掉子路径的队列端点', async () => {
+    const entries = [recorded.imageInitialStatus, recorded.imageStatus, recorded.imageResult]
+    const { provider, fetch } = setup(
+      entries.map((entry) => entry.body),
+      modelId,
+      entries.map((entry) => entry.httpStatus),
     )
-    expect(fetch.mock.calls[3]?.[0]).toBe(`https://queue.fal.run/fal-ai/flux/requests/${jobId}`)
+    expect(await provider.getStatus(recordedJobId)).toEqual({ status: 'running' })
+    expect(await provider.getStatus(recordedJobId)).toEqual({
+      status: 'succeeded',
+      result: imageResult,
+    })
+    expect(fetch.mock.calls[0]?.[0]).toBe(recorded.imageSubmit.body.status_url)
+    expect(fetch.mock.calls[2]?.[0]).toBe(recorded.imageSubmit.body.response_url)
+  })
+
+  it('排队查询按文档形状归一化（本次查询未捕获 IN_QUEUE）', async () => {
+    const { provider } = setup([fixtures.queued], modelId, [202])
+    expect(await provider.getStatus(jobId)).toEqual({ status: 'queued' })
   })
 
   it('视频结果不把模型运行时间当作生成用量', async () => {
@@ -82,17 +94,21 @@ describe('fal queue（文档夹具，待真实录制）', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-  it('取消以 PUT 发送，接受 202，传播已完成的 400', async () => {
-    const { provider, fetch } = setup([])
-    fetch
-      .mockResolvedValueOnce(response(fixtures.cancel, 202))
-      .mockResolvedValueOnce(response({ status: 'ALREADY_COMPLETED' }, 400))
-    await provider.cancel?.(jobId)
+  it('视频取消以 PUT 发送，接受录制的 202；图片已完成的录制 400 传播给调用方', async () => {
+    const { provider, fetch } = setup([recorded.videoCancel.body], recorded.metadata.videoModel, [
+      recorded.videoCancel.httpStatus,
+    ])
+    await provider.cancel?.(recorded.videoSubmit.body.request_id)
     expect(fetch.mock.calls[0]).toEqual([
-      `https://queue.fal.run/fal-ai/flux/requests/${jobId}/cancel`,
+      recorded.videoSubmit.body.cancel_url,
       expect.objectContaining({ method: 'PUT' }),
     ])
-    await expect(provider.cancel?.(jobId)).rejects.toMatchObject({ httpStatus: 400 })
+    const completed = setup([recorded.cancelCompleted.body], modelId, [
+      recorded.cancelCompleted.httpStatus,
+    ])
+    await expect(completed.provider.cancel?.(recordedJobId)).rejects.toMatchObject({
+      httpStatus: recorded.cancelCompleted.httpStatus,
+    })
   })
 
   it.each([503, 408, 429])('HTTP %i 提交不自动重试并保留是否可能已受理', async (status) => {
@@ -162,12 +178,21 @@ describe('fal webhook Ed25519 协议（本地临时签名）', () => {
     return { req, body }
   }
 
+  it('脱敏后的真实成功回调重新签名后归一化，接受上游 error=null', async () => {
+    const { provider } = setup([jwks])
+    const { req, body } = await signed(recorded.imageWebhook.body, recordedJobId)
+    expect(await provider.parseWebhook(req, body)).toEqual({
+      jobId: recordedJobId,
+      result: imageResult,
+    })
+  })
+
   it('成功与失败验签后归一化，内部重试保留队列 request_id，并缓存公钥', async () => {
     const { provider, fetch } = setup([jwks])
     const success = await signed({
       request_id: jobId,
       status: 'OK',
-      payload: { ...fixtures.image, prompt: '红色方块' },
+      payload: { ...recorded.imageResult.body, prompt: '红色方块' },
     })
     expect(await provider.parseWebhook(success.req, success.body)).toEqual({
       jobId,
