@@ -3,7 +3,7 @@ import { type MediaProvider, readMediaTaskInput } from '@saas/ai'
 import { createAuth } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
 import { getCreditBalance, grant } from '@saas/credits'
-import { aiModel, aiTask, createDb, member, scoped } from '@saas/db'
+import { aiModel, aiTask, createDb, file, member, scoped } from '@saas/db'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import { newId } from '@saas/shared'
 import { persistMediaOutputs } from '@saas/storage'
@@ -321,6 +321,11 @@ describe('公开 API 媒体任务与共用 Workflow', () => {
     expect(task?.userId).toBe(creator.id)
     for (const hidden of ['providerJobId', 'callbackPayload', 'holdId', 'input'])
       expect(body).not.toHaveProperty(hidden)
+
+    await scoped(db, who.id).updateById(file, output.id, { deletedAt: new Date() })
+    const afterDelete = await detail(key.key, taskId, deps)
+    expect(afterDelete.status).toBe(200)
+    expect(await afterDelete.json()).toMatchObject({ status: 'succeeded', files: [] })
   })
 
   it('关闭功能时提交和查询均返回 404', async () => {
