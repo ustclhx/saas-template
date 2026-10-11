@@ -1,12 +1,16 @@
 import { DataTable } from '@saas/ui'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import {
   adminListPage,
   adminListSearch,
   filtersToSearch,
   offsetOfPage,
 } from '../../features/admin/list.ts'
+import {
+  PARAMS_SCHEMA_TEMPLATES,
+  parseAdminParamsSchema,
+} from '../../features/ai/admin-model-params.ts'
 import {
   copyAdminModel,
   getAdminModels,
@@ -40,6 +44,7 @@ interface Draft {
   kind: Kind
   provider: string
   providerModelId: string
+  paramsSchema: string
   tags: string
   sort: string
   enabled: boolean
@@ -81,6 +86,7 @@ function toDraft(model: ModelRow): Draft {
     kind: model.kind,
     provider: model.provider,
     providerModelId: model.providerModelId,
+    paramsSchema: JSON.stringify(model.paramsSchema ?? {}, null, 2),
     tags: model.tags.join(', '),
     sort: String(model.sort),
     enabled: model.enabled,
@@ -94,6 +100,7 @@ function newDraft(defaults: Data['defaults'], kind: Kind = 'text'): Draft {
     kind,
     provider: '',
     providerModelId: '',
+    paramsSchema: '{}',
     tags: '',
     sort: '0',
     enabled: true,
@@ -135,6 +142,64 @@ function pricingOf(draft: Draft): unknown {
         ...(multipliers ? { multipliers } : {}),
       }
   }
+}
+
+function ParamsSchemaEditor({
+  label,
+  kind,
+  provider,
+  value,
+  onChange,
+  onTemplate,
+}: {
+  label: string
+  kind: Kind
+  provider: string
+  value: string
+  onChange: (value: string) => void
+  onTemplate: (message: string) => void
+}) {
+  const id = useId()
+  const templates = PARAMS_SCHEMA_TEMPLATES.filter(
+    (template) => template.kind === kind && (kind === 'text' || template.provider === provider),
+  )
+  return (
+    <>
+      <label htmlFor={`${id}-schema`}>{label}</label>
+      <textarea
+        id={`${id}-schema`}
+        className="block w-full font-mono"
+        rows={12}
+        spellCheck={false}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <label htmlFor={`${id}-template`}>插入参考模板</label>{' '}
+      <select
+        id={`${id}-template`}
+        value=""
+        disabled={templates.length === 0}
+        onChange={(event) => {
+          const template = templates.find((item) => item.id === event.target.value)
+          if (!template) return
+          onChange(JSON.stringify(template.schema, null, 2))
+          onTemplate(
+            template.kind !== 'text'
+              ? `Reference inserted for ${template.providerModelId}. Verify the Provider model ID before saving.`
+              : 'Text defaults inserted.',
+          )
+        }}
+      >
+        <option value="">Choose a reference template</option>
+        {templates.map((template) => (
+          <option key={template.id} value={template.id}>
+            {template.label}
+          </option>
+        ))}
+      </select>
+      <p>Templates replace the schema. Check the parameters against your Provider model ID.</p>
+    </>
+  )
 }
 
 function Models() {
@@ -241,13 +306,20 @@ function ModelEditor({
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [copyKey, setCopyKey] = useState(model ? `${model.key.slice(0, 59)}-copy` : '')
+  const savedParamsSchema = JSON.stringify(model?.paramsSchema ?? {}, null, 2)
+  const [copyParamsSchema, setCopyParamsSchema] = useState(savedParamsSchema)
+  useEffect(() => {
+    setCopyParamsSchema(savedParamsSchema)
+  }, [savedParamsSchema])
   const set = (patch: Partial<Draft>) => setDraft((current) => ({ ...current, ...patch }))
   const field = (name: keyof Draft) => ({
     value: String(draft[name]),
     onChange: (event: { target: { value: string } }) => set({ [name]: event.target.value }),
   })
 
-  async function act(action: () => Promise<{ ok: true } | { ok: false; error: string }>) {
+  async function act(
+    action: () => Promise<{ ok: true } | { ok: false; error: string; message?: string }>,
+  ) {
     setBusy(true)
     try {
       const result = await action()
@@ -256,7 +328,7 @@ function ModelEditor({
         if (!model) setDraft(newDraft(defaults))
         await router.invalidate()
       } else {
-        setMessage(ERRORS[result.error] ?? `Save rejected (${result.error}).`)
+        setMessage(result.message ?? ERRORS[result.error] ?? `Save rejected (${result.error}).`)
       }
     } catch {
       setMessage('Save unavailable. Check the fields (multipliers must be JSON) and retry.')
@@ -265,7 +337,18 @@ function ModelEditor({
     }
   }
 
+  function validateParamsSchema(kind: Kind, json: string) {
+    try {
+      parseAdminParamsSchema(kind, json)
+      return true
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Parameter schema is invalid.')
+      return false
+    }
+  }
+
   function save() {
+    if (!validateParamsSchema(draft.kind, draft.paramsSchema)) return
     return act(() =>
       saveAdminModel({
         data: {
@@ -274,12 +357,20 @@ function ModelEditor({
           kind: draft.kind,
           provider: draft.provider,
           providerModelId: draft.providerModelId,
+          paramsSchema: draft.paramsSchema,
           pricing: pricingOf(draft),
           tags: draft.tags.split(','),
           enabled: draft.enabled,
           sort: Number(draft.sort) || 0,
         },
       }),
+    )
+  }
+
+  function copy() {
+    if (!model || !validateParamsSchema(model.kind, copyParamsSchema)) return
+    return act(() =>
+      copyAdminModel({ data: { id: model.id, key: copyKey, paramsSchema: copyParamsSchema } }),
     )
   }
 
@@ -353,6 +444,17 @@ function ModelEditor({
           />{' '}
           Enabled
         </label>
+      </fieldset>
+      <fieldset disabled={busy}>
+        <legend>Parameters</legend>
+        <ParamsSchemaEditor
+          label="Parameters schema (JSON)"
+          kind={draft.kind}
+          provider={draft.provider}
+          value={draft.paramsSchema}
+          onChange={(paramsSchema) => set({ paramsSchema })}
+          onTemplate={setMessage}
+        />
       </fieldset>
       <fieldset disabled={busy}>
         <legend>Pricing</legend>
@@ -449,10 +551,15 @@ function ModelEditor({
               onChange={(event) => setCopyKey(event.target.value)}
             />
           </label>{' '}
-          <button
-            type="button"
-            onClick={() => act(() => copyAdminModel({ data: { id: model.id, key: copyKey } }))}
-          >
+          <ParamsSchemaEditor
+            label="Copy parameters schema (JSON)"
+            kind={model.kind}
+            provider={model.provider}
+            value={copyParamsSchema}
+            onChange={setCopyParamsSchema}
+            onTemplate={setMessage}
+          />
+          <button type="button" onClick={copy}>
             Copy model
           </button>
           <p>The copy is disabled until you enable it.</p>

@@ -9,6 +9,7 @@ import { templateConfig } from '../../server/template-config.ts'
 import { withAdminAction } from '../admin/action.server.ts'
 import { adminMiddleware } from '../admin/admin.functions.ts'
 import { ADMIN_PAGE_SIZE, adminListSearch } from '../admin/list.ts'
+import { parseAdminParamsSchema } from './admin-model-params.ts'
 import { assertModelProviderEnabled } from './admin-model-provider.ts'
 
 // 模型管理：服务端分页、类型筛选与排序；新增、编辑、复制、启用 / 停用。
@@ -26,6 +27,7 @@ const modelInput = z.object({
   provider: z.string().trim().min(1).max(64),
   providerModelId: z.string().trim().min(1).max(200),
   pricing: z.unknown(),
+  paramsSchema: z.string(),
   tags: z.array(z.string().trim().max(64)).max(50),
   enabled: z.boolean(),
   sort: z.number().int().min(-1_000_000).max(1_000_000),
@@ -33,7 +35,15 @@ const modelInput = z.object({
 
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json }
 
-type Result = { ok: true; id: string } | { ok: false; error: string }
+type Result = { ok: true; id: string } | { ok: false; error: string; message?: string }
+
+/** 只记录 JSON 摘要，避免把 prompt 等参数默认值全文写入审计。 */
+async function schemaHash(schema: Record<string, unknown> | null): Promise<string | null> {
+  if (schema === null) return null
+  const bytes = new TextEncoder().encode(JSON.stringify(schema))
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
 
 /** 违反唯一约束（重复的模型 key）：postgres.js 的错误经 drizzle 包装后在 cause 中 */
 function isUniqueViolation(error: unknown): boolean {
@@ -48,7 +58,7 @@ async function safe(action: () => Promise<string>): Promise<Result> {
     return { ok: true, id }
   } catch (error) {
     if (error instanceof PricingError) return { ok: false, error: error.code }
-    if (error instanceof AppError) return { ok: false, error: error.code }
+    if (error instanceof AppError) return { ok: false, error: error.code, message: error.message }
     if (isUniqueViolation(error)) return { ok: false, error: 'MODEL_KEY_TAKEN' }
     throw error
   }
@@ -81,6 +91,7 @@ export const getAdminModels = createServerFn({ method: 'GET' })
         provider: aiModel.provider,
         providerModelId: aiModel.providerModelId,
         pricing: aiModel.pricing,
+        paramsSchema: aiModel.paramsSchema,
         tags: aiModel.minPlanFeatures,
         enabled: aiModel.enabled,
         sort: aiModel.sort,
@@ -98,9 +109,11 @@ export const getAdminModels = createServerFn({ method: 'GET' })
     return {
       // pricing 列来自 JSON，按 JSON 类型返回给页面
       hasMore: rows.length > ADMIN_PAGE_SIZE,
-      models: rows
-        .slice(0, ADMIN_PAGE_SIZE)
-        .map((row) => ({ ...row, pricing: row.pricing as { [key: string]: Json } })),
+      models: rows.slice(0, ADMIN_PAGE_SIZE).map((row) => ({
+        ...row,
+        pricing: row.pricing as { [key: string]: Json },
+        paramsSchema: row.paramsSchema as { [key: string]: Json } | null,
+      })),
       mediaProviders: templateConfig.ai.mediaProviders,
       defaults: Object.fromEntries(kinds.map((kind) => [kind, defaultPricing(kind, modes)])),
     }
@@ -113,11 +126,12 @@ export const saveAdminModel = createServerFn({ method: 'POST' })
     safe(() =>
       withAdminAction(context, 'ai.model_save', async ({ tx, audit }) => {
         assertModelProviderEnabled(data.kind, data.provider, templateConfig.ai.mediaProviders)
-        const values = modelValues(data)
-        // 锁住旧行，保证并发改价时审计中的旧价格是本次实际覆盖的价格。
+        const paramsSchema = parseAdminParamsSchema(data.kind, data.paramsSchema)
+        const values = { ...modelValues(data), paramsSchema }
+        // 锁住旧行，保证并发编辑时审计中的旧值是本次实际覆盖的值。
         const [before] = data.id
           ? await tx
-              .select({ pricing: aiModel.pricing })
+              .select({ pricing: aiModel.pricing, paramsSchema: aiModel.paramsSchema })
               .from(aiModel)
               .where(eq(aiModel.id, data.id))
               .for('update')
@@ -138,6 +152,10 @@ export const saveAdminModel = createServerFn({ method: 'POST' })
             oldPricing: before?.pricing ?? null,
             newPricing: saved.pricing,
             enabled: saved.enabled,
+            paramsSchema: {
+              before: await schemaHash(before?.paramsSchema ?? null),
+              after: await schemaHash(saved.paramsSchema),
+            },
           },
         })
         return saved.id
@@ -171,13 +189,14 @@ export const setAdminModelEnabled = createServerFn({ method: 'POST' })
 /** 复制已保存的模型，包括媒体参数；副本先停用，审核后再启用。 */
 export const copyAdminModel = createServerFn({ method: 'POST' })
   .middleware([adminMiddleware])
-  .inputValidator(z.object({ id: z.uuid(), key: modelInput.shape.key }))
+  .inputValidator(z.object({ id: z.uuid(), key: modelInput.shape.key, paramsSchema: z.string() }))
   .handler(({ context, data }) =>
     safe(() =>
       withAdminAction(context, 'ai.model_copy', async ({ tx, audit }) => {
         const [source] = await tx.select().from(aiModel).where(eq(aiModel.id, data.id)).for('share')
         if (!source) throw new AppError('NOT_FOUND', 'Model not found', { status: 404 })
         assertModelProviderEnabled(source.kind, source.provider, templateConfig.ai.mediaProviders)
+        const paramsSchema = parseAdminParamsSchema(source.kind, data.paramsSchema)
         const values = modelValues({
           ...source,
           key: data.key,
@@ -186,7 +205,7 @@ export const copyAdminModel = createServerFn({ method: 'POST' })
         })
         const [saved] = await tx
           .insert(aiModel)
-          .values({ ...values, paramsSchema: source.paramsSchema })
+          .values({ ...values, paramsSchema })
           .returning()
         if (!saved) throw new AppError('NOT_FOUND', 'Model not found', { status: 404 })
         await audit({
@@ -199,6 +218,10 @@ export const copyAdminModel = createServerFn({ method: 'POST' })
             key: saved.key,
             pricing: saved.pricing,
             enabled: saved.enabled,
+            paramsSchema: {
+              before: await schemaHash(source.paramsSchema),
+              after: await schemaHash(saved.paramsSchema),
+            },
           },
         })
         return saved.id

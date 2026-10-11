@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto'
-import { expect, test } from '@playwright/test'
+import { createHash, randomUUID } from 'node:crypto'
+import { expect, type Route, test } from '@playwright/test'
 import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
 import { stubTurnstile } from './turnstile.ts'
 
@@ -43,16 +43,74 @@ test('platform admin can create, edit, disable and enable a model', async ({ pag
 
     await form.getByLabel('Max input tokens').fill('8000')
     await form.getByLabel('Max output tokens').fill('2000')
+    await form.getByLabel('Parameters schema (JSON)', { exact: true }).fill('{')
+    await form.getByRole('button', { name: 'Create model' }).click()
+    await expect(form.getByRole('status')).toContainText(/JSON/i)
+    await form
+      .getByLabel('Parameters schema (JSON)', { exact: true })
+      .fill(JSON.stringify({ 'x-text': { tokensPerChar: 0 } }))
+    await form.getByRole('button', { name: 'Create model' }).click()
+    await expect(form.getByRole('status')).toContainText(/tokensPerChar|x-text/i)
+    expect(await sql`select id from ai_model where key=${key}`).toHaveLength(0)
+    expect(
+      await sql`select id from audit_log where actor_user_id=${account.id} and target_type='ai_model'`,
+    ).toHaveLength(0)
+
+    const initialSchema = { 'x-text': { tokensPerChar: 1.5, maxOutputTokens: 2000 } }
+    await form
+      .getByLabel('Parameters schema (JSON)', { exact: true })
+      .fill(JSON.stringify(initialSchema))
     await form.getByRole('button', { name: 'Create model' }).click()
     const card = page.getByRole('article', { name: `Model ${key}` })
     await expect(card).toBeVisible()
 
+    const [created] = await sql`select params_schema from ai_model where key=${key}`
+    expect(created?.params_schema).toEqual(initialSchema)
+    // 篡改已通过浏览器校验的请求，确认服务端同样拒绝且不写库或审计。
+    const validJson = JSON.stringify(initialSchema)
+    let tampered = false
+    const tamper = async (route: Route) => {
+      const body = route.request().postData()
+      if (route.request().method() !== 'POST' || !body) {
+        await route.continue()
+        return
+      }
+      // Seroval 对字符串额外转义；按参数名定位编码节点，不依赖转义后的文本。
+      const wire = JSON.parse(body)
+      const props = wire.t.p.v[0].p
+      const index = props.k.indexOf('paramsSchema')
+      if (index === -1) {
+        await route.continue()
+        return
+      }
+      props.v[index].s = '{'
+      tampered = true
+      await route.continue({ postData: JSON.stringify(wire) })
+    }
+    await card.getByLabel('Parameters schema (JSON)', { exact: true }).fill(validJson)
+    await page.route('**/_serverFn/**', tamper)
+    await card.getByRole('button', { name: 'Save changes' }).click()
+    await expect(card.getByRole('status')).toContainText(/JSON/i)
+    await page.unroute('**/_serverFn/**', tamper)
+    expect(tampered).toBe(true)
+    const [rejected] = await sql`select params_schema from ai_model where key=${key}`
+    expect(rejected?.params_schema).toEqual(initialSchema)
+    expect(
+      await sql`select id from audit_log where actor_user_id=${account.id} and target_type='ai_model'`,
+    ).toHaveLength(1)
+
+    const editedSchema = { 'x-text': { tokensPerChar: 2, maxOutputTokens: 1800 } }
+    await card
+      .getByLabel('Parameters schema (JSON)', { exact: true })
+      .fill(JSON.stringify(editedSchema))
     await card.getByLabel('Credits per call').fill('3')
     await card.getByRole('button', { name: 'Save changes' }).click()
     await expect(card.getByRole('status')).toContainText('Saved.')
-    const [saved] = await sql`select id, pricing, enabled from ai_model where key=${key}`
+    const [saved] =
+      await sql`select id, pricing, params_schema, enabled from ai_model where key=${key}`
     expect(saved).toMatchObject({
       enabled: true,
+      params_schema: editedSchema,
       pricing: { mode: 'per_call', credits: 3, limits: { maxInputTokens: 8000 } },
     })
 
@@ -69,7 +127,14 @@ test('platform admin can create, edit, disable and enable a model', async ({ pag
       'ai.model_disabled',
       'ai.model_enabled',
     ])
+    const hash = (schema: unknown) =>
+      createHash('sha256').update(JSON.stringify(schema)).digest('hex')
+    expect(audits.find((row) => row.action === 'ai.model_created')?.meta.paramsSchema).toEqual({
+      before: null,
+      after: hash(created?.params_schema),
+    })
     expect(audits.find((row) => row.action === 'ai.model_updated')?.meta).toMatchObject({
+      paramsSchema: { before: hash(created?.params_schema), after: hash(saved?.params_schema) },
       oldPricing: {
         mode: 'per_call',
         credits: 2,
@@ -82,8 +147,11 @@ test('platform admin can create, edit, disable and enable a model', async ({ pag
       },
     })
 
-    // 复制已保存值，新副本停用，并保留参数 schema。
-    await sql`update ai_model set params_schema=${JSON.stringify({ quality: ['standard', 'hd'] })}::jsonb where key=${key}`
+    // 复制拥有自己的参数草稿，不改变来源模型的已保存 schema。
+    const copiedSchema = { 'x-text': { tokensPerChar: 3, maxOutputTokens: 1600 } }
+    await card
+      .getByLabel('Copy parameters schema (JSON)', { exact: true })
+      .fill(JSON.stringify(copiedSchema))
     await card.getByLabel('Copy key').fill(`${key}-copy`)
     await card.getByRole('button', { name: 'Copy model', exact: true }).click()
     const copy = page.getByRole('article', { name: `Model ${key}-copy` })
@@ -93,12 +161,19 @@ test('platform admin can create, edit, disable and enable a model', async ({ pag
       await sql`select id, pricing, params_schema, provider_model_id from ai_model where key=${`${key}-copy`}`
     expect(cloned).toMatchObject({
       pricing: saved?.pricing,
-      params_schema: { quality: ['standard', 'hd'] },
+      params_schema: copiedSchema,
       provider_model_id: 'gpt-fixture',
     })
     const [copyAudit] =
       await sql`select meta from audit_log where action='ai.model_copied' and target_id=${String(cloned?.id)}`
-    expect(copyAudit?.meta).toMatchObject({ sourceId: saved?.id, sourceKey: key })
+    expect(copyAudit?.meta).toMatchObject({
+      sourceId: saved?.id,
+      sourceKey: key,
+      paramsSchema: { before: hash(saved?.params_schema), after: hash(cloned?.params_schema) },
+    })
+    expect(JSON.stringify([...audits, copyAudit])).not.toContain('tokensPerChar')
+    const [sourceAfterCopy] = await sql`select params_schema from ai_model where key=${key}`
+    expect(sourceAfterCopy?.params_schema).toEqual(editedSchema)
 
     await page.getByLabel('Model type').selectOption('image')
     await page.getByRole('button', { name: 'Apply', exact: true }).click()
