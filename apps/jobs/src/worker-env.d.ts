@@ -1,11 +1,12 @@
 import type { MediaRuntimeEnv } from '@saas/ai'
 import type { PaymentRuntimeEnv } from '@saas/billing'
 import type { StorageEnv } from '@saas/storage'
+import type { SentryEnv } from './sentry.ts'
 
 declare global {
   /** wrangler.jsonc 中声明的绑定（`import { env } from 'cloudflare:workers'` 与各 handler 的 env 类型） */
   declare namespace Cloudflare {
-    interface Env extends PaymentRuntimeEnv, MediaRuntimeEnv, StorageEnv {
+    interface Env extends PaymentRuntimeEnv, MediaRuntimeEnv, StorageEnv, SentryEnv {
       FILES: R2Bucket
       EVENTS_QUEUE: Queue<
         | import('@saas/billing').BillingQueueMessage

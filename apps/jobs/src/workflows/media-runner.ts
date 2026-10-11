@@ -13,8 +13,9 @@ import {
 } from '@saas/ai'
 import { type AiTask, aiTask, type Database, scoped } from '@saas/db'
 import { AppError, MEDIA_DONE_EVENT } from '@saas/shared'
-import { log } from '@saas/shared/log'
+import { log, setLogContext } from '@saas/shared/log'
 import { and, eq, inArray, sql } from 'drizzle-orm'
+import { captureJobException, tagJobContext } from '../sentry.ts'
 
 export interface MediaRunnerDeps {
   db: Database
@@ -208,6 +209,8 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
     return JSON.stringify(task)
   })
   const task = JSON.parse(snapshot) as AiTask
+  setLogContext({ workspaceId: task.workspaceId, userId: task.userId })
+  tagJobContext()
   const now = deps.now ?? Date.now
   const deadline = new Date(task.deadlineAt).getTime()
   let currentStatus = task.status
@@ -351,6 +354,7 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
     })
     return { taskId, status }
   } catch (error) {
+    captureJobException(error)
     if (await stopIfTerminal()) return stopped()
     const status = await step.do('fail-and-notify', async () => {
       if (await stopIfTerminal()) return currentStatus

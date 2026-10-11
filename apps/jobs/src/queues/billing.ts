@@ -3,6 +3,7 @@ import { createDb, type Database } from '@saas/db'
 import { log, newRequestId, withLogContext } from '@saas/shared/log'
 import { type BillingEnv, createBillingContext, postprocessBillingDelivery } from '../billing.ts'
 import { deliverOperations, parseOperationsMessage } from '../notifications/operations.ts'
+import { captureJobException } from '../sentry.ts'
 
 export async function handleBillingBatch(batch: MessageBatch<unknown>, env: BillingEnv) {
   // Invalid messages never initialize a provider or touch the database.
@@ -33,6 +34,7 @@ export async function handleBillingBatch(batch: MessageBatch<unknown>, env: Bill
           }
           message.ack()
         } catch (error) {
+          captureJobException(error)
           log.warn(body ? 'billing.retry' : 'operations.retry', {
             id: message.id,
             attempts: message.attempts,

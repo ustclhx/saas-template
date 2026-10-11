@@ -53,6 +53,34 @@ export function getLogContext(): LogContext {
   return { ...storage.getStore() }
 }
 
+/** Sentry 的 beforeSend：复用统一脱敏，只保留定位所需的身份 ID，不采集请求正文与面包屑。 */
+export function sentryBeforeSend<T extends object>(event: T): T {
+  const value = event as Record<string, unknown>
+  const { requestId, workspaceId, userId } = getLogContext()
+  const request = value.request as Record<string, unknown> | undefined
+  const user = value.user as { id?: string } | undefined
+  return redact({
+    ...value,
+    breadcrumbs: undefined,
+    user: userId || user?.id ? { id: userId ?? user?.id } : undefined,
+    request: request
+      ? {
+          method: request.method,
+          url: typeof request.url === 'string' ? request.url.split(/[?#]/)[0] : undefined,
+          headers: request.headers,
+        }
+      : undefined,
+    tags: {
+      ...(value.tags as object),
+      ...Object.fromEntries(
+        Object.entries({ requestId, workspaceId, userId }).filter(
+          ([, value]) => value !== undefined,
+        ),
+      ),
+    },
+  }) as T
+}
+
 export function currentRequestId(): string | undefined {
   const requestId = storage.getStore()?.requestId
   return typeof requestId === 'string' ? requestId : undefined

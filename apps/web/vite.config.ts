@@ -24,7 +24,7 @@ const appVersion = (() => {
   if (process.env.APP_VERSION) return process.env.APP_VERSION
   try {
     return (
-      execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+      execFileSync('git', ['rev-parse', 'HEAD'], {
         cwd: repoRoot,
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'ignore'],
@@ -53,6 +53,7 @@ export default defineConfig(({ command }) => {
   // 本地 dev 时把根目录 .env.local 的五项测试支付配置同步到 .dev.vars 管理区块（#26）
   if (command === 'serve') syncLocalPaymentEnv(new URL('./', import.meta.url))
   return {
+    build: { sourcemap: 'hidden' },
     server: { port, strictPort: true },
     preview: { port, strictPort: true },
     define: {

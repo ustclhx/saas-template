@@ -5,7 +5,7 @@
 // 每个请求先建立日志上下文（新生成的 UUIDv7 请求 ID，附 Cloudflare 的 cf-ray 便于对照平台日志），
 // 结束时输出一行 `http.request`（@saas/shared/log）。
 import { log, newRequestId, withLogContext } from '@saas/shared/log'
-import handler from '@tanstack/react-start/server-entry'
+import { createStartHandler, defaultStreamHandler } from '@tanstack/react-start/server'
 import { gateAdminRequest } from './features/admin/gate.ts'
 import {
   gatePublicApiRequest,
@@ -15,21 +15,56 @@ import {
 import { gateLocaleRequest } from './features/i18n/gate.ts'
 import { localizeRequest } from './features/i18n/request.server.ts'
 import { checkEnv } from './server/env.ts'
+import { captureServerError, instrumentWeb } from './server/sentry.ts'
+import { SENTRY_TEST_PATH, sentryTest } from './server/sentry-test.ts'
 import { templateConfig } from './server/template-config.ts'
 
-export default {
+// Router 的 loader 错误已经转换为 SSR 匹配状态，不会再从 fetch 抛出。
+const startHandler = createStartHandler((context) => {
+  for (const match of context.router.stores.matches.get()) {
+    if (match.status === 'error') captureServerError(match.error)
+  }
+  return defaultStreamHandler(context)
+})
+
+const worker = instrumentWeb({
   fetch(request, env) {
+    const invalid = checkEnv(env)
+    if (invalid) return Promise.resolve(invalid)
+    if (new URL(request.url).pathname === SENTRY_TEST_PATH) return sentryTest(request, env)
+    return logged(
+      request,
+      async () =>
+        gatePublicApiRequest(request, templateConfig) ??
+        (await localized(gateLocaleRequest(await gateAdminRequest(request, env)), env)),
+    )
+  },
+} satisfies ExportedHandler<Cloudflare.Env>)
+
+export default {
+  fetch(request, env, ctx) {
     // 不信任入站的 x-request-id：可被客户端伪造，且会混入他人的检索结果
     const context = { requestId: newRequestId(), cfRay: request.headers.get('cf-ray') ?? undefined }
-    return withLogContext(context, () =>
-      logged(
-        request,
-        async () =>
-          checkEnv(env) ??
-          gatePublicApiRequest(request, templateConfig) ??
-          (await localized(gateLocaleRequest(await gateAdminRequest(request, env)), env)),
-      ),
-    )
+    return withLogContext(context, async () => {
+      try {
+        const response = await worker.fetch(request, env, ctx)
+        // 重定向与静态响应的 headers 可能只读，复制后再附请求 ID。
+        const headers = new Headers(response.headers)
+        headers.set('x-request-id', context.requestId)
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        })
+      } catch (error) {
+        // 包装器已经捕获异常；返回无敏感细节的响应与请求 ID，便于管理员验收定位。
+        log.error('http.unhandled', { error })
+        return new Response('Internal Server Error', {
+          status: 500,
+          headers: { 'x-request-id': context.requestId },
+        })
+      }
+    })
   },
 } satisfies ExportedHandler<Cloudflare.Env>
 
@@ -62,5 +97,5 @@ async function logged(request: Request, handle: () => Promise<Response>): Promis
 
 // 交给 TanStack Start 的仍是原始地址，语言前缀由路由器的 rewrite 去掉（与 SSR 后的客户端一致）
 function localized(request: Request, env: Cloudflare.Env): Promise<Response> {
-  return localizeRequest(request, env, () => handler.fetch(request))
+  return localizeRequest(request, env, () => startHandler(request))
 }
