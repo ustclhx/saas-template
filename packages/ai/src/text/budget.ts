@@ -31,7 +31,7 @@ export interface TextModelConfig {
   readonly maxOutputTokens: number
 }
 
-const textModelConfigSchema = z.object({
+export const textModelConfigSchema = z.object({
   tokensPerChar: z.number().finite().positive().optional(),
   maxOutputTokens: z.number().int().positive().optional(),
 })

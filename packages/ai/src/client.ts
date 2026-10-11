@@ -14,4 +14,10 @@ export {
   estimateCredits,
   type Pricing,
 } from './pricing.ts'
-export { estimateInputTokens, estimateTextTokens } from './text/budget.ts'
+export {
+  DEFAULT_MAX_OUTPUT_TOKENS,
+  DEFAULT_TOKENS_PER_CHAR,
+  estimateInputTokens,
+  estimateTextTokens,
+  textModelConfigSchema,
+} from './text/budget.ts'
