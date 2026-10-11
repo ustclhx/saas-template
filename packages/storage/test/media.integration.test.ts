@@ -131,6 +131,42 @@ describe('safe media persistence', () => {
     expect(await env.FILES.head(key(0))).toBeNull()
   })
 
+  it('enforces type, byte size and quota limits on synchronous outputs', async () => {
+    for (const [body, mime, expected] of [
+      [new Uint8Array(3), 'text/html', 'FILE_TYPE_NOT_ALLOWED'],
+      [new Uint8Array(limits.maxFileBytes + 1), 'image/png', 'FILE_TOO_LARGE'],
+      [new Uint8Array(3), 'image/png', 'UPGRADE_REQUIRED'],
+    ] as const) {
+      await expect(
+        copy({
+          result: { outputs: [{ body, mime }] },
+          limits: { ...limits, storageBytes: 2 },
+        }),
+      ).rejects.toMatchObject({ code: expected })
+    }
+    expect(await scoped(db, ws).count(file, eq(file.status, 'ready'))).toBe(0)
+    expect(await env.FILES.head(key(0))).toBeNull()
+  })
+
+  it('releases unused synchronous streams on replay and rejection', async () => {
+    await copy()
+    for (const scenario of ['replay', 'type', 'terminal'] as const) {
+      if (scenario === 'terminal')
+        await scoped(db, ws).updateById(aiTask, taskId, { status: 'canceled' })
+      const cancel = vi.fn()
+      const body = new ReadableStream<Uint8Array>({ cancel })
+      const saving = copy({
+        result: { outputs: [{ body, mime: scenario === 'type' ? 'text/html' : 'image/png' }] },
+      })
+      if (scenario === 'replay') await saving
+      else
+        await expect(saving).rejects.toMatchObject({
+          code: scenario === 'type' ? 'FILE_TYPE_NOT_ALLOWED' : 'MEDIA_TASK_TERMINAL',
+        })
+      expect(cancel).toHaveBeenCalledOnce()
+    }
+  })
+
   it('rejects redirects and mismatched Content-Length without making files ready', async () => {
     await expect(
       copy({
@@ -154,83 +190,129 @@ describe('safe media persistence', () => {
     expect(await env.FILES.head(key(0))).toBeNull()
   })
 
-  it('uses 5 MiB multipart parts with only the last part smaller for an unknown length', async () => {
-    const size = 5 * 1024 * 1024 + 7
-    const parts: number[] = []
-    const realMultipart = env.FILES.createMultipartUpload.bind(env.FILES)
-    const bucket = {
-      put: env.FILES.put.bind(env.FILES),
-      delete: env.FILES.delete.bind(env.FILES),
-      createMultipartUpload: vi.fn(async (objectKey: string, options?: R2MultipartOptions) => {
-        const upload = await realMultipart(objectKey, options)
-        return {
-          key: upload.key,
-          uploadId: upload.uploadId,
-          abort: upload.abort.bind(upload),
-          complete: upload.complete.bind(upload),
-          uploadPart: async (
-            number: number,
-            bytes: ArrayBuffer | ArrayBufferView | string | ReadableStream,
-          ) => {
-            if (!(bytes instanceof Uint8Array)) throw new Error('Expected buffered part')
-            parts.push(bytes.byteLength)
-            return upload.uploadPart(number, bytes)
-          },
-        }
-      }),
-    }
-    const fetcher = vi.fn(
-      async () =>
-        new Response(
-          new ReadableStream({
-            start(controller) {
-              controller.enqueue(new Uint8Array(size))
-              controller.close()
+  it.each(['url', 'binary'])(
+    'uses 5 MiB multipart parts for unknown-length %s outputs',
+    async (source) => {
+      const size = 5 * 1024 * 1024 + 7
+      const parts: number[] = []
+      const realMultipart = env.FILES.createMultipartUpload.bind(env.FILES)
+      const bucket = {
+        put: env.FILES.put.bind(env.FILES),
+        delete: env.FILES.delete.bind(env.FILES),
+        createMultipartUpload: vi.fn(async (objectKey: string, options?: R2MultipartOptions) => {
+          const upload = await realMultipart(objectKey, options)
+          return {
+            key: upload.key,
+            uploadId: upload.uploadId,
+            abort: upload.abort.bind(upload),
+            complete: upload.complete.bind(upload),
+            uploadPart: async (
+              number: number,
+              bytes: ArrayBuffer | ArrayBufferView | string | ReadableStream,
+            ) => {
+              if (!(bytes instanceof Uint8Array)) throw new Error('Expected buffered part')
+              parts.push(bytes.byteLength)
+              return upload.uploadPart(number, bytes)
             },
-          }),
-          { headers: { 'Content-Type': 'image/png' } },
-        ),
-    )
-    expect(await copy({ bucket, fetch: fetcher })).toEqual([expect.objectContaining({ size })])
-    expect(parts).toEqual([5 * 1024 * 1024, 7])
-  })
+          }
+        }),
+      }
+      const fetcher = vi.fn(
+        async () =>
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new Uint8Array(size))
+                controller.close()
+              },
+            }),
+            { headers: { 'Content-Type': 'image/png' } },
+          ),
+      )
+      const result =
+        source === 'url'
+          ? { outputs: [output] }
+          : {
+              outputs: [
+                {
+                  body: new ReadableStream<Uint8Array>({
+                    start(controller) {
+                      controller.enqueue(new Uint8Array(size))
+                      controller.close()
+                    },
+                  }),
+                  mime: 'image/png',
+                },
+              ],
+            }
+      expect(await copy({ bucket, fetch: fetcher, result })).toEqual([
+        expect.objectContaining({ size }),
+      ])
+      expect(parts).toEqual([5 * 1024 * 1024, 7])
+    },
+  )
 
-  it('aborts multipart immediately when the accumulated bytes exceed the limit', async () => {
-    const abort = vi.fn(async () => {})
-    const uploadPart = vi.fn(async (partNumber: number) => ({ partNumber, etag: 'part' }))
-    const complete = vi.fn()
-    const bucket = {
-      put: env.FILES.put.bind(env.FILES),
-      delete: env.FILES.delete.bind(env.FILES),
-      createMultipartUpload: vi.fn(async () => ({
-        key: key(0),
-        uploadId: 'fixture',
-        uploadPart,
-        complete,
-        abort,
-      })),
-    }
-    const fetcher = vi.fn(
-      async () =>
-        new Response(
-          new ReadableStream({
-            start(controller) {
-              controller.enqueue(new Uint8Array(5 * 1024 * 1024))
-              controller.enqueue(new Uint8Array(2))
-              controller.close()
-            },
-          }),
-          { headers: { 'Content-Type': 'image/png' } },
-        ),
-    )
-    await expect(
-      copy({ bucket, fetch: fetcher, limits: { ...limits, maxFileBytes: 5 * 1024 * 1024 + 1 } }),
-    ).rejects.toMatchObject({ code: 'FILE_TOO_LARGE' })
-    expect(uploadPart).toHaveBeenCalledTimes(1)
-    expect(abort).toHaveBeenCalledOnce()
-    expect(complete).not.toHaveBeenCalled()
-    expect(await scoped(db, ws).count(file, eq(file.status, 'ready'))).toBe(0)
-  })
+  it.each(['url', 'binary'])(
+    'aborts oversized multipart %s outputs immediately',
+    async (source) => {
+      const abort = vi.fn(async () => {})
+      const uploadPart = vi.fn(async (partNumber: number) => ({ partNumber, etag: 'part' }))
+      const complete = vi.fn()
+      const bucket = {
+        put: env.FILES.put.bind(env.FILES),
+        delete: env.FILES.delete.bind(env.FILES),
+        createMultipartUpload: vi.fn(async () => ({
+          key: key(0),
+          uploadId: 'fixture',
+          uploadPart,
+          complete,
+          abort,
+        })),
+      }
+      const fetcher = vi.fn(
+        async () =>
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new Uint8Array(5 * 1024 * 1024))
+                controller.enqueue(new Uint8Array(2))
+                controller.close()
+              },
+            }),
+            { headers: { 'Content-Type': 'image/png' } },
+          ),
+      )
+      await expect(
+        copy({
+          bucket,
+          fetch: fetcher,
+          ...(source === 'binary'
+            ? {
+                result: {
+                  outputs: [
+                    {
+                      body: new ReadableStream<Uint8Array>({
+                        start(controller) {
+                          controller.enqueue(new Uint8Array(5 * 1024 * 1024))
+                          controller.enqueue(new Uint8Array(2))
+                          controller.close()
+                        },
+                      }),
+                      mime: 'image/png',
+                    },
+                  ],
+                },
+              }
+            : {}),
+          limits: { ...limits, maxFileBytes: 5 * 1024 * 1024 + 1 },
+        }),
+      ).rejects.toMatchObject({ code: 'FILE_TOO_LARGE' })
+      expect(uploadPart).toHaveBeenCalledTimes(1)
+      expect(abort).toHaveBeenCalledOnce()
+      expect(complete).not.toHaveBeenCalled()
+      expect(await scoped(db, ws).count(file, eq(file.status, 'ready'))).toBe(0)
+    },
+  )
 
   it('rejects cancellation and preserves pending cleanup anchors after a later output fails', async () => {
     await scoped(db, ws).updateById(aiTask, taskId, { status: 'canceled' })

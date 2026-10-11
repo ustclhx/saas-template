@@ -1,5 +1,12 @@
 import { env, type WorkflowStep } from 'cloudflare:workers'
-import { type MediaProvider, type MediaResult, type MediaStatus, settleMediaTask } from '@saas/ai'
+import {
+  createTaskMediaProvider,
+  type MediaProvider,
+  type MediaResult,
+  type MediaStatus,
+  settleMediaTask,
+  type TaskMediaProvider,
+} from '@saas/ai'
 import { getCreditBalance, grant, hold } from '@saas/credits'
 import { type AiPricingJson, aiTask, createDb, member, organization, scoped, user } from '@saas/db'
 import { MEDIA_DONE_EVENT } from '@saas/shared'
@@ -88,7 +95,7 @@ function provider() {
 }
 
 function harness(
-  fakeProvider: MediaProvider,
+  fakeProvider: TaskMediaProvider,
   options: {
     replay?: string[]
     onWait?: () => Promise<void>
@@ -99,6 +106,7 @@ function harness(
   const names: string[] = []
   const sleeps: number[] = []
   const waits: { type: string; timeout: number }[] = []
+  const values = new Map<string, unknown>()
   const fetcher = vi.fn<typeof fetch>(
     async () =>
       // 沿用storage集成夹具，字节只进入本地R2，不请求服务商。
@@ -126,7 +134,9 @@ function harness(
         try {
           const value = await callback()
           // 模拟成功副作用后step结果未记录，重放相同回调。
-          return options.replay?.includes(name) ? await callback() : value
+          const returned = options.replay?.includes(name) ? await callback() : value
+          values.set(name, returned)
+          return returned
         } catch (error) {
           if (error instanceof NonRetryable || attempt >= (config?.retries?.limit ?? 0)) throw error
         }
@@ -143,7 +153,7 @@ function harness(
       now += duration
     },
   } as unknown as WorkflowStep
-  return { deps, step, names, sleeps, waits, fetcher }
+  return { deps, step, names, sleeps, waits, fetcher, values }
 }
 
 async function state(f: Awaited<ReturnType<typeof fixture>>) {
@@ -182,13 +192,13 @@ async function refunded(f: Awaited<ReturnType<typeof fixture>>) {
   })
 }
 
-async function succeeded(f: Awaited<ReturnType<typeof fixture>>) {
+async function succeeded(f: Awaited<ReturnType<typeof fixture>>, size = 3) {
   expect(await state(f)).toMatchObject({
     task: { status: 'succeeded', creditsCharged: 15 },
     hold: { status: 'captured', captured_amount: 15 },
     ledger: [{ delta: -15 }],
     notices: [{ type: 'ai_task.succeeded' }],
-    files: [{ status: 'ready', size: 3 }],
+    files: [{ status: 'ready', size }],
     balance: { available: 85, held: 0 },
   })
 }
@@ -351,4 +361,71 @@ it('a still-running provider reaches the hard deadline, stops polling and refund
   expect((await state(f)).task.errorCode).toBe('MEDIA_TIMEOUT')
   expect(h.fetcher).not.toHaveBeenCalled()
   await refunded(f)
+})
+
+async function workersAi(f: Awaited<ReturnType<typeof fixture>>) {
+  const task = await scoped(db, f.workspaceId).updateById(aiTask, f.taskId, {
+    provider: 'workers-ai',
+  })
+  const binding = {
+    run: vi.fn(async () => ({ image: 'iVBORw0KGgo=' })),
+  }
+  return { binding, provider: createTaskMediaProvider({ AI: binding }, task, ['workers-ai']) }
+}
+
+it('Workers AI persists and settles inside submit, replaying only file IDs without duplicate charges', async () => {
+  const f = await fixture()
+  const fake = await workersAi(f)
+  const h = harness(fake.provider, { replay: ['submit', 'settle-and-notify'] })
+  h.deps.callbackSecret = ''
+  await runMediaTask(f.taskId, h.step, h.deps)
+  expect(fake.binding.run).toHaveBeenCalledTimes(2)
+  expect(fake.binding.run).toHaveBeenCalledWith('fake/image', { num_images: 5 })
+  const actual = await state(f)
+  expect(h.values.get('submit')).toEqual(actual.files.map((file) => file.id))
+  expect(actual.files).toHaveLength(1)
+  expect(actual.task.output?.usage).toEqual({ images: 1 })
+  expect(JSON.stringify(actual.task.output)).not.toContain('body')
+  expect(h.names).toEqual(['load-task', 'submit', 'settle-and-notify'])
+  expect(h.fetcher).not.toHaveBeenCalled()
+  await succeeded(f, 8)
+})
+
+it('Workers AI inference failure refunds the whole hold without persisting any file', async () => {
+  const f = await fixture()
+  const fake = await workersAi(f)
+  fake.binding.run.mockRejectedValue(new Error('Inference unavailable'))
+  const h = harness(fake.provider)
+  await runMediaTask(f.taskId, h.step, h.deps)
+  expect(fake.binding.run).toHaveBeenCalledTimes(1)
+  const actual = await state(f)
+  expect(actual.task.errorCode).toBe('WORKERS_AI_GENERATION_FAILED')
+  expect(actual.files).toEqual([])
+  await refunded(f)
+})
+
+it('cancellation during Workers AI inference prevents storage and late workflow replay stops', async () => {
+  const f = await fixture()
+  const fake = await workersAi(f)
+  fake.binding.run.mockImplementation(async () => {
+    await settleMediaTask(db, {
+      workspaceId: f.workspaceId,
+      taskId: f.taskId,
+      outcome: 'canceled',
+    })
+    return { image: 'iVBORw0KGgo=' }
+  })
+  const h = harness(fake.provider)
+  expect(await runMediaTask(f.taskId, h.step, h.deps)).toEqual({
+    taskId: f.taskId,
+    status: 'canceled',
+  })
+  await runMediaTask(f.taskId, h.step, h.deps)
+  expect(fake.binding.run).toHaveBeenCalledTimes(1)
+  const actual = await state(f)
+  expect(actual.files).toEqual([])
+  expect(actual.hold?.status).toBe('released')
+  expect(actual.ledger).toEqual([])
+  expect(actual.balance).toMatchObject({ available: 100, held: 0 })
+  expect(await env.FILES.head(`ws/${f.workspaceId}/ai/${f.taskId}/0`)).toBeNull()
 })

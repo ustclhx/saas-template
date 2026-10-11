@@ -29,6 +29,8 @@ for (const binding of ['HYPERDRIVE', 'HYPERDRIVE_CACHED']) {
 
 const args = [
   'dev',
+  // Workers AI 无本地模拟；本地启动不连接远程绑定。
+  '--local',
   '--port',
   worktreeEnv.JOBS_PORT ?? '8788',
   '--inspector-port',

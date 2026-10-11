@@ -4,6 +4,7 @@ import {
   type MediaProvider,
   type MediaWebhook,
   mediaCallbackUrl,
+  WORKERS_AI_IMAGE_MODEL,
 } from '@saas/ai'
 import { createAuth } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
@@ -20,6 +21,7 @@ import {
   handleMediaWebhook,
   type MediaHttpDeps,
 } from '../src/features/ai/media-tasks.ts'
+import { templateConfig } from '../src/server/template-config.ts'
 
 const APP_URL = 'http://localhost:3000'
 const SECRET = 'fixture-media-webhook-secret'
@@ -66,13 +68,17 @@ async function account(name: string) {
   await grant(db, { workspaceId: user.id, source: 'admin', sourceRef: newId(), amount: 100 })
   return { userId: user.id, workspaceId: user.id, cookie }
 }
-async function model(extra: Record<string, unknown> = {}) {
+async function model(
+  extra: Record<string, unknown> = {},
+  provider = 'fal',
+  kind: 'image' | 'video' = 'image',
+) {
   const key = `${MODEL_PREFIX}${newId()}`
   await db.insert(aiModel).values({
     key,
-    kind: 'image',
-    provider: 'fal',
-    providerModelId: 'fal-ai/fixture',
+    kind,
+    provider,
+    providerModelId: provider === 'workers-ai' ? WORKERS_AI_IMAGE_MODEL : 'fal-ai/fixture',
     pricing: { mode: 'per_call', credits: 3 },
     paramsSchema: {
       type: 'object',
@@ -200,6 +206,68 @@ afterAll(async () => {
 })
 
 describe('media tasks API', () => {
+  it('rejects unknown, disabled and unconfigured providers before task creation or credit hold', async () => {
+    const who = await account('provider-unavailable')
+    const { deps } = dependencies()
+    expect((await submit(who, await model({}, 'unknown'), deps)).status).toBe(404)
+    expect((await submit(who, await model({}, 'workers-ai', 'video'), deps)).status).toBe(404)
+    const enabled = templateConfig.ai.mediaProviders
+    try {
+      Object.defineProperty(templateConfig.ai, 'mediaProviders', {
+        value: ['fal'],
+        configurable: true,
+      })
+      expect((await submit(who, await model({}, 'workers-ai'), deps)).status).toBe(404)
+    } finally {
+      Object.defineProperty(templateConfig.ai, 'mediaProviders', {
+        value: enabled,
+        configurable: true,
+      })
+    }
+    const { providerFactory: _factory, ...realDeps } = deps
+    for (const provider of ['fal', 'workers-ai'])
+      expect((await submit(who, await model({}, provider), realDeps)).status).toBe(503)
+    expect(await scoped(db, who.workspaceId).count(aiTask)).toBe(0)
+    expect(
+      await sql`select id from credit_hold where workspace_id=${who.workspaceId}`,
+    ).toHaveLength(0)
+    expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 100, held: 0 })
+  })
+
+  it('accepts a configured Workers AI model without callback secret or invoking inference in web', async () => {
+    const who = await account('workers-ai')
+    const { deps } = dependencies()
+    const { providerFactory: _factory, ...realDeps } = deps
+    let calls = 0
+    realDeps.env = {
+      AI: {
+        run: async () => {
+          calls++
+          throw new Error('web must not infer')
+        },
+      },
+    }
+    const taskId = await submitted(who, await model({}, 'workers-ai'), realDeps)
+    expect((await scoped(db, who.workspaceId).findById(aiTask, taskId)).provider).toBe('workers-ai')
+    expect(calls).toBe(0)
+    expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 97, held: 3 })
+  })
+
+  it('returns 404 for unknown and synchronous provider callbacks before signature or database lookup', async () => {
+    const { deps } = dependencies()
+    deps.env = {}
+    for (const provider of ['unknown', 'workers-ai'])
+      expect(
+        (
+          await handleMediaWebhook(
+            new Request(`${APP_URL}/api/webhooks/media/${provider}`),
+            provider,
+            deps,
+          )
+        ).status,
+      ).toBe(404)
+  })
+
   it('serializes genuinely concurrent submissions under the workspace limit with only accepted holds', async () => {
     const who = await account('concurrency')
     const key = await model()

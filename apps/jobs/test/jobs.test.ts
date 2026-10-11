@@ -57,9 +57,15 @@ describe('apps/jobs', () => {
       userId: id,
       kind: 'image',
       modelKey: 'fixture',
-      provider: 'fake',
+      provider: 'fal',
       providerRequestKey: id,
-      input: {},
+      input: {
+        params: {},
+        providerModelId: 'fal-ai/fixture',
+        unitsLimit: 1,
+        fileParams: [],
+        storageBytes: 1000,
+      },
       pricing: { mode: 'per_call', credits: 1 },
       deadlineAt: new Date(Date.now() + 7200000),
     })
