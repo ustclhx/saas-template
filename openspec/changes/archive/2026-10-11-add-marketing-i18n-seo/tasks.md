@@ -29,4 +29,4 @@
 ## 5. 文档与验收
 
 - [x] 5.1 更新 `docs/08-roadmap.md` 中 Q2 的决定与 `docs/01-architecture.md` 技术栈中的内容方案，验证文档与实现一致
-- [ ] 5.2 在 staging 用 Lighthouse 检查首页、定价页与一篇博客文章（中英文各一），验证 SEO 与可访问性得分均不低于 90
+- [x] 5.2 在 staging 用 Lighthouse 检查首页、定价页与一篇博客文章（中英文各一），验证 SEO 与可访问性得分均不低于 90
