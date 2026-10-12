@@ -89,6 +89,80 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
+describe('OpenAI 兼容直连', () => {
+  it('无 Gateway 凭据即可使用管理员 base/key 与注册表模型 ID，不发送 cf-aig 头', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'unintended-process-key')
+    let request: Request | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        request = new Request(input, init)
+        return Response.json(response('openai'))
+      }),
+    )
+    const result = await generateText({
+      model: defaultLanguageModelFactory(model('openai'), {
+        AI_TEXT_EGRESS: 'direct',
+        OPENAI_BASE_URL: 'https://compatible.example/api/v1/',
+        OPENAI_API_KEY: ' direct-fixture-key ',
+        AI_GATEWAY_TOKEN: 'ignored-gateway-token',
+      }),
+      prompt: 'hello',
+      maxRetries: 0,
+    })
+    expect(result.text).toBe('hello')
+    if (!request) throw new Error('Missing fixture request')
+    expect(request?.url).toBe('https://compatible.example/api/v1/chat/completions')
+    expect(request?.headers.get('authorization')).toBe('Bearer direct-fixture-key')
+    expect([...request.headers.keys()].some((key) => key.startsWith('cf-aig-'))).toBe(false)
+    expect((await request.json()).model).toBe('model-id')
+  })
+
+  it.each([
+    { OPENAI_BASE_URL: 'https://compatible.example/v1' },
+    { OPENAI_API_KEY: 'fixture-key' },
+    { OPENAI_BASE_URL: 'file:///private', OPENAI_API_KEY: 'fixture-key' },
+    { OPENAI_BASE_URL: 'https://user:secret@example.test/v1', OPENAI_API_KEY: 'fixture-key' },
+    { OPENAI_BASE_URL: 'https://example.test/v1?key=secret', OPENAI_API_KEY: 'fixture-key' },
+  ])('非法直连配置在调用前拒绝且不回退 SDK 环境密钥', (config) => {
+    vi.stubEnv('OPENAI_API_KEY', 'unintended-process-key')
+    const fetch = vi.fn()
+    vi.stubGlobal('fetch', fetch)
+    expect(() =>
+      defaultLanguageModelFactory(model('openai'), {
+        ...config,
+        AI_TEXT_EGRESS: 'direct',
+      }),
+    ).toThrowError(expect.objectContaining({ code: AI_PROVIDER_NOT_CONFIGURED, status: 503 }))
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('显式 gateway 不受已配置 direct base 的影响', async () => {
+    let request: Request | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        request = new Request(input, init)
+        return Response.json(response('openai'))
+      }),
+    )
+    await generateText({
+      model: defaultLanguageModelFactory(model('openai'), {
+        ...env,
+        AI_TEXT_EGRESS: 'gateway',
+        OPENAI_BASE_URL: 'https://ignored.example/v1',
+      }),
+      prompt: 'hello',
+      maxRetries: 0,
+    })
+    expect(request?.url).toBe(
+      'https://gateway.ai.cloudflare.com/v1/account/gateway/openai/chat/completions',
+    )
+    expect(request?.headers.get('cf-aig-authorization')).toBe('Bearer gateway-token')
+    expect(request?.headers.has('authorization')).toBe(false)
+  })
+})
+
 describe('Gateway 默认模型工厂', () => {
   it.each(providers)(
     '$provider 默认 BYOK，经兼容端点发送 Gateway 鉴权，不读取 SDK 环境密钥',

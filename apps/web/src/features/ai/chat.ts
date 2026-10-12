@@ -56,6 +56,7 @@ export interface ChatDeps {
   readonly auth: Parameters<typeof requireFreshSession>[0]['auth']
   /** 构造模型所需的环境变量，原样交给工厂 */
   readonly env: TextModelEnv
+  readonly workersAi?: boolean
   /** `RL_AI` 绑定 */
   readonly rateLimiter: RateLimiter
   /** 请求上下文的 `waitUntil`：客户端断开后继续读完模型流并结算 */
@@ -182,7 +183,7 @@ export async function startWorkspaceChat(
       }))
   )(db, workspaceId)
   const model = await requireAvailableModel(
-    { store: dbModelStore(db) },
+    { store: dbModelStore(db), workersAi: deps.workersAi ?? false },
     entitlements,
     input.modelId,
   )

@@ -12,11 +12,16 @@ export const getMediaSubmitPage = createServerFn({ method: 'GET' })
   .middleware([withWorkspace])
   .inputValidator(z.object({ slug: z.string().min(1).max(64) }))
   .handler(async ({ context }) => {
+    const runtime = getWebRuntime()
     const entitlements = await getEntitlements(context.db, context.workspace.id, {
       pastDueGraceDays: templateConfig.billing.pastDueGraceDays,
     })
     const available = await listAvailableModels(
-      { store: dbModelStore(context.db), cache: getWebRuntime().cache },
+      {
+        store: dbModelStore(context.db),
+        cache: runtime.cache,
+        workersAi: runtime.ai?.available ? runtime.ai.value.workersAi.available : false,
+      },
       entitlements,
     )
     const models = available

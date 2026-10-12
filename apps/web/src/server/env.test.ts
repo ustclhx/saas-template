@@ -138,6 +138,15 @@ describe('checkEnv（请求入口的环境校验）', () => {
     expect(error).not.toHaveBeenCalled()
   })
 
+  it('非法文本出口在请求入口拒绝，日志只含字段名', () => {
+    const error = captureErrors()
+    expect(checkEnv({ ...completeEnv(), AI_TEXT_EGRESS: 'private-invalid' })?.status).toBe(500)
+    const logged = error.mock.calls.flat().join(' ')
+    expect(JSON.parse(logged).invalid).toEqual(['AI_TEXT_EGRESS'])
+    expect(logged).not.toContain('private-invalid')
+    expect(checkEnv({ ...completeEnv(), AI_TEXT_EGRESS: 'direct' })).toBeNull()
+  })
+
   it('支付模式由入口工厂校验，不阻断公开页面', () => {
     expect(checkEnv({ ...completeEnv(), PAYMENT_MODE: 'invalid' })).toBeNull()
     expect(checkEnv({ ...completeEnv(), SENTRY_ENVIRONMENT: 'production' })).toBeNull()

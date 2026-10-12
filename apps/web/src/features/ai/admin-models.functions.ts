@@ -10,13 +10,18 @@ import { withAdminAction } from '../admin/action.server.ts'
 import { adminMiddleware } from '../admin/admin.functions.ts'
 import { ADMIN_PAGE_SIZE, adminListSearch } from '../admin/list.ts'
 import { parseAdminParamsSchema } from './admin-model-params.ts'
-import { assertModelProviderEnabled } from './admin-model-provider.ts'
+import { assertModelProviderEnabled, availableMediaProviders } from './admin-model-provider.ts'
 
 // 模型管理：服务端分页、类型筛选与排序；新增、编辑、复制、启用 / 停用。
 // 计费方式由 @saas/ai 的 parsePricing 校验（按次文本模型缺 token 上限时拒绝保存）；
 // 保存经 adminAction 包装（add-admin-console 1.1），审计与写入同事务；提交后使 KV 中的模型列表缓存失效。
 
 const kinds = ['text', 'image', 'video'] as const
+
+function workersAiAvailable(): boolean {
+  const ai = getWebRuntime().ai
+  return ai?.available === true && ai.value.workersAi.available
+}
 
 const modelInput = z.object({
   key: z
@@ -114,7 +119,10 @@ export const getAdminModels = createServerFn({ method: 'GET' })
         pricing: row.pricing as { [key: string]: Json },
         paramsSchema: row.paramsSchema as { [key: string]: Json } | null,
       })),
-      mediaProviders: templateConfig.ai.mediaProviders,
+      mediaProviders: availableMediaProviders(
+        templateConfig.ai.mediaProviders,
+        workersAiAvailable(),
+      ),
       defaults: Object.fromEntries(kinds.map((kind) => [kind, defaultPricing(kind, modes)])),
     }
   })
@@ -125,7 +133,12 @@ export const saveAdminModel = createServerFn({ method: 'POST' })
   .handler(({ context, data }) =>
     safe(() =>
       withAdminAction(context, 'ai.model_save', async ({ tx, audit }) => {
-        assertModelProviderEnabled(data.kind, data.provider, templateConfig.ai.mediaProviders)
+        assertModelProviderEnabled(
+          data.kind,
+          data.provider,
+          templateConfig.ai.mediaProviders,
+          workersAiAvailable(),
+        )
         const paramsSchema = parseAdminParamsSchema(data.kind, data.paramsSchema)
         const values = { ...modelValues(data), paramsSchema }
         // 锁住旧行，保证并发编辑时审计中的旧值是本次实际覆盖的值。
@@ -173,8 +186,20 @@ export const setAdminModelEnabled = createServerFn({ method: 'POST' })
           .update(aiModel)
           .set({ enabled: data.enabled })
           .where(eq(aiModel.id, data.id))
-          .returning({ id: aiModel.id, key: aiModel.key })
+          .returning({
+            id: aiModel.id,
+            key: aiModel.key,
+            kind: aiModel.kind,
+            provider: aiModel.provider,
+          })
         if (!saved) throw new AppError('NOT_FOUND', 'Model not found', { status: 404 })
+        if (data.enabled && saved.provider === 'workers-ai' && !workersAiAvailable())
+          assertModelProviderEnabled(
+            saved.kind,
+            saved.provider,
+            templateConfig.ai.mediaProviders,
+            false,
+          )
         await audit({
           action: data.enabled ? 'ai.model_enabled' : 'ai.model_disabled',
           targetType: 'ai_model',
@@ -195,7 +220,12 @@ export const copyAdminModel = createServerFn({ method: 'POST' })
       withAdminAction(context, 'ai.model_copy', async ({ tx, audit }) => {
         const [source] = await tx.select().from(aiModel).where(eq(aiModel.id, data.id)).for('share')
         if (!source) throw new AppError('NOT_FOUND', 'Model not found', { status: 404 })
-        assertModelProviderEnabled(source.kind, source.provider, templateConfig.ai.mediaProviders)
+        assertModelProviderEnabled(
+          source.kind,
+          source.provider,
+          templateConfig.ai.mediaProviders,
+          workersAiAvailable(),
+        )
         const paramsSchema = parseAdminParamsSchema(source.kind, data.paramsSchema)
         const values = modelValues({
           ...source,

@@ -2,8 +2,8 @@
 
 `packages/ai` 的模型注册、预算、检查点、结算及媒体 Provider/runner 契约已经使用业务类型，
 不需要 Workers 全局声明。模型列表的 `ModelCache` 只要求 KV 的文本读取、写入与删除，
-可直接接入平台 `KeyValueStore`。本批不修改 `src/text/model.ts` 的 Gateway/BYOK 出口；
-直连出口与 Workers AI 模型过滤由 change 的第 6 组处理。
+可直接接入平台 `KeyValueStore`。第 6 组已新增 `src/text/model.ts` 的 OpenAI 兼容直连出口，
+保留 Gateway/BYOK，并按目标能力过滤 Workers AI。
 
 Web AI、媒体回调及公开 API 从请求 `WebRuntime` 读取数据库、认证、缓存和限流。
 `WebRuntime.ai` 由目标入口显式装配 AI 标量配置、后台延续、媒体 Workflow、Workers AI
@@ -27,5 +27,16 @@ pnpm --filter @saas/web exec vitest run --config vitest.ai-node.config.ts
 Node 配置必须使用同一个隔离 worktree/CI 数据库的 app/migrator 连接；缺失或数据库不匹配
 立即失败，不静默跳过。默认 CF 测试不会收集 `.node.ts` 入口。
 
-这批验证不代表 Node 生产 HTTP 断开验收、direct 出口验收或 B/C 的持久媒体执行、对象
-存储验收完成；这些仍属于第 5/6/9 组和 B/C 交付。CF 媒体及公开媒体 runner 测试继续保留。
+第 6 组通过真实出口工厂与 OpenAI SDK 解析 fixture SSE，在 Node 上复用全部聊天业务断言，
+分别验证 direct 与 Gateway 的正常 usage、按次、超额、停止/错误估算封顶、检查点和幂等。
+SDK 把部分缺失计数变成 0 的行为在工厂边界还原为 unknown；真实 0 保留，原结算断言不放宽。
+所有请求使用 fixture，未发起真实外部 AI 调用。
+
+模型注册表接收 `workersAi` 可用性，缓存保留完整模型数据，读取后按目标过滤。Node 没有 binding，
+请求/后台默认不可用，隐藏模型选择与 provider 选项；直接聊天和媒体提交在预扣/任务创建前拒绝。
+Cloudflare 装配 binding 时保留 Workers AI 同步媒体路径。组 5 Node composition 须注入
+`workersAi: { available: false }`、Node schema 的 `AI_TEXT_EGRESS` / `OPENAI_BASE_URL` / `OPENAI_API_KEY`
+和平台后台任务集合，不复制 CF binding 或 Gateway 缺省配置。
+
+Node response reader.cancel 的完整结算已由业务 fixture 验证；Node **生产 HTTP** 断开 smoke
+仍待组 5 生产输出后补，6.3 保持待办。B/C 的持久媒体执行和对象存储未验收。

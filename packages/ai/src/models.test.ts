@@ -82,6 +82,21 @@ async function rejection(promise: Promise<unknown>): Promise<AppError> {
 }
 
 describe('listAvailableModels', () => {
+  it('按当前目标能力过滤 Workers AI，缓存不被目标过滤结果污染', async () => {
+    for (const firstWorkersAi of [true, false]) {
+      const { store, listCalls } = memoryStore([
+        row({ id: 'm1', key: 'gpt-a' }),
+        row({ id: 'm2', key: 'flux', kind: 'image', provider: 'workers-ai', sort: 1 }),
+      ])
+      const { cache } = memoryCache()
+      const keys = async (workersAi: boolean) =>
+        (await listAvailableModels({ store, cache, workersAi }, all)).map((model) => model.key)
+      expect(await keys(firstWorkersAi)).toEqual(firstWorkersAi ? ['gpt-a', 'flux'] : ['gpt-a'])
+      expect(await keys(!firstWorkersAi)).toEqual(firstWorkersAi ? ['gpt-a'] : ['gpt-a', 'flux'])
+      expect(listCalls()).toBe(1)
+    }
+  })
+
   it('停用模型不出现在列表中', async () => {
     const { store } = memoryStore([
       row({ id: 'm1', key: 'gpt-a' }),
@@ -149,6 +164,20 @@ describe('listAvailableModels', () => {
 })
 
 describe('requireAvailableModel', () => {
+  it('当前目标缺少 Workers AI 能力时明确拒绝，CF 和原调用方保持可用', async () => {
+    const { store } = memoryStore([row({ id: 'm1', key: 'flux', provider: 'workers-ai' })])
+    const error = await rejection(requireAvailableModel({ store, workersAi: false }, all, 'm1'))
+    expect(error).toMatchObject({
+      code: MODEL_UNAVAILABLE,
+      status: 404,
+      message: 'Workers AI is not available on this runtime',
+    })
+    expect(await requireAvailableModel({ store, workersAi: true }, all, 'm1')).toMatchObject({
+      key: 'flux',
+    })
+    expect(await requireAvailableModel({ store }, all, 'm1')).toMatchObject({ key: 'flux' })
+  })
+
   it('返回已启用且有权限的模型及其定价快照', async () => {
     const { store } = memoryStore([row({ id: 'm1', key: 'gpt-a' })])
     const model = await requireAvailableModel({ store }, all, 'm1')

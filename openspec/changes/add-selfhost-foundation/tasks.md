@@ -39,9 +39,9 @@
 
 ## 6. 文本 AI 出口与能力（模型工厂独占，4.3 后）
 
-- [ ] 6.1 文本模型工厂增加管理员配置的 OpenAI-compatible direct base URL/key 与显式可选 Gateway，保留 CF BYOK。验证：已有 Gateway 夹具和新 direct 请求夹具通过，直连无 cf-aig 头或占位 key、无 Gateway 凭据也可用；更新 AI 配置文档。（A2）
-- [ ] 6.2 在 Node 能力表与模型/后台 UI 过滤 Workers AI，直接调用在预扣前拒绝；CF 保持原可用性。验证：隐藏与直接提交无副作用的关键用例通过，CF Workers AI 测试保持；记录能力降级。（A4）
-- [ ] 6.3 复用定价/预算/结算测试覆盖两出口正常 usage、per_call、超额、停止/错误估算封顶与 Node 客户端断开后的完整结算。验证：账本金额及终态一致、重复结算不重复扣费，Node 生产 HTTP smoke 证明断开不取消服务端读流；补目标差异验收说明。（A3、A1）
+- [x] 6.1 文本模型工厂增加管理员配置的 OpenAI-compatible direct base URL/key 与显式可选 Gateway，保留 CF BYOK。验证：已有 Gateway 夹具和新 direct 请求夹具通过，直连无 cf-aig 头或占位 key、无 Gateway 凭据也可用；更新 AI 配置文档。（A2）
+- [x] 6.2 在 Node 能力表与模型/后台 UI 过滤 Workers AI，直接调用在预扣前拒绝；CF 保持原可用性。验证：隐藏与直接提交无副作用的关键用例通过，CF Workers AI 测试保持；记录能力降级。（A4）
+- [ ] 6.3 复用定价/预算/结算测试覆盖两出口正常 usage、per_call、超额、停止/错误估算封顶与 Node 客户端断开后的完整结算。验证：账本金额及终态一致、重复结算不重复扣费，Node 生产 HTTP smoke 证明断开不取消服务端读流；补目标差异验收说明。（A3、A1）本轮两出口 fixture 与账本/结算复用已验证；Node 生产 HTTP smoke 待组 5 产出后补。
 
 ## 7. Compose 与 Dockerfiles（deploy/selfhost 独占，infra 共享改动协调者整合）
 

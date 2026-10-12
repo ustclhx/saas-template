@@ -8,11 +8,15 @@ import type { AvailableModel } from '../models.ts'
 
 /**
  * 文本模型的构造（docs/06-ai.md §3「实现」）：按 `ai_model.provider` 返回经 AI Gateway 的
- * AI SDK 模型实例。接口调用方通过可注入的工厂取模型，测试注入模拟模型。
+ * AI SDK 模型实例；OpenAI 兼容直连由部署管理员配置。测试注入模拟模型。
  */
 
 /** 构造模型所需的环境变量（AI Gateway 端点与鉴权，design 决策 8） */
 export interface TextModelEnv {
+  /** CF 缺省 gateway；Node composition 显式装配 direct。 */
+  readonly AI_TEXT_EGRESS?: 'direct' | 'gateway' | undefined
+  /** 完整 OpenAI 兼容 API base，只来自管理员部署配置。 */
+  readonly OPENAI_BASE_URL?: string | undefined
   /** Cloudflare 账号 id 与 Gateway 名称，组成 Gateway 的服务商兼容端点 */
   readonly AI_GATEWAY_ACCOUNT_ID?: string | undefined
   readonly AI_GATEWAY_ID?: string | undefined
@@ -28,6 +32,59 @@ export interface TextModelEnv {
 export type LanguageModelFactory = (model: AvailableModel, env: TextModelEnv) => LanguageModel
 
 export const AI_PROVIDER_NOT_CONFIGURED = 'AI_PROVIDER_NOT_CONFIGURED'
+
+type OpenAiChatModel = ReturnType<ReturnType<typeof createOpenAI>['chat']>
+type OpenAiUsage = Awaited<ReturnType<OpenAiChatModel['doGenerate']>>['usage']
+
+function preserveUnknownUsage(usage: OpenAiUsage): OpenAiUsage {
+  const raw = usage.raw as
+    | { prompt_tokens?: number | null; completion_tokens?: number | null }
+    | undefined
+  if (!raw) return usage
+  // SDK 将部分缺失的计数转为 0；未知用量必须仍由共用结算器估算并受预扣封顶。
+  return {
+    ...usage,
+    inputTokens:
+      raw.prompt_tokens == null
+        ? { total: undefined, noCache: undefined, cacheRead: undefined, cacheWrite: undefined }
+        : usage.inputTokens,
+    outputTokens:
+      raw.completion_tokens == null
+        ? { total: undefined, text: undefined, reasoning: undefined }
+        : usage.outputTokens,
+  }
+}
+
+function openAiChat(options: Parameters<typeof createOpenAI>[0], modelId: string): OpenAiChatModel {
+  const model = createOpenAI(options).chat(modelId)
+  return {
+    specificationVersion: model.specificationVersion,
+    provider: model.provider,
+    modelId: model.modelId,
+    supportedUrls: model.supportedUrls,
+    async doGenerate(options) {
+      const result = await model.doGenerate(options)
+      return { ...result, usage: preserveUnknownUsage(result.usage) }
+    },
+    async doStream(options) {
+      const result = await model.doStream(options)
+      return {
+        ...result,
+        stream: result.stream.pipeThrough(
+          new TransformStream({
+            transform(chunk, controller) {
+              controller.enqueue(
+                chunk.type === 'finish'
+                  ? { ...chunk, usage: preserveUnknownUsage(chunk.usage) }
+                  : chunk,
+              )
+            },
+          }),
+        ),
+      }
+    },
+  }
+}
 
 function gatewayOptions(
   baseURL: string,
@@ -53,8 +110,34 @@ function gatewayOptions(
   }
 }
 
-/** 使用各家官方 SDK 的协议与 Gateway 兼容端点；所有模型请求都经过 Gateway。 */
+/** 保留原生 Provider Gateway 协议；OpenAI 可显式选择兼容直连。 */
 export const defaultLanguageModelFactory: LanguageModelFactory = (model, env) => {
+  if (env.AI_TEXT_EGRESS !== undefined && !['direct', 'gateway'].includes(env.AI_TEXT_EGRESS))
+    throw new AppError(AI_PROVIDER_NOT_CONFIGURED, 'Invalid text egress configuration', {
+      status: 503,
+    })
+  if (model.provider === 'openai' && env.AI_TEXT_EGRESS === 'direct') {
+    const apiKey = env.OPENAI_API_KEY?.trim()
+    let url: URL | undefined
+    try {
+      url = new URL(env.OPENAI_BASE_URL ?? '')
+    } catch {
+      // 只报告配置项，不将可能包含凭据的 URL 放入错误或日志。
+    }
+    if (
+      !apiKey ||
+      !url ||
+      !['https:', 'http:'].includes(url.protocol) ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash
+    )
+      throw new AppError(AI_PROVIDER_NOT_CONFIGURED, 'OpenAI direct endpoint is not configured', {
+        status: 503,
+      })
+    return openAiChat({ baseURL: url.href.replace(/\/$/, ''), apiKey }, model.providerModelId)
+  }
   const accountId = env.AI_GATEWAY_ACCOUNT_ID?.trim()
   const gatewayId = env.AI_GATEWAY_ID?.trim()
   if (!accountId || !gatewayId) {
@@ -63,9 +146,10 @@ export const defaultLanguageModelFactory: LanguageModelFactory = (model, env) =>
   const baseURL = `https://gateway.ai.cloudflare.com/v1/${encodeURIComponent(accountId)}/${encodeURIComponent(gatewayId)}`
   switch (model.provider) {
     case 'openai':
-      return createOpenAI(
+      return openAiChat(
         gatewayOptions(`${baseURL}/openai`, env, env.OPENAI_API_KEY, 'authorization'),
-      ).chat(model.providerModelId)
+        model.providerModelId,
+      )
     case 'anthropic':
       return createAnthropic(
         gatewayOptions(`${baseURL}/anthropic/v1`, env, env.ANTHROPIC_API_KEY, 'x-api-key'),

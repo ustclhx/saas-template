@@ -35,6 +35,7 @@ const ERRORS: Record<string, string> = {
   MISSING_TOKEN_LIMITS: 'Per-call text models require input and output token limits.',
   INVALID_PRICING: 'Pricing is invalid. Check the required fields for this pricing mode.',
   MEDIA_PROVIDER_DISABLED: 'Choose an enabled media provider.',
+  MODEL_PROVIDER_UNAVAILABLE: 'Workers AI is unavailable on this runtime. Choose another provider.',
   MODEL_KEY_TAKEN: 'Another model already uses this key.',
 }
 
@@ -148,6 +149,7 @@ function ParamsSchemaEditor({
   label,
   kind,
   provider,
+  mediaProviders,
   value,
   onChange,
   onTemplate,
@@ -155,13 +157,17 @@ function ParamsSchemaEditor({
   label: string
   kind: Kind
   provider: string
+  mediaProviders: readonly string[]
   value: string
   onChange: (value: string) => void
   onTemplate: (message: string) => void
 }) {
   const id = useId()
   const templates = PARAMS_SCHEMA_TEMPLATES.filter(
-    (template) => template.kind === kind && (kind === 'text' || template.provider === provider),
+    (template) =>
+      template.kind === kind &&
+      (kind === 'text' ||
+        (template.provider === provider && mediaProviders.includes(template.provider))),
   )
   return (
     <>
@@ -451,6 +457,7 @@ function ModelEditor({
           label="Parameters schema (JSON)"
           kind={draft.kind}
           provider={draft.provider}
+          mediaProviders={mediaProviders}
           value={draft.paramsSchema}
           onChange={(paramsSchema) => set({ paramsSchema })}
           onTemplate={setMessage}
@@ -555,6 +562,7 @@ function ModelEditor({
             label="Copy parameters schema (JSON)"
             kind={model.kind}
             provider={model.provider}
+            mediaProviders={mediaProviders}
             value={copyParamsSchema}
             onChange={setCopyParamsSchema}
             onTemplate={setMessage}
