@@ -1,4 +1,5 @@
 import { newId } from '@saas/shared'
+import { sql } from 'drizzle-orm'
 import {
   bigserial,
   index,
@@ -108,4 +109,37 @@ export const jobWorkflowWait = jobEngineSchema.table(
     finishedAt: timestamp('finished_at', { withTimezone: true }),
   },
   (t) => [uniqueIndex('workflow_wait_name_idx').on(t.workflowId, t.name)],
+)
+
+/** 持久游标在同一 schedule 行锁下推进，停机补跑不依赖进程内计时器。 */
+export const jobSchedule = jobEngineSchema.table('schedule', {
+  id: text('id').primaryKey(),
+  cron: text('cron').notNull(),
+  timeZone: text('time_zone').notNull().default('UTC'),
+  missedRun: text('missed_run').notNull().default('skip'),
+  nextScheduledAt: timestamp('next_scheduled_at', { withTimezone: true }).notNull(),
+})
+
+export const jobScheduleRun = jobEngineSchema.table(
+  'schedule_run',
+  {
+    id: uuid('id').primaryKey().$defaultFn(newId),
+    scheduleId: text('schedule_id')
+      .notNull()
+      .references(() => jobSchedule.id),
+    scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull(),
+    state: text('state').notNull().default('claimed'),
+    executorId: text('executor_id'),
+    executorToken: text('executor_token'),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    errorCode: text('error_code'),
+  },
+  (t) => [
+    uniqueIndex('schedule_run_slot_idx').on(t.scheduleId, t.scheduledAt),
+    // 活动运行跨 slot 仍互斥；终态不会阻挡下一次正常调度。
+    uniqueIndex('schedule_run_active_idx')
+      .on(t.scheduleId)
+      .where(sql`${t.state} IN ('claimed', 'running')`),
+  ],
 )

@@ -11,6 +11,7 @@ export default defineConfig({
             'test/node.test.ts',
             'test/node/request.test.ts',
             'test/node/background.test.ts',
+            'test/node/task-health.test.ts',
           ],
         },
       },

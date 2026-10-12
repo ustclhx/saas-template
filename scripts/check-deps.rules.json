@@ -1,5 +1,5 @@
 {
-  "description": "Cloudflare \u8fb9\u754c\uff1a\u5165\u53e3/\u76ee\u6807\u5939\u5177\u9010\u6587\u4ef6\u767b\u8bb0\uff0c\u4e1a\u52a1\u6ca1\u6709\u8fc7\u6e21\u8c41\u514d\u3002",
+  "description": "Cloudflare 边界：入口/目标夹具逐文件登记，业务没有过渡豁免。",
   "compositionEntries": [
     "apps/jobs/src/index.ts",
     "apps/web/src/server.ts",
@@ -87,6 +87,10 @@
     "apps/web/src/server/cloudflare/sentry.test.ts": ["cloudflare"],
     "packages/platform/test/node/fixtures/workflow-worker.ts": ["node"],
     "packages/platform/test/node/workflow.integration.test.ts": ["node"],
-    "apps/jobs/test/node-entry.unit.test.ts": ["node"]
+    "apps/jobs/test/node-entry.unit.test.ts": ["node"],
+    "packages/platform/test/node/task-health.test.ts": ["node"],
+    "packages/platform/test/node/scheduler.integration.test.ts": ["node"],
+    "packages/platform/test/node/fixtures/scheduler-worker.ts": ["node"],
+    "packages/platform/test/node/scheduler.helpers.ts": ["node"]
   }
 }

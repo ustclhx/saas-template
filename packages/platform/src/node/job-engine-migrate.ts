@@ -47,6 +47,10 @@ export async function migrateNodeJobEngine(options: NodeJobEngineMigrationOption
         `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA job_engine TO ${appRole}`,
       )
       await client.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA job_engine TO ${appRole}`)
+      // 调度游标与运行 ledger 是自有 metadata，运行时仅需 DML。
+      await client.query(
+        `GRANT SELECT, INSERT, UPDATE, DELETE ON job_engine.schedule, job_engine.schedule_run TO ${appRole}`,
+      )
       await client.query(
         `ALTER DEFAULT PRIVILEGES IN SCHEMA job_engine GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${appRole}`,
       )
@@ -74,6 +78,9 @@ export async function migrateNodeJobEngine(options: NodeJobEngineMigrationOption
         )
         await client.query(
           `GRANT SELECT (id, workflow_id, name, type, deadline, state, created_at, finished_at) ON job_engine.workflow_wait TO ${readonlyRole}`,
+        )
+        await client.query(
+          `GRANT SELECT ON job_engine.schedule, job_engine.schedule_run TO ${readonlyRole}`,
         )
       }
       await client.query('COMMIT')

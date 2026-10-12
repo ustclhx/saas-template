@@ -40,9 +40,23 @@
 
 依赖2.1/3.1；Scheduler.register返回void，初始化阶段完成持久注册/校验后才启动，handler获得原scheduledAt:Date。共享spike scheduler只是实验，不原样并入生产。
 
-- [ ] 4.1 实现jobs内cron/IANA时区、配置校验、唯一(scheduleId,scheduledAt)ledger；默认既有任务UTC，采集示例Asia/Singapore02:00。验证：UTC对应、非法cron/时区启动拒绝、正式Scheduler注册/health类型及原Date时间传递通过。
-- [ ] 4.2 实现整个schedule生命周期不重叠、双实例唯一slot、稳定运行身份、ownership/fencing及skip/once；不启用逐个backfill，已有未完成运行必须恢复。验证：两jobs、跨slot长任务、失去执行权/旧worker、停机多个周期once只补最近一次、skip已有运行恢复的PG场景通过。
-- [ ] 4.3 接TaskHealth/A Node readiness：真实backend+consumer探测，未装配unavailable、故障down，成功五分钟heartbeat写jobs.lastCronAt；前置失败不推进，超过10min/no record时503/no-store。SIGTERM停止领取并保留可恢复状态。验证：实际web health、成功/失败/停摆、queue未装配/消费者故障与优雅/强制退出恢复通过；各schedule可查询结果，日志无payload。
+- [x] 4.1 实现jobs内cron/IANA时区、配置校验、唯一(scheduleId,scheduledAt)ledger；默认既有任务UTC，采集示例Asia/Singapore02:00。验证：UTC对应、非法cron/时区启动拒绝、正式Scheduler注册/health类型及原Date时间传递通过。
+- [x] 4.2 实现整个schedule生命周期不重叠、双实例唯一slot、稳定运行身份、ownership/fencing及skip/once；不启用逐个backfill，已有未完成运行必须恢复。验证：两jobs、跨slot长任务、失去执行权/旧worker、停机多个周期once只补最近一次、skip已有运行恢复的PG场景通过。
+- [x] 4.3 接TaskHealth/A Node readiness：真实backend+consumer探测，未装配unavailable、故障down，成功五分钟heartbeat写jobs.lastCronAt；前置失败不推进，超过10min/no record时503/no-store。SIGTERM停止领取并保留可恢复状态。验证：实际web health、成功/失败/停摆、queue未装配/消费者故障与优雅/强制退出恢复通过；各schedule可查询结果，日志无payload。
+
+本批 B 4.1–4.3 按协调者任务说明只交付平台侧能力与测试，不修改并行组 5 的入口文件。
+Node jobs 仍待组 5 在 engine.register 中注册 handler 并 await scheduler.prepare，launch 后
+启动 scheduler；shutdown 停止 queue/scheduler 领取，再关闭 engine 与业务池。Node web
+readiness 仍待组合 TaskHealth 和 DB 探测并接入平台健康响应；五分钟业务前置 handler 用
+createNodeCronHeartbeat 包装，五条 UTC 业务映射归 5.2。实际 apps 入口/Compose/服务器
+健康验收留后续，不以本批真实 Node HTTP fixture 代替。只勾选本批平台范围，不勾 5.x/6.x。
+4.1–4.2 已通过隔离 PG 时区/defaults、双实例/长任务、真实秒级停机 skip/once、SIGKILL/
+SIGTERM、claimed-before-publish 和成功 checkpoint 后 ledger 写入故障恢复；恢复使用固定版
+DBOS 的公共 rewind 保留成功 step，同 run/workflow 身份与原计划 Date 不变。
+4.3 平台健康单测 12 项、真实 Node HTTP 成功/前置失败/缺失/陈旧心跳通过；独立实时时钟
+停摆测试等待 601 秒（用例 601.58 秒）后仍显示 2026-10-12T16:57:37.783Z 的旧心跳，
+返回 503/no-store。全仓 check/check:deps/check:singletons/dedupe --check/typecheck/test/build
+与 OpenSpec strict 全部通过；以上不改变前述尚待 apps 入口接线和部署验收的边界。
 
 ## 5. Phase 2：既有业务移植
 

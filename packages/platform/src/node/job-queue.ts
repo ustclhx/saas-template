@@ -566,6 +566,7 @@ export function createNodeQueueAdapter(options: NodeQueueOptions) {
     },
     async health() {
       try {
+        if (!DBOS.isInitialized()) return { status: 'down' as const }
         await options.assertOwnership()
         await db.select({ name: jobQueue.name }).from(jobQueue).limit(1)
         return { status: receiving && lastPollSucceeded ? ('up' as const) : ('down' as const) }
