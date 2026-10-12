@@ -2,7 +2,7 @@ import { recordLastCronAt } from '@saas/db'
 import type { DatabaseAccess } from '@saas/platform'
 import { log } from '@saas/shared/log'
 
-/** 每 5 分钟的心跳 Cron（wrangler.jsonc 的 triggers.crons） */
+/** 默认每 5 分钟；Cloudflare staging reduced profile 每半小时执行此任务组。 */
 export const HEARTBEAT_CRON = '*/5 * * * *'
 
 /**

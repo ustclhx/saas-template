@@ -2,7 +2,7 @@ import { retryDeletionCleanup } from '@saas/auth'
 import type { DatabaseAccess, KeyValueStore } from '@saas/platform'
 import { log } from '@saas/shared/log'
 
-/** Retry committed credential invalidations on the existing five-minute heartbeat. */
+/** 跟随心跳重试已提交的凭据失效；staging reduced profile 的周期为半小时。 */
 export async function runDeletionCleanup(context: { db: DatabaseAccess; cache: KeyValueStore }) {
   const result = await retryDeletionCleanup(context.db.business(), context.cache)
   log.info('cron.deletion-cleanup', result)

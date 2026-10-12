@@ -6,7 +6,7 @@ import type {
   ScheduledHandler,
   Scheduler,
 } from '@saas/platform'
-import { newRequestId, withLogContext } from '@saas/shared/log'
+import { log, newRequestId, withLogContext } from '@saas/shared/log'
 import {
   BILLING_DAILY_CRON,
   BILLING_HOURLY_CRON,
@@ -55,9 +55,28 @@ export async function consumeJobsBatch(batch: QueueBatch<unknown>, context: Jobs
 
 /** B 的真实 scheduler 接入点；保持五条 UTC trigger 和原有分组失败语义。 */
 export interface JobsScheduleOptions {
+  /** 仅 Cloudflare staging 入口设置 reduced；Node 保持默认五条调度。 */
+  cronProfile?: string
   features?: BillingScheduleFeatures
   skipUnavailableFiles?: boolean
   heartbeat?: ScheduledHandler
+}
+
+// 触发器映射到原有逻辑任务组；降低 staging 唤醒频率不改变任务组内部语义。
+const CRON_TASK_GROUPS = {
+  default: new Map<string, readonly [string, ...string[]]>([
+    [HEARTBEAT_CRON, [HEARTBEAT_CRON]],
+    [WORKSPACE_CLEANUP_CRON, [WORKSPACE_CLEANUP_CRON]],
+    [BILLING_HOURLY_CRON, [BILLING_HOURLY_CRON]],
+    [BILLING_RETRY_CRON, [BILLING_RETRY_CRON]],
+    [BILLING_DAILY_CRON, [BILLING_DAILY_CRON]],
+  ]),
+  reduced: new Map<string, readonly [string, ...string[]]>([
+    ['*/30 * * * *', [HEARTBEAT_CRON, BILLING_RETRY_CRON]],
+    [WORKSPACE_CLEANUP_CRON, [WORKSPACE_CLEANUP_CRON]],
+    [BILLING_HOURLY_CRON, [BILLING_HOURLY_CRON]],
+    [BILLING_DAILY_CRON, [BILLING_DAILY_CRON]],
+  ]),
 }
 
 export function registerJobsSchedules(
@@ -87,6 +106,35 @@ export async function runJobsSchedule(
   options: JobsScheduleOptions = {},
 ) {
   context.observer.tagContext()
+  const profile = options.cronProfile ?? 'default'
+  if (profile !== 'default' && profile !== 'reduced') {
+    log.error('cron.unknown_profile', { profile, cron })
+    throw new Error(`Unknown cron profile: ${profile}`)
+  }
+  const groups = CRON_TASK_GROUPS[profile].get(cron)
+  if (!groups) {
+    log.error('cron.unknown_trigger', { profile, cron })
+    throw new Error(`Unknown cron: ${cron}`)
+  }
+  if (groups.length === 1) return runJobsTaskGroup(groups[0], scheduledAt, context, options)
+  // 心跳与维护独立执行，任一组失败仍等待其他组完成，并将本次触发记为失败。
+  const results = await Promise.allSettled(
+    groups.map((group) => runJobsTaskGroup(group, scheduledAt, context, options)),
+  )
+  const failed = results.filter((result) => result.status === 'rejected')
+  if (failed.length)
+    throw new AggregateError(
+      failed.map((result) => result.reason),
+      'Reduced maintenance cron failed',
+    )
+}
+
+async function runJobsTaskGroup(
+  cron: string,
+  scheduledAt: Date,
+  context: JobsContext,
+  options: JobsScheduleOptions,
+) {
   const billingEnabled = !options.features || options.features.billing || options.features.credits
   switch (cron) {
     case BILLING_HOURLY_CRON:

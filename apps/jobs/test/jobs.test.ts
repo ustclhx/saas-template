@@ -31,6 +31,15 @@ describe('apps/jobs', () => {
     await expect(worker.scheduled(controller, env)).rejects.toThrow('Unknown cron')
   })
 
+  it('Cloudflare 入口传递调度 profile 并拒绝未知值', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const controller = createScheduledController({ cron: HEARTBEAT_CRON })
+    await expect(worker.scheduled(controller, { ...env, CRON_PROFILE: 'unknown' })).rejects.toThrow(
+      'Unknown cron profile',
+    )
+    expect(error.mock.calls.flat().join(' ')).toContain('cron.unknown_profile')
+  })
+
   it('缺少必需绑定时拒绝处理事件，错误只含变量名', async () => {
     const controller = createScheduledController({ cron: HEARTBEAT_CRON })
     const broken = { ...env, HYPERDRIVE: undefined } as unknown as Cloudflare.Env

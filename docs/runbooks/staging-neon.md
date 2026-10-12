@@ -130,7 +130,7 @@ node scripts/staging/wait-healthy.mjs https://web-staging.saas-jobs.workers.dev/
 STAGING_URL=https://web-staging.saas-jobs.workers.dev pnpm --filter @saas/web exec playwright test --project staging
 ```
 
-健康检查应 200、db.up、版本匹配；10 分钟内 jobs.lastCronAt 更新。本次线上检查与心跳已通过，完整版本及时间见顶部证据。按 `scripts/probes/71-locks/README.md` 对新关缓存 ID 重跑一轮七场景；探针 token 只走 secret/stdin，避免 README 示例的明文参数。只操作本轮创建的临时探针，保留其他现有资源。记录日期、往返延迟、锁释放与七场景结论到 docs/07。**Neon 锁探针已通过，见下方补正重跑结果；2026-10-03 的本机链路历史结果不能代替本轮。**
+健康检查应 200、db.up、版本匹配；当时按原调度验证 10 分钟内 jobs.lastCronAt 更新。本次线上检查与心跳已通过，完整版本及时间见顶部证据。2026-10-13 的 staging 半小时调度决定与后续心跳核验窗口见 §6。按 `scripts/probes/71-locks/README.md` 对新关缓存 ID 重跑一轮七场景；探针 token 只走 secret/stdin，避免 README 示例的明文参数。只操作本轮创建的临时探针，保留其他现有资源。记录日期、往返延迟、锁释放与七场景结论到 docs/07。**Neon 锁探针已通过，见下方补正重跑结果；2026-10-03 的本机链路历史结果不能代替本轮。**
 
 2026-10-08 13:26–13:27 UTC，通过 `wrangler dev --remote` 临时 preview 使用新关缓存 Hyperdrive 执行原探针一轮，未部署第三个常驻 Worker。七场景均返回 200；四个行锁/advisory 的 commit/rollback 场景 B 等待 2591–2674ms，A 释放后 36–43ms 获取锁。row/advisory 的 abandon 场景分别复用 PID 1796/1824，因此原驱动的“两个 PID 不同”断言失败（退出 1）；B 实际在 A 响应返回约 577/557ms 后才开始，原 abandon 没有执行 hold。各场景及最终五次 try-lock/NOWAIT、pg_locks 检查均通过，打印的 idle-in-transaction 列表为空；cleanup 删除探针行，随后 app 直连确认 `probe.7.1.%` 行数为 0。
 
@@ -172,9 +172,9 @@ jobs 已仅在 staging 开启日志、采样率 100%、traces 关闭，并按 jo
 
 回滚前由用户确认本机旧 staging PG 与 cloudflared 可用。把两个 app 的 staging ID 还原为 §3 旧值，按 jobs → web 发布；确认健康与心跳。必要时由协调者禁用 `deploy-staging.yml`，避免自动发布覆盖回滚。Neon 新库与本机旧库是独立数据集，回滚不复制测试数据。
 
-## 6. 24 小时观察（任务 9.2 保持未完成）
+## 6. 24 小时观察与 staging 调度
 
-记录切换日期后观察 24 小时（2026-10-09 用户决定由七天缩短：jobs Cron 每 5 分钟运行，计算基本不休眠，一天用量乘 30 即为月度估算）。每日检查 /api/health、Cron 心跳、错误率；Neon Dashboard 查看计算小时与存储占用，记录 Free 配额、使用量和预计耗尽时间。jobs 高频 Cron 可能使计算无法休眠；不更改 Cron 频率来节省用量。需要升级/关闭 scale-to-zero 时交给用户决定。
+切换后的观察窗口为 24 小时（2026-10-09 用户决定由七天缩短：当时 jobs Cron 每 5 分钟运行，计算基本不休眠，一天用量乘 30 即为月度估算）。每日检查 /api/health、Cron 心跳、错误率；Neon Dashboard 查看计算小时与存储占用，记录 Free 配额、使用量和预计耗尽时间。原先保持 Cron 频率的安排已由本节末尾的 2026-10-13 用户决定取代；生产仍保持默认频率。
 
 观察基线（2026-10-09 04:04 UTC）：Neon 项目 `saas-staging` 控制台仍为 Free；项目 Usage（Since Oct 8）显示 compute 3.05 CU-hrs、storage 40.38 MB、history 320.17 kB、network transfer 699.2 kB。这是包含两个分支的项目级统计，不能归因于主分支；控制台提示统计可延迟一小时。以本轮可核验的 2026-10-09 03:38 UTC 发布作为观察起点，观察在 2026-10-10 03:38 UTC 后完成，以 24 小时 compute CU-hrs × 30 估算月度用量并对照 Free 配额。
 
@@ -187,6 +187,12 @@ jobs 已仅在 staging 开启日志、采样率 100%、traces 关闭，并按 jo
 
 **对照配额**（[Neon 定价](https://neon.com/pricing)，2026-10-10 查询）：Free 每项目 100 CU-hrs/月，用尽后 compute 暂停到下个计费周期（数据保留，升级即恢复）；存储 1 GB/项目，当前远低于上限。Launch 按量计费 $0.106/CU-hr、$0.35/GB-月，无月度最低消费，按当前用量约 $17–19/月。
 
-**结论**：jobs Cron 每 5 分钟唤醒，scale-to-zero 不会生效，Free 计划的 compute 在每个计费周期约第 18 天用尽，之后 staging 数据库不可用到下一周期。可选：升级 Launch（约 $18/月）；或保持 Free、接受月末中断。不建议为节省用量降低 Cron 频率（见本节开头）。
+**历史结论（原高频调度）**：jobs Cron 每 5 分钟唤醒，scale-to-zero 不会生效，按当时推算，Free 计划的 compute 在每个计费周期约第 18 天用尽，之后 staging 数据库不可用到下一周期。该结论用于原调度，不代表半小时调度后的实测用量。
 
 **决定与执行（2026-10-10，用户决定）**：测试阶段保持 Neon Free，接受计费周期后段 compute 暂停的风险，实际产品上线时再升级付费计划。已删除旧 Hyperdrive `c4b28441aeaf49c3853a321a39cf8ec4` / `1b360caddf134503af774993499bdc4e`、Workers VPC 服务 `01a10214-295e-78c1-b8db-506adb15ef2a` 与 Tunnel `saas-template-local`（`1fad053b-8b3b-4dde-a8aa-7ddf524847a3`），并停止本机 `cloudflared` 容器；删除后 staging `/api/health` 正常（`db.status=up`，Cron 心跳持续）。阶段二若仍采用 Tunnel 方案，按 [hyperdrive-tunnel.md](hyperdrive-tunnel.md) 重新创建资源。9.2 完成。
+
+**staging 降频决定（2026-10-13，用户决定）**：测试阶段的定时任务只需在一定窗口内跑通，staging 使用 `CRON_PROFILE=reduced`。仅 Cloudflare `env.staging` 将原五分钟心跳与十分钟维护合并到 `*/30 * * * *`：每次各执行一次心跳及 hold 回收、Webhook 恢复、退款补偿、文件清理，子任务继续独立处理失败。`0 * * * *` 小时计费和 `0 3 * * *`、`0 4 * * *` 每日任务保持不变；它们与半小时任务同分钟触发，预计不增加独立唤醒次数。顶层/本地默认、生产默认频率和 Node 五项调度均保持原样。配置合入 main 后由自动发布生效，不手动部署分支到 staging。
+
+**预期用量（估算，待发布后复核）**：按每天约 48 次唤醒、每次计算活跃约 5.5 分钟、0.25 CU 估算，`48 × (5.5 / 60) × 0.25 ≈ 1.1 CU-hours/天`，月度约 35 CU-hours，低于上述 Free 每月 100 CU-hours 配额。实际请求、任务耗时、连接活跃时间与其他 Neon 分支会影响项目用量；持续访问可能阻止缩容到零。这是调度预算，不是已测得的节省量；发布后用 Dashboard Usage 与缩容记录复核。
+
+**健康与验收窗口**：Cloudflare `/api/health` 返回实时 `jobs.lastCronAt`，不以心跳是否在 10 分钟内决定 200/503；部署探活只要求 200、db.up 与完整 SHA 匹配，staging 冒烟覆盖首页、定价页、注册与注销，也不检查心跳新鲜度。Node 健康接口的 10 分钟门槛随原调度保持不变。自动发布后按半小时触发窗口核验心跳推进及维护任务日志，不再要求 10 分钟内推进；健康接口请求本身会访问数据库，观察缩容时避免持续轮询。

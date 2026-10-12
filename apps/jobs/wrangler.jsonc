@@ -50,7 +50,11 @@
   "env": {
     "staging": {
       "name": "jobs-staging",
-      "vars": { "SENTRY_ENVIRONMENT": "staging", "PAYMENT_MODE": "test" },
+      "vars": {
+        "SENTRY_ENVIRONMENT": "staging",
+        "PAYMENT_MODE": "test",
+        "CRON_PROFILE": "reduced"
+      },
       "ai": { "binding": "AI" },
       "r2_buckets": [{ "binding": "FILES", "bucket_name": "files-staging" }],
       // 计费 Cron 验收需要查询一小时内的完整日志，仅 staging 开启日志采集。
@@ -93,7 +97,8 @@
         ]
       },
       "triggers": {
-        "crons": ["*/5 * * * *", "0 3 * * *", "0 * * * *", "*/10 * * * *", "0 4 * * *"]
+        // staging 每半小时合并心跳与维护；小时和每日任务重合，不增加唤醒时点。
+        "crons": ["*/30 * * * *", "0 3 * * *", "0 * * * *", "0 4 * * *"]
       }
     }
   }
