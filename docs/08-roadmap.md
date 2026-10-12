@@ -92,9 +92,9 @@
 
 - [x] main 上 CI 成功后自动部署 staging：`deploy-staging.yml` 按迁移 → jobs → web → 版本健康检查 → Chromium 冒烟的顺序执行；PR #62 与预渲染补正 PR #64 已合并，[Deploy staging run 37894416572](https://github.com/ustclhx/saas-template/actions/runs/37894416572) 全部成功，健康版本匹配 `ce623cab63a99d6eee8c8ba67eeb09e564f97779`、数据库正常、三项冒烟通过，任务 7.4 已验收。
 - [x] staging 迁移通过 Neon 直连以 `migrator` 自动执行；Neon 建库、受限角色与权限、12 条迁移实测及切换已完成，GitHub staging 三项 secrets 已配置；上述成功自动发布已验证迁移后按 jobs → web 发布。阶段二生产私有 PG 的 CI 迁移仍见下文「生产迁移」。
-- [x] Neon 9.2：观察期由七天缩短为 24 小时，2026-10-10 用户决定测试阶段保持 Free、接受计费周期后段 compute 暂停，上线时再升级；旧 Hyperdrive、Tunnel 与 Workers VPC 已删除，本机 `cloudflared` 容器已停止（#79）。
+- [x] Neon 9.2：观察期由七天缩短为 24 小时，2026-10-10 用户决定测试阶段保持 Free、接受计费周期后段 compute 暂停，上线时再升级；旧 Hyperdrive、Tunnel 与 Workers VPC 已删除，本机 `cloudflared` 容器已停止（#79）。2026-10-13 用户决定 staging 使用 `CRON_PROFILE=reduced`，将五分钟心跳与十分钟维护合并为半小时执行，小时和每日调度不变；生产默认、顶层/本地及 Node 五项调度保持原频率。预计约 48 次唤醒/天 × 5.5 分钟 × 0.25 CU，约 1.1 CU-hours/天、35 CU-hours/月；实际请求与任务耗时会影响用量，合入 main 自动发布后再复核缩容及用量。
 
-发布使用 GitHub `staging` environment 的三个 secrets，PR CI 不获取这些凭据；发布串行且不取消进行中的运行。`add-cloud-staging-neon` 已完成 29/29，并于 2026-10-11 同步规格及归档（#85）。操作与验收证据见 [Neon staging runbook](./runbooks/staging-neon.md) §6 节末的 2026-10-10 决定与执行记录。
+发布使用 GitHub `staging` environment 的三个 secrets，PR CI 不获取这些凭据；发布串行且不取消进行中的运行。`add-cloud-staging-neon` 已完成 29/29，并于 2026-10-11 同步规格及归档（#85）。操作与验收证据、2026-10-13 staging 降频决定及半小时心跳核验窗口见 [Neon staging runbook](./runbooks/staging-neon.md) §6。
 
 ## 框架完成后的修补
 

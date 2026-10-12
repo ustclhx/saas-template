@@ -72,6 +72,7 @@ const handler = {
       controller.cron,
       new Date(controller.scheduledTime),
       createJobsContext(env),
+      { cronProfile: env.CRON_PROFILE ?? 'default' },
     )
   },
 } satisfies ExportedHandler<Cloudflare.Env>
