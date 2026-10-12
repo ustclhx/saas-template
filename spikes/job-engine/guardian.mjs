@@ -14,7 +14,8 @@ for(;;){
    const key=`${candidate}-${index}`
    const last=r.timeline.filter(t=>t.kind==='worker-ready'&&t.index===index).at(-1)
    let exited=false
-   try{process.kill(last.pid,0)}catch(e){if(e.code==='ESRCH')exited=true;else throw e}
+   try{const argv=readFileSync(`/proc/${last.pid}/cmdline`,'utf8').split('\0');const env=readFileSync(`/proc/${last.pid}/environ`,'utf8').split('\0');exited=argv[0]!=='/spike/runtime/bin/node'||!argv[1]?.endsWith('worker.mjs')||!env.includes(`WORKER_ID=${key}`)}catch(e){if(e.code==='ENOENT')exited=true;else throw e}
+   if(exited){try{const response=await fetch(`http://127.0.0.1:${(candidate==='dbos'?14000:15000)+index}/rpc`,{method:'POST',body:JSON.stringify({rpc:1,method:'usage',args:[]}),signal:AbortSignal.timeout(1000)});const current=await response.json();if(current.result?.workerId===key)continue}catch{}}
    if(!exited||children.has(key))continue
    const child=fork('./worker.mjs',[],{env:{...process.env,PGHOST:'localhost',PGDATABASE:`${candidate==='dbos'?'dbos':'boss'}_spike`,PGUSER:'app',CANDIDATE:candidate,WORKER_ID:key},stdio:['ignore','pipe','pipe','ipc']})
    children.set(key,child)

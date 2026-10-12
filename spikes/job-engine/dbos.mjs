@@ -273,7 +273,8 @@ export async function makeAdapter({ sql, workerId, handlers }) {
         const rows = await sql`select state from spike.dbos_phase where id = ${id}`
         status = rows[0]?.state || status
       }
-      return { status, output: result.output, error: result.error }
+      const error = result.error ? { name: result.error.name || 'Error', message: result.error.message || String(result.error) } : undefined
+      return { status, output: result.output, error }
     },
     async sendEvent(id, { type, payload }) {
       await sql.begin(async tx => {
