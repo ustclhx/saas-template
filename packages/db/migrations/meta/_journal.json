@@ -99,6 +99,13 @@
       "when": 1791807476588,
       "tag": "0013_node_job_engine",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791823278694,
+      "tag": "0014_node_job_engine_events",
+      "breakpoints": true
     }
   ]
 }
