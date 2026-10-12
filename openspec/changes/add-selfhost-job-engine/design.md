@@ -75,14 +75,15 @@ Phase 1 已在隔离 PG17/Linux Docker 运行，原型不进入本 PR。两个�
 - 10:16:05实验控制器使用旧PID，误杀本容器PG后端3059；PG在约103ms后完成恢复。pg-boss观察器因恢复期SQL异常退出，业务workflow仍waiting且检查点完整。保留 `boss-pipeline-observer-error.json`，观察器以原ID重新挂接，不重新create、不重发业务任务；后续结论仍需原始计数和最终断言。控制器交接改为验证 `/proc`可执行文件、worker ID和live RPC，禁止只凭旧PID认定进程所有权。该控制器错误不归因于候选引擎。
 - 早期 postchecks 的单项 end 在 await 前记录，单项耗时无效；断言与整份报告 start/end有效。最终关键耗时取 pipeline/重试/进程 timeline，不从该错误字段推算。
 
-**DR-B-001（spike 推荐，待协调者确认）**
+**DR-B-001（最终选择：DBOS，2026-10-12 用户确认）**
 
-- 状态：指定本地Q/J/W实验完成、正式接口已对齐；不是经审阅的最终选择；1.10保持未勾。
+- 状态：**已确认**。协调者审阅矩阵、证据与 2.x–6.x 后提交用户，用户于 2026-10-12 同意选择 DBOS；1.10 完成，Phase 2 按本推荐实施。
 - 推荐：固定 DBOS5.2.11 + 同业务 Drizzle tx 写消息 inbox；真实批次、逐条确认/DLQ、消息级全局配额；自有 FIFO event inbox/wait日志；持久 schedule ledger。
 - 取舍：删除额外 outbox 路径，保留稳定消息/批次 ID；复用原生 step/sleep/recovery，减少自研工作流状态机。没有选择第三候选。
 - 审阅证据：本节矩阵和 [spike 索引](spike/README.md)，保留首轮失败与定向复测，不以源码/类型检查冒充运行通过。
 - A 签收点：main `8c21cd20a48e0db3a696681a14b57766397d78d5`（#107），`packages/platform/src/{queue,workflow,scheduler,capabilities}.ts`、`docs/platform-capabilities.md`、`test/contracts.ts`。独立镜像快照的合同类型检查通过；Drizzle事务、字符串 ID、Date事件、linear退避分别有运行证据。Controller RPC不是业务接口。
-- 待确认：A 全服务资源预算；稳定 executorID 与退出后才复用的生命周期约束；Phase2 claim/permit fencing及保留期验证。协调者确认矩阵、边界与2.x–6.x后才能更新为最终选择。
+- 转入 Phase 2 验收（不阻塞选型）：A 全服务资源预算；稳定 executorID 与退出后才复用的生命周期约束；claim/permit fencing 及保留期验证。
+- 版本策略：DBOS 发布节奏快（v5.0→5.2 约两周），锁定精确版本；升级须在隔离库重跑迁移与核心场景后再合入。
 
 ### 3. 与 A 对齐的接口假设与文件边界
 
