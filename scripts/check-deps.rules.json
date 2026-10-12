@@ -88,9 +88,6 @@
     "apps/web/src/features/api-keys/functions.ts": {
       "cloudflare:workers": 1
     },
-    "apps/web/src/features/auth/options.functions.ts": {
-      "cloudflare:workers": 1
-    },
     "apps/web/src/features/billing/admin.functions.ts": {
       "cloudflare:workers": 1
     },
@@ -124,9 +121,6 @@
     "apps/web/src/features/settings/account.functions.ts": {
       "cloudflare:workers": 1
     },
-    "apps/web/src/features/workspace/workspace.functions.ts": {
-      "cloudflare:workers": 1
-    },
     "apps/web/src/routes/api/ai/chat.$messageId.stop.ts": {
       "cloudflare:workers": 1
     },
@@ -140,9 +134,6 @@
       "cloudflare:workers": 1
     },
     "apps/web/src/routes/api/ai/tasks/$taskId/cancel.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/auth/$.ts": {
       "cloudflare:workers": 1
     },
     "apps/web/src/routes/api/billing/webhooks/$provider.ts": {
@@ -201,9 +192,6 @@
     },
     "apps/web/src/routes/sitemap[.]xml.ts": {
       "cloudflare:workers": 1
-    },
-    "apps/web/src/server/middleware.ts": {
-      "cloudflare:workers": 1
     }
   },
   "nodeCompositionEntries": [],
@@ -213,6 +201,11 @@
     "packages/platform/test/node/background.test.ts": ["node"],
     "packages/platform/test/node/cache.integration.test.ts": ["node"],
     "packages/platform/test/node/fixtures/shutdown.ts": ["node"],
-    "packages/platform/test/node/request.test.ts": ["node"]
+    "packages/platform/test/node/request.test.ts": ["node"],
+    "packages/auth/test/helpers.ts": ["cloudflare"],
+    "packages/auth/test/session.test.ts": ["cloudflare"],
+    "packages/auth/test/deletion.test.ts": ["cloudflare"],
+    "packages/auth/test/signup-bonus-hook.test.ts": ["cloudflare"],
+    "packages/auth/test/node/auth.integration.test.ts": ["node"]
   }
 }

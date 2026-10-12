@@ -1,13 +1,11 @@
-import { env } from 'cloudflare:workers'
 import { requireFreshSession } from '@saas/auth'
-import { createDb } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { redirect } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { z } from 'zod'
-import { getAuth } from '../../server/auth.ts'
 import { withWorkspace } from '../../server/middleware.ts'
+import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import {
   recipientInvitation,
@@ -22,7 +20,7 @@ export const getWorkspacePage = createServerFn({ method: 'GET' })
   .handler(async ({ context }) => {
     const { db, workspace, member, workspaceReadOnly } = context
     const { user } = await requireFreshSession({
-      auth: getAuth(env, db),
+      auth: getWebRuntime().auth,
       db,
       headers: getRequest().headers,
     })
@@ -57,10 +55,10 @@ export const getWorkspacePage = createServerFn({ method: 'GET' })
 export const getInvitationPage = createServerFn({ method: 'GET' })
   .validator(z.object({ id: z.uuid() }))
   .handler(async ({ data }) => {
-    const db = createDb(env.HYPERDRIVE)
+    const { db } = getWebRuntime()
     try {
       const { user } = await requireFreshSession({
-        auth: getAuth(env, db),
+        auth: getWebRuntime().auth,
         db,
         headers: getRequest().headers,
       })

@@ -266,6 +266,9 @@ importers:
       '@saas/entitlements':
         specifier: workspace:*
         version: link:../../packages/entitlements
+      '@saas/platform':
+        specifier: workspace:*
+        version: link:../../packages/platform
       '@saas/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -424,6 +427,9 @@ importers:
       '@saas/db':
         specifier: workspace:*
         version: link:../db
+      '@saas/platform':
+        specifier: workspace:*
+        version: link:../platform
       '@saas/shared':
         specifier: workspace:*
         version: link:../shared

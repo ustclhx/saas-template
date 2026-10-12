@@ -1,3 +1,5 @@
+import type { RateLimiter as PlatformRateLimiter } from '@saas/platform'
+import { AppError } from '@saas/shared'
 import type { BetterAuthPlugin } from 'better-auth'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
 
@@ -11,7 +13,7 @@ import { APIError, createAuthMiddleware } from 'better-auth/api'
  * Rate Limiting 绑定按 Cloudflare 数据中心分别计数、最终一致，只用于防刷和削峰，不是精确配额。
  */
 
-/** Rate Limiting 绑定中本包用到的部分（与 workers-types 的 `RateLimit` 结构兼容）。 */
+/** @deprecated A4.3 迁移 AI/API 限流调用方后删除；认证已使用平台 RateLimiter。 */
 export interface RateLimiter {
   limit(options: { key: string }): Promise<{ success: boolean }>
 }
@@ -42,10 +44,12 @@ export const TURNSTILE_TOKEN_HEADER = 'x-turnstile-token'
 export const TURNSTILE_SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
 
 export interface AuthProtectionOptions {
-  /** RL_AUTH 绑定；未提供时不限流（仅限没有该绑定的测试环境，apps/web 的 env 校验要求它存在） */
-  readonly rateLimiter?: RateLimiter | undefined
+  /** 认证限流；未提供时仅用于无能力的单元测试。 */
+  readonly rateLimiter?: PlatformRateLimiter | undefined
   /** Turnstile secret；`null` 表示模板配置关闭了 Turnstile */
   readonly turnstileSecret: string | null
+  /** 可信运行时入口解析的本请求 IP；业务不读取转发头。 */
+  readonly clientIp?: string | null | undefined
 }
 
 const encoder = new TextEncoder()
@@ -54,11 +58,6 @@ const encoder = new TextEncoder()
 async function emailKey(email: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(email.trim().toLowerCase()))
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-function clientIp(headers: Headers): string {
-  // 只信任 Cloudflare 设置的 cf-connecting-ip；x-forwarded-for 可由客户端伪造，不使用
-  return headers.get('cf-connecting-ip') ?? 'unknown'
 }
 
 function tooManyRequests(): never {
@@ -91,6 +90,16 @@ export async function verifyTurnstile(
 export function authProtection(options: AuthProtectionOptions) {
   const paths = new Set<string>(PROTECTED_AUTH_PATHS)
   const { rateLimiter, turnstileSecret } = options
+  const ip = options.clientIp ?? 'unknown'
+  async function allow(key: string): Promise<boolean> {
+    if (!rateLimiter) return true
+    try {
+      return (await rateLimiter.limit('auth', key)).success
+    } catch (error) {
+      if (!(error instanceof AppError) || error.status !== 503) throw error
+      throw APIError.from('SERVICE_UNAVAILABLE', { code: error.code, message: error.message })
+    }
+  }
   return {
     id: 'auth-protection',
     hooks: {
@@ -99,9 +108,8 @@ export function authProtection(options: AuthProtectionOptions) {
           matcher: (ctx) => ctx.request !== undefined && paths.has(ctx.path ?? ''),
           handler: createAuthMiddleware(async (ctx) => {
             const headers = ctx.request?.headers ?? new Headers()
-            const ip = clientIp(headers)
 
-            if (rateLimiter && !(await rateLimiter.limit({ key: `auth:ip:${ip}` })).success) {
+            if (!(await allow(`auth:ip:${ip}`))) {
               tooManyRequests()
             }
 
@@ -132,7 +140,7 @@ export function authProtection(options: AuthProtectionOptions) {
               rateLimiter &&
               typeof email === 'string' &&
               email !== '' &&
-              !(await rateLimiter.limit({ key: `auth:email:${await emailKey(email)}` })).success
+              !(await allow(`auth:email:${await emailKey(email)}`))
             ) {
               tooManyRequests()
             }

@@ -24,7 +24,7 @@
 
 ## 4. 按模块迁移业务平台调用（依赖 1–3，可按子项独占并行）
 
-- [ ] 4.1 auth/workspace owner：迁移 packages/auth 与 apps/web/features/auth、workspace 和 auth/workspace API 的 env、KV、IP、rate 类型与调用；保持实时会话校验、异步发信与可选 Turnstile。验证：相关 CF 测试及 Node auth DB/cache 集成通过，关闭 Turnstile 不要求其密钥且仍限流；更新认证适配文档。共享 server/auth*.ts 由协调者合入。（R2、C1、C2、H5）
+- [x] 4.1 auth/workspace owner：迁移 packages/auth 与 apps/web/features/auth、workspace 和 auth/workspace API 的 env、KV、IP、rate 类型与调用；保持实时会话校验、异步发信与可选 Turnstile。验证：相关 CF 测试及 Node auth DB/cache 集成通过，关闭 Turnstile 不要求其密钥且仍限流；更新认证适配文档。共享 server/auth*.ts 由协调者合入。（R2、C1、C2、H5）
 - [ ] 4.2 billing/credits/admin owner：迁移相关业务包与 web 计费、后台 features/routes 的 env/db/cache/queue 调用，保持 adminAction 与账本边界。验证：既有支付、积分、后台权限测试及对应 Node 非队列业务测试通过，无迁移副作用、无直接 CF 导入；记录本批验收与依赖 B 的测试。（R2、D4）
 - [ ] 4.3 AI owner：迁移 packages/ai 与 web AI/API v1/chat 的 env、限流、waitUntil、workflow 类型与调用；保留预算/检查点/媒体业务 runner 契约。验证：既有 CF 聊天/媒体用例和 Node 文本业务用例通过，依赖 B/C 的媒体任务未伪验收；不修改组 6 的模型出口工厂。（R2、A1、A3）
 - [ ] 4.4 storage/growth/public owner：隔离 packages/storage 的 R2/FixedLengthStream 细节为 CF 专用入口，迁移 web files/growth/公开页/i18n 的 env 访问；Node 未装配 C 的文件能力明确拒绝。验证：CF 文件与公开页测试通过，Node 无 DB 公开页预渲染正常、文件不可用时无预扣/假成功；文档标明 C 接口。（R2）

@@ -8,7 +8,7 @@ afterAll(() => users.cleanup())
 const app = () =>
   setup({
     config: { auth: { turnstile: false, magicLink: true } },
-    env: { RL_AUTH: { limit: async () => ({ success: true }) } },
+    rateLimiter: { limit: async () => ({ success: true }) },
   })
 
 describe('UUID verification reservations in workerd', () => {

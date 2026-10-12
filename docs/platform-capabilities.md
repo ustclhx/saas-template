@@ -66,3 +66,46 @@ CF `cloudflareTransactionalEnqueue()` 返回 available:false。Node `unavailable
 - `pnpm --filter @saas/platform test`：原生 CF batch 确认/重试，Workflow 状态与事件边界，step 参数与异常转换，UTC Cron 独立执行，KV JSON/TTL，Node 缺失能力与真实 Node 导入。
 - `pnpm check:deps`：工程扫描加检查器正反例，含 routes/features 拒绝及清单收缩。
 - 根检查、全部现有测试与默认 CF 构建仍为 PR 门槛，e2e-smoke 与 main 自动 staging 发布保持原流水线；合并后的 staging 验收由协调者完成。
+
+## A 4.1：认证与空间的请求上下文
+
+`apps/web/src/server/runtime.ts` 导出中立 `WebRuntime`、`getWebRuntime()` 和
+`withWebRuntime(runtime, handler)`。AsyncLocalStorage 隔离每个请求，CF composition entry
+`apps/web/src/server.ts` 在环境校验后装配；同一个 requestId 用于日志与响应。数据库和认证
+使用请求内惰性 getter，公开页面不会因建立上下文而提前连接数据库。
+
+| runtime 字段 | 使用方式 |
+| --- | --- |
+| `config` | 已校验的认证标量与 Turnstile site key；不含 bindings，不能整个返回前端 |
+| `db` / `auth` | 本请求的业务 facade 与认证实例；实时守卫继续查数据库 |
+| `cache` / `rateLimiter` | 平台 KV / 限流契约，限流传入 auth、ai、api policy |
+| `requestMeta` | 入口解析的可信 clientIp、应用 requestId 和可选 cfRay |
+| `createAuth(db, cache?)` | 为后台事务 facade 与延后提交缓存创建认证实例 |
+| `handleAuthRequest(request)` | 保留后台 HTTP 白名单、模拟限制、实时守卫与事务审计 |
+
+`createWebAuth(config, db, deps)` 是中立认证工厂。composition 注入发信 sender、注册准入和
+删除步骤；web 共用空间席位与验证后积分钩子。CF 发信仍使用 EMAIL_QUEUE，仅等待入队。
+Node composition 由后续组 5/9 装配；B 未接入前不提供临时生产邮件队列。
+
+供 4.2–4.4 owner 迁移：Server Function / API handler 使用
+`const runtime = getWebRuntime()` 获取 db、auth、config，替换直接导入
+`cloudflare:workers` 与 `getAuth(env, db)`；已有事务或其他 facade 时用
+`runtime.createAuth(db)`。审计取 `runtime.requestMeta.clientIp`，防刷调用
+`runtime.rateLimiter.limit('ai'|'api', key)`，不重新读取 CF/XFF 头。迁移各自字段时扩展
+标量 config/能力并由 composition 显式装配，不把原始 env 传入 runtime。独立业务测试可直接
+注入能力，feature 不导入目标 adapter；迁移完成在同一 PR 缩减对应 transition 条目。
+旧 `getAuth(env, db)` 与后台 Server Function 的 env 分支仅为未迁移模块保留，由 A 4.6 清理。
+auth 旧 RateLimiter/KvStore 类型由后续 owner 替换。
+
+本批删除 auth options、workspace functions、auth API 与共享 middleware 四个 transition 条目，
+精确登记四个 auth CF adapter 测试夹具与一个 Node 集成夹具，没有新增业务例外。auth/web
+manifest 与 lockfile 仅增加 platform workspace 依赖。共享入口及后台认证调用方修改经过
+协调者授权；计费 customer functions 两个参数改用 Database，以接受中立 middleware facade，
+不再要求连接池 owner 的关闭方法，计费逻辑保持原样。
+
+验证命令：既有 `pnpm --filter @saas/auth test` 验证 CF 行为；
+`TEST_VALKEY_URL=<隔离测试缓存> pnpm --filter @saas/auth exec vitest run --config vitest.node.config.ts`
+使用本 worktree PG17 与独立 Valkey 验证基础认证 DB/cache。Node 配置缺资源立即失败，
+仅允许同库的隔离 worktree/CI app 与 migrator 连接。覆盖注册登录、缓存读取、实时吊销、撤销、
+跨客户端 IP/邮箱防刷和缓存故障 503；关闭 Turnstile 不要求密钥也不调用 siteverify。
+测试 sender 仅捕获消息，不替代 B 持久投递验收，完整 Compose auth e2e 仍属于 9.3。

@@ -54,7 +54,7 @@ async function time(fn: () => Promise<unknown>, rounds = ROUNDS) {
 
 /** 注册、登录（成功 / 密码错误）、修改密码；关闭 Turnstile 与 RL_AUTH，只测流程本身 */
 async function measureFlows(setupFn: typeof setup, label: string) {
-  const s = setupFn({ config: { auth: { turnstile: false } }, env: { RL_AUTH: undefined } })
+  const s = setupFn({ config: { auth: { turnstile: false } }, rateLimiter: undefined })
   const fresh = () => users.email(label)
   const out: Record<string, unknown> = {}
   out[`${label}.signUp`] = await time(async () => {
@@ -137,7 +137,7 @@ it('密码哈希原语与认证流程耗时', { timeout: 600_000 }, async () => 
   Object.assign(results, await measureFlows(scryptHelpers.setup, 'scrypt'))
   vi.doUnmock('../src/password.ts')
 
-  const s = setup({ config: { auth: { turnstile: false } }, env: { RL_AUTH: undefined } })
+  const s = setup({ config: { auth: { turnstile: false } }, rateLimiter: undefined })
   const cookie = cookieHeader(await s.post('/sign-up/email', signUpBody(users.email('c'))))
   // 对照：不做密码哈希的请求（读会话，绕过 Cookie 缓存，KV 命中）
   results.getSessionNoCache = await time(async () => {

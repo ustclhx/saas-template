@@ -7,6 +7,7 @@ import { getRequest, setResponseStatus } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import { billingDeletionSteps, getAuth } from '../../server/auth.ts'
 import { withRealSession } from '../../server/middleware.ts'
+import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 
 async function remove(workspaceId?: string) {
@@ -15,6 +16,7 @@ async function remove(workspaceId?: string) {
     db,
     auth: getAuth(env, db),
     headers: getRequest().headers,
+    clientIp: getWebRuntime().requestMeta.clientIp,
     kv: env.CACHE,
     additionalSteps: billingDeletionSteps(env, db),
   }

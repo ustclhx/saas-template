@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers'
 import { createDb } from '@saas/db'
+import { createCloudflareKv } from '@saas/platform/cloudflare'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SESSION_COOKIE_CACHE_MAX_AGE } from '../src/index.ts'
 import {
@@ -67,7 +68,7 @@ describe('会话三层', () => {
     // 对照：KV 中没有该会话时必须查库，数据库不可达就取不到
     const emptyKvNoDb = setup({
       db: createDb(env.HYPERDRIVE_REFUSED),
-      env: { CACHE: env.CACHE_EMPTY },
+      cache: createCloudflareKv(env.CACHE_EMPTY),
     })
     // Better Auth 会把查库失败记为 error 日志：截获并确认确实尝试了查库
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -77,7 +78,7 @@ describe('会话三层', () => {
     logged.mockRestore()
 
     // KV 未命中、数据库可达：回退查库取到会话
-    const emptyKv = setup({ env: { CACHE: env.CACHE_EMPTY } })
+    const emptyKv = setup({ cache: createCloudflareKv(env.CACHE_EMPTY) })
     expect((await sessionOf(emptyKv, tokenOnly))?.session.token).toBe(token)
   })
 
@@ -88,7 +89,7 @@ describe('会话三层', () => {
     const { cookie, token } = await signIn(s, address)
     const noStores = setup({
       db: createDb(env.HYPERDRIVE_REFUSED),
-      env: { CACHE: env.CACHE_EMPTY },
+      cache: createCloudflareKv(env.CACHE_EMPTY),
     })
     expect((await sessionOf(noStores, cookie))?.session.token).toBe(token)
   })

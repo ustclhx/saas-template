@@ -10,7 +10,8 @@ afterAll(() => users.cleanup())
 const configured = (emails?: string, magicLink = false) =>
   setup({
     config: { auth: { turnstile: false, magicLink } },
-    env: { BOOTSTRAP_ADMIN_EMAILS: emails, RL_AUTH: undefined },
+    env: { BOOTSTRAP_ADMIN_EMAILS: emails },
+    rateLimiter: undefined,
   })
 const readUser = async (s: ReturnType<typeof setup>, email: string) => {
   const user = await s.db.query.user.findFirst({ where: (u, { eq }) => eq(u.email, email) })
@@ -195,7 +196,9 @@ describe('first-run administrator bootstrap', () => {
         const s = setup({
           db: tx as unknown as Database,
           config: { auth: { turnstile: false } },
-          env: { BOOTSTRAP_ADMIN_EMAILS: address, CACHE: undefined, RL_AUTH: undefined },
+          env: { BOOTSTRAP_ADMIN_EMAILS: address },
+          cache: undefined,
+          rateLimiter: undefined,
         })
         const context = await s.auth.$context
         await context.internalAdapter.createSession(user.id)

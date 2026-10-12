@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers'
 import { createDb } from '@saas/db'
+import { createCloudflareKv } from '@saas/platform/cloudflare'
 import { newId } from '@saas/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
@@ -37,7 +38,7 @@ afterAll(async () => {
 })
 const app = () =>
   setup({
-    env: { RL_AUTH: { limit: async () => ({ success: true }) } },
+    rateLimiter: { limit: async () => ({ success: true }) },
     config: { auth: { turnstile: false, magicLink: true }, tenancy: { multiTenant: true } },
   })
 async function actor(a: ReturnType<typeof app>, name: string) {
@@ -50,7 +51,13 @@ async function actor(a: ReturnType<typeof app>, name: string) {
     id: user.id,
     email,
     cookie,
-    options: { auth: a.auth, db: a.db, headers: new Headers({ cookie }), kv: env.CACHE },
+    options: {
+      auth: a.auth,
+      db: a.db,
+      headers: new Headers({ cookie }),
+      kv: createCloudflareKv(env.CACHE),
+      clientIp: a.ip,
+    },
   }
 }
 async function team(a: ReturnType<typeof app>, owner: Awaited<ReturnType<typeof actor>>) {
@@ -245,7 +252,7 @@ describe('atomic deletion in workerd', () => {
     ).not.toBe(200)
     const off = setup({
       db: a.db,
-      env: { RL_AUTH: { limit: async () => ({ success: true }) } },
+      rateLimiter: { limit: async () => ({ success: true }) },
       config: { auth: { turnstile: false }, tenancy: { multiTenant: false } },
     })
     expect(
@@ -260,16 +267,15 @@ describe('atomic deletion in workerd', () => {
   it('persists failed invalidation, rejects stale challenges and preserves replacement challenges on retry', async () => {
     let fail = false
     const kv = {
-      get: (key: string) => env.CACHE.get(key),
-      put: (key: string, value: string, options?: { expirationTtl?: number }) =>
-        env.CACHE.put(key, value, options),
+      ...createCloudflareKv(env.CACHE),
       delete: async (key: string) => {
         if (fail) throw new Error('KV unavailable')
         await env.CACHE.delete(key)
       },
     }
     const a = setup({
-      env: { CACHE: kv, RL_AUTH: { limit: async () => ({ success: true }) } },
+      cache: kv,
+      rateLimiter: { limit: async () => ({ success: true }) },
       config: { auth: { turnstile: false, magicLink: true }, tenancy: { multiTenant: true } },
     })
     const owner = await actor(a, 'retry')

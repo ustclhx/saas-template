@@ -1,16 +1,20 @@
 import { env } from 'cloudflare:workers'
-import { createAuth, requireFreshSession } from '@saas/auth'
+import { createAuth, parseAuthEnv, requireFreshSession } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
 import { createDb } from '@saas/db'
+import type { KeyValueStore } from '@saas/platform'
 import { newId } from '@saas/shared'
 import { afterAll, describe, expect, it } from 'vitest'
 import { listAuditLogs } from '../src/features/admin/audit.ts'
 import { requireAdmin } from '../src/features/admin/guard.ts'
 import { executeAdminAuthAction } from '../src/features/admin/impersonation.server.ts'
 import { assertRealSession } from '../src/features/admin/impersonation.ts'
-import { handleAuthRequest } from '../src/features/admin/impersonation-http.ts'
+import { handleAuthRequest as handleRuntimeAuthRequest } from '../src/features/admin/impersonation-http.ts'
 import { adminUserDetail, listAdminUsers } from '../src/features/admin/users.ts'
 import { adminWorkspaceDetail, listAdminWorkspaces } from '../src/features/admin/workspaces.ts'
+import { getAuth } from '../src/server/auth.ts'
+import type { WebRuntime } from '../src/server/runtime.ts'
+import { templateConfig } from '../src/server/template-config.ts'
 
 const APP_URL = 'http://localhost:3000'
 const SECRET = 'test-secret-0123456789-abcdefghijklmnopqrstuvwxyz'
@@ -43,6 +47,32 @@ const auth = createAuth({ APP_URL, BETTER_AUTH_SECRET: SECRET }, db, {
   }),
   sendEmail: async () => {},
 })
+// 目标夹具只把既有测试资源注入 runtime，HTTP 权限仍经过生产包装器。
+function handleAuthRequest(request: Request, input: Cloudflare.Env) {
+  const get = async <T>(key: string, type?: 'json'): Promise<T | string | null> => {
+    const value = await input.CACHE.get(key)
+    return value === null || type !== 'json' ? value : (JSON.parse(value) as T)
+  }
+  const cache: KeyValueStore = {
+    get: get as KeyValueStore['get'],
+    put: input.CACHE.put.bind(input.CACHE),
+    delete: input.CACHE.delete.bind(input.CACHE),
+  }
+  const requestMeta = { clientIp: request.headers.get('cf-connecting-ip'), requestId: newId() }
+  const createAuth = (database: typeof db, override: KeyValueStore = cache) =>
+    getAuth(input, database, { cache: override, requestMeta })
+  const runtime: WebRuntime = {
+    config: parseAuthEnv(input, templateConfig),
+    db,
+    cache,
+    rateLimiter: { limit: (_policy, key) => input.RL_AUTH.limit({ key }) },
+    requestMeta,
+    auth: createAuth(db),
+    createAuth,
+    handleAuthRequest: (request) => handleRuntimeAuthRequest(request, runtime),
+  }
+  return runtime.handleAuthRequest(request)
+}
 function cookies(response: Response, previous = '') {
   const values = new Map<string, string>()
   for (const part of [

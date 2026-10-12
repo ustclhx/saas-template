@@ -73,6 +73,7 @@ export function teamWorkspaces(
   config: TemplateConfig,
   sendEmail: SendAuthEmail,
   resolveMaxSeats: ResolveMaxSeats = async () => null,
+  clientIp?: string | null,
 ) {
   return {
     id: 'team-workspaces',
@@ -127,7 +128,7 @@ export function teamWorkspaces(
                   action,
                   'member',
                   targetId,
-                  ctx.headers?.get('cf-connecting-ip') ?? null,
+                  clientIp ?? null,
                   JSON.stringify({ ...meta, impersonatedBy: session.impersonatedBy ?? null }),
                 ],
               )

@@ -41,7 +41,7 @@ const profileBody = z.looseObject({
   image: profileImageSchema.optional(),
 })
 
-export function accountSettings(db: Database, config: TemplateConfig) {
+export function accountSettings(db: Database, config: TemplateConfig, clientIp?: string | null) {
   return {
     id: 'account-settings',
     hooks: {
@@ -90,7 +90,7 @@ export function accountSettings(db: Database, config: TemplateConfig) {
                   await sql`update "user" set ${sql({ ...changes, updated_at: new Date().toISOString() })} where id=${actor.user.id}`
                   await sql`insert into audit_log (id,actor_user_id,action,target_type,target_id,ip,meta)
                     values (${newId()},${actor.user.id},'user.profile_updated','user',${actor.user.id},
-                    ${ctx.headers?.get('cf-connecting-ip') ?? null},${JSON.stringify({ before, after: changes, impersonatedBy: actor.session.impersonatedBy })}::jsonb)`
+                    ${clientIp ?? null},${JSON.stringify({ before, after: changes, impersonatedBy: actor.session.impersonatedBy })}::jsonb)`
                 }
               })
               // 清除被模拟用户的会话缓存，下次读取数据库中的新资料。

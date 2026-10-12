@@ -1,9 +1,8 @@
-import { env } from 'cloudflare:workers'
 import { createFileRoute } from '@tanstack/react-router'
-import { handleAuthRequest } from '../../../features/admin/impersonation-http.ts'
+import { getWebRuntime } from '../../../server/runtime.ts'
 
 // Better Auth 的全部接口（basePath /api/auth）
-const handle = ({ request }: { request: Request }) => handleAuthRequest(request, env)
+const handle = ({ request }: { request: Request }) => getWebRuntime().handleAuthRequest(request)
 
 export const Route = createFileRoute('/api/auth/$')({
   server: {

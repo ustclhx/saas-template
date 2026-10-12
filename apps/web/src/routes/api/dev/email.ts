@@ -12,7 +12,11 @@ export const Route = createFileRoute('/api/dev/email')({
         devOnly(async () => {
           const origin = new URL(request.url).origin
           const sendEmail = createQueueAuthEmailSender({
-            queue: env.EMAIL_QUEUE,
+            queue: {
+              send: async (message) => {
+                await env.EMAIL_QUEUE.send(message, { contentType: 'json' })
+              },
+            },
             appName: 'Dev',
             appUrl: origin,
           })
