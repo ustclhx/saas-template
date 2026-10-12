@@ -18,9 +18,9 @@
 
 ## 3. Node 基础适配器（platform/node 独占）
 
-- [ ] 3.1 实现 Valkey KV 与原子 fixed-window rateLimit，共用命名空间/用途前缀与三策略配置；补跨客户端计数、TTL、删除及故障关闭集成用例，记录缓存配置。验证：实际 Valkey 上两个客户端共享限额、到期/删除行为正确、不可达返回 503，不退回内存。（C1、C2）
-- [ ] 3.2 实现 TCP peer + trusted CIDR 的 IP 解析、应用 requestId 和可选 cfRay；补恶意 XFF、多层代理和无 cf 头的边界验证，记录 ingress 信任配置。验证：伪造转发头不能影响防刷 IP，响应日志 requestId 一致。（H2、H3）
-- [ ] 3.3 实现 waitUntil 任务跟踪与有界 drain（不实现持久队列）；补请求/客户端结束后完成、rejection 脱敏、SIGTERM 完成/超时用例，记录正常运行与 crash 限制。验证：任务注册后无 unhandled rejection，shutdown 在上限内结束且先排空后关 DB/cache。（A1、R6）
+- [x] 3.1 实现 Valkey KV 与原子 fixed-window rateLimit，共用命名空间/用途前缀与三策略配置；补跨客户端计数、TTL、删除及故障关闭集成用例，记录缓存配置。验证：实际 Valkey 上两个客户端共享限额、到期/删除行为正确、不可达返回 503，不退回内存。（C1、C2）
+- [x] 3.2 实现 TCP peer + trusted CIDR 的 IP 解析、应用 requestId 和可选 cfRay；补恶意 XFF、多层代理和无 cf 头的边界验证，记录 ingress 信任配置。验证：伪造转发头不能影响防刷 IP，响应日志 requestId 一致。（H2、H3）
+- [x] 3.3 实现 waitUntil 任务跟踪与有界 drain（不实现持久队列）；补请求/客户端结束后完成、rejection 脱敏、SIGTERM 完成/超时用例，记录正常运行与 crash 限制。验证：任务注册后无 unhandled rejection，shutdown 在上限内结束且先排空后关 DB/cache。（A1、R6）
 
 ## 4. 按模块迁移业务平台调用（依赖 1–3，可按子项独占并行）
 

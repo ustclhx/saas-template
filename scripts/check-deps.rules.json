@@ -209,6 +209,10 @@
   "nodeCompositionEntries": [],
   "targetAdapterFixtures": {
     "packages/platform/test/cloudflare.test.ts": ["cloudflare"],
-    "packages/platform/test/node.test.ts": ["node"]
+    "packages/platform/test/node.test.ts": ["node"],
+    "packages/platform/test/node/background.test.ts": ["node"],
+    "packages/platform/test/node/cache.integration.test.ts": ["node"],
+    "packages/platform/test/node/fixtures/shutdown.ts": ["node"],
+    "packages/platform/test/node/request.test.ts": ["node"]
   }
 }
