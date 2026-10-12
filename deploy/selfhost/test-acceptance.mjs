@@ -153,19 +153,15 @@ async function waitForRecovery() {
   throw lastFailure
 }
 function userCount() {
-  // 使用 app 角色只读查询；生产 web 不暴露其传递依赖给临时 node -e 脚本。
+  // app 查询使用与应用相同的 TLS 校验；密码只在容器内读 file secret。
   return Number(
     composeOutput(
       'exec',
       '-T',
       'postgres',
-      'psql',
-      '-U',
-      'app',
-      '-d',
-      env.POSTGRES_DB,
-      '-tAc',
-      `select count(*) from "user" where email like 'selfhost-final-%'`,
+      'sh',
+      '-c',
+      `export PGPASSWORD="$(cat /run/secrets/app_db_password)" PGSSLMODE=verify-full PGSSLROOTCERT=/run/certs/ca.crt; exec psql -h postgres -U app -d "$POSTGRES_DB" -tAc "select count(*) from \\"user\\" where email like 'selfhost-final-%'"`,
     ).trim(),
   )
 }
@@ -323,6 +319,8 @@ try {
   writeFileSync(
     override,
     `services:
+  postgres:
+    volumes: ['${env.CA_FILE}:/run/certs/ca.crt:ro']
   jobs: &fixture-jobs
     hostname: selfhost-final-jobs-1
     mem_limit: 384m
