@@ -55,7 +55,7 @@
 
 ## 8. 健康与基础集成（server/health 独占，5/7 后）
 
-- [ ] 8.1 扩展 health 的 Node db/cache/queue/scheduler 探测接口、完整 SHA 和 lastCronAt；保留 CF 响应与实时无缓存探测；区分进程 liveness 和依赖 readiness。验证：CF health 原测试通过，Node 200/503 都含完整 SHA、缓存失败或 B 未装配为 503/unavailable、不泄漏主机/凭据；更新探活文档。（O2）
+- [x] 8.1 扩展 health 的 Node db/cache/queue/scheduler 探测接口、完整 SHA 和 lastCronAt；保留 CF 响应与实时无缓存探测；区分进程 liveness 和依赖 readiness。验证：CF health 原测试通过，Node 200/503 都含完整 SHA、缓存失败或 B 未装配为 503/unavailable、不泄漏主机/凭据；更新探活文档。（O2）
 - [ ] 8.2 空卷 Compose 基础验收：迁移顺序、web/jobs 可运行、Node DB/Valkey 集成、非 root、资源/log rotation、外部仅代理 80/443、容器重启保留数据。验证：记录 compose config/ps、UID、权限、health SHA 与日志轮转证据；B 未合入的 queue/scheduler readiness 503 如实记录，不宣称 auth e2e 通过。
 - [ ] 8.3 完成根 pnpm check、check:deps、check:singletons、dedupe --check、typecheck、test、build 与新增 Node build/test，复核默认 CF e2e-smoke/自动 staging 发布未削弱。验证：CI 与合入后 main 自动 staging run/health 完整 SHA 证据；不手工部署分支到 staging，未获得合入后证据保持待办。（P6）
 

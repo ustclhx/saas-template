@@ -68,7 +68,7 @@ Compose 拓扑。三角色和权限脚本与项目相同，连接配置只在任
 | pnpm --filter @saas/jobs test:node | 11 文件/44 项通过 |
 | pnpm --filter @saas/web test:node:production | 1 文件/7 项通过 |
 | pnpm --filter @saas/jobs test:node:integration | 2 文件/2 项通过，96.29 秒；真实 retry/DLQ、五分钟 heartbeat 与停机 |
-| pnpm --filter @saas/platform test:job-engine | 待本轮结果 |
+| pnpm --filter @saas/platform test:job-engine | 2 文件/13 项通过，1127.96 秒，含真实完整六次退避与崩溃恢复 |
 | TEST_WORKFLOW_LONG=1 pnpm --filter @saas/platform exec vitest run --config vitest.workflow.config.ts | 待本轮结果，包含真实 61 分钟用例 |
 | TEST_SCHEDULER_LONG=1 pnpm --filter @saas/platform exec vitest run --config vitest.scheduler.config.ts | 10/10 通过，623.23 秒，含真实 601 秒心跳停摆 |
 | node deploy/selfhost/test-acceptance.mjs | 待本轮结果 |
@@ -88,7 +88,10 @@ billing 296、entitlements 14、web AI 50、public 29、files 拒绝路径 10、
 - 本轮首次 B engine/workflow 缺业务迁移导致 setup 失败；补齐隔离库正式业务迁移后重跑。
   jobs wire 首次复用了生产烟测库，已有 heartbeat 导致初始 503 断言失败；新建独立库重跑。
   CF smoke 首次未显式覆盖 cached Hyperdrive，数据库匹配保护拒绝启动；覆盖两绑定后通过。
-  以上均修正测试环境，没有修改业务断言、时限或生产代码来掩盖失败。
+  Compose 首轮误选未验证登录重发的回跳 `/app` 邮件；改为先读取注册邮件再做登录拒绝检查。
+  会话状态查询显式 `disableCookieCache=true`，与敏感鉴权守卫一致：旧签名 cookie 的缓存展示
+  不代表有效业务会话，仍保留旧 cookie 重放时页面拒绝与实时会话为空的断言。
+  以上修正环境/测试入口，没有弱化业务断言或时限，没有改 CF 的会话缓存语义。
 
 ## CI 与 staging 边界
 

@@ -89,7 +89,8 @@ async function signIn(page: Page, email: string) {
 
 async function sessionIdentity(page: Page) {
   return page.evaluate(async () => {
-    const response = await fetch('/api/auth/get-session')
+    // 与敏感鉴权守卫一样实时校验；旧签名 cookie 的缓存展示值不能代表有效会话。
+    const response = await fetch('/api/auth/get-session?disableCookieCache=true')
     const result = await response.json()
     // 返回可断言的身份字段，不将 session token 带回测试 runner。
     return result?.user ? { email: result.user.email, verified: result.user.emailVerified } : null
