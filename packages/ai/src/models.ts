@@ -45,6 +45,8 @@ export interface ModelCache {
 export interface ModelRegistryContext {
   store: ModelStore
   cache?: ModelCache | undefined
+  /** 目标未装配 Workers AI 时显式传 false；省略保留既有调用方行为。 */
+  workersAi?: boolean | undefined
 }
 
 export const MODEL_CACHE_KEY = 'ai:models'
@@ -52,6 +54,9 @@ export const MODEL_CACHE_KEY = 'ai:models'
 export const MODEL_CACHE_TTL_SECONDS = 60
 
 export const MODEL_UNAVAILABLE = 'MODEL_UNAVAILABLE'
+
+const providerAvailable = (ctx: Pick<ModelRegistryContext, 'workersAi'>, provider: string) =>
+  provider !== 'workers-ai' || ctx.workersAi !== false
 
 export function dbModelStore(db: Database): ModelStore {
   return {
@@ -94,15 +99,19 @@ function toAvailable(row: AiModel): AvailableModel | undefined {
   }
 }
 
-/** 全部已启用模型（不按权益过滤），优先读缓存 */
+/** 当前目标可用的已启用模型（不按权益过滤），优先读缓存 */
 export async function listEnabledModels(ctx: ModelRegistryContext): Promise<AvailableModel[]> {
   const cached = await ctx.cache?.get(MODEL_CACHE_KEY)
-  if (cached != null) return JSON.parse(cached) as AvailableModel[]
+  if (cached != null)
+    return (JSON.parse(cached) as AvailableModel[]).filter((model) =>
+      providerAvailable(ctx, model.provider),
+    )
   const models = (await ctx.store.listEnabled()).flatMap((row) => toAvailable(row) ?? [])
   await ctx.cache?.put(MODEL_CACHE_KEY, JSON.stringify(models), {
     expirationTtl: MODEL_CACHE_TTL_SECONDS,
   })
-  return models
+  // 缓存保留完整注册表，目标能力在读取后过滤，避免不同目标污染共享缓存。
+  return models.filter((model) => providerAvailable(ctx, model.provider))
 }
 
 const allowed = (entitlements: Entitlements, model: AvailableModel) =>
@@ -122,17 +131,21 @@ export async function listAvailableModels(
 }
 
 /**
- * 发起调用前按 id 取模型：不存在、已停用或计费方式不合法时抛出 `MODEL_UNAVAILABLE`（404），
+ * 发起调用前按 id 取模型：不存在、已停用、目标能力缺失或计费方式不合法时抛出 `MODEL_UNAVAILABLE`（404），
  * 权益不允许时抛出 `UPGRADE_REQUIRED`（403）。直接读库，不受列表缓存延迟影响。
  */
 export async function requireAvailableModel(
-  ctx: Pick<ModelRegistryContext, 'store'>,
+  ctx: Pick<ModelRegistryContext, 'store' | 'workersAi'>,
   entitlements: Entitlements,
   id: string,
 ): Promise<AvailableModel> {
   const row = await ctx.store.findEnabled(id)
   const model = row && toAvailable(row)
   if (!model) throw new AppError(MODEL_UNAVAILABLE, 'Model is not available', { status: 404 })
+  if (!providerAvailable(ctx, model.provider))
+    throw new AppError(MODEL_UNAVAILABLE, 'Workers AI is not available on this runtime', {
+      status: 404,
+    })
   requireEntitlement(entitlements, {
     capability: 'ai.useModel',
     modelKey: model.key,

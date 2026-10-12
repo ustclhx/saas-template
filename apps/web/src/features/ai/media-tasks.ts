@@ -188,7 +188,7 @@ export async function submitWorkspaceMedia(
     await lockWorkspaceCredits(tx, resolved.workspace.id)
     const current = await entitlements(deps, tx, resolved.workspace.id)
     const model = await requireAvailableModel(
-      { store: dbModelStore(tx as unknown as Database) },
+      { store: dbModelStore(tx as unknown as Database), workersAi: Boolean(deps.env.AI) },
       current,
       modelRow.id,
     )
