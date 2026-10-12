@@ -152,6 +152,23 @@ async function waitForRecovery() {
   }
   throw lastFailure
 }
+function userCount() {
+  // 使用 app 角色只读查询；生产 web 不暴露其传递依赖给临时 node -e 脚本。
+  return Number(
+    composeOutput(
+      'exec',
+      '-T',
+      'postgres',
+      'psql',
+      '-U',
+      'app',
+      '-d',
+      env.POSTGRES_DB,
+      '-tAc',
+      `select count(*) from "user" where email like 'selfhost-final-%'`,
+    ).trim(),
+  )
+}
 // 只输出非敏感进程身份；不把 owner token、邮件正文或密码写入日志。
 function ownerIdentity(service) {
   return JSON.parse(
@@ -515,14 +532,8 @@ secrets:
   compose('up', '-d', '--wait', '--wait-timeout', '180')
   await waitForRecovery()
   evidence('selfhost.acceptance.failures', { stoppedJobs: 503, stoppedCache: 503 })
-  compose(
-    'exec',
-    '-T',
-    'web',
-    'node',
-    '-e',
-    "const pg=require('postgres');const fs=require('node:fs');const s=pg(fs.readFileSync('/run/secrets/app_database_url','utf8'));s`select count(*)::int as count from \"user\" where email like 'selfhost-final-%'`.then(r=>{if(!r[0].count)process.exitCode=1}).finally(()=>s.end())",
-  )
+  const usersBefore = userCount()
+  fail(usersBefore > 0, 'application users not persisted')
   compose(
     'exec',
     '-T',
@@ -533,14 +544,7 @@ secrets:
   )
   compose('down')
   compose('up', '-d', '--wait', '--wait-timeout', '180')
-  compose(
-    'exec',
-    '-T',
-    'web',
-    'node',
-    '-e',
-    "const pg=require('postgres');const fs=require('node:fs');const s=pg(fs.readFileSync('/run/secrets/app_database_url','utf8'));s`select count(*)::int as count from \"user\" where email like 'selfhost-final-%'`.then(r=>{if(!r[0].count)process.exitCode=1}).finally(()=>s.end())",
-  )
+  fail(userCount() === usersBefore, 'Postgres user data lost')
   fail(
     composeOutput(
       'exec',
