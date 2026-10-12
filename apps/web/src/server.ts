@@ -5,6 +5,7 @@
 // 每个请求先建立日志上下文（新生成的 UUIDv7 请求 ID，附 Cloudflare 的 cf-ray 便于对照平台日志），
 // 结束时输出一行 `http.request`（@saas/shared/log）。
 import { type AuthEmail, parseAuthEnv, type SendAuthEmail } from '@saas/auth'
+import { loadEnv } from '@saas/config'
 import type { Database } from '@saas/db'
 import type { KeyValueStore, RequestMetadata } from '@saas/platform'
 import {
@@ -35,7 +36,7 @@ import { gateLocaleRequest } from './features/i18n/gate.ts'
 import { localizeRequest } from './features/i18n/request.server.ts'
 import { createWebAuth } from './server/auth.ts'
 import { createQueueAuthEmailSender, userLocaleByEmail } from './server/auth-email.ts'
-import { checkEnv } from './server/env.ts'
+import { checkEnv, webEnvSchema } from './server/env.ts'
 import { getWebRuntime, type WebRuntime, withWebRuntime } from './server/runtime.ts'
 import { captureServerError, instrumentWeb } from './server/sentry.ts'
 import { SENTRY_TEST_PATH, sentryTest } from './server/sentry-test.ts'
@@ -200,6 +201,7 @@ function createCloudflareWebRuntime(
     })
   }
   let auth: ReturnType<typeof createAuth> | undefined
+  const textConfig = loadEnv(env, webEnvSchema)
   const runtime: WebRuntime = {
     config,
     cache,
@@ -214,6 +216,8 @@ function createCloudflareWebRuntime(
       available: true,
       value: {
         config: {
+          AI_TEXT_EGRESS: textConfig.AI_TEXT_EGRESS ?? 'gateway',
+          OPENAI_BASE_URL: textConfig.OPENAI_BASE_URL,
           AI_GATEWAY_ACCOUNT_ID: env.AI_GATEWAY_ACCOUNT_ID,
           AI_GATEWAY_ID: env.AI_GATEWAY_ID,
           AI_GATEWAY_TOKEN: env.AI_GATEWAY_TOKEN,

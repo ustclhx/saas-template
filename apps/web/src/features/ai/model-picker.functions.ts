@@ -18,11 +18,16 @@ export const getPickerModels = createServerFn({ method: 'GET' })
     }),
   )
   .handler(async ({ context, data }) => {
+    const runtime = getWebRuntime()
     const entitlements = await getEntitlements(context.db, context.workspace.id, {
       pastDueGraceDays: templateConfig.billing.pastDueGraceDays,
     })
     const models = await listAvailableModels(
-      { store: dbModelStore(context.db), cache: getWebRuntime().cache },
+      {
+        store: dbModelStore(context.db),
+        cache: runtime.cache,
+        workersAi: runtime.ai?.available === true && runtime.ai.value.workersAi.available,
+      },
       entitlements,
       { kind: data.kind },
     )

@@ -35,6 +35,8 @@ export function registerAiChatSuite(
   runtime: {
     rateLimiter: RateLimiter
     background: () => BackgroundTasks & { settled: () => Promise<unknown> }
+    modelProvider?: string
+    mockFactory?: (mock: MockLanguageModelV4) => LanguageModelFactory
   },
 ) {
   const APP_URL = 'http://localhost:3000'
@@ -91,7 +93,7 @@ export function registerAiChatSuite(
       id,
       key: `${MODEL_KEY_PREFIX}${id}`,
       kind: 'text',
-      provider: 'mock',
+      provider: runtime.modelProvider ?? 'mock',
       providerModelId: 'mock-model',
       pricing,
       paramsSchema: maxOutputTokens ? { 'x-text': { maxOutputTokens } } : null,
@@ -150,7 +152,10 @@ export function registerAiChatSuite(
       }),
       overage: OVERAGE,
       ...(options.mock
-        ? { languageModelFactory: () => options.mock as MockLanguageModelV4 }
+        ? {
+            languageModelFactory:
+              runtime.mockFactory?.(options.mock) ?? (() => options.mock as MockLanguageModelV4),
+          }
         : options.factory
           ? { languageModelFactory: options.factory }
           : {}),
@@ -364,6 +369,35 @@ export function registerAiChatSuite(
   })
 
   describe('POST /api/ai/chat 调用前检查', () => {
+    it('Workers AI 能力缺失时在模型工厂与预扣前拒绝，无消息或账本副作用', async () => {
+      const me = await member('workers-ai-unavailable', 100)
+      const modelId = await textModel({ mode: 'token', inputPer1k: 1, outputPer1k: 1 })
+      await db.update(aiModel).set({ provider: 'workers-ai' }).where(eq(aiModel.id, modelId))
+      let factoryCalls = 0
+      const { response } = await begin(
+        me,
+        { modelId, text: 'hi' },
+        {
+          factory: () => {
+            factoryCalls++
+            return mockModel('never', { input: 1, output: 1 })
+          },
+        },
+      )
+      expect(response.status).toBe(404)
+      expect(await response.json()).toMatchObject({ error: { code: 'MODEL_UNAVAILABLE' } })
+      expect(factoryCalls).toBe(0)
+      expect(await scoped(db, me.workspaceId).count(aiConversation)).toBe(0)
+      expect(await scoped(db, me.workspaceId).count(aiMessage)).toBe(0)
+      expect(await sql`select id from credit_hold where workspace_id=${me.workspaceId}`).toEqual([])
+      expect(await consumeLedger(me.workspaceId)).toEqual([])
+      expect(await getCreditBalance(db, me.workspaceId)).toMatchObject({
+        available: 100,
+        held: 0,
+        debt: 0,
+      })
+    })
+
     it('AI policy keeps workspace/user key and rejects before creating messages or holds', async () => {
       const me = await member('rate-rejected', 100)
       const modelId = await textModel({

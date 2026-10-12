@@ -14,6 +14,7 @@ export function getAiHttpDeps() {
       ...(ai.workersAi.available ? { AI: ai.workersAi.value } : {}),
     },
     workflow: ai.workflow,
+    workersAi: ai.workersAi.available,
     rateLimiter: runtime.rateLimiter,
     waitUntil: (promise: Promise<unknown>) => ai.background.waitUntil(promise),
     downloadFile: ai.downloadFile,

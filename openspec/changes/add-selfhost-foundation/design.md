@@ -83,7 +83,11 @@ Node waitUntil 持有任务集合，注册即处理 rejected Promise 并通过 s
 
 ### 6. AI 出口（A2–A4）
 
-文本模型工厂接收出口配置：默认 CF 保留 Gateway / BYOK；Node 默认 direct，通过 `OPENAI_BASE_URL`（完整 API base）和 `OPENAI_API_KEY` 配置 OpenAI 兼容 provider，模型 id 使用既有注册表 providerModelId。其他既有原生 provider 继续原来的工厂路径；不新增供应商 SDK。Gateway 显式开启时才要求 account/id/token，direct 不发 cf-aig 授权头，不把占位 key 转发。直连端点属于管理员配置，不接受请求体任意 URL。
+文本模型工厂接收出口配置：`AI_TEXT_EGRESS=direct|gateway`，CF 缺省 gateway，Node 配置缺省 direct，非法值在启动/请求入口校验失败。direct 的 OpenAI 兼容 provider 使用 `OPENAI_BASE_URL`（完整 API base）和 `OPENAI_API_KEY`，模型 id 使用既有注册表 providerModelId。其他既有原生 provider 继续原来的 Gateway 工厂路径；不新增供应商 SDK。Gateway 使用 account/id 与可选鉴权 token，保留已有未开启 Gateway 鉴权的部署；direct 不发 cf-aig 头、不使用占位 key。直连只接受 HTTP(S) API base，不允许 URL 内嵌凭据、查询或 fragment，不接受请求体指定 URL。
+
+6.1 的「管理员配置」指部署管理员配置 env / `_FILE`，不是普通用户或模型表单配置。检查现有 `ai_model` 与模型后台后确认它们仅保存 provider、providerModelId、参数和定价；密钥仍归密钥层。`OPENAI_BASE_URL` / `OPENAI_API_KEY` 沿用 Node schema 的现有字段（key 支持 `_FILE`），后台选 `openai` 并填写兼容端点的模型 ID；不新增列或迁移，不把密钥写入数据库或审计。Gateway/BYOK 与 direct 是同一模型的两个部署出口，使用显式模式选择，已有 Gateway 配置不会使 direct 暗中转发 Gateway。
+
+真实 SDK fixture 发现 OpenAI SDK 4.0.91 将部分缺失的 usage 计数转换为 0。工厂在 SDK 输出边界依据 `usage.raw` 将缺失的计数还原为 unknown，真实 0 保留；两出口共用同一处理，让现有结算器继续按字段估算并受预扣封顶，不修改预算或账本规则。
 
 输出 factory 变化不触碰 pricing snapshot、budget、hold/capture/release、usage checkpoint 或权益。两种出口使用同一流式执行/结算测试覆盖正常 usage、per_call、超额、停止与客户端断开。Node 能力表缺 Workers AI 时，不渲染 workers-ai 模型/后台选项，直接提交在预扣前拒绝；CF 保持 binding 配置与同步媒体路径。
 

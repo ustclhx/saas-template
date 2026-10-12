@@ -37,6 +37,19 @@ function failure(fn: () => unknown, names: string[], values: string[]) {
 }
 
 describe('Node runtime config', () => {
+  it('Node 文本出口默认 direct，可显式选择 gateway，非法值启动失败且脱敏', () => {
+    expect(loadNodeEnv({ dotenvPath: false, env: valid }).AI_TEXT_EGRESS).toBe('direct')
+    expect(
+      loadNodeEnv({ dotenvPath: false, env: { ...valid, AI_TEXT_EGRESS: 'gateway' } })
+        .AI_TEXT_EGRESS,
+    ).toBe('gateway')
+    failure(
+      () =>
+        loadNodeEnv({ dotenvPath: false, env: { ...valid, AI_TEXT_EGRESS: 'private-invalid' } }),
+      ['AI_TEXT_EGRESS'],
+      ['private-invalid'],
+    )
+  })
   it('使用 dotenv 语法且进程环境优先，不改变 process.env，不要求 CF 或可选集成', () => {
     const path = join(directory(), '.env')
     writeFileSync(

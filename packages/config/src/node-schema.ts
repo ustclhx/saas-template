@@ -30,6 +30,7 @@ const nodeEnvBaseSchema = z.object({
   PAYPAL_CLIENT_SECRET: secret.optional(),
   PAYPAL_WEBHOOK_ID: z.string().optional(),
   OPENAI_BASE_URL: z.string().optional(),
+  AI_TEXT_EGRESS: z.enum(['direct', 'gateway']).default('direct'),
   OPENAI_API_KEY: secret.optional(),
   ANTHROPIC_API_KEY: secret.optional(),
   GOOGLE_API_KEY: secret.optional(),
