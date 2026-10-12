@@ -83,7 +83,7 @@ export const deepseekToken = {
   providerModelId: 'deepseek-flash',
   pricing: { mode: 'token', inputPer1k: 1, outputPer1k: 2, minCharge: 1 },
   sort: -997,
-  paramsSchema: null,
+  paramsSchema: {},
 } as const
 
 export const deepseekCall = {
@@ -98,7 +98,7 @@ export const deepseekCall = {
     limits: { maxInputTokens: 4096, maxOutputTokens: 1024 },
   },
   sort: -996,
-  paramsSchema: null,
+  paramsSchema: {},
 } as const
 
 export const ACCEPTANCE_MODELS = [workersImage, falImage, falVideo, deepseekToken, deepseekCall]
@@ -140,10 +140,10 @@ export async function ensureAcceptanceModels(
       await page.goto('/admin/models')
       await expect(page.getByRole('heading', { name: 'AI models', exact: true })).toBeVisible()
       const form = page.getByRole('article', { name: 'New model', exact: true })
-      const schema = form.getByLabel('Parameter schema (JSON)', { exact: true })
+      const schema = form.getByLabel('Parameters schema (JSON)', { exact: true })
       test.skip(
         model.kind !== 'text' && (await schema.count()) === 0,
-        'Media model setup requires the admin Parameter schema (JSON) field; current UI cannot create a usable media model.',
+        'Media model setup requires the admin Parameters schema (JSON) field; current UI cannot create a usable media model.',
       )
       // 新表单默认文本按 token 计费；动态按次字段出现才能证明 React 已接管。
       // 每次只切换一个状态并等待渲染，避免同一轮反复改 Kind 后立即检查旧 DOM。

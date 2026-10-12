@@ -44,12 +44,5 @@ export default defineConfig({
     screenshot: 'off',
     video: 'off',
   },
-  projects: [
-    { name: 'models', testMatch: 'models.spec.ts' },
-    {
-      name: 'acceptance',
-      testMatch: ['media.spec.ts', 'chat.spec.ts', 'admin.spec.ts', 'sentry.spec.ts'],
-      dependencies: ['models'],
-    },
-  ],
+  projects: [{ name: 'acceptance', testMatch: 'acceptance.spec.ts' }],
 })

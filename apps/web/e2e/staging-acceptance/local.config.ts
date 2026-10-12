@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { defineConfig } from '@playwright/test'
 import { loadEnv } from 'vite'
 import { paymentKeys } from '../../../../scripts/local-payment-env.mjs'
+import { readLocalAdminCredentials } from './local-admin.ts'
 import base from './playwright.config.ts'
 
 // 只有显式选择这份配置才能产生本地账号/种子，不允许读取或覆盖 staging 连接。
@@ -20,6 +21,11 @@ process.env.STAGING_ACCEPTANCE_LOCAL = '1'
 process.env.STAGING_URL = `http://localhost:${env.WEB_PORT ?? 3000}`
 process.env.NEON_READONLY_URL = db.toString()
 process.env.STAGING_ACCEPTANCE_RUN_ID ??= `local-${Date.now()}`
+const localAdmin = readLocalAdminCredentials()
+if (localAdmin) {
+  process.env.STAGING_ADMIN_EMAIL = localAdmin.email
+  process.env.STAGING_ADMIN_PASSWORD = localAdmin.password
+}
 for (const account of ['ADMIN', 'USER', 'TEST_USER']) {
   process.env[`STAGING_${account}_EMAIL`] ??=
     `acceptance-${account.toLowerCase()}-${process.env.STAGING_ACCEPTANCE_RUN_ID}@example.com`

@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test'
 import {
   awaitTerminal,
   mediaWorkspace,
@@ -16,10 +17,10 @@ async function requireMediaModel(model: typeof workersImage | typeof falImage | 
   await verifyAcceptanceModel(model)
 }
 
-test.beforeEach(async ({ page }) => {
+async function loginMedia(page: Page) {
   test.skip(!process.env.NEON_READONLY_URL, '媒体验收需要 NEON_READONLY_URL 只读对账及幂等恢复')
   await login(page, 'user')
-})
+}
 
 for (const [step, model] of [
   ['media-workers-image', workersImage],
@@ -27,6 +28,7 @@ for (const [step, model] of [
 ] as const) {
   test(`${step}：成功下载、按快照扣款一次及积分对账`, async ({ page }) => {
     test.setTimeout(22 * 60_000)
+    await loginMedia(page)
     await requireMediaModel(model)
     const workspace = await mediaWorkspace(page)
     const submitted = await reuseOrSubmit(page, workspace, model, step)
@@ -62,6 +64,7 @@ for (const [step, model] of [
 
 test('media-fal-video-cancel：提交后立即取消并全额退回', async ({ page }) => {
   test.setTimeout(3 * 60_000)
+  await loginMedia(page)
   await requireMediaModel(falVideo)
   const workspace = await mediaWorkspace(page)
   const step = 'media-fal-video-cancel'
