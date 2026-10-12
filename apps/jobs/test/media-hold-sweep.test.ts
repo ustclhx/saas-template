@@ -1,4 +1,4 @@
-import { env, type WorkflowStep } from 'cloudflare:workers'
+import { env } from 'cloudflare:workers'
 import {
   MEDIA_HOLD_SWEEP_BUFFER_MS,
   MEDIA_TASK_TTL_MS,
@@ -18,6 +18,7 @@ import {
   scoped,
   user,
 } from '@saas/db'
+import type { WorkflowStep } from '@saas/platform'
 import { sql as query } from 'drizzle-orm'
 import { afterAll, afterEach, expect, it, vi } from 'vitest'
 import '../src/ai.ts'
@@ -134,7 +135,6 @@ function lateRunner(options: { now?: number; onWait?: () => Promise<void> } = {}
     callbackOrigin: 'https://app.example.test',
     callbackSecret: 'media-sweep-secret',
     persist,
-    nonRetryable: (message) => new Error(message),
     now: () => options.now ?? Date.now(),
   }
   return { provider, persist, step, stepDo, deps }

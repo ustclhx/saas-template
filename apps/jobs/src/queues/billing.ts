@@ -1,11 +1,16 @@
 import { parseBillingQueueMessage } from '@saas/billing'
-import { createDb, type Database } from '@saas/db'
+import type { Database } from '@saas/db'
+import type { QueueBatch } from '@saas/platform'
 import { log, newRequestId, withLogContext } from '@saas/shared/log'
 import { type BillingEnv, createBillingContext, postprocessBillingDelivery } from '../billing.ts'
 import { deliverOperations, parseOperationsMessage } from '../notifications/operations.ts'
-import { captureJobException } from '../sentry.ts'
+import { type JobObserver, logJobObserver } from '../observer.ts'
 
-export async function handleBillingBatch(batch: MessageBatch<unknown>, env: BillingEnv) {
+export async function handleBillingBatch(
+  batch: QueueBatch<unknown>,
+  env: BillingEnv,
+  observer: JobObserver = logJobObserver,
+) {
   // Invalid messages never initialize a provider or touch the database.
   let context: ReturnType<typeof createBillingContext> | undefined
   let operationsDb: Database | undefined
@@ -28,13 +33,13 @@ export async function handleBillingBatch(batch: MessageBatch<unknown>, env: Bill
             await postprocessBillingDelivery(context, body.deliveryId)
             log.info('billing.postprocessed', { id: message.id, deliveryId: body.deliveryId })
           } else if (operations) {
-            operationsDb ??= createDb(env.HYPERDRIVE)
+            operationsDb ??= env.db.business()
             for (const event of operations.operations) await deliverOperations(operationsDb, event)
             log.info('operations.delivered', { id: message.id })
           }
           message.ack()
         } catch (error) {
-          captureJobException(error)
+          observer.captureException(error)
           log.warn(body ? 'billing.retry' : 'operations.retry', {
             id: message.id,
             attempts: message.attempts,

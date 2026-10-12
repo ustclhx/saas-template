@@ -163,7 +163,20 @@ it('退款已提交成功，Telegram HTTP 超时只让消息重试，重投成�
       const batch = createMessageBatch('events', [
         { id: 'ops-1', timestamp: new Date(), attempts, body: bodies[0] },
       ])
-      await handleBillingBatch(batch, { ...env, EVENTS_QUEUE: { send: enqueueAgain } } as never)
+      await handleBillingBatch(batch, {
+        config: { PAYMENT_MODE: 'test' },
+        db: { business: () => db, public: () => db },
+        cache: env.CACHE,
+        emailQueue: {
+          async send(body) {
+            await env.EMAIL_QUEUE.send(body)
+          },
+          async sendBatch(messages) {
+            await env.EMAIL_QUEUE.sendBatch(messages)
+          },
+        },
+        eventsQueue: { send: enqueueAgain, sendBatch: vi.fn() },
+      })
       return getQueueResult(batch, createExecutionContext())
     }
     // 模拟 HTTP 端点一直不响应，直到生产超时信号中止请求。

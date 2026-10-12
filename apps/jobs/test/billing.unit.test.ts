@@ -1,3 +1,4 @@
+import type { QueueBatch, QueueMessage } from '@saas/platform'
 import { AppError } from '@saas/shared'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -38,7 +39,6 @@ vi.mock('@saas/db', async (original) => ({
   createDb: mocks.createDb,
 }))
 
-vi.mock('../src/workflows/ai-media.ts', () => ({ AiMediaWorkflow: class {} }))
 vi.mock('../src/cron/heartbeat.ts', () => ({
   HEARTBEAT_CRON: '*/5 * * * *',
   runHeartbeat: vi.fn(),
@@ -54,7 +54,6 @@ import {
   BILLING_DAILY_CRON,
   BILLING_HOURLY_CRON,
   BILLING_RETRY_CRON,
-  type BillingEnv,
   createBillingContext,
   postprocessBillingDelivery,
   recoverBillingDeliveries,
@@ -64,16 +63,20 @@ import { runDeletionCleanup } from '../src/cron/deletion-cleanup.ts'
 import { runHeartbeat } from '../src/cron/heartbeat.ts'
 import { runMetricsDaily } from '../src/cron/metrics-daily.ts'
 import { runWorkspaceCleanup } from '../src/cron/workspace-cleanup.ts'
-import worker from '../src/index.ts'
+import { consumeJobsBatch, type JobsContext, runJobsSchedule } from '../src/handlers.ts'
+import { logJobObserver } from '../src/observer.ts'
 import { handleBillingBatch } from '../src/queues/billing.ts'
 
 const id = '93f577ac-e28b-4ca3-9768-05d4e2aa5649'
 const env = {
-  PAYMENT_MODE: 'test',
-  HYPERDRIVE: { connectionString: 'offline' },
-  CACHE: {},
-  EMAIL_QUEUE: { send: vi.fn() },
-} as unknown as BillingEnv
+  config: { PAYMENT_MODE: 'test' },
+  db: { business: mocks.createDb },
+  cache: {},
+  emailQueue: { send: vi.fn() },
+  emailTransport: { transport: 'log' },
+  files: { available: true, value: { delete: vi.fn() } },
+  observer: logJobObserver,
+} as unknown as JobsContext
 let db: ReturnType<typeof database>
 function database() {
   const results: unknown[][] = []
@@ -100,7 +103,7 @@ function message(body: unknown) {
     attempts: 2,
     ack: vi.fn(),
     retry: vi.fn(),
-  } as unknown as Message<unknown>
+  } as unknown as QueueMessage<unknown>
 }
 beforeEach(() => {
   vi.clearAllMocks()
@@ -129,7 +132,10 @@ describe('billing jobs', () => {
     )
     expect(mocks.credits).toHaveBeenCalledOnce()
     expect(mocks.cleanup).toHaveBeenCalledOnce()
-    expect(mocks.runtime).toHaveBeenCalledWith(env, ['stripe', 'paypal'], { cache: env.CACHE, db })
+    expect(mocks.runtime).toHaveBeenCalledWith(env.config, ['stripe', 'paypal'], {
+      cache: env.cache,
+      db,
+    })
   })
   it('acks invalid envelopes without initializing providers or touching the database', async () => {
     const messages = [
@@ -137,7 +143,7 @@ describe('billing jobs', () => {
       message({ v: 2, deliveryId: id }),
       message({ v: 1, deliveryId: 'not-uuid' }),
     ]
-    await handleBillingBatch({ messages } as unknown as MessageBatch<unknown>, env)
+    await handleBillingBatch({ messages } as unknown as QueueBatch<unknown>, env)
     for (const entry of messages) {
       expect(entry.ack).toHaveBeenCalledOnce()
       expect(entry.retry).not.toHaveBeenCalled()
@@ -149,12 +155,12 @@ describe('billing jobs', () => {
     const entry = message({ v: 1, deliveryId: id })
     db.results.push([{ id, status: 'processed' }], [])
     mocks.flush.mockResolvedValueOnce({ queued: 0, failures: ['refund-id'] })
-    await handleBillingBatch({ messages: [entry] } as unknown as MessageBatch<unknown>, env)
+    await handleBillingBatch({ messages: [entry] } as unknown as QueueBatch<unknown>, env)
     expect(entry.retry).toHaveBeenCalledWith({ delaySeconds: 60 })
     expect(entry.ack).not.toHaveBeenCalled()
     expect(db.insert).not.toHaveBeenCalled()
     db.results.push([{ id, status: 'processed' }], [])
-    await handleBillingBatch({ messages: [entry] } as unknown as MessageBatch<unknown>, env)
+    await handleBillingBatch({ messages: [entry] } as unknown as QueueBatch<unknown>, env)
     expect(entry.ack).toHaveBeenCalledOnce()
     expect(db.insert).toHaveBeenCalledOnce()
     expect(mocks.compensation).toHaveBeenCalledTimes(2)
@@ -177,25 +183,24 @@ describe('billing jobs', () => {
     expect(db.insert).toHaveBeenCalledOnce()
     const mail = mocks.flush.mock.calls[0]?.[0]
     await mail.queue.send({ v: 1 }, { contentType: 'json' })
-    expect(env.EMAIL_QUEUE.send).toHaveBeenCalledWith({ v: 1 }, { contentType: 'json' })
+    expect(env.emailQueue.send).toHaveBeenCalledWith({ v: 1 })
   })
 })
 
 it('preserves P1 dispatcher schedules and routes both billing queues', async () => {
-  const bindings = env as unknown as Cloudflare.Env
-  await worker.scheduled({ cron: '*/5 * * * *' } as ScheduledController, bindings)
+  await runJobsSchedule('*/5 * * * *', new Date(), env)
   expect(runDeletionCleanup).toHaveBeenCalledOnce()
   expect(runHeartbeat).toHaveBeenCalledOnce()
-  await worker.scheduled({ cron: '0 3 * * *' } as ScheduledController, bindings)
+  await runJobsSchedule('0 3 * * *', new Date(), env)
   expect(runWorkspaceCleanup).toHaveBeenCalledOnce()
   // 每日指标汇总与空间清理共用 03:00 触发器
   expect(runMetricsDaily).toHaveBeenCalledOnce()
-  await worker.scheduled({ cron: BILLING_HOURLY_CRON } as ScheduledController, bindings)
+  await runJobsSchedule(BILLING_HOURLY_CRON, new Date(), env)
   expect(mocks.annual).toHaveBeenCalledOnce()
   for (const queue of ['events', 'events-staging']) {
     const entry = message({ v: 1, deliveryId: id })
     db.results.push([{ id, status: 'ignored' }], [{ id: 'marker' }])
-    await worker.queue({ queue, messages: [entry] } as unknown as MessageBatch<unknown>, bindings)
+    await consumeJobsBatch({ queue, messages: [entry] } as unknown as QueueBatch<unknown>, env)
     expect(entry.ack).toHaveBeenCalledOnce()
   }
 })
@@ -233,7 +238,7 @@ it('enqueues reconciliation failures after the existing durable audit and preser
     return { processed: 0, failures: [{ workspaceId }] }
   })
   await expect(
-    runBillingSchedule(BILLING_DAILY_CRON, { ...env, EVENTS_QUEUE: { send } }),
+    runBillingSchedule(BILLING_DAILY_CRON, { ...env, eventsQueue: { send, sendBatch: vi.fn() } }),
   ).rejects.toThrow('credit_reconciliation (1)')
   expect(send.mock.calls[0]?.[0]).toMatchObject({
     v: 1,
@@ -251,9 +256,27 @@ it('payment configuration failure prevents scheduled work and keeps billing deli
   expect(mocks.subscription).not.toHaveBeenCalled()
   expect(mocks.credits).not.toHaveBeenCalled()
   const entry = message({ v: 1, deliveryId: id })
-  await handleBillingBatch({ messages: [entry] } as unknown as MessageBatch<unknown>, env)
+  await handleBillingBatch({ messages: [entry] } as unknown as QueueBatch<unknown>, env)
   expect(entry.retry).toHaveBeenCalledWith({ delaySeconds: 60 })
   expect(entry.ack).not.toHaveBeenCalled()
   expect(db.select).not.toHaveBeenCalled()
   expect(db.insert).not.toHaveBeenCalled()
 })
+
+it.each(['workspace', 'metrics'] as const)(
+  'runs both daily maintenance jobs when %s fails',
+  async (failure) => {
+    const workspace = vi.mocked(runWorkspaceCleanup)
+    const metrics = vi.mocked(runMetricsDaily)
+    workspace.mockResolvedValueOnce(undefined)
+    metrics.mockResolvedValueOnce(undefined)
+    if (failure === 'workspace')
+      workspace.mockReset().mockRejectedValueOnce(new Error('Workspace unavailable'))
+    else metrics.mockReset().mockRejectedValueOnce(new Error('Metrics unavailable'))
+    await expect(runJobsSchedule('0 3 * * *', new Date(), env)).rejects.toThrow(
+      'Daily maintenance cron failed',
+    )
+    expect(workspace).toHaveBeenCalledOnce()
+    expect(metrics).toHaveBeenCalledOnce()
+  },
+)

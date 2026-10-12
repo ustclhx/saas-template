@@ -23,7 +23,7 @@ declare global {
       CACHE: KVNamespace
       /** 带查询缓存（app-db-cached） */
       HYPERDRIVE_CACHED: Hyperdrive
-      AI_MEDIA_WORKFLOW: Workflow<import('./workflows/ai-media.ts').AiMediaParams>
+      AI_MEDIA_WORKFLOW: Workflow<import('./index.ts').AiMediaParams>
     }
   }
 }

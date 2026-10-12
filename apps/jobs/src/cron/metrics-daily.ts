@@ -1,5 +1,5 @@
-import type { Env } from '@saas/config'
-import { createDb, type Database } from '@saas/db'
+import type { Database } from '@saas/db'
+import type { DatabaseAccess } from '@saas/platform'
 import { log } from '@saas/shared/log'
 import { WORKSPACE_CLEANUP_CRON } from './workspace-cleanup.ts'
 
@@ -71,8 +71,8 @@ export async function summarizeDailyMetrics(db: Database, day: string) {
   })
 }
 
-export async function runMetricsDaily(env: Env, scheduledTime: number) {
+export async function runMetricsDaily(context: { db: DatabaseAccess }, scheduledTime: number) {
   const day = new Date(scheduledTime - 86_400_000).toISOString().slice(0, 10)
-  await summarizeDailyMetrics(createDb(env.HYPERDRIVE), day)
+  await summarizeDailyMetrics(context.db.business(), day)
   log.info('cron.metrics-daily', { day })
 }

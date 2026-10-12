@@ -51,13 +51,6 @@
     "packages/platform/test/cloudflare.test.ts": ["cloudflare:test", "cloudflare:workers"]
   },
   "transition": {
-    "apps/jobs/src/workflows/ai-media.ts": {
-      "cloudflare:workers": 1,
-      "cloudflare:workflows": 1
-    },
-    "apps/jobs/src/workflows/media-runner.ts": {
-      "cloudflare:workers": 1
-    },
     "apps/web/src/features/admin/admin.functions.ts": {
       "cloudflare:workers": 1
     },

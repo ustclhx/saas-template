@@ -47,7 +47,10 @@ it('reports a caught queue failure with the enqueuing request ID and preserves r
     retry: vi.fn(),
   }
   await withLogContext({ requestId: 'batch-id', queue: 'events' }, () =>
-    handleBillingBatch({ queue: 'events', messages: [message] } as never, {} as never),
+    handleBillingBatch({ queue: 'events', messages: [message] } as never, {} as never, {
+      tagContext() {},
+      captureException: captureJobException,
+    }),
   )
   expect(mocks.capture).toHaveBeenCalledWith(error, {
     tags: { requestId: 'request-1', workspaceId: undefined, userId: undefined },
