@@ -131,7 +131,26 @@ async function health(expected, component) {
   return result
 }
 let stackStarted = false
+let acceptanceFailure
 try {
+  // 公共基础镜像使用匿名拉取；不读取宿主 Docker Hub 凭据或阻塞在桌面凭据 helper。
+  const dockerHost = capture('docker', [
+    'context',
+    'inspect',
+    '--format',
+    '{{.Endpoints.docker.Host}}',
+  ]).trim()
+  const originalDockerConfig = env.DOCKER_CONFIG ?? join(env.HOME, '.docker')
+  env.DOCKER_HOST = dockerHost
+  env.DOCKER_CONFIG = join(temporary, 'docker')
+  mkdirSync(env.DOCKER_CONFIG)
+  writeFileSync(
+    join(env.DOCKER_CONFIG, 'config.json'),
+    JSON.stringify({
+      cliPluginsExtraDirs: [join(originalDockerConfig, 'cli-plugins')],
+    }),
+  )
+  env.DOCKER_BUILDKIT = '1'
   mkdirSync(env.SECRETS_DIR)
   mkdirSync(join(temporary, 'certs'))
   run(
@@ -362,6 +381,24 @@ secrets:
     { stdio: 'ignore' },
   )
   evidence('selfhost.acceptance.tls', { verified: true })
+  const permissions = composeOutput(
+    'exec',
+    '-T',
+    'postgres',
+    'psql',
+    '-U',
+    'postgres',
+    '-d',
+    env.POSTGRES_DB,
+    '-tAc',
+    "select has_schema_privilege('app','public','CREATE'), has_database_privilege('app',current_database(),'CREATE'), has_table_privilege('app','audit_log','UPDATE'), has_table_privilege('readonly','user','INSERT')",
+  )
+  fail(permissions.trim() === 'f|f|f|f', 'database role permissions widened')
+  evidence('selfhost.acceptance.permissions', {
+    appDDL: false,
+    auditUpdate: false,
+    readonlyWrite: false,
+  })
   run(
     'pnpm',
     ['--filter', '@saas/web', 'exec', 'playwright', 'test', '-c', 'playwright.selfhost.config.ts'],
@@ -470,8 +507,21 @@ secrets:
     secrets: false,
   })
   evidence('selfhost.acceptance.passed')
+} catch (error) {
+  acceptanceFailure = error
 } finally {
-  if (stackStarted) compose('down', '-v', '--remove-orphans')
-  rmSync(temporary, { recursive: true, force: true })
-  evidence('selfhost.acceptance.cleaned')
+  let cleanupCompleted = false
+  try {
+    if (stackStarted) compose('down', '-v', '--remove-orphans')
+    cleanupCompleted = true
+  } catch (cleanupFailure) {
+    // 不掩盖原始验收失败；即使 Docker 失联，也必须删除本任务临时密钥。
+    acceptanceFailure = acceptanceFailure
+      ? new AggregateError([acceptanceFailure, cleanupFailure], 'Acceptance and cleanup failed')
+      : cleanupFailure
+  } finally {
+    rmSync(temporary, { recursive: true, force: true })
+  }
+  evidence(cleanupCompleted ? 'selfhost.acceptance.cleaned' : 'selfhost.acceptance.cleanup_failed')
 }
+if (acceptanceFailure) throw acceptanceFailure

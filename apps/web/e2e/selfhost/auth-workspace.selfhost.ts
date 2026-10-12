@@ -121,6 +121,8 @@ test('fresh Node Compose: delivered verification, sign-out, password login and t
     `We sent a verification link to ${email}. Verify your email address, then sign in.`,
   )
   expect(await sessionIdentity(page)).toBeNull()
+  // 先取得注册邮件；未验证登录会另发一封回跳 /app 的邮件，不能混淆两个业务入口。
+  const deliveredLink = await verificationLink(email, baseURL)
 
   const deniedLogin = page.waitForResponse('**/api/auth/sign-in/email')
   await signIn(page, email)
@@ -130,7 +132,6 @@ test('fresh Node Compose: delivered verification, sign-out, password login and t
   )
   expect(await sessionIdentity(page)).toBeNull()
 
-  const deliveredLink = await verificationLink(email, baseURL)
   try {
     await page.goto(deliveredLink)
   } catch {

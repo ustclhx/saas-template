@@ -305,7 +305,8 @@ it('serves production SSR, Server Function RPC, static assets and no-DB prerende
 it('passes native production requests to all auth endpoints without clone failures', async () => {
   const session = await fetch(`${base}/api/auth/get-session`, { headers: { cookie } })
   expect(session.status).toBe(200)
-  expect(await session.json()).toMatchObject({ user: { id: userId } })
+  const identity = (await session.json()) as { user?: { id?: string } } | null
+  expect(identity?.user?.id).toBe(userId)
   // 不提供 token，让当前模板的防刷返回明确错误；不调用外部 Turnstile。
   for (const endpoint of ['sign-up/email', 'sign-in/email']) {
     const response = await fetch(`${base}/api/auth/${endpoint}`, {
