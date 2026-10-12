@@ -161,7 +161,7 @@ function ownerIdentity(service) {
       service,
       'node',
       '-e',
-      "const fs=require('node:fs');const crypto=require('node:crypto');const dir=process.env.JOB_OWNERSHIP_DIRECTORY;const key=crypto.createHash('sha256').update('saas-job-engine:'+process.env.JOB_EXECUTOR_ID).digest('hex');const {host,pid,pidNamespace,bootId,startTime}=JSON.parse(fs.readFileSync(dir+'/'+key+'.json','utf8'));if(!bootId||!startTime)process.exit(1);console.log(JSON.stringify({host,pid,pidNamespace,bootId,startTime,retained:fs.readdirSync(dir).filter(n=>n.startsWith(key+'.')).length}))",
+      "const fs=require('node:fs');const crypto=require('node:crypto');const dir=process.env.JOB_OWNERSHIP_DIRECTORY;const stat=fs.statSync(dir);if(stat.uid!==1000||(stat.mode&511)!==448)throw Error('owner directory permissions');const key=crypto.createHash('sha256').update('saas-job-engine:'+process.env.JOB_EXECUTOR_ID).digest('hex');const {host,pid,pidNamespace,bootId,startTime}=JSON.parse(fs.readFileSync(dir+'/'+key+'.json','utf8'));if(!bootId||!startTime)process.exit(1);console.log(JSON.stringify({host,pid,pidNamespace,bootId,startTime,retained:fs.readdirSync(dir).filter(n=>n.startsWith(key+'.')).length}))",
     ),
   )
 }
@@ -376,8 +376,17 @@ secrets:
   )
   fail(
     config.services.web.depends_on.migrate.condition === 'service_completed_successfully' &&
-      config.services.jobs.depends_on.migrate.condition === 'service_completed_successfully',
+      config.services.jobs.depends_on.migrate.condition === 'service_completed_successfully' &&
+      config.services['jobs-2'].depends_on.migrate.condition === 'service_completed_successfully',
     'migration gate mismatch',
+  )
+  const ownerVolumes = ['jobs', 'jobs-2'].map((service) =>
+    config.services[service].volumes.find((volume) => volume.target === '/app/.data/job-owners'),
+  )
+  fail(
+    ownerVolumes.every((volume) => volume?.type === 'volume') &&
+      ownerVolumes[0].source === ownerVolumes[1].source,
+    'replicas do not share persistent owner volume',
   )
   evidence('selfhost.acceptance.config', {
     nonRoot: true,
