@@ -55,6 +55,9 @@ function pidExited(pid: number): boolean {
 export async function processExited(owner: ProcessOwner, current: ProcessOwner): Promise<boolean> {
   if (owner.host !== current.host) return false
   if (process.platform === 'linux') {
+    // 损坏的旧 namespace 不是重启证明；旧 Linux 记录也必须是有效 inode。
+    if (!/^[1-9]\d*$/.test(owner.pidNamespace) || !Number.isSafeInteger(Number(owner.pidNamespace)))
+      return false
     // 同一 hostname 的容器重启可能复用 PID 1；boot/namespace 变化证明旧 incarnation 已退出。
     if (!current.bootId || !current.startTime) return false
     if (owner.bootId && owner.bootId !== current.bootId) return true

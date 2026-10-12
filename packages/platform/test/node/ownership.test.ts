@@ -57,6 +57,12 @@ describe('Node executor incarnation ownership', () => {
     ).toBe(true)
   })
 
+  it('refuses a damaged namespace instead of treating it as a container restart', async () => {
+    for (const pidNamespace of ['', 'corrupt', '0', '9007199254740992'])
+      expect(await processExited({ ...previous, pidNamespace }, current)).toBe(false)
+    expect(readFile).not.toHaveBeenCalled()
+  })
+
   it('distinguishes a reused PID from its still-live old incarnation', async () => {
     expect(await processExited(previous, current)).toBe(false)
     vi.mocked(readFile).mockResolvedValue(procStat(1, '2000'))
