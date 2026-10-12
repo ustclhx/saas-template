@@ -14,6 +14,7 @@
 | `STAGING_USER_EMAIL` / `STAGING_USER_PASSWORD` | `.env.local` 中随机生成的 `@example.com` 普通验收用户凭据；缺失仅跳过媒体与聊天 |
 | `STAGING_TEST_USER_EMAIL` / `STAGING_TEST_USER_PASSWORD` | `.env.local` 中随机生成的 `@example.com` 专用后台测试用户凭据；缺失跳过 Admin 6.1 |
 | `STAGING_ACCEPTANCE_RUN_ID` | 建议固定如 `acceptance-2026-10-12`；默认 UTC 日期 |
+| `STAGING_ADMIN_CDP_URL` | 可选，例如 `http://127.0.0.1:9333`；连接系统 Chrome 专用 profile 完成管理员登录 |
 | `NEON_READONLY_URL` | 只读证据连接，来自指定 staging 凭据文件 |
 
 首次管理员由协调者在合并后为 web 配置可选 Worker secret `BOOTSTRAP_ADMIN_EMAILS`，
@@ -23,6 +24,15 @@ Google OAuth 通常已验证，邮箱密码账号需在账号设置完成验证�
 现有部署流水线不写入或替换该 secret，配置只由协调者处理。
 
 管理员不配置验收脚本的邮箱或密码环境变量。脚本打开 `/login` 后打印「请在弹出的浏览器中登录管理员账号」，等待最多 5 分钟；管理员亲自完成登录，可使用 Google OAuth。登录后脚本检查当前会话身份是否为平台管理员并可访问 `/admin`，后台测试的身份与唯一性检查使用该会话用户。未加 `--headed` 或登录身份不满足管理员要求时，脚本明确提示并停止该步骤。管理员 Cookie 只在当前 worker 内存中复用，不保存密码、Cookie 文件或 storageState；每次新进程需重新人工登录。
+
+需要通过系统 Google Chrome 登录时，先启动专用 profile：
+
+```sh
+open -na "Google Chrome" --args --user-data-dir="$HOME/.config/saas-acceptance-chrome" --remote-debugging-port=9333 --remote-debugging-address=127.0.0.1
+export STAGING_ADMIN_CDP_URL=http://127.0.0.1:9333
+```
+
+自 Chrome 136 起，默认 profile 不支持 remote debugging，必须使用专用 `--user-data-dir`（[Chrome 官方说明](https://developer.chrome.com/blog/remote-debugging-port)）。上面的目录是仓库外的普通浏览器 profile，会保留 Google 登录会话；不要使用日常 Chrome profile。脚本连接该 Chrome 并新开 staging `/login` 标签，等待最多 5 分钟进入同源 `/app/...`，仅将 staging 可用的 Cookie 复制到测试 context 内存，再关闭新标签并断开 CDP，保留系统 Chrome 和其他标签。需要密码、二次验证或设备确认时由用户亲自完成。未设置该变量时继续使用原有弹出浏览器登录流程。
 
 普通用户与专用后台用户不存在时，脚本使用 `.env.local` 凭据通过普通注册页面创建；重跑复用已有账号，不重复注册。运行前需启用注册；当前 staging 为 `requireEmailVerification=false`，Turnstile 仍启用，需在可见浏览器中人工完成。专用后台用户必须与当前会话管理员、普通验收用户不同，已有账号只有姓名精确匹配脚本的专用 fixture、角色为 user 时才可复用。不要使用真实客户账号。
 

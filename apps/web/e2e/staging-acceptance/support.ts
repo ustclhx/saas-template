@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { type BrowserContext, expect, type Page, test } from '@playwright/test'
+import { type BrowserContext, chromium, expect, type Page, test } from '@playwright/test'
 import { type EntitlementSubscription, selectEntitlements } from '@saas/entitlements'
 import templateConfig from '../../../../template.config.ts'
 import { stubTurnstile } from '../turnstile.ts'
@@ -252,10 +252,43 @@ export async function login(page: Page, account: 'admin' | 'user') {
   await page.goto('/login')
   if (manualAdmin) {
     process.stdout.write('请在弹出的浏览器中登录管理员账号（可使用 Google，等待时间 5 分钟）\n')
-    try {
-      await page.waitForURL(/\/app\/[^/?#]+\/?$/, { timeout: HUMAN_LOGIN_TIMEOUT })
-    } catch {
-      throw new Error(`${guidancePrefix}管理员登录等待超时，请重跑并在弹出的浏览器中完成登录`)
+    const cdpUrl = process.env.STAGING_ADMIN_CDP_URL
+    if (cdpUrl) {
+      try {
+        const browser = await chromium.connectOverCDP(cdpUrl)
+        try {
+          const context = browser.contexts()[0]
+          if (!context) throw new Error('Missing Chrome default context')
+          const adminPage = await context.newPage()
+          try {
+            const origin = new URL(process.env.STAGING_URL ?? '').origin
+            await adminPage.goto(`${origin}/login`)
+            await adminPage.waitForURL(
+              (url) => url.origin === origin && url.pathname.startsWith('/app/'),
+              { timeout: HUMAN_LOGIN_TIMEOUT },
+            )
+            // 只复制 staging 可用的 Cookie，Google 会话留在专用 Chrome profile 中。
+            await page.context().addCookies(await context.cookies(origin))
+          } finally {
+            await adminPage.close()
+          }
+        } finally {
+          // connectOverCDP 返回的 browser.close() 仅断开连接，不关闭系统 Chrome。
+          await browser.close()
+        }
+      } catch {
+        // CDP 诊断可能包含端点或认证信息，不透传到日志。
+        throw new Error(
+          `${guidancePrefix}系统 Chrome 登录失败，请检查 CDP 连接并在 5 分钟内完成登录`,
+        )
+      }
+      await page.goto('/app')
+    } else {
+      try {
+        await page.waitForURL(/\/app\/[^/?#]+\/?$/, { timeout: HUMAN_LOGIN_TIMEOUT })
+      } catch {
+        throw new Error(`${guidancePrefix}管理员登录等待超时，请重跑并在弹出的浏览器中完成登录`)
+      }
     }
   } else {
     const form = page.getByRole('form', { name: 'Sign in with password' })
