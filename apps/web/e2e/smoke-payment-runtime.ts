@@ -96,13 +96,14 @@ const provider: PaymentProvider = {
   syncPlan: unsupported,
 }
 
-export function createTestPaymentRuntime(
+export function createPaymentRuntime(
   _env: unknown,
   enabled: TemplateConfig['billing']['providers'],
   _options?: unknown,
 ) {
   const providers: BillingProviders = enabled.includes('stripe') ? { stripe: provider } : {}
   return {
+    mode: 'test' as const,
     providers,
     normalizers: {},
     readiness: enabled.map((id) => ({ id, available: Boolean(providers[id]) })),

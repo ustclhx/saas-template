@@ -34,7 +34,7 @@ async function fixture(t) {
         name: app,
         ai: { binding: 'AI' },
         r2_buckets: [{ binding: 'FILES', bucket_name: 'files' }],
-        vars: { R2_FILES_BUCKET: 'files' },
+        vars: { R2_FILES_BUCKET: 'files', PAYMENT_MODE: 'test' },
         hyperdrive: [{ binding: 'HYPERDRIVE', id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }],
         workflows: [{ name: 'ai-media', script_name: 'jobs' }],
         queues: { producers: [{ queue: 'email' }] },
@@ -45,6 +45,7 @@ async function fixture(t) {
             r2_buckets: [{ binding: 'FILES', bucket_name: 'files-staging' }],
             vars: {
               APP_URL: 'https://old.workers.dev',
+              PAYMENT_MODE: 'test',
               R2_FILES_BUCKET: 'files-staging',
               R2_ACCOUNT_ID: 'template-account',
               AI_GATEWAY_ACCOUNT_ID: 'template-account',
@@ -153,6 +154,9 @@ test('生成副本改名与配置，排除各级密钥、链接和产物', async
   assert.equal(wrangler.name, 'acme-web')
   assert.equal(wrangler.hyperdrive[0].id, '00000000000000000000000000000000')
   assert.equal(wrangler.env.staging.vars.APP_URL, 'https://acme.example')
+  assert.equal(wrangler.vars.PAYMENT_MODE, 'test')
+  assert.equal(wrangler.env.staging.vars.PAYMENT_MODE, 'test')
+  assert.equal(wrangler.env.production, undefined)
   assert.equal(wrangler.workflows, undefined)
   assert.equal(wrangler.ai, undefined)
   assert.equal(wrangler.env.staging.ai, undefined)
@@ -196,9 +200,12 @@ test('生成副本改名与配置，排除各级密钥、链接和产物', async
   const example = await readFile(join(result.target, '.dev.vars.example'), 'utf8')
   for (const line of example.split('\n').filter((line) => line && !line.startsWith('#'))) {
     if (line.startsWith('APP_URL=')) assert.equal(line, 'APP_URL=https://acme.example')
+    else if (line.startsWith('PAYMENT_MODE=')) assert.equal(line, 'PAYMENT_MODE=test')
     else assert.match(line, /^[A-Z_]+=$/)
   }
   assert.match(example, /SENTRY_DSN=\n/)
+  assert.match(result.report, /PAYMENT_MODE/)
+  assert.match(example, /^PAYMENT_MODE=test$/m)
   assert.doesNotMatch(
     example,
     /SENTRY_AUTH_TOKEN|SENTRY_ORG|SENTRY_PROJECT|STAGING_MIGRATION_DATABASE_URL/,
@@ -218,6 +225,7 @@ test('媒体功能与支付开启时，清单和 Worker 引用同步生成', asy
   assert.match(result.report, /FAL_KEY/)
   assert.match(result.report, /R2_SECRET_ACCESS_KEY/)
   assert.match(result.report, /STRIPE_WEBHOOK_SECRET/)
+  assert.doesNotMatch(result.report, /PAYPAL_ENV/)
   assert.match(result.report, /GOOGLE_CLIENT_SECRET/)
 })
 

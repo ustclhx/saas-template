@@ -12,6 +12,9 @@ export {
   envSchema,
   type HyperdriveBinding,
   loadEnv,
+  type PaymentMode,
+  type PaymentModeEnv,
+  resolvePaymentMode,
 } from './env.ts'
 export * from './media.ts'
 export {

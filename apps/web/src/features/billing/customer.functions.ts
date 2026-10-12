@@ -4,7 +4,7 @@ import {
   changePlan,
   confirmCheckout,
   createCheckout,
-  createTestPaymentRuntime,
+  createPaymentRuntime,
   getPortalUrl,
   resumeSubscription,
 } from '@saas/billing'
@@ -12,7 +12,7 @@ import { createDb } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import { createServerFn } from '@tanstack/react-start'
-import { getRequest } from '@tanstack/react-start/server'
+import { getRequest, setResponseStatus } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import { withRealSession, withWorkspace } from '../../server/middleware.ts'
 import { templateConfig } from '../../server/template-config.ts'
@@ -26,7 +26,12 @@ import {
 const workspace = z.object({ slug: z.string().min(1).max(64) })
 const provider = z.enum(['stripe', 'paypal', 'creem', 'paddle', 'polar'])
 function runtime(db: ReturnType<typeof createDb>) {
-  return createTestPaymentRuntime(env, templateConfig.billing.providers, { cache: env.CACHE, db })
+  try {
+    return createPaymentRuntime(env, templateConfig.billing.providers, { cache: env.CACHE, db })
+  } catch (error) {
+    if (error instanceof AppError && error.status === 503) setResponseStatus(503)
+    throw error
+  }
 }
 function service(db: ReturnType<typeof createDb>) {
   return {
@@ -47,6 +52,7 @@ async function safe<T>(readOnly: boolean, action: () => Promise<T>) {
       throw new AppError('WORKSPACE_READ_ONLY', 'Workspace is read-only', { status: 403 })
     return { ok: true as const, result: await action() }
   } catch (error) {
+    if (error instanceof AppError && error.status === 503) setResponseStatus(503)
     // 非业务错误（服务商拒绝、网络等）对用户只显示 BILLING_UNAVAILABLE，原因需留在日志中排查
     if (!(error instanceof AppError)) log.error('billing.action_failed', { error })
     return {

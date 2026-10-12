@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers'
 import {
   createBillingEventHandler,
   createCompensationFailureHandler,
-  createTestPaymentRuntime,
+  createPaymentRuntime,
   markManualRefund,
   notifyRefundRequest,
   type RefundServiceOptions,
@@ -10,12 +10,12 @@ import {
   retryRefundNotification,
   reviewRefundRequest,
 } from '@saas/billing'
-import { EnvValidationError } from '@saas/config'
 import { type Database, refundRequest, webhookEvent } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { withRequestId } from '@saas/shared/log'
 import { isNotFound } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
+import { setResponseStatus } from '@tanstack/react-start/server'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { templateConfig } from '../../server/template-config.ts'
@@ -38,14 +38,10 @@ const request = z.object({ requestId: z.uuid() })
 const eventsEnv = env as typeof env & { EVENTS_QUEUE?: Queue<{ v: 1; deliveryId: string }> }
 function runtime(db: Database) {
   try {
-    return createTestPaymentRuntime(env, templateConfig.billing.providers, { cache: env.CACHE, db })
+    return createPaymentRuntime(env, templateConfig.billing.providers, { cache: env.CACHE, db })
   } catch (error) {
-    if (!(error instanceof EnvValidationError)) throw error
-    return {
-      providers: {},
-      normalizers: {},
-      readiness: templateConfig.billing.providers.map((id) => ({ id, available: false })),
-    } as ReturnType<typeof createTestPaymentRuntime>
+    if (error instanceof AppError && error.status === 503) setResponseStatus(503)
+    throw error
   }
 }
 function refundOptions(db: Database): RefundServiceOptions {
@@ -75,6 +71,7 @@ async function safe(action: () => Promise<string>) {
   } catch (error) {
     // 写事务内发现管理员已失效：与守卫一样返回 404，不当作业务失败
     if (isNotFound(error)) throw error
+    if (error instanceof AppError && error.status === 503) setResponseStatus(503)
     return {
       ok: false as const,
       error: error instanceof AppError ? error.code : 'BILLING_UNAVAILABLE',
@@ -85,10 +82,14 @@ async function safe(action: () => Promise<string>) {
 export const getAdminBilling = createServerFn({ method: 'GET' })
   .middleware([adminMiddleware])
   .inputValidator(page)
-  .handler(async ({ context, data }) => ({
-    ...(await listAdminPayments(context.db, data)),
-    readiness: runtime(context.db).readiness,
-  }))
+  .handler(async ({ context, data }) => {
+    const current = runtime(context.db)
+    return {
+      ...(await listAdminPayments(context.db, data)),
+      mode: current.mode,
+      readiness: current.readiness,
+    }
+  })
 
 export const getAdminSubscriptions = createServerFn({ method: 'GET' })
   .middleware([adminMiddleware])

@@ -3,7 +3,7 @@ import { deleteAccount, deleteTeamWorkspace } from '@saas/auth'
 import { createDb } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
-import { getRequest } from '@tanstack/react-start/server'
+import { getRequest, setResponseStatus } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import { billingDeletionSteps, getAuth } from '../../server/auth.ts'
 import { withRealSession } from '../../server/middleware.ts'
@@ -29,6 +29,7 @@ async function remove(workspaceId?: string) {
     return { ok: true as const }
   } catch (error) {
     if (!(error instanceof AppError)) throw error
+    if (error.status === 503) setResponseStatus(503)
     return {
       ok: false as const,
       code: error.code,

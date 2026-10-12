@@ -23,6 +23,7 @@ function BillingAdmin() {
   return (
     <section className="grid gap-5">
       <h2 className="font-semibold text-xl">Billing administration</h2>
+      <p>Payment mode: {data.mode}</p>
       <ul>
         {data.readiness.map((item) => (
           <li key={item.id}>

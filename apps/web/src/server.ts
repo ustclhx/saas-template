@@ -4,6 +4,7 @@
 // 之后由 Paraglide 按 URL 前缀 / Cookie 确定本次请求的语言（features/i18n/routing.ts）。
 // 每个请求先建立日志上下文（新生成的 UUIDv7 请求 ID，附 Cloudflare 的 cf-ray 便于对照平台日志），
 // 结束时输出一行 `http.request`（@saas/shared/log）。
+import { AppError } from '@saas/shared'
 import { log, newRequestId, withLogContext } from '@saas/shared/log'
 import { createStartHandler, defaultStreamHandler } from '@tanstack/react-start/server'
 import { gateAdminRequest } from './features/admin/gate.ts'
@@ -59,6 +60,11 @@ export default {
       } catch (error) {
         // 包装器已经捕获异常；返回无敏感细节的响应与请求 ID，便于管理员验收定位。
         log.error('http.unhandled', { error })
+        if (error instanceof AppError)
+          return Response.json(error.toJSON(), {
+            status: error.status,
+            headers: { 'x-request-id': context.requestId },
+          })
         return new Response('Internal Server Error', {
           status: 500,
           headers: { 'x-request-id': context.requestId },
@@ -87,7 +93,7 @@ async function logged(request: Request, handle: () => Promise<Response>): Promis
     log.error('http.request', {
       method,
       path,
-      status: 500,
+      status: error instanceof AppError ? error.status : 500,
       durationMs: Date.now() - started,
       error,
     })

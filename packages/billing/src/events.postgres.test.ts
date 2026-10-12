@@ -39,7 +39,7 @@ import type {
   PaymentSnapshot,
   SubscriptionSnapshot,
 } from './provider.ts'
-import { createTestPaymentRuntime } from './runtime.ts'
+import { createPaymentRuntime } from './runtime.ts'
 
 const testEnv = (globalThis as unknown as { process: { env: Record<string, string | undefined> } })
   .process.env
@@ -226,8 +226,9 @@ describe('billing event consumer on PostgreSQL', () => {
     const first = sale(`SALE-${id()}`, firstPaid)
     const renewal = sale(`SALE-${id()}`, nextPaid)
     let renewed = false
-    const runtime = createTestPaymentRuntime(
+    const runtime = createPaymentRuntime(
       {
+        PAYMENT_MODE: 'test',
         PAYPAL_CLIENT_ID: 'fixture',
         PAYPAL_CLIENT_SECRET: 'fixture',
         PAYPAL_WEBHOOK_ID: 'fixture',

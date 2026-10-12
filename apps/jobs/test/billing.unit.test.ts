@@ -1,3 +1,4 @@
+import { AppError } from '@saas/shared'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -22,7 +23,7 @@ vi.mock('../../../template.config.ts', async (original) => {
 })
 vi.mock('@saas/billing', async (original) => ({
   ...(await original<typeof import('@saas/billing')>()),
-  createTestPaymentRuntime: mocks.runtime,
+  createPaymentRuntime: mocks.runtime,
   flushRefundNotifications: mocks.flush,
   runPendingCompensations: mocks.compensation,
   runCreditExpiration: mocks.expiration,
@@ -68,6 +69,7 @@ import { handleBillingBatch } from '../src/queues/billing.ts'
 
 const id = '93f577ac-e28b-4ca3-9768-05d4e2aa5649'
 const env = {
+  PAYMENT_MODE: 'test',
   HYPERDRIVE: { connectionString: 'offline' },
   CACHE: {},
   EMAIL_QUEUE: { send: vi.fn() },
@@ -207,7 +209,9 @@ it('reports failed compensation and still flushes durable notifications on the r
 it('missing payment credentials keep both providers unavailable without remote requests', async () => {
   const billing = await vi.importActual<typeof import('@saas/billing')>('@saas/billing')
   const remote = vi.fn()
-  const runtime = billing.createTestPaymentRuntime({}, ['stripe', 'paypal'], { fetch: remote })
+  const runtime = billing.createPaymentRuntime({ PAYMENT_MODE: 'test' }, ['stripe', 'paypal'], {
+    fetch: remote,
+  })
   expect(runtime.providers).toEqual({})
   expect(runtime.readiness).toEqual([
     { id: 'stripe', available: false },
@@ -237,4 +241,19 @@ it('enqueues reconciliation failures after the existing durable audit and preser
   })
   expect(JSON.stringify(send.mock.calls)).not.toContain('private')
   expect(mocks.cleanup).toHaveBeenCalledOnce()
+})
+
+it('payment configuration failure prevents scheduled work and keeps billing deliveries retryable', async () => {
+  mocks.runtime.mockImplementation(() => {
+    throw new AppError('BILLING_UNAVAILABLE', 'Payment configuration unavailable', { status: 503 })
+  })
+  await expect(runBillingSchedule(BILLING_DAILY_CRON, env)).rejects.toMatchObject({ status: 503 })
+  expect(mocks.subscription).not.toHaveBeenCalled()
+  expect(mocks.credits).not.toHaveBeenCalled()
+  const entry = message({ v: 1, deliveryId: id })
+  await handleBillingBatch({ messages: [entry] } as unknown as MessageBatch<unknown>, env)
+  expect(entry.retry).toHaveBeenCalledWith({ delaySeconds: 60 })
+  expect(entry.ack).not.toHaveBeenCalled()
+  expect(db.select).not.toHaveBeenCalled()
+  expect(db.insert).not.toHaveBeenCalled()
 })

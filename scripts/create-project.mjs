@@ -201,6 +201,7 @@ export function setupChecklist(options) {
     'EMAIL_FROM',
     'EMAIL_REPLY_TO',
     'SENTRY_ENVIRONMENT',
+    'PAYMENT_MODE',
     'APP_VERSION',
   ]
   const ciSecrets = [
@@ -227,7 +228,6 @@ export function setupChecklist(options) {
         ? ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']
         : ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'PAYPAL_WEBHOOK_ID']),
     )
-    if (provider === 'paypal') vars.push('PAYPAL_ENV')
   }
   if (options.ai.includes('text')) {
     // 服务商密钥默认存于 AI Gateway BYOK；放 Worker 的 OPENAI/ANTHROPIC/GOOGLE/DEEPSEEK_API_KEY 为可选。
@@ -375,7 +375,9 @@ export async function createProject(input, source = root) {
   await copy()
   const checklist = setupChecklist(options)
   const vars = [...checklist.vars, ...checklist.secrets]
-    .map((key) => `${key}=${key === 'APP_URL' ? options.url : ''}`)
+    .map(
+      (key) => `${key}=${key === 'APP_URL' ? options.url : key === 'PAYMENT_MODE' ? 'test' : ''}`,
+    )
     .join('\n')
   const example = `# 密钥为空，APP_URL 为公开默认值；复制到对应 app 的 .dev.vars 后填写。\n${vars}\n`
   await writeFile(join(target, '.dev.vars.example'), example)

@@ -319,7 +319,7 @@ INSERT INTO credit_hold (...), credit_hold_allocation (...);
 
 ## P2 离线开发与联通边界（2026-10-04）
 
-当前实现不需要支付密钥。缺失凭据或未同步价格时，定价和账单页面显示支付不可用，不能伪装支付成功。Stripe 使用 SDK 23.0.0 与固定 API 版本 `2026-09-30.endive`；PayPal 工厂固定 sandbox，token 缓存到 CACHE KV。当前事件映射仅由离线 HTTP 夹具验证，不代表真实平台录制或 staging 验收通过。
+当前离线开发不需要支付密钥。缺失凭据或未同步价格时，定价和账单页面显示支付不可用，不能伪装支付成功。Stripe 使用 SDK 23.0.0 与固定 API 版本 `2026-09-30.endive`；支付工厂按 `PAYMENT_MODE` 选择 test/live，本地与 staging 保持 test（PayPal Sandbox），token 缓存到 CACHE KV 并按环境隔离。当前事件映射仅由离线 HTTP 夹具验证，不代表真实平台录制或 staging 验收通过。
 
 - 公开入口：`POST /api/billing/webhooks/{stripe|paypal}` 保留原始请求体验签；无效签名返回 400，业务或远端暂时失败返回 500，已提交的付款在队列投递失败时仍返回 200，由 Jobs 扫描持久化记录恢复通知。错误诊断会去除凭据、URL 与控制字符。
 - 后台：`/admin/billing` 列表与 failed 回调重放，`/admin/billing/refunds` 全额/部分审核、驳回与独立邮件重试。所有 server function 均重新验证平台 admin。审批或平台 API 响应不等于退款最终入账，只有匹配的已验证退款 ID 才完成申请和积分回收。
@@ -331,3 +331,24 @@ INSERT INTO credit_hold (...), credit_hold_allocation (...);
 `pnpm billing:seed` 只写当前数据库的示例套餐，未同步价格保持 inactive。示例金额与积分量并非最终商业定价；AI 模型价格仍由 P3 定义。`pnpm billing:sync` 要求显式 `BILLING_SYNC_MODE=test`、Stripe 测试凭据与 PayPal 沙箱凭据，仅在下一联通阶段执行。Web/Jobs 与同步脚本共用根目录 `.env.local` 的五项支付变量名，参照已提交的 `.env.example`；`seed` / `sync` 自动读取该文件，进程环境优先、未指定数据库时回退到 `.env.worktree`。本地 dev 入口生成 app `.dev.vars` 支付管理区块，线上仍使用 Cloudflare secrets。离线 Playwright 会清空五项支付绑定并启动独立服务，不使用真实支付凭据。密钥不进入模板配置、Git 或日志；完整配置与联通步骤见 [支付联通 runbook](./runbooks/p2-payment-integration.md)。
 
 下一联通阶段才完成：两平台价格同步及幂等复验、真实回调录制并核对事件映射、Stripe 测试卡/测试时钟与 PayPal 沙箱订阅/购买/退款、staging 迁移/队列资源/部署和对账。OpenSpec 的 1.3、3.2、3.3、10.1、10.4、11.1 在这些条件满足前保持未勾选。
+
+## 8. 支付模式与生产切换清单
+
+`createPaymentRuntime` 是 Web、Jobs 和认证删除步骤共用的支付工厂。非敏感 Worker var `PAYMENT_MODE` 只接受 `test` / `live`，两端 Wrangler 顶层与 `env.staging` 均显式设为 `test`；仓库不提供 production 环境配置。只有 `SENTRY_ENVIRONMENT=development` 缺少模式时默认 test，staging、production 和未知环境缺失模式时关闭支付：HTTP 支付入口返回 503，Jobs 事件失败并交给既有重试机制。结构化日志 `billing.runtime_invalid` 只包含安全字段名与模式，公开营销定价降级为支付不可用。
+
+| 模式 | Stripe Secret Key | PayPal API origin |
+|---|---|---|
+| test | 仅 `sk_test_` | `https://api-m.sandbox.paypal.com` |
+| live | `sk_live_` 或 `rk_live_` | `https://api-m.paypal.com` |
+
+模式与 Stripe key 错配时在远端请求前返回 503，绝不自动切换；后台显示实际模式。Stripe 已验签事件和后台重放的 `livemode` 也必须匹配当前模式，在平台快照查询和账务写入前拒绝跨模式事件。`STRIPE_WEBHOOK_SECRET` 与 PayPal Client ID / Secret / webhook ID 本身无法通过前缀判断 test/live，必须由部署配置提供同一模式的完整一组；PayPal OAuth、业务请求及验签始终只访问选定 origin，失败不重试另一环境。
+
+生产切换前逐项完成以下清单；本 change 只交付代码与离线验证，未配置 live 凭据或执行真实收款：
+
+- [ ] 解决 [路线图 Q9](./08-roadmap.md#待决事项)：确认 Stripe 正式收款主体及支持地区、账户归属；若选择仅 PayPal 或 MoR，按最终方案配置启用的 provider。代码支持 live 不代表主体已获批准。
+- [ ] 为生产配置独立数据库、KV、队列、域名与价格对象。不要复用测试数据库的 customer、subscription、payment、price ID；现有 `billing:sync` 仍要求 `BILLING_SYNC_MODE=test`，不能用它创建 live 价格。
+- [ ] 在生产 web **和** jobs 配置 `SENTRY_ENVIRONMENT=production`、`PAYMENT_MODE=live`；staging 继续 `PAYMENT_MODE=test`，不修改 staging secrets。生产配置由上线任务单独建立。
+- [ ] 分别为两个 Worker 配置生产 `STRIPE_SECRET_KEY`（优先有足够业务权限的 `rk_live_`）与 `STRIPE_WEBHOOK_SECRET`。密钥通过 Wrangler secrets 安全写入，不写模板、Git、PR 或日志。
+- [ ] 在 Stripe live 环境登记 `https://<生产域名>/api/billing/webhooks/stripe`，订阅 §2 的事件并匹配固定 API 版本；取此 live endpoint 的 signing secret。不要复用 test endpoint 或本地 `stripe listen` secret；签名不通过或事件模式错配都会拒绝入账。
+- [ ] 在 PayPal live 应用取得生产 `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET`，登记 `https://<生产域名>/api/billing/webhooks/paypal` 并订阅 §2 所需事件，将此 live webhook ID 配到两个 Worker 的 `PAYPAL_WEBHOOK_ID`。Sandbox 应用、账号、ID 与当前验收 runbook 保持独立。
+- [ ] 上线负责人完成受控真实付款、订阅、退款、回调和 Jobs 对账验收，核对后台 live 标识、账务幂等和积分。回滚到已验证部署；已有 live 账务的数据库不能直接切回 test。

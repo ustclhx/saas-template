@@ -4,7 +4,7 @@
   "main": "./src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
-  "vars": { "SENTRY_ENVIRONMENT": "development" },
+  "vars": { "SENTRY_ENVIRONMENT": "development", "PAYMENT_MODE": "test" },
   "ai": { "binding": "AI" },
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "files" }],
   // 本地开发时 localConnectionString 指向主 checkout 的 saas_dev；
@@ -50,7 +50,7 @@
   "env": {
     "staging": {
       "name": "jobs-staging",
-      "vars": { "SENTRY_ENVIRONMENT": "staging" },
+      "vars": { "SENTRY_ENVIRONMENT": "staging", "PAYMENT_MODE": "test" },
       "ai": { "binding": "AI" },
       "r2_buckets": [{ "binding": "FILES", "bucket_name": "files-staging" }],
       // 计费 Cron 验收需要查询一小时内的完整日志，仅 staging 开启日志采集。

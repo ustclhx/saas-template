@@ -22,6 +22,8 @@ const hyperdriveBinding = z.custom<HyperdriveBinding>(
 export const envSchema = z.object({
   /** 不带查询缓存的 Hyperdrive（app-db），健康检查与写操作使用 */
   HYPERDRIVE: hyperdriveBinding,
+  /** 缺失策略由支付入口解析，公开页面仍能降级服务。 */
+  PAYMENT_MODE: z.enum(['test', 'live']).optional(),
 })
 
 export type Env = z.output<typeof envSchema>
@@ -44,6 +46,23 @@ export class EnvValidationError extends Error {
     this.missing = missing
     this.invalid = invalid
   }
+}
+
+export type PaymentMode = 'test' | 'live'
+
+export interface PaymentModeEnv {
+  PAYMENT_MODE?: string | undefined
+  SENTRY_ENVIRONMENT?: string | undefined
+}
+
+/** 只有显式开发环境允许省略模式，避免未标记的线上环境默认为测试。 */
+export function resolvePaymentMode(env: PaymentModeEnv): PaymentMode {
+  if (env.PAYMENT_MODE === 'test' || env.PAYMENT_MODE === 'live') return env.PAYMENT_MODE
+  if (env.PAYMENT_MODE === undefined) {
+    if (env.SENTRY_ENVIRONMENT === 'development') return 'test'
+    throw new EnvValidationError(['PAYMENT_MODE'], [])
+  }
+  throw new EnvValidationError([], ['PAYMENT_MODE'])
 }
 
 /** 按默认 schema 校验 Worker 的 `env`，失败时抛出 `EnvValidationError`。 */

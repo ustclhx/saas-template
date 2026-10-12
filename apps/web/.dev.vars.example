@@ -1,5 +1,7 @@
 # 支付五项凭据使用仓库根目录 .env.example / .env.local；不要在这里重复填写。
 # 本地认证密钥模板：复制为 .dev.vars（已 gitignore）后填写。这里只放假值与公开的测试值。
+# 非敏感 Worker var；本地与 staging 保持 test，生产切换见 docs/05-billing.md。
+PAYMENT_MODE=test
 # Better Auth 签名密钥，至少 32 个字符：openssl rand -base64 32
 BETTER_AUTH_SECRET=
 # 可选首次管理员邮箱名单（逗号分隔）；必须已验证且未封禁，空值禁用。移除名单不会自动降权。
