@@ -3,6 +3,10 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   env: {} as Record<string, unknown>,
   process: vi.fn(),
+  checkout: vi.fn(),
+  eventsAvailable: true,
+  emailAvailable: true,
+  refund: vi.fn(),
   db: { transaction: vi.fn(), insert: vi.fn() },
   catalog: {
     plans: [{ id: 'pro', name: 'Pro' }],
@@ -12,6 +16,20 @@ const mocks = vi.hoisted(() => ({
   status: vi.fn(),
 }))
 vi.mock('cloudflare:workers', () => ({ env: mocks.env }))
+vi.mock('../../server/runtime.ts', () => ({
+  getWebRuntime: () => ({
+    config: mocks.env,
+    db: mocks.db,
+    cache: { get: vi.fn(), put: vi.fn(), delete: vi.fn() },
+    requestMeta: { clientIp: '198.51.100.42', requestId: 'test-request' },
+    emailQueue: mocks.emailAvailable
+      ? { available: true, value: { send: vi.fn() } }
+      : { available: false },
+    eventsQueue: mocks.eventsAvailable
+      ? { available: true, value: { send: vi.fn() } }
+      : { available: false },
+  }),
+}))
 vi.mock('@tanstack/react-router', () => ({
   createFileRoute: () => (options: unknown) => options,
   isNotFound: () => false,
@@ -51,6 +69,8 @@ vi.mock('@saas/db', async (original) => ({
 vi.mock('@saas/billing', async (original) => ({
   ...(await original<typeof import('@saas/billing')>()),
   processWebhook: mocks.process,
+  createCheckout: mocks.checkout,
+  submitRefundRequest: mocks.refund,
   createBillingDeletionStep: mocks.deletion,
 }))
 vi.mock('../../server/template-config.ts', () => ({
@@ -62,15 +82,18 @@ vi.mock('../marketing/pricing-data.ts', () => ({
 vi.mock('../marketing/pricing-snapshot.ts', () => ({ pricingSnapshot: {} }))
 
 import { handlePaymentWebhook } from '../../routes/api/billing/webhooks/$provider.ts'
-import { billingDeletionSteps } from '../../server/auth.ts'
 import { getMarketingPricing } from '../marketing/pricing.functions.ts'
 import { getAdminBilling, replayAdminWebhook } from './admin.functions.ts'
 import { checkoutCustomer } from './customer.functions.ts'
+import { createBillingDeletionSteps as billingDeletionSteps } from './deletion.server.ts'
+import { requestCustomerRefund } from './refund.functions.ts'
 
 beforeEach(() => {
   vi.clearAllMocks()
   for (const key of Object.keys(mocks.env)) delete mocks.env[key]
   mocks.env.HYPERDRIVE = { connectionString: 'offline' }
+  mocks.eventsAvailable = true
+  mocks.emailAvailable = true
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 afterEach(() => vi.restoreAllMocks())
@@ -110,7 +133,11 @@ it('invalid payment configuration leaves marketing prices visible and all provid
 
 it('ordinary auth creates deletion steps without payment configuration, then deletion rejects before writes', async () => {
   const db = mocks.db as unknown as Parameters<typeof billingDeletionSteps>[1]
-  const [step] = billingDeletionSteps(mocks.env as unknown as Cloudflare.Env, db)
+  const [step] = billingDeletionSteps(mocks.env, db, {
+    get: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
+  })
   expect(mocks.deletion).not.toHaveBeenCalled()
   await expect(
     step?.before?.({ actorUserId: 'actor', workspaceIds: ['workspace'], db }),
@@ -150,3 +177,60 @@ it('payment reads retain HTTP 503 when the runtime rejects configuration', async
   ).rejects.toMatchObject({ code: 'BILLING_UNAVAILABLE', status: 503 })
   expect(mocks.status).toHaveBeenCalledWith(503)
 })
+
+it('missing event capability rejects a webhook before accounting writes', async () => {
+  mocks.env.PAYMENT_MODE = 'test'
+  mocks.env.STRIPE_SECRET_KEY = 'sk_test_fixture'
+  mocks.env.STRIPE_WEBHOOK_SECRET = 'whsec_fixture'
+  mocks.eventsAvailable = false
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const response = await handlePaymentWebhook(
+    new Request('https://app.test/api/billing/webhooks/stripe', { method: 'POST', body: '{}' }),
+    'stripe',
+  )
+  expect(response.status).toBe(503)
+  expect(mocks.process).not.toHaveBeenCalled()
+  expect(mocks.db.transaction).not.toHaveBeenCalled()
+})
+
+it('checkout audit uses the trusted runtime IP and configured return URL', async () => {
+  mocks.env.PAYMENT_MODE = 'test'
+  mocks.env.APP_URL = 'https://configured.test'
+  mocks.checkout.mockResolvedValue({ url: 'https://checkout.test' })
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const result = await (checkoutCustomer as unknown as (input: unknown) => Promise<unknown>)({
+    context: {
+      db: mocks.db,
+      workspaceReadOnly: false,
+      workspace: { id: 'workspace', slug: 'team' },
+      user: { id: 'user' },
+    },
+    data: { provider: 'stripe', planPriceId: 'price', idempotencyKey: 'key' },
+  })
+  expect(result).toEqual({ ok: true, result: { url: 'https://checkout.test' } })
+  expect(mocks.checkout).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.objectContaining({
+      ip: '198.51.100.42',
+      successUrl: 'https://configured.test/app/team/billing-return?provider=stripe',
+    }),
+  )
+})
+
+it.each(['events', 'email'] as const)(
+  'missing %s queue rejects a refund before submission',
+  async (queue) => {
+    if (queue === 'events') mocks.eventsAvailable = false
+    else mocks.emailAvailable = false
+    const result = await (requestCustomerRefund as unknown as (input: unknown) => Promise<unknown>)(
+      {
+        context: { db: mocks.db, workspaceReadOnly: false },
+        data: {},
+      },
+    )
+    expect(result).toEqual({ ok: false, error: 'CAPABILITY_UNAVAILABLE' })
+    expect(mocks.status).toHaveBeenCalledWith(503)
+    expect(mocks.refund).not.toHaveBeenCalled()
+    expect(mocks.db.transaction).not.toHaveBeenCalled()
+  },
+)

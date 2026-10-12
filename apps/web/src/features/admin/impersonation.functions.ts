@@ -1,17 +1,16 @@
-import { env } from 'cloudflare:workers'
-import { createDb } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest, setResponseHeader } from '@tanstack/react-start/server'
-import { getAuth } from '../../server/auth.ts'
+import { getWebRuntime } from '../../server/runtime.ts'
 import { readRequestSession } from '../i18n/session.server.ts'
 import { executeAdminAuthAction } from './impersonation.server.ts'
 
 export const getImpersonation = createServerFn({ method: 'GET' }).handler(async () => {
-  const db = createDb(env.HYPERDRIVE)
+  const runtime = getWebRuntime()
+  const { db, auth } = runtime
   try {
     const fresh = await readRequestSession({
-      auth: getAuth(env, db),
+      auth,
       db,
       headers: getRequest().headers,
     })
@@ -28,9 +27,10 @@ export const getImpersonation = createServerFn({ method: 'GET' }).handler(async 
 })
 
 export const stopAdminImpersonation = createServerFn({ method: 'POST' }).handler(async () => {
+  const runtime = getWebRuntime()
   const response = await executeAdminAuthAction({
-    db: createDb(env.HYPERDRIVE),
-    env,
+    db: runtime.db,
+    runtime,
     headers: getRequest().headers,
     path: '/admin/stop-impersonating',
   })

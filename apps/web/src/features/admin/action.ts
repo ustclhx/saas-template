@@ -21,7 +21,7 @@ export type AdminTransaction = Parameters<Parameters<Database['transaction']>[0]
 export interface AdminActionContext {
   readonly db: Database
   readonly admin: Pick<User, 'id'>
-  /** 来源 IP（只取 Cloudflare 设置的 cf-connecting-ip） */
+  /** 来源 IP（由目标入口完成代理信任校验） */
   readonly ip?: string | null
 }
 

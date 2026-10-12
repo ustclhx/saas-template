@@ -485,6 +485,9 @@ importers:
       '@saas/entitlements':
         specifier: workspace:*
         version: link:../entitlements
+      '@saas/platform':
+        specifier: workspace:*
+        version: link:../platform
       '@saas/shared':
         specifier: workspace:*
         version: link:../shared

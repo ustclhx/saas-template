@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@saas/db": "workspace:*",
+    "@saas/platform": "workspace:*",
     "stripe": "23.0.0",
     "drizzle-orm": "^0.45.3",
     "@saas/credits": "workspace:*",

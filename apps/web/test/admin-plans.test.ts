@@ -1,8 +1,7 @@
-import { env } from 'cloudflare:workers'
 import { dbModelStore, requireAvailableModel } from '@saas/ai'
 import { createAuth } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
-import { auditLog, createDb, plan } from '@saas/db'
+import { auditLog, plan } from '@saas/db'
 import { DEFAULT_FREE_FEATURES, getEntitlements } from '@saas/entitlements'
 import { newId } from '@saas/shared'
 import { eq } from 'drizzle-orm'
@@ -11,9 +10,10 @@ import { AdminAccessRevokedError, runAdminAction } from '../src/features/admin/a
 import { requireAdmin } from '../src/features/admin/guard.ts'
 import { listAdminPlans, updateAdminPlanModels } from '../src/features/billing/admin-plans.ts'
 import { adminPlanModelsInput } from '../src/features/billing/admin-plans-input.ts'
+import { createAdminTestDb } from './admin-test-resources.ts'
 
-const db = createDb(env.HYPERDRIVE)
-const migrator = createDb(env.HYPERDRIVE_MIGRATOR)
+const db = createAdminTestDb()
+const migrator = createAdminTestDb('migrator')
 const adminId = newId()
 const memberId = newId()
 const workspaceId = newId()

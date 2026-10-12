@@ -1,12 +1,12 @@
 import {
   type BillingProviders,
-  type BillingQueueMessage,
   createBillingEventHandler,
   createCompensationFailureHandler,
   processWebhook,
   WebhookVerificationError,
 } from '@saas/billing'
 import type { Database, PaymentProviderId } from '@saas/db'
+import type { QueueProducer } from '@saas/platform'
 import { log, withRequestId } from '@saas/shared/log'
 import { enqueueOperations } from '../notifications/operations.ts'
 
@@ -17,9 +17,7 @@ export async function handleBillingWebhook(
     db: Database
     subscriptionCreditGraceHours: number
     providers: BillingProviders
-    queue: {
-      send(message: BillingQueueMessage, options: { contentType: 'json' }): Promise<unknown>
-    }
+    queue: Pick<QueueProducer<unknown>, 'send'>
   },
 ) {
   if (providerId !== 'stripe' && providerId !== 'paypal')
@@ -63,11 +61,10 @@ export async function handleBillingWebhook(
             : [],
         )
         // 计费后处理消息保持原样，投递失败沿用原有管线的失败状态与恢复机制。
-        await options.queue.send(withRequestId({ v: 1, deliveryId: delivery.id }), {
-          contentType: 'json',
-        })
+        await options.queue.send(withRequestId({ v: 1, deliveryId: delivery.id }))
         // 运营通知单独成消息：投递或推送失败只记日志 / 按自身重试，不影响计费后处理与回调结果。
-        for (const operation of operations) await enqueueOperations(options.queue, operation)
+        for (const operation of operations)
+          await enqueueOperations({ send: (message) => options.queue.send(message) }, operation)
       },
     })
     // DB failure must trigger platform retry. Queue failure is recovered from the durable row by Jobs.
@@ -78,10 +75,13 @@ export async function handleBillingWebhook(
         error: result.error,
       })
       if (result.delivery)
-        await enqueueOperations(options.queue, {
-          event: 'webhook.failed',
-          sourceId: `${result.delivery.id}:${result.delivery.attempts}`,
-        })
+        await enqueueOperations(
+          { send: (message) => options.queue.send(message) },
+          {
+            event: 'webhook.failed',
+            sourceId: `${result.delivery.id}:${result.delivery.attempts}`,
+          },
+        )
       return new Response('Processing failed', { status: 500 })
     }
     log.info('billing.webhook_processed', {

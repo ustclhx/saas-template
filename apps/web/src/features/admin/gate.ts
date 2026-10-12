@@ -1,5 +1,4 @@
-import { createDb } from '@saas/db'
-import { getAuth } from '../../server/auth.ts'
+import type { WebRuntime } from '../../server/runtime.ts'
 import { isAdminNotFound, requireAdmin } from './guard.ts'
 
 /**
@@ -22,12 +21,12 @@ export function isGatedAdminPath(pathname: string): boolean {
   return pathname === ADMIN_PATH || pathname.startsWith(`${ADMIN_PATH}/`)
 }
 
-export async function gateAdminRequest(request: Request, env: Cloudflare.Env): Promise<Request> {
+export async function gateAdminRequest(request: Request, runtime: WebRuntime): Promise<Request> {
   const url = new URL(request.url)
   if (!isGatedAdminPath(url.pathname)) return request
-  const db = createDb(env.HYPERDRIVE)
+  const { db, auth } = runtime
   try {
-    await requireAdmin({ auth: getAuth(env, db), db, headers: request.headers })
+    await requireAdmin({ auth, db, headers: request.headers })
     return request
   } catch (error) {
     if (!isAdminNotFound(error)) throw error

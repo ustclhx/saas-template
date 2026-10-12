@@ -1,11 +1,10 @@
-import { env } from 'cloudflare:workers'
-import { createDb } from '@saas/db'
 import { newId } from '@saas/shared'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { listAuditLogs } from '../src/features/admin/audit.ts'
 import { readAdminMetrics } from '../src/features/admin/metrics.ts'
+import { createAdminTestDb } from './admin-test-resources.ts'
 
-const db = createDb(env.HYPERDRIVE)
+const db = createAdminTestDb()
 const uid = newId(),
   workspaceId = newId(),
   action = `test.audit.${newId()}`
@@ -24,7 +23,7 @@ beforeAll(async () => {
     values (${day},${i + 1},20,10,${i + 1},${JSON.stringify({ USD: 1200 * (i + 1) })}::jsonb,${100 * (i + 1)},${10 * (i + 1)},${JSON.stringify({ model: 10 * (i + 1) })}::jsonb,${i === 1 ? 1 : 9},1,0,${new Date(Date.parse(`${day}T00:00:00Z`) + 86400000).toISOString()})`
 })
 afterAll(async () => {
-  const sql = createDb(env.HYPERDRIVE_MIGRATOR).$client
+  const sql = createAdminTestDb('migrator').$client
   await sql`delete from audit_log where workspace_id=${workspaceId}`
   await sql`delete from metrics_daily where day in ${sql(days)}`
   await sql`delete from organization where id=${workspaceId}`

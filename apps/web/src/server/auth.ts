@@ -7,11 +7,12 @@ import {
   parseAuthEnv,
   type SendAuthEmail,
 } from '@saas/auth'
-import { createBillingDeletionStep, createPaymentRuntime, grantSignupBonus } from '@saas/billing'
+import { grantSignupBonus } from '@saas/billing'
 import { createDb, type Database } from '@saas/db'
 import type { KeyValueStore, RateLimiter, RequestMetadata } from '@saas/platform'
 import { AppError } from '@saas/shared'
 import { APIError } from 'better-auth/api'
+import { createBillingDeletionSteps } from '../features/billing/deletion.server.ts'
 import { assertSignupAdmission } from '../features/growth/service.ts'
 import { createQueueAuthEmailSender, userLocaleByEmail } from './auth-email.ts'
 import { legacyRequestMetadata } from './runtime.ts'
@@ -89,32 +90,14 @@ export function getAuth(
         throw error
       }
     },
-    deletionSteps: billingDeletionSteps(env, db),
+    deletionSteps: createBillingDeletionSteps(env, db, cache),
     sendEmail,
   })
 }
 
+/** @deprecated A 4.6 迁移删除入口后移除旧 bindings 接线。 */
 export function billingDeletionSteps(env: Cloudflare.Env, db: Database): DeletionStep[] {
-  // 普通认证不依赖支付配置；只有真正执行删除时才初始化支付能力。
-  let step: DeletionStep
-  return [
-    {
-      async before(context) {
-        const { providers } = createPaymentRuntime(env, templateConfig.billing.providers, {
-          cache: env.CACHE,
-          db,
-        })
-        step = createBillingDeletionStep({
-          providers,
-          refundWindowDays: templateConfig.billing.refundWindowDays,
-        })
-        await step.before?.(context)
-      },
-      async execute(context, sql) {
-        await step.execute?.(context, sql)
-      },
-    },
-  ]
+  return createBillingDeletionSteps(env, db, env.CACHE)
 }
 
 /** 中立认证工厂；发信、注册准入与删除外部能力由 composition root 注入。 */
