@@ -1,9 +1,9 @@
-import type { WorkflowStep } from 'cloudflare:workers'
 import {
   isSyncMediaProvider,
   type MediaBinaryResult,
   type MediaError,
   type MediaResult,
+  type MediaStatus,
   type MediaTaskFile,
   mediaCallbackUrl,
   readMediaTaskInput,
@@ -12,10 +12,11 @@ import {
   type TaskMediaProvider,
 } from '@saas/ai'
 import { type AiTask, aiTask, type Database, scoped } from '@saas/db'
+import { NonRetryableError, type WorkflowStep } from '@saas/platform'
 import { AppError, MEDIA_DONE_EVENT } from '@saas/shared'
 import { log, setLogContext } from '@saas/shared/log'
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { captureJobException, tagJobContext } from '../sentry.ts'
+import { type JobObserver, logJobObserver } from '../observer.ts'
 
 export interface MediaRunnerDeps {
   db: Database
@@ -36,10 +37,12 @@ export interface MediaRunnerDeps {
       duration?: number | null
     }[]
   >
-  nonRetryable(message: string): Error
+  observer?: JobObserver
   now?: () => number
 }
-type Callback = { jobId: string; result?: MediaResult; error?: MediaError }
+// Provider 的 interface 本身没有 JSON 索引签名；只在持久步骤边界展开现有 JSON 字段。
+type StepData<T> = T extends object ? { [K in keyof T]: StepData<T[K]> } : T
+type Callback = StepData<{ jobId: string; result?: MediaResult; error?: MediaError }>
 const terminal = (task: AiTask) => ['succeeded', 'failed', 'canceled'].includes(task.status)
 const errorOf = (error: unknown): MediaError => ({
   code:
@@ -57,7 +60,10 @@ const errorOf = (error: unknown): MediaError => ({
 })
 
 /** 无幂等能力时，进程在受理/落库间崩溃后也不能再次提交。 */
-export async function submitMediaOnce(task: AiTask, deps: MediaRunnerDeps) {
+export async function submitMediaOnce(
+  task: AiTask,
+  deps: MediaRunnerDeps,
+): Promise<{ jobId: string; sync: StepData<MediaResult> | null; stopped: boolean }> {
   const { db } = deps
   if (!deps.callbackSecret)
     throw new AppError('MEDIA_WEBHOOK_NOT_CONFIGURED', 'Media callback is not configured', {
@@ -77,7 +83,7 @@ export async function submitMediaOnce(task: AiTask, deps: MediaRunnerDeps) {
     if (!current) throw new AppError('NOT_FOUND', 'Not found', { status: 404 })
     if (terminal(current) || current.providerJobId) return current
     if (current.output?.submissionAttempted && !provider.capabilities.idempotentSubmit)
-      throw deps.nonRetryable('MEDIA_SUBMISSION_UNCERTAIN')
+      throw new NonRetryableError('MEDIA_SUBMISSION_UNCERTAIN')
     await tenant.updateById(aiTask, task.id, { output: { submissionAttempted: true } })
     return current
   })
@@ -157,7 +163,7 @@ export async function submitMediaOnce(task: AiTask, deps: MediaRunnerDeps) {
       throw error
     }
     if (!provider.capabilities.idempotentSubmit)
-      throw deps.nonRetryable('MEDIA_SUBMISSION_UNCERTAIN')
+      throw new NonRetryableError('MEDIA_SUBMISSION_UNCERTAIN')
     throw error
   }
 }
@@ -201,6 +207,7 @@ async function submitSynchronousMedia(
 
 /** 事件只唤醒，结果始终以先落库的 callback 为准；每次轮询使用独立持久步骤。 */
 export async function runMediaTask(taskId: string, step: WorkflowStep, deps: MediaRunnerDeps) {
+  const observer = deps.observer ?? logJobObserver
   const snapshot = await step.do('load-task', async () => {
     // 内部 Workflow taskId 用于定位租户，之后业务查询一律 scoped。
     // biome-ignore lint/plugin: 内部绑定创建的 taskId 用于定位租户，后续读写均 scoped。
@@ -210,7 +217,7 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
   })
   const task = JSON.parse(snapshot) as AiTask
   setLogContext({ workspaceId: task.workspaceId, userId: task.userId })
-  tagJobContext()
+  observer.tagContext()
   const now = deps.now ?? Date.now
   const deadline = new Date(task.deadlineAt).getTime()
   let currentStatus = task.status
@@ -246,7 +253,7 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
     if (isSyncMediaProvider(provider)) {
       const fileIds = await step.do(
         'submit',
-        { retries: { limit: 0, delay: '10 seconds' }, timeout: '15 minutes' },
+        { retries: { limit: 0, delayMs: 10_000 }, timeoutMs: 900_000 },
         async () => ((await active()) ? submitSynchronousMedia(task, deps, provider) : []),
       )
       if (!(await active())) return stopped()
@@ -270,7 +277,7 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
     }
     const submitted = await step.do(
       'submit',
-      { retries: { limit: 3, delay: '10 seconds', backoff: 'exponential' }, timeout: '2 minutes' },
+      { retries: { limit: 3, delayMs: 10_000, backoff: 'exponential' }, timeoutMs: 120_000 },
       async () => {
         if (!(await active())) return { jobId: '', sync: null, stopped: true }
         return submitMediaOnce(task, deps)
@@ -290,7 +297,7 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
         await step
           .waitForEvent('wait-media-done', {
             type: MEDIA_DONE_EVENT,
-            timeout: Math.max(1, Math.min(15 * 60_000, deadline - now())),
+            timeoutMs: Math.max(1, Math.min(15 * 60_000, deadline - now())),
           })
           .catch(() => null)
       if (!(await active())) return stopped()
@@ -302,10 +309,13 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
     let delay = 30_000
     while (!callback?.result && !callback?.error) {
       if (!(await active())) return stopped()
-      const status = await step.do(`poll-${poll}`, async () => {
-        if (!(await active())) return { status: 'stopped' } as const
-        return provider.getStatus(submitted.jobId)
-      })
+      const status = await step.do(
+        `poll-${poll}`,
+        async (): Promise<StepData<MediaStatus> | { status: 'stopped' }> => {
+          if (!(await active())) return { status: 'stopped' } as const
+          return provider.getStatus(submitted.jobId)
+        },
+      )
       if (status.status === 'stopped') return stopped()
       if (status.status === 'succeeded')
         callback = { jobId: submitted.jobId, result: status.result }
@@ -325,7 +335,7 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
     const result = callback.result as MediaResult
     const files = await step.do(
       'persist',
-      { retries: { limit: 3, delay: '10 seconds', backoff: 'exponential' }, timeout: '15 minutes' },
+      { retries: { limit: 3, delayMs: 10_000, backoff: 'exponential' }, timeoutMs: 900_000 },
       async () => {
         if (!(await active())) return null
         const files = await deps.persist(task, result)
@@ -354,7 +364,7 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
     })
     return { taskId, status }
   } catch (error) {
-    captureJobException(error)
+    observer.captureException(error)
     if (await stopIfTerminal()) return stopped()
     const status = await step.do('fail-and-notify', async () => {
       if (await stopIfTerminal()) return currentStatus

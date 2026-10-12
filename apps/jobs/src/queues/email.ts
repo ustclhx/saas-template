@@ -8,9 +8,10 @@ import {
   renderEmail,
 } from '@saas/email'
 import { type EmailQueueMessage, parseEmailQueueMessage } from '@saas/email/queue'
+import type { DeadLetterSink, QueueBatch, QueueMessage } from '@saas/platform'
 import { log, newRequestId, withLogContext } from '@saas/shared/log'
 import templateConfig from '../../../../template.config.ts'
-import { captureJobException } from '../sentry.ts'
+import { type JobObserver, logJobObserver } from '../observer.ts'
 
 /**
  * EMAIL_QUEUE 消费者（tasks.md 3.2，specs/user-auth「认证邮件异步发送」）：
@@ -20,9 +21,10 @@ import { captureJobException } from '../sentry.ts'
  * - 可重试的失败（Resend 5xx / 429 / 网络错误）：`retry()`，按指数退避延迟重投；
  *   重投时幂等键不变，Resend 在 24 小时内去重，不会重复发送。
  * - 不可重试的失败（其余 4xx、消息格式错误、链接非法）：确认并记录告警，不再重试。
- * - 达到最大投递次数仍失败：确认并记录 `email.dropped` 错误日志。不使用死信队列：
+ * - CF 达到最大投递次数仍失败：确认并记录 `email.dropped` 错误日志。不使用死信队列：
  *   死信队列需要在 Cloudflare 上另建队列，而认证邮件（验证码、魔法链接）过期很快，
  *   事后重放价值不大；需要时在 wrangler.jsonc 中加 `dead_letter_queue` 并去掉这里的提前确认。
+ * - Node 的有效终态失败交给注入的 DeadLetterSink；持久记录失败时不提前确认。
  *
  * 日志只记录消息 ID、模板名、投递次数与错误摘要，不记录邮件内容；
  * 只有 log 通道会记录收件人（替代真实发送，供本地开发核对）。
@@ -84,18 +86,22 @@ function render(message: EmailQueueMessage): Promise<RenderedEmail> {
 }
 
 export async function handleEmailBatch(
-  batch: MessageBatch<unknown>,
+  batch: QueueBatch<unknown>,
   transport: EmailTransportConfig,
+  options: { observer?: JobObserver; deadLetters?: DeadLetterSink<unknown> } = {},
 ): Promise<void> {
   const deliver = createDeliver(transport)
   // 每条消息单独确认 / 重试，一条失败不影响同批的其他消息
-  await Promise.all(batch.messages.map((message) => handleMessage(message, deliver, transport)))
+  await Promise.all(
+    batch.messages.map((message) => handleMessage(message, deliver, transport, options)),
+  )
 }
 
 async function handleMessage(
-  message: Message<unknown>,
+  message: QueueMessage<unknown>,
   deliver: Deliver,
   transport: EmailTransportConfig,
+  options: { observer?: JobObserver; deadLetters?: DeadLetterSink<unknown> },
 ): Promise<void> {
   const meta = { id: message.id, attempts: message.attempts }
   const email = parseEmailQueueMessage(message.body)
@@ -106,16 +112,18 @@ async function handleMessage(
   }
 
   await withLogContext({ requestId: email.requestId ?? newRequestId() }, () =>
-    deliverMessage(message, email, deliver, transport),
+    deliverMessage(message, email, deliver, transport, options),
   )
 }
 
 async function deliverMessage(
-  message: Message<unknown>,
+  message: QueueMessage<unknown>,
   email: EmailQueueMessage,
   deliver: Deliver,
   transport: EmailTransportConfig,
+  options: { observer?: JobObserver; deadLetters?: DeadLetterSink<unknown> },
 ): Promise<void> {
+  const observer = options.observer ?? logJobObserver
   const meta = { id: message.id, attempts: message.attempts }
   const context = { ...meta, template: email.template, transport: transport.transport }
   try {
@@ -123,14 +131,14 @@ async function deliverMessage(
     log.info('email.sent', { ...context, providerId })
     message.ack()
   } catch (error) {
-    captureJobException(error)
+    observer.captureException(error)
     const failure = describeError(error)
     if (!failure.retryable) {
       log.warn('email.failed', { ...context, ...failure })
-      message.ack()
+      await finishFailure(message, failure, options.deadLetters)
     } else if (message.attempts >= EMAIL_MAX_ATTEMPTS) {
       log.error('email.dropped', { ...context, ...failure })
-      message.ack()
+      await finishFailure(message, failure, options.deadLetters)
     } else {
       const delaySeconds = emailRetryDelaySeconds(message.attempts)
       log.warn('email.retry', { ...context, ...failure, delaySeconds })
@@ -149,4 +157,18 @@ function describeError(error: unknown) {
   }
   const name = error instanceof Error ? error.name : typeof error
   return { retryable: !(error instanceof TypeError), error: name }
+}
+
+/** B 持久记录终态失败后才确认；CF 未装配此 hook，保留原有 drop。 */
+async function finishFailure(
+  message: QueueMessage<unknown>,
+  failure: { retryable: boolean },
+  deadLetters: DeadLetterSink<unknown> | undefined,
+) {
+  if (deadLetters) {
+    await deadLetters.failed(message, {
+      code: failure.retryable ? 'EMAIL_ATTEMPTS_EXHAUSTED' : 'EMAIL_NON_RETRYABLE',
+      retryable: failure.retryable,
+    })
+  } else message.ack()
 }

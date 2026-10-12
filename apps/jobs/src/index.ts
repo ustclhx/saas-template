@@ -1,45 +1,73 @@
-// 后台 Worker 入口：导出 Workflow 类与 fetch / queue / scheduled 处理器（docs/02-project-structure.md）。
-// 队列消息的请求 ID 由各消费者按消息恢复（queues/*）；Cron 每次触发生成新的请求 ID。
-import { emailTransportConfig } from '@saas/config'
-import { newRequestId, withLogContext } from '@saas/shared/log'
-import { withSentry } from '@sentry/cloudflare'
-import './ai.ts'
+// Cloudflare composition entry：绑定、WorkflowEntrypoint 与 Sentry SDK 只在目标入口装配。
+import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers'
+import { createTaskMediaProvider, getMediaOutputHosts, readMediaTaskInput } from '@saas/ai'
+import { emailTransportConfig, MEDIA_MAX_FILE_BYTES, MEDIA_OUTPUT_MIME_TYPES } from '@saas/config'
+import { createDb } from '@saas/db'
+import { getEntitlements } from '@saas/entitlements'
 import {
-  BILLING_DAILY_CRON,
-  BILLING_HOURLY_CRON,
-  BILLING_RETRY_CRON,
-  runBillingSchedule,
-} from './billing.ts'
-import { runDeletionCleanup } from './cron/deletion-cleanup.ts'
-import { runFilesCleanup } from './cron/files-cleanup.ts'
-import { HEARTBEAT_CRON, runHeartbeat } from './cron/heartbeat.ts'
-import { runMetricsDaily } from './cron/metrics-daily.ts'
-import { runWorkspaceCleanup, WORKSPACE_CLEANUP_CRON } from './cron/workspace-cleanup.ts'
+  createCloudflareDatabase,
+  createCloudflareKv,
+  createCloudflareQueue,
+  createCloudflareQueueBatch,
+  createCloudflareWorkflowStep,
+} from '@saas/platform/cloudflare'
+import { newRequestId, withLogContext } from '@saas/shared/log'
+import { getFileDownload, persistMediaOutputs } from '@saas/storage'
+import { instrumentWorkflowWithSentry, withSentry } from '@sentry/cloudflare'
+import templateConfig from '../../../template.config.ts'
 import { requireEnv } from './env.ts'
-import { handleBillingBatch } from './queues/billing.ts'
-import { handleEmailBatch } from './queues/email.ts'
-import { sentryEnabled, sentryOptions, tagJobContext } from './sentry.ts'
+import { consumeJobsBatch, type JobsContext, runJobsSchedule } from './handlers.ts'
+import { captureJobException, sentryEnabled, sentryOptions, tagJobContext } from './sentry.ts'
+import { runMediaTask } from './workflows/media-runner.ts'
 
-export { AiMediaWorkflow } from './workflows/ai-media.ts'
+const cloudflareJobObserver = { tagContext: tagJobContext, captureException: captureJobException }
 
-// 各环境的队列名（wrangler.jsonc：本地 email，staging email-staging）
-const EMAIL_QUEUES = new Set(['email', 'email-staging'])
-const EVENTS_QUEUES = new Set(['events', 'events-staging'])
+/** 每事件装配并显式挑选标量配置；不把 bindings 传入业务 env。 */
+function createJobsContext(env: Cloudflare.Env): JobsContext {
+  const valid = requireEnv(env)
+  return {
+    config: {
+      ...(valid.PAYMENT_MODE === undefined ? {} : { PAYMENT_MODE: valid.PAYMENT_MODE }),
+      ...(env.SENTRY_ENVIRONMENT === undefined
+        ? {}
+        : { SENTRY_ENVIRONMENT: env.SENTRY_ENVIRONMENT }),
+      ...(env.STRIPE_SECRET_KEY === undefined ? {} : { STRIPE_SECRET_KEY: env.STRIPE_SECRET_KEY }),
+      ...(env.STRIPE_WEBHOOK_SECRET === undefined
+        ? {}
+        : { STRIPE_WEBHOOK_SECRET: env.STRIPE_WEBHOOK_SECRET }),
+      ...(env.PAYPAL_CLIENT_ID === undefined ? {} : { PAYPAL_CLIENT_ID: env.PAYPAL_CLIENT_ID }),
+      ...(env.PAYPAL_CLIENT_SECRET === undefined
+        ? {}
+        : { PAYPAL_CLIENT_SECRET: env.PAYPAL_CLIENT_SECRET }),
+      ...(env.PAYPAL_WEBHOOK_ID === undefined ? {} : { PAYPAL_WEBHOOK_ID: env.PAYPAL_WEBHOOK_ID }),
+    },
+    db: createCloudflareDatabase(env),
+    cache: createCloudflareKv(env.CACHE),
+    emailQueue: createCloudflareQueue(env.EMAIL_QUEUE),
+    ...(env.EVENTS_QUEUE && { eventsQueue: createCloudflareQueue(env.EVENTS_QUEUE) }),
+    emailTransport: emailTransportConfig(valid),
+    files: { available: true, value: { delete: (key) => env.FILES.delete(key) } },
+    observer: cloudflareJobObserver,
+  }
+}
 
 const handler = {
-  // jobs 不对外提供 HTTP 接口
   async fetch(_request, env, _ctx?: ExecutionContext) {
     tagJobContext()
     requireEnv(env)
     return new Response('Not Found', { status: 404 })
   },
-
-  queue(batch, env, _ctx?: ExecutionContext) {
-    return withLogContext({ queue: batch.queue }, () => consume(batch, env))
+  async queue(batch, env, _ctx?: ExecutionContext) {
+    return withLogContext({ queue: batch.queue }, () =>
+      consumeJobsBatch(createCloudflareQueueBatch(batch), createJobsContext(env)),
+    )
   },
-
-  scheduled(controller, env, _ctx?: ExecutionContext) {
-    return schedule(controller, env)
+  async scheduled(controller, env, _ctx?: ExecutionContext) {
+    return runJobsSchedule(
+      controller.cron,
+      new Date(controller.scheduledTime),
+      createJobsContext(env),
+    )
   },
 } satisfies ExportedHandler<Cloudflare.Env>
 
@@ -67,59 +95,77 @@ export default {
   },
 } satisfies ExportedHandler<Cloudflare.Env>
 
-async function consume(batch: MessageBatch<unknown>, env: Cloudflare.Env) {
-  tagJobContext()
-  const validEnv = requireEnv(env)
-  if (EMAIL_QUEUES.has(batch.queue)) {
-    return handleEmailBatch(batch, emailTransportConfig(validEnv))
-  }
-  if (EVENTS_QUEUES.has(batch.queue)) {
-    return handleBillingBatch(batch, { ...validEnv, ...env })
-  }
-  // 未知队列：不确认，交给重试 / 死信队列
-  throw new Error(`Unknown queue: ${batch.queue}`)
+export type AiMediaParams = {
+  taskId: string
+  requestId?: string
 }
 
-async function schedule(controller: ScheduledController, env: Cloudflare.Env) {
-  tagJobContext()
-  const validEnv = requireEnv(env)
-  switch (controller.cron) {
-    case BILLING_HOURLY_CRON:
-    case BILLING_DAILY_CRON:
-      return runBillingSchedule(controller.cron, { ...validEnv, ...env })
-    case BILLING_RETRY_CRON: {
-      // 文件清理与计费补偿独立执行；任何一项失败仍将本次 Cron 标记为失败。
-      const results = await Promise.allSettled([
-        runBillingSchedule(controller.cron, { ...validEnv, ...env }),
-        runFilesCleanup({ ...validEnv, FILES: env.FILES }),
-      ])
-      const failed = results.filter((result) => result.status === 'rejected')
-      if (failed.length)
-        throw new AggregateError(
-          failed.map((result) => result.reason),
-          'Ten-minute maintenance cron failed',
-        )
-      return
-    }
-    // METRICS_DAILY_CRON 与 WORKSPACE_CLEANUP_CRON 是同一个触发器：两项任务独立执行，
-    // 任一失败不影响另一项，但仍让本次 Cron 标记为失败。
-    case WORKSPACE_CLEANUP_CRON: {
-      const results = await Promise.allSettled([
-        runWorkspaceCleanup(validEnv),
-        runMetricsDaily(validEnv, controller.scheduledTime),
-      ])
-      const failed = results.filter((result) => result.status === 'rejected')
-      if (failed.length)
-        throw new AggregateError(
-          failed.map((result) => result.reason),
-          'Daily maintenance cron failed',
-        )
-      return
-    }
-    case HEARTBEAT_CRON:
-      await runDeletionCleanup({ ...validEnv, CACHE: env.CACHE })
-      return runHeartbeat(validEnv)
-    default:
-      throw new Error(`Unknown cron: ${controller.cron}`)
+class AiMediaWorkflowBase extends WorkflowEntrypoint<Cloudflare.Env, AiMediaParams> {
+  override run(event: WorkflowEvent<AiMediaParams>, step: WorkflowStep) {
+    return withLogContext(
+      { requestId: event.payload.requestId ?? newRequestId(), taskId: event.payload.taskId },
+      async () => {
+        tagJobContext()
+        try {
+          const db = createDb(this.env.HYPERDRIVE)
+          return await runMediaTask(event.payload.taskId, createCloudflareWorkflowStep(step), {
+            db,
+            callbackOrigin: templateConfig.app.url,
+            callbackSecret: this.env.MEDIA_WEBHOOK_SECRET ?? '',
+            provider: (task) =>
+              createTaskMediaProvider(this.env, task, templateConfig.ai.mediaProviders),
+            params: async (task) => {
+              const input = readMediaTaskInput(task)
+              const params = { ...input.params }
+              for (const name of input.fileParams) {
+                params[name] = await getFileDownload(db, this.env, {
+                  workspaceId: task.workspaceId,
+                  fileId: input.params[name] as string,
+                })
+              }
+              return params
+            },
+            observer: cloudflareJobObserver,
+            persist: async (task, result) => {
+              const entitlements = await getEntitlements(db, task.workspaceId, {
+                pastDueGraceDays: templateConfig.billing.pastDueGraceDays,
+              })
+              return persistMediaOutputs({
+                db,
+                bucket: this.env.FILES,
+                task,
+                result,
+                limits: {
+                  maxFileBytes: MEDIA_MAX_FILE_BYTES,
+                  allowedHosts: getMediaOutputHosts(task.provider),
+                  allowedMimeTypes: MEDIA_OUTPUT_MIME_TYPES[task.kind],
+                  storageBytes: Math.min(
+                    readMediaTaskInput(task).storageBytes,
+                    entitlements.features.storageGb * 1024 ** 3,
+                  ),
+                },
+              })
+            },
+          })
+        } catch (error) {
+          captureJobException(error)
+          throw error
+        }
+      },
+    )
   }
 }
+
+const InstrumentedAiMediaWorkflow = instrumentWorkflowWithSentry(sentryOptions, AiMediaWorkflowBase)
+
+// Workflow 包装器在构造时绑定环境；禁用时直接构造原始类，避免 run 初始化 SDK。
+export const AiMediaWorkflow = new Proxy(AiMediaWorkflowBase, {
+  construct(target, args, newTarget) {
+    const env = args[1] as Cloudflare.Env
+    return Reflect.construct(
+      sentryEnabled(env) ? InstrumentedAiMediaWorkflow : target,
+      args,
+      newTarget,
+    )
+  },
+})

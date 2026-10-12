@@ -1,10 +1,11 @@
-import type { WorkflowStep } from 'cloudflare:workers'
 import { readMediaTaskInput, type TaskMediaProvider } from '@saas/ai'
 import { type Database, file, notFound, scoped } from '@saas/db'
 import { persistMediaOutputs } from '@saas/storage'
 import { runMediaTask } from '../../../jobs/src/workflows/media-runner.ts'
 import { requireFileWorkspace } from '../../src/features/files/access.ts'
 import type { FileHttpDeps } from '../../src/features/files/http.ts'
+
+type WorkflowStep = Parameters<typeof runMediaTask>[1]
 
 const bytes = Uint8Array.from(
   atob(
@@ -46,7 +47,6 @@ export function localWorkflow(db: Database, bucket: R2Bucket) {
           params: async (row) => readMediaTaskInput(row).params,
           callbackOrigin: 'http://localhost',
           callbackSecret: 'local-fixture',
-          nonRetryable: (message) => new Error(message),
           persist: (row, result) =>
             persistMediaOutputs({
               db,

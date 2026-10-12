@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ billing: vi.fn(), cleanup: vi.fn(), db: {} }))
-vi.mock('@saas/db', () => ({ createDb: () => mocks.db }))
 vi.mock('@saas/storage', () => ({ cleanupFiles: mocks.cleanup }))
 vi.mock('../src/ai.ts', () => ({}))
 vi.mock('../src/billing.ts', () => ({
@@ -10,8 +9,6 @@ vi.mock('../src/billing.ts', () => ({
   BILLING_DAILY_CRON: '0 4 * * *',
   runBillingSchedule: mocks.billing,
 }))
-vi.mock('../src/env.ts', () => ({ requireEnv: (env: unknown) => env }))
-vi.mock('../src/workflows/ai-media.ts', () => ({ AiMediaWorkflow: class {} }))
 vi.mock('../src/queues/billing.ts', () => ({ handleBillingBatch: vi.fn() }))
 vi.mock('../src/queues/email.ts', () => ({ handleEmailBatch: vi.fn() }))
 vi.mock('../src/cron/deletion-cleanup.ts', () => ({ runDeletionCleanup: vi.fn() }))
@@ -25,7 +22,8 @@ vi.mock('../src/cron/workspace-cleanup.ts', () => ({
   runWorkspaceCleanup: vi.fn(),
 }))
 
-import worker from '../src/index.ts'
+import { type JobsContext, runJobsSchedule } from '../src/handlers.ts'
+import { logJobObserver } from '../src/observer.ts'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -39,10 +37,24 @@ it.each(['billing', 'files'])('runs both ten-minute jobs when %s fails', async (
   if (failure === 'billing') mocks.billing.mockRejectedValueOnce(new Error('Billing unavailable'))
   else mocks.cleanup.mockResolvedValueOnce({ deleted: 0, failed: 1 })
   const bucket = { delete: vi.fn() }
-  const bindings = { HYPERDRIVE: {}, FILES: bucket } as unknown as Cloudflare.Env
-  await expect(
-    worker.scheduled({ cron: '*/10 * * * *' } as ScheduledController, bindings),
-  ).rejects.toThrow('Ten-minute maintenance cron failed')
+  const context = {
+    db: { business: () => mocks.db },
+    files: { available: true, value: bucket },
+    observer: logJobObserver,
+  } as unknown as JobsContext
+  await expect(runJobsSchedule('*/10 * * * *', new Date(), context)).rejects.toThrow(
+    'Ten-minute maintenance cron failed',
+  )
   expect(mocks.billing).toHaveBeenCalledOnce()
   expect(mocks.cleanup).toHaveBeenCalledWith(mocks.db, bucket)
+})
+
+it('rejects unavailable file storage before opening a database or deleting rows', async () => {
+  const business = vi.fn()
+  const { runFilesCleanup } = await import('../src/cron/files-cleanup.ts')
+  await expect(
+    runFilesCleanup({ db: { business, public: business }, files: { available: false } }),
+  ).rejects.toMatchObject({ code: 'CAPABILITY_UNAVAILABLE', status: 503 })
+  expect(business).not.toHaveBeenCalled()
+  expect(mocks.cleanup).not.toHaveBeenCalled()
 })

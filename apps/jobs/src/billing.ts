@@ -11,9 +11,9 @@ import {
   runPendingCompensations,
   runSubscriptionReconciliation,
 } from '@saas/billing'
-import type { Env } from '@saas/config'
-import { auditLog, createDb, type Database, webhookEvent } from '@saas/db'
+import { auditLog, type Database, webhookEvent } from '@saas/db'
 import type { EmailQueueMessage } from '@saas/email/queue'
+import type { DatabaseAccess, KeyValueStore, QueueProducer } from '@saas/platform'
 import { log, withRequestId } from '@saas/shared/log'
 import { and, asc, eq, inArray, notExists, sql } from 'drizzle-orm'
 import templateConfig from '../../../template.config.ts'
@@ -23,20 +23,19 @@ export const BILLING_RETRY_CRON = '*/10 * * * *'
 export const BILLING_DAILY_CRON = '0 4 * * *'
 export const BILLING_POSTPROCESS_ACTION = 'billing.webhook_postprocessed'
 export const BILLING_RECOVERY_LIMIT = 100
-export type BillingEnv = Omit<Env, 'PAYMENT_MODE'> &
-  PaymentRuntimeEnv & {
-    EVENTS_QUEUE?: { send(message: unknown, options: { contentType: 'json' }): Promise<unknown> }
-    CACHE: KVNamespace
-    EMAIL_QUEUE: {
-      send(message: EmailQueueMessage, options: { contentType: 'json' }): Promise<unknown>
-    }
-  }
+export interface BillingEnv {
+  config: Readonly<PaymentRuntimeEnv>
+  db: DatabaseAccess
+  cache: KeyValueStore
+  emailQueue: QueueProducer<EmailQueueMessage>
+  eventsQueue?: QueueProducer<unknown>
+}
 
 // Bindings and database clients belong to each invocation, never to module state.
 export function createBillingContext(env: BillingEnv) {
-  const db = createDb(env.HYPERDRIVE)
-  const { providers } = createPaymentRuntime(env, templateConfig.billing.providers, {
-    cache: env.CACHE,
+  const db = env.db.business()
+  const { providers } = createPaymentRuntime(env.config, templateConfig.billing.providers, {
+    cache: env.cache,
     db,
   })
   return {
@@ -45,8 +44,8 @@ export function createBillingContext(env: BillingEnv) {
     mail: {
       db,
       queue: {
-        async send(message: EmailQueueMessage, options: { contentType: 'json' }) {
-          await env.EMAIL_QUEUE.send(message, options)
+        async send(message: EmailQueueMessage) {
+          await env.emailQueue.send(message)
         },
       },
       appName: templateConfig.app.name,
@@ -140,8 +139,8 @@ export async function runBillingSchedule(cron: string, env: BillingEnv) {
   const now = new Date()
   const alert = async (failure: { job: string; workspaceId: string; targetId: string }) => {
     try {
-      if (!env.EVENTS_QUEUE) throw new Error('Events queue unavailable')
-      await env.EVENTS_QUEUE.send(
+      if (!env.eventsQueue) throw new Error('Events queue unavailable')
+      await env.eventsQueue.send(
         withRequestId({
           v: 1,
           operations: [
@@ -152,7 +151,6 @@ export async function runBillingSchedule(cron: string, env: BillingEnv) {
             },
           ],
         }),
-        { contentType: 'json' },
       )
     } catch {
       log.warn('operations.enqueue_failed', {

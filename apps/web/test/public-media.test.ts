@@ -1,4 +1,4 @@
-import { env, type WorkflowStep } from 'cloudflare:workers'
+import { env } from 'cloudflare:workers'
 import {
   createTaskMediaProvider,
   type MediaProvider,
@@ -22,6 +22,8 @@ import {
   handlePublicMediaSubmit,
   type PublicMediaDeps,
 } from '../src/features/api-keys/tasks.ts'
+
+type WorkflowStep = Parameters<typeof runMediaTask>[1]
 
 const db = createDb(env.HYPERDRIVE)
 const sql = db.$client
@@ -239,7 +241,6 @@ describe('公开 API 媒体任务与共用 Workflow', () => {
             allowedHosts: [],
           },
         }),
-      nonRetryable: (message: string) => new Error(message),
     }
     await runMediaTask(taskId, step, runnerDeps)
     await runMediaTask(taskId, step, runnerDeps)
@@ -342,7 +343,6 @@ describe('公开 API 媒体任务与共用 Workflow', () => {
             allowedHosts: ['*.fal.media'],
           },
         }),
-      nonRetryable: (message) => new Error(message),
     })
     try {
       await reachedWait

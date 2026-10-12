@@ -1,4 +1,4 @@
-import { env, type WorkflowStep } from 'cloudflare:workers'
+import { env } from 'cloudflare:workers'
 import {
   createTaskMediaProvider,
   type MediaProvider,
@@ -9,6 +9,7 @@ import {
 } from '@saas/ai'
 import { getCreditBalance, grant, hold } from '@saas/credits'
 import { type AiPricingJson, aiTask, createDb, member, organization, scoped, user } from '@saas/db'
+import { NonRetryableError, type WorkflowStep } from '@saas/platform'
 import { MEDIA_DONE_EVENT } from '@saas/shared'
 import { persistMediaOutputs } from '@saas/storage'
 import { afterAll, expect, it, vi } from 'vitest'
@@ -37,8 +38,6 @@ const limits = {
   allowedMimeTypes: ['image/png'],
   allowedHosts: ['*.fal.media'],
 }
-
-class NonRetryable extends Error {}
 
 async function fixture(pricing: AiPricingJson = { mode: 'per_call', credits: 15 }) {
   const workspaceId = id()
@@ -105,7 +104,7 @@ function harness(
   let now = options.start ?? Date.now()
   const names: string[] = []
   const sleeps: number[] = []
-  const waits: { type: string; timeout: number }[] = []
+  const waits: { type: string; timeoutMs: number }[] = []
   const values = new Map<string, unknown>()
   const fetcher = vi.fn<typeof fetch>(
     async () =>
@@ -120,7 +119,6 @@ function harness(
     callbackSecret: 'workflow-test-secret',
     persist: (task, media) =>
       persistMediaOutputs({ db, bucket: env.FILES, task, result: media, limits, fetch: fetcher }),
-    nonRetryable: (message) => new NonRetryable(message),
     now: () => now,
   }
   const step = {
@@ -138,13 +136,14 @@ function harness(
           values.set(name, returned)
           return returned
         } catch (error) {
-          if (error instanceof NonRetryable || attempt >= (config?.retries?.limit ?? 0)) throw error
+          if (error instanceof NonRetryableError || attempt >= (config?.retries?.limit ?? 0))
+            throw error
         }
       }
     },
-    async waitForEvent(_name: string, config: { type: string; timeout: number }) {
+    async waitForEvent(_name: string, config: { type: string; timeoutMs: number }) {
       waits.push(config)
-      now += config.timeout
+      now += config.timeoutMs
       await options.onWait?.()
       throw new Error('Event timeout')
     },
@@ -227,9 +226,9 @@ it('lost submission response leaves a durable marker, blocks replay and refunds 
   fake.submit.mockRejectedValue(new Error('Accepted by provider, response lost'))
   const h = harness(fake)
   const task = await scoped(db, f.workspaceId).findById(aiTask, f.taskId)
-  await expect(submitMediaOnce(task, h.deps)).rejects.toBeInstanceOf(NonRetryable)
+  await expect(submitMediaOnce(task, h.deps)).rejects.toBeInstanceOf(NonRetryableError)
   expect((await state(f)).task.output).toMatchObject({ submissionAttempted: true })
-  await expect(submitMediaOnce(task, h.deps)).rejects.toBeInstanceOf(NonRetryable)
+  await expect(submitMediaOnce(task, h.deps)).rejects.toBeInstanceOf(NonRetryableError)
   expect(await runMediaTask(f.taskId, h.step, h.deps)).toEqual({
     taskId: f.taskId,
     status: 'failed',
@@ -312,7 +311,7 @@ it('lost event with a callback committed during the wait is recovered by the pos
     },
   })
   await runMediaTask(f.taskId, h.step, h.deps)
-  expect(h.waits).toEqual([{ type: MEDIA_DONE_EVENT, timeout: 15 * 60_000 }])
+  expect(h.waits).toEqual([{ type: MEDIA_DONE_EVENT, timeoutMs: 15 * 60_000 }])
   expect(fake.getStatus).not.toHaveBeenCalled()
   await succeeded(f)
 })
@@ -324,7 +323,7 @@ it('missing callback polls after 15 minutes with exponential 30-second to 5-minu
   for (let index = 0; index < 6; index++) fake.getStatus.mockResolvedValueOnce(pending)
   const h = harness(fake)
   await runMediaTask(f.taskId, h.step, h.deps)
-  expect(h.waits[0]?.timeout).toBe(15 * 60_000)
+  expect(h.waits[0]?.timeoutMs).toBe(15 * 60_000)
   expect(h.sleeps).toEqual([30_000, 60_000, 120_000, 240_000, 300_000, 300_000])
   expect(fake.getStatus).toHaveBeenCalledTimes(7)
   expect(fake.getStatus).toHaveBeenCalledWith('job-fixture')

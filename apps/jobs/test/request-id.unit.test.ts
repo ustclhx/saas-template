@@ -4,6 +4,7 @@ import {
   type RefundNotification,
 } from '@saas/billing'
 import type { EmailQueueMessage } from '@saas/email/queue'
+import type { QueueBatch } from '@saas/platform'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 // tasks.md 1.1：结账请求投递的 EVENTS_QUEUE 消息带请求 ID（web 侧见 features/billing/webhook-http.test.ts），
@@ -11,7 +12,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ postprocess: vi.fn() }))
 vi.mock('../src/billing.ts', () => ({
-  createBillingContext: (env: { EMAIL_QUEUE: unknown }) => ({ mail: env.EMAIL_QUEUE }),
+  createBillingContext: (env: { emailQueue: unknown }) => ({ mail: env.emailQueue }),
   postprocessBillingDelivery: mocks.postprocess,
 }))
 
@@ -60,7 +61,7 @@ function batch<T>(queue: string, bodies: T[]) {
     ack: vi.fn(),
     retry: vi.fn(),
   }))
-  return { queue, messages } as unknown as MessageBatch<unknown> & { messages: typeof messages }
+  return { queue, messages } as unknown as QueueBatch<unknown> & { messages: typeof messages }
 }
 
 let lines: () => Record<string, unknown>[]
@@ -75,7 +76,7 @@ afterEach(() => vi.restoreAllMocks())
 
 it('follows one checkout request ID from EVENTS_QUEUE to EMAIL_QUEUE and both consumers', async () => {
   const emails: EmailQueueMessage[] = []
-  const env = { EMAIL_QUEUE: refundMail((message) => emails.push(message)) }
+  const env = { emailQueue: refundMail((message) => emails.push(message)) }
   const events = batch('events', [{ v: 1, deliveryId, requestId } satisfies BillingQueueMessage])
   await handleBillingBatch(events, env as never)
   expect(events.messages[0]?.ack).toHaveBeenCalledOnce()
@@ -96,7 +97,7 @@ it('follows one checkout request ID from EVENTS_QUEUE to EMAIL_QUEUE and both co
 
 it('still processes messages enqueued before request IDs existed, under a fresh ID', async () => {
   const emails: EmailQueueMessage[] = []
-  const env = { EMAIL_QUEUE: refundMail((message) => emails.push(message)) }
+  const env = { emailQueue: refundMail((message) => emails.push(message)) }
   const events = batch('events', [{ v: 1, deliveryId }])
   await handleBillingBatch(events, env as never)
   expect(events.messages[0]?.ack).toHaveBeenCalledOnce()
