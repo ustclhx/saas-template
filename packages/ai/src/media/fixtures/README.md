@@ -27,6 +27,16 @@
 
 录制脚本在内存中对回调**原始请求体**计算 SHA-256，按 fal 的 request ID / user ID / timestamp / hash 协议拼接签名消息，从公开 JWKS 获取 Ed25519 公钥，确认真实签名及 ±5 分钟时间窗通过，再脱敏载荷。`metadata.callbackRawBodySignatureVerified=true` 记录该现场检查；脱敏会使原签名失效，离线测试对 `imageWebhook.body` 使用临时 Ed25519 密钥重新签名，分别验证真实载荷解析与签名协议，不声称本地签名来自 fal。
 
+### 回调接收地址（2026-10-12 起）
+
+2026-10-12 的 `imageWebhook` 由第三方 webhook.site 接收；此后录制回调**不再使用任何第三方接收器**，改用自建的临时地址：本机起一个只记录请求的接收服务，再用 Cloudflare quick tunnel 暴露为临时 HTTPS 地址，例如：
+
+```sh
+docker run --rm cloudflare/cloudflared:latest tunnel --no-autoupdate --url http://host.docker.internal:<端口>
+```
+
+quick tunnel 无需账号配置、不创建持久 Tunnel 资源，进程退出即失效；不要复用或改动已有的命名 Tunnel。接收服务只在内存中处理原始请求体，完成签名核对与脱敏后再落盘，录制结束即停止接收服务与 tunnel。
+
 ## 文档补充与公开 JWKS
 
 `fal.documented.json` 仍保留未录制分支：单独查询的 `IN_QUEUE`（图片查询时已运行）、生成失败、视频结果、ERROR / payload_error 回调与内部重试。其字段依据下列官方文档构造，不作为真实 API 验收证据；真实提交、运行 / 完成状态、图片结果、取消与成功回调测试使用 `fal.recorded.json`。
