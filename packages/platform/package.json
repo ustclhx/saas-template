@@ -11,17 +11,23 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.cloudflare.json && tsc -p tsconfig.test.json",
     "test": "vitest run",
-    "test:node:integration": "vitest run --config vitest.node-integration.config.ts"
+    "test:node:integration": "vitest run --config vitest.node-integration.config.ts",
+    "dbos:migrate": "node --experimental-strip-types src/node/job-engine-migrate.ts",
+    "test:job-engine": "vitest run --config vitest.job-engine.config.ts"
   },
   "dependencies": {
+    "@dbos-inc/dbos-sdk": "5.2.11",
     "@saas/db": "workspace:*",
     "@saas/shared": "workspace:*",
-    "ioredis": "5.8.2"
+    "drizzle-orm": "^0.45.3",
+    "ioredis": "5.8.2",
+    "pg": "8.20.0"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.3.5",
     "@cloudflare/workers-types": "^5.20261002.1",
     "@types/node": "^22.20.5",
+    "@types/pg": "8.20.0",
     "vitest": "^4.1.11",
     "wrangler": "^4.146.0"
   }

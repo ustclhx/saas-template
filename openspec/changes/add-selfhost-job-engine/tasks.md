@@ -21,11 +21,11 @@
 
 依赖1.10；正式合同为A #107的queue/workflow/scheduler/capabilities与contracts夹具。协调者分配公共导出/依赖/schema权限后实施；下列编号均未执行。
 
-- [ ] 2.1 固定DBOS5.2.11，接入A Node生命周期、Database/Drizzle facade和独立native pg pool；稳定executorID不并发复用，退出后才恢复同ID。migrator执行DBOS public migrate及自有schema/权限，app runMigrations:false。验证：初始化/重复/升级、旧schema明确拒绝、app无CREATE/ALTER启动通过，业务/引擎/health总连接预算明确，check:deps/check:singletons通过。
-- [ ] 2.2 按正式QueueProducer/TransactionalEnqueue实现send/sendBatch/调用方Drizzle tx写事务消息inbox，UUIDv7消息ID、不可变timestamp、延迟与requestId/幂等键；原子批次claim后用稳定batch workflow ID发布，不额外增加outbox路径。验证：真实Drizzle未提交/回滚/提交、claim后未发布与接受后未标记的发布器崩溃，恢复无丢消息/重复业务结果；不得另开连接或依赖裸驱动codecs冒充caller tx。
-- [ ] 2.3 实现真实最大10条/5秒批次，QueueBatch ackAll/retryAll与逐条ack/retry，初次+5重试、30s指数退避封顶900s，持久DLQ与DeadLetterSink有效失败先记录后确认。验证：成功成员各1次，失败6次真实时间轴、确认前崩溃最终确认、不可重试有效失败与无效消息策略通过；不修改DBOS内部表。
-- [ ] 2.4 实现每队列跨两jobs消息级并发/滑动启动额度，批内和重试计额，独立队列互不占用；补齐failed batch/claim/permit恢复与ownership保护，不能盲目TTL释放仍可能运行的worker额度。验证：两worker实际竞争、真批次、重试、失去执行权/旧执行者/终态异常与其他队列的PG场景通过，持久计数不超限且不卡死未处置消息。
-- [ ] 2.5 提交事务inbox/批次/DLQ查询、手动处置、迁移、许可/版本、pool/轮询及保留期runbook；完成终态消息/事件/日志清理，active实例及未消费早到事件至少保留60min。验证：只读查询、保留期边界及拒绝删除active数据通过，脱敏日志有metadata且无邮件正文/凭据，相关静态检查通过。
+- [x] 2.1 固定DBOS5.2.11，接入A Node生命周期、Database/Drizzle facade和独立native pg pool；稳定executorID不并发复用，退出后才恢复同ID。migrator执行DBOS public migrate及自有schema/权限，app runMigrations:false。验证：初始化/重复/升级、旧schema明确拒绝、app无CREATE/ALTER启动通过，业务/引擎/health总连接预算明确，check:deps/check:singletons通过。
+- [x] 2.2 按正式QueueProducer/TransactionalEnqueue实现send/sendBatch/调用方Drizzle tx写事务消息inbox，UUIDv7消息ID、不可变timestamp、延迟与requestId/幂等键；原子批次claim后用稳定batch workflow ID发布，不额外增加outbox路径。验证：真实Drizzle未提交/回滚/提交、claim后未发布与接受后未标记的发布器崩溃，恢复无丢消息/重复业务结果；不得另开连接或依赖裸驱动codecs冒充caller tx。
+- [x] 2.3 实现真实最大10条/5秒批次，QueueBatch ackAll/retryAll与逐条ack/retry，初次+5重试、30s指数退避封顶900s，持久DLQ与DeadLetterSink有效失败先记录后确认。验证：成功成员各1次，失败6次真实时间轴、确认前崩溃最终确认、不可重试有效失败与无效消息策略通过；不修改DBOS内部表。
+- [x] 2.4 实现每队列跨两jobs消息级并发/滑动启动额度，批内和重试计额，独立队列互不占用；补齐failed batch/claim/permit恢复与ownership保护，不能盲目TTL释放仍可能运行的worker额度。验证：两worker实际竞争、真批次、重试、失去执行权/旧执行者/终态异常与其他队列的PG场景通过，持久计数不超限且不卡死未处置消息。
+- [x] 2.5 提交事务inbox/批次/DLQ查询、手动处置、迁移、许可/版本、pool/轮询及保留期runbook；清理自有message/batch/DLQ/start及owned DBOS queue-batch journal；不删除其他workflow/native事件，active及未消费数据至少保留60min；自有终态FIFO event清理归3.3。验证：只读查询、保留期边界及拒绝删除active数据通过，脱敏日志有metadata且无邮件正文/凭据，相关静态检查通过。
 
 ## 3. Phase 2：DBOS工作流与自有FIFO事件日志
 
@@ -33,7 +33,7 @@
 
 - [ ] 3.1 实现create({id?,params})/get返回中立instance，id/status/terminate/sendEvent、JSON输入输出和平台错误；任意合法字符串业务ID与内部引擎ID区分。验证：重复身份/不存在/完成失败/终止、终态事件拒绝与正式contracts类型夹具通过；SDK成功不冒充业务ai_task成功。
 - [ ] 3.2 实现named do的成功缓存、limit排除首次、毫秒timeout/delay、constant/exponential及linear退避；NonRetryableError不重试，sleep保留原唤醒时刻。验证：成功callback跨重启不增加，linear100/200/300ms与原有submit/persist策略、不可重试失败结算、sleep/副作用后checkpoint前故障通过；记录timeout不能强制停止不合作回调的边界。
-- [ ] 3.3 实现自有event inbox序号FIFO、wait deadline和原子消费结果journal，queued/sleep中接收事件，至少60min保留；timestamp API返回Date，持久结果JSON。固定版native状态只读/锁定耦合须封装并在升级验证，禁止写第三方内部表。验证：同type FIFO/不同type/消费一次、等待超时可捕获、截止后到达不误匹配、缺失/终态拒绝、重启原deadline及真实60+min事件通过。
+- [ ] 3.3 实现自有event inbox序号FIFO、wait deadline和原子消费结果journal，queued/sleep中接收事件，至少60min保留；timestamp API返回Date，持久结果JSON；负责自有终态FIFO event清理，active实例永不清理且未消费早到事件至少保留60min（2.5只清理队列域）。固定版native状态只读/锁定耦合须封装并在升级验证，禁止写第三方内部表。验证：同type FIFO/不同type/消费一次、等待超时可捕获、截止后到达不误匹配、缺失/终态拒绝、重启原deadline及真实60+min事件通过。
 - [ ] 3.4 完成同版本恢复与升级/停机runbook，记录applicationVersion/handler版本和稳定步骤顺序；接A shutdown停止领取，受控排空，未完成状态保留。验证：同版本1–2h流水线恢复、等待/sleep/成功步骤缓存通过；不宣称跨代码版本热重放已支持，变更版本先完成/暂停旧任务或保留旧handler。
 
 ## 4. Phase 2：持久调度与健康
