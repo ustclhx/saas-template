@@ -8,6 +8,7 @@ vi.mock('./template-config.ts', async (original) => {
   return {
     templateConfig: {
       ...templateConfig,
+      ai: { ...templateConfig.ai, image: true, video: true },
       auth: { ...templateConfig.auth, oauth: ['google', 'github'], turnstile: true },
       features: { ...templateConfig.features, publicApi: false },
     },

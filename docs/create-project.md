@@ -28,7 +28,7 @@ Rate Limiting 的 RL_AUTH / RL_AI / RL_API 命名空间需独立分配。Queue �
 FILES 桶按项目改名，R2_FILES_BUCKET 与绑定保持一致；文本模式也保留文件清理 Cron 所需的 FILES 桶。
 清单按 AI、支付、OAuth 与 Turnstile 开关列出资源与密钥；关闭图片和视频时移除 Workflow 绑定，
 清单不包含媒体服务商、Workflow 与媒体 R2 S3 密钥。
-密钥模板只包含空值，来自固定的变量名清单；脚本不读取本地真值生成模板。
+密钥模板只包含空值，APP_URL 使用公开默认地址，来自固定的变量名清单；脚本不读取本地真值生成模板。
 
 PROJECT_SETUP.md 分别列出 Worker 配置与 GitHub staging environment secrets。
 SENTRY_DSN 需要分别写入 web / jobs，SENTRY_ENVIRONMENT 设为 staging、production 或临时验收专用 smoke；

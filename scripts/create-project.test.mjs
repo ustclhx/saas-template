@@ -187,7 +187,8 @@ test('生成副本改名与配置，排除各级密钥、链接和产物', async
   assert.doesNotMatch(result.report, /FAL_KEY|Workflow：|STRIPE_SECRET|GOOGLE_CLIENT/)
   const example = await readFile(join(result.target, '.dev.vars.example'), 'utf8')
   for (const line of example.split('\n').filter((line) => line && !line.startsWith('#'))) {
-    assert.match(line, /^[A-Z_]+=$/)
+    if (line.startsWith('APP_URL=')) assert.equal(line, 'APP_URL=https://acme.example')
+    else assert.match(line, /^[A-Z_]+=$/)
   }
   assert.match(example, /SENTRY_DSN=\n/)
   assert.doesNotMatch(
@@ -272,3 +273,16 @@ for (const providers of ['fal', 'workers-ai', '']) {
     }
   })
 }
+
+// 新名称含源 scope 前缀时，插入的资源名也不能再经过全局替换。
+test('项目名包含旧 scope 前缀时资源只改名一次', async (t) => {
+  const f = await fixture(t)
+  const result = await createProject({ ...f.input, name: 'fixture-smoke' }, f.source)
+  const config = JSON.parse(await readFile(join(result.target, 'apps/web/wrangler.jsonc'), 'utf8'))
+  assert.equal(config.name, 'fixture-smoke-web')
+  assert.equal(config.r2_buckets[0].bucket_name, 'fixture-smoke-files')
+  assert.equal(config.queues.producers[0].queue, 'fixture-smoke-email')
+  const worker = await readFile(join(result.target, 'apps/jobs/src/index.ts'), 'utf8')
+  assert.match(worker, /'fixture-smoke-email-staging'/)
+  assert.doesNotMatch(worker, /fixture-smoke-smoke/)
+})

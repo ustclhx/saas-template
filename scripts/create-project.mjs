@@ -341,7 +341,8 @@ export async function createProject(input, source = root) {
           }
         }
         if (decoded !== null) {
-          let text = decoded
+          // 先替换源标识，再插入新名称，避免新名称含旧 scope 前缀时被二次替换。
+          let text = replace(decoded)
           if (path === 'template.config.ts') text = templateConfig(text, options)
           if (/^apps\/(web|jobs)\/wrangler.jsonc$/.test(path)) {
             text = wranglerConfig(text, options, path.split('/')[1])
@@ -363,7 +364,7 @@ export async function createProject(input, source = root) {
           if (path === 'scripts/staging/files-cors.json') {
             text = text.replace(/https:\/\/web-staging\.[^"\s]+/g, options.url)
           }
-          content = Buffer.from(replace(text))
+          content = Buffer.from(text)
         }
         await writeFile(to, content)
         await chmod(to, stat.mode & 0o777)
@@ -372,8 +373,10 @@ export async function createProject(input, source = root) {
   }
   await copy()
   const checklist = setupChecklist(options)
-  const vars = [...checklist.vars, ...checklist.secrets].map((key) => `${key}=`).join('\n')
-  const example = `# 仅为空值；复制到对应 app 的 .dev.vars 后填写，本文件不含真实密钥。\n${vars}\n`
+  const vars = [...checklist.vars, ...checklist.secrets]
+    .map((key) => `${key}=${key === 'APP_URL' ? options.url : ''}`)
+    .join('\n')
+  const example = `# 密钥为空，APP_URL 为公开默认值；复制到对应 app 的 .dev.vars 后填写。\n${vars}\n`
   await writeFile(join(target, '.dev.vars.example'), example)
   for (const app of ['web', 'jobs']) {
     await writeFile(join(target, 'apps', app, '.dev.vars.example'), example)
