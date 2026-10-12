@@ -19,4 +19,4 @@
 ## 4. 集成验收与交付
 
 - [x] 4.1 执行 openspec validate --strict、pnpm check、check:deps、check:singletons、typecheck、test、build、dedupe --check 与生成器边界测试，确认全部通过且无 Sandbox 数据/验收文档变化。
-- [ ] 4.2 提交中文 commit、fetch/rebase origin/main，复核最终 diff 后推送并创建 main PR（不合并/归档/部署）；PR 列验证与未做 live 外部验收；将 Orca 卡片设为 in-review 并评论支付模式 PR 已开：#号。
+- [x] 4.2 提交中文 commit、fetch/rebase origin/main，复核最终 diff 后推送并创建 main PR（不合并/归档/部署）；PR 列验证与未做 live 外部验收；将 Orca 卡片设为 in-review 并评论支付模式 PR 已开：#号。
