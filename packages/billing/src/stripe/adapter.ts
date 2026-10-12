@@ -1,3 +1,4 @@
+import type { PaymentMode } from '@saas/config'
 import type { JsonValue } from '@saas/db/schema'
 import Stripe from 'stripe'
 import {
@@ -23,10 +24,18 @@ export interface StripeProviderOptions {
   secretKey: string
   webhookSecret: string
   fetch?: typeof fetch
+  expectedMode?: PaymentMode
 }
 
 /** All enrichment finishes before the caller opens its consumer transaction. */
-async function normalizeStripeEvent(stripe: Stripe, event: Stripe.Event): Promise<VerifiedWebhook> {
+async function normalizeStripeEvent(
+  stripe: Stripe,
+  event: Stripe.Event,
+  expectedMode?: PaymentMode,
+): Promise<VerifiedWebhook> {
+  // 验签后的回调与可信载荷重放共用此边界，避免跨模式事件触发远端补充查询。
+  if (expectedMode && event.livemode !== (expectedMode === 'live'))
+    throw new WebhookVerificationError('Stripe event does not match the payment mode')
   const base = {
     provider: 'stripe' as const,
     occurredAt: stripeDate(event.created),
@@ -236,14 +245,14 @@ export function createStripeProvider(options: StripeProviderOptions): PaymentPro
       if (event.api_version !== STRIPE_API_VERSION) {
         throw new Error(`Incompatible Stripe event API version: ${event.api_version}`)
       }
-      return normalizeStripeEvent(stripe, event)
+      return normalizeStripeEvent(stripe, event, options.expectedMode)
     },
   }
 }
 
 /** Trusted persisted-payload replay only; HTTP ingress always uses verifyWebhook. */
 export function createStripeWebhookNormalizer(
-  options: Pick<StripeProviderOptions, 'secretKey' | 'fetch'>,
+  options: Pick<StripeProviderOptions, 'secretKey' | 'fetch' | 'expectedMode'>,
 ) {
   const stripe = createStripeClient(options.secretKey, options.fetch)
   return async (payload: JsonValue): Promise<VerifiedWebhook> => {
@@ -256,6 +265,6 @@ export function createStripeWebhookNormalizer(
       payload.api_version !== STRIPE_API_VERSION
     )
       throw new Error('Invalid stored Stripe event')
-    return normalizeStripeEvent(stripe, payload as unknown as Stripe.Event)
+    return normalizeStripeEvent(stripe, payload as unknown as Stripe.Event, options.expectedMode)
   }
 }

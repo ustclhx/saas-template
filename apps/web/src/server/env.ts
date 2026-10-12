@@ -14,7 +14,8 @@ const bindingWith = <T>(...methods: string[]) =>
   )
 
 /** apps/web 需要的环境变量与绑定：共享 schema 加上 web 独有的绑定。 */
-export const webEnvSchema = envSchema.extend({
+// 支付模式由支付工厂单独校验，避免支付配置错误阻断公开页面与普通认证。
+export const webEnvSchema = envSchema.omit({ PAYMENT_MODE: true }).extend({
   BOOTSTRAP_ADMIN_EMAILS: z.string().optional(),
   AI_MEDIA_WORKFLOW:
     templateConfig.ai.image || templateConfig.ai.video

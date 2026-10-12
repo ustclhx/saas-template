@@ -1,9 +1,11 @@
-import { type AuthEmail, createAuth, parseAuthEnv, type SendAuthEmail } from '@saas/auth'
 import {
-  createBillingDeletionStep,
-  createTestPaymentRuntime,
-  grantSignupBonus,
-} from '@saas/billing'
+  type AuthEmail,
+  createAuth,
+  type DeletionStep,
+  parseAuthEnv,
+  type SendAuthEmail,
+} from '@saas/auth'
+import { createBillingDeletionStep, createPaymentRuntime, grantSignupBonus } from '@saas/billing'
 import { createDb, type Database } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { APIError } from 'better-auth/api'
@@ -61,15 +63,25 @@ export function getAuth(env: Cloudflare.Env, db: Database = createDb(env.HYPERDR
   })
 }
 
-export function billingDeletionSteps(env: Cloudflare.Env, db: Database) {
-  const { providers } = createTestPaymentRuntime(env, templateConfig.billing.providers, {
-    cache: env.CACHE,
-    db,
-  })
+export function billingDeletionSteps(env: Cloudflare.Env, db: Database): DeletionStep[] {
+  // 普通认证不依赖支付配置；只有真正执行删除时才初始化支付能力。
+  let step: DeletionStep
   return [
-    createBillingDeletionStep({
-      providers,
-      refundWindowDays: templateConfig.billing.refundWindowDays,
-    }),
+    {
+      async before(context) {
+        const { providers } = createPaymentRuntime(env, templateConfig.billing.providers, {
+          cache: env.CACHE,
+          db,
+        })
+        step = createBillingDeletionStep({
+          providers,
+          refundWindowDays: templateConfig.billing.refundWindowDays,
+        })
+        await step.before?.(context)
+      },
+      async execute(context, sql) {
+        await step.execute?.(context, sql)
+      },
+    },
   ]
 }

@@ -1,12 +1,13 @@
 import { env } from 'cloudflare:workers'
 import {
-  createTestPaymentRuntime,
+  createPaymentRuntime,
   listRefundablePayments,
   notifyRefundRequest,
   submitRefundRequest,
 } from '@saas/billing'
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
+import { setResponseStatus } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import { withRealSession, withWorkspace } from '../../server/middleware.ts'
 import { templateConfig } from '../../server/template-config.ts'
@@ -14,12 +15,16 @@ import { enqueueRefundOperations } from '../notifications/operations.ts'
 
 const workspace = z.object({ slug: z.string().min(1).max(64) })
 function options(db: Parameters<typeof listRefundablePayments>[0]['db']) {
+  let runtime: ReturnType<typeof createPaymentRuntime>
+  try {
+    runtime = createPaymentRuntime(env, templateConfig.billing.providers, { cache: env.CACHE, db })
+  } catch (error) {
+    if (error instanceof AppError && error.status === 503) setResponseStatus(503)
+    throw error
+  }
   return {
     db,
-    providers: createTestPaymentRuntime(env, templateConfig.billing.providers, {
-      cache: env.CACHE,
-      db,
-    }).providers,
+    providers: runtime.providers,
     config: templateConfig.billing,
     notify: (notification: Parameters<typeof notifyRefundRequest>[1]) =>
       notifyRefundRequest(
@@ -78,6 +83,7 @@ export const requestCustomerRefund = createServerFn({ method: 'POST' })
       await enqueueRefundOperations(context.db, env.EVENTS_QUEUE, request)
       return { ok: true as const, id: request.id }
     } catch (error) {
+      if (error instanceof AppError && error.status === 503) setResponseStatus(503)
       return {
         ok: false as const,
         error: error instanceof AppError ? error.code : 'REFUND_UNAVAILABLE',

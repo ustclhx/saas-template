@@ -137,4 +137,9 @@ describe('checkEnv（请求入口的环境校验）', () => {
     expect(checkEnv(env)).toBeNull()
     expect(error).not.toHaveBeenCalled()
   })
+
+  it('支付模式由入口工厂校验，不阻断公开页面', () => {
+    expect(checkEnv({ ...completeEnv(), PAYMENT_MODE: 'invalid' })).toBeNull()
+    expect(checkEnv({ ...completeEnv(), SENTRY_ENVIRONMENT: 'production' })).toBeNull()
+  })
 })

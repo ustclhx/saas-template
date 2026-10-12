@@ -53,6 +53,7 @@
   // TURNSTILE_SITE_KEY 为 Cloudflare 官方测试 site key（始终通过），与 .dev.vars 中的测试 secret 配对
   "vars": {
     "SENTRY_ENVIRONMENT": "development",
+    "PAYMENT_MODE": "test",
     "APP_URL": "http://localhost:3000",
     "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
     "R2_FILES_BUCKET": "files"
@@ -68,6 +69,7 @@
       "r2_buckets": [{ "binding": "FILES", "bucket_name": "files-staging" }],
       "vars": {
         "SENTRY_ENVIRONMENT": "staging",
+        "PAYMENT_MODE": "test",
         "APP_URL": "https://web-staging.saas-jobs.workers.dev",
         "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
         "AI_GATEWAY_ACCOUNT_ID": "170a06d37ad50396b19943eb6b77a21d",

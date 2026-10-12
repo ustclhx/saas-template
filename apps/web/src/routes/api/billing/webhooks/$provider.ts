@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers'
-import { createTestPaymentRuntime } from '@saas/billing'
+import { createPaymentRuntime } from '@saas/billing'
 import { createDb } from '@saas/db'
+import { AppError } from '@saas/shared'
 import { createFileRoute } from '@tanstack/react-router'
 import { handleBillingWebhook } from '../../../../features/billing/webhook-http.ts'
 import { templateConfig } from '../../../../server/template-config.ts'
@@ -8,19 +9,29 @@ import { templateConfig } from '../../../../server/template-config.ts'
 export const Route = createFileRoute('/api/billing/webhooks/$provider')({
   server: {
     handlers: {
-      POST: ({ request, params }) => {
-        const db = createDb(env.HYPERDRIVE)
-        const runtime = createTestPaymentRuntime(env, templateConfig.billing.providers, {
-          cache: env.CACHE,
-          db,
-        })
-        return handleBillingWebhook(request, params.provider, {
-          db,
-          providers: runtime.providers,
-          queue: env.EVENTS_QUEUE,
-          subscriptionCreditGraceHours: templateConfig.billing.subscriptionCreditGraceHours,
-        })
-      },
+      POST: ({ request, params }) => handlePaymentWebhook(request, params.provider),
     },
   },
 })
+
+export async function handlePaymentWebhook(request: Request, providerId: string) {
+  if (providerId !== 'stripe' && providerId !== 'paypal')
+    return new Response('Not Found', { status: 404 })
+  const db = createDb(env.HYPERDRIVE)
+  try {
+    const runtime = createPaymentRuntime(env, templateConfig.billing.providers, {
+      cache: env.CACHE,
+      db,
+    })
+    return await handleBillingWebhook(request, providerId, {
+      db,
+      providers: runtime.providers,
+      queue: env.EVENTS_QUEUE,
+      subscriptionCreditGraceHours: templateConfig.billing.subscriptionCreditGraceHours,
+    })
+  } catch (error) {
+    if (error instanceof AppError && error.status === 503)
+      return new Response('Payments unavailable', { status: 503 })
+    throw error
+  }
+}

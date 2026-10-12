@@ -1,5 +1,6 @@
 import type Stripe from 'stripe'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { createPaymentRuntime } from '../runtime.ts'
 import { createStripeProvider, createStripeWebhookNormalizer } from './adapter.ts'
 import { STRIPE_API_VERSION } from './client.ts'
 
@@ -143,6 +144,7 @@ async function signed(
     timestamp?: number
     version?: string
     signingSecret?: string
+    livemode?: boolean
   } = {},
 ) {
   const rawBody = JSON.stringify({
@@ -152,7 +154,7 @@ async function signed(
     created: start + 42,
     api_version: options.version ?? STRIPE_API_VERSION,
     data: { object },
-    livemode: false,
+    livemode: options.livemode ?? false,
   })
   const timestamp = options.timestamp ?? Math.floor(Date.now() / 1000)
   const encoder = new TextEncoder()
@@ -217,6 +219,57 @@ function paymentReplies(invoiceBody?: unknown) {
   ]
 }
 describe('Stripe adapter with cryptographically signed synthetic fixtures', () => {
+  it.each(['test', 'live'] as const)(
+    'accepts signed and persisted events matching runtime mode %s',
+    async (mode) => {
+      const fetch = vi.fn<typeof globalThis.fetch>()
+      const runtime = createPaymentRuntime(
+        {
+          PAYMENT_MODE: mode,
+          STRIPE_SECRET_KEY: mode === 'test' ? 'sk_test_offline_only' : 'rk_live_offline_only',
+          STRIPE_WEBHOOK_SECRET: webhookSecret,
+        },
+        ['stripe'],
+        { fetch },
+      )
+      const payload = await signed('customer.subscription.updated', subscription, {
+        livemode: mode === 'live',
+      })
+      const verified = await runtime.providers.stripe?.verifyWebhook(
+        payload.request,
+        payload.rawBody,
+      )
+      expect(verified?.events[0]).toMatchObject({ type: 'subscription.updated' })
+      expect(await runtime.normalizers.stripe?.(JSON.parse(payload.rawBody))).toEqual(verified)
+      expect(fetch).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(['test', 'live'] as const)(
+    'rejects signed and persisted cross-mode events before enrichment in %s runtime',
+    async (mode) => {
+      const fetch = vi.fn<typeof globalThis.fetch>()
+      const runtime = createPaymentRuntime(
+        {
+          PAYMENT_MODE: mode,
+          STRIPE_SECRET_KEY: mode === 'test' ? 'sk_test_offline_only' : 'sk_live_offline_only',
+          STRIPE_WEBHOOK_SECRET: webhookSecret,
+        },
+        ['stripe'],
+        { fetch },
+      )
+      // invoice.paid 正常映射会先查询 invoice_payments，错配必须阻止该查询。
+      const payload = await signed('invoice.paid', invoice, { livemode: mode !== 'live' })
+      await expect(
+        runtime.providers.stripe?.verifyWebhook(payload.request, payload.rawBody),
+      ).rejects.toThrow('Stripe event does not match the payment mode')
+      await expect(runtime.normalizers.stripe?.(JSON.parse(payload.rawBody))).rejects.toThrow(
+        'Stripe event does not match the payment mode',
+      )
+      expect(fetch).not.toHaveBeenCalled()
+    },
+  )
+
   it('replays trusted persisted payloads with the same identity and normalization', async () => {
     const payload = await signed('customer.subscription.updated', subscription)
     const verified = await mockProvider().provider.verifyWebhook(payload.request, payload.rawBody)

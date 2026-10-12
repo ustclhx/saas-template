@@ -1,6 +1,12 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import { z } from 'zod'
-import { EnvValidationError, envSchema, type HyperdriveBinding, loadEnv } from './env.ts'
+import {
+  EnvValidationError,
+  envSchema,
+  type HyperdriveBinding,
+  loadEnv,
+  resolvePaymentMode,
+} from './env.ts'
 
 const SECRET = 'postgres://app:s3cr3t-password@db.internal:5432/app'
 
@@ -94,5 +100,37 @@ describe('loadEnv', () => {
       // 自定义的 Zod 错误消息里带了取值，也不能出现在错误中
       expectNoValues(error, ['not a url', 'short-secret-key', 'maybe'])
     })
+  })
+})
+
+describe('payment mode', () => {
+  it.each(['test', 'live'] as const)('accepts explicit %s in any environment', (mode) => {
+    expect(resolvePaymentMode({ PAYMENT_MODE: mode, SENTRY_ENVIRONMENT: 'production' })).toBe(mode)
+    expect(
+      loadEnv({ HYPERDRIVE: { connectionString: SECRET }, PAYMENT_MODE: mode }).PAYMENT_MODE,
+    ).toBe(mode)
+  })
+
+  it('defaults only explicit development to test', () => {
+    expect(resolvePaymentMode({ SENTRY_ENVIRONMENT: 'development' })).toBe('test')
+    for (const environment of ['staging', 'production', undefined]) {
+      expect(
+        captureError(() =>
+          resolvePaymentMode(environment ? { SENTRY_ENVIRONMENT: environment } : {}),
+        ).missing,
+      ).toEqual(['PAYMENT_MODE'])
+    }
+  })
+
+  it('rejects invalid modes without exposing their values', () => {
+    const value = 'private-invalid-mode'
+    for (const check of [
+      () => resolvePaymentMode({ PAYMENT_MODE: value, SENTRY_ENVIRONMENT: 'development' }),
+      () => loadEnv({ HYPERDRIVE: { connectionString: SECRET }, PAYMENT_MODE: value }),
+    ]) {
+      const error = captureError(check)
+      expect(error.invalid).toEqual(['PAYMENT_MODE'])
+      expectNoValues(error, [value])
+    }
   })
 })

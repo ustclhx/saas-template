@@ -1,7 +1,7 @@
 // biome-ignore-all lint/plugin: Cross-workspace system audit markers have no workspace owner.
 import {
   clearResolvedRefundContacts,
-  createTestPaymentRuntime,
+  createPaymentRuntime,
   flushRefundNotifications,
   type PaymentRuntimeEnv,
   runAnnualGrants,
@@ -23,7 +23,7 @@ export const BILLING_RETRY_CRON = '*/10 * * * *'
 export const BILLING_DAILY_CRON = '0 4 * * *'
 export const BILLING_POSTPROCESS_ACTION = 'billing.webhook_postprocessed'
 export const BILLING_RECOVERY_LIMIT = 100
-export type BillingEnv = Env &
+export type BillingEnv = Omit<Env, 'PAYMENT_MODE'> &
   PaymentRuntimeEnv & {
     EVENTS_QUEUE?: { send(message: unknown, options: { contentType: 'json' }): Promise<unknown> }
     CACHE: KVNamespace
@@ -35,7 +35,7 @@ export type BillingEnv = Env &
 // Bindings and database clients belong to each invocation, never to module state.
 export function createBillingContext(env: BillingEnv) {
   const db = createDb(env.HYPERDRIVE)
-  const { providers } = createTestPaymentRuntime(env, templateConfig.billing.providers, {
+  const { providers } = createPaymentRuntime(env, templateConfig.billing.providers, {
     cache: env.CACHE,
     db,
   })

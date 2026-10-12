@@ -97,7 +97,7 @@
 开发中发现、但不阻塞当前阶段的缺口，先在这里登记，整体框架完成后统一处理：
 
 - [x] CI 冒烟 Playwright e2e：`.github/workflows/ci.yml` 的独立 `e2e-smoke` job 使用临时 Postgres 与本地 fake 支付 Provider，覆盖注册进入个人空间、真实退出后密码登录、购买积分包、付款回调入账与重复回调不重复发放。仅安装并缓存 Chromium，无外部服务请求、PR secrets 或 trace/video；本地命令见 [07 §5](./07-infrastructure.md#5-部署与-ci-github-actions)。
-- [ ] 支付运行时仍是测试专用：Webhook 路由（`apps/web/src/routes/api/billing/webhooks/$provider.ts`）、`apps/jobs/src/billing.ts`、`apps/web/src/features/billing/{admin,customer,refund}.functions.ts`（以及 `apps/web/src/server/auth.ts`）均直接调用 `createTestPaymentRuntime`，它强制 Stripe 密钥为 `sk_test_`。上线前需提供按环境切换 test / live 的运行时工厂，并让上述入口改用它（关联上文「生产迁移」与待决事项 Q9）。
+- [x] 支付运行时按环境切换 test / live：[add-payment-live-mode](../openspec/changes/add-payment-live-mode/proposal.md) 提供统一工厂，迁移 Webhook、Jobs、后台/客户/退款、认证删除与营销定价入口；本地和 staging 保持 test，live 上线清单见 [05 §8](./05-billing.md#8-支付模式与生产切换清单)。生产凭据、外部验收与正式收款主体仍依赖「生产迁移」和待决事项 Q9。
 
 ## 生产迁移 · 进入阶段二（最小原型完成后）
 
