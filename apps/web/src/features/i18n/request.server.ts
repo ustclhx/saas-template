@@ -1,15 +1,14 @@
-import { createDb } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { baseLocale, cookieName, isLocale, type Locale } from '../../paraglide/runtime.js'
 import { paraglideMiddleware } from '../../paraglide/server.js'
-import { getAuth } from '../../server/auth.ts'
+import type { WebRuntime } from '../../server/runtime.ts'
 import { languageUrl, localeCookie, readCookie, usesAccountLocale } from './preference.ts'
 import { readRequestSession, withSessionCache } from './session.server.ts'
 
 /** 中间件内用修改后的 Cookie 决定语言，交给路由器的仍是原地址与原请求头。 */
 export function localizeRequest(
   request: Request,
-  env: Cloudflare.Env,
+  runtime: Pick<WebRuntime, 'db' | 'auth'>,
   next: () => Response | Promise<Response>,
 ): Promise<Response> {
   const url = new URL(request.url)
@@ -20,11 +19,10 @@ export function localizeRequest(
     const source = languageUrl(request)
     let locale: Locale | undefined
     if (usesAccountLocale(source)) {
-      const db = createDb(env.HYPERDRIVE)
       try {
         const fresh = await readRequestSession({
-          auth: getAuth(env, db),
-          db,
+          auth: runtime.auth,
+          db: runtime.db,
           headers: request.headers,
         })
         locale = isLocale(fresh.user.locale) ? fresh.user.locale : baseLocale

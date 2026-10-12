@@ -1,6 +1,6 @@
 import type { MediaRuntimeEnv } from '@saas/ai'
 import type { PaymentRuntimeEnv } from '@saas/billing'
-import type { StorageEnv } from '@saas/storage'
+import type { StorageEnv } from '@saas/storage/cloudflare'
 import type { SentryEnv } from './sentry.ts'
 
 declare global {

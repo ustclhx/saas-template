@@ -12,7 +12,12 @@ import { aiModel, aiTask, createDb, file, member, scoped } from '@saas/db'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import type { WorkflowInstance } from '@saas/platform'
 import { newId } from '@saas/shared'
-import { getFileDownload, persistMediaOutputs, type StorageEnv } from '@saas/storage'
+import { getFileDownload, persistMediaOutputs } from '@saas/storage'
+import {
+  createCloudflareMediaCopier,
+  createCloudflareStorage,
+  type StorageEnv,
+} from '@saas/storage/cloudflare'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import { runMediaTask } from '../../jobs/src/workflows/media-runner.ts'
 import enApiDoc from '../content/docs/en/public-api.mdx?raw'
@@ -152,7 +157,10 @@ function dependencies(overrides: Partial<PublicMediaDeps> = {}): PublicMediaDeps
         get: vi.fn(),
       },
     },
-    downloadFile: { available: true, value: (input) => getFileDownload(db, storageEnv, input) },
+    downloadFile: {
+      available: true,
+      value: (input) => getFileDownload(db, createCloudflareStorage(storageEnv), input),
+    },
     env: {
       APP_URL: url,
       MEDIA_WEBHOOK_SECRET: 'fixture-media-callback-secret',
@@ -250,7 +258,8 @@ describe('公开 API 媒体任务与共用 Workflow', () => {
       ) =>
         persistMediaOutputs({
           db,
-          bucket: env.FILES,
+          storage: createCloudflareStorage(storageEnv),
+          copyOutput: createCloudflareMediaCopier(env.FILES),
           task,
           result,
           limits: {
@@ -354,10 +363,10 @@ describe('公开 API 媒体任务与共用 Workflow', () => {
       persist: (task, result) =>
         persistMediaOutputs({
           db,
-          bucket: env.FILES,
+          storage: createCloudflareStorage(storageEnv),
+          copyOutput: createCloudflareMediaCopier(env.FILES, { fetch: fetcher }),
           task,
           result,
-          fetch: fetcher,
           limits: {
             maxFileBytes: 1000,
             storageBytes: 1000,

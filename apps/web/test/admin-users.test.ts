@@ -49,6 +49,7 @@ function createRuntime() {
   const runtime: WebRuntime = {
     config: parseAuthEnv(runtimeConfig, templateConfig),
     db,
+    publicDb: db,
     cache: adminCache,
     rateLimiter,
     requestMeta,

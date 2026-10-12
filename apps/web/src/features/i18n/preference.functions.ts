@@ -1,10 +1,8 @@
-import { env } from 'cloudflare:workers'
-import { createDb } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { baseLocale, isLocale } from '../../paraglide/runtime.js'
-import { getAuth } from '../../server/auth.ts'
+import { getWebRuntime } from '../../server/runtime.ts'
 import { languageUrl, PREFERENCE_COOKIE, preferredLocale, readCookie } from './preference.ts'
 import { readRequestSession } from './session.server.ts'
 
@@ -25,8 +23,7 @@ export const saveLanguagePreference = createServerFn({ method: 'POST' })
     return locale
   })
   .handler(async ({ data }) => {
-    const db = createDb(env.HYPERDRIVE)
-    const auth = getAuth(env, db)
+    const { db, auth } = getWebRuntime()
     let signedIn = false
     try {
       await readRequestSession({ auth, db, headers: getRequest().headers })

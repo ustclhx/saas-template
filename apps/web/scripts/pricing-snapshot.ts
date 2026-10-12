@@ -1,3 +1,4 @@
+import { createDb } from '@saas/db'
 import { log } from '@saas/shared/log'
 import type { Plugin } from 'vite'
 import { EXAMPLE_CATALOG } from '../../../packages/billing/src/catalog.ts'
@@ -36,7 +37,13 @@ export function examplePricingCatalog(): PricingCatalog {
 export async function buildPricingSnapshot(connectionString?: string): Promise<PricingCatalog> {
   try {
     if (!connectionString) throw new Error('No build database configured')
-    return await readPricingCatalog({ connectionString })
+    // 构建脚本拥有此连接；业务公开读取只借用运行时 facade。
+    const db = createDb(connectionString)
+    try {
+      return await readPricingCatalog(db)
+    } finally {
+      await db.$client.end({ timeout: 1 })
+    }
   } catch {
     log.warn('pricing.build_fallback', { message: '构建期套餐读取失败，使用仓库示例数据' })
     return examplePricingCatalog()

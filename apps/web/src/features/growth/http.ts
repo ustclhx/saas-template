@@ -1,9 +1,9 @@
-import { parseAuthEnv, verifyTurnstile } from '@saas/auth'
+import { verifyTurnstile } from '@saas/auth'
 import { normalizeSignupEmail } from '@saas/billing'
-import { createDb } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import { z } from 'zod'
+import { getWebRuntime, type WebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import {
   type GrowthContext,
@@ -14,14 +14,23 @@ import {
 } from './service.ts'
 import { verifyGrowthToken } from './tokens.ts'
 
-export function growthContext(env: Cloudflare.Env): GrowthContext {
-  const vars = parseAuthEnv(env, templateConfig)
+export type GrowthRuntime = Pick<
+  WebRuntime,
+  'db' | 'emailQueue' | 'rateLimiter' | 'requestMeta'
+> & {
+  readonly config: Pick<
+    WebRuntime['config'],
+    'APP_URL' | 'BETTER_AUTH_SECRET' | 'TURNSTILE_SECRET_KEY'
+  >
+}
+
+export function growthContext(runtime: GrowthRuntime = getWebRuntime()): GrowthContext {
   return {
-    db: createDb(env.HYPERDRIVE),
+    db: runtime.db,
     config: templateConfig,
-    secret: vars.BETTER_AUTH_SECRET,
-    appUrl: vars.APP_URL,
-    queue: env.EMAIL_QUEUE,
+    secret: runtime.config.BETTER_AUTH_SECRET,
+    appUrl: runtime.config.APP_URL,
+    queue: runtime.emailQueue,
   }
 }
 
@@ -49,28 +58,29 @@ export async function growthResponse(action: () => Promise<Response>): Promise<R
 
 export async function submitGrowth(
   request: Request,
-  env: Cloudflare.Env,
   feature: 'waitlist' | 'newsletter',
+  runtime?: GrowthRuntime,
   ctx?: GrowthContext,
 ) {
   return growthResponse(async () => {
     requireGrowthFeature(ctx?.config ?? templateConfig, feature)
-    ctx ??= growthContext(env)
-    const ip = request.headers.get('cf-connecting-ip') ?? 'unknown'
-    if (!(await env.RL_AUTH.limit({ key: `${feature}:ip:${ip}` })).success)
+    runtime ??= getWebRuntime()
+    ctx ??= growthContext(runtime)
+    const ip = runtime.requestMeta.clientIp
+    if (!(await runtime.rateLimiter.limit('auth', `${feature}:ip:${ip ?? 'unknown'}`)).success)
       throw new AppError('RATE_LIMITED', 'Try again later', { status: 429 })
     const input = z.object({ email: z.string().trim().pipe(z.email()) }).parse(await request.json())
     const email = normalizeSignupEmail(input.email)
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(email))
     const hash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
-    if (!(await env.RL_AUTH.limit({ key: `${feature}:email:${hash}` })).success)
+    if (!(await runtime.rateLimiter.limit('auth', `${feature}:email:${hash}`)).success)
       throw new AppError('RATE_LIMITED', 'Try again later', { status: 429 })
     if (ctx.config.auth.turnstile) {
       const token = request.headers.get('x-turnstile-token')
       if (
-        !env.TURNSTILE_SECRET_KEY ||
+        !runtime.config.TURNSTILE_SECRET_KEY ||
         !token ||
-        !(await verifyTurnstile(env.TURNSTILE_SECRET_KEY, token, ip === 'unknown' ? null : ip))
+        !(await verifyTurnstile(runtime.config.TURNSTILE_SECRET_KEY, token, ip))
       )
         throw new AppError('TURNSTILE_FAILED', 'Human verification failed', { status: 403 })
     }
@@ -82,13 +92,12 @@ export async function submitGrowth(
 
 export async function newsletterLink(
   request: Request,
-  env: Cloudflare.Env,
   purpose: 'confirm' | 'unsubscribe',
   ctx?: GrowthContext,
 ) {
   return growthResponse(async () => {
     requireGrowthFeature(ctx?.config ?? templateConfig, 'newsletter')
-    ctx ??= growthContext(env)
+    ctx ??= growthContext()
     await updateNewsletterStatus(ctx, new URL(request.url).searchParams.get('token') ?? '', purpose)
     return new Response(
       purpose === 'confirm'
@@ -99,17 +108,15 @@ export async function newsletterLink(
   })
 }
 
-export async function acceptWaitlistLink(request: Request, env: Cloudflare.Env) {
+export async function acceptWaitlistLink(
+  request: Request,
+  runtime?: Pick<GrowthRuntime, 'config'>,
+) {
   return growthResponse(async () => {
     requireGrowthFeature(templateConfig, 'waitlist')
+    runtime ??= getWebRuntime()
     const token = new URL(request.url).searchParams.get('token') ?? ''
-    if (
-      !(await verifyGrowthToken(
-        parseAuthEnv(env, templateConfig).BETTER_AUTH_SECRET,
-        token,
-        'waitlist',
-      ))
-    )
+    if (!(await verifyGrowthToken(runtime.config.BETTER_AUTH_SECRET, token, 'waitlist')))
       throw new AppError('INVALID_TOKEN', 'Invalid or expired invitation', { status: 400 })
     // OAuth 回跳也能取到邀请；凭据绑定数据库邮箱，不能用于任意新账号。
     return new Response(null, {
@@ -117,7 +124,7 @@ export async function acceptWaitlistLink(request: Request, env: Cloudflare.Env) 
       headers: {
         location: '/register',
         'cache-control': 'no-store',
-        'set-cookie': `waitlist-invitation=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800${new URL(env.APP_URL).protocol === 'https:' ? '; Secure' : ''}`,
+        'set-cookie': `waitlist-invitation=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800${new URL(runtime.config.APP_URL).protocol === 'https:' ? '; Secure' : ''}`,
       },
     })
   })

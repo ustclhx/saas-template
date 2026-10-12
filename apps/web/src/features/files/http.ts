@@ -1,5 +1,6 @@
 import type { AuthContextSource } from '@saas/auth'
 import type { Database } from '@saas/db'
+import type { Capability } from '@saas/platform'
 import { AppError, toErrorResponse } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import {
@@ -7,7 +8,7 @@ import {
   declareUpload,
   getFileDownload,
   getSharedFileDownload,
-  type StorageEnv,
+  type Storage,
 } from '@saas/storage'
 import { templateConfig } from '../../server/template-config.ts'
 import {
@@ -18,11 +19,12 @@ import {
   requireFileWrite,
   uploadInput,
 } from './access.ts'
+import { requireFileStorage } from './runtime.ts'
 
 export interface FileHttpDeps {
   readonly db: Database
   readonly auth: AuthContextSource
-  readonly env: StorageEnv
+  readonly files?: Capability<Storage>
 }
 
 async function fileResponse(action: () => Promise<Response>): Promise<Response> {
@@ -43,6 +45,7 @@ const redirectDownload = (url: string) =>
 
 export function handleFileUpload(request: Request, deps: FileHttpDeps): Promise<Response> {
   return fileResponse(async () => {
+    const storage = requireFileStorage(deps)
     const parsed = uploadInput.safeParse(await request.json().catch(() => undefined))
     if (!parsed.success) throw invalidRequest()
     const input = parsed.data
@@ -50,7 +53,7 @@ export function handleFileUpload(request: Request, deps: FileHttpDeps): Promise<
     requireFileWrite(context)
     const result = await declareUpload(
       deps.db,
-      deps.env,
+      storage,
       { ...input, userId: context.user.id },
       { pastDueGraceDays: templateConfig.billing.pastDueGraceDays },
     )
@@ -64,6 +67,7 @@ export function handleFileComplete(
   deps: FileHttpDeps,
 ): Promise<Response> {
   return fileResponse(async () => {
+    const storage = requireFileStorage(deps)
     const body = await request.json().catch(() => undefined)
     const workspace = fileWorkspaceInput.safeParse(body)
     if (!workspace.success) throw invalidRequest()
@@ -73,7 +77,7 @@ export function handleFileComplete(
     const context = await requireFileWorkspace({ ...deps, headers: request.headers, ...input })
     requireFileWrite(context)
     return Response.json(
-      await completeUpload(deps.db, deps.env, input, {
+      await completeUpload(deps.db, storage, input, {
         pastDueGraceDays: templateConfig.billing.pastDueGraceDays,
       }),
     )
@@ -86,6 +90,7 @@ export function handleFileDownload(
   deps: FileHttpDeps,
 ): Promise<Response> {
   return fileResponse(async () => {
+    const storage = requireFileStorage(deps)
     const parsed = fileInput.safeParse({
       fileId,
       workspaceId: new URL(request.url).searchParams.get('workspaceId'),
@@ -94,7 +99,7 @@ export function handleFileDownload(
     const input = parsed.data
     await requireFileWorkspace({ ...deps, headers: request.headers, ...input })
     return redirectDownload(
-      await getFileDownload(deps.db, deps.env, {
+      await getFileDownload(deps.db, storage, {
         ...input,
         ...(new URL(request.url).searchParams.get('download') === '1' ? { download: true } : {}),
       }),
@@ -104,10 +109,11 @@ export function handleFileDownload(
 
 export function handleSharedFileDownload(
   token: string,
-  deps: Pick<FileHttpDeps, 'db' | 'env'>,
+  deps: Pick<FileHttpDeps, 'db' | 'files'>,
 ): Promise<Response> {
   return fileResponse(async () => {
+    const storage = requireFileStorage(deps)
     if (!/^[A-Za-z0-9_-]{16,128}$/.test(token)) throw fileNotFound()
-    return redirectDownload(await getSharedFileDownload(deps.db, deps.env, token))
+    return redirectDownload(await getSharedFileDownload(deps.db, storage, token))
   })
 }

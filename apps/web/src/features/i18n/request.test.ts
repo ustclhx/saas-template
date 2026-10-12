@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { baseLocale, getLocale } from '../../paraglide/runtime.js'
+import type { WebRuntime } from '../../server/runtime.ts'
 import { languageUrl, preferredLocale } from './preference.ts'
 import { localizeRequest } from './request.server.ts'
 import { readRequestSession, withSessionCache } from './session.server.ts'
@@ -11,11 +12,8 @@ vi.mock('@saas/auth', async (original) => ({
     session: {},
   })),
 }))
-vi.mock('../../server/auth.ts', () => ({ getAuth: () => ({}) }))
-vi.mock('@saas/db', async (original) => ({
-  ...(await original<typeof import('@saas/db')>()),
-  createDb: () => ({}),
-}))
+
+const runtime = { db: {}, auth: {} } as Pick<WebRuntime, 'db' | 'auth'>
 
 const pause = () => new Promise((resolve) => setTimeout(resolve, 5))
 const origin = 'https://example.com'
@@ -28,7 +26,7 @@ describe('请求级语言与只读会话隔离', () => {
       const request = new Request(`${origin}/account`, {
         headers: { 'x-user': locale, 'x-locale': locale },
       })
-      return localizeRequest(request, {} as Cloudflare.Env, async () => {
+      return localizeRequest(request, runtime, async () => {
         await pause()
         const [a, b] = await Promise.all([
           readRequestSession({ headers: request.headers } as Parameters<
@@ -53,11 +51,7 @@ describe('请求级语言与只读会话隔离', () => {
     const request = new Request(`${origin}/_serverFn/test`, {
       headers: { referer: `${origin}/zh/pricing`, cookie: 'PARAGLIDE_LOCALE=en' },
     })
-    const response = await localizeRequest(
-      request,
-      {} as Cloudflare.Env,
-      async () => new Response(getLocale()),
-    )
+    const response = await localizeRequest(request, runtime, async () => new Response(getLocale()))
     expect(await response.text()).toBe('zh')
     expect(
       languageUrl(new Request(request, { headers: { referer: 'https://other.test/zh/pricing' } }))
@@ -73,7 +67,7 @@ describe('请求级语言与只读会话隔离', () => {
     })
     const response = await localizeRequest(
       request,
-      {} as Cloudflare.Env,
+      runtime,
       async () => new Response(await request.text()),
     )
     expect(await response.text()).toBe('zh')

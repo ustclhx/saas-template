@@ -7,6 +7,8 @@
     "vite.config.ts",
     "vitest.config.ts",
     "vitest.billing.node.config.ts",
+    "vitest.public.node.config.ts",
+    "vitest.files.node.config.ts",
     "playwright.config.ts",
     "playwright.smoke.config.ts",
     "playwright.disconnect.config.ts",

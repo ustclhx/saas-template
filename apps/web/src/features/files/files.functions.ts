@@ -1,4 +1,3 @@
-import { env } from 'cloudflare:workers'
 import {
   completeUpload,
   createFileShare,
@@ -18,7 +17,7 @@ export const declareFileUpload = createServerFn({ method: 'POST' })
     requireFileWrite(context)
     return declareUpload(
       context.db,
-      env,
+      context.storage,
       { ...data, workspaceId: context.workspace.id, userId: context.user.id },
       { pastDueGraceDays: templateConfig.billing.pastDueGraceDays },
     )
@@ -31,7 +30,7 @@ export const completeFileUpload = createServerFn({ method: 'POST' })
     requireFileWrite(context)
     return completeUpload(
       context.db,
-      env,
+      context.storage,
       { workspaceId: context.workspace.id, fileId: data.fileId },
       { pastDueGraceDays: templateConfig.billing.pastDueGraceDays },
     )

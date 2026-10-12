@@ -8,7 +8,7 @@ import { APIError } from 'better-auth/api'
 import { eq, like } from 'drizzle-orm'
 import { afterAll, describe, expect, it } from 'vitest'
 import { runAdminAction } from '../src/features/admin/action.ts'
-import { newsletterLink, submitGrowth } from '../src/features/growth/http.ts'
+import { type GrowthRuntime, newsletterLink, submitGrowth } from '../src/features/growth/http.ts'
 import {
   assertSignupAdmission,
   type GrowthContext,
@@ -36,13 +36,22 @@ const ctx: GrowthContext = {
   secret: 'test-secret-0123456789-abcdefghijklmnopqrstuvwxyz',
   appUrl,
   queue: {
-    send: async (message) => {
-      messages.push(message)
+    available: true,
+    value: {
+      send: async (message) => {
+        messages.push(message)
+      },
     },
   },
 }
 const email = () => `${newId()}@${domain}`
-const testEnv = { ...env, RL_AUTH: { limit: async () => ({ success: true }) } } as Cloudflare.Env
+const runtime: GrowthRuntime = {
+  config: { APP_URL: appUrl, BETTER_AUTH_SECRET: ctx.secret, TURNSTILE_SECRET_KEY: undefined },
+  db,
+  emailQueue: { available: false },
+  rateLimiter: { limit: async () => ({ success: true }) },
+  requestMeta: { clientIp: '192.0.2.1', requestId: newId() },
+}
 function request(address: string) {
   return new Request(`${appUrl}/api/waitlist`, {
     method: 'POST',
@@ -132,23 +141,46 @@ describe('Waitlist', () => {
   it('normalizes and deduplicates concurrent public submissions; rate limit and Turnstile reject before insertion', async () => {
     const address = email()
     const responses = await Promise.all([
-      submitGrowth(request(address.toUpperCase()), testEnv, 'waitlist', ctx),
-      submitGrowth(request(` ${address} `), testEnv, 'waitlist', ctx),
+      submitGrowth(request(address.toUpperCase()), 'waitlist', runtime, ctx),
+      submitGrowth(request(` ${address} `), 'waitlist', runtime, ctx),
     ])
     expect(responses.map((res) => res.status)).toEqual([200, 200])
     expect(await db.select().from(waitlist).where(eq(waitlist.email, address))).toHaveLength(1)
     const limited = {
-      ...testEnv,
-      RL_AUTH: { limit: async () => ({ success: false }) },
-    } as Cloudflare.Env
-    expect((await submitGrowth(request(email()), limited, 'waitlist', ctx)).status).toBe(429)
+      ...runtime,
+      rateLimiter: { limit: async () => ({ success: false }) },
+    }
+    expect((await submitGrowth(request(email()), 'waitlist', limited, ctx)).status).toBe(429)
     const protectedCtx = {
       ...ctx,
       config: { ...config, auth: { ...config.auth, turnstile: true } },
     }
-    expect((await submitGrowth(request(email()), testEnv, 'waitlist', protectedCtx)).status).toBe(
+    expect((await submitGrowth(request(email()), 'waitlist', runtime, protectedCtx)).status).toBe(
       403,
     )
+  })
+
+  it('uses trusted runtime IP for rate limiting with Turnstile disabled and ignores forwarded headers', async () => {
+    const calls: [string, string][] = []
+    const trustedRuntime: GrowthRuntime = {
+      ...runtime,
+      rateLimiter: {
+        limit: async (policy, key) => {
+          calls.push([policy, key])
+          return { success: !key.includes(':email:') }
+        },
+      },
+    }
+    const address = email()
+    const forged = request(address)
+    forged.headers.set('cf-connecting-ip', '198.51.100.9')
+    forged.headers.set('x-forwarded-for', '198.51.100.9')
+    expect((await submitGrowth(forged, 'waitlist', trustedRuntime, ctx)).status).toBe(429)
+    expect(calls).toEqual([
+      ['auth', 'waitlist:ip:192.0.2.1'],
+      ['auth', expect.stringMatching(/^waitlist:email:[a-f0-9]{64}$/)],
+    ])
+    expect(await db.select().from(waitlist).where(eq(waitlist.email, address))).toHaveLength(0)
   })
 
   it('prepares a selected batch with an audit and queues invitations after commit', async () => {
@@ -292,7 +324,6 @@ describe('Newsletter', () => {
     const url = await newsletterUnsubscribeUrl(ctx, row.id)
     const response = await newsletterLink(
       new Request(url, { method: 'POST', body: 'List-Unsubscribe=One-Click' }),
-      testEnv,
       'unsubscribe',
       ctx,
     )
@@ -319,9 +350,41 @@ describe('Newsletter', () => {
       expect.arrayContaining([expect.objectContaining({ email: address })]),
     )
     const tampered = `${url.slice(0, -1)}!`
-    expect((await newsletterLink(new Request(tampered), testEnv, 'unsubscribe', ctx)).status).toBe(
-      400,
+    expect((await newsletterLink(new Request(tampered), 'unsubscribe', ctx)).status).toBe(400)
+  })
+
+  it('rejects unavailable email capability before newsletter writes while allowing waitlist joins', async () => {
+    const unavailable: GrowthContext = { ...ctx, queue: { available: false } }
+    const address = email()
+    const response = await submitGrowth(request(address), 'newsletter', runtime, unavailable)
+    expect(response.status).toBe(503)
+    expect(await response.json()).toMatchObject({ error: { code: 'CAPABILITY_UNAVAILABLE' } })
+    expect(
+      await db.select().from(newsletterSubscriber).where(eq(newsletterSubscriber.email, address)),
+    ).toHaveLength(0)
+    expect((await submitGrowth(request(address), 'waitlist', runtime, unavailable)).status).toBe(
+      200,
     )
+    expect(await db.select().from(waitlist).where(eq(waitlist.email, address))).toHaveLength(1)
+
+    await subscribeNewsletter(ctx, address)
+    const [before] = await db
+      .select()
+      .from(newsletterSubscriber)
+      .where(eq(newsletterSubscriber.email, address))
+    if (!before) throw new Error('Missing subscriber')
+    await db
+      .update(newsletterSubscriber)
+      .set({ status: 'unsubscribed' })
+      .where(eq(newsletterSubscriber.id, before.id))
+    await expect(subscribeNewsletter(unavailable, address)).rejects.toMatchObject({
+      code: 'CAPABILITY_UNAVAILABLE',
+    })
+    const [after] = await db
+      .select()
+      .from(newsletterSubscriber)
+      .where(eq(newsletterSubscriber.id, before.id))
+    expect(after).toMatchObject({ status: 'unsubscribed', confirmToken: before.confirmToken })
   })
 
   it('returns 404 for disabled public submission and email links before parsing input', async () => {
@@ -331,8 +394,8 @@ describe('Newsletter', () => {
         (
           await submitGrowth(
             new Request(`${appUrl}/api/${feature}`, { method: 'POST', body: 'bad json' }),
-            testEnv,
             feature,
+            runtime,
             disabled,
           )
         ).status,
@@ -341,7 +404,6 @@ describe('Newsletter', () => {
       (
         await newsletterLink(
           new Request(`${appUrl}/api/newsletter/confirm?token=bad`),
-          testEnv,
           'confirm',
           disabled,
         )
@@ -351,7 +413,6 @@ describe('Newsletter', () => {
       (
         await newsletterLink(
           new Request(`${appUrl}/api/newsletter/unsubscribe?token=bad`),
-          testEnv,
           'unsubscribe',
           disabled,
         )

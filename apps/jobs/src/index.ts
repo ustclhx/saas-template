@@ -13,6 +13,7 @@ import {
 } from '@saas/platform/cloudflare'
 import { newRequestId, withLogContext } from '@saas/shared/log'
 import { getFileDownload, persistMediaOutputs } from '@saas/storage'
+import { createCloudflareMediaCopier, createCloudflareStorage } from '@saas/storage/cloudflare'
 import { instrumentWorkflowWithSentry, withSentry } from '@sentry/cloudflare'
 import templateConfig from '../../../template.config.ts'
 import { requireEnv } from './env.ts'
@@ -118,7 +119,7 @@ class AiMediaWorkflowBase extends WorkflowEntrypoint<Cloudflare.Env, AiMediaPara
               const input = readMediaTaskInput(task)
               const params = { ...input.params }
               for (const name of input.fileParams) {
-                params[name] = await getFileDownload(db, this.env, {
+                params[name] = await getFileDownload(db, createCloudflareStorage(this.env), {
                   workspaceId: task.workspaceId,
                   fileId: input.params[name] as string,
                 })
@@ -132,7 +133,8 @@ class AiMediaWorkflowBase extends WorkflowEntrypoint<Cloudflare.Env, AiMediaPara
               })
               return persistMediaOutputs({
                 db,
-                bucket: this.env.FILES,
+                storage: createCloudflareStorage(this.env),
+                copyOutput: createCloudflareMediaCopier(this.env.FILES),
                 task,
                 result,
                 limits: {

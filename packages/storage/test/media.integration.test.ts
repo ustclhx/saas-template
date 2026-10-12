@@ -3,6 +3,7 @@ import { aiTask, createDb, file, organization, scoped, user } from '@saas/db'
 import { newId } from '@saas/shared'
 import { eq, sql } from 'drizzle-orm'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createCloudflareMediaCopier } from '../src/cloudflare/index.ts'
 import { cleanupFiles, getStorageUsage, persistMediaOutputs } from '../src/index.ts'
 
 const db = createDb(env.HYPERDRIVE)
@@ -51,18 +52,28 @@ afterAll(() => db.$client.end())
 function key(index: number) {
   return `ws/${ws}/ai/${taskId}/${index}`
 }
-function copy(options: Partial<Parameters<typeof persistMediaOutputs>[0]> = {}) {
-  return persistMediaOutputs({
-    db,
-    bucket: env.FILES,
-    task: { id: taskId, workspaceId: ws, userId },
-    result: { outputs: [output] },
-    limits,
-    fetch: vi.fn(
+function copy(
+  options: Partial<Omit<Parameters<typeof persistMediaOutputs>[0], 'storage' | 'copyOutput'>> & {
+    bucket?: Pick<R2Bucket, 'put' | 'createMultipartUpload' | 'delete'>
+    fetch?: typeof fetch
+  } = {},
+) {
+  const {
+    bucket = env.FILES,
+    fetch: fetcher = vi.fn(
       async () =>
         new Response('png', { headers: { 'Content-Type': 'image/png', 'Content-Length': '3' } }),
     ),
-    ...options,
+    ...input
+  } = options
+  return persistMediaOutputs({
+    db,
+    storage: bucket,
+    copyOutput: createCloudflareMediaCopier(bucket, { fetch: fetcher }),
+    task: { id: taskId, workspaceId: ws, userId },
+    result: { outputs: [output] },
+    limits,
+    ...input,
   })
 }
 

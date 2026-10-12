@@ -48,24 +48,6 @@
     "apps/web/src/features/deletion/deletion.functions.ts": {
       "cloudflare:workers": 1
     },
-    "apps/web/src/features/files/files.functions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/features/files/middleware.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/features/growth/growth.functions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/features/i18n/preference.functions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/features/marketing/pricing.functions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/features/seo/origin.functions.ts": {
-      "cloudflare:workers": 1
-    },
     "apps/web/src/features/settings/account.functions.ts": {
       "cloudflare:workers": 1
     },
@@ -75,40 +57,7 @@
     "apps/web/src/routes/api/dev/workflow.ts": {
       "cloudflare:workers": 1
     },
-    "apps/web/src/routes/api/files/$id.complete.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/files/$id.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/files/shared/$token.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/files/uploads.ts": {
-      "cloudflare:workers": 1
-    },
     "apps/web/src/routes/api/health.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/newsletter/confirm.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/newsletter/index.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/newsletter/unsubscribe.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/waitlist/index.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/waitlist/invitation.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/robots[.]txt.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/sitemap[.]xml.ts": {
       "cloudflare:workers": 1
     }
   },

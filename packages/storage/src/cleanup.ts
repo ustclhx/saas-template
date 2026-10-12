@@ -2,13 +2,14 @@ import { WORKSPACE_RETENTION_DAYS } from '@saas/auth'
 import { type Database, file, organization, scoped } from '@saas/db'
 import { log } from '@saas/shared/log'
 import { and, eq, isNotNull, lt, type SQL, sql } from 'drizzle-orm'
+import type { Storage } from './storage.ts'
 
 const PENDING_RETENTION_MS = 60 * 60 * 1000
 
 /** 清理未确认上传与超过空间保留期的文件；对象删除失败时保留记录供 Cron 重试。 */
 export async function cleanupFiles(
   db: Database,
-  bucket: Pick<R2Bucket, 'delete'>,
+  bucket: Pick<Storage, 'delete'>,
   { now = new Date() }: { readonly now?: Date } = {},
 ) {
   const pendingBefore = new Date(now.getTime() - PENDING_RETENTION_MS)

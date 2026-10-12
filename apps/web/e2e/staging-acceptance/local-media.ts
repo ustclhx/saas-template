@@ -1,6 +1,8 @@
+import { env } from 'cloudflare:workers'
 import { readMediaTaskInput, type TaskMediaProvider } from '@saas/ai'
 import { type Database, file, notFound, scoped } from '@saas/db'
 import { persistMediaOutputs } from '@saas/storage'
+import { createCloudflareMediaCopier } from '@saas/storage/cloudflare'
 import { runMediaTask } from '../../../jobs/src/workflows/media-runner.ts'
 import { requireFileWorkspace } from '../../src/features/files/access.ts'
 import type { FileHttpDeps } from '../../src/features/files/http.ts'
@@ -50,7 +52,8 @@ export function localWorkflow(db: Database, bucket: R2Bucket) {
           persist: (row, result) =>
             persistMediaOutputs({
               db,
-              bucket,
+              storage: bucket,
+              copyOutput: createCloudflareMediaCopier(bucket),
               task: row,
               result,
               limits: {
@@ -75,7 +78,7 @@ export async function localDownload(request: Request, fileId: string, deps: File
   await requireFileWorkspace({ ...deps, workspaceId, headers: request.headers })
   const row = await scoped(deps.db, workspaceId).findById(file, fileId)
   if (row.status !== 'ready' || row.deletedAt) throw notFound()
-  const object = await deps.env.FILES.get(row.r2Key)
+  const object = await env.FILES.get(row.r2Key)
   if (!object) throw notFound()
   return new Response(object.body, {
     headers: {

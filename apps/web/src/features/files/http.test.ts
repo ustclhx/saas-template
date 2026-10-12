@@ -1,6 +1,6 @@
 import type { Database } from '@saas/db'
 import { AppError } from '@saas/shared'
-import type { StorageEnv } from '@saas/storage'
+import type { Storage } from '@saas/storage'
 import { beforeEach, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -39,7 +39,7 @@ const deps = {
   auth: {
     $context: Promise.resolve({ secret: 'fixture', authCookies: { sessionToken: { name: 's' } } }),
   },
-  env: {} as StorageEnv,
+  files: { available: true as const, value: {} as Storage },
 }
 const downloadUrl = 'https://files.example.test/signed-download'
 const request = () =>
@@ -89,7 +89,7 @@ it('redirects current members to the signed URL without caching authorization', 
   expect(response.status).toBe(302)
   expect(response.headers.get('location')).toBe(downloadUrl)
   expect(response.headers.get('cache-control')).toBe('no-store')
-  expect(mocks.download).toHaveBeenCalledWith(deps.db, deps.env, { workspaceId, fileId })
+  expect(mocks.download).toHaveBeenCalledWith(deps.db, deps.files.value, { workspaceId, fileId })
 })
 
 it('requests an attachment signature for explicit downloads after checking membership', async () => {
@@ -99,7 +99,7 @@ it('requests an attachment signature for explicit downloads after checking membe
     deps,
   )
   expect(response.status).toBe(302)
-  expect(mocks.download).toHaveBeenCalledWith(deps.db, deps.env, {
+  expect(mocks.download).toHaveBeenCalledWith(deps.db, deps.files.value, {
     workspaceId,
     fileId,
     download: true,
@@ -152,4 +152,31 @@ it('preserves confirmation failures after storage rejects the real object size',
   expect(await response.json()).toEqual({
     error: { code: 'UPLOAD_MISMATCH', message: 'Upload does not match declaration' },
   })
+})
+
+it('refuses unavailable Node file operations before reading auth or database or writing files', async () => {
+  const unavailable = {
+    files: { available: false as const },
+    get db(): Database {
+      throw new Error('Database must not be accessed')
+    },
+    get auth(): never {
+      throw new Error('Auth must not be accessed')
+    },
+  }
+  const responses = await Promise.all([
+    handleFileUpload(post({ workspaceId, mime: 'image/png', size: 1024 }), unavailable),
+    handleFileComplete(post({ workspaceId }), fileId, unavailable),
+    handleFileDownload(request(), fileId, unavailable),
+    handleSharedFileDownload('019bb460-a610-7000-8000-000000000004', unavailable),
+  ])
+  for (const response of responses) {
+    expect(response.status).toBe(503)
+    expect(await response.json()).toMatchObject({ error: { code: 'CAPABILITY_UNAVAILABLE' } })
+  }
+  expect(mocks.freshSession).not.toHaveBeenCalled()
+  expect(mocks.declare).not.toHaveBeenCalled()
+  expect(mocks.complete).not.toHaveBeenCalled()
+  expect(mocks.download).not.toHaveBeenCalled()
+  expect(mocks.sharedDownload).not.toHaveBeenCalled()
 })

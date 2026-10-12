@@ -2,6 +2,7 @@ import { normalizeSignupEmail } from '@saas/billing'
 import type { TemplateConfig } from '@saas/config'
 import { type Database, dbSettingStore, getSetting, newsletterSubscriber, waitlist } from '@saas/db'
 import { EMAIL_QUEUE_MESSAGE_VERSION, type EmailQueueMessage } from '@saas/email/queue'
+import { type Capability, type QueueProducer, requireCapability } from '@saas/platform'
 import { AppError, newId } from '@saas/shared'
 import { getLogContext, log } from '@saas/shared/log'
 import { and, eq, inArray } from 'drizzle-orm'
@@ -14,7 +15,7 @@ export interface GrowthContext {
   config: TemplateConfig
   secret: string
   appUrl: string
-  queue: { send(message: EmailQueueMessage): Promise<unknown> }
+  queue: Capability<Pick<QueueProducer<EmailQueueMessage>, 'send'>>
 }
 
 export function requireGrowthFeature(config: TemplateConfig, feature: 'waitlist' | 'newsletter') {
@@ -69,6 +70,7 @@ export async function sendWaitlistInvitations(
   rows: Awaited<ReturnType<typeof prepareWaitlistInvitations>>,
 ) {
   requireGrowthFeature(ctx.config, 'waitlist')
+  const queue = requireCapability(ctx.queue, 'Email queue')
   for (const row of rows) {
     if (!row.invitationNonce || !row.invitationExpiresAt) throw new Error('Invitation not prepared')
     const token = await signGrowthToken(ctx.secret, {
@@ -79,7 +81,7 @@ export async function sendWaitlistInvitations(
     })
     const url = new URL('/api/waitlist/invitation', ctx.appUrl)
     url.searchParams.set('token', token)
-    await ctx.queue.send({
+    await queue.send({
       ...(await base(ctx, row.email, `waitlist:${row.id}:${row.invitationNonce}`)),
       template: 'waitlist-invitation',
       props: { url: url.href },
@@ -89,7 +91,11 @@ export async function sendWaitlistInvitations(
 }
 
 /** 注入到创建用户前的 hook，覆盖邮箱密码、OTP、魔法链接与 OAuth 的新账号。 */
-export async function assertSignupAdmission(ctx: GrowthContext, email: string, headers?: Headers) {
+export async function assertSignupAdmission(
+  ctx: Pick<GrowthContext, 'db' | 'config' | 'secret'>,
+  email: string,
+  headers?: Headers,
+) {
   if (await getSetting({ store: dbSettingStore(ctx.db) }, 'auth.signupEnabled')) return
   const token =
     headers?.get('x-waitlist-invitation') ??
@@ -120,6 +126,8 @@ export async function assertSignupAdmission(ctx: GrowthContext, email: string, h
 
 export async function subscribeNewsletter(ctx: GrowthContext, email: string) {
   requireGrowthFeature(ctx.config, 'newsletter')
+  // 邮件能力未装配时不创建待确认订阅，也不重置旧订阅凭据。
+  const queue = requireCapability(ctx.queue, 'Email queue')
   const row = await ctx.db.transaction(async (tx) => {
     const normalized = normalizeSignupEmail(email)
     await tx
@@ -150,7 +158,7 @@ export async function subscribeNewsletter(ctx: GrowthContext, email: string) {
   })
   const url = new URL('/api/newsletter/confirm', ctx.appUrl)
   url.searchParams.set('token', token)
-  await ctx.queue.send({
+  await queue.send({
     ...(await base(ctx, row.email, `newsletter-confirm:${row.id}:${row.confirmToken}`)),
     template: 'newsletter-confirmation',
     props: { url: url.href },

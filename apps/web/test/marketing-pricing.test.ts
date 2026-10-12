@@ -10,6 +10,7 @@ import { readPricingCatalog } from '../src/features/marketing/pricing-read.ts'
 describe('公开套餐数据库读取', () => {
   it('读取 plan / plan_price，排除失效套餐和价格，缓存到期反映实际价格变更', async () => {
     const db = createDb(env.HYPERDRIVE)
+    const refusedDb = createDb(env.HYPERDRIVE_REFUSED)
     const planId = newId()
     const priceId = newId()
     const inactivePlanId = newId()
@@ -61,7 +62,7 @@ describe('公开套餐数据库读取', () => {
           currency: 'USD',
         },
       ])
-      const snapshot = await readPricingCatalog(env.HYPERDRIVE)
+      const snapshot = await readPricingCatalog(db)
       expect(snapshot.plans.find((p) => p.id === planId)?.credits).toBe(1234)
       expect(snapshot.plans.some((p) => p.id === inactivePlanId)).toBe(false)
       expect(snapshot.prices.filter((p) => p.planId === planId)).toMatchObject([
@@ -70,7 +71,7 @@ describe('公开套餐数据库读取', () => {
       expect(snapshot.prices.some((p) => p.planId === inactivePlanId)).toBe(false)
       let now = 1000
       const cached = createPricingCache(snapshot, () => now)
-      const read = () => readPricingCatalog(env.HYPERDRIVE)
+      const read = () => readPricingCatalog(db)
       await cached(read)
       await db.update(planPrice).set({ amount: 2900 }).where(eq(planPrice.id, priceId))
       now += PRICING_TTL_MS - 1
@@ -81,9 +82,8 @@ describe('公开套餐数据库读取', () => {
       now += PRICING_TTL_MS
       // 数据库不可达时继续展示上次成功读取的价格，不退回构建快照
       expect(
-        (await cached(() => readPricingCatalog(env.HYPERDRIVE_REFUSED))).prices.find(
-          (p) => p.id === priceId,
-        )?.amount,
+        (await cached(() => readPricingCatalog(refusedDb))).prices.find((p) => p.id === priceId)
+          ?.amount,
       ).toBe(2900)
       warn.mockRestore()
     } finally {
@@ -92,6 +92,7 @@ describe('公开套餐数据库读取', () => {
       await db.delete(plan).where(eq(plan.id, planId))
       await db.delete(plan).where(eq(plan.id, inactivePlanId))
       await db.$client.end()
+      await refusedDb.$client.end()
     }
   })
 })

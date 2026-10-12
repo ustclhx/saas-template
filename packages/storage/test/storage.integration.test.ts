@@ -3,6 +3,7 @@ import { createDb, file, member, organization, scoped, user } from '@saas/db'
 import { newId } from '@saas/shared'
 import { eq, inArray } from 'drizzle-orm'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createCloudflareStorage, type StorageEnv } from '../src/cloudflare/index.ts'
 import {
   cleanupFiles,
   completeUpload,
@@ -13,7 +14,6 @@ import {
   getStorageUsage,
   MAX_UPLOAD_BYTES,
   revokeFileShare,
-  type StorageEnv,
 } from '../src/index.ts'
 
 declare module 'cloudflare:workers' {
@@ -26,13 +26,14 @@ declare module 'cloudflare:workers' {
 }
 
 const db = createDb(env.HYPERDRIVE)
-const storage = {
+const storageEnv = {
   FILES: env.FILES,
   R2_ACCOUNT_ID: '00000000000000000000000000000000',
   R2_FILES_BUCKET: 'files',
   R2_ACCESS_KEY_ID: 'test-access-key',
   R2_SECRET_ACCESS_KEY: 'test-secret-key',
 } satisfies StorageEnv
+const storage = createCloudflareStorage(storageEnv)
 let ws: string
 let otherWs: string
 let userId: string
@@ -50,7 +51,7 @@ beforeEach(async () => {
   await db.insert(member).values({ id: newId(), organizationId: ws, userId, role: 'owner' })
 })
 afterEach(async () => {
-  await storage.FILES.delete(objectKeys)
+  await storageEnv.FILES.delete(objectKeys)
   await db.delete(file).where(inArray(file.workspaceId, [ws, otherWs]))
   await db.delete(member).where(inArray(member.organizationId, [ws, otherWs]))
   await db.delete(organization).where(inArray(organization.id, [ws, otherWs]))
@@ -62,7 +63,7 @@ async function upload(size: number, actualSize = size, mime = 'image/png') {
   const declaration = await declareUpload(db, storage, { workspaceId: ws, userId, mime, size })
   const row = await scoped(db, ws).findById(file, declaration.fileId)
   objectKeys.push(row.r2Key)
-  await storage.FILES.put(row.r2Key, new Uint8Array(actualSize), {
+  await storageEnv.FILES.put(row.r2Key, new Uint8Array(actualSize), {
     httpMetadata: { contentType: mime },
   })
   return row
@@ -78,7 +79,7 @@ async function fixture(options: {
   const workspaceId = options.workspaceId ?? ws
   const r2Key = `ws/${workspaceId}/${id}`
   objectKeys.push(r2Key)
-  await storage.FILES.put(r2Key, 'fixture', { httpMetadata: { contentType: 'image/png' } })
+  await storageEnv.FILES.put(r2Key, 'fixture', { httpMetadata: { contentType: 'image/png' } })
   await scoped(db, workspaceId).insert(file, {
     id,
     r2Key,
@@ -113,7 +114,7 @@ describe('upload confirmation and quota', () => {
     await expect(
       completeUpload(db, storage, { workspaceId: ws, fileId: row.id }),
     ).rejects.toMatchObject({ code: 'UPLOAD_MISMATCH' })
-    expect(await storage.FILES.head(row.r2Key)).toBeNull()
+    expect(await storageEnv.FILES.head(row.r2Key)).toBeNull()
     expect((await scoped(db, ws).findById(file, row.id)).deletedAt).not.toBeNull()
     expect(await getStorageUsage(db, ws)).toBe(0)
     await expect(
@@ -121,16 +122,19 @@ describe('upload confirmation and quota', () => {
     ).rejects.toMatchObject({ status: 404 })
   })
 
-  it('deletes an object whose stored MIME differs from its declaration', async () => {
-    const row = await upload(2)
-    await storage.FILES.put(row.r2Key, new Uint8Array(2), {
-      httpMetadata: { contentType: 'text/html' },
-    })
-    await expect(
-      completeUpload(db, storage, { workspaceId: ws, fileId: row.id }),
-    ).rejects.toMatchObject({ code: 'UPLOAD_MISMATCH' })
-    expect(await storage.FILES.head(row.r2Key)).toBeNull()
-  })
+  it.each(['text/html', null])(
+    'deletes an object whose stored MIME is %s rather than its declaration',
+    async (mime) => {
+      const row = await upload(2)
+      await storageEnv.FILES.put(row.r2Key, new Uint8Array(2), {
+        ...(mime ? { httpMetadata: { contentType: mime } } : {}),
+      })
+      await expect(
+        completeUpload(db, storage, { workspaceId: ws, fileId: row.id }),
+      ).rejects.toMatchObject({ code: 'UPLOAD_MISMATCH' })
+      expect(await storageEnv.FILES.head(row.r2Key)).toBeNull()
+    },
+  )
 
   it('serializes simultaneous confirmations so only one can consume the remaining quota', async () => {
     await fixture({ size: 5 * 1024 ** 3 - 3 })
@@ -188,12 +192,12 @@ describe('file cleanup', () => {
       .set({ deletedAt: new Date(now.getTime() - 31 * 86_400_000) })
       .where(eq(organization.id, otherWs))
     const expired = await fixture({ workspaceId: otherWs })
-    expect(await cleanupFiles(db, storage.FILES, { now })).toEqual({ deleted: 2, failed: 0 })
+    expect(await cleanupFiles(db, storageEnv.FILES, { now })).toEqual({ deleted: 2, failed: 0 })
     for (const row of [old, expired]) {
-      expect(await storage.FILES.head(row.r2Key)).toBeNull()
+      expect(await storageEnv.FILES.head(row.r2Key)).toBeNull()
       expect(await db.select().from(file).where(eq(file.id, row.id))).toHaveLength(0)
     }
-    for (const row of [fresh, ready]) expect(await storage.FILES.head(row.r2Key)).not.toBeNull()
+    for (const row of [fresh, ready]) expect(await storageEnv.FILES.head(row.r2Key)).not.toBeNull()
   })
 
   it('keeps the database retry anchor when R2 deletion fails and succeeds on the next run', async () => {
@@ -201,8 +205,8 @@ describe('file cleanup', () => {
     const fail = { delete: vi.fn().mockRejectedValue(new Error('object delete failed')) }
     expect(await cleanupFiles(db, fail)).toEqual({ deleted: 0, failed: 1 })
     expect(await scoped(db, ws).findById(file, row.id)).toBeDefined()
-    expect(await storage.FILES.head(row.r2Key)).not.toBeNull()
-    expect(await cleanupFiles(db, storage.FILES)).toEqual({ deleted: 1, failed: 0 })
-    expect(await storage.FILES.head(row.r2Key)).toBeNull()
+    expect(await storageEnv.FILES.head(row.r2Key)).not.toBeNull()
+    expect(await cleanupFiles(db, storageEnv.FILES)).toEqual({ deleted: 1, failed: 0 })
+    expect(await storageEnv.FILES.head(row.r2Key)).toBeNull()
   })
 })
