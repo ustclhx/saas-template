@@ -1,11 +1,13 @@
 import type { Page } from '@playwright/test'
 import {
+  adminIdentity,
+  ensureRegisteredAccount,
   evidence,
   expect,
   login,
   query,
-  registerAccount,
   requireEnv,
+  sessionUser,
   sqlLiteral,
   test,
 } from './support.ts'
@@ -42,40 +44,33 @@ test('Admin 6.1: dedicated user, ban, unban, impersonation, credits and restored
   requireEnv(['STAGING_TEST_USER_EMAIL', 'STAGING_TEST_USER_PASSWORD', 'NEON_READONLY_URL'])
   const email = (process.env.STAGING_TEST_USER_EMAIL ?? '').trim().toLowerCase()
   expect(
-    email === process.env.STAGING_ADMIN_EMAIL?.trim().toLowerCase(),
-    'Dedicated test user must differ from the administrator',
-  ).toBe(false)
-  expect(
     email === process.env.STAGING_USER_EMAIL?.trim().toLowerCase(),
     'Dedicated test user must differ from the ordinary AI acceptance user',
   ).toBe(false)
   await login(page, 'admin')
-  const [admin] = await query<IdRow>(`select id from "user"
-    where email=${sqlLiteral((process.env.STAGING_ADMIN_EMAIL ?? '').trim().toLowerCase())}`)
-  expect(Boolean(admin)).toBe(true)
-  const actorId = (admin as IdRow).id
+  const admin = adminIdentity(await sessionUser(page), email)
+  const actorId = admin.id
   const readTarget = () =>
     query<IdRow & { role: string; banned: boolean; is_fixture: boolean }>(
       `select id, role, coalesce(banned,false) as banned, name=${sqlLiteral(fixtureName)} as is_fixture
       from "user" where email=${sqlLiteral(email)}`,
     )
-  let [target] = await readTarget()
-  if (!target) {
-    // 平台有意关闭 Better Auth 的 create-user 写入口；专用账号通过正常注册产生。
-    const registration = await browser.newContext({ baseURL: process.env.STAGING_URL ?? '' })
-    try {
-      await registerAccount(
-        await registration.newPage(),
-        email,
-        process.env.STAGING_TEST_USER_PASSWORD ?? '',
-        fixtureName,
-      )
-    } finally {
-      await registration.close()
-    }
-    await expect.poll(async () => (await readTarget()).length).toBe(1)
-    ;[target] = await readTarget()
+  // 注册放在独立 Context，保留当前管理员的内存会话。
+  const registration = await browser.newContext({ baseURL: process.env.STAGING_URL ?? '' })
+  let target: Awaited<ReturnType<typeof readTarget>>[number]
+  try {
+    const result = await ensureRegisteredAccount(
+      await registration.newPage(),
+      async () => (await readTarget())[0],
+      email,
+      process.env.STAGING_TEST_USER_PASSWORD ?? '',
+      fixtureName,
+    )
+    target = result.account
+  } finally {
+    await registration.close()
   }
+  adminIdentity(admin, email, target.id)
   expect(target?.is_fixture, 'Existing account must be the dedicated acceptance fixture').toBe(true)
   expect(target?.role).toBe('user')
   const userId = (target as IdRow).id
