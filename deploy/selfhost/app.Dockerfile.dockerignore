@@ -40,3 +40,5 @@ deploy/selfhost/*
 **/.npmrc
 **/*.p12
 **/*.pfx
+# 本地捕获邮件只通过验收挂载注入，不能随迁移源码进入镜像。
+apps/web/e2e/selfhost
