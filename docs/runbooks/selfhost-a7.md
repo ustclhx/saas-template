@@ -37,7 +37,7 @@
 | app 对新表 INSERT，readonly SELECT | 成功，证明 default privileges |
 | app CREATE TABLE / audit_log UPDATE、DELETE | 均拒绝，42501 |
 | readonly INSERT / job_engine.message 正文读取 | 均拒绝，42501 |
-| app job_engine/dbos USAGE，job_engine CREATE | USAGE 有，CREATE 无 |
+| app public/job_engine/dbos CREATE、数据库 CREATE/TEMP | 全部无权限 |
 
 PG 的测试行和 Valkey 的 AOF 测试键在 `down`（不删卷）、重新创建容器及失败迁移之后保留。PG 重启仍使用999，复制后的私钥0600，TLS正常。最后用 `down -v` 清理全部本任务容器、网络、数据/证书卷；未操作其他容器。
 
@@ -51,10 +51,10 @@ ACME模式 `caddy validate` 通过，但没有可用公网测试域名，未验�
 
 ## 健康与范围外发现
 
-当前 web `/internal/live` 200，含完整SHA；jobs `/internal/live` 200，queue/scheduler均unavailable、lastCronAt=null，没有伪造消费者或Cron。当前 `/api/health` 实际是DB-only 200、DB up、lastCronAt=null，含同一完整SHA；**尚不能返回任务说明预期的完整 readiness 503**，它需要A8.1扩展与A9装配。B4在本批执行期间合入main，但Node composition仍没有装配它。本批不修改共享server或B实现，不勾选8/9组。
+当前 web `/internal/live` 200，含完整SHA；jobs `/internal/live` 200，queue/scheduler均unavailable、lastCronAt=null，没有伪造消费者或Cron。当前 `/api/health` 实际是DB-only 200、DB up、lastCronAt=null，含同一完整SHA；**尚不能返回任务说明预期的完整 readiness 503**，它需要A8.1扩展与A9装配。B4与协调者生成的调度SQL迁移#128在本批执行期间合入main，但Node composition仍没有装配它。本批不修改共享server或B实现，不勾选8/9组。
 
 附加尝试现有生产 `/api/auth/sign-in/email` 时返回500，日志为 `new Request` 克隆输入时 `Cannot read properties of undefined (reading 'window')`，发生在异步邮件/队列之前；没有调用外部Turnstile。此问题需协调者在A9完整认证验收前复核，涉及共享auth/runtime，未在A7越界修改，也未宣称认证e2e通过。IP验收使用上述真实代理+平台解析器probe完成。
 
 ## 工程检查
 
-根 `pnpm check`（修正迁移wrapper格式后）、`check:deps`、`check:singletons`、`dedupe --check`、`typecheck`、`test`、`build` 全部通过。首次全量 `test` 165文件/1201用例通过，typecheck14/14，默认Cloudflare构建2/2；后续rebase后的结果补录在本PR验证说明。没有新增迁移SQL、生产凭据、staging部署或CI权限变更。
+根 `pnpm check`（修正迁移wrapper格式后）、`check:deps`、`check:singletons`、`dedupe --check`、`typecheck`、`test`、`build` 全部通过。首次全量 `test` 165文件/1201用例通过，typecheck14/14，默认Cloudflare构建2/2；rebase #127/#128后166文件/1213用例通过，最终默认Cloudflare构建2/2重新执行成功。六个生产镜像通过 `build.sh` 构建，验收版本 `a959eb607dae82c7ce72623f6e68342fe85e1eea`；该提交后的改动仅为文档与Compose显式空trusted CIDR处理（config验证通过），不改变镜像源码。没有新增迁移SQL、生产凭据、staging部署或CI权限变更。

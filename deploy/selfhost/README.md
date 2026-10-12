@@ -62,7 +62,7 @@ Valkey 密码通过 ACL SHA-256 文件加载，不进入命令行；web/jobs 共
 
 Caddy 不信任外部转发链；它将 XFF 覆盖为实际 peer，并移除 CF-Connecting-IP 与 Forwarded。web 只信任专用 ingress 上的 Caddy 固定地址 `172.30.77.2/32`，不信任所有 Docker 网段。没有开启请求 access log，避免认证链接/query 进入日志；Caddy 自身日志为 JSON。
 
-外部代理模式设置 `COMPOSE_PROFILES=`，通过 `docker network connect <project>_ingress <proxy-container>` 将受控代理接到本项目 ingress，并使用 `web:3000`。给代理固定地址，将 `TRUSTED_PROXY_CIDRS` 设置为它的确切地址或受限子网；代理同样必须覆盖客户端转发头。外部代理不接 data 网。Dokploy/Traefik 的外部网络、label、域名与证书由 D 配置，本 Compose 不声明 Dokploy 专有设置；接入后仍使用同样的迁移 gate 与 secret 隔离。
+外部代理模式设置 `COMPOSE_PROFILES=`，通过 `docker network connect <project>_ingress <proxy-container>` 将受控代理接到本项目 ingress，并使用 `web:3000`。给代理固定地址，将 `TRUSTED_PROXY_CIDRS` 设置为它的确切地址或受限子网；显式空值表示完全不信任转发头；代理同样必须覆盖客户端转发头。外部代理不接 data 网。Dokploy/Traefik 的外部网络、label、域名与证书由 D 配置，本 Compose 不声明 Dokploy 专有设置；接入后仍使用同样的迁移 gate 与 secret 隔离。
 
 Caddy 配置依据官方 [global options](https://caddyserver.com/docs/caddyfile/options) 与 [reverse_proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)。Valkey ACL/认证依据官方 [security](https://valkey.io/topics/security/)；这些资料不替代本仓库固定镜像的实测结果。
 
