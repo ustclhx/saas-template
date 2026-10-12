@@ -190,7 +190,6 @@ export function checkWorkspace(
   const packages = readWorkspace(root, 'packages')
   const appNames = new Set(apps.map((a) => a.manifest.name))
   const violations = []
-  const transitionCounts = new Map()
 
   function checkDependency(pkgName, dep, where) {
     if (appNames.has(dep)) {
@@ -230,14 +229,9 @@ export function checkWorkspace(
         const where = `${rel}:${line}`
         if (specifier.startsWith('cloudflare:')) {
           if (cloudflareAllowed(rel, specifier, rules)) continue
-          const key = `${rel}\0${specifier}`
-          const count = (transitionCounts.get(key) ?? 0) + 1
-          transitionCounts.set(key, count)
-          if (count > (rules.transition[rel]?.[specifier] ?? 0)) {
-            violations.push(
-              `${where} → ${specifier}：仅允许平台 Cloudflare 适配器、显式 composition entry 与目标测试夹具`,
-            )
-          }
+          violations.push(
+            `${where} → ${specifier}：仅允许平台 Cloudflare 适配器、显式 composition entry 与目标测试夹具`,
+          )
           continue
         }
         const platformTarget = platformTargetOf(root, file, specifier)
@@ -266,17 +260,6 @@ export function checkWorkspace(
         }
         const dep = packageNameOf(specifier)
         if (dep) checkDependency(manifest.name, dep, where)
-      }
-    }
-  }
-  // 精确计数使迁移必须同步缩减清单；不能留下旧额度供新违例使用。
-  for (const [file, imports] of Object.entries(rules.transition)) {
-    for (const [specifier, expected] of Object.entries(imports)) {
-      const actual = transitionCounts.get(`${file}\0${specifier}`) ?? 0
-      if (!Number.isInteger(expected) || expected < 1 || actual < expected) {
-        violations.push(
-          `${file} → ${specifier}：transition 清单计数 ${expected}，实际 ${actual}；迁移后请删减该条目`,
-        )
       }
     }
   }

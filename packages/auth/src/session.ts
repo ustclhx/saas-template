@@ -14,13 +14,6 @@ import type { BetterAuthOptions, SecondaryStorage } from 'better-auth'
 /** Cookie 缓存时长（秒）：5 分钟 */
 export const SESSION_COOKIE_CACHE_MAX_AGE = 5 * 60
 
-/** @deprecated A4.2 迁移剩余缓存调用方后删除；新代码使用平台 KeyValueStore。 */
-export interface KvStore {
-  get(key: string): Promise<string | null>
-  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>
-  delete(key: string): Promise<void>
-}
-
 const KEY_PREFIX = 'auth:'
 
 /**

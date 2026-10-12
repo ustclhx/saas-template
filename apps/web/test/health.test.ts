@@ -8,7 +8,7 @@ const version = '1.2.3-test'
 
 async function call(hyperdrive: Hyperdrive, timeoutMs?: number) {
   const response = await healthResponse({
-    hyperdrive,
+    database: () => createDb(hyperdrive),
     version,
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
   })

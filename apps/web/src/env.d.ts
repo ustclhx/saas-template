@@ -1,6 +1,3 @@
-/** 构建时由 vite.config.ts 从 package.json 注入 */
-declare const __APP_VERSION__: string
-
 /** wrangler.jsonc 中声明的绑定（`import { env } from 'cloudflare:workers'` 的类型） */
 declare namespace Cloudflare {
   type PaymentEnv = import('@saas/billing').PaymentRuntimeEnv

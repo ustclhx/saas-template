@@ -36,9 +36,9 @@ import { gateLocaleRequest } from './features/i18n/gate.ts'
 import { localizeRequest } from './features/i18n/request.server.ts'
 import { createWebAuth } from './server/auth.ts'
 import { createQueueAuthEmailSender, userLocaleByEmail } from './server/auth-email.ts'
-import { checkEnv, webEnvSchema } from './server/env.ts'
+import { checkEnv, webEnvSchema } from './server/cloudflare/env.ts'
+import { captureServerError, instrumentWeb, sentryEnabled } from './server/cloudflare/sentry.ts'
 import { getWebRuntime, type WebRuntime, withWebRuntime } from './server/runtime.ts'
-import { captureServerError, instrumentWeb } from './server/sentry.ts'
 import { SENTRY_TEST_PATH, sentryTest } from './server/sentry-test.ts'
 import { templateConfig } from './server/template-config.ts'
 
@@ -54,7 +54,8 @@ const worker = instrumentWeb({
   fetch(request, env) {
     const invalid = checkEnv(env)
     if (invalid) return Promise.resolve(invalid)
-    if (new URL(request.url).pathname === SENTRY_TEST_PATH) return sentryTest(request, env)
+    if (new URL(request.url).pathname === SENTRY_TEST_PATH)
+      return sentryTest(request, getWebRuntime())
     return logged(
       request,
       async () =>
@@ -207,6 +208,7 @@ function createCloudflareWebRuntime(
     cache,
     rateLimiter,
     requestMeta,
+    observability: { enabled: sentryEnabled(env), captureError: captureServerError },
     files: { available: true, value: files },
     emailQueue: { available: true, value: queue },
     eventsQueue: env.EVENTS_QUEUE

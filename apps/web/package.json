@@ -8,7 +8,7 @@
     "build": "vite build",
     "deploy:staging": "CLOUDFLARE_ENV=staging vite build && wrangler deploy",
     "preview": "vite preview",
-    "typecheck": "node scripts/generate-route-tree.mjs && node scripts/compile-messages.mjs && node scripts/build-content.mjs && tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p tsconfig.node.json",
+    "typecheck": "node scripts/generate-route-tree.mjs && node scripts/compile-messages.mjs && node scripts/build-content.mjs && tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p tsconfig.node.json && tsc -p tsconfig.neutral.json",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test -c playwright.smoke.config.ts",

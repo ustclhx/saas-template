@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { checkEnv } from './env.ts'
 
 // 校验用例固定要求 OAuth 与 Turnstile，生成项目关闭登录方式时仍覆盖缺失变量。
-vi.mock('./template-config.ts', async (original) => {
-  const { templateConfig } = await original<typeof import('./template-config.ts')>()
+vi.mock('../template-config.ts', async (original) => {
+  const { templateConfig } = await original<typeof import('../template-config.ts')>()
   return {
     templateConfig: {
       ...templateConfig,

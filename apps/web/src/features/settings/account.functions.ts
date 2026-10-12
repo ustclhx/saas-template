@@ -1,11 +1,9 @@
-import { env } from 'cloudflare:workers'
 import { listDeletionRefundReminders } from '@saas/billing'
-import { createDb } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { redirect } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
-import { getAuth } from '../../server/auth.ts'
+import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import { readRequestSession } from '../i18n/session.server.ts'
 import { loadAccount } from './account.ts'
@@ -18,8 +16,7 @@ export const ACCOUNT_LOGIN_HREF = `/login?redirect=${encodeURIComponent('/accoun
  * 修改操作直接调用 Better Auth 的接口（/api/auth/*），其中修改密码、两步验证同样按数据库实时校验。
  */
 export const getAccount = createServerFn({ method: 'GET' }).handler(async () => {
-  const db = createDb(env.HYPERDRIVE)
-  const auth = getAuth(env, db)
+  const { db, auth } = getWebRuntime()
   try {
     const { user } = await readRequestSession({ auth, db, headers: getRequest().headers })
     const reminders = await listDeletionRefundReminders(

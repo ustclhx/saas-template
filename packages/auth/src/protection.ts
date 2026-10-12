@@ -1,4 +1,4 @@
-import type { RateLimiter as PlatformRateLimiter } from '@saas/platform'
+import type { RateLimiter } from '@saas/platform'
 import { AppError } from '@saas/shared'
 import type { BetterAuthPlugin } from 'better-auth'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
@@ -12,11 +12,6 @@ import { APIError, createAuthMiddleware } from 'better-auth/api'
  *
  * Rate Limiting 绑定按 Cloudflare 数据中心分别计数、最终一致，只用于防刷和削峰，不是精确配额。
  */
-
-/** @deprecated A4.3 迁移 AI/API 限流调用方后删除；认证已使用平台 RateLimiter。 */
-export interface RateLimiter {
-  limit(options: { key: string }): Promise<{ success: boolean }>
-}
 
 /** 受保护的接口路径（Better Auth 端点路径，不含 basePath） */
 export const PROTECTED_AUTH_PATHS = [
@@ -45,7 +40,7 @@ export const TURNSTILE_SITEVERIFY_URL = 'https://challenges.cloudflare.com/turns
 
 export interface AuthProtectionOptions {
   /** 认证限流；未提供时仅用于无能力的单元测试。 */
-  readonly rateLimiter?: PlatformRateLimiter | undefined
+  readonly rateLimiter?: RateLimiter | undefined
   /** Turnstile secret；`null` 表示模板配置关闭了 Turnstile */
   readonly turnstileSecret: string | null
   /** 可信运行时入口解析的本请求 IP；业务不读取转发头。 */

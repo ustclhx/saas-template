@@ -38,6 +38,11 @@ export interface WebRuntime {
   readonly cache: KeyValueStore
   readonly rateLimiter: RateLimiter
   readonly requestMeta: RequestMetadata
+  /** 目标入口注入观测；C 尚未接入时使用共享日志。 */
+  readonly observability?: {
+    readonly enabled: boolean
+    captureError(error: unknown): void
+  }
   readonly emailQueue: Capability<QueueProducer<EmailQueueMessage>>
   readonly eventsQueue: Capability<QueueProducer<unknown>>
   /** C 接入前 Node 不装配文件能力；在任何文件副作用之前拒绝。 */
@@ -60,9 +65,4 @@ export function getWebRuntime(): WebRuntime {
   if (!runtime)
     throw new AppError('RUNTIME_UNAVAILABLE', 'Request runtime is unavailable', { status: 503 })
   return runtime
-}
-
-/** @deprecated 仅供 A 4.6 待移除的 getAuth 接线；新业务必须要求请求上下文存在。 */
-export function legacyRequestMetadata(): RequestMetadata | undefined {
-  return storage.getStore()?.requestMeta
 }
