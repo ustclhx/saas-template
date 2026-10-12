@@ -1,9 +1,7 @@
-import { env } from 'cloudflare:workers'
-import { createDb } from '@saas/db'
 import { notFound } from '@tanstack/react-router'
 import { createMiddleware, createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
-import { getAuth } from '../../server/auth.ts'
+import { getWebRuntime } from '../../server/runtime.ts'
 import { isAdminNotFound, requireAdmin } from './guard.ts'
 
 /**
@@ -12,11 +10,12 @@ import { isAdminNotFound, requireAdmin } from './guard.ts'
  * 写操作再经 action.server.ts 的 adminAction 包装（add-admin-console tasks.md 1.1）。
  */
 export const adminMiddleware = createMiddleware({ type: 'function' }).server(async ({ next }) => {
-  const db = createDb(env.HYPERDRIVE)
+  const runtime = getWebRuntime()
+  const { db, auth } = runtime
   const headers = getRequest().headers
-  const admin = await requireAdmin({ auth: getAuth(env, db), db, headers }).catch(rethrowNotFound)
-  // 只信任 Cloudflare 设置的 cf-connecting-ip（与 @saas/auth 的限流一致）
-  return next({ context: { admin: admin.user, db, ip: headers.get('cf-connecting-ip') } })
+  const admin = await requireAdmin({ auth, db, headers }).catch(rethrowNotFound)
+  // IP 只使用入口完成信任校验后的请求元数据。
+  return next({ context: { admin: admin.user, db, ip: runtime.requestMeta.clientIp } })
 })
 
 function rethrowNotFound(error: unknown): never {

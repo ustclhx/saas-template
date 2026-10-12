@@ -260,7 +260,6 @@ describe('trusted refund service on PostgreSQL', () => {
         idempotencyKey: `refund-notification:${request.id}:approved`,
         template: 'refund-update',
       }),
-      { contentType: 'json' },
     )
     expect(remote).toHaveBeenCalledTimes(1)
   })

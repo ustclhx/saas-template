@@ -1,9 +1,9 @@
-import { env } from 'cloudflare:workers'
 import { getCreditBatches, getCreditLedger } from '@saas/credits'
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { z } from 'zod'
+import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import { adminMiddleware } from './admin.functions.ts'
 import { executeAdminWorkspaceRestore } from './workspaces.server.ts'
@@ -43,7 +43,7 @@ export const restoreAdminWorkspace = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     try {
       await executeAdminWorkspaceRestore(context, {
-        env,
+        runtime: getWebRuntime(),
         headers: getRequest().headers,
         workspaceId: data.id,
       })

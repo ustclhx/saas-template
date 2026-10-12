@@ -6,6 +6,7 @@
   "include": [
     "vite.config.ts",
     "vitest.config.ts",
+    "vitest.billing.node.config.ts",
     "playwright.config.ts",
     "playwright.smoke.config.ts",
     "playwright.disconnect.config.ts",

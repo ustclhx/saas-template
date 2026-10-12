@@ -1,9 +1,9 @@
-import { env } from 'cloudflare:workers'
 import { createPaymentRuntime } from '@saas/billing'
-import { createDb } from '@saas/db'
+import { requireCapability } from '@saas/platform'
 import { AppError } from '@saas/shared'
 import { createFileRoute } from '@tanstack/react-router'
 import { handleBillingWebhook } from '../../../../features/billing/webhook-http.ts'
+import { getWebRuntime } from '../../../../server/runtime.ts'
 import { templateConfig } from '../../../../server/template-config.ts'
 
 export const Route = createFileRoute('/api/billing/webhooks/$provider')({
@@ -17,16 +17,17 @@ export const Route = createFileRoute('/api/billing/webhooks/$provider')({
 export async function handlePaymentWebhook(request: Request, providerId: string) {
   if (providerId !== 'stripe' && providerId !== 'paypal')
     return new Response('Not Found', { status: 404 })
-  const db = createDb(env.HYPERDRIVE)
   try {
-    const runtime = createPaymentRuntime(env, templateConfig.billing.providers, {
-      cache: env.CACHE,
+    const web = getWebRuntime()
+    const db = web.db
+    const runtime = createPaymentRuntime(web.config, templateConfig.billing.providers, {
+      cache: web.cache,
       db,
     })
     return await handleBillingWebhook(request, providerId, {
       db,
       providers: runtime.providers,
-      queue: env.EVENTS_QUEUE,
+      queue: requireCapability(web.eventsQueue, 'Events queue'),
       subscriptionCreditGraceHours: templateConfig.billing.subscriptionCreditGraceHours,
     })
   } catch (error) {

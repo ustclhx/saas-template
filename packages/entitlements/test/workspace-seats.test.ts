@@ -1,13 +1,12 @@
 import { createDb } from '@saas/db'
 import * as schema from '@saas/db/schema'
-import { readLocalEnv } from '@saas/db/worktree-env'
 import { newId } from '@saas/shared'
 import { expect, it } from 'vitest'
 import { resolveWorkspaceMaxSeats } from '../../../apps/web/src/server/workspace-data.ts'
 import { DEFAULT_FREE_FEATURES, getEntitlements } from '../src/index.ts'
 
 // This integration test lives here because web test files are owned by the coordinator.
-const url = readLocalEnv('CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE')
+const url = process.env.ENTITLEMENTS_TEST_DATABASE_URL
 const rollbackFixture = (error: unknown) => {
   if (!(error instanceof Error) || error.message !== 'rollback fixture') throw error
 }
@@ -15,7 +14,7 @@ const rollbackFixture = (error: unknown) => {
 it.skipIf(!url)(
   'seat resolver reads uncommitted plans through the supplied auth transaction',
   async () => {
-    const db = createDb({ connectionString: url as string })
+    const db = createDb(url as string)
     const ws = newId()
     const key = newId()
     const planId = newId()
@@ -47,7 +46,7 @@ it.skipIf(!url)(
 it.skipIf(!url)(
   'getEntitlements scopes paid subscriptions and rereads time within a transaction',
   async () => {
-    const db = createDb({ connectionString: url as string })
+    const db = createDb(url as string)
     const ws = newId()
     const key = newId()
     const now = new Date()

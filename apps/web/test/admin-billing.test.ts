@@ -1,6 +1,4 @@
-import { env } from 'cloudflare:workers'
 import { getCreditBalance, reconcileWorkspaceCredits } from '@saas/credits'
-import { createDb } from '@saas/db'
 import { newId } from '@saas/shared'
 import { afterAll, describe, expect, it } from 'vitest'
 import { runAdminAction } from '../src/features/admin/action.ts'
@@ -12,9 +10,10 @@ import {
   listAdminSubscriptions,
   listAdminWebhooks,
 } from '../src/features/billing/admin-data.ts'
+import { createAdminTestDb } from './admin-test-resources.ts'
 
-const db = createDb(env.HYPERDRIVE)
-const migrator = createDb(env.HYPERDRIVE_MIGRATOR)
+const db = createAdminTestDb()
+const migrator = createAdminTestDb('migrator')
 const adminId = newId()
 const spaces = [newId(), newId()]
 const plans: string[] = []

@@ -1,6 +1,5 @@
-import { env } from 'cloudflare:workers'
 import { defineTemplateConfig } from '@saas/config'
-import { auditLog, createDb, dbSettingStore, getSetting, setting, user } from '@saas/db'
+import { auditLog, dbSettingStore, getSetting, setting, user } from '@saas/db'
 import { newId } from '@saas/shared'
 import { eq, inArray } from 'drizzle-orm'
 import { expect, it } from 'vitest'
@@ -13,9 +12,10 @@ import {
 } from '../src/features/admin/settings.ts'
 import { runtimeSettingsInput } from '../src/features/admin/settings-schema.ts'
 import { assertSignupAdmission } from '../src/features/growth/service.ts'
+import { createAdminTestDb } from './admin-test-resources.ts'
 
 it('保存设置后清除旧 KV 值，拒绝未受邀注册，并审计每项的新旧值', async () => {
-  const db = createDb(env.HYPERDRIVE)
+  const db = createAdminTestDb()
   const admin = { id: newId() }
   const original = await db
     .select()
@@ -92,9 +92,7 @@ it('保存设置后清除旧 KV 值，拒绝未受邀注册，并审计每项的
   } finally {
     await db.delete(setting).where(inArray(setting.key, [...RUNTIME_SETTING_KEYS]))
     if (original.length) await db.insert(setting).values(original)
-    await createDb(env.HYPERDRIVE_MIGRATOR)
-      .delete(auditLog)
-      .where(eq(auditLog.actorUserId, admin.id))
+    await createAdminTestDb('migrator').delete(auditLog).where(eq(auditLog.actorUserId, admin.id))
     await db.delete(user).where(eq(user.id, admin.id))
   }
 })

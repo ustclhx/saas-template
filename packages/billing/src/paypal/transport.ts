@@ -1,6 +1,8 @@
-export interface PayPalTokenCache {
+import type { KeyValueStore } from '@saas/platform'
+
+// OAuth 仅读取文本；写入使用平台 TTL 契约，适配器负责目标平台细节。
+export interface PayPalTokenCache extends Pick<KeyValueStore, 'put'> {
   get(key: string): Promise<string | null>
-  put(key: string, value: string, options: { expirationTtl: number }): Promise<void>
 }
 
 export interface PayPalTransportOptions {

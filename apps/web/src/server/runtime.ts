@@ -1,18 +1,28 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { Auth, parseAuthEnv } from '@saas/auth'
+import type { PaymentRuntimeEnv } from '@saas/billing'
 import type { Database } from '@saas/db'
-import type { KeyValueStore, RateLimiter, RequestMetadata } from '@saas/platform'
+import type { EmailQueueMessage } from '@saas/email/queue'
+import type {
+  Capability,
+  KeyValueStore,
+  QueueProducer,
+  RateLimiter,
+  RequestMetadata,
+} from '@saas/platform'
 import { AppError } from '@saas/shared'
 import type { AuthUiEnv } from '../features/auth/options.ts'
 
 /** 请求资源由目标入口装配；业务只读取标量与中立能力，不访问原始 bindings。 */
 export interface WebRuntime {
-  readonly config: ReturnType<typeof parseAuthEnv> & AuthUiEnv
+  readonly config: ReturnType<typeof parseAuthEnv> & AuthUiEnv & PaymentRuntimeEnv
   readonly db: Database
   readonly auth: Auth
   readonly cache: KeyValueStore
   readonly rateLimiter: RateLimiter
   readonly requestMeta: RequestMetadata
+  readonly emailQueue: Capability<QueueProducer<EmailQueueMessage>>
+  readonly eventsQueue: Capability<QueueProducer<unknown>>
   /** 后台认证写入需借用事务 facade 与延后提交的缓存。 */
   createAuth(db: Database, cache?: KeyValueStore): Auth
   handleAuthRequest(request: Request): Promise<Response>

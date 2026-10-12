@@ -25,13 +25,14 @@ import {
   isPublicApiPath,
   normalizePublicApiNotFound,
 } from './features/api-keys/gate.ts'
+import { createBillingDeletionSteps } from './features/billing/deletion.server.ts'
 import { assertSignupAdmission } from './features/growth/service.ts'
 import { gateLocaleRequest } from './features/i18n/gate.ts'
 import { localizeRequest } from './features/i18n/request.server.ts'
-import { billingDeletionSteps, createWebAuth } from './server/auth.ts'
+import { createWebAuth } from './server/auth.ts'
 import { createQueueAuthEmailSender, userLocaleByEmail } from './server/auth-email.ts'
 import { checkEnv } from './server/env.ts'
-import { type WebRuntime, withWebRuntime } from './server/runtime.ts'
+import { getWebRuntime, type WebRuntime, withWebRuntime } from './server/runtime.ts'
 import { captureServerError, instrumentWeb } from './server/sentry.ts'
 import { SENTRY_TEST_PATH, sentryTest } from './server/sentry-test.ts'
 import { templateConfig } from './server/template-config.ts'
@@ -53,7 +54,7 @@ const worker = instrumentWeb({
       request,
       async () =>
         gatePublicApiRequest(request, templateConfig) ??
-        (await localized(gateLocaleRequest(await gateAdminRequest(request, env)), env)),
+        (await localized(gateLocaleRequest(await gateAdminRequest(request, getWebRuntime())), env)),
     )
   },
 } satisfies ExportedHandler<Cloudflare.Env>)
@@ -133,6 +134,17 @@ function createCloudflareWebRuntime(env: Cloudflare.Env, requestMeta: RequestMet
   const config = {
     ...parseAuthEnv(env, templateConfig),
     TURNSTILE_SITE_KEY: env.TURNSTILE_SITE_KEY,
+    PAYMENT_MODE: env.PAYMENT_MODE,
+    SENTRY_ENVIRONMENT: env.SENTRY_ENVIRONMENT,
+    ...(env.STRIPE_SECRET_KEY === undefined ? {} : { STRIPE_SECRET_KEY: env.STRIPE_SECRET_KEY }),
+    ...(env.STRIPE_WEBHOOK_SECRET === undefined
+      ? {}
+      : { STRIPE_WEBHOOK_SECRET: env.STRIPE_WEBHOOK_SECRET }),
+    ...(env.PAYPAL_CLIENT_ID === undefined ? {} : { PAYPAL_CLIENT_ID: env.PAYPAL_CLIENT_ID }),
+    ...(env.PAYPAL_CLIENT_SECRET === undefined
+      ? {}
+      : { PAYPAL_CLIENT_SECRET: env.PAYPAL_CLIENT_SECRET }),
+    ...(env.PAYPAL_WEBHOOK_ID === undefined ? {} : { PAYPAL_WEBHOOK_ID: env.PAYPAL_WEBHOOK_ID }),
   }
   const databases = createCloudflareDatabase(env)
   const cache = createCloudflareKv(env.CACHE)
@@ -157,7 +169,7 @@ function createCloudflareWebRuntime(env: Cloudflare.Env, requestMeta: RequestMet
       rateLimiter,
       clientIp: requestMeta.clientIp,
       sendEmail,
-      deletionSteps: billingDeletionSteps(env, db),
+      deletionSteps: createBillingDeletionSteps(config, db, cache),
       beforeUserCreate: async (user, headers) => {
         try {
           await assertSignupAdmission(
@@ -185,6 +197,10 @@ function createCloudflareWebRuntime(env: Cloudflare.Env, requestMeta: RequestMet
     cache,
     rateLimiter,
     requestMeta,
+    emailQueue: { available: true, value: queue },
+    eventsQueue: env.EVENTS_QUEUE
+      ? { available: true, value: createCloudflareQueue(env.EVENTS_QUEUE) }
+      : { available: false },
     get db() {
       return databases.business()
     },

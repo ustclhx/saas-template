@@ -1,6 +1,6 @@
-import { env } from 'cloudflare:workers'
 import { log } from '@saas/shared/log'
 import { createServerFn } from '@tanstack/react-start'
+import { getWebRuntime } from '../../server/runtime.ts'
 import { withAdminAction } from './action.server.ts'
 import { adminMiddleware } from './admin.functions.ts'
 import { invalidateRuntimeSettings, readRuntimeSettings, writeRuntimeSettings } from './settings.ts'
@@ -16,7 +16,7 @@ export const saveAdminSettings = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     await withAdminAction(context, 'setting.update', (scope) => writeRuntimeSettings(scope, data))
     try {
-      await invalidateRuntimeSettings(env.CACHE)
+      await invalidateRuntimeSettings(getWebRuntime().cache)
     } catch (error) {
       log.error('admin.settings_cache_invalidation_failed', {
         error,

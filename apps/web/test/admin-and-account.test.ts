@@ -1,12 +1,11 @@
-import { env } from 'cloudflare:workers'
 import { createAuth, requireFreshSession } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
-import { createDb } from '@saas/db'
 import { AppError, newId } from '@saas/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { isGatedAdminPath } from '../src/features/admin/gate.ts'
 import { isPlatformAdmin, requireAdmin } from '../src/features/admin/guard.ts'
 import { loadAccount } from '../src/features/settings/account.ts'
+import { createAdminTestDb } from './admin-test-resources.ts'
 
 // tasks.md 5.1：/admin 的角色守卫，非 admin（含未登录、被封禁）一律 404；
 // tasks.md 5.2：设置页的数据（loadAccount）。页面与 server function 的端到端验证见 PR 描述。
@@ -23,7 +22,7 @@ const config = (twoFactor = false) =>
   })
 
 function setup() {
-  const db = createDb(env.HYPERDRIVE)
+  const db = createAdminTestDb()
   const auth = createAuth(
     { BETTER_AUTH_SECRET: 'test-secret-0123456789-abcdefghijklmnopqrstuvwxyz', APP_URL },
     db,
@@ -71,7 +70,7 @@ beforeAll(() => {
 })
 
 afterAll(async () => {
-  const sql = createDb(env.HYPERDRIVE).$client
+  const sql = createAdminTestDb().$client
   const users = await sql<
     { id: string }[]
   >`select id from "user" where email like ${`%@${EMAIL_DOMAIN}`}`

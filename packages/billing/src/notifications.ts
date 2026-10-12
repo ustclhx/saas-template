@@ -1,12 +1,13 @@
 import { auditLog, type Database, refundRequest, user } from '@saas/db'
 import { type EmailQueueMessage, parseEmailQueueMessage } from '@saas/email/queue'
+import type { QueueProducer } from '@saas/platform'
 import { withRequestId } from '@saas/shared/log'
 import { and, asc, eq, isNotNull, ne, notExists, sql } from 'drizzle-orm'
 import type { RefundNotification } from './refunds.ts'
 
 export interface RefundMailOptions {
   db: Database
-  queue: { send(message: EmailQueueMessage, options: { contentType: 'json' }): Promise<unknown> }
+  queue: Pick<QueueProducer<EmailQueueMessage>, 'send'>
   appName: string
   supportEmail: string
 }
@@ -44,7 +45,7 @@ export async function notifyRefundRequest(
     },
   })
   if (!message) throw new Error('Invalid refund notification')
-  await options.queue.send(withRequestId(message), { contentType: 'json' })
+  await options.queue.send(withRequestId(message))
   await options.db.insert(auditLog).values({
     workspaceId: request.workspaceId,
     action: action(request.status),

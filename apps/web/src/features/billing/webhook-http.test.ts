@@ -73,10 +73,7 @@ it('enqueues the post-commit message with the request ID that its logs carry', a
     handleBillingWebhook(request(), 'stripe', { ...options, queue: { send } }),
   )
   expect(response.status).toBe(200)
-  expect(send).toHaveBeenCalledWith(
-    { v: 1, deliveryId: 'delivery-1', requestId },
-    { contentType: 'json' },
-  )
+  expect(send).toHaveBeenCalledWith({ v: 1, deliveryId: 'delivery-1', requestId })
   expect(JSON.parse(String(info.mock.calls[0]?.[0]))).toMatchObject({
     event: 'billing.webhook_processed',
     requestId,

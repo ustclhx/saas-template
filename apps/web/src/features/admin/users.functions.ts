@@ -1,7 +1,7 @@
-import { env } from 'cloudflare:workers'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest, setResponseHeader } from '@tanstack/react-start/server'
 import { z } from 'zod'
+import { getWebRuntime } from '../../server/runtime.ts'
 import { adminMiddleware } from './admin.functions.ts'
 import { executeAdminAuthAction } from './impersonation.server.ts'
 import { adminUserDetail, listAdminUsers } from './users.ts'
@@ -26,7 +26,7 @@ export const setAdminUserBan = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     await executeAdminAuthAction({
       db: context.db,
-      env,
+      runtime: getWebRuntime(),
       headers: getRequest().headers,
       path: data.banned ? '/admin/ban-user' : '/admin/unban-user',
       body: { userId: data.userId, banReason: data.reason },
@@ -40,7 +40,7 @@ export const startAdminImpersonation = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     const response = await executeAdminAuthAction({
       db: context.db,
-      env,
+      runtime: getWebRuntime(),
       headers: getRequest().headers,
       path: '/admin/impersonate-user',
       body: data,

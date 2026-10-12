@@ -1,7 +1,6 @@
-import { env } from 'cloudflare:workers'
 import { createAuth } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
-import { auditLog, createDb, setting } from '@saas/db'
+import { auditLog, type createDb, setting } from '@saas/db'
 import { newId } from '@saas/shared'
 import { eq } from 'drizzle-orm'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -12,6 +11,7 @@ import {
   runDelegatedAdminAction,
 } from '../src/features/admin/action.ts'
 import { requireAdmin } from '../src/features/admin/guard.ts'
+import { createAdminTestDb } from './admin-test-resources.ts'
 
 // add-admin-console tasks.md 1.1：adminAction 包装。
 // 「旧会话」= 请求开始时守卫已放行（模拟 adminMiddleware），随后角色被撤销 / 用户被封禁。
@@ -22,7 +22,7 @@ const EMAIL_DOMAIN = `${newId()}.web-admin-action-test.example`
 const SETTING_PREFIX = `test.admin-action.${newId()}`
 
 function setup() {
-  const db = createDb(env.HYPERDRIVE)
+  const db = createAdminTestDb()
   const auth = createAuth(
     { BETTER_AUTH_SECRET: 'test-secret-0123456789-abcdefghijklmnopqrstuvwxyz', APP_URL },
     db,
@@ -81,7 +81,7 @@ function writeSetting(key: string, after?: () => void) {
 }
 
 afterAll(async () => {
-  const sql = createDb(env.HYPERDRIVE).$client
+  const sql = createAdminTestDb().$client
   await sql`delete from setting where key like ${`${SETTING_PREFIX}.%`}`
   const users = await sql<
     { id: string }[]
@@ -89,7 +89,7 @@ afterAll(async () => {
   const ids = users.map((u) => u.id)
   if (ids.length === 0) return
   // audit_log 对 app 只追加，审计行由 migrator 清理
-  await createDb(env.HYPERDRIVE_MIGRATOR)
+  await createAdminTestDb('migrator')
     .$client`delete from audit_log where actor_user_id in ${sql(ids)}`
   await sql`delete from session where user_id in ${sql(ids)}`
   await sql`delete from account where user_id in ${sql(ids)}`

@@ -2,6 +2,7 @@
   "description": "Cloudflare 边界：入口/目标夹具逐文件登记；transition 是现有业务导入的精确计数，仅允许随迁移删减，不得扩大。",
   "compositionEntries": ["apps/jobs/src/index.ts", "apps/web/src/server.ts"],
   "targetFixtures": {
+    "apps/web/test/admin-test-resources.ts": ["cloudflare:workers"],
     "apps/jobs/test/ai-hold-sweep.test.ts": ["cloudflare:test", "cloudflare:workers"],
     "apps/jobs/test/email-queue.test.ts": ["cloudflare:test", "cloudflare:workers"],
     "apps/jobs/test/jobs.test.ts": ["cloudflare:test", "cloudflare:workers"],
@@ -12,13 +13,6 @@
     "apps/jobs/test/sentry.test.ts": ["cloudflare:test", "cloudflare:workers"],
     "apps/jobs/test/workspace-cleanup.test.ts": ["cloudflare:test", "cloudflare:workers"],
     "apps/web/e2e/staging-acceptance/local-media.ts": ["cloudflare:workers"],
-    "apps/web/test/admin-action.test.ts": ["cloudflare:workers"],
-    "apps/web/test/admin-and-account.test.ts": ["cloudflare:workers"],
-    "apps/web/test/admin-audit-metrics.test.ts": ["cloudflare:workers"],
-    "apps/web/test/admin-billing.test.ts": ["cloudflare:workers"],
-    "apps/web/test/admin-plans.test.ts": ["cloudflare:workers"],
-    "apps/web/test/admin-settings.test.ts": ["cloudflare:workers"],
-    "apps/web/test/admin-users.test.ts": ["cloudflare:workers"],
     "apps/web/test/ai-chat.test.ts": ["cloudflare:workers"],
     "apps/web/test/ai-media-tasks.test.ts": ["cloudflare:workers"],
     "apps/web/test/auth-email.test.ts": ["cloudflare:workers"],
@@ -51,24 +45,6 @@
     "packages/platform/test/cloudflare.test.ts": ["cloudflare:test", "cloudflare:workers"]
   },
   "transition": {
-    "apps/web/src/features/admin/admin.functions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/features/admin/impersonation.functions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/features/admin/settings-announcement.functions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/features/admin/settings.functions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/features/admin/users.functions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/features/admin/workspaces.functions.ts": {
-      "cloudflare:workers": 1
-    },
     "apps/web/src/features/ai-media/page.functions.ts": {
       "cloudflare:workers": 1
     },
@@ -79,15 +55,6 @@
       "cloudflare:workers": 1
     },
     "apps/web/src/features/api-keys/functions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/features/billing/admin.functions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/features/billing/customer.functions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/features/billing/refund.functions.ts": {
       "cloudflare:workers": 1
     },
     "apps/web/src/features/deletion/deletion.functions.ts": {
@@ -127,9 +94,6 @@
       "cloudflare:workers": 1
     },
     "apps/web/src/routes/api/ai/tasks/$taskId/cancel.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/billing/webhooks/$provider.ts": {
       "cloudflare:workers": 1
     },
     "apps/web/src/routes/api/dev/email.ts": {
@@ -189,6 +153,7 @@
   },
   "nodeCompositionEntries": [],
   "targetAdapterFixtures": {
+    "apps/web/test/admin-node-resources.ts": ["node"],
     "packages/platform/test/cloudflare.test.ts": ["cloudflare"],
     "packages/platform/test/node.test.ts": ["node"],
     "packages/platform/test/node/background.test.ts": ["node"],

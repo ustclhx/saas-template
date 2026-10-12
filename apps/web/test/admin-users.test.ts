@@ -1,7 +1,5 @@
-import { env } from 'cloudflare:workers'
 import { createAuth, parseAuthEnv, requireFreshSession } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
-import { createDb } from '@saas/db'
 import type { KeyValueStore } from '@saas/platform'
 import { newId } from '@saas/shared'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -12,17 +10,17 @@ import { assertRealSession } from '../src/features/admin/impersonation.ts'
 import { handleAuthRequest as handleRuntimeAuthRequest } from '../src/features/admin/impersonation-http.ts'
 import { adminUserDetail, listAdminUsers } from '../src/features/admin/users.ts'
 import { adminWorkspaceDetail, listAdminWorkspaces } from '../src/features/admin/workspaces.ts'
-import { getAuth } from '../src/server/auth.ts'
+import { createWebAuth } from '../src/server/auth.ts'
 import type { WebRuntime } from '../src/server/runtime.ts'
 import { templateConfig } from '../src/server/template-config.ts'
+import { adminCache, cacheValues, createAdminTestDb, rateLimiter } from './admin-test-resources.ts'
 
 const APP_URL = 'http://localhost:3000'
 const SECRET = 'test-secret-0123456789-abcdefghijklmnopqrstuvwxyz'
 const domain = `${newId()}.admin-users.example`
-const db = createDb(env.HYPERDRIVE)
-const cache = new Map<string, string>()
-const testEnv = {
-  ...env,
+const db = createAdminTestDb()
+const cache = cacheValues
+const runtimeConfig = {
   APP_URL,
   BETTER_AUTH_SECRET: SECRET,
   TURNSTILE_SECRET_KEY: '1x0000000000000000000000000000000AA',
@@ -30,16 +28,7 @@ const testEnv = {
   GOOGLE_CLIENT_SECRET: 'test',
   GITHUB_CLIENT_ID: 'test',
   GITHUB_CLIENT_SECRET: 'test',
-  CACHE: {
-    get: async (key: string) => cache.get(key) ?? null,
-    put: async (key: string, value: string) => {
-      cache.set(key, value)
-    },
-    delete: async (key: string) => {
-      cache.delete(key)
-    },
-  },
-} as unknown as Cloudflare.Env
+}
 const auth = createAuth({ APP_URL, BETTER_AUTH_SECRET: SECRET }, db, {
   config: defineTemplateConfig({
     app: { name: 'TestApp', url: APP_URL, supportEmail: 'support@example.com' },
@@ -47,31 +36,32 @@ const auth = createAuth({ APP_URL, BETTER_AUTH_SECRET: SECRET }, db, {
   }),
   sendEmail: async () => {},
 })
-// 目标夹具只把既有测试资源注入 runtime，HTTP 权限仍经过生产包装器。
-function handleAuthRequest(request: Request, input: Cloudflare.Env) {
-  const get = async <T>(key: string, type?: 'json'): Promise<T | string | null> => {
-    const value = await input.CACHE.get(key)
-    return value === null || type !== 'json' ? value : (JSON.parse(value) as T)
-  }
-  const cache: KeyValueStore = {
-    get: get as KeyValueStore['get'],
-    put: input.CACHE.put.bind(input.CACHE),
-    delete: input.CACHE.delete.bind(input.CACHE),
-  }
-  const requestMeta = { clientIp: request.headers.get('cf-connecting-ip'), requestId: newId() }
-  const createAuth = (database: typeof db, override: KeyValueStore = cache) =>
-    getAuth(input, database, { cache: override, requestMeta })
+// 测试资源由目标夹具装配，HTTP 权限仍经过生产包装器。
+function createRuntime() {
+  const requestMeta = { clientIp: '203.0.113.9', requestId: newId() }
+  const createAuth = (database: typeof db, cache: KeyValueStore = adminCache) =>
+    createWebAuth(runtimeConfig, database, {
+      cache,
+      rateLimiter,
+      clientIp: requestMeta.clientIp,
+      sendEmail: async () => {},
+    })
   const runtime: WebRuntime = {
-    config: parseAuthEnv(input, templateConfig),
+    config: parseAuthEnv(runtimeConfig, templateConfig),
     db,
-    cache,
-    rateLimiter: { limit: (_policy, key) => input.RL_AUTH.limit({ key }) },
+    cache: adminCache,
+    rateLimiter,
     requestMeta,
+    emailQueue: { available: false },
+    eventsQueue: { available: false },
     auth: createAuth(db),
     createAuth,
     handleAuthRequest: (request) => handleRuntimeAuthRequest(request, runtime),
   }
-  return runtime.handleAuthRequest(request)
+  return runtime
+}
+function handleAuthRequest(request: Request) {
+  return createRuntime().handleAuthRequest(request)
 }
 function cookies(response: Response, previous = '') {
   const values = new Map<string, string>()
@@ -106,11 +96,17 @@ async function actor(role = 'user') {
   }
 }
 function action(headers: Headers, path: string, body?: unknown) {
-  return executeAdminAuthAction({ db, env: testEnv, headers, path, ...(body ? { body } : {}) })
+  return executeAdminAuthAction({
+    db,
+    runtime: createRuntime(),
+    headers,
+    path,
+    ...(body ? { body } : {}),
+  })
 }
 
 afterAll(async () => {
-  const sql = createDb(env.HYPERDRIVE_MIGRATOR).$client
+  const sql = createAdminTestDb('migrator').$client
   const users = await sql<{ id: string }[]>`select id from "user" where email like ${`%@${domain}`}`
   const ids = users.map((u) => u.id)
   if (!ids.length) return
@@ -136,7 +132,6 @@ describe('用户与空间后台', () => {
       ]) {
         const response = await handleAuthRequest(
           new Request(`${APP_URL}/api/auth${path}`, { method: 'POST', headers, body: '{' }),
-          testEnv,
         )
         expect(response.status).toBe(404)
         expect(await response.json()).toMatchObject({ code: 'NOT_FOUND' })
@@ -152,7 +147,6 @@ describe('用户与空间后台', () => {
         headers: admin.headers,
         body: JSON.stringify({ userId: target.id, role: 'admin' }),
       }),
-      testEnv,
     )
     expect(response.status).toBe(404)
     expect((await requireFreshSession({ db, auth, headers: target.headers })).user.role).toBe(
@@ -207,7 +201,7 @@ describe('用户与空间后台', () => {
   it('审计写入失败时，原生封禁 / 模拟会话与缓存副作用一起回滚', async () => {
     const admin = await actor('admin')
     const target = await actor()
-    const migrator = createDb(env.HYPERDRIVE_MIGRATOR).$client
+    const migrator = createAdminTestDb('migrator').$client
     const trigger = `test_reject_admin_${newId().replaceAll('-', '')}`
     const cachedBefore = new Map(cache)
     try {
@@ -252,19 +246,18 @@ describe('用户与空间后台', () => {
     for (const path of ['/change-password', '/two-factor/enable', '/deletion/account']) {
       const result = await handleAuthRequest(
         new Request(`${APP_URL}/api/auth${path}`, { method: 'POST', headers, body: '{}' }),
-        testEnv,
       )
       expect(result.status).toBe(403)
       expect(await result.json()).toMatchObject({ code: 'IMPERSONATION_FORBIDDEN' })
     }
-    headers.set('cf-connecting-ip', '203.0.113.9')
+    headers.set('cf-connecting-ip', '203.0.113.200')
+    headers.set('x-forwarded-for', '203.0.113.201')
     const invalid = await handleAuthRequest(
       new Request(`${APP_URL}/api/auth/update-user`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ timezone: 'Invalid/Timezone' }),
       }),
-      testEnv,
     )
     expect(invalid.status).toBe(400)
 
@@ -274,7 +267,6 @@ describe('用户与空间后台', () => {
         headers,
         body: JSON.stringify({ name: 'Audited profile' }),
       }),
-      testEnv,
     )
     expect(updated.status).toBe(200)
     const profileAudit = await listAuditLogs(db, {
@@ -303,7 +295,6 @@ describe('用户与空间后台', () => {
         method: 'POST',
         headers: stopHeaders,
       }),
-      testEnv,
     )
     expect(ended.status).toBe(200)
     headers.set('cookie', cookies(ended, headers.get('cookie') ?? ''))
@@ -336,7 +327,6 @@ describe('用户与空间后台', () => {
         headers: admin.headers,
         body: JSON.stringify({ workspaceId: owner.id }),
       }),
-      testEnv,
     )
     expect(restored.status).toBe(200)
     expect(await restored.json()).toMatchObject({ restored: true, ownerUserIds: [owner.id] })

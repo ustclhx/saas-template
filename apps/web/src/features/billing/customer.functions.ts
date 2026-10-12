@@ -1,4 +1,3 @@
-import { env } from 'cloudflare:workers'
 import {
   cancelSubscription,
   changePlan,
@@ -8,13 +7,14 @@ import {
   getPortalUrl,
   resumeSubscription,
 } from '@saas/billing'
-import { createDb, type Database } from '@saas/db'
+import type { Database } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import { createServerFn } from '@tanstack/react-start'
-import { getRequest, setResponseStatus } from '@tanstack/react-start/server'
+import { setResponseStatus } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import { withRealSession, withWorkspace } from '../../server/middleware.ts'
+import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import {
   creditPageSchema,
@@ -27,7 +27,10 @@ const workspace = z.object({ slug: z.string().min(1).max(64) })
 const provider = z.enum(['stripe', 'paypal', 'creem', 'paddle', 'polar'])
 function runtime(db: Database) {
   try {
-    return createPaymentRuntime(env, templateConfig.billing.providers, { cache: env.CACHE, db })
+    return createPaymentRuntime(getWebRuntime().config, templateConfig.billing.providers, {
+      cache: getWebRuntime().cache,
+      db,
+    })
   } catch (error) {
     if (error instanceof AppError && error.status === 503) setResponseStatus(503)
     throw error
@@ -41,7 +44,10 @@ function service(db: Database) {
   }
 }
 function returnUrl(slug: string, id: string, canceled = false) {
-  const url = new URL(`/app/${encodeURIComponent(slug)}/billing-return`, env.APP_URL)
+  const url = new URL(
+    `/app/${encodeURIComponent(slug)}/billing-return`,
+    getWebRuntime().config.APP_URL,
+  )
   url.searchParams.set('provider', id)
   if (canceled) url.searchParams.set('canceled', 'true')
   return url.toString()
@@ -62,7 +68,7 @@ async function safe<T>(readOnly: boolean, action: () => Promise<T>) {
   }
 }
 export const getPublicPricing = createServerFn({ method: 'GET' }).handler(() => {
-  const db = createDb(env.HYPERDRIVE)
+  const db = getWebRuntime().db
   return customerCatalog(db, runtime(db).readiness)
 })
 export const getCustomerBilling = createServerFn({ method: 'GET' })
@@ -111,7 +117,7 @@ export const checkoutCustomer = createServerFn({ method: 'POST' })
   .handler(({ context, data }) =>
     safe(context.workspaceReadOnly, async () => {
       const result = await createCheckout(service(context.db), {
-        ip: getRequest().headers.get('cf-connecting-ip'),
+        ip: getWebRuntime().requestMeta.clientIp,
         provider: data.provider,
         planPriceId: data.planPriceId,
         idempotencyKey: data.idempotencyKey,
@@ -140,7 +146,7 @@ export const manageCustomerSubscription = createServerFn({ method: 'POST' })
     safe(context.workspaceReadOnly, async () => {
       const ctx = service(context.db)
       const input = {
-        ip: getRequest().headers.get('cf-connecting-ip'),
+        ip: getWebRuntime().requestMeta.clientIp,
         subscriptionId: data.subscriptionId,
         workspaceId: context.workspace.id,
         userId: context.user.id,
@@ -152,7 +158,7 @@ export const manageCustomerSubscription = createServerFn({ method: 'POST' })
             ...input,
             returnUrl: new URL(
               `/app/${encodeURIComponent(context.workspace.slug)}/billing`,
-              env.APP_URL,
+              getWebRuntime().config.APP_URL,
             ).toString(),
           }),
         }

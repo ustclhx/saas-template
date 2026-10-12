@@ -1,15 +1,16 @@
-import { env } from 'cloudflare:workers'
 import {
   createPaymentRuntime,
   listRefundablePayments,
   notifyRefundRequest,
   submitRefundRequest,
 } from '@saas/billing'
+import { requireCapability } from '@saas/platform'
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { setResponseStatus } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import { withRealSession, withWorkspace } from '../../server/middleware.ts'
+import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import { enqueueRefundOperations } from '../notifications/operations.ts'
 
@@ -17,7 +18,10 @@ const workspace = z.object({ slug: z.string().min(1).max(64) })
 function options(db: Parameters<typeof listRefundablePayments>[0]['db']) {
   let runtime: ReturnType<typeof createPaymentRuntime>
   try {
-    runtime = createPaymentRuntime(env, templateConfig.billing.providers, { cache: env.CACHE, db })
+    runtime = createPaymentRuntime(getWebRuntime().config, templateConfig.billing.providers, {
+      cache: getWebRuntime().cache,
+      db,
+    })
   } catch (error) {
     if (error instanceof AppError && error.status === 503) setResponseStatus(503)
     throw error
@@ -30,7 +34,7 @@ function options(db: Parameters<typeof listRefundablePayments>[0]['db']) {
       notifyRefundRequest(
         {
           db,
-          queue: env.EMAIL_QUEUE,
+          queue: requireCapability(getWebRuntime().emailQueue, 'Email queue'),
           appName: templateConfig.app.name,
           supportEmail: templateConfig.app.supportEmail,
         },
@@ -73,6 +77,8 @@ export const requestCustomerRefund = createServerFn({ method: 'POST' })
     try {
       if (context.workspaceReadOnly)
         throw new AppError('WORKSPACE_READ_ONLY', 'Workspace is read-only', { status: 403 })
+      const events = requireCapability(getWebRuntime().eventsQueue, 'Events queue')
+      requireCapability(getWebRuntime().emailQueue, 'Email queue')
       const request = await submitRefundRequest(options(context.db), {
         userId: context.user.id,
         workspaceId: context.workspace.id,
@@ -80,7 +86,11 @@ export const requestCustomerRefund = createServerFn({ method: 'POST' })
         reason: data.reason,
         contactEmail: data.contactEmail,
       })
-      await enqueueRefundOperations(context.db, env.EVENTS_QUEUE, request)
+      await enqueueRefundOperations(
+        context.db,
+        { send: (message) => events.send(message) },
+        request,
+      )
       return { ok: true as const, id: request.id }
     } catch (error) {
       if (error instanceof AppError && error.status === 503) setResponseStatus(503)
