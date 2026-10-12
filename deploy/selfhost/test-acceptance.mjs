@@ -33,6 +33,7 @@ const env = {
   CADDY_TLS_MODE: 'supplied',
   POSTGRES_DB: 'saas_wt_selfhost_final_compose',
   CACHE_NAMESPACE: project,
+  EMAIL_TRANSPORT: 'log',
   GOOGLE_CLIENT_ID: 'unused-fixture',
   GITHUB_CLIENT_ID: 'unused-fixture',
   TURNSTILE_SITE_KEY: 'unused-fixture',
@@ -118,7 +119,13 @@ async function health(expected, component) {
       `fetch('http://127.0.0.1:3000/api/health').then(async r=>console.log(JSON.stringify({code:r.status,cache:r.headers.get('cache-control'),body:await r.json()})))`,
     ),
   )
-  fail(result.code === expected, `health status: expected ${expected}`)
+  const statuses = ['db', 'cache', 'queue', 'scheduler']
+    .map((name) => `${name}=${result.body[name]?.status}`)
+    .join(', ')
+  fail(
+    result.code === expected,
+    `health status: expected ${expected}, got ${result.code}; ${statuses}`,
+  )
   fail(
     result.cache === 'no-store' && result.body.version === version,
     'health version/cache mismatch',
@@ -129,6 +136,66 @@ async function health(expected, component) {
   )
   if (component) fail(result.body[component].status === 'down', `health ${component} not down`)
   return result
+}
+async function waitForRecovery() {
+  let lastFailure
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline) {
+    try {
+      return await health(200)
+    } catch (error) {
+      // 消费者启动是异步的；只等待未就绪状态，版本/泄密等断言仍立即失败。
+      if (!(error instanceof Error) || !error.message.startsWith('health status:')) throw error
+      lastFailure = error
+      await delay(1000)
+    }
+  }
+  throw lastFailure
+}
+// 只输出非敏感进程身份；不把 owner token、邮件正文或密码写入日志。
+function ownerIdentity(service) {
+  return JSON.parse(
+    composeOutput(
+      'exec',
+      '-T',
+      service,
+      'node',
+      '-e',
+      "const fs=require('node:fs');const crypto=require('node:crypto');const dir=process.env.JOB_OWNERSHIP_DIRECTORY;const key=crypto.createHash('sha256').update('saas-job-engine:'+process.env.JOB_EXECUTOR_ID).digest('hex');const {host,pid,pidNamespace,bootId,startTime}=JSON.parse(fs.readFileSync(dir+'/'+key+'.json','utf8'));if(!bootId||!startTime)process.exit(1);console.log(JSON.stringify({host,pid,pidNamespace,bootId,startTime,retained:fs.readdirSync(dir).filter(n=>n.startsWith(key+'.')).length}))",
+    ),
+  )
+}
+async function verifyReplica(stopped, active) {
+  compose('stop', stopped)
+  const email = composeOutput(
+    'exec',
+    '-T',
+    'web',
+    'node',
+    '-e',
+    "const crypto=require('node:crypto');const email='selfhost-final-replica-'+crypto.randomUUID()+'@example.com';fetch('http://127.0.0.1:3000/api/auth/sign-up/email',{method:'POST',headers:{'content-type':'application/json',origin:process.env.APP_URL},body:JSON.stringify({email,name:'Replica probe',password:crypto.randomBytes(24).toString('hex')})}).then(r=>{if(!r.ok)throw Error('replica signup status '+r.status);console.log(email)})",
+  ).trim()
+  let delivered = false
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const count = composeOutput(
+      'exec',
+      '-T',
+      'capture',
+      'node',
+      '-e',
+      "fetch('http://127.0.0.1:8025/emails?to='+encodeURIComponent(process.argv[1])).then(r=>r.json()).then(r=>console.log(r.length))",
+      email,
+    ).trim()
+    if (count === '1') {
+      delivered = true
+      break
+    }
+    await delay(1000)
+  }
+  fail(delivered, `remaining replica ${active} did not deliver verification email`)
+  compose('start', stopped)
+  compose('up', '-d', '--wait', '--wait-timeout', '180')
+  evidence('selfhost.acceptance.replica', { active, restarted: stopped, delivered: true })
 }
 let stackStarted = false
 let acceptanceFailure
@@ -239,17 +306,30 @@ try {
   writeFileSync(
     override,
     `services:
-  jobs:
+  jobs: &fixture-jobs
+    hostname: selfhost-final-jobs-1
+    mem_limit: 384m
+    cpus: 0.15
     command: [node, --import, /fixture/preload.mjs, server/index.mjs]
     environment:
       EMAIL_TRANSPORT: resend
       RESEND_API_KEY_FILE: /run/secrets/resend_key
       EMAIL_FROM: 'Fixture <fixture@example.com>'
-      JOB_EXECUTOR_ID: selfhost-final-jobs
+      JOB_EXECUTOR_ID: selfhost-final-jobs-1
     secrets: [resend_key]
     volumes: ['${fixture}:/fixture:ro']
     depends_on:
       capture: {condition: service_healthy}
+  jobs-2:
+    extends: {file: '${composeFile}', service: jobs}
+    <<: *fixture-jobs
+    hostname: selfhost-final-jobs-2
+    environment:
+      EMAIL_TRANSPORT: resend
+      RESEND_API_KEY_FILE: /run/secrets/resend_key
+      EMAIL_FROM: 'Fixture <fixture@example.com>'
+      JOB_EXECUTOR_ID: selfhost-final-jobs-2
+      JOB_OWNERSHIP_DIRECTORY: /app/.data/job-owners
   capture:
     image: node:22-bookworm-slim
     user: '1000:1000'
@@ -340,7 +420,7 @@ secrets:
       migrationLogs.indexOf('selfhost.dbos:migrate.completed'),
     'migration order mismatch',
   )
-  for (const service of ['postgres', 'valkey', 'web', 'jobs', 'caddy', 'capture'])
+  for (const service of ['postgres', 'valkey', 'web', 'jobs', 'jobs-2', 'caddy', 'capture'])
     fail(
       Number(composeOutput('exec', '-T', service, 'id', '-u').trim()) > 0,
       `${service}: root process`,
@@ -410,17 +490,21 @@ secrets:
       },
     },
   )
-  compose('stop', 'jobs')
+  const ownersBefore = [ownerIdentity('jobs'), ownerIdentity('jobs-2')]
+  fail(ownersBefore[0].host !== ownersBefore[1].host, 'replicas share hostname')
+  compose('stop', 'jobs', 'jobs-2')
   await health(503, 'queue')
-  compose('start', 'jobs')
-  await delay(3000)
+  compose('start', 'jobs', 'jobs-2')
+  await waitForRecovery()
+  await verifyReplica('jobs', 'jobs-2')
+  await verifyReplica('jobs-2', 'jobs')
   compose('stop', 'valkey')
   await health(503, 'cache')
   compose('start', 'valkey')
   // 缓存驱动不自动重放故障期操作；重启依赖进程后恢复真实连接。
-  compose('restart', 'web', 'jobs')
-  await delay(3000)
-  await health(200)
+  compose('restart', 'web', 'jobs', 'jobs-2')
+  compose('up', '-d', '--wait', '--wait-timeout', '180')
+  await waitForRecovery()
   evidence('selfhost.acceptance.failures', { stoppedJobs: 503, stoppedCache: 503 })
   compose(
     'exec',
@@ -459,8 +543,15 @@ secrets:
     ).trim() === 'present',
     'Valkey data lost',
   )
-  await health(200)
-  evidence('selfhost.acceptance.persistence', { postgres: true, valkey: true })
+  await waitForRecovery()
+  for (const [index, service] of ['jobs', 'jobs-2'].entries()) {
+    const current = ownerIdentity(service)
+    const old = ownersBefore[index]
+    fail(current.host === old.host && current.pid === old.pid, 'stable replica identity changed')
+    fail(current.pidNamespace !== old.pidNamespace, 'container namespace did not change')
+    fail(current.retained > old.retained, 'prior incarnation records were not preserved')
+  }
+  evidence('selfhost.acceptance.persistence', { postgres: true, valkey: true, ownership: true })
   // 写入应用主进程 stdout，实际跨越 Docker json-file 大小阈值；helper只读本任务日志目录。
   compose(
     'exec',

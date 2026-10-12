@@ -1,6 +1,5 @@
-import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
-import { hostname } from 'node:os'
+import { createHash } from 'node:crypto'
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import {
   type ContextualMetadata,
@@ -12,6 +11,7 @@ import type { Database } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import { Pool, type PoolClient } from 'pg'
+import { type ProcessOwner, processExited, processOwner } from './job-owner.ts'
 
 export interface NodeJobEngine {
   readonly database: Database
@@ -29,20 +29,13 @@ export interface NodeJobEngineOptions {
   readonly databaseUrl: string
   readonly executorId: string
   readonly applicationVersion: string
-  /** 所有 jobs 必须共享同一本机目录、主机名与 PID namespace；跨主机不能用 PID 判定退出。 */
+  /** 所有 jobs 共享持久目录；各副本使用互异且稳定的 hostname/executorId。 */
   readonly ownershipDirectory: string
   readonly nativePoolMax?: number
   readonly shutdownTimeoutMs?: number
   readonly register?: (engine: NodeJobEngine) => void | Promise<void>
   readonly start?: (engine: NodeJobEngine) => void | Promise<void>
   readonly stopReceiving?: () => void
-}
-
-interface ProcessOwner {
-  readonly pid: number
-  readonly host: string
-  readonly pidNamespace: string
-  readonly token: string
 }
 
 let allocated = false
@@ -53,13 +46,6 @@ function failure(code: string): AppError {
 
 function lockKey(executorId: string): string {
   return createHash('sha256').update(`saas-job-engine:${executorId}`).digest('hex')
-}
-
-async function processOwner(): Promise<ProcessOwner> {
-  // Linux 容器的 PID 必须在同一 namespace 可见；不把其他容器的同号 PID 误认为旧进程。
-  const pidNamespace =
-    process.platform === 'linux' ? String((await stat('/proc/self/ns/pid')).ino) : 'host'
-  return { pid: process.pid, host: hostname(), pidNamespace, token: randomUUID() }
 }
 
 async function readOwner(path: string): Promise<ProcessOwner | undefined> {
@@ -76,7 +62,12 @@ async function readOwner(path: string): Promise<ProcessOwner | undefined> {
       !('pidNamespace' in value) ||
       typeof value.pidNamespace !== 'string' ||
       !('token' in value) ||
-      typeof value.token !== 'string'
+      typeof value.token !== 'string' ||
+      ('bootId' in value &&
+        (typeof value.bootId !== 'string' ||
+          !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.bootId))) ||
+      ('startTime' in value &&
+        (typeof value.startTime !== 'string' || !/^\d+$/.test(value.startTime)))
     ) {
       throw failure('JOB_ENGINE_INVALID_OWNER')
     }
@@ -85,16 +76,6 @@ async function readOwner(path: string): Promise<ProcessOwner | undefined> {
     if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')
       return undefined
     throw failure('JOB_ENGINE_INVALID_OWNER')
-  }
-}
-
-function exited(owner: ProcessOwner, current: ProcessOwner): boolean {
-  if (owner.host !== current.host || owner.pidNamespace !== current.pidNamespace) return false
-  try {
-    process.kill(owner.pid, 0)
-    return false
-  } catch (error) {
-    return !!error && typeof error === 'object' && 'code' in error && error.code === 'ESRCH'
   }
 }
 
@@ -138,7 +119,12 @@ export async function createNodeJobEngine(options: NodeJobEngineOptions): Promis
     throw failure('JOB_ENGINE_INVALID_OPTIONS')
   // DBOS 是进程级 singleton；同进程 close 后仍可能有未合作 callback，禁止重建另一个 incarnation。
   if (allocated || DBOS.isInitialized()) throw failure('JOB_ENGINE_ALREADY_STARTED')
-  const current = await processOwner()
+  let current: ProcessOwner
+  try {
+    current = await processOwner()
+  } catch {
+    throw failure('JOB_ENGINE_INVALID_OWNER')
+  }
   allocated = true
   const pool = new Pool({
     connectionString: options.databaseUrl,
@@ -176,6 +162,8 @@ export async function createNodeJobEngine(options: NodeJobEngineOptions): Promis
           owner?.pid !== current.pid ||
           owner.host !== current.host ||
           owner.pidNamespace !== current.pidNamespace ||
+          owner.bootId !== current.bootId ||
+          owner.startTime !== current.startTime ||
           owner.token !== current.token
         )
           throw failure('JOB_ENGINE_OWNERSHIP_LOST')
@@ -192,7 +180,7 @@ export async function createNodeJobEngine(options: NodeJobEngineOptions): Promis
         ownershipToken ? tokenPath(executorId, ownershipToken) : ownerPath(executorId),
       )
       // 缺文件并不能证明一个已领取工作的执行者退出；人工误删锁也不得放行。
-      return owner !== undefined && exited(owner, current)
+      return owner !== undefined && (await processExited(owner, current))
     },
     stopReceiving() {
       if (stopping) return
@@ -239,7 +227,7 @@ export async function createNodeJobEngine(options: NodeJobEngineOptions): Promis
     try {
       const previous = await readOwner(ownerPath(options.executorId))
       if (previous) {
-        if (!exited(previous, current)) throw failure('JOB_ENGINE_EXECUTOR_IN_USE')
+        if (!(await processExited(previous, current))) throw failure('JOB_ENGINE_EXECUTOR_IN_USE')
         await unlink(ownerPath(options.executorId))
       }
       await writeFile(ownerPath(options.executorId), JSON.stringify(current), {

@@ -41,6 +41,7 @@ ARG APP_VERSION
 LABEL org.opencontainers.image.revision=$APP_VERSION
 COPY --from=build --chown=node:node /out/jobs/node_modules/ ./node_modules/
 COPY --from=build --chown=node:node /src/apps/jobs/.output/ ./
+RUN mkdir -p /app/.data/job-owners && chmod 0700 /app/.data/job-owners
 ENV PORT=3001
 EXPOSE 3001
 CMD ["node", "server/index.mjs"]

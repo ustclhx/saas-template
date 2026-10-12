@@ -19,7 +19,11 @@
 
 队列默认 250ms 轮询；每队列最多 10 条、最长 5 秒聚合窗口。并发/滑动速率按消息计额，批内成员与重试都计入，各队列独立。默认初次加最多 5 次重试，共 6 次；30 秒指数退避，封顶 900 秒。业务事务直接写 `job_engine.message`，提交前不发布；普通 `send` 不提供业务事务原子保证。批次发布 ID 固定为 `queue-batch:<batch UUID>`，不另建 outbox。
 
-每个 jobs 必须有稳定且互异的 `executorId`。所有 jobs 共享同一个本机 `ownershipDirectory`、相同主机名和 PID namespace；Linux 分离容器必须显式满足这些条件，不能根据其他 namespace 的同号 PID 判断旧进程退出。DB advisory 会话锁与 exclusive 本机 owner 文件共同保护启动；文件记录每个 incarnation 的 PID、host、namespace 和 token。目录必须持久、受限，不能在进程仍活着时删锁。
+每个 jobs 必须有稳定且互异的 `executorId`，同一 executor 跨重启保持相同主机名。所有 jobs 共享同一个持久、受限的本机 `ownershipDirectory`。Node 入口未显式配置 `JOB_EXECUTOR_ID` 时使用 `hostname()`；容器必须固定 hostname，不能沿用每次重建随机变化的容器名。DB advisory 会话锁与 exclusive 本机 owner 文件共同保护启动；文件记录每个 incarnation 的 PID、host、PID namespace inode、token，Linux 还记录 `boot_id` 与 `/proc/<pid>/stat` 的进程启动时间。
+
+退出证明先核对 host，不同 hostname 一律拒绝回收。Linux 同 host 下，boot ID 或 PID namespace inode 改变可证明旧 incarnation 已退出，无需共享旧 PID namespace；同 namespace 下，记录的启动时间与当前同号 PID 不同可证明 PID 已复用。读取 `/proc/<pid>/stat` 返回 `ENOENT` 时，还必须由 `kill(pid, 0)` 返回 `ESRCH` 确认退出。身份文件缺失/损坏、读取失败、权限拒绝或缺少可用退出证据都不能放行；旧记录缺少启动时间时，不能仅凭同号 PID 存在判定 PID 已复用。
+
+Compose 为 jobs 固定 `hostname=${JOB_EXECUTOR_ID:-jobs-1}`，并设置同值 executor ID；`job_owners` named volume 挂载到 `/app/.data/job-owners`。容器重建可沿用身份与 owner 记录，PID 1 重用由上述 Linux 身份证明处理。双副本必须分别配置不同且稳定的 hostname/ID、挂载同一 owner 目录并注册同版本完整 handler 集；不要对这个固定身份的 service 盲目执行 `docker compose up --scale jobs=2`。不同 hostname 的副本不能代替原 executor 证明退出，共享目录本身不提供跨 hostname 接管。
 
 SIGTERM 先停止领取，受控排空，然后关闭 DBOS/native 池。超时 callback 可能仍执行外部副作用；`close()` 返回、DB 锁释放、网络中断或固定 TTL 均不能证明旧进程退出。**真正退出后**才能复用相同 executor ID 或回收其 batch/permit。外部调用仍使用业务幂等键。
 
@@ -61,8 +65,8 @@ ORDER BY created_at DESC LIMIT 100;
 ## 手动处置
 
 - 死信重放：先查业务副作用是否已经成功以及失败原因，修正原因后，经获授权重放工具读取原消息并用 producer/业务事务重新入队。创建**新的消息 UUID**，保留原业务 `idempotencyKey` 与 `requestId`，记录新旧身份映射；保留原死信直到保留期结束。不要把原死信行改回 pending 或 reset attempts，也不要为规避去重生成新业务幂等键。
-- 卡住批次：核对 native 状态、batch executor/token 及对应 incarnation 文件。先停止该实例并确认记录 PID 在相同 host/namespace 已退出，再让 adapter 的恢复器按原消息与批次身份修复。禁止直接释放仍可能活着的 permit、删除 active batch/start、根据年龄或心跳缺失进行 TTL 接管。
-- `.recovering` guard 残留：读取 guard 的 PID/host/namespace/token，证明对应进程已退出后才人工删除该 guard；保留 owner 与 incarnation 记录。记录确认依据与操作者，不清空整个 ownership 目录。
+- 卡住批次：核对 native 状态、batch executor/token 及对应 incarnation 文件。先停止该实例，按前述 host、boot ID、PID namespace inode、启动时间或 `ENOENT` 加 `ESRCH` 规则取得退出证明，再让相同稳定身份的 adapter 恢复器按原消息与批次身份修复。记录旧/当前身份及证明依据；在其他容器中看不到同号 PID，不能单独作为退出证据。禁止直接释放仍可能活着的 permit、删除 active batch/start、根据年龄或心跳缺失进行 TTL 接管，也不以清除 owner 文件或随机更换 executor ID 绕过拒绝。
+- `.recovering` guard 残留：读取 guard 的完整身份 metadata，按同样的退出证明规则确认对应进程已退出后才人工删除该 guard；保留 owner 与 incarnation 记录。记录确认依据与操作者，不清空整个 ownership 目录。身份缺失、不可读或 host 不匹配时停止处置并调查，不能猜测退出。
 - 清理与重放/DBOS resume 操作互斥；清理期间不复活终态 native workflow。SDK 公共查询与删除不是跨系统原子事务，必须维持终态不被人工恢复的运维约束。
 
 ## 保留期与清理
@@ -265,10 +269,10 @@ sleep 日志的原唤醒结果与重启前快照完全一致。两个等待结�
 `apps/jobs/src/node/registration.ts`。新增任务按 [Node jobs 扩展指南](../node-jobs-extension.md)
 接入；不在平台 package 导入业务 app。
 
-Jobs 从 `JOB_EXECUTOR_ID`（默认 `jobs-1`）、`JOB_OWNERSHIP_DIRECTORY`
+Jobs 从 `JOB_EXECUTOR_ID`（Node 入口默认 `hostname()`，Compose 默认 `jobs-1`）、`JOB_OWNERSHIP_DIRECTORY`
 （默认 `.data/job-owners`）和 `JOB_NATIVE_POOL_MAX`（默认 4，最小 3）读取引擎参数。
-版本使用 Node 构建固化的完整 SHA。双 jobs 使用互异 executor ID，遵守前述共享
-ownership 目录、host/PID namespace 与同版本完整注册集约束。
+版本使用 Node 构建固化的完整 SHA。双 jobs 使用互异且稳定的 hostname/executor ID，遵守前述共享
+ownership 目录、Linux 退出证明与同版本完整注册集约束。
 
 `GET /internal/live` 仅检查进程，`GET /internal/ready` 实时检查 DB、Valkey、
 真实 queue backend/consumer、scheduler 与五分钟成功心跳，返回完整版本及
