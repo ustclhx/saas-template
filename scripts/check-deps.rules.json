@@ -199,6 +199,10 @@
     "packages/auth/test/session.test.ts": ["cloudflare"],
     "packages/auth/test/deletion.test.ts": ["cloudflare"],
     "packages/auth/test/signup-bonus-hook.test.ts": ["cloudflare"],
-    "packages/auth/test/node/auth.integration.test.ts": ["node"]
+    "packages/auth/test/node/auth.integration.test.ts": ["node"],
+    "packages/platform/test/node/fixtures/job-worker.ts": ["node"],
+    "packages/platform/test/node/job-queue.integration.test.ts": ["node"],
+    "packages/platform/test/node/job-engine.integration.test.ts": ["node"],
+    "packages/platform/test/node/fixtures/job-schema-probe.ts": ["node"]
   }
 }

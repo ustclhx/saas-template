@@ -24,4 +24,7 @@ export function unavailableTaskCapabilities<T = unknown, P extends JsonValue = J
 
 export * from './background.ts'
 export * from './cache.ts'
+export * from './job-engine.ts'
+export * from './job-maintenance.ts'
+export * from './job-queue.ts'
 export * from './request.ts'
