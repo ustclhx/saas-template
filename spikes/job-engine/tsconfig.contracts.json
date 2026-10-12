@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "types": [
+      "node"
+    ],
+    "paths": {
+      "@saas/db": [
+        "../../packages/db/src/index.ts"
+      ],
+      "@saas/shared": [
+        "../../packages/shared/src/index.ts"
+      ],
+      "@saas/config": [
+        "../../packages/config/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "ports.ts",
+    "contracts-snapshot/**/*.ts"
+  ]
+}

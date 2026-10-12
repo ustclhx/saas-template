@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "pg-boss": "^12.37.0",
+    "postgres": "^3.4.9"
+  }
+}
