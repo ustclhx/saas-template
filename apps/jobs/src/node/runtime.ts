@@ -1,18 +1,38 @@
 import { createServer } from 'node:http'
 import type { Socket } from 'node:net'
+import { emailTransportConfig, type TemplateConfig } from '@saas/config'
 import type { NodeEnv } from '@saas/config/node'
-import { createDb } from '@saas/db'
+import { createDb, pingDatabase } from '@saas/db'
 import {
   createNodeBackgroundTasks,
   createNodeCache,
-  unavailableTaskCapabilities,
+  createNodeJobEngine,
+  createNodeQueueAdapter,
+  createNodeQueueProducer,
+  createNodeScheduler,
+  createNodeTaskHealth,
+  createNodeTaskHealthResponse,
+  type NodeJobEngine,
 } from '@saas/platform/node'
 import { log, newRequestId, withLogContext } from '@saas/shared/log'
+import templateConfig from '../../../../template.config.ts'
+import { consumeJobsBatch, type JobsContext } from '../handlers.ts'
+import { logJobObserver } from '../observer.ts'
+import { getNodeJobFeatures, registerNodeJobsSchedules } from './registration.ts'
 
-/** B 装配前不启动消费者/调度器；探活只证明进程存活，不冒充依赖 readiness。 */
-export async function startNodeJobs(config: NodeEnv, options: { host: string; port: number }) {
+export interface NodeJobsOptions {
+  host: string
+  port: number
+  executorId: string
+  ownershipDirectory: string
+  applicationVersion: string
+  nativePoolMax?: number
+  template?: TemplateConfig
+}
+
+/** 先完成持久注册，再 launch/start；业务与 native 池由同一停机流程按顺序关闭。 */
+export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
   const background = createNodeBackgroundTasks()
-  const tasks = unavailableTaskCapabilities()
   const db = createDb(config.DATABASE_URL, { max: config.DB_POOL_MAX })
   let cache: Awaited<ReturnType<typeof createNodeCache>>
   try {
@@ -20,6 +40,125 @@ export async function startNodeJobs(config: NodeEnv, options: { host: string; po
   } catch (error) {
     await db.close()
     throw error
+  }
+  let queues!: ReturnType<typeof createNodeQueueAdapter>
+  let scheduler!: ReturnType<typeof createNodeScheduler>
+  let dispose = () => {}
+  let engine: NodeJobEngine
+  const template = options.template ?? templateConfig
+  const features = getNodeJobFeatures(template)
+  const context: JobsContext = {
+    config: {
+      ...(config.PAYMENT_MODE === undefined ? {} : { PAYMENT_MODE: config.PAYMENT_MODE }),
+      ...(config.SENTRY_ENVIRONMENT === undefined
+        ? {}
+        : { SENTRY_ENVIRONMENT: config.SENTRY_ENVIRONMENT }),
+      ...(config.STRIPE_SECRET_KEY === undefined
+        ? {}
+        : { STRIPE_SECRET_KEY: config.STRIPE_SECRET_KEY }),
+      ...(config.STRIPE_WEBHOOK_SECRET === undefined
+        ? {}
+        : { STRIPE_WEBHOOK_SECRET: config.STRIPE_WEBHOOK_SECRET }),
+      ...(config.PAYPAL_CLIENT_ID === undefined
+        ? {}
+        : { PAYPAL_CLIENT_ID: config.PAYPAL_CLIENT_ID }),
+      ...(config.PAYPAL_CLIENT_SECRET === undefined
+        ? {}
+        : { PAYPAL_CLIENT_SECRET: config.PAYPAL_CLIENT_SECRET }),
+      ...(config.PAYPAL_WEBHOOK_ID === undefined
+        ? {}
+        : { PAYPAL_WEBHOOK_ID: config.PAYPAL_WEBHOOK_ID }),
+    },
+    db: { business: () => db, public: () => db },
+    cache: cache.kv('auth'),
+    emailQueue: createNodeQueueProducer(db, 'email').producer,
+    eventsQueue: createNodeQueueProducer(db, 'events').producer,
+    emailTransport: emailTransportConfig(config),
+    files: { available: false },
+    observer: logJobObserver,
+    billingEnabled: features.billing,
+  }
+  try {
+    engine = await createNodeJobEngine({
+      database: db,
+      databaseUrl: config.DATABASE_URL,
+      executorId: options.executorId,
+      applicationVersion: options.applicationVersion,
+      ownershipDirectory: options.ownershipDirectory,
+      ...(options.nativePoolMax === undefined ? {} : { nativePoolMax: options.nativePoolMax }),
+      shutdownTimeoutMs: config.SHUTDOWN_TIMEOUT_MS,
+      async register(engine) {
+        queues = createNodeQueueAdapter({
+          db,
+          executorId: engine.executorId,
+          ownershipToken: engine.ownershipToken,
+          assertOwnership: () => engine.assertOwnership(),
+          isExecutorStopped: (id, token) => engine.isExecutorStopped(id, token),
+        })
+        queues.register('email', (batch, sink) =>
+          consumeJobsBatch(batch, { ...context, emailDeadLetters: sink }),
+        )
+        queues.register('events', (batch, sink) =>
+          consumeJobsBatch(batch, { ...context, eventsDeadLetters: sink }),
+        )
+        scheduler = createNodeScheduler({ engine })
+        dispose = registerNodeJobsSchedules(scheduler, context, template)
+        await queues.prepare()
+        await scheduler.prepare()
+      },
+      start() {
+        queues.start()
+        scheduler.start()
+      },
+      stopReceiving() {
+        queues?.stopReceiving()
+        scheduler?.stopReceiving()
+      },
+    })
+  } catch (error) {
+    dispose()
+    await Promise.all([cache.close(), db.close()])
+    throw error
+  }
+  const health = createNodeTaskHealth({ queue: queues, scheduler })
+  const taskResponse = createNodeTaskHealthResponse(health, { version: options.applicationVersion })
+  async function dependencyAvailable(probe: () => Promise<void>) {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([
+        Promise.resolve()
+          .then(probe)
+          .then(() => true),
+        new Promise<false>((resolve) => {
+          timer = setTimeout(() => resolve(false), 5_000)
+        }),
+      ])
+    } catch {
+      return false
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  async function readiness() {
+    const [response, probes] = await Promise.all([
+      taskResponse(),
+      Promise.all([
+        dependencyAvailable(() => pingDatabase(db)),
+        dependencyAvailable(() => cache.ping()),
+      ]),
+    ])
+    const body = (await response.json()) as Record<string, unknown>
+    const [databaseUp, cacheUp] = probes
+    const ready = response.ok && databaseUp && cacheUp
+    return Response.json(
+      {
+        ...body,
+        status: ready ? 'ok' : 'error',
+        db: { status: databaseUp ? 'up' : 'down' },
+        cache: { status: cacheUp ? 'up' : 'down' },
+      },
+      { status: ready ? 200 : 503, headers: { 'cache-control': 'no-store' } },
+    )
   }
   const sockets = new Set<Socket>()
   let stopping = false
@@ -29,20 +168,18 @@ export async function startNodeJobs(config: NodeEnv, options: { host: string; po
     response.once('close', release)
     withLogContext({ requestId: newRequestId() }, () => {
       response.setHeader('cache-control', 'no-store')
-      if (stopping) {
-        response.writeHead(503).end()
-      } else if (request.method === 'GET' && request.url === '/internal/live') {
+      if (stopping) response.writeHead(503).end()
+      else if (request.method === 'GET' && request.url === '/internal/live') {
+        response.setHeader('content-type', 'application/json')
+        response.end(JSON.stringify({ status: 'ok', version: options.applicationVersion }))
+      } else if (request.method === 'GET' && request.url === '/internal/ready') {
         background.waitUntil(
-          Promise.all([tasks.health.queue(), tasks.health.scheduler()]).then(
-            ([queue, scheduler]) => {
-              response.setHeader('content-type', 'application/json')
-              response.end(JSON.stringify({ status: 'ok', queue, scheduler }))
-            },
-          ),
+          readiness().then(async (result) => {
+            response.setHeader('content-type', 'application/json')
+            response.writeHead(result.status).end(await result.text())
+          }),
         )
-      } else {
-        response.writeHead(404).end()
-      }
+      } else response.writeHead(404).end()
     })
   })
   server.on('connection', (socket) => {
@@ -50,8 +187,12 @@ export async function startNodeJobs(config: NodeEnv, options: { host: string; po
     socket.once('close', () => sockets.delete(socket))
   })
   async function closeResources() {
-    // 同时发起驱动关闭；共享 deadline 覆盖 drain 与资源释放。
-    await Promise.all([cache.close(), db.close()])
+    try {
+      await engine.close()
+    } finally {
+      dispose()
+      await Promise.all([cache.close(), db.close()])
+    }
   }
   try {
     await new Promise<void>((resolve, reject) => {
@@ -71,7 +212,11 @@ export async function startNodeJobs(config: NodeEnv, options: { host: string; po
     background,
     db,
     cache,
-    tasks,
+    engine,
+    queues,
+    scheduler,
+    tasks: { health },
+    readiness,
     shutdown() {
       shutdown ??= background
         .shutdown({
@@ -79,11 +224,13 @@ export async function startNodeJobs(config: NodeEnv, options: { host: string; po
           stopReceiving() {
             stopping = true
             server.close()
+            engine.stopReceiving()
+            // native 排空与 HTTP 排空共用 deadline；业务池只能在 engine 完成关闭后释放。
+            background.waitUntil(engine.close())
           },
           closeResources,
         })
         .then((result) => {
-          // server.close 不等待未完成/半开 socket；deadline 到达后不让其持有进程。
           for (const socket of sockets) socket.destroy()
           log.info('jobs.node.stopped', { ...result })
           return result

@@ -58,7 +58,7 @@
 
 ## 9. B 合入后的尾部验收（明确依赖门，不属于 B 引擎实施）
 
-- [ ] 9.1 B 合入且其 Postgres 引擎验收通过后，在 Node composition 装配真实 queue/workflow/scheduler，替换 unavailable 探测并保留同一接口；不得在 A 实现 B 后端。验证：真实邮件批量 ack/retry、Node 最终有效消息失败经 B hook 进入持久死信且不提前 ack/drop、CF 保持原 drop 行为、后台心跳、health DB/cache/queue up 与完整 SHA，缺失/停摆消费者或 Cron 返回 503，B 所需权限不越过三角色。（O2）
+- [x] 9.1 B 合入且其 Postgres 引擎验收通过后，在 Node composition 装配真实 queue/workflow/scheduler，替换 unavailable 探测并保留同一接口；不得在 A 实现 B 后端。验证：真实邮件批量 ack/retry、Node 最终有效消息失败经 B hook 进入持久死信且不提前 ack/drop、CF 保持原 drop 行为、后台心跳、health DB/cache/queue up 与完整 SHA，缺失/停摆消费者或 Cron 返回 503，B 所需权限不越过三角色。（O2）
 - [ ] 9.2 在隔离 PG/Valkey 上运行 Node 全部适用单元与业务集成测试（含依赖 B 的用例），CF 专属适配器用例仍在 CF 运行，C 尚未实现的文件/媒体验收列为独立范围。验证：记录目标测试矩阵、测试数与跳过理由，无队列相关用例被隐藏、无弱化断言。（P6、A3）
 - [ ] 9.3 在开发机全新 Compose 卷，真实 B 队列+测试邮件 sender、关闭 Turnstile、开启 requireEmailVerification 与 multiTenant：注册→验证邮件真实送达→验证→真实 sign-out→密码登录→创建/切换团队和个人空间。验证：Node 生产输出 Playwright auth e2e 通过、页面/会话/权限正确、健康完整 SHA；不读取 DB token 替代邮件链路、不把日志邮件内容开放给生产；编写本地验收 runbook并记录证据。
 - [ ] 9.4 汇总 A 分配需求与剩余 C/D 交付，协调者确认 B 依赖已满足和全部 A 验收通过。验证：本 change 全部对应项有证据、openspec validate add-selfhost-foundation --strict 通过；不提前勾选部署/外部凭据验收，不由 worker 归档。

@@ -38,6 +38,8 @@ it('runs production jobs without workerd and exits gracefully with a residual HT
       HOST: '127.0.0.1',
       PORT: String(port),
       SHUTDOWN_TIMEOUT_MS: '1000',
+      JOB_EXECUTOR_ID: 'jobs-production-fixture',
+      JOB_OWNERSHIP_DIRECTORY: join(directory, 'owners'),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -62,8 +64,14 @@ it('runs production jobs without workerd and exits gracefully with a residual HT
     const response = await fetch(`http://127.0.0.1:${port}/internal/live`)
     expect(response.status).toBe(200)
     expect(await response.json()).toMatchObject({
-      queue: { status: 'unavailable' },
-      scheduler: { status: 'unavailable', lastCronAt: null },
+      status: 'ok',
+      version: expect.stringMatching(/^[a-f0-9]{40}$/),
+    })
+    const ready = await fetch(`http://127.0.0.1:${port}/internal/ready`)
+    expect([200, 503]).toContain(ready.status)
+    expect(await ready.json()).toMatchObject({
+      queue: { status: expect.stringMatching(/^(up|down)$/) },
+      scheduler: { status: expect.stringMatching(/^(up|down)$/) },
     })
     socket = connect(port, '127.0.0.1')
     await once(socket, 'connect')

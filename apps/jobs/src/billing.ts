@@ -134,8 +134,20 @@ export async function recoverBillingDeliveries(context: BillingContext) {
   return { failures }
 }
 
-export async function runBillingSchedule(cron: string, env: BillingEnv) {
-  const context = createBillingContext(env)
+export interface BillingScheduleFeatures {
+  billing: boolean
+  credits: boolean
+}
+
+export async function runBillingSchedule(
+  cron: string,
+  env: BillingEnv,
+  features: BillingScheduleFeatures = { billing: true, credits: true },
+) {
+  if (!features.billing && !features.credits) return
+  // 只有积分功能时不初始化支付 Provider；关闭的业务也不访问数据库。
+  const context = features.billing ? createBillingContext(env) : undefined
+  const db = context?.db ?? env.db.business()
   const now = new Date()
   const alert = async (failure: { job: string; workspaceId: string; targetId: string }) => {
     try {
@@ -159,35 +171,41 @@ export async function runBillingSchedule(cron: string, env: BillingEnv) {
       })
     }
   }
+  const jobs: [string, () => Promise<JobResult>][] = []
   switch (cron) {
     case BILLING_HOURLY_CRON:
-      return runBillingJobs([
-        ['credit_expiration', () => runCreditExpiration(context.db, now)],
-        [
+      if (features.credits) jobs.push(['credit_expiration', () => runCreditExpiration(db, now)])
+      if (features.credits && context)
+        jobs.push([
           'annual_grants',
           () =>
             runAnnualGrants(context.db, now, {
               subscriptionCreditGraceHours: templateConfig.billing.subscriptionCreditGraceHours,
             }),
-        ],
-      ])
+        ])
+      break
     case BILLING_RETRY_CRON:
-      return runBillingJobs([
-        ['hold_sweep', () => runHoldSweep(context.db, now)],
-        ['delivery_recovery', () => recoverBillingDeliveries(context)],
-        ['compensation', () => runPendingCompensations(context)],
-        ['refund_notifications', () => flushRefundNotifications(context.mail)],
-      ])
+      if (features.credits) jobs.push(['hold_sweep', () => runHoldSweep(db, now)])
+      if (context)
+        jobs.push(
+          ['delivery_recovery', () => recoverBillingDeliveries(context)],
+          ['compensation', () => runPendingCompensations(context)],
+          ['refund_notifications', () => flushRefundNotifications(context.mail)],
+        )
+      break
     case BILLING_DAILY_CRON:
-      return runBillingJobs([
-        [
+      if (context)
+        jobs.push([
           'subscription_reconciliation',
           () => runSubscriptionReconciliation(context.db, context.providers, { alert }),
-        ],
-        ['credit_reconciliation', () => runCreditReconciliation(context.db, { alert })],
-        ['refund_contact_cleanup', () => clearResolvedRefundContacts(context.db, now)],
-      ])
+        ])
+      if (features.credits)
+        jobs.push(['credit_reconciliation', () => runCreditReconciliation(db, { alert })])
+      if (context)
+        jobs.push(['refund_contact_cleanup', () => clearResolvedRefundContacts(context.db, now)])
+      break
     default:
       throw new Error('Unknown billing cron')
   }
+  return runBillingJobs(jobs)
 }

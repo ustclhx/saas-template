@@ -1,4 +1,5 @@
 import { type Database, pingDatabase, readLastCronAt } from '@saas/db'
+import type { TaskHealth } from '@saas/platform'
 import { log } from '@saas/shared/log'
 
 /** 数据库探测超过该时间视为不可达（specs/system-health） */
@@ -9,6 +10,7 @@ export interface HealthOptions {
   database(): Database
   version: string
   timeoutMs?: number
+  dependencies?: { cache(): Promise<void>; tasks: TaskHealth }
 }
 
 export type HealthBody =
@@ -39,8 +41,54 @@ export async function healthResponse({
   database,
   version,
   timeoutMs = HEALTH_DB_TIMEOUT_MS,
+  dependencies,
 }: HealthOptions): Promise<Response> {
   const headers = { 'cache-control': 'no-store' }
+  if (dependencies) {
+    const [databaseResult, cacheResult, queueResult, schedulerResult] = await Promise.allSettled([
+      withTimeout(
+        Promise.resolve().then(() => probe(database())),
+        timeoutMs,
+      ),
+      withTimeout(
+        Promise.resolve().then(() => dependencies.cache()),
+        timeoutMs,
+      ),
+      withTimeout(dependencies.tasks.queue(), timeoutMs),
+      withTimeout(dependencies.tasks.scheduler(), timeoutMs),
+    ])
+    const db =
+      databaseResult.status === 'fulfilled'
+        ? { status: 'up', latencyMs: databaseResult.value.latencyMs }
+        : { status: 'down' }
+    const cache = { status: cacheResult.status === 'fulfilled' ? 'up' : 'down' }
+    const queue = queueResult.status === 'fulfilled' ? queueResult.value : { status: 'down' }
+    const scheduler =
+      schedulerResult.status === 'fulfilled'
+        ? schedulerResult.value
+        : { status: 'down', lastCronAt: null }
+    const lastCronAt = scheduler.lastCronAt
+    const at = lastCronAt === null ? Number.NaN : Date.parse(lastCronAt)
+    const ready =
+      db.status === 'up' &&
+      cache.status === 'up' &&
+      queue.status === 'up' &&
+      scheduler.status === 'up' &&
+      Number.isFinite(at) &&
+      Date.now() - at <= 10 * 60_000
+    return Response.json(
+      {
+        status: ready ? 'ok' : 'error',
+        version,
+        db,
+        cache,
+        queue,
+        scheduler,
+        jobs: { lastCronAt },
+      },
+      { status: ready ? 200 : 503, headers },
+    )
+  }
   try {
     const db = database()
     const { latencyMs, lastCronAt } = await withTimeout(probe(db), timeoutMs)

@@ -5,7 +5,14 @@ import { getWebRuntime } from '../../server/runtime.ts'
 export const Route = createFileRoute('/api/health')({
   server: {
     handlers: {
-      GET: () => healthResponse({ database: () => getWebRuntime().db, version: __APP_VERSION__ }),
+      GET: () => {
+        const runtime = getWebRuntime()
+        return healthResponse({
+          database: () => runtime.db,
+          version: __APP_VERSION__,
+          ...(runtime.health && { dependencies: runtime.health }),
+        })
+      },
     },
   },
 })

@@ -1,12 +1,19 @@
-// AI 对话预扣的超时兜底（design 决策 7）：模块加载时向 hold sweep 注册 `ai_message` 处理器，
-// BILLING_RETRY_CRON 中的 runHoldSweep 据此结算超过 10 分钟未结算的对话预扣。
+// 由目标入口显式注册，避免加载中立 handlers 时给关闭 AI 的 Node 项目安装处理器。
 import { chatHoldSweeper, mediaTaskHoldSweeper } from '@saas/ai'
 import { registerHoldSweeper } from '@saas/billing'
 import templateConfig from '../../../template.config.ts'
 
-export const unregisterChatHoldSweeper = registerHoldSweeper(
-  'ai_message',
-  chatHoldSweeper({ overage: templateConfig.billing.overage }),
-)
-
-export const unregisterMediaTaskHoldSweeper = registerHoldSweeper('ai_task', mediaTaskHoldSweeper())
+export function registerAiHoldSweepers(features: { text: boolean; media: boolean }) {
+  const dispose: (() => void)[] = []
+  if (features.text)
+    dispose.push(
+      registerHoldSweeper(
+        'ai_message',
+        chatHoldSweeper({ overage: templateConfig.billing.overage }),
+      ),
+    )
+  if (features.media) dispose.push(registerHoldSweeper('ai_task', mediaTaskHoldSweeper()))
+  return () => {
+    for (const unregister of dispose) unregister()
+  }
+}
