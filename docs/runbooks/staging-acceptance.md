@@ -63,7 +63,7 @@ fal 图片尺寸采用官方 API 支持的平面枚举 `square`，避免当前 s
 
 ## 本地验证
 
-本地配置只接受 worktree 隔离数据库和 loopback origin。管理员凭据优先使用进程中的 `LOCAL_ADMIN_EMAIL` / `LOCAL_ADMIN_PASSWORD`；未设置的键从主 checkout 已忽略的 `/Users/hxlee/workspace/saas-template/.env.local` 读取，仅读取这两个本地键，不导入 `STAGING_URL`、数据库连接或其他配置。两键齐全且非空时使用该账号；任一键缺失或为空时继续使用当前随机账号 fallback。不要打印这些凭据，也不要在本地执行前 source 整份主 checkout `.env.local`。
+本地配置只接受 worktree 隔离数据库和 loopback origin。管理员凭据优先使用进程中的 `LOCAL_ADMIN_EMAIL` / `LOCAL_ADMIN_PASSWORD`；未设置的键从主 checkout 已忽略的 `.env.local` 读取。`local-admin.ts` 通过 `git rev-parse --path-format=absolute --git-common-dir` 获取共享 git 目录，取其父目录定位主 checkout，再读取 `.env.local`，不依赖固定本机路径（#97）。仅读取这两个本地键，不导入 `STAGING_URL`、数据库连接或其他配置。两键齐全且非空时使用该账号；任一键缺失或为空时继续使用当前随机账号 fallback。不要打印这些凭据，也不要在本地执行前 source 整份主 checkout `.env.local`。
 
 在 worktree 根目录先应用现有迁移，清除 staging 环境变量后执行；主 checkout 的本地管理员键无需复制到 worktree：
 
