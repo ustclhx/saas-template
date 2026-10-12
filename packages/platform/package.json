@@ -10,11 +10,13 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.cloudflare.json && tsc -p tsconfig.test.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:node:integration": "vitest run --config vitest.node-integration.config.ts"
   },
   "dependencies": {
     "@saas/db": "workspace:*",
-    "@saas/shared": "workspace:*"
+    "@saas/shared": "workspace:*",
+    "ioredis": "5.8.2"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.3.5",

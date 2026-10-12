@@ -4,7 +4,16 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     projects: [
-      { test: { name: 'node', include: ['test/node.test.ts'] } },
+      {
+        test: {
+          name: 'node',
+          include: [
+            'test/node.test.ts',
+            'test/node/request.test.ts',
+            'test/node/background.test.ts',
+          ],
+        },
+      },
       {
         plugins: [
           cloudflareTest({
