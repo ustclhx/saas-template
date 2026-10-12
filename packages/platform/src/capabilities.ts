@@ -13,7 +13,9 @@ export function requireCapability<T>(capability: Capability<T>, name: string): T
 }
 
 export type ConfigScalar = string | number | boolean | undefined
-export interface PlatformEnv<C = Readonly<Record<string, ConfigScalar>>> {
+export interface PlatformEnv<
+  C extends { [K in keyof C]: ConfigScalar } = Readonly<Record<string, ConfigScalar>>,
+> {
   /** composition root 传入已校验的标量配置；bindings 不进入业务 env。 */
   readonly config: Readonly<C>
   readonly capabilities: Readonly<{

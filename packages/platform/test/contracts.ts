@@ -1,6 +1,7 @@
 import type {
   DatabaseTransaction,
   JsonValue,
+  PlatformEnv,
   QueueProducer,
   Scheduler,
   TaskHealth,
@@ -13,6 +14,8 @@ import type {
 export type InvalidWorkflowParams = Workflow<{ stream: { read(): Promise<string> } }>
 // @ts-expect-error 不允许把二进制持久化为 Workflow 结果。
 export type InvalidWorkflowResult = Workflow<{ taskId: string }, Uint8Array>
+// @ts-expect-error 业务 env 不能重新暴露原始 binding 对象。
+export type InvalidPlatformEnv = PlatformEnv<{ CACHE: { get(key: string): Promise<string> } }>
 
 /** B spike 的接入形状：只有平台/现有 DB 事务类型，没有引擎类型。 */
 export interface JobEnginePort {
