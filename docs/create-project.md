@@ -23,10 +23,20 @@ pnpm create-project --name acme --domain acme.example --target ../acme --locale 
 
 生成内容包含改名的包作用域、Worker / Queue / Workflow 名称、站点品牌、
 `template.config.ts`、根目录及两个 app 的 `.dev.vars.example` 和 `PROJECT_SETUP.md`。
-Hyperdrive / KV 的部署 ID 重置为零占位值，所有环境都需换成新资源；
-Rate Limiting 命名空间需独立分配。清单按 AI、支付、OAuth 与 Turnstile 开关列出资源与密钥；
-关闭图片和视频时移除 Workflow 绑定，清单不包含媒体服务商、Workflow 与媒体 R2 密钥。
+Hyperdrive / KV 的部署 ID 重置为零占位值，AI Gateway / R2 账号标识清空，所有环境都需配置新资源；
+Rate Limiting 的 RL_AUTH / RL_AI / RL_API 命名空间需独立分配。Queue 名会同步到 jobs 消费者与测试。
+FILES 桶按项目改名，R2_FILES_BUCKET 与绑定保持一致；文本模式也保留文件清理 Cron 所需的 FILES 桶。
+清单按 AI、支付、OAuth 与 Turnstile 开关列出资源与密钥；关闭图片和视频时移除 Workflow 绑定，
+清单不包含媒体服务商、Workflow 与媒体 R2 S3 密钥。
 密钥模板只包含空值，来自固定的变量名清单；脚本不读取本地真值生成模板。
+
+PROJECT_SETUP.md 分别列出 Worker 配置与 GitHub staging environment secrets。
+SENTRY_DSN 需要分别写入 web / jobs，SENTRY_ENVIRONMENT 设为 staging、production 或临时验收专用 smoke；
+CI 的 SENTRY_AUTH_TOKEN / SENTRY_ORG / SENTRY_PROJECT 仅用于 source map 上传。
+APP_VERSION 与 Sentry release 使用同一个完整提交 SHA，CI 已负责注入；手动部署参考
+[Sentry runbook](runbooks/sentry.md)。线上 secrets 需要通过 Wrangler 分别写入两个 Worker，
+本地 .dev.vars 不会随部署上传。将 .github/workflows/deploy-staging.yml 中的 STAGING_URL
+占位地址改为新环境实际可访问的 URL，并核对 staging APP_URL、邮件发件配置与数据库迁移凭据。
 
 复制排除各级 `.git`、node_modules、`.env` / `.env.*` 和 `.dev.vars*`（保留 example）、
 `.wrangler`、dist、`.turbo`、coverage、构建和测试生成目录、进行中的 `openspec/changes`、

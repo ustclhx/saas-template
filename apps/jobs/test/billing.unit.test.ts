@@ -15,6 +15,11 @@ const mocks = vi.hoisted(() => ({
   workspace: vi.fn(),
   deletion: vi.fn(),
 }))
+// 计费调度测试固定启用两个 Provider，不依赖生成项目的功能选择。
+vi.mock('../../../template.config.ts', async (original) => {
+  const { default: config } = await original<typeof import('../../../template.config.ts')>()
+  return { default: { ...config, billing: { ...config.billing, providers: ['stripe', 'paypal'] } } }
+})
 vi.mock('@saas/billing', async (original) => ({
   ...(await original<typeof import('@saas/billing')>()),
   createTestPaymentRuntime: mocks.runtime,

@@ -161,12 +161,15 @@ function wranglerConfig(source, options, app) {
     .replace(
       /("(?:name|script_name|queue|bucket_name)"\s*:\s*")([^"\n]+)"/g,
       (_match, prefix, value) =>
-        /^(?:web|jobs|email|events|ai-media)(?:-staging)?$/.test(value)
+        /^(?:web|jobs|email|events|ai-media|files)(?:-staging)?$/.test(value)
           ? `${prefix}${options.name}-${value}"`
           : `${prefix}${value}"`,
     )
     .replace(/("id"\s*:\s*")[a-f0-9]{32}"/g, '$100000000000000000000000000000000"')
     .replace(/("APP_URL"\s*:\s*")https:[^"]+"/g, `$1${options.url}"`)
+  result = result
+    .replace(/("(?:AI_GATEWAY_ACCOUNT_ID|AI_GATEWAY_ID|R2_ACCOUNT_ID)"\s*:\s*")[^"]*"/g, '$1"')
+    .replace(/("R2_FILES_BUCKET"\s*:\s*")(files(?:-staging)?)"/g, `$1${options.name}-$2"`)
   if (!media || !options.mediaProviders.includes('workers-ai')) {
     result = result.replace(/"ai"\s*:\s*\{[^}]*\},?/g, '')
   }
@@ -183,13 +186,30 @@ export function setupChecklist(options) {
     'Postgres（app / migrator / readonly 账号、备份）及 Cloudflare Tunnel / Workers VPC',
     `Workers：${options.name}-web、${options.name}-jobs（staging 使用 -staging 后缀）`,
     'Hyperdrive：HYPERDRIVE（关缓存）/ HYPERDRIVE_CACHED（开缓存），替换所有环境的 id',
-    'KV：CACHE，替换所有环境的 id；Rate Limiting：RL_AUTH / RL_AI，分配独立 namespace_id',
+    'KV：CACHE，替换所有环境的 id；Rate Limiting：RL_AUTH / RL_AI / RL_API，分配独立 namespace_id',
     `Queues：${options.name}-email、${options.name}-events（staging 使用 -staging 后缀）`,
     'Resend：验证发件域名；本地 EMAIL_TRANSPORT=log 不需要凭据',
     '域名 / DNS 与 Cloudflare 部署账号；CI 的 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID',
+    `R2：FILES 私有桶 ${options.name}-files（staging 使用 -staging 后缀）；文本模式也保留文件清理 Cron 所需绑定`,
+    'Sentry：为 web / jobs 配置 DSN；CI 上传 source map 并使用部署提交 SHA 作为 release',
   ]
-  const secrets = ['BETTER_AUTH_SECRET', 'RESEND_API_KEY']
-  const vars = ['APP_URL', 'EMAIL_TRANSPORT', 'EMAIL_FROM', 'EMAIL_REPLY_TO']
+  const secrets = ['BETTER_AUTH_SECRET', 'RESEND_API_KEY', 'SENTRY_DSN']
+  const vars = [
+    'APP_URL',
+    'EMAIL_TRANSPORT',
+    'EMAIL_FROM',
+    'EMAIL_REPLY_TO',
+    'SENTRY_ENVIRONMENT',
+    'APP_VERSION',
+  ]
+  const ciSecrets = [
+    'CLOUDFLARE_API_TOKEN',
+    'CLOUDFLARE_ACCOUNT_ID',
+    'STAGING_MIGRATION_DATABASE_URL',
+    'SENTRY_AUTH_TOKEN',
+    'SENTRY_ORG',
+    'SENTRY_PROJECT',
+  ]
   for (const provider of options.oauth) {
     resources.push(`${provider} OAuth 应用：登记新域名的回调 URL`)
     secrets.push(`${provider.toUpperCase()}_CLIENT_ID`, `${provider.toUpperCase()}_CLIENT_SECRET`)
@@ -219,7 +239,7 @@ export function setupChecklist(options) {
   if (media) {
     resources.push(
       `Workflow：${options.name}-ai-media（定义在 jobs，web 的 script_name 指向 jobs）`,
-      'R2：FILES 桶（绑定与 CORS）及仅授权该桶的 S3 令牌',
+      'R2：配置 FILES 桶 CORS 与仅授权该桶的 S3 令牌；R2_FILES_BUCKET 必须与绑定桶名一致',
     )
     secrets.push('R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY')
     if (options.mediaProviders.includes('fal')) {
@@ -231,7 +251,7 @@ export function setupChecklist(options) {
     }
     vars.push('R2_ACCOUNT_ID', 'R2_FILES_BUCKET')
   }
-  return { resources, secrets, vars }
+  return { resources, secrets, vars, ciSecrets }
 }
 
 async function replacements(source, options, app) {
@@ -326,6 +346,23 @@ export async function createProject(input, source = root) {
           if (/^apps\/(web|jobs)\/wrangler.jsonc$/.test(path)) {
             text = wranglerConfig(text, options, path.split('/')[1])
           }
+          // 消费者与测试 fixture 使用同一组队列名，避免改 manifest 后消息全部进入未知队列分支。
+          if (path === 'apps/jobs/src/index.ts' || /^apps\/jobs\/test\/.*\.ts$/.test(path)) {
+            text = text.replace(
+              /(['"])(email|events)(-staging)?\1/g,
+              (_match, quote, queue, suffix = '') =>
+                `${quote}${options.name}-${queue}${suffix}${quote}`,
+            )
+          }
+          if (path === '.github/workflows/deploy-staging.yml') {
+            text = text.replace(
+              /(STAGING_URL:\s*)https:\/\/\S+/g,
+              '$1https://configure-staging-url.invalid',
+            )
+          }
+          if (path === 'scripts/staging/files-cors.json') {
+            text = text.replace(/https:\/\/web-staging\.[^"\s]+/g, options.url)
+          }
           content = Buffer.from(replace(text))
         }
         await writeFile(to, content)
@@ -341,7 +378,7 @@ export async function createProject(input, source = root) {
   for (const app of ['web', 'jobs']) {
     await writeFile(join(target, 'apps', app, '.dev.vars.example'), example)
   }
-  const report = `# ${options.name} 初始化清单\n\n## 基础设施与账号\n\n${checklist.resources.map((s) => `- [ ] ${s}`).join('\n')}\n\n## Secrets\n\n${checklist.secrets.map((s) => `- ${s}`).join('\n')}\n\n## 非敏感 Vars\n\n${checklist.vars.map((s) => `- ${s}`).join('\n')}\n\n所有部署资源 ID 为占位值，部署前逐项配置；参考 docs/07-infrastructure.md。\n复制 apps/web 与 apps/jobs 的 .dev.vars.example 后填写，本地密钥不提交。\n自检只运行单元测试，集成测试需独立数据库与迁移配置；上线前另做 staging 验收。\n`
+  const report = `# ${options.name} 初始化清单\n\n## 基础设施与账号\n\n${checklist.resources.map((s) => `- [ ] ${s}`).join('\n')}\n\n## Worker Secrets\n\n${checklist.secrets.map((s) => `- ${s}`).join('\n')}\n\n## 非敏感 Worker Vars\n\n${checklist.vars.map((s) => `- ${s}`).join('\n')}\n\n## GitHub staging environment Secrets（不写入 Worker）\n\n${checklist.ciSecrets.map((s) => `- ${s}`).join('\n')}\n\n所有部署资源 ID 为占位值，部署前逐项配置；参考 docs/07-infrastructure.md。\nAI Gateway / R2 账号标识已清空；配置所选功能使用的新资源。\n将 .github/workflows/deploy-staging.yml 的 STAGING_URL 占位值改为实际可访问的 staging URL，并核对该环境的 APP_URL。\nSENTRY_DSN 分别写入 web 与 jobs secrets；SENTRY_ENVIRONMENT 设为 staging、production 或临时验收专用 smoke。\nAPP_VERSION 使用同一个完整提交 SHA，CI 已负责注入并上传 source map；手动部署按 docs/runbooks/sentry.md 操作。\n复制 apps/web 与 apps/jobs 的 .dev.vars.example 后填写，本地密钥不提交；线上 secrets 需分别写入 Worker。\n自检只运行单元测试，集成测试需独立数据库与迁移配置；上线前另做 staging 验收。\n`
   await writeFile(join(target, 'PROJECT_SETUP.md'), report)
   return { target, options, checklist, report }
 }

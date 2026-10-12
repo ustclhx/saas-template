@@ -9,7 +9,7 @@ declare namespace Cloudflare {
   type TextEnv = import('@saas/ai').TextModelEnv
   interface Env extends PaymentEnv, StorageEnv, MediaEnv, TextEnv {
     SENTRY_DSN?: string
-    SENTRY_ENVIRONMENT?: 'development' | 'staging' | 'production'
+    SENTRY_ENVIRONMENT?: 'development' | 'staging' | 'production' | 'smoke'
     /** 不带查询缓存（app-db）：健康检查与写操作 */
     HYPERDRIVE: Hyperdrive
     /** 带查询缓存（app-db-cached）：可容忍短暂旧数据的读 */

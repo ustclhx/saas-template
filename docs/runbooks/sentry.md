@@ -8,7 +8,7 @@ staging 只由 main 自动发布；本分支不手动部署，1.2 由协调者�
 | 配置 | 位置 | 用途 |
 |---|---|---|
 | `SENTRY_DSN` | web-staging、jobs-staging 的 Wrangler secrets | 服务端发送事件 |
-| `SENTRY_ENVIRONMENT` | 对应 Wrangler 环境 vars | 仅 staging / production 启用；development 与测试默认不初始化 |
+| `SENTRY_ENVIRONMENT` | 对应 Wrangler 环境 vars | 仅 staging / production / smoke 启用；development 与测试默认不初始化 |
 | `SENTRY_AUTH_TOKEN`、`SENTRY_ORG`、`SENTRY_PROJECT` | GitHub staging environment secrets | CI 创建 release、上传 source map、finalize |
 | `APP_VERSION` | CI 构建/部署参数 | 完整提交 SHA；web health version 与 Sentry release 相同 |
 
@@ -81,7 +81,7 @@ eventId=`a9a002c620074b97a8f328a04a1e5a43`。
 
 ## 5. 排查
 
-- 没有事件：确认 Worker secret DSN 存在、`SENTRY_ENVIRONMENT` 为 staging/production，并确认请求真正到达 Worker。认证失败、业务已处理错误和静态 assets 请求不会产生未处理异常事件。
+- 没有事件：确认 Worker secret DSN 存在、`SENTRY_ENVIRONMENT` 为 staging/production/smoke，并确认请求真正到达 Worker。认证失败、业务已处理错误和静态 assets 请求不会产生未处理异常事件。
 - release 不一致：比较事件 release、health version、Actions 检出 SHA 与 jobs 部署 `APP_VERSION` var，必须都是完整 SHA。
 - 没有源码映射：确认 bundle 的 release/dist、debug ID、map 的 `sourcesContent`，以及部署确实读取注入后的 JS。可在仅含 Sentry 环境变量的受控终端运行 `pnpm exec sentry-cli sourcemaps explain <event-id>`；不要开启含敏感请求详情的 debug 日志。
 - 上传失败：检查 GitHub staging secrets 与 token 的项目上传权限；保持失败阻止部署，不增加忽略错误或本地上传绕过。

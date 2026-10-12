@@ -33,6 +33,8 @@ async function fixture(t) {
       JSON.stringify({
         name: app,
         ai: { binding: 'AI' },
+        r2_buckets: [{ binding: 'FILES', bucket_name: 'files' }],
+        vars: { R2_FILES_BUCKET: 'files' },
         hyperdrive: [{ binding: 'HYPERDRIVE', id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }],
         workflows: [{ name: 'ai-media', script_name: 'jobs' }],
         queues: { producers: [{ queue: 'email' }] },
@@ -40,12 +42,32 @@ async function fixture(t) {
           staging: {
             name: `${app}-staging`,
             ai: { binding: 'AI' },
-            vars: { APP_URL: 'https://old.workers.dev' },
+            r2_buckets: [{ binding: 'FILES', bucket_name: 'files-staging' }],
+            vars: {
+              APP_URL: 'https://old.workers.dev',
+              R2_FILES_BUCKET: 'files-staging',
+              R2_ACCOUNT_ID: 'template-account',
+              AI_GATEWAY_ACCOUNT_ID: 'template-account',
+              AI_GATEWAY_ID: 'template-gateway',
+            },
           },
         },
       }),
     )
   }
+  await file(
+    'apps/jobs/src/index.ts',
+    "const EMAIL_QUEUES = new Set(['email', 'email-staging'])\nconst EVENTS_QUEUES = new Set(['events', 'events-staging'])",
+  )
+  await file('apps/jobs/test/queues.test.ts', "const queues = ['email', 'events-staging']")
+  await file(
+    '.github/workflows/deploy-staging.yml',
+    'env:\n  STAGING_URL: https://old.workers.dev\n',
+  )
+  await file(
+    'scripts/staging/files-cors.json',
+    '{"origins":["https://web-staging.old.workers.dev"]}',
+  )
   return {
     dir,
     source,
@@ -134,11 +156,44 @@ test('生成副本改名与配置，排除各级密钥、链接和产物', async
   assert.equal(wrangler.workflows, undefined)
   assert.equal(wrangler.ai, undefined)
   assert.equal(wrangler.env.staging.ai, undefined)
+  for (const [env, bucket] of [
+    [wrangler, 'acme-files'],
+    [wrangler.env.staging, 'acme-files-staging'],
+  ]) {
+    assert.equal(env.r2_buckets[0].bucket_name, bucket)
+    assert.equal(env.vars.R2_FILES_BUCKET, bucket)
+  }
+  for (const key of ['R2_ACCOUNT_ID', 'AI_GATEWAY_ACCOUNT_ID', 'AI_GATEWAY_ID']) {
+    assert.equal(wrangler.env.staging.vars[key], '')
+  }
+  assert.match(result.report, /R2：FILES 私有桶 acme-files/)
+  assert.match(result.report, /SENTRY_DSN/)
+  assert.match(result.report, /SENTRY_AUTH_TOKEN/)
+  assert.match(result.report, /RL_API/)
+  assert.doesNotMatch(result.report, /R2_SECRET_ACCESS_KEY/)
+  const worker = await readFile(join(result.target, 'apps/jobs/src/index.ts'), 'utf8')
+  assert.match(worker, /new Set\(\['acme-email', 'acme-email-staging'\]\)/)
+  assert.match(worker, /new Set\(\['acme-events', 'acme-events-staging'\]\)/)
+  const queueFixtures = await readFile(join(result.target, 'apps/jobs/test/queues.test.ts'), 'utf8')
+  assert.match(queueFixtures, /\['acme-email', 'acme-events-staging'\]/)
+  const ci = await readFile(join(result.target, '.github/workflows/deploy-staging.yml'), 'utf8')
+  assert.match(ci, /STAGING_URL: https:\/\/configure-staging-url\.invalid/)
+  assert.doesNotMatch(ci, /old\.workers\.dev/)
+  assert.equal(
+    JSON.parse(await readFile(join(result.target, 'scripts/staging/files-cors.json'), 'utf8'))
+      .origins[0],
+    'https://acme.example',
+  )
   assert.doesNotMatch(result.report, /FAL_KEY|Workflow：|STRIPE_SECRET|GOOGLE_CLIENT/)
   const example = await readFile(join(result.target, '.dev.vars.example'), 'utf8')
   for (const line of example.split('\n').filter((line) => line && !line.startsWith('#'))) {
     assert.match(line, /^[A-Z_]+=$/)
   }
+  assert.match(example, /SENTRY_DSN=\n/)
+  assert.doesNotMatch(
+    example,
+    /SENTRY_AUTH_TOKEN|SENTRY_ORG|SENTRY_PROJECT|STAGING_MIGRATION_DATABASE_URL/,
+  )
   // 生成的模板也可以继续作为源，不依赖未加引号的对象键。
   await createProject({ ...f.input, name: 'next', target: join(f.dir, 'next') }, result.target)
 })

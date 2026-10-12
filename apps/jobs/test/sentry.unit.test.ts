@@ -21,13 +21,15 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-it('only enables Sentry with a DSN in staging or production', () => {
+it('only enables Sentry with a DSN in staging, production or smoke', () => {
   const dsn = 'https://fixture@example.com/1'
   expect(sentryEnabled({ SENTRY_DSN: dsn, SENTRY_ENVIRONMENT: 'development' })).toBe(false)
   expect(sentryEnabled({ SENTRY_DSN: dsn })).toBe(false)
   expect(sentryEnabled({ SENTRY_ENVIRONMENT: 'staging' })).toBe(false)
   expect(sentryEnabled({ SENTRY_DSN: dsn, SENTRY_ENVIRONMENT: 'staging' })).toBe(true)
   expect(sentryEnabled({ SENTRY_DSN: dsn, SENTRY_ENVIRONMENT: 'production' })).toBe(true)
+  expect(sentryEnabled({ SENTRY_DSN: dsn, SENTRY_ENVIRONMENT: 'smoke' })).toBe(true)
+  expect(sentryEnabled({ SENTRY_ENVIRONMENT: 'smoke' })).toBe(false)
   mocks.client = false
   captureJobException(new Error('local failure'))
   expect(mocks.capture).not.toHaveBeenCalled()

@@ -8,7 +8,7 @@ import {
 
 export interface SentryEnv {
   SENTRY_DSN?: string
-  SENTRY_ENVIRONMENT?: 'development' | 'staging' | 'production'
+  SENTRY_ENVIRONMENT?: 'development' | 'staging' | 'production' | 'smoke'
   APP_VERSION?: string
 }
 
@@ -16,7 +16,9 @@ export interface SentryEnv {
 export function sentryEnabled(env: SentryEnv): boolean {
   return Boolean(
     env.SENTRY_DSN &&
-      (env.SENTRY_ENVIRONMENT === 'staging' || env.SENTRY_ENVIRONMENT === 'production'),
+      (env.SENTRY_ENVIRONMENT === 'staging' ||
+        env.SENTRY_ENVIRONMENT === 'production' ||
+        env.SENTRY_ENVIRONMENT === 'smoke'),
   )
 }
 
