@@ -64,3 +64,77 @@ jobs:
       - run: pnpm test
       # turbo run build：没有 build 脚本的包会被跳过
       - run: pnpm build
+
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: saas_ci_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d saas_ci_e2e"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: postgres://app:app@localhost:5432/saas_ci_e2e
+      CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_CACHED: postgres://app:app@localhost:5432/saas_ci_e2e
+      MIGRATION_DATABASE_URL: postgres://migrator:migrator@localhost:5432/saas_ci_e2e
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Initialize database roles
+        env:
+          PGURL: postgres://postgres:postgres@localhost:5432/saas_ci_e2e
+        run: |
+          psql "$PGURL" -v ON_ERROR_STOP=1 -f infra/local/initdb/01-roles.sql
+          psql "$PGURL" -v ON_ERROR_STOP=1 -f infra/local/initdb/02-db-grants.sql
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Get Playwright version
+        id: playwright
+        working-directory: apps/web
+        run: node -p "'version=' + require('@playwright/test/package.json').version" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        id: browsers
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}-chromium-shell
+      - name: Install Chromium
+        if: steps.browsers.outputs.cache-hit != 'true'
+        run: pnpm --filter @saas/web exec playwright install --with-deps --only-shell chromium
+      - name: Install Chromium system dependencies
+        if: steps.browsers.outputs.cache-hit == 'true'
+        run: pnpm --filter @saas/web exec playwright install-deps chromium
+      - name: Prepare local authentication and migrate
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import { randomBytes } from 'node:crypto'
+          const vars = readFileSync('apps/web/.dev.vars.example', 'utf8')
+            .replace(/^BETTER_AUTH_SECRET=.*$/m, `BETTER_AUTH_SECRET=${randomBytes(32).toString('base64')}`)
+          writeFileSync('apps/web/.dev.vars', vars, { mode: 0o600 })
+          NODE
+          pnpm --filter @saas/db db:migrate
+      - name: Run local e2e smoke
+        run: pnpm --filter @saas/web test:e2e:smoke
+      # 只上传 HTML report；冒烟配置禁用 trace、video 和 screenshot，不上传服务器日志。
+      - uses: actions/upload-artifact@v6
+        if: failure()
+        with:
+          name: playwright-smoke-report
+          path: apps/web/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore

@@ -7,6 +7,7 @@
     "vite.config.ts",
     "vitest.config.ts",
     "playwright.config.ts",
+    "playwright.smoke.config.ts",
     "playwright.disconnect.config.ts",
     "playwright.stripe.config.ts",
     "scripts",

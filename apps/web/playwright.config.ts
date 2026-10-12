@@ -17,6 +17,7 @@ export default defineConfig({
   testDir: './e2e',
   testIgnore: [
     /\/e2e\/staging-acceptance\//,
+    '**/smoke.spec.ts',
     ...(!stagingURL ? ['**/staging/**', '**/ai-chat-disconnect.spec.ts'] : []),
   ],
   // 认证入口按 IP 限流（RL_AUTH 每分钟 10 次），串行执行避免并发请求触发 429
