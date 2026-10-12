@@ -13,4 +13,4 @@
 ## 3. 集成与交付
 
 - [x] 3.1 运行 openspec validate --strict、pnpm check、check:deps、check:singletons、typecheck、test、build、dedupe --check 以及生成器验收；记录通过结果与任何未完成外部验收。
-- [ ] 3.2 rebase origin/main 后复核，提交并推送同一 PR（提案与实现）；PR 说明 Worker secret、流水线不会覆盖及协调者合并后配置 staging，卡片设 in-review 并评论 PR 号。
+- [x] 3.2 rebase origin/main 后复核，提交并推送同一 PR（提案与实现）；PR 说明 Worker secret、流水线不会覆盖及协调者合并后配置 staging，卡片设 in-review 并评论 PR 号。
