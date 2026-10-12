@@ -1,10 +1,10 @@
 import { type Database, type Plan, type PlanPrice, plan, planPrice } from '@saas/db'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import { newId } from '@saas/shared'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import type { PaymentProvider } from './provider.ts'
 
-/** Template examples in USD cents, not approved business prices. Models are set in P3. */
+/** Template examples in USD cents, not approved business prices. Model permissions are managed in the admin console. */
 export const EXAMPLE_CATALOG = [
   {
     key: 'free',
@@ -102,7 +102,14 @@ export async function seedCatalog(db: Database): Promise<void> {
       const [localPlan] = await tx
         .insert(plan)
         .values(values)
-        .onConflictDoUpdate({ target: plan.key, set: values })
+        .onConflictDoUpdate({
+          target: plan.key,
+          set: {
+            ...values,
+            // 重跑 seed 保留后台授权；在同一个 upsert 内合并，避免覆盖并发编辑。
+            features: sql`excluded.features || jsonb_build_object('models', ${plan.features}->'models')`,
+          },
+        })
         .returning()
       if (!localPlan) throw new Error('Catalog plan upsert returned no row')
       // The upsert locks the plan until commit, serializing tuple creation across seed runs.

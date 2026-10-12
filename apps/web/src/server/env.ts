@@ -15,6 +15,7 @@ const bindingWith = <T>(...methods: string[]) =>
 
 /** apps/web 需要的环境变量与绑定：共享 schema 加上 web 独有的绑定。 */
 export const webEnvSchema = envSchema.extend({
+  BOOTSTRAP_ADMIN_EMAILS: z.string().optional(),
   AI_MEDIA_WORKFLOW:
     templateConfig.ai.image || templateConfig.ai.video
       ? bindingWith<Cloudflare.Env['AI_MEDIA_WORKFLOW']>('create', 'get')

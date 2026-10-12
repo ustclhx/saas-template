@@ -272,6 +272,10 @@ INSERT INTO credit_hold (...), credit_hold_allocation (...);
 }
 ```
 
+- 平台管理员在 `/admin/billing/plans` 维护 `features.models`：多选现有模型 key 或 `*`，
+  保留并警告不存在的历史 key，其他权益和价格不变；写入经过实时鉴权并记录前后审计。
+  下一次权益读取即生效，无跨请求权益缓存。首次 seed 的 free 默认 `models=[]`；
+  重跑 `billing:seed` 保留既有 models（包括空列表），其他示例配置仍按 seed 更新。
 - 当前权益 = 所有**生效中**订阅对应 plan 中 `sort` 最高者的 features，否则取 `free` plan；可叠加积分包附带的权益（首版不做）。同一空间可能短暂存在两个生效订阅（换套餐重叠期，见 §6）。
 - 使用方式：`await can(ctx, 'ai.useModel', { modelKey })`、`limit(ctx, 'maxConcurrentTasks')`。
 - 「生效中」在**读取时计算**，不依赖定时任务改状态：

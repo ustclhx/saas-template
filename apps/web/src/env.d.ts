@@ -36,6 +36,8 @@ declare namespace Cloudflare {
     TURNSTILE_SITE_KEY?: string
     // 以下为 secrets（wrangler secret / .dev.vars），按模板配置在 checkEnv 中校验
     BETTER_AUTH_SECRET?: string
+    /** 可选首次管理员邮箱名单；仅已验证且未封禁账号会被提升 */
+    BOOTSTRAP_ADMIN_EMAILS?: string
     TURNSTILE_SECRET_KEY?: string
     GOOGLE_CLIENT_ID?: string
     GOOGLE_CLIENT_SECRET?: string

@@ -1,5 +1,6 @@
 import { type Database, plan, planPrice } from '@saas/db'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
+import { SQL } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
 import { seedCatalog, syncCatalog } from './catalog.ts'
 import type { PaymentProvider, PlanSyncInput } from './provider.ts'
@@ -42,8 +43,14 @@ function memoryDb() {
               return {
                 async returning() {
                   let row = plans.find((p) => p.key === value.key)
-                  if (row) Object.assign(row, set)
-                  else {
+                  if (row) {
+                    // SQL 合并的实际行为由 catalog.postgres.test.ts 验证；这里只模拟 upsert。
+                    const features =
+                      set.features instanceof SQL
+                        ? { ...(value.features as Row), models: (row.features as Row).models }
+                        : set.features
+                    Object.assign(row, set, { features })
+                  } else {
                     row = { ...value, id: crypto.randomUUID() }
                     plans.push(row)
                   }

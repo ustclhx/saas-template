@@ -89,7 +89,8 @@ export function testUsers(prefix: string) {
       // 个人空间的 id 即用户 id（personal-workspace.ts）
       const orgs = [...ids, ...createdOrgs]
       await createDb(env.HYPERDRIVE_MIGRATOR)
-        .$client`delete from audit_log where actor_user_id in ${sql(ids)} or workspace_id in ${sql(orgs)}`
+        .$client`delete from audit_log where actor_user_id in ${sql(ids)} or workspace_id in ${sql(orgs)}
+          or (target_type = 'user' and target_id in ${sql(ids)})`
       await sql`delete from invitation where organization_id in ${sql(orgs)} or inviter_id in ${sql(ids)}`
       await sql`delete from member where organization_id in ${sql(orgs)} or user_id in ${sql(ids)}`
       await sql`delete from organization where id in ${sql(orgs)}`

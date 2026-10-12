@@ -7,6 +7,8 @@ import type { KvStore } from './session.ts'
 export interface AuthEnv {
   readonly BETTER_AUTH_SECRET?: string | undefined
   readonly APP_URL?: string | undefined
+  /** 已验证邮箱的首次管理员名单；逗号分隔，空值禁用 */
+  readonly BOOTSTRAP_ADMIN_EMAILS?: string | undefined
   readonly GOOGLE_CLIENT_ID?: string | undefined
   readonly GOOGLE_CLIENT_SECRET?: string | undefined
   readonly GITHUB_CLIENT_ID?: string | undefined
@@ -33,6 +35,7 @@ export function parseAuthEnv(env: AuthEnv, config: TemplateConfig) {
     // Better Auth 要求至少 32 个字符
     BETTER_AUTH_SECRET: z.string().min(32),
     APP_URL: z.url(),
+    BOOTSTRAP_ADMIN_EMAILS: z.string().optional(),
     GOOGLE_CLIENT_ID: oauth.has('google') ? secret : optional,
     GOOGLE_CLIENT_SECRET: oauth.has('google') ? secret : optional,
     GITHUB_CLIENT_ID: oauth.has('github') ? secret : optional,

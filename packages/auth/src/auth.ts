@@ -8,6 +8,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError } from 'better-auth/api'
 import { admin, emailOTP, magicLink, organization, twoFactor } from 'better-auth/plugins'
 import { accountSettings, userSettingsFields } from './account-settings.ts'
+import { adminBootstrap } from './admin-bootstrap.ts'
 import { type DeletionStep, deletionPlugin } from './deletion.ts'
 import type { SendAuthEmail } from './email.ts'
 import { emailVerificationOptions } from './email-verification.ts'
@@ -52,6 +53,7 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
   const { config, sendEmail } = deps
   const vars = parseAuthEnv(env, config)
   const workspaceHooks = personalWorkspaceHooks(db)
+  const bootstrapAdmin = adminBootstrap(db, vars.BOOTSTRAP_ADMIN_EMAILS)
 
   return betterAuth({
     appName: config.app.name,
@@ -88,6 +90,7 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
           }),
           after: async (user) => {
             await workspaceHooks.user.create.after(user)
+            await bootstrapAdmin(user.id, 'user.create')
             // Better Auth defers create.after until registration commits. Keep the
             // injected callback outside the workspace hook's best-effort catch.
             if (user.emailVerified && deps.onEmailVerified) {
@@ -97,6 +100,20 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
               })
               if (personal) await deps.onEmailVerified({ id: user.id, email: user.email })
             }
+          },
+        },
+        update: {
+          // OTP 与 magic link 直接持久化验证标记，不经过 afterEmailVerification。
+          after: async (user) => {
+            if (user.emailVerified) await bootstrapAdmin(user.id, 'user.update')
+          },
+        },
+      },
+      session: {
+        create: {
+          ...workspaceHooks.session.create,
+          after: async (session) => {
+            await bootstrapAdmin(session.userId, 'session.create')
           },
         },
       },
@@ -125,6 +142,7 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
       // Verification remains committed if this callback fails: retry via the
       // authenticated claim entry, since replaying a verified link skips this hook.
       afterEmailVerification: async (user) => {
+        await bootstrapAdmin(user.id, 'email.verify')
         await deps.onEmailVerified?.({ id: user.id, email: user.email })
       },
     },

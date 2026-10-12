@@ -170,6 +170,14 @@ test('生成副本改名与配置，排除各级密钥、链接和产物', async
   assert.match(result.report, /SENTRY_DSN/)
   assert.match(result.report, /SENTRY_AUTH_TOKEN/)
   assert.match(result.report, /RL_API/)
+  assert.match(result.report, /BOOTSTRAP_ADMIN_EMAILS（可选，仅 web/)
+  assert.match(result.report, /已验证且未封禁才提升/)
+  assert.match(result.report, /移除名单不会自动撤销/)
+  assert.match(result.report, /admin\/billing\/plans/)
+  assert.match(
+    await readFile(join(result.target, 'apps/web/.dev.vars.example'), 'utf8'),
+    /^BOOTSTRAP_ADMIN_EMAILS=$/m,
+  )
   assert.doesNotMatch(result.report, /R2_SECRET_ACCESS_KEY/)
   const worker = await readFile(join(result.target, 'apps/jobs/src/index.ts'), 'utf8')
   assert.match(worker, /new Set\(\['acme-email', 'acme-email-staging'\]\)/)

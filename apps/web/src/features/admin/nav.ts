@@ -15,6 +15,12 @@ export const ADMIN_NAV = linkOptions([
     activeOptions: { exact: true, includeSearch: false },
   },
   {
+    to: '/admin/billing/plans',
+    search: { offset: 0 },
+    label: 'Plan model access',
+    activeOptions: { includeSearch: false },
+  },
+  {
     to: '/admin/billing/refunds',
     search: { offset: 0 },
     label: ADMIN_COPY.nav.refunds,
