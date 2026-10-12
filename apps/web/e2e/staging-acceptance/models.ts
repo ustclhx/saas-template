@@ -11,12 +11,12 @@ export const workersImage = {
   providerModelId: '@cf/black-forest-labs/flux-1-schnell',
   pricing: { mode: 'per_call', credits: 1, chargeOn: 'success' },
   sort: -1000,
-  params: { prompt, num_steps: 1 },
+  params: { prompt, steps: 1 },
   paramsSchema: {
     type: 'object',
     properties: {
       prompt: promptProperty,
-      num_steps: { type: 'integer', minimum: 1, maximum: 8, default: 1 },
+      steps: { type: 'integer', minimum: 1, maximum: 8, default: 1 },
     },
     required: ['prompt'],
     additionalProperties: false,
