@@ -26,7 +26,7 @@
 
 - [x] 4.1 auth/workspace owner：迁移 packages/auth 与 apps/web/features/auth、workspace 和 auth/workspace API 的 env、KV、IP、rate 类型与调用；保持实时会话校验、异步发信与可选 Turnstile。验证：相关 CF 测试及 Node auth DB/cache 集成通过，关闭 Turnstile 不要求其密钥且仍限流；更新认证适配文档。共享 server/auth*.ts 由协调者合入。（R2、C1、C2、H5）
 - [x] 4.2 billing/credits/admin owner：迁移相关业务包与 web 计费、后台 features/routes 的 env/db/cache/queue 调用，保持 adminAction 与账本边界。验证：既有支付、积分、后台权限测试及对应 Node 非队列业务测试通过，无迁移副作用、无直接 CF 导入；记录本批验收与依赖 B 的测试。（R2、D4）
-- [ ] 4.3 AI owner：迁移 packages/ai 与 web AI/API v1/chat 的 env、限流、waitUntil、workflow 类型与调用；保留预算/检查点/媒体业务 runner 契约。验证：既有 CF 聊天/媒体用例和 Node 文本业务用例通过，依赖 B/C 的媒体任务未伪验收；不修改组 6 的模型出口工厂。（R2、A1、A3）
+- [x] 4.3 AI owner：迁移 packages/ai 与 web AI/API v1/chat 的 env、限流、waitUntil、workflow 类型与调用；保留预算/检查点/媒体业务 runner 契约。验证：既有 CF 聊天/媒体用例和 Node 文本业务用例通过，依赖 B/C 的媒体任务未伪验收；不修改组 6 的模型出口工厂。（R2、A1、A3）
 - [ ] 4.4 storage/growth/public owner：隔离 packages/storage 的 R2/FixedLengthStream 细节为 CF 专用入口，迁移 web files/growth/公开页/i18n 的 env 访问；Node 未装配 C 的文件能力明确拒绝。验证：CF 文件与公开页测试通过，Node 无 DB 公开页预渲染正常、文件不可用时无预扣/假成功；文档标明 C 接口。（R2）
 - [x] 4.5 jobs owner：迁移 apps/jobs 的 queue handlers、cron、media-runner 为中立能力与类型，Cloudflare WorkflowEntrypoint 留 CF entry，Sentry capture/tag 使用可注入观测边界（Node 暂为共享日志）。验证：jobs 现有 CF 测试全部通过，cron 独立任务失败仍遵循 allSettled，Node 可加载业务 handler 不加载 Workers/Sentry CF 包；记录 B 接入位置。（R2）
 - [ ] 4.6 协调者整合 apps/web 的 server/middleware/auth/env、start 与其余 routes 的调用及 Cloudflare composition entry，清除残留业务 Workers 全局类型；同步 manifests 与 lockfile。验证：全量 cloudflare:* / Cloudflare.Env / binding 类型定向扫描只剩允许位置，pnpm check:deps、check:singletons、dedupe --check、双目标类型检查通过。（R2）

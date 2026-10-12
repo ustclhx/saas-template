@@ -14,7 +14,7 @@ import {
   validateMediaParams,
   verifyMediaCallbackSignature,
 } from '@saas/ai'
-import { type AuthContextSource, type RateLimiter, requireFreshSession } from '@saas/auth'
+import { type AuthContextSource, requireFreshSession } from '@saas/auth'
 import { CreditsError, hold, lockWorkspaceCredits } from '@saas/credits'
 import {
   type AiTask,
@@ -27,6 +27,7 @@ import {
   scoped,
 } from '@saas/db'
 import { type Entitlements, getEntitlements, requireEntitlement } from '@saas/entitlements'
+import { type Capability, type RateLimiter, requireCapability, type Workflow } from '@saas/platform'
 import { AppError, MEDIA_DONE_EVENT, newId, toErrorResponse } from '@saas/shared'
 import { log, setLogContext } from '@saas/shared/log'
 import { getStorageUsage } from '@saas/storage'
@@ -42,7 +43,7 @@ export interface MediaHttpDeps {
   db: Database
   auth: AuthContextSource
   env: MediaHttpEnv
-  workflow: Pick<Workflow<{ taskId: string }>, 'create' | 'get'>
+  workflow: Capability<Workflow<{ taskId: string }>>
   rateLimiter: RateLimiter
   providerFactory?: (env: MediaHttpEnv, task: AiTask) => TaskMediaProvider
   entitlements?: (
@@ -164,12 +165,12 @@ export async function submitWorkspaceMedia(
   resolved: ResolvedWorkspace,
   deps: WorkspaceMediaDeps,
 ): Promise<AiTask> {
+  const workflow = requireCapability(deps.workflow, 'Media workflow')
   const callbackOrigin = deps.callbackOrigin
   if (
     deps.rateLimiter &&
-    !(
-      await deps.rateLimiter.limit({ key: `ai:${resolved.workspace.id}:${resolved.member.userId}` })
-    ).success
+    !(await deps.rateLimiter.limit('ai', `ai:${resolved.workspace.id}:${resolved.member.userId}`))
+      .success
   )
     throw new AppError('RATE_LIMITED', 'Too many requests, please try again later', {
       status: 429,
@@ -255,7 +256,7 @@ export async function submitWorkspaceMedia(
     return tenant.updateById(aiTask, taskId, { holdId: reservation.id })
   })
   try {
-    await deps.workflow.create({ id: task.id, params: { taskId: task.id } })
+    await workflow.create({ id: task.id, params: { taskId: task.id } })
   } catch {
     await settleMediaTask(deps.db, {
       workspaceId: task.workspaceId,
@@ -384,7 +385,9 @@ export function handleMediaCancel(
       },
       async () => {
         if (task.workflowInstanceId) {
-          const instance = await deps.workflow.get(task.workflowInstanceId)
+          const instance = await requireCapability(deps.workflow, 'Media workflow').get(
+            task.workflowInstanceId,
+          )
           if (['queued', 'running', 'paused', 'waiting'].includes((await instance.status()).status))
             await instance.terminate()
         }
@@ -464,7 +467,9 @@ export function handleMediaWebhook(
     })
     try {
       if (located.workflowInstanceId)
-        await (await deps.workflow.get(located.workflowInstanceId)).sendEvent({
+        await (
+          await requireCapability(deps.workflow, 'Media workflow').get(located.workflowInstanceId)
+        ).sendEvent({
           type: MEDIA_DONE_EVENT,
           payload: { taskId },
         })

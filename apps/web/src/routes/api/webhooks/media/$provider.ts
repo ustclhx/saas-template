@@ -1,19 +1,10 @@
-import { env } from 'cloudflare:workers'
 import { getMediaProviderDefinition } from '@saas/ai'
-import { createDb } from '@saas/db'
 import { createFileRoute } from '@tanstack/react-router'
 import { handleMediaWebhook } from '../../../../features/ai/media-tasks.ts'
-import { getAuth } from '../../../../server/auth.ts'
+import { getAiHttpDeps } from '../../../../features/ai/runtime.ts'
 
 function deps() {
-  const db = createDb(env.HYPERDRIVE)
-  return {
-    db,
-    auth: getAuth(env, db),
-    env,
-    workflow: env.AI_MEDIA_WORKFLOW,
-    rateLimiter: env.RL_AI,
-  }
+  return getAiHttpDeps()
 }
 
 export const Route = createFileRoute('/api/webhooks/media/$provider')({

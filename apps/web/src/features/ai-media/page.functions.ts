@@ -1,4 +1,3 @@
-import { env } from 'cloudflare:workers'
 import { dbModelStore, listAvailableModels } from '@saas/ai'
 import { file, scoped } from '@saas/db'
 import { getEntitlements } from '@saas/entitlements'
@@ -6,6 +5,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { and, desc, eq, isNull, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
 import { withWorkspace } from '../../server/middleware.ts'
+import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 
 export const getMediaSubmitPage = createServerFn({ method: 'GET' })
@@ -16,7 +16,7 @@ export const getMediaSubmitPage = createServerFn({ method: 'GET' })
       pastDueGraceDays: templateConfig.billing.pastDueGraceDays,
     })
     const available = await listAvailableModels(
-      { store: dbModelStore(context.db), cache: env.CACHE },
+      { store: dbModelStore(context.db), cache: getWebRuntime().cache },
       entitlements,
     )
     const models = available

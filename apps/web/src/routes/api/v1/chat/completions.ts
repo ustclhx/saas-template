@@ -1,9 +1,7 @@
-import { env, waitUntil } from 'cloudflare:workers'
-import { createDb } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { createFileRoute } from '@tanstack/react-router'
+import { getAiHttpDeps } from '../../../../features/ai/runtime.ts'
 import { apiError, handleCompletions } from '../../../../features/api-keys/completions.ts'
-import { getAuth } from '../../../../server/auth.ts'
 import { templateConfig } from '../../../../server/template-config.ts'
 
 const unsupported = () =>
@@ -25,15 +23,7 @@ export const Route = createFileRoute('/api/v1/chat/completions')({
       DELETE: unsupported,
       OPTIONS: unsupported,
       POST: ({ request }) => {
-        const db = createDb(env.HYPERDRIVE)
-        return handleCompletions(request, {
-          db,
-          auth: getAuth(env, db),
-          env,
-          waitUntil,
-          config: templateConfig,
-          rateLimiter: env.RL_API,
-        })
+        return handleCompletions(request, { ...getAiHttpDeps(), config: templateConfig })
       },
     },
   },
