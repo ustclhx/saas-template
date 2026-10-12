@@ -28,7 +28,7 @@
 9. **对话隐私**：对话只对创建者可见，`ai_conversation` 查询在 `scoped(ws)` 之上再加 `user_id` 过滤。
 10. **用量检查点**（Phase 0 实测 7.3 后采纳）：平台在客户端断开后只允许 `waitUntil` 再运行 30 秒，超时静默取消，`onFinish` 不会执行。因此在 `waitUntil` 中读模型流的同一个读取器里，每 5 秒或每 200 个输出 token（先到者）执行一次 `UPDATE ai_message SET usage_checkpoint = {inputTokens, outputTokens, at}, parts = <已生成内容>`。服务商通常只在流结束时返回 usage，所以检查点中的输出 token 按已生成文本估算（与输入估算用同一个估算器）；检查点只是估算，字符估算可能高于服务商实际分词数（英文约 4 倍），按检查点结算可能多收，由决策 11、12 约束。备选「断开约 25 秒后主动中止生成、在时限内按已产生用量结算」被否决：它会截断用户的回复，且中止后服务商不一定返回 usage。
 11. **估算结算不超过预扣**：停止、出错与超时兜底在拿不到服务商用量、改按估算结算时，金额 MUST 不超过该次预扣额（`min(估算金额, hold.amount)`），因此不触发超额容忍、不补扣余额、不产生欠费。预扣额已包含 `maxOutputTokens` 对应的输出费用，而服务商实际输出不会超过该上限，封顶不会让平台收得少于实际消耗。超额容忍只用于服务商报告的真实用量超出预扣（正常完成路径）。
-12. **实际用量优先，估算只作兜底**：生产环境的结算顺序为：服务商在流中返回的最终 usage → 中断时从 AI Gateway 取回的该请求实际用量 → 按决策 11 封顶的估算。每次经 AI Gateway 的调用带上可回查的请求标识（如 `cf-aig-metadata` 中的消息 ID），中断后按标识查询日志中的 token 数。AI Gateway 是否记录被中断流的用量、日志可查询的延迟，以及「中断时立即查询」还是「先按估算结算、再由 Cron 对账补差」，需在有真实凭据后验证再定（见 Open Questions、tasks 2.9）。
+12. **实际用量优先，估算只作兜底**：结算顺序为：服务商在流中返回的最终 usage → 按决策 11 封顶的估算。正常完成与客户端断开后服务端读完上游（见「客户端断开不影响结算」）都能拿到最终 usage；用户停止、出错、超时兜底时上游已中止、没有 usage，按封顶估算结算。不查询 AI Gateway 日志：2.9 实测被中断的流在 Gateway 中不产生日志（见 Open Questions），日志回查对兜底场景无效；线上 Worker 因此不需要日志读取权限，结算也不依赖额外的外部查询或延后对账。停止时也不改为继续读完上游：那会为用户未看到的内容支付全部 token，而对用户仍只能按估算收费。
 
 ## Risks / Trade-offs
 
@@ -44,6 +44,7 @@
 
 ## Open Questions
 
-- AI Gateway 日志能否提供被中断流的实际 token 数、可查询延迟多大；据此决定决策 12 采用即时查询还是延后对账补差（补差需要积分账本的调整分录）。由 2.9 在 staging 验证后定。
+- ~~AI Gateway 日志能否提供被中断流的实际 token 数、可查询延迟多大~~ **已决（2026-10-12）：不能，决策 12 去掉日志回查一层。**
   - 2026-10-12 本地探针：DeepSeek `deepseek-flash` 经 Gateway 托管密钥（BYOK，仅带 `cf-aig-authorization`，未传服务商 key）非流式调用成功，返回输入 7 / 输出 2 tokens。另一次流式请求带 `cf-aig-metadata`，读取 2 个文本块（2 个字符）后在约 1.8 秒 abort，响应 `cf-aig-log-id=01a12c2b-cf0e-74b0-ae84-7bd4b534532c`，中断前未收到最终 usage。
   - 阻塞：需要 AI Gateway 日志读取权限的 token。现有 Gateway token 与已刷新的 Wrangler OAuth 查询日志列表均返回 403（Cloudflare 错误码 10000）；OAuth 按上述 log ID 查询详情也返回 403。本机未发现具备此权限的 Cloudflare API token，未创建新 token。因此无法判断 `tokens_in` / `tokens_out` 是否存在，也无法测量日志出现延迟；不据此选择即时查询或延后对账，不实现结算改动，2.9 与 staging 验收保持未完成。后续持有日志读取权限后按同样标识重测，所需字段见 [日志详情 API](https://developers.cloudflare.com/api/resources/ai_gateway/subresources/logs/methods/get/)。
+  - 2026-10-12 实测（只读日志 token，DeepSeek 经 Gateway，带 `cf-aig-metadata` 标识）：完整流式请求的日志约 2.9 秒出现，含 `tokens_in`/`tokens_out` 14/552 与费用，与客户端收到的最终 usage 一致；客户端分别在收到约 1.5KB、约 60KB 后中止的两次流式请求，Gateway 在约 4–5 分钟后仍无任何日志记录。完整流已能从流内拿到 usage，被中止的流没有日志，日志回查在任何场景都不提供额外信息。用户选择去掉该层（方案 A）。
