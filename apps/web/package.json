@@ -12,7 +12,11 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test -c playwright.smoke.config.ts",
-    "test:e2e:stripe": "playwright test -c playwright.stripe.config.ts"
+    "test:e2e:stripe": "playwright test -c playwright.stripe.config.ts",
+    "build:node": "vite build --config vite.node.config.ts",
+    "start:node": "node .output/server/index.mjs",
+    "test:node": "node scripts/test-node.mjs",
+    "test:node:production": "vitest run --config vitest.production.node.config.ts"
   },
   "dependencies": {
     "@ai-sdk/react": "^4.0.130",
@@ -56,10 +60,12 @@
     "@vitejs/plugin-react": "^6.1.1",
     "cf-workers-og": "3.0.1",
     "esbuild": "^0.28.2",
+    "nitro": "3.0.260903-beta",
     "openai": "^7.28.0",
     "tailwindcss": "^4.3.3",
     "vite": "^8.3.2",
     "vitest": "^4.1.11",
-    "wrangler": "^4.146.0"
+    "wrangler": "^4.146.0",
+    "srvx": "1.0.5"
   }
 }

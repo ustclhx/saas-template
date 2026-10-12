@@ -8,7 +8,11 @@
     "build": "wrangler deploy --dry-run --outdir dist",
     "deploy:staging": "wrangler deploy --env staging",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p tsconfig.node.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:node": "node scripts/build-node.mjs",
+    "start:node": "node .output/server/index.mjs",
+    "test:node": "vitest run --config vitest.unit.config.ts",
+    "test:node:integration": "vitest run --config vitest.node-integration.config.ts"
   },
   "dependencies": {
     "@saas/ai": "workspace:*",
@@ -21,14 +25,20 @@
     "@saas/platform": "workspace:*",
     "@saas/shared": "workspace:*",
     "@saas/storage": "workspace:*",
-    "@sentry/cloudflare": "^11.6.0"
+    "@sentry/cloudflare": "^11.6.0",
+    "ioredis": "5.8.2",
+    "postgres": "^3.4.9",
+    "zod": "^4.6.5",
+    "uuid": "^14.0.2",
+    "drizzle-orm": "^0.45.3",
+    "@dbos-inc/dbos-sdk": "5.2.11",
+    "pg": "8.20.0"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.3.5",
     "@cloudflare/workers-types": "^5.20261002.1",
     "@saas/credits": "workspace:*",
     "@types/node": "^22.20.5",
-    "drizzle-orm": "^0.45.3",
     "esbuild": "^0.28.2",
     "vitest": "^4.1.11",
     "wrangler": "^4.146.0"
