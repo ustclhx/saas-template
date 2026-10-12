@@ -314,6 +314,7 @@ AI                                (Workers AI，可选)
 
 ```
 PR:    install → biome check → typecheck → unit test (vitest-plugin) → build
+       并行 e2e-smoke：临时 PG → migrate → 本地 vite dev → Chromium 冒烟
        → （可选，且 PR 不含新迁移时）部署预览版本
 main:  以上 + 数据库迁移(staging) → 部署 staging → e2e (Playwright) 
 tag:   数据库迁移(production) → wrangler deploy (jobs 先于 web) → 冒烟测试
@@ -328,6 +329,22 @@ jobs 用 `wrangler deploy --env staging --dry-run --outdir dist --var APP_VERSIO
 部署直接使用注入后的产物：jobs 指定 `dist/index.js --no-bundle` 并再次传入版本 var；web 指定 Vite 生成的 `dist/server/wrangler.json --no-bundle`（包含 staging 绑定与 client assets 路径）。CI 不调用会重新构建的 `deploy:staging` 脚本。Sentry 认证只在上传与 finalize 步骤从 environment secrets 读取，PR CI 不上传。验收与失败排查见 [Sentry runbook](./runbooks/sentry.md)。
 
 GitHub `staging` environment 三项 secrets（`CLOUDFLARE_ACCOUNT_ID`、`STAGING_MIGRATION_DATABASE_URL`、`CLOUDFLARE_API_TOKEN`）已配置，CI token 已验证 active 与当前 account。PR #62 合并为 `ad1b5da` 后的首次自动发布在 web 预渲染阶段失败：本地 Hyperdrive 缺少模拟连接串，迁移与 jobs 已成功。PR #64 合并为 `ce623ca`，在 Deploy web 的环境变量中为两个 Hyperdrive 绑定设置不可达的本地占位连接；仅使预渲染 preview 能启动，快照按既有设计降级为示例数据，绝不连接真实库。其触发的 [Deploy staging run 37894416572](https://github.com/ustclhx/saas-template/actions/runs/37894416572) 于 `2026-10-09T06:36:31Z–06:38:28Z` 全部成功：Neon 迁移 → jobs → web → 版本健康检查 → staging 冒烟（`3 passed (10.0s)`）。健康检查匹配完整 `ce623cab63a99d6eee8c8ba67eeb09e564f97779` 且 `db.status=up`，任务 7.4 已验收；本机原三项冒烟（6.2）亦已通过，断言与超时未改。PR3 仅补齐文档与任务记录，9.2 24 小时观察保留未完成。操作与回滚见 [Neon staging runbook](./runbooks/staging-neon.md)。
+
+### 本地冒烟 e2e
+
+PR 与 main 的 `e2e-smoke` job 和 `check` 并行运行，使用独立 Postgres 17 服务，先初始化角色并应用现有迁移，再由 Playwright 启动本地 `vite dev`。只运行 `playwright.smoke.config.ts` 选中的一个主流程用例：注册进入个人空间、真实退出后密码登录、购买积分包、付款回调入账及重复投递不重复发积分。job 预算 6 分钟，Chromium headless shell 按 Playwright 版本缓存；无 PR secrets，认证签名密钥在临时 runner 随机生成。
+
+在已完成 Orca setup 的 worktree 中，确保本地 PG 已启动、认证 `.dev.vars` 按模板配置，且本 worktree 的 dev 端口空闲，运行：
+
+```sh
+pnpm --filter @saas/db db:migrate
+pnpm --filter @saas/web exec playwright install --only-shell chromium
+pnpm --filter @saas/web test:e2e:smoke
+```
+
+夹具只接受 localhost 上的 `saas_wt_*` 隔离数据库（CI 使用 `saas_ci_e2e`），仅写入测试套餐，用户和付款通过应用产生。`smoke.vite.ts` 只在专用本地 dev 服务中替换 `createTestPaymentRuntime`，fake Provider 返回本地结账地址与确定的付款事件，复用真实支付服务与 Webhook 去重/入账管线。浏览器复用现有 Turnstile stub；Worker 的 siteverify 返回本地响应，其余外部 fetch 被阻止。五项支付凭据在 dev 子进程中清空，不复用已有服务，不访问 Stripe、PayPal 或 staging；该用例不代表真实平台联通验收。
+
+失败时 CI 只上传 `apps/web/playwright-report/` HTML 报告，保留 7 天；此配置始终禁用 trace、video、截图，不上传 `test-results` 或服务端日志。其余离线 e2e 仍用 `pnpm --filter @saas/web test:e2e`。
 
 **阶段二私有 PG 迁移**：CI 可运行 `cloudflared access tcp`（需要 §2 的公网主机名 + Access 备选方式）在本地开转发端口，再执行迁移；或通过 SSH 在生产服务器上执行迁移。
 
