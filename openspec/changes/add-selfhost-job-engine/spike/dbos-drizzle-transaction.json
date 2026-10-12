@@ -1,0 +1,44 @@
+{
+  "candidate": "dbos",
+  "start": "2026-10-12T09:45:21.341Z",
+  "kind": "real-drizzle-postgres-js-transaction",
+  "ids": {
+    "commit": "01a12f80-a0bd-7e37-aff9-74ab3f63a86c",
+    "rollback": "01a12f80-a0bd-706e-a9b2-ea19c8e09d1a"
+  },
+  "uncommitted": {
+    "business": [],
+    "executions": []
+  },
+  "committed": {
+    "business": [
+      {
+        "id": "01a12f80-a0bd-7e37-aff9-74ab3f63a86c",
+        "quota": 10
+      }
+    ],
+    "effects": [
+      {
+        "id": "01a12f80-a0bd-7e37-aff9-74ab3f63a86c",
+        "n": 1
+      }
+    ],
+    "executions": [
+      {
+        "id": "59",
+        "message_id": "01a12f80-a0bd-7e37-aff9-74ab3f63a86c",
+        "queue": "main",
+        "attempt": 1,
+        "worker": "dbos-1",
+        "started_at": "2026-10-12T09:45:28.751Z",
+        "ended_at": "2026-10-12T09:45:28.794Z"
+      }
+    ]
+  },
+  "rolledBack": {
+    "business": [],
+    "executions": []
+  },
+  "passed": true,
+  "end": "2026-10-12T09:45:28.869Z"
+}

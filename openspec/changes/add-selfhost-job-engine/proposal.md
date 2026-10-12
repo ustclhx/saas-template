@@ -11,7 +11,7 @@
 - 新增 Node 调度实现：J1 jobs 内 cron 与 IANA 时区（含 Asia/Singapore）；J2 双 jobs 实例不并发重复执行同一定时任务，停机补跑可配置为跳过或补跑一次；J3 保留 heartbeat 与健康检查的最近运行时间。
 - 新增 Node 持久工作流实现：W1 步骤结果、步骤重试、sleep、带超时 waitForEvent、不可重试错误、外部 sendEvent；W2 重启从最后成功步骤恢复；W3 早到事件至少保留 60 分钟。
 - 通过 change A `add-selfhost-foundation` 定义的 `packages/platform` queue/workflow/scheduler 接口提供实现，迁移 email/events、现有五条 Cron 与 AiMediaWorkflow 到 Node，保持业务幂等、回调落库与结算行为。
-- 本轮只交付规划文档，所有 spike、实现及部署验收任务保持未完成。
+- Phase 1 仅提交隔离 spike 的证据与选型建议，原型和独立依赖不进入合并；Phase 2 等协调者确认后实施，未实际完成的实现和部署验收保持未完成。
 
 ## Capabilities
 
