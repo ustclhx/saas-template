@@ -1,6 +1,6 @@
 # 2核4GiB预算对齐（建议，未签收）
 
-A正式接口已在 #107 合并；其foundation design §7列出 PostgreSQL、web、jobs、Valkey、代理，但没有可引用的最终CPU/内存cap。已向协调者请求预算。以下是供A/协调者审阅的预算建议，**不是A已确认配置或全服务实测**。
+A正式接口已在 #107 合并；其foundation design §7列出 PostgreSQL、web、jobs、Valkey、代理，但没有可引用的最终CPU/内存cap。协调者已明确要求在PR提交建议预算，并保留整机预算验收未完成。以下是供A/协调者审阅的预算建议，**不是A已确认配置或全服务实测**。
 
 | 服务 | CPU cap | 内存 cap | 验证状态 |
 |---|---:|---:|---|
