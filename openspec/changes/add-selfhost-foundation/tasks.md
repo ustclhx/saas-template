@@ -12,9 +12,9 @@
 
 ## 2. 配置与数据库生命周期（config/db 独占）
 
-- [ ] 2.1 实现 config 按目标 schema、Node dotenv/env/file 密钥加载和启动校验，保留 payment/可选集成降级；补文件冲突/不可读/空值及脱敏的重要边界用例，更新运行时配置文档。验证：config 测试和类型检查通过，非法必需配置在 listen 前非零退出，值不进入日志或前端。（R3、R4）
-- [ ] 2.2 扩展 createDb 的 Hyperdrive/string/Sql 输入与资源所有权；Node 复用有界 app 池，退出关闭自有池，CF 保留请求客户端。验证：db 现有测试与 Node 实库用例通过，连续请求连接数量受池上限约束、关闭借用 facade 不终止共享池；记录池预算及 shutdown 用法。（D1）
-- [ ] 2.3 为 Node 配置现有 db 业务集成测试，复用事务、FOR UPDATE、advisory_xact_lock、回滚、scoped/账本并发关键场景。验证：隔离 PG17 运行用例，提交/回滚释放锁且无 idle-in-transaction，不修改原断言、不提交 worker 迁移 SQL。（D4）
+- [x] 2.1 实现 config 按目标 schema、Node dotenv/env/file 密钥加载和启动校验，保留 payment/可选集成降级；补文件冲突/不可读/空值及脱敏的重要边界用例，更新运行时配置文档。验证：config 测试和类型检查通过，非法必需配置在 listen 前非零退出，值不进入日志或前端。（R3、R4）
+- [x] 2.2 扩展 createDb 的 Hyperdrive/string/Sql 输入与资源所有权；Node 复用有界 app 池，退出关闭自有池，CF 保留请求客户端。验证：db 现有测试与 Node 实库用例通过，连续请求连接数量受池上限约束、关闭借用 facade 不终止共享池；记录池预算及 shutdown 用法。（D1）
+- [x] 2.3 为 Node 配置现有 db 业务集成测试，复用事务、FOR UPDATE、advisory_xact_lock、回滚、scoped/账本并发关键场景。验证：隔离 PG17 运行用例，提交/回滚释放锁且无 idle-in-transaction，不修改原断言、不提交 worker 迁移 SQL。（D4）
 
 ## 3. Node 基础适配器（platform/node 独占）
 

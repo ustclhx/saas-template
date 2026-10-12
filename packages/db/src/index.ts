@@ -1,4 +1,9 @@
-export { createDb, type Database, type HyperdriveBinding } from './client.ts'
+export {
+  createDb,
+  type Database,
+  type DatabasePoolOptions,
+  type HyperdriveBinding,
+} from './client.ts'
 export {
   JOBS_LAST_CRON_AT_KEY,
   pingDatabase,
