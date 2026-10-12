@@ -51,7 +51,7 @@ export default defineConfig({
               test: {
                 name: 'integration',
                 include: ['test/**/*.test.ts'],
-                exclude: ['test/**/*.unit.test.ts', 'test/node-production.integration.test.ts'],
+                exclude: ['test/**/*.unit.test.ts', 'test/node-*.integration.test.ts'],
                 globalSetup: ['@saas/db/test/global-setup'],
               },
             },

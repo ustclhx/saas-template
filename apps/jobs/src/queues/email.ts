@@ -92,9 +92,12 @@ export async function handleEmailBatch(
 ): Promise<void> {
   const deliver = createDeliver(transport)
   // 每条消息单独确认 / 重试，一条失败不影响同批的其他消息
-  await Promise.all(
+  const results = await Promise.allSettled(
     batch.messages.map((message) => handleMessage(message, deliver, transport, options)),
   )
+  // 死信持久化失败也须等其他成员完成，避免批次出口提前恢复仍在处理的消息。
+  const failure = results.find((result) => result.status === 'rejected')
+  if (failure) throw failure.reason
 }
 
 async function handleMessage(

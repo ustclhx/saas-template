@@ -11,6 +11,7 @@ import type {
   QueueProducer,
   RateLimiter,
   RequestMetadata,
+  TaskHealth,
   Workflow,
 } from '@saas/platform'
 import { AppError } from '@saas/shared'
@@ -38,6 +39,7 @@ export interface WebRuntime {
   readonly cache: KeyValueStore
   readonly rateLimiter: RateLimiter
   readonly requestMeta: RequestMetadata
+  readonly health?: { cache(): Promise<void>; tasks: TaskHealth }
   /** 目标入口注入观测；C 尚未接入时使用共享日志。 */
   readonly observability?: {
     readonly enabled: boolean

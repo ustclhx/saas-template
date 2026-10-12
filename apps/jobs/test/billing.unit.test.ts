@@ -118,6 +118,18 @@ beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
 describe('billing jobs', () => {
+  it('runs credit maintenance without initializing disabled payment providers', async () => {
+    const features = { billing: false, credits: true }
+    for (const cron of [BILLING_HOURLY_CRON, BILLING_RETRY_CRON, BILLING_DAILY_CRON])
+      await runBillingSchedule(cron, env, features)
+    expect(mocks.expiration).toHaveBeenCalledOnce()
+    expect(mocks.hold).toHaveBeenCalledOnce()
+    expect(mocks.credits).toHaveBeenCalledOnce()
+    expect(mocks.runtime).not.toHaveBeenCalled()
+    expect(mocks.annual).not.toHaveBeenCalled()
+    expect(mocks.compensation).not.toHaveBeenCalled()
+    expect(mocks.subscription).not.toHaveBeenCalled()
+  })
   it('routes hourly, ten-minute and daily jobs and propagates service failures without secrets', async () => {
     await runBillingSchedule(BILLING_HOURLY_CRON, env)
     expect(mocks.expiration).toHaveBeenCalledOnce()
@@ -150,6 +162,87 @@ describe('billing jobs', () => {
     }
     expect(mocks.createDb).not.toHaveBeenCalled()
     expect(mocks.runtime).not.toHaveBeenCalled()
+  })
+  it.each([
+    { status: 400, attempts: 2, code: 'BILLING_NON_RETRYABLE', retryable: false },
+    { status: 503, attempts: 6, code: 'BILLING_ATTEMPTS_EXHAUSTED', retryable: true },
+  ])('records Node terminal failure $code before confirming', async (failure) => {
+    mocks.runtime.mockImplementationOnce(() => {
+      throw new AppError('BILLING_FAILURE', 'Unavailable', { status: failure.status })
+    })
+    const entry = { ...message({ v: 1, deliveryId: id }), attempts: failure.attempts }
+    let finish!: () => void
+    const persisted = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const failed = vi.fn(async () => {
+      await persisted
+      entry.ack()
+    })
+    const consuming = handleBillingBatch(
+      { messages: [entry] } as unknown as QueueBatch<unknown>,
+      env,
+      logJobObserver,
+      { deadLetters: { failed } },
+    )
+    await vi.waitFor(() =>
+      expect(failed).toHaveBeenCalledWith(entry, {
+        code: failure.code,
+        retryable: failure.retryable,
+      }),
+    )
+    expect(entry.ack).not.toHaveBeenCalled()
+    finish()
+    await consuming
+    expect(entry.ack).toHaveBeenCalledOnce()
+    expect(entry.retry).not.toHaveBeenCalled()
+  })
+  it('keeps CF failures retryable even on the final attempt', async () => {
+    mocks.runtime.mockImplementationOnce(() => {
+      throw new AppError('BAD_INPUT', 'Invalid', { status: 400 })
+    })
+    const entry = { ...message({ v: 1, deliveryId: id }), attempts: 6 }
+    await handleBillingBatch({ messages: [entry] } as unknown as QueueBatch<unknown>, env)
+    expect(entry.retry).toHaveBeenCalledWith({ delaySeconds: 900 })
+    expect(entry.ack).not.toHaveBeenCalled()
+  })
+  it('reports failed dead-letter persistence only after processing the remaining messages', async () => {
+    mocks.runtime.mockImplementationOnce(() => {
+      throw new AppError('BAD_INPUT', 'Invalid', { status: 400 })
+    })
+    const invalid = message(null)
+    const failedEntry = message({ v: 1, deliveryId: id })
+    const success = message({ v: 1, deliveryId: id })
+    db.results.push([{ id, status: 'ignored' }], [{ id: 'marker' }])
+    const failed = vi.fn().mockRejectedValue(new Error('Persistence unavailable'))
+    await expect(
+      handleBillingBatch(
+        { messages: [invalid, failedEntry, success] } as unknown as QueueBatch<unknown>,
+        env,
+        logJobObserver,
+        { deadLetters: { failed } },
+      ),
+    ).rejects.toThrow('Events queue batch failed')
+    expect(failed).toHaveBeenCalledOnce()
+    expect(failedEntry.ack).not.toHaveBeenCalled()
+    expect(failedEntry.retry).not.toHaveBeenCalled()
+    expect(invalid.ack).toHaveBeenCalledOnce()
+    expect(success.ack).toHaveBeenCalledOnce()
+  })
+  it('records disabled billing without initializing payment providers', async () => {
+    const entry = message({ v: 1, deliveryId: id })
+    const failed = vi.fn().mockResolvedValue(undefined)
+    await handleBillingBatch(
+      { messages: [entry] } as unknown as QueueBatch<unknown>,
+      env,
+      logJobObserver,
+      { billingEnabled: false, deadLetters: { failed } },
+    )
+    expect(failed).toHaveBeenCalledWith(entry, { code: 'BILLING_DISABLED', retryable: false })
+    expect(mocks.runtime).not.toHaveBeenCalled()
+    expect(mocks.createDb).not.toHaveBeenCalled()
+    expect(entry.ack).not.toHaveBeenCalled()
+    expect(entry.retry).not.toHaveBeenCalled()
   })
   it('leaves notification failures unmarked and retries the same persisted delivery successfully', async () => {
     const entry = message({ v: 1, deliveryId: id })

@@ -21,13 +21,15 @@ import {
 import type { WorkflowStep } from '@saas/platform'
 import { sql as query } from 'drizzle-orm'
 import { afterAll, afterEach, expect, it, vi } from 'vitest'
-import '../src/ai.ts'
+import { registerAiHoldSweepers } from '../src/ai.ts'
 import { type MediaRunnerDeps, runMediaTask } from '../src/workflows/media-runner.ts'
 
 const db = createDb(env.HYPERDRIVE)
 const sql = db.$client
 const id = () => crypto.randomUUID()
 const workspaces: string[] = []
+const unregister = registerAiHoldSweepers({ text: false, media: true })
+afterAll(unregister)
 
 async function fixture() {
   const workspaceId = id()

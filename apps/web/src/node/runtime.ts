@@ -1,20 +1,24 @@
 import { parseAuthEnv } from '@saas/auth'
+import { loadEnv } from '@saas/config'
 import { loadNodeEnv } from '@saas/config/node'
 import { createDb, type Database } from '@saas/db'
-import type { KeyValueStore, RequestMetadata } from '@saas/platform'
+import type { EmailQueueMessage } from '@saas/email/queue'
+import type { KeyValueStore, RequestMetadata, TaskHealth } from '@saas/platform'
 import {
   createNodeBackgroundTasks,
   createNodeCache,
+  createNodeQueueProducer,
   createNodeRequestMetadata,
-  unavailableTaskCapabilities,
 } from '@saas/platform/node'
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import { APIError } from 'better-auth/api'
+import { z } from 'zod'
 import { handleAuthRequest } from '../features/admin/impersonation-http.ts'
 import { createBillingDeletionSteps } from '../features/billing/deletion.server.ts'
 import { assertSignupAdmission } from '../features/growth/service.ts'
 import { createWebAuth } from '../server/auth.ts'
+import { createQueueAuthEmailSender, userLocaleByEmail } from '../server/auth-email.ts'
 import type { WebRuntime } from '../server/runtime.ts'
 import { templateConfig } from '../server/template-config.ts'
 
@@ -58,6 +62,12 @@ export function prerenderRuntime(requestMeta: RequestMetadata): WebRuntime {
 /** 生产入口在 listen 前装配一次；请求引用进程 facade 并创建认证上下文。 */
 export async function createNodeWebProcess() {
   const env = loadNodeEnv({ templateConfig })
+  const jobsConfig = loadEnv(
+    process.env,
+    z.object({
+      JOBS_URL: z.url({ protocol: /^https?$/, hostname: /.+/ }).default('http://jobs:3001'),
+    }),
+  )
   const metadata = createNodeRequestMetadata(env.TRUSTED_PROXY_CIDRS.split(',').filter(Boolean))
   const db = createDb(env.DATABASE_URL, { max: env.DB_POOL_MAX })
   let cache: Awaited<ReturnType<typeof createNodeCache>>
@@ -68,7 +78,47 @@ export async function createNodeWebProcess() {
     throw error
   }
   const background = createNodeBackgroundTasks()
-  const tasks = unavailableTaskCapabilities()
+  const emailQueue = createNodeQueueProducer<EmailQueueMessage>(db, 'email').producer
+  const eventsQueue = createNodeQueueProducer<unknown>(db, 'events').producer
+  const jobsHealthSchema = z.object({
+    queue: z.object({ status: z.enum(['up', 'down', 'unavailable']) }),
+    scheduler: z.object({
+      status: z.enum(['up', 'down', 'unavailable']),
+      lastCronAt: z.iso.datetime().nullable(),
+    }),
+  })
+  // 每次readiness只读一次jobs真实探测；web不启动DBOS或伪造consumer状态。
+  let probing: Promise<z.output<typeof jobsHealthSchema>> | undefined
+  const readJobsHealth = () => {
+    probing ??= fetch(new URL('/internal/ready', jobsConfig.JOBS_URL), {
+      signal: AbortSignal.timeout(5_000),
+      cache: 'no-store',
+    })
+      .then(async (response) => {
+        if (response.status !== 200 && response.status !== 503) throw new Error('Jobs probe failed')
+        return jobsHealthSchema.parse(await response.json())
+      })
+      .finally(() => {
+        probing = undefined
+      })
+    return probing
+  }
+  const taskHealth: TaskHealth = {
+    queue: async () => {
+      try {
+        return (await readJobsHealth()).queue
+      } catch {
+        return { status: 'down' }
+      }
+    },
+    scheduler: async () => {
+      try {
+        return (await readJobsHealth()).scheduler
+      } catch {
+        return { status: 'down', lastCronAt: null }
+      }
+    },
+  }
   const config = {
     ...parseAuthEnv(env, templateConfig),
     TURNSTILE_SITE_KEY: env.TURNSTILE_SITE_KEY,
@@ -91,7 +141,12 @@ export async function createNodeWebProcess() {
         cache: secondaryCache,
         rateLimiter: cache.rateLimiter,
         clientIp: requestMeta.clientIp,
-        sendEmail: async () => unavailable(),
+        sendEmail: createQueueAuthEmailSender({
+          queue: emailQueue,
+          appName: templateConfig.app.name,
+          appUrl: config.APP_URL,
+          resolveLocale: userLocaleByEmail(database),
+        }),
         deletionSteps: createBillingDeletionSteps(config, database, authCache),
         beforeUserCreate: async (user, headers) => {
           try {
@@ -116,8 +171,9 @@ export async function createNodeWebProcess() {
       rateLimiter: cache.rateLimiter,
       requestMeta,
       observability: { enabled: false, captureError: () => log.error('server.error') },
-      emailQueue: tasks.queue,
-      eventsQueue: tasks.queue,
+      emailQueue: { available: true, value: emailQueue },
+      eventsQueue: { available: true, value: eventsQueue },
+      health: { cache: () => cache.ping(), tasks: taskHealth },
       files: { available: false },
       ai: {
         available: true,

@@ -6,7 +6,7 @@
 
 使用一次性 migrator 进程，顺序是：版本控制的业务迁移 → `DBOS.migrate` 公共 API 与权限 → app/jobs 启动。运行时 `runMigrations: false`，app 只有必要 DML 权限，不能授予 CREATE/ALTER 解决启动失败。
 
-1. 协调者在 main 统一生成业务迁移：`pnpm --filter @saas/db exec drizzle-kit generate --name node_job_engine`。该命令读取 `src/schema/index.ts`，覆盖 `job_engine` pgSchema；本地已确认生成该 namespace 的 5 张表。审阅 SQL 与 metadata，再在隔离数据库验收；worker 不提交迁移。
+1. 协调者在 main 统一生成业务迁移：`pnpm --filter @saas/db exec drizzle-kit generate --name node_job_engine`。该命令读取 `src/schema/index.ts`，覆盖 `job_engine` pgSchema；队列、事件与调度表对应迁移必须全部就绪。审阅 SQL 与 metadata，再在隔离数据库验收；worker 不提交迁移。
 2. 配置该环境的 `MIGRATION_DATABASE_URL`（migrator 凭据）后，运行 `pnpm --filter @saas/db db:migrate`。不要把连接串粘贴到终端命令或报告。
 3. 在仓库根执行公共迁移入口：`node --experimental-strip-types packages/platform/src/node/job-engine-migrate.ts`。它调用 `DBOS.migrate`；`DBOS_APPLICATION_ROLE` 默认 `app`，按需配置 `DBOS_READONLY_ROLE=readonly`。该进程使用 migrator URL，只输出固定结构化事件。
 4. 业务/schema 与 native schema 均成功后才启动 jobs，app 使用独立 DML URL。迁移入口失败必须停止发布，不以 app 自动迁移兜底。
@@ -90,18 +90,26 @@ native 删除仅使用 `DBOS.deleteWorkflow('queue-batch:<UUID>', false)` 公共
 
 ```ts
 let queues: ReturnType<typeof createNodeQueueAdapter>
+let scheduler: ReturnType<typeof createNodeScheduler>
 const engine = await createNodeJobEngine({
   database: db, databaseUrl, executorId, applicationVersion, ownershipDirectory,
-  register(engine) {
+  async register(engine) {
     queues = createNodeQueueAdapter({
       db, executorId, ownershipToken: engine.ownershipToken,
       assertOwnership: () => engine.assertOwnership(),
       isExecutorStopped: (id, token) => engine.isExecutorStopped(id, token),
     })
     queues.register('email', consumeEmail)
+    scheduler = createNodeScheduler({ engine })
+    scheduler.register(
+      { id: 'report-v1', cron: '0 2 * * *', timeZone: 'Asia/Singapore', missedRun: 'once' },
+      ({ scheduledAt }) => runReport(scheduledAt),
+    )
+    await queues.prepare()
+    await scheduler.prepare()
   },
-  async start() { await queues.prepare(); queues.start() },
-  stopReceiving() { queues.stopReceiving() },
+  start() { queues.start(); scheduler.start() },
+  stopReceiving() { queues.stopReceiving(); scheduler.stopReceiving() },
 })
 ```
 
@@ -249,3 +257,61 @@ resume 等待的原 deadline 为 **13:08:21.247422 UTC**，重启后不改变；
 sleep 日志的原唤醒结果与重启前快照完全一致。两个等待结果均 completed，事件只消费一次。
 以上为正式 Node adapter 的隔离 PG 验收，失败旧轮不计入通过时长，也不替代服务器
 部署、跨代码版本热重放或整机资源验收。
+
+## Node apps 装配与探活
+
+生产入口为 `apps/jobs/src/index.node.ts`，资源与生命周期在
+`apps/jobs/src/node/runtime.ts`，五条 UTC 业务注册在
+`apps/jobs/src/node/registration.ts`。新增任务按 [Node jobs 扩展指南](../node-jobs-extension.md)
+接入；不在平台 package 导入业务 app。
+
+Jobs 从 `JOB_EXECUTOR_ID`（默认 `jobs-1`）、`JOB_OWNERSHIP_DIRECTORY`
+（默认 `.data/job-owners`）和 `JOB_NATIVE_POOL_MAX`（默认 4，最小 3）读取引擎参数。
+版本使用 Node 构建固化的完整 SHA。双 jobs 使用互异 executor ID，遵守前述共享
+ownership 目录、host/PID namespace 与同版本完整注册集约束。
+
+`GET /internal/live` 仅检查进程，`GET /internal/ready` 实时检查 DB、Valkey、
+真实 queue backend/consumer、scheduler 与五分钟成功心跳，返回完整版本及
+`jobs.lastCronAt`，响应 `no-store`。首次成功心跳前，缺记录、消费者停止或
+心跳陈旧超过 10 分钟时 readiness 为 503；进程存活不推进成功时间。
+
+Web 配置 `JOBS_URL`（默认 `http://jobs:3001`），从 jobs 的 `/internal/ready`
+取得任务探测结果，并与自己的 DB/Valkey 探测组合为 `/api/health`。
+邮件与事件生产者直接写同库的 PG inbox，无需在 web 启动 DBOS；因此先完成
+jobs 的队列 `prepare()` 再接受生产流量。Jobs 的内部端点不映射公网。
+
+Node 文件能力尚未装配时跳过文件清理分支，媒体 Workflow 继续 unavailable，
+媒体请求在 hold 前拒绝；本次装配不代表对象存储或媒体验收完成。
+关闭计费、积分与 AI 的域处理器仍保留 jobs、email/operations 和成功 heartbeat，
+具体开关组合与验证命令见扩展指南。
+
+### 本批装配验证（A 9.1、B 5.1/5.2/5.5，2026-10-13）
+
+使用本任务独立 Docker PG17/Valkey 与不同逻辑库；业务迁移和 DBOS 公共迁移
+先以 migrator 执行。app 的 CREATE 与历史 audit UPDATE、readonly 的写入和
+payload 读取实际被拒绝，未扩展运行时权限。开始时 #128 未合入，调度迁移仅在
+本地生成和应用，产物已恢复；交付前 rebase 已合入的 #128。
+
+- `pnpm check`、`check:deps`（7 项）、`check:singletons`、`dedupe --check` 通过。
+- `pnpm typecheck` 14/14、`pnpm test` 26/26、`pnpm build` 2/2 通过。
+  CF 原有队列/账本/hold、文件/空间清理和指标用例保持；初次内容编译因并发负载
+  超过原五秒时限，定向及全量重跑通过，没有放宽时限或断言。
+- `pnpm --filter @saas/web test:node`：12 项目、687 项通过；
+  jobs `test:node`：11 文件、44 项通过。
+- jobs `test:node:integration`：2 项通过，60.53 秒。真实十条混合邮件：九条各
+  一次，暂时失败条按原 30 秒退避后成功；有效永久失败、已达到第六次的失败和
+  关闭计费后的有效事件均由真实 sink 写入持久 DLQ。第六次边界从持久第五次状态
+  构造，不把此用例称为完整六次生产时间轴；完整时钟证据见前述 B 2.x 记录。
+- 全关闭 billing/credits/AI 的注册在真实 jobs 中启动，实际等待下一五分钟 UTC
+  slot；schedule_run 成功与 heartbeat 均可查，随后 readiness 200，停止 scheduler
+  或消费者后 503。没有回填心跳、改变数据库时钟或用进程存活冒充成功。
+- `pnpm build:node` 2/2、18 个无生产凭据预渲染页面通过；jobs 外置依赖均在
+  manifest 声明且可解析，无 Workers/CF Sentry 依赖。
+- web `test:node:production`：6 项通过，真实 jobs HTTP 探测和完整 SHA/no-store；
+  jobs 退出后 web 健康 503，媒体提交 503 且 hold 数不变；原 HTTP 断连及 SIGTERM
+  用量结算回归通过。jobs 半开 socket 的生产停机也退出 0。
+- 探测 DB/cache 与任务状态分别受五秒上限约束；未完成引擎排空时不提前关闭业务池。
+  引擎实现保持原样，媒体 Workflow 和对象存储接线仍归后续 B 5.3/5.4 与 C。
+
+上述不是 Compose 认证邮件 e2e、镜像依赖闭包、服务器、整机预算或 main 自动
+staging 发布验收；不勾这些未分配项，不手工部署分支、不归档 change。

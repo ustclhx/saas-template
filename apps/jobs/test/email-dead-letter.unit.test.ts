@@ -50,11 +50,20 @@ it.each([
       new Response(JSON.stringify({ name: 'fixture_failure' }), { status }),
     )
     const { batch: messages, message } = batch()
+    let finish!: () => void
+    const persisted = new Promise<void>((resolve) => {
+      finish = resolve
+    })
     const failed = vi.fn(async () => {
       expect(message.ack).not.toHaveBeenCalled()
+      await persisted
       message.ack()
     })
-    await handleEmailBatch(messages, transport, { deadLetters: { failed } })
+    const consuming = handleEmailBatch(messages, transport, { deadLetters: { failed } })
+    await vi.waitFor(() => expect(failed).toHaveBeenCalledOnce())
+    expect(message.ack).not.toHaveBeenCalled()
+    finish()
+    await consuming
     expect(failed).toHaveBeenCalledWith(message, { code, retryable })
     expect(message.ack).toHaveBeenCalledOnce()
     expect(message.retry).not.toHaveBeenCalled()

@@ -1,8 +1,10 @@
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
-import { readdir, readFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createAuth } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
@@ -31,6 +33,10 @@ let child: ChildProcess
 let productionEnv: NodeJS.ProcessEnv
 let base: string
 let childExit: Promise<unknown[]>
+let jobs: ChildProcess
+let jobsExit: Promise<unknown[]>
+let owners: string
+let jobsBase: string
 const logs: { event?: string; requestId?: string }[] = []
 let upstreamCompleted = 0
 let upstreamCanceled = 0
@@ -151,6 +157,38 @@ beforeAll(async () => {
     OPENAI_BASE_URL: `http://127.0.0.1:${upstreamPort}/v1`,
     OPENAI_API_KEY: 'fixture-key',
   }
+  const jobsPortProbe = createServer().listen(0, '127.0.0.1')
+  await once(jobsPortProbe, 'listening')
+  const jobsPort = (jobsPortProbe.address() as AddressInfo).port
+  await new Promise<void>((resolve) => jobsPortProbe.close(() => resolve()))
+  jobsBase = `http://127.0.0.1:${jobsPort}`
+  owners = await mkdtemp(join(tmpdir(), 'web-jobs-production-'))
+  jobs = spawn(process.execPath, ['.output/server/index.mjs'], {
+    cwd: fileURLToPath(new URL('../../../../jobs/', import.meta.url)),
+    env: {
+      ...productionEnv,
+      PORT: String(jobsPort),
+      JOB_EXECUTOR_ID: `web-smoke-${fixtureId}`,
+      JOB_OWNERSHIP_DIRECTORY: owners,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  jobs.stdout?.resume()
+  jobs.stderr?.resume()
+  jobsExit = once(jobs, 'exit')
+  await vi.waitFor(
+    async () => {
+      if (jobs.exitCode !== null) throw new Error('Production jobs exited before listen')
+      expect(
+        await fetch(`${jobsBase}/internal/live`).then(
+          (res) => res.status,
+          () => 0,
+        ),
+      ).toBe(200)
+    },
+    { timeout: 8000 },
+  )
+  productionEnv.JOBS_URL = jobsBase
   child = spawn(process.execPath, ['.output/server/index.mjs'], {
     cwd: root,
     env: productionEnv,
@@ -185,6 +223,11 @@ afterAll(async () => {
     child.kill('SIGTERM')
     await childExit
   }
+  if (jobs?.exitCode === null) {
+    jobs.kill('SIGTERM')
+    await jobsExit
+  }
+  if (owners) await rm(owners, { recursive: true, force: true })
   await new Promise<void>((resolve) => upstream.close(() => resolve()))
   if (userId) {
     await sql`delete from ai_message where workspace_id = ${userId}`
@@ -241,6 +284,42 @@ it('serves production SSR, Server Function RPC, static assets and no-DB prerende
   expect(await rpc.text()).toContain(appUrl)
   expect(await readFile(`${root}/.output/public/index.html`, 'utf8')).toContain('</html>')
   expect(await readFile(`${root}/.output/public/zh.html`, 'utf8')).toContain('</html>')
+})
+
+it('uses real jobs readiness and refuses media before any hold while files are unavailable', async () => {
+  const jobsHealth = (await (await fetch(`${jobsBase}/internal/ready`)).json()) as {
+    queue: { status: string }
+    scheduler: { status: string; lastCronAt: string | null }
+  }
+  const response = await fetch(`${base}/api/health`)
+  expect(response.headers.get('cache-control')).toBe('no-store')
+  expect(await response.json()).toMatchObject({
+    version: expect.stringMatching(/^[a-f0-9]{40}$/),
+    db: { status: 'up' },
+    cache: { status: 'up' },
+    queue: jobsHealth.queue,
+    scheduler: jobsHealth.scheduler,
+  })
+  const before =
+    await sql`select count(*)::int as count from credit_hold where workspace_id = ${userId}`
+  const media = await fetch(`${base}/api/ai/tasks`, {
+    method: 'POST',
+    headers: { cookie, origin: appUrl, 'content-type': 'application/json' },
+    body: JSON.stringify({ slug, modelId, params: {} }),
+  })
+  expect(media.status).toBe(503)
+  expect(
+    await sql`select count(*)::int as count from credit_hold where workspace_id = ${userId}`,
+  ).toEqual(before)
+  jobs.kill('SIGTERM')
+  expect(await jobsExit).toEqual([0, null])
+  const stopped = await fetch(`${base}/api/health`)
+  expect(stopped.status).toBe(503)
+  expect(await stopped.json()).toMatchObject({
+    queue: { status: 'down' },
+    scheduler: { status: 'down' },
+    version: expect.stringMatching(/^[a-f0-9]{40}$/),
+  })
 })
 
 for (const configuration of ['missing', 'occupied port']) {
