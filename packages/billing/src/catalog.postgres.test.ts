@@ -30,6 +30,34 @@ function provider(id: 'stripe' | 'paypal') {
 }
 
 describe('catalog on isolated PostgreSQL', () => {
+  it('preserves admin model permissions across repeated and concurrent seeds', async () => {
+    await seedCatalog(db)
+    const before = await db
+      .select()
+      .from(plan)
+      .where(inArray(plan.key, ['free', 'pro', 'team']))
+    const grants = { free: ['text-example', 'retired-model'], pro: ['*'], team: [] }
+    try {
+      for (const row of before) {
+        await db
+          .update(plan)
+          .set({ features: { ...row.features, models: grants[row.key as keyof typeof grants] } })
+          .where(eq(plan.id, row.id))
+      }
+      await Promise.all([seedCatalog(db), seedCatalog(db)])
+      await seedCatalog(db)
+      const after = await db
+        .select()
+        .from(plan)
+        .where(inArray(plan.key, ['free', 'pro', 'team']))
+      for (const row of after)
+        expect(row.features.models).toEqual(grants[row.key as keyof typeof grants])
+    } finally {
+      for (const row of before)
+        await db.update(plan).set({ features: row.features }).where(eq(plan.id, row.id))
+    }
+  })
+
   it('serializes concurrent seeds, preserves historical prices, and retries partial sync', async () => {
     await Promise.all([seedCatalog(db), seedCatalog(db)])
     // Roll back mock mappings and historical fixture, retaining the seeded catalog.

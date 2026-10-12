@@ -184,7 +184,7 @@ export function setupChecklist(options) {
   const media = options.ai.includes('image') || options.ai.includes('video')
   const resources = [
     'Postgres（app / migrator / readonly 账号；Neon TLS 直连或自建库的 Tunnel / Workers VPC）',
-    '数据库：迁移后配置 catalog seed 的 free.models 允许列表，再对新库运行 pnpm billing:seed；默认 models=[] 不开放 AI 模型',
+    '数据库：迁移后运行 pnpm billing:seed；首次 free.models=[]，模型授权在后台套餐页面配置，重跑保留已有 models',
     `Workers：${options.name}-web、${options.name}-jobs（staging 使用 -staging 后缀）`,
     'Hyperdrive：HYPERDRIVE（关缓存）/ HYPERDRIVE_CACHED（开缓存），替换所有环境的 id',
     'KV：CACHE，替换所有环境的 id；Rate Limiting：RL_AUTH / RL_AI / RL_API，分配独立 namespace_id',
@@ -194,7 +194,7 @@ export function setupChecklist(options) {
     `R2：FILES 私有桶 ${options.name}-files（staging 使用 -staging 后缀）；文本模式也保留文件清理 Cron 所需绑定`,
     'Sentry：为 web / jobs 配置 DSN；CI 上传 source map 并使用部署提交 SHA 作为 release',
   ]
-  const secrets = ['BETTER_AUTH_SECRET', 'RESEND_API_KEY', 'SENTRY_DSN']
+  const secrets = ['BETTER_AUTH_SECRET', 'BOOTSTRAP_ADMIN_EMAILS', 'RESEND_API_KEY', 'SENTRY_DSN']
   const vars = [
     'APP_URL',
     'EMAIL_TRANSPORT',
@@ -382,7 +382,7 @@ export async function createProject(input, source = root) {
   for (const app of ['web', 'jobs']) {
     await writeFile(join(target, 'apps', app, '.dev.vars.example'), example)
   }
-  const report = `# ${options.name} 初始化清单\n\n## 基础设施与账号\n\n${checklist.resources.map((s) => `- [ ] ${s}`).join('\n')}\n\n## Worker Secrets\n\n${checklist.secrets.map((s) => `- ${s}`).join('\n')}\n\n## 非敏感 Worker Vars\n\n${checklist.vars.map((s) => `- ${s}`).join('\n')}\n\n## GitHub staging environment Secrets（不写入 Worker）\n\n${checklist.ciSecrets.map((s) => `- ${s}`).join('\n')}\n\n所有部署资源 ID 为占位值，部署前逐项配置；参考 docs/07-infrastructure.md。\nAI Gateway / R2 账号标识已清空；配置所选功能使用的新资源。\n将 .github/workflows/deploy-staging.yml 的 STAGING_URL 占位值改为实际可访问的 staging URL，并核对该环境的 APP_URL。\nSENTRY_DSN 分别写入 web 与 jobs secrets；SENTRY_ENVIRONMENT 设为 staging、production 或临时验收专用 smoke。\nAPP_VERSION 使用同一个完整提交 SHA，CI 已负责注入并上传 source map；手动部署按 docs/runbooks/sentry.md 操作。\n复制 apps/web 与 apps/jobs 的 .dev.vars.example 后填写，本地密钥不提交；线上 secrets 需分别写入 Worker。\n自检只运行单元测试，集成测试需独立数据库与迁移配置；上线前另做 staging 验收。\n`
+  const report = `# ${options.name} 初始化清单\n\n## 基础设施与账号\n\n${checklist.resources.map((s) => `- [ ] ${s}`).join('\n')}\n\n## Worker Secrets\n\n${checklist.secrets.map((s) => (s === 'BOOTSTRAP_ADMIN_EMAILS' ? '- BOOTSTRAP_ADMIN_EMAILS（可选，仅 web：逗号分隔邮箱名单；已验证且未封禁才提升，空值禁用）' : `- ${s}`)).join('\n')}\n\n## 非敏感 Worker Vars\n\n${checklist.vars.map((s) => `- ${s}`).join('\n')}\n\n## GitHub staging environment Secrets（不写入 Worker）\n\n${checklist.ciSecrets.map((s) => `- ${s}`).join('\n')}\n\n所有部署资源 ID 为占位值，部署前逐项配置；参考 docs/07-infrastructure.md。\nAI Gateway / R2 账号标识已清空；配置所选功能使用的新资源。\n将 .github/workflows/deploy-staging.yml 的 STAGING_URL 占位值改为实际可访问的 staging URL，并核对该环境的 APP_URL。\nSENTRY_DSN 分别写入 web 与 jobs secrets；SENTRY_ENVIRONMENT 设为 staging、production 或临时验收专用 smoke。\nAPP_VERSION 使用同一个完整提交 SHA，CI 已负责注入并上传 source map；手动部署按 docs/runbooks/sentry.md 操作。\n复制 apps/web 与 apps/jobs 的 .dev.vars.example 后填写，本地密钥不提交；线上 secrets 需分别写入 Worker。\n自检只运行单元测试，集成测试需独立数据库与迁移配置；上线前另做 staging 验收。\n\n## 首次运行\n\n1. 迁移后运行 pnpm billing:seed，首次 free 的 models=[]。\n2. 为 web 配置可选 Worker secret BOOTSTRAP_ADMIN_EMAILS（本地填 apps/web/.dev.vars，逗号分隔、忽略大小写与两侧空白），名单内账号必须先验证邮箱且未封禁。\n3. 用名单账号登录；Google OAuth 返回已验证邮箱可直接提升，邮箱密码账号在账号设置验证后提升，已有账号重新登录也会检查。\n4. 在 /admin/models 创建模型，再到 /admin/billing/plans 为有效套餐（新用户通常为 free）多选模型 key 或 * 并保存；仅建模型或发积分仍不足以授权。\n5. models 在下一次请求生效；历史 key 会警告并保留，其他权益及价格不改。重跑 seed 保留已有 models，其他示例配置仍按 seed 更新。\n\n移除名单不会自动撤销既有管理员；需要撤权时先移除名单，再由运维显式修改数据库中的平台角色（当前后台不提供角色修改入口），否则下次登录会再次提升。\n线上通过 wrangler secret put BOOTSTRAP_ADMIN_EMAILS --env staging 在 web Worker 配置；本地 .dev.vars 不上传。部署流水线不写入或替换此 secret；不要在模板、PR 或日志中保存真实邮箱。\n`
   await writeFile(join(target, 'PROJECT_SETUP.md'), report)
   return { target, options, checklist, report }
 }

@@ -54,12 +54,28 @@ APP_VERSION 与 Sentry release 使用同一个完整提交 SHA，CI 已负责注
 新库初始化时，先以 migrator 应用已有迁移，再将新库 app 连接通过进程环境传给
 `pnpm billing:seed`（变量名为 `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`）。
 这条命令只写套餐示例，不调用支付服务，关闭支付的文本项目也需要套餐权益初始化。
-在执行前编辑新项目 `packages/billing/src/catalog.ts` 的 free seed，将 `features.models`
-显式配置为允许的模型 key 或标签；默认 `DEFAULT_FREE_FEATURES.models=[]` 不允许任何 AI 模型，
-仅在后台新增模型和发积分仍会返回 403。当前后台没有套餐权益编辑入口，需要在新项目的 seed
-配置中做此选择；不要为快速验收改模板默认策略。重新 seed 会覆盖示例套餐的配置，应只对明确
-指定的新库执行。Neon staging 使用 TLS 直连与两个 Hyperdrive，不需要 Tunnel / Workers VPC
-或自建库备份；实际部署顺序为迁移 → seed → jobs → web。
+首次 seed 的 `free.features.models=[]`，不开放任何 AI 模型。按以下顺序完成首次运行：
+
+1. 为 web 配置可选 `BOOTSTRAP_ADMIN_EMAILS`：线上使用 Worker secret（在 apps/web 执行
+   `pnpm exec wrangler secret put BOOTSTRAP_ADMIN_EMAILS --env staging`，通过 stdin 录入）；
+   本地填 `apps/web/.dev.vars`。逗号分隔，去除两侧空白并忽略大小写；模板保持空值。
+2. 用名单账号登录。邮箱必须已验证且账号未封禁；Google OAuth 返回已验证邮箱时可直接提升，
+   邮箱密码账号先在账号设置完成验证，再访问后台。已有账号重新登录也会检查并提升。
+3. 在 `/admin/models` 创建模型，然后到 `/admin/billing/plans` 为用户生效套餐（新用户通常为 free）
+   多选模型 key 或 `*`（全部模型）并保存。仅新增模型或发积分仍不足以授予调用权限。
+
+套餐页只编辑模型授权，其他权益和价格原样保留；不存在的历史 key 会警告并保留，允许主动移除。
+权限在下一次请求生效。重跑 `billing:seed` 保留既有 `features.models`（包括空列表），
+其他示例配置仍按 seed 更新。不要为快速验收改模板 free 默认策略。
+
+未配置或空名单会禁用自动提升；移除邮箱不会自动撤销已授予的 admin。
+需要撤权时先移除名单，再由运维显式修改数据库中的平台角色（当前后台不提供角色修改入口），否则下一次登录会再次提升。
+提升写入 `admin.user.bootstrap` 审计。真实邮箱不要写入代码、文档、PR 或日志。
+`BOOTSTRAP_ADMIN_EMAILS` 不放在 wrangler vars 中；现有部署流水线只部署 Worker，
+不写入或替换此 secret。staging 配置与部署验收由协调者合并后执行。
+
+Neon staging 使用 TLS 直连与两个 Hyperdrive，不需要 Tunnel / Workers VPC 或自建库备份；
+实际部署顺序为迁移 → seed → jobs → web，再登录后台创建模型及配置套餐模型权限。
 
 2026-10-12 临时 `saas-smoke` 部署验收已通过，临时云资源与本地副本已清理，
 脱敏状态、ID 与界面观察见 [6.1 证据](runbooks/evidence/create-project/2026-10-12/acceptance.json)
