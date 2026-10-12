@@ -145,9 +145,15 @@ billing 296、entitlements 14、web AI 50、public 29、files 拒绝路径 10、
 Node job 没有 staging secrets/部署步骤。staging 保持 main CI push 成功后触发，按完整 SHA
 checkout，迁移 → jobs/web 发布 → health SHA 检查 → staging Playwright。
 
-当前 main `30731bfdfef267a0841bd534e2349d1a7a61d197` 的
+本轮开始时 main `30731bfdfef267a0841bd534e2349d1a7a61d197` 的
 [CI 38288222594](https://github.com/ustclhx/saas-template/actions/runs/38288222594) 和
 [自动 staging 38288882367](https://github.com/ustclhx/saas-template/actions/runs/38288882367)
 均通过；只读请求 staging `/api/health` 返回 200，version 同为完整 `30731bfdfef267a0841bd534e2349d1a7a61d197`，lastCronAt 非空。这是本分支基线的证据，不能替代本 PR 合入后的 run/health。
 本分支不手工部署 staging、不自行合并；8.3 要求本 PR 合入后的 main 自动 staging 与完整 SHA，
 取得该证据前保持未勾选，由协调者合入后补验。
+
+交付前 rebase 到 `62ac48d66cca59d022fae322d6193c3f0f57c470`（#132/#133）。
+新增内容是 Cloudflare staging reduced Cron 与 staging CDP 登录支持；Node 仍使用
+默认五条 UTC 调度。补跑 jobs Node 11 文件/54 项与三套 jobs tsc 均通过，最终 PR CI
+再验集成后的根检查、CF smoke 和 Node 构建/测试。上述 Compose 镜像与长时钟证据
+记录的是 rebase 前完整 SHA；auth/ownership 实现和 Compose 文件在 rebase 中没有改变。
