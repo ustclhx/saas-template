@@ -69,9 +69,7 @@ it('保存设置后清除旧 KV 值，拒绝未受邀注册，并审计每项的
           config: defineTemplateConfig({
             app: { name: 'Test', url: 'http://localhost:3000', supportEmail: 'help@example.test' },
           }),
-          appUrl: 'http://localhost:3000',
           secret: 'test-secret',
-          queue: { send: async () => {} },
         },
         'guest@example.test',
         new Headers(),

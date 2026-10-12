@@ -109,3 +109,9 @@ manifest 与 lockfile 仅增加 platform workspace 依赖。共享入口及后�
 仅允许同库的隔离 worktree/CI app 与 migrator 连接。覆盖注册登录、缓存读取、实时吊销、撤销、
 跨客户端 IP/邮箱防刷和缓存故障 503；关闭 Turnstile 不要求密钥也不调用 siteverify。
 测试 sender 仅捕获消息，不替代 B 持久投递验收，完整 Compose auth e2e 仍属于 9.3。
+
+## A 4.4：文件、growth 与公开读取
+
+`WebRuntime.files` 注入 `Capability<Storage>`，`publicDb` 为惰性的公开读 facade。文件 HTTP 与 RPC 在副作用前检查文件能力，媒体提交 POST 也先检查存储，Node 在 C 之前明确返回 503，无任务/预扣。Cloudflare storage 工厂在 web/jobs entry 装配；R2/FixedLengthStream 细节仅由 `@saas/storage/cloudflare` 导出。C 的 `Storage`/`MediaOutputCopier` 接口见 [storage README](../packages/storage/README.md)，本批验证及 Node 生产预渲染的组 5 边界见 [验收说明](runbooks/selfhost-a4-storage.md)。
+
+公开定价读取接受借用的 Database，不终止进程池；构建快照由脚本关闭自有池。公开页沿用数据库不可达降级，语言处理仅在账号区域读取 auth/db。growth 限流使用请求 runtime 的可信 IP 与 auth policy，发信依赖缺失时在业务写入前拒绝。

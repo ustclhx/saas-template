@@ -12,6 +12,7 @@ import { type AiPricingJson, aiTask, createDb, member, organization, scoped, use
 import { NonRetryableError, type WorkflowStep } from '@saas/platform'
 import { MEDIA_DONE_EVENT } from '@saas/shared'
 import { persistMediaOutputs } from '@saas/storage'
+import { createCloudflareMediaCopier, createCloudflareStorage } from '@saas/storage/cloudflare'
 import { afterAll, expect, it, vi } from 'vitest'
 import documented from '../../../packages/ai/src/media/fixtures/fal.documented.json'
 import {
@@ -118,7 +119,14 @@ function harness(
     callbackOrigin: 'https://app.example.test',
     callbackSecret: 'workflow-test-secret',
     persist: (task, media) =>
-      persistMediaOutputs({ db, bucket: env.FILES, task, result: media, limits, fetch: fetcher }),
+      persistMediaOutputs({
+        db,
+        storage: createCloudflareStorage(env),
+        copyOutput: createCloudflareMediaCopier(env.FILES, { fetch: fetcher }),
+        task,
+        result: media,
+        limits,
+      }),
     now: () => now,
   }
   const step = {

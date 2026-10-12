@@ -1,9 +1,11 @@
-import { env } from 'cloudflare:workers'
 import { log } from '@saas/shared/log'
 import { createServerFn } from '@tanstack/react-start'
+import { getWebRuntime } from '../../server/runtime.ts'
 import { getImpersonation } from '../admin/impersonation.functions.ts'
 
-export const getSeoOrigin = createServerFn({ method: 'GET' }).handler(() => env.APP_URL)
+export const getSeoOrigin = createServerFn({ method: 'GET' }).handler(
+  () => getWebRuntime().config.APP_URL,
+)
 
 /** 根布局中的会话装饰读取失败不能阻断公开页（无数据库预渲染）。 */
 export const getSafeImpersonation = createServerFn({ method: 'GET' }).handler(async () => {

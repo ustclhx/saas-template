@@ -78,8 +78,6 @@ export function getAuth(
             db,
             config: templateConfig,
             secret: parseAuthEnv(env, templateConfig).BETTER_AUTH_SECRET,
-            appUrl: env.APP_URL,
-            queue: env.EMAIL_QUEUE,
           },
           user.email,
           headers,

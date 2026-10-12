@@ -1,12 +1,12 @@
 import { AppError } from '@saas/shared'
 import { createFileRoute } from '@tanstack/react-router'
-import { getAiHttpDeps } from '../../../features/ai/runtime.ts'
 import { apiError } from '../../../features/api-keys/completions.ts'
 import { handlePublicMediaSubmit } from '../../../features/api-keys/tasks.ts'
+import { getFileMediaHttpDeps } from '../../../features/files/runtime.ts'
 import { templateConfig } from '../../../server/template-config.ts'
 
 function deps() {
-  return { ...getAiHttpDeps(), config: templateConfig }
+  return { ...getFileMediaHttpDeps(), config: templateConfig }
 }
 
 const unsupported = () =>

@@ -4,7 +4,7 @@ declare const __APP_VERSION__: string
 /** wrangler.jsonc 中声明的绑定（`import { env } from 'cloudflare:workers'` 的类型） */
 declare namespace Cloudflare {
   type PaymentEnv = import('@saas/billing').PaymentRuntimeEnv
-  type StorageEnv = import('@saas/storage').StorageEnv
+  type StorageEnv = import('@saas/storage/cloudflare').StorageEnv
   type MediaEnv = import('@saas/ai').MediaRuntimeEnv
   type TextEnv = import('@saas/ai').TextModelEnv
   interface Env extends PaymentEnv, StorageEnv, MediaEnv, TextEnv {

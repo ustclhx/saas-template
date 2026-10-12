@@ -1,7 +1,5 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "types": ["node"]
-  },
-  "include": ["vitest.config.ts"]
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "types": ["node"] },
+  "include": ["vitest.config.ts", "test/node-import.unit.test.ts", "test/node-contracts.ts"]
 }

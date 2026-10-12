@@ -1,11 +1,10 @@
-import { createDb, type HyperdriveBinding, plan, planPrice } from '@saas/db'
+import { type Database, plan, planPrice } from '@saas/db'
 import { log } from '@saas/shared/log'
 import { asc, desc, eq } from 'drizzle-orm'
 import type { PricingCatalog } from './pricing-data.ts'
 
 /** 公开展示只保留有效价格；支付可用性由每次请求的运行时配置决定。 */
-export async function readPricingCatalog(binding: HyperdriveBinding): Promise<PricingCatalog> {
-  const db = createDb(binding)
+export async function readPricingCatalog(db: Database): Promise<PricingCatalog> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([
@@ -19,7 +18,6 @@ export async function readPricingCatalog(binding: HyperdriveBinding): Promise<Pr
     throw error
   } finally {
     clearTimeout(timer)
-    await db.$client.end({ timeout: 1 })
   }
 
   async function read(): Promise<PricingCatalog> {

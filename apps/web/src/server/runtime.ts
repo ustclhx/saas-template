@@ -14,6 +14,7 @@ import type {
   Workflow,
 } from '@saas/platform'
 import { AppError } from '@saas/shared'
+import type { Storage } from '@saas/storage'
 import type { AuthUiEnv } from '../features/auth/options.ts'
 
 /** AI 模块按目标注入；文件签名留在目标入口，不让公开 API 依赖 R2 类型。 */
@@ -31,12 +32,16 @@ export interface WebAiRuntime {
 export interface WebRuntime {
   readonly config: ReturnType<typeof parseAuthEnv> & AuthUiEnv & PaymentRuntimeEnv
   readonly db: Database
+  /** 公开读取保留目标自身的缓存策略，不拥有连接池。 */
+  readonly publicDb: Database
   readonly auth: Auth
   readonly cache: KeyValueStore
   readonly rateLimiter: RateLimiter
   readonly requestMeta: RequestMetadata
   readonly emailQueue: Capability<QueueProducer<EmailQueueMessage>>
   readonly eventsQueue: Capability<QueueProducer<unknown>>
+  /** C 接入前 Node 不装配文件能力；在任何文件副作用之前拒绝。 */
+  readonly files?: Capability<Storage>
   /** 未装配的目标明确报告 unavailable；认证等独立模块不要求 AI 能力。 */
   readonly ai?: Capability<WebAiRuntime>
   /** 后台认证写入需借用事务 facade 与延后提交的缓存。 */

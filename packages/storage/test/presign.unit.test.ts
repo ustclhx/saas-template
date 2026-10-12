@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { presignDownload, presignUpload, type StorageEnv } from '../src/index.ts'
+import { presignDownload, presignUpload, type StorageEnv } from '../src/cloudflare/index.ts'
 
 const env = {
   FILES: {} as R2Bucket,

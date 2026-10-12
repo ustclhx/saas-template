@@ -2,7 +2,7 @@ import { type Database, type File, file, notFound, organization, scoped } from '
 import { type EntitlementOptions, getEntitlements, requireEntitlement } from '@saas/entitlements'
 import { AppError, newId } from '@saas/shared'
 import { and, eq, isNull, type SQL, sql } from 'drizzle-orm'
-import { presignDownload, presignUpload, type StorageEnv } from './presign.ts'
+import type { Storage } from './storage.ts'
 
 type StorageDatabase = Database | Parameters<Parameters<Database['transaction']>[0]>[0]
 
@@ -56,14 +56,14 @@ function checkDeclaration(mime: string, size: number) {
 
 export async function declareUpload(
   db: Database,
-  env: StorageEnv,
+  storage: Storage,
   input: { workspaceId: string; userId: string; mime: string; size: number },
   options: EntitlementOptions = {},
 ) {
   checkDeclaration(input.mime, input.size)
   const fileId = newId()
   const r2Key = `ws/${input.workspaceId}/${fileId}`
-  const signature = await presignUpload(env, r2Key, input.mime)
+  const signature = await storage.presignUpload(r2Key, input.mime)
   await db.transaction(async (tx) => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${`ws:${input.workspaceId}`}, 0))`,
@@ -97,13 +97,13 @@ async function visibleFile(
 
 export async function completeUpload(
   db: Database,
-  env: StorageEnv,
+  storage: Storage,
   input: { workspaceId: string; fileId: string },
   options: EntitlementOptions = {},
 ): Promise<File> {
   const initial = await visibleFile(db, input.workspaceId, input.fileId)
   if (initial.status === 'ready') return initial
-  const object = await env.FILES.head(initial.r2Key)
+  const object = await storage.head(initial.r2Key)
   if (!object) throw new AppError('UPLOAD_NOT_FOUND', 'Upload has not completed', { status: 409 })
   const result = await db.transaction(async (tx) => {
     // 确认与清理、删空间和其他确认共用空间锁；仅 ready 文件计入已用配额。
@@ -113,11 +113,7 @@ export async function completeUpload(
     const row = await visibleFile(tx, input.workspaceId, input.fileId)
     if (row.status === 'ready') return { row }
     let error: AppError | undefined
-    if (
-      object.size !== row.size ||
-      object.httpMetadata?.contentType !== row.mime ||
-      object.size > MAX_UPLOAD_BYTES
-    ) {
+    if (object.size !== row.size || object.mime !== row.mime || object.size > MAX_UPLOAD_BYTES) {
       error = new AppError('UPLOAD_MISMATCH', 'Uploaded size or type differs from declaration')
     } else {
       try {
@@ -140,7 +136,7 @@ export async function completeUpload(
     }
   })
   if (result.error) {
-    await env.FILES.delete(result.row.r2Key)
+    await storage.delete(result.row.r2Key)
     throw result.error
   }
   return result.row
@@ -148,11 +144,11 @@ export async function completeUpload(
 
 export async function getFileDownload(
   db: Database,
-  env: StorageEnv,
+  storage: Storage,
   input: { workspaceId: string; fileId: string; download?: boolean },
 ) {
   const row = await visibleFile(db, input.workspaceId, input.fileId, true)
-  return presignDownload(env, row.r2Key, input.download)
+  return storage.presignDownload(row.r2Key, input.download)
 }
 
 async function ownedFile(
@@ -184,7 +180,7 @@ export async function revokeFileShare(
   await scoped(db, input.workspaceId).updateById(file, row.id, { publicToken: null })
 }
 
-export async function getSharedFileDownload(db: Database, env: StorageEnv, token: string) {
+export async function getSharedFileDownload(db: Database, storage: Storage, token: string) {
   // 公开 token 是跨租户定位入口，找到空间后仍通过 scoped 校验文件状态与软删状态。
   const [entry] = await db
     .select({ id: file.id, workspaceId: file.workspaceId })
@@ -194,5 +190,5 @@ export async function getSharedFileDownload(db: Database, env: StorageEnv, token
   if (!entry) throw notFound()
   const row = await visibleFile(db, entry.workspaceId, entry.id, true)
   if (row.publicToken !== token) throw notFound()
-  return presignDownload(env, row.r2Key)
+  return storage.presignDownload(row.r2Key)
 }

@@ -19,6 +19,7 @@ import {
 import { AppError } from '@saas/shared'
 import { log, withLogContext } from '@saas/shared/log'
 import { getFileDownload } from '@saas/storage'
+import { createCloudflareStorage } from '@saas/storage/cloudflare'
 import { createStartHandler, defaultStreamHandler } from '@tanstack/react-start/server'
 import { APIError } from 'better-auth/api'
 import { gateAdminRequest } from './features/admin/gate.ts'
@@ -57,7 +58,7 @@ const worker = instrumentWeb({
       request,
       async () =>
         gatePublicApiRequest(request, templateConfig) ??
-        (await localized(gateLocaleRequest(await gateAdminRequest(request, getWebRuntime())), env)),
+        (await localized(gateLocaleRequest(await gateAdminRequest(request, getWebRuntime())))),
     )
   },
 } satisfies ExportedHandler<Cloudflare.Env>)
@@ -128,8 +129,8 @@ async function logged(request: Request, handle: () => Promise<Response>): Promis
 }
 
 // 交给 TanStack Start 的仍是原始地址，语言前缀由路由器的 rewrite 去掉（与 SSR 后的客户端一致）
-function localized(request: Request, env: Cloudflare.Env): Promise<Response> {
-  return localizeRequest(request, env, () => startHandler(request))
+function localized(request: Request): Promise<Response> {
+  return localizeRequest(request, getWebRuntime(), () => startHandler(request))
 }
 
 /** CF bindings 仅在入口装配；getter 保证公开页降级时不提前创建认证/数据库资源。 */
@@ -154,6 +155,7 @@ function createCloudflareWebRuntime(
     ...(env.PAYPAL_WEBHOOK_ID === undefined ? {} : { PAYPAL_WEBHOOK_ID: env.PAYPAL_WEBHOOK_ID }),
   }
   const databases = createCloudflareDatabase(env)
+  const files = createCloudflareStorage(env)
   const cache = createCloudflareKv(env.CACHE)
   const rateLimiter = createCloudflareRateLimiter(env)
   const queue = createCloudflareQueue(env.EMAIL_QUEUE)
@@ -185,8 +187,6 @@ function createCloudflareWebRuntime(
               db,
               config: templateConfig,
               secret: config.BETTER_AUTH_SECRET,
-              appUrl: config.APP_URL,
-              queue: env.EMAIL_QUEUE,
             },
             user.email,
             headers,
@@ -205,6 +205,7 @@ function createCloudflareWebRuntime(
     cache,
     rateLimiter,
     requestMeta,
+    files: { available: true, value: files },
     emailQueue: { available: true, value: queue },
     eventsQueue: env.EVENTS_QUEUE
       ? { available: true, value: createCloudflareQueue(env.EVENTS_QUEUE) }
@@ -234,12 +235,15 @@ function createCloudflareWebRuntime(
           : { available: false },
         downloadFile: {
           available: true,
-          value: (input) => getFileDownload(databases.business(), env, input),
+          value: (input) => getFileDownload(databases.business(), files, input),
         },
       },
     },
     get db() {
       return databases.business()
+    },
+    get publicDb() {
+      return databases.public()
     },
     get auth() {
       auth ??= createAuth(databases.business())

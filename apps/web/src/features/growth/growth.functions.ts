@@ -1,9 +1,10 @@
-import { env } from 'cloudflare:workers'
 import { waitlist } from '@saas/db'
+import { requireCapability } from '@saas/platform'
 import { notFound } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { desc } from 'drizzle-orm'
 import { z } from 'zod'
+import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import { withAdminAction } from '../admin/action.server.ts'
 import { adminMiddleware } from '../admin/admin.functions.ts'
@@ -15,7 +16,11 @@ export const getGrowthFormOptions = createServerFn({ method: 'GET' })
   .inputValidator(z.enum(['waitlist', 'newsletter']))
   .handler(({ data }) => {
     if (!templateConfig.features[data]) throw notFound()
-    return { siteKey: templateConfig.auth.turnstile ? (env.TURNSTILE_SITE_KEY ?? null) : null }
+    return {
+      siteKey: templateConfig.auth.turnstile
+        ? (getWebRuntime().config.TURNSTILE_SITE_KEY ?? null)
+        : null,
+    }
   })
 
 export const getAdminWaitlist = createServerFn({ method: 'GET' })
@@ -42,9 +47,11 @@ export const inviteAdminWaitlist = createServerFn({ method: 'POST' })
   .inputValidator(z.object({ ids: z.array(z.uuid()).min(1).max(50) }))
   .handler(async ({ context, data }) => {
     if (!templateConfig.features.waitlist) throw notFound()
+    const ctx = { ...growthContext(), db: context.db }
+    requireCapability(ctx.queue, 'Email queue')
     const rows = await withAdminAction(context, 'waitlist.invite', (scope) =>
       prepareWaitlistInvitations(scope, data.ids),
     )
-    await sendWaitlistInvitations({ ...growthContext(env), db: context.db }, rows)
+    await sendWaitlistInvitations(ctx, rows)
     return { count: rows.length }
   })
