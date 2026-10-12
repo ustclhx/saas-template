@@ -33,8 +33,8 @@
 
 - [x] 3.1 实现create({id?,params})/get返回中立instance，id/status/terminate/sendEvent、JSON输入输出和平台错误；任意合法字符串业务ID与内部引擎ID区分。验证：重复身份/不存在/完成失败/终止、终态事件拒绝与正式contracts类型夹具通过；SDK成功不冒充业务ai_task成功。
 - [x] 3.2 实现named do的成功缓存、limit排除首次、毫秒timeout/delay、constant/exponential及linear退避；NonRetryableError不重试，sleep保留原唤醒时刻。验证：成功callback跨重启不增加，linear100/200/300ms与原有submit/persist策略、不可重试失败结算、sleep/副作用后checkpoint前故障通过；记录timeout不能强制停止不合作回调的边界。
-- [ ] 3.3 实现自有event inbox序号FIFO、wait deadline和原子消费结果journal，queued/sleep中接收事件，至少60min保留；timestamp API返回Date，持久结果JSON；负责自有终态FIFO event清理，active实例永不清理且未消费早到事件至少保留60min（2.5只清理队列域）。固定版native状态只读/锁定耦合须封装并在升级验证，禁止写第三方内部表。验证：同type FIFO/不同type/消费一次、等待超时可捕获、截止后到达不误匹配、缺失/终态拒绝、重启原deadline及真实60+min事件通过。
-- [ ] 3.4 完成同版本恢复与升级/停机runbook，记录applicationVersion/handler版本和稳定步骤顺序；接A shutdown停止领取，受控排空，未完成状态保留。验证：同版本1–2h流水线恢复、等待/sleep/成功步骤缓存通过；不宣称跨代码版本热重放已支持，变更版本先完成/暂停旧任务或保留旧handler。
+- [x] 3.3 实现自有event inbox序号FIFO、wait deadline和原子消费结果journal，queued/sleep中接收事件，至少60min保留；timestamp API返回Date，持久结果JSON；负责自有终态FIFO event清理，active实例永不清理且未消费早到事件至少保留60min（2.5只清理队列域）。固定版native状态只读/锁定耦合须封装并在升级验证，禁止写第三方内部表。验证：同type FIFO/不同type/消费一次、等待超时可捕获、截止后到达不误匹配、缺失/终态拒绝、重启原deadline及真实60+min事件通过。
+- [x] 3.4 完成同版本恢复与升级/停机runbook，记录applicationVersion/handler版本和稳定步骤顺序；接A shutdown停止领取，受控排空，未完成状态保留。验证：同版本1–2h流水线恢复、等待/sleep/成功步骤缓存通过；不宣称跨代码版本热重放已支持，变更版本先完成/暂停旧任务或保留旧handler。
 
 ## 4. Phase 2：持久调度与健康
 
