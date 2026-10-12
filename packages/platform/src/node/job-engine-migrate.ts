@@ -68,6 +68,13 @@ export async function migrateNodeJobEngine(options: NodeJobEngineMigrationOption
         await client.query(
           `GRANT SELECT (workflow_uuid, status, name, executor_id, application_version, created_at, updated_at, recovery_attempts, queue_name) ON dbos.workflow_status TO ${readonlyRole}`,
         )
+        // 新事件域只开放排障摘要；payload 与原子等待结果包含业务正文，不能开放。
+        await client.query(
+          `GRANT SELECT (id, sequence, workflow_id, type, created_at, consumed_at) ON job_engine.workflow_event TO ${readonlyRole}`,
+        )
+        await client.query(
+          `GRANT SELECT (id, workflow_id, name, type, deadline, state, created_at, finished_at) ON job_engine.workflow_wait TO ${readonlyRole}`,
+        )
       }
       await client.query('COMMIT')
     } catch {

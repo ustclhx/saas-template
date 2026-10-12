@@ -132,3 +132,107 @@ handler 的 Promise 必须涵盖整批全部在途工作；并行消费使用 al
 | 6 | 11:58:00.196 | 485.044 秒 |
 
 间隔为 30/60/120/240/480 秒退避加真实 5 秒聚合窗；该长跑之后的 ownership 修复由独立取消等待批次/同 ID 重启回归验证。清理时钟边界、active 数据与未消费 native 事件保护、30 天 DLQ 保留、close 后活进程拒绝同 ID、已退出 owner 的失败批次恢复和执行权丢失均由独立 PG 测试覆盖。模拟清理时钟不替代后续工作流的真实 60+ 分钟等待验收。
+
+## 工作流装配、恢复与停机（B 3.1–3.4）
+
+在 `createNodeJobEngine` 的 `register(engine)` 内调用
+`createNodeWorkflow({ engine, name: 'media-v1', handler })`，handler 接收
+`(params, step)`，只能返回 JSON。通过 Node 入口取得适配器；业务仍使用中立
+`Workflow` / `WorkflowStep`。所有 jobs 必须注册同一版本的完整 handler 集，不能让缺少
+handler 的实例领取恢复任务。`applicationVersion` 由发布版本固定，handler 名包含版本；
+同版本重启沿用稳定且互异的 executor ID，并且必须确认旧进程已退出。
+
+业务 ID 是合法非空字符串（含 Unicode），内部 ID 为
+`workflow:<handler 名的 base64url>:<业务 ID 的 base64url>`，不与 queue-batch 身份混用。
+省略 ID 时生成 UUIDv7；重复 create 复用同一身份，首次持久输入与结果保持不变。
+SDK completed 只表示 handler 返回，返回的业务状态仍可能 failed，不据此更新 ai_task。
+实例缺失报 `WORKFLOW_NOT_FOUND`，终态事件报 `WORKFLOW_TERMINAL`。
+
+命名步骤在一个流程中唯一，顺序稳定；随机值、当前时间和副作用在 `step.do` 内获取并
+保存 JSON 结果。`retries.limit` 不包含首次，所有时间单位为毫秒；linear 为
+`delayMs / 2×delayMs / 3×delayMs`，exponential 为 `delayMs / 2×delayMs / 4×delayMs`。
+每次失败结果与重试 sleep 分别持久保存，成功 callback 在恢复时不再调用。
+`NonRetryableError` 不重试，handler 仍可捕获它完成失败结算。
+`WORKFLOW_STEP_TIMEOUT` 表示尝试超时，不能强行停止不合作 callback；其迟到结果被
+丢弃，但外部副作用仍可能发生，必须依靠业务幂等或底层取消信号。副作用已提交而 step
+checkpoint 未提交时，恢复可重试；不要宣称任意副作用 exactly-once。
+
+`sleep` 使用原生持久唤醒时刻。`waitForEvent` 使用自有 wait 日志保存首次 deadline，
+重启不延长；超时报可捕获的 `WORKFLOW_EVENT_TIMEOUT`，随后可按既有业务策略轮询。
+事件可在 queued 或 sleep 中发送，按 type/单调序号 FIFO，事件消费与 wait JSON 结果
+在同一事务提交。事件时间持久为 UTC ISO 字符串，API 还原为 `Date`。截止后到达的事件
+不完成原等待，仍可用于后续等待。不要使用 DBOS native recv 替代这一 FIFO 语义。
+
+停机先由 A 的 stopReceiving hook 调用每个 workflow adapter 的 `stopReceiving()` 和
+队列 publisher 的停止入口，再发起 `engine.close()`；DBOS shutdown 先停止 native
+队列领取与恢复接收，再在配置的 `shutdownTimeoutMs` 内排空。之后关闭业务池。
+超时的 sleep/wait/未完成 step 保留在 PG，真正退出后由相同版本恢复；不要通过
+terminate、清空事件或删除 journal 来模拟停机。停止接收后新 create 报
+`WORKFLOW_STOPPING`，在途业务请求应先排空，再关闭其使用的资源。
+
+本期只承诺同版本恢复；升级前先完成旧任务，或保留旧版本 handler 与兼容的步骤次序。
+不能原地修改旧 handler 的 do/sleep/wait 顺序或持久结果形状并热重放旧实例。
+回滚时也保留 native checkpoint、event inbox 和 wait 日志，确认 schema/代码版本匹配。
+
+### 事件 schema、权限与清理
+
+协调者合并后生成新增两张表的迁移：
+`pnpm --filter @saas/db exec drizzle-kit generate --name node_workflow_events`。
+先应用业务迁移，再运行 `pnpm --filter @saas/platform dbos:migrate`，最后启动 jobs。
+app 拥有事件表 DML 和序号 sequence USAGE；readonly 仅能读以下摘要列，不能读 payload
+或 wait result。初始化/升级须复验固定版 `dbos.workflow_status` 的
+`workflow_uuid/status/name/updated_at` 及行锁：发送和消费只读取/锁定该表，从不手写第三方表。
+
+```sql
+SELECT id, sequence, workflow_id, type, created_at, consumed_at
+FROM job_engine.workflow_event
+ORDER BY sequence LIMIT 100;
+
+SELECT id, workflow_id, name, type, deadline, state, created_at, finished_at
+FROM job_engine.workflow_wait
+ORDER BY created_at DESC LIMIT 100;
+```
+
+维护路径单独调用 `cleanupNodeWorkflowEvents(db, { terminalRetentionMs })`，默认 7 天，
+最短 60 分钟。只删自有 event/wait；native journal 由另行获授权的运维流程管理。
+实例必须是本模块的已知 native 终态且 updated_at 已达到保留期，事件/wait 自身创建时间
+也达到保留期，才可删；未消费事件同样至少保留 60 分钟。active、缺失 native 状态或
+未知更新时间均保留，长任务不因年龄被删。清理与人工 resume 互斥，不修改终态使其复活。
+每实例短事务与发送/消费使用同一 native 行锁，日志只报告删除计数，不输出 payload。
+
+本地快验：配置隔离的 `TEST_JOB_DATABASE_URL`、`TEST_JOB_MIGRATOR_URL` 与
+`TEST_JOB_READONLY_DATABASE_URL` 后，执行
+`pnpm --filter @saas/platform exec vitest run --config vitest.workflow.config.ts`。
+真实长跑另设 `TEST_WORKFLOW_LONG=1` 并筛选 `-t 'real 61-minute'`；同一逻辑数据库不能并发跑
+注册集不同的 DBOS suite，长跑与快验使用独立数据库。长跑使用真实时钟，不用 fake timers
+或把数据库时间改老来冒充 60+ 分钟事件/1–2 小时流水线验收。
+
+### 本批工作流验证记录（2026-10-12）
+
+独立 worktree 命名的 Postgres 17.11 容器，Node 23.11.0、DBOS 固定 5.2.11；
+不同注册集使用不同隔离逻辑库，没有请求外部业务 API 或 staging。
+工作流快验 10 项通过（113.17 秒）；媒体 submit/persist 使用真实 10 秒 delay，
+persist 三次重试依次等待 10/20/30 秒，首次不计入 limit。
+消费事务提交后/native checkpoint 前 SIGKILL 验证结果仍可读取且事件不再次消费；
+另有副作用后/checkpoint 前 SIGKILL 验证幂等结果只产生一次。
+SIGTERM 定向回归 7.35 秒：受控排空后未完成 sleep 仍为 PENDING，同 ID 退出后
+重启使用原唤醒时刻与成功 step 结果，不用 terminate 冒充停机。
+
+单独升级库通过 5.1.10 CLI 初始化与重复初始化；5.2.11 app probe 明确返回
+`JOB_ENGINE_DATABASE_NOT_READY`。执行当前公共 migrate 两次后 app probe 返回 started，
+再运行 FIFO、原 wait deadline/晚到事件、原子消费恢复和 readonly 权限 4 项回归，
+14.40 秒全部通过。固定版 native 状态的读取/行锁路径在升级后实际运行；未来版本
+升级仍须重跑上述场景，不能从本次推导任意未来版本兼容。
+
+新增事件表及权限后，既有 `test:job-engine` 回归 2 个文件、13 项全部通过，
+耗时 1124.61 秒；覆盖真实六次生产退避/DLQ、caller tx、双 jobs 消息级限额、
+发布/确认窗口、ownership 与队列域清理。事件/wait 域的清理仍独立于队列入口。
+
+初版真实长跑在中段 resume 的 JSON `null` 载荷触发 SQL NOT NULL 约束而失败，
+该轮不作为通过证据。Drizzle 会跳过 JS null 的 JSON codec；适配器已在事件写入边界
+显式编码 JSON 并转换 jsonb，使 JSON null 与 SQL NULL 区分。
+补强原子消费测试使用 null 载荷，4.26 秒通过；修复后的完整工作流快验 10 项
+再次通过（112.22 秒），根目录检查/类型/测试/构建也再次通过。
+真实长跑把短 sleep/wait/中间成功步骤的三次退出注入前置，再使用 3661 秒的
+第二段真实 sleep 等待早到事件；仍验证原唤醒时间、同业务身份、1–2h 总时长
+与超过 60 分钟的原始事件时间，不修改数据库时钟或回填事件时间。
