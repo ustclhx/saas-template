@@ -1,6 +1,6 @@
 # A 8/9：Node 认证与 Compose 尾部验收
 
-本轮仅处理 Node 认证 500 与 A 8.1、8.2、8.3、9.2、9.3；不勾选 ACME、C 存储/媒体、D 正式交付或 A 9.4。
+本轮处理 Node 认证 500、协调者追加授权的 B ownership 补修与 A 8.1、8.2、8.3、9.2、9.3；不勾选 ACME、C 存储/媒体、D 正式交付或 A 9.4。
 
 ## 认证修复
 
@@ -14,6 +14,21 @@ runtime 并交给 Nitro。保留 body 流与取消信号，不缓存正文。Clo
 生产回归覆盖 get-session、注册/登录的正常 Turnstile 拒绝、真实 sign-out 与旧会话失效；
 另外保留 SSR、RPC、静态资源、无 DB 预渲染、AI 客户端断开与 SIGTERM 完整结算。
 关闭 Turnstile 后的成功注册/密码登录由下述 Compose e2e 验证。
+
+## 授权补修：B 容器 ownership
+
+原 Compose 重启将 jobs 留在 unhealthy：旧 owner 文件保留了 PID 1 与旧 PID namespace，
+原判定只允许同 namespace 的 ESRCH，不能证明新容器中的同号 PID 属于另一 incarnation。
+经协调者授权，Linux owner 增加 boot ID 与进程启动时间；同 hostname 的 boot/namespace
+变化或同 namespace 下启动时间变化提供退出证明，其他 hostname、活进程和读取失败继续拒绝。
+旧记录缺启动时间时不能凭活 PID 放行。advisory lock、exclusive guard 与 incarnation token
+保留；未清空 owner 文件、未随机更换 executor ID。
+
+Node 入口默认 ID 从 hostname 派生；Compose 将 hostname/ID 固定，owner 目录挂持久卷。
+验收配置声明两套互异且稳定的 hostname/ID，各自使用正式引擎与同一 owner 卷；依次停止
+一个副本，由另一个消费真实注册验证邮件，再用原身份重启。down/up 后核对 PID 1 复用、
+namespace 改变与历史 incarnation 记录保留。跨 hostname 自动接管仍不在契约内。
+详细恢复和手动处置规则见 [Node job engine runbook](node-job-engine.md)。
 
 ## 可重复的空卷验收
 
@@ -45,6 +60,23 @@ Dockerfile ignore 显式排除捕获夹具，连 migrate 的源码镜像也不�
 读取 Docker 自身日志目录。无论成功或失败，finally 执行 down -v 并删除临时 secrets。
 不操作其他容器，不清理其他镜像/缓存。
 
+### 最终 Compose 证据（2026-10-13 本地 / 2026-10-12 UTC）
+
+验收镜像 SHA 为 `0c11b8787b211323a309c377d50e4fdbafc90816`。
+健康接口返回 200/no-store，db/cache/queue/scheduler 均 up，真实成功 heartbeat
+为 `2026-10-12T19:10:00.957Z`；停止 jobs/cache 分别得到 503，恢复后回到 200。
+业务迁移与 DBOS 迁移按序成功，migrate exit 0。仅代理发布 80/443，资源限制和
+json-file 配置通过 compose config 检查；实际 UID 为 PG/Valkey 999、web/jobs/capture
+1000、Caddy 10001。owner 卷为 UID 1000/0700，两个 owner 均 PID 1，记录有效
+namespace、boot ID 与启动时间，且 hostname/ID 互异且稳定。
+
+两个副本轮流停止时，另一个都通过真实 B queue 送达一封新注册验证邮件；停止的
+副本以原 ID 重新启动成功。随后 down/up 保留卷，TLS verify-full 的 app 查询核对
+用户数完全一致，Valkey AOF 标记保留，owner namespace 改变且历史 incarnation
+记录数增加。向主进程 stdout 写入非敏感 JSON 后，实际保留三个日志文件（含 `.2`），
+requestId 可查、随机 secret 值未出现。最终 `selfhost.acceptance.passed` 后
+`selfhost.acceptance.cleaned`，本次服务、网络和卷全部删除，临时 secrets 已删除。
+
 ## 隔离测试矩阵
 
 本机使用独立 `selfhost-final-tests` PG17/Valkey，只绑定宿主 loopback 测试端口；它不是生产
@@ -60,22 +92,31 @@ Compose 拓扑。三角色和权限脚本与项目相同，连接配置只在任
 | pnpm check:singletons | 通过 |
 | pnpm dedupe --check | 通过 |
 | pnpm typecheck | 14/14 通过 |
-| pnpm test | 168 文件/1240 项，26/26 任务通过；22 任务复用未改变代码的缓存 |
+| pnpm test | 169 文件/1250 项，26/26 任务通过；15 任务复用未改变代码的缓存 |
 | pnpm build | 默认 CF web/jobs 2/2 通过，18 页预渲染 |
-| pnpm --filter @saas/web test:e2e:smoke | 1/1 通过，注册、真实退出/登录、本地支付 provider |
+| pnpm --filter @saas/web test:e2e:smoke | 1/1 通过，28.3 秒；注册、真实退出/登录、本地支付 provider |
 | pnpm build:node | Node web/jobs 2/2 通过，18 页无生产凭据预渲染 |
 | pnpm --filter @saas/web test:node | 12 组/687 项通过 |
 | pnpm --filter @saas/jobs test:node | 11 文件/44 项通过 |
-| pnpm --filter @saas/web test:node:production | 1 文件/7 项通过 |
+| pnpm --filter @saas/web test:node:production | 1 文件/7 项通过，5.01 秒 |
 | pnpm --filter @saas/jobs test:node:integration | 2 文件/2 项通过，96.29 秒；真实 retry/DLQ、五分钟 heartbeat 与停机 |
 | pnpm --filter @saas/platform test:job-engine | 2 文件/13 项通过，1127.96 秒，含真实完整六次退避与崩溃恢复 |
-| TEST_WORKFLOW_LONG=1 pnpm --filter @saas/platform exec vitest run --config vitest.workflow.config.ts | 待本轮结果，包含真实 61 分钟用例 |
+| TEST_WORKFLOW_LONG=1 pnpm --filter @saas/platform exec vitest run --config vitest.workflow.config.ts | 11/11 通过，3779.04 秒，包含真实 61 分钟 pipeline、重启与 60+ 分钟早到事件 |
 | TEST_SCHEDULER_LONG=1 pnpm --filter @saas/platform exec vitest run --config vitest.scheduler.config.ts | 10/10 通过，623.23 秒，含真实 601 秒心跳停摆 |
-| node deploy/selfhost/test-acceptance.mjs | 待本轮结果 |
+| 补修后 platform Node 单元与 ownership 定向集成 | Node 5 文件/38 项通过（含 ownership 10 项）；既有 engine 6 项通过，91.45 秒 |
+| 补修后 workflow/scheduler 快速集成 | workflow 10 项通过，113.43 秒；scheduler 9 项通过，31.11 秒；长用例在独立完整运行中等待/执行 |
+| Node生产 Compose Playwright：playwright.selfhost.config.ts | 1/1 通过，14.8 秒；完整验证邮件/退出/密码登录/团队与个人空间切换 |
+| node deploy/selfhost/test-acceptance.mjs | 通过；空卷、双副本发信/重启、PG/Valkey/owner 持久化与实际三文件日志轮转，finally down -v 完成 |
 
 Node 聚合包含 config 33、AI 113、platform 基础 16、DB/credits 86、Valkey 3、auth 3、
 billing 296、entitlements 14、web AI 50、public 29、files 拒绝路径 10、admin 34。
 公共 shared/ui/email/storage 单元与 platform task-health 等由根 test 覆盖。
+
+长 Workflow 的早到事件在 `2026-10-12T18:08:18.524345Z` 创建，
+于 `2026-10-12T19:09:25.848662Z` 消费，真实保留 **3667.324317 秒**。
+完整 11 项无跳过；7 个 native sleep 原结果、wait deadline、18 个 callback 各一次
+与 15 个幂等副作用断言均通过。补修后的快速重跑不重复等待长时钟用例，
+其显式跳过只对应上述独立完整运行，不隐藏队列/事件相关用例。
 
 跳过/独立范围逐项说明：
 
@@ -91,6 +132,11 @@ billing 296、entitlements 14、web AI 50、public 29、files 拒绝路径 10、
   Compose 首轮误选未验证登录重发的回跳 `/app` 邮件；改为先读取注册邮件再做登录拒绝检查。
   会话状态查询显式 `disableCookieCache=true`，与敏感鉴权守卫一致：旧签名 cookie 的缓存展示
   不代表有效业务会话，仍保留旧 cookie 重放时页面拒绝与实时会话为空的断言。
+  持久化探测首次误用 web 的传递依赖，随后本地 app socket 被生产 PG 策略正确拒绝；
+  最终改为测试 CA 的 verify-full app TLS 查询，没有放宽 pg_hba 或生产权限。
+  B 补修后 workflow 快速重跑首次受并发构建负载影响，原唤醒截止断言迟 326ms；
+  定向重跑与完整快速组随后均通过，保留原断言和时限。长时钟组在补修前启动，
+  容器身份变更另由补修后的 Node ownership、engine/短 workflow/scheduler 与真实 Compose 验证。
   以上修正环境/测试入口，没有弱化业务断言或时限，没有改 CF 的会话缓存语义。
 
 ## CI 与 staging 边界

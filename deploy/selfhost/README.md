@@ -39,7 +39,7 @@ pnpm CLI 与其平台原生 binary 在镜像构建阶段预装到非 root 可读
 
 jobs 的 `JOB_EXECUTOR_ID` 默认 `jobs-1`，Compose 将 hostname 固定为同值，并把持久 `job_owners` 卷挂载到 `/app/.data/job-owners`。每个 executor 的 hostname/ID 必须跨重启稳定；不能通过更换随机 ID 或清除 owner 文件绕过启动拒绝。Linux owner 记录包含 PID、host、PID namespace inode、boot ID 和进程启动时间，容器重建后即使重用 PID 1 也使用这些身份核对旧 incarnation 是否退出；证明规则与 guard 处置见 [任务引擎 runbook](../../docs/runbooks/node-job-engine.md#连接轮询与-ownership)。
 
-双 jobs 副本需分别声明不同且稳定的 hostname/ID，挂载同一 `job_owners` 卷，并使用同一版本的完整 handler 集与队列策略。当前 service 使用固定身份，不能盲目用 `docker compose up --scale jobs=2` 扩容；不同 hostname 的副本也不能为另一 executor 证明退出。共享卷和双副本配置要求不代表 Compose 双副本验收已经通过。
+双 jobs 副本需分别声明不同且稳定的 hostname/ID，挂载同一 `job_owners` 卷，并使用同一版本的完整 handler 集与队列策略。当前 service 使用固定身份，不能盲目用 `docker compose up --scale jobs=2` 扩容；不同 hostname 的副本也不能为另一 executor 证明退出。本地真实发信、双副本停启与保留卷重建证据见 [A 8/9 runbook](../../docs/runbooks/selfhost-a-final.md)。
 
 ## 文件与权限
 
