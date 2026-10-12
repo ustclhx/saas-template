@@ -67,7 +67,8 @@ jobs:
 
   e2e-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    # 正常约 2–3 分钟；留出 apt 镜像偶发缓慢的余量，单步再设上限避免挂死占满整个 job。
+    timeout-minutes: 12
     permissions:
       contents: read
     services:
@@ -117,6 +118,7 @@ jobs:
         run: pnpm --filter @saas/web exec playwright install --with-deps --only-shell chromium
       - name: Install Chromium system dependencies
         if: steps.browsers.outputs.cache-hit == 'true'
+        timeout-minutes: 5
         run: pnpm --filter @saas/web exec playwright install-deps chromium
       - name: Prepare local authentication and migrate
         run: |
