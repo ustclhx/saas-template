@@ -6,7 +6,9 @@ import { isNotFound, isRedirect } from '@tanstack/react-router'
 export function sentryEnabled(env: Pick<Cloudflare.Env, 'SENTRY_DSN' | 'SENTRY_ENVIRONMENT'>) {
   return Boolean(
     env.SENTRY_DSN &&
-      (env.SENTRY_ENVIRONMENT === 'staging' || env.SENTRY_ENVIRONMENT === 'production'),
+      (env.SENTRY_ENVIRONMENT === 'staging' ||
+        env.SENTRY_ENVIRONMENT === 'production' ||
+        env.SENTRY_ENVIRONMENT === 'smoke'),
   )
 }
 

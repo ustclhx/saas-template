@@ -2,6 +2,19 @@ import { withLogContext } from '@saas/shared/log'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { checkEnv } from './env.ts'
 
+// 校验用例固定要求 OAuth 与 Turnstile，生成项目关闭登录方式时仍覆盖缺失变量。
+vi.mock('./template-config.ts', async (original) => {
+  const { templateConfig } = await original<typeof import('./template-config.ts')>()
+  return {
+    templateConfig: {
+      ...templateConfig,
+      ai: { ...templateConfig.ai, image: true, video: true },
+      auth: { ...templateConfig.auth, oauth: ['google', 'github'], turnstile: true },
+      features: { ...templateConfig.features, publicApi: false },
+    },
+  }
+})
+
 const SECRET = 'postgres://app:super-secret@db.internal.example:5432/app'
 
 /** 齐全的 env：Hyperdrive、形状正确的 Workflow / Queue / KV / Rate Limiting 绑定，以及模板配置要求的认证变量 */

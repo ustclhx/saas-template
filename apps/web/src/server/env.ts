@@ -15,7 +15,10 @@ const bindingWith = <T>(...methods: string[]) =>
 
 /** apps/web 需要的环境变量与绑定：共享 schema 加上 web 独有的绑定。 */
 export const webEnvSchema = envSchema.extend({
-  AI_MEDIA_WORKFLOW: bindingWith<Cloudflare.Env['AI_MEDIA_WORKFLOW']>('create', 'get'),
+  AI_MEDIA_WORKFLOW:
+    templateConfig.ai.image || templateConfig.ai.video
+      ? bindingWith<Cloudflare.Env['AI_MEDIA_WORKFLOW']>('create', 'get')
+      : bindingWith<Cloudflare.Env['AI_MEDIA_WORKFLOW']>('create', 'get').optional(),
   EMAIL_QUEUE: bindingWith<Cloudflare.Env['EMAIL_QUEUE']>('send'),
   CACHE: bindingWith<Cloudflare.Env['CACHE']>('get', 'put', 'delete'),
   RL_AUTH: bindingWith<Cloudflare.Env['RL_AUTH']>('limit'),

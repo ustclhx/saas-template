@@ -21,7 +21,7 @@ afterEach(() => {
   mocks.client = true
 })
 
-it('真实 DSN 在本地也不包装或初始化 SDK，staging 才启用', async () => {
+it('真实 DSN 在本地也不包装或初始化 SDK，部署环境才启用', async () => {
   const fetch = vi.fn(() => Promise.resolve(new Response('ok')))
   const handler = instrumentWeb({ fetch })
   const request = new Request('https://app.test') as Parameters<typeof handler.fetch>[0]
@@ -38,8 +38,14 @@ it('真实 DSN 在本地也不包装或初始化 SDK，staging 才启用', async
     { SENTRY_DSN: 'fixture', SENTRY_ENVIRONMENT: 'staging' } as Cloudflare.Env,
     ctx,
   )
-  expect(mocks.wrap).toHaveBeenCalledTimes(1)
-  expect(fetch).toHaveBeenCalledTimes(3)
+  const smokeHandler = instrumentWeb({ fetch })
+  await smokeHandler.fetch(
+    request,
+    { SENTRY_DSN: 'fixture', SENTRY_ENVIRONMENT: 'smoke' } as Cloudflare.Env,
+    ctx,
+  )
+  expect(mocks.wrap).toHaveBeenCalledTimes(2)
+  expect(fetch).toHaveBeenCalledTimes(4)
   vi.stubGlobal('__APP_VERSION__', 'full-deployment-sha')
   expect(sentryOptions({} as Cloudflare.Env)).toMatchObject({
     release: 'full-deployment-sha',

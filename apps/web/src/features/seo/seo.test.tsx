@@ -52,7 +52,13 @@ const content = {
 }
 const pages = publicPages(content, new Date('2026-10-01'), {
   ...templateConfig,
-  features: { ...templateConfig.features, docs: true, newsletter: true, waitlist: true },
+  features: {
+    ...templateConfig.features,
+    blog: true,
+    docs: true,
+    newsletter: true,
+    waitlist: true,
+  },
 })
 
 describe('公开页面 SEO（4.1–4.3）', () => {

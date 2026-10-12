@@ -279,7 +279,7 @@ SENTRY_DSN
 Sentry 的 `SENTRY_DSN` 仅供 web/jobs 服务端上报，两个 Worker 的 staging secret 分别配置；
 `SENTRY_AUTH_TOKEN`、`SENTRY_ORG`、`SENTRY_PROJECT` 只用于 GitHub `staging` environment 的
 source map 上传，不进入 Wrangler vars、Worker bundle 或浏览器。运行时必须同时有 DSN 与
-`SENTRY_ENVIRONMENT=staging|production` 才初始化 SDK；顶层 development 与测试默认不发送。
+`SENTRY_ENVIRONMENT=staging|production|smoke` 才初始化 SDK；顶层 development 与测试默认不发送。
 本地一次真实事件的显式验证及凭据处理见 [Sentry runbook](./runbooks/sentry.md)。
 
 ### Vars（非敏感）
@@ -292,7 +292,7 @@ TURNSTILE_SITE_KEY(前端公开)
 EMAIL_TRANSPORT=log|resend        # jobs 的邮件发送通道，默认 log：只记录收件人与模板名、不调用外部服务（无 Resend 凭据时使用）
 EMAIL_FROM                        # jobs；EMAIL_TRANSPORT=resend 时必填，如 `MyApp <noreply@example.com>`，域名需在 Resend 验证
 EMAIL_REPLY_TO                    # jobs，可选；默认回复地址（通常为 app.supportEmail）
-SENTRY_ENVIRONMENT=development|staging|production  # 服务端 SDK 开关；staging 在对应 Wrangler env 声明
+SENTRY_ENVIRONMENT=development|staging|production|smoke  # 服务端 SDK 开关；staging 在对应 Wrangler env 声明
 APP_VERSION                      # CI 完整提交 SHA；jobs 通过 --var 注入，web 在 Vite 构建时固化
 ```
 
