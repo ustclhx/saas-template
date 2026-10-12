@@ -6,9 +6,9 @@
 
 ## 1. 能力契约与工程边界（协调者串行）
 
-- [ ] 1.1 新增 packages/platform 中立契约和显式 Cloudflare/Node export，落实 platform 可依赖 shared/config/db、db/config 不反向依赖 platform；与 B 记录 queue/事务入队/workflow/step/scheduler/health 的接口交接。验证：平台契约类型检查、pnpm check:deps、无循环，B spike 能在不导入引擎类型的情况下接入；文档记录签收接口与能力缺失策略。（R2）
-- [ ] 1.2 扩展 scripts/check-deps.mjs（或专用检查）覆盖 apps/packages 的 cloudflare:* 静态/动态/export/require 导入及明确入口例外；添加精简正反例并同步 AGENTS.md、docs/01 与 docs/02 的依赖说明。验证：检查器拒绝 routes/features 的违例且允许平台 CF entry/目标测试，pnpm check:deps 通过。（R2）
-- [ ] 1.3 提供现有 CF env、db、KV、限流、waitUntil、请求元数据与 queue/workflow/scheduler 的 adapter；保留 retry、事件等待和原 UTC cron 行为，Node 任务能力仅定义/报告 unavailable。验证：现有 Worker handler/邮件/媒体 runner 测试通过，Node 能导入中立入口且不加载 cloudflare:*；能力用法文档与 B 交接一致。
+- [x] 1.1 新增 packages/platform 中立契约和显式 Cloudflare/Node export，落实 platform 可依赖 shared/config/db、db/config 不反向依赖 platform；与 B 记录 queue/事务入队/workflow/step/scheduler/health 的接口交接。验证：平台契约类型检查、pnpm check:deps、无循环，B spike 能在不导入引擎类型的情况下接入；文档记录签收接口与能力缺失策略。（R2）
+- [x] 1.2 扩展 scripts/check-deps.mjs（或专用检查）覆盖 apps/packages 的 cloudflare:* 静态/动态/export/require 导入及明确入口例外；添加精简正反例并同步 AGENTS.md、docs/01 与 docs/02 的依赖说明。验证：检查器拒绝 routes/features 的违例且允许平台 CF entry/目标测试，pnpm check:deps 通过。（R2）
+- [x] 1.3 提供现有 CF env、db、KV、限流、waitUntil、请求元数据与 queue/workflow/scheduler 的 adapter；保留 retry、事件等待和原 UTC cron 行为，Node 任务能力仅定义/报告 unavailable。验证：现有 Worker handler/邮件/媒体 runner 测试通过，Node 能导入中立入口且不加载 cloudflare:*；能力用法文档与 B 交接一致。
 
 ## 2. 配置与数据库生命周期（config/db 独占）
 

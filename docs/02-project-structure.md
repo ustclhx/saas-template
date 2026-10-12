@@ -33,6 +33,7 @@ saas-template/
 ├─ packages/
 │  ├─ config/                     # template.config.ts 类型与默认值、env schema
 │  ├─ db/                         # Drizzle schema、迁移、createDb()、scoped 查询
+│  ├─ platform/                   # 目标中立能力契约、显式 cloudflare/node 入口
 │  ├─ auth/                       # Better Auth 实例工厂与插件配置
 │  ├─ billing/                    # PaymentProvider 接口 + stripe/ paypal/ 实现
 │  ├─ credits/                    # 积分：grant / hold / capture / release / expire
@@ -52,7 +53,18 @@ saas-template/
 └─ CLAUDE.md / AGENTS.md          # AI 编码助手约定
 ```
 
-**依赖方向**：`apps/*` → `packages/*`；packages 之间只允许 `shared` ← `config` ← `db` ← 业务包（billing/credits/ai/…）。业务包不得依赖 `apps`，不得依赖 React（`ui` 除外）。例外：`email` 用 React Email 在服务端渲染邮件，允许依赖 `react` / `react-dom` 与 React Email（`react-email`、`@react-email/*`），但不得依赖 `ui`；其他包依赖 React Email 同样视为依赖 React。以上规则由 `pnpm check:deps`（`scripts/check-deps.mjs`）检查。
+**依赖方向**由 `pnpm check:deps`（`scripts/check-deps.mjs`）检查 manifest 与源码：
+
+- `apps/*` 可依赖 `packages/*`；packages 不依赖 apps。
+- `shared` 不依赖其他内部包；`config` 仅可依赖 shared；`db` 仅可依赖 shared/config。
+- `platform` 仅可依赖 shared/config/db；config/db 不反向依赖 platform。业务包与 apps 可依赖 platform，业务包之间允许互相依赖，检查器没有规定它们的总顺序。
+- React 仅允许用于 `ui`。`email` 用 React Email 在服务端渲染邮件，可依赖 React / React DOM / React Email（`react-email`、`@react-email/*`），但不依赖 ui；其他包依赖 React Email 同样视为依赖 React。
+
+**平台导入边界**：业务通过 platform 中立入口访问平台能力。检查器解析 apps/packages 下的源码（含 test/probe/e2e，排除依赖和构建产物），识别静态 import、export from、动态 import、require 和 type import。`cloudflare:workers` / `cloudflare:workflows` 仅允许在 `packages/platform/src/cloudflare/**`；显式 app composition entry 只允许 `cloudflare:workers`。目标测试夹具按文件与模块名明确登记，`cloudflare:test` 只向这些夹具开放，不按目录或 `.test.ts` 后缀豁免。
+
+入口与测试夹具清单位于 [`scripts/check-deps.rules.json`](../scripts/check-deps.rules.json)。其中 `transition` 记录迁移前的业务导入，按文件、模块名和出现次数精确锁定；新增导入检查失败，迁移后必须同步缩减或删除条目。该清单用于分批实施 selfhost 迁移，现有条目仍是待迁移依赖。新增目标入口或测试夹具时只登记确切路径与所需模块，不扩大业务例外。CF/Node 适配器子入口（含相对路径）也仅向对应目标目录、明确入口和目标夹具开放；跨包相对导入同样执行基础包依赖方向检查。
+
+平台能力的具体 API、CF 装配和 B 交接见 [平台能力与交接](platform-capabilities.md)。
 
 ## 2. 为什么拆 `apps/jobs`
 

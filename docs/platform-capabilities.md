@@ -1,0 +1,68 @@
+# 平台能力与 A/B 接口交接
+
+本批实现 `add-selfhost-foundation` 1.1–1.3。Cloudflare 仍为默认构建和部署目标；业务模块迁移属于组 4，Node 基础适配器属于组 2/3，Node 持久任务引擎属于 B。当前没有 Node 生产队列、Workflow 或 Cron。
+
+## 入口与装配
+
+业务仅从 `@saas/platform` 导入中立类型、`NonRetryableError` 和 `requireCapability`。composition root 显式导入 `@saas/platform/cloudflare` 或 `@saas/platform/node`，不使用条件导出或万能 bindings env。中立入口与 Node 入口不读取 process.env、不加载 `cloudflare:*`。Node 类型检查不注入 Workers 全局类型；测试还在真实 Node 子进程中加载两个 package export。
+
+| 能力 | 中立契约 | CF 装配 |
+| --- | --- | --- |
+| env | `PlatformEnv<C>`，只读已校验标量配置及能力表 | `createCloudflareEnv` 接收 app schema 校验后挑选的标量，binding 引用留在入口 |
+| db | `DatabaseAccess.business()/public()`，返回现有 `Database` | `createCloudflareDatabase` 在每请求/事件内创建，分别使用 HYPERDRIVE / HYPERDRIVE_CACHED，闭包限于该次调用，不结束 workerd 客户端 |
+| KV | `KeyValueStore`，text/JSON get、string put、秒 TTL、delete | `createCloudflareKv` 使用原 KV binding，TTL 至少 60 秒 |
+| 限流 | `RateLimiter.limit('auth'|'ai'|'api', key)` | 原 RL_AUTH / RL_AI / RL_API；保留 key 与限额，缺 binding 拒绝执行 |
+| 延续 | `BackgroundTasks.waitUntil(promise)` | `createCloudflareBackgroundTasks(ctx)` 保留 ctx receiver 和原 Promise，CF 继续管理生命周期 |
+| 请求 | `RequestMetadata`，应用 requestId、可空 clientIp、可选 cfRay | `createCloudflareRequestMetadata(request)` 仅由可信 CF 入口调用；cf-ray 只是附加字段 |
+
+适配器不能放在模块全局并缓存请求资源。后续组 4 的入口将适配器注入业务上下文；本批不改变现有 handler 的业务调用路径。
+
+## B 签收接口与验收责任
+
+合并后以以下文件作为交接点；PR 列出同一接口清单供协调者和 B 审阅签收。`packages/platform/test/contracts.ts` 是无需引擎类型的 spike 接入类型夹具，随中立类型检查执行；它证明接口可接入，不代表 B 引擎已验收。
+
+| 文件 / 导出 | A 提供的行为 | B 的责任 |
+| --- | --- | --- |
+| `src/queue.ts` / `QueueProducer<T>` | send(body,{delaySeconds?})、sendBatch([{body,delaySeconds?}])，返回 Promise<void> | 持久投递，retry/backoff/concurrency/rate 由队列配置决定 |
+| `QueueMessage<T>` / `QueueBatch<T>` | 稳定 id、body、attempts、timestamp，逐条/整批 ack/retry | 至少一次投递；未 ack 重投；耗尽后保留死信 |
+| `TransactionalEnqueue<T>` / `DatabaseTransaction` | enqueue(tx,body)，事务类型取自现有 db.transaction 回调参数 | 同一 PG 事务或 outbox，回滚不投递；不能另开引擎连接冒充同一事务 |
+| `DeadLetterSink<T>` / `QueueFailure` | failed(message,{code,retryable})，与 ack/retry 分开 | 对有效消息的不可重试/耗尽失败持久记录，完成后才确认；不要沿用 CF 邮件 ack/drop 丢失死信证据 |
+| `src/workflow.ts` / `Workflow<P,R>` | create({id?,params})、get(id)，instance.status/terminate/sendEvent | 业务稳定 id；参数、事件、步骤结果只用 JSON；缺实例/终态发事件明确报错 |
+| `WorkflowStatus` | queued/running/paused/waiting/completed/failed/terminated | 引擎状态映射到中立枚举，不向业务暴露 DBOS/pg-boss 对象 |
+| `WorkflowStep` | do(name,callback) 或 do(name,{retries:{limit,delayMs,backoff},timeoutMs},callback)，sleep(name,durationMs)，waitForEvent(name,{type,timeoutMs}) | 成功步骤持久化、重启续跑；事件按 type FIFO 单次消费，早到事件至少保留 60 分钟 |
+| `NonRetryableError` | 两目标共用的不可重试异常，CF 转换为原引擎异常 | 转换到 B 引擎，不重试该步骤 |
+| `src/scheduler.ts` / `Scheduler` | register({id,cron,timeZone,missedRun:'skip'|'once'},handler)，handler 收到 scheduledAt:Date；health() | jobs 内调度、锁互斥、补跑策略、心跳；健康读取最近成功 cron 时间 |
+| `src/capabilities.ts` / `TaskHealth` | queue() → {status}；scheduler() → {status,lastCronAt}，status 为 up/down/unavailable，lastCronAt 为 UTC ISO 或 null | 实时 backend/consumer readiness 和 scheduler heartbeat，不能用 DB 可达推断 queue up |
+
+`Workflow<P,R>` 的 P/R 受 `JsonValue` 约束；结构性参数对象使用 type alias（如 `type MediaParams = { taskId: string; requestId?: string }`），避免 interface 缺少 JSON 索引签名。步骤结果的 `JsonValue` 类型禁止流、Date 和二进制进入持久化结果。现有媒体 runner 中使用的 `10 seconds` / `2 minutes` / `15 minutes` 在迁移时分别写为 `10_000` / `120_000` / `900_000` 毫秒。业务超时、终态检查、提交幂等规则不变。
+
+Cloudflare Workflow 将 complete 映射到 completed、errored 映射到 failed，waitingForPause/rollingBack 视为 running；unknown 明确返回 WORKFLOW_NOT_FOUND。get 验证原生 handle 是否存在，终态事件返回 WORKFLOW_TERMINAL；发送时发生的原生错误继续传播。step adapter 原样转发毫秒 retry/backoff/timeout、sleep 和事件等待，转换共享 NonRetryableError。原 CF 邮件消费者的有效消息最终失败仍保留 ack/drop；B 的持久死信 hook 在后续 Node handler 接入。
+
+CF `cloudflareTransactionalEnqueue()` 返回 available:false。Node `unavailableTaskCapabilities()` 的 queue、transactionalEnqueue、workflow、scheduler 全部 available:false，health 返回 queue/scheduler unavailable、lastCronAt:null。`requireCapability` 在调用方副作用前抛 CAPABILITY_UNAVAILABLE（503），不提供假成功或内存后端。组 8/9 接入 Node readiness 和真实 B 引擎；完整认证 Compose e2e 仍等待 B。
+
+## Cloudflare Cron 兼容边界
+
+`createCloudflareScheduler` 接收 Wrangler 已部署的 crons，注册仅接受 UTC + missedRun:skip。任意时区、once 补跑或未部署 cron 均明确拒绝。相同 cron 可注册不同 id 的独立任务，scheduled handler 用原 controller.scheduledTime 生成 scheduledAt，allSettled 保证一项失败不阻止其他项；成功时间由既有业务心跳写库，适配器不伪造 lastCronAt。`createCloudflareTaskHealth` 组合明确传入的队列探测与 scheduler.health；CF 没有原生队列 ping，不假装验证消费者就绪。
+
+当前 jobs 的五条 UTC triggers 保持原配置和分派：
+
+| Cron | 既有分派 |
+| --- | --- |
+| `*/5 * * * *` | 删除清理后记录心跳 |
+| `0 3 * * *` | 空间清理与日指标，独立执行 |
+| `0 * * * *` | 每小时计费维护 |
+| `*/10 * * * *` | 计费补偿与文件清理，独立执行 |
+| `0 4 * * *` | 每日计费维护 |
+
+## 过渡清单收缩
+
+`pnpm check:deps` 解析 apps/packages 的静态/动态 import、export、require 和 type import。明确平台目录、composition entry、目标夹具之外，既有业务违例固定在 `scripts/check-deps.rules.json` 的 transition：本批 51 个文件、52 处导入。条目按文件+specifier+次数锁定，新增次数或新路径立即失败；迁移使实际次数变少时，检查器也失败，要求同步删减对应条目。
+
+组 4 每批迁移需要替换平台导入和 Workers 全局能力类型，然后在同一 PR 删除/减少该模块 transition 条目，并运行 check:deps。不得把迁移后的业务路径移入 targetFixtures 或 compositionEntries，也不得增加过渡额度。组 4.6 清空剩余过渡清单并定向检查 Workers 全局类型；当前导入检查器不声称已验证全局类型中立。
+
+## 本批验证
+
+- `pnpm --filter @saas/platform typecheck`：中立/Node 无 Workers 声明，另行检查 CF 适配器和测试类型，包含 B 接入夹具。
+- `pnpm --filter @saas/platform test`：原生 CF batch 确认/重试，Workflow 状态与事件边界，step 参数与异常转换，UTC Cron 独立执行，KV JSON/TTL，Node 缺失能力与真实 Node 导入。
+- `pnpm check:deps`：工程扫描加检查器正反例，含 routes/features 拒绝及清单收缩。
+- 根检查、全部现有测试与默认 CF 构建仍为 PR 门槛，e2e-smoke 与 main 自动 staging 发布保持原流水线；合并后的 staging 验收由协调者完成。
