@@ -183,7 +183,8 @@ function wranglerConfig(source, options, app) {
 export function setupChecklist(options) {
   const media = options.ai.includes('image') || options.ai.includes('video')
   const resources = [
-    'Postgres（app / migrator / readonly 账号、备份）及 Cloudflare Tunnel / Workers VPC',
+    'Postgres（app / migrator / readonly 账号；Neon TLS 直连或自建库的 Tunnel / Workers VPC）',
+    '数据库：迁移后配置 catalog seed 的 free.models 允许列表，再对新库运行 pnpm billing:seed；默认 models=[] 不开放 AI 模型',
     `Workers：${options.name}-web、${options.name}-jobs（staging 使用 -staging 后缀）`,
     'Hyperdrive：HYPERDRIVE（关缓存）/ HYPERDRIVE_CACHED（开缓存），替换所有环境的 id',
     'KV：CACHE，替换所有环境的 id；Rate Limiting：RL_AUTH / RL_AI / RL_API，分配独立 namespace_id',
