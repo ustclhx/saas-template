@@ -1,5 +1,7 @@
 import {
   type AuthEmail,
+  type AuthEnv,
+  type CreateAuthDeps,
   createAuth,
   type DeletionStep,
   parseAuthEnv,
@@ -7,10 +9,12 @@ import {
 } from '@saas/auth'
 import { createBillingDeletionStep, createPaymentRuntime, grantSignupBonus } from '@saas/billing'
 import { createDb, type Database } from '@saas/db'
+import type { KeyValueStore, RateLimiter, RequestMetadata } from '@saas/platform'
 import { AppError } from '@saas/shared'
 import { APIError } from 'better-auth/api'
 import { assertSignupAdmission } from '../features/growth/service.ts'
 import { createQueueAuthEmailSender, userLocaleByEmail } from './auth-email.ts'
+import { legacyRequestMetadata } from './runtime.ts'
 import { templateConfig } from './template-config.ts'
 import { resolveWorkspaceMaxSeats } from './workspace-data.ts'
 
@@ -20,9 +24,18 @@ import { resolveWorkspaceMaxSeats } from './workspace-data.ts'
  * （tasks.md 3.2）；用户请求只等待入队。
  * 同一请求中已有数据库客户端时可传入复用（如 withSession、requireFreshSession），避免多建一个连接；否则新建一个。
  */
-export function getAuth(env: Cloudflare.Env, db: Database = createDb(env.HYPERDRIVE)) {
+/** @deprecated A 4.6 移除旧 bindings 接线；新模块使用 getWebRuntime().auth/createWebAuth。 */
+export function getAuth(
+  env: Cloudflare.Env,
+  db: Database = createDb(env.HYPERDRIVE),
+  options?: { cache?: KeyValueStore; rateLimiter?: RateLimiter; requestMeta?: RequestMetadata },
+) {
   const queued = createQueueAuthEmailSender({
-    queue: env.EMAIL_QUEUE,
+    queue: {
+      send: async (message) => {
+        await env.EMAIL_QUEUE.send(message, { contentType: 'json' })
+      },
+    },
     appName: templateConfig.app.name,
     appUrl: env.APP_URL,
     resolveLocale: userLocaleByEmail(db),
@@ -34,8 +47,29 @@ export function getAuth(env: Cloudflare.Env, db: Database = createDb(env.HYPERDR
         await queued(email)
       }
     : queued
-  return createAuth(env, db, {
-    config: templateConfig,
+  // 尚未迁移的调用方保留 CF TTL 与限流语义，能力不再进入 AuthEnv。
+  const cache = options?.cache ?? {
+    get: env.CACHE.get.bind(env.CACHE),
+    put: (key: string, value: string, ttl?: { expirationTtl?: number }) =>
+      env.CACHE.put(
+        key,
+        value,
+        ttl?.expirationTtl === undefined
+          ? undefined
+          : {
+              expirationTtl: Math.max(60, ttl.expirationTtl),
+            },
+      ),
+    delete: env.CACHE.delete.bind(env.CACHE),
+  }
+  const rateLimiter = options?.rateLimiter ?? {
+    limit: (_policy: 'auth' | 'ai' | 'api', key: string) => env.RL_AUTH.limit({ key }),
+  }
+  const requestMeta = options?.requestMeta ?? legacyRequestMetadata()
+  return createWebAuth(env, db, {
+    cache,
+    rateLimiter,
+    clientIp: requestMeta?.clientIp ?? null,
     beforeUserCreate: async (user, headers) => {
       try {
         await assertSignupAdmission(
@@ -57,9 +91,6 @@ export function getAuth(env: Cloudflare.Env, db: Database = createDb(env.HYPERDR
     },
     deletionSteps: billingDeletionSteps(env, db),
     sendEmail,
-    resolveMaxSeats: resolveWorkspaceMaxSeats,
-    onEmailVerified: (user) =>
-      grantSignupBonus({ db, userId: user.id, config: templateConfig.billing }),
   })
 }
 
@@ -84,4 +115,16 @@ export function billingDeletionSteps(env: Cloudflare.Env, db: Database): Deletio
       },
     },
   ]
+}
+
+/** 中立认证工厂；发信、注册准入与删除外部能力由 composition root 注入。 */
+export function createWebAuth(config: AuthEnv, db: Database, deps: Omit<CreateAuthDeps, 'config'>) {
+  return createAuth(config, db, {
+    ...deps,
+    config: templateConfig,
+    resolveMaxSeats: deps.resolveMaxSeats ?? resolveWorkspaceMaxSeats,
+    onEmailVerified:
+      deps.onEmailVerified ??
+      ((user) => grantSignupBonus({ db, userId: user.id, config: templateConfig.billing })),
+  })
 }

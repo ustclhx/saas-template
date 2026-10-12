@@ -1,3 +1,4 @@
+import type { KeyValueStore } from '@saas/platform'
 import type { BetterAuthOptions, SecondaryStorage } from 'better-auth'
 
 /**
@@ -13,15 +14,13 @@ import type { BetterAuthOptions, SecondaryStorage } from 'better-auth'
 /** Cookie 缓存时长（秒）：5 分钟 */
 export const SESSION_COOKIE_CACHE_MAX_AGE = 5 * 60
 
-/** Workers KV 绑定中本包用到的部分（与 workers-types 的 `KVNamespace` 结构兼容）。 */
+/** @deprecated A4.2 迁移剩余缓存调用方后删除；新代码使用平台 KeyValueStore。 */
 export interface KvStore {
   get(key: string): Promise<string | null>
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>
   delete(key: string): Promise<void>
 }
 
-/** KV 要求 `expirationTtl` 至少 60 秒，更短的 TTL 会让 `put` 抛错 */
-const KV_MIN_TTL_SECONDS = 60
 const KEY_PREFIX = 'auth:'
 
 /**
@@ -29,7 +28,7 @@ const KEY_PREFIX = 'auth:'
  * KV 没有原子操作：`getAndDelete` 只在验证值不写库时用于一次性消费（这里写库，由数据库原子消费），
  * `increment` 只在内置限流存 secondaryStorage 时使用（这里改为内存），二者都不会被调用。
  */
-export function kvSecondaryStorage(kv: KvStore): SecondaryStorage {
+export function kvSecondaryStorage(kv: KeyValueStore): SecondaryStorage {
   return {
     get: (key) => kv.get(KEY_PREFIX + key),
     getAndDelete: async (key) => {
@@ -44,7 +43,7 @@ export function kvSecondaryStorage(kv: KvStore): SecondaryStorage {
       await kv.put(
         KEY_PREFIX + key,
         value,
-        ttl === undefined ? {} : { expirationTtl: Math.max(Math.ceil(ttl), KV_MIN_TTL_SECONDS) },
+        ttl === undefined ? {} : { expirationTtl: Math.max(Math.ceil(ttl), 1) },
       )
     },
     delete: (key) => kv.delete(KEY_PREFIX + key),
@@ -52,7 +51,7 @@ export function kvSecondaryStorage(kv: KvStore): SecondaryStorage {
 }
 
 /** `createAuth` 中与会话存储相关的选项；没有 KV 绑定时只用 Cookie 缓存 + 数据库。 */
-export function sessionStorageOptions(kv: KvStore | undefined) {
+export function sessionStorageOptions(kv: KeyValueStore | undefined) {
   return {
     session: {
       cookieCache: { enabled: true, maxAge: SESSION_COOKIE_CACHE_MAX_AGE },

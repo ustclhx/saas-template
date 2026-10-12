@@ -1,6 +1,5 @@
-import { env } from 'cloudflare:workers'
 import { type FreshSession, requireFreshSession } from '@saas/auth'
-import { createDb, type Database } from '@saas/db'
+import type { Database } from '@saas/db'
 import {
   type EntitlementRequirement,
   getEntitlements,
@@ -13,7 +12,7 @@ import { getRequest } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import { assertRealSession } from '../features/admin/impersonation.ts'
 import { readRequestSession } from '../features/i18n/session.server.ts'
-import { getAuth } from './auth.ts'
+import { getWebRuntime } from './runtime.ts'
 import { templateConfig } from './template-config.ts'
 import { resolveDefaultWorkspace, resolveWorkspaceBySlug } from './workspace-context.ts'
 
@@ -34,11 +33,11 @@ export const LOGIN_PATH = '/login'
  * Better Auth 的普通会话接口仍使用 Cookie / KV 缓存；空间成员身份由 `withWorkspace` 查库。
  */
 export const withSession = createMiddleware({ type: 'function' }).server(async ({ next }) => {
-  const db = createDb(env.HYPERDRIVE)
+  const { db, auth } = getWebRuntime()
   let result: FreshSession
   try {
     result = await readRequestSession({
-      auth: getAuth(env, db),
+      auth,
       db,
       headers: getRequest().headers,
     })
@@ -56,7 +55,7 @@ export const withRealSession = createMiddleware({ type: 'function' })
   .server(async ({ context, next }) => {
     // 敏感入口独立实时校验，不复用语言 / 只读页面缓存。
     const fresh = await requireFreshSession({
-      auth: getAuth(env, context.db),
+      auth: getWebRuntime().auth,
       db: context.db,
       headers: getRequest().headers,
     })

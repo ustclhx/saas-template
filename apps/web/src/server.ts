@@ -4,18 +4,34 @@
 // 之后由 Paraglide 按 URL 前缀 / Cookie 确定本次请求的语言（features/i18n/routing.ts）。
 // 每个请求先建立日志上下文（新生成的 UUIDv7 请求 ID，附 Cloudflare 的 cf-ray 便于对照平台日志），
 // 结束时输出一行 `http.request`（@saas/shared/log）。
+import { type AuthEmail, parseAuthEnv, type SendAuthEmail } from '@saas/auth'
+import type { Database } from '@saas/db'
+import type { KeyValueStore, RequestMetadata } from '@saas/platform'
+import {
+  createCloudflareDatabase,
+  createCloudflareKv,
+  createCloudflareQueue,
+  createCloudflareRateLimiter,
+  createCloudflareRequestMetadata,
+} from '@saas/platform/cloudflare'
 import { AppError } from '@saas/shared'
-import { log, newRequestId, withLogContext } from '@saas/shared/log'
+import { log, withLogContext } from '@saas/shared/log'
 import { createStartHandler, defaultStreamHandler } from '@tanstack/react-start/server'
+import { APIError } from 'better-auth/api'
 import { gateAdminRequest } from './features/admin/gate.ts'
+import { handleAuthRequest } from './features/admin/impersonation-http.ts'
 import {
   gatePublicApiRequest,
   isPublicApiPath,
   normalizePublicApiNotFound,
 } from './features/api-keys/gate.ts'
+import { assertSignupAdmission } from './features/growth/service.ts'
 import { gateLocaleRequest } from './features/i18n/gate.ts'
 import { localizeRequest } from './features/i18n/request.server.ts'
+import { billingDeletionSteps, createWebAuth } from './server/auth.ts'
+import { createQueueAuthEmailSender, userLocaleByEmail } from './server/auth-email.ts'
 import { checkEnv } from './server/env.ts'
+import { type WebRuntime, withWebRuntime } from './server/runtime.ts'
 import { captureServerError, instrumentWeb } from './server/sentry.ts'
 import { SENTRY_TEST_PATH, sentryTest } from './server/sentry-test.ts'
 import { templateConfig } from './server/template-config.ts'
@@ -45,10 +61,16 @@ const worker = instrumentWeb({
 export default {
   fetch(request, env, ctx) {
     // 不信任入站的 x-request-id：可被客户端伪造，且会混入他人的检索结果
-    const context = { requestId: newRequestId(), cfRay: request.headers.get('cf-ray') ?? undefined }
+    const requestMeta = createCloudflareRequestMetadata(request)
+    const context = { requestId: requestMeta.requestId, cfRay: requestMeta.cfRay }
     return withLogContext(context, async () => {
       try {
-        const response = await worker.fetch(request, env, ctx)
+        const invalid = checkEnv(env)
+        const response =
+          invalid ??
+          (await withWebRuntime(createCloudflareWebRuntime(env, requestMeta), () =>
+            worker.fetch(request, env, ctx),
+          ))
         // 重定向与静态响应的 headers 可能只读，复制后再附请求 ID。
         const headers = new Headers(response.headers)
         headers.set('x-request-id', context.requestId)
@@ -104,4 +126,74 @@ async function logged(request: Request, handle: () => Promise<Response>): Promis
 // 交给 TanStack Start 的仍是原始地址，语言前缀由路由器的 rewrite 去掉（与 SSR 后的客户端一致）
 function localized(request: Request, env: Cloudflare.Env): Promise<Response> {
   return localizeRequest(request, env, () => startHandler(request))
+}
+
+/** CF bindings 仅在入口装配；getter 保证公开页降级时不提前创建认证/数据库资源。 */
+function createCloudflareWebRuntime(env: Cloudflare.Env, requestMeta: RequestMetadata): WebRuntime {
+  const config = {
+    ...parseAuthEnv(env, templateConfig),
+    TURNSTILE_SITE_KEY: env.TURNSTILE_SITE_KEY,
+  }
+  const databases = createCloudflareDatabase(env)
+  const cache = createCloudflareKv(env.CACHE)
+  const rateLimiter = createCloudflareRateLimiter(env)
+  const queue = createCloudflareQueue(env.EMAIL_QUEUE)
+  const createAuth = (db: Database, authCache: KeyValueStore = cache) => {
+    const queued = createQueueAuthEmailSender({
+      queue,
+      appName: templateConfig.app.name,
+      appUrl: config.APP_URL,
+      resolveLocale: userLocaleByEmail(db),
+    })
+    // 本地调试行为与旧接线一致；生产队列消息不写入日志。
+    const sendEmail: SendAuthEmail = import.meta.env.DEV
+      ? async (email: AuthEmail) => {
+          console.log('[dev] auth email', email)
+          await queued(email)
+        }
+      : queued
+    return createWebAuth(config, db, {
+      cache: authCache,
+      rateLimiter,
+      clientIp: requestMeta.clientIp,
+      sendEmail,
+      deletionSteps: billingDeletionSteps(env, db),
+      beforeUserCreate: async (user, headers) => {
+        try {
+          await assertSignupAdmission(
+            {
+              db,
+              config: templateConfig,
+              secret: config.BETTER_AUTH_SECRET,
+              appUrl: config.APP_URL,
+              queue: env.EMAIL_QUEUE,
+            },
+            user.email,
+            headers,
+          )
+        } catch (error) {
+          if (error instanceof AppError)
+            throw APIError.from('FORBIDDEN', { code: error.code, message: error.message })
+          throw error
+        }
+      },
+    })
+  }
+  let auth: ReturnType<typeof createAuth> | undefined
+  const runtime: WebRuntime = {
+    config,
+    cache,
+    rateLimiter,
+    requestMeta,
+    get db() {
+      return databases.business()
+    },
+    get auth() {
+      auth ??= createAuth(databases.business())
+      return auth
+    },
+    createAuth,
+    handleAuthRequest: (request) => handleAuthRequest(request, runtime),
+  }
+  return runtime
 }

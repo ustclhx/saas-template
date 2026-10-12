@@ -7,6 +7,7 @@ import {
   type EmailTemplateProps,
   parseEmailQueueMessage,
 } from '@saas/email/queue'
+import type { QueueProducer } from '@saas/platform'
 import { newId } from '@saas/shared'
 import { withRequestId } from '@saas/shared/log'
 
@@ -50,9 +51,7 @@ export function invitationUrl(appUrl: string, invitationId: string): string {
 
 export interface QueueAuthEmailSenderOptions {
   /** `env.EMAIL_QUEUE`（测试中可传入记录消息的假实现） */
-  readonly queue: {
-    send(message: EmailQueueMessage, options?: QueueSendOptions): Promise<unknown>
-  }
+  readonly queue: Pick<QueueProducer<EmailQueueMessage>, 'send'>
   /** `template.config.ts` 的 `app.name`，随消息带给消费者用于渲染 */
   readonly appName: string
   /** `APP_URL`，用于拼接邀请链接 */
@@ -79,7 +78,7 @@ export function createQueueAuthEmailSender(options: QueueAuthEmailSenderOptions)
     if (parseEmailQueueMessage(message) === null) {
       throw new TypeError(`Invalid ${template} email message`)
     }
-    await options.queue.send(withRequestId(message), { contentType: 'json' })
+    await options.queue.send(withRequestId(message))
   }
 }
 

@@ -27,7 +27,8 @@ describe('createQueueAuthEmailSender', () => {
 
     expect(sent).toHaveLength(1)
     const [{ body, options }] = sent as [(typeof sent)[number]]
-    expect(options).toEqual({ contentType: 'json' })
+    // 平台契约只发送消息；CF JSON 序列化由目标 adapter/默认队列行为负责。
+    expect(options).toBeUndefined()
     expect(body).toEqual({
       v: 1,
       template: 'reset-password',

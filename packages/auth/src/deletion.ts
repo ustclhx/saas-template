@@ -1,10 +1,10 @@
 import type { Database } from '@saas/db'
+import type { KeyValueStore } from '@saas/platform'
 import { AppError, newId } from '@saas/shared'
 import type { BetterAuthPlugin } from 'better-auth'
 import { APIError, createAuthEndpoint } from 'better-auth/api'
 import { z } from 'zod'
 import { type AuthContextSource, requireFreshSession } from './fresh-session.ts'
-import type { KvStore } from './session.ts'
 
 export type DeletionKind = 'account' | 'workspace'
 export type DeletionTransaction = Parameters<Parameters<Database['$client']['begin']>[1]>[0]
@@ -34,7 +34,8 @@ interface Options {
   readonly auth: AuthContextSource
   readonly db: Database
   readonly headers: Headers
-  readonly kv?: KvStore | undefined
+  readonly kv?: Pick<KeyValueStore, 'delete'> | undefined
+  readonly clientIp?: string | null | undefined
 }
 function fail(
   code: string,
@@ -57,21 +58,30 @@ async function freshInTransaction(sql: DeletionTransaction, token: string, recen
 }
 /** Reserved exclusively for short-lived deletion credentials; never audit storage. */
 export const DELETION_CLEANUP_PREFIX = 'deletion-cleanup:'
-async function saveCleanup(sql: DeletionTransaction, keys: readonly string[], kv?: KvStore) {
+async function saveCleanup(
+  sql: DeletionTransaction,
+  keys: readonly string[],
+  kv?: Pick<KeyValueStore, 'delete'>,
+) {
   if (!kv || !keys.length) return null
   const id = newId()
   await sql`insert into verification (id,identifier,value,expires_at,created_at,updated_at)
     values (${id},${DELETION_CLEANUP_PREFIX + id},${JSON.stringify([...new Set(keys)])},now()+interval '24 hours',now(),now())`
   return id
 }
-async function runCleanup(db: Database, kv: KvStore, id: string, keys: readonly string[]) {
+async function runCleanup(
+  db: Database,
+  kv: Pick<KeyValueStore, 'delete'>,
+  id: string,
+  keys: readonly string[],
+) {
   const results = await Promise.allSettled(keys.map((key) => kv.delete(`auth:${key}`)))
   if (results.some((result) => result.status === 'rejected')) return false
   await db.$client`delete from verification where id=${id} and identifier=${DELETION_CLEANUP_PREFIX + id}`
   return true
 }
 /** Retry only reserved manifests. No KV/network operations occur inside a DB transaction. */
-export async function retryDeletionCleanup(db: Database, kv: KvStore) {
+export async function retryDeletionCleanup(db: Database, kv: Pick<KeyValueStore, 'delete'>) {
   await db.$client`delete from verification where identifier like ${`${DELETION_CLEANUP_PREFIX}%`} and expires_at<=now()`
   const rows = await db.$client<{ id: string; value: string }[]>`
     select id,value from verification where identifier like ${`${DELETION_CLEANUP_PREFIX}%`} and expires_at>now()`
@@ -83,7 +93,11 @@ export async function retryDeletionCleanup(db: Database, kv: KvStore) {
   }
   return { completed, failed }
 }
-async function finishCleanup(db: Database, kv: KvStore | undefined, id: string | null) {
+async function finishCleanup(
+  db: Database,
+  kv: Pick<KeyValueStore, 'delete'> | undefined,
+  id: string | null,
+) {
   if (!kv || !id) return
   try {
     const [row] = await db.$client<
@@ -150,7 +164,7 @@ export async function deleteTeamWorkspace(
   )
     fail('WORKSPACE_PERMISSION', 'Only owners can delete a team workspace')
   const context = {
-    ip: options.headers.get('cf-connecting-ip'),
+    ip: options.clientIp ?? null,
     db: options.db,
     actorUserId: fresh.user.id,
     workspaceIds: [workspaceId],
@@ -170,12 +184,7 @@ export async function deleteTeamWorkspace(
     if (workspace.role !== 'owner')
       fail('WORKSPACE_PERMISSION', 'Only owners can delete a team workspace')
     for (const step of registered) await step.execute?.(context, sql)
-    const keys = await softDelete(
-      sql,
-      workspaceId,
-      fresh.user.id,
-      options.headers.get('cf-connecting-ip'),
-    )
+    const keys = await softDelete(sql, workspaceId, fresh.user.id, options.clientIp ?? null)
     return saveCleanup(sql, keys, options.kv)
   })
   await finishCleanup(options.db, options.kv, keys)
@@ -205,7 +214,7 @@ export async function deleteAccount(options: Options) {
   if (fresh.session.impersonatedBy || Date.now() - fresh.session.createdAt.getTime() > 600000)
     fail('REAUTHENTICATION_REQUIRED', 'Sign out and sign in again within ten minutes')
   const context = {
-    ip: options.headers.get('cf-connecting-ip'),
+    ip: options.clientIp ?? null,
     db: options.db,
     actorUserId: fresh.user.id,
     workspaceIds: [fresh.user.id],
@@ -234,14 +243,7 @@ export async function deleteAccount(options: Options) {
     >`select o.id from organization o join member m on m.organization_id=o.id where m.user_id=${current.id} and o.is_personal and o.deleted_at is null`
     const cacheKeys: string[] = [`active-sessions-${current.id}`]
     for (const workspace of personal)
-      cacheKeys.push(
-        ...(await softDelete(
-          sql,
-          workspace.id,
-          current.id,
-          options.headers.get('cf-connecting-ip'),
-        )),
-      )
+      cacheKeys.push(...(await softDelete(sql, workspace.id, current.id, options.clientIp ?? null)))
     const sessions = await sql<
       { token: string }[]
     >`delete from session where user_id=${current.id} returning token`
@@ -263,10 +265,10 @@ export async function deleteAccount(options: Options) {
     for (const membership of memberships)
       await sql`insert into audit_log (id,actor_user_id,workspace_id,action,target_type,target_id,ip,meta)
       values (${newId()},${current.id},${membership.organization_id},'workspace.member_removed','member',${membership.id},
-      ${options.headers.get('cf-connecting-ip')},${JSON.stringify({ targetUserId: current.id, oldRole: membership.role, newRole: null, reason: 'account_deleted' })}::jsonb)`
+      ${options.clientIp ?? null},${JSON.stringify({ targetUserId: current.id, oldRole: membership.role, newRole: null, reason: 'account_deleted' })}::jsonb)`
     await sql`update invitation set status='canceled',updated_at=now() where status='pending' and (inviter_id=${current.id} or lower(email)=lower(${current.email}))`
     await sql`update "user" set email=${`deleted+${current.id}@invalid`},name='',image=null,locale=null,timezone=null,email_verified=false,two_factor_enabled=false,banned=true,ban_reason='Account deleted',ban_expires=null,updated_at=now() where id=${current.id}`
-    await sql`insert into audit_log (id,actor_user_id,action,target_type,target_id,ip,meta) values (${newId()},${current.id},'account.deleted','user',${current.id},${options.headers.get('cf-connecting-ip')},${JSON.stringify({ anonymized: true, deletedPersonalWorkspaceIds: personal.map((workspace) => workspace.id) })}::jsonb)`
+    await sql`insert into audit_log (id,actor_user_id,action,target_type,target_id,ip,meta) values (${newId()},${current.id},'account.deleted','user',${current.id},${options.clientIp ?? null},${JSON.stringify({ anonymized: true, deletedPersonalWorkspaceIds: personal.map((workspace) => workspace.id) })}::jsonb)`
     return saveCleanup(sql, cacheKeys, options.kv)
   })
   await finishCleanup(options.db, options.kv, keys)
@@ -275,9 +277,10 @@ export async function deleteAccount(options: Options) {
 /** Mount before the native organization plugin. The HTTP endpoints validate signed cookies in DB. */
 export function deletionPlugin(
   db: Database,
-  kv?: KvStore,
+  kv?: Pick<KeyValueStore, 'delete'>,
   multiTenant = true,
   additionalSteps?: readonly DeletionStep[],
+  clientIp?: string | null,
 ) {
   const endpoint = (kind: DeletionKind) =>
     createAuthEndpoint(
@@ -292,6 +295,7 @@ export function deletionPlugin(
           const options = {
             db,
             kv,
+            clientIp,
             ...(additionalSteps ? { additionalSteps } : {}),
             headers: ctx.headers,
             auth: { $context: Promise.resolve(ctx.context) },

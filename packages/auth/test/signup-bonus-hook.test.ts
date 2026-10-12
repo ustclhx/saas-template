@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers'
 import { defineTemplateConfig } from '@saas/config'
 import { createDb } from '@saas/db'
+import { createCloudflareKv } from '@saas/platform/cloudflare'
 import { newId } from '@saas/shared'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type CreateAuthDeps, createAuth } from '../src/auth.ts'
@@ -23,7 +24,8 @@ beforeEach(() => users.start())
 function setup(callback: NonNullable<CreateAuthDeps['onEmailVerified']>) {
   const db = createDb(env.HYPERDRIVE)
   const sent: AuthEmail[] = []
-  const auth = createAuth({ ...testEnv, CACHE: env.CACHE }, db, {
+  const auth = createAuth(testEnv, db, {
+    cache: createCloudflareKv(env.CACHE),
     config: defineTemplateConfig({ app, auth: { turnstile: false } }),
     sendEmail: async (message) => {
       sent.push(message)

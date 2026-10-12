@@ -1,6 +1,12 @@
 import { env } from 'cloudflare:workers'
 import { defineTemplateConfig, type TemplateConfigInput } from '@saas/config'
 import { createDb, type Database } from '@saas/db'
+import type { KeyValueStore, RateLimiter } from '@saas/platform'
+import {
+  createCloudflareKv,
+  createCloudflareRateLimiter,
+  createCloudflareRequestMetadata,
+} from '@saas/platform/cloudflare'
 import { newId } from '@saas/shared'
 import { onTestFinished, vi } from 'vitest'
 import { type AuthEmail, type AuthEnv, createAuth } from '../src/index.ts'
@@ -112,7 +118,7 @@ export const nextIp = () => `198.51.100.${(ipCounter++ % 250) + 1}`
 export function countingRateLimiter(limit = 5) {
   const counts = new Map<string, number>()
   return {
-    async limit({ key }: { key: string }) {
+    async limit(_policy: string, key: string) {
       const count = counts.get(key) ?? 0
       if (count >= limit) return { success: false }
       counts.set(key, count + 1)
@@ -124,6 +130,8 @@ export function countingRateLimiter(limit = 5) {
 export interface SetupOptions {
   readonly config?: Omit<TemplateConfigInput, 'app'>
   readonly env?: Partial<AuthEnv>
+  readonly cache?: KeyValueStore | undefined
+  readonly rateLimiter?: RateLimiter | undefined
   readonly db?: Database
   readonly maxSeats?: number
 }
@@ -135,42 +143,57 @@ export interface SetupOptions {
 export function setup(options: SetupOptions = {}) {
   const sent: AuthEmail[] = []
   const db = options.db ?? createDb(env.HYPERDRIVE)
-  const auth = createAuth(
-    { ...testEnv, CACHE: env.CACHE, RL_AUTH: env.RL_AUTH, ...options.env },
-    db,
-    {
+  const cache = 'cache' in options ? options.cache : createCloudflareKv(env.CACHE)
+  const rateLimiter =
+    'rateLimiter' in options ? options.rateLimiter : createCloudflareRateLimiter(env)
+  const makeAuth = (clientIp: string | null) =>
+    createAuth({ ...testEnv, ...options.env }, db, {
+      cache,
+      rateLimiter,
+      clientIp,
       config: defineTemplateConfig({ app, ...options.config }),
       resolveMaxSeats: async () => options.maxSeats ?? null,
       sendEmail: async (message) => {
         sent.push(message)
       },
-    },
-  )
+    })
   const ip = nextIp()
+  let auth = makeAuth(ip)
   const request = (
     method: 'GET' | 'POST',
     path: string,
     body?: unknown,
     headers: Record<string, string> = {},
-  ) =>
-    auth.handler(
-      new Request(path.startsWith('http') ? path : `${APP_URL}/api/auth${path}`, {
-        method,
-        headers: {
-          origin: APP_URL,
-          'cf-connecting-ip': ip,
-          [TURNSTILE_TOKEN_HEADER]: TURNSTILE_DUMMY_TOKEN,
-          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-          ...headers,
-        },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      }),
-    )
+  ) => {
+    const req = new Request(path.startsWith('http') ? path : `${APP_URL}/api/auth${path}`, {
+      method,
+      headers: {
+        origin: APP_URL,
+        'cf-connecting-ip': ip,
+        [TURNSTILE_TOKEN_HEADER]: TURNSTILE_DUMMY_TOKEN,
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...headers,
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })
+    auth = makeAuth(createCloudflareRequestMetadata(req).clientIp)
+    return auth.handler(req)
+  }
   const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
     request('POST', path, body, headers)
   const get = (path: string, headers: Record<string, string> = {}) =>
     request('GET', path, undefined, headers)
-  return { auth, db, sent, ip, request, post, get }
+  return {
+    get auth() {
+      return auth
+    },
+    db,
+    sent,
+    ip,
+    request,
+    post,
+    get,
+  }
 }
 
 export const signUpBody = (address: string, password = PASSWORD) => ({

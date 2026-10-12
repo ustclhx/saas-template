@@ -1,23 +1,21 @@
 import { requireFreshSession } from '@saas/auth'
-import { createDb } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { isNotFound } from '@tanstack/react-router'
 import { z } from 'zod'
-import { getAuth } from '../../server/auth.ts'
+import type { WebRuntime } from '../../server/runtime.ts'
 import { requireAdmin } from './guard.ts'
 import { executeAdminAuthAction } from './impersonation.server.ts'
 import { assertRealSession, isSensitiveAuthPath } from './impersonation.ts'
 import { executeAdminWorkspaceRestore } from './workspaces.server.ts'
 
 /** 原生 admin HTTP 接口也经过事务包装，不能通过直接请求绕过审计或模拟限制。 */
-export async function handleAuthRequest(request: Request, env: Cloudflare.Env) {
-  const db = createDb(env.HYPERDRIVE)
-  const auth = getAuth(env, db)
+export async function handleAuthRequest(request: Request, runtime: WebRuntime) {
+  const { db, auth } = runtime
   const path = new URL(request.url).pathname.slice('/api/auth'.length)
   try {
     if (path.startsWith('/admin/')) {
       if (path === '/admin/stop-impersonating' && request.method === 'POST')
-        return await executeAdminAuthAction({ db, env, headers: request.headers, path })
+        return await executeAdminAuthAction({ db, runtime, headers: request.headers, path })
       // 先隐藏后台，再解析输入，避免非管理员通过畸形 JSON 辨认管理入口。
       const fresh = await requireAdmin({ db, auth, headers: request.headers })
       if (
@@ -26,7 +24,7 @@ export async function handleAuthRequest(request: Request, env: Cloudflare.Env) {
       )
         return await executeAdminAuthAction({
           db,
-          env,
+          runtime,
           headers: request.headers,
           path,
           body: await request.json(),
@@ -37,8 +35,8 @@ export async function handleAuthRequest(request: Request, env: Cloudflare.Env) {
           throw new AppError('INVALID_INPUT', 'Valid workspace ID is required', { status: 400 })
         return Response.json(
           await executeAdminWorkspaceRestore(
-            { db, admin: fresh.user, ip: request.headers.get('cf-connecting-ip') },
-            { env, headers: request.headers, workspaceId: input.data.workspaceId },
+            { db, admin: fresh.user, ip: runtime.requestMeta.clientIp },
+            { runtime, headers: request.headers, workspaceId: input.data.workspaceId },
           ),
         )
       }

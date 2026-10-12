@@ -1,10 +1,12 @@
 import { type KvStore, requireFreshSession } from '@saas/auth'
 import { type Database, session, user } from '@saas/db'
+import type { KeyValueStore } from '@saas/platform'
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { getAuth } from '../../server/auth.ts'
+import type { WebRuntime } from '../../server/runtime.ts'
 import { withAdminAction } from './action.server.ts'
 import { isPlatformAdmin, requireAdmin } from './guard.ts'
 import { assertRealSession } from './impersonation.ts'
@@ -21,17 +23,23 @@ const bodySchema = (body: unknown) => {
 /** KV 写入在数据库提交后执行；失败仍由实时数据库守卫阻止失效会话。 */
 function stagedCache(cache: KvStore) {
   const pending: (() => Promise<void>)[] = []
-  return {
-    cache: {
-      get: (key: string) =>
-        key.startsWith('auth:active-sessions-') ? cache.get(key) : Promise.resolve(null),
-      put: async (...args: Parameters<KvStore['put']>) => {
-        pending.push(() => cache.put(...args))
-      },
-      delete: async (key: string) => {
-        pending.push(() => cache.delete(key))
-      },
+  function get(key: string): Promise<string | null>
+  function get<T>(key: string, type: 'json'): Promise<T | null>
+  async function get<T>(key: string, type?: 'json'): Promise<T | string | null> {
+    const value = key.startsWith('auth:active-sessions-') ? await cache.get(key) : null
+    return value === null || type !== 'json' ? value : (JSON.parse(value) as T)
+  }
+  const staged: KeyValueStore = {
+    get,
+    put: async (...args: Parameters<KvStore['put']>) => {
+      pending.push(() => cache.put(...args))
     },
+    delete: async (key: string) => {
+      pending.push(() => cache.delete(key))
+    },
+  }
+  return {
+    cache: staged,
     flush: async () => {
       for (const action of pending) {
         try {
@@ -47,31 +55,40 @@ function stagedCache(cache: KvStore) {
 }
 
 /** 原生 admin 插件的会话 / 用户写入使用同一 Drizzle 事务，审计失败则一并回滚。 */
-export async function executeAdminAuthAction(options: {
-  db: Database
-  env: Cloudflare.Env
-  headers: Headers
-  path: string
-  body?: unknown
-}) {
+export async function executeAdminAuthAction(
+  options: {
+    db: Database
+    headers: Headers
+    path: string
+    body?: unknown
+  } & ({ runtime: WebRuntime; env?: never } | { env: Cloudflare.Env; runtime?: never }),
+) {
   const { db, headers, path } = options
+  // 旧 Server Functions 待 A 4.2 迁移；认证 HTTP 路径使用中立 runtime。
+  const createAuth = options.runtime
+    ? options.runtime.createAuth
+    : (db: Database, cache?: KeyValueStore) =>
+        getAuth(options.env, db, cache ? { cache } : undefined)
+  const ip = options.runtime
+    ? options.runtime.requestMeta.clientIp
+    : headers.get('cf-connecting-ip')
+  const appUrl = options.runtime ? options.runtime.config.APP_URL : options.env.APP_URL
+  const sourceCache = options.runtime ? options.runtime.cache : options.env.CACHE
   const stopping = path === '/admin/stop-impersonating'
   const fresh = stopping
-    ? await requireFreshSession({ auth: getAuth(options.env, db), db, headers }).catch(
-        (error: unknown) => {
-          if (error instanceof AppError && [401, 403].includes(error.status))
-            throw new AppError('NOT_FOUND', 'Not Found', { status: 404 })
-          throw error
-        },
-      )
-    : await requireAdmin({ auth: getAuth(options.env, db), db, headers })
+    ? await requireFreshSession({ auth: createAuth(db), db, headers }).catch((error: unknown) => {
+        if (error instanceof AppError && [401, 403].includes(error.status))
+          throw new AppError('NOT_FOUND', 'Not Found', { status: 404 })
+        throw error
+      })
+    : await requireAdmin({ auth: createAuth(db), db, headers })
   if (!stopping) assertRealSession(fresh.session)
   const adminId = stopping ? fresh.session.impersonatedBy : fresh.user.id
   if (!adminId) throw new AppError('NOT_FOUND', 'Not Found', { status: 404 })
   const input = stopping ? { userId: fresh.user.id, reason: '' } : bodySchema(options.body)
-  const cache = stagedCache(options.env.CACHE)
+  const cache = stagedCache(sourceCache)
   const response = await withAdminAction(
-    { db, admin: { id: adminId }, ip: headers.get('cf-connecting-ip') },
+    { db, admin: { id: adminId }, ip },
     path,
     async ({ tx, audit }) => {
       const [current] = await tx
@@ -96,11 +113,11 @@ export async function executeAdminAuthAction(options: {
         throw new AppError('REASON_REQUIRED', 'A reason is required', { status: 400 })
       // 插件只能使用本事务；关闭读取 KV，避免原生权限中间件读取旧角色 / 会话。
       const txDb = tx as unknown as Database
-      const txAuth = getAuth({ ...options.env, CACHE: cache.cache as unknown as KVNamespace }, txDb)
+      const txAuth = createAuth(txDb, cache.cache)
       const nativeHeaders = new Headers(headers)
       nativeHeaders.set('content-type', 'application/json')
       const native = await txAuth.handler(
-        new Request(`${options.env.APP_URL}/api/auth${path}`, {
+        new Request(`${appUrl}/api/auth${path}`, {
           method: 'POST',
           headers: nativeHeaders,
           body: JSON.stringify(stopping ? {} : { userId: input.userId, banReason: input.reason }),

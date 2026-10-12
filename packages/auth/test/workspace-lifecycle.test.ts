@@ -9,7 +9,7 @@ import { cookieHeader, setup, signUpBody, testUsers } from './helpers.ts'
 const users = testUsers('lifecycle')
 const app = () =>
   setup({
-    env: { RL_AUTH: { limit: async () => ({ success: true }) } },
+    rateLimiter: { limit: async () => ({ success: true }) },
     config: { auth: { turnstile: false }, tenancy: { multiTenant: true } },
   })
 beforeAll(() => users.start())

@@ -31,6 +31,7 @@ export async function restoreWorkspace(options: {
   readonly headers: Headers
   readonly workspaceId: string
   readonly maxWorkspacesPerUser?: number
+  readonly clientIp?: string | null | undefined
 }) {
   const fresh = await requireFreshSession(options)
   if (fresh.user.role !== 'admin') refuse('ADMIN_REQUIRED', 'Platform administrator required')
@@ -80,7 +81,7 @@ export async function restoreWorkspace(options: {
       await sql`insert into member (id,organization_id,user_id,role) values (${newId()},${workspaceId},${id},'owner')`
     await sql`update organization set deleted_at=null,updated_at=now() where id=${workspaceId}`
     await sql`insert into audit_log (id,actor_user_id,workspace_id,action,target_type,target_id,ip,meta)
-      values (${newId()},${fresh.user.id},${workspaceId},'workspace.restored','organization',${workspaceId},${options.headers.get('cf-connecting-ip')},${JSON.stringify({ deletionAuditId: deletion.id, ownerUserIds: valid })}::jsonb)`
+      values (${newId()},${fresh.user.id},${workspaceId},'workspace.restored','organization',${workspaceId},${options.clientIp ?? null},${JSON.stringify({ deletionAuditId: deletion.id, ownerUserIds: valid })}::jsonb)`
     return { restored: true, ownerUserIds: valid }
   })
 }
@@ -113,6 +114,7 @@ export async function cleanupExpiredWorkspaces(db: Database) {
 export function workspaceLifecyclePlugin(
   db: Database,
   maxWorkspacesPerUser = templateConfigDefaults.tenancy.maxWorkspacesPerUser as number,
+  clientIp?: string | null,
 ) {
   return {
     id: 'workspace-lifecycle',
@@ -129,6 +131,7 @@ export function workspaceLifecyclePlugin(
             return ctx.json(
               await restoreWorkspace({
                 db,
+                clientIp,
                 maxWorkspacesPerUser,
                 workspaceId: ctx.body.workspaceId,
                 headers: ctx.headers,

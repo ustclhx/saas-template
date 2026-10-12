@@ -3,5 +3,5 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "include": ["*.ts"]
+  "include": ["src", "test/node", "vitest.node.config.ts"]
 }

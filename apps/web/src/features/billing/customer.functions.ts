@@ -8,7 +8,7 @@ import {
   getPortalUrl,
   resumeSubscription,
 } from '@saas/billing'
-import { createDb } from '@saas/db'
+import { createDb, type Database } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import { createServerFn } from '@tanstack/react-start'
@@ -25,7 +25,7 @@ import {
 
 const workspace = z.object({ slug: z.string().min(1).max(64) })
 const provider = z.enum(['stripe', 'paypal', 'creem', 'paddle', 'polar'])
-function runtime(db: ReturnType<typeof createDb>) {
+function runtime(db: Database) {
   try {
     return createPaymentRuntime(env, templateConfig.billing.providers, { cache: env.CACHE, db })
   } catch (error) {
@@ -33,7 +33,7 @@ function runtime(db: ReturnType<typeof createDb>) {
     throw error
   }
 }
-function service(db: ReturnType<typeof createDb>) {
+function service(db: Database) {
   return {
     db,
     providers: runtime(db).providers,

@@ -21,8 +21,9 @@
 | `magicLink` | 魔法链接登录（`auth.magicLink`） |
 | `twoFactor` | 可选 |
 
-### Workers 适配要点
-- 每个请求创建 `auth` 实例（`createAuth(env, db)`），内部用该请求的 Drizzle 实例（Drizzle adapter，provider `pg`）。
+### 跨运行时适配要点
+- 每个请求创建 `auth` 实例（`createAuth(env, db, deps)`），env 仅含标量配置；`deps.cache`、`deps.rateLimiter`、`deps.clientIp` 由可信入口注入。内部用本请求的 Drizzle facade（Drizzle adapter，provider `pg`）；Node facade 借用进程池，CF 使用请求客户端。
+- web 认证与空间入口通过 `getWebRuntime()` 获取认证、数据库和请求元数据；CF adapter 在 `apps/web/src/server.ts` 装配。Node 装配与持久邮件队列接入由后续任务负责。入口签名与其他模块迁移指引见 [平台能力与交接](platform-capabilities.md)。
 - **会话读取的分层**（`packages/auth/src/session.ts`）：
   1. `session.cookieCache`（签名 Cookie，`maxAge` 5 分钟）：普通 Better Auth 会话读取可不读 KV、不查库；应用页面使用下述实时守卫。
   2. `secondaryStorage` 接 KV（绑定 `CACHE`，键前缀 `auth:`）：cookie 缓存过期后读 KV，减少跨地域查库；KV 未命中时回退查库。
@@ -30,7 +31,7 @@
   - 吊销必须经 Better Auth（退出登录、撤销会话、封禁、改密码等），它同时删除数据库行与 KV 副本。只在数据库中删除会话行（如手写 SQL）不会删除 KV 副本，KV 中的会话会一直有效到其 TTL（会话过期时间）；运维脚本需同时删除 `auth:<token>`。
   - 验证码、魔法链接、重置密码等验证值只从数据库签发、读取并原子消费（`verification.storeInDatabase`）。删除插件排除 secondaryStorage 的 `verification:` 键，防止旧缓存验证码绑定到同邮箱重新注册的账号；历史 KV 验证值不再读取，按原 TTL 到期。会话缓存仍保留。
   - Better Auth 1.7.7 的 OTP / 魔法链接单次消费预留使用非 UUID 主键，不能直接写入本项目的 UUID 列。`verificationReservation` 在请求执行前替换内部预留方法：按原始 identifier 获取事务锁，未过期预留只允许一个请求成功，新行用 UUIDv7；过期预留可重新使用。真实未验证邮箱的 OTP / 魔法链接登录保留 Better Auth 的凭据清理行为，不通过预先设置已验证来绕过。
-  - KV 的 `expirationTtl` 最少 60 秒，适配层把更短的 TTL 提升到 60 秒。
+  - 业务 TTL 向上取整为至少 1 秒；CF adapter 按 KV 约束提升至至少 60 秒，Node Valkey 保留秒级 TTL。两端共用 `auth:` 键前缀，Node 环境/用途命名空间由 cache adapter 隔离。
   - Better Auth 自带的 rateLimit 改用 isolate 内存，不存 KV：每个请求写同一个键会触发 KV「同一键每秒最多写 1 次」的限制，且计数最终一致。认证入口的限流以 `RL_AUTH` 为准（见下文）。
 - **吊销不是即时的**：KV 的写入和删除传播到所有边缘节点最多约 60 秒，再叠加 cookie 缓存的 `maxAge`，改密码 / 封禁 / 踢下线后，旧会话最长可能还有效「cookieCache maxAge + 约 60 秒」。可接受的场景照常使用；以下**敏感操作不走缓存，直接查库**校验会话与 `user.banned`：
   - 修改密码 / 邮箱 / 2FA、删除账号
@@ -63,10 +64,10 @@
 - staging 实测（2026-10-04，Wrangler tail 的单次样本，非 p95）：成功注册 `cpuTime` 为 85 / 54 ms、墙钟为 6966 / 5347 ms；成功密码登录为 40 ms / 2682 ms，错误密码登录为 60 ms / 390 ms。已使用 PBKDF2；注册 CPU 仍高于本地测量，样本不足以作为稳定基准。远程浏览器验收将等待预算设为 30 秒，避免沿用本地 5 秒断言时截断尚未完成的跨地域请求；业务断言不变。
 - Cookie：`SameSite=Lax`、`Secure`；使用自定义域名，web 与 API 同源，避免跨站 Cookie 问题。
 - **防刷**（`packages/auth/src/protection.ts`）：注册（`/sign-up/email`）、登录（`/sign-in/email`、`/sign-in/email-otp`、`/sign-in/magic-link`）、发送验证码（`/email-otp/send-verification-otp`）、找回密码（`/request-password-reset`、`/forget-password/email-otp`、`/email-otp/request-password-reset`）以及发送验证邮件（`/send-verification-email`）在接口执行前依次检查：
-  1. `RL_AUTH` 按 IP（`cf-connecting-ip`）限流；
+  1. 平台 `rateLimiter.limit('auth', key)` 按可信入口注入的客户端 IP 限流（CF 入口取 `cf-connecting-ip`，Node 入口按 TCP peer / trusted CIDR 解析，不读取客户端伪造的 CF/XFF 头）；
   2. Turnstile（`auth.turnstile=true` 时）：请求头 `x-turnstile-token`，服务端调用 siteverify（带 `remoteip`），缺失、无效或 siteverify 不可达都返回 403 `TURNSTILE_FAILED`；已登录用户调用 `/send-verification-email` 时免检；
   3. `RL_AUTH` 按邮箱（规范化后 SHA-256）限流。
-  超限返回 429 `RATE_LIMITED`。不通过时接口本身不执行，不会创建用户或发送邮件；服务端直接调用 `auth.api.*` 不经过这些检查。限额在 `wrangler.jsonc` 的 `ratelimits` 中配置（当前每个 key 每 60 秒 10 次）。
+  超限返回 429 `RATE_LIMITED`；Node Valkey 不可达返回脱敏 503 `CACHE_UNAVAILABLE`，不放行或退回内存。关闭 Turnstile 时无需 secret/site key、不校验令牌，但保留 IP/邮箱限流。不通过时接口本身不执行，不会创建用户或发送邮件；服务端直接调用 `auth.api.*` 不经过这些检查。CF 限额在 `wrangler.jsonc` 的 `ratelimits` 中配置（当前每个 key 每 60 秒 10 次）。
 - 本地开发与测试：Turnstile 使用 Cloudflare 官方测试 secret（`1x0000000000000000000000000000000AA` 始终通过、`2x0000000000000000000000000000000AA` 始终失败，见 `apps/web/.dev.vars.example`）；集成测试按官方文档的行为模拟 siteverify，不访问外部服务。`CACHE` 与 `RL_AUTH` 由 Miniflare 模拟。
 - 注意 Rate Limiting 绑定的计数是**按 Cloudflare 数据中心分别统计、最终一致**的，不是全局精确计数，只用来防刷和削峰。
 

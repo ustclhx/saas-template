@@ -118,7 +118,7 @@ describe('Turnstile', () => {
 
 describe('RL_AUTH 限流', () => {
   it('同一邮箱连续发送验证码超过限额后返回 429，且不再发送邮件', async () => {
-    const s = setup({ env: { RL_AUTH: countingRateLimiter() } })
+    const s = setup({ rateLimiter: countingRateLimiter() })
     const address = users.email('otp-flood')
     const statuses: number[] = []
     for (let i = 0; i < 7; i++) {
@@ -136,7 +136,7 @@ describe('RL_AUTH 限流', () => {
   })
 
   it('邮箱大小写与首尾空格不同视为同一邮箱', async () => {
-    const s = setup({ env: { RL_AUTH: countingRateLimiter() } })
+    const s = setup({ rateLimiter: countingRateLimiter() })
     const address = users.email('case')
     const variants = [address, address.toUpperCase(), ` ${address} `]
     const statuses: number[] = []
@@ -152,7 +152,7 @@ describe('RL_AUTH 限流', () => {
   })
 
   it('同一 IP 超过限额后返回 429（找回密码不发邮件、注册不创建用户）', async () => {
-    const s = setup({ env: { RL_AUTH: countingRateLimiter() } })
+    const s = setup({ rateLimiter: countingRateLimiter() })
     const address = users.email('ip-flood')
     expect((await s.post('/sign-up/email', signUpBody(address))).status).toBe(200)
     for (let i = 0; i < 4; i++) {
@@ -173,7 +173,7 @@ describe('RL_AUTH 限流', () => {
   })
 
   it('服务端直接调用 auth.api 不经过限流与 Turnstile', async () => {
-    const s = setup({ env: { RL_AUTH: countingRateLimiter() } })
+    const s = setup({ rateLimiter: countingRateLimiter() })
     const address = users.email('server-call')
     for (let i = 0; i < 7; i++) {
       await s.auth.api.sendVerificationOTP({ body: { email: address, type: 'sign-in' } })
@@ -183,7 +183,7 @@ describe('RL_AUTH 限流', () => {
   })
 
   it('已登录用户主动发送验证邮件不要求 Turnstile，但同样限流', async () => {
-    const s = setup({ env: { RL_AUTH: countingRateLimiter() } })
+    const s = setup({ rateLimiter: countingRateLimiter() })
     const address = users.email('verify-entry')
     const signUp = await s.post('/sign-up/email', signUpBody(address))
     const cookie = cookieHeader(signUp)

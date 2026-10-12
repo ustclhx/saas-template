@@ -24,6 +24,7 @@
     "@saas/db": "workspace:*",
     "@saas/email": "workspace:*",
     "@saas/entitlements": "workspace:*",
+    "@saas/platform": "workspace:*",
     "@saas/shared": "workspace:*",
     "@saas/storage": "workspace:*",
     "@saas/ui": "workspace:*",

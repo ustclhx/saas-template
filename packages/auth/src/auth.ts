@@ -2,6 +2,7 @@ import { apiKey } from '@better-auth/api-key'
 import type { TemplateConfig } from '@saas/config'
 import type { Database } from '@saas/db'
 import * as schema from '@saas/db/schema'
+import type { KeyValueStore, RateLimiter } from '@saas/platform'
 import { newId } from '@saas/shared'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
@@ -22,7 +23,14 @@ import { type ResolveMaxSeats, teamWorkspaces } from './team-workspaces.ts'
 import { verificationReservation } from './verification-reservation.ts'
 import { workspaceLifecyclePlugin } from './workspace-lifecycle.ts'
 
+// Better Auth 只支持从头解析 IP；入口包装会强制覆盖，客户端不能选择此值。
+const CLIENT_IP_HEADER = 'x-saas-auth-client-ip'
+
 export interface CreateAuthDeps {
+  readonly cache?: KeyValueStore | undefined
+  readonly rateLimiter?: RateLimiter | undefined
+  /** 可信运行时入口解析的本请求 IP。 */
+  readonly clientIp?: string | null | undefined
   readonly beforeUserCreate?: (user: { readonly email: string }, headers?: Headers) => Promise<void>
   readonly deletionSteps?: readonly DeletionStep[]
   /** 模板配置（`template.config.ts`），决定启用哪些登录方式与插件 */
@@ -55,7 +63,7 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
   const workspaceHooks = personalWorkspaceHooks(db)
   const bootstrapAdmin = adminBootstrap(db, vars.BOOTSTRAP_ADMIN_EMAILS)
 
-  return betterAuth({
+  const auth = betterAuth({
     appName: config.app.name,
     baseURL: vars.APP_URL,
     basePath: '/api/auth',
@@ -70,8 +78,9 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
     secret: vars.BETTER_AUTH_SECRET,
     database: drizzleAdapter(db, { provider: 'pg', schema }),
     // 会话三层：Cookie 缓存 → KV → 数据库（session.ts）
-    ...sessionStorageOptions(env.CACHE),
+    ...sessionStorageOptions(deps.cache),
     advanced: {
+      ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },
       // 主键统一为 UUIDv7（design.md 决策 2），列类型为 uuid
       database: { generateId: () => newId() },
     },
@@ -111,7 +120,11 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
       },
       session: {
         create: {
-          ...workspaceHooks.session.create,
+          before: async (session) => {
+            const workspace = await workspaceHooks.session.create.before(session)
+            // 可信 auth.api 调用也不让传入 headers 决定会话 IP。
+            return { data: { ...session, ...workspace?.data, ipAddress: deps.clientIp ?? null } }
+          },
           after: async (session) => {
             await bootstrapAdmin(session.userId, 'session.create')
           },
@@ -150,17 +163,18 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
     plugins: [
       // 认证入口防刷：RL_AUTH 限流 + Turnstile（protection.ts）
       authProtection({
-        rateLimiter: env.RL_AUTH,
+        rateLimiter: deps.rateLimiter,
+        clientIp: deps.clientIp,
         turnstileSecret: config.auth.turnstile ? (vars.TURNSTILE_SECRET_KEY ?? null) : null,
       }),
       // 敏感接口按数据库实时校验会话与封禁（fresh-session.ts）
       freshSessionGuard(db),
-      deletionPlugin(db, env.CACHE, config.tenancy.multiTenant, deps.deletionSteps),
+      deletionPlugin(db, deps.cache, config.tenancy.multiTenant, deps.deletionSteps, deps.clientIp),
       verificationReservation(db),
-      workspaceLifecyclePlugin(db, config.tenancy.maxWorkspacesPerUser),
-      teamWorkspaces(db, config, sendEmail, deps.resolveMaxSeats),
+      workspaceLifecyclePlugin(db, config.tenancy.maxWorkspacesPerUser, deps.clientIp),
+      teamWorkspaces(db, config, sendEmail, deps.resolveMaxSeats, deps.clientIp),
       // 用户设置：资料校验、修改密码时吊销其他会话（account-settings.ts）
-      accountSettings(db, config),
+      accountSettings(db, config, deps.clientIp),
       organization({
         // 团队空间的创建准入由 multiTenant 决定；个人空间由服务端创建（tasks.md 4.1）
         allowUserToCreateOrganization: config.tenancy.multiTenant,
@@ -233,6 +247,16 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
         : []),
     ],
   })
+  return {
+    ...auth,
+    handler: (request: Request) => {
+      // 在 Better Auth 内置限流之前覆盖内部头；插件 onRequest 执行顺序太晚。
+      const headers = new Headers(request.headers)
+      headers.delete(CLIENT_IP_HEADER)
+      if (deps.clientIp) headers.set(CLIENT_IP_HEADER, deps.clientIp)
+      return auth.handler(new Request(request, { headers }))
+    },
+  }
 }
 
 export type Auth = ReturnType<typeof createAuth>
