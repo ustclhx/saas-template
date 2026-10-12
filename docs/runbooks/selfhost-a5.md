@@ -58,3 +58,5 @@ pnpm --filter @saas/web test:node:production
 web runner 先生成文案/内容，再执行 config、AI、platform Node unit、DB/credits、Valkey、auth、billing、entitlements、web AI/public/files/admin 的现有 Node 套件。PG/Valkey 缺失直接失败，不跳过；共享测试库的业务套件顺序执行。CF-specific 适配器仍由原 workers-pool 项目验证。
 
 本地提供 worktree 的 PG 配置与独立 `TEST_VALKEY_URL` 后运行相同命令。另完成根 `pnpm check`、`check:deps`、`check:singletons`、`dedupe --check`、`typecheck`、`test`、`build` 及默认 Playwright e2e-smoke。CI 结果以本 PR 的 checks 为准；合并后的 main staging SHA 验收仍属于协调者/A8.3。
+
+PR #126 实现提交 `9da1959` 的 [CI run 38280750963](https://github.com/ustclhx/saas-template/actions/runs/38280750963) 三个 job（check、node、e2e-smoke）全部通过，5.1–5.3 与 6.3 已勾选。后续提交仅补验收记录与勾选。

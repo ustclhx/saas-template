@@ -35,7 +35,7 @@
 
 - [x] 5.1 在现有 Start/Vite 版本上锁定兼容 Nitro，新增独立 vite.node.config.ts、server.node entry 和 build:node/start:node；复用生成/预渲染选项，保留 CF 默认配置。验证：Node SSR、Server Function、静态资源与流式 smoke，无生产凭据/DB 的预渲染通过，CF build 产物不变；补文档记录确切 adapter 版本。（R1、R5）
 - [x] 5.2 新增 jobs Node ESM 输出与 entry，装配 config、池、缓存、内部 liveness 和 shutdown，B 未合入时 queue/scheduler unavailable；外置原生模块依赖。验证：生产 Node 入口可运行及优雅退出、无 workerd/Cloudflare 专用依赖、未执行临时队列或 cron；记录 R6 无平台 CPU 上限与业务超时边界。（R1、R5、R6）
-- [ ] 5.3 新增独立 Node Vitest 项目与 build/test CI job，临时 PG17/Valkey，按需复用业务用例；区分输出与 Turbo cache inputs/outputs，保留 CF workers-pool/check/e2e-smoke/staging。验证：CI 同时通过 CF 和 Node 构建/单元测试，Node 基础集成不跳过，缓存不能串目标，Node job 无 staging secrets/部署步骤；文档列出实际命令。（P6）
+- [x] 5.3 新增独立 Node Vitest 项目与 build/test CI job，临时 PG17/Valkey，按需复用业务用例；区分输出与 Turbo cache inputs/outputs，保留 CF workers-pool/check/e2e-smoke/staging。验证：CI 同时通过 CF 和 Node 构建/单元测试，Node 基础集成不跳过，缓存不能串目标，Node job 无 staging secrets/部署步骤；文档列出实际命令。（P6）
 
 ## 6. 文本 AI 出口与能力（模型工厂独占，4.3 后）
 
