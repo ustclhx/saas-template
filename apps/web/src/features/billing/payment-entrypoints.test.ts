@@ -15,7 +15,6 @@ const mocks = vi.hoisted(() => ({
   deletion: vi.fn(),
   status: vi.fn(),
 }))
-vi.mock('cloudflare:workers', () => ({ env: mocks.env }))
 vi.mock('../../server/runtime.ts', () => ({
   getWebRuntime: () => ({
     config: mocks.env,

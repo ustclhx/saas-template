@@ -29,7 +29,7 @@
 - [x] 4.3 AI owner：迁移 packages/ai 与 web AI/API v1/chat 的 env、限流、waitUntil、workflow 类型与调用；保留预算/检查点/媒体业务 runner 契约。验证：既有 CF 聊天/媒体用例和 Node 文本业务用例通过，依赖 B/C 的媒体任务未伪验收；不修改组 6 的模型出口工厂。（R2、A1、A3）
 - [x] 4.4 storage/growth/public owner：隔离 packages/storage 的 R2/FixedLengthStream 细节为 CF 专用入口，迁移 web files/growth/公开页/i18n 的 env 访问；Node 未装配 C 的文件能力明确拒绝。验证：CF 文件与公开页测试通过，Node 无 DB 公开页预渲染正常、文件不可用时无预扣/假成功；文档标明 C 接口。（R2）（经协调者确认：本批验证中立公开页无 DB 降级与 CF 实际预渲染；Node 生产无 DB 预渲染留组 5 验收。证据见 docs/runbooks/selfhost-a4-storage.md。）
 - [x] 4.5 jobs owner：迁移 apps/jobs 的 queue handlers、cron、media-runner 为中立能力与类型，Cloudflare WorkflowEntrypoint 留 CF entry，Sentry capture/tag 使用可注入观测边界（Node 暂为共享日志）。验证：jobs 现有 CF 测试全部通过，cron 独立任务失败仍遵循 allSettled，Node 可加载业务 handler 不加载 Workers/Sentry CF 包；记录 B 接入位置。（R2）
-- [ ] 4.6 协调者整合 apps/web 的 server/middleware/auth/env、start 与其余 routes 的调用及 Cloudflare composition entry，清除残留业务 Workers 全局类型；同步 manifests 与 lockfile。验证：全量 cloudflare:* / Cloudflare.Env / binding 类型定向扫描只剩允许位置，pnpm check:deps、check:singletons、dedupe --check、双目标类型检查通过。（R2）
+- [x] 4.6 协调者整合 apps/web 的 server/middleware/auth/env、start 与其余 routes 的调用及 Cloudflare composition entry，清除残留业务 Workers 全局类型；同步 manifests 与 lockfile。验证：全量 cloudflare:* / Cloudflare.Env / binding 类型定向扫描只剩允许位置，pnpm check:deps、check:singletons、dedupe --check、双目标类型检查通过。（R2）
 
 ## 5. Node 生产构建、启动与 CI（apps 构建/入口与 CI 独占）
 

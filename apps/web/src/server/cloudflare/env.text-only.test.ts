@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 
-vi.mock('./template-config.ts', async (original) => {
-  const { templateConfig } = await original<typeof import('./template-config.ts')>()
+vi.mock('../template-config.ts', async (original) => {
+  const { templateConfig } = await original<typeof import('../template-config.ts')>()
   return {
     templateConfig: {
       ...templateConfig,

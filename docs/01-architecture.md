@@ -130,4 +130,4 @@ POST /api/webhooks/{stripe|paypal} → 验签 → 转换为内部统一事件
 
 `packages/platform` 提供目标中立的 env、db、KV、限流、后台延续和请求元数据，以及 queue/workflow/scheduler 契约；通过显式 `./cloudflare` 与 `./node` 入口按目标装配。业务包与 apps 使用中立契约。Cloudflare 仍是默认部署目标，Node 基础能力及业务迁移由 `add-selfhost-foundation` 分批实施，持久任务引擎由 B 交付；未装配的能力明确报告 unavailable。
 
-platform 仅可依赖 shared/config/db，config/db 不反向依赖 platform。shared 无内部依赖、config 仅依赖 shared、db 仅依赖 shared/config；业务包之间允许依赖，检查器没有规定总顺序。`pnpm check:deps` 对 apps/packages 的 Cloudflare 导入执行目标边界检查，入口、目标测试与迁移过渡清单规则见 [项目结构 §1](02-project-structure.md#1-monorepo-目录)。过渡清单锁定现有导入且随迁移缩减，不表示业务迁移已经完成。
+platform 仅可依赖 shared/config/db，config/db 不反向依赖 platform。shared 无内部依赖、config 仅依赖 shared、db 仅依赖 shared/config；业务包之间允许依赖，检查器没有规定总顺序。`pnpm check:deps` 对 apps/packages 的 Cloudflare 导入执行目标边界检查，入口与目标测试规则见 [项目结构 §1](02-project-structure.md#1-monorepo-目录)。A 4.6 已清除业务导入的过渡清单，业务源码与中立 web 类型检查不依赖 Workers 全局声明。

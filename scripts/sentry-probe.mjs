@@ -21,7 +21,7 @@ const output = await build({
   stdin: {
     resolveDir: `${root}/apps/web`,
     contents: `
-      import { sentryOptions } from './src/server/sentry.ts'
+      import { sentryOptions } from './src/server/cloudflare/sentry.ts'
       import { withLogContext } from '@saas/shared/log'
       import { createTransport, getIsolationScope, withSentry } from '@sentry/cloudflare'
       const worker = withSentry(env => ({

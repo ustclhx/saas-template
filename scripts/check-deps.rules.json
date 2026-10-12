@@ -1,6 +1,13 @@
 {
-  "description": "Cloudflare 边界：入口/目标夹具逐文件登记；transition 是现有业务导入的精确计数，仅允许随迁移删减，不得扩大。",
-  "compositionEntries": ["apps/jobs/src/index.ts", "apps/web/src/server.ts"],
+  "description": "Cloudflare 边界：入口/目标夹具逐文件登记，业务没有过渡豁免。",
+  "compositionEntries": [
+    "apps/jobs/src/index.ts",
+    "apps/web/src/server.ts",
+    "apps/web/src/server/cloudflare/env.ts",
+    "apps/web/src/server/cloudflare/sentry.ts",
+    "apps/web/src/env.d.ts",
+    "apps/jobs/src/worker-env.d.ts"
+  ],
   "targetFixtures": {
     "apps/web/test/admin-test-resources.ts": ["cloudflare:workers"],
     "apps/jobs/test/ai-hold-sweep.test.ts": ["cloudflare:test", "cloudflare:workers"],
@@ -42,24 +49,15 @@
     "packages/db/test/setting.test.ts": ["cloudflare:workers"],
     "packages/storage/test/media.integration.test.ts": ["cloudflare:workers"],
     "packages/storage/test/storage.integration.test.ts": ["cloudflare:workers"],
-    "packages/platform/test/cloudflare.test.ts": ["cloudflare:test", "cloudflare:workers"]
-  },
-  "transition": {
-    "apps/web/src/features/deletion/deletion.functions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/features/settings/account.functions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/dev/email.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/dev/workflow.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/health.ts": {
-      "cloudflare:workers": 1
-    }
+    "packages/platform/test/cloudflare.test.ts": ["cloudflare:test", "cloudflare:workers"],
+    "apps/web/test/env.d.ts": [],
+    "apps/jobs/test/env.d.ts": [],
+    "packages/auth/test/env.d.ts": [],
+    "packages/db/test/env.d.ts": [],
+    "packages/storage/test/presign.unit.test.ts": [],
+    "packages/storage/test/worker.ts": [],
+    "apps/web/src/server/cloudflare/sentry.test.ts": [],
+    "packages/platform/test/env.d.ts": []
   },
   "nodeCompositionEntries": [],
   "targetAdapterFixtures": {
@@ -81,6 +79,7 @@
     "packages/platform/test/node/fixtures/job-schema-probe.ts": ["node"],
     "apps/web/test/ai-chat.test.ts": ["cloudflare"],
     "apps/web/test/ai-media-tasks.test.ts": ["cloudflare"],
-    "apps/web/test/ai-node/chat.node.ts": ["node"]
+    "apps/web/test/ai-node/chat.node.ts": ["node"],
+    "apps/web/src/server/cloudflare/sentry.test.ts": ["cloudflare"]
   }
 }

@@ -62,7 +62,7 @@ saas-template/
 
 **平台导入边界**：业务通过 platform 中立入口访问平台能力。检查器解析 apps/packages 下的源码（含 test/probe/e2e，排除依赖和构建产物），识别静态 import、export from、动态 import、require 和 type import。`cloudflare:workers` / `cloudflare:workflows` 仅允许在 `packages/platform/src/cloudflare/**`；显式 app composition entry 只允许 `cloudflare:workers`。目标测试夹具按文件与模块名明确登记，`cloudflare:test` 只向这些夹具开放，不按目录或 `.test.ts` 后缀豁免。
 
-入口与测试夹具清单位于 [`scripts/check-deps.rules.json`](../scripts/check-deps.rules.json)。其中 `transition` 记录迁移前的业务导入，按文件、模块名和出现次数精确锁定；新增导入检查失败，迁移后必须同步缩减或删除条目。该清单用于分批实施 selfhost 迁移，现有条目仍是待迁移依赖。新增目标入口或测试夹具时只登记确切路径与所需模块，不扩大业务例外。CF/Node 适配器子入口（含相对路径）也仅向对应目标目录、明确入口和目标夹具开放；跨包相对导入同样执行基础包依赖方向检查。
+入口与测试夹具清单位于 [`scripts/check-deps.rules.json`](../scripts/check-deps.rules.json)。A 4.6 已删除 `transition` 及其检查器豁免逻辑，业务导入不再有过渡额度。CF 环境校验与 Sentry 装配位于 web 的 `server/cloudflare/`，作为明确的 composition 辅助入口登记；绑定声明与仅含目标类型的夹具也逐文件登记（空模块列表不授权平台导入）。新增目标入口或测试夹具时只登记确切路径与所需模块，不扩大业务例外。CF/Node 适配器子入口（含相对路径）也仅向对应目标目录、明确入口和目标夹具开放；跨包相对导入同样执行基础包依赖方向检查。
 
 平台能力的具体 API、CF 装配和 B 交接见 [平台能力与交接](platform-capabilities.md)。
 

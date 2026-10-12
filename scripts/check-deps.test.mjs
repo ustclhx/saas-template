@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { checkWorkspace, importsOf } from './check-deps.mjs'
 
-const emptyRules = () => ({ compositionEntries: [], targetFixtures: {}, transition: {} })
+const emptyRules = () => ({ compositionEntries: [], targetFixtures: {} })
 
 function workspace(t, files, rules = emptyRules()) {
   const root = mkdtempSync(join(tmpdir(), 'check-deps-'))
@@ -92,10 +92,9 @@ test('only platform Cloudflare adapters, exact composition entries and exact tar
   assert.equal(check().length, 5)
 })
 
-test('transition permits the exact old count; new imports fail and migrated entries must shrink', (t) => {
+test('former transition entries cannot exempt business imports', (t) => {
   const file = 'apps/web/src/routes/old.ts'
-  const rules = emptyRules()
-  rules.transition = { [file]: { 'cloudflare:workers': 1 } }
+  const rules = { ...emptyRules(), transition: { [file]: { 'cloudflare:workers': 1 } } }
   const check = workspace(
     t,
     {
@@ -104,20 +103,8 @@ test('transition permits the exact old count; new imports fail and migrated entr
     },
     rules,
   )
-  assert.deepEqual(check(), [])
-  const extra = workspace(
-    t,
-    {
-      'apps/web/package.json': manifest('@saas/web'),
-      [file]: "import 'cloudflare:workers'; export * from 'cloudflare:workers'",
-    },
-    rules,
-  )
-  assert.equal(extra().length, 1)
-  const migrated = workspace(t, { 'apps/web/package.json': manifest('@saas/web') }, rules)
-  assert.match(migrated()[0], /实际 0；迁移后请删减/)
-  delete rules.transition[file]
-  assert.deepEqual(migrated(), [])
+  assert.equal(check().length, 1)
+  assert.match(check()[0], /仅允许平台 Cloudflare 适配器/)
 })
 
 test('platform depends only on shared/config/db; config/db cannot reverse that direction; business packages may depend on each other', (t) => {

@@ -1,24 +1,23 @@
-import { env } from 'cloudflare:workers'
 import { deleteAccount, deleteTeamWorkspace } from '@saas/auth'
-import { createDb } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest, setResponseStatus } from '@tanstack/react-start/server'
 import { z } from 'zod'
-import { billingDeletionSteps, getAuth } from '../../server/auth.ts'
 import { withRealSession } from '../../server/middleware.ts'
 import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
+import { createBillingDeletionSteps } from '../billing/deletion.server.ts'
 
 async function remove(workspaceId?: string) {
-  const db = createDb(env.HYPERDRIVE)
+  const runtime = getWebRuntime()
+  const db = runtime.db
   const options = {
     db,
-    auth: getAuth(env, db),
+    auth: runtime.auth,
     headers: getRequest().headers,
-    clientIp: getWebRuntime().requestMeta.clientIp,
-    kv: env.CACHE,
-    additionalSteps: billingDeletionSteps(env, db),
+    clientIp: runtime.requestMeta.clientIp,
+    kv: runtime.cache,
+    additionalSteps: createBillingDeletionSteps(runtime.config, db, runtime.cache),
   }
   try {
     if (workspaceId)

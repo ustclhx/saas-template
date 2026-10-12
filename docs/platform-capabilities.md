@@ -54,11 +54,15 @@ CF `cloudflareTransactionalEnqueue()` 返回 available:false。Node `unavailable
 | `*/10 * * * *` | 计费补偿与文件清理，独立执行 |
 | `0 4 * * *` | 每日计费维护 |
 
-## 过渡清单收缩
+## 平台边界收尾（A 4.6）
 
-`pnpm check:deps` 解析 apps/packages 的静态/动态 import、export、require 和 type import。明确平台目录、composition entry、目标夹具之外，既有业务违例固定在 `scripts/check-deps.rules.json` 的 transition：本批 51 个文件、52 处导入。条目按文件+specifier+次数锁定，新增次数或新路径立即失败；迁移使实际次数变少时，检查器也失败，要求同步删减对应条目。
+`transition` 与检查器的计数豁免已删除；业务目录不再允许 `cloudflare:*`。检查器仍解析静态/动态 import、export、require 与 type import，明确登记的目标入口/夹具和平台 CF 目录才允许对应导入。旧 transition 配置也不能恢复业务豁免，回归用例验证这一点。
 
-组 4 每批迁移需要替换平台导入和 Workers 全局能力类型，然后在同一 PR 删除/减少该模块 transition 条目，并运行 check:deps。不得把迁移后的业务路径移入 targetFixtures 或 compositionEntries，也不得增加过渡额度。组 4.6 清空剩余过渡清单并定向检查 Workers 全局类型；当前导入检查器不声称已验证全局类型中立。
+web 的 `server/cloudflare/env.ts` 与 `server/cloudflare/sentry.ts` 是显式 CF composition 辅助入口；绑定声明和只含目标类型的测试逐文件登记。`start.ts` 的共享异常处理使用 runtime 注入的 `observability`，CF 仍附请求身份采集，未装配的 Node 目标使用共享日志。Sentry 验证 HTTP 入口使用 runtime 的实时认证、数据库和可信 IP，保留同源限制与先审计再抛错。
+
+账号、删除、dev 邮件/Workflow 和 health 均使用 runtime。health 注入惰性无缓存业务数据库 getter，数据库创建/查询失败仍返回脱敏 503；facade 不关闭借用池。Node 完整 readiness 扩展留组 8。`getAuth(env, db)`、`billingDeletionSteps(env, db)`、`legacyRequestMetadata`、auth 旧 `KvStore`/`RateLimiter` 导出均已移除。
+
+`apps/web/tsconfig.neutral.json` 在默认 typecheck 中检查整个中立 src，仅加载 Node/Vite 全局声明，排除 CF entry、绑定声明和 CF composition 辅助文件。CF 仍单独检查完整 src 和目标夹具。定向扫描的允许位置和本批验收见 [A 4.6 记录](runbooks/selfhost-a46.md)。
 
 ## 本批验证
 
@@ -94,8 +98,7 @@ Node composition 由后续组 5/9 装配；B 未接入前不提供临时生产�
 `runtime.rateLimiter.limit('ai'|'api', key)`，不重新读取 CF/XFF 头。迁移各自字段时扩展
 标量 config/能力并由 composition 显式装配，不把原始 env 传入 runtime。独立业务测试可直接
 注入能力，feature 不导入目标 adapter；迁移完成在同一 PR 缩减对应 transition 条目。
-旧 `getAuth(env, db)` 与后台 Server Function 的 env 分支仅为未迁移模块保留，由 A 4.6 清理。
-auth 旧 RateLimiter/KvStore 类型由后续 owner 替换。
+A 4.6 已删除旧 `getAuth(env, db)` 与 auth 旧 RateLimiter/KvStore 接线，全部调用方要求请求 runtime。
 
 本批删除 auth options、workspace functions、auth API 与共享 middleware 四个 transition 条目，
 精确登记四个 auth CF adapter 测试夹具与一个 Node 集成夹具，没有新增业务例外。auth/web

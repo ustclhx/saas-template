@@ -2,7 +2,7 @@ import { parseAuthEnv } from '@saas/auth'
 import { EnvValidationError, envSchema, loadEnv } from '@saas/config'
 import { log } from '@saas/shared/log'
 import { z } from 'zod'
-import { templateConfig } from './template-config.ts'
+import { templateConfig } from '../template-config.ts'
 
 /** 绑定对象上必须存在的方法（只检查形状，不读取任何取值） */
 const bindingWith = <T>(...methods: string[]) =>

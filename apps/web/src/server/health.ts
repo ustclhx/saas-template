@@ -1,18 +1,12 @@
-import {
-  createDb,
-  type Database,
-  type HyperdriveBinding,
-  pingDatabase,
-  readLastCronAt,
-} from '@saas/db'
+import { type Database, pingDatabase, readLastCronAt } from '@saas/db'
 import { log } from '@saas/shared/log'
 
 /** 数据库探测超过该时间视为不可达（specs/system-health） */
 export const HEALTH_DB_TIMEOUT_MS = 5_000
 
 export interface HealthOptions {
-  /** 必须是不带查询缓存的 `HYPERDRIVE` 绑定，不能用 `HYPERDRIVE_CACHED` */
-  hyperdrive: HyperdriveBinding
+  /** 惰性获取无缓存的业务 facade；连接初始化失败也由探活返回脱敏 503。 */
+  database(): Database
   version: string
   timeoutMs?: number
 }
@@ -39,18 +33,16 @@ class ProbeTimeoutError extends Error {
  * （不经过 getSetting 的 KV 缓存）。整个探测超过 `timeoutMs` 或任一步失败时返回 503，
  * 响应与日志都不包含连接串、主机名或驱动的错误消息。
  *
- * 不调用 `sql.end()`：postgres.js 3.4.9 在 workerd 中关闭连接时会抛出无法捕获的
- * 「Stream was cancelled」（cf/polyfills.js 中 `socket.close()` 的 promise 未被处理）。
- * 连接随请求结束由 workerd 回收，Hyperdrive 在边缘维护连接池，因此按请求创建、不显式关闭。
+ * 借用入口的数据库，不关闭池；CF 每请求创建，Node 复用进程池。
  */
 export async function healthResponse({
-  hyperdrive,
+  database,
   version,
   timeoutMs = HEALTH_DB_TIMEOUT_MS,
 }: HealthOptions): Promise<Response> {
   const headers = { 'cache-control': 'no-store' }
   try {
-    const db = createDb(hyperdrive)
+    const db = database()
     const { latencyMs, lastCronAt } = await withTimeout(probe(db), timeoutMs)
     const body: HealthBody = {
       status: 'ok',
