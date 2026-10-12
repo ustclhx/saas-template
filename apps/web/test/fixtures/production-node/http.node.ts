@@ -1,0 +1,324 @@
+import { type ChildProcess, spawn, spawnSync } from 'node:child_process'
+import { once } from 'node:events'
+import { readdir, readFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
+import { fileURLToPath } from 'node:url'
+import { createAuth } from '@saas/auth'
+import { defineTemplateConfig } from '@saas/config'
+import { getCreditBalance, grant } from '@saas/credits'
+import { aiModel, createDb, plan, planPrice, subscription } from '@saas/db'
+import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
+import { newId } from '@saas/shared'
+import { afterAll, beforeAll, expect, it, vi } from 'vitest'
+
+const root = fileURLToPath(new URL('../../../', import.meta.url))
+const databaseUrl = process.env.NODE_PRODUCTION_DATABASE_URL
+const valkeyUrl = process.env.TEST_VALKEY_URL
+if (!databaseUrl || !valkeyUrl) throw new Error('Missing production smoke resources')
+const db = createDb(databaseUrl, { max: 3 })
+const sql = db.$client
+const secret = 'production-smoke-secret-at-least-32-characters'
+const appUrl = 'https://example.com'
+const fixtureId = newId()
+const modelId = newId()
+const planId = newId()
+const priceId = newId()
+let userId: string
+let slug: string
+let cookie: string
+let child: ChildProcess
+let productionEnv: NodeJS.ProcessEnv
+let base: string
+let childExit: Promise<unknown[]>
+const logs: { event?: string; requestId?: string }[] = []
+let upstreamCompleted = 0
+let upstreamCanceled = 0
+const upstream = createServer(async (request, response) => {
+  let body = ''
+  for await (const chunk of request) body += String(chunk)
+  expect(request.url).toBe('/v1/chat/completions')
+  expect(request.headers.authorization).toBe('Bearer fixture-key')
+  expect(request.headers['cf-aig-authorization']).toBeUndefined()
+  expect(JSON.parse(body)).toMatchObject({ model: 'mock-model', stream: true })
+  response.on('close', () => {
+    if (!response.writableFinished) upstreamCanceled++
+  })
+  response.writeHead(200, { 'content-type': 'text/event-stream' })
+  const emit = (value: unknown) => response.write(`data: ${JSON.stringify(value)}\n\n`)
+  emit({ choices: [{ index: 0, delta: { content: 'first ' } }] })
+  // 保证客户端已断开、或 SIGTERM 已发出后才送最终 usage。
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+  emit({ choices: [{ index: 0, delta: { content: 'last' } }] })
+  emit({
+    choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+    usage: { prompt_tokens: 100, completion_tokens: 1000 },
+  })
+  response.end('data: [DONE]\n\n')
+  upstreamCompleted++
+})
+
+beforeAll(async () => {
+  const auth = createAuth({ APP_URL: appUrl, BETTER_AUTH_SECRET: secret }, db, {
+    config: defineTemplateConfig({
+      app: { name: 'Smoke', url: appUrl, supportEmail: 'support@example.com' },
+      auth: { oauth: [], turnstile: false },
+    }),
+    sendEmail: async () => {},
+  })
+  const signed = await auth.handler(
+    new Request(`${appUrl}/api/auth/sign-up/email`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: appUrl },
+      body: JSON.stringify({
+        email: `${fixtureId}@production-smoke.example`,
+        password: 'correct-horse-battery-staple',
+        name: 'Production smoke',
+      }),
+    }),
+  )
+  expect(signed.status).toBe(200)
+  userId = ((await signed.json()) as { user: { id: string } }).user.id
+  cookie = signed.headers
+    .getSetCookie()
+    .map((value) => value.split(';')[0])
+    .join('; ')
+  const [workspace] = await sql<
+    { slug: string }[]
+  >`select slug from organization where id = ${userId}`
+  if (!workspace) throw new Error('Missing fixture workspace')
+  slug = workspace.slug
+  await grant(db, { workspaceId: userId, source: 'admin', sourceRef: fixtureId, amount: 100 })
+  await db.insert(aiModel).values({
+    id: modelId,
+    key: `production-${fixtureId}`,
+    kind: 'text',
+    provider: 'openai',
+    providerModelId: 'mock-model',
+    pricing: { mode: 'token', inputPer1k: 10, outputPer1k: 10 },
+    paramsSchema: { 'x-text': { maxOutputTokens: 2000 } },
+  })
+  await db.insert(plan).values({
+    id: planId,
+    key: `production-${fixtureId}`,
+    name: 'Smoke',
+    type: 'subscription',
+    credits: 0,
+    features: { ...DEFAULT_FREE_FEATURES, models: [`production-${fixtureId}`] },
+  })
+  await db.insert(planPrice).values({
+    id: priceId,
+    planId,
+    provider: 'stripe',
+    providerPriceId: fixtureId,
+    amount: 0,
+    currency: 'USD',
+    interval: 'month',
+  })
+  await db.insert(subscription).values({
+    workspaceId: userId,
+    planId,
+    planPriceId: priceId,
+    provider: 'stripe',
+    providerSubscriptionId: fixtureId,
+    status: 'active',
+    currentPeriodEnd: new Date(Date.now() + 86_400_000),
+    lastEventAt: new Date(),
+  })
+  upstream.listen(0, '127.0.0.1')
+  await once(upstream, 'listening')
+  const upstreamPort = (upstream.address() as AddressInfo).port
+  const portProbe = createServer().listen(0, '127.0.0.1')
+  await once(portProbe, 'listening')
+  const port = (portProbe.address() as AddressInfo).port
+  await new Promise<void>((resolve) => portProbe.close(() => resolve()))
+  base = `http://127.0.0.1:${port}`
+  productionEnv = {
+    DATABASE_URL: databaseUrl,
+    VALKEY_URL: valkeyUrl,
+    BETTER_AUTH_SECRET: secret,
+    APP_URL: appUrl,
+    GOOGLE_CLIENT_ID: 'fixture',
+    GOOGLE_CLIENT_SECRET: 'fixture',
+    GITHUB_CLIENT_ID: 'fixture',
+    GITHUB_CLIENT_SECRET: 'fixture',
+    TURNSTILE_SITE_KEY: 'fixture',
+    TURNSTILE_SECRET_KEY: 'fixture',
+    CACHE_NAMESPACE: `production-${fixtureId}`,
+    HOST: '127.0.0.1',
+    PORT: String(port),
+    SHUTDOWN_TIMEOUT_MS: '5000',
+    OPENAI_BASE_URL: `http://127.0.0.1:${upstreamPort}/v1`,
+    OPENAI_API_KEY: 'fixture-key',
+  }
+  child = spawn(process.execPath, ['.output/server/index.mjs'], {
+    cwd: root,
+    env: productionEnv,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  let logBuffer = ''
+  child.stdout?.on('data', (chunk) => {
+    logBuffer += String(chunk)
+    const lines = logBuffer.split('\n')
+    logBuffer = lines.pop() ?? ''
+    for (const line of lines) {
+      if (line.startsWith('{')) logs.push(JSON.parse(line))
+    }
+  })
+  child.stderr?.resume()
+  childExit = once(child, 'exit')
+  await vi.waitFor(
+    async () => {
+      if (child.exitCode !== null) throw new Error('Production web exited before listen')
+      const status = await fetch(`${base}/internal/live`).then(
+        (res) => res.status,
+        () => 0,
+      )
+      expect(status).toBe(200)
+    },
+    { timeout: 8000 },
+  )
+})
+
+afterAll(async () => {
+  if (child?.exitCode === null) {
+    child.kill('SIGTERM')
+    await childExit
+  }
+  await new Promise<void>((resolve) => upstream.close(() => resolve()))
+  if (userId) {
+    await sql`delete from ai_message where workspace_id = ${userId}`
+    await sql`delete from ai_conversation where workspace_id = ${userId}`
+    await sql`delete from credit_hold_allocation where hold_id in (select id from credit_hold where workspace_id = ${userId})`
+    await sql`delete from credit_ledger where workspace_id = ${userId}`
+    await sql`delete from credit_hold where workspace_id = ${userId}`
+    await sql`delete from credit_grant where workspace_id = ${userId}`
+    await sql`delete from credit_debt where workspace_id = ${userId}`
+    await sql`delete from subscription where workspace_id = ${userId}`
+    await sql`delete from session where user_id = ${userId}`
+    await sql`delete from account where user_id = ${userId}`
+    await sql`delete from member where user_id = ${userId}`
+    await sql`delete from organization where id = ${userId}`
+    await sql`delete from "user" where id = ${userId}`
+  }
+  await sql`delete from ai_model where id = ${modelId}`
+  await sql`delete from plan_price where id = ${priceId}`
+  await sql`delete from plan where id = ${planId}`
+  await db.close()
+})
+
+it('serves production SSR, Server Function RPC, static assets and no-DB prerender output', async () => {
+  const live = await fetch(`${base}/internal/live`)
+  expect(await live.json()).toMatchObject({ version: expect.stringMatching(/^[a-f0-9]{40}$/) })
+  const ssr = await fetch(`${base}/login`)
+  expect(ssr.status).toBe(200)
+  expect(ssr.headers.get('x-request-id')).toMatch(/^[a-f0-9-]{36}$/)
+  const html = await ssr.text()
+  await expect
+    .poll(() =>
+      logs.some(
+        (line) =>
+          line.event === 'http.request' && line.requestId === ssr.headers.get('x-request-id'),
+      ),
+    )
+    .toBe(true)
+  expect(html).toContain('</html>')
+  const asset = html.match(/href="([^"]+\.css)"/)?.[1]
+  expect(asset).toBeDefined()
+  expect((await fetch(new URL(asset ?? '', base))).status).toBe(200)
+  const files = await readdir(`${root}/.output/server/_ssr`)
+  const originFile = files.find(
+    (file) => file.startsWith('origin.functions-') && file.endsWith('.mjs'),
+  )
+  expect(originFile).toBeDefined()
+  const source = await readFile(`${root}/.output/server/_ssr/${originFile}`, 'utf8')
+  const id = source.match(/id: "([a-f0-9]+)",\s*name: "getSeoOrigin"/)?.[1]
+  expect(id).toBeDefined()
+  const rpc = await fetch(`${base}/_serverFn/${id}`, {
+    headers: { 'x-tsr-serverFn': 'true', origin: base, 'sec-fetch-site': 'same-origin' },
+  })
+  expect(rpc.status).toBe(200)
+  expect(await rpc.text()).toContain(appUrl)
+  expect(await readFile(`${root}/.output/public/index.html`, 'utf8')).toContain('</html>')
+  expect(await readFile(`${root}/.output/public/zh.html`, 'utf8')).toContain('</html>')
+})
+
+for (const configuration of ['missing', 'occupied port']) {
+  it(`fails production startup with ${configuration} without exposing configuration values`, () => {
+    const result = spawnSync(process.execPath, ['.output/server/index.mjs'], {
+      cwd: root,
+      env: configuration === 'missing' ? {} : productionEnv,
+      encoding: 'utf8',
+      timeout: 8000,
+    })
+    expect(result.status).toBe(1)
+    expect(result.stdout + result.stderr).toContain('node.web.start_failed')
+    expect(result.stdout + result.stderr).not.toMatch(
+      /postgres:\/\/|redis:\/\/|fixture-key|production-smoke-secret|EADDRINUSE/,
+    )
+  })
+}
+
+for (const terminate of [false, true]) {
+  it(`settles full production usage after HTTP disconnect${terminate ? ' and SIGTERM' : ''}`, async () => {
+    const response = await fetch(`${base}/api/ai/chat`, {
+      method: 'POST',
+      headers: { cookie, origin: appUrl, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        slug,
+        modelId,
+        message: { role: 'user', parts: [{ type: 'text', text: 'hello' }] },
+      }),
+    })
+    expect(response.status).toBe(200)
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('Missing chat stream')
+    let streamed = ''
+    await expect
+      .poll(async () => {
+        const { value } = await reader.read()
+        streamed += new TextDecoder().decode(value)
+        return streamed.includes('first ')
+      })
+      .toBe(true)
+    const messageId = streamed.match(/"messageId":"([a-f0-9-]+)"/)?.[1]
+    expect(messageId).toBeDefined()
+    await reader.cancel()
+    if (terminate) {
+      child.kill('SIGTERM')
+      expect(await childExit).toEqual([0, null])
+    }
+    await expect
+      .poll(
+        async () => {
+          const [row] = await sql<
+            { status: string }[]
+          >`select status from ai_message where id = ${messageId as string}`
+          return row?.status
+        },
+        { timeout: 5000 },
+      )
+      .toBe('completed')
+    const [row] = await sql<
+      {
+        credits: number
+        input_tokens: number
+        output_tokens: number
+        parts: unknown
+        hold_id: string
+      }[]
+    >`select * from ai_message where id = ${messageId as string}`
+    expect(row).toMatchObject({
+      credits: 11,
+      input_tokens: 100,
+      output_tokens: 1000,
+      parts: [{ type: 'text', text: 'first last' }],
+    })
+    const [reservation] =
+      await sql`select status, captured_amount from credit_hold where id = ${row?.hold_id as string}`
+    expect(reservation).toMatchObject({ status: 'captured', captured_amount: 11 })
+    expect((await getCreditBalance(db, userId)).available).toBe(terminate ? 78 : 89)
+    expect(upstreamCompleted).toBe(terminate ? 2 : 1)
+    expect(upstreamCanceled).toBe(0)
+  })
+}

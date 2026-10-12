@@ -14,6 +14,20 @@
     "dev": {
       "cache": false,
       "persistent": true
+    },
+    "build:node": {
+      "dependsOn": ["^build:node"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/template.config.ts",
+        "$TURBO_ROOT$/tsconfig.base.json",
+        "!dist/**",
+        "!.output/**",
+        "!src/server/cloudflare/**",
+        "!wrangler.jsonc"
+      ],
+      "outputs": [".output/**"],
+      "env": ["APP_VERSION"]
     }
   }
 }

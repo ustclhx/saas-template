@@ -33,15 +33,15 @@
 
 ## 5. Node 生产构建、启动与 CI（apps 构建/入口与 CI 独占）
 
-- [ ] 5.1 在现有 Start/Vite 版本上锁定兼容 Nitro，新增独立 vite.node.config.ts、server.node entry 和 build:node/start:node；复用生成/预渲染选项，保留 CF 默认配置。验证：Node SSR、Server Function、静态资源与流式 smoke，无生产凭据/DB 的预渲染通过，CF build 产物不变；补文档记录确切 adapter 版本。（R1、R5）
-- [ ] 5.2 新增 jobs Node ESM 输出与 entry，装配 config、池、缓存、内部 liveness 和 shutdown，B 未合入时 queue/scheduler unavailable；外置原生模块依赖。验证：生产 Node 入口可运行及优雅退出、无 workerd/Cloudflare 专用依赖、未执行临时队列或 cron；记录 R6 无平台 CPU 上限与业务超时边界。（R1、R5、R6）
+- [x] 5.1 在现有 Start/Vite 版本上锁定兼容 Nitro，新增独立 vite.node.config.ts、server.node entry 和 build:node/start:node；复用生成/预渲染选项，保留 CF 默认配置。验证：Node SSR、Server Function、静态资源与流式 smoke，无生产凭据/DB 的预渲染通过，CF build 产物不变；补文档记录确切 adapter 版本。（R1、R5）
+- [x] 5.2 新增 jobs Node ESM 输出与 entry，装配 config、池、缓存、内部 liveness 和 shutdown，B 未合入时 queue/scheduler unavailable；外置原生模块依赖。验证：生产 Node 入口可运行及优雅退出、无 workerd/Cloudflare 专用依赖、未执行临时队列或 cron；记录 R6 无平台 CPU 上限与业务超时边界。（R1、R5、R6）
 - [ ] 5.3 新增独立 Node Vitest 项目与 build/test CI job，临时 PG17/Valkey，按需复用业务用例；区分输出与 Turbo cache inputs/outputs，保留 CF workers-pool/check/e2e-smoke/staging。验证：CI 同时通过 CF 和 Node 构建/单元测试，Node 基础集成不跳过，缓存不能串目标，Node job 无 staging secrets/部署步骤；文档列出实际命令。（P6）
 
 ## 6. 文本 AI 出口与能力（模型工厂独占，4.3 后）
 
 - [x] 6.1 文本模型工厂增加管理员配置的 OpenAI-compatible direct base URL/key 与显式可选 Gateway，保留 CF BYOK。验证：已有 Gateway 夹具和新 direct 请求夹具通过，直连无 cf-aig 头或占位 key、无 Gateway 凭据也可用；更新 AI 配置文档。（A2）
 - [x] 6.2 在 Node 能力表与模型/后台 UI 过滤 Workers AI，直接调用在预扣前拒绝；CF 保持原可用性。验证：隐藏与直接提交无副作用的关键用例通过，CF Workers AI 测试保持；记录能力降级。（A4）
-- [ ] 6.3 复用定价/预算/结算测试覆盖两出口正常 usage、per_call、超额、停止/错误估算封顶与 Node 客户端断开后的完整结算。验证：账本金额及终态一致、重复结算不重复扣费，Node 生产 HTTP smoke 证明断开不取消服务端读流；补目标差异验收说明。（A3、A1）本轮两出口 fixture 与账本/结算复用已验证；Node 生产 HTTP smoke 待组 5 产出后补。
+- [x] 6.3 复用定价/预算/结算测试覆盖两出口正常 usage、per_call、超额、停止/错误估算封顶与 Node 客户端断开后的完整结算。验证：账本金额及终态一致、重复结算不重复扣费，Node 生产 HTTP smoke 证明断开不取消服务端读流；补目标差异验收说明。（A3、A1）两出口 fixture 与账本/结算复用已验证；Node 生产 HTTP 断连与 SIGTERM 完整结算 smoke 通过，证据见 docs/runbooks/selfhost-a5.md。
 
 ## 7. Compose 与 Dockerfiles（deploy/selfhost 独占，infra 共享改动协调者整合）
 

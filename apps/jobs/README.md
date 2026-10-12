@@ -22,9 +22,34 @@ Wrangler 的五条 UTC Cron、队列重试配置、工作流绑定和 Sentry 启
 | `JobObserver` | CF 注入现有 Sentry capture/tag；Node 暂用 `logJobObserver` 记录错误类型与共享日志上下文。C 再接入 Node Sentry。 |
 | `JobsContext.files` / 媒体 `deps.persist` | C 未接入 Node 文件能力时，文件清理传 available:false，在访问 DB 前拒绝；媒体不装配/启动。十分钟 Cron 的计费任务仍独立执行。 |
 
-本批不提供 Node 生产 entry、队列引擎或临时 Cron；生产启动属于 A 5.2，真实 B 装配及队列
-集成验收属于 A 9。C 的 Node 存储/媒体和 Node Sentry 仍待交付，不把业务模块可加载当作
+真实 B 装配及队列集成验收属于 A 9。C 的 Node 存储/媒体和 Node Sentry 仍待交付，不把业务模块可加载当作
 持久任务、死信或媒体生产能力已验收。
+
+## Node 生产入口（A 5.2）
+
+`pnpm --filter @saas/jobs build:node` 使用现有 esbuild 生成独立
+`.output/server/index.mjs`；`pnpm --filter @saas/jobs start:node` 在 Node >=22.12 启动。
+默认 `build` 仍输出 Wrangler `dist`。workspace 源码编译进入 ESM，第三方依赖保持外置，
+允许运行层加载原生 Node 模块；部署时必须安装 jobs 的 production dependencies。
+`.output/node-build.json` 记录实际外置依赖与源码图，产物不包含 CF entry、workerd 或 Sentry CF。
+platform Node barrel 当前也导出 B 引擎代码，因此 DBOS/pg 是已声明的外置依赖；本入口不装配引擎。
+
+入口在 listen 前调用 `loadNodeEnv({ templateConfig })` 校验 dotenv/env/文件密钥和模板开关，
+随后创建 `DB_POOL_MAX` 上限的自有 app 池及共享 `CACHE_NAMESPACE` 的 Valkey 连接。
+监听 `HOST`（默认 `0.0.0.0`）和 `PORT`（默认 `3001`），只有 GET `/internal/live` 返回 200。
+这是容器内部进程 liveness：queue/scheduler 为 unavailable、lastCronAt 为 null；
+不执行临时队列、Cron 或媒体任务，不将进程存活当作依赖 readiness。
+
+SIGTERM/SIGINT 使用同一个幂等 shutdown：停止接收 → 排空请求/后台任务 → 同时关闭缓存与 SQL 池。
+`SHUTDOWN_TIMEOUT_MS` 覆盖整个顺序（默认 30 秒）；最终销毁残留 socket，排空或资源关闭不完整时
+以非零状态退出。正常运行没有平台 CPU 或响应后时限；现有业务 timeout、依赖探测 timeout 与
+停机 deadline 各自保留，waitUntil 仍不提供 crash durability。
+
+`pnpm --filter @saas/jobs test:node` 独立运行 Node 单元用例；
+`pnpm --filter @saas/jobs test:node:integration` 要求 `TEST_VALKEY_URL` 和
+`TEST_DATABASE_URL`（本地可读取 worktree app 连接），缺资源直接失败。
+生产子进程用真实 Valkey 启动、读取 unavailable 探活，并在半开 HTTP socket 下验证 SIGTERM 退出；
+单元用例另外验证启动配置拒绝、external 解析、drain 顺序与超时，不替代 B 的任务引擎验收。
 
 ## 验证
 
