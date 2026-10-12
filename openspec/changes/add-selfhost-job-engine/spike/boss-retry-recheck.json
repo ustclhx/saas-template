@@ -1,0 +1,85 @@
+{
+  "candidate": "boss",
+  "start": "2026-10-12T09:40:20.155Z",
+  "messageId": "01a12f7c-083b-7bf5-845e-93ae62bd0ca7",
+  "expectedDelaysSeconds": [
+    30,
+    60,
+    120,
+    240,
+    480
+  ],
+  "capSeconds": 900,
+  "attempts": [
+    {
+      "id": "55",
+      "message_id": "01a12f7c-083b-7bf5-845e-93ae62bd0ca7",
+      "queue": "main",
+      "attempt": 1,
+      "worker": "boss-0",
+      "started_at": "2026-10-12T09:40:22.350Z",
+      "ended_at": "2026-10-12T09:40:22.391Z"
+    },
+    {
+      "id": "56",
+      "message_id": "01a12f7c-083b-7bf5-845e-93ae62bd0ca7",
+      "queue": "main",
+      "attempt": 2,
+      "worker": "boss-0",
+      "started_at": "2026-10-12T09:40:57.357Z",
+      "ended_at": "2026-10-12T09:40:57.398Z"
+    },
+    {
+      "id": "57",
+      "message_id": "01a12f7c-083b-7bf5-845e-93ae62bd0ca7",
+      "queue": "main",
+      "attempt": 3,
+      "worker": "boss-1",
+      "started_at": "2026-10-12T09:41:57.403Z",
+      "ended_at": "2026-10-12T09:41:57.445Z"
+    },
+    {
+      "id": "58",
+      "message_id": "01a12f7c-083b-7bf5-845e-93ae62bd0ca7",
+      "queue": "main",
+      "attempt": 4,
+      "worker": "boss-1",
+      "started_at": "2026-10-12T09:43:59.557Z",
+      "ended_at": "2026-10-12T09:43:59.600Z"
+    },
+    {
+      "id": "60",
+      "message_id": "01a12f7c-083b-7bf5-845e-93ae62bd0ca7",
+      "queue": "main",
+      "attempt": 5,
+      "worker": "boss-1",
+      "started_at": "2026-10-12T09:48:02.365Z",
+      "ended_at": "2026-10-12T09:48:02.411Z"
+    },
+    {
+      "id": "61",
+      "message_id": "01a12f7c-083b-7bf5-845e-93ae62bd0ca7",
+      "queue": "main",
+      "attempt": 6,
+      "worker": "boss-0",
+      "started_at": "2026-10-12T09:56:02.493Z",
+      "ended_at": "2026-10-12T09:56:02.537Z"
+    }
+  ],
+  "dlq": {
+    "message_id": "01a12f7c-083b-7bf5-845e-93ae62bd0ca7",
+    "queue": "main",
+    "attempts": 6,
+    "reason": "Retries exhausted",
+    "at": "2026-10-12T09:56:02.538Z"
+  },
+  "actualDelaysSeconds": [
+    34.966,
+    60.005,
+    122.112,
+    242.765,
+    480.082
+  ],
+  "passed": true,
+  "end": "2026-10-12T09:56:03.006Z"
+}

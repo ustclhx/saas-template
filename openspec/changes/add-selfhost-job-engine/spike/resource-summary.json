@@ -1,0 +1,199 @@
+{
+  "recordedAt": "2026-10-12T10:43:54.081029+00:00",
+  "scope": "One2vCPU/4GiB Linux Docker cgroup: PG17,both candidates4jobs,controllers. A web/Valkey/proxy absent. Not full stack acceptance.",
+  "dockerSampleCount": 169,
+  "firstSampleAt": "2026-10-12T09:15:50.916738+00:00",
+  "lastSampleAt": "2026-10-12T10:43:32.280050+00:00",
+  "maxDockerCpuPercent": 42.01,
+  "cpuPercentMeaning": "Docker100%=oneCPU; configured2 CPUs=200%. Includes both candidates, no per-engine PG CPU attribution.",
+  "maxDockerWorkingSet": {
+    "at": "2026-10-12T09:40:21.092085+00:00",
+    "phase": "both-candidates-real-time",
+    "docker": {
+      "BlockIO": "4.1kB / 503MB",
+      "CPUPerc": "29.04%",
+      "Container": "selfhost-b-spike-pg",
+      "ID": "ecda9959397d",
+      "MemPerc": "16.17%",
+      "MemUsage": "662.1MiB / 4GiB",
+      "Name": "selfhost-b-spike-pg",
+      "NetIO": "1.75kB / 126B",
+      "PIDs": "147"
+    }
+  },
+  "idleAfterCompletedPipelines": {
+    "BlockIO": "4.1kB / 773MB",
+    "CPUPerc": "18.75%",
+    "Container": "selfhost-b-spike-pg",
+    "ID": "ecda9959397d",
+    "MemPerc": "8.55%",
+    "MemUsage": "350.3MiB / 4GiB",
+    "Name": "selfhost-b-spike-pg",
+    "NetIO": "1.75kB / 126B",
+    "PIDs": "66"
+  },
+  "cgroup": {
+    "memory.current": "463925248",
+    "memory.peak": "964587520",
+    "memory.swap.current": "0",
+    "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+    "cpu.stat": "usage_usec 1567332524\nuser_usec 1298134713\nsystem_usec 269197811\nnice_usec 0\nnr_periods 57941\nnr_throttled 80\nthrottled_usec 18443937\nnr_bursts 0\nburst_usec 0",
+    "cpu.max": "200000 100000",
+    "pids.peak": "175"
+  },
+  "oomKilled": false,
+  "pipeline": {
+    "dbos": {
+      "workflowId": "01a12f79-dc09-7f54-9125-20327b86950f",
+      "start": "2026-10-12T09:37:57.769Z",
+      "end": "2026-10-12T10:39:44.475Z",
+      "elapsedMs": 3706704,
+      "eventAgeMs": 3706679,
+      "passed": true,
+      "peakConcurrency": 2,
+      "maxRollingWindow": 2,
+      "calls": [
+        {
+          "step": "list",
+          "n": 1,
+          "started": "2026-10-12T09:37:57.827Z",
+          "ended": "2026-10-12T09:37:57.827Z"
+        },
+        {
+          "step": "reserve-and-enqueue",
+          "n": 1,
+          "started": "2026-10-12T09:37:57.830Z",
+          "ended": "2026-10-12T09:37:57.830Z"
+        },
+        {
+          "step": "details",
+          "n": 1,
+          "started": "2026-10-12T09:37:57.839Z",
+          "ended": "2026-10-12T09:37:57.839Z"
+        },
+        {
+          "step": "effect-window",
+          "n": 2,
+          "started": "2026-10-12T09:38:38.546Z",
+          "ended": "2026-10-12T09:38:39.414Z"
+        },
+        {
+          "step": "details-after-first",
+          "n": 1,
+          "started": "2026-10-12T10:09:11.925Z",
+          "ended": "2026-10-12T10:09:11.925Z"
+        },
+        {
+          "step": "merge",
+          "n": 1,
+          "started": "2026-10-12T10:39:44.447Z",
+          "ended": "2026-10-12T10:39:44.447Z"
+        },
+        {
+          "step": "summary",
+          "n": 1,
+          "started": "2026-10-12T10:39:44.449Z",
+          "ended": "2026-10-12T10:39:44.449Z"
+        }
+      ],
+      "observerFailures": null
+    },
+    "boss": {
+      "workflowId": "01a12f79-dc4d-73dc-8f98-972825528e1b",
+      "start": "2026-10-12T09:37:57.837Z",
+      "end": "2026-10-12T10:39:54.389Z",
+      "elapsedMs": 3716550,
+      "eventAgeMs": 3716514,
+      "passed": true,
+      "peakConcurrency": 2,
+      "maxRollingWindow": 2,
+      "calls": [
+        {
+          "step": "list",
+          "n": 1,
+          "started": "2026-10-12T09:37:58.126Z",
+          "ended": "2026-10-12T09:37:58.126Z"
+        },
+        {
+          "step": "reserve-and-enqueue",
+          "n": 1,
+          "started": "2026-10-12T09:37:58.128Z",
+          "ended": "2026-10-12T09:37:58.128Z"
+        },
+        {
+          "step": "details",
+          "n": 1,
+          "started": "2026-10-12T09:37:58.138Z",
+          "ended": "2026-10-12T09:37:58.138Z"
+        },
+        {
+          "step": "effect-window",
+          "n": 2,
+          "started": "2026-10-12T09:38:42.731Z",
+          "ended": "2026-10-12T09:38:49.303Z"
+        },
+        {
+          "step": "details-after-first",
+          "n": 1,
+          "started": "2026-10-12T10:09:21.815Z",
+          "ended": "2026-10-12T10:09:21.815Z"
+        },
+        {
+          "step": "merge",
+          "n": 1,
+          "started": "2026-10-12T10:39:54.331Z",
+          "ended": "2026-10-12T10:39:54.331Z"
+        },
+        {
+          "step": "summary",
+          "n": 1,
+          "started": "2026-10-12T10:39:54.334Z",
+          "ended": "2026-10-12T10:39:54.334Z"
+        }
+      ],
+      "observerFailures": [
+        {
+          "error": {
+            "name": "PostgresError",
+            "message": "the database system is in recovery mode"
+          }
+        }
+      ]
+    }
+  },
+  "database": {
+    "dbos": {
+      "firstSnapshot": {
+        "connections": 15,
+        "database_bytes": "9492147",
+        "wal_lsn": "0/20834B8"
+      },
+      "finalSnapshot": {
+        "database_bytes": 10557107,
+        "connections": 11,
+        "wal_lsn": "0/4327628"
+      },
+      "peakSampledConnections": 18,
+      "databaseGrowthBytes": 1064960,
+      "clusterWalGrowthBytes": 36323696,
+      "walMeaning": "Cluster LSN includes both candidates/upgrades/controllers; not attributable per candidate."
+    },
+    "boss": {
+      "firstSnapshot": {
+        "connections": 7,
+        "database_bytes": "9246387",
+        "wal_lsn": "0/2083248"
+      },
+      "finalSnapshot": {
+        "database_bytes": 10262195,
+        "connections": 7,
+        "wal_lsn": "0/4327628"
+      },
+      "peakSampledConnections": 10,
+      "databaseGrowthBytes": 1015808,
+      "clusterWalGrowthBytes": 36324320,
+      "walMeaning": "Cluster LSN includes both candidates/upgrades/controllers; not attributable per candidate."
+    }
+  },
+  "resourceBudget": "resource-budget.md: proposed, coordinator/A confirmation pending"
+}

@@ -1,0 +1,190 @@
+{
+  "candidate": "dbos",
+  "start": "2026-10-12T09:22:55.998Z",
+  "tests": [
+    {
+      "name": "Q3.actual-two-worker-contention",
+      "start": "2026-10-12T09:22:55.998Z",
+      "end": "2026-10-12T09:23:20.235Z",
+      "passed": true,
+      "evidence": {
+        "first": "11f0b555-79cd-4d74-853e-e0730993784c",
+        "second": "1417961e-95e2-4b16-90cd-75418382d9a4",
+        "owner": 1,
+        "pid": 1331,
+        "frozenAt": "2026-10-12T09:23:12.285Z",
+        "resumedAt": "2026-10-12T09:23:17.416Z",
+        "freezeMs": 5131,
+        "rows": [
+          {
+            "id": "31",
+            "message_id": "11f0b555-79cd-4d74-853e-e0730993784c",
+            "queue": "limited",
+            "attempt": 1,
+            "worker": "dbos-1",
+            "started_at": "2026-10-12T09:23:12.191Z",
+            "ended_at": "2026-10-12T09:23:20.196Z"
+          },
+          {
+            "id": "32",
+            "message_id": "1417961e-95e2-4b16-90cd-75418382d9a4",
+            "queue": "limited",
+            "attempt": 1,
+            "worker": "dbos-0",
+            "started_at": "2026-10-12T09:23:17.370Z",
+            "ended_at": "2026-10-12T09:23:18.573Z"
+          }
+        ],
+        "observedConcurrency": 2,
+        "startsInWindow": 2
+      }
+    },
+    {
+      "name": "Q2.genuine-outbox-only-publisher-crash",
+      "start": "2026-10-12T09:23:20.236Z",
+      "end": "2026-10-12T09:23:25.477Z",
+      "passed": true,
+      "evidence": {
+        "id": "98e4e93c-2d52-4547-985a-0af0da06fcf0",
+        "exit": {
+          "code": 88,
+          "at": "2026-10-12T09:23:20.265Z"
+        },
+        "business": [
+          {
+            "id": "98e4e93c-2d52-4547-985a-0af0da06fcf0",
+            "quota": 7
+          }
+        ],
+        "outbox": [
+          {
+            "id": "98e4e93c-2d52-4547-985a-0af0da06fcf0",
+            "queue": "main",
+            "published": true
+          }
+        ],
+        "attempts": [
+          {
+            "id": "33",
+            "message_id": "98e4e93c-2d52-4547-985a-0af0da06fcf0",
+            "queue": "main",
+            "attempt": 1,
+            "worker": "dbos-1",
+            "started_at": "2026-10-12T09:23:25.374Z",
+            "ended_at": "2026-10-12T09:23:25.417Z"
+          }
+        ],
+        "effects": [
+          {
+            "id": "98e4e93c-2d52-4547-985a-0af0da06fcf0",
+            "n": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "Q1.success-peers-durable-ack",
+      "start": "2026-10-12T09:23:25.477Z",
+      "end": "2026-10-12T09:23:25.480Z",
+      "passed": true,
+      "evidence": {
+        "counts": [
+          {
+            "message_id": "01a12f5e-af82-70d8-a426-b771bc986805",
+            "attempts": 1
+          },
+          {
+            "message_id": "01a12f5e-af82-7cbf-9c48-189bc8d83a5c",
+            "attempts": 1
+          },
+          {
+            "message_id": "01a12f5e-af82-7610-8b26-e6adbc3e8659",
+            "attempts": 1
+          },
+          {
+            "message_id": "01a12f5e-af82-7426-9139-9445a5738e20",
+            "attempts": 1
+          },
+          {
+            "message_id": "01a12f5e-af82-7cbd-91aa-3fe2c3773516",
+            "attempts": 1
+          },
+          {
+            "message_id": "01a12f5e-af83-7d72-8c65-64831ee89b91",
+            "attempts": 1
+          },
+          {
+            "message_id": "01a12f5e-af83-784d-aba0-d7a2c978db11",
+            "attempts": 1
+          },
+          {
+            "message_id": "01a12f5e-af83-7a06-b54f-3c07fd520f1d",
+            "attempts": 1
+          },
+          {
+            "message_id": "01a12f5e-af82-730f-ae05-8cacad5a025e",
+            "attempts": 1
+          }
+        ],
+        "crashId": "01a12f5f-a2b1-7450-8c04-19c4db9c632e",
+        "state": {
+          "id": "01a12f5f-a2b1-7450-8c04-19c4db9c632e",
+          "state": "ack"
+        },
+        "attempts": [
+          {
+            "id": "26",
+            "message_id": "01a12f5f-a2b1-7450-8c04-19c4db9c632e",
+            "queue": "main",
+            "attempt": 1,
+            "worker": "dbos-0",
+            "started_at": "2026-10-12T09:09:24.275Z",
+            "ended_at": null
+          },
+          {
+            "id": "27",
+            "message_id": "01a12f5f-a2b1-7450-8c04-19c4db9c632e",
+            "queue": "main",
+            "attempt": 1,
+            "worker": "dbos-1",
+            "started_at": "2026-10-12T09:09:25.016Z",
+            "ended_at": "2026-10-12T09:09:25.058Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "late-event-after-deadline-restart",
+      "start": "2026-10-12T09:23:25.481Z",
+      "end": "2026-10-12T09:23:30.059Z",
+      "passed": true,
+      "evidence": {
+        "id": "ab11a1c6-f6a5-491f-899b-9d1da3b15ef8",
+        "before": {
+          "deadline": "2026-10-12T09:23:28.552Z"
+        },
+        "pids": [
+          1332,
+          1331
+        ],
+        "done": {
+          "status": "completed",
+          "output": {
+            "began": 1791797005547,
+            "ended": 1791797009960
+          }
+        },
+        "journal": {
+          "workflow_id": "ab11a1c6-f6a5-491f-899b-9d1da3b15ef8",
+          "name": "deadline",
+          "deadline": "2026-10-12T09:23:28.552Z",
+          "done": true,
+          "result": null
+        },
+        "lateEventStayedPending": true
+      }
+    }
+  ],
+  "end": "2026-10-12T09:23:30.060Z",
+  "passed": true
+}

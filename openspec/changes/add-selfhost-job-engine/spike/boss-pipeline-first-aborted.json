@@ -1,0 +1,219 @@
+{
+  "candidate": "boss",
+  "start": "2026-10-12T09:32:47.877Z",
+  "workflowId": "01a12f75-2185-7732-a3c5-061dfadbac1b",
+  "durationMs": 3665000,
+  "timeline": [
+    {
+      "at": "2026-10-12T09:32:48.881Z",
+      "kind": "created-and-early-event-sent"
+    },
+    {
+      "at": "2026-10-12T09:35:49.111Z",
+      "kind": "failed"
+    }
+  ],
+  "eventSentAt": "2026-10-12T09:32:48.878Z",
+  "resources": [
+    {
+      "at": "2026-10-12T09:33:02.890Z",
+      "workerId": "boss-0",
+      "pid": 1761,
+      "memory": {
+        "rss": 94642176,
+        "heapTotal": 22089728,
+        "heapUsed": 18481072,
+        "external": 4087452,
+        "arrayBuffers": 366320
+      },
+      "cpu": {
+        "user": 567105,
+        "system": 74288
+      }
+    },
+    {
+      "at": "2026-10-12T09:33:17.899Z",
+      "workerId": "boss-0",
+      "pid": 1761,
+      "memory": {
+        "rss": 101842944,
+        "heapTotal": 36769792,
+        "heapUsed": 18953048,
+        "external": 4547520,
+        "arrayBuffers": 826348
+      },
+      "cpu": {
+        "user": 745790,
+        "system": 92956
+      }
+    },
+    {
+      "at": "2026-10-12T09:33:32.899Z",
+      "workerId": "boss-0",
+      "pid": 1761,
+      "memory": {
+        "rss": 108859392,
+        "heapTotal": 37556224,
+        "heapUsed": 22535704,
+        "external": 4074056,
+        "arrayBuffers": 352884
+      },
+      "cpu": {
+        "user": 930754,
+        "system": 124461
+      }
+    },
+    {
+      "at": "2026-10-12T09:33:47.900Z",
+      "workerId": "boss-0",
+      "pid": 1761,
+      "memory": {
+        "rss": 112607232,
+        "heapTotal": 54333440,
+        "heapUsed": 24415424,
+        "external": 6125566,
+        "arrayBuffers": 2404394
+      },
+      "cpu": {
+        "user": 1104127,
+        "system": 147657
+      }
+    },
+    {
+      "at": "2026-10-12T09:34:02.904Z",
+      "workerId": "boss-0",
+      "pid": 1761,
+      "memory": {
+        "rss": 120254464,
+        "heapTotal": 37031936,
+        "heapUsed": 24792704,
+        "external": 4525659,
+        "arrayBuffers": 804487
+      },
+      "cpu": {
+        "user": 1343570,
+        "system": 168912
+      }
+    },
+    {
+      "at": "2026-10-12T09:34:17.906Z",
+      "workerId": "boss-0",
+      "pid": 1761,
+      "memory": {
+        "rss": 123260928,
+        "heapTotal": 38080512,
+        "heapUsed": 17699200,
+        "external": 4374397,
+        "arrayBuffers": 657571
+      },
+      "cpu": {
+        "user": 1602723,
+        "system": 187646
+      }
+    },
+    {
+      "at": "2026-10-12T09:34:32.916Z",
+      "workerId": "boss-0",
+      "pid": 1761,
+      "memory": {
+        "rss": 123502592,
+        "heapTotal": 25759744,
+        "heapUsed": 16595704,
+        "external": 3859218,
+        "arrayBuffers": 142392
+      },
+      "cpu": {
+        "user": 1769040,
+        "system": 216685
+      }
+    },
+    {
+      "at": "2026-10-12T09:34:47.915Z",
+      "workerId": "boss-0",
+      "pid": 1761,
+      "memory": {
+        "rss": 123502592,
+        "heapTotal": 25759744,
+        "heapUsed": 17041280,
+        "external": 3868994,
+        "arrayBuffers": 152168
+      },
+      "cpu": {
+        "user": 1909647,
+        "system": 245685
+      }
+    },
+    {
+      "at": "2026-10-12T09:35:02.917Z",
+      "workerId": "boss-0",
+      "pid": 1761,
+      "memory": {
+        "rss": 120897536,
+        "heapTotal": 25759744,
+        "heapUsed": 17394808,
+        "external": 3854263,
+        "arrayBuffers": 137437
+      },
+      "cpu": {
+        "user": 2075685,
+        "system": 271375
+      }
+    },
+    {
+      "at": "2026-10-12T09:35:17.916Z",
+      "workerId": "boss-0",
+      "pid": 1761,
+      "memory": {
+        "rss": 120737792,
+        "heapTotal": 25759744,
+        "heapUsed": 17769728,
+        "external": 3876418,
+        "arrayBuffers": 159592
+      },
+      "cpu": {
+        "user": 2202933,
+        "system": 306865
+      }
+    },
+    {
+      "at": "2026-10-12T09:35:32.927Z",
+      "workerId": "boss-0",
+      "pid": 1964,
+      "memory": {
+        "rss": 99758080,
+        "heapTotal": 21303296,
+        "heapUsed": 16917400,
+        "external": 3870988,
+        "arrayBuffers": 149856
+      },
+      "cpu": {
+        "user": 526527,
+        "system": 64186
+      }
+    },
+    {
+      "at": "2026-10-12T09:35:47.922Z",
+      "workerId": "boss-0",
+      "pid": 1964,
+      "memory": {
+        "rss": 109031424,
+        "heapTotal": 39129088,
+        "heapUsed": 20043512,
+        "external": 4807875,
+        "arrayBuffers": 1086703
+      },
+      "cpu": {
+        "user": 836058,
+        "system": 99572
+      }
+    }
+  ],
+  "passed": false,
+  "error": {
+    "name": "Error",
+    "message": "condition timeout"
+  },
+  "end": "2026-10-12T09:35:49.114Z",
+  "abortedAt": "2026-10-12T09:37:57.368Z",
+  "abortReason": "Prototype bridge corrected after discovering Drizzle mutates postgres.js codecs; restart clean identical pipeline"
+}

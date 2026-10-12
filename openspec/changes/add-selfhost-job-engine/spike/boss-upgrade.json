@@ -1,0 +1,81 @@
+{
+  "candidate": "boss",
+  "start": "2026-10-12T09:14:39.001Z",
+  "steps": [
+    {
+      "name": "previous-init",
+      "passed": true,
+      "at": "2026-10-12T09:14:39.064Z"
+    },
+    {
+      "name": "previous-repeat",
+      "passed": true,
+      "at": "2026-10-12T09:14:39.068Z"
+    },
+    {
+      "name": "upgrade",
+      "passed": true,
+      "at": "2026-10-12T09:14:39.103Z"
+    },
+    {
+      "name": "upgrade-repeat",
+      "passed": true,
+      "at": "2026-10-12T09:14:39.106Z"
+    }
+  ],
+  "schema": [
+    {
+      "schemaname": "pgboss",
+      "tablename": "bam"
+    },
+    {
+      "schemaname": "pgboss",
+      "tablename": "instance"
+    },
+    {
+      "schemaname": "pgboss",
+      "tablename": "job"
+    },
+    {
+      "schemaname": "pgboss",
+      "tablename": "job_common"
+    },
+    {
+      "schemaname": "pgboss",
+      "tablename": "job_dependency"
+    },
+    {
+      "schemaname": "pgboss",
+      "tablename": "queue"
+    },
+    {
+      "schemaname": "pgboss",
+      "tablename": "queue_stats"
+    },
+    {
+      "schemaname": "pgboss",
+      "tablename": "queue_stats_20261012"
+    },
+    {
+      "schemaname": "pgboss",
+      "tablename": "queue_stats_20261013"
+    },
+    {
+      "schemaname": "pgboss",
+      "tablename": "schedule"
+    },
+    {
+      "schemaname": "pgboss",
+      "tablename": "subscription"
+    },
+    {
+      "schemaname": "pgboss",
+      "tablename": "version"
+    },
+    {
+      "schemaname": "pgboss",
+      "tablename": "warning"
+    }
+  ],
+  "end": "2026-10-12T09:14:39.106Z"
+}

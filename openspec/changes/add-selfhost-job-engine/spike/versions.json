@@ -1,0 +1,242 @@
+{
+  "recordedAt": "2026-10-12T09:12:51.923916+00:00",
+  "packages": {
+    "dbos": {
+      "package": "@dbos-inc/dbos-sdk",
+      "version": "5.2.11",
+      "sourceSha": "3f36908f58fd8b3079cbf5372203c7a2d0ba06cc",
+      "licenseSha256": "503e404dfddb2f1ec81ade7bb601e54c05a3bb8e7b657a0e0444069bc00fd86a"
+    },
+    "boss": {
+      "package": "pg-boss",
+      "version": "12.37.1",
+      "sourceSha": "9bdce7c360d33bd43ec927671851c8f9136fcec6",
+      "licenseSha256": "51ad77d655782ec9ea2a624529a37f25cb82bd41ae38d85d15cdb0d4dd9c5689"
+    }
+  },
+  "node": "22.22.2 linux-arm64",
+  "postgres": "17.11 Debian17.11-1.pgdg13+2 arm64",
+  "postgresImageDigest": "sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f",
+  "resourceLimit": {
+    "cpus": 2,
+    "memoryBytes": 4294967296,
+    "topology": "One Docker cgroup contains PG17, both candidate drivers and four jobs workers; no cloud/no host port"
+  },
+  "rootGitSha": "923453624507c4440ebdab32dc694239473f3961",
+  "spikeLockSha256": "18d8e10eb952a15a36c4a36415881f7cc2166952b96e7a87b3508d8682c0286f",
+  "dependencies": [
+    {
+      "name": "@dbos-inc/dbos-sdk",
+      "version": "5.2.11",
+      "license": "MIT"
+    },
+    {
+      "name": "@opentelemetry/api",
+      "version": "1.9.1",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "@types/node",
+      "version": "22.20.5",
+      "license": "MIT"
+    },
+    {
+      "name": "commander",
+      "version": "12.1.0",
+      "license": "MIT"
+    },
+    {
+      "name": "copy-anything",
+      "version": "3.0.5",
+      "license": "MIT"
+    },
+    {
+      "name": "cron-parser",
+      "version": "5.6.0",
+      "license": "MIT"
+    },
+    {
+      "name": "drizzle-orm",
+      "version": "0.45.3",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "is-what",
+      "version": "4.1.16",
+      "license": "MIT"
+    },
+    {
+      "name": "luxon",
+      "version": "3.7.2",
+      "license": "MIT"
+    },
+    {
+      "name": "non-error",
+      "version": "0.1.0",
+      "license": "MIT"
+    },
+    {
+      "name": "pg",
+      "version": "8.23.1",
+      "license": "MIT"
+    },
+    {
+      "name": "cron-parser",
+      "version": "5.10.2",
+      "license": "MIT"
+    },
+    {
+      "name": "serialize-error",
+      "version": "13.0.2",
+      "license": "MIT"
+    },
+    {
+      "name": "type-fest",
+      "version": "5.10.0",
+      "license": "(MIT OR CC0-1.0)"
+    },
+    {
+      "name": "pg-boss",
+      "version": "12.37.1",
+      "license": "MIT"
+    },
+    {
+      "name": "pg-cloudflare",
+      "version": "1.4.1",
+      "license": "MIT"
+    },
+    {
+      "name": "pg-connection-string",
+      "version": "2.14.1",
+      "license": "MIT"
+    },
+    {
+      "name": "pg-int8",
+      "version": "1.0.1",
+      "license": "ISC"
+    },
+    {
+      "name": "pg-pool",
+      "version": "3.14.0",
+      "license": "MIT"
+    },
+    {
+      "name": "pg-protocol",
+      "version": "1.16.1",
+      "license": "MIT"
+    },
+    {
+      "name": "pg-types",
+      "version": "2.2.0",
+      "license": "MIT"
+    },
+    {
+      "name": "pgpass",
+      "version": "1.0.5",
+      "license": "MIT"
+    },
+    {
+      "name": "postgres",
+      "version": "3.4.9",
+      "license": "Unlicense"
+    },
+    {
+      "name": "postgres-array",
+      "version": "2.0.0",
+      "license": "MIT"
+    },
+    {
+      "name": "postgres-bytea",
+      "version": "1.0.1",
+      "license": "MIT"
+    },
+    {
+      "name": "postgres-date",
+      "version": "1.0.7",
+      "license": "MIT"
+    },
+    {
+      "name": "postgres-interval",
+      "version": "1.2.0",
+      "license": "MIT"
+    },
+    {
+      "name": "rrule-temporal",
+      "version": "2.2.8",
+      "license": "MIT"
+    },
+    {
+      "name": "serialize-error",
+      "version": "8.1.0",
+      "license": "MIT"
+    },
+    {
+      "name": "split2",
+      "version": "4.2.0",
+      "license": "ISC"
+    },
+    {
+      "name": "superjson",
+      "version": "1.13.3",
+      "license": "MIT"
+    },
+    {
+      "name": "tagged-tag",
+      "version": "1.0.0",
+      "license": "MIT"
+    },
+    {
+      "name": "temporal-spec",
+      "version": "1.0.1",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "type-fest",
+      "version": "0.20.2",
+      "license": "(MIT OR CC0-1.0)"
+    },
+    {
+      "name": "undici-types",
+      "version": "6.21.0",
+      "license": "MIT"
+    },
+    {
+      "name": "ws",
+      "version": "8.22.0",
+      "license": "MIT"
+    },
+    {
+      "name": "xtend",
+      "version": "4.0.2",
+      "license": "MIT"
+    },
+    {
+      "name": "yaml",
+      "version": "2.9.1",
+      "license": "ISC"
+    }
+  ],
+  "prototypeFiles": {
+    "publisher.mjs": "979c41b498181659c8548bdadfc4a727e48fee47dd12f0f685b654f828af52f9",
+    "worker.mjs": "e4baaff1e3fd70ac49516574b5eafd1550b6c0d909d53db8a9a4c01c7fee4f0a",
+    "upgrade.mjs": "0b3a4de2f18a5f5e089d3247e270e02228f09ca38743c24cd8ce239ad7417a22",
+    "drizzle-bridge.mjs": "a8457029a2154b3e15025f3c18cf714867df36ac28a8025d6b1103475fbaecc3",
+    "pipeline.mjs": "45fbd0a2c660d13cb952bc9a090215ba0f046752cfe0935f0a9b2be5a558dde7",
+    "scheduler.mjs": "48a4d160ba8978f753b107668da365840222056f3f0abab4b3c3029cdfecad25",
+    "drizzle-check.mjs": "835329bb38a94154e7fad5d3d003b7bba4a558a983b8080056697292afffb05a",
+    "common.mjs": "ce21606823f9a6bfaedda09c619afe978809dd69bf693d3024b6e4bc7799c107",
+    "retry-check.mjs": "a9a8d40303d7749b66e8f5da21366571a51cb845c151c855dc0df0f71a25709a",
+    "formal-check.mjs": "461cd2195e779a6a3b934ddf4b36d6591ac30c2e7c9634e49696ec73d0ed3bdf",
+    "dbos.mjs": "fa491c59b23cff96c7d5a17de78677266ab6919eaad8b7e9ae840e40a77ce434",
+    "retention-check.mjs": "575fa092aeae3f7728da6116c687a168a6445fbe0226835cfa032a0849db5c55",
+    "guardian.mjs": "2915f281a89a17326f20b4239c9be2380ec921a7f59593dbc882dc0fb02dd582",
+    "postchecks.mjs": "7dc7938c06b301d32ae94681f111da773dc5c62501ccdc3cd4d05a5dc2017581",
+    "boss.mjs": "b7b3f2ea8449777b9629e46d182f1f32a9fca4aa711a793593fa0fd136a39e11",
+    "permissions.mjs": "eb8dc464b3a531f3ec1d0d79e178bd5faf21316a3a2b9303c97ed3d050348631",
+    "driver.mjs": "541b56c45ba1528ad1993f093b30c8183ac850d88a41b92f1086d6ad2a02fc62",
+    "extras.mjs": "400329f78afb969908bd4ca48158ad9909818c1a9cd4be8073a31c1c269b1f43",
+    "ports.ts": "cdcb7ada5f8c71005103380461513388be5651f7db8c37d3e4b86ed497ffb673"
+  },
+  "interfaceSignedSha": "8c21cd20a48e0db3a696681a14b57766397d78d5",
+  "prototypeArchiveSha": "b5109e29b231849205867195892974aa919e5fc8"
+}

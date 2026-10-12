@@ -1,0 +1,23 @@
+{
+  "candidate": "boss",
+  "start": "2026-10-12T10:28:19.105Z",
+  "minimumEventRetentionSeconds": 3600,
+  "experimentCutoffSeconds": 86400,
+  "ids": {
+    "terminal": "01a12fa7-f621-77b2-b178-52887c31fa96",
+    "active": "01a12f79-dc4d-73dc-8f98-972825528e1b"
+  },
+  "deleted": [
+    {
+      "workflow_id": "01a12fa7-f621-77b2-b178-52887c31fa96"
+    }
+  ],
+  "preserved": [
+    {
+      "workflow_id": "01a12f79-dc4d-73dc-8f98-972825528e1b"
+    }
+  ],
+  "passed": true,
+  "scope": "Manual owned-inbox SQL retention feasibility; not production automatic cleanup. Active aged fixture retained; real early event untouched.",
+  "end": "2026-10-12T10:28:20.095Z"
+}

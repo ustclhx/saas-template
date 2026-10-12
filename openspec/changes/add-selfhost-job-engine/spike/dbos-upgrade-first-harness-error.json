@@ -1,0 +1,14 @@
+{
+  "candidate": "dbos",
+  "start": "2026-10-12T09:14:38.911Z",
+  "steps": [
+    {
+      "name": "previous-init",
+      "passed": false,
+      "error": "TypeError",
+      "message": "m.DBOS.migrate is not a function"
+    }
+  ],
+  "schema": [],
+  "end": "2026-10-12T09:14:38.951Z"
+}

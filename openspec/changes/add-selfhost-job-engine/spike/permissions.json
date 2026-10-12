@@ -1,0 +1,143 @@
+{
+  "at": "2026-10-12T10:02:57.233Z",
+  "databases": [
+    {
+      "database": "dbos_spike",
+      "checks": [
+        {
+          "username": "app",
+          "privileges": [
+            {
+              "nspname": "dbos",
+              "usage": true,
+              "can_create": false
+            },
+            {
+              "nspname": "spike",
+              "usage": true,
+              "can_create": false
+            }
+          ]
+        },
+        {
+          "username": "app",
+          "deniedCreate": true
+        },
+        {
+          "username": "app",
+          "deniedTempCreate": true
+        },
+        {
+          "username": "app",
+          "deniedAlter": true
+        },
+        {
+          "username": "readonly",
+          "privileges": [
+            {
+              "nspname": "dbos",
+              "usage": true,
+              "can_create": false
+            },
+            {
+              "nspname": "spike",
+              "usage": true,
+              "can_create": false
+            }
+          ]
+        },
+        {
+          "username": "readonly",
+          "deniedCreate": true
+        },
+        {
+          "username": "readonly",
+          "deniedTempCreate": true
+        },
+        {
+          "username": "readonly",
+          "deniedAlter": true
+        },
+        {
+          "readonlyQuery": [
+            {
+              "n": "180"
+            }
+          ]
+        },
+        {
+          "deniedWrite": true
+        }
+      ]
+    },
+    {
+      "database": "boss_spike",
+      "checks": [
+        {
+          "username": "app",
+          "privileges": [
+            {
+              "nspname": "pgboss",
+              "usage": true,
+              "can_create": false
+            },
+            {
+              "nspname": "spike",
+              "usage": true,
+              "can_create": false
+            }
+          ]
+        },
+        {
+          "username": "app",
+          "deniedCreate": true
+        },
+        {
+          "username": "app",
+          "deniedTempCreate": true
+        },
+        {
+          "username": "app",
+          "deniedAlter": true
+        },
+        {
+          "username": "readonly",
+          "privileges": [
+            {
+              "nspname": "pgboss",
+              "usage": true,
+              "can_create": false
+            },
+            {
+              "nspname": "spike",
+              "usage": true,
+              "can_create": false
+            }
+          ]
+        },
+        {
+          "username": "readonly",
+          "deniedCreate": true
+        },
+        {
+          "username": "readonly",
+          "deniedTempCreate": true
+        },
+        {
+          "username": "readonly",
+          "deniedAlter": true
+        },
+        {
+          "readonlyQuery": [
+            {
+              "n": "173"
+            }
+          ]
+        },
+        {
+          "deniedWrite": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,186 @@
+{
+  "candidate": "boss",
+  "start": "2026-10-12T09:17:59.316Z",
+  "tests": [
+    {
+      "name": "queued-early-event",
+      "start": "2026-10-12T09:17:59.316Z",
+      "end": "2026-10-12T09:17:59.316Z",
+      "passed": true,
+      "evidence": {
+        "id": "752784f0-0483-4a92-90ec-439167970326",
+        "queued": {
+          "status": "queued"
+        },
+        "done": {
+          "status": "completed",
+          "output": [
+            {
+              "type": "b",
+              "payload": {
+                "n": 3
+              },
+              "timestamp": "2026-10-12T09:18:00.105Z"
+            },
+            {
+              "type": "a",
+              "payload": {
+                "n": 1
+              },
+              "timestamp": "2026-10-12T09:18:00.099Z"
+            },
+            {
+              "type": "a",
+              "payload": {
+                "n": 2
+              },
+              "timestamp": "2026-10-12T09:18:00.102Z"
+            },
+            "timeout"
+          ]
+        }
+      }
+    },
+    {
+      "name": "wait-deadline-restart-recheck",
+      "start": "2026-10-12T09:18:09.920Z",
+      "end": "2026-10-12T09:18:09.920Z",
+      "passed": true,
+      "evidence": {
+        "id": "07a0acca-aab0-4f65-8d22-1478794dcdca",
+        "before": {
+          "deadline": "2026-10-12T09:18:22.009Z",
+          "status": "pending",
+          "output": null
+        },
+        "restart": {
+          "at": "2026-10-12T09:18:14.150Z",
+          "killed": [
+            947,
+            949
+          ]
+        },
+        "after": {
+          "deadline": "2026-10-12T09:18:22.009Z",
+          "status": "failed",
+          "output": null
+        },
+        "done": {
+          "status": "completed",
+          "output": {
+            "began": 1791796690008,
+            "ended": 1791796702318
+          }
+        },
+        "counts": [
+          {
+            "step": "before-wait",
+            "n": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "terminate-terminal-event",
+      "start": "2026-10-12T09:18:22.384Z",
+      "end": "2026-10-12T09:18:22.384Z",
+      "passed": true,
+      "evidence": {
+        "id": "f592f931-8828-47a8-97d4-7d7a05d1a9e3",
+        "state": {
+          "status": "terminated"
+        }
+      }
+    },
+    {
+      "name": "schedule-existing-skip-recovery",
+      "start": "2026-10-12T09:18:23.013Z",
+      "end": "2026-10-12T09:18:23.013Z",
+      "passed": true,
+      "evidence": {
+        "run": {
+          "id": "1e61c3d1-c175-5919-947b-b0a4ec8679f7",
+          "schedule_id": "resume-skipped",
+          "scheduled_at": "2026-10-12T09:18:25.000Z",
+          "status": "running",
+          "started_at": "2026-10-12T09:18:25.316Z",
+          "finished_at": null,
+          "params": {
+            "scenario": "schedule",
+            "durationMs": 20000,
+            "scheduleId": "resume-skipped",
+            "scheduledAt": "2026-10-12T09:18:25.000Z"
+          }
+        },
+        "before": [
+          {
+            "id": "119",
+            "workflow_id": "1e61c3d1-c175-5919-947b-b0a4ec8679f7",
+            "step": "schedule-first",
+            "worker": "boss-0",
+            "at": "2026-10-12T09:18:25.315Z"
+          }
+        ],
+        "restart": {
+          "at": "2026-10-12T09:18:25.487Z",
+          "killed": [
+            1028,
+            1029
+          ]
+        },
+        "done": {
+          "status": "completed",
+          "output": {
+            "scheduledAt": "2026-10-12T09:18:25.000Z"
+          }
+        },
+        "calls": [
+          {
+            "step": "schedule-first",
+            "n": 1
+          },
+          {
+            "step": "schedule-last",
+            "n": 1
+          }
+        ],
+        "ledger": [
+          {
+            "id": "1e61c3d1-c175-5919-947b-b0a4ec8679f7",
+            "schedule_id": "resume-skipped",
+            "scheduled_at": "2026-10-12T09:18:25.000Z",
+            "status": "completed",
+            "started_at": "2026-10-12T09:18:25.316Z",
+            "finished_at": "2026-10-12T09:18:45.537Z",
+            "params": {
+              "scenario": "schedule",
+              "durationMs": 20000,
+              "scheduleId": "resume-skipped",
+              "scheduledAt": "2026-10-12T09:18:25.000Z"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "actual-health-http",
+      "start": "2026-10-12T09:18:45.764Z",
+      "end": "2026-10-12T09:18:45.764Z",
+      "passed": true,
+      "evidence": {
+        "httpStatus": 200,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "jobs": {
+            "lastCronAt": "2026-10-12T09:15:00.288Z"
+          },
+          "status": "up"
+        }
+      }
+    }
+  ],
+  "end": "2026-10-12T09:18:45.765Z",
+  "passed": true
+}

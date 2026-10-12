@@ -1,0 +1,81 @@
+{
+  "candidate": "dbos",
+  "start": "2026-10-12T09:15:49.540Z",
+  "steps": [
+    {
+      "name": "previous-init",
+      "passed": true,
+      "at": "2026-10-12T09:15:49.658Z"
+    },
+    {
+      "name": "previous-repeat",
+      "passed": true,
+      "at": "2026-10-12T09:15:49.662Z"
+    },
+    {
+      "name": "upgrade",
+      "passed": true,
+      "at": "2026-10-12T09:15:49.696Z"
+    },
+    {
+      "name": "upgrade-repeat",
+      "passed": true,
+      "at": "2026-10-12T09:15:49.703Z"
+    }
+  ],
+  "schema": [
+    {
+      "schemaname": "dbos",
+      "tablename": "application_versions"
+    },
+    {
+      "schemaname": "dbos",
+      "tablename": "dbos_migrations"
+    },
+    {
+      "schemaname": "dbos",
+      "tablename": "event_dispatch_kv"
+    },
+    {
+      "schemaname": "dbos",
+      "tablename": "notifications"
+    },
+    {
+      "schemaname": "dbos",
+      "tablename": "operation_outputs"
+    },
+    {
+      "schemaname": "dbos",
+      "tablename": "queues"
+    },
+    {
+      "schemaname": "dbos",
+      "tablename": "streams"
+    },
+    {
+      "schemaname": "dbos",
+      "tablename": "workflow_events"
+    },
+    {
+      "schemaname": "dbos",
+      "tablename": "workflow_events_history"
+    },
+    {
+      "schemaname": "dbos",
+      "tablename": "workflow_input"
+    },
+    {
+      "schemaname": "dbos",
+      "tablename": "workflow_output"
+    },
+    {
+      "schemaname": "dbos",
+      "tablename": "workflow_schedules"
+    },
+    {
+      "schemaname": "dbos",
+      "tablename": "workflow_status"
+    }
+  ],
+  "end": "2026-10-12T09:15:49.708Z"
+}

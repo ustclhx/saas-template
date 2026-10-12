@@ -1,0 +1,53 @@
+{
+  "candidate": "boss",
+  "start": "2026-10-12T09:42:58.661Z",
+  "interfaceSha": "8c21cd20a48e0db3a696681a14b57766397d78d5",
+  "id": "formal-string-01a12f7e-7365-76a0-ad43-d036324676a3",
+  "result": {
+    "status": "completed",
+    "output": {
+      "id": "formal-string-01a12f7e-7365-76a0-ad43-d036324676a3",
+      "isDate": true,
+      "payload": {
+        "ready": true
+      }
+    }
+  },
+  "calls": [
+    {
+      "id": "170",
+      "workflow_id": "formal-string-01a12f7e-7365-76a0-ad43-d036324676a3",
+      "step": "linear",
+      "worker": "boss-1",
+      "at": "2026-10-12T09:43:00.048Z"
+    },
+    {
+      "id": "171",
+      "workflow_id": "formal-string-01a12f7e-7365-76a0-ad43-d036324676a3",
+      "step": "linear",
+      "worker": "boss-1",
+      "at": "2026-10-12T09:43:00.152Z"
+    },
+    {
+      "id": "172",
+      "workflow_id": "formal-string-01a12f7e-7365-76a0-ad43-d036324676a3",
+      "step": "linear",
+      "worker": "boss-1",
+      "at": "2026-10-12T09:43:00.361Z"
+    },
+    {
+      "id": "173",
+      "workflow_id": "formal-string-01a12f7e-7365-76a0-ad43-d036324676a3",
+      "step": "linear",
+      "worker": "boss-1",
+      "at": "2026-10-12T09:43:00.666Z"
+    }
+  ],
+  "delaysMs": [
+    104,
+    209,
+    305
+  ],
+  "passed": true,
+  "end": "2026-10-12T09:43:00.692Z"
+}
