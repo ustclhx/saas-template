@@ -1,9 +1,10 @@
 import { env } from 'cloudflare:workers'
-import { createAuth, type RateLimiter } from '@saas/auth'
+import { createAuth } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
 import { getCreditBalance, grant } from '@saas/credits'
 import { type AiPricingJson, aiModel, createDb } from '@saas/db'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
+import type { RateLimiter } from '@saas/platform'
 import { newId } from '@saas/shared'
 import { simulateReadableStream } from 'ai'
 import { MockLanguageModelV4 } from 'ai/test'
@@ -265,7 +266,8 @@ describe('公开 API Key 管理与鉴权', () => {
     const keys: string[] = []
     const limited = client(who.key.key, {
       rateLimiter: {
-        limit: async ({ key }: { key: string }) => {
+        limit: async (policy, key) => {
+          expect(policy).toBe('api')
           keys.push(key)
           return { success: !key.startsWith('api:workspace:') }
         },

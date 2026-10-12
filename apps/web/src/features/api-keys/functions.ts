@@ -1,9 +1,7 @@
-import { env } from 'cloudflare:workers'
-import { createDb } from '@saas/db'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { z } from 'zod'
-import { getAuth } from '../../server/auth.ts'
+import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import {
   createKeySchema,
@@ -14,8 +12,8 @@ import {
 } from './service.ts'
 
 function deps() {
-  const db = createDb(env.HYPERDRIVE)
-  return { db, auth: getAuth(env, db), config: templateConfig }
+  const runtime = getWebRuntime()
+  return { db: runtime.db, auth: runtime.auth, config: templateConfig }
 }
 export const listKeys = createServerFn({ method: 'GET' })
   .validator(

@@ -1,22 +1,12 @@
-import { env } from 'cloudflare:workers'
-import { createDb } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { createFileRoute } from '@tanstack/react-router'
+import { getAiHttpDeps } from '../../../features/ai/runtime.ts'
 import { apiError } from '../../../features/api-keys/completions.ts'
 import { handlePublicMediaSubmit } from '../../../features/api-keys/tasks.ts'
-import { getAuth } from '../../../server/auth.ts'
 import { templateConfig } from '../../../server/template-config.ts'
 
 function deps() {
-  const db = createDb(env.HYPERDRIVE)
-  return {
-    db,
-    auth: getAuth(env, db),
-    env,
-    workflow: env.AI_MEDIA_WORKFLOW,
-    config: templateConfig,
-    rateLimiter: env.RL_API,
-  }
+  return { ...getAiHttpDeps(), config: templateConfig }
 }
 
 const unsupported = () =>

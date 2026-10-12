@@ -8,14 +8,17 @@ import { type AuthEmail, parseAuthEnv, type SendAuthEmail } from '@saas/auth'
 import type { Database } from '@saas/db'
 import type { KeyValueStore, RequestMetadata } from '@saas/platform'
 import {
+  createCloudflareBackgroundTasks,
   createCloudflareDatabase,
   createCloudflareKv,
   createCloudflareQueue,
   createCloudflareRateLimiter,
   createCloudflareRequestMetadata,
+  createCloudflareWorkflow,
 } from '@saas/platform/cloudflare'
 import { AppError } from '@saas/shared'
 import { log, withLogContext } from '@saas/shared/log'
+import { getFileDownload } from '@saas/storage'
 import { createStartHandler, defaultStreamHandler } from '@tanstack/react-start/server'
 import { APIError } from 'better-auth/api'
 import { gateAdminRequest } from './features/admin/gate.ts'
@@ -69,7 +72,7 @@ export default {
         const invalid = checkEnv(env)
         const response =
           invalid ??
-          (await withWebRuntime(createCloudflareWebRuntime(env, requestMeta), () =>
+          (await withWebRuntime(createCloudflareWebRuntime(env, requestMeta, ctx), () =>
             worker.fetch(request, env, ctx),
           ))
         // 重定向与静态响应的 headers 可能只读，复制后再附请求 ID。
@@ -130,7 +133,11 @@ function localized(request: Request, env: Cloudflare.Env): Promise<Response> {
 }
 
 /** CF bindings 仅在入口装配；getter 保证公开页降级时不提前创建认证/数据库资源。 */
-function createCloudflareWebRuntime(env: Cloudflare.Env, requestMeta: RequestMetadata): WebRuntime {
+function createCloudflareWebRuntime(
+  env: Cloudflare.Env,
+  requestMeta: RequestMetadata,
+  ctx: ExecutionContext,
+): WebRuntime {
   const config = {
     ...parseAuthEnv(env, templateConfig),
     TURNSTILE_SITE_KEY: env.TURNSTILE_SITE_KEY,
@@ -150,6 +157,7 @@ function createCloudflareWebRuntime(env: Cloudflare.Env, requestMeta: RequestMet
   const cache = createCloudflareKv(env.CACHE)
   const rateLimiter = createCloudflareRateLimiter(env)
   const queue = createCloudflareQueue(env.EMAIL_QUEUE)
+  const workersAi = env.AI
   const createAuth = (db: Database, authCache: KeyValueStore = cache) => {
     const queued = createQueueAuthEmailSender({
       queue,
@@ -201,6 +209,35 @@ function createCloudflareWebRuntime(env: Cloudflare.Env, requestMeta: RequestMet
     eventsQueue: env.EVENTS_QUEUE
       ? { available: true, value: createCloudflareQueue(env.EVENTS_QUEUE) }
       : { available: false },
+    ai: {
+      available: true,
+      value: {
+        config: {
+          AI_GATEWAY_ACCOUNT_ID: env.AI_GATEWAY_ACCOUNT_ID,
+          AI_GATEWAY_ID: env.AI_GATEWAY_ID,
+          AI_GATEWAY_TOKEN: env.AI_GATEWAY_TOKEN,
+          OPENAI_API_KEY: env.OPENAI_API_KEY,
+          ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
+          GOOGLE_API_KEY: env.GOOGLE_API_KEY,
+          DEEPSEEK_API_KEY: env.DEEPSEEK_API_KEY,
+          ...(env.FAL_KEY === undefined ? {} : { FAL_KEY: env.FAL_KEY }),
+          ...(env.MEDIA_WEBHOOK_SECRET === undefined
+            ? {}
+            : { MEDIA_WEBHOOK_SECRET: env.MEDIA_WEBHOOK_SECRET }),
+        },
+        workersAi: workersAi
+          ? { available: true, value: { run: (model, params) => workersAi.run(model, params) } }
+          : { available: false },
+        background: createCloudflareBackgroundTasks(ctx),
+        workflow: env.AI_MEDIA_WORKFLOW
+          ? { available: true, value: createCloudflareWorkflow(env.AI_MEDIA_WORKFLOW) }
+          : { available: false },
+        downloadFile: {
+          available: true,
+          value: (input) => getFileDownload(databases.business(), env, input),
+        },
+      },
+    },
     get db() {
       return databases.business()
     },

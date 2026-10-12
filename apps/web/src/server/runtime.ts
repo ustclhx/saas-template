@@ -1,17 +1,31 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
+import type { MediaProviderEnv, TextModelEnv } from '@saas/ai'
 import type { Auth, parseAuthEnv } from '@saas/auth'
 import type { PaymentRuntimeEnv } from '@saas/billing'
 import type { Database } from '@saas/db'
 import type { EmailQueueMessage } from '@saas/email/queue'
 import type {
+  BackgroundTasks,
   Capability,
   KeyValueStore,
   QueueProducer,
   RateLimiter,
   RequestMetadata,
+  Workflow,
 } from '@saas/platform'
 import { AppError } from '@saas/shared'
 import type { AuthUiEnv } from '../features/auth/options.ts'
+
+/** AI 模块按目标注入；文件签名留在目标入口，不让公开 API 依赖 R2 类型。 */
+export interface WebAiRuntime {
+  readonly config: TextModelEnv & Omit<MediaProviderEnv, 'AI'>
+  readonly workersAi: Capability<NonNullable<MediaProviderEnv['AI']>>
+  readonly background: BackgroundTasks
+  readonly workflow: Capability<Workflow<{ taskId: string }>>
+  readonly downloadFile: Capability<
+    (input: { workspaceId: string; fileId: string }) => Promise<string>
+  >
+}
 
 /** 请求资源由目标入口装配；业务只读取标量与中立能力，不访问原始 bindings。 */
 export interface WebRuntime {
@@ -23,6 +37,8 @@ export interface WebRuntime {
   readonly requestMeta: RequestMetadata
   readonly emailQueue: Capability<QueueProducer<EmailQueueMessage>>
   readonly eventsQueue: Capability<QueueProducer<unknown>>
+  /** 未装配的目标明确报告 unavailable；认证等独立模块不要求 AI 能力。 */
+  readonly ai?: Capability<WebAiRuntime>
   /** 后台认证写入需借用事务 facade 与延后提交的缓存。 */
   createAuth(db: Database, cache?: KeyValueStore): Auth
   handleAuthRequest(request: Request): Promise<Response>

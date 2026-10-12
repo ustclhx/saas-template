@@ -20,7 +20,7 @@ import {
   truncateHistory,
   writeUsageCheckpoint,
 } from '@saas/ai'
-import { type RateLimiter, requireFreshSession } from '@saas/auth'
+import { requireFreshSession } from '@saas/auth'
 import type { OveragePolicy } from '@saas/credits'
 import { CreditsError, getCreditBalance, hold } from '@saas/credits'
 import {
@@ -32,6 +32,7 @@ import {
   scoped,
 } from '@saas/db'
 import { type Entitlements, getEntitlements } from '@saas/entitlements'
+import type { BackgroundTasks, RateLimiter } from '@saas/platform'
 import { AppError, newId, toErrorResponse } from '@saas/shared'
 import { log, setLogContext } from '@saas/shared/log'
 import { type LanguageModelUsage, streamText } from 'ai'
@@ -58,7 +59,7 @@ export interface ChatDeps {
   /** `RL_AI` 绑定 */
   readonly rateLimiter: RateLimiter
   /** 请求上下文的 `waitUntil`：客户端断开后继续读完模型流并结算 */
-  readonly waitUntil: (promise: Promise<unknown>) => void
+  readonly waitUntil: BackgroundTasks['waitUntil']
   /** 默认 `defaultLanguageModelFactory`；测试注入模拟模型 */
   readonly languageModelFactory?: LanguageModelFactory
   /** 默认按订阅读取（`getEntitlements`） */
@@ -192,7 +193,7 @@ export async function startWorkspaceChat(
   // 2. 限流（按数据中心计数，只用于防刷）
   if (
     deps.rateLimiter &&
-    !(await deps.rateLimiter.limit({ key: `ai:${workspaceId}:${userId}` })).success
+    !(await deps.rateLimiter.limit('ai', `ai:${workspaceId}:${userId}`)).success
   )
     throw new AppError('RATE_LIMITED', 'Too many requests, please try again later', { status: 429 })
 

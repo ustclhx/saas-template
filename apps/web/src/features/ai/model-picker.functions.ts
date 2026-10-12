@@ -1,9 +1,9 @@
-import { env } from 'cloudflare:workers'
 import { dbModelStore, listAvailableModels } from '@saas/ai'
 import { getEntitlements } from '@saas/entitlements'
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 import { withWorkspace } from '../../server/middleware.ts'
+import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 
 // 模型选择器的数据（tasks.md 3.2）：当前空间权益允许且已启用的模型，经 KV 缓存读取。
@@ -22,7 +22,7 @@ export const getPickerModels = createServerFn({ method: 'GET' })
       pastDueGraceDays: templateConfig.billing.pastDueGraceDays,
     })
     const models = await listAvailableModels(
-      { store: dbModelStore(context.db), cache: env.CACHE },
+      { store: dbModelStore(context.db), cache: getWebRuntime().cache },
       entitlements,
       { kind: data.kind },
     )

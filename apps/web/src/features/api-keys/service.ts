@@ -1,7 +1,8 @@
-import { type Auth, type RateLimiter, requireFreshSession } from '@saas/auth'
+import { type Auth, requireFreshSession } from '@saas/auth'
 import type { TemplateConfig } from '@saas/config'
 import { apikey, type Database, member, scoped } from '@saas/db'
 import { type Entitlements, getEntitlements, requireEntitlement } from '@saas/entitlements'
+import type { RateLimiter } from '@saas/platform'
 import { AppError } from '@saas/shared'
 import { setLogContext } from '@saas/shared/log'
 import { and, desc, eq, sql } from 'drizzle-orm'
@@ -170,7 +171,7 @@ export async function authenticateApiKey(
   const entitlements = await entitlement(deps, workspace.id)
   requireEntitlement(entitlements, { capability: 'publicApi' })
   for (const limitKey of [`api:key:${key.id}`, `api:workspace:${workspace.id}`]) {
-    if (!(await deps.rateLimiter.limit({ key: limitKey })).success)
+    if (!(await deps.rateLimiter.limit('api', limitKey)).success)
       throw new AppError('RATE_LIMITED', 'Too many requests', { status: 429 })
   }
   return { workspace, member: membership, user, entitlements }

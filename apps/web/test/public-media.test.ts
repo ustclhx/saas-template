@@ -10,8 +10,9 @@ import { defineTemplateConfig } from '@saas/config'
 import { getCreditBalance, grant } from '@saas/credits'
 import { aiModel, aiTask, createDb, file, member, scoped } from '@saas/db'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
+import type { WorkflowInstance } from '@saas/platform'
 import { newId } from '@saas/shared'
-import { persistMediaOutputs } from '@saas/storage'
+import { getFileDownload, persistMediaOutputs, type StorageEnv } from '@saas/storage'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import { runMediaTask } from '../../jobs/src/workflows/media-runner.ts'
 import enApiDoc from '../content/docs/en/public-api.mdx?raw'
@@ -46,6 +47,13 @@ const entitlement = {
   features: { ...DEFAULT_FREE_FEATURES, publicApi: true, models: ['*'], maxConcurrentTasks: 3 },
 }
 const objectKeys: string[] = []
+const storageEnv: StorageEnv = {
+  FILES: env.FILES,
+  R2_ACCOUNT_ID: '00000000000000000000000000000000',
+  R2_FILES_BUCKET: 'files',
+  R2_ACCESS_KEY_ID: 'test-access-key',
+  R2_SECRET_ACCESS_KEY: 'test-secret-key',
+}
 const authPost = (path: string, body: unknown) =>
   auth.handler(
     new Request(`${url}/api/auth${path}`, {
@@ -126,17 +134,28 @@ function dependencies(overrides: Partial<PublicMediaDeps> = {}): PublicMediaDeps
     rateLimiter: { limit: async () => ({ success: true }) },
     providerFactory: () => provider(),
     workflow: {
-      create: vi.fn(async () => ({})),
-      get: vi.fn(),
-    } as unknown as PublicMediaDeps['workflow'],
+      available: true,
+      value: {
+        create: vi.fn(
+          async ({
+            id,
+          }: {
+            id?: string
+            params: { taskId: string }
+          }): Promise<WorkflowInstance> => ({
+            id: id ?? newId(),
+            status: async () => ({ status: 'queued' }),
+            terminate: async () => {},
+            sendEvent: async () => {},
+          }),
+        ),
+        get: vi.fn(),
+      },
+    },
+    downloadFile: { available: true, value: (input) => getFileDownload(db, storageEnv, input) },
     env: {
-      FILES: env.FILES,
       APP_URL: url,
       MEDIA_WEBHOOK_SECRET: 'fixture-media-callback-secret',
-      R2_ACCOUNT_ID: '00000000000000000000000000000000',
-      R2_FILES_BUCKET: 'files',
-      R2_ACCESS_KEY_ID: 'test-access-key',
-      R2_SECRET_ACCESS_KEY: 'test-secret-key',
     },
     ...overrides,
   }
@@ -293,7 +312,10 @@ describe('公开 API 媒体任务与共用 Workflow', () => {
     const submitted = (await submission.json()) as { id: string }
     expect(submitted).toMatchObject({ object: 'media.task', model: modelKey, status: 'queued' })
     const taskId = submitted.id
-    expect(deps.workflow.create).toHaveBeenCalledWith({ id: taskId, params: { taskId } })
+    expect(deps.workflow.available && deps.workflow.value.create).toHaveBeenCalledWith({
+      id: taskId,
+      params: { taskId },
+    })
     const queued = await detail(key.key, taskId, deps)
     expect(await queued.json()).toMatchObject({ id: taskId, status: 'queued', files: [] })
     expect(await getCreditBalance(db, who.id)).toMatchObject({ available: 97, held: 3 })
@@ -388,6 +410,13 @@ describe('公开 API 媒体任务与共用 Workflow', () => {
     for (const hidden of ['providerJobId', 'callbackPayload', 'holdId', 'input'])
       expect(body).not.toHaveProperty(hidden)
 
+    const unavailable = await detail(key.key, taskId, {
+      ...deps,
+      downloadFile: { available: false },
+    })
+    expect(unavailable.status).toBe(503)
+    expect(await unavailable.json()).toMatchObject({ error: { code: 'CAPABILITY_UNAVAILABLE' } })
+
     await scoped(db, who.id).updateById(file, output.id, { deletedAt: new Date() })
     const afterDelete = await detail(key.key, taskId, deps)
     expect(afterDelete.status).toBe(200)
@@ -439,7 +468,7 @@ describe('公开 API 媒体任务与共用 Workflow', () => {
     expect(response.status).toBe(400)
     expect(await response.json()).toMatchObject({ error: { code: 'INVALID_PARAMS' } })
     await noReservation(who.id)
-    expect(deps.workflow.create).not.toHaveBeenCalled()
+    expect(deps.workflow.available && deps.workflow.value.create).not.toHaveBeenCalled()
   })
 
   it('提交和查询分别按 Key 与空间限流，返回 429 和 Retry-After', async () => {
@@ -448,7 +477,8 @@ describe('公开 API 媒体任务与共用 Workflow', () => {
       const keys: string[] = []
       const deps = dependencies({
         rateLimiter: {
-          limit: async ({ key }) => {
+          limit: async (policy, key) => {
+            expect(policy).toBe('api')
             keys.push(key)
             return { success: !key.startsWith(`api:${blocked}:`) }
           },
@@ -488,7 +518,7 @@ describe('公开 API 媒体任务与共用 Workflow', () => {
     expect(responses.map((response) => response.status).sort()).toEqual([202, 403])
     expect(await scoped(db, who.id).count(aiTask)).toBe(1)
     expect(await getCreditBalance(db, who.id)).toMatchObject({ available: 97, held: 3 })
-    expect(deps.workflow.create).toHaveBeenCalledTimes(1)
+    expect(deps.workflow.available && deps.workflow.value.create).toHaveBeenCalledTimes(1)
   })
 
   it('模型权益不足时拒绝提交，不产生预扣', async () => {
@@ -512,6 +542,6 @@ describe('公开 API 媒体任务与共用 Workflow', () => {
     expect(response.status).toBe(402)
     expect(await response.json()).toMatchObject({ error: { code: 'INSUFFICIENT_CREDITS' } })
     await noReservation(who.id, 1)
-    expect(deps.workflow.create).not.toHaveBeenCalled()
+    expect(deps.workflow.available && deps.workflow.value.create).not.toHaveBeenCalled()
   })
 })

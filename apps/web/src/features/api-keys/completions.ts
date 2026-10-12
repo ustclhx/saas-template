@@ -1,4 +1,4 @@
-import type { RateLimiter } from '@saas/auth'
+import type { RateLimiter } from '@saas/platform'
 import { AppError, toErrorResponse } from '@saas/shared'
 import { currentRequestId, log } from '@saas/shared/log'
 import { z } from 'zod'

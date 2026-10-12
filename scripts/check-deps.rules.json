@@ -45,18 +45,6 @@
     "packages/platform/test/cloudflare.test.ts": ["cloudflare:test", "cloudflare:workers"]
   },
   "transition": {
-    "apps/web/src/features/ai-media/page.functions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/features/ai/admin-models.functions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/features/ai/model-picker.functions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/features/api-keys/functions.ts": {
-      "cloudflare:workers": 1
-    },
     "apps/web/src/features/deletion/deletion.functions.ts": {
       "cloudflare:workers": 1
     },
@@ -79,21 +67,6 @@
       "cloudflare:workers": 1
     },
     "apps/web/src/features/settings/account.functions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/ai/chat.$messageId.stop.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/ai/chat.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/ai/tasks.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/ai/tasks/$taskId.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/ai/tasks/$taskId/cancel.ts": {
       "cloudflare:workers": 1
     },
     "apps/web/src/routes/api/dev/email.ts": {
@@ -126,22 +99,10 @@
     "apps/web/src/routes/api/newsletter/unsubscribe.ts": {
       "cloudflare:workers": 1
     },
-    "apps/web/src/routes/api/v1/chat/completions.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/v1/tasks.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/v1/tasks/$taskId.ts": {
-      "cloudflare:workers": 1
-    },
     "apps/web/src/routes/api/waitlist/index.ts": {
       "cloudflare:workers": 1
     },
     "apps/web/src/routes/api/waitlist/invitation.ts": {
-      "cloudflare:workers": 1
-    },
-    "apps/web/src/routes/api/webhooks/media/$provider.ts": {
       "cloudflare:workers": 1
     },
     "apps/web/src/routes/robots[.]txt.ts": {
@@ -168,6 +129,9 @@
     "packages/platform/test/node/fixtures/job-worker.ts": ["node"],
     "packages/platform/test/node/job-queue.integration.test.ts": ["node"],
     "packages/platform/test/node/job-engine.integration.test.ts": ["node"],
-    "packages/platform/test/node/fixtures/job-schema-probe.ts": ["node"]
+    "packages/platform/test/node/fixtures/job-schema-probe.ts": ["node"],
+    "apps/web/test/ai-chat.test.ts": ["cloudflare"],
+    "apps/web/test/ai-media-tasks.test.ts": ["cloudflare"],
+    "apps/web/test/ai-node/chat.node.ts": ["node"]
   }
 }

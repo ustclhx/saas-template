@@ -11,6 +11,7 @@ import { defineTemplateConfig } from '@saas/config'
 import { getCreditBalance, grant } from '@saas/credits'
 import { aiModel, aiTask, createDb, file, member as membership, scoped } from '@saas/db'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
+import { createCloudflareRateLimiter, createCloudflareWorkflow } from '@saas/platform/cloudflare'
 import { AppError, newId } from '@saas/shared'
 import { afterAll, describe, expect, it } from 'vitest'
 import {
@@ -130,7 +131,7 @@ function dependencies(
     db,
     auth,
     env: { MEDIA_WEBHOOK_SECRET: SECRET },
-    rateLimiter: { limit: async () => ({ success: true }) },
+    rateLimiter: createCloudflareRateLimiter({ RL_AI: { limit: async () => ({ success: true }) } }),
     providerFactory: () => provider,
     entitlements: async () => ({
       key: 'fixture',
@@ -138,24 +139,33 @@ function dependencies(
       features: { ...DEFAULT_FREE_FEATURES, models: ['*'], maxConcurrentTasks: options.max ?? 3 },
     }),
     workflow: {
-      create: async () => {
-        if (options.startFails) throw new Error('fixture start unavailable')
-        return {}
-      },
-      get: async (instanceId: string) => ({
-        status: async () => ({ status: terminated > 0 ? 'terminated' : 'running' }),
-        terminate: async () => {
-          terminated++
+      available: true,
+      value: createCloudflareWorkflow({
+        create: async () => {
+          if (options.startFails) throw new Error('fixture start unavailable')
+          return {
+            id: 'fixture-created',
+            status: async () => ({ status: 'running' }),
+            terminate: async () => {},
+            sendEvent: async () => {},
+          }
         },
-        sendEvent: async () => {
-          events++
-          const [stored] =
-            await sql`select callback_payload from ai_task where workflow_instance_id=${instanceId}`
-          expect(stored?.callback_payload).not.toBeNull()
-          throw new Error('fixture delivery unavailable')
-        },
-      }),
-    } as unknown as MediaHttpDeps['workflow'],
+        get: async (instanceId: string) => ({
+          id: instanceId,
+          status: async () => ({ status: terminated > 0 ? 'terminated' : 'running' }),
+          terminate: async () => {
+            terminated++
+          },
+          sendEvent: async () => {
+            events++
+            const [stored] =
+              await sql`select callback_payload from ai_task where workflow_instance_id=${instanceId}`
+            expect(stored?.callback_payload).not.toBeNull()
+            throw new Error('fixture delivery unavailable')
+          },
+        }),
+      } as unknown as Parameters<typeof createCloudflareWorkflow>[0]),
+    },
   }
   return { deps, counts: () => ({ parsed, canceled, terminated, events }) }
 }
@@ -206,6 +216,28 @@ afterAll(async () => {
 })
 
 describe('media tasks API', () => {
+  it('rejects an unavailable workflow before rate limiting, task creation or credit holds', async () => {
+    const who = await account('workflow-unavailable')
+    const { deps } = dependencies()
+    deps.workflow = { available: false }
+    let calls = 0
+    deps.rateLimiter = {
+      limit: async () => {
+        calls++
+        return { success: true }
+      },
+    }
+    const response = await submit(who, await model(), deps)
+    expect(response.status).toBe(503)
+    expect(await response.json()).toMatchObject({ error: { code: 'CAPABILITY_UNAVAILABLE' } })
+    expect(calls).toBe(0)
+    expect(await scoped(db, who.workspaceId).count(aiTask)).toBe(0)
+    expect(
+      await sql`select id from credit_hold where workspace_id=${who.workspaceId}`,
+    ).toHaveLength(0)
+    expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 100, held: 0 })
+  })
+
   it('rejects unknown, disabled and unconfigured providers before task creation or credit hold', async () => {
     const who = await account('provider-unavailable')
     const { deps } = dependencies()

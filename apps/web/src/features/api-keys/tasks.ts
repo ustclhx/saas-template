@@ -1,8 +1,7 @@
 import type { MediaTaskFile } from '@saas/ai'
-import type { RateLimiter } from '@saas/auth'
+import { type Capability, type RateLimiter, requireCapability } from '@saas/platform'
 import { AppError } from '@saas/shared'
 import { currentRequestId } from '@saas/shared/log'
-import { getFileDownload, type StorageEnv } from '@saas/storage'
 import { z } from 'zod'
 import {
   getWorkspaceMediaTask,
@@ -14,8 +13,9 @@ import { type ApiKeyDeps, authenticateApiKey } from './service.ts'
 
 export type PublicMediaDeps = Omit<ApiKeyDeps, 'entitlements'> &
   Omit<MediaHttpDeps, 'auth' | 'rateLimiter' | 'env'> & {
-    env: MediaHttpDeps['env'] & StorageEnv
+    env: MediaHttpDeps['env']
     rateLimiter: RateLimiter
+    downloadFile: Capability<(input: { workspaceId: string; fileId: string }) => Promise<string>>
   }
 
 const inputSchema = z
@@ -70,7 +70,10 @@ export async function handlePublicMediaDetail(
     const signedFiles = await Promise.all(
       (task.status === 'succeeded' ? (output?.files ?? []) : []).map(async (file) => {
         // 产出文件被用户删除后只从列表中省略，任务本身仍可查询。
-        const downloadUrl = await getFileDownload(deps.db, deps.env, {
+        const downloadUrl = await requireCapability(
+          deps.downloadFile,
+          'files',
+        )({
           workspaceId: context.workspace.id,
           fileId: file.id,
         }).catch((error: unknown) => {

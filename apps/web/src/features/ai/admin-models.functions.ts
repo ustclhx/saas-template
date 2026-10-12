@@ -1,10 +1,10 @@
-import { env } from 'cloudflare:workers'
 import { defaultPricing, invalidateModelCache, modelValues, PricingError } from '@saas/ai'
 import { aiModel } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { asc, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import { withAdminAction } from '../admin/action.server.ts'
 import { adminMiddleware } from '../admin/admin.functions.ts'
@@ -54,7 +54,7 @@ function isUniqueViolation(error: unknown): boolean {
 async function safe(action: () => Promise<string>): Promise<Result> {
   try {
     const id = await action()
-    await invalidateModelCache(env.CACHE)
+    await invalidateModelCache(getWebRuntime().cache)
     return { ok: true, id }
   } catch (error) {
     if (error instanceof PricingError) return { ok: false, error: error.code }
