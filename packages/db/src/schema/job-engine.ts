@@ -1,5 +1,15 @@
 import { newId } from '@saas/shared'
-import { index, integer, jsonb, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import {
+  bigserial,
+  index,
+  integer,
+  jsonb,
+  pgSchema,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core'
 
 /** Node 专用持久消息域；业务事务与消息共用同一数据库。 */
 export const jobEngineSchema = pgSchema('job_engine')
@@ -67,3 +77,35 @@ export const jobDeadLetter = jobEngineSchema.table('dead_letter', {
   retryable: integer('retryable').notNull(),
   createdAt: time('created_at'),
 })
+
+/** 序号在实例锁内分配，保证同实例并发发送的提交顺序；不依赖毫秒时间排序。 */
+export const jobWorkflowEvent = jobEngineSchema.table(
+  'workflow_event',
+  {
+    id: uuid('id').primaryKey().$defaultFn(newId),
+    sequence: bigserial('sequence', { mode: 'bigint' }).notNull(),
+    workflowId: text('workflow_id').notNull(),
+    type: text('type').notNull(),
+    payload: jsonb('payload').notNull(),
+    createdAt: time('created_at'),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  },
+  (t) => [index('workflow_event_fifo_idx').on(t.workflowId, t.type, t.sequence)],
+)
+
+/** 消费结果与事件消费标记同事务写入，native checkpoint 前退出也不会丢事件。 */
+export const jobWorkflowWait = jobEngineSchema.table(
+  'workflow_wait',
+  {
+    id: uuid('id').primaryKey().$defaultFn(newId),
+    workflowId: text('workflow_id').notNull(),
+    name: text('name').notNull(),
+    type: text('type').notNull(),
+    deadline: timestamp('deadline', { withTimezone: true }).notNull(),
+    state: text('state').notNull().default('waiting'),
+    result: jsonb('result'),
+    createdAt: time('created_at'),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [uniqueIndex('workflow_wait_name_idx').on(t.workflowId, t.name)],
+)

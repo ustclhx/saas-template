@@ -80,6 +80,8 @@
     "apps/web/test/ai-chat.test.ts": ["cloudflare"],
     "apps/web/test/ai-media-tasks.test.ts": ["cloudflare"],
     "apps/web/test/ai-node/chat.node.ts": ["node"],
-    "apps/web/src/server/cloudflare/sentry.test.ts": ["cloudflare"]
+    "apps/web/src/server/cloudflare/sentry.test.ts": ["cloudflare"],
+    "packages/platform/test/node/fixtures/workflow-worker.ts": ["node"],
+    "packages/platform/test/node/workflow.integration.test.ts": ["node"]
   }
 }
