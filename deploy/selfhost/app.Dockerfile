@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1
 FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS toolchain
-RUN corepack enable && corepack prepare pnpm@12.8.1 --activate
+ENV COREPACK_HOME=/opt/corepack
+# CLI 与平台原生 pnpm binary 在构建阶段准备，迁移用户不需下载。
+RUN corepack enable && corepack prepare pnpm@12.8.1 --activate \
+  && pnpm --version && chmod -R a+rX /opt/corepack
 WORKDIR /src
 
 FROM toolchain AS version-check
@@ -44,6 +47,7 @@ CMD ["node", "server/index.mjs"]
 
 # 迁移保留已锁定的 CLI、workspace TS 和 SQL，不接收应用/超级用户 secret。
 FROM toolchain AS migrate
+ENV COREPACK_ENABLE_NETWORK=0
 ARG APP_VERSION
 LABEL org.opencontainers.image.revision=$APP_VERSION
 COPY --from=source --chown=node:node /src/ /src/

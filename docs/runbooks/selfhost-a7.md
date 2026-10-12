@@ -12,6 +12,7 @@
 - Nitro SSR 的 CommonJS React 外部引用不能仅靠 `.output` 解析：web 一并复制 `pnpm deploy --prod` 生产依赖闭包。保留完整 `.output`。
 - Tailwind 需要根 `.gitignore` 排除生成目录：构建 context 保留此文件后，SSR 的 CSS URL 与 public 文件一致，`/login` 和 CSS 都返回200。
 - 非 root PG 重启不能覆盖只读源复制出的文件：每次使用 `install -m 0600` 更新自己的 TLS 目录；授权脚本目录保持可遍历。
+- Corepack默认缓存属于root，迁移用户原先会在线下载pnpm：构建阶段准备共享可读缓存和平台binary，运行时关闭Corepack下载，并以 `--network none` 验证pnpm版本。
 - Caddy 官方 binary 带低端口 file capability：高端口镜像去掉它，兼容 `cap_drop: ALL`；web/Caddy 固定 ingress `.3/.2`，避免自动分配抢占代理 IP。
 
 `docker compose config --format json` 断言通过：无 build；仅 Caddy 发布80/443；全部 service 有非 root user、healthcheck、CPU/内存上限、日志轮转、停止宽限；常驻 unless-stopped，migrate no；web/jobs 的 migrate 依赖为 `service_completed_successfully`。资源配额总计2核，常驻内存3.25GiB，migrate 512MiB；日志默认10m×3，stop grace45秒。

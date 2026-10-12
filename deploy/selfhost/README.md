@@ -35,7 +35,7 @@ pnpm --filter @saas/db db:migrate
 pnpm --filter @saas/platform dbos:migrate
 ```
 
-wrapper 仅接受 `MIGRATION_DATABASE_URL_FILE` 的 migrator、postgres 服务名、`sslmode=verify-full` 连接，拒绝本地默认连接与直接值。迁移 CLI 的原始输出可能含驱动配置，因此只输出固定 JSON 成功/失败事件。失败容器退出非零且 `restart: no`；web/jobs 仅在其成功退出以及 Valkey healthy 后启动。重跑失败迁移前应检查版本、secret、证书和迁移本身，再执行 `docker compose up -d`，不配置无限重试。
+pnpm CLI 与其平台原生 binary 在镜像构建阶段预装到非 root 可读的共享缓存；migrate 设置 `COREPACK_ENABLE_NETWORK=0`，不需要部署时下载包管理器。wrapper 仅接受 `MIGRATION_DATABASE_URL_FILE` 的 migrator、postgres 服务名、`sslmode=verify-full` 连接，拒绝本地默认连接与直接值。迁移 CLI 的原始输出可能含驱动配置，因此只输出固定 JSON 成功/失败事件。失败容器退出非零且 `restart: no`；web/jobs 仅在其成功退出以及 Valkey healthy 后启动。重跑失败迁移前应检查版本、secret、证书和迁移本身，再执行 `docker compose up -d`，不配置无限重试。
 
 ## 文件与权限
 
