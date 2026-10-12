@@ -26,6 +26,7 @@
     "@saas/shared": "workspace:*",
     "@saas/storage": "workspace:*",
     "@sentry/cloudflare": "^11.6.0",
+    "cron-parser": "5.4.0",
     "ioredis": "5.8.2",
     "postgres": "^3.4.9",
     "zod": "^4.6.5",

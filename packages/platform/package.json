@@ -19,6 +19,7 @@
     "@dbos-inc/dbos-sdk": "5.2.11",
     "@saas/db": "workspace:*",
     "@saas/shared": "workspace:*",
+    "cron-parser": "5.4.0",
     "drizzle-orm": "^0.45.3",
     "ioredis": "5.8.2",
     "pg": "8.20.0"
