@@ -1,0 +1,198 @@
+import assert from 'node:assert/strict'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import test from 'node:test'
+import { checkWorkspace, importsOf } from './check-deps.mjs'
+
+const emptyRules = () => ({ compositionEntries: [], targetFixtures: {}, transition: {} })
+
+function workspace(t, files, rules = emptyRules()) {
+  const root = mkdtempSync(join(tmpdir(), 'check-deps-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  for (const [file, text] of Object.entries(files)) {
+    const path = join(root, file)
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, typeof text === 'string' ? text : JSON.stringify(text))
+  }
+  return () => checkWorkspace(root, rules).violations
+}
+
+const manifest = (name, dependencies = {}) => ({ name, dependencies })
+
+test('AST covers import/export/require/type and dynamic syntax without matching comments or strings', () => {
+  const source = [
+    "// import 'cloudflare:fake'",
+    'const example = "require(\'cloudflare:fake\')"',
+    "import type { Env } from 'cloudflare:workers'",
+    "import 'cloudflare:workers'",
+    "export { env } from 'cloudflare:workers'",
+    "export * from 'cloudflare:workers'",
+    "import /* comment */ ( /* comment */ 'cloudflare:workers', { with: { type: 'json' } })",
+    'import(`cloudflare:workers`)',
+    "require /* comment */ ('cloudflare:workers')",
+    "import workers = require('cloudflare:workers')",
+    "type Step = import('cloudflare:workers').WorkflowStep",
+    "import('cloudflare:' + 'workers')",
+    "import('cloudflare\\x3aworkers')",
+  ].join('\n')
+  const imports = importsOf(source)
+  assert.equal(imports.length, 11)
+  assert.ok(imports.every(({ specifier }) => specifier === 'cloudflare:workers'))
+  assert.equal(imports[0].line, 3)
+})
+
+test('apps routes/features and packages reject Cloudflare imports, even outside src', (t) => {
+  const check = workspace(t, {
+    'apps/web/package.json': manifest('@saas/web'),
+    'apps/web/src/routes/api.ts': "export * from 'cloudflare:workers'",
+    'apps/web/src/features/auth.ts': "import /* comment */ ('cloudflare:workflows')",
+    'apps/web/test/unregistered.test.ts': "import 'cloudflare:test'",
+    'packages/auth/package.json': manifest('@saas/auth'),
+    'packages/auth/src/auth.ts': "require('cloudflare:workers')",
+    'packages/auth/probe/new.ts': "import 'cloudflare:workers'",
+  })
+  const violations = check()
+  assert.equal(violations.length, 5)
+  for (const file of [
+    'routes/api.ts',
+    'features/auth.ts',
+    'unregistered.test.ts',
+    'src/auth.ts',
+    'probe/new.ts',
+  ]) {
+    assert.ok(violations.some((message) => message.includes(`${file}:1`)))
+  }
+})
+
+test('only platform Cloudflare adapters, exact composition entries and exact target fixtures are exempt', (t) => {
+  const rules = emptyRules()
+  rules.compositionEntries = ['apps/web/src/server.ts']
+  rules.targetFixtures = {
+    'packages/platform/test/cloudflare.test.ts': ['cloudflare:test', 'cloudflare:workers'],
+  }
+  const check = workspace(
+    t,
+    {
+      'apps/web/package.json': manifest('@saas/web'),
+      'apps/web/src/server.ts': "import 'cloudflare:workers'",
+      'packages/platform/package.json': manifest('@saas/platform'),
+      'packages/platform/src/cloudflare/index.ts':
+        "import 'cloudflare:workers'; import 'cloudflare:workflows'",
+      'packages/platform/test/cloudflare.test.ts':
+        "import 'cloudflare:test'; import type { WorkflowStep } from 'cloudflare:workers'",
+      'packages/platform/src/node/index.ts': "import 'cloudflare:workers'",
+      'packages/platform/src/index.ts': "export * from 'cloudflare:workers'",
+      'packages/platform/src/cloudflare/test.ts': "import 'cloudflare:test'",
+      'apps/web/src/server.node.ts': "import 'cloudflare:workers'",
+      'apps/web/src/server-helper.ts': "import 'cloudflare:workers'",
+    },
+    rules,
+  )
+  assert.equal(check().length, 5)
+})
+
+test('transition permits the exact old count; new imports fail and migrated entries must shrink', (t) => {
+  const file = 'apps/web/src/routes/old.ts'
+  const rules = emptyRules()
+  rules.transition = { [file]: { 'cloudflare:workers': 1 } }
+  const check = workspace(
+    t,
+    {
+      'apps/web/package.json': manifest('@saas/web'),
+      [file]: "import 'cloudflare:workers'",
+    },
+    rules,
+  )
+  assert.deepEqual(check(), [])
+  const extra = workspace(
+    t,
+    {
+      'apps/web/package.json': manifest('@saas/web'),
+      [file]: "import 'cloudflare:workers'; export * from 'cloudflare:workers'",
+    },
+    rules,
+  )
+  assert.equal(extra().length, 1)
+  const migrated = workspace(t, { 'apps/web/package.json': manifest('@saas/web') }, rules)
+  assert.match(migrated()[0], /实际 0；迁移后请删减/)
+  delete rules.transition[file]
+  assert.deepEqual(migrated(), [])
+})
+
+test('platform depends only on shared/config/db; config/db cannot reverse that direction; business packages may depend on each other', (t) => {
+  const check = workspace(t, {
+    'packages/platform/package.json': manifest('@saas/platform', {
+      '@saas/shared': '*',
+      '@saas/config': '*',
+      '@saas/db': '*',
+    }),
+    'packages/platform/src/index.ts': "import '@saas/auth'",
+    'packages/config/package.json': manifest('@saas/config', { '@saas/platform': '*' }),
+    'packages/db/package.json': manifest('@saas/db'),
+    'packages/db/src/client.ts': "import '@saas/platform'",
+    'packages/ai/package.json': manifest('@saas/ai', {
+      '@saas/credits': '*',
+      '@saas/platform': '*',
+    }),
+    'packages/credits/package.json': manifest('@saas/credits', { '@saas/billing': '*' }),
+  })
+  assert.equal(check().length, 3)
+})
+
+test('target adapters are restricted for named and relative imports, with exact target entries and fixtures allowed', (t) => {
+  const rules = emptyRules()
+  rules.compositionEntries = ['apps/web/src/server.ts']
+  rules.targetFixtures = { 'apps/web/test/cloudflare.test.ts': ['cloudflare:workers'] }
+  rules.targetAdapterFixtures = {
+    'packages/platform/test/cloudflare.test.ts': ['cloudflare'],
+    'packages/platform/test/node.test.ts': ['node'],
+  }
+  const check = workspace(
+    t,
+    {
+      'apps/web/package.json': manifest('@saas/web'),
+      'apps/web/src/server.ts': "import '@saas/platform/cloudflare'",
+      'apps/web/src/routes/neutral.ts': "import '@saas/platform'",
+      'apps/web/src/routes/adapter.ts':
+        "import '@saas/platform/cloudflare'; import '@saas/platform/node'; import '../../../../packages/platform/src/cloudflare/index.ts'",
+      'apps/web/test/cloudflare.test.ts': "import '@saas/platform/cloudflare'",
+      'apps/web/test/unknown.test.ts': "import '@saas/platform/cloudflare'",
+      'apps/web/src/server.node.ts': "import '@saas/platform/node'",
+      'packages/platform/package.json': manifest('@saas/platform'),
+      'packages/platform/src/cloudflare/index.ts': "export * from './runtime'",
+      'packages/platform/src/cloudflare/runtime.ts': "import '@saas/platform/cloudflare'",
+      'packages/platform/src/node/index.ts': "import '@saas/platform/node'",
+      'packages/platform/src/index.ts':
+        "export * from './cloudflare/index'; export * from './node/index'",
+      'packages/platform/test/cloudflare.test.ts': "import '../src/cloudflare/index'",
+      'packages/platform/test/node.test.ts': "import '../src/node/index'",
+    },
+    rules,
+  )
+  const violations = check()
+  assert.equal(violations.length, 7)
+  assert.ok(violations.every((message) => message.includes('业务仅可依赖 platform 中立入口')))
+})
+
+test('relative cross-package imports enforce foundation layers and packages cannot reference apps', (t) => {
+  const check = workspace(t, {
+    'apps/web/package.json': manifest('@saas/web'),
+    'apps/web/src/index.ts': '',
+    'packages/platform/package.json': manifest('@saas/platform'),
+    'packages/platform/src/index.ts': "import '../../db/src/client'",
+    'packages/config/package.json': manifest('@saas/config'),
+    'packages/config/src/index.ts': "import '../../platform/src/index.ts'",
+    'packages/db/package.json': manifest('@saas/db'),
+    'packages/db/src/client.ts':
+      "import '../../platform/src/index.ts'; import '../../config/src/index'",
+    'packages/ai/package.json': manifest('@saas/ai'),
+    'packages/ai/src/index.ts':
+      "import '../../platform/src/index.ts'; import '../../../apps/web/src/index'",
+  })
+  const violations = check()
+  assert.equal(violations.length, 3)
+  assert.ok(violations.some((message) => message.includes('@saas/config → @saas/platform')))
+  assert.ok(violations.some((message) => message.includes('@saas/db → @saas/platform')))
+  assert.ok(violations.some((message) => message.includes('packages 不得引用 apps')))
+})

@@ -23,16 +23,17 @@ This block is written and re-added by `turbo` before repository-scoped commands 
 - `apps/web`：TanStack Start 路由、页面、Server Functions 和 HTTP 接口。
 - `apps/jobs`：Cloudflare Workflows、Queue 消费者和 Cron；web 经绑定调用 jobs。
 - `packages/shared`：类型、错误、ID、结构化日志；`config`：模板类型、默认值和环境校验；
-  `db`：Drizzle schema、迁移、租户查询和运行时设置。
+  `db`：Drizzle schema、迁移、租户查询和运行时设置；`platform`：目标中立能力契约与 Cloudflare/Node 适配。
 - `packages/auth`：身份、会话和空间；`billing`：支付、订单和订阅；`credits`：积分账本和预扣结算；
   `entitlements`：套餐权益；`ai`：模型和 Provider；`storage`：R2 与安全下载；
   `email`：邮件模板与发送；`ui`：共享 React 组件。
 - `infra`：本地及服务器 Postgres；`scripts`：工程检查、项目生成和 Orca 生命周期。
 
 依赖边界以 `scripts/check-deps.mjs` 为准：packages 不依赖 apps；shared 不依赖其他内部包；
-config 只可依赖 shared；db 只可依赖 shared、config。业务包之间允许依赖，检查器没有规定
-它们的总顺序。React 仅允许用于 ui，email 可依赖 React / React Email，但不能依赖 ui。
-检查器同时检查 manifest 与源码 import。
+config 只可依赖 shared；db 只可依赖 shared、config；platform 只可依赖 shared、config、db，
+config/db 不反向依赖 platform。业务包之间允许依赖，检查器没有规定它们的总顺序。React 仅允许用于 ui，email 可依赖 React / React Email，但不能依赖 ui。
+检查器同时检查 manifest 与源码 import。业务平台能力通过 platform 中立入口访问；Cloudflare
+导入边界与逐文件过渡清单见 [项目结构 §1](docs/02-project-structure.md#1-monorepo-目录)。
 
 ## 编码与配置
 
