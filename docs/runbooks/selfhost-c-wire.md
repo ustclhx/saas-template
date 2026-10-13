@@ -31,8 +31,11 @@ web 的三个 bundle 各有自己的日志 ALS 与 AppError 类。桥接传当�
 在产生错误的 bundle 内识别 AppError，再在 observer bundle 内按原对象缓存安全错误摘要；
 保留低于 500 的过滤、机器码、源码 frame 和同对象去重。runtime 包装复制属性描述符，
 保持 getter 惰性及 own/enumerable，文件 handler 展开依赖仍能读到 db/auth。
-Node envelope 沿用 adapter 白名单，受信任资源错误在 Nitro/SSR 边界重建为调用方 AppError，保留 S3 502/机器码，避免文件响应吞错时退化成 INTERNAL_ERROR。所有日志 Error 摘要移除 message/stack/cause 原文，
-保留固定类型与安全 AppError 码；CF/shared 脱敏回归继续通过。
+Node envelope 沿用 adapter 白名单，受信任资源错误在 Nitro/SSR 边界重建为调用方 AppError，
+保留 S3 502/机器码，避免文件响应吞错时退化成 INTERNAL_ERROR。异常文本的最后安全边界
+只在 Sentry 发送路径：Node beforeSend 白名单移除任意异常 message/stack/cause 原文，
+保留安全机器码与结构化源码 frame。shared redact 的日志路径继续保留原有
+name/message/stack/cause 与按字段名脱敏，CF/shared 日志回归保持原样。
 
 SIGTERM/INT 沿用 A 的绝对 deadline。web 停 HTTP、排空请求/waitUntil、关闭缓存/DB/Nitro；
 jobs 停领取、DBOS 排空、关闭业务/缓存池。之后监控仅使用剩余时间 close/flush，剩余零时
@@ -59,7 +62,7 @@ web-node/jobs-node，不串用 CF 的 dist/server、web/jobs。上传凭据不�
 
 ## 本批验收与边界
 
-配置 39 个用例、shared 23 个用例通过；Node 文件/HTTP/Sentry Docker runner 18 个用例
+配置 39 个用例、shared 22 个用例通过；Node 文件/HTTP/Sentry Docker runner 18 个用例
 验证实际上传确认下载、权限/配额/清理、storage-only task/hold 不变、并发管理员身份、
 真实 transport 捕获后可达/挂起/禁用三模式 SIGTERM 退出，以及 map URL 404。
 bridge fixture 另验证两空间隔离、跨 bundle 业务码/过滤与去重。
