@@ -31,3 +31,5 @@
 ## 5. 阶段验收
 
 - [ ] 5.1 在 staging 用一个按 token 与一个按次计费的模型完成对话、停止、关闭页面、服务商报错四种情况，验证积分流水与 AI Gateway 的 token 统计差异不超过 1%，且对账不变式成立
+
+2026-10-13 验收记录：13j 的两种计费各正常、停止、关页六项及积分对账已有[真实证据](../../../docs/runbooks/evidence/staging-acceptance/README.md)。服务商报错与 AI Gateway token 差异不超过 1% 尚未核验；本 run 为 direct DeepSeek，未做外部用量比较。5.1 保留未勾选。
