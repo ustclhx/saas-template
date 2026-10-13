@@ -37,8 +37,29 @@ test('saved media parameter schemas drive submit fields, defaults and validation
       values (${subscriptionId},${actor.workspace_id},${planId},${priceId},'stripe',${`e2e:${planId}`},
         'canceled',now(),now()+interval '1 day',true,now(),now())`
 
-    await page.goto('/admin/models')
+    // 延迟客户端脚本，复现 SSR 表单可见但 React 尚未接管的窗口。
+    let allowScripts = () => {}
+    const scriptsReady = new Promise<void>((resolve) => {
+      allowScripts = resolve
+    })
+    const gateScripts = async (route: import('@playwright/test').Route) => {
+      if (route.request().resourceType() === 'script') await scriptsReady
+      await route.continue()
+    }
+    await page.route('**/*', gateScripts)
+    try {
+      await page.goto('/admin/models', { waitUntil: 'commit' })
+      const serverForm = page.getByRole('article', { name: 'New model' })
+      await expect(serverForm.getByRole('button', { name: 'Create model' })).toBeDisabled()
+      await expect(
+        serverForm.getByLabel('Parameters schema (JSON)', { exact: true }),
+      ).toBeDisabled()
+    } finally {
+      allowScripts()
+      await page.unroute('**/*', gateScripts)
+    }
     const form = page.getByRole('article', { name: 'New model' })
+    await expect(form.getByRole('button', { name: 'Create model' })).toBeEnabled()
     await expect
       .poll(async () => {
         await form.getByRole('combobox', { name: 'Kind', exact: true }).selectOption('video')

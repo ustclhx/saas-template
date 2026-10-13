@@ -1,4 +1,4 @@
-import { DataTable } from '@saas/ui'
+import { Button, DataTable, Input } from '@saas/ui'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useEffect, useId, useState } from 'react'
 import {
@@ -171,17 +171,22 @@ function ParamsSchemaEditor({
   )
   return (
     <>
-      <label htmlFor={`${id}-schema`}>{label}</label>
+      <label className="grid gap-2 text-sm font-medium" htmlFor={`${id}-schema`}>
+        {label}
+      </label>
       <textarea
         id={`${id}-schema`}
-        className="block w-full font-mono"
+        className="block w-full rounded-md border border-input bg-transparent p-3 font-mono text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
         rows={12}
         spellCheck={false}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-      <label htmlFor={`${id}-template`}>Insert reference template</label>{' '}
+      <label className="grid gap-2 text-sm font-medium" htmlFor={`${id}-template`}>
+        Insert reference template
+      </label>
       <select
+        className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
         id={`${id}-template`}
         value=""
         disabled={templates.length === 0}
@@ -214,9 +219,9 @@ function Models() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
-    <section>
-      <h2>AI models</h2>
-      <p>
+    <section className="grid gap-6">
+      <h2 className="font-semibold text-xl">AI models</h2>
+      <p className="text-muted-foreground text-sm">
         Disabled models are hidden from model pickers and calls to them are rejected. Price changes
         apply to calls started after saving.
       </p>
@@ -310,15 +315,19 @@ function ModelEditor({
   const router = useRouter()
   const [draft, setDraft] = useState(initial)
   const [busy, setBusy] = useState(false)
+  const [ready, setReady] = useState(false)
   const [message, setMessage] = useState('')
   const [copyKey, setCopyKey] = useState(model ? `${model.key.slice(0, 59)}-copy` : '')
   const savedParamsSchema = JSON.stringify(model?.paramsSchema ?? {}, null, 2)
   const [copyParamsSchema, setCopyParamsSchema] = useState(savedParamsSchema)
+  // SSR 表单先禁用，避免 React 接管前的输入丢失或保存点击无效。
+  useEffect(() => setReady(true), [])
   useEffect(() => {
     setCopyParamsSchema(savedParamsSchema)
   }, [savedParamsSchema])
   const set = (patch: Partial<Draft>) => setDraft((current) => ({ ...current, ...patch }))
   const field = (name: keyof Draft) => ({
+    id: `${model?.id ?? 'new'}-${name}`,
     value: String(draft[name]),
     onChange: (event: { target: { value: string } }) => set({ [name]: event.target.value }),
   })
@@ -381,20 +390,27 @@ function ModelEditor({
   }
 
   const title = model ? `Model ${model.key}` : 'New model'
+  const disabled = busy || !ready
   return (
-    <article aria-label={title} id={model ? `model-${model.id}` : undefined}>
-      <h3>
+    <article
+      aria-label={title}
+      aria-busy={disabled}
+      id={model ? `model-${model.id}` : undefined}
+      className="grid min-w-0 gap-5 rounded-lg border bg-card p-5 text-card-foreground"
+    >
+      <h3 className="font-semibold text-lg">
         {title}
         {model && !model.enabled && ' (disabled)'}
       </h3>
-      <fieldset disabled={busy}>
-        <legend>Model</legend>
-        <label>
-          Key <input required maxLength={64} {...field('key')} />
-        </label>{' '}
-        <label>
+      <fieldset disabled={disabled} className="grid gap-4 sm:grid-cols-2">
+        <legend className="mb-3 font-medium">Model</legend>
+        <label className="grid gap-2 text-sm font-medium" htmlFor={`${model?.id ?? 'new'}-key`}>
+          Key <Input required maxLength={64} {...field('key')} />
+        </label>
+        <label className="grid gap-2 text-sm font-medium">
           Kind{' '}
           <select
+            className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
             value={draft.kind}
             disabled={Boolean(model)}
             onChange={(event) => {
@@ -412,18 +428,20 @@ function ModelEditor({
             <option value="image">Image</option>
             <option value="video">Video</option>
           </select>
-        </label>{' '}
-        <label htmlFor={`${model?.id ?? 'new'}-provider`}>
+        </label>
+        <label
+          className="grid gap-2 text-sm font-medium"
+          htmlFor={`${model?.id ?? 'new'}-provider`}
+        >
           Provider{' '}
           {draft.kind === 'text' ? (
-            <input
-              id={`${model?.id ?? 'new'}-provider`}
-              required
-              maxLength={64}
-              {...field('provider')}
-            />
+            <Input required maxLength={64} {...field('provider')} />
           ) : (
-            <select id={`${model?.id ?? 'new'}-provider`} required {...field('provider')}>
+            <select
+              className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+              required
+              {...field('provider')}
+            >
               <option value="">Choose a provider</option>
               {mediaProviders.map((provider) => (
                 <option key={provider} value={provider}>
@@ -432,18 +450,22 @@ function ModelEditor({
               ))}
             </select>
           )}
-        </label>{' '}
-        <label>
-          Provider model ID <input required maxLength={200} {...field('providerModelId')} />
-        </label>{' '}
-        <label>
-          Plan tags (comma separated) <input {...field('tags')} />
-        </label>{' '}
-        <label>
-          Sort <input type="number" step="1" {...field('sort')} />
-        </label>{' '}
-        <label>
+        </label>
+        <label
+          className="grid gap-2 text-sm font-medium"
+          htmlFor={`${model?.id ?? 'new'}-providerModelId`}
+        >
+          Provider model ID <Input required maxLength={200} {...field('providerModelId')} />
+        </label>
+        <label className="grid gap-2 text-sm font-medium" htmlFor={`${model?.id ?? 'new'}-tags`}>
+          Plan tags (comma separated) <Input {...field('tags')} />
+        </label>
+        <label className="grid gap-2 text-sm font-medium" htmlFor={`${model?.id ?? 'new'}-sort`}>
+          Sort <Input type="number" step="1" {...field('sort')} />
+        </label>
+        <label className="flex items-center gap-2 text-sm font-medium">
           <input
+            className="size-4 accent-primary"
             type="checkbox"
             checked={draft.enabled}
             onChange={(event) => set({ enabled: event.target.checked })}
@@ -451,8 +473,8 @@ function ModelEditor({
           Enabled
         </label>
       </fieldset>
-      <fieldset disabled={busy}>
-        <legend>Parameters</legend>
+      <fieldset disabled={disabled} className="grid min-w-0 gap-3">
+        <legend className="mb-3 font-medium">Parameters</legend>
         <ParamsSchemaEditor
           label="Parameters schema (JSON)"
           kind={draft.kind}
@@ -463,11 +485,12 @@ function ModelEditor({
           onTemplate={setMessage}
         />
       </fieldset>
-      <fieldset disabled={busy}>
-        <legend>Pricing</legend>
-        <label>
+      <fieldset disabled={disabled} className="grid gap-4 sm:grid-cols-2">
+        <legend className="mb-3 font-medium">Pricing</legend>
+        <label className="grid gap-2 text-sm font-medium">
           Pricing mode{' '}
           <select
+            className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
             value={draft.mode}
             onChange={(event) => set({ mode: event.target.value as Mode })}
           >
@@ -475,89 +498,129 @@ function ModelEditor({
             <option value="token">Per token</option>
             <option value="per_unit">Per unit</option>
           </select>
-        </label>{' '}
+        </label>
         {draft.mode === 'per_call' && (
           <>
-            <label>
-              Credits per call <input type="number" min="0" step="1" {...field('credits')} />
-            </label>{' '}
-            <label>
+            <label
+              className="grid gap-2 text-sm font-medium"
+              htmlFor={`${model?.id ?? 'new'}-credits`}
+            >
+              Credits per call <Input type="number" min="0" step="1" {...field('credits')} />
+            </label>
+            <label
+              className="grid gap-2 text-sm font-medium"
+              htmlFor={`${model?.id ?? 'new'}-chargeOn`}
+            >
               Charge on{' '}
-              <select {...field('chargeOn')}>
+              <select
+                className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                {...field('chargeOn')}
+              >
                 <option value="">Default</option>
                 <option value="any_output">Any output</option>
                 <option value="success">Success</option>
               </select>
-            </label>{' '}
-            <label>
-              Max input tokens <input type="number" min="1" step="1" {...field('maxInputTokens')} />
-            </label>{' '}
-            <label>
+            </label>
+            <label
+              className="grid gap-2 text-sm font-medium"
+              htmlFor={`${model?.id ?? 'new'}-maxInputTokens`}
+            >
+              Max input tokens <Input type="number" min="1" step="1" {...field('maxInputTokens')} />
+            </label>
+            <label
+              className="grid gap-2 text-sm font-medium"
+              htmlFor={`${model?.id ?? 'new'}-maxOutputTokens`}
+            >
               Max output tokens{' '}
-              <input type="number" min="1" step="1" {...field('maxOutputTokens')} />
-            </label>{' '}
+              <Input type="number" min="1" step="1" {...field('maxOutputTokens')} />
+            </label>
           </>
         )}
         {draft.mode === 'token' && (
           <>
-            <label>
-              Input credits / 1k <input type="number" min="0" step="any" {...field('inputPer1k')} />
-            </label>{' '}
-            <label>
+            <label
+              className="grid gap-2 text-sm font-medium"
+              htmlFor={`${model?.id ?? 'new'}-inputPer1k`}
+            >
+              Input credits / 1k <Input type="number" min="0" step="any" {...field('inputPer1k')} />
+            </label>
+            <label
+              className="grid gap-2 text-sm font-medium"
+              htmlFor={`${model?.id ?? 'new'}-outputPer1k`}
+            >
               Output credits / 1k{' '}
-              <input type="number" min="0" step="any" {...field('outputPer1k')} />
-            </label>{' '}
-            <label>
-              Minimum charge <input type="number" min="0" step="1" {...field('minCharge')} />
+              <Input type="number" min="0" step="any" {...field('outputPer1k')} />
+            </label>
+            <label
+              className="grid gap-2 text-sm font-medium"
+              htmlFor={`${model?.id ?? 'new'}-minCharge`}
+            >
+              Minimum charge <Input type="number" min="0" step="1" {...field('minCharge')} />
             </label>
           </>
         )}
         {draft.mode === 'per_unit' && (
           <>
-            <label>
+            <label
+              className="grid gap-2 text-sm font-medium"
+              htmlFor={`${model?.id ?? 'new'}-unit`}
+            >
               Unit{' '}
-              <select {...field('unit')}>
+              <select
+                className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                {...field('unit')}
+              >
                 <option value="image">Image</option>
                 <option value="second">Second</option>
               </select>
-            </label>{' '}
-            <label>
-              Credits per unit <input type="number" min="0" step="any" {...field('perUnit')} />
-            </label>{' '}
+            </label>
+            <label
+              className="grid gap-2 text-sm font-medium"
+              htmlFor={`${model?.id ?? 'new'}-perUnit`}
+            >
+              Credits per unit <Input type="number" min="0" step="any" {...field('perUnit')} />
+            </label>
           </>
         )}
         {draft.mode !== 'token' && (
-          <label>
+          <label
+            className="grid gap-2 text-sm font-medium"
+            htmlFor={`${model?.id ?? 'new'}-multipliers`}
+          >
             Multipliers (JSON, optional){' '}
-            <input placeholder='{"resolution":{"720p":1,"1080p":2}}' {...field('multipliers')} />
+            <Input placeholder='{"resolution":{"720p":1,"1080p":2}}' {...field('multipliers')} />
           </label>
         )}
       </fieldset>
-      <button type="button" disabled={busy} onClick={save}>
-        {model ? 'Save changes' : 'Create model'}
-      </button>{' '}
+      <div className="flex flex-wrap gap-3">
+        <Button type="button" disabled={disabled} onClick={save}>
+          {model ? 'Save changes' : 'Create model'}
+        </Button>
+        {model && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={disabled}
+            onClick={() =>
+              act(() => setAdminModelEnabled({ data: { id: model.id, enabled: !model.enabled } }))
+            }
+          >
+            {model.enabled ? 'Disable' : 'Enable'}
+          </Button>
+        )}
+      </div>
       {model && (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() =>
-            act(() => setAdminModelEnabled({ data: { id: model.id, enabled: !model.enabled } }))
-          }
-        >
-          {model.enabled ? 'Disable' : 'Enable'}
-        </button>
-      )}
-      {model && (
-        <fieldset disabled={busy}>
-          <legend>Copy saved model</legend>
-          <label>
+        <fieldset disabled={disabled} className="grid min-w-0 gap-3 rounded-md border p-4">
+          <legend className="px-2 font-medium">Copy saved model</legend>
+          <label className="grid gap-2 text-sm font-medium" htmlFor={`${model?.id}-copy-key`}>
             Copy key{' '}
-            <input
+            <Input
+              id={`${model?.id}-copy-key`}
               value={copyKey}
               maxLength={64}
               onChange={(event) => setCopyKey(event.target.value)}
             />
-          </label>{' '}
+          </label>
           <ParamsSchemaEditor
             label="Copy parameters schema (JSON)"
             kind={model.kind}
@@ -567,13 +630,15 @@ function ModelEditor({
             onChange={setCopyParamsSchema}
             onTemplate={setMessage}
           />
-          <button type="button" onClick={copy}>
+          <Button type="button" variant="outline" className="w-fit" onClick={copy}>
             Copy model
-          </button>
-          <p>The copy is disabled until you enable it.</p>
+          </Button>
+          <p className="text-muted-foreground text-sm">The copy is disabled until you enable it.</p>
         </fieldset>
       )}
-      <p role="status">{message}</p>
+      <p role="status" className="min-h-5 text-sm">
+        {ready ? message : 'Loading editor…'}
+      </p>
     </article>
   )
 }
