@@ -15,6 +15,7 @@ const CATEGORIES = [
   /\bBrowser closed/,
   /\bProtocol error \([A-Za-z.]+\)/,
   /\b(?:ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN)\b/,
+  /\bRead-only evidence query failed \((?:connect|timeout|ssl|auth|sql|container|unknown)\)/,
 ]
 
 export function safeDiagnostic(message: string | undefined) {
@@ -24,4 +25,48 @@ export function safeDiagnostic(message: string | undefined) {
   for (const pattern of CATEGORIES) parts.push(pattern.exec(first)?.[0])
   const safe = parts.filter(Boolean)
   return safe.length > 0 ? safe.join(': ') : 'unclassified'
+}
+
+export type PsqlFailure = 'connect' | 'timeout' | 'ssl' | 'auth' | 'sql' | 'container' | 'unknown'
+
+// 按顺序匹配：docker 与认证先于连接类（认证失败也以 "connection to server ... failed" 开头）；
+// Neon 代理的唤醒失败以 ERROR: 开头，所以连接类要先于 sql。statement timeout 属于查询本身，归 sql。
+const PSQL_PATTERNS: [PsqlFailure, RegExp][] = [
+  [
+    'container',
+    /Error response from daemon|No such container|Cannot connect to the Docker daemon|is not running/i,
+  ],
+  [
+    'auth',
+    /password authentication failed|authentication failed|no pg_hba\.conf entry|role ".*" does not exist|database ".*" does not exist|password is required/i,
+  ],
+  ['sql', /canceling statement due to statement timeout/i],
+  ['ssl', /\bSSL\b|unexpected eof/i],
+  ['timeout', /timeout expired|timed out/i],
+  [
+    'connect',
+    /could not connect|connection refused|could not translate host name|server closed the connection|terminating connection|connection to server .* failed|no connection to the server|connection reset|network is unreachable|compute node|compute is starting|endpoint is starting/i,
+  ],
+  ['sql', /^(?:psql:[^\n]*?)?(?:ERROR|FATAL):/im],
+]
+
+export const TRANSIENT_PSQL_FAILURES: ReadonlySet<PsqlFailure> = new Set([
+  'connect',
+  'timeout',
+  'ssl',
+])
+
+// psql/docker 的 stderr 含主机名、SQL 片段或数据，只返回固定类别，原文不外传。
+export function classifyPsqlFailure(stderr: string, code: number | null): PsqlFailure {
+  // 跳过 psql 回显的 SQL 行（LINE n: 与箭头行），避免查询文本误触发连接类模式。
+  const text = stderr
+    .split('\n')
+    .filter((line) => !/^\s*(?:LINE \d+:|\^)/.test(line) && !/^\s/.test(line))
+    .join('\n')
+  for (const [category, pattern] of PSQL_PATTERNS) if (pattern.test(text)) return category
+  // psql 退出码 2 表示连接异常，3 表示脚本错误；docker exec 自身失败为 125-127。
+  if (code === 2) return 'connect'
+  if (code === 3) return 'sql'
+  if (code !== null && code >= 125 && code <= 127) return 'container'
+  return 'unknown'
 }

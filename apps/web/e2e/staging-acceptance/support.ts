@@ -13,7 +13,12 @@ import {
   HUMAN_LOGIN_TIMEOUT,
   sessionUser,
 } from './accounts.ts'
-import { safeDiagnostic } from './diagnostic.ts'
+import {
+  classifyPsqlFailure,
+  type PsqlFailure,
+  safeDiagnostic,
+  TRANSIENT_PSQL_FAILURES,
+} from './diagnostic.ts'
 import { ACCEPTANCE_MODELS } from './models.ts'
 
 export { adminIdentity, ensureRegisteredAccount, registerAccount, sessionUser } from './accounts.ts'
@@ -56,10 +61,30 @@ export function sqlLiteral(value: string) {
   return `'${value.replaceAll("'", "''")}'`
 }
 
+// Neon 缩容到零后首个连接需等计算节点唤醒，只对连接类失败短暂退避重试；只读查询可安全重放。
+const QUERY_RETRY_DELAYS = [2_000, 5_000]
+
 export async function query<T extends Record<string, unknown>>(statement: string): Promise<T[]> {
   requireEnv(['NEON_READONLY_URL'])
-  // 连接串仅通过继承环境传递；SQL 走 stdin，错误不透传 psql 的连接诊断或数据。
-  const result = await new Promise<string>((resolve, reject) => {
+  for (let attempt = 0; ; attempt++) {
+    const result = await runReadOnly(statement)
+    if (typeof result === 'string') {
+      try {
+        return JSON.parse(result.trim()) as T[]
+      } catch {
+        throw new Error('Invalid read-only evidence result')
+      }
+    }
+    const delay = QUERY_RETRY_DELAYS[attempt]
+    if (!TRANSIENT_PSQL_FAILURES.has(result.category) || delay === undefined)
+      throw new Error(`Read-only evidence query failed (${result.category})`)
+    await new Promise((resolve) => setTimeout(resolve, delay))
+  }
+}
+
+function runReadOnly(statement: string) {
+  // 连接串仅通过继承环境传递；SQL 走 stdin，stderr 只在内存中归类，不透传连接诊断或数据。
+  return new Promise<string | { category: PsqlFailure }>((resolve, reject) => {
     const child = spawn(
       'docker',
       [
@@ -67,34 +92,35 @@ export async function query<T extends Record<string, unknown>>(statement: string
         '-i',
         '-e',
         'U',
+        '-e',
+        'PGCONNECT_TIMEOUT',
         'saas-template-pg',
         'sh',
         '-c',
         'exec psql "$U" -X -q -t -A -v ON_ERROR_STOP=1',
       ],
       {
-        env: { ...process.env, U: process.env.NEON_READONLY_URL },
+        // 冷启动唤醒需要数秒，给连接留出 15 秒。
+        env: { ...process.env, U: process.env.NEON_READONLY_URL, PGCONNECT_TIMEOUT: '15' },
         stdio: ['pipe', 'pipe', 'pipe'],
       },
     )
     let output = ''
+    let errors = ''
     child.stdout.on('data', (chunk) => {
       output += String(chunk)
     })
-    child.stderr.resume()
+    child.stderr.on('data', (chunk) => {
+      if (errors.length < 16_384) errors += String(chunk)
+    })
     child.on('error', () => reject(new Error('Read-only evidence query could not start')))
     child.on('close', (code) =>
-      code === 0 ? resolve(output) : reject(new Error('Read-only evidence query failed')),
+      resolve(code === 0 ? output : { category: classifyPsqlFailure(errors, code) }),
     )
     child.stdin.end(
       `BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSET LOCAL statement_timeout = '30s';\nSELECT coalesce(json_agg(evidence_row), '[]'::json) FROM (${statement}) AS evidence_row;\nROLLBACK;\n`,
     )
   })
-  try {
-    return JSON.parse(result.trim()) as T[]
-  } catch {
-    throw new Error('Invalid read-only evidence result')
-  }
 }
 
 const readyWorkspaces = new Set<string>()
