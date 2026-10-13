@@ -1,0 +1,120 @@
+# Email
+
+`@saas/email` 提供 React Email 模板、`EmailSender`、fetch Resend sender；
+`@saas/email/queue` 是不加载模板的 producer 消息入口。
+Node SMTP 仅从 `@saas/email/node` 显式导入，锁定 **Nodemailer 10.1.0**（自带类型）。
+中立入口与 CF consumer 不导入此子入口。
+
+```ts
+import { createSmtpSender } from '@saas/email/node'
+
+const sender = createSmtpSender({
+  host: 'smtp.example.com',
+  port: 587,
+  tlsMode: 'starttls',
+  from: 'MyApp <noreply@example.com>',
+  replyTo: 'support@example.com',
+  // user/password 由 composition 显式传入；可以同时省略以使用受控匿名中继。
+})
+```
+
+Adapter 不读取 env，不执行启动联通探测；本地非法配置立即抛不可重试的
+`EmailSendError`，服务不可达留给已有队列处理。只从 `EmailMessage` 复制
+to/subject/html/text/replyTo、两项 List headers 和稳定身份，不接受附件或任意
+Nodemailer transport 配置；禁用文件/URL 内容读取、debug、logger、transactionLog。
+`replyTo` 优先使用消息值，再使用 sender 默认值。模板及渲染结果保持现有实现。
+
+## TLS 与错误策略
+
+| 模式 | 行为 | 常用端口 |
+| --- | --- | --- |
+| `implicit` | 建连即 TLS，验证证书和主机名 | 465 |
+| `starttls` | 强制升级 TLS，升级失败拒绝发送，不降级 | 587 |
+| `none` | 显式明文，忽略 STARTTLS，仅限受控内网中继/本地测试 | 按部署指定 |
+
+端口必须显式提供，允许 1–65535；模式不由端口推断。TLS 最低 1.2，始终
+`rejectUnauthorized: true`，没有关闭证书验证的 adapter 选项。内部 CA 可由
+Node 启动时的信任存储提供；测试仅在独立子进程中传入临时 CA。
+选项依据 [Nodemailer SMTP transport](https://nodemailer.com/smtp)。
+
+每封邮件使用独立连接，不池化，不自行重试或跨通道补发。默认连接（包括 DNS）
+10 秒、greeting 10 秒、socket 空闲 30 秒；可通过 `connectionTimeoutMs`、
+`greetingTimeoutMs`、`socketTimeoutMs` 显式设置 100–60000 毫秒。
+这些是各阶段/空闲期限，不承诺总投递墙钟时间；并发与停机总预算由队列/runtime 控制。
+
+按 [Nodemailer error reference](https://nodemailer.com/errors) 的 `responseCode`
+优先分类，保留为 `EmailSendError.status`（SMTP 状态码）：
+
+| 结果 | retryable | 安全 message |
+| --- | --- | --- |
+| 4xx（包括 451、认证 454） | true | `SMTP_TEMPORARY_FAILURE` |
+| 5xx（包括认证 535、收件人 550） | false | `SMTP_PERMANENT_FAILURE` |
+| 无 SMTP 状态的连接失败、超时、断流、TLS 验证失败 | true | `SMTP_CONNECTION_FAILED` |
+| 本地非法配置 | false | `SMTP_CONFIG_INVALID` |
+| 非法消息/地址/头部换行 | false | `SMTP_MESSAGE_INVALID` |
+| 无 SMTP 状态的认证/配置/信封/内容访问错误 | false | `SMTP_MESSAGE_OR_CONFIG_INVALID` |
+
+客户端 EAUTH/EENVELOPE 不覆盖 4xx 临时状态。原始响应、message、收件人、
+正文、密码和驱动 cause 均不进入错误。成功返回 `{ id: messageId }`，不返回响应正文。
+多收件人部分拒收会作为失败，优先保留可重试拒收结果；重投可能重复送达已经接受的地址。
+
+同一个 from 与 `idempotencyKey` 生成相同的哈希 Message-ID，不暴露邮箱或业务键。
+SMTP 服务不保证去重，DATA 被接受后、本地确认前崩溃或断连仍可能重复投递。
+Resend 继续使用原始稳定幂等键与其服务端去重窗口。这里未改变持久 inbox/DLQ，
+没有完成认证 HTTP→入队→验证链接端到端验收（C 3.3/3.4）。
+
+## 本地验证
+
+```sh
+pnpm --filter @saas/email typecheck
+pnpm --filter @saas/email test
+pnpm --filter @saas/email test:node:smtp
+```
+
+最后一项需要 Docker、OpenSSL 和 `node:22.23.3-bookworm-slim` 镜像。
+fixture 只监听发布到 127.0.0.1 的随机端口，不转发邮件；容器名包含
+`selfhost-c-smtp`，runner 结束清理自己的容器与临时 CA/私钥。
+可信/不可信/主机名错误证书均在运行时生成，不提交密钥。
+真实协议用例覆盖模板/MIME、from/replyTo/list headers、TLS 与不可降级、
+451/454/535/550、超时/断流脱敏及稳定身份，默认 `test` 不启动 Docker。
+中立冷导入测试阻止 Nodemailer 加载；既有 workerd 渲染测试和 CF 构建验证中立导入。
+
+## 共享接线补丁（协调者；本批未实施，3.1 保持待办）
+
+1. **`packages/config/src/node-schema.ts`**：Node 专用 schema 接受
+   `EMAIL_TRANSPORT=log|resend|smtp`，默认仍为 `log`。保持 CF 的 `withEmailEnv`
+   与 `EMAIL_TRANSPORTS=log|resend` 不变；Node schema 不再经该 helper 把 enum
+   覆盖回 CF 枚举。`nodeEnvSchema` 与 `nodeEnvSchemaFor` 共用 Node 邮件校验。
+   新增 `SMTP_HOST`（hostname/IP，非 URL、无凭据/空白/路径）、`SMTP_PORT`
+   （coerce 整数 1–65535，无默认）、`SMTP_TLS_MODE`
+   （`implicit|starttls|none`，默认 `starttls`）、`SMTP_USER`/`SMTP_PASSWORD`
+   （非空可选）；smtp 时 host/port/`EMAIL_FROM` 必填，user/password 同时存在或均缺。
+   from 验证为单一邮箱（允许显示名），replyTo 为单一邮箱；显式 resend 时仍要求
+   `RESEND_API_KEY`/`EMAIL_FROM`。错误通过 `EnvValidationError` 只列字段名。
+2. **固定文件密钥 allowlist**：在 `nodeSecretNames` 加入 `SMTP_PASSWORD`，复用
+   `loadNodeEnv` 现有 `_FILE` 读取、直接值与文件值冲突/空文件/不可读文件拒绝规则。
+   不为 host/port/user 加任意文件读取。配置示例由协调者在部署接线批次更新，
+   `none` 必须写明仅受控内部中继/测试。
+3. **`packages/config/src/node.ts`**：导出 Node 通道转换函数
+   `nodeEmailTransportConfig(env)`，返回既有 log/resend 或 smtp 配置
+   `{ transport: 'smtp', host, port, tlsMode, from, replyTo?, user?, password? }`；
+   保留中立/CF `emailTransportConfig` 的现有行为与 Resend 稳定幂等键。
+   Node 类型不需要导入 Nodemailer 或 email SDK。
+4. **`apps/jobs/src/queues/email.ts`**：`handleEmailBatch` 接受
+   `EmailTransportConfig | { readonly transport: 'smtp' }`，options 加
+   `sender?: EmailSender`。log 分支保持；smtp 必须有 sender，否则立即安全报错，
+   不回退。把已有“渲染结果→sender.send”映射提取为该函数内小型共用路径，
+   让 Resend 和注入的 SMTP 都传原 to、subject、html、text、headers、idempotencyKey。
+   本文件只 type import `EmailSender`，不 import `@saas/email/node`。
+5. **`apps/jobs/src/handlers.ts` / `JobsContext`**：emailTransport 按第 4 条加 smtp
+   描述类型，新增 `emailSender?: EmailSender`，在 `consumeJobsBatch` 调用
+   `handleEmailBatch` 时连同 observer/deadLetters 传入 sender。
+   不改变首次+5次/30秒指数退避封顶900秒、同批独立确认和有效终态先持久DLQ规则。
+6. **`apps/jobs/src/node/runtime.ts`**：启动、创建业务池之前调用 Node 通道转换；
+   smtp 时由此 Node composition 显式 import `createSmtpSender`，传第 3 条字段，
+   将通道描述和 sender 注入 context。无需 Resend key、不调用 verify、不在 web
+   producer 装配 SMTP。包依赖 `@saas/email` 已有，无需引入另一个发送器/队列。
+   CF 入口、Node registration 和构建脚本无需 SMTP 专属修改。
+7. **共享契约注释**：协调者同步 `EmailMessage.idempotencyKey` 注释，说明去重取决于
+   通道，SMTP 只生成稳定身份；接口形状不变。补 config 缺项/非法值/认证配对/
+   `_FILE` 冲突与无值泄漏测试，并在 B consumer 的独立批次完成 C 3.3/3.4 验收。

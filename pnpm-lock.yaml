@@ -600,6 +600,9 @@ importers:
 
   packages/email:
     dependencies:
+      nodemailer:
+        specifier: 10.1.0
+        version: 10.1.0
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -5179,6 +5182,10 @@ packages:
   node-releases@2.0.57:
     resolution: {integrity: sha512-kQK9LGGFiHtrWiNhZtA7Qbw17AQz+dmsEKODRIVTXA9+e5MS/2gZEBhYJt13GrAz5/IOZKddH/0Z3TP/Zgo+yw==}
     engines: {node: '>=18'}
+
+  nodemailer@10.1.0:
+    resolution: {integrity: sha512-fXW8AulB25aOTuwfRYV6lqHyfz2VM4rr4SGXH03mE7x5znEUpzL5mu6anARUpZN7744Ziwkmr4AxSLPJsBQspg==}
+    engines: {node: '>=20.0.0'}
 
   normalize-path@3.0.0:
     resolution: {integrity: sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA==}
@@ -10370,6 +10377,8 @@ snapshots:
       unstorage: 2.0.0-alpha.10
 
   node-releases@2.0.57: {}
+
+  nodemailer@10.1.0: {}
 
   normalize-path@3.0.0: {}
 
