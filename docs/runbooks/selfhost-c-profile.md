@@ -61,6 +61,6 @@ DockerEngine stats每约500ms采样全部被测容器：usage包含页缓存，w
 
 ## PR检查与后续边界
 
-根check/deps/singletons/dedupe/typecheck/test/build均通过；typecheck14/14，根test26/26任务、174文件/1289用例（21任务缓存），默认CF build2/2、18页预渲染/jobs dry-run。Node web/jobs在本机验收镜像构建中执行pnpm build:node并离线注入maps，18页无部署凭据预渲染通过。OpenSpec strict与新增shell/Node/Biome检查通过。独立核验发现并补修代理错误日志、动态IP冲突和采样覆盖/OOM检查，未削弱业务断言或改第三方adapter。
+根check/deps/singletons/dedupe/typecheck/test/build均通过；typecheck14/14，rebase后根test26/26任务、175文件/1293用例（22任务缓存），默认CF build2/2（最终有效缓存；初轮实跑18页预渲染/jobs dry-run）。Node web/jobs在本机验收镜像构建中执行pnpm build:node并离线注入maps，18页无部署凭据预渲染通过。rebase main `ba8f27b`（#143，CF/fal修复）后，全部根门槛及host `pnpm build:node`重新验证，Node两输出2/2实跑且离线inject通过；profile与Node S3 adapter/入口没有变化。OpenSpec strict与新增shell/Node/Biome检查通过。独立核验发现并补修代理错误日志、动态IP冲突和采样覆盖/OOM检查，未削弱业务断言或改第三方adapter。
 
 只勾选有本次完整证据的C1.5/1.6。C1.7外部R2/第二端点、真实Sentry源码映射、SMTP认证邮件、C4.x及B/D任务不在本批；不同步/归档change、不自行合并PR。profile关闭不复制或删除既有卷，迁移endpoint与备份恢复仍需部署方单独安排。
