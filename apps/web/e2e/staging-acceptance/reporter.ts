@@ -7,6 +7,7 @@ import type {
 } from '@playwright/test/reporter'
 
 import { guidancePrefix } from './accounts.ts'
+import { safeDiagnostic } from './diagnostic.ts'
 
 // 默认 reporter 的 locator/请求诊断可能包含邮箱或请求体；这里只输出固定标题与状态。
 export default class AcceptanceReporter implements Reporter {
@@ -30,6 +31,7 @@ export default class AcceptanceReporter implements Reporter {
     const message = error.message?.replace(/^Error: /, '')
     // 准备检查只构造固定指引、模型 key、数值和 UUID，不输出通用异常中的敏感数据。
     if (message?.startsWith(guidancePrefix)) process.stdout.write(`${message}\n`)
+    else process.stdout.write(`Failure diagnostic: ${safeDiagnostic(message)}\n`)
     const frames =
       error.stack?.split('\n').filter((line) => /^\s+at .*\.[cm]?tsx?:\d+:\d+\)?$/.test(line)) ?? []
     process.stdout.write(
