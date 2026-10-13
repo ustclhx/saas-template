@@ -162,8 +162,19 @@ export async function submitMediaOnce(
       )
       throw error
     }
-    if (!provider.capabilities.idempotentSubmit)
+    if (!provider.capabilities.idempotentSubmit) {
+      // 转成 UNCERTAIN 前保留原因；只记录错误名、代码与 HTTP 状态，不含上游正文或参数。
+      log.warn('ai.media.submit_uncertain', {
+        taskId: task.id,
+        errorName: error instanceof Error ? error.name : typeof error,
+        errorCode: error instanceof AppError ? error.code : undefined,
+        httpStatus:
+          typeof error === 'object' && error !== null && 'httpStatus' in error
+            ? error.httpStatus
+            : undefined,
+      })
       throw new NonRetryableError('MEDIA_SUBMISSION_UNCERTAIN')
+    }
     throw error
   }
 }
