@@ -77,3 +77,41 @@ Caddy 配置依据官方 [global options](https://caddyserver.com/docs/caddyfile
 Docker `json-file` 的 `LOG_MAX_SIZE=10m`、`LOG_MAX_FILE=3` 可调。应用与迁移输出脱敏 JSON；PG/Valkey 保留官方 stderr 格式，由 Docker 包装和轮转。只有 Caddy profile 有公开入口。内部 `/internal/live` 仅用于容器进程探活，B 缺失不触发重启循环；外部 `/api/health` 实时检查 DB/cache/queue/scheduler，返回完整 SHA 与 `lastCronAt`。所有依赖正常且有有效成功心跳时返回 200；启动尚无心跳、依赖故障或消费者/调度器停摆时返回 503。容器 healthy 只说明进程存活，不能代替该 readiness。
 
 初轮镜像与尚未通过的 ACME 项见 [A7 验收记录](../../docs/runbooks/selfhost-a7.md)，完整健康与认证尾部验收见 [A 8/9 runbook](../../docs/runbooks/selfhost-a-final.md)。停止保留数据用 `docker compose down`；仅删除隔离验收数据时才使用 `down -v`。
+
+## 可选 object-storage（C 1.5/1.6）
+
+默认仍连接部署方选择的外部 S3。自带 SeaweedFS **Community 4.48** 只通过额外的 Compose override 启用；不加载该文件时，基础 Compose 不定义自带存储服务或 S3 secret。关闭时同时省略该 override，不能仅删 `--profile` 而保留其中对初始化器的依赖。需要支持 `!override` 的 Docker Compose **2.24.4+**。
+
+复制 `.env.object-storage.example` 为本机 `.env.object-storage`（只填镜像、域名、region、bucket）；按 `secrets.example` 的补充清单创建四份独立随机凭据。不要把值写入 env 示例、Docker ARG、命令参数或日志。使用已包含 C 存储 SDK 的迁移镜像，初始化器挂载仓库脚本、复用其锁定 SDK，不在启动时安装依赖。构建此存储 wrapper 仅使用固定上游镜像；应用镜像发布、服务器部署、备份与恢复仍归 D。
+
+```sh
+# 从仓库根目录构建存储 wrapper；上游 manifest digest 固定并含 amd64/arm64。
+docker build -f deploy/selfhost/object-storage.Dockerfile \
+  -t saas-selfhost/object-storage:4.48 .
+# 然后在 deploy/selfhost 目录：
+docker compose --env-file .env --env-file .env.object-storage \
+  -f compose.yaml -f compose.object-storage.yaml --profile object-storage config
+docker compose --env-file .env --env-file .env.object-storage \
+  -f compose.yaml -f compose.object-storage.yaml --profile object-storage up -d
+```
+
+配置独立 `S3_PUBLIC_DOMAIN` 的 DNS 与 HTTPS 证书，证书覆盖 APP_DOMAIN 和 S3_PUBLIC_DOMAIN；自带证书需对应 CA，ACME 则需两域公网可达。web/jobs 签名与服务端操作均使用 `https://S3_PUBLIC_DOMAIN`，不能在签名后替换协议、Host、路径或 query。专用 ingress 中该域名解析到 Caddy；profile 内部 Caddy 监听443并发布宿主443，HTTP8080发布80。只有代理 namespace 的 `ip_unprivileged_port_start=0`，其 UID10001、cap_drop ALL 保持；jobs 使用独立固定内网地址避免占用代理地址。
+
+对象服务仅接私有 object 网络，Caddy接 object/ingress、不接 PG data；web/jobs 不接 object。master/filer/admin/volume/gRPC 等内部控制端口没有 host 映射，额外 WebDAV/IAM/Iceberg/Lance/Admin UI 关闭。上游 mini 必须运行内部管理/维护组件，关闭 UI 不代表删除控制面；不要把应用容器、其他不受信任服务或外部代理接入 object 网。健康检查用于 master/S3 进程存活，不能代替实际签名协议验收。
+
+首次 named volume 从镜像目录继承 UID1000/GID1000、0700；数据在 `object_data`，master/admin/filer LevelDB 元数据在 `object_metadata`。已有卷应预先匹配属主；入口不执行 root 修复。认证在开始监听前由非 root wrapper从只读 file secrets生成0700 tmpfs中的0600 JSON，Go参数及环境不含凭据。应用身份只声明指定 bucket 的 Read/Write/List/Tagging；admin身份只给初始化器和对象服务。**SeaweedFS 4.48 的 bucket Write 同时允许修改 CORS、生命周期等管理操作**，因此公开代理另拒绝 bucket 根 PUT/POST/DELETE；初始化器使用私有端点进行管理。应用不得绕过代理直接接控制网；当前不支持公开批量 DeleteObjects或用应用密钥管理 bucket。
+
+初始化器依次在数据库迁移、存储健康后完成，成功退出才启动 web/jobs。它以 admin创建私有 bucket，按 APP_URL 的 **origin** 幂等更新 CORS：PUT/GET/HEAD，Content-Type/If-None-Match，暴露 ETag/Content-Length/Content-Type/Content-Disposition，不允许其他来源。不设置匿名策略；错误只输出固定摘要。重跑初始化会覆盖该 bucket 的 CORS，以本配置为准。
+
+S3站点不启用 access log，并用固定503错误响应处理代理故障，防止 Caddy默认5xx错误日志包含预签名 request URI。不要启用 debug或添加包含query的access/error日志。Docker仍按10m×3轮转进程日志。
+
+profile资源起点与最终验收记录见 [C profile runbook](../../docs/runbooks/selfhost-c-profile.md)。仅此 override 将 web/jobs 上限收敛为768/512MiB；PG1024、Valkey384、代理128、存储512MiB，常驻合计3328MiB/2CPU。migrate和bucket init在应用前运行。SeaweedFS设置384MiB Go内存目标、单Go执行核、LevelDB索引、128MiB volume、storage/filer并发参数2与32MiB上传预算；Go内存目标不是硬上限，Docker512MiB才是边界。实测安全并发只适用于记录中的负载，不承诺任意对象数量或吞吐。
+
+停止并保留全部对象/元数据/数据库：
+
+```sh
+docker compose --env-file .env --env-file .env.object-storage \
+  -f compose.yaml -f compose.object-storage.yaml --profile object-storage down
+```
+
+不加 `-v`。随后关闭profile时省略第二份配置文件，使用部署方的外部S3配置；该操作不复制对象，旧对象不会自动出现在新endpoint。重新启用时复用相同project名、卷和凭据。密钥轮换、数据迁移/备份由部署方另行安排。
