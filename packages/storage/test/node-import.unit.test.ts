@@ -15,3 +15,17 @@ it('loads the neutral export in Node without Workers modules or globals', () => 
   )
   expect(output.trim()).toBe('function function undefined')
 })
+
+it('loads the explicit Node adapter without Workers globals', () => {
+  const output = execFileSync(
+    process.execPath,
+    [
+      '--experimental-strip-types',
+      '--input-type=module',
+      '-e',
+      "const storage = await import('@saas/storage/node'); console.log(typeof storage.createNodeStorage, typeof storage.createNodeMediaCopier, typeof globalThis.FixedLengthStream)",
+    ],
+    { cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8' },
+  )
+  expect(output.trim()).toBe('function function undefined')
+})
