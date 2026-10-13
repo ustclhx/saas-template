@@ -7,6 +7,26 @@ export interface WorkersAiBinding {
 
 export const WORKERS_AI_IMAGE_MODEL = '@cf/black-forest-labs/flux-1-schnell'
 
+// 官方错误表中的超时、中止与容量不足；推理未产出结果，重放同步提交不会重复文件或积分。
+const TRANSIENT_WORKERS_AI_CODES = new Set([3007, 3008, 3040])
+
+/** 绑定错误摘要：只取错误名与数字错误码，描述可能回显输入，不进入日志和任务。 */
+export function workersAiErrorSummary(error: unknown): {
+  upstreamName: string | null
+  upstreamCode: number | null
+  retryable: boolean
+} {
+  const name = error instanceof Error ? error.name : null
+  const message = error instanceof Error ? error.message : ''
+  const code = /^(\d{3,5}):/.exec(message)?.[1]
+  const upstreamCode = code ? Number(code) : null
+  return {
+    upstreamName: name && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name) ? name : null,
+    upstreamCode,
+    retryable: upstreamCode !== null && TRANSIENT_WORKERS_AI_CODES.has(upstreamCode),
+  }
+}
+
 function invalidOutput(): never {
   throw new AppError('WORKERS_AI_INVALID_RESPONSE', 'Invalid Workers AI image output', {
     status: 502,
@@ -84,11 +104,15 @@ export function createWorkersAiMediaProvider(options: {
       let response: unknown
       try {
         response = await options.binding.run(options.modelId, input.params)
-      } catch {
-        // 不传播绑定错误中的请求参数和上游详情。
-        throw new AppError('WORKERS_AI_GENERATION_FAILED', 'Workers AI image generation failed', {
-          status: 502,
-        })
+      } catch (error) {
+        // 不传播绑定错误中的请求参数和上游描述；保留安全摘要供排障与重试判断。
+        const summary = workersAiErrorSummary(error)
+        const label = [summary.upstreamName, summary.upstreamCode].filter((v) => v !== null)
+        throw new AppError(
+          'WORKERS_AI_GENERATION_FAILED',
+          `Workers AI image generation failed${label.length ? ` (${label.join(' ')})` : ''}`,
+          { status: 502, details: summary },
+        )
       }
       if (response instanceof ReadableStream)
         return { outputs: [await streamOutput(response)], usage: { images: 1 } }
