@@ -40,17 +40,29 @@ const jwksSchema = z.object({
 
 export type FalSubmissionOutcome = 'ambiguous' | 'rejected'
 
-/** 不附带上游响应或网络错误，避免把请求参数与密钥泄露给客户端或日志。 */
+/**
+ * 不附带上游响应或网络错误，避免把请求参数与密钥泄露给客户端或日志。
+ * causeName 只保留底层异常的类名（如 TypeError / TimeoutError），用于定位传输失败原因。
+ */
 export class FalProviderError extends AppError {
   constructor(
     code: string,
     message: string,
     readonly httpStatus?: number,
     readonly submissionOutcome?: FalSubmissionOutcome,
+    readonly causeName?: string,
   ) {
     super(code, message, { status: 502 })
   }
 }
+
+function errorName(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error
+}
+
+// workerd 不支持 redirect: 'error'（RequestInit 校验直接抛 TypeError，请求不会发出）；
+// 改用 manual 并由 !response.ok 拒绝 3xx，效果同样是不跟随重定向。
+const NO_REDIRECT = 'manual' as const
 
 export interface FalMediaProviderOptions {
   apiKey: string
@@ -151,15 +163,16 @@ export function createFalMediaProvider(options: FalMediaProviderOptions): MediaP
         method,
         headers: { Authorization: `Key ${options.apiKey}`, 'Content-Type': 'application/json' },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        redirect: 'error',
+        redirect: NO_REDIRECT,
         signal: AbortSignal.timeout(30_000),
       })
-    } catch {
+    } catch (error) {
       throw new FalProviderError(
         'FAL_TRANSPORT_ERROR',
         'fal.ai request did not complete',
         undefined,
         method === 'POST' ? 'ambiguous' : undefined,
+        errorName(error),
       )
     }
     if (!response.ok) {
@@ -196,11 +209,17 @@ export function createFalMediaProvider(options: FalMediaProviderOptions): MediaP
     try {
       // JWKS 请求不携带 API key；也不允许回调提供公钥地址。
       response = await fetcher(JWKS_URL, {
-        redirect: 'error',
+        redirect: NO_REDIRECT,
         signal: AbortSignal.timeout(10_000),
       })
-    } catch {
-      throw new FalProviderError('FAL_JWKS_UNAVAILABLE', 'fal.ai webhook keys are unavailable')
+    } catch (error) {
+      throw new FalProviderError(
+        'FAL_JWKS_UNAVAILABLE',
+        'fal.ai webhook keys are unavailable',
+        undefined,
+        undefined,
+        errorName(error),
+      )
     }
     if (!response.ok)
       throw new FalProviderError(

@@ -47,7 +47,7 @@ describe('fal queue（真实录制与未录制分支的文档补充）', () => {
     expect(init).toMatchObject({
       method: 'POST',
       body: JSON.stringify(input.params),
-      redirect: 'error',
+      redirect: 'manual',
     })
     expect(new Headers(init?.headers).get('authorization')).toBe('Key test-placeholder')
     expect(new Headers(init?.headers).has('idempotency-key')).toBe(false)
@@ -219,7 +219,7 @@ describe('fal webhook Ed25519 协议（本地临时签名）', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(fetch.mock.calls[0]).toEqual([
       'https://rest.fal.ai/.well-known/jwks.json',
-      expect.objectContaining({ redirect: 'error' }),
+      expect.objectContaining({ redirect: 'manual' }),
     ])
     expect(new Headers(fetch.mock.calls[0]?.[1]?.headers).has('authorization')).toBe(false)
   })

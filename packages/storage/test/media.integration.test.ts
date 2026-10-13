@@ -112,7 +112,7 @@ describe('safe media persistence', () => {
         new Response('png', { headers: { 'Content-Type': 'image/png', 'Content-Length': '3' } }),
     )
     const first = await copy({ fetch: fetcher, limits: { ...limits, storageBytes: 3 } })
-    expect(fetcher).toHaveBeenCalledWith(output.url, { redirect: 'error' })
+    expect(fetcher).toHaveBeenCalledWith(output.url, { redirect: 'manual' })
     expect(first).toEqual([
       expect.objectContaining({ mime: 'image/png', size: 3, width: 10, height: 20 }),
     ])

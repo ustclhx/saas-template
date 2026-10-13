@@ -112,7 +112,8 @@ export async function sendOperationsChannel(
   try {
     const response = await fetch(url, {
       method: 'POST',
-      redirect: 'error',
+      // workerd 不支持 redirect: 'error'；manual 下 3xx 由 !response.ok 视为失败。
+      redirect: 'manual',
       signal: controller.signal,
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(

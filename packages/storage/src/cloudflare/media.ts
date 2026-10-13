@@ -19,8 +19,9 @@ async function copyOutput(
     throw new AppError('FILE_TYPE_NOT_ALLOWED', 'Media type is not allowed')
   let response: Response
   if ('url' in output) {
+    // workerd 不支持 redirect: 'error'；manual 下 3xx 由下方 !response.ok 拒绝。
     response = await fetcher(allowedUrl(output.url, limits.allowedHosts).toString(), {
-      redirect: 'error',
+      redirect: 'manual',
     })
   } else {
     const body = output.body
