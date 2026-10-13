@@ -315,6 +315,63 @@ export function registerAiChatSuite(
       expect(ledger).toEqual([{ type: 'consume', delta: -3, ref_id: message.id }])
     })
 
+    it('响应逐块转出：模型仍在生成时客户端已收到首段正文（#152）', async () => {
+      const me = await member('incremental', 100)
+      const modelId = await textModel({
+        mode: 'per_call',
+        credits: 1,
+        limits: { maxInputTokens: 4000, maxOutputTokens: 500 },
+      })
+      let release: () => void = () => {}
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const usage = {
+        inputTokens: { total: 2, noCache: 2, cacheRead: undefined, cacheWrite: undefined },
+        outputTokens: { total: 2, text: 2, reasoning: undefined },
+      }
+      const mock = new MockLanguageModelV4({
+        doStream: async () => ({
+          stream: new ReadableStream({
+            async start(controller) {
+              controller.enqueue({ type: 'text-start', id: 't1' })
+              controller.enqueue({ type: 'text-delta', id: 't1', delta: 'first' })
+              // 放行前模型不会结束：服务端若缓冲整段，下面的读取会一直等待。
+              await gate
+              controller.enqueue({ type: 'text-delta', id: 't1', delta: ' second' })
+              controller.enqueue({ type: 'text-end', id: 't1' })
+              controller.enqueue({
+                type: 'finish',
+                finishReason: { unified: 'stop', raw: undefined },
+                usage,
+              })
+              controller.close()
+            },
+          }),
+        }),
+      })
+      const { response, settled } = await begin(me, { modelId, text: 'hi' }, { mock })
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error('missing response body')
+      const decoder = new TextDecoder()
+      let early = ''
+      while (!streamedText(early).includes('first')) {
+        const { done, value } = await reader.read()
+        if (done) throw new Error(`stream ended before release: ${response.status}`)
+        early += decoder.decode(value, { stream: true })
+      }
+      expect(streamedText(early)).toBe('first')
+      release()
+      let rest = ''
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        rest += decoder.decode(value, { stream: true })
+      }
+      await settled()
+      expect(streamedText(early + rest)).toBe('first second')
+    })
+
     it('实际少于预扣（按 token）：预扣 50、实际 12 → 扣除 12、退回 38', async () => {
       const me = await member('token-less', 1000)
       // 预扣 = ceil((估算输入 × 1 + 4900 × 10) / 1000) = 50
