@@ -15,7 +15,7 @@ const CATEGORIES = [
   /\bBrowser closed/,
   /\bProtocol error \([A-Za-z.]+\)/,
   /\b(?:ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN)\b/,
-  /\bRead-only evidence query failed \((?:connect|timeout|ssl|auth|sql|container|unknown)\)/,
+  /\bRead-only evidence query failed \((?:connect|timeout|ssl|auth|sql|unknown)\)/,
 ]
 
 export function safeDiagnostic(message: string | undefined) {
@@ -27,46 +27,41 @@ export function safeDiagnostic(message: string | undefined) {
   return safe.length > 0 ? safe.join(': ') : 'unclassified'
 }
 
-export type PsqlFailure = 'connect' | 'timeout' | 'ssl' | 'auth' | 'sql' | 'container' | 'unknown'
+export type PgFailure = 'connect' | 'timeout' | 'ssl' | 'auth' | 'sql' | 'unknown'
 
-// 按顺序匹配：docker 与认证先于连接类（认证失败也以 "connection to server ... failed" 开头）；
-// Neon 代理的唤醒失败以 ERROR: 开头，所以连接类要先于 sql。statement timeout 属于查询本身，归 sql。
-const PSQL_PATTERNS: [PsqlFailure, RegExp][] = [
-  [
-    'container',
-    /Error response from daemon|No such container|Cannot connect to the Docker daemon|is not running/i,
-  ],
-  [
-    'auth',
-    /password authentication failed|authentication failed|no pg_hba\.conf entry|role ".*" does not exist|database ".*" does not exist|password is required/i,
-  ],
-  ['sql', /canceling statement due to statement timeout/i],
-  ['ssl', /\bSSL\b|unexpected eof/i],
-  ['timeout', /timeout expired|timed out/i],
-  [
-    'connect',
-    /could not connect|connection refused|could not translate host name|server closed the connection|terminating connection|connection to server .* failed|no connection to the server|connection reset|network is unreachable|compute node|compute is starting|endpoint is starting/i,
-  ],
-  ['sql', /^(?:psql:[^\n]*?)?(?:ERROR|FATAL):/im],
-]
-
-export const TRANSIENT_PSQL_FAILURES: ReadonlySet<PsqlFailure> = new Set([
-  'connect',
-  'timeout',
-  'ssl',
+// SQLSTATE 08 类为连接异常；57P01-57P03 为服务端关闭/重启；53300 为连接数已满，均可重连重放。
+const RECONNECTABLE_SQLSTATE = /^(?:08|57P0[123]$|53300$)/
+// postgres.js 自身的连接错误码与 Node 套接字错误码。
+const CONNECT_CODES = new Set([
+  'CONNECTION_CLOSED',
+  'CONNECTION_ENDED',
+  'CONNECTION_DESTROYED',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ECONNABORTED',
+  'EPIPE',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'ENETDOWN',
 ])
 
-// psql/docker 的 stderr 含主机名、SQL 片段或数据，只返回固定类别，原文不外传。
-export function classifyPsqlFailure(stderr: string, code: number | null): PsqlFailure {
-  // 跳过 psql 回显的 SQL 行（LINE n: 与箭头行），避免查询文本误触发连接类模式。
-  const text = stderr
-    .split('\n')
-    .filter((line) => !/^\s*(?:LINE \d+:|\^)/.test(line) && !/^\s/.test(line))
-    .join('\n')
-  for (const [category, pattern] of PSQL_PATTERNS) if (pattern.test(text)) return category
-  // psql 退出码 2 表示连接异常，3 表示脚本错误；docker exec 自身失败为 125-127。
-  if (code === 2) return 'connect'
-  if (code === 3) return 'sql'
-  if (code !== null && code >= 125 && code <= 127) return 'container'
+export const TRANSIENT_PG_FAILURES: ReadonlySet<PgFailure> = new Set(['connect', 'timeout', 'ssl'])
+
+// 驱动错误的 message 可能含主机名、SQL 片段或数据，只按错误码与固定短语归为类别，原文不外传。
+export function classifyPgFailure(error: unknown): PgFailure {
+  const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown }
+  const sqlstate = typeof code === 'string' ? code : ''
+  const text = typeof message === 'string' ? message : ''
+  if (sqlstate === 'CONNECT_TIMEOUT' || sqlstate === 'ETIMEDOUT') return 'timeout'
+  if (CONNECT_CODES.has(sqlstate)) return 'connect'
+  if (/^(?:ERR_SSL|ERR_TLS)|^EPROTO$|CERT|^DEPTH_ZERO/.test(sqlstate)) return 'ssl'
+  if (/^28/.test(sqlstate) || /^SASL_/.test(sqlstate)) return 'auth'
+  if (RECONNECTABLE_SQLSTATE.test(sqlstate)) return 'connect'
+  // Neon 代理在计算节点唤醒或不可达时以 XX000 等通用码返回，靠固定短语识别。
+  if (/compute node|compute is starting|endpoint is starting|could not connect/i.test(text))
+    return 'connect'
+  if (/^[0-9A-Z]{5}$/.test(sqlstate)) return 'sql'
   return 'unknown'
 }

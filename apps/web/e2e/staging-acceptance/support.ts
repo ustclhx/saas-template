@@ -1,7 +1,7 @@
-import { spawn } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { type BrowserContext, chromium, expect, type Page, test } from '@playwright/test'
 import { type EntitlementSubscription, selectEntitlements } from '@saas/entitlements'
+import postgres from 'postgres'
 import templateConfig from '../../../../template.config.ts'
 import { stubTurnstile } from '../turnstile.ts'
 import {
@@ -13,12 +13,7 @@ import {
   HUMAN_LOGIN_TIMEOUT,
   sessionUser,
 } from './accounts.ts'
-import {
-  classifyPsqlFailure,
-  type PsqlFailure,
-  safeDiagnostic,
-  TRANSIENT_PSQL_FAILURES,
-} from './diagnostic.ts'
+import { classifyPgFailure, safeDiagnostic, TRANSIENT_PG_FAILURES } from './diagnostic.ts'
 import { ACCEPTANCE_MODELS } from './models.ts'
 
 export { adminIdentity, ensureRegisteredAccount, registerAccount, sessionUser } from './accounts.ts'
@@ -61,66 +56,85 @@ export function sqlLiteral(value: string) {
   return `'${value.replaceAll("'", "''")}'`
 }
 
-// Neon 缩容到零后首个连接需等计算节点唤醒，只对连接类失败短暂退避重试；只读查询可安全重放。
-const QUERY_RETRY_DELAYS = [2_000, 5_000]
+// 每次查询新建连接（原先每条都 docker exec psql）在跨洋链路上握手需 2-4 秒、十余次往返，
+// 偶发丢包会让整轮握手失败；改为同一 worker 复用单条只读连接，断线由驱动自动重连。
+let readOnlyClient: postgres.Sql | undefined
+
+function readOnlySql() {
+  readOnlyClient ??= postgres(process.env.NEON_READONLY_URL ?? '', {
+    max: 1,
+    // Neon 缩容到零后首个连接需等计算节点唤醒。
+    connect_timeout: 15,
+    // 空闲连接自行关闭，避免中间设备静默丢弃后首条查询卡住，也不阻止 worker 退出。
+    idle_timeout: 20,
+    fetch_types: false,
+    prepare: false,
+    onnotice: () => {},
+    // 会话级只读与语句超时作为第二道保险；事务本身也声明 READ ONLY。
+    // Neon 代理会丢弃自定义启动参数，只转发 options 中的 -c 设置。
+    connection: {
+      application_name: 'staging-acceptance-readonly',
+      options: '-c default_transaction_read_only=on -c statement_timeout=30s',
+    },
+  })
+  return readOnlyClient
+}
+
+async function resetReadOnlyClient() {
+  const client = readOnlyClient
+  readOnlyClient = undefined
+  await client?.end({ timeout: 0 }).catch(() => {})
+}
+
+// 只对连接类失败退避重试（只读查询可安全重放）；带抖动以免与瞬时网络抖动同相，总等待约 30 秒。
+const QUERY_RETRY_DELAYS = [1_000, 3_000, 8_000, 15_000]
+// 半开连接上驱动不会自行超时，客户端兜底时长需大于连接与语句超时之和。
+const QUERY_DEADLINE = 50_000
 
 export async function query<T extends Record<string, unknown>>(statement: string): Promise<T[]> {
   requireEnv(['NEON_READONLY_URL'])
   for (let attempt = 0; ; attempt++) {
-    const result = await runReadOnly(statement)
-    if (typeof result === 'string') {
-      try {
-        return JSON.parse(result.trim()) as T[]
-      } catch {
-        throw new Error('Invalid read-only evidence result')
-      }
+    let category: ReturnType<typeof classifyPgFailure>
+    try {
+      return await runReadOnly<T>(statement)
+    } catch (error) {
+      category = classifyPgFailure(error)
     }
+    // 丢弃可能处于异常状态的连接，下次重试重新握手。
+    if (TRANSIENT_PG_FAILURES.has(category)) await resetReadOnlyClient()
     const delay = QUERY_RETRY_DELAYS[attempt]
-    if (!TRANSIENT_PSQL_FAILURES.has(result.category) || delay === undefined)
-      throw new Error(`Read-only evidence query failed (${result.category})`)
-    await new Promise((resolve) => setTimeout(resolve, delay))
+    if (!TRANSIENT_PG_FAILURES.has(category) || delay === undefined)
+      throw new Error(`Read-only evidence query failed (${category})`)
+    await new Promise((resolve) => setTimeout(resolve, delay * (0.75 + Math.random() * 0.5)))
   }
 }
 
-function runReadOnly(statement: string) {
-  // 连接串仅通过继承环境传递；SQL 走 stdin，stderr 只在内存中归类，不透传连接诊断或数据。
-  return new Promise<string | { category: PsqlFailure }>((resolve, reject) => {
-    const child = spawn(
-      'docker',
-      [
-        'exec',
-        '-i',
-        '-e',
-        'U',
-        '-e',
-        'PGCONNECT_TIMEOUT',
-        'saas-template-pg',
-        'sh',
-        '-c',
-        'exec psql "$U" -X -q -t -A -v ON_ERROR_STOP=1',
-      ],
-      {
-        // 冷启动唤醒需要数秒，给连接留出 15 秒。
-        env: { ...process.env, U: process.env.NEON_READONLY_URL, PGCONNECT_TIMEOUT: '15' },
-        stdio: ['pipe', 'pipe', 'pipe'],
-      },
-    )
-    let output = ''
-    let errors = ''
-    child.stdout.on('data', (chunk) => {
-      output += String(chunk)
-    })
-    child.stderr.on('data', (chunk) => {
-      if (errors.length < 16_384) errors += String(chunk)
-    })
-    child.on('error', () => reject(new Error('Read-only evidence query could not start')))
-    child.on('close', (code) =>
-      resolve(code === 0 ? output : { category: classifyPsqlFailure(errors, code) }),
-    )
-    child.stdin.end(
-      `BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSET LOCAL statement_timeout = '30s';\nSELECT coalesce(json_agg(evidence_row), '[]'::json) FROM (${statement}) AS evidence_row;\nROLLBACK;\n`,
+async function runReadOnly<T>(statement: string) {
+  // 连接串只在驱动内使用；SQL、行数据与驱动原始错误均不输出，只由调用方归类。
+  const sql = readOnlySql()
+  let timer: NodeJS.Timeout | undefined
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(Object.assign(new Error('deadline'), { code: 'CONNECT_TIMEOUT' })),
+      QUERY_DEADLINE,
     )
   })
+  try {
+    const rows = await Promise.race([
+      sql.begin('isolation level repeatable read read only', async (tx) => {
+        await tx`set local statement_timeout = '30s'`
+        return tx.unsafe<{ rows: T[] }[]>(
+          `select coalesce(json_agg(evidence_row), '[]'::json) as rows from (${statement}) as evidence_row`,
+        )
+      }),
+      deadline,
+    ])
+    const result = rows[0]?.rows
+    if (!Array.isArray(result)) throw new Error('Invalid read-only evidence result')
+    return result
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 const readyWorkspaces = new Set<string>()
