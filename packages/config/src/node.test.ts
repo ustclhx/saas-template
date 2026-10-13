@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { EnvValidationError } from './env.ts'
-import { loadNodeEnv } from './node.ts'
+import {
+  loadNodeEnv,
+  nodeEmailTransportConfig,
+  nodeSecretNames,
+  nodeStorageConfig,
+} from './node.ts'
 import { templateConfigDefaults } from './template.ts'
 
 const valid = {
@@ -14,6 +19,20 @@ const valid = {
   APP_URL: 'https://example.test',
 }
 const directories: string[] = []
+const storage = {
+  S3_ENDPOINT: 'https://objects.example.test',
+  S3_REGION: 'auto',
+  S3_BUCKET: 'fixture',
+  S3_ACCESS_KEY_ID: 'fixture-access',
+  S3_SECRET_ACCESS_KEY: 'fixture-secret',
+}
+const smtp = {
+  EMAIL_TRANSPORT: 'smtp',
+  SMTP_HOST: 'localhost',
+  SMTP_PORT: '2525',
+  EMAIL_FROM: 'Fixture <mail@example.test>',
+  EMAIL_REPLY_TO: 'help@example.test',
+}
 function directory() {
   const path = mkdtempSync(join(tmpdir(), 'node-config-'))
   directories.push(path)
@@ -37,6 +56,239 @@ function failure(fn: () => unknown, names: string[], values: string[]) {
 }
 
 describe('Node runtime config', () => {
+  it('S3 原始配置启用校验，全部缺省保持 unavailable，布尔严格且两种 schema 一致', () => {
+    const auth = { ...templateConfigDefaults.auth, oauth: [], turnstile: false }
+    for (const templateConfig of [undefined, { auth }]) {
+      const load = (env: Record<string, string>) =>
+        loadNodeEnv({
+          dotenvPath: false,
+          env: { ...valid, ...env },
+          ...(templateConfig ? { templateConfig } : {}),
+        })
+      expect(nodeStorageConfig(load({}))).toBeUndefined()
+      expect(load({}).S3_FORCE_PATH_STYLE).toBe(true)
+      for (const key of Object.keys(storage)) {
+        const partial = { ...storage }
+        delete partial[key as keyof typeof storage]
+        failure(() => load(partial), [key], [])
+      }
+      failure(() => load({ S3_FORCE_PATH_STYLE: 'false' }), Object.keys(storage), [])
+      expect(nodeStorageConfig(load(storage))).toEqual({
+        endpoint: storage.S3_ENDPOINT,
+        region: 'auto',
+        bucket: 'fixture',
+        accessKeyId: 'fixture-access',
+        secretAccessKey: 'fixture-secret',
+        forcePathStyle: true,
+      })
+      expect(
+        nodeStorageConfig(load({ ...storage, S3_FORCE_PATH_STYLE: 'false' }))?.forcePathStyle,
+      ).toBe(false)
+      failure(() => load({ ...storage, S3_FORCE_PATH_STYLE: '1' }), ['S3_FORCE_PATH_STYLE'], [])
+    }
+  })
+
+  it('S3 endpoint 拒绝非 HTTP(S)、内嵌凭据、query/fragment，生产强制 HTTPS且不泄漏值', () => {
+    const load = (S3_ENDPOINT: string, SENTRY_ENVIRONMENT = 'staging') =>
+      loadNodeEnv({
+        dotenvPath: false,
+        env: { ...valid, ...storage, S3_ENDPOINT, SENTRY_ENVIRONMENT },
+      })
+    expect(load('http://localhost:8333').S3_ENDPOINT).toBe('http://localhost:8333')
+    for (const endpoint of [
+      'ftp://objects.test',
+      'https://user:private@objects.test',
+      'https://objects.test?signature=private',
+      'https://objects.test#private',
+      'invalid-private',
+    ]) {
+      failure(() => load(endpoint), ['S3_ENDPOINT'], [endpoint])
+    }
+    failure(
+      () => load('http://objects.test', 'production'),
+      ['S3_ENDPOINT'],
+      ['http://objects.test'],
+    )
+  })
+
+  it('Node smtp 配置无 Resend 依赖，两种 schema 保持通道/必需项与认证配对校验', () => {
+    const auth = { ...templateConfigDefaults.auth, oauth: [], turnstile: false }
+    for (const templateConfig of [undefined, { auth }]) {
+      const load = (env: Record<string, string>) =>
+        loadNodeEnv({
+          dotenvPath: false,
+          env: { ...valid, ...env },
+          ...(templateConfig ? { templateConfig } : {}),
+        })
+      expect(nodeEmailTransportConfig(load(smtp))).toEqual({
+        transport: 'smtp',
+        host: 'localhost',
+        port: 2525,
+        tlsMode: 'starttls',
+        from: smtp.EMAIL_FROM,
+        replyTo: smtp.EMAIL_REPLY_TO,
+      })
+      failure(() => load({ EMAIL_TRANSPORT: 'smtp' }), ['SMTP_HOST', 'SMTP_PORT', 'EMAIL_FROM'], [])
+      failure(
+        () => load({ ...smtp, SMTP_USER: 'fixture-user' }),
+        ['SMTP_PASSWORD'],
+        ['fixture-user'],
+      )
+      failure(
+        () => load({ ...smtp, SMTP_PASSWORD: 'fixture-password' }),
+        ['SMTP_USER'],
+        ['fixture-password'],
+      )
+      expect(
+        nodeEmailTransportConfig(
+          load({
+            ...smtp,
+            SMTP_USER: 'fixture-user',
+            SMTP_PASSWORD: 'fixture-password',
+            SMTP_TLS_MODE: 'implicit',
+          }),
+        ),
+      ).toMatchObject({ user: 'fixture-user', password: 'fixture-password', tlsMode: 'implicit' })
+      expect(nodeEmailTransportConfig(load({ ...smtp, SMTP_TLS_MODE: 'none' }))).toMatchObject({
+        tlsMode: 'none',
+      })
+      expect(nodeEmailTransportConfig(load({}))).toEqual({ transport: 'log' })
+      expect(
+        nodeEmailTransportConfig(
+          load({ ...smtp, EMAIL_FROM: '"Example, Inc" <mail@example.test>' }),
+        ),
+      ).toMatchObject({ from: '"Example, Inc" <mail@example.test>' })
+      expect(
+        nodeEmailTransportConfig(
+          load({
+            EMAIL_TRANSPORT: 'resend',
+            EMAIL_FROM: smtp.EMAIL_FROM,
+            RESEND_API_KEY: 'fixture-resend',
+          }),
+        ),
+      ).toMatchObject({ transport: 'resend', apiKey: 'fixture-resend' })
+    }
+  })
+
+  it('SMTP 拒绝 URL host、非法端口/TLS、空认证及多邮箱/换行注入', () => {
+    const cases = {
+      SMTP_HOST: ['https://private.test', 'user@private.test', 'private.test/path', 'host name'],
+      SMTP_PORT: ['', '0', '65536', '1.5', 'private-port'],
+      SMTP_TLS_MODE: ['private-mode'],
+      SMTP_USER: [''],
+      SMTP_PASSWORD: [''],
+      EMAIL_FROM: [
+        'one@example.test,two@example.test',
+        'Name\r\n <one@example.test>',
+        'private-invalid',
+      ],
+      EMAIL_REPLY_TO: ['one@example.test;two@example.test'],
+    }
+    for (const [key, values] of Object.entries(cases)) {
+      for (const value of values)
+        failure(
+          () =>
+            loadNodeEnv({
+              dotenvPath: false,
+              env: {
+                ...valid,
+                ...smtp,
+                SMTP_USER: 'fixture-user',
+                SMTP_PASSWORD: 'fixture-password',
+                [key]: value,
+              },
+            }),
+          [key],
+          value.includes('private') ? [value] : [],
+        )
+    }
+    for (const host of ['mail.example.test', '127.0.0.1', '::1'])
+      expect(
+        loadNodeEnv({ dotenvPath: false, env: { ...valid, ...smtp, SMTP_HOST: host } }).SMTP_HOST,
+      ).toBe(host)
+  })
+
+  it('Sentry 环境可选无默认，空 DSN关闭，非法 DSN/环境和生产HTTP拒绝且不泄漏值', () => {
+    const load = (env: Record<string, string>) =>
+      loadNodeEnv({ dotenvPath: false, env: { ...valid, ...env } })
+    expect(load({}).SENTRY_ENVIRONMENT).toBeUndefined()
+    expect(load({ SENTRY_DSN: '' }).SENTRY_DSN).toBe('')
+    expect(
+      load({ SENTRY_DSN: 'http://public@localhost/1', SENTRY_ENVIRONMENT: 'smoke' }).SENTRY_DSN,
+    ).toBe('http://public@localhost/1')
+    for (const dsn of [
+      'private-invalid',
+      'ftp://public@host.test/1',
+      'https://host.test/1',
+      'https://public:password@host.test/1',
+      'https://private-key@host.test/1',
+      'https://public@host.test/project',
+      'https://public@host.test/1?private=query',
+      'https://public@host.test/1#private',
+    ])
+      failure(() => load({ SENTRY_DSN: dsn }), ['SENTRY_DSN'], [dsn])
+    failure(
+      () => load({ SENTRY_DSN: 'http://public@host.test/1', SENTRY_ENVIRONMENT: 'production' }),
+      ['SENTRY_DSN'],
+      ['http://public@host.test/1'],
+    )
+    failure(
+      () => load({ SENTRY_ENVIRONMENT: 'private-env' }),
+      ['SENTRY_ENVIRONMENT'],
+      ['private-env'],
+    )
+  })
+
+  it('新增 _FILE 仅限 S3 两凭据、SMTP password、Sentry DSN，复用冲突与不可读/空文件拒绝', () => {
+    const dir = directory()
+    const path = join(dir, 'secret')
+    const empty = join(dir, 'empty')
+    writeFileSync(empty, '\n')
+    for (const [key, value, config] of [
+      ['S3_ACCESS_KEY_ID', storage.S3_ACCESS_KEY_ID, storage],
+      ['S3_SECRET_ACCESS_KEY', storage.S3_SECRET_ACCESS_KEY, storage],
+      ['SMTP_PASSWORD', 'fixture-password', { ...smtp, SMTP_USER: 'fixture-user' }],
+      ['SENTRY_DSN', 'https://public@host.test/1', {}],
+    ] as const) {
+      writeFileSync(path, `${value}\n`)
+      const source: Record<string, string | undefined> = {
+        ...valid,
+        ...config,
+        [key]: undefined,
+        [`${key}_FILE`]: path,
+      }
+      expect(loadNodeEnv({ dotenvPath: false, env: source })[key]).toBe(value)
+      failure(
+        () => loadNodeEnv({ dotenvPath: false, env: { ...source, [key]: value } }),
+        [key],
+        [value, path],
+      )
+      for (const file of [empty, join(dir, 'missing')])
+        failure(
+          () => loadNodeEnv({ dotenvPath: false, env: { ...source, [`${key}_FILE`]: file } }),
+          [key],
+          [file, 'ENOENT'],
+        )
+    }
+    for (const key of [
+      'S3_ENDPOINT',
+      'S3_REGION',
+      'S3_BUCKET',
+      'SMTP_HOST',
+      'SMTP_PORT',
+      'SMTP_USER',
+    ])
+      expect(nodeSecretNames).not.toContain(key)
+    expect(
+      nodeStorageConfig(
+        loadNodeEnv({
+          dotenvPath: false,
+          env: { ...valid, S3_ENDPOINT_FILE: '/unreadable', SMTP_HOST_FILE: '/unreadable' },
+        }),
+      ),
+    ).toBeUndefined()
+  })
+
   it('Node 文本出口默认 direct，可显式选择 gateway，非法值启动失败且脱敏', () => {
     expect(loadNodeEnv({ dotenvPath: false, env: valid }).AI_TEXT_EGRESS).toBe('direct')
     expect(

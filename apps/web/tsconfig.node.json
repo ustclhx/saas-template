@@ -19,7 +19,8 @@
     "e2e-live",
     "vite.node.config.ts",
     "vitest.node.config.ts",
-    "vitest.production.node.config.ts"
+    "vitest.production.node.config.ts",
+    "vitest.storage.node.config.ts"
   ],
   "exclude": ["e2e/staging-acceptance/local-media.ts"]
 }

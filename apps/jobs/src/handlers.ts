@@ -1,4 +1,4 @@
-import type { EmailTransportConfig } from '@saas/config'
+import type { EmailSender } from '@saas/email'
 import type {
   Capability,
   DeadLetterSink,
@@ -20,12 +20,13 @@ import { runFilesCleanup } from './cron/files-cleanup.ts'
 import { HEARTBEAT_CRON, runHeartbeat } from './cron/heartbeat.ts'
 import { runMetricsDaily } from './cron/metrics-daily.ts'
 import { runWorkspaceCleanup, WORKSPACE_CLEANUP_CRON } from './cron/workspace-cleanup.ts'
-import type { JobObserver } from './observer.ts'
+import { type JobObserver, withJobObserver } from './observer.ts'
 import { handleBillingBatch } from './queues/billing.ts'
-import { handleEmailBatch } from './queues/email.ts'
+import { handleEmailBatch, type JobsEmailTransport } from './queues/email.ts'
 
 export interface JobsContext extends BillingEnv {
-  emailTransport: EmailTransportConfig
+  emailTransport: JobsEmailTransport
+  emailSender?: EmailSender
   files: Capability<{ delete(key: string | string[]): Promise<void> }>
   observer: JobObserver
   emailDeadLetters?: DeadLetterSink<unknown>
@@ -36,11 +37,16 @@ export interface JobsContext extends BillingEnv {
 const EMAIL_QUEUES = new Set(['email', 'email-staging'])
 const EVENTS_QUEUES = new Set(['events', 'events-staging'])
 
-export async function consumeJobsBatch(batch: QueueBatch<unknown>, context: JobsContext) {
+export function consumeJobsBatch(batch: QueueBatch<unknown>, context: JobsContext) {
+  return withJobObserver(context.observer, () => consumeBatch(batch, context))
+}
+
+async function consumeBatch(batch: QueueBatch<unknown>, context: JobsContext) {
   context.observer.tagContext()
   if (EMAIL_QUEUES.has(batch.queue)) {
     return handleEmailBatch(batch, context.emailTransport, {
       observer: context.observer,
+      ...(context.emailSender && { sender: context.emailSender }),
       ...(context.emailDeadLetters && { deadLetters: context.emailDeadLetters }),
     })
   }
@@ -99,11 +105,20 @@ export function registerJobsSchedules(
   }
 }
 
-export async function runJobsSchedule(
+export function runJobsSchedule(
   cron: string,
   scheduledAt: Date,
   context: JobsContext,
   options: JobsScheduleOptions = {},
+) {
+  return withJobObserver(context.observer, () => runSchedule(cron, scheduledAt, context, options))
+}
+
+async function runSchedule(
+  cron: string,
+  scheduledAt: Date,
+  context: JobsContext,
+  options: JobsScheduleOptions,
 ) {
   context.observer.tagContext()
   const profile = options.cronProfile ?? 'default'

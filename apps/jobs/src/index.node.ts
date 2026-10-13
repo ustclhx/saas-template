@@ -5,7 +5,7 @@ import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import { z } from 'zod'
 import templateConfig from '../../../template.config.ts'
-import { startNodeJobs } from './node/runtime.ts'
+import { initializeNodeObservability } from './node/observability.ts'
 
 declare const __APP_VERSION__: string
 
@@ -22,6 +22,14 @@ try {
       JOB_NATIVE_POOL_MAX: z.coerce.number().int().min(3).max(100).default(4),
     }),
   )
+  const observer = await initializeNodeObservability({
+    dsn: config.SENTRY_DSN,
+    environment: config.SENTRY_ENVIRONMENT,
+    release: __APP_VERSION__,
+  })
+  // runtime 与 DBOS/邮件/存储模块仅在进程 observer 初始化后加载。
+  const { startNodeJobs } = await import('./node/runtime.ts')
+  const client = observer.client
   const runtime = await startNodeJobs(config, {
     port: listener.PORT,
     host: listener.HOST,
@@ -29,6 +37,12 @@ try {
     ownershipDirectory: listener.JOB_OWNERSHIP_DIRECTORY,
     nativePoolMax: listener.JOB_NATIVE_POOL_MAX,
     applicationVersion: __APP_VERSION__,
+    observer: {
+      ...observer,
+      ...(client && {
+        close: async (timeoutMs: number) => client.close(timeoutMs),
+      }),
+    },
   })
   log.info('jobs.node.started', { version: __APP_VERSION__ })
   const stop = () => {

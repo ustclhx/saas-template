@@ -49,7 +49,7 @@ describe('structured log', () => {
     const [line] = read()
     expect(line).toMatchObject({
       level: 'error',
-      error: { name: 'TypeError', message: 'boom' },
+      error: { name: 'TypeError', message: '[REDACTED]' },
       authorization: '[REDACTED]',
     })
   })

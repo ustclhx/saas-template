@@ -94,7 +94,7 @@ export function withRequestId<T extends object>(message: T): T & { requestId?: s
 
 /**
  * 输出一行结构化日志：`{ level, event, ...上下文, ...fields }`，经脱敏后序列化。
- * `error` 字段可以直接传入捕获到的异常，输出时只保留 name / message / stack。写日志本身不会抛错。
+ * `error` 字段可以直接传入捕获到的异常，输出时只保留安全类型与业务码，任意异常原文被移除。写日志本身不会抛错。
  */
 export function writeLog(level: LogLevel, event: string, fields: LogFields = {}): void {
   let line: string

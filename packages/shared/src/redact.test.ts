@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { AppError } from './errors.ts'
 import { isSensitiveKey, REDACTED, redact } from './redact.ts'
 
 describe('redact', () => {
@@ -51,7 +52,7 @@ describe('redact', () => {
     expect(result.body?.message).toEqual({ id: 'm1', role: 'user', parts: REDACTED })
     expect(result.body?.messages).toBe(REDACTED)
     expect(result.body?.prompt).toBe(REDACTED)
-    expect(result.error).toMatchObject({ name: 'Error', message: 'upstream failed' })
+    expect(result.error).toEqual({ name: 'Error', message: REDACTED })
     // 计量字段不是令牌
     expect(result.usage).toEqual({ inputTokens: 12, outputTokens: 34 })
     // 不修改入参
@@ -73,6 +74,22 @@ describe('redact', () => {
     expect(redact(cyclic)).toEqual({ id: 1, self: '[Circular]' })
     expect(JSON.stringify(redact(deep))).toContain('[Truncated]')
     expect(redact({ n: 10n, at: new Date(0) })).toEqual({ n: '10', at: '1970-01-01T00:00:00.000Z' })
+  })
+
+  it('removes arbitrary error text, stack and cause while retaining safe business codes', () => {
+    const text = 'ordinary private email and AI conversation body'
+    const error = new AppError('STORAGE_FAILED', text, {
+      cause: new Error(
+        'https://object.test/file?signature=s3-secret SMTP password Authorization Cookie OTP',
+      ),
+    })
+    error.stack = `Error: ${text}\nhttps://object.test/file?signature=s3-secret`
+    expect(redact(error)).toEqual({ name: 'AppError', message: REDACTED, code: 'STORAGE_FAILED' })
+    expect(redact(Object.assign(new Error(text), { name: text, code: text }))).toEqual({
+      name: 'Error',
+      message: REDACTED,
+    })
+    expect(redact(new AppError(text, text))).toEqual({ name: 'AppError', message: REDACTED })
   })
 })
 

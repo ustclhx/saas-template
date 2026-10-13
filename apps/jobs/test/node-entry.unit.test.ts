@@ -19,6 +19,11 @@ const fixture = vi.hoisted(() => ({
   queuePrepare: vi.fn(),
   schedulerPrepare: vi.fn(),
   dispose: vi.fn(),
+  storageDelete: vi.fn(),
+  jobsContext: undefined as unknown,
+}))
+vi.mock('@saas/storage/node', () => ({
+  createNodeStorage: () => ({ delete: fixture.storageDelete }),
 }))
 vi.mock('@saas/db', () => ({
   createDb: fixture.createDb,
@@ -26,7 +31,8 @@ vi.mock('@saas/db', () => ({
 }))
 vi.mock('../src/node/registration.ts', () => ({
   getNodeJobFeatures: () => ({ billing: false }),
-  registerNodeJobsSchedules: () => {
+  registerNodeJobsSchedules: (_scheduler: unknown, context: unknown) => {
+    fixture.jobsContext = context
     fixture.events.push('scheduler.register')
     return fixture.dispose
   },
@@ -279,4 +285,44 @@ it('disposes registered handlers and resources when persistent preparation fails
   ])
   expect(fixture.closeCache).toHaveBeenCalledOnce()
   expect(fixture.closeDb).toHaveBeenCalledOnce()
+})
+
+it('bridges string and array object deletion serially and preserves a cleanup failure', async () => {
+  const configured = {
+    ...config,
+    S3_ENDPOINT: 'https://objects.example.com',
+    S3_REGION: 'auto',
+    S3_BUCKET: 'fixture',
+    S3_FORCE_PATH_STYLE: true,
+    S3_ACCESS_KEY_ID: 'fixture',
+    S3_SECRET_ACCESS_KEY: 'fixture',
+  }
+  active = await startNodeJobs(configured, options)
+  const context = fixture.jobsContext as import('../src/handlers.ts').JobsContext
+  expect(context.files.available).toBe(true)
+  if (!context.files.available) throw new Error('Storage not assembled')
+  await context.files.value.delete('first')
+  await context.files.value.delete(['second', 'third'])
+  expect(fixture.storageDelete.mock.calls).toEqual([['first'], ['second'], ['third']])
+  const failure = new Error('delete fixture failed')
+  fixture.storageDelete.mockRejectedValueOnce(failure)
+  await expect(context.files.value.delete(['failed', 'never'])).rejects.toBe(failure)
+  expect(fixture.storageDelete).not.toHaveBeenCalledWith('never')
+})
+
+it('closes the injected observer after business resources with only the remaining shutdown budget', async () => {
+  const close = vi.fn(async (_timeoutMs: number) => {
+    fixture.events.push('observer.close')
+  })
+  active = await startNodeJobs(config, {
+    ...options,
+    observer: { tagContext() {}, captureException() {}, close },
+  })
+  expect(await active.shutdown()).toMatchObject({ completed: true, resourcesClosed: true })
+  expect(close).toHaveBeenCalledOnce()
+  expect(close.mock.calls[0]?.[0]).toBeGreaterThan(0)
+  expect(close.mock.calls[0]?.[0]).toBeLessThanOrEqual(config.SHUTDOWN_TIMEOUT_MS)
+  expect(fixture.events.indexOf('observer.close')).toBeGreaterThan(
+    fixture.events.indexOf('db.close'),
+  )
 })

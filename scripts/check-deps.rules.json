@@ -99,6 +99,9 @@
     "packages/storage/test/node-s3/fixture.ts": ["node"],
     "packages/storage/test/node-media/copier.test.ts": ["node"],
     "packages/storage/test/node-media-replay.integration.test.ts": ["node"],
-    "packages/storage/test/node-import.unit.test.ts": ["node"]
+    "packages/storage/test/node-import.unit.test.ts": ["node"],
+    "apps/jobs/test/node-smtp.integration.test.ts": ["node"],
+    "apps/web/src/node/storage-http.node.ts": ["node"],
+    "apps/jobs/test/node-observer-shutdown.integration.test.ts": ["node"]
   }
 }

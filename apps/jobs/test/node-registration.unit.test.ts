@@ -136,3 +136,13 @@ it('retains enabled media hold recovery while unavailable files skip object clea
   expect(mocks.files).not.toHaveBeenCalled()
   dispose()
 })
+
+it('enables ten-minute object cleanup only for assembled file capability', async () => {
+  const registered = scheduler()
+  const available = { ...context, files: { available: true as const, value: { delete: vi.fn() } } }
+  const dispose = registerNodeJobsSchedules(registered, available, disabled)
+  await registered.runs.get('jobs-ten-minute-maintenance-v1')?.({ scheduledAt: new Date() })
+  expect(mocks.files).toHaveBeenCalledExactlyOnceWith(available)
+  expect(mocks.billing).not.toHaveBeenCalled()
+  dispose()
+})

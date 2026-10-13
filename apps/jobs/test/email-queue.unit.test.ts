@@ -89,3 +89,32 @@ it('acks malformed messages and retries temporary failures with the original req
     '"requestId":"original-request"',
   )
 })
+
+it('uses the injected SMTP sender with the rendered template and stable identity', async () => {
+  const remote = vi.spyOn(globalThis, 'fetch')
+  const send = vi.fn().mockResolvedValue({ id: 'smtp-message-id' })
+  const entry = message()
+  await handleEmailBatch(batch([entry]), { transport: 'smtp' }, { sender: { send }, observer })
+  expect(send).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({
+      to: body.to,
+      subject: expect.any(String),
+      html: expect.stringContaining('https://example.com/reset?token=private'),
+      text: expect.stringContaining('https://example.com/reset?token=private'),
+      idempotencyKey: body.idempotencyKey,
+    }),
+  )
+  expect(entry.ack).toHaveBeenCalledOnce()
+  expect(remote).not.toHaveBeenCalled()
+})
+
+it('rejects unassembled SMTP before processing and never falls back to another channel', async () => {
+  const remote = vi.spyOn(globalThis, 'fetch')
+  const entry = message()
+  await expect(handleEmailBatch(batch([entry]), { transport: 'smtp' })).rejects.toThrow(
+    'SMTP_SENDER_UNAVAILABLE',
+  )
+  expect(remote).not.toHaveBeenCalled()
+  expect(entry.ack).not.toHaveBeenCalled()
+  expect(entry.retry).not.toHaveBeenCalled()
+})

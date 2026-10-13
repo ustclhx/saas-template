@@ -5,7 +5,7 @@ import { isAppError } from '@saas/shared'
 import { log, newRequestId, withLogContext } from '@saas/shared/log'
 import { type BillingEnv, createBillingContext, postprocessBillingDelivery } from '../billing.ts'
 import { deliverOperations, parseOperationsMessage } from '../notifications/operations.ts'
-import { type JobObserver, logJobObserver } from '../observer.ts'
+import { type JobObserver, logJobObserver, withJobObserver } from '../observer.ts'
 
 const EVENTS_MAX_ATTEMPTS = 6
 
@@ -31,60 +31,61 @@ export async function handleBillingBatch(
     try {
       await withLogContext(
         { requestId: body?.requestId ?? operations?.requestId ?? newRequestId() },
-        async () => {
-          if (body && options.billingEnabled === false) {
-            await finishFailure(
-              message,
-              { code: 'BILLING_DISABLED', retryable: false },
-              options.deadLetters,
-            )
-            return
-          }
-          // 计费后处理与运营通知分别确认 / 重试：运营推送失败不会让计费后处理重跑，反之亦然。
-          try {
-            if (body) {
-              context ??= createBillingContext(env)
-              await postprocessBillingDelivery(context, body.deliveryId)
-              log.info('billing.postprocessed', { id: message.id, deliveryId: body.deliveryId })
-            } else if (operations) {
-              operationsDb ??= env.db.business()
-              for (const event of operations.operations)
-                await deliverOperations(operationsDb, event)
-              log.info('operations.delivered', { id: message.id })
-            }
-            message.ack()
-          } catch (error) {
-            observer.captureException(error)
-            // AppError 以 HTTP status 表达失败性质；普通渠道/数据库错误仍按暂时失败处理。
-            const retryable =
-              !isAppError(error) ||
-              error.status >= 500 ||
-              error.status === 408 ||
-              error.status === 429
-            const terminal =
-              options.deadLetters && (!retryable || message.attempts >= EVENTS_MAX_ATTEMPTS)
-            const kind = body ? 'billing' : 'operations'
-            log.warn(`${kind}.${terminal ? 'failed' : 'retry'}`, {
-              id: message.id,
-              attempts: message.attempts,
-              error: error instanceof Error ? error.name : typeof error,
-            })
-            if (terminal) {
+        () =>
+          withJobObserver(observer, async () => {
+            if (body && options.billingEnabled === false) {
               await finishFailure(
                 message,
-                {
-                  code: `${kind.toUpperCase()}_${retryable ? 'ATTEMPTS_EXHAUSTED' : 'NON_RETRYABLE'}`,
-                  retryable,
-                },
+                { code: 'BILLING_DISABLED', retryable: false },
                 options.deadLetters,
               )
-            } else {
-              message.retry({
-                delaySeconds: Math.min(30 * 2 ** Math.max(0, message.attempts - 1), 900),
-              })
+              return
             }
-          }
-        },
+            // 计费后处理与运营通知分别确认 / 重试：运营推送失败不会让计费后处理重跑，反之亦然。
+            try {
+              if (body) {
+                context ??= createBillingContext(env)
+                await postprocessBillingDelivery(context, body.deliveryId)
+                log.info('billing.postprocessed', { id: message.id, deliveryId: body.deliveryId })
+              } else if (operations) {
+                operationsDb ??= env.db.business()
+                for (const event of operations.operations)
+                  await deliverOperations(operationsDb, event)
+                log.info('operations.delivered', { id: message.id })
+              }
+              message.ack()
+            } catch (error) {
+              observer.captureException(error)
+              // AppError 以 HTTP status 表达失败性质；普通渠道/数据库错误仍按暂时失败处理。
+              const retryable =
+                !isAppError(error) ||
+                error.status >= 500 ||
+                error.status === 408 ||
+                error.status === 429
+              const terminal =
+                options.deadLetters && (!retryable || message.attempts >= EVENTS_MAX_ATTEMPTS)
+              const kind = body ? 'billing' : 'operations'
+              log.warn(`${kind}.${terminal ? 'failed' : 'retry'}`, {
+                id: message.id,
+                attempts: message.attempts,
+                error: error instanceof Error ? error.name : typeof error,
+              })
+              if (terminal) {
+                await finishFailure(
+                  message,
+                  {
+                    code: `${kind.toUpperCase()}_${retryable ? 'ATTEMPTS_EXHAUSTED' : 'NON_RETRYABLE'}`,
+                    retryable,
+                  },
+                  options.deadLetters,
+                )
+              } else {
+                message.retry({
+                  delaySeconds: Math.min(30 * 2 ** Math.max(0, message.attempts - 1), 900),
+                })
+              }
+            }
+          }),
       )
     } catch (error) {
       // 死信失败不确认，且继续处理同批其他成员；出口统一向引擎报告失败。

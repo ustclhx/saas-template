@@ -1,8 +1,9 @@
 import { fileURLToPath } from 'node:url'
 import { AppError } from '@saas/shared'
-import { withLogContext } from '@saas/shared/log'
+import { getLogContext, withLogContext } from '@saas/shared/log'
 import type { ErrorEvent, NodeOptions } from '@sentry/node'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { consumeJobsBatch, type JobsContext, runJobsSchedule } from '../src/handlers.ts'
 import { initializeNodeObservability } from '../src/node/observability.ts'
 import { handleEmailBatch } from '../src/queues/email.ts'
 
@@ -233,10 +234,93 @@ it('preserves email ack, retry, terminal DLQ and failed-sink behavior when trans
   expect(unrecorded.ack).not.toHaveBeenCalled()
   expect(unrecorded.retry).not.toHaveBeenCalled()
   await observer.client?.flush(1_000)
-  expect(events).toHaveLength(3)
+  expect(events).toHaveLength(4)
   expect(events.map((event) => event.tags?.requestId)).toEqual([
     'request-retry',
     'request-terminal',
     'request-unrecorded',
+    'request-unrecorded',
   ])
+  // 新增的外围持久 sink 异常保留成员身份，并移除数据库错误原文。
+  expect(JSON.stringify(events)).not.toContain('fixture DLQ failure')
+})
+
+it('isolates actual consumer members and captures cron and outer sink failures with the original ALS identity', async () => {
+  const { observer, events } = await fixture()
+  const sdk = await import('@sentry/node')
+  const parentScope = sdk.getIsolationScope()
+  const scopes: unknown[] = []
+  const capturedIdentity: unknown[] = []
+  const sender = {
+    async send() {
+      scopes.push(sdk.getIsolationScope())
+      capturedIdentity.push({ ...getLogContext() })
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      throw new TypeError('SMTP password private-text')
+    },
+  }
+  const messages = ['a', 'b'].map((id) => ({
+    id,
+    timestamp: new Date(),
+    attempts: 1,
+    body: {
+      v: 1,
+      template: 'otp',
+      to: 'fixture@example.com',
+      appName: 'Fixture',
+      props: { otp: '123456', purpose: 'sign-in', expiresInMinutes: 5 },
+      idempotencyKey: id,
+      requestId: `member-${id}`,
+    },
+    ack: vi.fn(),
+    retry: vi.fn(),
+  }))
+  const context = {
+    observer,
+    emailTransport: { transport: 'smtp' },
+    emailSender: sender,
+    emailDeadLetters: {
+      async failed(message: (typeof messages)[number]) {
+        message.ack()
+      },
+    },
+  } as unknown as JobsContext
+  await withLogContext({ jobId: 'batch-identity', workspaceId: 'workspace' }, () =>
+    consumeJobsBatch({ queue: 'email', messages, ackAll: vi.fn(), retryAll: vi.fn() }, context),
+  )
+  expect(scopes).toHaveLength(2)
+  expect(scopes[0]).not.toBe(parentScope)
+  expect(scopes[1]).not.toBe(scopes[0])
+  expect(capturedIdentity).toEqual([
+    { jobId: 'batch-identity', workspaceId: 'workspace', requestId: 'member-a' },
+    { jobId: 'batch-identity', workspaceId: 'workspace', requestId: 'member-b' },
+  ])
+  for (const message of messages) expect(message.ack).toHaveBeenCalledOnce()
+  await expect(
+    withLogContext({ requestId: 'cron-request', scheduleId: 'cron-id', cron: 'invalid' }, () =>
+      runJobsSchedule('invalid', new Date(), context),
+    ),
+  ).rejects.toThrow('Unknown cron')
+  await observer.client?.flush(1_000)
+  expect(events).toHaveLength(3)
+  expect(events.map((event) => event.tags)).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        requestId: 'member-a',
+        workspaceId: 'workspace',
+        jobId: 'batch-identity',
+      }),
+      expect.objectContaining({
+        requestId: 'member-b',
+        workspaceId: 'workspace',
+        jobId: 'batch-identity',
+      }),
+      expect.objectContaining({
+        requestId: 'cron-request',
+        scheduleId: 'cron-id',
+        cron: 'invalid',
+      }),
+    ]),
+  )
+  expect(JSON.stringify(events)).not.toContain('private-text')
 })

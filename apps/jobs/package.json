@@ -12,7 +12,8 @@
     "build:node": "node scripts/build-node.mjs",
     "start:node": "node .output/server/index.mjs",
     "test:node": "vitest run --config vitest.unit.config.ts",
-    "test:node:integration": "vitest run --config vitest.node-integration.config.ts"
+    "test:node:integration": "vitest run --config vitest.node-integration.config.ts",
+    "test:node:smtp": "node test/run-node-integration.mjs"
   },
   "dependencies": {
     "@saas/ai": "workspace:*",

@@ -118,3 +118,20 @@ manifest 与 lockfile 仅增加 platform workspace 依赖。共享入口及后�
 `WebRuntime.files` 注入 `Capability<Storage>`，`publicDb` 为惰性的公开读 facade。文件 HTTP 与 RPC 在副作用前检查文件能力，媒体提交 POST 也先检查存储，Node 在 C 之前明确返回 503，无任务/预扣。Cloudflare storage 工厂在 web/jobs entry 装配；R2/FixedLengthStream 细节仅由 `@saas/storage/cloudflare` 导出。C 的 `Storage`/`MediaOutputCopier` 接口见 [storage README](../packages/storage/README.md)，本批验证及 Node 生产预渲染的组 5 边界见 [验收说明](runbooks/selfhost-a4-storage.md)。
 
 公开定价读取接受借用的 Database，不终止进程池；构建快照由脚本关闭自有池。公开页沿用数据库不可达降级，语言处理仅在账号区域读取 auth/db。growth 限流使用请求 runtime 的可信 IP 与 auth policy，发信依赖缺失时在业务写入前拒绝。
+
+## C：Node 存储、邮件与观测接线
+
+Node 生产配置完整时，web 的 `files` 与 `ai.downloadFile` 使用 `@saas/storage/node`；
+jobs 仅注入删除能力，批量 key 逐个等待删除。十分钟维护只在 files 已装配时执行文件清理。
+全部 S3 参数未配置和构建预渲染继续 unavailable，部分配置拒绝启动。
+媒体 workflow 仍独立 unavailable，storage-only 提交在创建 task/hold 前返回 503。
+存储工厂、copier 与 C→B 5.3/5.4 交接见 [文件验收](runbooks/selfhost-c-storage.md)。
+
+Node SMTP 由 jobs composition 显式选择并注入既有 EmailSender；web 继续只负责持久入队，
+CF 的 log/resend 通道不变。原初次加五次重试、混合批次独立确认、终态先持久 DLQ 再确认
+沿用 B，SMTP 稳定 Message-ID 不承诺幂等。详情见 [jobs 接线](runbooks/selfhost-c-jobs-wire.md)。
+
+Node 早期 ESM 入口在加载应用前初始化唯一进程 observer。web 在 bootstrap、Nitro、Start
+之间显式传递身份与受信任 AppError 摘要；每请求与后台成员使用独立 scope，不存全局身份。
+正常停机在 A 的业务排空/资源关闭后只使用剩余 deadline 关闭监控，监控失败不改业务退出结果。
+source maps、上传入口和未完成外部验收见 [共享接线验收](runbooks/selfhost-c-wire.md)。

@@ -4,7 +4,23 @@
  *
  * 字段名比较时忽略大小写与 `-` / `_`，因此 `Authorization`、`set-cookie`、`api_key` 都能匹配。
  */
+import { AppError } from './errors.ts'
+
 export const REDACTED = '[REDACTED]'
+
+const ERROR_TYPES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'SyntaxError',
+  'ReferenceError',
+  'URIError',
+  'EvalError',
+  'AggregateError',
+  'AppError',
+  'EmailSendError',
+  'EnvValidationError',
+])
 
 /** 整个字段视为敏感的名称（归一化后精确匹配） */
 const SENSITIVE_KEYS = new Set([
@@ -45,7 +61,8 @@ export function isSensitiveKey(key: string): boolean {
 
 /**
  * 返回脱敏后的副本（不修改入参）：敏感字段的值替换为 `[REDACTED]`；`Headers` / `Map` 转为普通对象后同样处理；
- * `Error` 只保留 name / message / stack 与 cause；`Request` 只保留方法、不含查询串的地址与脱敏后的头部。
+ * `Error` 只保留固定类型与安全业务码，不保留任意 message / stack / cause；
+ * `Request` 只保留方法、不含查询串的地址与脱敏后的头部。
  */
 export function redact(value: unknown): unknown {
   return walk(value, 0, new WeakSet())
@@ -70,13 +87,14 @@ function walk(value: unknown, depth: number, seen: WeakSet<object>): unknown {
     // Headers / Map：按键值对处理（Headers 的键已是小写）
     if (isEntriesLike(value)) return walkEntries(value.entries(), depth, seen)
     if (value instanceof Error) {
-      const error: Record<string, unknown> = {
-        name: value.name,
-        message: value.message,
-        stack: value.stack,
+      // 异常文本可能只有正文而没有敏感字段或 token，必须整体移除。
+      return {
+        name: ERROR_TYPES.has(value.name) ? value.name : 'Error',
+        message: REDACTED,
+        ...(value instanceof AppError && /^[A-Z][A-Z0-9_]{0,63}$/.test(value.code)
+          ? { code: value.code }
+          : {}),
       }
-      if (value.cause !== undefined) error.cause = value.cause
-      return walkEntries(Object.entries(error), depth, seen)
     }
     if (Array.isArray(value)) return value.map((item) => walk(item, depth + 1, seen))
     return walkEntries(Object.entries(value), depth, seen)

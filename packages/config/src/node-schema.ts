@@ -1,8 +1,43 @@
 import { z } from 'zod'
-import { withEmailEnv } from './email-env.ts'
 import type { TemplateConfig } from './template.ts'
 
 const secret = z.string().min(1)
+const storageNames = [
+  'S3_ENDPOINT',
+  'S3_REGION',
+  'S3_BUCKET',
+  'S3_ACCESS_KEY_ID',
+  'S3_SECRET_ACCESS_KEY',
+] as const
+const mailbox = z
+  .string()
+  .min(1)
+  .refine((value) => {
+    if (/[\r\n\0]/.test(value)) return false
+    const address = value.includes('<')
+      ? /^(?:"(?:[^"\\]|\\.)+"|[^"<>,;:]+)\s*<([^<>]+)>$/.exec(value)?.[1]
+      : value
+    return address !== undefined && z.email().safeParse(address).success
+  })
+const smtpHost = z
+  .string()
+  .refine(
+    (value) =>
+      z.ipv4().safeParse(value).success ||
+      z.ipv6().safeParse(value).success ||
+      (value.length <= 253 &&
+        value.split('.').every((label) => /^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?$/i.test(label))),
+  )
+
+function httpUrl(value: string): URL | undefined {
+  try {
+    const url = new URL(value)
+    if (!/^https?:$/.test(url.protocol) || /[\s?#]/.test(value)) return undefined
+    return url
+  } catch {
+    return undefined
+  }
+}
 
 /** 仅标量配置；PAYMENT_MODE 继续由支付入口校验，缺凭据不阻断公开页面。 */
 const nodeEnvBaseSchema = z.object({
@@ -15,8 +50,35 @@ const nodeEnvBaseSchema = z.object({
   TRUSTED_PROXY_CIDRS: z.string().default(''),
   CACHE_NAMESPACE: secret.default('saas'),
   PAYMENT_MODE: z.string().optional(),
-  SENTRY_ENVIRONMENT: z.string().optional(),
-  SENTRY_DSN: z.string().optional(),
+  SENTRY_ENVIRONMENT: z.enum(['development', 'staging', 'production', 'smoke']).optional(),
+  SENTRY_DSN: z
+    .string()
+    .refine((value) => {
+      if (value === '') return true
+      const url = httpUrl(value)
+      return (
+        url !== undefined &&
+        /^\w+$/.test(url.username) &&
+        url.password === '' &&
+        /\/\d+$/.test(url.pathname)
+      )
+    })
+    .optional(),
+  S3_ENDPOINT: secret
+    .refine((value) => {
+      const url = httpUrl(value)
+      return url !== undefined && url.username === '' && url.password === ''
+    })
+    .optional(),
+  S3_REGION: secret.optional(),
+  S3_BUCKET: secret.optional(),
+  S3_ACCESS_KEY_ID: secret.optional(),
+  S3_SECRET_ACCESS_KEY: secret.optional(),
+  // 在对象校验之后才补默认值，避免默认 true 意外启用未配置存储。
+  S3_FORCE_PATH_STYLE: z
+    .enum(['true', 'false'])
+    .transform((value) => value === 'true')
+    .optional(),
   BOOTSTRAP_ADMIN_EMAILS: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: secret.optional(),
@@ -40,12 +102,51 @@ const nodeEnvBaseSchema = z.object({
   AI_GATEWAY_ID: z.string().optional(),
   AI_GATEWAY_TOKEN: secret.optional(),
   RESEND_API_KEY: secret.optional(),
-  EMAIL_TRANSPORT: z.enum(['log', 'resend']).default('log'),
-  EMAIL_FROM: z.string().optional(),
-  EMAIL_REPLY_TO: z.string().optional(),
+  EMAIL_TRANSPORT: z.enum(['log', 'resend', 'smtp']).default('log'),
+  EMAIL_FROM: mailbox.optional(),
+  EMAIL_REPLY_TO: mailbox.optional(),
+  SMTP_HOST: smtpHost.optional(),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).optional(),
+  SMTP_TLS_MODE: z.enum(['implicit', 'starttls', 'none']).default('starttls'),
+  SMTP_USER: secret.optional(),
+  SMTP_PASSWORD: secret.optional(),
 })
 
-export const nodeEnvSchema = withEmailEnv(nodeEnvBaseSchema)
+function withNodeValidation<Shape extends z.core.$ZodShape>(schema: z.ZodObject<Shape>) {
+  return schema
+    .superRefine((parsed, ctx) => {
+      const env = parsed as z.output<typeof nodeEnvBaseSchema>
+      const required = (names: readonly (keyof typeof env)[]) => {
+        for (const key of names) {
+          if (env[key] === undefined)
+            ctx.addIssue({ code: 'custom', path: [key], message: 'required' })
+        }
+      }
+      if (
+        env.S3_FORCE_PATH_STYLE !== undefined ||
+        storageNames.some((key) => env[key] !== undefined)
+      )
+        required(storageNames)
+      if (env.EMAIL_TRANSPORT === 'resend') required(['RESEND_API_KEY', 'EMAIL_FROM'])
+      if (env.EMAIL_TRANSPORT === 'smtp') {
+        required(['SMTP_HOST', 'SMTP_PORT', 'EMAIL_FROM'])
+        if (env.SMTP_USER !== undefined || env.SMTP_PASSWORD !== undefined)
+          required(['SMTP_USER', 'SMTP_PASSWORD'])
+      }
+      if (env.SENTRY_ENVIRONMENT === 'production') {
+        for (const key of ['S3_ENDPOINT', 'SENTRY_DSN'] as const) {
+          if (env[key] && httpUrl(env[key])?.protocol === 'http:')
+            ctx.addIssue({ code: 'custom', path: [key], message: 'https required' })
+        }
+      }
+    })
+    .transform((env) => ({
+      ...env,
+      S3_FORCE_PATH_STYLE: (env as z.output<typeof nodeEnvBaseSchema>).S3_FORCE_PATH_STYLE ?? true,
+    }))
+}
+
+export const nodeEnvSchema = withNodeValidation(nodeEnvBaseSchema)
 
 export type NodeEnv = z.output<typeof nodeEnvSchema>
 
@@ -67,12 +168,16 @@ export const nodeSecretNames = [
   'FAL_KEY',
   'AI_GATEWAY_TOKEN',
   'RESEND_API_KEY',
+  'S3_ACCESS_KEY_ID',
+  'S3_SECRET_ACCESS_KEY',
+  'SMTP_PASSWORD',
+  'SENTRY_DSN',
 ] as const satisfies readonly (keyof NodeEnv)[]
 
 /** 启动入口传入模板开关；OAuth/Turnstile 仅启用时必填，邮件沿用既有通道约束。 */
 export function nodeEnvSchemaFor(config: Pick<TemplateConfig, 'auth'>) {
   const oauth = new Set(config.auth.oauth)
-  return withEmailEnv(
+  return withNodeValidation(
     nodeEnvBaseSchema.extend({
       GOOGLE_CLIENT_ID: oauth.has('google') ? secret : secret.optional(),
       GOOGLE_CLIENT_SECRET: oauth.has('google') ? secret : secret.optional(),

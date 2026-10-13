@@ -68,8 +68,8 @@ export function resolvePaymentMode(env: PaymentModeEnv): PaymentMode {
 /** 按默认 schema 校验 Worker 的 `env`，失败时抛出 `EnvValidationError`。 */
 export function loadEnv(env: unknown): Env
 /** 按指定 schema（通常是 `envSchema.extend(...)`）校验。 */
-export function loadEnv<S extends z.ZodObject>(env: unknown, schema: S): z.output<S>
-export function loadEnv(env: unknown, schema: z.ZodObject = envSchema): unknown {
+export function loadEnv<S extends z.ZodType>(env: unknown, schema: S): z.output<S>
+export function loadEnv(env: unknown, schema: z.ZodType = envSchema): unknown {
   const result = schema.safeParse(env ?? {})
   if (result.success) return result.data
 
