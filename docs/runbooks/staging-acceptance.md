@@ -1,6 +1,6 @@
 # Staging 验收脚本
 
-脚本入口：`apps/web/e2e/staging-acceptance/playwright.config.ts`。默认 e2e 与 staging smoke 均不收集该目录；staging 必须以 `--headed` 运行并有人值守，单 worker、无自动重试，不录制 trace、截图、视频，不将 Cookie 或 storageState 写入文件/日志；模型设置与后续验收在同一 worker 中顺序执行，失败后停止；仅在内存复用新鲜登录会话，避免逐用例重新登录触发认证限流。脚本只通过应用 HTTP/UI 产生业务数据，数据库证据查询仅使用 `NEON_READONLY_URL`，在 Docker 内执行只读事务。
+脚本入口：`apps/web/e2e/staging-acceptance/playwright.config.ts`。默认 e2e 与 staging smoke 均不收集该目录；staging 必须以 `--headed` 运行并有人值守，单 worker、无自动重试，不录制 trace、截图、视频，不将 Cookie 或 storageState 写入文件/日志；模型设置与后续验收在同一 worker 中顺序执行，失败后停止；仅在内存复用新鲜登录会话，避免逐用例重新登录触发认证限流。脚本只通过应用 HTTP/UI 产生业务数据，数据库证据查询仅使用 `NEON_READONLY_URL`，由 Node Postgres 驱动在同一 worker 内复用单条只读连接（会话默认只读、语句超时 30 秒、事务 READ ONLY），连接类失败带抖动退避重试，不依赖 Docker。
 
 本 PR 不运行 staging，不部署，也不勾选 OpenSpec。脚本通过不等于 media 7.1/7.2、chat 5.1、admin 6.1 或 observability 1.2 全部验收完成。
 

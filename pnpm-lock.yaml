@@ -396,6 +396,9 @@ importers:
       openai:
         specifier: ^7.28.0
         version: 7.28.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(undici@7.29.1)(ws@8.21.0)(zod@4.6.5)
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
       srvx:
         specifier: 1.0.5
         version: 1.0.5
