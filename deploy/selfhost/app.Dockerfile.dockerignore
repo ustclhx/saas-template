@@ -15,6 +15,10 @@
 !deploy/selfhost/
 deploy/selfhost/*
 !deploy/selfhost/migrate.mjs
+# Node 构建在镜像内注入 Sentry debug ID，需要这一个脚本；其余 scripts 不进入镜像上下文。
+!scripts/
+scripts/*
+!scripts/sentry-node-maps.mjs
 **/node_modules
 **/.output
 **/dist
