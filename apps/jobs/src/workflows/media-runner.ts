@@ -44,20 +44,51 @@ export interface MediaRunnerDeps {
 type StepData<T> = T extends object ? { [K in keyof T]: StepData<T[K]> } : T
 type Callback = StepData<{ jobId: string; result?: MediaResult; error?: MediaError }>
 const terminal = (task: AiTask) => ['succeeded', 'failed', 'canceled'].includes(task.status)
+// 同步提交中以 NonRetryableError 带出的业务错误码（Node 引擎会跨 step 保留 code）。
+const carriedCode = (error: unknown) =>
+  error instanceof NonRetryableError &&
+  'code' in error &&
+  typeof error.code === 'string' &&
+  error.code !== 'MEDIA_SUBMISSION_UNCERTAIN'
+    ? error.code
+    : null
 const errorOf = (error: unknown): MediaError => ({
   code:
     error instanceof AppError
       ? error.code
-      : error instanceof Error && error.message === 'MEDIA_SUBMISSION_UNCERTAIN'
-        ? 'MEDIA_SUBMISSION_UNCERTAIN'
-        : 'MEDIA_GENERATION_FAILED',
+      : (carriedCode(error) ??
+        (error instanceof Error && error.message === 'MEDIA_SUBMISSION_UNCERTAIN'
+          ? 'MEDIA_SUBMISSION_UNCERTAIN'
+          : 'MEDIA_GENERATION_FAILED')),
   message:
-    error instanceof AppError
+    error instanceof AppError || (carriedCode(error) && error instanceof Error)
       ? error.message
       : error instanceof Error && error.message === 'MEDIA_SUBMISSION_UNCERTAIN'
         ? 'Submission outcome is uncertain; credits were returned'
         : 'Media generation failed',
 })
+const SYNC_SUBMIT_RETRIES = { limit: 2, delayMs: 10_000, backoff: 'exponential' } as const
+
+/** 同步提交只重试 Provider 标明的瞬时失败；其余失败带原错误码直接终止，不再推理。 */
+function syncSubmitFailure(taskId: string, error: unknown): Error {
+  const app = error instanceof AppError ? error : null
+  const retryable = app?.details?.retryable === true
+  // 非业务错误只记录错误名，原异常经 cause 交给观测，不写入任务。
+  const errorName = error instanceof Error ? error.name : typeof error
+  log.warn('ai.media.sync_submit_failed', {
+    taskId,
+    errorName,
+    code: app?.code ?? 'MEDIA_GENERATION_FAILED',
+    upstreamName: app?.details?.upstreamName ?? null,
+    upstreamCode: app?.details?.upstreamCode ?? null,
+    retryable,
+  })
+  if (retryable && app) return app
+  if (error instanceof NonRetryableError) return error
+  return app
+    ? Object.assign(new NonRetryableError(app.message), { code: app.code })
+    : new NonRetryableError(`Media generation failed (${errorName})`, { cause: error })
+}
 
 /** 无幂等能力时，进程在受理/落库间崩溃后也不能再次提交。 */
 export async function submitMediaOnce(
@@ -268,8 +299,14 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
     if (isSyncMediaProvider(provider)) {
       const fileIds = await step.do(
         'submit',
-        { retries: { limit: 0, delayMs: 10_000 }, timeoutMs: 900_000 },
-        async () => ((await active()) ? submitSynchronousMedia(task, deps, provider) : []),
+        { retries: SYNC_SUBMIT_RETRIES, timeoutMs: 900_000 },
+        async () => {
+          try {
+            return (await active()) ? await submitSynchronousMedia(task, deps, provider) : []
+          } catch (error) {
+            throw syncSubmitFailure(taskId, error)
+          }
+        },
       )
       if (!(await active())) return stopped()
       const status = await step.do('settle-and-notify', async () => {

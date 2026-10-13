@@ -411,6 +411,52 @@ it('Workers AI inference failure refunds the whole hold without persisting any f
   await refunded(f)
 })
 
+const upstreamError = (message: string, name = 'InferenceUpstreamError') =>
+  Object.assign(new Error(message), { name })
+
+it('Workers AI capacity errors are retried by the submit step and charge only the success once', async () => {
+  const f = await fixture()
+  const fake = await workersAi(f)
+  fake.binding.run
+    .mockRejectedValueOnce(upstreamError('3040: Capacity temporarily exceeded, please try again.'))
+    .mockRejectedValueOnce(upstreamError('3007: Request timeout'))
+  const h = harness(fake.provider)
+  h.deps.callbackSecret = ''
+  await runMediaTask(f.taskId, h.step, h.deps)
+  expect(fake.binding.run).toHaveBeenCalledTimes(3)
+  expect(h.names).toEqual(['load-task', 'submit', 'settle-and-notify'])
+  await succeeded(f, 8)
+})
+
+it('Workers AI deterministic rejection is not retried and keeps the safe upstream summary', async () => {
+  const f = await fixture()
+  const fake = await workersAi(f)
+  fake.binding.run.mockRejectedValue(
+    upstreamError('8007: Input prompt contains NSFW content. fixture prompt', 'AiError'),
+  )
+  const h = harness(fake.provider)
+  await runMediaTask(f.taskId, h.step, h.deps)
+  expect(fake.binding.run).toHaveBeenCalledTimes(1)
+  const actual = await state(f)
+  expect(actual.task).toMatchObject({
+    errorCode: 'WORKERS_AI_GENERATION_FAILED',
+    errorMessage: 'Workers AI image generation failed (AiError 8007)',
+  })
+  expect(actual.files).toEqual([])
+  await refunded(f)
+})
+
+it('Workers AI transient errors stop after the retry limit and refund the whole hold', async () => {
+  const f = await fixture()
+  const fake = await workersAi(f)
+  fake.binding.run.mockRejectedValue(upstreamError('3040: Capacity temporarily exceeded'))
+  const h = harness(fake.provider)
+  await runMediaTask(f.taskId, h.step, h.deps)
+  expect(fake.binding.run).toHaveBeenCalledTimes(3)
+  expect((await state(f)).task.errorCode).toBe('WORKERS_AI_GENERATION_FAILED')
+  await refunded(f)
+})
+
 it('cancellation during Workers AI inference prevents storage and late workflow replay stops', async () => {
   const f = await fixture()
   const fake = await workersAi(f)

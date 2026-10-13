@@ -58,7 +58,43 @@ describe('Workers AI 图片 Provider', () => {
     })
     await expect(failed.run(input)).rejects.toMatchObject({
       code: 'WORKERS_AI_GENERATION_FAILED',
-      message: 'Workers AI image generation failed',
+      message: 'Workers AI image generation failed (Error)',
+      details: { upstreamName: 'Error', upstreamCode: null, retryable: false },
     })
+  })
+
+  it('按 workerd 绑定错误格式保留错误名与数字码，只把超时 / 容量不足标为可重试', async () => {
+    // workerd 的 AI.run 以 `${internalCode}: ${description}` 抛出 InferenceUpstreamError。
+    const upstream = (message: string, name = 'InferenceUpstreamError') =>
+      Object.assign(new Error(message), { name })
+    const cases = [
+      [upstream('3040: Capacity temporarily exceeded, please try again.'), 3040, true],
+      [upstream('3007: Request timeout'), 3007, true],
+      [
+        upstream('8007: Input prompt contains NSFW content. fixture prompt', 'AiError'),
+        8007,
+        false,
+      ],
+      [upstream('5006: Error: required properties at fixture prompt'), 5006, false],
+    ] as const
+    for (const [error, upstreamCode, retryable] of cases) {
+      const provider = createWorkersAiMediaProvider({
+        binding: {
+          run: async () => {
+            throw error
+          },
+        },
+        modelId: input.modelId,
+      })
+      const failure = await provider.run(input).catch((caught: unknown) => caught)
+      expect(failure).toMatchObject({
+        code: 'WORKERS_AI_GENERATION_FAILED',
+        message: `Workers AI image generation failed (${error.name} ${upstreamCode})`,
+        details: { upstreamName: error.name, upstreamCode, retryable },
+      })
+      expect(
+        JSON.stringify({ ...(failure as object), message: (failure as Error).message }),
+      ).not.toContain('fixture prompt')
+    }
   })
 })
