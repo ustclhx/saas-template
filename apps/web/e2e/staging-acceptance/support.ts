@@ -13,6 +13,7 @@ import {
   HUMAN_LOGIN_TIMEOUT,
   sessionUser,
 } from './accounts.ts'
+import { safeDiagnostic } from './diagnostic.ts'
 import { ACCEPTANCE_MODELS } from './models.ts'
 
 export { adminIdentity, ensureRegisteredAccount, registerAccount, sessionUser } from './accounts.ts'
@@ -276,10 +277,10 @@ export async function login(page: Page, account: 'admin' | 'user') {
           // connectOverCDP 返回的 browser.close() 仅断开连接，不关闭系统 Chrome。
           await browser.close()
         }
-      } catch {
-        // CDP 诊断可能包含端点或认证信息，不透传到日志。
+      } catch (error) {
+        // CDP 诊断可能包含端点或认证信息，只附带脱敏后的固定类别。
         throw new Error(
-          `${guidancePrefix}系统 Chrome 登录失败，请检查 CDP 连接并在 5 分钟内完成登录`,
+          `${guidancePrefix}系统 Chrome 登录失败（${safeDiagnostic(String(error))}），请检查 CDP 连接并在 5 分钟内完成登录`,
         )
       }
       await page.goto('/app')
