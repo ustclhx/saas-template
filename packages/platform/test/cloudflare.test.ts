@@ -70,6 +70,30 @@ describe('Cloudflare capability adapters', () => {
     await expect(workflow.get('missing')).rejects.toMatchObject({ code: 'WORKFLOW_NOT_FOUND' })
   })
 
+  it('treats terminate of an instance that already finished as done, and rethrows otherwise', async () => {
+    let state: InstanceStatus = { status: 'running' }
+    const raced = new Error(
+      'WorkflowError: (instance.cannot_terminate) Cannot terminate instance since its on a finite state',
+    )
+    const instance = {
+      id: 'task',
+      status: async () => state,
+      sendEvent: vi.fn(),
+      terminate: vi.fn(async () => {
+        throw raced
+      }),
+    } as unknown as WorkflowInstance
+    const handle = await createCloudflareWorkflow({
+      create: vi.fn(),
+      get: vi.fn(async () => instance),
+    }).get('task')
+    // 调用方读到 running 后实例自行结束，terminate 才抛错
+    state = { status: 'complete' }
+    await expect(handle.terminate()).resolves.toBeUndefined()
+    state = { status: 'running' }
+    await expect(handle.terminate()).rejects.toBe(raced)
+  })
+
   it('converts step retry/timeout milliseconds and the shared non-retryable signal', async () => {
     const doStep = vi.fn(
       async (_name: string, configOrCallback: unknown, callback?: () => Promise<unknown>) =>

@@ -34,7 +34,18 @@ function adaptInstance<R extends JsonValue>(instance: WorkflowInstance): Platfor
   return {
     id: instance.id,
     status: async () => normalizeState<R>(await instance.status()),
-    terminate: () => instance.terminate(),
+    async terminate() {
+      try {
+        await instance.terminate()
+      } catch (error) {
+        // 先查状态再 terminate 之间实例可能自行结束；CF 对终态实例抛
+        // instance.cannot_terminate，而 Node（DBOS）对终态取消是空操作。复查确认已是
+        // 终态才视为完成，否则原样抛出，不吞掉真实失败。
+        const state = await instance.status().catch(() => null)
+        if (state && ['complete', 'errored', 'terminated'].includes(state.status)) return
+        throw error
+      }
+    },
     async sendEvent(event) {
       const { status } = normalizeState(await instance.status())
       if (status === 'completed' || status === 'failed' || status === 'terminated')

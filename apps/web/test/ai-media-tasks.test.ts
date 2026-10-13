@@ -98,6 +98,8 @@ function dependencies(
     max?: number
     startFails?: boolean
     cancelFails?: boolean
+    // 取消读到 running 后实例自行结束：CF 绑定的 terminate 对终态实例抛错
+    finishesBeforeTerminate?: boolean
     callback?: MediaWebhook
     invalidProviderSignature?: boolean
   } = {},
@@ -150,20 +152,31 @@ function dependencies(
             sendEvent: async () => {},
           }
         },
-        get: async (instanceId: string) => ({
-          id: instanceId,
-          status: async () => ({ status: terminated > 0 ? 'terminated' : 'running' }),
-          terminate: async () => {
-            terminated++
-          },
-          sendEvent: async () => {
-            events++
-            const [stored] =
-              await sql`select callback_payload from ai_task where workflow_instance_id=${instanceId}`
-            expect(stored?.callback_payload).not.toBeNull()
-            throw new Error('fixture delivery unavailable')
-          },
-        }),
+        get: async (instanceId: string) => {
+          let finished = false
+          return {
+            id: instanceId,
+            status: async () => ({
+              status: finished ? 'complete' : terminated > 0 ? 'terminated' : 'running',
+            }),
+            terminate: async () => {
+              if (options.finishesBeforeTerminate) {
+                finished = true
+                throw new Error(
+                  'WorkflowError: (instance.cannot_terminate) Cannot terminate instance since its on a finite state',
+                )
+              }
+              terminated++
+            },
+            sendEvent: async () => {
+              events++
+              const [stored] =
+                await sql`select callback_payload from ai_task where workflow_instance_id=${instanceId}`
+              expect(stored?.callback_payload).not.toBeNull()
+              throw new Error('fixture delivery unavailable')
+            },
+          }
+        },
       } as unknown as Parameters<typeof createCloudflareWorkflow>[0]),
     },
   }
@@ -490,6 +503,21 @@ describe('media tasks API', () => {
     expect((await cancel()).status).toBe(200)
     expect((await scoped(db, who.workspaceId).findById(aiTask, taskId)).errorCode).toBeNull()
     expect(state.counts()).toMatchObject({ canceled: 2, terminated: 1 })
+    expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 100, held: 0 })
+  })
+
+  it('does not leave a retry marker when the workflow finishes on its own between status and terminate', async () => {
+    const who = await account('cancel-race')
+    const state = dependencies({ finishesBeforeTerminate: true })
+    const taskId = await submitted(who, await model(), state.deps)
+    const response = await handleMediaCancel(
+      post(`/api/ai/tasks/${taskId}/cancel`, who, { workspaceId: who.workspaceId }),
+      taskId,
+      state.deps,
+    )
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ status: 'canceled', cancellationPending: false })
+    expect((await scoped(db, who.workspaceId).findById(aiTask, taskId)).errorCode).toBeNull()
     expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 100, held: 0 })
   })
 

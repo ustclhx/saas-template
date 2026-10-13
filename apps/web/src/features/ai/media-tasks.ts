@@ -350,6 +350,24 @@ export function handleMediaDetail(
   })
 }
 
+/** 取消失败只记录异常类名与平台/业务错误码，不记录上游正文或参数。 */
+function cancelErrorFields(error: unknown) {
+  const message = error instanceof Error ? error.message : ''
+  return {
+    errorName: error instanceof Error ? error.name : typeof error,
+    errorCode:
+      error instanceof AppError
+        ? error.code
+        : typeof error === 'object' &&
+            error !== null &&
+            'code' in error &&
+            typeof error.code === 'string'
+          ? error.code
+          : // Workflow 绑定错误形如 "(instance.cannot_terminate) ..."，只取括号内代码
+            /\((instance\.[a-z_]+)\)/.exec(message)?.[1],
+  }
+}
+
 export function handleMediaCancel(
   request: Request,
   taskId: string,
@@ -375,29 +393,40 @@ export function handleMediaCancel(
     if (task.status !== 'canceled')
       return Response.json({ taskId, status: task.status, cancellationPending: false })
     let pending = false
+    const markPending = (operation: 'provider' | 'workflow', error: unknown) => {
+      pending = true
+      log.warn('ai.media.cancel_pending', { taskId, operation, ...cancelErrorFields(error) })
+    }
     // 积分释放已持久化；外部取消失败记可重试标记，同一取消接口重试不会再次退款。
-    for (const action of [
-      async () => {
-        if (task.providerJobId) {
-          const provider = taskProvider(deps, task)
-          if (!isSyncMediaProvider(provider)) await provider.cancel?.(task.providerJobId)
-        }
-      },
-      async () => {
-        if (task.workflowInstanceId) {
-          const instance = await requireCapability(deps.workflow, 'Media workflow').get(
-            task.workflowInstanceId,
-          )
-          if (['queued', 'running', 'paused', 'waiting'].includes((await instance.status()).status))
-            await instance.terminate()
-        }
-      },
-    ]) {
+    for (const [operation, action] of [
+      [
+        'provider',
+        async () => {
+          if (task.providerJobId) {
+            const provider = taskProvider(deps, task)
+            if (!isSyncMediaProvider(provider)) await provider.cancel?.(task.providerJobId)
+          }
+        },
+      ],
+      [
+        'workflow',
+        async () => {
+          if (task.workflowInstanceId) {
+            const instance = await requireCapability(deps.workflow, 'Media workflow').get(
+              task.workflowInstanceId,
+            )
+            if (
+              ['queued', 'running', 'paused', 'waiting'].includes((await instance.status()).status)
+            )
+              await instance.terminate()
+          }
+        },
+      ],
+    ] as const) {
       try {
         await action()
-      } catch {
-        pending = true
-        log.warn('ai.media.cancel_pending', { taskId })
+      } catch (error) {
+        markPending(operation, error)
       }
     }
     // 提交可能在取消期间才返回 jobId，不能据旧快照清除恢复标记。
@@ -406,9 +435,8 @@ export function handleMediaCancel(
       try {
         const provider = taskProvider(deps, latest)
         if (!isSyncMediaProvider(provider)) await provider.cancel?.(latest.providerJobId)
-      } catch {
-        pending = true
-        log.warn('ai.media.cancel_pending', { taskId })
+      } catch (error) {
+        markPending('provider', error)
       }
     }
     if (latest.output?.submissionAttempted && !latest.providerJobId) pending = true
