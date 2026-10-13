@@ -172,6 +172,10 @@ export async function submitMediaOnce(
           typeof error === 'object' && error !== null && 'httpStatus' in error
             ? error.httpStatus
             : undefined,
+        causeName:
+          typeof error === 'object' && error !== null && 'causeName' in error
+            ? error.causeName
+            : undefined,
       })
       throw new NonRetryableError('MEDIA_SUBMISSION_UNCERTAIN')
     }
