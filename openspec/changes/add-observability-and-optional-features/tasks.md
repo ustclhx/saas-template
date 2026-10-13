@@ -33,3 +33,5 @@
 ## 6. 阶段验收
 
 - [x] 6.1 用创建脚本从模板生成一个新项目，按输出清单完成基础设施配置并部署到一个新的 staging，验证健康检查通过、注册到首次 AI 调用的完整流程可用、错误能在 Sentry 中看到
+
+2026-10-13 验收记录：13j 的 Sentry 测试入口返回 HTTP 500 与 request ID，有[真实证据](../../../docs/runbooks/evidence/staging-acceptance/2026-10-13/acceptance-2026-10-13j-sentry-test.json)。指定项目实际事件与 web/jobs 的 release、dist、TypeScript source map 尚未核验；1.2 保留未勾选。
