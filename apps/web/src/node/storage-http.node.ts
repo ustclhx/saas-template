@@ -35,6 +35,7 @@ const appUrl = 'https://example.com'
 let base: string
 let child: ChildProcess | undefined
 let childExit: Promise<unknown[]> | undefined
+let productionEnv: NodeJS.ProcessEnv
 const identities: { id: string; cookie: string; slug: string }[] = []
 const headers = (cookie: string) => ({ cookie, origin: appUrl, 'content-type': 'application/json' })
 const post = (path: string, body: unknown, cookie = identities[0]?.cookie ?? '') =>
@@ -84,30 +85,31 @@ beforeAll(async () => {
   const port = (probe.address() as AddressInfo).port
   await new Promise<void>((resolve) => probe.close(() => resolve()))
   base = `http://127.0.0.1:${port}`
+  productionEnv = {
+    PATH: process.env.PATH,
+    DATABASE_URL: databaseUrl,
+    VALKEY_URL: process.env.TEST_VALKEY_URL,
+    BETTER_AUTH_SECRET: secret,
+    APP_URL: appUrl,
+    GOOGLE_CLIENT_ID: 'fixture',
+    GOOGLE_CLIENT_SECRET: 'fixture',
+    GITHUB_CLIENT_ID: 'fixture',
+    GITHUB_CLIENT_SECRET: 'fixture',
+    TURNSTILE_SITE_KEY: 'fixture',
+    TURNSTILE_SECRET_KEY: 'fixture',
+    S3_ENDPOINT: process.env.S3_ENDPOINT,
+    S3_REGION: process.env.S3_REGION,
+    S3_BUCKET: process.env.S3_BUCKET,
+    S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID,
+    S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
+    CACHE_NAMESPACE: `storage-${newId()}`,
+    HOST: '127.0.0.1',
+    PORT: String(port),
+    SHUTDOWN_TIMEOUT_MS: '5000',
+  }
   child = spawn(process.execPath, ['.output/server/index.mjs'], {
     cwd: fileURLToPath(new URL('../../', import.meta.url)),
-    env: {
-      PATH: process.env.PATH,
-      DATABASE_URL: databaseUrl,
-      VALKEY_URL: process.env.TEST_VALKEY_URL,
-      BETTER_AUTH_SECRET: secret,
-      APP_URL: appUrl,
-      GOOGLE_CLIENT_ID: 'fixture',
-      GOOGLE_CLIENT_SECRET: 'fixture',
-      GITHUB_CLIENT_ID: 'fixture',
-      GITHUB_CLIENT_SECRET: 'fixture',
-      TURNSTILE_SITE_KEY: 'fixture',
-      TURNSTILE_SECRET_KEY: 'fixture',
-      S3_ENDPOINT: process.env.S3_ENDPOINT,
-      S3_REGION: process.env.S3_REGION,
-      S3_BUCKET: process.env.S3_BUCKET,
-      S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID,
-      S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
-      CACHE_NAMESPACE: `storage-${newId()}`,
-      HOST: '127.0.0.1',
-      PORT: String(port),
-      SHUTDOWN_TIMEOUT_MS: '5000',
-    },
+    env: productionEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   // 不打印 SDK/认证原始输出，防止测试失败时泄漏随机密钥或签名链接。
@@ -242,6 +244,53 @@ it('serializes concurrent confirmations at the remaining quota', async () => {
     expect(await getStorageUsage(db, workspaceId)).toBe(5 * 1024 ** 3)
   } finally {
     await sql`delete from file where id = ${quotaId}`
+  }
+})
+
+it('preserves the S3 HEAD failure code and 502 across the Nitro/SSR resource boundary', async () => {
+  const fileId = await upload(1)
+  const probe = createServer().listen(0, '127.0.0.1')
+  await once(probe, 'listening')
+  const port = (probe.address() as AddressInfo).port
+  await new Promise<void>((resolve) => probe.close(() => resolve()))
+  const failingBase = `http://127.0.0.1:${port}`
+  const failing = spawn(process.execPath, ['.output/server/index.mjs'], {
+    cwd: fileURLToPath(new URL('../../', import.meta.url)),
+    env: {
+      ...productionEnv,
+      PORT: String(port),
+      S3_SECRET_ACCESS_KEY: 'invalid-fixture-signature',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  failing.stdout?.resume()
+  failing.stderr?.resume()
+  const exit = once(failing, 'exit')
+  try {
+    await vi.waitFor(async () =>
+      expect(
+        await fetch(`${failingBase}/internal/live`).then(
+          (res) => res.status,
+          () => 0,
+        ),
+      ).toBe(200),
+    )
+    const response = await fetch(`${failingBase}/api/files/${fileId}/complete`, {
+      method: 'POST',
+      headers: headers(identities[0]?.cookie ?? ''),
+      body: JSON.stringify({ workspaceId: identities[0]?.id }),
+    })
+    expect(response.status).toBe(502)
+    expect(await response.json()).toMatchObject({ error: { code: 'STORAGE_HEAD_FAILED' } })
+    expect(await scoped(db, identities[0]?.id as string).findById(file, fileId)).toMatchObject({
+      status: 'pending',
+      deletedAt: null,
+    })
+  } finally {
+    if (failing.exitCode === null) {
+      failing.kill('SIGTERM')
+      await exit
+    }
   }
 })
 

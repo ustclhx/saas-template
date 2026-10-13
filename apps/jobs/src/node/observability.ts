@@ -95,6 +95,23 @@ export function nodeBeforeSend(event: ErrorEvent, hint: EventHint): ErrorEvent |
     tags: { ...tags, code },
     ...(tags.userId ? { user: { id: tags.userId } } : {}),
     exception: { values: values ?? [] },
+    // SDK 在 beforeSend 前把注入的 debug ID 转为 images；只保留已验证的本地源码路径与 UUID。
+    debug_meta: {
+      images:
+        redacted.debug_meta?.images?.flatMap((entry) => {
+          if (
+            entry.type !== 'sourcemap' ||
+            typeof entry.code_file !== 'string' ||
+            typeof entry.debug_id !== 'string' ||
+            !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(entry.debug_id) ||
+            !sourceFrame({ filename: entry.code_file })
+          )
+            return []
+          return [
+            { type: 'sourcemap' as const, code_file: entry.code_file, debug_id: entry.debug_id },
+          ]
+        }) ?? [],
+    },
   }
 }
 

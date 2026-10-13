@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { once } from 'node:events'
+import { readFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { AddressInfo, Socket } from 'node:net'
 import { fileURLToPath } from 'node:url'
@@ -27,6 +28,7 @@ for (const mode of ['reachable', 'stalled', 'disabled']) {
       user?: { id: string }
       release: string
       dist: string
+      debug_meta: { images: { type: string; code_file: string; debug_id: string }[] }
     }[] = []
     const connections = new Set<Socket>()
     const transport = createServer(async (request, response) => {
@@ -174,6 +176,21 @@ for (const mode of ['reachable', 'stalled', 'disabled']) {
               dist: 'web-node',
             }),
           )
+        }
+        for (const event of events) {
+          expect(event.debug_meta.images.length).toBeGreaterThan(0)
+          for (const image of event.debug_meta.images) {
+            const source = image.code_file.startsWith('file://')
+              ? fileURLToPath(image.code_file)
+              : image.code_file
+            const map = JSON.parse(await readFile(`${source}.map`, 'utf8'))
+            expect(image.debug_id).toBe(map.debugId)
+            expect(image).toEqual({
+              type: 'sourcemap',
+              code_file: expect.any(String),
+              debug_id: expect.stringMatching(/^[a-f0-9-]{36}$/),
+            })
+          }
         }
         expect(JSON.stringify(events)).not.toContain('Sentry verification')
         expect(logs.includes(secret)).toBe(false)

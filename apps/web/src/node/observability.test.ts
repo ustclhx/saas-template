@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { AppError } from '@saas/shared'
 import { setLogContext, withLogContext } from '@saas/shared/log'
 import { notFound, redirect } from '@tanstack/react-router'
@@ -10,7 +11,7 @@ import { build } from 'esbuild'
 import { expect, it } from 'vitest'
 import { type WebRuntime, withWebRuntime } from '../server/runtime.ts'
 import { captureServerError } from '../server/sentry.ts'
-import { initializeNodeObservability } from './observability.ts'
+import { initializeNodeObservability, nodeBeforeSend } from './observability.ts'
 
 const release = '0123456789abcdef0123456789abcdef01234567'
 
@@ -100,7 +101,7 @@ it.each([false, true])(
       await build({
         stdin: {
           contents: `
-          import { initializeNodeObservability } from './src/node/observability.ts'
+          import { initializeNodeObservability, nodeBeforeSend } from './src/node/observability.ts'
           import { withLogContext } from '@saas/shared/log'
           import { makeNodeTransport } from '@sentry/node'
           import { setTimeout as delay } from 'node:timers/promises'
@@ -270,4 +271,30 @@ it('HTTP observer 真实 envelope 隔离空间、过滤预期异常、去重并�
     server.closeAllConnections()
     await new Promise<void>((resolve) => server.close(() => resolve()))
   }
+})
+
+it('retains only local source-map UUID metadata and removes unsafe debug images', () => {
+  const id = '01234567-89ab-cdef-0123-456789abcdef'
+  const local = fileURLToPath(import.meta.url)
+  const event = nodeBeforeSend(
+    {
+      debug_meta: {
+        images: [
+          { type: 'sourcemap', code_file: local, debug_id: id, body: 'private-body' },
+          {
+            type: 'sourcemap',
+            code_file: 'https://remote/file.js?token=private-token',
+            debug_id: id,
+          },
+          { type: 'sourcemap', code_file: local, debug_id: 'private-credential' },
+          { type: 'sourcemap', code_file: '/missing/private.js', debug_id: id },
+        ],
+      },
+    } as never,
+    { originalException: new Error('private-error') },
+  )
+  expect(event?.debug_meta?.images).toEqual([{ type: 'sourcemap', code_file: local, debug_id: id }])
+  expect(JSON.stringify(event)).not.toMatch(
+    /private-body|private-token|private-credential|private-error/,
+  )
 })

@@ -28,7 +28,7 @@
 
 - [x] 3.1 实现 `@saas/email/node` Nodemailer SMTP sender；协调者加入 Node smtp 通道/host/port/TLS模式/成对认证/password `_FILE` 校验和现有 consumer sender 注入，保留 CF log/resend 及稳定 Resend 幂等键。验证：config 与 email 现有测试通过，smtp 无 Resend key 可装配、显式通道缺项启动拒绝且不回退；中立/CF 导入不加载 Node SMTP，文档记录配置与内部明文模式边界。
 - [x] 3.2 复用模板/from/replyTo/list headers，SMTP 隐式TLS/强制STARTTLS/受控内部none模式有界发送；按 responseCode 优先分类网络/4xx/永久5xx/本地配置错误为安全 EmailSendError，debug关闭、禁止附件文件/URL读取。验证：新增 `pnpm --filter @saas/email test:node:smtp` 的本地真实协议 fixture 验证模板接收、465式TLS/STARTTLS、证书验证拒绝、不降级、451/454认证临时失败 retryable、535/550 non-retryable、超时/断流脱敏；不测试 Nodemailer 内部实现，README列TLS与错误策略。
-- [ ] 3.3 在 B 的真实 Node inbox/DBOS consumer 接 SMTP，保持初次+5重试、原退避、混合批次成功独立确认、有效失败先DLQ/无效消息确认；不加入第二套重试或跨通道回退。验证：jobs `test:node` 与 `test:node:integration` 在隔离 PG/SMTP fixture 中证明暂时失败后成功、永久/第六次边界写持久DLQ、sink失败不提前ack；已有真实六次生产时钟证据仍归 B，不把构造第六次称为完整时间轴，文档保持 inbox/DLQ权限与保留期。
+- [x] 3.3 在 B 的真实 Node inbox/DBOS consumer 接 SMTP，保持初次+5重试、原退避、混合批次成功独立确认、有效失败先DLQ/无效消息确认；不加入第二套重试或跨通道回退。验证：jobs `test:node` 与 `test:node:integration` 在隔离 PG/SMTP fixture 中证明暂时失败后成功、永久/第六次边界写持久DLQ、sink失败不提前ack；已有真实六次生产时钟证据仍归 B，不把构造第六次称为完整时间轴，文档保持 inbox/DLQ权限与保留期。
 - [ ] 3.4 通过真实持久邮件链路验证注册验证/重置密码等认证邮件，记录稳定 Message-ID 和 SMTP接受后确认前故障的至少一次边界。验证：Node auth HTTP/e2e + 本地 SMTP捕获fixture 完成入队→收件→验证链接，不查DB token代替送达；临时 SMTP故障不使成功入队请求失败，不确定结果允许原身份重试且不自动切Resend；文档明确潜在重复投递，不承诺 SMTP幂等或 exactly-once。
 
 ## 4. 跨组集成验收（协调者，依赖已完成的各组）

@@ -1,6 +1,6 @@
 # C 共享接线：配置、观测与构建
 
-本批只覆盖 C 1.1、1.4、2.1–2.4、3.1、3.3。三个已合入 adapter 的实现未修改，
+本批只覆盖 C 1.1、1.4、2.1–2.4、3.1、3.3。S3/SMTP adapter 实现未修改；经用户授权，Sentry adapter 仅补安全 debug metadata 白名单，
 没有移植 B 媒体 workflow、改 staging 触发器或承接 D 的镜像/发布/部署。
 
 ## Node 配置
@@ -31,7 +31,7 @@ web 的三个 bundle 各有自己的日志 ALS 与 AppError 类。桥接传当�
 在产生错误的 bundle 内识别 AppError，再在 observer bundle 内按原对象缓存安全错误摘要；
 保留低于 500 的过滤、机器码、源码 frame 和同对象去重。runtime 包装复制属性描述符，
 保持 getter 惰性及 own/enumerable，文件 handler 展开依赖仍能读到 db/auth。
-Node envelope 沿用 adapter 白名单，所有日志 Error 摘要移除 message/stack/cause 原文，
+Node envelope 沿用 adapter 白名单，受信任资源错误在 Nitro/SSR 边界重建为调用方 AppError，保留 S3 502/机器码，避免文件响应吞错时退化成 INTERNAL_ERROR。所有日志 Error 摘要移除 message/stack/cause 原文，
 保留固定类型与安全 AppError 码；CF/shared 脱敏回归继续通过。
 
 SIGTERM/INT 沿用 A 的绝对 deadline。web 停 HTTP、排空请求/waitUntil、关闭缓存/DB/Nitro；
@@ -59,12 +59,12 @@ web-node/jobs-node，不串用 CF 的 dist/server、web/jobs。上传凭据不�
 
 ## 本批验收与边界
 
-配置 39 个用例、shared 23 个用例通过；Node 文件/HTTP/Sentry Docker runner 17 个用例
+配置 39 个用例、shared 23 个用例通过；Node 文件/HTTP/Sentry Docker runner 18 个用例
 验证实际上传确认下载、权限/配额/清理、storage-only task/hold 不变、并发管理员身份、
 真实 transport 捕获后可达/挂起/禁用三模式 SIGTERM 退出，以及 map URL 404。
 bridge fixture 另验证两空间隔离、跨 bundle 业务码/过滤与去重。
-jobs 的 64 个 Node unit 及真实持久 SMTP/生产停机/Cron 验收见 jobs 接线记录。
-maps fixture 验证路径/dist/SHA、上传凭据隔离与公开 maps 删除。
+jobs 的 65 个 Node unit 及真实持久 SMTP/生产停机/Cron 验收见 jobs 接线记录。
+maps fixture 验证路径/dist/SHA、上传凭据隔离与公开 maps 删除。实际产物 web/jobs envelope 保留 debug_meta.images，并逐项匹配本地 map 的 debugId；签名 URL、非法 UUID、缺失文件与任意 metadata 正文被白名单拒绝。
 根 check、依赖/单实例/dedupe、typecheck、test、CF build 与 Node build 是 PR 门槛。
 
 1.5–1.7 的 profile/CORS/全栈资源/外部 S3、2.5 的真实 Sentry 项目源码映射、3.4 的认证

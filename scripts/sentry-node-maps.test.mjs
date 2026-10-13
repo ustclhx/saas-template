@@ -38,6 +38,11 @@ test('Node maps use matching release/dist, isolate upload secrets and remove pub
     await prepareNodeMaps({ root, release, upload: true, env, run })
     assert.deepEqual(calls[0].args, ['releases', 'new', release])
     assert.deepEqual(calls.at(-1).args, ['releases', 'finalize', release])
+    assert.ok(
+      calls
+        .filter(({ args }) => args[1] === 'inject')
+        .every(({ environment }) => environment.SENTRY_AUTH_TOKEN === undefined),
+    )
     const uploads = calls.filter(({ args }) => args[1] === 'upload')
     assert.equal(uploads.length, 2)
     for (const [index, { args, environment }] of uploads.entries()) {

@@ -36,7 +36,7 @@ PG trust 只属于此临时独占环境；业务仍用 app DML 角色，migrator
 DBOS 迁移。旧 Node integration 的默认 include 不要求 SMTP；只有 runner 提供明确
 `JOBS_SMTP_PORT` 和 `JOBS_SMTP_CONTROL` 才纳入 SMTP 两个 fixture，缺项不伪造通过。
 
-本批证据：64 个 Node unit 与 jobs typecheck 通过；SMTP、shutdown 和原 production
+本批证据：65 个 Node unit 与 jobs typecheck 通过；SMTP、shutdown 和原 production
 共 3 文件 5 用例通过（74.20 秒）。SMTP 证明混合批次独立确认、451 暂时失败后以原
 30 秒退避成功、550 永久失败持久 DLQ、构造已有五次持久状态后的第六次边界，以及真实
 PG trigger 拒写 DLQ 后未提前确认；这不是完整六次生产退避时钟。原 inbox/DLQ 的权限和
@@ -46,6 +46,8 @@ shutdown fixture 另以严格 exit 0 重跑：3 个真实生产 Node 子进程�
 发送 SIGTERM，覆盖可达、HTTP 接受但不回应、禁用 transport；1 秒 shutdown 预算均在
 1.7 秒退出上限内，业务终态仍为持久 dead。单文件 3 用例通过（20.79 秒）。
 
-完整五分钟 Cron wire 集成由主代理最终执行；这里没有替代该验收。runner 为每个测试文件创建独立数据库，保留原 wire 用例的全库消息计数隔离假设。
-该最后的编排隔离改动仍须由主代理执行完整 runner 验收。没有真实 Sentry 项目或外部 SMTP 验收，未勾选
-2.5/3.4；本地 transport 不能替代 source map 的真实项目验收。
+主代理完成整个 runner：原 production、实际产物 debug ID envelope/shutdown、SMTP、原 Cron
+wire 四文件六用例均通过，每文件独立 PG 数据库并重置 SMTP 捕获状态。原 wire 沿用真实
+生产时钟，不修改任务重试、调度或 B 用例的全库计数断言。
+没有真实 Sentry 项目或外部 SMTP 验收，2.5/3.4 保持待办；本地 transport 不能替代真实
+source map 项目验收。

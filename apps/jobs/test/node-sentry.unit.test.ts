@@ -4,7 +4,7 @@ import { getLogContext, withLogContext } from '@saas/shared/log'
 import type { ErrorEvent, NodeOptions } from '@sentry/node'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { consumeJobsBatch, type JobsContext, runJobsSchedule } from '../src/handlers.ts'
-import { initializeNodeObservability } from '../src/node/observability.ts'
+import { initializeNodeObservability, nodeBeforeSend } from '../src/node/observability.ts'
 import { handleEmailBatch } from '../src/queues/email.ts'
 
 const spies = vi.hoisted(() => ({ loaded: vi.fn(), init: vi.fn() }))
@@ -323,4 +323,30 @@ it('isolates actual consumer members and captures cron and outer sink failures w
     ]),
   )
   expect(JSON.stringify(events)).not.toContain('private-text')
+})
+
+it('retains only local source-map UUID metadata and removes unsafe debug images', () => {
+  const id = '01234567-89ab-cdef-0123-456789abcdef'
+  const local = fileURLToPath(import.meta.url)
+  const event = nodeBeforeSend(
+    {
+      debug_meta: {
+        images: [
+          { type: 'sourcemap', code_file: local, debug_id: id, body: 'private-body' },
+          {
+            type: 'sourcemap',
+            code_file: 'https://remote/file.js?token=private-token',
+            debug_id: id,
+          },
+          { type: 'sourcemap', code_file: local, debug_id: 'private-credential' },
+          { type: 'sourcemap', code_file: '/missing/private.js', debug_id: id },
+        ],
+      },
+    } as never,
+    { originalException: new Error('private-error') },
+  )
+  expect(event?.debug_meta?.images).toEqual([{ type: 'sourcemap', code_file: local, debug_id: id }])
+  expect(JSON.stringify(event)).not.toMatch(
+    /private-body|private-token|private-credential|private-error/,
+  )
 })

@@ -48,12 +48,13 @@ export async function prepareNodeMaps({
   for (const key of Object.keys(environment)) {
     if (key.startsWith('SENTRY_')) delete environment[key]
   }
+  const uploadEnvironment = { ...environment }
   if (upload) {
     for (const key of ['SENTRY_AUTH_TOKEN', 'SENTRY_ORG', 'SENTRY_PROJECT']) {
       if (!env[key]) throw new Error(`Missing ${key}`)
-      environment[key] = env[key]
+      uploadEnvironment[key] = env[key]
     }
-    run(['releases', 'new', release], environment)
+    run(['releases', 'new', release], uploadEnvironment)
   }
   for (const target of targets) {
     run(['sourcemaps', 'inject', target.directory], environment)
@@ -71,11 +72,11 @@ export async function prepareNodeMaps({
           '--wait',
           target.directory,
         ],
-        environment,
+        uploadEnvironment,
       )
   }
   await removePublicMaps(resolve(root, 'apps/web/.output/public'))
-  if (upload) run(['releases', 'finalize', release], environment)
+  if (upload) run(['releases', 'finalize', release], uploadEnvironment)
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

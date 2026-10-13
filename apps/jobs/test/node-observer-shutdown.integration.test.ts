@@ -1,10 +1,11 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { AddressInfo, Socket } from 'node:net'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { gunzipSync } from 'node:zlib'
 import { createDb, jobMessage } from '@saas/db'
 import type { EmailQueueMessage } from '@saas/email/queue'
 import { createNodeQueueProducer } from '@saas/platform/node'
@@ -25,9 +26,20 @@ it.each(['reachable', 'unreachable', 'disabled'] as const)(
     const db = createDb(databaseUrl, { max: 1 })
     const id = newId()
     let envelopes = 0
+    const images: { debug_id: string; code_file: string }[] = []
     const sockets = new Set<Socket>()
     const receiver = createServer(async (request, response) => {
-      for await (const _chunk of request) {
+      const chunks: Buffer[] = []
+      for await (const chunk of request) chunks.push(Buffer.from(chunk))
+      const body = Buffer.concat(chunks)
+      const wire = request.headers['content-encoding'] === 'gzip' ? gunzipSync(body) : body
+      for (const line of wire.toString().split('\n')) {
+        try {
+          const event = JSON.parse(line)
+          if (event.exception) images.push(...(event.debug_meta?.images ?? []))
+        } catch {
+          /* 非 JSON envelope 项不参与断言 */
+        }
       }
       envelopes++
       if (mode === 'reachable') response.end('{}')
@@ -49,6 +61,16 @@ it.each(['reachable', 'unreachable', 'disabled'] as const)(
       cwd: root,
       stdio: 'pipe',
     })
+    // 真实构建产物离线注入 ID，再从实际 transport envelope 核验关联信息保留。
+    execFileSync(
+      'pnpm',
+      ['exec', 'sentry-cli', 'sourcemaps', 'inject', join(directory, 'server')],
+      {
+        cwd: root,
+        env: { PATH: process.env.PATH, HOME: process.env.HOME },
+        stdio: 'pipe',
+      },
+    )
     const child = spawn(process.execPath, [join(directory, 'server/index.mjs')], {
       cwd: directory,
       env: {
@@ -123,7 +145,17 @@ it.each(['reachable', 'unreachable', 'disabled'] as const)(
         .where(eq(jobMessage.idempotencyKey, `shutdown-${id}`))
       expect(message?.state).toBe('dead')
       if (mode === 'disabled') expect(envelopes).toBe(0)
-      else expect(envelopes).toBeGreaterThan(0)
+      else {
+        expect(envelopes).toBeGreaterThan(0)
+        expect(images.length).toBeGreaterThan(0)
+        for (const image of images) {
+          const source = image.code_file.startsWith('file://')
+            ? fileURLToPath(image.code_file)
+            : image.code_file
+          const map = JSON.parse(await readFile(`${source}.map`, 'utf8'))
+          expect(image.debug_id).toBe(map.debugId)
+        }
+      }
     } finally {
       if (child.exitCode === null) {
         child.kill('SIGKILL')
