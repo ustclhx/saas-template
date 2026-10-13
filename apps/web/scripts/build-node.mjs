@@ -17,4 +17,11 @@ const result = spawnSync('pnpm', ['exec', 'turbo', 'run', 'build:node'], {
   env: { ...process.env, APP_VERSION: version },
 })
 if (result.error) throw result.error
-process.exit(result.status ?? 1)
+if (result.status !== 0) process.exit(result.status ?? 1)
+const maps = spawnSync(process.execPath, ['scripts/sentry-node-maps.mjs'], {
+  cwd: root,
+  stdio: 'inherit',
+  env: { ...process.env, APP_VERSION: version },
+})
+if (maps.error) throw maps.error
+process.exit(maps.status ?? 1)

@@ -121,7 +121,8 @@ it.each([
   await expect(runJobsSchedule(cron, new Date(), context, { cronProfile })).rejects.toThrow(
     'Unknown cron',
   )
-  expect(error).toHaveBeenCalledOnce()
+  expect(error).toHaveBeenCalledTimes(2)
+  expect(JSON.parse(error.mock.calls[1]?.[0] as string)).toMatchObject({ event: 'jobs.exception' })
   expect(JSON.parse(error.mock.calls[0]?.[0] as string)).toMatchObject({
     event,
     profile: cronProfile,

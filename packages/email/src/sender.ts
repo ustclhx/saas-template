@@ -19,8 +19,8 @@ export interface EmailMessage {
   /** 回复地址；缺省时使用发送方的默认值 */
   readonly replyTo?: string
   /**
-   * 幂等键：同一个键在服务商的去重窗口内只发送一次。
-   * 队列重试时应传入稳定的值（如消息 ID），避免重复投递。
+   * 稳定业务身份：Resend 在服务商去重窗口内使用幂等键；SMTP 生成稳定 Message-ID，仍可能重复投递。
+   * 队列重试时应传入同一个值（如消息 ID），实际去重取决于所选通道。
    */
   readonly idempotencyKey?: string
 }

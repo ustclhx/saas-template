@@ -1,6 +1,6 @@
 import { parseAuthEnv } from '@saas/auth'
 import { loadEnv } from '@saas/config'
-import { loadNodeEnv } from '@saas/config/node'
+import { loadNodeEnv, type NodeEnv, nodeStorageConfig } from '@saas/config/node'
 import { createDb, type Database } from '@saas/db'
 import type { EmailQueueMessage } from '@saas/email/queue'
 import type { KeyValueStore, RequestMetadata, TaskHealth } from '@saas/platform'
@@ -12,6 +12,8 @@ import {
 } from '@saas/platform/node'
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
+import { getFileDownload } from '@saas/storage'
+import { createNodeStorage } from '@saas/storage/node'
 import { APIError } from 'better-auth/api'
 import { z } from 'zod'
 import { handleAuthRequest } from '../features/admin/impersonation-http.ts'
@@ -21,6 +23,7 @@ import { createWebAuth } from '../server/auth.ts'
 import { createQueueAuthEmailSender, userLocaleByEmail } from '../server/auth-email.ts'
 import type { WebRuntime } from '../server/runtime.ts'
 import { templateConfig } from '../server/template-config.ts'
+import type { NodeWebObserver } from './observer-context.ts'
 
 function unavailable(): never {
   throw new AppError('CAPABILITY_UNAVAILABLE', 'Capability is unavailable', { status: 503 })
@@ -60,8 +63,15 @@ export function prerenderRuntime(requestMeta: RequestMetadata): WebRuntime {
 }
 
 /** 生产入口在 listen 前装配一次；请求引用进程 facade 并创建认证上下文。 */
-export async function createNodeWebProcess() {
-  const env = loadNodeEnv({ templateConfig })
+export async function createNodeWebProcess(
+  env: NodeEnv = loadNodeEnv({ templateConfig }),
+  observer: Pick<NodeWebObserver, 'enabled' | 'captureError'> = {
+    enabled: false,
+    captureError: () => log.error('http.server_error'),
+  },
+) {
+  const storageConfig = nodeStorageConfig(env)
+  const storage = storageConfig ? createNodeStorage(storageConfig) : undefined
   const jobsConfig = loadEnv(
     process.env,
     z.object({
@@ -170,11 +180,11 @@ export async function createNodeWebProcess() {
       cache: cache.kv('settings'),
       rateLimiter: cache.rateLimiter,
       requestMeta,
-      observability: { enabled: false, captureError: () => log.error('server.error') },
+      observability: observer,
       emailQueue: { available: true, value: emailQueue },
       eventsQueue: { available: true, value: eventsQueue },
       health: { cache: () => cache.ping(), tasks: taskHealth },
-      files: { available: false },
+      files: storage ? { available: true, value: storage } : { available: false },
       ai: {
         available: true,
         value: {
@@ -193,7 +203,9 @@ export async function createNodeWebProcess() {
           workersAi: { available: false },
           background,
           workflow: { available: false },
-          downloadFile: { available: false },
+          downloadFile: storage
+            ? { available: true, value: (input) => getFileDownload(db, storage, input) }
+            : { available: false },
         },
       },
       get auth() {

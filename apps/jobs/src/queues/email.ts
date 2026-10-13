@@ -1,6 +1,8 @@
 import type { EmailTransportConfig } from '@saas/config'
 import {
   createResendSender,
+  EmailSendError,
+  type EmailSender,
   type EmailTemplateName,
   type EmailTemplateProps,
   isEmailSendError,
@@ -11,7 +13,7 @@ import { type EmailQueueMessage, parseEmailQueueMessage } from '@saas/email/queu
 import type { DeadLetterSink, QueueBatch, QueueMessage } from '@saas/platform'
 import { log, newRequestId, withLogContext } from '@saas/shared/log'
 import templateConfig from '../../../../template.config.ts'
-import { type JobObserver, logJobObserver } from '../observer.ts'
+import { type JobObserver, logJobObserver, withJobObserver } from '../observer.ts'
 
 /**
  * EMAIL_QUEUE 消费者（tasks.md 3.2，specs/user-auth「认证邮件异步发送」）：
@@ -47,18 +49,34 @@ export function emailRetryDelaySeconds(attempts: number): number {
 /** 一次投递：发送渲染好的邮件，返回服务商的邮件 ID（log 通道为 null）。 */
 type Deliver = (message: EmailQueueMessage, rendered: RenderedEmail) => Promise<string | null>
 
-function createDeliver(transport: EmailTransportConfig): Deliver {
+export type JobsEmailTransport = EmailTransportConfig | { readonly transport: 'smtp' }
+
+interface EmailBatchOptions {
+  observer?: JobObserver
+  deadLetters?: DeadLetterSink<unknown>
+  sender?: EmailSender
+}
+
+function createDeliver(transport: JobsEmailTransport, injectedSender?: EmailSender): Deliver {
   if (transport.transport === 'log') {
     return async (message) => {
       log.info('email.logged', { template: message.template, to: message.to })
       return null
     }
   }
-  const sender = createResendSender({
-    apiKey: transport.apiKey,
-    from: transport.from,
-    ...(transport.replyTo === undefined ? {} : { replyTo: transport.replyTo }),
-  })
+  if (transport.transport === 'smtp' && !injectedSender) {
+    throw new EmailSendError('SMTP_SENDER_UNAVAILABLE', { retryable: false })
+  }
+  const sender =
+    injectedSender ??
+    (transport.transport === 'resend'
+      ? createResendSender({
+          apiKey: transport.apiKey,
+          from: transport.from,
+          ...(transport.replyTo === undefined ? {} : { replyTo: transport.replyTo }),
+        })
+      : undefined)
+  if (!sender) throw new EmailSendError('SMTP_SENDER_UNAVAILABLE', { retryable: false })
   return async (message, rendered) => {
     const result = await sender.send({
       to: message.to,
@@ -87,10 +105,10 @@ function render(message: EmailQueueMessage): Promise<RenderedEmail> {
 
 export async function handleEmailBatch(
   batch: QueueBatch<unknown>,
-  transport: EmailTransportConfig,
-  options: { observer?: JobObserver; deadLetters?: DeadLetterSink<unknown> } = {},
+  transport: JobsEmailTransport,
+  options: EmailBatchOptions = {},
 ): Promise<void> {
-  const deliver = createDeliver(transport)
+  const deliver = createDeliver(transport, options.sender)
   // 每条消息单独确认 / 重试，一条失败不影响同批的其他消息
   const results = await Promise.allSettled(
     batch.messages.map((message) => handleMessage(message, deliver, transport, options)),
@@ -103,8 +121,8 @@ export async function handleEmailBatch(
 async function handleMessage(
   message: QueueMessage<unknown>,
   deliver: Deliver,
-  transport: EmailTransportConfig,
-  options: { observer?: JobObserver; deadLetters?: DeadLetterSink<unknown> },
+  transport: JobsEmailTransport,
+  options: EmailBatchOptions,
 ): Promise<void> {
   const meta = { id: message.id, attempts: message.attempts }
   const email = parseEmailQueueMessage(message.body)
@@ -115,7 +133,9 @@ async function handleMessage(
   }
 
   await withLogContext({ requestId: email.requestId ?? newRequestId() }, () =>
-    deliverMessage(message, email, deliver, transport, options),
+    withJobObserver(options.observer ?? logJobObserver, () =>
+      deliverMessage(message, email, deliver, transport, options),
+    ),
   )
 }
 
@@ -123,8 +143,8 @@ async function deliverMessage(
   message: QueueMessage<unknown>,
   email: EmailQueueMessage,
   deliver: Deliver,
-  transport: EmailTransportConfig,
-  options: { observer?: JobObserver; deadLetters?: DeadLetterSink<unknown> },
+  transport: JobsEmailTransport,
+  options: EmailBatchOptions,
 ): Promise<void> {
   const observer = options.observer ?? logJobObserver
   const meta = { id: message.id, attempts: message.attempts }

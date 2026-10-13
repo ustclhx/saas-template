@@ -13,10 +13,11 @@
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test -c playwright.smoke.config.ts",
     "test:e2e:stripe": "playwright test -c playwright.stripe.config.ts",
-    "build:node": "vite build --config vite.node.config.ts",
+    "build:node": "vite build --config vite.node.config.ts && node scripts/build-node-bootstrap.mjs",
     "start:node": "node .output/server/index.mjs",
     "test:node": "node scripts/test-node.mjs",
-    "test:node:production": "vitest run --config vitest.production.node.config.ts"
+    "test:node:production": "vitest run --config vitest.production.node.config.ts",
+    "test:node:storage": "node scripts/test-node-storage.mjs"
   },
   "dependencies": {
     "@ai-sdk/react": "^4.0.130",

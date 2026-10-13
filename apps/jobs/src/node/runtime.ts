@@ -1,7 +1,7 @@
 import { createServer } from 'node:http'
 import type { Socket } from 'node:net'
-import { emailTransportConfig, type TemplateConfig } from '@saas/config'
-import type { NodeEnv } from '@saas/config/node'
+import type { TemplateConfig } from '@saas/config'
+import { type NodeEnv, nodeEmailTransportConfig, nodeStorageConfig } from '@saas/config/node'
 import { createDb, pingDatabase } from '@saas/db'
 import {
   createNodeBackgroundTasks,
@@ -15,9 +15,10 @@ import {
   type NodeJobEngine,
 } from '@saas/platform/node'
 import { log, newRequestId, withLogContext } from '@saas/shared/log'
+import { createNodeStorage } from '@saas/storage/node'
 import templateConfig from '../../../../template.config.ts'
 import { consumeJobsBatch, type JobsContext } from '../handlers.ts'
-import { logJobObserver } from '../observer.ts'
+import { type JobObserver, logJobObserver } from '../observer.ts'
 import { getNodeJobFeatures, registerNodeJobsSchedules } from './registration.ts'
 
 export interface NodeJobsOptions {
@@ -28,10 +29,20 @@ export interface NodeJobsOptions {
   applicationVersion: string
   nativePoolMax?: number
   template?: TemplateConfig
+  observer?: JobObserver
 }
 
 /** 先完成持久注册，再 launch/start；业务与 native 池由同一停机流程按顺序关闭。 */
 export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
+  // 显式通道及存储配置必须在业务连接池创建前完成校验，SMTP 不会跨通道回退。
+  const emailTransport = nodeEmailTransportConfig(config)
+  const storageConfig = nodeStorageConfig(config)
+  const storage = storageConfig ? createNodeStorage(storageConfig) : undefined
+  const emailSender =
+    emailTransport.transport === 'smtp'
+      ? (await import('@saas/email/node')).createSmtpSender(emailTransport)
+      : undefined
+  const observer = options.observer ?? logJobObserver
   const background = createNodeBackgroundTasks()
   const db = createDb(config.DATABASE_URL, { max: config.DB_POOL_MAX })
   let cache: Awaited<ReturnType<typeof createNodeCache>>
@@ -73,9 +84,20 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
     cache: cache.kv('auth'),
     emailQueue: createNodeQueueProducer(db, 'email').producer,
     eventsQueue: createNodeQueueProducer(db, 'events').producer,
-    emailTransport: emailTransportConfig(config),
-    files: { available: false },
-    observer: logJobObserver,
+    emailTransport,
+    ...(emailSender && { emailSender }),
+    files: storage
+      ? {
+          available: true,
+          value: {
+            async delete(keys) {
+              // Cleanup 的批量形状保持原样；Storage 每次只接受一个 key。
+              for (const key of typeof keys === 'string' ? [keys] : keys) await storage.delete(key)
+            },
+          },
+        }
+      : { available: false },
+    observer,
     billingEnabled: features.billing,
   }
   try {
@@ -186,6 +208,26 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
     sockets.add(socket)
     socket.once('close', () => sockets.delete(socket))
   })
+  let shutdownDeadline: number | undefined
+  async function closeObserver() {
+    if (!observer.close || shutdownDeadline === undefined) return
+    const remaining = Math.max(0, shutdownDeadline - Date.now())
+    // SDK 的 close(0) 表示无限等待；没有预算时不能调用，也不能再分配第二个 deadline。
+    if (remaining === 0) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      await Promise.race([
+        observer.close(remaining),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, remaining)
+        }),
+      ])
+    } catch {
+      log.warn('jobs.node.observer_close_failed')
+    } finally {
+      clearTimeout(timer)
+    }
+  }
   async function closeResources() {
     try {
       await engine.close()
@@ -218,6 +260,7 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
     tasks: { health },
     readiness,
     shutdown() {
+      shutdownDeadline ??= Date.now() + config.SHUTDOWN_TIMEOUT_MS
       shutdown ??= background
         .shutdown({
           timeoutMs: config.SHUTDOWN_TIMEOUT_MS,
@@ -230,7 +273,9 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
           },
           closeResources,
         })
-        .then((result) => {
+        .then(async (result) => {
+          // 业务资源结果由 A 决定；监控单独使用同一 deadline 的余量，失败不改退出结果。
+          await closeObserver()
           for (const socket of sockets) socket.destroy()
           log.info('jobs.node.stopped', { ...result })
           return result

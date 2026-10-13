@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { builtinModules } from 'node:module'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -12,10 +12,15 @@ const version =
   process.env.APP_VERSION ??
   execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
 if (!/^[a-f0-9]{40}$/.test(version)) throw new Error('APP_VERSION must be a full git SHA')
+// splitting 产生版本化 chunk，旧产物不能混入本版本的 maps 上传目录。
+await rm(`${output}/server`, { recursive: true, force: true })
 const result = await build({
   absWorkingDir: root,
-  entryPoints: ['src/index.node.ts'],
-  outfile: `${output}/server/index.mjs`,
+  entryPoints: { index: 'src/index.node.ts' },
+  outdir: `${output}/server`,
+  outExtension: { '.js': '.mjs' },
+  splitting: true,
+  sourcemap: 'external',
   bundle: true,
   format: 'esm',
   platform: 'node',
@@ -59,5 +64,5 @@ const runtimePackages = externals.filter(
 await mkdir(output, { recursive: true })
 await writeFile(
   `${output}/node-build.json`,
-  `${JSON.stringify({ externals: runtimePackages, inputs: Object.keys(result.metafile.inputs) }, null, 2)}\n`,
+  `${JSON.stringify({ release: version, dist: 'jobs-node', externals: runtimePackages, inputs: Object.keys(result.metafile.inputs) }, null, 2)}\n`,
 )

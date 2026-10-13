@@ -26,6 +26,9 @@ export default defineConfig({
     ...sitePlugins('server.node.ts'),
     nitro({
       preset: 'node_server',
+      sourcemap: true,
+      // bootstrap 独立编译，SDK 仍需被 trace 到可复制的生产产物。
+      traceDeps: ['@sentry/node'],
       entry: fileURLToPath(new URL('./src/node/http.ts', import.meta.url)),
       serverEntry: false,
       experimental: { asyncContext: true },
