@@ -105,7 +105,7 @@ export function ChatPage({
   }
 
   async function stopReply() {
-    const messageId = status === 'streaming' ? streamingMessageId(messages) : undefined
+    const messageId = streamingMessageId(messages, status)
     setStopError(null)
     // 先通知服务端停止上游生成，再中断本地读取（服务端在客户端断开后仍会继续读完模型流）
     const request = messageId

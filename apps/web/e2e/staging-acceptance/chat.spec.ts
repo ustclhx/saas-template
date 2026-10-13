@@ -86,7 +86,24 @@ async function conversation(page: Page, slug: string, workspaceId: string, title
 }
 
 async function accounting(workspaceId: string, saved: Message, scenario: Scenario) {
-  expect(saved.text.length, 'Reply must have output').toBeGreaterThan(0)
+  const ledgerOf = () =>
+    query<Record<string, unknown> & { id: string; type: string; delta: number }>(
+      `select id, type, delta from credit_ledger where workspace_id = ${sqlLiteral(workspaceId)}
+        and ref_type = 'ai_message' and ref_id = ${sqlLiteral(saved.id)} order by created_at, id`,
+    )
+  // 停止可能早于首个输出：按 token 仍按最低费用结算；按次计费无输出时释放预扣、不扣费。
+  if (scenario === 'stop' && saved.text === '' && saved.pricing.mode === 'per_call') {
+    expect(saved.hold_status).toBe('released')
+    expect(saved.credits).toBe(0)
+    expect(saved.input_tokens).toBeNull()
+    expect(saved.output_tokens).toBeNull()
+    expect(saved.captured_amount + saved.overage_debited + saved.overage_debt).toBe(0)
+    const ledger = await ledgerOf()
+    expect(ledger.filter((entry) => entry.type === 'consume')).toHaveLength(0)
+    expect(ledger.reduce((sum, entry) => sum + entry.delta, 0)).toBe(0)
+    return { ledger, reconciliation: await reconcile(workspaceId) }
+  }
+  if (scenario !== 'stop') expect(saved.text.length, 'Reply must have output').toBeGreaterThan(0)
   expect(saved.input_tokens).not.toBeNull()
   expect(saved.output_tokens).not.toBeNull()
   expect(saved.credits).not.toBeNull()
@@ -112,10 +129,7 @@ async function accounting(workspaceId: string, saved: Message, scenario: Scenari
     expect(saved.overage_debited).toBe(0)
     expect(saved.credits).toBeLessThanOrEqual(saved.amount)
   }
-  const ledger = await query<Record<string, unknown> & { id: string; type: string; delta: number }>(
-    `select id, type, delta from credit_ledger where workspace_id = ${sqlLiteral(workspaceId)}
-      and ref_type = 'ai_message' and ref_id = ${sqlLiteral(saved.id)} order by created_at, id`,
-  )
+  const ledger = await ledgerOf()
   expect(ledger.filter((entry) => entry.type === 'consume')).toHaveLength(1)
   expect(ledger.reduce((sum, entry) => sum + entry.delta, 0)).toBe(-(saved.credits ?? 0))
   return { ledger, reconciliation: await reconcile(workspaceId) }
@@ -194,10 +208,13 @@ for (const [billing, model] of [
         }`
         await page.getByLabel('Message', { exact: true }).fill(prompt)
         await page.getByRole('button', { name: 'Send', exact: true }).click()
-        await expect(
-          page.getByRole('listitem', { name: 'Assistant', exact: true }).locator('p'),
-        ).toHaveText(/\S/)
-        if (scenario !== 'normal') {
+        const started = page.getByRole('listitem', { name: 'Assistant', exact: true })
+        if (scenario === 'normal') await expect(started.locator('p')).toHaveText(/\S/)
+        else {
+          // staging 上游把推理与正文缓冲后集中下发：首个可见文本到达时生成已经结束、Stop 已消失。
+          // 因此在流 start 事件渲染出回复（服务端已有 streaming 消息）后立即停止或关页，
+          // 不等待首个可见输出；无输出与有部分输出两种停止结算都由 accounting 校验。
+          await expect(started, 'Assistant reply must start streaming').toHaveCount(1)
           await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible()
           if (scenario === 'stop')
             await page.getByRole('button', { name: 'Stop', exact: true }).click()
@@ -257,6 +274,7 @@ for (const [billing, model] of [
         generationStartedAt: saved.created_at,
         holdId: saved.hold_id,
         reused,
+        textLength: saved.text.length,
         tailCompletionMs,
         inputTokens: saved.input_tokens,
         outputTokens: saved.output_tokens,

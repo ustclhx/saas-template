@@ -73,13 +73,26 @@ describe('chatRequestBody', () => {
 describe('streamingMessageId', () => {
   it('取最后一条助手消息 start 事件中的 messageId', () => {
     const user: ChatUIMessage = { id: 'u', role: 'user', parts: [] }
-    expect(streamingMessageId([user])).toBeUndefined()
-    expect(
-      streamingMessageId([
-        user,
-        { id: 'x', role: 'assistant', parts: [], metadata: { messageId: id(5) } },
-      ]),
-    ).toBe(id(5))
+    const started: ChatUIMessage = {
+      id: 'x',
+      role: 'assistant',
+      parts: [],
+      metadata: { messageId: id(5) },
+    }
+    expect(streamingMessageId([user], 'submitted')).toBeUndefined()
+    expect(streamingMessageId([user, started], 'streaming')).toBe(id(5))
+  })
+
+  it('start 事件后、首个输出前（仍为 submitted）也返回 id，结束后不返回', () => {
+    const started: ChatUIMessage = {
+      id: 'x',
+      role: 'assistant',
+      parts: [],
+      metadata: { messageId: id(5) },
+    }
+    expect(streamingMessageId([started], 'submitted')).toBe(id(5))
+    expect(streamingMessageId([started], 'ready')).toBeUndefined()
+    expect(streamingMessageId([started], 'error')).toBeUndefined()
   })
 })
 
