@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import {
   awaitTerminal,
+  isWorkersUpstream8007,
   mediaWorkspace,
   recordMedia,
   reuseOrSubmit,
@@ -8,6 +9,9 @@ import {
 } from './media-support.ts'
 import { falImage, falVideo, verifyAcceptanceModel, workersImage } from './models.ts'
 import { evidence, expect, login, query, sqlLiteral, test } from './support.ts'
+
+// Workers AI 8007 误判时最多额外换新任务两次；每次失败均已全额退回并留证。
+const WORKERS_8007_EXTRA_ATTEMPTS = 2
 
 async function requireMediaModel(model: typeof workersImage | typeof falImage | typeof falVideo) {
   const existing = await query<{ id: string }>(
@@ -27,18 +31,50 @@ for (const [step, model] of [
   ['media-fal-image', falImage],
 ] as const) {
   test(`${step}：成功下载、按快照扣款一次及积分对账`, async ({ page }) => {
-    test.setTimeout(22 * 60_000)
+    // 仅 Workers 步骤：上游 8007 误判时完整对账该次失败，再以新 step 键提交新任务；
+    // 新键改变提示内标记，同一 run ID 重跑时各次尝试仍按键幂等复用、不会反复复用失败任务。
+    const maxAttempts = step === 'media-workers-image' ? 1 + WORKERS_8007_EXTRA_ATTEMPTS : 1
+    // 8007 在推理前即被拒、很快终止，每次额外尝试只预留 5 分钟。
+    test.setTimeout((22 + 5 * (maxAttempts - 1)) * 60_000)
     await loginMedia(page)
     await requireMediaModel(model)
     const workspace = await mediaWorkspace(page)
-    const submitted = await reuseOrSubmit(page, workspace, model, step)
-    const task = await awaitTerminal(page, workspace.workspaceId, submitted.taskId)
+    let attempt = 1
+    let submitted = await reuseOrSubmit(page, workspace, model, step)
+    let task = await awaitTerminal(page, workspace.workspaceId, submitted.taskId)
+    while (attempt < maxAttempts && isWorkersUpstream8007(task)) {
+      const failed = await verifyMediaAccounting(
+        workspace.workspaceId,
+        task.id,
+        'failed',
+        model.pricing.credits as number,
+      )
+      await evidence(`${step}-attempt-${attempt}-upstream-8007`, {
+        taskId: task.id,
+        workspaceId: task.workspaceId,
+        status: task.status,
+        errorCode: task.errorCode,
+        upstreamCode: 8007,
+        reused: submitted.reused,
+        holdId: failed.row.holdId,
+        holdStatus: failed.row.holdStatus,
+        heldCredits: failed.row.held,
+        capturedCredits: failed.row.captured,
+        creditsCharged: failed.row.credits,
+        ledger: failed.ledger,
+        reconciliation: failed.snapshot,
+      })
+      attempt += 1
+      submitted = await reuseOrSubmit(page, workspace, model, `${step}#${attempt}`)
+      task = await awaitTerminal(page, workspace.workspaceId, submitted.taskId)
+    }
     await evidence(`${step}-terminal`, {
       taskId: task.id,
       workspaceId: task.workspaceId,
       status: task.status,
       errorCode: task.errorCode,
       reused: submitted.reused,
+      attempt,
     })
     expect(task.status).toBe('succeeded')
     expect(task.files.length).toBeGreaterThan(0)

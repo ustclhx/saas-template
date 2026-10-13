@@ -93,10 +93,25 @@ export async function awaitTerminal(page: Page, workspaceId: string, taskId: str
   return task
 }
 
+// Workers AI 偶发把无害提示误判为 NSFW（上游 8007）；产品有意不重试以免绕过内容过滤。
+// 仅凭任务接口返回的安全摘要识别，错误码与消息格式需同时匹配，其他失败一律不放行。
+const WORKERS_UPSTREAM_8007 =
+  /^Workers AI image generation failed \((?:[A-Za-z][A-Za-z0-9_]{0,63} )?8007\)$/
+
+export function isWorkersUpstream8007(
+  task: Pick<MediaTask, 'status' | 'errorCode' | 'errorMessage'>,
+) {
+  return (
+    task.status === 'failed' &&
+    task.errorCode === 'WORKERS_AI_GENERATION_FAILED' &&
+    WORKERS_UPSTREAM_8007.test(task.errorMessage ?? '')
+  )
+}
+
 export async function verifyMediaAccounting(
   workspaceId: string,
   taskId: string,
-  expectedStatus: 'succeeded' | 'canceled',
+  expectedStatus: 'succeeded' | 'failed' | 'canceled',
   expectedPrice: number,
 ) {
   const rows = await query<{
