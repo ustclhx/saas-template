@@ -94,6 +94,11 @@
     "packages/platform/test/node/task-health.test.ts": ["node"],
     "packages/platform/test/node/scheduler.integration.test.ts": ["node"],
     "packages/platform/test/node/fixtures/scheduler-worker.ts": ["node"],
-    "packages/platform/test/node/scheduler.helpers.ts": ["node"]
+    "packages/platform/test/node/scheduler.helpers.ts": ["node"],
+    "packages/storage/test/node-s3/storage.test.ts": ["node"],
+    "packages/storage/test/node-s3/fixture.ts": ["node"],
+    "packages/storage/test/node-media/copier.test.ts": ["node"],
+    "packages/storage/test/node-media-replay.integration.test.ts": ["node"],
+    "packages/storage/test/node-import.unit.test.ts": ["node"]
   }
 }

@@ -4,5 +4,11 @@
     "types": ["@cloudflare/workers-types", "@cloudflare/vitest-plugin/types"]
   },
   "include": ["test"],
-  "exclude": ["test/node-import.unit.test.ts", "test/node-contracts.ts"]
+  "exclude": [
+    "test/node-import.unit.test.ts",
+    "test/node-contracts.ts",
+    "test/node-s3",
+    "test/node-media",
+    "test/node-media-replay.integration.test.ts"
+  ]
 }

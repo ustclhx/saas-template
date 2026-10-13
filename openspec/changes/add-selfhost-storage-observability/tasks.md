@@ -9,8 +9,8 @@
 ## 1. 存储（S1/S2，storage owner；共享接线协调者串行）
 
 - [ ] 1.1 实现 `packages/storage/src/node/` 通用 S3 adapter 与 `./node` export，保持 Storage/MediaOutputCopier 中立，显式传配置与凭据；协调者接入 S3 schema/布尔校验/固定 `_FILE` allowlist，未配置 unavailable、部分配置启动拒绝。验证：config 的缺项/非法 URL/文件冲突/无值泄漏用例、storage typecheck/node-import 及 `pnpm check:deps` 通过；README 记录外部 S3/R2 参数与一条公开 endpoint 规则。
-- [ ] 1.2 实现 HEAD/幂等 delete/600 秒 PUT/300 秒 GET、签名 MIME 和 If-None-Match、attachment 与既有两类 key 校验；SDK 版本与 checksum/签名头策略锁定。验证：新增真实 S3 fixture `pnpm --filter @saas/storage test:node:s3` 覆盖 PUT→HEAD→GET→DELETE、403 不伪装 missing、过期/篡改签名、重复/并发条件 PUT 拒覆盖、path-style 两模式（虚拟主机模式提供 fixture DNS/TLS）；复用 CF presign 断言并保留原测试，文档列支持操作及不兼容处理。
-- [ ] 1.3 实现安全流式 Node MediaOutputCopier，复用 HTTPS 白名单/无重定向/MIME/实际大小限额，支持既有 binary 输入；multipart 有界内存、异常 cancel/abort/清理，不吞删除失败。验证：fixture 覆盖恶意重定向、缺/伪造 Content-Length、MIME 错误、实际超限、断流、残留分片、对象成功而确认失败后的确定性重放与配额仅一次；storage README 记录接口与清理失败重试，不称 B 工作流已移植。
+- [x] 1.2 实现 HEAD/幂等 delete/600 秒 PUT/300 秒 GET、签名 MIME 和 If-None-Match、attachment 与既有两类 key 校验；SDK 版本与 checksum/签名头策略锁定。验证：新增真实 S3 fixture `pnpm --filter @saas/storage test:node:s3` 覆盖 PUT→HEAD→GET→DELETE、403 不伪装 missing、过期/篡改签名、重复/并发条件 PUT 拒覆盖、path-style 两模式（虚拟主机模式提供 fixture DNS/TLS）；复用 CF presign 断言并保留原测试，文档列支持操作及不兼容处理。
+- [x] 1.3 实现安全流式 Node MediaOutputCopier，复用 HTTPS 白名单/无重定向/MIME/实际大小限额，支持既有 binary 输入；multipart 有界内存、异常 cancel/abort/清理，不吞删除失败。验证：fixture 覆盖恶意重定向、缺/伪造 Content-Length、MIME 错误、实际超限、断流、残留分片、对象成功而确认失败后的确定性重放与配额仅一次；storage README 记录接口与清理失败重试，不称 B 工作流已移植。
 - [ ] 1.4 协调者装配 web files/downloadFile 和 jobs delete capability，处理 jobs string|string[] 桥接并启用已装配的十分钟文件清理；保留未配置/预渲染 unavailable 和独立 workflow gate。验证：Node 文件业务测试复用实际大小、并发配额、跨租户/失效会话/分享撤销、清理失败锚点；真实 HTTP 上传/确认/下载可用，而 storage-only 媒体仍 503 且 task/hold 数不变；更新平台能力和 C→B 5.3/5.4 交接文档，不改 B 勾选。
 - [ ] 1.5 为 deploy/selfhost 增加默认关闭的 `object-storage` SeaweedFS Community 4.48 profile 与无真值配置，固定并复核 manifest 双架构；最小组件、私有 bucket、管理/应用权限分离、幂等 CORS 初始化、非 root/文件密钥/持久卷/health/资源/滚动日志，公开 API 经独立 HTTPS 子域。验证：profile 关/开分别 `docker compose config`，关时无本地 secret 前提；真实空目录启动与重启 UID 非零、对象保留、匿名读取拒绝、管理接口无公网端口，代理仅80/443且保留签名 Host/path/query；README 记录初始化与关闭保留数据方式，不建/发布 D 应用镜像。
 - [ ] 1.6 验收 profile 的真实浏览器 CORS/预签名与整个 2 CPU/4 GiB 栈资源预算，收敛 profile 的 web/jobs/storage 限额与安全并发。验证：APP_URL 的 OPTIONS/PUT/GET/HEAD 及 Content-Type/If-None-Match 成功，未授权 origin 被拒；记录 idle/并发上传/未知长度转存/维护/重启 CPU、峰值内存与余量，无 OOM，不能仅测存储单服务；报告初始预算与最终预算区别，未通过不勾选 S2。
@@ -27,7 +27,7 @@
 ## 3. SMTP（E1，email Node adapter owner；共享配置/consumer协调者串行）
 
 - [ ] 3.1 实现 `@saas/email/node` Nodemailer SMTP sender；协调者加入 Node smtp 通道/host/port/TLS模式/成对认证/password `_FILE` 校验和现有 consumer sender 注入，保留 CF log/resend 及稳定 Resend 幂等键。验证：config 与 email 现有测试通过，smtp 无 Resend key 可装配、显式通道缺项启动拒绝且不回退；中立/CF 导入不加载 Node SMTP，文档记录配置与内部明文模式边界。
-- [ ] 3.2 复用模板/from/replyTo/list headers，SMTP 隐式TLS/强制STARTTLS/受控内部none模式有界发送；按 responseCode 优先分类网络/4xx/永久5xx/本地配置错误为安全 EmailSendError，debug关闭、禁止附件文件/URL读取。验证：新增 `pnpm --filter @saas/email test:node:smtp` 的本地真实协议 fixture 验证模板接收、465式TLS/STARTTLS、证书验证拒绝、不降级、451/454认证临时失败 retryable、535/550 non-retryable、超时/断流脱敏；不测试 Nodemailer 内部实现，README列TLS与错误策略。
+- [x] 3.2 复用模板/from/replyTo/list headers，SMTP 隐式TLS/强制STARTTLS/受控内部none模式有界发送；按 responseCode 优先分类网络/4xx/永久5xx/本地配置错误为安全 EmailSendError，debug关闭、禁止附件文件/URL读取。验证：新增 `pnpm --filter @saas/email test:node:smtp` 的本地真实协议 fixture 验证模板接收、465式TLS/STARTTLS、证书验证拒绝、不降级、451/454认证临时失败 retryable、535/550 non-retryable、超时/断流脱敏；不测试 Nodemailer 内部实现，README列TLS与错误策略。
 - [ ] 3.3 在 B 的真实 Node inbox/DBOS consumer 接 SMTP，保持初次+5重试、原退避、混合批次成功独立确认、有效失败先DLQ/无效消息确认；不加入第二套重试或跨通道回退。验证：jobs `test:node` 与 `test:node:integration` 在隔离 PG/SMTP fixture 中证明暂时失败后成功、永久/第六次边界写持久DLQ、sink失败不提前ack；已有真实六次生产时钟证据仍归 B，不把构造第六次称为完整时间轴，文档保持 inbox/DLQ权限与保留期。
 - [ ] 3.4 通过真实持久邮件链路验证注册验证/重置密码等认证邮件，记录稳定 Message-ID 和 SMTP接受后确认前故障的至少一次边界。验证：Node auth HTTP/e2e + 本地 SMTP捕获fixture 完成入队→收件→验证链接，不查DB token代替送达；临时 SMTP故障不使成功入队请求失败，不确定结果允许原身份重试且不自动切Resend；文档明确潜在重复投递，不承诺 SMTP幂等或 exactly-once。
 

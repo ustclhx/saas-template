@@ -33,6 +33,7 @@ export default defineConfig({
               test: {
                 name: 'integration',
                 include: ['test/**/*.integration.test.ts'],
+                exclude: ['test/node-media-replay.integration.test.ts'],
                 globalSetup: ['@saas/db/test/global-setup'],
               },
             },

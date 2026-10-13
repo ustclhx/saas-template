@@ -8,6 +8,7 @@ export default defineConfig({
         test: {
           name: 'unit',
           include: ['src/**/*.test.ts', 'test/*.test.ts'],
+          exclude: ['src/node/test/**'],
           environment: 'node',
         },
       },
