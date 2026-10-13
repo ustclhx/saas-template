@@ -36,8 +36,19 @@ export async function fetch(request: ServerRequest): Promise<Response> {
           { status: 'ok', version: __APP_VERSION__ },
           { headers: { 'cache-control': 'no-store' } },
         )
-      attachWebRuntime(request, resources?.requestRuntime(meta) ?? prerenderRuntime(meta))
-      return nitroApp.fetch(request)
+      // srvx 的惰性 Request 继承原生 prototype，却没有 Undici 的内部槽。
+      // SSR bundle 中的 new Request(input) 会把它误认作原生实例；在跨 bundle
+      // 边界按标准字段创建一次原生请求，保留流式 body 与取消信号而不克隆包装对象。
+      const init: RequestInit & { duplex?: 'half' } = {
+        method: request.method,
+        headers: request.headers,
+        signal: request.signal,
+        body: request.body,
+        duplex: 'half',
+      }
+      const nativeRequest = new Request(request.url, init)
+      attachWebRuntime(nativeRequest, resources?.requestRuntime(meta) ?? prerenderRuntime(meta))
+      return nitroApp.fetch(nativeRequest)
     })
   } finally {
     handlerDone = true

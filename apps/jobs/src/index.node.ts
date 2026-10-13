@@ -1,5 +1,7 @@
+import { hostname } from 'node:os'
 import { EnvValidationError, loadEnv } from '@saas/config'
 import { loadNodeEnv } from '@saas/config/node'
+import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import { z } from 'zod'
 import templateConfig from '../../../template.config.ts'
@@ -15,7 +17,7 @@ try {
     z.object({
       PORT: z.coerce.number().int().min(1).max(65535).default(3001),
       HOST: z.string().min(1).default('0.0.0.0'),
-      JOB_EXECUTOR_ID: z.string().min(1).default('jobs-1'),
+      JOB_EXECUTOR_ID: z.string().min(1).default(hostname()),
       JOB_OWNERSHIP_DIRECTORY: z.string().min(1).default('.data/job-owners'),
       JOB_NATIVE_POOL_MAX: z.coerce.number().int().min(3).max(100).default(4),
     }),
@@ -43,7 +45,11 @@ try {
 } catch (error) {
   log.error(
     'jobs.node.start_failed',
-    error instanceof EnvValidationError ? { missing: error.missing, invalid: error.invalid } : {},
+    error instanceof EnvValidationError
+      ? { missing: error.missing, invalid: error.invalid }
+      : error instanceof AppError
+        ? { code: error.code }
+        : {},
   )
   process.exit(1)
 }

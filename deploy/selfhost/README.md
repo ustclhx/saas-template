@@ -1,6 +1,6 @@
 # 自托管 Compose（A 7.1–7.4）
 
-本目录定义本机可验收的部署拓扑；GHCR、多架构发布、服务器部署、备份和 Dokploy 配置由 D 交付。B 尚未装配，当前镜像不能宣称完整队列、Cron 或验证邮件认证 e2e 已就绪。默认 Cloudflare 构建与 staging 流程保持原样。
+本目录定义本机可验收的部署拓扑；GHCR、多架构发布、服务器部署、备份和 Dokploy 配置由 D 交付。Node 已装配真实 B 队列与 Cron。关闭 Turnstile、开启验证邮件与多租户的本地生产验收见 [A 8/9 runbook](../../docs/runbooks/selfhost-a-final.md)；正式邮件凭据由部署方提供。默认 Cloudflare 构建与 staging 流程保持原样。
 
 ## 镜像与启动
 
@@ -37,6 +37,10 @@ pnpm --filter @saas/platform dbos:migrate
 
 pnpm CLI 与其平台原生 binary 在镜像构建阶段预装到非 root 可读的共享缓存；migrate 设置 `COREPACK_ENABLE_NETWORK=0`，不需要部署时下载包管理器。wrapper 仅接受 `MIGRATION_DATABASE_URL_FILE` 的 migrator、postgres 服务名、`sslmode=verify-full` 连接，拒绝本地默认连接与直接值。迁移 CLI 的原始输出可能含驱动配置，因此只输出固定 JSON 成功/失败事件。失败容器退出非零且 `restart: no`；web/jobs 仅在其成功退出以及 Valkey healthy 后启动。重跑失败迁移前应检查版本、secret、证书和迁移本身，再执行 `docker compose up -d`，不配置无限重试。
 
+jobs 的 `JOB_EXECUTOR_ID` 默认 `jobs-1`，Compose 将 hostname 固定为同值，并把持久 `job_owners` 卷挂载到 `/app/.data/job-owners`。每个 executor 的 hostname/ID 必须跨重启稳定；不能通过更换随机 ID 或清除 owner 文件绕过启动拒绝。Linux owner 记录包含 PID、host、PID namespace inode、boot ID 和进程启动时间，容器重建后即使重用 PID 1 也使用这些身份核对旧 incarnation 是否退出；证明规则与 guard 处置见 [任务引擎 runbook](../../docs/runbooks/node-job-engine.md#连接轮询与-ownership)。
+
+双 jobs 副本需分别声明不同且稳定的 hostname/ID，挂载同一 `job_owners` 卷，并使用同一版本的完整 handler 集与队列策略。当前 service 使用固定身份，不能盲目用 `docker compose up --scale jobs=2` 扩容；不同 hostname 的副本也不能为另一 executor 证明退出。本地真实发信、双副本停启与保留卷重建证据见 [A 8/9 runbook](../../docs/runbooks/selfhost-a-final.md)。
+
 ## 文件与权限
 
 PG 的 bootstrap 超级用户仅分配给 postgres；app 密码仅用于初始化，app URL 仅分配给 web/jobs；migrator URL 仅分配给 migrate。readonly 不分配给应用，排查时从操作员独立 secret 文件读取。应用镜像只有默认 DML，不能 DDL；readonly 不能写；audit_log 保持只追加；DBOS/job_engine 迁移与授权由 migrator 完成。
@@ -47,10 +51,10 @@ PG 复用 `infra/local/initdb/01-roles.sql` 和 `02-db-grants.sql`。唯一共�
 |---|---|---|
 | postgres | 999:999 | 镜像预置 data 0700；TLS 复制目标 0700；私钥 0600 |
 | valkey | 999:999 | `/data` 0700，AOF 持久化；ACL 散列只在 tmpfs 中 |
-| web / jobs / migrate | 1000:1000 | 应用文件归 node；无数据库/证书写卷 |
+| web / jobs / migrate | 1000:1000 | 应用文件归 node；jobs 的 `/app/.data/job-owners` 为 0700；无数据库/证书写卷 |
 | caddy | 10001:10001 | `/data` 与 `/config` 镜像预置可写，证书/ACME 状态持久化 |
 
-首次 named volume 通过镜像目录复制正确属主，不使用 root init 容器。已有卷必须预先匹配上述 UID；不要通过 root 入口在每次启动时修正。Compose file secrets 不转换宿主文件 UID/mode：宿主父目录使用 0700，secret 文件与只读证书挂载源必须让分配的容器 UID 可读。Linux 可按对应 UID/GID 设置权限；不把私钥开放到公共宿主目录。PG 入口每次以 postgres 用户将挂载证书复制到受限可写目录。
+首次 named volume 通过镜像目录复制正确属主，不使用 root init 容器。jobs 镜像由 node（UID 1000）创建 0700 的 owner 目录，空 `job_owners` 卷继承该属主和权限，owner/guard 文件为 0600。已有卷必须预先匹配上述 UID；不要通过 root 入口在每次启动时修正。Compose file secrets 不转换宿主文件 UID/mode：宿主父目录使用 0700，secret 文件与只读证书挂载源必须让分配的容器 UID 可读。Linux 可按对应 UID/GID 设置权限；不把私钥开放到公共宿主目录。PG 入口每次以 postgres 用户将挂载证书复制到受限可写目录。
 
 PG 拒绝全部非 TLS TCP 连接，TLS 要求 SCRAM。`certs/postgres/server.crt` 必须有 `DNS:postgres` SAN；`server.key` 为对应私钥；`certs/ca.crt` 是签发 CA/bundle。所有 Node 容器使用 `NODE_EXTRA_CA_CERTS=/run/certs/ca.crt` 和 `sslmode=verify-full`，同时验证 CA 与服务名。不要改为 `require`（postgres.js 会关闭证书验证），也不要将 `sslrootcert=/path` 塞入 postgres.js URL。外部 PG 修改服务名时需要同步证书与受控 migrator wrapper。
 
@@ -70,6 +74,6 @@ Caddy 配置依据官方 [global options](https://caddyserver.com/docs/caddyfile
 
 默认 CPU 配额总计 2 核；常驻服务内存上限合计约 3.25 GiB，migrate 额外 512 MiB。PG 最大连接100，web/jobs 各池10，迁移使用独立低并发连接；调整池预算时保留运维余量。每个 service 包含健康检查、资源上限、restart、日志轮转和45秒停止宽限期。应用 shutdown 默认30秒，必须小于容器 grace；增大 `SHUTDOWN_TIMEOUT_MS` 时同步修改 grace。
 
-Docker `json-file` 的 `LOG_MAX_SIZE=10m`、`LOG_MAX_FILE=3` 可调。应用与迁移输出脱敏 JSON；PG/Valkey 保留官方 stderr 格式，由 Docker 包装和轮转。只有 Caddy profile 有公开入口。内部 `/internal/live` 仅用于容器进程探活，B 缺失不触发重启循环；完整 DB/cache/queue/scheduler readiness 属于 A8/A9，不能以容器 healthy 宣称全部依赖就绪。
+Docker `json-file` 的 `LOG_MAX_SIZE=10m`、`LOG_MAX_FILE=3` 可调。应用与迁移输出脱敏 JSON；PG/Valkey 保留官方 stderr 格式，由 Docker 包装和轮转。只有 Caddy profile 有公开入口。内部 `/internal/live` 仅用于容器进程探活，B 缺失不触发重启循环；外部 `/api/health` 实时检查 DB/cache/queue/scheduler，返回完整 SHA 与 `lastCronAt`。所有依赖正常且有有效成功心跳时返回 200；启动尚无心跳、依赖故障或消费者/调度器停摆时返回 503。容器 healthy 只说明进程存活，不能代替该 readiness。
 
-本次实测与尚未通过的 ACME/readiness 项见 [A7 验收记录](../../docs/runbooks/selfhost-a7.md)。停止保留数据用 `docker compose down`；仅删除隔离验收数据时才使用 `down -v`。
+初轮镜像与尚未通过的 ACME 项见 [A7 验收记录](../../docs/runbooks/selfhost-a7.md)，完整健康与认证尾部验收见 [A 8/9 runbook](../../docs/runbooks/selfhost-a-final.md)。停止保留数据用 `docker compose down`；仅删除隔离验收数据时才使用 `down -v`。

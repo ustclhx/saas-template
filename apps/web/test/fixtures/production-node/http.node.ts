@@ -29,6 +29,7 @@ const priceId = newId()
 let userId: string
 let slug: string
 let cookie: string
+let signOutCookie: string
 let child: ChildProcess
 let productionEnv: NodeJS.ProcessEnv
 let base: string
@@ -86,6 +87,21 @@ beforeAll(async () => {
   expect(signed.status).toBe(200)
   userId = ((await signed.json()) as { user: { id: string } }).user.id
   cookie = signed.headers
+    .getSetCookie()
+    .map((value) => value.split(';')[0])
+    .join('; ')
+  const secondSession = await auth.handler(
+    new Request(`${appUrl}/api/auth/sign-in/email`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: appUrl },
+      body: JSON.stringify({
+        email: `${fixtureId}@production-smoke.example`,
+        password: 'correct-horse-battery-staple',
+      }),
+    }),
+  )
+  expect(secondSession.status).toBe(200)
+  signOutCookie = secondSession.headers
     .getSetCookie()
     .map((value) => value.split(';')[0])
     .join('; ')
@@ -284,6 +300,40 @@ it('serves production SSR, Server Function RPC, static assets and no-DB prerende
   expect(await rpc.text()).toContain(appUrl)
   expect(await readFile(`${root}/.output/public/index.html`, 'utf8')).toContain('</html>')
   expect(await readFile(`${root}/.output/public/zh.html`, 'utf8')).toContain('</html>')
+})
+
+it('passes native production requests to all auth endpoints without clone failures', async () => {
+  const session = await fetch(`${base}/api/auth/get-session`, { headers: { cookie } })
+  expect(session.status).toBe(200)
+  const identity = (await session.json()) as { user?: { id?: string } } | null
+  expect(identity?.user?.id).toBe(userId)
+  // 不提供 token，让当前模板的防刷返回明确错误；不调用外部 Turnstile。
+  for (const endpoint of ['sign-up/email', 'sign-in/email']) {
+    const response = await fetch(`${base}/api/auth/${endpoint}`, {
+      method: 'POST',
+      headers: { origin: appUrl, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: `${fixtureId}@production-smoke.example`,
+        password: 'correct-horse-battery-staple',
+        name: 'Production smoke',
+      }),
+    })
+    expect(response.status).toBe(403)
+    expect(await response.json()).toMatchObject({ code: 'TURNSTILE_FAILED' })
+  }
+  // 真实注销第二个会话，保留 AI 断连验收使用的原会话。
+  const signOut = await fetch(`${base}/api/auth/sign-out`, {
+    method: 'POST',
+    headers: { cookie: signOutCookie, origin: appUrl, 'content-type': 'application/json' },
+    body: '{}',
+  })
+  expect(signOut.status).toBe(200)
+  expect(await signOut.json()).toMatchObject({ success: true })
+  const signedOut = await fetch(`${base}/api/auth/get-session?disableCookieCache=true`, {
+    headers: { cookie: signOutCookie },
+  })
+  expect(signedOut.status).toBe(200)
+  expect((await signedOut.json()) === null).toBe(true)
 })
 
 it('uses real jobs readiness and refuses media before any hold while files are unavailable', async () => {
