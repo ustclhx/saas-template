@@ -132,6 +132,8 @@ export function createFalMediaProvider(options: FalMediaProviderOptions): MediaP
   }
   const baseModelId = parts.slice(0, baseLength).join('/')
   const now = options.now ?? Date.now
+  // 不能以 options 为 this 调用：Workers 的全局 fetch 会抛 Illegal invocation，请求根本不会发出。
+  const fetcher = options.fetch
   let cachedKeys: { keys: CryptoKey[]; expiresAt: number } | undefined
 
   async function request(
@@ -145,7 +147,7 @@ export function createFalMediaProvider(options: FalMediaProviderOptions): MediaP
       })
     let response: Response
     try {
-      response = await options.fetch(url, {
+      response = await fetcher(url, {
         method,
         headers: { Authorization: `Key ${options.apiKey}`, 'Content-Type': 'application/json' },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -193,7 +195,7 @@ export function createFalMediaProvider(options: FalMediaProviderOptions): MediaP
     let response: Response
     try {
       // JWKS 请求不携带 API key；也不允许回调提供公钥地址。
-      response = await options.fetch(JWKS_URL, {
+      response = await fetcher(JWKS_URL, {
         redirect: 'error',
         signal: AbortSignal.timeout(10_000),
       })

@@ -53,6 +53,19 @@ describe('fal queue（真实录制与未录制分支的文档补充）', () => {
     expect(new Headers(init?.headers).has('idempotency-key')).toBe(false)
   })
 
+  it('注入的 fetch 不以 options 为 this 调用（Workers 全局 fetch 会抛 Illegal invocation）', async () => {
+    const receivers: unknown[] = []
+    const fetch = function (this: unknown) {
+      receivers.push(this)
+      // 模拟 workerd：this 不是全局对象或 undefined 时直接抛错，请求不会发出。
+      if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation')
+      return Promise.resolve(response(recorded.imageSubmit.body))
+    } as typeof globalThis.fetch
+    const provider = createFalMediaProvider({ apiKey: 'test-placeholder', modelId, fetch })
+    expect(await provider.submit(input)).toEqual({ jobId: recordedJobId })
+    expect(receivers).toHaveLength(1)
+  })
+
   it('新实例用录制的 202 运行状态与 200 图片结果，使用去掉子路径的队列端点', async () => {
     const entries = [recorded.imageInitialStatus, recorded.imageStatus, recorded.imageResult]
     const { provider, fetch } = setup(
