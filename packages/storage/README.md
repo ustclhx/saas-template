@@ -20,6 +20,53 @@ await persistMediaOutputs({ db, storage, copyOutput, task, result, limits })
 
 `cleanupFiles` 仅要求 `Pick<Storage, 'delete'>`，原 R2 bucket 也结构兼容。分享 token 的授权、撤销和租户校验仍由业务函数执行。
 
-Node 在 C 交付之前不装配存储或媒体复制能力，调用方在数据库写入/积分预扣前通过平台能力表明确拒绝。这里没有 S3 后端或假成功实现。`test/node-contracts.ts` 是无 Workers 声明的接入类型夹具；真实 S3/Node 媒体验收属于 C。
+Node composition 从 `@saas/storage/node` 显式导入工厂；中立/Cloudflare 入口不会加载 Node S3 SDK。工厂只接受配置对象，不读取 env、文件密钥或云主机 metadata：
 
-验证：`pnpm --filter @saas/storage typecheck` 与 `pnpm --filter @saas/storage test`。前者分别检查中立、Cloudflare、CF 测试和 Node 夹具；后者保留签名、文件/媒体 CF 集成，并在真实 Node 子进程加载 package 中立 export。集成需要本 worktree 或 CI 隔离数据库配置。
+```ts
+import { createNodeMediaCopier, createNodeStorage } from '@saas/storage/node'
+
+const config = {
+  endpoint: 'https://objects.example.com',
+  region: 'us-east-1',
+  bucket: 'files',
+  forcePathStyle: true,
+  accessKeyId: secrets.accessKeyId,
+  secretAccessKey: secrets.secretAccessKey,
+}
+const storage = createNodeStorage(config)
+const copyOutput = createNodeMediaCopier(config)
+await persistMediaOutputs({ db, storage, copyOutput, task, result, limits })
+```
+
+这里提供 B 5.3/5.4 的存储前置能力。web/jobs 装配和 Node 媒体工作流仍由协调者/B 完成；只装配存储时媒体提交仍需在任务创建/积分预扣前拒绝。
+
+## Node S3 策略与支持操作
+
+`@aws-sdk/client-s3`、`@aws-sdk/s3-request-presigner` 和 `@aws-sdk/lib-storage` 精确锁定 **3.1149.0**，传递依赖由 lockfile 锁定。SDK 的 requestChecksumCalculation/responseChecksumValidation 均为 `WHEN_REQUIRED`，不自动添加可选 CRC32/checksum trailer。PUT 显式用 `signableHeaders` 签入 `content-type` 和 `if-none-match`；浏览器只需发送返回的两项头，不要求额外 checksum 头。签名默认使用 UNSIGNED-PAYLOAD，真实 MIME 仍由 HEAD 和业务声明匹配；校验依据 [SDK 官方 presigner 文档](https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/Package/-aws-sdk-s3-request-presigner/)。升级版本必须重跑真实协议 fixture。
+
+- HEAD：返回实际 Content-Length/Content-Type；只有 NoSuchKey/404 返回 null。403、网络故障返回固定 `STORAGE_HEAD_FAILED`，不能伪装 missing。
+- DELETE：单对象幂等，失败返回 `STORAGE_DELETE_FAILED`，保留业务清理锚点。
+- PUT：600 秒，返回 Content-Type/If-None-Match:*，同 key 的重复/并发写入由服务原子拒绝。
+- GET：300 秒，显式 attachment 响应覆盖参与签名，默认保留 inline。
+- key：沿用 CF 的 `ws/<workspace>/<file>` 与 `ws/<workspace>/ai/<task>/<index>` 租户前缀；所有操作拒绝 `.`/`..` 段。
+- copier：已校验 URL 或 binary Uint8Array/ReadableStream 输入，实际字节计数、固定长度匹配；未知长度也受限。复用 `media-validation.ts` 的 HTTPS 白名单、MIME 与大小规则，fetch 禁重定向。SDK multipart partSize=5 MiB、queueSize=1，64 KiB 读取背压，无整文件聚合；内存为分片缓冲及当前上游 chunk，调用者应逐块生产流。
+
+SDK/网络失败不携带驱动消息、URL、凭据或 cause。源断流为 `MEDIA_DOWNLOAD_FAILED`，写入失败为 `STORAGE_WRITE_FAILED`；cancel、abort 或删除失败明确返回 `STORAGE_CLEANUP_FAILED`。copier 等待上传结束后取消源流、abort 已记录的 multipart 并删除可能完成的对象。调用方使用确定性 key 和 pending 数据库记录重试；`persistMediaOutputs` 的业务确认失败仍保留 pending 墓碑供既有 `cleanupFiles` 重试，不改现有业务错误与日志语义。桶管理员还应设置未完成 multipart 生命周期回收，处理进程被强制结束或清理持续不可达的窗口。
+
+不支持原子 `If-None-Match`、签名头、multipart/abort 或 attachment 的端点不能视为兼容：保留失败，不退回 HEAD→PUT，不移除禁止覆盖头，不自动更换端点。桶必须私有；预签名不代替空间权限和配额检查。
+
+## 共享接线补丁（协调者）
+
+配置增加 `S3_ENDPOINT`、`S3_REGION`、`S3_BUCKET`、`S3_ACCESS_KEY_ID`、`S3_SECRET_ACCESS_KEY` 必需字段及 `S3_FORCE_PATH_STYLE`（默认 true，严格接受 true/false）。完全未配置时保持 unavailable；任何原始参数出现即启用校验（默认填充的 path-style 不算启用），部分配置启动拒绝。endpoint 仅 HTTP(S)，无内嵌凭据/query/fragment，错误只含字段名；生产使用 HTTPS。将两个凭据键加入固定 `_FILE` allowlist，并复用冲突/文件读取校验。
+
+**一个公开、浏览器可达 endpoint 同时用于签名与服务端操作。** 不能签名后替换 Host/path/query/协议。R2 经 S3 API 使用 `https://<account-id>.r2.cloudflarestorage.com`、region=`auto`、部署 bucket 与显式凭据，不需要 CF binding。其他 S3 兼容服务按自身 region 配置。`forcePathStyle=false` 需要 bucket 子域 DNS/TLS 与服务虚拟主机支持。
+
+web Node runtime 将上述字段映射为 config 注入 `createNodeStorage`，装配 files 与 downloadFile；预渲染和未配置时不创建 SDK。jobs Node runtime 的 `files.delete(string|string[])` 用逐 key 调用 `storage.delete` 桥接，registration 仅在已装配时启用既有十分钟清理。B 将 `createNodeMediaCopier(config)` 注入现有媒体持久化，工作流能力 gate 单独保留。本包新增 ./node export 与 SDK 依赖已完成，构建脚本仅在对应 Node composition 导入该入口；CF 构建保持现有入口。
+
+## 验证
+
+`pnpm --filter @saas/storage test:node:s3` 启动随机凭据、私有桶的 **SeaweedFS 4.48 测试容器**，只映射随机 loopback 端口；容器名包含 selfhost-c-storage，结束自动移除。虚拟主机 fixture 提供临时 CA、bucket wildcard DNS/TLS 与保留 Host/path/query 的 TLS 反代，验证证书不被禁用；无需修改系统 hosts。该 fixture 不进入 deploy/，不代表外部 R2/第二端点联通或 S2 全栈预算/CORS 验收。
+
+测试覆盖两种寻址的 PUT→HEAD→attachment GET→DELETE、匿名拒绝、403、过期/篡改/MIME 签名、重复与并发拒覆盖，来源/重定向/MIME/缺或伪造长度、实际超限/断流、binary 输入、串行分片与残留分片检查、清理失败安全传播。有隔离 worktree/CI PG 时同时执行真实对象已成功而业务确认失败后的确定性重放及满额配额只计一次；缺 PG 时该脚本拒绝，不静默跳过验收。
+
+`pnpm --filter @saas/storage typecheck` 分别检查中立、Cloudflare、CF 测试和 Node adapter/夹具；`pnpm --filter @saas/storage test` 保留 CF 签名和文件/媒体集成，并在真实 Node 子进程加载中立与 ./node exports。集成需要本 worktree 或 CI 隔离数据库配置。

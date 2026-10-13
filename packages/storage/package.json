@@ -5,13 +5,18 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./cloudflare": "./src/cloudflare/index.ts"
+    "./cloudflare": "./src/cloudflare/index.ts",
+    "./node": "./src/node/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.cloudflare.json && tsc -p tsconfig.test.json && tsc -p tsconfig.node.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:node:s3": "vitest run --config vitest.node-s3.config.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1149.0",
+    "@aws-sdk/lib-storage": "3.1149.0",
+    "@aws-sdk/s3-request-presigner": "3.1149.0",
     "@saas/auth": "workspace:*",
     "@saas/db": "workspace:*",
     "@saas/entitlements": "workspace:*",
