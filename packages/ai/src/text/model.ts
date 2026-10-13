@@ -33,6 +33,8 @@ export type LanguageModelFactory = (model: AvailableModel, env: TextModelEnv) =>
 
 export const AI_PROVIDER_NOT_CONFIGURED = 'AI_PROVIDER_NOT_CONFIGURED'
 
+const DEEPSEEK_DIRECT_BASE_URL = 'https://api.deepseek.com'
+
 type OpenAiChatModel = ReturnType<ReturnType<typeof createOpenAI>['chat']>
 type OpenAiUsage = Awaited<ReturnType<OpenAiChatModel['doGenerate']>>['usage']
 
@@ -138,6 +140,13 @@ export const defaultLanguageModelFactory: LanguageModelFactory = (model, env) =>
       })
     return openAiChat({ baseURL: url.href.replace(/\/$/, ''), apiKey }, model.providerModelId)
   }
+  // Gateway 会把 DeepSeek 的 SSE 整段缓冲后才返回（#152），direct 且有管理员密钥时直连官方端点；
+  // 未配置密钥时保持原 Gateway（BYOK）路径，不改变既有部署。
+  const deepseekKey = env.DEEPSEEK_API_KEY?.trim()
+  if (model.provider === 'deepseek' && env.AI_TEXT_EGRESS === 'direct' && deepseekKey)
+    return createDeepSeek({ baseURL: DEEPSEEK_DIRECT_BASE_URL, apiKey: deepseekKey })(
+      model.providerModelId,
+    )
   const accountId = env.AI_GATEWAY_ACCOUNT_ID?.trim()
   const gatewayId = env.AI_GATEWAY_ID?.trim()
   if (!accountId || !gatewayId) {

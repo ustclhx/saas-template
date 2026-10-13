@@ -1,4 +1,4 @@
-import { generateText } from 'ai'
+import { generateText, streamText } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AvailableModel } from '../models.ts'
 import {
@@ -232,5 +232,97 @@ describe('Gateway 默认模型工厂', () => {
     expect(() => defaultLanguageModelFactory(model(provider), config)).toThrowError(
       expect.objectContaining({ code: AI_PROVIDER_NOT_CONFIGURED, status: 503 }),
     )
+  })
+})
+
+describe('DeepSeek 直连（#152）', () => {
+  const sse = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`
+  const delta = (delta: Record<string, string>) =>
+    sse({ id: 'r', created: 1, model: 'model-id', choices: [{ index: 0, delta }] })
+
+  it('direct 且有密钥时以流式请求直连官方端点，并在上游结束前逐块转出 reasoning 与正文', async () => {
+    vi.stubEnv('DEEPSEEK_API_KEY', 'unintended-process-key')
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let request: Request | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        request = new Request(input, init)
+        const encoder = new TextEncoder()
+        // 模拟服务商逐 token 输出：第二段在测试放行前不会到达。
+        const body = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            controller.enqueue(encoder.encode(delta({ reasoning_content: 'think' })))
+            controller.enqueue(encoder.encode(delta({ content: 'first' })))
+            await gate
+            controller.enqueue(encoder.encode(delta({ content: ' second' })))
+            controller.enqueue(
+              encoder.encode(
+                sse({
+                  id: 'r',
+                  created: 1,
+                  model: 'model-id',
+                  choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+                  usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 },
+                }),
+              ),
+            )
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+            controller.close()
+          },
+        })
+        return new Response(body, { headers: { 'content-type': 'text/event-stream' } })
+      }),
+    )
+    const result = streamText({
+      model: defaultLanguageModelFactory(model('deepseek'), {
+        ...env,
+        AI_TEXT_EGRESS: 'direct',
+        DEEPSEEK_API_KEY: ' direct-deepseek-key ',
+      }),
+      prompt: 'hello',
+      maxRetries: 0,
+    })
+    const seen: string[] = []
+    for await (const part of result.fullStream) {
+      if (part.type === 'reasoning-delta' || part.type === 'text-delta') seen.push(part.text)
+      // 首段正文到达时上游仍未结束：证明不是读完整个响应后再转出。
+      if (part.type === 'text-delta' && part.text === 'first') release()
+    }
+    expect(seen).toEqual(['think', 'first', ' second'])
+    expect(request?.url).toBe('https://api.deepseek.com/chat/completions')
+    expect(request?.headers.get('authorization')).toBe('Bearer direct-deepseek-key')
+    expect([...(request?.headers.keys() ?? [])].some((key) => key.startsWith('cf-aig-'))).toBe(
+      false,
+    )
+    expect(await request?.json()).toMatchObject({ model: 'model-id', stream: true })
+  })
+
+  it('direct 但未配置 DeepSeek 密钥时保持 Gateway BYOK 路径', async () => {
+    let request: Request | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        request = new Request(input, init)
+        return Response.json(response('deepseek'))
+      }),
+    )
+    await generateText({
+      model: defaultLanguageModelFactory(model('deepseek'), {
+        ...env,
+        AI_TEXT_EGRESS: 'direct',
+        DEEPSEEK_API_KEY: ' ',
+      }),
+      prompt: 'hello',
+      maxRetries: 0,
+    })
+    expect(request?.url).toBe(
+      'https://gateway.ai.cloudflare.com/v1/account/gateway/deepseek/chat/completions',
+    )
+    expect(request?.headers.get('cf-aig-authorization')).toBe('Bearer gateway-token')
+    expect(request?.headers.has('authorization')).toBe(false)
   })
 })

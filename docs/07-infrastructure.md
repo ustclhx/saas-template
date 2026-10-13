@@ -265,7 +265,7 @@ RESEND_API_KEY                # jobs；仅 EMAIL_TRANSPORT=resend 时必填
 STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET
 PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET / PAYPAL_WEBHOOK_ID
 AI_GATEWAY_TOKEN             # 文本 AI 的 Gateway 鉴权；BYOK 必需
-OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY / DEEPSEEK_API_KEY   # 可选：Provider 密钥放 Worker 而非 BYOK
+OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY / DEEPSEEK_API_KEY   # 可选：Provider 密钥放 Worker 而非 BYOK；DeepSeek 配合 AI_TEXT_EGRESS=direct 时直连（#152）
 FAL_KEY
 MEDIA_WEBHOOK_SECRET          # 回调 URL 的 HMAC
 R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY   # R2 S3 API 令牌，仅授权 FILES 桶，用于签发预签名上传/下载 URL
@@ -287,6 +287,7 @@ source map 上传，不进入 Wrangler vars、Worker bundle 或浏览器。运�
 APP_URL
 PAYPAL_ENV=sandbox|live          # 规划项；当前 P2 工厂固定 sandbox，不读取该变量
 AI_GATEWAY_ACCOUNT_ID / AI_GATEWAY_ID
+AI_TEXT_EGRESS=direct|gateway   # CF 缺省 gateway；DeepSeek 需逐块流式时设 direct（Gateway 会整段缓冲 DeepSeek SSE，见 06-ai）
 R2_ACCOUNT_ID / R2_FILES_BUCKET   # 拼接 S3 兼容端点
 TURNSTILE_SITE_KEY(前端公开)
 EMAIL_TRANSPORT=log|resend        # jobs 的邮件发送通道，默认 log：只记录收件人与模板名、不调用外部服务（无 Resend 凭据时使用）
