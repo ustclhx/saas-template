@@ -1,4 +1,4 @@
-import type { UIMessage } from 'ai'
+import type { ChatStatus, UIMessage } from 'ai'
 import { z } from 'zod'
 import { m } from '../../paraglide/messages.js'
 import type { ChatRequest } from './chat.ts'
@@ -88,8 +88,16 @@ export function chatRequestBody(input: {
   }
 }
 
-/** 正在生成的助手消息 id（停止接口需要），取自 start 事件的 metadata */
-export function streamingMessageId(messages: readonly ChatUIMessage[]): string | undefined {
+/**
+ * 正在生成的助手消息 id（停止接口需要），取自 start 事件的 metadata。
+ * AI SDK 收到 start 事件时只写入消息、保持 submitted，首个内容到达才切到 streaming；
+ * 首个输出前停止同样必须通知服务端，否则只中断本地读取，服务端继续生成并全额结算。
+ */
+export function streamingMessageId(
+  messages: readonly ChatUIMessage[],
+  status: ChatStatus,
+): string | undefined {
+  if (status !== 'submitted' && status !== 'streaming') return undefined
   const last = messages.at(-1)
   return last?.role === 'assistant' ? last.metadata?.messageId : undefined
 }

@@ -261,9 +261,10 @@ test('stop button calls the stop endpoint with the streaming message id', async 
   await register(page, `chat-stop-${randomUUID()}@example.com`)
   const slug = slugOf(page)
   const model = await seedChatModel(slug)
-  const messageIds = [newId(), newId()]
+  const messageIds = [newId(), newId(), newId()]
   try {
-    // 模拟一条不会自行结束的流：发出 start 与第一段文本后保持打开，直到请求被中止
+    // 模拟一条不会自行结束的流：发出 start 与第一段文本后保持打开，直到请求被中止；
+    // 第三条只发 start（模拟上游首个输出前），此时 useChat 仍为 submitted
     await page.addInitScript(
       ({ messageIds }) => {
         const original = window.fetch
@@ -275,14 +276,17 @@ test('stop button calls the stop endpoint with the streaming message id', async 
           const encoder = new TextEncoder()
           const send = (chunk: object) => encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`)
           const body = JSON.parse(String(init?.body)) as { conversationId: string }
-          const messageId = messageIds[calls++ % messageIds.length]
+          const call = calls++
+          const messageId = messageIds[call % messageIds.length]
           const stream = new ReadableStream({
             start(controller) {
               const metadata = { conversationId: body.conversationId, messageId }
               controller.enqueue(send({ type: 'start', messageId, messageMetadata: metadata }))
-              controller.enqueue(send({ type: 'start-step' }))
-              controller.enqueue(send({ type: 'text-start', id: 't1' }))
-              controller.enqueue(send({ type: 'text-delta', id: 't1', delta: 'Partial answer' }))
+              if (call < 2) {
+                controller.enqueue(send({ type: 'start-step' }))
+                controller.enqueue(send({ type: 'text-start', id: 't1' }))
+                controller.enqueue(send({ type: 'text-delta', id: 't1', delta: 'Partial answer' }))
+              }
               init?.signal?.addEventListener('abort', () =>
                 controller.error(new DOMException('Aborted', 'AbortError')),
               )
@@ -307,7 +311,7 @@ test('stop button calls the stop endpoint with the streaming message id', async 
       stopRequests.push({ path: new URL(request.url()).pathname, body: request.postDataJSON() })
       await route.fulfill({
         status: 200,
-        json: { status: stopRequests.length === 1 ? 'aborted' : 'failed' },
+        json: { status: stopRequests.length === 2 ? 'failed' : 'aborted' },
       })
     })
 
@@ -344,6 +348,15 @@ test('stop button calls the stop endpoint with the streaming message id', async 
     await expect(replies.nth(1)).toContainText('This reply failed.')
     expect(stopRequests[1]).toEqual({ path: `/api/ai/chat/${messageIds[1]}/stop`, body: { slug } })
     await expect(replies.nth(1)).not.toContainText('Stopped')
+
+    // 首个输出前停止也必须通知服务端，不能只中断本地读取
+    await page.getByLabel('Message', { exact: true }).fill('Stop before output')
+    await page.getByRole('button', { name: 'Send' }).click()
+    await expect(replies).toHaveCount(3)
+    await page.getByRole('button', { name: 'Stop' }).click()
+    await expect.poll(() => stopRequests).toHaveLength(3)
+    expect(stopRequests[2]).toEqual({ path: `/api/ai/chat/${messageIds[2]}/stop`, body: { slug } })
+    await expect(replies.nth(2)).toContainText('Stopped')
   } finally {
     await removeModel(model.modelId)
   }
