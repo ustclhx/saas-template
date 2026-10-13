@@ -1,6 +1,7 @@
 import { createScheduledController, introspectWorkflowInstance } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
 import { aiTask, createDb, organization, readLastCronAt, user } from '@saas/db'
+import { createCloudflareWorkflow } from '@saas/platform/cloudflare'
 import { MEDIA_DONE_EVENT } from '@saas/shared'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HEARTBEAT_CRON } from '../src/cron/heartbeat.ts'
@@ -105,6 +106,54 @@ describe('apps/jobs', () => {
         taskId: id,
         status: 'succeeded',
       })
+    } finally {
+      await instance.dispose()
+      await db.$client`delete from ai_task where id=${id}`
+      await db.$client`delete from organization where id=${id}`
+      await db.$client`delete from "user" where id=${id}`
+    }
+  })
+
+  it('取消读到 running 后实例已自行结束：真实绑定 terminate 抛错，中立适配视为已终止', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const id = crypto.randomUUID()
+    const instance = await introspectWorkflowInstance(env.AI_MEDIA_WORKFLOW, id)
+    const db = createDb(env.HYPERDRIVE)
+    await db
+      .insert(user)
+      .values({ id, name: 'Cancel', email: `${id}@workflow-cancel.example.test` })
+    await db.insert(organization).values({ id, name: 'Cancel', slug: id })
+    // 与 staging 一致：HTTP 取消先落库，Workflow 的 submit 自检到终态后正常结束
+    await db.insert(aiTask).values({
+      id,
+      workspaceId: id,
+      userId: id,
+      kind: 'video',
+      modelKey: 'fixture',
+      provider: 'fal',
+      providerRequestKey: id,
+      status: 'canceled',
+      input: {
+        params: {},
+        providerModelId: 'fal-ai/fixture',
+        unitsLimit: 1,
+        fileParams: [],
+        storageBytes: 1000,
+      },
+      pricing: { mode: 'per_call', credits: 1 },
+      deadlineAt: new Date(Date.now() + 7200000),
+    })
+    try {
+      await instance.modify(async (m) => {
+        await m.mockStepResult({ name: 'submit' }, { jobId: '', sync: null, stopped: true })
+      })
+      await env.AI_MEDIA_WORKFLOW.create({ id, params: { taskId: id } })
+      const handle = await createCloudflareWorkflow(env.AI_MEDIA_WORKFLOW).get(id)
+      await instance.waitForStatus('complete')
+      const raw = await env.AI_MEDIA_WORKFLOW.get(id)
+      await expect(raw.terminate()).rejects.toThrow('instance.cannot_terminate')
+      await expect(handle.terminate()).resolves.toBeUndefined()
+      expect((await handle.status()).status).toBe('completed')
     } finally {
       await instance.dispose()
       await db.$client`delete from ai_task where id=${id}`
