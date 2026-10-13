@@ -74,6 +74,8 @@
         "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
         "AI_GATEWAY_ACCOUNT_ID": "170a06d37ad50396b19943eb6b77a21d",
         "AI_GATEWAY_ID": "saas-staging",
+        // Gateway 整段缓冲 DeepSeek SSE（#152）；有 DEEPSEEK_API_KEY secret 时直连，缺失时仍走 Gateway。
+        "AI_TEXT_EGRESS": "direct",
         "R2_ACCOUNT_ID": "170a06d37ad50396b19943eb6b77a21d",
         "R2_FILES_BUCKET": "files-staging"
       },
