@@ -16,7 +16,7 @@ import { BILLING_RETRY_CRON } from '../src/billing.ts'
 import worker from '../src/index.ts'
 
 // tasks.md 2.6：jobs 启动时注册的 `ai_message` 兜底处理器，经 BILLING_RETRY_CRON 的 hold sweep
-// 结算超时未结算的对话预扣：按 token 有检查点按检查点、无检查点收最低费用，按次无输出释放。
+// 结算超时未结算的对话预扣：有正文按检查点，无正文（包括仅 reasoning）全额释放。
 
 const db = createDb(env.HYPERDRIVE)
 const sql = db.$client
@@ -92,7 +92,7 @@ afterAll(async () => {
   }
 })
 
-it('BILLING_RETRY_CRON 的 hold sweep 找到 ai_message 处理器，按检查点 / 最低费用 / 释放结算', async () => {
+it('BILLING_RETRY_CRON 的 hold sweep 找到 ai_message 处理器，按正文检查点收费，无正文或仅 reasoning 全退', async () => {
   const token: AiPricingJson = { mode: 'token', inputPer1k: 10, outputPer1k: 100, minCharge: 2 }
   // 按 token 有检查点：ceil((50 × 10 + 300 × 100) / 1000) = 31
   const withCheckpoint = await staleReply({
@@ -102,8 +102,19 @@ it('BILLING_RETRY_CRON 的 hold sweep 找到 ai_message 处理器，按检查点
     checkpoint: { inputTokens: 50, outputTokens: 300, at: new Date().toISOString() },
     text: 'partial reply',
   })
-  // 按 token 无检查点：按估算输入 ceil(50 × 10 / 1000) = 1，不低于 minCharge 2
+  // 按 token 无检查点且无正文：不收 minCharge，全额释放
   const noCheckpoint = await staleReply({ pricing: token, holdAmount: 101, inputTokens: 50 })
+  const reasoningOnly = await staleReply({
+    pricing: token,
+    holdAmount: 101,
+    inputTokens: 50,
+    checkpoint: {
+      inputTokens: 50,
+      outputTokens: 300,
+      reasoningTokens: 300,
+      at: new Date().toISOString(),
+    },
+  })
   // 按次无输出：释放
   const perCall = await staleReply({
     pricing: {
@@ -133,9 +144,14 @@ it('BILLING_RETRY_CRON 的 hold sweep 找到 ai_message 处理器，按检查点
     balance: { available: 969, held: 0 },
   })
   expect(await state(noCheckpoint)).toMatchObject({
-    message: { status: 'failed', parts: [], credits: 2 },
-    hold: { status: 'captured', captured_amount: 2 },
-    balance: { available: 998, held: 0 },
+    message: { status: 'failed', parts: [], credits: 0 },
+    hold: { status: 'released', captured_amount: 0 },
+    balance: { available: 1000, held: 0 },
+  })
+  expect(await state(reasoningOnly)).toMatchObject({
+    message: { status: 'failed', parts: [], credits: 0 },
+    hold: { status: 'released', captured_amount: 0 },
+    balance: { available: 1000, held: 0 },
   })
   expect(await state(perCall)).toMatchObject({
     message: { status: 'failed', parts: [], credits: 0 },
