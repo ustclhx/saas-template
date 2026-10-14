@@ -175,7 +175,7 @@ async function settlementAmount(
   input: SettleBase & { status?: 'aborted' | 'failed' },
   amount: number,
 ) {
-  if (input.usageSource === 'actual' && input.status !== 'failed') return amount
+  if (input.usageSource === 'actual' && input.status === undefined) return amount
   const [reservation] = await scoped(tx, input.workspaceId)
     .select(creditHold, {
       where: eq(creditHold.id, input.holdId),

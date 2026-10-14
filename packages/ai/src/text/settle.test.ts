@@ -248,6 +248,17 @@ describe('reasoning 失败结算与回收', () => {
     expect(release).toHaveBeenCalledOnce()
   })
 
+  it('主动停止即使拿到完整 usage 也不超出原预扣', async () => {
+    await settleInterruptedChatMessage(db, {
+      ...base,
+      pricing: token,
+      status: 'aborted',
+      hasOutput: true,
+      text: '正文',
+    })
+    expect(capture).toHaveBeenCalledWith(tx, expect.objectContaining({ actualAmount: 5 }), tx)
+  })
+
   it('跨 isolate 在 reasoning 阶段停止按次回复，与本地停止一样全退', async () => {
     await settleFromCheckpoint(
       db,
