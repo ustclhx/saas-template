@@ -14,7 +14,7 @@
 - [x] 1.6 分别验证 J3 heartbeat 与 health：五分钟成功路径、删除缓存补偿失败、不运行超过 10 分钟。验证：`jobs.lastCronAt` 成功时更新、失败不前移、health 无缓存展示旧值或初始 null；各 schedule run ledger 有结果。
 - [x] 1.7 分别构建仿 AiMediaWorkflow 的持久 step 原型，覆盖 W1 的步骤重试/超时、sleep、等待超时、NonRetryableError、外部 sendEvent，覆盖 W3 的 queued/sleep 中早到、同 type FIFO、一次消费、不存在/终态拒绝。验证：至少一次实时时长超过 3600s 的早到事件在中途重启后仍被匹配，等待截止不因重启延长，脱敏报告可复现。
 - [x] 1.8 两候选分别运行真实持续 1–2h 的模拟采集流水线（无真实 API）：列表、事务预扣/限流分批、详情、归并、汇总；成功中间步骤后和 sleep/wait 中强制重启。验证 W2：同任务身份完成、成功步骤调用计数不增加、未完成步骤安全重试；补测副作用后 checkpoint 前崩溃窗口。
-- [ ] 1.9 比较 2 vCPU/4GiB Docker 资源、schema 与许可/成熟度：idle/backlog/双 jobs/长跑 CPU/RSS/连接/WAL/journal 增长，合并 A 全服务预算；migrator 初始化/重复迁移/升级、app 无 DDL 启动、readonly 权限及保留期。验证：固定版本 LICENSE/维护证据与可复现测量入报告，无 OOM/连接耗尽，不把引擎自身低于 4GiB 当整机达标。
+- [x] 1.9 比较 2 vCPU/4GiB Docker 资源、schema 与许可/成熟度：idle/backlog/双 jobs/长跑 CPU/RSS/连接/WAL/journal 增长，合并 A 全服务预算；migrator 初始化/重复迁移/升级、app 无 DDL 启动、readonly 权限及保留期。验证：固定版本 LICENSE/维护证据与可复现测量入报告，无 OOM/连接耗尽，不把引擎自身低于 4GiB 当整机达标。
 - [x] 1.10 将实测评价矩阵、证据索引、推荐与排除理由回填 design.md，更新 DR-B-001 为经审阅的最终选择，并与 A design 对齐接口；按结果重写 2.x–6.x（选 pg-boss 时补自研 step journal/事件 inbox/恢复任务，删除 DBOS 假设）。验证：协调者确认核心门槛和接口、无未解释差距，`openspec validate add-selfhost-job-engine --strict` 通过；两候选均不满足时记录阻塞而不启动实施。
 
 ## 2. Phase 2：DBOS 初始化与事务消息 inbox
