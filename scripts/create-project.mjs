@@ -131,9 +131,11 @@ export function projectOptions(input) {
     )
   }
   const imageNamespace = input['image-namespace'] ?? `ghcr.io/configure-owner/${input.name}`
-  if (!/^[a-z0-9][a-z0-9.:-]*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)+$/.test(imageNamespace)) {
+  if (
+    !/^ghcr\.io\/[a-z0-9]+(?:[._-][a-z0-9]+)*\/[a-z0-9]+(?:[._-][a-z0-9]+)*$/.test(imageNamespace)
+  ) {
     throw new Error(
-      '--image-namespace 必须为不含标签或凭据的 OCI namespace，例如 ghcr.io/acme/project',
+      '--image-namespace 必须匹配当前发布 CI：ghcr.io/<owner>/<project>（小写，不含标签或凭据）',
     )
   }
   const billingEnabled = boolean(input['billing-enabled'] ?? 'true', 'billing-enabled')
@@ -671,12 +673,13 @@ export async function main() {
         ['domain', '域名', ''],
         ['target', '部署目标（cloudflare/selfhost）', 'cloudflare'],
         ['output', '输出目录', values.name ?? ''],
+        ['image-namespace', '镜像 namespace（ghcr.io/owner/project）', ''],
         ['billing-enabled', '启用支付模块', 'true'],
         ['credits-enabled', '启用积分模块', 'true'],
         ['marketing', '启用营销页面', 'true'],
         ['i18n', '启用多语言', 'true'],
         ['locale', '默认语言', 'en'],
-        ['ai', 'AI 功能（逗号列表）', 'text,image,video'],
+        ['ai', 'AI 功能（逗号列表，- 关闭全部）', 'text,image,video'],
         ['media-providers', '媒体服务商（逗号列表，- 关闭全部）', 'fal,workers-ai'],
         ['features', '可选功能（逗号列表，- 关闭全部）', 'blog'],
         ['billing', '支付（逗号列表，- 关闭全部）', 'stripe,paypal'],
@@ -685,7 +688,13 @@ export async function main() {
         ['multi-tenant', '多租户', 'false'],
       ]) {
         if (values[key] !== undefined) continue
-        const suggestion = key === 'output' ? join('..', values.name) : fallback
+        if (key === 'image-namespace' && values.target !== 'selfhost') continue
+        const suggestion =
+          key === 'output'
+            ? join('..', values.name)
+            : key === 'image-namespace'
+              ? `ghcr.io/configure-owner/${values.name}`
+              : fallback
         const answer = (
           await rl.question(`${label}${suggestion ? ` [${suggestion}]` : ''}：`)
         ).trim()

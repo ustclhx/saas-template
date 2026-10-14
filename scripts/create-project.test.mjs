@@ -346,6 +346,14 @@ test('部署目标默认为 Cloudflare，拒绝旧路径并提示 output，参�
   assert.equal(projectOptions(f.input).target, 'cloudflare')
   assert.throws(() => projectOptions({ ...f.input, target: '../old' }), /--output/)
   assert.throws(() => projectOptions({ ...f.input, target: 'unknown' }), /cloudflare 或 selfhost/)
+  assert.throws(
+    () => projectOptions({ ...f.input, 'image-namespace': 'registry.example/team/project' }),
+    /当前发布 CI/,
+  )
+  assert.throws(
+    () => projectOptions({ ...f.input, 'image-namespace': 'ghcr.io/Owner/project' }),
+    /小写/,
+  )
   assert.throws(() => projectOptions({ ...f.input, 'billing-enabled': 'false' }), /关闭 AI/)
   assert.throws(
     () => projectOptions({ ...f.input, 'credits-enabled': 'false' }),
@@ -449,17 +457,17 @@ test('selfhost 继承发布和运维材料，排除真值，并再次生成 name
       ...input,
       name: 'second',
       output: join(f.dir, 'second'),
-      'image-namespace': 'registry.example:5000/team/second',
+      'image-namespace': 'ghcr.io/second-owner/second',
     },
     result.target,
   )
   assert.match(
     await readFile(join(next.target, 'deploy/selfhost/.env.example'), 'utf8'),
-    /WEB_IMAGE=registry.example:5000\/team\/second\/web:/,
+    /WEB_IMAGE=ghcr.io\/second-owner\/second\/web:/,
   )
   assert.match(
     await readFile(join(next.target, '.github/workflows/selfhost-publish.yml'), 'utf8'),
-    /default: registry.example:5000\/team\/second/,
+    /default: ghcr.io\/second-owner\/second/,
   )
-  assert.match(next.report, /second-selfhost|team\/second/)
+  assert.match(next.report, /second-selfhost|second-owner\/second/)
 })
