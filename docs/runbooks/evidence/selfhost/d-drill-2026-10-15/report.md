@@ -70,3 +70,5 @@ node deploy/selfhost/test-backup.mjs --release-drill \
 根 check/deps/singletons/dedupe/typecheck/test/build 和 OpenSpec strict 全通过；typecheck 额外无缓存 14/14 以生成路由，test 26/26 任务、1520 通过/2 个既有 Linux-only 跳过，build 2/2 命中缓存。最终夹具修正后再次 check、Node 语法与 28 项 Python 备份测试通过；见 [validation.json](validation.json)。首次无缓存 typecheck 的本地 plan 表缺失只触发既有定价降级，没有新增迁移。
 
 真实供应商身份独立性、外部存储/服务器、生产规模 RTO/RPO 和异机 jobs 退出证明仍需对应签收；只勾选 6.2，不勾选 7.2、不归档或合并 change。
+
+PR 变基到 main 的协调者签收 #207 后，仅 tasks.md 冲突；保留原复核为历史并保留 6.4 签收。本次运行的夹具文件 SHA256 与变基后逐一一致，strict/check 再次通过，见 [rebase.json](rebase.json)。

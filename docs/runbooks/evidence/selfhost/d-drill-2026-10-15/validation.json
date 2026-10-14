@@ -168,5 +168,15 @@
   {
     "command": "git diff --check",
     "exit": 0
+  },
+  {
+    "command": "pnpm check (after rebase onto main #207)",
+    "exit": 0,
+    "key_output": ["Passed; no production or fixture source conflict; run file SHA256 unchanged"]
+  },
+  {
+    "command": "openspec validate add-selfhost-delivery --strict (after rebase)",
+    "exit": 0,
+    "key_output": ["Valid; 6.2 done, 7.2 pending; 29/33 complete including upstream 6.4"]
   }
 ]
