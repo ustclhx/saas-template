@@ -1234,8 +1234,10 @@ export function registerAiChatSuite(
       const conversationId = response.headers.get('x-conversation-id') as string
       const read = async () => (await assistantMessage(conversationId)).message
 
+      // 消息创建时已写入 0 输出的初始检查点，必须等到 200 token 检查点；闸门停在 30 块（240 token），
+      // 下一个检查点（400）在开闸前不可能出现，等到的状态是稳定的。
       await gated.reached(30)
-      const first = await until(read, (m) => m.usage_checkpoint !== null)
+      const first = await until(read, (m) => m.usage_checkpoint?.outputTokens === 200)
       expect(first).toMatchObject({
         status: 'streaming',
         usage_checkpoint: { inputTokens: 10, outputTokens: 200 },
@@ -1342,7 +1344,8 @@ export function registerAiChatSuite(
       const conversationId = response.headers.get('x-conversation-id') as string
       const read = async () => (await assistantMessage(conversationId)).message
       await gated.reached(30)
-      const { id: messageId } = await until(read, (m) => m.usage_checkpoint !== null)
+      // 跳过创建时的 0 输出初始检查点，等到闸门前稳定的 200 token 检查点再跨 isolate 停止
+      const { id: messageId } = await until(read, (m) => m.usage_checkpoint?.outputTokens === 200)
 
       // 停止请求落在没有该流的 isolate
       expect(await stop(me, messageId, { activeChats: new Map() })).toEqual({
