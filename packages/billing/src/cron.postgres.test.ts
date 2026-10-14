@@ -380,6 +380,71 @@ describe('billing cron on isolated PostgreSQL', () => {
       spy.mockRestore()
     }
   })
+  it('terminal-cancels an elapsed PayPal period-end cancellation once; terminal remote state is never cancelled again', async () => {
+    const elapsed = new Date(now.getTime() - 1000)
+    await db.update(planPrice).set({ provider: 'paypal' }).where(eq(planPrice.id, price))
+    await db
+      .update(subscription)
+      .set({
+        provider: 'paypal',
+        status: 'canceled',
+        cancelAtPeriodEnd: true,
+        currentPeriodEnd: elapsed,
+      })
+      .where(eq(subscription.id, sid))
+    // 模拟 PayPal：周期末取消先 suspend，已 CANCELLED 的订阅再 cancel 会返回 422
+    let remote: 'SUSPENDED' | 'CANCELLED' = 'SUSPENDED'
+    const snapshot = (): SubscriptionSnapshot => ({
+      providerSubscriptionId: sid,
+      providerCustomerId: null,
+      providerPriceId: price,
+      status: remote === 'CANCELLED' ? 'canceled' : 'paused',
+      remoteStatus: remote,
+      currentPeriodStart: start,
+      currentPeriodEnd: elapsed,
+      cancelAtPeriodEnd: false,
+      canceledAt: remote === 'CANCELLED' ? now : null,
+      trialEnd: null,
+      pastDueSince: null,
+      metadata: null,
+      raw: { status: remote },
+    })
+    const getSubscription = vi.fn(async () => snapshot())
+    const cancelSubscription = vi.fn(async () => {
+      if (remote === 'CANCELLED') throw new Error('PayPal HTTP request failed (422)')
+      remote = 'CANCELLED'
+    })
+    const provider = {
+      id: 'paypal',
+      getSubscription,
+      cancelSubscription,
+    } as unknown as PaymentProvider
+    for (let round = 0; round < 2; round++)
+      expect(
+        scopedFailures(
+          await runSubscriptionReconciliation(db, { paypal: provider }, { now: () => now }),
+        ),
+      ).toEqual([])
+    expect(cancelSubscription).toHaveBeenCalledTimes(1)
+    expect(cancelSubscription).toHaveBeenCalledWith(sid, { atPeriodEnd: false })
+    const [sub] = await db.select().from(subscription).where(eq(subscription.id, sid))
+    expect(sub).toMatchObject({ status: 'canceled' })
+    expect(sub?.raw).toEqual({ status: 'CANCELLED' })
+
+    // 远端已因 CANCELLED 回调终止：对账只读取状态，不再调用 cancel
+    cancelSubscription.mockClear()
+    await db
+      .update(subscription)
+      .set({ status: 'canceled', cancelAtPeriodEnd: true })
+      .where(eq(subscription.id, sid))
+    expect(
+      scopedFailures(
+        await runSubscriptionReconciliation(db, { paypal: provider }, { now: () => now }),
+      ),
+    ).toEqual([])
+    expect(cancelSubscription).not.toHaveBeenCalled()
+  })
+
   it('clears contacts only 30 days after rejection or refund completion, never pending or approved', async () => {
     const old = new Date(now.getTime() - 31 * 86_400_000)
     const recent = new Date(now.getTime() - 29 * 86_400_000)
