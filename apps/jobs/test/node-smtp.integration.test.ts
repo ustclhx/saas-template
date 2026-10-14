@@ -34,7 +34,7 @@ it('delivers SMTP through persistent inbox/DBOS, preserves mixed outcomes and ne
   const template = defineTemplateConfig({
     app: { name: 'Fixture', url: 'https://example.com', supportEmail: 'support@example.com' },
     billing: { providers: [], signupBonusCredits: 0 },
-    ai: { text: false, image: false, video: false },
+    ai: { text: { enabled: false }, image: false, video: false },
   })
   const config = nodeEnvSchema.parse({
     DATABASE_URL: databaseUrl,

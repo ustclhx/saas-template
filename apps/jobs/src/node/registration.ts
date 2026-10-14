@@ -9,7 +9,7 @@ import { type JobsContext, registerJobsSchedules } from '../handlers.ts'
 /** 沿用模板已有开关；免费赠送或 AI 仍需积分维护，不新增配置层。 */
 export function getNodeJobFeatures(config: TemplateConfig = templateConfig) {
   const billing = config.billing.providers.length > 0
-  const text = config.ai.text
+  const text = config.ai.text.enabled
   const media = config.ai.image || config.ai.video
   return {
     billing,

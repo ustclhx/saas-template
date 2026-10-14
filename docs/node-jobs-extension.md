@@ -100,7 +100,7 @@ Asia/Singapore 02:00 对应前一 UTC 日 18:00。既有五条任务保持 UTC�
 按 text 与 image/video 分别注册。无需新增运行时开关。
 
 关闭计费、积分和 AI 时设置 `billing.providers: []`、
-`billing.signupBonusCredits: 0`、`ai.text/image/video: false`。对应域业务
+`billing.signupBonusCredits: 0`、`ai.text.enabled: false`、`ai.image/video: false`。对应域业务
 handler 不注册/执行，共享维护 schedule、email/operations、jobs 和 heartbeat
 仍启动。Node 未装配文件能力时跳过文件清理，媒体 Workflow unavailable，
 请求在预扣前拒绝。文件存储与媒体 Workflow 的完整接入属于后续任务。

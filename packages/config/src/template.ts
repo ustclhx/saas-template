@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 /**
  * 模板配置（`template.config.ts`）：功能开关与产品形态，改代码、重新部署才生效。
  * 除 `app` 外每一项都有默认值（取自 docs/02-project-structure.md §3 草案），
@@ -12,6 +14,20 @@ export type AiModality = 'text' | 'image' | 'video'
 export type MediaProviderId = 'fal' | 'workers-ai'
 
 export type DefaultLocale = 'en' | 'zh'
+
+export const textConfigSchema = z.strictObject({
+  enabled: z.boolean().default(true),
+  thinking: z
+    .strictObject({
+      default: z.enum(['off', 'on']).default('off'),
+      userToggle: z.boolean().default(false),
+    })
+    .prefault({}),
+  reasoning: z.strictObject({ display: z.boolean().default(false) }).prefault({}),
+  failedReplyRefund: z.enum(['no-visible-output', 'all']).default('no-visible-output'),
+})
+
+export type TextConfig = z.infer<typeof textConfigSchema>
 
 /** 解析后的完整配置：所有选项都有值。 */
 export interface TemplateConfig<L extends string = string> {
@@ -68,7 +84,7 @@ export interface TemplateConfig<L extends string = string> {
     readonly refundWindowDays: number
   }
   readonly ai: {
-    readonly text: boolean
+    readonly text: TextConfig
     readonly image: boolean
     readonly video: boolean
     /** 启用的媒体服务商；凭据与绑定仍由运行环境提供 */
@@ -109,7 +125,8 @@ export interface TemplateConfigInput<L extends string = DefaultLocale> {
   billing?: Partial<Omit<Section<'billing'>, 'overage'>> & {
     overage?: Partial<Section<'billing'>['overage']>
   }
-  ai?: Partial<Omit<Section<'ai'>, 'defaultPricingMode'>> & {
+  ai?: Partial<Omit<Section<'ai'>, 'defaultPricingMode' | 'text'>> & {
+    text?: z.input<typeof textConfigSchema>
     defaultPricingMode?: Partial<Section<'ai'>['defaultPricingMode']>
   }
   features?: Partial<Section<'features'>>
@@ -139,7 +156,12 @@ export const templateConfigDefaults = {
     refundWindowDays: 30,
   },
   ai: {
-    text: true,
+    text: {
+      enabled: true,
+      thinking: { default: 'off', userToggle: false },
+      reasoning: { display: false },
+      failedReplyRefund: 'no-visible-output',
+    },
     image: true,
     video: true,
     mediaProviders: ['fal', 'workers-ai'],
@@ -184,6 +206,7 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
     ai: {
       ...d.ai,
       ...input.ai,
+      text: textConfigSchema.parse(input.ai?.text ?? {}),
       defaultPricingMode: { ...d.ai.defaultPricingMode, ...input.ai?.defaultPricingMode },
     },
     features: { ...d.features, ...input.features },
