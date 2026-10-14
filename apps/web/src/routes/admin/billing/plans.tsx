@@ -1,5 +1,5 @@
 import { DataTable } from '@saas/ui'
-import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { createFileRoute, notFound as featureNotFound, useRouter } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import {
   adminListPage,
@@ -11,8 +11,12 @@ import {
   getAdminPlans,
   saveAdminPlanModels,
 } from '../../../features/billing/admin-plans.functions.ts'
+import { templateConfig } from '../../../server/template-config.ts'
 
 export const Route = createFileRoute('/admin/billing/plans')({
+  beforeLoad: () => {
+    if (!templateConfig.billing.enabled) throw featureNotFound()
+  },
   validateSearch: (search: Record<string, unknown>) => adminListSearch(['q'])(search),
   loaderDeps: ({ search }) => search,
   loader: ({ deps }) => getAdminPlans({ data: deps }),

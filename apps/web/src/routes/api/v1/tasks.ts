@@ -21,7 +21,10 @@ const unsupported = () =>
 export const Route = createFileRoute('/api/v1/tasks')({
   server: {
     handlers: {
-      POST: ({ request }) => handlePublicMediaSubmit(request, deps()),
+      POST: ({ request }) => {
+        if (!templateConfig.billing.enabled) return new Response('Not Found', { status: 404 })
+        return handlePublicMediaSubmit(request, deps())
+      },
       GET: unsupported,
       HEAD: unsupported,
       PUT: unsupported,

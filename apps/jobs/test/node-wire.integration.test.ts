@@ -39,7 +39,8 @@ it('wires real consumers, retry/DLQ, disabled modules, heartbeat readiness and g
   })
   const template = defineTemplateConfig({
     app: { name: 'Fixture', url: 'https://example.com', supportEmail: 'support@example.com' },
-    billing: { providers: [], signupBonusCredits: 0 },
+    billing: { enabled: false },
+    credits: { enabled: false },
     ai: { text: { enabled: false }, image: false, video: false },
   })
   const attempts = new Map<string, number>()
@@ -84,12 +85,13 @@ it('wires real consumers, retry/DLQ, disabled modules, heartbeat readiness and g
     expect((await db.select().from(jobSchedule)).map((row) => [row.cron, row.timeZone])).toEqual(
       expect.arrayContaining([
         ['*/5 * * * *', 'UTC'],
-        ['0 * * * *', 'UTC'],
         ['*/10 * * * *', 'UTC'],
         ['0 3 * * *', 'UTC'],
-        ['0 4 * * *', 'UTC'],
       ]),
     )
+    expect(
+      (await db.select().from(jobSchedule)).filter((row) => row.id.startsWith('jobs-billing-')),
+    ).toEqual([])
     const producer = (
       await import('@saas/platform/node')
     ).createNodeQueueProducer<EmailQueueMessage>(db, 'email').producer

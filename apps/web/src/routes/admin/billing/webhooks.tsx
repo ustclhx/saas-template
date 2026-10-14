@@ -1,5 +1,5 @@
 import { DataTable } from '@saas/ui'
-import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { createFileRoute, notFound as featureNotFound, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import {
   adminListPage,
@@ -8,8 +8,12 @@ import {
   offsetOfPage,
 } from '../../../features/admin/list.ts'
 import { getAdminWebhooks, replayAdminWebhook } from '../../../features/billing/admin.functions.ts'
+import { templateConfig } from '../../../server/template-config.ts'
 
 export const Route = createFileRoute('/admin/billing/webhooks')({
+  beforeLoad: () => {
+    if (!templateConfig.billing.enabled) throw featureNotFound()
+  },
   validateSearch: (search: Record<string, unknown>) => adminListSearch(['workspaceId'])(search),
   loaderDeps: ({ search }) => search,
   loader: ({ deps }) => getAdminWebhooks({ data: deps }),

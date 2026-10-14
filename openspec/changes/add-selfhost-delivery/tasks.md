@@ -27,7 +27,7 @@
 
 ## 3. 项目生成与功能关闭（P5，generator owner，共享配置串行）
 
-- [ ] 3.1 将生成器 `--target` 专用于 cloudflare/selfhost、输出迁至 `--output`，同步交互/help/docs/create-project.md 的 breaking 迁移提示。验证：现有边界用例扩展目标默认/非法/旧路径提示，保留防覆盖和源树保护；`pnpm test:create-project` 通过。（P5）
+- [x] 3.1 将生成器 `--target` 专用于 cloudflare/selfhost、输出迁至 `--output`，同步交互/help/docs/create-project.md 的 breaking 迁移提示。验证：现有边界用例扩展目标默认/非法/旧路径提示，保留防覆盖和源树保护；`pnpm test:create-project` 通过。（P5）
 - [ ] 3.2 生成 selfhost 的 namespace、发布 CI、Compose 和无真值运维/secret 清单；补路径排除 secrets/certs、无扩展名密码、私钥、ownership/备份/release 状态。验证：已有 fixture 用哨兵证明不复制、不读取真值，保留 example/脚本；真实副本再次生成新项目名称与 namespace 正确。（P5）
 - [ ] 3.3 在既有 template/config 中表达 billing/credits/营销/i18n 启用状态与关闭组合，保持默认开启行为和三层配置归属。验证：config 精简用例校验有效/无效依赖组合，关闭模块不再要求其 secret/seed；同步功能开关文档，不增加业务分叉。（P5）
 - [ ] 3.4 接线关闭 billing/credits 时 web 入口、导航/权限和 jobs 注册；保留 auth/workspace/email/operations/成功 heartbeat，不删历史账本。验证：复用相关 Node 用例覆盖全关组合无计费/积分任务、无 seed 依赖，正常认证与空间仍可用；CF 默认业务测试通过。（P5）

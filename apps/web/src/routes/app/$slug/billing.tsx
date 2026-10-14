@@ -1,5 +1,10 @@
 import { Button } from '@saas/ui'
-import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
+import {
+  createFileRoute,
+  notFound as featureNotFound,
+  Link,
+  useRouter,
+} from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import {
   checkoutCustomer,
@@ -9,8 +14,12 @@ import {
 import { getCustomerRefunds } from '../../../features/billing/refund.functions.ts'
 import { RefundSection } from '../../../features/billing/refund-section.tsx'
 import { m } from '../../../paraglide/messages.js'
+import { templateConfig } from '../../../server/template-config.ts'
 
 export const Route = createFileRoute('/app/$slug/billing')({
+  beforeLoad: () => {
+    if (!templateConfig.billing.enabled) throw featureNotFound()
+  },
   loader: async ({ params }) => {
     const [billing, refunds] = await Promise.all([
       getCustomerBilling({ data: { slug: params.slug } }),

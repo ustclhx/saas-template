@@ -18,7 +18,8 @@ export interface ApiKeyDeps {
 }
 
 export function requirePublicApi(config: TemplateConfig) {
-  if (!config.features.publicApi) throw new AppError('NOT_FOUND', 'Not found', { status: 404 })
+  if (!config.billing.enabled || !config.features.publicApi)
+    throw new AppError('NOT_FOUND', 'Not found', { status: 404 })
 }
 
 async function entitlement(deps: ApiKeyDeps, workspaceId: string) {

@@ -33,7 +33,8 @@ it('delivers SMTP through persistent inbox/DBOS, preserves mixed outcomes and ne
   const directory = await mkdtemp(join(tmpdir(), 'selfhost-c-wire-smtp-'))
   const template = defineTemplateConfig({
     app: { name: 'Fixture', url: 'https://example.com', supportEmail: 'support@example.com' },
-    billing: { providers: [], signupBonusCredits: 0 },
+    billing: { enabled: false },
+    credits: { enabled: false },
     ai: { text: { enabled: false }, image: false, video: false },
   })
   const config = nodeEnvSchema.parse({

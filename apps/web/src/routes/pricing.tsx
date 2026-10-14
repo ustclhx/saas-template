@@ -1,12 +1,16 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, notFound as featureNotFound, Link } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { getMarketingPricing } from '../features/marketing/pricing.functions.ts'
 import { PRICING_TTL_MS } from '../features/marketing/pricing-data.ts'
 import { originFromMatches, pageHead, staticPage } from '../features/seo/metadata.ts'
 import { pricingData } from '../features/seo/structured-data.ts'
 import { getLocale } from '../paraglide/runtime.js'
+import { templateConfig } from '../server/template-config.ts'
 
 export const Route = createFileRoute('/pricing')({
+  beforeLoad: () => {
+    if (!templateConfig.billing.enabled) throw featureNotFound()
+  },
   loader: () => getMarketingPricing(),
   component: PricingPage,
   head: ({ matches, loaderData }) =>

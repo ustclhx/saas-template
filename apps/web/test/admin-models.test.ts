@@ -8,6 +8,7 @@ import { adminCache, cacheValues, createAdminTestDb } from './admin-test-resourc
 // 只替换 Server Function 传输与请求环境；业务 handler、adminAction 与数据库保持真实。
 const runtime = vi.hoisted(() => ({ env: {} as Record<string, string> }))
 vi.mock('@tanstack/react-start', () => ({
+  createMiddleware: () => ({ server: () => ({}) }),
   createServerFn: () => {
     const builder = {
       middleware: () => builder,

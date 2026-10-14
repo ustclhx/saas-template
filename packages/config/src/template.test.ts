@@ -14,6 +14,10 @@ describe('defineTemplateConfig', () => {
   it('fills every omitted option with the documented default', () => {
     const config = defineTemplateConfig({ app })
     expect(config).toEqual({ app, ...templateConfigDefaults })
+    expect(config.billing.enabled).toBe(true)
+    expect(config.credits.enabled).toBe(true)
+    expect(config.marketing.enabled).toBe(true)
+    expect(config.i18n.enabled).toBe(true)
     expect(config.features.analytics).toBe(false)
     expect(config.analytics.cloudflareToken).toBe('')
     expect(config.analytics.posthogKey).toBe('')
@@ -71,12 +75,61 @@ describe('defineTemplateConfig', () => {
 
   it('defaults defaultLocale to the first locale', () => {
     const config = defineTemplateConfig({ app, i18n: { locales: ['ja', 'en'] } })
-    expect(config.i18n).toEqual({ locales: ['ja', 'en'], defaultLocale: 'ja' })
+    expect(config.i18n).toEqual({ enabled: true, locales: ['ja', 'en'], defaultLocale: 'ja' })
     expectTypeOf(config.i18n.defaultLocale).toEqualTypeOf<'ja' | 'en'>()
   })
 
   it('rejects an empty locale list at runtime', () => {
     expect(() => defineTemplateConfig({ app, i18n: { locales: [] } })).toThrow(RangeError)
+  })
+
+  it('accepts all modules disabled while retaining their existing parameters', () => {
+    const config = defineTemplateConfig({
+      app,
+      billing: { enabled: false },
+      credits: { enabled: false },
+      marketing: { enabled: false },
+      i18n: { enabled: false, locales: ['ja', 'en'], defaultLocale: 'ja' },
+      ai: { text: { enabled: false }, image: false, video: false },
+    })
+    expect(config.billing).toEqual({ ...templateConfigDefaults.billing, enabled: false })
+    expect(config.credits.enabled).toBe(false)
+    expect(config.marketing.enabled).toBe(false)
+    expect(config.i18n).toEqual({ enabled: false, locales: ['ja', 'en'], defaultLocale: 'ja' })
+    expect(config.auth).toEqual(templateConfigDefaults.auth)
+  })
+
+  it('accepts credits without billing when AI is disabled', () => {
+    const config = defineTemplateConfig({
+      app,
+      billing: { enabled: false },
+      ai: { text: { enabled: false }, image: false, video: false },
+    })
+    expect(config.credits.enabled).toBe(true)
+  })
+
+  it('rejects billing without credits', () => {
+    expect(() =>
+      defineTemplateConfig({
+        app,
+        credits: { enabled: false },
+        ai: { text: { enabled: false }, image: false, video: false },
+      }),
+    ).toThrow('billing.enabled requires credits.enabled')
+  })
+
+  it.each(['text', 'image', 'video'] as const)('rejects %s AI without billing', (modality) => {
+    expect(() =>
+      defineTemplateConfig({
+        app,
+        billing: { enabled: false },
+        ai: {
+          text: { enabled: modality === 'text' },
+          image: modality === 'image',
+          video: modality === 'video',
+        },
+      }),
+    ).toThrow('AI requires billing.enabled and credits.enabled')
   })
 
   it('does not share nested objects with the defaults', () => {

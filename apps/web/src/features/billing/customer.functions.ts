@@ -13,6 +13,7 @@ import { log } from '@saas/shared/log'
 import { createServerFn } from '@tanstack/react-start'
 import { setResponseStatus } from '@tanstack/react-start/server'
 import { z } from 'zod'
+import { withBilling, withCredits } from '../../server/feature-gates.ts'
 import { withRealSession, withWorkspace } from '../../server/middleware.ts'
 import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
@@ -67,12 +68,14 @@ async function safe<T>(readOnly: boolean, action: () => Promise<T>) {
     }
   }
 }
-export const getPublicPricing = createServerFn({ method: 'GET' }).handler(() => {
-  const db = getWebRuntime().db
-  return customerCatalog(db, runtime(db).readiness)
-})
+export const getPublicPricing = createServerFn({ method: 'GET' })
+  .middleware([withBilling])
+  .handler(() => {
+    const db = getWebRuntime().db
+    return customerCatalog(db, runtime(db).readiness)
+  })
 export const getCustomerBilling = createServerFn({ method: 'GET' })
-  .middleware([withWorkspace])
+  .middleware([withBilling, withWorkspace])
   .inputValidator(workspace)
   .handler(async ({ context }) => ({
     ...(await customerBilling(
@@ -86,7 +89,7 @@ export const getCustomerBilling = createServerFn({ method: 'GET' })
     readOnly: context.workspaceReadOnly,
   }))
 export const getCustomerUsage = createServerFn({ method: 'GET' })
-  .middleware([withWorkspace])
+  .middleware([withCredits, withWorkspace])
   .inputValidator(
     workspace.extend({
       ...creditPageSchema.shape,
@@ -104,7 +107,7 @@ export const getCustomerUsage = createServerFn({ method: 'GET' })
     ),
   )
 export const checkoutCustomer = createServerFn({ method: 'POST' })
-  .middleware([withWorkspace, withRealSession])
+  .middleware([withBilling, withWorkspace, withRealSession])
   .inputValidator(
     workspace.extend({
       provider,
@@ -134,7 +137,7 @@ export const checkoutCustomer = createServerFn({ method: 'POST' })
     }),
   )
 export const manageCustomerSubscription = createServerFn({ method: 'POST' })
-  .middleware([withWorkspace, withRealSession])
+  .middleware([withBilling, withWorkspace, withRealSession])
   .inputValidator(
     workspace.extend({
       subscriptionId: z.uuid(),
@@ -172,7 +175,7 @@ export const manageCustomerSubscription = createServerFn({ method: 'POST' })
     }),
   )
 export const confirmCustomerCheckout = createServerFn({ method: 'POST' })
-  .middleware([withWorkspace, withRealSession])
+  .middleware([withBilling, withWorkspace, withRealSession])
   .inputValidator(workspace.extend({ provider, providerRef: z.string().min(1).max(255) }))
   .handler(({ context, data }) =>
     safe(context.workspaceReadOnly, async () => {

@@ -23,6 +23,7 @@ export const Route = createFileRoute('/api/v1/chat/completions')({
       DELETE: unsupported,
       OPTIONS: unsupported,
       POST: ({ request }) => {
+        if (!templateConfig.billing.enabled) return new Response('Not Found', { status: 404 })
         return handleCompletions(request, { ...getAiHttpDeps(), config: templateConfig })
       },
     },

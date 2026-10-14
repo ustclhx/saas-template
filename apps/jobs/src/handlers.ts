@@ -99,6 +99,13 @@ export function registerJobsSchedules(
     ['jobs-ten-minute-maintenance-v1', BILLING_RETRY_CRON],
     ['jobs-billing-daily-v1', BILLING_DAILY_CRON],
   ] as const) {
+    if (
+      options.features &&
+      !options.features.billing &&
+      !options.features.credits &&
+      (cron === BILLING_HOURLY_CRON || cron === BILLING_DAILY_CRON)
+    )
+      continue
     scheduler.register({ id, cron, timeZone: 'UTC', missedRun: 'skip' }, ({ scheduledAt }) =>
       withLogContext({ requestId: newRequestId(), cron }, () =>
         runJobsSchedule(cron, scheduledAt, context, options),

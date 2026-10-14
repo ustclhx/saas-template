@@ -95,15 +95,14 @@ Asia/Singapore 02:00 对应前一 UTC 日 18:00。既有五条任务保持 UTC�
 
 ## 功能开关与媒体边界
 
-使用现有 `template.config.ts`：`billing.providers.length > 0` 启用计费；
-积分维护由计费、signupBonusCredits 或任一 AI 功能决定；AI hold handler
-按 text 与 image/video 分别注册。无需新增运行时开关。
+使用 `template.config.ts` 的 `billing.enabled`、`credits.enabled` 整体开关，
+不以支付 provider 列表推断模块启用状态；默认均开启。AI hold handler 按
+`ai.text.enabled` 与 image/video 分别注册，AI 依赖现有套餐授权及积分。
 
-关闭计费、积分和 AI 时设置 `billing.providers: []`、
-`billing.signupBonusCredits: 0`、`ai.text.enabled: false`、`ai.image/video: false`。对应域业务
-handler 不注册/执行，共享维护 schedule、email/operations、jobs 和 heartbeat
-仍启动。Node 未装配文件能力时跳过文件清理，媒体 Workflow unavailable，
-请求在预扣前拒绝。文件存储与媒体 Workflow 的完整接入属于后续任务。
+关闭计费、积分和 AI 时设置 `billing.enabled: false`、`credits.enabled: false`，
+并关闭所有 AI。对应域业务 handler 不注册/执行，email/operations、jobs 和成功
+heartbeat 仍启动，不要求支付密钥或计费 seed，也不删除历史账本。文件与空间清理
+继续使用既有维护路径，Node 未装配文件能力时跳过文件清理。
 
 ## 版本、迁移、连接与停机
 

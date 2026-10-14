@@ -10,10 +10,12 @@ const getDeletionWorkspace = createServerFn({ method: 'GET' })
   .handler(async ({ context: { workspace, member, db, user } }) => {
     if (workspace.isPersonal || member.role !== 'owner' || !templateConfig.tenancy.multiTenant)
       throw notFound()
-    const reminders = await listDeletionRefundReminders(
-      { db, actorUserId: user.id, workspaceIds: [workspace.id] },
-      templateConfig.billing.refundWindowDays,
-    )
+    const reminders = templateConfig.billing.enabled
+      ? await listDeletionRefundReminders(
+          { db, actorUserId: user.id, workspaceIds: [workspace.id] },
+          templateConfig.billing.refundWindowDays,
+        )
+      : { eligiblePaymentIds: [], pendingRequests: [] }
     return {
       refundReminder: {
         eligibleCount: reminders.eligiblePaymentIds.length,

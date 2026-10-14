@@ -41,7 +41,9 @@ function WorkspaceLayout() {
         <WorkspaceSwitcher page={page} />
         <NotificationCenter key={page.workspace.slug} slug={page.workspace.slug} />
         <nav className="flex flex-wrap gap-4">
-          {templateConfig.features.publicApi && (page.role === 'owner' || page.role === 'admin') ? (
+          {templateConfig.billing.enabled &&
+          templateConfig.features.publicApi &&
+          (page.role === 'owner' || page.role === 'admin') ? (
             <Link
               to="/app/$slug/api-keys"
               search={{ page: 0 }}
@@ -51,9 +53,11 @@ function WorkspaceLayout() {
               API Keys
             </Link>
           ) : null}
-          <Link to="/app/$slug/chat" params={{ slug: page.workspace.slug }} className="underline">
-            {m.app_chat()}
-          </Link>
+          {templateConfig.ai.text.enabled && (
+            <Link to="/app/$slug/chat" params={{ slug: page.workspace.slug }} className="underline">
+              {m.app_chat()}
+            </Link>
+          )}
           {templateConfig.ai.image || templateConfig.ai.video ? (
             <Link
               to="/app/$slug/tasks"
@@ -79,16 +83,24 @@ function WorkspaceLayout() {
           >
             {m.app_workspace_settings()}
           </Link>
-          <Link
-            to="/app/$slug/billing"
-            params={{ slug: page.workspace.slug }}
-            className="underline"
-          >
-            {m.app_billing()}
-          </Link>
-          <Link to="/app/$slug/usage" params={{ slug: page.workspace.slug }} className="underline">
-            {m.app_usage()}
-          </Link>
+          {templateConfig.billing.enabled && (
+            <Link
+              to="/app/$slug/billing"
+              params={{ slug: page.workspace.slug }}
+              className="underline"
+            >
+              {m.app_billing()}
+            </Link>
+          )}
+          {templateConfig.credits.enabled && (
+            <Link
+              to="/app/$slug/usage"
+              params={{ slug: page.workspace.slug }}
+              className="underline"
+            >
+              {m.app_usage()}
+            </Link>
+          )}
         </nav>
       </header>
       <main>

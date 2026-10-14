@@ -3,6 +3,7 @@ import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { z } from 'zod'
+import { withCredits } from '../../server/feature-gates.ts'
 import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import { adminMiddleware } from './admin.functions.ts'
@@ -24,12 +25,17 @@ export const getAdminWorkspace = createServerFn({ method: 'GET' })
   .middleware([adminMiddleware])
   .validator(z.object({ id: z.uuid() }))
   .handler(({ context, data }) =>
-    adminWorkspaceDetail(context.db, data.id, templateConfig.billing.pastDueGraceDays),
+    adminWorkspaceDetail(
+      context.db,
+      data.id,
+      templateConfig.billing.pastDueGraceDays,
+      templateConfig,
+    ),
   )
 
 const creditCursor = z.object({ id: z.uuid(), createdAt: z.string().max(40) })
 export const getAdminWorkspaceCredits = createServerFn({ method: 'GET' })
-  .middleware([adminMiddleware])
+  .middleware([withCredits, adminMiddleware])
   .validator(z.object({ id: z.uuid(), kind: z.enum(['batches', 'ledger']), cursor: creditCursor }))
   .handler(({ context, data }) =>
     data.kind === 'batches'

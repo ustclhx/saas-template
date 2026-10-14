@@ -19,6 +19,9 @@ const password = 'correct-horse-battery-staple'
 const config = defineTemplateConfig({
   app: { name: 'Node auth test', url: appUrl, supportEmail: 'support@example.test' },
   auth: { turnstile: false, oauth: [] },
+  billing: { enabled: false },
+  credits: { enabled: false },
+  ai: { text: { enabled: false }, image: false, video: false },
 })
 const scalarEnv = {
   APP_URL: appUrl,

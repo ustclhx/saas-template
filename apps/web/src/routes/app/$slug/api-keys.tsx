@@ -9,7 +9,7 @@ export const Route = createFileRoute('/app/$slug/api-keys')({
     page: Math.max(0, Math.floor(Number(search.page) || 0)),
   }),
   beforeLoad: () => {
-    if (!templateConfig.features.publicApi) throw notFound()
+    if (!templateConfig.billing.enabled || !templateConfig.features.publicApi) throw notFound()
   },
   loaderDeps: ({ search }) => ({ page: search.page }),
   loader: ({ params, deps }) => listKeys({ data: { slug: params.slug, page: deps.page } }),

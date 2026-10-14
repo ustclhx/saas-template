@@ -78,10 +78,16 @@ function WorkspaceDetail() {
           { label: 'Slug', value: data.workspace.slug },
           { label: 'Status', value: data.workspace.deletedAt ? 'Deleted' : 'Active' },
           { label: 'Deleted at', value: data.workspace.deletedAt?.toISOString() },
-          { label: 'Entitlement plan', value: data.entitlements.key },
-          { label: 'Available credits', value: data.balance.available },
-          { label: 'Held credits', value: data.balance.held },
-          { label: 'Credit debt', value: data.balance.debt },
+          ...(data.entitlements
+            ? [{ label: 'Entitlement plan', value: data.entitlements.key }]
+            : []),
+          ...(data.balance
+            ? [
+                { label: 'Available credits', value: data.balance.available },
+                { label: 'Held credits', value: data.balance.held },
+                { label: 'Credit debt', value: data.balance.debt },
+              ]
+            : []),
         ]}
       />
       {data.workspace.deletedAt && (
@@ -120,48 +126,61 @@ function WorkspaceDetail() {
           </li>
         ))}
       </ul>
-      <h3 className="font-semibold">Subscriptions and overlapping periods</h3>
-      <p>
-        All subscription periods are shown. Effective entitlements use the highest eligible plan.
-      </p>
-      <ul>
-        {data.subscriptions.map(({ subscription: sub, planName }, index) => (
-          <li key={sub.id} className="rounded border p-3">
-            {planName} · {sub.provider} · {sub.status} · {sub.id}
-            <br />
-            Period: {sub.currentPeriodStart?.toISOString() ?? 'Unconfirmed'} —{' '}
-            {sub.currentPeriodEnd?.toISOString() ?? 'Unconfirmed'}
-            {overlaps(index) && <strong> · Overlapping period</strong>}
-            {sub.pastDueSince && <p>Past due since: {sub.pastDueSince.toISOString()}</p>}
-          </li>
-        ))}
-      </ul>
-      <h3 className="font-semibold">Credit batches</h3>
-      <ul>
-        {batches.items.map((batch) => (
-          <li key={batch.id} className="rounded border p-3">
-            {batch.id} · {batch.source} · {batch.status} · Remaining: {batch.remaining} /{' '}
-            {batch.amount} · Expires: {batch.expiresAt?.toISOString() ?? 'Never'}
-          </li>
-        ))}
-      </ul>
-      {batches.nextCursor && (
-        <Button className="w-fit" disabled={!ready || busy} onClick={() => void more('batches')}>
-          Older batches
-        </Button>
+      {data.entitlements && (
+        <>
+          <h3 className="font-semibold">Subscriptions and overlapping periods</h3>
+          <p>
+            All subscription periods are shown. Effective entitlements use the highest eligible
+            plan.
+          </p>
+          <ul>
+            {data.subscriptions.map(({ subscription: sub, planName }, index) => (
+              <li key={sub.id} className="rounded border p-3">
+                {planName} · {sub.provider} · {sub.status} · {sub.id}
+                <br />
+                Period: {sub.currentPeriodStart?.toISOString() ?? 'Unconfirmed'} —{' '}
+                {sub.currentPeriodEnd?.toISOString() ?? 'Unconfirmed'}
+                {overlaps(index) && <strong> · Overlapping period</strong>}
+                {sub.pastDueSince && <p>Past due since: {sub.pastDueSince.toISOString()}</p>}
+              </li>
+            ))}
+          </ul>
+        </>
       )}
-      <h3 className="font-semibold">Recent credit ledger</h3>
-      <ul>
-        {ledger.items.map((entry) => (
-          <li key={entry.id} className="rounded border p-3">
-            {entry.createdAt.toISOString()} · {entry.type} · {entry.delta} · {entry.id}
-          </li>
-        ))}
-      </ul>
-      {ledger.nextCursor && (
-        <Button className="w-fit" disabled={!ready || busy} onClick={() => void more('ledger')}>
-          Older ledger entries
-        </Button>
+      {data.balance && (
+        <>
+          <h3 className="font-semibold">Credit batches</h3>
+          <ul>
+            {batches.items.map((batch) => (
+              <li key={batch.id} className="rounded border p-3">
+                {batch.id} · {batch.source} · {batch.status} · Remaining: {batch.remaining} /{' '}
+                {batch.amount} · Expires: {batch.expiresAt?.toISOString() ?? 'Never'}
+              </li>
+            ))}
+          </ul>
+          {batches.nextCursor && (
+            <Button
+              className="w-fit"
+              disabled={!ready || busy}
+              onClick={() => void more('batches')}
+            >
+              Older batches
+            </Button>
+          )}
+          <h3 className="font-semibold">Recent credit ledger</h3>
+          <ul>
+            {ledger.items.map((entry) => (
+              <li key={entry.id} className="rounded border p-3">
+                {entry.createdAt.toISOString()} · {entry.type} · {entry.delta} · {entry.id}
+              </li>
+            ))}
+          </ul>
+          {ledger.nextCursor && (
+            <Button className="w-fit" disabled={!ready || busy} onClick={() => void more('ledger')}>
+              Older ledger entries
+            </Button>
+          )}
+        </>
       )}
     </section>
   )

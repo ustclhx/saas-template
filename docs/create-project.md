@@ -2,15 +2,36 @@
 
 在已安装 Node >=22 与本仓库 pnpm 版本的环境中，运行根目录 create-project 脚本。
 无参数会询问项目名称、域名、目标目录、默认语言与功能开关。名称采用小写 kebab-case，
-域名采用 HTTPS 主机名，语言支持 en、zh。目标默认是当前目录的同级项目目录
+域名采用 HTTPS 主机名，语言支持 en、zh。部署目标 `--target cloudflare|selfhost` 默认
+为 cloudflare；输出目录 `--output` 默认是当前目录的同级项目目录
 （`../<项目名称>`），必须是模板目录之外尚不存在的目录。
 
 非交互示例（完整生成与自检）：
 
 ```sh
-pnpm create-project --name acme --domain acme.example --target ../acme --locale zh \
+pnpm create-project --name acme --domain acme.example --target cloudflare --output ../acme --locale zh \
   --ai text --features blog,waitlist --billing stripe --oauth google
 ```
+
+**Breaking 参数迁移**：旧 `--target ../acme` 改为 `--output ../acme`。旧路径或非法部署目标
+会明确失败并提示新用法，不会创建副本。
+
+selfhost 非交互示例（团队工具全关组合）：
+
+```sh
+pnpm create-project --name acme --domain acme.example --target selfhost --output ../acme \
+  --image-namespace ghcr.io/my-org/acme --ai '' --billing-enabled false \
+  --credits-enabled false --marketing false --i18n false --locale zh
+```
+
+`--billing-enabled`、`--credits-enabled`、`--marketing`、`--i18n` 接受 true/false，默认 true，
+分别写入模板的 billing.enabled、credits.enabled、marketing.enabled、i18n.enabled。
+`--billing` 仍为支付 Provider 列表，空列表与关闭模块分别处理。
+启用 billing 要求启用 credits；关闭 billing 时必须 `--ai ''`（现有 AI 额度依赖套餐）。
+可以保留 credits 开启并关闭 billing，用于赠送积分；生成清单不要求支付 secret 或 billing seed。
+开关写入模板，副本继续使用同一套业务源码。关闭 i18n 的单语言路由与关闭营销后的应用首页
+接线属于后续 3.5，本次只生成配置，不将这两个开关的路由验收视为完成。
+生成器修改 ai.text.enabled 时保留其 thinking、reasoning、failedReplyRefund 等设置。
 
 默认开启文本、图片、视频、Stripe、PayPal、Google、GitHub 与 Turnstile，
 可选功能仅开启 blog。列表传空字符串可全部关闭；交互时输入 `-` 可关闭列表。
@@ -38,9 +59,26 @@ APP_VERSION 与 Sentry release 使用同一个完整提交 SHA，CI 已负责注
 本地 .dev.vars 不会随部署上传。将 .github/workflows/deploy-staging.yml 中的 STAGING_URL
 占位地址改为新环境实际可访问的 URL，并核对 staging APP_URL、邮件发件配置与数据库迁移凭据。
 
+selfhost 副本复用 `deploy/selfhost/compose.yaml`、配置示例及仓库已有发布/运维材料。
+`--image-namespace` 为不含标签的 OCI namespace，默认 `ghcr.io/configure-owner/<项目名称>`，
+必须替换 configure-owner；镜像为 `<namespace>-<service>:<完整40位SHA>`，
+`.env.example` 和名称含 selfhost 的发布 workflow 的 `IMAGE_NAMESPACE` 同步更新。
+自己的功能配置必须在 CI 重新构建，不能直接使用模板仓库镜像。
+生成副本可继续作为源创建下一项目，namespace 会按下一项目参数重新写入。
+
+`PROJECT_SETUP.md` 的 selfhost 清单包含受限 secret 文件、PG TLS、专用 ingress、
+Compose、同 SHA release、health/jobs/heartbeat、兼容回滚、ownership 与双目标备份恢复步骤。
+生成器继承 owner 已提供的交付文件；发布 workflow 和部署/初始化/恢复材料未交付时，
+在清单中标为待交付，不预设脚本路径，不将生成成功当成实际部署或恢复验收通过。
+自托管 secret 通过受限文件与对应 `_FILE` 配置，示例值为空；不使用 CF staging 凭据。
+自托管副本不复制自动 CF staging 发布 workflow；Cloudflare 副本继续保留原发布路径。
+OAuth/Turnstile 关闭时副本 Compose 和示例同步移除其要求；原模板文件保持不变。
+
 复制排除各级 `.git`、node_modules、`.env` / `.env.*` 和 `.dev.vars*`（保留 example）、
 `.wrangler`、dist、`.turbo`、coverage、构建和测试生成目录、进行中的 `openspec/changes`、
-探针 results、日志和证书私钥。符号链接不复制，二进制文件原样保留。
+探针 results、日志和证书私钥，以及各级 secrets/、certs/、.data/、job-owners/ 与 selfhost 的 ownership/owners/、
+backups/backup-data/、releases/release-state/、state/.state/ 等运行目录。
+无扩展名密码与 owner/release 状态不会复制；`.env.example`、`secrets.example` 和运维脚本保留。符号链接不复制，二进制文件原样保留。
 脚本不创建远程资源、不写入密钥；上线前按清单和 [基础设施文档](07-infrastructure.md) 配置，
 另行验证数据库迁移、集成测试与 staging 端到端流程。
 
@@ -53,7 +91,8 @@ APP_VERSION 与 Sentry release 使用同一个完整提交 SHA，CI 已负责注
 
 新库初始化时，先以 migrator 应用已有迁移，再将新库 app 连接通过进程环境传给
 `pnpm billing:seed`（变量名为 `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`）。
-这条命令只写套餐示例，不调用支付服务，关闭支付的文本项目也需要套餐权益初始化。
+这条命令只写套餐示例，不调用支付服务；billing.enabled=false 的项目跳过 seed，
+AI 关闭且积分模块可按需保留。仅清空支付 Provider 列表时 billing 仍开启，仍需套餐初始化。
 首次 seed 的 `free.features.models=[]`，不开放任何 AI 模型。按以下顺序完成首次运行：
 
 1. 为 web 配置可选 `BOOTSTRAP_ADMIN_EMAILS`：线上使用 Worker secret（在 apps/web 执行

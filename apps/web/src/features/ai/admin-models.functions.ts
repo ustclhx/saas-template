@@ -11,6 +11,7 @@ import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { asc, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { withBilling } from '../../server/feature-gates.ts'
 import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import { withAdminAction } from '../admin/action.server.ts'
@@ -93,7 +94,7 @@ async function safe(action: () => Promise<string>): Promise<Result> {
 }
 
 export const getAdminModels = createServerFn({ method: 'GET' })
-  .middleware([adminMiddleware])
+  .middleware([withBilling, adminMiddleware])
   .inputValidator(
     z.object({
       offset: z.number().int().min(0).max(100_000),
@@ -151,7 +152,7 @@ export const getAdminModels = createServerFn({ method: 'GET' })
   })
 
 export const saveAdminModel = createServerFn({ method: 'POST' })
-  .middleware([adminMiddleware])
+  .middleware([withBilling, adminMiddleware])
   .inputValidator(modelInput.extend({ id: z.uuid().optional() }))
   .handler(({ context, data }) =>
     safe(() =>
@@ -201,7 +202,7 @@ export const saveAdminModel = createServerFn({ method: 'POST' })
   )
 
 export const setAdminModelEnabled = createServerFn({ method: 'POST' })
-  .middleware([adminMiddleware])
+  .middleware([withBilling, adminMiddleware])
   .inputValidator(z.object({ id: z.uuid(), enabled: z.boolean() }))
   .handler(({ context, data }) =>
     safe(() =>
@@ -248,7 +249,7 @@ export const setAdminModelEnabled = createServerFn({ method: 'POST' })
 
 /** 复制已保存的模型，包括媒体参数；副本先停用，审核后再启用。 */
 export const copyAdminModel = createServerFn({ method: 'POST' })
-  .middleware([adminMiddleware])
+  .middleware([withBilling, adminMiddleware])
   .inputValidator(z.object({ id: z.uuid(), key: modelInput.shape.key, paramsSchema: z.string() }))
   .handler(({ context, data }) =>
     safe(() =>

@@ -4,13 +4,14 @@ import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { withCredits } from '../../server/feature-gates.ts'
 import { adminAction } from './action.server.ts'
 import { adminMiddleware } from './admin.functions.ts'
 import { adjustAdminCredits, creditAdjustmentInput } from './credits.ts'
 import { ADMIN_PAGE_SIZE } from './list.ts'
 
 export const getAdminCredits = createServerFn({ method: 'GET' })
-  .middleware([adminMiddleware])
+  .middleware([withCredits, adminMiddleware])
   .inputValidator(
     z.object({ workspaceId: z.uuid().optional(), offset: z.number().int().min(0).max(100_000) }),
   )
@@ -32,7 +33,7 @@ export const getAdminCredits = createServerFn({ method: 'GET' })
   })
 
 export const adjustCredits = createServerFn({ method: 'POST' })
-  .middleware([adminMiddleware])
+  .middleware([withCredits, adminMiddleware])
   .inputValidator(creditAdjustmentInput)
   .handler(async (input) => {
     try {

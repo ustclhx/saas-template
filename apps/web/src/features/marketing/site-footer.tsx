@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { m } from '../../paraglide/messages.js'
+import { templateConfig } from '../../server/template-config.ts'
 import { site } from './site.ts'
 
 const footerLink = 'text-muted-foreground text-sm hover:text-foreground'
@@ -14,9 +15,11 @@ export function SiteFooter() {
           <p className="text-muted-foreground text-sm">{m.common_site_tagline()}</p>
         </div>
         <FooterColumn title={m.marketing_footer_product()}>
-          <Link to="/pricing" className={footerLink}>
-            {m.marketing_nav_pricing()}
-          </Link>
+          {templateConfig.billing.enabled && (
+            <Link to="/pricing" className={footerLink}>
+              {m.marketing_nav_pricing()}
+            </Link>
+          )}
           <Link to="/register" className={footerLink}>
             {m.marketing_nav_get_started()}
           </Link>

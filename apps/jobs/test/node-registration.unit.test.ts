@@ -44,7 +44,8 @@ import { getNodeJobFeatures, registerNodeJobsSchedules } from '../src/node/regis
 
 const disabled = defineTemplateConfig({
   app: { name: 'test', url: 'https://example.test', supportEmail: 'support@example.test' },
-  billing: { providers: [], signupBonusCredits: 0 },
+  billing: { enabled: false },
+  credits: { enabled: false },
   ai: { text: { enabled: false }, image: false, video: false },
 })
 const business = vi.fn(() => ({}) as ReturnType<JobsContext['db']['business']>)
@@ -72,15 +73,13 @@ beforeEach(() => {
 })
 afterEach(() => vi.restoreAllMocks())
 
-it('starts all five UTC schedules and heartbeat with billing, credits and AI disabled', async () => {
+it('keeps core UTC schedules and heartbeat with billing, credits and AI disabled', async () => {
   const registered = scheduler()
   const dispose = registerNodeJobsSchedules(registered, context, disabled)
   expect(registered.definitions.map(({ cron }) => cron)).toEqual([
     '*/5 * * * *',
     '0 3 * * *',
-    '0 * * * *',
     '*/10 * * * *',
-    '0 4 * * *',
   ])
   for (const definition of registered.definitions) {
     expect(definition).toMatchObject({ timeZone: 'UTC', missedRun: 'skip' })
@@ -122,13 +121,18 @@ it('does not advance the Node heartbeat when deletion cache compensation fails',
 })
 
 it('retains enabled media hold recovery while unavailable files skip object cleanup', async () => {
-  const config = { ...disabled, ai: { ...disabled.ai, image: true } }
+  const config = {
+    ...disabled,
+    billing: { ...disabled.billing, enabled: true },
+    credits: { enabled: true },
+    ai: { ...disabled.ai, image: true },
+  }
   const registered = scheduler()
   const dispose = registerNodeJobsSchedules(registered, context, config)
   await registered.runs.get('jobs-ten-minute-maintenance-v1')?.({ scheduledAt: new Date() })
   expect(mocks.hold.mock.calls.map(([type]) => type)).toEqual(['ai_task'])
   expect(mocks.billing).toHaveBeenCalledWith('*/10 * * * *', context, {
-    billing: false,
+    billing: true,
     credits: true,
     text: false,
     media: true,

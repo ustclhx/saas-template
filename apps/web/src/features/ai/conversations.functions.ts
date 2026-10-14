@@ -5,6 +5,7 @@ import { notFound } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { and, asc, desc, eq, inArray, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
+import { withBilling } from '../../server/feature-gates.ts'
 import { withWorkspace } from '../../server/middleware.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import { conversationTitleSchema, messageDisplayParts } from './conversation.ts'
@@ -58,7 +59,7 @@ async function updateOwn(
 }
 
 export const listConversations = createServerFn({ method: 'GET' })
-  .middleware([withWorkspace])
+  .middleware([withBilling, withWorkspace])
   .inputValidator(workspace)
   .handler(async ({ context }) => {
     const s = scoped(context.db, context.workspace.id)
@@ -84,7 +85,7 @@ export const listConversations = createServerFn({ method: 'GET' })
   })
 
 export const getConversation = createServerFn({ method: 'GET' })
-  .middleware([withWorkspace])
+  .middleware([withBilling, withWorkspace])
   .inputValidator(conversationInput)
   .handler(async ({ context, data }) => {
     const s = scoped(context.db, context.workspace.id)
@@ -128,7 +129,7 @@ export const getConversation = createServerFn({ method: 'GET' })
 
 /** 新建空对话；标题在首轮回复完成后由对话页按首条消息填入，模型在发送时选择 */
 export const createConversation = createServerFn({ method: 'POST' })
-  .middleware([withWorkspace])
+  .middleware([withBilling, withWorkspace])
   .inputValidator(workspace)
   .handler(({ context }) =>
     mutation(context.workspaceReadOnly, async () => {
@@ -141,7 +142,7 @@ export const createConversation = createServerFn({ method: 'POST' })
   )
 
 export const renameConversation = createServerFn({ method: 'POST' })
-  .middleware([withWorkspace])
+  .middleware([withBilling, withWorkspace])
   .inputValidator(conversationInput.extend({ title: conversationTitleSchema }))
   .handler(({ context, data }) =>
     mutation(context.workspaceReadOnly, () =>
@@ -152,7 +153,7 @@ export const renameConversation = createServerFn({ method: 'POST' })
   )
 
 export const setConversationArchived = createServerFn({ method: 'POST' })
-  .middleware([withWorkspace])
+  .middleware([withBilling, withWorkspace])
   .inputValidator(conversationInput.extend({ archived: z.boolean() }))
   .handler(({ context, data }) =>
     mutation(context.workspaceReadOnly, () =>

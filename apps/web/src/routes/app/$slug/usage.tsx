@@ -1,9 +1,13 @@
 import { Button } from '@saas/ui'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, notFound as featureNotFound } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { getCustomerUsage } from '../../../features/billing/customer.functions.ts'
+import { templateConfig } from '../../../server/template-config.ts'
 
 export const Route = createFileRoute('/app/$slug/usage')({
+  beforeLoad: () => {
+    if (!templateConfig.credits.enabled) throw featureNotFound()
+  },
   loader: ({ params }) => getCustomerUsage({ data: { slug: params.slug } }),
   staleTime: 0,
   component: UsagePage,

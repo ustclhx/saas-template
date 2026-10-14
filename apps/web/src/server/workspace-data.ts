@@ -10,6 +10,7 @@ import { templateConfig } from './template-config.ts'
 
 /** Reads through the caller's transaction, preserving the auth workspace lock. */
 export const resolveWorkspaceMaxSeats: ResolveMaxSeats = async (workspaceId, sql) => {
+  if (!templateConfig.billing.enabled) return null
   const now = new Date()
   const subscriptions = await sql.unsafe<EntitlementSubscription[]>(
     `select s.status, s.past_due_since as "pastDueSince", s.current_period_end as "currentPeriodEnd",
