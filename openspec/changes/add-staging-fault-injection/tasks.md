@@ -40,5 +40,7 @@
 
 ## 7. 合并发布后的协调者验收（实施 worker 不执行、不勾选）
 
-- [ ] 7.1 协调者确认 main 自动发布及 health SHA，人工值守运行独立故障套件；验证十一场景无 skip、全部场景证明/只读对账/终态后观察与 finally 停用通过，审阅并保存脱敏真实证据，失败或外部取消未确认保持未完成。
+- [x] 7.1 协调者确认 main 自动发布及 health SHA，人工值守运行独立故障套件；验证十一场景无 skip、全部场景证明/只读对账/终态后观察与 finally 停用通过，审阅并保存脱敏真实证据，失败或外部取消未确认保持未完成。
+2026-10-14 验收记录：[fault-2026-10-14a](../../../docs/runbooks/evidence/staging-acceptance/2026-10-14/fault-2026-10-14a-execution-status.json)（SHA d6a9a3f）十一场景中十项通过；chat-mid-stream-per_call 因 deepseek-flash 默认思考耗尽输出上限、未触发注入而失败（#165 修复，计费口径见 #166），finally 一项停用失败已人工经后台停用并核对审计。[fault-2026-10-14b](../../../docs/runbooks/evidence/staging-acceptance/2026-10-14/fault-2026-10-14b-execution-status.json)（SHA 6b02f18，经协调者批准的新 run ID）定向重跑 chat-mid-stream-per_call 与 workers-error 均通过，清理 attempts=1。十一场景合计全部有完整证明与零差额对账。
+
 - [ ] 7.2 协调者合并故障证据并与常规 Gateway token 比对、fal 视频成功产出及原其余要求合并核验；只有全部原验收要求满足才勾选对应 media/chat 编号，按并行计划处理后续 specs 同步/归档；验证原验收记录准确区分合成注入、真实调用和仍未完成项。

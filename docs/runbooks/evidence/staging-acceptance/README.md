@@ -28,6 +28,13 @@ JSON 中的 `evidenceCommitted: false`、阻塞、推断及待授权状态是当
 | [acceptance-2026-10-13i](2026-10-13/acceptance-2026-10-13i-execution-status.json) | 11 / 1 / 2 | 媒体与六项 Chat 通过；Admin 解封后审计只读查询 connect 失败（#155）。解封已生效。 |
 | [acceptance-2026-10-13j](2026-10-13/acceptance-2026-10-13j-execution-status.json) | 13 / 0 / 1 | 全部自动项通过；固定跳过 Workers 故障注入，Sentry 仅证明测试入口行为。 |
 
+2026-10-14 受控故障套件（`fault.config.ts`，独立入口）：
+
+| Run | 场景 | 结论 |
+|---|---|---|
+| [fault-2026-10-14a](2026-10-14/fault-2026-10-14a-execution-status.json) | 11 | 10 通过；chat-mid-stream-per_call 未触发注入（deepseek-flash 思考耗尽上限，#165、#166）。fal 5 次、DeepSeek 2 次真实调用，共 8 积分，对账零差额。[Sentry 去重核验](2026-10-14/fault-2026-10-14a-sentry-dedupe.json)发现非最终尝试失败仅有引擎包装帧（#164）。 |
+| [fault-2026-10-14b](2026-10-14/fault-2026-10-14b-execution-status.json) | 2 | chat-mid-stream-per_call 与 workers-error 通过；workers-error 的 Sentry 事件映射到我方 TypeScript、无引擎帧（[核验](2026-10-14/fault-2026-10-14b-sentry-verification.json)）。 |
+
 另保留 [13 的早期表单阻塞记录](2026-10-12/acceptance-2026-10-13-execution-status.json)：
 当时 Save Changes 未接管输入，未运行套件；#137 后保存 Workers schema，随后核对并恢复误停用的专用 fal 模型。
 fal 13 / 13b / 13c 的控制台只读核对均未在对应时间窗观察到受理请求；
@@ -66,8 +73,8 @@ observability 1.2 于 2026-10-14 补齐 Sentry 实际事件核验后勾选；其
 
 | Change / 任务 | 已有真实证据 | 仍待完成（完整任务保持未勾选） |
 |---|---|---|
-| [media 7.1 / 7.2](../../../../openspec/changes/add-ai-media-generation/tasks.md) | Workers/fal 图片成功、取消全退；历史失败对账 | Workers 推理失败与硬超时受控注入；fal 视频成功产出、回调丢失/早到、已受理提交响应丢失、服务商失败及硬超时 |
-| [chat 5.1](../../../../openspec/changes/add-ai-text-chat/tasks.md) | 两种计费各正常/停止/关页，流水与不变式通过 | 服务商报错、AI Gateway token 差异 ≤1% 核对；13j 使用 direct DeepSeek，未作外部用量比较 |
+| [media 7.2](../../../../openspec/changes/add-ai-media-generation/tasks.md)（7.1 已于 2026-10-14 勾选） | Workers/fal 图片成功、取消全退；fal 五类受控故障（fault-2026-10-14a） | fal 视频成功产出 |
+| [chat 5.1](../../../../openspec/changes/add-ai-text-chat/tasks.md) | 两种计费各正常/停止/关页，流水与不变式通过 | AI Gateway/供应商 token 差异 ≤1% 核对（服务商报错已由 fault-2026-10-14a/b 覆盖；reasoning 口径见 #166）；13j 使用 direct DeepSeek，未作外部用量比较 |
 | [admin 6.1](../../../../openspec/changes/add-admin-console/tasks.md) | 专用用户动作、积分幂等、设置恢复及审计 | 指定测试支付资源的失败回调重放与退款审核（未执行），次日指标更新核验 |
 
 故障注入按 [验收 runbook](../../staging-acceptance.md)执行；历史意外失败不代替受控注入。
