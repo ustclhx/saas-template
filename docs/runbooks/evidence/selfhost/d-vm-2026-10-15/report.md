@@ -95,3 +95,7 @@ SSH阶段加入系统测试CA使首次本地“未知CA”负向断言失效，�
 `cleanup.json`与runtime的cleanup阶段均通过：probe/S3/app/registry及所属卷网络已清除，
 私有harness目录已移除。随后停止并删除`selfhost-d-vm`，Lima列表无该实例、磁盘目录不存在；
 宿主临时fixture输入也已删除。本worktree与脱敏证据保留供PR审阅。
+
+`rebased-checks.json`记录无冲突rebase至main `0bdb1cc` 后的全部根检查；
+check/deps/singletons/dedupe/typecheck/test/build均为exit 0，test为26/26任务成功。
+原VM/source fixture证据对应初始base `7e7c99c`，源码摘要见source-provenance，不冒充新正式发布。
