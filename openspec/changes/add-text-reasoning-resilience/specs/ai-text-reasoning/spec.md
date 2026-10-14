@@ -7,15 +7,37 @@
 ## ADDED Requirements
 
 ### Requirement: thinking 与 reasoning 配置
-系统 SHALL 提供模板配置项：thinking 默认开启或关闭、是否允许用户逐条切换 thinking、是否展示 reasoning 过程。模型 SHALL 声明是否支持 thinking；不支持的模型忽略 thinking 设置。用户请求携带的 thinking 开关只在允许用户切换时生效，否则 MUST 被拒绝或忽略并按配置执行。
+系统 SHALL 提供模板配置项：thinking 默认开启或关闭、是否允许用户逐条切换 thinking、是否展示 reasoning 过程。模型 MAY 在 `params_schema['x-text']` 声明可选的 `thinking` 能力覆盖：缺省 SHALL 跟随 Provider adapter；显式 `false` SHALL 表示不支持、不下发控制且不允许用户切换；显式 `true` SHALL 表示支持，但无可控 adapter 时仍 SHALL 忽略 thinking 设置。adapter 可控且模型未显式声明 `false` 时，系统 SHALL 始终按模板默认值或允许的请求值显式下发开/关，不依赖模型声明 `true`，当前仅 DeepSeek adapter 可控。
+
+用户开关 SHALL 仅在模板 `userToggle=true`、adapter 可控且模型未显式声明 `false` 时显示并生效。模板关闭用户切换时携带请求 thinking 字段 MUST 返回 400；模板启用但模型不可控时 SHALL 忽略该字段。后台模型保存 SHALL 保持对 `x-text` 的严格校验，拒绝非法值与未知键。
 
 #### Scenario: 不暴露开关时按配置执行
-- **WHEN** 模板关闭用户切换且默认关闭 thinking，用户对支持 thinking 的模型发起对话
-- **THEN** 系统以关闭 thinking 调用模型，请求中的 thinking 参数不改变该行为
+- **WHEN** 模板关闭用户切换且默认关闭 thinking，用户对 adapter 可控且未显式声明 `thinking=false` 的模型发起不含 thinking 字段的对话
+- **THEN** 系统显式关闭 thinking 调用模型
+
+#### Scenario: 不暴露开关时拒绝请求字段
+- **WHEN** 模板关闭用户切换，用户请求携带 thinking 字段
+- **THEN** 系统返回 400，无论所选模型是否可控
+
+#### Scenario: 空 schema 的 DeepSeek 模型遵循模板关闭
+- **WHEN** DeepSeek 模型的 `params_schema` 为 `{}`，模板默认 thinking 为 `off`，请求未携带 thinking 字段
+- **THEN** 上游请求体含 `thinking: { type: 'disabled' }`
+
+#### Scenario: 空 schema 的 DeepSeek 模型遵循模板开启
+- **WHEN** DeepSeek 模型的 `params_schema` 为 `{}`，模板默认 thinking 为 `on`，请求未携带 thinking 字段
+- **THEN** 上游请求体含 `thinking: { type: 'enabled' }`
 
 #### Scenario: 用户逐条开启 thinking
-- **WHEN** 模板允许用户切换，用户对支持 thinking 的模型开启 thinking 发送消息
+- **WHEN** 模板允许用户切换，用户对 adapter 可控且未显式声明 `thinking=false` 的模型开启 thinking 发送消息
 - **THEN** 该条回复以开启 thinking 调用模型
+
+#### Scenario: 显式 false 禁用 thinking 控制
+- **WHEN** DeepSeek 模型声明 `x-text.thinking=false`，模板允许用户切换且默认 thinking 为 `on`，请求携带 thinking 字段
+- **THEN** 页面不显示该模型的用户开关，系统忽略请求字段且不向上游下发 thinking 控制
+
+#### Scenario: 无 adapter 的模型保持原行为
+- **WHEN** Provider 无可控 thinking adapter，模型未声明 thinking 或声明 `x-text.thinking=true`，模板允许用户切换且请求携带 thinking 字段
+- **THEN** 页面不显示该模型的用户开关，系统忽略模板与请求的 thinking 设置，保持上游调用原行为
 
 ### Requirement: reasoning 展示与隔离
 展示 reasoning 开启时，系统 SHALL 单独保存 reasoning 并在界面折叠显示；关闭时 MUST NOT 保存或下发 reasoning。reasoning MUST NOT 进入后续对话上下文，API key 接口 MUST NOT 返回 reasoning。

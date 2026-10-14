@@ -1,6 +1,12 @@
-import { readUIMessageStream, simulateReadableStream, type UIMessageChunk } from 'ai'
+import { type AvailableModel, defaultLanguageModelFactory } from '@saas/ai'
+import {
+  type LanguageModel,
+  readUIMessageStream,
+  simulateReadableStream,
+  type UIMessageChunk,
+} from 'ai'
 import { MockLanguageModelV4 } from 'ai/test'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { type ChatUIMessage, messageReasoning } from './conversation.ts'
 import { createChatStream } from './text-stream.ts'
 
@@ -14,7 +20,7 @@ const finish = {
 }
 
 function start(
-  model: MockLanguageModelV4,
+  model: LanguageModel,
   overrides: Partial<Parameters<typeof createChatStream>[0]> = {},
 ) {
   return createChatStream({
@@ -37,7 +43,52 @@ function start(
   })
 }
 
+afterEach(() => vi.unstubAllGlobals())
+
 describe('single reply stream', () => {
+  it.each([
+    { provider: 'deepseek', thinking: false, expected: 'disabled' },
+    { provider: 'deepseek', thinking: true, expected: 'enabled' },
+    { provider: 'deepseek', thinking: undefined, expected: undefined },
+    { provider: 'openai', thinking: undefined, expected: undefined },
+  ] as const)(
+    '$provider thinking=$thinking 实际 SDK 请求只携带已解析的 thinking 控制',
+    async ({ provider, thinking, expected }) => {
+      let body: Record<string, unknown> | undefined
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          body = (await new Request(input, init).json()) as Record<string, unknown>
+          return new Response(
+            `data: ${JSON.stringify({ id: 'reply', created: 1, model: 'test-model', choices: [{ index: 0, delta: { content: 'answer' }, finish_reason: 'stop' }], usage: { prompt_tokens: 10, completion_tokens: 20 } })}\n\ndata: [DONE]\n\n`,
+            { headers: { 'content-type': 'text/event-stream' } },
+          )
+        }),
+      )
+      const registered: AvailableModel = {
+        id: 'model',
+        key: 'test-model',
+        kind: 'text',
+        provider,
+        providerModelId: 'test-model',
+        pricing: { mode: 'per_call', credits: 1 },
+        tags: [],
+        paramsSchema: {},
+        sort: 0,
+      }
+      const model = defaultLanguageModelFactory(registered, {
+        AI_TEXT_EGRESS: 'direct',
+        DEEPSEEK_API_KEY: 'fixture-key',
+        OPENAI_BASE_URL: 'https://provider.example/v1',
+        OPENAI_API_KEY: 'fixture-key',
+      })
+      const result = start(model, { provider, thinking })
+      expect(await result.done).toMatchObject({ text: 'answer', status: 'completed' })
+      if (expected) expect(body).toMatchObject({ thinking: { type: expected } })
+      else expect(body).not.toHaveProperty('thinking')
+    },
+  )
+
   it('SDK reads retries as one message, with only the final reasoning shown', async () => {
     let n = 0
     const model = new MockLanguageModelV4({

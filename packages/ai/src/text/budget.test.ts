@@ -60,13 +60,13 @@ describe('输入 token 保守估算', () => {
     ).toEqual({
       tokensPerChar: 1.5,
       maxOutputTokens: 8000,
-      thinking: false,
+      thinking: undefined,
       continuation: 'none',
     })
     const defaults = {
       tokensPerChar: DEFAULT_TOKENS_PER_CHAR,
       maxOutputTokens: 4096,
-      thinking: false,
+      thinking: undefined,
       continuation: 'none',
     }
     expect(textModelConfig({ paramsSchema: null })).toEqual(defaults)
@@ -81,6 +81,10 @@ describe('输入 token 保守估算', () => {
     expect(textModelConfigSchema.safeParse({ thinking: false, continuation: 'none' }).success).toBe(
       true,
     )
+    expect(textModelConfig({ paramsSchema: { 'x-text': {} } }).thinking).toBeUndefined()
+    expect(textModelConfig({ paramsSchema: { 'x-text': { thinking: false } } }).thinking).toBe(
+      false,
+    )
     for (const config of [
       { thinking: 'true' },
       { thinking: null },
@@ -90,7 +94,7 @@ describe('输入 token 保守估算', () => {
     ]) {
       expect(textModelConfigSchema.safeParse(config).success).toBe(false)
       expect(textModelConfig({ paramsSchema: { 'x-text': config } })).toMatchObject({
-        thinking: false,
+        thinking: undefined,
         continuation: 'none',
       })
     }

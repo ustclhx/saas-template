@@ -14,12 +14,13 @@
 
 ### 1. 配置分层
 - `template.config.ts`：`ai.text.thinking = { default: 'off' | 'on', userToggle: boolean }`、`ai.text.reasoning = { display: boolean }`、`ai.text.failedReplyRefund: 'no-visible-output' | 'all'`（默认前者）。模板默认：thinking off、userToggle false、display false。
-- 模型 `params_schema['x-text']`：`thinking?: boolean`（支持与否，缺省 false）、`continuation?: 'native' | 'none'`（缺省 none）。后台保存沿用严格校验。
-- 请求：`thinking?: boolean`，仅 `userToggle` 时接受，否则 400（与 strictObject 风格一致）。
+- 模型 `params_schema['x-text']`：`thinking?: boolean` 为可选能力覆盖，缺省跟随 Provider adapter；显式 `false` 表示模型不支持，不下发、不允许用户切换；显式 `true` 表示支持，但无 adapter 时仍无法下发并忽略。`continuation?: 'native' | 'none'` 缺省 none。后台保存沿用严格校验；Text 参考模板省略 thinking 字段以跟随 adapter，已有模型的显式 `thinking=false` 保持禁用控制。
+- 请求：`thinking?: boolean`。`userToggle=false` 时携带字段仍返回 400（与 strictObject 风格一致）；启用时，仅 adapter 可控且模型未显式声明 `false` 才显示并接受开关，模型不可控时忽略请求字段，保留现有行为。
+- 下发：adapter 可控且模型未显式声明 `false` 时，始终显式下发模板默认值或允许的请求覆盖；空 schema 与未声明 `x-text.thinking` 的模型同样适用，不依赖模型显式声明 `true`。
 - 备选：放 runtime settings —— 拒绝：这是产品形态决策，属模板层；运行时切换会使在途口径不一致。
 
 ### 2. Provider 能力接口
-`packages/ai/src/text` 增加 `TextProviderCapabilities { applyThinking(params, on): params; continuation?: { buildPrefix(messages, partial): messages } }`，按 provider 注册；DeepSeek 实现 thinking 映射（统一 `reasoning` 参数 + `providerOptions.deepseek.thinking`）与前缀续写（DeepSeek “chat prefix completion”：末条 assistant 带 prefix 标记，需 beta 端点）。实施时先核实已安装 `@ai-sdk/deepseek` 是否支持 prefix；不支持时经自定义 fetch/body 转换实现；都不可行则 DeepSeek 也 `continuation: none` 并在 PR 中报告。其他 provider 返回默认（thinking 不变、无续写）。fault 包装的关闭思考改走同一接口。
+`packages/ai/src/text` 增加 `TextProviderCapabilities`，按 provider 注册 thinking 控制能力与 `applyThinking(params, on)` 映射，并可选提供 `continuation.buildPrefix(messages, partial)`。当前仅 DeepSeek adapter 可控 thinking，实现统一 `reasoning` 参数 + `providerOptions.deepseek.thinking` 映射与前缀续写（DeepSeek “chat prefix completion”：末条 assistant 带 prefix 标记，需 beta 端点）。实施时先核实已安装 `@ai-sdk/deepseek` 是否支持 prefix；不支持时经自定义 fetch/body 转换实现；都不可行则 DeepSeek 也 `continuation: none` 并在 PR 中报告。其他 provider 不具备 thinking 控制能力，即使模型声明 `thinking=true` 也保持原行为、无续写。fault 包装的关闭思考改走同一接口。
 
 ### 3. 尝试编排（单回复多次上游调用）
 ```
@@ -57,4 +58,4 @@ attempt loop (same hold, same assistant message):
 
 ## Migration Plan
 
-无迁移。默认 thinking off 会改变现有 deepseek 模型的默认行为（当前为 Provider 默认开启）——这是有意的；项目可改模板默认值。回滚：还原配置或代码，经 main 自动发布。
+无迁移。默认 thinking off 会改变未显式声明 `thinking=false` 的现有 DeepSeek 模型的默认行为（Provider 默认开启）——这是有意的；空 schema 同样显式关闭，项目可改模板默认值。显式 `thinking=false` 的模型不下发控制，沿用 Provider 行为。回滚：还原配置或代码，经 main 自动发布。

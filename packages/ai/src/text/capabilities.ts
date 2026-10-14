@@ -4,6 +4,7 @@ type CallOptions = Parameters<ReturnType<typeof wrapLanguageModel>['doStream']>[
 export type TextThinkingParams = Pick<CallOptions, 'reasoning' | 'providerOptions'>
 
 export interface TextProviderCapabilities {
+  readonly supportsThinking: boolean
   applyThinking<T extends TextThinkingParams>(params: T, on: boolean): T & TextThinkingParams
   continuation?: {
     buildPrefix(messages: ModelMessage[], partial: string): ModelMessage[]
@@ -11,10 +12,12 @@ export interface TextProviderCapabilities {
 }
 
 const defaults: TextProviderCapabilities = {
+  supportsThinking: false,
   applyThinking: (params) => params,
 }
 
 const deepseek: TextProviderCapabilities = {
+  supportsThinking: true,
   applyThinking: (params, on) => ({
     ...params,
     reasoning: on ? 'high' : 'none',
@@ -43,4 +46,9 @@ const capabilities = new Map<string, TextProviderCapabilities>([['deepseek', dee
 /** 同时接受注册表 provider 与 SDK 的 deepseek.chat 标识。 */
 export function getTextProviderCapabilities(provider: string): TextProviderCapabilities {
   return capabilities.get(provider.split('.')[0] ?? provider) ?? defaults
+}
+
+/** 模型缺省跟随适配器；显式 true 仍需 Provider 可控，false 始终禁用。 */
+export function supportsTextThinking(provider: string, thinkingOverride?: boolean): boolean {
+  return thinkingOverride !== false && getTextProviderCapabilities(provider).supportsThinking
 }

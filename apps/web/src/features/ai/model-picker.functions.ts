@@ -1,4 +1,4 @@
-import { dbModelStore, listAvailableModels } from '@saas/ai'
+import { dbModelStore, listAvailableModels, supportsTextThinking, textModelConfig } from '@saas/ai'
 import { getEntitlements } from '@saas/entitlements'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
@@ -40,5 +40,13 @@ export const getPickerModels = createServerFn({ method: 'GET' })
       entitlements,
       { kind: data.kind },
     )
-    return models.map(({ id, key, kind, pricing }) => ({ id, key, kind, pricing }))
+    return models.map((model) => ({
+      id: model.id,
+      key: model.key,
+      kind: model.kind,
+      pricing: model.pricing,
+      supportsThinking:
+        model.kind === 'text' &&
+        supportsTextThinking(model.provider, textModelConfig(model).thinking),
+    }))
   })
