@@ -270,6 +270,7 @@ class Acceptance:
 
     def runtime_checks(self, sha):
         config = json.loads(self.compose(sha, 'config', '--format', 'json'))
+        observed = []
         for name, service in config['services'].items():
             require(not service.get('build'), 'server build configured')
             require(name == 'caddy' or not service.get('ports'), 'data port published')
@@ -284,6 +285,16 @@ class Acceptance:
             if name != 'migrate':
                 uid = self.compose(sha, 'exec', '-T', name, 'id', '-u')
                 require(uid.isdigit() and int(uid) > 0, 'runtime root UID')
+            else:
+                uid = inspected['Config']['User'].split(':')[0]
+            observed.append({'service': name, 'uid': int(uid),
+                             'state': inspected['State']['Status'],
+                             'exitCode': inspected['State']['ExitCode'],
+                             'health': inspected['State'].get('Health', {}).get('Status'),
+                             'image': inspected['Config']['Image'],
+                             'networks': sorted(inspected['NetworkSettings']['Networks']),
+                             'publishedPorts': sorted(inspected['HostConfig'].get('PortBindings') or {}),
+                             'secretNames': sorted(secret['source'] for secret in service.get('secrets', []))})
             require(not inspected['HostConfig'].get('Privileged'), 'privileged container')
             if name != 'caddy':
                 require(not inspected['HostConfig'].get('PortBindings'), 'runtime data port published')
@@ -312,7 +323,8 @@ class Acceptance:
             check=False).returncode == 60, 'unknown HTTPS CA was not rejected')
         self.mark('runtime TLS ports secrets UID', sha=sha, pgVerifyFull=True, invalidPgCaRejected=True,
                   unknownHttpsCaRejected=True, pgHostnameMismatchRejected=True, secretsDirectoryMode='0700',
-                  secretFiles='0644 under restricted parent (Docker Desktop)' if self.desktop else '0600 service UID')
+                  secretFiles='0644 under restricted parent (Docker Desktop)' if self.desktop else '0600 service UID',
+                  services=observed)
 
     def fixture(self):
         source = self.directory / 'fixture-source'
