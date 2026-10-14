@@ -35,6 +35,8 @@ const excluded = new Set([
   'test-results',
   'image-artifacts',
   'image-set',
+  'release-bundle',
+  '__pycache__',
   '.DS_Store',
   '.omp',
   '.codex',
@@ -75,7 +77,8 @@ function omit(path) {
         ].includes(part),
       )) ||
     /^(?:id_rsa|id_ed25519|id_ecdsa|id_dsa)(?:\.pub)?$/.test(name) ||
-    /\.(?:tsbuildinfo|log|pem|key|crt|p12|pfx|p8)$/.test(name)
+    /^selfhost-release-.*\.tar\.gz$/.test(name) ||
+    /\.(?:tsbuildinfo|pyc|log|pem|key|crt|p12|pfx|p8)$/.test(name)
   )
 }
 
@@ -603,6 +606,17 @@ export async function createProject(input, source = root) {
       '.github/workflows/selfhost-images.yml',
       '.github/workflows/selfhost-publish.yml',
       'deploy/selfhost/images/catalog.json',
+      'deploy/selfhost/deploy.sh',
+      'deploy/selfhost/deploy.py',
+      'deploy/selfhost/health.py',
+      'deploy/selfhost/init-server.sh',
+      'deploy/selfhost/init-server.py',
+      'deploy/selfhost/init-firewall.sh',
+      'deploy/selfhost/compose.proxy.yaml',
+      'deploy/selfhost/release/bundle.py',
+      'deploy/selfhost/OPERATIONS.md',
+      'deploy/selfhost/restore.sh',
+      'deploy/selfhost/restore-drill.sh',
     ]
     const missing = []
     for (const path of required) {
@@ -613,7 +627,7 @@ export async function createProject(input, source = root) {
         missing.push(path)
       }
     }
-    report = `# ${options.name} selfhost 初始化清单\n\n## 启用功能\n\n- billing=${options.billingEnabled} / credits=${options.creditsEnabled} / marketing=${options.marketing} / i18n=${options.i18n}（默认语言 ${options.locale}）\n- AI：${options.ai.join(',') || '关闭'}\n\n## 运维与资源\n\n${checklist.resources.map((item) => `- [ ] ${item}`).join('\n')}\n\n## 应用配置键（密钥使用受限文件与对应 _FILE；值保持为空）\n\n${[...checklist.vars, ...checklist.secrets].map((key) => `- ${key}`).join('\n')}\n\n## Compose secret 文件\n\n${['postgres_password', 'app_db_password', 'migrator_db_password', 'readonly_db_password', 'app_database_url', 'migrator_database_url', 'valkey_password', 'valkey_url', 'auth_secret', ...options.oauth.map((provider) => `${provider}_client_secret`), ...(options.turnstile ? ['turnstile_secret'] : [])].map((key) => `- secrets/${key}`).join('\n')}\n\n复制 deploy/selfhost/.env.example 后配置 namespace、同 SHA 镜像、域名、TLS 与受限 secret 文件；参考 deploy/selfhost/README.md 和 secrets.example。\n发布 CI 以 namespace 输入装配 IMAGE_NAMESPACE：\n\n    gh workflow run selfhost-publish.yml --ref main -f sha=<full-40-character-main-sha> -f namespace=${options.imageNamespace}\n\n生成副本的功能配置必须重新构建镜像。PR 不获得 registry 写入或服务器 secret，正式发布使用受信提交和完整集合 gate。\n${options.billingEnabled ? '迁移后运行 pnpm billing:seed，并配置模型与套餐授权。' : '应用现有数据库迁移；支付模块关闭。'}\nBOOTSTRAP_ADMIN_EMAILS 可选，仅 web；已验证且未封禁账号才提升；移除名单不会自动撤销管理员。\n自检仅验证单元测试；上线前独立完成 Compose、登录/空间、heartbeat、SHA 与恢复验收。\n\n## 交付材料状态\n\n部署/初始化/恢复脚本：待 owner 交付并确认入口路径，生成器不预设尚未交付的路径。备份镜像仍由 catalog 的 pendingServices 标记；完整集合门尚未放行时不要发布。\n\n${missing.length ? missing.map((path) => `- 待交付：${path}`).join('\n') : '生成副本已继承现有发布/Compose 材料；仍需实际发布与部署验收。'}\n`
+    report = `# ${options.name} selfhost 初始化清单\n\n## 启用功能\n\n- billing=${options.billingEnabled} / credits=${options.creditsEnabled} / marketing=${options.marketing} / i18n=${options.i18n}（默认语言 ${options.locale}）\n- AI：${options.ai.join(',') || '关闭'}\n\n## 运维与资源\n\n${checklist.resources.map((item) => `- [ ] ${item}`).join('\n')}\n\n## 应用配置键（密钥使用受限文件与对应 _FILE；值保持为空）\n\n${[...checklist.vars, ...checklist.secrets].map((key) => `- ${key}`).join('\n')}\n\n## Compose secret 文件\n\n${['postgres_password', 'app_db_password', 'migrator_db_password', 'readonly_db_password', 'app_database_url', 'migrator_database_url', 'valkey_password', 'valkey_url', 'auth_secret', ...options.oauth.map((provider) => `${provider}_client_secret`), ...(options.turnstile ? ['turnstile_secret'] : [])].map((key) => `- secrets/${key}`).join('\n')}\n\n复制 deploy/selfhost/.env.example 后配置 namespace、同 SHA 镜像、域名、TLS 与受限 secret 文件；参考 deploy/selfhost/README.md 和 secrets.example。\n发布 CI 以 namespace 输入装配 IMAGE_NAMESPACE：\n\n    gh workflow run selfhost-publish.yml --ref main -f sha=<full-40-character-main-sha> -f namespace=${options.imageNamespace}\n\n生成副本的功能配置必须重新构建镜像。PR 不获得 registry 写入或服务器 secret，正式发布使用受信提交和完整集合 gate。\n${options.billingEnabled ? '迁移后运行 pnpm billing:seed，并配置模型与套餐授权。' : '应用现有数据库迁移；支付模块关闭。'}\nBOOTSTRAP_ADMIN_EMAILS 可选，仅 web；已验证且未封禁账号才提升；移除名单不会自动撤销管理员。\n自检仅验证单元测试；上线前独立完成 Compose、登录/空间、heartbeat、SHA 与恢复验收。\n\n## 交付材料状态\n\n部署/回滚：deploy/selfhost/deploy.sh；初始化：deploy/selfhost/init-server.sh；bundle：deploy/selfhost/release/bundle.py；外部代理：deploy/selfhost/compose.proxy.yaml。仅继承已交付文件，下列缺失项仍待 owner 交付；恢复脚本尚未交付不代表可做异机恢复。首次真实 registry 发布与 B/D ownership 签收仍待协调者确认，部署成功不等于备份/恢复验收。\n\n${missing.length ? missing.map((path) => `- 待交付：${path}`).join('\n') : '生成副本已继承现有发布/Compose 材料；仍需实际发布与部署验收。'}\n`
   }
   const entryChecklist = `## 页面与语言\n\n- ${options.marketing ? '营销页面已启用，/ 为营销首页。' : '营销页面关闭，/ 重定向至 /app，作为应用入口；营销路由不可用。'}\n- ${options.i18n ? `多语言已启用，默认语言 ${options.locale}；其他语言使用语言前缀。` : `仅编译所选默认语言 ${options.locale}；页面路径无语言前缀，其他语言前缀返回 404；不显示语言控件，忽略账号语言、cookie 与 Accept-Language。`}\n`
   report += `\n${entryChecklist}`

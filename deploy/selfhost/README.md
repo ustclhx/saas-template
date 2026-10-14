@@ -1,8 +1,21 @@
-# 自托管 Compose（A 7.1–7.4）
+# 自托管 Compose 与部署交付
 
-本目录定义本机可验收的部署拓扑；GHCR、多架构发布、服务器部署、备份和 Dokploy 配置由 D 交付。Node 已装配真实 B 队列与 Cron。关闭 Turnstile、开启验证邮件与多租户的本地生产验收见 [A 8/9 runbook](../../docs/runbooks/selfhost-a-final.md)；正式邮件凭据由部署方提供。默认 Cloudflare 构建与 staging 流程保持原样。
+本目录提供 image-only Compose、显式 SSH/本机部署与兼容回滚、health/SHA 门、空白主机初始化、代理接入和同 SHA bundle 打包。首次真实 GHCR 发布仍待授权；完整恢复脚本与 B/D ownership 签收尚未完成，不能据此宣称服务器恢复已验收。Node 已装配真实 B 队列与 Cron。关闭 Turnstile、开启验证邮件与多租户的本地生产验收见 [A 8/9 runbook](../../docs/runbooks/selfhost-a-final.md)；正式邮件凭据由部署方提供。默认 Cloudflare 构建与 staging 流程保持原样。
 
-## 镜像与启动
+## 正式部署
+
+从受信发布 run 下载成功的同 SHA bundle；服务器仅安装 Python3、Docker Engine/Compose
+与 curl，不需要业务源码、Node 或 pnpm。按 [OPERATIONS.md](OPERATIONS.md) 配置公开
+`.env`、独立 file secrets 和证书，再通过 `deploy.sh` 更新，不用直接 `up` 做升级。
+镜像引用由 bundle 的 digest 清单固定，不接受运行环境改写。
+
+详细步骤见 [部署与回滚](../../docs/runbooks/selfhost-deploy.md)、
+[空白初始化](../../docs/runbooks/selfhost-init.md)、[外部代理](../../docs/runbooks/selfhost-proxy.md)
+与 [release bundle](../../docs/runbooks/selfhost-release.md)。Dokploy 是可选入口，不能跳过
+迁移/排空门；不会自动安装或连接任何既有服务器。恢复脚本尚未交付，1.4 的完整 bundle
+与 1.5/6.3/7 的恢复验收保持待办。
+
+## 本地开发镜像与基础启动
 
 从仓库根目录构建，源码与基础镜像均锁定。`APP_VERSION` 必须为对应源码的完整 40 位小写 Git SHA；没有 Git 的归档必须显式提供它，不能使用短 SHA 或版本号。所有 `FROM` 都固定 digest；镜像不携带部署凭据。只有构建阶段使用 root；运行及数据初始化均非 root。
 
@@ -20,7 +33,7 @@ docker run --rm selfhost-native-smoke
 
 根 `.gitignore` 作为 Tailwind 扫描输入保留，避免生成目录改变 SSR/client 两次构建的 CSS URL。构建使用 Dockerfile 专用 `.dockerignore`，排除 Git、dotenv、`.dev.vars`、密钥/证书目录、开发依赖目录及生成产物。密钥不能通过 Docker ARG/ENV 或构建缓存传入；需要修改模板开关时先改 `template.config.ts` 并重新构建。
 
-部署目录复制 `.env.example` 为 `.env`，填写同一完整 SHA 的镜像引用，以及公开 HTTPS URL/域名和集成 ID。D 发布可拉取的镜像后可直接填写它们；在此之前先构建本机镜像。按 `secrets.example` 创建单文件 secrets 与证书，随后在本目录执行：
+本地开发时复制 `.env.example` 为 `.env`，使用刚构建的本机镜像替换其中 registry 占位引用，填写公开 HTTPS URL/域名和集成 ID。正式服务器部署使用上面的 release 入口。按 `secrets.example` 创建单文件 secrets 与证书，随后在本目录执行：
 
 ```sh
 docker compose config
@@ -74,7 +87,7 @@ Caddy 配置依据官方 [global options](https://caddyserver.com/docs/caddyfile
 
 默认 CPU 配额总计 2 核；常驻服务内存上限合计约 3.25 GiB，migrate 额外 512 MiB。PG 最大连接100，web/jobs 各池10，迁移使用独立低并发连接；调整池预算时保留运维余量。每个 service 包含健康检查、资源上限、restart、日志轮转和45秒停止宽限期。应用 shutdown 默认30秒，必须小于容器 grace；增大 `SHUTDOWN_TIMEOUT_MS` 时同步修改 grace。
 
-Docker `json-file` 的 `LOG_MAX_SIZE=10m`、`LOG_MAX_FILE=3` 可调。应用与迁移输出脱敏 JSON；PG/Valkey 保留官方 stderr 格式，由 Docker 包装和轮转。只有 Caddy profile 有公开入口。内部 `/internal/live` 仅用于容器进程探活，B 缺失不触发重启循环；外部 `/api/health` 实时检查 DB/cache/queue/scheduler，返回完整 SHA 与 `lastCronAt`。所有依赖正常且有有效成功心跳时返回 200；启动尚无心跳、依赖故障或消费者/调度器停摆时返回 503。容器 healthy 只说明进程存活，不能代替该 readiness。
+Docker `json-file` 的 `LOG_MAX_SIZE=10m`、`LOG_MAX_FILE=3` 可调。应用与迁移输出脱敏 JSON；PG/Valkey 保留官方 stderr 格式，由 Docker 包装和轮转。只有 Caddy profile 有公开入口。内部 `/internal/live` 仅用于容器进程探活，依赖暂未就绪不触发重启循环；外部 `/api/health` 实时检查 DB/cache/queue/scheduler，返回完整 SHA 与 `lastCronAt`。所有依赖正常且有有效成功心跳时返回 200；启动尚无心跳、依赖故障或消费者/调度器停摆时返回 503。容器 healthy 只说明进程存活，不能代替该 readiness。
 
 初轮镜像与尚未通过的 ACME 项见 [A7 验收记录](../../docs/runbooks/selfhost-a7.md)，完整健康与认证尾部验收见 [A 8/9 runbook](../../docs/runbooks/selfhost-a-final.md)。停止保留数据用 `docker compose down`；仅删除隔离验收数据时才使用 `down -v`。
 

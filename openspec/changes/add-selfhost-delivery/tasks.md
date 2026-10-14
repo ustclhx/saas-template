@@ -15,6 +15,7 @@
 - [ ] 1.3 新增独立 GHCR 发布 workflow，支持显式 OCI namespace、最小 registry 写权限、受信提交发布、不可覆写 SHA 与完整集合 gate。验证：PR 没有写权限/服务器密钥，失败架构不发布可部署 release，成功 registry manifest/digest/revision 与源 SHA 相符；更新发布说明，CF CI/staging 原路径不变。（P1）
   - 2026-10-14：独立手动发布 workflow、集合/信任/不可覆写 gate 与发布说明已实现。缺 backup 时只读阶段阻断；合并前不真实发布，registry 验收由协调者按 `deploy/selfhost/images/README.md` 首次触发后签收，此前保持未勾选。
 - [ ] 1.4 打包同 SHA 的部署 release bundle，包含 Compose/脚本/示例及镜像 digest 清单，更新 image-only `.env.example` 和 README 的过时 B 状态。验证：从干净目录仅拉 bundle/镜像即可 `compose config`，无服务器构建/源码依赖、无真值；所有必需服务的引用与 release SHA 一致。（P1、P2）
+  - 2026-10-14：同SHA Git白名单打包、八服务digest/checksum、干净目录Compose与成功发布后bundle artifact已实现；本地tar/registry夹具验证，不触发真实GHCR。完整恢复材料及正式digest签收仍待协调者，不提前勾选。
 - [ ] 1.5 **依赖 B owner：** 协调者取得可信容器重建/宿主 boot/异机恢复退出证据实现的签收，再由 D 接入持久 ownership 卷、executor ID、hostname/namespace 和版本配置。验证：旧进程仍活时拒绝重用、真实退出后可恢复、container recreate/reboot 不卡住；不删整个 owner 目录、不以 TTL 或 pid:host 猜测绕过。B 改动单独交付，未签收时 2 的恢复与 6.3/7.3 保持 BLOCKED。（§6.8）
 
 2026-10-14 协调者签收：1.1 交接清单经审阅（[selfhost-delivery-handoff](../../../docs/runbooks/selfhost-delivery-handoff.md)）；1.2 与 4.1 由 main 70496c6 的 Selfhost images 双架构 CI（run 38555725385）完成 backup 在内的完整集合构建与真实备份/恢复 runtime smoke，arm64 另有 #177 本机证据。1.3 待首次真实发布。
@@ -22,10 +23,15 @@
 ## 2. 发布、回滚、入口与初始化（P2–P4，deployment owner）
 
 - [ ] 2.1 实现显式 host/dir/SHA 的 SSH 与本机部署入口、文件锁、release 校验、pull、旧 web/jobs 排空退出、强制目标 migrate、成功后 up 的顺序；保留前成功版本。验证：隔离 Compose 初始部署/已有版本升级通过，迁移失败不启动目标 app，发布并发串行，拉取失败不更改运行版本；复用现有脱敏脚本测试风格覆盖关键失败路径，写部署 runbook。（P2）
-- [ ] 2.2 实现有界 health readiness/完整 SHA 检查及 jobs 版本确认，等待窗口覆盖首次五分钟心跳；失败非零退出、输出目标/观察 SHA 和回滚命令。验证：成功/旧 SHA/503/半开请求/任务版本不符在隔离 HTTP 或真实服务上得到正确结论，无连接串和凭据输出。（P3）
+  - 2026-10-14：显式SSH/本机入口、锁/pull/排空/强制migrate/成功记录与8项真实隔离Compose机制验证已交付；PG/DBOS为明确合成夹具，1.5未签收，正式业务与恢复验收保留BLOCKED。
+- [x] 2.2 实现有界 health readiness/完整 SHA 检查及 jobs 版本确认，等待窗口覆盖首次五分钟心跳；失败非零退出、输出目标/观察 SHA 和回滚命令。验证：成功/旧 SHA/503/半开请求/任务版本不符在隔离 HTTP 或真实服务上得到正确结论，无连接串和凭据输出。（P3）
+  - 2026-10-14：health门默认360秒覆盖五分钟slot，独立web/jobs完整SHA与依赖/成功心跳；9项精简部署/HTTP测试覆盖旧SHA、503、半开响应、jobs版本及脱敏，隔离Compose旧SHA失败返回非零和回滚命令。
 - [ ] 2.3 实现上一成功 bundle/镜像回滚入口与 schema/DBOS handler 兼容门，不自动 down migration；不兼容指向新卷恢复。验证：兼容双版本更新→失败→回滚后 SHA 正确、卷和任务状态保留；不兼容案例明确阻止并给出匹配备份操作步骤，未执行生产数据倒退。（P3）
-- [ ] 2.4 写同 Compose 的 Dokploy/Traefik 与既有代理/cloudflared 接入说明，配置关闭 Caddy、只接 web ingress、确切 trusted proxy 与 secret 权限。验证：plain config 和外部代理最终渲染均无 build/额外数据端口，TLS/恶意 XFF/非 root 通过；Dokploy 实机演示需获准测试资源，否则只记录文档/静态证据，留第 7 组实际验收。（P2）
-- [ ] 2.5 实现 init-server.sh 单命令入口，固定支持的 Ubuntu/Debian/架构与 Docker/Compose 版本，安装并启用开机启动、配置保留 SSH 的 22/80/443 防火墙、受限目录和无真值 env 骨架。验证：临时空白 VM 安装与重复执行通过，已用主机/冲突端口拒绝且未覆盖配置；从 VM 外部验证 Docker 防火墙后端下实际端口，不 flush 规则、不默认安装 Dokploy；同组交付初始化 runbook。（P4）
+  - 2026-10-14：已记录上一成功bundle/公开配置、最后schemaSha与显式schema/handler兼容门；真实本地registry双版本失败→兼容回滚保留卷/网络/task marker、不跑旧migration；不兼容在变更前拒绝。真实DBOS状态恢复依赖1.5，保留未勾选。
+- [x] 2.4 写同 Compose 的 Dokploy/Traefik 与既有代理/cloudflared 接入说明，配置关闭 Caddy、只接 web ingress、确切 trusted proxy 与 secret 权限。验证：plain config 和外部代理最终渲染均无 build/额外数据端口，TLS/恶意 XFF/非 root 通过；Dokploy 实机演示需获准测试资源，否则只记录文档/静态证据，留第 7 组实际验收。（P2）
+  - 2026-10-14：同Compose代理override及Dokploy/Traefik/cloudflared runbook交付；plain/external最终渲染、实际TLS/未知CA拒绝/恶意XFF清洗/UID与无数据端口通过，实际Dokploy/Tunnel留第7组。
+- [x] 2.5 实现 init-server.sh 单命令入口，固定支持的 Ubuntu/Debian/架构与 Docker/Compose 版本，安装并启用开机启动、配置保留 SSH 的 22/80/443 防火墙、受限目录和无真值 env 骨架。验证：临时空白 VM 安装与重复执行通过，已用主机/冲突端口拒绝且未覆盖配置；从 VM 外部验证 Docker 防火墙后端下实际端口，不 flush 规则、不默认安装 Dokploy；同组交付初始化 runbook。（P4）
+  - 2026-10-14：临时Debian12 arm64 Lima VM实际安装/幂等/拒绝已用和冲突/哨兵不变；VM外部22/80/443可达、Docker发布8080/5432被阻止，daemon restart与实际VM reboot恢复。8安全用例通过；其它OS/架构实机、全栈/B恢复仍留6.3/第7组，VM已删除。
 
 ## 3. 项目生成与功能关闭（P5，generator owner，共享配置串行）
 
