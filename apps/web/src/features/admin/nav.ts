@@ -6,7 +6,7 @@ import { ADMIN_COPY } from './copy.ts'
  * 后台侧栏导航（add-admin-console tasks.md 1.3）。新增后台页面时在这里加一项；
  * 列表页的分页与筛选放在 search 参数中，入口链接从第一页开始。
  */
-export const ADMIN_NAV = linkOptions([
+const nav = linkOptions([
   { to: '/admin', label: ADMIN_COPY.nav.overview, activeOptions: { exact: true } },
   {
     to: '/admin/billing',
@@ -85,3 +85,10 @@ export const ADMIN_NAV = linkOptions([
     ? [{ to: '/admin/waitlist' as const, search: { offset: 0 }, label: 'Waitlist' }]
     : []),
 ])
+
+export const ADMIN_NAV = nav.filter((item) => {
+  if (item.to.startsWith('/admin/billing')) return templateConfig.billing.enabled
+  if (item.to === '/admin/models') return templateConfig.billing.enabled
+  if (item.to === '/admin/credits') return templateConfig.credits.enabled
+  return true
+})

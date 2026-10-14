@@ -1,6 +1,6 @@
 import { newId } from '@saas/shared'
 import { DataTable } from '@saas/ui'
-import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { createFileRoute, notFound as featureNotFound, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { adjustCredits, getAdminCredits } from '../../features/admin/credits.functions.ts'
 import {
@@ -9,8 +9,12 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../features/admin/list.ts'
+import { templateConfig } from '../../server/template-config.ts'
 
 export const Route = createFileRoute('/admin/credits')({
+  beforeLoad: () => {
+    if (!templateConfig.credits.enabled) throw featureNotFound()
+  },
   validateSearch: (search: Record<string, unknown>) => adminListSearch(['workspaceId'])(search),
   loaderDeps: ({ search }) => search,
   loader: ({ deps }) => getAdminCredits({ data: deps }),

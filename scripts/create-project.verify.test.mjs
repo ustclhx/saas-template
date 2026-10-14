@@ -17,7 +17,7 @@ for (const locale of ['en', 'zh']) {
       domain: `${name}.example`,
       locale,
       ai: 'text',
-      target: join(temp, 'acme'),
+      output: join(temp, 'acme'),
     })
     let count = 0
     async function inspect(folder) {

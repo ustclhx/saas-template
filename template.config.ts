@@ -7,7 +7,7 @@ import { defineTemplateConfig } from '@saas/config'
  */
 export default defineTemplateConfig({
   app: { name: 'MyApp', url: 'https://example.com', supportEmail: 'support@example.com' },
-  i18n: { locales: ['en', 'zh'], defaultLocale: 'en' },
+  i18n: { enabled: true, locales: ['en', 'zh'], defaultLocale: 'en' },
   tenancy: {
     multiTenant: false, // false = 仅个人空间；true = 允许团队 workspace
     maxWorkspacesPerUser: 5,
@@ -22,6 +22,7 @@ export default defineTemplateConfig({
     turnstile: true,
   },
   billing: {
+    enabled: true, // 计费依赖积分；关闭计费时同时关闭 AI
     providers: ['stripe', 'paypal'], // 结账页展示顺序
     currency: 'usd',
     signupBonusCredits: 100, // 用户领取时触发邮箱验证，验证完成后发放
@@ -35,6 +36,8 @@ export default defineTemplateConfig({
     },
     refundWindowDays: 30, // 可申请退款的付款时间范围；退款需人工审核，默认不主动退
   },
+  credits: { enabled: true },
+  marketing: { enabled: true },
   ai: {
     text: {
       enabled: true,

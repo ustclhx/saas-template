@@ -1,10 +1,14 @@
 import { Button } from '@saas/ui'
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, notFound as featureNotFound, Link } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { z } from 'zod'
 import { confirmCustomerCheckout } from '../../../features/billing/customer.functions.ts'
+import { templateConfig } from '../../../server/template-config.ts'
 
 export const Route = createFileRoute('/app/$slug/billing-return')({
+  beforeLoad: () => {
+    if (!templateConfig.billing.enabled) throw featureNotFound()
+  },
   validateSearch: z.object({
     provider: z.enum(['stripe', 'paypal', 'creem', 'paddle', 'polar']).optional(),
     token: z.string().max(255).optional(),

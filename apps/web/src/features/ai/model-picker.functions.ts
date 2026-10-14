@@ -3,6 +3,7 @@ import { getEntitlements } from '@saas/entitlements'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { z } from 'zod'
+import { withBilling } from '../../server/feature-gates.ts'
 import { withWorkspace } from '../../server/middleware.ts'
 import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
@@ -12,7 +13,7 @@ import { readFaultAccess } from './fault-access.ts'
 // 只返回选择与预计消耗所需的字段，不暴露服务商与服务商侧的模型 id。
 
 export const getPickerModels = createServerFn({ method: 'GET' })
-  .middleware([withWorkspace])
+  .middleware([withBilling, withWorkspace])
   .inputValidator(
     z.object({
       slug: z.string().min(1).max(64),

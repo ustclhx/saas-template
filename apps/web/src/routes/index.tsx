@@ -28,7 +28,7 @@ function HomePage() {
     <MarketingShell>
       <Hero />
       <Features />
-      <Pricing plans={placeholderPlans} />
+      {templateConfig.billing.enabled && <Pricing plans={placeholderPlans} />}
       <Testimonials />
       <Faq />
       <Cta />

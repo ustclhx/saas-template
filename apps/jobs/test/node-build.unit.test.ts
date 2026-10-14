@@ -10,7 +10,11 @@ it('builds portable Node ESM with declared externals and rejects invalid configu
   await mkdir(join(root, '.output'), { recursive: true })
   const directory = await mkdtemp(join(root, '.output/test-'))
   try {
-    execFileSync(process.execPath, ['scripts/build-node.mjs', directory], { cwd: root })
+    // 生成副本没有 .git；构建夹具显式提供完整 SHA，发布仍使用 CI 检出的真实版本。
+    execFileSync(process.execPath, ['scripts/build-node.mjs', directory], {
+      cwd: root,
+      env: { ...process.env, APP_VERSION: 'a'.repeat(40) },
+    })
     const entry = join(directory, 'server/index.mjs')
     const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
     const graph = JSON.parse(await readFile(join(directory, 'node-build.json'), 'utf8')) as {

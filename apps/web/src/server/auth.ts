@@ -12,6 +12,9 @@ export function createWebAuth(config: AuthEnv, db: Database, deps: Omit<CreateAu
     resolveMaxSeats: deps.resolveMaxSeats ?? resolveWorkspaceMaxSeats,
     onEmailVerified:
       deps.onEmailVerified ??
-      ((user) => grantSignupBonus({ db, userId: user.id, config: templateConfig.billing })),
+      (async (user) => {
+        if (templateConfig.credits.enabled)
+          return grantSignupBonus({ db, userId: user.id, config: templateConfig.billing })
+      }),
   })
 }

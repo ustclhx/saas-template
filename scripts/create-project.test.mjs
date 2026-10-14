@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { test } from 'node:test'
@@ -60,7 +60,13 @@ async function fixture(t) {
     'apps/jobs/src/index.ts',
     "const EMAIL_QUEUES = new Set(['email', 'email-staging'])\nconst EVENTS_QUEUES = new Set(['events', 'events-staging'])",
   )
-  await file('apps/jobs/test/queues.test.ts', "const queues = ['email', 'events-staging']")
+  await file(
+    'apps/jobs/test/queues.test.ts',
+    "const queues = ['email', 'events-staging']; const lifecycle = ['queue.register:email']",
+  )
+  await file('apps/jobs/src/handlers.ts', "const queues = ['email', 'events-staging']")
+  await file('apps/jobs/src/node/runtime.ts', "queues.register('email', consume)")
+  await file('apps/web/src/node/runtime.ts', "createNodeQueueProducer(db, 'events')")
   await file(
     '.github/workflows/deploy-staging.yml',
     'env:\n  STAGING_URL: https://old.workers.dev\n',
@@ -73,7 +79,7 @@ async function fixture(t) {
     dir,
     source,
     file,
-    input: { name: 'acme', domain: 'acme.example', target: join(dir, 'acme') },
+    input: { name: 'acme', domain: 'acme.example', output: join(dir, 'acme') },
   }
 }
 
@@ -96,6 +102,13 @@ test('生成副本改名与配置，排除各级密钥、链接和产物', async
     '.dev.vars.staging',
     '.env.local',
     '.env.worktree',
+    'image-artifacts/web.tar',
+    'image-set/image-set.json',
+    'secrets/auth_secret',
+    'certs/server/private',
+    '.data/job-owners/executor.json',
+    'apps/jobs/.data/job-owners/executor.json',
+    'apps/jobs/job-owners/executor.json',
     'apps/web/.dev.vars',
     'apps/jobs/.env.production',
     'node_modules/secret',
@@ -107,6 +120,7 @@ test('生成副本改名与配置，排除各级密钥、链接和产物', async
     'scripts/probes/x/results/config.json',
   ]) {
     await f.file(path, 'SENSITIVE_SENTINEL')
+    await chmod(join(f.source, path), 0o000)
   }
   await f.file(
     'docs/fixture-template.md',
@@ -188,6 +202,19 @@ test('生成副本改名与配置，排除各级密钥、链接和产物', async
   assert.match(worker, /new Set\(\['acme-events', 'acme-events-staging'\]\)/)
   const queueFixtures = await readFile(join(result.target, 'apps/jobs/test/queues.test.ts'), 'utf8')
   assert.match(queueFixtures, /\['acme-email', 'acme-events-staging'\]/)
+  assert.match(queueFixtures, /\['queue.register:acme-email'\]/)
+  assert.match(
+    await readFile(join(result.target, 'apps/jobs/src/handlers.ts'), 'utf8'),
+    /\['acme-email', 'acme-events-staging'\]/,
+  )
+  assert.match(
+    await readFile(join(result.target, 'apps/jobs/src/node/runtime.ts'), 'utf8'),
+    /queues.register\('acme-email'/,
+  )
+  assert.match(
+    await readFile(join(result.target, 'apps/web/src/node/runtime.ts'), 'utf8'),
+    /createNodeQueueProducer\(db, 'acme-events'\)/,
+  )
   const ci = await readFile(join(result.target, '.github/workflows/deploy-staging.yml'), 'utf8')
   assert.match(ci, /STAGING_URL: https:\/\/configure-staging-url\.invalid/)
   assert.doesNotMatch(ci, /old\.workers\.dev/)
@@ -211,7 +238,7 @@ test('生成副本改名与配置，排除各级密钥、链接和产物', async
     /SENTRY_AUTH_TOKEN|SENTRY_ORG|SENTRY_PROJECT|STAGING_MIGRATION_DATABASE_URL/,
   )
   // 生成的模板也可以继续作为源，不依赖未加引号的对象键。
-  await createProject({ ...f.input, name: 'next', target: join(f.dir, 'next') }, result.target)
+  await createProject({ ...f.input, name: 'next', output: join(f.dir, 'next') }, result.target)
 })
 
 test('媒体功能与支付开启时，清单和 Worker 引用同步生成', async (t) => {
@@ -231,20 +258,20 @@ test('媒体功能与支付开启时，清单和 Worker 引用同步生成', asy
 
 test('拒绝覆盖、源树递归复制、非法名称和无效功能输入', async (t) => {
   const f = await fixture(t)
-  await assert.rejects(createProject({ ...f.input, target: f.source }, f.source), /模板目录内/)
+  await assert.rejects(createProject({ ...f.input, output: f.source }, f.source), /模板目录内/)
   await assert.rejects(
-    createProject({ ...f.input, target: join(f.source, 'child') }, f.source),
+    createProject({ ...f.input, output: join(f.source, 'child') }, f.source),
     /模板目录内/,
   )
   await assert.rejects(
-    createProject({ ...f.input, target: join(f.source, '..hidden') }, f.source),
+    createProject({ ...f.input, output: join(f.source, '..hidden') }, f.source),
     /模板目录内/,
   )
   assert.equal(
-    projectOptions({ ...f.input, target: undefined }).target,
+    projectOptions({ ...f.input, output: undefined }).output,
     resolve('..', f.input.name),
   )
-  await mkdir(f.input.target)
+  await mkdir(f.input.output)
   await assert.rejects(createProject(f.input, f.source), /目标已存在/)
   assert.throws(() => projectOptions({ ...f.input, name: '../escape' }), /名称/)
   assert.throws(() => projectOptions({ ...f.input, domain: 'acme.example/path' }), /域名/)
@@ -312,4 +339,135 @@ test('文本对象开关按 ai 列表裁剪并保留 reasoning 策略', async (t
     assert.match(config, /thinking: \{ default: 'off', userToggle: false \}/)
     assert.match(config, /failedReplyRefund: 'no-visible-output'/)
   }
+})
+
+test('部署目标默认为 Cloudflare，拒绝旧路径并提示 output，参数依赖明确', async (t) => {
+  const f = await fixture(t)
+  assert.equal(projectOptions(f.input).target, 'cloudflare')
+  assert.throws(() => projectOptions({ ...f.input, target: '../old' }), /--output/)
+  assert.throws(() => projectOptions({ ...f.input, target: 'unknown' }), /cloudflare 或 selfhost/)
+  assert.throws(
+    () => projectOptions({ ...f.input, 'image-namespace': 'registry.example/team/project' }),
+    /当前发布 CI/,
+  )
+  assert.throws(
+    () => projectOptions({ ...f.input, 'image-namespace': 'ghcr.io/Owner/project' }),
+    /小写/,
+  )
+  assert.throws(() => projectOptions({ ...f.input, 'billing-enabled': 'false' }), /关闭 AI/)
+  assert.throws(
+    () => projectOptions({ ...f.input, 'credits-enabled': 'false' }),
+    /必须启用 credits/,
+  )
+  assert.equal(
+    projectOptions({ ...f.input, ai: '', 'billing-enabled': 'false' }).creditsEnabled,
+    true,
+  )
+})
+
+test('selfhost 继承发布和运维材料，排除真值，并再次生成 namespace', async (t) => {
+  const f = await fixture(t)
+  await f.file(
+    'deploy/selfhost/.env.example',
+    'COMPOSE_PROJECT_NAME=fixture-selfhost\nIMAGE_NAMESPACE=ghcr.io/old/fixture\nWEB_IMAGE=fixture-selfhost/web:old\nAPP_URL=https://old.example\nAPP_DOMAIN=old.example\n',
+  )
+  await f.file('deploy/selfhost/secrets.example', '# 每个 secret 一个文件\n')
+  for (const name of ['deploy.sh', 'init-server.sh', 'restore.sh', 'restore-drill.sh']) {
+    await f.file(`deploy/selfhost/${name}`, '#!/bin/sh\n# owner 的交付脚本\n')
+  }
+  await f.file(
+    'deploy/selfhost/compose.yaml',
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: Compose 插值必须保留字面量。
+    'name: ${COMPOSE_PROJECT_NAME:-fixture-selfhost}\nx-app-env:\n  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?required}\n  GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret\n  TURNSTILE_SECRET_KEY_FILE: /run/secrets/turnstile_secret\nx-app-secrets:\n  - google_client_secret\n  - turnstile_secret\nservices:\n  web:\n    image: ${WEB_IMAGE}\nsecrets:\n  google_client_secret: {file: secrets/google_client_secret}\n  turnstile_secret: {file: secrets/turnstile_secret}\n',
+  )
+  await f.file(
+    '.github/workflows/selfhost-publish.yml',
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: 保留 GitHub Actions 运行时输入。
+    'on:\n  workflow_dispatch:\n    inputs:\n      namespace:\n        required: true\n        type: string\nenv:\n  IMAGE_NAMESPACE: ${{ inputs.namespace }}\n',
+  )
+  await f.file('.github/workflows/selfhost-images.yml', 'permissions: { contents: read }\n')
+  await f.file(
+    'deploy/selfhost/images/catalog.json',
+    JSON.stringify({ pendingServices: ['backup'], services: [{ name: 'web' }] }),
+  )
+  await f.file(
+    'template.config.ts',
+    (await readFile(join(f.source, 'template.config.ts'), 'utf8'))
+      .replace(
+        "thinking: { default: 'off', userToggle: false }",
+        "thinking: { default: 'on', userToggle: true }",
+      )
+      .replace('reasoning: { display: false }', 'reasoning: { display: true }')
+      .replace("failedReplyRefund: 'no-visible-output'", "failedReplyRefund: 'all'"),
+  )
+  for (const path of [
+    'secrets/auth_secret',
+    'secrets/app_database_url',
+    'certs/caddy/private',
+    'ownership/executor.json',
+    'backups/base.tar',
+    'releases/current/manifest.json',
+    'release-state/previous',
+    'state/backup.json',
+  ]) {
+    await f.file(`deploy/selfhost/${path}`, 'SELFHOST_SENSITIVE_SENTINEL')
+  }
+  await f.file('deploy/selfhost/id_ed25519', 'SELFHOST_SENSITIVE_SENTINEL')
+  const input = {
+    ...f.input,
+    target: 'selfhost',
+    ai: '',
+    'billing-enabled': 'false',
+    'credits-enabled': 'false',
+    marketing: 'false',
+    i18n: 'false',
+    oauth: '',
+    turnstile: 'false',
+  }
+  const result = await createProject(input, f.source)
+  assert.ok(!(await files(result.target)).some((path) => path.endsWith('deploy-staging.yml')))
+  assert.doesNotMatch(
+    result.report,
+    /BLOCKED|STRIPE_SECRET|PAYPAL_CLIENT|billing:seed|admin\/billing\/plans|CLOUDFLARE_API_TOKEN/,
+  )
+  assert.match(result.report, /billing=false \/ credits=false \/ marketing=false \/ i18n=false/)
+  assert.doesNotMatch(
+    await readFile(join(result.target, 'deploy/selfhost/compose.yaml'), 'utf8'),
+    /GOOGLE_CLIENT|TURNSTILE_|google_client_secret|turnstile_secret/,
+  )
+  const config = await readFile(join(result.target, 'template.config.ts'), 'utf8')
+  for (const section of ['billing', 'credits', 'marketing', 'i18n'])
+    assert.match(config, new RegExp(`${section}:\\s*\\{ enabled: false`))
+  assert.match(
+    config,
+    /text: \{ enabled: false, thinking: \{ default: 'on', userToggle: true \}, reasoning: \{ display: true \}, failedReplyRefund: 'all' \}/,
+  )
+  assert.match(
+    await readFile(join(result.target, 'deploy/selfhost/.env.example'), 'utf8'),
+    /WEB_IMAGE=ghcr.io\/configure-owner\/acme\/web:<full-40-character-sha>/,
+  )
+  assert.match(
+    await readFile(join(result.target, '.github/workflows/selfhost-publish.yml'), 'utf8'),
+    /default: ghcr.io\/configure-owner\/acme/,
+  )
+  for (const path of await files(result.target))
+    assert.doesNotMatch((await readFile(path)).toString(), /SELFHOST_SENSITIVE_SENTINEL/)
+  const next = await createProject(
+    {
+      ...input,
+      name: 'second',
+      output: join(f.dir, 'second'),
+      'image-namespace': 'ghcr.io/second-owner/second',
+    },
+    result.target,
+  )
+  assert.match(
+    await readFile(join(next.target, 'deploy/selfhost/.env.example'), 'utf8'),
+    /WEB_IMAGE=ghcr.io\/second-owner\/second\/web:/,
+  )
+  assert.match(
+    await readFile(join(next.target, '.github/workflows/selfhost-publish.yml'), 'utf8'),
+    /default: ghcr.io\/second-owner\/second/,
+  )
+  assert.match(next.report, /second-selfhost|second-owner\/second/)
 })

@@ -37,6 +37,7 @@ export interface TemplateConfig<L extends string = string> {
     readonly supportEmail: string
   }
   readonly i18n: {
+    readonly enabled: boolean
     readonly locales: readonly L[]
     readonly defaultLocale: L
   }
@@ -61,6 +62,7 @@ export interface TemplateConfig<L extends string = string> {
     readonly turnstile: boolean
   }
   readonly billing: {
+    readonly enabled: boolean
     /** 结账页展示顺序 */
     readonly providers: readonly PaymentProvider[]
     /** ISO 4217 小写货币代码 */
@@ -82,6 +84,12 @@ export interface TemplateConfig<L extends string = string> {
     }
     /** 可申请退款的付款时间范围；退款需人工审核，默认不主动退 */
     readonly refundWindowDays: number
+  }
+  readonly credits: {
+    readonly enabled: boolean
+  }
+  readonly marketing: {
+    readonly enabled: boolean
   }
   readonly ai: {
     readonly text: TextConfig
@@ -116,6 +124,7 @@ type Section<K extends keyof TemplateConfig> = TemplateConfig[K]
 export interface TemplateConfigInput<L extends string = DefaultLocale> {
   app: Section<'app'>
   i18n?: {
+    enabled?: boolean
     locales?: readonly L[]
     /** 必须是 `locales` 之一；省略时取 `locales[0]` */
     defaultLocale?: NoInfer<L>
@@ -125,6 +134,8 @@ export interface TemplateConfigInput<L extends string = DefaultLocale> {
   billing?: Partial<Omit<Section<'billing'>, 'overage'>> & {
     overage?: Partial<Section<'billing'>['overage']>
   }
+  credits?: Partial<Section<'credits'>>
+  marketing?: Partial<Section<'marketing'>>
   ai?: Partial<Omit<Section<'ai'>, 'defaultPricingMode' | 'text'>> & {
     text?: z.input<typeof textConfigSchema>
     defaultPricingMode?: Partial<Section<'ai'>['defaultPricingMode']>
@@ -135,7 +146,7 @@ export interface TemplateConfigInput<L extends string = DefaultLocale> {
 
 /** 除 `app` 外的默认值，与 docs/02-project-structure.md §3 草案一致。 */
 export const templateConfigDefaults = {
-  i18n: { locales: ['en', 'zh'], defaultLocale: 'en' },
+  i18n: { enabled: true, locales: ['en', 'zh'], defaultLocale: 'en' },
   tenancy: { multiTenant: false, maxWorkspacesPerUser: 5 },
   auth: {
     emailPassword: true,
@@ -147,6 +158,7 @@ export const templateConfigDefaults = {
     turnstile: true,
   },
   billing: {
+    enabled: true,
     providers: ['stripe', 'paypal'],
     currency: 'usd',
     signupBonusCredits: 100,
@@ -155,6 +167,8 @@ export const templateConfigDefaults = {
     overage: { maxRatio: 0.2, maxCredits: 50, dailyBudgetPerWorkspace: 200 },
     refundWindowDays: 30,
   },
+  credits: { enabled: true },
+  marketing: { enabled: true },
   ai: {
     text: {
       enabled: true,
@@ -193,9 +207,9 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
     throw new RangeError('template config: i18n.defaultLocale must be one of i18n.locales')
   }
 
-  return {
+  const config: TemplateConfig<L> = {
     app: { ...input.app },
-    i18n: { locales, defaultLocale },
+    i18n: { enabled: input.i18n?.enabled ?? d.i18n.enabled, locales, defaultLocale },
     tenancy: { ...d.tenancy, ...input.tenancy },
     auth: { ...d.auth, ...input.auth },
     billing: {
@@ -203,6 +217,8 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
       ...input.billing,
       overage: { ...d.billing.overage, ...input.billing?.overage },
     },
+    credits: { ...d.credits, ...input.credits },
+    marketing: { ...d.marketing, ...input.marketing },
     ai: {
       ...d.ai,
       ...input.ai,
@@ -212,4 +228,16 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
     features: { ...d.features, ...input.features },
     analytics: { ...d.analytics, ...input.analytics },
   }
+
+  if (config.billing.enabled && !config.credits.enabled) {
+    throw new RangeError('template config: billing.enabled requires credits.enabled')
+  }
+  // AI 沿用套餐授权和积分结算；关闭计费时不能以隐式额度绕过这两个前置条件。
+  if (config.ai.text.enabled || config.ai.image || config.ai.video) {
+    if (!config.billing.enabled || !config.credits.enabled) {
+      throw new RangeError('template config: AI requires billing.enabled and credits.enabled')
+    }
+  }
+
+  return config
 }

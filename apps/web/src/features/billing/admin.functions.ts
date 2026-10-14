@@ -18,6 +18,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { setResponseStatus } from '@tanstack/react-start/server'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { withBilling } from '../../server/feature-gates.ts'
 import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import { withAdminAction, withDelegatedAdminAction } from '../admin/action.server.ts'
@@ -84,7 +85,7 @@ async function safe(action: () => Promise<string>) {
 }
 
 export const getAdminBilling = createServerFn({ method: 'GET' })
-  .middleware([adminMiddleware])
+  .middleware([withBilling, adminMiddleware])
   .inputValidator(page)
   .handler(async ({ context, data }) => {
     const current = runtime(context.db)
@@ -96,17 +97,17 @@ export const getAdminBilling = createServerFn({ method: 'GET' })
   })
 
 export const getAdminSubscriptions = createServerFn({ method: 'GET' })
-  .middleware([adminMiddleware])
+  .middleware([withBilling, adminMiddleware])
   .inputValidator(page)
   .handler(({ context, data }) => listAdminSubscriptions(context.db, data))
 
 export const getAdminPurchases = createServerFn({ method: 'GET' })
-  .middleware([adminMiddleware])
+  .middleware([withBilling, adminMiddleware])
   .inputValidator(page)
   .handler(({ context, data }) => listAdminPurchases(context.db, data))
 
 export const getAdminWebhooks = createServerFn({ method: 'GET' })
-  .middleware([adminMiddleware])
+  .middleware([withBilling, adminMiddleware])
   .inputValidator(page)
   .handler(async ({ context, data }) => {
     const result = await listAdminWebhooks(context.db, data)
@@ -121,7 +122,7 @@ export const getAdminWebhooks = createServerFn({ method: 'GET' })
   })
 
 export const getAdminRefunds = createServerFn({ method: 'GET' })
-  .middleware([adminMiddleware])
+  .middleware([withBilling, adminMiddleware])
   .inputValidator(page)
   .handler(async ({ context, data }) => {
     const result = await listAdminRefunds(context.db, data)
@@ -139,7 +140,7 @@ export const getAdminRefunds = createServerFn({ method: 'GET' })
   })
 
 export const replayAdminWebhook = createServerFn({ method: 'POST' })
-  .middleware([adminMiddleware])
+  .middleware([withBilling, adminMiddleware])
   .inputValidator(z.object({ webhookEventId: z.uuid() }))
   .handler(({ context, data }) =>
     safe(async () => {
@@ -195,7 +196,7 @@ export const replayAdminWebhook = createServerFn({ method: 'POST' })
 // 退款审核 / 手动退款 / 重发通知：@saas/billing 在自己的决策事务内写审计，并在提交后才调用支付平台与邮件队列，
 // 因此只经 adminAction 的实时角色校验（withDelegatedAdminAction），不包进外层事务
 export const reviewAdminRefund = createServerFn({ method: 'POST' })
-  .middleware([adminMiddleware])
+  .middleware([withBilling, adminMiddleware])
   .inputValidator(
     request.extend({
       decision: z.enum(['approve', 'reject']),
@@ -223,7 +224,7 @@ export const reviewAdminRefund = createServerFn({ method: 'POST' })
   )
 
 export const completeAdminRefund = createServerFn({ method: 'POST' })
-  .middleware([adminMiddleware])
+  .middleware([withBilling, adminMiddleware])
   .inputValidator(
     request.extend({
       providerRefundId: z.string().trim().min(1).max(2000),
@@ -247,7 +248,7 @@ export const completeAdminRefund = createServerFn({ method: 'POST' })
   )
 
 export const retryAdminRefundEmail = createServerFn({ method: 'POST' })
-  .middleware([adminMiddleware])
+  .middleware([withBilling, adminMiddleware])
   .inputValidator(request)
   .handler(({ context, data }) =>
     safe(async () =>

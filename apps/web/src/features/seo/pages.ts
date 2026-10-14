@@ -28,7 +28,9 @@ export function publicPages(
 ): SeoPage[] {
   return config.i18n.locales.flatMap((locale) => {
     const { defaultLocale } = config.i18n
-    const pages = ['/', '/pricing'].map((path) => staticPage(path, locale))
+    const pages = ['/', ...(config.billing.enabled ? ['/pricing'] : [])].map((path) =>
+      staticPage(path, locale),
+    )
     if (config.features.newsletter) pages.push(staticPage('/newsletter', locale))
     if (config.features.waitlist) pages.push(staticPage('/waitlist', locale))
     if (config.features.blog) {

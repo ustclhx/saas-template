@@ -1,6 +1,7 @@
 import { Button } from '@saas/ui'
 import { Link } from '@tanstack/react-router'
 import { m } from '../../paraglide/messages.js'
+import { templateConfig } from '../../server/template-config.ts'
 import { site } from './site.ts'
 
 const navLink = 'text-muted-foreground text-sm transition-colors hover:text-foreground'
@@ -13,9 +14,11 @@ export function SiteHeader() {
           {site.name}
         </Link>
         <nav aria-label={m.marketing_nav_label()} className="flex flex-1 items-center gap-5">
-          <Link to="/pricing" className={navLink}>
-            {m.marketing_nav_pricing()}
-          </Link>
+          {templateConfig.billing.enabled && (
+            <Link to="/pricing" className={navLink}>
+              {m.marketing_nav_pricing()}
+            </Link>
+          )}
           {site.blog && (
             <Link to="/blog" className={navLink}>
               {m.marketing_nav_blog()}

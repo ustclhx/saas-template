@@ -1,8 +1,10 @@
+import type { TemplateConfig } from '@saas/config'
 import { getCreditBalance, getCreditBatches, getCreditLedger } from '@saas/credits'
 import { type Database, member, organization, plan, scoped, subscription, user } from '@saas/db'
 import { getEntitlements } from '@saas/entitlements'
 import { AppError } from '@saas/shared'
 import { and, desc, eq, ilike, isNotNull, isNull, or, sql } from 'drizzle-orm'
+import { templateConfig } from '../../server/template-config.ts'
 import { ADMIN_PAGE_SIZE, adminListSearch } from './list.ts'
 
 export async function listAdminWorkspaces(
@@ -35,7 +37,12 @@ export async function listAdminWorkspaces(
   return { rows: rows.slice(0, ADMIN_PAGE_SIZE), hasMore: rows.length > ADMIN_PAGE_SIZE }
 }
 
-export async function adminWorkspaceDetail(db: Database, id: string, pastDueGraceDays: number) {
+export async function adminWorkspaceDetail(
+  db: Database,
+  id: string,
+  pastDueGraceDays: number,
+  config: TemplateConfig = templateConfig,
+) {
   const [workspace] = await db.select().from(organization).where(eq(organization.id, id))
   if (!workspace) throw new AppError('NOT_FOUND', 'Workspace not found', { status: 404 })
   const members = await scoped(db, id)
@@ -49,15 +56,17 @@ export async function adminWorkspaceDetail(db: Database, id: string, pastDueGrac
       },
     })
     .innerJoin(user, eq(member.userId, user.id))
-  const subscriptions = await scoped(db, id)
-    .select(subscription, { fields: { subscription, planName: plan.name } })
-    .innerJoin(plan, eq(subscription.planId, plan.id))
-    .orderBy(desc(subscription.currentPeriodEnd), desc(subscription.id))
+  const subscriptions = config.billing.enabled
+    ? await scoped(db, id)
+        .select(subscription, { fields: { subscription, planName: plan.name } })
+        .innerJoin(plan, eq(subscription.planId, plan.id))
+        .orderBy(desc(subscription.currentPeriodEnd), desc(subscription.id))
+    : []
   const [balance, batches, ledger, entitlements] = await Promise.all([
-    getCreditBalance(db, id),
-    getCreditBatches(db, id),
-    getCreditLedger(db, id),
-    getEntitlements(db, id, { pastDueGraceDays }),
+    config.credits.enabled ? getCreditBalance(db, id) : null,
+    config.credits.enabled ? getCreditBatches(db, id) : { items: [], nextCursor: null },
+    config.credits.enabled ? getCreditLedger(db, id) : { items: [], nextCursor: null },
+    config.billing.enabled ? getEntitlements(db, id, { pastDueGraceDays }) : null,
   ])
   return { workspace, members, subscriptions, balance, batches, ledger, entitlements }
 }

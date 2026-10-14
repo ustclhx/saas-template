@@ -12,6 +12,7 @@ import { getRequest } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import { assertRealSession } from '../features/admin/impersonation.ts'
 import { readRequestSession } from '../features/i18n/session.server.ts'
+import { requireFeature } from './feature-gates.ts'
 import { getWebRuntime } from './runtime.ts'
 import { templateConfig } from './template-config.ts'
 import { resolveDefaultWorkspace, resolveWorkspaceBySlug } from './workspace-context.ts'
@@ -116,6 +117,7 @@ export function withEntitlement(
         throw new AppError('WORKSPACE_READ_ONLY', 'Team workspace writes are disabled', {
           status: 403,
         })
+      requireFeature('billing')
       const entitlements = await getEntitlements(context.db, context.workspace.id, {
         pastDueGraceDays: templateConfig.billing.pastDueGraceDays,
       })

@@ -30,8 +30,13 @@ import { runMediaTask } from './workflows/media-runner.ts'
 
 const cloudflareJobObserver = { tagContext: tagJobContext, captureException: captureJobException }
 
-// Cloudflare 保持既有全量 hold 兜底；Node 在自身入口按模板功能选择注册。
-registerAiHoldSweepers({ text: true, media: true })
+const features = {
+  billing: templateConfig.billing.enabled,
+  credits: templateConfig.credits.enabled,
+  text: templateConfig.ai.text.enabled,
+  media: templateConfig.ai.image || templateConfig.ai.video,
+}
+registerAiHoldSweepers(features)
 
 /** 每事件装配并显式挑选标量配置；不把 bindings 传入业务 env。 */
 function createJobsContext(env: Cloudflare.Env): JobsContext {
@@ -62,6 +67,7 @@ function createJobsContext(env: Cloudflare.Env): JobsContext {
     emailTransport: emailTransportConfig(valid),
     files: { available: true, value: { delete: (key) => env.FILES.delete(key) } },
     observer: cloudflareJobObserver,
+    billingEnabled: features.billing,
   }
 }
 
@@ -81,7 +87,7 @@ const handler = {
       controller.cron,
       new Date(controller.scheduledTime),
       createJobsContext(env),
-      { cronProfile: env.CRON_PROFILE ?? 'default' },
+      { cronProfile: env.CRON_PROFILE ?? 'default', features },
     )
   },
 } satisfies ExportedHandler<Cloudflare.Env>

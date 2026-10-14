@@ -1,5 +1,10 @@
 import { DataTable } from '@saas/ui'
-import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
+import {
+  createFileRoute,
+  notFound as featureNotFound,
+  Link,
+  useRouter,
+} from '@tanstack/react-router'
 import { useState } from 'react'
 import {
   adminListPage,
@@ -14,8 +19,12 @@ import {
   reviewAdminRefund,
 } from '../../../features/billing/admin.functions.ts'
 import { adminMoney } from '../../../features/billing/admin-display.ts'
+import { templateConfig } from '../../../server/template-config.ts'
 
 export const Route = createFileRoute('/admin/billing/refunds')({
+  beforeLoad: () => {
+    if (!templateConfig.billing.enabled) throw featureNotFound()
+  },
   validateSearch: (search: Record<string, unknown>) => adminListSearch(['workspaceId'])(search),
   loaderDeps: ({ search }) => search,
   loader: ({ deps }) => getAdminRefunds({ data: deps }),

@@ -19,10 +19,12 @@ export const getAccount = createServerFn({ method: 'GET' }).handler(async () => 
   const { db, auth } = getWebRuntime()
   try {
     const { user } = await readRequestSession({ auth, db, headers: getRequest().headers })
-    const reminders = await listDeletionRefundReminders(
-      { db, actorUserId: user.id, workspaceIds: [user.id] },
-      templateConfig.billing.refundWindowDays,
-    )
+    const reminders = templateConfig.billing.enabled
+      ? await listDeletionRefundReminders(
+          { db, actorUserId: user.id, workspaceIds: [user.id] },
+          templateConfig.billing.refundWindowDays,
+        )
+      : { eligiblePaymentIds: [], pendingRequests: [] }
     const personal = await db.query.organization.findFirst({
       where: (o, { eq }) => eq(o.id, user.id),
       columns: { slug: true },
@@ -35,7 +37,9 @@ export const getAccount = createServerFn({ method: 'GET' }).handler(async () => 
       },
       ...(await loadAccount(db, user, templateConfig)),
       supportEmail: templateConfig.app.supportEmail,
-      signupBonusCredits: templateConfig.billing.signupBonusCredits,
+      signupBonusCredits: templateConfig.credits.enabled
+        ? templateConfig.billing.signupBonusCredits
+        : 0,
     }
   } catch (error) {
     if (error instanceof AppError) throw redirect({ href: ACCOUNT_LOGIN_HREF })

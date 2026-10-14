@@ -13,6 +13,7 @@ export function createBillingDeletionSteps(
   db: Database,
   cache: KeyValueStore,
 ): DeletionStep[] {
+  if (!templateConfig.billing.enabled) return []
   // 普通认证不依赖支付配置；只有真正执行删除时才初始化支付能力。
   let step: DeletionStep
   return [

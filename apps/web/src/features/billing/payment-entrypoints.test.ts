@@ -34,6 +34,7 @@ vi.mock('@tanstack/react-router', () => ({
   isNotFound: () => false,
 }))
 vi.mock('@tanstack/react-start', () => ({
+  createMiddleware: () => ({ server: () => ({}) }),
   createServerFn: () => {
     const builder = {
       middleware: () => builder,
@@ -73,7 +74,10 @@ vi.mock('@saas/billing', async (original) => ({
   createBillingDeletionStep: mocks.deletion,
 }))
 vi.mock('../../server/template-config.ts', () => ({
-  templateConfig: { billing: { providers: ['stripe', 'paypal'], refundWindowDays: 30 } },
+  templateConfig: {
+    credits: { enabled: true },
+    billing: { enabled: true, providers: ['stripe', 'paypal'], refundWindowDays: 30 },
+  },
 }))
 vi.mock('../marketing/pricing-data.ts', () => ({
   createPricingCache: () => async () => mocks.catalog,

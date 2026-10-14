@@ -86,6 +86,13 @@ saas-template/
 
 归属原则：泄露有风险的放密钥；需要不发版就能改的放运行时设置；决定代码路径和产品形态的（是否多租户、启用哪些登录方式）放模板配置。运行时设置在代码里必须有默认值，`setting` 表中缺失时回退到默认值，而不是去读另外两层。
 
+整体模块开关也属于模板配置：`billing.enabled`、`credits.enabled`、
+`marketing.enabled`、`i18n.enabled` 默认均为 `true`。支付 provider 列表为空只隐藏支付渠道，
+不等于关闭计费模块。计费依赖积分；AI 使用已有套餐授权与积分，因此启用 AI 时必须同时
+启用计费和积分。团队工具可关闭计费、积分和所有 AI，保留认证、空间、邮件、运维事件与
+成功 heartbeat，无需支付密钥或 `billing:seed`。关闭开关不删除历史账本。
+营销首页和单语言路由的接线由 `add-selfhost-delivery` 3.5 单独验收，不能仅配置开关便宣称完成。
+
 `template.config.ts` 草案：
 
 ```ts

@@ -1,17 +1,18 @@
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
+import { withBilling } from '../../server/feature-gates.ts'
 import { withAdminAction } from '../admin/action.server.ts'
 import { adminMiddleware } from '../admin/admin.functions.ts'
 import { listAdminPlans, updateAdminPlanModels } from './admin-plans.ts'
 import { adminPlanModelsInput, adminPlansListInput } from './admin-plans-input.ts'
 
 export const getAdminPlans = createServerFn({ method: 'GET' })
-  .middleware([adminMiddleware])
+  .middleware([withBilling, adminMiddleware])
   .inputValidator(adminPlansListInput)
   .handler(({ context, data }) => listAdminPlans(context.db, data))
 
 export const saveAdminPlanModels = createServerFn({ method: 'POST' })
-  .middleware([adminMiddleware])
+  .middleware([withBilling, adminMiddleware])
   .inputValidator(adminPlanModelsInput)
   .handler(async ({ context, data }) => {
     try {

@@ -15,6 +15,7 @@ export const Route = createFileRoute('/api/billing/webhooks/$provider')({
 })
 
 export async function handlePaymentWebhook(request: Request, providerId: string) {
+  if (!templateConfig.billing.enabled) return new Response('Not Found', { status: 404 })
   if (providerId !== 'stripe' && providerId !== 'paypal')
     return new Response('Not Found', { status: 404 })
   try {

@@ -5,13 +5,14 @@ import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { and, desc, eq, isNull, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
+import { withBilling } from '../../server/feature-gates.ts'
 import { withWorkspace } from '../../server/middleware.ts'
 import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import { readFaultAccess } from '../ai/fault-access.ts'
 
 export const getMediaSubmitPage = createServerFn({ method: 'GET' })
-  .middleware([withWorkspace])
+  .middleware([withBilling, withWorkspace])
   .inputValidator(z.object({ slug: z.string().min(1).max(64) }))
   .handler(async ({ context }) => {
     const runtime = getWebRuntime()

@@ -10,7 +10,7 @@ import {
   nodeSecretNames,
   nodeStorageConfig,
 } from './node.ts'
-import { templateConfigDefaults } from './template.ts'
+import { defineTemplateConfig, templateConfigDefaults } from './template.ts'
 
 const valid = {
   DATABASE_URL: 'postgres://fixture:fixture@localhost/test',
@@ -56,6 +56,24 @@ function failure(fn: () => unknown, names: string[], values: string[]) {
 }
 
 describe('Node runtime config', () => {
+  it('全关模板无需支付模式、支付或 AI 密钥即可加载基础运行环境', () => {
+    const templateConfig = defineTemplateConfig({
+      app: { name: 'Tool', url: valid.APP_URL, supportEmail: 'support@example.test' },
+      auth: { oauth: [], turnstile: false },
+      billing: { enabled: false },
+      credits: { enabled: false },
+      marketing: { enabled: false },
+      i18n: { enabled: false },
+      ai: { text: { enabled: false }, image: false, video: false },
+    })
+    const loaded = loadNodeEnv({ dotenvPath: false, env: valid, templateConfig })
+    expect(loaded.APP_URL).toBe(valid.APP_URL)
+    expect(loaded.PAYMENT_MODE).toBeUndefined()
+    expect(loaded.STRIPE_SECRET_KEY).toBeUndefined()
+    expect(loaded.PAYPAL_CLIENT_SECRET).toBeUndefined()
+    expect(loaded.OPENAI_API_KEY).toBeUndefined()
+  })
+
   it('两种 Node schema 保留故障闸门，仅 staging 开启并安全拒绝生产配置和非法值', () => {
     const auth = { ...templateConfigDefaults.auth, oauth: [], turnstile: false }
     for (const templateConfig of [undefined, { auth }]) {

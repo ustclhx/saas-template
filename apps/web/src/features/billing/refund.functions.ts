@@ -9,6 +9,7 @@ import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { setResponseStatus } from '@tanstack/react-start/server'
 import { z } from 'zod'
+import { withBilling } from '../../server/feature-gates.ts'
 import { withRealSession, withWorkspace } from '../../server/middleware.ts'
 import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
@@ -43,7 +44,7 @@ function options(db: Parameters<typeof listRefundablePayments>[0]['db']) {
   }
 }
 export const getCustomerRefunds = createServerFn({ method: 'GET' })
-  .middleware([withWorkspace])
+  .middleware([withBilling, withWorkspace])
   .inputValidator(workspace)
   .handler(async ({ context }) => {
     if (context.member.role !== 'owner') return null
@@ -65,7 +66,7 @@ export const getCustomerRefunds = createServerFn({ method: 'GET' })
     }
   })
 export const requestCustomerRefund = createServerFn({ method: 'POST' })
-  .middleware([withWorkspace, withRealSession])
+  .middleware([withBilling, withWorkspace, withRealSession])
   .inputValidator(
     workspace.extend({
       paymentId: z.uuid(),
