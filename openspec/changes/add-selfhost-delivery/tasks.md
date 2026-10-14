@@ -8,14 +8,16 @@
 
 ## 1. 镜像发布与集成交接（P1，协调者/CI owner）
 
-- [ ] 1.1 固定各 worker 文件所有权、A/B/C 依赖与 capability 同步顺序，记录 B/D 容器 recreate、boot 与恢复退出证据的签收清单。验证：交接文档含确切文件/接口、未完成 A/B/C 项和第 7 组阻塞原因；无重复 requirement 名、无越权归档。
+- [x] 1.1 固定各 worker 文件所有权、A/B/C 依赖与 capability 同步顺序，记录 B/D 容器 recreate、boot 与恢复退出证据的签收清单。验证：交接文档含确切文件/接口、未完成 A/B/C 项和第 7 组阻塞原因；无重复 requirement 名、无越权归档。
   - 2026-10-14：交接草案见 `docs/runbooks/selfhost-delivery-handoff.md`；已记录实际 ownership 补修与剩余依赖，待协调者审阅后勾选，worker 不勾选。
-- [ ] 1.2 基于 A Dockerfiles 建立两个架构的 CI 构建/运行矩阵，核对各基础 digest 为 multiarch manifest；配套 PG/Valkey/Caddy 和备份镜像纳入同 SHA 集合。验证：buildx manifest 含 linux/amd64、linux/arm64，各架构非 root 启动与原生依赖 smoke 通过，web/jobs 固化完整 SHA，无 build secret/CF 平台依赖；记录实际版本。（P1）
+- [x] 1.2 基于 A Dockerfiles 建立两个架构的 CI 构建/运行矩阵，核对各基础 digest 为 multiarch manifest；配套 PG/Valkey/Caddy 和备份镜像纳入同 SHA 集合。验证：buildx manifest 含 linux/amd64、linux/arm64，各架构非 root 启动与原生依赖 smoke 通过，web/jobs 固化完整 SHA，无 build secret/CF 平台依赖；记录实际版本。（P1）
   - 2026-10-14：只读 CI 矩阵与现有七镜像 build/runtime smoke 已实现；五个基础 digest 已实查含两架构。backup 工具仍依赖 4.1，完整集合及双架构 CI 验收未齐前不勾选。
 - [ ] 1.3 新增独立 GHCR 发布 workflow，支持显式 OCI namespace、最小 registry 写权限、受信提交发布、不可覆写 SHA 与完整集合 gate。验证：PR 没有写权限/服务器密钥，失败架构不发布可部署 release，成功 registry manifest/digest/revision 与源 SHA 相符；更新发布说明，CF CI/staging 原路径不变。（P1）
   - 2026-10-14：独立手动发布 workflow、集合/信任/不可覆写 gate 与发布说明已实现。缺 backup 时只读阶段阻断；合并前不真实发布，registry 验收由协调者按 `deploy/selfhost/images/README.md` 首次触发后签收，此前保持未勾选。
 - [ ] 1.4 打包同 SHA 的部署 release bundle，包含 Compose/脚本/示例及镜像 digest 清单，更新 image-only `.env.example` 和 README 的过时 B 状态。验证：从干净目录仅拉 bundle/镜像即可 `compose config`，无服务器构建/源码依赖、无真值；所有必需服务的引用与 release SHA 一致。（P1、P2）
 - [ ] 1.5 **依赖 B owner：** 协调者取得可信容器重建/宿主 boot/异机恢复退出证据实现的签收，再由 D 接入持久 ownership 卷、executor ID、hostname/namespace 和版本配置。验证：旧进程仍活时拒绝重用、真实退出后可恢复、container recreate/reboot 不卡住；不删整个 owner 目录、不以 TTL 或 pid:host 猜测绕过。B 改动单独交付，未签收时 2 的恢复与 6.3/7.3 保持 BLOCKED。（§6.8）
+
+2026-10-14 协调者签收：1.1 交接清单经审阅（[selfhost-delivery-handoff](../../../docs/runbooks/selfhost-delivery-handoff.md)）；1.2 与 4.1 由 main 70496c6 的 Selfhost images 双架构 CI（run 38555725385）完成 backup 在内的完整集合构建与真实备份/恢复 runtime smoke，arm64 另有 #177 本机证据。1.3 待首次真实发布。
 
 ## 2. 发布、回滚、入口与初始化（P2–P4，deployment owner）
 
@@ -36,7 +38,7 @@
 
 ## 4. 基础与逻辑备份（B1、B2，backup owner）
 
-- [ ] 4.1 为 selfhost PG/工具镜像安装固定 checksum WAL-G（两架构），增加文件 secret、S3 endpoint/region/prefix/path-style/CA、禁用元数据探测与非 root 配置。验证：独立 S3 兼容夹具、两架构 UID/secret读取/TLS失败边界通过，app 三角色权限不变，web/jobs 无备份管理凭据；写配置说明。（B1）
+- [x] 4.1 为 selfhost PG/工具镜像安装固定 checksum WAL-G（两架构），增加文件 secret、S3 endpoint/region/prefix/path-style/CA、禁用元数据探测与非 root 配置。验证：独立 S3 兼容夹具、两架构 UID/secret读取/TLS失败边界通过，app 三角色权限不变，web/jobs 无备份管理凭据；写配置说明。（B1）
 - [x] 4.2 启用 PG WAL 归档及 wrapper、归档延迟/失败状态查询；设置一处持久调度与互斥，每日 full base，配置备份资源/上传限额。验证：真实写入→S3 base/WAL/timeline 可查询，重启后调度恢复，目标不可达非零失败/不丢 WAL；记录空间和连接预算，不改 CF infra/postgres。（B1）
 - [x] 4.3 实现 7 天每日+4 周每周锚点的可调保留计划、dry-run、WAL链保护和失败禁止破坏性清理。验证：精简保留边界用例及隔离 S3 清理证明最老 weekly base 仍可 PITR；缺段/新备份失败/副本失败保留可用链；固定 WAL-G 删除行为有实际证据，runbook禁止独立年龄删 WAL。（B1）
 - [x] 4.4 实现每日 custom-format pg_dump 与角色/权限恢复材料、受限临时空间、成功后上传、失败清理和状态。验证：`pg_restore --list` 与隔离完整恢复成功，业务/任务 schema 和角色权限一致，磁盘不足/上传失败明确非零、日志无真值；写逻辑备份用途与保留说明。（B2）
