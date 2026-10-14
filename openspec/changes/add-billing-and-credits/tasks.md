@@ -71,6 +71,8 @@
 
 - [ ] 11.1 在 staging 用 Stripe 测试时钟与 PayPal 沙箱走完：月付与年付订阅、续费、取消、换套餐重叠期、积分包购买、退款申请与平台退款；重复投递回调，验证积分不重复发放、无负余额、对账不变式成立
 
+2026-10-15 验收记录（Stripe 部分）：[billing-111-2026-10-15a](../../../docs/runbooks/evidence/staging-acceptance/2026-10-15/billing-111-2026-10-15a-execution-status.json) 经应用 Checkout 完成月付订阅、期末取消与恢复、pro→team 原地升级（按 Stripe proration 一次补差，无额外积分）、年付订阅，以及已处理事件经 Stripe CLI 重投后不重复入账；积分包购买与平台部分退款见 [admin-61-2026-10-15a](../../../docs/runbooks/evidence/staging-acceptance/2026-10-15/admin-61-2026-10-15a-resume-execution-status.json)；两空间无负余额、对账零差额。仍缺：Stripe 续费（需 Dashboard Simulations 登录）、PayPal 订阅/年付/续费/取消恢复/Sale 退款与重复回调（需已登录 Sandbox 买家会话，自然续费 2026-11-11）。11.1 保留未勾选。
+
 离线验收记录见 `docs/runbooks/p2-offline-acceptance.md`。剩余六项在真实支付联通阶段完成，离线验收时未配置凭据、请求真实平台或部署 P2 staging；2026-10-05 已进入上述联通阶段。
 
 2026-10-15 PayPal 录制与文档核对：自建本地接收器与 Docker Cloudflare quick tunnel 录制 6 条既有真实 Sandbox 回调；独立 USD 0.01 官方测试卡订单与全额 Capture 退款另录制两条回调，修复快速退款后的完成投递状态兼容。共 8 条回调、9 份 GET 快照与来源见 `packages/billing/src/paypal/fixtures/recorded`，11 个映射回归通过。回传验签均 SUCCESS、接收器均返回 200；两轮原 webhook URL / 事件订阅均已恢复，接收器和 tunnel 已停止。10.4 已核对 Q4 不结转、Q5 adjustment 不补发、Q6 仅收回剩余积分及其现有实现/测试；未将部分实测写成完整验收。3.3 仍缺自然月/年续费、Sale 退款与 Capture 部分退款录制等完整门槛，11.1 仍由协调者执行；没有部署或修改 staging secrets，也未改动既有 staging 付款或待审退款。
