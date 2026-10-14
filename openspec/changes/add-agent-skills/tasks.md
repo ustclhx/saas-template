@@ -15,4 +15,4 @@
 ## 3. 集成与交付
 
 - [x] 3.1 八技能 frontmatter、引用路径和双目录 byte 对比通过，openspec validate add-agent-skills --strict 与 pnpm check、check:deps、check:singletons、typecheck、test、build、dedupe --check 均通过；记录离线验证范围与未做外部验收。
-- [ ] 3.2 fetch/rebase origin/main 后复核变更并推送，创建中文标题 PR、描述逐项验证和未完成外部验收；Orca 卡片设置 in-review 与 comment「skills PR 已开：#<号>」，不合并、不归档。
+- [x] 3.2 fetch/rebase origin/main 后复核变更并推送，创建中文标题 PR、描述逐项验证和未完成外部验收；Orca 卡片设置 in-review 与 comment「skills PR 已开：#<号>」，不合并、不归档。
