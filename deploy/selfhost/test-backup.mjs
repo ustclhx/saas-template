@@ -88,7 +88,8 @@ function run(command, commandArgs, options = {}) {
     if (error.message === 'Fixture leaked a credential') throw error
     const fixtureCode =
       String(error.stderr ?? '').match(/BACKUP_S3_FIXTURE_FAILED_[A-Za-z]+/)?.[0] ??
-      String(error.stdout ?? '').match(/REPLICA_[A-Z0-9_]+/)?.[0] ?? ''
+      String(error.stdout ?? '').match(/REPLICA_[A-Z0-9_]+/)?.[0] ??
+      ''
     const name = commandArgs.includes('/usr/local/lib/selfhost-backup/backup.py')
       ? commandArgs.at(-1)
       : commandArgs.includes('selfhost-walg')
@@ -427,6 +428,39 @@ async function restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, source
     existingPathRejected: true,
     missingWalRejected: true,
     beyondUpperBoundRejected: true,
+  })
+  const failedDrillState = join(temporary, 'failed-drill')
+  const failedChecks = join(temporary, 'failed-checks.json')
+  writeFileSync(
+    failedChecks,
+    JSON.stringify({
+      creditsEnabled: true,
+      checks: [{ name: 'expected-failure', sql: 'select false' }],
+    }),
+    { mode: 0o600 },
+  )
+  restoreStates.push(failedDrillState)
+  let drillRejected = false
+  try {
+    await hostRestore(
+      'restore-drill.sh',
+      restoreArgs(false, failedDrillState, 'failed-drill', ['--checks-file', failedChecks]),
+    )
+  } catch {
+    drillRejected = true
+  }
+  const failedDrill = JSON.parse(readFileSync(join(failedDrillState, 'report.json'), 'utf8'))
+  const failedDrillMetadata = JSON.parse(readFileSync(join(failedDrillState, 'state.json'), 'utf8'))
+  assert(
+    drillRejected && failedDrill.status === 'failed' && !failedDrill.cleaned,
+    'Failed drill did not retain diagnosis',
+  )
+  run('docker', ['volume', 'inspect', failedDrillMetadata.volume])
+  await hostRestore('restore.sh', ['cleanup', '--state-dir', failedDrillState])
+  evidence('restore.failed_drill', {
+    nonzero: true,
+    diagnosisRetained: true,
+    volumeRetainedUntilExplicitCleanup: true,
   })
   const replicaSync = () =>
     compose(

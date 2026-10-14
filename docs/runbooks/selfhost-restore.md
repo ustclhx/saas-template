@@ -144,3 +144,35 @@ PG回退不回退用户S3对象、邮件、支付、Provider任务、webhook或�
 
 依据：[PG17 PITR与pause/promote](https://www.postgresql.org/docs/17/continuous-archiving.html)、
 [备份配置及保留](selfhost-backup.md)、[保留链边界](selfhost-backup-retention.md)。
+
+## 2026-10-14 本机 arm64 交付验收
+
+[脱敏证据](evidence/selfhost/d-restore-2026-10-14.json)记录两个隔离 SeaweedFS 实例、
+独立凭据和全部自建资源清理。最终验证使用镜像内backup runtime（无`--dev-runtime`），
+宿主Python3.9.6执行正式restore/drill入口，PG17.11/WAL-G3.0.8；这是本地机制验证，
+不是同SHA的registry release或真实供应商/服务器签收。
+
+基础为提交`1fe53d2eaeaa5fc649ef2c9bce3851dc0a8b03e6`加本PR最后的夹具验收改动。
+PG、迁移和S3复用此前已构建的本地镜像；backup从已有固定底座重新COPY本PR runtime，
+没有连接远端S3、服务器或拉取新的Docker Hub镜像。两种架构的新恢复路径已接入
+`Selfhost images` smoke；本记录只证明本机arm64，PR的CI结果单独查验。
+
+| 校验 | 主目标 | 第二目标（主PG、S3和backup均停止） |
+| --- | --- | --- |
+| 目标UTC | 2026-10-14T12:36:02.353457Z | 相同 |
+| 最后重放事务UTC | 2026-10-14T12:35:49.235842+00:00 | 相同 |
+| 重放LSN | 0/6085880 | 相同 |
+| 恢复与校验耗时 | 8.099秒 | 8.888秒 |
+| 前marker存在、后marker不存在 | 通过 | 通过 |
+| 全schema/数据库ACL/三角色/任务状态/积分对账 | 通过 | 通过 |
+
+任务状态包括真实job_engine inbox、event、wait、schedule和DBOS schema；演练不启动
+jobs，不宣称未完成任务已重新执行或可信ownership已签收。全量复制清单包含base、
+dump、WAL和真实promote产生的timeline history；初次已确认归档上界
+`2026-10-14 12:36:04.251292+00`覆盖演练点，同步完成距该上界约40.22秒。
+这些是小型本地夹具耗时，不是生产数据量或不同供应商的RTO/RPO承诺。
+
+通过：显式promote、已有状态/卷拒绝、缺WAL/未来越界非零、失败drill保留报告和卷直至
+显式清理；复制重复/中断后补齐/源删除不传播/第二目标故障可见且禁止主清理，主归档
+独立成功。所有fixture容器/卷清理，未改生产资源。28个Python边界用例与根目录所有
+规定检查通过；真实不同供应商7.2、ownership/服务器重启签收继续保持未完成。
