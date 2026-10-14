@@ -1,5 +1,5 @@
-{"event": "fixture.acceptance.publish", "sha": "11f7a773b4ecf6c126544d4e1459d6d996be1055", "platform": "linux/amd64"}
-{"event": "fixture.acceptance.publish", "sha": "4c42bd090018f5a89cf61923e96b0c80dac36893", "platform": "linux/amd64"}
+{"event": "fixture.acceptance.publish", "sha": "9890a2a6b4ebea1c0326d720acac14811d760df2", "platform": "linux/amd64"}
+{"event": "fixture.acceptance.publish", "sha": "cd6c1469ca82448c0c7c8f31a2f3492bc20d9ef1", "platform": "linux/amd64"}
 {"event": "fixture.acceptance.passed", "case": "initial deployment"}
 {"event": "fixture.acceptance.passed", "case": "pull failure retains old apps"}
 {"event": "fixture.acceptance.passed", "case": "migration failure blocks target apps"}

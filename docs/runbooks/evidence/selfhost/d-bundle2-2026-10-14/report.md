@@ -43,3 +43,23 @@ checksum 证明传输完整性，信任仍来自成功发布 run 与受信 Git �
 `backup_replica_s3_*`，compose.replica.yaml 实际使用 `replica_s3_*`；按实际 Compose
 配置提供文件，此处只记录，不混入异 SHA 修复。第 7 组保持 BLOCKED；未连接真实服务器，
 未部署共享 CF staging，不代勾 A/B/C，不归档 change。
+
+最终只读验收：[run 38596482116](https://github.com/ustclhx/saas-template/actions/runs/38596482116)
+成功，匿名拉取八个正式镜像，在独立空卷使用完整 bundle 部署与真实 SQL/DBOS 迁移，
+自然 heartbeat、公开 HTTPS health 与 jobs readiness 完整 SHA、TLS verify-full/错误 CA/
+hostname 拒绝、非 root/端口/secret 隔离均通过。10 项运行检查与 cleanupComplete 全为 true。
+`runtime.json`、`failure-gates.jsonl` 来自该 run；`ci.json` 保存 CI 状态与首次演练历史。
+第二版本仅为本地 registry 元数据 fixture，未修改业务/schema/handler，不冒充第二个
+正式 GHCR 发布。迁移/HTTPS 健康失败后兼容回滚到正式 SHA，真实终态 schedule_run、
+DBOS workflow/checkpoint、578 列 schema、三角色元数据和命名卷保留，未运行旧迁移。
+业务表和 inbox 为空，不宣称非空业务恢复或未完成任务重放。
+
+首次只读演练 run 38594557246 同样通过部署，但下载目录 artifact 遗漏四份 dotenv
+示例。验收上传已改为明确的 tar/脱敏报告路径；第二次 artifact 下载后，独立新目录解压
+得到全部 28 文件、27 checksum、四份隐藏示例和执行权限，manifest 与正式发布材料一致。
+再次用包内 verify 和 compose-config 通过。`artifact.json` 保存下载 tar 的 SHA256 与核验项；
+正式发布的原始 tar 自始完整，未改变正式镜像或运行材料。
+
+本次仅勾选 D 1.4。最新 CI 的根检查/Node/e2e、部署机制及功能关闭演练通过；首轮 PR
+双架构镜像检查也通过。修正 artifact 后的新一轮镜像矩阵仍在运行，状态如实记录，
+不把待完成检查写成通过。模板发布 run 38588820873 的两架构正式集合均已成功。
