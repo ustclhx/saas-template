@@ -1,0 +1,12 @@
+{
+  "conclusion": "success",
+  "headSha": "41d5cdeef9365e4cc05c4332cdf376408f4b55ed",
+  "jobs": [
+    {
+      "conclusion": "success",
+      "name": "released-bundle",
+      "url": "https://github.com/ustclhx/saas-template/actions/runs/38594557246/job/115957798791"
+    }
+  ],
+  "url": "https://github.com/ustclhx/saas-template/actions/runs/38594557246"
+}

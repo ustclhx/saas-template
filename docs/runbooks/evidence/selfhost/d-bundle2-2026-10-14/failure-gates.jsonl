@@ -1,0 +1,11 @@
+{"event": "fixture.acceptance.publish", "sha": "11f7a773b4ecf6c126544d4e1459d6d996be1055", "platform": "linux/amd64"}
+{"event": "fixture.acceptance.publish", "sha": "4c42bd090018f5a89cf61923e96b0c80dac36893", "platform": "linux/amd64"}
+{"event": "fixture.acceptance.passed", "case": "initial deployment"}
+{"event": "fixture.acceptance.passed", "case": "pull failure retains old apps"}
+{"event": "fixture.acceptance.passed", "case": "migration failure blocks target apps"}
+{"event": "fixture.acceptance.passed", "case": "existing version upgrade"}
+{"event": "fixture.acceptance.passed", "case": "old SHA health preserves successful release"}
+{"event": "fixture.acceptance.passed", "case": "compatible rollback preserves volume and markers"}
+{"event": "fixture.acceptance.passed", "case": "incompatible rollback rejected before mutation"}
+{"event": "fixture.acceptance.passed", "case": "concurrent publications serialized"}
+{"event": "fixture.acceptance.completed", "platforms": ["linux/amd64"], "businessPgDbosHeartbeat": "not verified", "tlsRebootSsh": "not verified"}

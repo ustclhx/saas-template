@@ -66,9 +66,15 @@ jobs:
           trap 'sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/released-bundle"' EXIT
           sudo env PATH="$PATH" python3 deploy/selfhost/test-release-compose.py --bundle "$RUNNER_TEMP/released-bundle/bundle" --evidence "$RUNNER_TEMP/released-bundle/compose-evidence.json"
           python3 deploy/selfhost/test-deploy-compose.py > "$RUNNER_TEMP/released-bundle/failure-gates.jsonl"
+      - name: Preserve hidden examples and executable modes in the acceptance bundle
+        run: tar -C "$RUNNER_TEMP/released-bundle/bundle" -czf "$RUNNER_TEMP/released-bundle/selfhost-release-$RELEASE_SHA.tar.gz" .
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: selfhost-released-bundle-acceptance-${{ github.run_id }}
-          path: ${{ runner.temp }}/released-bundle
+          path: |
+            ${{ runner.temp }}/released-bundle/*.tar.gz
+            ${{ runner.temp }}/released-bundle/*.json
+            ${{ runner.temp }}/released-bundle/*.jsonl
+            ${{ runner.temp }}/released-bundle/images/image-set.json
           if-no-files-found: error
