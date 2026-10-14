@@ -85,13 +85,32 @@ export function createCloudflareWorkflowStep(step: CloudflareStep): WorkflowStep
       options: { type: string; timeout: number },
     ): Promise<WorkflowStepEvent<JsonValue>>
   }
-  async function run<T extends JsonValue>(callback: () => Promise<T>): Promise<JsonValue> {
-    try {
-      return await callback()
-    } catch (error) {
-      if (error instanceof NonRetryableError) throw new CloudflareNonRetryableError(error.message)
-      throw error
+  // CF 引擎把 step 内抛出的错误经 RPC 复制后再拒绝 do()：只保留 name/message，丢失共享
+  // NonRetryableError 的实例身份与业务 code。本次 do 内由回调抛出的原错误在同一 isolate 中，
+  // 拒绝时据此还原为共享错误（与 Node adapter 一致），引擎拒绝作为 cause 保留供观测关联。
+  function call<T extends JsonValue>(
+    start: (callback: () => Promise<JsonValue>) => Promise<JsonValue>,
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    let thrown: NonRetryableError | undefined
+    const run = async (): Promise<JsonValue> => {
+      thrown = undefined
+      try {
+        return await callback()
+      } catch (error) {
+        if (!(error instanceof NonRetryableError)) throw error
+        thrown = error
+        throw new CloudflareNonRetryableError(error.message)
+      }
     }
+    return start(run).catch((rejection: unknown) => {
+      // 重放时引擎可能不再执行回调，此时没有原错误可还原，按原拒绝传播。
+      if (!thrown) throw rejection
+      const restored = new NonRetryableError(thrown.message, { cause: rejection })
+      if ('code' in thrown && typeof thrown.code === 'string')
+        Object.assign(restored, { code: thrown.code })
+      throw restored
+    }) as Promise<T>
   }
   function doStep<T extends JsonValue>(name: string, callback: () => Promise<T>): Promise<T>
   function doStep<T extends JsonValue>(
@@ -105,7 +124,7 @@ export function createCloudflareWorkflowStep(step: CloudflareStep): WorkflowStep
     callback?: () => Promise<T>,
   ): Promise<T> {
     if (typeof optionsOrCallback === 'function')
-      return jsonStep.do(name, () => run(optionsOrCallback)) as Promise<T>
+      return call((run) => jsonStep.do(name, run), optionsOrCallback)
     const { retries, timeoutMs } = optionsOrCallback
     const config = {
       ...(retries === undefined
@@ -119,7 +138,7 @@ export function createCloudflareWorkflowStep(step: CloudflareStep): WorkflowStep
           }),
       ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
     }
-    return jsonStep.do(name, config, () => run(callback as () => Promise<T>)) as Promise<T>
+    return call((run) => jsonStep.do(name, config, run), callback as () => Promise<T>)
   }
   return {
     do: doStep,

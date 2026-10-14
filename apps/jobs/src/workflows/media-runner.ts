@@ -50,7 +50,7 @@ export interface MediaRunnerDeps {
 type StepData<T> = T extends object ? { [K in keyof T]: StepData<T[K]> } : T
 type Callback = StepData<{ jobId: string; result?: MediaResult; error?: MediaError }>
 const terminal = (task: AiTask) => ['succeeded', 'failed', 'canceled'].includes(task.status)
-// 同步提交中以 NonRetryableError 带出的业务错误码（Node 引擎会跨 step 保留 code）。
+// 同步提交中以 NonRetryableError 带出的业务错误码（两目标的 step adapter 都会跨 step 还原 code）。
 const carriedCode = (error: unknown) =>
   error instanceof NonRetryableError &&
   'code' in error &&

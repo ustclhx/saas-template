@@ -110,7 +110,9 @@ export function createWorkflowSentry<T extends { do: (...args: never[]) => unkno
   const observer: JobObserver = {
     tagContext: tagJobContext,
     captureException(error) {
-      const failure = failures.get(error)
+      // 平台 adapter 还原共享错误时把引擎 rejection 放在 cause，按两者关联本次 do 的失败。
+      const failure =
+        failures.get(error) ?? (error instanceof Error ? failures.get(error.cause) : undefined)
       if (!failure?.sdkCaptured) captureJobException(failure ? failure.original : error)
     },
   }

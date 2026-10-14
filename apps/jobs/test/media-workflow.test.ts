@@ -14,6 +14,7 @@ import {
 import { getCreditBalance, grant, hold } from '@saas/credits'
 import { type AiPricingJson, aiTask, createDb, member, organization, scoped, user } from '@saas/db'
 import { NonRetryableError, type WorkflowStep } from '@saas/platform'
+import { createCloudflareWorkflowStep } from '@saas/platform/cloudflare'
 import { MEDIA_DONE_EVENT } from '@saas/shared'
 import { persistMediaOutputs } from '@saas/storage'
 import { createCloudflareMediaCopier, createCloudflareStorage } from '@saas/storage/cloudflare'
@@ -515,6 +516,42 @@ it('Workers AI deterministic rejection is not retried and keeps the safe upstrea
   )
   const h = harness(fake.provider)
   await runMediaTask(f.taskId, h.step, h.deps)
+  expect(fake.binding.run).toHaveBeenCalledTimes(1)
+  const actual = await state(f)
+  expect(actual.task).toMatchObject({
+    errorCode: 'WORKERS_AI_GENERATION_FAILED',
+    errorMessage: 'Workers AI image generation failed (AiError 8007)',
+  })
+  expect(actual.files).toEqual([])
+  await refunded(f)
+})
+
+it('Workers AI 8007 keeps its safe code and summary through the Cloudflare step adapter', async () => {
+  const f = await fixture()
+  const fake = await workersAi(f)
+  fake.binding.run.mockRejectedValue(
+    upstreamError('8007: Input prompt contains NSFW content. fixture prompt', 'AiError'),
+  )
+  const h = harness(fake.provider)
+  // 模拟 CF 引擎：NonRetryableError 不再重试，回调异常经 RPC 复制后只剩 name/message。
+  const engine = {
+    async do(_name: string, configOrCallback: unknown, maybeCallback?: () => Promise<unknown>) {
+      const callback = (maybeCallback ?? configOrCallback) as () => Promise<unknown>
+      const limit = maybeCallback
+        ? ((configOrCallback as { retries?: { limit: number } }).retries?.limit ?? 0)
+        : 0
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await callback()
+        } catch (error) {
+          const { name, message } = error as Error
+          if (name === 'NonRetryableError' || attempt >= limit)
+            throw Object.assign(new Error(message), { name })
+        }
+      }
+    },
+  }
+  await runMediaTask(f.taskId, createCloudflareWorkflowStep(engine as never), h.deps)
   expect(fake.binding.run).toHaveBeenCalledTimes(1)
   const actual = await state(f)
   expect(actual.task).toMatchObject({
