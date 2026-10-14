@@ -128,6 +128,7 @@ class AiMediaWorkflowBase extends WorkflowEntrypoint<Cloudflare.Env, AiMediaPara
           const workflowStep = createCloudflareWorkflowStep(workflowSentry.step)
           return await runMediaTask(event.payload.taskId, workflowStep, {
             db,
+            faultEnv: this.env,
             callbackOrigin: templateConfig.app.url,
             callbackSecret: this.env.MEDIA_WEBHOOK_SECRET ?? '',
             provider: (task) =>

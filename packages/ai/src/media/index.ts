@@ -1,4 +1,6 @@
 export * from './fal.ts'
+export * from './fault.ts'
+export * from './fault-provider.ts'
 export * from './input.ts'
 export * from './provider.ts'
 export * from './registry.ts'
