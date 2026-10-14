@@ -702,6 +702,13 @@ async function restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, source
     replicaList().some((o) => /00000002\.history(?:\.[^.]+)?$/.test(o.key)),
     'Replica did not copy real history',
   )
+  evidence('replica.history', {
+    realPromotionHistoryCopied: true,
+    primaryTimeline: 1,
+    promotedFixtureTimeline: 2,
+    chainVerifiedBeforeHistory: status().verification.ok,
+    laterPrimaryVerificationOrRetention: false,
+  })
   evidence('replica.failure', { nonzero: true, primaryArchiveIndependent: true, recovered: true })
   phase = 'replica_source_delete'
   const logicalKey = s3('list').find((o) => /logical\/.*database.dump.lz4$/.test(o.key)).key
@@ -771,18 +778,30 @@ async function restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, source
 async function cleanup() {
   sampling = false
   if (sampler) await sampler.catch(() => {})
-  try {
-    for (const state of restoreStates) {
+  const errors = []
+  for (const state of restoreStates) {
+    try {
       const metadata = join(state, 'state.json')
       if (!existsSync(metadata)) continue
       run(join(bundleDirectory, 'restore.sh'), ['cleanup', '--state-dir', state])
+    } catch {
+      errors.push('restore-state')
     }
-    if (started) compose('down', '-v', '--remove-orphans', '--timeout', '10')
-    cleaned = true
-  } catch {
-    failure ??= 'Backup acceptance cleanup failed'
   }
-  rmSync(temporary, { recursive: true, force: true })
+  // 任一恢复实例清理失败也必须继续清理其他实例与主fixture；失败现场保留供定向重试。
+  if (started) {
+    try {
+      compose('down', '-v', '--remove-orphans', '--timeout', '10')
+    } catch {
+      errors.push('fixture-compose')
+    }
+  }
+  cleaned = errors.length === 0
+  if (cleaned) rmSync(temporary, { recursive: true, force: true })
+  else {
+    failure ??= 'Backup acceptance cleanup failed'
+    evidence('backup.cleanup_failed', { errors, retainedTemporary: temporary })
+  }
 }
 for (const signal of ['SIGINT', 'SIGTERM'])
   process.once(signal, async () => {
@@ -1538,20 +1557,24 @@ ${credentials
       'PITR before/after marker incorrect',
     )
     assert(JSON.parse(sql(checkSql, 'restore')).marker === 17, 'PITR roles/tasks missing')
-    sql('select pg_wal_replay_resume()', 'restore')
-    sql('select pg_promote(true, 30)', 'restore')
-    compose(
-      'exec',
-      '-T',
-      'restore',
-      'sh',
-      '-c',
-      'selfhost-walg wal-push /var/lib/postgresql/data/pg_wal/00000002.history',
-    )
-    assert(
-      s3('list').some((o) => /wal_005\/00000002\.history/.test(o.key)),
-      'Real timeline history missing',
-    )
+    // 正式演练后续还要再次验证主timeline=1的连续链；提前上传promote的timeline=2
+    // history会按正式工具契约拒绝该证明。history专项延后到主验证全部完成后的副本阶段。
+    if (!releaseDrill) {
+      sql('select pg_wal_replay_resume()', 'restore')
+      sql('select pg_promote(true, 30)', 'restore')
+      compose(
+        'exec',
+        '-T',
+        'restore',
+        'sh',
+        '-c',
+        'selfhost-walg wal-push /var/lib/postgresql/data/pg_wal/00000002.history',
+      )
+      assert(
+        s3('list').some((o) => /wal_005\/00000002\.history/.test(o.key)),
+        'Real timeline history missing',
+      )
+    }
     evidence('backup.oldest_weekly_pitr', {
       backupId: weeklyId,
       retentionDateSimulated: true,
@@ -1559,7 +1582,8 @@ ${credentials
       realTarget: beforeTarget,
       beforePresent: true,
       afterAbsent: true,
-      historyArchived: true,
+      historyArchived: !releaseDrill,
+      historyDeferredToReplicaPhase: releaseDrill,
       elapsedMs: Date.now() - restoreStart,
     })
     // 不再写业务数据：按工具公布的采样上界恢复，验证空闲库也能命中target_time。
@@ -1682,6 +1706,32 @@ ${credentials
         resource.cgroupPeakBytes <=
           (name.startsWith('recovery:') ? 512 * 1024 * 1024 : config.services[name].mem_limit),
         'Backup memory budget exceeded',
+      )
+    }
+  }
+  if (releaseDrill) {
+    for (const service of [
+      'postgres',
+      'backup',
+      'object-storage',
+      'tls',
+      'replica-storage',
+      'replica-tls',
+    ]) {
+      const points = Object.values(measurements)
+        .map((point) => point.services[service])
+        .filter(Boolean)
+      assert(
+        points.some(
+          (point) =>
+            point.samples >= 1 &&
+            Number.isFinite(point.cgroupPeakBytes) &&
+            point.cgroupPeakBytes > 0 &&
+            Number.isFinite(point.rssPeakBytes) &&
+            point.rssPeakBytes > 0 &&
+            (service !== 'postgres' || point.maxPgDataBytes > 0),
+        ),
+        'Required service resource samples absent',
       )
     }
   }
