@@ -1,5 +1,6 @@
 import { createExecutionContext, createMessageBatch, env, getQueueResult } from 'cloudflare:test'
 import type { WorkflowStep as CloudflareStep } from 'cloudflare:workers'
+import { NonRetryableError as CloudflareNonRetryableError } from 'cloudflare:workflows'
 import { describe, expect, it, vi } from 'vitest'
 import {
   cloudflareTransactionalEnqueue,
@@ -131,7 +132,52 @@ describe('Cloudflare capability adapters', () => {
       throw new NonRetryableError('stop')
     })
     await expect(failure).rejects.toMatchObject({ name: 'NonRetryableError', message: 'stop' })
-    await expect(failure).rejects.not.toBeInstanceOf(NonRetryableError)
+    await expect(failure).rejects.toBeInstanceOf(NonRetryableError)
+  })
+
+  it('restores the shared non-retryable error and its code after the engine copies the rejection', async () => {
+    // 模拟 CF 引擎：回调异常经 RPC 复制后只剩 name/message，再由 do() 拒绝。
+    const engineErrors: unknown[] = []
+    const copy = (error: unknown) => {
+      engineErrors.push(error)
+      const { name, message } = error as Error
+      return Object.assign(new Error(message), { name })
+    }
+    const step = createCloudflareWorkflowStep({
+      async do(_name: string, configOrCallback: unknown, callback?: () => Promise<unknown>) {
+        try {
+          return await (callback ?? (configOrCallback as () => Promise<unknown>))()
+        } catch (error) {
+          throw copy(error)
+        }
+      },
+    } as unknown as CloudflareStep)
+    const failure = step.do('submit', { retries: { limit: 2, delayMs: 10_000 } }, async () => {
+      throw Object.assign(
+        new NonRetryableError('Workers AI image generation failed (AiError 8007)'),
+        { code: 'WORKERS_AI_GENERATION_FAILED' },
+      )
+    })
+    const error = await failure.catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(NonRetryableError)
+    expect(error).toMatchObject({
+      code: 'WORKERS_AI_GENERATION_FAILED',
+      message: 'Workers AI image generation failed (AiError 8007)',
+    })
+    // 引擎仍收到原生不可重试信号；其 rejection 作为 cause 供观测按 do 关联。
+    expect(engineErrors[0]).toBeInstanceOf(CloudflareNonRetryableError)
+    expect(engineErrors[0]).not.toHaveProperty('code')
+    expect((error as Error).cause).toMatchObject({ name: 'NonRetryableError' })
+    expect((error as Error).cause).not.toBeInstanceOf(NonRetryableError)
+
+    // 重放时引擎直接拒绝而不执行回调：无原错误可还原，原样传播。
+    const replayed = new Error('replayed engine failure')
+    const replay = createCloudflareWorkflowStep({
+      do: async () => {
+        throw replayed
+      },
+    } as unknown as CloudflareStep)
+    await expect(replay.do('submit', async () => null)).rejects.toBe(replayed)
   })
 
   it('keeps deployed UTC cron time and runs independent handlers even if one fails', async () => {

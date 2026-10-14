@@ -122,17 +122,23 @@ async function handler(params: Params, step: WorkflowStep): Promise<JsonValue> {
         { retries: { limit: 3, delayMs: 100, backoff: 'linear' } },
         async () => {
           await count(key, 'submit')
-          throw new NonRetryableError('SECRET_SUBMISSION_UNCERTAIN')
+          throw Object.assign(new NonRetryableError('SECRET_SUBMISSION_UNCERTAIN'), {
+            code: 'FIXTURE_PROVIDER_REJECTED',
+          })
         },
       )
-    } catch {
+    } catch (error) {
       await step.do('settlement', async () => {
         await count(key, 'settlement')
         await effect(key, 'release-hold')
         return null
       })
+      // 与 CF adapter 同一契约：跨 step 还原共享错误类型与业务 code。
+      const carriedCode =
+        error instanceof NonRetryableError && 'code' in error ? (error.code as string) : null
+      return { businessStatus: 'failed', holdReleased: true, carriedCode }
     }
-    return { businessStatus: 'failed', holdReleased: true }
+    return { businessStatus: 'failed', holdReleased: true, carriedCode: null }
   }
   if (mode === 'timeout') {
     try {

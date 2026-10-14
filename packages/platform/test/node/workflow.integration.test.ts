@@ -395,7 +395,11 @@ describe('Node durable workflows on real PostgreSQL', () => {
   it('allows NonRetryable failure settlement once and reports timeout safely while an uncooperative callback can still finish', async () => {
     const { child } = await launch()
     const id = await create(child, { mode: 'nonretryable' })
-    expect(await completed(child, id)).toEqual({ businessStatus: 'failed', holdReleased: true })
+    expect(await completed(child, id)).toEqual({
+      businessStatus: 'failed',
+      holdReleased: true,
+      carriedCode: 'FIXTURE_PROVIDER_REJECTED',
+    })
     expect(await counts(id)).toEqual([
       { step: 'settlement', count: 1 },
       { step: 'submit', count: 1 },

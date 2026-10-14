@@ -30,7 +30,7 @@
 | `src/workflow.ts` / `Workflow<P,R>` | create({id?,params})、get(id)，instance.status/terminate/sendEvent | 业务稳定 id；参数、事件、步骤结果只用 JSON；缺实例/终态发事件明确报错 |
 | `WorkflowStatus` | queued/running/paused/waiting/completed/failed/terminated | 引擎状态映射到中立枚举，不向业务暴露 DBOS/pg-boss 对象 |
 | `WorkflowStep` | do(name,callback) 或 do(name,{retries:{limit,delayMs,backoff},timeoutMs},callback)，sleep(name,durationMs)，waitForEvent(name,{type,timeoutMs}) | 成功步骤持久化、重启续跑；事件按 type FIFO 单次消费，早到事件至少保留 60 分钟 |
-| `NonRetryableError` | 两目标共用的不可重试异常，CF 转换为原引擎异常 | 转换到 B 引擎，不重试该步骤 |
+| `NonRetryableError` | 两目标共用的不可重试异常，CF 转换为原引擎异常；引擎拒绝时还原为共享类型并保留 `code`（引擎 rejection 放在 `cause`） | 转换到 B 引擎，不重试该步骤 |
 | `src/scheduler.ts` / `Scheduler` | register({id,cron,timeZone,missedRun:'skip'|'once'},handler)，handler 收到 scheduledAt:Date；health() | jobs 内调度、锁互斥、补跑策略、心跳；健康读取最近成功 cron 时间 |
 | `src/capabilities.ts` / `TaskHealth` | queue() → {status}；scheduler() → {status,lastCronAt}，status 为 up/down/unavailable，lastCronAt 为 UTC ISO 或 null | 实时 backend/consumer readiness 和 scheduler heartbeat，不能用 DB 可达推断 queue up |
 

@@ -163,7 +163,10 @@ it.each([Error, NonRetryableError])(
         throw original
       }),
     )
-    await expect(workflow.run(event, step)).rejects.toBe(wrapped)
+    const rejection = await workflow.run(event, step).catch((error: unknown) => error)
+    // 平台 adapter 还原共享不可重试错误，引擎 rejection 留在 cause，观测仍按 do 关联且不双报。
+    if (ErrorType === Error) expect(rejection).toBe(wrapped)
+    else expect(rejection).toMatchObject({ message: original.message, cause: wrapped })
     await waitOnExecutionContext(ctx)
     expect(sentryEvents(send)).toHaveLength(1)
     expect(sentryEvents(send)[0].exception.values[0].mechanism.type).not.toBe(
