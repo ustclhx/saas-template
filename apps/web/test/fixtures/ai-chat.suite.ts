@@ -1125,6 +1125,62 @@ export function registerAiChatSuite(
       },
     )
 
+    it.each(['off', 'on'] as const)(
+      'DeepSeek 空 schema 仍按模板 %s 显式下发 thinking',
+      async (defaultThinking) => {
+        const me = await member(`thinking-default-${defaultThinking}`, 100)
+        const modelId = await resilientModel(callPricing)
+        await db.update(aiModel).set({ paramsSchema: {} }).where(eq(aiModel.id, modelId))
+        const mock = attempts([{ text: 'answer' }])
+        const { response } = await send(
+          me,
+          { modelId, text: 'hi' },
+          {
+            factory: () => mock,
+            textConfig: policy({ thinking: { default: defaultThinking, userToggle: false } }),
+          },
+        )
+        expect(response.status).toBe(200)
+        expect(mock.doStreamCalls[0]?.providerOptions).toMatchObject({
+          deepseek: { thinking: { type: defaultThinking === 'on' ? 'enabled' : 'disabled' } },
+        })
+      },
+    )
+
+    it('DeepSeek 空 schema 接受用户逐条开启 thinking', async () => {
+      const me = await member('thinking-adapter-policy', 100)
+      const modelId = await resilientModel(callPricing)
+      await db.update(aiModel).set({ paramsSchema: {} }).where(eq(aiModel.id, modelId))
+      const on = attempts([{ text: 'on' }])
+      const config = policy({ thinking: { default: 'off', userToggle: true } })
+      await send(
+        me,
+        { modelId, text: 'hi', thinking: true },
+        { factory: () => on, textConfig: config },
+      )
+      expect(on.doStreamCalls[0]?.providerOptions).toMatchObject({
+        deepseek: { thinking: { type: 'enabled' } },
+      })
+    })
+
+    it('无适配器 Provider 忽略显式 thinking 支持声明与请求开关', async () => {
+      const me = await member('thinking-no-adapter', 100)
+      const modelId = await resilientModel(callPricing)
+      const config = policy({ thinking: { default: 'on', userToggle: true } })
+      await db
+        .update(aiModel)
+        .set({ provider: 'openai', paramsSchema: { 'x-text': { thinking: true } } })
+        .where(eq(aiModel.id, modelId))
+      const plain = attempts([{ text: 'plain' }])
+      await send(
+        me,
+        { modelId, text: 'hi', thinking: true },
+        { factory: () => plain, textConfig: config },
+      )
+      expect(plain.doStreamCalls[0]?.providerOptions?.deepseek).toBeUndefined()
+      expect(plain.doStreamCalls[0]?.reasoning).toBeUndefined()
+    })
+
     it('thinking 按模板与单条请求映射；禁止切换时拒绝，不支持的模型忽略', async () => {
       const me = await member('thinking-policy', 100)
       const modelId = await resilientModel(callPricing)

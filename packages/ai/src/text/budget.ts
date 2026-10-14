@@ -29,8 +29,8 @@ export interface TextModelConfig {
   readonly tokensPerChar: number
   /** 模型单次输出上限 */
   readonly maxOutputTokens: number
-  /** 模型是否支持 thinking；缺省关闭 */
-  readonly thinking: boolean
+  /** thinking 能力覆盖；缺省跟随 Provider 适配器，false 禁用 */
+  readonly thinking: boolean | undefined
   /** 模型是否支持 Provider 原生续写 */
   readonly continuation: 'native' | 'none'
 }
@@ -52,7 +52,7 @@ export function textModelConfig(model: Pick<AvailableModel, 'paramsSchema'>): Te
   return {
     tokensPerChar: config.tokensPerChar ?? DEFAULT_TOKENS_PER_CHAR,
     maxOutputTokens: config.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
-    thinking: config.thinking ?? false,
+    thinking: config.thinking,
     continuation: config.continuation ?? 'none',
   }
 }

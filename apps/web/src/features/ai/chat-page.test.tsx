@@ -1,21 +1,27 @@
+import type { ChatTransport } from 'ai'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatUIMessage } from './conversation.ts'
+import type { PickerModel } from './model-picker.ts'
 
 const state = vi.hoisted(() => ({
   messages: [] as ChatUIMessage[],
   status: 'ready',
+  transport: undefined as ChatTransport<ChatUIMessage> | undefined,
   text: { thinking: { default: 'off', userToggle: false }, reasoning: { display: false } },
 }))
 
 vi.mock('@ai-sdk/react', () => ({
-  useChat: () => ({
-    messages: state.messages,
-    status: state.status,
-    sendMessage: vi.fn(),
-    stop: vi.fn(),
-    clearError: vi.fn(),
-  }),
+  useChat: ({ transport }: { transport: ChatTransport<ChatUIMessage> }) => {
+    state.transport = transport
+    return {
+      messages: state.messages,
+      status: state.status,
+      sendMessage: vi.fn(),
+      stop: vi.fn(),
+      clearError: vi.fn(),
+    }
+  },
 }))
 vi.mock('../../server/template-config.ts', () => ({ templateConfig: { ai: { text: state.text } } }))
 vi.mock('./conversations.functions.ts', () => ({ renameConversation: vi.fn() }))
@@ -23,13 +29,20 @@ vi.mock('@tanstack/react-router', () => ({ Link: () => null }))
 
 import { ChatPage } from './chat-page.tsx'
 
-const render = () =>
+const model: PickerModel = {
+  id: 'm',
+  key: 'deepseek',
+  pricing: { mode: 'per_call', credits: 1 },
+  supportsThinking: true,
+}
+
+const render = (models: readonly PickerModel[] = [model]) =>
   renderToStaticMarkup(
     <ChatPage
       slug="personal"
       conversation={{ id: 'c', title: 'Test' }}
       storedMessages={[]}
-      models={[]}
+      models={models}
       readOnly={false}
     />,
   )
@@ -42,6 +55,8 @@ beforeEach(() => {
   state.text.reasoning.display = false
 })
 
+afterEach(() => vi.unstubAllGlobals())
+
 describe('chat reasoning controls', () => {
   it('仅模板允许时显示 thinking 开关，初始值遵循模板默认', () => {
     expect(render()).not.toContain('type="checkbox"')
@@ -49,6 +64,44 @@ describe('chat reasoning controls', () => {
     state.text.thinking.default = 'on'
     expect(render()).toMatch(/type="checkbox"[^>]*checked/)
   })
+
+  it('不可控或未选择模型时不显示 thinking 开关', () => {
+    state.text.thinking.userToggle = true
+    expect(render([{ ...model, supportsThinking: false }])).not.toContain('type="checkbox"')
+    expect(render([])).not.toContain('type="checkbox"')
+  })
+
+  it.each([true, false])(
+    '模型可控=%s 时发送正文只携带允许的 thinking 开关',
+    async (supportsThinking) => {
+      state.text.thinking.userToggle = true
+      state.text.thinking.default = 'on'
+      render([{ ...model, supportsThinking }])
+      let body: Record<string, unknown> | undefined
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+          body = JSON.parse(init?.body as string) as Record<string, unknown>
+          return new Response('data: [DONE]\n\n', {
+            headers: { 'content-type': 'text/event-stream' },
+          })
+        }),
+      )
+      await state.transport?.sendMessages({
+        trigger: 'submit-message',
+        chatId: 'c',
+        messageId: undefined,
+        abortSignal: undefined,
+        messages: [{ id: 'u', role: 'user', parts: [{ type: 'text', text: 'hi' }] }],
+      })
+      expect(body).toMatchObject({
+        modelId: model.id,
+        message: { parts: [{ type: 'text', text: 'hi' }] },
+      })
+      if (supportsThinking) expect(body).toHaveProperty('thinking', true)
+      else expect(body).not.toHaveProperty('thinking')
+    },
+  )
 
   it('reasoning 折叠显示且在关闭展示时隐藏', () => {
     state.messages = [

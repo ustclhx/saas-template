@@ -68,7 +68,6 @@ export const PARAMS_SCHEMA_TEMPLATES: ParamsSchemaTemplate[] = [
       'x-text': {
         tokensPerChar: DEFAULT_TOKENS_PER_CHAR,
         maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
-        thinking: false,
         continuation: 'none',
       },
     },

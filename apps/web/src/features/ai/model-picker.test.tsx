@@ -7,6 +7,7 @@ import { CreditEstimateText, ModelPicker } from './model-picker.tsx'
 const perCall: PickerModel = {
   id: '00000000-0000-4000-8000-000000000001',
   key: 'fast-chat',
+  supportsThinking: false,
   pricing: {
     mode: 'per_call',
     credits: 5,
@@ -17,6 +18,7 @@ const perCall: PickerModel = {
 const perToken: PickerModel = {
   id: '00000000-0000-4000-8000-000000000002',
   key: 'smart-chat',
+  supportsThinking: false,
   // 每 1k 输入 2 积分、每 1k 输出 10 积分
   pricing: { mode: 'token', inputPer1k: 2, outputPer1k: 10, minCharge: 1 },
 }

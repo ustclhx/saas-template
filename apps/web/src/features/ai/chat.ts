@@ -16,6 +16,7 @@ import {
   settleChatMessage,
   settleFromCheckpoint,
   settleInterruptedChatMessage,
+  supportsTextThinking,
   TEXT_FAULT_MAX_OUTPUT_TOKENS,
   type TextModelEnv,
   textModelConfig,
@@ -371,7 +372,9 @@ export async function startWorkspaceChat(
     model: streamModel,
     provider: model.provider,
     messages: prompt.map((message) => ({ role: message.role, content: message.text })),
-    thinking: thinking ? (input.thinking ?? textConfig.thinking.default === 'on') : undefined,
+    thinking: supportsTextThinking(model.provider, thinking)
+      ? (input.thinking ?? textConfig.thinking.default === 'on')
+      : undefined,
     continuation: continuation === 'native' && !faultMode,
     displayReasoning: textConfig.reasoning.display,
     inputTokens,

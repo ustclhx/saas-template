@@ -10,6 +10,7 @@ export interface PickerModel {
   readonly id: string
   readonly key: string
   readonly pricing: Pricing
+  readonly supportsThinking: boolean
 }
 
 export type CreditEstimate =

@@ -67,6 +67,11 @@ describe('parameter schema templates', () => {
     }
   })
 
+  it('text defaults leave thinking capability to the Provider adapter', () => {
+    const template = PARAMS_SCHEMA_TEMPLATES.find((item) => item.id === 'text-defaults')
+    expect(template?.schema['x-text']).not.toHaveProperty('thinking')
+  })
+
   it('Wan turbo accepts the recorded request and rejects unsupported duration', () => {
     const template = PARAMS_SCHEMA_TEMPLATES.find((item) => item.id === 'fal-wan-turbo')
     if (!template) throw new Error('Wan turbo template missing')

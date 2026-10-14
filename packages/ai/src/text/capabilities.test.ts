@@ -2,7 +2,7 @@ import type { ModelMessage } from 'ai'
 import { generateText, streamText } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AvailableModel } from '../models.ts'
-import { getTextProviderCapabilities } from './capabilities.ts'
+import { getTextProviderCapabilities, supportsTextThinking } from './capabilities.ts'
 import { defaultLanguageModelFactory } from './model.ts'
 
 const model: AvailableModel = {
@@ -24,13 +24,28 @@ describe('文本 Provider 能力', () => {
     const params = { reasoning: 'high' as const, providerOptions: { custom: { keep: true } } }
     for (const provider of ['openai', 'anthropic', 'google', 'unknown']) {
       const capability = getTextProviderCapabilities(provider)
+      expect(capability.supportsThinking).toBe(false)
       expect(capability.applyThinking(params, false)).toBe(params)
       expect(capability.continuation).toBeUndefined()
     }
   })
 
+  it('thinking 能力缺省跟随适配器，模型覆盖不能为未注册 Provider 添加能力', () => {
+    for (const provider of ['deepseek', 'deepseek.chat']) {
+      expect(supportsTextThinking(provider)).toBe(true)
+      expect(supportsTextThinking(provider, true)).toBe(true)
+      expect(supportsTextThinking(provider, false)).toBe(false)
+    }
+    for (const provider of ['openai', 'unknown']) {
+      expect(supportsTextThinking(provider)).toBe(false)
+      expect(supportsTextThinking(provider, true)).toBe(false)
+      expect(supportsTextThinking(provider, false)).toBe(false)
+    }
+  })
+
   it('DeepSeek 映射保留其他参数，并以新末条 assistant 保存纯正文前缀', () => {
     const capability = getTextProviderCapabilities('deepseek.chat')
+    expect(capability.supportsThinking).toBe(true)
     const params = {
       reasoning: 'high' as const,
       maxOutputTokens: 100,

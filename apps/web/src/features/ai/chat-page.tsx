@@ -48,6 +48,8 @@ export function ChatPage({
   readOnly: boolean
 }) {
   const [modelId, setModelId] = useState(models[0]?.id)
+  const model = models.find((m) => m.id === modelId)
+  const canToggleThinking = templateConfig.ai.text.thinking.userToggle && model?.supportsThinking
   const [input, setInput] = useState('')
   const [thinking, setThinking] = useState(templateConfig.ai.text.thinking.default === 'on')
   const [title, setTitle] = useState(conversation.title)
@@ -59,6 +61,8 @@ export function ChatPage({
   modelRef.current = modelId
   const thinkingRef = useRef(thinking)
   thinkingRef.current = thinking
+  const canToggleThinkingRef = useRef(canToggleThinking)
+  canToggleThinkingRef.current = canToggleThinking
   const titleRef = useRef(title)
 
   const transport = useMemo(
@@ -71,9 +75,7 @@ export function ChatPage({
             modelId: modelRef.current ?? '',
             conversationId: conversation.id,
             messages,
-            ...(templateConfig.ai.text.thinking.userToggle
-              ? { thinking: thinkingRef.current }
-              : {}),
+            ...(canToggleThinkingRef.current ? { thinking: thinkingRef.current } : {}),
           }),
         }),
       }),
@@ -97,7 +99,6 @@ export function ChatPage({
   })
 
   const busy = status === 'submitted' || status === 'streaming'
-  const model = models.find((m) => m.id === modelId)
   const inputTokens = estimateInputTokens([
     ...messages.map((message) => ({ text: messageText(message) })),
     { text: input },
@@ -180,7 +181,7 @@ export function ChatPage({
       >
         <HydratedControls>
           <ModelPicker models={models} value={modelId} onChange={setModelId} disabled={busy} />
-          {templateConfig.ai.text.thinking.userToggle ? (
+          {canToggleThinking ? (
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"

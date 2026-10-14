@@ -6,8 +6,8 @@ staging 故障套件（fault-2026-10-14a）发现 deepseek-flash 默认开启思
 
 ## What Changes
 
-- 模板配置项：thinking 默认开关、是否向用户暴露 thinking 开关、是否展示 reasoning 过程；失败全退模板开关（默认关闭）。模型在 `params_schema['x-text']` 声明是否支持 thinking 与续写能力。
-- 请求可携带单条 thinking 开关，仅在模板允许暴露时接受；否则由配置决定。
+- 模板配置项：thinking 默认开关、是否向用户暴露 thinking 开关、是否展示 reasoning 过程；失败全退模板开关（默认关闭）。模型在 `params_schema['x-text']` 可选声明 thinking 能力覆盖与续写能力；thinking 缺省跟随 Provider adapter，显式 `false` 不下发、不允许用户切换，显式 `true` 仍须 adapter 可控。
+- adapter 可控且模型未显式声明 `thinking=false` 时，始终按模板或允许的请求值显式下发开/关，即使模型 schema 为空。用户开关仅在模板允许、adapter 可控且模型未显式声明 `false` 时显示并生效；模板关闭时携带字段返回 400，模板启用但模型不可控时忽略字段。
 - **BREAKING（未归档 ai-chat 语义）**：没有可见文本的回复（仅 reasoning、reasoning 阶段中断、输出前报错）最终失败时视为 failed 且不向用户收费，成本由 SaaS 承担；有可见文本后失败仍按已产生部分计费（失败全退开关开启时全部 failed 不收费）。
 - 可见文本出现前的瞬时错误、空回复与仅 reasoning 回复，在同一预扣下透明重试；可见文本后中断，用原上下文加已生成部分续写，作为同一条回复保存与结算。
 - 用量统计、检查点与对账记录 reasoning token。
