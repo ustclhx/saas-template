@@ -38,6 +38,7 @@ export const defaultLanguageModelFactory: LanguageModelFactory = (model) => {
       'Only local acceptance text models are available',
     )
   return new MockLanguageModelV4({
+    provider: 'deepseek.chat',
     doStream: async ({ prompt, abortSignal, providerOptions }) => {
       // 模拟 deepseek-flash 默认思考：未关闭时故障模型只回 reasoning 并用尽输出上限，
       // 复现 staging fault-2026-10-14a；只作用于专用故障模型，普通本地验收输出不变。

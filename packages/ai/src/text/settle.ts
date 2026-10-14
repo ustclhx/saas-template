@@ -6,6 +6,7 @@ import {
   release,
 } from '@saas/credits'
 import {
+  type AiTextUsage,
   type AiUsageCheckpoint,
   aiMessage,
   type CreditHold,
@@ -46,7 +47,35 @@ export function messageText(parts: readonly unknown[]): string {
     .join('')
 }
 
-const textParts = (text: string) => (text ? [{ type: 'text', text }] : [])
+const messageParts = (text: string, reasoning?: string) => [
+  ...(reasoning ? [{ type: 'reasoning', text: reasoning }] : []),
+  ...(text ? [{ type: 'text', text }] : []),
+]
+
+type FailedReplyRefund = 'no-visible-output' | 'all'
+
+interface TextUsageInput extends AiTextUsage {
+  /** 仅展示 reasoning 时传入；不传即不保存。 */
+  readonly reasoning?: string
+  readonly failedReplyRefund?: FailedReplyRefund
+}
+
+function usageCheckpoint(input: TextUsageInput, at = new Date()): AiUsageCheckpoint {
+  return {
+    inputTokens: input.inputTokens,
+    outputTokens: input.outputTokens,
+    ...(input.reasoningTokens === undefined ? {} : { reasoningTokens: input.reasoningTokens }),
+    ...(input.absorbed === undefined ? {} : { absorbed: input.absorbed }),
+    ...(input.total === undefined ? {} : { total: input.total }),
+    ...(input.failedReplyRefund === undefined
+      ? {}
+      : { failedReplyRefund: input.failedReplyRefund }),
+    at: at.toISOString(),
+  }
+}
+
+const mergedCheckpoint = (checkpoint: AiUsageCheckpoint) =>
+  sql`coalesce(${aiMessage.usageCheckpoint}, '{}'::jsonb) || ${JSON.stringify(checkpoint)}::jsonb`
 
 export interface CheckpointScheduleOptions {
   readonly intervalMs?: number
@@ -77,11 +106,9 @@ export function checkpointSchedule(options: CheckpointScheduleOptions = {}) {
   }
 }
 
-export interface UsageCheckpointInput {
+export interface UsageCheckpointInput extends TextUsageInput {
   readonly workspaceId: string
   readonly messageId: string
-  readonly inputTokens: number
-  readonly outputTokens: number
   /** 截至此刻已生成的内容 */
   readonly text: string
   readonly at?: Date
@@ -95,18 +122,14 @@ export async function writeUsageCheckpoint(
   db: Database,
   input: UsageCheckpointInput,
 ): Promise<boolean> {
-  const checkpoint: AiUsageCheckpoint = {
-    inputTokens: input.inputTokens,
-    outputTokens: input.outputTokens,
-    at: (input.at ?? new Date()).toISOString(),
-  }
+  const checkpoint = usageCheckpoint(input, input.at)
   const rows = await scoped(db, input.workspaceId)
     .update(
       aiMessage,
       {
         // 普通用量与故障证明独立更新，避免并发检查点抹掉已持久化的证明。
-        usageCheckpoint: sql`coalesce(${aiMessage.usageCheckpoint}, '{}'::jsonb) || ${JSON.stringify(checkpoint)}::jsonb`,
-        parts: textParts(input.text),
+        usageCheckpoint: mergedCheckpoint(checkpoint),
+        parts: messageParts(input.text, input.reasoning),
       },
       and(eq(aiMessage.id, input.messageId), eq(aiMessage.status, 'streaming')) as SQL,
     )
@@ -125,7 +148,7 @@ interface SettleBase {
   readonly usageSource: 'actual' | 'estimated'
 }
 
-export interface SettleChatInput extends SettleBase {
+export interface SettleChatInput extends SettleBase, TextUsageInput {
   readonly text: string
   readonly inputTokens: number
   readonly outputTokens: number
@@ -146,9 +169,13 @@ async function once<T>(
   }
 }
 
-/** 估算先按快照计算（含 minCharge），再以同一事务中的预扣额封顶，避免估算触发超额。 */
-async function settlementAmount(tx: CreditsTransaction, input: SettleBase, amount: number) {
-  if (input.usageSource === 'actual') return amount
+/** 估算与 failed 回复均以预扣额封顶；只有正常完成的完整用量可以触发超额。 */
+async function settlementAmount(
+  tx: CreditsTransaction,
+  input: SettleBase & { status?: 'aborted' | 'failed' },
+  amount: number,
+) {
+  if (input.usageSource === 'actual' && input.status === undefined) return amount
   const [reservation] = await scoped(tx, input.workspaceId)
     .select(creditHold, {
       where: eq(creditHold.id, input.holdId),
@@ -182,7 +209,8 @@ export function settleChatMessage(
     })
     await scoped(tx, input.workspaceId).updateById(aiMessage, input.messageId, {
       status: 'completed',
-      parts: textParts(input.text),
+      parts: messageParts(input.text, input.reasoning),
+      usageCheckpoint: mergedCheckpoint(usageCheckpoint(input)),
       inputTokens: input.inputTokens,
       outputTokens: input.outputTokens,
       credits: settlement.captured + settlement.debited,
@@ -191,7 +219,7 @@ export function settleChatMessage(
   })
 }
 
-export interface SettleInterruptedInput extends SettleBase {
+export interface SettleInterruptedInput extends SettleBase, TextUsageInput {
   /** 停止 → aborted；出错 / 结算丢失 → failed */
   readonly status: 'aborted' | 'failed'
   /** 已产生的用量（服务商未返回时按检查点或已生成文本估算） */
@@ -205,13 +233,22 @@ export interface SettleInterruptedInput extends SettleBase {
 
 /**
  * 未正常完成时的结算额（specs/ai-chat「主动停止」「出错与结算丢失」）：
- * - 按 token：按已产生用量，不低于 `minCharge`；没有输出用量时即为最低费用（design 决策 4）。
+ * - failed 无可见正文或开启失败全退时释放；用户主动停止维持原计费口径。
+ * - 按 token：按已产生用量，不低于 `minCharge`。
  * - 按次：`chargeOn` 为 `any_output`（文本默认）且已有输出时全额，否则释放（undefined）。
  */
 export function interruptedCredits(
   pricing: Pricing,
-  usage: { inputTokens: number; outputTokens: number; hasOutput: boolean },
+  usage: {
+    inputTokens: number
+    outputTokens: number
+    hasOutput: boolean
+    status?: 'aborted' | 'failed'
+    failedReplyRefund?: FailedReplyRefund
+  },
 ): number | undefined {
+  if (usage.status === 'failed' && (!usage.hasOutput || usage.failedReplyRefund === 'all'))
+    return undefined
   switch (pricing.mode) {
     case 'token':
       return actualCredits(pricing, usage)
@@ -249,12 +286,12 @@ export function settleInterruptedChatMessage(
         },
         tx,
       )
-    const charged = amount !== undefined
     await scoped(tx, input.workspaceId).updateById(aiMessage, input.messageId, {
       status: input.status,
-      ...(input.text === undefined ? {} : { parts: textParts(input.text) }),
-      inputTokens: charged ? input.inputTokens : null,
-      outputTokens: charged ? input.outputTokens : null,
+      ...(input.text === undefined ? {} : { parts: messageParts(input.text, input.reasoning) }),
+      usageCheckpoint: mergedCheckpoint(usageCheckpoint(input)),
+      inputTokens: amount !== undefined || input.status === 'failed' ? input.inputTokens : null,
+      outputTokens: amount !== undefined || input.status === 'failed' ? input.outputTokens : null,
       credits: settlement.captured + settlement.debited,
     })
     return settlement
@@ -288,7 +325,16 @@ export function settleFromCheckpoint(
       status: options.status,
       inputTokens: checkpoint?.inputTokens ?? message.inputTokens ?? 0,
       outputTokens,
-      hasOutput: outputTokens > 0 || messageText(message.parts) !== '',
+      ...(checkpoint?.reasoningTokens === undefined
+        ? {}
+        : { reasoningTokens: checkpoint.reasoningTokens }),
+      ...(checkpoint?.absorbed === undefined ? {} : { absorbed: checkpoint.absorbed }),
+      ...(checkpoint?.total === undefined ? {} : { total: checkpoint.total }),
+      ...(checkpoint?.failedReplyRefund === undefined
+        ? {}
+        : { failedReplyRefund: checkpoint.failedReplyRefund }),
+      // reasoning 已计入输出用量，但按次的输出判定仍只看正文，与同 isolate 停止一致。
+      hasOutput: messageText(message.parts) !== '',
     },
     tx,
   )

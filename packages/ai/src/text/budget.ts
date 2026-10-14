@@ -23,17 +23,23 @@ export const DEFAULT_MAX_OUTPUT_TOKENS = 4096
 export const INSUFFICIENT_CREDITS = 'INSUFFICIENT_CREDITS'
 export const INPUT_TOO_LONG = 'INPUT_TOO_LONG'
 
-/** 文本模型的估算参数 */
+/** 文本模型的估算参数与 Provider 能力声明 */
 export interface TextModelConfig {
   /** 输入估算的保守系数：token 数 = 字符数 × 系数 */
   readonly tokensPerChar: number
   /** 模型单次输出上限 */
   readonly maxOutputTokens: number
+  /** 模型是否支持 thinking；缺省关闭 */
+  readonly thinking: boolean
+  /** 模型是否支持 Provider 原生续写 */
+  readonly continuation: 'native' | 'none'
 }
 
-export const textModelConfigSchema = z.object({
+export const textModelConfigSchema = z.strictObject({
   tokensPerChar: z.number().finite().positive().optional(),
   maxOutputTokens: z.number().int().positive().optional(),
+  thinking: z.boolean().optional(),
+  continuation: z.enum(['native', 'none']).optional(),
 })
 
 /**
@@ -46,6 +52,8 @@ export function textModelConfig(model: Pick<AvailableModel, 'paramsSchema'>): Te
   return {
     tokensPerChar: config.tokensPerChar ?? DEFAULT_TOKENS_PER_CHAR,
     maxOutputTokens: config.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+    thinking: config.thinking ?? false,
+    continuation: config.continuation ?? 'none',
   }
 }
 

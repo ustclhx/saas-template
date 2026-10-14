@@ -88,6 +88,31 @@ function openAiChat(options: Parameters<typeof createOpenAI>[0], modelId: string
   }
 }
 
+type DeepSeekModel = ReturnType<ReturnType<typeof createDeepSeek>>
+
+/** SDK 原生支持 prefix，但仅 beta base URL；按本次消息选择端点，避免改变普通调用。 */
+function deepseekChat(
+  options: Parameters<typeof createDeepSeek>[0] & { baseURL: string },
+  modelId: string,
+): DeepSeekModel {
+  const model = createDeepSeek(options)(modelId)
+  const beta = createDeepSeek({ ...options, baseURL: `${options.baseURL}/beta` })(modelId)
+  const select = (params: Parameters<DeepSeekModel['doStream']>[0]) => {
+    const last = params.prompt.at(-1)
+    return last?.role === 'assistant' && last.providerOptions?.deepseek?.prefix === true
+      ? beta
+      : model
+  }
+  return {
+    specificationVersion: model.specificationVersion,
+    provider: model.provider,
+    modelId: model.modelId,
+    supportedUrls: model.supportedUrls,
+    doGenerate: (params) => select(params).doGenerate(params),
+    doStream: (params) => select(params).doStream(params),
+  }
+}
+
 function gatewayOptions(
   baseURL: string,
   env: TextModelEnv,
@@ -144,7 +169,8 @@ export const defaultLanguageModelFactory: LanguageModelFactory = (model, env) =>
   // 未配置密钥时保持原 Gateway（BYOK）路径，不改变既有部署。
   const deepseekKey = env.DEEPSEEK_API_KEY?.trim()
   if (model.provider === 'deepseek' && env.AI_TEXT_EGRESS === 'direct' && deepseekKey)
-    return createDeepSeek({ baseURL: DEEPSEEK_DIRECT_BASE_URL, apiKey: deepseekKey })(
+    return deepseekChat(
+      { baseURL: DEEPSEEK_DIRECT_BASE_URL, apiKey: deepseekKey },
       model.providerModelId,
     )
   const accountId = env.AI_GATEWAY_ACCOUNT_ID?.trim()
@@ -173,9 +199,10 @@ export const defaultLanguageModelFactory: LanguageModelFactory = (model, env) =>
         ),
       )(model.providerModelId)
     case 'deepseek':
-      return createDeepSeek(
+      return deepseekChat(
         gatewayOptions(`${baseURL}/deepseek`, env, env.DEEPSEEK_API_KEY, 'authorization'),
-      )(model.providerModelId)
+        model.providerModelId,
+      )
     default:
       throw new AppError(
         AI_PROVIDER_NOT_CONFIGURED,

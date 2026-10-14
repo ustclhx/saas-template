@@ -17,7 +17,7 @@ export interface ChatUIMetadata {
   readonly status?: ChatMessageStatus
 }
 
-export type ChatUIMessage = UIMessage<ChatUIMetadata>
+export type ChatUIMessage = UIMessage<ChatUIMetadata, { retry: { n: number } }>
 
 /** 对话标题的最大长度；新建对话标题为空，首轮回复完成后取首条消息 */
 export const CONVERSATION_TITLE_LENGTH = 80
@@ -44,6 +44,34 @@ const textOf = (parts: readonly unknown[]) =>
 
 export const messageText = (message: Pick<UIMessage, 'parts'>) => textOf(message.parts)
 
+/** 重试数据部件是 attempt 分界；旧 reasoning 不再展示，正文续写始终连续。 */
+export function messageReasoning(message: ChatUIMessage) {
+  const retry = message.parts.findLastIndex((part) => part.type === 'data-retry')
+  return message.parts
+    .slice(retry + 1)
+    .flatMap((part) => (part.type === 'reasoning' ? [part.text] : []))
+    .join('')
+}
+
+export function messageRetrying(message: ChatUIMessage): boolean {
+  const retry = message.parts.findLastIndex((part) => part.type === 'data-retry')
+  return (
+    retry >= 0 &&
+    !message.parts
+      .slice(retry + 1)
+      .some((part) => (part.type === 'text' || part.type === 'reasoning') && part.text)
+  )
+}
+
+/** 服务器历史读取也执行展示策略，关闭后旧 reasoning 不会再发到浏览器。 */
+export function messageDisplayParts(parts: readonly unknown[], displayReasoning: boolean) {
+  const schema = z.object({ type: z.enum(['text', 'reasoning']), text: z.string() })
+  return parts.flatMap((part) => {
+    const parsed = schema.safeParse(part)
+    return parsed.success && (parsed.data.type === 'text' || displayReasoning) ? [parsed.data] : []
+  })
+}
+
 /** 数据库中的消息行（`getConversation` 的返回项） */
 export interface StoredMessage {
   readonly id: string
@@ -52,17 +80,28 @@ export interface StoredMessage {
   readonly status: ChatMessageStatus
 }
 
-/** 只保留用户与助手的文本内容；还在生成或已停止的回复保留已生成部分并带上状态 */
+/** reasoning 只用于助手展示；请求与输入 token 估算仍只取正文。 */
 export function toChatMessages(rows: readonly StoredMessage[]): ChatUIMessage[] {
   return rows.flatMap((row) => {
     if (row.role !== 'user' && row.role !== 'assistant') return []
     const text = textOf(row.parts)
+    const reasoning =
+      row.role === 'assistant'
+        ? row.parts.flatMap((part) => {
+            const parsed = z
+              .object({ type: z.literal('reasoning'), text: z.string() })
+              .safeParse(part)
+            return parsed.success
+              ? [{ type: 'reasoning' as const, text: parsed.data.text, state: 'done' as const }]
+              : []
+          })
+        : []
     if (!text && row.role === 'user') return []
     return [
       {
         id: row.id,
         role: row.role,
-        parts: text ? [{ type: 'text' as const, text }] : [],
+        parts: [...reasoning, ...(text ? [{ type: 'text' as const, text }] : [])],
         metadata: { messageId: row.id, status: row.status },
       },
     ]
@@ -75,6 +114,7 @@ export function chatRequestBody(input: {
   modelId: string
   conversationId: string
   messages: readonly UIMessage[]
+  thinking?: boolean
 }): ChatRequest {
   const last = input.messages.findLast((message) => message.role === 'user')
   const parts = (last?.parts ?? []).flatMap((part) =>
@@ -85,6 +125,7 @@ export function chatRequestBody(input: {
     modelId: input.modelId,
     conversationId: input.conversationId,
     message: { role: 'user', parts },
+    ...(input.thinking === undefined ? {} : { thinking: input.thinking }),
   }
 }
 

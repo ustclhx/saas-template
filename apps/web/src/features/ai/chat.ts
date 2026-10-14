@@ -5,7 +5,6 @@ import {
   dbModelStore,
   defaultLanguageModelFactory,
   estimateInputTokens,
-  estimateTextTokens,
   type FaultAccessContext,
   type LanguageModelFactory,
   MODEL_UNAVAILABLE,
@@ -26,7 +25,7 @@ import {
   writeUsageCheckpoint,
 } from '@saas/ai'
 import { requireFreshSession } from '@saas/auth'
-import type { AiFaultInjectionEnv } from '@saas/config'
+import type { AiFaultInjectionEnv, TemplateConfig } from '@saas/config'
 import type { OveragePolicy } from '@saas/credits'
 import { CreditsError, getCreditBalance, hold } from '@saas/credits'
 import {
@@ -41,12 +40,12 @@ import { type Entitlements, getEntitlements } from '@saas/entitlements'
 import type { BackgroundTasks, RateLimiter } from '@saas/platform'
 import { AppError, newId, toErrorResponse } from '@saas/shared'
 import { log, setLogContext } from '@saas/shared/log'
-import { type LanguageModelUsage, streamText } from 'ai'
 import { and, asc, eq, inArray, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
 import { templateConfig } from '../../server/template-config.ts'
 import { resolveWorkspaceBySlug } from '../../server/workspace-context.ts'
 import { sessionFaultAccess } from './fault-access.ts'
+import { chatRetryDelay, createChatStream } from './text-stream.ts'
 
 /**
  * `POST /api/ai/chat`（docs/06-ai.md §3「流程」，specs/ai-chat）：
@@ -75,6 +74,8 @@ export interface ChatDeps {
   /** 默认取模板配置 `billing.overage` */
   readonly overage?: OveragePolicy
   /** 用量检查点节奏，默认每 5 秒或每 200 个输出 token；测试可调 */
+  readonly textConfig?: TemplateConfig['ai']['text']
+  readonly retryDelay?: (ms: number, signal: AbortSignal) => Promise<void>
   readonly checkpoint?: CheckpointScheduleOptions
 }
 
@@ -84,6 +85,7 @@ export const chatRequestSchema = z.strictObject({
   /** 当前空间（URL 中的 `$slug`） */
   slug: z.string().min(1).max(64),
   modelId: z.uuid(),
+  thinking: z.boolean().optional(),
   /** 省略时新建对话 */
   conversationId: z.uuid().optional(),
   /** 本轮的用户消息；首版只接受文本 */
@@ -163,8 +165,7 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
     },
   )
   return started.result.toUIMessageStreamResponse({
-    generateMessageId: () => started.metadata.messageId,
-    messageMetadata: ({ part }) => (part.type === 'start' ? started.metadata : undefined),
+    metadata: started.metadata,
     headers: { 'x-conversation-id': started.metadata.conversationId },
   })
 }
@@ -188,6 +189,9 @@ export async function startWorkspaceChat(
   deps: WorkspaceChatDeps,
 ) {
   const { db } = deps
+  const textConfig = deps.textConfig ?? templateConfig.ai.text
+  if (input.thinking !== undefined && !textConfig.thinking.userToggle)
+    throw new AppError('INVALID_REQUEST', 'Thinking toggle is disabled')
   const { workspaceId, userId } = context
   const s = scoped(db, workspaceId)
 
@@ -242,7 +246,7 @@ export async function startWorkspaceChat(
         where: and(
           eq(aiMessage.conversationId, conversationId),
           inArray(aiMessage.role, ['user', 'assistant']),
-          inArray(aiMessage.status, ['completed', 'aborted']),
+          inArray(aiMessage.status, ['completed', 'aborted', 'failed']),
         ) as SQL,
       })
       .orderBy(asc(aiMessage.id))
@@ -254,7 +258,12 @@ export async function startWorkspaceChat(
     })
   }
   const userText = input.message.parts.map((part) => part.text).join('')
-  const { tokensPerChar, maxOutputTokens: modelMaxOutput } = textModelConfig(model)
+  const {
+    tokensPerChar,
+    maxOutputTokens: modelMaxOutput,
+    thinking,
+    continuation,
+  } = textModelConfig(model)
   let prompt = context.prompt ?? [...history, { role: 'user' as const, text: userText }]
   if (pricing.mode === 'per_call' && pricing.limits?.maxInputTokens !== undefined) {
     prompt = truncateHistory(prompt, pricing.limits.maxInputTokens, tokensPerChar)
@@ -281,6 +290,7 @@ export async function startWorkspaceChat(
 
   // 5. 同一事务：对话、用户消息、预扣、带定价快照的 streaming 消息
   const assistantId = newId()
+  const holdDeadline = Date.now() + CHAT_HOLD_TTL_MS
   const streamModel = faultMode
     ? wrapTextFaultModel(languageModel, {
         mode: faultMode,
@@ -312,7 +322,7 @@ export async function startWorkspaceChat(
       amount: budget.holdAmount,
       refType: 'ai_message',
       refId: assistantId,
-      expiresAt: new Date(Date.now() + CHAT_HOLD_TTL_MS),
+      expiresAt: new Date(holdDeadline),
     })
     await t.insert(aiMessage, {
       id: assistantId,
@@ -324,12 +334,14 @@ export async function startWorkspaceChat(
       status: 'streaming',
       // 结算前存放输入估算：兜底处理器在没有检查点时据此收最低费用（design 决策 4）
       inputTokens,
-      ...(faultMode
-        ? {
-            usageCheckpoint: {
-              inputTokens,
-              outputTokens: 0,
-              at: new Date().toISOString(),
+      usageCheckpoint: {
+        inputTokens,
+        outputTokens: 0,
+        reasoningTokens: 0,
+        failedReplyRefund: textConfig.failedReplyRefund,
+        at: new Date().toISOString(),
+        ...(faultMode
+          ? {
               acceptanceFaultProof: {
                 mode: faultMode,
                 policyVersion: 1 as const,
@@ -338,9 +350,9 @@ export async function startWorkspaceChat(
                 realProviderCalled: false,
                 upstreamCalls: 0,
               },
-            },
-          }
-        : {}),
+            }
+          : {}),
+      },
       holdId: reservation.id,
     })
     return reservation.id
@@ -353,42 +365,38 @@ export async function startWorkspaceChat(
   // 6. 流式调用；结算与客户端连接解耦
   const overage = deps.overage ?? templateConfig.billing.overage
   const controller = new AbortController()
-  const schedule = checkpointSchedule(deps.checkpoint)
-  let text = ''
-  let streamFailed = false
-  let end:
-    | { text: string; usage: Pick<LanguageModelUsage, 'inputTokens' | 'outputTokens'> }
-    | undefined
+  let schedule = checkpointSchedule(deps.checkpoint)
   let checkpoints: Promise<unknown> = Promise.resolve()
-  const outputTokensOf = (value: string) => estimateTextTokens(value, tokensPerChar)
-  const result = streamText({
+  const result = createChatStream({
     model: streamModel,
-    ...(faultMode ? { maxRetries: 0 } : {}),
-    allowSystemInMessages: true,
+    provider: model.provider,
     messages: prompt.map((message) => ({ role: message.role, content: message.text })),
-    ...(context.temperature === undefined ? {} : { temperature: context.temperature }),
+    thinking: thinking ? (input.thinking ?? textConfig.thinking.default === 'on') : undefined,
+    continuation: continuation === 'native' && !faultMode,
+    displayReasoning: textConfig.reasoning.display,
+    inputTokens,
+    tokensPerChar,
     maxOutputTokens: Math.min(
       budget.maxOutputTokens,
       context.maxOutputTokens ?? budget.maxOutputTokens,
       faultMode ? TEXT_FAULT_MAX_OUTPUT_TOKENS : budget.maxOutputTokens,
     ),
-    abortSignal: controller.signal,
-    // 用量检查点（tasks 2.5）：不阻塞读流，写入串行；写入失败只记日志。
-    // 消息已被停止接口或兜底处理器结束（其他 isolate）时中止上游生成
-    onChunk: ({ chunk }) => {
-      if (chunk.type !== 'text-delta') return
-      text += chunk.text
-      const outputTokens = outputTokensOf(text)
-      if (!schedule.due(outputTokens)) return
-      const snapshot = text
+    temperature: context.temperature,
+    controller,
+    deadline: holdDeadline,
+    retryDelay: deps.retryDelay ?? chatRetryDelay,
+    checkpoint: (snapshot) => {
+      // 输出归零意味着丢弃无正文 attempt，必须立刻替换持久化检查点。
+      if (snapshot.outputTokens === 0) schedule = checkpointSchedule(deps.checkpoint)
+      else if (!schedule.due(snapshot.outputTokens)) return
       checkpoints = checkpoints.then(async () => {
         try {
           const streaming = await writeUsageCheckpoint(db, {
             workspaceId,
             messageId: assistantId,
-            inputTokens,
-            outputTokens,
-            text: snapshot,
+            ...snapshot,
+            reasoning: textConfig.reasoning.display ? snapshot.reasoning : '',
+            failedReplyRefund: textConfig.failedReplyRefund,
           })
           if (!streaming) controller.abort('settled')
         } catch (error) {
@@ -396,62 +404,40 @@ export async function startWorkspaceChat(
         }
       })
     },
-    onEnd: (event) => {
-      end = { text: event.text, usage: event.totalUsage }
-    },
-    onError: ({ error }) => {
-      streamFailed = true
-      log.error('ai.chat.stream_error', { messageId: assistantId, error })
+    settle: async (outcome) => {
+      await checkpoints
+      const usage = {
+        workspaceId,
+        messageId: assistantId,
+        holdId,
+        pricing,
+        overage,
+        text: outcome.text,
+        ...(textConfig.reasoning.display ? { reasoning: outcome.reasoning } : {}),
+        inputTokens: outcome.inputTokens,
+        outputTokens: outcome.outputTokens,
+        reasoningTokens: outcome.reasoningTokens,
+        absorbed: outcome.absorbed,
+        total: outcome.total,
+        usageSource: outcome.usageSource,
+        failedReplyRefund: textConfig.failedReplyRefund,
+      }
+      try {
+        if (outcome.status === 'completed') await settleChatMessage(db, usage)
+        else
+          await settleInterruptedChatMessage(db, {
+            ...usage,
+            status: outcome.status,
+            hasOutput: outcome.text !== '',
+          })
+      } catch (error) {
+        log.error('ai.chat.settle_failed', { messageId: assistantId, error })
+      } finally {
+        activeChats.delete(assistantId)
+      }
     },
   })
-
-  // 读完模型流后结算：完成 → 按实际用量；停止 → aborted、出错 → failed，均按已产生用量。
-  // 结算失败时预扣保持 held，由超时兜底处理器结算；已被另一方结算时不重复结算
-  const done = (async () => {
-    // 中止与服务商错误已由 onError / 中止原因处理，这里只读完流
-    await result.consumeStream({
-      onError: () => {
-        streamFailed = true
-      },
-    })
-    await checkpoints
-    try {
-      if (end && !streamFailed) {
-        await settleChatMessage(db, {
-          workspaceId,
-          messageId: assistantId,
-          holdId,
-          pricing,
-          text: end.text,
-          inputTokens: end.usage.inputTokens ?? inputTokens,
-          outputTokens: end.usage.outputTokens ?? outputTokensOf(end.text),
-          usageSource:
-            end.usage.inputTokens !== undefined && end.usage.outputTokens !== undefined
-              ? 'actual'
-              : 'estimated',
-          overage,
-        })
-      } else {
-        await settleInterruptedChatMessage(db, {
-          workspaceId,
-          messageId: assistantId,
-          holdId,
-          pricing,
-          overage,
-          status: controller.signal.aborted ? 'aborted' : 'failed',
-          text,
-          inputTokens,
-          outputTokens: outputTokensOf(text),
-          hasOutput: text !== '',
-          usageSource: 'estimated',
-        })
-      }
-    } catch (error) {
-      log.error('ai.chat.settle_failed', { messageId: assistantId, error })
-    } finally {
-      activeChats.delete(assistantId)
-    }
-  })()
+  const done = result.done.then(() => {})
   activeChats.set(assistantId, { abort: () => controller.abort('stop'), done })
   deps.waitUntil(done)
 

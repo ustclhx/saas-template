@@ -12,6 +12,7 @@ import {
   MIN_OUTPUT_TOKENS,
   planTextBudget,
   textModelConfig,
+  textModelConfigSchema,
   truncateHistory,
 } from './budget.ts'
 import { AI_PROVIDER_NOT_CONFIGURED, defaultLanguageModelFactory } from './model.ts'
@@ -56,11 +57,43 @@ describe('输入 token 保守估算', () => {
       textModelConfig({
         paramsSchema: { 'x-text': { tokensPerChar: 1.5, maxOutputTokens: 8000 } },
       }),
-    ).toEqual({ tokensPerChar: 1.5, maxOutputTokens: 8000 })
-    const defaults = { tokensPerChar: DEFAULT_TOKENS_PER_CHAR, maxOutputTokens: 4096 }
+    ).toEqual({
+      tokensPerChar: 1.5,
+      maxOutputTokens: 8000,
+      thinking: false,
+      continuation: 'none',
+    })
+    const defaults = {
+      tokensPerChar: DEFAULT_TOKENS_PER_CHAR,
+      maxOutputTokens: 4096,
+      thinking: false,
+      continuation: 'none',
+    }
     expect(textModelConfig({ paramsSchema: null })).toEqual(defaults)
     expect(textModelConfig({ paramsSchema: { 'x-text': { tokensPerChar: -1 } } })).toEqual(defaults)
     expect(DEFAULT_MAX_OUTPUT_TOKENS).toBe(4096)
+  })
+
+  it('按模型声明 thinking 与原生续写能力，严格拒绝非法能力与未知键', () => {
+    expect(
+      textModelConfig({ paramsSchema: { 'x-text': { thinking: true, continuation: 'native' } } }),
+    ).toMatchObject({ thinking: true, continuation: 'native' })
+    expect(textModelConfigSchema.safeParse({ thinking: false, continuation: 'none' }).success).toBe(
+      true,
+    )
+    for (const config of [
+      { thinking: 'true' },
+      { thinking: null },
+      { continuation: 'prompt' },
+      { continuation: true },
+      { thinking: true, unknown: true },
+    ]) {
+      expect(textModelConfigSchema.safeParse(config).success).toBe(false)
+      expect(textModelConfig({ paramsSchema: { 'x-text': config } })).toMatchObject({
+        thinking: false,
+        continuation: 'none',
+      })
+    }
   })
 
   it('按上限截断历史：丢弃最早的消息，至少保留最后一条', () => {

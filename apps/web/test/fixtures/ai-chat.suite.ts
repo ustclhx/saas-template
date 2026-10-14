@@ -1,6 +1,6 @@
 import { chatHoldSweeper, type LanguageModelFactory, settleInterruptedChatMessage } from '@saas/ai'
 import { createAuth } from '@saas/auth'
-import { defineTemplateConfig } from '@saas/config'
+import { defineTemplateConfig, type TemplateConfig } from '@saas/config'
 import { getCreditBalance, grant, hold, reconcileWorkspaceCredits } from '@saas/credits'
 import {
   type AiPricingJson,
@@ -141,6 +141,7 @@ export function registerAiChatSuite(
     mock?: MockLanguageModelV4
     rateLimiter?: RateLimiter
     env?: ChatDeps['env']
+    textConfig?: TemplateConfig['ai']['text']
   }) {
     const background = runtime.background()
     const deps: ChatDeps = {
@@ -155,6 +156,8 @@ export function registerAiChatSuite(
         features: { ...DEFAULT_FREE_FEATURES, models: ['*'] },
       }),
       overage: OVERAGE,
+      retryDelay: async () => {},
+      ...(options.textConfig ? { textConfig: options.textConfig } : {}),
       ...(options.mock
         ? {
             languageModelFactory:
@@ -170,12 +173,13 @@ export function registerAiChatSuite(
   /** 发起请求但不读取响应，用于在流式过程中观察检查点或调用停止接口 */
   async function begin(
     who: { slug: string; cookie: string },
-    body: { modelId: string; text: string; conversationId?: string },
+    body: { modelId: string; text: string; conversationId?: string; thinking?: boolean },
     options: {
       factory?: LanguageModelFactory
       mock?: MockLanguageModelV4
       rateLimiter?: RateLimiter
       env?: ChatDeps['env']
+      textConfig?: TemplateConfig['ai']['text']
     } = {},
   ) {
     const { deps, background } = chatDeps(options)
@@ -186,6 +190,7 @@ export function registerAiChatSuite(
         body: JSON.stringify({
           slug: who.slug,
           modelId: body.modelId,
+          ...(body.thinking !== undefined ? { thinking: body.thinking } : {}),
           ...(body.conversationId ? { conversationId: body.conversationId } : {}),
           message: { role: 'user', parts: [{ type: 'text', text: body.text }] },
         }),
@@ -214,12 +219,13 @@ export function registerAiChatSuite(
 
   async function send(
     who: { slug: string; cookie: string },
-    body: { modelId: string; text: string; conversationId?: string },
+    body: { modelId: string; text: string; conversationId?: string; thinking?: boolean },
     options: {
       factory?: LanguageModelFactory
       mock?: MockLanguageModelV4
       rateLimiter?: RateLimiter
       env?: ChatDeps['env']
+      textConfig?: TemplateConfig['ai']['text']
     } = {},
   ) {
     const { response, settled } = await begin(who, body, options)
@@ -763,7 +769,7 @@ export function registerAiChatSuite(
   }
 
   describe('估算结算封顶（tasks 2.8）', () => {
-    it('中断时显式提供真实 usage：保持超额承担与余额补扣规则', async () => {
+    it('失败时显式提供真实 usage：费用仍以预扣封顶', async () => {
       const me = await member('interrupted-actual', 100)
       const pricing = { mode: 'token' as const, inputPer1k: 10, outputPer1k: 10 }
       const modelId = await textModel(pricing, 1000)
@@ -784,16 +790,16 @@ export function registerAiChatSuite(
         outputTokens: 1000,
         hasOutput: true,
       })
-      // 真实金额 14、预扣 11：承担 2，补扣 1。后续原流结束不得改写先结算者的状态。
-      expect(settlement).toEqual({ captured: 11, absorbed: 2, debited: 1, debt: 0 })
+      // 真实金额 14、预扣 11：failed 仍封顶 11，原流结束不能改写先结算者的状态。
+      expect(settlement).toEqual({ captured: 11, absorbed: 0, debited: 0, debt: 0 })
       gated.open(0)
       await bodyText(response)
       await settled()
       expect((await assistantMessage(conversationId)).message).toMatchObject({
         status: 'failed',
-        credits: 12,
+        credits: 11,
       })
-      expect(await getCreditBalance(db, me.workspaceId)).toMatchObject({ available: 88, debt: 0 })
+      expect(await getCreditBalance(db, me.workspaceId)).toMatchObject({ available: 89, debt: 0 })
       await assertInvariant(me.workspaceId)
     })
 
@@ -861,7 +867,7 @@ export function registerAiChatSuite(
     )
 
     it.each(['checkpoint', 'minimum'] as const)(
-      '超时兜底 %s：估算与 minCharge 均不超过预扣',
+      '超时兜底 %s：有正文封顶预扣，无正文全退',
       async (path) => {
         const me = await member(`cap-sweep-${path}`, 100)
         const conversationId = newId()
@@ -903,11 +909,264 @@ export function registerAiChatSuite(
           if (!expired) throw new Error('hold missing')
           await chatHoldSweeper({ overage: OVERAGE })({ db, tx, hold: expired })
         })
-        const { message } = await assertCapped(me.workspaceId, conversationId, 2)
+        const { message, hold: reservationResult } =
+          path === 'checkpoint'
+            ? await assertCapped(me.workspaceId, conversationId, 2)
+            : await assistantMessage(conversationId)
+        if (path === 'minimum') {
+          expect(message.credits).toBe(0)
+          expect(reservationResult?.status).toBe('released')
+          expect(await consumeLedger(me.workspaceId)).toEqual([])
+          await assertInvariant(me.workspaceId)
+        }
         expect(message.status).toBe('failed')
         expect(message.output_tokens).toBe(path === 'checkpoint' ? 960 : 0)
       },
     )
+  })
+
+  describe('reasoning 重试与原生续写', () => {
+    const tokenPricing = { mode: 'token' as const, inputPer1k: 10, outputPer1k: 10 }
+    const callPricing = {
+      mode: 'per_call' as const,
+      credits: 3,
+      limits: { maxInputTokens: 4000, maxOutputTokens: 1000 },
+    }
+    const policy = (options: Partial<TemplateConfig['ai']['text']> = {}) => ({
+      ...defineTemplateConfig({
+        app: { name: 'TestApp', url: APP_URL, supportEmail: 'support@example.test' },
+      }).ai.text,
+      ...options,
+    })
+
+    async function resilientModel(pricing: AiPricingJson, thinking = true, continuation = true) {
+      const id = await textModel(pricing, 1000)
+      await db
+        .update(aiModel)
+        .set({
+          provider: 'deepseek',
+          paramsSchema: {
+            'x-text': {
+              maxOutputTokens: 1000,
+              thinking,
+              continuation: continuation ? 'native' : 'none',
+            },
+          },
+        })
+        .where(eq(aiModel.id, id))
+      return id
+    }
+
+    /** 每次上游调用用一段独立脚本，断开保留此前真正下发的正文。 */
+    function attempts(scripts: { text?: string; reasoning?: string; fail?: boolean }[]) {
+      let attempt = 0
+      return new MockLanguageModelV4({
+        doStream: async () => {
+          const script = scripts[attempt++]
+          if (!script) throw new Error('unexpected extra attempt')
+          const chunks = []
+          if (script.reasoning)
+            chunks.push(
+              { type: 'reasoning-start' as const, id: 'r' },
+              { type: 'reasoning-delta' as const, id: 'r', delta: script.reasoning },
+              { type: 'reasoning-end' as const, id: 'r' },
+            )
+          if (script.text)
+            chunks.push(
+              { type: 'text-start' as const, id: 't' },
+              { type: 'text-delta' as const, id: 't', delta: script.text },
+              { type: 'text-end' as const, id: 't' },
+            )
+          if (script.fail)
+            chunks.push({ type: 'error' as const, error: new Error('provider disconnected') })
+          else
+            chunks.push({
+              ...USAGE_FINISH(100, 200),
+              usage: {
+                inputTokens: {
+                  total: 100,
+                  noCache: 100,
+                  cacheRead: undefined,
+                  cacheWrite: undefined,
+                },
+                outputTokens: {
+                  total: 200,
+                  text: script.text ? 150 : 0,
+                  reasoning: script.reasoning ? 50 : 0,
+                },
+              },
+            })
+          return {
+            stream: simulateReadableStream({ chunks, initialDelayInMs: 0, chunkDelayInMs: 0 }),
+          }
+        },
+      })
+    }
+
+    it('仅 reasoning 后成功：同一预扣重试，仅保存最终 reasoning 与成功用量', async () => {
+      const me = await member('reasoning-retry', 100)
+      const modelId = await resilientModel(tokenPricing)
+      const mock = attempts([
+        { reasoning: 'discarded thought' },
+        { reasoning: 'final thought', text: 'answer' },
+      ])
+      const { response, stream } = await send(
+        me,
+        { modelId, text: 'hi' },
+        {
+          factory: () => mock,
+          textConfig: policy({ reasoning: { display: true } }),
+        },
+      )
+      const conversationId = response.headers.get('x-conversation-id') as string
+      const { message, hold: reservation } = await assistantMessage(conversationId)
+      expect(mock.doStreamCalls).toHaveLength(2)
+      expect(streamedText(stream)).toBe('answer')
+      expect(stream).toContain('"type":"data-retry"')
+      expect(message).toMatchObject({
+        status: 'completed',
+        credits: 3,
+        input_tokens: 100,
+        output_tokens: 200,
+        parts: [
+          { type: 'reasoning', text: 'final thought' },
+          { type: 'text', text: 'answer' },
+        ],
+        usage_checkpoint: {
+          reasoningTokens: 50,
+          absorbed: { inputTokens: 100, outputTokens: 200, reasoningTokens: 50 },
+        },
+      })
+      expect(reservation).toMatchObject({ status: 'captured', captured_amount: 3 })
+      const [counts] = await sql<{ messages: number; holds: number }[]>`
+        select (select count(*)::int from ai_message where conversation_id=${conversationId} and role='assistant') as messages,
+          (select count(*)::int from credit_hold where workspace_id=${me.workspaceId}) as holds`
+      expect(counts).toEqual({ messages: 1, holds: 1 })
+      await assertInvariant(me.workspaceId)
+    })
+
+    it.each([tokenPricing, callPricing])('仅 reasoning 重试耗尽免费：$mode', async (pricing) => {
+      const me = await member('reasoning-exhausted', 100)
+      const modelId = await resilientModel(pricing)
+      const mock = attempts(Array.from({ length: 3 }, () => ({ reasoning: 'hidden thought' })))
+      const { response, stream } = await send(me, { modelId, text: 'hi' }, { factory: () => mock })
+      expect(mock.doStreamCalls).toHaveLength(3)
+      expect(stream.match(/"type":"data-retry"/g)).toHaveLength(2)
+      expect(stream).not.toContain('hidden thought')
+      expect(
+        await assistantMessage(response.headers.get('x-conversation-id') as string),
+      ).toMatchObject({
+        message: { status: 'failed', parts: [], credits: 0 },
+        hold: { status: 'released' },
+      })
+      expect(await consumeLedger(me.workspaceId)).toEqual([])
+      expect(await getCreditBalance(db, me.workspaceId)).toMatchObject({ available: 100, held: 0 })
+      await assertInvariant(me.workspaceId)
+    })
+
+    it('有正文中断后原生续写：正文连续追加且仅结算一次', async () => {
+      const me = await member('native-continuation', 100)
+      const modelId = await resilientModel(callPricing)
+      const mock = attempts([{ text: 'first ', fail: true }, { text: 'second' }])
+      const { response, stream } = await send(me, { modelId, text: 'hi' }, { factory: () => mock })
+      expect(mock.doStreamCalls).toHaveLength(2)
+      expect(mock.doStreamCalls[1]?.prompt.at(-1)).toMatchObject({
+        role: 'assistant',
+        content: [{ type: 'text', text: 'first ' }],
+        providerOptions: { deepseek: { prefix: true } },
+      })
+      expect(streamedText(stream)).toBe('first second')
+      expect(
+        await assistantMessage(response.headers.get('x-conversation-id') as string),
+      ).toMatchObject({
+        message: {
+          status: 'completed',
+          parts: [{ type: 'text', text: 'first second' }],
+          credits: 3,
+        },
+        hold: { status: 'captured', captured_amount: 3 },
+      })
+      expect(await consumeLedger(me.workspaceId)).toEqual([{ delta: -3 }])
+      await assertInvariant(me.workspaceId)
+    })
+
+    it.each(['no-visible-output', 'all'] as const)(
+      '续写耗尽 %s：保存正文，失败全退开关决定收费',
+      async (failedReplyRefund) => {
+        const me = await member('continuation-failed', 100)
+        const modelId = await resilientModel(callPricing)
+        const mock = attempts([
+          { text: 'partial', reasoning: 'private thought', fail: true },
+          { fail: true },
+          { fail: true },
+        ])
+        const { response } = await send(
+          me,
+          { modelId, text: 'hi' },
+          {
+            factory: () => mock,
+            textConfig: policy({ failedReplyRefund, reasoning: { display: true } }),
+          },
+        )
+        const conversationId = response.headers.get('x-conversation-id') as string
+        const { message, hold: reservation } = await assistantMessage(conversationId)
+        expect(mock.doStreamCalls).toHaveLength(3)
+        const credits = failedReplyRefund === 'all' ? 0 : 3
+        expect(message).toMatchObject({ status: 'failed', credits })
+        expect(message.parts).toContainEqual({ type: 'text', text: 'partial' })
+        expect(reservation?.status).toBe(credits ? 'captured' : 'released')
+        // 模型下一轮看到用户已经看到的 failed 正文，reasoning 始终隔离。
+        const next = attempts([{ text: 'next answer' }])
+        await send(me, { modelId, text: 'continue', conversationId }, { factory: () => next })
+        const history = JSON.stringify(next.doStreamCalls[0]?.prompt)
+        expect(history).toContain('partial')
+        expect(history).not.toContain('private thought')
+        await assertInvariant(me.workspaceId)
+      },
+    )
+
+    it('thinking 按模板与单条请求映射；禁止切换时拒绝，不支持的模型忽略', async () => {
+      const me = await member('thinking-policy', 100)
+      const modelId = await resilientModel(callPricing)
+      const denied = attempts([{ text: 'unused' }])
+      expect(
+        (await send(me, { modelId, text: 'hi', thinking: true }, { factory: () => denied }))
+          .response.status,
+      ).toBe(400)
+      expect(denied.doStreamCalls).toHaveLength(0)
+      const off = attempts([{ text: 'off' }])
+      await send(me, { modelId, text: 'hi' }, { factory: () => off })
+      expect(off.doStreamCalls[0]?.providerOptions).toMatchObject({
+        deepseek: { thinking: { type: 'disabled' } },
+      })
+      const on = attempts([{ text: 'on' }])
+      await send(
+        me,
+        { modelId, text: 'hi', thinking: true },
+        {
+          factory: () => on,
+          textConfig: policy({ thinking: { default: 'off', userToggle: true } }),
+        },
+      )
+      expect(on.doStreamCalls[0]?.providerOptions).toMatchObject({
+        deepseek: { thinking: { type: 'enabled' } },
+      })
+      const unsupportedId = await resilientModel(callPricing, false)
+      const unsupported = attempts([{ reasoning: 'hidden', text: 'plain' }])
+      const { response, stream } = await send(
+        me,
+        { modelId: unsupportedId, text: 'hi', thinking: true },
+        {
+          factory: () => unsupported,
+          textConfig: policy({ thinking: { default: 'on', userToggle: true } }),
+        },
+      )
+      expect(unsupported.doStreamCalls[0]?.providerOptions?.deepseek).toBeUndefined()
+      expect(stream).not.toContain('hidden')
+      expect(
+        (await assistantMessage(response.headers.get('x-conversation-id') as string)).message.parts,
+      ).toEqual([{ type: 'text', text: 'plain' }])
+    })
   })
 
   describe('用量检查点（tasks 2.5）', () => {
@@ -1228,7 +1487,7 @@ export function registerAiChatSuite(
       const result = await assistantMessage(conversationId)
       const mid = mode === 'chat-mid-stream'
       const output = mid ? 'abcdefgh'.repeat(25) : ''
-      const charged = kind === 'token' ? (mid ? 21 : 2) : mid ? 3 : 0
+      const charged = mid ? (kind === 'token' ? 21 : 3) : 0
       expect(streamedText(stream)).toBe(output)
       expect(result.message).toMatchObject({
         status: 'failed',
@@ -1423,7 +1682,7 @@ export function registerAiChatSuite(
       expect(await consumeLedger(me.workspaceId)).toEqual([])
     })
 
-    it('按 token 且无输出即出错：收最低费用（按估算输入，不低于 minCharge）', async () => {
+    it('按 token 且无输出即出错：预扣全退，不收 minCharge', async () => {
       const me = await member('error-token', 100)
       const modelId = await textModel(
         { mode: 'token', inputPer1k: 1, outputPer1k: 10, minCharge: 2 },
@@ -1433,8 +1692,8 @@ export function registerAiChatSuite(
       expect(
         await assistantMessage(response.headers.get('x-conversation-id') as string),
       ).toMatchObject({
-        message: { status: 'failed', parts: [], credits: 2 },
-        hold: { status: 'captured', captured_amount: 2 },
+        message: { status: 'failed', parts: [], credits: 0 },
+        hold: { status: 'released' },
       })
     })
 

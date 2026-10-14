@@ -4,6 +4,7 @@ import { Button, Label } from '@saas/ui'
 import { Link } from '@tanstack/react-router'
 import { DefaultChatTransport } from 'ai'
 import { useMemo, useRef, useState } from 'react'
+import { templateConfig } from '../../server/template-config.ts'
 import { FormAlert } from '../auth/auth-layout.tsx'
 import { HydratedControls } from '../workspace/components.tsx'
 import {
@@ -13,6 +14,8 @@ import {
   chatErrorMessage,
   chatRequestBody,
   conversationTitle,
+  messageReasoning,
+  messageRetrying,
   messageText,
   type StoredMessage,
   stopResponseSchema,
@@ -46,6 +49,7 @@ export function ChatPage({
 }) {
   const [modelId, setModelId] = useState(models[0]?.id)
   const [input, setInput] = useState('')
+  const [thinking, setThinking] = useState(templateConfig.ai.text.thinking.default === 'on')
   const [title, setTitle] = useState(conversation.title)
   // 停止接口返回的消息状态，覆盖流中的状态显示
   const [ended, setEnded] = useState<Record<string, ChatMessageStatus>>({})
@@ -53,6 +57,8 @@ export function ChatPage({
   // transport 只创建一次，发送时读取当前选择的模型
   const modelRef = useRef(modelId)
   modelRef.current = modelId
+  const thinkingRef = useRef(thinking)
+  thinkingRef.current = thinking
   const titleRef = useRef(title)
 
   const transport = useMemo(
@@ -65,6 +71,9 @@ export function ChatPage({
             modelId: modelRef.current ?? '',
             conversationId: conversation.id,
             messages,
+            ...(templateConfig.ai.text.thinking.userToggle
+              ? { thinking: thinkingRef.current }
+              : {}),
           }),
         }),
       }),
@@ -171,6 +180,17 @@ export function ChatPage({
       >
         <HydratedControls>
           <ModelPicker models={models} value={modelId} onChange={setModelId} disabled={busy} />
+          {templateConfig.ai.text.thinking.userToggle ? (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={thinking}
+                disabled={busy || readOnly}
+                onChange={(event) => setThinking(event.target.checked)}
+              />
+              Thinking
+            </label>
+          ) : null}
           <p className="grid gap-1">
             <Label htmlFor="chat-input">Message</Label>
             <textarea
@@ -214,6 +234,8 @@ function ChatMessage({
   status: ChatMessageStatus | undefined
   live: boolean
 }) {
+  const reasoning = templateConfig.ai.text.reasoning.display ? messageReasoning(message) : ''
+  const retrying = live && messageRetrying(message)
   const note =
     status === 'aborted'
       ? 'Stopped'
@@ -225,7 +247,14 @@ function ChatMessage({
   return (
     <li className="grid gap-1" data-role={message.role} aria-label={roleName(message.role)}>
       <span className="text-muted-foreground text-sm">{roleName(message.role)}</span>
+      {reasoning ? (
+        <details className="text-muted-foreground text-sm">
+          <summary>Reasoning</summary>
+          <p className="whitespace-pre-wrap">{reasoning}</p>
+        </details>
+      ) : null}
       <p className="whitespace-pre-wrap">{messageText(message)}</p>
+      {retrying ? <span role="status">Retrying…</span> : null}
       {note ? <span className="text-muted-foreground text-sm">{note}</span> : null}
     </li>
   )

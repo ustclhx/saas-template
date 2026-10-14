@@ -147,6 +147,7 @@ export async function handleCompletions(
           for await (const part of started.result.fullStream) {
             if (cancelled) break
             if (part.type === 'error') throw part.error
+            // 公开协议只转发正文；reasoning 与内部重试信号均不泄露给 API key 客户端。
             if (part.type === 'text-delta') send(chunk({ content: part.text }))
           }
           await started.done
