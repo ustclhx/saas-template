@@ -91,7 +91,7 @@ Docker save 的 config 内容 hash、本地 image ID 与 registry manifest/index
 也不证明正式 GHCR 两架构 revision/发布信任门。首次发布已在用户授权后成功，见下文；后续先确认main CI与两架构smoke成功，再下载
 成功image-set，按同SHA build/verify/config验收。不要自行触发publish workflow。
 
-备份、restore/drill与副本脚本已经交付；本次补齐未来release的完整运行白名单。
+备份、restore/drill与副本脚本已经交付；第二次正式release已包含完整运行白名单。
 打包器按指定Git SHA自身的受审白名单打包，校验器只接受原17项或新24项的确切集合，
 不接受任意manifest文件名。旧SHA仍使用旧工具和白名单，不将未发布修复冒充该SHA材料。
 B/D ownership、VM全栈恢复和真实服务器验收仍待签收。
@@ -117,7 +117,26 @@ revision 是另一提交，因此该材料明示 fixture，拒绝作为正式同
 restore/drill/replica及附加env示例。当前补齐只影响包含修复的后续source SHA，完整恢复
 bundle的正式发布签收仍待协调者决定新发布，不能用本地fixture代替。
 
+以上缺口仅适用于首次发布，第二次发布的完整材料见下文。
+
 `Selfhost released bundle acceptance` 是独立只读CI：读取上述成功集合，匿名pull八镜像，
 空卷执行bundle初部署、已有版本升级、失败与回滚。第二版本为本地registry元数据变体，
 明确fixture，业务/schema/handler不改，不能用来宣称第二个正式GHCR版本已发布。
 CI artifact包含原SHA部署bundle、image-set与脱敏演练报告；真实server/ownership仍待签收。
+
+## 第二次正式 GHCR 集合与完整 bundle（2026-10-14）
+
+用户已批准的[发布 run 38588820873](https://github.com/ustclhx/saas-template/actions/runs/38588820873)
+成功，源 SHA `081305013b022f457c561eecf5828b1959e13908`，namespace
+`ghcr.io/ustclhx/saas-template`；八服务的 amd64/arm64 smoke 与完整集合发布成功。
+从该 run 下载 `selfhost-image-set-081305013b022f457c561eecf5828b1959e13908`，
+按同 SHA Git 对象重新生成 24 项完整运行 bundle，其 manifest 与该 run 的
+`selfhost-release-081305013b022f457c561eecf5828b1959e13908` 压缩 artifact 一致。
+包内校验器 verify、干净目录基础/backup/object-storage/replica/组合/外部代理 config 均通过。
+
+恢复材料包含 `restore.sh`、`restore-drill.sh`、`backup/restore.py`、`compose.replica.yaml`
+和三份附加无真值 env 示例。共 27 个文件有 checksum，另有 `release.json`；
+所有镜像引用固定到该发布集合的 digest，包内没有业务源码、构建文件或运行真值。
+验收 workflow 已固定到这次成功发布，并拒绝缺少上述恢复材料的 bundle。
+证据与可重复命令见 [d-bundle2 报告](evidence/selfhost/d-bundle2-2026-10-14/report.md)。
+后续发布仍由协调者决定，不重触发 `selfhost-publish` 或覆写正式 SHA。

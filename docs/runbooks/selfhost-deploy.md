@@ -103,5 +103,6 @@ DBOS checkpoint/ownership恢复或真实五分钟slot。正式业务镜像的空
 bundle与registry镜像，第二版仅为本地registry版本元数据fixture。保留真实已完成DBOS
 状态不等于未完成任务恢复；后者及6.3仍依赖1.5签收，2.1/2.3仅按已完成证据判断。
 
-首次真实GHCR发布已授权并成功；旧SHA恢复bundle未齐，第7组主机/入口/备份/重启均BLOCKED；
+第二次真实GHCR发布已授权并成功，完整恢复bundle已齐，见[release](selfhost-release.md#第二次正式-ghcr-集合与完整-bundle2026-10-14)。
+2.1/2.3仍依赖B/D1.5签收，第7组主机/入口/备份/重启均BLOCKED；
 没有连接 `product-res-ecs` 或其他真实服务器，不手动部署Cloudflare staging。
