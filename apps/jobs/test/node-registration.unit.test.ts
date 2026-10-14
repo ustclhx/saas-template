@@ -151,14 +151,14 @@ it('enables ten-minute object cleanup only for assembled file capability', async
   dispose()
 })
 
-it('uses text.enabled to register text recovery and credit maintenance', () => {
+it('uses explicit module and text.enabled flags rather than payment provider presence', () => {
   const config = defineTemplateConfig({
     app: disabled.app,
-    billing: { providers: [], signupBonusCredits: 0 },
+    billing: { enabled: true, providers: [], signupBonusCredits: 0 },
     ai: { text: { enabled: true }, image: false, video: false },
   })
   expect(getNodeJobFeatures(config)).toEqual({
-    billing: false,
+    billing: true,
     credits: true,
     text: true,
     media: false,
