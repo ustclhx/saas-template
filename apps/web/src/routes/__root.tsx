@@ -49,7 +49,7 @@ function RootComponent() {
       <ProductAnalytics />
       <ImpersonationBanner viewer={impersonation} />
       <AnnouncementBanner initial={announcement} />
-      <LanguageControls />
+      {templateConfig.i18n.enabled && <LanguageControls />}
       <Outlet />
     </RootDocument>
   )

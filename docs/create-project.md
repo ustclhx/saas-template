@@ -29,8 +29,12 @@ pnpm create-project --name acme --domain acme.example --target selfhost --output
 `--billing` 仍为支付 Provider 列表，空列表与关闭模块分别处理。
 启用 billing 要求启用 credits；关闭 billing 时必须 `--ai ''`（现有 AI 额度依赖套餐）。
 可以保留 credits 开启并关闭 billing，用于赠送积分；生成清单不要求支付 secret 或 billing seed。
-开关写入模板，副本继续使用同一套业务源码。关闭 i18n 的单语言路由与关闭营销后的应用首页
-接线属于后续 3.5，本次只生成配置，不将这两个开关的路由验收视为完成。
+开关写入模板，副本继续使用同一套业务源码。关闭营销后，`/` 转向 `/app`：未登录进入
+登录页，已登录进入活跃或个人空间；定价、博客、文档、法律页、增长页面、公开增长 API、
+robots 与 sitemap 不加入路由，营销页不预渲染，也不生成营销 OG 图。
+关闭 i18n 后只编译 `--locale` 所选语言，所有路径无语言前缀，语言控件隐藏；
+账号语言、Cookie 与 Accept-Language 不改变显示语言，`/en/...`、`/zh/...` 返回 404。
+已有未接入 Paraglide 的固定文案仍按原页面显示；关闭开关不额外翻译这些文案。
 生成器修改 ai.text.enabled 时保留其 thinking、reasoning、failedReplyRefund 等设置。
 
 默认开启文本、图片、视频、Stripe、PayPal、Google、GitHub 与 Turnstile，
@@ -88,9 +92,12 @@ backups/backup-data/、releases/release-state/、state/.state/ 等运行目录�
 测试使用 Node 内置 test runner，在临时目录验证改名、真值排除、功能清单和路径边界，
 无论成功或失败均清理测试目录；不向源树注入测试密钥。
 
-完整副本验证使用 `pnpm test:create-project:verify`：从真实工作树生成临时项目，
-逐文件确认模板原名称与排除目录不存在，再安装依赖并运行 typecheck 与单元测试，
-结束后清理临时目录。该命令单独运行，避免日常边界测试重复安装完整依赖。
+完整副本验证使用 `pnpm test:create-project:verify`：从真实工作树生成 CF 默认、selfhost 默认、
+selfhost 全关计费/积分/营销/i18n/AI 三个临时项目，逐文件确认模板原名称与排除目录不存在，
+安装依赖并运行 typecheck、单元测试与 Node build，同时验证副本再次生成。结束后清理临时目录。
+独立只读 `selfhost-features.yml` 从真实源生成全关副本、构建镜像并在空卷 Compose 启动，
+实际验证 SSR/静态资源、登录/空间、关闭入口、成功 heartbeat 与完整 SHA。
+该命令单独运行，避免日常边界测试重复安装完整依赖。
 
 新库初始化时，先以 migrator 应用已有迁移，再将新库 app 连接通过进程环境传给
 `pnpm billing:seed`（变量名为 `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`）。

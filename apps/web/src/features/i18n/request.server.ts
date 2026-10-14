@@ -2,6 +2,7 @@ import { AppError } from '@saas/shared'
 import { baseLocale, cookieName, isLocale, type Locale } from '../../paraglide/runtime.js'
 import { paraglideMiddleware } from '../../paraglide/server.js'
 import type { WebRuntime } from '../../server/runtime.ts'
+import { templateConfig } from '../../server/template-config.ts'
 import { languageUrl, localeCookie, readCookie, usesAccountLocale } from './preference.ts'
 import { readRequestSession, withSessionCache } from './session.server.ts'
 
@@ -11,6 +12,8 @@ export function localizeRequest(
   runtime: Pick<WebRuntime, 'db' | 'auth'>,
   next: () => Response | Promise<Response>,
 ): Promise<Response> {
+  // 单语言构建只使用 baseLocale，不读取账号或 Cookie，也不按 URL 自动跳转。
+  if (!templateConfig.i18n.enabled) return paraglideMiddleware(request, next)
   const url = new URL(request.url)
   // 认证端点可能修改会话；不读取、不缓存会话，也不改 Cookie。
   if (url.pathname.startsWith('/api/')) return paraglideMiddleware(request, next)

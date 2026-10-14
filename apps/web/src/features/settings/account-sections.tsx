@@ -2,6 +2,7 @@ import { Button, Input, Label, useAppForm } from '@saas/ui'
 import { useRouter } from '@tanstack/react-router'
 import { type ReactNode, useId, useState } from 'react'
 import { baseLocale, isLocale } from '../../paraglide/runtime.js'
+import { templateConfig } from '../../server/template-config.ts'
 import { authClient } from '../auth/auth-client.ts'
 import { rememberLocale } from '../i18n/preference.ts'
 import type { AccountView } from './account.ts'
@@ -154,7 +155,8 @@ export function PreferencesSection({
         timezone: emptyToNull(value.timezone),
       })
       if (error) return setStatus({ kind: 'error', message: errorMessage(error) })
-      rememberLocale(isLocale(value.locale) ? value.locale : baseLocale)
+      if (templateConfig.i18n.enabled)
+        rememberLocale(isLocale(value.locale) ? value.locale : baseLocale)
       window.location.reload()
     },
   })
@@ -162,28 +164,30 @@ export function PreferencesSection({
   return (
     <Section title={copy.heading}>
       <form onSubmit={submitHandler(form.handleSubmit)} noValidate>
-        <form.Field name="locale">
-          {(field) => (
-            <p>
-              <Label htmlFor={field.name}>{copy.locale}</Label>
-              <select
-                id={field.name}
-                name={field.name}
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
-              >
-                <option value="">{copy.localeDefault}</option>
-                {locales.map((l) => (
-                  <option key={l} value={l}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-              <FieldErrors id={`${field.name}-errors`} errors={field.state.meta.errors} />
-            </p>
-          )}
-        </form.Field>
+        {templateConfig.i18n.enabled && (
+          <form.Field name="locale">
+            {(field) => (
+              <p>
+                <Label htmlFor={field.name}>{copy.locale}</Label>
+                <select
+                  id={field.name}
+                  name={field.name}
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                >
+                  <option value="">{copy.localeDefault}</option>
+                  {locales.map((l) => (
+                    <option key={l} value={l}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+                <FieldErrors id={`${field.name}-errors`} errors={field.state.meta.errors} />
+              </p>
+            )}
+          </form.Field>
+        )}
         <form.Field name="timezone">
           {(field) => (
             <p>

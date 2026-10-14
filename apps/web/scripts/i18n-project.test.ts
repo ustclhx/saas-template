@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { compile } from '@inlang/paraglide-js'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
+  activeLocales,
   findMissingMessages,
   formatMissingMessages,
   paraglideOptions,
@@ -48,4 +49,48 @@ describe('文案回退与缺失检查（tasks.md 1.3）', () => {
     expect(m.pricing_title?.({}, { locale: 'zh' })).toBe('定价')
     expect(m.common_cancel?.({}, { locale: 'zh' })).toBe('Cancel')
   })
+})
+
+it('关闭 i18n 后真实编译仅保留默认中文，账号 Cookie 和语言 URL 不改变语言', async () => {
+  const singleRoot = mkdtempSync(join(tmpdir(), 'saas-i18n-single-'))
+  try {
+    symlinkSync(
+      new URL('../node_modules', import.meta.url).pathname,
+      join(singleRoot, 'node_modules'),
+    )
+    for (const [locale, text] of [
+      ['en', 'Save'],
+      ['zh', '保存'],
+    ] as const) {
+      mkdirSync(join(singleRoot, 'messages', locale), { recursive: true })
+      writeFileSync(
+        join(singleRoot, 'messages', locale, 'common.json'),
+        JSON.stringify({ common_save: text }),
+      )
+    }
+    const single = { ...i18n, enabled: false, defaultLocale: 'zh' }
+    expect(activeLocales(single)).toEqual(['zh'])
+    expect(activeLocales(i18n)).toEqual(['en', 'zh'])
+    writeInlangProject(single, singleRoot)
+    const options = paraglideOptions(['/app', '/account'], singleRoot, false)
+    expect(options.strategy).toEqual(['baseLocale'])
+    expect(options.routeStrategies ?? []).toEqual([])
+    await compile({ ...options, emitTsDeclarations: false })
+    const runtime = await import(join(singleRoot, 'src/paraglide/runtime.js'))
+    const { m } = await import(join(singleRoot, 'src/paraglide/messages.js'))
+    const { paraglideMiddleware } = await import(join(singleRoot, 'src/paraglide/server.js'))
+    expect(runtime.locales).toEqual(['zh'])
+    expect(runtime.baseLocale).toBe('zh')
+    expect(m.common_save()).toBe('保存')
+    for (const path of ['/app', '/en/pricing', '/zh/pricing']) {
+      const response = await paraglideMiddleware(
+        new Request(`https://example.com${path}`, { headers: { cookie: 'PARAGLIDE_LOCALE=en' } }),
+        () => new Response(runtime.getLocale()),
+      )
+      expect(await response.text()).toBe('zh')
+      expect(response.headers.get('location')).toBeNull()
+    }
+  } finally {
+    rmSync(singleRoot, { recursive: true, force: true })
+  }
 })

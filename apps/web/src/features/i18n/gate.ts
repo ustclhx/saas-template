@@ -1,4 +1,4 @@
-import { isLocale } from '../../paraglide/runtime.js'
+import { templateConfig } from '../../server/template-config.ts'
 import { NOT_FOUND_PATH } from '../admin/gate.ts'
 import { isAppAreaPath } from './app-area.ts'
 
@@ -10,6 +10,8 @@ import { isAppAreaPath } from './app-area.ts'
 export function gateLocaleRequest(request: Request): Request {
   const url = new URL(request.url)
   const [, first, ...rest] = url.pathname.split('/')
-  if (!isLocale(first) || !isAppAreaPath(`/${rest.join('/')}`)) return request
+  const prefixed = templateConfig.i18n.locales.some((locale) => locale === first)
+  if (!prefixed || (templateConfig.i18n.enabled && !isAppAreaPath(`/${rest.join('/')}`)))
+    return request
   return new Request(new URL(NOT_FOUND_PATH, url), request)
 }

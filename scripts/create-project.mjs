@@ -615,17 +615,34 @@ export async function createProject(input, source = root) {
     }
     report = `# ${options.name} selfhost 初始化清单\n\n## 启用功能\n\n- billing=${options.billingEnabled} / credits=${options.creditsEnabled} / marketing=${options.marketing} / i18n=${options.i18n}（默认语言 ${options.locale}）\n- AI：${options.ai.join(',') || '关闭'}\n\n## 运维与资源\n\n${checklist.resources.map((item) => `- [ ] ${item}`).join('\n')}\n\n## 应用配置键（密钥使用受限文件与对应 _FILE；值保持为空）\n\n${[...checklist.vars, ...checklist.secrets].map((key) => `- ${key}`).join('\n')}\n\n## Compose secret 文件\n\n${['postgres_password', 'app_db_password', 'migrator_db_password', 'readonly_db_password', 'app_database_url', 'migrator_database_url', 'valkey_password', 'valkey_url', 'auth_secret', ...options.oauth.map((provider) => `${provider}_client_secret`), ...(options.turnstile ? ['turnstile_secret'] : [])].map((key) => `- secrets/${key}`).join('\n')}\n\n复制 deploy/selfhost/.env.example 后配置 namespace、同 SHA 镜像、域名、TLS 与受限 secret 文件；参考 deploy/selfhost/README.md 和 secrets.example。\n发布 CI 以 namespace 输入装配 IMAGE_NAMESPACE：\n\n    gh workflow run selfhost-publish.yml --ref main -f sha=<full-40-character-main-sha> -f namespace=${options.imageNamespace}\n\n生成副本的功能配置必须重新构建镜像。PR 不获得 registry 写入或服务器 secret，正式发布使用受信提交和完整集合 gate。\n${options.billingEnabled ? '迁移后运行 pnpm billing:seed，并配置模型与套餐授权。' : '应用现有数据库迁移；支付模块关闭。'}\nBOOTSTRAP_ADMIN_EMAILS 可选，仅 web；已验证且未封禁账号才提升；移除名单不会自动撤销管理员。\n自检仅验证单元测试；上线前独立完成 Compose、登录/空间、heartbeat、SHA 与恢复验收。\n\n## 交付材料状态\n\n部署/初始化/恢复脚本：待 owner 交付并确认入口路径，生成器不预设尚未交付的路径。备份镜像仍由 catalog 的 pendingServices 标记；完整集合门尚未放行时不要发布。\n\n${missing.length ? missing.map((path) => `- 待交付：${path}`).join('\n') : '生成副本已继承现有发布/Compose 材料；仍需实际发布与部署验收。'}\n`
   }
+  const entryChecklist = `## 页面与语言\n\n- ${options.marketing ? '营销页面已启用，/ 为营销首页。' : '营销页面关闭，/ 重定向至 /app，作为应用入口；营销路由不可用。'}\n- ${options.i18n ? `多语言已启用，默认语言 ${options.locale}；其他语言使用语言前缀。` : `仅编译所选默认语言 ${options.locale}；页面路径无语言前缀，其他语言前缀返回 404；不显示语言控件，忽略账号语言、cookie 与 Accept-Language。`}\n`
+  report += `\n${entryChecklist}`
   await writeFile(join(target, 'PROJECT_SETUP.md'), report)
   return { target, options, checklist, report }
 }
 
-export function verifyProject(target) {
+export function verifyProject(target, { nodeBuild = false } = {}) {
   // 清除调用者的数据库真值，CI 模式关闭本地库 fallback；不对模板数据库执行测试。
   const env = { ...process.env, CI: 'true', TURBO_ENV_MODE: 'loose', TURBO_TELEMETRY_DISABLED: '1' }
   for (const key of Object.keys(env)) {
     if (/DATABASE_URL|HYPERDRIVE_LOCAL_CONNECTION_STRING/.test(key)) delete env[key]
   }
-  for (const args of [['install', '--frozen-lockfile'], ['typecheck'], ['test']]) {
+  // 副本不包含 .git，Node 构建需要显式完整 SHA，且不上传 source map 到调用者的 Sentry。
+  if (nodeBuild) {
+    env.APP_VERSION = '0123456789abcdef0123456789abcdef01234567'
+    delete env.SENTRY_AUTH_TOKEN
+    delete env.SENTRY_ORG
+    delete env.SENTRY_PROJECT
+    delete env.SENTRY_RELEASE
+  }
+  // 完整矩阵逐包执行测试，避免多个 Node 构建探针争抢 CPU；保持用例断言与时限不变。
+  const commands = [
+    ['install', '--frozen-lockfile'],
+    ['typecheck'],
+    nodeBuild ? ['test', '--concurrency=1'] : ['test'],
+  ]
+  if (nodeBuild) commands.push(['build:node'])
+  for (const args of commands) {
     const result = spawnSync('pnpm', args, { cwd: target, env, stdio: 'inherit' })
     if (result.error) throw result.error
     if (result.status !== 0) throw new Error(`副本 pnpm ${args.join(' ')} 失败（${result.status}）`)

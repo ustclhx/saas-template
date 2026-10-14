@@ -1,6 +1,6 @@
 import { TURNSTILE_TOKEN_HEADER as SERVER_HEADER } from '@saas/auth'
 import { afterEach, describe, expect, it } from 'vitest'
-import { baseLocale, overwriteGetLocale } from '../../paraglide/runtime.js'
+import { baseLocale, locales, overwriteGetLocale } from '../../paraglide/runtime.js'
 import { AUTH_ERROR_MESSAGES, authErrorMessage } from './errors.ts'
 import { TURNSTILE_TOKEN_HEADER } from './turnstile.tsx'
 
@@ -8,9 +8,14 @@ describe('authErrorMessage（按错误码提示）', () => {
   afterEach(() => overwriteGetLocale(() => baseLocale))
 
   it('按调用时的语言显示认证错误，未知错误仍显示本地化通用提示', () => {
-    overwriteGetLocale(() => 'zh')
-    expect(authErrorMessage('INVALID_EMAIL_OR_PASSWORD')).toBe('邮箱或密码不正确。')
-    expect(authErrorMessage('UNRECOGNIZED')).toBe('操作失败，请重试。')
+    const locale = locales.find((locale) => String(locale) === 'zh') ?? baseLocale
+    overwriteGetLocale(() => locale)
+    expect(authErrorMessage('INVALID_EMAIL_OR_PASSWORD')).toBe(
+      String(locale) === 'zh' ? '邮箱或密码不正确。' : 'Incorrect email or password.',
+    )
+    expect(authErrorMessage('UNRECOGNIZED')).toBe(
+      String(locale) === 'zh' ? '操作失败，请重试。' : 'Something went wrong. Please try again.',
+    )
   })
 
   it('429 一律提示限流', () => {

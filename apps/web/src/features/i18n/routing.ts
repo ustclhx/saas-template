@@ -1,5 +1,6 @@
 import type { LocationRewrite } from '@tanstack/react-router'
 import { deLocalizeUrl, localizeUrl } from '../../paraglide/runtime.js'
+import { templateConfig } from '../../server/template-config.ts'
 import { isAppAreaPath } from './app-area.ts'
 
 /**
@@ -13,6 +14,7 @@ import { isAppAreaPath } from './app-area.ts'
 
 /** 路由器的 URL 改写：进入时去掉语言前缀，生成链接时按当前语言加前缀（应用区除外） */
 export const localeRewrite = {
-  input: ({ url }) => deLocalizeUrl(url),
-  output: ({ url }) => (isAppAreaPath(url.pathname) ? url : localizeUrl(url)),
+  input: ({ url }) => (templateConfig.i18n.enabled ? deLocalizeUrl(url) : url),
+  output: ({ url }) =>
+    !templateConfig.i18n.enabled || isAppAreaPath(url.pathname) ? url : localizeUrl(url),
 } satisfies LocationRewrite

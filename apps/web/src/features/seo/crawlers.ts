@@ -29,7 +29,12 @@ export function sitemap(pages: readonly SeoPage[], appUrl: string): string {
 }
 
 export function robots(appUrl: string): string {
-  const prefixes = ['', ...templateConfig.i18n.locales.map((locale) => `/${locale}`)]
+  const prefixes = [
+    '',
+    ...(templateConfig.i18n.enabled
+      ? templateConfig.i18n.locales.map((locale) => `/${locale}`)
+      : []),
+  ]
   return [
     'User-agent: *',
     ...prefixes.flatMap((prefix) =>
