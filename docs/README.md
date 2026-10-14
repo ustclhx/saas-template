@@ -40,3 +40,10 @@
 ## 参考对象
 
 ShipAny、MkSaaS、TanStarter（功能清单参考）、Aceternity UI / Magic UI（营销页组件参考）。不购买、不复制其代码。
+
+## Agent Skills
+
+模板提供项目启动、Cloudflare/自托管部署准备、页面/模块/静态内容扩展、AI 模型配置与安全审查技能。
+完整清单、调用示例、默认只读部署边界与双目录维护规则见
+[创建项目 · Agent Skills](create-project.md#agent-skills)。
+Codex 从 `.agents/skills/` 读取，Claude 从 `.claude/skills/` 读取；可直接指定技能文件执行。

@@ -136,3 +136,40 @@ Neon staging 使用 TLS 直连与两个 Hyperdrive，不需要 Tunnel / Workers 
 及 [资源清单](runbooks/evidence/create-project/2026-10-12/resources.md)。
 临时 jobs 删除前需先移除其两个 Queue consumer，否则 Cloudflare 会拒绝删除 Worker；
 限流 namespace 为 Worker 绑定内的独立整数标识，清理时随临时 Worker 移除绑定。
+
+## Agent Skills
+
+项目内提供 8 个技能，Codex 使用 `.agents/skills/`，Claude 使用 `.claude/skills/`。
+在项目根按技能名发起请求，例如 Codex `$quick-start`、Claude `/quick-start`；
+也可直接要求 agent 阅读对应 `SKILL.md` 执行。生成副本会一起继承技能并改写包 scope。
+
+| 技能 | 用途 |
+| --- | --- |
+| [quick-start](../.agents/skills/quick-start/SKILL.md) | 收集项目名、域名、部署目标、功能与语言，非交互生成、自检、本地 PG/管理员与首个 AI 调用 |
+| [deploy-cloudflare](../.agents/skills/deploy-cloudflare/SKILL.md) | 新环境资源/绑定/secret 名称预检，迁移、发布、health SHA 与管理员；支持 `--env/--domain/--admin-email` |
+| [deploy-selfhost](../.agents/skills/deploy-selfhost/SKILL.md) | 空白主机、GHCR 同 SHA image-set/bundle、部署与 health、兼容回滚和备份恢复入口 |
+| [new-page](../.agents/skills/new-page/SKILL.md) | admin/app 路由、类型化 Server Functions、表格/表单、导航和 i18n |
+| [new-module](../.agents/skills/new-module/SKILL.md) | 复用现有表与领域模块，租户服务、鉴权入口、运行时设置与积分边界 |
+| [new-static-page](../.agents/skills/new-static-page/SKILL.md) | 多语言营销/法务 MDX 或静态路由、SEO、sitemap 与预渲染 |
+| [add-ai-model](../.agents/skills/add-ai-model/SKILL.md) | 后台模型编辑器、参数 schema/定价/套餐授权；必要时新增 Provider |
+| [security-scan](../.agents/skills/security-scan/SKILL.md) | 工程检查、敏感路径与凭据扫描、鉴权/注入/账本等 diff 审查 |
+
+示例：`$quick-start 创建 acme，目标 selfhost，默认中文，关闭计费和 AI`；
+`/deploy-cloudflare --env staging --domain app.example.com --admin-email <管理员邮箱>`；
+`$new-page 新增 app 通知列表`。管理员真实邮箱与 key 只填受限配置，不进入提交或公开报告。
+
+部署技能默认只读预检与本地 dry-run；列出具体动作清单并确认后才创建资源、
+写配置/secret、迁移或发布。模板共享 staging 继续只由 main 自动发布。
+quick-start 的生成/安装/typecheck/unit 与本地/外部验收分开报告：
+缺凭据的 AI、邮件、支付和部署保持待验收，dry-run 不代表部署成功。
+
+维护时编辑 `.agents/skills/<name>/SKILL.md` 后复制到 `.claude` 同名路径，
+新技能两份逐字节一致，不用符号链接（生成器不复制符号链接）。提交前核对：
+
+```sh
+for skill in quick-start deploy-cloudflare deploy-selfhost new-page new-module new-static-page add-ai-model security-scan; do
+  cmp ".agents/skills/$skill/SKILL.md" ".claude/skills/$skill/SKILL.md" || exit 1
+done
+```
+
+现有 OpenSpec 技能保留各 agent 的调用语法差异，不纳入此复制命令。
