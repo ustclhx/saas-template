@@ -35,6 +35,17 @@ export interface AiUsageCheckpoint {
   outputTokens: number
   /** ISO 时间 */
   at: string
+  /** 验收包装器的最小执行证明；不包含提示词或输出正文。 */
+  acceptanceFaultProof?: {
+    mode: 'chat-before-stream' | 'chat-mid-stream'
+    policyVersion: 1
+    phase: 'pending' | 'before-stream' | 'mid-stream'
+    injected: boolean
+    realProviderCalled: boolean
+    upstreamCalls: number
+    injectedAt?: string
+    outputTokens?: number
+  }
 }
 
 /**

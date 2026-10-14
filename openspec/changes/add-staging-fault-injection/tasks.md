@@ -23,8 +23,8 @@
 
 ## 4. 文本流错误包装与原有结算
 
-- [ ] 4.1 实现 doStream 流前错误（不调用上游）与真实流中转发到 200 估算输出 token 后 controller.error，仅故障调用 maxRetries=0，正确取消上游且不标记用户 stop；仅扩展 packages/db/src/schema/ai.ts 的 AiUsageCheckpoint 可选证明类型，冻结 mode 并持久记录实际 injected/phase/上游调用，检查点局部合并保留证明；扩展现有文本/ai-chat 共用 suite 验证 token/per_call 四组合、failed/部分输出/检查点、精确费用/hold封顶/无欠费/对账和重复结算，CF 与 Node 共用测试通过。
-- [ ] 4.2 更新本地文本夹具/别名，确保本地 fake 上游也实际经过新包装器，未知模型仍不回退真实 Provider；测试未到阈值即结束、上游自然报错或证明写入失败均不伪称注入成功、故障流异常不被 onEnd 记 completed，正常流回归通过；同步 docs/06-ai.md 的故障计费矩阵及真实调用边界。
+- [x] 4.1 实现 doStream 流前错误（不调用上游）与真实流中转发到 200 估算输出 token 后 controller.error，仅故障调用 maxRetries=0，正确取消上游且不标记用户 stop；仅扩展 packages/db/src/schema/ai.ts 的 AiUsageCheckpoint 可选证明类型，冻结 mode 并持久记录实际 injected/phase/上游调用，检查点局部合并保留证明；扩展现有文本/ai-chat 共用 suite 验证 token/per_call 四组合、failed/部分输出/检查点、精确费用/hold封顶/无欠费/对账和重复结算，CF 与 Node 共用测试通过。
+- [x] 4.2 更新本地文本夹具/别名，确保本地 fake 上游也实际经过新包装器，未知模型仍不回退真实 Provider；测试未到阈值即结束、上游自然报错或证明写入失败均不伪称注入成功、故障流异常不被 onEnd 记 completed，正常流回归通过；同步 docs/06-ai.md 的故障计费矩阵及真实调用边界。
 
 ## 5. 独立故障验收套件
 

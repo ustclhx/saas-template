@@ -11,14 +11,18 @@ import {
   MODEL_UNAVAILABLE,
   messageText,
   type Pricing,
+  parseAcceptanceFault,
   planTextBudget,
   requireAvailableModel,
   settleChatMessage,
   settleFromCheckpoint,
   settleInterruptedChatMessage,
+  TEXT_FAULT_MAX_OUTPUT_TOKENS,
   type TextModelEnv,
   textModelConfig,
   truncateHistory,
+  wrapTextFaultModel,
+  writeTextFaultProof,
   writeUsageCheckpoint,
 } from '@saas/ai'
 import { requireFreshSession } from '@saas/auth'
@@ -207,6 +211,12 @@ export async function startWorkspaceChat(
   if (model.kind !== 'text')
     throw new AppError(MODEL_UNAVAILABLE, 'Model is not available', { status: 404 })
   const pricing = model.pricing
+  // fresh 调用闸门已通过，此处固定模式；后续模型修改不改变在途语义。
+  const fault = parseAcceptanceFault(model)
+  const faultMode =
+    fault?.mode === 'chat-before-stream' || fault?.mode === 'chat-mid-stream'
+      ? fault.mode
+      : undefined
 
   // 2. 限流（按数据中心计数，只用于防刷）
   if (
@@ -259,7 +269,11 @@ export async function startWorkspaceChat(
     pricing,
     inputTokens,
     balance: balance.available,
-    maxOutputTokens: Math.min(modelMaxOutput, context.maxOutputTokens ?? modelMaxOutput),
+    maxOutputTokens: Math.min(
+      modelMaxOutput,
+      context.maxOutputTokens ?? modelMaxOutput,
+      faultMode ? TEXT_FAULT_MAX_OUTPUT_TOKENS : modelMaxOutput,
+    ),
     ...(context.maxOutputTokens === undefined
       ? {}
       : { minOutputTokens: Math.min(256, context.maxOutputTokens) }),
@@ -267,6 +281,15 @@ export async function startWorkspaceChat(
 
   // 5. 同一事务：对话、用户消息、预扣、带定价快照的 streaming 消息
   const assistantId = newId()
+  const streamModel = faultMode
+    ? wrapTextFaultModel(languageModel, {
+        mode: faultMode,
+        env: deps.env,
+        tokensPerChar,
+        writeProof: (proof) =>
+          writeTextFaultProof(db, { workspaceId, messageId: assistantId, proof }),
+      })
+    : languageModel
   const holdId = await db.transaction(async (tx) => {
     const t = scoped(tx, workspaceId)
     if (conversationId === undefined) {
@@ -301,6 +324,23 @@ export async function startWorkspaceChat(
       status: 'streaming',
       // 结算前存放输入估算：兜底处理器在没有检查点时据此收最低费用（design 决策 4）
       inputTokens,
+      ...(faultMode
+        ? {
+            usageCheckpoint: {
+              inputTokens,
+              outputTokens: 0,
+              at: new Date().toISOString(),
+              acceptanceFaultProof: {
+                mode: faultMode,
+                policyVersion: 1 as const,
+                phase: 'pending' as const,
+                injected: false,
+                realProviderCalled: false,
+                upstreamCalls: 0,
+              },
+            },
+          }
+        : {}),
       holdId: reservation.id,
     })
     return reservation.id
@@ -315,19 +355,22 @@ export async function startWorkspaceChat(
   const controller = new AbortController()
   const schedule = checkpointSchedule(deps.checkpoint)
   let text = ''
+  let streamFailed = false
   let end:
     | { text: string; usage: Pick<LanguageModelUsage, 'inputTokens' | 'outputTokens'> }
     | undefined
   let checkpoints: Promise<unknown> = Promise.resolve()
   const outputTokensOf = (value: string) => estimateTextTokens(value, tokensPerChar)
   const result = streamText({
-    model: languageModel,
+    model: streamModel,
+    ...(faultMode ? { maxRetries: 0 } : {}),
     allowSystemInMessages: true,
     messages: prompt.map((message) => ({ role: message.role, content: message.text })),
     ...(context.temperature === undefined ? {} : { temperature: context.temperature }),
     maxOutputTokens: Math.min(
       budget.maxOutputTokens,
       context.maxOutputTokens ?? budget.maxOutputTokens,
+      faultMode ? TEXT_FAULT_MAX_OUTPUT_TOKENS : budget.maxOutputTokens,
     ),
     abortSignal: controller.signal,
     // 用量检查点（tasks 2.5）：不阻塞读流，写入串行；写入失败只记日志。
@@ -357,6 +400,7 @@ export async function startWorkspaceChat(
       end = { text: event.text, usage: event.totalUsage }
     },
     onError: ({ error }) => {
+      streamFailed = true
       log.error('ai.chat.stream_error', { messageId: assistantId, error })
     },
   })
@@ -365,10 +409,14 @@ export async function startWorkspaceChat(
   // 结算失败时预扣保持 held，由超时兜底处理器结算；已被另一方结算时不重复结算
   const done = (async () => {
     // 中止与服务商错误已由 onError / 中止原因处理，这里只读完流
-    await result.consumeStream({ onError: () => {} })
+    await result.consumeStream({
+      onError: () => {
+        streamFailed = true
+      },
+    })
     await checkpoints
     try {
-      if (end) {
+      if (end && !streamFailed) {
         await settleChatMessage(db, {
           workspaceId,
           messageId: assistantId,

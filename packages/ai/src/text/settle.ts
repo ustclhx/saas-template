@@ -13,7 +13,7 @@ import {
   type Database,
   scoped,
 } from '@saas/db'
-import { and, eq, type SQL } from 'drizzle-orm'
+import { and, eq, type SQL, sql } from 'drizzle-orm'
 import { actualCredits, type Pricing } from '../pricing.ts'
 
 /**
@@ -103,7 +103,11 @@ export async function writeUsageCheckpoint(
   const rows = await scoped(db, input.workspaceId)
     .update(
       aiMessage,
-      { usageCheckpoint: checkpoint, parts: textParts(input.text) },
+      {
+        // 普通用量与故障证明独立更新，避免并发检查点抹掉已持久化的证明。
+        usageCheckpoint: sql`coalesce(${aiMessage.usageCheckpoint}, '{}'::jsonb) || ${JSON.stringify(checkpoint)}::jsonb`,
+        parts: textParts(input.text),
+      },
       and(eq(aiMessage.id, input.messageId), eq(aiMessage.status, 'streaming')) as SQL,
     )
     .returning({ id: aiMessage.id })
