@@ -53,3 +53,18 @@ export const FAULT_MODELS: readonly FaultModelDefinition[] = [
 export function faultScenarioId(model: FaultModelDefinition): string {
   return `${model.mode}-${model.pricing.mode}`
 }
+
+/**
+ * 可选的场景子集（逗号分隔的场景 ID，如 `chat-mid-stream-per_call`），用于修复后只重跑失败场景，
+ * 避免为已通过场景重复付费。未知或重复 ID 直接拒绝，不静默退回全量矩阵。
+ */
+export function selectFaultModels(
+  filter = process.env.STAGING_FAULT_SCENARIOS,
+): readonly FaultModelDefinition[] {
+  if (!filter?.trim()) return FAULT_MODELS
+  const ids = filter.split(',').map((id) => id.trim())
+  const known = new Set(FAULT_MODELS.map(faultScenarioId))
+  if (ids.some((id) => !known.has(id)) || new Set(ids).size !== ids.length)
+    throw new Error('Invalid STAGING_FAULT_SCENARIOS')
+  return FAULT_MODELS.filter((model) => ids.includes(faultScenarioId(model)))
+}

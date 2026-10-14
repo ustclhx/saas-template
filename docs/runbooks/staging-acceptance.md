@@ -104,7 +104,14 @@ pnpm --filter @saas/web exec playwright test -c e2e/staging-acceptance/fault.con
 模型权益、至少30积分、无欠费、可用并发与至少10 MiB剩余存储。脚本不会修改套餐或补发积分。
 缺条件即失败并报告安全资源ID，人工准备后用同一 run ID恢复。整个模型准备与执行都在
 try/finally 内：已有配置必须完整相同才启用，新模型经后台 UI创建；退出时逐项停用并核对审计。
-一项停用失败仍处理其余模型，按清理证据中的 key/ID到后台恢复停用，不覆盖同名冲突模型。
+每项停用最多尝试3次：每次先只读确认状态，已停用不再点击，等后台表单接管后才点 Disable，并以新审计确认；
+配置或身份不匹配不重试。一项仍失败时继续处理其余模型，清理证据记录尝试次数与失败阶段
+（read/configuration/editor/disable/confirm）及安全类别，按其中的 key/ID到后台恢复停用，不覆盖同名冲突模型。
+
+修复后只重跑部分场景时，设 `STAGING_FAULT_SCENARIOS`（逗号分隔场景 ID，如
+`chat-mid-stream-per_call`），套件只准备、执行并停用这些模型；未知或重复 ID 直接拒绝。
+原 run 中已终态但证明不完整的资源会被同 run 恢复拒绝，此时经协调者批准使用新的 run ID 并只选该场景，
+原资源保留为失败证据，不重复付费补全其他已通过场景。
 
 同一 run复用已有 task或conversation/message，只接受证明完整的终态；在途、重复资源、缺失
 证明、已发送但无 assistant或外部取消未确认时停止，禁止换 run ID重复付费补证据。每个终态
@@ -139,6 +146,9 @@ finally 停用，不直接写 staging 数据，不手动部署。实施 worker �
 | fal 响应丢失 / `fal-submit-response-lost` | 真实 ID 仅写证明后抛 ambiguous 错误，不提供 webhook | providerJobId 留空、一次 submit、不重提、failed 全退，证明 ID 在结算后保留 |
 | fal 服务商失败 / `fal-provider-error` | wait 5 秒、20分钟 deadline；先查询原作业再包装 failed | failed、0消费、全退；真实成功回调不能抢先；按原 ID 尽力取消 |
 | fal 硬超时 / `fal-timeout` | wait 5 秒、60秒 deadline；真实查询后包装 queued，sleep 不超剩余 deadline | failed 全退、实际跨 deadline；晚到结果/重放不重复结算，按原 ID 尽力取消 |
+
+文本故障固定使用 `deepseek-flash`；包装器对故障调用关闭思考（`thinking: disabled`），否则 V4 默认思考可能只输出
+reasoning 并用尽1024输出上限，正文阈值永不到达（fault-2026-10-14a 的 `chat-mid-stream-per_call`）。
 
 fal 仅固定低成本 `fal-ai/flux/schnell` 图片模型，square、一张，最多五次提交；Workers 零次
 真实推理。所有故障 hold 保持 deadline 后10分钟到期。媒体配置快照和独立执行证明分别保存在

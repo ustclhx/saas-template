@@ -55,3 +55,28 @@ describe('fault evidence safety', () => {
     }
   })
 })
+
+describe('fault scenario subset', () => {
+  async function definitions() {
+    vi.stubEnv('STAGING_ACCEPTANCE_LOCAL', '1')
+    vi.stubEnv('STAGING_ACCEPTANCE_RUN_ID', runId)
+    return import('../../../e2e/staging-acceptance/fault-definitions.ts')
+  }
+
+  it('缺省为完整矩阵，子集只保留指定场景', async () => {
+    const { FAULT_MODELS, selectFaultModels } = await definitions()
+    expect(selectFaultModels('')).toBe(FAULT_MODELS)
+    expect(selectFaultModels(undefined)).toHaveLength(11)
+    expect(selectFaultModels(' chat-mid-stream-per_call ').map((m) => m.key)).toEqual([
+      'acceptance-fault-chat-mid-stream-per_call',
+    ])
+  })
+
+  it.each(['chat-mid-stream', 'chat-mid-stream-per_call,chat-mid-stream-per_call', ','])(
+    '未知或重复场景 %j 拒绝而不是退回全量',
+    async (filter) => {
+      const { selectFaultModels } = await definitions()
+      expect(() => selectFaultModels(filter)).toThrow('Invalid STAGING_FAULT_SCENARIOS')
+    },
+  )
+})
