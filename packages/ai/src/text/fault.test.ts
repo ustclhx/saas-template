@@ -228,8 +228,9 @@ describe('文本故障 doStream 包装', () => {
     expect(legacy.doStreamCalls).toHaveLength(1)
   })
 
-  it('故障调用关闭思考，其余调用参数保持', async () => {
+  it('DeepSeek 故障调用关闭思考，其余调用参数保持', async () => {
     const f = fixture([finish])
+    Object.defineProperty(f.upstream, 'provider', { value: 'deepseek.chat' })
     await f.model.doStream({
       prompt: [],
       maxOutputTokens: 1024,
@@ -243,6 +244,12 @@ describe('文本故障 doStream 包装', () => {
         other: { keep: true },
       },
     })
+  })
+
+  it('未注册 Provider 的故障调用不添加 DeepSeek 参数', async () => {
+    const f = fixture([finish])
+    await f.model.doStream({ prompt: [], maxOutputTokens: 1024 })
+    expect(f.upstream.doStreamCalls[0]).toEqual({ prompt: [], maxOutputTokens: 1024 })
   })
 
   describe('真实 DeepSeek Provider（假 fetch）', () => {

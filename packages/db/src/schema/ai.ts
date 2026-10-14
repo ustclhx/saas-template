@@ -29,10 +29,20 @@ const timestamps = {
  */
 export type AiPricingJson = { mode: 'per_call' | 'token' | 'per_unit' } & Record<string, unknown>
 
-/** 生成过程中定期写入的累计用量估算，结算丢失时兜底按它结算（docs/06-ai.md §3） */
-export interface AiUsageCheckpoint {
+/** 文本输出用量已包含 reasoning；absorbed 为平台承担的废弃 attempt 用量。 */
+export interface AiTextUsage {
   inputTokens: number
   outputTokens: number
+  reasoningTokens?: number
+  absorbed?: { inputTokens: number; outputTokens: number; reasoningTokens?: number }
+  /** 所有上游 attempt 的累计成本用量，与用户结算用量分开。 */
+  total?: { inputTokens: number; outputTokens: number; reasoningTokens: number }
+}
+
+/** 生成过程中定期写入的累计用量估算，结算丢失时兜底按它结算（docs/06-ai.md §3） */
+export interface AiUsageCheckpoint extends AiTextUsage {
+  /** 发起回复时的模板策略快照，避免在途配置改变结算口径。 */
+  failedReplyRefund?: 'no-visible-output' | 'all'
   /** ISO 时间 */
   at: string
   /** 验收包装器的最小执行证明；不包含提示词或输出正文。 */

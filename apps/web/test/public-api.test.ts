@@ -82,6 +82,13 @@ function model() {
     doStream: async () => ({
       stream: simulateReadableStream({
         chunks: [
+          { type: 'reasoning-start', id: 'reasoning' },
+          {
+            type: 'reasoning-delta',
+            id: 'reasoning',
+            delta: 'Private reasoning must stay private',
+          },
+          { type: 'reasoning-end', id: 'reasoning' },
           { type: 'text-start', id: 'text' },
           { type: 'text-delta', id: 'text', delta: 'Hello SDK' },
           { type: 'text-end', id: 'text' },
@@ -95,7 +102,7 @@ function model() {
                 cacheRead: undefined,
                 cacheWrite: undefined,
               },
-              outputTokens: { total: 1180, text: 1180, reasoning: undefined },
+              outputTokens: { total: 1180, text: 1173, reasoning: 7 },
             },
           },
         ],
@@ -348,7 +355,14 @@ describe('官方 OpenAI Node SDK 与共用积分结算', () => {
       it(`${stream ? 'SSE' : 'JSON'} / ${pricing.mode} 返回兼容格式，按实际用量扣费并保存快照`, async () => {
         const who = await owner()
         const key = await textModel(pricing)
-        const { sdk, mock, settled } = client(who.key.key)
+        const { sdk, mock, settled } = client(who.key.key, {
+          config: defineTemplateConfig({
+            app: config.app,
+            auth: { oauth: [], turnstile: false },
+            features: { publicApi: true },
+            ai: { text: { reasoning: { display: true } } },
+          }),
+        })
         const response = await sdk.chat.completions.create({
           model: key,
           messages: [
@@ -371,10 +385,12 @@ describe('官方 OpenAI Node SDK 与共用积分结算', () => {
             total_tokens: 1380,
           })
           expect(chunks.at(-2)?.choices[0]?.finish_reason).toBe('stop')
+          expect(JSON.stringify(chunks)).not.toMatch(/reasoning_content|Private reasoning/)
         } else {
           const completion = response as OpenAI.Chat.Completions.ChatCompletion
           text = completion.choices[0]?.message.content ?? ''
           expect(completion.usage).toMatchObject({ prompt_tokens: 200, completion_tokens: 1180 })
+          expect(JSON.stringify(completion)).not.toMatch(/reasoning_content|Private reasoning/)
         }
         expect(text).toBe('Hello SDK')
         await settled()

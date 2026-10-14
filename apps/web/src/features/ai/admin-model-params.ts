@@ -29,7 +29,7 @@ export function parseAdminParamsSchema(
         const field = ['x-text', ...(issue?.path ?? [])].join('.')
         throw new AppError(
           'PARAMS_SCHEMA_INVALID',
-          `${field} is invalid: tokensPerChar must be positive and maxOutputTokens must be a positive integer.`,
+          `${field} is invalid: tokensPerChar must be positive, maxOutputTokens must be a positive integer, thinking must be boolean and continuation must be native or none; unknown x-text fields are not allowed.`,
         )
       }
     }
@@ -68,6 +68,8 @@ export const PARAMS_SCHEMA_TEMPLATES: ParamsSchemaTemplate[] = [
       'x-text': {
         tokensPerChar: DEFAULT_TOKENS_PER_CHAR,
         maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
+        thinking: false,
+        continuation: 'none',
       },
     },
   },

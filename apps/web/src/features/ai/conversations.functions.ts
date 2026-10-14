@@ -6,7 +6,8 @@ import { createServerFn } from '@tanstack/react-start'
 import { and, asc, desc, eq, inArray, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
 import { withWorkspace } from '../../server/middleware.ts'
-import { conversationTitleSchema, textParts } from './conversation.ts'
+import { templateConfig } from '../../server/template-config.ts'
+import { conversationTitleSchema, messageDisplayParts } from './conversation.ts'
 
 // 对话列表与对话页的数据（tasks.md 3.1，specs/ai-chat「会话管理」）。
 // 对话只对创建者可见：所有读写都在 scoped(ws) 之上再按 user_id 过滤，
@@ -114,7 +115,13 @@ export const getConversation = createServerFn({ method: 'GET' })
       .orderBy(asc(aiMessage.id))
     return {
       conversation,
-      messages: messages.map((message) => ({ ...message, parts: textParts(message.parts) })),
+      messages: messages.map((message) => ({
+        ...message,
+        parts: messageDisplayParts(
+          message.parts,
+          message.role === 'assistant' && templateConfig.ai.text.reasoning.display,
+        ),
+      })),
       readOnly: context.workspaceReadOnly,
     }
   })

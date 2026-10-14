@@ -26,6 +26,11 @@ describe('parseAdminParamsSchema', () => {
     { tokensPerChar: '1' },
     { maxOutputTokens: 0 },
     { maxOutputTokens: 1.5 },
+    { thinking: 'true' },
+    { thinking: null },
+    { continuation: 'prompt' },
+    { continuation: true },
+    { thinking: true, unknown: true },
     null,
   ])('rejects invalid text configuration: %j', (config) => {
     expect(() => parseAdminParamsSchema('text', JSON.stringify({ 'x-text': config }))).toThrow(
@@ -35,7 +40,15 @@ describe('parseAdminParamsSchema', () => {
 
   it('allows text defaults and preserves schema metadata', () => {
     expect(parseAdminParamsSchema('text', '{}')).toEqual({})
-    const schema = { title: 'Text model', 'x-text': { tokensPerChar: 1.5, maxOutputTokens: 2048 } }
+    const schema = {
+      title: 'Text model',
+      'x-text': {
+        tokensPerChar: 1.5,
+        maxOutputTokens: 2048,
+        thinking: true,
+        continuation: 'native',
+      },
+    }
     expect(parseAdminParamsSchema('text', JSON.stringify(schema))).toEqual(schema)
   })
 

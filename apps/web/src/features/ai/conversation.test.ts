@@ -6,6 +6,10 @@ import {
   chatErrorCode,
   chatErrorMessage,
   chatRequestBody,
+  messageDisplayParts,
+  messageReasoning,
+  messageRetrying,
+  messageText,
   streamingMessageId,
   titleFromText,
   toChatMessages,
@@ -17,6 +21,24 @@ afterEach(() => overwriteGetLocale(() => baseLocale))
 const id = (n: number) => `00000000-0000-4000-8000-00000000000${n}`
 
 describe('toChatMessages', () => {
+  it('保留助手 reasoning 供折叠展示，但正文和请求不包含 reasoning', () => {
+    const [message] = toChatMessages([
+      {
+        id: id(1),
+        role: 'assistant',
+        status: 'failed',
+        parts: [
+          { type: 'reasoning', text: 'private' },
+          { type: 'text', text: 'partial' },
+        ],
+      },
+    ])
+    if (!message) throw new Error('Missing assistant message')
+    expect(messageReasoning(message)).toBe('private')
+    expect(messageText(message)).toBe('partial')
+    expect(message.metadata?.status).toBe('failed')
+  })
+
   it('只保留用户与助手的文本内容，并带上保存时的状态', () => {
     const messages = toChatMessages([
       { id: id(1), role: 'system', parts: [{ type: 'text', text: 'hidden' }], status: 'completed' },
@@ -52,7 +74,33 @@ describe('toChatMessages', () => {
   })
 })
 
+describe('reasoning retries', () => {
+  it('重试分界清除旧 reasoning，新输出结束重试提示且保留连续正文', () => {
+    const message: ChatUIMessage = {
+      id: 'a',
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: 'discarded' },
+        { type: 'data-retry', data: { n: 1 } },
+      ],
+    }
+    expect(messageReasoning(message)).toBe('')
+    expect(messageRetrying(message)).toBe(true)
+    message.parts.push({ type: 'reasoning', text: 'final' }, { type: 'text', text: 'Hello' })
+    expect(messageReasoning(message)).toBe('final')
+    expect(messageRetrying(message)).toBe(false)
+    message.parts.push({ type: 'data-retry', data: { n: 2 } }, { type: 'text', text: ' world' })
+    expect(messageText(message)).toBe('Hello world')
+    expect(messageReasoning(message)).toBe('')
+  })
+})
+
 describe('chatRequestBody', () => {
+  it('显式 thinking 为 false 时仍提交，未暴露开关时不附带该字段', () => {
+    const input = { slug: 'u-abc', modelId: id(9), conversationId: id(8), messages: [] }
+    expect(chatRequestBody({ ...input, thinking: false })).toHaveProperty('thinking', false)
+    expect(chatRequestBody(input)).not.toHaveProperty('thinking')
+  })
   it('只提交最后一条用户消息的文本部分', () => {
     const messages: ChatUIMessage[] = [
       { id: 'a', role: 'user', parts: [{ type: 'text', text: 'first' }] },
@@ -125,4 +173,14 @@ describe('titleFromText', () => {
     expect(titleFromText('  hello\n\n world ')).toBe('hello world')
     expect(titleFromText('x'.repeat(200))).toHaveLength(80)
   })
+})
+
+it('历史读取开启时保留 reasoning，关闭时连已保存的 reasoning 也不下发', () => {
+  const parts = [
+    { type: 'reasoning', text: 'private' },
+    { type: 'text', text: 'answer' },
+    { type: 'tool', text: 'internal' },
+  ]
+  expect(messageDisplayParts(parts, true)).toEqual(parts.slice(0, 2))
+  expect(messageDisplayParts(parts, false)).toEqual([{ type: 'text', text: 'answer' }])
 })
