@@ -54,6 +54,22 @@ function run(command, args, { cwd = root, timeout = 60_000 } = {}) {
       // 构建尚无 secret；compose up 仅输出服务状态，不转储服务日志或 secret。
       console.error((result.stderr || result.stdout || '').split('\n').slice(-20).join('\n'))
     }
+    if (stage === 'browser') {
+      const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`
+      // 只提取测试位置和 matcher 名，原始错误可能包含会话或验证 URL。
+      console.error(
+        JSON.stringify({
+          locations: [...new Set(output.match(/auth-workspace\.selfhost\.ts:\d+:\d+/g) ?? [])],
+          matchers: [
+            ...new Set(
+              output.match(
+                /(?:toHaveText|toHaveURL|toBeVisible|toHaveCount|toHaveAttribute|locator\.fill|browserType\.launch)/g,
+              ) ?? [],
+            ),
+          ],
+        }),
+      )
+    }
     // 子进程错误可能包含 secret 文件正文、连接串或验证链接，只报告固定步骤名。
     throw new Error(`Selfhost features command failed during ${stage}: ${command}`)
   }
