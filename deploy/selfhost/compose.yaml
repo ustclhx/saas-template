@@ -134,8 +134,7 @@ services:
     <<: *service
     image: ${JOBS_IMAGE:?Use a full SHA jobs image}
     hostname: ${JOB_EXECUTOR_ID:-jobs-1}
-    # 退出证明必须观察同一宿主 PID 域；另一个容器的 namespace 变化不能证明旧进程退出。
-    pid: host
+    # 退出证明来自 job_owners 卷上由进程持有到退出的内核 flock，不共享宿主 PID namespace。
     user: '1000:1000'
     mem_limit: 768m
     cpus: 0.3

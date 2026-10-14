@@ -13,6 +13,7 @@ export default defineConfig({
             'test/node/background.test.ts',
             'test/node/task-health.test.ts',
             'test/node/ownership.test.ts',
+            'test/node/job-lock.test.ts',
           ],
         },
       },

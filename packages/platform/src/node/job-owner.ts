@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
 import { hostname } from 'node:os'
+import { nodeJobLockReleased } from './job-guard.ts'
 
 export interface ProcessOwner {
   readonly pid: number
   readonly host: string
   readonly pidNamespace: string
   readonly token: string
-  // 旧 Linux 记录缺宿主身份时必须人工核验迁移，不能用新机 boot ID 猜测旧机退出。
+  // 旧 Linux 记录缺宿主身份或 token 锁时必须人工核验迁移，不能自动接管。
   readonly machineId?: string
   readonly bootId?: string
   readonly startTime?: string
@@ -59,37 +60,18 @@ function pidExited(pid: number): boolean {
   }
 }
 
-export async function processExited(owner: ProcessOwner, current: ProcessOwner): Promise<boolean> {
+export async function processExited(
+  owner: ProcessOwner,
+  current: ProcessOwner,
+  lockPath?: string,
+): Promise<boolean> {
   if (owner.host !== current.host) return false
   if (process.platform === 'linux') {
-    // 损坏的旧 namespace 不是重启证明；旧 Linux 记录也必须是有效 inode。
-    if (!/^[1-9]\d*$/.test(owner.pidNamespace) || !Number.isSafeInteger(Number(owner.pidNamespace)))
-      return false
-    // hostname 可被异机复用；只有可信宿主身份相同，boot 变化才证明旧宿主已重启。
-    if (
-      !owner.machineId ||
-      owner.machineId !== current.machineId ||
-      !owner.bootId ||
-      !current.bootId ||
-      !current.startTime
-    )
-      return false
-    if (owner.bootId !== current.bootId) return true
-    // 不同 namespace 可以同时存活；selfhost 容器共享宿主 PID namespace 后才可查询旧 PID。
-    if (owner.pidNamespace !== current.pidNamespace) return false
-    try {
-      const startTime = await processStartTime(owner.pid)
-      return owner.startTime !== undefined && owner.startTime !== startTime
-    } catch (error) {
-      // hidepid 等挂载选项也可能隐藏活 PID；/proc 缺失必须再由 ESRCH 确认。
-      return (
-        !!error &&
-        typeof error === 'object' &&
-        'code' in error &&
-        error.code === 'ENOENT' &&
-        pidExited(owner.pid)
-      )
-    }
+    // flock 只在同一宿主内核内有效；恢复到另一台机器的卷没有持锁者，不能据此证明旧机退出。
+    if (!owner.machineId || owner.machineId !== current.machineId || !lockPath) return false
+    // 旧 incarnation 在写记录前已对自己的 token 锁加排他锁并持有到进程退出；不同容器、
+    // PID namespace 或 reboot 后都由内核释放，无需共享宿主 PID namespace 或推断 PID 复用。
+    return nodeJobLockReleased(lockPath)
   }
   if (owner.pidNamespace !== current.pidNamespace) return false
   return pidExited(owner.pid)

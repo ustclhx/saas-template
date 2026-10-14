@@ -558,12 +558,8 @@ secrets:
   for (const [index, service] of ['jobs', 'jobs-2'].entries()) {
     const current = ownerIdentity(service)
     const old = ownersBefore[index]
-    fail(current.host === old.host, 'stable replica hostname changed')
-    fail(current.pidNamespace === old.pidNamespace, 'host PID namespace changed without reboot')
-    fail(
-      current.pid !== old.pid || current.startTime !== old.startTime,
-      'process incarnation did not change',
-    )
+    fail(current.host === old.host && current.pid === old.pid, 'stable replica identity changed')
+    fail(current.pidNamespace !== old.pidNamespace, 'container namespace did not change')
     fail(current.retained > old.retained, 'prior incarnation records were not preserved')
   }
   evidence('selfhost.acceptance.persistence', { postgres: true, valkey: true, ownership: true })

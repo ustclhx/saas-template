@@ -61,6 +61,11 @@ machineId，同 boot 下不同 namespace 拒绝；D Compose 接入 host PID name
 宿主身份。Linux 初始化临界区以 OS flock 保护可信 dead guard 的定向恢复，保留历史记录。
 确切行为、Linux/PG/VM证据见 [d-vm报告](evidence/selfhost/d-vm-2026-10-15/report.md)。
 
+评审后将退出证明改为进程生命周期内核锁：Node 持有 ownership 卷上 executor/token 锁的
+描述符直至真实退出，同机跨容器/namespace 由 flock 互斥证明，不再使用 `pid:host`；
+machineId 仍拒绝异机卷。d-vm 报告中的补修 VM 证据针对此前 `pid:host` 版本，
+锁版本需协调者安排重跑 `test-vm-lifecycle.py --patched` 的 exit/namespace/recreate/reboot。
+
 原正式 bundle/镜像保持不可变；新源码 fixture 不代签旧正式镜像。旧记录缺machineId的
 可信迁移、异机恢复退出证明和补修后正式镜像仍待协调者签收，因此1.5与依赖它的
 2.1/2.3/6.3保留未勾选。第7组主机决策门不变；没有连接真实服务器或触发新发布。

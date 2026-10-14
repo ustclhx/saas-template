@@ -42,7 +42,9 @@ def main():
         script = "fetch('http://127.0.0.1:3101'+process.argv[1],{signal:AbortSignal.timeout(5000)}).then(async r=>{if(!r.ok)process.exit(1);console.log(await r.text())}).catch(()=>process.exit(1))"
         return json.loads(a.docker('exec', container, 'node', '-e', script, path))
 
-    def launch(container=name, host_pid=True):
+    # 正式镜像的旧证据依赖宿主 PID namespace；补修以 ownership 卷上的内核锁证明，不使用 --pid host。
+    def launch(container=name, host_pid=None):
+        host_pid = not args.patched if host_pid is None else host_pid
         command = ['run', '-d', '--name', container, '--hostname', identity,
             '--user', '1000:1000', '--restart', 'unless-stopped' if container == name else 'no', '--cap-drop', 'ALL',
             '--security-opt', 'no-new-privileges:true', '--network', a.project + '_data',
@@ -121,7 +123,7 @@ def main():
             rpc('/close')
             vm.require(json.loads(a.docker('inspect', name))[0]['State']['Running'], 'old process not live')
             duplicate = name + '-duplicate'
-            launch(duplicate, host_pid=args.phase != 'namespace')
+            launch(duplicate, host_pid=not args.patched and args.phase != 'namespace')
             deadline_at = time.monotonic() + 30
             while time.monotonic() < deadline_at:
                 state = json.loads(a.docker('inspect', duplicate))[0]['State']

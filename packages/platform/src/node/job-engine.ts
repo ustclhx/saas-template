@@ -11,7 +11,7 @@ import type { Database } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import { Pool, type PoolClient } from 'pg'
-import { acquireNodeJobGuard } from './job-guard.ts'
+import { holdNodeJobLock } from './job-guard.ts'
 import { type ProcessOwner, processExited, processOwner } from './job-owner.ts'
 
 export interface NodeJobEngine {
@@ -146,6 +146,8 @@ export async function createNodeJobEngine(options: NodeJobEngineOptions): Promis
     resolve(options.ownershipDirectory, `${lockKey(executorId)}.json`)
   const tokenPath = (executorId: string, token: string) =>
     resolve(options.ownershipDirectory, `${lockKey(executorId)}.${lockKey(token)}.json`)
+  const tokenLockPath = (executorId: string, token: string) =>
+    resolve(options.ownershipDirectory, `${lockKey(executorId)}.${lockKey(token)}.lock`)
   const loseOwnership = () => {
     if (!owned) return
     owned = false
@@ -186,7 +188,8 @@ export async function createNodeJobEngine(options: NodeJobEngineOptions): Promis
         ownershipToken ? tokenPath(executorId, ownershipToken) : ownerPath(executorId),
       )
       // 缺文件并不能证明一个已领取工作的执行者退出；人工误删锁也不得放行。
-      return owner !== undefined && (await processExited(owner, current))
+      if (!owner || (ownershipToken !== undefined && owner.token !== ownershipToken)) return false
+      return processExited(owner, current, tokenLockPath(executorId, owner.token))
     },
     stopReceiving() {
       if (stopping) return
@@ -227,38 +230,51 @@ export async function createNodeJobEngine(options: NodeJobEngineOptions): Promis
     if (!lock.rows[0]?.acquired) throw failure('JOB_ENGINE_EXECUTOR_IN_USE')
     await mkdir(options.ownershipDirectory, { recursive: true, mode: 0o700 })
     const recoveryGuard = `${ownerPath(options.executorId)}.recovering`
-    // DB 会话锁可能在网络故障时释放；Linux 内核锁串行保护旧 guard 的证明、删除与重建。
-    const releaseGuard = await acquireNodeJobGuard(`${ownerPath(options.executorId)}.lock`)
-    try {
-      if (process.platform === 'linux') {
-        const abandoned = await readOwner(recoveryGuard)
-        if (abandoned) {
-          if (!(await processExited(abandoned, current)))
-            throw failure('JOB_ENGINE_EXECUTOR_IN_USE')
-          await unlink(recoveryGuard)
-        }
-      }
-      await writeFile(recoveryGuard, JSON.stringify(current), { flag: 'wx', mode: 0o600 })
-      try {
-        const previous = await readOwner(ownerPath(options.executorId))
-        if (previous) {
-          if (!(await processExited(previous, current))) throw failure('JOB_ENGINE_EXECUTOR_IN_USE')
-          await unlink(ownerPath(options.executorId))
-        }
-        await writeFile(ownerPath(options.executorId), JSON.stringify(current), {
-          flag: 'wx',
-          mode: 0o600,
-        })
-        // 每个 incarnation 的记录独立保留；重启覆盖 active 文件后仍能证明旧 batch 的进程退出。
-        await writeFile(tokenPath(options.executorId, current.token), JSON.stringify(current), {
-          flag: 'wx',
-          mode: 0o600,
-        })
-      } finally {
+    // Linux 上 executor 锁与本 incarnation 的 token 锁都由本进程持有到真正退出：前者串行化
+    // 初始化并拒绝任何仍存活的同 ID 进程（跨容器/namespace），后者供其他进程证明本 token 退出。
+    // 获取失败即拒绝；不按 TTL、DB 锁消失或删除 owner 目录接管。
+    await holdNodeJobLock(`${ownerPath(options.executorId)}.lock`)
+    await holdNodeJobLock(tokenLockPath(options.executorId, current.token), { create: true })
+    if (process.platform === 'linux') {
+      // 初始化被 SIGKILL 打断留下的 guard：仅在其 token 锁已由内核释放时定向清理。
+      const abandoned = await readOwner(recoveryGuard)
+      if (abandoned) {
+        if (
+          !(await processExited(
+            abandoned,
+            current,
+            tokenLockPath(options.executorId, abandoned.token),
+          ))
+        )
+          throw failure('JOB_ENGINE_EXECUTOR_IN_USE')
         await unlink(recoveryGuard)
       }
+    }
+    await writeFile(recoveryGuard, JSON.stringify(current), { flag: 'wx', mode: 0o600 })
+    try {
+      const previous = await readOwner(ownerPath(options.executorId))
+      if (previous) {
+        if (
+          !(await processExited(
+            previous,
+            current,
+            tokenLockPath(options.executorId, previous.token),
+          ))
+        )
+          throw failure('JOB_ENGINE_EXECUTOR_IN_USE')
+        await unlink(ownerPath(options.executorId))
+      }
+      await writeFile(ownerPath(options.executorId), JSON.stringify(current), {
+        flag: 'wx',
+        mode: 0o600,
+      })
+      // 每个 incarnation 的记录独立保留；重启覆盖 active 文件后仍能证明旧 batch 的进程退出。
+      await writeFile(tokenPath(options.executorId, current.token), JSON.stringify(current), {
+        flag: 'wx',
+        mode: 0o600,
+      })
     } finally {
-      await releaseGuard()
+      await unlink(recoveryGuard)
     }
     owned = true
     DBOS.setConfig({
