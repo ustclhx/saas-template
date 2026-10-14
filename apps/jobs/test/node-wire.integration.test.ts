@@ -67,7 +67,14 @@ it('wires real consumers, retry/DLQ, disabled modules, heartbeat readiness and g
     })
     const base = `http://127.0.0.1:${(runtime.server.address() as AddressInfo).port}`
     expect((await originalFetch(`${base}/internal/live`)).status).toBe(200)
-    await until(async () => (await runtime?.tasks.health.queue())?.status === 'up')
+    // Queue 与 scheduler 独立轮询；两者首次成功后才能断言只因缺少心跳而未就绪。
+    await until(async () => {
+      const [queue, scheduler] = await Promise.all([
+        runtime?.tasks.health.queue(),
+        runtime?.tasks.health.scheduler(),
+      ])
+      return queue?.status === 'up' && scheduler?.status === 'up'
+    })
     const initial = await originalFetch(`${base}/internal/ready`)
     expect(initial.status).toBe(503)
     expect(await initial.json()).toMatchObject({
