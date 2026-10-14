@@ -21,6 +21,7 @@ import {
   handleMediaSubmit,
   handleMediaWebhook,
   type MediaHttpDeps,
+  submitWorkspaceMedia,
 } from '../src/features/ai/media-tasks.ts'
 import { templateConfig } from '../src/server/template-config.ts'
 
@@ -229,6 +230,53 @@ afterAll(async () => {
 })
 
 describe('media tasks API', () => {
+  it('故障媒体对普通空间 owner 和没有 fresh session 的管理员调用均拒绝，且不创建任务或预扣', async () => {
+    const who = await account('fault-denied')
+    const key = `acceptance-fault-${newId()}`
+    await db.insert(aiModel).values({
+      key,
+      kind: 'image',
+      provider: 'fal',
+      providerModelId: 'fal-ai/flux/schnell',
+      pricing: { mode: 'per_call', credits: 1 },
+      paramsSchema: {
+        type: 'object',
+        properties: { prompt: { type: 'string' } },
+        'x-acceptance-fault': { mode: 'fal-timeout' },
+      },
+    })
+    try {
+      const { deps } = dependencies()
+      deps.env.AI_FAULT_INJECTION = 'enabled'
+      deps.env.SENTRY_ENVIRONMENT = 'staging'
+      expect((await submit(who, key, deps)).status).toBe(404)
+      await sql`update member set role='admin' where user_id=${who.userId}`
+      expect((await submit(who, key, deps)).status).toBe(404)
+      await sql`update "user" set role='admin' where id=${who.userId}`
+      const workspace = await db.query.organization.findFirst({
+        where: (o, { eq }) => eq(o.id, who.workspaceId),
+      })
+      const member = await db.query.member.findFirst({
+        where: (m, { eq }) => eq(m.userId, who.userId),
+      })
+      if (!workspace || !member) throw new Error('Missing fixture workspace')
+      await expect(
+        submitWorkspaceMedia(
+          { modelKey: key, params: { prompt: 'fixture' } },
+          { workspace, member },
+          { ...deps, callbackOrigin: APP_URL },
+        ),
+      ).rejects.toMatchObject({ code: 'MODEL_UNAVAILABLE' })
+      expect(await scoped(db, who.workspaceId).count(aiTask)).toBe(0)
+      expect(await sql`select id from credit_hold where workspace_id=${who.workspaceId}`).toEqual(
+        [],
+      )
+      expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 100, held: 0 })
+    } finally {
+      await sql`delete from ai_model where key=${key}`
+    }
+  })
+
   it('rejects an unavailable workflow before rate limiting, task creation or credit holds', async () => {
     const who = await account('workflow-unavailable')
     const { deps } = dependencies()

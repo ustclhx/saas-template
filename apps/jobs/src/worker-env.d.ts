@@ -11,6 +11,7 @@ declare global {
         MediaRuntimeEnv,
         StorageEnv,
         SentryEnv {
+      AI_FAULT_INJECTION?: string
       CRON_PROFILE?: string
       FILES: R2Bucket
       EVENTS_QUEUE: Queue<

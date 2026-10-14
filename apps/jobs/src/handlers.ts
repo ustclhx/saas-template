@@ -1,3 +1,4 @@
+import type { AiFaultInjectionEnv } from '@saas/config'
 import type { EmailSender } from '@saas/email'
 import type {
   Capability,
@@ -25,6 +26,7 @@ import { handleBillingBatch } from './queues/billing.ts'
 import { handleEmailBatch, type JobsEmailTransport } from './queues/email.ts'
 
 export interface JobsContext extends BillingEnv {
+  config: BillingEnv['config'] & AiFaultInjectionEnv
   emailTransport: JobsEmailTransport
   emailSender?: EmailSender
   files: Capability<{ delete(key: string | string[]): Promise<void> }>

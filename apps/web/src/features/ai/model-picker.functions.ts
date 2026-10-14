@@ -1,10 +1,12 @@
 import { dbModelStore, listAvailableModels } from '@saas/ai'
 import { getEntitlements } from '@saas/entitlements'
 import { createServerFn } from '@tanstack/react-start'
+import { getRequest } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import { withWorkspace } from '../../server/middleware.ts'
 import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
+import { readFaultAccess } from './fault-access.ts'
 
 // 模型选择器的数据（tasks.md 3.2）：当前空间权益允许且已启用的模型，经 KV 缓存读取。
 // 只返回选择与预计消耗所需的字段，不暴露服务商与服务商侧的模型 id。
@@ -27,6 +29,12 @@ export const getPickerModels = createServerFn({ method: 'GET' })
         store: dbModelStore(context.db),
         cache: runtime.cache,
         workersAi: runtime.ai?.available === true && runtime.ai.value.workersAi.available,
+        faultAccess: await readFaultAccess({
+          auth: runtime.auth,
+          db: context.db,
+          headers: getRequest().headers,
+          env: runtime.ai?.available ? runtime.ai.value.config : {},
+        }),
       },
       entitlements,
       { kind: data.kind },

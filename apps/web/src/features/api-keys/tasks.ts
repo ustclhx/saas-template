@@ -42,6 +42,7 @@ export async function handlePublicMediaSubmit(request: Request, deps: PublicMedi
       context,
       {
         ...deps,
+        faultAccess: { enabled: false, platformAdmin: false },
         // 公开入口已经按 Key 和空间限流；事务内仍实时读取模型权益与配额。
         rateLimiter: undefined,
         callbackOrigin: new URL(deps.env.APP_URL ?? request.url).origin,

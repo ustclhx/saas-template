@@ -3,6 +3,11 @@ import { DEFAULT_FREE_FEATURES, type Entitlements, UPGRADE_REQUIRED } from '@saa
 import { AppError } from '@saas/shared'
 import { describe, expect, it } from 'vitest'
 import {
+  ACCEPTANCE_FAULT_INVALID,
+  type AcceptanceFaultMode,
+  parseAcceptanceFault,
+} from './fault.ts'
+import {
   defaultPricing,
   invalidateModelCache,
   listAvailableModels,
@@ -72,6 +77,76 @@ const plan = (models: string[]): Entitlements => ({
 })
 const all = plan(['*'])
 
+function faultRow(mode: AcceptanceFaultMode = 'chat-before-stream'): AiModel {
+  return row({
+    id: 'fault',
+    key: `acceptance-fault-${mode}`,
+    provider: 'deepseek',
+    providerModelId: 'deepseek-flash',
+    paramsSchema: { 'x-acceptance-fault': { mode } },
+  })
+}
+
+describe('parseAcceptanceFault', () => {
+  it('只接受与指定 Provider、种类和模型配对的九个模式', () => {
+    const modes: AcceptanceFaultMode[] = [
+      'workers-error',
+      'workers-timeout',
+      'fal-callback-lost',
+      'fal-callback-early',
+      'fal-submit-response-lost',
+      'fal-provider-error',
+      'fal-timeout',
+      'chat-before-stream',
+      'chat-mid-stream',
+    ]
+    for (const mode of modes) {
+      const model = faultRow(mode)
+      const paired = mode.startsWith('workers-')
+        ? {
+            ...model,
+            kind: 'image' as const,
+            provider: 'workers-ai',
+            providerModelId: '@cf/black-forest-labs/flux-1-schnell',
+          }
+        : mode.startsWith('fal-')
+          ? {
+              ...model,
+              kind: 'image' as const,
+              provider: 'fal',
+              providerModelId: 'fal-ai/flux/schnell',
+            }
+          : model
+      expect(parseAcceptanceFault(paired)).toEqual({ mode })
+      for (const invalid of [
+        { ...paired, provider: 'openai' },
+        { ...paired, kind: 'video' as const },
+        { ...paired, providerModelId: 'other-model' },
+      ])
+        expect(() => parseAcceptanceFault(invalid)).toThrow(
+          expect.objectContaining({ code: ACCEPTANCE_FAULT_INVALID }),
+        )
+    }
+    expect(parseAcceptanceFault(row({ id: 'normal', key: 'normal' }))).toBeUndefined()
+  })
+
+  it('半配置、未知模式和请求可调策略都拒绝，不降级为普通模型', () => {
+    for (const invalid of [
+      { ...faultRow(), paramsSchema: null },
+      { ...faultRow(), key: 'normal' },
+      { ...faultRow(), paramsSchema: { 'x-acceptance-fault': undefined } },
+      { ...faultRow(), paramsSchema: { 'x-acceptance-fault': { mode: 'unknown' } } },
+      {
+        ...faultRow(),
+        paramsSchema: { 'x-acceptance-fault': { mode: 'chat-mid-stream', deadline: 1 } },
+      },
+    ])
+      expect(() => parseAcceptanceFault(invalid)).toThrow(
+        expect.objectContaining({ code: ACCEPTANCE_FAULT_INVALID }),
+      )
+  })
+})
+
 async function rejection(promise: Promise<unknown>): Promise<AppError> {
   const error = await promise.then(
     () => undefined,
@@ -82,6 +157,35 @@ async function rejection(promise: Promise<unknown>): Promise<AppError> {
 }
 
 describe('listAvailableModels', () => {
+  it('完整注册表缓存每次按故障权限过滤，任一闸门缺失均隐藏且不影响正常模型', async () => {
+    for (const adminFirst of [true, false]) {
+      const { store, listCalls } = memoryStore([row({ id: 'normal', key: 'normal' }), faultRow()])
+      const { cache, data } = memoryCache()
+      const keys = async (faultAccess?: { enabled: boolean; platformAdmin: boolean }) =>
+        (await listAvailableModels({ store, cache, faultAccess }, all)).map((model) => model.key)
+      const authorized = { enabled: true, platformAdmin: true }
+      expect(await keys(adminFirst ? authorized : undefined)).toHaveLength(adminFirst ? 2 : 1)
+      expect(await keys(adminFirst ? undefined : authorized)).toHaveLength(adminFirst ? 1 : 2)
+      for (const faultAccess of [
+        { enabled: false, platformAdmin: true },
+        { enabled: true, platformAdmin: false },
+      ])
+        expect(await keys(faultAccess)).toEqual(['normal'])
+      expect(JSON.parse(data.get(MODEL_CACHE_KEY) ?? '[]')).toHaveLength(2)
+      expect(listCalls()).toBe(1)
+    }
+  })
+
+  it('无效故障注册项即使在旧缓存中也不会出现', async () => {
+    const invalid = { ...faultRow(), paramsSchema: null }
+    const { store } = memoryStore([invalid])
+    const { cache, data } = memoryCache()
+    const ctx = { store, cache, faultAccess: { enabled: true, platformAdmin: true } }
+    expect(await listAvailableModels(ctx, all)).toEqual([])
+    data.set(MODEL_CACHE_KEY, JSON.stringify([{ ...invalid, tags: [] }]))
+    expect(await listAvailableModels(ctx, all)).toEqual([])
+  })
+
   it('按当前目标能力过滤 Workers AI，缓存不被目标过滤结果污染', async () => {
     for (const firstWorkersAi of [true, false]) {
       const { store, listCalls } = memoryStore([
@@ -164,6 +268,30 @@ describe('listAvailableModels', () => {
 })
 
 describe('requireAvailableModel', () => {
+  it('直接调用重新核验故障授权与当前配置，列表缓存不能授权或复活停用模型', async () => {
+    const { store, rows } = memoryStore([faultRow()])
+    const { cache } = memoryCache()
+    const faultAccess = { enabled: true, platformAdmin: true }
+    const ctx = { store, cache, faultAccess }
+    await listAvailableModels(ctx, all)
+    expect(await requireAvailableModel(ctx, all, 'fault')).toMatchObject({ id: 'fault' })
+    for (const denied of [
+      undefined,
+      { enabled: false, platformAdmin: true },
+      { enabled: true, platformAdmin: false },
+    ])
+      expect(
+        (await rejection(requireAvailableModel({ store, faultAccess: denied }, all, 'fault'))).code,
+      ).toBe(MODEL_UNAVAILABLE)
+    expect((await rejection(requireAvailableModel(ctx, plan([]), 'fault'))).code).toBe(
+      UPGRADE_REQUIRED,
+    )
+    rows[0] = { ...faultRow(), paramsSchema: null }
+    expect((await rejection(requireAvailableModel(ctx, all, 'fault'))).code).toBe(MODEL_UNAVAILABLE)
+    rows[0] = { ...faultRow(), enabled: false }
+    expect((await rejection(requireAvailableModel(ctx, all, 'fault'))).code).toBe(MODEL_UNAVAILABLE)
+  })
+
   it('当前目标缺少 Workers AI 能力时明确拒绝，CF 和原调用方保持可用', async () => {
     const { store } = memoryStore([row({ id: 'm1', key: 'flux', provider: 'workers-ai' })])
     const error = await rejection(requireAvailableModel({ store, workersAi: false }, all, 'm1'))
@@ -256,5 +384,14 @@ describe('modelValues', () => {
 
   it('不合法的计费方式被拒绝', () => {
     expect(() => modelValues({ ...base, pricing: { mode: 'free' } })).toThrow(PricingError)
+  })
+
+  it('后台保存也拒绝缺元数据的专用 key，合法配对可通过共享校验', () => {
+    const model = faultRow()
+    const input = { ...model, tags: [] }
+    expect(modelValues(input)).toMatchObject({ key: model.key })
+    expect(() => modelValues({ ...input, paramsSchema: null })).toThrow(
+      expect.objectContaining({ code: ACCEPTANCE_FAULT_INVALID }),
+    )
   })
 })

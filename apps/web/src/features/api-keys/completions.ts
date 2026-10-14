@@ -83,7 +83,12 @@ export async function handleCompletions(
         maxOutputTokens: input.max_completion_tokens ?? input.max_tokens,
         temperature: input.temperature,
       },
-      { ...deps, rateLimiter: undefined, entitlements: async () => context.entitlements },
+      {
+        ...deps,
+        rateLimiter: undefined,
+        entitlements: async () => context.entitlements,
+        faultAccess: { enabled: false, platformAdmin: false },
+      },
     )
     const base = {
       id: `chatcmpl-${started.metadata.messageId}`,

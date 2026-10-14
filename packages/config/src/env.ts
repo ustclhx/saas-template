@@ -55,6 +55,28 @@ export interface PaymentModeEnv {
   SENTRY_ENVIRONMENT?: string | undefined
 }
 
+export interface AiFaultInjectionEnv {
+  AI_FAULT_INJECTION?: string | undefined
+  SENTRY_ENVIRONMENT?: string | undefined
+}
+
+/** 专用开关只允许 staging 开启，生产环境连显式关闭配置也拒绝。 */
+export function validateAiFaultInjectionEnv(env: AiFaultInjectionEnv): void {
+  const value = env.AI_FAULT_INJECTION
+  if (value === undefined) return
+  if (
+    env.SENTRY_ENVIRONMENT === 'production' ||
+    (value !== 'enabled' && value !== 'disabled') ||
+    (value === 'enabled' && env.SENTRY_ENVIRONMENT !== 'staging')
+  )
+    throw new EnvValidationError([], ['AI_FAULT_INJECTION'])
+}
+
+/** 调用入口缺省拒绝；环境装配另行校验，非法配置不能触发故障。 */
+export function isAiFaultInjectionEnabled(env: AiFaultInjectionEnv): boolean {
+  return env.AI_FAULT_INJECTION === 'enabled' && env.SENTRY_ENVIRONMENT === 'staging'
+}
+
 /** 只有显式开发环境允许省略模式，避免未标记的线上环境默认为测试。 */
 export function resolvePaymentMode(env: PaymentModeEnv): PaymentMode {
   if (env.PAYMENT_MODE === 'test' || env.PAYMENT_MODE === 'live') return env.PAYMENT_MODE

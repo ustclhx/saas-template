@@ -1,11 +1,14 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import { z } from 'zod'
 import {
+  type AiFaultInjectionEnv,
   EnvValidationError,
   envSchema,
   type HyperdriveBinding,
+  isAiFaultInjectionEnabled,
   loadEnv,
   resolvePaymentMode,
+  validateAiFaultInjectionEnv,
 } from './env.ts'
 
 const SECRET = 'postgres://app:s3cr3t-password@db.internal:5432/app'
@@ -100,6 +103,39 @@ describe('loadEnv', () => {
       // 自定义的 Zod 错误消息里带了取值，也不能出现在错误中
       expectNoValues(error, ['not a url', 'short-secret-key', 'maybe'])
     })
+  })
+})
+
+describe('AI fault injection environment', () => {
+  it('只允许 staging 显式开启，缺失或 disabled 不开启故障', () => {
+    for (const env of [
+      {},
+      { SENTRY_ENVIRONMENT: 'production' },
+      { AI_FAULT_INJECTION: 'disabled' },
+      { AI_FAULT_INJECTION: 'disabled', SENTRY_ENVIRONMENT: 'staging' },
+      { AI_FAULT_INJECTION: 'enabled', SENTRY_ENVIRONMENT: 'staging' },
+    ]) {
+      expect(() => validateAiFaultInjectionEnv(env)).not.toThrow()
+      expect(isAiFaultInjectionEnabled(env)).toBe(env.AI_FAULT_INJECTION === 'enabled')
+    }
+  })
+
+  it.each<AiFaultInjectionEnv>([
+    { AI_FAULT_INJECTION: 'enabled', SENTRY_ENVIRONMENT: 'production' },
+    { AI_FAULT_INJECTION: 'disabled', SENTRY_ENVIRONMENT: 'production' },
+    { AI_FAULT_INJECTION: 'enabled' },
+    { AI_FAULT_INJECTION: 'enabled', SENTRY_ENVIRONMENT: 'development' },
+    { AI_FAULT_INJECTION: 'enabled', SENTRY_ENVIRONMENT: 'private-unknown' },
+    { AI_FAULT_INJECTION: 'private-invalid', SENTRY_ENVIRONMENT: 'staging' },
+    { AI_FAULT_INJECTION: '', SENTRY_ENVIRONMENT: 'staging' },
+  ])('拒绝非 staging 开启、生产配置和非法值且只报告变量名：%j', (env) => {
+    const error = captureError(() => validateAiFaultInjectionEnv(env))
+    expect(error.invalid).toEqual(['AI_FAULT_INJECTION'])
+    expectNoValues(
+      error,
+      Object.values(env).filter((value): value is string => Boolean(value)),
+    )
+    expect(isAiFaultInjectionEnabled(env)).toBe(false)
   })
 })
 

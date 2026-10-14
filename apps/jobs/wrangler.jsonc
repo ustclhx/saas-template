@@ -52,6 +52,7 @@
       "name": "jobs-staging",
       "vars": {
         "SENTRY_ENVIRONMENT": "staging",
+        "AI_FAULT_INJECTION": "enabled",
         "PAYMENT_MODE": "test",
         "CRON_PROFILE": "reduced"
       },

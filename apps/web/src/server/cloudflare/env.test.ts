@@ -151,4 +151,25 @@ describe('checkEnv（请求入口的环境校验）', () => {
     expect(checkEnv({ ...completeEnv(), PAYMENT_MODE: 'invalid' })).toBeNull()
     expect(checkEnv({ ...completeEnv(), SENTRY_ENVIRONMENT: 'production' })).toBeNull()
   })
+
+  it('故障开关只允许 staging enabled，生产 disabled 和未知环境开启均安全拒绝', () => {
+    const error = captureErrors()
+    for (const env of [
+      { AI_FAULT_INJECTION: 'enabled', SENTRY_ENVIRONMENT: 'production' },
+      { AI_FAULT_INJECTION: 'disabled', SENTRY_ENVIRONMENT: 'production' },
+      { AI_FAULT_INJECTION: 'enabled' },
+      { AI_FAULT_INJECTION: 'enabled', SENTRY_ENVIRONMENT: 'private-unknown' },
+      { AI_FAULT_INJECTION: 'private-invalid', SENTRY_ENVIRONMENT: 'staging' },
+    ])
+      expect(checkEnv({ ...completeEnv(), ...env })?.status).toBe(500)
+    for (const [logged] of error.mock.calls) {
+      expect(JSON.parse(String(logged)).invalid).toEqual(['AI_FAULT_INJECTION'])
+      expect(logged).not.toContain('private-')
+    }
+    for (const env of [
+      { AI_FAULT_INJECTION: 'disabled' },
+      { AI_FAULT_INJECTION: 'enabled', SENTRY_ENVIRONMENT: 'staging' },
+    ])
+      expect(checkEnv({ ...completeEnv(), ...env })).toBeNull()
+  })
 })

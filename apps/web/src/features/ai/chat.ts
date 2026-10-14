@@ -6,6 +6,7 @@ import {
   defaultLanguageModelFactory,
   estimateInputTokens,
   estimateTextTokens,
+  type FaultAccessContext,
   type LanguageModelFactory,
   MODEL_UNAVAILABLE,
   messageText,
@@ -21,6 +22,7 @@ import {
   writeUsageCheckpoint,
 } from '@saas/ai'
 import { requireFreshSession } from '@saas/auth'
+import type { AiFaultInjectionEnv } from '@saas/config'
 import type { OveragePolicy } from '@saas/credits'
 import { CreditsError, getCreditBalance, hold } from '@saas/credits'
 import {
@@ -40,6 +42,7 @@ import { and, asc, eq, inArray, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
 import { templateConfig } from '../../server/template-config.ts'
 import { resolveWorkspaceBySlug } from '../../server/workspace-context.ts'
+import { sessionFaultAccess } from './fault-access.ts'
 
 /**
  * `POST /api/ai/chat`（docs/06-ai.md §3「流程」，specs/ai-chat）：
@@ -55,7 +58,7 @@ export interface ChatDeps {
   readonly db: Database
   readonly auth: Parameters<typeof requireFreshSession>[0]['auth']
   /** 构造模型所需的环境变量，原样交给工厂 */
-  readonly env: TextModelEnv
+  readonly env: TextModelEnv & AiFaultInjectionEnv
   readonly workersAi?: boolean
   /** `RL_AI` 绑定 */
   readonly rateLimiter: RateLimiter
@@ -73,7 +76,7 @@ export interface ChatDeps {
 
 const textPart = z.object({ type: z.literal('text'), text: z.string().min(1).max(100_000) })
 
-export const chatRequestSchema = z.object({
+export const chatRequestSchema = z.strictObject({
   /** 当前空间（URL 中的 `$slug`） */
   slug: z.string().min(1).max(64),
   modelId: z.uuid(),
@@ -138,7 +141,8 @@ async function readRequest(request: Request): Promise<ChatRequest> {
 
 async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
   const { db } = deps
-  const { user } = await requireFreshSession({ auth: deps.auth, db, headers: request.headers })
+  const fresh = await requireFreshSession({ auth: deps.auth, db, headers: request.headers })
+  const { user } = fresh
   const input = await readRequest(request)
   const resolved = await resolveWorkspaceBySlug(db, user.id, input.slug)
   if (!resolved) throw new AppError('NOT_FOUND', 'Not found', { status: 404 })
@@ -146,7 +150,14 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
   setLogContext({ workspaceId, userId: user.id })
   if (!templateConfig.tenancy.multiTenant && !resolved.workspace.isPersonal)
     throw new AppError('WORKSPACE_READ_ONLY', 'Team workspace writes are disabled', { status: 403 })
-  const started = await startWorkspaceChat(input, { workspaceId, userId: user.id }, deps)
+  const started = await startWorkspaceChat(
+    input,
+    { workspaceId, userId: user.id },
+    {
+      ...deps,
+      faultAccess: sessionFaultAccess(fresh, deps.env),
+    },
+  )
   return started.result.toUIMessageStreamResponse({
     generateMessageId: () => started.metadata.messageId,
     messageMetadata: ({ part }) => (part.type === 'start' ? started.metadata : undefined),
@@ -156,6 +167,8 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
 
 export type WorkspaceChatDeps = Omit<ChatDeps, 'auth' | 'rateLimiter'> & {
   readonly rateLimiter?: RateLimiter | undefined
+  /** 仅站内 fresh session 入口提供；API key 缺省拒绝。 */
+  readonly faultAccess?: FaultAccessContext
 }
 
 /** 已鉴权入口共用预扣、定价快照、检查点与结算；公开 API 仅转换请求和响应协议。 */
@@ -183,7 +196,11 @@ export async function startWorkspaceChat(
       }))
   )(db, workspaceId)
   const model = await requireAvailableModel(
-    { store: dbModelStore(db), workersAi: deps.workersAi ?? false },
+    {
+      store: dbModelStore(db),
+      workersAi: deps.workersAi ?? false,
+      faultAccess: deps.faultAccess,
+    },
     entitlements,
     input.modelId,
   )
