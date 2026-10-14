@@ -1,5 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises'
-import { createNodeBackgroundTasks } from '../../../src/node/index.ts'
+// 聚合入口会加载无关的数据库与任务引擎模块，CI 并发时可能在 ready 前耗尽 watchdog。
+import { createNodeBackgroundTasks } from '../../../src/node/background.ts'
 
 const mode = process.argv[2]
 const tasks = createNodeBackgroundTasks()
