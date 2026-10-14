@@ -1264,7 +1264,11 @@ ${credentials
       phase,
       reason,
       exitCode: Number.isInteger(error.code) ? error.code : null,
-      code: ['ETIMEDOUT', 'ENOENT', 'EACCES'].includes(error.code) ? error.code : null,
+      code: ['ETIMEDOUT', 'ENOENT', 'EACCES', 'EAGAIN', 'EMFILE', 'ENFILE', 'ENOMEM'].includes(
+        error.code,
+      )
+        ? error.code
+        : null,
       signal: /^SIG[A-Z]+$/.test(error.signal ?? '') ? error.signal : null,
       killed: error.killed === true,
     })

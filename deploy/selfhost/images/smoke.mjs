@@ -312,13 +312,27 @@ secrets:
   } catch (error) {
     // 原始输出不透传；只附加验收脚本自身写入证据的固定阶段与原因，CI 才能定位失败断言。
     let failed
+    let observer
     try {
-      failed = JSON.parse(readFileSync(join(output, 'backup-smoke.json'), 'utf8')).events.find(
-        (item) => item.event === 'backup.failed',
-      )
+      const events = JSON.parse(readFileSync(join(output, 'backup-smoke.json'), 'utf8')).events
+      failed = events.find((item) => item.event === 'backup.failed')
+      observer = events.find((item) => item.event === 'backup.sampling_failed')
     } catch {}
     if (!failed) throw error
-    throw new Error(`${error.message} (phase=${failed.phase}; reason=${failed.reason})`)
+    // 失败job没有发布artifact；仅透出观察者固定分类/退出元数据，不能再丢失首个错误。
+    const diagnostic = observer
+      ? JSON.stringify({
+          phase: observer.phase,
+          reason: observer.reason,
+          exitCode: observer.exitCode,
+          code: observer.code,
+          signal: observer.signal,
+          killed: observer.killed,
+        })
+      : 'none'
+    throw new Error(
+      `${error.message} (phase=${failed.phase}; reason=${failed.reason}; observer=${diagnostic})`,
+    )
   }
   const backupEvidence = JSON.parse(readFileSync(join(output, 'backup-smoke.json'), 'utf8'))
   assert(backupEvidence.passed && backupEvidence.cleaned, 'backup real runtime smoke failed')
