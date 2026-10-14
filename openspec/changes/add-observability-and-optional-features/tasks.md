@@ -3,7 +3,7 @@
 ## 1. 可观测性
 
 - [x] 1.1 请求 ID 生成与贯穿（日志上下文、队列消息、Workflow 参数），结构化 JSON 日志，验证测试：一次结账请求与其后续队列消息的日志带同一请求 ID
-- [ ] 1.2 接入 `@sentry/cloudflare`（web + jobs）、release 与 source map 上传（CI），验证在 staging 触发一个测试异常后 Sentry 中出现可读堆栈
+- [x] 1.2 接入 `@sentry/cloudflare`（web + jobs）、release 与 source map 上传（CI），验证在 staging 触发一个测试异常后 Sentry 中出现可读堆栈
 - [x] 1.3 统一脱敏过滤器（日志与 Sentry），验证单元测试：带 Authorization 头与对话内容的错误事件中这些字段被移除
 - [x] 1.4 接入 Cloudflare Web Analytics，以及 `features.analytics` 控制的可选 PostHog 接入点（默认关闭），验证默认配置下页面不加载 PostHog 脚本
 
@@ -34,4 +34,4 @@
 
 - [x] 6.1 用创建脚本从模板生成一个新项目，按输出清单完成基础设施配置并部署到一个新的 staging，验证健康检查通过、注册到首次 AI 调用的完整流程可用、错误能在 Sentry 中看到
 
-2026-10-13 验收记录：13j 的 Sentry 测试入口返回 HTTP 500 与 request ID，有[真实证据](../../../docs/runbooks/evidence/staging-acceptance/2026-10-13/acceptance-2026-10-13j-sentry-test.json)。指定项目实际事件与 web/jobs 的 release、dist、TypeScript source map 尚未核验；1.2 保留未勾选。
+2026-10-14 验收记录：13j 测试入口 request ID 对应的 web 事件（release e6936068，dist=web）与 jobs 真实 Workflow 失败的 SDK step 事件（release 8782adb，dist=jobs）均映射到 TypeScript 函数/文件/行号且源码上下文可读、无凭据与对话内容，见[真实证据](../../../docs/runbooks/evidence/staging-acceptance/2026-10-13/acceptance-2026-10-13j-sentry-verification.json)。同一失败另有一个 Workflows 引擎包装的事件，其引擎帧不可映射属预期，重复上报另行修复。

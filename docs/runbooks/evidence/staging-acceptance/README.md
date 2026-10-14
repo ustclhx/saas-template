@@ -47,7 +47,7 @@ fal 13 / 13b / 13c 的控制台只读核对均未在对应时间窗观察到受�
 - fal 视频提交后立即取消，释放预扣 3 积分、消费 0；本场景不证明视频成功产出。
 - 按 token / 按次各执行正常、主动停止、生成中关页，共六项 Chat 通过。
 - Admin 专用用户搜索、封禁/解封、模拟登录/退出、补发 25 积分、公告修改/恢复通过，均有审计 ID；最终已解封、已退出模拟，公告恢复。
-- Sentry 测试入口返回预期 HTTP 500 与 request ID；实际事件与 source map 尚未核验。
+- Sentry 测试入口返回预期 HTTP 500 与 request ID；2026-10-14 在指定项目[核验](2026-10-13/acceptance-2026-10-13j-sentry-verification.json) web 与 jobs 事件的 release、dist 及 TypeScript 可读源码堆栈。
 
 | Chat 场景 | token 积分 / 状态 | 按次积分 / 状态 |
 |---|---|---|
@@ -62,14 +62,13 @@ fal 13 / 13b / 13c 的控制台只读核对均未在对应时间窗观察到受�
 
 ## OpenSpec 核对与剩余人工验收
 
-本次没有新增可完整勾选的原始任务。保留任务定义及未勾选状态，并在 tasks.md 写入证据与未覆盖范围。
+observability 1.2 于 2026-10-14 补齐 Sentry 实际事件核验后勾选；其余任务保留未勾选，并在 tasks.md 写入证据与未覆盖范围。
 
 | Change / 任务 | 已有真实证据 | 仍待完成（完整任务保持未勾选） |
 |---|---|---|
 | [media 7.1 / 7.2](../../../../openspec/changes/add-ai-media-generation/tasks.md) | Workers/fal 图片成功、取消全退；历史失败对账 | Workers 推理失败与硬超时受控注入；fal 视频成功产出、回调丢失/早到、已受理提交响应丢失、服务商失败及硬超时 |
 | [chat 5.1](../../../../openspec/changes/add-ai-text-chat/tasks.md) | 两种计费各正常/停止/关页，流水与不变式通过 | 服务商报错、AI Gateway token 差异 ≤1% 核对；13j 使用 direct DeepSeek，未作外部用量比较 |
 | [admin 6.1](../../../../openspec/changes/add-admin-console/tasks.md) | 专用用户动作、积分幂等、设置恢复及审计 | 指定测试支付资源的失败回调重放与退款审核（未执行），次日指标更新核验 |
-| [observability 1.2](../../../../openspec/changes/add-observability-and-optional-features/tasks.md) | 测试入口 HTTP 500，request ID 已保存 | 指定 Sentry 项目实际事件、release/dist、web + jobs TypeScript 可读源码堆栈及 source map |
 
 故障注入按 [验收 runbook](../../staging-acceptance.md)执行；历史意外失败不代替受控注入。
 退款与支付回调重放仍需针对具体测试资源的授权。此次只整理证据，没有补跑付费调用、注入故障或执行支付动作。
