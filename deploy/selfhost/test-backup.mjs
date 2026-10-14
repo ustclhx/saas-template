@@ -17,8 +17,9 @@ import { promisify } from 'node:util'
 
 const root = resolve(import.meta.dirname, '../..')
 const args = process.argv.slice(2)
-const full = args.includes('--full')
-const restoreSuite = args.includes('--restore')
+const releaseDrill = args.includes('--release-drill')
+const full = args.includes('--full') || releaseDrill
+const restoreSuite = args.includes('--restore') || releaseDrill
 const devRuntime = args.includes('--dev-runtime')
 const option = (name, fallback) => (args.includes(name) ? args[args.indexOf(name) + 1] : fallback)
 const sha = option(
@@ -27,28 +28,38 @@ const sha = option(
 )
 if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error('Expected full SHA')
 const sourceDirty = Boolean(
-  execFileSync('git', ['status', '--porcelain', '--', 'deploy/selfhost'], {
+  execFileSync('git', ['status', '--porcelain'], {
     cwd: root,
     encoding: 'utf8',
   }).trim(),
 )
+const harnessRevision = execFileSync('git', ['rev-parse', 'HEAD'], {
+  cwd: root,
+  encoding: 'utf8',
+}).trim()
+const bundleDirectory = resolve(option('--bundle-dir', join(root, 'deploy/selfhost')))
+let bundleRelease
 const output = resolve(option('--output', join(tmpdir(), `selfhost-d-backup-evidence-${sha}`)))
 const temporary = realpathSync(mkdtempSync(join(tmpdir(), 'selfhost-d-backup-')))
 chmodSync(temporary, 0o700)
-const project = `selfhost-d-restore-${randomBytes(6).toString('hex')}`
+const project = `selfhost-d-drill-${randomBytes(6).toString('hex')}`
 const fixture = join(temporary, 'fixture')
 const secrets = join(temporary, 'secrets')
 const composeFile = join(temporary, 'compose.yaml')
 const env = { ...process.env, COMPOSE_PROJECT_NAME: project, COMPOSE_PROFILES: '' }
 const image = (name) =>
-  process.env[`${name.toUpperCase().replaceAll('-', '_')}_IMAGE`] || `local/selfhost/${name}:${sha}`
+  bundleRelease?.images[name] ||
+  process.env[`${name.toUpperCase().replaceAll('-', '_')}_IMAGE`] ||
+  `local/selfhost/${name}:${sha}`
 const execute = promisify(execFile)
 let started = false
 let failure
 let phase = 'configuration'
 let sampling = false
 let sampler
+let sampleInFlight
 let cleaned = false
+let selectedRestore
 const restoreStates = []
 const events = []
 const measurements = {}
@@ -244,68 +255,157 @@ async function sample() {
     minFreeBytes: null,
   }
   const point = measurements[phase]
-  for (const service of ['postgres', 'backup', 'object-storage', 'tls']) {
-    let result
-    try {
-      result = compose(
-        'exec',
-        '-T',
-        service,
-        'sh',
-        '-c',
-        "cat /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.peak /sys/fs/cgroup/memory.events /sys/fs/cgroup/cpu.stat; awk '/^VmRSS:/ {s += $2} END {print s*1024}' /proc/[0-9]*/status 2>/dev/null || true",
-      )
-    } catch (error) {
-      if (service === 'tls' && phase === 'archive_upload_failure') continue
-      throw error
-    }
-    const lines = result.trim().split('\n')
-    point.services[service] ??= {
-      rssPeakBytes: 0,
-      cgroupPeakBytes: 0,
-      cpuUsec: 0,
-      cpuPeakPercent: 0,
-    }
-    const value = point.services[service]
-    value.rssPeakBytes = Math.max(value.rssPeakBytes, Number(lines.at(-1)))
-    value.cgroupPeakBytes = Math.max(value.cgroupPeakBytes, Number(lines[1]))
-    value.cpuUsec = Number(result.match(/usage_usec (\d+)/)?.[1])
-    const measuredAt = Date.now()
-    const prior = priorCpu.get(service)
-    if (prior)
-      value.cpuPeakPercent = Math.max(
-        value.cpuPeakPercent,
-        (value.cpuUsec - prior.usage) / ((measuredAt - prior.at) * 10),
-      )
-    priorCpu.set(service, { usage: value.cpuUsec, at: measuredAt })
-    assert(/oom_kill 0\b/.test(result), 'Fixture resource budget OOM')
+  // 异步容器采样，避免宿主同步docker调用阻塞恢复子进程；只枚举本fixture与已登记恢复project。
+  const projects = new Set([project])
+  for (const directory of restoreStates) {
+    const metadata = join(directory, 'state.json')
+    if (existsSync(metadata)) projects.add(JSON.parse(readFileSync(metadata, 'utf8')).project)
   }
-  const metrics = JSON.parse(
-    sql(
-      "select json_build_object('connections',(select count(*) from pg_stat_activity),'walBytes',(select coalesce(sum(size),0) from pg_ls_waldir()),'pgDataBytes',pg_database_size(current_database()))",
-    ),
+  const lists = await Promise.all(
+    [...projects].map(async (name) => {
+      const result = await execute(
+        'docker',
+        [
+          'ps',
+          '--filter',
+          `label=com.docker.compose.project=${name}`,
+          '--format',
+          '{{.ID}} {{.Label "com.docker.compose.service"}}',
+        ],
+        { env, encoding: 'utf8', timeout: 10_000 },
+      )
+      return result.stdout
+        .trim()
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => {
+          const [id, service] = line.split(' ')
+          return {
+            id,
+            service: name === project ? service : `recovery:${name}`,
+            postgres: service === 'postgres' || service === 'restore',
+          }
+        })
+    }),
   )
-  point.maxConnections = Math.max(point.maxConnections, metrics.connections)
-  point.maxWalBytes = Math.max(point.maxWalBytes, metrics.walBytes)
-  point.maxPgDataBytes = Math.max(point.maxPgDataBytes, metrics.pgDataBytes)
-  const disk = status().disk
-  point.minFreeBytes = Math.min(point.minFreeBytes ?? disk.freeBytes, disk.freeBytes)
-  point.maxPgDataBytes = Math.max(point.maxPgDataBytes, disk.pgDataBytes)
+  await Promise.all(
+    lists.flat().map(async ({ id, service, postgres }) => {
+      let result
+      try {
+        result = await execute(
+          'docker',
+          [
+            'exec',
+            id,
+            'sh',
+            '-c',
+            "cat /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.peak /sys/fs/cgroup/memory.events /sys/fs/cgroup/cpu.stat; awk '/^VmRSS:/ {s += $2} END {print s*1024}' /proc/[0-9]*/status 2>/dev/null || true",
+          ],
+          { env, encoding: 'utf8', timeout: 10_000 },
+        )
+      } catch {
+        // 一次性backup-fetch/校验容器会在采样中自然退出；不能把该竞争当作OOM或漏采成功。
+        return
+      }
+      const raw = safe(result.stdout)
+      const lines = raw.trim().split('\n')
+      point.services[service] ??= {
+        rssPeakBytes: 0,
+        cgroupPeakBytes: 0,
+        cpuUsec: 0,
+        cpuPeakPercent: 0,
+        samples: 0,
+        maxConnections: 0,
+        maxWalBytes: 0,
+        maxPgDataBytes: 0,
+        minFreeBytes: null,
+      }
+      const value = point.services[service]
+      value.rssPeakBytes = Math.max(value.rssPeakBytes, Number(lines.at(-1)))
+      value.cgroupPeakBytes = Math.max(value.cgroupPeakBytes, Number(lines[1]))
+      value.cpuUsec = Number(raw.match(/usage_usec (\d+)/)?.[1])
+      const measuredAt = Date.now()
+      const prior = priorCpu.get(id)
+      if (prior)
+        value.cpuPeakPercent = Math.max(
+          value.cpuPeakPercent,
+          (value.cpuUsec - prior.usage) / ((measuredAt - prior.at) * 10),
+        )
+      priorCpu.set(id, { usage: value.cpuUsec, at: measuredAt })
+      assert(/oom_kill 0\b/.test(raw), 'Fixture resource budget OOM')
+      value.samples++
+      if (postgres) {
+        try {
+          const metrics = await execute(
+            'docker',
+            [
+              'exec',
+              id,
+              'psql',
+              '-X',
+              '-U',
+              'postgres',
+              '-d',
+              'saas_production',
+              '-tAc',
+              "select json_build_object('connections',(select count(*) from pg_stat_activity),'walBytes',(select coalesce(sum(size),0) from pg_ls_waldir()),'pgDataBytes',pg_database_size(current_database()))",
+            ],
+            { env, encoding: 'utf8', timeout: 10_000 },
+          )
+          const data = JSON.parse(metrics.stdout)
+          for (const [key, source] of [
+            ['maxConnections', 'connections'],
+            ['maxWalBytes', 'walBytes'],
+            ['maxPgDataBytes', 'pgDataBytes'],
+          ]) {
+            value[key] = Math.max(value[key], data[source])
+            point[key] = Math.max(point[key], data[source])
+          }
+          const disk = await execute(
+            'docker',
+            [
+              'exec',
+              id,
+              'sh',
+              '-c',
+              'df -Pk /var/lib/postgresql/data | tail -1; du -sk /var/lib/postgresql/data',
+            ],
+            { env, encoding: 'utf8', timeout: 10_000 },
+          )
+          const diskLines = disk.stdout.trim().split('\n')
+          const free = Number(diskLines[0].trim().split(/\s+/)[3]) * 1024
+          const pgDataBytes = Number(diskLines[1].trim().split(/\s+/)[0]) * 1024
+          value.maxPgDataBytes = Math.max(value.maxPgDataBytes, pgDataBytes)
+          point.maxPgDataBytes = Math.max(point.maxPgDataBytes, pgDataBytes)
+          value.minFreeBytes = Math.min(value.minFreeBytes ?? free, free)
+          point.minFreeBytes = Math.min(point.minFreeBytes ?? free, free)
+        } catch {
+          // base抓取与重放早期还没有可查询的数据库；容器cgroup仍已采到。
+        }
+      }
+    }),
+  )
   point.samples++
 }
 async function monitor() {
   while (sampling) {
-    if (phase !== 'schedule_restart') await sample()
+    if (phase !== 'schedule_restart') {
+      sampleInFlight = sample()
+      await sampleInFlight
+    }
     await delay(1000)
   }
 }
-async function restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, sourceDbAcl) {
+async function restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, sourceDbAcl, selected) {
+  const selectedBackupId = selected?.backupId || first.base.backupId
   phase = 'restore_target'
-  const target = sql(
-    'select to_char(clock_timestamp() at time zone \'UTC\',\'YYYY-MM-DD"T"HH24:MI:SS.US"Z"\')',
-  )
-  await delay(1200)
-  sql("insert into public.backup_marker values ('after',99)")
+  const target =
+    selected?.target ||
+    sql('select to_char(clock_timestamp() at time zone \'UTC\',\'YYYY-MM-DD"T"HH24:MI:SS.US"Z"\')')
+  if (!selected) {
+    await delay(1200)
+    sql("insert into public.backup_marker values ('after',99)")
+  }
   backup('verify')
   const checksFile = join(temporary, 'checks.json')
   writeFileSync(
@@ -327,7 +427,7 @@ async function restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, source
         },
         {
           name: 'task-state',
-          sql: "select (select state='pending' from job_engine.message where queue='restore-fixture') and (select consumed_at is null from job_engine.workflow_event where workflow_id='restore-fixture') and (select state='waiting' from job_engine.workflow_wait where workflow_id='restore-fixture') and exists(select 1 from job_engine.schedule where id='restore-fixture') and (select status='pending' from dbos.backup_task where id='fixture')",
+          sql: "select (select state='pending' from job_engine.message where queue='restore-fixture') and (select consumed_at is null from job_engine.workflow_event where workflow_id='restore-fixture') and (select state='waiting' from job_engine.workflow_wait where workflow_id='restore-fixture') and exists(select 1 from job_engine.schedule where id='restore-fixture') and (select status='pending' from dbos.backup_task where id='fixture') and exists(select 1 from dbos.workflow_status where workflow_uuid='d-drill-fixture' and status='PENDING' and name='direct-sql-restore-fixture') and exists(select 1 from dbos.operation_outputs where workflow_uuid='d-drill-fixture' and function_id=0 and function_name='prepared' and output='17')",
         },
         {
           name: 'credit-snapshot',
@@ -356,11 +456,11 @@ async function restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, source
       '--image',
       image('postgres'),
       '--backup-id',
-      first.base.backupId,
+      selectedBackupId,
       '--target-time',
       target,
       '--project',
-      `selfhost-restore-d-restore-${randomBytes(6).toString('hex')}`,
+      `selfhost-restore-d-drill-${randomBytes(6).toString('hex')}`,
       '--state-dir',
       state,
       '--network',
@@ -375,13 +475,14 @@ async function restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, source
   }
   async function hostRestore(script, commandArgs) {
     try {
-      const result = await execute(join(root, `deploy/selfhost/${script}`), commandArgs, {
+      const result = await execute(join(bundleDirectory, script), commandArgs, {
         cwd: root,
         env,
         encoding: 'utf8',
         timeout: 180_000,
         maxBuffer: 1024 * 1024,
       })
+      if (sampleInFlight) await sampleInFlight
       return JSON.parse(safe(result.stdout).trim().split('\n').at(-1))
     } catch (error) {
       const code = String(error.stderr ?? '').match(/RESTORE_[A-Z_]+/)?.[0] || 'UNKNOWN'
@@ -433,7 +534,7 @@ async function restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, source
     Date.now() + 86400_000,
   ).toISOString()
   assert(await rejectedRestore(futureArgs), 'Out-of-range target silently restored latest')
-  const gapKey = `wal_005/${first.base.backupId.slice(5)}.lz4`
+  const gapKey = `wal_005/${selectedBackupId.slice(5)}.lz4`
   walg('st', 'get', gapKey, '/var/lib/selfhost-backup/gap.lz4', '--no-decompress')
   walg('st', 'rm', gapKey)
   const gapState = join(temporary, 'gap-restore')
@@ -498,7 +599,10 @@ async function restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, source
     JSON.parse(compose('run', '--rm', '--no-deps', 'replica-s3tool', 'list'))
   const copyState = status().replica
   assert(
-    copyState.ok && copyState.continuousUntil && copyState.backupId === first.base.backupId,
+    copyState.ok &&
+      copyState.continuousUntil &&
+      copyState.backupId === status().base.backupId &&
+      (!releaseDrill || copyState.oldestBackupId === selectedBackupId),
     'Replica lacks verified upper bound',
   )
   const copied = replicaList()
@@ -581,7 +685,7 @@ async function restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, source
   assert(status().verification.ok, 'Replica outage blocked primary archive')
   await composeAsync('start', 'replica-tls')
   // 只针对本夹具生成真实history，再停止此临时PG；正式恢复入口不向主归档写入。
-  await pitr(first.base.backupId, target)
+  await pitr(selectedBackupId, target)
   sql('select pg_wal_replay_resume()', 'restore')
   sql('select pg_promote(true,30)', 'restore')
   compose(
@@ -608,9 +712,18 @@ async function restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, source
     'Source deletion propagated',
   )
   evidence('replica.source_delete', { deletionNotPropagated: true })
+  const finalCopyState = status().replica
+  assert(
+    Date.parse(finalCopyState.continuousUntil) >= Date.parse(target),
+    'Replica upper bound precedes target',
+  )
+  evidence('replica.final_bound', {
+    ...finalCopyState,
+    target,
+    observedAt: new Date().toISOString(),
+    observedLagSeconds: (Date.now() - Date.parse(finalCopyState.continuousUntil)) / 1000,
+  })
   phase = 'restore_secondary_only'
-  sampling = false
-  await sampler
   await composeAsync('stop', 'tls', 'object-storage', 'postgres', 'backup')
   const secondaryState = join(temporary, 'secondary-restore')
   restoreStates.push(secondaryState)
@@ -626,6 +739,33 @@ async function restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, source
     beforePresent: true,
     afterAbsent: true,
   })
+  assert(
+    primary.backupId === secondary.backupId &&
+      primary.targetTime === secondary.targetTime &&
+      primary.replayLsn === secondary.replayLsn &&
+      primary.actualReplayTime === secondary.actualReplayTime,
+    'Primary and secondary replay positions differ',
+  )
+  if (releaseDrill) {
+    for (const report of [primary, secondary]) {
+      const points = Object.values(measurements)
+        .map((point) => point.services[`recovery:${report.project}`])
+        .filter(Boolean)
+      assert(
+        points.some((point) => point.samples >= 1 && point.maxPgDataBytes > 0),
+        'Recovery resource samples absent',
+      )
+    }
+  }
+  evidence('restore.same_point', {
+    backupId: selectedBackupId,
+    target,
+    replayLsn: primary.replayLsn,
+    actualReplayTime: primary.actualReplayTime,
+    primaryRtoSeconds: primary.elapsedSeconds,
+    secondaryRtoSeconds: secondary.elapsedSeconds,
+    sameReplayPosition: true,
+  })
   await composeAsync('start', 'object-storage', 'tls', 'postgres', 'backup')
 }
 async function cleanup() {
@@ -635,7 +775,7 @@ async function cleanup() {
     for (const state of restoreStates) {
       const metadata = join(state, 'state.json')
       if (!existsSync(metadata)) continue
-      run(join(root, 'deploy/selfhost/restore.sh'), ['cleanup', '--state-dir', state])
+      run(join(bundleDirectory, 'restore.sh'), ['cleanup', '--state-dir', state])
     }
     if (started) compose('down', '-v', '--remove-orphans', '--timeout', '10')
     cleaned = true
@@ -652,6 +792,37 @@ for (const signal of ['SIGINT', 'SIGTERM'])
   })
 
 try {
+  if (releaseDrill) {
+    assert(!sourceDirty, 'Release drill requires a clean committed harness')
+    assert(
+      args.includes('--bundle-dir') && !devRuntime,
+      'Release drill requires bundle and image-contained runtime',
+    )
+    run('python3', [
+      '-B',
+      join(bundleDirectory, 'release/bundle.py'),
+      'verify',
+      bundleDirectory,
+      '--sha',
+      sha,
+    ])
+    bundleRelease = JSON.parse(readFileSync(join(bundleDirectory, 'release.json'), 'utf8'))
+    for (const name of ['postgres', 'backup', 'migrate', 'object-storage']) {
+      const supplied = process.env[`${name.toUpperCase().replaceAll('-', '_')}_IMAGE`]
+      assert(
+        !supplied || supplied === bundleRelease.images[name],
+        'External image differs from release bundle',
+      )
+    }
+    evidence('release.provenance', {
+      sourceRevision: sha,
+      harnessRevision,
+      sourceDirty,
+      images: bundleRelease.images,
+      bundleVerified: true,
+      imageContainedRuntime: true,
+    })
+  }
   mkdirSync(secrets)
   mkdirSync(fixture)
   for (const name of [
@@ -946,9 +1117,19 @@ ${credentials
       info.Config.User && !['0', 'root'].includes(info.Config.User.split(':')[0]),
       'Fixture image is root',
     )
+    if (releaseDrill) {
+      assert(
+        info.Config.Labels?.['org.opencontainers.image.revision'] === sha,
+        'Image OCI revision differs',
+      )
+      assert(
+        info.RepoDigests?.includes(image(name)),
+        'Image RepoDigests differs from bundle digest',
+      )
+    }
   }
   evidence('backup.fixture', {
-    mode: restoreSuite ? 'restore' : full ? 'full' : 'smoke',
+    mode: releaseDrill ? 'release-drill' : restoreSuite ? 'restore' : full ? 'full' : 'smoke',
     project,
     noPublishedPorts: true,
     internalOnly: true,
@@ -1212,7 +1393,8 @@ ${credentials
     'Restart duplicated successful schedule slot',
   )
   evidence('backup.schedule_restart', { successfulSlotPreserved: true, noDuplicateBase: true })
-  if (restoreSuite) await restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, sourceDbAcl)
+  if (restoreSuite && !releaseDrill)
+    await restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, sourceDbAcl)
   if (full) {
     phase = 'oldest_weekly_pitr'
     await composeAsync(
@@ -1225,7 +1407,7 @@ ${credentials
     )
     const weeklyId = status().base.backupId
     const beforeTarget = sql(
-      "select to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD HH24:MI:SS.US') || '+00'",
+      'select to_char(clock_timestamp() at time zone \'UTC\',\'YYYY-MM-DD"T"HH24:MI:SS.US"Z"\')',
     )
     await delay(1500)
     sql("insert into public.backup_marker values ('after', 99)")
@@ -1246,6 +1428,31 @@ ${credentials
       '/usr/local/lib/selfhost-backup/backup.py',
       'base',
     )
+    const laterIds = [status().base.backupId]
+    if (releaseDrill) {
+      for (let index = 0; index < 2; index++) {
+        await composeAsync(
+          'exec',
+          '-T',
+          'backup',
+          'python3',
+          '/usr/local/lib/selfhost-backup/backup.py',
+          'base',
+        )
+        laterIds.push(status().base.backupId)
+      }
+      assert(
+        new Set([first.base.backupId, weeklyId, ...laterIds]).size === 5,
+        'Expected five distinct real full backups',
+      )
+    }
+    const metadataDates = () =>
+      JSON.parse(walg('backup-list', '--detail', '--json')).map((item) => ({
+        backupId: item.backup_name,
+        startTime: item.start_time,
+        finishTime: item.finish_time,
+      }))
+    const originalDates = metadataDates()
     const all = JSON.parse(walg('backup-list', '--json'))
     const oldest = all.find((b) => (b.backup_name ?? b.BackupName) === weeklyId)
     assert(oldest, 'Oldest base missing before retention')
@@ -1259,6 +1466,15 @@ ${credentials
     )?.key
     s3('age', obsoleteKey, new Date(Date.now() - 40 * 86400_000).toISOString())
     s3('age', oldestKey, weeklyDate.toISOString())
+    if (releaseDrill) {
+      for (const [index, backupId] of laterIds.slice(0, 2).entries()) {
+        const date = new Date(weeklyDate.getTime() + (index + 1) * 7 * 86400_000)
+        const key = s3('list').find((item) => item.key.endsWith(`/${backupId}/metadata.json`))?.key
+        assert(key, 'Weekly metadata absent')
+        s3('age', key, date.toISOString())
+      }
+    }
+    const simulatedDates = metadataDates()
     backup('verify')
     // 删除缺段只能在本fixture发生；恢复原始压缩对象后才继续真实清理。
     const gapKey = s3('list').find((o) => o.key.endsWith(`/wal_005/${weeklyId.slice(5)}.lz4`))?.key
@@ -1283,6 +1499,20 @@ ${credentials
     const beforeCleanup = s3('list')
     const plan = JSON.parse(backup('retention-plan'))
     assert(plan.oldest === weeklyId && plan.weekly.includes(weeklyId), 'Weekly selection differs')
+    if (releaseDrill)
+      assert(
+        plan.weekly.length === 4 && plan.missingWeeklyAnchors.length === 0,
+        'Four weekly anchors absent',
+      )
+    evidence('backup.retention_plan', {
+      plan,
+      originalDates,
+      simulatedDates,
+      metadataOnlyAged: true,
+      actualBackupCount: all.length,
+      weeklyDate: weeklyDate.toISOString(),
+      simulatedWeeklyOffsetDays: 21,
+    })
     preservedInventory(beforeCleanup, s3('list'), 'Dry-run mutated S3')
     backup('retention-apply')
     assert(
@@ -1299,6 +1529,7 @@ ${credentials
       ),
       'Weekly anchor deleted by real retention',
     )
+    selectedRestore = { backupId: weeklyId, target: beforeTarget }
     const restoreStart = Date.now()
     await pitr(weeklyId, beforeTarget)
     assert(
@@ -1324,7 +1555,7 @@ ${credentials
     evidence('backup.oldest_weekly_pitr', {
       backupId: weeklyId,
       retentionDateSimulated: true,
-      retainedAgeDays: 21,
+      retainedAgeDays: (Date.now() - weeklyDate.getTime()) / 86400_000,
       realTarget: beforeTarget,
       beforePresent: true,
       afterAbsent: true,
@@ -1425,6 +1656,20 @@ ${credentials
     assert(status().dump.ok, 'Dump did not recover after endpoint restored')
     evidence('backup.failure_recovery', { archiveRetried: true, dumpRecovered: true })
   }
+  if (releaseDrill) {
+    phase = 'base_failure_recovery'
+    await composeAsync(
+      'exec',
+      '-T',
+      'backup',
+      'python3',
+      '/usr/local/lib/selfhost-backup/backup.py',
+      'base',
+    )
+    backup('verify')
+    assert(status().base.ok, 'Base did not recover before release drill')
+    await restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, sourceDbAcl, selectedRestore)
+  }
   sampling = false
   await sampler
   assert(!failure, failure)
@@ -1434,13 +1679,20 @@ ${credentials
     assert(point.maxConnections <= 10, 'Backup connection budget exceeded')
     for (const [name, resource] of Object.entries(point.services)) {
       assert(
-        resource.cgroupPeakBytes <= config.services[name].mem_limit,
+        resource.cgroupPeakBytes <=
+          (name.startsWith('recovery:') ? 512 * 1024 * 1024 : config.services[name].mem_limit),
         'Backup memory budget exceeded',
       )
     }
   }
   evidence('backup.resources', {
-    budgets: { fixtureMiB: 2432, backupMiB: 256, backupCpu: 0.2, maxConnections: 10 },
+    budgets: {
+      recoveryEachMiB: 512,
+      backupMiB: 256,
+      backupCpu: 0.2,
+      maxConnections: 10,
+    },
+    interpretation: 'Per-service sampled maxima; these are not a simultaneous whole-host peak',
     measurements,
     disk: final.disk,
   })
@@ -1456,7 +1708,12 @@ ${credentials
       ...(restoreSuite ? ['replica-storage', 'replica-tls'] : []),
     ),
   )
-  evidence('backup.passed', { full })
+  evidence('backup.passed', {
+    full,
+    restoreSuite,
+    releaseDrill,
+    fixtureData: 'direct SQL into production schemas; no jobs executed',
+  })
 } catch (error) {
   failure = error instanceof Error ? error.message : 'Backup acceptance failed'
   if (started) {
@@ -1470,7 +1727,7 @@ ${credentials
   mkdirSync(output, { recursive: true })
   writeFileSync(
     join(output, 'backup-smoke.json'),
-    `${JSON.stringify({ sha, sourceDirty, full, passed: !failure, cleaned, events, measurements }, null, 2)}\n`,
+    `${JSON.stringify({ sha, sourceRevision: sha, harnessRevision, sourceDirty, full, restoreSuite, releaseDrill, passed: !failure, cleaned, events, measurements }, null, 2)}\n`,
   )
 }
 if (failure) {
