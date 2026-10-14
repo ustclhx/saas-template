@@ -9,8 +9,11 @@
 ## 1. 镜像发布与集成交接（P1，协调者/CI owner）
 
 - [ ] 1.1 固定各 worker 文件所有权、A/B/C 依赖与 capability 同步顺序，记录 B/D 容器 recreate、boot 与恢复退出证据的签收清单。验证：交接文档含确切文件/接口、未完成 A/B/C 项和第 7 组阻塞原因；无重复 requirement 名、无越权归档。
+  - 2026-10-14：交接草案见 `docs/runbooks/selfhost-delivery-handoff.md`；已记录实际 ownership 补修与剩余依赖，待协调者审阅后勾选，worker 不勾选。
 - [ ] 1.2 基于 A Dockerfiles 建立两个架构的 CI 构建/运行矩阵，核对各基础 digest 为 multiarch manifest；配套 PG/Valkey/Caddy 和备份镜像纳入同 SHA 集合。验证：buildx manifest 含 linux/amd64、linux/arm64，各架构非 root 启动与原生依赖 smoke 通过，web/jobs 固化完整 SHA，无 build secret/CF 平台依赖；记录实际版本。（P1）
+  - 2026-10-14：只读 CI 矩阵与现有七镜像 build/runtime smoke 已实现；五个基础 digest 已实查含两架构。backup 工具仍依赖 4.1，完整集合及双架构 CI 验收未齐前不勾选。
 - [ ] 1.3 新增独立 GHCR 发布 workflow，支持显式 OCI namespace、最小 registry 写权限、受信提交发布、不可覆写 SHA 与完整集合 gate。验证：PR 没有写权限/服务器密钥，失败架构不发布可部署 release，成功 registry manifest/digest/revision 与源 SHA 相符；更新发布说明，CF CI/staging 原路径不变。（P1）
+  - 2026-10-14：独立手动发布 workflow、集合/信任/不可覆写 gate 与发布说明已实现。缺 backup 时只读阶段阻断；合并前不真实发布，registry 验收由协调者按 `deploy/selfhost/images/README.md` 首次触发后签收，此前保持未勾选。
 - [ ] 1.4 打包同 SHA 的部署 release bundle，包含 Compose/脚本/示例及镜像 digest 清单，更新 image-only `.env.example` 和 README 的过时 B 状态。验证：从干净目录仅拉 bundle/镜像即可 `compose config`，无服务器构建/源码依赖、无真值；所有必需服务的引用与 release SHA 一致。（P1、P2）
 - [ ] 1.5 **依赖 B owner：** 协调者取得可信容器重建/宿主 boot/异机恢复退出证据实现的签收，再由 D 接入持久 ownership 卷、executor ID、hostname/namespace 和版本配置。验证：旧进程仍活时拒绝重用、真实退出后可恢复、container recreate/reboot 不卡住；不删整个 owner 目录、不以 TTL 或 pid:host 猜测绕过。B 改动单独交付，未签收时 2 的恢复与 6.3/7.3 保持 BLOCKED。（§6.8）
 

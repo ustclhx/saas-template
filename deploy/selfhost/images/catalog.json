@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "pendingServices": ["backup"],
+  "services": [
+    { "name": "web", "dockerfile": "deploy/selfhost/app.Dockerfile", "target": "web" },
+    { "name": "jobs", "dockerfile": "deploy/selfhost/app.Dockerfile", "target": "jobs" },
+    {
+      "name": "migrate",
+      "dockerfile": "deploy/selfhost/app.Dockerfile",
+      "target": "migrate"
+    },
+    { "name": "postgres", "dockerfile": "deploy/selfhost/postgres.Dockerfile" },
+    { "name": "valkey", "dockerfile": "deploy/selfhost/valkey.Dockerfile" },
+    { "name": "caddy", "dockerfile": "deploy/selfhost/caddy.Dockerfile" },
+    { "name": "object-storage", "dockerfile": "deploy/selfhost/object-storage.Dockerfile" }
+  ]
+}
