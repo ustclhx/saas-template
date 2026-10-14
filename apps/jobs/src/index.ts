@@ -19,7 +19,13 @@ import templateConfig from '../../../template.config.ts'
 import { registerAiHoldSweepers } from './ai.ts'
 import { requireEnv } from './env.ts'
 import { consumeJobsBatch, type JobsContext, runJobsSchedule } from './handlers.ts'
-import { captureJobException, sentryEnabled, sentryOptions, tagJobContext } from './sentry.ts'
+import {
+  captureJobException,
+  createWorkflowSentry,
+  sentryEnabled,
+  sentryOptions,
+  tagJobContext,
+} from './sentry.ts'
 import { runMediaTask } from './workflows/media-runner.ts'
 
 const cloudflareJobObserver = { tagContext: tagJobContext, captureException: captureJobException }
@@ -112,9 +118,11 @@ class AiMediaWorkflowBase extends WorkflowEntrypoint<Cloudflare.Env, AiMediaPara
       { requestId: event.payload.requestId ?? newRequestId(), taskId: event.payload.taskId },
       async () => {
         tagJobContext()
+        const workflowSentry = createWorkflowSentry(step, sentryEnabled(this.env))
         try {
           const db = createDb(this.env.HYPERDRIVE)
-          return await runMediaTask(event.payload.taskId, createCloudflareWorkflowStep(step), {
+          const workflowStep = createCloudflareWorkflowStep(workflowSentry.step)
+          return await runMediaTask(event.payload.taskId, workflowStep, {
             db,
             callbackOrigin: templateConfig.app.url,
             callbackSecret: this.env.MEDIA_WEBHOOK_SECRET ?? '',
@@ -131,7 +139,7 @@ class AiMediaWorkflowBase extends WorkflowEntrypoint<Cloudflare.Env, AiMediaPara
               }
               return params
             },
-            observer: cloudflareJobObserver,
+            observer: workflowSentry.observer,
             persist: async (task, result) => {
               const entitlements = await getEntitlements(db, task.workspaceId, {
                 pastDueGraceDays: templateConfig.billing.pastDueGraceDays,
@@ -155,7 +163,7 @@ class AiMediaWorkflowBase extends WorkflowEntrypoint<Cloudflare.Env, AiMediaPara
             },
           })
         } catch (error) {
-          captureJobException(error)
+          workflowSentry.observer.captureException(error)
           throw error
         }
       },
