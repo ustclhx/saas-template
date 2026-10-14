@@ -332,7 +332,12 @@ async function sample() {
           (value.cpuUsec - prior.usage) / ((measuredAt - prior.at) * 10),
         )
       priorCpu.set(id, { usage: value.cpuUsec, at: measuredAt })
-      assert(/oom_kill 0\b/.test(raw), 'Fixture resource budget OOM')
+      assert(
+        /oom_kill 0\b/.test(raw),
+        /oom_kill \d+\b/.test(raw)
+          ? 'Fixture resource budget OOM'
+          : 'Fixture cgroup OOM counters absent',
+      )
       value.samples++
       if (postgres) {
         try {
@@ -474,18 +479,24 @@ async function restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, source
     return JSON.parse(compose('config', '--format', 'json')).networks.fixture.name
   }
   async function hostRestore(script, commandArgs) {
+    let result
     try {
-      const result = await execute(join(bundleDirectory, script), commandArgs, {
+      result = await execute(join(bundleDirectory, script), commandArgs, {
         cwd: root,
         env,
         encoding: 'utf8',
         timeout: 180_000,
         maxBuffer: 1024 * 1024,
       })
-      if (sampleInFlight) await sampleInFlight
-      return JSON.parse(safe(result.stdout).trim().split('\n').at(-1))
     } catch (error) {
       const code = String(error.stderr ?? '').match(/RESTORE_[A-Z_]+/)?.[0] || 'UNKNOWN'
+      evidence('restore.process_failure', {
+        phase,
+        restoreCode: code,
+        exitCode: Number.isInteger(error.code) ? error.code : null,
+        signal: /^SIG[A-Z]+$/.test(error.signal ?? '') ? error.signal : null,
+        killed: error.killed === true,
+      })
       if (error.stdout) {
         const lines = safe(String(error.stdout)).trim().split('\n')
         try {
@@ -494,6 +505,13 @@ async function restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, source
         } catch {}
       }
       throw new Error(`Restore entrance failed (${phase}; ${code})`)
+    }
+    // 恢复子进程与资源观察者是独立失败边界，不能把观察者错误误报为RESTORE UNKNOWN。
+    if (sampleInFlight) await sampleInFlight
+    try {
+      return JSON.parse(safe(result.stdout).trim().split('\n').at(-1))
+    } catch {
+      throw new Error(`Restore report invalid (${phase})`)
     }
   }
   const primaryState = join(temporary, 'primary-restore')
@@ -1235,7 +1253,22 @@ ${credentials
   sampling = true
   sampler = monitor().catch((error) => {
     sampling = false
-    failure = `Backup resource sampling failed: ${error.message}`
+    const reason = ['Fixture resource budget OOM', 'Fixture cgroup OOM counters absent'].includes(
+      error.message,
+    )
+      ? error.message
+      : error.name === 'SyntaxError'
+        ? 'Sampler metadata JSON invalid'
+        : 'Sampler Docker operation failed'
+    evidence('backup.sampling_failed', {
+      phase,
+      reason,
+      exitCode: Number.isInteger(error.code) ? error.code : null,
+      code: ['ETIMEDOUT', 'ENOENT', 'EACCES'].includes(error.code) ? error.code : null,
+      signal: /^SIG[A-Z]+$/.test(error.signal ?? '') ? error.signal : null,
+      killed: error.killed === true,
+    })
+    failure ??= `Backup resource sampling failed: ${reason}`
   })
   await wait(() => {
     const value = status()
@@ -1765,7 +1798,7 @@ ${credentials
     fixtureData: 'direct SQL into production schemas; no jobs executed',
   })
 } catch (error) {
-  failure = error instanceof Error ? error.message : 'Backup acceptance failed'
+  failure ??= error instanceof Error ? error.message : 'Backup acceptance failed'
   if (started) {
     try {
       evidence('backup.failure_status', { status: status() })
