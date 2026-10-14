@@ -1,10 +1,10 @@
-# Spec Delta
+# ai-fault-injection Specification
 
 ## Purpose
 
 定义仅供 staging 验收使用的 AI 故障模型如何配置、授权并包装真实服务商链路，使媒体和文本故障可重复触发，同时保持正常用户的模型选择、计费与运行行为稳定。
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: 故障注入环境闸门
 系统 SHALL 仅在显式 staging 环境且 `AI_FAULT_INJECTION=enabled` 时接受故障模型调用；production、未知环境或非法开关值 MUST 校验失败。开关关闭时，正常模型行为 MUST 保持不变，故障模型 MUST 不可调用。
@@ -82,11 +82,11 @@ Workers AI 故障模型 SHALL 支持无实际推理的确定失败与模拟未�
 - **THEN** 任务进入真实截止时间检查并失败退款，迟到执行不能重复结算
 
 ### Requirement: 文本流前与流中故障结算
-文本故障模型 SHALL 在流开始前或已有真实输出后注入错误，分别支持 token 与 per_call 定价，并保存实际注入位置与上游调用的持久证明。消息 MUST 为 failed；流前无输出时 per_call 全退、token 按现有输入估算与最低费用结算，流中按原有已产生用量计费。估算收费 MUST 不超过预扣，结算 MUST 至多一次。
+文本故障模型 SHALL 在流开始前或已有真实输出后注入错误，分别支持 token 与 per_call 定价，并保存实际注入位置与上游调用的持久证明。消息 MUST 为 failed；流前无可见正文时 token 与 per_call 均全额释放预扣（口径见 ai-text-reasoning），流中已有可见正文时 token 按已产生用量、per_call 按固定费用计费。收费 MUST 不超过预扣，结算 MUST 至多一次。
 
 #### Scenario: 流前错误
 - **WHEN** token 或 per_call 故障模型在任何输出之前报错
-- **THEN** 不产生 assistant 输出；per_call 全额释放，token 按原有规则收费并释放剩余预扣，证据区分两种预期
+- **THEN** 不产生 assistant 输出；token 与 per_call 均全额释放预扣、消费为零
 
 #### Scenario: 流中错误
 - **WHEN** 服务商已流式产生真实文本，包装层中断上游并注入流错误
