@@ -2,11 +2,13 @@ import { dbModelStore, listAvailableModels } from '@saas/ai'
 import { file, scoped } from '@saas/db'
 import { getEntitlements } from '@saas/entitlements'
 import { createServerFn } from '@tanstack/react-start'
+import { getRequest } from '@tanstack/react-start/server'
 import { and, desc, eq, isNull, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
 import { withWorkspace } from '../../server/middleware.ts'
 import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
+import { readFaultAccess } from '../ai/fault-access.ts'
 
 export const getMediaSubmitPage = createServerFn({ method: 'GET' })
   .middleware([withWorkspace])
@@ -21,6 +23,12 @@ export const getMediaSubmitPage = createServerFn({ method: 'GET' })
         store: dbModelStore(context.db),
         cache: runtime.cache,
         workersAi: runtime.ai?.available ? runtime.ai.value.workersAi.available : false,
+        faultAccess: await readFaultAccess({
+          auth: runtime.auth,
+          db: context.db,
+          headers: getRequest().headers,
+          env: runtime.ai?.available ? runtime.ai.value.config : {},
+        }),
       },
       entitlements,
     )

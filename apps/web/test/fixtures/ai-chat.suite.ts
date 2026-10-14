@@ -24,6 +24,7 @@ import {
   type ChatStopDeps,
   handleChatRequest,
   handleChatStopRequest,
+  startWorkspaceChat,
 } from '../../src/features/ai/chat.ts'
 
 // tasks.md 2.3：POST /api/ai/chat 的三种结算（正常完成、实际少于预扣、实际多于预扣），
@@ -426,6 +427,84 @@ export function registerAiChatSuite(
   })
 
   describe('POST /api/ai/chat 调用前检查', () => {
+    it('故障模型仅允许实时平台管理员；普通空间 owner 与管理员 API 上下文均无副作用', async () => {
+      const me = await member('fault-denied', 100)
+      const modelId = await textModel({ mode: 'token', inputPer1k: 1, outputPer1k: 2 })
+      const key = `acceptance-fault-${modelId}`
+      await db
+        .update(aiModel)
+        .set({
+          key,
+          provider: 'deepseek',
+          providerModelId: 'deepseek-flash',
+          paramsSchema: { 'x-acceptance-fault': { mode: 'chat-before-stream' } },
+        })
+        .where(eq(aiModel.id, modelId))
+      try {
+        const { deps } = chatDeps({
+          factory: () => {
+            throw new Error('must not invoke provider')
+          },
+        })
+        deps.env.AI_FAULT_INJECTION = 'enabled'
+        deps.env.SENTRY_ENVIRONMENT = 'staging'
+        const response = await handleChatRequest(
+          new Request(`${APP_URL}/api/ai/chat`, {
+            method: 'POST',
+            headers: { cookie: me.cookie, 'content-type': 'application/json' },
+            body: JSON.stringify({
+              slug: me.slug,
+              modelId,
+              message: { role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+            }),
+          }),
+          deps,
+        )
+        expect(response.status).toBe(404)
+        await sql`update "user" set role='admin' where id=${me.userId}`
+        // 管理员的模拟会话也不能触发故障；会话事实直接来自数据库。
+        await sql`update session set impersonated_by=${me.userId} where user_id=${me.userId}`
+        const impersonated = await handleChatRequest(
+          new Request(`${APP_URL}/api/ai/chat`, {
+            method: 'POST',
+            headers: { cookie: me.cookie, 'content-type': 'application/json' },
+            body: JSON.stringify({
+              slug: me.slug,
+              modelId,
+              message: { role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+            }),
+          }),
+          deps,
+        )
+        expect(impersonated.status).toBe(404)
+        await sql`update session set impersonated_by=null where user_id=${me.userId}`
+        // 模拟已鉴权 API key 调用；平台角色也不授予没有 fresh session 的入口权限。
+        await sql`update "user" set role='admin' where id=${me.userId}`
+        await expect(
+          startWorkspaceChat(
+            {
+              slug: me.slug,
+              modelId,
+              message: { role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+            },
+            { workspaceId: me.workspaceId, userId: me.userId },
+            deps,
+          ),
+        ).rejects.toMatchObject({ code: 'MODEL_UNAVAILABLE' })
+        expect(await scoped(db, me.workspaceId).count(aiConversation)).toBe(0)
+        expect(await scoped(db, me.workspaceId).count(aiMessage)).toBe(0)
+        expect(await sql`select id from credit_hold where workspace_id=${me.workspaceId}`).toEqual(
+          [],
+        )
+        expect(await getCreditBalance(db, me.workspaceId)).toMatchObject({
+          available: 100,
+          held: 0,
+        })
+      } finally {
+        await db.delete(aiModel).where(eq(aiModel.id, modelId))
+      }
+    })
+
     it('Workers AI 能力缺失时在模型工厂与预扣前拒绝，无消息或账本副作用', async () => {
       const me = await member('workers-ai-unavailable', 100)
       const modelId = await textModel({ mode: 'token', inputPer1k: 1, outputPer1k: 1 })

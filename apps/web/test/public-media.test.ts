@@ -22,7 +22,11 @@ import { afterAll, describe, expect, it, vi } from 'vitest'
 import { runMediaTask } from '../../jobs/src/workflows/media-runner.ts'
 import enApiDoc from '../content/docs/en/public-api.mdx?raw'
 import zhApiDoc from '../content/docs/zh/public-api.mdx?raw'
-import { createWorkspaceKey, editWorkspaceKey } from '../src/features/api-keys/service.ts'
+import {
+  authenticateApiKey,
+  createWorkspaceKey,
+  editWorkspaceKey,
+} from '../src/features/api-keys/service.ts'
 import {
   handlePublicMediaDetail,
   handlePublicMediaSubmit,
@@ -225,6 +229,64 @@ afterAll(async () => {
 })
 
 describe('公开 API 媒体任务与共用 Workflow', () => {
+  it('平台管理员创建的 Key 在 staging 开启故障时仍不可选媒体故障模型，且无业务或积分副作用', async () => {
+    const who = await owner()
+    await sql`update "user" set role='admin' where id=${who.id}`
+    const key = await createWorkspaceKey(
+      who.headers,
+      { slug: who.slug, name: 'Admin fault denied' },
+      dependencies(),
+    )
+    const modelKey = `acceptance-fault-${newId()}`
+    try {
+      await db.insert(aiModel).values({
+        key: modelKey,
+        kind: 'image',
+        provider: 'fal',
+        providerModelId: 'fal-ai/flux/schnell',
+        pricing: { mode: 'per_call', credits: 1 },
+        paramsSchema: {
+          type: 'object',
+          required: ['prompt'],
+          properties: { prompt: { type: 'string', minLength: 1 } },
+          'x-acceptance-fault': { mode: 'fal-timeout' },
+        },
+      })
+      const providerFactory = vi.fn(() => provider())
+      const apiDeps = {
+        ...dependencies({
+          env: {
+            APP_URL: url,
+            MEDIA_WEBHOOK_SECRET: 'fixture-media-callback-secret',
+            SENTRY_ENVIRONMENT: 'staging',
+            AI_FAULT_INJECTION: 'enabled',
+          },
+          providerFactory,
+        }),
+        // 即使内部依赖允许故障，公开入口也必须覆盖为拒绝。
+        faultAccess: { enabled: true, platformAdmin: true },
+      }
+      const context = await authenticateApiKey(
+        new Request(`${url}/api/v1/tasks`, { headers: { authorization: `Bearer ${key.key}` } }),
+        apiDeps,
+      )
+      expect(context.user).toMatchObject({ id: who.id, role: 'admin' })
+      const response = await submit(key.key, modelKey, apiDeps)
+      expect(response.status).toBe(404)
+      expect(await response.json()).toMatchObject({ error: { code: 'MODEL_UNAVAILABLE' } })
+      expect(providerFactory).not.toHaveBeenCalled()
+      expect(apiDeps.workflow.available && apiDeps.workflow.value.create).not.toHaveBeenCalled()
+      await noReservation(who.id)
+      expect(await sql`select id from ai_message where workspace_id=${who.id}`).toHaveLength(0)
+      expect(
+        await sql`select id from credit_ledger where workspace_id=${who.id} and type='consume'`,
+      ).toHaveLength(0)
+      expect(await getCreditBalance(db, who.id)).toMatchObject({ debt: 0 })
+    } finally {
+      await sql`delete from ai_model where key=${modelKey}`
+    }
+  })
+
   it('通过假 AI 绑定执行同步图片，公开 API 可查询真实 R2 文件且积分结算一次', async () => {
     const who = await owner()
     const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])

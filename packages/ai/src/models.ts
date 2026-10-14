@@ -3,6 +3,7 @@ import { type AiModel, aiModel, type Database, type NewAiModel } from '@saas/db'
 import { can, type Entitlements, requireEntitlement } from '@saas/entitlements'
 import { AppError } from '@saas/shared'
 import { and, asc, eq } from 'drizzle-orm'
+import { ACCEPTANCE_FAULT_INVALID, type FaultAccessContext, parseAcceptanceFault } from './fault.ts'
 import { type AiModality, type Pricing, PricingError, parsePricing } from './pricing.ts'
 
 /**
@@ -47,6 +48,7 @@ export interface ModelRegistryContext {
   cache?: ModelCache | undefined
   /** 目标未装配 Workers AI 时显式传 false；省略保留既有调用方行为。 */
   workersAi?: boolean | undefined
+  faultAccess?: FaultAccessContext | undefined
 }
 
 export const MODEL_CACHE_KEY = 'ai:models'
@@ -82,8 +84,10 @@ function toAvailable(row: AiModel): AvailableModel | undefined {
   let pricing: Pricing
   try {
     pricing = parsePricing(row.pricing, row.kind)
+    parseAcceptanceFault(row)
   } catch (error) {
     if (error instanceof PricingError) return undefined
+    if (error instanceof AppError && error.code === ACCEPTANCE_FAULT_INVALID) return undefined
     throw error
   }
   return {
@@ -99,19 +103,36 @@ function toAvailable(row: AiModel): AvailableModel | undefined {
   }
 }
 
+function faultAvailable(
+  ctx: Pick<ModelRegistryContext, 'faultAccess'>,
+  model: AvailableModel,
+): boolean {
+  try {
+    return (
+      parseAcceptanceFault(model) === undefined ||
+      (ctx.faultAccess?.enabled === true && ctx.faultAccess.platformAdmin === true)
+    )
+  } catch (error) {
+    if (error instanceof AppError && error.code === ACCEPTANCE_FAULT_INVALID) return false
+    throw error
+  }
+}
+
 /** 当前目标可用的已启用模型（不按权益过滤），优先读缓存 */
 export async function listEnabledModels(ctx: ModelRegistryContext): Promise<AvailableModel[]> {
   const cached = await ctx.cache?.get(MODEL_CACHE_KEY)
   if (cached != null)
-    return (JSON.parse(cached) as AvailableModel[]).filter((model) =>
-      providerAvailable(ctx, model.provider),
+    return (JSON.parse(cached) as AvailableModel[]).filter(
+      (model) => providerAvailable(ctx, model.provider) && faultAvailable(ctx, model),
     )
   const models = (await ctx.store.listEnabled()).flatMap((row) => toAvailable(row) ?? [])
   await ctx.cache?.put(MODEL_CACHE_KEY, JSON.stringify(models), {
     expirationTtl: MODEL_CACHE_TTL_SECONDS,
   })
-  // 缓存保留完整注册表，目标能力在读取后过滤，避免不同目标污染共享缓存。
-  return models.filter((model) => providerAvailable(ctx, model.provider))
+  // 缓存保留完整注册表，每次读取后按目标、环境和身份过滤，避免共享缓存串权。
+  return models.filter(
+    (model) => providerAvailable(ctx, model.provider) && faultAvailable(ctx, model),
+  )
 }
 
 const allowed = (entitlements: Entitlements, model: AvailableModel) =>
@@ -135,13 +156,14 @@ export async function listAvailableModels(
  * 权益不允许时抛出 `UPGRADE_REQUIRED`（403）。直接读库，不受列表缓存延迟影响。
  */
 export async function requireAvailableModel(
-  ctx: Pick<ModelRegistryContext, 'store' | 'workersAi'>,
+  ctx: Pick<ModelRegistryContext, 'store' | 'workersAi' | 'faultAccess'>,
   entitlements: Entitlements,
   id: string,
 ): Promise<AvailableModel> {
   const row = await ctx.store.findEnabled(id)
   const model = row && toAvailable(row)
-  if (!model) throw new AppError(MODEL_UNAVAILABLE, 'Model is not available', { status: 404 })
+  if (!model || !faultAvailable(ctx, model))
+    throw new AppError(MODEL_UNAVAILABLE, 'Model is not available', { status: 404 })
   if (!providerAvailable(ctx, model.provider))
     throw new AppError(MODEL_UNAVAILABLE, 'Workers AI is not available on this runtime', {
       status: 404,
@@ -188,6 +210,7 @@ export interface ModelInput {
   readonly tags: readonly string[]
   readonly enabled: boolean
   readonly sort: number
+  readonly paramsSchema?: Record<string, unknown> | null | undefined
 }
 
 /**
@@ -196,6 +219,12 @@ export interface ModelInput {
  */
 export function modelValues(input: ModelInput) {
   const pricing = parsePricing(input.pricing, input.kind)
+  parseAcceptanceFault({
+    ...input,
+    key: input.key.trim(),
+    provider: input.provider.trim(),
+    providerModelId: input.providerModelId.trim(),
+  })
   return {
     key: input.key.trim(),
     kind: input.kind,
