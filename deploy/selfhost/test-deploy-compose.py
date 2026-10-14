@@ -129,7 +129,9 @@ class Acceptance:
             if name == 'caddy':
                 lines += ['    ports: ["127.0.0.1:${FIXTURE_PORT}:8080"]']
             if name in ['postgres', 'valkey']:
-                lines += ['    healthcheck:', '      test: ["CMD", "node", "-e", "process.exit(0)"]',
+                # PG夹具先写持久marker才就绪，避免空成功探针领先于主进程初始化。
+                health = "if(!require('fs').existsSync('/state/task'))process.exit(1)" if name == 'postgres' else 'process.exit(0)'
+                lines += ['    healthcheck:', '      test: ["CMD", "node", "-e", ' + json.dumps(health) + ']',
                           '      interval: 1s', '      timeout: 2s', '      retries: 5']
         lines += ['volumes:', '  state:', 'networks:', '  data:']
         (target / 'compose.yaml').write_text('\n'.join(lines) + '\n')
