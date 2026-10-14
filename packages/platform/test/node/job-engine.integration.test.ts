@@ -299,4 +299,40 @@ describe('Node engine ownership, permissions and queue retention', () => {
     expect(duplicate.child.exitCode).toBe(1)
     await child.stop('SIGKILL')
   })
+
+  it('refuses a live or unknown recovery guard and recovers only a trusted exited Linux owner', async () => {
+    const name = queueName()
+    const id = `guard-${randomUUID()}`
+    const child = await launch([name], id)
+    const key = createHash('sha256').update(`saas-job-engine:${id}`).digest('hex')
+    const path = join(directory, `${key}.json`)
+    const owner = await readFile(path, 'utf8')
+    const guard = `${path}.recovering`
+    await writeFile(guard, owner, { flag: 'wx' })
+    child.send('close')
+    await child.wait('engine-closed')
+    const liveDuplicate = spawnWorker([name], id)
+    await until(async () => liveDuplicate.child.exitCode !== null)
+    expect(liveDuplicate.child.exitCode).toBe(1)
+    await child.stop('SIGKILL')
+    await writeFile(guard, '{}')
+    const unknownDuplicate = spawnWorker([name], id)
+    await until(async () => unknownDuplicate.child.exitCode !== null)
+    expect(unknownDuplicate.child.exitCode).toBe(1)
+    expect(await readFile(guard, 'utf8')).toBe('{}')
+    expect(await readFile(path, 'utf8')).toBe(owner)
+    await writeFile(guard, owner)
+    const stoppedDuplicate = spawnWorker([name], id)
+    if (process.platform === 'linux') {
+      await stoppedDuplicate.wait('ready')
+      expect(await readFile(path, 'utf8')).not.toBe(owner)
+      await expect(readFile(guard, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+      await stoppedDuplicate.stop()
+    } else {
+      await until(async () => stoppedDuplicate.child.exitCode !== null)
+      expect(stoppedDuplicate.child.exitCode).toBe(1)
+      expect(await readFile(guard, 'utf8')).toBe(owner)
+      expect(await readFile(path, 'utf8')).toBe(owner)
+    }
+  })
 })

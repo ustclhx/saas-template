@@ -106,3 +106,8 @@ bundle与registry镜像，第二版仅为本地registry版本元数据fixture。
 第二次真实GHCR发布已授权并成功，完整恢复bundle已齐，见[release](selfhost-release.md#第二次正式-ghcr-集合与完整-bundle2026-10-14)。
 2.1/2.3仍依赖B/D1.5签收，第7组主机/入口/备份/重启均BLOCKED；
 没有连接 `product-res-ecs` 或其他真实服务器，不手动部署Cloudflare staging。
+
+2026-10-15 的 [d-vm验收](evidence/selfhost/d-vm-2026-10-15/report.md)补充临时Debian VM、
+真实SSH入口、完整backup和宿主reboot证据，并发现固定正式`0813050`的B退出证明缺口。
+本PR补修同机身份/namespace及guard；旧记录与异机迁移、新正式镜像仍待签收，
+不以本地新源码fixture提前勾选1.5或依赖它的2.1/2.3/6.3。

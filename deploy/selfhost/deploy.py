@@ -236,7 +236,8 @@ def local(args):
         if extras:
             compose('up', '-d', '--no-deps', *extras)
         url = compose.config['services']['web']['environment']['APP_URL'].rstrip('/') + '/api/health'
-        if not wait_health(target, lambda timeout: public_probe(url, timeout), compose.jobs_probe, timeout=args.health_timeout):
+        # SSH 的登录环境可能携带代理；探活与 Compose 共用经过筛选的环境，避免观察错误入口。
+        if not wait_health(target, lambda timeout: public_probe(url, timeout, env=compose.env), compose.jobs_probe, timeout=args.health_timeout):
             raise DeploymentError('web/jobs readiness or full SHA check failed')
         previous = state.get('successful')
         if previous and previous['sha'] != target:

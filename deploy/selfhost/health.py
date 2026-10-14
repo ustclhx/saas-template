@@ -33,7 +33,7 @@ def ready(response, sha):
         return False
 
 
-def public_probe(url, timeout):
+def public_probe(url, timeout, env=None):
     parsed = urllib.parse.urlsplit(url)
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError('health URL must not contain credentials, query or fragment')
@@ -43,7 +43,7 @@ def public_probe(url, timeout):
     result = subprocess.run(['curl', '--silent', '--connect-timeout', str(min(3, timeout)),
                              '--max-time', str(timeout), '--max-filesize', '65536',
                              '--write-out', '\n%{http_code}', url],
-                            capture_output=True, timeout=timeout + 1)
+                            capture_output=True, timeout=timeout + 1, env=env)
     if result.returncode or len(result.stdout) > 65540:
         return {}
     payload, status = result.stdout.rsplit(b'\n', 1)

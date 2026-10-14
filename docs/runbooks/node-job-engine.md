@@ -19,11 +19,15 @@
 
 队列默认 250ms 轮询；每队列最多 10 条、最长 5 秒聚合窗口。并发/滑动速率按消息计额，批内成员与重试都计入，各队列独立。默认初次加最多 5 次重试，共 6 次；30 秒指数退避，封顶 900 秒。业务事务直接写 `job_engine.message`，提交前不发布；普通 `send` 不提供业务事务原子保证。批次发布 ID 固定为 `queue-batch:<batch UUID>`，不另建 outbox。
 
-每个 jobs 必须有稳定且互异的 `executorId`，同一 executor 跨重启保持相同主机名。所有 jobs 共享同一个持久、受限的本机 `ownershipDirectory`。Node 入口未显式配置 `JOB_EXECUTOR_ID` 时使用 `hostname()`；容器必须固定 hostname，不能沿用每次重建随机变化的容器名。DB advisory 会话锁与 exclusive 本机 owner 文件共同保护启动；文件记录每个 incarnation 的 PID、host、PID namespace inode、token，Linux 还记录 `boot_id` 与 `/proc/<pid>/stat` 的进程启动时间。
+每个 jobs 必须有稳定且互异的 `executorId`，同一 executor 跨重启保持相同主机名。所有 jobs 共享同一个持久、受限的本机 `ownershipDirectory`。Node 入口未显式配置 `JOB_EXECUTOR_ID` 时使用 `hostname()`；容器必须固定 hostname，不能沿用每次重建随机变化的容器名。DB advisory 会话锁与 exclusive 本机 owner 文件共同保护启动；Linux 另由进程生命周期内核锁保护（见下段）。文件记录每个 incarnation 的 PID、host、PID namespace inode、token，Linux 还记录宿主 `machineId`、`boot_id` 与 `/proc/<pid>/stat` 的进程启动时间（诊断用，不作退出证明）。Linux 从 `JOB_HOST_ID_FILE` 指定文件读取宿主身份，默认 `/etc/machine-id`；要求32位十六进制且非全零。容器必须只读挂载真实宿主的身份文件，不能以容器内生成的身份替代；宿主克隆也必须确保机器身份互异。
 
-退出证明先核对 host，不同 hostname 一律拒绝回收。Linux 同 host 下，boot ID 或 PID namespace inode 改变可证明旧 incarnation 已退出，无需共享旧 PID namespace；同 namespace 下，记录的启动时间与当前同号 PID 不同可证明 PID 已复用。读取 `/proc/<pid>/stat` 返回 `ENOENT` 时，还必须由 `kill(pid, 0)` 返回 `ESRCH` 确认退出。身份文件缺失/损坏、读取失败、权限拒绝或缺少可用退出证据都不能放行；旧记录缺少启动时间时，不能仅凭同号 PID 存在判定 PID 已复用。
+Linux runtime 必须提供 `flock(1)`（已实查正式 Debian slim jobs 镜像）。启动时 Node 自己打开 `<executor>.lock` 与本 incarnation 新建的 `<executor>.<token>.lock`，把描述符交给 `flock -n -x 3` 加锁后 flock 立即退出；`flock` 锁属于打开文件描述，仍由 Node 进程持有的描述符承载，描述符永不关闭。因此锁只在该 Node 进程真正退出（正常 exit、SIGKILL、OOM、容器删除或宿主 reboot）后由内核释放；engine close、DB 锁释放、helper 进程退出都不释放它。同一宿主内核上，不同容器/PID namespace 经同一 named volume 对同一 inode 加 flock 互斥，所以无需 `pid:host`。executor 锁拒绝任何仍存活的同 ID 进程并串行化初始化；token 锁供其他进程以非阻塞共享锁探测某个 token 的 incarnation 是否已退出。`.lock` 文件持久保留，不在运行或恢复期间删除/替换（加锁后核对路径仍指向同一 inode）；ownership 卷必须是本机文件系统，不能是跨主机的网络卷。
 
-Compose 为 jobs 固定 `hostname=${JOB_EXECUTOR_ID:-jobs-1}`，并设置同值 executor ID；`job_owners` named volume 挂载到 `/app/.data/job-owners`。容器重建可沿用身份与 owner 记录，PID 1 重用由上述 Linux 身份证明处理。双副本必须分别配置不同且稳定的 hostname/ID、挂载同一 owner 目录并注册同版本完整 handler 集；不要对这个固定身份的 service 盲目执行 `docker compose up --scale jobs=2`。不同 hostname 的副本不能代替原 executor 证明退出，共享目录本身不提供跨 hostname 接管。
+退出证明先核对 host，不同 hostname 一律拒绝回收。Linux 还要求旧/当前 `machineId` 相同：flock 只在同一内核有效，恢复到另一台机器的卷没有持锁者，不能据此证明旧机退出，不同机器或旧记录缺宿主身份时拒绝回收。满足后，旧 incarnation 的 token 锁文件存在且非阻塞共享锁成功即证明其进程已退出；锁文件缺失（含本契约之前的记录）、打不开、仍被持有或 flock 调用失败都不能放行。不再以 PID namespace、boot ID 或 PID 启动时间推断 Linux 进程退出。非 Linux 开发环境保留同 namespace 下 `kill(pid, 0)` 返回 `ESRCH` 的证明。
+
+Selfhost Compose 为 jobs 固定 `hostname=${JOB_EXECUTOR_ID:-jobs-1}`，并设置同值 executor ID；`job_owners` named volume 挂载到 `/app/.data/job-owners`，宿主 `/etc/machine-id` 只读挂载到 `/run/job-host/machine-id` 并设置 `JOB_HOST_ID_FILE`。jobs 不使用 `pid:host`，保持独立 PID namespace；容器重建与宿主 reboot 均由内核释放旧进程的锁提供证明。双副本必须分别配置不同且稳定的 hostname/ID、挂载同一 owner 目录并注册同版本完整 handler 集；不要对这个固定身份的 service 盲目执行 `docker compose up --scale jobs=2`。不同 hostname 的副本不能代替原 executor 证明退出，共享目录本身不提供跨 hostname 接管。
+
+旧 Linux owner 没有 `machineId` 或 token 锁文件，升级到本契约后会明确拒绝自动接管。先停旧 jobs 并核验实际退出，保留旧 owner/历史 token 与任务身份；可信旧记录迁移和异机恢复仍需独立的明确流程与签收，本补修不自动修改旧 JSON，也不通过删除目录、新建生产卷或随机 executor ID 绕过。新卷验收只用于本次隔离的新部署，不能证明旧生产任务可迁移。
 
 SIGTERM 先停止领取，受控排空，然后关闭 DBOS/native 池。超时 callback 可能仍执行外部副作用；`close()` 返回、DB 锁释放、网络中断或固定 TTL 均不能证明旧进程退出。**真正退出后**才能复用相同 executor ID 或回收其 batch/permit。外部调用仍使用业务幂等键。
 
@@ -66,7 +70,7 @@ ORDER BY created_at DESC LIMIT 100;
 
 - 死信重放：先查业务副作用是否已经成功以及失败原因，修正原因后，经获授权重放工具读取原消息并用 producer/业务事务重新入队。创建**新的消息 UUID**，保留原业务 `idempotencyKey` 与 `requestId`，记录新旧身份映射；保留原死信直到保留期结束。不要把原死信行改回 pending 或 reset attempts，也不要为规避去重生成新业务幂等键。
 - 卡住批次：核对 native 状态、batch executor/token 及对应 incarnation 文件。先停止该实例，按前述 host、boot ID、PID namespace inode、启动时间或 `ENOENT` 加 `ESRCH` 规则取得退出证明，再让相同稳定身份的 adapter 恢复器按原消息与批次身份修复。记录旧/当前身份及证明依据；在其他容器中看不到同号 PID，不能单独作为退出证据。禁止直接释放仍可能活着的 permit、删除 active batch/start、根据年龄或心跳缺失进行 TTL 接管，也不以清除 owner 文件或随机更换 executor ID 绕过拒绝。
-- `.recovering` guard 残留：读取 guard 的完整身份 metadata，按同样的退出证明规则确认对应进程已退出后才人工删除该 guard；保留 owner 与 incarnation 记录。记录确认依据与操作者，不清空整个 ownership 目录。身份缺失、不可读或 host 不匹配时停止处置并调查，不能猜测退出。
+- `.recovering` guard 残留：Linux 先取得 OS flock，再读取 guard 的完整身份，只有同可信宿主域证明对应进程真实退出时才定向删除该一个 guard、独占创建本次 guard。文件证明、删除、替换及本次 guard 清理均在同一个内核锁内，DB 会话锁丢失不会使两个初始化进程交错删除新 guard。活进程、未知身份、不同宿主或损坏记录继续拒绝；不自动猜测旧版本身份。非 Linux 保留原先保守拒绝路径。需要人工处置未知 guard 时，先停止所有可能竞争的 jobs/恢复进程并取得独立可信退出依据；保留 owner 与 incarnation 记录，记录操作者，不清空整个 ownership 目录。
 - 清理与重放/DBOS resume 操作互斥；清理期间不复活终态 native workflow。SDK 公共查询与删除不是跨系统原子事务，必须维持终态不被人工恢复的运维约束。
 
 ## 保留期与清理

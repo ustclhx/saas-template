@@ -11,6 +11,7 @@ import type { Database } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import { Pool, type PoolClient } from 'pg'
+import { holdNodeJobLock } from './job-guard.ts'
 import { type ProcessOwner, processExited, processOwner } from './job-owner.ts'
 
 export interface NodeJobEngine {
@@ -63,6 +64,10 @@ async function readOwner(path: string): Promise<ProcessOwner | undefined> {
       typeof value.pidNamespace !== 'string' ||
       !('token' in value) ||
       typeof value.token !== 'string' ||
+      ('machineId' in value &&
+        (typeof value.machineId !== 'string' ||
+          !/^[0-9a-f]{32}$/.test(value.machineId) ||
+          /^0+$/.test(value.machineId))) ||
       ('bootId' in value &&
         (typeof value.bootId !== 'string' ||
           !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.bootId))) ||
@@ -141,6 +146,8 @@ export async function createNodeJobEngine(options: NodeJobEngineOptions): Promis
     resolve(options.ownershipDirectory, `${lockKey(executorId)}.json`)
   const tokenPath = (executorId: string, token: string) =>
     resolve(options.ownershipDirectory, `${lockKey(executorId)}.${lockKey(token)}.json`)
+  const tokenLockPath = (executorId: string, token: string) =>
+    resolve(options.ownershipDirectory, `${lockKey(executorId)}.${lockKey(token)}.lock`)
   const loseOwnership = () => {
     if (!owned) return
     owned = false
@@ -162,6 +169,7 @@ export async function createNodeJobEngine(options: NodeJobEngineOptions): Promis
           owner?.pid !== current.pid ||
           owner.host !== current.host ||
           owner.pidNamespace !== current.pidNamespace ||
+          owner.machineId !== current.machineId ||
           owner.bootId !== current.bootId ||
           owner.startTime !== current.startTime ||
           owner.token !== current.token
@@ -180,7 +188,8 @@ export async function createNodeJobEngine(options: NodeJobEngineOptions): Promis
         ownershipToken ? tokenPath(executorId, ownershipToken) : ownerPath(executorId),
       )
       // 缺文件并不能证明一个已领取工作的执行者退出；人工误删锁也不得放行。
-      return owner !== undefined && (await processExited(owner, current))
+      if (!owner || (ownershipToken !== undefined && owner.token !== ownershipToken)) return false
+      return processExited(owner, current, tokenLockPath(executorId, owner.token))
     },
     stopReceiving() {
       if (stopping) return
@@ -221,13 +230,38 @@ export async function createNodeJobEngine(options: NodeJobEngineOptions): Promis
     if (!lock.rows[0]?.acquired) throw failure('JOB_ENGINE_EXECUTOR_IN_USE')
     await mkdir(options.ownershipDirectory, { recursive: true, mode: 0o700 })
     const recoveryGuard = `${ownerPath(options.executorId)}.recovering`
-    // DB 会话锁可能在网络故障时释放；本机 exclusive guard 同时保护文件替换，不做 TTL 接管。
-    // 极短临界区被 SIGKILL 打断时，运维确认 guard 的 PID 已退出后手动清除，宁可阻塞也不盲接管。
+    // Linux 上 executor 锁与本 incarnation 的 token 锁都由本进程持有到真正退出：前者串行化
+    // 初始化并拒绝任何仍存活的同 ID 进程（跨容器/namespace），后者供其他进程证明本 token 退出。
+    // 获取失败即拒绝；不按 TTL、DB 锁消失或删除 owner 目录接管。
+    await holdNodeJobLock(`${ownerPath(options.executorId)}.lock`)
+    await holdNodeJobLock(tokenLockPath(options.executorId, current.token), { create: true })
+    if (process.platform === 'linux') {
+      // 初始化被 SIGKILL 打断留下的 guard：仅在其 token 锁已由内核释放时定向清理。
+      const abandoned = await readOwner(recoveryGuard)
+      if (abandoned) {
+        if (
+          !(await processExited(
+            abandoned,
+            current,
+            tokenLockPath(options.executorId, abandoned.token),
+          ))
+        )
+          throw failure('JOB_ENGINE_EXECUTOR_IN_USE')
+        await unlink(recoveryGuard)
+      }
+    }
     await writeFile(recoveryGuard, JSON.stringify(current), { flag: 'wx', mode: 0o600 })
     try {
       const previous = await readOwner(ownerPath(options.executorId))
       if (previous) {
-        if (!(await processExited(previous, current))) throw failure('JOB_ENGINE_EXECUTOR_IN_USE')
+        if (
+          !(await processExited(
+            previous,
+            current,
+            tokenLockPath(options.executorId, previous.token),
+          ))
+        )
+          throw failure('JOB_ENGINE_EXECUTOR_IN_USE')
         await unlink(ownerPath(options.executorId))
       }
       await writeFile(ownerPath(options.executorId), JSON.stringify(current), {

@@ -41,7 +41,9 @@ ARG APP_VERSION
 LABEL org.opencontainers.image.revision=$APP_VERSION
 COPY --from=build --chown=node:node /out/jobs/node_modules/ ./node_modules/
 COPY --from=build --chown=node:node /src/apps/jobs/.output/ ./
-RUN mkdir -p /app/.data/job-owners && chmod 0700 /app/.data/job-owners
+# Linux 退出证明依赖底座的 flock(1) 对进程持有的描述符加锁；构建时验证，避免运行时才缺命令。
+RUN command -v flock \
+  && mkdir -p /app/.data/job-owners && chmod 0700 /app/.data/job-owners
 ENV PORT=3001
 EXPOSE 3001
 CMD ["node", "server/index.mjs"]

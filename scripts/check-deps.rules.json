@@ -79,6 +79,7 @@
     "packages/platform/test/node.test.ts": ["node"],
     "packages/platform/test/node/background.test.ts": ["node"],
     "packages/platform/test/node/ownership.test.ts": ["node"],
+    "packages/platform/test/node/job-lock.test.ts": ["node"],
     "packages/platform/test/node/cache.integration.test.ts": ["node"],
     "packages/platform/test/node/fixtures/shutdown.ts": ["node"],
     "packages/platform/test/node/request.test.ts": ["node"],

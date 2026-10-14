@@ -1,5 +1,6 @@
 import datetime
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -27,6 +28,26 @@ def response(sha=A, status=200):
 
 
 class HealthTest(unittest.TestCase):
+    def test_release_probe_uses_explicit_environment_instead_of_ssh_login_proxy(self):
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(json.dumps(response()['body']).encode())
+            def log_message(self, *_args):
+                pass
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with patch.dict(os.environ, {'http_proxy': 'http://127.0.0.1:1', 'no_proxy': '', 'NO_PROXY': ''}):
+                probe = health.public_probe(f'http://127.0.0.1:{server.server_port}', 1,
+                                            env={'PATH': os.environ['PATH']})
+                self.assertTrue(health.ready(probe, A))
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_old_sha_503_and_jobs_mismatch_wait_then_success_without_body_leak(self):
         steps = iter([response(B), response(A, 503), response(A), response(A)])
         jobs = iter([response(A), response(A), response(B), response(A)])
