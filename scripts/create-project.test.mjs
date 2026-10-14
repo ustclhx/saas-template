@@ -232,6 +232,8 @@ test('生成副本改名与配置，排除各级密钥、链接和产物', async
   }
   assert.match(example, /SENTRY_DSN=\n/)
   assert.match(result.report, /PAYMENT_MODE/)
+  assert.match(result.report, /营销页面已启用，\/ 为营销首页/)
+  assert.match(result.report, /多语言已启用，默认语言 zh/)
   assert.match(example, /^PAYMENT_MODE=test$/m)
   assert.doesNotMatch(
     example,
@@ -431,6 +433,10 @@ test('selfhost 继承发布和运维材料，排除真值，并再次生成 name
     /BLOCKED|STRIPE_SECRET|PAYPAL_CLIENT|billing:seed|admin\/billing\/plans|CLOUDFLARE_API_TOKEN/,
   )
   assert.match(result.report, /billing=false \/ credits=false \/ marketing=false \/ i18n=false/)
+  assert.match(result.report, /营销页面关闭，\/ 重定向至 \/app/)
+  assert.match(result.report, /仅编译所选默认语言 en/)
+  assert.match(result.report, /其他语言前缀返回 404/)
+  assert.match(result.report, /不显示语言控件，忽略账号语言、cookie 与 Accept-Language/)
   assert.doesNotMatch(
     await readFile(join(result.target, 'deploy/selfhost/compose.yaml'), 'utf8'),
     /GOOGLE_CLIENT|TURNSTILE_|google_client_secret|turnstile_secret/,

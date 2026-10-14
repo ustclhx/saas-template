@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { baseLocale, overwriteGetLocale } from '../../paraglide/runtime.js'
+import { baseLocale, locales, overwriteGetLocale } from '../../paraglide/runtime.js'
 import {
   CHAT_ERROR_FALLBACK,
   type ChatUIMessage,
@@ -15,7 +15,9 @@ import {
   toChatMessages,
 } from './conversation.ts'
 
-beforeEach(() => overwriteGetLocale(() => 'en'))
+const locale = locales.find((locale) => String(locale) === 'en') ?? baseLocale
+const fallback = String(locale) === 'zh' ? '操作失败，请重试。' : CHAT_ERROR_FALLBACK
+beforeEach(() => overwriteGetLocale(() => locale))
 afterEach(() => overwriteGetLocale(() => baseLocale))
 
 const id = (n: number) => `00000000-0000-4000-8000-00000000000${n}`
@@ -150,7 +152,11 @@ describe('chat errors', () => {
       JSON.stringify({ error: { code: 'AI_PROVIDER_NOT_CONFIGURED', message: 'x' } }),
     )
     expect(chatErrorCode(error)).toBe('AI_PROVIDER_NOT_CONFIGURED')
-    expect(chatErrorMessage('AI_PROVIDER_NOT_CONFIGURED')).toContain('not set up')
+    expect(chatErrorMessage('AI_PROVIDER_NOT_CONFIGURED')).toBe(
+      String(locale) === 'zh'
+        ? '服务器尚未配置 AI 回复，请稍后重试。'
+        : 'AI replies are not set up on this server yet. Please try later.',
+    )
     for (const code of [
       'INSUFFICIENT_CREDITS',
       'CREDIT_DEBT',
@@ -158,13 +164,13 @@ describe('chat errors', () => {
       'UPGRADE_REQUIRED',
       'MODEL_UNAVAILABLE',
     ])
-      expect(chatErrorMessage(code)).not.toBe(CHAT_ERROR_FALLBACK)
+      expect(chatErrorMessage(code)).not.toBe(fallback)
   })
 
   it('无法识别的错误使用通用提示', () => {
     expect(chatErrorCode(new Error('Failed to fetch'))).toBeUndefined()
-    expect(chatErrorMessage(undefined)).toBe(CHAT_ERROR_FALLBACK)
-    expect(chatErrorMessage('SOMETHING_NEW')).toBe(CHAT_ERROR_FALLBACK)
+    expect(chatErrorMessage(undefined)).toBe(fallback)
+    expect(chatErrorMessage('SOMETHING_NEW')).toBe(fallback)
   })
 })
 

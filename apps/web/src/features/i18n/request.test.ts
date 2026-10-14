@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { baseLocale, getLocale } from '../../paraglide/runtime.js'
+import { baseLocale, getLocale, isLocale } from '../../paraglide/runtime.js'
 import type { WebRuntime } from '../../server/runtime.ts'
+import { templateConfig } from '../../server/template-config.ts'
 import { languageUrl, preferredLocale } from './preference.ts'
 import { localizeRequest } from './request.server.ts'
 import { readRequestSession, withSessionCache } from './session.server.ts'
@@ -26,7 +27,7 @@ describe('请求级语言与只读会话隔离', () => {
       const request = new Request(`${origin}/account`, {
         headers: { 'x-user': locale, 'x-locale': locale },
       })
-      return localizeRequest(request, runtime, async () => {
+      const handle = async () => {
         await pause()
         const [a, b] = await Promise.all([
           readRequestSession({ headers: request.headers } as Parameters<
@@ -37,12 +38,23 @@ describe('请求级语言与只读会话隔离', () => {
           >[0]),
         ])
         return Response.json({ locale: getLocale(), a: a.user.id, b: b.user.id })
-      })
+      }
+      return localizeRequest(request, runtime, () =>
+        templateConfig.i18n.enabled ? handle() : withSessionCache(handle),
+      )
     }
     const responses = await Promise.all([run('zh'), run('en')])
     expect(await Promise.all(responses.map((response) => response.json()))).toEqual([
-      { locale: 'zh', a: 'zh', b: 'zh' },
-      { locale: 'en', a: 'en', b: 'en' },
+      {
+        locale: templateConfig.i18n.enabled && isLocale('zh') ? 'zh' : baseLocale,
+        a: 'zh',
+        b: 'zh',
+      },
+      {
+        locale: templateConfig.i18n.enabled && isLocale('en') ? 'en' : baseLocale,
+        a: 'en',
+        b: 'en',
+      },
     ])
     expect(requireFreshSession).toHaveBeenCalledTimes(2)
   })
@@ -52,7 +64,9 @@ describe('请求级语言与只读会话隔离', () => {
       headers: { referer: `${origin}/zh/pricing`, cookie: 'PARAGLIDE_LOCALE=en' },
     })
     const response = await localizeRequest(request, runtime, async () => new Response(getLocale()))
-    expect(await response.text()).toBe('zh')
+    expect(await response.text()).toBe(
+      templateConfig.i18n.enabled && isLocale('zh') ? 'zh' : baseLocale,
+    )
     expect(
       languageUrl(new Request(request, { headers: { referer: 'https://other.test/zh/pricing' } }))
         .pathname,
@@ -87,11 +101,28 @@ describe('请求级语言与只读会话隔离', () => {
   })
 })
 
+it('账号语言只在多语言模式读取，单语言忽略 Cookie 和账号偏好', async () => {
+  const { requireFreshSession } = await import('@saas/auth')
+  vi.mocked(requireFreshSession).mockClear()
+  const request = new Request(`${origin}/account`, {
+    headers: { 'x-user': 'one', 'x-locale': 'zh', cookie: 'PARAGLIDE_LOCALE=en' },
+  })
+  const response = await localizeRequest(request, runtime, async () => new Response(getLocale()))
+  expect(await response.text()).toBe(
+    templateConfig.i18n.enabled && isLocale('zh') ? 'zh' : baseLocale,
+  )
+  expect(requireFreshSession).toHaveBeenCalledTimes(templateConfig.i18n.enabled ? 1 : 0)
+  if (!templateConfig.i18n.enabled) {
+    expect(response.headers.get('set-cookie')).toBeNull()
+    expect(response.headers.get('location')).toBeNull()
+  }
+})
+
 describe('首次访问建议', () => {
   it('按 Accept-Language 的 q 权重、地区语言和禁用项匹配，默认语言也尊重优先级', () => {
-    expect(preferredLocale('fr,zh-CN;q=0.8,en;q=0.2')).toBe('zh')
-    expect(preferredLocale('zh;q=0,en;q=0.9')).toBe('en')
-    expect(preferredLocale('en-US;q=0.9,zh;q=0.8')).toBe('en')
+    expect(preferredLocale('fr,zh-CN;q=0.8,en;q=0.2')).toBe(isLocale('zh') ? 'zh' : baseLocale)
+    expect(preferredLocale('zh;q=0,en;q=0.9')).toBe(isLocale('en') ? 'en' : baseLocale)
+    expect(preferredLocale('en-US;q=0.9,zh;q=0.8')).toBe(isLocale('en') ? 'en' : baseLocale)
     expect(preferredLocale('zh;q=oops,fr')).toBe(baseLocale)
   })
 })

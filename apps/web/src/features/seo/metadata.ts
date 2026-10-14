@@ -11,10 +11,11 @@ export interface SeoPage {
   date?: string | undefined
 }
 
-const { locales, defaultLocale } = templateConfig.i18n
+const { defaultLocale, enabled } = templateConfig.i18n
+const locales = enabled ? templateConfig.i18n.locales : [defaultLocale]
 export function localizedPath(path: string, locale: string): string {
   const clean = path.replace(/\/+$/, '') || '/'
-  return locale === defaultLocale ? clean : `/${locale}${clean === '/' ? '' : clean}`
+  return !enabled || locale === defaultLocale ? clean : `/${locale}${clean === '/' ? '' : clean}`
 }
 
 export function absoluteUrl(appUrl: string, path: string): string {

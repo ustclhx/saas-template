@@ -10,6 +10,7 @@ import { EMAIL_LOCALES } from '@saas/email/queue'
 import type { Plugin } from 'vite'
 
 export interface I18nConfig {
+  readonly enabled?: boolean
   readonly locales: readonly string[]
   readonly defaultLocale: string
 }
@@ -38,8 +39,15 @@ export function listFeatures(root = WEB_ROOT): string[] {
   return [...features].sort()
 }
 
+/** 单语言仍复用 Paraglide 文案调用，只编译所选默认语言。 */
+export function activeLocales(i18n: I18nConfig): readonly string[] {
+  return i18n.enabled === false ? [i18n.defaultLocale] : i18n.locales
+}
+
 /** 写入 `<root>/project.inlang/settings.json`；内容未变化时不写，避免触发 Paraglide 重新编译 */
-export function writeInlangProject({ locales, defaultLocale }: I18nConfig, root = WEB_ROOT): void {
+export function writeInlangProject(i18n: I18nConfig, root = WEB_ROOT): void {
+  const { defaultLocale } = i18n
+  const locales = activeLocales(i18n)
   const settings = {
     $schema: 'https://inlang.com/schema/project-settings',
     baseLocale: defaultLocale,
@@ -65,16 +73,17 @@ export function writeInlangProject({ locales, defaultLocale }: I18nConfig, root 
 export function paraglideOptions(
   appAreaPrefixes: readonly string[],
   root = WEB_ROOT,
+  enabled = true,
 ): CompilerOptions {
   return {
     project: join(root, 'project.inlang'),
     outdir: join(root, 'src/paraglide'),
     // tsconfig 未开启 allowJs，生成 .d.ts 供类型检查
     emitTsDeclarations: true,
-    strategy: ['url', 'baseLocale'],
+    strategy: enabled ? ['url', 'baseLocale'] : ['baseLocale'],
     // 与路由器一致：去掉末尾的 `/`（否则 `/zh` 会被本地化为 `/zh/`，再被路由器 307 回来）
     trailingSlash: 'never',
-    routeStrategies: [...appAreaPrefixes, '/_serverFn'].map((prefix) => ({
+    routeStrategies: (enabled ? [...appAreaPrefixes, '/_serverFn'] : []).map((prefix) => ({
       match: `${prefix}/:path(.*)?`,
       strategy: ['cookie', 'baseLocale'],
     })),
@@ -130,12 +139,12 @@ export function i18nMessages({
   readonly i18n: I18nConfig
   readonly appAreaPrefixes: readonly string[]
 }): Plugin[] {
-  const unsupported = i18n.locales.filter(
+  const unsupported = activeLocales(i18n).filter(
     (locale) => !(EMAIL_LOCALES as readonly string[]).includes(locale),
   )
   if (unsupported.length) throw new Error(`[i18n] 邮件模板缺少语言：${unsupported.join(', ')}`)
   writeInlangProject(i18n)
-  const options = paraglideOptions(appAreaPrefixes)
+  const options = paraglideOptions(appAreaPrefixes, WEB_ROOT, i18n.enabled)
   let reported = false
   return [
     paraglideVitePlugin(options) as Plugin,
@@ -146,7 +155,9 @@ export function i18nMessages({
         // client 与 ssr 两个环境各触发一次 buildStart，只报告一次
         if (reported) return
         reported = true
-        const report = formatMissingMessages(findMissingMessages(i18n))
+        const report = formatMissingMessages(
+          findMissingMessages({ ...i18n, locales: activeLocales(i18n) }),
+        )
         if (report) this.warn(report)
       },
     },

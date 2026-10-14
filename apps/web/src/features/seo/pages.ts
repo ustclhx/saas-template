@@ -26,7 +26,9 @@ export function publicPages(
   now = new Date(),
   config = templateConfig,
 ): SeoPage[] {
-  return config.i18n.locales.flatMap((locale) => {
+  if (!config.marketing.enabled) return []
+  const locales = config.i18n.enabled ? config.i18n.locales : [config.i18n.defaultLocale]
+  return locales.flatMap((locale) => {
     const { defaultLocale } = config.i18n
     const pages = ['/', ...(config.billing.enabled ? ['/pricing'] : [])].map((path) =>
       staticPage(path, locale),

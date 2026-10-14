@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import { GrowthForm } from '../features/growth/forms.tsx'
 import { MarketingShell } from '../features/marketing/marketing-shell.tsx'
 import { placeholderPlans } from '../features/marketing/pricing-placeholder.ts'
@@ -15,11 +15,16 @@ import { templateConfig } from '../server/template-config.ts'
 
 // 首页（tasks.md 3.1）：各区块均为静态文案与数据，构建期预渲染，不依赖数据库（features/marketing/prerender.ts）
 export const Route = createFileRoute('/')({
+  beforeLoad: () => {
+    if (!templateConfig.marketing.enabled) throw redirect({ to: '/app' })
+  },
   head: ({ matches }) =>
-    pageHead(staticPage('/', getLocale()), originFromMatches(matches), [
-      organizationData(originFromMatches(matches)),
-      websiteData(originFromMatches(matches)),
-    ]),
+    templateConfig.marketing.enabled
+      ? pageHead(staticPage('/', getLocale()), originFromMatches(matches), [
+          organizationData(originFromMatches(matches)),
+          websiteData(originFromMatches(matches)),
+        ])
+      : {},
   component: HomePage,
 })
 
