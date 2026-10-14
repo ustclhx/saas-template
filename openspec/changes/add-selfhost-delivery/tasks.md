@@ -15,7 +15,7 @@
 - [ ] 1.3 新增独立 GHCR 发布 workflow，支持显式 OCI namespace、最小 registry 写权限、受信提交发布、不可覆写 SHA 与完整集合 gate。验证：PR 没有写权限/服务器密钥，失败架构不发布可部署 release，成功 registry manifest/digest/revision 与源 SHA 相符；更新发布说明，CF CI/staging 原路径不变。（P1）
   - 2026-10-14：独立手动发布 workflow、集合/信任/不可覆写 gate 与发布说明已实现。缺 backup 时只读阶段阻断；合并前不真实发布，registry 验收由协调者按 `deploy/selfhost/images/README.md` 首次触发后签收，此前保持未勾选。
 - [ ] 1.4 打包同 SHA 的部署 release bundle，包含 Compose/脚本/示例及镜像 digest 清单，更新 image-only `.env.example` 和 README 的过时 B 状态。验证：从干净目录仅拉 bundle/镜像即可 `compose config`，无服务器构建/源码依赖、无真值；所有必需服务的引用与 release SHA 一致。（P1、P2）
-  - 2026-10-14：同SHA Git白名单打包、八服务digest/checksum、干净目录Compose与成功发布后bundle artifact已实现；本地tar/registry夹具验证，不触发真实GHCR。完整恢复材料及正式digest签收仍待协调者，不提前勾选。
+  - 2026-10-14 d-bundle：已读取成功发布run38573156122的真实image-set，并从80983d2完整SHA的Git对象生成正式17项部署bundle；包内原版verify与干净目录config通过。当前补齐未来SHA的24项完整恢复/副本/示例白名单，旧SHA不混入未发布修复；新版真实提交结构与全部override config通过。原SHA仍缺7项完整恢复材料，正式完整bundle需协调者决定后续发布，保留未勾选。证据：`docs/runbooks/evidence/selfhost/d-bundle-2026-10-14/`。
 - [ ] 1.5 **依赖 B owner：** 协调者取得可信容器重建/宿主 boot/异机恢复退出证据实现的签收，再由 D 接入持久 ownership 卷、executor ID、hostname/namespace 和版本配置。验证：旧进程仍活时拒绝重用、真实退出后可恢复、container recreate/reboot 不卡住；不删整个 owner 目录、不以 TTL 或 pid:host 猜测绕过。B 改动单独交付，未签收时 2 的恢复与 6.3/7.3 保持 BLOCKED。（§6.8）
 
 2026-10-14 协调者签收：1.1 交接清单经审阅（[selfhost-delivery-handoff](../../../docs/runbooks/selfhost-delivery-handoff.md)）；1.2 与 4.1 由 main 70496c6 的 Selfhost images 双架构 CI（run 38555725385）完成 backup 在内的完整集合构建与真实备份/恢复 runtime smoke，arm64 另有 #177 本机证据。1.3 待首次真实发布。
@@ -23,11 +23,11 @@
 ## 2. 发布、回滚、入口与初始化（P2–P4，deployment owner）
 
 - [ ] 2.1 实现显式 host/dir/SHA 的 SSH 与本机部署入口、文件锁、release 校验、pull、旧 web/jobs 排空退出、强制目标 migrate、成功后 up 的顺序；保留前成功版本。验证：隔离 Compose 初始部署/已有版本升级通过，迁移失败不启动目标 app，发布并发串行，拉取失败不更改运行版本；复用现有脱敏脚本测试风格覆盖关键失败路径，写部署 runbook。（P2）
-  - 2026-10-14：显式SSH/本机入口、锁/pull/排空/强制migrate/成功记录与8项真实隔离Compose机制验证已交付；PG/DBOS为明确合成夹具，1.5未签收，正式业务与恢复验收保留BLOCKED。
+  - 2026-10-14 d-bundle：正式GHCR80983d2 bundle空卷部署、metadata-only本地registry第二版更新、真实角色迁移失败阻止目标app、health失败保持成功记录通过；原隔离registry八项机制测试补齐pull失败和并发串行。只读CI38583108140成功，PG/DBOS为正式镜像的真实迁移与自然心跳，控制路径已完成，但tasks波次明确2.1–2.3依赖1.5的B签收，正式签收仍保留未勾选；未完成任务恢复/真实SSH服务器不代验。
 - [x] 2.2 实现有界 health readiness/完整 SHA 检查及 jobs 版本确认，等待窗口覆盖首次五分钟心跳；失败非零退出、输出目标/观察 SHA 和回滚命令。验证：成功/旧 SHA/503/半开请求/任务版本不符在隔离 HTTP 或真实服务上得到正确结论，无连接串和凭据输出。（P3）
   - 2026-10-14：health门默认360秒覆盖五分钟slot，独立web/jobs完整SHA与依赖/成功心跳；9项精简部署/HTTP测试覆盖旧SHA、503、半开响应、jobs版本及脱敏，隔离Compose旧SHA失败返回非零和回滚命令。
 - [ ] 2.3 实现上一成功 bundle/镜像回滚入口与 schema/DBOS handler 兼容门，不自动 down migration；不兼容指向新卷恢复。验证：兼容双版本更新→失败→回滚后 SHA 正确、卷和任务状态保留；不兼容案例明确阻止并给出匹配备份操作步骤，未执行生产数据倒退。（P3）
-  - 2026-10-14：已记录上一成功bundle/公开配置、最后schemaSha与显式schema/handler兼容门；真实本地registry双版本失败→兼容回滚保留卷/网络/task marker、不跑旧migration；不兼容在变更前拒绝。真实DBOS状态恢复依赖1.5，保留未勾选。
+  - 2026-10-14 d-bundle：CI38583108140从正式GHCR版本更新至只改固化SHA的本地registry fixture；迁移/health失败后回滚至GHCR完整SHA，真实已完成schedule_run/DBOS workflow/checkpoint、578列schema、三角色元数据及卷保持，未跑旧migration。不兼容前置拒绝由八项隔离机制测试补齐。真实业务/inbox为空；未完成任务重放和可信ownership仍依赖1.5，保留未勾选，不把终态保留冒充恢复签收。
 - [x] 2.4 写同 Compose 的 Dokploy/Traefik 与既有代理/cloudflared 接入说明，配置关闭 Caddy、只接 web ingress、确切 trusted proxy 与 secret 权限。验证：plain config 和外部代理最终渲染均无 build/额外数据端口，TLS/恶意 XFF/非 root 通过；Dokploy 实机演示需获准测试资源，否则只记录文档/静态证据，留第 7 组实际验收。（P2）
   - 2026-10-14：同Compose代理override及Dokploy/Traefik/cloudflared runbook交付；plain/external最终渲染、实际TLS/未知CA拒绝/恶意XFF清洗/UID与无数据端口通过，实际Dokploy/Tunnel留第7组。
 - [x] 2.5 实现 init-server.sh 单命令入口，固定支持的 Ubuntu/Debian/架构与 Docker/Compose 版本，安装并启用开机启动、配置保留 SSH 的 22/80/443 防火墙、受限目录和无真值 env 骨架。验证：临时空白 VM 安装与重复执行通过，已用主机/冲突端口拒绝且未覆盖配置；从 VM 外部验证 Docker 防火墙后端下实际端口，不 flush 规则、不默认安装 Dokploy；同组交付初始化 runbook。（P4）
@@ -61,7 +61,8 @@
 
 ## 6. 本地与 CI 集成验收（各 owner 完成后协调者验收）
 
-- [ ] 6.1 在本地/CI 空卷使用 registry 预构建镜像与 release bundle 验证 plain Compose、已有版本更新和 rollback；检查非 root、TLS、端口、secret隔离、持久卷与 Node health/任务 SHA。验证：脱敏 config/ps/版本/迁移失败/回滚证据齐全；不把应用健康当完整 backup 成功，不代勾 A/B/C。（P1–P3）
+- [x] 6.1 在本地/CI 空卷使用 registry 预构建镜像与 release bundle 验证 plain Compose、已有版本更新和 rollback；检查非 root、TLS、端口、secret隔离、持久卷与 Node health/任务 SHA。验证：脱敏 config/ps/版本/迁移失败/回滚证据齐全；不把应用健康当完整 backup 成功，不代勾 A/B/C。（P1–P3）
+  - 2026-10-14 d-bundle：只读CI38583108140通过，匿名pull八个正式GHCR digest；空卷plain Compose、metadata-only本地registry第二版更新、真实迁移/HTTPS health失败→兼容回滚、自然五分钟heartbeat与web/jobs完整SHA、PG verify-full/CA/hostname失败、HTTPS未知CA拒绝、非root/端口/secret隔离、真实终态DBOS记录与卷保留通过。证据位于`docs/runbooks/evidence/selfhost/d-bundle-2026-10-14/`；1.5/未完成任务重放/完整backup/真实服务器未代验。
 - [ ] 6.2 正式运行一次 S3 指定时间点恢复演练并从第二目标独立重复，记录业务/角色/引擎数据校验和资源/RTO/RPO。验证：§6.7 本地通过，至少一组最老受保留 weekly base 可恢复，失败路径不伤生产；真实存储资源尚未提供时其外部验收保持待办。（B1–B5、§6.7）
 - [ ] 6.3 在临时 Ubuntu/Debian VM 验证单命令初始化、幂等与拒绝已用主机，然后部署并实际 reboot。验证：SSH保持、外部只允许22/80/443、Docker开机启动，全部常驻服务（含backup）自动恢复、一次性迁移不循环、health/jobs完整SHA，B退出证据/任务恢复通过；1.5未签收保持BLOCKED。这是本地VM证据，不替代7.3。（P4、§6.8）
 - [ ] 6.4 集成后执行 `openspec validate add-selfhost-delivery --strict`、根 `pnpm check`、`pnpm check:deps`、`pnpm check:singletons`、`pnpm dedupe --check`、`pnpm typecheck`、`pnpm test`、`pnpm build` 及 Node/生成器相关新增验证。验证：全部通过，双目标未串产物或削弱 CF 测试/staging；合入后 main 自动 staging/health 回归由协调者记录，未获得发布证据不冒充通过。（集成）
