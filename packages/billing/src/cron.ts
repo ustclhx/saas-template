@@ -264,17 +264,26 @@ export async function runSubscriptionReconciliation(
       const [current] = await db.select().from(subscription).where(eq(subscription.id, row.id))
       if (!current) continue
       const clock = options.now ?? (() => new Date())
+      const fetchSnapshot = async () => {
+        const remote = await provider.getSubscription(current.providerSubscriptionId)
+        if (remote.providerSubscriptionId !== current.providerSubscriptionId)
+          throw new Error('Remote billing object mismatch')
+        return remote
+      }
+      let snapshot = await fetchSnapshot()
+      // PayPal 终止后本地仍保留 cancelAtPeriodEnd=true，行会被再次选中；
+      // 先读远端状态，已终止（CANCELLED/EXPIRED）时不再 cancel，保证幂等
       if (
         current.provider === 'paypal' &&
         current.cancelAtPeriodEnd &&
         current.currentPeriodEnd &&
-        current.currentPeriodEnd <= clock()
+        current.currentPeriodEnd <= clock() &&
+        snapshot.status !== 'canceled' &&
+        snapshot.status !== 'expired'
       ) {
         await provider.cancelSubscription(current.providerSubscriptionId, { atPeriodEnd: false })
+        snapshot = await fetchSnapshot()
       }
-      const snapshot = await provider.getSubscription(current.providerSubscriptionId)
-      if (snapshot.providerSubscriptionId !== current.providerSubscriptionId)
-        throw new Error('Remote billing object mismatch')
       const now = clock()
       const event: NormalizedEvent = {
         provider: current.provider,
