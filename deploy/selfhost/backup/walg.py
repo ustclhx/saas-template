@@ -16,11 +16,12 @@ class BackupError(Exception):
     """只包含固定错误码，调用方可安全记录。"""
 
 
-def _secret(name):
+def _secret(name, settings=None):
+    settings = os.environ if settings is None else settings
     try:
-        if name.removesuffix('_FILE') in os.environ:
+        if name.removesuffix('_FILE') in settings:
             raise ValueError
-        value = Path(os.environ[name]).read_bytes().decode('utf-8').removesuffix('\n')
+        value = Path(settings[name]).read_bytes().decode('utf-8').removesuffix('\n')
         if not value or len(value) > 4096 or any(c in value for c in '\r\n\0'):
             raise ValueError
         return value
@@ -28,15 +29,17 @@ def _secret(name):
         raise BackupError('invalid-secret-file') from None
 
 
-def _positive(name, default):
-    value = os.environ.get(name, str(default))
+def _positive(name, default, settings=None):
+    settings = os.environ if settings is None else settings
+    value = settings.get(name, str(default))
     if not re.fullmatch(r'[1-9][0-9]*', value):
         raise BackupError('invalid-resource-limit')
     return value
 
 
-def _environment():
-    endpoint = os.environ.get('BACKUP_S3_ENDPOINT', '')
+def _environment(settings=None):
+    settings = os.environ if settings is None else settings
+    endpoint = settings.get('BACKUP_S3_ENDPOINT', '')
     try:
         parsed = urlsplit(endpoint)
         if (any(ord(c) < 32 for c in endpoint)
@@ -46,40 +49,40 @@ def _environment():
             raise ValueError
     except ValueError:
         raise BackupError('invalid-s3-endpoint') from None
-    if parsed.scheme == 'http' and os.environ.get('BACKUP_ALLOW_HTTP') != 'true':
+    if parsed.scheme == 'http' and settings.get('BACKUP_ALLOW_HTTP') != 'true':
         raise BackupError('s3-https-required')
-    prefix = os.environ.get('BACKUP_S3_PREFIX', '')
+    prefix = settings.get('BACKUP_S3_PREFIX', '')
     if not re.fullmatch(r's3://[a-z0-9][a-z0-9.-]+/[A-Za-z0-9_./-]+', prefix):
         raise BackupError('invalid-s3-prefix')
     if any(part in ('.', '..') for part in prefix[5:].split('/')):
         raise BackupError('invalid-s3-prefix')
-    region = os.environ.get('BACKUP_S3_REGION', '')
+    region = settings.get('BACKUP_S3_REGION', '')
     if not re.fullmatch(r'[A-Za-z0-9-]+', region):
         raise BackupError('invalid-s3-region')
-    path_style = os.environ.get('BACKUP_S3_FORCE_PATH_STYLE', 'true')
+    path_style = settings.get('BACKUP_S3_FORCE_PATH_STYLE', 'true')
     if path_style not in ('true', 'false'):
         raise BackupError('invalid-s3-path-style')
     # 白名单重建，避免共享 AWS profile、代理或应用环境提供另一组凭据。
     env = {
         'PATH': '/usr/local/bin:/usr/bin:/bin', 'HOME': '/nonexistent', 'LANG': 'C.UTF-8',
-        'TMPDIR': os.environ.get('BACKUP_TMP_DIR', '/var/lib/selfhost-backup/tmp'),
+        'TMPDIR': settings.get('BACKUP_TMP_DIR', '/var/lib/selfhost-backup/tmp'),
         'PGHOST': '/var/run/postgresql', 'PGPORT': '5432', 'PGUSER': 'postgres',
-        'PGDATABASE': os.environ.get('POSTGRES_DB', 'saas_production'),
+        'PGDATABASE': settings.get('POSTGRES_DB', 'saas_production'),
         'PGCONNECT_TIMEOUT': '10', 'PGAPPNAME': 'selfhost-backup',
         'AWS_ENDPOINT': endpoint, 'AWS_REGION': region,
         'AWS_S3_FORCE_PATH_STYLE': path_style, 'WALG_S3_PREFIX': prefix,
-        'AWS_ACCESS_KEY_ID': _secret('BACKUP_S3_ACCESS_KEY_ID_FILE'),
-        'AWS_SECRET_ACCESS_KEY': _secret('BACKUP_S3_SECRET_ACCESS_KEY_FILE'),
+        'AWS_ACCESS_KEY_ID': _secret('BACKUP_S3_ACCESS_KEY_ID_FILE', settings),
+        'AWS_SECRET_ACCESS_KEY': _secret('BACKUP_S3_SECRET_ACCESS_KEY_FILE', settings),
         'AWS_EC2_METADATA_DISABLED': 'true', 'AWS_SHARED_CREDENTIALS_FILE': '/dev/null',
         'AWS_CONFIG_FILE': '/dev/null', 'AWS_SDK_LOAD_CONFIG': 'false',
         'WALG_COMPRESSION_METHOD': 'lz4', 'WALG_DELTA_MAX_STEPS': '0',
         'WALG_UPLOAD_CONCURRENCY': '1', 'WALG_UPLOAD_DISK_CONCURRENCY': '1',
         'WALG_DOWNLOAD_CONCURRENCY': '1', 'WALG_S3_MAX_RETRIES': '2',
-        'WALG_DISK_RATE_LIMIT': _positive('BACKUP_DISK_RATE_LIMIT', 20971520),
-        'WALG_NETWORK_RATE_LIMIT': _positive('BACKUP_NETWORK_RATE_LIMIT', 10485760),
+        'WALG_DISK_RATE_LIMIT': _positive('BACKUP_DISK_RATE_LIMIT', 20971520, settings),
+        'WALG_NETWORK_RATE_LIMIT': _positive('BACKUP_NETWORK_RATE_LIMIT', 10485760, settings),
         'WALG_LOG_LEVEL': 'ERROR',
     }
-    ca_file = os.environ.get('BACKUP_S3_CA_FILE')
+    ca_file = settings.get('BACKUP_S3_CA_FILE')
     if ca_file:
         if '\0' in ca_file or not Path(ca_file).is_file() or not os.access(ca_file, os.R_OK):
             raise BackupError('invalid-s3-ca-file')

@@ -1,8 +1,9 @@
 # Selfhost PG17 基础与逻辑备份
 
 此入口对应 D 4.1–4.5；备份覆盖 PG 全集群，包括角色、业务以及 `job_engine`、`dbos`。
-正式新服务器 restore、演练入口与第二供应商复制归任务 5，尚未交付；真实外部供应商和
-服务器验收保持待办。本地 S3 夹具只证明机制，不选定部署方的存储供应商。
+指定时间点恢复和隔离演练见 [恢复入口](selfhost-restore.md)，第二目标独立复制与恢复
+见 [副本入口](selfhost-replica.md)。真实外部供应商和服务器验收保持待办；本地 S3
+夹具只证明机制，不选定部署方的存储供应商。
 
 ## 配置与启动
 
@@ -63,9 +64,9 @@ docker compose exec -T backup selfhost-walg backup-list --detail --json
 选中的最老 daily/weekly/permanent base 起，全部中间 base、WAL、history 保留，宁可
 多占空间。详见 [保留边界](selfhost-backup-retention.md)。新 base 失败、未知/混合
 cluster/timeline、归档缺段、陈旧/失败副本证明均拒绝删除。不得另跑 count-only retain、
-garbage，也不得给桶添加独立按年龄删 WAL/history 的 lifecycle。当前第二目标显示
-`not_configured`，没有伪造副本成功。以后装配副本时清理必须使用真实完整性 manifest，
-不能直接编辑 state 的布尔字段来绕过门禁。
+garbage，也不得给桶添加独立按年龄删 WAL/history 的 lifecycle。不加载副本override时
+第二目标显示 `not_configured`。启用后，副本复制必须完成真实对象大小/SHA256清单后
+才能清理；不能编辑 state 的布尔字段绕过门禁。
 
 ## 逻辑备份与恢复材料
 

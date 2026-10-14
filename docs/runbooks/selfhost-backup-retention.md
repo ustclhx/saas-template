@@ -49,7 +49,8 @@ lastWal 名称或最新 base 的时间直接当作 WAL 恢复上界。
 `ok: true`、`lastSuccess`、`continuousUntil`、`backupId`、`oldestBackupId`、
 `clusterId`、`timeline`；最新 base、最老保留 base 和恢复上界须覆盖当前计划。
 未经大小/可用 checksum/完整对象清单验证的乐观布尔值不能充当 manifest。
-任务 5.3 未装配时保持 configured=false，结果明确 `not_configured`，不宣称双副本成功。
+未加载 `compose.replica.yaml` 时保持 configured=false，结果明确 `not_configured`；启用时
+`replica.py` 校验远端完整对象清单并提交 manifest，成功后才产生本地保留证明。
 已配置但缺少、陈旧、失败或覆盖不足的副本证明拒绝删除。新 base、归档验证失败
 同样拒绝任何 delete。WAL-G WARNING、FAILURE 即使进程 exit 0 也拒绝。
 
