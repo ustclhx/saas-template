@@ -151,3 +151,8 @@ Artifact Bundles 的两个 Node dist、debug ID 与源码帧对应；预期我�
 `web.expectedSource` / `jobs.expectedSource`，这些字段不是已映射的核验结论。
 保存实际 event ID/链接、源文件/行号与源码上下文，并检查 JSON 无认证头、Cookie、
 邮箱、OTP/邮件正文、DSN 或其他凭据，同一触发没有重复上报。全部通过后再勾选 2.5。
+
+2026-10-14 首次核验中 web-node 事件未映射到 `sentry-test.ts`（`js_invalid_sourcemap_location`、
+`js_missing_sources_content`）：Nitro 二次打包的 `_ssr/ssr.mjs.map` mappings 为空且只指向中间产物，
+`application.mjs.map` 缺 sourcesContent。修复见 [selfhost-c-wire Source maps](./selfhost-c-wire.md#source-maps)；
+需用新完整 SHA 重新构建、上传、触发后复核，旧 release 的事件不会因修复而改变。
