@@ -58,6 +58,12 @@ web Nitro/SSR/bootstrap 与 jobs chunks 均带 server maps；jobs 构建先清�
 上传沿用 release → inject → upload → finalize，只选择 `.output/server`，dist 分别为
 web-node/jobs-node，不串用 CF 的 dist/server、web/jobs。上传凭据不在应用 schema、
 模板配置或 build ARG 中；非 upload 的 CLI 环境移除 SENTRY_*。
+
+web 的 SSR 代码先由 Vite service 环境编译到 `node_modules/.nitro/vite/services`，再由 Nitro
+rolldown 二次打包进 `.output/server/_ssr`。`vite.node.config.ts` 在二次打包 load 时交出中间
+map 以串接到 TypeScript，并关闭 Nitro 默认 `sourcemapMinify`（它会删除 sourcesContent，
+并清空来源全在 node_modules 的 mappings）。inject 前 `assertNodeMaps` 拒绝缺源码、空 mappings
+或未串接的中间 map；已构建时测试会把 `sentry-test.ts` 的 throw 位置映射回源码并读取 sourcesContent。
 生产 HTTP 对 map 路径返回 404，不把 server 输出当作公开静态目录。
 
 ## 本批验收与边界

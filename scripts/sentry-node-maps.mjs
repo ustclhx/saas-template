@@ -12,6 +12,43 @@ export function nodeMapTargets(root) {
   ]
 }
 
+async function* serverMaps(directory) {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    // trace 进来的第三方依赖自带 map，不属于本次上传的产物校验范围。
+    if (entry.name === 'node_modules') continue
+    const path = resolve(directory, entry.name)
+    if (entry.isDirectory()) yield* serverMaps(path)
+    else if (entry.name.endsWith('.map')) yield path
+  }
+}
+
+/**
+ * 上传前拦截无法在 Sentry 读出源码的 map：仓库源码缺 sourcesContent、mappings 被清空，
+ * 或仍指向带自身 map 的 Nitro/Vite 中间产物（二次打包未串接）。至少要有一份 TypeScript 源码。
+ */
+export async function assertNodeMaps(directory) {
+  let typeScript = false
+  for await (const path of serverMaps(directory)) {
+    const map = JSON.parse(await readFile(path, 'utf8'))
+    const sources = map.sources ?? []
+    const name = path.slice(directory.length + 1)
+    if (sources.length > 0 && !map.mappings) throw new Error(`Empty source map mappings: ${name}`)
+    for (const [index, source] of sources.entries()) {
+      const content = map.sourcesContent?.[index]
+      if (
+        source.includes('/.nitro/vite/services/') &&
+        /\/\/# sourceMappingURL=/.test(content ?? '')
+      )
+        throw new Error(`Unchained intermediate source map: ${name}`)
+      // 第三方依赖、URL 与 virtual: 模块不要求源码；只检查仓库内相对路径。
+      if (source.includes('node_modules') || /^[a-z][a-z0-9+.-]*:/i.test(source)) continue
+      if (typeof content !== 'string') throw new Error(`Missing sourcesContent: ${name}`)
+      if (/\.tsx?$/.test(source)) typeScript = true
+    }
+  }
+  if (!typeScript) throw new Error(`No TypeScript sources in Node maps: ${directory}`)
+}
+
 async function removePublicMaps(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const path = resolve(directory, entry.name)
@@ -43,6 +80,7 @@ export async function prepareNodeMaps({
     if (metadata.release !== release || metadata.dist !== target.dist)
       throw new Error(`Node build metadata mismatch: ${target.dist}`)
     await stat(resolve(target.directory, 'index.mjs.map'))
+    await assertNodeMaps(target.directory)
   }
   const environment = { ...env }
   for (const key of Object.keys(environment)) {

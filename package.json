@@ -27,6 +27,7 @@
     "@biomejs/biome": "2.5.15",
     "@saas/config": "workspace:*",
     "@sentry/cli": "^3.8.0",
+    "source-map": "0.7.6",
     "turbo": "^2.11.7",
     "typescript": "^7.0.2"
   }
