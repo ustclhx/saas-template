@@ -33,8 +33,10 @@
 - [x] 3.2 生成 selfhost 的 namespace、发布 CI、Compose 和无真值运维/secret 清单；补路径排除 secrets/certs、无扩展名密码、私钥、ownership/备份/release 状态。验证：已有 fixture 用哨兵证明不复制、不读取真值，保留 example/脚本；真实副本再次生成新项目名称与 namespace 正确。（P5）
 - [x] 3.3 在既有 template/config 中表达 billing/credits/营销/i18n 启用状态与关闭组合，保持默认开启行为和三层配置归属。验证：config 精简用例校验有效/无效依赖组合，关闭模块不再要求其 secret/seed；同步功能开关文档，不增加业务分叉。（P5）
 - [x] 3.4 接线关闭 billing/credits 时 web 入口、导航/权限和 jobs 注册；保留 auth/workspace/email/operations/成功 heartbeat，不删历史账本。验证：复用相关 Node 用例覆盖全关组合无计费/积分任务、无 seed 依赖，正常认证与空间仍可用；CF 默认业务测试通过。（P5）
-- [ ] 3.5 接线关闭营销的应用首页及关闭 i18n 的单语言构建/路由，调整生成的启用功能清单。验证：实际 Node SSR/静态资源与登录后入口可用，未启用的营销/多语言入口不注册，启用时既有 marketing/i18n/SEO 用例保持；记录单语言行为。（P5）
-- [ ] 3.6 扩展真实副本验证，至少 CF 默认、selfhost 默认及 selfhost 全关 billing/credits/营销/i18n（AI 可关闭）三个组合。验证：`pnpm test:create-project`、`pnpm test:create-project:verify` 与各副本 Node build 通过，CI 构建全关副本镜像并在空卷 Compose 实际启动、登录/空间/heartbeat/完整 SHA 通过；不能仅文本快照宣称可运行。（P5）
+- [x] 3.5 接线关闭营销的应用首页及关闭 i18n 的单语言构建/路由，调整生成的启用功能清单。验证：实际 Node SSR/静态资源与登录后入口可用，未启用的营销/多语言入口不注册，启用时既有 marketing/i18n/SEO 用例保持；记录单语言行为。（P5）
+  - 2026-10-14：PR #186 实施并验收；三种真实副本安装/typecheck/单测/Node build 全通过，独立只读 CI 在空卷中验证中文 SSR、静态资源、关闭入口、验证邮件/登录/空间、成功 heartbeat 与 web/jobs 完整 SHA。证据：`docs/runbooks/evidence/create-project/2026-10-14/selfhost-features.json`，CI run `38563638983`；单语言行为见 `docs/create-project.md`。
+- [x] 3.6 扩展真实副本验证，至少 CF 默认、selfhost 默认及 selfhost 全关 billing/credits/营销/i18n（AI 可关闭）三个组合。验证：`pnpm test:create-project`、`pnpm test:create-project:verify` 与各副本 Node build 通过，CI 构建全关副本镜像并在空卷 Compose 实际启动、登录/空间/heartbeat/完整 SHA 通过；不能仅文本快照宣称可运行。（P5）
+  - 2026-10-14：PR #186 实施并验收；三种真实副本安装/typecheck/单测/Node build 全通过，独立只读 CI 在空卷中验证中文 SSR、静态资源、关闭入口、验证邮件/登录/空间、成功 heartbeat 与 web/jobs 完整 SHA。证据：`docs/runbooks/evidence/create-project/2026-10-14/selfhost-features.json`，CI run `38563638983`；单语言行为见 `docs/create-project.md`。
 
 ## 4. 基础与逻辑备份（B1、B2，backup owner）
 
