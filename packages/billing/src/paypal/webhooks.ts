@@ -163,8 +163,12 @@ export function payPalWebhookNormalizer(
       const saleEvent = type === 'PAYMENT.SALE.COMPLETED'
       const eventAmount = money(resource.amount, saleEvent)
       const eventPaidAt = payPalDate(resource.create_time)
-      if (saleEvent ? resource.state !== 'completed' : resource.status !== 'COMPLETED')
-        throw new Error('Malformed PayPal completed payment state')
+      // 沙箱快速退款后，COMPLETED 投递的正文可能已反映退款；付款状态以随后核验的快照为准。
+      const paidState = saleEvent
+        ? resource.state === 'completed'
+        : typeof resource.status === 'string' &&
+          ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUNDED'].includes(resource.status)
+      if (!paidState) throw new Error('Malformed PayPal completed payment state')
       const payment =
         type === 'PAYMENT.CAPTURE.COMPLETED'
           ? await snapshots.getPayment({ kind: 'one_time', providerPaymentId: paymentId })
