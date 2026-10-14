@@ -145,6 +145,18 @@ PG回退不回退用户S3对象、邮件、支付、Provider任务、webhook或�
 依据：[PG17 PITR与pause/promote](https://www.postgresql.org/docs/17/continuous-archiving.html)、
 [备份配置及保留](selfhost-backup.md)、[保留链边界](selfhost-backup-retention.md)。
 
+## 2026-10-15 正式发布镜像完整演练（D 6.2）
+
+正式 `598d1f68b6ef7b19e8a6d30c13575bac1701b7c2` 镜像与同 SHA bundle 已在一次干净
+夹具运行中完成四周 metadata 锚点保留、最老 weekly 主目标与仅第二目标独立 PITR，
+两端业务/角色/真实 DBOS checkpoint、job_engine 与积分校验通过且 LSN 相同。
+数据库恢复校验 RTO 为 8.203/7.837 秒，关闭主目标前确认链的观测 RPO 滞后 47.613 秒；
+CPU/RSS/磁盘、日期模拟方法、首次夹具失败和清理记录见
+[完整报告](evidence/selfhost/d-drill-2026-10-15/report.md)。
+复现使用 `test-backup.mjs --release-drill --sha <正式完整SHA> --bundle-dir <同SHA目录>`。
+这是小型本地独立 SeaweedFS 证据；真实供应商/服务器 7.2、异机 ownership 和生产规模
+RTO/RPO 保持待办，不由数据库恢复校验代替。
+
 ## 2026-10-14 本机 arm64 交付验收
 
 [脱敏证据](evidence/selfhost/d-restore-2026-10-14.json)记录两个隔离 SeaweedFS 实例、
