@@ -50,8 +50,8 @@ function run(command, args, { cwd = root, timeout = 60_000 } = {}) {
         if (error.code !== 'ESRCH') throw error
       }
     }
-    if (stage === 'build') {
-      // 构建时尚未创建任何 fixture secret，白名单环境与生成 context 无真值。
+    if (stage === 'build' || (stage === 'start' && args.includes('up'))) {
+      // 构建尚无 secret；compose up 仅输出服务状态，不转储服务日志或 secret。
       console.error((result.stderr || result.stdout || '').split('\n').slice(-20).join('\n'))
     }
     // 子进程错误可能包含 secret 文件正文、连接串或验证链接，只报告固定步骤名。
@@ -403,6 +403,9 @@ secrets:
     Object.assign(env, {
       SELFHOST_COMPOSE_FILE: [composeFile, override].join(delimiter),
       SELFHOST_BASE_URL: env.APP_URL,
+      SELFHOST_LOCALE: 'zh',
+      SELFHOST_MARKETING: 'false',
+      SELFHOST_I18N: 'false',
     })
     // 完整复用既有邮件/登录/空间浏览器流程，不另造认证或数据库写入通道。
     run(

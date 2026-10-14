@@ -6,6 +6,23 @@ import { expect, type Page, test } from '@playwright/test'
 
 const runFile = promisify(execFile)
 const PASSWORD = 'correct-horse-battery'
+const copy =
+  process.env.SELFHOST_LOCALE === 'zh'
+    ? {
+        emailNotVerified: '请先验证邮箱，我们已向你发送新的验证链接。',
+        personal: '个人空间',
+        team: '团队空间',
+        owner: '你的角色：owner',
+        settings: '空间设置',
+      }
+    : {
+        emailNotVerified:
+          'Please verify your email address first. We have sent you a new verification link.',
+        personal: 'Personal workspace',
+        team: 'Team workspace',
+        owner: 'Your role: owner',
+        settings: 'Workspace settings',
+      }
 const PERSONAL_URL = /\/app\/u-[a-z0-9]+\/?$/
 
 interface CapturedEmail {
@@ -128,9 +145,7 @@ test('fresh Node Compose: delivered verification, sign-out, password login and t
   const deniedLogin = page.waitForResponse('**/api/auth/sign-in/email')
   await signIn(page, email)
   expect((await deniedLogin).status()).toBe(403)
-  await expect(page.getByRole('alert')).toHaveText(
-    'Please verify your email address first. We have sent you a new verification link.',
-  )
+  await expect(page.getByRole('alert')).toHaveText(copy.emailNotVerified)
   expect(await sessionIdentity(page)).toBeNull()
 
   try {
@@ -154,6 +169,10 @@ test('fresh Node Compose: delivered verification, sign-out, password login and t
   expect(oldCookies.some((cookie) => cookie.name.endsWith('session_token'))).toBe(true)
 
   await page.goto('/account')
+  if (process.env.SELFHOST_I18N === 'false') {
+    await expect(page.getByLabel(/^(Language|语言)$/)).toHaveCount(0)
+    await expect(page.locator('html')).toHaveAttribute('lang', process.env.SELFHOST_LOCALE ?? 'en')
+  }
   const signOutResponse = page.waitForResponse('**/api/auth/sign-out')
   await page.getByRole('button', { name: 'Sign out and sign in again', exact: true }).click()
   expect((await signOutResponse).status()).toBe(200)
@@ -179,9 +198,13 @@ test('fresh Node Compose: delivered verification, sign-out, password login and t
   await signIn(page, email)
   expect((await signInResponse).status()).toBe(200)
   await expect(page).toHaveURL(personalURL)
+  if (process.env.SELFHOST_MARKETING === 'false') {
+    await page.goto('/')
+    await expect(page).toHaveURL(personalURL)
+  }
   await expect(page.getByTestId('workspace-name')).toHaveText('Personal')
-  await expect(page.getByText('Personal workspace', { exact: true })).toBeVisible()
-  await expect(page.getByText('Your role: owner', { exact: true })).toBeVisible()
+  await expect(page.getByText(copy.personal, { exact: true })).toBeVisible()
+  await expect(page.getByText(copy.owner, { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Create team workspace', exact: true }).click()
   const createTeam = page.getByRole('form', { name: 'Create team workspace' })
@@ -190,10 +213,10 @@ test('fresh Node Compose: delivered verification, sign-out, password login and t
   await createTeam.getByRole('button', { name: 'Create team', exact: true }).click()
   await expect(page).toHaveURL(`${baseURL}/app/${slug}`)
   await expect(page.getByTestId('workspace-name')).toHaveText(teamName)
-  await expect(page.getByText('Team workspace', { exact: true })).toBeVisible()
+  await expect(page.getByText(copy.team, { exact: true })).toBeVisible()
   await expect(page.getByTestId('current-user')).toHaveText(`${name} (${email})`)
-  await expect(page.getByText('Your role: owner', { exact: true })).toBeVisible()
-  await page.getByRole('link', { name: 'Workspace settings', exact: true }).click()
+  await expect(page.getByText(copy.owner, { exact: true })).toBeVisible()
+  await page.getByRole('link', { name: copy.settings, exact: true }).click()
   await expect(page.getByRole('form', { name: 'Invite member', exact: true })).toBeVisible()
   await expect(page.getByText(`${name} (${email}) · owner`, { exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Delete team workspace', exact: true })).toBeVisible()
@@ -203,7 +226,7 @@ test('fresh Node Compose: delivered verification, sign-out, password login and t
   })
   await expect(page).toHaveURL(personalURL)
   await expect(page.getByTestId('workspace-name')).toHaveText('Personal')
-  await page.getByRole('link', { name: 'Workspace settings', exact: true }).click()
+  await page.getByRole('link', { name: copy.settings, exact: true }).click()
   await expect(page.getByRole('form', { name: 'Invite member', exact: true })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Delete team workspace', exact: true })).toHaveCount(
     0,

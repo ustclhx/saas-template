@@ -3,6 +3,19 @@ import { expect, it, vi } from 'vitest'
 import { withEntitlement, withWorkspace } from '../../../apps/web/src/server/middleware.ts'
 import { DEFAULT_FREE_FEATURES, UPGRADE_REQUIRED } from '../src/index.ts'
 
+// 这些用例验证启用模块的权益行为；关闭模块的 404/无 seed 行为由 web feature-gates 用例覆盖。
+vi.mock('../../../apps/web/src/server/template-config.ts', async (original) => {
+  const { templateConfig } =
+    await original<typeof import('../../../apps/web/src/server/template-config.ts')>()
+  return {
+    templateConfig: {
+      ...templateConfig,
+      billing: { ...templateConfig.billing, enabled: true },
+      credits: { ...templateConfig.credits, enabled: true },
+    },
+  }
+})
+
 vi.mock('../../../apps/web/src/server/auth.ts', () => ({ getAuth: vi.fn() }))
 vi.mock('@saas/entitlements', async (original) => ({
   ...(await original<typeof import('../src/index.ts')>()),
