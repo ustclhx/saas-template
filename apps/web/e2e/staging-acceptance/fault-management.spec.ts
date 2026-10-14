@@ -132,11 +132,68 @@ test('one failed Disable RPC still cleans other models and reports both errors',
     expect((failure as AggregateError).errors).toContain(sceneError)
     expect(cleanup.map((result) => result.status)).toEqual(['failed', 'disabled'])
     expect(cleanup[0]?.id).toBe(rejectedId)
+    // 持续失败只做有界重试，并留下可定位的安全阶段。
+    expect(cleanup[0]).toMatchObject({ attempts: 3, failure: { stage: 'disable' } })
+    expect(cleanup[1]).toMatchObject({ attempts: 1 })
+    expect(cleanup[1]?.failure).toBeUndefined()
     expect((await readFaultModel(models[0] as FaultModelDefinition))?.enabled).toBe(true)
     await disabled(models[1] as FaultModelDefinition)
   } finally {
     await page.unroute('**/*', intercept)
     await cleanupFaultModels(page, models)
+  }
+})
+
+test('a transient Disable failure is retried once and confirmed by a new audit', async ({
+  page,
+}) => {
+  const model = ownedModel('cleanup-transient')
+  let targetId = ''
+  let aborted = 0
+  let cleanup: FaultCleanupResult[] = []
+  const intercept = async (route: Route) => {
+    const request = route.request()
+    // 仅第一次 Disable RPC 在到达服务端前失败，模拟 staging 单项停用的瞬时失败。
+    if (
+      request.method() === 'POST' &&
+      targetId &&
+      aborted === 0 &&
+      (request.postData() ?? '').includes(targetId)
+    ) {
+      aborted++
+      await route.abort('failed')
+    } else await route.continue()
+  }
+  await page.route('**/*', intercept)
+  try {
+    const sceneError = new Error('Intentional scene failure before transient cleanup')
+    const failure = await captureFailure(() =>
+      withFaultModels(
+        page,
+        [model],
+        async () => {
+          targetId = (await readFaultModel(model))?.id ?? ''
+          throw sceneError
+        },
+        async (results) => {
+          cleanup = results
+        },
+      ),
+    )
+    // 清理最终成功时只保留原场景错误，不包装成清理失败。
+    expect(failure).toBe(sceneError)
+    expect(aborted).toBe(1)
+    expect(cleanup).toEqual([
+      expect.objectContaining({ id: targetId, status: 'disabled', attempts: 2 }),
+    ])
+    expect(cleanup[0]?.failure).toBeUndefined()
+    const audits = await query<{ id: string }>(`select id from audit_log
+      where action='ai.model_disabled' and target_id=${sqlLiteral(targetId)} order by id`)
+    expect(cleanup[0]?.auditIds).toEqual(audits.map((audit) => audit.id))
+    await disabled(model)
+  } finally {
+    await page.unroute('**/*', intercept)
+    await cleanupFaultModels(page, [model])
   }
 })
 

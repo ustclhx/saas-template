@@ -52,6 +52,14 @@ describe('本地文本验收上游', () => {
     },
   )
 
+  it('故障模型未关闭思考时只回 reasoning，复现 staging 未注入', async () => {
+    const upstream = defaultLanguageModelFactory(model, {}) as MockLanguageModelV4
+    const result = streamText({ model: upstream, prompt: 'local fixture', maxRetries: 0 })
+    expect(await result.text).toBe('')
+    expect(await result.reasoningText).toHaveLength(1024)
+    expect((await result.totalUsage).outputTokens).toBe(1024)
+  })
+
   it('未知服务商或模型 ID 明确拒绝，不能回退真实 Provider', () => {
     for (const changes of [{ provider: 'openai' }, { providerModelId: 'unknown-model' }])
       expect(() => defaultLanguageModelFactory({ ...model, ...changes }, {})).toThrow(

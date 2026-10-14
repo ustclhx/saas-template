@@ -1,14 +1,20 @@
 import { isDeepStrictEqual } from 'node:util'
 import type { Page } from '@playwright/test'
+import { safeDiagnostic } from './diagnostic.ts'
 import type { FaultModelDefinition } from './fault-definitions.ts'
 import { createAcceptanceModel } from './models.ts'
 import { expect, query, sqlLiteral } from './support.ts'
+
+export type FaultCleanupStage = 'read' | 'configuration' | 'editor' | 'disable' | 'confirm'
 
 export interface FaultCleanupResult {
   key: string
   id?: string
   status: 'disabled' | 'already-disabled' | 'failed'
   auditIds: string[]
+  /** 实际尝试次数；失败时附最后一次的阶段与安全类别，不含页面或驱动原文。 */
+  attempts?: number
+  failure?: { stage: FaultCleanupStage; diagnostic: string }
 }
 
 type ModelRow = Record<string, unknown> & { id: string; enabled: boolean }
@@ -59,6 +65,100 @@ async function disabledAudits(id: string) {
     where action='ai.model_disabled' and target_id=${sqlLiteral(id)} order by id`)
 }
 
+// 单项停用的有界重试：每次先只读确认当前状态，已停用即不再点击，因此重复尝试是幂等的。
+const DISABLE_ATTEMPTS = 3
+const DISABLE_RETRY_DELAY_MS = 2_000
+const UI_TIMEOUT_MS = 20_000
+
+class CleanupStageError extends Error {
+  constructor(
+    readonly stage: FaultCleanupStage,
+    readonly retryable: boolean,
+    readonly origin?: unknown,
+  ) {
+    super(`Fault model cleanup failed at ${stage}`)
+  }
+}
+
+async function stage<T>(name: FaultCleanupStage, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run()
+  } catch (error) {
+    if (error instanceof CleanupStageError) throw error
+    throw new CleanupStageError(name, true, error)
+  }
+}
+
+/**
+ * 停用一个已登记模型，结果写入 result。配置或身份不匹配不可重试，也绝不覆盖；
+ * 其余阶段（只读查询、页面接管、RPC、确认）失败时由调用方整体重试。
+ */
+async function disableEntry(
+  page: Page,
+  entry: CleanupEntry,
+  result: FaultCleanupResult,
+  baseline: { ids?: Set<string>; clicked: boolean },
+) {
+  const row = await stage('read', () => readFaultModel(entry.expected))
+  if (!row) {
+    // 创建在写库前被拒绝时没有遗留资源，无需制造一次停用审计。
+    if (entry.id) throw new CleanupStageError('configuration', false)
+    result.status = 'already-disabled'
+    return
+  }
+  result.id = row.id
+  try {
+    verifyConfiguration(row, entry.expected)
+  } catch (error) {
+    throw new CleanupStageError('configuration', false, error)
+  }
+  if (entry.id && entry.id !== row.id) throw new CleanupStageError('configuration', false)
+  // 基线只取首次读取：前一次尝试的点击可能已生效但未确认，新审计仍应计入本次停用。
+  baseline.ids ??= new Set((await stage('read', () => disabledAudits(row.id))).map((a) => a.id))
+  // 停用 RPC 与审计同事务；只读副本可能滞后，按有界轮询确认出现新的停用审计。
+  const confirmed = async () => {
+    const after = await disabledAudits(row.id)
+    if (!after.some((audit) => !baseline.ids?.has(audit.id))) return false
+    result.auditIds = after.map((audit) => audit.id)
+    result.status = 'disabled'
+    return true
+  }
+  const confirm = () =>
+    stage('confirm', () => expect.poll(confirmed, { timeout: UI_TIMEOUT_MS }).toBe(true))
+  if (!row.enabled) {
+    if (baseline.clicked) return confirm()
+    result.auditIds = [...baseline.ids]
+    result.status = 'already-disabled'
+    return
+  }
+  const editor = await stage('editor', async () => {
+    const editor = await faultModelEditor(page, entry.expected, row.id)
+    // SSR 表单在 React 接管前禁用；等接管完成再点，避免点击落空。
+    await expect(editor).toHaveAttribute('aria-busy', 'false', { timeout: UI_TIMEOUT_MS })
+    return editor
+  })
+  const status = editor.getByRole('status')
+  await stage('disable', async () => {
+    // 按钮名为 Disable 才代表此次提交 enabled=false；页面陈旧显示 Enable 时等待超时而不会误启用。
+    const button = editor.getByRole('button', { name: 'Disable', exact: true })
+    await expect(button).toBeEnabled({ timeout: UI_TIMEOUT_MS })
+    baseline.clicked = true
+    await button.click({ timeout: UI_TIMEOUT_MS })
+    await expect(status).not.toHaveText('', { timeout: UI_TIMEOUT_MS })
+    // 拒绝文案可能回显服务端信息，只按固定成功文案判定。
+    if ((await status.textContent())?.trim() !== 'Saved.')
+      throw new CleanupStageError('disable', true)
+  })
+  await stage('confirm', () =>
+    expect
+      .poll(async () => (await readFaultModel(entry.expected))?.enabled, {
+        timeout: UI_TIMEOUT_MS,
+      })
+      .toBe(false),
+  )
+  await confirm()
+}
+
 async function cleanupEntries(page: Page, entries: CleanupEntry[]): Promise<FaultCleanupResult[]> {
   const results: FaultCleanupResult[] = []
   for (const entry of entries) {
@@ -69,36 +169,24 @@ async function cleanupEntries(page: Page, entries: CleanupEntry[]): Promise<Faul
       auditIds: [],
     }
     results.push(result)
-    try {
-      const row = await readFaultModel(entry.expected)
-      if (!row) {
-        // 创建在写库前被拒绝时没有遗留资源，无需制造一次停用审计。
-        if (entry.id) throw new Error('Prepared fault model disappeared')
-        result.status = 'already-disabled'
-        continue
+    const baseline: { ids?: Set<string>; clicked: boolean } = { clicked: false }
+    for (let attempt = 1; attempt <= DISABLE_ATTEMPTS; attempt++) {
+      result.attempts = attempt
+      try {
+        await disableEntry(page, entry, result, baseline)
+        delete result.failure
+        break
+      } catch (error) {
+        // 单项失败不能跳过其他资源；只记录阶段与固定类别，原错误可能含选择器、URL 或页面文本。
+        const failed =
+          error instanceof CleanupStageError ? error : new CleanupStageError('read', true, error)
+        const cause = failed.origin instanceof Error ? failed.origin.message : undefined
+        result.status = 'failed'
+        result.failure = { stage: failed.stage, diagnostic: safeDiagnostic(cause) }
+        if (!failed.retryable) break
+        if (attempt < DISABLE_ATTEMPTS)
+          await new Promise((resolve) => setTimeout(resolve, DISABLE_RETRY_DELAY_MS * attempt))
       }
-      result.id = row.id
-      verifyConfiguration(row, entry.expected)
-      if (entry.id && entry.id !== row.id) throw new Error('Prepared fault model identity changed')
-      const before = await disabledAudits(row.id)
-      result.auditIds = before.map((audit) => audit.id)
-      if (!row.enabled) {
-        result.status = 'already-disabled'
-        continue
-      }
-      const editor = await faultModelEditor(page, entry.expected, row.id)
-      await editor.getByRole('button', { name: 'Disable', exact: true }).click()
-      await expect(editor.getByRole('status')).toHaveText('Saved.', { timeout: 5_000 })
-      await expect.poll(async () => (await readFaultModel(entry.expected))?.enabled).toBe(false)
-      const after = await disabledAudits(row.id)
-      const oldIds = new Set(result.auditIds)
-      if (!after.some((audit) => !oldIds.has(audit.id)))
-        throw new Error('Fault model disable audit is missing')
-      result.auditIds = after.map((audit) => audit.id)
-      result.status = 'disabled'
-    } catch {
-      // 单项失败不能跳过其他资源；固定安全错误由调用方统一报告。
-      result.status = 'failed'
     }
   }
   return results

@@ -1,3 +1,4 @@
+import { createDeepSeek } from '@ai-sdk/deepseek'
 import type { AiFaultInjectionEnv } from '@saas/config'
 import { MockLanguageModelV3, MockLanguageModelV4 } from 'ai/test'
 import { describe, expect, it, vi } from 'vitest'
@@ -225,6 +226,99 @@ describe('文本故障 doStream 包装', () => {
     expect((await reader.read()).value).toEqual(delta('a'.repeat(200)))
     await expect(reader.read()).rejects.toMatchObject({ code: 'ACCEPTANCE_FAULT_INJECTED' })
     expect(legacy.doStreamCalls).toHaveLength(1)
+  })
+
+  it('故障调用关闭思考，其余调用参数保持', async () => {
+    const f = fixture([finish])
+    await f.model.doStream({
+      prompt: [],
+      maxOutputTokens: 1024,
+      providerOptions: { deepseek: { userId: 'u' }, other: { keep: true } },
+    })
+    expect(f.upstream.doStreamCalls[0]).toMatchObject({
+      maxOutputTokens: 1024,
+      reasoning: 'none',
+      providerOptions: {
+        deepseek: { userId: 'u', thinking: { type: 'disabled' } },
+        other: { keep: true },
+      },
+    })
+  })
+
+  describe('真实 DeepSeek Provider（假 fetch）', () => {
+    const sse = (choice: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+      `data: ${JSON.stringify({ id: 'r', created: 1, model: 'deepseek-flash', choices: [{ index: 0, ...choice }], ...extra })}\n\n`
+    function deepseek(events: string[]) {
+      const bodies: Record<string, unknown>[] = []
+      const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)))
+        const encoder = new TextEncoder()
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              for (const event of [...events, 'data: [DONE]\n\n'])
+                controller.enqueue(encoder.encode(event))
+              controller.close()
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        )
+      })
+      const upstream = createDeepSeek({ apiKey: 'test', fetch })('deepseek-flash')
+      const proofs: TextFaultProof[] = []
+      const model = wrapTextFaultModel(upstream, {
+        mode: 'chat-mid-stream',
+        env: enabled,
+        tokensPerChar: 1,
+        writeProof: async (proof) => {
+          proofs.push(proof)
+          return true
+        },
+      })
+      return { model, bodies, proofs }
+    }
+    const prompt = [{ role: 'user' as const, content: [{ type: 'text' as const, text: 'hi' }] }]
+
+    it('请求体关闭 V4 默认思考，正文 delta 达阈值后注入', async () => {
+      const f = deepseek([
+        sse({ delta: { content: 'a'.repeat(150) } }),
+        sse({ delta: { content: 'b'.repeat(150) } }),
+        sse({ delta: {}, finish_reason: 'stop' }),
+      ])
+      const reader = (await f.model.doStream({ prompt, maxOutputTokens: 1024 })).stream.getReader()
+      let error: unknown
+      try {
+        while (!(await reader.read()).done) {}
+      } catch (caught) {
+        error = caught
+      }
+      expect(error).toMatchObject({ code: 'ACCEPTANCE_FAULT_INJECTED' })
+      expect(f.bodies).toHaveLength(1)
+      expect(f.bodies[0]).toMatchObject({ thinking: { type: 'disabled' }, max_tokens: 1024 })
+      expect(f.bodies[0]).not.toHaveProperty('reasoning_effort')
+      expect(f.proofs.at(-1)).toMatchObject({ injected: true, outputTokens: 300 })
+    })
+
+    it('服务商仍只回 reasoning 时不计入阈值，也不伪称注入', async () => {
+      const f = deepseek([
+        sse({ delta: { reasoning_content: 'r'.repeat(1024) } }),
+        sse(
+          { delta: {}, finish_reason: 'length' },
+          { usage: { prompt_tokens: 53, completion_tokens: 1024, total_tokens: 1077 } },
+        ),
+      ])
+      const reader = (await f.model.doStream({ prompt })).stream.getReader()
+      const types: string[] = []
+      for (;;) {
+        const next = await reader.read()
+        if (next.done) break
+        types.push(next.value.type)
+      }
+      expect(types).toContain('reasoning-delta')
+      expect(types).not.toContain('text-delta')
+      expect(f.proofs.some((p) => p.injected)).toBe(false)
+      expect(f.proofs.at(-1)).toMatchObject({ realProviderCalled: true, upstreamCalls: 1 })
+    })
   })
 
   it('字符串模型不能回退默认真实 Provider', () => {
