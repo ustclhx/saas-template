@@ -1,9 +1,16 @@
 import { env } from 'cloudflare:workers'
 import {
+  createFalMediaProvider,
+  initialMediaFaultProof,
   MEDIA_HOLD_SWEEP_BUFFER_MS,
+  type MediaFaultMode,
   type MediaProvider,
   type MediaWebhook,
   mediaCallbackUrl,
+  mediaFaultPolicy,
+  readMediaFault,
+  settleMediaTask,
+  updateMediaFaultProof,
   WORKERS_AI_IMAGE_MODEL,
 } from '@saas/ai'
 import { createAuth } from '@saas/auth'
@@ -21,6 +28,7 @@ import {
   handleMediaSubmit,
   handleMediaWebhook,
   type MediaHttpDeps,
+  submitWorkspaceMedia,
 } from '../src/features/ai/media-tasks.ts'
 import { templateConfig } from '../src/server/template-config.ts'
 
@@ -92,6 +100,102 @@ async function model(
     },
   })
   return key
+}
+async function faultModel(mode: MediaFaultMode) {
+  const key = `acceptance-fault-${MODEL_PREFIX}${newId()}`
+  const workers = mode.startsWith('workers-')
+  await db.insert(aiModel).values({
+    key,
+    kind: 'image',
+    provider: workers ? 'workers-ai' : 'fal',
+    providerModelId: workers ? WORKERS_AI_IMAGE_MODEL : 'fal-ai/flux/schnell',
+    pricing: { mode: 'per_call', credits: 3 },
+    paramsSchema: {
+      type: 'object',
+      required: ['prompt'],
+      properties: {
+        prompt: { type: 'string', minLength: 1 },
+        image_size: { type: 'string', enum: ['square', 'landscape_4_3'] },
+        num_images: { type: 'integer', minimum: 1, maximum: 2 },
+      },
+      'x-acceptance-fault': { mode },
+    },
+  })
+  return key
+}
+async function administrator(name: string) {
+  const who = await account(name)
+  // 保留原登录 cookie，敏感入口必须从数据库读取刚更新的平台角色。
+  await sql`update "user" set role='admin' where id=${who.userId}`
+  return who
+}
+function faultDependencies() {
+  const state = dependencies()
+  state.deps.env = {
+    ...state.deps.env,
+    AI_FAULT_INJECTION: 'enabled',
+    SENTRY_ENVIRONMENT: 'staging',
+    AI: {
+      run: async () => {
+        throw new Error('web must not infer')
+      },
+    },
+  }
+  return state
+}
+async function signedFalCallbacks() {
+  const pair = (await crypto.subtle.generateKey('Ed25519', true, [
+    'sign',
+    'verify',
+  ])) as CryptoKeyPair
+  const publicKey = await crypto.subtle.exportKey('jwk', pair.publicKey)
+  const requests: string[] = []
+  const provider = createFalMediaProvider({
+    apiKey: 'fixture-only',
+    modelId: 'fal-ai/flux/schnell',
+    fetch: async (input) => {
+      const url = String(input)
+      requests.push(url)
+      // 仅提供临时公钥，任何队列、图片下载或未知请求都不能访问外部网络。
+      if (url !== 'https://rest.fal.ai/.well-known/jwks.json')
+        throw new Error('Unexpected fal fixture request')
+      return Response.json({ keys: [{ x: publicKey.x }] })
+    },
+  })
+  const hex = (bytes: ArrayBuffer) =>
+    Array.from(new Uint8Array(bytes), (value) => value.toString(16).padStart(2, '0')).join('')
+  return {
+    provider,
+    requests,
+    async request(taskId: string, jobId: string) {
+      const url = await mediaCallbackUrl(APP_URL, SECRET, { id: taskId, provider: 'fal' })
+      const body = JSON.stringify({
+        request_id: jobId,
+        status: 'OK',
+        payload: {
+          images: [{ url: 'https://v3.fal.media/fixture.png', content_type: 'image/png' }],
+        },
+      })
+      const timestamp = String(Math.floor(Date.now() / 1000))
+      const encoder = new TextEncoder()
+      const hash = hex(await crypto.subtle.digest('SHA-256', encoder.encode(body)))
+      const signature = await crypto.subtle.sign(
+        'Ed25519',
+        pair.privateKey,
+        encoder.encode([jobId, 'fixture-user', timestamp, hash].join('\n')),
+      )
+      return new Request(url, {
+        method: 'POST',
+        body,
+        headers: {
+          'x-fal-webhook-request-id': jobId,
+          'x-fal-webhook-user-id': 'fixture-user',
+          'x-fal-webhook-timestamp': timestamp,
+          'x-fal-webhook-signature': hex(signature),
+        },
+      })
+    },
+  }
 }
 function dependencies(
   options: {
@@ -226,9 +330,282 @@ afterAll(async () => {
   await sql`delete from organization where id in (${ids})`
   await sql`delete from "user" where id in (${ids})`
   await sql`delete from ai_model where key like ${`${MODEL_PREFIX}%`}`
+  await sql`delete from ai_model where key like ${`acceptance-fault-${MODEL_PREFIX}%`}`
 })
 
 describe('media tasks API', () => {
+  it.each(['workers-timeout', 'fal-timeout'] as const)(
+    '%s 冻结管理员故障策略和 60 秒 deadline，模型停用与并发证明更新不改变输入',
+    async (mode) => {
+      const who = await administrator(mode)
+      const key = await faultModel(mode)
+      const { deps } = faultDependencies()
+      const before = Date.now()
+      const taskId = await submitted(who, key, deps)
+      const acceptedAt = Date.now()
+      const tenant = scoped(db, who.workspaceId)
+      const task = await tenant.findById(aiTask, taskId)
+      const snapshot = mediaFaultPolicy(mode)
+      expect(task.input.acceptanceFault).toEqual(snapshot)
+      expect(snapshot).toMatchObject({
+        policyVersion: 1,
+        authorizedAdmin: true,
+        deadlineMs: 60_000,
+        initialWaitMs: mode === 'fal-timeout' ? 5_000 : 0,
+        barrierMs: 0,
+      })
+      expect(task.deadlineAt.getTime()).toBeGreaterThanOrEqual(before + 60_000)
+      expect(task.deadlineAt.getTime()).toBeLessThanOrEqual(acceptedAt + 60_000)
+      const [reservation] = await sql<{ expires_at: string }[]>`
+        select expires_at from credit_hold where id=${task.holdId}`
+      expect(new Date(reservation?.expires_at ?? '').getTime()).toBe(
+        task.deadlineAt.getTime() + 10 * 60_000,
+      )
+      expect(task.input.acceptanceFaultProof).toEqual(initialMediaFaultProof(snapshot))
+      if (mode === 'fal-timeout')
+        expect(task.input.params).toEqual({
+          prompt: 'fixture',
+          image_size: 'square',
+          num_images: 1,
+        })
+
+      const changedMode = mode === 'workers-timeout' ? 'workers-error' : 'fal-provider-error'
+      await sql`update ai_model set enabled=false, params_schema=jsonb_set(params_schema,
+        '{x-acceptance-fault}', ${JSON.stringify({ mode: changedMode })}::jsonb) where key=${key}`
+      expect(readMediaFault(await tenant.findById(aiTask, taskId))).toEqual(snapshot)
+      expect((await submit(who, key, deps)).status).toBe(404)
+      await Promise.all([
+        updateMediaFaultProof(db, task, { submitAttempts: 1, realRequestId: 'fixture-proof-job' }),
+        updateMediaFaultProof(db, task, { pollCount: 2, injected: true }),
+      ])
+      const updated = await tenant.findById(aiTask, taskId)
+      expect(updated.input).toEqual({
+        ...task.input,
+        acceptanceFaultProof: {
+          ...initialMediaFaultProof(snapshot),
+          submitAttempts: 1,
+          realRequestId: 'fixture-proof-job',
+          pollCount: 2,
+          injected: true,
+        },
+      })
+      expect(updated.deadlineAt).toEqual(task.deadlineAt)
+      expect(await tenant.count(aiTask)).toBe(1)
+      expect(
+        await sql`select id from credit_hold where workspace_id=${who.workspaceId}`,
+      ).toHaveLength(1)
+    },
+  )
+
+  it('fal 专用请求拒绝非 square 或多图片且不预扣，合法请求固定为单张 square', async () => {
+    const who = await administrator('fault-params')
+    const key = await faultModel('fal-callback-lost')
+    const { deps } = faultDependencies()
+    for (const params of [
+      { prompt: 'fixture', image_size: 'landscape_4_3' },
+      { prompt: 'fixture', num_images: 2 },
+    ]) {
+      const response = await submit(who, key, deps, params)
+      expect(response.status).toBe(400)
+      expect(await response.json()).toMatchObject({ error: { code: 'INVALID_PARAMS' } })
+    }
+    expect(await scoped(db, who.workspaceId).count(aiTask)).toBe(0)
+    expect(
+      await sql`select id from credit_hold where workspace_id=${who.workspaceId}`,
+    ).toHaveLength(0)
+    expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 100, held: 0 })
+    const taskId = await submitted(who, key, deps)
+    const task = await scoped(db, who.workspaceId).findById(aiTask, taskId)
+    expect(task.input.params).toEqual({ prompt: 'fixture', image_size: 'square', num_images: 1 })
+    expect(task.input.unitsLimit).toBe(1)
+    expect(task.input.acceptanceFault).toEqual(mediaFaultPolicy('fal-callback-lost'))
+  })
+
+  it('early 回调经过真实 HMAC 和 fal Ed25519 验签先落库，重放保留首次时间及不可变输入', async () => {
+    const who = await administrator('fault-early-callback')
+    const state = faultDependencies()
+    const signed = await signedFalCallbacks()
+    state.deps.providerFactory = () => signed.provider
+    const taskId = await submitted(who, await faultModel('fal-callback-early'), state.deps)
+    const tenant = scoped(db, who.workspaceId)
+    const original = await tenant.findById(aiTask, taskId)
+    expect(original.input.acceptanceFault).toEqual({
+      mode: 'fal-callback-early',
+      policyVersion: 1,
+      authorizedAdmin: true,
+      deadlineMs: 20 * 60_000,
+      initialWaitMs: 5_000,
+      barrierMs: 10 * 60_000,
+    })
+    expect(original.providerJobId).toBeNull()
+    expect(
+      (
+        await handleMediaWebhook(
+          await signed.request(taskId, 'fixture-early-job'),
+          'fal',
+          state.deps,
+        )
+      ).status,
+    ).toBe(200)
+    const stored = await tenant.findById(aiTask, taskId)
+    const proof = stored.input.acceptanceFaultProof as { callbackStoredAt: string }
+    expect(Number.isFinite(Date.parse(proof.callbackStoredAt))).toBe(true)
+    expect(stored.input).toEqual({
+      ...original.input,
+      acceptanceFaultProof: {
+        ...(original.input.acceptanceFaultProof as object),
+        callbackStoredAt: proof.callbackStoredAt,
+      },
+    })
+    expect(stored.callbackPayload).toMatchObject({
+      jobId: 'fixture-early-job',
+      result: { outputs: [{ url: 'https://v3.fal.media/fixture.png', mime: 'image/png' }] },
+    })
+    expect(state.counts().events).toBe(1)
+    expect(
+      (
+        await handleMediaWebhook(
+          await signed.request(taskId, 'fixture-early-job'),
+          'fal',
+          state.deps,
+        )
+      ).status,
+    ).toBe(200)
+    const replayed = await tenant.findById(aiTask, taskId)
+    expect(replayed.input).toEqual(stored.input)
+    expect(replayed.callbackPayload).toEqual(stored.callbackPayload)
+    expect(replayed.status).toBe('queued')
+    expect(replayed.output).toBeNull()
+    expect(signed.requests).toEqual(['https://rest.fal.ai/.well-known/jwks.json'])
+    expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 97, held: 3 })
+  })
+
+  it.each([
+    'fal-callback-lost',
+    'fal-submit-response-lost',
+    'fal-provider-error',
+    'fal-timeout',
+  ] as const)('%s 只在真实签名校验后忽略成功回调，终态重放不产出或重复结算', async (mode) => {
+    const who = await administrator(mode)
+    const state = faultDependencies()
+    const signed = await signedFalCallbacks()
+    state.deps.providerFactory = () => signed.provider
+    const taskId = await submitted(who, await faultModel(mode), state.deps)
+    const tenant = scoped(db, who.workspaceId)
+    const original = await tenant.findById(aiTask, taskId)
+    const invalid = await signed.request(taskId, 'fixture-ignored-job')
+    invalid.headers.set('x-fal-webhook-signature', '0'.repeat(128))
+    expect((await handleMediaWebhook(invalid, 'fal', state.deps)).status).toBe(400)
+    expect(
+      (
+        await handleMediaWebhook(
+          await signed.request(taskId, 'fixture-ignored-job'),
+          'fal',
+          state.deps,
+        )
+      ).status,
+    ).toBe(200)
+    const ignored = await tenant.findById(aiTask, taskId)
+    expect(ignored.input).toEqual(original.input)
+    expect(ignored.callbackPayload).toBeNull()
+    expect(ignored.status).toBe('queued')
+    expect(ignored.output).toBeNull()
+    expect(state.counts().events).toBe(0)
+    expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 97, held: 3 })
+
+    if (mode !== 'fal-callback-lost') {
+      await settleMediaTask(db, {
+        workspaceId: who.workspaceId,
+        taskId,
+        outcome: 'failed',
+        error: { code: 'FIXTURE_FAULT', message: 'Fixture failure' },
+      })
+      const failed = await tenant.findById(aiTask, taskId)
+      const ledger =
+        await sql`select id, delta, type from credit_ledger where workspace_id=${who.workspaceId}`
+      expect(ledger.filter((entry) => entry.type === 'consume')).toHaveLength(0)
+      const holds =
+        await sql`select id, status, captured_amount from credit_hold where workspace_id=${who.workspaceId}`
+      const notifications =
+        await sql`select id from notification where workspace_id=${who.workspaceId}`
+      expect(notifications).toHaveLength(1)
+      expect(holds).toEqual([{ id: failed.holdId, status: 'released', captured_amount: 0 }])
+      for (let repeat = 0; repeat < 2; repeat++)
+        expect(
+          (
+            await handleMediaWebhook(
+              await signed.request(taskId, 'fixture-ignored-job'),
+              'fal',
+              state.deps,
+            )
+          ).status,
+        ).toBe(200)
+      expect(await tenant.findById(aiTask, taskId)).toEqual(failed)
+      expect(
+        await sql`select id, delta, type from credit_ledger where workspace_id=${who.workspaceId}`,
+      ).toEqual(ledger)
+      expect(
+        await sql`select id, status, captured_amount from credit_hold where workspace_id=${who.workspaceId}`,
+      ).toEqual(holds)
+      expect(await sql`select id from notification where workspace_id=${who.workspaceId}`).toEqual(
+        notifications,
+      )
+      expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 100, held: 0 })
+    }
+    expect(await tenant.count(file)).toBe(0)
+    expect(
+      await sql`select id from notification where workspace_id=${who.workspaceId}`,
+    ).toHaveLength(mode === 'fal-callback-lost' ? 0 : 1)
+    expect(signed.requests).toEqual(['https://rest.fal.ai/.well-known/jwks.json'])
+  })
+
+  it('故障媒体对普通空间 owner 和没有 fresh session 的管理员调用均拒绝，且不创建任务或预扣', async () => {
+    const who = await account('fault-denied')
+    const key = `acceptance-fault-${newId()}`
+    await db.insert(aiModel).values({
+      key,
+      kind: 'image',
+      provider: 'fal',
+      providerModelId: 'fal-ai/flux/schnell',
+      pricing: { mode: 'per_call', credits: 1 },
+      paramsSchema: {
+        type: 'object',
+        properties: { prompt: { type: 'string' } },
+        'x-acceptance-fault': { mode: 'fal-timeout' },
+      },
+    })
+    try {
+      const { deps } = dependencies()
+      deps.env.AI_FAULT_INJECTION = 'enabled'
+      deps.env.SENTRY_ENVIRONMENT = 'staging'
+      expect((await submit(who, key, deps)).status).toBe(404)
+      await sql`update member set role='admin' where user_id=${who.userId}`
+      expect((await submit(who, key, deps)).status).toBe(404)
+      await sql`update "user" set role='admin' where id=${who.userId}`
+      const workspace = await db.query.organization.findFirst({
+        where: (o, { eq }) => eq(o.id, who.workspaceId),
+      })
+      const member = await db.query.member.findFirst({
+        where: (m, { eq }) => eq(m.userId, who.userId),
+      })
+      if (!workspace || !member) throw new Error('Missing fixture workspace')
+      await expect(
+        submitWorkspaceMedia(
+          { modelKey: key, params: { prompt: 'fixture' } },
+          { workspace, member },
+          { ...deps, callbackOrigin: APP_URL },
+        ),
+      ).rejects.toMatchObject({ code: 'MODEL_UNAVAILABLE' })
+      expect(await scoped(db, who.workspaceId).count(aiTask)).toBe(0)
+      expect(await sql`select id from credit_hold where workspace_id=${who.workspaceId}`).toEqual(
+        [],
+      )
+      expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 100, held: 0 })
+    } finally {
+      await sql`delete from ai_model where key=${key}`
+    }
+  })
+
   it('rejects an unavailable workflow before rate limiting, task creation or credit holds', async () => {
     const who = await account('workflow-unavailable')
     const { deps } = dependencies()

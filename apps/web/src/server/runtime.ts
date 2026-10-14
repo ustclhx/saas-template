@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import type { MediaProviderEnv, TextModelEnv } from '@saas/ai'
 import type { Auth, parseAuthEnv } from '@saas/auth'
 import type { PaymentRuntimeEnv } from '@saas/billing'
+import type { AiFaultInjectionEnv } from '@saas/config'
 import type { Database } from '@saas/db'
 import type { EmailQueueMessage } from '@saas/email/queue'
 import type {
@@ -20,7 +21,7 @@ import type { AuthUiEnv } from '../features/auth/options.ts'
 
 /** AI 模块按目标注入；文件签名留在目标入口，不让公开 API 依赖 R2 类型。 */
 export interface WebAiRuntime {
-  readonly config: TextModelEnv & Omit<MediaProviderEnv, 'AI'>
+  readonly config: TextModelEnv & Omit<MediaProviderEnv, 'AI'> & AiFaultInjectionEnv
   readonly workersAi: Capability<NonNullable<MediaProviderEnv['AI']>>
   readonly background: BackgroundTasks
   readonly workflow: Capability<Workflow<{ taskId: string }>>
@@ -31,7 +32,10 @@ export interface WebAiRuntime {
 
 /** 请求资源由目标入口装配；业务只读取标量与中立能力，不访问原始 bindings。 */
 export interface WebRuntime {
-  readonly config: ReturnType<typeof parseAuthEnv> & AuthUiEnv & PaymentRuntimeEnv
+  readonly config: ReturnType<typeof parseAuthEnv> &
+    AuthUiEnv &
+    PaymentRuntimeEnv &
+    AiFaultInjectionEnv
   readonly db: Database
   /** 公开读取保留目标自身的缓存策略，不拥有连接池。 */
   readonly publicDb: Database

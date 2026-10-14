@@ -69,6 +69,7 @@
       "r2_buckets": [{ "binding": "FILES", "bucket_name": "files-staging" }],
       "vars": {
         "SENTRY_ENVIRONMENT": "staging",
+        "AI_FAULT_INJECTION": "enabled",
         "PAYMENT_MODE": "test",
         "APP_URL": "https://web-staging.saas-jobs.workers.dev",
         "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",

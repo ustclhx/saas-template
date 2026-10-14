@@ -5,6 +5,7 @@ declare namespace Cloudflare {
   type MediaEnv = import('@saas/ai').MediaRuntimeEnv
   type TextEnv = import('@saas/ai').TextModelEnv
   interface Env extends PaymentEnv, StorageEnv, MediaEnv, TextEnv {
+    AI_FAULT_INJECTION?: string
     SENTRY_DSN?: string
     SENTRY_ENVIRONMENT?: 'development' | 'staging' | 'production' | 'smoke'
     /** 不带查询缓存（app-db）：健康检查与写操作 */

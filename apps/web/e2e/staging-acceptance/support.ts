@@ -342,6 +342,37 @@ export async function login(page: Page, account: 'admin' | 'user') {
   await finish()
 }
 
+/** 只允许最小业务证明；递归检查字段别名，拒绝所有 URL 以覆盖未知签名格式。 */
+export function assertSafeEvidence(data: unknown) {
+  const payload = JSON.stringify(data)
+  if (payload === undefined) throw new Error('Invalid evidence data')
+  const secrets = Object.entries(process.env)
+    .filter(
+      ([key, value]) =>
+        value && /(?:PASSWORD|COOKIE|SECRET|TOKEN|KEY|DATABASE_URL|READONLY_URL)$/.test(key),
+    )
+    .map(([, value]) => value as string)
+  const forbidden =
+    /^(?:password|passwd|cookie|authorization|email|prompt|parts|text|content|body|payload|callbackPayload|input|output|message|partialText|completion|downloadUrl|url|signedUrl|connectionString|databaseUrl|apiKey|secret|token|accessToken|refreshToken)$/i
+  const inspect = (value: unknown): boolean => {
+    if (Array.isArray(value)) return value.some(inspect)
+    if (value && typeof value === 'object')
+      return Object.entries(value).some(
+        ([key, item]) => forbidden.test(key.replaceAll(/[_-]/g, '')) || inspect(item),
+      )
+    return false
+  }
+  if (
+    inspect(data) ||
+    secrets.some((value) => value.length > 3 && payload.includes(value)) ||
+    /[\w.+-]+@[\w.-]+\.[a-z]{2,}/i.test(payload) ||
+    /(?:https?:\/\/|postgres(?:ql)?:\/\/|Bearer\s|(?:X-Amz-|X-Goog-|Signature=|[?&](?:sig|token|signature)=))/i.test(
+      payload,
+    )
+  )
+    throw new Error('Evidence contains a forbidden sensitive value or field')
+}
+
 export async function evidence(name: string, data: unknown) {
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) throw new Error('Invalid evidence name')
   const payload = JSON.stringify(
@@ -354,19 +385,7 @@ export async function evidence(name: string, data: unknown) {
     null,
     2,
   )
-  // 防止误把凭据、邮箱或带签名的下载地址写进可提交证据。
-  const secrets = Object.entries(process.env)
-    .filter(
-      ([key, value]) =>
-        value && /(?:PASSWORD|COOKIE|SECRET|TOKEN|KEY|DATABASE_URL|READONLY_URL)$/.test(key),
-    )
-    .map(([, value]) => value as string)
-  if (
-    secrets.some((value) => value.length > 3 && payload.includes(value)) ||
-    /[\w.+-]+@[\w.-]+\.[a-z]{2,}/i.test(payload) ||
-    /"(?:password|cookie|authorization|email|prompt|parts|downloadUrl)"\s*:/i.test(payload)
-  )
-    throw new Error('Evidence contains a forbidden sensitive value or field')
+  assertSafeEvidence(data)
   await mkdir(evidenceDir, { recursive: true })
   await writeFile(new URL(`${runId}-${name}.json`, evidenceDir), `${payload}\n`)
 }

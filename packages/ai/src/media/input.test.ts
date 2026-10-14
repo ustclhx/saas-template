@@ -1,5 +1,6 @@
 import { AppError } from '@saas/shared'
 import { describe, expect, it } from 'vitest'
+import { mediaFaultPolicy, readMediaFault } from './fault.ts'
 import { readMediaTaskInput, validateMediaParams } from './input.ts'
 
 const fileId = '019bb460-a610-7000-8000-000000000001'
@@ -19,6 +20,43 @@ const schema = {
 const params = { prompt: 'hello', resolution: '720p', source: fileId, seconds: 5, steps: 3 }
 
 describe('media request snapshot', () => {
+  it('故障快照必须具有固定版本、授权与时间策略，不能降级或从当前模型重读', () => {
+    const task = {
+      modelKey: 'acceptance-fault-timeout',
+      kind: 'image' as const,
+      provider: 'fal',
+      input: {
+        params: { prompt: 'fixture' },
+        providerModelId: 'fal-ai/flux/schnell',
+        unitsLimit: 1,
+        fileParams: [],
+        storageBytes: 1000,
+        acceptanceFault: mediaFaultPolicy('fal-timeout'),
+      },
+    }
+    expect(readMediaTaskInput(task).acceptanceFault).toEqual(mediaFaultPolicy('fal-timeout'))
+    expect(readMediaFault(task)).toEqual(mediaFaultPolicy('fal-timeout'))
+    for (const patch of [
+      { mode: 'unknown' },
+      { policyVersion: 2 },
+      { authorizedAdmin: false },
+      { deadlineMs: 1 },
+      { initialWaitMs: 0 },
+      { barrierMs: 1 },
+      { extra: true },
+    ]) {
+      expect(() =>
+        readMediaTaskInput({
+          input: { ...task.input, acceptanceFault: { ...task.input.acceptanceFault, ...patch } },
+        }),
+      ).toThrow(AppError)
+    }
+    expect(() =>
+      readMediaFault({ ...task, input: { ...task.input, acceptanceFault: undefined } }),
+    ).toThrow(AppError)
+    expect(() => readMediaFault({ ...task, provider: 'workers-ai' })).toThrow(AppError)
+    expect(() => readMediaFault({ ...task, modelKey: 'normal-model' })).toThrow(AppError)
+  })
   it('uses the model schema for enum, range, integer and file reference validation', () => {
     expect(validateMediaParams(schema, params, 'video')).toEqual({
       params: { ...params, enhance: false },

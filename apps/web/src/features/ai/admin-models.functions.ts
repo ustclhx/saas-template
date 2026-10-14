@@ -1,4 +1,11 @@
-import { defaultPricing, invalidateModelCache, modelValues, PricingError } from '@saas/ai'
+import {
+  defaultPricing,
+  invalidateModelCache,
+  modelValues,
+  PricingError,
+  parseAcceptanceFault,
+} from '@saas/ai'
+import { isAiFaultInjectionEnabled } from '@saas/config'
 import { aiModel } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
@@ -21,6 +28,22 @@ const kinds = ['text', 'image', 'video'] as const
 function workersAiAvailable(): boolean {
   const ai = getWebRuntime().ai
   return ai?.available === true && ai.value.workersAi.available
+}
+
+/** 保存、复制和启用复用相同元数据契约；停用不经过闸门，确保遗留模型可清理。 */
+function assertAdminFaultConfig(model: Parameters<typeof parseAcceptanceFault>[0]) {
+  const fault = parseAcceptanceFault(model)
+  if (fault) {
+    const ai = getWebRuntime().ai
+    if (!isAiFaultInjectionEnabled(ai?.available === true ? ai.value.config : {})) {
+      throw new AppError(
+        'AI_FAULT_INJECTION_DISABLED',
+        'Acceptance fault models require staging fault injection to be enabled.',
+        { status: 400 },
+      )
+    }
+  }
+  return fault
 }
 
 const modelInput = z.object({
@@ -140,7 +163,8 @@ export const saveAdminModel = createServerFn({ method: 'POST' })
           workersAiAvailable(),
         )
         const paramsSchema = parseAdminParamsSchema(data.kind, data.paramsSchema)
-        const values = { ...modelValues(data), paramsSchema }
+        assertAdminFaultConfig({ ...data, paramsSchema })
+        const values = { ...modelValues({ ...data, paramsSchema }), paramsSchema }
         // 锁住旧行，保证并发编辑时审计中的旧值是本次实际覆盖的值。
         const [before] = data.id
           ? await tx
@@ -182,6 +206,24 @@ export const setAdminModelEnabled = createServerFn({ method: 'POST' })
   .handler(({ context, data }) =>
     safe(() =>
       withAdminAction(context, 'ai.model_set_enabled', async ({ tx, audit }) => {
+        // 先锁定完整配置并校验，再写入；不能依赖事务回滚掩盖非法启用的写操作。
+        const [before] = await tx
+          .select()
+          .from(aiModel)
+          .where(eq(aiModel.id, data.id))
+          .for('update')
+        if (!before) throw new AppError('NOT_FOUND', 'Model not found', { status: 404 })
+        if (data.enabled) {
+          const fault = assertAdminFaultConfig(before)
+          if (fault || (before.provider === 'workers-ai' && !workersAiAvailable())) {
+            assertModelProviderEnabled(
+              before.kind,
+              before.provider,
+              templateConfig.ai.mediaProviders,
+              workersAiAvailable(),
+            )
+          }
+        }
         const [saved] = await tx
           .update(aiModel)
           .set({ enabled: data.enabled })
@@ -193,13 +235,6 @@ export const setAdminModelEnabled = createServerFn({ method: 'POST' })
             provider: aiModel.provider,
           })
         if (!saved) throw new AppError('NOT_FOUND', 'Model not found', { status: 404 })
-        if (data.enabled && saved.provider === 'workers-ai' && !workersAiAvailable())
-          assertModelProviderEnabled(
-            saved.kind,
-            saved.provider,
-            templateConfig.ai.mediaProviders,
-            false,
-          )
         await audit({
           action: data.enabled ? 'ai.model_enabled' : 'ai.model_disabled',
           targetType: 'ai_model',
@@ -226,10 +261,21 @@ export const copyAdminModel = createServerFn({ method: 'POST' })
           templateConfig.ai.mediaProviders,
           workersAiAvailable(),
         )
+        const sourceFault = assertAdminFaultConfig(source)
         const paramsSchema = parseAdminParamsSchema(source.kind, data.paramsSchema)
+        const copiedFault = assertAdminFaultConfig({ ...source, key: data.key, paramsSchema })
+        // 同时删除前缀与扩展会各自成为合法普通模型，因此还需保护来源故障属性。
+        if (sourceFault && !copiedFault) {
+          throw new AppError(
+            'ACCEPTANCE_FAULT_INVALID',
+            'Acceptance fault copies must retain fault model configuration.',
+            { status: 400 },
+          )
+        }
         const values = modelValues({
           ...source,
           key: data.key,
+          paramsSchema,
           tags: source.minPlanFeatures,
           enabled: false,
         })

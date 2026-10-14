@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import type { Pricing } from '@saas/ai'
 import { evidence, expect, query, sqlLiteral, test } from './support.ts'
 
 const prompt = 'A red square on a plain white background'
@@ -130,6 +131,96 @@ export async function verifyAcceptanceModel(model: Model) {
   return row
 }
 
+export interface AcceptanceModelDefinition {
+  key: string
+  kind: 'text' | 'image' | 'video'
+  provider: string
+  providerModelId: string
+  pricing: Pricing
+  sort: number
+  paramsSchema: Record<string, unknown>
+  tags?: readonly string[]
+}
+
+// 两类验收共用已有后台表单；故障场景要求 schema 字段存在，不允许跳过。
+export async function createAcceptanceModel(
+  page: Page,
+  model: AcceptanceModelDefinition,
+  requireSchema = false,
+) {
+  if (model.pricing.mode === 'per_unit')
+    throw new Error('Acceptance model setup does not support per-unit pricing')
+  await page.goto('/admin/models')
+  await expect(page.getByRole('heading', { name: 'AI models', exact: true })).toBeVisible()
+  const form = page.getByRole('article', { name: 'New model', exact: true })
+  const schema = form.getByLabel('Parameters schema (JSON)', { exact: true })
+  if (requireSchema && (await schema.count()) === 0)
+    throw new Error('Fault model preparation requires the parameter schema editor')
+  test.skip(
+    model.kind !== 'text' && (await schema.count()) === 0,
+    'Media model setup requires the admin Parameters schema (JSON) field; current UI cannot create a usable media model.',
+  )
+  // 新表单默认文本按 token 计费；动态按次字段出现才能证明 React 已接管。
+  // 每次只切换一个状态并等待渲染，避免同一轮反复改 Kind 后立即检查旧 DOM。
+  await expect
+    .poll(async () => {
+      await form.getByLabel('Pricing mode').selectOption('per_call')
+      return form.getByLabel('Credits per call', { exact: true }).isVisible()
+    })
+    .toBe(true)
+  await form.getByLabel('Kind').selectOption(model.kind)
+  await expect(form.locator('#new-provider')).toHaveJSProperty(
+    'tagName',
+    model.kind === 'text' ? 'INPUT' : 'SELECT',
+  )
+  await form.getByLabel('Pricing mode').selectOption(model.pricing.mode)
+  await expect(
+    form.getByLabel(model.pricing.mode === 'token' ? 'Input credits / 1k' : 'Credits per call', {
+      exact: true,
+    }),
+  ).toBeVisible()
+  await form.getByLabel('Key', { exact: true }).fill(model.key)
+  const provider = form.locator('#new-provider')
+  if (model.kind === 'text') await provider.fill(model.provider)
+  else await provider.selectOption(model.provider)
+  await form.getByLabel('Provider model ID', { exact: true }).fill(model.providerModelId)
+  await form
+    .getByLabel('Plan tags (comma separated)', { exact: true })
+    .fill((model.tags ?? []).join(','))
+  await form.getByLabel('Sort', { exact: true }).fill(String(model.sort))
+  await form.getByLabel('Enabled', { exact: true }).check()
+  if (await schema.count()) await schema.fill(JSON.stringify(model.paramsSchema))
+  if (model.pricing.mode === 'token') {
+    await form
+      .getByLabel('Input credits / 1k', { exact: true })
+      .fill(String(model.pricing.inputPer1k))
+    await form
+      .getByLabel('Output credits / 1k', { exact: true })
+      .fill(String(model.pricing.outputPer1k))
+    await form.getByLabel('Minimum charge', { exact: true }).fill(String(model.pricing.minCharge))
+  } else {
+    await form.getByLabel('Credits per call', { exact: true }).fill(String(model.pricing.credits))
+    await form.getByLabel('Charge on').selectOption(model.pricing.chargeOn ?? '')
+    await form.getByLabel('Multipliers (JSON, optional)', { exact: true }).fill('')
+    await form
+      .getByLabel('Max input tokens', { exact: true })
+      .fill(
+        model.pricing.limits?.maxInputTokens === undefined
+          ? ''
+          : String(model.pricing.limits.maxInputTokens),
+      )
+    await form
+      .getByLabel('Max output tokens', { exact: true })
+      .fill(
+        model.pricing.limits?.maxOutputTokens === undefined
+          ? ''
+          : String(model.pricing.limits.maxOutputTokens),
+      )
+  }
+  await form.getByRole('button', { name: 'Create model', exact: true }).click()
+  await expect(form.getByRole('status')).toHaveText('Saved.')
+}
+
 export async function ensureAcceptanceModels(
   page: Page,
   models: readonly Model[] = ACCEPTANCE_MODELS,
@@ -137,68 +228,7 @@ export async function ensureAcceptanceModels(
   for (const model of models) {
     const existing = await readModel(model)
     if (existing.length === 0) {
-      await page.goto('/admin/models')
-      await expect(page.getByRole('heading', { name: 'AI models', exact: true })).toBeVisible()
-      const form = page.getByRole('article', { name: 'New model', exact: true })
-      const schema = form.getByLabel('Parameters schema (JSON)', { exact: true })
-      test.skip(
-        model.kind !== 'text' && (await schema.count()) === 0,
-        'Media model setup requires the admin Parameters schema (JSON) field; current UI cannot create a usable media model.',
-      )
-      // 新表单默认文本按 token 计费；动态按次字段出现才能证明 React 已接管。
-      // 每次只切换一个状态并等待渲染，避免同一轮反复改 Kind 后立即检查旧 DOM。
-      await expect
-        .poll(async () => {
-          await form.getByLabel('Pricing mode').selectOption('per_call')
-          return form.getByLabel('Credits per call', { exact: true }).isVisible()
-        })
-        .toBe(true)
-      await form.getByLabel('Kind').selectOption(model.kind)
-      await expect(form.locator('#new-provider')).toHaveJSProperty(
-        'tagName',
-        model.kind === 'text' ? 'INPUT' : 'SELECT',
-      )
-      await form.getByLabel('Pricing mode').selectOption(model.pricing.mode)
-      await expect(
-        form.getByLabel(
-          model.pricing.mode === 'token' ? 'Input credits / 1k' : 'Credits per call',
-          { exact: true },
-        ),
-      ).toBeVisible()
-      await form.getByLabel('Key', { exact: true }).fill(model.key)
-      const provider = form.locator('#new-provider')
-      if (model.kind === 'text') await provider.fill(model.provider)
-      else await provider.selectOption(model.provider)
-      await form.getByLabel('Provider model ID', { exact: true }).fill(model.providerModelId)
-      await form.getByLabel('Plan tags (comma separated)', { exact: true }).fill('')
-      await form.getByLabel('Sort', { exact: true }).fill(String(model.sort))
-      await form.getByLabel('Enabled', { exact: true }).check()
-      if (await schema.count()) await schema.fill(JSON.stringify(model.paramsSchema))
-      if (model.pricing.mode === 'token') {
-        await form
-          .getByLabel('Input credits / 1k', { exact: true })
-          .fill(String(model.pricing.inputPer1k))
-        await form
-          .getByLabel('Output credits / 1k', { exact: true })
-          .fill(String(model.pricing.outputPer1k))
-        await form
-          .getByLabel('Minimum charge', { exact: true })
-          .fill(String(model.pricing.minCharge))
-      } else {
-        await form
-          .getByLabel('Credits per call', { exact: true })
-          .fill(String(model.pricing.credits))
-        await form.getByLabel('Charge on').selectOption(model.pricing.chargeOn)
-        await form.getByLabel('Multipliers (JSON, optional)', { exact: true }).fill('')
-        await form
-          .getByLabel('Max input tokens', { exact: true })
-          .fill(model.kind === 'text' ? String(deepseekCall.pricing.limits.maxInputTokens) : '')
-        await form
-          .getByLabel('Max output tokens', { exact: true })
-          .fill(model.kind === 'text' ? String(deepseekCall.pricing.limits.maxOutputTokens) : '')
-      }
-      await form.getByRole('button', { name: 'Create model', exact: true }).click()
-      await expect(form.getByRole('status')).toHaveText('Saved.')
+      await createAcceptanceModel(page, model)
       await expect.poll(async () => (await readModel(model)).length).toBe(1)
     }
     const row = await verifyAcceptanceModel(model)

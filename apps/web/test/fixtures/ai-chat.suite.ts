@@ -1,9 +1,10 @@
 import { chatHoldSweeper, type LanguageModelFactory, settleInterruptedChatMessage } from '@saas/ai'
 import { createAuth } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
-import { getCreditBalance, grant, hold } from '@saas/credits'
+import { getCreditBalance, grant, hold, reconcileWorkspaceCredits } from '@saas/credits'
 import {
   type AiPricingJson,
+  type AiUsageCheckpoint,
   aiConversation,
   aiMessage,
   aiModel,
@@ -24,6 +25,7 @@ import {
   type ChatStopDeps,
   handleChatRequest,
   handleChatStopRequest,
+  startWorkspaceChat,
 } from '../../src/features/ai/chat.ts'
 
 // tasks.md 2.3：POST /api/ai/chat 的三种结算（正常完成、实际少于预扣、实际多于预扣），
@@ -45,6 +47,7 @@ export function registerAiChatSuite(
   const OVERAGE = { maxRatio: 0.2, maxCredits: 50, dailyBudgetPerWorkspace: 200 }
   /** 本次运行创建的模型 key 前缀，清理时按它删除 */
   const MODEL_KEY_PREFIX = `chat-test-${newId()}-`
+  const FAULT_KEY_PREFIX = `acceptance-fault-${MODEL_KEY_PREFIX}`
 
   const sql = db.$client
   const auth = createAuth(
@@ -137,12 +140,13 @@ export function registerAiChatSuite(
     factory?: LanguageModelFactory
     mock?: MockLanguageModelV4
     rateLimiter?: RateLimiter
+    env?: ChatDeps['env']
   }) {
     const background = runtime.background()
     const deps: ChatDeps = {
       db,
       auth,
-      env: {},
+      env: options.env ?? {},
       rateLimiter: options.rateLimiter ?? runtime.rateLimiter,
       waitUntil: (promise) => background.waitUntil(promise),
       entitlements: async () => ({
@@ -171,6 +175,7 @@ export function registerAiChatSuite(
       factory?: LanguageModelFactory
       mock?: MockLanguageModelV4
       rateLimiter?: RateLimiter
+      env?: ChatDeps['env']
     } = {},
   ) {
     const { deps, background } = chatDeps(options)
@@ -214,6 +219,7 @@ export function registerAiChatSuite(
       factory?: LanguageModelFactory
       mock?: MockLanguageModelV4
       rateLimiter?: RateLimiter
+      env?: ChatDeps['env']
     } = {},
   ) {
     const { response, settled } = await begin(who, body, options)
@@ -243,7 +249,7 @@ export function registerAiChatSuite(
         output_tokens: number
         pricing: AiPricingJson
         hold_id: string
-        usage_checkpoint: { inputTokens: number; outputTokens: number; at: string } | null
+        usage_checkpoint: AiUsageCheckpoint | null
       }[]
     >`select * from ai_message where conversation_id = ${conversationId} and role = 'assistant'
     order by id desc limit 1`
@@ -277,7 +283,8 @@ export function registerAiChatSuite(
     await sql`delete from member where user_id in (${ids})`
     await sql`delete from organization where id in (${ids})`
     await sql`delete from "user" where id in (${ids})`
-    await sql`delete from ai_model where key like ${`${MODEL_KEY_PREFIX}%`}`
+    await sql`delete from ai_model where key like ${`${MODEL_KEY_PREFIX}%`}
+      or key like ${`${FAULT_KEY_PREFIX}%`}`
   })
 
   describe('POST /api/ai/chat 结算', () => {
@@ -426,6 +433,84 @@ export function registerAiChatSuite(
   })
 
   describe('POST /api/ai/chat 调用前检查', () => {
+    it('故障模型仅允许实时平台管理员；普通空间 owner 与管理员 API 上下文均无副作用', async () => {
+      const me = await member('fault-denied', 100)
+      const modelId = await textModel({ mode: 'token', inputPer1k: 1, outputPer1k: 2 })
+      const key = `acceptance-fault-${modelId}`
+      await db
+        .update(aiModel)
+        .set({
+          key,
+          provider: 'deepseek',
+          providerModelId: 'deepseek-flash',
+          paramsSchema: { 'x-acceptance-fault': { mode: 'chat-before-stream' } },
+        })
+        .where(eq(aiModel.id, modelId))
+      try {
+        const { deps } = chatDeps({
+          factory: () => {
+            throw new Error('must not invoke provider')
+          },
+        })
+        deps.env.AI_FAULT_INJECTION = 'enabled'
+        deps.env.SENTRY_ENVIRONMENT = 'staging'
+        const response = await handleChatRequest(
+          new Request(`${APP_URL}/api/ai/chat`, {
+            method: 'POST',
+            headers: { cookie: me.cookie, 'content-type': 'application/json' },
+            body: JSON.stringify({
+              slug: me.slug,
+              modelId,
+              message: { role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+            }),
+          }),
+          deps,
+        )
+        expect(response.status).toBe(404)
+        await sql`update "user" set role='admin' where id=${me.userId}`
+        // 管理员的模拟会话也不能触发故障；会话事实直接来自数据库。
+        await sql`update session set impersonated_by=${me.userId} where user_id=${me.userId}`
+        const impersonated = await handleChatRequest(
+          new Request(`${APP_URL}/api/ai/chat`, {
+            method: 'POST',
+            headers: { cookie: me.cookie, 'content-type': 'application/json' },
+            body: JSON.stringify({
+              slug: me.slug,
+              modelId,
+              message: { role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+            }),
+          }),
+          deps,
+        )
+        expect(impersonated.status).toBe(404)
+        await sql`update session set impersonated_by=null where user_id=${me.userId}`
+        // 模拟已鉴权 API key 调用；平台角色也不授予没有 fresh session 的入口权限。
+        await sql`update "user" set role='admin' where id=${me.userId}`
+        await expect(
+          startWorkspaceChat(
+            {
+              slug: me.slug,
+              modelId,
+              message: { role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+            },
+            { workspaceId: me.workspaceId, userId: me.userId },
+            deps,
+          ),
+        ).rejects.toMatchObject({ code: 'MODEL_UNAVAILABLE' })
+        expect(await scoped(db, me.workspaceId).count(aiConversation)).toBe(0)
+        expect(await scoped(db, me.workspaceId).count(aiMessage)).toBe(0)
+        expect(await sql`select id from credit_hold where workspace_id=${me.workspaceId}`).toEqual(
+          [],
+        )
+        expect(await getCreditBalance(db, me.workspaceId)).toMatchObject({
+          available: 100,
+          held: 0,
+        })
+      } finally {
+        await db.delete(aiModel).where(eq(aiModel.id, modelId))
+      }
+    })
+
     it('Workers AI 能力缺失时在模型工厂与预扣前拒绝，无消息或账本副作用', async () => {
       const me = await member('workers-ai-unavailable', 100)
       const modelId = await textModel({ mode: 'token', inputPer1k: 1, outputPer1k: 1 })
@@ -1021,6 +1106,294 @@ export function registerAiChatSuite(
       expect(peek).toMatchObject({ status: 404, body: { error: { code: 'NOT_FOUND' } } })
       expect((await stop(owner, newId())).status).toBe(404)
       expect((await stop(owner, 'not-a-uuid')).status).toBe(404)
+    })
+  })
+
+  describe('staging 文本故障包装（tasks 4.1、4.2）', () => {
+    const faultEnv = { AI_FAULT_INJECTION: 'enabled' as const, SENTRY_ENVIRONMENT: 'staging' }
+    const pricingOptions = {
+      token: { mode: 'token' as const, inputPer1k: 10, outputPer1k: 100, minCharge: 2 },
+      per_call: {
+        mode: 'per_call' as const,
+        credits: 3,
+        limits: { maxInputTokens: 4000, maxOutputTokens: 4096 },
+      },
+    }
+
+    async function administrator(name: string) {
+      const me = await member(name, 100)
+      await sql`update "user" set role='admin' where id=${me.userId}`
+      // 去掉登录时普通角色的 Cookie 缓存，让入口同时读取实时管理员身份。
+      const context = await auth.$context
+      const tokenName = context.authCookies.sessionToken.name
+      return {
+        ...me,
+        cookie: me.cookie
+          .split('; ')
+          .filter((cookie) => cookie.startsWith(`${tokenName}=`))
+          .join('; '),
+      }
+    }
+
+    async function faultModel(
+      mode: 'chat-before-stream' | 'chat-mid-stream',
+      pricing: AiPricingJson,
+      maxOutputTokens = 4096,
+    ) {
+      const id = newId()
+      await db.insert(aiModel).values({
+        id,
+        key: `${FAULT_KEY_PREFIX}${id}`,
+        kind: 'text',
+        provider: 'deepseek',
+        providerModelId: 'deepseek-flash',
+        pricing,
+        paramsSchema: {
+          'x-acceptance-fault': { mode },
+          'x-text': { maxOutputTokens },
+        },
+      })
+      return id
+    }
+
+    /** pull 模拟上游：取消即停止产出，记录业务 AbortController 是否被误当成用户 stop。 */
+    function upstream(options: {
+      chunks: number
+      failAfter?: number
+      delta?: string
+      gate?: Promise<void>
+    }) {
+      let cancelled = 0
+      let signal: AbortSignal | undefined
+      const delta = options.delta ?? 'abcdefgh'
+      const model = new MockLanguageModelV4({
+        doStream: async ({ abortSignal }) => {
+          signal = abortSignal
+          let index = -1
+          return {
+            stream: new ReadableStream({
+              async pull(controller) {
+                if (index === -1) {
+                  await options.gate
+                  index++
+                  controller.enqueue({ type: 'text-start', id: 't1' })
+                } else if (index === options.failAfter) {
+                  controller.error(new Error('natural provider disconnect'))
+                } else if (index < options.chunks) {
+                  index++
+                  controller.enqueue({ type: 'text-delta', id: 't1', delta })
+                } else {
+                  controller.enqueue({ type: 'text-end', id: 't1' })
+                  controller.enqueue(USAGE_FINISH(10, options.chunks * delta.length))
+                  controller.close()
+                }
+              },
+              cancel() {
+                cancelled++
+              },
+            }),
+          }
+        },
+      })
+      // Node 普通模型使用固定 OpenAI transport；此工厂保留合法 DeepSeek 元数据，
+      // 两个运行目标都让生产 chat 的故障包装器处理同一真实 SDK 流。
+      return {
+        model,
+        factory: () => model,
+        cancelled: () => cancelled,
+        aborted: () => signal?.aborted,
+      }
+    }
+
+    it.each([
+      ['chat-before-stream', 'token'],
+      ['chat-before-stream', 'per_call'],
+      ['chat-mid-stream', 'token'],
+      ['chat-mid-stream', 'per_call'],
+    ] as const)('%s / %s：故障证明、差异化收费与重复结算', async (mode, kind) => {
+      const me = await administrator(`fault-${mode}-${kind}`)
+      const pricing = pricingOptions[kind]
+      const modelId = await faultModel(mode, pricing)
+      const source = upstream({ chunks: 60 })
+      const { response, stream } = await send(
+        me,
+        { modelId, text: 'hi' },
+        {
+          factory: source.factory,
+          env: faultEnv,
+        },
+      )
+      expect(response.status).toBe(200)
+      const conversationId = response.headers.get('x-conversation-id') as string
+      const result = await assistantMessage(conversationId)
+      const mid = mode === 'chat-mid-stream'
+      const output = mid ? 'abcdefgh'.repeat(25) : ''
+      const charged = kind === 'token' ? (mid ? 21 : 2) : mid ? 3 : 0
+      expect(streamedText(stream)).toBe(output)
+      expect(result.message).toMatchObject({
+        status: 'failed',
+        parts: mid ? [{ type: 'text', text: output }] : [],
+        credits: charged,
+        pricing,
+        usage_checkpoint: {
+          inputTokens: 10,
+          outputTokens: mid ? 200 : 0,
+          acceptanceFaultProof: {
+            mode,
+            policyVersion: 1,
+            phase: mid ? 'mid-stream' : 'before-stream',
+            injected: true,
+            realProviderCalled: mid,
+            upstreamCalls: mid ? 1 : 0,
+          },
+        },
+      })
+      expect(result.message.usage_checkpoint?.acceptanceFaultProof?.injectedAt).toEqual(
+        expect.any(String),
+      )
+      expect(result.hold).toMatchObject({
+        status: charged ? 'captured' : 'released',
+        amount: kind === 'token' ? 100 : 3,
+        captured_amount: charged,
+        overage_absorbed: 0,
+        overage_debited: 0,
+        overage_debt: 0,
+      })
+      expect(source.model.doStreamCalls).toHaveLength(mid ? 1 : 0)
+      if (mid) {
+        expect(source.model.doStreamCalls[0]?.maxOutputTokens).toBe(kind === 'token' ? 999 : 1024)
+        expect(source.cancelled()).toBe(1)
+        expect(source.aborted()).toBe(false)
+      }
+      expect(await getCreditBalance(db, me.workspaceId)).toMatchObject({
+        available: 100 - charged,
+        held: 0,
+        debt: 0,
+      })
+      expect(await consumeLedger(me.workspaceId)).toEqual(charged ? [{ delta: -charged }] : [])
+      expect(await reconcileWorkspaceCredits(db, me.workspaceId)).toMatchObject({
+        consistent: true,
+        difference: 0,
+        held: 0,
+        debt: 0,
+      })
+
+      const before =
+        await sql`select * from credit_ledger where workspace_id=${me.workspaceId} order by id`
+      expect(
+        await settleInterruptedChatMessage(db, {
+          workspaceId: me.workspaceId,
+          messageId: result.message.id,
+          holdId: result.message.hold_id,
+          pricing,
+          overage: OVERAGE,
+          usageSource: 'estimated',
+          status: 'failed',
+          inputTokens: 10,
+          outputTokens: mid ? 200 : 0,
+          text: output,
+          hasOutput: mid,
+        }),
+      ).toBeNull()
+      expect(await assistantMessage(conversationId)).toEqual(result)
+      expect(
+        await sql`select * from credit_ledger where workspace_id=${me.workspaceId} order by id`,
+      ).toEqual(before)
+    })
+
+    it('上游尚未产出时仅保存输入预算与未注入证明，不提前持久化输出', async () => {
+      const me = await administrator('fault-initial-checkpoint')
+      const modelId = await faultModel('chat-mid-stream', pricingOptions.per_call)
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const source = upstream({ chunks: 60, gate })
+      const { response, settled } = await begin(
+        me,
+        { modelId, text: 'hi' },
+        { factory: source.factory, env: faultEnv },
+      )
+      const conversationId = response.headers.get('x-conversation-id') as string
+      try {
+        const message = await until(
+          async () => (await assistantMessage(conversationId)).message,
+          (message) => message.usage_checkpoint?.acceptanceFaultProof?.upstreamCalls === 1,
+        )
+        expect(message).toMatchObject({
+          status: 'streaming',
+          parts: [],
+          input_tokens: 10,
+          usage_checkpoint: {
+            inputTokens: 10,
+            outputTokens: 0,
+            acceptanceFaultProof: { injected: false, realProviderCalled: true, upstreamCalls: 1 },
+          },
+        })
+      } finally {
+        release()
+        await bodyText(response)
+        await settled()
+      }
+    })
+
+    it('流中单块超过预扣：估算封顶且不产生超额或欠费', async () => {
+      const me = await administrator('fault-cap')
+      const modelId = await faultModel('chat-mid-stream', pricingOptions.token, 256)
+      const source = upstream({ chunks: 2, delta: 'abcdefgh'.repeat(120) })
+      const { response } = await send(
+        me,
+        { modelId, text: 'hi' },
+        { factory: source.factory, env: faultEnv },
+      )
+      const conversationId = response.headers.get('x-conversation-id') as string
+      const { message } = await assertCapped(me.workspaceId, conversationId, 26)
+      expect(message).toMatchObject({
+        status: 'failed',
+        output_tokens: 960,
+        usage_checkpoint: {
+          outputTokens: 960,
+          acceptanceFaultProof: { injected: true, outputTokens: 960 },
+        },
+      })
+      expect(source.cancelled()).toBe(1)
+      expect(await reconcileWorkspaceCredits(db, me.workspaceId)).toMatchObject({
+        consistent: true,
+        difference: 0,
+      })
+    })
+
+    it.each(['short', 'natural-error'] as const)('%s：未达到阈值不认证故障注入', async (path) => {
+      const me = await administrator(`fault-${path}`)
+      const modelId = await faultModel('chat-mid-stream', pricingOptions.per_call)
+      const source = upstream({ chunks: 10, ...(path === 'natural-error' ? { failAfter: 5 } : {}) })
+      const { response, stream } = await send(
+        me,
+        { modelId, text: 'hi' },
+        { factory: source.factory, env: faultEnv },
+      )
+      const { message } = await assistantMessage(
+        response.headers.get('x-conversation-id') as string,
+      )
+      expect(message).toMatchObject({
+        status: path === 'short' ? 'completed' : 'failed',
+        parts: [{ type: 'text', text: 'abcdefgh'.repeat(path === 'short' ? 10 : 5) }],
+        credits: 3,
+        usage_checkpoint: {
+          acceptanceFaultProof: {
+            mode: 'chat-mid-stream',
+            policyVersion: 1,
+            phase: 'mid-stream',
+            injected: false,
+            realProviderCalled: true,
+            upstreamCalls: 1,
+          },
+        },
+      })
+      expect(streamedText(stream)).toBe(message.parts[0]?.text)
+      expect(message.usage_checkpoint?.acceptanceFaultProof?.injectedAt).toBeUndefined()
+      expect(source.model.doStreamCalls).toHaveLength(1)
+      expect(await consumeLedger(me.workspaceId)).toEqual([{ delta: -3 }])
     })
   })
 

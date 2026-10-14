@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { EnvValidationError, validateAiFaultInjectionEnv } from './env.ts'
 import type { TemplateConfig } from './template.ts'
 
 const secret = z.string().min(1)
@@ -50,6 +51,7 @@ const nodeEnvBaseSchema = z.object({
   TRUSTED_PROXY_CIDRS: z.string().default(''),
   CACHE_NAMESPACE: secret.default('saas'),
   PAYMENT_MODE: z.string().optional(),
+  AI_FAULT_INJECTION: z.string().optional(),
   SENTRY_ENVIRONMENT: z.enum(['development', 'staging', 'production', 'smoke']).optional(),
   SENTRY_DSN: z
     .string()
@@ -116,6 +118,13 @@ function withNodeValidation<Shape extends z.core.$ZodShape>(schema: z.ZodObject<
   return schema
     .superRefine((parsed, ctx) => {
       const env = parsed as z.output<typeof nodeEnvBaseSchema>
+      try {
+        validateAiFaultInjectionEnv(env)
+      } catch (error) {
+        if (!(error instanceof EnvValidationError)) throw error
+        for (const key of error.invalid)
+          ctx.addIssue({ code: 'custom', path: [key], message: 'invalid' })
+      }
       const required = (names: readonly (keyof typeof env)[]) => {
         for (const key of names) {
           if (env[key] === undefined)

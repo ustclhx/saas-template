@@ -1,5 +1,11 @@
 import { parseAuthEnv } from '@saas/auth'
-import { EnvValidationError, envSchema, loadEnv } from '@saas/config'
+import {
+  type AiFaultInjectionEnv,
+  EnvValidationError,
+  envSchema,
+  loadEnv,
+  validateAiFaultInjectionEnv,
+} from '@saas/config'
 import { log } from '@saas/shared/log'
 import { z } from 'zod'
 import { templateConfig } from '../template-config.ts'
@@ -45,6 +51,7 @@ function validate(env: unknown): EnvValidationError | null {
   const missing = new Set<string>()
   const invalid = new Set<string>()
   for (const check of [
+    () => validateAiFaultInjectionEnv((env ?? {}) as AiFaultInjectionEnv),
     () => loadEnv(env, webEnvSchema),
     () => loadEnv(env, authUiEnvSchema),
     () => parseAuthEnv((env ?? {}) as Parameters<typeof parseAuthEnv>[0], templateConfig),

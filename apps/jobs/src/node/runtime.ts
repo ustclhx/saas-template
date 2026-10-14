@@ -61,6 +61,9 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
   const context: JobsContext = {
     config: {
       ...(config.PAYMENT_MODE === undefined ? {} : { PAYMENT_MODE: config.PAYMENT_MODE }),
+      ...(config.AI_FAULT_INJECTION === undefined
+        ? {}
+        : { AI_FAULT_INJECTION: config.AI_FAULT_INJECTION }),
       ...(config.SENTRY_ENVIRONMENT === undefined
         ? {}
         : { SENTRY_ENVIRONMENT: config.SENTRY_ENVIRONMENT }),

@@ -6,21 +6,27 @@ import {
   defaultLanguageModelFactory,
   estimateInputTokens,
   estimateTextTokens,
+  type FaultAccessContext,
   type LanguageModelFactory,
   MODEL_UNAVAILABLE,
   messageText,
   type Pricing,
+  parseAcceptanceFault,
   planTextBudget,
   requireAvailableModel,
   settleChatMessage,
   settleFromCheckpoint,
   settleInterruptedChatMessage,
+  TEXT_FAULT_MAX_OUTPUT_TOKENS,
   type TextModelEnv,
   textModelConfig,
   truncateHistory,
+  wrapTextFaultModel,
+  writeTextFaultProof,
   writeUsageCheckpoint,
 } from '@saas/ai'
 import { requireFreshSession } from '@saas/auth'
+import type { AiFaultInjectionEnv } from '@saas/config'
 import type { OveragePolicy } from '@saas/credits'
 import { CreditsError, getCreditBalance, hold } from '@saas/credits'
 import {
@@ -40,6 +46,7 @@ import { and, asc, eq, inArray, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
 import { templateConfig } from '../../server/template-config.ts'
 import { resolveWorkspaceBySlug } from '../../server/workspace-context.ts'
+import { sessionFaultAccess } from './fault-access.ts'
 
 /**
  * `POST /api/ai/chat`（docs/06-ai.md §3「流程」，specs/ai-chat）：
@@ -55,7 +62,7 @@ export interface ChatDeps {
   readonly db: Database
   readonly auth: Parameters<typeof requireFreshSession>[0]['auth']
   /** 构造模型所需的环境变量，原样交给工厂 */
-  readonly env: TextModelEnv
+  readonly env: TextModelEnv & AiFaultInjectionEnv
   readonly workersAi?: boolean
   /** `RL_AI` 绑定 */
   readonly rateLimiter: RateLimiter
@@ -73,7 +80,7 @@ export interface ChatDeps {
 
 const textPart = z.object({ type: z.literal('text'), text: z.string().min(1).max(100_000) })
 
-export const chatRequestSchema = z.object({
+export const chatRequestSchema = z.strictObject({
   /** 当前空间（URL 中的 `$slug`） */
   slug: z.string().min(1).max(64),
   modelId: z.uuid(),
@@ -138,7 +145,8 @@ async function readRequest(request: Request): Promise<ChatRequest> {
 
 async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
   const { db } = deps
-  const { user } = await requireFreshSession({ auth: deps.auth, db, headers: request.headers })
+  const fresh = await requireFreshSession({ auth: deps.auth, db, headers: request.headers })
+  const { user } = fresh
   const input = await readRequest(request)
   const resolved = await resolveWorkspaceBySlug(db, user.id, input.slug)
   if (!resolved) throw new AppError('NOT_FOUND', 'Not found', { status: 404 })
@@ -146,7 +154,14 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
   setLogContext({ workspaceId, userId: user.id })
   if (!templateConfig.tenancy.multiTenant && !resolved.workspace.isPersonal)
     throw new AppError('WORKSPACE_READ_ONLY', 'Team workspace writes are disabled', { status: 403 })
-  const started = await startWorkspaceChat(input, { workspaceId, userId: user.id }, deps)
+  const started = await startWorkspaceChat(
+    input,
+    { workspaceId, userId: user.id },
+    {
+      ...deps,
+      faultAccess: sessionFaultAccess(fresh, deps.env),
+    },
+  )
   return started.result.toUIMessageStreamResponse({
     generateMessageId: () => started.metadata.messageId,
     messageMetadata: ({ part }) => (part.type === 'start' ? started.metadata : undefined),
@@ -156,6 +171,8 @@ async function startChat(request: Request, deps: ChatDeps): Promise<Response> {
 
 export type WorkspaceChatDeps = Omit<ChatDeps, 'auth' | 'rateLimiter'> & {
   readonly rateLimiter?: RateLimiter | undefined
+  /** 仅站内 fresh session 入口提供；API key 缺省拒绝。 */
+  readonly faultAccess?: FaultAccessContext
 }
 
 /** 已鉴权入口共用预扣、定价快照、检查点与结算；公开 API 仅转换请求和响应协议。 */
@@ -183,13 +200,23 @@ export async function startWorkspaceChat(
       }))
   )(db, workspaceId)
   const model = await requireAvailableModel(
-    { store: dbModelStore(db), workersAi: deps.workersAi ?? false },
+    {
+      store: dbModelStore(db),
+      workersAi: deps.workersAi ?? false,
+      faultAccess: deps.faultAccess,
+    },
     entitlements,
     input.modelId,
   )
   if (model.kind !== 'text')
     throw new AppError(MODEL_UNAVAILABLE, 'Model is not available', { status: 404 })
   const pricing = model.pricing
+  // fresh 调用闸门已通过，此处固定模式；后续模型修改不改变在途语义。
+  const fault = parseAcceptanceFault(model)
+  const faultMode =
+    fault?.mode === 'chat-before-stream' || fault?.mode === 'chat-mid-stream'
+      ? fault.mode
+      : undefined
 
   // 2. 限流（按数据中心计数，只用于防刷）
   if (
@@ -242,7 +269,11 @@ export async function startWorkspaceChat(
     pricing,
     inputTokens,
     balance: balance.available,
-    maxOutputTokens: Math.min(modelMaxOutput, context.maxOutputTokens ?? modelMaxOutput),
+    maxOutputTokens: Math.min(
+      modelMaxOutput,
+      context.maxOutputTokens ?? modelMaxOutput,
+      faultMode ? TEXT_FAULT_MAX_OUTPUT_TOKENS : modelMaxOutput,
+    ),
     ...(context.maxOutputTokens === undefined
       ? {}
       : { minOutputTokens: Math.min(256, context.maxOutputTokens) }),
@@ -250,6 +281,15 @@ export async function startWorkspaceChat(
 
   // 5. 同一事务：对话、用户消息、预扣、带定价快照的 streaming 消息
   const assistantId = newId()
+  const streamModel = faultMode
+    ? wrapTextFaultModel(languageModel, {
+        mode: faultMode,
+        env: deps.env,
+        tokensPerChar,
+        writeProof: (proof) =>
+          writeTextFaultProof(db, { workspaceId, messageId: assistantId, proof }),
+      })
+    : languageModel
   const holdId = await db.transaction(async (tx) => {
     const t = scoped(tx, workspaceId)
     if (conversationId === undefined) {
@@ -284,6 +324,23 @@ export async function startWorkspaceChat(
       status: 'streaming',
       // 结算前存放输入估算：兜底处理器在没有检查点时据此收最低费用（design 决策 4）
       inputTokens,
+      ...(faultMode
+        ? {
+            usageCheckpoint: {
+              inputTokens,
+              outputTokens: 0,
+              at: new Date().toISOString(),
+              acceptanceFaultProof: {
+                mode: faultMode,
+                policyVersion: 1 as const,
+                phase: 'pending' as const,
+                injected: false,
+                realProviderCalled: false,
+                upstreamCalls: 0,
+              },
+            },
+          }
+        : {}),
       holdId: reservation.id,
     })
     return reservation.id
@@ -298,19 +355,22 @@ export async function startWorkspaceChat(
   const controller = new AbortController()
   const schedule = checkpointSchedule(deps.checkpoint)
   let text = ''
+  let streamFailed = false
   let end:
     | { text: string; usage: Pick<LanguageModelUsage, 'inputTokens' | 'outputTokens'> }
     | undefined
   let checkpoints: Promise<unknown> = Promise.resolve()
   const outputTokensOf = (value: string) => estimateTextTokens(value, tokensPerChar)
   const result = streamText({
-    model: languageModel,
+    model: streamModel,
+    ...(faultMode ? { maxRetries: 0 } : {}),
     allowSystemInMessages: true,
     messages: prompt.map((message) => ({ role: message.role, content: message.text })),
     ...(context.temperature === undefined ? {} : { temperature: context.temperature }),
     maxOutputTokens: Math.min(
       budget.maxOutputTokens,
       context.maxOutputTokens ?? budget.maxOutputTokens,
+      faultMode ? TEXT_FAULT_MAX_OUTPUT_TOKENS : budget.maxOutputTokens,
     ),
     abortSignal: controller.signal,
     // 用量检查点（tasks 2.5）：不阻塞读流，写入串行；写入失败只记日志。
@@ -340,6 +400,7 @@ export async function startWorkspaceChat(
       end = { text: event.text, usage: event.totalUsage }
     },
     onError: ({ error }) => {
+      streamFailed = true
       log.error('ai.chat.stream_error', { messageId: assistantId, error })
     },
   })
@@ -348,10 +409,14 @@ export async function startWorkspaceChat(
   // 结算失败时预扣保持 held，由超时兜底处理器结算；已被另一方结算时不重复结算
   const done = (async () => {
     // 中止与服务商错误已由 onError / 中止原因处理，这里只读完流
-    await result.consumeStream({ onError: () => {} })
+    await result.consumeStream({
+      onError: () => {
+        streamFailed = true
+      },
+    })
     await checkpoints
     try {
-      if (end) {
+      if (end && !streamFailed) {
         await settleChatMessage(db, {
           workspaceId,
           messageId: assistantId,

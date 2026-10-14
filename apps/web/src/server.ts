@@ -146,6 +146,7 @@ function createCloudflareWebRuntime(
     TURNSTILE_SITE_KEY: env.TURNSTILE_SITE_KEY,
     PAYMENT_MODE: env.PAYMENT_MODE,
     SENTRY_ENVIRONMENT: env.SENTRY_ENVIRONMENT,
+    AI_FAULT_INJECTION: env.AI_FAULT_INJECTION,
     ...(env.STRIPE_SECRET_KEY === undefined ? {} : { STRIPE_SECRET_KEY: env.STRIPE_SECRET_KEY }),
     ...(env.STRIPE_WEBHOOK_SECRET === undefined
       ? {}
@@ -218,6 +219,8 @@ function createCloudflareWebRuntime(
       available: true,
       value: {
         config: {
+          AI_FAULT_INJECTION: env.AI_FAULT_INJECTION,
+          SENTRY_ENVIRONMENT: env.SENTRY_ENVIRONMENT,
           AI_TEXT_EGRESS: textConfig.AI_TEXT_EGRESS ?? 'gateway',
           OPENAI_BASE_URL: textConfig.OPENAI_BASE_URL,
           AI_GATEWAY_ACCOUNT_ID: env.AI_GATEWAY_ACCOUNT_ID,

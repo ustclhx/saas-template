@@ -39,6 +39,9 @@ function createJobsContext(env: Cloudflare.Env): JobsContext {
   return {
     config: {
       ...(valid.PAYMENT_MODE === undefined ? {} : { PAYMENT_MODE: valid.PAYMENT_MODE }),
+      ...(env.AI_FAULT_INJECTION === undefined
+        ? {}
+        : { AI_FAULT_INJECTION: env.AI_FAULT_INJECTION }),
       ...(env.SENTRY_ENVIRONMENT === undefined
         ? {}
         : { SENTRY_ENVIRONMENT: env.SENTRY_ENVIRONMENT }),
@@ -120,10 +123,12 @@ class AiMediaWorkflowBase extends WorkflowEntrypoint<Cloudflare.Env, AiMediaPara
         tagJobContext()
         const workflowSentry = createWorkflowSentry(step, sentryEnabled(this.env))
         try {
+          requireEnv(this.env)
           const db = createDb(this.env.HYPERDRIVE)
           const workflowStep = createCloudflareWorkflowStep(workflowSentry.step)
           return await runMediaTask(event.payload.taskId, workflowStep, {
             db,
+            faultEnv: this.env,
             callbackOrigin: templateConfig.app.url,
             callbackSecret: this.env.MEDIA_WEBHOOK_SECRET ?? '',
             provider: (task) =>

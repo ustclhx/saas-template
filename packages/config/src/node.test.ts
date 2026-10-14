@@ -56,6 +56,30 @@ function failure(fn: () => unknown, names: string[], values: string[]) {
 }
 
 describe('Node runtime config', () => {
+  it('两种 Node schema 保留故障闸门，仅 staging 开启并安全拒绝生产配置和非法值', () => {
+    const auth = { ...templateConfigDefaults.auth, oauth: [], turnstile: false }
+    for (const templateConfig of [undefined, { auth }]) {
+      const load = (env: Record<string, string>) =>
+        loadNodeEnv({
+          dotenvPath: false,
+          env: { ...valid, ...env },
+          ...(templateConfig ? { templateConfig } : {}),
+        })
+      expect(load({}).AI_FAULT_INJECTION).toBeUndefined()
+      expect(load({ AI_FAULT_INJECTION: 'disabled' }).AI_FAULT_INJECTION).toBe('disabled')
+      expect(
+        load({ AI_FAULT_INJECTION: 'enabled', SENTRY_ENVIRONMENT: 'staging' }).AI_FAULT_INJECTION,
+      ).toBe('enabled')
+      for (const env of [
+        { AI_FAULT_INJECTION: 'enabled', SENTRY_ENVIRONMENT: 'production' },
+        { AI_FAULT_INJECTION: 'disabled', SENTRY_ENVIRONMENT: 'production' },
+        { AI_FAULT_INJECTION: 'enabled' },
+        { AI_FAULT_INJECTION: 'enabled', SENTRY_ENVIRONMENT: 'development' },
+        { AI_FAULT_INJECTION: 'private-invalid', SENTRY_ENVIRONMENT: 'staging' },
+      ])
+        failure(() => load(env), ['AI_FAULT_INJECTION'], ['private-invalid'])
+    }
+  })
   it('S3 原始配置启用校验，全部缺省保持 unavailable，布尔严格且两种 schema 一致', () => {
     const auth = { ...templateConfigDefaults.auth, oauth: [], turnstile: false }
     for (const templateConfig of [undefined, { auth }]) {

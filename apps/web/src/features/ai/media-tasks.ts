@@ -1,13 +1,17 @@
 import {
+  createMediaFault,
   createTaskMediaProvider,
   dbModelStore,
   estimateCredits,
+  type FaultAccessContext,
   getMediaProviderDefinition,
+  initialMediaFaultProof,
   isSyncMediaProvider,
   MEDIA_HOLD_SWEEP_BUFFER_MS,
   MEDIA_TASK_TTL_MS,
   type MediaProviderEnv,
   type MediaWebhook,
+  readMediaFault,
   requireAvailableModel,
   settleMediaTask,
   type TaskMediaProvider,
@@ -15,6 +19,7 @@ import {
   verifyMediaCallbackSignature,
 } from '@saas/ai'
 import { type AuthContextSource, requireFreshSession } from '@saas/auth'
+import type { AiFaultInjectionEnv } from '@saas/config'
 import { CreditsError, hold, lockWorkspaceCredits } from '@saas/credits'
 import {
   type AiTask,
@@ -35,8 +40,9 @@ import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { templateConfig } from '../../server/template-config.ts'
 import type { ResolvedWorkspace } from '../../server/workspace-context.ts'
+import { sessionFaultAccess } from './fault-access.ts'
 
-export interface MediaHttpEnv extends MediaProviderEnv {
+export interface MediaHttpEnv extends MediaProviderEnv, AiFaultInjectionEnv {
   APP_URL?: string | undefined
 }
 export interface MediaHttpDeps {
@@ -53,10 +59,12 @@ export interface MediaHttpDeps {
 }
 
 const workspaceInput = z.object({ workspaceId: z.uuid() })
-const submitInput = workspaceInput.extend({
-  modelKey: z.string().min(1).max(128),
-  params: z.record(z.string(), z.unknown()),
-})
+const submitInput = workspaceInput
+  .extend({
+    modelKey: z.string().min(1).max(128),
+    params: z.record(z.string(), z.unknown()),
+  })
+  .strict()
 const terminal = (task: AiTask) => !['queued', 'running'].includes(task.status)
 const invalid = () => new AppError('INVALID_REQUEST', 'Invalid media task request')
 
@@ -149,7 +157,11 @@ export function handleMediaSubmit(request: Request, deps: MediaHttpDeps): Promis
     // jobs 不绑定站点 URL；由请求入口冻结可信服务端 origin，供回调签名使用。
     const callbackOrigin = new URL(deps.env.APP_URL ?? request.url).origin
     const resolved = await context(request, input.workspaceId, deps, true)
-    const task = await submitWorkspaceMedia(input, resolved, { ...deps, callbackOrigin })
+    const task = await submitWorkspaceMedia(input, resolved, {
+      ...deps,
+      callbackOrigin,
+      faultAccess: sessionFaultAccess(resolved, deps.env),
+    })
     return Response.json({ taskId: task.id, status: task.status }, { status: 202 })
   })
 }
@@ -157,6 +169,8 @@ export function handleMediaSubmit(request: Request, deps: MediaHttpDeps): Promis
 export type WorkspaceMediaDeps = Omit<MediaHttpDeps, 'auth' | 'rateLimiter'> & {
   rateLimiter?: RateLimiter | undefined
   callbackOrigin: string
+  /** API key 入口不提供此授权，即使 key 由平台管理员创建。 */
+  faultAccess?: FaultAccessContext
 }
 
 /** 入口已解析空间及成员；计费、配额和任务创建由站内与公开 API 共用。 */
@@ -188,7 +202,11 @@ export async function submitWorkspaceMedia(
     await lockWorkspaceCredits(tx, resolved.workspace.id)
     const current = await entitlements(deps, tx, resolved.workspace.id)
     const model = await requireAvailableModel(
-      { store: dbModelStore(tx as unknown as Database), workersAi: Boolean(deps.env.AI) },
+      {
+        store: dbModelStore(tx as unknown as Database),
+        workersAi: Boolean(deps.env.AI),
+        faultAccess: deps.faultAccess,
+      },
       current,
       modelRow.id,
     )
@@ -200,6 +218,16 @@ export async function submitWorkspaceMedia(
         status: 503,
       })
     const validated = validateMediaParams(model.paramsSchema, input.params, model.kind)
+    const acceptanceFault = createMediaFault(model, deps.faultAccess)
+    if (acceptanceFault?.mode.startsWith('fal-')) {
+      if (
+        (validated.params.image_size !== undefined && validated.params.image_size !== 'square') ||
+        (validated.params.num_images !== undefined && validated.params.num_images !== 1)
+      )
+        throw new AppError('INVALID_PARAMS', 'Acceptance media requires one square image')
+      validated.params = { ...validated.params, image_size: 'square', num_images: 1 }
+      validated.unitsLimit = 1
+    }
     const tenant = scoped(tx, resolved.workspace.id)
     const [workspace] = await tx
       .select({ id: organization.id })
@@ -235,12 +263,18 @@ export async function submitWorkspaceMedia(
         pricing: model.pricing,
         providerRequestKey: taskId,
         workflowInstanceId: taskId,
-        deadlineAt: new Date(Date.now() + MEDIA_TASK_TTL_MS),
+        deadlineAt: new Date(Date.now() + (acceptanceFault?.deadlineMs ?? MEDIA_TASK_TTL_MS)),
         input: {
           ...validated,
           providerModelId: model.providerModelId,
           storageBytes,
           callbackOrigin,
+          ...(acceptanceFault
+            ? {
+                acceptanceFault,
+                acceptanceFaultProof: initialMediaFaultProof(acceptanceFault),
+              }
+            : {}),
         },
       })
       .returning()
@@ -481,7 +515,14 @@ export function handleMediaWebhook(
     const provider = taskProvider(deps, located)
     if (isSyncMediaProvider(provider)) throw notFound()
     const payload: MediaWebhook = await provider.parseWebhook(request, await request.text())
+    const fault = readMediaFault(located)
+    // 故障失败/轮询模式只接收验签证据，不能被真实成功回调抢先恢复成功。
+    if (fault && fault.mode !== 'fal-callback-early') return Response.json({ ok: true })
     await deps.db.transaction(async (tx) => {
+      if (fault)
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${`ws:${located.workspaceId}`}, 0))`,
+        )
       const tenant = scoped(tx, located.workspaceId)
       const [task] = await tenant.select(aiTask, { where: eq(aiTask.id, taskId) }).for('update')
       if (!task) throw notFound()
@@ -489,7 +530,14 @@ export function handleMediaWebhook(
         throw new AppError('MEDIA_WEBHOOK_INVALID', 'Callback does not match the task job')
       await tenant.update(
         aiTask,
-        { callbackPayload: payload },
+        {
+          callbackPayload: payload,
+          ...(fault && !task.callbackPayload
+            ? {
+                input: sql`${aiTask.input} || jsonb_build_object('acceptanceFaultProof', coalesce(${aiTask.input}->'acceptanceFaultProof', '{}'::jsonb) || jsonb_build_object('callbackStoredAt', now()))`,
+              }
+            : {}),
+        },
         and(eq(aiTask.id, taskId), isNull(aiTask.callbackPayload)),
       )
     })
