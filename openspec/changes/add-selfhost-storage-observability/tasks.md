@@ -35,5 +35,20 @@
 
 ## 4. 跨组集成验收（协调者，依赖已完成的各组）
 
-- [ ] 4.1 集成共享入口/配置/依赖/构建/Compose 补丁后，执行 `openspec validate add-selfhost-storage-observability --strict`、根 `pnpm check`、`check:deps`、`check:singletons`、`dedupe --check`、`typecheck`、`test`、`build`、`build:node`，以及各组三种 Node 目标验收。验证：记录命令/结果，CF默认构建和既有用例通过，无Cloudflare bundle引入Node adapter，已知失败先处理，不弱化断言或删除测试。
-- [ ] 4.2 核对 S1/S2/O3/E1 与 C→B 交接证据、未完成外部凭据验收和 D 边界，确认只勾选有真实证据的 C 项。验证：review记录逐项映射需求/用例/文档，存储-only媒体gate仍正确、B任务未提前完成，S2全栈资源与真实source map证据缺失时明确保持对应项待办；不以PR合入替代部署、不手工部署分支到staging、不由worker同步或归档change。
+- [x] 4.1 集成共享入口/配置/依赖/构建/Compose 补丁后，执行 `openspec validate add-selfhost-storage-observability --strict`、根 `pnpm check`、`check:deps`、`check:singletons`、`dedupe --check`、`typecheck`、`test`、`build`、`build:node`，以及各组三种 Node 目标验收。验证：记录命令/结果，CF默认构建和既有用例通过，无Cloudflare bundle引入Node adapter，已知失败先处理，不弱化断言或删除测试。
+- [x] 4.2 核对 S1/S2/O3/E1 与 C→B 交接证据、未完成外部凭据验收和 D 边界，确认只勾选有真实证据的 C 项。验证：review记录逐项映射需求/用例/文档，存储-only媒体gate仍正确、B任务未提前完成，S2全栈资源与真实source map证据缺失时明确保持对应项待办；不以PR合入替代部署、不手工部署分支到staging、不由worker同步或归档change。
+
+2026-10-15 协调者签收（4.1）：b43c6b3 上 strict validate、根 check/check:deps/check:singletons/dedupe --check、无缓存 typecheck/test/build 与 build:node 通过；三种 Node 目标：存储 `test:node:s3` 28 项与 `test:node:storage` 18 项、SMTP `email test:node:smtp` 22 项与 `jobs test:node:smtp` 6 项、Sentry observability 5 项/jobs node-sentry 6 项/`sentry-node-maps` 3 项全部通过。CF web server 2082 与 jobs 829 个 source 无 Node S3/SMTP/Sentry adapter，Node 输出无 CF adapter。首次缓存测试的 routeTree 生成物缺失经无缓存 typecheck 恢复，未改断言或测试。证据：[签收记录](../../../docs/runbooks/evidence/selfhost/signoff-2026-10-15.json)。
+
+2026-10-15 协调者 review（4.2）：
+
+| 需求 | 任务 | 用例/证据 | 文档 | 结论 |
+| --- | --- | --- | --- | --- |
+| S1 Node 通用 S3 配置/文件一致性/安全转存 | 1.1–1.4 | config 用例、`test:node:s3`、`test:node:storage`（含 storage-only 媒体 503 且 task/hold 不变） | storage README、[selfhost-c-storage](../../../docs/runbooks/selfhost-c-storage.md) | 本地/fixture 通过；外部 R2 与第二兼容端点 1.7 无凭据，保持待办 |
+| S2 可选自带对象存储 | 1.5–1.6 | #144 profile 开关 config、真实 CORS/预签名与 2C/4GiB 全栈资源 | [selfhost-c-profile](../../../docs/runbooks/selfhost-c-profile.md)、[资源记录](../../../docs/runbooks/selfhost-c-profile-resources.json) | 有真实全栈资源证据，已勾选项成立 |
+| O3 Node Sentry | 2.1–2.5 | observability/node-sentry/maps fixture；真实项目 source map 证据 | [sentry-node-adapter](../../../docs/runbooks/sentry-node-adapter.md)、[2.5 证据](../../../docs/runbooks/evidence/selfhost/c-2.5-sentry-node-verification-70496c6.json) | 真实 source map 证据存在，已勾选项成立 |
+| E1 SMTP | 3.1–3.4 | `email`/`jobs test:node:smtp`、jobs 持久 DLQ、认证邮件链路 | email README、[3.4 证据](../../../docs/runbooks/evidence/selfhost/c-3.4-auth-smtp.json) | 本地 SMTP fixture 通过；无外部 SMTP 服务承诺 |
+| C→B 5.3/5.4 交接 | 1.4、B 5.3/5.4 | C 只交付工厂与独立 gate；B 5.3/5.4 由 B 的 #173/#174 以自身证据勾选 | [selfhost-c-storage §C→B](../../../docs/runbooks/selfhost-c-storage.md) | 无提前代勾 B 任务 |
+| D 边界 | — | C 未承接镜像发布/部署/备份；S2 上游镜像引用不等于 D 发布 | proposal 非目标 | 边界保持 |
+
+只勾选 4.1/4.2；1.7 外部 S3 联通明确保持待办，change 因此不可归档。未部署、未手工发布 staging、未同步或归档。
