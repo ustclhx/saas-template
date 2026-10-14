@@ -72,3 +72,39 @@ export function hasTrustedCi(runs, sha, repository) {
       run.conclusion === 'success',
   )
 }
+
+const serviceName = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/
+
+export function parseNewServices(value, catalog) {
+  const names = value
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean)
+  assert.equal(new Set(names).size, names.length, 'new services must be distinct')
+  for (const name of names)
+    assert(
+      catalog.services.some((service) => service.name === name),
+      `new service not in catalog: ${name}`,
+    )
+  return names
+}
+
+// 构建前的正式 tag 门：任一已存在即拒绝；无法确认的只允许显式声明的新仓库通过，
+// 它们仍由 publish 作业在写入凭据下做写前检查。
+export function assertFormalTagsAbsent(states, newServices = []) {
+  for (const [name, state] of states) {
+    assert.match(name, serviceName, 'invalid catalog service name')
+    assert.notEqual(state, 'present', `immutable SHA already exists: ${name}`)
+    if (state === 'unconfirmed')
+      assert(
+        newServices.includes(name),
+        `formal tag existence unconfirmed (declare new_services only for packages never published): ${name}`,
+      )
+    else assert.equal(state, 'absent', `unexpected registry state: ${name}`)
+  }
+}
+
+export function formalRepository(namespace, name) {
+  assert.match(name, serviceName, 'invalid catalog service name')
+  return `${namespace.slice('ghcr.io/'.length)}/${name}`
+}

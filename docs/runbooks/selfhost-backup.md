@@ -142,6 +142,9 @@ node deploy/selfhost/test-backup.mjs
 端口、随机临时 file secrets、自签 TLS；仅清理自己资源。覆盖真实 base/WAL/dump、
 隔离逻辑恢复、最老 weekly PITR、删除语义、TLS/密钥失败、上传/磁盘/归档故障与重启。
 日期边界由隔离fixture元数据模拟，真实WAL/目标marker不改，不宣称已运行四周。
+夹具PG的 `archive_timeout` 会在任意时刻归档新WAL段，对象清单比较只允许新增WAL段，
+既有对象不得删除或改写；重复副本同步的复制数须恰为这些新段。失败时 image smoke
+只附加 `backup-smoke.json` 中的固定 phase/reason，不透传命令原始输出。
 amd64使用 `Selfhost images` 的原生CI矩阵；本机arm64实际记录及CI链接见交付记录。
 正式远端存储、不同供应商、真实服务器/PITR/reboot仍未获资源，保持待办。
 

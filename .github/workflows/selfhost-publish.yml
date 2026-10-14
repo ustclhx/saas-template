@@ -16,6 +16,11 @@ on:
         description: Explicit lowercase OCI namespace (ghcr.io/owner/project)
         required: true
         type: string
+      new_services:
+        description: Comma-separated catalog services whose GHCR package has never been published (first publish only)
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -32,6 +37,8 @@ jobs:
     permissions:
       contents: read
       actions: read
+      # 只读检查正式 tag；写权限只在 publish 作业。
+      packages: read
     outputs:
       sha: ${{ steps.trust.outputs.sha }}
     steps:
@@ -60,6 +67,41 @@ jobs:
           const runs = JSON.parse(execFileSync('gh', ['api', `repos/${process.env.GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${sha}&per_page=100`], { encoding: 'utf8' }))
           assert(hasTrustedCi(runs.workflow_runs, sha, process.env.GITHUB_REPOSITORY), 'successful main push CI required for exact source SHA')
           appendFileSync(process.env.GITHUB_OUTPUT, `sha=${sha}\n`)
+          NODE
+      # 使用 workflow 所在 main 的检查代码（旧源 SHA 可能没有此门），catalog 取自源 SHA。
+      - name: Reject existing immutable formal tags before any build
+        env:
+          SOURCE_SHA: ${{ steps.trust.outputs.sha }}
+          IMAGE_NAMESPACE: ${{ inputs.namespace }}
+          NEW_SERVICES: ${{ inputs.new_services }}
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process'
+          import {
+            assertCompleteCatalog,
+            assertFormalTagsAbsent,
+            formalRepository,
+            parseNewServices,
+            validateIdentity,
+          } from './deploy/selfhost/images/policy.mjs'
+          import { formalTagState } from './deploy/selfhost/images/registry.mjs'
+          const sha = process.env.SOURCE_SHA
+          const namespace = process.env.IMAGE_NAMESPACE
+          validateIdentity(sha, namespace)
+          const catalog = JSON.parse(execFileSync('git', ['show', `${sha}:deploy/selfhost/images/catalog.json`], { encoding: 'utf8' }))
+          assertCompleteCatalog(catalog)
+          const newServices = parseNewServices(process.env.NEW_SERVICES, catalog)
+          const states = new Map()
+          for (const { name } of catalog.services) {
+            const state = await formalTagState(formalRepository(namespace, name), sha, {
+              username: process.env.GITHUB_ACTOR,
+              password: process.env.REGISTRY_TOKEN,
+            })
+            console.info(JSON.stringify({ event: 'selfhost.formal-tag.checked', service: name, state }))
+            states.set(name, state)
+          }
+          assertFormalTagsAbsent(states, newServices)
           NODE
       - uses: actions/checkout@v7
         with:

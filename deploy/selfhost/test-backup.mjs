@@ -159,6 +159,25 @@ const backup = (...commandArgs) =>
     ...commandArgs,
   )
 const status = () => JSON.parse(backup('status'))
+// 夹具 PG 开着 archive_mode 与 archive_timeout，autovacuum/checkpoint 会在任意时刻封口并归档
+// 新 WAL 段。比较对象清单时既有对象必须原样保留（不删除、不改写），新增只允许 WAL 段；
+// rewritten 列出按设计每次重写的对象（只要求仍存在）。返回新增对象供调用方精确核对。
+function preservedInventory(before, after, reason, rewritten = []) {
+  const current = new Map(after.map((o) => [o.key, o.bytes]))
+  const prior = new Set(before.map((o) => o.key))
+  assert(
+    before.every((o) =>
+      rewritten.includes(o.key) ? current.has(o.key) : current.get(o.key) === o.bytes,
+    ),
+    reason,
+  )
+  const added = after.filter((o) => !prior.has(o.key))
+  assert(
+    added.every((o) => /\/wal_005\/[0-9A-F]{24}(?:\.lz4)?$/.test(o.key)),
+    reason,
+  )
+  return added
+}
 const s3 = (...commandArgs) =>
   JSON.parse(compose('run', '--rm', '--no-deps', 's3tool', ...commandArgs))
 function rejectBackup(overrides, command = 'status', entrypoint) {
@@ -488,8 +507,15 @@ async function restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, source
     'Replica did not copy dump',
   )
   replicaSync()
+  // 两次同步之间主库可能刚归档新 WAL：重复同步只能复制这些新段，既有对象一个都不重写。
+  const repeated = replicaList()
+  const primaryNow = new Map(s3('list').map((o) => [o.key, o.bytes]))
+  const newlyArchived = preservedInventory(copied, repeated, 'Repeated sync changed inventory', [
+    'cluster/replica/manifest.json',
+  ])
   assert(
-    JSON.stringify(copied.map((o) => o.key)) === JSON.stringify(replicaList().map((o) => o.key)),
+    newlyArchived.every((o) => primaryNow.get(o.key) === o.bytes) &&
+      status().replica.copiedObjects === newlyArchived.length,
     'Repeated sync changed inventory',
   )
   let interrupted = false
@@ -549,10 +575,7 @@ async function restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, source
     }
     assert(refused, 'Failed replica permitted healthy state or primary cleanup')
   }
-  assert(
-    JSON.stringify(priorObjects) === JSON.stringify(s3('list')),
-    'Replica failure allowed deletion',
-  )
+  preservedInventory(priorObjects, s3('list'), 'Replica failure allowed deletion')
   sql("insert into public.backup_marker values ('primary-independent',1)")
   backup('verify')
   assert(status().verification.ok, 'Replica outage blocked primary archive')
@@ -1251,7 +1274,8 @@ ${credentials
       gapRejected = true
     }
     assert(
-      gapRejected && JSON.stringify(beforeGapApply) === JSON.stringify(s3('list')),
+      gapRejected &&
+        preservedInventory(beforeGapApply, s3('list'), 'Gap permitted destructive cleanup'),
       'Gap permitted destructive cleanup',
     )
     walg('st', 'put', '/var/lib/selfhost-backup/acceptance/gap.lz4', relativeGap, '--no-compress')
@@ -1259,7 +1283,7 @@ ${credentials
     const beforeCleanup = s3('list')
     const plan = JSON.parse(backup('retention-plan'))
     assert(plan.oldest === weeklyId && plan.weekly.includes(weeklyId), 'Weekly selection differs')
-    assert(JSON.stringify(beforeCleanup) === JSON.stringify(s3('list')), 'Dry-run mutated S3')
+    preservedInventory(beforeCleanup, s3('list'), 'Dry-run mutated S3')
     backup('retention-apply')
     assert(
       !JSON.parse(walg('backup-list', '--json')).some((b) => b.backup_name === first.base.backupId),
