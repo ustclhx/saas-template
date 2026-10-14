@@ -67,6 +67,8 @@
     "apps/jobs/src/node/registration.ts"
   ],
   "targetAdapterFixtures": {
+    "apps/web/test/sentry-local/probe.node.ts": ["node"],
+    "apps/web/test/node/auth-smtp.integration.node.ts": ["node"],
     "apps/web/e2e/staging-acceptance/fault-local-media.ts": ["cloudflare"],
     "apps/web/test/admin-node-resources.ts": ["node"],
     "packages/platform/test/cloudflare.test.ts": ["cloudflare"],
