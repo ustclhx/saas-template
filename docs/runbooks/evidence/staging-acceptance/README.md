@@ -41,6 +41,7 @@ JSON 中的 `evidenceCommitted: false`、阻塞、推断及待授权状态是当
 |---|---|
 | [acceptance-2026-10-14a](2026-10-14/acceptance-2026-10-14a-execution-status.json) | 2 / 1 / 11：Workers 上游 8007 被记为 MEDIA_GENERATION_FAILED，未进入换任务重试（CF step 丢失 NonRetryableError code，#178 修复）。 |
 | [acceptance-2026-10-14b](2026-10-14/acceptance-2026-10-14b-execution-status.json) | 13 / 0 / 1（SHA 70496c6）：全部常规项通过；本轮无 8007。消息 parts 无 reasoning；checkpoint 记录 reasoningTokens，但未声明能力的 DeepSeek 模型仍按上游默认开启思考（后续修复）。 |
+| [acceptance-2026-10-14c](2026-10-14/acceptance-2026-10-14c-execution-status.json) | 2 / 0 / 0（SHA a3973cf，仅 chat 正常回复）：#183 后未声明能力的 DeepSeek 模型按模板默认关闭思考，reasoningTokens 由 55/52 降为 0，parts 无 reasoning（[对比](2026-10-14/acceptance-2026-10-14c-reasoning-comparison.json)）。 |
 | [admin 次日指标](2026-10-14/admin-metrics-next-day.json) | 看板截至 2026-10-14 00:00 UTC，10-13 汇总与原始数据 25/25 项一致。 |
 
 另保留 [13 的早期表单阻塞记录](2026-10-12/acceptance-2026-10-13-execution-status.json)：
