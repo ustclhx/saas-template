@@ -29,13 +29,13 @@
 ## 5. 独立故障验收套件
 
 - [x] 5.1 新增独立故障 config/spec 与平台管理员专用 readiness，不加入普通 acceptance.spec、默认 e2e 或 smoke；复用后台 UI 创建/完整核对/启用专用模型，整个准备和执行包在 try/finally，逐项停用并查审计；本地 Playwright 验证部分准备失败、场景失败与一项 cleanup 失败后仍尝试其他停用、同名冲突不覆盖、重复 run 不重发。
-- [ ] 5.2 实现七个媒体场景和四个文本场景的只读断言：task/message/hold/ledger、差异化收费、一次提交/产出/通知/结算、deadline或回调/轮询场景证明、终态后60秒复核与同快照对账；缺失证明、重复资源或不确定外部取消明确停止；本地全套故障夹具与强制迟到/重放用例通过，不访问真实 Provider。
+- [x] 5.2 实现七个媒体场景和四个文本场景的只读断言：task/message/hold/ledger、差异化收费、一次提交/产出/通知/结算、deadline或回调/轮询场景证明、终态后60秒复核与同快照对账；缺失证明、重复资源或不确定外部取消明确停止；本地全套故障夹具与强制迟到/重放用例通过，不访问真实 Provider。
 - [x] 5.3 证据增加版本、mode、injected、realProviderCalled、最小 request ID/时间顺序与清理状态，复用敏感字段过滤；本地核验纯ID/布尔用量证据可写、凭据/内容/签名URL被拒，证据只在已忽略 test-results，不出现在 runbook 真实证据目录。
 - [x] 5.4 更新 runbook 独立故障执行命令（headed、单worker、零重试）、同 run 恢复、准备条件、模型停用恢复、固定时间预算及仅协调者发布后运行；用 `playwright test --list` 核验专用配置只收集故障场景，默认/常规配置不收集它，并确认没有支付/邮件或真实视频调用。
 
 ## 6. 集成检查与交付
 
-- [ ] 6.1 在本 worktree 运行最终本地集成检查：`pnpm check`、`pnpm check:deps`、`pnpm check:singletons`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm dedupe --check` 与 `openspec validate add-staging-fault-injection --strict` 全部通过；diff 只含授权范围，无迁移种子、secrets 或真实staging证据，原 media 7.1/7.2、chat 5.1 未勾选。
+- [x] 6.1 在本 worktree 运行最终本地集成检查：`pnpm check`、`pnpm check:deps`、`pnpm check:singletons`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm dedupe --check` 与 `openspec validate add-staging-fault-injection --strict` 全部通过；diff 只含授权范围，无迁移种子、secrets 或真实staging证据，原 media 7.1/7.2、chat 5.1 未勾选。
 - [ ] 6.2 fetch/rebase origin/main，推送实施 PR，描述本地证据与尚未运行的 staging 验收，卡片更新 in-review 并通知协调者；验证 PR diff 与最新 main 一致且无手动部署，等待协调者合并后发布运行，不自行合并/归档。
 
 ## 7. 合并发布后的协调者验收（实施 worker 不执行、不勾选）

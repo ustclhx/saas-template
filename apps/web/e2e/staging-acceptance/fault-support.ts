@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { Page } from '@playwright/test'
 import type { Pricing } from '@saas/ai'
+import { guidancePrefix } from './accounts.ts'
 import { type FaultModelDefinition, faultScenarioId } from './fault-definitions.ts'
 import type { FaultWorkspace } from './fault-readiness.ts'
 import { evidence, expect, query, runId, sqlLiteral } from './support.ts'
@@ -12,7 +13,8 @@ const TEXT_PROMPT =
 const terminal = (status: string) =>
   ['failed', 'succeeded', 'canceled', 'completed', 'aborted'].includes(status)
 function must(condition: unknown, message: string): asserts condition {
-  if (!condition) throw new Error(`[故障核验] ${message}；停止新提交，请用同一 run ID 核验原资源`)
+  if (!condition)
+    throw new Error(`${guidancePrefix}故障核验：${message}；停止新提交，请用同一 run ID 核验原资源`)
 }
 
 type Ledger = { id: string; type: string; delta: number }
