@@ -20,6 +20,7 @@
     "apps/jobs/test/sentry.test.ts": ["cloudflare:test", "cloudflare:workers"],
     "apps/jobs/test/workspace-cleanup.test.ts": ["cloudflare:test", "cloudflare:workers"],
     "apps/web/e2e/staging-acceptance/local-media.ts": ["cloudflare:workers"],
+    "apps/web/e2e/staging-acceptance/fault-local-media.ts": ["cloudflare:workers"],
     "apps/web/test/ai-chat.test.ts": ["cloudflare:workers"],
     "apps/web/test/ai-media-tasks.test.ts": ["cloudflare:workers"],
     "apps/web/test/auth-email.test.ts": ["cloudflare:workers"],
@@ -66,6 +67,7 @@
     "apps/jobs/src/node/registration.ts"
   ],
   "targetAdapterFixtures": {
+    "apps/web/e2e/staging-acceptance/fault-local-media.ts": ["cloudflare"],
     "apps/web/test/admin-node-resources.ts": ["node"],
     "packages/platform/test/cloudflare.test.ts": ["cloudflare"],
     "packages/platform/test/node.test.ts": ["node"],

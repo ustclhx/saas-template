@@ -91,6 +91,39 @@ pnpm --filter @saas/web exec playwright test -c e2e/staging-acceptance/local.con
 
 ## 媒体受控故障验收（待协调者发布后执行）
 
+独立入口覆盖七个媒体场景与 token/per_call 两种价格的四个文本场景。普通
+`acceptance.spec.ts`、默认 e2e 和 smoke 不收集故障用例。协调者确认 main 自动发布后，提供
+`STAGING_URL`、只读 `NEON_READONLY_URL`、完整40位 `STAGING_FAULT_EXPECTED_SHA` 和稳定的
+`STAGING_ACCEPTANCE_RUN_ID`，在管理员自己的空间运行：
+
+```sh
+pnpm --filter @saas/web exec playwright test -c e2e/staging-acceptance/fault.config.ts --headed --workers=1 --retries=0
+```
+
+准备检查要求 health 无缓存、数据库 up、SHA 完全匹配，管理员未模拟用户，空间拥有全部11个
+模型权益、至少30积分、无欠费、可用并发与至少10 MiB剩余存储。脚本不会修改套餐或补发积分。
+缺条件即失败并报告安全资源ID，人工准备后用同一 run ID恢复。整个模型准备与执行都在
+try/finally 内：已有配置必须完整相同才启用，新模型经后台 UI创建；退出时逐项停用并核对审计。
+一项停用失败仍处理其余模型，按清理证据中的 key/ID到后台恢复停用，不覆盖同名冲突模型。
+
+同一 run复用已有 task或conversation/message，只接受证明完整的终态；在途、重复资源、缺失
+证明、已发送但无 assistant或外部取消未确认时停止，禁止换 run ID重复付费补证据。每个终态
+再观察60秒并核对同一资源、产出/通知/结算唯一性及同快照账本。两种超时固定60秒，fal正常
+deadline20分钟、早到屏障最多10分钟；矩阵总超时40分钟，零重试，失败立即停止新增付费提交。
+
+实施 worker仅执行下面的离线入口，不加载 staging凭据，不调用真实Provider、视频、支付或邮件：
+
+```sh
+unset STAGING_URL NEON_READONLY_URL STAGING_ACCEPTANCE_LOCAL
+pnpm --filter @saas/web exec playwright test -c e2e/staging-acceptance/fault.management.local.config.ts
+pnpm --filter @saas/web exec playwright test -c e2e/staging-acceptance/fault.local.config.ts
+```
+
+本地配置限定 loopback worktree隔离库、稳定日期run ID和当前HEAD，UI准备模型；假上游仍经过
+生产故障包装、runner、真实格式签名webhook、R2转存与原结算。证据只写已忽略的
+`test-results/staging-acceptance`。跨日期恢复需沿用原run ID，并在该本地目录复制当日动作证据；
+不要复制到真实runbook证据目录。
+
 正常脚本继续覆盖 Workers/fal 图片成功及 fal 视频取消。受控故障来自专用
 `acceptance-fault-*` 模型的 `x-acceptance-fault` 元数据，仅 staging 开关开启且实时、未模拟的
 平台管理员会话可以选用；普通用户与所有 API key 均拒绝。模型由独立故障套件经后台准备并在
