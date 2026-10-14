@@ -10,7 +10,7 @@
 |---|---|---|
 | Phase 0 | `setup-scaffold-and-infra` | 26/26；已归档：`archive/2026-10-04-setup-scaffold-and-infra` |
 | Phase 1 | `add-auth-and-workspaces` | 25/25；已归档：`archive/2026-10-04-add-auth-and-workspaces`（#22） |
-| Phase 2 | `add-billing-and-credits` | 31/34；3.3、10.4、11.1 待办 |
+| Phase 2 | `add-billing-and-credits` | 32/34；3.3、11.1 待办；10.4 实测文档与策略核对已完成 |
 | Phase 3 | `add-ai-text-chat` | 16/17；staging 5.1 待办 |
 | Phase 4 | `add-ai-media-generation` | 20/22；staging 7.1/7.2 待办 |
 | Phase 5 | `add-admin-console` | 13/14；staging 6.1 待办 |
@@ -66,7 +66,7 @@
 - [x] `plan` / `plan_price` 种子数据与同步脚本（Stripe、PayPal；billing 1.3，两平台同步两次、映射稳定且 active，证据见支付联通 runbook）
 - [x] `packages/credits`：grant / hold / capture / release / expire，含并发测试（#24、#27）
 - [x] Stripe Provider：订阅 + 积分包 Checkout、Webhook、Portal（#71；billing 3.2）
-- [ ] PayPal Provider：Orders capture、Subscriptions、Webhook 验签、自建取消；代码已合并，部分沙箱交易通过，完整回调夹具与交易矩阵待办（#82、#90；billing 3.3）。
+- [ ] PayPal Provider：Orders capture、Subscriptions、Webhook 验签、自建取消；代码已合并，8 条真实 Sandbox 回调录制已覆盖一次性付款、月付首付、暂停/恢复及独立测试卡 Capture 全额退款；自然续费、Sale 退款与 Capture 部分退款录制等仍待办（#82、#90；billing 3.3；见 [05 §2](./05-billing.md#2-支付-provider-抽象)）。
 - [x] Webhook 通用管线（按投递去重、登记/处理分事务、失败记录、重放；#24、#28）
 - [x] 权益 `can()` / `limit()`（读取时计算生效状态）；free 档与注册赠送（验证后发放、防刷；#24）
 - [x] 结账前置检查；换套餐 / 换平台的订阅重叠期（#24；完整平台验收见 11.1）
@@ -74,7 +74,7 @@
 - [x] 退款申请：用户发起、后台审核、调用平台退款、Webhook 回收积分（#24；真实管理员审核验收仍见 11.1）
 - [x] Cron：积分过期、年付按月发放、hold 超时回收、订阅对账、积分对账不变式校验（#24）
 - [x] 页面开发与规定验收：定价/回跳、账单/用量、最小计费后台；Stripe 测试卡支付已通过（#24、#63、#71；billing 10.1–10.3）
-- [ ] 支付实测文档与 Q4/Q5/Q6 最终验收汇总：策略已决定，PayPal 剩余矩阵及协调者汇总待办（billing 10.4，由协调者在完整平台验收后确认）。
+- [x] 支付实测文档与 Q4/Q5/Q6 实现核对（billing 10.4，2026-10-15）：记录真实 Sandbox 事件差异、录制来源、已通过与仍待验证的边界；Q4/Q5/Q6 的已实现策略不等于完整平台矩阵通过。协调者继续负责 3.3 与 11.1。
 - [ ] **阶段验收（billing 11.1）**：两家测试环境下完成订阅（月付、年付）、续费（测试时钟 / 沙箱）、取消、积分包购买、退款；重复投递 Webhook 不重复发积分；首付只发一次积分；并发扣减不出现负数；PayPal 换套餐期间新旧订阅可并存；hold 在批次过期 / 被收回后释放，积分对账不变式仍成立。Stripe 管理员部分退款审核与 PayPal 完整矩阵仍待验收。
 
 ## Phase 3 · AI 文本
@@ -165,9 +165,9 @@
 | Q1 | 表单库 | 已决定并接入：TanStack Form + Zod（#20、#22） | 2026-10-04，P1 验收确认 |
 | Q2 | 内容方案 | 已决定并接入（#44、#76）：content-collections。博客、法律页与可选文档站都是 `apps/web/content/<集合>/<locale>/<slug>.mdx`，frontmatter 用 Zod 校验；MDX 在构建期渲染为静态 HTML（Worker 不允许执行 MDX 编译结果），文档搜索使用构建期生成的纯文本索引。不引入 Fumadocs：它的路由与 UI 体系对博客和法律页过重；个别站点需要重型文档站时再单独引入 | 2026-10-10 决定；2026-10-11 P6 验收并归档（#86） |
 | Q3 | 产品分析 | 已决定并接入（#56、#60）：默认只用无 Cookie 的 Cloudflare Web Analytics（配置公开 token 后在公开页面加载）；PostHog 为可选接入点，由 `features.analytics` 控制且默认关闭，开启后须用户同意（`saas.analytics.consent`）并尊重 DNT，后台不加载；不做 Umami | 2026-10-07 |
-| Q4 | 订阅积分是否结转 | 已按设计确定：按套餐配置，默认不结转（#24） | 2026-10-04 离线验证确认；完整平台验收与文档汇总待 billing 10.4/11.1 |
-| Q5 | 升级时是否立即补发积分差额 | 已按设计确定：默认不立即补发（#24）；Stripe 升级链路已实测（#71） | 2026-10-04 离线验证确认；PayPal 换套餐与最终汇总待 billing 10.4/11.1 |
-| Q6 | 退款时已消费积分的处理 | 已按设计确定：默认不追溯（#24）；Stripe 平台退款已实测（#71） | 2026-10-04 离线验证确认；管理员审核、PayPal 退款与最终汇总待 billing 10.4/11.1 |
+| Q4 | 订阅积分是否结转 | 已按设计确定：按套餐配置，默认不结转（#24） | 2026-10-04 策略确定；2026-10-15 文档核对 `grantSubscriptionMonth` 与账期过期测试：月付默认周期末 + 24h，不结转；staging 时间与年付完整验收仍待 11.1 |
+| Q5 | 升级时是否立即补发积分差额 | 已按设计确定：默认不立即补发（#24）；Stripe 升级链路已实测（#71） | 2026-10-04 策略确定；2026-10-15 文档核对 `payment.kind=adjustment` 不发积分，仅 initial/renewal 发放；PayPal 换套餐完整验收仍待 11.1 |
+| Q6 | 退款时已消费积分的处理 | 已按设计确定：默认不追溯（#24）；Stripe 平台退款已实测（#71） | 2026-10-04 策略确定；2026-10-15 文档核对 `revokePaymentCredits` 只收回剩余积分，部分退款也收回全部剩余批次；管理员与 PayPal 真实退款验收仍待 3.3/11.1 |
 | Q7 | 文本中断时的最低计费 | 已决定：优先流内最终 usage；无 usage 时按检查点估算，无检查点按估算输入、输出为 0 计算，应用 `minCharge ?? 1` 下限后再以 `hold.amount` 封顶。按次有输出才扣费；不做 Gateway 日志回查（决策 12，#98），详见 chat design 与 `06` §3 | 2026-10-11 取值确认（#84）；2026-10-12 封顶与决策 12（#89、#98）；staging 5.1 待办 |
 | Q8 | 是否启用 RLS 加固 | 已决定：默认否；P1 使用 scoped() + lint + 实时成员校验（#13、#22） | 2026-10-04，P1 验收确认 |
 | Q9 | Stripe 正式收款所需主体 | 未决定：注册海外主体 / 仅 PayPal 上线 / 接 MoR；测试账号联通与 test/live 工厂完成（#104）不代表正式收款资格已解决 | 上线前由用户决定 |
