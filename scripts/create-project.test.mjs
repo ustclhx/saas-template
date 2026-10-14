@@ -22,7 +22,7 @@ async function fixture(t) {
     app: { name: 'FixtureApp', url: 'https://fixture.example', supportEmail: 'support@fixture.example' },
     i18n: { locales: ['en', 'zh'], defaultLocale: 'en' },
     tenancy: { multiTenant: false }, auth: { oauth: ['google'], turnstile: true },
-    billing: { providers: ['stripe'] }, ai: { text: true, image: true, video: true, mediaProviders: ['fal', 'workers-ai'] },
+    billing: { providers: ['stripe'] }, ai: { text: { enabled: true, thinking: { default: 'off', userToggle: false }, reasoning: { display: false }, failedReplyRefund: 'no-visible-output' }, image: true, video: true, mediaProviders: ['fal', 'workers-ai'] },
     features: { blog: true },
   })`,
   )
@@ -301,4 +301,15 @@ test('项目名包含旧 scope 前缀时资源只改名一次', async (t) => {
   const worker = await readFile(join(result.target, 'apps/jobs/src/index.ts'), 'utf8')
   assert.match(worker, /'fixture-smoke-email-staging'/)
   assert.doesNotMatch(worker, /fixture-smoke-smoke/)
+})
+
+test('文本对象开关按 ai 列表裁剪并保留 reasoning 策略', async (t) => {
+  for (const ai of ['', 'text']) {
+    const f = await fixture(t)
+    const result = await createProject({ ...f.input, ai }, f.source)
+    const config = await readFile(join(result.target, 'template.config.ts'), 'utf8')
+    assert.match(config, new RegExp(`text: \\{ enabled: ${ai === 'text'}`))
+    assert.match(config, /thinking: \{ default: 'off', userToggle: false \}/)
+    assert.match(config, /failedReplyRefund: 'no-visible-output'/)
+  }
 })

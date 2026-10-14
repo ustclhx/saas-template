@@ -119,7 +119,8 @@ export default defineTemplateConfig({
     refundWindowDays: 30,              // 可申请退款的付款时间范围；退款需人工审核，默认不主动退
   },
   ai: {
-    text: true, image: true, video: true,
+    text: { enabled: true, thinking: { default: 'off', userToggle: false }, reasoning: { display: false }, failedReplyRefund: 'no-visible-output' },
+    image: true, video: true,
     // 新建模型时的默认计费方式，后台可逐个模型修改：'per_call' 按次 | 'token' 按 token | 'per_unit' 按张/秒
     defaultPricingMode: { text: 'token', image: 'per_call', video: 'per_call' },
   },

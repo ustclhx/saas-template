@@ -40,7 +40,7 @@ it('wires real consumers, retry/DLQ, disabled modules, heartbeat readiness and g
   const template = defineTemplateConfig({
     app: { name: 'Fixture', url: 'https://example.com', supportEmail: 'support@example.com' },
     billing: { providers: [], signupBonusCredits: 0 },
-    ai: { text: false, image: false, video: false },
+    ai: { text: { enabled: false }, image: false, video: false },
   })
   const attempts = new Map<string, number>()
   const originalFetch = globalThis.fetch

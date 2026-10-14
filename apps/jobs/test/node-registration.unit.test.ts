@@ -45,7 +45,7 @@ import { getNodeJobFeatures, registerNodeJobsSchedules } from '../src/node/regis
 const disabled = defineTemplateConfig({
   app: { name: 'test', url: 'https://example.test', supportEmail: 'support@example.test' },
   billing: { providers: [], signupBonusCredits: 0 },
-  ai: { text: false, image: false, video: false },
+  ai: { text: { enabled: false }, image: false, video: false },
 })
 const business = vi.fn(() => ({}) as ReturnType<JobsContext['db']['business']>)
 const context = {
@@ -145,4 +145,18 @@ it('enables ten-minute object cleanup only for assembled file capability', async
   expect(mocks.files).toHaveBeenCalledExactlyOnceWith(available)
   expect(mocks.billing).not.toHaveBeenCalled()
   dispose()
+})
+
+it('uses text.enabled to register text recovery and credit maintenance', () => {
+  const config = defineTemplateConfig({
+    app: disabled.app,
+    billing: { providers: [], signupBonusCredits: 0 },
+    ai: { text: { enabled: true }, image: false, video: false },
+  })
+  expect(getNodeJobFeatures(config)).toEqual({
+    billing: false,
+    credits: true,
+    text: true,
+    media: false,
+  })
 })

@@ -44,7 +44,7 @@ describe('defineTemplateConfig', () => {
       posthogHost: 'https://us.i.posthog.com',
     })
     expect(config.ai).toEqual({
-      text: true,
+      text: templateConfigDefaults.ai.text,
       image: true,
       video: false,
       mediaProviders: ['fal', 'workers-ai'],
@@ -121,4 +121,27 @@ describe('defineTemplateConfig types', () => {
     ]
     expectTypeOf(invalid).toBeFunction()
   })
+})
+
+it('merges text policy defaults and rejects invalid text policy values', () => {
+  const config = defineTemplateConfig({
+    app,
+    ai: { text: { enabled: false, thinking: { userToggle: true } } },
+  })
+  expect(config.ai.text).toEqual({
+    enabled: false,
+    thinking: { default: 'off', userToggle: true },
+    reasoning: { display: false },
+    failedReplyRefund: 'no-visible-output',
+  })
+  for (const text of [
+    { enabled: 'false' },
+    { thinking: { default: 'auto' } },
+    { reasoning: { display: 1 } },
+    { failedReplyRefund: 'none' },
+    { extra: true },
+  ]) {
+    // 外部配置可能绕过 TypeScript，运行时也必须拒绝非法策略。
+    expect(() => defineTemplateConfig({ app, ai: { text: text as never } })).toThrow()
+  }
 })

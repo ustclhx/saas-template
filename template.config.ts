@@ -36,7 +36,12 @@ export default defineTemplateConfig({
     refundWindowDays: 30, // 可申请退款的付款时间范围；退款需人工审核，默认不主动退
   },
   ai: {
-    text: true,
+    text: {
+      enabled: true,
+      thinking: { default: 'off', userToggle: false },
+      reasoning: { display: false },
+      failedReplyRefund: 'no-visible-output',
+    },
     image: true,
     video: true,
     mediaProviders: ['fal', 'workers-ai'], // 只启用需要的媒体服务商；Workers AI 使用 AI 绑定，无外部密钥

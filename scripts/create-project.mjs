@@ -140,7 +140,11 @@ function templateConfig(source, options) {
       `mediaProviders: ${JSON.stringify(options.mediaProviders)}`,
     )
     .replace(/providers:\s*\[[^\]]*\]/, `providers: ${JSON.stringify(options.billing)}`)
-  for (const name of aiNames) {
+  result = result.replace(
+    /(text:\s*\{\s*enabled:)\s*(?:true|false)/,
+    `$1 ${options.ai.includes('text')}`,
+  )
+  for (const name of ['image', 'video']) {
     result = result.replace(
       new RegExp(`${name}:\\s*(?:true|false)`),
       `${name}: ${options.ai.includes(name)}`,
