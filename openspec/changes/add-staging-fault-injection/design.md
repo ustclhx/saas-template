@@ -69,7 +69,7 @@
 
 不在模型构造阶段 throw，否则没有 hold 可验证。流前在包装后的 doStream 抛安全异常，不调用真实模型；仅故障模型显式 `maxRetries=0`。流中调用原 Provider 的 doStream，转发真实 text-delta 后中断读取并以流异常终止；不只 enqueue error chunk 后 close：当前 AI SDK 仍可能触发 onEnd，被现 handler 当成 completed。
 
-流中注入在累计真实文本足以触发已有 token 检查点后执行（固定 200 个估算输出 token），并限制现有 maxOutputTokens 为 1024；真实流未达到阈值即结束则场景未触发，不认证成功。停止上游 reader，但不触发业务“用户停止” AbortController，确保状态是 failed。保留现有 onChunk、checkpoint、done、settleInterruptedChatMessage 路径，不修改收费公式。四个模型模式×定价组合分别核验：per_call 无输出 0、有输出固定费用；token 按输入/已输出估算与 minCharge、封顶 hold，无额外欠费。
+流中注入在累计真实文本足以触发已有 token 检查点后执行（固定 200 个估算输出 token），并限制现有 maxOutputTokens 为 1024；真实流未达到阈值即结束则场景未触发，不认证成功。阈值只计正文 text-delta（与检查点、部分输出和 per_call 有输出判定同口径）；`deepseek-flash` 默认思考可能只产生 reasoning 并用尽上限，故障调用经包装器固定关闭思考，不把 reasoning 计入阈值。停止上游 reader，但不触发业务“用户停止” AbortController，确保状态是 failed。保留现有 onChunk、checkpoint、done、settleInterruptedChatMessage 路径，不修改收费公式。四个模型模式×定价组合分别核验：per_call 无输出 0、有输出固定费用；token 按输入/已输出估算与 minCharge、封顶 hold，无额外欠费。
 
 全假 staging 文本流无法证明真实流经过错误分支，故只在本地用已安装 SDK/夹具复现。Gateway 日志比对依然独立，direct/gateway 出口保持现有配置。
 

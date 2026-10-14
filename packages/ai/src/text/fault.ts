@@ -59,6 +59,17 @@ export function wrapTextFaultModel(
     model,
     middleware: {
       specificationVersion: 'v4',
+      // deepseek-flash 默认开启思考：输出可能全是 reasoning-delta，用尽 maxOutputTokens 仍无可见
+      // 文本，流中注入的文本阈值永不到达（staging fault-2026-10-14a）。故障调用固定关闭思考，让真实
+      // 流产生 text-delta，经过检查点与错误分支；只作用于故障模型，普通模型的思考配置不变。
+      transformParams: async ({ params }) => ({
+        ...params,
+        reasoning: 'none',
+        providerOptions: {
+          ...params.providerOptions,
+          deepseek: { ...params.providerOptions?.deepseek, thinking: { type: 'disabled' } },
+        },
+      }),
       wrapGenerate: async () => {
         throw new AppError('ACCEPTANCE_FAULT_INVALID', 'Acceptance model requires streaming', {
           status: 503,
