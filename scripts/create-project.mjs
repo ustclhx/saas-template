@@ -635,7 +635,12 @@ export function verifyProject(target, { nodeBuild = false } = {}) {
     delete env.SENTRY_PROJECT
     delete env.SENTRY_RELEASE
   }
-  const commands = [['install', '--frozen-lockfile'], ['typecheck'], ['test']]
+  // 完整矩阵逐包执行测试，避免多个 Node 构建探针争抢 CPU；保持用例断言与时限不变。
+  const commands = [
+    ['install', '--frozen-lockfile'],
+    ['typecheck'],
+    nodeBuild ? ['test', '--concurrency=1'] : ['test'],
+  ]
   if (nodeBuild) commands.push(['build:node'])
   for (const args of commands) {
     const result = spawnSync('pnpm', args, { cwd: target, env, stdio: 'inherit' })
