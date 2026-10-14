@@ -2,8 +2,18 @@ name: Selfhost images
 
 on:
   pull_request:
+    # 纯文档/规格/证据改动不影响镜像内容，跳过约 15 分钟的双架构构建；发布经 workflow_call 不受影响。
+    paths-ignore:
+      - 'docs/**'
+      - 'openspec/**'
+      - '**/*.md'
   push:
     branches: [main]
+    # 纯文档/规格/证据改动不影响镜像内容，跳过约 15 分钟的双架构构建；发布经 workflow_call 不受影响。
+    paths-ignore:
+      - 'docs/**'
+      - 'openspec/**'
+      - '**/*.md'
   workflow_call:
     inputs:
       sha:
