@@ -37,10 +37,10 @@
 ## 4. 基础与逻辑备份（B1、B2，backup owner）
 
 - [ ] 4.1 为 selfhost PG/工具镜像安装固定 checksum WAL-G（两架构），增加文件 secret、S3 endpoint/region/prefix/path-style/CA、禁用元数据探测与非 root 配置。验证：独立 S3 兼容夹具、两架构 UID/secret读取/TLS失败边界通过，app 三角色权限不变，web/jobs 无备份管理凭据；写配置说明。（B1）
-- [ ] 4.2 启用 PG WAL 归档及 wrapper、归档延迟/失败状态查询；设置一处持久调度与互斥，每日 full base，配置备份资源/上传限额。验证：真实写入→S3 base/WAL/timeline 可查询，重启后调度恢复，目标不可达非零失败/不丢 WAL；记录空间和连接预算，不改 CF infra/postgres。（B1）
-- [ ] 4.3 实现 7 天每日+4 周每周锚点的可调保留计划、dry-run、WAL链保护和失败禁止破坏性清理。验证：精简保留边界用例及隔离 S3 清理证明最老 weekly base 仍可 PITR；缺段/新备份失败/副本失败保留可用链；固定 WAL-G 删除行为有实际证据，runbook禁止独立年龄删 WAL。（B1）
-- [ ] 4.4 实现每日 custom-format pg_dump 与角色/权限恢复材料、受限临时空间、成功后上传、失败清理和状态。验证：`pg_restore --list` 与隔离完整恢复成功，业务/任务 schema 和角色权限一致，磁盘不足/上传失败明确非零、日志无真值；写逻辑备份用途与保留说明。（B2）
-- [ ] 4.5 实现 backup 状态查询与 runbook（最近 base/dump/归档/副本成功、连续上界、失败计数、pg_stat_archiver/磁盘），整合工具服务健康/重启/资源/log rotation。验证：失效注入状态正确、重启自动恢复调度，CPU/RSS/连接/WAL/磁盘峰值记录，不用“进程活着”冒充备份成功。（B1、B2）
+- [x] 4.2 启用 PG WAL 归档及 wrapper、归档延迟/失败状态查询；设置一处持久调度与互斥，每日 full base，配置备份资源/上传限额。验证：真实写入→S3 base/WAL/timeline 可查询，重启后调度恢复，目标不可达非零失败/不丢 WAL；记录空间和连接预算，不改 CF infra/postgres。（B1）
+- [x] 4.3 实现 7 天每日+4 周每周锚点的可调保留计划、dry-run、WAL链保护和失败禁止破坏性清理。验证：精简保留边界用例及隔离 S3 清理证明最老 weekly base 仍可 PITR；缺段/新备份失败/副本失败保留可用链；固定 WAL-G 删除行为有实际证据，runbook禁止独立年龄删 WAL。（B1）
+- [x] 4.4 实现每日 custom-format pg_dump 与角色/权限恢复材料、受限临时空间、成功后上传、失败清理和状态。验证：`pg_restore --list` 与隔离完整恢复成功，业务/任务 schema 和角色权限一致，磁盘不足/上传失败明确非零、日志无真值；写逻辑备份用途与保留说明。（B2）
+- [x] 4.5 实现 backup 状态查询与 runbook（最近 base/dump/归档/副本成功、连续上界、失败计数、pg_stat_archiver/磁盘），整合工具服务健康/重启/资源/log rotation。验证：失效注入状态正确、重启自动恢复调度，CPU/RSS/连接/WAL/磁盘峰值记录，不用“进程活着”冒充备份成功。（B1、B2）
 
 ## 5. PITR、演练与第二供应商（B3–B5，backup owner）
 

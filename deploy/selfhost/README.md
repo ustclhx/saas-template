@@ -115,3 +115,12 @@ docker compose --env-file .env --env-file .env.object-storage \
 ```
 
 不加 `-v`。随后关闭profile时省略第二份配置文件，使用部署方的外部S3配置；该操作不复制对象，旧对象不会自动出现在新endpoint。重新启用时复用相同project名、卷和凭据。密钥轮换、数据迁移/备份由部署方另行安排。
+
+## 可选 PG 备份（D 4.1–4.5）
+
+显式加载 `compose.backup.yaml` 与 `.env.backup.example` 的本机副本，使用与 PG 同一
+完整 SHA 的 backup 镜像；WAL-G v3.0.8、每日 full/逻辑备份和连续归档，仅 PG/工具
+获得独立 backup file secrets、UID999 peer socket、受限状态卷。默认每日02:00 UTC，
+7天每日＋4周 weekly 保留完整连续链；实际清理先 dry-run 和最老链校验。
+配置、逻辑恢复用途、状态/告警及未完成外部验收见
+[备份 runbook](../../docs/runbooks/selfhost-backup.md)。不加载 override 时原有部署保持可用。

@@ -6,7 +6,7 @@ runner。显式检出源后以 `git rev-parse HEAD` 固化版本；PR 使用 mer
 
 每架构校验 Dockerfile 中基础 digest 的 multiarch manifest，再 buildx `--load` 构建
 catalog 的完整已有集合及 native-smoke。实际启动 PG/Valkey/migrate/web/jobs/Caddy/
-object-storage，核对镜像与 PID1 UID、原生 sharp、SQL→DBOS 迁移、真实五分钟 heartbeat、
+object-storage，并以独立PG/S3夹具验收backup真实备份和逻辑恢复，核对镜像与 PID1 UID、原生 sharp、SQL→DBOS 迁移、真实五分钟 heartbeat、
 TLS、web/jobs 编译 SHA（运行时伪造 APP_VERSION 不能覆盖）。夹具只使用随机本地 file
 secrets、自签 CA、私有网络和临时卷，无宿主数据端口；结束只清理自己创建的 project。
 
@@ -19,7 +19,7 @@ pnpm12.8.1；精确 patch 与 Docker/Buildx/Compose 版本以实际 run 证据�
 web/jobs 编译版本、真实心跳、Caddy TLS 与全部常驻 PID1 非 root，临时 project/卷已清理。
 实际版本：Node22.23.3、PG17.11（Debian17.11-1.pgdg13+2）、Valkey8.1.6、Caddy2.11.2、
 SeaweedFS4.48（530be3e37）；Docker client/server29.1.3、Compose2.40.3-desktop.1、
-Buildx0.30.1-desktop.1。amd64 原生构建/运行留 PR CI，backup 与真实 registry 发布尚未验收。
+Buildx0.30.1-desktop.1。amd64 原生构建/运行留 PR CI，真实 registry 发布尚未验收。D 4.1–4.5 的backup本机证据见 [备份runbook](../../../docs/runbooks/selfhost-backup.md)。
 
 ## 合并后的首次验证与触发
 
@@ -27,9 +27,10 @@ Buildx0.30.1-desktop.1。amd64 原生构建/运行留 PR CI，backup 与真实 r
 下载两个架构的 `selfhost-images-<sha>-<arch>` artifacts 检查 build.json/smoke.json。
 仅成功 smoke 会上传镜像 tar，发布不会重新构建另一份未测镜像。
 
-当前 backup 工具尚待 D 4.1，publish 的完整集合门会明确失败；此时只能验证只读 CI。
-backup owner 接入 Dockerfile/双架构实际 smoke、清除 catalog 的 pendingServices 后，
-等待新的 main CI 成功，再由协调者明确选择 namespace 和完整提交号触发：
+backup工具现已接入catalog与两个架构的实际runtime smoke：固定WAL-G checksum、UID999、
+secret/TLS失败边界、真实base/WAL/dump与角色恢复、持久调度及资源检查，成功生成
+backup-smoke.json后才允许整组artifact通过。本机arm64完整验收已通过；amd64以本PR
+CI原生矩阵为准。等待新的main CI两架构全部成功，再由协调者明确选择namespace和完整提交号触发：
 
 ```sh
 gh workflow run selfhost-publish.yml --ref main \

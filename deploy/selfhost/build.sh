@@ -12,6 +12,6 @@ for target in web jobs migrate; do
   docker build -f deploy/selfhost/app.Dockerfile --target "$target" \
     --build-arg "APP_VERSION=$version" -t "$namespace/$target:$version" .
 done
-for service in postgres valkey caddy; do
+for service in postgres valkey caddy backup; do
   docker build -f "deploy/selfhost/$service.Dockerfile" -t "$namespace/$service:$version" .
 done
