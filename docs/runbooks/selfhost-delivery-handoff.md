@@ -53,6 +53,18 @@ Compose 已将 `JOB_EXECUTOR_ID` 同时用于稳定 hostname，并挂载 `job_ow
 
 1.5 的签收尚待协调者确认，D 2 的恢复验收与 6.3/7.3 仍受此门限制。本 worker 不修改 B。
 
+### 2026-10-15 d-vm 补修及剩余门
+
+本次任务明确授权 B 补修同 PR 交付。检查固定正式 SHA `0813050` 后发现：不同 PID
+namespace 可能同时活着，同名异机的 boot 差异也不能证明旧机退出。新实现要求可信宿主
+machineId，同 boot 下不同 namespace 拒绝；D Compose 接入 host PID namespace 和只读
+宿主身份。Linux 初始化临界区以 OS flock 保护可信 dead guard 的定向恢复，保留历史记录。
+确切行为、Linux/PG/VM证据见 [d-vm报告](evidence/selfhost/d-vm-2026-10-15/report.md)。
+
+原正式 bundle/镜像保持不可变；新源码 fixture 不代签旧正式镜像。旧记录缺machineId的
+可信迁移、异机恢复退出证明和补修后正式镜像仍待协调者签收，因此1.5与依赖它的
+2.1/2.3/6.3保留未勾选。第7组主机决策门不变；没有连接真实服务器或触发新发布。
+
 ## 镜像集合与后续接入
 
 `deploy/selfhost/images/catalog.json` 当前含 web/jobs/migrate/postgres/valkey/caddy/

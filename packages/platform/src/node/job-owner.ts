@@ -7,7 +7,8 @@ export interface ProcessOwner {
   readonly host: string
   readonly pidNamespace: string
   readonly token: string
-  // 旧版本记录没有这两项；不能凭缺少身份信息接管仍存活的 PID。
+  // 旧 Linux 记录缺宿主身份时必须人工核验迁移，不能用新机 boot ID 猜测旧机退出。
+  readonly machineId?: string
   readonly bootId?: string
   readonly startTime?: string
 }
@@ -29,6 +30,11 @@ async function processStartTime(pid: number): Promise<string> {
 export async function processOwner(): Promise<ProcessOwner> {
   const base = { pid: process.pid, host: hostname(), token: randomUUID() }
   if (process.platform !== 'linux') return { ...base, pidNamespace: 'host' }
+  const machineId = (await readFile(process.env.JOB_HOST_ID_FILE ?? '/etc/machine-id', 'utf8'))
+    .trim()
+    .toLowerCase()
+  if (!/^[0-9a-f]{32}$/.test(machineId) || /^0+$/.test(machineId))
+    throw new Error('Invalid Linux host identity')
   const bootId = (await readFile('/proc/sys/kernel/random/boot_id', 'utf8')).trim()
   if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(bootId))
     throw new Error('Invalid Linux boot identity')
@@ -37,6 +43,7 @@ export async function processOwner(): Promise<ProcessOwner> {
     throw new Error('Invalid Linux PID namespace')
   return {
     ...base,
+    machineId,
     pidNamespace: String(namespace.ino),
     bootId,
     startTime: await processStartTime(process.pid),
@@ -58,10 +65,18 @@ export async function processExited(owner: ProcessOwner, current: ProcessOwner):
     // 损坏的旧 namespace 不是重启证明；旧 Linux 记录也必须是有效 inode。
     if (!/^[1-9]\d*$/.test(owner.pidNamespace) || !Number.isSafeInteger(Number(owner.pidNamespace)))
       return false
-    // 同一 hostname 的容器重启可能复用 PID 1；boot/namespace 变化证明旧 incarnation 已退出。
-    if (!current.bootId || !current.startTime) return false
-    if (owner.bootId && owner.bootId !== current.bootId) return true
-    if (owner.pidNamespace !== current.pidNamespace) return true
+    // hostname 可被异机复用；只有可信宿主身份相同，boot 变化才证明旧宿主已重启。
+    if (
+      !owner.machineId ||
+      owner.machineId !== current.machineId ||
+      !owner.bootId ||
+      !current.bootId ||
+      !current.startTime
+    )
+      return false
+    if (owner.bootId !== current.bootId) return true
+    // 不同 namespace 可以同时存活；selfhost 容器共享宿主 PID namespace 后才可查询旧 PID。
+    if (owner.pidNamespace !== current.pidNamespace) return false
     try {
       const startTime = await processStartTime(owner.pid)
       return owner.startTime !== undefined && owner.startTime !== startTime
