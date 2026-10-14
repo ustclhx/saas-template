@@ -35,9 +35,9 @@ C 的存储能力不等于 B 的媒体 workflow 已移植，D 不替 5.3/5.4 验
 ## B/D 生命周期签收（D 1.5）
 
 设计文档的 ownership 快照早于已合入的补修。现在 `job-owner.ts` 的
-`ProcessOwner` 包含 `bootId`、`startTime`、host、PID 与 PID namespace；
-`processOwner()` 读取 Linux boot ID、namespace inode 和 `/proc/<pid>/stat`；
-`processExited()` 在同 hostname 下核对 incarnation，无法证明时拒绝接管。
+`ProcessOwner` 包含可信宿主 `machineId`、host、PID 与 PID namespace，
+boot ID 和启动时间仅供诊断；`processExited()` 要求相同 hostname/machineId，
+且旧 token 锁文件存在并可取得非阻塞共享 flock，无法证明时拒绝接管。
 Compose 已将 `JOB_EXECUTOR_ID` 同时用于稳定 hostname，并挂载 `job_owners` 到
 `/app/.data/job-owners`；UID1000、目录0700。以
 [A 最终验收](selfhost-a-final.md) 和 [引擎 runbook](node-job-engine.md) 为证据来源。
@@ -46,12 +46,13 @@ Compose 已将 `JOB_EXECUTOR_ID` 同时用于稳定 hostname，并挂载 `job_ow
 
 - 旧执行者仍活时，同 ID 启动明确拒绝；退出后才能恢复同版本任务。
 - `stop/start` 与保留卷的 container recreate 分别有证据；hostname/ID 稳定，旧 owner/guard 保留，PID 1 复用不被误认。
-- Linux boot ID 改变的证明与实际 VM reboot 后恢复分别记录；不能用 container restart 替代 reboot。
+- 实际 VM reboot 改变 boot ID，并由内核释放旧进程持有的 flock 后恢复；不能用 container restart 替代 reboot，也不以 boot ID 单独作为退出证明。
 - 异机恢复只在旧执行者确定退出、版本/handler 匹配后执行明确恢复流程；不能复制 owner 文件当作退出证据。
 - 双 jobs 的互异 ID/hostname、共享持久 ownership 目录与引擎 namespace 契约签收；不能直接 `--scale jobs=2` 复制同 ID。
 - 记录排空/强制退出、旧任务身份、成功 step 缓存、原 deadline 和幂等结果；不能仅用 health SHA 证明任务恢复。
 
-1.5 的签收尚待协调者确认，D 2 的恢复验收与 6.3/7.3 仍受此门限制。本 worker 不修改 B。
+上述为原签收清单；本机正式 flock 验收进展见下方 d-vm2 记录。异机恢复和真实服务器
+仍各有独立门，本轮没有修改 B 引擎。
 
 ### 2026-10-15 d-vm 补修及剩余门
 
@@ -64,11 +65,31 @@ machineId，同 boot 下不同 namespace 拒绝；D Compose 接入 host PID name
 评审后将退出证明改为进程生命周期内核锁：Node 持有 ownership 卷上 executor/token 锁的
 描述符直至真实退出，同机跨容器/namespace 由 flock 互斥证明，不再使用 `pid:host`；
 machineId 仍拒绝异机卷。d-vm 报告中的补修 VM 证据针对此前 `pid:host` 版本，
-锁版本需协调者安排重跑 `test-vm-lifecycle.py --patched` 的 exit/namespace/recreate/reboot。
+锁版本使用 `test-vm-lifecycle.py --official-flock --expected-sha <正式完整SHA>`
+重跑 exit/namespace/recreate/reboot，禁止挂载本地补修源码代替发布镜像。
 
-原正式 bundle/镜像保持不可变；新源码 fixture 不代签旧正式镜像。旧记录缺machineId的
-可信迁移、异机恢复退出证明和补修后正式镜像仍待协调者签收，因此1.5与依赖它的
-2.1/2.3/6.3保留未勾选。第7组主机决策门不变；没有连接真实服务器或触发新发布。
+原正式 bundle/镜像保持不可变；新源码 fixture 不代签旧正式镜像。协调者已确认
+修复前镜像（0813050及更早）从未部署到真实服务器，**BREAKING：不提供缺machineId或
+token锁文件的旧owner升级迁移路径，正式flock版须新卷部署**；不自动改写旧记录或删除
+目录绕过。异机恢复退出证明仍为开放设计项，本轮不实现。正式镜像的本机签收与
+第7组真实服务器门分别处理，不以本地VM验收解除真实主机决策门。
+
+### 2026-10-15 d-vm2 正式 flock 本机签收
+
+第三次已批准的正式发布为 `598d1f68b6ef7b19e8a6d30c13575bac1701b7c2`
+（[run 38624392597](https://github.com/ustclhx/saas-template/actions/runs/38624392597)）。
+新建 Debian12 arm64 Lima `selfhost-d-vm2`（2C/4GiB），初始部署、reboot和生命周期探针
+使用其原版 bundle 与正式 GHCR digest；升级回滚另使用仅SHA元数据变化的本地registry
+fixture。生产 jobs 和受控任务 probe 均没有源码补修挂载或 host PID namespace。
+
+正式代码的 exit/namespace/recreate/reboot 全部通过：旧进程仍活、DB advisory 已释放时
+拒绝同 ID；真实退出后恢复；保留原任务身份、原 deadline，成功 callback 恰一次。
+实际 reboot 后全部常驻服务含 backup 自动恢复、迁移不循环，fresh 自然 heartbeat、
+web/jobs 完整 SHA、backup scheduler/成功 slot、数据与卷保持。
+据此按协调者本轮已定范围勾选 1.5 与 6.3；异机退出证明仍开放，第7组保持待办。
+同轮正式bundle SSH部署、真实PG/DBOS升级/失败/回滚与八项隔离机制通过后，2.1/2.3
+也已勾选。任务资源与VM已删除，不将本地版本元数据fixture称为第二个正式发布。
+逐项证据见 [d-vm2报告](evidence/selfhost/d-vm2-2026-10-15/report.md)。
 
 ## 镜像集合与后续接入
 

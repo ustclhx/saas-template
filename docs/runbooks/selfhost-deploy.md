@@ -104,10 +104,18 @@ bundle与registry镜像，第二版仅为本地registry版本元数据fixture。
 状态不等于未完成任务恢复；后者及6.3仍依赖1.5签收，2.1/2.3仅按已完成证据判断。
 
 第二次真实GHCR发布已授权并成功，完整恢复bundle已齐，见[release](selfhost-release.md#第二次正式-ghcr-集合与完整-bundle2026-10-14)。
-2.1/2.3仍依赖B/D1.5签收，第7组主机/入口/备份/重启均BLOCKED；
+第二次发布时2.1/2.3仍依赖B/D1.5签收，第7组主机/入口/备份/重启均BLOCKED；
 没有连接 `product-res-ecs` 或其他真实服务器，不手动部署Cloudflare staging。
 
 2026-10-15 的 [d-vm验收](evidence/selfhost/d-vm-2026-10-15/report.md)补充临时Debian VM、
 真实SSH入口、完整backup和宿主reboot证据，并发现固定正式`0813050`的B退出证明缺口。
 本PR补修同机身份/namespace及guard；旧记录与异机迁移、新正式镜像仍待签收，
 不以本地新源码fixture提前勾选1.5或依赖它的2.1/2.3/6.3。
+
+2026-10-15 的第三次正式发布 `598d1f68b6ef7b19e8a6d30c13575bac1701b7c2` 已在
+新Lima `selfhost-d-vm2` 完成正式flock生命周期、全栈实际reboot、严格SSH部署与真实
+PG/DBOS升级/失败/兼容回滚，1.5/2.1/2.3/6.3已勾选。
+详见[d-vm2证据](evidence/selfhost/d-vm2-2026-10-15/report.md)；升级回滚第二版明确为
+本地registry仅SHA元数据fixture，不是第二个正式版本或补修源码镜像。
+修复前镜像从未部署真实服务器，不提供旧缺machineId/token锁记录的迁移，要求新卷
+部署；异机退出证明仍开放，第7组不变。VM及所属资源已清理。
