@@ -22,7 +22,9 @@
 - [x] 2.2 完成并发请求/消息 isolation scope、标签与安全异常 envelope，禁 PII/正文/自动 DB/AI/Queue内容和 breadcrumbs，保护 Error.message/stack/cause 中的链接/凭据。验证：实际 transport envelope 的两个空间并发事件各自身份正确，恶意异常中的 Authorization/Cookie/OTP/签名 query/S3/SMTP凭据/正文不出现，安全码与源码 frames 保留；重复捕获不重复上报，监控出站失败不改业务/DLQ结果，shared/CF 脱敏回归通过。
 - [x] 2.3 补齐 Node web/jobs server maps，并复用现有 release→inject→upload 流程增加 `.output/server` 与 dist `web-node/jobs-node`；token 仅上传步骤使用，产物无公开 maps。验证：`pnpm build:node` 的两输出含预期 source map/debug id、完整 SHA和正确 dist，上传 fixture 选中 Node 路径且不串 CF；生产 HTTP 对 map 访问不可用、无凭据 build/预渲染仍通过；记录运行命令，不改 staging 触发器或承接 D 发布流水线。
 - [x] 2.4 把 flush/close 接入 A 剩余 shutdown deadline，正常退出/未启用/监控断网都不延长预算。验证：真实 Node 子进程 capture 后 SIGTERM 的可达/不可达 transport 退出在上限内，没有改变 DBOS停止领取/排空/业务池关闭顺序，未启用无副作用；文档记录可能未发出事件的边界。
-- [ ] 2.5 在已授权 Sentry 测试项目验证同版本 Node web/jobs 可读源码堆栈与受控错误采集。验证：事件的完整 SHA、dist、requestId/任务标识与源码位置有脱敏记录，既有实时admin/同源/先审计异常入口保护保持；无项目凭据时保持此项未完成，transport fixture 不能代替真实 source map 验收。
+- [x] 2.5 在已授权 Sentry 测试项目验证同版本 Node web/jobs 可读源码堆栈与受控错误采集。验证：事件的完整 SHA、dist、requestId/任务标识与源码位置有脱敏记录，既有实时admin/同源/先审计异常入口保护保持；无项目凭据时保持此项未完成，transport fixture 不能代替真实 source map 验收。
+
+2026-10-14 验收记录：release 70496c6（environment smoke，本地 Node 生产输出）web-node 事件顶帧映射 `apps/web/src/server/sentry-test.ts:30`、jobs-node 事件映射 `packages/email/src/node/smtp.ts:165`，源码上下文可读、各 1 事件、无凭据/正文，见[核验证据](../../../docs/runbooks/evidence/selfhost/c-2.5-sentry-node-verification-70496c6.json)；此前 65c0413 的 web-node 映射失败由 #179 修复，[原失败证据](../../../docs/runbooks/evidence/selfhost/c-2.5-sentry-node-verification.json)保留。
 
 ## 3. SMTP（E1，email Node adapter owner；共享配置/consumer协调者串行）
 

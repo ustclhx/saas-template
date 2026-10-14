@@ -35,6 +35,14 @@ JSON 中的 `evidenceCommitted: false`、阻塞、推断及待授权状态是当
 | [fault-2026-10-14a](2026-10-14/fault-2026-10-14a-execution-status.json) | 11 | 10 通过；chat-mid-stream-per_call 未触发注入（deepseek-flash 思考耗尽上限，#165、#166）。fal 5 次、DeepSeek 2 次真实调用，共 8 积分，对账零差额。[Sentry 去重核验](2026-10-14/fault-2026-10-14a-sentry-dedupe.json)发现非最终尝试失败仅有引擎包装帧（#164）。 |
 | [fault-2026-10-14b](2026-10-14/fault-2026-10-14b-execution-status.json) | 2 | chat-mid-stream-per_call 与 workers-error 通过；workers-error 的 Sentry 事件映射到我方 TypeScript、无引擎帧（[核验](2026-10-14/fault-2026-10-14b-sentry-verification.json)）。 |
 
+2026-10-14 回归与补充核验：
+
+| Run / 核验 | 结论 |
+|---|---|
+| [acceptance-2026-10-14a](2026-10-14/acceptance-2026-10-14a-execution-status.json) | 2 / 1 / 11：Workers 上游 8007 被记为 MEDIA_GENERATION_FAILED，未进入换任务重试（CF step 丢失 NonRetryableError code，#178 修复）。 |
+| [acceptance-2026-10-14b](2026-10-14/acceptance-2026-10-14b-execution-status.json) | 13 / 0 / 1（SHA 70496c6）：全部常规项通过；本轮无 8007。消息 parts 无 reasoning；checkpoint 记录 reasoningTokens，但未声明能力的 DeepSeek 模型仍按上游默认开启思考（后续修复）。 |
+| [admin 次日指标](2026-10-14/admin-metrics-next-day.json) | 看板截至 2026-10-14 00:00 UTC，10-13 汇总与原始数据 25/25 项一致。 |
+
 另保留 [13 的早期表单阻塞记录](2026-10-12/acceptance-2026-10-13-execution-status.json)：
 当时 Save Changes 未接管输入，未运行套件；#137 后保存 Workers schema，随后核对并恢复误停用的专用 fal 模型。
 fal 13 / 13b / 13c 的控制台只读核对均未在对应时间窗观察到受理请求；
@@ -75,7 +83,7 @@ observability 1.2 于 2026-10-14 补齐 Sentry 实际事件核验后勾选；其
 |---|---|---|
 | [media 7.2](../../../../openspec/changes/add-ai-media-generation/tasks.md)（7.1 已于 2026-10-14 勾选） | Workers/fal 图片成功、取消全退；fal 五类受控故障（fault-2026-10-14a） | fal 视频成功产出 |
 | [chat 5.1](../../../../openspec/changes/add-ai-text-chat/tasks.md) | 两种计费各正常/停止/关页，流水与不变式通过 | AI Gateway/供应商 token 差异 ≤1% 核对（服务商报错已由 fault-2026-10-14a/b 覆盖；reasoning 口径见 #166）；13j 使用 direct DeepSeek，未作外部用量比较 |
-| [admin 6.1](../../../../openspec/changes/add-admin-console/tasks.md) | 专用用户动作、积分幂等、设置恢复及审计 | 指定测试支付资源的失败回调重放与退款审核（未执行），次日指标更新核验 |
+| [admin 6.1](../../../../openspec/changes/add-admin-console/tasks.md) | 专用用户动作、积分幂等、设置恢复及审计 | 指定测试支付资源的失败回调重放与退款审核（未执行）；次日指标已于 2026-10-14 核验通过 |
 
 故障注入按 [验收 runbook](../../staging-acceptance.md)执行；历史意外失败不代替受控注入。
 退款与支付回调重放仍需针对具体测试资源的授权。此次只整理证据，没有补跑付费调用、注入故障或执行支付动作。
