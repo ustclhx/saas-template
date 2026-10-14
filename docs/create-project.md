@@ -61,8 +61,10 @@ APP_VERSION 与 Sentry release 使用同一个完整提交 SHA，CI 已负责注
 
 selfhost 副本复用 `deploy/selfhost/compose.yaml`、配置示例及仓库已有发布/运维材料。
 `--image-namespace` 为不含标签的 OCI namespace，默认 `ghcr.io/configure-owner/<项目名称>`，
-必须替换 configure-owner；镜像为 `<namespace>-<service>:<完整40位SHA>`，
-`.env.example` 和名称含 selfhost 的发布 workflow 的 `IMAGE_NAMESPACE` 同步更新。
+必须替换 configure-owner；镜像为 `<namespace>/<service>:<完整40位SHA>`，
+`.env.example` 的 `IMAGE_NAMESPACE` 和 `selfhost-publish.yml` 的 namespace 输入默认值同步更新，
+trust/publish 的运行时输入表达式保持一致。`selfhost-images.yml` 只读构建与 smoke，
+正式发布只使用内置 GITHUB_TOKEN，无需 CF 或服务器凭据。
 自己的功能配置必须在 CI 重新构建，不能直接使用模板仓库镜像。
 生成副本可继续作为源创建下一项目，namespace 会按下一项目参数重新写入。
 
@@ -76,7 +78,7 @@ OAuth/Turnstile 关闭时副本 Compose 和示例同步移除其要求；原模�
 
 复制排除各级 `.git`、node_modules、`.env` / `.env.*` 和 `.dev.vars*`（保留 example）、
 `.wrangler`、dist、`.turbo`、coverage、构建和测试生成目录、进行中的 `openspec/changes`、
-探针 results、日志和证书私钥，以及各级 secrets/、certs/、.data/、job-owners/ 与 selfhost 的 ownership/owners/、
+探针 results、image-artifacts/image-set 发布产物、日志和证书私钥，以及各级 secrets/、certs/、.data/、job-owners/ 与 selfhost 的 ownership/owners/、
 backups/backup-data/、releases/release-state/、state/.state/ 等运行目录。
 无扩展名密码与 owner/release 状态不会复制；`.env.example`、`secrets.example` 和运维脚本保留。符号链接不复制，二进制文件原样保留。
 脚本不创建远程资源、不写入密钥；上线前按清单和 [基础设施文档](07-infrastructure.md) 配置，

@@ -102,6 +102,8 @@ test('生成副本改名与配置，排除各级密钥、链接和产物', async
     '.dev.vars.staging',
     '.env.local',
     '.env.worktree',
+    'image-artifacts/web.tar',
+    'image-set/image-set.json',
     'secrets/auth_secret',
     'certs/server/private',
     '.data/job-owners/executor.json',
@@ -371,8 +373,14 @@ test('selfhost 继承发布和运维材料，排除真值，并再次生成 name
     'name: ${COMPOSE_PROJECT_NAME:-fixture-selfhost}\nx-app-env:\n  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?required}\n  GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret\n  TURNSTILE_SECRET_KEY_FILE: /run/secrets/turnstile_secret\nx-app-secrets:\n  - google_client_secret\n  - turnstile_secret\nservices:\n  web:\n    image: ${WEB_IMAGE}\nsecrets:\n  google_client_secret: {file: secrets/google_client_secret}\n  turnstile_secret: {file: secrets/turnstile_secret}\n',
   )
   await f.file(
-    '.github/workflows/publish-selfhost.yml',
-    'env:\n  IMAGE_NAMESPACE: ghcr.io/old/fixture\n',
+    '.github/workflows/selfhost-publish.yml',
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: 保留 GitHub Actions 运行时输入。
+    'on:\n  workflow_dispatch:\n    inputs:\n      namespace:\n        required: true\n        type: string\nenv:\n  IMAGE_NAMESPACE: ${{ inputs.namespace }}\n',
+  )
+  await f.file('.github/workflows/selfhost-images.yml', 'permissions: { contents: read }\n')
+  await f.file(
+    'deploy/selfhost/images/catalog.json',
+    JSON.stringify({ pendingServices: ['backup'], services: [{ name: 'web' }] }),
   )
   await f.file(
     'template.config.ts',
@@ -428,11 +436,11 @@ test('selfhost 继承发布和运维材料，排除真值，并再次生成 name
   )
   assert.match(
     await readFile(join(result.target, 'deploy/selfhost/.env.example'), 'utf8'),
-    /WEB_IMAGE=ghcr.io\/configure-owner\/acme-web:<full-40-character-sha>/,
+    /WEB_IMAGE=ghcr.io\/configure-owner\/acme\/web:<full-40-character-sha>/,
   )
   assert.match(
-    await readFile(join(result.target, '.github/workflows/publish-selfhost.yml'), 'utf8'),
-    /IMAGE_NAMESPACE: ghcr.io\/configure-owner\/acme/,
+    await readFile(join(result.target, '.github/workflows/selfhost-publish.yml'), 'utf8'),
+    /default: ghcr.io\/configure-owner\/acme/,
   )
   for (const path of await files(result.target))
     assert.doesNotMatch((await readFile(path)).toString(), /SELFHOST_SENSITIVE_SENTINEL/)
@@ -447,11 +455,11 @@ test('selfhost 继承发布和运维材料，排除真值，并再次生成 name
   )
   assert.match(
     await readFile(join(next.target, 'deploy/selfhost/.env.example'), 'utf8'),
-    /WEB_IMAGE=registry.example:5000\/team\/second-web:/,
+    /WEB_IMAGE=registry.example:5000\/team\/second\/web:/,
   )
   assert.match(
-    await readFile(join(next.target, '.github/workflows/publish-selfhost.yml'), 'utf8'),
-    /IMAGE_NAMESPACE: registry.example:5000\/team\/second/,
+    await readFile(join(next.target, '.github/workflows/selfhost-publish.yml'), 'utf8'),
+    /default: registry.example:5000\/team\/second/,
   )
   assert.match(next.report, /second-selfhost|team\/second/)
 })

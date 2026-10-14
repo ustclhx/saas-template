@@ -33,6 +33,8 @@ const excluded = new Set([
   'paraglide',
   'playwright-report',
   'test-results',
+  'image-artifacts',
+  'image-set',
   '.DS_Store',
   '.omp',
   '.codex',
@@ -527,7 +529,7 @@ export async function createProject(input, source = root) {
               .replace(
                 /^([A-Z_]+)_IMAGE=.*$/gm,
                 (_match, service) =>
-                  `${service}_IMAGE=${options.imageNamespace}-${service.toLowerCase().replaceAll('_', '-')}:<full-40-character-sha>`,
+                  `${service}_IMAGE=${options.imageNamespace}/${service.toLowerCase().replaceAll('_', '-')}:<full-40-character-sha>`,
               )
               .replace(
                 /^COMPOSE_PROJECT_NAME=.*$/m,
@@ -557,11 +559,13 @@ export async function createProject(input, source = root) {
                 .replace(new RegExp(`^  ${secret}:.*\\n?`, 'gm'), '')
             }
           }
-          if (
-            options.target === 'selfhost' &&
-            /^\.github\/workflows\/.*selfhost.*\.ya?ml$/.test(path)
-          ) {
-            text = text.replace(/^(\s*IMAGE_NAMESPACE:\s*).*$/m, `$1${options.imageNamespace}`)
+          if (options.target === 'selfhost' && path === '.github/workflows/selfhost-publish.yml') {
+            // 只设置手动输入默认值，保留 trust/publish 共用的 inputs.namespace 表达式。
+            text = text.replace(
+              /( {6}namespace:\n)((?: {8}[^\n]*\n)+)/,
+              (_match, prefix, fields) =>
+                `${prefix}${fields.replace(/^ {8}default:.*\n/gm, '')}        default: ${options.imageNamespace}\n`,
+            )
           }
           content = Buffer.from(text)
         }
@@ -592,7 +596,12 @@ export async function createProject(input, source = root) {
       .replace(/4\. 在 \/admin\/models[^\n]*\n5\. models[^\n]*\n/, '')
   }
   if (options.target === 'selfhost') {
-    const required = ['deploy/selfhost/compose.yaml']
+    const required = [
+      'deploy/selfhost/compose.yaml',
+      '.github/workflows/selfhost-images.yml',
+      '.github/workflows/selfhost-publish.yml',
+      'deploy/selfhost/images/catalog.json',
+    ]
     const missing = []
     for (const path of required) {
       try {
@@ -602,13 +611,7 @@ export async function createProject(input, source = root) {
         missing.push(path)
       }
     }
-    const workflows = await readdir(join(target, '.github/workflows')).catch((error) => {
-      if (error.code !== 'ENOENT') throw error
-      return []
-    })
-    if (!workflows.some((name) => /selfhost.*\.ya?ml$/.test(name)))
-      missing.push('.github/workflows/*selfhost*.yml（镜像发布 owner 待交付）')
-    report = `# ${options.name} selfhost 初始化清单\n\n## 启用功能\n\n- billing=${options.billingEnabled} / credits=${options.creditsEnabled} / marketing=${options.marketing} / i18n=${options.i18n}（默认语言 ${options.locale}）\n- AI：${options.ai.join(',') || '关闭'}\n\n## 运维与资源\n\n${checklist.resources.map((item) => `- [ ] ${item}`).join('\n')}\n\n## 应用配置键（密钥使用受限文件与对应 _FILE；值保持为空）\n\n${[...checklist.vars, ...checklist.secrets].map((key) => `- ${key}`).join('\n')}\n\n## Compose secret 文件\n\n${['postgres_password', 'app_db_password', 'migrator_db_password', 'readonly_db_password', 'app_database_url', 'migrator_database_url', 'valkey_password', 'valkey_url', 'auth_secret', ...options.oauth.map((provider) => `${provider}_client_secret`), ...(options.turnstile ? ['turnstile_secret'] : [])].map((key) => `- secrets/${key}`).join('\n')}\n\n复制 deploy/selfhost/.env.example 后配置 namespace、同 SHA 镜像、域名、TLS 与受限 secret 文件；参考 deploy/selfhost/README.md 和 secrets.example。\n发布 CI 使用 IMAGE_NAMESPACE；生成副本的功能配置必须重新构建镜像。PR 不获得 registry 写入或服务器 secret，正式发布使用受信提交和完整集合 gate。\n${options.billingEnabled ? '迁移后运行 pnpm billing:seed，并配置模型与套餐授权。' : '应用现有数据库迁移；支付模块关闭。'}\nBOOTSTRAP_ADMIN_EMAILS 可选，仅 web；已验证且未封禁账号才提升；移除名单不会自动撤销管理员。\n自检仅验证单元测试；上线前独立完成 Compose、登录/空间、heartbeat、SHA 与恢复验收。\n\n## 交付材料状态\n\n部署/初始化/恢复脚本：待 owner 交付并确认入口路径，生成器不预设尚未交付的路径。\n\n${missing.length ? missing.map((path) => `- 待交付：${path}`).join('\n') : '生成副本已继承发布和运维材料；仍需实际部署验收。'}\n`
+    report = `# ${options.name} selfhost 初始化清单\n\n## 启用功能\n\n- billing=${options.billingEnabled} / credits=${options.creditsEnabled} / marketing=${options.marketing} / i18n=${options.i18n}（默认语言 ${options.locale}）\n- AI：${options.ai.join(',') || '关闭'}\n\n## 运维与资源\n\n${checklist.resources.map((item) => `- [ ] ${item}`).join('\n')}\n\n## 应用配置键（密钥使用受限文件与对应 _FILE；值保持为空）\n\n${[...checklist.vars, ...checklist.secrets].map((key) => `- ${key}`).join('\n')}\n\n## Compose secret 文件\n\n${['postgres_password', 'app_db_password', 'migrator_db_password', 'readonly_db_password', 'app_database_url', 'migrator_database_url', 'valkey_password', 'valkey_url', 'auth_secret', ...options.oauth.map((provider) => `${provider}_client_secret`), ...(options.turnstile ? ['turnstile_secret'] : [])].map((key) => `- secrets/${key}`).join('\n')}\n\n复制 deploy/selfhost/.env.example 后配置 namespace、同 SHA 镜像、域名、TLS 与受限 secret 文件；参考 deploy/selfhost/README.md 和 secrets.example。\n发布 CI 以 namespace 输入装配 IMAGE_NAMESPACE：\n\n    gh workflow run selfhost-publish.yml --ref main -f sha=<full-40-character-main-sha> -f namespace=${options.imageNamespace}\n\n生成副本的功能配置必须重新构建镜像。PR 不获得 registry 写入或服务器 secret，正式发布使用受信提交和完整集合 gate。\n${options.billingEnabled ? '迁移后运行 pnpm billing:seed，并配置模型与套餐授权。' : '应用现有数据库迁移；支付模块关闭。'}\nBOOTSTRAP_ADMIN_EMAILS 可选，仅 web；已验证且未封禁账号才提升；移除名单不会自动撤销管理员。\n自检仅验证单元测试；上线前独立完成 Compose、登录/空间、heartbeat、SHA 与恢复验收。\n\n## 交付材料状态\n\n部署/初始化/恢复脚本：待 owner 交付并确认入口路径，生成器不预设尚未交付的路径。备份镜像仍由 catalog 的 pendingServices 标记；完整集合门尚未放行时不要发布。\n\n${missing.length ? missing.map((path) => `- 待交付：${path}`).join('\n') : '生成副本已继承现有发布/Compose 材料；仍需实际发布与部署验收。'}\n`
   }
   await writeFile(join(target, 'PROJECT_SETUP.md'), report)
   return { target, options, checklist, report }
