@@ -167,6 +167,7 @@ try {
       valkey: 'valkey-server',
       caddy: 'caddy',
       'object-storage': 'weed',
+      backup: 'wal-g',
     }[name]
     assert(binary, `${name}: missing binary version smoke`)
     const flag = ['caddy', 'object-storage'].includes(name) ? 'version' : '--version'
@@ -285,6 +286,23 @@ secrets:
   s3_secret_access_key: {file: '${env.SECRETS_DIR}/s3_secret_access_key'}
 `,
   )
+  run('python3', [
+    '-m',
+    'unittest',
+    'discover',
+    '-s',
+    join(root, 'deploy/selfhost/backup'),
+    '-p',
+    '*test*.py',
+  ])
+  // 备份使用自己的隔离 PG/S3 fixture，必须完成真实备份与恢复才算 runtime smoke。
+  run(
+    'node',
+    [join(root, 'deploy/selfhost/test-backup.mjs'), '--sha', sha, '--output', output],
+    600_000,
+  )
+  const backupEvidence = JSON.parse(readFileSync(join(output, 'backup-smoke.json'), 'utf8'))
+  assert(backupEvidence.passed && backupEvidence.cleaned, 'backup real runtime smoke failed')
   const config = JSON.parse(compose('config', '--format', 'json'))
   assert(
     Object.values(config.services).every((service) => !service.build && !service.ports?.length),
@@ -300,6 +318,17 @@ secrets:
   const dbosAt = logs.indexOf('selfhost.dbos:migrate.completed')
   assert(sqlAt >= 0 && dbosAt > sqlAt, 'migration order failed')
   for (const service of services) {
+    if (service.name === 'backup') {
+      const runtimeUid = backupEvidence.events.find(
+        (item) => item.event === 'backup.real_cycle',
+      )?.runtimeUid
+      assert(runtimeUid === service.uid, 'backup: actual PID1 UID differs')
+      assert(backupEvidence.sha === sha, 'backup: source revision differs')
+      service.runtimeUid = runtimeUid
+      service.realBackupRestore = true
+      service.passed = true
+      continue
+    }
     assert(config.services[service.name], `${service.name}: missing runtime smoke`)
     if (service.name !== 'migrate') {
       const status = compose('exec', '-T', service.name, 'cat', '/proc/1/status')

@@ -51,7 +51,18 @@ selfhost_postgres_main() {
   install -m 0600 "$src/server.crt" "$dst/server.crt"
   install -m 0600 "$src/server.key" "$dst/server.key"
   export POSTGRES_INITDB_ARGS='--auth-local=peer --auth-host=scram-sha-256'
+  local -a archive_args=()
+  if [[ "${BACKUP_ENABLED:-false}" == true ]]; then
+    if [[ ! "${BACKUP_ARCHIVE_TIMEOUT_SECONDS:-60}" =~ ^[1-9][0-9]*$ ]]; then
+      printf 'selfhost-postgres: invalid backup archive timeout\n' >&2
+      exit 1
+    fi
+    archive_args=(-c archive_mode=on
+      -c "archive_timeout=${BACKUP_ARCHIVE_TIMEOUT_SECONDS:-60}"
+      -c 'archive_command=/usr/local/bin/selfhost-walg wal-push %p')
+  fi
   exec docker-entrypoint.sh "$@" \
+    "${archive_args[@]}" \
     -c listen_addresses='*' \
     -c hba_file=/etc/postgresql/pg_hba.conf \
     -c ssl=on \
