@@ -82,7 +82,7 @@ observability 1.2 于 2026-10-14 补齐 Sentry 实际事件核验后勾选；其
 
 | Change / 任务 | 已有真实证据 | 仍待完成（完整任务保持未勾选） |
 |---|---|---|
-| [media 7.2](../../../../openspec/changes/add-ai-media-generation/tasks.md)（7.1 已于 2026-10-14 勾选） | Workers/fal 图片成功、取消全退；fal 五类受控故障（fault-2026-10-14a） | fal 视频成功产出 |
+| [media 7.2](../../../../openspec/changes/archive/2026-10-15-add-ai-media-generation/tasks.md)（7.1 于 2026-10-14、7.2 于 2026-10-15 勾选，change 已归档） | Workers/fal 图片成功、取消全退；fal 五类受控故障（fault-2026-10-14a）；fal 视频成功产出（[media-video-2026-10-15a](2026-10-15/media-video-2026-10-15a-execution-status.json)） | 无 |
 | [chat 5.1](../../../../openspec/changes/add-ai-text-chat/tasks.md) | 两种计费各正常/停止/关页，流水与不变式通过 | AI Gateway/供应商 token 差异 ≤1% 核对（服务商报错已由 fault-2026-10-14a/b 覆盖；reasoning 口径见 #166）；13j 使用 direct DeepSeek，未作外部用量比较 |
 | [admin 6.1](../../../../openspec/changes/add-admin-console/tasks.md) | 专用用户动作、积分幂等、设置恢复及审计 | 指定测试支付资源的失败回调重放与退款审核（未执行）；次日指标已于 2026-10-14 核验通过 |
 
