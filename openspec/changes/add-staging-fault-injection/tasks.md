@@ -36,7 +36,7 @@
 ## 6. 集成检查与交付
 
 - [x] 6.1 在本 worktree 运行最终本地集成检查：`pnpm check`、`pnpm check:deps`、`pnpm check:singletons`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm dedupe --check` 与 `openspec validate add-staging-fault-injection --strict` 全部通过；diff 只含授权范围，无迁移种子、secrets 或真实staging证据，原 media 7.1/7.2、chat 5.1 未勾选。
-- [ ] 6.2 fetch/rebase origin/main，推送实施 PR，描述本地证据与尚未运行的 staging 验收，卡片更新 in-review 并通知协调者；验证 PR diff 与最新 main 一致且无手动部署，等待协调者合并后发布运行，不自行合并/归档。
+- [x] 6.2 fetch/rebase origin/main，推送实施 PR，描述本地证据与尚未运行的 staging 验收，卡片更新 in-review 并通知协调者；验证 PR diff 与最新 main 一致且无手动部署，等待协调者合并后发布运行，不自行合并/归档。
 
 ## 7. 合并发布后的协调者验收（实施 worker 不执行、不勾选）
 
