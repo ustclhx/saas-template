@@ -71,15 +71,20 @@ trust/publish 的运行时输入表达式保持一致。`selfhost-images.yml` �
 
 `PROJECT_SETUP.md` 的 selfhost 清单包含受限 secret 文件、PG TLS、专用 ingress、
 Compose、同 SHA release、health/jobs/heartbeat、兼容回滚、ownership 与双目标备份恢复步骤。
-生成器继承 owner 已提供的交付文件；发布 workflow 和部署/初始化/恢复材料未交付时，
-在清单中标为待交付，不预设脚本路径，不将生成成功当成实际部署或恢复验收通过。
+生成器继承 owner 已提供的交付文件；当前部署/回滚入口为 `deploy/selfhost/deploy.sh`，
+初始化为 `init-server.sh`，release 打包/校验为 `release/bundle.py`，外部代理为
+`compose.proxy.yaml`；配套 Python/防火墙文件一并继承。参考
+[部署](runbooks/selfhost-deploy.md)、[初始化](runbooks/selfhost-init.md)、
+[release](runbooks/selfhost-release.md) 和 [代理](runbooks/selfhost-proxy.md) runbook。
+恢复/drill 材料尚未交付，首次真实 registry 发布与 B/D ownership 签收仍待协调者确认。缺失文件
+在清单中标为待交付，不将生成成功当成实际部署或恢复验收通过。
 自托管 secret 通过受限文件与对应 `_FILE` 配置，示例值为空；不使用 CF staging 凭据。
 自托管副本不复制自动 CF staging 发布 workflow；Cloudflare 副本继续保留原发布路径。
 OAuth/Turnstile 关闭时副本 Compose 和示例同步移除其要求；原模板文件保持不变。
 
 复制排除各级 `.git`、node_modules、`.env` / `.env.*` 和 `.dev.vars*`（保留 example）、
 `.wrangler`、dist、`.turbo`、coverage、构建和测试生成目录、进行中的 `openspec/changes`、
-探针 results、image-artifacts/image-set 发布产物、日志和证书私钥，以及各级 secrets/、certs/、.data/、job-owners/ 与 selfhost 的 ownership/owners/、
+探针 results、image-artifacts/image-set/release-bundle 发布产物、selfhost-release 压缩包、Python缓存、日志和证书私钥，以及各级 secrets/、certs/、.data/、job-owners/ 与 selfhost 的 ownership/owners/、
 backups/backup-data/、releases/release-state/、state/.state/ 等运行目录。
 无扩展名密码与 owner/release 状态不会复制；`.env.example`、`secrets.example` 和运维脚本保留。符号链接不复制，二进制文件原样保留。
 脚本不创建远程资源、不写入密钥；上线前按清单和 [基础设施文档](07-infrastructure.md) 配置，

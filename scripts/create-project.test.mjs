@@ -117,6 +117,9 @@ test('生成副本改名与配置，排除各级密钥、链接和产物', async
     '.turbo/cache',
     'coverage/out',
     'openspec/changes/pending/tasks.md',
+    'release-bundle/release.json',
+    'deploy/selfhost/release/__pycache__/bundle.cpython-312.pyc',
+    'selfhost-release-fixture.tar.gz',
     'scripts/probes/x/results/config.json',
   ]) {
     await f.file(path, 'SENSITIVE_SENTINEL')
