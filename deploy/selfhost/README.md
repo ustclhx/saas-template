@@ -12,8 +12,9 @@
 详细步骤见 [部署与回滚](../../docs/runbooks/selfhost-deploy.md)、
 [空白初始化](../../docs/runbooks/selfhost-init.md)、[外部代理](../../docs/runbooks/selfhost-proxy.md)
 与 [release bundle](../../docs/runbooks/selfhost-release.md)。Dokploy 是可选入口，不能跳过
-迁移/排空门；不会自动安装或连接任何既有服务器。恢复脚本已交付，完整 bundle 的运行白名单已补齐；已发布 SHA 的旧版 bundle
-仍仅含部署材料，不覆写旧 SHA。1.5/6.3/7 的恢复验收保持待办。
+迁移/排空门；不会自动安装或连接任何既有服务器。第二次正式发布
+`081305013b022f457c561eecf5828b1959e13908` 的 bundle 包含全部 24 项运行材料，
+包括恢复/drill/副本入口和附加示例；旧 SHA 的材料保持原样。1.5/6.3/7 的恢复验收保持待办。
 
 ## 本地开发镜像与基础启动
 
