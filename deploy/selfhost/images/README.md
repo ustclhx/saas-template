@@ -40,9 +40,18 @@ gh workflow run selfhost-publish.yml --ref main \
 
 workflow_dispatch 只接受在 main 上运行、目标为 main 可达完整 SHA，且该 SHA 的同仓
 main push `ci.yml` 已成功。GHCR 认证仅使用内置 GITHUB_TOKEN，不需新增 secret。
-只读 trust/build jobs 无 packages 权限，publish job 单独有 contents:read/packages:write。
+trust job 只有 contents/actions/packages 的 read，build job 无 packages 权限，
+publish job 单独有 contents:read/packages:write。
 同 namespace 串行且不取消运行，checkout 不保留 git 凭据，无 secrets:inherit。
 凭据使用 stdin login 与固定 GHCR token endpoint；403/网络/不明确404均失败。
+
+trust job 在任何构建前先做正式 tag 门：用 workflow 所在 main 的检查代码（旧源 SHA
+可能没有此门）读取源 SHA 的 catalog，逐个服务只读查询正式 `<namespace>/<service>:<sha>`。
+先用匿名 GHCR pull token，被拒时再用只请求 pull scope 的 GITHUB_TOKEN（packages:read）；
+任一正式 tag 已存在即在几分钟内失败，不进入双架构构建。仅明确 `MANIFEST_UNKNOWN` 的
+404 算不存在；限流、5xx、网络与不明确 404 均失败关闭。GHCR 对从未发布、私有且无权
+的仓库统一返回 DENIED，无法区分，因此同样失败；只有首次发布某个包时，协调者可用
+`-f new_services=<逗号分隔服务名>` 显式声明这些服务，它们仍由 publish 作业写前检查。
 
 发布前完整校验两架构 smoke 证据、集合（包括 backup）、已测 image ID、revision 和
 UID；写入临时 candidate tags，随后组合正式 `<namespace>/<service>:<full-sha>`。
@@ -51,13 +60,14 @@ UID；写入临时 candidate tags，随后组合正式 `<namespace>/<service>:<f
 的 tag/digest/source 清单，供 D 1.4 打包。它本身不是可部署 release bundle。
 
 首次真实 run 验收须记录 run URL、源 SHA、所有服务两平台、registry digest/revision
-和 image-set artifact。验证重复触发同 SHA 在写入前拒绝、故障架构使 publish job
+和 image-set artifact。验证重复触发同 SHA 在 trust 的正式 tag 门即拒绝（无构建）、故障架构使 publish job
 跳过，且没有可部署 bundle。服务器部署与 release bundle 验收仍归后续 D 项。
 
 ## 不可覆写与失败处理
 
 正式 SHA 任一已存在即拒绝，包括部分失败留下的 SHA。OCI registry 不提供跨多个
-仓库的原子事务，本流程依靠 namespace 串行锁、写前/临写前检查及最后的成功集合门。
+仓库的原子事务，本流程依靠 namespace 串行锁、构建前只读门、写前/临写前检查及最后的成功集合门；
+构建前门只节省重复构建，不替代 publish 作业在写入凭据下的写前检查。
 正式发布者必须只用此 workflow；带额外权限的外部人工写入不受该锁控制。
 失败可能留下 candidate 或部分正式 tag，但没有成功 image-set，更没有可部署 release。
 不要删已发布正式 tag 后重跑；修正失败后用新 main SHA。candidate 仅用于组合索引，

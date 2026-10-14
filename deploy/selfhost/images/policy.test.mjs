@@ -3,12 +3,15 @@ import { test } from 'node:test'
 import {
   assertCompleteCatalog,
   assertEvidence,
+  assertFormalTagsAbsent,
   assertPlatforms,
+  formalRepository,
   hasTrustedCi,
+  parseNewServices,
   requiredServices,
   validateIdentity,
 } from './policy.mjs'
-import { Registry } from './registry.mjs'
+import { formalTagState, Registry } from './registry.mjs'
 
 const sha = 'a'.repeat(40)
 const catalog = { schemaVersion: 1, services: requiredServices.map((name) => ({ name })) }
@@ -111,4 +114,94 @@ test('registry拒绝将token交给非GHCR挑战地址', async () => {
   })
   await assert.rejects(registry.manifest(sha, true))
   assert.equal(calls, 1)
+})
+
+test('构建前正式tag门：已存在即拒绝，无法确认仅放行显式声明的新服务', () => {
+  const absent = new Map(catalog.services.map(({ name }) => [name, 'absent']))
+  assertFormalTagsAbsent(absent)
+  assert.throws(
+    () => assertFormalTagsAbsent(new Map([...absent, ['web', 'present']]), ['web']),
+    /immutable SHA already exists: web/,
+  )
+  const unconfirmed = new Map([...absent, ['backup', 'unconfirmed']])
+  assert.throws(() => assertFormalTagsAbsent(unconfirmed), /unconfirmed.*backup/)
+  assertFormalTagsAbsent(unconfirmed, ['backup'])
+  assert.throws(() => assertFormalTagsAbsent(new Map([['web', 'unknown']])))
+  assert.deepEqual(parseNewServices(' backup, web ,', catalog), ['backup', 'web'])
+  assert.deepEqual(parseNewServices('', catalog), [])
+  assert.throws(() => parseNewServices('missing', catalog))
+  assert.throws(() => parseNewServices('web,web', catalog))
+  assert.equal(formalRepository('ghcr.io/owner/project', 'web'), 'owner/project/web')
+  assert.throws(() => formalRepository('ghcr.io/owner/project', '../web'))
+})
+
+test('构建前检查只用匿名或只读pull token，403/网络/不明确404失败关闭', async () => {
+  const challenge = () =>
+    new Response('', {
+      status: 401,
+      headers: { 'www-authenticate': 'Bearer realm="https://ghcr.io/token",service="ghcr.io"' },
+    })
+  const json = (status, body, headers = {}) =>
+    new Response(JSON.stringify(body), { status, headers })
+  // 按顺序回放 registry 响应，并记录 token 请求的 scope 与是否携带凭据。
+  const fixture = (...replies) => {
+    const tokens = []
+    const request = async (url, init) => {
+      if (String(url).startsWith('https://ghcr.io/token')) {
+        tokens.push({
+          scope: new URL(url).searchParams.get('scope'),
+          authenticated: Boolean(init.headers.Authorization),
+        })
+      }
+      const reply = replies.shift()
+      if (reply instanceof Error) throw reply
+      return reply()
+    }
+    return { request, tokens }
+  }
+  const token = () => json(200, { token: 'fixture' })
+  const denied = () => json(403, { errors: [{ code: 'DENIED' }] })
+  const manifestUnknown = () => json(404, { errors: [{ code: 'MANIFEST_UNKNOWN' }] })
+  const existing = () =>
+    json(200, { manifests: [] }, { 'docker-content-digest': `sha256:${'b'.repeat(64)}` })
+  const credentials = { username: 'actor', password: 'read-only' }
+
+  let registry = fixture(challenge, token, existing)
+  assert.equal(await formalTagState('owner/project/web', sha, registry), 'present')
+  assert.deepEqual(registry.tokens, [
+    { scope: 'repository:owner/project/web:pull', authenticated: false },
+  ])
+
+  registry = fixture(challenge, token, manifestUnknown)
+  assert.equal(await formalTagState('owner/project/web', sha, registry), 'absent')
+
+  // 私有包：匿名被拒后改用只读凭据，仍只请求 pull。
+  registry = fixture(challenge, denied, challenge, token, existing)
+  assert.equal(
+    await formalTagState('owner/project/web', sha, { ...credentials, ...registry }),
+    'present',
+  )
+  assert.deepEqual(
+    registry.tokens.map((item) => item.authenticated),
+    [false, true],
+  )
+  assert(registry.tokens.every((item) => item.scope.endsWith(':pull')))
+
+  registry = fixture(challenge, denied, challenge, denied)
+  assert.equal(
+    await formalTagState('owner/project/web', sha, { ...credentials, ...registry }),
+    'unconfirmed',
+  )
+  registry = fixture(challenge, token, denied)
+  assert.equal(await formalTagState('owner/project/web', sha, registry), 'unconfirmed')
+
+  for (const replies of [
+    [challenge, token, () => json(404, { errors: [{ code: 'NAME_UNKNOWN' }] })],
+    [challenge, token, () => json(429, {})],
+    [challenge, token, () => json(500, {})],
+    [challenge, () => json(500, {})],
+    [new Error('network failed')],
+  ]) {
+    await assert.rejects(formalTagState('owner/project/web', sha, fixture(...replies)))
+  }
 })

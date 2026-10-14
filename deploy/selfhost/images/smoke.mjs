@@ -296,11 +296,30 @@ secrets:
     '*test*.py',
   ])
   // 备份使用自己的隔离 PG/S3 fixture，必须完成真实备份与恢复才算 runtime smoke。
-  run(
-    'node',
-    [join(root, 'deploy/selfhost/test-backup.mjs'), '--restore', '--sha', sha, '--output', output],
-    600_000,
-  )
+  try {
+    run(
+      'node',
+      [
+        join(root, 'deploy/selfhost/test-backup.mjs'),
+        '--restore',
+        '--sha',
+        sha,
+        '--output',
+        output,
+      ],
+      600_000,
+    )
+  } catch (error) {
+    // 原始输出不透传；只附加验收脚本自身写入证据的固定阶段与原因，CI 才能定位失败断言。
+    let failed
+    try {
+      failed = JSON.parse(readFileSync(join(output, 'backup-smoke.json'), 'utf8')).events.find(
+        (item) => item.event === 'backup.failed',
+      )
+    } catch {}
+    if (!failed) throw error
+    throw new Error(`${error.message} (phase=${failed.phase}; reason=${failed.reason})`)
+  }
   const backupEvidence = JSON.parse(readFileSync(join(output, 'backup-smoke.json'), 'utf8'))
   assert(backupEvidence.passed && backupEvidence.cleaned, 'backup real runtime smoke failed')
   const config = JSON.parse(compose('config', '--format', 'json'))
