@@ -104,6 +104,10 @@
     "packages/storage/test/node-import.unit.test.ts": ["node"],
     "apps/jobs/test/node-smtp.integration.test.ts": ["node"],
     "apps/web/src/node/storage-http.node.ts": ["node"],
-    "apps/jobs/test/node-observer-shutdown.integration.test.ts": ["node"]
+    "apps/jobs/test/node-observer-shutdown.integration.test.ts": ["node"],
+    "apps/jobs/test/fixtures/media-worker.ts": ["node"],
+    "apps/jobs/test/node-media.integration.test.ts": ["node"],
+    "apps/jobs/test/fixtures/media-node-env.ts": ["node"],
+    "apps/jobs/test/fixtures/media-node-storage.ts": ["node"]
   }
 }
