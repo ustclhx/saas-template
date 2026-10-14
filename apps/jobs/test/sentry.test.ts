@@ -4,6 +4,7 @@ import {
   waitOnExecutionContext,
 } from 'cloudflare:test'
 import { env, type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers'
+import { NonRetryableError } from '@saas/platform'
 import { instrumentWorkflowWithSentry } from '@sentry/cloudflare'
 import { afterEach, expect, it, vi } from 'vitest'
 import worker, { AiMediaWorkflow } from '../src/index.ts'
@@ -93,7 +94,9 @@ it.each(['run', 'runner'] as const)(
       dist: 'jobs',
       release: 'fixture-commit-sha',
       tags: { requestId: 'workflow-request' },
-      exception: { values: [{ mechanism: { type: 'auto.faas.cloudflare.workflow' } }] },
+      exception: {
+        values: [{ value: original.message, mechanism: { type: 'auto.faas.cloudflare.workflow' } }],
+      },
     })
   },
 )
@@ -133,31 +136,152 @@ it('reports a step engine rejection when its callback never failed', async () =>
   ).rejects.toBe(engineError)
   await waitOnExecutionContext(ctx)
   expect(sentryEvents(send)).toHaveLength(1)
+  expect(sentryEvents(send)[0].exception.values[0].value).toBe(engineError.message)
 })
 
-it('reports an early step termination that the SDK does not capture', async () => {
+it.each([Error, NonRetryableError])(
+  'reports the original %s on early step termination without SDK capture',
+  async (ErrorType) => {
+    const { send, ctx, workflow, event } = workflowFixture()
+    const original = new ErrorType('fixture nonretryable failure')
+    const wrapped = new Error('fixture early termination')
+    const step = {
+      async do(
+        _name: string,
+        _options: unknown,
+        callback: (...args: unknown[]) => Promise<unknown>,
+      ) {
+        try {
+          return await callback({ attempt: 1, config: { retries: { limit: 3 } } })
+        } catch {
+          throw wrapped
+        }
+      },
+    } as unknown as WorkflowStep
+    vi.spyOn(mediaRunner, 'runMediaTask').mockImplementationOnce(async (_taskId, step) =>
+      step.do('fixture-step', { retries: { limit: 3, delayMs: 1 } }, async () => {
+        throw original
+      }),
+    )
+    await expect(workflow.run(event, step)).rejects.toBe(wrapped)
+    await waitOnExecutionContext(ctx)
+    expect(sentryEvents(send)).toHaveLength(1)
+    expect(sentryEvents(send)[0].exception.values[0].mechanism.type).not.toBe(
+      'auto.faas.cloudflare.workflow',
+    )
+    expect(sentryEvents(send)[0].exception.values[0]).toMatchObject({
+      type: original.name,
+      value: original.message,
+      stacktrace: {
+        frames: expect.arrayContaining([
+          expect.objectContaining({
+            filename: expect.stringContaining(
+              ErrorType === Error ? 'sentry.test.ts' : 'platform/src/cloudflare/workflow.ts',
+            ),
+          }),
+        ]),
+      },
+    })
+  },
+)
+
+it.each([false, true])(
+  'clears a failed attempt after retry success (later engine rejection: %s)',
+  async (engineRejects) => {
+    const { send, ctx, workflow, event } = workflowFixture()
+    const engineError = new Error('fixture engine failure after retry success')
+    const step = {
+      async do(_name: string, callback: (...args: unknown[]) => Promise<unknown>) {
+        await callback({ attempt: 1, config: { retries: { limit: 3 } } }).catch(() => null)
+        const result = await callback({ attempt: 2, config: { retries: { limit: 3 } } })
+        if (engineRejects) throw engineError
+        return result
+      },
+    } as unknown as WorkflowStep
+    let attempts = 0
+    vi.spyOn(mediaRunner, 'runMediaTask').mockImplementationOnce(async (_taskId, step) =>
+      step.do('fixture-step', async () => {
+        if (++attempts === 1) throw new Error('fixture transient failure')
+        return { taskId: 'task-fixture', status: 'failed' }
+      }),
+    )
+    const run = workflow.run(event, step)
+    if (engineRejects) await expect(run).rejects.toBe(engineError)
+    else await expect(run).resolves.toMatchObject({ taskId: 'task-fixture' })
+    await waitOnExecutionContext(ctx)
+    expect(attempts).toBe(2)
+    expect(sentryEvents(send).map((event) => event.exception.values[0].value)).toEqual(
+      engineRejects ? [engineError.message] : [],
+    )
+  },
+)
+
+it('associates concurrent engine rejections with their own step errors', async () => {
   const { send, ctx, workflow, event } = workflowFixture()
-  const wrapped = new Error('fixture early termination')
+  const originals = [new Error('fixture first step'), new Error('fixture second step')]
+  let releaseFirst!: () => void
+  const secondFailed = new Promise<void>((resolve) => {
+    releaseFirst = resolve
+  })
   const step = {
-    async do(_name: string, _options: unknown, callback: (...args: unknown[]) => Promise<unknown>) {
+    async do(name: string, callback: (...args: unknown[]) => Promise<unknown>) {
       try {
         return await callback({ attempt: 1, config: { retries: { limit: 3 } } })
       } catch {
-        throw wrapped
+        // 两个回调先后失败，引擎 rejection 反序返回，暴露全局最后错误串错。
+        if (name === 'first') await secondFailed
+        else releaseFirst()
+        throw new Error(`fixture engine wrapper ${name}`)
       }
     },
   } as unknown as WorkflowStep
-  vi.spyOn(mediaRunner, 'runMediaTask').mockImplementationOnce(async (_taskId, step) =>
-    step.do('fixture-step', { retries: { limit: 3, delayMs: 1 } }, async () => {
-      throw new Error('fixture nonretryable failure')
+  vi.spyOn(mediaRunner, 'runMediaTask').mockImplementationOnce(async (_taskId, step, deps) => {
+    await Promise.all(
+      ['first', 'second'].map((name, index) =>
+        step
+          .do(name, async () => {
+            throw originals[index]
+          })
+          .catch((error) => deps.observer?.captureException(error)),
+      ),
+    )
+    return { taskId: 'task-fixture', status: 'failed' }
+  })
+  await workflow.run(event, step)
+  await waitOnExecutionContext(ctx)
+  expect(sentryEvents(send)).toHaveLength(2)
+  expect(
+    sentryEvents(send)
+      .map((event) => event.exception.values[0].value)
+      .sort(),
+  ).toEqual(originals.map((error) => error.message).sort())
+})
+
+it('keeps original error associations isolated between runs', async () => {
+  const { send, ctx, workflow, event } = workflowFixture()
+  const original = new Error('fixture first run failure')
+  const wrapped = new Error('fixture engine error reused across runs')
+  const step = {
+    do: vi
+      .fn()
+      .mockImplementationOnce(async (_name, callback) => {
+        await callback({ attempt: 1, config: { retries: { limit: 3 } } }).catch(() => null)
+        throw wrapped
+      })
+      .mockRejectedValueOnce(wrapped),
+  } as unknown as WorkflowStep
+  vi.spyOn(mediaRunner, 'runMediaTask').mockImplementation(async (_taskId, step) =>
+    step.do('fixture-step', async () => {
+      throw original
     }),
   )
   await expect(workflow.run(event, step)).rejects.toBe(wrapped)
+  await expect(workflow.run(event, step)).rejects.toBe(wrapped)
   await waitOnExecutionContext(ctx)
-  expect(sentryEvents(send)).toHaveLength(1)
-  expect(sentryEvents(send)[0].exception.values[0].mechanism.type).not.toBe(
-    'auto.faas.cloudflare.workflow',
-  )
+  expect(sentryEvents(send).map((event) => event.exception.values[0].value)).toEqual([
+    original.message,
+    wrapped.message,
+  ])
 })
 
 it('captures an unhandled staging Cron error with release and request ID through the real SDK', async () => {
