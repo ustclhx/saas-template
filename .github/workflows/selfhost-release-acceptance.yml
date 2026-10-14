@@ -53,7 +53,8 @@ jobs:
           PY
       - name: Exercise the real bundle, upgrade and compatible rollback in empty volumes
         run: |
-          python3 deploy/selfhost/test-release-compose.py --bundle "$RUNNER_TEMP/released-bundle/bundle" --evidence "$RUNNER_TEMP/released-bundle/compose-evidence.json"
+          sudo env PATH="$PATH" python3 deploy/selfhost/test-release-compose.py --bundle "$RUNNER_TEMP/released-bundle/bundle" --evidence "$RUNNER_TEMP/released-bundle/compose-evidence.json"
+          sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/released-bundle"
           python3 deploy/selfhost/test-deploy-compose.py > "$RUNNER_TEMP/released-bundle/failure-gates.jsonl"
       - uses: actions/upload-artifact@v7
         if: always()
