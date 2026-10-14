@@ -22,4 +22,4 @@
 
 ## 5. 集成检查
 
-- [ ] 5.1 `pnpm check`、`pnpm check:deps`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`openspec validate add-text-reasoning-resilience --strict` 全部通过；diff 无迁移或 secrets；PR 写明 staging 验收步骤（协调者执行：开启 thinking 的 DeepSeek 正常回复、仅 reasoning 重试、展示开关）。
+- [x] 5.1 `pnpm check`、`pnpm check:deps`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`openspec validate add-text-reasoning-resilience --strict` 全部通过；diff 无迁移或 secrets；PR 写明 staging 验收步骤（协调者执行：开启 thinking 的 DeepSeek 正常回复、仅 reasoning 重试、展示开关）。
