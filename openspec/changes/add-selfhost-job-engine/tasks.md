@@ -72,8 +72,8 @@ DBOS 的公共 rewind 保留成功 step，同 run/workflow 身份与原计划 Da
 
 依赖1.10与2–5全部实际完成、A可运行、C相关能力可用；spike不能替代以下正式验收。只做集成检查，不提前勾选服务器/外部凭据或main发布。
 
-- [ ] 6.1 本地Docker需求验收第4项：Asia/Singapore、双jobs、跨slot长任务及skip/once/恢复。验证：UTC计划/实际时间、唯一运行、无重叠、真实web health heartbeat证据入报告。
-- [ ] 6.2 本地Docker需求验收第5项：实际业务Drizzle回滚零执行、策略6次重试/DLQ、真实批次与双worker全局限额。验证：完整尝试时间轴、DLQ、确认前/发布窗口故障、跨worker竞争及无超限入报告。
-- [ ] 6.3 本地Docker需求验收第6项：真实1–2h采集替身流水线，列表→事务额度/限流批次→详情→归并→汇总；成功步骤后及sleep/wait重启、60+min早到事件、副作用checkpoint窗口。验证：同业务身份、已成功callback计数不增加、原deadline和幂等输出/结算，固定版本和开始/结束时间记录。
+- [x] 6.1 本地Docker需求验收第4项：Asia/Singapore、双jobs、跨slot长任务及skip/once/恢复。验证：UTC计划/实际时间、唯一运行、无重叠、真实web health heartbeat证据入报告。
+- [x] 6.2 本地Docker需求验收第5项：实际业务Drizzle回滚零执行、策略6次重试/DLQ、真实批次与双worker全局限额。验证：完整尝试时间轴、DLQ、确认前/发布窗口故障、跨worker竞争及无超限入报告。
+- [x] 6.3 本地Docker需求验收第6项：真实1–2h采集替身流水线，列表→事务额度/限流批次→详情→归并→汇总；成功步骤后及sleep/wait重启、60+min早到事件、副作用checkpoint窗口。验证：同业务身份、已成功callback计数不增加、原deadline和幂等输出/结算，固定版本和开始/结束时间记录。
 - [ ] 6.4 新加坡Linux重复第4–6项，合并A全服务预算并在整机2核4GiB下测web/PG/cache/代理/双jobs、连接/WAL/journal及余量。验证：完整SHA、脱敏版本/限额、时间轴/恢复/死信/资源通过；服务器或配套未就绪时保持未完成，不用本地spike冒充部署验收。
 - [ ] 6.5 集成后openspec strict、pnpm check/check:deps/check:singletons/dedupe --check/typecheck/test/build全部通过；Node适用集成与CF既有用例通过，CF bundle无Node引擎依赖。A真实Compose auth e2e依赖门解除后验收；main自动staging/health回归由协调者执行，不手动部署本分支或以构建替代部署验收。
