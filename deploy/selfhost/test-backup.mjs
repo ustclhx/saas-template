@@ -1,6 +1,15 @@
 import { execFile, execFileSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -9,6 +18,7 @@ import { promisify } from 'node:util'
 const root = resolve(import.meta.dirname, '../..')
 const args = process.argv.slice(2)
 const full = args.includes('--full')
+const restoreSuite = args.includes('--restore')
 const devRuntime = args.includes('--dev-runtime')
 const option = (name, fallback) => (args.includes(name) ? args[args.indexOf(name) + 1] : fallback)
 const sha = option(
@@ -23,9 +33,9 @@ const sourceDirty = Boolean(
   }).trim(),
 )
 const output = resolve(option('--output', join(tmpdir(), `selfhost-d-backup-evidence-${sha}`)))
-const temporary = mkdtempSync(join(tmpdir(), 'selfhost-d-backup-'))
+const temporary = realpathSync(mkdtempSync(join(tmpdir(), 'selfhost-d-backup-')))
 chmodSync(temporary, 0o700)
-const project = `selfhost-d-backup-${randomBytes(6).toString('hex')}`
+const project = `selfhost-d-restore-${randomBytes(6).toString('hex')}`
 const fixture = join(temporary, 'fixture')
 const secrets = join(temporary, 'secrets')
 const composeFile = join(temporary, 'compose.yaml')
@@ -39,6 +49,7 @@ let phase = 'configuration'
 let sampling = false
 let sampler
 let cleaned = false
+const restoreStates = []
 const events = []
 const measurements = {}
 const priorCpu = new Map()
@@ -76,7 +87,9 @@ function run(command, commandArgs, options = {}) {
   } catch (error) {
     if (error.message === 'Fixture leaked a credential') throw error
     const fixtureCode =
-      String(error.stderr ?? '').match(/BACKUP_S3_FIXTURE_FAILED_[A-Za-z]+/)?.[0] ?? ''
+      String(error.stderr ?? '').match(/BACKUP_S3_FIXTURE_FAILED_[A-Za-z]+/)?.[0] ??
+      String(error.stdout ?? '').match(/REPLICA_[A-Z0-9_]+/)?.[0] ??
+      ''
     const name = commandArgs.includes('/usr/local/lib/selfhost-backup/backup.py')
       ? commandArgs.at(-1)
       : commandArgs.includes('selfhost-walg')
@@ -176,7 +189,8 @@ async function pitr(backupId, target) {
     '/var/lib/postgresql/data',
     backupId,
   )
-  const config = `restore_command = 'selfhost-walg wal-fetch %f %p'\nrecovery_target_time = '${target}'\nrecovery_target_timeline = '1'\nrecovery_target_action = 'pause'\nrecovery_target_inclusive = true\n`
+  const recoveryTarget = target.replace('T', ' ').replace(/Z$/, '+00')
+  const config = `restore_command = 'selfhost-walg wal-fetch %f %p'\nrecovery_target_time = '${recoveryTarget}'\nrecovery_target_timeline = '1'\nrecovery_target_action = 'pause'\nrecovery_target_inclusive = true\n`
   run(
     'docker',
     [
@@ -266,10 +280,340 @@ async function monitor() {
     await delay(1000)
   }
 }
+async function restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, sourceDbAcl) {
+  phase = 'restore_target'
+  const target = sql(
+    'select to_char(clock_timestamp() at time zone \'UTC\',\'YYYY-MM-DD"T"HH24:MI:SS.US"Z"\')',
+  )
+  await delay(1200)
+  sql("insert into public.backup_marker values ('after',99)")
+  backup('verify')
+  const checksFile = join(temporary, 'checks.json')
+  writeFileSync(
+    checksFile,
+    JSON.stringify({
+      creditsEnabled: true,
+      checks: [
+        {
+          name: 'markers',
+          sql: "select exists(select 1 from backup_marker where id='before' and amount=17) and not exists(select 1 from backup_marker where id='after')",
+        },
+        {
+          name: 'schemas',
+          sql: `select (${schemaSql})::text = '${sourceSchemas.replaceAll("'", "''")}'`,
+        },
+        {
+          name: 'database-acl',
+          sql: `select (${aclSql})::text = '${sourceDbAcl.replaceAll("'", "''")}'`,
+        },
+        {
+          name: 'task-state',
+          sql: "select (select state='pending' from job_engine.message where queue='restore-fixture') and (select consumed_at is null from job_engine.workflow_event where workflow_id='restore-fixture') and (select state='waiting' from job_engine.workflow_wait where workflow_id='restore-fixture') and exists(select 1 from job_engine.schedule where id='restore-fixture') and (select status='pending' from dbos.backup_task where id='fixture')",
+        },
+        {
+          name: 'credit-snapshot',
+          sql: "select (select sum(delta) from credit_ledger)=17 and (select sum(remaining) from credit_grant where status='active')=17",
+        },
+      ],
+    }),
+    { mode: 0o600 },
+  )
+  function restoreArgs(destination, state, suffix, extra = []) {
+    const envPath = join(temporary, `${suffix}.env`)
+    writeFileSync(
+      envPath,
+      `BACKUP_S3_ENDPOINT=https://${destination ? 'replica-tls' : 'tls'}:8443\nBACKUP_S3_REGION=us-east-1\nBACKUP_S3_PREFIX=s3://backup-fixture/cluster\nBACKUP_S3_FORCE_PATH_STYLE=true\n`,
+      { mode: 0o600 },
+    )
+    return [
+      '--s3-env',
+      envPath,
+      '--access-key-file',
+      join(secrets, destination ? 'replica_admin_id' : 's3_admin_access_key_id'),
+      '--secret-key-file',
+      join(secrets, destination ? 'replica_admin_key' : 's3_admin_secret_access_key'),
+      '--ca-file',
+      join(fixture, 'ca.crt'),
+      '--image',
+      image('postgres'),
+      '--backup-id',
+      first.base.backupId,
+      '--target-time',
+      target,
+      '--project',
+      `selfhost-restore-d-restore-${randomBytes(6).toString('hex')}`,
+      '--state-dir',
+      state,
+      '--network',
+      configNetwork(),
+      '--checks-file',
+      checksFile,
+      ...extra,
+    ]
+  }
+  function configNetwork() {
+    return JSON.parse(compose('config', '--format', 'json')).networks.fixture.name
+  }
+  async function hostRestore(script, commandArgs) {
+    try {
+      const result = await execute(join(root, `deploy/selfhost/${script}`), commandArgs, {
+        cwd: root,
+        env,
+        encoding: 'utf8',
+        timeout: 180_000,
+        maxBuffer: 1024 * 1024,
+      })
+      return JSON.parse(safe(result.stdout).trim().split('\n').at(-1))
+    } catch (error) {
+      const code = String(error.stderr ?? '').match(/RESTORE_[A-Z_]+/)?.[0] || 'UNKNOWN'
+      if (error.stdout) {
+        const lines = safe(String(error.stdout)).trim().split('\n')
+        try {
+          const report = JSON.parse(lines.at(-1))
+          evidence('restore.diagnostic', { report })
+        } catch {}
+      }
+      throw new Error(`Restore entrance failed (${phase}; ${code})`)
+    }
+  }
+  const primaryState = join(temporary, 'primary-restore')
+  restoreStates.push(primaryState)
+  phase = 'restore_primary'
+  const primary = await hostRestore('restore.sh', [
+    'restore',
+    ...restoreArgs(false, primaryState, 'primary'),
+  ])
+  evidence('restore.primary', { report: primary, target, beforePresent: true, afterAbsent: true })
+  const promoted = await hostRestore('restore.sh', ['promote', '--state-dir', primaryState])
+  assert(promoted.status === 'promoted_isolated', 'Explicit promote did not succeed')
+  evidence('restore.promote', { explicit: true, isolated: true })
+  phase = 'restore_failure_boundaries'
+  async function rejectedRestore(commandArgs) {
+    try {
+      await hostRestore('restore.sh', ['restore', ...commandArgs])
+      return false
+    } catch {
+      return true
+    }
+  }
+  assert(
+    await rejectedRestore(restoreArgs(false, primaryState, 'unsafe-existing')),
+    'Existing state path accepted',
+  )
+  const existingVolumeArgs = restoreArgs(
+    false,
+    join(temporary, 'existing-volume'),
+    'existing-volume',
+  )
+  existingVolumeArgs[existingVolumeArgs.indexOf('--project') + 1] = primary.project
+  assert(await rejectedRestore(existingVolumeArgs), 'Existing database volume accepted')
+  const tooLateState = join(temporary, 'future-restore')
+  restoreStates.push(tooLateState)
+  const futureArgs = restoreArgs(false, tooLateState, 'future', ['--timeout', '20'])
+  futureArgs[futureArgs.indexOf('--target-time') + 1] = new Date(
+    Date.now() + 86400_000,
+  ).toISOString()
+  assert(await rejectedRestore(futureArgs), 'Out-of-range target silently restored latest')
+  const gapKey = `wal_005/${first.base.backupId.slice(5)}.lz4`
+  walg('st', 'get', gapKey, '/var/lib/selfhost-backup/gap.lz4', '--no-decompress')
+  walg('st', 'rm', gapKey)
+  const gapState = join(temporary, 'gap-restore')
+  restoreStates.push(gapState)
+  assert(
+    await rejectedRestore(restoreArgs(false, gapState, 'gap', ['--timeout', '20'])),
+    'Missing WAL returned success',
+  )
+  walg('st', 'put', '/var/lib/selfhost-backup/gap.lz4', gapKey, '--no-compress')
+  evidence('restore.boundaries', {
+    existingPathRejected: true,
+    missingWalRejected: true,
+    beyondUpperBoundRejected: true,
+  })
+  const failedDrillState = join(temporary, 'failed-drill')
+  const failedChecks = join(temporary, 'failed-checks.json')
+  writeFileSync(
+    failedChecks,
+    JSON.stringify({
+      creditsEnabled: true,
+      checks: [{ name: 'expected-failure', sql: 'select false' }],
+    }),
+    { mode: 0o600 },
+  )
+  restoreStates.push(failedDrillState)
+  let drillRejected = false
+  try {
+    await hostRestore(
+      'restore-drill.sh',
+      restoreArgs(false, failedDrillState, 'failed-drill', ['--checks-file', failedChecks]),
+    )
+  } catch {
+    drillRejected = true
+  }
+  const failedDrill = JSON.parse(readFileSync(join(failedDrillState, 'report.json'), 'utf8'))
+  const failedDrillMetadata = JSON.parse(readFileSync(join(failedDrillState, 'state.json'), 'utf8'))
+  assert(
+    drillRejected && failedDrill.status === 'failed' && !failedDrill.cleaned,
+    'Failed drill did not retain diagnosis',
+  )
+  run('docker', ['volume', 'inspect', failedDrillMetadata.volume])
+  await hostRestore('restore.sh', ['cleanup', '--state-dir', failedDrillState])
+  evidence('restore.failed_drill', {
+    nonzero: true,
+    diagnosisRetained: true,
+    volumeRetainedUntilExplicitCleanup: true,
+  })
+  const replicaSync = () =>
+    compose(
+      'exec',
+      '-T',
+      '-e',
+      'BACKUP_REPLICA_ENABLED=true',
+      'backup',
+      'python3',
+      '/usr/local/lib/selfhost-backup/backup.py',
+      'replica-sync',
+    )
+  phase = 'replica_sync'
+  replicaSync()
+  const replicaList = () =>
+    JSON.parse(compose('run', '--rm', '--no-deps', 'replica-s3tool', 'list'))
+  const copyState = status().replica
+  assert(
+    copyState.ok && copyState.continuousUntil && copyState.backupId === first.base.backupId,
+    'Replica lacks verified upper bound',
+  )
+  const copied = replicaList()
+  assert(
+    copied.some((o) => o.key.includes('/logical/')),
+    'Replica did not copy dump',
+  )
+  replicaSync()
+  assert(
+    JSON.stringify(copied.map((o) => o.key)) === JSON.stringify(replicaList().map((o) => o.key)),
+    'Repeated sync changed inventory',
+  )
+  let interrupted = false
+  try {
+    compose(
+      'exec',
+      '-T',
+      '-e',
+      'BACKUP_REPLICA_ENABLED=true',
+      'backup',
+      'timeout',
+      '--signal=KILL',
+      '1',
+      'python3',
+      '/usr/local/lib/selfhost-backup/backup.py',
+      'replica-sync',
+    )
+  } catch {
+    interrupted = true
+  }
+  assert(interrupted && !status().replica.ok, 'Interrupted copy reported success')
+  replicaSync()
+  evidence('replica.sync', {
+    complete: true,
+    repeated: true,
+    interruptedResumed: true,
+    independentCredentials: true,
+    dump: true,
+    continuousUntil: copyState.continuousUntil,
+    lagSeconds: copyState.syncLagSeconds,
+  })
+  phase = 'replica_failure'
+  await composeAsync('stop', 'replica-tls')
+  let rejected = false
+  try {
+    replicaSync()
+  } catch {
+    rejected = true
+  }
+  assert(rejected && !status().replica.ok, 'Replica outage reported success')
+  const priorObjects = s3('list')
+  for (const operation of ['health', 'retention-apply']) {
+    let refused = false
+    try {
+      compose(
+        'exec',
+        '-T',
+        '-e',
+        'BACKUP_REPLICA_ENABLED=true',
+        'backup',
+        'python3',
+        '/usr/local/lib/selfhost-backup/backup.py',
+        operation,
+      )
+    } catch {
+      refused = true
+    }
+    assert(refused, 'Failed replica permitted healthy state or primary cleanup')
+  }
+  assert(
+    JSON.stringify(priorObjects) === JSON.stringify(s3('list')),
+    'Replica failure allowed deletion',
+  )
+  sql("insert into public.backup_marker values ('primary-independent',1)")
+  backup('verify')
+  assert(status().verification.ok, 'Replica outage blocked primary archive')
+  await composeAsync('start', 'replica-tls')
+  // 只针对本夹具生成真实history，再停止此临时PG；正式恢复入口不向主归档写入。
+  await pitr(first.base.backupId, target)
+  sql('select pg_wal_replay_resume()', 'restore')
+  sql('select pg_promote(true,30)', 'restore')
+  compose(
+    'exec',
+    '-T',
+    'restore',
+    'selfhost-walg',
+    'wal-push',
+    '/var/lib/postgresql/data/pg_wal/00000002.history',
+  )
+  await composeAsync('stop', 'restore')
+  replicaSync()
+  assert(
+    replicaList().some((o) => /00000002\.history(?:\.[^.]+)?$/.test(o.key)),
+    'Replica did not copy real history',
+  )
+  evidence('replica.failure', { nonzero: true, primaryArchiveIndependent: true, recovered: true })
+  phase = 'replica_source_delete'
+  const logicalKey = s3('list').find((o) => /logical\/.*database.dump.lz4$/.test(o.key)).key
+  walg('st', 'rm', logicalKey.slice('cluster/'.length))
+  replicaSync()
+  assert(
+    replicaList().some((o) => o.key === logicalKey),
+    'Source deletion propagated',
+  )
+  evidence('replica.source_delete', { deletionNotPropagated: true })
+  phase = 'restore_secondary_only'
+  sampling = false
+  await sampler
+  await composeAsync('stop', 'tls', 'object-storage', 'postgres', 'backup')
+  const secondaryState = join(temporary, 'secondary-restore')
+  restoreStates.push(secondaryState)
+  const secondary = await hostRestore(
+    'restore-drill.sh',
+    restoreArgs(true, secondaryState, 'secondary'),
+  )
+  evidence('restore.secondary', {
+    report: secondary,
+    target,
+    primaryStopped: true,
+    independentCredentials: true,
+    beforePresent: true,
+    afterAbsent: true,
+  })
+  await composeAsync('start', 'object-storage', 'tls', 'postgres', 'backup')
+}
 async function cleanup() {
   sampling = false
   if (sampler) await sampler.catch(() => {})
   try {
+    for (const state of restoreStates) {
+      const metadata = join(state, 'state.json')
+      if (!existsSync(metadata)) continue
+      run(join(root, 'deploy/selfhost/restore.sh'), ['cleanup', '--state-dir', state])
+    }
     if (started) compose('down', '-v', '--remove-orphans', '--timeout', '10')
     cleaned = true
   } catch {
@@ -317,10 +661,17 @@ try {
     '2',
     '-subj',
     '/CN=selfhost-d-backup-CA',
+    '-addext',
+    'basicConstraints=critical,CA:TRUE',
+    '-addext',
+    'keyUsage=critical,keyCertSign,cRLSign',
+    '-addext',
+    'subjectKeyIdentifier=hash',
   ])
   writeFileSync(
     join(fixture, 'extensions'),
-    'subjectAltName=DNS:tls,DNS:postgres\nextendedKeyUsage=serverAuth\n',
+    // Python3.13启用严格X509校验，夹具CA/leaf也必须包含真实证书的必要扩展。
+    'subjectAltName=DNS:tls,DNS:replica-tls,DNS:postgres\nextendedKeyUsage=serverAuth\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\n',
   )
   run('openssl', [
     'req',
@@ -501,7 +852,66 @@ ${credentials
   .join('\n')}
 `,
   )
-  const config = JSON.parse(compose('config', '--format', 'json'))
+  let config = JSON.parse(compose('config', '--format', 'json'))
+  if (restoreSuite) {
+    // 独立实例与凭据模拟账号丢失；不复用主目标的对象卷或管理身份。
+    for (const name of [
+      'replica_admin_id',
+      'replica_admin_key',
+      'replica_app_id',
+      'replica_app_key',
+    ]) {
+      secret(name)
+      config.secrets[name] = { file: join(secrets, name) }
+    }
+    const copy = (name) => structuredClone(config.services[name])
+    const replicaStore = copy('object-storage')
+    replicaStore.environment.S3_PUBLIC_DOMAIN = 'replica-tls'
+    replicaStore.secrets = [
+      'replica_admin_id',
+      'replica_admin_key',
+      'replica_app_id',
+      'replica_app_key',
+    ].map((source, i) => ({
+      source,
+      target: [
+        's3_admin_access_key_id',
+        's3_admin_secret_access_key',
+        's3_access_key_id',
+        's3_secret_access_key',
+      ][i],
+    }))
+    replicaStore.volumes = replicaStore.volumes.map((volume) => ({
+      ...volume,
+      source: `replica_${volume.source}`,
+    }))
+    for (const volume of replicaStore.volumes) config.volumes[volume.source] = {}
+    config.services['replica-storage'] = replicaStore
+    const replicaTls = copy('tls')
+    replicaTls.environment = { FIXTURE_S3_HOST: 'replica-storage' }
+    config.services['replica-tls'] = replicaTls
+    const replicaTool = copy('s3tool')
+    replicaTool.environment = { FIXTURE_S3_HOST: 'replica-storage' }
+    replicaTool.secrets = replicaStore.secrets.slice(0, 2)
+    config.services['replica-s3tool'] = replicaTool
+    // 初始主备份不等待副本；测试显式启用复制后才声明双副本。
+    config.services.backup.environment = {
+      ...config.services.backup.environment,
+      BACKUP_REPLICA_S3_ENDPOINT: 'https://replica-tls:8443',
+      BACKUP_REPLICA_S3_REGION: 'us-east-1',
+      BACKUP_REPLICA_S3_PREFIX: 's3://backup-fixture/cluster',
+      BACKUP_REPLICA_S3_FORCE_PATH_STYLE: 'true',
+      BACKUP_REPLICA_S3_ACCESS_KEY_ID_FILE: '/run/secrets/replica_admin_id',
+      BACKUP_REPLICA_S3_SECRET_ACCESS_KEY_FILE: '/run/secrets/replica_admin_key',
+      BACKUP_REPLICA_S3_CA_FILE: '/fixture/ca.crt',
+    }
+    config.services.backup.secrets.push(
+      { source: 'replica_admin_id', target: 'replica_admin_id' },
+      { source: 'replica_admin_key', target: 'replica_admin_key' },
+    )
+    writeFileSync(composeFile, JSON.stringify(config))
+    config = JSON.parse(compose('config', '--format', 'json'))
+  }
   assert(
     Object.values(config.services).every((s) => !s.ports?.length && !s.build),
     'Fixture exposes data ports or builds',
@@ -515,7 +925,7 @@ ${credentials
     )
   }
   evidence('backup.fixture', {
-    mode: full ? 'full' : 'smoke',
+    mode: restoreSuite ? 'restore' : full ? 'full' : 'smoke',
     project,
     noPublishedPorts: true,
     internalOnly: true,
@@ -531,9 +941,24 @@ ${credentials
     'postgres',
     'object-storage',
     'tls',
+    ...(restoreSuite ? ['replica-storage', 'replica-tls'] : []),
   )
   phase = 'bucket_initialization'
   s3('init')
+  if (restoreSuite) compose('run', '--rm', '--no-deps', 'replica-s3tool', 'init')
+  if (restoreSuite) {
+    const connectivity = compose(
+      'run',
+      '--rm',
+      '--no-deps',
+      '--entrypoint',
+      'python3',
+      'backup',
+      '-c',
+      "import sys;sys.path.insert(0,'/usr/local/lib/selfhost-backup');from replica import S3,configuration;from walg import BackupError\ntry:\n print([len(S3(configuration(other)).list()) for other in [False,True]])\nexcept BackupError as e:\n print(str(e));sys.exit(1)",
+    )
+    assert(connectivity.includes('['), 'Replica endpoints not readable')
+  }
   evidence('backup.bucket_ready')
   phase = 'migrations'
   const migration = compose('run', '--rm', '--no-deps', 'migrate')
@@ -556,6 +981,8 @@ ${credentials
     insert into public.backup_marker values ('before', 17);
     insert into job_engine.backup_task values ('fixture', 'pending');
     insert into dbos.backup_task values ('fixture', 'pending');`)
+  if (restoreSuite)
+    sql(readFileSync(join(root, 'deploy/selfhost/backup/fixtures/restore-seed.sql'), 'utf8'))
   // 启动前做配置边界，防止失败测试与生产式调度互相覆盖状态。
   phase = 'configuration_boundaries'
   rejectBackup({ BACKUP_S3_ACCESS_KEY_ID_FILE: '/fixture/missing' }, 'base')
@@ -762,6 +1189,7 @@ ${credentials
     'Restart duplicated successful schedule slot',
   )
   evidence('backup.schedule_restart', { successfulSlotPreserved: true, noDuplicateBase: true })
+  if (restoreSuite) await restoreAcceptance(first, sourceSchemas, schemaSql, aclSql, sourceDbAcl)
   if (full) {
     phase = 'oldest_weekly_pitr'
     await composeAsync(
@@ -993,7 +1421,17 @@ ${credentials
     disk: final.disk,
   })
   phase = 'redaction'
-  safe(compose('logs', '--no-log-prefix', 'postgres', 'backup', 'object-storage', 'tls'))
+  safe(
+    compose(
+      'logs',
+      '--no-log-prefix',
+      'postgres',
+      'backup',
+      'object-storage',
+      'tls',
+      ...(restoreSuite ? ['replica-storage', 'replica-tls'] : []),
+    ),
+  )
   evidence('backup.passed', { full })
 } catch (error) {
   failure = error instanceof Error ? error.message : 'Backup acceptance failed'

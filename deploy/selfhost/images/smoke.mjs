@@ -298,7 +298,7 @@ secrets:
   // 备份使用自己的隔离 PG/S3 fixture，必须完成真实备份与恢复才算 runtime smoke。
   run(
     'node',
-    [join(root, 'deploy/selfhost/test-backup.mjs'), '--sha', sha, '--output', output],
+    [join(root, 'deploy/selfhost/test-backup.mjs'), '--restore', '--sha', sha, '--output', output],
     600_000,
   )
   const backupEvidence = JSON.parse(readFileSync(join(output, 'backup-smoke.json'), 'utf8'))

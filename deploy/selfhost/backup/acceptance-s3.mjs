@@ -7,6 +7,9 @@ import { createRequire } from 'node:module'
 const require = createRequire(new URL('../../../packages/storage/package.json', import.meta.url))
 const sdk = require('@aws-sdk/client-s3')
 const [operation, key, destination] = process.argv.slice(2)
+// 此脚本由Docker夹具直接执行，不属于Turbo缓存任务。
+// biome-ignore lint/suspicious/noUndeclaredEnvVars: 仅隔离夹具接线
+const fixtureHost = process.env.FIXTURE_S3_HOST || 'object-storage'
 let client
 function assertMetadataChange(before, after) {
   if (before === after) throw new Error('Metadata timestamps absent')
@@ -22,7 +25,7 @@ try {
         (request, response) => {
           const upstream = http.request(
             {
-              host: 'object-storage',
+              host: fixtureHost,
               port: 8333,
               path: request.url,
               method: request.method,
@@ -43,7 +46,7 @@ try {
       .listen(8443, '0.0.0.0')
   } else {
     client = new sdk.S3Client({
-      endpoint: 'http://object-storage:8333',
+      endpoint: `http://${fixtureHost}:8333`,
       region: 'us-east-1',
       forcePathStyle: true,
       credentials: {

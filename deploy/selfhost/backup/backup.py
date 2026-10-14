@@ -126,7 +126,7 @@ def bases():
     return data
 
 
-def base():
+def base(sync_replica=True):
     def perform():
         info = pg_info()
         prior = {item['backup_name'] for item in bases()}
@@ -137,10 +137,14 @@ def base():
         if len(created) != 1:
             raise BackupError('BACKUP_BASE_COMMIT_INVALID')
         return {'backupId': created[0]['backup_name'], 'clusterId': info['clusterId']}
-    return operation('base', perform)
+    result = operation('base', perform)
+    if sync_replica and replica_enabled():
+        verify()
+        replica_sync()
+    return result
 
 
-def dump():
+def dump(sync_replica=True):
     def perform():
         info = pg_info()
         TMP.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -173,7 +177,11 @@ def dump():
             # 最后上传完成标记；部分失败对象不可作为成功 dump 消费。
             invoke(['st', 'put', str(path / 'manifest.json'), prefix + '/manifest.json', '--no-compress'])
         return {'prefix': prefix, 'clusterId': info['clusterId'], 'databaseBytes': database_bytes}
-    return operation('dump', perform)
+    result = operation('dump', perform)
+    if sync_replica and replica_enabled():
+        verify()
+        replica_sync()
+    return result
 
 
 def archive_stats():
@@ -210,6 +218,30 @@ def verify():
     return operation('verification', perform)
 
 
+def replica_enabled():
+    from replica import enabled
+    return enabled()
+
+
+def replica_sync():
+    from replica import sync
+    from retention import plan
+    state = load()
+    state['replica'] = {**state.get('replica', {}), 'configured': True}
+    save(state)
+    def perform():
+        if not replica_enabled():
+            raise BackupError('REPLICA_NOT_CONFIGURED')
+        inventory = plan(bases(), now(), number('BACKUP_DAILY_DAYS', 7),
+                         number('BACKUP_WEEKLY_WEEKS', 4), number('BACKUP_WEEKLY_DAY', 0, 0))
+        verification = load().get('verification', {})
+        verified_at = dt.datetime.fromisoformat(verification.get('verifiedAt', '').replace('Z', '+00:00'))
+        if not 0 <= (now() - verified_at).total_seconds() <= 900:
+            raise BackupError('REPLICA_SOURCE_PROOF_STALE')
+        return sync(inventory, verification, TMP)
+    return operation('replica', perform)
+
+
 def retention(dry_run=True):
     from retention import plan, execute
     state = load()
@@ -220,7 +252,7 @@ def retention(dry_run=True):
     proof = {'clusterId': pg_info()['clusterId'],
              'timeline': int(query('SELECT timeline_id FROM pg_control_checkpoint()')),
              'base': state.get('base', {}), 'archive': state.get('verification', {}),
-             'replica': state.get('replica', {'configured': False})}
+             'replica': {**state.get('replica', {}), 'configured': replica_enabled()}}
     outcome = execute(invoke, result, proof, now(), dry_run=dry_run)
     if not dry_run:
         state['retention'] = {**outcome, 'lastSuccess': stamp(), 'ok': True}
@@ -229,9 +261,11 @@ def retention(dry_run=True):
 
 
 def cycle():
-    base()
-    dump()
+    base(sync_replica=False)
+    dump(sync_replica=False)
     verify()
+    if replica_enabled():
+        replica_sync()
     result = retention(dry_run=False)
     return result
 
@@ -258,7 +292,7 @@ def status():
     except BackupError:
         stats, disk, pg_ok = {}, {}, False
     result = {**state, 'archive': archive, 'pgStatArchiver': stats, 'disk': disk,
-              'replica': state.get('replica', {'configured': False, 'ok': False}),
+              'replica': {**state.get('replica', {'ok': False}), 'configured': replica_enabled()},
               'checkedAt': stamp()}
     threshold = number('BACKUP_MAX_AGE_SECONDS', 90000)
     recent = True
@@ -267,6 +301,15 @@ def status():
         value = entry.get('lastSuccess')
         recent = recent and bool(entry.get('ok') and value and
                                 (now() - dt.datetime.fromisoformat(value.replace('Z', '+00:00'))).total_seconds() <= threshold)
+    replica = result['replica']
+    if replica['configured']:
+        value = replica.get('lastSuccess')
+        recent = recent and bool(replica.get('ok') and value and
+            0 <= (now() - dt.datetime.fromisoformat(value.replace('Z', '+00:00'))).total_seconds() <=
+            number('BACKUP_REPLICA_MAX_AGE_SECONDS', 900))
+        if replica.get('continuousUntil'):
+            replica['currentLagSeconds'] = (now() - dt.datetime.fromisoformat(
+                replica['continuousUntil'].replace('Z', '+00:00'))).total_seconds()
     result['healthy'] = bool(pg_ok and recent and archive.get('lastSuccess') and
                              archive.get('consecutiveFailures', 0) == 0 and
                              stats.get('last_archived_time') and
@@ -289,6 +332,7 @@ def schedule():
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     last_attempt = 0.0
+    replica_attempt = 0.0
     while not stopping:
         current = now()
         due = current.replace(hour=hours, minute=minutes, second=0, microsecond=0)
@@ -317,6 +361,24 @@ def schedule():
                                          'failures': prior.get('failures', 0) + 1}
                     save(state)
                 event('cycle.failed', False)
+        if replica_enabled() and time.monotonic() - replica_attempt >= number('BACKUP_REPLICA_INTERVAL_SECONDS', 300):
+            replica_attempt = time.monotonic()
+            previous_failures = load().get('replica', {}).get('failures', 0)
+            try:
+                with locked():
+                    # verify产生已封口WAL时间边界；复制与每日周期共锁，PG归档仍独立。
+                    verify()
+                    replica_sync()
+                event('replica.completed')
+            except Exception:
+                with locked():
+                    state = load()
+                    prior = state.get('replica', {})
+                    state['replica'] = {**prior, 'configured': True, 'ok': False,
+                                        'lastFailure': stamp(),
+                                        'failures': max(prior.get('failures', 0), previous_failures + 1)}
+                    save(state)
+                event('replica.failed', False)
         # 小步等待使停止及时；持久 slot 不依赖容器内 cron 内存状态。
         for _ in range(30):
             if stopping:
@@ -344,7 +406,7 @@ def main():
         raise BackupError('BACKUP_REQUIRES_UID999')
     parser = argparse.ArgumentParser()
     parser.add_argument('command', choices=['base', 'dump', 'verify', 'cycle', 'status',
-                                           'health', 'schedule', 'retention-plan', 'retention-apply'])
+                                           'health', 'schedule', 'replica-sync', 'retention-plan', 'retention-apply'])
     args = parser.parse_args()
     STATE.mkdir(mode=0o700, parents=True, exist_ok=True)
     if args.command == 'schedule':
@@ -363,7 +425,8 @@ def main():
             if args.command.startswith('retention-'):
                 print(json.dumps(retention(dry_run=args.command == 'retention-plan')))
             else:
-                {'base': base, 'dump': dump, 'verify': verify, 'cycle': cycle}[args.command]()
+                {'base': base, 'dump': dump, 'verify': verify, 'cycle': cycle,
+                 'replica-sync': replica_sync}[args.command]()
                 event(args.command + '.completed')
     return 0
 
