@@ -1,3 +1,4 @@
+import type { WorkflowInstance } from '@saas/platform'
 import { AppError } from '@saas/shared'
 import { getLogContext } from '@saas/shared/log'
 import type { Storage } from '@saas/storage'
@@ -50,13 +51,20 @@ export function requestWebRuntime(request: Request): WebRuntime {
     : undefined
   const ai = runtime.ai?.available ? runtime.ai.value : undefined
   const download = ai?.downloadFile.available ? ai.downloadFile.value : undefined
+  const workflow = ai?.workflow.available ? ai.workflow.value : undefined
+  const workflowInstance = (instance: WorkflowInstance): WorkflowInstance => ({
+    id: instance.id,
+    status: () => resourceCall(() => instance.status()),
+    sendEvent: (event) => resourceCall(() => instance.sendEvent(event)),
+    terminate: () => resourceCall(() => instance.terminate()),
+  })
   // 复制属性描述符保留惰性 getter 和 own/enumerable，文件 handler 的依赖展开才能保留 db/auth。
   return Object.defineProperties(
     {},
     {
       ...Object.getOwnPropertyDescriptors(runtime),
       ...(files ? { files: { enumerable: true, value: { available: true, value: files } } } : {}),
-      ...(ai && download
+      ...(ai && (download || workflow)
         ? {
             ai: {
               enumerable: true,
@@ -64,11 +72,30 @@ export function requestWebRuntime(request: Request): WebRuntime {
                 available: true,
                 value: {
                   ...ai,
-                  downloadFile: {
-                    available: true,
-                    value: (input: Parameters<typeof download>[0]) =>
-                      resourceCall(() => download(input)),
-                  },
+                  ...(download
+                    ? {
+                        downloadFile: {
+                          available: true,
+                          value: (input: Parameters<typeof download>[0]) =>
+                            resourceCall(() => download(input)),
+                        },
+                      }
+                    : {}),
+                  ...(workflow
+                    ? {
+                        workflow: {
+                          available: true,
+                          value: {
+                            create: (input: Parameters<typeof workflow.create>[0]) =>
+                              resourceCall(async () =>
+                                workflowInstance(await workflow.create(input)),
+                              ),
+                            get: (id: string) =>
+                              resourceCall(async () => workflowInstance(await workflow.get(id))),
+                          },
+                        },
+                      }
+                    : {}),
                 },
               },
             },

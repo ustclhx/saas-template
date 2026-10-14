@@ -23,6 +23,7 @@ import { createWebAuth } from '../server/auth.ts'
 import { createQueueAuthEmailSender, userLocaleByEmail } from '../server/auth-email.ts'
 import type { WebRuntime } from '../server/runtime.ts'
 import { templateConfig } from '../server/template-config.ts'
+import { createNodeMediaWorkflowClient } from './media-workflow.ts'
 import type { NodeWebObserver } from './observer-context.ts'
 
 function unavailable(): never {
@@ -202,10 +203,24 @@ export async function createNodeWebProcess(
             AI_GATEWAY_ID: env.AI_GATEWAY_ID,
             AI_GATEWAY_TOKEN: env.AI_GATEWAY_TOKEN,
             ...(env.FAL_KEY === undefined ? {} : { FAL_KEY: env.FAL_KEY }),
+            ...(env.MEDIA_WEBHOOK_SECRET === undefined
+              ? {}
+              : { MEDIA_WEBHOOK_SECRET: env.MEDIA_WEBHOOK_SECRET }),
           },
           workersAi: { available: false },
           background,
-          workflow: { available: false },
+          workflow:
+            storage &&
+            (templateConfig.ai.image || templateConfig.ai.video) &&
+            env.MEDIA_WEBHOOK_SECRET
+              ? {
+                  available: true,
+                  value: createNodeMediaWorkflowClient({
+                    jobsUrl: jobsConfig.JOBS_URL,
+                    secret: env.MEDIA_WEBHOOK_SECRET,
+                  }),
+                }
+              : { available: false },
           downloadFile: storage
             ? { available: true, value: (input) => getFileDownload(db, storage, input) }
             : { available: false },
