@@ -64,7 +64,7 @@ DBOS 的公共 rewind 保留成功 step，同 run/workflow 身份与原计划 Da
 
 - [x] 5.1 将email/events生产消费接A Queue接口和Node adapter，保留requestId/幂等键、邮件错误分类、billing/operations逐消息处理；有效不可重试/耗尽失败先DeadLetterSink持久记录再确认，CF保留原行为。验证：email-queue/billing.unit/operations.unit及web队列测试两目标通过，暂时失败/无效/耗尽符合规格。
 - [x] 5.2 注册五条既有UTC Cron，移植billing、删除缓存补偿、文件/空间清理、metrics与heartbeat；保留ai_message/ai_task hold注册及独立子任务失败策略。验证：现有jobs/billing/files-cleanup/metrics/workspace测试通过，五条映射齐全；metrics补跑使用原scheduledAt前一UTC日，重复upsert不累计。
-- [ ] 5.3 解耦media-runner的CF step/telemetry，由Node外壳注入A DB、C storage、既有Provider和正式WorkflowStep，CF wrapper复用runner。验证：media-workflow/media-settlement/media-hold-sweep两目标通过，丢提交响应不重提、check/recheck/轮询/硬截止、确定性产出及结算幂等不变。
+- [x] 5.3 解耦media-runner的CF step/telemetry，由Node外壳注入A DB、C storage、既有Provider和正式WorkflowStep，CF wrapper复用runner。验证：media-workflow/media-settlement/media-hold-sweep两目标通过，丢提交响应不重提、check/recheck/轮询/硬截止、确定性产出及结算幂等不变。
 - [ ] 5.4 将web create/get/instance.status/sendEvent/terminate接正式Workflow，保留创建失败退款、回调先落库且通知失败仍200、取消先释放/落终态及停止失败可恢复。验证：ai-media-tasks/跨绑定smoke、Node重启/晚回调/取消后恢复不重复扣费；CF不依赖Node引擎。
 - [x] 5.5 提交Node jobs注册/扩展指南，含中立接口、事务API、队列配置、UTC/Singapore、版本与pool/shutdown约束。验证：隔离目标按指南新增任务可运行，关闭billing/credits/AI时不注册对应业务handler且jobs/heartbeat可启动；文档无外部本机路径。
 

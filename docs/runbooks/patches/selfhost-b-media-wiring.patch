@@ -1,0 +1,215 @@
+diff --git a/apps/jobs/src/node/runtime.ts b/apps/jobs/src/node/runtime.ts
+index 3ee9793..eb7d8a7 100644
+--- a/apps/jobs/src/node/runtime.ts
++++ b/apps/jobs/src/node/runtime.ts
+@@ -12,6 +12,7 @@ import {
+   createNodeScheduler,
+   createNodeTaskHealth,
+   createNodeTaskHealthResponse,
++  createNodeWorkflow,
+   type NodeJobEngine,
+ } from '@saas/platform/node'
+ import { log, newRequestId, withLogContext } from '@saas/shared/log'
+@@ -19,6 +20,8 @@ import { createNodeStorage } from '@saas/storage/node'
+ import templateConfig from '../../../../template.config.ts'
+ import { consumeJobsBatch, type JobsContext } from '../handlers.ts'
+ import { type JobObserver, logJobObserver } from '../observer.ts'
++import { createNodeMediaHandler } from './media.ts'
++import { createNodeMediaWorkflowHttpHandler } from './media-http.ts'
+ import { getNodeJobFeatures, registerNodeJobsSchedules } from './registration.ts'
+
+ export interface NodeJobsOptions {
+@@ -54,6 +57,9 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
+   }
+   let queues!: ReturnType<typeof createNodeQueueAdapter>
+   let scheduler!: ReturnType<typeof createNodeScheduler>
++  let mediaWorkflow:
++    | ReturnType<typeof createNodeWorkflow<{ taskId: string; requestId?: string }>>
++    | undefined
+   let dispose = () => {}
+   let engine: NodeJobEngine
+   const template = options.template ?? templateConfig
+@@ -126,6 +132,22 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
+         queues.register('events', (batch, sink) =>
+           consumeJobsBatch(batch, { ...context, eventsDeadLetters: sink }),
+         )
++        if (features.media && storageConfig && config.MEDIA_WEBHOOK_SECRET) {
++          mediaWorkflow = createNodeWorkflow({
++            engine,
++            name: 'ai-media-v1',
++            handler: createNodeMediaHandler(engine.database, {
++              storage: storageConfig,
++              providerEnv: {
++                ...(config.FAL_KEY === undefined ? {} : { FAL_KEY: config.FAL_KEY }),
++              },
++              callbackOrigin: config.APP_URL,
++              callbackSecret: config.MEDIA_WEBHOOK_SECRET,
++              template,
++              observer,
++            }),
++          })
++        }
+         scheduler = createNodeScheduler({ engine })
+         dispose = registerNodeJobsSchedules(scheduler, context, template)
+         await queues.prepare()
+@@ -136,6 +158,7 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
+         scheduler.start()
+       },
+       stopReceiving() {
++        mediaWorkflow?.stopReceiving()
+         queues?.stopReceiving()
+         scheduler?.stopReceiving()
+       },
+@@ -185,6 +208,10 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
+       { status: ready ? 200 : 503, headers: { 'cache-control': 'no-store' } },
+     )
+   }
++  const mediaHttp = createNodeMediaWorkflowHttpHandler({
++    workflow: mediaWorkflow ? { available: true, value: mediaWorkflow } : { available: false },
++    secret: config.MEDIA_WEBHOOK_SECRET ?? '',
++  })
+   const sockets = new Set<Socket>()
+   let stopping = false
+   const server = createServer((request, response) => {
+@@ -204,6 +231,8 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
+             response.writeHead(result.status).end(await result.text())
+           }),
+         )
++      } else if (request.url === '/internal/workflows/ai-media') {
++        background.waitUntil(mediaHttp(request, response))
+       } else response.writeHead(404).end()
+     })
+   })
+@@ -211,6 +240,7 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
+     sockets.add(socket)
+     socket.once('close', () => sockets.delete(socket))
+   })
++  server.requestTimeout = 5_000
+   let shutdownDeadline: number | undefined
+   async function closeObserver() {
+     if (!observer.close || shutdownDeadline === undefined) return
+diff --git a/apps/web/src/node/request-runtime.ts b/apps/web/src/node/request-runtime.ts
+index 36dcfc4..7de7470 100644
+--- a/apps/web/src/node/request-runtime.ts
++++ b/apps/web/src/node/request-runtime.ts
+@@ -1,3 +1,4 @@
++import type { WorkflowInstance } from '@saas/platform'
+ import { AppError } from '@saas/shared'
+ import { getLogContext } from '@saas/shared/log'
+ import type { Storage } from '@saas/storage'
+@@ -50,13 +51,20 @@ export function requestWebRuntime(request: Request): WebRuntime {
+     : undefined
+   const ai = runtime.ai?.available ? runtime.ai.value : undefined
+   const download = ai?.downloadFile.available ? ai.downloadFile.value : undefined
++  const workflow = ai?.workflow.available ? ai.workflow.value : undefined
++  const workflowInstance = (instance: WorkflowInstance): WorkflowInstance => ({
++    id: instance.id,
++    status: () => resourceCall(() => instance.status()),
++    sendEvent: (event) => resourceCall(() => instance.sendEvent(event)),
++    terminate: () => resourceCall(() => instance.terminate()),
++  })
+   // 复制属性描述符保留惰性 getter 和 own/enumerable，文件 handler 的依赖展开才能保留 db/auth。
+   return Object.defineProperties(
+     {},
+     {
+       ...Object.getOwnPropertyDescriptors(runtime),
+       ...(files ? { files: { enumerable: true, value: { available: true, value: files } } } : {}),
+-      ...(ai && download
++      ...(ai && (download || workflow)
+         ? {
+             ai: {
+               enumerable: true,
+@@ -64,11 +72,30 @@ export function requestWebRuntime(request: Request): WebRuntime {
+                 available: true,
+                 value: {
+                   ...ai,
+-                  downloadFile: {
+-                    available: true,
+-                    value: (input: Parameters<typeof download>[0]) =>
+-                      resourceCall(() => download(input)),
+-                  },
++                  ...(download
++                    ? {
++                        downloadFile: {
++                          available: true,
++                          value: (input: Parameters<typeof download>[0]) =>
++                            resourceCall(() => download(input)),
++                        },
++                      }
++                    : {}),
++                  ...(workflow
++                    ? {
++                        workflow: {
++                          available: true,
++                          value: {
++                            create: (input: Parameters<typeof workflow.create>[0]) =>
++                              resourceCall(async () =>
++                                workflowInstance(await workflow.create(input)),
++                              ),
++                            get: (id: string) =>
++                              resourceCall(async () => workflowInstance(await workflow.get(id))),
++                          },
++                        },
++                      }
++                    : {}),
+                 },
+               },
+             },
+diff --git a/apps/web/src/node/runtime.ts b/apps/web/src/node/runtime.ts
+index a6f0a03..42af44d 100644
+--- a/apps/web/src/node/runtime.ts
++++ b/apps/web/src/node/runtime.ts
+@@ -23,6 +23,7 @@ import { createWebAuth } from '../server/auth.ts'
+ import { createQueueAuthEmailSender, userLocaleByEmail } from '../server/auth-email.ts'
+ import type { WebRuntime } from '../server/runtime.ts'
+ import { templateConfig } from '../server/template-config.ts'
++import { createNodeMediaWorkflowClient } from './media-workflow.ts'
+ import type { NodeWebObserver } from './observer-context.ts'
+
+ function unavailable(): never {
+@@ -202,10 +203,24 @@ export async function createNodeWebProcess(
+             AI_GATEWAY_ID: env.AI_GATEWAY_ID,
+             AI_GATEWAY_TOKEN: env.AI_GATEWAY_TOKEN,
+             ...(env.FAL_KEY === undefined ? {} : { FAL_KEY: env.FAL_KEY }),
++            ...(env.MEDIA_WEBHOOK_SECRET === undefined
++              ? {}
++              : { MEDIA_WEBHOOK_SECRET: env.MEDIA_WEBHOOK_SECRET }),
+           },
+           workersAi: { available: false },
+           background,
+-          workflow: { available: false },
++          workflow:
++            storage &&
++            (templateConfig.ai.image || templateConfig.ai.video) &&
++            env.MEDIA_WEBHOOK_SECRET
++              ? {
++                  available: true,
++                  value: createNodeMediaWorkflowClient({
++                    jobsUrl: jobsConfig.JOBS_URL,
++                    secret: env.MEDIA_WEBHOOK_SECRET,
++                  }),
++                }
++              : { available: false },
+           downloadFile: storage
+             ? { available: true, value: (input) => getFileDownload(db, storage, input) }
+             : { available: false },
+diff --git a/packages/config/src/node-schema.ts b/packages/config/src/node-schema.ts
+index ad341d1..4c76707 100644
+--- a/packages/config/src/node-schema.ts
++++ b/packages/config/src/node-schema.ts
+@@ -100,6 +100,7 @@ const nodeEnvBaseSchema = z.object({
+   GOOGLE_API_KEY: secret.optional(),
+   DEEPSEEK_API_KEY: secret.optional(),
+   FAL_KEY: secret.optional(),
++  MEDIA_WEBHOOK_SECRET: z.string().min(32).optional(),
+   AI_GATEWAY_ACCOUNT_ID: z.string().optional(),
+   AI_GATEWAY_ID: z.string().optional(),
+   AI_GATEWAY_TOKEN: secret.optional(),
+@@ -175,6 +176,7 @@ export const nodeSecretNames = [
+   'GOOGLE_API_KEY',
+   'DEEPSEEK_API_KEY',
+   'FAL_KEY',
++  'MEDIA_WEBHOOK_SECRET',
+   'AI_GATEWAY_TOKEN',
+   'RESEND_API_KEY',
+   'S3_ACCESS_KEY_ID',
