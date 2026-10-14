@@ -1,14 +1,17 @@
 import {
+  createMediaFault,
   createTaskMediaProvider,
   dbModelStore,
   estimateCredits,
   type FaultAccessContext,
   getMediaProviderDefinition,
+  initialMediaFaultProof,
   isSyncMediaProvider,
   MEDIA_HOLD_SWEEP_BUFFER_MS,
   MEDIA_TASK_TTL_MS,
   type MediaProviderEnv,
   type MediaWebhook,
+  readMediaFault,
   requireAvailableModel,
   settleMediaTask,
   type TaskMediaProvider,
@@ -215,6 +218,16 @@ export async function submitWorkspaceMedia(
         status: 503,
       })
     const validated = validateMediaParams(model.paramsSchema, input.params, model.kind)
+    const acceptanceFault = createMediaFault(model, deps.faultAccess)
+    if (acceptanceFault?.mode.startsWith('fal-')) {
+      if (
+        (validated.params.image_size !== undefined && validated.params.image_size !== 'square') ||
+        (validated.params.num_images !== undefined && validated.params.num_images !== 1)
+      )
+        throw new AppError('INVALID_PARAMS', 'Acceptance media requires one square image')
+      validated.params = { ...validated.params, image_size: 'square', num_images: 1 }
+      validated.unitsLimit = 1
+    }
     const tenant = scoped(tx, resolved.workspace.id)
     const [workspace] = await tx
       .select({ id: organization.id })
@@ -250,12 +263,18 @@ export async function submitWorkspaceMedia(
         pricing: model.pricing,
         providerRequestKey: taskId,
         workflowInstanceId: taskId,
-        deadlineAt: new Date(Date.now() + MEDIA_TASK_TTL_MS),
+        deadlineAt: new Date(Date.now() + (acceptanceFault?.deadlineMs ?? MEDIA_TASK_TTL_MS)),
         input: {
           ...validated,
           providerModelId: model.providerModelId,
           storageBytes,
           callbackOrigin,
+          ...(acceptanceFault
+            ? {
+                acceptanceFault,
+                acceptanceFaultProof: initialMediaFaultProof(acceptanceFault),
+              }
+            : {}),
         },
       })
       .returning()
@@ -496,7 +515,14 @@ export function handleMediaWebhook(
     const provider = taskProvider(deps, located)
     if (isSyncMediaProvider(provider)) throw notFound()
     const payload: MediaWebhook = await provider.parseWebhook(request, await request.text())
+    const fault = readMediaFault(located)
+    // 故障失败/轮询模式只接收验签证据，不能被真实成功回调抢先恢复成功。
+    if (fault && fault.mode !== 'fal-callback-early') return Response.json({ ok: true })
     await deps.db.transaction(async (tx) => {
+      if (fault)
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${`ws:${located.workspaceId}`}, 0))`,
+        )
       const tenant = scoped(tx, located.workspaceId)
       const [task] = await tenant.select(aiTask, { where: eq(aiTask.id, taskId) }).for('update')
       if (!task) throw notFound()
@@ -504,7 +530,14 @@ export function handleMediaWebhook(
         throw new AppError('MEDIA_WEBHOOK_INVALID', 'Callback does not match the task job')
       await tenant.update(
         aiTask,
-        { callbackPayload: payload },
+        {
+          callbackPayload: payload,
+          ...(fault && !task.callbackPayload
+            ? {
+                input: sql`${aiTask.input} || jsonb_build_object('acceptanceFaultProof', coalesce(${aiTask.input}->'acceptanceFaultProof', '{}'::jsonb) || jsonb_build_object('callbackStoredAt', now()))`,
+              }
+            : {}),
+        },
         and(eq(aiTask.id, taskId), isNull(aiTask.callbackPayload)),
       )
     })

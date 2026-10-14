@@ -89,20 +89,44 @@ pnpm --filter @saas/web exec playwright test -c e2e/staging-acceptance/local.con
 
 本地关页动作证据的写入与重跑读取都使用 `test-results/staging-acceptance`，不会写入 staging 的证据目录。跨 UTC 日期重跑时，在这个本地目录内复制对应动作证据到当日子目录；不要将本地文件搬到 runbook 证据目录。
 
-## 媒体人工故障验收（待执行）
+## 媒体受控故障验收（待协调者发布后执行）
 
-自动脚本覆盖 Workers/fal 图片成功下载、按次精确消费及对账，以及 fal 视频立即取消全退。Workers 推理失败没有已验证的参数可安全触发，明确作为人工步骤；不会随机扩大 schema 或尝试不可信参数。每个故障保存 task ID、hold ID、终态、退款/消费 ledger ID 和只读对账结果。
+正常脚本继续覆盖 Workers/fal 图片成功及 fal 视频取消。受控故障来自专用
+`acceptance-fault-*` 模型的 `x-acceptance-fault` 元数据，仅 staging 开关开启且实时、未模拟的
+平台管理员会话可以选用；普通用户与所有 API key 均拒绝。模型由独立故障套件经后台准备并在
+finally 停用，不直接写 staging 数据，不手动部署。实施 worker 只运行本地夹具；实际套件须由
+协调者确认 main 自动发布与 health SHA 后人工值守执行。
 
-以下注入需协调者与用户确认针对专用验收资源，通过单独故障注入改动走 main 自动发布；不得从本分支手动部署、直接改 staging 数据或破坏共享资源。优先在本地 Provider 夹具复现，再在 staging 验证单一已确认故障。
-
-| 场景 | 建议注入方式 | 验收 |
+| 场景 / mode | 固定策略 | 验收与最小证明 |
 |---|---|---|
-| Workers 推理失败 | 专用任务的 AI 绑定代理抛错；或在官方文档确认后由模型管理员提供本站接受但供应商拒绝的参数 | failed；hold released；0 消费；全退 |
-| fal 服务商失败 | 专用 Provider 代理返回确定失败状态/有效签名失败回调 | failed；0 消费；全退 |
-| 回调丢失 | 针对专用 task 的 webhook 暂时拒绝投递，保留查询状态可用；不要全站屏蔽 | 等待 15 分钟后轮询成功；产出1份、消费1次 |
-| 回调早到 | 仅专用任务在提交返回后、等待前延迟 Workflow；确保真实验签回调已先落库 | callback_payload 被复用；产出和消费不重复 |
-| 提交响应丢失 | 专用队列出口代理在供应商已受理后断开响应连接（保留供应商 request ID） | 非幂等 fal 不再次提交；failed/全退；核对供应商只有1作业 |
-| 硬超时 | 专用任务 Provider 保持 queued/running，等真实 2 小时 deadline 及10分钟扫描缓冲；可用经评审的专用短超时配置加速 | failed/全退；晚到回调/Workflow不重复结算 |
+| Workers 推理失败 / `workers-error` | 合成不可重试错误，不调用 AI 绑定 | failed、hold released、0 消费、无文件；injected=true、realProviderCalled=false |
+| Workers 硬超时 / `workers-timeout` | 60 秒 deadline，持久 sleep 至真实 active 超时检查 | 同上，实际跨 deadline；证明截止/退款，不能声称真实 AI 挂起 |
+| fal 回调丢失 / `fal-callback-lost` | 真实 submit 去掉 webhook；wait 5 秒，20 分钟 deadline | 原 request ID 轮询成功；pollCount>0、无 callback；文件/消费/通知各一份 |
+| fal 回调早到 / `fal-callback-early` | 真实 submit/签名回调；jobId 落库后，正常 check 前最多10分钟屏障，每2秒持久sleep | callbackStoredAt 先于 callbackCheckedAt；未见该顺序不能由轮询成功替代；不重复产出/消费 |
+| fal 响应丢失 / `fal-submit-response-lost` | 真实 ID 仅写证明后抛 ambiguous 错误，不提供 webhook | providerJobId 留空、一次 submit、不重提、failed 全退，证明 ID 在结算后保留 |
+| fal 服务商失败 / `fal-provider-error` | wait 5 秒、20分钟 deadline；先查询原作业再包装 failed | failed、0消费、全退；真实成功回调不能抢先；按原 ID 尽力取消 |
+| fal 硬超时 / `fal-timeout` | wait 5 秒、60秒 deadline；真实查询后包装 queued，sleep 不超剩余 deadline | failed 全退、实际跨 deadline；晚到结果/重放不重复结算，按原 ID 尽力取消 |
+
+fal 仅固定低成本 `fal-ai/flux/schnell` 图片模型，square、一张，最多五次提交；Workers 零次
+真实推理。所有故障 hold 保持 deadline 后10分钟到期。媒体配置快照和独立执行证明分别保存在
+`ai_task.input.acceptanceFault` 与 `acceptanceFaultProof`，不污染 Provider params 或结算 output。
+后台修改/停用只影响新请求；runner 每持久步骤重新核验开关，关闭后不执行 Provider，走原失败全退。
+
+失败 fal 证明区分 `cancellation-requested`（202 仅受理）、`already-terminal`（原 Provider 查询
+已终态）和 `unconfirmed`（queued/running/查询失败）；取消不保证推理停止或不收外部费用。
+未确认状态必须停止并交人工核验，不能通过再次提交补证据。证据只证明应用的一次提交及原 ID，
+不承诺 Provider 内部是否又建了作业。早到只证明「jobId 落库后、正常读取前」的真实回调顺序，
+不声称证明更严格的「jobId 落库前」时序；后者由本地竞态测试覆盖。
+
+Workers 原错误码 `WORKERS_AI_GENERATION_FAILED`、fal 响应丢失 `MEDIA_SUBMISSION_UNCERTAIN`、
+确定失败 `FAL_GENERATION_FAILED`、超时 `MEDIA_TIMEOUT` 在 Cloudflare step 序列化后可能变为
+通用 `MEDIA_GENERATION_FAILED`。复核现 CF adapter 的非重试异常转换测试，记录实际安全错误码，
+判定以持久注入证明、任务终态与积分为准。本地强制迟到/重放；staging 对原资源终态后再观察60秒，
+没有实际晚到时只能记录观察，不能称为注入了真实晚到回调。
+
+每个场景保存 task ID、hold ID、终态、消费 ledger ID、版本 SHA、mode、injected、
+realProviderCalled、最小原 request ID/时序/取消证明与只读对账结果。失败释放原预扣即可，不要求额外
+refund 分录。原 media 7.1/7.2 还包含 fal 视频成功产出；本套件实现和本地通过不提前勾选。
 
 只读对账使用同一快照：`sum(credit_ledger.delta) = sum(active credit_grant.remaining) + sum(held credit_hold.amount) - sum(credit_debt.amount)`。active 批次不额外排除已到期而待 Cron 处理的记录，以免制造虚假差异。失败/取消只释放预扣，不要求额外 refund 分录；可花余额的 remaining 已减去 hold，不能再减一次。
 

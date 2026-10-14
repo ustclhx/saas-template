@@ -120,6 +120,7 @@ class AiMediaWorkflowBase extends WorkflowEntrypoint<Cloudflare.Env, AiMediaPara
           const db = createDb(this.env.HYPERDRIVE)
           return await runMediaTask(event.payload.taskId, createCloudflareWorkflowStep(step), {
             db,
+            faultEnv: this.env,
             callbackOrigin: templateConfig.app.url,
             callbackSecret: this.env.MEDIA_WEBHOOK_SECRET ?? '',
             provider: (task) =>

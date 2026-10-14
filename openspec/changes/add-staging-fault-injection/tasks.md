@@ -15,11 +15,11 @@
 
 ## 3. 媒体故障包装与持久生命周期
 
-- [ ] 3.1 在媒体提交事务/输入解析保存不可变 acceptanceFault 快照与固定策略，增加独立 acceptanceFaultProof 子树的局部原子更新；测试模型修改/停用后原任务语义不变、非法快照拒绝、配置关闭不执行 Provider 并全退、deadline 与 hold 缓冲一致、证明更新不改变 params，相关 ai/web 媒体测试通过。
-- [ ] 3.2 实现 Workers 不可重试错误包装及 runner 的 60 秒持久 stalled 分支；扩展现有 media-workflow 测试断言两场景不调用 AI、不转存文件、实际跨 deadline 才超时、failed/hold released/0消费/对账，正常同步图片回归通过；更新 docs/06-ai.md 关于合成错误/超时证据边界。
-- [ ] 3.3 实现 fal 回调丢失与早到包装/持久屏障，初始 wait 5 秒仅用于专用模式，正常等待不变；测试调用原 Provider 一次、丢失回调经轮询成功、真实格式签名回调先落库后正常检查、屏障未满足不能算成功，以及 R2/file/consume/通知仅一份；扩展现有 jobs/web 媒体测试并通过。
-- [ ] 3.4 实现 fal 响应丢失、确定失败与 queued 超时，真实 submit ID 只写证明字段，保留 submissionAttempted/非幂等不重提，针对原 ID 尽力取消并记录安全结果（取消受理、原 Provider 查询已终态或仍未确认）；测试每场景一次 submit、failed全退、证据ID结算后保留、真实成功回调不能抢先、跨 deadline、迟到/重放不重复产出或结算，相关 jobs/ai/web 测试通过。
-- [ ] 3.5 更新 docs/06-ai.md/runbooks/staging-acceptance.md 的媒体故障表，写明固定时间策略、早到屏障、取消并非停止计费、原错误码与 CF step 序列化边界；核对文档与上述实现并复核现有 CF adapter 测试，`pnpm --filter @saas/jobs test` 通过。
+- [x] 3.1 在媒体提交事务/输入解析保存不可变 acceptanceFault 快照与固定策略，增加独立 acceptanceFaultProof 子树的局部原子更新；测试模型修改/停用后原任务语义不变、非法快照拒绝、配置关闭不执行 Provider 并全退、deadline 与 hold 缓冲一致、证明更新不改变 params，相关 ai/web 媒体测试通过。
+- [x] 3.2 实现 Workers 不可重试错误包装及 runner 的 60 秒持久 stalled 分支；扩展现有 media-workflow 测试断言两场景不调用 AI、不转存文件、实际跨 deadline 才超时、failed/hold released/0消费/对账，正常同步图片回归通过；更新 docs/06-ai.md 关于合成错误/超时证据边界。
+- [x] 3.3 实现 fal 回调丢失与早到包装/持久屏障，初始 wait 5 秒仅用于专用模式，正常等待不变；测试调用原 Provider 一次、丢失回调经轮询成功、真实格式签名回调先落库后正常检查、屏障未满足不能算成功，以及 R2/file/consume/通知仅一份；扩展现有 jobs/web 媒体测试并通过。
+- [x] 3.4 实现 fal 响应丢失、确定失败与 queued 超时，真实 submit ID 只写证明字段，保留 submissionAttempted/非幂等不重提，针对原 ID 尽力取消并记录安全结果（取消受理、原 Provider 查询已终态或仍未确认）；测试每场景一次 submit、failed全退、证据ID结算后保留、真实成功回调不能抢先、跨 deadline、迟到/重放不重复产出或结算，相关 jobs/ai/web 测试通过。
+- [x] 3.5 更新 docs/06-ai.md/runbooks/staging-acceptance.md 的媒体故障表，写明固定时间策略、早到屏障、取消并非停止计费、原错误码与 CF step 序列化边界；核对文档与上述实现并复核现有 CF adapter 测试，`pnpm --filter @saas/jobs test` 通过。
 
 ## 4. 文本流错误包装与原有结算
 

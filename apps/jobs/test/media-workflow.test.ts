@@ -1,11 +1,15 @@
 import { env } from 'cloudflare:workers'
 import {
   createTaskMediaProvider,
+  initialMediaFaultProof,
+  type MediaAcceptanceFault,
+  type MediaAcceptanceFaultProof,
   type MediaProvider,
   type MediaResult,
   type MediaStatus,
   settleMediaTask,
   type TaskMediaProvider,
+  updateMediaFaultProof,
 } from '@saas/ai'
 import { getCreditBalance, grant, hold } from '@saas/credits'
 import { type AiPricingJson, aiTask, createDb, member, organization, scoped, user } from '@saas/db'
@@ -99,6 +103,7 @@ function harness(
   options: {
     replay?: string[]
     onWait?: () => Promise<void>
+    onSleep?: (duration: number, now: number) => Promise<void>
     start?: number
   } = {},
 ) {
@@ -115,7 +120,7 @@ function harness(
   const deps: MediaRunnerDeps = {
     db,
     provider: () => fakeProvider,
-    params: async () => ({ num_images: 5 }),
+    params: async (task) => task.input.params as Record<string, unknown>,
     callbackOrigin: 'https://app.example.test',
     callbackSecret: 'workflow-test-secret',
     persist: (task, media) =>
@@ -157,10 +162,11 @@ function harness(
     },
     async sleep(_name: string, duration: number) {
       sleeps.push(duration)
+      await options.onSleep?.(duration, now)
       now += duration
     },
   } as unknown as WorkflowStep
-  return { deps, step, names, sleeps, waits, fetcher, values }
+  return { deps, step, names, sleeps, waits, fetcher, values, now: () => now }
 }
 
 async function state(f: Awaited<ReturnType<typeof fixture>>) {
@@ -208,6 +214,79 @@ async function succeeded(f: Awaited<ReturnType<typeof fixture>>, size = 3) {
     files: [{ status: 'ready', size }],
     balance: { available: 85, held: 0 },
   })
+}
+
+async function faultFixture(mode: MediaAcceptanceFault['mode']) {
+  const f = await fixture()
+  const start = Date.now()
+  const workers = mode.startsWith('workers-')
+  const fault: MediaAcceptanceFault = {
+    mode,
+    policyVersion: 1,
+    authorizedAdmin: true,
+    deadlineMs: mode.endsWith('timeout') ? 60_000 : 20 * 60_000,
+    initialWaitMs: workers ? 0 : 5_000,
+    barrierMs: mode === 'fal-callback-early' ? 10 * 60_000 : 0,
+  }
+  const task = await scoped(db, f.workspaceId).findById(aiTask, f.taskId)
+  await scoped(db, f.workspaceId).updateById(aiTask, f.taskId, {
+    modelKey: `acceptance-fault-${mode}`,
+    provider: workers ? 'workers-ai' : 'fal',
+    input: {
+      ...task.input,
+      params: { image_size: 'square', num_images: 1 },
+      providerModelId: workers ? '@cf/black-forest-labs/flux-1-schnell' : 'fal-ai/flux/schnell',
+      unitsLimit: 1,
+      acceptanceFault: { ...fault },
+      acceptanceFaultProof: { ...initialMediaFaultProof(fault) },
+    },
+    createdAt: new Date(start),
+    deadlineAt: new Date(start + fault.deadlineMs),
+  })
+  return { ...f, start, fault }
+}
+
+function faultProvider() {
+  return {
+    ...provider(),
+    id: 'fal',
+    cancel: vi.fn<NonNullable<MediaProvider['cancel']>>(async () => {}),
+  }
+}
+
+function enableFaults(h: ReturnType<typeof harness>) {
+  h.deps.faultEnv = { SENTRY_ENVIRONMENT: 'staging', AI_FAULT_INJECTION: 'enabled' }
+}
+
+async function faultProof(f: Awaited<ReturnType<typeof fixture>>) {
+  const task = await scoped(db, f.workspaceId).findById(aiTask, f.taskId)
+  return task.input.acceptanceFaultProof as MediaAcceptanceFaultProof | undefined
+}
+
+async function lateReplay(f: Awaited<ReturnType<typeof fixture>>, h: ReturnType<typeof harness>) {
+  const before = await state(f)
+  await scoped(db, f.workspaceId).updateById(aiTask, f.taskId, {
+    callbackPayload: { jobId: 'job-fixture', result },
+  })
+  await settleMediaTask(db, {
+    workspaceId: f.workspaceId,
+    taskId: f.taskId,
+    outcome: 'succeeded',
+    result,
+    files: [],
+  })
+  await runMediaTask(f.taskId, h.step, h.deps)
+  const after = await state(f)
+  expect(after.task.status).toBe(before.task.status)
+  expect(after.task.creditsCharged).toBe(before.task.creditsCharged)
+  expect(after.task.providerJobId).toBe(before.task.providerJobId)
+  expect(after.task.output).toEqual(before.task.output)
+  expect(after.task.errorCode).toBe(before.task.errorCode)
+  expect(after.hold).toEqual(before.hold)
+  expect(after.ledger).toEqual(before.ledger)
+  expect(after.notices).toEqual(before.notices)
+  expect(after.files).toEqual(before.files)
+  expect(after.balance).toEqual(before.balance)
 }
 
 afterAll(async () => {
@@ -481,4 +560,295 @@ it('cancellation during Workers AI inference prevents storage and late workflow 
   expect(actual.ledger).toEqual([])
   expect(actual.balance).toMatchObject({ available: 100, held: 0 })
   expect(await env.FILES.head(`ws/${f.workspaceId}/ai/${f.taskId}/0`)).toBeNull()
+})
+
+it.each(['workers-error', 'workers-timeout'] as const)(
+  '%s is injected without invoking Workers AI or persisting bytes and refunds once',
+  async (mode) => {
+    const f = await faultFixture(mode)
+    const fake = await workersAi(f)
+    const h = harness(fake.provider, {
+      start: f.start,
+      replay: ['fail-and-notify'],
+      onSleep: async (_duration, now) => {
+        const actual = await state(f)
+        expect(now).toBeLessThan(f.start + f.fault.deadlineMs)
+        expect(actual.task.status).toBe('running')
+        expect(actual.hold?.status).toBe('held')
+        expect(actual.files).toEqual([])
+        expect(fake.binding.run).not.toHaveBeenCalled()
+      },
+    })
+    enableFaults(h)
+    const persist = vi.spyOn(h.deps, 'persist')
+    expect(await runMediaTask(f.taskId, h.step, h.deps)).toEqual({
+      taskId: f.taskId,
+      status: 'failed',
+    })
+    expect(await faultProof(f)).toMatchObject({
+      mode,
+      policyVersion: 1,
+      injected: true,
+      realProviderCalled: false,
+      submitAttempts: 0,
+      pollCount: 0,
+    })
+    if (mode === 'workers-timeout') {
+      expect(h.sleeps).toEqual([60_000])
+      expect(h.now()).toBe(f.start + 60_000)
+      expect((await state(f)).task.errorCode).toBe('MEDIA_TIMEOUT')
+    } else {
+      expect(h.sleeps).toEqual([])
+      expect(h.now()).toBe(f.start)
+    }
+    expect(fake.binding.run).not.toHaveBeenCalled()
+    expect(persist).not.toHaveBeenCalled()
+    expect(h.fetcher).not.toHaveBeenCalled()
+    await refunded(f)
+    await lateReplay(f, h)
+    expect(fake.binding.run).not.toHaveBeenCalled()
+  },
+)
+
+it('fal callback loss wraps one original submission and recovers via polling with one output and charge', async () => {
+  const f = await faultFixture('fal-callback-lost')
+  const fake = faultProvider()
+  const h = harness(fake, {
+    start: f.start,
+    replay: ['submit', 'persist', 'settle-and-notify'],
+  })
+  enableFaults(h)
+  await runMediaTask(f.taskId, h.step, h.deps)
+  expect(fake.submit).toHaveBeenCalledTimes(1)
+  expect(fake.submit).toHaveBeenCalledWith({
+    modelId: 'fal-ai/flux/schnell',
+    params: { image_size: 'square', num_images: 1 },
+    idempotencyKey: f.taskId,
+  })
+  expect(h.waits).toEqual([{ type: MEDIA_DONE_EVENT, timeoutMs: 5_000 }])
+  expect(fake.getStatus).toHaveBeenCalledTimes(1)
+  expect(fake.getStatus).toHaveBeenCalledWith('job-fixture')
+  expect(await faultProof(f)).toMatchObject({
+    mode: 'fal-callback-lost',
+    policyVersion: 1,
+    injected: true,
+    realProviderCalled: true,
+    realRequestId: 'job-fixture',
+    submitAttempts: 1,
+    pollCount: 1,
+  })
+  expect(h.fetcher).toHaveBeenCalledTimes(1)
+  await succeeded(f)
+  await lateReplay(f, h)
+  expect(fake.submit).toHaveBeenCalledTimes(1)
+  expect(fake.getStatus).toHaveBeenCalledTimes(1)
+  expect(h.fetcher).toHaveBeenCalledTimes(1)
+})
+
+it('fal early barrier observes a committed callback before normal checking without waiting or polling', async () => {
+  const f = await faultFixture('fal-callback-early')
+  const fake = faultProvider()
+  let callbackStoredAt = ''
+  const h = harness(fake, {
+    start: f.start,
+    replay: ['submit', 'persist', 'settle-and-notify'],
+    onSleep: async (duration, now) => {
+      // 模拟验签入口在持久 sleep 期间提交；签名与事务本身由 web 回调集成测试覆盖。
+      callbackStoredAt = new Date(now + duration / 2).toISOString()
+      const task = await scoped(db, f.workspaceId).updateById(aiTask, f.taskId, {
+        callbackPayload: { jobId: 'job-fixture', result },
+      })
+      await updateMediaFaultProof(db, task, { callbackStoredAt })
+    },
+  })
+  enableFaults(h)
+  await runMediaTask(f.taskId, h.step, h.deps)
+  expect(fake.submit).toHaveBeenCalledTimes(1)
+  expect(fake.submit.mock.calls[0]?.[0].webhookUrl).toContain('/api/webhooks/media/')
+  expect(h.sleeps).toEqual([2_000])
+  expect(h.waits).toEqual([])
+  expect(fake.getStatus).not.toHaveBeenCalled()
+  const proof = await faultProof(f)
+  expect(proof).toMatchObject({
+    mode: 'fal-callback-early',
+    injected: true,
+    realProviderCalled: true,
+    realRequestId: 'job-fixture',
+    submitAttempts: 1,
+    pollCount: 0,
+    callbackStoredAt,
+  })
+  expect(Date.parse(proof?.callbackStoredAt ?? '')).toBeLessThan(
+    Date.parse(proof?.callbackCheckedAt ?? ''),
+  )
+  await succeeded(f)
+  await lateReplay(f, h)
+  expect(fake.submit).toHaveBeenCalledTimes(1)
+  expect(fake.getStatus).not.toHaveBeenCalled()
+  expect(h.fetcher).toHaveBeenCalledTimes(1)
+})
+
+it('fal early barrier fails when no callback is committed and never falls back to successful polling', async () => {
+  const f = await faultFixture('fal-callback-early')
+  const fake = faultProvider()
+  const h = harness(fake, { start: f.start })
+  enableFaults(h)
+  await runMediaTask(f.taskId, h.step, h.deps)
+  expect(h.now()).toBe(f.start + 10 * 60_000)
+  expect(h.sleeps.reduce((total, duration) => total + duration, 0)).toBe(10 * 60_000)
+  expect(fake.submit).toHaveBeenCalledTimes(1)
+  expect(fake.getStatus).not.toHaveBeenCalled()
+  expect(h.waits).toEqual([])
+  expect(h.fetcher).not.toHaveBeenCalled()
+  expect(await faultProof(f)).toMatchObject({ injected: false, realRequestId: 'job-fixture' })
+  expect((await state(f)).task.errorCode).toBe('MEDIA_CALLBACK_EARLY_NOT_OBSERVED')
+  await refunded(f)
+})
+
+it.each(['fal-submit-response-lost', 'fal-provider-error', 'fal-timeout'] as const)(
+  '%s preserves one original request ID, refunds and ignores late success or workflow replay',
+  async (mode) => {
+    const f = await faultFixture(mode)
+    const fake = faultProvider()
+    const h = harness(fake, {
+      start: f.start,
+      replay: ['submit', 'fail-and-notify'],
+      onWait: async () => {
+        // 即使出现晚到成功，失败注入也只能处理原作业的故障分支。
+        await scoped(db, f.workspaceId).updateById(aiTask, f.taskId, {
+          callbackPayload: { jobId: 'job-fixture', result },
+        })
+      },
+    })
+    enableFaults(h)
+    await runMediaTask(f.taskId, h.step, h.deps)
+    expect(fake.submit).toHaveBeenCalledTimes(1)
+    expect(fake.submit.mock.calls[0]?.[0].webhookUrl).toBeUndefined()
+    const proof = await faultProof(f)
+    expect(proof).toMatchObject({
+      mode,
+      policyVersion: 1,
+      injected: true,
+      realProviderCalled: true,
+      realRequestId: 'job-fixture',
+      submitAttempts: 1,
+      cancellation: { status: 'cancellation-requested' },
+    })
+    expect(fake.cancel).toHaveBeenCalledWith('job-fixture')
+    expect(fake.cancel).toHaveBeenCalledTimes(1)
+    if (mode === 'fal-submit-response-lost') {
+      expect((await state(f)).task).toMatchObject({
+        providerJobId: null,
+        errorCode: 'MEDIA_SUBMISSION_UNCERTAIN',
+      })
+      expect(proof?.pollCount).toBe(0)
+      expect(fake.getStatus).not.toHaveBeenCalled()
+      expect(h.waits).toEqual([])
+    } else {
+      expect(h.waits).toEqual([{ type: MEDIA_DONE_EVENT, timeoutMs: 5_000 }])
+      expect(fake.getStatus).toHaveBeenCalledTimes(mode === 'fal-timeout' ? 2 : 1)
+      expect(proof?.pollCount).toBe(mode === 'fal-timeout' ? 2 : 1)
+      if (mode === 'fal-timeout') {
+        expect(h.sleeps).toEqual([30_000, 25_000])
+        expect(h.now()).toBe(f.start + 60_000)
+        expect((await state(f)).task.errorCode).toBe('MEDIA_TIMEOUT')
+      }
+    }
+    expect(h.fetcher).not.toHaveBeenCalled()
+    expect((await state(f)).files).toEqual([])
+    await refunded(f)
+    await lateReplay(f, h)
+    expect(fake.submit).toHaveBeenCalledTimes(1)
+    expect((await faultProof(f))?.realRequestId).toBe('job-fixture')
+    expect((await state(f)).files).toEqual([])
+  },
+)
+
+it.each([
+  { providerStatus: 'succeeded', cancellationStatus: 'already-terminal' },
+  { providerStatus: 'queued', cancellationStatus: 'unconfirmed' },
+] as const)(
+  'failed cancellation reads the unwrapped original $providerStatus status as $cancellationStatus',
+  async ({ providerStatus, cancellationStatus }) => {
+    const f = await faultFixture('fal-provider-error')
+    const fake = faultProvider()
+    fake.cancel.mockRejectedValue(new Error('Cancellation unavailable'))
+    fake.getStatus.mockResolvedValue(
+      providerStatus === 'succeeded' ? { status: 'succeeded', result } : { status: 'queued' },
+    )
+    const h = harness(fake, { start: f.start })
+    enableFaults(h)
+    await runMediaTask(f.taskId, h.step, h.deps)
+    expect(fake.submit).toHaveBeenCalledTimes(1)
+    expect(fake.cancel).toHaveBeenCalledTimes(1)
+    expect(fake.getStatus).toHaveBeenCalledTimes(2)
+    expect(await faultProof(f)).toMatchObject({
+      pollCount: 1,
+      cancellation: { status: cancellationStatus, providerStatus },
+    })
+    await refunded(f)
+    expect((await state(f)).files).toEqual([])
+  },
+)
+
+it.each(['missing', 'disabled'] as const)(
+  'a %s jobs gate refunds a frozen fault task before constructing or calling a provider',
+  async (gate) => {
+    const f = await faultFixture('fal-callback-lost')
+    const fake = faultProvider()
+    const h = harness(fake, { start: f.start })
+    if (gate === 'disabled')
+      h.deps.faultEnv = { SENTRY_ENVIRONMENT: 'staging', AI_FAULT_INJECTION: 'disabled' }
+    const construct = vi.spyOn(h.deps, 'provider')
+    await runMediaTask(f.taskId, h.step, h.deps)
+    expect(construct).not.toHaveBeenCalled()
+    expect(fake.submit).not.toHaveBeenCalled()
+    expect(fake.getStatus).not.toHaveBeenCalled()
+    expect(h.fetcher).not.toHaveBeenCalled()
+    expect((await state(f)).files).toEqual([])
+    await refunded(f)
+  },
+)
+
+it('disabling the jobs gate after submission refunds before polling or invoking cancellation', async () => {
+  const f = await faultFixture('fal-timeout')
+  const fake = faultProvider()
+  const h = harness(fake, {
+    start: f.start,
+    onWait: async () => {
+      h.deps.faultEnv = { SENTRY_ENVIRONMENT: 'staging', AI_FAULT_INJECTION: 'disabled' }
+    },
+  })
+  enableFaults(h)
+  await runMediaTask(f.taskId, h.step, h.deps)
+  expect(fake.submit).toHaveBeenCalledTimes(1)
+  expect(fake.getStatus).not.toHaveBeenCalled()
+  expect(fake.cancel).not.toHaveBeenCalled()
+  expect(h.fetcher).not.toHaveBeenCalled()
+  expect(await faultProof(f)).toMatchObject({
+    injected: false,
+    realProviderCalled: true,
+    realRequestId: 'job-fixture',
+    submitAttempts: 1,
+    pollCount: 0,
+  })
+  await refunded(f)
+  expect((await state(f)).files).toEqual([])
+})
+
+it('an invalid frozen fault policy is rejected before provider construction and refunds the hold', async () => {
+  const f = await faultFixture('fal-callback-lost')
+  const task = await scoped(db, f.workspaceId).findById(aiTask, f.taskId)
+  await scoped(db, f.workspaceId).updateById(aiTask, f.taskId, {
+    input: { ...task.input, acceptanceFault: { ...f.fault, deadlineMs: 1 } },
+  })
+  const fake = faultProvider()
+  const h = harness(fake, { start: f.start })
+  enableFaults(h)
+  const construct = vi.spyOn(h.deps, 'provider')
+  await runMediaTask(f.taskId, h.step, h.deps)
+  expect(construct).not.toHaveBeenCalled()
+  expect(fake.submit).not.toHaveBeenCalled()
+  expect((await state(f)).task.errorCode).toBe('MEDIA_INPUT_INVALID')
+  await refunded(f)
 })

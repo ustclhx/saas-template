@@ -1,6 +1,11 @@
 import type { AiTask } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { z } from 'zod'
+import {
+  type MediaAcceptanceFault,
+  type MediaAcceptanceFaultProof,
+  parseMediaFaultSnapshot,
+} from './fault.ts'
 import { createMediaParamsValidator, parseMediaSchema } from './params.ts'
 
 export interface MediaTaskInput {
@@ -10,6 +15,8 @@ export interface MediaTaskInput {
   fileParams: string[]
   storageBytes: number
   callbackOrigin?: string | undefined
+  acceptanceFault?: MediaAcceptanceFault
+  acceptanceFaultProof?: MediaAcceptanceFaultProof
 }
 
 const snapshot = z.object({
@@ -25,7 +32,20 @@ export function readMediaTaskInput(task: Pick<AiTask, 'input'>): MediaTaskInput 
   const parsed = snapshot.safeParse(task.input)
   if (!parsed.success)
     throw new AppError('MEDIA_INPUT_INVALID', 'Invalid media task snapshot', { status: 500 })
-  return parsed.data
+  // Provider 重建处有完整任务，runner/提交入口另行校验故障快照的身份配对。
+  return {
+    ...parsed.data,
+    ...(task.input.acceptanceFault === undefined
+      ? {}
+      : {
+          acceptanceFault: parseMediaFaultSnapshot(task.input.acceptanceFault),
+        }),
+    ...(task.input.acceptanceFaultProof === undefined
+      ? {}
+      : {
+          acceptanceFaultProof: task.input.acceptanceFaultProof as MediaAcceptanceFaultProof,
+        }),
+  }
 }
 
 /** 模型参数解析与表单共用浏览器安全实现；数据库文件权限仍由提交事务检查。 */
