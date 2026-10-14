@@ -12,6 +12,7 @@ import {
   createNodeScheduler,
   createNodeTaskHealth,
   createNodeTaskHealthResponse,
+  createNodeWorkflow,
   type NodeJobEngine,
 } from '@saas/platform/node'
 import { log, newRequestId, withLogContext } from '@saas/shared/log'
@@ -19,6 +20,8 @@ import { createNodeStorage } from '@saas/storage/node'
 import templateConfig from '../../../../template.config.ts'
 import { consumeJobsBatch, type JobsContext } from '../handlers.ts'
 import { type JobObserver, logJobObserver } from '../observer.ts'
+import { createNodeMediaHandler } from './media.ts'
+import { createNodeMediaWorkflowHttpHandler } from './media-http.ts'
 import { getNodeJobFeatures, registerNodeJobsSchedules } from './registration.ts'
 
 export interface NodeJobsOptions {
@@ -54,6 +57,9 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
   }
   let queues!: ReturnType<typeof createNodeQueueAdapter>
   let scheduler!: ReturnType<typeof createNodeScheduler>
+  let mediaWorkflow:
+    | ReturnType<typeof createNodeWorkflow<{ taskId: string; requestId?: string }>>
+    | undefined
   let dispose = () => {}
   let engine: NodeJobEngine
   const template = options.template ?? templateConfig
@@ -126,6 +132,22 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
         queues.register('events', (batch, sink) =>
           consumeJobsBatch(batch, { ...context, eventsDeadLetters: sink }),
         )
+        if (features.media && storageConfig && config.MEDIA_WEBHOOK_SECRET) {
+          mediaWorkflow = createNodeWorkflow({
+            engine,
+            name: 'ai-media-v1',
+            handler: createNodeMediaHandler(engine.database, {
+              storage: storageConfig,
+              providerEnv: {
+                ...(config.FAL_KEY === undefined ? {} : { FAL_KEY: config.FAL_KEY }),
+              },
+              callbackOrigin: config.APP_URL,
+              callbackSecret: config.MEDIA_WEBHOOK_SECRET,
+              template,
+              observer,
+            }),
+          })
+        }
         scheduler = createNodeScheduler({ engine })
         dispose = registerNodeJobsSchedules(scheduler, context, template)
         await queues.prepare()
@@ -136,6 +158,7 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
         scheduler.start()
       },
       stopReceiving() {
+        mediaWorkflow?.stopReceiving()
         queues?.stopReceiving()
         scheduler?.stopReceiving()
       },
@@ -185,6 +208,10 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
       { status: ready ? 200 : 503, headers: { 'cache-control': 'no-store' } },
     )
   }
+  const mediaHttp = createNodeMediaWorkflowHttpHandler({
+    workflow: mediaWorkflow ? { available: true, value: mediaWorkflow } : { available: false },
+    secret: config.MEDIA_WEBHOOK_SECRET ?? '',
+  })
   const sockets = new Set<Socket>()
   let stopping = false
   const server = createServer((request, response) => {
@@ -204,6 +231,8 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
             response.writeHead(result.status).end(await result.text())
           }),
         )
+      } else if (request.url === '/internal/workflows/ai-media') {
+        background.waitUntil(mediaHttp(request, response))
       } else response.writeHead(404).end()
     })
   })
@@ -211,6 +240,7 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
     sockets.add(socket)
     socket.once('close', () => sockets.delete(socket))
   })
+  server.requestTimeout = 5_000
   let shutdownDeadline: number | undefined
   async function closeObserver() {
     if (!observer.close || shutdownDeadline === undefined) return
