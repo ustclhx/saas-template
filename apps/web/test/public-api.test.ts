@@ -9,7 +9,7 @@ import { newId } from '@saas/shared'
 import { simulateReadableStream } from 'ai'
 import { MockLanguageModelV4 } from 'ai/test'
 import OpenAI from 'openai'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import enApiDoc from '../content/docs/en/public-api.mdx?raw'
 import zhApiDoc from '../content/docs/zh/public-api.mdx?raw'
 import { handleCompletions } from '../src/features/api-keys/completions.ts'
@@ -281,6 +281,61 @@ describe('公开 API Key 管理与鉴权', () => {
 })
 
 describe('官方 OpenAI Node SDK 与共用积分结算', () => {
+  it('平台管理员创建的 Key 在 staging 开启故障时仍不可选文本故障模型，且无业务或积分副作用', async () => {
+    const who = await owner()
+    await sql`update "user" set role='admin' where id=${who.id}`
+    const key = await createWorkspaceKey(
+      who.headers,
+      { slug: who.slug, name: 'Admin fault denied' },
+      deps,
+    )
+    const modelKey = `acceptance-fault-${newId()}`
+    try {
+      await db.insert(aiModel).values({
+        key: modelKey,
+        kind: 'text',
+        provider: 'deepseek',
+        providerModelId: 'deepseek-flash',
+        pricing: { mode: 'token', inputPer1k: 1, outputPer1k: 2 },
+        paramsSchema: { 'x-acceptance-fault': { mode: 'chat-before-stream' } },
+      })
+      const languageModelFactory = vi.fn(() => model())
+      const apiDeps = {
+        ...client(key.key).apiDeps,
+        env: { SENTRY_ENVIRONMENT: 'staging', AI_FAULT_INJECTION: 'enabled' },
+        languageModelFactory,
+        // 即使内部依赖允许故障，公开入口也必须覆盖为拒绝。
+        faultAccess: { enabled: true, platformAdmin: true },
+      }
+      const context = await authenticateApiKey(request(key.key), apiDeps)
+      expect(context.user).toMatchObject({ id: who.id, role: 'admin' })
+      const response = await handleCompletions(
+        request(key.key, {
+          model: modelKey,
+          messages: [{ role: 'user', content: 'Fixture' }],
+        }),
+        apiDeps,
+      )
+      expect(response.status).toBe(404)
+      expect(await response.json()).toMatchObject({ error: { code: 'MODEL_UNAVAILABLE' } })
+      expect(languageModelFactory).not.toHaveBeenCalled()
+      expect(await sql`select id from ai_conversation where workspace_id=${who.id}`).toHaveLength(0)
+      expect(await sql`select id from ai_message where workspace_id=${who.id}`).toHaveLength(0)
+      expect(await sql`select id from ai_task where workspace_id=${who.id}`).toHaveLength(0)
+      expect(await sql`select id from credit_hold where workspace_id=${who.id}`).toHaveLength(0)
+      expect(
+        await sql`select id from credit_ledger where workspace_id=${who.id} and type='consume'`,
+      ).toHaveLength(0)
+      expect(await getCreditBalance(db, who.id)).toMatchObject({
+        available: 1000,
+        held: 0,
+        debt: 0,
+      })
+    } finally {
+      await sql`delete from ai_model where key=${modelKey}`
+    }
+  })
+
   for (const stream of [false, true] as const) {
     for (const pricing of [
       {

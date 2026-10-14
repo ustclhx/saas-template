@@ -2,6 +2,7 @@ import {
   createTaskMediaProvider,
   dbModelStore,
   estimateCredits,
+  type FaultAccessContext,
   getMediaProviderDefinition,
   isSyncMediaProvider,
   MEDIA_HOLD_SWEEP_BUFFER_MS,
@@ -15,6 +16,7 @@ import {
   verifyMediaCallbackSignature,
 } from '@saas/ai'
 import { type AuthContextSource, requireFreshSession } from '@saas/auth'
+import type { AiFaultInjectionEnv } from '@saas/config'
 import { CreditsError, hold, lockWorkspaceCredits } from '@saas/credits'
 import {
   type AiTask,
@@ -35,8 +37,9 @@ import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { templateConfig } from '../../server/template-config.ts'
 import type { ResolvedWorkspace } from '../../server/workspace-context.ts'
+import { sessionFaultAccess } from './fault-access.ts'
 
-export interface MediaHttpEnv extends MediaProviderEnv {
+export interface MediaHttpEnv extends MediaProviderEnv, AiFaultInjectionEnv {
   APP_URL?: string | undefined
 }
 export interface MediaHttpDeps {
@@ -53,10 +56,12 @@ export interface MediaHttpDeps {
 }
 
 const workspaceInput = z.object({ workspaceId: z.uuid() })
-const submitInput = workspaceInput.extend({
-  modelKey: z.string().min(1).max(128),
-  params: z.record(z.string(), z.unknown()),
-})
+const submitInput = workspaceInput
+  .extend({
+    modelKey: z.string().min(1).max(128),
+    params: z.record(z.string(), z.unknown()),
+  })
+  .strict()
 const terminal = (task: AiTask) => !['queued', 'running'].includes(task.status)
 const invalid = () => new AppError('INVALID_REQUEST', 'Invalid media task request')
 
@@ -149,7 +154,11 @@ export function handleMediaSubmit(request: Request, deps: MediaHttpDeps): Promis
     // jobs 不绑定站点 URL；由请求入口冻结可信服务端 origin，供回调签名使用。
     const callbackOrigin = new URL(deps.env.APP_URL ?? request.url).origin
     const resolved = await context(request, input.workspaceId, deps, true)
-    const task = await submitWorkspaceMedia(input, resolved, { ...deps, callbackOrigin })
+    const task = await submitWorkspaceMedia(input, resolved, {
+      ...deps,
+      callbackOrigin,
+      faultAccess: sessionFaultAccess(resolved, deps.env),
+    })
     return Response.json({ taskId: task.id, status: task.status }, { status: 202 })
   })
 }
@@ -157,6 +166,8 @@ export function handleMediaSubmit(request: Request, deps: MediaHttpDeps): Promis
 export type WorkspaceMediaDeps = Omit<MediaHttpDeps, 'auth' | 'rateLimiter'> & {
   rateLimiter?: RateLimiter | undefined
   callbackOrigin: string
+  /** API key 入口不提供此授权，即使 key 由平台管理员创建。 */
+  faultAccess?: FaultAccessContext
 }
 
 /** 入口已解析空间及成员；计费、配额和任务创建由站内与公开 API 共用。 */
@@ -188,7 +199,11 @@ export async function submitWorkspaceMedia(
     await lockWorkspaceCredits(tx, resolved.workspace.id)
     const current = await entitlements(deps, tx, resolved.workspace.id)
     const model = await requireAvailableModel(
-      { store: dbModelStore(tx as unknown as Database), workersAi: Boolean(deps.env.AI) },
+      {
+        store: dbModelStore(tx as unknown as Database),
+        workersAi: Boolean(deps.env.AI),
+        faultAccess: deps.faultAccess,
+      },
       current,
       modelRow.id,
     )

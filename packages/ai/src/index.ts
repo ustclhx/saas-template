@@ -1,3 +1,4 @@
+export * from './fault.ts'
 export * from './media/index.ts'
 export * from './models.ts'
 export {

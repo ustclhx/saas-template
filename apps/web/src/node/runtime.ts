@@ -134,6 +134,7 @@ export async function createNodeWebProcess(
     TURNSTILE_SITE_KEY: env.TURNSTILE_SITE_KEY,
     PAYMENT_MODE: env.PAYMENT_MODE,
     SENTRY_ENVIRONMENT: env.SENTRY_ENVIRONMENT,
+    AI_FAULT_INJECTION: env.AI_FAULT_INJECTION,
     ...(env.STRIPE_SECRET_KEY === undefined ? {} : { STRIPE_SECRET_KEY: env.STRIPE_SECRET_KEY }),
     ...(env.STRIPE_WEBHOOK_SECRET === undefined
       ? {}
@@ -189,6 +190,8 @@ export async function createNodeWebProcess(
         available: true,
         value: {
           config: {
+            AI_FAULT_INJECTION: env.AI_FAULT_INJECTION,
+            SENTRY_ENVIRONMENT: env.SENTRY_ENVIRONMENT,
             AI_TEXT_EGRESS: env.AI_TEXT_EGRESS,
             OPENAI_BASE_URL: env.OPENAI_BASE_URL,
             OPENAI_API_KEY: env.OPENAI_API_KEY,

@@ -4,14 +4,14 @@
 
 ## 1. 故障元数据与运行环境闸门
 
-- [ ] 1.1 在 packages/ai 增加 x-acceptance-fault 严格枚举解析，扩展媒体 schema 顶层允许项，验证 key/provider/kind/modelId 配对且不泄露到业务 params；扩展现有 params/models 单测覆盖合法模式、非法组合、前缀缺元数据及请求伪造，`pnpm --filter @saas/ai test` 通过。
-- [ ] 1.2 在 packages/config 实现显式 staging/开关校验并接入 web/jobs CF 与 Node env 装配和绑定类型；测试 production 配置专用开关（含 disabled）、未知环境 enabled、非法值均拒绝，缺失/disabled 保持正常模型行为；`pnpm --filter @saas/config test` 与相关 apps env 测试通过，错误仅含变量名。
-- [ ] 1.3 仅在 apps/web/wrangler.jsonc 与 apps/jobs/wrangler.jsonc 的 staging vars 添加 enabled，更新 docs/06-ai.md 的配置说明；检查 diff 确认顶层/production vars 与 secrets 未变、关闭闸门和在途任务处理说明一致，`pnpm check` 通过。
+- [x] 1.1 在 packages/ai 增加 x-acceptance-fault 严格枚举解析，扩展媒体 schema 顶层允许项，验证 key/provider/kind/modelId 配对且不泄露到业务 params；扩展现有 params/models 单测覆盖合法模式、非法组合、前缀缺元数据及请求伪造，`pnpm --filter @saas/ai test` 通过。
+- [x] 1.2 在 packages/config 实现显式 staging/开关校验并接入 web/jobs CF 与 Node env 装配和绑定类型；测试 production 配置专用开关（含 disabled）、未知环境 enabled、非法值均拒绝，缺失/disabled 保持正常模型行为；`pnpm --filter @saas/config test` 与相关 apps env 测试通过，错误仅含变量名。
+- [x] 1.3 仅在 apps/web/wrangler.jsonc 与 apps/jobs/wrangler.jsonc 的 staging vars 添加 enabled，更新 docs/06-ai.md 的配置说明；检查 diff 确认顶层/production vars 与 secrets 未变、关闭闸门和在途任务处理说明一致，`pnpm check` 通过。
 
 ## 2. 模型访问与后台配置边界
 
-- [ ] 2.1 在 packages/ai 模型列表/直接读库调用增加缺省拒绝的故障访问上下文，在 web 模型选择器、媒体表单、文本/媒体提交与 API key 路径接入 fresh 未模拟的平台管理员校验；扩展现有模型/API测试覆盖普通用户、空间 owner/admin、管理员 API key、缓存命中与停用，断言不可见/不可选且无任务、消息、hold 和 Provider 调用；相关 ai/web 测试通过。
-- [ ] 2.2 后台 save/copy/enable 接入同一故障配置与环境校验，disabled gate 仍允许停用遗留模型，沿用 adminAction、schema 哈希审计与缓存失效；扩展既有 admin-models 测试验证非法配置无写入、合法配置审计/失效与复制限制，更新 docs/06-ai.md 元数据示例及权限说明，相关测试通过。
+- [x] 2.1 在 packages/ai 模型列表/直接读库调用增加缺省拒绝的故障访问上下文，在 web 模型选择器、媒体表单、文本/媒体提交与 API key 路径接入 fresh 未模拟的平台管理员校验；扩展现有模型/API测试覆盖普通用户、空间 owner/admin、管理员 API key、缓存命中与停用，断言不可见/不可选且无任务、消息、hold 和 Provider 调用；相关 ai/web 测试通过。
+- [x] 2.2 后台 save/copy/enable 接入同一故障配置与环境校验，disabled gate 仍允许停用遗留模型，沿用 adminAction、schema 哈希审计与缓存失效；扩展既有 admin-models 测试验证非法配置无写入、合法配置审计/失效与复制限制，更新 docs/06-ai.md 元数据示例及权限说明，相关测试通过。
 
 ## 3. 媒体故障包装与持久生命周期
 

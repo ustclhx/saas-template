@@ -7,14 +7,17 @@ export {
   withEmailEnv,
 } from './email-env.ts'
 export {
+  type AiFaultInjectionEnv,
   type Env,
   EnvValidationError,
   envSchema,
   type HyperdriveBinding,
+  isAiFaultInjectionEnabled,
   loadEnv,
   type PaymentMode,
   type PaymentModeEnv,
   resolvePaymentMode,
+  validateAiFaultInjectionEnv,
 } from './env.ts'
 export * from './media.ts'
 export { type NodeEnv, nodeEnvSchema, nodeEnvSchemaFor, nodeSecretNames } from './node-schema.ts'

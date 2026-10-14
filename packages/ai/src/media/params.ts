@@ -1,5 +1,6 @@
 import { AppError } from '@saas/shared'
 import { z } from 'zod'
+import { parseAcceptanceFaultMetadata } from '../fault.ts'
 
 const configurationError = () =>
   new AppError('MEDIA_SCHEMA_INVALID', 'Media model parameter schema is not supported', {
@@ -14,6 +15,7 @@ const rootKeys = new Set([
   'description',
   '$schema',
   'x-media',
+  'x-acceptance-fault',
 ])
 const fieldKeys = new Set([
   'type',
@@ -92,6 +94,8 @@ export function parseMediaSchema(schema: Record<string, unknown> | null): MediaS
     properties[name] = field
   }
   const media = schema['x-media']
+  if (Object.hasOwn(schema, 'x-acceptance-fault'))
+    parseAcceptanceFaultMetadata(schema['x-acceptance-fault'])
   if (
     media !== undefined &&
     (!plainObject(media) ||
@@ -127,6 +131,7 @@ export function createMediaParamsValidator(schema: MediaSchema, kind?: 'image' |
       properties,
       additionalProperties: false,
       'x-media': undefined,
+      'x-acceptance-fault': undefined,
     } as Parameters<typeof z.fromJSONSchema>[0]) as z.ZodType<MediaParams>
   } catch {
     throw configurationError()
