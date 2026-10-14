@@ -90,8 +90,8 @@ app健康不能代表backup成功；backup另查真实base/dump/WAL链状态。
 未声明或不兼容时入口在pull/stop之前拒绝：取匹配PG17/应用版本和目标UTC点的备份，
 恢复到**新空卷**，默认不启动jobs或外部副作用，校验业务/角色/引擎状态后显式promote、
 重建正确secret/TLS/ownership环境，再决定入口切换。对象文件/支付/邮件等外部副作用
-不会随PG回退。restore/drill交付与异机ownership签收仍待backup/B owner，当前不能自动
-完成此恢复，交协调者确认具体操作，不对原卷尝试降级。
+不会随PG回退。restore/drill已交付，见[恢复runbook](selfhost-restore.md)；旧版部署bundle不含恢复器，
+必须另取匹配材料。异机ownership仍待B签收，交协调者确认切流量，不对原卷降级。
 
 ## 证据与限制
 
@@ -99,8 +99,9 @@ app健康不能代表backup成功；backup另查真实base/dump/WAL链状态。
 及本地HTTP旧SHA/503/半开响应/脱敏；`python3 deploy/selfhost/test-deploy-compose.py`
 使用真实本机registry digest和隔离Compose，验证初始/升级、pull/迁移/health失败、兼容
 回滚、持久marker及并发文件锁。轻量Node镜像只证明编排顺序和卷保留，不证明PG迁移/
-DBOS checkpoint/ownership恢复或真实五分钟slot。正式业务镜像+任务恢复仍需1.5签收后
-完成6.1/6.3；任务2.1/2.3的恢复部分保持BLOCKED，不将夹具称为业务全栈验收。
+DBOS checkpoint/ownership恢复或真实五分钟slot。正式业务镜像的空卷部署、升级和回滚另由`test-release-compose.py`验收；它使用成功发布
+bundle与registry镜像，第二版仅为本地registry版本元数据fixture。保留真实已完成DBOS
+状态不等于未完成任务恢复；后者及6.3仍依赖1.5签收，2.1/2.3仅按已完成证据判断。
 
-真实GHCR发布未授权、完整恢复bundle未齐、第7组主机/入口/备份/重启均BLOCKED；
+首次真实GHCR发布已授权并成功；旧SHA恢复bundle未齐，第7组主机/入口/备份/重启均BLOCKED；
 没有连接 `product-res-ecs` 或其他真实服务器，不手动部署Cloudflare staging。

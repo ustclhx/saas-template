@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read immutable Git runtime materials; verify image-only bundles using stdlib."""
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -18,13 +19,22 @@ SERVICE_ENV = {
     'postgres': 'POSTGRES_IMAGE', 'valkey': 'VALKEY_IMAGE', 'caddy': 'CADDY_IMAGE',
     'object-storage': 'OBJECT_STORAGE_IMAGE', 'backup': 'BACKUP_IMAGE',
 }
-# 固定运行清单，不能把源码、构建材料或工作树中的secret递归打进包。
+# 已发布版本保持原契约；新版本不能把源码、构建材料或工作树secret递归打进包。
+LEGACY_RUNTIME_FILES = (
+    'compose.yaml', 'compose.backup.yaml', 'compose.object-storage.yaml',
+    'compose.proxy.yaml', '.env.example', 'secrets.example',
+    'Caddyfile.object-storage', 'object-storage-init.mjs',
+    'deploy.sh', 'deploy.py', 'health.py', 'init-server.sh', 'init-server.py', 'init-firewall.sh',
+    'release/bundle.py', 'README.md', 'OPERATIONS.md',
+)
 RUNTIME_FILES = (
     'compose.yaml', 'compose.backup.yaml', 'compose.object-storage.yaml',
     'compose.proxy.yaml', '.env.example', 'secrets.example',
     'Caddyfile.object-storage', 'object-storage-init.mjs',
     'deploy.sh', 'deploy.py', 'health.py', 'init-server.sh', 'init-server.py', 'init-firewall.sh',
     'release/bundle.py', 'README.md', 'OPERATIONS.md',
+    'restore.sh', 'restore-drill.sh', 'backup/restore.py', 'compose.replica.yaml',
+    '.env.backup.example', '.env.object-storage.example', '.env.replica.example',
 )
 GENERATED_FILES = ('image-set.json', 'image-catalog.json', 'images.env')
 
@@ -89,8 +99,10 @@ def verify_bundle(directory, expected_sha, allow_fixture=False):
         require(path.is_file() or path.is_dir(), 'bundle special files are forbidden')
         if path.is_file():
             actual.add(path.relative_to(directory).as_posix())
-    expected = set(RUNTIME_FILES) | set(GENERATED_FILES) | {'release.json'}
-    require(actual == expected, 'bundle contains missing or unexpected runtime files')
+    runtime_files = next((names for names in (LEGACY_RUNTIME_FILES, RUNTIME_FILES)
+                          if actual == set(names) | set(GENERATED_FILES) | {'release.json'}), None)
+    require(runtime_files is not None, 'bundle contains missing or unexpected runtime files')
+    expected = set(runtime_files) | set(GENERATED_FILES) | {'release.json'}
     release = json.loads((directory / 'release.json').read_text())
     require(release.get('schemaVersion') == 1 and release.get('sha') == expected_sha,
             'release source SHA/schema mismatch')
@@ -115,7 +127,13 @@ def verify_bundle(directory, expected_sha, allow_fixture=False):
     for key, value in image_env(release).items():
         require(re.findall(r'^' + key + r'=(.*)$', example, re.M) == [value],
                 'example image reference mismatch')
-    for name in RUNTIME_FILES:
+    if runtime_files == RUNTIME_FILES:
+        for name in ('.env.backup.example', '.env.object-storage.example', '.env.replica.example'):
+            example = (directory / name).read_text()
+            for key, value in image_env(release).items():
+                references = re.findall(r'^' + key + r'=(.*)$', example, re.M)
+                require(not references or references == [value], 'example image reference mismatch')
+    for name in runtime_files:
         if name.startswith('compose') and name.endswith('.yaml'):
             require(not re.search(r'^\s*build\s*:', (directory / name).read_text(), re.M),
                     'server-side builds are forbidden')
@@ -134,6 +152,23 @@ def git_file(source, sha, path):
     return result.stdout, int(entry[0], 8) & 0o777
 
 
+def source_runtime_files(source, sha):
+    # 只解析源提交自己的字面量，不执行其代码，也不把新版白名单冒充旧SHA。
+    data, _ = git_file(source, sha, 'release/bundle.py')
+    try:
+        assignments = [node.value for node in ast.parse(data).body
+                       if isinstance(node, ast.Assign)
+                       and any(isinstance(target, ast.Name) and target.id == 'RUNTIME_FILES'
+                               for target in node.targets)]
+        require(len(assignments) == 1, 'source runtime whitelist must be one literal tuple')
+        names = ast.literal_eval(assignments[0])
+    except (SyntaxError, ValueError, TypeError):
+        raise ValueError('source runtime whitelist must be one literal tuple') from None
+    require(isinstance(names, tuple) and names in (LEGACY_RUNTIME_FILES, RUNTIME_FILES),
+            'source runtime whitelist is not an approved file list')
+    return names
+
+
 def build_bundle(source, sha, image_set_path, output, compatible=(), fixture=False):
     require(bool(SHA.fullmatch(sha)), 'expected full lowercase source SHA')
     source, output = Path(source), Path(output)
@@ -142,6 +177,7 @@ def build_bundle(source, sha, image_set_path, output, compatible=(), fixture=Fal
     kind = subprocess.run(['git', '-C', str(source), 'cat-file', '-t', sha],
                           check=True, capture_output=True).stdout.decode().strip()
     require(kind == 'commit', 'source SHA must be a commit')
+    runtime_files = source_runtime_files(source, sha)
     catalog = json.loads(git_file(source, sha, 'images/catalog.json')[0])
     image_set = json.loads(Path(image_set_path).read_text())
     images = validate_image_set(image_set, sha, catalog, fixture)
@@ -150,7 +186,7 @@ def build_bundle(source, sha, image_set_path, output, compatible=(), fixture=Fal
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix='.bundle-', dir=output.parent))
     try:
-        for name in RUNTIME_FILES:
+        for name in runtime_files:
             data, mode = git_file(source, sha, name)
             target = temporary / name
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -166,13 +202,19 @@ def build_bundle(source, sha, image_set_path, output, compatible=(), fixture=Fal
             else:
                 example += '\n' + key + '=' + value + '\n'
         (temporary / '.env.example').write_text(example)
+        if runtime_files == RUNTIME_FILES:
+            for name in ('.env.backup.example', '.env.object-storage.example', '.env.replica.example'):
+                example = (temporary / name).read_text()
+                for key, value in image_env(release).items():
+                    example = re.sub(r'^' + key + r'=.*$', key + '=' + value, example, flags=re.M)
+                (temporary / name).write_text(example)
         (temporary / 'images.env').write_text(env_text(release))
         for name, value in [('image-set.json', image_set), ('image-catalog.json', {
                 'schemaVersion': 1, 'pendingServices': [],
                 'services': [{'name': name} for name in images]})]:
             (temporary / name).write_text(json.dumps(value, indent=2) + '\n')
         release['files'] = {name: checksum(temporary / name)
-                            for name in sorted(set(RUNTIME_FILES) | set(GENERATED_FILES))}
+                            for name in sorted(set(runtime_files) | set(GENERATED_FILES))}
         (temporary / 'release.json').write_text(json.dumps(release, indent=2) + '\n')
         verify_bundle(temporary, sha, allow_fixture=fixture)
         # 不改已有版本，也不在失败时留下半成品供部署使用。

@@ -2,7 +2,7 @@
 
 仅使用受信 Actions 发布成功的 `image-set.json` / 同 SHA bundle。校验 checksum 用于传输
 完整性；不替代来源核实。先校验源 SHA、发布 run、所有镜像两架构、namespace/revision。
-首次真实 GHCR 发布需用户授权；本地 fixture 不能用于服务器。
+发布需要明确授权；首次模板发布的源 SHA 与 run 见仓库发布 runbook，本地 fixture 不能用于服务器。
 
 1. 在明确选择的**空白** Ubuntu24.04 / Debian12 amd64/arm64 上，单命令运行
    `sudo ./init-server.sh --dir /srv/saas-selfhost`。已有主机只使用经审阅的既有 Docker / 入口，
@@ -29,9 +29,47 @@
    `--host <explicit-host>`）。最后迁移release必须显式声明目标兼容，包括schema、DBOS
    handler/checkpoint和长任务版本；应用回滚不会降低数据库schema或执行旧migration。
    不兼容时恢复匹配PG17备份到**新空卷**，暂停jobs/外部副作用、核对业务/角色/任务状态、
-   明确promote及入口切换。restore/drill入口尚未交付，交协调者完成恢复runbook与签收；
+   明确promote及入口切换。新版bundle含restore/drill入口，旧版bundle需独立取得匹配材料；
    不删除旧卷或ownership文件，不改DBOS内部表。
 
 空间预检仅是部署目录至少2GiB余量；还需核对Docker data-root及PG/WAL/备份实际容量。
 成功app health不代表备份成功。B/D退出证据签收、整机恢复、真实registry/公网TLS/Dokploy
 和独立备份资源验收尚待协调者确认，禁止将本地机制测试当作服务器验收。
+
+## 指定点恢复与第二目标（新版完整 bundle）
+
+`restore.sh` / `restore-drill.sh` 只使用 Python3、Docker/Compose 和事先拉取的匹配 PG17
+镜像，在新空卷恢复完整 cluster，不启动 jobs，不切流量。先独立保管角色 secret、
+TLS、匹配应用镜像和用户对象备份。恢复身份只需要独立 prefix 的 List/Get 权限。
+受限目录0700，secret文件0600且UID999可读；不要把值放env、argv或日志。
+
+恢复用单独的受限 `restore-s3.env`，不能直接传 `.env.backup.example`：
+
+```dotenv
+BACKUP_S3_ENDPOINT=https://backup.example.com
+BACKUP_S3_REGION=us-east-1
+BACKUP_S3_PREFIX=s3://backup-example/cluster/pg17
+BACKUP_S3_FORCE_PATH_STYLE=true
+```
+
+```sh
+./restore-drill.sh --s3-env /restricted/restore-s3.env \
+  --access-key-file /restricted/secrets/restore-access-key \
+  --secret-key-file /restricted/secrets/restore-secret-key \
+  --ca-file /restricted/backup-ca.crt --image <matching-postgres-digest> \
+  --backup-id <base-id> --target-time <explicit-UTC-time> \
+  --project selfhost-restore-example --state-dir /restricted/new-drill \
+  --checks-file /restricted/restore-checks.json
+```
+
+checks为受信JSON，含 `creditsEnabled` 和 `checks:[{name,sql}]`；SQL仅单条只读SELECT/WITH，
+期望恰好一个`t`。必须校验目标前/后业务及真实引擎记录，不能只核对schema。
+用 `restore.sh` 保留实例时成功状态为 `validated_paused`；`check` / `promote` / `cleanup`
+均传同一 `--state-dir`。promote不切流量，drill成功只清理自己的资源，失败保留报告/卷。
+恢复后启用jobs仍需要B/D可信退出证据和同版本handler签收。
+
+第二目标加载 `compose.replica.yaml` 与 `.env.replica.example` 的本机副本，额外提供
+`backup_replica_s3_access_key_id` / `backup_replica_s3_secret_access_key` 文件及独立CA，
+只给backup。它异步复制完整base/dump/WAL/history并校验，不传播主目标删除；副本失败
+可见但不阻塞主PG归档。只能用第二目标独立凭据与配置重复恢复，才能证明主账号不可用
+时仍可恢复。应用健康不等于备份或副本成功。

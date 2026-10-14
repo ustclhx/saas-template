@@ -22,6 +22,11 @@ class BundleTest(unittest.TestCase):
             target = self.source / 'deploy/selfhost' / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text('services: {}\n' if name.startswith('compose') else '# example\n')
+        self.validator = self.source / 'deploy/selfhost/release/bundle.py'
+        self.validator.write_text('RUNTIME_FILES = ' + repr(bundle.RUNTIME_FILES) + '\n')
+        for name, key in [('.env.backup.example', 'BACKUP_IMAGE'),
+                          ('.env.object-storage.example', 'OBJECT_STORAGE_IMAGE')]:
+            (self.source / 'deploy/selfhost' / name).write_text(key + '=unpublished-placeholder\n')
         catalog = self.source / 'deploy/selfhost/images/catalog.json'
         catalog.parent.mkdir()
         self.catalog = {'schemaVersion': 1, 'pendingServices': [],
@@ -53,6 +58,17 @@ class BundleTest(unittest.TestCase):
     def build(self, **kwargs):
         return bundle.build_bundle(self.source, self.sha, self.images, self.output, **kwargs)
 
+    def commit_source(self, message):
+        self.git('add', '.')
+        self.git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                 'commit', '-qm', message)
+        old_sha = self.sha
+        self.sha = self.git('rev-parse', 'HEAD').strip()
+        self.image_set['sha'] = self.sha
+        for item in self.image_set['images']:
+            item['tag'] = item['tag'].replace(old_sha, self.sha)
+        self.images.write_text(json.dumps(self.image_set))
+
     def test_exact_commit_whitelist_and_immutable_output(self):
         # 工作树真值、未提交脚本修改均不能混入指定SHA的bundle。
         base = self.source / 'deploy/selfhost'
@@ -65,6 +81,14 @@ class BundleTest(unittest.TestCase):
         self.assertEqual(release['rollbackCompatibleWith'], ['a' * 40])
         self.assertNotIn('private-sentinel', (self.output / 'deploy.py').read_text())
         self.assertFalse((self.output / 'secrets').exists())
+        required = {'restore.sh', 'restore-drill.sh', 'backup/restore.py', 'compose.replica.yaml',
+                    '.env.backup.example', '.env.object-storage.example', '.env.replica.example'}
+        self.assertEqual(set(bundle.RUNTIME_FILES) - set(bundle.LEGACY_RUNTIME_FILES), required)
+        self.assertEqual(set(release['files']), set(bundle.RUNTIME_FILES) | set(bundle.GENERATED_FILES))
+        for name, service in [('.env.backup.example', 'backup'),
+                              ('.env.object-storage.example', 'object-storage')]:
+            self.assertEqual((self.output / name).read_text(),
+                             bundle.SERVICE_ENV[service] + '=' + release['images'][service] + '\n')
         with self.assertRaisesRegex(ValueError, 'already exists'):
             self.build()
         self.assertEqual(bundle.verify_bundle(self.output, self.sha), release)
@@ -138,6 +162,39 @@ class BundleTest(unittest.TestCase):
             self.build()
         self.assertFalse(self.output.exists())
         self.assertEqual(list(self.root.glob('.bundle-*')), [])
+
+    def test_legacy_source_sha_keeps_its_exact_files_and_validator(self):
+        # 小型旧版validator独立检查其原始契约；新版打包器不能加文件或换入当前代码。
+        validator = ('RUNTIME_FILES = ' + repr(bundle.LEGACY_RUNTIME_FILES) + '\n' +
+                     "from pathlib import Path\nimport json\n"
+                     "root = Path(__file__).resolve().parent.parent\n"
+                     "expected = set(RUNTIME_FILES) | {'image-set.json', 'image-catalog.json', 'images.env'}\n"
+                     "actual = {p.relative_to(root).as_posix() for p in root.rglob('*') if p.is_file()}\n"
+                     "assert actual == expected | {'release.json'}\n"
+                     "assert set(json.loads((root / 'release.json').read_text())['files']) == expected\n")
+        self.validator.write_text(validator)
+        self.commit_source('legacy runtime contract')
+        # 工作树白名单即使改成新版，也只能按旧commit打包。
+        self.validator.write_text('RUNTIME_FILES = ' + repr(bundle.RUNTIME_FILES) + '\n')
+        release = self.build()
+        self.assertEqual(bundle.verify_bundle(self.output, self.sha), release)
+        self.assertEqual(set(release['files']), set(bundle.LEGACY_RUNTIME_FILES) | set(bundle.GENERATED_FILES))
+        self.assertEqual((self.output / 'release/bundle.py').read_text(), validator)
+        subprocess.run(['python3', str(self.output / 'release/bundle.py')], check=True,
+                       capture_output=True)
+
+    def test_unapproved_source_whitelist_and_partial_full_bundle_are_rejected(self):
+        self.validator.write_text('RUNTIME_FILES = ' + repr(bundle.RUNTIME_FILES + ('private.env',)) + '\n')
+        self.commit_source('unapproved runtime contract')
+        with self.assertRaisesRegex(ValueError, 'not an approved file list'):
+            self.build()
+        self.assertFalse(self.output.exists())
+        self.validator.write_text('RUNTIME_FILES = ' + repr(bundle.RUNTIME_FILES) + '\n')
+        self.commit_source('restore approved runtime contract')
+        self.build()
+        (self.output / 'restore.sh').unlink()
+        with self.assertRaisesRegex(ValueError, 'missing or unexpected'):
+            bundle.verify_bundle(self.output, self.sha)
 
 
 if __name__ == '__main__':

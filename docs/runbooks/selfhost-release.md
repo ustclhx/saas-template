@@ -9,10 +9,10 @@
 `selfhost-image-set-<sha>/image-set.json`，以及同一完整 main commit 的可信 Git 对象。
 操作者须确认发布 run URL、成功结论、完整 SHA、namespace 和来源仓库；不要以存在某个
 SHA tag 代替成功集合。发布成功后 workflow 将同 SHA 的上述材料打包为 `selfhost-release-<sha>` artifact；
-未经用户授权，本轮不会触发该发布。可选 `rollback_compatible_with` 输入只填已审阅的完整
+发布需要明确授权；验收workflow只读取已有成功发布，不触发或覆写SHA。可选 `rollback_compatible_with` 输入只填已审阅的完整
 历史SHA列表，默认空值使回滚门保持关闭。脚本校验清单、引用和 SHA，checksum 用于传输完整性，不提供签名
 或 registry 身份证明。因此应从受信 Actions artifact 下载，并使用已验证 SSH host key
-传输；不要使用第三方提供的 bundle 或 image-set。首次实际发布仍需用户授权。
+传输；不要使用第三方提供的 bundle 或 image-set。后续新发布由协调者决定。
 
 目前正式 image-set 使用 `ghcr.io/<owner>/<project>/<service>`。每个服务同时记录
 `tag: ...:<sha>`、`digest: sha256:...` 和 `reference: ...@sha256:...`，平台恰为
@@ -36,14 +36,15 @@ python3 /tmp/releases/<full-main-sha>/release/bundle.py compose-config \
   /tmp/releases/<full-main-sha> --sha <full-main-sha>
 ```
 
-固定运行清单为三个官方 Compose、代理 override、deploy/init/health 入口、初始化防火墙
+新版完整运行清单为基础/backup/object-storage/replica Compose、代理 override、
+restore/drill与自包含宿主恢复器、三个附加无真值env示例、deploy/init/health入口、初始化防火墙
 脚本、运行时挂载的 `object-storage-init.mjs` 与 `Caddyfile.object-storage`、无真值示例和
 服务器校验器及README/OPERATIONS。Dockerfile、build.sh、业务源码和镜像内部的备份实现不复制。新增运行文件
 时需审阅更新 `RUNTIME_FILES`；不能改成递归复制整个 deploy 目录。
 
 bundle 根目录含 `release.json`、`image-set.json`、仅保留服务名的 `image-catalog.json`、
 `images.env`。`.env.example` 中八服务镜像全部替换为该集合的 digest；所有运行文件及
-这三个生成文件都有 SHA-256。`release.json` 自身不循环计算 checksum，信任来自受信
+这三个生成文件都有 SHA-256。新版附加env示例同样固定到集合digest。`release.json` 自身不循环计算 checksum，信任来自受信
 artifact 与传输渠道。校验拒绝 symlink、额外文件、缺文件、checksum 不符和镜像示例不符。
 
 `compose-config` 在 bundle 干净目录读取 example 与最后的 images.env，清掉进程业务
@@ -87,13 +88,13 @@ symlink 拒绝、前成功版本保护以及显式 fixture 门。`build --fixtur
 Docker save 的 config 内容 hash、本地 image ID 与 registry manifest/index digest 必须分别核对；
 本机 containerd store 的 inspect.Id 可能对应导出包的另一个 OCI blob，并不等于 config hash。
 本机 tar/digest 夹具只能证明打包结构；即使本地 registry 返回真实 manifest digest，
-也不证明正式 GHCR 两架构 revision/发布信任门。首次真实发布获得授权后，先确认 main
-CI 与两架构 image smoke 成功，再下载成功 image-set，按上面的同 SHA build/verify/
-干净目录 config 重新验收并记录 registry digest。不要自行触发 publish workflow。
+也不证明正式 GHCR 两架构 revision/发布信任门。首次发布已在用户授权后成功，见下文；后续先确认main CI与两架构smoke成功，再下载
+成功image-set，按同SHA build/verify/config验收。不要自行触发publish workflow。
 
-备份镜像已纳入集合；restore/drill/第二目标同步脚本尚未交付，不能宣称完整恢复 bundle
-已交付。1.4 的完整验收以及 6/7 组 registry、VM、服务器证据仍由协调者按实际成果签收；
-本地结构测试不解除这些待办或 B/D ownership 门。
+备份、restore/drill与副本脚本已经交付；本次补齐未来release的完整运行白名单。
+打包器按指定Git SHA自身的受审白名单打包，校验器只接受原17项或新24项的确切集合，
+不接受任意manifest文件名。旧SHA仍使用旧工具和白名单，不将未发布修复冒充该SHA材料。
+B/D ownership、VM全栈恢复和真实服务器验收仍待签收。
 
 2026-10-14 本机补充结构证据：使用八个已实际构建镜像的本地 ID、固定运行材料临时
 Git fixture commit `1f7cb280a68a14068186914a46c24a364189bf6c`，完成 build/verify 与
@@ -103,3 +104,20 @@ Git fixture commit `1f7cb280a68a14068186914a46c24a364189bf6c`，完成 build/ver
 原始 web revision 为 `ffd6ba7a6bfa706893ab4a0dfe095afb008ae4a1`。backup 本地镜像
 revision 是另一提交，因此该材料明示 fixture，拒绝作为正式同 SHA 集合或 registry
 发布证据；没有进行 pull 或触发发布。临时源码/bundle/tar 均自动清理。
+
+## 首次正式 GHCR 集合（2026-10-14）
+
+用户已批准的[发布run 38573156122](https://github.com/ustclhx/saas-template/actions/runs/38573156122)
+成功，源SHA `80983d29f83cb5b57563fc8360119793cf8c12be`，namespace
+`ghcr.io/ustclhx/saas-template`。amd64/arm64 image smoke均成功，八镜像可匿名拉取。
+不得重触发同SHA发布或覆写tag。
+
+该SHA含#187原17文件打包白名单；正式部署bundle已从Git对象及成功image-set生成，
+由bundle内原版校验器完成verify和干净目录config。它支持部署/初始化/回滚，但不含
+restore/drill/replica及附加env示例。当前补齐只影响包含修复的后续source SHA，完整恢复
+bundle的正式发布签收仍待协调者决定新发布，不能用本地fixture代替。
+
+`Selfhost released bundle acceptance` 是独立只读CI：读取上述成功集合，匿名pull八镜像，
+空卷执行bundle初部署、已有版本升级、失败与回滚。第二版本为本地registry元数据变体，
+明确fixture，业务/schema/handler不改，不能用来宣称第二个正式GHCR版本已发布。
+CI artifact包含原SHA部署bundle、image-set与脱敏演练报告；真实server/ownership仍待签收。

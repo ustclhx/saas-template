@@ -1,6 +1,6 @@
 # 自托管 Compose 与部署交付
 
-本目录提供 image-only Compose、显式 SSH/本机部署与兼容回滚、health/SHA 门、空白主机初始化、代理接入和同 SHA bundle 打包。首次真实 GHCR 发布仍待授权；完整恢复脚本与 B/D ownership 签收尚未完成，不能据此宣称服务器恢复已验收。Node 已装配真实 B 队列与 Cron。关闭 Turnstile、开启验证邮件与多租户的本地生产验收见 [A 8/9 runbook](../../docs/runbooks/selfhost-a-final.md)；正式邮件凭据由部署方提供。默认 Cloudflare 构建与 staging 流程保持原样。
+本目录提供 image-only Compose、显式 SSH/本机部署与兼容回滚、health/SHA 门、空白主机初始化、代理接入和同 SHA bundle 打包。首次真实 GHCR 发布已完成；恢复/副本脚本已交付，B/D ownership 签收与服务器恢复验收仍未完成。Node 已装配真实 B 队列与 Cron。关闭 Turnstile、开启验证邮件与多租户的本地生产验收见 [A 8/9 runbook](../../docs/runbooks/selfhost-a-final.md)；正式邮件凭据由部署方提供。默认 Cloudflare 构建与 staging 流程保持原样。
 
 ## 正式部署
 
@@ -12,8 +12,8 @@
 详细步骤见 [部署与回滚](../../docs/runbooks/selfhost-deploy.md)、
 [空白初始化](../../docs/runbooks/selfhost-init.md)、[外部代理](../../docs/runbooks/selfhost-proxy.md)
 与 [release bundle](../../docs/runbooks/selfhost-release.md)。Dokploy 是可选入口，不能跳过
-迁移/排空门；不会自动安装或连接任何既有服务器。恢复脚本尚未交付，1.4 的完整 bundle
-与 1.5/6.3/7 的恢复验收保持待办。
+迁移/排空门；不会自动安装或连接任何既有服务器。恢复脚本已交付，完整 bundle 的运行白名单已补齐；已发布 SHA 的旧版 bundle
+仍仅含部署材料，不覆写旧 SHA。1.5/6.3/7 的恢复验收保持待办。
 
 ## 本地开发镜像与基础启动
 
