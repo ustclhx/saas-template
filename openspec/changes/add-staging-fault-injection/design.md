@@ -5,7 +5,7 @@
 动机与范围见 proposal；行为契约见两个 delta specs。现有事实与切入点：
 
 - `packages/ai/src/models.ts` 的 `ai:models` KV 保存完整启用注册表，调用前 `requireAvailableModel` 直接读库；当前没有管理员/故障过滤。
-- `apps/web/src/features/ai/chat.ts` 在建模后才创建消息和 hold，随后 `streamText`。`packages/ai/src/text/settle.ts` 已实现错误结算、估算封顶和预扣幂等；无输出 token 仍按输入估算与 minCharge 收费，per_call 默认 any_output 无输出全退。
+- `apps/web/src/features/ai/chat.ts` 在建模后才创建消息和 hold，随后 `streamText`。`packages/ai/src/text/settle.ts` 已实现错误结算、估算封顶和预扣幂等；无输出 token 仍按输入估算与 minCharge 收费，per_call 默认 any_output 无输出全退（提案时的口径；2026-10-15 注：无可见正文的失败已改为 token 与按次均全额释放，见主 spec ai-text-reasoning 与 #170/#183）。
 - `apps/jobs/src/workflows/media-runner.ts` 的 `submitMediaOnce` 在外部 submit 前保存 `output.submissionAttempted`，fal `idempotentSubmit=false`，不确定受理后终止且退款。已有 jobId 时重放会复用，因此响应丢失不能提前填业务 `providerJobId`。
 - 真实回调入口先校验任务 HMAC 和 fal 签名，落 `callback_payload` 再唤醒；runner 在 wait 前后查库。默认 wait 15 分钟，deadline 2 小时，hold deadline 后 10 分钟到期；直接把所有 deadline 缩短会令回调丢失场景来不及轮询。
 - Workers 是同步字节路径；目前 `run` 返回后先 persist，外围再检查 deadline。故障超时不能用迟交图片的方法，否则会先产生临时文件。
@@ -69,7 +69,7 @@
 
 不在模型构造阶段 throw，否则没有 hold 可验证。流前在包装后的 doStream 抛安全异常，不调用真实模型；仅故障模型显式 `maxRetries=0`。流中调用原 Provider 的 doStream，转发真实 text-delta 后中断读取并以流异常终止；不只 enqueue error chunk 后 close：当前 AI SDK 仍可能触发 onEnd，被现 handler 当成 completed。
 
-流中注入在累计真实文本足以触发已有 token 检查点后执行（固定 200 个估算输出 token），并限制现有 maxOutputTokens 为 1024；真实流未达到阈值即结束则场景未触发，不认证成功。阈值只计正文 text-delta（与检查点、部分输出和 per_call 有输出判定同口径）；`deepseek-flash` 默认思考可能只产生 reasoning 并用尽上限，故障调用经包装器固定关闭思考，不把 reasoning 计入阈值。停止上游 reader，但不触发业务“用户停止” AbortController，确保状态是 failed。保留现有 onChunk、checkpoint、done、settleInterruptedChatMessage 路径，不修改收费公式。四个模型模式×定价组合分别核验：per_call 无输出 0、有输出固定费用；token 按输入/已输出估算与 minCharge、封顶 hold，无额外欠费。
+流中注入在累计真实文本足以触发已有 token 检查点后执行（固定 200 个估算输出 token），并限制现有 maxOutputTokens 为 1024；真实流未达到阈值即结束则场景未触发，不认证成功。阈值只计正文 text-delta（与检查点、部分输出和 per_call 有输出判定同口径）；`deepseek-flash` 默认思考可能只产生 reasoning 并用尽上限，故障调用经包装器固定关闭思考，不把 reasoning 计入阈值。停止上游 reader，但不触发业务“用户停止” AbortController，确保状态是 failed。保留现有 onChunk、checkpoint、done、settleInterruptedChatMessage 路径，不修改收费公式。四个模型模式×定价组合分别核验：per_call 无输出 0、有输出固定费用；token 按输入/已输出估算与 minCharge、封顶 hold，无额外欠费（2026-10-15 注：无可见正文的失败已改为 token 与按次均全额释放，token 流前错误不再收 minCharge；有可见正文后的收费不变）。
 
 全假 staging 文本流无法证明真实流经过错误分支，故只在本地用已安装 SDK/夹具复现。Gateway 日志比对依然独立，direct/gateway 出口保持现有配置。
 
