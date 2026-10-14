@@ -9,6 +9,11 @@ import { fileURLToPath } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const composeFile = join(root, 'deploy/selfhost/compose.yaml')
 const proxyFile = join(root, 'deploy/selfhost/compose.proxy.yaml')
+// 与 catalog 的 app Dockerfile 共用基础 manifest，冷缓存 CI 也不能依赖浮动标签。
+const nodeImage = readFileSync(join(root, 'deploy/selfhost/app.Dockerfile'), 'utf8').match(
+  /^FROM (node:\S+@sha256:[a-f0-9]{64})\s/m,
+)?.[1]
+assert(nodeImage, 'Missing pinned Node base in the app Dockerfile')
 const args = process.argv.slice(2)
 const event = (name, details = {}) => console.info(JSON.stringify({ event: name, ...details }))
 
@@ -178,7 +183,7 @@ proxy.test {
     `name: ${project}
 services:
   web:
-    image: node:22.23.3-bookworm-slim
+    image: ${nodeImage}
     user: '1000:1000'
     command: [node, /fixture/echo.mjs]
     volumes: ['${directory}:/fixture:ro']
@@ -196,7 +201,7 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
   probe:
-    image: node:22.23.3-bookworm-slim
+    image: ${nodeImage}
     user: '1000:1000'
     command: [node, -e, 'setInterval(()=>{},1000)']
     volumes: ['${directory}:/fixture:ro']
@@ -206,6 +211,8 @@ networks:
   data: {internal: true}
 `,
   )
+  // 只拉夹具所需固定 digest；proxy wrapper 已由调用者构建，不能被上游镜像替代。
+  run('docker', ['pull', nodeImage], { timeout: 300_000 })
   started = true
   compose('up', '-d', '--pull', 'never')
   const probe = `const https=require('node:https'),fs=require('node:fs');const req=https.get({host:'proxy',port:8443,servername:'proxy.test',ca:fs.readFileSync('/fixture/server.crt'),headers:{host:'proxy.test','x-forwarded-for':'198.51.100.66, fake','cf-connecting-ip':'198.51.100.66',forwarded:'for=198.51.100.66'}},res=>{let text='';res.on('data',c=>text+=c);res.on('end',()=>console.log(text))});req.setTimeout(3000,()=>req.destroy());req.on('error',()=>process.exit(1))`

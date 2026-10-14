@@ -2,8 +2,16 @@ name: Selfhost deployment gates
 
 on:
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'openspec/**'
+      - '**/*.md'
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'openspec/**'
+      - '**/*.md'
 
 permissions:
   contents: read
