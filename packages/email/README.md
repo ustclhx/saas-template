@@ -60,8 +60,9 @@ Node 启动时的信任存储提供；测试仅在独立子进程中传入临时
 
 同一个 from 与 `idempotencyKey` 生成相同的哈希 Message-ID，不暴露邮箱或业务键。
 SMTP 服务不保证去重，DATA 被接受后、本地确认前崩溃或断连仍可能重复投递。
-Resend 继续使用原始稳定幂等键与其服务端去重窗口。这里未改变持久 inbox/DLQ，
-没有完成认证 HTTP→入队→验证链接端到端验收（C 3.3/3.4）。
+Resend 继续使用原始稳定幂等键与其服务端去重窗口。持久 inbox/DLQ 保持原契约：
+首次加最多五次重试，30 秒指数退避封顶 900 秒，成功成员独立确认，
+有效终态失败先写持久 DLQ 再确认；不会自动改用 Resend。
 
 ## 本地验证
 
@@ -79,7 +80,41 @@ fixture 只监听发布到 127.0.0.1 的随机端口，不转发邮件；容器�
 451/454/535/550、超时/断流脱敏及稳定身份，默认 `test` 不启动 Docker。
 中立冷导入测试阻止 Nodemailer 加载；既有 workerd 渲染测试和 CF 构建验证中立导入。
 
-## 共享接线补丁（协调者；本批未实施，3.1 保持待办）
+## 认证邮件持久链路验收（C 3.4）
+
+仓库根目录运行：
+
+```sh
+node apps/web/test/node/run-auth-smtp.mjs
+```
+
+需要 Docker、OpenSSL，以及本地 `postgres:17`、`valkey/valkey:8.1.6-alpine`、
+`node:22.23.3-bookworm-slim` 镜像。Runner 创建独占 PG/Valkey/SMTP，随机端口仅绑定
+127.0.0.1，应用角色保留既有 DML 权限，迁移由 migrator 执行。容器名包含
+`c-verify`；退出清理自己的容器和临时 HTTPS 证书。SMTP 只在内存捕获，
+不转发外部邮箱，不保存正文或认证链接。默认 CF 测试不收集这个 `.node.ts` 文件。
+
+这是实际 Node HTTPS 请求经源码 `createNodeWebProcess` / `handleAuthRequest`，
+连接实际 inbox、DBOS、`startNodeJobs`、模板渲染和 SMTP sender 的集成验收；
+没有运行打包后的 Nitro 服务、浏览器 UI 或 Compose 发布栈。测试只替换模板开关：
+禁用 Turnstile/OAuth/支付和 AI，开启注册邮箱验证。HTTPS 使用临时受信 CA，
+SMTP `none` 仅在本地隔离 fixture；生产 TLS 见上面的真实协议测试。
+
+注册请求在 SMTP 返回 451 时仍成功入队并返回 200，经生产 30 秒退避送达，
+从实际收到的 MIME text/plain 提取并点击验证链接，再经 HTTP 登录确认邮箱已验证。
+重置请求同样返回 200；fixture 保存完整 DATA 后故意断连，客户端收不到最终 250，
+持久 inbox 保留 pending。原队列消息经相同 30 秒退避重试，产生两次收件记录，
+两次 Message-ID 和重置链接完全相同。随后点击收到的链接并提交新密码，
+验证旧密码拒绝、新密码成功、旧会话 token cookie 失效；普通 Cookie 缓存仍遵循
+原五分钟吊销延迟。测试不查询 verification token，也不从 inbox body 取得链接。
+
+成功运行生成脱敏证据
+[`c-3.4-auth-smtp.json`](../../docs/runbooks/evidence/selfhost/c-3.4-auth-smtp.json)，
+包含完整 HEAD、请求/inbox/Message-ID、收件时间、尝试次数、状态和零 Resend 调用。
+SMTP 接受后确认前存在不确定结果，可能重复投递；稳定 Message-ID 只提供身份追踪，
+不能保证接收服务去重，也不承诺 exactly-once。
+
+## 已装配共享接线（C 3.1–3.3）
 
 1. **`packages/config/src/node-schema.ts`**：Node 专用 schema 接受
    `EMAIL_TRANSPORT=log|resend|smtp`，默认仍为 `log`。保持 CF 的 `withEmailEnv`
@@ -117,4 +152,4 @@ fixture 只监听发布到 127.0.0.1 的随机端口，不转发邮件；容器�
    CF 入口、Node registration 和构建脚本无需 SMTP 专属修改。
 7. **共享契约注释**：协调者同步 `EmailMessage.idempotencyKey` 注释，说明去重取决于
    通道，SMTP 只生成稳定身份；接口形状不变。补 config 缺项/非法值/认证配对/
-   `_FILE` 冲突与无值泄漏测试，并在 B consumer 的独立批次完成 C 3.3/3.4 验收。
+   `_FILE` 冲突与无值泄漏测试，C 3.3 的真实 consumer 验收见 jobs `test:node:smtp`，C 3.4 见上面的认证链路。

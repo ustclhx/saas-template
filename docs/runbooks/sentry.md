@@ -104,3 +104,50 @@ eventId=`a9a002c620074b97a8f328a04a1e5a43`。
 
 OpenSpec 1.2 已由协调者在 main 勾选；此修复不更改任务勾选、不手动部署 staging。
 本次 Workflow 原始错误补报的 staging 复核待 main 合并自动发布后进行，历史事件不代表修复已上线。
+
+## 7. Node 本地真实项目触发（C 2.5）
+
+本次经协调者确认复用现有 `environment=smoke` 与纯完整 HEAD SHA release，
+dist 为 `web-node` / `jobs-node`；smoke 在这里表示本地 Node 验收。
+没有修改 schema、监控 gate、上传脚本、项目设置、token 或 staging CI。
+构建时的 HEAD 记录在证据的 `buildSourceSha`，后续只提交测试、文档与证据。
+
+显式运行顺序如下，默认测试不会执行真实项目探针：
+
+```sh
+pnpm build:node
+node --env-file=/Users/hxlee/workspace/saas-template/.env.local apps/web/test/sentry-local/upload.mjs
+node --env-file=/Users/hxlee/workspace/saas-template/.env.local apps/web/test/sentry-local/run.mjs
+```
+
+upload 包装器复用既有 release → inject → 两个 Node dist upload → finalize 流程，
+先验证产物 metadata 与当前完整 SHA 一致。上传子进程只接收所需 Sentry 上传变量；
+CLI 输出只保留步骤/结果，403 立即失败，不查找其他凭据。
+build 不加载 dotenv，实际 web/jobs 子进程只取得 DSN，不取得上传 token、org 或 project。
+探针将本地 DSN 的末尾路径分隔符按 URL 规范化为既有 schema 接受的数字项目路径，
+仍使用同一授权项目与公钥，未更换凭据。
+
+探针使用名字含 `c-verify` 的临时 Docker PG/Valkey/SMTP，结束删除自己的容器。
+实际启动已上传 maps 的两个生产 Node 输出。管理员通过本地认证工厂完成验证与
+bootstrap 提升，生产 HTTP 入口仍执行同源、实时管理员与先审计保护；只调用一次
+`sentry-test` 并核对 500 和一条已提交审计。另一条有效邮件经实际持久 inbox/DBOS
+到 jobs，由既有 SMTP fixture 的永久 550 路径失败一次并进入持久终态。
+未增加公开 jobs 故障接口，也未更改业务实现；公开 `.map` 请求核对为 404。
+
+2026-10-14 本地触发记录见
+[`c-2.5-sentry-node-trigger.json`](./evidence/selfhost/c-2.5-sentry-node-trigger.json)。
+upload 与生产触发通过，只证明准备与触发完成；事件入库、可读 TypeScript 帧、
+脱敏和重复事件仍需协调者在指定 Sentry 测试项目核验，2.5 保持未勾选。
+
+协调者分别查询证据中的 release 与 requestId：
+
+```text
+environment:smoke release:<buildSourceSha> dist:web-node requestId:<web.requestId>
+environment:smoke release:<buildSourceSha> dist:jobs-node requestId:<jobs.requestId>
+```
+
+按记录的 UTC 触发时间定位两条事件，确认 event release/dist/requestId，
+Artifact Bundles 的两个 Node dist、debug ID 与源码帧对应；预期我方源码位置分别见
+`web.expectedSource` / `jobs.expectedSource`，这些字段不是已映射的核验结论。
+保存实际 event ID/链接、源文件/行号与源码上下文，并检查 JSON 无认证头、Cookie、
+邮箱、OTP/邮件正文、DSN 或其他凭据，同一触发没有重复上报。全部通过后再勾选 2.5。
