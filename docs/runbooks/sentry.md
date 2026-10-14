@@ -2,7 +2,7 @@
 
 适用范围：`add-observability-and-optional-features` 1.2，web/jobs 的服务端异常。
 staging 只由 main 自动发布；本分支不手动部署。原接入验收已由协调者完成，见 §6；
-Workflow 重复上报修复仍需合并后按 §3 复核。
+Workflow 原始错误补报修复（#160 后续）仍需合并后按 §3 复核。
 
 ## 1. 配置与安全
 
@@ -52,7 +52,14 @@ Debug ID 注入后的 JS 注释 `debugId` 应与相应 map 的 `debugId`（CLI 3
 
    预期 500：授权与审计成功后，Worker 入口故意抛出测试异常。503 表示该环境未启用 Sentry，应先核对 DSN 与环境 gate；权限或同源校验失败不算成功触发。
 4. 在 Sentry Issues 查询 `environment:staging release:<完整SHA> requestId:<响应请求ID>`。打开事件，确认 release、dist=`web`、requestId，且堆栈显示仓库 TypeScript 源路径、函数、行号与源码上下文，不能仅有打包后的 `index.js` 行号。检查事件 JSON 不含 Authorization、Cookie、邮箱、支付凭据与对话内容。
-5. jobs 可从现有 Workflow 的真实失败或 Queue/Cron 消费异常事件验收，按对应 request ID 与同一 release 查询，确认 dist=`jobs` 与 TypeScript 源码堆栈。Workflow 以 SDK step 事件（mechanism=`auto.faas.cloudflare.workflow`）为准：同一次 step 最终失败只应有该事件，不应再出现外围捕获的引擎包装事件；重试过程按 SDK 的最终尝试策略处理。run 自身、未由 SDK 捕获的引擎异常以及 Queue/Cron 仍应上报。不新增公开 jobs 触发接口，不用破坏业务数据的方式制造错误。
+5. jobs 原始错误补报修复合并后，由协调者等待 main 自动发布成功，确认 health `version` 等于合并提交的完整 SHA，再复跑既有故障套件的 `workers-error` 场景；可另核 `fal-submit-response-lost`。按场景对应 request ID 与同一 release 查询 Sentry，确认 dist=`jobs`、仅上报一次、事件保留原始业务错误与我方 TypeScript 源码堆栈，并检查事件 JSON 脱敏。Workflow 的预期如下：
+
+   - SDK 在 step 最终尝试上报（mechanism=`auto.faas.cloudflare.workflow`）后，外围捕获跳过，不再上报引擎包装错误。
+   - 首次尝试抛出 `NonRetryableError` 或引擎提前终止、SDK 未上报时，run 级捕获改报对应 step 回调最后抛出的原始错误，保留我方堆栈；不能使用其他并发 step 的错误。
+   - 引擎错误未执行 step 回调、没有对应原始错误时，仍上报引擎包装错误；run 自身以及 Queue/Cron 异常仍应上报。
+   - 重试后成功的 step 不上报错误。
+
+   不新增公开 jobs 触发接口，不用破坏业务数据的方式制造错误。
 6. 保存脱敏证据：UTC、完整 SHA、Actions run、event ID/事件链接、request ID、映射后的源路径与行号、web/jobs dist、脱敏检查结论。协调者完成所需 staging 验收后才勾选 1.2；此 runbook 不提前宣称通过。
 
 ## 4. 本地一次真实事件
@@ -85,7 +92,7 @@ eventId=`a9a002c620074b97a8f328a04a1e5a43`。
 - 没有事件：确认 Worker secret DSN 存在、`SENTRY_ENVIRONMENT` 为 staging/production/smoke，并确认请求真正到达 Worker。认证失败、业务已处理错误和静态 assets 请求不会产生未处理异常事件。
 - release 不一致：比较事件 release、health version、Actions 检出 SHA 与 jobs 部署 `APP_VERSION` var，必须都是完整 SHA。
 - 没有源码映射：确认 bundle 的 release/dist、debug ID、map 的 `sourcesContent`，以及部署确实读取注入后的 JS。可在仅含 Sentry 环境变量的受控终端运行 `pnpm exec sentry-cli sourcemaps explain <event-id>`；不要开启含敏感请求详情的 debug 日志。
-- Workflow 引擎帧：`ContextImpl.wrapper` 等 Cloudflare Workflows 引擎代码不属于仓库源码，无法用项目 source map 映射属于预期。引擎脚本也可能叫 `index.js`，误关联我方 debug ID/map 时会出现 `js_invalid_sourcemap_location`；不能仅凭该引擎帧判定 bundle 注入、上传或部署损坏。优先检查 SDK step 事件中的原始错误及项目 TypeScript 帧，并按同一 request ID、release 与步骤确认没有重复外围事件。当前保留 jobs 的 `dist/index.js`：去重解决已核实的重复捕获，改名会扩大构建/注入/部署链路修改且不能提供引擎源码；若后续仍有独立的同名误关联，再单独评估改名。
+- Workflow 引擎帧：`ContextImpl.wrapper` 等 Cloudflare Workflows 引擎代码不属于仓库源码，无法用项目 source map 映射属于预期。引擎脚本也可能叫 `index.js`，误关联我方 debug ID/map 时会出现 `js_invalid_sourcemap_location`；不能仅凭该引擎帧判定 bundle 注入、上传或部署损坏。若 step 回调已抛错，应检查 SDK step 事件或 run 级补报事件中的原始错误及项目 TypeScript 帧，并按同一 request ID、release 与步骤确认仅有一次上报；未执行回调的引擎错误才保留包装错误。当前保留 jobs 的 `dist/index.js`：去重与原始错误补报对应已核实的捕获问题，改名会扩大构建/注入/部署链路修改且不能提供引擎源码；若后续仍有独立的同名误关联，再单独评估改名。
 - 上传失败：检查 GitHub staging secrets 与 token 的项目上传权限；保持失败阻止部署，不增加忽略错误或本地上传绕过。
 
 ## 6. 验收记录
@@ -96,4 +103,4 @@ eventId=`a9a002c620074b97a8f328a04a1e5a43`。
 | main staging 可读堆栈 | 2026-10-14 协调者已核验 web 与 jobs SDK step 的 TypeScript 帧及脱敏；另发现 jobs 重复上报 | [事件与源码映射证据](./evidence/staging-acceptance/2026-10-13/acceptance-2026-10-13j-sentry-verification.json) |
 
 OpenSpec 1.2 已由协调者在 main 勾选；此修复不更改任务勾选、不手动部署 staging。
-本次 Workflow 去重的 staging 复核待 main 合并自动发布后进行，历史事件不代表修复已上线。
+本次 Workflow 原始错误补报的 staging 复核待 main 合并自动发布后进行，历史事件不代表修复已上线。

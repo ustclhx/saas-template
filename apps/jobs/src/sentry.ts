@@ -58,12 +58,12 @@ export function captureJobException(error: unknown): void {
   captureException(error, { tags: { requestId, workspaceId, userId } })
 }
 
-/** 每次 run 独立记录 SDK 已捕获的 step rejection，兼容引擎重新包装原错误。 */
+/** 每次 run 按 step 调用关联原始错误与引擎 rejection，保留堆栈并避免 SDK 双报。 */
 export function createWorkflowSentry<T extends { do: (...args: never[]) => unknown }>(
   step: T,
   sdkEnabled: boolean,
 ) {
-  const captured = new Set<unknown>()
+  const failures = new Map<unknown, { original: unknown; sdkCaptured: boolean }>()
   const trackedStep = new Proxy(step, {
     get(target, property, receiver) {
       const value = Reflect.get(target, property, receiver)
@@ -75,28 +75,33 @@ export function createWorkflowSentry<T extends { do: (...args: never[]) => unkno
       return async (...args: unknown[]) => {
         const callbackIndex = typeof args[1] === 'function' ? 1 : 2
         const callback = args[callbackIndex] as (...args: unknown[]) => Promise<unknown>
-        let sdkCaptured = false
+        let failure: { original: unknown; sdkCaptured: boolean } | undefined
         args[callbackIndex] = async (...callbackArgs: unknown[]) => {
           const context = callbackArgs[0] as
             | { attempt?: number; config?: { retries?: { limit?: number } } }
             | undefined
-          // 与安装的 SDK WrappedWorkflowStep 最终尝试判定一致；重试成功时清除标记。
-          sdkCaptured = false
+          // 每次尝试清除上次错误；重试成功后不能把旧错误关联到后续引擎异常。
+          failure = undefined
           try {
             return await callback(...callbackArgs)
           } catch (error) {
             const attempt = context?.attempt
             const limit = context?.config?.retries?.limit
-            sdkCaptured =
-              typeof attempt !== 'number' || typeof limit !== 'number' || attempt > limit
+            // 与安装的 SDK WrappedWorkflowStep 最终尝试判定一致。
+            failure = {
+              original: error,
+              sdkCaptured:
+                sdkEnabled &&
+                (typeof attempt !== 'number' || typeof limit !== 'number' || attempt > limit),
+            }
             throw error
           }
         }
         try {
           return await Reflect.apply(target.do, target, args)
         } catch (error) {
-          // 未执行回调的引擎错误、提前终止的非最终尝试仍需外围捕获。
-          if (sdkEnabled && sdkCaptured) captured.add(error)
+          // 只关联本次 do 的失败，避免并发 step 的错误相互覆盖。
+          if (failure) failures.set(error, failure)
           throw error
         }
       }
@@ -105,7 +110,8 @@ export function createWorkflowSentry<T extends { do: (...args: never[]) => unkno
   const observer: JobObserver = {
     tagContext: tagJobContext,
     captureException(error) {
-      if (!captured.has(error)) captureJobException(error)
+      const failure = failures.get(error)
+      if (!failure?.sdkCaptured) captureJobException(failure ? failure.original : error)
     },
   }
   return { step: trackedStep, observer }
