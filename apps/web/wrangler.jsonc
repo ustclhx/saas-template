@@ -105,6 +105,48 @@
           { "binding": "EVENTS_QUEUE", "queue": "events-staging" }
         ]
       }
+    },
+    // add-cloud-production-neon 2.1：生产资源与 staging 一一对应，不复用任何 staging ID（production runbook §8.B）。
+    // 不设 PAYMENT_MODE（Q9 前支付关闭）与 AI_FAULT_INJECTION（生产禁止）；TURNSTILE_SITE_KEY 随 2.2 的生产站点配置。
+    "production": {
+      "name": "web-production",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [{ "pattern": "app.ezarouter.cc", "custom_domain": true }],
+      "ai": { "binding": "AI" },
+      "r2_buckets": [{ "binding": "FILES", "bucket_name": "files-production" }],
+      "vars": {
+        "SENTRY_ENVIRONMENT": "production",
+        "APP_URL": "https://app.ezarouter.cc",
+        "AI_TEXT_EGRESS": "direct",
+        "R2_ACCOUNT_ID": "170a06d37ad50396b19943eb6b77a21d",
+        "R2_FILES_BUCKET": "files-production"
+      },
+      "kv_namespaces": [{ "binding": "CACHE", "id": "76d4f2b69b1a45db8fe1c0a66eaf9b34" }],
+      "ratelimits": [
+        { "name": "RL_AUTH", "namespace_id": "1007", "simple": { "limit": 10, "period": 60 } },
+        { "name": "RL_AI", "namespace_id": "1008", "simple": { "limit": 20, "period": 60 } },
+        { "name": "RL_API", "namespace_id": "1009", "simple": { "limit": 60, "period": 60 } }
+      ],
+      "hyperdrive": [
+        // Neon saas_production，app 非 pooled TLS 直连；分别关闭缓存与默认缓存
+        { "binding": "HYPERDRIVE", "id": "0519ee8f8e5b4f0f95ecd9d425c58a36" },
+        { "binding": "HYPERDRIVE_CACHED", "id": "3deaa579109549f9a06f12b6c8d4aae6" }
+      ],
+      "workflows": [
+        {
+          "name": "ai-media-production",
+          "binding": "AI_MEDIA_WORKFLOW",
+          "class_name": "AiMediaWorkflow",
+          "script_name": "jobs-production"
+        }
+      ],
+      "queues": {
+        "producers": [
+          { "binding": "EMAIL_QUEUE", "queue": "email-production" },
+          { "binding": "EVENTS_QUEUE", "queue": "events-production" }
+        ]
+      }
     }
   }
 }

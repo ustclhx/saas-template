@@ -52,6 +52,18 @@ async function fixture(t) {
               AI_GATEWAY_ID: 'template-gateway',
             },
           },
+          production: {
+            name: `${app}-production`,
+            routes: [{ pattern: 'app.template.example', custom_domain: true }],
+            r2_buckets: [{ binding: 'FILES', bucket_name: 'files-production' }],
+            hyperdrive: [{ binding: 'HYPERDRIVE', id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' }],
+            queues: { producers: [{ queue: 'email-production' }] },
+            vars: {
+              APP_URL: 'https://app.template.example',
+              R2_FILES_BUCKET: 'files-production',
+              R2_ACCOUNT_ID: 'template-account',
+            },
+          },
         },
       }),
     )
@@ -173,7 +185,8 @@ test('生成副本改名与配置，排除各级密钥、链接和产物', async
   assert.equal(wrangler.env.staging.vars.APP_URL, 'https://acme.example')
   assert.equal(wrangler.vars.PAYMENT_MODE, 'test')
   assert.equal(wrangler.env.staging.vars.PAYMENT_MODE, 'test')
-  assert.equal(wrangler.env.production, undefined)
+  // 生成副本可带 production 环境块，但不得预置支付模式（payment-mode：缺省即关闭支付，live 需另行配置）
+  assert.equal(wrangler.env.production.vars.PAYMENT_MODE, undefined)
   assert.equal(wrangler.workflows, undefined)
   assert.equal(wrangler.ai, undefined)
   assert.equal(wrangler.env.staging.ai, undefined)
@@ -321,6 +334,29 @@ for (const providers of ['fal', 'workers-ai', '']) {
     }
   })
 }
+
+test('模板 production 环境改名、清空 ID 并替换自定义域名', async (t) => {
+  const f = await fixture(t)
+  const result = await createProject(f.input, f.source)
+  const name = JSON.parse(
+    await readFile(join(result.target, 'apps/web/wrangler.jsonc'), 'utf8'),
+  ).name.replace(/-web$/, '')
+  for (const app of ['web', 'jobs']) {
+    const production = JSON.parse(
+      await readFile(join(result.target, 'apps', app, 'wrangler.jsonc'), 'utf8'),
+    ).env.production
+    assert.equal(production.name, `${name}-${app}-production`)
+    assert.equal(production.r2_buckets[0].bucket_name, `${name}-files-production`)
+    assert.equal(production.vars.R2_FILES_BUCKET, `${name}-files-production`)
+    assert.equal(production.queues.producers[0].queue, `${name}-email-production`)
+    assert.equal(production.hyperdrive[0].id, '0'.repeat(32))
+    assert.equal(production.vars.R2_ACCOUNT_ID, '')
+    assert.deepEqual(production.routes, [
+      { pattern: 'configure-production-domain.invalid', custom_domain: true },
+    ])
+    assert.notEqual(production.vars.APP_URL, 'https://app.template.example')
+  }
+})
 
 // 新名称含源 scope 前缀时，插入的资源名也不能再经过全局替换。
 test('项目名包含旧 scope 前缀时资源只改名一次', async (t) => {

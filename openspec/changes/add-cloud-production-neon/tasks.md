@@ -14,7 +14,8 @@
 ## 2. production 环境配置
 
 - [ ] 2.1 创建生产 Hyperdrive（缓存/非缓存，非 pooled TLS 直连 app 角色）、KV、Queues、Workflows、R2 与限流命名空间，并在 web / jobs `wrangler.jsonc` 增加 `env.production`（`SENTRY_ENVIRONMENT=production`，不设 `PAYMENT_MODE`，测试期 `CRON_PROFILE=reduced`、对外开放注册前改回默认 profile，自定义域名路由）。验证：两 app `wrangler deploy --dry-run --env production` 通过；新增脚本比较 staging 与 production 的绑定名集合一致并纳入 `pnpm check`；无任何 staging 资源 ID 出现在 production 段。
-  - 2026-10-15：资源与命名清单已起草（production runbook §8.B），待用户批准后创建。
+  - 2026-10-15 进展：用户批准后资源已创建（ID 见 production runbook §8 执行记录），两个 `wrangler.jsonc` 已加 `env.production`（Worker 自定义域名 `app.ezarouter.cc`，关闭 workers.dev / preview URL）；`scripts/production/check-wrangler-envs.mjs` 纳入 `pnpm check`（绑定名一致、无 staging ID / 名称、禁设 PAYMENT_MODE 与 AI_FAULT_INJECTION，单测含反例）。jobs dry-run 通过；web 生产构建待生产 `TURNSTILE_SITE_KEY` 后复验，届时勾选。
+  - 同批修复生产会触发的缺陷：jobs 队列分发只认 `email|events(-staging)`，`*-production` 会抛 `Unknown queue`；`presign.ts` 文件桶白名单只含 `files|files-staging`，生产上传会 503。两处加入 production 名称并补测试（备份桶仍被拒绝）。生成器同步识别 `-production` 后缀并把模板生产域名替换为占位值，避免新项目复用本项目域名与资源名。
 - [ ] 2.2 写入生产 Wrangler secrets（auth、邮件、AI、Sentry、通知等，支付除外）并在 runbook 列出名称与来源。验证：`wrangler secret list --env production` 名称与清单一致；本 change 不写入支付 secrets。
 
 ## 3. 生产发布流水线

@@ -123,7 +123,23 @@ wrangler 无法创建 API token（无对应命令，OAuth 可选范围不含 API
 - 生产 Sentry secrets 未配置（5.2 前）时，流水线跳过 source map 上传并给出 warning，仍删除客户端 map。
 - 本地对任意环境试跑只读冒烟：`PRODUCTION_URL=<URL> pnpm --filter @saas/web exec playwright test --project production`。
 
-## 8. 待用户批准的写操作清单（2026-10-15 起草，未执行）
+## 8. 生产写操作清单（2026-10-15 起草；A、B 已获用户批准并执行）
+
+### 执行记录（2026-10-15）
+
+- **A 已执行**：`neondb_owner` 执行 `GRANT pg_read_all_data TO readonly`；回读 `pg_has_role('readonly','pg_read_all_data')` 由 f 变 t，readonly 高权限 flags 与 neon_superuser 成员身份仍均为 false；readonly 以 PG17 容器 `pg_dump` 成功（空库 1159 字节），`CREATE TABLE` 仍被拒绝。
+- **B 已执行**（名称冲突预检通过后创建）：
+
+  | 资源 | 名称 | ID / 状态 |
+  |---|---|---|
+  | KV | `saas-production-cache` | `76d4f2b69b1a45db8fe1c0a66eaf9b34` |
+  | R2 | `files-production` | 已建；CORS 仅 `https://app.ezarouter.cc`、PUT/GET/HEAD；r2.dev 关闭 |
+  | Queues | `email-production` / `events-production` | 已建 |
+  | Hyperdrive | `saas-production-neon` | `0519ee8f8e5b4f0f95ecd9d425c58a36`（缓存关闭） |
+  | Hyperdrive | `saas-production-neon-cached` | `3deaa579109549f9a06f12b6c8d4aae6`（缓存开启，默认 max_age） |
+
+  Hyperdrive 经 Cloudflare API 创建：请求体与授权头均经 stdin，连接串不进命令参数或输出；缓存设置回读 staging 两个配置后照搬；创建时 Hyperdrive 已实际连通 `saas_production`（app，非 pooled）。Workflow `ai-media-production` 与两个 Worker 随首次发布（3.3）创建。
+- **构建验证**：jobs `wrangler deploy --env production --dry-run` 全部绑定指向上述资源；web 生产构建在预渲染阶段因 `env.invalid missing TURNSTILE_SITE_KEY` 失败（模板启用 Turnstile，站点 key 为构建期必需 var）。需为 `app.ezarouter.cc` 新建生产 Turnstile 站点并写入 `env.production.vars.TURNSTILE_SITE_KEY` 后复验；不使用始终通过的测试 key。
 
 按 deploy-cloudflare 技能「写入前确认动作清单」，以下操作会在 Cloudflare 账号或生产库产生真实资源 / 权限变更，批准后由协调者执行并回读核对。名称与 staging 一一对应。
 

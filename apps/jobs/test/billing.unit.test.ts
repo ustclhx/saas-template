@@ -290,7 +290,7 @@ it('preserves P1 dispatcher schedules and routes both billing queues', async () 
   expect(runMetricsDaily).toHaveBeenCalledOnce()
   await runJobsSchedule(BILLING_HOURLY_CRON, new Date(), env)
   expect(mocks.annual).toHaveBeenCalledOnce()
-  for (const queue of ['events', 'events-staging']) {
+  for (const queue of ['events', 'events-staging', 'events-production']) {
     const entry = message({ v: 1, deliveryId: id })
     db.results.push([{ id, status: 'ignored' }], [{ id: 'marker' }])
     await consumeJobsBatch({ queue, messages: [entry] } as unknown as QueueBatch<unknown>, env)

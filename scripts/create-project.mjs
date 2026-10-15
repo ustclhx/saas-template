@@ -224,22 +224,27 @@ function templateConfig(source, options) {
   )
 }
 
-// 仅在配置语义位置改 Worker / Queue 名；资源 ID 清空，避免新项目复用模板的 staging。
+// 仅在配置语义位置改 Worker / Queue 名；资源 ID 清空，避免新项目复用模板的 staging / production。
 function wranglerConfig(source, options, app) {
   const media = options.ai.includes('image') || options.ai.includes('video')
   let result = source
     .replace(
       /("(?:name|script_name|queue|bucket_name)"\s*:\s*")([^"\n]+)"/g,
       (_match, prefix, value) =>
-        /^(?:web|jobs|email|events|ai-media|files)(?:-staging)?$/.test(value)
+        /^(?:web|jobs|email|events|ai-media|files)(?:-staging|-production)?$/.test(value)
           ? `${prefix}${options.name}-${value}"`
           : `${prefix}${value}"`,
     )
     .replace(/("id"\s*:\s*")[a-f0-9]{32}"/g, '$100000000000000000000000000000000"')
     .replace(/("APP_URL"\s*:\s*")https:[^"]+"/g, `$1${options.url}"`)
+    // 模板生产自定义域名不能被新项目绑定；部署前按新项目域名配置
+    .replace(/("pattern"\s*:\s*")[^"]+"/g, '$1configure-production-domain.invalid"')
   result = result
     .replace(/("(?:AI_GATEWAY_ACCOUNT_ID|AI_GATEWAY_ID|R2_ACCOUNT_ID)"\s*:\s*")[^"]*"/g, '$1"')
-    .replace(/("R2_FILES_BUCKET"\s*:\s*")(files(?:-staging)?)"/g, `$1${options.name}-$2"`)
+    .replace(
+      /("R2_FILES_BUCKET"\s*:\s*")(files(?:-staging|-production)?)"/g,
+      `$1${options.name}-$2"`,
+    )
   if (!media || !options.mediaProviders.includes('workers-ai')) {
     result = result.replace(/"ai"\s*:\s*\{[^}]*\},?/g, '')
   }
@@ -500,7 +505,7 @@ export async function createProject(input, source = root) {
             /^apps\/jobs\/test\/.*\.ts$/.test(path)
           ) {
             text = text.replace(
-              /(['"])(email|events)(-staging)?\1/g,
+              /(['"])(email|events)(-staging|-production)?\1/g,
               (_match, quote, queue, suffix = '') =>
                 `${quote}${options.name}-${queue}${suffix}${quote}`,
             )

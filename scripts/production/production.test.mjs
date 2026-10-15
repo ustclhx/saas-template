@@ -1,7 +1,37 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { checkRelease } from './check-release.mjs'
+import { checkEnvs, parseJsonc } from './check-wrangler-envs.mjs'
 import { buildChecks, keyTables, migrationCount, pgEnv, verifyRestore } from './verify-restore.mjs'
+
+const wrangler = (app) =>
+  parseJsonc(readFileSync(new URL(`../../apps/${app}/wrangler.jsonc`, import.meta.url), 'utf8'))
+
+test('JSONC parser keeps // inside strings and drops comments and trailing commas', () => {
+  assert.deepEqual(parseJsonc('{ "url": "https://a.b", // c\n "x": [1, 2,], /* d */ }'), {
+    url: 'https://a.b',
+    x: [1, 2],
+  })
+})
+
+test('real web and jobs configs keep production aligned with staging', () => {
+  for (const app of ['web', 'jobs']) assert.deepEqual(checkEnvs(app, wrangler(app)), [])
+})
+
+test('production drift, staging reuse and forbidden vars are reported', () => {
+  const config = wrangler('web')
+  const production = config.env.production
+  production.kv_namespaces = []
+  production.hyperdrive[0].id = config.env.staging.hyperdrive[0].id
+  production.queues.producers[0].queue = 'email-staging'
+  production.vars.PAYMENT_MODE = 'live'
+  const problems = checkEnvs('web', config)
+  assert.ok(problems.includes('web: production is missing binding kv:CACHE'))
+  assert.ok(problems.some((line) => line.includes('reuses staging resource id')))
+  assert.ok(problems.includes('web: production references staging value email-staging'))
+  assert.ok(problems.includes('web: production must not set PAYMENT_MODE'))
+})
 
 const sha = 'a'.repeat(40)
 
