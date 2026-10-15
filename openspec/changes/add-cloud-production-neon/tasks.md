@@ -14,12 +14,13 @@
 ## 2. production 环境配置
 
 - [ ] 2.1 创建生产 Hyperdrive（缓存/非缓存，非 pooled TLS 直连 app 角色）、KV、Queues、Workflows、R2 与限流命名空间，并在 web / jobs `wrangler.jsonc` 增加 `env.production`（`SENTRY_ENVIRONMENT=production`，不设 `PAYMENT_MODE`，测试期 `CRON_PROFILE=reduced`、对外开放注册前改回默认 profile，自定义域名路由）。验证：两 app `wrangler deploy --dry-run --env production` 通过；新增脚本比较 staging 与 production 的绑定名集合一致并纳入 `pnpm check`；无任何 staging 资源 ID 出现在 production 段。
+  - 2026-10-15：资源与命名清单已起草（production runbook §8.B），待用户批准后创建。
 - [ ] 2.2 写入生产 Wrangler secrets（auth、邮件、AI、Sentry、通知等，支付除外）并在 runbook 列出名称与来源。验证：`wrangler secret list --env production` 名称与清单一致；本 change 不写入支付 secrets。
 
 ## 3. 生产发布流水线
 
-- [ ] 3.1 新增 `.github/workflows/deploy-production.yml`：`v*` tag 触发，前置校验 tag 提交在 main 历史上且存在该 SHA 成功的 `Deploy staging` run，再进入 `production` environment 作业，按迁移 → jobs → web → `wait-healthy.mjs` 完整 SHA 执行；`concurrency` 串行不取消；提供 `workflow_dispatch` 回滚入口。验证：对未经 staging 的 SHA 打测试 tag 时在迁移前失败；actionlint 通过；日志无连接串。
-  - 2026-10-15 进展：`deploy-production.yml` 与 `scripts/production/check-release.mjs`（单测 4 项纳入 `pnpm check`；真实 git/gh 下 main 提交通过、非 main 提交失败）已交付，actionlint 通过；Sentry 未配置时跳过上传但仍删除客户端 map。待合并后推送测试 tag 验证迁移前失败；完整部署依赖 2.1 的 `env.production`。
+- [x] 3.1 新增 `.github/workflows/deploy-production.yml`：`v*` tag 触发，前置校验 tag 提交在 main 历史上且存在该 SHA 成功的 `Deploy staging` run，再进入 `production` environment 作业，按迁移 → jobs → web → `wait-healthy.mjs` 完整 SHA 执行；`concurrency` 串行不取消；提供 `workflow_dispatch` 回滚入口。验证：对未经 staging 的 SHA 打测试 tag 时在迁移前失败；actionlint 通过；日志无连接串。
+  - 2026-10-15 进展：`deploy-production.yml` 与 `scripts/production/check-release.mjs`（单测 4 项纳入 `pnpm check`；真实 git/gh 下 main 提交通过、非 main 提交失败）已交付，actionlint 通过；Sentry 未配置时跳过上传但仍删除客户端 map。#222 合并后对非 main 提交 `667ecaf` 推送测试 tag `v0.0.0-verify-1`：run 38717565372 的 `verify` 失败（not on main）、`deploy` 跳过，未迁移、未请求审批、日志无连接串；测试 tag 已删除。实际部署依赖 2.1 的 `env.production`，在 3.3 首次发布时验证。
 - [x] 3.2 新增 Playwright `production` project 的只读冒烟（首页、定价页、`/api/health`），流水线失败时上传 trace。验证：本地对 staging 域名以 production project 运行通过；用例中无注册、支付或写请求。
   - 2026-10-15 完成：`apps/web/e2e/production/smoke.spec.ts` 只发 GET（首页、定价页、`/api/health`，设置 APP_VERSION 时校验版本）；`PRODUCTION_URL=<staging>` 本地运行 3/3 通过；默认本地运行与 staging project 均不包含该目录；失败上传 trace 在 `deploy-production.yml`。
 - [ ] 3.3 首次生产发布：推送首个 tag，完成迁移、seed 与冒烟。验证：健康返回完整 SHA 与 `db.up`；Cron 心跳推进；生产库无冒烟账号；证据写入 `docs/runbooks/evidence/production/`。
@@ -27,7 +28,9 @@
 ## 4. 备份与恢复
 
 - [ ] 4.1 新增每日备份 workflow：`readonly` 角色 `pg_dump -Fc` → age 加密 → 上传到 1.3 的 bucket；失败时 workflow 失败并经内部通知渠道告警。验证：手动触发一次成功，bucket 中出现加密对象且无法用无私钥方式读取；故意使用错误凭据时任务失败并告警，已有对象不变。
+  - 2026-10-15 进展：`backup-production.yml`（`production-backup` 环境；定时需仓库变量 `PRODUCTION_BACKUP_SCHEDULE=true`）与 `scripts/production/backup.sh`（PG17 容器 `pg_dump` → age → R2 put + head 校验大小）已交付，actionlint 通过；本地 dry run 生成有效加密文件。告警使用 GitHub 对失败 workflow 的通知。待：生产执行 `GRANT pg_read_all_data TO readonly`（readonly 无 drizzle schema 权限，见 production runbook §8.A）、R2 密钥写入后手动触发验证。
 - [ ] 4.2 编写 `docs/runbooks/restore.md` 与校验脚本（迁移记录、关键表行数、积分对账不变式），完成两条路径的恢复演练：Neon 时间点临时分支、解密逻辑备份恢复到临时目标。验证：两次校验通过，记录 RTO / RPO，临时分支已删除，生产主分支未受影响。
+  - 2026-10-15 进展：`docs/runbooks/restore.md` 与 `scripts/production/verify-restore.mjs`（单测 3 项；规则同自托管恢复演练与 `reconcileWorkspaceCredits`）已交付。本地加密备份 → 解密 → `pg_restore` 到临时库校验五项通过，人为删除一条迁移记录后判定失败；临时库已删除。两条生产路径演练待首次发布与首个真实备份后执行。
 
 ## 5. 观测与基线
 

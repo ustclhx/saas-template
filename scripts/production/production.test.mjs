@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { checkRelease } from './check-release.mjs'
+import { buildChecks, keyTables, migrationCount, pgEnv, verifyRestore } from './verify-restore.mjs'
 
 const sha = 'a'.repeat(40)
 
@@ -54,4 +55,48 @@ test('rejects abbreviated or malformed SHAs', async () => {
     const { code } = await run({ sha: value })
     assert.equal(code, 1)
   }
+})
+
+test('restore checks compare migrations with the journal and add role checks only on request', () => {
+  assert.equal(migrationCount(JSON.stringify({ entries: [{}, {}, {}] })), 3)
+  const base = buildChecks({ expectedMigrations: 16 })
+  assert.deepEqual(
+    base.map((check) => check.name),
+    ['pg17', 'migrations', 'business_tables', 'constraints', 'credits_balance'],
+  )
+  assert.match(base[1].sql, /count\(\*\) = 16 FROM drizzle\.__drizzle_migrations/)
+  assert.deepEqual(
+    buildChecks({ expectedMigrations: 16, roles: true })
+      .slice(-2)
+      .map((check) => check.name),
+    ['roles', 'role_permissions'],
+  )
+})
+
+test('restore connection is split into PG env vars', () => {
+  assert.deepEqual(pgEnv('postgresql://ro%40x:p%2Fw@db.example:6543/saas?sslmode=require'), {
+    PGHOST: 'db.example',
+    PGPORT: '6543',
+    PGUSER: 'ro@x',
+    PGPASSWORD: 'p/w',
+    PGDATABASE: 'saas',
+    PGSSLMODE: 'require',
+  })
+})
+
+test('restore verification fails when any check is false and never prints credentials', () => {
+  const lines = []
+  const code = verifyRestore({
+    url: 'postgresql://readonly:secret-pw@db.example/saas',
+    write: (line) => lines.push(line),
+    run: (sql) => {
+      if (sql.startsWith('SELECT count(*) FROM public')) return { ok: true, value: '7' }
+      if (sql.includes('credit_ledger')) return { ok: true, value: 'f' }
+      return { ok: true, value: 't' }
+    },
+  })
+  assert.equal(code, 1)
+  assert.ok(lines.includes('{"check":"credits_balance","ok":false}'))
+  assert.equal(lines.filter((line) => line.includes('"rows":7')).length, keyTables.length)
+  assert.ok(lines.every((line) => !line.includes('secret-pw') && !line.includes('db.example')))
 })
