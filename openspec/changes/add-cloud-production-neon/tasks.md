@@ -19,8 +19,8 @@
 
 ## 3. 生产发布流水线
 
-- [ ] 3.1 新增 `.github/workflows/deploy-production.yml`：`v*` tag 触发，前置校验 tag 提交在 main 历史上且存在该 SHA 成功的 `Deploy staging` run，再进入 `production` environment 作业，按迁移 → jobs → web → `wait-healthy.mjs` 完整 SHA 执行；`concurrency` 串行不取消；提供 `workflow_dispatch` 回滚入口。验证：对未经 staging 的 SHA 打测试 tag 时在迁移前失败；actionlint 通过；日志无连接串。
-  - 2026-10-15 进展：`deploy-production.yml` 与 `scripts/production/check-release.mjs`（单测 4 项纳入 `pnpm check`；真实 git/gh 下 main 提交通过、非 main 提交失败）已交付，actionlint 通过；Sentry 未配置时跳过上传但仍删除客户端 map。待合并后推送测试 tag 验证迁移前失败；完整部署依赖 2.1 的 `env.production`。
+- [x] 3.1 新增 `.github/workflows/deploy-production.yml`：`v*` tag 触发，前置校验 tag 提交在 main 历史上且存在该 SHA 成功的 `Deploy staging` run，再进入 `production` environment 作业，按迁移 → jobs → web → `wait-healthy.mjs` 完整 SHA 执行；`concurrency` 串行不取消；提供 `workflow_dispatch` 回滚入口。验证：对未经 staging 的 SHA 打测试 tag 时在迁移前失败；actionlint 通过；日志无连接串。
+  - 2026-10-15 进展：`deploy-production.yml` 与 `scripts/production/check-release.mjs`（单测 4 项纳入 `pnpm check`；真实 git/gh 下 main 提交通过、非 main 提交失败）已交付，actionlint 通过；Sentry 未配置时跳过上传但仍删除客户端 map。#222 合并后对非 main 提交 `667ecaf` 推送测试 tag `v0.0.0-verify-1`：run 38717565372 的 `verify` 失败（not on main）、`deploy` 跳过，未迁移、未请求审批、日志无连接串；测试 tag 已删除。实际部署依赖 2.1 的 `env.production`，在 3.3 首次发布时验证。
 - [x] 3.2 新增 Playwright `production` project 的只读冒烟（首页、定价页、`/api/health`），流水线失败时上传 trace。验证：本地对 staging 域名以 production project 运行通过；用例中无注册、支付或写请求。
   - 2026-10-15 完成：`apps/web/e2e/production/smoke.spec.ts` 只发 GET（首页、定价页、`/api/health`，设置 APP_VERSION 时校验版本）；`PRODUCTION_URL=<staging>` 本地运行 3/3 通过；默认本地运行与 staging project 均不包含该目录；失败上传 trace 在 `deploy-production.yml`。
 - [ ] 3.3 首次生产发布：推送首个 tag，完成迁移、seed 与冒烟。验证：健康返回完整 SHA 与 `db.up`；Cron 心跳推进；生产库无冒烟账号；证据写入 `docs/runbooks/evidence/production/`。
