@@ -217,10 +217,11 @@ describe('trusted refund service on PostgreSQL', () => {
     ).toHaveLength(1)
     expect(
       (await db.select().from(creditGrant).where(eq(creditGrant.paymentId, pid)))[0],
-    ).toMatchObject({ remaining: 0, status: 'revoked' })
+    ).toMatchObject({ remaining: 3, status: 'active' })
+    // 部分退款 40%：批次保留 floor(10 × 0.6) = 6，已消费 3 不追溯，只从剩余 7 中收回 4
     expect(
       await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws)),
-    ).toMatchObject([{ type: 'revoke', delta: -7 }])
+    ).toMatchObject([{ type: 'revoke', delta: -4 }])
     expect(
       notify.mock.calls.every(
         ([notification]) => notification.contactEmail === 'saved@example.test',
@@ -450,7 +451,7 @@ describe('trusted refund service on PostgreSQL', () => {
     ).toHaveLength(1)
     expect(
       (await db.select().from(creditGrant).where(eq(creditGrant.paymentId, pid)))[0]?.remaining,
-    ).toBe(0)
+    ).toBe(2)
     expect(
       await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws)),
     ).toHaveLength(1)

@@ -104,8 +104,9 @@ export async function runAnnualGrants(
     .innerJoin(planPrice, eq(planPrice.id, payment.planPriceId))
     .where(
       and(
-        eq(payment.status, 'succeeded'),
-        eq(payment.refundedAmount, 0),
+        // 部分退款的年付继续按未退款份额发放后续月份；全额退款与争议停止发放。
+        inArray(payment.status, ['succeeded', 'partially_refunded']),
+        lt(payment.refundedAmount, payment.amount),
         inArray(payment.kind, ['initial', 'renewal']),
         eq(planPrice.interval, 'year'),
         lte(payment.periodStart, now),
@@ -128,8 +129,8 @@ export async function runAnnualGrants(
               eq(payment.workspaceId, workspaceId),
               eq(subscription.workspaceId, workspaceId),
               isNull(organization.deletedAt),
-              eq(payment.status, 'succeeded'),
-              eq(payment.refundedAmount, 0),
+              inArray(payment.status, ['succeeded', 'partially_refunded']),
+              lt(payment.refundedAmount, payment.amount),
               inArray(payment.kind, ['initial', 'renewal']),
               eq(planPrice.interval, 'year'),
               or(
