@@ -593,7 +593,7 @@ describe('billing event consumer on PostgreSQL', () => {
     expect(await payments()).toHaveLength(1)
     expect(await grants()).toEqual([])
   })
-  it('yearly batches preserve anchor and payment provenance; refund revokes all remaining including held release', async () => {
+  it('yearly batches preserve anchor and payment provenance; full refund revokes all remaining including held release', async () => {
     await db.update(planPrice).set({ interval: 'year' }).where(eq(planPrice.id, priceId))
     await apply([paid({ period: { start: now, end: new Date('2031-01-31T12:00:00Z') } })])
     const [p] = await payments()
@@ -630,7 +630,8 @@ describe('billing event consumer on PostgreSQL', () => {
       type: 'payment.refunded',
       providerPaymentId: p.providerPaymentId,
       providerRefundId: `refund-${id()}`,
-      amount: 200,
+      // 全额退款收回全部剩余；部分退款的比例回收由 credits 生命周期与年付 cron 用例覆盖
+      amount: 1000,
       currency: 'USD',
       refundedAmount: null,
       occurredAt: now,
@@ -727,12 +728,21 @@ describe('billing event consumer on PostgreSQL', () => {
     }
     await apply([r])
     await apply([r])
+    // 比例回收：10 积分的批次在退款 20% 后保留 floor(10 × 0.8) = 8，重放不重复收回
+    expect((await grants())[0]).toMatchObject({ amount: 10, remaining: 8, status: 'active' })
     await apply([{ ...r, providerRefundId: id(), amount: 100, refundedAmount: 300 }])
     await apply([event])
     expect((await payments())[0]).toMatchObject({
       refundedAmount: 300,
       status: 'partially_refunded',
     })
+    expect((await grants())[0]).toMatchObject({ remaining: 7, status: 'active' })
+    expect(
+      (await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws)))
+        .filter((row) => row.type === 'revoke')
+        .map((row) => row.delta)
+        .sort((a, b) => a - b),
+    ).toEqual([-2, -1])
     expect(
       await db.select().from(paymentRefund).where(eq(paymentRefund.workspaceId, ws)),
     ).toHaveLength(2)

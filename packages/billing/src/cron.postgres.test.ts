@@ -202,7 +202,7 @@ describe('billing cron on isolated PostgreSQL', () => {
       expect(await grants()).toEqual([])
     },
   )
-  it('does not grant a future or refunded paid period', async () => {
+  it('does not grant a future or fully refunded period; partial refunds grant the unrefunded share', async () => {
     await db
       .update(payment)
       .set({ periodStart: subscriptionMonthAnchor(now, 1) })
@@ -211,10 +211,23 @@ describe('billing cron on isolated PostgreSQL', () => {
     expect(await grants()).toEqual([])
     await db
       .update(payment)
-      .set({ periodStart: start, status: 'partially_refunded', refundedAmount: 1 })
+      .set({ periodStart: start, status: 'refunded', refundedAmount: 1000 })
       .where(eq(payment.id, paid))
     expect(scopedFailures(await runAnnualGrants(db, now))).toEqual([])
     expect(await grants()).toEqual([])
+    // 退款 50%：批次记录原始 10，按比例回收后保留 floor(10 × 0.5) = 5（Q6）
+    await db
+      .update(payment)
+      .set({ status: 'partially_refunded', refundedAmount: 500 })
+      .where(eq(payment.id, paid))
+    expect(scopedFailures(await runAnnualGrants(db, now))).toEqual([])
+    const scaled = await grants()
+    expect(scaled.length).toBeGreaterThan(0)
+    expect(scaled.every((row) => row.amount === 10)).toBe(true)
+    // 已过账期的月份随后被同一 cron 过期，只核对仍有效批次的保留份额
+    const active = scaled.filter((row) => row.status === 'active')
+    expect(active.length).toBeGreaterThan(0)
+    expect(active.every((row) => row.remaining === 5)).toBe(true)
   })
   it('expiration leaves held allocation for later release without restoring balance', async () => {
     const batch = await grant(db, { workspaceId: ws, source: 'admin', sourceRef: id(), amount: 10 })

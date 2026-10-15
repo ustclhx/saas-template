@@ -1,4 +1,4 @@
-import { revokePaymentCredits } from '@saas/credits'
+import { reducePaymentCredits, revokePaymentCredits } from '@saas/credits'
 import { auditLog, payment, paymentRefund, purchase, refundRequest } from '@saas/db'
 import { and, eq, sql } from 'drizzle-orm'
 import type { WebhookTransaction } from '../pipeline.ts'
@@ -118,7 +118,15 @@ export async function applyPaymentRefunded(
       .update(purchase)
       .set({ status: 'refunded' })
       .where(and(eq(purchase.id, paid.purchaseId), eq(purchase.workspaceId, paid.workspaceId)))
-  await revokePaymentCredits(tx, { workspaceId: paid.workspaceId, paymentId: paid.id })
+  // 全额退款收回全部剩余；部分退款按累计未退款份额保留各批次（Q6 比例回收），重放按累计值幂等。
+  if (total === paid.amount)
+    await revokePaymentCredits(tx, { workspaceId: paid.workspaceId, paymentId: paid.id })
+  else
+    await reducePaymentCredits(tx, {
+      workspaceId: paid.workspaceId,
+      paymentId: paid.id,
+      share: { kept: paid.amount - total, total: paid.amount },
+    })
   if (claimed)
     await tx.insert(auditLog).values({
       workspaceId: paid.workspaceId,
