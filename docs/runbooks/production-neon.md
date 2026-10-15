@@ -23,6 +23,24 @@ neonctl projects create --org-id org-ancient-mountain-81615147 --name saas-produ
   --no-secrets --output json
 ```
 
+## 1a. 生产域名（任务 1.2，2026-10-15）
+
+- 用户选定 production web 域名 **`app.ezarouter.cc`**；staging 保持 `web-staging.saas-jobs.workers.dev`，不绑定自定义域名。
+- Zone `ezarouter.cc`（`c6b12cacca002dc21f9b24370d4a5bd7`）在本 Cloudflare 账号 `170a06d3…` 下，`active`，Free Website 计划；NS 为 Cloudflare（`bingo` / `damien`）。apex 已在使用（Cloudflare 代理），不改动 apex 及其他记录。
+- `app.ezarouter.cc` 公共 DNS（DoH `cloudflare-dns.com`）查询 A/AAAA/CNAME 均为 NXDOMAIN，未被占用。本机经代理的普通 `dig` 返回 `198.18.x.x`（fake-ip），不能作为依据。
+- 绑定方式：web Worker `env.production` 的 Workers 自定义域名（`routes` 中 `custom_domain: true`），由 Cloudflare 自动建 DNS 记录与证书；存在同名 DNS 记录时绑定失败而不会覆盖。
+- 权限：本机 wrangler OAuth 有 `zone (read)`、`workers_routes (write)`、`ssl_certs (write)`，无 DNS 读取权限（DNS records API 返回 Authentication error），实际绑定在 2.1 / 3.3 首次部署时验证。CI 使用的生产 Cloudflare API token（任务 1.4）须对 Zone `ezarouter.cc` 具备 Workers Routes 编辑权限，不能直接沿用只含账号级权限的 staging token。
+
+域名确定后连带的配置（在对应任务中完成）：
+
+| 用途 | 地址 / 动作 | 任务 |
+|---|---|---|
+| 应用 URL 与认证回调 | `APP_URL=https://app.ezarouter.cc`；Google / GitHub OAuth 生产应用回调登记该域名 | 2.1 / 2.2 |
+| 邮件发件域 | 生产发件地址所用域名需在邮件服务商验证，并按其要求在 DNS 增加 SPF / DKIM 记录（需用户在控制台操作或授予 DNS 编辑权限） | 2.2 |
+| Turnstile | 生产站点 hostname 加入 `app.ezarouter.cc` | 2.2 |
+| 支付 webhook（Q9 后） | `https://app.ezarouter.cc/api/billing/webhooks/stripe`、`/paypal` | 6.1 |
+| 只读冒烟 | Playwright `production` project 的 baseURL | 3.2 |
+
 ## 2. 受限角色与凭据
 
 按 staging §1 以 **SQL** 创建 `migrator` / `app` / `readonly`（NOSUPERUSER、NOCREATEDB、NOCREATEROLE、NOREPLICATION、NOBYPASSRLS），`GRANT migrator TO neondb_owner` → `ALTER DATABASE saas_production OWNER TO migrator` → `REVOKE migrator FROM neondb_owner`；再以 migrator 执行 `infra/local/initdb/02-db-grants.sql`。

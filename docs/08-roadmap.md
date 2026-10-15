@@ -128,7 +128,7 @@
 
 - [x] Neon 生产项目：独立项目与付费计划、PG 17、受限 `migrator` / `app` / `readonly` 角色（沿用 [staging-neon runbook](./runbooks/staging-neon.md) §1–2），确认计划的 PITR 保留窗口
 - [ ] Cloudflare production 环境：web / jobs 的 `env.production`（Hyperdrive 缓存/非缓存、KV、Queues、Workflows、R2）与 Wrangler secrets
-- [ ] 域名：production（及可选 staging）绑定自定义域名（可先用已有 Zone 的子域，如 `ezarouter.cc`）
+- [x] 域名：production 选定 `app.ezarouter.cc`（2026-10-15，绑定在首次部署时完成），staging 保持 workers.dev
 - [ ] 备份：Neon PITR + 每日逻辑备份到独立对象存储（R2 Bucket Lock 或非 Cloudflare 存储）；恢复演练用 Neon 时间点分支 + 校验脚本，写 `docs/runbooks/restore.md` 并记录 RTO/RPO
 - [ ] 发布流水线：GitHub `production` environment 的 Neon 直连迁移凭据；tag 触发 生产迁移 → jobs → web → `/api/health` 完整 SHA → 冒烟
 - [ ] 生产延迟基线：Hyperdrive → Neon 区域选择与 Smart Placement / 显式放置评估
