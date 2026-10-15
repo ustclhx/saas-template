@@ -223,7 +223,11 @@ describe('billing cron on isolated PostgreSQL', () => {
     expect(scopedFailures(await runAnnualGrants(db, now))).toEqual([])
     const scaled = await grants()
     expect(scaled.length).toBeGreaterThan(0)
-    expect(scaled.every((row) => row.amount === 10 && row.remaining === 5)).toBe(true)
+    expect(scaled.every((row) => row.amount === 10)).toBe(true)
+    // 已过账期的月份随后被同一 cron 过期，只核对仍有效批次的保留份额
+    const active = scaled.filter((row) => row.status === 'active')
+    expect(active.length).toBeGreaterThan(0)
+    expect(active.every((row) => row.remaining === 5)).toBe(true)
   })
   it('expiration leaves held allocation for later release without restoring balance', async () => {
     const batch = await grant(db, { workspaceId: ws, source: 'admin', sourceRef: id(), amount: 10 })
