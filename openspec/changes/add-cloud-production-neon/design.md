@@ -29,7 +29,7 @@
 
 **D4 只读生产冒烟。** 新增 Playwright `production` project，仅访问首页、定价页与 `/api/health`；注册类用例只保留在 staging，避免生产出现测试账号和邮件发送。
 
-**D5 逻辑备份在 GitHub Actions 中运行。** 每日 schedule workflow 用 `readonly` 角色执行 `pg_dump -Fc`，以 age 公钥加密后上传到独立 bucket（默认 R2 + Bucket Lock；用户也可选非 Cloudflare 的 S3 兼容存储以获得供应商隔离），私钥离线保存不进 CI。备选「Worker 内导出」无法运行 pg_dump；「Neon 自带快照」与 PITR 同供应商，不满足独立副本，故两者并存。失败通过 workflow 失败通知 + 现有内部通知渠道告警。
+**D5 逻辑备份在 GitHub Actions 中运行。** 备份作业使用独立的 `production-backup` environment（无审批、仅 main），只持有 readonly 凭据与备份桶写入密钥；需审批的 `production` environment 不能用于每日定时任务。每日 schedule workflow 用 `readonly` 角色执行 `pg_dump -Fc`，以 age 公钥加密后上传到独立 bucket（默认 R2 + Bucket Lock；用户也可选非 Cloudflare 的 S3 兼容存储以获得供应商隔离），私钥离线保存不进 CI。备选「Worker 内导出」无法运行 pg_dump；「Neon 自带快照」与 PITR 同供应商，不满足独立副本，故两者并存。失败通过 workflow 失败通知 + 现有内部通知渠道告警。
 
 **D6 恢复演练。** 时间点路径：在 Neon 从生产主分支创建指定时间点的临时分支；逻辑路径：解密后 `pg_restore` 到临时 Neon 分支或本地 Docker PG。两者运行同一校验脚本（迁移记录、关键表行数、积分对账不变式），记录 RTO / RPO 到 `docs/runbooks/restore.md`，演练后删除临时分支。
 
