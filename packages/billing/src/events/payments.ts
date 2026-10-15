@@ -1,4 +1,4 @@
-import { grant, revokePaymentCredits } from '@saas/credits'
+import { grant, reducePaymentCredits, revokePaymentCredits } from '@saas/credits'
 import { payment, purchase, subscription } from '@saas/db'
 import { and, eq } from 'drizzle-orm'
 import type { WebhookTransaction } from '../pipeline.ts'
@@ -116,11 +116,23 @@ export async function applyPaymentSucceeded(
       })
       .where(and(eq(subscription.id, sub.id), eq(subscription.workspaceId, a.workspaceId)))
   }
-  if (status !== 'succeeded' || refunded > 0) {
+  // 全额退款、争议或金额未知的部分退款收回全部剩余；已知金额的部分退款按未退款份额保留（Q6）。
+  if (status !== 'succeeded' && !(status === 'partially_refunded' && refunded > 0)) {
     await revokePaymentCredits(tx, { workspaceId: paid.workspaceId, paymentId: paid.id })
     return
   }
-  if (compensated || deleted) return
+  const reduceToKept = () =>
+    refunded > 0
+      ? reducePaymentCredits(tx, {
+          workspaceId: paid.workspaceId,
+          paymentId: paid.id,
+          share: { kept: paid.amount - refunded, total: paid.amount },
+        })
+      : undefined
+  if (compensated || deleted) {
+    await reduceToKept()
+    return
+  }
   if (p.kind === 'initial' || p.kind === 'renewal')
     await grantSubscriptionMonth(
       tx,
@@ -143,4 +155,5 @@ export async function applyPaymentSucceeded(
           ? null
           : new Date(paid.paidAt.getTime() + a.plan.creditExpiryDays * 86_400_000),
     })
+  await reduceToKept()
 }
