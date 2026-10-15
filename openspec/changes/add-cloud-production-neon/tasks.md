@@ -4,9 +4,10 @@
 
 - [x] 1.1 **BLOCKED（用户开通 Neon 付费计划并选定区域）**：新建 Neon 生产项目（PG 17），按 `docs/runbooks/staging-neon.md` §1–2 以 SQL 创建受限 `migrator` / `app` / `readonly`，执行权限脚本，确认计划的 PITR 保留窗口。验证：三角色无高权限 flags 与 `neon_superuser` 成员身份；app DDL、readonly 写入被拒；新增 `docs/runbooks/production-neon.md` 记录项目、区域、计划与 PITR 窗口（不含凭据）。
   - 2026-10-15 完成：Launch 计划、`saas-production`（`super-resonance-99115167`，`aws-us-west-2`，PG 17）；SQL 受限三角色、权限脚本、flags 与拒绝验证通过；用户确认后 PITR 改为 7 天、计算改为 0.25–1 CU，staging 上限改为 2 CU（runbook §4）。表级写入拒绝随 3.3 迁移后复核。见 [production-neon runbook](../../../docs/runbooks/production-neon.md)。
-- [ ] 1.2 **BLOCKED（用户提供生产域名与 DNS 权限）**：确定 production web 域名（可先用已有 Zone 的子域），记录在 production runbook。验证：Zone 归属与 DNS 权限可用，域名写入 runbook。
+- [x] 1.2 **BLOCKED（用户提供生产域名与 DNS 权限）**：确定 production web 域名（可先用已有 Zone 的子域），记录在 production runbook。验证：Zone 归属与 DNS 权限可用，域名写入 runbook。
+  - 2026-10-15 完成：用户选定 `app.ezarouter.cc`，staging 保持 workers.dev；Zone 在本账号且 active，该主机名公共 DNS 为 NXDOMAIN。本机 OAuth 无 DNS 读取权限，Workers 自定义域名绑定在 2.1 / 3.3 首次部署时验证；生产 CI token 的 Zone 权限见 1.4。见 [production runbook §1a](../../../docs/runbooks/production-neon.md)。
 - [ ] 1.3 **BLOCKED（用户选定备份存储并提供凭据）**：创建开启对象锁定的独立备份 bucket（R2 Bucket Lock 或非 Cloudflare S3 兼容存储），生成 age 密钥对，私钥离线保存。验证：bucket 锁定策略与保留期限截图/命令输出脱敏记录；公钥写入 runbook，私钥不进仓库与 CI。
-- [ ] 1.4 **BLOCKED（用户指定审批人）**：创建 GitHub `production` environment，配置必需审批人与生产迁移、Cloudflare、备份 secrets。验证：PR 与 staging workflow 中无法读取这些 secrets；secrets 名称清单写入 runbook。
+- [ ] 1.4 **BLOCKED（用户指定审批人）**：创建 GitHub `production` environment，配置必需审批人与生产迁移、Cloudflare（token 需含 Zone `ezarouter.cc` 的 Workers Routes 编辑权限）、备份 secrets。验证：PR 与 staging workflow 中无法读取这些 secrets；secrets 名称清单写入 runbook。
 
 ## 2. production 环境配置
 
