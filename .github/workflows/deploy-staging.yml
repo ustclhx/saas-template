@@ -111,6 +111,16 @@ jobs:
           APP_VERSION: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: pnpm --filter @saas/web exec playwright test --project staging
 
+      # 失败时保留 trace（随机邮箱与固定测试密码，不含 secrets），供定位发布后的偶发失败
+      - name: Upload smoke traces
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: staging-smoke-traces
+          path: apps/web/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Finalize Sentry release
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
