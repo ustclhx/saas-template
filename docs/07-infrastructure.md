@@ -7,7 +7,9 @@
 | 阶段 | 时间 | 数据库 | 连接方式 | Worker 部署 | 域名 | 备份 |
 |---|---|---|---|---|---|---|
 | **阶段一：开发与云端 staging 测试**（当前） | 从 Phase 0 到完成最小原型 | 本地开发：Docker PG（`infra/local`）；线上 staging：Neon `saas_staging` | 本地开发直连；staging：Hyperdrive → Neon 非 pooled TLS 直连（§2） | staging 部署到 `*.workers.dev` | 不需要 | 不做 |
-| **阶段二：生产服务器测试** | 完成最小原型之后 | 生产服务器上的 PG（§1，`infra/postgres`） | Hyperdrive → Workers VPC → Tunnel → 服务器 PG，或公网主机名 + Access（§2 备选） | staging / production，绑定自定义域名 | 需要（可先用已有 Zone 的子域名） | 必须（§1「备份与恢复」） |
+| **阶段二：生产上线** | 完成最小原型之后 | production：Neon 付费计划的独立项目；staging 保持 Neon Free | Hyperdrive → Neon 非 pooled TLS 直连（与 staging 相同） | staging / production，绑定自定义域名 | 需要（可先用已有 Zone 的子域名） | 必须：Neon PITR + 独立逻辑备份与恢复演练 |
+
+**2026-10-15 用户决定**：Cloudflare 形态的生产数据库使用 Neon 付费档，不自建 PG，不建设 Tunnel / Workers VPC，计划与任务见 `docs/08-roadmap.md`「Cloudflare 生产上线」。§1 的自建 PG、§2 的 Workers VPC / Access 方案保留为历史与后路，不再是阶段二默认。自托管形态（Node + Compose）使用 Compose 内的 PG，见 `docs/node-jobs-extension.md` 与 `docs/runbooks/selfhost-*.md`。
 
 **最小原型**指 Phase 0–3 完成：可以注册登录、开通套餐或购买积分、进行一次计费正确的 AI 对话（见 `docs/08-roadmap.md`）。
 
@@ -21,7 +23,7 @@ Phase 0 本机链路的历史实测条件与当前观察范围：
 - Phase 0 请求绕回本机，其延迟基线只验证原链路可用，不能代表 Neon 或生产环境。
 - 本机 PG 不做备份；Neon staging 为可重建测试数据，24 小时观察显示 compute 常驻约 165 CU-hrs/月，超出 Free 100 CU-hrs；测试阶段仍用 Free，产品上线再升级（见 runbook staging-neon §6），不替代阶段二备份方案。阶段一的旧 Hyperdrive、Tunnel 与 Workers VPC 资源已于 2026-10-10 删除。
 
-## 1. 自建 Postgres（阶段二）
+## 1. 自建 Postgres（Cloudflare 形态后路；2026-10-15 起阶段二改用 Neon 付费档，见 §0）
 
 ### 部署形态
 一台 VPS（地区按具体应用的主要用户选择，模板不限定），Docker Compose 运行：
