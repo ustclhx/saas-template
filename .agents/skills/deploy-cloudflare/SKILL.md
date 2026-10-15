@@ -7,6 +7,8 @@ description: 为本 SaaS 模板准备或部署 Cloudflare 环境，检查 Worker
 
 在含 `template.config.ts` 的项目根执行。技能接受 `--env <name>`（默认 staging）、`--domain <HTTPS主机名>`、`--admin-email <邮箱>`；这些是技能输入，不是新 shell CLI。读取 `apps/{web,jobs}/package.json` 获取当前包名，下面 `@saas/*` 示例在生成项目中替换为实际 scope。管理员邮箱仅作为受限 secret 输入，报告中脱敏。
 
+本机可能另装有 Cloudflare / Neon 官方 skill 或 MCP，它们只作命令语法与平台能力参考；与本技能或所引 runbook 冲突时以本技能为准：先只读预检、写入前确认动作清单，不经 Cloudflare / Neon 的 API 类 MCP 写入资源，写操作使用仓库内 wrangler 与 runbook 命令。
+
 ## 1. 只读预检
 
 完整阅读 `docs/07-infrastructure.md`、`docs/runbooks/staging-neon.md`、`docs/runbooks/p2-staging-preparation.md`、`docs/runbooks/sentry.md`，核对两个 Wrangler 文件及 `.github/workflows/deploy-staging.yml`。仓库没有 `docs/runbooks/staging-deployment.md`；部署契约见 `openspec/specs/staging-deployment/spec.md`。
