@@ -122,3 +122,31 @@ wrangler 无法创建 API token（无对应命令，OAuth 可选范围不含 API
 - 回滚：`gh workflow run deploy-production.yml --ref <上一个 tag>`，同样需要审批。只回退 Worker 版本，不回滚 schema；迁移须保持向前兼容，破坏性迁移单独评审。数据问题按恢复 runbook 处理。
 - 生产 Sentry secrets 未配置（5.2 前）时，流水线跳过 source map 上传并给出 warning，仍删除客户端 map。
 - 本地对任意环境试跑只读冒烟：`PRODUCTION_URL=<URL> pnpm --filter @saas/web exec playwright test --project production`。
+
+## 8. 待用户批准的写操作清单（2026-10-15 起草，未执行）
+
+按 deploy-cloudflare 技能「写入前确认动作清单」，以下操作会在 Cloudflare 账号或生产库产生真实资源 / 权限变更，批准后由协调者执行并回读核对。名称与 staging 一一对应。
+
+**A. 生产库权限（4.1 前置）**——以 `neondb_owner` 执行一次：
+
+```sql
+GRANT pg_read_all_data TO readonly;
+```
+
+原因：`readonly` 只在 public 有权限，`pg_dump` 读 `drizzle.__drizzle_migrations` 时报 `permission denied for schema drizzle`。`pg_read_all_data`（PG14+ 内置）可读全部 schema 与序列，仍不能写；本地临时角色已验证（见 [restore §6](./restore.md)）。
+
+**B. Cloudflare 资源（2.1）**——本机 wrangler OAuth 已有对应写权限：
+
+| staging | production（新建） | 说明 |
+|---|---|---|
+| Hyperdrive `saas-staging-neon` / `-cached` | `saas-production-neon` / `saas-production-neon-cached` | 指向 `saas_production` 的 app 非 pooled 直连，`sslmode=require`；缓存版沿用默认 max_age |
+| KV `CACHE` | 新 KV namespace `saas-production-cache` | web 与 jobs 共用 |
+| R2 `files-staging` | `files-production` + CORS（origin `https://app.ezarouter.cc`，PUT/GET/HEAD，同 `scripts/staging/files-cors.json`） | 用户文件；与备份桶 `saas-production-backups` 分开 |
+| Queues `email-staging` / `events-staging` | `email-production` / `events-production` | 消费者参数同 staging |
+| Workflow `ai-media-staging` | `ai-media-production`（随 jobs 部署创建） | web 经 `script_name: jobs-production` 调用 |
+| 限流 namespace 1002/1004/1006 | 1007/1008/1009 | 与 staging、本地不共享计数 |
+| Worker `web-staging` / `jobs-staging` | `web-production` / `jobs-production`（首次发布 3.3 创建） | web 绑定自定义域名 `app.ezarouter.cc` |
+
+vars：`SENTRY_ENVIRONMENT=production`、`APP_URL=https://app.ezarouter.cc`，**不设** `PAYMENT_MODE`（Q9 前支付关闭），jobs 测试期 `CRON_PROFILE=reduced`（开放注册前改回默认，D7）。资源创建后把 ID 写入两个 `wrangler.jsonc` 的 `env.production`，以 `wrangler deploy --dry-run --env production` 与绑定名一致性检查验证（2.1）。
+
+**C. 生产 Worker secrets（2.2）**——名称同 `scripts/staging/check-secrets.mjs` 的 web / jobs 清单（支付类除外），值需用户提供或新生成（如 `BETTER_AUTH_SECRET` 新随机值，OAuth / Turnstile 需为 `app.ezarouter.cc` 新建生产应用）。
