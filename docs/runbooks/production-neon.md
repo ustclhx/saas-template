@@ -110,10 +110,15 @@ psql "$NEON_MIGRATOR_URL" -X -c 'select current_user, current_database()'   # �
 | production-backup | `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | secret | **待用户创建**：R2 API token，Object Read & Write，仅限桶 `saas-production-backups` |
 | production-backup | `BACKUP_BUCKET` / `BACKUP_AGE_RECIPIENT` / `R2_ACCOUNT_ID` | variable | 已写入（非机密） |
 
-secret 均经 stdin 写入（无末尾换行），不出现在命令参数或输出中。仓库级 secrets 为空，生产值只存在于上述两个 environment；PR 与 `deploy-staging.yml`（environment `staging`）的作业无法读取。用户自行写入时在 Claude Code 提示符执行，输入不回显：
+secret 均经 stdin 写入（无末尾换行），不出现在命令参数或输出中。仓库级 secrets 为空，生产值只存在于上述两个 environment；PR 与 `deploy-staging.yml`（environment `staging`）的作业无法读取。
 
-```sh
-! gh secret set CLOUDFLARE_API_TOKEN --env production
-! gh secret set R2_ACCESS_KEY_ID --env production-backup
-! gh secret set R2_SECRET_ACCESS_KEY --env production-backup
-```
+用户自行写入时须在**真实终端**执行 `gh secret set <NAME> --env <environment>`（交互提示、输入不回显），或从 600 权限文件经 stdin 写入（`gh secret set <NAME> --env <environment> < <文件>`）。**不要**在 Claude Code 提示符用 `!` 执行不带输入的 `gh secret set`：该模式没有 TTY，gh 会把空值写成 secret（2026-10-15 实际发生，`CLOUDFLARE_API_TOKEN` 与 `R2_ACCESS_KEY_ID` 被写为空，需重写）。写入前应先用只读 API 验证凭据（token verify、Zone 与资源读取、R2 列桶 HTTP 200）。
+
+wrangler 无法创建 API token（无对应命令，OAuth 可选范围不含 API Tokens 权限，其登录令牌短期有效且绑定本机），R2 S3 密钥同样派生自 API token；首个凭据必须在控制台创建。
+
+## 7. 发布与回滚（任务 3.1 / 3.2）
+
+- 发布：对已合并到 main 且 `Deploy staging` 成功的提交创建并推送 `v*` tag。`deploy-production.yml` 先运行 `scripts/production/check-release.mjs`，校验提交在 main 上且该完整 SHA 有成功的 staging 发布；再进入 `production` environment 等待审批。批准后依次迁移、部署 jobs、部署 web、等待 `https://app.ezarouter.cc/api/health` 返回完整 SHA，最后运行只读冒烟（`playwright test --project production`，仅 GET）。
+- 回滚：`gh workflow run deploy-production.yml --ref <上一个 tag>`，同样需要审批。只回退 Worker 版本，不回滚 schema；迁移须保持向前兼容，破坏性迁移单独评审。数据问题按恢复 runbook 处理。
+- 生产 Sentry secrets 未配置（5.2 前）时，流水线跳过 source map 上传并给出 warning，仍删除客户端 map。
+- 本地对任意环境试跑只读冒烟：`PRODUCTION_URL=<URL> pnpm --filter @saas/web exec playwright test --project production`。

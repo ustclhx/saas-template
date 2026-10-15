@@ -1,0 +1,144 @@
+name: Deploy production
+
+# production-deployment spec：只由 v* tag 触发；被发布的提交必须在 main 上且已成功发布到 staging，
+# 经 production environment 审批后按「迁移 → jobs → web → 健康完整 SHA → 只读冒烟」串行执行。
+# 回滚：对上一个 tag 运行 workflow_dispatch（gh workflow run deploy-production.yml --ref vX.Y.Z）。
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    # 只接受 tag ref；environment 的 v* tag 策略再做一次限制
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify release commit is on main and deployed to staging
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --no-tags origin main
+          node scripts/production/check-release.mjs "$GITHUB_SHA"
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DEPLOY_SHA: ${{ github.sha }}
+      PRODUCTION_URL: https://app.ezarouter.cc
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Migrate production database
+        env:
+          MIGRATION_DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: pnpm --filter @saas/db db:migrate
+
+      - name: Build jobs
+        env:
+          APP_VERSION: ${{ env.DEPLOY_SHA }}
+        run: >-
+          pnpm --filter @saas/jobs exec wrangler deploy --env production --dry-run
+          --outdir dist --var "APP_VERSION:$APP_VERSION"
+
+      - name: Build web
+        env:
+          CLOUDFLARE_ENV: production
+          APP_VERSION: ${{ env.DEPLOY_SHA }}
+          # 与 staging 相同：预渲染只用不可达的本地占位连接，绝不指向真实数据库。
+          CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: 'postgres://app:app@127.0.0.1:1/unused'
+          CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_CACHED: 'postgres://app:app@127.0.0.1:1/unused'
+        run: pnpm --filter @saas/web build
+
+      - name: Upload server source maps to Sentry
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          SENTRY_RELEASE: ${{ env.DEPLOY_SHA }}
+        run: |
+          # 生产 Sentry 由 add-cloud-production-neon 5.2 配置；未配置时跳过上传但仍删除客户端 map
+          if [ -n "$SENTRY_AUTH_TOKEN" ] && [ -n "$SENTRY_ORG" ] && [ -n "$SENTRY_PROJECT" ]; then
+            test -f apps/web/dist/server/index.js.map
+            test -f apps/jobs/dist/index.js.map
+            pnpm exec sentry-cli releases new "$SENTRY_RELEASE"
+            pnpm exec sentry-cli sourcemaps inject apps/web/dist/server
+            pnpm exec sentry-cli sourcemaps inject apps/jobs/dist
+            pnpm exec sentry-cli sourcemaps upload --release "$SENTRY_RELEASE" --dist web --validate --strict --wait apps/web/dist/server
+            pnpm exec sentry-cli sourcemaps upload --release "$SENTRY_RELEASE" --dist jobs --validate --strict --wait apps/jobs/dist
+          else
+            echo "::warning::Production Sentry secrets are not configured; skipping source map upload"
+          fi
+          find apps/web/dist/client -type f -name '*.map' -delete
+
+      - name: Deploy built jobs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          APP_VERSION: ${{ env.DEPLOY_SHA }}
+        run: >-
+          pnpm --filter @saas/jobs exec wrangler deploy dist/index.js --env production
+          --no-bundle --var "APP_VERSION:$APP_VERSION"
+
+      - name: Deploy built web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm --filter @saas/web exec wrangler deploy --config dist/server/wrangler.json --no-bundle
+
+      - name: Confirm deployment health and version
+        run: node scripts/staging/wait-healthy.mjs "$PRODUCTION_URL/api/health" "$DEPLOY_SHA"
+
+      - name: Install Chromium
+        run: pnpm --filter @saas/web exec playwright install --with-deps chromium
+
+      - name: Read-only smoke test production
+        env:
+          APP_VERSION: ${{ env.DEPLOY_SHA }}
+        run: pnpm --filter @saas/web exec playwright test --project production
+
+      - name: Upload smoke traces
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: production-smoke-traces
+          path: apps/web/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Rollback hint
+        if: failure()
+        run: >-
+          echo "::error::Production deploy failed. Roll back by re-running this workflow on the previous tag:
+          gh workflow run deploy-production.yml --ref <previous-tag>. Schema is not rolled back; see docs/runbooks/production-neon.md."
+
+      - name: Finalize Sentry release
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          if [ -n "$SENTRY_AUTH_TOKEN" ]; then pnpm exec sentry-cli releases finalize "$DEPLOY_SHA"; fi
