@@ -184,7 +184,7 @@ Creem / Paddle / Polar 各实现一个 Provider，`capabilities.merchantOfRecord
 - **平台字段缺失**：未付款订阅的服务周期允许为空，未确认周期前不授予付费权益；付款快照仍必须给出可验证的付款周期。平台不提供累计部分退款金额时，Provider 返回 `null`，业务层按唯一平台退款 ID 累计本地已验证退款，不把未知值当作零。
 - **付款来源保存**：入账时保存付款对应的 `plan_price_id` 与服务周期（一次性付款无周期），后续换套餐或续费不会改写历史付款的年付发放依据。每个已验证退款记录到 `payment_refund`，以平台退款 ID 去重后累计，跨回调与人工审核使用同一身份。
 - Cron `subscription-grants`（每小时）：使用已付款的历史 `payment.plan_price_id` 与 `period_start/end` 作为年付依据，按原 UTC 月日锚点计算 n=0..11。active/trialing 与仍在已付周期内的周期末取消订阅均继续发放；暂停、欠费、立即取消、已退款或空间删除时停止。补发缺失的 `{payment.id}:{k}`，迟到月份保留原失效时间并在同一事务中过期，`unique(source, source_ref)` 保证幂等。
-- 订阅取消（周期末生效）期间照常按月发放，进入终止状态后停止；退款时按 §「退款与争议」回收该 `payment.id` 下所有批次的剩余积分。
+- 订阅取消（周期末生效）期间照常按月发放，进入终止状态后停止；退款时按 §「退款与争议」处理该 `payment.id` 下的批次：全额退款回收剩余积分并停止后续发放，部分退款按未退款份额保留并按该份额继续发放。
 
 ### 注册赠送防刷
 - **领取触发验证**：注册时不强制验证邮箱（04-auth「登录方式」）。未验证的用户在应用内看到「验证邮箱领取 N 积分」入口，点击后发送验证邮件；在**邮箱验证完成**时发放（Better Auth `emailVerification.afterEmailVerification`）。OAuth 账号的邮箱已验证时，注册后直接发放，无需领取。站点开启 `auth.requireEmailVerification` 时，注册即验证，验证完成后直接发放。
@@ -260,7 +260,10 @@ INSERT INTO credit_hold (...), credit_hold_allocation (...);
 `status='active' AND expires_at <= now()` 的批次：写 `credit_ledger(type='expire', delta=-remaining)`（`remaining>0` 时），置 `remaining=0, status='expired'`。被 hold 占用的部分不在此时过期，之后的 capture 正常消费，release 按「退回到非 active 批次」处理。
 
 ### 退款与争议
-- 订阅/积分包退款：通过 `payment.id` 找到对应批次（年付为 `{payment.id}:*` 的所有批次），回收**剩余**积分（`type='revoke'`，置 `status='revoked'`）；已消费部分不追溯（当前实现的固定策略，Q6）。被 hold 占用的部分同样按「退回到非 active 批次」处理。
+- 订阅/积分包退款：通过 `payment.id` 找到对应批次（年付为 `{payment.id}:*` 的所有批次）。
+  - **全额退款**：回收全部**剩余**积分（`type='revoke'`，置 `status='revoked'`），被 hold 占用的部分结算时退回到非 active 批次。
+  - **部分退款按比例回收**（Q6，2026-10-15 起）：每个批次只保留未退款份额 `floor(amount × (付款金额 − 累计退款) / 付款金额)`，超出部分从剩余积分中收回（`type='revoke'`，批次仍为 active）。目标按累计退款与该批次已收回总量计算，重放与多次部分退款不会重复收回；hold 释放回来的积分在下次回收时一并计入。年付后续月份按同一份额发放，取整为 0 时不发放。
+  - 已消费部分不追溯：剩余积分不足目标时只收回剩余部分，不产生欠费。
 - 争议（chargeback）：同退款处理，并可将 workspace 标记为受限。
 
 ### 退款申请（人工审核）

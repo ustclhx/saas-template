@@ -84,6 +84,8 @@ afterAll(() => client.end())
 
 import {
   expireWorkspaceCredits,
+  keptCredits,
+  reducePaymentCredits,
   revokeGrant,
   revokePaymentCredits,
   revokeWorkspaceCredits,
@@ -244,6 +246,62 @@ describe('credits lifecycle on PostgreSQL', () => {
     expect(grants.find((g) => g.id === inactive.id)?.status).toBe('expired')
     expect(grants.find((g) => g.id === untouched.id)?.remaining).toBe(7)
     expect(await getCreditBalance(db, otherWs)).toEqual({ available: 9, held: 0, debt: 0 })
+    await invariant()
+  })
+
+  it('reduces linked grants to the unrefunded share once, without chasing consumed or held credits', async () => {
+    const paid = await annualPayment()
+    const batches: Awaited<ReturnType<typeof grant>>[] = []
+    for (let n = 0; n < 12; n++)
+      batches.push(
+        await grant(db, {
+          ...grantInput(10, `${paid.id}:${n}`),
+          source: 'subscription',
+          paymentId: paid.id,
+        }),
+      )
+    // 首批先被消费 3、预扣 4，只剩 3 可收回
+    const spent = await hold(db, holdInput(3))
+    await capture(db, { workspaceId: ws, holdId: spent.id, actualAmount: 3 })
+    const reserved = await hold(db, holdInput(4))
+    const untouched = await grant(db, grantInput(7))
+    await expect(
+      reducePaymentCredits(db, {
+        workspaceId: otherWs,
+        paymentId: paid.id,
+        share: { kept: 50, total: 100 },
+      }),
+    ).rejects.toMatchObject({ code: 'WORKSPACE_RESOURCE_NOT_FOUND' })
+
+    const half = { workspaceId: ws, paymentId: paid.id, share: { kept: 50, total: 100 } }
+    const [first, replay] = await Promise.all([
+      reducePaymentCredits(db, half),
+      reducePaymentCredits(db, half),
+    ])
+    expect(first.revoked + replay.revoked).toBe(3 + 11 * 5)
+    await invariant()
+
+    // 累计退款到 75%：每批目标收回 10 - floor(2.5) = 8，扣除已收回部分
+    const quarter = await reducePaymentCredits(db, { ...half, share: { kept: 25, total: 100 } })
+    expect(quarter.revoked).toBe(11 * 3)
+    await release(db, { workspaceId: ws, holdId: reserved.id })
+    const afterRelease = await reducePaymentCredits(db, {
+      ...half,
+      share: { kept: 25, total: 100 },
+    })
+    expect(afterRelease.revoked).toBe(4)
+    const grants = await db.select().from(creditGrant).where(eq(creditGrant.workspaceId, ws))
+    expect(grants.find((g) => g.id === batches[0]?.id)).toMatchObject({
+      remaining: 0,
+      status: 'active',
+    })
+    expect(grants.find((g) => g.id === batches[1]?.id)).toMatchObject({
+      remaining: 2,
+      status: 'active',
+    })
+    expect(grants.find((g) => g.id === untouched.id)?.remaining).toBe(7)
+    expect(keptCredits(10, { kept: 0, total: 100 })).toBe(0)
+    expect(() => keptCredits(10, { kept: 101, total: 100 })).toThrow()
     await invariant()
   })
 

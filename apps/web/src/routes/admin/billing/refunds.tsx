@@ -45,6 +45,11 @@ function Refunds() {
         Original and remaining credits include held or revoked credits in their difference; that
         difference is not consumed usage.
       </p>
+      <p>
+        A full refund revokes all remaining credits for the payment. A partial refund keeps the
+        unrefunded share of each credit batch and revokes the rest from what is unused; consumed
+        credits are never clawed back.
+      </p>
       <DataTable
         label="Refund requests"
         rows={rows}

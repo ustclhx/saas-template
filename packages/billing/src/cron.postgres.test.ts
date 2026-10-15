@@ -202,7 +202,7 @@ describe('billing cron on isolated PostgreSQL', () => {
       expect(await grants()).toEqual([])
     },
   )
-  it('does not grant a future or refunded paid period', async () => {
+  it('does not grant a future or fully refunded period; partial refunds grant the unrefunded share', async () => {
     await db
       .update(payment)
       .set({ periodStart: subscriptionMonthAnchor(now, 1) })
@@ -211,10 +211,19 @@ describe('billing cron on isolated PostgreSQL', () => {
     expect(await grants()).toEqual([])
     await db
       .update(payment)
-      .set({ periodStart: start, status: 'partially_refunded', refundedAmount: 1 })
+      .set({ periodStart: start, status: 'refunded', refundedAmount: 1000 })
       .where(eq(payment.id, paid))
     expect(scopedFailures(await runAnnualGrants(db, now))).toEqual([])
     expect(await grants()).toEqual([])
+    // 退款 50%：后续月份按 floor(10 × 0.5) = 5 发放（Q6 比例回收）
+    await db
+      .update(payment)
+      .set({ status: 'partially_refunded', refundedAmount: 500 })
+      .where(eq(payment.id, paid))
+    expect(scopedFailures(await runAnnualGrants(db, now))).toEqual([])
+    const scaled = await grants()
+    expect(scaled.length).toBeGreaterThan(0)
+    expect(scaled.every((row) => row.amount === 5 && row.remaining === 5)).toBe(true)
   })
   it('expiration leaves held allocation for later release without restoring balance', async () => {
     const batch = await grant(db, { workspaceId: ws, source: 'admin', sourceRef: id(), amount: 10 })

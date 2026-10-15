@@ -1,4 +1,4 @@
-import { grant } from '@saas/credits'
+import { grant, keptCredits } from '@saas/credits'
 import {
   organization,
   type Payment,
@@ -42,8 +42,9 @@ export async function grantSubscriptionMonth(
     .where(and(eq(payment.id, paid.id), eq(payment.workspaceId, paid.workspaceId)))
     .for('update')
   if (
-    current?.status !== 'succeeded' ||
-    current.refundedAmount > 0 ||
+    !current ||
+    !['succeeded', 'partially_refunded'].includes(current.status) ||
+    current.refundedAmount >= current.amount ||
     !['initial', 'renewal'].includes(current.kind)
   )
     throw new Error('Payment is not eligible for subscription grants')
@@ -100,12 +101,18 @@ export async function grantSubscriptionMonth(
       ? null
       : new Date(start.getTime() + selectedPlan.creditExpiryDays * 86_400_000)
     : new Date(end.getTime() + graceHours * 3_600_000)
+  // 部分退款后的后续月份只发未退款份额，与已发批次的比例回收一致（Q6）；份额取整为 0 时不发放。
+  const amount = keptCredits(selectedPlan.credits, {
+    kept: current.amount - current.refundedAmount,
+    total: current.amount,
+  })
+  if (amount === 0) return
   return grant(tx, {
     workspaceId: current.workspaceId,
     source: 'subscription',
     sourceRef: `${current.id}:${month}`,
     paymentId: current.id,
-    amount: selectedPlan.credits,
+    amount,
     expiresAt,
   })
 }
