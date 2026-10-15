@@ -1,4 +1,4 @@
-import { grant, keptCredits } from '@saas/credits'
+import { grant, reducePaymentCredits } from '@saas/credits'
 import {
   organization,
   type Payment,
@@ -101,18 +101,20 @@ export async function grantSubscriptionMonth(
       ? null
       : new Date(start.getTime() + selectedPlan.creditExpiryDays * 86_400_000)
     : new Date(end.getTime() + graceHours * 3_600_000)
-  // 部分退款后的后续月份只发未退款份额，与已发批次的比例回收一致（Q6）；份额取整为 0 时不发放。
-  const amount = keptCredits(selectedPlan.credits, {
-    kept: current.amount - current.refundedAmount,
-    total: current.amount,
-  })
-  if (amount === 0) return
-  return grant(tx, {
+  const granted = await grant(tx, {
     workspaceId: current.workspaceId,
     source: 'subscription',
     sourceRef: `${current.id}:${month}`,
     paymentId: current.id,
-    amount,
+    amount: selectedPlan.credits,
     expiresAt,
   })
+  // 批次始终记录原始积分；部分退款后由幂等的比例回收保留未退款份额（Q6），避免重复缩放。
+  if (current.refundedAmount > 0)
+    await reducePaymentCredits(tx, {
+      workspaceId: current.workspaceId,
+      paymentId: current.id,
+      share: { kept: current.amount - current.refundedAmount, total: current.amount },
+    })
+  return granted
 }

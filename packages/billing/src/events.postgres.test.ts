@@ -593,7 +593,7 @@ describe('billing event consumer on PostgreSQL', () => {
     expect(await payments()).toHaveLength(1)
     expect(await grants()).toEqual([])
   })
-  it('yearly batches preserve anchor and payment provenance; refund revokes all remaining including held release', async () => {
+  it('yearly batches preserve anchor and payment provenance; full refund revokes all remaining including held release', async () => {
     await db.update(planPrice).set({ interval: 'year' }).where(eq(planPrice.id, priceId))
     await apply([paid({ period: { start: now, end: new Date('2031-01-31T12:00:00Z') } })])
     const [p] = await payments()
@@ -630,7 +630,8 @@ describe('billing event consumer on PostgreSQL', () => {
       type: 'payment.refunded',
       providerPaymentId: p.providerPaymentId,
       providerRefundId: `refund-${id()}`,
-      amount: 200,
+      // 全额退款收回全部剩余；部分退款的比例回收由 credits 生命周期与年付 cron 用例覆盖
+      amount: 1000,
       currency: 'USD',
       refundedAmount: null,
       occurredAt: now,
