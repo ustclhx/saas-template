@@ -2,7 +2,7 @@
 
 每个阶段结束时都应该能部署到 staging 并完成验收。阶段内顺序即建议的实现顺序。
 
-**进度基线（2026-10-12，main `cca3f17` / #104）**：以下状态已核对 `openspec list --json`、各 change 的 `tasks.md`、归档与 main 已合并 PR。功能项勾选表示对应任务的实现与规定验证已完成；阶段整体验收另列，代码合并或本地模拟通过不替代 staging 验收。进行中的其他 worktree 不计入完成项。
+**进度基线（2026-10-15，main `01343ad` / #215）**：以下状态已核对 `openspec list --json`、各 change 的 `tasks.md`、归档与 main 已合并 PR。功能项勾选表示对应任务的实现与规定验证已完成；阶段整体验收另列，代码合并或本地模拟通过不替代 staging 验收。进行中的其他 worktree 不计入完成项。
 
 每个阶段对应一个 OpenSpec change（`openspec/changes/<name>/`），实现时用 `/opsx:apply <name>` 按其 `tasks.md` 推进，全部验收完成后由协调者归档：
 
@@ -10,18 +10,28 @@
 |---|---|---|
 | Phase 0 | `setup-scaffold-and-infra` | 26/26；已归档：`archive/2026-10-04-setup-scaffold-and-infra` |
 | Phase 1 | `add-auth-and-workspaces` | 25/25；已归档：`archive/2026-10-04-add-auth-and-workspaces`（#22） |
-| Phase 2 | `add-billing-and-credits` | 32/34；3.3、11.1 待办；10.4 实测文档与策略核对已完成 |
-| Phase 3 | `add-ai-text-chat` | 16/17；staging 5.1 待办 |
-| Phase 4 | `add-ai-media-generation` | 20/22；staging 7.1/7.2 待办 |
-| Phase 5 | `add-admin-console` | 13/14；staging 6.1 待办 |
+| Phase 2 | `add-billing-and-credits` | 32/34；2026-10-15 Cloudflare 部分结项并归档（#215），3.3、11.1 剩余项转入 `add-cloud-acceptance-followups` |
+| Phase 3 | `add-ai-text-chat` | 17/17；已归档：`archive/2026-10-15-add-ai-text-chat`（#209） |
+| Phase 4 | `add-ai-media-generation` | 22/22；已归档：`archive/2026-10-15-add-ai-media-generation`（#209） |
+| Phase 5 | `add-admin-console` | 13/14；2026-10-15 结项并归档（#215），6.1 仅剩失败回调重放，转入 `add-cloud-acceptance-followups` |
 | Phase 6 | `add-marketing-i18n-seo` | 16/16；已归档：`archive/2026-10-11-add-marketing-i18n-seo`（#86） |
-| Phase 7 | `add-observability-and-optional-features` | 15/16；staging Sentry 1.2 待办，6.1 已完成（#100） |
+| Phase 7 | `add-observability-and-optional-features` | 16/16；已归档：`archive/2026-10-14-add-observability-and-optional-features`（#184） |
+| 验收承接 | `add-cloud-acceptance-followups` | 0/4；全部依赖外部资源或自然时间，见下文「Cloudflare 剩余验收」 |
 
-另有 `add-cloud-staging-neon` 29/29，已归档（#85）；`add-first-run-admin-setup` 6/6，已合并但尚未归档（#101），其 staging 配置与外部验收边界见 Phase 5；`add-payment-live-mode` 9/9，已合并但尚未归档（#104），生产凭据与外部收款验收仍待办。
+已归档的其他 change：`add-cloud-staging-neon` 29/29（#85）、`add-first-run-admin-setup` 6/6 与 `add-payment-live-mode` 9/9（#184）、`add-text-reasoning-resilience` 9/9（#196）、`add-staging-fault-injection` 20/20（#209）、`add-agent-skills` 8/8（#211）。live 模式只交付代码，生产凭据与外部收款验收见下文「Cloudflare 生产上线」与 Q9。
+
+**自托管形态**（Node + Docker Compose，PG 在 Compose 内）：四个 change 的代码、本地 Docker/临时 VM/CI 验收与正式 GHCR 发布已完成，剩余项全部依赖真实服务器或外部资源——
+
+| change | 进度 | 剩余（阻塞资源） |
+|---|---|---|
+| `add-selfhost-foundation` | 30/33 | 7.4 ACME 实签（公网测试域名）；9.4 汇总签收 |
+| `add-selfhost-job-engine` | 31/32 | 6.4 新加坡 2 核 4 GiB 整机复测（测试主机） |
+| `add-selfhost-storage-observability` | 17/18 | 1.7 外部 S3（R2 S3 API + 另一兼容服务凭据） |
+| `add-selfhost-delivery` | 29/33 | 7.1 真机部署（主机/入口/域名）、7.2 独立备份（第二供应商账号与演练窗口）、7.3 整机重启窗口、7.4 汇总 |
 
 各阶段之间与阶段内部的并行拆分见 [09-parallel-plan.md](./09-parallel-plan.md)。
 
-**基础设施节奏**（`docs/07` §0）：当前仍在**阶段一**——本地开发使用各 worktree 的隔离 Docker PG 数据库，线上 staging 使用 Neon 并部署到 `*.workers.dev`，不需要域名，不做备份。Phase 2/3 完整验收后达到**最小原型**（可注册登录、开通套餐或购买积分、进行一次计费正确的 AI 对话），再执行下文的「生产迁移」进入阶段二。Phase 4–7 的开发已按依赖提前推进，完成实现不代表生产迁移已执行。
+**基础设施节奏**（`docs/07` §0）：当前仍在**阶段一**——本地开发使用各 worktree 的隔离 Docker PG 数据库，线上 staging 使用 Neon Free 并部署到 `*.workers.dev`，不需要域名，不做备份。最小原型（Phase 0–3）已具备，下一步执行下文「Cloudflare 生产上线」进入阶段二。2026-10-15 用户决定：**Cloudflare 形态的生产数据库使用 Neon 付费档，不自建 PG**（原「生产服务器 PG + cloudflared + Workers VPC」方案作废）；**自托管形态继续使用 Compose 内的 PG**，其备份/PITR/副本由 `add-selfhost-*` 交付。
 
 ## Phase 0 · 脚手架与基础设施验证（技术风险最高，优先做）
 
@@ -61,12 +71,12 @@
 
 ## Phase 2 · 计费与积分
 
-**进度（2026-10-12）**：OpenSpec 31/34。离线实现与组合验收已完成（#24）；两平台测试凭据已配置，10 条报价同步及幂等复验通过（1.3）。Stripe 真实录制夹具、测试卡订阅/积分包、测试时钟续费与平台退款已验收（#63、#71）。PayPal 积分包 capture 与重复事件、月付首付、取消/恢复已取得有限沙箱证据（#82、#90），但自然续费、年付、换套餐、退款及完整录制矩阵仍待办。3.3、10.4、11.1 保持未完成，见 [支付联通 runbook](./runbooks/p2-payment-integration.md) 与 [Stripe 验收](./runbooks/p2-acceptance-stripe.md)。
+**进度（2026-10-12；2026-10-15 已归档，剩余项见「Cloudflare 剩余验收」）**：OpenSpec 31/34。离线实现与组合验收已完成（#24）；两平台测试凭据已配置，10 条报价同步及幂等复验通过（1.3）。Stripe 真实录制夹具、测试卡订阅/积分包、测试时钟续费与平台退款已验收（#63、#71）。PayPal 积分包 capture 与重复事件、月付首付、取消/恢复已取得有限沙箱证据（#82、#90），但自然续费、年付、换套餐、退款及完整录制矩阵仍待办。3.3、10.4、11.1 保持未完成，见 [支付联通 runbook](./runbooks/p2-payment-integration.md) 与 [Stripe 验收](./runbooks/p2-acceptance-stripe.md)。
 
 - [x] `plan` / `plan_price` 种子数据与同步脚本（Stripe、PayPal；billing 1.3，两平台同步两次、映射稳定且 active，证据见支付联通 runbook）
 - [x] `packages/credits`：grant / hold / capture / release / expire，含并发测试（#24、#27）
 - [x] Stripe Provider：订阅 + 积分包 Checkout、Webhook、Portal（#71；billing 3.2）
-- [ ] PayPal Provider：Orders capture、Subscriptions、Webhook 验签、自建取消；代码已合并，8 条真实 Sandbox 回调录制已覆盖一次性付款、月付首付、暂停/恢复及独立测试卡 Capture 全额退款；自然续费、Sale 退款与 Capture 部分退款录制等仍待办（#82、#90；billing 3.3；见 [05 §2](./05-billing.md#2-支付-provider-抽象)）。
+- [ ] PayPal Provider（剩余录制转入 followups 2.1）：Orders capture、Subscriptions、Webhook 验签、自建取消；代码已合并，8 条真实 Sandbox 回调录制已覆盖一次性付款、月付首付、暂停/恢复及独立测试卡 Capture 全额退款；自然续费、Sale 退款与 Capture 部分退款录制等仍待办（#82、#90；billing 3.3；见 [05 §2](./05-billing.md#2-支付-provider-抽象)）。
 - [x] Webhook 通用管线（按投递去重、登记/处理分事务、失败记录、重放；#24、#28）
 - [x] 权益 `can()` / `limit()`（读取时计算生效状态）；free 档与注册赠送（验证后发放、防刷；#24）
 - [x] 结账前置检查；换套餐 / 换平台的订阅重叠期（#24；完整平台验收见 11.1）
@@ -75,7 +85,7 @@
 - [x] Cron：积分过期、年付按月发放、hold 超时回收、订阅对账、积分对账不变式校验（#24）
 - [x] 页面开发与规定验收：定价/回跳、账单/用量、最小计费后台；Stripe 测试卡支付已通过（#24、#63、#71；billing 10.1–10.3）
 - [x] 支付实测文档与 Q4/Q5/Q6 实现核对（billing 10.4，2026-10-15）：记录真实 Sandbox 事件差异、录制来源、已通过与仍待验证的边界；Q4/Q5/Q6 的已实现策略不等于完整平台矩阵通过。协调者继续负责 3.3 与 11.1。
-- [ ] **阶段验收（billing 11.1）**：两家测试环境下完成订阅（月付、年付）、续费（测试时钟 / 沙箱）、取消、积分包购买、退款；重复投递 Webhook 不重复发积分；首付只发一次积分；并发扣减不出现负数；PayPal 换套餐期间新旧订阅可并存；hold 在批次过期 / 被收回后释放，积分对账不变式仍成立。Stripe 管理员部分退款审核与 PayPal 完整矩阵仍待验收。
+- [ ] **阶段验收（billing 11.1；剩余转入 followups 3.1/3.2）**：两家测试环境下完成订阅（月付、年付）、续费（测试时钟 / 沙箱）、取消、积分包购买、退款；重复投递 Webhook 不重复发积分；首付只发一次积分；并发扣减不出现负数；PayPal 换套餐期间新旧订阅可并存；hold 在批次过期 / 被收回后释放，积分对账不变式仍成立。Stripe 管理员部分退款审核与 PayPal 完整矩阵仍待验收。
 
 ## Phase 3 · AI 文本
 
@@ -84,7 +94,7 @@
 - [x] 对话列表、对话页（`useChat`）、模型选择（#36、#41）
 - [x] 权益检查与 AI 限流（#33、#38）
 - [x] 决策 12：结算使用「流内最终 usage → 预扣额封顶的估算」；被中断流在 Gateway 不产生日志，不做日志回查（#98；chat 2.9，2026-10-12 已决）。
-- [ ] **阶段验收（chat 5.1）**：代码已合并，staging 按 token/按次模型的对话、停止、关页与服务商报错，以及账本不变式和 Gateway 可比用量差异 <1% 核对仍待办。决策 12 已完成，不代表 5.1 通过；验收入口见 [staging 验收 runbook](./runbooks/staging-acceptance.md)。
+- [x] **阶段验收（chat 5.1）**：staging 对话、停止、关页与服务商报错、账本不变式及 Gateway 可比用量核对已通过（#205），change 已归档（#209）；证据见 `docs/runbooks/evidence/staging-acceptance/`。
 
 ## CI 能力建设
 
@@ -103,20 +113,28 @@
 - [x] **已完成（`ci-e2e-smoke`，#102）**：`.github/workflows/ci.yml` 的独立 `e2e-smoke` job 使用临时 Postgres 与本地 fake 支付 Provider，覆盖注册进入个人空间、真实退出后密码登录、购买积分包、付款回调入账与重复回调不重复发放。仅安装并缓存 Chromium，无外部服务请求、PR secrets 或 trace/video；PR CI 冒烟已通过，#102 于 2026-10-12 合并。本地命令见 [07 §5](./07-infrastructure.md#5-部署与-ci-github-actions)，真实支付平台验收仍按既有 runbook 执行。
 - [x] **已完成（`payment-live-mode`，#104）**：[add-payment-live-mode](../openspec/changes/add-payment-live-mode/proposal.md) 提供统一 `createPaymentRuntime` 工厂，按 `PAYMENT_MODE` 切换 test/live，并迁移 Webhook、Jobs、后台/客户/退款、认证删除与营销定价入口。9/9 任务完成，#104 于 2026-10-12 合并；本地和 staging 保持 test，live 上线清单见 [05 §8](./05-billing.md#8-支付模式与生产切换清单)。生产凭据、外部验收与正式收款主体仍依赖「生产迁移」和待决事项 Q9。
 
-## 生产迁移 · 进入阶段二（最小原型完成后）
+## Cloudflare 剩余验收（`add-cloud-acceptance-followups`）
 
-暂不建 OpenSpec change，先在这里登记，进入阶段二时再拆成 change：
+不新增行为，只承接需外部资源或自然时间的验收；全部完成后由协调者归档。
 
-- [ ] 生产服务器：按 `infra/postgres` 部署 PG 17 + 两个 `cloudflared` 副本，Workers VPC 指向新服务器，证书改为受信任并开启校验
-- [ ] 备份（原 P0 任务 5.3）：WAL-G 基础备份与 WAL 归档到 R2（需先开通 R2，开启 Bucket Lock）
-- [ ] 异地第二副本（待办）：每日同步到非 Cloudflare 对象存储（存储选型待定）
-- [ ] 恢复演练（原 P0 任务 5.4）：在临时实例恢复到指定时间点并跑校验脚本，写 `docs/runbooks/restore.md`，核对 RTO
-- [ ] 域名：staging 与 production 绑定自定义域名（可先用已有 Zone 的子域名，如 `ezarouter.cc` 的子域）
-- [ ] CI 迁移：为 PG 配置公网主机名 + Access（或 SSH），main 流水线执行 staging 迁移
-- [ ] tag 流水线（原 P0 任务 6.3）：生产迁移 → 部署 jobs → 部署 web → `/api/health` 冒烟测试
-- [ ] 在生产服务器上重测 P0 的延迟基线与 `cloudflared` 副本切换
+- [ ] 1.1 失败回调后台重放：等待 staging 自然失败事件；若改用受控失败机制，先单独评审。
+- [ ] 2.1 PayPal 订阅 Sale 付款与部分/全额退款录制：需已登录的 PayPal Sandbox personal 买家会话。
+- [ ] 3.1 Stripe 续费：需 Stripe Dashboard 登录，用 Simulations 推进本应用 Checkout 建立的订阅。
+- [ ] 3.2 PayPal 完整矩阵：需买家会话；既有订阅自然续费最早 2026-11-11 后才能观察。
 
-**验收**：production 绑定域名可访问；备份可恢复；从 staging 合并到 tag 发布的全流程自动化。
+## Cloudflare 生产上线 · 进入阶段二（Neon 付费档）
+
+2026-10-15 用户决定：生产数据库使用 Neon 付费档，不自建 PG，不再建设 Tunnel / Workers VPC。设计与任务见 OpenSpec change [`add-cloud-production-neon`](../openspec/changes/add-cloud-production-neon/proposal.md)（提案阶段，待用户确认资源与 Q9 后派发）。staging 维持 2026-10-10 决定的 Neon Free。
+
+- [ ] Neon 生产项目：独立项目与付费计划、PG 17、受限 `migrator` / `app` / `readonly` 角色（沿用 [staging-neon runbook](./runbooks/staging-neon.md) §1–2），确认计划的 PITR 保留窗口
+- [ ] Cloudflare production 环境：web / jobs 的 `env.production`（Hyperdrive 缓存/非缓存、KV、Queues、Workflows、R2）与 Wrangler secrets
+- [ ] 域名：production（及可选 staging）绑定自定义域名（可先用已有 Zone 的子域，如 `ezarouter.cc`）
+- [ ] 备份：Neon PITR + 每日逻辑备份到独立对象存储（R2 Bucket Lock 或非 Cloudflare 存储）；恢复演练用 Neon 时间点分支 + 校验脚本，写 `docs/runbooks/restore.md` 并记录 RTO/RPO
+- [ ] 发布流水线：GitHub `production` environment 的 Neon 直连迁移凭据；tag 触发 生产迁移 → jobs → web → `/api/health` 完整 SHA → 冒烟
+- [ ] 生产延迟基线：Hyperdrive → Neon 区域选择与 Smart Placement / 显式放置评估
+- [ ] 支付 live：按 [05 §8](./05-billing.md#8-支付模式与生产切换清单) 清单执行，前置 Q9
+
+**验收**：production 绑定域名可访问；tag 发布全流程自动化且健康 SHA 匹配；从 Neon 时间点与逻辑备份各恢复一次并通过校验。
 
 ## Phase 4 · AI 图片 / 视频
 
@@ -126,7 +144,7 @@
 - [x] 媒体回调入口（HMAC + 服务商验签 + 先落库再 sendEvent；#73）
 - [x] 任务列表/详情页、参数表单（由 params_schema 渲染）；后台模型参数 schema 编辑（#72、#75、#96）
 - [x] 并发数限制（空间级事务锁）；DB-only 超时回收，Workflow 自检终态停止（#73；media 4.7，不依赖查询 Workflow 状态）
-- [ ] **阶段验收（media 7.1/7.2）**：代码已合并，本地故障测试与 fal 录制通过；staging Workers AI 图片与推理失败/硬超时、fal 图片/视频及回调丢失/早到/提交响应丢失/服务商失败/硬超时的完整矩阵仍待办。只录制服务商响应不等于应用 Workflow、转存与账本的线上验收；入口见 [staging 验收 runbook](./runbooks/staging-acceptance.md)。
+- [x] **阶段验收（media 7.1/7.2）**：staging 媒体矩阵（含 `add-staging-fault-injection` 的受控故障）与 fal 视频真实产出已通过（#200、#209），change 已归档；证据见 `docs/runbooks/evidence/staging-acceptance/`。
 
 ## Phase 5 · 管理后台
 
@@ -135,8 +153,8 @@
 - [x] 模型与定价、系统设置（`setting` 表；#51、#96）
 - [x] 审计日志；业务指标看板（注册、付费、MRR、消耗、任务成功率；#54、#59）
 - [x] 首次管理员引导与套餐模型权限编辑（`add-first-run-admin-setup`，#101，6/6）：可选 web Worker secret `BOOTSTRAP_ADMIN_EMAILS` 仅提升已验证且未封禁的名单用户；`/admin/billing/plans` 编辑 `features.models`，seed 重跑保留授权。移除名单不自动降权。
-- [ ] 首次运行 staging 配置与外部验收：#101 未配置或写入 staging；由协调者配置 secret 后核验真实邮箱登录、创建模型与套餐授权，不能以 6/6 交付任务视为已完成外部验收。
-- [ ] **阶段验收（admin 6.1）**：代码已合并，staging 搜索/封禁、模拟登录、补发积分、失败回调重放、退款审核、设置审计及次日指标核对仍待办（#95、#97 提供脚本，脚本合并不等于验收）。
+- [x] 首次运行 staging 配置：`add-first-run-admin-setup` 已归档（#184），staging 管理员会话已用于 admin 6.1 验收；配置方式见 [staging 验收 runbook](./runbooks/staging-acceptance.md)。
+- [ ] **阶段验收（admin 6.1）**：搜索/封禁、模拟登录、补发积分、退款审核（#205）、设置审计及次日指标已通过；仅失败回调重放因 staging 无自然失败事件未完成，转入 followups 1.1，change 已归档（#215）。
 
 ## Phase 6 · 营销、内容、国际化、SEO
 
@@ -150,13 +168,13 @@
 ## Phase 7 · 打磨与可选功能
 
 - [x] 请求 ID、结构化日志与脱敏过滤器、Cloudflare Web Analytics / 可选 PostHog（#42、#56）
-- [ ] Sentry 与 CI source map 上传：代码已合并（#94），main staging 的 web/jobs 真实异常与可读源码堆栈验收待办（observability 1.2）；新项目 smoke Sentry 证据不替代此项，见 [Sentry runbook](./runbooks/sentry.md)。
+- [x] Sentry 与 CI source map 上传（#94；observability 1.2 staging 可读堆栈已验收，change 已归档），见 [Sentry runbook](./runbooks/sentry.md)。
 - [x] 站内通知中心；内部通知（新订单 → Telegram/Discord；#58）
 - [x] 公开 API（API Key、OpenAI 兼容对话、媒体任务接口与文档；#57、#60、#77）
 - [x] Waitlist、Newsletter（#46）
 - [x] `CLAUDE.md` / `AGENTS.md`：模块说明、约定、常用命令（#52）
 - [x] 「从模板创建新项目」的清单与脚本（改名、换配置、初始化基础设施；#52、#92、#100）
-- [x] **新项目阶段验收（observability 6.1）**：#100 从模板生成独立文本 AI 项目，配置新 Neon / Cloudflare staging，健康、注册到首次 AI 调用、精确积分结算和 Sentry 源码堆栈均通过；临时资源已清理（2026-10-12；[脱敏证据](./runbooks/evidence/create-project/2026-10-12/acceptance.json)）。原 staging 的 Sentry 1.2 仍待验收。
+- [x] **新项目阶段验收（observability 6.1）**：#100 从模板生成独立文本 AI 项目，配置新 Neon / Cloudflare staging，健康、注册到首次 AI 调用、精确积分结算和 Sentry 源码堆栈均通过；临时资源已清理（2026-10-12；[脱敏证据](./runbooks/evidence/create-project/2026-10-12/acceptance.json)）。原 staging 的 Sentry 1.2 已另行验收。
 
 ## 待决事项
 
