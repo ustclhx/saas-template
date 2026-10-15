@@ -11,7 +11,7 @@
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "check": "biome check . && node scripts/check-credit-writes.mjs && node scripts/check-payment-runtime.mjs && node --test scripts/check-payment-runtime.test.mjs scripts/local-payment-env.test.mjs && node --test scripts/staging/staging.test.mjs scripts/production/production.test.mjs",
+    "check": "biome check . && node scripts/check-credit-writes.mjs && node scripts/check-payment-runtime.mjs && node scripts/production/check-wrangler-envs.mjs && node --test scripts/check-payment-runtime.test.mjs scripts/local-payment-env.test.mjs && node --test scripts/staging/staging.test.mjs scripts/production/production.test.mjs",
     "check:fix": "biome check --write .",
     "check:deps": "node scripts/check-deps.mjs && node --test scripts/check-deps.test.mjs",
     "check:singletons": "node scripts/check-singletons.mjs",

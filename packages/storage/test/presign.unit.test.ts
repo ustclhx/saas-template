@@ -32,6 +32,14 @@ describe('FILES presigned URLs', () => {
     await expect(
       presignDownload({ ...env, R2_FILES_BUCKET: 'backups' }, key),
     ).rejects.toMatchObject({ code: 'STORAGE_UNAVAILABLE' })
+    // 生产文件桶可签名，生产备份桶仍拒绝
+    const production = new URL(
+      await presignDownload({ ...env, R2_FILES_BUCKET: 'files-production' }, key),
+    )
+    expect(production.pathname).toBe(`/files-production/${key}`)
+    await expect(
+      presignDownload({ ...env, R2_FILES_BUCKET: 'saas-production-backups' }, key),
+    ).rejects.toMatchObject({ code: 'STORAGE_UNAVAILABLE' })
     await expect(presignDownload(env, `${key}/../../backups`)).rejects.toMatchObject({
       code: 'INVALID_FILE_KEY',
     })

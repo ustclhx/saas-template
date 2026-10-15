@@ -164,6 +164,12 @@ describe('EMAIL_QUEUE 消费者：resend 通道', () => {
     expect(result.explicitAcks).toEqual(['m1'])
   })
 
+  it('production 队列名 email-production 同样由邮件消费者处理', async () => {
+    fetchMock.mockResolvedValueOnce(resendReply(200, { id: 'ok' }))
+    const result = await consume([message], { env: resendEnv, queue: 'email-production' })
+    expect(result.explicitAcks).toEqual(['m1'])
+  })
+
   it('缺少 Resend 变量时拒绝处理，错误只含变量名', async () => {
     const broken = { ...env, EMAIL_TRANSPORT: 'resend' } as Cloudflare.Env
     await expect(consume([message], { env: broken })).rejects.toThrow(

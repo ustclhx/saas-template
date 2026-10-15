@@ -101,6 +101,54 @@
         // staging 每半小时合并心跳与维护；小时和每日任务重合，不增加唤醒时点。
         "crons": ["*/30 * * * *", "0 3 * * *", "0 * * * *", "0 4 * * *"]
       }
+    },
+    // add-cloud-production-neon 2.1：生产资源与 staging 一一对应（production runbook §8.B）。
+    // 测试期沿用 reduced Cron，对外开放注册前改回默认调度（design D7）；不设 PAYMENT_MODE / AI_FAULT_INJECTION。
+    "production": {
+      "name": "jobs-production",
+      "workers_dev": false,
+      "preview_urls": false,
+      "vars": {
+        "SENTRY_ENVIRONMENT": "production",
+        "CRON_PROFILE": "reduced"
+      },
+      "ai": { "binding": "AI" },
+      "r2_buckets": [{ "binding": "FILES", "bucket_name": "files-production" }],
+      "kv_namespaces": [{ "binding": "CACHE", "id": "76d4f2b69b1a45db8fe1c0a66eaf9b34" }],
+      "hyperdrive": [
+        { "binding": "HYPERDRIVE", "id": "0519ee8f8e5b4f0f95ecd9d425c58a36" },
+        { "binding": "HYPERDRIVE_CACHED", "id": "3deaa579109549f9a06f12b6c8d4aae6" }
+      ],
+      "workflows": [
+        {
+          "name": "ai-media-production",
+          "binding": "AI_MEDIA_WORKFLOW",
+          "class_name": "AiMediaWorkflow"
+        }
+      ],
+      "queues": {
+        "producers": [
+          { "queue": "email-production", "binding": "EMAIL_QUEUE" },
+          { "queue": "events-production", "binding": "EVENTS_QUEUE" }
+        ],
+        "consumers": [
+          {
+            "queue": "email-production",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5
+          },
+          {
+            "queue": "events-production",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5
+          }
+        ]
+      },
+      "triggers": {
+        "crons": ["*/30 * * * *", "0 3 * * *", "0 * * * *", "0 4 * * *"]
+      }
     }
   }
 }
