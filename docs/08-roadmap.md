@@ -31,7 +31,7 @@
 
 各阶段之间与阶段内部的并行拆分见 [09-parallel-plan.md](./09-parallel-plan.md)。
 
-**基础设施节奏**（`docs/07` §0）：当前仍在**阶段一**——本地开发使用各 worktree 的隔离 Docker PG 数据库，线上 staging 使用 Neon Free 并部署到 `*.workers.dev`，不需要域名，不做备份。最小原型（Phase 0–3）已具备，下一步执行下文「Cloudflare 生产上线」进入阶段二。2026-10-15 用户决定：**Cloudflare 形态的生产数据库使用 Neon 付费档，不自建 PG**（原「生产服务器 PG + cloudflared + Workers VPC」方案作废）；**自托管形态继续使用 Compose 内的 PG**，其备份/PITR/副本由 `add-selfhost-*` 交付。
+**基础设施节奏**（`docs/07` §0）：当前仍在**阶段一**——本地开发使用各 worktree 的隔离 Docker PG 数据库，线上 staging 使用 Neon（2026-10-15 随组织升级为 Launch 计费）并部署到 `*.workers.dev`，不需要域名，不做备份。最小原型（Phase 0–3）已具备，下一步执行下文「Cloudflare 生产上线」进入阶段二。2026-10-15 用户决定：**Cloudflare 形态的生产数据库使用 Neon 付费档，不自建 PG**（原「生产服务器 PG + cloudflared + Workers VPC」方案作废）；**自托管形态继续使用 Compose 内的 PG**，其备份/PITR/副本由 `add-selfhost-*` 交付。
 
 ## Phase 0 · 脚手架与基础设施验证（技术风险最高，优先做）
 
@@ -124,9 +124,9 @@
 
 ## Cloudflare 生产上线 · 进入阶段二（Neon 付费档）
 
-2026-10-15 用户决定：生产数据库使用 Neon 付费档，不自建 PG，不再建设 Tunnel / Workers VPC。设计与任务见 OpenSpec change [`add-cloud-production-neon`](../openspec/changes/add-cloud-production-neon/proposal.md)（提案阶段，待用户确认资源与 Q9 后派发）。staging 维持 2026-10-10 决定的 Neon Free。
+2026-10-15 用户决定：生产数据库使用 Neon 付费档，不自建 PG，不再建设 Tunnel / Workers VPC。设计与任务见 OpenSpec change [`add-cloud-production-neon`](../openspec/changes/add-cloud-production-neon/proposal.md)。1.1 已完成：Launch 组织下 `saas-production`（`aws-us-west-2`，0.25–1 CU，PITR 7 天），见 [production-neon runbook](./runbooks/production-neon.md)；staging 随组织升级改为 Launch 计费、上限 2 CU。
 
-- [ ] Neon 生产项目：独立项目与付费计划、PG 17、受限 `migrator` / `app` / `readonly` 角色（沿用 [staging-neon runbook](./runbooks/staging-neon.md) §1–2），确认计划的 PITR 保留窗口
+- [x] Neon 生产项目：独立项目与付费计划、PG 17、受限 `migrator` / `app` / `readonly` 角色（沿用 [staging-neon runbook](./runbooks/staging-neon.md) §1–2），确认计划的 PITR 保留窗口
 - [ ] Cloudflare production 环境：web / jobs 的 `env.production`（Hyperdrive 缓存/非缓存、KV、Queues、Workflows、R2）与 Wrangler secrets
 - [ ] 域名：production（及可选 staging）绑定自定义域名（可先用已有 Zone 的子域，如 `ezarouter.cc`）
 - [ ] 备份：Neon PITR + 每日逻辑备份到独立对象存储（R2 Bucket Lock 或非 Cloudflare 存储）；恢复演练用 Neon 时间点分支 + 校验脚本，写 `docs/runbooks/restore.md` 并记录 RTO/RPO

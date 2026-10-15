@@ -2,7 +2,7 @@
 
 ## Context
 
-- staging：Neon Free 项目 `saas-staging`（PG 17、`aws-us-west-2`），受限三角色由 SQL 创建，Hyperdrive 缓存/非缓存两个绑定走非 pooled TLS 直连；main CI 成功后 `deploy-staging.yml` 按迁移 → jobs → web → 健康 SHA → 冒烟发布（见 `docs/runbooks/staging-neon.md`、`openspec/specs/staging-deployment`）。
+- staging：Neon 项目 `saas-staging`（2026-10-15 随组织升级为 Launch 计费，计算 0.25–2 CU）（PG 17、`aws-us-west-2`），受限三角色由 SQL 创建，Hyperdrive 缓存/非缓存两个绑定走非 pooled TLS 直连；main CI 成功后 `deploy-staging.yml` 按迁移 → jobs → web → 健康 SHA → 冒烟发布（见 `docs/runbooks/staging-neon.md`、`openspec/specs/staging-deployment`）。
 - web / jobs 的 `wrangler.jsonc` 只有顶层（本地）与 `env.staging`；hyperdrive / workflows / queues / kv / ratelimits / vars 不从顶层继承，每个环境都要重新声明。
 - `payment-mode` 已规定：staging、production 缺少 `PAYMENT_MODE` 时关闭支付；`billing:sync` 只允许 test。Q9（正式收款主体）未决。
 - 原阶段二方案（自建 PG + cloudflared + Workers VPC）已由 2026-10-15 用户决定替换；自托管形态的 PG、WAL-G 与 PITR 属于 `add-selfhost-*`，本 change 不复用其服务器脚本。
@@ -33,7 +33,7 @@
 
 **D6 恢复演练。** 时间点路径：在 Neon 从生产主分支创建指定时间点的临时分支；逻辑路径：解密后 `pg_restore` 到临时 Neon 分支或本地 Docker PG。两者运行同一校验脚本（迁移记录、关键表行数、积分对账不变式），记录 RTO / RPO 到 `docs/runbooks/restore.md`，演练后删除临时分支。
 
-**D7 Cron 与成本。** 生产保持默认 Cron 频率（不使用 staging 的 `reduced` profile），接受 compute 基本常驻；上线首月用 Neon Usage 复核费用，再决定 autoscaling 上下限。
+**D7 Cron 与成本。** 生产计算为 autoscaling 0.25–1 CU、PITR 7 天（2026-10-15 用户确认）。测试期（首次发布到对外开放注册之间）生产使用 staging 已验证的 `CRON_PROFILE=reduced`，compute 可缩容，约 $4/月；对外开放注册前改回默认频率，接受 compute 基本常驻（0.25 CU 约 $20–25/月）。上线首月用 Neon Usage 复核费用，再调整 autoscaling 上限。
 
 **D8 支付关闭上线。** Q9 未决时生产不设置 `PAYMENT_MODE` 与支付 secrets，营销定价显示支付不可用；Q9 决定后单独执行 05 §8 清单（任务组 6）。
 

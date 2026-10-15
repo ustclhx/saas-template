@@ -12,8 +12,8 @@
 | 默认分支 | `main`（`br-cold-morning-ar2z16iw`）；staging 默认分支名为 `production`，两者不要混淆 |
 | 读写 endpoint | `ep-morning-resonance-arum7105`（非 pooled 主机名，不带 `-pooler`） |
 | 数据库 | `saas_production`，owner `migrator`；创建时默认 owner 为 `neondb_owner` |
-| PITR 保留（创建时默认） | `history_retention_seconds = 86400`（1 天），见 §4 |
-| 计算（创建时默认） | 固定 1 CU，`suspend_timeout_seconds = 0`（平台默认缩容），见 §4 |
+| PITR 保留 | 7 天（创建时默认 1 天），见 §4 |
+| 计算 | autoscaling 0.25–1 CU（创建时默认固定 1 CU），`suspend_timeout_seconds = 0`（平台默认 5 分钟缩容），见 §4 |
 
 创建命令（`--no-secrets` 不在输出中打印密码）：
 
@@ -44,9 +44,16 @@ psql "$NEON_MIGRATOR_URL" -X -c 'select current_user, current_database()'   # �
 - 拒绝验证（独立事务、ROLLBACK）：app `CREATE TABLE public.t` → `permission denied for schema public`；readonly `CREATE TABLE public.t` → 同上；app `CREATE SCHEMA` → `permission denied for database saas_production`。
 - 尚未迁移（0 张业务表）：app 修改 `audit_log`、readonly 写业务表的拒绝验证在首次生产发布（任务 3.3）迁移后执行，届时迁移记录数应等于 `packages/db/migrations/meta/_journal.json` 条目数。
 
-## 4. 待用户确认的项目设置
+## 4. 项目设置与费用（2026-10-15 用户按推荐配置确认）
 
-以下为成本 / 恢复能力取舍，创建后保持平台默认，未修改：
+用户在组织升级 Launch 后按以下推荐配置确认，已经 Neon API（`neonctl api ... -X PATCH`）修改并回读核对：
 
-- **PITR 保留窗口**：当前 1 天。生产建议提高到 Launch 允许的上限（7 天），代价是 history 存储增加。
-- **计算规格**：当前固定 1 CU。生产 Cron 保持默认频率会使 compute 基本常驻，固定 1 CU 约 720 CU-hours/月；改为 autoscaling（例如 0.25–1 CU）可在低负载时降低费用。以 Neon Usage 复核后定。
+| 项 | 创建时默认 | 现值 |
+|---|---|---|
+| 生产 PITR 保留 | 1 天 | **7 天**（`history_retention_seconds = 604800`，Launch 上限） |
+| 生产计算 | 固定 1 CU | **autoscaling 0.25–1 CU**（endpoint 与项目默认值），缩容沿用平台默认 5 分钟 |
+| staging 计算上限 | 0.25–8 CU（升级后） | **0.25–2 CU**（两个 endpoint 与项目默认值） |
+
+**费用依据**（[Neon 定价](https://neon.com/pricing)，2026-10-15 查询，Launch）：$0.106/CU-hour、$0.35/GB-月、PITR history $0.20/GB-月，每项目含 10 个分支与 500 GB 出流量，无月度最低消费。升级为组织级：同组织的 `saas-staging` 与无关项目 `yingshu` 也按量计费，不再受 Free 的 100 CU-hours 上限保护。
+
+**估算（每月，待 Usage 复核）**：生产首次发布前接近 $0；发布后默认 Cron 使 compute 基本常驻，0.25 CU 空闲约 183 CU-hours ≈ $20–25（固定 1 CU 时约 $77）；测试期生产使用 `CRON_PROFILE=reduced` 时约 33 CU-hours ≈ $4（见提案 2.1 / D7）；存储与 7 天 history 低于 $0.1；staging 约 $4，验收期另加 $1–3。

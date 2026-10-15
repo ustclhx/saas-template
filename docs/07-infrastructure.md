@@ -7,7 +7,7 @@
 | 阶段 | 时间 | 数据库 | 连接方式 | Worker 部署 | 域名 | 备份 |
 |---|---|---|---|---|---|---|
 | **阶段一：开发与云端 staging 测试**（当前） | 从 Phase 0 到完成最小原型 | 本地开发：Docker PG（`infra/local`）；线上 staging：Neon `saas_staging` | 本地开发直连；staging：Hyperdrive → Neon 非 pooled TLS 直连（§2） | staging 部署到 `*.workers.dev` | 不需要 | 不做 |
-| **阶段二：生产上线** | 完成最小原型之后 | production：Neon 付费计划的独立项目；staging 保持 Neon Free | Hyperdrive → Neon 非 pooled TLS 直连（与 staging 相同） | staging / production，绑定自定义域名 | 需要（可先用已有 Zone 的子域名） | 必须：Neon PITR + 独立逻辑备份与恢复演练 |
+| **阶段二：生产上线** | 完成最小原型之后 | production：Neon Launch 的独立项目；staging 为同组织另一项目（2026-10-15 随组织升级为 Launch 计费） | Hyperdrive → Neon 非 pooled TLS 直连（与 staging 相同） | staging / production，绑定自定义域名 | 需要（可先用已有 Zone 的子域名） | 必须：Neon PITR + 独立逻辑备份与恢复演练 |
 
 **2026-10-15 用户决定**：Cloudflare 形态的生产数据库使用 Neon 付费档，不自建 PG，不建设 Tunnel / Workers VPC，计划与任务见 `docs/08-roadmap.md`「Cloudflare 生产上线」。§1 的自建 PG、§2 的 Workers VPC / Access 方案保留为历史与后路，不再是阶段二默认。自托管形态（Node + Compose）使用 Compose 内的 PG，见 `docs/node-jobs-extension.md` 与 `docs/runbooks/selfhost-*.md`。
 
@@ -75,7 +75,7 @@ Phase 0 本机链路的历史实测条件与当前观察范围：
 
 ### 阶段一线上 staging：Neon（main 自动发布已验收）
 
-Neon Free 项目 `saas-staging`，Postgres 17、`aws-us-west-2`，数据库 `saas_staging`；Hyperdrive 使用 app 的非 pooled 直连与 `sslmode=require`。migrator 为数据库/public owner，仅用于迁移，readonly 用于排查。Console 创建角色默认加入 `neon_superuser`；受限角色通过 SQL 创建，再由默认 owner 授权，原 `02-db-grants.sql` 不变。2026-10-08 已验证三角色均无高权限 flags/该成员身份，app DDL 与审计 UPDATE、readonly DELETE 均被拒绝。
+Neon 项目 `saas-staging`（2026-10-15 前为 Free，现随组织为 Launch 计费，计算 0.25–2 CU），Postgres 17、`aws-us-west-2`，数据库 `saas_staging`；Hyperdrive 使用 app 的非 pooled 直连与 `sslmode=require`。migrator 为数据库/public owner，仅用于迁移，readonly 用于排查。Console 创建角色默认加入 `neon_superuser`；受限角色通过 SQL 创建，再由默认 owner 授权，原 `02-db-grants.sql` 不变。2026-10-08 已验证三角色均无高权限 flags/该成员身份，app DDL 与审计 UPDATE、readonly DELETE 均被拒绝。
 
 | 绑定 | 新资源 | ID | 状态 |
 |---|---|---|---|
