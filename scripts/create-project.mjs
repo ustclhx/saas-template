@@ -237,7 +237,8 @@ function wranglerConfig(source, options, app) {
     )
     .replace(/("id"\s*:\s*")[a-f0-9]{32}"/g, '$100000000000000000000000000000000"')
     .replace(/("APP_URL"\s*:\s*")https:[^"]+"/g, `$1${options.url}"`)
-    // 模板生产自定义域名不能被新项目绑定；部署前按新项目域名配置
+    // 模板生产自定义域名与真实 Turnstile 站点 key 不能被新项目复用；部署前按新项目配置（测试 key 1x… 保留）
+    .replace(/("TURNSTILE_SITE_KEY"\s*:\s*")0x[^"]*"/g, '$1"')
     .replace(/("pattern"\s*:\s*")[^"]+"/g, '$1configure-production-domain.invalid"')
   result = result
     .replace(/("(?:AI_GATEWAY_ACCOUNT_ID|AI_GATEWAY_ID|R2_ACCOUNT_ID)"\s*:\s*")[^"]*"/g, '$1"')
@@ -250,7 +251,7 @@ function wranglerConfig(source, options, app) {
   }
   if (!media) result = result.replace(/"workflows"\s*:\s*\[[\s\S]*?\],?/g, '')
   if (app === 'web' && !options.turnstile) {
-    result = result.replace(/,?\s*"TURNSTILE_SITE_KEY"\s*:\s*"[^"]+"/g, '')
+    result = result.replace(/,?\s*"TURNSTILE_SITE_KEY"\s*:\s*"[^"]*"/g, '')
   }
   return result
 }

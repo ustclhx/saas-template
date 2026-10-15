@@ -60,6 +60,7 @@ async function fixture(t) {
             queues: { producers: [{ queue: 'email-production' }] },
             vars: {
               APP_URL: 'https://app.template.example',
+              TURNSTILE_SITE_KEY: '0x4AAAAAAATemplateSiteKey',
               R2_FILES_BUCKET: 'files-production',
               R2_ACCOUNT_ID: 'template-account',
             },
@@ -355,6 +356,7 @@ test('模板 production 环境改名、清空 ID 并替换自定义域名', asyn
       { pattern: 'configure-production-domain.invalid', custom_domain: true },
     ])
     assert.notEqual(production.vars.APP_URL, 'https://app.template.example')
+    assert.equal(production.vars.TURNSTILE_SITE_KEY, '')
   }
 })
 

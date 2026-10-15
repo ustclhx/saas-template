@@ -107,7 +107,7 @@
       }
     },
     // add-cloud-production-neon 2.1：生产资源与 staging 一一对应，不复用任何 staging ID（production runbook §8.B）。
-    // 不设 PAYMENT_MODE（Q9 前支付关闭）与 AI_FAULT_INJECTION（生产禁止）；TURNSTILE_SITE_KEY 随 2.2 的生产站点配置。
+    // 不设 PAYMENT_MODE（Q9 前支付关闭）与 AI_FAULT_INJECTION（生产禁止）；Turnstile 站点 saas-production 仅允许 app.ezarouter.cc。
     "production": {
       "name": "web-production",
       "workers_dev": false,
@@ -118,6 +118,7 @@
       "vars": {
         "SENTRY_ENVIRONMENT": "production",
         "APP_URL": "https://app.ezarouter.cc",
+        "TURNSTILE_SITE_KEY": "0x4AAAAAAFXeXLLV-NITAkGX",
         "AI_TEXT_EGRESS": "direct",
         "R2_ACCOUNT_ID": "170a06d37ad50396b19943eb6b77a21d",
         "R2_FILES_BUCKET": "files-production"

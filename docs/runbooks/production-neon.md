@@ -139,7 +139,7 @@ wrangler 无法创建 API token（无对应命令，OAuth 可选范围不含 API
   | Hyperdrive | `saas-production-neon-cached` | `3deaa579109549f9a06f12b6c8d4aae6`（缓存开启，默认 max_age） |
 
   Hyperdrive 经 Cloudflare API 创建：请求体与授权头均经 stdin，连接串不进命令参数或输出；缓存设置回读 staging 两个配置后照搬；创建时 Hyperdrive 已实际连通 `saas_production`（app，非 pooled）。Workflow `ai-media-production` 与两个 Worker 随首次发布（3.3）创建。
-- **构建验证**：jobs `wrangler deploy --env production --dry-run` 全部绑定指向上述资源；web 生产构建在预渲染阶段因 `env.invalid missing TURNSTILE_SITE_KEY` 失败（模板启用 Turnstile，站点 key 为构建期必需 var）。需为 `app.ezarouter.cc` 新建生产 Turnstile 站点并写入 `env.production.vars.TURNSTILE_SITE_KEY` 后复验；不使用始终通过的测试 key。
+- **构建验证**：jobs `wrangler deploy --env production --dry-run` 全部绑定指向上述资源；web 生产构建在预渲染阶段因 `env.invalid missing TURNSTILE_SITE_KEY` 失败（模板启用 Turnstile，站点 key 为构建期必需 var）。用户批准后经 Cloudflare API（wrangler OAuth 的 `challengewidgets.write`）新建 Turnstile 站点 `saas-production`：managed 模式、仅允许 `app.ezarouter.cc`，站点 key `0x4AAAAAAFXeXLLV-NITAkGX` 写入 web `env.production.vars`；密钥未输出，存于开发机 `~/.config/saas-template/turnstile-production.secret`（600），在 2.2 写为 web secret `TURNSTILE_SECRET_KEY`。复验后 web 生产构建（预渲染无 `env.invalid`）与部署 dry-run 通过。不使用始终通过的测试 key；生成器会清空 `0x` 开头的真实站点 key，新项目须自行配置。
 
 按 deploy-cloudflare 技能「写入前确认动作清单」，以下操作会在 Cloudflare 账号或生产库产生真实资源 / 权限变更，批准后由协调者执行并回读核对。名称与 staging 一一对应。
 
