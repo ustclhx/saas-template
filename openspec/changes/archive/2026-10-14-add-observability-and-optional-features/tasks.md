@@ -34,4 +34,4 @@
 
 - [x] 6.1 用创建脚本从模板生成一个新项目，按输出清单完成基础设施配置并部署到一个新的 staging，验证健康检查通过、注册到首次 AI 调用的完整流程可用、错误能在 Sentry 中看到
 
-2026-10-14 验收记录：13j 测试入口 request ID 对应的 web 事件（release e6936068，dist=web）与 jobs 真实 Workflow 失败的 SDK step 事件（release 8782adb，dist=jobs）均映射到 TypeScript 函数/文件/行号且源码上下文可读、无凭据与对话内容，见[真实证据](../../../docs/runbooks/evidence/staging-acceptance/2026-10-13/acceptance-2026-10-13j-sentry-verification.json)。同一失败另有一个 Workflows 引擎包装的事件，其引擎帧不可映射属预期，重复上报另行修复。
+2026-10-14 验收记录：13j 测试入口 request ID 对应的 web 事件（release e6936068，dist=web）与 jobs 真实 Workflow 失败的 SDK step 事件（release 8782adb，dist=jobs）均映射到 TypeScript 函数/文件/行号且源码上下文可读、无凭据与对话内容，见[真实证据](../../../../docs/runbooks/evidence/staging-acceptance/2026-10-13/acceptance-2026-10-13j-sentry-verification.json)。同一失败另有一个 Workflows 引擎包装的事件，其引擎帧不可映射属预期，重复上报另行修复。

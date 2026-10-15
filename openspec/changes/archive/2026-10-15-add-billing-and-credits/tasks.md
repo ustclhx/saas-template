@@ -26,6 +26,8 @@
 - [x] 3.2 实现 Stripe Provider（fetch http client、锁定 API 版本、`constructEventAsync` 验签、订阅与一次性结账、Portal、取消 / 恢复、退款），用录制的回调夹具验证事件映射测试通过
 - [ ] 3.3 实现 PayPal Provider（OAuth token 缓存到 KV、Orders v2 capture、Subscriptions v1、webhook 验签接口、取消 / 恢复、退款），用沙箱录制的回调夹具验证事件映射测试通过，并把实测的事件名差异回写 `docs/05-billing.md`
 
+2026-10-15 结项：用户决定先对 Cloudflare 部分结项，3.3 的 PayPal 订阅 Sale 录制剩余验收转入 [add-cloud-acceptance-followups](../../add-cloud-acceptance-followups/tasks.md)，本项保持未勾选并随 change 归档。
+
 ## 4. Webhook 管线
 
 - [x] 4.1 实现通用管线：验签 → 事务 A 登记 → 事务 B 加锁处理 → 失败另起事务记录 → 事务后投递 `EVENTS_QUEUE`，验证测试：重复投递只处理一次、并发投递只处理一次、处理中出错后状态为 failed 且带错误信息
@@ -71,7 +73,9 @@
 
 - [ ] 11.1 在 staging 用 Stripe 测试时钟与 PayPal 沙箱走完：月付与年付订阅、续费、取消、换套餐重叠期、积分包购买、退款申请与平台退款；重复投递回调，验证积分不重复发放、无负余额、对账不变式成立
 
-2026-10-15 验收记录（Stripe 部分）：[billing-111-2026-10-15a](../../../docs/runbooks/evidence/staging-acceptance/2026-10-15/billing-111-2026-10-15a-execution-status.json) 经应用 Checkout 完成月付订阅、期末取消与恢复、pro→team 原地升级（按 Stripe proration 一次补差，无额外积分）、年付订阅，以及已处理事件经 Stripe CLI 重投后不重复入账；积分包购买与平台部分退款见 [admin-61-2026-10-15a](../../../docs/runbooks/evidence/staging-acceptance/2026-10-15/admin-61-2026-10-15a-resume-execution-status.json)；两空间无负余额、对账零差额。仍缺：Stripe 续费（需 Dashboard Simulations 登录）、PayPal 订阅/年付/续费/取消恢复/Sale 退款与重复回调（需已登录 Sandbox 买家会话，自然续费 2026-11-11）。11.1 保留未勾选。
+2026-10-15 结项：用户决定先对 Cloudflare 部分结项，11.1 的 Stripe 续费与 PayPal 矩阵剩余验收转入 [add-cloud-acceptance-followups](../../add-cloud-acceptance-followups/tasks.md)，本项保持未勾选并随 change 归档。
+
+2026-10-15 验收记录（Stripe 部分）：[billing-111-2026-10-15a](../../../../docs/runbooks/evidence/staging-acceptance/2026-10-15/billing-111-2026-10-15a-execution-status.json) 经应用 Checkout 完成月付订阅、期末取消与恢复、pro→team 原地升级（按 Stripe proration 一次补差，无额外积分）、年付订阅，以及已处理事件经 Stripe CLI 重投后不重复入账；积分包购买与平台部分退款见 [admin-61-2026-10-15a](../../../../docs/runbooks/evidence/staging-acceptance/2026-10-15/admin-61-2026-10-15a-resume-execution-status.json)；两空间无负余额、对账零差额。仍缺：Stripe 续费（需 Dashboard Simulations 登录）、PayPal 订阅/年付/续费/取消恢复/Sale 退款与重复回调（需已登录 Sandbox 买家会话，自然续费 2026-11-11）。11.1 保留未勾选。
 
 离线验收记录见 `docs/runbooks/p2-offline-acceptance.md`。剩余六项在真实支付联通阶段完成，离线验收时未配置凭据、请求真实平台或部署 P2 staging；2026-10-05 已进入上述联通阶段。
 

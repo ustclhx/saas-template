@@ -32,6 +32,8 @@
 
 - [ ] 6.1 在 staging 以管理员身份完成：搜索并封禁用户、模拟登录排查、补发积分、重放失败回调、审核退款、修改设置，验证每一步都有审计记录且指标看板次日更新
 
-2026-10-15 验收记录：[admin-61-2026-10-15a](../../../docs/runbooks/evidence/staging-acceptance/2026-10-15/admin-61-2026-10-15a-resume-execution-status.json) 以 Stripe 测试卡完成 10 美元积分包购买（单次入账 1000 积分），用户提交退款、管理员后台审核 5 美元部分退款，Stripe test refund succeeded，按 Q6 收回剩余 1000 积分，审计 4 条，对账零差额；2026-10-14 已核验次日指标（25/25）。失败回调重放尚未核验：staging 无失败 Stripe 事件，已处理事件不可后台重放，不制造失败。6.1 保留未勾选。
+2026-10-15 结项：用户决定先对 Cloudflare 部分结项，6.1 的失败回调重放剩余验收转入 [add-cloud-acceptance-followups](../../add-cloud-acceptance-followups/tasks.md)，本项保持未勾选并随 change 归档。
 
-2026-10-13 验收记录：13j 的专用用户搜索、封禁/解封、模拟登录/退出、幂等补发积分、公告修改/恢复及审计已有[真实证据](../../../docs/runbooks/evidence/staging-acceptance/README.md)。未执行支付回调重放或退款审核，次日指标更新也未核验；6.1 保留未勾选。支付动作仍需具体测试资源授权。
+2026-10-15 验收记录：[admin-61-2026-10-15a](../../../../docs/runbooks/evidence/staging-acceptance/2026-10-15/admin-61-2026-10-15a-resume-execution-status.json) 以 Stripe 测试卡完成 10 美元积分包购买（单次入账 1000 积分），用户提交退款、管理员后台审核 5 美元部分退款，Stripe test refund succeeded，按 Q6 收回剩余 1000 积分，审计 4 条，对账零差额；2026-10-14 已核验次日指标（25/25）。失败回调重放尚未核验：staging 无失败 Stripe 事件，已处理事件不可后台重放，不制造失败。6.1 保留未勾选。
+
+2026-10-13 验收记录：13j 的专用用户搜索、封禁/解封、模拟登录/退出、幂等补发积分、公告修改/恢复及审计已有[真实证据](../../../../docs/runbooks/evidence/staging-acceptance/README.md)。未执行支付回调重放或退款审核，次日指标更新也未核验；6.1 保留未勾选。支付动作仍需具体测试资源授权。

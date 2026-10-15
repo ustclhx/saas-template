@@ -84,7 +84,7 @@ observability 1.2 于 2026-10-14 补齐 Sentry 实际事件核验后勾选；其
 |---|---|---|
 | [media 7.2](../../../../openspec/changes/archive/2026-10-15-add-ai-media-generation/tasks.md)（7.1 于 2026-10-14、7.2 于 2026-10-15 勾选，change 已归档） | Workers/fal 图片成功、取消全退；fal 五类受控故障（fault-2026-10-14a）；fal 视频成功产出（[media-video-2026-10-15a](2026-10-15/media-video-2026-10-15a-execution-status.json)） | 无 |
 | [chat 5.1](../../../../openspec/changes/archive/2026-10-15-add-ai-text-chat/tasks.md)（2026-10-15 勾选，change 已归档） | 两种计费各正常/停止/关页，流水与不变式通过；服务商报错由 fault-2026-10-14a/b 覆盖；[chat-51-2026-10-15a](2026-10-15/chat-51-2026-10-15a-execution-status.json) 经 AI Gateway 比对，四条可关联消息输入/输出 token 差异均为 0% | 无；两个停止场景在首个输出前中止、Gateway 无日志，按 runbook 记为无法比对 |
-| [admin 6.1](../../../../openspec/changes/add-admin-console/tasks.md) | 专用用户动作、积分幂等、设置恢复及审计 | 指定测试支付资源的失败回调重放与退款审核（未执行）；次日指标已于 2026-10-14 核验通过 |
+| [admin 6.1](../../../../openspec/changes/archive/2026-10-15-add-admin-console/tasks.md) | 专用用户动作、积分幂等、设置恢复及审计 | 指定测试支付资源的失败回调重放与退款审核（未执行）；次日指标已于 2026-10-14 核验通过 |
 
 故障注入按 [验收 runbook](../../staging-acceptance.md)执行；历史意外失败不代替受控注入。
 退款与支付回调重放仍需针对具体测试资源的授权。此次只整理证据，没有补跑付费调用、注入故障或执行支付动作。

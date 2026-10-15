@@ -32,6 +32,6 @@
 
 - [x] 5.1 在 staging 用一个按 token 与一个按次计费的模型完成对话、停止、关闭页面、服务商报错四种情况，验证积分流水与 AI Gateway 的 token 统计差异不超过 1%，且对账不变式成立
 
-2026-10-13 验收记录：13j 的两种计费各正常、停止、关页六项及积分对账已有[真实证据](../../../docs/runbooks/evidence/staging-acceptance/README.md)。服务商报错与 AI Gateway token 差异不超过 1% 尚未核验；本 run 为 direct DeepSeek，未做外部用量比较。5.1 保留未勾选。
+2026-10-13 验收记录：13j 的两种计费各正常、停止、关页六项及积分对账已有[真实证据](../../../../docs/runbooks/evidence/staging-acceptance/README.md)。服务商报错与 AI Gateway token 差异不超过 1% 尚未核验；本 run 为 direct DeepSeek，未做外部用量比较。5.1 保留未勾选。
 
-2026-10-15 验收记录：[chat-51-2026-10-15a](../../../docs/runbooks/evidence/staging-acceptance/2026-10-15/chat-51-2026-10-15a-execution-status.json)（SHA a3e8179，文本临时经 AI Gateway）六场景全部通过；正常完成与关页四条消息与 Gateway 日志唯一关联，输入/输出 token 差异均为 0%；两个停止场景在首个输出前中止、Gateway 无日志，按 runbook 记为无法比对且估算封顶；服务商报错由 fault-2026-10-14a/b 覆盖；同快照对账零差额。5.1 勾选，验收后已改回 direct。
+2026-10-15 验收记录：[chat-51-2026-10-15a](../../../../docs/runbooks/evidence/staging-acceptance/2026-10-15/chat-51-2026-10-15a-execution-status.json)（SHA a3e8179，文本临时经 AI Gateway）六场景全部通过；正常完成与关页四条消息与 Gateway 日志唯一关联，输入/输出 token 差异均为 0%；两个停止场景在首个输出前中止、Gateway 无日志，按 runbook 记为无法比对且估算封顶；服务商报错由 fault-2026-10-14a/b 覆盖；同快照对账零差额。5.1 勾选，验收后已改回 direct。
