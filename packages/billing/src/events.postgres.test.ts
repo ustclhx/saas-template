@@ -740,7 +740,7 @@ describe('billing event consumer on PostgreSQL', () => {
       (await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws)))
         .filter((row) => row.type === 'revoke')
         .map((row) => row.delta)
-        .sort(),
+        .sort((a, b) => a - b),
     ).toEqual([-2, -1])
     expect(
       await db.select().from(paymentRefund).where(eq(paymentRefund.workspaceId, ws)),
