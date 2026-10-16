@@ -20,14 +20,7 @@
 
 已归档的其他 change：`add-cloud-staging-neon` 29/29（#85）、`add-first-run-admin-setup` 6/6 与 `add-payment-live-mode` 9/9（#184）、`add-text-reasoning-resilience` 9/9（#196）、`add-staging-fault-injection` 20/20（#209）、`add-agent-skills` 8/8（#211）。live 模式只交付代码，生产凭据与外部收款验收见下文「Cloudflare 生产上线」与 Q9。
 
-**自托管形态**（Node + Docker Compose，PG 在 Compose 内）：四个 change 的代码、本地 Docker/临时 VM/CI 验收与正式 GHCR 发布已完成，剩余项全部依赖真实服务器或外部资源——
-
-| change | 进度 | 剩余（阻塞资源） |
-|---|---|---|
-| `add-selfhost-foundation` | 30/33 | 7.4 ACME 实签（公网测试域名）；9.4 汇总签收 |
-| `add-selfhost-job-engine` | 31/32 | 6.4 新加坡 2 核 4 GiB 整机复测（测试主机） |
-| `add-selfhost-storage-observability` | 17/18 | 1.7 外部 S3（R2 S3 API + 另一兼容服务凭据） |
-| `add-selfhost-delivery` | 29/33 | 7.1 真机部署（主机/入口/域名）、7.2 独立备份（第二供应商账号与演练窗口）、7.3 整机重启窗口、7.4 汇总 |
+**自托管形态**（Node + Docker Compose，PG 在 Compose 内）：**2026-10-17 结项并归档**。四个 change 全部完成（foundation 33/33、job-engine 32/32、storage-observability 18/18、delivery 33/33），已同步主 spec 并归档为 `archive/2026-10-17-add-selfhost-*`。服务器验收在新加坡测试主机 `product-res-ecs`（2 vCPU / 3.5 GiB）用正式 release `1888e7d` 完成：真实 ACME（`selfhost.ezarouter.cc`）、R2 外部存储与备份（用户决定单一供应商：同一 R2 账号下独立桶与桶级 token，已记录失去供应商独立性）、两路时间点与逻辑恢复、2 核整机任务预算与真实整机 reboot（21 项恢复检查通过）。证据见 [server-acceptance-1888e7d](./runbooks/evidence/selfhost/server-acceptance-1888e7d/report.md)。
 
 各阶段之间与阶段内部的并行拆分见 [09-parallel-plan.md](./09-parallel-plan.md)。
 
