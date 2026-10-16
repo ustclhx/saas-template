@@ -336,6 +336,31 @@ for (const providers of ['fal', 'workers-ai', '']) {
   })
 }
 
+test('文件桶签名白名单与生成项目的桶名一致，备份桶名不受影响', async (t) => {
+  const f = await fixture(t)
+  await f.file(
+    'packages/storage/src/cloudflare/presign.ts',
+    "if (!['files', 'files-staging', 'files-production'].includes(bucket)) throw new Error('no')\n",
+  )
+  await f.file(
+    'packages/storage/test/presign.unit.test.ts',
+    "const env = { R2_FILES_BUCKET: 'files-staging' }\nexpect(path).toBe(`/files-staging/${key}`)\nconst denied = 'saas-production-backups'\n",
+  )
+  const result = await createProject(f.input, f.source)
+  const source = await readFile(
+    join(result.target, 'packages/storage/src/cloudflare/presign.ts'),
+    'utf8',
+  )
+  assert.match(source, /\['acme-files', 'acme-files-staging', 'acme-files-production'\]/)
+  const spec = await readFile(
+    join(result.target, 'packages/storage/test/presign.unit.test.ts'),
+    'utf8',
+  )
+  assert.match(spec, /R2_FILES_BUCKET: 'acme-files-staging'/)
+  assert.match(spec, /`\/acme-files-staging\/\$\{key\}`/)
+  assert.match(spec, /'saas-production-backups'/)
+})
+
 test('模板 production 环境改名、清空 ID 并替换自定义域名', async (t) => {
   const f = await fixture(t)
   const result = await createProject(f.input, f.source)
