@@ -5192,5 +5192,901 @@
         "dockerCpuPercent": 0.23
       }
     ]
+  },
+  {
+    "at": "2026-10-16T17:42:54.728829+00:00",
+    "hostCpuPercent": null,
+    "availableMemoryMiB": 2165.711,
+    "freeDiskGiB": 8.0264,
+    "containerWorkingSetMiB": 949.89,
+    "postgres": {
+      "connections": 24,
+      "idleInTransaction": 0,
+      "databaseBytes": 11400883,
+      "walBytes": 234881390,
+      "engineBytes": 1097728
+    },
+    "containers": [
+      {
+        "name": "selfhost-accept-probe",
+        "workingSetMiB": 52.94,
+        "dockerCpuPercent": 20.07
+      },
+      {
+        "name": "selfhost-accept-jobs2",
+        "workingSetMiB": 83.41,
+        "dockerCpuPercent": 14.31
+      },
+      {
+        "name": "saas-selfhost-backup-1",
+        "workingSetMiB": 59.19,
+        "dockerCpuPercent": 0.01
+      },
+      {
+        "name": "saas-selfhost-caddy-1",
+        "workingSetMiB": 30.98,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-web-1",
+        "workingSetMiB": 132.3,
+        "dockerCpuPercent": 4.34
+      },
+      {
+        "name": "saas-selfhost-jobs-1",
+        "workingSetMiB": 111.1,
+        "dockerCpuPercent": 3.24
+      },
+      {
+        "name": "saas-selfhost-postgres-1",
+        "workingSetMiB": 465.2,
+        "dockerCpuPercent": 17.88
+      },
+      {
+        "name": "saas-selfhost-valkey-1",
+        "workingSetMiB": 14.77,
+        "dockerCpuPercent": 0.23
+      }
+    ]
+  },
+  {
+    "at": "2026-10-16T17:43:53.830970+00:00",
+    "hostCpuPercent": 19.931,
+    "availableMemoryMiB": 1937.383,
+    "freeDiskGiB": 8.0228,
+    "containerWorkingSetMiB": 1152.07,
+    "postgres": {
+      "connections": 28,
+      "idleInTransaction": 0,
+      "databaseBytes": 11400883,
+      "walBytes": 234881390,
+      "engineBytes": 1097728
+    },
+    "containers": [
+      {
+        "name": "selfhost-accept-recovery-r6",
+        "workingSetMiB": 213.8,
+        "dockerCpuPercent": 7.93
+      },
+      {
+        "name": "selfhost-accept-probe",
+        "workingSetMiB": 53.36,
+        "dockerCpuPercent": 0.67
+      },
+      {
+        "name": "selfhost-accept-jobs2",
+        "workingSetMiB": 94.56,
+        "dockerCpuPercent": 5.0
+      },
+      {
+        "name": "saas-selfhost-backup-1",
+        "workingSetMiB": 47.3,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-caddy-1",
+        "workingSetMiB": 27.58,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-web-1",
+        "workingSetMiB": 132.4,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-jobs-1",
+        "workingSetMiB": 110.8,
+        "dockerCpuPercent": 4.16
+      },
+      {
+        "name": "saas-selfhost-postgres-1",
+        "workingSetMiB": 458.8,
+        "dockerCpuPercent": 9.92
+      },
+      {
+        "name": "saas-selfhost-valkey-1",
+        "workingSetMiB": 13.47,
+        "dockerCpuPercent": 0.23
+      }
+    ]
+  },
+  {
+    "at": "2026-10-16T17:44:52.730017+00:00",
+    "hostCpuPercent": 38.089,
+    "availableMemoryMiB": 1949.77,
+    "freeDiskGiB": 8.0226,
+    "containerWorkingSetMiB": 1136.37,
+    "postgres": {
+      "connections": 20,
+      "idleInTransaction": 0,
+      "databaseBytes": 11400883,
+      "walBytes": 234881390,
+      "engineBytes": 1097728
+    },
+    "containers": [
+      {
+        "name": "selfhost-accept-recovery-r6",
+        "workingSetMiB": 214.6,
+        "dockerCpuPercent": 86.58
+      },
+      {
+        "name": "selfhost-accept-probe",
+        "workingSetMiB": 54.21,
+        "dockerCpuPercent": 0.66
+      },
+      {
+        "name": "selfhost-accept-jobs2",
+        "workingSetMiB": 94.98,
+        "dockerCpuPercent": 4.33
+      },
+      {
+        "name": "saas-selfhost-backup-1",
+        "workingSetMiB": 46.65,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-caddy-1",
+        "workingSetMiB": 29.16,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-web-1",
+        "workingSetMiB": 132.5,
+        "dockerCpuPercent": 0.01
+      },
+      {
+        "name": "saas-selfhost-jobs-1",
+        "workingSetMiB": 110.8,
+        "dockerCpuPercent": 4.67
+      },
+      {
+        "name": "saas-selfhost-postgres-1",
+        "workingSetMiB": 440.0,
+        "dockerCpuPercent": 13.64
+      },
+      {
+        "name": "saas-selfhost-valkey-1",
+        "workingSetMiB": 13.47,
+        "dockerCpuPercent": 0.28
+      }
+    ]
+  },
+  {
+    "at": "2026-10-16T17:45:58.661577+00:00",
+    "hostCpuPercent": 18.125,
+    "availableMemoryMiB": 2109.359,
+    "freeDiskGiB": 8.019,
+    "containerWorkingSetMiB": 960.06,
+    "postgres": {
+      "connections": 20,
+      "idleInTransaction": 0,
+      "databaseBytes": 11400883,
+      "walBytes": 234881390,
+      "engineBytes": 1097728
+    },
+    "containers": [
+      {
+        "name": "selfhost-accept-probe",
+        "workingSetMiB": 55.84,
+        "dockerCpuPercent": 0.51
+      },
+      {
+        "name": "selfhost-accept-jobs2",
+        "workingSetMiB": 95.87,
+        "dockerCpuPercent": 6.58
+      },
+      {
+        "name": "saas-selfhost-backup-1",
+        "workingSetMiB": 74.06,
+        "dockerCpuPercent": 4.46
+      },
+      {
+        "name": "saas-selfhost-caddy-1",
+        "workingSetMiB": 30.72,
+        "dockerCpuPercent": 0.04
+      },
+      {
+        "name": "saas-selfhost-web-1",
+        "workingSetMiB": 132.5,
+        "dockerCpuPercent": 14.63
+      },
+      {
+        "name": "saas-selfhost-jobs-1",
+        "workingSetMiB": 110.8,
+        "dockerCpuPercent": 4.09
+      },
+      {
+        "name": "saas-selfhost-postgres-1",
+        "workingSetMiB": 446.8,
+        "dockerCpuPercent": 13.23
+      },
+      {
+        "name": "saas-selfhost-valkey-1",
+        "workingSetMiB": 13.47,
+        "dockerCpuPercent": 0.24
+      }
+    ]
+  },
+  {
+    "at": "2026-10-16T17:46:57.365423+00:00",
+    "hostCpuPercent": 21.122,
+    "availableMemoryMiB": 2101.434,
+    "freeDiskGiB": 8.0189,
+    "containerWorkingSetMiB": 981.69,
+    "postgres": {
+      "connections": 22,
+      "idleInTransaction": 0,
+      "databaseBytes": 11400883,
+      "walBytes": 234881390,
+      "engineBytes": 1097728
+    },
+    "containers": [
+      {
+        "name": "selfhost-accept-probe",
+        "workingSetMiB": 66.25,
+        "dockerCpuPercent": 4.3
+      },
+      {
+        "name": "selfhost-accept-jobs2",
+        "workingSetMiB": 96.09,
+        "dockerCpuPercent": 12.09
+      },
+      {
+        "name": "saas-selfhost-backup-1",
+        "workingSetMiB": 71.17,
+        "dockerCpuPercent": 2.72
+      },
+      {
+        "name": "saas-selfhost-caddy-1",
+        "workingSetMiB": 30.8,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-web-1",
+        "workingSetMiB": 132.5,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-jobs-1",
+        "workingSetMiB": 110.8,
+        "dockerCpuPercent": 3.67
+      },
+      {
+        "name": "saas-selfhost-postgres-1",
+        "workingSetMiB": 460.6,
+        "dockerCpuPercent": 6.24
+      },
+      {
+        "name": "saas-selfhost-valkey-1",
+        "workingSetMiB": 13.48,
+        "dockerCpuPercent": 0.24
+      }
+    ]
+  },
+  {
+    "at": "2026-10-16T17:47:56.064565+00:00",
+    "hostCpuPercent": 19.777,
+    "availableMemoryMiB": 2097.488,
+    "freeDiskGiB": 8.0176,
+    "containerWorkingSetMiB": 987.41,
+    "postgres": {
+      "connections": 22,
+      "idleInTransaction": 0,
+      "databaseBytes": 11400883,
+      "walBytes": 234881390,
+      "engineBytes": 1097728
+    },
+    "containers": [
+      {
+        "name": "selfhost-accept-probe",
+        "workingSetMiB": 69.34,
+        "dockerCpuPercent": 4.35
+      },
+      {
+        "name": "selfhost-accept-jobs2",
+        "workingSetMiB": 96.21,
+        "dockerCpuPercent": 4.32
+      },
+      {
+        "name": "saas-selfhost-backup-1",
+        "workingSetMiB": 70.98,
+        "dockerCpuPercent": 1.72
+      },
+      {
+        "name": "saas-selfhost-caddy-1",
+        "workingSetMiB": 30.8,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-web-1",
+        "workingSetMiB": 132.5,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-jobs-1",
+        "workingSetMiB": 110.8,
+        "dockerCpuPercent": 4.0
+      },
+      {
+        "name": "saas-selfhost-postgres-1",
+        "workingSetMiB": 463.3,
+        "dockerCpuPercent": 6.09
+      },
+      {
+        "name": "saas-selfhost-valkey-1",
+        "workingSetMiB": 13.48,
+        "dockerCpuPercent": 0.22
+      }
+    ]
+  },
+  {
+    "at": "2026-10-16T17:48:59.430294+00:00",
+    "hostCpuPercent": null,
+    "availableMemoryMiB": 2566.102,
+    "freeDiskGiB": 8.0501,
+    "containerWorkingSetMiB": 436.23,
+    "postgres": {
+      "connections": 8,
+      "idleInTransaction": 0,
+      "databaseBytes": 11400883,
+      "walBytes": 234881390,
+      "engineBytes": 1097728
+    },
+    "containers": [
+      {
+        "name": "selfhost-accept-probe",
+        "workingSetMiB": 76.09,
+        "dockerCpuPercent": 10.72
+      },
+      {
+        "name": "selfhost-accept-jobs2",
+        "workingSetMiB": 93.23,
+        "dockerCpuPercent": 12.73
+      },
+      {
+        "name": "saas-selfhost-backup-1",
+        "workingSetMiB": 29.82,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-caddy-1",
+        "workingSetMiB": 10.65,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-web-1",
+        "workingSetMiB": 76.56,
+        "dockerCpuPercent": 0.01
+      },
+      {
+        "name": "saas-selfhost-jobs-1",
+        "workingSetMiB": 86.71,
+        "dockerCpuPercent": 12.51
+      },
+      {
+        "name": "saas-selfhost-postgres-1",
+        "workingSetMiB": 53.1,
+        "dockerCpuPercent": 0.03
+      },
+      {
+        "name": "saas-selfhost-valkey-1",
+        "workingSetMiB": 10.07,
+        "dockerCpuPercent": 0.2
+      }
+    ]
+  },
+  {
+    "at": "2026-10-16T17:49:58.209788+00:00",
+    "hostCpuPercent": 21.921,
+    "availableMemoryMiB": 2489.406,
+    "freeDiskGiB": 8.0978,
+    "containerWorkingSetMiB": 514.91,
+    "postgres": {
+      "connections": 20,
+      "idleInTransaction": 0,
+      "databaseBytes": 11400883,
+      "walBytes": 234881390,
+      "engineBytes": 1097728
+    },
+    "containers": [
+      {
+        "name": "selfhost-accept-probe",
+        "workingSetMiB": 83.73,
+        "dockerCpuPercent": 6.41
+      },
+      {
+        "name": "selfhost-accept-jobs2",
+        "workingSetMiB": 107.0,
+        "dockerCpuPercent": 4.67
+      },
+      {
+        "name": "saas-selfhost-backup-1",
+        "workingSetMiB": 35.94,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-caddy-1",
+        "workingSetMiB": 12.15,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-web-1",
+        "workingSetMiB": 70.1,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-jobs-1",
+        "workingSetMiB": 101.2,
+        "dockerCpuPercent": 5.31
+      },
+      {
+        "name": "saas-selfhost-postgres-1",
+        "workingSetMiB": 94.11,
+        "dockerCpuPercent": 7.45
+      },
+      {
+        "name": "saas-selfhost-valkey-1",
+        "workingSetMiB": 10.68,
+        "dockerCpuPercent": 1.82
+      }
+    ]
+  },
+  {
+    "at": "2026-10-16T17:50:57.007364+00:00",
+    "hostCpuPercent": 26.334,
+    "availableMemoryMiB": 2355.926,
+    "freeDiskGiB": 8.0971,
+    "containerWorkingSetMiB": 553.44,
+    "postgres": {
+      "connections": 22,
+      "idleInTransaction": 1,
+      "databaseBytes": 11400883,
+      "walBytes": 234881390,
+      "engineBytes": 1097728
+    },
+    "containers": [
+      {
+        "name": "selfhost-accept-probe",
+        "workingSetMiB": 83.72,
+        "dockerCpuPercent": 4.33
+      },
+      {
+        "name": "selfhost-accept-jobs2",
+        "workingSetMiB": 107.9,
+        "dockerCpuPercent": 4.77
+      },
+      {
+        "name": "saas-selfhost-backup-1",
+        "workingSetMiB": 48.8,
+        "dockerCpuPercent": 12.04
+      },
+      {
+        "name": "saas-selfhost-caddy-1",
+        "workingSetMiB": 19.29,
+        "dockerCpuPercent": 2.49
+      },
+      {
+        "name": "saas-selfhost-web-1",
+        "workingSetMiB": 76.52,
+        "dockerCpuPercent": 15.3
+      },
+      {
+        "name": "saas-selfhost-jobs-1",
+        "workingSetMiB": 105.6,
+        "dockerCpuPercent": 12.9
+      },
+      {
+        "name": "saas-selfhost-postgres-1",
+        "workingSetMiB": 98.62,
+        "dockerCpuPercent": 14.09
+      },
+      {
+        "name": "saas-selfhost-valkey-1",
+        "workingSetMiB": 12.99,
+        "dockerCpuPercent": 0.23
+      }
+    ]
+  },
+  {
+    "at": "2026-10-16T17:51:55.772293+00:00",
+    "hostCpuPercent": 31.061,
+    "availableMemoryMiB": 2325.172,
+    "freeDiskGiB": 8.0962,
+    "containerWorkingSetMiB": 545.59,
+    "postgres": {
+      "connections": 24,
+      "idleInTransaction": 0,
+      "databaseBytes": 11400883,
+      "walBytes": 234881390,
+      "engineBytes": 1097728
+    },
+    "containers": [
+      {
+        "name": "selfhost-accept-probe",
+        "workingSetMiB": 85.34,
+        "dockerCpuPercent": 4.15
+      },
+      {
+        "name": "selfhost-accept-jobs2",
+        "workingSetMiB": 107.6,
+        "dockerCpuPercent": 7.13
+      },
+      {
+        "name": "saas-selfhost-backup-1",
+        "workingSetMiB": 36.32,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-caddy-1",
+        "workingSetMiB": 16.79,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-web-1",
+        "workingSetMiB": 77.1,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-jobs-1",
+        "workingSetMiB": 108.6,
+        "dockerCpuPercent": 7.33
+      },
+      {
+        "name": "saas-selfhost-postgres-1",
+        "workingSetMiB": 100.7,
+        "dockerCpuPercent": 7.47
+      },
+      {
+        "name": "saas-selfhost-valkey-1",
+        "workingSetMiB": 13.14,
+        "dockerCpuPercent": 0.23
+      }
+    ]
+  },
+  {
+    "at": "2026-10-16T17:52:54.576517+00:00",
+    "hostCpuPercent": 30.396,
+    "availableMemoryMiB": 2338.051,
+    "freeDiskGiB": 8.0949,
+    "containerWorkingSetMiB": 542.91,
+    "postgres": {
+      "connections": 24,
+      "idleInTransaction": 0,
+      "databaseBytes": 11425459,
+      "walBytes": 234881390,
+      "engineBytes": 1122304
+    },
+    "containers": [
+      {
+        "name": "selfhost-accept-probe",
+        "workingSetMiB": 75.71,
+        "dockerCpuPercent": 0.53
+      },
+      {
+        "name": "selfhost-accept-jobs2",
+        "workingSetMiB": 107.2,
+        "dockerCpuPercent": 4.84
+      },
+      {
+        "name": "saas-selfhost-backup-1",
+        "workingSetMiB": 36.23,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-caddy-1",
+        "workingSetMiB": 16.75,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-web-1",
+        "workingSetMiB": 78.5,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-jobs-1",
+        "workingSetMiB": 109.3,
+        "dockerCpuPercent": 6.37
+      },
+      {
+        "name": "saas-selfhost-postgres-1",
+        "workingSetMiB": 105.2,
+        "dockerCpuPercent": 7.9
+      },
+      {
+        "name": "saas-selfhost-valkey-1",
+        "workingSetMiB": 14.02,
+        "dockerCpuPercent": 0.26
+      }
+    ]
+  },
+  {
+    "at": "2026-10-16T17:53:53.300280+00:00",
+    "hostCpuPercent": 28.131,
+    "availableMemoryMiB": 2364.0,
+    "freeDiskGiB": 8.0942,
+    "containerWorkingSetMiB": 599.76,
+    "postgres": {
+      "connections": 23,
+      "idleInTransaction": 0,
+      "databaseBytes": 11425459,
+      "walBytes": 234881390,
+      "engineBytes": 1122304
+    },
+    "containers": [
+      {
+        "name": "selfhost-accept-probe",
+        "workingSetMiB": 77.57,
+        "dockerCpuPercent": 0.57
+      },
+      {
+        "name": "selfhost-accept-jobs2",
+        "workingSetMiB": 106.3,
+        "dockerCpuPercent": 3.61
+      },
+      {
+        "name": "saas-selfhost-backup-1",
+        "workingSetMiB": 49.8,
+        "dockerCpuPercent": 10.33
+      },
+      {
+        "name": "saas-selfhost-caddy-1",
+        "workingSetMiB": 17.43,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-web-1",
+        "workingSetMiB": 78.46,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-jobs-1",
+        "workingSetMiB": 109.5,
+        "dockerCpuPercent": 4.93
+      },
+      {
+        "name": "saas-selfhost-postgres-1",
+        "workingSetMiB": 145.0,
+        "dockerCpuPercent": 21.5
+      },
+      {
+        "name": "saas-selfhost-valkey-1",
+        "workingSetMiB": 15.7,
+        "dockerCpuPercent": 3.58
+      }
+    ]
+  },
+  {
+    "at": "2026-10-16T17:54:59.192360+00:00",
+    "hostCpuPercent": 29.965,
+    "availableMemoryMiB": 2318.031,
+    "freeDiskGiB": 8.1084,
+    "containerWorkingSetMiB": 647.24,
+    "postgres": {
+      "connections": 24,
+      "idleInTransaction": 0,
+      "databaseBytes": 11425459,
+      "walBytes": 218104174,
+      "engineBytes": 1122304
+    },
+    "containers": [
+      {
+        "name": "selfhost-accept-probe",
+        "workingSetMiB": 79.16,
+        "dockerCpuPercent": 0.48
+      },
+      {
+        "name": "selfhost-accept-jobs2",
+        "workingSetMiB": 106.3,
+        "dockerCpuPercent": 3.85
+      },
+      {
+        "name": "saas-selfhost-backup-1",
+        "workingSetMiB": 82.02,
+        "dockerCpuPercent": 3.53
+      },
+      {
+        "name": "saas-selfhost-caddy-1",
+        "workingSetMiB": 20.79,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-web-1",
+        "workingSetMiB": 81.94,
+        "dockerCpuPercent": 0.36
+      },
+      {
+        "name": "saas-selfhost-jobs-1",
+        "workingSetMiB": 111.4,
+        "dockerCpuPercent": 18.55
+      },
+      {
+        "name": "saas-selfhost-postgres-1",
+        "workingSetMiB": 149.7,
+        "dockerCpuPercent": 4.59
+      },
+      {
+        "name": "saas-selfhost-valkey-1",
+        "workingSetMiB": 15.93,
+        "dockerCpuPercent": 3.6
+      }
+    ]
+  },
+  {
+    "at": "2026-10-16T17:55:57.599774+00:00",
+    "hostCpuPercent": 24.02,
+    "availableMemoryMiB": 2311.777,
+    "freeDiskGiB": 8.1069,
+    "containerWorkingSetMiB": 654.2,
+    "postgres": {
+      "connections": 23,
+      "idleInTransaction": 0,
+      "databaseBytes": 11425459,
+      "walBytes": 218104174,
+      "engineBytes": 1122304
+    },
+    "containers": [
+      {
+        "name": "selfhost-accept-probe",
+        "workingSetMiB": 80.95,
+        "dockerCpuPercent": 1.06
+      },
+      {
+        "name": "selfhost-accept-jobs2",
+        "workingSetMiB": 106.9,
+        "dockerCpuPercent": 3.74
+      },
+      {
+        "name": "saas-selfhost-backup-1",
+        "workingSetMiB": 81.79,
+        "dockerCpuPercent": 2.73
+      },
+      {
+        "name": "saas-selfhost-caddy-1",
+        "workingSetMiB": 23.07,
+        "dockerCpuPercent": 0.01
+      },
+      {
+        "name": "saas-selfhost-web-1",
+        "workingSetMiB": 82.43,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-jobs-1",
+        "workingSetMiB": 112.6,
+        "dockerCpuPercent": 4.09
+      },
+      {
+        "name": "saas-selfhost-postgres-1",
+        "workingSetMiB": 149.3,
+        "dockerCpuPercent": 4.48
+      },
+      {
+        "name": "saas-selfhost-valkey-1",
+        "workingSetMiB": 17.16,
+        "dockerCpuPercent": 0.23
+      }
+    ]
+  },
+  {
+    "at": "2026-10-16T17:56:55.988650+00:00",
+    "hostCpuPercent": 21.941,
+    "availableMemoryMiB": 2341.305,
+    "freeDiskGiB": 8.1058,
+    "containerWorkingSetMiB": 665.41,
+    "postgres": {
+      "connections": 23,
+      "idleInTransaction": 0,
+      "databaseBytes": 11425459,
+      "walBytes": 218104174,
+      "engineBytes": 1122304
+    },
+    "containers": [
+      {
+        "name": "selfhost-accept-probe",
+        "workingSetMiB": 81.22,
+        "dockerCpuPercent": 0.48
+      },
+      {
+        "name": "selfhost-accept-jobs2",
+        "workingSetMiB": 108.8,
+        "dockerCpuPercent": 3.94
+      },
+      {
+        "name": "saas-selfhost-backup-1",
+        "workingSetMiB": 80.14,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-caddy-1",
+        "workingSetMiB": 24.15,
+        "dockerCpuPercent": 0.5
+      },
+      {
+        "name": "saas-selfhost-web-1",
+        "workingSetMiB": 89.77,
+        "dockerCpuPercent": 6.38
+      },
+      {
+        "name": "saas-selfhost-jobs-1",
+        "workingSetMiB": 112.2,
+        "dockerCpuPercent": 3.93
+      },
+      {
+        "name": "saas-selfhost-postgres-1",
+        "workingSetMiB": 151.9,
+        "dockerCpuPercent": 11.67
+      },
+      {
+        "name": "saas-selfhost-valkey-1",
+        "workingSetMiB": 17.23,
+        "dockerCpuPercent": 0.21
+      }
+    ]
+  },
+  {
+    "at": "2026-10-16T17:57:39.703420+00:00",
+    "hostCpuPercent": 15.417,
+    "availableMemoryMiB": 2481.332,
+    "freeDiskGiB": 8.1044,
+    "containerWorkingSetMiB": 449.23,
+    "postgres": {
+      "connections": 14,
+      "idleInTransaction": 0,
+      "databaseBytes": 11425459,
+      "walBytes": 218104174,
+      "engineBytes": 1122304
+    },
+    "containers": [
+      {
+        "name": "saas-selfhost-backup-1",
+        "workingSetMiB": 79.39,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-caddy-1",
+        "workingSetMiB": 23.92,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-web-1",
+        "workingSetMiB": 82.47,
+        "dockerCpuPercent": 0.0
+      },
+      {
+        "name": "saas-selfhost-jobs-1",
+        "workingSetMiB": 111.9,
+        "dockerCpuPercent": 3.98
+      },
+      {
+        "name": "saas-selfhost-postgres-1",
+        "workingSetMiB": 133.5,
+        "dockerCpuPercent": 1.89
+      },
+      {
+        "name": "saas-selfhost-valkey-1",
+        "workingSetMiB": 18.05,
+        "dockerCpuPercent": 0.25
+      }
+    ]
   }
 ]

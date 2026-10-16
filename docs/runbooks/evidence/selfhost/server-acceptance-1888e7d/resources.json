@@ -1,22 +1,35 @@
 {
   "sha": "1888e7d165b0b87784e7d16a4c39709a9bc063e3",
   "sampleStart": "2026-10-16T16:00:16.285512+00:00",
-  "sampleEnd": "2026-10-16T17:21:25.661216+00:00",
-  "samples": 669,
-  "rawSha256": "2379d2d000e4fbfd0a6b559c1b079c24df0d347ffbe56517393b20a3cce017aa",
+  "sampleEnd": "2026-10-16T17:57:39.703420+00:00",
+  "samples": 785,
+  "samplingGapsOver30Seconds": [
+    {
+      "from": "2026-10-16T17:21:25.661216+00:00",
+      "to": "2026-10-16T17:42:54.728829+00:00",
+      "seconds": 1289.068
+    },
+    {
+      "from": "2026-10-16T17:48:10.742554+00:00",
+      "to": "2026-10-16T17:48:59.430294+00:00",
+      "seconds": 48.688
+    }
+  ],
+  "cpuCounterResets": 1,
+  "rawSha256": "0479c4e17d39876fcf9ff3c43fedf01aa09548cadc99571929eab8e86f7896a2",
   "hostPhysicalMemoryMiB": 3495.140625,
   "minAvailableMemoryMiB": 1392.742,
   "maxOwnedContainerWorkingSetMiB": 1456.86,
   "minFreeDiskGiB": 7.7639,
   "hostCpuPercent": {
     "max": 99.106,
-    "p95": 70.713,
-    "tickWeightedMean": 28.359
+    "p95": 66.891,
+    "tickWeightedMean": 28.205
   },
   "postgres": {
     "connections": {
       "first": 7,
-      "last": 21,
+      "last": 14,
       "max": 44
     },
     "idleInTransaction": {
@@ -26,23 +39,23 @@
     },
     "databaseBytes": {
       "first": 7714483,
-      "last": 11302579,
-      "max": 11302579
+      "last": 11425459,
+      "max": 11425459
     },
     "walBytes": {
       "first": 33554432,
-      "last": 234881390,
+      "last": 218104174,
       "max": 234881390
     },
     "engineBytes": {
       "first": 0,
-      "last": 999424,
-      "max": 999424
+      "last": 1122304,
+      "max": 1122304
     }
   },
   "swapKiB": {
     "initialUsed": 69272,
-    "finalUsed": 64920,
+    "finalUsed": 0,
     "maxUsed": 69272
   },
   "containers": {
@@ -51,7 +64,7 @@
       "maxDockerCpuPercent": 44.96
     },
     "saas-selfhost-valkey-1": {
-      "maxWorkingSetMiB": 16.85,
+      "maxWorkingSetMiB": 18.05,
       "maxDockerCpuPercent": 7.19
     },
     "saas-selfhost-migrate-1": {
@@ -63,7 +76,7 @@
       "maxDockerCpuPercent": 31.26
     },
     "saas-selfhost-jobs-1": {
-      "maxWorkingSetMiB": 123.7,
+      "maxWorkingSetMiB": 124.1,
       "maxDockerCpuPercent": 30.09
     },
     "saas-selfhost-backup-1": {
@@ -72,7 +85,7 @@
     },
     "saas-selfhost-caddy-1": {
       "maxWorkingSetMiB": 38.91,
-      "maxDockerCpuPercent": 3.58
+      "maxDockerCpuPercent": 3.77
     },
     "selfhost-accept-storage": {
       "maxWorkingSetMiB": 107.2,
@@ -91,7 +104,7 @@
       "maxDockerCpuPercent": 52.19
     },
     "selfhost-accept-jobs2": {
-      "maxWorkingSetMiB": 100.6,
+      "maxWorkingSetMiB": 116.6,
       "maxDockerCpuPercent": 29.36
     },
     "selfhost-accept-acme": {
@@ -111,7 +124,7 @@
       "maxDockerCpuPercent": 52.42
     },
     "selfhost-accept-probe": {
-      "maxWorkingSetMiB": 66.75,
+      "maxWorkingSetMiB": 96.13,
       "maxDockerCpuPercent": 20.15
     },
     "selfhost-restore-server-main-1888-postgres-run-12dd10f4d9c2": {
@@ -165,12 +178,16 @@
     "selfhost-accept-recovery-r5": {
       "maxWorkingSetMiB": 192.1,
       "maxDockerCpuPercent": 114.87
+    },
+    "selfhost-accept-recovery-r6": {
+      "maxWorkingSetMiB": 235.7,
+      "maxDockerCpuPercent": 111.57
     }
   },
   "notes": [
     "Host CPU 100% means both vCPUs. Derived from Linux /proc/stat deltas, excludes idle and iowait; guest fields excluded from total to avoid double-counting.",
     "Docker CPU 100% means one core. Memory is Docker working set, not exact RSS; cgroup peaks and OOM counters are separate evidence.",
-    "Nominal sleep 5s plus collection time; actual intervals are preserved. Sampling boundaries are explicit; recorded deployment/migration activity, manual full backup, restores and all long tests are included.",
+    "CPU excludes intervals over 30s and reset counters; sampler intentionally stopped while awaiting approval, and host reboot interrupts sampling. Gaps are reported, not presented as continuous coverage. Nominal sleep 5s plus collection time; actual intervals are preserved. Sampling boundaries are explicit; recorded deployment/migration activity, manual full backup, restores and all long tests are included.",
     "PG connections/WAL are cluster-wide; databaseBytes/engineBytes cover main saas_production only; engine-footprints records isolated suite databases separately.",
     "Transient idle-in-transaction is expected during caller-transaction visibility/rollback tests; report final value separately.",
     "Limits are per-service ceilings, not reserved memory. Official resident limits total 3712MiB with backup, 4480MiB with second jobs; simultaneous saturation exceeds this host. Results apply to measured fixture workload, not arbitrary production concurrency."

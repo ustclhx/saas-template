@@ -1,6 +1,6 @@
 # A 8/9：Node 认证与 Compose 尾部验收
 
-最新服务器状态（2026-10-16 UTC）：[1888e7d需求矩阵](evidence/selfhost/server-acceptance-1888e7d/matrix.md)已补齐实际ACME签发/续期、外部R2与备份恢复；B6.4短恢复原断言仍失败，真实reboot未执行，A9.4仍待协调者审阅。下文是原本机验收快照，其环境/SHA及历史未完成项不代表最新服务器状态。
+最新服务器状态（2026-10-16 UTC）：[1888e7d需求矩阵](evidence/selfhost/server-acceptance-1888e7d/matrix.md)已补齐实际ACME签发/续期、R2与备份恢复、B6.4批准夹具后的复验及真实整机reboot。worker技术验收通过，A9.4仅待协调者审阅。下文为原本机验收快照，其环境/SHA及历史未完成项不代表最新服务器状态。
 
 本轮处理 Node 认证 500、协调者追加授权的 B ownership 补修与 A 8.1、8.2、8.3、9.2、9.3；不勾选 ACME、C 存储/媒体、D 正式交付或 A 9.4。
 

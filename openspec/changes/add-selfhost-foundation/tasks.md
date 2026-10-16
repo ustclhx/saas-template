@@ -66,5 +66,5 @@
 - [x] 9.2 在隔离 PG/Valkey 上运行 Node 全部适用单元与业务集成测试（含依赖 B 的用例），CF 专属适配器用例仍在 CF 运行，C 尚未实现的文件/媒体验收列为独立范围。验证：记录目标测试矩阵、测试数与跳过理由，无队列相关用例被隐藏、无弱化断言。（P6、A3）
 - [x] 9.3 在开发机全新 Compose 卷，真实 B 队列+测试邮件 sender、关闭 Turnstile、开启 requireEmailVerification 与 multiTenant：注册→验证邮件真实送达→验证→真实 sign-out→密码登录→创建/切换团队和个人空间。验证：Node 生产输出 Playwright auth e2e 通过、页面/会话/权限正确、健康完整 SHA；不读取 DB token 替代邮件链路、不把日志邮件内容开放给生产；编写本地验收 runbook并记录证据。
 - [ ] 9.4 汇总 A 分配需求与剩余 C/D 交付，协调者确认 B 依赖已满足和全部 A 验收通过。验证：本 change 全部对应项有证据、openspec validate add-selfhost-foundation --strict 通过；不提前勾选部署/外部凭据验收，不由 worker 归档。
-  - 2026-10-16 worker已补齐7.4实际ACME，提交最新需求/证据矩阵 `docs/runbooks/evidence/selfhost/server-acceptance-1888e7d/matrix.md`，四个change strict validate通过。C1.7和D7.2已通过；B6.4短恢复时间界限仍失败，D7.1/7.3尾项未签收，未执行已批准reboot。本项继续留给协调者最终审阅，不把worker的汇总当成协调者确认。
+  - 最新worker汇总：7.4实际ACME签发/续期、C1.7、B6.4（批准夹具后服务器复验）、D7.1/7.2/真实7.3均通过，证据矩阵 `docs/runbooks/evidence/selfhost/server-acceptance-1888e7d/matrix.md` 与report齐全，四个change strict validate通过。本项仅待协调者审阅并确认全部依赖；worker不代签，不同步主spec或归档。
   - 2026-10-15 协调者复核：8.3 已签收、B 依赖（9.1–9.3）满足、strict validate 通过；但 7.4 ACME 实际签发/续期仍无可用测试域名，A 尚有未通过验收，9.4 保持待办。证据：[签收记录](../../../docs/runbooks/evidence/selfhost/signoff-2026-10-15.json)。

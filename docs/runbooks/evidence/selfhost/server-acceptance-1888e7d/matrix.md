@@ -16,12 +16,12 @@
 | B4 临时实例恢复演练 | [主](restore-main-readonly.json)、[副本](restore-replica-readonly.json)、[逻辑](logical-restore.json) | 新临时卷、无 host ports、无应用/外部副作用；成功后清理本次资源；RTO/RPO 的测量范围明确 |
 | B5 独立凭据恢复副本 | [同步 token 权限](permissions.json)、[恢复只读权限](permissions-readonly.json)、[副本挂载](restore-replica-readonly-audit.json)、[副本同点恢复](restore-replica-readonly.json) | 仅副本只读 token/桶成功，主桶 List403，Put/Delete403，replay LSN 相同；同一账号/供应商的共同故障风险保留 |
 | §6.7 指定点恢复 | [主](restore-main-readonly.json)、[副本](restore-replica-readonly.json)、[备份摘要](backup-summary.json) | 本服务器实际新卷恢复与数据/角色/真实任务状态校验通过，不仅是本地机制夹具 |
-| §6.8 实际服务器 reboot | [当前阻塞/未执行](blocked-final-state.json) | 61分钟长例通过，但B6.4短恢复原断言仍失败；按用户的前置顺序不执行已批准reboot，不以容器restart或既有VM代替 |
+| §6.8 实际服务器 reboot | [真实reboot](reboot.json)、[命令](reboot-command.json)、[前](reboot-pre.json)/[后](reboot-post.json)、[备份恢复周期](backup-postboot.json)、[会话/文件](postboot-file.json)、[最终状态](final-state.json) | 实际systemctl reboot，21项通过：自然heartbeat、全服务自动恢复、迁移不重跑、原任务/deadline/成功step、PG/Valkey/证书/文件、备份周期及原15服务继续停用；无手工启动或owner删除 |
 | A foundation 7.4 | [实际 ACME](deploy-acme.json)、[续期](acme-renewal.json)、[既有证书/XFF/非 root](../../../selfhost-a7.md) | 已补齐实际域名 ACME 门；staging 续期与生产证书状态隔离 |
 | A 其他需求、B/C 依赖 | [A 最终矩阵](../../../selfhost-a-final.md)、[协调者集成签收](../signoff-2026-10-15.json)、各 change tasks 的既有逐项证据 | A 8.3/9.1–9.3 与 B/C 已合入签收不由本 worker 重做；本轮增加剩余服务器证据 |
-| B job-engine 6.4 | [调度10/10](scheduler.json)、[引擎/队列14/14](queue.json)、[重试](queue-timeline.json)、[双worker](permits.json)、[长例通过](workflow-proof.json)、[首轮10/11](workflow-first.json)、[失败对照](workflow-recovery-failures.json)、[资源](resources.json) | 长例实际3675秒通过，短恢复原断言在0.5/1/2 CPU均失败；保持未勾选，不豁免失败。拟议夹具补丁未应用，待协调者决定 |
+| B job-engine 6.4 | [调度10/10](scheduler.json)、[引擎/队列14/14](queue.json)、[重试](queue-timeline.json)、[双worker](permits.json)、[长例通过](workflow-proof.json)、[短例复验](workflow-approved-fast.json)、[分次覆盖](workflow-acceptance.json)、[修正说明](approved-fixture.md)、[原失败](workflow-recovery-failures.json)、[资源](resources.json) | 长例实际3675秒通过；批准夹具初始sleep 2→5秒后，10个短例全部通过，原断言完整保留。B6.4已勾选，分次运行及原失败均明确保留 |
 | C storage-observability 1.7 | [业务/SDK](storage.json)、[浏览器](browser.json)、[私有桶配置](r2-settings.json) | R2 外挂默认路径通过，无自带对象存储服务；不重复验收或修改已签收的 B 媒体接线 |
-| A 9.4 / D 7.4 最终签收 | 本矩阵与 [报告](report.md) 提交协调者 | 所有实测门齐全后交协调者审阅；主 spec 同步与归档仍由协调者执行，不虚构已收到的审阅确认 |
+| A 9.4 / D 7.4 最终签收 | 本矩阵与 [报告](report.md) 提交协调者 | 服务器实测门已齐全，待协调者审阅；主 spec 同步与归档仍由协调者执行，不虚构已收到的审阅确认 |
 
 当前服务器未配置真实邮件/OAuth/Turnstile/支付/AI/管理员集成，不将既有其他环境的对应
 验收混称为本服务器实际接通。生产 Cloudflare/staging 没有被本次操作修改。

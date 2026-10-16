@@ -1,6 +1,6 @@
 # D 镜像交付与协调者签收清单
 
-最新服务器状态（2026-10-16 UTC）：主机/Caddy/R2及真实reboot均已获用户授权；正式1888e7d已部署，R2两桶只读PITR与逻辑恢复通过。当前技术阻塞是B6.4短恢复原断言在2 CPU下仍越界297ms，按前置顺序未执行reboot。最新[需求矩阵](evidence/selfhost/server-acceptance-1888e7d/matrix.md)与[报告](evidence/selfhost/server-acceptance-1888e7d/report.md)已提交；7.1/7.3/7.4保持待办。下文早期“缺主机/凭据/授权”的快照不再是当前阻塞原因。
+最新服务器状态（2026-10-16 UTC）：正式1888e7d部署、真实R2主/副本只读PITR及逻辑恢复、B6.4批准夹具后复验、已批准的真实systemctl reboot全部通过。D7.1/7.2/7.3已验收，7.4仅待协调者审阅。最新[矩阵](evidence/selfhost/server-acceptance-1888e7d/matrix.md)与[报告](evidence/selfhost/server-acceptance-1888e7d/report.md)齐全；15个原有容器与warp保持停用。下文历史“缺资源/授权”及初次阻塞不再代表当前状态。
 
 此文是 `add-selfhost-delivery` 1.1 的审阅草案，快照日期 2026-10-14。
 协调者确认文件所有权及以下依赖后才勾选 1.1。D worker 仅领取 1.1–1.3，
