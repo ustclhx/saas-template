@@ -1,3 +1,4 @@
+import { Button } from '@saas/ui'
 import { useEffect, useState } from 'react'
 import { stopAdminImpersonation } from './impersonation.functions.ts'
 
@@ -31,14 +32,16 @@ export function ImpersonationBanner({
         Impersonating {viewer.userEmail} · Administrator: {viewer.adminEmail}. Sensitive actions are
         disabled.
       </span>
-      <button
+      <Button
         type="button"
+        variant="outline"
+        size="sm"
         disabled={!ready || busy}
-        className="font-semibold underline"
+        className="border-amber-900/30 bg-amber-50 text-amber-950 hover:bg-amber-200"
         onClick={() => void stop()}
       >
         Stop impersonating
-      </button>
+      </Button>
       {error && <span role="alert">{error}</span>}
     </aside>
   )

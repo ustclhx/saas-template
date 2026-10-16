@@ -1,5 +1,11 @@
 import { themeInitScript } from '@saas/ui'
-import { createRootRoute, HeadContent, Outlet, Scripts } from '@tanstack/react-router'
+import {
+  createRootRoute,
+  HeadContent,
+  Outlet,
+  Scripts,
+  useRouterState,
+} from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import { ImpersonationBanner } from '../features/admin/impersonation-banner.tsx'
 import { getAnnouncement } from '../features/admin/settings-announcement.functions.ts'
@@ -44,18 +50,25 @@ export const Route = createRootRoute({
 
 function RootComponent() {
   const { impersonation, announcement } = Route.useLoaderData()
+  // 后台侧栏自带语言与主题控件；全站浮动控件在 /admin 下会遮挡侧栏底部与正文，故不渲染
+  const inAdmin = useRouterState({
+    select: (state) => /^\/admin(\/|$)/.test(state.location.pathname),
+  })
   return (
-    <RootDocument>
+    <RootDocument floatingControls={!inAdmin}>
       <ProductAnalytics />
       <ImpersonationBanner viewer={impersonation} />
       <AnnouncementBanner initial={announcement} />
-      {templateConfig.i18n.enabled && <LanguageControls />}
+      {templateConfig.i18n.enabled && !inAdmin && <LanguageControls />}
       <Outlet />
     </RootDocument>
   )
 }
 
-function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
+function RootDocument({
+  children,
+  floatingControls,
+}: Readonly<{ children: ReactNode; floatingControls: boolean }>) {
   return (
     // 主题类名由下方内联脚本在水合前写到 <html> 上，与服务端输出不一致属预期
     <html lang={getLocale()} suppressHydrationWarning>
@@ -64,7 +77,7 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
       </head>
       <body>
         {children}
-        <ThemeToggle className="fixed right-4 bottom-4" />
+        {floatingControls && <ThemeToggle className="fixed right-4 bottom-4" />}
         <Scripts />
       </body>
     </html>

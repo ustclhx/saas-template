@@ -6,6 +6,7 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../../features/admin/list.ts'
+import { AdminPage } from '../../../features/admin/ui.tsx'
 import { getAdminSubscriptions } from '../../../features/billing/admin.functions.ts'
 import { templateConfig } from '../../../server/template-config.ts'
 
@@ -23,8 +24,7 @@ function List() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
-    <section className="grid gap-5">
-      <h2 className="font-semibold text-xl">Subscriptions</h2>
+    <AdminPage title="Subscriptions">
       <DataTable
         label="Subscriptions"
         rows={data.rows}
@@ -62,6 +62,6 @@ function List() {
           void navigate({ search: filtersToSearch(['workspaceId'], values) })
         }
       />
-    </section>
+    </AdminPage>
   )
 }

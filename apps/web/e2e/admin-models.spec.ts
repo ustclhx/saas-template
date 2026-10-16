@@ -22,6 +22,8 @@ test('platform admin can create, edit, disable and enable a model', async ({ pag
 
     await page.goto('/admin/models')
     await expect(page.getByRole('heading', { name: 'AI models' })).toBeVisible()
+    // 新建表单默认收起，先展开
+    await page.getByRole('button', { name: 'New model', exact: true }).click()
     const form = page.getByRole('article', { name: 'New model' })
     // template.config.ts 中文本模型默认按 token 计费
     await expect(form.getByLabel('Pricing mode')).toHaveValue('token')

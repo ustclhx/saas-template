@@ -2,6 +2,7 @@ import { Button, DataTable } from '@saas/ui'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { ADMIN_PAGE_SIZE, adminListPage, adminListSearch } from '../../features/admin/list.ts'
+import { AdminPage, formatDateTime } from '../../features/admin/ui.tsx'
 import { getAdminWaitlist, inviteAdminWaitlist } from '../../features/growth/growth.functions.ts'
 export const Route = createFileRoute('/admin/waitlist')({
   validateSearch: (search) => ({ offset: adminListSearch([])(search).offset }),
@@ -18,9 +19,9 @@ function WaitlistAdmin() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   return (
-    <section className="grid gap-4">
-      <h2 className="text-xl font-semibold">Waitlist</h2>
+    <AdminPage title="Waitlist">
       <Button
+        className="w-fit"
         disabled={busy || selected.length === 0}
         onClick={async () => {
           setBusy(true)
@@ -38,7 +39,9 @@ function WaitlistAdmin() {
       >
         Invite selected ({selected.length})
       </Button>
-      <p role="status">{message}</p>
+      <p role="status" className="min-h-5 text-sm">
+        {message}
+      </p>
       <DataTable
         label="Waitlist"
         rows={data.rows}
@@ -56,6 +59,7 @@ function WaitlistAdmin() {
               <input
                 aria-label={`Select ${row.email}`}
                 type="checkbox"
+                className="size-4 accent-primary"
                 checked={selected.includes(row.id)}
                 onChange={(event) =>
                   setSelected((ids) =>
@@ -66,14 +70,14 @@ function WaitlistAdmin() {
             ),
           },
           { id: 'email', header: 'Email', cell: (row) => row.email },
-          { id: 'created', header: 'Joined', cell: (row) => row.createdAt.toLocaleDateString() },
+          { id: 'created', header: 'Joined', cell: (row) => formatDateTime(row.createdAt) },
           {
             id: 'invited',
             header: 'Invited',
-            cell: (row) => row.invitedAt?.toLocaleDateString() ?? 'Awaiting invitation',
+            cell: (row) => (row.invitedAt ? formatDateTime(row.invitedAt) : 'Awaiting invitation'),
           },
         ]}
       />
-    </section>
+    </AdminPage>
   )
 }

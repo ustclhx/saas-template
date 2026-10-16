@@ -1,11 +1,21 @@
 import { Button, DetailList } from '@saas/ui'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import { ADMIN_COPY } from '../../../features/admin/copy.ts'
+import {
+  AdminPage,
+  AdminSection,
+  CheckboxField,
+  EmptyState,
+  formatDateTime,
+  panelClass,
+} from '../../../features/admin/ui.tsx'
 import {
   getAdminWorkspace,
   getAdminWorkspaceCredits,
   restoreAdminWorkspace,
 } from '../../../features/admin/workspaces.functions.ts'
+import { templateConfig } from '../../../server/template-config.ts'
 
 export const Route = createFileRoute('/admin/workspaces/$id')({
   loader: ({ params }) => getAdminWorkspace({ data: { id: params.id } }),
@@ -66,18 +76,35 @@ function WorkspaceDetail() {
     )
   }
   return (
-    <section className="grid gap-5">
-      <Link to="/admin/workspaces" search={{ offset: 0 }} className="underline">
-        Back to workspaces
-      </Link>
-      <h2 className="font-semibold text-xl">Workspace details</h2>
+    <AdminPage
+      title="Workspace details"
+      actions={
+        <>
+          {templateConfig.credits.enabled && (
+            <Button asChild size="sm">
+              <Link to="/admin/credits" search={{ offset: 0, workspaceId: data.workspace.id }}>
+                {ADMIN_COPY.adjustCredits}
+              </Link>
+            </Button>
+          )}
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/admin/workspaces" search={{ offset: 0 }}>
+              Back to workspaces
+            </Link>
+          </Button>
+        </>
+      }
+    >
       <DetailList
         fields={[
           { label: 'Name', value: data.workspace.name },
           { label: 'ID', value: data.workspace.id },
           { label: 'Slug', value: data.workspace.slug },
           { label: 'Status', value: data.workspace.deletedAt ? 'Deleted' : 'Active' },
-          { label: 'Deleted at', value: data.workspace.deletedAt?.toISOString() },
+          {
+            label: 'Deleted at',
+            value: data.workspace.deletedAt ? formatDateTime(data.workspace.deletedAt) : null,
+          },
           ...(data.entitlements
             ? [{ label: 'Entitlement plan', value: data.entitlements.key }]
             : []),
@@ -91,20 +118,17 @@ function WorkspaceDetail() {
         ]}
       />
       {data.workspace.deletedAt && (
-        <div className="grid max-w-xl gap-3">
-          <p>
+        <div className={panelClass('danger', 'max-w-xl')}>
+          <p className="text-sm">
             Restore within the 30-day retention period. Only eligible original owners are restored;
             other members need new invitations.
           </p>
-          <label>
-            <input
-              disabled={!ready}
-              type="checkbox"
-              checked={confirmed}
-              onChange={(event) => setConfirmed(event.target.checked)}
-            />{' '}
-            I confirm restoring this workspace
-          </label>
+          <CheckboxField
+            label="I confirm restoring this workspace"
+            disabled={!ready}
+            checked={confirmed}
+            onChange={(event) => setConfirmed(event.target.checked)}
+          />
           <Button
             className="w-fit"
             disabled={!ready || busy || !confirmed}
@@ -114,74 +138,106 @@ function WorkspaceDetail() {
           </Button>
         </div>
       )}
-      <p role="status">{message}</p>
-      <h3 className="font-semibold">Members</h3>
-      <ul>
-        {data.members.map((m) => (
-          <li key={m.id}>
-            <Link to="/admin/users/$id" params={{ id: m.userId }} className="underline">
-              {m.email}
-            </Link>{' '}
-            · {m.role}
-          </li>
-        ))}
-      </ul>
+      {message && (
+        <p role="status" className="text-sm">
+          {message}
+        </p>
+      )}
+      <AdminSection title="Members">
+        {data.members.length ? (
+          <ul className="grid gap-2">
+            {data.members.map((m) => (
+              <li key={m.id} className="break-all rounded-md border px-3 py-2 text-sm">
+                <Link to="/admin/users/$id" params={{ id: m.userId }} className="underline">
+                  {m.email}
+                </Link>{' '}
+                · {m.role}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <EmptyState />
+        )}
+      </AdminSection>
       {data.entitlements && (
-        <>
-          <h3 className="font-semibold">Subscriptions and overlapping periods</h3>
-          <p>
+        <AdminSection title="Subscriptions and overlapping periods">
+          <p className="text-muted-foreground text-sm">
             All subscription periods are shown. Effective entitlements use the highest eligible
             plan.
           </p>
-          <ul>
-            {data.subscriptions.map(({ subscription: sub, planName }, index) => (
-              <li key={sub.id} className="rounded border p-3">
-                {planName} · {sub.provider} · {sub.status} · {sub.id}
-                <br />
-                Period: {sub.currentPeriodStart?.toISOString() ?? 'Unconfirmed'} —{' '}
-                {sub.currentPeriodEnd?.toISOString() ?? 'Unconfirmed'}
-                {overlaps(index) && <strong> · Overlapping period</strong>}
-                {sub.pastDueSince && <p>Past due since: {sub.pastDueSince.toISOString()}</p>}
-              </li>
-            ))}
-          </ul>
-        </>
+          {data.subscriptions.length ? (
+            <ul className="grid gap-2">
+              {data.subscriptions.map(({ subscription: sub, planName }, index) => (
+                <li key={sub.id} className="break-words rounded-md border px-3 py-2 text-sm">
+                  {planName} · {sub.provider} · {sub.status} · {sub.id}
+                  <br />
+                  Period:{' '}
+                  {sub.currentPeriodStart ? formatDateTime(sub.currentPeriodStart) : 'Unconfirmed'}{' '}
+                  — {sub.currentPeriodEnd ? formatDateTime(sub.currentPeriodEnd) : 'Unconfirmed'}
+                  {overlaps(index) && <strong> · Overlapping period</strong>}
+                  {sub.pastDueSince && <p>Past due since: {formatDateTime(sub.pastDueSince)}</p>}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState />
+          )}
+        </AdminSection>
       )}
       {data.balance && (
         <>
-          <h3 className="font-semibold">Credit batches</h3>
-          <ul>
-            {batches.items.map((batch) => (
-              <li key={batch.id} className="rounded border p-3">
-                {batch.id} · {batch.source} · {batch.status} · Remaining: {batch.remaining} /{' '}
-                {batch.amount} · Expires: {batch.expiresAt?.toISOString() ?? 'Never'}
-              </li>
-            ))}
-          </ul>
-          {batches.nextCursor && (
-            <Button
-              className="w-fit"
-              disabled={!ready || busy}
-              onClick={() => void more('batches')}
-            >
-              Older batches
-            </Button>
-          )}
-          <h3 className="font-semibold">Recent credit ledger</h3>
-          <ul>
-            {ledger.items.map((entry) => (
-              <li key={entry.id} className="rounded border p-3">
-                {entry.createdAt.toISOString()} · {entry.type} · {entry.delta} · {entry.id}
-              </li>
-            ))}
-          </ul>
-          {ledger.nextCursor && (
-            <Button className="w-fit" disabled={!ready || busy} onClick={() => void more('ledger')}>
-              Older ledger entries
-            </Button>
-          )}
+          <AdminSection title="Credit batches">
+            {batches.items.length ? (
+              <ul className="grid gap-2">
+                {batches.items.map((batch) => (
+                  <li key={batch.id} className="break-words rounded-md border px-3 py-2 text-sm">
+                    {batch.id} · {batch.source} · {batch.status} · Remaining: {batch.remaining} /{' '}
+                    {batch.amount} · Expires:{' '}
+                    {batch.expiresAt ? formatDateTime(batch.expiresAt) : 'Never'}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState />
+            )}
+            {batches.nextCursor && (
+              <Button
+                className="w-fit"
+                variant="outline"
+                size="sm"
+                disabled={!ready || busy}
+                onClick={() => void more('batches')}
+              >
+                Older batches
+              </Button>
+            )}
+          </AdminSection>
+          <AdminSection title="Recent credit ledger">
+            {ledger.items.length ? (
+              <ul className="grid gap-2">
+                {ledger.items.map((entry) => (
+                  <li key={entry.id} className="break-words rounded-md border px-3 py-2 text-sm">
+                    {formatDateTime(entry.createdAt)} · {entry.type} · {entry.delta} · {entry.id}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState />
+            )}
+            {ledger.nextCursor && (
+              <Button
+                className="w-fit"
+                variant="outline"
+                size="sm"
+                disabled={!ready || busy}
+                onClick={() => void more('ledger')}
+              >
+                Older ledger entries
+              </Button>
+            )}
+          </AdminSection>
         </>
       )}
-    </section>
+    </AdminPage>
   )
 }

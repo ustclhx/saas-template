@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { type FormEvent, useEffect, useState } from 'react'
 import { adminListSearch } from '../../features/admin/list.ts'
 import { getAdminMetrics } from '../../features/admin/metrics.functions.ts'
+import { AdminPage, EmptyState } from '../../features/admin/ui.tsx'
 
 export const Route = createFileRoute('/admin/metrics')({
   validateSearch: (search: Record<string, unknown>) => adminListSearch(['from', 'to'])(search),
@@ -24,11 +25,10 @@ function Metrics() {
     })
   }
   return (
-    <section className="grid gap-5">
-      <h2 className="font-semibold text-xl">Business metrics</h2>
-      <fieldset disabled={!ready}>
+    <AdminPage title="Business metrics">
+      <fieldset disabled={!ready} className="min-w-0">
         <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
-          <div>
+          <div className="grid gap-2">
             <Label htmlFor="metrics-from">From (UTC)</Label>
             <Input
               key={data.from}
@@ -39,7 +39,7 @@ function Metrics() {
               required
             />
           </div>
-          <div>
+          <div className="grid gap-2">
             <Label htmlFor="metrics-to">To (UTC)</Label>
             <Input
               key={data.to}
@@ -79,9 +79,9 @@ function Metrics() {
           </div>
         ))}
       </dl>
-      <h3 className="font-semibold">MRR (monthly, latest snapshot)</h3>
+      <h3 className="font-semibold text-lg">MRR (monthly, latest snapshot)</h3>
       {data.latest && Object.entries(data.latest.mrrByCurrency).length ? (
-        <ul>
+        <ul className="grid gap-1 text-sm">
           {Object.entries(data.latest.mrrByCurrency).map(([currency, cents]) => (
             <li key={currency}>
               {currency}: {(cents / 100).toFixed(2)}
@@ -89,31 +89,33 @@ function Metrics() {
           ))}
         </ul>
       ) : (
-        <p>No paid subscriptions.</p>
+        <EmptyState>No paid subscriptions.</EmptyState>
       )}
-      <h3 className="font-semibold">Platform overage by model</h3>
+      <h3 className="font-semibold text-lg">Platform overage by model</h3>
       {Object.entries(data.overageByModel).length ? (
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr>
-              <th>Model</th>
-              <th>Credits absorbed</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(data.overageByModel)
-              .sort((a, b) => b[1] - a[1])
-              .map(([model, amount]) => (
-                <tr key={model}>
-                  <td>{model}</td>
-                  <td>{amount}</td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-muted/50">
+              <tr className="border-b">
+                <th className="h-10 px-3 font-medium text-muted-foreground">Model</th>
+                <th className="h-10 px-3 font-medium text-muted-foreground">Credits absorbed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(data.overageByModel)
+                .sort((a, b) => b[1] - a[1])
+                .map(([model, amount]) => (
+                  <tr key={model} className="border-b last:border-0">
+                    <td className="px-3 py-2">{model}</td>
+                    <td className="px-3 py-2">{amount}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
-        <p>No platform overage in this range.</p>
+        <EmptyState>No platform overage in this range.</EmptyState>
       )}
-    </section>
+    </AdminPage>
   )
 }
