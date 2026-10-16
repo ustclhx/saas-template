@@ -3,7 +3,12 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { z } from 'zod'
 import { authClient } from '../../features/auth/auth-client.ts'
-import { AuthLayout, FormAlert, StatusAlert } from '../../features/auth/auth-layout.tsx'
+import {
+  AuthLayout,
+  authLinkClassName,
+  FormAlert,
+  StatusAlert,
+} from '../../features/auth/auth-layout.tsx'
 import { getAuthUiOptions } from '../../features/auth/options.functions.ts'
 import { useTurnstile } from '../../features/auth/turnstile.tsx'
 import { useAuthRequest } from '../../features/auth/use-auth-request.ts'
@@ -39,7 +44,7 @@ function ForgotPasswordPage() {
       title={COPY.title}
       description={COPY.description}
       footer={
-        <Link to="/login" className="text-foreground underline underline-offset-4">
+        <Link to="/login" className={authLinkClassName}>
           {COPY.backToLogin}
         </Link>
       }

@@ -3,7 +3,12 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { z } from 'zod'
 import { authClient } from '../../features/auth/auth-client.ts'
-import { AuthLayout, FormAlert, StatusAlert } from '../../features/auth/auth-layout.tsx'
+import {
+  AuthLayout,
+  authLinkClassName,
+  FormAlert,
+  StatusAlert,
+} from '../../features/auth/auth-layout.tsx'
 import { authErrorMessage } from '../../features/auth/errors.ts'
 import {
   actionResult,
@@ -27,7 +32,14 @@ function InvitationPage() {
   const [pending, setPending] = useState(false)
   const [sent, setSent] = useState(false)
   return (
-    <AuthLayout title="Accept invitation" footer={<a href="/app">Go to my workspace</a>}>
+    <AuthLayout
+      title="Accept invitation"
+      footer={
+        <a href="/app" className={authLinkClassName}>
+          Go to my workspace
+        </a>
+      }
+    >
       <FormAlert message={error} />
       {'error' in page ? (
         <FormAlert message={workspaceError(page.error)} />
