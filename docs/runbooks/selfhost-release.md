@@ -36,7 +36,7 @@ python3 /tmp/releases/<full-main-sha>/release/bundle.py compose-config \
   /tmp/releases/<full-main-sha> --sha <full-main-sha>
 ```
 
-新版完整运行清单为基础/backup/object-storage/replica Compose、代理 override、
+新版完整运行清单为基础/backup/object-storage/replica Compose、代理与外部 S3 override、
 restore/drill与自包含宿主恢复器、三个附加无真值env示例、deploy/init/health入口、初始化防火墙
 脚本、运行时挂载的 `object-storage-init.mjs` 与 `Caddyfile.object-storage`、无真值示例和
 服务器校验器及README/OPERATIONS。Dockerfile、build.sh、业务源码和镜像内部的备份实现不复制。新增运行文件
@@ -92,9 +92,16 @@ Docker save 的 config 内容 hash、本地 image ID 与 registry manifest/index
 成功image-set，按同SHA build/verify/config验收。不要自行触发publish workflow。
 
 备份、restore/drill与副本脚本已经交付；第二次正式release已包含完整运行白名单。
-打包器按指定Git SHA自身的受审白名单打包，校验器只接受原17项或新24项的确切集合，
+打包器按指定Git SHA自身的受审白名单打包，校验器只接受原17项、恢复版24项或外部S3版25项的确切集合，
 不接受任意manifest文件名。旧SHA仍使用旧工具和白名单，不将未发布修复冒充该SHA材料。
 B/D ownership、VM全栈恢复和真实服务器验收仍待签收。
+
+外部 S3 版新增 `compose.s3.yaml`，连同三个生成文件共28项 checksum（另有
+`release.json`），不改写旧17/24项的已发布材料。部署加
+`--compose-file compose.s3.yaml`，所需公开配置从同包 `.env.example` 填写，凭据遵循
+`secrets.example`，不递归复制本机 secret。bundle 测试使用 Docker Compose CLI 在无秘密、
+不启动容器的情况下渲染基础/外部S3/外部S3+backup，验证凭据隔离和缺配置拒绝，并验证
+17/24项历史版本仍按自己的 Git 对象生成；不代表真实 R2 联通或服务器验收。
 
 2026-10-14 本机补充结构证据：使用八个已实际构建镜像的本地 ID、固定运行材料临时
 Git fixture commit `1f7cb280a68a14068186914a46c24a364189bf6c`，完成 build/verify 与

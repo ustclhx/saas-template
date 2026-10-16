@@ -4,6 +4,57 @@ Node 配置通过 `nodeStorageConfig` 映射 `S3_ENDPOINT`、`S3_REGION`、`S3_B
 
 web 装配 files 与 downloadFile，jobs 只注入所需删除能力，`string|string[]` 在 composition 逐 key 桥接。只有装配后才执行既有十分钟文件清理；删除失败保留数据库锚点供下一轮重试。
 
+## 正式 bundle 的外部 S3 / R2 配置
+
+使用包含 `compose.s3.yaml` 的新正式 SHA bundle；旧发布没有该装配，不能手改旧 bundle、
+checksum 或现场追加未审阅 override。由发布负责人合并、发布同 SHA image-set/bundle，
+通过包内 verify 后再部署；应用镜像仍从该集合拉取，服务器不构建。
+
+在部署目录的0600 `.env` 填公开配置，不写凭据值：
+
+```dotenv
+# 将占位 account-id 和桶名替换为部署方的专用资源；R2 region 必须为 auto。
+S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+S3_REGION=auto
+S3_BUCKET=selfhost-files
+S3_FORCE_PATH_STYLE=true
+```
+
+endpoint 必须同时供浏览器签名请求和服务端访问，R2 使用其 S3 API 地址，不能使用
+`r2.dev` 或自定义公开下载域名，不能在签名后改写 URL。R2 公共 HTTPS 使用 Node 的系统
+信任库；已有 PG CA 挂载保持，不关闭证书校验。region、bucket 不从供应商隐式推断；其他
+S3 端点填其实际 region/path-style，虚拟主机寻址需额外验证对应 DNS/TLS。
+
+按 `secrets.example` 准备 `secrets/s3_access_key_id` 与 `secrets/s3_secret_access_key`：
+父目录0700、单文件0600，属主1000或精确 ACL 允许应用 UID1000 读取。Compose file secret
+不会自动改属主。R2 控制台创建只限应用私有桶对象读写的 S3 API 凭据，应用需要上传、
+HEAD/GET、失败清理 DELETE 与媒体 multipart；不分配桶管理、其他桶或备份权限，不复用
+backup/replica token。两个值只经受保护文件传入 `_FILE`，不放 `.env`、argv 或日志。
+
+桶由运维方事先创建并保持私有；该 override 不创建/修改远端桶，也不需要 bucket 管理
+凭据。CORS 仅允许 APP_URL 的 **origin**，方法 PUT/GET/HEAD，允许
+Content-Type/If-None-Match，暴露 ETag/Content-Length/Content-Type/Content-Disposition；
+浏览器自动发送 OPTIONS，用真实浏览器核对允许来源成功、未授权来源拒绝。
+
+```sh
+<bundle-dir>/deploy.sh --host <explicit-authorized-host> --dir <deploy-dir> \
+  --sha <full-sha> --bundle <bundle-dir> --compose-file compose.s3.yaml
+```
+
+默认仍用 `COMPOSE_PROFILES=caddy`。不要同时加载 `compose.object-storage.yaml`；外部路径
+没有 SeaweedFS、对象存储卷或 object-storage-init 依赖，基础迁移/readiness/网络/UID/日志
+边界保留。外部 S3 secrets 只挂给 web/jobs，PG、migrate、Caddy 和 backup 均不获得。
+启用备份可另加 `--compose-file compose.backup.yaml --env-file .env.backup`，副本同理，
+其桶和凭据独立。部署器按既有 `.env.example` 公开键保存 S3 endpoint/region/bucket/
+path-style 配置快照，回滚仍需匹配 bundle 和兼容声明；它不会保存或恢复凭据内容。
+
+基础 Compose 不加载 `compose.s3.yaml` 时，即使 `.env` 中留有这些公开占位配置，也不会
+要求或挂载 S3 secrets；文件能力未配置时继续明确 unavailable。关闭外部路径需在新部署
+计划中省略该文件，保留对象和凭据文件，不执行桶删除。切换 endpoint 不迁移已有对象。
+
+本批只修复发布装配并验证无凭据 Compose/bundle；C 1.7 真实 R2 上传确认、短期下载、
+租户/配额、失败清理和 copier 仍须待新发布与真实受限凭据后验收，不提前勾选。
+
 ## 本地真实 HTTP 验收
 
 先构建当前 Node web 产物，再运行隔离 runner：

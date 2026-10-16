@@ -1,6 +1,7 @@
 import copy
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -82,7 +83,8 @@ class BundleTest(unittest.TestCase):
         self.assertNotIn('private-sentinel', (self.output / 'deploy.py').read_text())
         self.assertFalse((self.output / 'secrets').exists())
         required = {'restore.sh', 'restore-drill.sh', 'backup/restore.py', 'compose.replica.yaml',
-                    '.env.backup.example', '.env.object-storage.example', '.env.replica.example'}
+                    '.env.backup.example', '.env.object-storage.example', '.env.replica.example',
+                    'compose.s3.yaml'}
         self.assertEqual(set(bundle.RUNTIME_FILES) - set(bundle.LEGACY_RUNTIME_FILES), required)
         self.assertEqual(set(release['files']), set(bundle.RUNTIME_FILES) | set(bundle.GENERATED_FILES))
         for name, service in [('.env.backup.example', 'backup'),
@@ -165,23 +167,82 @@ class BundleTest(unittest.TestCase):
 
     def test_legacy_source_sha_keeps_its_exact_files_and_validator(self):
         # 小型旧版validator独立检查其原始契约；新版打包器不能加文件或换入当前代码。
-        validator = ('RUNTIME_FILES = ' + repr(bundle.LEGACY_RUNTIME_FILES) + '\n' +
-                     "from pathlib import Path\nimport json\n"
-                     "root = Path(__file__).resolve().parent.parent\n"
-                     "expected = set(RUNTIME_FILES) | {'image-set.json', 'image-catalog.json', 'images.env'}\n"
-                     "actual = {p.relative_to(root).as_posix() for p in root.rglob('*') if p.is_file()}\n"
-                     "assert actual == expected | {'release.json'}\n"
-                     "assert set(json.loads((root / 'release.json').read_text())['files']) == expected\n")
-        self.validator.write_text(validator)
-        self.commit_source('legacy runtime contract')
-        # 工作树白名单即使改成新版，也只能按旧commit打包。
-        self.validator.write_text('RUNTIME_FILES = ' + repr(bundle.RUNTIME_FILES) + '\n')
+        for names in (bundle.LEGACY_RUNTIME_FILES, bundle.PRE_S3_RUNTIME_FILES):
+            with self.subTest(runtime_files=len(names)):
+                validator = ('RUNTIME_FILES = ' + repr(names) + '\n' +
+                             "from pathlib import Path\nimport json\n"
+                             "root = Path(__file__).resolve().parent.parent\n"
+                             "expected = set(RUNTIME_FILES) | {'image-set.json', 'image-catalog.json', 'images.env'}\n"
+                             "actual = {p.relative_to(root).as_posix() for p in root.rglob('*') if p.is_file()}\n"
+                             "assert actual == expected | {'release.json'}\n"
+                             "assert set(json.loads((root / 'release.json').read_text())['files']) == expected\n")
+                self.validator.write_text(validator)
+                self.commit_source('legacy runtime contract')
+                # 工作树白名单即使改成新版，也只能按旧commit打包。
+                self.validator.write_text('RUNTIME_FILES = ' + repr(bundle.RUNTIME_FILES) + '\n')
+                self.output = self.root / ('release-' + str(len(names)))
+                release = self.build()
+                self.assertEqual(bundle.verify_bundle(self.output, self.sha), release)
+                self.assertEqual(set(release['files']), set(names) | set(bundle.GENERATED_FILES))
+                self.assertEqual((self.output / 'release/bundle.py').read_text(), validator)
+                subprocess.run(['python3', str(self.output / 'release/bundle.py')], check=True,
+                               capture_output=True)
+
+    def test_bundled_external_s3_mounts_only_application_identity_without_local_storage(self):
+        # 从真实交付文件构造独立Git版本；只渲染，不创建secret、不读真值或启动容器。
+        for name in ('compose.yaml', 'compose.s3.yaml', 'compose.backup.yaml', '.env.example'):
+            original = Path(__file__).resolve().parents[1] / name
+            (self.source / 'deploy/selfhost' / name).write_bytes(original.read_bytes())
+        self.commit_source('external S3 assembly')
         release = self.build()
-        self.assertEqual(bundle.verify_bundle(self.output, self.sha), release)
-        self.assertEqual(set(release['files']), set(bundle.LEGACY_RUNTIME_FILES) | set(bundle.GENERATED_FILES))
-        self.assertEqual((self.output / 'release/bundle.py').read_text(), validator)
-        subprocess.run(['python3', str(self.output / 'release/bundle.py')], check=True,
-                       capture_output=True)
+        clean_env = {key: value for key, value in os.environ.items() if key in
+                     ('PATH', 'HOME', 'DOCKER_CONFIG', 'DOCKER_HOST', 'DOCKER_CONTEXT')}
+        public = {'S3_ENDPOINT': 'https://s3.example.invalid', 'S3_REGION': 'auto',
+                  'S3_BUCKET': 'fixture-files', 'S3_FORCE_PATH_STYLE': 'false'}
+
+        def render(files, values=None):
+            args = ['docker', 'compose', '--project-directory', str(self.output),
+                    '--env-file', str(self.output / '.env.example'),
+                    '--env-file', str(self.output / 'images.env')]
+            for name in ('compose.yaml', *files):
+                args += ['-f', str(self.output / name)]
+            result = subprocess.run(args + ['config', '--format', 'json'],
+                                    env={**clean_env, **(values or {})}, capture_output=True, check=True)
+            return json.loads(result.stdout)
+
+        base = render([], {key: '' for key in public})
+        for service in base['services'].values():
+            self.assertFalse(any(key.startswith('S3_') for key in service.get('environment', {})))
+            self.assertFalse(any(item['source'].startswith('s3_') for item in service.get('secrets', [])))
+        for files in (['compose.s3.yaml'], ['compose.s3.yaml', 'compose.backup.yaml']):
+            with self.subTest(files=files):
+                config = render(files, public)
+                self.assertNotIn('object-storage', config['services'])
+                self.assertNotIn('object-storage-init', config['services'])
+                application_secrets = {'s3_access_key_id', 's3_secret_access_key'}
+                for name, service in config['services'].items():
+                    self.assertEqual(service['image'], release['images'][name])
+                    self.assertNotIn('build', service)
+                    if name != 'caddy':
+                        self.assertFalse(service.get('ports'))
+                    mounts = {item['source'] for item in service.get('secrets', [])}
+                    if name in ('web', 'jobs'):
+                        self.assertEqual({key: service['environment'][key] for key in public}, public)
+                        for key, secret in [('S3_ACCESS_KEY_ID', 's3_access_key_id'),
+                                            ('S3_SECRET_ACCESS_KEY', 's3_secret_access_key')]:
+                            self.assertEqual(service['environment'][key + '_FILE'], '/run/secrets/' + secret)
+                            self.assertNotIn(key, service['environment'])
+                        base_mounts = {item['source'] for item in base['services'][name]['secrets']}
+                        self.assertEqual(mounts, base_mounts | application_secrets)
+                        self.assertFalse(any('backup' in item or 'admin' in item for item in mounts))
+                    else:
+                        self.assertTrue(mounts.isdisjoint(application_secrets))
+                self.assertEqual(config['services']['web']['depends_on']['migrate']['condition'],
+                                 'service_completed_successfully')
+                self.assertEqual(set(config['services']['jobs']['networks']), {'data'})
+        for key in ('S3_ENDPOINT', 'S3_REGION', 'S3_BUCKET'):
+            with self.subTest(missing=key), self.assertRaises(subprocess.CalledProcessError):
+                render(['compose.s3.yaml'], {**public, key: ''})
 
     def test_unapproved_source_whitelist_and_partial_full_bundle_are_rejected(self):
         self.validator.write_text('RUNTIME_FILES = ' + repr(bundle.RUNTIME_FILES + ('private.env',)) + '\n')
@@ -192,9 +253,14 @@ class BundleTest(unittest.TestCase):
         self.validator.write_text('RUNTIME_FILES = ' + repr(bundle.RUNTIME_FILES) + '\n')
         self.commit_source('restore approved runtime contract')
         self.build()
-        (self.output / 'restore.sh').unlink()
-        with self.assertRaisesRegex(ValueError, 'missing or unexpected'):
-            bundle.verify_bundle(self.output, self.sha)
+        for name, message in [('restore.sh', 'missing or unexpected'),
+                              ('compose.s3.yaml', 'checksum manifest must cover the exact runtime file list')]:
+            path = self.output / name
+            contents = path.read_bytes()
+            path.unlink()
+            with self.assertRaisesRegex(ValueError, message):
+                bundle.verify_bundle(self.output, self.sha)
+            path.write_bytes(contents)
 
 
 if __name__ == '__main__':
