@@ -77,6 +77,69 @@ describe('表单封装（TanStack Form + Zod）', () => {
     expect(screen.queryByText('At least 8 characters')).toBeNull()
   })
 
+  it('其他字段失焦后，正在输入、尚未失焦的字段不提前显示错误', async () => {
+    render(<SignInForm onSubmit={async () => {}} />)
+    const email = screen.getByLabelText('Email')
+    fireEvent.change(email, { target: { value: 'a@example.com' } })
+    await act(async () => {
+      fireEvent.blur(email)
+    })
+    // 表单级失焦校验已为 password 写入错误，但 password 尚未失焦
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'short' } })
+    expect(screen.queryByText('At least 8 characters')).toBeNull()
+  })
+
+  it('已显示的错误在输入修正后立即消失，不等到失焦', async () => {
+    render(<SignInForm onSubmit={async () => {}} />)
+    const password = screen.getByLabelText('Password')
+    fireEvent.change(password, { target: { value: 'short' } })
+    await act(async () => {
+      fireEvent.blur(password)
+    })
+    expect(screen.getByText('At least 8 characters')).toBeTruthy()
+    await act(async () => {
+      fireEvent.change(password, { target: { value: 'password123' } })
+    })
+    expect(screen.queryByText('At least 8 characters')).toBeNull()
+  })
+
+  it('按下提交按钮引起的失焦不做失焦校验，交给提交统一校验', async () => {
+    const onSubmit = vi.fn(async () => {})
+    render(<SignInForm onSubmit={onSubmit} />)
+    const password = screen.getByLabelText('Password')
+    fireEvent.change(password, { target: { value: 'short' } })
+    fireEvent.pointerDown(screen.getByRole('button'))
+    await act(async () => {
+      fireEvent.blur(password)
+    })
+    expect(screen.queryByText('At least 8 characters')).toBeNull()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button'))
+    })
+    expect(await screen.findByText('At least 8 characters')).toBeTruthy()
+    expect(screen.getByText('Enter a valid email')).toBeTruthy()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('聚焦字段带着过期的失焦错误时，一次提交即按当前值校验并提交', async () => {
+    const onSubmit = vi.fn(async () => {})
+    render(<SignInForm onSubmit={onSubmit} />)
+    const email = screen.getByLabelText('Email')
+    const password = screen.getByLabelText('Password')
+    fireEvent.change(email, { target: { value: 'a@example.com' } })
+    // email 失焦时表单级校验为空的 password 写入错误；随后修正 password 并直接按下提交
+    await act(async () => {
+      fireEvent.blur(email)
+    })
+    fireEvent.change(password, { target: { value: 'password123' } })
+    fireEvent.pointerDown(screen.getByRole('button'))
+    await act(async () => {
+      fireEvent.blur(password)
+      fireEvent.click(screen.getByRole('button'))
+    })
+    expect(onSubmit).toHaveBeenCalledWith({ email: 'a@example.com', password: 'password123' })
+  })
+
   it('errorMessages 取 issue 的 message 并去重', () => {
     expect(errorMessages(['a', { message: 'b' }, { message: 'a' }, null, { message: 1 }])).toEqual([
       'a',
