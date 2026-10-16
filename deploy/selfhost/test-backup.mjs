@@ -309,6 +309,22 @@ async function sample() {
       }
       const raw = safe(result.stdout)
       const lines = raw.trim().split('\n')
+      if (!/oom_kill \d+\b/.test(raw)) {
+        // 一次性容器在 cat 途中退出时 cgroup 文件随之消失，而末尾 awk 的 `|| true` 让 exec 仍返回 0；
+        // 只有容器已不在运行才视为退出竞争并跳过本次采样，仍在运行时交给下方断言判定计数缺失。
+        let running = false
+        try {
+          const state = await execute('docker', ['inspect', '-f', '{{.State.Running}}', id], {
+            env,
+            encoding: 'utf8',
+            timeout: 10_000,
+          })
+          running = state.stdout.trim() === 'true'
+        } catch {
+          // inspect 失败说明容器已被移除，同样属于退出竞争
+        }
+        if (!running) return
+      }
       point.services[service] ??= {
         rssPeakBytes: 0,
         cgroupPeakBytes: 0,
