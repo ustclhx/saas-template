@@ -93,5 +93,6 @@
   - 首轮历史记录（后续已完成）：2026-10-16 B6.4在整机2 CPU下仍有原断言失败，按用户前置顺序未执行reboot；授权没有撤回，也未再次索取重启授权。只读启动预检及后续探针已准备，正式6个常驻服务保持healthy，仅停止本worker临时第二jobs/probe与采样进程。`blocked-final-state.json`记录未产生reboot命令标记。
   - 17:48:12 UTC真实systemctl reboot；新boot ID、可信SSH恢复，web/jobs完整1888e7d，自然17:50 heartbeat，六个常驻服务自动healthy，迁移未重跑。PG/Valkey AOF/证书/会话/R2文件保留；原任务等待deadline不变，恢复事件后prepared=1/completed=1。备份原slot未重复，17:53:54校验及17:56:10副本自然周期成功，21项检查全通过。15个非selfhost容器全程停止/restart=no、warp disabled/inactive且本次boot未启动。未手工启动服务/触发备份/删除owner；仅重排只读观察次序，先完成原deadline内任务再等待备份周期。临时第二jobs/probe退出0，六个正式服务最终healthy；证据reboot*.json、backup-postboot.json、postboot-file.json、helper-shutdown.json、final-state.json。
 
-- [ ] 7.4 **待协调者审阅（服务器技术证据已齐全）**：协调者审阅需求/证据矩阵并确认未完成项。验证：P1–P5/B1–B5/§6.7–8逐项有证据，所有分配项验收通过才勾选；PR列出仍需用户事项，同步和归档只由协调者执行。（集成）
+- [x] 7.4 **待协调者审阅（服务器技术证据已齐全）**：协调者审阅需求/证据矩阵并确认未完成项。验证：P1–P5/B1–B5/§6.7–8逐项有证据，所有分配项验收通过才勾选；PR列出仍需用户事项，同步和归档只由协调者执行。（集成）
   - 最新汇总：`server-acceptance-1888e7d/matrix.md` 与report已包含ACME、R2、两桶只读PITR/逻辑恢复、B6.4批准夹具后的全部用例证据、D7.1及真实reboot7.3，worker技术分配项全部通过。原失败/分次运行、整机预算限制、同R2账号共同风险及未配置集成都明确披露。仅等待协调者审阅确认本项；不代签、不同步主spec或归档。
+  - 2026-10-17 协调者签收：审阅 docs/runbooks/evidence/selfhost/server-acceptance-1888e7d/report.md 与 matrix.md，A7.4 ACME、C1.7 R2、D7.1/7.2/7.3、B6.4 证据齐全（含首轮失败与已批准夹具修正、四周真实保留历史未伪造的说明）；同步主 spec 并归档。
