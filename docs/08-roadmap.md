@@ -127,14 +127,16 @@
 2026-10-15 用户决定：生产数据库使用 Neon 付费档，不自建 PG，不再建设 Tunnel / Workers VPC。设计与任务见 OpenSpec change [`add-cloud-production-neon`](../openspec/changes/add-cloud-production-neon/proposal.md)。1.1 已完成：Launch 组织下 `saas-production`（`aws-us-west-2`，0.25–1 CU，PITR 7 天），见 [production-neon runbook](./runbooks/production-neon.md)；staging 随组织升级改为 Launch 计费、上限 2 CU。
 
 - [x] Neon 生产项目：独立项目与付费计划、PG 17、受限 `migrator` / `app` / `readonly` 角色（沿用 [staging-neon runbook](./runbooks/staging-neon.md) §1–2），确认计划的 PITR 保留窗口
-- [ ] Cloudflare production 环境：web / jobs 的 `env.production`（Hyperdrive 缓存/非缓存、KV、Queues、Workflows、R2）与 Wrangler secrets
+- [x] Cloudflare production 环境：web / jobs 的 `env.production`（Hyperdrive 缓存/非缓存、KV、Queues、Workflows、R2）与 Wrangler secrets
 - [x] 域名：production 选定 `app.ezarouter.cc`（2026-10-15，绑定在首次部署时完成），staging 保持 workers.dev
-- [ ] 备份：Neon PITR + 每日逻辑备份到独立对象存储（R2 Bucket Lock 或非 Cloudflare 存储）；恢复演练用 Neon 时间点分支 + 校验脚本，写 `docs/runbooks/restore.md` 并记录 RTO/RPO
-- [ ] 发布流水线：GitHub `production` environment 的 Neon 直连迁移凭据；tag 触发 生产迁移 → jobs → web → `/api/health` 完整 SHA → 冒烟
+- [x] 备份：Neon PITR + 每日逻辑备份到独立对象存储（R2 Bucket Lock 或非 Cloudflare 存储）；恢复演练用 Neon 时间点分支 + 校验脚本，写 `docs/runbooks/restore.md` 并记录 RTO/RPO
+- [x] 发布流水线：GitHub `production` environment 的 Neon 直连迁移凭据；tag 触发 生产迁移 → jobs → web → `/api/health` 完整 SHA → 冒烟
 - [ ] 生产延迟基线：Hyperdrive → Neon 区域选择与 Smart Placement / 显式放置评估
 - [ ] 支付 live：按 [05 §8](./05-billing.md#8-支付模式与生产切换清单) 清单执行，前置 Q9
 
 **验收**：production 绑定域名可访问；tag 发布全流程自动化且健康 SHA 匹配；从 Neon 时间点与逻辑备份各恢复一次并通过校验。
+
+**进度（2026-10-16）**：v0.1.0 已发布到 `https://app.ezarouter.cc`（健康完整 SHA、db.up），seed 完成；每日加密备份已开启，两条恢复路径演练通过（[证据](./runbooks/evidence/production/release-2026-10-16.md)）。剩余：延迟基线（5.1）、生产 Sentry（5.2）、支付 live（Q9 / 6.1）、开放注册前把 jobs Cron 改回默认调度。
 
 ## Phase 4 · AI 图片 / 视频
 
