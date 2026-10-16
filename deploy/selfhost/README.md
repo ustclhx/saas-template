@@ -92,6 +92,18 @@ Docker `json-file` 的 `LOG_MAX_SIZE=10m`、`LOG_MAX_FILE=3` 可调。应用与�
 
 初轮镜像与尚未通过的 ACME 项见 [A7 验收记录](../../docs/runbooks/selfhost-a7.md)，完整健康与认证尾部验收见 [A 8/9 runbook](../../docs/runbooks/selfhost-a-final.md)。停止保留数据用 `docker compose down`；仅删除隔离验收数据时才使用 `down -v`。
 
+## 外部 S3 / R2（C 1.7）
+
+正式 bundle 的 `compose.s3.yaml` 将 `S3_ENDPOINT/REGION/BUCKET/FORCE_PATH_STYLE` 和两份
+应用凭据 `_FILE` 装配到 web/jobs。按 `.env.example` 填公开配置，按 `secrets.example` 创建
+UID1000 可读的 `s3_access_key_id` / `s3_secret_access_key`，通过
+`deploy.sh ... --compose-file compose.s3.yaml` 部署。不加载此文件时基础 Compose 无 S3
+配置或凭据前提。外部 S3 与自带 object-storage 二选一；此路径不启动 SeaweedFS 或
+bucket 初始化器，不将应用存储凭据分给 PG、迁移器、代理或 backup。
+R2 的 S3 API endpoint、region=auto、私有桶、最小权限与浏览器 CORS 设置步骤见
+[外部存储 runbook](../../docs/runbooks/selfhost-c-storage.md#正式-bundle-的外部-s3--r2-配置)。
+新增装配须随新 SHA 发布；旧 bundle 不含该文件，不能现场修改旧版本绕过校验。
+
 ## 可选 object-storage（C 1.5/1.6）
 
 默认仍连接部署方选择的外部 S3。自带 SeaweedFS **Community 4.48** 只通过额外的 Compose override 启用；不加载该文件时，基础 Compose 不定义自带存储服务或 S3 secret。关闭时同时省略该 override，不能仅删 `--profile` 而保留其中对初始化器的依赖。需要支持 `!override` 的 Docker Compose **2.24.4+**。

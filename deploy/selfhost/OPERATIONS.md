@@ -24,6 +24,11 @@
    独立备份file secrets/CA只给PG和backup。可选自带对象服务使用
    `--compose-file compose.object-storage.yaml --env-file .env.object-storage`，env含
    `COMPOSE_PROFILES=object-storage`；bucket init也必须成功后才启动应用。
+   外部 S3/R2 则只加 `--compose-file compose.s3.yaml`，在 `.env` 中配置公开的
+   `S3_ENDPOINT/REGION/BUCKET/FORCE_PATH_STYLE`，两份应用 S3 file secrets 仅给 web/jobs。
+   此路径与 object-storage 二选一，不启动本地存储，不要求其管理身份；可与 backup/replica
+   组合，应用与备份身份保持独立。外部桶须事先私有化并配置 APP_URL origin 的 CORS，
+   R2 使用 S3 API HTTPS endpoint 与 region=auto，详见仓库外部存储 runbook。
 6. release-state保留上一成功版本和最后迁移SHA。失败不自动回滚；兼容性审阅后执行
    `./deploy.sh --local --dir /srv/saas-selfhost --rollback <previous-success-sha>`（SSH换成
    `--host <explicit-host>`）。最后迁移release必须显式声明目标兼容，包括schema、DBOS

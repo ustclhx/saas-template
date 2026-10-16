@@ -27,6 +27,15 @@ LEGACY_RUNTIME_FILES = (
     'deploy.sh', 'deploy.py', 'health.py', 'init-server.sh', 'init-server.py', 'init-firewall.sh',
     'release/bundle.py', 'README.md', 'OPERATIONS.md',
 )
+PRE_S3_RUNTIME_FILES = (
+    'compose.yaml', 'compose.backup.yaml', 'compose.object-storage.yaml',
+    'compose.proxy.yaml', '.env.example', 'secrets.example',
+    'Caddyfile.object-storage', 'object-storage-init.mjs',
+    'deploy.sh', 'deploy.py', 'health.py', 'init-server.sh', 'init-server.py', 'init-firewall.sh',
+    'release/bundle.py', 'README.md', 'OPERATIONS.md',
+    'restore.sh', 'restore-drill.sh', 'backup/restore.py', 'compose.replica.yaml',
+    '.env.backup.example', '.env.object-storage.example', '.env.replica.example',
+)
 RUNTIME_FILES = (
     'compose.yaml', 'compose.backup.yaml', 'compose.object-storage.yaml',
     'compose.proxy.yaml', '.env.example', 'secrets.example',
@@ -35,6 +44,7 @@ RUNTIME_FILES = (
     'release/bundle.py', 'README.md', 'OPERATIONS.md',
     'restore.sh', 'restore-drill.sh', 'backup/restore.py', 'compose.replica.yaml',
     '.env.backup.example', '.env.object-storage.example', '.env.replica.example',
+    'compose.s3.yaml',
 )
 GENERATED_FILES = ('image-set.json', 'image-catalog.json', 'images.env')
 
@@ -99,7 +109,7 @@ def verify_bundle(directory, expected_sha, allow_fixture=False):
         require(path.is_file() or path.is_dir(), 'bundle special files are forbidden')
         if path.is_file():
             actual.add(path.relative_to(directory).as_posix())
-    runtime_files = next((names for names in (LEGACY_RUNTIME_FILES, RUNTIME_FILES)
+    runtime_files = next((names for names in (LEGACY_RUNTIME_FILES, PRE_S3_RUNTIME_FILES, RUNTIME_FILES)
                           if actual == set(names) | set(GENERATED_FILES) | {'release.json'}), None)
     require(runtime_files is not None, 'bundle contains missing or unexpected runtime files')
     expected = set(runtime_files) | set(GENERATED_FILES) | {'release.json'}
@@ -127,7 +137,7 @@ def verify_bundle(directory, expected_sha, allow_fixture=False):
     for key, value in image_env(release).items():
         require(re.findall(r'^' + key + r'=(.*)$', example, re.M) == [value],
                 'example image reference mismatch')
-    if runtime_files == RUNTIME_FILES:
+    if runtime_files != LEGACY_RUNTIME_FILES:
         for name in ('.env.backup.example', '.env.object-storage.example', '.env.replica.example'):
             example = (directory / name).read_text()
             for key, value in image_env(release).items():
@@ -164,7 +174,7 @@ def source_runtime_files(source, sha):
         names = ast.literal_eval(assignments[0])
     except (SyntaxError, ValueError, TypeError):
         raise ValueError('source runtime whitelist must be one literal tuple') from None
-    require(isinstance(names, tuple) and names in (LEGACY_RUNTIME_FILES, RUNTIME_FILES),
+    require(isinstance(names, tuple) and names in (LEGACY_RUNTIME_FILES, PRE_S3_RUNTIME_FILES, RUNTIME_FILES),
             'source runtime whitelist is not an approved file list')
     return names
 
@@ -202,7 +212,7 @@ def build_bundle(source, sha, image_set_path, output, compatible=(), fixture=Fal
             else:
                 example += '\n' + key + '=' + value + '\n'
         (temporary / '.env.example').write_text(example)
-        if runtime_files == RUNTIME_FILES:
+        if runtime_files != LEGACY_RUNTIME_FILES:
             for name in ('.env.backup.example', '.env.object-storage.example', '.env.replica.example'):
                 example = (temporary / name).read_text()
                 for key, value in image_env(release).items():
