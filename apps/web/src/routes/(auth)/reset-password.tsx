@@ -3,7 +3,12 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { z } from 'zod'
 import { authClient } from '../../features/auth/auth-client.ts'
-import { AuthLayout, FormAlert, StatusAlert } from '../../features/auth/auth-layout.tsx'
+import {
+  AuthLayout,
+  authLinkClassName,
+  FormAlert,
+  StatusAlert,
+} from '../../features/auth/auth-layout.tsx'
 import { AUTH_ERROR_MESSAGES, authErrorMessage } from '../../features/auth/errors.ts'
 
 /** 页面文案（英文硬编码，P6 接 Paraglide） */
@@ -46,7 +51,7 @@ function ResetPasswordPage() {
       title={COPY.title}
       description={COPY.description}
       footer={
-        <Link to="/login" className="text-foreground underline underline-offset-4">
+        <Link to="/login" className={authLinkClassName}>
           {COPY.backToLogin}
         </Link>
       }
