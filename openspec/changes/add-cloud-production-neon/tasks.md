@@ -43,8 +43,8 @@
 - [ ] 5.1 生产延迟基线与放置评估：测 Hyperdrive → Neon 的读写与事务往返，对比 Smart Placement 开关；区域非 `aws-us-west-2` 时重跑锁探针七场景。验证：结果写入 `docs/07-infrastructure.md` §8，注明日期与区域。
   - 2026-10-16 进展：生产健康探测 40 次（入口 LAX）Worker 内 DB 往返 p50 45 ms / p95 116 ms，记入 docs/07 §8。放置对比需部署临时探针 Worker 绑定生产 Hyperdrive，待用户批准。
   - 2026-10-16 用户决定：放置对比（临时探针 Worker）推迟到上线后有真实用户地域分布再做；当前保留健康探测基线。本项保持未勾选。
-- [ ] 5.2 生产 Sentry release / source map 与告警：确认 tag 发布上传 maps、生产异常可读，备份失败与健康 503 有通知。验证：触发一次受控测试异常得到可读堆栈；告警渠道收到测试通知。
-  - 2026-10-16 进展：v0.1.1 / v0.1.2 发布已上传 source map；生产受控测试异常（requestId `01a144d8-…`）在 Sentry `SAAS-PRODUCTION-3` 显示 `src/server/sentry-test.ts:30:9` 源码堆栈。备份失败由 GitHub 邮件告警；剩余：生产健康 503 告警（Sentry Uptime Monitor，待用户配置）。见证据 §5。
+- [x] 5.2 生产 Sentry release / source map 与告警：确认 tag 发布上传 maps、生产异常可读，备份失败与健康 503 有通知。验证：触发一次受控测试异常得到可读堆栈；告警渠道收到测试通知。
+  - 2026-10-16 进展：v0.1.1 / v0.1.2 发布已上传 source map；生产受控测试异常（requestId `01a144d8-…`）在 Sentry `SAAS-PRODUCTION-3` 显示 `src/server/sentry-test.ts:30:9` 源码堆栈。备份失败由 GitHub 邮件告警；生产健康告警由 Sentry Uptime 监控（每分钟，连续 3 次失败告警到邮箱）覆盖。见证据 §5。
 
 ## 6. 支付 live（Q9 决定后）
 
