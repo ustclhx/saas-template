@@ -8,15 +8,17 @@
   - 2026-10-15 完成：用户选定 `app.ezarouter.cc`，staging 保持 workers.dev；Zone 在本账号且 active，该主机名公共 DNS 为 NXDOMAIN。本机 OAuth 无 DNS 读取权限，Workers 自定义域名绑定在 2.1 / 3.3 首次部署时验证；生产 CI token 的 Zone 权限见 1.4。见 [production runbook §1a](../../../docs/runbooks/production-neon.md)。
 - [x] 1.3 **BLOCKED（用户选定备份存储并提供凭据）**：创建开启对象锁定的独立备份 bucket（R2 Bucket Lock 或非 Cloudflare S3 兼容存储），生成 age 密钥对，私钥离线保存。验证：bucket 锁定策略与保留期限截图/命令输出脱敏记录；公钥写入 runbook，私钥不进仓库与 CI。
   - 2026-10-15 完成：R2 桶 `saas-production-backups`，Bucket Lock 30 天、生命周期 35 天过期，r2.dev 关闭；age 公钥写入 runbook §5，私钥在开发机仓库外（600），离线两份副本由用户保存并在 4.2 验证。
-- [ ] 1.4 **BLOCKED（用户指定审批人）**：创建 GitHub `production` environment，配置必需审批人与生产迁移、Cloudflare（token 需含 Zone `ezarouter.cc` 的 Workers Routes 编辑权限）、备份 secrets。验证：PR 与 staging workflow 中无法读取这些 secrets；secrets 名称清单写入 runbook。
+- [x] 1.4 **BLOCKED（用户指定审批人）**：创建 GitHub `production` environment，配置必需审批人与生产迁移、Cloudflare（token 需含 Zone `ezarouter.cc` 的 Workers Routes 编辑权限）、备份 secrets。验证：PR 与 staging workflow 中无法读取这些 secrets；secrets 名称清单写入 runbook。
   - 2026-10-15 进展：`production`（审批人 ustclhx、仅 `v*` tag）与 `production-backup`（无审批、仅 main，供每日定时备份）已创建；数据库凭据、账号 ID 与备份变量已写入。待用户创建生产 `CLOUDFLARE_API_TOKEN` 与 R2 备份密钥后勾选，见 runbook §6。
+  - 2026-10-16 完成：用户在真实终端重写 `CLOUDFLARE_API_TOKEN`（production）与 R2 备份密钥（production-backup）；`gh secret list` 核对名称与写入时间，仓库级 secrets 为空。值在 3.3 首次发布与 4.1 首次备份时实际验证。见 production runbook §6。
 
 ## 2. production 环境配置
 
 - [x] 2.1 创建生产 Hyperdrive（缓存/非缓存，非 pooled TLS 直连 app 角色）、KV、Queues、Workflows、R2 与限流命名空间，并在 web / jobs `wrangler.jsonc` 增加 `env.production`（`SENTRY_ENVIRONMENT=production`，不设 `PAYMENT_MODE`，测试期 `CRON_PROFILE=reduced`、对外开放注册前改回默认 profile，自定义域名路由）。验证：两 app `wrangler deploy --dry-run --env production` 通过；新增脚本比较 staging 与 production 的绑定名集合一致并纳入 `pnpm check`；无任何 staging 资源 ID 出现在 production 段。
   - 2026-10-15 进展：用户批准后资源已创建（ID 见 production runbook §8 执行记录），两个 `wrangler.jsonc` 已加 `env.production`（Worker 自定义域名 `app.ezarouter.cc`，关闭 workers.dev / preview URL）；`scripts/production/check-wrangler-envs.mjs` 纳入 `pnpm check`（绑定名一致、无 staging ID / 名称、禁设 PAYMENT_MODE 与 AI_FAULT_INJECTION，单测含反例）。用户批准后经 API 新建 Turnstile 站点 `saas-production`（仅 `app.ezarouter.cc`，managed），站点 key 写入 web `env.production.vars`、密钥存开发机 600 文件供 2.2；jobs dry-run 与 web 生产构建（预渲染无 env.invalid）+ 部署 dry-run 均通过，2.1 完成。
   - 同批修复生产会触发的缺陷：jobs 队列分发只认 `email|events(-staging)`，`*-production` 会抛 `Unknown queue`；`presign.ts` 文件桶白名单只含 `files|files-staging`，生产上传会 503。两处加入 production 名称并补测试（备份桶仍被拒绝）。生成器同步识别 `-production` 后缀并把模板生产域名替换为占位值，避免新项目复用本项目域名与资源名。
-- [ ] 2.2 写入生产 Wrangler secrets（auth、邮件、AI、Sentry、通知等，支付除外）并在 runbook 列出名称与来源。验证：`wrangler secret list --env production` 名称与清单一致；本 change 不写入支付 secrets。
+- [x] 2.2 写入生产 Wrangler secrets（auth、邮件、AI、Sentry、通知等，支付除外）并在 runbook 列出名称与来源。验证：`wrangler secret list --env production` 名称与清单一致；本 change 不写入支付 secrets。
+  - 2026-10-16 完成：`wrangler secret list --name web-production / jobs-production` 名称与 runbook §9 清单一致，无支付 secrets；jobs 的 `EMAIL_TRANSPORT=resend` 与 `EMAIL_FROM` 由用户以 secret 写入（不再声明同名 var）。可选项 `SENTRY_DSN`、`BOOTSTRAP_ADMIN_EMAILS` 未配置。
 
 ## 3. 生产发布流水线
 
