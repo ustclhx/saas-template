@@ -103,6 +103,37 @@ class HealthTest(unittest.TestCase):
             self.assertFalse(health.ready(value, A))
 
 
+class ComposeTest(unittest.TestCase):
+    def test_verified_external_s3_plan_accepts_digit_filename_but_rejects_unlisted_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            (directory / '.env').write_text('APP_URL=https://example.com\n')
+            (directory / '.env').chmod(0o600)
+            (directory / '.env.example').write_text('APP_URL=https://example.com\n')
+            files = ['compose.yaml', 'compose.s3.yaml', 'compose.backup.yaml', 'compose.replica.yaml']
+            images = {name: f'registry.example/{name}@sha256:{"a" * 64}'
+                      for name in ['postgres', 'valkey', 'migrate', 'web', 'jobs']}
+            release = {'images': images, 'files': dict.fromkeys(files)}
+            config = {'name': 'isolated', 'services': {
+                name: {'image': image, 'user': '1000:1000', 'networks': {'data': {}}}
+                for name, image in images.items()}}
+
+            # 保留真实 Compose 计划校验，仅替代外部 CLI 的配置输出；不运行 pull/up。
+            with patch.object(deploy, 'run', side_effect=[json.dumps(config), '']) as command:
+                compose = deploy.Compose(directory, directory, release, files, ['.env'])
+                self.assertEqual(compose.project, 'isolated')
+                rendered = command.call_args_list[0].args[0]
+                self.assertIn(str(directory / 'compose.s3.yaml'), rendered)
+
+            for name in ['compose.private2.yaml', '../compose.s3.yaml']:
+                with self.subTest(name=name), patch.object(deploy, 'run') as command:
+                    # 即使出现在清单中，目录穿越仍须拒绝；普通文件仍须属于清单。
+                    candidate = {**release, 'files': {**release['files'], '../compose.s3.yaml': None}}
+                    with self.assertRaisesRegex(deploy.DeploymentError, 'verified bundle'):
+                        deploy.Compose(directory, directory, candidate, ['compose.yaml', name], ['.env'])
+                    command.assert_not_called()
+
+
 class DeployTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

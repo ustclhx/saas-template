@@ -62,7 +62,7 @@ class Compose:
                 raise DeploymentError('runtime env must be a regular file with mode 0600')
             self.args += ['--env-file', str(path)]
         for name in files:
-            if name not in release['files'] or not re.fullmatch(r'compose(?:\.[a-z-]+)?\.yaml', name):
+            if name not in release['files'] or not re.fullmatch(r'compose(?:\.[a-z0-9-]+)?\.yaml', name):
                 raise DeploymentError('Compose file must belong to the verified bundle')
             self.args += ['-f', str(bundle / name)]
         self.config = json.loads(self('config', '--format', 'json'))
