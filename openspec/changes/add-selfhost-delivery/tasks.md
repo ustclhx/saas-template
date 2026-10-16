@@ -83,7 +83,15 @@
 
 本组使用获授权的 product-res-ecs、模板 Caddy、selfhost.ezarouter.cc 与三个 selfhost 专用 R2 桶；同账号主/副本使用独立受限 token，失去供应商独立性。6.4 指定现有服务仅可按追加授权记录策略后停止，不删除数据；不运行空白 init，不触碰生产 Cloudflare/staging。7.3 整机 reboot 已追加获准，待部署、foundation 7.4、job-engine 6.4、7.2 完成后执行；重启前留证且已停止的非 selfhost 服务不得自启，不用本地验证提前勾选。具体边界见 design 的 2026-10-16 决定。
 
-- [ ] 7.1 **待验收（2026-10-16 用户已授权主机/Caddy）**：在选定且获授权的新加坡测试主机从 release bundle 部署；空白主机才运行 init，复用主机仅按获准方案接内部代理。验证：无供应商专有配置/服务器构建、正确SHA/任务readiness；选择Dokploy时同Compose由其Traefik提供入口、无Caddy抢端口；资源/磁盘/备份峰值有余量。（P1–P4）
-- [ ] 7.2 **待验收（2026-10-16 用户已授权 R2）**：验证每日 base+WAL、pg_dump、保留策略及同一 R2 账号下独立副本桶、独立且最小权限 token；服务器临时实例执行指定时间点恢复。验证：§6.7通过，恢复实例不挂载主目标凭据，副本 token 无主桶权限且副本单独恢复通过；数据/角色/任务校验、RTO/RPO/状态报告齐全，未触及已有生产卷。记录失去供应商独立性及账号级共同故障风险，不宣称通过第二供应商/独立账号容灾。（B1–B5、§6.7）
-- [ ] 7.3 **待验收（2026-10-16 已追加批准整机重启；先完成部署/ACME/6.4/7.2）**：实际重启所选服务器。验证：全部常驻服务无手工修补恢复，health/jobs目标完整SHA、数据及同版本任务状态正确、备份调度恢复；失败如实记录且不影响已有未授权服务，不用容器restart代替整机reboot。（§6.8）
-- [ ] 7.4 **BLOCKED（以上服务器证据齐全）**：协调者审阅需求/证据矩阵并确认未完成项。验证：P1–P5/B1–B5/§6.7–8逐项有证据，所有分配项验收通过才勾选；PR列出仍需用户事项，同步和归档只由协调者执行。（集成）
+- [x] 7.1 **已验收（正式1888e7d，复用主机/Caddy）**：在选定且获授权的新加坡测试主机从 release bundle 部署；空白主机才运行 init，复用主机仅按获准方案接内部代理。验证：无供应商专有配置/服务器构建、正确SHA/任务readiness；选择Dokploy时同Compose由其Traefik提供入口、无Caddy抢端口；资源/磁盘/备份峰值有余量。（P1–P4）
+  - 首轮历史记录（后续B6.4已通过）：2026-10-16 原版1888e7d正式bundle部署、PG/DBOS迁移、web/jobs完整SHA及自然heartbeat通过，无服务器构建；最低可用内存1392.742MiB、空闲磁盘7.7639GiB、连接峰值44/100、OOM0。B6.4短恢复时间上界仍失败，资源/服务器尾部签收未完成，不提前勾选；证据见 `docs/runbooks/evidence/selfhost/server-acceptance-1888e7d/`。
+  - 后续B6.4已完成批准夹具修正后的服务器复验，正式镜像/bundle与业务代码不变，原始部署和全部版本门有效。已有整机实测负载/备份恢复余量与CPU峰值、单服务上限限制均如实披露，本项签收；不把此测试负载外推为生产吞吐保证。
+
+- [x] 7.2 **2026-10-16 已验收（用户已授权 R2）**：验证每日 base+WAL、pg_dump、保留策略及同一 R2 账号下独立副本桶、独立且最小权限 token；服务器临时实例执行指定时间点恢复。验证：§6.7通过，恢复实例不挂载主目标凭据，副本 token 无主桶权限且副本单独恢复通过；数据/角色/任务校验、RTO/RPO/状态报告齐全，未触及已有生产卷。记录失去供应商独立性及账号级共同故障风险，不宣称通过第二供应商/独立账号容灾。（B1–B5、§6.7）
+  - 正式 1888e7d：每日 UTC02 slot 首次补做、额外完整 cycle、真实 R2 base/WAL/dump/角色材料、7天/4周保留计划与锁定配置通过；新环境缺少前三周真实锚点，不声称运行四周。主桶与仅副本独立凭据同点 PITR 各15项校验通过、相同 LSN，使用独立桶级只读恢复身份，Put/Delete403、无写入凭据挂载，恢复校验29.045/30.589秒；禁网临时PG逻辑恢复11项通过。报告列明观测 RPO、独立 token 权限及同账号/供应商共同故障风险。证据：`docs/runbooks/evidence/selfhost/server-acceptance-1888e7d/` 的 backup/retention/r2-settings/logical/restore JSON 与 report.md；临时恢复卷已清理，未挂载已有生产卷。
+- [x] 7.3 **已验收（2026-10-16 UTC 真实 systemctl reboot）**：实际重启所选服务器。验证：全部常驻服务无手工修补恢复，health/jobs目标完整SHA、数据及同版本任务状态正确、备份调度恢复；失败如实记录且不影响已有未授权服务，不用容器restart代替整机reboot。（§6.8）
+  - 首轮历史记录（后续已完成）：2026-10-16 B6.4在整机2 CPU下仍有原断言失败，按用户前置顺序未执行reboot；授权没有撤回，也未再次索取重启授权。只读启动预检及后续探针已准备，正式6个常驻服务保持healthy，仅停止本worker临时第二jobs/probe与采样进程。`blocked-final-state.json`记录未产生reboot命令标记。
+  - 17:48:12 UTC真实systemctl reboot；新boot ID、可信SSH恢复，web/jobs完整1888e7d，自然17:50 heartbeat，六个常驻服务自动healthy，迁移未重跑。PG/Valkey AOF/证书/会话/R2文件保留；原任务等待deadline不变，恢复事件后prepared=1/completed=1。备份原slot未重复，17:53:54校验及17:56:10副本自然周期成功，21项检查全通过。15个非selfhost容器全程停止/restart=no、warp disabled/inactive且本次boot未启动。未手工启动服务/触发备份/删除owner；仅重排只读观察次序，先完成原deadline内任务再等待备份周期。临时第二jobs/probe退出0，六个正式服务最终healthy；证据reboot*.json、backup-postboot.json、postboot-file.json、helper-shutdown.json、final-state.json。
+
+- [ ] 7.4 **待协调者审阅（服务器技术证据已齐全）**：协调者审阅需求/证据矩阵并确认未完成项。验证：P1–P5/B1–B5/§6.7–8逐项有证据，所有分配项验收通过才勾选；PR列出仍需用户事项，同步和归档只由协调者执行。（集成）
+  - 最新汇总：`server-acceptance-1888e7d/matrix.md` 与report已包含ACME、R2、两桶只读PITR/逻辑恢复、B6.4批准夹具后的全部用例证据、D7.1及真实reboot7.3，worker技术分配项全部通过。原失败/分次运行、整机预算限制、同R2账号共同风险及未配置集成都明确披露。仅等待协调者审阅确认本项；不代签、不同步主spec或归档。

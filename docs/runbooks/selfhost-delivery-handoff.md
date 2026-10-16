@@ -1,5 +1,7 @@
 # D 镜像交付与协调者签收清单
 
+最新服务器状态（2026-10-16 UTC）：正式1888e7d部署、真实R2主/副本只读PITR及逻辑恢复、B6.4批准夹具后复验、已批准的真实systemctl reboot全部通过。D7.1/7.2/7.3已验收，7.4仅待协调者审阅。最新[矩阵](evidence/selfhost/server-acceptance-1888e7d/matrix.md)与[报告](evidence/selfhost/server-acceptance-1888e7d/report.md)齐全；15个原有容器与warp保持停用。下文历史“缺资源/授权”及初次阻塞不再代表当前状态。
+
 此文是 `add-selfhost-delivery` 1.1 的审阅草案，快照日期 2026-10-14。
 协调者确认文件所有权及以下依赖后才勾选 1.1。D worker 仅领取 1.1–1.3，
 不勾选 A/B/C、不同步或归档 capability、不连接服务器或使用部署凭据。

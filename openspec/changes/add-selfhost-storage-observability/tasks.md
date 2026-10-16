@@ -14,7 +14,9 @@
 - [x] 1.4 协调者装配 web files/downloadFile 和 jobs delete capability，处理 jobs string|string[] 桥接并启用已装配的十分钟文件清理；保留未配置/预渲染 unavailable 和独立 workflow gate。验证：Node 文件业务测试复用实际大小、并发配额、跨租户/失效会话/分享撤销、清理失败锚点；真实 HTTP 上传/确认/下载可用，而 storage-only 媒体仍 503 且 task/hold 数不变；更新平台能力和 C→B 5.3/5.4 交接文档，不改 B 勾选。
 - [x] 1.5 为 deploy/selfhost 增加默认关闭的 `object-storage` SeaweedFS Community 4.48 profile 与无真值配置，固定并复核 manifest 双架构；最小组件、私有 bucket、管理/应用权限分离、幂等 CORS 初始化、非 root/文件密钥/持久卷/health/资源/滚动日志，公开 API 经独立 HTTPS 子域。验证：profile 关/开分别 `docker compose config`，关时无本地 secret 前提；真实空目录启动与重启 UID 非零、对象保留、匿名读取拒绝、管理接口无公网端口，代理仅80/443且保留签名 Host/path/query；README 记录初始化与关闭保留数据方式，不建/发布 D 应用镜像。
 - [x] 1.6 验收 profile 的真实浏览器 CORS/预签名与整个 2 CPU/4 GiB 栈资源预算，收敛 profile 的 web/jobs/storage 限额与安全并发。验证：APP_URL 的 OPTIONS/PUT/GET/HEAD 及 Content-Type/If-None-Match 成功，未授权 origin 被拒；记录 idle/并发上传/未知长度转存/维护/重启 CPU、峰值内存与余量，无 OOM，不能仅测存储单服务；报告初始预算与最终预算区别，未通过不勾选 S2。
-- [ ] 1.7 验收外部 S3 默认路径，仅使用 R2 经 S3 API 的可配置端点与独立私有桶/受限应用凭据（2026-10-16 用户决定，不再要求另一个兼容端点）；交付 B 可使用的存储/copier 证据。验证：使用同一业务/SDK 验收上传确认/短期下载/权限配额/失败清理，关闭 profile 无自带服务；没有外部凭据时写明未完成而不以本地服务冒充外部联通，不实际移植 B 5.3/5.4。
+- [x] 1.7 验收外部 S3 默认路径，仅使用 R2 经 S3 API 的可配置端点与独立私有桶/受限应用凭据（2026-10-16 用户决定，不再要求另一个兼容端点）；交付 B 可使用的存储/copier 证据。验证：使用同一业务/SDK 验收上传确认/短期下载/权限配额/失败清理，关闭 profile 无自带服务；没有外部凭据时写明未完成而不以本地服务冒充外部联通，不实际移植 B 5.3/5.4。
+
+2026-10-16 正式 1888e7d + product-res-ecs + R2 验收通过：真实业务上传确认/短期下载、条件 PUT、配额/租户/会话/分享、失败清理、8MiB 未知长度 multipart copier 与超限清理；独立 Chromium 的允许 origin OPTIONS204/PUT/GET/HEAD、响应头暴露及未授权 origin 拒绝，三个 token 跨桶 List 均403。证据：`docs/runbooks/evidence/selfhost/server-acceptance-1888e7d/{storage,browser,permissions}.json`。仅外部 R2，无自带对象存储服务，未修改 B 媒体实现。
 
 ## 2. Sentry Node（O3，Node 观测 adapter owner；共享文件协调者串行）
 
