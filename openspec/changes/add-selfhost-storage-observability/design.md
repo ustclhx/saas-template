@@ -21,6 +21,10 @@
 
 ## Decisions
 
+### 2026-10-16 用户决定：外部联通仅使用 R2
+
+本次 1.7 外部服务验收只使用 Cloudflare R2 S3 API，不再要求第二个外部兼容端点。使用独立私有 `selfhost-files` 桶和仅限该桶的应用凭据；应用身份不读取备份桶，备份身份不交给 web/jobs。通用 endpoint/region/bucket/path-style 能力与已有协议测试保持，不能把本地夹具写成真实 R2 联通证据。R2 外部路径须在关闭自带 profile 时验证上传确认、短期下载、权限/配额和失败清理，交付 storage/copier 证据。
+
 ### 1. 通用 S3 Node 适配器与配置（S1）
 
 选择 `@aws-sdk/client-s3`、`@aws-sdk/s3-request-presigner`，流式 multipart 使用 `@aws-sdk/lib-storage`；均只由 `@saas/storage/node` 加载。相比继续扩展 aws4fetch 的固定 R2 实现，通用 SDK 直接处理 endpoint/region/path-style、HEAD/DELETE 和 multipart；不引入厂商专用 SDK。CF 工厂和其绑定保持原路径；API 用法参考 [官方 JavaScript S3 示例](https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/javascript_s3_code_examples.html)。
@@ -89,6 +93,7 @@ SMTP 接受后返回成功；先按 responseCode 分类，4xx（包括临时认�
 
 ## Risks / Trade-offs
 
+- [外部服务实测仅覆盖 R2] → 本次不证明第二家真实端点联通；通用 S3 配置和本地协议矩阵继续保留，换供应商时重新验收。
 - [S3 兼容实现/SDK 版本差异] → 真实条件 PUT、HEAD、attachment、CORS、签名过期与两种寻址验收；拒绝削弱不覆盖保护。
 - [自带存储占用 4 GB 余量] → profile 专门预算、整体 cgroup/主机测量；不把单服务低 RSS 当作全栈证明。
 - [预签名经代理被改写] → 独立子域、原 Host/path/query 与 externalUrl，一条真实浏览器链路验证。
@@ -108,4 +113,4 @@ SMTP 接受后返回成功；先按 responseCode 分类，4xx（包括临时认�
 
 - profile 的最终 CPU/内存、对象索引、partSize/最大安全并发及非 root 卷权限参数，按上述整体资源和协议门槛实测收敛；当前数值为起点，不是通过证据。
 - 所选 Node Sentry/S3/Nodemailer 精确锁定版本与 Nitro map 文件路径，在真实目标构建/fixture 验证后记录；不会改变既定接口与功能范围。
-- 真实 Sentry 项目源码映射和第二个外部 S3 endpoint 的联通凭据可用时间；缺凭据时对应验收明确未完成，不能以测试 transport 或类型检查代替。
+- 真实 Sentry 项目源码映射按 2.5 证据签收；1.7 的 R2 受限凭据通过控制台安全落盘后验收。2026-10-16 用户已取消第二个外部 endpoint 的验收要求，不能以本地 fixture 代替真实 R2。

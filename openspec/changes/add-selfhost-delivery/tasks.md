@@ -64,7 +64,7 @@
 - [x] 5.1 实现新空目录/卷 restore.sh：目标 UTC 时间/backup ID 校验、匹配 PG17、base+WAL 恢复、暂停/校验/显式 promote 边界。验证：隔离数据目标前/后 marker 正确，非空/生产路径、缺 WAL 和目标越界非零失败；无 jobs/外部副作用/主归档写入；交付新服务器恢复 runbook含 secret/TLS/ownership/外部对象边界。（B3）
 - [x] 5.2 实现独立 project/volume 的 restore-drill.sh 和 schema/角色/业务/任务校验，复用积分余额对账（启用时），输出恢复点/耗时脱敏报告。验证：从实际 S3 恢复通过，失败保留诊断，清理仅本脚本资源，PG无公网端口且生产未改；提供可重复命令。（B4、§6.7）
 - [x] 5.3 实现独立第二目标配置与 base/dump/WAL/history 复制入口、完整性清单、连续上界/延迟、独立保留及不传播删除。验证：两个隔离 S3 目标的重复同步/中断/源删除/第二目标故障通过，主归档独立成功且副本失败可见；写调度/RPO/权限说明。（B5）
-- [x] 5.4 禁止访问主目标，以第二目标独立凭据恢复相同时间点并校验完整恢复链。验证：只靠副本 base/WAL/history 与独立恢复材料成功，记录可恢复上界及同步延迟；两个本地桶只证明机制，真实不同供应商账号验收仍待 7.2。（B5、B3）
+- [x] 5.4 禁止访问主目标，以第二目标独立凭据恢复相同时间点并校验完整恢复链。验证：只靠副本 base/WAL/history 与独立恢复材料成功，记录可恢复上界及同步延迟；两个本地桶只证明机制，真实外部目标验收仍待 7.2（2026-10-16 已改为同一 R2 账号下独立桶/token）。（B5、B3）
 
 ## 6. 本地与 CI 集成验收（各 owner 完成后协调者验收）
 
@@ -79,11 +79,11 @@
 - [x] 6.4 集成后执行 `openspec validate add-selfhost-delivery --strict`、根 `pnpm check`、`pnpm check:deps`、`pnpm check:singletons`、`pnpm dedupe --check`、`pnpm typecheck`、`pnpm test`、`pnpm build` 及 Node/生成器相关新增验证。验证：全部通过，双目标未串产物或削弱 CF 测试/staging；合入后 main 自动 staging/health 回归由协调者记录，未获得发布证据不冒充通过。（集成）
   - 2026-10-15 协调者签收：b43c6b3 上 strict validate、根 check/check:deps/check:singletons/dedupe --check、无缓存 typecheck/test/build 通过；Node 与生成器新增验证 build:node、web/jobs Node 套件、`test:create-project` 10 项、deploy/release/init 单测 10/7/8、backup 28 项、镜像策略 6 项通过。CF 与 Node 输出互不包含对方 adapter；main CI、Selfhost images 双架构、deployment gates、disabled features 均成功，合入后 [自动 staging 38640230004](https://github.com/ustclhx/saas-template/actions/runs/38640230004) health 完整 SHA。证据：[签收记录](../../../docs/runbooks/evidence/selfhost/signoff-2026-10-15.json)。
 
-## 7. 服务器验收（全部 BLOCKED：等待用户决策与资源）
+## 7. 服务器验收（2026-10-16 主机/入口/R2 已授权，验收证据仍待取得）
 
-本组依赖 design Open Questions 的用户选择：单独新机或升级/复用、入口（Caddy/既有代理/cloudflared）、是否使用 Dokploy；以及实际主机授权、域名/TLS、独立存储账号和重启窗口。不得假设是已有 product-res-ecs，不连接或修改它。用户决定后协调者放行相应编号；不用本地验证提前勾选。
+本组使用获授权的 product-res-ecs、模板 Caddy、selfhost.ezarouter.cc 与三个 selfhost 专用 R2 桶；同账号主/副本使用独立受限 token，失去供应商独立性。6.4 指定现有服务仅可按追加授权记录策略后停止，不删除数据；不运行空白 init，不触碰生产 Cloudflare/staging。7.3 整机 reboot 已追加获准，待部署、foundation 7.4、job-engine 6.4、7.2 完成后执行；重启前留证且已停止的非 selfhost 服务不得自启，不用本地验证提前勾选。具体边界见 design 的 2026-10-16 决定。
 
-- [ ] 7.1 **BLOCKED（用户主机/入口/运维决策）**：在选定且获授权的新加坡测试主机从 release bundle 部署；空白主机才运行 init，复用主机仅按获准方案接内部代理。验证：无供应商专有配置/服务器构建、正确SHA/任务readiness；选择Dokploy时同Compose由其Traefik提供入口、无Caddy抢端口；资源/磁盘/备份峰值有余量。（P1–P4）
-- [ ] 7.2 **BLOCKED（用户提供独立备份资源和演练窗口）**：验证每日 base+WAL、pg_dump、保留策略及第二供应商真实独立账号；服务器临时实例执行指定时间点恢复。验证：§6.7通过，主目标不可用时副本单独恢复通过，数据/角色/任务校验、RTO/RPO/状态报告齐全，未触及已有生产卷。（B1–B5、§6.7）
-- [ ] 7.3 **BLOCKED（用户批准真实重启窗口且1.5签收）**：实际重启所选服务器。验证：全部常驻服务无手工修补恢复，health/jobs目标完整SHA、数据及同版本任务状态正确、备份调度恢复；失败如实记录且不影响已有未授权服务，不用容器restart代替整机reboot。（§6.8）
+- [ ] 7.1 **待验收（2026-10-16 用户已授权主机/Caddy）**：在选定且获授权的新加坡测试主机从 release bundle 部署；空白主机才运行 init，复用主机仅按获准方案接内部代理。验证：无供应商专有配置/服务器构建、正确SHA/任务readiness；选择Dokploy时同Compose由其Traefik提供入口、无Caddy抢端口；资源/磁盘/备份峰值有余量。（P1–P4）
+- [ ] 7.2 **待验收（2026-10-16 用户已授权 R2）**：验证每日 base+WAL、pg_dump、保留策略及同一 R2 账号下独立副本桶、独立且最小权限 token；服务器临时实例执行指定时间点恢复。验证：§6.7通过，恢复实例不挂载主目标凭据，副本 token 无主桶权限且副本单独恢复通过；数据/角色/任务校验、RTO/RPO/状态报告齐全，未触及已有生产卷。记录失去供应商独立性及账号级共同故障风险，不宣称通过第二供应商/独立账号容灾。（B1–B5、§6.7）
+- [ ] 7.3 **待验收（2026-10-16 已追加批准整机重启；先完成部署/ACME/6.4/7.2）**：实际重启所选服务器。验证：全部常驻服务无手工修补恢复，health/jobs目标完整SHA、数据及同版本任务状态正确、备份调度恢复；失败如实记录且不影响已有未授权服务，不用容器restart代替整机reboot。（§6.8）
 - [ ] 7.4 **BLOCKED（以上服务器证据齐全）**：协调者审阅需求/证据矩阵并确认未完成项。验证：P1–P5/B1–B5/§6.7–8逐项有证据，所有分配项验收通过才勾选；PR列出仍需用户事项，同步和归档只由协调者执行。（集成）
