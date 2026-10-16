@@ -104,10 +104,10 @@ psql "$NEON_MIGRATOR_URL" -X -c 'select current_user, current_database()'   # �
 |---|---|---|---|
 | production | `PRODUCTION_MIGRATION_DATABASE_URL` | secret | 已写入（Neon migrator 非 pooled 直连） |
 | production | `CLOUDFLARE_ACCOUNT_ID` | secret | 已写入 |
-| production | `CLOUDFLARE_API_TOKEN` | secret | **待用户创建**：账号级 Workers Scripts / KV / R2 / Queues / Hyperdrive 编辑，Zone `ezarouter.cc` 的 Workers Routes 编辑与 Zone 读取；不复用 staging token |
+| production | `CLOUDFLARE_API_TOKEN` | secret | 用户 2026-10-16 04:09Z 在真实终端重写（`saas-production-deploy`：账号级 Workers Scripts / KV / R2 / Queues / Hyperdrive 编辑，Zone `ezarouter.cc` 的 Workers Routes 编辑与 Zone 读取） |
 | production | `SENTRY_AUTH_TOKEN` / `SENTRY_ORG` / `SENTRY_PROJECT` | secret | 待 5.2 |
 | production-backup | `PRODUCTION_READONLY_DATABASE_URL` | secret | 已写入（Neon readonly 非 pooled 直连） |
-| production-backup | `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | secret | **待用户创建**：R2 API token，Object Read & Write，仅限桶 `saas-production-backups` |
+| production-backup | `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | secret | 用户 2026-10-16 04:13Z 重写（`saas-production-backups-rw`：Object Read & Write，仅限桶 `saas-production-backups`） |
 | production-backup | `BACKUP_BUCKET` / `BACKUP_AGE_RECIPIENT` / `R2_ACCOUNT_ID` | variable | 已写入（非机密） |
 
 secret 均经 stdin 写入（无末尾换行），不出现在命令参数或输出中。仓库级 secrets 为空，生产值只存在于上述两个 environment；PR 与 `deploy-staging.yml`（environment `staging`）的作业无法读取。
@@ -166,3 +166,24 @@ GRANT pg_read_all_data TO readonly;
 vars：`SENTRY_ENVIRONMENT=production`、`APP_URL=https://app.ezarouter.cc`，**不设** `PAYMENT_MODE`（Q9 前支付关闭），jobs 测试期 `CRON_PROFILE=reduced`（开放注册前改回默认，D7）。资源创建后把 ID 写入两个 `wrangler.jsonc` 的 `env.production`，以 `wrangler deploy --dry-run --env production` 与绑定名一致性检查验证（2.1）。
 
 **C. 生产 Worker secrets（2.2）**——名称同 `scripts/staging/check-secrets.mjs` 的 web / jobs 清单（支付类除外），值需用户提供或新生成（如 `BETTER_AUTH_SECRET` 新随机值，OAuth / Turnstile 需为 `app.ezarouter.cc` 新建生产应用）。
+
+## 9. 生产 Worker secrets（任务 2.2，2026-10-16 核对名称）
+
+用户在真实终端写入；协调者以 `wrangler secret list --name <worker>` 只核对名称（不读值）。值的正确性在首次发布（3.3）时以健康检查、注册邮件与登录实际验证。
+
+| Worker | secrets | 来源 |
+|---|---|---|
+| `web-production` | `BETTER_AUTH_SECRET` | 本地随机生成，未留存 |
+| | `TURNSTILE_SECRET_KEY` | Turnstile 站点 `saas-production`（开发机 `~/.config/saas-template/turnstile-production.secret`） |
+| | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google 生产 OAuth 客户端，回调 `https://app.ezarouter.cc/api/auth/callback/google` |
+| | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | GitHub 生产 OAuth App，回调 `https://app.ezarouter.cc/api/auth/callback/github` |
+| | `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | R2 token，仅 `files-production`（与备份 token 分开） |
+| | `DEEPSEEK_API_KEY` | 生产文本 AI 直连（未配 AI Gateway） |
+| | `FAL_KEY`、`MEDIA_WEBHOOK_SECRET` | 与 jobs 相同值（媒体回调 HMAC 需一致） |
+| `jobs-production` | `RESEND_API_KEY` | Resend 发信 key，域名 `ezarouter.cc` |
+| | `EMAIL_TRANSPORT`（`resend`）、`EMAIL_FROM`（`EzaRouter <noreply@ezarouter.cc>`） | 用户以 **secret** 写入；运行时与 var 等效。**不要**再在 `wrangler.jsonc` 中声明同名 var，否则部署时绑定名冲突 |
+| | `FAL_KEY`、`MEDIA_WEBHOOK_SECRET` | 与 web 相同 |
+
+未配置（可选）：`SENTRY_DSN`（两端，5.2）、`BOOTSTRAP_ADMIN_EMAILS`（web；无管理员则无法在生产后台创建模型与套餐授权，首次发布前建议配置）、`EMAIL_REPLY_TO`。支付 secrets 待 Q9（6.1）。
+
+Resend 域名记录（DoH 核对）：`resend._domainkey.ezarouter.cc` TXT 存在；`send.ezarouter.cc` 的 MX 与 SPF TXT 存在（经 CNAME `send.forge.rmta.net`）；`_dmarc.ezarouter.cc` 未配置（建议补 `v=DMARC1; p=none;` 以提升送达率）。域名验证状态以 Resend 控制台 Verified 为准。
