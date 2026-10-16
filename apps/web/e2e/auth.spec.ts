@@ -92,6 +92,42 @@ test('注册 → 进入 /app；退出后登录 → 进入 /app', async ({ page, 
   await expect(page.getByText('Personal workspace', { exact: true })).toBeVisible()
 })
 
+test('注册表单：只显示已失焦字段的错误，修正后一次点击即可提交', async ({ page }) => {
+  test.skip(!auth.emailPassword, '模板配置关闭了邮箱密码')
+  test.skip(auth.requireEmailVerification, '强制验证邮箱时注册后需先验证')
+  await page.goto('/register')
+  const form = page.getByRole('form', { name: 'Create an account' })
+  const password = form.getByLabel('Password')
+
+  // 只编辑 Name 并失焦：未触碰的 Email / Password 不显示错误
+  await form.getByLabel('Name').fill('E2E User')
+  await form.getByLabel('Name').blur()
+  // 在密码框输入（尚未失焦）时不提前显示它自己的错误
+  await password.fill('short')
+  await expect(form.getByText('Enter a valid email address')).toHaveCount(0)
+  await expect(form.getByText('Password must be at least 8 characters')).toHaveCount(0)
+
+  // 密码框失焦后才显示自己的错误
+  await password.blur()
+  await expect(form.getByText('Password must be at least 8 characters')).toBeVisible()
+  await expect(form.getByText('Enter a valid email address')).toHaveCount(0)
+
+  await form.getByLabel('Email').fill(uniqueEmail())
+  await password.fill(PASSWORD)
+  // 修正后错误在输入时即消失，失焦不会再挪动提交按钮
+  await expect(form.getByText('Password must be at least 8 characters')).toHaveCount(0)
+  const signUp = page.waitForRequest('**/api/auth/sign-up/email', { timeout: 10_000 })
+  // 只点击一次，且点在按钮下沿附近：密码框仍有焦点，mousedown 触发的失焦若让错误消失、
+  // 按钮上移，mouseup 会落到按钮外而丢失点击（中心点击可能因位移较小而侥幸命中）
+  const submit = form.getByRole('button', { name: 'Create account' })
+  const box = await submit.boundingBox()
+  if (!box) throw new Error('提交按钮不可见')
+  await submit.click({ position: { x: box.width / 2, y: box.height - 3 } })
+  await signUp
+  await expect(page).toHaveURL(APP_URL)
+  await expect(page.getByText('Personal workspace', { exact: true })).toBeVisible()
+})
+
 test('错误按错误码提示：密码错误', async ({ page }) => {
   test.skip(!auth.emailPassword, '模板配置关闭了邮箱密码')
   await signIn(page, uniqueEmail(), 'wrong-password-123')
