@@ -517,6 +517,16 @@ export async function createProject(input, source = root) {
                 `$1${options.name}-$2$3`,
               )
           }
+          // 文件桶签名白名单与绑定桶名一致：新项目的 FILES 桶已改名为 <name>-files*，否则上传签名一律 503
+          if (
+            path === 'packages/storage/src/cloudflare/presign.ts' ||
+            path === 'packages/storage/test/presign.unit.test.ts'
+          ) {
+            text = text.replace(
+              /(?<=['"`/])files(-staging|-production)?(?=['"`/])/g,
+              (_match, suffix = '') => `${options.name}-files${suffix}`,
+            )
+          }
           if (path === '.github/workflows/deploy-staging.yml') {
             text = text.replace(
               /(STAGING_URL:\s*)https:\/\/\S+/g,
