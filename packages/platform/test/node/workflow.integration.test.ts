@@ -418,7 +418,7 @@ describe('Node durable workflows on real PostgreSQL', () => {
 
   it('drains gracefully with unfinished sleep retained, reuses successful checkpoints and retries a side effect before checkpoint idempotently', async () => {
     const launched = await launch()
-    const sleepId = await create(launched.child, { mode: 'sleep', sleepMs: 2_000 })
+    const sleepId = await create(launched.child, { mode: 'sleep', sleepMs: 5_000 })
     const [checkpoint] = await sleepCheckpoint(launched.name, sleepId)
     const deadline = Number(JSON.parse(checkpoint?.output as string))
     await delay(500)
