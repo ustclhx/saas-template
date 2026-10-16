@@ -15,10 +15,15 @@
     "sameTargetTime": true,
     "sameReplayLsn": true,
     "databaseValidationRtoSeconds": {
+      "main": 29.045,
+      "replica": 30.589
+    },
+    "rtoScope": "new volume, fetch/replay and read-only checks; excludes cleanup, application restart and traffic cutover",
+    "initialWriterIdentityRtoSeconds": {
       "main": 32.164,
       "replica": 36.645
     },
-    "rtoScope": "new volume, fetch/replay and read-only checks; excludes cleanup, application restart and traffic cutover"
+    "finalRestoreCredentials": "two separate bucket-scoped object-read-only identities; writer identities never mounted"
   },
   "rpoObservation": {
     "replicaChainContinuousUntil": "2026-10-16 16:18:24.93829+00",
@@ -41,6 +46,8 @@
     "separateTokens": true,
     "replicaCannotListMainBucket": true,
     "sameCloudflareAccount": true,
-    "providerIndependent": false
+    "providerIndependent": false,
+    "independentS3Identities": 5,
+    "restorePutDeleteDenied": true
   }
 }

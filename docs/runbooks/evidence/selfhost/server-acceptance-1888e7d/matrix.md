@@ -12,14 +12,14 @@
 | P5 生成器与功能裁剪 | [生成器实测](../../create-project/2026-10-14/selfhost-features.json)、[协调者集成签收](../signoff-2026-10-15.json) | 既有 selfhost 生成与裁剪证据；本轮没有修改生成器或将默认正式模板冒充裁剪副本 |
 | B1 每日 full/WAL/分层保留 | [备份状态](backup.json)、[摘要](backup-summary.json)、[保留计划](retention.json)、[R2 锁/生命周期](r2-settings.json) | 真 R2、首次每日 slot 与额外完整周期；7天/4周策略。新环境缺少前三周锚点；四周 metadata 机制另见 [既有演练](../d-drill-2026-10-15/report.md) |
 | B2 每日逻辑备份 | [下载与 SHA 校验](logical.json)、[禁网逻辑恢复](logical-restore.json) | 实际 pg_dump + roles/custom dump 恢复，业务/任务/约束/角色 11 项；不把逻辑快照当作连续 PITR |
-| B3 新卷显式 UTC PITR | [主桶恢复](restore-main.json) | 正式 restore-drill.sh、初始 base+连续 WAL、前标记存在/后标记不存在、15 项校验；原卷未挂载 |
-| B4 临时实例恢复演练 | [主](restore-main.json)、[副本](restore-replica.json)、[逻辑](logical-restore.json) | 新临时卷、无 host ports、无应用/外部副作用；成功后清理本次资源；RTO/RPO 的测量范围明确 |
-| B5 独立凭据恢复副本 | [token 权限](permissions.json)、[副本挂载](restore-replica-audit.json)、[副本同点恢复](restore-replica.json) | 仅副本 token/桶成功，主桶 List403，replay LSN 相同；同一账号/供应商的共同故障风险保留 |
-| §6.7 指定点恢复 | [主](restore-main.json)、[副本](restore-replica.json)、[备份摘要](backup-summary.json) | 本服务器实际新卷恢复与数据/角色/真实任务状态校验通过，不仅是本地机制夹具 |
-| §6.8 实际服务器 reboot | 尚待真实 61 分钟工作流通过后执行 | 不以容器 restart、既有本地 VM 或 health 单独代替 |
+| B3 新卷显式 UTC PITR | [主桶恢复](restore-main-readonly.json) | 正式 restore-drill.sh、初始 base+连续 WAL、前标记存在/后标记不存在、15 项校验；原卷未挂载 |
+| B4 临时实例恢复演练 | [主](restore-main-readonly.json)、[副本](restore-replica-readonly.json)、[逻辑](logical-restore.json) | 新临时卷、无 host ports、无应用/外部副作用；成功后清理本次资源；RTO/RPO 的测量范围明确 |
+| B5 独立凭据恢复副本 | [同步 token 权限](permissions.json)、[恢复只读权限](permissions-readonly.json)、[副本挂载](restore-replica-readonly-audit.json)、[副本同点恢复](restore-replica-readonly.json) | 仅副本只读 token/桶成功，主桶 List403，Put/Delete403，replay LSN 相同；同一账号/供应商的共同故障风险保留 |
+| §6.7 指定点恢复 | [主](restore-main-readonly.json)、[副本](restore-replica-readonly.json)、[备份摘要](backup-summary.json) | 本服务器实际新卷恢复与数据/角色/真实任务状态校验通过，不仅是本地机制夹具 |
+| §6.8 实际服务器 reboot | [当前阻塞/未执行](blocked-final-state.json) | 61分钟长例通过，但B6.4短恢复原断言仍失败；按用户的前置顺序不执行已批准reboot，不以容器restart或既有VM代替 |
 | A foundation 7.4 | [实际 ACME](deploy-acme.json)、[续期](acme-renewal.json)、[既有证书/XFF/非 root](../../../selfhost-a7.md) | 已补齐实际域名 ACME 门；staging 续期与生产证书状态隔离 |
 | A 其他需求、B/C 依赖 | [A 最终矩阵](../../../selfhost-a-final.md)、[协调者集成签收](../signoff-2026-10-15.json)、各 change tasks 的既有逐项证据 | A 8.3/9.1–9.3 与 B/C 已合入签收不由本 worker 重做；本轮增加剩余服务器证据 |
-| B job-engine 6.4 | [调度 10/10](scheduler.json)、[引擎/队列 14/14](queue.json)、[实际重试时间](queue-timeline.json)、[双 worker 补测](permits.json) | 调度及队列已通过；61 分钟 workflow 与完整整机资源汇总继续运行，未提前勾选 |
+| B job-engine 6.4 | [调度10/10](scheduler.json)、[引擎/队列14/14](queue.json)、[重试](queue-timeline.json)、[双worker](permits.json)、[长例通过](workflow-proof.json)、[首轮10/11](workflow-first.json)、[失败对照](workflow-recovery-failures.json)、[资源](resources.json) | 长例实际3675秒通过，短恢复原断言在0.5/1/2 CPU均失败；保持未勾选，不豁免失败。拟议夹具补丁未应用，待协调者决定 |
 | C storage-observability 1.7 | [业务/SDK](storage.json)、[浏览器](browser.json)、[私有桶配置](r2-settings.json) | R2 外挂默认路径通过，无自带对象存储服务；不重复验收或修改已签收的 B 媒体接线 |
 | A 9.4 / D 7.4 最终签收 | 本矩阵与 [报告](report.md) 提交协调者 | 所有实测门齐全后交协调者审阅；主 spec 同步与归档仍由协调者执行，不虚构已收到的审阅确认 |
 
