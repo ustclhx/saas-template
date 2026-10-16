@@ -299,16 +299,32 @@ async function sample() {
             id,
             'sh',
             '-c',
-            "cat /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.peak /sys/fs/cgroup/memory.events /sys/fs/cgroup/cpu.stat; awk '/^VmRSS:/ {s += $2} END {print s*1024}' /proc/[0-9]*/status 2>/dev/null || true",
+            // cat 失败（容器正在 compose stop 或已退出、cgroup 文件随之消失）必须让 exec 非零，
+            // 否则末尾 awk 的 `|| true` 会把残缺输出当作成功采样，误判为 OOM 计数缺失。
+            "cat /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.peak /sys/fs/cgroup/memory.events /sys/fs/cgroup/cpu.stat || exit 97; awk '/^VmRSS:/ {s += $2} END {print s*1024}' /proc/[0-9]*/status 2>/dev/null || true",
           ],
           { env, encoding: 'utf8', timeout: 10_000 },
         )
       } catch {
-        // 一次性backup-fetch/校验容器会在采样中自然退出；不能把该竞争当作OOM或漏采成功。
+        // 一次性backup-fetch/校验容器或正在停止的服务会在采样中自然退出；不能把该竞争当作OOM或漏采成功。
         return
       }
       const raw = safe(result.stdout)
       const lines = raw.trim().split('\n')
+      // compose stop 期间 exec 进程随容器被终止时，docker exec 可能返回 0 且无任何输出
+      // （CI 证据：service=tls、keys 为空、lineCount=1）；没有读到任何计数即视为退出竞争，跳过本次采样。
+      if (raw.trim() === '') return
+      if (!/oom_kill \d+\b/.test(raw)) {
+        // 读到了计数却没有 oom_kill 行：真实计数缺失，带上服务名供定位
+        const error = new Error('Fixture cgroup OOM counters absent')
+        error.service = service
+        // 只记录读到的计数名（如 anon / oom / oom_kill）与行数，不含数值，供定位缺失原因
+        error.keys = [...new Set(lines.map((line) => line.match(/^[a-z_]+/)?.[0]).filter(Boolean))]
+          .slice(0, 60)
+          .join(' ')
+        error.lineCount = lines.length
+        throw error
+      }
       point.services[service] ??= {
         rssPeakBytes: 0,
         cgroupPeakBytes: 0,
@@ -1263,6 +1279,10 @@ ${credentials
     evidence('backup.sampling_failed', {
       phase,
       reason,
+      // compose 服务名或 recovery:<项目名>，只含小写标识字符，不含主机或凭据信息
+      service: /^[a-z0-9:_-]{1,80}$/.test(error.service ?? '') ? error.service : null,
+      keys: /^[a-z_ ]{0,1000}$/.test(error.keys ?? '-') ? error.keys : null,
+      lineCount: Number.isInteger(error.lineCount) ? error.lineCount : null,
       exitCode: Number.isInteger(error.code) ? error.code : null,
       code: ['ETIMEDOUT', 'ENOENT', 'EACCES', 'EAGAIN', 'EMFILE', 'ENFILE', 'ENOMEM'].includes(
         error.code,
