@@ -328,6 +328,9 @@ secrets:
           code: observer.code,
           signal: observer.signal,
           killed: observer.killed,
+          service: observer.service,
+          keys: observer.keys,
+          lineCount: observer.lineCount,
         })
       : 'none'
     throw new Error(

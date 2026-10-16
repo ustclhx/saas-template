@@ -315,6 +315,11 @@ async function sample() {
         // 四个 cgroup 文件都读到却没有 oom_kill 行：真实计数缺失，带上服务名供定位
         const error = new Error('Fixture cgroup OOM counters absent')
         error.service = service
+        // 只记录读到的计数名（如 anon / oom / oom_kill）与行数，不含数值，供定位缺失原因
+        error.keys = [...new Set(lines.map((line) => line.match(/^[a-z_]+/)?.[0]).filter(Boolean))]
+          .slice(0, 60)
+          .join(' ')
+        error.lineCount = lines.length
         throw error
       }
       point.services[service] ??= {
@@ -1273,6 +1278,8 @@ ${credentials
       reason,
       // compose 服务名或 recovery:<项目名>，只含小写标识字符，不含主机或凭据信息
       service: /^[a-z0-9:_-]{1,80}$/.test(error.service ?? '') ? error.service : null,
+      keys: /^[a-z_ ]{0,1000}$/.test(error.keys ?? '-') ? error.keys : null,
+      lineCount: Number.isInteger(error.lineCount) ? error.lineCount : null,
       exitCode: Number.isInteger(error.code) ? error.code : null,
       code: ['ETIMEDOUT', 'ENOENT', 'EACCES', 'EAGAIN', 'EMFILE', 'ENFILE', 'ENOMEM'].includes(
         error.code,
