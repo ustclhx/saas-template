@@ -386,6 +386,16 @@ staging 尚未通过前不勾选 OpenSpec 1.2。
 
 ## 8. 延迟基线（Phase 0 实测 7.4，2026-10-03）
 
+### 生产初测（2026-10-16，v0.1.0）
+
+`https://app.ezarouter.cc/api/health` 顺序请求 40 次（间隔 1 秒），记录 Worker 内 `db.latencyMs`（Hyperdrive → Neon `aws-us-west-2`，非缓存连接）与 `cf-ray` 入口机房。全部入口为 LAX（开发机经美国西部出口）：
+
+| n | min | p50 | p90 | p95 | max |
+|---|---|---|---|---|---|
+| 40 | 40 ms | 45 ms | 90 ms | 116 ms | 171 ms |
+
+这是单一入口、默认放置下的健康探测往返，只作上线基线；Smart Placement 与显式放置对比需按下文 `scripts/probes/latency/` 部署临时探针 Worker（绑定生产 Hyperdrive、只读 `setting`），待批准后执行（`add-cloud-production-neon` 5.1）。
+
 > **2026-10-03 实测时 staging 数据库在开发者本机，以下历史数据只证明「Worker → Hyperdrive → Workers VPC → Tunnel → 本机 PG」链路可用，不代表当前 Neon 或生产延迟。** 生产延迟在阶段二部署生产服务器后重新测量。
 
 ### 测试方法
