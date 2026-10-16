@@ -311,8 +311,11 @@ async function sample() {
       }
       const raw = safe(result.stdout)
       const lines = raw.trim().split('\n')
+      // compose stop 期间 exec 进程随容器被终止时，docker exec 可能返回 0 且无任何输出
+      // （CI 证据：service=tls、keys 为空、lineCount=1）；没有读到任何计数即视为退出竞争，跳过本次采样。
+      if (raw.trim() === '') return
       if (!/oom_kill \d+\b/.test(raw)) {
-        // 四个 cgroup 文件都读到却没有 oom_kill 行：真实计数缺失，带上服务名供定位
+        // 读到了计数却没有 oom_kill 行：真实计数缺失，带上服务名供定位
         const error = new Error('Fixture cgroup OOM counters absent')
         error.service = service
         // 只记录读到的计数名（如 anon / oom / oom_kill）与行数，不含数值，供定位缺失原因
