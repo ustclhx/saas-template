@@ -49,15 +49,14 @@ test('saved media parameter schemas drive submit fields, defaults and validation
     await page.route('**/*', gateScripts)
     try {
       await page.goto('/admin/models', { waitUntil: 'commit' })
-      const serverForm = page.getByRole('article', { name: 'New model' })
-      await expect(serverForm.getByRole('button', { name: 'Create model' })).toBeDisabled()
-      await expect(
-        serverForm.getByLabel('Parameters schema (JSON)', { exact: true }),
-      ).toBeDisabled()
+      // 新建表单默认收起；React 接管前展开按钮保持禁用，SSR 阶段的点击不会丢失
+      await expect(page.getByRole('button', { name: 'New model', exact: true })).toBeDisabled()
+      await expect(page.getByRole('article', { name: 'New model' })).toHaveCount(0)
     } finally {
       allowScripts()
       await page.unroute('**/*', gateScripts)
     }
+    await page.getByRole('button', { name: 'New model', exact: true }).click()
     const form = page.getByRole('article', { name: 'New model' })
     await expect(form.getByRole('button', { name: 'Create model' })).toBeEnabled()
     await expect

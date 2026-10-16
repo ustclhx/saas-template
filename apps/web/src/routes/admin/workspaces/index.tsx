@@ -6,6 +6,7 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../../features/admin/list.ts'
+import { AdminPage } from '../../../features/admin/ui.tsx'
 import { getAdminWorkspaces } from '../../../features/admin/workspaces.functions.ts'
 
 export const Route = createFileRoute('/admin/workspaces/')({
@@ -25,8 +26,7 @@ function Workspaces() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
-    <section className="grid gap-5">
-      <h2 className="font-semibold text-xl">Workspaces</h2>
+    <AdminPage title="Workspaces">
       <DataTable
         label="Workspaces"
         rows={data.rows}
@@ -68,6 +68,6 @@ function Workspaces() {
           void navigate({ search: filtersToSearch(['q', 'status'], values) })
         }
       />
-    </section>
+    </AdminPage>
   )
 }

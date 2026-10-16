@@ -6,6 +6,7 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../../features/admin/list.ts'
+import { AdminPage } from '../../../features/admin/ui.tsx'
 import { getAdminUsers } from '../../../features/admin/users.functions.ts'
 
 export const Route = createFileRoute('/admin/users/')({
@@ -19,8 +20,7 @@ function Users() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
-    <section className="grid gap-5">
-      <h2 className="font-semibold text-xl">Users</h2>
+    <AdminPage title="Users">
       <DataTable
         label="Users"
         rows={data.rows}
@@ -48,6 +48,6 @@ function Users() {
         }
         onFiltersChange={(values) => void navigate({ search: filtersToSearch(['q'], values) })}
       />
-    </section>
+    </AdminPage>
   )
 }

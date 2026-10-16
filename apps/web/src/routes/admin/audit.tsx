@@ -8,6 +8,7 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../features/admin/list.ts'
+import { AdminPage } from '../../features/admin/ui.tsx'
 
 const filters = ['actor', 'workspaceId', 'action', 'from', 'to'] as const
 export const Route = createFileRoute('/admin/audit')({
@@ -24,11 +25,10 @@ function Audit() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
-    <section className="grid gap-5">
-      <h2 className="font-semibold text-xl">Audit log</h2>
-      <p className="text-muted-foreground text-sm">
-        Dates use UTC and include both selected days. Records are read only.
-      </p>
+    <AdminPage
+      title="Audit log"
+      description="Dates use UTC and include both selected days. Records are read only."
+    >
       <fieldset disabled={!ready} className="min-w-0">
         <DataTable
           label="Audit log"
@@ -89,6 +89,6 @@ function Audit() {
           onFiltersChange={(values) => void navigate({ search: filtersToSearch(filters, values) })}
         />
       </fieldset>
-    </section>
+    </AdminPage>
   )
 }

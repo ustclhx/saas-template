@@ -7,6 +7,7 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../features/admin/list.ts'
+import { AdminPage, NativeSelect, Textarea } from '../../features/admin/ui.tsx'
 import {
   PARAMS_SCHEMA_TEMPLATES,
   parseAdminParamsSchema,
@@ -174,9 +175,9 @@ function ParamsSchemaEditor({
       <label className="grid gap-2 text-sm font-medium" htmlFor={`${id}-schema`}>
         {label}
       </label>
-      <textarea
+      <Textarea
         id={`${id}-schema`}
-        className="block w-full rounded-md border border-input bg-transparent p-3 font-mono text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
+        className="font-mono md:text-sm"
         rows={12}
         spellCheck={false}
         value={value}
@@ -185,8 +186,7 @@ function ParamsSchemaEditor({
       <label className="grid gap-2 text-sm font-medium" htmlFor={`${id}-template`}>
         Insert reference template
       </label>
-      <select
-        className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+      <NativeSelect
         id={`${id}-template`}
         value=""
         disabled={templates.length === 0}
@@ -207,8 +207,10 @@ function ParamsSchemaEditor({
             {template.label}
           </option>
         ))}
-      </select>
-      <p>Templates replace the schema. Check the parameters against your Provider model ID.</p>
+      </NativeSelect>
+      <p className="text-muted-foreground text-sm">
+        Templates replace the schema. Check the parameters against your Provider model ID.
+      </p>
     </>
   )
 }
@@ -218,13 +220,26 @@ function Models() {
   const { models, defaults, mediaProviders } = data
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
+  // 新建表单很长，默认收起；按钮在水合前禁用，避免 SSR 阶段点击无效
+  const [creating, setCreating] = useState(false)
+  const [ready, setReady] = useState(false)
+  useEffect(() => setReady(true), [])
   return (
-    <section className="grid gap-6">
-      <h2 className="font-semibold text-xl">AI models</h2>
-      <p className="text-muted-foreground text-sm">
-        Disabled models are hidden from model pickers and calls to them are rejected. Price changes
-        apply to calls started after saving.
-      </p>
+    <AdminPage
+      title="AI models"
+      description="Disabled models are hidden from model pickers and calls to them are rejected. Price changes apply to calls started after saving."
+      actions={
+        <Button
+          type="button"
+          variant={creating ? 'outline' : 'default'}
+          aria-expanded={creating}
+          disabled={!ready}
+          onClick={() => setCreating((open) => !open)}
+        >
+          New model
+        </Button>
+      }
+    >
       <DataTable
         label="AI models"
         rows={models}
@@ -281,13 +296,14 @@ function Models() {
           void navigate({ search: filtersToSearch(['kind', 'order'], values) })
         }
       />
-      <ModelEditor
-        key="new"
-        initial={newDraft(defaults)}
-        defaults={defaults}
-        mediaProviders={mediaProviders}
-      />
-      {models.length === 0 && <p>No models yet.</p>}
+      {creating && (
+        <ModelEditor
+          key="new"
+          initial={newDraft(defaults)}
+          defaults={defaults}
+          mediaProviders={mediaProviders}
+        />
+      )}
       {models.map((model) => (
         <ModelEditor
           key={model.id}
@@ -297,7 +313,7 @@ function Models() {
           mediaProviders={mediaProviders}
         />
       ))}
-    </section>
+    </AdminPage>
   )
 }
 
@@ -395,7 +411,7 @@ function ModelEditor({
     <article
       aria-label={title}
       aria-busy={disabled}
-      id={model ? `model-${model.id}` : undefined}
+      id={model ? `model-${model.id}` : 'new-model-editor'}
       className="grid min-w-0 gap-5 rounded-lg border bg-card p-5 text-card-foreground"
     >
       <h3 className="font-semibold text-lg">
@@ -407,10 +423,10 @@ function ModelEditor({
         <label className="grid gap-2 text-sm font-medium" htmlFor={`${model?.id ?? 'new'}-key`}>
           Key <Input required maxLength={64} {...field('key')} />
         </label>
-        <label className="grid gap-2 text-sm font-medium">
+        <label className="grid gap-2 text-sm font-medium" htmlFor={`${model?.id ?? 'new'}-kind`}>
           Kind{' '}
-          <select
-            className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+          <NativeSelect
+            id={`${model?.id ?? 'new'}-kind`}
             value={draft.kind}
             disabled={Boolean(model)}
             onChange={(event) => {
@@ -427,7 +443,7 @@ function ModelEditor({
             <option value="text">Text</option>
             <option value="image">Image</option>
             <option value="video">Video</option>
-          </select>
+          </NativeSelect>
         </label>
         <label
           className="grid gap-2 text-sm font-medium"
@@ -437,18 +453,14 @@ function ModelEditor({
           {draft.kind === 'text' ? (
             <Input required maxLength={64} {...field('provider')} />
           ) : (
-            <select
-              className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-              required
-              {...field('provider')}
-            >
+            <NativeSelect required {...field('provider')}>
               <option value="">Choose a provider</option>
               {mediaProviders.map((provider) => (
                 <option key={provider} value={provider}>
                   {provider}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           )}
         </label>
         <label
@@ -487,17 +499,17 @@ function ModelEditor({
       </fieldset>
       <fieldset disabled={disabled} className="grid gap-4 sm:grid-cols-2">
         <legend className="mb-3 font-medium">Pricing</legend>
-        <label className="grid gap-2 text-sm font-medium">
+        <label className="grid gap-2 text-sm font-medium" htmlFor={`${model?.id ?? 'new'}-mode`}>
           Pricing mode{' '}
-          <select
-            className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+          <NativeSelect
+            id={`${model?.id ?? 'new'}-mode`}
             value={draft.mode}
             onChange={(event) => set({ mode: event.target.value as Mode })}
           >
             <option value="per_call">Per call</option>
             <option value="token">Per token</option>
             <option value="per_unit">Per unit</option>
-          </select>
+          </NativeSelect>
         </label>
         {draft.mode === 'per_call' && (
           <>
@@ -512,14 +524,11 @@ function ModelEditor({
               htmlFor={`${model?.id ?? 'new'}-chargeOn`}
             >
               Charge on{' '}
-              <select
-                className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-                {...field('chargeOn')}
-              >
+              <NativeSelect {...field('chargeOn')}>
                 <option value="">Default</option>
                 <option value="any_output">Any output</option>
                 <option value="success">Success</option>
-              </select>
+              </NativeSelect>
             </label>
             <label
               className="grid gap-2 text-sm font-medium"
@@ -566,13 +575,10 @@ function ModelEditor({
               htmlFor={`${model?.id ?? 'new'}-unit`}
             >
               Unit{' '}
-              <select
-                className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-                {...field('unit')}
-              >
+              <NativeSelect {...field('unit')}>
                 <option value="image">Image</option>
                 <option value="second">Second</option>
-              </select>
+              </NativeSelect>
             </label>
             <label
               className="grid gap-2 text-sm font-medium"

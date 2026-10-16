@@ -6,6 +6,7 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../../features/admin/list.ts'
+import { AdminPage } from '../../../features/admin/ui.tsx'
 import { getAdminPurchases } from '../../../features/billing/admin.functions.ts'
 import { adminMoney } from '../../../features/billing/admin-display.ts'
 import { templateConfig } from '../../../server/template-config.ts'
@@ -24,8 +25,7 @@ function List() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
-    <section className="grid gap-5">
-      <h2 className="font-semibold text-xl">One-time purchases</h2>
+    <AdminPage title="One-time purchases">
       <DataTable
         label="One-time purchases"
         rows={data.rows}
@@ -52,6 +52,6 @@ function List() {
           void navigate({ search: filtersToSearch(['workspaceId'], values) })
         }
       />
-    </section>
+    </AdminPage>
   )
 }

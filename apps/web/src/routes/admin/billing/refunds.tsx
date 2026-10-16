@@ -1,4 +1,4 @@
-import { DataTable } from '@saas/ui'
+import { Button, DataTable, Input } from '@saas/ui'
 import {
   createFileRoute,
   notFound as featureNotFound,
@@ -12,6 +12,7 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../../features/admin/list.ts'
+import { AdminPage, Field, panelClass, Textarea } from '../../../features/admin/ui.tsx'
 import {
   completeAdminRefund,
   getAdminRefunds,
@@ -36,20 +37,18 @@ function Refunds() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
-    <section>
-      <h2>Refund reviews</h2>
-      <Link to="/admin/billing" search={{ offset: 0 }}>
-        Billing administration
-      </Link>
-      <p>
-        Original and remaining credits include held or revoked credits in their difference; that
-        difference is not consumed usage.
-      </p>
-      <p>
-        A full refund revokes all remaining credits for the payment. A partial refund keeps the
-        unrefunded share of each credit batch and revokes the rest from what is unused; consumed
-        credits are never clawed back.
-      </p>
+    <AdminPage
+      title="Refund reviews"
+      description={
+        <>
+          Original and remaining credits include held or revoked credits in their difference; that
+          difference is not consumed usage.
+          <br />A full refund revokes all remaining credits for the payment. A partial refund keeps
+          the unrefunded share of each credit batch and revokes the rest from what is unused;
+          consumed credits are never clawed back.
+        </>
+      }
+    >
       <DataTable
         label="Refund requests"
         rows={rows}
@@ -65,7 +64,7 @@ function Refunds() {
           void navigate({ search: filtersToSearch(['workspaceId'], values) })
         }
       />
-    </section>
+    </AdminPage>
   )
 }
 type RefundRow = Awaited<ReturnType<typeof getAdminRefunds>>['rows'][number]
@@ -108,82 +107,100 @@ function Refund({ row }: { row: RefundRow }) {
     )
   }
   return (
-    <article aria-label={`Refund ${row.id}`}>
-      <h3>Refund {row.id}</h3>
-      <p>
-        Workspace: {row.workspaceId} · {row.provider} · Status: {row.status}
-      </p>
-      <p>Reason: {row.reason}</p>
-      <p>
-        Requested:{' '}
-        {row.requestedAmount === null
-          ? 'Full remaining payment'
-          : adminMoney(row.requestedAmount, row.currency)}{' '}
-        · Remaining refundable: {adminMoney(row.remainingRefundable, row.currency)}
-      </p>
-      <p>
-        Approved:{' '}
-        {row.approvedAmount === null ? 'None' : adminMoney(row.approvedAmount, row.currency)} ·
-        Review note: {row.reviewNote || 'None'}
-      </p>
-      <p>
-        Original credits: {row.originalCredits} · Remaining credits: {row.remainingCredits}
-      </p>
-      {!row.providerAvailable && (
+    <article aria-label={`Refund ${row.id}`} className="grid min-w-0 gap-3 py-2">
+      <h3 className="break-all font-semibold">Refund {row.id}</h3>
+      <div className="grid gap-1 break-words text-sm">
         <p>
+          Workspace:{' '}
+          <Link to="/admin/workspaces/$id" params={{ id: row.workspaceId }} className="underline">
+            {row.workspaceId}
+          </Link>{' '}
+          · {row.provider} · Status: {row.status}
+        </p>
+        <p>Reason: {row.reason}</p>
+        <p>
+          Requested:{' '}
+          {row.requestedAmount === null
+            ? 'Full remaining payment'
+            : adminMoney(row.requestedAmount, row.currency)}{' '}
+          · Remaining refundable: {adminMoney(row.remainingRefundable, row.currency)}
+        </p>
+        <p>
+          Approved:{' '}
+          {row.approvedAmount === null ? 'None' : adminMoney(row.approvedAmount, row.currency)} ·
+          Review note: {row.reviewNote || 'None'}
+        </p>
+        <p>
+          Original credits: {row.originalCredits} · Remaining credits: {row.remainingCredits}
+        </p>
+      </div>
+      {!row.providerAvailable && (
+        <p className="text-muted-foreground text-sm">
           Provider not configured. Approval, manual completion and API retry are unavailable. Saved
           reviews remain visible.
         </p>
       )}
       {row.status === 'pending' && (
-        <fieldset disabled={busy}>
-          <legend>Review decision</legend>
-          <label>
-            Review note{' '}
-            <textarea
+        <fieldset disabled={busy} className={panelClass('default', 'max-w-2xl')}>
+          <legend className="px-1 font-medium text-sm">Review decision</legend>
+          <Field label="Review note" htmlFor={`${row.id}-note`}>
+            <Textarea
+              id={`${row.id}-note`}
               value={note}
               maxLength={2000}
               onChange={(event) => setNote(event.target.value)}
             />
-          </label>
-          <button
-            type="button"
-            disabled={!row.providerAvailable || row.remainingRefundable <= 0}
-            onClick={() => review('approve')}
-          >
-            Approve full refund
-          </button>
-          <label>
-            Partial amount (USD cents){' '}
-            <input
-              type="number"
-              min="1"
-              max={row.remainingRefundable}
-              step="1"
-              value={cents}
-              onChange={(event) => setCents(event.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            disabled={
-              !row.providerAvailable ||
-              !Number.isInteger(Number(cents)) ||
-              Number(cents) <= 0 ||
-              Number(cents) >= row.remainingRefundable
-            }
-            onClick={() => review('approve', Number(cents))}
-          >
-            Approve partial refund
-          </button>
-          <button type="button" disabled={!note.trim()} onClick={() => review('reject')}>
-            Reject refund
-          </button>
+          </Field>
+          <div className="flex flex-wrap items-end gap-3">
+            <Button
+              type="button"
+              disabled={!row.providerAvailable || row.remainingRefundable <= 0}
+              onClick={() => review('approve')}
+            >
+              Approve full refund
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!note.trim()}
+              onClick={() => review('reject')}
+            >
+              Reject refund
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="Partial amount (USD cents)" htmlFor={`${row.id}-cents`}>
+              <Input
+                id={`${row.id}-cents`}
+                className="w-48"
+                type="number"
+                min="1"
+                max={row.remainingRefundable}
+                step="1"
+                value={cents}
+                onChange={(event) => setCents(event.target.value)}
+              />
+            </Field>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={
+                !row.providerAvailable ||
+                !Number.isInteger(Number(cents)) ||
+                Number(cents) <= 0 ||
+                Number(cents) >= row.remainingRefundable
+              }
+              onClick={() => review('approve', Number(cents))}
+            >
+              Approve partial refund
+            </Button>
+          </div>
         </fieldset>
       )}
       {row.status === 'approved' && row.providerAvailable && !row.manualAvailable && (
-        <button
+        <Button
           type="button"
+          className="w-fit"
           disabled={busy}
           onClick={() =>
             act(() =>
@@ -199,29 +216,30 @@ function Refund({ row }: { row: RefundRow }) {
           }
         >
           Retry approved refund API
-        </button>
+        </Button>
       )}
       {row.status === 'approved' && row.manualAvailable && (
-        <fieldset disabled={busy}>
-          <legend>Manual platform completion</legend>
-          <label>
-            Platform refund ID{' '}
-            <input
+        <fieldset disabled={busy} className={panelClass('default', 'max-w-2xl')}>
+          <legend className="px-1 font-medium text-sm">Manual platform completion</legend>
+          <Field label="Platform refund ID" htmlFor={`${row.id}-refund-id`}>
+            <Input
+              id={`${row.id}-refund-id`}
               value={refundId}
               maxLength={2000}
               onChange={(event) => setRefundId(event.target.value)}
             />
-          </label>
-          <label>
-            Platform proof{' '}
-            <textarea
+          </Field>
+          <Field label="Platform proof" htmlFor={`${row.id}-proof`}>
+            <Textarea
+              id={`${row.id}-proof`}
               value={proof}
               maxLength={2000}
               onChange={(event) => setProof(event.target.value)}
             />
-          </label>
-          <button
+          </Field>
+          <Button
             type="button"
+            className="w-fit"
             disabled={!refundId.trim() || !proof.trim()}
             onClick={() =>
               act(() =>
@@ -232,19 +250,24 @@ function Refund({ row }: { row: RefundRow }) {
             }
           >
             Mark manual refund complete
-          </button>
+          </Button>
         </fieldset>
       )}
       {row.status !== 'pending' && (
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
+          className="w-fit"
           disabled={busy}
           onClick={() => act(() => retryAdminRefundEmail({ data: { requestId: row.id } }))}
         >
           Retry refund email
-        </button>
+        </Button>
       )}
-      <p role="status">{message}</p>
+      <p role="status" className="text-sm">
+        {message}
+      </p>
     </article>
   )
 }

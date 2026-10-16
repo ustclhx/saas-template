@@ -1,4 +1,4 @@
-import { DataTable } from '@saas/ui'
+import { Button, DataTable } from '@saas/ui'
 import { createFileRoute, notFound as featureNotFound, useRouter } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import {
@@ -7,6 +7,7 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../../features/admin/list.ts'
+import { AdminPage, CheckboxField, panelClass } from '../../../features/admin/ui.tsx'
 import {
   getAdminPlans,
   saveAdminPlanModels,
@@ -31,10 +32,16 @@ function Plans() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
-    <section className="grid gap-5">
-      <h2 className="font-semibold text-xl">Plan model access</h2>
-      <p>Saved model access applies to the next request. Select no models to revoke all access.</p>
-      <p>Credit packs only grant credits; their model selections do not grant plan entitlements.</p>
+    <AdminPage
+      title="Plan model access"
+      description={
+        <>
+          Saved model access applies to the next request. Select no models to revoke all access.
+          <br />
+          Credit packs only grant credits; their model selections do not grant plan entitlements.
+        </>
+      }
+    >
       <DataTable
         label="Plans"
         rows={data.rows}
@@ -65,7 +72,7 @@ function Plans() {
       {data.rows.map((plan) => (
         <PlanEditor key={plan.id} plan={plan} models={data.models} />
       ))}
-    </section>
+    </AdminPage>
   )
 }
 
@@ -105,46 +112,47 @@ function PlanEditor({ plan, models }: { plan: Data['rows'][number]; models: Data
     }
   }
   return (
-    <article
-      aria-label={`Plan ${plan.key}`}
-      id={`plan-${plan.id}`}
-      className="grid gap-3 rounded border p-4"
-    >
-      <h3 className="font-semibold">
+    <article aria-label={`Plan ${plan.key}`} id={`plan-${plan.id}`} className={panelClass()}>
+      <h3 className="font-semibold text-lg">
         {plan.name} ({plan.key})
       </h3>
       {plan.type === 'credit_pack' && (
-        <p>Credit pack: these selections do not grant model access.</p>
+        <p className="text-muted-foreground text-sm">
+          Credit pack: these selections do not grant model access.
+        </p>
       )}
       {historical.length > 0 && (
-        <p role="alert">
+        <p role="alert" className="text-destructive text-sm">
           Historical model keys are missing: {historical.join(', ')}. They remain selected until you
           remove them.
         </p>
       )}
-      <fieldset disabled={busy || !ready} className="grid gap-2">
-        <legend>Allowed models</legend>
+      <fieldset disabled={busy || !ready} className="grid min-w-0 gap-2 sm:grid-cols-2">
+        <legend className="mb-2 font-medium text-sm">Allowed models</legend>
         {options.map((option) => (
-          <label key={option.key} className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={selected.includes(option.key)}
-              onChange={(event) =>
-                setSelected((current) =>
-                  event.target.checked
-                    ? [...current, option.key]
-                    : current.filter((key) => key !== option.key),
-                )
-              }
-            />
-            {option.label}
-          </label>
+          <CheckboxField
+            key={option.key}
+            label={option.label}
+            className="break-all"
+            checked={selected.includes(option.key)}
+            onChange={(event) =>
+              setSelected((current) =>
+                event.target.checked
+                  ? [...current, option.key]
+                  : current.filter((key) => key !== option.key),
+              )
+            }
+          />
         ))}
       </fieldset>
-      <button type="button" disabled={busy || !ready} onClick={() => void save()}>
-        Save model access
-      </button>
-      <p role="status">{message}</p>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="button" disabled={busy || !ready} onClick={() => void save()}>
+          Save model access
+        </Button>
+        <p role="status" className="text-sm">
+          {message}
+        </p>
+      </div>
     </article>
   )
 }

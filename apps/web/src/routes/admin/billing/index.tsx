@@ -6,6 +6,7 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../../features/admin/list.ts'
+import { AdminPage } from '../../../features/admin/ui.tsx'
 import { getAdminBilling } from '../../../features/billing/admin.functions.ts'
 import { adminMoney } from '../../../features/billing/admin-display.ts'
 import { templateConfig } from '../../../server/template-config.ts'
@@ -25,16 +26,23 @@ function BillingAdmin() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
-    <section className="grid gap-5">
-      <h2 className="font-semibold text-xl">Billing administration</h2>
-      <p>Payment mode: {data.mode}</p>
-      <ul>
-        {data.readiness.map((item) => (
-          <li key={item.id}>
-            {item.id}: {item.available ? 'Configured' : 'Unavailable — provider is not configured'}
-          </li>
-        ))}
-      </ul>
+    <AdminPage title="Billing administration">
+      <div className="grid gap-2 rounded-lg border bg-card p-4 text-sm">
+        <p>
+          <span className="text-muted-foreground">Payment mode:</span>{' '}
+          <span className="font-medium">{data.mode}</span>
+        </p>
+        <ul className="grid gap-1">
+          {data.readiness.map((item) => (
+            <li key={item.id} className="break-words">
+              {item.id}:{' '}
+              <span className={item.available ? 'text-success' : 'text-muted-foreground'}>
+                {item.available ? 'Configured' : 'Unavailable — provider is not configured'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
       <DataTable
         label="Payments"
         rows={data.rows}
@@ -61,6 +69,6 @@ function BillingAdmin() {
           void navigate({ search: filtersToSearch(['workspaceId'], values) })
         }
       />
-    </section>
+    </AdminPage>
   )
 }

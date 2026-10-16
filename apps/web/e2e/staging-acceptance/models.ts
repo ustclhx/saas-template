@@ -152,7 +152,10 @@ export async function createAcceptanceModel(
     throw new Error('Acceptance model setup does not support per-unit pricing')
   await page.goto('/admin/models')
   await expect(page.getByRole('heading', { name: 'AI models', exact: true })).toBeVisible()
+  // 新建表单默认收起；按钮在水合后才可用，点击后表单出现
+  await page.getByRole('button', { name: 'New model', exact: true }).click()
   const form = page.getByRole('article', { name: 'New model', exact: true })
+  await expect(form).toBeVisible()
   const schema = form.getByLabel('Parameters schema (JSON)', { exact: true })
   if (requireSchema && (await schema.count()) === 0)
     throw new Error('Fault model preparation requires the parameter schema editor')

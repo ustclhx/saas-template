@@ -1,4 +1,4 @@
-import { DataTable } from '@saas/ui'
+import { Button, DataTable } from '@saas/ui'
 import { createFileRoute, notFound as featureNotFound, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import {
@@ -7,6 +7,7 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../../features/admin/list.ts'
+import { AdminPage } from '../../../features/admin/ui.tsx'
 import { getAdminWebhooks, replayAdminWebhook } from '../../../features/billing/admin.functions.ts'
 import { templateConfig } from '../../../server/template-config.ts'
 
@@ -39,10 +40,15 @@ function Webhooks() {
     }
   }
   return (
-    <section className="grid gap-5">
-      <h2 className="font-semibold text-xl">Webhook events</h2>
-      <p role="status">{message}</p>
-      <p>Events without an associated workspace appear only when no workspace filter is set.</p>
+    <AdminPage
+      title="Webhook events"
+      description="Events without an associated workspace appear only when no workspace filter is set."
+    >
+      {message && (
+        <p role="status" className="text-sm">
+          {message}
+        </p>
+      )}
       <DataTable
         label="Webhook events"
         rows={data.rows}
@@ -58,17 +64,19 @@ function Webhooks() {
             header: 'Replay',
             cell: (row) =>
               row.status === 'failed' ? (
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   disabled={busy || !row.replayAvailable}
                   onClick={() => void replay(row.id)}
                 >
                   {row.replayAvailable
                     ? 'Replay failed event'
                     : 'Replay unavailable — provider not configured'}
-                </button>
+                </Button>
               ) : (
-                'Only failed events can be replayed'
+                <span className="text-muted-foreground">Only failed events can be replayed</span>
               ),
           },
         ]}
@@ -82,6 +90,6 @@ function Webhooks() {
           void navigate({ search: filtersToSearch(['workspaceId'], values) })
         }
       />
-    </section>
+    </AdminPage>
   )
 }

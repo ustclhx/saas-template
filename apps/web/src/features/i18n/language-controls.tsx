@@ -15,8 +15,16 @@ import { isAppAreaPath } from './app-area.ts'
 import { getLanguageSuggestion, saveLanguagePreference } from './preference.functions.ts'
 import { rememberLocale } from './preference.ts'
 
-/** 独立组件，预渲染页只在水合后获取 Accept-Language 建议，不改变 URL。 */
-export function LanguageControls() {
+/**
+ * 独立组件，预渲染页只在水合后获取 Accept-Language 建议，不改变 URL。
+ * 默认固定在左下角；`placement="inline"` 用于后台侧栏等自带位置的容器，避免浮层遮挡内容。
+ */
+export function LanguageControls({
+  placement = 'floating',
+}: {
+  placement?: 'floating' | 'inline'
+} = {}) {
+  const floating = placement === 'floating'
   const location = useLocation()
   const [suggestion, setSuggestion] = useState<Locale | null>(null)
   const [ready, setReady] = useState(false)
@@ -92,7 +100,13 @@ export function LanguageControls() {
           </Button>
         </aside>
       )}
-      <label className="fixed bottom-4 left-4 z-50 rounded-md border bg-background px-3 py-2 text-sm shadow-sm">
+      <label
+        className={
+          floating
+            ? 'fixed bottom-4 left-4 z-50 rounded-md border bg-background px-3 py-2 text-sm shadow-sm'
+            : 'inline-flex w-fit rounded-md border bg-background px-3 py-1.5 text-sm shadow-xs'
+        }
+      >
         <span className="sr-only">{m.i18n_language()}</span>
         <select
           aria-label={m.i18n_language()}
@@ -110,7 +124,10 @@ export function LanguageControls() {
         </select>
       </label>
       {error && (
-        <p role="alert" className="fixed bottom-16 left-4">
+        <p
+          role="alert"
+          className={floating ? 'fixed bottom-16 left-4' : 'text-destructive text-sm'}
+        >
           {error}
         </p>
       )}
