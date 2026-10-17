@@ -50,16 +50,18 @@ export const Route = createRootRoute({
 
 function RootComponent() {
   const { impersonation, announcement } = Route.useLoaderData()
-  // 后台侧栏自带语言与主题控件；全站浮动控件在 /admin 下会遮挡侧栏底部与正文，故不渲染
-  const inAdmin = useRouterState({
-    select: (state) => /^\/admin(\/|$)/.test(state.location.pathname),
+  // 后台侧栏与认证页脚自带控件，避免浮动控件遮挡正文。
+  const hasInlineControls = useRouterState({
+    select: (state) =>
+      state.matches.some((match) => match.routeId.startsWith('/(auth)/')) ||
+      /^\/admin(\/|$)/.test(state.location.pathname),
   })
   return (
-    <RootDocument floatingControls={!inAdmin}>
+    <RootDocument floatingControls={!hasInlineControls}>
       <ProductAnalytics />
       <ImpersonationBanner viewer={impersonation} />
       <AnnouncementBanner initial={announcement} />
-      {templateConfig.i18n.enabled && !inAdmin && <LanguageControls />}
+      {templateConfig.i18n.enabled && !hasInlineControls && <LanguageControls />}
       <Outlet />
     </RootDocument>
   )

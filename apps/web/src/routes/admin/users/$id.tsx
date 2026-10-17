@@ -16,6 +16,7 @@ import {
   setAdminUserBan,
   startAdminImpersonation,
 } from '../../../features/admin/users.functions.ts'
+import { m } from '../../../paraglide/messages.js'
 import { templateConfig } from '../../../server/template-config.ts'
 
 export const Route = createFileRoute('/admin/users/$id')({
@@ -40,13 +41,13 @@ function UserDetail() {
         window.location.assign('/app')
       } else {
         await setAdminUserBan({ data: { userId: data.user.id, banned: !data.user.banned, reason } })
-        setMessage(data.user.banned ? 'User unbanned.' : 'User banned.')
+        setMessage(data.user.banned ? m.admin_user_unbanned() : m.admin_user_banned())
         setConfirm(false)
         setReason('')
         await router.invalidate()
       }
     } catch {
-      setMessage('Operation failed. Reload to check the current state.')
+      setMessage(m.admin_operation_failed_reload_to_check_the_current_state())
     } finally {
       setBusy(false)
     }
@@ -54,31 +55,36 @@ function UserDetail() {
   const isAdminUser = (data.user.role ?? '').split(',').some((role) => role.trim() === 'admin')
   return (
     <AdminPage
-      title="User details"
+      title={m.admin_user_details()}
       actions={
         <Button asChild variant="ghost" size="sm">
           <Link to="/admin/users" search={{ offset: 0 }}>
-            Back to users
+            {m.admin_back_to_users()}
           </Link>
         </Button>
       }
     >
       <DetailList
         fields={[
-          { label: 'Email', value: data.user.email },
-          { label: 'Name', value: data.user.name },
-          { label: 'ID', value: data.user.id },
-          { label: 'Registered', value: formatDateTime(data.user.createdAt) },
-          { label: 'Login methods', value: data.methods.join(', ') || 'None' },
-          { label: 'Ban status', value: data.user.banned ? 'Banned' : 'Active' },
-          { label: 'Ban reason', value: data.user.banReason },
+          { label: m.admin_email(), value: data.user.email },
+          { label: m.admin_name(), value: data.user.name },
+          { label: m.admin_id(), value: data.user.id },
+          { label: m.admin_registered(), value: formatDateTime(data.user.createdAt) },
+          { label: m.admin_login_methods(), value: data.methods.join(', ') || m.admin_none() },
           {
-            label: 'Ban expires',
-            value: data.user.banExpires ? formatDateTime(data.user.banExpires) : 'No expiry',
+            label: m.admin_ban_status(),
+            value: data.user.banned ? m.admin_banned() : m.admin_active(),
+          },
+          { label: m.admin_ban_reason(), value: data.user.banReason },
+          {
+            label: m.admin_ban_expires(),
+            value: data.user.banExpires
+              ? formatDateTime(data.user.banExpires)
+              : m.admin_no_expiry(),
           },
         ]}
       />
-      <AdminSection title="Workspaces">
+      <AdminSection title={m.admin_workspaces()}>
         {data.workspaces.length ? (
           <ul className="grid gap-2">
             {data.workspaces.map((ws) => (
@@ -110,37 +116,37 @@ function UserDetail() {
           <EmptyState />
         )}
       </AdminSection>
-      <AdminSection title="Impersonation">
+      <AdminSection title={m.admin_impersonation()}>
         <div className="flex flex-wrap items-center gap-3">
           <Button
             variant="outline"
             disabled={!ready || busy || isAdminUser || Boolean(data.user.banned)}
             onClick={() => void action(true)}
           >
-            Impersonate user
+            {m.admin_impersonate_user()}
           </Button>
           <p className="text-muted-foreground text-sm">
-            Administrators and banned users cannot be impersonated.
+            {m.admin_administrators_and_banned_users_cannot_be_impersonated()}
           </p>
         </div>
       </AdminSection>
       <form
         className={panelClass('danger', 'max-w-xl')}
-        aria-label="Ban management"
+        aria-label={m.admin_ban_management()}
         onSubmit={(event) => {
           event.preventDefault()
           void action()
         }}
       >
         <div className="grid gap-1">
-          <h3 className="font-semibold text-destructive text-lg">Ban management</h3>
+          <h3 className="font-semibold text-destructive text-lg">{m.admin_ban_management()}</h3>
           <p className="text-muted-foreground text-sm">
             {data.user.banned
-              ? 'Restores sign-in for this user. The reason is recorded in the audit log.'
-              : 'Signs the user out and blocks sign-in. The reason is recorded in the audit log.'}
+              ? m.admin_restores_sign_in_for_this_user_the_reason()
+              : m.admin_signs_the_user_out_and_blocks_sign_in()}
           </p>
         </div>
-        <Field label="Reason" htmlFor="ban-reason">
+        <Field label={m.admin_reason()} htmlFor="ban-reason">
           <Input
             disabled={!ready}
             id="ban-reason"
@@ -151,7 +157,7 @@ function UserDetail() {
           />
         </Field>
         <CheckboxField
-          label="I confirm this user status change"
+          label={m.admin_i_confirm_this_user_status_change()}
           disabled={!ready}
           checked={confirm}
           onChange={(event) => setConfirm(event.target.checked)}
@@ -168,10 +174,10 @@ function UserDetail() {
             (!data.user.banned && data.user.id === admin.id)
           }
         >
-          {data.user.banned ? 'Unban user' : 'Ban user'}
+          {data.user.banned ? m.admin_unban_user() : m.admin_ban_user()}
         </Button>
         {data.user.id === admin.id && (
-          <p className="text-muted-foreground text-sm">You cannot ban yourself.</p>
+          <p className="text-muted-foreground text-sm">{m.admin_you_cannot_ban_yourself()}</p>
         )}
       </form>
       <p role="status" className="min-h-5 text-sm">

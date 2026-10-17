@@ -8,7 +8,8 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../features/admin/list.ts'
-import { AdminPage } from '../../features/admin/ui.tsx'
+import { AdminPage, adminTableLabels } from '../../features/admin/ui.tsx'
+import { m } from '../../paraglide/messages.js'
 
 const filters = ['actor', 'workspaceId', 'action', 'from', 'to'] as const
 export const Route = createFileRoute('/admin/audit')({
@@ -26,41 +27,46 @@ function Audit() {
   const navigate = Route.useNavigate()
   return (
     <AdminPage
-      title="Audit log"
-      description="Dates use UTC and include both selected days. Records are read only."
+      title={m.admin_audit_log()}
+      description={m.admin_dates_use_utc_and_include_both_selected_days()}
     >
       <fieldset disabled={!ready} className="min-w-0">
         <DataTable
-          label="Audit log"
+          labels={adminTableLabels()}
+          label={m.admin_audit_log()}
           rows={data.rows}
           getRowId={(row) => row.log.id}
           columns={[
-            { id: 'at', header: 'Time (UTC)', cell: ({ log }) => log.createdAt.toISOString() },
+            {
+              id: 'at',
+              header: m.admin_time_utc(),
+              cell: ({ log }) => log.createdAt.toISOString(),
+            },
             {
               id: 'actor',
-              header: 'Actor',
+              header: m.admin_actor(),
               cell: ({ log, actorEmail }) => (
                 <span>
-                  {actorEmail ?? log.actorUserId ?? 'System'}
+                  {actorEmail ?? log.actorUserId ?? m.admin_system()}
                   <br />
                   {log.actorUserId}
                 </span>
               ),
             },
-            { id: 'space', header: 'Workspace', cell: ({ log }) => log.workspaceId ?? '—' },
-            { id: 'action', header: 'Action', cell: ({ log }) => log.action },
+            { id: 'space', header: m.admin_workspace(), cell: ({ log }) => log.workspaceId ?? '—' },
+            { id: 'action', header: m.admin_action(), cell: ({ log }) => log.action },
             {
               id: 'target',
-              header: 'Target',
+              header: m.admin_target(),
               cell: ({ log }) => `${log.targetType ?? ''} ${log.targetId ?? ''}`,
             },
-            { id: 'ip', header: 'Source IP', cell: ({ log }) => log.ip ?? '—' },
+            { id: 'ip', header: m.admin_source_ip(), cell: ({ log }) => log.ip ?? '—' },
             {
               id: 'meta',
-              header: 'Details',
+              header: m.admin_details(),
               cell: ({ log }) => (
                 <details>
-                  <summary>View details</summary>
+                  <summary>{m.admin_view_details()}</summary>
                   <pre className="max-w-sm whitespace-pre-wrap break-all text-xs">
                     {JSON.stringify(log.meta, null, 2)}
                   </pre>
@@ -70,11 +76,15 @@ function Audit() {
           ]}
           page={adminListPage(search.offset, data)}
           filters={[
-            { id: 'actor', label: 'Actor', placeholder: 'User ID or email / actual admin ID' },
-            { id: 'workspaceId', label: 'Workspace ID' },
-            { id: 'action', label: 'Action' },
-            { id: 'from', label: 'From (UTC)', placeholder: 'YYYY-MM-DD' },
-            { id: 'to', label: 'To (UTC)', placeholder: 'YYYY-MM-DD' },
+            {
+              id: 'actor',
+              label: m.admin_actor(),
+              placeholder: m.admin_user_id_or_email_actual_admin_id(),
+            },
+            { id: 'workspaceId', label: m.admin_workspace_id() },
+            { id: 'action', label: m.admin_action() },
+            { id: 'from', label: m.admin_from_utc(), placeholder: 'YYYY-MM-DD' },
+            { id: 'to', label: m.admin_to_utc(), placeholder: 'YYYY-MM-DD' },
           ]}
           filterValues={{
             actor: search.actor,

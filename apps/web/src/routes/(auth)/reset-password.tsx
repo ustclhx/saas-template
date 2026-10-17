@@ -10,32 +10,64 @@ import {
   StatusAlert,
 } from '../../features/auth/auth-layout.tsx'
 import { AUTH_ERROR_MESSAGES, authErrorMessage } from '../../features/auth/errors.ts'
+import { m } from '../../paraglide/messages.js'
 
-/** 页面文案（英文硬编码，P6 接 Paraglide） */
+/** 按当前请求或页面语言读取文案，避免在模块初始化时固定语言。 */
 const COPY = {
-  metaTitle: 'Set a new password',
-  title: 'Set a new password',
-  description: 'Choose a new password for your account.',
-  password: 'New password',
-  confirm: 'Confirm new password',
-  passwordHint: 'At least 8 characters.',
-  submit: 'Update password',
-  pending: 'Updating…',
-  done: 'Your password has been updated. Other signed-in devices will be signed out.',
-  signIn: 'Sign in',
-  requestNewLink: 'Request a new link',
-  backToLogin: 'Back to sign in',
-  passwordTooShort: 'Password must be at least 8 characters',
-  passwordTooLong: 'Password must be at most 128 characters',
-  mismatch: 'Passwords do not match',
+  get metaTitle() {
+    return m.auth_set_a_new_password()
+  },
+  get title() {
+    return m.auth_set_a_new_password()
+  },
+  get description() {
+    return m.auth_choose_a_new_password_for_your_account()
+  },
+  get password() {
+    return m.auth_new_password()
+  },
+  get confirm() {
+    return m.auth_confirm_new_password()
+  },
+  get passwordHint() {
+    return m.auth_at_least_8_characters()
+  },
+  get submit() {
+    return m.auth_update_password()
+  },
+  get pending() {
+    return m.auth_updating()
+  },
+  get done() {
+    return m.auth_your_password_has_been_updated_other_signed_in()
+  },
+  get signIn() {
+    return m.auth_sign_in()
+  },
+  get requestNewLink() {
+    return m.auth_request_a_new_link()
+  },
+  get backToLogin() {
+    return m.auth_back_to_sign_in()
+  },
+  get passwordTooShort() {
+    return m.auth_password_must_be_at_least_8_characters()
+  },
+  get passwordTooLong() {
+    return m.auth_password_must_be_at_most_128_characters()
+  },
+  get mismatch() {
+    return m.auth_passwords_do_not_match()
+  },
 } as const
 
-const schema = z
-  .object({
-    password: z.string().min(8, COPY.passwordTooShort).max(128, COPY.passwordTooLong),
-    confirm: z.string(),
-  })
-  .refine((v) => v.password === v.confirm, { message: COPY.mismatch, path: ['confirm'] })
+const schema = () =>
+  z
+    .object({
+      password: z.string().min(8, COPY.passwordTooShort).max(128, COPY.passwordTooLong),
+      confirm: z.string(),
+    })
+    .refine((v) => v.password === v.confirm, { message: COPY.mismatch, path: ['confirm'] })
 
 export const Route = createFileRoute('/(auth)/reset-password')({
   // 重置链接校验通过时带 ?token=，链接无效 / 过期时带 ?error=INVALID_TOKEN
@@ -75,7 +107,7 @@ function ResetPasswordForm({ token }: { token: string }) {
   const [done, setDone] = useState(false)
   const form = useAppForm({
     defaultValues: { password: '', confirm: '' },
-    validators: { onBlur: schema, onSubmit: schema },
+    validators: { onBlur: schema(), onSubmit: schema() },
     onSubmit: async ({ value }) => {
       setError(null)
       try {

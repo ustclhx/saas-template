@@ -12,6 +12,8 @@ import {
 import { Link } from '@tanstack/react-router'
 import { type ReactNode, useEffect, useState } from 'react'
 import { templateConfig } from '../../server/template-config.ts'
+import { LanguageControls } from '../i18n/language-controls.tsx'
+import { ThemeToggle } from '../theme/theme-toggle.tsx'
 
 /** 认证页面的公共外框：应用名 + 居中卡片（标题 / 说明 / 内容 / 页脚链接） */
 export function AuthLayout({
@@ -28,8 +30,7 @@ export function AuthLayout({
   const [hydrated, setHydrated] = useState(false)
   useEffect(() => setHydrated(true), [])
   return (
-    // 底部留白：语言与主题切换固定在视口底部，手机宽度下避免遮住卡片页脚
-    <main className="flex min-h-svh flex-col items-center justify-center gap-6 bg-muted/40 px-4 pt-8 pb-24 sm:py-8">
+    <main className="flex min-h-svh flex-col items-center justify-center gap-6 bg-muted/40 px-4 py-8">
       {/* 应用名取模板配置，作为回到首页的出口；不是标题，页面只保留卡片内一个 h1 */}
       <Link
         to="/"
@@ -56,6 +57,11 @@ export function AuthLayout({
           </CardFooter>
         ) : null}
       </Card>
+      {/* 控件随卡片排版，窄屏和较矮视口下都不会遮挡页脚链接。 */}
+      <footer className="flex w-full max-w-sm flex-wrap items-center justify-between gap-3">
+        {templateConfig.i18n.enabled && <LanguageControls placement="inline" />}
+        <ThemeToggle className="ml-auto" />
+      </footer>
     </main>
   )
 }

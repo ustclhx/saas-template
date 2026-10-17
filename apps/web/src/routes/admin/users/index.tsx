@@ -6,8 +6,9 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../../features/admin/list.ts'
-import { AdminPage } from '../../../features/admin/ui.tsx'
+import { AdminPage, adminTableLabels } from '../../../features/admin/ui.tsx'
 import { getAdminUsers } from '../../../features/admin/users.functions.ts'
+import { m } from '../../../paraglide/messages.js'
 
 export const Route = createFileRoute('/admin/users/')({
   validateSearch: (search: Record<string, unknown>) => adminListSearch(['q'])(search),
@@ -20,28 +21,35 @@ function Users() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
-    <AdminPage title="Users">
+    <AdminPage title={m.admin_users()}>
       <DataTable
-        label="Users"
+        labels={adminTableLabels()}
+        label={m.admin_users()}
         rows={data.rows}
         getRowId={(row) => row.id}
         columns={[
           {
             id: 'email',
-            header: 'Email',
+            header: m.admin_email(),
             cell: (row) => (
               <Link to="/admin/users/$id" params={{ id: row.id }} className="underline">
                 {row.email}
               </Link>
             ),
           },
-          { id: 'name', header: 'Name', cell: (row) => row.name },
-          { id: 'id', header: 'ID', cell: (row) => row.id },
-          { id: 'role', header: 'Role', cell: (row) => row.role ?? 'user' },
-          { id: 'ban', header: 'Ban status', cell: (row) => (row.banned ? 'Banned' : 'Active') },
+          { id: 'name', header: m.admin_name(), cell: (row) => row.name },
+          { id: 'id', header: m.admin_id(), cell: (row) => row.id },
+          { id: 'role', header: m.admin_role(), cell: (row) => row.role ?? 'user' },
+          {
+            id: 'ban',
+            header: m.admin_ban_status(),
+            cell: (row) => (row.banned ? m.admin_banned() : m.admin_active()),
+          },
         ]}
         page={adminListPage(search.offset, data)}
-        filters={[{ id: 'q', label: 'Search users', placeholder: 'Email, name or ID' }]}
+        filters={[
+          { id: 'q', label: m.admin_search_users(), placeholder: m.admin_email_name_or_id() },
+        ]}
         filterValues={{ q: search.q }}
         onPageChange={(page) =>
           void navigate({ search: { ...search, offset: offsetOfPage(page) } })

@@ -2,8 +2,9 @@ import { Button, DataTable } from '@saas/ui'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { ADMIN_PAGE_SIZE, adminListPage, adminListSearch } from '../../features/admin/list.ts'
-import { AdminPage, formatDateTime } from '../../features/admin/ui.tsx'
+import { AdminPage, adminTableLabels, formatDateTime } from '../../features/admin/ui.tsx'
 import { getAdminWaitlist, inviteAdminWaitlist } from '../../features/growth/growth.functions.ts'
+import { m } from '../../paraglide/messages.js'
 export const Route = createFileRoute('/admin/waitlist')({
   validateSearch: (search) => ({ offset: adminListSearch([])(search).offset }),
   loaderDeps: ({ search }) => search,
@@ -19,7 +20,7 @@ function WaitlistAdmin() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   return (
-    <AdminPage title="Waitlist">
+    <AdminPage title={m.admin_waitlist()}>
       <Button
         className="w-fit"
         disabled={busy || selected.length === 0}
@@ -27,23 +28,24 @@ function WaitlistAdmin() {
           setBusy(true)
           try {
             const result = await inviteAdminWaitlist({ data: { ids: selected } })
-            setMessage(`${result.count} invitations queued.`)
+            setMessage(m.admin_invitations_queued({ count: result.count }))
             setSelected([])
             await router.invalidate()
           } catch {
-            setMessage('Invitations could not all be queued. Select the same addresses to retry.')
+            setMessage(m.admin_invitations_could_not_all_be_queued_select_the())
           } finally {
             setBusy(false)
           }
         }}
       >
-        Invite selected ({selected.length})
+        {m.admin_invite_selected({ count: selected.length })}
       </Button>
       <p role="status" className="min-h-5 text-sm">
         {message}
       </p>
       <DataTable
-        label="Waitlist"
+        labels={adminTableLabels()}
+        label={m.admin_waitlist()}
         rows={data.rows}
         getRowId={(row) => row.id}
         page={adminListPage(offset, data)}
@@ -54,10 +56,10 @@ function WaitlistAdmin() {
         columns={[
           {
             id: 'select',
-            header: 'Select',
+            header: m.admin_select(),
             cell: (row) => (
               <input
-                aria-label={`Select ${row.email}`}
+                aria-label={m.admin_select_email({ email: row.email })}
                 type="checkbox"
                 className="size-4 accent-primary"
                 checked={selected.includes(row.id)}
@@ -69,12 +71,13 @@ function WaitlistAdmin() {
               />
             ),
           },
-          { id: 'email', header: 'Email', cell: (row) => row.email },
-          { id: 'created', header: 'Joined', cell: (row) => formatDateTime(row.createdAt) },
+          { id: 'email', header: m.admin_email(), cell: (row) => row.email },
+          { id: 'created', header: m.admin_joined(), cell: (row) => formatDateTime(row.createdAt) },
           {
             id: 'invited',
-            header: 'Invited',
-            cell: (row) => (row.invitedAt ? formatDateTime(row.invitedAt) : 'Awaiting invitation'),
+            header: m.admin_invited(),
+            cell: (row) =>
+              row.invitedAt ? formatDateTime(row.invitedAt) : m.admin_awaiting_invitation(),
           },
         ]}
       />

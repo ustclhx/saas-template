@@ -12,35 +12,69 @@ import {
 import { getAuthUiOptions } from '../../features/auth/options.functions.ts'
 import { useTurnstile } from '../../features/auth/turnstile.tsx'
 import { useAuthRequest } from '../../features/auth/use-auth-request.ts'
+import { m } from '../../paraglide/messages.js'
 
-/** 页面文案（英文硬编码，P6 接 Paraglide） */
+/** 按当前请求或页面语言读取文案，避免在模块初始化时固定语言。 */
 const COPY = {
-  metaTitle: 'Create account',
-  title: 'Create an account',
-  description: 'Sign up with your email address.',
-  name: 'Name',
-  email: 'Email',
-  password: 'Password',
-  passwordHint: 'At least 8 characters.',
-  submit: 'Create account',
-  pending: 'Creating account…',
+  get metaTitle() {
+    return m.auth_create_account()
+  },
+  get title() {
+    return m.auth_create_an_account()
+  },
+  get description() {
+    return m.auth_sign_up_with_your_email_address()
+  },
+  get name() {
+    return m.auth_name()
+  },
+  get email() {
+    return m.auth_email()
+  },
+  get password() {
+    return m.auth_password()
+  },
+  get passwordHint() {
+    return m.auth_at_least_8_characters()
+  },
+  get submit() {
+    return m.auth_create_account()
+  },
+  get pending() {
+    return m.auth_creating_account()
+  },
   checkEmail: (email: string) =>
-    `We sent a verification link to ${email}. Verify your email address, then sign in.`,
-  haveAccount: 'Already have an account?',
-  signIn: 'Sign in',
-  unavailable: 'Sign-up with email and password is not available. Sign in with another method.',
-  nameRequired: 'Enter your name',
-  invalidEmail: 'Enter a valid email address',
-  passwordTooShort: 'Password must be at least 8 characters',
-  passwordTooLong: 'Password must be at most 128 characters',
+    m.auth_we_sent_a_verification_link_to_verify_your({ email: email }),
+  get haveAccount() {
+    return m.auth_already_have_an_account()
+  },
+  get signIn() {
+    return m.auth_sign_in()
+  },
+  get unavailable() {
+    return m.auth_sign_up_with_email_and_password_is_not()
+  },
+  get nameRequired() {
+    return m.auth_enter_your_name()
+  },
+  get invalidEmail() {
+    return m.auth_enter_a_valid_email_address()
+  },
+  get passwordTooShort() {
+    return m.auth_password_must_be_at_least_8_characters()
+  },
+  get passwordTooLong() {
+    return m.auth_password_must_be_at_most_128_characters()
+  },
 } as const
 
 // 与 Better Auth 默认的密码长度限制一致（minPasswordLength 8 / maxPasswordLength 128）
-const schema = z.object({
-  name: z.string().trim().min(1, COPY.nameRequired),
-  email: z.email(COPY.invalidEmail),
-  password: z.string().min(8, COPY.passwordTooShort).max(128, COPY.passwordTooLong),
-})
+const schema = () =>
+  z.object({
+    name: z.string().trim().min(1, COPY.nameRequired),
+    email: z.email(COPY.invalidEmail),
+    password: z.string().min(8, COPY.passwordTooShort).max(128, COPY.passwordTooLong),
+  })
 
 export const Route = createFileRoute('/(auth)/register')({
   loader: () => getAuthUiOptions(),
@@ -78,7 +112,7 @@ function RegisterForm({ siteKey }: { siteKey: string | null }) {
   const [verifyEmail, setVerifyEmail] = useState<string | null>(null)
   const form = useAppForm({
     defaultValues: { name: '', email: '', password: '' },
-    validators: { onBlur: schema, onSubmit: schema },
+    validators: { onBlur: schema(), onSubmit: schema() },
     onSubmit: async ({ value }) => {
       const data = await run((headers) =>
         authClient().signUp.email({

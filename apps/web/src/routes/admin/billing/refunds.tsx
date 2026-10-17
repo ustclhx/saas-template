@@ -12,7 +12,13 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../../features/admin/list.ts'
-import { AdminPage, Field, panelClass, Textarea } from '../../../features/admin/ui.tsx'
+import {
+  AdminPage,
+  adminTableLabels,
+  Field,
+  panelClass,
+  Textarea,
+} from '../../../features/admin/ui.tsx'
 import {
   completeAdminRefund,
   getAdminRefunds,
@@ -20,6 +26,7 @@ import {
   reviewAdminRefund,
 } from '../../../features/billing/admin.functions.ts'
 import { adminMoney } from '../../../features/billing/admin-display.ts'
+import { m } from '../../../paraglide/messages.js'
 import { templateConfig } from '../../../server/template-config.ts'
 
 export const Route = createFileRoute('/admin/billing/refunds')({
@@ -29,7 +36,7 @@ export const Route = createFileRoute('/admin/billing/refunds')({
   validateSearch: (search: Record<string, unknown>) => adminListSearch(['workspaceId'])(search),
   loaderDeps: ({ search }) => search,
   loader: ({ deps }) => getAdminRefunds({ data: deps }),
-  errorComponent: () => <p role="alert">Refund data is unavailable. Please reload.</p>,
+  errorComponent: () => <p role="alert">{m.admin_refund_data_is_unavailable_please_reload()}</p>,
   component: Refunds,
 })
 function Refunds() {
@@ -38,24 +45,24 @@ function Refunds() {
   const navigate = Route.useNavigate()
   return (
     <AdminPage
-      title="Refund reviews"
+      title={m.admin_refund_reviews()}
       description={
         <>
-          Original and remaining credits include held or revoked credits in their difference; that
-          difference is not consumed usage.
-          <br />A full refund revokes all remaining credits for the payment. A partial refund keeps
-          the unrefunded share of each credit batch and revokes the rest from what is unused;
-          consumed credits are never clawed back.
+          {m.admin_original_and_remaining_credits_include_held_or_revoked()} <br />
+          {m.admin_a_full_refund_revokes_all_remaining_credits_for()}
         </>
       }
     >
       <DataTable
-        label="Refund requests"
+        labels={adminTableLabels()}
+        label={m.admin_refund_requests()}
         rows={rows}
         getRowId={(row) => row.id}
-        columns={[{ id: 'review', header: 'Refund review', cell: (row) => <Refund row={row} /> }]}
+        columns={[
+          { id: 'review', header: m.admin_refund_review(), cell: (row) => <Refund row={row} /> },
+        ]}
         page={adminListPage(search.offset, { hasMore })}
-        filters={[{ id: 'workspaceId', label: 'Workspace ID' }]}
+        filters={[{ id: 'workspaceId', label: m.admin_workspace_id() }]}
         filterValues={{ workspaceId: search.workspaceId }}
         onPageChange={(page) =>
           void navigate({ search: { ...search, offset: offsetOfPage(page) } })
@@ -85,11 +92,11 @@ function Refund({ row }: { row: RefundRow }) {
       setMessage(
         result.ok
           ? result.status
-          : `Action unavailable (${result.error}). The decision may already be saved; refreshed status is shown below. Email can be retried independently.`,
+          : m.admin_action_unavailable_the_decision_may_already_be_saved({ error: result.error }),
       )
       await router.invalidate()
     } catch {
-      setMessage('Action unavailable. Reload to check saved status before retrying.')
+      setMessage(m.admin_action_unavailable_reload_to_check_saved_status_before())
     } finally {
       setBusy(false)
     }
@@ -107,43 +114,49 @@ function Refund({ row }: { row: RefundRow }) {
     )
   }
   return (
-    <article aria-label={`Refund ${row.id}`} className="grid min-w-0 gap-3 py-2">
-      <h3 className="break-all font-semibold">Refund {row.id}</h3>
+    <article aria-label={m.admin_refund({ id: row.id })} className="grid min-w-0 gap-3 py-2">
+      <h3 className="break-all font-semibold">
+        {m.admin_refund_label()} {row.id}
+      </h3>
       <div className="grid gap-1 break-words text-sm">
         <p>
-          Workspace:{' '}
+          {m.admin_workspace_label()}{' '}
           <Link to="/admin/workspaces/$id" params={{ id: row.workspaceId }} className="underline">
             {row.workspaceId}
           </Link>{' '}
-          · {row.provider} · Status: {row.status}
+          · {row.provider} {m.admin_status_inline()} {row.status}
         </p>
-        <p>Reason: {row.reason}</p>
         <p>
-          Requested:{' '}
+          {m.admin_reason_label()} {row.reason}
+        </p>
+        <p>
+          {m.admin_requested()}{' '}
           {row.requestedAmount === null
-            ? 'Full remaining payment'
+            ? m.admin_full_remaining_payment()
             : adminMoney(row.requestedAmount, row.currency)}{' '}
-          · Remaining refundable: {adminMoney(row.remainingRefundable, row.currency)}
+          {m.admin_remaining_refundable()} {adminMoney(row.remainingRefundable, row.currency)}
         </p>
         <p>
-          Approved:{' '}
-          {row.approvedAmount === null ? 'None' : adminMoney(row.approvedAmount, row.currency)} ·
-          Review note: {row.reviewNote || 'None'}
+          {m.admin_approved()}{' '}
+          {row.approvedAmount === null
+            ? m.admin_none()
+            : adminMoney(row.approvedAmount, row.currency)}{' '}
+          {m.admin_review_note()} {row.reviewNote || m.admin_none()}
         </p>
         <p>
-          Original credits: {row.originalCredits} · Remaining credits: {row.remainingCredits}
+          {m.admin_original_credits()} {row.originalCredits} {m.admin_remaining_credits()}{' '}
+          {row.remainingCredits}
         </p>
       </div>
       {!row.providerAvailable && (
         <p className="text-muted-foreground text-sm">
-          Provider not configured. Approval, manual completion and API retry are unavailable. Saved
-          reviews remain visible.
+          {m.admin_provider_not_configured_approval_manual_completion_and_api()}
         </p>
       )}
       {row.status === 'pending' && (
         <fieldset disabled={busy} className={panelClass('default', 'max-w-2xl')}>
-          <legend className="px-1 font-medium text-sm">Review decision</legend>
-          <Field label="Review note" htmlFor={`${row.id}-note`}>
+          <legend className="px-1 font-medium text-sm">{m.admin_review_decision()}</legend>
+          <Field label={m.admin_review_note_field()} htmlFor={`${row.id}-note`}>
             <Textarea
               id={`${row.id}-note`}
               value={note}
@@ -157,7 +170,7 @@ function Refund({ row }: { row: RefundRow }) {
               disabled={!row.providerAvailable || row.remainingRefundable <= 0}
               onClick={() => review('approve')}
             >
-              Approve full refund
+              {m.admin_approve_full_refund()}
             </Button>
             <Button
               type="button"
@@ -165,11 +178,11 @@ function Refund({ row }: { row: RefundRow }) {
               disabled={!note.trim()}
               onClick={() => review('reject')}
             >
-              Reject refund
+              {m.admin_reject_refund()}
             </Button>
           </div>
           <div className="flex flex-wrap items-end gap-3">
-            <Field label="Partial amount (USD cents)" htmlFor={`${row.id}-cents`}>
+            <Field label={m.admin_partial_amount_usd_cents()} htmlFor={`${row.id}-cents`}>
               <Input
                 id={`${row.id}-cents`}
                 className="w-48"
@@ -192,7 +205,7 @@ function Refund({ row }: { row: RefundRow }) {
               }
               onClick={() => review('approve', Number(cents))}
             >
-              Approve partial refund
+              {m.admin_approve_partial_refund()}
             </Button>
           </div>
         </fieldset>
@@ -215,13 +228,15 @@ function Refund({ row }: { row: RefundRow }) {
             )
           }
         >
-          Retry approved refund API
+          {m.admin_retry_approved_refund_api()}
         </Button>
       )}
       {row.status === 'approved' && row.manualAvailable && (
         <fieldset disabled={busy} className={panelClass('default', 'max-w-2xl')}>
-          <legend className="px-1 font-medium text-sm">Manual platform completion</legend>
-          <Field label="Platform refund ID" htmlFor={`${row.id}-refund-id`}>
+          <legend className="px-1 font-medium text-sm">
+            {m.admin_manual_platform_completion()}
+          </legend>
+          <Field label={m.admin_platform_refund_id()} htmlFor={`${row.id}-refund-id`}>
             <Input
               id={`${row.id}-refund-id`}
               value={refundId}
@@ -229,7 +244,7 @@ function Refund({ row }: { row: RefundRow }) {
               onChange={(event) => setRefundId(event.target.value)}
             />
           </Field>
-          <Field label="Platform proof" htmlFor={`${row.id}-proof`}>
+          <Field label={m.admin_platform_proof()} htmlFor={`${row.id}-proof`}>
             <Textarea
               id={`${row.id}-proof`}
               value={proof}
@@ -249,7 +264,7 @@ function Refund({ row }: { row: RefundRow }) {
               )
             }
           >
-            Mark manual refund complete
+            {m.admin_mark_manual_refund_complete()}
           </Button>
         </fieldset>
       )}
@@ -262,7 +277,7 @@ function Refund({ row }: { row: RefundRow }) {
           disabled={busy}
           onClick={() => act(() => retryAdminRefundEmail({ data: { requestId: row.id } }))}
         >
-          Retry refund email
+          {m.admin_retry_refund_email()}
         </Button>
       )}
       <p role="status" className="text-sm">

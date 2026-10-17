@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@saas/ui'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ADMIN_COPY } from '../../features/admin/copy.ts'
 import { getAdminMetrics } from '../../features/admin/metrics.functions.ts'
-import { ADMIN_NAV_GROUPS } from '../../features/admin/nav.ts'
+import { getAdminNavGroups } from '../../features/admin/nav.ts'
 import { AdminPage, AdminSection } from '../../features/admin/ui.tsx'
 
 export const Route = createFileRoute('/admin/')({
@@ -22,7 +22,7 @@ const percent = (value: number | null) => (value === null ? '—' : `${(value * 
 
 function AdminOverview() {
   const { metrics } = Route.useLoaderData()
-  const groups = ADMIN_NAV_GROUPS.filter((group) => group.label)
+  const groups = getAdminNavGroups().filter((group) => group.label)
   return (
     <AdminPage title={copy.heading} description={copy.description}>
       {metrics ? (

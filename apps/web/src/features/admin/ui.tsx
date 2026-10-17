@@ -1,5 +1,6 @@
 import { cn, Label } from '@saas/ui'
 import type { ComponentProps, ReactNode } from 'react'
+import { m } from '../../paraglide/messages.js'
 import { ADMIN_COPY } from './copy.ts'
 
 /**
@@ -141,4 +142,20 @@ export function formatDateTime(value: Date | string | null | undefined): string 
   const date = typeof value === 'string' ? new Date(value) : value
   if (Number.isNaN(date.getTime())) return '—'
   return `${date.toISOString().slice(0, 16).replace('T', ' ')} UTC`
+}
+
+export function adminTableLabels() {
+  return {
+    previous: m.admin_previous(),
+    next: m.admin_next(),
+    page: (page: number, pageCount: number | null) =>
+      pageCount === null
+        ? m.admin_page({ page: page })
+        : m.admin_page_of({ page: page, pageCount: pageCount }),
+    empty: m.admin_no_records_found(),
+    applyFilters: m.admin_apply(),
+    resetFilters: m.admin_reset(),
+    filters: m.admin_filters(),
+    pagination: m.admin_pagination(),
+  }
 }

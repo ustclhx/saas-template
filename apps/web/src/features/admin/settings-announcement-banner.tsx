@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { m } from '../../paraglide/messages.js'
 import { getAnnouncement } from './settings-announcement.functions.ts'
 
 export function AnnouncementBanner({ initial }: { initial: string }) {
@@ -23,7 +24,7 @@ export function AnnouncementBanner({ initial }: { initial: string }) {
   if (!announcement) return null
   return (
     <aside
-      aria-label="Site announcement"
+      aria-label={m.admin_site_announcement()}
       role="status"
       className="border-b bg-muted px-6 py-3 text-center whitespace-pre-wrap"
     >

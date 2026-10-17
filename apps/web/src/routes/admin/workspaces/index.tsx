@@ -6,8 +6,9 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../../features/admin/list.ts'
-import { AdminPage } from '../../../features/admin/ui.tsx'
+import { AdminPage, adminTableLabels } from '../../../features/admin/ui.tsx'
 import { getAdminWorkspaces } from '../../../features/admin/workspaces.functions.ts'
+import { m } from '../../../paraglide/messages.js'
 
 export const Route = createFileRoute('/admin/workspaces/')({
   validateSearch: (search: Record<string, unknown>) => adminListSearch(['q', 'status'])(search),
@@ -26,38 +27,47 @@ function Workspaces() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
-    <AdminPage title="Workspaces">
+    <AdminPage title={m.admin_workspaces()}>
       <DataTable
-        label="Workspaces"
+        labels={adminTableLabels()}
+        label={m.admin_workspaces()}
         rows={data.rows}
         getRowId={(row) => row.id}
         columns={[
           {
             id: 'name',
-            header: 'Name',
+            header: m.admin_name(),
             cell: (row) => (
               <Link to="/admin/workspaces/$id" params={{ id: row.id }} className="underline">
                 {row.name}
               </Link>
             ),
           },
-          { id: 'id', header: 'ID', cell: (row) => row.id },
-          { id: 'slug', header: 'Slug', cell: (row) => row.slug },
-          { id: 'kind', header: 'Type', cell: (row) => (row.isPersonal ? 'Personal' : 'Team') },
-          { id: 'status', header: 'Status', cell: (row) => (row.deletedAt ? 'Deleted' : 'Active') },
+          { id: 'id', header: m.admin_id(), cell: (row) => row.id },
+          { id: 'slug', header: m.admin_slug(), cell: (row) => row.slug },
+          {
+            id: 'kind',
+            header: m.admin_type(),
+            cell: (row) => (row.isPersonal ? m.admin_personal() : m.admin_team()),
+          },
+          {
+            id: 'status',
+            header: m.admin_status(),
+            cell: (row) => (row.deletedAt ? m.admin_deleted() : m.admin_active()),
+          },
         ]}
         page={adminListPage(search.offset, data)}
         filterValues={{ q: search.q, status: search.status }}
         filters={[
-          { id: 'q', label: 'Search workspaces', placeholder: 'Name, slug or ID' },
+          { id: 'q', label: m.admin_search_workspaces(), placeholder: m.admin_name_slug_or_id() },
           {
             id: 'status',
-            label: 'Status',
+            label: m.admin_status(),
             type: 'select',
             options: [
-              { value: '', label: 'All' },
-              { value: 'active', label: 'Active' },
-              { value: 'deleted', label: 'Deleted' },
+              { value: '', label: m.admin_all() },
+              { value: 'active', label: m.admin_active() },
+              { value: 'deleted', label: m.admin_deleted() },
             ],
           },
         ]}
