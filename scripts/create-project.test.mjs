@@ -499,6 +499,22 @@ test('selfhost 继承发布和运维材料，排除真值，并再次生成 name
     /BLOCKED|STRIPE_SECRET|PAYPAL_CLIENT|billing:seed|admin\/billing\/plans|CLOUDFLARE_API_TOKEN/,
   )
   assert.match(result.report, /billing=false \/ credits=false \/ marketing=false \/ i18n=false/)
+  assert.match(
+    result.report,
+    /外部应用 S3\/R2：.*compose\.s3\.yaml.*release bundle.*_FILE.*配置缺口/,
+  )
+  assert.match(result.report, /待交付：deploy\/selfhost\/compose\.s3\.yaml/)
+  assert.match(result.report, /独立凭据恢复副本目标（允许不同供应商\/账号）/)
+  assert.match(
+    result.report,
+    /同一 R2 账号方案.*独立桶与桶级独立 token.*供应商独立性.*账号级共同故障/,
+  )
+  assert.match(result.report, /副本 token 无主桶权限/)
+  assert.doesNotMatch(result.report, /第二供应商独立凭据/)
+  assert.match(
+    result.report,
+    /BACKUP_REPLICA_MAX_AGE_SECONDS.*大于 BACKUP_REPLICA_INTERVAL_SECONDS.*间隔 3 倍.*完整同步.*余量.*300\/3600.*显式旧值/,
+  )
   assert.match(result.report, /营销页面关闭，\/ 重定向至 \/app/)
   assert.match(result.report, /仅编译所选默认语言 en/)
   assert.match(result.report, /其他语言前缀返回 404/)
