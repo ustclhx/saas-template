@@ -7,8 +7,9 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../../features/admin/list.ts'
-import { AdminPage } from '../../../features/admin/ui.tsx'
+import { AdminPage, adminTableLabels } from '../../../features/admin/ui.tsx'
 import { getAdminWebhooks, replayAdminWebhook } from '../../../features/billing/admin.functions.ts'
+import { m } from '../../../paraglide/messages.js'
 import { templateConfig } from '../../../server/template-config.ts'
 
 export const Route = createFileRoute('/admin/billing/webhooks')({
@@ -31,18 +32,18 @@ function Webhooks() {
     setBusy(true)
     try {
       const result = await replayAdminWebhook({ data: { webhookEventId: id } })
-      setMessage(result.ok ? result.status : `Replay unavailable (${result.error}).`)
+      setMessage(result.ok ? result.status : m.admin_replay_unavailable({ error: result.error }))
       await router.invalidate()
     } catch {
-      setMessage('Replay unavailable. Reload to check the saved record.')
+      setMessage(m.admin_replay_unavailable_reload_to_check_the_saved_record())
     } finally {
       setBusy(false)
     }
   }
   return (
     <AdminPage
-      title="Webhook events"
-      description="Events without an associated workspace appear only when no workspace filter is set."
+      title={m.admin_webhook_events()}
+      description={m.admin_events_without_an_associated_workspace_appear_only_when()}
     >
       {message && (
         <p role="status" className="text-sm">
@@ -50,18 +51,19 @@ function Webhooks() {
         </p>
       )}
       <DataTable
-        label="Webhook events"
+        labels={adminTableLabels()}
+        label={m.admin_webhook_events()}
         rows={data.rows}
         getRowId={(row) => row.id}
         columns={[
-          { id: 'provider', header: 'Provider', cell: (row) => row.provider },
-          { id: 'event', header: 'Event', cell: (row) => row.providerEventId },
-          { id: 'type', header: 'Type', cell: (row) => row.type },
-          { id: 'status', header: 'Status', cell: (row) => row.status },
-          { id: 'attempts', header: 'Attempts', cell: (row) => row.attempts },
+          { id: 'provider', header: m.admin_provider(), cell: (row) => row.provider },
+          { id: 'event', header: m.admin_event(), cell: (row) => row.providerEventId },
+          { id: 'type', header: m.admin_type(), cell: (row) => row.type },
+          { id: 'status', header: m.admin_status(), cell: (row) => row.status },
+          { id: 'attempts', header: m.admin_attempts_label(), cell: (row) => row.attempts },
           {
             id: 'replay',
-            header: 'Replay',
+            header: m.admin_replay(),
             cell: (row) =>
               row.status === 'failed' ? (
                 <Button
@@ -72,16 +74,18 @@ function Webhooks() {
                   onClick={() => void replay(row.id)}
                 >
                   {row.replayAvailable
-                    ? 'Replay failed event'
-                    : 'Replay unavailable — provider not configured'}
+                    ? m.admin_replay_failed_event()
+                    : m.admin_replay_unavailable_provider_not_configured()}
                 </Button>
               ) : (
-                <span className="text-muted-foreground">Only failed events can be replayed</span>
+                <span className="text-muted-foreground">
+                  {m.admin_only_failed_events_can_be_replayed()}
+                </span>
               ),
           },
         ]}
         page={adminListPage(search.offset, data)}
-        filters={[{ id: 'workspaceId', label: 'Workspace ID' }]}
+        filters={[{ id: 'workspaceId', label: m.admin_workspace_id() }]}
         filterValues={{ workspaceId: search.workspaceId }}
         onPageChange={(page) =>
           void navigate({ search: { ...search, offset: offsetOfPage(page) } })

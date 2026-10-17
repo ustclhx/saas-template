@@ -7,11 +7,17 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../../features/admin/list.ts'
-import { AdminPage, CheckboxField, panelClass } from '../../../features/admin/ui.tsx'
+import {
+  AdminPage,
+  adminTableLabels,
+  CheckboxField,
+  panelClass,
+} from '../../../features/admin/ui.tsx'
 import {
   getAdminPlans,
   saveAdminPlanModels,
 } from '../../../features/billing/admin-plans.functions.ts'
+import { m } from '../../../paraglide/messages.js'
 import { templateConfig } from '../../../server/template-config.ts'
 
 export const Route = createFileRoute('/admin/billing/plans')({
@@ -21,7 +27,7 @@ export const Route = createFileRoute('/admin/billing/plans')({
   validateSearch: (search: Record<string, unknown>) => adminListSearch(['q'])(search),
   loaderDeps: ({ search }) => search,
   loader: ({ deps }) => getAdminPlans({ data: deps }),
-  errorComponent: () => <p role="alert">Plan data is unavailable. Please reload.</p>,
+  errorComponent: () => <p role="alert">{m.admin_plan_data_is_unavailable_please_reload()}</p>,
   component: Plans,
 })
 
@@ -33,36 +39,44 @@ function Plans() {
   const navigate = Route.useNavigate()
   return (
     <AdminPage
-      title="Plan model access"
+      title={m.admin_plan_model_access()}
       description={
         <>
-          Saved model access applies to the next request. Select no models to revoke all access.
-          <br />
-          Credit packs only grant credits; their model selections do not grant plan entitlements.
+          {m.admin_saved_model_access_applies_to_the_next_request()} <br />
+          {m.admin_credit_packs_only_grant_credits_their_model_selections()}
         </>
       }
     >
       <DataTable
-        label="Plans"
+        labels={adminTableLabels()}
+        label={m.admin_plans()}
         rows={data.rows}
         getRowId={(row) => row.id}
         columns={[
           {
             id: 'key',
-            header: 'Key',
+            header: m.admin_key(),
             cell: (row) => (
               <a href={`#plan-${row.id}`} className="underline">
                 {row.key}
               </a>
             ),
           },
-          { id: 'name', header: 'Name', cell: (row) => row.name },
-          { id: 'type', header: 'Type', cell: (row) => row.type },
-          { id: 'active', header: 'Status', cell: (row) => (row.active ? 'Active' : 'Inactive') },
-          { id: 'models', header: 'Models', cell: (row) => row.models.join(', ') || 'None' },
+          { id: 'name', header: m.admin_name(), cell: (row) => row.name },
+          { id: 'type', header: m.admin_type(), cell: (row) => row.type },
+          {
+            id: 'active',
+            header: m.admin_status(),
+            cell: (row) => (row.active ? m.admin_active() : m.admin_inactive()),
+          },
+          {
+            id: 'models',
+            header: m.admin_models(),
+            cell: (row) => row.models.join(', ') || m.admin_none(),
+          },
         ]}
         page={adminListPage(search.offset, data)}
-        filters={[{ id: 'q', label: 'Search plans' }]}
+        filters={[{ id: 'q', label: m.admin_search_plans() }]}
         filterValues={{ q: search.q }}
         onPageChange={(page) =>
           void navigate({ search: { ...search, offset: offsetOfPage(page) } })
@@ -87,12 +101,12 @@ function PlanEditor({ plan, models }: { plan: Data['rows'][number]; models: Data
   const currentKeys = new Set(models.map((model) => model.key))
   const historical = plan.models.filter((key) => key !== '*' && !currentKeys.has(key))
   const options = [
-    { key: '*', label: 'All models (*)' },
+    { key: '*', label: m.admin_all_models() },
     ...models.map((model) => ({
       key: model.key,
-      label: `${model.key}${model.enabled ? '' : ' (disabled)'}`,
+      label: `${model.key}${model.enabled ? '' : m.admin_disabled_suffix()}`,
     })),
-    ...historical.map((key) => ({ key, label: `${key} (historical; model missing)` })),
+    ...historical.map((key) => ({ key, label: m.admin_historical_model_missing({ key: key }) })),
   ]
   async function save() {
     setBusy(true)
@@ -104,31 +118,36 @@ function PlanEditor({ plan, models }: { plan: Data['rows'][number]; models: Data
         return
       }
       await router.invalidate()
-      setMessage('Saved.')
+      setMessage(m.admin_saved())
     } catch {
-      setMessage('Save unavailable. Reload and retry.')
+      setMessage(m.admin_save_unavailable_reload_and_retry())
     } finally {
       setBusy(false)
     }
   }
   return (
-    <article aria-label={`Plan ${plan.key}`} id={`plan-${plan.id}`} className={panelClass()}>
+    <article
+      aria-label={m.admin_plan({ key: plan.key })}
+      id={`plan-${plan.id}`}
+      className={panelClass()}
+    >
       <h3 className="font-semibold text-lg">
         {plan.name} ({plan.key})
       </h3>
       {plan.type === 'credit_pack' && (
         <p className="text-muted-foreground text-sm">
-          Credit pack: these selections do not grant model access.
+          {m.admin_credit_pack_these_selections_do_not_grant_model()}
         </p>
       )}
       {historical.length > 0 && (
         <p role="alert" className="text-destructive text-sm">
-          Historical model keys are missing: {historical.join(', ')}. They remain selected until you
-          remove them.
+          {m.admin_historical_model_keys_are_missing_they_remain_selected({
+            keys: historical.join(', '),
+          })}
         </p>
       )}
       <fieldset disabled={busy || !ready} className="grid min-w-0 gap-2 sm:grid-cols-2">
-        <legend className="mb-2 font-medium text-sm">Allowed models</legend>
+        <legend className="mb-2 font-medium text-sm">{m.admin_allowed_models()}</legend>
         {options.map((option) => (
           <CheckboxField
             key={option.key}
@@ -147,7 +166,7 @@ function PlanEditor({ plan, models }: { plan: Data['rows'][number]; models: Data
       </fieldset>
       <div className="flex flex-wrap items-center gap-3">
         <Button type="button" disabled={busy || !ready} onClick={() => void save()}>
-          Save model access
+          {m.admin_save_model_access()}
         </Button>
         <p role="status" className="text-sm">
           {message}

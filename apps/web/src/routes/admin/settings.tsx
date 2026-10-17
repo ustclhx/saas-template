@@ -4,10 +4,11 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { getAdminSettings, saveAdminSettings } from '../../features/admin/settings.functions.ts'
 import { OperationsSettingsForm } from '../../features/admin/settings-operations-form.tsx'
 import { AdminPage, CheckboxField, Field, panelClass, Textarea } from '../../features/admin/ui.tsx'
+import { m } from '../../paraglide/messages.js'
 
 export const Route = createFileRoute('/admin/settings')({
   loader: () => getAdminSettings(),
-  errorComponent: () => <p role="alert">Settings are unavailable. Please reload.</p>,
+  errorComponent: () => <p role="alert">{m.admin_settings_are_unavailable_please_reload()}</p>,
   component: Settings,
 })
 
@@ -39,36 +40,35 @@ function Settings() {
       })
       setMessage(
         result.ok
-          ? 'Saved. Changes apply within about 60 seconds.'
-          : (result.error ?? 'Save failed.'),
+          ? m.admin_saved_changes_apply_within_about_60_seconds()
+          : (result.error ?? m.admin_save_failed()),
       )
       await router.invalidate()
     } catch {
-      setMessage('Save unavailable. Enter valid domains (no email addresses or URLs) and retry.')
+      setMessage(m.admin_save_unavailable_enter_valid_domains_no_email_addresses())
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <AdminPage title="Runtime settings" className="max-w-3xl">
-      <form onSubmit={submit} aria-label="Runtime settings" className={panelClass()}>
+    <AdminPage title={m.admin_runtime_settings()} className="max-w-3xl">
+      <form onSubmit={submit} aria-label={m.admin_runtime_settings()} className={panelClass()}>
         <fieldset disabled={!hydrated || busy} className="grid min-w-0 gap-5">
           <div className="grid gap-2">
             <CheckboxField
-              label="Registration enabled"
+              label={m.admin_registration_enabled()}
               checked={signupEnabled}
               onChange={(event) => setSignupEnabled(event.target.checked)}
             />
             <p className="text-muted-foreground text-sm">
-              When registration is closed, only valid waitlist invitations can admit new users if
-              waitlist is enabled.
+              {m.admin_when_registration_is_closed_only_valid_waitlist_invitations()}
             </p>
           </div>
           <Field
-            label="Site announcement"
+            label={m.admin_site_announcement()}
             htmlFor="announcement"
-            description="Plain text shown across the site. Leave empty to hide the banner."
+            description={m.admin_plain_text_shown_across_the_site_leave_empty()}
           >
             <Textarea
               id="announcement"
@@ -79,9 +79,9 @@ function Settings() {
             />
           </Field>
           <Field
-            label="Disposable email domains"
+            label={m.admin_disposable_email_domains()}
             htmlFor="blacklist"
-            description="One domain per line, or comma separated. These domains and their subdomains cannot receive signup bonus credits; registration itself is unaffected."
+            description={m.admin_one_domain_per_line_or_comma_separated_these()}
           >
             <Textarea
               id="blacklist"
@@ -91,7 +91,7 @@ function Settings() {
             />
           </Field>
           <Button type="submit" className="w-fit">
-            Save settings
+            {m.admin_save_settings()}
           </Button>
         </fieldset>
       </form>

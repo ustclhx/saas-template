@@ -7,7 +7,7 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../features/admin/list.ts'
-import { AdminPage, NativeSelect, Textarea } from '../../features/admin/ui.tsx'
+import { AdminPage, adminTableLabels, NativeSelect, Textarea } from '../../features/admin/ui.tsx'
 import {
   PARAMS_SCHEMA_TEMPLATES,
   parseAdminParamsSchema,
@@ -18,12 +18,13 @@ import {
   saveAdminModel,
   setAdminModelEnabled,
 } from '../../features/ai/admin-models.functions.ts'
+import { m } from '../../paraglide/messages.js'
 
 export const Route = createFileRoute('/admin/models')({
   validateSearch: (search: Record<string, unknown>) => adminListSearch(['kind', 'order'])(search),
   loaderDeps: ({ search }) => search,
   loader: ({ deps }) => getAdminModels({ data: deps }),
-  errorComponent: () => <p role="alert">Model data is unavailable. Please reload.</p>,
+  errorComponent: () => <p role="alert">{m.admin_model_data_is_unavailable_please_reload()}</p>,
   component: Models,
 })
 
@@ -33,11 +34,21 @@ type Kind = ModelRow['kind']
 type Mode = 'per_call' | 'token' | 'per_unit'
 
 const ERRORS: Record<string, string> = {
-  MISSING_TOKEN_LIMITS: 'Per-call text models require input and output token limits.',
-  INVALID_PRICING: 'Pricing is invalid. Check the required fields for this pricing mode.',
-  MEDIA_PROVIDER_DISABLED: 'Choose an enabled media provider.',
-  MODEL_PROVIDER_UNAVAILABLE: 'Workers AI is unavailable on this runtime. Choose another provider.',
-  MODEL_KEY_TAKEN: 'Another model already uses this key.',
+  get MISSING_TOKEN_LIMITS() {
+    return m.admin_per_call_text_models_require_input_and_output()
+  },
+  get INVALID_PRICING() {
+    return m.admin_pricing_is_invalid_check_the_required_fields_for()
+  },
+  get MEDIA_PROVIDER_DISABLED() {
+    return m.admin_choose_an_enabled_media_provider()
+  },
+  get MODEL_PROVIDER_UNAVAILABLE() {
+    return m.admin_workers_ai_is_unavailable_on_this_runtime_choose()
+  },
+  get MODEL_KEY_TAKEN() {
+    return m.admin_another_model_already_uses_this_key()
+  },
 }
 
 /** 表单状态：数值字段保留输入的字符串，提交时再转换 */
@@ -184,7 +195,7 @@ function ParamsSchemaEditor({
         onChange={(event) => onChange(event.target.value)}
       />
       <label className="grid gap-2 text-sm font-medium" htmlFor={`${id}-template`}>
-        Insert reference template
+        {m.admin_insert_reference_template()}
       </label>
       <NativeSelect
         id={`${id}-template`}
@@ -196,20 +207,22 @@ function ParamsSchemaEditor({
           onChange(JSON.stringify(template.schema, null, 2))
           onTemplate(
             template.kind !== 'text'
-              ? `Reference inserted for ${template.providerModelId}. Verify the Provider model ID before saving.`
-              : 'Text defaults inserted.',
+              ? m.admin_reference_inserted_for_verify_the_provider_model_id({
+                  modelId: template.providerModelId,
+                })
+              : m.admin_text_defaults_inserted(),
           )
         }}
       >
-        <option value="">Choose a reference template</option>
+        <option value="">{m.admin_choose_a_reference_template()}</option>
         {templates.map((template) => (
           <option key={template.id} value={template.id}>
-            {template.label}
+            {template.id === 'text-defaults' ? m.admin_text_schema_defaults() : template.label}
           </option>
         ))}
       </NativeSelect>
       <p className="text-muted-foreground text-sm">
-        Templates replace the schema. Check the parameters against your Provider model ID.
+        {m.admin_templates_replace_the_schema_check_the_parameters_against()}
       </p>
     </>
   )
@@ -226,8 +239,8 @@ function Models() {
   useEffect(() => setReady(true), [])
   return (
     <AdminPage
-      title="AI models"
-      description="Disabled models are hidden from model pickers and calls to them are rejected. Price changes apply to calls started after saving."
+      title={m.admin_ai_models()}
+      description={m.admin_disabled_models_are_hidden_from_model_pickers_and()}
       actions={
         <Button
           type="button"
@@ -236,55 +249,56 @@ function Models() {
           disabled={!ready}
           onClick={() => setCreating((open) => !open)}
         >
-          New model
+          {m.admin_new_model()}
         </Button>
       }
     >
       <DataTable
-        label="AI models"
+        labels={adminTableLabels()}
+        label={m.admin_ai_models()}
         rows={models}
         getRowId={(row) => row.id}
         columns={[
           {
             id: 'key',
-            header: 'Key',
+            header: m.admin_key(),
             cell: (row) => (
               <a href={`#model-${row.id}`} className="underline">
                 {row.key}
               </a>
             ),
           },
-          { id: 'kind', header: 'Type', cell: (row) => row.kind },
-          { id: 'provider', header: 'Provider', cell: (row) => row.provider },
-          { id: 'pricing', header: 'Pricing', cell: (row) => String(row.pricing.mode) },
-          { id: 'sort', header: 'Sort', cell: (row) => row.sort },
+          { id: 'kind', header: m.admin_type(), cell: (row) => row.kind },
+          { id: 'provider', header: m.admin_provider(), cell: (row) => row.provider },
+          { id: 'pricing', header: m.admin_pricing(), cell: (row) => String(row.pricing.mode) },
+          { id: 'sort', header: m.admin_sort(), cell: (row) => row.sort },
           {
             id: 'enabled',
-            header: 'Status',
-            cell: (row) => (row.enabled ? 'Enabled' : 'Disabled'),
+            header: m.admin_status(),
+            cell: (row) => (row.enabled ? m.admin_enabled() : m.admin_disabled()),
           },
         ]}
         page={adminListPage(search.offset, data)}
         filters={[
           {
             id: 'kind',
-            label: 'Model type',
+            label: m.admin_model_type(),
             type: 'select',
             options: [
-              { value: 'text', label: 'Text' },
-              { value: 'image', label: 'Image' },
-              { value: 'video', label: 'Video' },
+              { value: 'text', label: m.admin_text() },
+              { value: 'image', label: m.admin_image() },
+              { value: 'video', label: m.admin_video() },
             ],
           },
           {
             id: 'order',
-            label: 'Order models',
+            label: m.admin_order_models(),
             type: 'select',
             options: [
-              { value: 'sort', label: 'Sort ascending' },
-              { value: 'sort_desc', label: 'Sort descending' },
-              { value: 'key', label: 'Key ascending' },
-              { value: 'key_desc', label: 'Key descending' },
+              { value: 'sort', label: m.admin_sort_ascending() },
+              { value: 'sort_desc', label: m.admin_sort_descending() },
+              { value: 'key', label: m.admin_key_ascending() },
+              { value: 'key_desc', label: m.admin_key_descending() },
             ],
           },
         ]}
@@ -355,14 +369,16 @@ function ModelEditor({
     try {
       const result = await action()
       if (result.ok) {
-        setMessage('Saved.')
+        setMessage(m.admin_saved())
         if (!model) setDraft(newDraft(defaults))
         await router.invalidate()
       } else {
-        setMessage(result.message ?? ERRORS[result.error] ?? `Save rejected (${result.error}).`)
+        setMessage(
+          result.message ?? ERRORS[result.error] ?? m.admin_save_rejected({ error: result.error }),
+        )
       }
     } catch {
-      setMessage('Save unavailable. Check the fields (multipliers must be JSON) and retry.')
+      setMessage(m.admin_save_unavailable_check_the_fields_multipliers_must_be())
     } finally {
       setBusy(false)
     }
@@ -373,7 +389,7 @@ function ModelEditor({
       parseAdminParamsSchema(kind, json)
       return true
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Parameter schema is invalid.')
+      setMessage(error instanceof Error ? error.message : m.admin_parameter_schema_is_invalid())
       return false
     }
   }
@@ -405,7 +421,7 @@ function ModelEditor({
     )
   }
 
-  const title = model ? `Model ${model.key}` : 'New model'
+  const title = model ? m.admin_model_title({ key: model.key }) : m.admin_new_model()
   const disabled = busy || !ready
   return (
     <article
@@ -416,15 +432,15 @@ function ModelEditor({
     >
       <h3 className="font-semibold text-lg">
         {title}
-        {model && !model.enabled && ' (disabled)'}
+        {model && !model.enabled && m.admin_disabled_suffix()}
       </h3>
       <fieldset disabled={disabled} className="grid gap-4 sm:grid-cols-2">
-        <legend className="mb-3 font-medium">Model</legend>
+        <legend className="mb-3 font-medium">{m.admin_model()}</legend>
         <label className="grid gap-2 text-sm font-medium" htmlFor={`${model?.id ?? 'new'}-key`}>
-          Key <Input required maxLength={64} {...field('key')} />
+          {m.admin_key()} <Input required maxLength={64} {...field('key')} />
         </label>
         <label className="grid gap-2 text-sm font-medium" htmlFor={`${model?.id ?? 'new'}-kind`}>
-          Kind{' '}
+          {m.admin_kind()}{' '}
           <NativeSelect
             id={`${model?.id ?? 'new'}-kind`}
             value={draft.kind}
@@ -440,21 +456,21 @@ function ModelEditor({
               }))
             }}
           >
-            <option value="text">Text</option>
-            <option value="image">Image</option>
-            <option value="video">Video</option>
+            <option value="text">{m.admin_text()}</option>
+            <option value="image">{m.admin_image()}</option>
+            <option value="video">{m.admin_video()}</option>
           </NativeSelect>
         </label>
         <label
           className="grid gap-2 text-sm font-medium"
           htmlFor={`${model?.id ?? 'new'}-provider`}
         >
-          Provider{' '}
+          {m.admin_provider()}{' '}
           {draft.kind === 'text' ? (
             <Input required maxLength={64} {...field('provider')} />
           ) : (
             <NativeSelect required {...field('provider')}>
-              <option value="">Choose a provider</option>
+              <option value="">{m.admin_choose_a_provider()}</option>
               {mediaProviders.map((provider) => (
                 <option key={provider} value={provider}>
                   {provider}
@@ -467,13 +483,14 @@ function ModelEditor({
           className="grid gap-2 text-sm font-medium"
           htmlFor={`${model?.id ?? 'new'}-providerModelId`}
         >
-          Provider model ID <Input required maxLength={200} {...field('providerModelId')} />
+          {m.admin_provider_model_id()}{' '}
+          <Input required maxLength={200} {...field('providerModelId')} />
         </label>
         <label className="grid gap-2 text-sm font-medium" htmlFor={`${model?.id ?? 'new'}-tags`}>
-          Plan tags (comma separated) <Input {...field('tags')} />
+          {m.admin_plan_tags_comma_separated()} <Input {...field('tags')} />
         </label>
         <label className="grid gap-2 text-sm font-medium" htmlFor={`${model?.id ?? 'new'}-sort`}>
-          Sort <Input type="number" step="1" {...field('sort')} />
+          {m.admin_sort()} <Input type="number" step="1" {...field('sort')} />
         </label>
         <label className="flex items-center gap-2 text-sm font-medium">
           <input
@@ -482,13 +499,13 @@ function ModelEditor({
             checked={draft.enabled}
             onChange={(event) => set({ enabled: event.target.checked })}
           />{' '}
-          Enabled
+          {m.admin_enabled()}
         </label>
       </fieldset>
       <fieldset disabled={disabled} className="grid min-w-0 gap-3">
-        <legend className="mb-3 font-medium">Parameters</legend>
+        <legend className="mb-3 font-medium">{m.admin_parameters()}</legend>
         <ParamsSchemaEditor
-          label="Parameters schema (JSON)"
+          label={m.admin_parameters_schema_json()}
           kind={draft.kind}
           provider={draft.provider}
           mediaProviders={mediaProviders}
@@ -498,17 +515,17 @@ function ModelEditor({
         />
       </fieldset>
       <fieldset disabled={disabled} className="grid gap-4 sm:grid-cols-2">
-        <legend className="mb-3 font-medium">Pricing</legend>
+        <legend className="mb-3 font-medium">{m.admin_pricing()}</legend>
         <label className="grid gap-2 text-sm font-medium" htmlFor={`${model?.id ?? 'new'}-mode`}>
-          Pricing mode{' '}
+          {m.admin_pricing_mode()}{' '}
           <NativeSelect
             id={`${model?.id ?? 'new'}-mode`}
             value={draft.mode}
             onChange={(event) => set({ mode: event.target.value as Mode })}
           >
-            <option value="per_call">Per call</option>
-            <option value="token">Per token</option>
-            <option value="per_unit">Per unit</option>
+            <option value="per_call">{m.admin_per_call()}</option>
+            <option value="token">{m.admin_per_token()}</option>
+            <option value="per_unit">{m.admin_per_unit()}</option>
           </NativeSelect>
         </label>
         {draft.mode === 'per_call' && (
@@ -517,30 +534,32 @@ function ModelEditor({
               className="grid gap-2 text-sm font-medium"
               htmlFor={`${model?.id ?? 'new'}-credits`}
             >
-              Credits per call <Input type="number" min="0" step="1" {...field('credits')} />
+              {m.admin_credits_per_call()}{' '}
+              <Input type="number" min="0" step="1" {...field('credits')} />
             </label>
             <label
               className="grid gap-2 text-sm font-medium"
               htmlFor={`${model?.id ?? 'new'}-chargeOn`}
             >
-              Charge on{' '}
+              {m.admin_charge_on()}{' '}
               <NativeSelect {...field('chargeOn')}>
-                <option value="">Default</option>
-                <option value="any_output">Any output</option>
-                <option value="success">Success</option>
+                <option value="">{m.admin_default()}</option>
+                <option value="any_output">{m.admin_any_output()}</option>
+                <option value="success">{m.admin_success()}</option>
               </NativeSelect>
             </label>
             <label
               className="grid gap-2 text-sm font-medium"
               htmlFor={`${model?.id ?? 'new'}-maxInputTokens`}
             >
-              Max input tokens <Input type="number" min="1" step="1" {...field('maxInputTokens')} />
+              {m.admin_max_input_tokens()}{' '}
+              <Input type="number" min="1" step="1" {...field('maxInputTokens')} />
             </label>
             <label
               className="grid gap-2 text-sm font-medium"
               htmlFor={`${model?.id ?? 'new'}-maxOutputTokens`}
             >
-              Max output tokens{' '}
+              {m.admin_max_output_tokens()}{' '}
               <Input type="number" min="1" step="1" {...field('maxOutputTokens')} />
             </label>
           </>
@@ -551,20 +570,22 @@ function ModelEditor({
               className="grid gap-2 text-sm font-medium"
               htmlFor={`${model?.id ?? 'new'}-inputPer1k`}
             >
-              Input credits / 1k <Input type="number" min="0" step="any" {...field('inputPer1k')} />
+              {m.admin_input_credits_1k()}{' '}
+              <Input type="number" min="0" step="any" {...field('inputPer1k')} />
             </label>
             <label
               className="grid gap-2 text-sm font-medium"
               htmlFor={`${model?.id ?? 'new'}-outputPer1k`}
             >
-              Output credits / 1k{' '}
+              {m.admin_output_credits_1k()}{' '}
               <Input type="number" min="0" step="any" {...field('outputPer1k')} />
             </label>
             <label
               className="grid gap-2 text-sm font-medium"
               htmlFor={`${model?.id ?? 'new'}-minCharge`}
             >
-              Minimum charge <Input type="number" min="0" step="1" {...field('minCharge')} />
+              {m.admin_minimum_charge()}{' '}
+              <Input type="number" min="0" step="1" {...field('minCharge')} />
             </label>
           </>
         )}
@@ -574,17 +595,18 @@ function ModelEditor({
               className="grid gap-2 text-sm font-medium"
               htmlFor={`${model?.id ?? 'new'}-unit`}
             >
-              Unit{' '}
+              {m.admin_unit()}{' '}
               <NativeSelect {...field('unit')}>
-                <option value="image">Image</option>
-                <option value="second">Second</option>
+                <option value="image">{m.admin_image()}</option>
+                <option value="second">{m.admin_second()}</option>
               </NativeSelect>
             </label>
             <label
               className="grid gap-2 text-sm font-medium"
               htmlFor={`${model?.id ?? 'new'}-perUnit`}
             >
-              Credits per unit <Input type="number" min="0" step="any" {...field('perUnit')} />
+              {m.admin_credits_per_unit()}{' '}
+              <Input type="number" min="0" step="any" {...field('perUnit')} />
             </label>
           </>
         )}
@@ -593,14 +615,14 @@ function ModelEditor({
             className="grid gap-2 text-sm font-medium"
             htmlFor={`${model?.id ?? 'new'}-multipliers`}
           >
-            Multipliers (JSON, optional){' '}
+            {m.admin_multipliers_json_optional()}{' '}
             <Input placeholder='{"resolution":{"720p":1,"1080p":2}}' {...field('multipliers')} />
           </label>
         )}
       </fieldset>
       <div className="flex flex-wrap gap-3">
         <Button type="button" disabled={disabled} onClick={save}>
-          {model ? 'Save changes' : 'Create model'}
+          {model ? m.admin_save_changes() : m.admin_create_model()}
         </Button>
         {model && (
           <Button
@@ -611,15 +633,15 @@ function ModelEditor({
               act(() => setAdminModelEnabled({ data: { id: model.id, enabled: !model.enabled } }))
             }
           >
-            {model.enabled ? 'Disable' : 'Enable'}
+            {model.enabled ? m.admin_disable() : m.admin_enable()}
           </Button>
         )}
       </div>
       {model && (
         <fieldset disabled={disabled} className="grid min-w-0 gap-3 rounded-md border p-4">
-          <legend className="px-2 font-medium">Copy saved model</legend>
+          <legend className="px-2 font-medium">{m.admin_copy_saved_model()}</legend>
           <label className="grid gap-2 text-sm font-medium" htmlFor={`${model?.id}-copy-key`}>
-            Copy key{' '}
+            {m.admin_copy_key()}{' '}
             <Input
               id={`${model?.id}-copy-key`}
               value={copyKey}
@@ -628,7 +650,7 @@ function ModelEditor({
             />
           </label>
           <ParamsSchemaEditor
-            label="Copy parameters schema (JSON)"
+            label={m.admin_copy_parameters_schema_json()}
             kind={model.kind}
             provider={model.provider}
             mediaProviders={mediaProviders}
@@ -637,13 +659,15 @@ function ModelEditor({
             onTemplate={setMessage}
           />
           <Button type="button" variant="outline" className="w-fit" onClick={copy}>
-            Copy model
+            {m.admin_copy_model()}
           </Button>
-          <p className="text-muted-foreground text-sm">The copy is disabled until you enable it.</p>
+          <p className="text-muted-foreground text-sm">
+            {m.admin_the_copy_is_disabled_until_you_enable_it()}
+          </p>
         </fieldset>
       )}
       <p role="status" className="min-h-5 text-sm">
-        {ready ? message : 'Loading editor…'}
+        {ready ? message : m.admin_loading_editor()}
       </p>
     </article>
   )

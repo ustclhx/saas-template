@@ -15,6 +15,7 @@ import {
   getAdminWorkspaceCredits,
   restoreAdminWorkspace,
 } from '../../../features/admin/workspaces.functions.ts'
+import { m } from '../../../paraglide/messages.js'
 import { templateConfig } from '../../../server/template-config.ts'
 
 export const Route = createFileRoute('/admin/workspaces/$id')({
@@ -37,12 +38,12 @@ function WorkspaceDetail() {
       const result = await restoreAdminWorkspace({ data: { id: data.workspace.id } })
       setMessage(
         result.ok
-          ? 'Workspace restored. Original owners can access it again.'
+          ? m.admin_workspace_restored_original_owners_can_access_it_again()
           : `${result.message} (${result.code})`,
       )
       await router.invalidate()
     } catch {
-      setMessage('Restore failed. Reload to check the current state.')
+      setMessage(m.admin_restore_failed_reload_to_check_the_current_state())
     } finally {
       setBusy(false)
     }
@@ -56,7 +57,7 @@ function WorkspaceDetail() {
       if (kind === 'batches') setBatches(page as typeof batches)
       else setLedger(page as typeof ledger)
     } catch {
-      setMessage('Credit history is unavailable. Please retry.')
+      setMessage(m.admin_credit_history_is_unavailable_please_retry())
     } finally {
       setBusy(false)
     }
@@ -77,7 +78,7 @@ function WorkspaceDetail() {
   }
   return (
     <AdminPage
-      title="Workspace details"
+      title={m.admin_workspace_details()}
       actions={
         <>
           {templateConfig.credits.enabled && (
@@ -89,7 +90,7 @@ function WorkspaceDetail() {
           )}
           <Button asChild variant="ghost" size="sm">
             <Link to="/admin/workspaces" search={{ offset: 0 }}>
-              Back to workspaces
+              {m.admin_back_to_workspaces()}
             </Link>
           </Button>
         </>
@@ -97,34 +98,34 @@ function WorkspaceDetail() {
     >
       <DetailList
         fields={[
-          { label: 'Name', value: data.workspace.name },
-          { label: 'ID', value: data.workspace.id },
-          { label: 'Slug', value: data.workspace.slug },
-          { label: 'Status', value: data.workspace.deletedAt ? 'Deleted' : 'Active' },
+          { label: m.admin_name(), value: data.workspace.name },
+          { label: m.admin_id(), value: data.workspace.id },
+          { label: m.admin_slug(), value: data.workspace.slug },
           {
-            label: 'Deleted at',
+            label: m.admin_status(),
+            value: data.workspace.deletedAt ? m.admin_deleted() : m.admin_active(),
+          },
+          {
+            label: m.admin_deleted_at(),
             value: data.workspace.deletedAt ? formatDateTime(data.workspace.deletedAt) : null,
           },
           ...(data.entitlements
-            ? [{ label: 'Entitlement plan', value: data.entitlements.key }]
+            ? [{ label: m.admin_entitlement_plan(), value: data.entitlements.key }]
             : []),
           ...(data.balance
             ? [
-                { label: 'Available credits', value: data.balance.available },
-                { label: 'Held credits', value: data.balance.held },
-                { label: 'Credit debt', value: data.balance.debt },
+                { label: m.admin_available_credits(), value: data.balance.available },
+                { label: m.admin_held_credits(), value: data.balance.held },
+                { label: m.admin_credit_debt(), value: data.balance.debt },
               ]
             : []),
         ]}
       />
       {data.workspace.deletedAt && (
         <div className={panelClass('danger', 'max-w-xl')}>
-          <p className="text-sm">
-            Restore within the 30-day retention period. Only eligible original owners are restored;
-            other members need new invitations.
-          </p>
+          <p className="text-sm">{m.admin_restore_within_the_30_day_retention_period_only()} </p>
           <CheckboxField
-            label="I confirm restoring this workspace"
+            label={m.admin_i_confirm_restoring_this_workspace()}
             disabled={!ready}
             checked={confirmed}
             onChange={(event) => setConfirmed(event.target.checked)}
@@ -134,7 +135,7 @@ function WorkspaceDetail() {
             disabled={!ready || busy || !confirmed}
             onClick={() => void restore()}
           >
-            Restore workspace
+            {m.admin_restore_workspace()}
           </Button>
         </div>
       )}
@@ -143,7 +144,7 @@ function WorkspaceDetail() {
           {message}
         </p>
       )}
-      <AdminSection title="Members">
+      <AdminSection title={m.admin_members()}>
         {data.members.length ? (
           <ul className="grid gap-2">
             {data.members.map((m) => (
@@ -160,10 +161,9 @@ function WorkspaceDetail() {
         )}
       </AdminSection>
       {data.entitlements && (
-        <AdminSection title="Subscriptions and overlapping periods">
+        <AdminSection title={m.admin_subscriptions_and_overlapping_periods()}>
           <p className="text-muted-foreground text-sm">
-            All subscription periods are shown. Effective entitlements use the highest eligible
-            plan.
+            {m.admin_all_subscription_periods_are_shown_effective_entitlements_use()}
           </p>
           {data.subscriptions.length ? (
             <ul className="grid gap-2">
@@ -171,11 +171,20 @@ function WorkspaceDetail() {
                 <li key={sub.id} className="break-words rounded-md border px-3 py-2 text-sm">
                   {planName} · {sub.provider} · {sub.status} · {sub.id}
                   <br />
-                  Period:{' '}
-                  {sub.currentPeriodStart ? formatDateTime(sub.currentPeriodStart) : 'Unconfirmed'}{' '}
-                  — {sub.currentPeriodEnd ? formatDateTime(sub.currentPeriodEnd) : 'Unconfirmed'}
-                  {overlaps(index) && <strong> · Overlapping period</strong>}
-                  {sub.pastDueSince && <p>Past due since: {formatDateTime(sub.pastDueSince)}</p>}
+                  {m.admin_period()}{' '}
+                  {sub.currentPeriodStart
+                    ? formatDateTime(sub.currentPeriodStart)
+                    : m.admin_unconfirmed()}{' '}
+                  —{' '}
+                  {sub.currentPeriodEnd
+                    ? formatDateTime(sub.currentPeriodEnd)
+                    : m.admin_unconfirmed()}
+                  {overlaps(index) && <strong> {m.admin_overlapping_period()}</strong>}
+                  {sub.pastDueSince && (
+                    <p>
+                      {m.admin_past_due_since()} {formatDateTime(sub.pastDueSince)}
+                    </p>
+                  )}
                 </li>
               ))}
             </ul>
@@ -186,14 +195,14 @@ function WorkspaceDetail() {
       )}
       {data.balance && (
         <>
-          <AdminSection title="Credit batches">
+          <AdminSection title={m.admin_credit_batches()}>
             {batches.items.length ? (
               <ul className="grid gap-2">
                 {batches.items.map((batch) => (
                   <li key={batch.id} className="break-words rounded-md border px-3 py-2 text-sm">
-                    {batch.id} · {batch.source} · {batch.status} · Remaining: {batch.remaining} /{' '}
-                    {batch.amount} · Expires:{' '}
-                    {batch.expiresAt ? formatDateTime(batch.expiresAt) : 'Never'}
+                    {batch.id} · {batch.source} · {batch.status} {m.admin_remaining()}{' '}
+                    {batch.remaining} / {batch.amount} {m.admin_expires()}{' '}
+                    {batch.expiresAt ? formatDateTime(batch.expiresAt) : m.admin_never()}
                   </li>
                 ))}
               </ul>
@@ -208,11 +217,11 @@ function WorkspaceDetail() {
                 disabled={!ready || busy}
                 onClick={() => void more('batches')}
               >
-                Older batches
+                {m.admin_older_batches()}
               </Button>
             )}
           </AdminSection>
-          <AdminSection title="Recent credit ledger">
+          <AdminSection title={m.admin_recent_credit_ledger()}>
             {ledger.items.length ? (
               <ul className="grid gap-2">
                 {ledger.items.map((entry) => (
@@ -232,7 +241,7 @@ function WorkspaceDetail() {
                 disabled={!ready || busy}
                 onClick={() => void more('ledger')}
               >
-                Older ledger entries
+                {m.admin_older_ledger_entries()}
               </Button>
             )}
           </AdminSection>

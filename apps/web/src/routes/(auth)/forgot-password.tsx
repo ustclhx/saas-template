@@ -12,24 +12,42 @@ import {
 import { getAuthUiOptions } from '../../features/auth/options.functions.ts'
 import { useTurnstile } from '../../features/auth/turnstile.tsx'
 import { useAuthRequest } from '../../features/auth/use-auth-request.ts'
+import { m } from '../../paraglide/messages.js'
 
-/** 页面文案（英文硬编码，P6 接 Paraglide） */
+/** 按当前请求或页面语言读取文案，避免在模块初始化时固定语言。 */
 const COPY = {
-  metaTitle: 'Forgot password',
-  title: 'Reset your password',
-  description: "Enter your email and we'll send you a link to reset your password.",
-  email: 'Email',
-  submit: 'Send reset link',
-  pending: 'Sending…',
+  get metaTitle() {
+    return m.auth_forgot_password()
+  },
+  get title() {
+    return m.auth_reset_your_password()
+  },
+  get description() {
+    return m.auth_enter_your_email_and_we_ll_send_you()
+  },
+  get email() {
+    return m.auth_email()
+  },
+  get submit() {
+    return m.auth_send_reset_link()
+  },
+  get pending() {
+    return m.auth_sending()
+  },
   // 不论邮箱是否注册都给出同样的提示，不泄露账号是否存在
-  sent: (email: string) =>
-    `If an account exists for ${email}, you will receive a password reset link shortly.`,
-  backToLogin: 'Back to sign in',
-  unavailable: 'Password sign-in is not enabled.',
-  invalidEmail: 'Enter a valid email address',
+  sent: (email: string) => m.auth_if_an_account_exists_for_you_will_receive({ email: email }),
+  get backToLogin() {
+    return m.auth_back_to_sign_in()
+  },
+  get unavailable() {
+    return m.auth_password_sign_in_is_not_enabled()
+  },
+  get invalidEmail() {
+    return m.auth_enter_a_valid_email_address()
+  },
 } as const
 
-const schema = z.object({ email: z.email(COPY.invalidEmail) })
+const schema = () => z.object({ email: z.email(COPY.invalidEmail) })
 
 export const Route = createFileRoute('/(auth)/forgot-password')({
   loader: () => getAuthUiOptions(),
@@ -64,7 +82,7 @@ function ForgotPasswordForm({ siteKey }: { siteKey: string | null }) {
   const [sentTo, setSentTo] = useState<string | null>(null)
   const form = useAppForm({
     defaultValues: { email: '' },
-    validators: { onSubmit: schema },
+    validators: { onSubmit: schema() },
     onSubmit: async ({ value }) => {
       const data = await run((headers) =>
         authClient().requestPasswordReset({
