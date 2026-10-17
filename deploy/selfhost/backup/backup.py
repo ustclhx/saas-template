@@ -109,12 +109,21 @@ def pg_info():
 
 
 def operation(name, fn):
+    if name == 'replica':
+        # 内核锁只证明当前刷新仍在执行；SIGKILL/crash 后自动释放，不能留下乐观成功。
+        with locked('replica.lock'):
+            return _operation(name, fn)
+    return _operation(name, fn)
+
+
+def _operation(name, fn):
     state = load()
     previous = state.get(name, {})
     started = time.monotonic()
-    # 刷新中的副本沿用仍在新鲜度预算内的已验证成功；失败立即失效，其他安全门不变。
-    state[name] = {**previous, 'ok': previous.get('ok', False) if name == 'replica' else False,
-                   'lastAttempt': stamp(), 'running': True}
+    # ok 只表示本次复制已提交并校验完成，进程被强杀也必须保持 false。
+    state[name] = {**previous, 'ok': False, 'lastAttempt': stamp(), 'running': True}
+    if name == 'replica':
+        state[name]['refreshFromSuccess'] = previous.get('ok') is True
     save(state)
     try:
         metadata = fn()
@@ -126,6 +135,7 @@ def operation(name, fn):
                        'consecutiveFailures': previous.get('consecutiveFailures', 0) + 1,
                        'lastFailure': stamp(),
                        'lastError': error_code(error)}
+        state[name].pop('refreshFromSuccess', None)
         save(state)
         event('operation.failed', False, code=error_code(error), operation=name)
         raise
@@ -135,6 +145,7 @@ def operation(name, fn):
                    'lastDurationSeconds': round(time.monotonic() - started, 3),
                    'failures': previous.get('failures', 0)}
     state[name].pop('lastError', None)
+    state[name].pop('refreshFromSuccess', None)
     save(state)
     return state[name]
 
@@ -301,6 +312,20 @@ def tree_bytes(directory):
     return total
 
 
+def replica_refresh_active():
+    try:
+        stream = (STATE / 'replica.lock').open('r')
+    except FileNotFoundError:
+        return False
+    with stream:
+        try:
+            # 多个健康读取共用共享锁，只有复制持有的排他锁才表示刷新仍活跃。
+            fcntl.flock(stream, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+    return False
+
+
 def status():
     state = load()
     archive = load('archive.json')
@@ -326,7 +351,10 @@ def status():
         max_age = replica_max_age()
         replica['maxAgeSeconds'] = max_age
         value = replica.get('lastSuccess')
-        recent = recent and bool(replica.get('ok') and value and
+        # 健康可使用活跃刷新之前的有效证明，但状态 ok 与删除门禁仍只认本次成功。
+        refreshing = (replica.get('running') and replica.get('refreshFromSuccess') and
+                      replica_refresh_active())
+        recent = recent and bool((replica.get('ok') or refreshing) and value and
             0 <= (now() - dt.datetime.fromisoformat(value.replace('Z', '+00:00'))).total_seconds() <=
             max_age)
         if replica.get('continuousUntil'):
@@ -412,9 +440,11 @@ def schedule():
 
 
 class locked:
+    def __init__(self, name='operation.lock'):
+        self.name = name
     def __enter__(self):
         STATE.mkdir(mode=0o700, parents=True, exist_ok=True)
-        self.stream = (STATE / 'operation.lock').open('a')
+        self.stream = (STATE / self.name).open('a')
         fcntl.flock(self.stream, fcntl.LOCK_EX)
         return self
     def __exit__(self, *_):

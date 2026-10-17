@@ -5,7 +5,10 @@ import io
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlsplit
@@ -92,6 +95,55 @@ class ReplicaTests(unittest.TestCase):
         self.target.fail = None
         self.assertEqual(self.sync()['copiedObjects'], 1)
 
+    def test_killed_replica_attempt_must_not_report_previous_success(self):
+        directory = Path(self.temporary.name)
+        previous = {'configured': True, 'ok': True, 'lastSuccess': backup.stamp(),
+                    'manifestSha256': 'previous-verified-manifest'}
+        with patch.object(backup, 'STATE', directory), \
+                patch.dict(os.environ, {'BACKUP_REPLICA_ENABLED': 'true'}, clear=True), \
+                patch.object(backup, 'archive_stats', return_value={'last_archived_time': previous['lastSuccess']}), \
+                patch.object(backup, 'tree_bytes', return_value=0), \
+                patch.object(backup.shutil, 'disk_usage', return_value=MagicMock(free=100)):
+            backup.save({**{name: {'ok': True, 'lastSuccess': previous['lastSuccess']}
+                           for name in ('base', 'dump', 'verification')}, 'replica': previous})
+            (directory / 'archive.json').write_text(json.dumps({'lastSuccess': previous['lastSuccess']}))
+            script = """
+import sys, time
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import backup
+def copying():
+    (backup.STATE / 'copy-started').touch()
+    time.sleep(60)
+    return {}
+with backup.locked():
+    backup.operation('replica', copying)
+"""
+            process = subprocess.Popen([sys.executable, '-c', script, str(Path(backup.__file__).parent)],
+                                       env={**os.environ, 'BACKUP_STATE_DIR': str(directory),
+                                            'PYTHONDONTWRITEBYTECODE': '1'})
+            try:
+                deadline = time.monotonic() + 5
+                while not (directory / 'copy-started').exists():
+                    self.assertIsNone(process.poll(), 'copy exited before interruption')
+                    self.assertLess(time.monotonic(), deadline, 'copy never started')
+                    time.sleep(0.01)
+                self.assertTrue(backup.status()['healthy'])
+                process.kill()
+                process.wait(timeout=5)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=5)
+            self.assertLess(process.returncode, 0)
+            state = backup.load()['replica']
+            self.assertFalse(state['ok'], 'Interrupted copy reported success')
+            self.assertEqual(state['lastSuccess'], previous['lastSuccess'])
+            self.assertEqual(state['manifestSha256'], previous['manifestSha256'])
+            # 残留 running=true 或其他运维操作持锁，都不能冒充复制仍在执行。
+            with backup.locked():
+                self.assertFalse(backup.status()['healthy'])
+
     def test_corrupt_upload_or_missing_segment_refuses_manifest(self):
         self.target.corrupt = True
         with self.assertRaisesRegex(BackupError, 'CHECKSUM_MISMATCH'):
@@ -149,6 +201,7 @@ class ReplicaTests(unittest.TestCase):
             backup.save(state)
             def refresh():
                 self.assertTrue(backup.load()['replica']['running'])
+                self.assertFalse(backup.load()['replica']['ok'])
                 self.assertTrue(backup.status()['healthy'])
                 return {}
             backup.operation('replica', refresh)
@@ -209,10 +262,21 @@ class ReplicaTests(unittest.TestCase):
         connection = MagicMock()
         connection.getresponse.side_effect = TimeoutError('secret-sentinel')
         output = io.StringIO()
+        previous = {'ok': True, 'lastSuccess': backup.stamp(),
+                    'manifestSha256': 'previous-verified-manifest'}
         with patch.object(replica.http.client, 'HTTPSConnection', return_value=connection) as factory, \
+                patch.object(backup, 'STATE', Path(self.temporary.name)), \
                 contextlib.redirect_stdout(output), self.assertRaisesRegex(BackupError, '^REPLICA_S3_TIMEOUT$'):
-            client.request('GET', 'key-sentinel')
-        event = json.loads(output.getvalue())
+            backup.save({'replica': previous})
+            backup.operation('replica', lambda: client.request('GET', 'key-sentinel'))
+        with patch.object(backup, 'STATE', Path(self.temporary.name)):
+            state = backup.load()['replica']
+        self.assertFalse(state['ok'])
+        self.assertFalse(state['running'])
+        self.assertEqual(state['lastError'], 'REPLICA_S3_TIMEOUT')
+        self.assertEqual(state['lastSuccess'], previous['lastSuccess'])
+        self.assertEqual(state['manifestSha256'], previous['manifestSha256'])
+        event = json.loads(output.getvalue().splitlines()[0])
         self.assertEqual((event['level'], event['target'], event['method'], event['stage']),
                          ('error', 'replica', 'GET', 'response_headers'))
         self.assertEqual(factory.call_args.kwargs['timeout'], 30)

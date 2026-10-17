@@ -43,8 +43,10 @@
 
 ## 本地修复与安全边界
 
-- 仅副本刷新保留原成功标志，仍用原lastSuccess检查新鲜度；首次无成功、失败、
-  未来时间和超过预算均不健康。失败立即置false，失败后的重试运行中也不会恢复健康。
+- 每次副本刷新立即置ok=false，旧成功时间与manifest元数据保留；仅在本次刷新从
+  成功状态开始且内核锁仍证明它活跃时，health按旧lastSuccess检查新鲜度。
+  首次无成功、失败、未来时间和超过预算均不健康；中断释放锁后不能借旧证明放行。
+  初版直接保留ok=true造成SIGKILL误报的回归与补正见[CI中断回归补正](ci-interruption-correction.md)。
 - 默认max_age改为3600秒，至少为interval的3倍；运维还需按
   interval＋完整sync＋verify/锁等待/调度余量核对预算。记录lastDurationSeconds和有效maxAgeSeconds。
 - 所有操作失败输出level=error和脱敏错误码；请求传输失败额外输出目标角色、
