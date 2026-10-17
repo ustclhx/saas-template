@@ -30,8 +30,11 @@ export interface PayPalTransport {
 
 /** Do not attach response bodies: OAuth errors can contain sensitive input. */
 export class PayPalHttpError extends Error {
-  constructor(readonly status: number) {
+  readonly status: number
+
+  constructor(status: number) {
     super(`PayPal HTTP request failed (${status})`)
+    this.status = status
     this.name = 'PayPalHttpError'
   }
 }

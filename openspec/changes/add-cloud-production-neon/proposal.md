@@ -10,8 +10,12 @@ Cloudflare 形态的最小原型与 staging 验收已完成，但只有 `*.worke
 - web / jobs 新增 `env.production` Wrangler 配置（独立 KV、Queues、Workflows、R2、限流命名空间与 vars）和生产 secrets 清单，绑定自定义域名。
 - 新增由 tag 触发的生产发布流水线：只发布已在 staging 成功部署的提交，按「迁移 → jobs → web → 健康检查完整 SHA → 只读冒烟」串行执行，需 GitHub `production` environment 审批。
 - 新增生产备份与恢复：Neon PITR 之外，每日用 `readonly` 角色生成加密逻辑备份并上传到开启 Bucket Lock 的独立存储；提供恢复演练 runbook 并记录 RTO / RPO。
-- 生产支付在 Q9（正式收款主体）决定前不配置，按 `payment-mode` 现有规范关闭支付入口；Q9 决定后按 `docs/05-billing.md` §8 清单切换 live。
+- 模板生产环境按 `payment-mode` 现有规范关闭支付入口；正式收款主体（Q9）、live 支付与生产放置对比移交派生项目上线时执行。
 - 不修改 main → staging 自动发布行为（staging 项目随组织 2026-10-15 升级为 Launch 计费，计算上限改为 2 CU，见 production runbook §4）；不涉及自托管形态（其 PG 在 Compose 内，由 `add-selfhost-*` 负责）。
+
+## Non-goals
+
+2026-10-18 用户决定：本仓库是模板，正式收款主体（Q9）、生产 live 支付（原 6.1）与生产延迟放置对比（原 5.1）不在模板内验收，移交派生项目上线清单。执行方法保留在 `docs/05-billing.md` §8、`docs/07-infrastructure.md` §8 与 `docs/runbooks/production-neon.md`；已记录的生产健康探测基线继续保留。
 
 ## Capabilities
 
@@ -29,5 +33,5 @@ Cloudflare 形态的最小原型与 staging 验收已完成，但只有 `*.worke
 - CI：新增 `.github/workflows/deploy-production.yml` 与每日备份 workflow；GitHub `production` environment 及其 secrets。
 - 测试：新增 production 只读冒烟 Playwright project；现有 staging 冒烟不变。
 - 文档：`docs/07-infrastructure.md`、`docs/08-roadmap.md`、新 runbook `docs/runbooks/production-neon.md` 与 `docs/runbooks/restore.md`。
-- 外部资源（用户提供或批准）：Neon 付费计划与账单、生产域名及 DNS 权限、备份存储（R2 Bucket Lock 或非 Cloudflare 对象存储）、备份加密密钥、GitHub production 审批人；live 支付另依赖 Q9。
+- 外部资源（用户提供或批准）：Neon 付费计划与账单、生产域名及 DNS 权限、备份存储（R2 Bucket Lock 或非 Cloudflare 对象存储）、备份加密密钥、GitHub production 审批人；派生项目的 live 支付另依赖其收款主体决定。
 - 费用：Neon Launch 按 CU-hours 与存储计费。生产 autoscaling 0.25–1 CU、PITR 7 天；测试期 reduced Cron 约 $4/月，默认 Cron 常驻约 $20–25/月；staging 约 $4/月。以实际 Usage 复核，依据见 production runbook §4。

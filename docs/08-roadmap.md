@@ -2,7 +2,7 @@
 
 每个阶段结束时都应该能部署到 staging 并完成验收。阶段内顺序即建议的实现顺序。
 
-**进度基线（2026-10-15，main `01343ad` / #215）**：以下状态已核对 `openspec list --json`、各 change 的 `tasks.md`、归档与 main 已合并 PR。功能项勾选表示对应任务的实现与规定验证已完成；阶段整体验收另列，代码合并或本地模拟通过不替代 staging 验收。进行中的其他 worktree 不计入完成项。
+**进度基线（2026-10-18，main `a2381f8` / #242）**：以下状态已核对 `openspec list --json`、各 change 的 `tasks.md`、归档与 main 已合并 PR。功能项勾选表示对应任务的实现与规定验证已完成；阶段整体验收另列，代码合并或本地模拟通过不替代 staging 验收。进行中的其他 worktree 不计入完成项。
 
 每个阶段对应一个 OpenSpec change（`openspec/changes/<name>/`），实现时用 `/opsx:apply <name>` 按其 `tasks.md` 推进，全部验收完成后由协调者归档：
 
@@ -16,7 +16,9 @@
 | Phase 5 | `add-admin-console` | 13/14；2026-10-15 结项并归档（#215），6.1 仅剩失败回调重放，转入 `add-cloud-acceptance-followups` |
 | Phase 6 | `add-marketing-i18n-seo` | 16/16；已归档：`archive/2026-10-11-add-marketing-i18n-seo`（#86） |
 | Phase 7 | `add-observability-and-optional-features` | 16/16；已归档：`archive/2026-10-14-add-observability-and-optional-features`（#184） |
-| 验收承接 | `add-cloud-acceptance-followups` | 0/4；全部依赖外部资源或自然时间，见下文「Cloudflare 剩余验收」 |
+| 验收承接 | `add-cloud-acceptance-followups` | main 为 0/4；另一 worker 正在处理 staging 支付验收，尚未合并的结果不计入完成项 |
+| Cloudflare 生产 | `add-cloud-production-neon` | 模板范围 13/13（本次结项）；v0.1.3 在线，合并后由协调者同步规格并归档；原 5.1 / 6.1 移交派生项目 |
+| 自托管 | `add-selfhost-*`（四个 change） | 116/116；2026-10-17 已同步规格并归档（#239） |
 
 已归档的其他 change：`add-cloud-staging-neon` 29/29（#85）、`add-first-run-admin-setup` 6/6 与 `add-payment-live-mode` 9/9（#184）、`add-text-reasoning-resilience` 9/9（#196）、`add-staging-fault-injection` 20/20（#209）、`add-agent-skills` 8/8（#211）。live 模式只交付代码，生产凭据与外部收款验收见下文「Cloudflare 生产上线」与 Q9。
 
@@ -24,7 +26,7 @@
 
 各阶段之间与阶段内部的并行拆分见 [09-parallel-plan.md](./09-parallel-plan.md)。
 
-**基础设施节奏**（`docs/07` §0）：当前仍在**阶段一**——本地开发使用各 worktree 的隔离 Docker PG 数据库，线上 staging 使用 Neon（2026-10-15 随组织升级为 Launch 计费）并部署到 `*.workers.dev`，不需要域名，不做备份。最小原型（Phase 0–3）已具备，下一步执行下文「Cloudflare 生产上线」进入阶段二。2026-10-15 用户决定：**Cloudflare 形态的生产数据库使用 Neon 付费档，不自建 PG**（原「生产服务器 PG + cloudflared + Workers VPC」方案作废）；**自托管形态继续使用 Compose 内的 PG**，其备份/PITR/副本由 `add-selfhost-*` 交付。
+**基础设施节奏**（`docs/07` §0）：已进入**阶段二**——本地开发使用各 worktree 的隔离 Docker PG 数据库，线上 staging 使用 Neon Launch 并部署到 `*.workers.dev`；生产 v0.1.3 已在 `app.ezarouter.cc` 上线，具备独立 Neon 项目、PITR、每日加密逻辑备份与两路恢复演练。2026-10-15 用户决定：**Cloudflare 形态的生产数据库使用 Neon 付费档，不自建 PG**（原「生产服务器 PG + cloudflared + Workers VPC」方案作废）；**自托管形态继续使用 Compose 内的 PG**，其备份/PITR/副本由 `add-selfhost-*` 交付。
 
 ## Phase 0 · 脚手架与基础设施验证（技术风险最高，优先做）
 
@@ -45,7 +47,7 @@
 
 - P3（文本对话）：客户端断开后服务端只能再运行 30 秒，长回复可能来不及结算；已决定采用「用量检查点」（`06` §3，已写入 `add-ai-text-chat`），兜底按检查点用量而不是最低费用结算。
 - P4（媒体）：事件类型使用 `@saas/shared` 的 `MEDIA_DONE_EVENT = 'media-done'`；保留等待前 `check-callback` 与超时后 `recheck-callback`，结果以已落库回调为准，事件只用于唤醒（#73；`06` §4）。
-- 阶段二（生产迁移）：`cloudflared` 副本分故障域部署、告警阈值与重试策略按 `07` §2 的建议；在生产服务器上重测延迟基线与副本切换；评估显式放置替代 Smart Placement。
+- 阶段二：Cloudflare 生产已改用 Neon，不再建设 `cloudflared`；原副本切换建议留作自建 PG 后路。生产延迟放置对比（原 5.1）移交派生项目按用户地域评估，见 `07` §8。
 
 ## Phase 1 · 认证与 Workspace
 
@@ -64,7 +66,7 @@
 
 ## Phase 2 · 计费与积分
 
-**进度（2026-10-12；2026-10-15 已归档，剩余项见「Cloudflare 剩余验收」）**：OpenSpec 31/34。离线实现与组合验收已完成（#24）；两平台测试凭据已配置，10 条报价同步及幂等复验通过（1.3）。Stripe 真实录制夹具、测试卡订阅/积分包、测试时钟续费与平台退款已验收（#63、#71）。PayPal 积分包 capture 与重复事件、月付首付、取消/恢复已取得有限沙箱证据（#82、#90），但自然续费、年付、换套餐、退款及完整录制矩阵仍待办。3.3、10.4、11.1 保持未完成，见 [支付联通 runbook](./runbooks/p2-payment-integration.md) 与 [Stripe 验收](./runbooks/p2-acceptance-stripe.md)。
+**进度（2026-10-12；2026-10-15 已归档，剩余项见「Cloudflare 剩余验收」）**：结项时 OpenSpec 32/34。离线实现与组合验收已完成（#24）；两平台测试凭据已配置，10 条报价同步及幂等复验通过（1.3）。Stripe 真实录制夹具、测试卡订阅/积分包、测试时钟续费与平台退款已验收（#63、#71）。PayPal 积分包 capture 与重复事件、月付首付、取消/恢复已取得有限沙箱证据（#82、#90），但自然续费、年付、换套餐、退款及完整录制矩阵仍待办。10.4 文档核对已完成；3.3、11.1 的剩余验收已转入 followups，见 [支付联通 runbook](./runbooks/p2-payment-integration.md) 与 [Stripe 验收](./runbooks/p2-acceptance-stripe.md)。
 
 - [x] `plan` / `plan_price` 种子数据与同步脚本（Stripe、PayPal；billing 1.3，两平台同步两次、映射稳定且 active，证据见支付联通 runbook）
 - [x] `packages/credits`：grant / hold / capture / release / expire，含并发测试（#24、#27）
@@ -94,7 +96,7 @@
 从 Phase 0 移出（原 `setup-scaffold-and-infra` 任务 6.2），由 `add-cloud-staging-neon` 建设：
 
 - [x] main 上 CI 成功后自动部署 staging：`deploy-staging.yml` 按迁移 → jobs → web → 版本健康检查 → Chromium 冒烟的顺序执行；PR #62 与预渲染补正 PR #64 已合并，[Deploy staging run 37894416572](https://github.com/ustclhx/saas-template/actions/runs/37894416572) 全部成功，健康版本匹配 `ce623cab63a99d6eee8c8ba67eeb09e564f97779`、数据库正常、三项冒烟通过，任务 7.4 已验收。
-- [x] staging 迁移通过 Neon 直连以 `migrator` 自动执行；Neon 建库、受限角色与权限、12 条迁移实测及切换已完成，GitHub staging 三项 secrets 已配置；上述成功自动发布已验证迁移后按 jobs → web 发布。阶段二生产私有 PG 的 CI 迁移仍见下文「生产迁移」。
+- [x] staging 迁移通过 Neon 直连以 `migrator` 自动执行；Neon 建库、受限角色与权限、12 条迁移实测及切换已完成，GitHub staging 三项 secrets 已配置；上述成功自动发布已验证迁移后按 jobs → web 发布。阶段二 Neon 生产迁移已随 tag 发布流水线完成，见下文「Cloudflare 生产上线」。
 - [x] Neon 9.2：观察期由七天缩短为 24 小时，2026-10-10 用户决定测试阶段保持 Free、接受计费周期后段 compute 暂停，上线时再升级；旧 Hyperdrive、Tunnel 与 Workers VPC 已删除，本机 `cloudflared` 容器已停止（#79）。2026-10-13 用户决定 staging 使用 `CRON_PROFILE=reduced`，将五分钟心跳与十分钟维护合并为半小时执行，小时和每日调度不变；生产默认、顶层/本地及 Node 五项调度保持原频率。预计约 48 次唤醒/天 × 5.5 分钟 × 0.25 CU，约 1.1 CU-hours/天、35 CU-hours/月；实际请求与任务耗时会影响用量，合入 main 自动发布后再复核缩容及用量。
 
 发布使用 GitHub `staging` environment 的三个 secrets，PR CI 不获取这些凭据；发布串行且不取消进行中的运行。`add-cloud-staging-neon` 已完成 29/29，并于 2026-10-11 同步规格及归档（#85）。操作与验收证据、2026-10-13 staging 降频决定及半小时心跳核验窗口见 [Neon staging runbook](./runbooks/staging-neon.md) §6。
@@ -104,11 +106,11 @@
 开发中发现的两项缺口均已完成实现与规定验证，真实支付平台与生产上线验收仍按各自清单执行：
 
 - [x] **已完成（`ci-e2e-smoke`，#102）**：`.github/workflows/ci.yml` 的独立 `e2e-smoke` job 使用临时 Postgres 与本地 fake 支付 Provider，覆盖注册进入个人空间、真实退出后密码登录、购买积分包、付款回调入账与重复回调不重复发放。仅安装并缓存 Chromium，无外部服务请求、PR secrets 或 trace/video；PR CI 冒烟已通过，#102 于 2026-10-12 合并。本地命令见 [07 §5](./07-infrastructure.md#5-部署与-ci-github-actions)，真实支付平台验收仍按既有 runbook 执行。
-- [x] **已完成（`payment-live-mode`，#104）**：[add-payment-live-mode](../openspec/changes/add-payment-live-mode/proposal.md) 提供统一 `createPaymentRuntime` 工厂，按 `PAYMENT_MODE` 切换 test/live，并迁移 Webhook、Jobs、后台/客户/退款、认证删除与营销定价入口。9/9 任务完成，#104 于 2026-10-12 合并；本地和 staging 保持 test，live 上线清单见 [05 §8](./05-billing.md#8-支付模式与生产切换清单)。生产凭据、外部验收与正式收款主体仍依赖「生产迁移」和待决事项 Q9。
+- [x] **已完成（`payment-live-mode`，#104）**：[add-payment-live-mode](../openspec/changes/add-payment-live-mode/proposal.md) 提供统一 `createPaymentRuntime` 工厂，按 `PAYMENT_MODE` 切换 test/live，并迁移 Webhook、Jobs、后台/客户/退款、认证删除与营销定价入口。9/9 任务完成，#104 于 2026-10-12 合并；本地和 staging 保持 test，live 上线清单见 [05 §8](./05-billing.md#8-支付模式与生产切换清单)。生产凭据、外部收款验收与正式收款主体（Q9）移交派生项目上线时执行，模板不处理。
 
 ## Cloudflare 剩余验收（`add-cloud-acceptance-followups`）
 
-不新增行为，只承接需外部资源或自然时间的验收；全部完成后由协调者归档。
+不新增行为，只承接需外部资源或自然时间的验收；main 当前为 0/4，另一 worker 正在处理 staging 支付验收，合并前保持以下状态。全部完成后由协调者归档。
 
 - [ ] 1.1 失败回调后台重放：等待 staging 自然失败事件；若改用受控失败机制，先单独评审。
 - [ ] 2.1 PayPal 订阅 Sale 付款与部分/全额退款录制：需已登录的 PayPal Sandbox personal 买家会话。
@@ -124,12 +126,12 @@
 - [x] 域名：production 选定 `app.ezarouter.cc`（2026-10-15，绑定在首次部署时完成），staging 保持 workers.dev
 - [x] 备份：Neon PITR + 每日逻辑备份到独立对象存储（R2 Bucket Lock 或非 Cloudflare 存储）；恢复演练用 Neon 时间点分支 + 校验脚本，写 `docs/runbooks/restore.md` 并记录 RTO/RPO
 - [x] 发布流水线：GitHub `production` environment 的 Neon 直连迁移凭据；tag 触发 生产迁移 → jobs → web → `/api/health` 完整 SHA → 冒烟
-- [ ] 生产延迟基线：Hyperdrive → Neon 区域选择与 Smart Placement / 显式放置评估
-- [ ] 支付 live：按 [05 §8](./05-billing.md#8-支付模式与生产切换清单) 清单执行，前置 Q9
+- 移交派生项目（原 5.1，非模板验收任务）：保留健康探测基线；按真实用户地域执行 Hyperdrive → Neon 区域与 Smart Placement / 显式放置对比，方法见 [07 §8](./07-infrastructure.md#8-延迟基线phase-0-实测-742026-10-03)。
+- 移交派生项目（原 6.1 / Q9，非模板验收任务）：正式收款主体由派生项目决定，live 付款、退款与对账按 [05 §8](./05-billing.md#8-支付模式与生产切换清单) 和 [production runbook](./runbooks/production-neon.md) 执行。
 
 **验收**：production 绑定域名可访问；tag 发布全流程自动化且健康 SHA 匹配；从 Neon 时间点与逻辑备份各恢复一次并通过校验。
 
-**进度（2026-10-16）**：v0.1.0 已发布到 `https://app.ezarouter.cc`（健康完整 SHA、db.up），seed 完成；每日加密备份已开启，两条恢复路径演练通过（[证据](./runbooks/evidence/production/release-2026-10-16.md)）。剩余：延迟基线（5.1）、生产 Sentry（5.2）、支付 live（Q9 / 6.1）、开放注册前把 jobs Cron 改回默认调度。
+**进度（2026-10-18）**：生产 **v0.1.3** 在线（完整 SHA `54c537542ad0f2033628c136a7057a705c6d0218`，db.up；[发布 run 38910072786](https://github.com/ustclhx/saas-template/actions/runs/38910072786) 成功）。seed、每日加密备份、两路恢复演练、Sentry source map / 可读堆栈与健康监控均已有[证据](./runbooks/evidence/production/release-2026-10-16.md)。本次核对 1–5 的模板范围并完成 7.1，13/13；change 保持活动状态，待合并后由协调者归档。2026-10-18 用户决定：原 5.1、6.1 与 Q9 不在模板内验收，移交派生项目上线清单；派生项目开放注册前还需按 production runbook 恢复默认 Cron 并复核费用。
 
 ## Phase 4 · AI 图片 / 视频
 
@@ -181,7 +183,7 @@
 | Q4 | 订阅积分是否结转 | 已按设计确定：按套餐配置，默认不结转（#24） | 2026-10-04 策略确定；2026-10-15 文档核对 `grantSubscriptionMonth` 与账期过期测试：月付默认周期末 + 24h，不结转；staging 时间与年付完整验收仍待 11.1 |
 | Q5 | 升级时是否立即补发积分差额 | 已按设计确定：默认不立即补发（#24）；Stripe 升级链路已实测（#71） | 2026-10-04 策略确定；2026-10-15 文档核对 `payment.kind=adjustment` 不发积分，仅 initial/renewal 发放；PayPal 换套餐完整验收仍待 11.1 |
 | Q6 | 退款时已消费积分的处理 | 已决定：已消费不追溯；全额退款收回全部剩余，部分退款按未退款份额比例保留并收回超出部分，年付后续月份按同一份额发放 | 2026-10-04 不追溯策略（#24）；2026-10-15 用户决定部分退款改为按比例回收；Stripe 管理员部分退款已在 staging 实测（admin-61-2026-10-15a，为旧规则下的全部剩余收回）；PayPal 真实退款仍待 3.3/11.1 |
-| Q7 | 文本中断时的最低计费 | 已决定：优先流内最终 usage；无 usage 时按检查点估算，无检查点按估算输入、输出为 0 计算，应用 `minCharge ?? 1` 下限后再以 `hold.amount` 封顶。按次有输出才扣费；不做 Gateway 日志回查（决策 12，#98），详见 chat design 与 `06` §3 | 2026-10-11 取值确认（#84）；2026-10-12 封顶与决策 12（#89、#98）；staging 5.1 待办 |
+| Q7 | 文本中断时的最低计费 | 已决定：优先流内最终 usage；无 usage 时按检查点估算，无检查点按估算输入、输出为 0 计算，应用 `minCharge ?? 1` 下限后再以 `hold.amount` 封顶。按次有输出才扣费；不做 Gateway 日志回查（决策 12，#98），详见 chat design 与 `06` §3 | 2026-10-11 取值确认（#84）；2026-10-12 封顶与决策 12（#89、#98）；staging 5.1 已验收并归档（#209） |
 | Q8 | 是否启用 RLS 加固 | 已决定：默认否；P1 使用 scoped() + lint + 实时成员校验（#13、#22） | 2026-10-04，P1 验收确认 |
-| Q9 | Stripe 正式收款所需主体 | 未决定：注册海外主体 / 仅 PayPal 上线 / 接 MoR；测试账号联通与 test/live 工厂完成（#104）不代表正式收款资格已解决 | 上线前由用户决定 |
+| Q9 | Stripe 正式收款所需主体 | **模板不处理，派生项目决定**：注册海外主体 / 仅 PayPal 上线 / 接 MoR；测试账号联通与 test/live 工厂完成（#104）不代表正式收款资格已解决 | 2026-10-18 用户决定移出模板验收，移交派生项目上线清单（05 §8） |
 | Q10 | 超额容忍的默认额度（`billing.overage`） | 已按 `template.config.ts` 确定：单次平台承担上限为预扣额的 20% 与 50 积分的较小值（向下取整），每空间每 UTC 日累计最多 200 积分；剩余超额从余额补扣，不足记欠费。只适用于真实 usage 超额，估算结算受预扣封顶；上线后观察两周 `overage_absorbed` 再调整 | 2026-10-11 取值确认（#84）；2026-10-12 明确估算封顶（#89）；真实误差数据校准待办 |

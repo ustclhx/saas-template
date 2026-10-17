@@ -45,13 +45,14 @@ export interface BillingEventOptions {
 /** The caller must persist a compensation job after rollback; this error contains no credentials. */
 export class RenewingSubscriptionConflict extends Error {
   readonly code = 'RENEWING_SUBSCRIPTION_CONFLICT'
-  constructor(
-    public readonly compensation: Exclude<
-      SubscriptionCompensationPayload,
-      { reason: 'workspace_deleted' }
-    > & { workspaceId: string },
-  ) {
+  readonly compensation: Exclude<
+    SubscriptionCompensationPayload,
+    { reason: 'workspace_deleted' }
+  > & { workspaceId: string }
+
+  constructor(compensation: RenewingSubscriptionConflict['compensation']) {
     super('RENEWING_SUBSCRIPTION_CONFLICT')
+    this.compensation = compensation
     this.name = 'RenewingSubscriptionConflict'
   }
 }
