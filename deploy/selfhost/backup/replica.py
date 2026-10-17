@@ -40,8 +40,9 @@ def configuration(replica=False):
 
 
 class S3:
-    def __init__(self, config):
+    def __init__(self, config, role='primary'):
         self.config = config
+        self.role = role
         self.endpoint = urlsplit(config['AWS_ENDPOINT'])
         location = urlsplit(config['WALG_S3_PREFIX'])
         self.bucket = location.netloc
@@ -94,6 +95,7 @@ class S3:
                         time.sleep(delay)
                     yield data
             body = throttled_upload()
+        stage = 'request'
         try:
             if self.endpoint.scheme == 'https':
                 connection = http.client.HTTPSConnection(self.host, self.port, timeout=30, context=self.context)
@@ -101,6 +103,7 @@ class S3:
                 connection = http.client.HTTPConnection(self.host, self.port, timeout=30)
             connection.request(method, path + ('?' + canonical_query if canonical_query else ''),
                                body=body, headers=headers)
+            stage = 'response_headers'
             response = connection.getresponse()
             if response.status == 404 and method == 'GET':
                 response.close()
@@ -126,6 +129,10 @@ class S3:
                 code = 'REPLICA_S3_TIMEOUT'
             else:
                 code = 'REPLICA_S3_REQUEST_FAILED'
+            # 不记录端点、对象key、签名或原始异常；区分请求发送与响应头等待超时。
+            print(json.dumps({'event': 'selfhost.backup.replica.request.failed', 'ok': False,
+                              'level': 'error', 'code': code, 'target': self.role,
+                              'method': method, 'stage': stage, 'objectBytes': size}), flush=True)
             raise BackupError(code) from None
 
     def list(self):
@@ -216,7 +223,7 @@ def sync(inventory, verification, temporary, source=None, target=None):
     if verification.get('ok') is not True:
         raise BackupError('REPLICA_SOURCE_NOT_VERIFIED')
     source = source or S3(configuration())
-    target = target or S3(configuration(True))
+    target = target or S3(configuration(True), role='replica')
     if (source.endpoint == target.endpoint and source.bucket == target.bucket
             and (source.prefix.startswith(target.prefix) or target.prefix.startswith(source.prefix))):
         raise BackupError('REPLICA_TARGET_OVERLAPS_SOURCE')
