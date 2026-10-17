@@ -100,6 +100,8 @@ type NormalizedEvent =
 - 税务：暂不启用 Stripe Tax；接入 MoR 时由 MoR 处理。
 - **限制**：正式收款需要 Stripe 支持地区的主体；无主体阶段仅用测试模式开发与联调。
 
+2026-10-18（Asia/Taipei）补充：按协调者指示，使用已登录 Sandbox CLI 的 Test Clocks，复用已有应用 Checkout 的月付/年付独立订阅，在 staging `a2381f875fbd8b1009e48f7024addcb25285aca9` 各推进一个平台账期。两笔 `invoice.paid` 在 endpoint 中实际为 `2026-09-30.endive`、`livemode=false`，分别入账 renewal / 1900 与 19000（USD 最小单位），各只新增首月 1000 积分；各两次重投的 staging HTTP 200、duplicate 事件 ID 与前后账务快照一致，两个空间同快照对账差额均为 0。证据见 [W3 沙箱验收](runbooks/evidence/staging-acceptance/2026-10-17/README.md)。平台时钟推进不代表应用时间、年付后续月份 Cron 或自然到期已发生；真实主体与 live 收款验收移交派生项目，沿用 §8 清单。
+
 ### PayPal 实现要点
 - 直接使用 REST（`fetch`），自封装：OAuth token（缓存到 KV，按 `expires_in` 过期）、Orders v2、Subscriptions v1、Webhook 验签。
 - 一次性付款：`POST /v2/checkout/orders`（intent=CAPTURE，`custom_id`=workspaceId）→ 用户批准后回到 `successUrl` → 服务端 `capture`（`confirmCheckout`）→ 以 `PAYMENT.CAPTURE.COMPLETED` Webhook 作为最终入账依据（capture 接口与 webhook 谁先到都要幂等）。
