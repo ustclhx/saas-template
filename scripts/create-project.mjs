@@ -263,7 +263,9 @@ function selfhostChecklist(options) {
     'Postgres 17 TLS 与 app / migrator / readonly；Valkey；专用 ingress，默认 Caddy 或现有代理',
     '受限 secrets/ 与 certs/；非 root 服务 UID 可读，数据服务不开放宿主端口',
     '邮件：默认 EMAIL_TRANSPORT=log；生产按 Node 邮件适配器配置 SMTP 或 Resend',
-    '备份：主 S3 与第二供应商独立凭据、WAL/base/dump、保留策略与新空卷恢复演练',
+    '外部应用 S3/R2：需要文件存储或清理能力时叠加 compose.s3.yaml，核对 release bundle 已装配 S3 env / _FILE 与受限应用身份；缺失则停在配置缺口',
+    '备份：主 S3 与独立凭据恢复副本目标（允许不同供应商/账号）；同一 R2 账号方案使用独立桶与桶级独立 token，记录失去供应商独立性及账号级共同故障风险；核验副本 token 无主桶权限、WAL/base/dump、保留策略与新空卷恢复演练',
+    '副本健康：BACKUP_REPLICA_MAX_AGE_SECONDS 必须大于 BACKUP_REPLICA_INTERVAL_SECONDS，至少为间隔 3 倍，并覆盖完整同步、verify/锁等待与余量；默认 300/3600 秒，检查主机显式旧值，健康预算不等于 RPO',
     'ownership 持久卷、唯一 executor ID、容器重建与宿主重启退出证据；未签收前禁止声明恢复验收成功',
     '发布后有界检查 /api/health 与 jobs 的完整 SHA 和成功 heartbeat；回滚须确认 schema/持久任务兼容',
   ]
@@ -629,6 +631,7 @@ export async function createProject(input, source = root) {
       'deploy/selfhost/init-server.py',
       'deploy/selfhost/init-firewall.sh',
       'deploy/selfhost/compose.proxy.yaml',
+      'deploy/selfhost/compose.s3.yaml',
       'deploy/selfhost/release/bundle.py',
       'deploy/selfhost/OPERATIONS.md',
       'deploy/selfhost/restore.sh',

@@ -133,8 +133,8 @@ selfhost 目标的此步骤仍使用仓库 `pnpm dev` 的本地 workerd 联调�
 | Cloudflare AI Gateway 鉴权 token（AI Gateway Run 权限） | ai.text / 后台模型 | AI_GATEWAY_TOKEN：web `.dev.vars`；AI_GATEWAY_ACCOUNT_ID、AI_GATEWAY_ID、AI_TEXT_EGRESS 为非敏感 vars；CF 默认 gateway，Node 默认 direct |
 | fal.ai Keys；回调 HMAC 本地生成 | ai.image/video、ai.mediaProviders / 后台媒体模型 | FAL_KEY、MEDIA_WEBHOOK_SECRET：使用它们的 web/jobs `.dev.vars` |
 | Cloudflare Workers AI | ai.mediaProviders / 后台媒体模型 | web/jobs AI 绑定；无需 Provider key，本地禁用远程绑定，不能离线验收真实推理 |
-| Cloudflare R2 桶与受限 S3 token | AI/文件能力 / 空间存储配额 | R2_ACCESS_KEY_ID、R2_SECRET_ACCESS_KEY：使用它们的 app `.dev.vars`；R2_ACCOUNT_ID、R2_FILES_BUCKET 为 vars，FILES 为绑定，文本项目也保留清理用桶 |
-| selfhost 已有 PG/Valkey、S3 与 SMTP 服务凭据 | 目标/功能开关 / 同上 | 服务器受限 secret 文件与允许的 `_FILE`（以 `packages/config/src/node-schema.ts` 为准）：DATABASE_URL、VALKEY_URL、S3_ACCESS_KEY_ID、S3_SECRET_ACCESS_KEY、SMTP_PASSWORD 等；endpoint/bucket、SMTP_HOST/PORT/TLS_MODE 是环境配置 |
+| Cloudflare R2 桶与受限 S3 token | AI/文件能力 / 空间存储配额 | R2_ACCESS_KEY_ID、R2_SECRET_ACCESS_KEY：使用它们的 app `.dev.vars`；R2_ACCOUNT_ID、R2_FILES_BUCKET 为 vars，FILES 为绑定，文本项目也保留清理用桶；selfhost 使用R2时按 [deploy-selfhost §3](../deploy-selfhost/SKILL.md#3-获授权后初始化与配置) 加载外部S3 overlay |
+| selfhost 已有 PG/Valkey、S3 与 SMTP 服务凭据 | 目标/功能开关 / 同上 | 服务器受限 secret 文件与允许的 `_FILE`（以 `packages/config/src/node-schema.ts` 为准）：DATABASE_URL、VALKEY_URL、S3_ACCESS_KEY_ID、S3_SECRET_ACCESS_KEY、SMTP_PASSWORD 等；endpoint/bucket、SMTP_HOST/PORT/TLS_MODE 是环境配置；按 [deploy-selfhost](../deploy-selfhost/SKILL.md) §1–§5核对bundle装配、`compose.s3.yaml`、复用主机、独立凭据副本与健康预算 |
 | Sentry 项目 Client Keys 与上传 token | 无 / 无 | SENTRY_DSN：web/jobs secret；SENTRY_ENVIRONMENT 是 vars；SENTRY_AUTH_TOKEN/ORG/PROJECT 仅 CI source map 上传 |
 | Cloudflare 部署 token、数据库 migrator 凭据 | 无 / 无 | CLOUDFLARE_API_TOKEN、CLOUDFLARE_ACCOUNT_ID、STAGING_MIGRATION_DATABASE_URL：GitHub staging environment；本地 migrator 用 MIGRATION_DATABASE_URL，不写业务运行时设置 |
 
