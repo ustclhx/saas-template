@@ -39,6 +39,20 @@ def number(name, default, minimum=1):
     return int(value)
 
 
+def replica_max_age():
+    interval = number('BACKUP_REPLICA_INTERVAL_SECONDS', 300)
+    threshold = number('BACKUP_REPLICA_MAX_AGE_SECONDS', 3600)
+    if threshold < 3 * interval:
+        raise BackupError('BACKUP_REPLICA_MAX_AGE_TOO_SHORT')
+    return threshold
+
+
+def error_code(error):
+    if isinstance(error, BackupError) and re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,95}', str(error)):
+        return str(error)
+    return 'BACKUP_RETENTION_FAILED' if isinstance(error, RetentionError) else 'BACKUP_OPERATION_FAILED'
+
+
 def load(name='state.json'):
     path = STATE / name
     if not path.exists():
@@ -97,7 +111,10 @@ def pg_info():
 def operation(name, fn):
     state = load()
     previous = state.get(name, {})
-    state[name] = {**previous, 'ok': False, 'lastAttempt': stamp(), 'running': True}
+    started = time.monotonic()
+    # 刷新中的副本沿用仍在新鲜度预算内的已验证成功；失败立即失效，其他安全门不变。
+    state[name] = {**previous, 'ok': previous.get('ok', False) if name == 'replica' else False,
+                   'lastAttempt': stamp(), 'running': True}
     save(state)
     try:
         metadata = fn()
@@ -108,13 +125,16 @@ def operation(name, fn):
                        'failures': previous.get('failures', 0) + 1,
                        'consecutiveFailures': previous.get('consecutiveFailures', 0) + 1,
                        'lastFailure': stamp(),
-                       'lastError': str(error) if isinstance(error, (BackupError, RetentionError)) else 'BACKUP_OPERATION_FAILED'}
+                       'lastError': error_code(error)}
         save(state)
+        event('operation.failed', False, code=error_code(error), operation=name)
         raise
     state = load()
     state[name] = {**state[name], **metadata, 'ok': True, 'running': False,
                    'lastSuccess': stamp(), 'consecutiveFailures': 0,
+                   'lastDurationSeconds': round(time.monotonic() - started, 3),
                    'failures': previous.get('failures', 0)}
+    state[name].pop('lastError', None)
     save(state)
     return state[name]
 
@@ -303,10 +323,12 @@ def status():
                                 (now() - dt.datetime.fromisoformat(value.replace('Z', '+00:00'))).total_seconds() <= threshold)
     replica = result['replica']
     if replica['configured']:
+        max_age = replica_max_age()
+        replica['maxAgeSeconds'] = max_age
         value = replica.get('lastSuccess')
         recent = recent and bool(replica.get('ok') and value and
             0 <= (now() - dt.datetime.fromisoformat(value.replace('Z', '+00:00'))).total_seconds() <=
-            number('BACKUP_REPLICA_MAX_AGE_SECONDS', 900))
+            max_age)
         if replica.get('continuousUntil'):
             replica['currentLagSeconds'] = (now() - dt.datetime.fromisoformat(
                 replica['continuousUntil'].replace('Z', '+00:00'))).total_seconds()
@@ -320,6 +342,8 @@ def status():
 
 
 def schedule():
+    if replica_enabled():
+        replica_max_age()
     clock = os.environ.get('BACKUP_UTC_TIME', '02:00')
     if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', clock):
         raise BackupError('BACKUP_INVALID_UTC_TIME')
@@ -353,14 +377,14 @@ def schedule():
                         state['schedule'] = {'slot': slot, 'lastSuccess': stamp(), 'ok': True}
                         save(state)
                         event('cycle.completed')
-            except Exception:
+            except Exception as error:
                 with locked():
                     state = load()
                     prior = state.get('schedule', {})
                     state['schedule'] = {**prior, 'ok': False, 'lastFailure': stamp(),
                                          'failures': prior.get('failures', 0) + 1}
                     save(state)
-                event('cycle.failed', False)
+                event('cycle.failed', False, code=error_code(error))
         if replica_enabled() and time.monotonic() - replica_attempt >= number('BACKUP_REPLICA_INTERVAL_SECONDS', 300):
             replica_attempt = time.monotonic()
             previous_failures = load().get('replica', {}).get('failures', 0)
@@ -370,15 +394,16 @@ def schedule():
                     verify()
                     replica_sync()
                 event('replica.completed')
-            except Exception:
+            except Exception as error:
                 with locked():
                     state = load()
                     prior = state.get('replica', {})
                     state['replica'] = {**prior, 'configured': True, 'ok': False,
                                         'lastFailure': stamp(),
+                                        'lastError': error_code(error),
                                         'failures': max(prior.get('failures', 0), previous_failures + 1)}
                     save(state)
-                event('replica.failed', False)
+                event('replica.failed', False, code=error_code(error))
         # 小步等待使停止及时；持久 slot 不依赖容器内 cron 内存状态。
         for _ in range(30):
             if stopping:
@@ -396,8 +421,9 @@ class locked:
         self.stream.close()
 
 
-def event(name, ok=True):
-    print(json.dumps({'event': 'selfhost.backup.' + name, 'ok': ok}), flush=True)
+def event(name, ok=True, **metadata):
+    print(json.dumps({'event': 'selfhost.backup.' + name, 'ok': ok,
+                      'level': 'info' if ok else 'error', **metadata}), flush=True)
 
 
 def main():
@@ -434,7 +460,7 @@ def main():
 if __name__ == '__main__':
     try:
         sys.exit(main())
-    except Exception:
+    except Exception as error:
         # 外部程序错误/数据库对象信息一律不穿透运维日志。
-        event('operation.failed', False)
+        event('operation.failed', False, code=error_code(error))
         sys.exit(1)
