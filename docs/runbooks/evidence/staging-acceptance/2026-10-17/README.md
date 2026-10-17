@@ -21,13 +21,17 @@ CLI Events GET 仍报告账号默认 `2026-08-26.dahlia`；实际 staging 已验
 
 `w3-paypal-api-readiness.json` 保存 Sandbox OAuth 200、原 staging webhook、四个 ACTIVE Plan 与本地报价、既有订阅/付款/待审申请保护清单和当前事件目录。既有两笔付款及待审申请不退款；新订阅必须与此清单分离。当前事件目录没有 Sale 退款，不能凭旧事件完成 2.1 / 3.2。回调接收器和 quick tunnel 尚未启动。
 
-## 1.1 受控失败方案（执行前须已写入 PR）
+## 1.1 受控失败准备（后台重放尚未执行）
 
-在 staging 测试 endpoint 单次投递本地合成的 `invoice.payment_failed` 测试事件，固定 `livemode=false`、锁定 API 版本，用指定本地凭据中的 staging endpoint secret 在进程内签名。只引用唯一的、明确不存在的 `sub_w3_missing_*` 测试订阅 ID，不包含真实客户/付款/空间或支付信息。签名及密钥不落盘、不输出；合成来源明确记录，不能称为 Stripe 自然事件或真实平台回调录制。
+草稿 [PR #244](https://github.com/ustclhx/saas-template/pull/244) 在执行前说明了两种方式。第一种是单次投递本地合成的 `invoice.payment_failed` 测试事件，只引用不存在的测试订阅，以指定本地 secret 在进程内签名。实际 HTTP 400、没有登记事件；确切拒绝原因未独立核实，不猜测密钥内容、不修改 secret、不重复尝试。`w3-controlled-failure-intent.json` 及 `w3-controlled-injection-rejected.json` 保留该未通过尝试；付款、订阅、批次、账本、退款、补偿六类业务表的白名单摘要与计数完全不变。该事件不是 Stripe 平台事件、处理失败或回调录制成功证据。
 
-现有 normalizer 不对该事件预先查询订阅，现有管线先登记事件，prepare 阶段只读查询不存在的远端订阅而失败，持久化 failed 并返回 500。该失败不进入业务事务，不产生付款、积分或订阅，也不属于触发订阅补偿的领域冲突。无新代码机制、部署、密钥修改或账务写库。投递前后以只读同快照业务白名单摘要与计数核对；若实际结果与预期不符立即停止。
+第二种方式先更新 PR 说明，再通过已登录 Stripe Sandbox CLI 新建无邮箱、无付款方式、无应用 metadata 的独立 customer 和一天免费试用订阅，缺少付款方式时自动取消。使用既有测试报价，发票应付/实付均为 0。平台真实生成并签名投递的 `customer.subscription.created` 因 `Missing or invalid billing metadata` 在现有 prepare 校验失败，持久化 failed；这是真实平台事件，但失败由受控缺少关联条件造成，不能称为自然失败。该资源不是应用 Checkout 或付费订阅验收数据。
 
-随后由真实管理员在 `/admin/billing/webhooks` 对该 ID 点击重放，保存 `billing.webhook_replay_requested` 审计 ID、attempts 与实际结果。因为订阅刻意不存在，预计重放仍 failed；只能证明后台重放路径与失败隔离，不能声称恢复为 processed 或成功处理付款。付款/批次/账本须保持不变，观察空间同快照对账仍为 0。未取得后台审计及前后快照前不勾选 1.1。
+`w3-platform-failure-{customer,subscription,ready,cleanup}.json` 保存安全对象 ID、零金额发票、failed 回调、取消结果与同快照业务摘要。只取消这次新建的试用订阅；取消后的回调因同一缺少关联条件也会 failed，明确保留，不删除记录。取消命令的确认提示使本地 JSON 解析停止，随后通过独立只读 GET 确认已 canceled，没有重复取消。
+
+无新应用失败机制、代码、部署、密钥修改或账务直写。与试用有关的 Stripe 对象不含应用空间/用户关联，不进入付款与积分业务事务，也不产生订阅补偿；六类业务表前后摘要一致，月付/年付观察空间对账差额均为 0。原回调待管理员重放的事件 UUID 为 `01a14ae5-035b-77c0-b03b-4aa9075d5aa9`，平台 ID 为 `evt_1URbLcL3UTpBAoXoPo2JjN1L`。
+
+真实管理员仍须在 `/admin/billing/webhooks` 对该 ID 点击重放，保存 `billing.webhook_replay_requested` 审计 ID、attempts 与实际结果。因 metadata 刻意缺失，预计重放仍 failed；只能证明后台重放路径与失败隔离，不能声称恢复 processed 或成功处理付款。未取得后台审计及前后付款/批次/账本快照前不勾选 1.1。
 
 ## 移交与待执行
 
