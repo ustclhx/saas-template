@@ -1,4 +1,4 @@
-#!/usr/bin/env -S node --experimental-transform-types
+#!/usr/bin/env -S node --experimental-strip-types
 import { createDb } from '@saas/db'
 import { readLocalEnv } from '@saas/db/worktree-env'
 import { syncCatalog } from '../src/catalog.ts'

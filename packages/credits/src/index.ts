@@ -27,8 +27,11 @@ export type CreditsErrorCode =
   | 'INVALID_OVERAGE_POLICY'
 
 export class CreditsError extends Error {
-  constructor(public readonly code: CreditsErrorCode) {
+  readonly code: CreditsErrorCode
+
+  constructor(code: CreditsErrorCode) {
     super(code)
+    this.code = code
     this.name = 'CreditsError'
   }
 }

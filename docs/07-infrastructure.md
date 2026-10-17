@@ -6,22 +6,22 @@
 
 | 阶段 | 时间 | 数据库 | 连接方式 | Worker 部署 | 域名 | 备份 |
 |---|---|---|---|---|---|---|
-| **阶段一：开发与云端 staging 测试**（当前） | 从 Phase 0 到完成最小原型 | 本地开发：Docker PG（`infra/local`）；线上 staging：Neon `saas_staging` | 本地开发直连；staging：Hyperdrive → Neon 非 pooled TLS 直连（§2） | staging 部署到 `*.workers.dev` | 不需要 | 不做 |
-| **阶段二：生产上线** | 完成最小原型之后 | production：Neon Launch 的独立项目；staging 为同组织另一项目（2026-10-15 随组织升级为 Launch 计费） | Hyperdrive → Neon 非 pooled TLS 直连（与 staging 相同） | staging / production，绑定自定义域名 | 需要（可先用已有 Zone 的子域名） | 必须：Neon PITR + 独立逻辑备份与恢复演练 |
+| **阶段一：开发与云端 staging 测试** | 从 Phase 0 到完成最小原型 | 本地开发：Docker PG（`infra/local`）；线上 staging：Neon `saas_staging` | 本地开发直连；staging：Hyperdrive → Neon 非 pooled TLS 直连（§2） | staging 部署到 `*.workers.dev` | 不需要 | 不做 |
+| **阶段二：生产上线**（当前） | 完成最小原型之后 | production：Neon Launch 的独立项目；staging 为同组织另一项目（2026-10-15 随组织升级为 Launch 计费） | Hyperdrive → Neon 非 pooled TLS 直连（与 staging 相同） | staging / production，绑定自定义域名 | 需要（可先用已有 Zone 的子域名） | 必须：Neon PITR + 独立逻辑备份与恢复演练 |
 
 **2026-10-15 用户决定**：Cloudflare 形态的生产数据库使用 Neon 付费档，不自建 PG，不建设 Tunnel / Workers VPC，计划与任务见 `docs/08-roadmap.md`「Cloudflare 生产上线」。§1 的自建 PG、§2 的 Workers VPC / Access 方案保留为历史与后路，不再是阶段二默认。自托管形态（Node + Compose）使用 Compose 内的 PG，见 `docs/node-jobs-extension.md` 与 `docs/runbooks/selfhost-*.md`。
 
 **最小原型**指 Phase 0–3 完成：可以注册登录、开通套餐或购买积分、进行一次计费正确的 AI 对话（见 `docs/08-roadmap.md`）。
 
-截至 2026-10-09 UTC，staging 已由 main 自动按迁移 → jobs → web 发布到 Neon，当前版本为 `ce623cab63a99d6eee8c8ba67eeb09e564f97779`，两个新 Hyperdrive 绑定已随 PR #62 合入 main。最小权限、12 条迁移、幂等 seed、锁探针一轮七场景/49 断言及独立空库重建已通过；自动发布的健康检查为 200、db.up、完整 SHA 匹配，三项冒烟全部通过，Cron 心跳已推进。两平台报价同步与 Stripe Test webhook 验签已有证据，固定一小时支付缺凭据告警检索为 0 条。Stripe Sandbox $10 积分包购买成功，UI 余额 0 → 1000，付款与唯一积分批次关联一致；Checkout Managed Payments 与重复投递修复已随 PR #62 合并，同一原始事件重投返回 200，付款、积分批次、事件与余额不再增加，购买任务 9.1 已通过。Neon change 当前 28/29，仅 9.2 24 小时观察未完成；P2 完整订阅、退款与 PayPal 场景仍待核验，11.1 保持未完成。PR #61、#62、#64 均已合并，本 PR3 只补文档、runbook 与验收记录，见 [Neon staging 操作与证据](./runbooks/staging-neon.md)。不迁移旧 staging 数据，本地 worktree 与阶段二生产方案保持现状。
+截至 2026-10-18，已进入阶段二：Cloudflare 生产 **v0.1.3** 在 `https://app.ezarouter.cc` 在线，健康返回完整 SHA `54c537542ad0f2033628c136a7057a705c6d0218`、`db.status=up` 与推进的 Cron 心跳；[生产发布 run 38910072786](https://github.com/ustclhx/saas-template/actions/runs/38910072786) 成功。生产使用独立 Neon Launch 项目（PG 17、`aws-us-west-2`、0.25–1 CU、PITR 7 天），tag 发布依次完成迁移、jobs、web、完整 SHA 健康与只读冒烟；每日加密逻辑备份、两路恢复演练及 Sentry source map / 可读堆栈、健康监控均已验证，见 [production runbook](./runbooks/production-neon.md) 与[发布恢复证据](./runbooks/evidence/production/release-2026-10-16.md)。staging 继续由 main 自动发布到 Neon（同组织 Launch），`add-cloud-staging-neon` 已于 2026-10-11 完成 29/29 并归档。
 
-自动发布 [run 37894416572](https://github.com/ustclhx/saas-template/actions/runs/37894416572) 于 `2026-10-09T06:36:31Z` 开始、`06:38:28Z` 完成；jobs / web Worker version 分别为 `38ec01c5-8ced-4173-b478-e2e4f1dc9139` / `7281e552-88c9-4c40-bfb9-b3ae0c69c83d`。`2026-10-09T06:41:05.684100Z` 健康观测为 200、db.up、匹配上述完整 SHA，`jobs.lastCronAt = 2026-10-09T06:40:35.438Z`。原 `433e737` 手动部署与购买证据作为历史记录保留在 runbook；固定一小时 5.6 结果与24 小时观察起点不因修复重部署重置。
+Cloudflare 生产 change 的模板范围已结项，合并后由协调者归档；自托管四个 change 已于 2026-10-17 全部同步并归档（#239）。`add-cloud-acceptance-followups` 的 staging 支付验收由另一 worker 处理中，未合并结果不计入当前 main 进度。2026-10-18 用户决定：正式收款主体（Q9）、生产 live 支付（原 6.1）与生产延迟放置对比（原 5.1）不在模板内验收，移交派生项目上线清单，方法见 `docs/05-billing.md` §8、本文件 §8 与 production runbook。派生项目开放注册前还需恢复默认 Cron 并复核费用。
 
 Phase 0 本机链路的历史实测条件与当前观察范围：
 
-- 切换前 staging 访问旧数据库要求开发者本机与 `cloudflared` 在线；当前线上 Neon 链路已解除此依赖，回滚到旧库前仍需确认两者可用。
+- 切换前 staging 访问旧数据库要求开发者本机与 `cloudflared` 在线；当前线上 Neon 链路已解除此依赖，旧 Tunnel / VPC 资源已删除。
 - Phase 0 请求绕回本机，其延迟基线只验证原链路可用，不能代表 Neon 或生产环境。
-- 本机 PG 不做备份；Neon staging 为可重建测试数据，24 小时观察显示 compute 常驻约 165 CU-hrs/月，超出 Free 100 CU-hrs；测试阶段仍用 Free，产品上线再升级（见 runbook staging-neon §6），不替代阶段二备份方案。阶段一的旧 Hyperdrive、Tunnel 与 Workers VPC 资源已于 2026-10-10 删除。
+- 本机 PG 不做备份；Neon staging 为可重建测试数据，24 小时观察显示 compute 常驻约 165 CU-hrs/月，超出 Free 100 CU-hrs；2026-10-10 曾决定测试阶段保持 Free，2026-10-15 已随组织升级为 Launch（见 runbook staging-neon §6 与 production-neon §4），staging 不替代生产备份方案。阶段一的旧 Hyperdrive、Tunnel 与 Workers VPC 资源已于 2026-10-10 删除。
 
 ## 1. 自建 Postgres（Cloudflare 形态后路；2026-10-15 起阶段二改用 Neon 付费档，见 §0）
 
@@ -394,9 +394,9 @@ staging 尚未通过前不勾选 OpenSpec 1.2。
 |---|---|---|---|---|---|
 | 40 | 40 ms | 45 ms | 90 ms | 116 ms | 171 ms |
 
-这是单一入口、默认放置下的健康探测往返，只作上线基线；Smart Placement 与显式放置对比需按下文 `scripts/probes/latency/` 部署临时探针 Worker（绑定生产 Hyperdrive、只读 `setting`），待批准后执行（`add-cloud-production-neon` 5.1）。
+这是单一入口、默认放置下的健康探测往返，只作上线基线；Smart Placement 与显式放置对比需按下文 `scripts/probes/latency/` 部署临时探针 Worker（绑定生产 Hyperdrive、只读 `setting`），2026-10-18 用户决定移交派生项目按真实用户地域执行（原 `add-cloud-production-neon` 5.1，不属于模板验收）。
 
-> **2026-10-03 实测时 staging 数据库在开发者本机，以下历史数据只证明「Worker → Hyperdrive → Workers VPC → Tunnel → 本机 PG」链路可用，不代表当前 Neon 或生产延迟。** 生产延迟在阶段二部署生产服务器后重新测量。
+> **2026-10-03 实测时 staging 数据库在开发者本机，以下历史数据只证明「Worker → Hyperdrive → Workers VPC → Tunnel → 本机 PG」链路可用，不代表当前 Neon 或生产延迟。** 派生项目上线时按实际 Neon 区域与用户地域重新测量放置对比。
 
 ### 测试方法
 

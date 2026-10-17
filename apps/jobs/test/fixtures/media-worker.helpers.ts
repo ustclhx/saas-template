@@ -14,10 +14,7 @@ export function startMediaWorker(
 ) {
   const child = spawn(
     process.execPath,
-    [
-      '--experimental-transform-types',
-      fileURLToPath(new URL('./media-worker.ts', import.meta.url)),
-    ],
+    ['--experimental-strip-types', fileURLToPath(new URL('./media-worker.ts', import.meta.url))],
     {
       env: { ...process.env, TEST_MEDIA_WORKER_CONFIG: JSON.stringify(config) },
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
