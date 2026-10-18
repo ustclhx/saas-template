@@ -2,7 +2,7 @@
 
 ## 1. 后台
 
-- [ ] 1.1 （原 admin 6.1 剩余）staging 的 Stripe/PayPal 失败回调经后台重放，核对付款与积分不重复入账并保存审计 ID。无自然失败时，按 2026-10-18 用户决定，允许经既有测试入口以已知校验制造可审阅的受控失败，先在 PR 说明方式及账务隔离；需新增代码机制则停止评审。验证：明确自然/受控来源、重放实际结果与审计 ID、重放前后付款/批次/账本只读快照一致、对账零差额，证据写入 `docs/runbooks/evidence/staging-acceptance/`。
+- [x] 1.1 （原 admin 6.1 剩余）staging 的 Stripe/PayPal 失败回调经后台重放，核对付款与积分不重复入账并保存审计 ID。无自然失败时，按 2026-10-18 用户决定，允许经既有测试入口以已知校验制造可审阅的受控失败，先在 PR 说明方式及账务隔离；需新增代码机制则停止评审。验证：2026-10-18 真实管理员在后台重放受控平台事件 `evt_1URbLcL3UTpBAoXoPo2JjN1L`，attempts 3→4，审计 `01a14d88-cd77-764e-98c9-64b3250f8ffc`；因刻意缺少关联 metadata，结果仍 failed，不冒称恢复 processed。六类业务表计数/摘要及观察空间付款/批次/账本只读快照一致，同快照对账差额 0。证据为 `docs/runbooks/evidence/staging-acceptance/2026-10-18/w3-admin-replay-{before,after}.json`。
 
 ## 2. PayPal Provider 录制
 
