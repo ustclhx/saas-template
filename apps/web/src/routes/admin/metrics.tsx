@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { adminListSearch } from '../../features/admin/list.ts'
 import { getAdminMetrics } from '../../features/admin/metrics.functions.ts'
 import { AdminPage, EmptyState } from '../../features/admin/ui.tsx'
+import { m } from '../../paraglide/messages.js'
 
 export const Route = createFileRoute('/admin/metrics')({
   validateSearch: (search: Record<string, unknown>) => adminListSearch(['from', 'to'])(search),
@@ -25,11 +26,11 @@ function Metrics() {
     })
   }
   return (
-    <AdminPage title="Business metrics">
+    <AdminPage title={m.admin_business_metrics()}>
       <fieldset disabled={!ready} className="min-w-0">
         <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
           <div className="grid gap-2">
-            <Label htmlFor="metrics-from">From (UTC)</Label>
+            <Label htmlFor="metrics-from">{m.admin_from_utc()}</Label>
             <Input
               key={data.from}
               id="metrics-from"
@@ -40,7 +41,7 @@ function Metrics() {
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="metrics-to">To (UTC)</Label>
+            <Label htmlFor="metrics-to">{m.admin_to_utc()}</Label>
             <Input
               key={data.to}
               id="metrics-to"
@@ -50,28 +51,31 @@ function Metrics() {
               required
             />
           </div>
-          <Button type="submit">Apply</Button>
+          <Button type="submit">{m.admin_apply()}</Button>
         </form>
       </fieldset>
       <p className="text-muted-foreground text-sm">
         {data.latest
-          ? `Data through ${data.latest.dataThrough.toISOString()} (exclusive); last computed ${data.latest.computedAt.toISOString()}.`
-          : 'No daily summaries yet.'}
+          ? m.admin_data_through_exclusive_last_computed({
+              dataThrough: data.latest.dataThrough.toISOString(),
+              computedAt: data.latest.computedAt.toISOString(),
+            })
+          : m.admin_no_daily_summaries_yet()}
       </p>
       <p className="text-muted-foreground text-sm">
-        {data.rows.length} daily summaries in this range. Paid conversion = paid workspaces / all
-        active workspaces. MRR and workspace counts use the latest available daily snapshot. Success
-        rate covers completed / (completed + failed + aborted) assistant text messages; media tasks
-        are not included yet.
+        {m.admin_daily_summaries_in_this_range_paid_conversion_paid({ count: data.rows.length })}
       </p>
       <dl className="grid gap-4 sm:grid-cols-3">
         {[
-          ['Registrations', data.registrations],
-          ['Paid workspaces', data.latest?.paidWorkspaces ?? '—'],
-          ['Paid conversion', percent(data.paidConversion)],
-          ['User credits consumed', data.creditsConsumed],
-          ['Platform overage absorbed', data.overageAbsorbed],
-          ['Text success rate', `${percent(data.successRate)} (${data.attempts} attempts)`],
+          [m.admin_registrations(), data.registrations],
+          [m.admin_paid_workspaces(), data.latest?.paidWorkspaces ?? '—'],
+          [m.admin_paid_conversion(), percent(data.paidConversion)],
+          [m.admin_user_credits_consumed(), data.creditsConsumed],
+          [m.admin_platform_overage_absorbed(), data.overageAbsorbed],
+          [
+            m.admin_text_success_rate(),
+            m.admin_attempts({ rate: percent(data.successRate), attempts: data.attempts }),
+          ],
         ].map(([label, value]) => (
           <div key={label} className="rounded-lg border p-4">
             <dt className="text-muted-foreground text-sm">{label}</dt>
@@ -79,7 +83,7 @@ function Metrics() {
           </div>
         ))}
       </dl>
-      <h3 className="font-semibold text-lg">MRR (monthly, latest snapshot)</h3>
+      <h3 className="font-semibold text-lg">{m.admin_mrr_monthly_latest_snapshot()}</h3>
       {data.latest && Object.entries(data.latest.mrrByCurrency).length ? (
         <ul className="grid gap-1 text-sm">
           {Object.entries(data.latest.mrrByCurrency).map(([currency, cents]) => (
@@ -89,16 +93,18 @@ function Metrics() {
           ))}
         </ul>
       ) : (
-        <EmptyState>No paid subscriptions.</EmptyState>
+        <EmptyState>{m.admin_no_paid_subscriptions()}</EmptyState>
       )}
-      <h3 className="font-semibold text-lg">Platform overage by model</h3>
+      <h3 className="font-semibold text-lg">{m.admin_platform_overage_by_model()}</h3>
       {Object.entries(data.overageByModel).length ? (
         <div className="overflow-x-auto rounded-md border">
           <table className="w-full text-left text-sm">
             <thead className="bg-muted/50">
               <tr className="border-b">
-                <th className="h-10 px-3 font-medium text-muted-foreground">Model</th>
-                <th className="h-10 px-3 font-medium text-muted-foreground">Credits absorbed</th>
+                <th className="h-10 px-3 font-medium text-muted-foreground">{m.admin_model()}</th>
+                <th className="h-10 px-3 font-medium text-muted-foreground">
+                  {m.admin_credits_absorbed()}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -114,7 +120,7 @@ function Metrics() {
           </table>
         </div>
       ) : (
-        <EmptyState>No platform overage in this range.</EmptyState>
+        <EmptyState>{m.admin_no_platform_overage_in_this_range()}</EmptyState>
       )}
     </AdminPage>
   )

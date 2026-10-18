@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { m } from '../../paraglide/messages.js'
 
 /**
  * Cloudflare Turnstile 小组件（explicit rendering）。认证入口的请求在请求头 `x-turnstile-token` 中带上令牌，
@@ -126,7 +127,7 @@ export function useTurnstile(siteKey: string | null, action?: string): Turnstile
         <div ref={containerRef} data-testid="turnstile" />
         {failed ? (
           <p className="text-destructive text-sm">
-            Human verification could not load. Refresh the page and try again.
+            {m.auth_human_verification_could_not_load_refresh_the_page()}{' '}
           </p>
         ) : null}
       </div>

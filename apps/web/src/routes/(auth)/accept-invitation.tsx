@@ -17,6 +17,7 @@ import {
   workspaceError,
 } from '../../features/workspace/client.ts'
 import { getInvitationPage } from '../../features/workspace/workspace.functions.ts'
+import { m } from '../../paraglide/messages.js'
 
 export const Route = createFileRoute('/(auth)/accept-invitation')({
   validateSearch: z.object({ id: z.uuid() }),
@@ -33,10 +34,10 @@ function InvitationPage() {
   const [sent, setSent] = useState(false)
   return (
     <AuthLayout
-      title="Accept invitation"
+      title={m.auth_accept_invitation()}
       footer={
         <a href="/app" className={authLinkClassName}>
-          Go to my workspace
+          {m.auth_go_to_my_workspace()}
         </a>
       }
     >
@@ -45,9 +46,9 @@ function InvitationPage() {
         <FormAlert message={workspaceError(page.error)} />
       ) : page.verifyRequired === true ? (
         <>
-          <p>Verify {page.email} before viewing and accepting this invitation.</p>
+          <p>{m.auth_verify_before_viewing_and_accepting_this_invitation({ email: page.email })}</p>
           {sent ? (
-            <StatusAlert>Verification email sent. Check your inbox and open the link.</StatusAlert>
+            <StatusAlert>{m.auth_verification_email_sent_check_your_inbox_and_open()}</StatusAlert>
           ) : null}
           <Button
             disabled={pending}
@@ -62,29 +63,29 @@ function InvitationPage() {
                 if (result.error) setError(authErrorMessage(result.error))
                 else setSent(true)
               } catch {
-                setError('Could not send verification email. Please try again.')
+                setError(m.auth_could_not_send_verification_email_please_try_again())
               } finally {
                 setPending(false)
               }
             }}
           >
-            Send verification email
+            {m.auth_send_verification_email()}
           </Button>
-          <p>
-            Open the link to return here. If you verified in another tab, reload this page. You can
-            retry sending if the email does not arrive.
-          </p>
+          <p>{m.auth_open_the_link_to_return_here_if_you()} </p>
           <Button variant="outline" onClick={() => window.location.reload()}>
-            Reload after verification
+            {m.auth_reload_after_verification()}
           </Button>
           {!page.multiTenant ? (
-            <p>Team features are disabled. Invitations cannot be accepted.</p>
+            <p>{m.auth_team_features_are_disabled_invitations_cannot_be_accepted()}</p>
           ) : null}
         </>
       ) : (
         <>
           <p>
-            You are invited to {page.workspace.name} as {page.invitation.role}.
+            {m.auth_you_are_invited_to_as({
+              workspace: String(page.workspace.name),
+              role: String(page.invitation.role),
+            })}
           </p>
           {page.multiTenant ? (
             <Button
@@ -100,15 +101,15 @@ function InvitationPage() {
                   )
                   await activateWorkspace(page.workspace)
                 } catch (e) {
-                  setError(e instanceof Error ? e.message : 'Could not accept invitation.')
+                  setError(e instanceof Error ? e.message : m.auth_could_not_accept_invitation())
                   setPending(false)
                 }
               }}
             >
-              Accept invitation
+              {m.auth_accept_invitation()}
             </Button>
           ) : (
-            <p>Team features are disabled. Invitations cannot be accepted.</p>
+            <p>{m.auth_team_features_are_disabled_invitations_cannot_be_accepted()}</p>
           )}
         </>
       )}

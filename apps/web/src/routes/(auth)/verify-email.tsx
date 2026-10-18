@@ -4,16 +4,31 @@ import { z } from 'zod'
 import { AFTER_SIGN_IN_PATH } from '../../features/auth/auth-client.ts'
 import { AuthLayout, FormAlert, StatusAlert } from '../../features/auth/auth-layout.tsx'
 import { authErrorMessage } from '../../features/auth/errors.ts'
+import { m } from '../../paraglide/messages.js'
 
-/** 页面文案（英文硬编码，P6 接 Paraglide） */
+/** 按当前请求或页面语言读取文案，避免在模块初始化时固定语言。 */
 const COPY = {
-  metaTitle: 'Email verification',
-  successTitle: 'Email verified',
-  success: 'Your email address has been verified.',
-  continue: 'Continue',
-  failureTitle: 'Verification failed',
-  failureHint: 'Sign in to receive a new verification email.',
-  signIn: 'Back to sign in',
+  get metaTitle() {
+    return m.auth_email_verification()
+  },
+  get successTitle() {
+    return m.auth_email_verified()
+  },
+  get success() {
+    return m.auth_your_email_address_has_been_verified()
+  },
+  get continue() {
+    return m.auth_continue()
+  },
+  get failureTitle() {
+    return m.auth_verification_failed()
+  },
+  get failureHint() {
+    return m.auth_sign_in_to_receive_a_new_verification_email()
+  },
+  get signIn() {
+    return m.auth_back_to_sign_in()
+  },
 } as const
 
 /**

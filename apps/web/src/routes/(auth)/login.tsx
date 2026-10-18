@@ -17,37 +17,92 @@ import { useTurnstile } from '../../features/auth/turnstile.tsx'
 import { useAuthRequest } from '../../features/auth/use-auth-request.ts'
 import { m } from '../../paraglide/messages.js'
 
-/** 页面文案（英文硬编码，P6 接 Paraglide） */
+/** 按当前请求或页面语言读取文案，避免在模块初始化时固定语言。 */
 const COPY = {
-  metaTitle: 'Sign in',
-  title: 'Sign in',
-  description: 'Welcome back. Choose how you want to sign in.',
-  email: 'Email',
-  password: 'Password',
-  code: 'Verification code',
-  forgotPassword: 'Forgot password?',
-  signIn: 'Sign in',
-  signingIn: 'Signing in…',
-  sendCode: 'Send code',
-  sendingCode: 'Sending…',
-  codeSent: (email: string) => `We sent a 6-digit code to ${email}. It expires in a few minutes.`,
-  useAnotherEmail: 'Use a different email',
-  sendLink: 'Send magic link',
-  sendingLink: 'Sending…',
-  linkSent: (email: string) => `Check ${email} for a sign-in link.`,
-  or: 'or',
-  modes: {
-    password: 'Sign in with password',
-    otp: 'Sign in with email code',
-    magicLink: 'Sign in with magic link',
+  get metaTitle() {
+    return m.auth_sign_in()
   },
-  oauth: { google: 'Continue with Google', github: 'Continue with GitHub' },
-  noAccount: "Don't have an account?",
-  register: 'Sign up',
-  noMethods: 'Sign-in is not available right now.',
-  invalidEmail: 'Enter a valid email address',
-  passwordRequired: 'Enter your password',
-  invalidCode: 'Enter the 6-digit code',
+  get title() {
+    return m.auth_sign_in()
+  },
+  get description() {
+    return m.auth_welcome_back_choose_how_you_want_to_sign()
+  },
+  get email() {
+    return m.auth_email()
+  },
+  get password() {
+    return m.auth_password()
+  },
+  get code() {
+    return m.auth_verification_code()
+  },
+  get forgotPassword() {
+    return m.auth_forgot_password_link()
+  },
+  get signIn() {
+    return m.auth_sign_in()
+  },
+  get signingIn() {
+    return m.auth_signing_in()
+  },
+  get sendCode() {
+    return m.auth_send_code()
+  },
+  get sendingCode() {
+    return m.auth_sending()
+  },
+  codeSent: (email: string) => m.auth_we_sent_a_6_digit_code_to_it({ email: email }),
+  get useAnotherEmail() {
+    return m.auth_use_a_different_email()
+  },
+  get sendLink() {
+    return m.auth_send_magic_link()
+  },
+  get sendingLink() {
+    return m.auth_sending()
+  },
+  linkSent: (email: string) => m.auth_check_for_a_sign_in_link({ email: email }),
+  get or() {
+    return m.auth_or()
+  },
+  modes: {
+    get password() {
+      return m.auth_sign_in_with_password()
+    },
+    get otp() {
+      return m.auth_sign_in_with_email_code()
+    },
+    get magicLink() {
+      return m.auth_sign_in_with_magic_link()
+    },
+  },
+  oauth: {
+    get google() {
+      return m.auth_continue_with_google()
+    },
+    get github() {
+      return m.auth_continue_with_github()
+    },
+  },
+  get noAccount() {
+    return m.auth_don_t_have_an_account()
+  },
+  get register() {
+    return m.auth_sign_up()
+  },
+  get noMethods() {
+    return m.auth_sign_in_is_not_available_right_now()
+  },
+  get invalidEmail() {
+    return m.auth_enter_a_valid_email_address()
+  },
+  get passwordRequired() {
+    return m.auth_enter_your_password()
+  },
+  get invalidCode() {
+    return m.auth_enter_the_6_digit_code()
+  },
 } as const
 
 type Mode = keyof typeof COPY.modes
@@ -126,7 +181,7 @@ function LoginPage() {
   )
 }
 
-const emailSchema = z.email(COPY.invalidEmail)
+const emailSchema = () => z.email(COPY.invalidEmail)
 
 function PasswordSignIn({ siteKey }: { siteKey: string | null }) {
   const turnstile = useTurnstile(siteKey, 'sign-in')
@@ -135,7 +190,7 @@ function PasswordSignIn({ siteKey }: { siteKey: string | null }) {
     defaultValues: { email: '', password: '' },
     validators: {
       onSubmit: z.object({
-        email: emailSchema,
+        email: emailSchema(),
         password: z.string().min(1, COPY.passwordRequired),
       }),
     },
@@ -205,7 +260,7 @@ function OtpRequest({
   const { error, run } = useAuthRequest(turnstile)
   const form = useAppForm({
     defaultValues: { email: '' },
-    validators: { onSubmit: z.object({ email: emailSchema }) },
+    validators: { onSubmit: z.object({ email: emailSchema() }) },
     onSubmit: async ({ value }) => {
       const data = await run((headers) =>
         authClient().emailOtp.sendVerificationOtp({
@@ -287,7 +342,7 @@ function MagicLinkSignIn({ siteKey }: { siteKey: string | null }) {
   const [sentTo, setSentTo] = useState<string | null>(null)
   const form = useAppForm({
     defaultValues: { email: '' },
-    validators: { onSubmit: z.object({ email: emailSchema }) },
+    validators: { onSubmit: z.object({ email: emailSchema() }) },
     onSubmit: async ({ value }) => {
       const data = await run((headers) =>
         authClient().signIn.magicLink({

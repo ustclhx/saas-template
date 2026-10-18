@@ -3,7 +3,7 @@ import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { getAdminViewer } from '../../features/admin/admin.functions.ts'
 import { ADMIN_COPY } from '../../features/admin/copy.ts'
-import { ADMIN_NAV_GROUPS } from '../../features/admin/nav.ts'
+import { getAdminNavGroups } from '../../features/admin/nav.ts'
 import { authClient } from '../../features/auth/auth-client.ts'
 import { LanguageControls } from '../../features/i18n/language-controls.tsx'
 import { ThemeToggle } from '../../features/theme/theme-toggle.tsx'
@@ -32,7 +32,7 @@ function AdminLayout() {
             </p>
           </header>
           <nav aria-label={ADMIN_COPY.nav.label} className="flex flex-col gap-3 md:gap-4">
-            {ADMIN_NAV_GROUPS.map((group) => (
+            {getAdminNavGroups().map((group) => (
               <div key={group.id} className="flex flex-col gap-1">
                 {group.label && (
                   <p className="px-3 font-medium text-muted-foreground text-xs">{group.label}</p>

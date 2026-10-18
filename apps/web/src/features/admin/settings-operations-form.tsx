@@ -1,5 +1,6 @@
 import { Button, Input } from '@saas/ui'
 import { type FormEvent, useEffect, useState } from 'react'
+import { m } from '../../paraglide/messages.js'
 import { getOperationsSettings, saveOperationsSettings } from './settings-operations.functions.ts'
 import { CheckboxField, Field, panelClass } from './ui.tsx'
 
@@ -18,7 +19,7 @@ export function OperationsSettingsForm() {
         setSaved(value)
         setChatId(value.telegramChatId)
       })
-      .catch(() => setMessage('Operations settings unavailable.'))
+      .catch(() => setMessage(m.admin_operations_settings_unavailable()))
   }, [])
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -40,23 +41,28 @@ export function OperationsSettingsForm() {
       setClearToken(false)
       setClearWebhook(false)
       setSaved(await getOperationsSettings())
-      setMessage('Operations settings saved.')
+      setMessage(m.admin_operations_settings_saved())
     } catch {
-      setMessage('Save failed. Check channel configuration and retry.')
+      setMessage(m.admin_save_failed_check_channel_configuration_and_retry())
     } finally {
       setBusy(false)
     }
   }
   return (
-    <form onSubmit={submit} aria-label="Operations notifications" className={panelClass()}>
-      <h3 className="font-semibold text-lg">Operations notifications</h3>
+    <form
+      onSubmit={submit}
+      aria-label={m.admin_operations_notifications()}
+      className={panelClass()}
+    >
+      <h3 className="font-semibold text-lg">{m.admin_operations_notifications()}</h3>
       <fieldset disabled={!saved || busy} className="grid min-w-0 gap-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="grid content-start gap-3">
             <p className="text-sm">
-              Telegram bot: {saved?.telegramConfigured ? 'Configured' : 'Not configured'}
+              {m.admin_telegram_bot()}{' '}
+              {saved?.telegramConfigured ? m.admin_configured() : m.admin_not_configured()}
             </p>
-            <Field label="Telegram bot token" htmlFor="telegram-token">
+            <Field label={m.admin_telegram_bot_token()} htmlFor="telegram-token">
               <Input
                 id="telegram-token"
                 type="password"
@@ -66,11 +72,11 @@ export function OperationsSettingsForm() {
               />
             </Field>
             <CheckboxField
-              label="Clear Telegram token"
+              label={m.admin_clear_telegram_token()}
               checked={clearToken}
               onChange={(event) => setClearToken(event.target.checked)}
             />
-            <Field label="Telegram chat ID" htmlFor="telegram-chat">
+            <Field label={m.admin_telegram_chat_id()} htmlFor="telegram-chat">
               <Input
                 id="telegram-chat"
                 value={chatId}
@@ -80,9 +86,10 @@ export function OperationsSettingsForm() {
           </div>
           <div className="grid content-start gap-3">
             <p className="text-sm">
-              Discord webhook: {saved?.discordConfigured ? 'Configured' : 'Not configured'}
+              {m.admin_discord_webhook()}{' '}
+              {saved?.discordConfigured ? m.admin_configured() : m.admin_not_configured()}
             </p>
-            <Field label="Discord webhook URL" htmlFor="discord-webhook">
+            <Field label={m.admin_discord_webhook_url()} htmlFor="discord-webhook">
               <Input
                 id="discord-webhook"
                 type="password"
@@ -92,18 +99,17 @@ export function OperationsSettingsForm() {
               />
             </Field>
             <CheckboxField
-              label="Clear Discord webhook"
+              label={m.admin_clear_discord_webhook()}
               checked={clearWebhook}
               onChange={(event) => setClearWebhook(event.target.checked)}
             />
           </div>
         </div>
         <p className="text-muted-foreground text-sm">
-          Leave secret inputs empty to keep configured values. Notifications retry in the events
-          queue.
+          {m.admin_leave_secret_inputs_empty_to_keep_configured_values()}
         </p>
         <Button type="submit" className="w-fit">
-          Save operations notifications
+          {m.admin_save_operations_notifications()}
         </Button>
       </fieldset>
       {message && (
