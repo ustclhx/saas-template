@@ -44,8 +44,8 @@
 - [x] 7.1 在 staging 用 Workers AI 跑通一个图片模型，并模拟推理失败与超过硬超时，验证任务终态正确、积分只扣一次或全额退回、对账不变式成立
 - [x] 7.2 在 staging 用一个异步服务商（默认 fal.ai）各跑通一个图片与一个视频模型；分别模拟回调丢失、回调早到、提交响应丢失、服务商失败、超过硬超时，验证每种情况任务终态正确、积分只扣一次或全额退回、对账不变式成立
 
-2026-10-13 验收记录：13j 的 Workers/fal 图片成功、按次消费各一次及 fal 视频取消全退已有[真实证据](../../../../docs/runbooks/evidence/staging-acceptance/README.md)。7.1 的受控推理失败与硬超时、7.2 的视频成功产出及各类故障注入尚未完成，因此两项保留未勾选；历史意外失败与取消不能代替完整验收。
+2026-10-13 验收记录：13j 的 Workers/fal 图片成功、按次消费各一次及 fal 视频取消全退已有真实证据（私有证据库 `saas-template-evidence:staging-acceptance/README.md`）。7.1 的受控推理失败与硬超时、7.2 的视频成功产出及各类故障注入尚未完成，因此两项保留未勾选；历史意外失败与取消不能代替完整验收。
 
-2026-10-14 验收记录：受控故障套件 [fault-2026-10-14a](../../../../docs/runbooks/evidence/staging-acceptance/2026-10-14/fault-2026-10-14a-execution-status.json) / [14b](../../../../docs/runbooks/evidence/staging-acceptance/2026-10-14/fault-2026-10-14b-execution-status.json) 完成 Workers 合成推理失败与 60 秒固定 deadline 硬超时（均 failed、预扣全退、0 消费、对账零差额），连同 13j 的真实成功产出，7.1 勾选；合成错误不调用 AI 绑定、超时以持久 sleep 模拟未完成推理，证据边界见 add-staging-fault-injection design。fal 五类故障已在同一套件通过。
+2026-10-14 验收记录：受控故障套件 fault-2026-10-14a（私有证据库 `saas-template-evidence:staging-acceptance/2026-10-14/fault-2026-10-14a-execution-status.json`） / 14b（私有证据库 `saas-template-evidence:staging-acceptance/2026-10-14/fault-2026-10-14b-execution-status.json`） 完成 Workers 合成推理失败与 60 秒固定 deadline 硬超时（均 failed、预扣全退、0 消费、对账零差额），连同 13j 的真实成功产出，7.1 勾选；合成错误不调用 AI 绑定、超时以持久 sleep 模拟未完成推理，证据边界见 add-staging-fault-injection design。fal 五类故障已在同一套件通过。
 
-2026-10-15 验收记录：[media-video-2026-10-15a](../../../../docs/runbooks/evidence/staging-acceptance/2026-10-15/media-video-2026-10-15a-execution-status.json)（SHA 7e7c99c）以 `fal-ai/wan/v2.2-a14b/text-to-video/turbo` 480p 真实生成 5 秒视频成功：真实回调、R2 文件与安全下载、单次 consume 3 积分、单次通知、终态后 67 秒复核稳定、同快照对账零差额。连同 13j 的 fal 图片成功与 fault-2026-10-14a 五类故障，7.2 勾选。
+2026-10-15 验收记录：media-video-2026-10-15a（私有证据库 `saas-template-evidence:staging-acceptance/2026-10-15/media-video-2026-10-15a-execution-status.json`）（SHA 7e7c99c）以 `fal-ai/wan/v2.2-a14b/text-to-video/turbo` 480p 真实生成 5 秒视频成功：真实回调、R2 文件与安全下载、单次 consume 3 积分、单次通知、终态后 67 秒复核稳定、同快照对账零差额。连同 13j 的 fal 图片成功与 fault-2026-10-14a 五类故障，7.2 勾选。

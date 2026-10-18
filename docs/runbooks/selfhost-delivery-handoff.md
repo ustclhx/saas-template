@@ -1,6 +1,6 @@
 # D 镜像交付与协调者签收清单
 
-最新服务器状态（2026-10-16 UTC）：正式1888e7d部署、真实R2主/副本只读PITR及逻辑恢复、B6.4批准夹具后复验、已批准的真实systemctl reboot全部通过。D7.1/7.2/7.3已验收，7.4仅待协调者审阅。最新[矩阵](evidence/selfhost/server-acceptance-1888e7d/matrix.md)与[报告](evidence/selfhost/server-acceptance-1888e7d/report.md)齐全；15个原有容器与warp保持停用。下文历史“缺资源/授权”及初次阻塞不再代表当前状态。
+最新服务器状态（2026-10-16 UTC）：正式1888e7d部署、真实R2主/副本只读PITR及逻辑恢复、B6.4批准夹具后复验、已批准的真实systemctl reboot全部通过。D7.1/7.2/7.3已验收，7.4仅待协调者审阅。最新矩阵（私有证据库 `saas-template-evidence:selfhost/server-acceptance-1888e7d/matrix.md`）与报告（私有证据库 `saas-template-evidence:selfhost/server-acceptance-1888e7d/report.md`）齐全；15个原有容器与warp保持停用。下文历史“缺资源/授权”及初次阻塞不再代表当前状态。
 
 此文是 `add-selfhost-delivery` 1.1 的审阅草案，快照日期 2026-10-14。
 协调者确认文件所有权及以下依赖后才勾选 1.1。D worker 仅领取 1.1–1.3，
@@ -62,7 +62,7 @@ Compose 已将 `JOB_EXECUTOR_ID` 同时用于稳定 hostname，并挂载 `job_ow
 namespace 可能同时活着，同名异机的 boot 差异也不能证明旧机退出。新实现要求可信宿主
 machineId，同 boot 下不同 namespace 拒绝；D Compose 接入 host PID namespace 和只读
 宿主身份。Linux 初始化临界区以 OS flock 保护可信 dead guard 的定向恢复，保留历史记录。
-确切行为、Linux/PG/VM证据见 [d-vm报告](evidence/selfhost/d-vm-2026-10-15/report.md)。
+确切行为、Linux/PG/VM证据见 d-vm报告（私有证据库 `saas-template-evidence:selfhost/d-vm-2026-10-15/report.md`）。
 
 评审后将退出证明改为进程生命周期内核锁：Node 持有 ownership 卷上 executor/token 锁的
 描述符直至真实退出，同机跨容器/namespace 由 flock 互斥证明，不再使用 `pid:host`；
@@ -91,7 +91,7 @@ web/jobs 完整 SHA、backup scheduler/成功 slot、数据与卷保持。
 据此按协调者本轮已定范围勾选 1.5 与 6.3；异机退出证明仍开放，第7组保持待办。
 同轮正式bundle SSH部署、真实PG/DBOS升级/失败/回滚与八项隔离机制通过后，2.1/2.3
 也已勾选。任务资源与VM已删除，不将本地版本元数据fixture称为第二个正式发布。
-逐项证据见 [d-vm2报告](evidence/selfhost/d-vm2-2026-10-15/report.md)。
+逐项证据见 d-vm2报告（私有证据库 `saas-template-evidence:selfhost/d-vm2-2026-10-15/report.md`）。
 
 ## 镜像集合与后续接入
 

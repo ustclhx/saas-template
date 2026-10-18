@@ -1,7 +1,8 @@
 # Neon staging 操作与验收
 
-本 runbook 对应 `add-cloud-staging-neon`。staging 专用 Neon Postgres 17（`aws-us-west-2`），数据库 `saas_staging`，角色 `migrator` / `app` / `readonly`；Hyperdrive 使用非 pooled 直连，TLS `sslmode=require`。不搬迁本机旧 staging 数据，不改变本地 worktree 或阶段二生产方案。
+为项目创建独立的 staging Neon Postgres 17，数据库 `saas_staging`，角色 `migrator` / `app` / `readonly`；区域由项目负责人选择。Hyperdrive 使用非 pooled 直连与 TLS `sslmode=require`。资源名示例随生成器改名，资源 ID 必须使用本项目新建或明确复用的资源。
 
+<!-- template-only:start -->
 ## 当前进度与证据（2026-10-09 UTC）
 
 **main 已自动发布到 Neon staging，迁移、jobs → web、完整版本探活与注册冒烟均通过。** 当前线上代码为 `ce623cab63a99d6eee8c8ba67eeb09e564f97779`。Neon change 最终完成 28/29，仅24 小时观察（9.2）保持未完成；新旧数据库是独立数据集。本 PR 3 仅更新文档与任务记录，配置已随 PR #62 合入 main。
@@ -36,18 +37,25 @@
 
 以上为非敏感准备记录。后续实测需补 UTC、完整提交 SHA、两 Worker version、运行链接、退出码和关键结果；不记录密码、连接串、token 或 API key。
 
+<!-- template-only:end -->
+
 ## 1. 建库、受限角色与本地凭据
 
-在已登录的 Neon 控制台使用 Free 计划创建新项目（建议名 `saas-staging`），Postgres 17、`aws-us-west-2`；先以默认 owner 创建空数据库 `saas_staging`。下面是**新项目**的初始化流程；不对已有项目盲目重建同名角色。已有资源覆盖、删除、账号/组织或付款/条款选择由用户决定。
+在已登录的 Neon 控制台选择本项目组织、计划与区域，创建新项目（建议名 `saas-staging`），Postgres 17；先以默认 owner 创建空数据库 `saas_staging`。下面是**新项目**的初始化流程；不对已有项目盲目重建同名角色。已有资源覆盖、删除、账号/组织或付款/条款选择由用户决定。
 
-### 角色创建方式差异与本次处理
+### 受限角色的创建方式
 
-Neon Console / CLI / API 创建的角色自动成为 `neon_superuser` 成员；受限业务角色应通过 SQL 创建并显式授权，见 [Neon 角色文档](https://neon.com/docs/manage/roles)。本次最初在控制台创建的三角色均带 CREATEDB / CREATEROLE / BYPASSRLS / REPLICATION 与该成员身份，默认 owner 执行 `REVOKE neon_superuser FROM migrator, app, readonly` 被 `42501` 拒绝，事务已回滚。用户批准后，只删除并重建本次新建的三角色，保留项目、数据库与默认 owner；最终以 SQL 创建受限角色并完成 owner 授权。原权限 SQL 未改动。这是初次控制台建角的补救记录，不是新项目常规步骤。
+Neon Console / CLI / API 创建的角色自动成为 `neon_superuser` 成员；受限业务角色应通过 SQL 创建并显式授权，见 [Neon 角色文档](https://neon.com/docs/manage/roles)。
+
+<!-- template-only:start -->
+本次最初在控制台创建的三角色均带 CREATEDB / CREATEROLE / BYPASSRLS / REPLICATION 与该成员身份，默认 owner 执行 `REVOKE neon_superuser FROM migrator, app, readonly` 被 `42501` 拒绝，事务已回滚。用户批准后，只删除并重建本次新建的三角色，保留项目、数据库与默认 owner；最终以 SQL 创建受限角色并完成 owner 授权。原权限 SQL 未改动。这是初次控制台建角的补救记录，不是新项目常规步骤。
+
+<!-- template-only:end -->
 
 ### 新项目初始化
 
 1. 通过受保护临时凭据，以默认 owner 直连新建的 `saas_staging`，先核对 `current_user = neondb_owner`、`current_database() = saas_staging`；确认三角色尚不存在。
-2. SQL 创建三角色；密码以安全随机方式生成，通过交互式 psql `\password migrator`、`\password app`、`\password readonly` 设置，不把密码写进 SQL 文件、命令参数或历史。
+2. SQL 创建三角色；密码以安全随机方式生成，按 [production-neon §2](production-neon.md#2-受限角色与凭据) 的 stdin/TLS 流程设置（Neon 不接受 psql `\password` 生成的 SCRAM 校验值），不把密码写进 SQL 文件、命令参数或历史。
 
 ```sql
 CREATE ROLE migrator LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
@@ -59,7 +67,7 @@ REVOKE migrator FROM neondb_owner;
 ```
 
 3. 以 `migrator` 重连目标库，按 §2 执行原权限脚本，令 public schema owner 与默认权限归属 migrator。核对三角色的高权限 flags 均为 false，且 `pg_has_role(rolname, 'neon_superuser', 'MEMBER')` 均为 false；不把 `neon_superuser` 设为数据库 owner。
-4. 按用户确认，保存三个直连 URL 到被忽略的 `.env.staging-neon`（600、明文），不使用 Mac 密码 App 或全局钥匙串。键名为 `NEON_MIGRATOR_URL`、`NEON_APP_URL`、`NEON_READONLY_URL`；必须是非 pooled 主机名（不能带 `-pooler`）、`sslmode=require`。先执行 `git check-ignore .env.staging-neon`，设置文件权限 600。复制后立即清空剪贴板，不用 echo 或 shell tracing；移除临时默认 owner URL。
+4. 保存三个直连 URL 到被忽略的 `.env.staging-neon`（600、明文）。键名为 `NEON_MIGRATOR_URL`、`NEON_APP_URL`、`NEON_READONLY_URL`；必须是非 pooled 主机名（不能带 `-pooler`）、`sslmode=require`。先执行 `git check-ignore .env.staging-neon`，设置文件权限 600。复制后立即清空剪贴板，不用 echo 或 shell tracing；移除临时默认 owner URL。
 
 ```sh
 set -a
@@ -87,7 +95,12 @@ psql "$NEON_MIGRATOR_URL" -X \
 
 迁移记录数应等于 `packages/db/migrations/meta/_journal.json` 条目数。核对 public owner 为 migrator，app 只有 USAGE；用 app 分别在独立事务中尝试 `CREATE TABLE public.t(x int)` 与 `UPDATE audit_log SET id=id WHERE false`，用 readonly 在独立事务中尝试 `DELETE FROM plan WHERE false`，均应拒绝，最后 ROLLBACK。测试即使意外成功也不会留下表或更改审计记录。
 
-若 Neon 拒绝权限语句，停止并核对角色来源、owner 与授权，由默认 owner 修复必要授权；不修改原 SQL 的本地/CI 行为。本次受限角色重建后，migrator 完整执行原脚本通过，无需 owner 补执行脚本语句。迁移与三项权限拒绝结果见顶部证据。
+若 Neon 拒绝权限语句，停止并核对角色来源、owner 与授权，由默认 owner 修复必要授权；不修改原 SQL 的本地/CI 行为。
+
+<!-- template-only:start -->
+本次受限角色重建后，migrator 完整执行原脚本通过，无需 owner 补执行脚本语句。迁移与三项权限拒绝结果见顶部证据。
+
+<!-- template-only:end -->
 
 确认 app 的 `current_database()` 为 `saas_staging` 后：
 
@@ -99,19 +112,16 @@ psql "$NEON_APP_URL" -X -c 'select key from plan order by key'
 
 应为 free / pro / team / credit_pack 四套餐，两次执行行数与 ID 不变；seed 不是平台价格同步，真实购买前按 [P2 支付联通](./p2-payment-integration.md) 同步测试报价。
 
+<!-- template-only:start -->
 2026-10-09 UTC 已完成测试报价同步。写入前 db guard 核验 `saas_staging / app`，Stripe API 核验目标 Sandbox account，PayPal Sandbox OAuth 通过。网络失败后安全续跑 `billing:sync` 两次，均退出 0；readonly 复核全部 10 项映射 active，UUID 与远端 ID 均稳定。续跑日志为 `/tmp/cloud-staging-neon-sync-retry2.log`。此记录证明价格映射已同步；之后已完成一次 Stripe Sandbox 积分包购买及余额增加，最小修复部署后同一原始事件重投返回 200、记录与余额不再增加，任务 9.1 已通过，见顶部证据。
+
+<!-- template-only:end -->
 
 ## 3. Hyperdrive 与切换
 
-先核对已有名称，不覆盖资源。新建 `saas-staging-neon`（关缓存）与 `saas-staging-neon-cached`（max_age 60）。直连参数从环境读取；禁用命令 tracing，CLI 输出只保留名称、ID 与缓存配置，不输出源连接串。
+先核对本项目已有资源名称与归属。创建 `saas-staging-neon`（关闭缓存）与 `saas-staging-neon-cached`（`max_age=60`），两者均连接 app、`saas_staging`、非 pooled 直连与 TLS。通过已授权的 Cloudflare 控制台输入受保护连接；或使用请求体与授权头经 stdin 传入的 API 流程，连接串不进入 argv、输出或历史。回读仅记录资源 ID 与缓存配置，填入 web/jobs 的 `env.staging.hyperdrive`；缓存与非缓存绑定分别为 `HYPERDRIVE_CACHED` / `HYPERDRIVE`。
 
-```sh
-pnpm --dir apps/web exec wrangler hyperdrive create saas-staging-neon \
-  --connection-string "$NEON_APP_URL" --caching-disabled
-pnpm --dir apps/web exec wrangler hyperdrive create saas-staging-neon-cached \
-  --connection-string "$NEON_APP_URL" --max-age 60
-```
-
+<!-- template-only:start -->
 2026-10-08 已创建以下资源，均使用 app、saas_staging、非 pooled 直连与 TLS require：
 
 | 资源 | ID | 缓存 |
@@ -123,13 +133,18 @@ pnpm --dir apps/web exec wrangler hyperdrive create saas-staging-neon-cached \
 
 两个 app 的 `env.staging.hyperdrive` ID、Neon 注释、AI Gateway vars 与 observability 配置已随 PR #62 合入 main，本 PR 3 仅更新文档与任务记录，不重复配置变更。自动发布已使用新绑定并通过，见顶部证据。旧关缓存 ID `c4b28441aeaf49c3853a321a39cf8ec4`，旧缓存 ID `1b360caddf134503af774993499bdc4e`；观察期保留。以下为经授权的手动部署/重验参考；日常 main 发布由 §4 流水线负责。
 
+<!-- template-only:end -->
+
+以下为获准手动发布时的参考；日常发布走 §4 流水线。先将 `STAGING_URL` 设为本项目的实际 HTTPS URL。
+
 ```sh
 pnpm --filter @saas/jobs deploy:staging
 APP_VERSION="$(git rev-parse HEAD)" pnpm --filter @saas/web deploy:staging
-node scripts/staging/wait-healthy.mjs https://web-staging.saas-jobs.workers.dev/api/health "$(git rev-parse HEAD)"
-STAGING_URL=https://web-staging.saas-jobs.workers.dev pnpm --filter @saas/web exec playwright test --project staging
+node scripts/staging/wait-healthy.mjs "${STAGING_URL:?先设置本项目 staging URL}/api/health" "$(git rev-parse HEAD)"
+STAGING_URL="$STAGING_URL" pnpm --filter @saas/web exec playwright test --project staging
 ```
 
+<!-- template-only:start -->
 健康检查应 200、db.up、版本匹配；当时按原调度验证 10 分钟内 jobs.lastCronAt 更新。本次线上检查与心跳已通过，完整版本及时间见顶部证据。2026-10-13 的 staging 半小时调度决定与后续心跳核验窗口见 §6。按 `scripts/probes/71-locks/README.md` 对新关缓存 ID 重跑一轮七场景；探针 token 只走 secret/stdin，避免 README 示例的明文参数。只操作本轮创建的临时探针，保留其他现有资源。记录日期、往返延迟、锁释放与七场景结论到 docs/07。**Neon 锁探针已通过，见下方补正重跑结果；2026-10-03 的本机链路历史结果不能代替本轮。**
 
 2026-10-08 13:26–13:27 UTC，通过 `wrangler dev --remote` 临时 preview 使用新关缓存 Hyperdrive 执行原探针一轮，未部署第三个常驻 Worker。七场景均返回 200；四个行锁/advisory 的 commit/rollback 场景 B 等待 2591–2674ms，A 释放后 36–43ms 获取锁。row/advisory 的 abandon 场景分别复用 PID 1796/1824，因此原驱动的“两个 PID 不同”断言失败（退出 1）；B 实际在 A 响应返回约 577/557ms 后才开始，原 abandon 没有执行 hold。各场景及最终五次 try-lock/NOWAIT、pg_locks 检查均通过，打印的 idle-in-transaction 列表为空；cleanup 删除探针行，随后 app 直连确认 `probe.7.1.%` 行数为 0。
@@ -140,39 +155,61 @@ STAGING_URL=https://web-staging.saas-jobs.workers.dev pnpm --filter @saas/web ex
 
 八轮释放检查（每轮五次 try-lock/NOWAIT 与五次只读查询）通过，无其他 advisory holder，idle-in-transaction 列表为空。cleanup 返回 200；13:59:36 UTC app 直连终检确认 saas_staging、探针行数 0、该 advisory key 无持有者、app 超两秒空闲未结束事务为空。临时 preview 已停止、随机 token 文件已删除。五次 `/check` 往返 752/623/743/567/518ms（中位 623ms），包含本机 loopback 代理与 remote preview，不能作为纯数据库或业务 Worker 时延。
 
+<!-- template-only:end -->
+
+健康检查应 HTTP 200、`db.status=up`、完整 SHA 匹配；按 `apps/jobs/wrangler.jsonc` 的实际 Cron 周期核对心跳推进及维护任务日志。锁与事务等关键数据库行为在本项目隔离环境验证，证据写入 `EVIDENCE_DIR`。
+
 ## 4. 配置与自动发布
 
 ```sh
 pnpm staging:check-secrets
 ```
 
-脚本核对两个 Worker 的 secret 名称；必需项缺失退出 1，可选项缺失仍列出。web 必需 Auth、Turnstile、OAuth 四项、Stripe 两项、PayPal 三项；jobs 必需 Stripe 两项和 PayPal 三项。可选为 RESEND_API_KEY、AI_GATEWAY_TOKEN、SENTRY_DSN。真值只通过标准输入写 Wrangler，覆盖已有密钥需明确用户授权，本次 web PayPal 三项已获授权统一；Stripe 仅 Test mode，PayPal 仅 Sandbox，webhook 事件按 P2 runbook。
+脚本按默认功能核对两个 Worker 的 secret 名称；关闭 OAuth/支付等功能时按 `template.config.ts` 与实际消费者解释缺项。必需项缺失退出 1，可选项缺失仍列出。web 必需 Auth、Turnstile、OAuth 四项、Stripe 两项、PayPal 三项；jobs 必需 Stripe 两项和 PayPal 三项。可选为 RESEND_API_KEY、AI_GATEWAY_TOKEN、SENTRY_DSN。真值只通过标准输入写 Wrangler，覆盖已有密钥需明确用户授权；Stripe 仅 Test mode，PayPal 仅 Sandbox，webhook 事件按 P2 runbook。
 
+<!-- template-only:start -->
 AI Gateway `saas-staging` 与 R2 桶 `files-staging` 已创建。Gateway 鉴权已开启，账号/Gateway ID 的 web staging vars 与经 stdin 配置的 `AI_GATEWAY_TOKEN` 已部署；secrets 检查及启动配置验收（5.4）通过，见顶部证据。权限仅限当前账户，Cloudflare 无法限单个 Gateway。S3 令牌 `files-staging-s3` 仅授权该桶对象读写、永久有效，凭据已按用户授权保存 `.env.staging-r2`（git 忽略、600、明文），剪贴板已清空；绑定由媒体 change 接入。资源创建不代表 AI 或媒体联通验收；涉及付款/绑卡/条款时交给用户。
 
-GitHub environment `staging` 需要 CLOUDFLARE_API_TOKEN、CLOUDFLARE_ACCOUNT_ID、STAGING_MIGRATION_DATABASE_URL。三项已配置并核对名称；CI token 已验证 active 与当前 account。当前账号的最小权限方案为 Workers Scripts 编辑，Workers KV / Queues / Hyperdrive / Account Settings 读取；控制台没有独立 Workflows scope，Workflows API 使用 Workers Scripts 权限，不要求创建不存在的 scope。token 从控制台 Copy 后经剪贴板 stdin 写 `gh secret set`，立即清空；迁移 URL 只从忽略文件 stdin 传入。用 `gh secret list --env staging` 仅核对名称。
+<!-- template-only:end -->
 
-`deploy-staging.yml` 跟随 main 成功 CI，检出该次 head_sha；手动运行也限 main。environment 限制 secrets，PR CI 不引用它们。`staging-deploy` 串行且不取消：迁移 → jobs → web（完整 SHA）→ 3 分钟版本探活 → staging Chromium 冒烟。首次自动发布失败与补正后成功记录见顶部；任务 7.4 已按成功运行验收。手动重发：
+按所选功能创建私有 R2 文件桶 `saas-files-staging`，CORS 仅允许本项目 staging URL；S3 token 限该桶对象读写。启用 Gateway 时创建本项目 Gateway、配置账号/Gateway vars，并经 stdin 写入 `AI_GATEWAY_TOKEN`。web/jobs 的绑定、桶名与 `R2_FILES_BUCKET` 保持一致；密钥仅进入受保护本地文件或目标 Worker。
+
+GitHub environment `staging` 需要 CLOUDFLARE_API_TOKEN、CLOUDFLARE_ACCOUNT_ID、STAGING_MIGRATION_DATABASE_URL。先只读验证 token 归属与资源权限，再配置并核对名称。CI token 权限按当前 workflow 使用的资源确定；参考权限为 Workers Scripts 编辑，Workers KV / Queues / Hyperdrive / Account Settings 读取；Workflows API 使用 Workers Scripts 权限；以当前平台控制台与部署操作所需权限为准。token 从控制台 Copy 后经剪贴板 stdin 写 `gh secret set`，立即清空；迁移 URL 只从忽略文件 stdin 传入。用 `gh secret list --env staging` 仅核对名称。
+
+`deploy-staging.yml` 跟随 main 成功 CI，检出该次 head_sha；手动运行也限 main。environment 限制 secrets，PR CI 不引用它们。`staging-deploy` 串行且不取消：迁移 → jobs → web（完整 SHA）→ 3 分钟版本探活 → staging Chromium 冒烟。先把 workflow 的 `STAGING_URL` 与两个 Worker 的 `APP_URL` 改为本项目可访问 URL，核对所选功能的 secrets 与绑定。获准手动重发：
 
 ```sh
 gh workflow run deploy-staging.yml --ref main
 ```
 
+<!-- template-only:start -->
 版本探活（7.1）已验证正确版本退出 0，错误版本 36 轮约 180 秒后退出 1。staging 原三项 Chromium 冒烟（6.2）已在本机现有 HTTP 代理下通过，临时等效配置未修改断言或超时，详见顶部证据。PR #62 与 #64 均已合并；补正后的 main 自动发布（7.4）已通过，Actions 原三项 Chromium 冒烟为 3 passed（10.0 秒），见顶部成功运行。
 
 jobs 已仅在 staging 开启日志、采样率 100%、traces 关闭，并按 jobs → web 完成重部署。近 1 小时 Workers Logs 的 `billing.provider_unconfigured` 检查（5.6）已通过：2026-10-09 03:39–04:39 UTC 的固定窗口检索为 0 条，同窗口有 48 条 scheduled 记录与 13 条结构化心跳，详见顶部证据。注册与两平台选择已完成；Managed Payments 与重复投递最小补正均已应用并部署，Stripe Sandbox 积分包付款、余额增加、同一原始事件重投 200 且无重复入账均通过，购买（9.1）已完成。Cron 心跳已通过 2.3；固定窗口 5.6 结果保留，不因本轮重部署重置。
 
+<!-- template-only:end -->
+
 ## 5. 空库重建与回滚
 
-独立空库重建（8.1）已通过，结果如下。重建只用新的 Neon 分支/空数据库，先核对它仍叫 `saas_staging`；删除/覆盖继承副本需用户明确授权。新分支通常继承角色与数据，必须核对三角色已受限且目标库确实为空；已存在角色时跳过 §1 的 CREATE ROLE，不盲目删角色或已有表。按 §1–2 完成 owner、权限、迁移与 seed 校验，验证迁移数及 seed 幂等一致；将新分支直连信息写受保护本地文件。验证完成后才决定是否切换 Hyperdrive，不自动删除分支。
+重建只用新的 Neon 分支/空数据库，先核对它仍叫 `saas_staging`；删除/覆盖继承副本需用户明确授权。新分支通常继承角色与数据，必须核对三角色已受限且目标库确实为空；已存在角色时跳过 §1 的 CREATE ROLE，不盲目删角色或已有表。按 §1–2 完成 owner、权限、迁移与 seed 校验，验证迁移数及 seed 幂等一致；将新分支直连信息写受保护本地文件。验证完成后才决定是否切换 Hyperdrive，不自动删除分支。
 
+<!-- template-only:start -->
 2026-10-08 13:47 UTC 创建独立验证分支 `verify-empty-rebuild-20261008`（`br-lucky-rice-ak38vmkg`，Free、Never 自动删除），父分支为 `production`。继承副本包含 12 条迁移，Console 无改名入口。用户明确授权后，仅删除此分支的 `saas_staging` 副本，保留 neondb 与全部角色，再创建 owner 为 migrator 的空 `saas_staging`。主分支、Hyperdrive 与 GitHub 迁移 secret 均未切换。
 
 验证仅加载忽略的 `.env.staging-neon-rebuild`（600），先确认新分支 hostname、三角色身份、库名 saas_staging/owner migrator，以及用户关系/函数/枚举/域对象均为 0。原权限 SQL 完整通过，三角色高权限均为 false；迁移退出 0，12 记录 = 12 SQL = 12 journal；app DDL/audit UPDATE 与 readonly DELETE 均拒绝 42501；seed 两次退出 0，四套餐及 ID 一致。没有更新 GitHub 迁移目标、没有部署 Worker。用户已完成 readonly 轮换，新连接与最小权限复核通过；该角色未绑定 Hyperdrive。验证分支不自动删除。
 
 回滚前由用户确认本机旧 staging PG 与 cloudflared 可用。把两个 app 的 staging ID 还原为 §3 旧值，按 jobs → web 发布；确认健康与心跳。必要时由协调者禁用 `deploy-staging.yml`，避免自动发布覆盖回滚。Neon 新库与本机旧库是独立数据集，回滚不复制测试数据。
 
-## 6. 24 小时观察与 staging 调度
+<!-- template-only:end -->
+
+回滚到本项目已验证的上一版本与绑定，按 jobs → web 发布并重新检查健康和心跳；必要时暂停自动发布，防止覆盖回滚。保留新库与资源，schema 迁移保持向前兼容；数据恢复见 [restore](restore.md)。不同数据库之间的数据迁移需要单独方案，不随应用回滚自动执行。
+
+## 6. 运行观察与调度
+
+按项目选择的观察窗口检查健康、完整 SHA、Cron 心跳、错误率与 Neon Usage；记录计算、存储与预算。`CRON_PROFILE=reduced` 的心跳核验按实际半小时周期；连续健康轮询本身会唤醒数据库，观察缩容时避免持续请求。费用与配额以项目当前计划为准。
+
+<!-- template-only:start -->
+## 模板观察与调度记录
 
 切换后的观察窗口为 24 小时（2026-10-09 用户决定由七天缩短：当时 jobs Cron 每 5 分钟运行，计算基本不休眠，一天用量乘 30 即为月度估算）。每日检查 /api/health、Cron 心跳、错误率；Neon Dashboard 查看计算小时与存储占用，记录 Free 配额、使用量和预计耗尽时间。原先保持 Cron 频率的安排已由本节末尾的 2026-10-13 用户决定取代；生产仍保持默认频率。
 
@@ -196,3 +233,4 @@ jobs 已仅在 staging 开启日志、采样率 100%、traces 关闭，并按 jo
 **预期用量（估算，待发布后复核）**：按每天约 48 次唤醒、每次计算活跃约 5.5 分钟、0.25 CU 估算，`48 × (5.5 / 60) × 0.25 ≈ 1.1 CU-hours/天`，月度约 35 CU-hours，低于上述 Free 每月 100 CU-hours 配额。实际请求、任务耗时、连接活跃时间与其他 Neon 分支会影响项目用量；持续访问可能阻止缩容到零。这是调度预算，不是已测得的节省量；发布后用 Dashboard Usage 与缩容记录复核。
 
 **健康与验收窗口**：Cloudflare `/api/health` 返回实时 `jobs.lastCronAt`，不以心跳是否在 10 分钟内决定 200/503；部署探活只要求 200、db.up 与完整 SHA 匹配，staging 冒烟覆盖首页、定价页、注册与注销，也不检查心跳新鲜度。Node 健康接口的 10 分钟门槛随原调度保持不变。自动发布后按半小时触发窗口核验心跳推进及维护任务日志，不再要求 10 分钟内推进；健康接口请求本身会访问数据库，观察缩容时避免持续轮询。
+<!-- template-only:end -->

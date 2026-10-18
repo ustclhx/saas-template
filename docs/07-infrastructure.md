@@ -1,6 +1,11 @@
 # 07 · 基础设施、环境与部署
 
-## 0. 部署阶段
+## 0. 部署准备
+
+Cloudflare 项目创建自身的 Postgres、Hyperdrive、KV、Queues、R2 与域名资源；自托管项目从同 SHA 镜像与 release bundle 初始化空白主机。开发使用隔离本地数据库，上线前完成权限、备份恢复、健康与支付配置验收，资源和凭据以本项目 `PROJECT_SETUP.md` 为准。
+
+<!-- template-only:start -->
+### 模板历史部署阶段
 
 模板按两个阶段推进基础设施，避免在原型尚未成形时就投入生产服务器的运维：
 
@@ -13,9 +18,9 @@
 
 **最小原型**指 Phase 0–3 完成：可以注册登录、开通套餐或购买积分、进行一次计费正确的 AI 对话（见 `docs/08-roadmap.md`）。
 
-**当前状态（2026-10-18）**：按用户确认，模板演示的 Cloudflare 生产实例与自托管测试实例已拆除。生产 Workers、KV、Queues、Hyperdrive、Turnstile 与 Neon 项目已删除；GitHub `production` environment（含 secrets）与 `PRODUCTION_BACKUP_SCHEDULE` 已删除。自托管 `saas-selfhost` 栈、项目卷、本机项目镜像与 `/opt/saas-selfhost` 已清理，80/443 已释放。四个非空 R2 桶已解除锁并设为所有对象 1 天后过期，待 2026-10-19 核空后删桶；`selfhost.ezarouter.cc` DNS 与 Sentry Uptime 监控因 API 权限不足待用户手动删除。生产自定义域名已解绑，公共 DNS 的 A/AAAA/CNAME 均为 NXDOMAIN。详见[拆除记录](./runbooks/evidence/teardown-2026-10-18.md)。
+**当前状态（2026-10-18）**：按用户确认，模板演示的 Cloudflare 生产实例与自托管测试实例已拆除。生产 Workers、KV、Queues、Hyperdrive、Turnstile 与 Neon 项目已删除；GitHub `production` environment（含 secrets）与 `PRODUCTION_BACKUP_SCHEDULE` 已删除。自托管 `saas-selfhost` 栈、项目卷、本机项目镜像与 `/opt/saas-selfhost` 已清理，80/443 已释放。四个非空 R2 桶已解除锁并设为所有对象 1 天后过期，待 2026-10-19 核空后删桶；`selfhost.ezarouter.cc` DNS 与 Sentry Uptime 监控因 API 权限不足待用户手动删除。生产自定义域名已解绑，公共 DNS 的 A/AAAA/CNAME 均为 NXDOMAIN。详见拆除记录（私有证据库 `saas-template-evidence:teardown-2026-10-18.md`）。
 
-拆除前 Cloudflare 生产 **v0.1.3** 的完整 SHA 为 `54c537542ad0f2033628c136a7057a705c6d0218`；[发布 run 38910072786](https://github.com/ustclhx/saas-template/actions/runs/38910072786)、每日加密逻辑备份、两路恢复演练及 Sentry 可读堆栈与健康监控均已验证，见 [production runbook](./runbooks/production-neon.md) 与[历史发布恢复证据](./runbooks/evidence/production/release-2026-10-16.md)。配置、workflow、部署材料与 runbook 保留供派生项目使用，原生产资源 ID 已失效，重新上线须创建项目自身资源和凭据。staging 继续由 main 自动发布到 Neon（同组织 Launch），`add-cloud-staging-neon` 已于 2026-10-11 完成 29/29 并归档。
+拆除前 Cloudflare 生产 **v0.1.3** 的完整 SHA 为 `54c537542ad0f2033628c136a7057a705c6d0218`；[发布 run 38910072786](https://github.com/ustclhx/saas-template/actions/runs/38910072786)、每日加密逻辑备份、两路恢复演练及 Sentry 可读堆栈与健康监控均已验证，见 [production runbook](./runbooks/production-neon.md) 与历史发布恢复证据（私有证据库 `saas-template-evidence:production/release-2026-10-16.md`）。配置、workflow、部署材料与 runbook 保留供派生项目使用，原生产资源 ID 已失效，重新上线须创建项目自身资源和凭据。staging 继续由 main 自动发布到 Neon（同组织 Launch），`add-cloud-staging-neon` 已于 2026-10-11 完成 29/29 并归档。
 
 Cloudflare 生产 change 的模板范围已结项，合并后由协调者归档；自托管四个 change 已于 2026-10-17 全部同步并归档（#239）。`add-cloud-acceptance-followups` 的 staging 支付验收由另一 worker 处理中，未合并结果不计入当前 main 进度。2026-10-18 用户决定：正式收款主体（Q9）、生产 live 支付（原 6.1）与生产延迟放置对比（原 5.1）不在模板内验收，移交派生项目上线清单，方法见 `docs/05-billing.md` §8、本文件 §8 与 production runbook。派生项目开放注册前还需恢复默认 Cron 并复核费用。
 
@@ -25,7 +30,8 @@ Phase 0 本机链路的历史实测条件与当前观察范围：
 - Phase 0 请求绕回本机，其延迟基线只验证原链路可用，不能代表 Neon 或生产环境。
 - 本机 PG 不做备份；Neon staging 为可重建测试数据，24 小时观察显示 compute 常驻约 165 CU-hrs/月，超出 Free 100 CU-hrs；2026-10-10 曾决定测试阶段保持 Free，2026-10-15 已随组织升级为 Launch（见 runbook staging-neon §6 与 production-neon §4），staging 不替代生产备份方案。阶段一的旧 Hyperdrive、Tunnel 与 Workers VPC 资源已于 2026-10-10 删除。
 
-## 1. 自建 Postgres（Cloudflare 形态后路；2026-10-15 起阶段二改用 Neon 付费档，见 §0）
+<!-- template-only:end -->
+## 1. 自建 Postgres（Cloudflare 形态的可选后端，见 §0）
 
 ### 部署形态
 一台 VPS（地区按具体应用的主要用户选择，模板不限定），Docker Compose 运行：
@@ -48,7 +54,10 @@ Phase 0 本机链路的历史实测条件与当前观察范围：
 
 ### 备份与恢复（阶段二必须；阶段一不做）
 
+<!-- template-only:start -->
 > 状态：推迟到阶段二实施。R2 主备份与异地第二副本均为待办（`docs/08-roadmap.md`「生产迁移」）。
+<!-- template-only:end -->
+
 
 - 每日基础备份 + 持续 WAL 归档到独立的 R2 桶（开启 Bucket Lock 保留规则，防误删）。
 - **异地第二副本**：每日基础备份与 `pg_dump` 再同步一份到**非 Cloudflare 账号**下的对象存储（如 Backblaze B2，使用独立凭证）。业务和主备份都在同一个 Cloudflare 账号下，账号被盗、被封或误操作时会一起丢失。
@@ -75,6 +84,7 @@ Phase 0 本机链路的历史实测条件与当前观察范围：
 
 ## 2. Hyperdrive 与数据库连接
 
+<!-- template-only:start -->
 ### 阶段一线上 staging：Neon（main 自动发布已验收）
 
 Neon 项目 `saas-staging`（2026-10-15 前为 Free，现随组织为 Launch 计费，计算 0.25–2 CU），Postgres 17、`aws-us-west-2`，数据库 `saas_staging`；Hyperdrive 使用 app 的非 pooled 直连与 `sslmode=require`。migrator 为数据库/public owner，仅用于迁移，readonly 用于排查。Console 创建角色默认加入 `neon_superuser`；受限角色通过 SQL 创建，再由默认 owner 授权，原 `02-db-grants.sql` 不变。2026-10-08 已验证三角色均无高权限 flags/该成员身份，app DDL 与审计 UPDATE、readonly DELETE 均被拒绝。
@@ -86,6 +96,7 @@ Neon 项目 `saas-staging`（2026-10-15 前为 Free，现随组织为 Launch 计
 
 缓存 API 省略默认字段，官方默认 max_age 为 60 秒，详见 [操作记录](./runbooks/staging-neon.md#3-hyperdrive-与切换)。计费、会话及权限读写使用不缓存的 `HYPERDRIVE`。新关缓存 Hyperdrive 经 remote preview 的 Neon 锁探针七场景/49 断言已通过，证据见下文；§8 保留本机链路历史延迟，不能作为 Neon 业务 Worker 延迟基线。
 
+<!-- template-only:end -->
 ### Workers VPC（切换前 staging 与阶段二自建 PG）
 
 Hyperdrive 通过 Workers VPC 服务经 Tunnel 访问私有数据库，**不需要公网主机名、DNS 记录、Access 应用或 Service Token**。链路：Worker → Hyperdrive → Workers VPC 服务（TCP）→ Tunnel → `cloudflared` → Postgres。
@@ -122,6 +133,7 @@ export function createDb(hd: Hyperdrive) {
 // 每个请求调用一次 createDb(env.HYPERDRIVE)，不要缓存到模块作用域
 ```
 
+<!-- template-only:start -->
 ### 事务与锁（7.1 本机链路历史实测，2026-10-03）
 
 **结论：可用。** 经 Hyperdrive（关缓存）时，显式事务内的 `SELECT ... FOR UPDATE` 与 `pg_advisory_xact_lock` 都能让并发请求串行执行；事务提交、回滚，以及 Worker 中途结束导致事务被丢弃，三种情况下锁都会释放，连接池中不残留锁或未结束的事务。`docs/04`、`docs/06` 中「先取空间级 `pg_advisory_xact_lock` 再检查并写入」的写法保持不变，不需要改用 design.md 风险条目中「锁 workspace 行」的替代写法。
@@ -222,6 +234,7 @@ export function createDb(hd: Hyperdrive) {
 - 计划内的 cloudflared 升级或重启要逐个副本进行，两次之间至少间隔 30 s（确认新副本注册了 2 条连接、`/api/health` 恢复正常后再动下一个），并避开流量高峰：每停一个副本都会有一次 5–10 s 的数据库访问卡顿，`--grace-period` 不能避免（cloudflared 不排空 Hyperdrive 的长连接）。
 - 阶段二在生产服务器上用同一脚本重测（`HEALTH_URL`、`REPLICA_1`、`REPLICA_2` 可配置），并补测「写事务进行中切断副本」的场景。
 
+<!-- template-only:end -->
 ## 3. 环境
 
 | 环境 | Web | 数据库 | 支付 | 说明 |
@@ -333,7 +346,9 @@ jobs 用 `wrangler deploy --env staging --dry-run --outdir dist --var APP_VERSIO
 
 部署直接使用注入后的产物：jobs 指定 `dist/index.js --no-bundle` 并再次传入版本 var；web 指定 Vite 生成的 `dist/server/wrangler.json --no-bundle`（包含 staging 绑定与 client assets 路径）。CI 不调用会重新构建的 `deploy:staging` 脚本。Sentry 认证只在上传与 finalize 步骤从 environment secrets 读取，PR CI 不上传。验收与失败排查见 [Sentry runbook](./runbooks/sentry.md)。
 
+<!-- template-only:start -->
 GitHub `staging` environment 三项 secrets（`CLOUDFLARE_ACCOUNT_ID`、`STAGING_MIGRATION_DATABASE_URL`、`CLOUDFLARE_API_TOKEN`）已配置，CI token 已验证 active 与当前 account。PR #62 合并为 `ad1b5da` 后的首次自动发布在 web 预渲染阶段失败：本地 Hyperdrive 缺少模拟连接串，迁移与 jobs 已成功。PR #64 合并为 `ce623ca`，在 Deploy web 的环境变量中为两个 Hyperdrive 绑定设置不可达的本地占位连接；仅使预渲染 preview 能启动，快照按既有设计降级为示例数据，绝不连接真实库。其触发的 [Deploy staging run 37894416572](https://github.com/ustclhx/saas-template/actions/runs/37894416572) 于 `2026-10-09T06:36:31Z–06:38:28Z` 全部成功：Neon 迁移 → jobs → web → 版本健康检查 → staging 冒烟（`3 passed (10.0s)`）。健康检查匹配完整 `ce623cab63a99d6eee8c8ba67eeb09e564f97779` 且 `db.status=up`，任务 7.4 已验收；本机原三项冒烟（6.2）亦已通过，断言与超时未改。PR3 仅补齐文档与任务记录，9.2 24 小时观察保留未完成。操作与回滚见 [Neon staging runbook](./runbooks/staging-neon.md)。
+<!-- template-only:end -->
 
 ### 本地冒烟 e2e
 
@@ -386,6 +401,7 @@ Sentry 只在服务端启用，接入 web fetch 与 jobs fetch / Queue / Cron / 
 本地真实事件与合并后 staging 可读堆栈的验收记录见 [Sentry runbook](./runbooks/sentry.md)，
 staging 尚未通过前不勾选 OpenSpec 1.2。
 
+<!-- template-only:start -->
 ## 8. 延迟基线（Phase 0 实测 7.4，2026-10-03）
 
 ### 生产初测（2026-10-16，v0.1.0）
@@ -441,3 +457,4 @@ staging 尚未通过前不勾选 OpenSpec 1.2。
 - 保持 `createDb` 的 `prepare: true`（§2）：同一请求内的重复查询只需 1 次往返；改为 `false` 会让每次查询多一次往返。
 - 请求内顺序执行的查询次数直接放大延迟（阶段一每次约 160–310 ms）。后续 change 应尽量合并查询（CTE、`returning`、一个事务内少次往返），避免在一个请求中串行多次读库；这一点在阶段二数据库离用户较远时同样适用。
 - 不依赖 Smart Placement 把访问数据库的 Worker 移到数据库附近。阶段二若用户与数据库不在同一地区，建议对以数据库为主的 Worker 评估显式放置（`placement.mode = "targeted"`，`region` 或 `host` 指向数据库所在地区），并在阶段二重新测量本基线后再决定。
+<!-- template-only:end -->

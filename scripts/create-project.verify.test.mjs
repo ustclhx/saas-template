@@ -114,6 +114,20 @@ test('真实副本覆盖 Cloudflare 默认、selfhost 默认和 selfhost 全关�
             if (!content.includes(0)) {
               assert.ok(!content.toString().includes(sourceName), `原名称仍存在：${path}`)
               assert.ok(!content.toString().includes(sentinel), `真值仍存在：${path}`)
+              if (/^(?:\.agents|\.claude)\/skills\/.*\.md$/.test(projectPath)) {
+                assert.doesNotMatch(content.toString(), /项目维护约定[、，\s`]+项目维护约定/)
+                for (const [reference] of content.toString().matchAll(/docs\/[\w./-]+\.md/g)) {
+                  await assert.doesNotReject(
+                    () => readFile(join(result.target, reference)),
+                    `${projectPath} 引用不存在的文档：${reference}`,
+                  )
+                }
+              }
+              assert.doesNotMatch(
+                content.toString(),
+                /docs\/runbooks\/evidence|saas-template-evidence|product-res-ecs|170a06d37ad50396b19943eb6b77a21d|ezarouter\.cc|ustclhx|\/Users\/hxlee/,
+                `模板专属标识仍存在：${path}`,
+              )
             }
             count++
           }

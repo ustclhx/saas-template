@@ -74,6 +74,7 @@ python3 deploy/selfhost/release/bundle.py build \
 缺少声明时不得绕过门、不自动 down migration。需要匹配备份恢复到新空卷；恢复入口
 及异机 ownership 签收仍属后续任务，不用删除 owner 目录或修改 DBOS 内部表代替。
 
+<!-- template-only:start -->
 ## 本地夹具与未完成证据
 
 ```sh
@@ -145,7 +146,7 @@ CI artifact包含原SHA部署bundle、image-set与脱敏演练报告；真实ser
 和三份附加无真值 env 示例。共 27 个文件有 checksum，另有 `release.json`；
 所有镜像引用固定到该发布集合的 digest，包内没有业务源码、构建文件或运行真值。
 验收 workflow 已固定到这次成功发布，并拒绝缺少上述恢复材料的 bundle。
-证据与可重复命令见 [d-bundle2 报告](evidence/selfhost/d-bundle2-2026-10-14/report.md)。
+证据与可重复命令见 d-bundle2 报告（私有证据库 `saas-template-evidence:selfhost/d-bundle2-2026-10-14/report.md`）。
 后续发布仍由协调者决定，不重触发 `selfhost-publish` 或覆写正式 SHA。
 
 ## 第三次正式 GHCR 集合与 ownership 升级边界（2026-10-15）
@@ -156,10 +157,11 @@ CI artifact包含原SHA部署bundle、image-set与脱敏演练报告；真实ser
 jobs 使用进程持有的 ownership 卷 flock，保持独立 PID namespace，不使用 `pid:host`。
 只复用该成功发布，不再次触发发布或覆写镜像。
 正式新卷部署、exit/namespace/recreate/实际reboot、SSH入口及兼容回滚证据见
-[d-vm2报告](evidence/selfhost/d-vm2-2026-10-15/report.md)，本轮1.5/2.1/2.3/6.3已验收。
+d-vm2报告（私有证据库 `saas-template-evidence:selfhost/d-vm2-2026-10-15/report.md`），本轮1.5/2.1/2.3/6.3已验收。
 回滚的第二版仅为本地registry版本元数据fixture；真实服务器第7组仍保持BLOCKED。
 
 **BREAKING：** 修复前镜像（0813050及更早）从未部署到真实服务器，不提供缺少
 machineId或token锁文件的旧owner升级迁移路径。此正式版本要求新卷部署，旧owner记录
 会保守拒绝；不得自动改写旧记录、删除目录或换executor ID绕过。异机恢复退出证明仍
 为开放设计项，恢复数据库不代表可启动jobs，须等待独立流程与签收。
+<!-- template-only:end -->

@@ -100,7 +100,9 @@ type NormalizedEvent =
 - 税务：暂不启用 Stripe Tax；接入 MoR 时由 MoR 处理。
 - **限制**：正式收款需要 Stripe 支持地区的主体；无主体阶段仅用测试模式开发与联调。
 
-2026-10-18（Asia/Taipei）补充：按协调者指示，使用已登录 Sandbox CLI 的 Test Clocks，复用已有应用 Checkout 的月付/年付独立订阅，在 staging `a2381f875fbd8b1009e48f7024addcb25285aca9` 各推进一个平台账期。两笔 `invoice.paid` 在 endpoint 中实际为 `2026-09-30.endive`、`livemode=false`，分别入账 renewal / 1900 与 19000（USD 最小单位），各只新增首月 1000 积分；各两次重投的 staging HTTP 200、duplicate 事件 ID 与前后账务快照一致，两个空间同快照对账差额均为 0。证据见 [W3 沙箱验收](runbooks/evidence/staging-acceptance/2026-10-17/README.md)。平台时钟推进不代表应用时间、年付后续月份 Cron 或自然到期已发生；真实主体与 live 收款验收移交派生项目，沿用 §8 清单。
+<!-- template-only:start -->
+2026-10-18（Asia/Taipei）补充：按协调者指示，使用已登录 Sandbox CLI 的 Test Clocks，复用已有应用 Checkout 的月付/年付独立订阅，在 staging `a2381f875fbd8b1009e48f7024addcb25285aca9` 各推进一个平台账期。两笔 `invoice.paid` 在 endpoint 中实际为 `2026-09-30.endive`、`livemode=false`，分别入账 renewal / 1900 与 19000（USD 最小单位），各只新增首月 1000 积分；各两次重投的 staging HTTP 200、duplicate 事件 ID 与前后账务快照一致，两个空间同快照对账差额均为 0。证据见 W3 沙箱验收（私有证据库 `saas-template-evidence:staging-acceptance/2026-10-17/README.md`）。平台时钟推进不代表应用时间、年付后续月份 Cron 或自然到期已发生；真实主体与 live 收款验收移交派生项目，沿用 §8 清单。
+<!-- template-only:end -->
 
 ### PayPal 实现要点
 - 直接使用 REST（`fetch`），自封装：OAuth token（缓存到 KV，按 `expires_in` 过期）、Orders v2、Subscriptions v1、Webhook 验签。
@@ -111,6 +113,7 @@ type NormalizedEvent =
 - 验签：调用 `POST /v1/notifications/verify-webhook-signature`（需 `webhook_id`），失败即拒绝。
 - 无客户门户：账单页周期末取消调用 `suspend`，恢复调用 `activate`；立即取消调用 `cancel`。Subscriptions v1 没有本实现使用的远端周期末取消字段，因此本地保留已付权益至周期末，SUSPENDED 回调不能覆盖本地取消意图；终止后的订阅不能恢复。首版 `capabilities.changePlan=false`，换套餐使用「取消后重新订阅」，重叠处理见 §6。
 
+<!-- template-only:start -->
 ### PayPal Sandbox 实测与录制（2026-10-15，Asia/Taipei）
 
 复用当前 Sandbox App 的 2026-10-11 真实交易，在 2026-10-14 UTC 将既有 webhook URL 临时改为自建本地接收器的 Cloudflare quick tunnel，并通过 Webhooks Management API 重投 6 条既有事件。随后按协调者指示，使用 [PayPal 官方 Sandbox 测试卡](https://developer.paypal.com/sandbox-testing/card-testing) 与 Orders v2 `payment_source.card` 创建独立 USD 0.01 订单，创建接口直接返回 COMPLETED 与 Capture；全额退款也为 COMPLETED，再录制这笔交易的两条回调。既有 staging Capture / Sale 和待审退款均未改动。8 条回调全部收到原始 body 与 transmission headers，回传 `/v1/notifications/verify-webhook-signature` 得到 `SUCCESS`，接收器返回 200。两轮录制后均已恢复原 staging URL 与原 12 项事件订阅，并停止接收器和 quick tunnel；未修改命名 tunnel、staging secrets 或部署。本次接收器只录制和验签，不写应用账务，不能代替 staging 11.1。
@@ -138,10 +141,11 @@ type NormalizedEvent =
 
 月付退款后按比例保留 `floor(1000 × 1500 / 1900)=789` 积分，回收 211；年付全额退款回收其 5000。余额从原 90 经首付变为 6090，再为 5879、879；各阶段无负批次、重复付款或重复积分来源，对账差额为 0。既有验收付款、订阅与待审退款未变。
 
-四条新增录制及十份 GET 快照位于 `packages/billing/src/paypal/fixtures/recorded/w3-*.json`；原始回调先在线验签 SUCCESS，再脱敏，离线 recorded 测试验证月付/年付历史分类、不可变账期和部分/全额退款关联。使用额外临时 webhook 经自建接收器 + Docker quick tunnel 录制，原 staging webhook 未改动；清理与重复回调结果见 [W3 补充验收证据](runbooks/evidence/staging-acceptance/2026-10-18/README.md)。
+四条新增录制及十份 GET 快照位于 `packages/billing/src/paypal/fixtures/recorded/w3-*.json`；原始回调先在线验签 SUCCESS，再脱敏，离线 recorded 测试验证月付/年付历史分类、不可变账期和部分/全额退款关联。使用额外临时 webhook 经自建接收器 + Docker quick tunnel 录制，原 staging webhook 未改动；清理与重复回调结果见 W3 补充验收证据（私有证据库 `saas-template-evidence:staging-acceptance/2026-10-18/README.md`）。
 
 **移交派生项目**：按 2026-10-18 用户决定，PayPal 自然月/年续费（含恢复后续费）、取消到期终止及年付第 2–12 月真实 Cron 观察按实际账期执行。既有订阅下一扣款为 `2026-11-11T10:00:00Z`；不能用模拟器、DAY Plan、欠款 capture 或隔离库时间夹具替代。Capture 部分退款、争议及其他未录制终态不在本次四项任务已通过证据内。OAuth KV 缓存仍有离线测试，本次不证明线上 KV 命中。
 
+<!-- template-only:end -->
 ### 未来 MoR
 Creem / Paddle / Polar 各实现一个 Provider，`capabilities.merchantOfRecord=true`；结账、Webhook、门户均映射到同一套内部事件，业务层无需改动。
 
@@ -353,6 +357,7 @@ INSERT INTO credit_hold (...), credit_hold_allocation (...);
 - `/app/$slug/usage`：积分流水、按模型/成员的用量统计。
 - `/admin/billing`：付款、订阅、Webhook 事件（可重放）；手动调积分和完整管理能力在 P5。
 
+<!-- template-only:start -->
 ## P2 离线开发与联通边界（2026-10-04）
 
 当前离线开发不需要支付密钥。缺失凭据或未同步价格时，定价和账单页面显示支付不可用，不能伪装支付成功。Stripe 使用 SDK 23.0.0 与固定 API 版本 `2026-09-30.endive`；支付工厂按 `PAYMENT_MODE` 选择 test/live，本地与 staging 保持 test（PayPal Sandbox），token 缓存到 CACHE KV 并按环境隔离。Stripe 3.2 已有真实 Test 录制；PayPal 的 12 条真实 Sandbox 回调录制及补充矩阵见 §2。自然时间和真实收款主体验收移交派生项目。
@@ -368,6 +373,7 @@ INSERT INTO credit_hold (...), credit_hold_allocation (...);
 
 已完成两平台价格同步与幂等复验（1.3）、Stripe 真实录制与 Provider 验收（3.2）、规定页面验收（10.1–10.3）。本文与路线图的策略及实测证据更新归 10.4；后续 change `add-cloud-acceptance-followups` 承接 PayPal Sale 录制和 staging 沙箱矩阵，并单列自然时间与真实主体移交，范围及逐项证据以其 tasks 为准。
 
+<!-- template-only:end -->
 ## 8. 支付模式与生产切换清单
 
 `createPaymentRuntime` 是 Web、Jobs 和认证删除步骤共用的支付工厂。非敏感 Worker var `PAYMENT_MODE` 只接受 `test` / `live`，两端 Wrangler 顶层与 `env.staging` 均显式设为 `test`；仓库不提供 production 环境配置。只有 `SENTRY_ENVIRONMENT=development` 缺少模式时默认 test，staging、production 和未知环境缺失模式时关闭支付：HTTP 支付入口返回 503，Jobs 事件失败并交给既有重试机制。结构化日志 `billing.runtime_invalid` 只包含安全字段名与模式，公开营销定价降级为支付不可用。

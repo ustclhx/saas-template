@@ -22,9 +22,9 @@
 
 已归档的其他 change：`add-cloud-staging-neon` 29/29（#85）、`add-first-run-admin-setup` 6/6 与 `add-payment-live-mode` 9/9（#184）、`add-text-reasoning-resilience` 9/9（#196）、`add-staging-fault-injection` 20/20（#209）、`add-agent-skills` 8/8（#211）。live 模式只交付代码，生产凭据与外部收款验收见下文「Cloudflare 生产上线」与 Q9。
 
-**自托管形态**（Node + Docker Compose，PG 在 Compose 内）：**2026-10-17 结项并归档**。四个 change 全部完成（foundation 33/33、job-engine 32/32、storage-observability 18/18、delivery 33/33），已同步主 spec 并归档为 `archive/2026-10-17-add-selfhost-*`。服务器验收在新加坡测试主机 `product-res-ecs`（2 vCPU / 3.5 GiB）用正式 release `1888e7d` 完成：真实 ACME（`selfhost.ezarouter.cc`）、R2 外部存储与备份（用户决定单一供应商：同一 R2 账号下独立桶与桶级 token，已记录失去供应商独立性）、两路时间点与逻辑恢复、2 核整机任务预算与真实整机 reboot（21 项恢复检查通过）。证据见 [server-acceptance-1888e7d](./runbooks/evidence/selfhost/server-acceptance-1888e7d/report.md)。
+**自托管形态**（Node + Docker Compose，PG 在 Compose 内）：**2026-10-17 结项并归档**。四个 change 全部完成（foundation 33/33、job-engine 32/32、storage-observability 18/18、delivery 33/33），已同步主 spec 并归档为 `archive/2026-10-17-add-selfhost-*`。服务器验收在新加坡测试主机 `product-res-ecs`（2 vCPU / 3.5 GiB）用正式 release `1888e7d` 完成：真实 ACME（`selfhost.ezarouter.cc`）、R2 外部存储与备份（用户决定单一供应商：同一 R2 账号下独立桶与桶级 token，已记录失去供应商独立性）、两路时间点与逻辑恢复、2 核整机任务预算与真实整机 reboot（21 项恢复检查通过）。证据见 server-acceptance-1888e7d（私有证据库 `saas-template-evidence:selfhost/server-acceptance-1888e7d/report.md`）。
 
-**实例状态（2026-10-18）**：用户确认拆除模板演示的生产实例与自托管测试实例，验收勾选保留为历史交付结果。生产云资源与自托管栈已清理；四个非空 R2 桶待 2026-10-19 核空删除，DNS / Sentry 与桶级 token 手动收尾见[拆除记录](./runbooks/evidence/teardown-2026-10-18.md)。生产配置、workflow、GHCR 镜像与 runbook 保留供派生项目使用；staging 全部资源保留。
+**实例状态（2026-10-18）**：用户确认拆除模板演示的生产实例与自托管测试实例，验收勾选保留为历史交付结果。生产云资源与自托管栈已清理；四个非空 R2 桶待 2026-10-19 核空删除，DNS / Sentry 与桶级 token 手动收尾见拆除记录（私有证据库 `saas-template-evidence:teardown-2026-10-18.md`）。生产配置、workflow、GHCR 镜像与 runbook 保留供派生项目使用；staging 全部资源保留。
 
 各阶段之间与阶段内部的并行拆分见 [09-parallel-plan.md](./09-parallel-plan.md)。
 
@@ -91,7 +91,7 @@
 - [x] 对话列表、对话页（`useChat`）、模型选择（#36、#41）
 - [x] 权益检查与 AI 限流（#33、#38）
 - [x] 决策 12：结算使用「流内最终 usage → 预扣额封顶的估算」；被中断流在 Gateway 不产生日志，不做日志回查（#98；chat 2.9，2026-10-12 已决）。
-- [x] **阶段验收（chat 5.1）**：staging 对话、停止、关页与服务商报错、账本不变式及 Gateway 可比用量核对已通过（#205），change 已归档（#209）；证据见 `docs/runbooks/evidence/staging-acceptance/`。
+- [x] **阶段验收（chat 5.1）**：staging 对话、停止、关页与服务商报错、账本不变式及 Gateway 可比用量核对已通过（#205），change 已归档（#209）；证据见 私有证据库 `saas-template-evidence:staging-acceptance/`。
 
 ## CI 能力建设
 
@@ -133,7 +133,7 @@
 
 **验收**：production 绑定域名可访问；tag 发布全流程自动化且健康 SHA 匹配；从 Neon 时间点与逻辑备份各恢复一次并通过校验。
 
-**进度（2026-10-18）**：生产演示实例已拆除；拆除前 **v0.1.3** 的完整 SHA 为 `54c537542ad0f2033628c136a7057a705c6d0218`（[发布 run 38910072786](https://github.com/ustclhx/saas-template/actions/runs/38910072786) 成功）。seed、每日加密备份、两路恢复演练、Sentry source map / 可读堆栈与健康监控均有[历史证据](./runbooks/evidence/production/release-2026-10-16.md)。本次核对 1–5 的模板范围并完成 7.1，13/13；change 保持活动状态，待合并后由协调者归档。2026-10-18 用户决定：原 5.1、6.1 与 Q9 不在模板内验收，移交派生项目上线清单；派生项目开放注册前还需重建自身资源和凭据、按 production runbook 恢复默认 Cron 并复核费用。
+**进度（2026-10-18）**：生产演示实例已拆除；拆除前 **v0.1.3** 的完整 SHA 为 `54c537542ad0f2033628c136a7057a705c6d0218`（[发布 run 38910072786](https://github.com/ustclhx/saas-template/actions/runs/38910072786) 成功）。seed、每日加密备份、两路恢复演练、Sentry source map / 可读堆栈与健康监控均有历史证据（私有证据库 `saas-template-evidence:production/release-2026-10-16.md`）。本次核对 1–5 的模板范围并完成 7.1，13/13；change 保持活动状态，待合并后由协调者归档。2026-10-18 用户决定：原 5.1、6.1 与 Q9 不在模板内验收，移交派生项目上线清单；派生项目开放注册前还需重建自身资源和凭据、按 production runbook 恢复默认 Cron 并复核费用。
 
 ## Phase 4 · AI 图片 / 视频
 
@@ -143,7 +143,7 @@
 - [x] 媒体回调入口（HMAC + 服务商验签 + 先落库再 sendEvent；#73）
 - [x] 任务列表/详情页、参数表单（由 params_schema 渲染）；后台模型参数 schema 编辑（#72、#75、#96）
 - [x] 并发数限制（空间级事务锁）；DB-only 超时回收，Workflow 自检终态停止（#73；media 4.7，不依赖查询 Workflow 状态）
-- [x] **阶段验收（media 7.1/7.2）**：staging 媒体矩阵（含 `add-staging-fault-injection` 的受控故障）与 fal 视频真实产出已通过（#200、#209），change 已归档；证据见 `docs/runbooks/evidence/staging-acceptance/`。
+- [x] **阶段验收（media 7.1/7.2）**：staging 媒体矩阵（含 `add-staging-fault-injection` 的受控故障）与 fal 视频真实产出已通过（#200、#209），change 已归档；证据见 私有证据库 `saas-template-evidence:staging-acceptance/`。
 
 ## Phase 5 · 管理后台
 
@@ -162,7 +162,7 @@
 - [x] content-collections 博客（MDX）、法律页、可选文档站（#44；Q2 已决定）
 - [x] SEO：metadata、sitemap、robots、构建期 OG 图片、JSON-LD、hreflang（#53）
 - [x] 暗色模式与主题定制（#37）
-- [x] **阶段验收（marketing 5.2）**：2026-10-11 staging 首页、定价页、博客中英文共六页 Lighthouse SEO / 可访问性均为 100；16/16 任务已同步并归档（#86；[验收证据](./runbooks/evidence/marketing/lighthouse-2026-10-11.md)）。
+- [x] **阶段验收（marketing 5.2）**：2026-10-11 staging 首页、定价页、博客中英文共六页 Lighthouse SEO / 可访问性均为 100；16/16 任务已同步并归档（#86；验收证据（私有证据库 `saas-template-evidence:marketing/lighthouse-2026-10-11.md`））。
 
 ## Phase 7 · 打磨与可选功能
 
@@ -173,7 +173,7 @@
 - [x] Waitlist、Newsletter（#46）
 - [x] `CLAUDE.md` / `AGENTS.md`：模块说明、约定、常用命令（#52）
 - [x] 「从模板创建新项目」的清单与脚本（改名、换配置、初始化基础设施；#52、#92、#100）
-- [x] **新项目阶段验收（observability 6.1）**：#100 从模板生成独立文本 AI 项目，配置新 Neon / Cloudflare staging，健康、注册到首次 AI 调用、精确积分结算和 Sentry 源码堆栈均通过；临时资源已清理（2026-10-12；[脱敏证据](./runbooks/evidence/create-project/2026-10-12/acceptance.json)）。原 staging 的 Sentry 1.2 已另行验收。
+- [x] **新项目阶段验收（observability 6.1）**：#100 从模板生成独立文本 AI 项目，配置新 Neon / Cloudflare staging，健康、注册到首次 AI 调用、精确积分结算和 Sentry 源码堆栈均通过；临时资源已清理（2026-10-12；脱敏证据（私有证据库 `saas-template-evidence:create-project/2026-10-12/acceptance.json`））。原 staging 的 Sentry 1.2 已另行验收。
 
 ## 待决事项
 

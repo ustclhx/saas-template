@@ -9,6 +9,7 @@
       "dependsOn": ["^typecheck"]
     },
     "test": {
+      "env": ["EVIDENCE_DIR"],
       "dependsOn": ["^typecheck", "^test"]
     },
     "dev": {

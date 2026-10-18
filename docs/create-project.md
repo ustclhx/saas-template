@@ -80,11 +80,15 @@ Compose、同 SHA release、health/jobs/heartbeat、兼容回滚、ownership 与
 `compose.proxy.yaml`；配套 Python/防火墙文件一并继承。参考
 [部署](runbooks/selfhost-deploy.md)、[初始化](runbooks/selfhost-init.md)、
 [release](runbooks/selfhost-release.md) 和 [代理](runbooks/selfhost-proxy.md) runbook。
+<!-- template-only:start -->
 恢复/drill 材料尚未交付，首次真实 registry 发布与 B/D ownership 签收仍待协调者确认。缺失文件
 在清单中标为待交付，不将生成成功当成实际部署或恢复验收通过。
+<!-- template-only:end -->
 自托管 secret 通过受限文件与对应 `_FILE` 配置，示例值为空；不使用 CF staging 凭据。
-自托管副本不复制自动 CF staging 发布 workflow；Cloudflare 副本继续保留原发布路径。
+自托管副本不复制 Cloudflare staging/production 发布与 Neon 备份 workflow；Cloudflare 副本保留这些通用发布/备份入口，需配置自身资源与凭据。
 OAuth/Turnstile 关闭时副本 Compose 和示例同步移除其要求；原模板文件保持不变。
+
+生成器只交付初始化与运行新项目需要的材料：排除模板路线图、并行波次、一次性验收/交接记录、全部历史 change、Phase 0 探针、Orca 生命周期脚本与模板验收 workflow。业务单测/类型检查依赖的本地夹具、脱敏支付回调录制、OpenSpec 主规格及项目扩展技能保留。Neon staging / production 与 staging 准备 runbook 保留建库、受限角色、资源、密钥和发布/回滚步骤，资源名随项目改写。混合文档以 `template-only` 注释标明仅供模板维护的部分，派生时删除；指向排除资料的链接改为说明文字。新项目自行建立私有验收记录，证据写入 `EVIDENCE_DIR`，默认落在已忽略的 `test-results/evidence/`。
 
 复制排除各级 `.git`、node_modules、`.env` / `.env.*` 和 `.dev.vars*`（保留 example）、
 `.wrangler`、dist、`.turbo`、coverage、构建和测试生成目录、进行中的 `openspec/changes`、
@@ -97,6 +101,7 @@ backups/backup-data/、releases/release-state/、state/.state/ 等运行目录�
 测试使用 Node 内置 test runner，在临时目录验证改名、真值排除、功能清单和路径边界，
 无论成功或失败均清理测试目录；不向源树注入测试密钥。
 
+<!-- template-only:start -->
 完整副本验证使用 `pnpm test:create-project:verify`：从真实工作树生成 CF 默认、selfhost 默认、
 selfhost 全关计费/积分/营销/i18n/AI 三个临时项目，逐文件确认模板原名称与排除目录不存在，
 安装依赖并运行 typecheck、单元测试与 Node build，同时验证副本再次生成。结束后清理临时目录。
@@ -104,6 +109,7 @@ selfhost 全关计费/积分/营销/i18n/AI 三个临时项目，逐文件确认
 实际验证 SSR/静态资源、登录/空间、关闭入口、成功 heartbeat 与完整 SHA。
 该命令单独运行，避免日常边界测试重复安装完整依赖。
 
+<!-- template-only:end -->
 新库初始化时，先以 migrator 应用已有迁移，再将新库 app 连接通过进程环境传给
 `pnpm billing:seed`（变量名为 `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`）。
 这条命令只写套餐示例，不调用支付服务；billing.enabled=false 的项目跳过 seed，
@@ -131,12 +137,14 @@ AI 关闭且积分模块可按需保留。仅清空支付 Provider 列表时 bil
 Neon staging 使用 TLS 直连与两个 Hyperdrive，不需要 Tunnel / Workers VPC 或自建库备份；
 实际部署顺序为迁移 → seed → jobs → web，再登录后台创建模型及配置套餐模型权限。
 
+<!-- template-only:start -->
 2026-10-12 临时 `saas-smoke` 部署验收已通过，临时云资源与本地副本已清理，
-脱敏状态、ID 与界面观察见 [6.1 证据](runbooks/evidence/create-project/2026-10-12/acceptance.json)
-及 [资源清单](runbooks/evidence/create-project/2026-10-12/resources.md)。
+脱敏状态、ID 与界面观察见 6.1 证据（私有证据库 `saas-template-evidence:create-project/2026-10-12/acceptance.json`）
+及 资源清单（私有证据库 `saas-template-evidence:create-project/2026-10-12/resources.md`）。
 临时 jobs 删除前需先移除其两个 Queue consumer，否则 Cloudflare 会拒绝删除 Worker；
 限流 namespace 为 Worker 绑定内的独立整数标识，清理时随临时 Worker 移除绑定。
 
+<!-- template-only:end -->
 ## Agent Skills
 
 项目内提供 8 个技能，Codex 使用 `.agents/skills/`，Claude 使用 `.claude/skills/`。
@@ -163,6 +171,7 @@ Neon staging 使用 TLS 直连与两个 Hyperdrive，不需要 Tunnel / Workers 
 quick-start 的生成/安装/typecheck/unit 与本地/外部验收分开报告：
 缺凭据的 AI、邮件、支付和部署保持待验收，dry-run 不代表部署成功。
 
+<!-- template-only:start -->
 维护时编辑 `.agents/skills/<name>/SKILL.md` 后复制到 `.claude` 同名路径，
 新技能两份逐字节一致，不用符号链接（生成器不复制符号链接）。提交前核对：
 
@@ -173,3 +182,4 @@ done
 ```
 
 现有 OpenSpec 技能保留各 agent 的调用语法差异，不纳入此复制命令。
+<!-- template-only:end -->

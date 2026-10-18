@@ -11,7 +11,7 @@ import {
   realpath,
   writeFile,
 } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
@@ -36,6 +36,7 @@ const excluded = new Set([
   'image-artifacts',
   'image-set',
   'release-bundle',
+  'feature-artifacts',
   '__pycache__',
   '.DS_Store',
   '.omp',
@@ -46,14 +47,102 @@ const excluded = new Set([
   'job-owners',
 ])
 
+// 模板自身的开发、运营和验收材料不属于新项目交付内容。
+const templateOnly = new Set([
+  'docs/08-roadmap.md',
+  'docs/09-parallel-plan.md',
+  'docs/runbooks/hyperdrive-tunnel.md',
+  'docs/runbooks/p2-acceptance-paypal.md',
+  'docs/runbooks/p2-acceptance-stripe.md',
+  'docs/runbooks/p2-offline-acceptance.md',
+  'docs/runbooks/staging-acceptance.md',
+  'docs/runbooks/selfhost-a-final.md',
+  'docs/runbooks/selfhost-a4-billing.md',
+  'docs/runbooks/selfhost-a4-storage.md',
+  'docs/runbooks/selfhost-a46.md',
+  'docs/runbooks/selfhost-a5.md',
+  'docs/runbooks/selfhost-a7.md',
+  'docs/runbooks/selfhost-c-jobs-wire.md',
+  'docs/runbooks/selfhost-c-profile.md',
+  'docs/runbooks/selfhost-c-profile-resources.json',
+  'docs/runbooks/selfhost-c-storage.md',
+  'docs/runbooks/selfhost-c-wire.md',
+  'docs/runbooks/selfhost-delivery-handoff.md',
+  'orca.yaml',
+  '.worktreeinclude',
+  '.github/workflows/selfhost-features.yml',
+  '.github/workflows/selfhost-release-acceptance.yml',
+  'scripts/selfhost-features.mjs',
+  'scripts/selfhost-features-routes.mjs',
+  'scripts/create-project.test.mjs',
+  'scripts/create-project.verify.test.mjs',
+])
+const templateOnlyDirectories = [
+  ['docs', 'runbooks', 'evidence'].join('/'),
+  'openspec/changes',
+  'scripts/orca',
+  'scripts/probes',
+]
+// 业务单测和类型检查直接依赖的本地夹具，保留其传递依赖；远程验收入口不交付。
+const acceptanceFixtures = new Set([
+  'accounts.ts',
+  'diagnostic.ts',
+  'fault-definitions.ts',
+  'fault-local-media.ts',
+  'local-admin.ts',
+  'local-media.ts',
+  'local-text-model.ts',
+  'models.ts',
+  'reporter.ts',
+  'support.ts',
+])
+
+function projectText(text, path) {
+  if (path === '.gitignore') return text.replaceAll(`/${templateOnlyDirectories[0]}/\n`, '')
+  if (!path.endsWith('.md')) return text
+  text = text.replace(/^\| `pnpm test:create-project(?::verify)?`.*\n/gm, '')
+  text = text.replace(/<!-- template-only:start -->[\s\S]*?<!-- template-only:end -->\n?/g, '')
+  // 保留通用操作说明；模板证据只在主仓库可追溯。
+  text = text.replace(/私有证据库 `[^`]*`/g, '项目自身的私有验收记录')
+  text = text.replace(/\[([^\]\n]*)\]\(([^)\n]+)\)/g, (match, label, href) => {
+    if (/^(?:[a-z]+:|#|\/)/i.test(href)) return match
+    const target = posix.normalize(posix.join(posix.dirname(path), href.split('#')[0]))
+    return omit(target) ? `${label}（模板维护资料；请为本项目建立相应记录）` : match
+  })
+  text = text.replace(
+    /；并行(?:开发|修改导航或文案时)读 `docs\/09-parallel-plan\.md` §3\/§6。/g,
+    '；并行开发先明确文件所有权与数据库隔离。',
+  )
+  if (path.endsWith('/SKILL.md')) {
+    text = text
+      .replace(
+        /需完整矩阵时才运行[^。]*，\n其真实副本、CI 环境与清理模式见[^。]*。/g,
+        '新增组合通过临时副本的安装、类型检查和单元测试核验。',
+      )
+      .replace(
+        /修改生成器时执行[^\n]*/g,
+        '修改生成器时，通过临时副本执行依赖安装、类型检查、单元测试与目标构建。',
+      )
+  }
+  for (const entry of templateOnly) text = text.replaceAll(entry, '项目维护约定')
+  text = text.replace(
+    /\[([^\]]+)\]\(https:\/\/github\.com\/[^/]+\/[^/]+\/(?:pull|actions\/runs)\/\d+\)/g,
+    '$1（模板实现参考）',
+  )
+  text = text.replace(/`(?:\.\.\/)?scripts\/(?:probes|orca)\/[^`]*`/g, '项目自身的隔离验证')
+  return text
+}
+
 function omit(path) {
   const parts = path.split('/')
   const name = parts.at(-1)
   return (
     parts.some((part) => excluded.has(part)) ||
-    path === 'openspec/changes' ||
-    path.startsWith('openspec/changes/') ||
-    (path.startsWith('scripts/probes/') && parts.includes('results')) ||
+    templateOnly.has(path) ||
+    templateOnlyDirectories.some(
+      (directory) => path === directory || path.startsWith(`${directory}/`),
+    ) ||
+    (path.startsWith('apps/web/e2e/staging-acceptance/') && !acceptanceFixtures.has(name)) ||
     ((name === '.env' ||
       name.startsWith('.env.') ||
       name === '.dev.vars' ||
@@ -469,8 +558,14 @@ export async function createProject(input, source = root) {
     for (const name of await readdir(join(sourcePath, folder))) {
       const path = folder ? `${folder}/${name}` : name
       if (omit(path)) continue
-      // 自托管项目不继承自动 CF staging 发布，避免要求另一部署目标的凭据。
-      if (options.target === 'selfhost' && path === '.github/workflows/deploy-staging.yml') continue
+      // 自托管项目不继承 CF 发布和 Neon 备份工作流，避免要求另一目标的凭据。
+      if (
+        options.target === 'selfhost' &&
+        ['deploy-staging.yml', 'deploy-production.yml', 'backup-production.yml'].some(
+          (name) => path === `.github/workflows/${name}`,
+        )
+      )
+        continue
       const from = join(sourcePath, path)
       const to = join(target, replace(path))
       const stat = await lstat(from)
@@ -492,7 +587,14 @@ export async function createProject(input, source = root) {
         }
         if (decoded !== null) {
           // 先替换源标识，再插入新名称，避免新名称含旧 scope 前缀时被二次替换。
-          let text = replace(decoded)
+          let text = replace(projectText(decoded, path))
+          if (path === 'package.json') {
+            const manifest = JSON.parse(text)
+            // 生成器维护矩阵只在模板运行；副本仍可用 create-project 再生成。
+            delete manifest.scripts?.['test:create-project']
+            delete manifest.scripts?.['test:create-project:verify']
+            text = `${JSON.stringify(manifest, null, 2)}\n`
+          }
           if (path === 'template.config.ts') text = templateConfig(text, options)
           if (/^apps\/(web|jobs)\/wrangler.jsonc$/.test(path)) {
             text = wranglerConfig(text, options, path.split('/')[1])
@@ -527,6 +629,12 @@ export async function createProject(input, source = root) {
             text = text.replace(
               /(?<=['"`/])files(-staging|-production)?(?=['"`/])/g,
               (_match, suffix = '') => `${options.name}-files${suffix}`,
+            )
+          }
+          if (path === '.github/workflows/deploy-production.yml') {
+            text = text.replace(
+              /(PRODUCTION_URL:\s*)https:\/\/\S+/g,
+              '$1https://configure-production-url.invalid',
             )
           }
           if (path === '.github/workflows/deploy-staging.yml') {
@@ -582,7 +690,7 @@ export async function createProject(input, source = root) {
                 .replace(new RegExp(`^  ${secret}:.*\\n?`, 'gm'), '')
             }
           }
-          if (options.target === 'selfhost' && path === '.github/workflows/selfhost-publish.yml') {
+          if (path === '.github/workflows/selfhost-publish.yml') {
             // 只设置手动输入默认值，保留 trust/publish 共用的 inputs.namespace 表达式。
             text = text.replace(
               /( {6}namespace:\n)((?: {8}[^\n]*\n)+)/,
@@ -646,7 +754,7 @@ export async function createProject(input, source = root) {
         missing.push(path)
       }
     }
-    report = `# ${options.name} selfhost 初始化清单\n\n## 启用功能\n\n- billing=${options.billingEnabled} / credits=${options.creditsEnabled} / marketing=${options.marketing} / i18n=${options.i18n}（默认语言 ${options.locale}）\n- AI：${options.ai.join(',') || '关闭'}\n\n## 运维与资源\n\n${checklist.resources.map((item) => `- [ ] ${item}`).join('\n')}\n\n## 应用配置键（密钥使用受限文件与对应 _FILE；值保持为空）\n\n${[...checklist.vars, ...checklist.secrets].map((key) => `- ${key}`).join('\n')}\n\n## Compose secret 文件\n\n${['postgres_password', 'app_db_password', 'migrator_db_password', 'readonly_db_password', 'app_database_url', 'migrator_database_url', 'valkey_password', 'valkey_url', 'auth_secret', ...options.oauth.map((provider) => `${provider}_client_secret`), ...(options.turnstile ? ['turnstile_secret'] : [])].map((key) => `- secrets/${key}`).join('\n')}\n\n复制 deploy/selfhost/.env.example 后配置 namespace、同 SHA 镜像、域名、TLS 与受限 secret 文件；参考 deploy/selfhost/README.md 和 secrets.example。\n发布 CI 以 namespace 输入装配 IMAGE_NAMESPACE：\n\n    gh workflow run selfhost-publish.yml --ref main -f sha=<full-40-character-main-sha> -f namespace=${options.imageNamespace}\n\n生成副本的功能配置必须重新构建镜像。PR 不获得 registry 写入或服务器 secret，正式发布使用受信提交和完整集合 gate。\n${options.billingEnabled ? '迁移后运行 pnpm billing:seed，并配置模型与套餐授权。' : '应用现有数据库迁移；支付模块关闭。'}\nBOOTSTRAP_ADMIN_EMAILS 可选，仅 web；已验证且未封禁账号才提升；移除名单不会自动撤销管理员。\n自检仅验证单元测试；上线前独立完成 Compose、登录/空间、heartbeat、SHA 与恢复验收。\n\n## 交付材料状态\n\n部署/回滚：deploy/selfhost/deploy.sh；初始化：deploy/selfhost/init-server.sh；bundle：deploy/selfhost/release/bundle.py；外部代理：deploy/selfhost/compose.proxy.yaml。仅继承已交付文件，下列缺失项仍待 owner 交付；恢复脚本尚未交付不代表可做异机恢复。首次真实 registry 发布与 B/D ownership 签收仍待协调者确认，部署成功不等于备份/恢复验收。\n\n${missing.length ? missing.map((path) => `- 待交付：${path}`).join('\n') : '生成副本已继承现有发布/Compose 材料；仍需实际发布与部署验收。'}\n`
+    report = `# ${options.name} selfhost 初始化清单\n\n## 启用功能\n\n- billing=${options.billingEnabled} / credits=${options.creditsEnabled} / marketing=${options.marketing} / i18n=${options.i18n}（默认语言 ${options.locale}）\n- AI：${options.ai.join(',') || '关闭'}\n\n## 运维与资源\n\n${checklist.resources.map((item) => `- [ ] ${item}`).join('\n')}\n\n## 应用配置键（密钥使用受限文件与对应 _FILE；值保持为空）\n\n${[...checklist.vars, ...checklist.secrets].map((key) => `- ${key}`).join('\n')}\n\n## Compose secret 文件\n\n${['postgres_password', 'app_db_password', 'migrator_db_password', 'readonly_db_password', 'app_database_url', 'migrator_database_url', 'valkey_password', 'valkey_url', 'auth_secret', ...options.oauth.map((provider) => `${provider}_client_secret`), ...(options.turnstile ? ['turnstile_secret'] : [])].map((key) => `- secrets/${key}`).join('\n')}\n\n复制 deploy/selfhost/.env.example 后配置 namespace、同 SHA 镜像、域名、TLS 与受限 secret 文件；参考 deploy/selfhost/README.md 和 secrets.example。\n发布 CI 以 namespace 输入装配 IMAGE_NAMESPACE：\n\n    gh workflow run selfhost-publish.yml --ref main -f sha=<full-40-character-main-sha> -f namespace=${options.imageNamespace}\n\n生成副本的功能配置必须重新构建镜像。PR 不获得 registry 写入或服务器 secret，正式发布使用受信提交和完整集合 gate。\n${options.billingEnabled ? '迁移后运行 pnpm billing:seed，并配置模型与套餐授权。' : '应用现有数据库迁移；支付模块关闭。'}\nBOOTSTRAP_ADMIN_EMAILS 可选，仅 web；已验证且未封禁账号才提升；移除名单不会自动撤销管理员。\n自检仅验证单元测试；上线前独立完成 Compose、登录/空间、heartbeat、SHA 与恢复验收。\n\n## 交付材料状态\n\n部署/回滚：deploy/selfhost/deploy.sh；初始化：deploy/selfhost/init-server.sh；bundle：deploy/selfhost/release/bundle.py；外部代理：deploy/selfhost/compose.proxy.yaml。检查同 SHA 发布集合包含所需运行材料；有缺失时先补齐并重新发布。首次发布前核对镜像、部署与备份恢复验收。\n\n${missing.length ? missing.map((path) => `- 待交付：${path}`).join('\n') : '生成副本已继承现有发布/Compose 材料；仍需实际发布与部署验收。'}\n`
   }
   const entryChecklist = `## 页面与语言\n\n- ${options.marketing ? '营销页面已启用，/ 为营销首页。' : '营销页面关闭，/ 重定向至 /app，作为应用入口；营销路由不可用。'}\n- ${options.i18n ? `多语言已启用，默认语言 ${options.locale}；其他语言使用语言前缀。` : `仅编译所选默认语言 ${options.locale}；页面路径无语言前缀，其他语言前缀返回 404；不显示语言控件，忽略账号语言、cookie 与 Accept-Language。`}\n`
   report += `\n${entryChecklist}`

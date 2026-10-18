@@ -15,9 +15,11 @@ This block is written and re-added by `turbo` before repository-scoped commands 
 
 首次修改架构或跨模块行为时，完整阅读 [总体架构](docs/01-architecture.md) 与
 [项目结构和配置](docs/02-project-structure.md)，再阅读对应领域文档。
+<!-- template-only:start -->
 并行工作、共享文件修改、创建或清理 worktree、提交 PR 时，必须阅读
 [并行计划 §3 与 §6](docs/09-parallel-plan.md) 并遵守其规则；共享文件规则以该文档为准。
 
+<!-- template-only:end -->
 ## 模块职责与依赖方向
 
 - `apps/web`：TanStack Start 路由、页面、Server Functions 和 HTTP 接口。
@@ -47,6 +49,7 @@ config/db 不反向依赖 platform。业务包之间允许依赖，检查器没�
 - 模板开关放 `template.config.ts`，运行时设置使用 `packages/db/src/settings.ts`，
   密钥放 Wrangler secrets 或本地 `.dev.vars`。三层配置各自负责，不互相覆盖。
 - 根布局和公开页面的数据读取失败时降级；数据库不可达时营销页与构建期预渲染仍应可用。
+- 验收/自测证据写入 `EVIDENCE_DIR`（未设置时使用已忽略的 `test-results/evidence/`），提交到私有证据库 `saas-template-evidence`；主仓库与 PR 只引用，不提交证据。
 - 只修改任务所需内容；复用现有实现与测试，为核心行为和真实回归风险增加精简用例。
 
 ## 常用命令

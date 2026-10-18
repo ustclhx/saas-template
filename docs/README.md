@@ -2,8 +2,10 @@
 
 自用的 AI SaaS 模板。目标：以 Cloudflare 为主要运行平台、自建 Postgres 为数据层，作为后续不同 AI 应用的起点，通过配置开关适配不同业务形态（个人用户 / 团队、订阅 / 积分）。
 
+<!-- template-only:start -->
 > 状态：**v0.6（2026-10-07）**。Phase 0 与 Phase 1 已完成、部署到 staging 并归档，验收记录见 `08`。Phase 2（计费与积分）离线开发已完成并部署到 staging，已验收 28/34 项，剩余 6 项待测试 / 沙箱支付凭据联通。其余阶段已用 Orca 并行（Claude 协调、Codex / Claude worker 开发，流程见 `09` §6）完成全部无需凭据的部分：Phase 3（AI 文本）11/15，模型注册表、计费、流式对话与结算、停止 / 检查点 / 超时兜底、对话界面已完成，真实 AI Gateway 调用与 staging 验收待 LLM 凭据；Phase 5（后台）13/14、Phase 6（营销 / i18n / SEO）14/16，均只剩 staging 验收；Phase 7 已完成请求 ID 与结构化日志、脱敏、Web Analytics 与可选 PostHog、通知中心与运营通知、API Key 与兼容 OpenAI 的对话接口及文档、Waitlist / Newsletter、`CLAUDE.md` / `AGENTS.md` 与项目创建脚本，Sentry 待项目凭据；Phase 4（AI 图片 / 视频）尚未开始，按计划在生产迁移之后进行。真实 OAuth 联调与 Resend 发送仍待配置，当前保持 OAuth mock、邮件 log 模式。CI 冒烟 e2e 与按环境切换的支付运行时登记为框架完成后的修补待办（`08`）。下次 staging 部署需应用迁移 0008–0011 并带上新的 RL_AI / RL_API 限流与 jobs 的 EVENTS_QUEUE producer 绑定。基础设施按两个阶段推进，当前为阶段一（数据库在开发者本机，见 `07` §0）。
 
+<!-- template-only:end -->
 ## 文档目录
 
 | 文档 | 内容 |

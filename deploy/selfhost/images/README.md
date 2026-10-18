@@ -14,6 +14,7 @@ secrets、自签 CA、私有网络和临时卷，无宿主数据端口；结束�
 Node22 bookworm、PG17 trixie、Valkey8.1.6、Caddy2.11.2、SeaweedFS Community4.48，
 pnpm12.8.1；精确 patch 与 Docker/Buildx/Compose 版本以实际 run 证据为准。
 
+<!-- template-only:start -->
 2026-10-14 本机 arm64 已实际构建并运行全部七服务及 sharp smoke；使用未改应用代码的
 基线源码 `ffd6ba7a6bfa706893ab4a0dfe095afb008ae4a1`，正式模板保持不变。成功验证迁移、
 web/jobs 编译版本、真实心跳、Caddy TLS 与全部常驻 PID1 非 root，临时 project/卷已清理。
@@ -21,6 +22,7 @@ web/jobs 编译版本、真实心跳、Caddy TLS 与全部常驻 PID1 非 root�
 SeaweedFS4.48（530be3e37）；Docker client/server29.1.3、Compose2.40.3-desktop.1、
 Buildx0.30.1-desktop.1。amd64 原生构建/运行留 PR CI，真实 registry 发布尚未验收。D 4.1–4.5 的backup本机证据见 [备份runbook](../../../docs/runbooks/selfhost-backup.md)。
 
+<!-- template-only:end -->
 ## 合并后的首次验证与触发
 
 本分支不真实发布。协调者合并后先查看 main 的 `CI` 和 `Selfhost images` 全部通过，

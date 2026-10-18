@@ -16,7 +16,7 @@
 - [x] 1.6 验收 profile 的真实浏览器 CORS/预签名与整个 2 CPU/4 GiB 栈资源预算，收敛 profile 的 web/jobs/storage 限额与安全并发。验证：APP_URL 的 OPTIONS/PUT/GET/HEAD 及 Content-Type/If-None-Match 成功，未授权 origin 被拒；记录 idle/并发上传/未知长度转存/维护/重启 CPU、峰值内存与余量，无 OOM，不能仅测存储单服务；报告初始预算与最终预算区别，未通过不勾选 S2。
 - [x] 1.7 验收外部 S3 默认路径，仅使用 R2 经 S3 API 的可配置端点与独立私有桶/受限应用凭据（2026-10-16 用户决定，不再要求另一个兼容端点）；交付 B 可使用的存储/copier 证据。验证：使用同一业务/SDK 验收上传确认/短期下载/权限配额/失败清理，关闭 profile 无自带服务；没有外部凭据时写明未完成而不以本地服务冒充外部联通，不实际移植 B 5.3/5.4。
 
-2026-10-16 正式 1888e7d + product-res-ecs + R2 验收通过：真实业务上传确认/短期下载、条件 PUT、配额/租户/会话/分享、失败清理、8MiB 未知长度 multipart copier 与超限清理；独立 Chromium 的允许 origin OPTIONS204/PUT/GET/HEAD、响应头暴露及未授权 origin 拒绝，三个 token 跨桶 List 均403。证据：`docs/runbooks/evidence/selfhost/server-acceptance-1888e7d/{storage,browser,permissions}.json`。仅外部 R2，无自带对象存储服务，未修改 B 媒体实现。
+2026-10-16 正式 1888e7d + product-res-ecs + R2 验收通过：真实业务上传确认/短期下载、条件 PUT、配额/租户/会话/分享、失败清理、8MiB 未知长度 multipart copier 与超限清理；独立 Chromium 的允许 origin OPTIONS204/PUT/GET/HEAD、响应头暴露及未授权 origin 拒绝，三个 token 跨桶 List 均403。证据：私有证据库 `saas-template-evidence:selfhost/server-acceptance-1888e7d/{storage,browser,permissions}.json`。仅外部 R2，无自带对象存储服务，未修改 B 媒体实现。
 
 ## 2. Sentry Node（O3，Node 观测 adapter owner；共享文件协调者串行）
 
@@ -26,7 +26,7 @@
 - [x] 2.4 把 flush/close 接入 A 剩余 shutdown deadline，正常退出/未启用/监控断网都不延长预算。验证：真实 Node 子进程 capture 后 SIGTERM 的可达/不可达 transport 退出在上限内，没有改变 DBOS停止领取/排空/业务池关闭顺序，未启用无副作用；文档记录可能未发出事件的边界。
 - [x] 2.5 在已授权 Sentry 测试项目验证同版本 Node web/jobs 可读源码堆栈与受控错误采集。验证：事件的完整 SHA、dist、requestId/任务标识与源码位置有脱敏记录，既有实时admin/同源/先审计异常入口保护保持；无项目凭据时保持此项未完成，transport fixture 不能代替真实 source map 验收。
 
-2026-10-14 验收记录：release 70496c6（environment smoke，本地 Node 生产输出）web-node 事件顶帧映射 `apps/web/src/server/sentry-test.ts:30`、jobs-node 事件映射 `packages/email/src/node/smtp.ts:165`，源码上下文可读、各 1 事件、无凭据/正文，见[核验证据](../../../docs/runbooks/evidence/selfhost/c-2.5-sentry-node-verification-70496c6.json)；此前 65c0413 的 web-node 映射失败由 #179 修复，[原失败证据](../../../docs/runbooks/evidence/selfhost/c-2.5-sentry-node-verification.json)保留。
+2026-10-14 验收记录：release 70496c6（environment smoke，本地 Node 生产输出）web-node 事件顶帧映射 `apps/web/src/server/sentry-test.ts:30`、jobs-node 事件映射 `packages/email/src/node/smtp.ts:165`，源码上下文可读、各 1 事件、无凭据/正文，见核验证据（私有证据库 `saas-template-evidence:selfhost/c-2.5-sentry-node-verification-70496c6.json`）；此前 65c0413 的 web-node 映射失败由 #179 修复，原失败证据（私有证据库 `saas-template-evidence:selfhost/c-2.5-sentry-node-verification.json`）保留。
 
 ## 3. SMTP（E1，email Node adapter owner；共享配置/consumer协调者串行）
 
@@ -40,7 +40,7 @@
 - [x] 4.1 集成共享入口/配置/依赖/构建/Compose 补丁后，执行 `openspec validate add-selfhost-storage-observability --strict`、根 `pnpm check`、`check:deps`、`check:singletons`、`dedupe --check`、`typecheck`、`test`、`build`、`build:node`，以及各组三种 Node 目标验收。验证：记录命令/结果，CF默认构建和既有用例通过，无Cloudflare bundle引入Node adapter，已知失败先处理，不弱化断言或删除测试。
 - [x] 4.2 核对 S1/S2/O3/E1 与 C→B 交接证据、未完成外部凭据验收和 D 边界，确认只勾选有真实证据的 C 项。验证：review记录逐项映射需求/用例/文档，存储-only媒体gate仍正确、B任务未提前完成，S2全栈资源与真实source map证据缺失时明确保持对应项待办；不以PR合入替代部署、不手工部署分支到staging、不由worker同步或归档change。
 
-2026-10-15 协调者签收（4.1）：b43c6b3 上 strict validate、根 check/check:deps/check:singletons/dedupe --check、无缓存 typecheck/test/build 与 build:node 通过；三种 Node 目标：存储 `test:node:s3` 28 项与 `test:node:storage` 18 项、SMTP `email test:node:smtp` 22 项与 `jobs test:node:smtp` 6 项、Sentry observability 5 项/jobs node-sentry 6 项/`sentry-node-maps` 3 项全部通过。CF web server 2082 与 jobs 829 个 source 无 Node S3/SMTP/Sentry adapter，Node 输出无 CF adapter。首次缓存测试的 routeTree 生成物缺失经无缓存 typecheck 恢复，未改断言或测试。证据：[签收记录](../../../docs/runbooks/evidence/selfhost/signoff-2026-10-15.json)。
+2026-10-15 协调者签收（4.1）：b43c6b3 上 strict validate、根 check/check:deps/check:singletons/dedupe --check、无缓存 typecheck/test/build 与 build:node 通过；三种 Node 目标：存储 `test:node:s3` 28 项与 `test:node:storage` 18 项、SMTP `email test:node:smtp` 22 项与 `jobs test:node:smtp` 6 项、Sentry observability 5 项/jobs node-sentry 6 项/`sentry-node-maps` 3 项全部通过。CF web server 2082 与 jobs 829 个 source 无 Node S3/SMTP/Sentry adapter，Node 输出无 CF adapter。首次缓存测试的 routeTree 生成物缺失经无缓存 typecheck 恢复，未改断言或测试。证据：签收记录（私有证据库 `saas-template-evidence:selfhost/signoff-2026-10-15.json`）。
 
 2026-10-15 协调者 review（4.2）：
 
@@ -48,8 +48,8 @@
 | --- | --- | --- | --- | --- |
 | S1 Node 通用 S3 配置/文件一致性/安全转存 | 1.1–1.4 | config 用例、`test:node:s3`、`test:node:storage`（含 storage-only 媒体 503 且 task/hold 不变） | storage README、[selfhost-c-storage](../../../docs/runbooks/selfhost-c-storage.md) | 本地/fixture 通过；外部 R2 与第二兼容端点 1.7 无凭据，保持待办 |
 | S2 可选自带对象存储 | 1.5–1.6 | #144 profile 开关 config、真实 CORS/预签名与 2C/4GiB 全栈资源 | [selfhost-c-profile](../../../docs/runbooks/selfhost-c-profile.md)、[资源记录](../../../docs/runbooks/selfhost-c-profile-resources.json) | 有真实全栈资源证据，已勾选项成立 |
-| O3 Node Sentry | 2.1–2.5 | observability/node-sentry/maps fixture；真实项目 source map 证据 | [sentry-node-adapter](../../../docs/runbooks/sentry-node-adapter.md)、[2.5 证据](../../../docs/runbooks/evidence/selfhost/c-2.5-sentry-node-verification-70496c6.json) | 真实 source map 证据存在，已勾选项成立 |
-| E1 SMTP | 3.1–3.4 | `email`/`jobs test:node:smtp`、jobs 持久 DLQ、认证邮件链路 | email README、[3.4 证据](../../../docs/runbooks/evidence/selfhost/c-3.4-auth-smtp.json) | 本地 SMTP fixture 通过；无外部 SMTP 服务承诺 |
+| O3 Node Sentry | 2.1–2.5 | observability/node-sentry/maps fixture；真实项目 source map 证据 | [sentry-node-adapter](../../../docs/runbooks/sentry-node-adapter.md)、2.5 证据（私有证据库 `saas-template-evidence:selfhost/c-2.5-sentry-node-verification-70496c6.json`） | 真实 source map 证据存在，已勾选项成立 |
+| E1 SMTP | 3.1–3.4 | `email`/`jobs test:node:smtp`、jobs 持久 DLQ、认证邮件链路 | email README、3.4 证据（私有证据库 `saas-template-evidence:selfhost/c-3.4-auth-smtp.json`） | 本地 SMTP fixture 通过；无外部 SMTP 服务承诺 |
 | C→B 5.3/5.4 交接 | 1.4、B 5.3/5.4 | C 只交付工厂与独立 gate；B 5.3/5.4 由 B 的 #173/#174 以自身证据勾选 | [selfhost-c-storage §C→B](../../../docs/runbooks/selfhost-c-storage.md) | 无提前代勾 B 任务 |
 | D 边界 | — | C 未承接镜像发布/部署/备份；S2 上游镜像引用不等于 D 发布 | proposal 非目标 | 边界保持 |
 

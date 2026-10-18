@@ -1,8 +1,15 @@
 # 自托管 Compose 与部署交付
 
-> **当前实例状态（2026-10-18）**：模板自托管测试实例已按用户确认拆除；部署能力、配置、runbook 与 GHCR 镜像保留供派生项目使用。R2 次日删桶与 DNS / token 手动收尾见[拆除记录](../../docs/runbooks/evidence/teardown-2026-10-18.md)。下文各次验收与待办说明按其记录时间阅读，不表示测试主机仍运行模板实例。
+<!-- template-only:start -->
+> **当前实例状态（2026-10-18）**：模板自托管测试实例已按用户确认拆除；部署能力、配置、runbook 与 GHCR 镜像保留供派生项目使用。R2 次日删桶与 DNS / token 手动收尾见拆除记录（私有证据库 `saas-template-evidence:teardown-2026-10-18.md`）。下文各次验收与待办说明按其记录时间阅读，不表示测试主机仍运行模板实例。
+<!-- template-only:end -->
 
-本目录提供 image-only Compose、显式 SSH/本机部署与兼容回滚、health/SHA 门、空白主机初始化、代理接入和同 SHA bundle 打包。首次真实 GHCR 发布已完成；恢复/副本脚本已交付，B/D ownership 签收与服务器恢复验收仍未完成。Node 已装配真实 B 队列与 Cron。关闭 Turnstile、开启验证邮件与多租户的本地生产验收见 [A 8/9 runbook](../../docs/runbooks/selfhost-a-final.md)；正式邮件凭据由部署方提供。默认 Cloudflare 构建与 staging 流程保持原样。
+本目录提供 image-only Compose、显式 SSH/本机部署与兼容回滚、health/SHA 门、空白主机初始化、代理接入和同 SHA bundle 打包。正式邮件、存储、域名与镜像凭据由部署方提供。上线前按本项目配置执行部署与恢复验收。
+
+<!-- template-only:start -->
+首次真实 GHCR 发布已完成；恢复/副本脚本已交付，B/D ownership 签收与服务器恢复验收仍未完成。Node 已装配真实 B 队列与 Cron。关闭 Turnstile、开启验证邮件与多租户的本地生产验收见 [A 8/9 runbook](../../docs/runbooks/selfhost-a-final.md)；正式邮件凭据由部署方提供。默认 Cloudflare 构建与 staging 流程保持原样。
+<!-- template-only:end -->
+
 
 ## 正式部署
 
@@ -14,9 +21,14 @@
 详细步骤见 [部署与回滚](../../docs/runbooks/selfhost-deploy.md)、
 [空白初始化](../../docs/runbooks/selfhost-init.md)、[外部代理](../../docs/runbooks/selfhost-proxy.md)
 与 [release bundle](../../docs/runbooks/selfhost-release.md)。Dokploy 是可选入口，不能跳过
-迁移/排空门；不会自动安装或连接任何既有服务器。第二次正式发布
+迁移/排空门；不会自动安装或连接任何既有服务器。
+
+<!-- template-only:start -->
+第二次正式发布
 `081305013b022f457c561eecf5828b1959e13908` 的 bundle 包含全部 24 项运行材料，
 包括恢复/drill/副本入口和附加示例；旧 SHA 的材料保持原样。1.5/6.3/7 的恢复验收保持待办。
+<!-- template-only:end -->
+
 
 ## 本地开发镜像与基础启动
 

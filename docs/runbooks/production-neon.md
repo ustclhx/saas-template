@@ -1,9 +1,27 @@
 # Neon production 操作与验收
 
-> **实例状态（2026-10-18）**：用户确认拆除模板演示的生产实例与自托管测试实例。`saas-production` Neon 项目及生产 Workers、KV、Queues、Hyperdrive、Turnstile、空文件桶和 GitHub `production` environment 已删除；备份开关变量 `PRODUCTION_BACKUP_SCHEDULE` 已删除。生产备份桶已解除 `retain-30d` 锁并设为所有对象 1 天后过期，待次日核空删除；Sentry Uptime 监控待用户手动删除。完整结果与手动收尾见[拆除记录](./evidence/teardown-2026-10-18.md)。下文为历史验收与派生项目操作参考，原资源 ID、凭据路径及已写入状态不代表仍可使用；`env.production` 与 workflow 保留，重新上线须创建项目自身资源和凭据。GitHub `production-backup` environment 本次未在删除范围内，仍保留。
+生产使用独立于 staging 的 Neon 项目与数据库，计划、区域、备份保留期和预算由项目负责人选择。先完成 [staging-neon](staging-neon.md) §1–2 的建库与受限角色流程，再按本文配置生产资源、备份与发布门。示例资源名由生成器改为本项目名称；资源 ID、账号、域名与凭据由项目自身配置。
+
+<!-- template-only:start -->
+> **实例状态（2026-10-18）**：用户确认拆除模板演示的生产实例与自托管测试实例。`saas-production` Neon 项目及生产 Workers、KV、Queues、Hyperdrive、Turnstile、空文件桶和 GitHub `production` environment 已删除；备份开关变量 `PRODUCTION_BACKUP_SCHEDULE` 已删除。生产备份桶已解除 `retain-30d` 锁并设为所有对象 1 天后过期，待次日核空删除；Sentry Uptime 监控待用户手动删除。完整结果与手动收尾见拆除记录（私有证据库 `saas-template-evidence:teardown-2026-10-18.md`）。下文为历史验收与派生项目操作参考，原资源 ID、凭据路径及已写入状态不代表仍可使用；`env.production` 与 workflow 保留，重新上线须创建项目自身资源和凭据。GitHub `production-backup` environment 本次未在删除范围内，仍保留。
 
 本 runbook 对应 `add-cloud-production-neon`（2026-10-15 用户决定：Cloudflare 形态生产数据库使用 Neon 付费档，不自建 PG）。流程沿用 [staging-neon](./staging-neon.md) §1–2，本文只记录生产项目的事实与差异，不含任何凭据。
 
+<!-- template-only:end -->
+
+## 1. 项目
+
+核对组织与区域，创建独立项目 `saas-production`、Postgres 17、数据库 `saas_production`；确认默认分支与非 pooled endpoint，不从 staging 复制资源 ID 或凭据。以下参数先由项目负责人选择，`--no-secrets` 避免输出密码：
+
+```sh
+neonctl projects create --org-id "${NEON_ORG_ID:?选择本项目组织}" --name saas-production \
+  --region-id "${NEON_REGION_ID:?选择本项目区域}" --pg-version 17 \
+  --database saas_production --role neondb_owner --no-secrets --output json
+```
+
+核对项目与默认分支归属，将 endpoint、数据库 owner、PITR 与计算配置记入本项目私有运维记录。
+
+<!-- template-only:start -->
 ## 1. 项目（任务 1.1，2026-10-15）
 
 | 项 | 值 |
@@ -25,6 +43,15 @@ neonctl projects create --org-id org-ancient-mountain-81615147 --name saas-produ
   --no-secrets --output json
 ```
 
+<!-- template-only:end -->
+
+## 1a. 生产域名
+
+核对本项目生产域名的 Zone、DNS 占用、账户权限及 TLS。web `env.production.routes` 使用 `custom_domain: true`，`APP_URL` 与实际 HTTPS 域名一致；已有同名 DNS 记录先核对用途，不直接覆盖。CI token 需有目标 Zone 的 Workers Routes 权限及实际资源所需账号权限。
+
+域名同时用于 Google/GitHub OAuth 回调 `/api/auth/callback/<provider>`、Turnstile 允许的 hostname、支付 webhook `/api/billing/webhooks/<provider>`、生产只读冒烟 URL 与文件桶 CORS。邮件发件域在服务商验证，按要求设置 SPF/DKIM 等 DNS 记录。staging 使用独立 URL 与测试凭据。
+
+<!-- template-only:start -->
 ## 1a. 生产域名（任务 1.2，2026-10-15）
 
 - 用户选定 production web 域名 **`app.ezarouter.cc`**；staging 保持 `web-staging.saas-jobs.workers.dev`，不绑定自定义域名。
@@ -43,19 +70,28 @@ neonctl projects create --org-id org-ancient-mountain-81615147 --name saas-produ
 | 支付 webhook（Q9 后） | `https://app.ezarouter.cc/api/billing/webhooks/stripe`、`/paypal` | 6.1 |
 | 只读冒烟 | Playwright `production` project 的 baseURL | 3.2 |
 
+<!-- template-only:end -->
+
 ## 2. 受限角色与凭据
 
-按 staging §1 以 **SQL** 创建 `migrator` / `app` / `readonly`（NOSUPERUSER、NOCREATEDB、NOCREATEROLE、NOREPLICATION、NOBYPASSRLS），`GRANT migrator TO neondb_owner` → `ALTER DATABASE saas_production OWNER TO migrator` → `REVOKE migrator FROM neondb_owner`；再以 migrator 执行 `infra/local/initdb/02-db-grants.sql`。
+按 [staging-neon §1](staging-neon.md#1-建库受限角色与本地凭据) 以 **SQL** 创建 `migrator` / `app` / `readonly`（NOSUPERUSER、NOCREATEDB、NOCREATEROLE、NOREPLICATION、NOBYPASSRLS），`GRANT migrator TO neondb_owner` → `ALTER DATABASE saas_production OWNER TO migrator` → `REVOKE migrator FROM neondb_owner`；再以 migrator 执行 `infra/local/initdb/02-db-grants.sql`。
 
-**与 staging runbook 的差异——密码设置**：Neon 控制面拒绝预先计算的 SCRAM 校验值（`ALTER ROLE ... PASSWORD 'SCRAM-SHA-256$...'` 返回 `Neon only supports being given plaintext passwords`），psql `\password` 同样在客户端加密，因此不可用。生产采用：脚本用 `crypto.randomBytes(32)` 生成 64 位十六进制密码，`ALTER ROLE ... PASSWORD '<明文>'` 只经 psql **stdin** 与 TLS 发送；连接参数通过 `PG*` 环境变量传入，连接串与密码不出现在命令参数、shell 历史或输出中。默认 owner 连接串由 `neonctl connection-string main --role-name neondb_owner` 取得后只在脚本内存中使用。
+**Neon 密码设置**：Neon 控制面拒绝预先计算的 SCRAM 校验值（`ALTER ROLE ... PASSWORD 'SCRAM-SHA-256$...'` 返回 `Neon only supports being given plaintext passwords`），psql `\password` 同样在客户端加密，因此不可用。设置方式：脚本用 `crypto.randomBytes(32)` 生成 64 位十六进制密码，`ALTER ROLE ... PASSWORD '<明文>'` 只经 psql **stdin** 与 TLS 发送；连接参数通过 `PG*` 环境变量传入，连接串与密码不出现在命令参数、shell 历史或输出中。默认 owner 连接串由 `neonctl connection-string main --role-name neondb_owner` 取得后只在脚本内存中使用。
 
-三个非 pooled 直连 URL（`sslmode=require`）保存在主 checkout 被忽略的 `.env.production-neon`（600），键名 `NEON_MIGRATOR_URL`、`NEON_APP_URL`、`NEON_READONLY_URL`。该文件只用于运维与恢复演练；CI 迁移凭据在任务 1.4 写入 GitHub `production` environment。
+三个非 pooled 直连 URL（`sslmode=require`）保存在当前 checkout 被忽略的 `.env.production-neon`（600），键名 `NEON_MIGRATOR_URL`、`NEON_APP_URL`、`NEON_READONLY_URL`。该文件只用于运维与恢复演练；CI 迁移凭据按 §6 写入 GitHub `production` environment。
 
 ```sh
 set -a; . ./.env.production-neon; set +a
 psql "$NEON_MIGRATOR_URL" -X -c 'select current_user, current_database()'   # 应为 migrator | saas_production
 ```
 
+## 3. 权限与迁移验证
+
+按 [staging-neon §2](staging-neon.md#2-权限迁移与-seed) 执行 `infra/local/initdb/02-db-grants.sql` 与迁移。核对数据库和 public schema owner 均为 migrator，app/readonly 只有预期权限，三角色高权限 flags 与 `neon_superuser` 成员身份均为 false。
+
+迁移记录数应等于 journal 条目数。app 建表、修改审计日志与 readonly 写业务表均应被拒绝；每次权限探测使用独立事务并 ROLLBACK。billing 启用时仅在确认目标库、角色和支付模式后 seed / sync；验证完成不自动接入 live 支付。
+
+<!-- template-only:start -->
 ## 3. 验证结果（2026-10-15）
 
 - 身份：owner、migrator、app、readonly 分别返回 `<角色> | saas_production`。
@@ -64,6 +100,13 @@ psql "$NEON_MIGRATOR_URL" -X -c 'select current_user, current_database()'   # �
 - 拒绝验证（独立事务、ROLLBACK）：app `CREATE TABLE public.t` → `permission denied for schema public`；readonly `CREATE TABLE public.t` → 同上；app `CREATE SCHEMA` → `permission denied for database saas_production`。
 - 尚未迁移（0 张业务表）：app 修改 `audit_log`、readonly 写业务表的拒绝验证在首次生产发布（任务 3.3）迁移后执行，届时迁移记录数应等于 `packages/db/migrations/meta/_journal.json` 条目数。
 
+<!-- template-only:end -->
+
+## 4. 项目设置与预算
+
+按恢复目标选择 PITR 保留期、计算上下限与缩容策略，核对当前计划支持范围和组织内其他项目的计费影响。发布后用 Neon Usage 与实际 Cron 频率复核预算；持续定时唤醒可能阻止缩容。记录本项目配置和观察结果，价格与配额以当前平台计划为准。
+
+<!-- template-only:start -->
 ## 4. 项目设置与费用（2026-10-15 用户按推荐配置确认）
 
 用户在组织升级 Launch 后按以下推荐配置确认，已经 Neon API（`neonctl api ... -X PATCH`）修改并回读核对：
@@ -78,6 +121,29 @@ psql "$NEON_MIGRATOR_URL" -X -c 'select current_user, current_database()'   # �
 
 **估算（每月，待 Usage 复核）**：生产首次发布前接近 $0；发布后默认 Cron 使 compute 基本常驻，0.25 CU 空闲约 183 CU-hours ≈ $20–25（固定 1 CU 时约 $77）；测试期生产使用 `CRON_PROFILE=reduced` 时约 33 CU-hours ≈ $4（见提案 2.1 / D7）；存储与 7 天 history 低于 $0.1；staging 约 $4，验收期另加 $1–3。
 
+<!-- template-only:end -->
+
+## 5. 逻辑备份存储与加密
+
+创建与用户文件桶分离的私有备份桶，关闭公开访问：
+
+```sh
+pnpm --dir apps/web exec wrangler r2 bucket create saas-production-backups
+```
+
+在 R2 配置并回读保留策略，例如 Bucket Lock `retain-30d`（全部前缀，30 天不可删除/覆盖）、生命周期 `expire-35d`（35 天过期，晚于锁定期）、中止未完成分片。保留期按项目恢复目标确认，调整时保持生命周期晚于锁定期。备份 S3 token 仅授权此桶对象读写，与文件桶 token 分开。
+
+生成本项目独立 age 密钥，私钥目录 700、文件 600，私钥不进入仓库或 CI：
+
+```sh
+install -d -m 700 "$HOME/.config/saas-template"
+(umask 077; age-keygen -o "$HOME/.config/saas-template/production-backup.agekey")
+age-keygen -y "$HOME/.config/saas-template/production-backup.agekey"
+```
+
+仅将最后命令输出的公钥写入 `BACKUP_AGE_RECIPIENT`，私钥保存两份离线副本；验证一次加解密往返和离线副本恢复。备份上传前 age 加密，数据库只读角色授权见 §8；备份/恢复脚本与演练见 [restore](restore.md)。
+
+<!-- template-only:start -->
 ## 5. 逻辑备份存储与加密（任务 1.3，2026-10-15）
 
 用户选定 R2。桶与规则由 wrangler 创建并回读核对：
@@ -95,6 +161,22 @@ psql "$NEON_MIGRATOR_URL" -X -c 'select current_user, current_database()'   # �
 - 公钥（`BACKUP_AGE_RECIPIENT`）：`age1e7a6xlm8rfj0skg8658qhk559prk6g6d4pcrtk0usl5g43e4c3fq3l3tve`
 - 私钥：开发机 `~/.config/saas-template/production-backup.agekey`（目录 700、文件 600），生成后已做一次加解密往返验证。**用户须另存两份离线副本**（如密码管理器 + 离线介质）；私钥丢失则所有备份不可解密，恢复演练（4.2）时验证离线副本可用。
 
+<!-- template-only:end -->
+
+## 6. GitHub environments
+
+| environment | 保护与允许的 ref | 配置 |
+|---|---|---|
+| `production` | 项目负责人审批，仅 tag `v*`；按团队情况设置审批人与自审策略 | secrets：`PRODUCTION_MIGRATION_DATABASE_URL`（migrator 非 pooled TLS）、`CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_API_TOKEN`；可选 Sentry 上传三项 |
+| `production-backup` | 仅分支 `main`，定时备份不等待交互审批 | secrets：`PRODUCTION_READONLY_DATABASE_URL`（readonly 非 pooled TLS）、`R2_ACCESS_KEY_ID`、`R2_SECRET_ACCESS_KEY`；variables：`BACKUP_BUCKET=saas-production-backups`、`BACKUP_AGE_RECIPIENT`、`R2_ACCOUNT_ID` |
+
+`backup-production.yml` 还由仓库 variable `PRODUCTION_BACKUP_SCHEDULE=true` 控制定时运行，完成首份备份与恢复演练后再启用。`BACKUP_BUCKET` 为备份桶，不是用户文件桶。
+
+Cloudflare token 按实际部署资源配置账号权限和目标 Zone 的 Workers Routes 权限。先只读验证 token 归属、资源访问与 R2 列桶，再写入 environment；首个 API token / R2 S3 凭据由用户在平台控制台创建。
+
+只在真实终端交互执行 `gh secret set <NAME> --env <environment>`，或从权限 600 文件经 stdin 写入 `gh secret set <NAME> --env <environment> < <文件>`；自动化调用必须提供非空 stdin，真值不进入 argv、输出或历史。用 `gh secret list --env <environment>` 只核对名称。生产 secrets 不放仓库级；PR CI 与 staging 作业使用各自 environment。
+
+<!-- template-only:start -->
 ## 6. GitHub environments（任务 1.4，2026-10-15）
 
 | environment | 保护规则 | 允许的 ref | 用途 |
@@ -118,13 +200,18 @@ secret 均经 stdin 写入（无末尾换行），不出现在命令参数或输
 
 wrangler 无法创建 API token（无对应命令，OAuth 可选范围不含 API Tokens 权限，其登录令牌短期有效且绑定本机），R2 S3 密钥同样派生自 API token；首个凭据必须在控制台创建。
 
-## 7. 发布与回滚（任务 3.1 / 3.2）
+<!-- template-only:end -->
 
-- 发布：对已合并到 main 且 `Deploy staging` 成功的提交创建并推送 `v*` tag。`deploy-production.yml` 先运行 `scripts/production/check-release.mjs`，校验提交在 main 上且该完整 SHA 有成功的 staging 发布；再进入 `production` environment 等待审批。批准后依次迁移、部署 jobs、部署 web、等待 `https://app.ezarouter.cc/api/health` 返回完整 SHA，最后运行只读冒烟（`playwright test --project production`，仅 GET）。
-- 回滚：`gh workflow run deploy-production.yml --ref <上一个 tag>`，同样需要审批。只回退 Worker 版本，不回滚 schema；迁移须保持向前兼容，破坏性迁移单独评审。数据问题按恢复 runbook 处理。
-- 生产 Sentry secrets 未配置（5.2 前）时，流水线跳过 source map 上传并给出 warning，仍删除客户端 map。
+## 7. 发布与回滚
+
+- 发布：对已合并到 main 且 `Deploy staging` 成功的提交创建并推送 `v*` tag。`deploy-production.yml` 先运行 `scripts/production/check-release.mjs`，校验提交在 main 上且该完整 SHA 有成功的 staging 发布；再进入 `production` environment 等待审批。批准后依次迁移、部署 jobs、部署 web、等待本项目生产 URL 的 `/api/health` 返回完整 SHA，最后运行只读冒烟（`playwright test --project production`，仅 GET）。
+- 回滚：`gh workflow run deploy-production.yml --ref <上一个 tag>`，同样需要审批。只回退 Worker 版本，不回滚 schema；迁移须保持向前兼容，破坏性迁移单独评审。数据问题按 [restore](restore.md) 处理。
+- 未配置生产 Sentry 上传 secrets 时，流水线跳过 source map 上传并给出 warning，仍删除客户端 map。
 - 本地对任意环境试跑只读冒烟：`PRODUCTION_URL=<URL> pnpm --filter @saas/web exec playwright test --project production`。
 
+## 8. 生产写操作清单
+
+<!-- template-only:start -->
 ## 8. 生产写操作清单（2026-10-15 起草；A、B 已获用户批准并执行）
 
 ### 执行记录（2026-10-15）
@@ -143,49 +230,74 @@ wrangler 无法创建 API token（无对应命令，OAuth 可选范围不含 API
   Hyperdrive 经 Cloudflare API 创建：请求体与授权头均经 stdin，连接串不进命令参数或输出；缓存设置回读 staging 两个配置后照搬；创建时 Hyperdrive 已实际连通 `saas_production`（app，非 pooled）。Workflow `ai-media-production` 与两个 Worker 随首次发布（3.3）创建。
 - **构建验证**：jobs `wrangler deploy --env production --dry-run` 全部绑定指向上述资源；web 生产构建在预渲染阶段因 `env.invalid missing TURNSTILE_SITE_KEY` 失败（模板启用 Turnstile，站点 key 为构建期必需 var）。用户批准后经 Cloudflare API（wrangler OAuth 的 `challengewidgets.write`）新建 Turnstile 站点 `saas-production`：managed 模式、仅允许 `app.ezarouter.cc`，站点 key `0x4AAAAAAFXeXLLV-NITAkGX` 写入 web `env.production.vars`；密钥未输出，存于开发机 `~/.config/saas-template/turnstile-production.secret`（600），在 2.2 写为 web secret `TURNSTILE_SECRET_KEY`。复验后 web 生产构建（预渲染无 `env.invalid`）与部署 dry-run 通过。不使用始终通过的测试 key；生成器会清空 `0x` 开头的真实站点 key，新项目须自行配置。
 
+<!-- template-only:end -->
+
 按 deploy-cloudflare 技能「写入前确认动作清单」，以下操作会在 Cloudflare 账号或生产库产生真实资源 / 权限变更，批准后由协调者执行并回读核对。名称与 staging 一一对应。
 
-**A. 生产库权限（4.1 前置）**——以 `neondb_owner` 执行一次：
+**A. 生产库备份权限**——以 `neondb_owner` 执行一次：
 
 ```sql
 GRANT pg_read_all_data TO readonly;
 ```
 
-原因：`readonly` 只在 public 有权限，`pg_dump` 读 `drizzle.__drizzle_migrations` 时报 `permission denied for schema drizzle`。`pg_read_all_data`（PG14+ 内置）可读全部 schema 与序列，仍不能写；本地临时角色已验证（见 [restore §6](./restore.md)）。
+原因：`readonly` 只在 public 有权限，`pg_dump` 读 `drizzle.__drizzle_migrations` 时报 `permission denied for schema drizzle`。`pg_read_all_data`（PG14+ 内置）可读全部 schema 与序列，仍不能写；权限与恢复演练说明（见 [restore §6](./restore.md)）。
 
-**B. Cloudflare 资源（2.1）**——本机 wrangler OAuth 已有对应写权限：
+**B. Cloudflare 资源**——先核对当前登录身份与写权限：
 
 | staging | production（新建） | 说明 |
 |---|---|---|
 | Hyperdrive `saas-staging-neon` / `-cached` | `saas-production-neon` / `saas-production-neon-cached` | 指向 `saas_production` 的 app 非 pooled 直连，`sslmode=require`；缓存版沿用默认 max_age |
 | KV `CACHE` | 新 KV namespace `saas-production-cache` | web 与 jobs 共用 |
-| R2 `files-staging` | `files-production` + CORS（origin `https://app.ezarouter.cc`，PUT/GET/HEAD，同 `scripts/staging/files-cors.json`） | 用户文件；与备份桶 `saas-production-backups` 分开 |
-| Queues `email-staging` / `events-staging` | `email-production` / `events-production` | 消费者参数同 staging |
-| Workflow `ai-media-staging` | `ai-media-production`（随 jobs 部署创建） | web 经 `script_name: jobs-production` 调用 |
-| 限流 namespace 1002/1004/1006 | 1007/1008/1009 | 与 staging、本地不共享计数 |
-| Worker `web-staging` / `jobs-staging` | `web-production` / `jobs-production`（首次发布 3.3 创建） | web 绑定自定义域名 `app.ezarouter.cc` |
+| R2 `saas-files-staging` | `saas-files-production` + CORS（origin 为本项目生产 `APP_URL`，PUT/GET/HEAD，同 `scripts/staging/files-cors.json`） | 用户文件；与备份桶 `saas-production-backups` 分开 |
+| Queues `saas-email-staging` / `saas-events-staging` | `saas-email-production` / `saas-events-production` | 消费者参数同 staging |
+| Workflow `saas-ai-media-staging` | `saas-ai-media-production`（随 jobs 部署创建） | web 经 `script_name: saas-jobs-production` 调用 |
+| 限流 namespace | 为本项目环境分配三个独立整数 | 与 staging、本地不共享计数 |
+| Worker `saas-web-staging` / `saas-jobs-staging` | `saas-web-production` / `saas-jobs-production`（首次发布创建） | web 绑定自定义域名为本项目生产域名 |
 
-vars：`SENTRY_ENVIRONMENT=production`、`APP_URL=https://app.ezarouter.cc`，**不设** `PAYMENT_MODE`（Q9 前支付关闭），jobs 测试期 `CRON_PROFILE=reduced`（开放注册前改回默认，D7）。资源创建后把 ID 写入两个 `wrangler.jsonc` 的 `env.production`，以 `wrangler deploy --dry-run --env production` 与绑定名一致性检查验证（2.1）。
+vars：`SENTRY_ENVIRONMENT=production`、`APP_URL`（本项目生产 HTTPS URL），按已确认的支付模式配置 `PAYMENT_MODE`（未接入 live 前关闭生产支付），jobs 的 `CRON_PROFILE` 按本项目调度需求选择。资源创建后把 ID 写入两个 `wrangler.jsonc` 的 `env.production`，以 `wrangler deploy --dry-run --env production` 与绑定名一致性检查验证。
 
-**C. 生产 Worker secrets（2.2）**——名称同 `scripts/staging/check-secrets.mjs` 的 web / jobs 清单（支付类除外），值需用户提供或新生成（如 `BETTER_AUTH_SECRET` 新随机值，OAuth / Turnstile 需为 `app.ezarouter.cc` 新建生产应用）。
+**C. 生产 Worker secrets**——名称同 `scripts/staging/check-secrets.mjs` 的 web / jobs 清单（支付类除外），值需用户提供或新生成（如 `BETTER_AUTH_SECRET` 新随机值，OAuth / Turnstile 需为本项目生产域名新建生产应用）。
 
+## 9. 生产 Worker secrets
+
+按功能开关与实际两端消费者建立清单，写入前核对目标 Worker/environment。值由用户提供或安全生成，真值经交互或 stdin 写入；仅用 `wrangler secret list --env production` 核对名称。
+
+| Worker | secrets 与来源 |
+|---|---|
+| `saas-web-production` | 独立随机 `BETTER_AUTH_SECRET`；所选 OAuth 的生产 client ID/secret；本项目 Turnstile secret；可选 `BOOTSTRAP_ADMIN_EMAILS` |
+| web / jobs 按消费者配置 | 文件桶的 `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`；AI Gateway token 或直连 Provider key；媒体 `FAL_KEY` / `MEDIA_WEBHOOK_SECRET`（两端共享值）；可选 `SENTRY_DSN` |
+| `saas-jobs-production` | 已验证发件域的 `RESEND_API_KEY`、`EMAIL_TRANSPORT` / `EMAIL_FROM`；支付与媒体功能所需 secrets |
+
+OAuth 回调使用 §1a 的生产域名。文件与备份 R2 token 分开；同一绑定名只声明为 secret 或 var 之一。支付 secrets 仅在确认 live 账户、webhook 与生产支付清单后配置，详见 [支付联通](p2-payment-integration.md)。邮件 DNS 与服务商 Verified 状态需独立核验。
+
+```sh
+pnpm --dir apps/web exec wrangler secret put <SECRET_NAME> --env production
+pnpm --dir apps/jobs exec wrangler secret put <SECRET_NAME> --env production
+pnpm --dir apps/web exec wrangler secret list --env production
+pnpm --dir apps/jobs exec wrangler secret list --env production
+```
+
+首次发布前完成 secret 名称、构建与绑定检查；值的有效性通过健康、注册邮件、OAuth 登录与所启功能验证。
+
+<!-- template-only:start -->
 ## 9. 生产 Worker secrets（任务 2.2，2026-10-16 核对名称）
 
 用户在真实终端写入；协调者以 `wrangler secret list --name <worker>` 只核对名称（不读值）。值的正确性在首次发布（3.3）时以健康检查、注册邮件与登录实际验证。
 
 | Worker | secrets | 来源 |
 |---|---|---|
-| `web-production` | `BETTER_AUTH_SECRET` | 本地随机生成，未留存 |
+| `saas-web-production` | `BETTER_AUTH_SECRET` | 本地随机生成，未留存 |
 | | `TURNSTILE_SECRET_KEY` | Turnstile 站点 `saas-production`（开发机 `~/.config/saas-template/turnstile-production.secret`） |
-| | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google 生产 OAuth 客户端，回调 `https://app.ezarouter.cc/api/auth/callback/google` |
-| | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | GitHub 生产 OAuth App，回调 `https://app.ezarouter.cc/api/auth/callback/github` |
-| | `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | R2 token，仅 `files-production`（与备份 token 分开） |
+| | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google 生产 OAuth 客户端，回调 `本项目生产 APP_URL/api/auth/callback/google` |
+| | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | GitHub 生产 OAuth App，回调 `本项目生产 APP_URL/api/auth/callback/github` |
+| | `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | R2 token，仅 `saas-files-production`（与备份 token 分开） |
 | | `DEEPSEEK_API_KEY` | 生产文本 AI 直连（未配 AI Gateway） |
 | | `FAL_KEY`、`MEDIA_WEBHOOK_SECRET` | 与 jobs 相同值（媒体回调 HMAC 需一致） |
-| `jobs-production` | `RESEND_API_KEY` | Resend 发信 key，域名 `ezarouter.cc` |
+| `saas-jobs-production` | `RESEND_API_KEY` | Resend 发信 key，域名 `ezarouter.cc` |
 | | `EMAIL_TRANSPORT`（`resend`）、`EMAIL_FROM`（`EzaRouter <noreply@ezarouter.cc>`） | 用户以 **secret** 写入；运行时与 var 等效。**不要**再在 `wrangler.jsonc` 中声明同名 var，否则部署时绑定名冲突 |
 | | `FAL_KEY`、`MEDIA_WEBHOOK_SECRET` | 与 web 相同 |
 
 未配置（可选）：`SENTRY_DSN`（两端，5.2）、`BOOTSTRAP_ADMIN_EMAILS`（web；无管理员则无法在生产后台创建模型与套餐授权，首次发布前建议配置）、`EMAIL_REPLY_TO`。支付 secrets 待 Q9（6.1）。
 
 Resend 域名记录（DoH 核对）：`resend._domainkey.ezarouter.cc` TXT 存在；`send.ezarouter.cc` 的 MX 与 SPF TXT 存在（经 CNAME `send.forge.rmta.net`）；`_dmarc.ezarouter.cc` 未配置（建议补 `v=DMARC1; p=none;` 以提升送达率）。域名验证状态以 Resend 控制台 Verified 为准。
+<!-- template-only:end -->

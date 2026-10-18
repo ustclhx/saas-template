@@ -260,6 +260,173 @@ test('生成副本改名与配置，排除各级密钥、链接和产物', async
   await createProject({ ...f.input, name: 'next', output: join(f.dir, 'next') }, result.target)
 })
 
+test('交付只保留项目基线与必需夹具，模板历史及远程验收不复制', async (t) => {
+  const f = await fixture(t)
+  const omitted = [
+    'docs/runbooks/evidence/selfhost/report.json',
+    'docs/08-roadmap.md',
+    'docs/09-parallel-plan.md',
+    'docs/runbooks/selfhost-a-final.md',
+    'docs/runbooks/selfhost-delivery-handoff.md',
+    'docs/runbooks/p2-acceptance-stripe.md',
+    'docs/runbooks/p2-acceptance-paypal.md',
+    'docs/runbooks/p2-offline-acceptance.md',
+    'docs/runbooks/staging-acceptance.md',
+    'docs/runbooks/hyperdrive-tunnel.md',
+    'docs/runbooks/selfhost-c-profile-resources.json',
+    'scripts/orca/setup.sh',
+    'scripts/probes/latency/run.mjs',
+    'orca.yaml',
+    '.worktreeinclude',
+    'apps/web/e2e/staging-acceptance/acceptance.spec.ts',
+    'apps/web/e2e/staging-acceptance/playwright.config.ts',
+    'apps/web/e2e/staging-acceptance/local-setup.ts',
+    '.github/workflows/selfhost-features.yml',
+    '.github/workflows/selfhost-release-acceptance.yml',
+    'scripts/selfhost-features.mjs',
+    'scripts/selfhost-features-routes.mjs',
+    'scripts/create-project.test.mjs',
+    'scripts/create-project.verify.test.mjs',
+    'feature-artifacts/report.json',
+  ]
+  for (const path of omitted) await f.file(path, 'TEMPLATE_HISTORY_SENTINEL')
+  const kept = [
+    'openspec/specs/auth/spec.md',
+    'openspec/config.yaml',
+    '.agents/skills/new-module/SKILL.md',
+    '.claude/skills/openspec-propose/SKILL.md',
+    'packages/billing/src/paypal/fixtures/recorded/webhook.json',
+    'apps/web/e2e/staging-acceptance/local-text-model.ts',
+    'apps/web/e2e/staging-acceptance/accounts.ts',
+    'apps/web/e2e/staging-acceptance/support.ts',
+    'docs/runbooks/selfhost-deploy.md',
+    'docs/runbooks/staging-neon.md',
+    'docs/runbooks/production-neon.md',
+    'docs/runbooks/p2-staging-preparation.md',
+    'scripts/staging/wait-healthy.mjs',
+  ]
+  for (const path of kept) await f.file(path, 'PROJECT_BASELINE_SENTINEL')
+  await f.file(
+    'docs/mixed.md',
+    [
+      '# 操作说明',
+      '<!-- template-only:start -->',
+      'product-res-ecs saas-template-evidence 170a06d37ad50396b19943eb6b77a21d',
+      '<!-- template-only:end -->',
+      '[历史](./08-roadmap.md) 与 [历史探针](../scripts/probes/latency/README.md)',
+      '私有证据库 `saas-template-evidence:selfhost/report.json`',
+      '[通用部署](./runbooks/selfhost-deploy.md)',
+    ].join('\n'),
+  )
+  await f.file(
+    '.agents/skills/quick-start/SKILL.md',
+    '需完整矩阵时才运行 `pnpm test:create-project:verify`，\n其真实副本、CI 环境与清理模式见 `scripts/create-project.verify.test.mjs`。',
+  )
+  await f.file(
+    '.claude/skills/add-ai-model/SKILL.md',
+    '修改生成器时执行 `pnpm test:create-project`；用 `pnpm test:create-project:verify` 验收。',
+  )
+  await f.file(
+    'package.json',
+    JSON.stringify({
+      name: 'fixture-template',
+      scripts: {
+        'create-project': 'node scripts/create-project',
+        'test:create-project': 'node --test scripts/create-project.test.mjs',
+        'test:create-project:verify': 'node --test scripts/create-project.verify.test.mjs',
+        check: 'node scripts/staging/wait-healthy.mjs',
+      },
+    }),
+  )
+  const result = await createProject(f.input, f.source)
+  const paths = (await files(result.target)).map((path) => path.slice(result.target.length + 1))
+  for (const path of omitted) assert.ok(!paths.includes(path), `模板材料仍被复制：${path}`)
+  for (const path of kept) assert.ok(paths.includes(path), `项目基线被误排除：${path}`)
+  const text = await readFile(join(result.target, 'docs/mixed.md'), 'utf8')
+  assert.doesNotMatch(
+    text,
+    /TEMPLATE_HISTORY|saas-template-evidence|product-res-ecs|170a06d37ad50396b19943eb6b77a21d|template-only|08-roadmap|scripts\/probes/,
+  )
+  assert.match(text, /项目自身的私有验收记录/)
+  assert.match(text, /\[通用部署\]\(\.\/runbooks\/selfhost-deploy.md\)/)
+  for (const path of [
+    '.agents/skills/quick-start/SKILL.md',
+    '.claude/skills/add-ai-model/SKILL.md',
+  ])
+    assert.doesNotMatch(
+      await readFile(join(result.target, path), 'utf8'),
+      /test:create-project|create-project.verify.test/,
+    )
+  const manifest = JSON.parse(await readFile(join(result.target, 'package.json'), 'utf8'))
+  assert.equal(manifest.scripts['test:create-project'], undefined)
+  assert.equal(manifest.scripts['test:create-project:verify'], undefined)
+  assert.equal(manifest.scripts['create-project'], 'node scripts/create-project')
+})
+
+test('真实副本保留 Cloudflare 操作步骤，技能文档引用存在且没有重复占位文字', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'bootstrap-docs-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const result = await createProject({
+    name: 'acme',
+    domain: 'acme.example',
+    target: 'cloudflare',
+    output: join(dir, 'acme'),
+  })
+  for (const path of await files(result.target)) {
+    if (!path.endsWith('.md')) continue
+    const text = await readFile(path, 'utf8')
+    assert.doesNotMatch(text, /staging-acceptance\.md/, `仍引用已排除的 runbook：${path}`)
+    if (!/[/](?:\.agents|\.claude)[/]skills[/]/.test(path)) continue
+    assert.doesNotMatch(text, /项目维护约定[、，\s`]+项目维护约定/, `技能包含重复占位文字：${path}`)
+    for (const [reference] of text.matchAll(/docs\/[\w./{},-]+\.md/g)) {
+      const group = reference.match(/\{([^}]+)\}/)
+      const targets = group
+        ? group[1].split(',').map((name) => reference.replace(group[0], name))
+        : [reference]
+      for (const target of targets) {
+        await assert.doesNotReject(
+          () => readFile(join(result.target, target)),
+          `${path} 引用不存在的文档：${target}`,
+        )
+      }
+    }
+  }
+  const skill = await readFile(
+    join(result.target, '.agents/skills/deploy-cloudflare/SKILL.md'),
+    'utf8',
+  )
+  assert.equal(
+    skill,
+    await readFile(join(result.target, '.claude/skills/deploy-cloudflare/SKILL.md'), 'utf8'),
+  )
+  assert.doesNotMatch(skill, /项目维护约定|按 staging-neon/)
+  const staging = await readFile(join(result.target, 'docs/runbooks/staging-neon.md'), 'utf8')
+  const production = await readFile(join(result.target, 'docs/runbooks/production-neon.md'), 'utf8')
+  const preparation = await readFile(
+    join(result.target, 'docs/runbooks/p2-staging-preparation.md'),
+    'utf8',
+  )
+  for (const text of [staging, production, preparation]) {
+    assert.doesNotMatch(
+      text,
+      /template-only|saas-template-evidence|170a06d3|ezarouter\.cc|ustclhx|2026-10-\d\d|br-(?:royal|cold|lucky)|org-ancient|super-resonance|ancient-hill|项目维护约定/,
+    )
+  }
+  assert.match(staging, /CREATE ROLE app LOGIN NOSUPERUSER/)
+  assert.match(staging, /acme-staging-neon-cached/)
+  assert.match(staging, /acme-files-staging/)
+  assert.match(staging, /STAGING_MIGRATION_DATABASE_URL/)
+  assert.match(production, /--name acme-production/)
+  assert.match(production, /acme_production/)
+  assert.match(production, /age-keygen/)
+  assert.match(production, /acme-production-backups/)
+  assert.match(production, /production-backup/)
+  assert.match(production, /gh workflow run deploy-production\.yml/)
+  assert.match(production, /TURNSTILE_SECRET_KEY|Turnstile secret/)
+  assert.match(preparation, /queues create acme-events-staging/)
+  assert.match(preparation, /pnpm --filter @acme\/db db:migrate/)
+})
+
 test('媒体功能与支付开启时，清单和 Worker 引用同步生成', async (t) => {
   const f = await fixture(t)
   const result = await createProject(f.input, f.source)
@@ -453,6 +620,11 @@ test('selfhost 继承发布和运维材料，排除真值，并再次生成 name
     // biome-ignore lint/suspicious/noTemplateCurlyInString: 保留 GitHub Actions 运行时输入。
     'on:\n  workflow_dispatch:\n    inputs:\n      namespace:\n        required: true\n        type: string\nenv:\n  IMAGE_NAMESPACE: ${{ inputs.namespace }}\n',
   )
+  await f.file(
+    '.github/workflows/deploy-production.yml',
+    'env: { PRODUCTION_URL: https://old.example }\n',
+  )
+  await f.file('.github/workflows/backup-production.yml', 'name: Neon backup\n')
   await f.file('.github/workflows/selfhost-images.yml', 'permissions: { contents: read }\n')
   await f.file(
     'deploy/selfhost/images/catalog.json',
@@ -493,7 +665,8 @@ test('selfhost 继承发布和运维材料，排除真值，并再次生成 name
     turnstile: 'false',
   }
   const result = await createProject(input, f.source)
-  assert.ok(!(await files(result.target)).some((path) => path.endsWith('deploy-staging.yml')))
+  for (const workflow of ['deploy-staging.yml', 'deploy-production.yml', 'backup-production.yml'])
+    assert.ok(!(await files(result.target)).some((path) => path.endsWith(workflow)))
   assert.doesNotMatch(
     result.report,
     /BLOCKED|STRIPE_SECRET|PAYPAL_CLIENT|billing:seed|admin\/billing\/plans|CLOUDFLARE_API_TOKEN/,
