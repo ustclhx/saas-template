@@ -9,6 +9,16 @@ const PASSWORD = 'correct-horse-battery'
 const copy =
   process.env.SELFHOST_LOCALE === 'zh'
     ? {
+        registerForm: '创建账号',
+        name: '姓名',
+        email: '邮箱',
+        password: '密码',
+        createAccount: '创建账号',
+        signInForm: '使用密码登录',
+        signIn: '登录',
+        verificationSent: (email: string) => `已向 ${email} 发送验证链接，请先验证邮箱再登录。`,
+        emailVerified: '邮箱已验证',
+        continue: '继续',
         emailNotVerified: '请先验证邮箱，我们已向你发送新的验证链接。',
         personal: '个人空间',
         team: '团队空间',
@@ -16,6 +26,17 @@ const copy =
         settings: '空间设置',
       }
     : {
+        registerForm: 'Create an account',
+        name: 'Name',
+        email: 'Email',
+        password: 'Password',
+        createAccount: 'Create account',
+        signInForm: 'Sign in with password',
+        signIn: 'Sign in',
+        verificationSent: (email: string) =>
+          `We sent a verification link to ${email}. Verify your email address, then sign in.`,
+        emailVerified: 'Email verified',
+        continue: 'Continue',
         emailNotVerified:
           'Please verify your email address first. We have sent you a new verification link.',
         personal: 'Personal workspace',
@@ -98,10 +119,10 @@ async function verificationLink(email: string, baseURL: string) {
 
 async function signIn(page: Page, email: string) {
   await page.goto('/login')
-  const form = page.getByRole('form', { name: 'Sign in with password' })
-  await form.getByLabel('Email', { exact: true }).fill(email)
-  await form.getByLabel('Password', { exact: true }).fill(PASSWORD)
-  await form.getByRole('button', { name: 'Sign in', exact: true }).click()
+  const form = page.getByRole('form', { name: copy.signInForm })
+  await form.getByLabel(copy.email, { exact: true }).fill(email)
+  await form.getByLabel(copy.password, { exact: true }).fill(PASSWORD)
+  await form.getByRole('button', { name: copy.signIn, exact: true }).click()
 }
 
 async function sessionIdentity(page: Page) {
@@ -128,16 +149,14 @@ test('fresh Node Compose: delivered verification, sign-out, password login and t
   const slug = `selfhost-${key}`
 
   await page.goto('/register')
-  const registration = page.getByRole('form', { name: 'Create an account' })
-  await registration.getByLabel('Name', { exact: true }).fill(name)
-  await registration.getByLabel('Email', { exact: true }).fill(email)
-  await registration.getByLabel('Password', { exact: true }).fill(PASSWORD)
+  const registration = page.getByRole('form', { name: copy.registerForm })
+  await registration.getByLabel(copy.name, { exact: true }).fill(name)
+  await registration.getByLabel(copy.email, { exact: true }).fill(email)
+  await registration.getByLabel(copy.password, { exact: true }).fill(PASSWORD)
   const signUpResponse = page.waitForResponse('**/api/auth/sign-up/email')
-  await registration.getByRole('button', { name: 'Create account', exact: true }).click()
+  await registration.getByRole('button', { name: copy.createAccount, exact: true }).click()
   expect((await signUpResponse).status()).toBe(200)
-  await expect(page.getByRole('status')).toHaveText(
-    `We sent a verification link to ${email}. Verify your email address, then sign in.`,
-  )
+  await expect(page.getByRole('status')).toHaveText(copy.verificationSent(email))
   expect(await sessionIdentity(page)).toBeNull()
   // 先取得注册邮件；未验证登录会另发一封回跳 /app 的邮件，不能混淆两个业务入口。
   const deliveredLink = await verificationLink(email, baseURL)
@@ -159,8 +178,8 @@ test('fresh Node Compose: delivered verification, sign-out, password login and t
   expect(
     /^\/verify-email\/?$/.test(verificationResult.pathname) && !verificationResult.search,
   ).toBe(true)
-  await expect(page.getByRole('heading', { name: 'Email verified', exact: true })).toBeVisible()
-  await page.getByRole('link', { name: 'Continue', exact: true }).click()
+  await expect(page.getByRole('heading', { name: copy.emailVerified, exact: true })).toBeVisible()
+  await page.getByRole('link', { name: copy.continue, exact: true }).click()
   await expect(page).toHaveURL(PERSONAL_URL)
   const personalURL = page.url()
   await expect(page.getByTestId('current-user')).toHaveText(`${name} (${email})`)

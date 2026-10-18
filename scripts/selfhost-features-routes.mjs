@@ -13,12 +13,14 @@ check(
     new URL(home.headers.get('location'), 'http://local').pathname === '/app',
   'Application homepage does not lead to /app',
 )
+// 单语言构建仍使用默认语言文案，按实际中文表单名验证 SSR。
 const login = await get('/login')
 const html = await login.text()
 check(
   login.status === 200 &&
     /<html[^>]*lang="zh"/.test(html) &&
-    html.includes('Sign in with password'),
+    html.includes('aria-label="使用密码登录"') &&
+    !html.includes('aria-label="Sign in with password"'),
   'Chinese single-language Node SSR failed',
 )
 const assets = [
