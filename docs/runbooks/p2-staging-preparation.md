@@ -1,5 +1,8 @@
-# P2 staging 准备记录（更新至 2026-10-09 UTC）
+# Staging 发布准备
 
+按 [Neon staging](staging-neon.md) §1–4 完成独立数据库、受限角色、Hyperdrive、文件桶、Worker secrets 与 GitHub `staging` environment；支付启用时另读 [支付联通](p2-payment-integration.md)。先核对新项目资源、实际 URL 与完整 SHA，再执行获授权的迁移、seed 和发布。凭据从被忽略且权限为 600 的 `.env.staging-neon` 加载，核对目标数据库与角色，避免回退到本机同名库。
+
+<!-- template-only:start -->
 用户已同意进入真实支付联通阶段。P1 归档保持完成；P2 仍为 28/34，本文记录部署准备与有限联通证据，不作为剩余六项全部完成的验收结论。
 
 ## 发布基线与结果（2026-10-05 历史记录）
@@ -13,6 +16,8 @@
 
 下列为 Neon 准备/发布命令参考；2026-10-05 上述结果来自本机旧 staging。当前 Neon 迁移与 seed 已完成，Worker 已由 main 自动发布并切换绑定；无需重做已完成的准备步骤。后续执行前从受保护 `.env.staging-neon` 加载变量并确认目标库，不使用本机同名库连接串：
 
+<!-- template-only:end -->
+
 ```bash
 set -a
 . ./.env.staging-neon
@@ -21,13 +26,25 @@ psql "$NEON_MIGRATOR_URL" -X -v ON_ERROR_STOP=1 \
   -c 'select current_database(), current_user'
 MIGRATION_DATABASE_URL="$NEON_MIGRATOR_URL" pnpm --filter @saas/db db:migrate
 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="$NEON_APP_URL" pnpm billing:seed
-pnpm --dir apps/web exec wrangler queues create events-staging --env staging
+pnpm --dir apps/web exec wrangler queues create saas-events-staging --env staging
 pnpm --filter @saas/jobs deploy:staging
 APP_VERSION="$(git rev-parse HEAD)" pnpm --filter @saas/web deploy:staging
 ```
 
 队列已存在后跳过 create；发布顺序与配置见 [Cloudflare 官方 Queues 配置说明](https://developers.cloudflare.com/queues/configuration/configure-queues/)。
 
+日常发布使用 `.github/workflows/deploy-staging.yml`（main 成功 CI → 迁移 → jobs → web → 版本探活 → 浏览器冒烟）；上面的手工命令仅用于明确授权的首次准备或重验。billing 关闭时跳过 seed 与支付配置。已有队列先核对归属再复用。
+
+发布后运行：
+
+```sh
+node scripts/staging/wait-healthy.mjs "${STAGING_URL:?先设置本项目 staging URL}/api/health" "$(git rev-parse HEAD)"
+STAGING_URL="$STAGING_URL" pnpm --filter @saas/web exec playwright test --project staging
+```
+
+核对 HTTP 200、数据库 up、完整 SHA、按调度推进的 jobs 心跳，以及注册/登录和所启用功能。支付只能在已确认的测试账户中按支付 runbook 验证；健康与价格 seed 通过不能代替购买、回调验签和去重验收。结果写入 `EVIDENCE_DIR`，PR 只引用本项目私有记录。
+
+<!-- template-only:start -->
 ## 冒烟验证（2026-10-05 本机链路历史结果）
 
 - `/api/health`、`/pricing`、`/login` 均返回 200，数据库 up；新 Jobs 心跳为 `2026-10-05T03:35:26.799Z`，晚于本次 Jobs 发布。
@@ -69,3 +86,4 @@ Stripe Checkout 首次返回 `BILLING_UNAVAILABLE`，Workbench 400 确认账户�
 退款、订阅、PayPal 购买及完整业务回调录制仍待 P2 完整门槛核验；本轮有限联通不能作为全量 P2 支付验收。不在聊天、日志或 git 中传递密钥。
 
 按 [支付联通步骤](p2-payment-integration.md) 保存已有同步证据并核对完整门槛，再走测试卡、测试时钟和 PayPal 沙箱的完整业务场景。完成 P2 tasks 1.3、3.2、3.3、10.1、10.4、11.1，回写 Q4/Q5/Q6 后才归档 P2；上述 Neon 任务通过不能替代 P2 11.1。OAuth 继续 mock，邮件继续 log；不接入 live/production。
+<!-- template-only:end -->

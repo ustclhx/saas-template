@@ -88,7 +88,7 @@ Compose、同 SHA release、health/jobs/heartbeat、兼容回滚、ownership 与
 自托管副本不复制 Cloudflare staging/production 发布与 Neon 备份 workflow；Cloudflare 副本保留这些通用发布/备份入口，需配置自身资源与凭据。
 OAuth/Turnstile 关闭时副本 Compose 和示例同步移除其要求；原模板文件保持不变。
 
-生成器只交付初始化与运行新项目需要的材料：排除模板路线图、并行波次、一次性验收/交接记录、全部历史 change、Phase 0 探针、Orca 生命周期脚本与模板验收 workflow。业务单测/类型检查依赖的本地夹具、脱敏支付回调录制、OpenSpec 主规格及项目扩展技能保留。混合文档以 `template-only` 注释标明仅供模板维护的部分，派生时删除；指向排除资料的链接改为说明文字。新项目自行建立私有验收记录，证据写入 `EVIDENCE_DIR`，默认落在已忽略的 `test-results/evidence/`。
+生成器只交付初始化与运行新项目需要的材料：排除模板路线图、并行波次、一次性验收/交接记录、全部历史 change、Phase 0 探针、Orca 生命周期脚本与模板验收 workflow。业务单测/类型检查依赖的本地夹具、脱敏支付回调录制、OpenSpec 主规格及项目扩展技能保留。Neon staging / production 与 staging 准备 runbook 保留建库、受限角色、资源、密钥和发布/回滚步骤，资源名随项目改写。混合文档以 `template-only` 注释标明仅供模板维护的部分，派生时删除；指向排除资料的链接改为说明文字。新项目自行建立私有验收记录，证据写入 `EVIDENCE_DIR`，默认落在已忽略的 `test-results/evidence/`。
 
 复制排除各级 `.git`、node_modules、`.env` / `.env.*` 和 `.dev.vars*`（保留 example）、
 `.wrangler`、dist、`.turbo`、coverage、构建和测试生成目录、进行中的 `openspec/changes`、

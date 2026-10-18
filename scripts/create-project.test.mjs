@@ -271,10 +271,7 @@ test('交付只保留项目基线与必需夹具，模板历史及远程验收�
     'docs/runbooks/p2-acceptance-stripe.md',
     'docs/runbooks/p2-acceptance-paypal.md',
     'docs/runbooks/p2-offline-acceptance.md',
-    'docs/runbooks/p2-staging-preparation.md',
     'docs/runbooks/staging-acceptance.md',
-    'docs/runbooks/staging-neon.md',
-    'docs/runbooks/production-neon.md',
     'docs/runbooks/hyperdrive-tunnel.md',
     'docs/runbooks/selfhost-c-profile-resources.json',
     'scripts/orca/setup.sh',
@@ -303,6 +300,9 @@ test('交付只保留项目基线与必需夹具，模板历史及远程验收�
     'apps/web/e2e/staging-acceptance/accounts.ts',
     'apps/web/e2e/staging-acceptance/support.ts',
     'docs/runbooks/selfhost-deploy.md',
+    'docs/runbooks/staging-neon.md',
+    'docs/runbooks/production-neon.md',
+    'docs/runbooks/p2-staging-preparation.md',
     'scripts/staging/wait-healthy.mjs',
   ]
   for (const path of kept) await f.file(path, 'PROJECT_BASELINE_SENTINEL')
@@ -361,6 +361,70 @@ test('交付只保留项目基线与必需夹具，模板历史及远程验收�
   assert.equal(manifest.scripts['test:create-project'], undefined)
   assert.equal(manifest.scripts['test:create-project:verify'], undefined)
   assert.equal(manifest.scripts['create-project'], 'node scripts/create-project')
+})
+
+test('真实副本保留 Cloudflare 操作步骤，技能文档引用存在且没有重复占位文字', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'bootstrap-docs-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const result = await createProject({
+    name: 'acme',
+    domain: 'acme.example',
+    target: 'cloudflare',
+    output: join(dir, 'acme'),
+  })
+  for (const path of await files(result.target)) {
+    if (!path.endsWith('.md')) continue
+    const text = await readFile(path, 'utf8')
+    assert.doesNotMatch(text, /staging-acceptance\.md/, `仍引用已排除的 runbook：${path}`)
+    if (!/[/](?:\.agents|\.claude)[/]skills[/]/.test(path)) continue
+    assert.doesNotMatch(text, /项目维护约定[、，\s`]+项目维护约定/, `技能包含重复占位文字：${path}`)
+    for (const [reference] of text.matchAll(/docs\/[\w./{},-]+\.md/g)) {
+      const group = reference.match(/\{([^}]+)\}/)
+      const targets = group
+        ? group[1].split(',').map((name) => reference.replace(group[0], name))
+        : [reference]
+      for (const target of targets) {
+        await assert.doesNotReject(
+          () => readFile(join(result.target, target)),
+          `${path} 引用不存在的文档：${target}`,
+        )
+      }
+    }
+  }
+  const skill = await readFile(
+    join(result.target, '.agents/skills/deploy-cloudflare/SKILL.md'),
+    'utf8',
+  )
+  assert.equal(
+    skill,
+    await readFile(join(result.target, '.claude/skills/deploy-cloudflare/SKILL.md'), 'utf8'),
+  )
+  assert.doesNotMatch(skill, /项目维护约定|按 staging-neon/)
+  const staging = await readFile(join(result.target, 'docs/runbooks/staging-neon.md'), 'utf8')
+  const production = await readFile(join(result.target, 'docs/runbooks/production-neon.md'), 'utf8')
+  const preparation = await readFile(
+    join(result.target, 'docs/runbooks/p2-staging-preparation.md'),
+    'utf8',
+  )
+  for (const text of [staging, production, preparation]) {
+    assert.doesNotMatch(
+      text,
+      /template-only|saas-template-evidence|170a06d3|ezarouter\.cc|ustclhx|2026-10-\d\d|br-(?:royal|cold|lucky)|org-ancient|super-resonance|ancient-hill|项目维护约定/,
+    )
+  }
+  assert.match(staging, /CREATE ROLE app LOGIN NOSUPERUSER/)
+  assert.match(staging, /acme-staging-neon-cached/)
+  assert.match(staging, /acme-files-staging/)
+  assert.match(staging, /STAGING_MIGRATION_DATABASE_URL/)
+  assert.match(production, /--name acme-production/)
+  assert.match(production, /acme_production/)
+  assert.match(production, /age-keygen/)
+  assert.match(production, /acme-production-backups/)
+  assert.match(production, /production-backup/)
+  assert.match(production, /gh workflow run deploy-production\.yml/)
+  assert.match(production, /TURNSTILE_SECRET_KEY|Turnstile secret/)
+  assert.match(preparation, /queues create acme-events-staging/)
+  assert.match(preparation, /pnpm --filter @acme\/db db:migrate/)
 })
 
 test('媒体功能与支付开启时，清单和 Worker 引用同步生成', async (t) => {
