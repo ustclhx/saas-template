@@ -45,14 +45,21 @@ export type FalSubmissionOutcome = 'ambiguous' | 'rejected'
  * causeName 只保留底层异常的类名（如 TypeError / TimeoutError），用于定位传输失败原因。
  */
 export class FalProviderError extends AppError {
+  readonly httpStatus: number | undefined
+  readonly submissionOutcome: FalSubmissionOutcome | undefined
+  readonly causeName: string | undefined
+
   constructor(
     code: string,
     message: string,
-    readonly httpStatus?: number,
-    readonly submissionOutcome?: FalSubmissionOutcome,
-    readonly causeName?: string,
+    httpStatus?: number,
+    submissionOutcome?: FalSubmissionOutcome,
+    causeName?: string,
   ) {
     super(code, message, { status: 502 })
+    this.httpStatus = httpStatus
+    this.submissionOutcome = submissionOutcome
+    this.causeName = causeName
   }
 }
 

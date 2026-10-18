@@ -9,8 +9,8 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "seed": "node --env-file-if-exists=../../.env.local --experimental-transform-types scripts/seed.ts",
-    "sync": "node --env-file-if-exists=../../.env.local --experimental-transform-types scripts/sync.ts"
+    "seed": "node --env-file-if-exists=../../.env.local --experimental-strip-types scripts/seed.ts",
+    "sync": "node --env-file-if-exists=../../.env.local --experimental-strip-types scripts/sync.ts"
   },
   "dependencies": {
     "@saas/db": "workspace:*",

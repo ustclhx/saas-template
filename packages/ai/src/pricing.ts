@@ -60,11 +60,11 @@ export type PricingErrorCode =
   | 'CREDITS_OUT_OF_RANGE'
 
 export class PricingError extends Error {
-  constructor(
-    public readonly code: PricingErrorCode,
-    message: string = code,
-  ) {
+  readonly code: PricingErrorCode
+
+  constructor(code: PricingErrorCode, message: string = code) {
     super(message)
+    this.code = code
     this.name = 'PricingError'
   }
 }
