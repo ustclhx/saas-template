@@ -1,5 +1,7 @@
 # Bundle 运维入口
 
+> **模板测试实例状态（2026-10-18）**：用户确认拆除 `product-res-ecs` 上的 `saas-selfhost` 项目。当前部署的基础 / S3 / backup / replica Compose 栈、项目卷、本机项目镜像和 `/opt/saas-selfhost` 已清理，80/443 已释放；其他容器、匿名卷、镜像与 `warp-svc` 状态保留。三个 selfhost R2 桶已解除锁并设为所有对象 1 天后过期，待次日核空删除；域名 DNS 与桶级 token 的手动收尾见[拆除记录](../../docs/runbooks/evidence/teardown-2026-10-18.md)。本目录部署材料、runbook 与远端 GHCR 镜像保留供派生项目使用。
+
 仅使用受信 Actions 发布成功的 `image-set.json` / 同 SHA bundle。校验 checksum 用于传输
 完整性；不替代来源核实。先校验源 SHA、发布 run、所有镜像两架构、namespace/revision。
 发布需要明确授权；首次模板发布的源 SHA 与 run 见仓库发布 runbook，本地 fixture 不能用于服务器。

@@ -7,13 +7,15 @@
 | 阶段 | 时间 | 数据库 | 连接方式 | Worker 部署 | 域名 | 备份 |
 |---|---|---|---|---|---|---|
 | **阶段一：开发与云端 staging 测试** | 从 Phase 0 到完成最小原型 | 本地开发：Docker PG（`infra/local`）；线上 staging：Neon `saas_staging` | 本地开发直连；staging：Hyperdrive → Neon 非 pooled TLS 直连（§2） | staging 部署到 `*.workers.dev` | 不需要 | 不做 |
-| **阶段二：生产上线**（当前） | 完成最小原型之后 | production：Neon Launch 的独立项目；staging 为同组织另一项目（2026-10-15 随组织升级为 Launch 计费） | Hyperdrive → Neon 非 pooled TLS 直连（与 staging 相同） | staging / production，绑定自定义域名 | 需要（可先用已有 Zone 的子域名） | 必须：Neon PITR + 独立逻辑备份与恢复演练 |
+| **阶段二：生产上线**（派生项目参考） | 完成最小原型之后 | production：Neon Launch 的独立项目；staging 为同组织另一项目（2026-10-15 随组织升级为 Launch 计费） | Hyperdrive → Neon 非 pooled TLS 直连（与 staging 相同） | staging / production，绑定自定义域名 | 需要（可先用已有 Zone 的子域名） | 必须：Neon PITR + 独立逻辑备份与恢复演练 |
 
 **2026-10-15 用户决定**：Cloudflare 形态的生产数据库使用 Neon 付费档，不自建 PG，不建设 Tunnel / Workers VPC，计划与任务见 `docs/08-roadmap.md`「Cloudflare 生产上线」。§1 的自建 PG、§2 的 Workers VPC / Access 方案保留为历史与后路，不再是阶段二默认。自托管形态（Node + Compose）使用 Compose 内的 PG，见 `docs/node-jobs-extension.md` 与 `docs/runbooks/selfhost-*.md`。
 
 **最小原型**指 Phase 0–3 完成：可以注册登录、开通套餐或购买积分、进行一次计费正确的 AI 对话（见 `docs/08-roadmap.md`）。
 
-截至 2026-10-18，已进入阶段二：Cloudflare 生产 **v0.1.3** 在 `https://app.ezarouter.cc` 在线，健康返回完整 SHA `54c537542ad0f2033628c136a7057a705c6d0218`、`db.status=up` 与推进的 Cron 心跳；[生产发布 run 38910072786](https://github.com/ustclhx/saas-template/actions/runs/38910072786) 成功。生产使用独立 Neon Launch 项目（PG 17、`aws-us-west-2`、0.25–1 CU、PITR 7 天），tag 发布依次完成迁移、jobs、web、完整 SHA 健康与只读冒烟；每日加密逻辑备份、两路恢复演练及 Sentry source map / 可读堆栈、健康监控均已验证，见 [production runbook](./runbooks/production-neon.md) 与[发布恢复证据](./runbooks/evidence/production/release-2026-10-16.md)。staging 继续由 main 自动发布到 Neon（同组织 Launch），`add-cloud-staging-neon` 已于 2026-10-11 完成 29/29 并归档。
+**当前状态（2026-10-18）**：按用户确认，模板演示的 Cloudflare 生产实例与自托管测试实例已拆除。生产 Workers、KV、Queues、Hyperdrive、Turnstile 与 Neon 项目已删除；GitHub `production` environment（含 secrets）与 `PRODUCTION_BACKUP_SCHEDULE` 已删除。自托管 `saas-selfhost` 栈、项目卷、本机项目镜像与 `/opt/saas-selfhost` 已清理，80/443 已释放。四个非空 R2 桶已解除锁并设为所有对象 1 天后过期，待 2026-10-19 核空后删桶；`selfhost.ezarouter.cc` DNS 与 Sentry Uptime 监控因 API 权限不足待用户手动删除。生产自定义域名已解绑，公共 DNS 的 A/AAAA/CNAME 均为 NXDOMAIN。详见[拆除记录](./runbooks/evidence/teardown-2026-10-18.md)。
+
+拆除前 Cloudflare 生产 **v0.1.3** 的完整 SHA 为 `54c537542ad0f2033628c136a7057a705c6d0218`；[发布 run 38910072786](https://github.com/ustclhx/saas-template/actions/runs/38910072786)、每日加密逻辑备份、两路恢复演练及 Sentry 可读堆栈与健康监控均已验证，见 [production runbook](./runbooks/production-neon.md) 与[历史发布恢复证据](./runbooks/evidence/production/release-2026-10-16.md)。配置、workflow、部署材料与 runbook 保留供派生项目使用，原生产资源 ID 已失效，重新上线须创建项目自身资源和凭据。staging 继续由 main 自动发布到 Neon（同组织 Launch），`add-cloud-staging-neon` 已于 2026-10-11 完成 29/29 并归档。
 
 Cloudflare 生产 change 的模板范围已结项，合并后由协调者归档；自托管四个 change 已于 2026-10-17 全部同步并归档（#239）。`add-cloud-acceptance-followups` 的 staging 支付验收由另一 worker 处理中，未合并结果不计入当前 main 进度。2026-10-18 用户决定：正式收款主体（Q9）、生产 live 支付（原 6.1）与生产延迟放置对比（原 5.1）不在模板内验收，移交派生项目上线清单，方法见 `docs/05-billing.md` §8、本文件 §8 与 production runbook。派生项目开放注册前还需恢复默认 Cron 并复核费用。
 
@@ -227,7 +229,7 @@ export function createDb(hd: Hyperdrive) {
 | local | `wrangler dev` / `vite dev`（workerd） | 本地 Docker PG | Stripe test / PayPal sandbox | Hyperdrive 使用 `localConnectionString` 直连本地 PG；R2/KV/Queues 由 Miniflare 模拟 |
 | preview | 每个 PR 一个 Worker 预览版本 | staging 库（**只读 schema**） | 测试模式 | 可选；PR 不得对 staging 库执行迁移，含 schema 变更的 PR 不部署预览（或改用本地验证） |
 | staging | 阶段一：`*.workers.dev`；阶段二：`*.staging.<域名>` | 阶段一线上：Neon `saas_staging`；阶段二：生产服务器上的独立 database 或独立实例 | 测试模式 | main 自动发布已验收；24 小时观察见 Neon runbook |
-| production | 自定义域名（阶段二） | 生产库 | 正式 | 阶段一不部署 |
+| production | 自定义域名（派生项目） | 生产库 | 正式 | 模板演示实例已于 2026-10-18 拆除；`env.production` 保留为参考 |
 
 Wrangler 使用 `env.staging` / `env.production` 区分绑定与变量。
 

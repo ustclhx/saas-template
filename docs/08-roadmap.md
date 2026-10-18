@@ -17,16 +17,18 @@
 | Phase 6 | `add-marketing-i18n-seo` | 16/16；已归档：`archive/2026-10-11-add-marketing-i18n-seo`（#86） |
 | Phase 7 | `add-observability-and-optional-features` | 16/16；已归档：`archive/2026-10-14-add-observability-and-optional-features`（#184） |
 | 验收承接 | `add-cloud-acceptance-followups` | main 为 0/4；另一 worker 正在处理 staging 支付验收，尚未合并的结果不计入完成项 |
-| Cloudflare 生产 | `add-cloud-production-neon` | 模板范围 13/13（本次结项）；v0.1.3 在线，合并后由协调者同步规格并归档；原 5.1 / 6.1 移交派生项目 |
+| Cloudflare 生产 | `add-cloud-production-neon` | 模板范围 13/13（本次结项）；演示实例于 2026-10-18 拆除，合并后由协调者同步规格并归档；原 5.1 / 6.1 移交派生项目 |
 | 自托管 | `add-selfhost-*`（四个 change） | 116/116；2026-10-17 已同步规格并归档（#239） |
 
 已归档的其他 change：`add-cloud-staging-neon` 29/29（#85）、`add-first-run-admin-setup` 6/6 与 `add-payment-live-mode` 9/9（#184）、`add-text-reasoning-resilience` 9/9（#196）、`add-staging-fault-injection` 20/20（#209）、`add-agent-skills` 8/8（#211）。live 模式只交付代码，生产凭据与外部收款验收见下文「Cloudflare 生产上线」与 Q9。
 
 **自托管形态**（Node + Docker Compose，PG 在 Compose 内）：**2026-10-17 结项并归档**。四个 change 全部完成（foundation 33/33、job-engine 32/32、storage-observability 18/18、delivery 33/33），已同步主 spec 并归档为 `archive/2026-10-17-add-selfhost-*`。服务器验收在新加坡测试主机 `product-res-ecs`（2 vCPU / 3.5 GiB）用正式 release `1888e7d` 完成：真实 ACME（`selfhost.ezarouter.cc`）、R2 外部存储与备份（用户决定单一供应商：同一 R2 账号下独立桶与桶级 token，已记录失去供应商独立性）、两路时间点与逻辑恢复、2 核整机任务预算与真实整机 reboot（21 项恢复检查通过）。证据见 [server-acceptance-1888e7d](./runbooks/evidence/selfhost/server-acceptance-1888e7d/report.md)。
 
+**实例状态（2026-10-18）**：用户确认拆除模板演示的生产实例与自托管测试实例，验收勾选保留为历史交付结果。生产云资源与自托管栈已清理；四个非空 R2 桶待 2026-10-19 核空删除，DNS / Sentry 与桶级 token 手动收尾见[拆除记录](./runbooks/evidence/teardown-2026-10-18.md)。生产配置、workflow、GHCR 镜像与 runbook 保留供派生项目使用；staging 全部资源保留。
+
 各阶段之间与阶段内部的并行拆分见 [09-parallel-plan.md](./09-parallel-plan.md)。
 
-**基础设施节奏**（`docs/07` §0）：已进入**阶段二**——本地开发使用各 worktree 的隔离 Docker PG 数据库，线上 staging 使用 Neon Launch 并部署到 `*.workers.dev`；生产 v0.1.3 已在 `app.ezarouter.cc` 上线，具备独立 Neon 项目、PITR、每日加密逻辑备份与两路恢复演练。2026-10-15 用户决定：**Cloudflare 形态的生产数据库使用 Neon 付费档，不自建 PG**（原「生产服务器 PG + cloudflared + Workers VPC」方案作废）；**自托管形态继续使用 Compose 内的 PG**，其备份/PITR/副本由 `add-selfhost-*` 交付。
+**基础设施节奏**（`docs/07` §0）：阶段二的模板生产与自托管能力已完成验收，演示实例于 2026-10-18 拆除；本地开发继续使用各 worktree 的隔离 Docker PG 数据库，线上 staging 使用 Neon Launch 并部署到 `*.workers.dev`。派生项目保留 **Cloudflare 生产使用 Neon 付费档、不自建 PG** 的路径（2026-10-15 用户决定，原「生产服务器 PG + cloudflared + Workers VPC」方案作废）；**自托管形态使用 Compose 内的 PG**，其备份/PITR/副本由 `add-selfhost-*` 交付。
 
 ## Phase 0 · 脚手架与基础设施验证（技术风险最高，优先做）
 
@@ -119,7 +121,7 @@
 
 ## Cloudflare 生产上线 · 进入阶段二（Neon 付费档）
 
-2026-10-15 用户决定：生产数据库使用 Neon 付费档，不自建 PG，不再建设 Tunnel / Workers VPC。设计与任务见 OpenSpec change [`add-cloud-production-neon`](../openspec/changes/add-cloud-production-neon/proposal.md)。1.1 已完成：Launch 组织下 `saas-production`（`aws-us-west-2`，0.25–1 CU，PITR 7 天），见 [production-neon runbook](./runbooks/production-neon.md)；staging 随组织升级改为 Launch 计费、上限 2 CU。
+2026-10-15 用户决定：生产数据库使用 Neon 付费档，不自建 PG，不再建设 Tunnel / Workers VPC。设计与任务见 OpenSpec change [`add-cloud-production-neon`](../openspec/changes/add-cloud-production-neon/proposal.md)。1.1 历史验收：Launch 组织下 `saas-production`（`aws-us-west-2`，0.25–1 CU，PITR 7 天），该演示项目已于 2026-10-18 删除，见 [production-neon runbook](./runbooks/production-neon.md)；staging 随组织升级改为 Launch 计费、上限 2 CU。
 
 - [x] Neon 生产项目：独立项目与付费计划、PG 17、受限 `migrator` / `app` / `readonly` 角色（沿用 [staging-neon runbook](./runbooks/staging-neon.md) §1–2），确认计划的 PITR 保留窗口
 - [x] Cloudflare production 环境：web / jobs 的 `env.production`（Hyperdrive 缓存/非缓存、KV、Queues、Workflows、R2）与 Wrangler secrets
@@ -131,7 +133,7 @@
 
 **验收**：production 绑定域名可访问；tag 发布全流程自动化且健康 SHA 匹配；从 Neon 时间点与逻辑备份各恢复一次并通过校验。
 
-**进度（2026-10-18）**：生产 **v0.1.3** 在线（完整 SHA `54c537542ad0f2033628c136a7057a705c6d0218`，db.up；[发布 run 38910072786](https://github.com/ustclhx/saas-template/actions/runs/38910072786) 成功）。seed、每日加密备份、两路恢复演练、Sentry source map / 可读堆栈与健康监控均已有[证据](./runbooks/evidence/production/release-2026-10-16.md)。本次核对 1–5 的模板范围并完成 7.1，13/13；change 保持活动状态，待合并后由协调者归档。2026-10-18 用户决定：原 5.1、6.1 与 Q9 不在模板内验收，移交派生项目上线清单；派生项目开放注册前还需按 production runbook 恢复默认 Cron 并复核费用。
+**进度（2026-10-18）**：生产演示实例已拆除；拆除前 **v0.1.3** 的完整 SHA 为 `54c537542ad0f2033628c136a7057a705c6d0218`（[发布 run 38910072786](https://github.com/ustclhx/saas-template/actions/runs/38910072786) 成功）。seed、每日加密备份、两路恢复演练、Sentry source map / 可读堆栈与健康监控均有[历史证据](./runbooks/evidence/production/release-2026-10-16.md)。本次核对 1–5 的模板范围并完成 7.1，13/13；change 保持活动状态，待合并后由协调者归档。2026-10-18 用户决定：原 5.1、6.1 与 Q9 不在模板内验收，移交派生项目上线清单；派生项目开放注册前还需重建自身资源和凭据、按 production runbook 恢复默认 Cron 并复核费用。
 
 ## Phase 4 · AI 图片 / 视频
 

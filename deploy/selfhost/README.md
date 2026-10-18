@@ -1,5 +1,7 @@
 # 自托管 Compose 与部署交付
 
+> **当前实例状态（2026-10-18）**：模板自托管测试实例已按用户确认拆除；部署能力、配置、runbook 与 GHCR 镜像保留供派生项目使用。R2 次日删桶与 DNS / token 手动收尾见[拆除记录](../../docs/runbooks/evidence/teardown-2026-10-18.md)。下文各次验收与待办说明按其记录时间阅读，不表示测试主机仍运行模板实例。
+
 本目录提供 image-only Compose、显式 SSH/本机部署与兼容回滚、health/SHA 门、空白主机初始化、代理接入和同 SHA bundle 打包。首次真实 GHCR 发布已完成；恢复/副本脚本已交付，B/D ownership 签收与服务器恢复验收仍未完成。Node 已装配真实 B 队列与 Cron。关闭 Turnstile、开启验证邮件与多租户的本地生产验收见 [A 8/9 runbook](../../docs/runbooks/selfhost-a-final.md)；正式邮件凭据由部署方提供。默认 Cloudflare 构建与 staging 流程保持原样。
 
 ## 正式部署
