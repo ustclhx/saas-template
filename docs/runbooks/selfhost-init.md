@@ -7,10 +7,12 @@ release bundle，保留相邻的 `init-server.py`、`init-firewall.sh` 和 `.env
 sudo bash ./init-server.sh --dir /opt/saas-selfhost
 ```
 
+<!-- template-only:start -->
 预检可先执行 `sudo bash ./init-server.sh --dir /opt/saas-selfhost --check`。
 入口不安装应用或 Dokploy，不创建真实 secret，不签发证书，不连接既有服务器。
 完成后按部署/代理/备份 runbook 配置同版 bundle、镜像 digest、域名和 secret/TLS。
 不要把此命令用于 `product-res-ecs` 或任何共用生产主机。
+<!-- template-only:end -->
 
 ## 固定支持范围
 
@@ -91,6 +93,7 @@ Docker 转发使用 `FORWARD → DOCKER-USER → SAAS-DOCKER`，放行已建立�
 系统 ruleset，避免用旧快照覆盖 Docker 网络。额外防火墙管理器或手工规则修改不受支持，
 托管规则变化会使重复初始化验证失败。
 
+<!-- template-only:start -->
 ## 本地验证及未完成验收
 
 安全边界用例：
@@ -148,3 +151,4 @@ verify拒绝`managed configuration changed`，恢复原文件后verify成功。�
 最终安全测试8项通过，bash语法和Python编译通过。这里只验证Debian12/arm64实际安装；
 其它支持组合由固定包矩阵测试及官方包存在性核验覆盖，完整实机矩阵仍应由协调者安排。
 本轮VM在证据收集后停止并删除，只清理本任务创建的资源。
+<!-- template-only:end -->

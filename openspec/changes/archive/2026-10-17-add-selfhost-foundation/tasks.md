@@ -50,7 +50,7 @@
 - [x] 7.3 复用 infra 角色/授权脚本，安全读取挂载密码、保留 default privileges 和 audit 写保护，明确容器间 PG TLS/证书配置且不沿用 local 固定密码。验证：空卷非 root 初始化、migrator SQL 迁移、app DDL/audit 修改被拒绝、readonly 写被拒绝；迁移失败时应用不启动；文档说明 secret 分配。（D2、D3、D4）
 - [x] 7.4 配置 Caddy profile、非 root 8080/8443→80/443、ACME/自带证书、专用 ingress/trusted CIDR 与证书卷；env 示例启用 profile 以兼容普通 up 命令。验证：两种证书模式可访问（ACME 需可用测试域名时才勾选）、data 服务无宿主机 ports、恶意 XFF 不能覆盖客户端 IP；文档说明外部代理模式和 D 的 Dokploy/Traefik 接入边界。（H1、H2）
   - 本机自带证书、Caddy高端口、非root证书卷及恶意XFF验收通过，见 `docs/runbooks/selfhost-a7.md`。
-  - [x] ACME验收：2026-10-16 正式 1888e7d 在 selfhost.ezarouter.cc 实际签发受信 Let’s Encrypt 证书；相同正式 Caddy 镜像与独立 staging ACME 状态完成签发、强制续期及证书序列号更换，随后恢复原生产证书且指纹一致。见 `docs/runbooks/evidence/selfhost/server-acceptance-1888e7d/deploy-acme.json` 与 `acme-renewal.json`。
+  - [x] ACME验收：2026-10-16 正式 1888e7d 在 selfhost.ezarouter.cc 实际签发受信 Let’s Encrypt 证书；相同正式 Caddy 镜像与独立 staging ACME 状态完成签发、强制续期及证书序列号更换，随后恢复原生产证书且指纹一致。见 私有证据库 `saas-template-evidence:selfhost/server-acceptance-1888e7d/deploy-acme.json` 与 `acme-renewal.json`。
 
 
 ## 8. 健康与基础集成（server/health 独占，5/7 后）
@@ -58,7 +58,7 @@
 - [x] 8.1 扩展 health 的 Node db/cache/queue/scheduler 探测接口、完整 SHA 和 lastCronAt；保留 CF 响应与实时无缓存探测；区分进程 liveness 和依赖 readiness。验证：CF health 原测试通过，Node 200/503 都含完整 SHA、缓存失败或 B 未装配为 503/unavailable、不泄漏主机/凭据；更新探活文档。（O2）
 - [x] 8.2 空卷 Compose 基础验收：迁移顺序、web/jobs 可运行、Node DB/Valkey 集成、非 root、资源/log rotation、外部仅代理 80/443、容器重启保留数据。验证：记录 compose config/ps、UID、权限、health SHA 与日志轮转证据；B 未合入的 queue/scheduler readiness 503 如实记录，不宣称 auth e2e 通过。
 - [x] 8.3 完成根 pnpm check、check:deps、check:singletons、dedupe --check、typecheck、test、build 与新增 Node build/test，复核默认 CF e2e-smoke/自动 staging 发布未削弱。验证：CI 与合入后 main 自动 staging run/health 完整 SHA 证据；不手工部署分支到 staging，未获得合入后证据保持待办。（P6）
-  - 2026-10-15 协调者签收：b43c6b3 上根 check/check:deps/check:singletons/dedupe --check、无缓存 typecheck 14/14、test 26/26（1520 项）、build 与 build:node、Node test:node/production 全部通过；[main CI 38639245935](https://github.com/ustclhx/saas-template/actions/runs/38639245935) 的 check/node/e2e-smoke 成功，合入后 [自动 staging 38640230004](https://github.com/ustclhx/saas-template/actions/runs/38640230004) 由 main push 触发，health 轮询至 200、db up、version 为完整 `b43c6b3f6105355449ba4bb4d73d0d714a87bc2d`，staging smoke 3 项通过。deploy-staging.yml 自 #126 前未改，ci.yml 仅新增独立 node job，smoke 配置与断言未削弱。证据：[签收记录](../../../docs/runbooks/evidence/selfhost/signoff-2026-10-15.json)。
+  - 2026-10-15 协调者签收：b43c6b3 上根 check/check:deps/check:singletons/dedupe --check、无缓存 typecheck 14/14、test 26/26（1520 项）、build 与 build:node、Node test:node/production 全部通过；[main CI 38639245935](https://github.com/ustclhx/saas-template/actions/runs/38639245935) 的 check/node/e2e-smoke 成功，合入后 [自动 staging 38640230004](https://github.com/ustclhx/saas-template/actions/runs/38640230004) 由 main push 触发，health 轮询至 200、db up、version 为完整 `b43c6b3f6105355449ba4bb4d73d0d714a87bc2d`，staging smoke 3 项通过。deploy-staging.yml 自 #126 前未改，ci.yml 仅新增独立 node job，smoke 配置与断言未削弱。证据：签收记录（私有证据库 `saas-template-evidence:selfhost/signoff-2026-10-15.json`）。
 
 ## 9. B 合入后的尾部验收（明确依赖门，不属于 B 引擎实施）
 
@@ -66,6 +66,6 @@
 - [x] 9.2 在隔离 PG/Valkey 上运行 Node 全部适用单元与业务集成测试（含依赖 B 的用例），CF 专属适配器用例仍在 CF 运行，C 尚未实现的文件/媒体验收列为独立范围。验证：记录目标测试矩阵、测试数与跳过理由，无队列相关用例被隐藏、无弱化断言。（P6、A3）
 - [x] 9.3 在开发机全新 Compose 卷，真实 B 队列+测试邮件 sender、关闭 Turnstile、开启 requireEmailVerification 与 multiTenant：注册→验证邮件真实送达→验证→真实 sign-out→密码登录→创建/切换团队和个人空间。验证：Node 生产输出 Playwright auth e2e 通过、页面/会话/权限正确、健康完整 SHA；不读取 DB token 替代邮件链路、不把日志邮件内容开放给生产；编写本地验收 runbook并记录证据。
 - [x] 9.4 汇总 A 分配需求与剩余 C/D 交付，协调者确认 B 依赖已满足和全部 A 验收通过。验证：本 change 全部对应项有证据、openspec validate add-selfhost-foundation --strict 通过；不提前勾选部署/外部凭据验收，不由 worker 归档。
-  - 最新worker汇总：7.4实际ACME签发/续期、C1.7、B6.4（批准夹具后服务器复验）、D7.1/7.2/真实7.3均通过，证据矩阵 `docs/runbooks/evidence/selfhost/server-acceptance-1888e7d/matrix.md` 与report齐全，四个change strict validate通过。本项仅待协调者审阅并确认全部依赖；worker不代签，不同步主spec或归档。
-  - 2026-10-15 协调者复核：8.3 已签收、B 依赖（9.1–9.3）满足、strict validate 通过；但 7.4 ACME 实际签发/续期仍无可用测试域名，A 尚有未通过验收，9.4 保持待办。证据：[签收记录](../../../docs/runbooks/evidence/selfhost/signoff-2026-10-15.json)。
-  - 2026-10-17 协调者签收：审阅 docs/runbooks/evidence/selfhost/server-acceptance-1888e7d/report.md 与 matrix.md，A7.4 ACME、C1.7 R2、D7.1/7.2/7.3、B6.4 证据齐全（含首轮失败与已批准夹具修正、四周真实保留历史未伪造的说明）；同步主 spec 并归档。
+  - 最新worker汇总：7.4实际ACME签发/续期、C1.7、B6.4（批准夹具后服务器复验）、D7.1/7.2/真实7.3均通过，证据矩阵 私有证据库 `saas-template-evidence:selfhost/server-acceptance-1888e7d/matrix.md` 与report齐全，四个change strict validate通过。本项仅待协调者审阅并确认全部依赖；worker不代签，不同步主spec或归档。
+  - 2026-10-15 协调者复核：8.3 已签收、B 依赖（9.1–9.3）满足、strict validate 通过；但 7.4 ACME 实际签发/续期仍无可用测试域名，A 尚有未通过验收，9.4 保持待办。证据：签收记录（私有证据库 `saas-template-evidence:selfhost/signoff-2026-10-15.json`）。
+  - 2026-10-17 协调者签收：审阅 私有证据库 `saas-template-evidence:selfhost/server-acceptance-1888e7d/report.md` 与 matrix.md，A7.4 ACME、C1.7 R2、D7.1/7.2/7.3、B6.4 证据齐全（含首轮失败与已批准夹具修正、四周真实保留历史未伪造的说明）；同步主 spec 并归档。

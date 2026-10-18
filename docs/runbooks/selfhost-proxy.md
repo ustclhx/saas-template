@@ -137,6 +137,7 @@ node test-proxy.mjs --external-config final.preview.json
 运行后仍 inspect 实际网络/端口/UID，公开HTTPS请求须正常校验证书，发伪造XFF再核对
 防刷身份；最后检查 `/api/health` 完整SHA与jobs readiness。不要用config通过冒充实机验收。
 
+<!-- template-only:start -->
 ## 本地证据
 
 从仓库根运行
@@ -155,3 +156,4 @@ external及误启全部profiles的真实Compose渲染，并证明宽泛trusted C
 [A最终Compose证据](selfhost-a-final.md#最终-compose-证据2026-10-13-本地--2026-10-12-utc)：
 SHA `0c11b8787b211323a309c377d50e4fdbafc90816`，PG/Valkey999，web/jobs1000，Caddy10001，
 verify-full与HTTPS通过；本轮引用该明确历史证据，不重新宣称整栈运行或新的SHA验收。
+<!-- template-only:end -->

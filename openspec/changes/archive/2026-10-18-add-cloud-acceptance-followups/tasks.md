@@ -2,7 +2,7 @@
 
 ## 1. 后台
 
-- [x] 1.1 （原 admin 6.1 剩余）staging 的 Stripe/PayPal 失败回调经后台重放，核对付款与积分不重复入账并保存审计 ID。无自然失败时，按 2026-10-18 用户决定，允许经既有测试入口以已知校验制造可审阅的受控失败，先在 PR 说明方式及账务隔离；需新增代码机制则停止评审。验证：2026-10-18 真实管理员在后台重放受控平台事件 `evt_1URbLcL3UTpBAoXoPo2JjN1L`，attempts 3→4，审计 `01a14d88-cd77-764e-98c9-64b3250f8ffc`；因刻意缺少关联 metadata，结果仍 failed，不冒称恢复 processed。六类业务表计数/摘要及观察空间付款/批次/账本只读快照一致，同快照对账差额 0。证据为 `docs/runbooks/evidence/staging-acceptance/2026-10-18/w3-admin-replay-{before,after}.json`。
+- [x] 1.1 （原 admin 6.1 剩余）staging 的 Stripe/PayPal 失败回调经后台重放，核对付款与积分不重复入账并保存审计 ID。无自然失败时，按 2026-10-18 用户决定，允许经既有测试入口以已知校验制造可审阅的受控失败，先在 PR 说明方式及账务隔离；需新增代码机制则停止评审。验证：2026-10-18 真实管理员在后台重放受控平台事件 `evt_1URbLcL3UTpBAoXoPo2JjN1L`，attempts 3→4，审计 `01a14d88-cd77-764e-98c9-64b3250f8ffc`；因刻意缺少关联 metadata，结果仍 failed，不冒称恢复 processed。六类业务表计数/摘要及观察空间付款/批次/账本只读快照一致，同快照对账差额 0。证据为 私有证据库 `saas-template-evidence:staging-acceptance/2026-10-18/w3-admin-replay-{before,after}.json`。
 
 ## 2. PayPal Provider 录制
 
@@ -11,7 +11,7 @@
 ## 3. staging 支付矩阵
 
 - [x] 3.1 （原 billing 11.1 剩余，Stripe）对本应用 Checkout 建立的订阅推进账期，核对续费付款与积分批次唯一、对账不变式。按 2026-10-18 协调者指示，可使用已登录 Sandbox CLI/API 的 Test Clocks 替代 Dashboard Simulations；须核对 livemode=false 及 Checkout/订阅/空间/报价关联。验证：2026-10-17 UTC 的 `billing-111-w3-stripe-{month,year}-renewal-{intent,advance,settled,duplicates}.json`：月付 1900、年付 19000 各新增唯一 renewal 付款与首月 1000 积分批次，各两次重投经 staging tail 核实 HTTP 200，前后付款/批次/账本/订阅/退款快照完全一致，同快照对账差额 0。
-- [x] 3.2 （原 billing 11.1 剩余，PayPal 沙箱部分）完成 PayPal 月付/年付订阅、取消/恢复、换套餐重叠期、Sale 退款与重复回调。验证：唯一付款与积分批次、无负余额、同快照对账零差额，证据写入 `docs/runbooks/evidence/staging-acceptance/`。自然时间与真实主体部分按下述移交，不冒称沙箱已验证。2026-10-18 在独立空间完成 Pro 月付→取消/恢复→Team 年付换套餐批准，重叠期仅新套餐续费；两笔 initial 各唯一付款/首月批次，余额 90→6090，部分/全额 Sale 退款后为 5879→879。四类事件各两次重投均由 staging tail 核实 HTTP 200/duplicate，业务快照及持久事件不变；另一次全额退款重投仅获 202、未独立观测，单列不计成功。所有阶段对账差额 0、无负余额与重复批次；既有付款/订阅/待审申请未变，新建两份订阅已取消续费。证据见 `2026-10-18/w3-paypal-{duplicates,protected-records,final}.json` 与各阶段快照。
+- [x] 3.2 （原 billing 11.1 剩余，PayPal 沙箱部分）完成 PayPal 月付/年付订阅、取消/恢复、换套餐重叠期、Sale 退款与重复回调。验证：唯一付款与积分批次、无负余额、同快照对账零差额，证据写入 私有证据库 `saas-template-evidence:staging-acceptance/`。自然时间与真实主体部分按下述移交，不冒称沙箱已验证。2026-10-18 在独立空间完成 Pro 月付→取消/恢复→Team 年付换套餐批准，重叠期仅新套餐续费；两笔 initial 各唯一付款/首月批次，余额 90→6090，部分/全额 Sale 退款后为 5879→879。四类事件各两次重投均由 staging tail 核实 HTTP 200/duplicate，业务快照及持久事件不变；另一次全额退款重投仅获 202、未独立观测，单列不计成功。所有阶段对账差额 0、无负余额与重复批次；既有付款/订阅/待审申请未变，新建两份订阅已取消续费。证据见 `2026-10-18/w3-paypal-{duplicates,protected-records,final}.json` 与各阶段快照。
 
 ## 移交派生项目（2026-10-18 用户决定）
 

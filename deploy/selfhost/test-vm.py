@@ -485,7 +485,10 @@ def main():
     parser.add_argument('--phase', required=True, choices=['prepare', 'after-reboot', 'ssh', 'gates', 'cleanup'])
     parser.add_argument('--directory', type=Path, default=Path('/opt/selfhost-d-vm-harness'))
     parser.add_argument('--bundle', required=True, type=Path)
-    parser.add_argument('--evidence', type=Path, default=Path('/opt/d-vm-results/runtime.json'))
+    parser.add_argument(
+        '--evidence', type=Path,
+        default=Path(os.environ.get('EVIDENCE_DIR') or 'test-results/evidence') / 'selfhost/runtime.json',
+    )
     args = parser.parse_args()
     os.umask(0o077)
     acceptance = None

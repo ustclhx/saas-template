@@ -54,7 +54,7 @@ pnpm --filter @saas/web exec playwright test -c e2e/staging-acceptance/playwrigh
 
 同一用户、run ID 和步骤重跑会复用已有媒体任务或聊天会话。不要更换 run ID 作为故障恢复手段：新 ID 会产生新收费请求。提交结果不明确、已有用户消息却没有 assistant、重复任务、外部取消待确认会失败，先核对数据库证据与供应商作业再恢复。视频已完成时不能再证明取消退款。关页用例另存流中关页的动作证据；已有回复缺少对应动作证据时明确 skip、交给人工核验，不认证为关页成功。同 run ID 跨 UTC 日期恢复时，应将其动作证据复制到当日目录（保留原文件），否则同样 skip。
 
-真实 staging 运行的证据写入 `docs/runbooks/evidence/staging-acceptance/<UTC日期>/<run-ID>-*.json`，只有这些真实证据可以提交仓库。本地假服务商证据写入仓库根目录下已被 git 忽略的 `test-results/staging-acceptance/<UTC日期>/<run-ID>-*.json`，不得提交。两种证据只含 ID、状态、定价、用量、积分、账本和审计记录 ID，不含邮箱、对话内容、请求体、Cookie、下载签名或连接串。同 run ID 同步骤覆盖最新证据，不同 run ID 分开保留。默认 reporter 只输出步骤标题/状态/失败代码位置；人工登录与账户准备的失败详情仅保留固定安全指引及必要用户 UUID，不输出邮箱或凭据。自行使用 verbose reporter 或 trace 可能泄露认证页面数据，勿用于可分享日志。
+真实 staging 与本地假服务商证据统一写入 `EVIDENCE_DIR/staging-acceptance/<UTC日期>/<run-ID>-*.json`；未设置 `EVIDENCE_DIR` 时使用已被 Git 忽略的 `test-results/evidence/`。需要留档时设置 `EVIDENCE_DIR=/Users/hxlee/workspace/saas-template-evidence` 并提交到私有证据库，主仓库与 PR 只引用，不能提交证据。两种证据只含 ID、状态、定价、用量、积分、账本和审计记录 ID，不含邮箱、对话内容、请求体、Cookie、下载签名或连接串。同 run ID 同步骤覆盖最新证据，不同 run ID 分开保留。默认 reporter 只输出步骤标题/状态/失败代码位置；人工登录与账户准备的失败详情仅保留固定安全指引及必要用户 UUID，不输出邮箱或凭据。自行使用 verbose reporter 或 trace 可能泄露认证页面数据，勿用于可分享日志。
 
 ## 模型设置与当前阻塞
 
@@ -87,7 +87,7 @@ pnpm --filter @saas/web exec playwright test -c e2e/staging-acceptance/local.con
 
 `local-setup.ts` 查询该管理员账号，不存在时通过普通注册页面创建，再晋升管理员；现有账号直接复用。普通验收账号仍自动生成仅驻留进程的密码，自动登录管理员与验收用户，默认无头运行，不要求人工管理员登录；套餐和积分准备仍由上述本地种子完成。需要重跑同一普通账号时，在进程中提供相同 `STAGING_ACCEPTANCE_RUN_ID`、`STAGING_USER_EMAIL` / `STAGING_USER_PASSWORD`，且仍先 unset 远程目标变量；管理员可继续复用上述本地凭据。服务由 Playwright 启停，不复用现有 dev。
 
-本地关页动作证据的写入与重跑读取都使用 `test-results/staging-acceptance`，不会写入 staging 的证据目录。跨 UTC 日期重跑时，在这个本地目录内复制对应动作证据到当日子目录；不要将本地文件搬到 runbook 证据目录。
+本地关页动作证据的写入与重跑读取都使用 `test-results/evidence/staging-acceptance`，不会写入 staging 的证据目录。跨 UTC 日期重跑时，在这个本地目录内复制对应动作证据到当日子目录；不要将本地文件搬到 runbook 证据目录。
 
 ## 媒体受控故障验收（待协调者发布后执行）
 
@@ -128,7 +128,7 @@ pnpm --filter @saas/web exec playwright test -c e2e/staging-acceptance/fault.loc
 
 本地配置限定 loopback worktree隔离库、稳定日期run ID和当前HEAD，UI准备模型；假上游仍经过
 生产故障包装、runner、真实格式签名webhook、R2转存与原结算。证据只写已忽略的
-`test-results/staging-acceptance`。跨日期恢复需沿用原run ID，并在该本地目录复制当日动作证据；
+`test-results/evidence/staging-acceptance`。跨日期恢复需沿用原run ID，并在该本地目录复制当日动作证据；
 不要复制到真实runbook证据目录。
 
 正常脚本继续覆盖 Workers/fal 图片成功及 fal 视频取消。受控故障来自专用

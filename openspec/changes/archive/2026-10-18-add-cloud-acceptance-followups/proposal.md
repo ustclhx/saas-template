@@ -10,7 +10,7 @@ Cloudflare 侧功能与 staging 验收已完成，`add-admin-console` 与 `add-b
 - 承接 `add-billing-and-credits` 3.3 剩余：PayPal 订阅 Sale 付款、Sale 部分/全额退款的真实沙箱录制（需已登录 Sandbox 买家会话）。
 - 承接 `add-billing-and-credits` 11.1 剩余的沙箱部分：Stripe 续费（Dashboard Simulations 或已登录 Sandbox CLI/API 的 Test Clocks，须关联应用 Checkout）、PayPal 月付/年付订阅、取消恢复、换套餐重叠期、Sale 退款与重复回调矩阵。
 - 按 2026-10-18 用户决定，依赖自然时间的 PayPal 月/年续费、恢复后扣款、到期终止与真实 Cron 观察，以及真实收款主体、live 配置与收款验收，移交派生实际项目；不以模拟器、DAY Plan、欠款 capture 或本地时间夹具冒称完成。模板沙箱任务通过且移交说明齐备后，可由协调者归档。
-- 已完成部分（Stripe 订阅矩阵、积分包购买、管理员部分退款审核、次日指标、PayPal 积分包 capture 与 8 条回调录制等）的证据保留在原 change 的 tasks.md 与 `docs/runbooks/evidence/` 中，本 change 只引用不重复。
+- 已完成部分（Stripe 订阅矩阵、积分包购买、管理员部分退款审核、次日指标、PayPal 积分包 capture 与 8 条回调录制等）的证据保留在原 change 的 tasks.md 与 私有证据库 `saas-template-evidence:` 中，本 change 只引用不重复。
 - 不新增或修改任何行为与 spec。
 
 ## Capabilities

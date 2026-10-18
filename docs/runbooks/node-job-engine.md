@@ -129,6 +129,7 @@ handler 的 Promise 必须涵盖整批全部在途工作；并行消费使用 al
 
 所有 jobs 必须注册相同 `applicationVersion` 的完整 handler 集与队列策略。DBOS 恢复会进入全局内部队列，不能让缺少对应 handler 或无法读取同一 ownership 目录的实例接走恢复任务；不同注册集的测试运行使用不同逻辑数据库，不并发复用同一 DBOS 应用版本。
 
+<!-- template-only:start -->
 ## 本批验证记录（2026-10-12）
 
 本地 Node 23.11.0（满足仓库 >=22）与独立 Postgres 17 容器，app/migrator/readonly 分权；没有请求外部业务 API 或 staging。
@@ -149,6 +150,7 @@ handler 的 Promise 必须涵盖整批全部在途工作；并行消费使用 al
 
 间隔为 30/60/120/240/480 秒退避加真实 5 秒聚合窗；该长跑之后的 ownership 修复由独立取消等待批次/同 ID 重启回归验证。清理时钟边界、active 数据与未消费 native 事件保护、30 天 DLQ 保留、close 后活进程拒绝同 ID、已退出 owner 的失败批次恢复和执行权丢失均由独立 PG 测试覆盖。模拟清理时钟不替代后续工作流的真实 60+ 分钟等待验收。
 
+<!-- template-only:end -->
 ## 工作流装配、恢复与停机（B 3.1–3.4）
 
 在 `createNodeJobEngine` 的 `register(engine)` 内调用
@@ -223,6 +225,7 @@ ORDER BY created_at DESC LIMIT 100;
 注册集不同的 DBOS suite，长跑与快验使用独立数据库。长跑使用真实时钟，不用 fake timers
 或把数据库时间改老来冒充 60+ 分钟事件/1–2 小时流水线验收。
 
+<!-- template-only:start -->
 ### 本批工作流验证记录（2026-10-12）
 
 独立 worktree 命名的 Postgres 17.11 容器，Node 23.11.0、DBOS 固定 5.2.11；
@@ -266,6 +269,7 @@ sleep 日志的原唤醒结果与重启前快照完全一致。两个等待结�
 以上为正式 Node adapter 的隔离 PG 验收，失败旧轮不计入通过时长，也不替代服务器
 部署、跨代码版本热重放或整机资源验收。
 
+<!-- template-only:end -->
 ## Node apps 装配与探活
 
 生产入口为 `apps/jobs/src/index.node.ts`，资源与生命周期在
@@ -293,6 +297,7 @@ Node 文件能力尚未装配时跳过文件清理分支，媒体 Workflow 继�
 关闭计费、积分与 AI 的域处理器仍保留 jobs、email/operations 和成功 heartbeat，
 具体开关组合与验证命令见扩展指南。
 
+<!-- template-only:start -->
 ### 本批装配验证（A 9.1、B 5.1/5.2/5.5，2026-10-13）
 
 使用本任务独立 Docker PG17/Valkey 与不同逻辑库；业务迁移和 DBOS 公共迁移
@@ -323,3 +328,4 @@ payload 读取实际被拒绝，未扩展运行时权限。开始时 #128 未合
 
 上述不是 Compose 认证邮件 e2e、镜像依赖闭包、服务器、整机预算或 main 自动
 staging 发布验收；不勾这些未分配项，不手工部署分支、不归档 change。
+<!-- template-only:end -->

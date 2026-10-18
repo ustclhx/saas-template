@@ -114,6 +114,11 @@ test('真实副本覆盖 Cloudflare 默认、selfhost 默认和 selfhost 全关�
             if (!content.includes(0)) {
               assert.ok(!content.toString().includes(sourceName), `原名称仍存在：${path}`)
               assert.ok(!content.toString().includes(sentinel), `真值仍存在：${path}`)
+              assert.doesNotMatch(
+                content.toString(),
+                /docs\/runbooks\/evidence|saas-template-evidence|product-res-ecs|170a06d37ad50396b19943eb6b77a21d|ezarouter\.cc|ustclhx|\/Users\/hxlee/,
+                `模板专属标识仍存在：${path}`,
+              )
             }
             count++
           }

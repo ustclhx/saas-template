@@ -36,3 +36,6 @@ test-results/
 
 # 系统
 .DS_Store
+
+# 验收证据迁到私有库，旧路径也防止重新提交
+/docs/runbooks/evidence/

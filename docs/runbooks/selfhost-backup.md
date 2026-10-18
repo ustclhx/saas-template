@@ -152,6 +152,7 @@ amd64使用 `Selfhost images` 的原生CI矩阵；本机arm64实际记录及CI�
 [WAL-G v3.0.8 PG命令](https://github.com/wal-g/wal-g/blob/v3.0.8/docs/PostgreSQL.md)、
 [S3配置](https://github.com/wal-g/wal-g/blob/v3.0.8/docs/STORAGES.md)。
 
+<!-- template-only:start -->
 ## 2026-10-14 本机 arm64 验收记录
 
 以基线 `65c0413794f408259682c9c6afdf2c4364fbfdac` 加本工作树备份改动构建 PG/backup，
@@ -191,3 +192,4 @@ history归档。日期仅在隔离metadata模拟，cluster的64位身份精度�
 本机 `images/check-bases.mjs` 在 Docker Desktop 读取 Node基础manifest 时120秒超时，
 已停止该步；基础digest未更换，两个架构的manifest检查留Selfhost images CI。未据此
 勾选4.1，也未将本机证据当作正式镜像发布。
+<!-- template-only:end -->

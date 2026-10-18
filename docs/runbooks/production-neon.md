@@ -1,6 +1,6 @@
 # Neon production 操作与验收
 
-> **实例状态（2026-10-18）**：用户确认拆除模板演示的生产实例与自托管测试实例。`saas-production` Neon 项目及生产 Workers、KV、Queues、Hyperdrive、Turnstile、空文件桶和 GitHub `production` environment 已删除；备份开关变量 `PRODUCTION_BACKUP_SCHEDULE` 已删除。生产备份桶已解除 `retain-30d` 锁并设为所有对象 1 天后过期，待次日核空删除；Sentry Uptime 监控待用户手动删除。完整结果与手动收尾见[拆除记录](./evidence/teardown-2026-10-18.md)。下文为历史验收与派生项目操作参考，原资源 ID、凭据路径及已写入状态不代表仍可使用；`env.production` 与 workflow 保留，重新上线须创建项目自身资源和凭据。GitHub `production-backup` environment 本次未在删除范围内，仍保留。
+> **实例状态（2026-10-18）**：用户确认拆除模板演示的生产实例与自托管测试实例。`saas-production` Neon 项目及生产 Workers、KV、Queues、Hyperdrive、Turnstile、空文件桶和 GitHub `production` environment 已删除；备份开关变量 `PRODUCTION_BACKUP_SCHEDULE` 已删除。生产备份桶已解除 `retain-30d` 锁并设为所有对象 1 天后过期，待次日核空删除；Sentry Uptime 监控待用户手动删除。完整结果与手动收尾见拆除记录（私有证据库 `saas-template-evidence:teardown-2026-10-18.md`）。下文为历史验收与派生项目操作参考，原资源 ID、凭据路径及已写入状态不代表仍可使用；`env.production` 与 workflow 保留，重新上线须创建项目自身资源和凭据。GitHub `production-backup` environment 本次未在删除范围内，仍保留。
 
 本 runbook 对应 `add-cloud-production-neon`（2026-10-15 用户决定：Cloudflare 形态生产数据库使用 Neon 付费档，不自建 PG）。流程沿用 [staging-neon](./staging-neon.md) §1–2，本文只记录生产项目的事实与差异，不含任何凭据。
 

@@ -18,7 +18,7 @@
 
 脱敏会改变正文，录制测试中的离线签名使用测试专用 secret 重新生成；不声称它是 Stripe 原始签名。原始正文含联系方式及带 token 的 URL，未落盘。夹具仍保留对象 ID、金额、USD 币种、业务 metadata、历史周期和退款身份。
 
-可审阅的只读账务快照保存在 [evidence/p2-stripe](./evidence/p2-stripe/)，包含年付首付、积分包、申请 pending、Portal 返回、取消失败后的真实状态、平台退款遗漏及首付两次重投前后比较；仅导出白名单字段。原始 SQL 使用 runbook §6 的对账口径，`monthly-initial-resend-comparison.json` 汇总前后相等结果；平台 HTTP 200 来自 Workbench 独立核对，CLI 接受请求本身不证明目标端点返回 200。
+可审阅的只读账务快照保存在 私有证据库 `saas-template-evidence:p2-stripe/`，包含年付首付、积分包、申请 pending、Portal 返回、取消失败后的真实状态、平台退款遗漏及首付两次重投前后比较；仅导出白名单字段。原始 SQL 使用 runbook §6 的对账口径，`monthly-initial-resend-comparison.json` 汇总前后相等结果；平台 HTTP 200 来自 Workbench 独立核对，CLI 接受请求本身不证明目标端点返回 200。
 
 ## 已通过与发现的问题
 
@@ -45,7 +45,7 @@
 
 这些 event 的真实 HTTP 投递都在 2026-10-09 UTC，应用 `Date`、PostgreSQL `now()` 和 Cron 没有推进。PR #67 允许已验证成功付款发放其首月，后续月仍由应用时间判断。两年付付款各只有首月 1000，不能把平台年续费称为 staging 已按月发放全年积分。
 
-按协调者 2026-10-09 的明确决定，应用到期门槛采用「真实平台续费回调 + 既有 PostgreSQL 测试注入 now / 控制夹具日期」组合。详细命令、case 与限制见 [受控时间验证](./evidence/p2-stripe/controlled-time-tests.md)：101 passed，其中 83 个本地 PostgreSQL case；全年 12 批由共用发放原语验证，Cron 服务独立验证前三批补发、追溯过期与并发幂等；取消到期读取回落 free、积分过期与 hold/capture/release 对账均通过。付款事件与 Provider 为测试替身，此证据不声称 staging 真实全年 Cron 或应用时钟已推进，也不要求等待真实到期。
+按协调者 2026-10-09 的明确决定，应用到期门槛采用「真实平台续费回调 + 既有 PostgreSQL 测试注入 now / 控制夹具日期」组合。详细命令、case 与限制见 受控时间验证（私有证据库 `saas-template-evidence:p2-stripe/controlled-time-tests.md`）：101 passed，其中 83 个本地 PostgreSQL case；全年 12 批由共用发放原语验证，Cron 服务独立验证前三批补发、追溯过期与并发幂等；取消到期读取回落 free、积分过期与 hold/capture/release 对账均通过。付款事件与 Provider 为测试替身，此证据不声称 staging 真实全年 Cron 或应用时钟已推进，也不要求等待真实到期。
 
 ## 重投与对账
 

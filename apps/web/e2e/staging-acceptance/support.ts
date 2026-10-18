@@ -1,4 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { type BrowserContext, chromium, expect, type Page, test } from '@playwright/test'
 import { type EntitlementSubscription, selectEntitlements } from '@saas/entitlements'
 import postgres from 'postgres'
@@ -24,11 +26,11 @@ if (!/^[a-zA-Z0-9_-]{1,64}$/.test(runId)) throw new Error('Invalid STAGING_ACCEP
 export const local = process.env.STAGING_ACCEPTANCE_LOCAL === '1'
 // 同一 worker 内复用新鲜会话，避免每个用例登录触发真实认证限流；Cookie 不落盘或输出。
 const sessions = new Map<string, Parameters<BrowserContext['addCookies']>[0]>()
-// 只有真实 staging 证据进入 runbook；本地假服务商证据留在已忽略的 test-results。
-const evidenceRoot = local ? 'test-results' : 'docs/runbooks/evidence'
-const evidenceDir = new URL(
-  `../../../../${evidenceRoot}/staging-acceptance/${new Date().toISOString().slice(0, 10)}/`,
-  import.meta.url,
+// 环境变量指向私有证据 checkout；默认只写已忽略的本地目录。
+const repository = fileURLToPath(new URL('../../../../', import.meta.url))
+const evidenceRoot = process.env.EVIDENCE_DIR || resolve(repository, 'test-results/evidence')
+const evidenceDir = pathToFileURL(
+  `${resolve(evidenceRoot, 'staging-acceptance', new Date().toISOString().slice(0, 10))}/`,
 )
 
 export async function readEvidence<T>(name: string): Promise<T | undefined> {

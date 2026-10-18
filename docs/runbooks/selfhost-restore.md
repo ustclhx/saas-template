@@ -145,6 +145,7 @@ PG回退不回退用户S3对象、邮件、支付、Provider任务、webhook或�
 依据：[PG17 PITR与pause/promote](https://www.postgresql.org/docs/17/continuous-archiving.html)、
 [备份配置及保留](selfhost-backup.md)、[保留链边界](selfhost-backup-retention.md)。
 
+<!-- template-only:start -->
 ## 2026-10-15 正式发布镜像完整演练（D 6.2）
 
 正式 `598d1f68b6ef7b19e8a6d30c13575bac1701b7c2` 镜像与同 SHA bundle 已在一次干净
@@ -152,14 +153,14 @@ PG回退不回退用户S3对象、邮件、支付、Provider任务、webhook或�
 两端业务/角色/真实 DBOS checkpoint、job_engine 与积分校验通过且 LSN 相同。
 数据库恢复校验 RTO 为 8.203/7.837 秒，关闭主目标前确认链的观测 RPO 滞后 47.613 秒；
 CPU/RSS/磁盘、日期模拟方法、首次夹具失败和清理记录见
-[完整报告](evidence/selfhost/d-drill-2026-10-15/report.md)。
+完整报告（私有证据库 `saas-template-evidence:selfhost/d-drill-2026-10-15/report.md`）。
 复现使用 `test-backup.mjs --release-drill --sha <正式完整SHA> --bundle-dir <同SHA目录>`。
 这是小型本地独立 SeaweedFS 证据；真实供应商/服务器 7.2、异机 ownership 和生产规模
 RTO/RPO 保持待办，不由数据库恢复校验代替。
 
 ## 2026-10-14 本机 arm64 交付验收
 
-[脱敏证据](evidence/selfhost/d-restore-2026-10-14.json)记录两个隔离 SeaweedFS 实例、
+脱敏证据（私有证据库 `saas-template-evidence:selfhost/d-restore-2026-10-14.json`）记录两个隔离 SeaweedFS 实例、
 独立凭据和全部自建资源清理。最终验证使用镜像内backup runtime（无`--dev-runtime`），
 宿主Python3.9.6执行正式restore/drill入口，PG17.11/WAL-G3.0.8；这是本地机制验证，
 不是同SHA的registry release或真实供应商/服务器签收。
@@ -188,3 +189,4 @@ dump、WAL和真实promote产生的timeline history；初次已确认归档上�
 显式清理；复制重复/中断后补齐/源删除不传播/第二目标故障可见且禁止主清理，主归档
 独立成功。所有fixture容器/卷清理，未改生产资源。28个Python边界用例与根目录所有
 规定检查通过；真实不同供应商7.2、ownership/服务器重启签收继续保持未完成。
+<!-- template-only:end -->
