@@ -174,9 +174,8 @@
     }
   },
   "pending": [
-    "Natural monthly/yearly renewal, including after resume",
-    "Capture partial refund and Sale partial/full refund recordings",
-    "New annual subscription and full staging transaction matrix (11.1)"
+    "Natural monthly/yearly renewal, including after resume; cancellation expiry and annual later-month Cron observation transferred to derived projects",
+    "Capture partial refund, dispute and other unrecorded terminal events are outside the four follow-up acceptance tasks"
   ],
   "independentCardProbe": {
     "mode": "sandbox",
@@ -200,5 +199,6 @@
     "receiverStopped": true,
     "quickTunnelStopped": true,
     "note": "Orders create with payment_source.card returned COMPLETED and a capture; no separate capture call was needed. An immediate full refund changed the completed-event resource.status to REFUNDED before delivery. This independent probe marker is not application checkout metadata."
-  }
+  },
+  "supplementalRecordingManifest": "w3-provenance.json (2026-10-18 monthly/yearly initial Sale and partial/full Sale refunds; see staging acceptance evidence for the application matrix)"
 }

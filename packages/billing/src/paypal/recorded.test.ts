@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import cardOrderFixture from './fixtures/recorded/card-order.json'
 import subscriptionFixture from './fixtures/recorded/monthly-subscription.json'
 import provenance from './fixtures/recorded/provenance.json'
+import followups from './fixtures/recorded/w3-provenance.json'
 import { createPayPalWebhookNormalizer } from './index.ts'
 import type { PayPalRecordedSale, PayPalSaleLookup } from './snapshots.ts'
 
@@ -16,7 +17,9 @@ function fixturePayload(fixture: string): JsonValue {
   return JSON.parse(fixtureBody(fixture))
 }
 
-type RecordedSnapshot = (typeof provenance.snapshots)[keyof typeof provenance.snapshots]
+type RecordedSnapshot =
+  | (typeof provenance.snapshots)[keyof typeof provenance.snapshots]
+  | (typeof followups.snapshots)[keyof typeof followups.snapshots]
 type OfflineReply = RecordedSnapshot & { body?: string }
 
 function offlineNormalizer(replies: OfflineReply[], lookupRecordedSale?: PayPalSaleLookup) {
@@ -83,11 +86,115 @@ describe('PayPal adapter with recorded sandbox fixtures', () => {
     for (const recording of [
       ...Object.values(provenance.events),
       ...Object.values(provenance.snapshots),
+      ...Object.values(followups.events),
+      ...Object.values(followups.snapshots),
     ]) {
       expect(createHash('sha256').update(fixtureBody(recording.fixture)).digest('hex')).toBe(
         recording.fixtureSha256,
       )
     }
+  })
+
+  it.each([
+    {
+      interval: 'monthly',
+      event: followups.events['w3-monthly-initial-event'],
+      replies: [
+        followups.snapshots['w3-monthly-initial-sale'],
+        followups.snapshots['w3-monthly-subscription'],
+        followups.snapshots['w3-monthly-initial-transactions'],
+        followups.snapshots['w3-pro-month-plan'],
+      ],
+      saleId: '71D187337X5761003',
+      subscriptionId: 'I-PE4VWXLXB1XP',
+      amount: 1900,
+      priceId: '01a11bac-8ffa-740a-b8e6-0624cd93c617',
+      start: '2026-10-18T06:06:16.000Z',
+      end: '2026-11-18T10:00:00.000Z',
+    },
+    {
+      interval: 'annual',
+      event: followups.events['w3-annual-initial-event'],
+      replies: [
+        followups.snapshots['w3-annual-initial-sale'],
+        followups.snapshots['w3-annual-subscription'],
+        followups.snapshots['w3-annual-initial-transactions'],
+        followups.snapshots['w3-team-year-plan'],
+      ],
+      saleId: '5ST08785RL1551152',
+      subscriptionId: 'I-TKG3FMFU9BEN',
+      amount: 49000,
+      priceId: '01a11bac-a018-7367-8674-f78af86ce46a',
+      start: '2026-10-18T06:09:14.000Z',
+      end: '2027-10-18T10:00:00.000Z',
+    },
+  ])(
+    'maps the new $interval Sale with recorded history and actual next billing time',
+    async (row) => {
+      const mock = offlineNormalizer(row.replies)
+      const result = await mock.normalize(fixturePayload(row.event.fixture))
+      expect(result.providerEventId).toBe(row.event.providerEventId)
+      expect(result.events).toHaveLength(1)
+      expect(result.events[0]).toMatchObject({
+        type: 'payment.succeeded',
+        provider: 'paypal',
+        payment: {
+          kind: 'initial',
+          providerPaymentId: row.saleId,
+          providerSubscriptionId: row.subscriptionId,
+          amount: row.amount,
+          currency: 'USD',
+          status: 'succeeded',
+          refundedAmount: 0,
+          period: { start: new Date(row.start), end: new Date(row.end) },
+          metadata: {
+            workspaceId: '01a12ef0-66cc-75e2-88d0-eac1f1904d3c',
+            userId: '01a12ef0-66cc-75e2-88d0-eac1f1904d3c',
+            planPriceId: row.priceId,
+          },
+        },
+      })
+      mock.complete()
+    },
+  )
+
+  it.each([
+    {
+      kind: 'partial',
+      event: followups.events['w3-monthly-partial-refund-event'],
+      snapshot: followups.snapshots['w3-monthly-partial-refund'],
+      saleId: '71D187337X5761003',
+      refundId: '95R03124HK508535V',
+      amount: 400,
+    },
+    {
+      kind: 'full',
+      event: followups.events['w3-annual-full-refund-event'],
+      snapshot: followups.snapshots['w3-annual-full-refund'],
+      saleId: '5ST08785RL1551152',
+      refundId: '6JW466111B6808810',
+      amount: 49000,
+    },
+  ])('maps a recorded $kind Sale refund to its verified refund and original Sale', async (row) => {
+    const mock = offlineNormalizer([row.snapshot])
+    const payload = fixturePayload(row.event.fixture)
+    const result = await mock.normalize(payload)
+    expect(result.providerEventId).toBe(row.event.providerEventId)
+    expect(result.events).toEqual([
+      {
+        type: 'payment.refunded',
+        provider: 'paypal',
+        providerPaymentId: row.saleId,
+        providerRefundId: row.refundId,
+        amount: row.amount,
+        currency: 'USD',
+        // v1 顶层 total_refunded_amount 不套用 v2 capture 累计语义，按唯一退款 ID 累加。
+        refundedAmount: null,
+        occurredAt: new Date(JSON.parse(fixtureBody(row.event.fixture)).create_time),
+        raw: payload,
+      },
+    ])
+    mock.complete()
   })
 
   // 原始回调已在线验签；脱敏正文只重放映射，不伪造原始传输签名。
