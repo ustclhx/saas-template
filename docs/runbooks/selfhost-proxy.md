@@ -99,6 +99,13 @@ HTTPS 在 Cloudflare 边缘终止，容器到 web 是同机私有 HTTP；不要�
 端口，不为隧道添加宿主 ports。优先接到已有、已验证的边缘代理，让它按已验证客户端链
 重建 XFF，再信任它在 web 网络上的确切地址。
 
+Cloudflare 边缘（橙云代理与 Tunnel 相同）在源站开始响应前或两段数据之间约 100 秒无字节时
+返回 524，Free/Pro/Business 不可调整。AI 对话流与 OpenAI 兼容流在上游静默（如推理模型隐藏
+思考）满 25 秒时发送心跳（站内为前端忽略的 transient 片段，公开 API 为 SSE 注释
+`: keepalive`），并在等待首个 token 前发出响应头，见 [06-ai §3「空闲心跳」](../06-ai.md)。
+中间若还有 Nginx 等代理，其读超时须大于 25 秒且不得缓冲 `text/event-stream`
+（Nginx 对这些路由设 `proxy_buffering off`）；Caddy 对 SSE 默认立即转发。
+
 直接 cloudflared→web 时，只有在真实 Tunnel 验证 Cloudflare edge 对恶意 XFF 的清洗、
 实际 socket peer 和最终 client IP 后才能启用该 `/32` 或 `/128`。验证之前设
 `TRUSTED_PROXY_CIDRS=`（本 override 会拒绝空值，可先使用基础 Compose 的 ingress 手动
