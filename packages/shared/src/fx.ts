@@ -1,6 +1,16 @@
 import { AppError } from './errors.ts'
 import { log } from './log.ts'
 
+/** 本模块用到的 fetch 形状：URL、请求头与超时信号；测试可注入替身 */
+export type FxFetch = (
+  input: string,
+  init: { headers: Record<string, string>; signal: object },
+) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>
+
+// 运行时由 Workers 与 Node 提供；源码不依赖 DOM 类型（同 log.ts），这里只声明本模块需要的形状
+declare const fetch: FxFetch
+declare const AbortSignal: { timeout(ms: number): object }
+
 /**
  * 参考汇率（add-fx-rates）：以 USD 为基准的当地货币估价，供「约」值展示使用，不参与扣款。
  * 实际扣款以支付服务商（如 Stripe Adaptive Pricing）显示的金额为准。
@@ -42,7 +52,7 @@ export interface FxOptions {
   /** 拉取失败或响应无效时使用的参考值，键与 `rates` 相同 */
   readonly fallback: Readonly<Record<string, number>>
   readonly url?: string
-  readonly fetch?: typeof fetch
+  readonly fetch?: FxFetch
   readonly ttlSeconds?: number
   readonly now?: () => Date
   /** 拉取超时（毫秒），超时视为失败并回退 */

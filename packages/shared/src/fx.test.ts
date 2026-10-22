@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { AppError } from './errors.ts'
-import { FX_ATTRIBUTION, type FxStore, loadUsdRates, parseOpenErApiRates } from './fx.ts'
+import {
+  FX_ATTRIBUTION,
+  type FxFetch,
+  type FxStore,
+  loadUsdRates,
+  parseOpenErApiRates,
+} from './fx.ts'
 
 function memoryStore(initial: string | null = null): FxStore & { values: Map<string, string> } {
   const values = new Map<string, string>()
@@ -17,7 +23,7 @@ const fallback = { CNY: 7.2, KRW: 1350, TWD: 32.5 }
 const now = () => new Date('2026-10-22T00:00:00.000Z')
 
 function jsonFetch(payload: unknown, status = 200) {
-  return (async () => new Response(JSON.stringify(payload), { status })) as typeof fetch
+  return (async () => new Response(JSON.stringify(payload), { status })) as FxFetch
 }
 
 describe('parseOpenErApiRates', () => {
@@ -58,7 +64,7 @@ describe('loadUsdRates', () => {
     const counting = (async () => {
       calls += 1
       return new Response('{}')
-    }) as typeof fetch
+    }) as FxFetch
     const again = await loadUsdRates({ store, fallback, fetch: counting, now })
     expect(calls).toBe(0)
     expect(again.source).toBe('live')
@@ -70,7 +76,7 @@ describe('loadUsdRates', () => {
       jsonFetch(body, 503),
       (async () => {
         throw new TypeError('network down')
-      }) as typeof fetch,
+      }) as FxFetch,
     ]) {
       const store = memoryStore()
       const result = await loadUsdRates({ store, fallback, fetch: failing, now })
