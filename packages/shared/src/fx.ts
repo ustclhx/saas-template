@@ -17,6 +17,8 @@ declare const AbortSignal: { timeout(ms: number): object }
  *
  * 数据源默认为 Exchange Rate API 的免费开放端点（无需密钥，约每日更新）。该服务要求在使用汇率的页面
  * 链接到其站点，见 {@link FX_ATTRIBUTION}。拉取失败时回退到调用方提供的固定参考值，并标记 `source`。
+ *
+ * 经 `@saas/shared/fx` 单独导出：依赖 `log.ts`（`node:async_hooks`），不能进入浏览器包。
  */
 
 export const FX_DEFAULT_URL = 'https://open.er-api.com/v6/latest/USD'

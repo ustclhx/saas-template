@@ -3,7 +3,7 @@
 ## 1. 模块
 
 - [x] 1.1 实现 `packages/shared/src/fx.ts`：校验、缓存读写、拉取与回退
-- [x] 1.2 从 `packages/shared/src/index.ts` 导出公共接口
+- [x] 1.2 经 `@saas/shared/fx` 子路径导出公共接口（不进入根入口）
 
 ## 2. 测试
 

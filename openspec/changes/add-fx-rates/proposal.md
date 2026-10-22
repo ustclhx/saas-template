@@ -22,7 +22,7 @@
 
 ## Impact
 
-- 代码：`packages/shared/src/fx.ts`、`fx.test.ts`，并从 `packages/shared/src/index.ts` 导出。
+- 代码：`packages/shared/src/fx.ts`、`fx.test.ts`，经 `@saas/shared/fx` 子路径导出（依赖服务端日志，不进入根入口与浏览器包）。
 - 依赖：无新增依赖，使用运行时的 `fetch`、`AbortSignal.timeout` 与 `AppError`。
 - 外部：运行时会请求 `https://open.er-api.com/v6/latest/USD`（每 12 小时至多一次，每个运行实例）。
 - 运营：项目若使用汇率展示，必须按服务商要求显示署名链接；本变更不改变任何页面。

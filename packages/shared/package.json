@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./fx": "./src/fx.ts",
     "./log": "./src/log.ts"
   },
   "scripts": {
