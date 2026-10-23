@@ -335,5 +335,9 @@
   "admin_filters": "Filters",
   "admin_pagination": "Pagination",
   "admin_payment_amount": "Amount",
-  "admin_text_schema_defaults": "Text · x-text defaults"
+  "admin_text_schema_defaults": "Text · x-text defaults",
+  "admin_ai_free_failure_count": "Free failed AI replies per workspace",
+  "admin_ai_free_failure_count_description": "Chat replies that fail without visible text are refunded in full up to this many times per window. Later failures are charged for the last upstream attempt (never more than the hold). 0 charges every such failure.",
+  "admin_ai_free_failure_window_minutes": "Free failure window (minutes)",
+  "admin_ai_free_failure_window_description": "Rolling window for counting free failures. Default 60 minutes."
 }

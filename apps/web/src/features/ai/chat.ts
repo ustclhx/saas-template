@@ -422,6 +422,7 @@ export async function startWorkspaceChat(
         reasoningTokens: outcome.reasoningTokens,
         absorbed: outcome.absorbed,
         total: outcome.total,
+        lastAttempt: outcome.lastAttempt,
         usageSource: outcome.usageSource,
         failedReplyRefund: textConfig.failedReplyRefund,
       }

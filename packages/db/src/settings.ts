@@ -15,6 +15,11 @@ export interface SettingValues {
   'operations.telegramBotToken': string
   'operations.telegramChatId': string
   'operations.discordWebhookUrl': string
+  /**
+   * 对话无可见正文失败的免费次数：同一工作区在最近 `windowSeconds` 秒内的前 `count` 次全额退回，
+   * 超出后按最后一次上游尝试的用量结算（specs/ai-text-reasoning）。
+   */
+  'ai.freeFailures': { count: number; windowSeconds: number }
 }
 
 export const settingDefaults: SettingValues = {
@@ -24,6 +29,7 @@ export const settingDefaults: SettingValues = {
   'operations.telegramBotToken': '',
   'operations.telegramChatId': '',
   'operations.discordWebhookUrl': '',
+  'ai.freeFailures': { count: 3, windowSeconds: 3600 },
 }
 
 export type SettingKey = keyof SettingValues

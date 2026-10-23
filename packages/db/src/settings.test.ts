@@ -67,3 +67,18 @@ describe('getSetting', () => {
     expect(data.get('setting:auth.signupEnabled')).toBe('{}')
   })
 })
+
+describe('ai.freeFailures', () => {
+  it('默认每小时 3 次免费失败', async () => {
+    const { store } = memoryStore({})
+    expect(await getSetting({ store }, 'ai.freeFailures')).toEqual({
+      count: 3,
+      windowSeconds: 3600,
+    })
+  })
+
+  it('表中保存的值覆盖默认值', async () => {
+    const { store } = memoryStore({ 'ai.freeFailures': { count: 0, windowSeconds: 600 } })
+    expect(await getSetting({ store }, 'ai.freeFailures')).toEqual({ count: 0, windowSeconds: 600 })
+  })
+})
