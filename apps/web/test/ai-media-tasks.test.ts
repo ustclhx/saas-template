@@ -986,6 +986,31 @@ describe('媒体取消计费、不确定提交回调与存储配额', () => {
     ).toMatchObject({ started: true, charged: false, freeStartedRemaining: 1 })
   })
 
+  it('异步任务 Workflow 运行中但尚未尝试提交：取消免费且不占用已开始免费次数', async () => {
+    const who = await account('cancel-running-unsubmitted')
+    const state = dependencies({ providerStatus: 'running' })
+    const taskId = await submitted(who, await model(), state.deps)
+    await scoped(db, who.workspaceId).updateById(aiTask, taskId, { status: 'running' })
+    expect(await preview(who, taskId, state.deps)).toMatchObject({
+      started: false,
+      charged: false,
+      freeStartedRemaining: 1,
+    })
+    expect((await cancel(who, taskId, state.deps)).body).toMatchObject({
+      status: 'canceled',
+      cancelBilling: 'free_unstarted',
+      creditsCharged: 0,
+    })
+    expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 100, held: 0 })
+    expect(state.counts().statusChecks).toBe(0)
+    const next = await accepted(who, state.deps)
+    expect(await preview(who, next, state.deps)).toMatchObject({
+      started: true,
+      charged: false,
+      freeStartedRemaining: 1,
+    })
+  })
+
   it('已开始生成：首次免费取消全额退回，第二次按定价快照全价扣费，重复取消不重复结算', async () => {
     const who = await account('cancel-started')
     const state = dependencies({ providerStatus: 'running' })

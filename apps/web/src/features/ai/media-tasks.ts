@@ -409,12 +409,22 @@ function cancelErrorFields(error: unknown) {
 const CANCEL_PENDING_MESSAGE = 'Task canceled; external cancellation needs retry'
 
 /**
- * 服务商是否已开始生成（D2）：没有作业 ID 且未尝试提交视为未开始；已尝试提交却没有作业 ID
- * （提交在途或结果不确定）与同步 Provider 运行中无法查询，按已开始处理；查询失败同样按已开始。
+ * 服务商是否已开始生成（D2）：没有作业 ID 且未尝试提交视为未开始（异步 Provider 即使 Workflow 已
+ * running）；已尝试提交却没有作业 ID（提交在途或结果不确定）与同步 Provider 运行中无法查询，
+ * 按已开始处理；查询失败同样按已开始。
  */
 async function providerStarted(deps: MediaHttpDeps, task: AiTask): Promise<boolean> {
-  if (!task.providerJobId)
-    return Boolean(task.output?.submissionAttempted) || task.status === 'running'
+  if (!task.providerJobId) {
+    if (task.output?.submissionAttempted) return true
+    // 异步 Provider 尚未尝试提交时服务商从未收到请求；只有运行中的同步 Provider 才算已开始。
+    if (task.status !== 'running') return false
+    try {
+      return isSyncMediaProvider(taskProvider(deps, task))
+    } catch (error) {
+      log.warn('ai.media.cancel_status_failed', { taskId: task.id, ...cancelErrorFields(error) })
+      return true
+    }
+  }
   try {
     const provider = taskProvider(deps, task)
     if (isSyncMediaProvider(provider)) return true
