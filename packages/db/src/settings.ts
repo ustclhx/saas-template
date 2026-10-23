@@ -9,6 +9,8 @@ import { setting } from './schema/platform.ts'
 export interface SettingValues {
   /** 是否开放注册 */
   'auth.signupEnabled': boolean
+  /** 媒体提交结果不确定时保留预扣、等待已验签回调的秒数；仍受任务 2 小时期限约束（specs/ai-media-tasks）。 */
+  'ai.mediaUncertainWaitSeconds': number
   /** 空字符串表示不显示公告 */
   'site.announcement': string
   'billing.signupBonusDomainBlacklist': string[]
@@ -24,6 +26,7 @@ export interface SettingValues {
 
 export const settingDefaults: SettingValues = {
   'auth.signupEnabled': true,
+  'ai.mediaUncertainWaitSeconds': 3600,
   'site.announcement': '',
   'billing.signupBonusDomainBlacklist': [],
   'operations.telegramBotToken': '',
