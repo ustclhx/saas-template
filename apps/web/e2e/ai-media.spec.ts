@@ -58,6 +58,7 @@ function taskFixture(
     finishedAt: null,
     deadlineAt: new Date(Date.now() + 7_200_000).toISOString(),
     creditsCharged: 0,
+    cancelBilling: null,
     errorCode: null,
     errorMessage: null,
     params: { prompt: 'A forest' },
@@ -300,23 +301,48 @@ test('restores pending external cancellation after reload and explains uncertain
   let task = taskFixture(workspace)
   await page.route(`**/api/ai/tasks/${task.id}?*`, (route) => route.fulfill({ json: { task } }))
   const cancelBodies: unknown[] = []
+  await page.route(`**/api/ai/tasks/${task.id}/cancel?*`, (route) =>
+    route.fulfill({
+      json: {
+        taskId: task.id,
+        cancelable: true,
+        started: true,
+        charged: false,
+        credits: 0,
+        freeStartedRemaining: 1,
+      },
+    }),
+  )
   await page.route(`**/api/ai/tasks/${task.id}/cancel`, async (route) => {
     cancelBodies.push(route.request().postDataJSON())
     task = {
       ...task,
       status: 'canceled',
       canCancel: false,
+      cancelBilling: 'free_started',
       errorCode: cancelBodies.length === 1 ? 'MEDIA_CANCEL_PENDING' : null,
     }
     await route.fulfill({
-      json: { taskId: task.id, status: 'canceled', cancellationPending: cancelBodies.length === 1 },
+      json: {
+        taskId: task.id,
+        status: 'canceled',
+        cancellationPending: cancelBodies.length === 1,
+        cancelBilling: 'free_started',
+        creditsCharged: 0,
+      },
     })
   })
   await page.goto(`/app/${workspace.slug}/tasks/${task.id}`)
   await page.getByRole('button', { name: 'Cancel task', exact: true }).click()
+  // 先展示取消计费说明，确认后才执行取消。
+  await expect(page.getByRole('alertdialog')).toContainText(
+    'Each workspace gets one free cancellation of a started task',
+  )
+  expect(cancelBodies).toEqual([])
+  await page.getByRole('button', { name: 'Confirm cancellation' }).click()
   await expect(page.getByTestId('media-task-status')).toHaveText('Canceled')
   const pending = page.getByText(
-    'The task is canceled and credits have been returned. External cancellation is still pending; you can retry it.',
+    'The task is canceled. External cancellation is still pending; you can retry it.',
   )
   await expect(pending).toBeVisible()
   await page.reload()

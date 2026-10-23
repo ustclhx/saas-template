@@ -48,6 +48,11 @@ describe('getSetting', () => {
     expect(settingDefaults['auth.signupEnabled']).toBe(true)
   })
 
+  it('媒体不确定提交默认等待 1 小时', async () => {
+    const { store } = memoryStore({})
+    expect(await getSetting({ store }, 'ai.mediaUncertainWaitSeconds')).toBe(3600)
+  })
+
   it('表中存在时写入缓存，之后命中缓存不再查表', async () => {
     const { store, calls } = memoryStore({ 'auth.signupEnabled': false })
     const { cache, data, ttls } = memoryCache()

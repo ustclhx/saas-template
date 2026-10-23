@@ -120,6 +120,20 @@
       "when": 1792787175510,
       "tag": "0016_job_engine_app_dead_letter",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792788204111,
+      "tag": "0017_audit_meta_remove_personal_data",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792788204698,
+      "tag": "0018_ai_task_cancel_billing",
+      "breakpoints": true
     }
   ]
 }
