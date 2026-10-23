@@ -35,7 +35,8 @@ for await (const file of htmlFiles(root)) {
     const href = tag.match(HREF)[1]
     const css = await sheet(href)
     if (css.includes('</style')) throw new Error(`${href} 含有 </style>，无法内联`)
-    out = out.replace(tag, `<style>${css}</style>`)
+    // 用函数替换，避免 CSS 中的 `$&`、`$'` 等被当作替换模式
+    out = out.replace(tag, () => `<style>${css}</style>`)
     inlined += 1
   }
   await writeFile(file, out)
