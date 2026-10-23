@@ -1,7 +1,13 @@
 import { createRouter } from '@tanstack/react-router'
+import { createIsomorphicFn } from '@tanstack/react-start'
 import { localeRewrite } from './features/i18n/routing.ts'
 import { routeTree } from './routeTree.gen'
+import { securityNonce } from './security-context.server.ts'
 import { templateConfig } from './server/template-config.ts'
+
+const getNonce = createIsomorphicFn()
+  .server(() => securityNonce())
+  .client(() => undefined)
 
 export function getRouter() {
   // 保留文件路由类型供同一源码编译；关闭模块的页面不加入运行时路由树。
@@ -15,8 +21,10 @@ export function getRouter() {
       ),
     )
   }
+  const nonce = getNonce()
   return createRouter({
     routeTree,
+    ...(nonce ? { ssr: { nonce } } : {}),
     scrollRestoration: true,
     rewrite: localeRewrite,
   })

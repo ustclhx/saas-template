@@ -67,8 +67,9 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
     appName: config.app.name,
     baseURL: vars.APP_URL,
     basePath: '/api/auth',
-    // 空间绑定与角色校验只经应用管理入口；原生 HTTP 接口不能绕过。
+    // 禁用独立 OTP 校验；空间绑定与角色校验只经应用管理入口，原生 HTTP 接口不能绕过。
     disabledPaths: [
+      '/email-otp/check-verification-otp',
       '/api-key/create',
       '/api-key/update',
       '/api-key/delete',

@@ -56,7 +56,8 @@ export function ogImages(): Plugin {
       this.emitFile({
         type: 'asset',
         fileName: '_headers',
-        source: '/og/*\n  Cache-Control: public, max-age=86400\n  X-Robots-Tag: noindex\n',
+        source:
+          '/og/*\n  Cache-Control: public, max-age=86400\n  X-Robots-Tag: noindex\n  X-Content-Type-Options: nosniff\n',
       })
     },
     configureServer(server) {
