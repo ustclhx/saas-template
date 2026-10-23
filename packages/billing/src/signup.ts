@@ -1,7 +1,7 @@
 import type { TemplateConfig } from '@saas/config'
 import { CreditsError, grant, lockWorkspaceCredits } from '@saas/credits'
 import { creditGrant, type Database, member, organization, setting, user } from '@saas/db'
-import { AppError } from '@saas/shared'
+import { AppError, normalizeSignupEmail } from '@saas/shared'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 
 export const SIGNUP_BONUS_DOMAIN_BLACKLIST_KEY = 'billing.signupBonusDomainBlacklist'
@@ -10,19 +10,8 @@ export type SignupBonusResult =
   | { status: 'granted'; credits: number }
   | { status: 'already_claimed' | 'unverified' | 'blacklisted' | 'disabled' }
 
-/** Gmail and Googlemail share one identity; other providers retain dots and tags. */
-export function normalizeSignupEmail(email: string): string {
-  const normalized = email.trim().toLowerCase()
-  const parts = normalized.split('@')
-  if (parts.length !== 2 || !parts[0] || !parts[1]) throw new Error('Invalid signup email')
-  let [local, domain] = parts as [string, string]
-  if (domain === 'gmail.com' || domain === 'googlemail.com') {
-    domain = 'gmail.com'
-    local = local.split('+')[0]?.replaceAll('.', '') ?? ''
-    if (!local) throw new Error('Invalid signup email')
-  }
-  return `${local}@${domain}`
-}
+// 增长名单与删号清理共用同一规范化规则，实现放在 shared，避免 auth 反向依赖 billing。
+export { normalizeSignupEmail }
 
 function blacklistDomains(value: unknown): string[] {
   if (!Array.isArray(value)) throw new Error('Invalid signup bonus domain blacklist')
