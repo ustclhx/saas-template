@@ -385,11 +385,11 @@ pnpm --filter @saas/web test:e2e:smoke
 
 ### 安全响应头与 CSP 上线
 
-`apps/web/src/security-headers.ts` 是 Cloudflare / Node 共用的响应头策略。页面、API、Server Function、重定向、错误与静态资源都补齐 `X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin`；只有 HTTPS 响应补 `Strict-Transport-Security: max-age=31536000; includeSubDomains`。已有同名头原样保留，错误响应也携带请求 ID。
+`apps/web/src/security-headers.ts` 是 Cloudflare / Node 共用的响应头策略。页面、API、Server Function、重定向与错误响应都补齐 `X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin`；只有 HTTPS 响应补 `Strict-Transport-Security: max-age=31536000; includeSubDomains`。已有同名头原样保留，错误响应也携带请求 ID。
 
 完整 CSP 只发送 `Content-Security-Policy-Report-Only`，其中 `frame-ancestors 'none'` 与 X-Frame-Options 一致；当前实际防嵌入由 X-Frame-Options 执行。脚本来源含同源与 Turnstile，表单允许 Stripe Checkout / Portal 跳转，R2 使用 `R2_ACCOUNT_ID` 拼接的精确下载 origin，Node 对象存储使用 `S3_ENDPOINT` 的 origin；Sentry 使用配置 DSN 的 ingest origin（目前 SDK 仅在服务端运行）。不使用全局 `*`。样式允许组件库实际使用的内联 style 属性。
 
-浏览器端提前设置 Zod `jitless`，避免运行时编译与 Function 探测产生 CSP 违规。动态 SSR 为每个请求产生独立 nonce，路由器统一给主题和水合脚本加 nonce，SSR / 对话 API 流继续透传。预渲染静态 HTML 则对构建产物中的内联脚本计算 SHA-256 内容哈希，哈希按 HTML parser 的换行与 NUL 规范化规则计算，原始字节、缓存头及 ETag 保持不变；304 不替换缓存文档已有的哈希策略。Cloudflare 配置 `assets.run_worker_first: true` 与 `ASSETS` 绑定，先返回已有静态资源，未命中再走 SSR；因此首页无需访问数据库也能携带安全头。Node 在 Nitro HTTP 外层对静态响应使用同一策略。
+浏览器端提前设置 Zod `jitless`，避免运行时编译与 Function 探测产生 CSP 违规。动态 SSR 为每个请求产生独立 nonce，路由器统一给主题和水合脚本加 nonce，SSR / 对话 API 流继续透传。预渲染静态 HTML 则对构建产物中的内联脚本计算 SHA-256 内容哈希，哈希按 HTML parser 的换行与 NUL 规范化规则计算，原始字节、缓存头及 ETag 保持不变；304 不替换缓存文档已有的哈希策略。Cloudflare 配置 `assets.run_worker_first: ["/*", "!/assets/*", "!/og/*"]` 与 `ASSETS` 绑定：HTML / 动态路由先返回已有预渲染内容，未命中再走 SSR，因此首页无需访问数据库也能携带安全头。`/assets/*` 的哈希 JS / CSS / 字体等直接由静态服务返回，省去 Worker 调用；`/og/*` 的构建 PNG 同样直出，使用 `_headers` 保留一天缓存、noindex 与 nosniff。其他路径继续经过 Worker；新增静态目录时应核对构建输出后显式添加排除规则。Node 在 Nitro HTTP 外层对静态响应使用同一策略。
 
 上线步骤：
 

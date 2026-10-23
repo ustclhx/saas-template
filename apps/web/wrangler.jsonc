@@ -3,8 +3,11 @@
   "name": "web",
   // 自定义入口：先校验环境变量，再交给 TanStack Start（src/server.ts）
   "main": "./src/server.ts",
-  // 静态与预渲染响应也经过统一安全头入口；静态内容仍由 ASSETS 提供。
-  "assets": { "binding": "ASSETS", "run_worker_first": true },
+  // HTML / 动态路由走安全头入口；构建静态资源与 OG 图片直接由 Asset Worker 返回。
+  "assets": {
+    "binding": "ASSETS",
+    "run_worker_first": ["/*", "!/assets/*", "!/og/*"]
+  },
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "ai": { "binding": "AI" },
