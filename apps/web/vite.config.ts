@@ -45,7 +45,12 @@ export default defineConfig(({ command }) => {
   // 本地 dev 时把根目录 .env.local 的五项测试支付配置同步到 .dev.vars 管理区块（#26）
   if (command === 'serve') syncLocalPaymentEnv(new URL('./', import.meta.url))
   return {
-    build: { sourcemap: 'hidden' },
+    build: {
+      sourcemap: 'hidden',
+      // 关闭模块预加载：首屏 HTML 会带上全部路由 chunk 的 modulepreload，与阻塞首绘的样式表争抢带宽，
+      // 首绘与 LCP 被推迟；水合所需的模块仍由入口的 import 链加载。
+      modulePreload: false,
+    },
     server: { port, strictPort: true },
     preview: { port, strictPort: true },
     define: {
