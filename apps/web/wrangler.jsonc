@@ -110,6 +110,7 @@
     // 不设 PAYMENT_MODE（Q9 前支付关闭）与 AI_FAULT_INJECTION（生产禁止）；Turnstile 站点 saas-production 仅允许本项目的生产域名。
     "production": {
       "name": "web-production",
+      "observability": { "enabled": true, "head_sampling_rate": 1, "traces": { "enabled": false } },
       "workers_dev": false,
       "preview_urls": false,
       "routes": [{ "pattern": "app.ezarouter.cc", "custom_domain": true }],

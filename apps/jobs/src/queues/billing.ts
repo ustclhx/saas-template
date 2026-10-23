@@ -74,7 +74,11 @@ export async function handleBillingBatch(
                 await finishFailure(
                   message,
                   {
-                    code: `${kind.toUpperCase()}_${retryable ? 'ATTEMPTS_EXHAUSTED' : 'NON_RETRYABLE'}`,
+                    code: isAppError(error)
+                      ? error.code
+                      : error instanceof Error
+                        ? error.name
+                        : `${kind.toUpperCase()}_UNKNOWN_FAILURE`,
                     retryable,
                   },
                   options.deadLetters,

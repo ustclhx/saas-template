@@ -1,3 +1,4 @@
+-- rollback-safe: 仅新增 schedule 与 schedule_run 表及索引和外键，旧引擎表保持不变
 CREATE TABLE "job_engine"."schedule" (
 	"id" text PRIMARY KEY NOT NULL,
 	"cron" text NOT NULL,

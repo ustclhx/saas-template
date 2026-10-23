@@ -1,3 +1,4 @@
+-- rollback-safe: 新增退款表及 payment 可空列，旧代码省略新列时仍满足新增约束
 CREATE TABLE "payment_refund" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"workspace_id" uuid NOT NULL,

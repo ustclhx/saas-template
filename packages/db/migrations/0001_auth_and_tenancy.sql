@@ -1,3 +1,4 @@
+-- rollback-safe: 仅新增认证、租户、审计与通知表及其索引和外键，不改变已有表契约
 CREATE TABLE "account" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"account_id" text NOT NULL,

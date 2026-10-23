@@ -40,6 +40,9 @@ function run(overrides = {}) {
   const deps = {
     isOnMain: async () => true,
     stagingRuns: async () => [{ head_sha: sha, conclusion: 'success' }],
+    ciRuns: async () => [
+      { head_sha: sha, head_branch: 'main', event: 'push', conclusion: 'success' },
+    ],
     write: (line) => lines.push(line),
     ...overrides,
   }
@@ -129,4 +132,14 @@ test('restore verification fails when any check is false and never prints creden
   assert.ok(lines.includes('{"check":"credits_balance","ok":false}'))
   assert.equal(lines.filter((line) => line.includes('"rows":7')).length, keyTables.length)
   assert.ok(lines.every((line) => !line.includes('secret-pw') && !line.includes('db.example')))
+})
+
+test('production requires successful main push CI in addition to staging', async () => {
+  const { code } = await run({ ciRuns: async () => [] })
+  assert.equal(code, 1)
+})
+
+test('testing CI bypass still requires main ancestry and staging success', async () => {
+  assert.equal((await run({ phase: 'testing', isOnMain: async () => false })).code, 1)
+  assert.equal((await run({ phase: 'testing', stagingRuns: async () => [] })).code, 1)
 })

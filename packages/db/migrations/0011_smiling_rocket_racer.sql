@@ -1,3 +1,4 @@
+-- rollback-safe: 仅新增每日指标表，不改变已有业务表
 CREATE TABLE "metrics_daily" (
 	"day" date PRIMARY KEY NOT NULL,
 	"registrations" integer NOT NULL,

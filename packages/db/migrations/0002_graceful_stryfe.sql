@@ -1,3 +1,4 @@
+-- rollback-safe: 仅新增计费与积分表及其索引和外键，旧代码可忽略新增表
 CREATE TABLE "billing_customer" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"workspace_id" uuid NOT NULL,

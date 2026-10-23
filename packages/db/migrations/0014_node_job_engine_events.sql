@@ -1,3 +1,4 @@
+-- rollback-safe: 仅新增 workflow_event 与 workflow_wait 表及索引，旧引擎表保持不变
 CREATE TABLE "job_engine"."workflow_event" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"sequence" bigserial NOT NULL,
