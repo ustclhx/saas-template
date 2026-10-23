@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
+    "build": "vite build && node scripts/inline-critical-css.mjs",
     "deploy:staging": "CLOUDFLARE_ENV=staging vite build && wrangler deploy",
     "preview": "vite preview",
     "typecheck": "node scripts/generate-route-tree.mjs && node scripts/compile-messages.mjs && node scripts/build-content.mjs && tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p tsconfig.node.json && tsc -p tsconfig.neutral.json",
