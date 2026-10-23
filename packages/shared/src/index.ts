@@ -1,3 +1,4 @@
+export { normalizeSignupEmail } from './email.ts'
 export {
   AppError,
   type ErrorBody,

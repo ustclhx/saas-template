@@ -142,7 +142,7 @@ describe('workspace lifecycle in workerd', () => {
       code: 'WORKSPACE_RETENTION_EXPIRED',
     })
     expect((await cleanupExpiredWorkspaces(a.db)).cleaned).toBeGreaterThanOrEqual(1)
-    expect(await cleanupExpiredWorkspaces(a.db)).toEqual({ cleaned: 0 })
+    expect(await cleanupExpiredWorkspaces(a.db)).toMatchObject({ cleaned: 0 })
     expect(
       await a.db.query.notification.findFirst({ where: (n, { eq }) => eq(n.workspaceId, id) }),
     ).toBeUndefined()

@@ -41,10 +41,10 @@
 
 ## 5. 删除与清理
 
-- [ ] 5.1 `cleanupExpiredWorkspaces` 按外键顺序删除空间的 `ai_message`、`ai_conversation`、`ai_task`，跳过仍有 `held` 预扣的行；Postgres 测试断言保留期后这些表中没有该空间的行，财务表不变
-- [ ] 5.2 `deleteAccount` 的事务内删除 newsletter、waitlist 中对应邮箱的记录与该用户的通知，并去除审计记录元数据中的邮箱与姓名；Postgres 测试断言
-- [ ] 5.3 在 jobs 清理任务中分批删除已删除用户在团队空间中的对话、消息与媒体任务；Postgres 测试断言团队空间其他成员的数据与积分流水不受影响
-- [ ] 5.4 更新 `docs/03-data-model.md` 的删除与保留说明，包括"24 小时内完成删除"
+- [x] 5.1 `cleanupExpiredWorkspaces` 按外键顺序删除空间的 `ai_message`、`ai_conversation`、`ai_task`，跳过仍有 `held` 预扣的行；Postgres 测试断言保留期后这些表中没有该空间的行，财务表不变
+- [x] 5.2 `deleteAccount` 的事务内删除 newsletter、waitlist 中对应邮箱的记录与该用户的通知，并去除审计记录元数据中的邮箱与姓名；Postgres 测试断言
+- [x] 5.3 在 jobs 清理任务中分批删除已删除用户在团队空间中的对话、消息与媒体任务；Postgres 测试断言团队空间其他成员的数据与积分流水不受影响
+- [x] 5.4 更新 `docs/03-data-model.md` 的删除与保留说明，包括"24 小时内完成删除"
 
 ## 6. 发布门禁、迁移安全与可观测性
 

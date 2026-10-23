@@ -1,6 +1,6 @@
 import type { Database } from '@saas/db'
 import type { KeyValueStore } from '@saas/platform'
-import { AppError, newId } from '@saas/shared'
+import { AppError, newId, normalizeSignupEmail } from '@saas/shared'
 import type { BetterAuthPlugin } from 'better-auth'
 import { APIError, createAuthEndpoint } from 'better-auth/api'
 import { z } from 'zod'
@@ -209,6 +209,15 @@ function belongsToUser(row: { identifier: string; value: string }, id: string, e
   }
   return false
 }
+function growthEmails(email: string) {
+  const emails = new Set([email.trim().toLowerCase()])
+  try {
+    emails.add(normalizeSignupEmail(email))
+  } catch {
+    // 无法规范化的历史邮箱只按小写原值匹配。
+  }
+  return [...emails]
+}
 export async function deleteAccount(options: Options) {
   const fresh = await requireFreshSession(options)
   if (fresh.session.impersonatedBy || Date.now() - fresh.session.createdAt.getTime() > 600000)
@@ -267,6 +276,11 @@ export async function deleteAccount(options: Options) {
       values (${newId()},${current.id},${membership.organization_id},'workspace.member_removed','member',${membership.id},
       ${options.clientIp ?? null},${JSON.stringify({ targetUserId: current.id, oldRole: membership.role, newRole: null, reason: 'account_deleted' })}::jsonb)`
     await sql`update invitation set status='canceled',updated_at=now() where status='pending' and (inviter_id=${current.id} or lower(email)=lower(${current.email}))`
+    // 原邮箱被替换前删除增长名单记录；两张表按 normalizeSignupEmail 规范化存储。
+    const emails = growthEmails(current.email)
+    await sql`delete from newsletter_subscriber where email in ${sql(emails)}`
+    await sql`delete from waitlist where email in ${sql(emails)}`
+    await sql`delete from notification where user_id=${current.id}`
     await sql`update "user" set email=${`deleted+${current.id}@invalid`},name='',image=null,locale=null,timezone=null,email_verified=false,two_factor_enabled=false,banned=true,ban_reason='Account deleted',ban_expires=null,updated_at=now() where id=${current.id}`
     await sql`insert into audit_log (id,actor_user_id,action,target_type,target_id,ip,meta) values (${newId()},${current.id},'account.deleted','user',${current.id},${options.clientIp ?? null},${JSON.stringify({ anonymized: true, deletedPersonalWorkspaceIds: personal.map((workspace) => workspace.id) })}::jsonb)`
     return saveCleanup(sql, cacheKeys, options.kv)
