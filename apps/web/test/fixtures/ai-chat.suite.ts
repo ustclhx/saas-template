@@ -1,4 +1,9 @@
-import { chatHoldSweeper, type LanguageModelFactory, settleInterruptedChatMessage } from '@saas/ai'
+import {
+  chatHoldSweeper,
+  type LanguageModelFactory,
+  settleInterruptedChatMessage,
+  uuidv7Floor,
+} from '@saas/ai'
 import { createAuth } from '@saas/auth'
 import { defineTemplateConfig, type TemplateConfig } from '@saas/config'
 import { getCreditBalance, grant, hold, reconcileWorkspaceCredits } from '@saas/credits'
@@ -1146,6 +1151,150 @@ export function registerAiChatSuite(
         })
       },
     )
+
+    describe('免费失败次数（harden-audit-findings 3.3）', () => {
+      /** 指定时刻的 UUIDv7：免费失败按 id 的时间前缀计数 */
+      const idAt = (ms: number) => `${uuidv7Floor(ms).slice(0, 14)}7000-8000-${newId().slice(-12)}`
+
+      /** 直接写入已结算的免费失败（failed、credits=0），模拟窗口内或窗口外的历史失败 */
+      async function pastFailures(
+        who: { workspaceId: string; userId: string },
+        n: number,
+        ageMs: number,
+      ) {
+        const s = scoped(db, who.workspaceId)
+        const conversationId = newId()
+        await s.insert(aiConversation, {
+          id: conversationId,
+          userId: who.userId,
+          title: 'past failures',
+          modelKey: 'past',
+        })
+        for (let i = 0; i < n; i++)
+          await s.insert(aiMessage, {
+            id: idAt(Date.now() - ageMs - i),
+            conversationId,
+            role: 'assistant',
+            status: 'failed',
+            parts: [],
+            credits: 0,
+          })
+      }
+
+      const fail = async (me: { slug: string; cookie: string }, modelId: string) => {
+        const mock = attempts(Array.from({ length: 3 }, () => ({ reasoning: 'hidden thought' })))
+        const { response } = await send(me, { modelId, text: 'hi' }, { factory: () => mock })
+        return assistantMessage(response.headers.get('x-conversation-id') as string)
+      }
+
+      it('按次：前 3 次无正文失败全退，第 4 次收固定积分', async () => {
+        const me = await member('free-failures', 100)
+        const modelId = await resilientModel(callPricing)
+        for (let i = 0; i < 3; i++)
+          expect(await fail(me, modelId)).toMatchObject({
+            message: { status: 'failed', credits: 0 },
+            hold: { status: 'released' },
+          })
+        expect(await fail(me, modelId)).toMatchObject({
+          message: { status: 'failed', credits: 3, parts: [] },
+          hold: { status: 'captured', captured_amount: 3 },
+        })
+        // 收费的失败不占用免费次数，之后仍按次收费。
+        expect((await fail(me, modelId)).message.credits).toBe(3)
+        expect(await consumeLedger(me.workspaceId)).toEqual([{ delta: -3 }, { delta: -3 }])
+        await assertInvariant(me.workspaceId)
+      })
+
+      it('按 token：超出后按最后一次尝试的用量结算', async () => {
+        const me = await member('free-failures-token', 100)
+        const modelId = await resilientModel(tokenPricing)
+        await pastFailures(me, 3, 0)
+        const { message, hold: reservation } = await fail(me, modelId)
+        // 只按最后一次尝试（100 输入 + 200 输出，10/1k）计 3 积分，前两次尝试不计入。
+        expect(reservation).toMatchObject({ status: 'captured', captured_amount: 3 })
+        expect(message.credits).toBe(3)
+        expect(message).toMatchObject({ input_tokens: 100, output_tokens: 200 })
+        expect(reservation).toMatchObject({ overage_absorbed: 0, overage_debited: 0 })
+        await assertInvariant(me.workspaceId)
+      })
+
+      it('窗口滚动后恢复免费；失败全退开关开启时超出次数也全退', async () => {
+        const me = await member('free-failures-window', 100)
+        const modelId = await resilientModel(callPricing)
+        await pastFailures(me, 3, 3_601_000)
+        expect(await fail(me, modelId)).toMatchObject({
+          message: { status: 'failed', credits: 0 },
+          hold: { status: 'released' },
+        })
+        await pastFailures(me, 3, 0)
+        const mock = attempts(Array.from({ length: 3 }, () => ({ reasoning: 'hidden thought' })))
+        const { response } = await send(
+          me,
+          { modelId, text: 'hi' },
+          { factory: () => mock, textConfig: policy({ failedReplyRefund: 'all' }) },
+        )
+        expect(
+          await assistantMessage(response.headers.get('x-conversation-id') as string),
+        ).toMatchObject({ message: { credits: 0 }, hold: { status: 'released' } })
+        expect(await consumeLedger(me.workspaceId)).toEqual([])
+      })
+
+      it.each([
+        ['lastAttempt', 20],
+        ['minimum', 5],
+      ] as const)('兜底处理器同样计数：超出后按 %s 结算', async (path, expected) => {
+        const me = await member(`free-failures-sweep-${path}`, 100)
+        await pastFailures(me, 3, 0)
+        const conversationId = newId()
+        const messageId = newId()
+        const pricing = { mode: 'token' as const, inputPer1k: 1, outputPer1k: 10, minCharge: 5 }
+        const reservation = await hold(db, {
+          workspaceId: me.workspaceId,
+          userId: me.userId,
+          amount: 20,
+          refType: 'ai_message',
+          refId: messageId,
+          expiresAt: new Date(Date.now() - 1),
+        })
+        const s = scoped(db, me.workspaceId)
+        await s.insert(aiConversation, {
+          id: conversationId,
+          userId: me.userId,
+          title: 'sweep',
+          modelKey: 'mock-sweep',
+        })
+        await s.insert(aiMessage, {
+          id: messageId,
+          conversationId,
+          role: 'assistant',
+          status: 'streaming',
+          pricing,
+          inputTokens: 10,
+          holdId: reservation.id,
+          parts: [{ type: 'reasoning', text: 'thinking' }],
+          usageCheckpoint: {
+            inputTokens: 10,
+            outputTokens: 0,
+            at: new Date().toISOString(),
+            // (100 × 1 + 3000 × 10) / 1000 = 30.1 → 31，以预扣 20 封顶
+            ...(path === 'lastAttempt'
+              ? { lastAttempt: { inputTokens: 100, outputTokens: 3000, reasoningTokens: 3000 } }
+              : {}),
+          },
+        })
+        await db.transaction(async (tx) => {
+          const [expired] = await scoped(tx, me.workspaceId)
+            .select(creditHold, { where: eq(creditHold.id, reservation.id) })
+            .limit(1)
+          if (!expired) throw new Error('hold missing')
+          await chatHoldSweeper({ overage: OVERAGE })({ db, tx, hold: expired })
+        })
+        const { message, hold: result } = await assistantMessage(conversationId)
+        expect(message).toMatchObject({ status: 'failed', credits: expected })
+        expect(result).toMatchObject({ status: 'captured', captured_amount: expected })
+        await assertInvariant(me.workspaceId)
+      })
+    })
 
     it('DeepSeek 空 schema 接受用户逐条开启 thinking', async () => {
       const me = await member('thinking-adapter-policy', 100)

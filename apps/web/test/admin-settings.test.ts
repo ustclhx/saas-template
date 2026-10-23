@@ -50,6 +50,7 @@ it('保存设置后清除旧 KV 值，拒绝未受邀注册，并审计每项的
       signupEnabled: false,
       announcement: ' Scheduled maintenance ',
       signupBonusDomainBlacklist: [' Mailinator.com. ', 'mailinator.com', 'temp-mail.test'],
+      freeFailures: { count: 5, windowSeconds: 1800 },
     })
     await runAdminAction({ db, admin, ip: '203.0.113.14' }, 'setting.update', (scope) =>
       writeRuntimeSettings(scope, input),
@@ -62,6 +63,7 @@ it('保存设置后清除旧 KV 值，拒绝未受邀注册，并审计每项的
       'mailinator.com',
       'temp-mail.test',
     ])
+    expect(await getSetting(ctx, 'ai.freeFailures')).toEqual({ count: 5, windowSeconds: 1800 })
     await expect(
       assertSignupAdmission(
         {
@@ -76,9 +78,19 @@ it('保存设置后清除旧 KV 值，拒绝未受邀注册，并审计每项的
       ),
     ).rejects.toMatchObject({ code: 'SIGNUP_DISABLED', status: 403 })
     const records = await db.select().from(auditLog).where(eq(auditLog.actorUserId, admin.id))
-    expect(records).toHaveLength(3)
-    const oldValues = [before.signupEnabled, before.announcement, before.signupBonusDomainBlacklist]
-    const newValues = [input.signupEnabled, input.announcement, input.signupBonusDomainBlacklist]
+    expect(records).toHaveLength(RUNTIME_SETTING_KEYS.length)
+    const oldValues = [
+      before.signupEnabled,
+      before.announcement,
+      before.signupBonusDomainBlacklist,
+      before.freeFailures,
+    ]
+    const newValues = [
+      input.signupEnabled,
+      input.announcement,
+      input.signupBonusDomainBlacklist,
+      input.freeFailures,
+    ]
     for (const [index, key] of RUNTIME_SETTING_KEYS.entries()) {
       expect(records.find((row) => row.targetId === key)).toMatchObject({
         action: 'setting.updated',
@@ -102,7 +114,22 @@ it('邮箱域黑名单拒绝 URL 和邮箱地址，避免误保存无效规则',
         signupEnabled: true,
         announcement: '',
         signupBonusDomainBlacklist: [domain],
+        freeFailures: { count: 3, windowSeconds: 3600 },
       }).success,
     ).toBe(false)
   }
+})
+
+it('免费失败设置只接受非负整数次数与 1 分钟到 7 天的窗口', () => {
+  const parse = (freeFailures: unknown) =>
+    runtimeSettingsInput.safeParse({
+      signupEnabled: true,
+      announcement: '',
+      signupBonusDomainBlacklist: [],
+      freeFailures,
+    }).success
+  expect(parse({ count: 0, windowSeconds: 60 })).toBe(true)
+  expect(parse({ count: -1, windowSeconds: 3600 })).toBe(false)
+  expect(parse({ count: 1.5, windowSeconds: 3600 })).toBe(false)
+  expect(parse({ count: 3, windowSeconds: 59 })).toBe(false)
 })

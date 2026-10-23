@@ -1,4 +1,4 @@
-import { Button } from '@saas/ui'
+import { Button, Input } from '@saas/ui'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { type FormEvent, useEffect, useState } from 'react'
 import { getAdminSettings, saveAdminSettings } from '../../features/admin/settings.functions.ts'
@@ -18,6 +18,10 @@ function Settings() {
   const [signupEnabled, setSignupEnabled] = useState(saved.signupEnabled)
   const [announcement, setAnnouncement] = useState(saved.announcement)
   const [blacklist, setBlacklist] = useState(saved.signupBonusDomainBlacklist.join('\n'))
+  const [freeFailureCount, setFreeFailureCount] = useState(String(saved.freeFailures.count))
+  const [freeFailureMinutes, setFreeFailureMinutes] = useState(
+    String(saved.freeFailures.windowSeconds / 60),
+  )
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [hydrated, setHydrated] = useState(false)
@@ -36,6 +40,10 @@ function Settings() {
             .split(/[\n,]/)
             .map((entry) => entry.trim())
             .filter(Boolean),
+          freeFailures: {
+            count: Number(freeFailureCount),
+            windowSeconds: Math.round(Number(freeFailureMinutes) * 60),
+          },
         },
       })
       setMessage(
@@ -90,6 +98,40 @@ function Settings() {
               onChange={(event) => setBlacklist(event.target.value)}
             />
           </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label={m.admin_ai_free_failure_count()}
+              htmlFor="free-failure-count"
+              description={m.admin_ai_free_failure_count_description()}
+            >
+              <Input
+                id="free-failure-count"
+                type="number"
+                min={0}
+                max={1000}
+                step={1}
+                required
+                value={freeFailureCount}
+                onChange={(event) => setFreeFailureCount(event.target.value)}
+              />
+            </Field>
+            <Field
+              label={m.admin_ai_free_failure_window_minutes()}
+              htmlFor="free-failure-window"
+              description={m.admin_ai_free_failure_window_description()}
+            >
+              <Input
+                id="free-failure-window"
+                type="number"
+                min={1}
+                max={10080}
+                step={1}
+                required
+                value={freeFailureMinutes}
+                onChange={(event) => setFreeFailureMinutes(event.target.value)}
+              />
+            </Field>
+          </div>
           <Button type="submit" className="w-fit">
             {m.admin_save_settings()}
           </Button>

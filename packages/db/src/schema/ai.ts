@@ -37,6 +37,8 @@ export interface AiTextUsage {
   absorbed?: { inputTokens: number; outputTokens: number; reasoningTokens?: number }
   /** 所有上游 attempt 的累计成本用量，与用户结算用量分开。 */
   total?: { inputTokens: number; outputTokens: number; reasoningTokens: number }
+  /** 最后一次上游尝试的用量：超出免费失败次数的无正文失败按它结算，每次尝试整体替换。 */
+  lastAttempt?: { inputTokens: number; outputTokens: number; reasoningTokens: number }
 }
 
 /** 生成过程中定期写入的累计用量估算，结算丢失时兜底按它结算（docs/06-ai.md §3） */
