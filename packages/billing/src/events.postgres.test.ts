@@ -23,6 +23,7 @@ import {
 } from '@saas/db'
 import { eq, inArray } from 'drizzle-orm'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { runSubscriptionReconciliation } from './cron.ts'
 import {
   applyBillingEvent,
   createBillingEventHandler,
@@ -418,6 +419,87 @@ describe('billing event consumer on PostgreSQL', () => {
     } finally {
       await db.delete(webhookEvent).where(inArray(webhookEvent.providerEventId, deliveries))
     }
+  })
+  it('non-USD payment fails as a non-retryable currency mismatch and grants nothing', async () => {
+    await apply([await checkout()])
+    const delivery = id()
+    try {
+      const verified = {
+        providerEventId: delivery,
+        type: 'invoice.paid',
+        events: [paid({ currency: 'EUR' })],
+      }
+      const onFailure = vi.fn()
+      const result = await processWebhook({
+        db,
+        provider: { ...provider, verifyWebhook: async () => verified },
+        request: new Request('https://example.test'),
+        rawBody: '{}',
+        ...createBillingEventHandler({ db, providers: { stripe: provider }, now: () => now }),
+        onFailure,
+      })
+      expect(result).toMatchObject({ status: 'failed', retryable: false })
+      expect(result.status === 'failed' && result.error).toContain('BILLING_CURRENCY_MISMATCH')
+      const [row] = await db
+        .select()
+        .from(webhookEvent)
+        .where(eq(webhookEvent.providerEventId, delivery))
+      expect(row).toMatchObject({ status: 'failed', attempts: 1 })
+      expect(row?.error).toContain('BILLING_CURRENCY_MISMATCH')
+      expect(onFailure).toHaveBeenCalledOnce()
+      expect(await payments()).toHaveLength(0)
+      expect(await grants()).toHaveLength(0)
+      expect(
+        await db.select().from(creditLedger).where(eq(creditLedger.workspaceId, ws)),
+      ).toHaveLength(0)
+    } finally {
+      await db.delete(webhookEvent).where(eq(webhookEvent.providerEventId, delivery))
+    }
+  })
+  it('past_due start survives updates, retries and daily reconciliation; recovery clears it', async () => {
+    await apply([paid()])
+    const at = (days: number) => new Date(now.getTime() + days * 86_400_000)
+    const failedPayment = (days: number): NormalizedEvent => ({
+      provider: 'stripe',
+      type: 'subscription.past_due',
+      providerSubscriptionId: subId,
+      status: 'past_due',
+      pastDueSince: at(days),
+      occurredAt: at(days),
+      raw: {},
+    })
+    const updated = (days: number, status: SubscriptionSnapshot['status']): NormalizedEvent => ({
+      provider: 'stripe',
+      type: 'subscription.updated',
+      // Stripe 快照不带欠费时间
+      subscription: { ...snapshot, status, pastDueSince: null },
+      occurredAt: at(days),
+      raw: {},
+    })
+    const since = async () => (await subs())[0]?.pastDueSince ?? null
+    await apply([failedPayment(1)])
+    expect(await since()).toEqual(at(1))
+    // 欠费 2 天后收到订阅更新（如设置周期末取消）
+    await apply([updated(3, 'past_due')])
+    expect(await since()).toEqual(at(1))
+    // 第 3、5 天扣款重试再次失败
+    await apply([failedPayment(3)])
+    await apply([failedPayment(5)])
+    expect(await since()).toEqual(at(1))
+    // 每日对账以远端快照重写订阅状态
+    snapshot = { ...snapshot, status: 'past_due', pastDueSince: null }
+    const reconciled = await runSubscriptionReconciliation(
+      db,
+      { stripe: provider },
+      { now: () => at(6) },
+    )
+    expect(reconciled.failures.filter((f) => f.workspaceId === ws)).toEqual([])
+    expect((await subs())[0]).toMatchObject({ status: 'past_due', pastDueSince: at(1) })
+    // 恢复后清空，再次欠费重新记录
+    await apply([updated(7, 'active')])
+    expect(await since()).toBeNull()
+    await apply([failedPayment(37)])
+    expect(await since()).toEqual(at(37))
   })
   it('missing metadata renewals repair from remote verified object; existing associations ignore hostile metadata', async () => {
     await apply([paid({ kind: 'renewal' })])

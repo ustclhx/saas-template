@@ -6,6 +6,8 @@
 - **积分包**（`plan.type='credit_pack'`）：一次性购买，发放一批有效期较长的积分，不改变权益（或只附加少量权益）。
 - **免费档**：`plan.key='free'`，无需支付记录；注册赠送积分 `signupBonusCredits`（用户领取时触发邮箱验证，验证完成后才发放，见 §4「注册赠送防刷」）。
 - 币种：模板默认单币种（`billing.currency`），多币种作为后续扩展（`plan_price` 已按 currency 建模）。
+  Stripe Checkout 显式传 `adaptive_pricing: { enabled: false }`，买家所在地不会改变扣款币种；
+  回调中出现非 USD 金额时 `money()` 抛出 `BILLING_CURRENCY_MISMATCH`，见 §3「不可重试的失败」。
 
 ## 2. 支付 Provider 抽象
 
@@ -171,10 +173,15 @@ Creem / Paddle / Polar 各实现一个 Provider，`capabilities.merchantOfRecord
 6. 事务 B 异常：ROLLBACK 后另起事务
      UPDATE webhook_event SET status='failed', error=?, attempts=attempts+1
    返回 500，让平台重试（重试时从第 4 步继续）
+   不可重试的错误码（当前为 BILLING_CURRENCY_MISMATCH）：同样记 failed 并发运营告警，但返回 200
 ```
 
 - 失败记录必须在**独立事务**中写入：事务 B 回滚会撤销其内部的所有写入，若登记与处理放在同一事务里，`failed` 状态和错误信息永远写不进去。
 - 管理后台的「重放」= 对 `failed` 的记录用保存的 `payload` 重新执行第 4 步。
+- **不可重试的失败**：重投无法修复的错误（`NON_RETRYABLE_BILLING_ERRORS`，当前只有币种不符
+  `BILLING_CURRENCY_MISMATCH`）在 `webhook_event.error` 中以错误码开头记录，整笔回滚、不入账也不发积分；
+  `processWebhook` 返回 `retryable: false`，HTTP 入口经运营通知队列发 `webhook.failed` 告警后返回 200，
+  平台不再重投。运营人工核实（如退款或修正配置）后，可在后台重放。
 
 **乱序处理**：订阅状态更新以 `occurredAt` / 平台对象的最新状态为准；收到较旧事件时不覆盖较新状态。必要时通过 API 拉取最新对象（`reconcile`）。
 
@@ -321,6 +328,9 @@ INSERT INTO credit_hold (...), credit_hold_allocation (...);
 - 「生效中」在**读取时计算**，不依赖定时任务改状态：
   - `trialing` / `active`：生效。
   - `past_due`：在 `past_due_since + billing.pastDueGraceDays` 之前生效，之后视为 free。
+    `past_due_since` 由 `nextPastDueSince()` 统一计算：取本次进入欠费（`past_due`，含 PayPal 挂起的
+    `paused`）的首个时间点；保持欠费期间的订阅更新、每日对账与扣款重试失败都不清空或推后它
+    （Stripe 订阅快照不带欠费时间，不能直接覆盖）；离开欠费状态时清空，再次欠费时重新记录。
   - `canceled` / `expired`：`now() < current_period_end` 时生效（周期内取消保留权益）。
   - `paused`：不生效。
 
@@ -328,10 +338,10 @@ INSERT INTO credit_hold (...), credit_hold_allocation (...);
 
 | 场景 | 行为 |
 |---|---|
-| 升级（Stripe） | 立即生效，平台按比例计费；权益立即切换；积分在下一次 `invoice.paid` 按新套餐发放，当前实现不提供立即补发差额开关（Q5） |
-| 降级（Stripe） | 周期结束时生效（schedule） |
+| 升级（Stripe，同一计费周期） | 立即生效，平台按比例计费；权益立即切换；积分在下一次 `invoice.paid` 按新套餐发放，当前实现不提供立即补发差额开关（Q5） |
+| 降级（Stripe，同一计费周期） | 周期结束时生效（schedule） |
+| 月付 ↔ 年付（Stripe） | 无论档位升降，一律在当前周期结束时生效（复用降级的 schedule）：当前周期照常到期，新周期首笔付款按续费入账并发放积分（年付仍按月发放）。立即切换会产生 `subscription_update` 调整账单，年付款无法按续费入账。账单页在确认前提示该生效时间 |
 | PayPal | 首版不支持订阅内升降级：取消当前（周期末生效）+ 新订阅，重叠期见下 |
-| 月付 ↔ 年付 | 同升降级 |
 
 ### 「一个空间一个订阅」约束与重叠期
 

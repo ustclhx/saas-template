@@ -16,11 +16,11 @@
 
 ## 2. 计费：币种锁定、周期变更、欠费开始时间
 
-- [ ] 2.1 在 Stripe Checkout 参数中加入 `adaptive_pricing: { enabled: false }`；单元测试断言请求参数包含该项
-- [ ] 2.2 `money()` 遇到币种不符时抛出 `BILLING_CURRENCY_MISMATCH`，webhook 管线将其视为不可重试错误：记录失败并发运营告警；Postgres 测试断言不发放积分且不再重试
-- [ ] 2.3 新增 `nextPastDueSince` 纯函数，替换 `events/subscriptions.ts` 的两处赋值与 `services.ts:180` 的赋值；单元测试覆盖四种情况：欠费期间收到更新、每日对账、多次重试失败、恢复后再次欠费
-- [ ] 2.4 `services.ts` 判断升降级时，周期不同的切换走定时切换路径（周期结束时生效）；测试断言月付切换年付时不调用立即开票，并在周期结束时生效
-- [ ] 2.5 账单页的换套餐确认文案写明"周期变更在当前周期结束时生效"（多语言）；在 `docs/05-billing.md` 中更新升降级与欠费说明
+- [x] 2.1 在 Stripe Checkout 参数中加入 `adaptive_pricing: { enabled: false }`；单元测试断言请求参数包含该项
+- [x] 2.2 `money()` 遇到币种不符时抛出 `BILLING_CURRENCY_MISMATCH`，webhook 管线将其视为不可重试错误：记录失败并发运营告警；Postgres 测试断言不发放积分且不再重试
+- [x] 2.3 新增 `nextPastDueSince` 纯函数，替换 `events/subscriptions.ts` 的两处赋值与 `services.ts:180` 的赋值；单元测试覆盖四种情况：欠费期间收到更新、每日对账、多次重试失败、恢复后再次欠费
+- [x] 2.4 `services.ts` 判断升降级时，周期不同的切换走定时切换路径（周期结束时生效）；测试断言月付切换年付时不调用立即开票，并在周期结束时生效
+- [x] 2.5 账单页的换套餐确认文案写明"周期变更在当前周期结束时生效"（多语言）；在 `docs/05-billing.md` 中更新升降级与欠费说明
 
 ## 3. AI 文本：免费失败次数与上游超时
 
