@@ -1,3 +1,4 @@
+-- rollback-safe: 仅创建 setting 表，旧代码不依赖新增表
 CREATE TABLE "setting" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"key" text NOT NULL,

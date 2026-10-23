@@ -1,3 +1,4 @@
+-- rollback-safe: 仅新增媒体任务与文件表及其索引和外键，不改变已有表契约
 CREATE TABLE "ai_task" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"workspace_id" uuid NOT NULL,

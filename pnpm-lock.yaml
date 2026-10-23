@@ -178,6 +178,9 @@ importers:
       source-map:
         specifier: 0.7.6
         version: 0.7.6
+      squawk-cli:
+        specifier: 2.67.0
+        version: 2.67.0
       turbo:
         specifier: ^2.11.7
         version: 2.11.7
@@ -3489,6 +3492,45 @@ packages:
   '@speed-highlight/core@1.2.24':
     resolution: {integrity: sha512-qeW2e1l78afw8VhRPfPQ1Gjj+KU5XFQ/OFV5ti6eTa9bruO7mJyZtA4vw0ofqmA3tKCkROE9xLk3VZoeRc98nw==}
 
+  '@squawk-cli/darwin-arm64@2.67.0':
+    resolution: {integrity: sha512-o/qIhh3doZzxcgmudv5a1hg7eYc4WqieDn4jDSnqsmvRWHr3JaTGggZex4CWzaIujSWs+LvsiwMd11Vi2iv15g==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@squawk-cli/darwin-x64@2.67.0':
+    resolution: {integrity: sha512-+uRpodtYM/xPxgqPzZRE9xpCy5Ay+1J9hZ/Z+4r3R5BEPKIRiuVO6TK7WmHQgcsZsPcJN4NA0RHuC9lKDjz3RA==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@squawk-cli/linux-arm64-musl@2.67.0':
+    resolution: {integrity: sha512-3GyY99ZIfqq9HBugC/FVlwq/DmmV5O04O65iQi2hibcPVmyGBtnF/GVHcnHnnAoV787UAwG9Jhiq0k/qe7WgXQ==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@squawk-cli/linux-arm64@2.67.0':
+    resolution: {integrity: sha512-rU/LRPxKoQ6y5wKrhy9Z15dFj/UN22qHoGE2nd6RCZOpGWaPw9ySiuXloVs4ncAGqVd84Sxalx7/22GChCuusA==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@squawk-cli/linux-x64-musl@2.67.0':
+    resolution: {integrity: sha512-xV9AlCj0imIOKFVcFiJAnznbIYcZnP1SB9J+rYMjwjbN2ml1y6pDYdsulf5/iUWl7GgY4k+J3QkXVMcEsb4xuw==}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@squawk-cli/linux-x64@2.67.0':
+    resolution: {integrity: sha512-4hGTajHD2TDGoQkzve4Lg71WBxGHLIiF+DX2DkHB3pgfqmIXYww9zFHV1Zk/zMCpq7n+Z4UEvqnRb8W9OBgJ2w==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@squawk-cli/win32-x64@2.67.0':
+    resolution: {integrity: sha512-KH8lYlMBYWiivQxTYOFongUm8cmLO0VkBtJffcTqkH2rw8GU5HBm+Btfo7tF72FCDjN44/wcyY4WFtxtmOkw2Q==}
+    cpu: [x64]
+    os: [win32]
+
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
@@ -5805,6 +5847,10 @@ packages:
 
   sprintf-js@1.0.3:
     resolution: {integrity: sha512-D9cPgkvLlV3t3IzL0D0YLvGA9Ahk4PcvVwUbN0dSGr1aP0Nrt4AEnTUbuGvquEC0mA64Gqt1fzirlRs5ibXx8g==}
+
+  squawk-cli@2.67.0:
+    resolution: {integrity: sha512-ksEFSZRWtGil08epWb1LsL0RPTqjxnUZ/Ugoz1b2zO+W3PFZtQq95BnsJg+hyN6jckb5IyLn6jHjHEBlE/aQfg==}
+    hasBin: true
 
   srvx@0.11.22:
     resolution: {integrity: sha512-LqZxxBDMKuMAZzFzJnDCkFOrs9MZQZr0LvHiO/SuSZVdQaXD7xQ5UWTUxheJrQPve1qk9MG2B/yttUvJxw8egQ==}
@@ -8714,6 +8760,27 @@ snapshots:
 
   '@speed-highlight/core@1.2.24': {}
 
+  '@squawk-cli/darwin-arm64@2.67.0':
+    optional: true
+
+  '@squawk-cli/darwin-x64@2.67.0':
+    optional: true
+
+  '@squawk-cli/linux-arm64-musl@2.67.0':
+    optional: true
+
+  '@squawk-cli/linux-arm64@2.67.0':
+    optional: true
+
+  '@squawk-cli/linux-x64-musl@2.67.0':
+    optional: true
+
+  '@squawk-cli/linux-x64@2.67.0':
+    optional: true
+
+  '@squawk-cli/win32-x64@2.67.0':
+    optional: true
+
   '@standard-schema/spec@1.1.0': {}
 
   '@tailwindcss/node@4.3.3':
@@ -11248,6 +11315,16 @@ snapshots:
   split2@4.2.0: {}
 
   sprintf-js@1.0.3: {}
+
+  squawk-cli@2.67.0:
+    optionalDependencies:
+      '@squawk-cli/darwin-arm64': 2.67.0
+      '@squawk-cli/darwin-x64': 2.67.0
+      '@squawk-cli/linux-arm64': 2.67.0
+      '@squawk-cli/linux-arm64-musl': 2.67.0
+      '@squawk-cli/linux-x64': 2.67.0
+      '@squawk-cli/linux-x64-musl': 2.67.0
+      '@squawk-cli/win32-x64': 2.67.0
 
   srvx@0.11.22: {}
 

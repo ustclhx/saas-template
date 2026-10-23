@@ -48,13 +48,13 @@
 
 ## 6. 发布门禁、迁移安全与可观测性
 
-- [ ] 6.1 抽出共享的发布检查模块：要求该 SHA 在 main 上有成功的 CI，支持 `RELEASE_PHASE=testing` 与 `bypass=hotfix` + `reason` 两种绕过，并写入 Job Summary；用 node 测试覆盖各分支；在 `deploy-staging.yml` 与 `deploy-production.yml` 中加入 dispatch 输入并接入该模块
-- [ ] 6.2 `deploy-production.yml` 改为先构建、再迁移、再部署；`RELEASE_PHASE=live` 时缺少 Sentry 配置则失败，`testing` 时只警告；用 actionlint 或 `act` 的 dry-run 校验语法
-- [ ] 6.3 迁移入口设置 `lock_timeout=5s` 与 `statement_timeout=15min`；用本地 PG 集成测试证明锁被占用时迁移失败
-- [ ] 6.4 CI 对新增迁移运行固定版本的 squawk（确认 npm 包名与发布者无误），支持带原因的豁免；在 PR 中演示对一条危险迁移的拦截结果
-- [ ] 6.5 回滚兼容检查：读取生产 health 的版本，列出比目标 tag 新增的迁移，任一条缺少 `-- rollback-safe:` 注释即失败；node 测试覆盖各种情况；为已有迁移补齐判断后的注释
-- [ ] 6.6 生产环境的 web 与 jobs `wrangler.jsonc` 开启 observability；`events` 队列配置 `dead_letter_queue: "events-dlq"`，jobs 消费 `events-dlq`，写入死信表并告警；不可重试错误直接投递到死信队列；单元测试覆盖消费者
-- [ ] 6.7 更新 `docs/07-infrastructure.md` 与生产 runbook：说明 `RELEASE_PHASE`、紧急修复的触发方式、回滚兼容注释、`events-dlq` 的创建步骤，并在上线清单中加入"`RELEASE_PHASE` 改为 `live`"
+- [x] 6.1 抽出共享的发布检查模块：要求该 SHA 在 main 上有成功的 CI，支持 `RELEASE_PHASE=testing` 与 `bypass=hotfix` + `reason` 两种绕过，并写入 Job Summary；用 node 测试覆盖各分支；在 `deploy-staging.yml` 与 `deploy-production.yml` 中加入 dispatch 输入并接入该模块
+- [x] 6.2 `deploy-production.yml` 改为先构建、再迁移、再部署；`RELEASE_PHASE=live` 时缺少 Sentry 配置则失败，`testing` 时只警告；用 actionlint 或 `act` 的 dry-run 校验语法
+- [x] 6.3 迁移入口设置 `lock_timeout=5s` 与 `statement_timeout=15min`；用本地 PG 集成测试证明锁被占用时迁移失败
+- [x] 6.4 CI 对新增迁移运行固定版本的 squawk（确认 npm 包名与发布者无误），支持带原因的豁免；在 PR 中演示对一条危险迁移的拦截结果
+- [x] 6.5 回滚兼容检查：读取生产 health 的版本，列出比目标 tag 新增的迁移，任一条缺少 `-- rollback-safe:` 注释即失败；node 测试覆盖各种情况；为已有迁移补齐判断后的注释
+- [x] 6.6 生产环境的 web 与 jobs `wrangler.jsonc` 开启 observability；`events` 队列配置 `dead_letter_queue: "events-dlq"`，jobs 消费 `events-dlq`，写入死信表并告警；不可重试错误直接投递到死信队列；单元测试覆盖消费者
+- [x] 6.7 更新 `docs/07-infrastructure.md` 与生产 runbook：说明 `RELEASE_PHASE`、紧急修复的触发方式、回滚兼容注释、`events-dlq` 的创建步骤，并在上线清单中加入"`RELEASE_PHASE` 改为 `live`"
 
 ## 7. 协调者：合并后与验收
 

@@ -1,12 +1,26 @@
 name: Deploy production
 
 # production-deployment spec：只由 v* tag 触发；被发布的提交必须在 main 上且已成功发布到 staging，
-# 经 production environment 审批后按「迁移 → jobs → web → 健康完整 SHA → 只读冒烟」串行执行。
-# 回滚：对上一个 tag 运行 workflow_dispatch（gh workflow run deploy-production.yml --ref vX.Y.Z）。
+# 经 production environment 审批后按「构建 → 迁移 → jobs → web → 健康完整 SHA → 只读冒烟」串行执行。
+# 回滚从 main 的当前 workflow 执行并指定 tag，门禁脚本不取自旧 tag。
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag to release (run this workflow on main for rollback)'
+        type: string
+        required: false
+      bypass:
+        description: 'CI bypass (staging success and production approval still required)'
+        type: choice
+        options: [none, hotfix]
+        default: none
+      reason:
+        description: 'Required reason for hotfix CI bypass'
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -18,30 +32,62 @@ concurrency:
 
 jobs:
   verify:
-    # 只接受 tag ref；environment 的 v* tag 策略再做一次限制
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.release.outputs.sha }}
+      tools_sha: ${{ steps.release.outputs.tools_sha }}
     steps:
+      # 校验使用 main 上的维护版本，避免旧 tag 没有门禁脚本。
       - uses: actions/checkout@v7
         with:
+          ref: main
           fetch-depth: 0
 
-      - name: Verify release commit is on main and deployed to staging
+      - name: Resolve version tag and verify main, staging and CI
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG_INPUT: ${{ inputs.tag }}
+          RELEASE_PHASE: ${{ vars.RELEASE_PHASE }}
+          RELEASE_BYPASS: ${{ inputs.bypass || 'none' }}
+          RELEASE_REASON: ${{ inputs.reason }}
         run: |
-          git fetch --no-tags origin main
-          node scripts/production/check-release.mjs "$GITHUB_SHA"
+          release_ref="$GITHUB_REF"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ -n "$TAG_INPUT" ]; then
+            release_ref="refs/tags/$TAG_INPUT"
+          fi
+          if [[ "$release_ref" != refs/tags/v* ]]; then
+            echo '::error::A v* version tag is required; dispatch on main with the tag input'
+            exit 1
+          fi
+          sha=$(git rev-parse --verify "$release_ref^{commit}")
+          node scripts/production/check-release.mjs "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "tools_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   deploy:
     needs: verify
     runs-on: ubuntu-latest
     environment: production
     env:
-      DEPLOY_SHA: ${{ github.sha }}
+      DEPLOY_SHA: ${{ needs.verify.outputs.sha }}
+      RELEASE_PHASE: ${{ vars.RELEASE_PHASE }}
       PRODUCTION_URL: https://app.ezarouter.cc
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
+          fetch-depth: 0
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.verify.outputs.tools_sha }}
+          path: .release-tools
+      - name: Keep release controls outside the target checkout
+        run: |
+          mv .release-tools "$RUNNER_TEMP/release-tools"
+          echo "RELEASE_TOOLS=$RUNNER_TEMP/release-tools/scripts/production" >> "$GITHUB_ENV"
 
       - uses: pnpm/action-setup@v6
 
@@ -52,10 +98,17 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Migrate production database
+      - name: Verify production Sentry configuration
         env:
-          MIGRATION_DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
-        run: pnpm --filter @saas/db db:migrate
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: node "$RELEASE_TOOLS/release-policy.mjs" sentry
+
+      - name: Check rollback schema compatibility against running production
+        if: github.event_name == 'workflow_dispatch'
+        run: node "$RELEASE_TOOLS/check-rollback.mjs" "$DEPLOY_SHA"
 
       - name: Build jobs
         env:
@@ -80,7 +133,7 @@ jobs:
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           SENTRY_RELEASE: ${{ env.DEPLOY_SHA }}
         run: |
-          # 生产 Sentry 由 add-cloud-production-neon 5.2 配置；未配置时跳过上传但仍删除客户端 map
+          # live 的完整配置已在构建前校验；testing 允许缺配置并保留警告。
           if [ -n "$SENTRY_AUTH_TOKEN" ] && [ -n "$SENTRY_ORG" ] && [ -n "$SENTRY_PROJECT" ]; then
             test -f apps/web/dist/server/index.js.map
             test -f apps/jobs/dist/index.js.map
@@ -93,6 +146,11 @@ jobs:
             echo "::warning::Production Sentry secrets are not configured; skipping source map upload"
           fi
           find apps/web/dist/client -type f -name '*.map' -delete
+
+      - name: Migrate production database
+        env:
+          MIGRATION_DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: node "$RELEASE_TOOLS/migrate.mjs"
 
       - name: Deploy built jobs
         env:
@@ -133,7 +191,7 @@ jobs:
         if: failure()
         run: >-
           echo "::error::Production deploy failed. Roll back by re-running this workflow on the previous tag:
-          gh workflow run deploy-production.yml --ref <previous-tag>. Schema is not rolled back; see docs/runbooks/production-neon.md."
+          gh workflow run deploy-production.yml --ref main -f tag=<previous-tag>. Schema is not rolled back; see docs/runbooks/production-neon.md."
 
       - name: Finalize Sentry release
         env:
@@ -141,4 +199,6 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: |
-          if [ -n "$SENTRY_AUTH_TOKEN" ]; then pnpm exec sentry-cli releases finalize "$DEPLOY_SHA"; fi
+          if [ -n "$SENTRY_AUTH_TOKEN" ] && [ -n "$SENTRY_ORG" ] && [ -n "$SENTRY_PROJECT" ]; then
+            pnpm exec sentry-cli releases finalize "$DEPLOY_SHA"
+          fi

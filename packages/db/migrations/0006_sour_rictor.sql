@@ -1,3 +1,4 @@
+-- rollback-safe: 仅新增计费补偿表及其索引和外键，不改变既有业务表
 CREATE TABLE "billing_compensation" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"workspace_id" uuid NOT NULL,

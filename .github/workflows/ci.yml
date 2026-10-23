@@ -37,6 +37,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       # 与 infra/local/docker-compose.yml 的容器初始化相同：集群级账号 + 单库权限
       - name: Initialize database roles
@@ -55,6 +57,14 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+      - name: Lint added migration SQL
+        env:
+          MIGRATION_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$MIGRATION_BASE" ] || [[ "$MIGRATION_BASE" =~ ^0+$ ]]; then
+            MIGRATION_BASE=$(git hash-object -t tree /dev/null)
+          fi
+          node scripts/production/lint-migrations.mjs "$MIGRATION_BASE"
       # lockfile 必须已去重，且 drizzle-orm / react 只有一个实例（scripts/check-singletons.mjs 说明了原因）
       - run: pnpm dedupe --check
       - run: pnpm check:singletons

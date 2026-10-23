@@ -167,7 +167,7 @@ age-keygen -y "$HOME/.config/saas-template/production-backup.agekey"
 
 | environment | 保护与允许的 ref | 配置 |
 |---|---|---|
-| `production` | 项目负责人审批，仅 tag `v*`；按团队情况设置审批人与自审策略 | secrets：`PRODUCTION_MIGRATION_DATABASE_URL`（migrator 非 pooled TLS）、`CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_API_TOKEN`；可选 Sentry 上传三项 |
+| `production` | 项目负责人审批，允许 tag `v*` 与分支 `main`（手动入口）；按团队情况设置审批人与自审策略 | secrets：`PRODUCTION_MIGRATION_DATABASE_URL`（migrator 非 pooled TLS）、`CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_API_TOKEN`；live 阶段另需 `SENTRY_DSN`、`SENTRY_AUTH_TOKEN`、`SENTRY_ORG`、`SENTRY_PROJECT` |
 | `production-backup` | 仅分支 `main`，定时备份不等待交互审批 | secrets：`PRODUCTION_READONLY_DATABASE_URL`（readonly 非 pooled TLS）、`R2_ACCESS_KEY_ID`、`R2_SECRET_ACCESS_KEY`；variables：`BACKUP_BUCKET=saas-production-backups`、`BACKUP_AGE_RECIPIENT`、`R2_ACCOUNT_ID` |
 
 `backup-production.yml` 还由仓库 variable `PRODUCTION_BACKUP_SCHEDULE=true` 控制定时运行，完成首份备份与恢复演练后再启用。`BACKUP_BUCKET` 为备份桶，不是用户文件桶。
@@ -204,10 +204,60 @@ wrangler 无法创建 API token（无对应命令，OAuth 可选范围不含 API
 
 ## 7. 发布与回滚
 
-- 发布：对已合并到 main 且 `Deploy staging` 成功的提交创建并推送 `v*` tag。`deploy-production.yml` 先运行 `scripts/production/check-release.mjs`，校验提交在 main 上且该完整 SHA 有成功的 staging 发布；再进入 `production` environment 等待审批。批准后依次迁移、部署 jobs、部署 web、等待本项目生产 URL 的 `/api/health` 返回完整 SHA，最后运行只读冒烟（`playwright test --project production`，仅 GET）。
-- 回滚：`gh workflow run deploy-production.yml --ref <上一个 tag>`，同样需要审批。只回退 Worker 版本，不回滚 schema；迁移须保持向前兼容，破坏性迁移单独评审。数据问题按 [restore](restore.md) 处理。
-- 未配置生产 Sentry 上传 secrets 时，流水线跳过 source map 上传并给出 warning，仍删除客户端 map。
-- 本地对任意环境试跑只读冒烟：`PRODUCTION_URL=<URL> pnpm --filter @saas/web exec playwright test --project production`。
+仓库变量 `RELEASE_PHASE` 仅取 `testing` 或 `live`，未设置按 `live`。测试阶段可以绕过 CI；正式上线后只有紧急修复可绕过。CI 必须是本仓库 `main` 分支上同一完整 SHA 的成功 `CI` push 运行，PR 检查不算。生产始终要求目标 tag 的提交在 main 历史上、已成功发布 staging，并经 `production` environment 审批；这些条件不能绕过。
+
+正常发布：对已验证的提交推送 `v*` tag。批准后依次构建 jobs/web、上传 source map、迁移、部署 jobs、部署 web、校验 `/api/health` 完整 SHA，最后执行只读 Playwright 冒烟。两个构建产物保留在同一 job，构建失败不会触及数据库。live 阶段缺少 `SENTRY_DSN` 或 source map 上传配置会在迁移前失败；testing 只发 warning 并写摘要。GitHub production DSN 用于发布门禁，web/jobs 的运行时 `SENTRY_DSN` secrets 也必须分别配置，发布门禁不代替实际事件验收。
+
+手动操作从 **main 的当前工作流** 运行并指定目标 tag，避免旧 tag 自带的旧工作流缺少新检查。`production` environment 的 deployment branches/tags 需同时允许 `main` 与 `v*`，保留必需审批人。维护者应先确认目标 tag 与摘要中的解析 SHA 一致。
+
+```sh
+# 普通手动重发 / 回滚，仍需 CI、staging 与审批
+gh workflow run deploy-production.yml --ref main -f tag=vX.Y.Z
+# 紧急修复：先部署同一 main SHA 到 staging，生产仍需审批
+gh workflow run deploy-staging.yml --ref main -f bypass=hotfix -f reason='修复正在发生的生产故障，关联事件编号'
+gh workflow run deploy-production.yml --ref main -f tag=vX.Y.Z -f bypass=hotfix -f reason='修复正在发生的生产故障，关联事件编号'
+```
+
+每次 CI 绕过都有 `::warning` 和 Job Summary，记录 `testing` 或 `hotfix` 类型、原因及 `github.actor`。testing 未填写原因时摘要会使用测试阶段说明；live 的 hotfix 原因必须非空。不得把 testing 长期当作上线后的发布通道。
+
+回滚 dispatch 读取当前生产 `/api/health.version`，比较当前版本与目标 tag 的迁移文件。每条新增迁移必须在**当前生产提交**中有 `-- rollback-safe: <具体原因>`，否则部署前失败并改为向前修复。只新增表、可空列等且旧代码仍兼容时才能标注；删除/改名字段、增加旧写入无法满足的非空约束等不得标注。旧生产提交未带声明时会保守阻止跨迁移回滚；后来补注释不会追溯改变旧提交。历史 `0003`（变更约束）、`0004`（原非空列可为 null）与 `0009`（撤销权限）未声明安全，禁止自动跨越。该检查只允许回退 Worker，schema 与数据不回退；数据恢复按 [restore](restore.md)。
+
+staging/production 共用 `node scripts/production/migrate.mjs`，连接启动参数强制 `lock_timeout=5s`、`statement_timeout=15min`，避免等锁长期阻塞。CI 以固定版本 `squawk-cli@2.67.0` 检查相对 base 新增的迁移，危险 SQL 会阻断 PR。依赖来源核对为 [sbdchd/squawk 官方仓库](https://github.com/sbdchd/squawk) 的 [npm 包 squawk-cli](https://www.npmjs.com/package/squawk-cli)，该版本 publisher 为 `sbdchd`，maintainers 为 `sbdchd` / `cdignam`。例外按 [原生 ignore 语法](https://squawkhq.com/docs/cli/) 在同一行写原因，例如下列空表上的已评审索引；迁移在事务内执行，`CONCURRENTLY` 需要另行规划，不盲目照搬建议。不要为回滚执行反向 SQL。
+
+```sql
+SET lock_timeout = '5s';
+SET statement_timeout = '15min';
+-- squawk-ignore require-concurrent-index-creation -- reason: table is empty before first deployment
+CREATE INDEX example_idx ON example_table (id);
+```
+
+本地只读冒烟：`PRODUCTION_URL=<URL> pnpm --filter @saas/web exec playwright test --project production`。
+
+## 7a. events 死信队列与上线清单
+
+合并后由协调者在确认 Cloudflare 账号后创建两个独立队列，资源名称必须与 jobs 的对应 Wrangler 环境一致；此步骤不由 worker 执行。Queues 的死信配置放在原队列 consumer 上，详见 [Cloudflare 死信队列文档](https://developers.cloudflare.com/queues/configuration/dead-letter-queues/)。
+
+```sh
+pnpm --dir apps/jobs exec wrangler queues create events-dlq-staging --env staging
+pnpm --dir apps/jobs exec wrangler queues create events-dlq-production --env production
+```
+
+随后部署 jobs，使 `events-staging|events-production` 的 `dead_letter_queue` 与 `EVENTS_DLQ` producer、死信 consumer 同时生效。认证邮件不加 DLQ。不可重试和达到尝试上限的错误用信封保留真实错误、原队列、原 ID 与失败时间，投递成功后确认原消息；原生 DLQ 同时保留意外消费者失败的落点。死信落库或告警失败时继续重试，运营告警直接发渠道，避免循环进入 events。
+
+Cloudflare 过去只授权 public schema；复用 job-engine 死信表前，在 staging/production 各以 migrator 对已迁移的目标库授予最小权限（不调用 Node/DBOS 迁移，也不授予 app DDL）：
+
+```sql
+GRANT USAGE ON SCHEMA job_engine TO app;
+GRANT SELECT, INSERT ON job_engine.queue, job_engine.message, job_engine.dead_letter TO app;
+```
+
+上线前逐项核对：
+
+- 两个 DLQ 已创建，jobs consumer 与 producer 指向各自环境；生产两个 Worker 的日志开启且采样率为 1。
+- app 可以幂等写入死信表，死信记录包含原 ID、原队列、尝试次数、原因、时间，运营渠道收到测试告警。
+- production environment 允许 main 手动入口与 v* tag，保留审批；Sentry DSN 两端绑定、GitHub 上传配置及真实事件均已验收。
+- 新迁移已由协调者生成、审阅 squawk 结果并判断 rollback-safe；两环境迁移入口的锁超时验证通过。
+- **把仓库变量 `RELEASE_PHASE` 改为 `live`**，回读确认；普通手动发布不能绕过 CI，hotfix 必须有原因且摘要保留触发人。
 
 ## 8. 生产写操作清单
 

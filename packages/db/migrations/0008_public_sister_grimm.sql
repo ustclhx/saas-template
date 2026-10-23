@@ -1,3 +1,4 @@
+-- rollback-safe: 仅新增 AI 模型、对话与消息表及其索引和外键，旧代码可忽略
 CREATE TABLE "ai_conversation" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"workspace_id" uuid NOT NULL,

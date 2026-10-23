@@ -1,3 +1,4 @@
+-- rollback-safe: 仅新增 newsletter 与 waitlist 表及索引，旧代码可忽略
 CREATE TABLE "newsletter_subscriber" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"email" text NOT NULL,

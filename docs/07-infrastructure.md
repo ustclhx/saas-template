@@ -335,10 +335,10 @@ PR:    install → biome check → typecheck → unit test (vitest-plugin) → b
        并行 e2e-smoke：临时 PG → migrate → 本地 vite dev → Chromium 冒烟
        → （可选，且 PR 不含新迁移时）部署预览版本
 main:  以上 + 数据库迁移(staging) → 部署 staging → e2e (Playwright) 
-tag:   数据库迁移(production) → wrangler deploy (jobs 先于 web) → 冒烟测试
+tag:   发布门禁 → production 审批 → 构建 jobs/web → 数据库迁移 → 部署 jobs/web → 冒烟测试
 ```
 
-**staging 自动发布**：`.github/workflows/deploy-staging.yml` 跟随 main 上成功的 `CI`，检出该次 CI 的提交；也可在 main 上手动触发 `workflow_dispatch`。发布使用 GitHub `staging` environment，`staging-deploy` concurrency 串行执行且不取消进行中的运行。PR 的 `ci.yml` 不引用 staging secrets，只操作临时 CI 数据库。
+**staging 自动发布**：`.github/workflows/deploy-staging.yml` 跟随 main 上成功的 `CI`，检出该次 CI 的提交；也可在 main 上手动触发 `workflow_dispatch`。手动发布复用生产 CI 门禁：目标 SHA 必须有本仓库 main 上成功的 `CI` push 运行。仓库变量 `RELEASE_PHASE` 仅接受 `testing|live`，未设置按 `live`；`testing` 可绕过 CI，上线后仅手动选择 `bypass=hotfix` 并填写非空 `reason` 才能绕过。每次绕过都会输出 warning 与 Job Summary，记录类型、原因和触发人。发布使用 GitHub `staging` environment，`staging-deploy` concurrency 串行执行且不取消进行中的运行。PR 的 `ci.yml` 不引用 staging secrets，只操作临时 CI 数据库。
 
 发布顺序为 install → Neon 迁移 → 构建 jobs 与 web → Sentry release / source map 上传 → 部署 jobs → 部署 web → 健康检查 → Playwright `staging` 项目 → finalize release。release 与两个 Worker 的 `APP_VERSION` 均为所检出提交的完整 SHA（`workflow_run.head_sha`，手动运行时为 `github.sha`），与 `/api/health.version` 一致。迁移通过 environment 的 `STAGING_MIGRATION_DATABASE_URL` 直连 Neon，以 `migrator` 执行；Cloudflare 认证使用 `CLOUDFLARE_API_TOKEN` 与 `CLOUDFLARE_ACCOUNT_ID`。健康检查每 5 秒轮询、最多 3 分钟，要求 200、`db.status=up`、`version` 等于目标 SHA；之后用 Chromium 检查首页、定价与一次随机邮箱注册。任一步失败即停止发布。
 
@@ -368,9 +368,11 @@ pnpm --filter @saas/web test:e2e:smoke
 
 **阶段二私有 PG 迁移**：CI 可运行 `cloudflared access tcp`（需要 §2 的公网主机名 + Access 备选方式）在本地开转发端口，再执行迁移；或通过 SSH 在生产服务器上执行迁移。
 
-**迁移原则**：只做向后兼容的变更（先加字段/表 → 部署代码 → 再删旧字段），保证 web/jobs 滚动发布期间新旧代码都能运行。
+**迁移原则**：只做向后兼容的变更（先加字段/表 → 部署代码 → 再删旧字段），保证 web/jobs 滚动发布期间新旧代码都能运行。staging 与 production 共用 `node scripts/production/migrate.mjs`，强制 `lock_timeout=5s`、`statement_timeout=15min`；锁超时后停止部署。CI 用固定版本 `squawk-cli` 检查相对 base 新增的 SQL；例外必须用 squawk ignore 注释并在同一行说明原因，不修改历史 SQL 来隐藏风险。
 
-**部署顺序**：迁移 → `apps/jobs` → `apps/web`（web 依赖 jobs 中定义的 Workflow / Queue 消费者）。
+Cloudflare 回滚先读取生产 `/api/health.version`，逐条检查当前版本相对目标 tag 新增的迁移。只有每条都声明 `-- rollback-safe: <旧代码仍兼容的具体原因>` 才允许回滚，否则向前修复。该声明只说明 Worker 回退兼容性，不表示 SQL 可以反向执行。新迁移由协调者合并后统一生成并判断；worker 不生成迁移。
+
+**生产部署顺序**：门禁 → production environment 审批 → 构建 `apps/jobs` 与 `apps/web` → source map 上传 → 迁移 → jobs → web。构建失败不执行迁移。生产仍要求 main 历史、staging 发布成功与审批，CI 绕过不影响这些要求。`RELEASE_PHASE=live` 必须配置 Sentry DSN 与上传配置，`testing` 缺失仅在 warning 与摘要中提示。详见 [生产发布 runbook](./runbooks/production-neon.md#7-发布与回滚)。
 
 ## 6. 安全清单
 
@@ -397,6 +399,14 @@ pnpm --filter @saas/web test:e2e:smoke
 Sentry 只在服务端启用，接入 web fetch 与 jobs fetch / Queue / Cron / Workflow；事件经统一
 `beforeSend` 脱敏过滤器处理，不采集邮箱、Authorization、Cookie、支付凭据或 AI 对话内容。
 事件 release 为完整部署 SHA，dist 为 `web` 或 `jobs`，request ID 标签用于关联 Workers Logs。
+生产 web/jobs 在 Wrangler 的 `env.production.observability` 开启日志并设 `head_sampling_rate: 1`。
+
+events 消费失败达到 6 次或出现不可重试错误时进入 `events-dlq`（线上分别为
+`events-dlq-staging`、`events-dlq-production`）。jobs 通过 producer 绑定直接转投不可重试消息，
+确认发送成功后才 ack；死信消费者复用 `job_engine.message` 与 `job_engine.dead_letter`，
+持久化原消息 ID、原队列、尝试次数、失败原因与时间，再直接发送运营告警，避免告警再次进入失败队列。
+邮件队列继续沿用现有丢弃策略。队列创建、数据库最小授权和上线清单见
+[生产 runbook §7a](./runbooks/production-neon.md#7a-events-死信队列与上线清单)。
 管理员测试异常入口需新鲜的实时平台管理员会话、同源 POST 与后台审计；没有公开测试入口。
 本地真实事件与合并后 staging 可读堆栈的验收记录见 [Sentry runbook](./runbooks/sentry.md)，
 staging 尚未通过前不勾选 OpenSpec 1.2。

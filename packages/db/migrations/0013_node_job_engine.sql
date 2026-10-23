@@ -1,3 +1,4 @@
+-- rollback-safe: 仅新增 job_engine schema 与任务引擎表，旧代码可忽略
 CREATE SCHEMA "job_engine";
 --> statement-breakpoint
 CREATE TABLE "job_engine"."batch" (
