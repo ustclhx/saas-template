@@ -383,6 +383,20 @@ pnpm --filter @saas/web test:e2e:smoke
 - 数据库最小权限账号；自建 PG 只经 Tunnel（Workers VPC 或 Access）访问，不开放公网端口；Neon staging 通过非 pooled TLS 直连，不使用默认 owner 作为 Worker 连接账号。
 - 依赖更新：Renovate / Dependabot。
 
+### 安全响应头与 CSP 上线
+
+`apps/web/src/security-headers.ts` 是 Cloudflare / Node 共用的响应头策略。页面、API、Server Function、重定向、错误与静态资源都补齐 `X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin`；只有 HTTPS 响应补 `Strict-Transport-Security: max-age=31536000; includeSubDomains`。已有同名头原样保留，错误响应也携带请求 ID。
+
+完整 CSP 只发送 `Content-Security-Policy-Report-Only`，其中 `frame-ancestors 'none'` 与 X-Frame-Options 一致；当前实际防嵌入由 X-Frame-Options 执行。脚本来源含同源与 Turnstile，表单允许 Stripe Checkout / Portal 跳转，R2 使用 `R2_ACCOUNT_ID` 拼接的精确下载 origin，Node 对象存储使用 `S3_ENDPOINT` 的 origin；Sentry 使用配置 DSN 的 ingest origin（目前 SDK 仅在服务端运行）。不使用全局 `*`。样式允许组件库实际使用的内联 style 属性。
+
+浏览器端提前设置 Zod `jitless`，避免运行时编译与 Function 探测产生 CSP 违规。动态 SSR 为每个请求产生独立 nonce，路由器统一给主题和水合脚本加 nonce，SSR / 对话 API 流继续透传。预渲染静态 HTML 则对构建产物中的内联脚本计算 SHA-256 内容哈希，哈希按 HTML parser 的换行与 NUL 规范化规则计算，原始字节、缓存头及 ETag 保持不变；304 不替换缓存文档已有的哈希策略。Cloudflare 配置 `assets.run_worker_first: true` 与 `ASSETS` 绑定，先返回已有静态资源，未命中再走 SSR；因此首页无需访问数据库也能携带安全头。Node 在 Nitro HTTP 外层对静态响应使用同一策略。
+
+上线步骤：
+
+1. 本地 `pnpm build` 后，用浏览器检查预渲染首页、登录与已登录对话页的主题、水合、导航和 CSP 违规事件；保留结果到私有证据库，并在 PR 中引用。
+2. 在 staging 检查真实 Turnstile、Stripe 结账跳转、对话流、R2 媒体预览及 Sentry 错误上报；按浏览器 `securitypolicyviolation` 事件 / 控制台定位策略外来源。当前未设置自动报告接收端，需主动收集浏览器事件。
+3. 新增集成时只添加实际 origin，复测对应流程。Report-Only 无违规和功能验收通过后，再单独决定是否切换为强制 CSP；本次不切换。
+
 ## 7. 可观测性
 
 | 维度 | 工具 |

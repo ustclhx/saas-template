@@ -34,6 +34,8 @@ import { createBillingDeletionSteps } from './features/billing/deletion.server.t
 import { assertSignupAdmission } from './features/growth/service.ts'
 import { gateLocaleRequest } from './features/i18n/gate.ts'
 import { localizeRequest } from './features/i18n/request.server.ts'
+import { withSecurityNonce } from './security-context.server.ts'
+import { withSecurityHeaders, withStaticSecurityHeaders } from './security-headers.ts'
 import { createWebAuth } from './server/auth.ts'
 import { createQueueAuthEmailSender, userLocaleByEmail } from './server/auth-email.ts'
 import { checkEnv, webEnvSchema } from './server/cloudflare/env.ts'
@@ -70,36 +72,54 @@ export default {
     // 不信任入站的 x-request-id：可被客户端伪造，且会混入他人的检索结果
     const requestMeta = createCloudflareRequestMetadata(request)
     const context = { requestId: requestMeta.requestId, cfRay: requestMeta.cfRay }
-    return withLogContext(context, async () => {
-      try {
-        const invalid = checkEnv(env)
-        const response =
-          invalid ??
-          (await withWebRuntime(createCloudflareWebRuntime(env, requestMeta, ctx), () =>
-            worker.fetch(request, env, ctx),
-          ))
-        // 重定向与静态响应的 headers 可能只读，复制后再附请求 ID。
-        const headers = new Headers(response.headers)
-        headers.set('x-request-id', context.requestId)
-        return new Response(response.body, {
-          status: response.status,
-          statusText: response.statusText,
-          headers,
-        })
-      } catch (error) {
-        // 包装器已经捕获异常；返回无敏感细节的响应与请求 ID，便于管理员验收定位。
-        log.error('http.unhandled', { error })
-        if (error instanceof AppError)
-          return Response.json(error.toJSON(), {
-            status: error.status,
-            headers: { 'x-request-id': context.requestId },
+    const nonce = crypto.randomUUID()
+    const security = {
+      https: new URL(request.url).protocol === 'https:',
+      nonce,
+      r2AccountId: env.R2_ACCOUNT_ID,
+      sentryDsn: env.SENTRY_DSN,
+    }
+    return withSecurityNonce(nonce, () =>
+      withLogContext(context, async () => {
+        try {
+          const invalid = checkEnv(env)
+          if (!invalid && (request.method === 'GET' || request.method === 'HEAD') && env.ASSETS) {
+            const asset = await env.ASSETS.fetch(request)
+            if (asset.status !== 404) {
+              const response = await withStaticSecurityHeaders(asset, security)
+              response.headers.set('x-request-id', context.requestId)
+              return response
+            }
+            await asset.body?.cancel()
+          }
+          const response =
+            invalid ??
+            (await withWebRuntime(createCloudflareWebRuntime(env, requestMeta, ctx), () =>
+              worker.fetch(request, env, ctx),
+            ))
+          // 重定向与静态响应的 headers 可能只读，复制后再附请求 ID。
+          const headers = withSecurityHeaders(response.headers, security)
+          headers.set('x-request-id', context.requestId)
+          return new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers,
           })
-        return new Response('Internal Server Error', {
-          status: 500,
-          headers: { 'x-request-id': context.requestId },
-        })
-      }
-    })
+        } catch (error) {
+          // 包装器已经捕获异常；返回无敏感细节的响应与请求 ID，便于管理员验收定位。
+          log.error('http.unhandled', { error })
+          if (error instanceof AppError)
+            return Response.json(error.toJSON(), {
+              status: error.status,
+              headers: withSecurityHeaders({ 'x-request-id': context.requestId }, security),
+            })
+          return new Response('Internal Server Error', {
+            status: 500,
+            headers: withSecurityHeaders({ 'x-request-id': context.requestId }, security),
+          })
+        }
+      }),
+    )
   },
 } satisfies ExportedHandler<Cloudflare.Env>
 

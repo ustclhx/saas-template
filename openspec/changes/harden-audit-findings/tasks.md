@@ -7,12 +7,12 @@
 
 ## 1. 认证防刷与安全响应头
 
-- [ ] 1.1 在 `packages/auth/src/auth.ts` 的 `disabledPaths` 中加入 `/email-otp/check-verification-otp`；测试断言请求该路径返回 404
-- [ ] 1.2 在 `protection.ts` 中新增"只限流"路径集合（verify-email、email-otp reset-password、reset-password、sign-in/email-otp），按 IP 与邮箱限流，不要求 Turnstile；单元测试覆盖超限返回 429，且不调用后续处理器
-- [ ] 1.3 增加并发错误验证码的测试：累计有效尝试不超过上限（无法在单元层复现时，用 Postgres 集成测试）
-- [ ] 1.4 新增 `apps/web/src/security-headers.ts`，在 `server.ts` 的正常与错误分支、`server.node.ts` 中统一附加基础安全响应头；单元测试覆盖已存在同名头时不覆盖、HTTPS 下才发送 HSTS
-- [ ] 1.5 生成 CSP Report-Only 策略：内联主题脚本使用 nonce 或 hash，并列出 Turnstile、Stripe、R2、Sentry 的来源；本地 `pnpm build` 后用浏览器访问首页、登录、对话页，确认没有违规报告，并在 PR 中附上结果说明
-- [ ] 1.6 更新 `docs/04-auth-and-tenancy.md` 的防刷说明，在 `docs/07-infrastructure.md` 中记录安全响应头与 CSP 的上线步骤
+- [x] 1.1 在 `packages/auth/src/auth.ts` 的 `disabledPaths` 中加入 `/email-otp/check-verification-otp`；测试断言请求该路径返回 404
+- [x] 1.2 在 `protection.ts` 中新增"只限流"路径集合（verify-email、email-otp reset-password、reset-password、sign-in/email-otp），按 IP 与邮箱限流，不要求 Turnstile；单元测试覆盖超限返回 429，且不调用后续处理器
+- [x] 1.3 增加并发错误验证码的测试：累计有效尝试不超过上限（无法在单元层复现时，用 Postgres 集成测试）
+- [x] 1.4 新增 `apps/web/src/security-headers.ts`，在 `server.ts` 的正常与错误分支、`server.node.ts` 中统一附加基础安全响应头；单元测试覆盖已存在同名头时不覆盖、HTTPS 下才发送 HSTS
+- [x] 1.5 生成 CSP Report-Only 策略：内联主题脚本使用 nonce 或 hash，并列出 Turnstile、Stripe、R2、Sentry 的来源；本地 `pnpm build` 后用浏览器访问首页、登录、对话页，确认没有违规报告，并在 PR 中附上结果说明
+- [x] 1.6 更新 `docs/04-auth-and-tenancy.md` 的防刷说明，在 `docs/07-infrastructure.md` 中记录安全响应头与 CSP 的上线步骤
 
 ## 2. 计费：币种锁定、周期变更、欠费开始时间
 
