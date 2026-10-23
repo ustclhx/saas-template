@@ -61,6 +61,14 @@ function BillingPage() {
     page.catalog.plans.find((plan) => plan.id === selected?.planId)?.type === 'subscription'
   const change = isSubscription && renewing?.provider === 'stripe' && provider === 'stripe'
   const replacement = isSubscription && !change ? renewing : undefined
+  const currentInterval = page.catalog.prices.find(
+    (price) => price.id === renewing?.planPriceId,
+  )?.interval
+  // 月付与年付互换由服务端安排在当前周期结束时生效，确认前先说明生效时间
+  const intervalChange =
+    change &&
+    Boolean(selected?.interval && currentInterval) &&
+    selected?.interval !== currentInterval
   async function manage(subscriptionId: string, action: 'cancel' | 'resume' | 'portal' | 'change') {
     setBusy(true)
     setMessage('')
@@ -83,7 +91,7 @@ function BillingPage() {
       }
       setMessage(
         result.result.status === 'scheduled'
-          ? 'Plan change scheduled for the end of your paid period.'
+          ? m.billing_change_scheduled()
           : 'Subscription updated.',
       )
       await router.invalidate()
@@ -249,6 +257,9 @@ function BillingPage() {
               immediately. My old paid access lasts until {date(replacement.currentPeriodEnd)}; the
               paid periods may overlap.
             </label>
+          )}
+          {intervalChange && renewing && (
+            <p>{m.billing_change_interval_notice({ date: date(renewing.currentPeriodEnd) })}</p>
           )}
           <Button
             disabled={disabled || !selected?.available || Boolean(replacement && !confirmed)}

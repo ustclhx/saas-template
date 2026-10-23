@@ -163,6 +163,7 @@ describe('Stripe checkout and transport', () => {
       expect(request?.headers.get('idempotency-key')).toBe(input.idempotencyKey)
       expect(request?.body.get('mode')).toBe(mode === 'one_time' ? 'payment' : mode)
       expect(request?.body.get('managed_payments[enabled]')).toBe('false')
+      expect(request?.body.get('adaptive_pricing[enabled]')).toBe('false')
       const dataKey = mode === 'subscription' ? 'subscription_data' : 'payment_intent_data'
       for (const [key, value] of Object.entries(metadata)) {
         expect(request?.body.get(`metadata[${key}]`)).toBe(value)

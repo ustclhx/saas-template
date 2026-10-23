@@ -68,11 +68,14 @@ export async function handleBillingWebhook(
       },
     })
     // DB failure must trigger platform retry. Queue failure is recovered from the durable row by Jobs.
+    // 不可重试的失败（如币种不符）已记录为 failed 行并告警，应答 200 以免服务商无限重投。
     if (result.status === 'failed') {
+      const retryable = result.retryable !== false
       log.error('billing.webhook_failed', {
         provider: providerId,
         deliveryId: result.delivery?.id,
         error: result.error,
+        retryable,
       })
       if (result.delivery)
         await enqueueOperations(
@@ -82,6 +85,7 @@ export async function handleBillingWebhook(
             sourceId: `${result.delivery.id}:${result.delivery.attempts}`,
           },
         )
+      if (!retryable) return Response.json({ received: true })
       return new Response('Processing failed', { status: 500 })
     }
     log.info('billing.webhook_processed', {

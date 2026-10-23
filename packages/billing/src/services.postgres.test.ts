@@ -431,7 +431,7 @@ describe('trusted billing services on PostgreSQL', () => {
       'https://example.test/billing',
     )
   })
-  it('Stripe monthly to annual changes immediately and annual to monthly schedules without changing current price or grants', async () => {
+  it('Stripe interval changes schedule at period end in both directions without immediate invoicing or grants', async () => {
     await seedSub()
     const year = id()
     await db.insert(planPrice).values({
@@ -443,15 +443,109 @@ describe('trusted billing services on PostgreSQL', () => {
       amount: 10000,
       currency: 'USD',
     })
+    // 月付切换年付：不立即开票，当前月付周期照常到期
     expect(await changePlan(ctx, { ...subInput(), planPriceId: year })).toEqual({
-      status: 'changed',
+      status: 'scheduled',
     })
-    expect((await subs())[0]?.planPriceId).toBe(year)
+    expect(ctx.providers.stripe?.changePlan).toHaveBeenLastCalledWith(
+      remote.providerSubscriptionId,
+      expect.objectContaining({ id: year }),
+      { atPeriodEnd: true },
+    )
+    expect((await subs())[0]?.planPriceId).toBe(sp)
+    expect(await db.select().from(creditGrant).where(eq(creditGrant.workspaceId, ws))).toEqual([])
+    // 周期结束时 Stripe 按计划切换为年付，订阅更新通知把本地价格切到年付
+    const periodEnd = remote.currentPeriodEnd as Date
+    remote = {
+      ...remote,
+      providerPriceId: `price_${year}`,
+      currentPeriodStart: periodEnd,
+      currentPeriodEnd: new Date(periodEnd.getTime() + 365 * 86_400_000),
+      metadata: { workspaceId: ws, userId: uid, planPriceId: year },
+    }
+    const switched: NormalizedEvent = {
+      provider: 'stripe',
+      type: 'subscription.updated',
+      subscription: remote,
+      occurredAt: periodEnd,
+      raw: {},
+    }
+    const prepared = await prepareBillingEvents([switched], db, ctx.providers)
+    await db.transaction((tx) => applyBillingEvent(tx, switched, prepared))
+    expect((await subs())[0]).toMatchObject({ planPriceId: year, currentPeriodStart: periodEnd })
+    // 年付切回月付同样在周期结束时生效
     expect(await changePlan(ctx, { ...subInput(), planPriceId: sp })).toEqual({
       status: 'scheduled',
     })
+    expect(ctx.providers.stripe?.changePlan).toHaveBeenLastCalledWith(
+      remote.providerSubscriptionId,
+      expect.objectContaining({ id: sp }),
+      { atPeriodEnd: true },
+    )
     expect((await subs())[0]?.planPriceId).toBe(year)
-    expect(await db.select().from(creditGrant).where(eq(creditGrant.workspaceId, ws))).toEqual([])
+  })
+  it('Stripe same-interval upgrade across tiers still changes immediately', async () => {
+    await seedSub()
+    const team = id(),
+      teamYear = id(),
+      proYear = id()
+    extraPlans.push(team)
+    const [base] = await db.select().from(plan).where(eq(plan.id, pid))
+    if (!base) throw new Error('Missing plan')
+    await db
+      .insert(plan)
+      .values({ ...base, id: team, key: team, name: 'Team', sort: 20, credits: 30 })
+    await db.insert(planPrice).values([
+      {
+        id: proYear,
+        planId: pid,
+        provider: 'stripe',
+        providerPriceId: `price_${proYear}`,
+        interval: 'year',
+        amount: 10000,
+        currency: 'USD',
+      },
+      {
+        id: teamYear,
+        planId: team,
+        provider: 'stripe',
+        providerPriceId: `price_${teamYear}`,
+        interval: 'year',
+        amount: 20000,
+        currency: 'USD',
+      },
+    ])
+    // 月付 Pro 升到年付 Team：周期不同，即便档位更高也在周期末生效
+    expect(await changePlan(ctx, { ...subInput(), planPriceId: teamYear })).toEqual({
+      status: 'scheduled',
+    })
+    await db.update(subscription).set({ planPriceId: proYear }).where(eq(subscription.id, sid))
+    remote = { ...remote, providerPriceId: `price_${proYear}` }
+    // 年付 Pro 升到年付 Team：同周期升级立即生效
+    expect(await changePlan(ctx, { ...subInput(), planPriceId: teamYear })).toEqual({
+      status: 'changed',
+    })
+    expect(ctx.providers.stripe?.changePlan).toHaveBeenLastCalledWith(
+      remote.providerSubscriptionId,
+      expect.objectContaining({ id: teamYear }),
+      { atPeriodEnd: false },
+    )
+    expect((await subs())[0]).toMatchObject({ planId: team, planPriceId: teamYear })
+  })
+  it('persisted Stripe snapshots keep the first past_due time', async () => {
+    await seedSub()
+    const since = new Date('2030-01-02T00:00:00Z')
+    await db
+      .update(subscription)
+      .set({ status: 'past_due', pastDueSince: since })
+      .where(eq(subscription.id, sid))
+    remote = { ...remote, status: 'past_due', remoteStatus: 'past_due', pastDueSince: null }
+    await cancelSubscription(ctx, subInput())
+    expect((await subs())[0]).toMatchObject({
+      status: 'past_due',
+      cancelAtPeriodEnd: true,
+      pastDueSince: since,
+    })
   })
   it('PayPal changes return explicit new-checkout confirmation and capture only advances an owned purchase', async () => {
     await seedSub('paypal')
