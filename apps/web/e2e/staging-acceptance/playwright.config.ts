@@ -44,10 +44,5 @@ export default defineConfig({
     screenshot: 'off',
     video: 'off',
   },
-  projects: [
-    { name: 'acceptance', testMatch: 'acceptance.spec.ts' },
-    // harden-audit-findings 7.3（AI）：管理员空间内的受控故障验收，按标签拆成两个独立入口。
-    { name: 'harden-ai-text', testMatch: 'harden-ai.spec.ts', grep: /@harden-ai-text/ },
-    { name: 'harden-ai-media', testMatch: 'harden-ai.spec.ts', grep: /@harden-ai-media/ },
-  ],
+  projects: [{ name: 'acceptance', testMatch: 'acceptance.spec.ts' }],
 })

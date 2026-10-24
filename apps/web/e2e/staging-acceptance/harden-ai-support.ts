@@ -348,11 +348,18 @@ export async function runFreeFailureGroup(
 
 const mediaMessages = JSON.parse(
   readFileSync(new URL('../../messages/en/ai-media-tasks.json', import.meta.url), 'utf8'),
-) as Record<string, string>
+) as Record<string, string | [{ match: Record<string, string> }]>
+// 文案可能是 inlang 复数变体（`creditsPlural=one/other`），按英文复数规则选取后再代入数值。
 const copy = (key: string, credits?: number) => {
-  const value = mediaMessages[key]
+  const entry = mediaMessages[key]
+  const value =
+    typeof entry === 'string'
+      ? entry
+      : entry?.[0]?.match[
+          `creditsPlural=${new Intl.PluralRules('en').select(credits ?? 0) === 'one' ? 'one' : 'other'}`
+        ]
   if (!value) throw new Error(`Missing message ${key}`)
-  return credits === undefined ? value : value.replace('{credits}', String(credits))
+  return credits === undefined ? value : value.replaceAll('{credits}', String(credits))
 }
 
 export type CancelPreview = {

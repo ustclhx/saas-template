@@ -9,9 +9,6 @@ process.env.LOCAL_ADMIN_PASSWORD ??= ''
 // 本地 Workflow 同步执行，延迟启动才能让任务停留在 queued（staging 无此夹具，见 harden-ai.spec.ts）。
 process.env.LOCAL_WORKFLOW_START_DELAY_MS ??= '15000'
 const { default: base } = await import('./fault.local.config.ts')
-const { default: root } = await import('./playwright.config.ts')
+const { default: harden } = await import('./harden-ai.config.ts')
 
-export default defineConfig({
-  ...base,
-  projects: (root.projects ?? []).filter((project) => project.name?.startsWith('harden-ai-')),
-})
+export default defineConfig({ ...base, projects: harden.projects ?? [] })
