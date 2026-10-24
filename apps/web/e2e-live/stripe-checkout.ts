@@ -52,3 +52,21 @@ export async function expectBillingReturn(page: Page, slug: string) {
   await page.waitForURL(new RegExp(`/app/${slug}/billing-return`), { timeout: 90_000 })
   await expect(page).toHaveURL(new RegExp(`/app/${slug}/billing-return`))
 }
+
+/** 已有 Stripe 订阅时在账单页选择目标报价并点击 Change plan，返回所选 plan_price id */
+export async function chooseChange(page: Page, price: RegExp, notice?: RegExp) {
+  // SSR 已显示选项；ready 控件启用后才写入选择，防止水合覆盖。
+  await expect(page.getByRole('combobox', { name: 'Payment method', exact: true })).toBeEnabled()
+  await page.getByRole('combobox', { name: 'Payment method', exact: true }).selectOption('stripe')
+  const plan = page.getByRole('combobox', { name: 'Plan', exact: true })
+  const option = plan.locator('option', { hasText: price })
+  await expect(option).toHaveCount(1)
+  const planPriceId = await option.getAttribute('value')
+  if (!planPriceId) throw new Error('Plan-change acceptance target price is missing')
+  await plan.selectOption(planPriceId)
+  // 周期变更须在确认前展示生效时间说明
+  if (notice) await expect(page.getByText(notice)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Change plan', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: 'Change plan', exact: true }).click()
+  return planPriceId
+}
