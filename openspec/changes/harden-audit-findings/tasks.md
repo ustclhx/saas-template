@@ -59,5 +59,5 @@
 ## 7. 协调者：合并后与验收
 
 - [x] 7.1 第 4 组合并后，在 main 上生成 `ai_task.cancel_billing` 迁移（如第 6 组需要死信字段，一并生成），加 `rollback-safe` 注释，并在本地 `saas_dev` 验证
-- [ ] 7.2 创建 staging 与 production 的 `events-dlq` 队列，设置仓库变量 `RELEASE_PHASE=testing`（2026-10-24 已创建 `events-dlq-staging` 并设置变量；`events-dlq-production` 待生产环境重建时按 runbook 创建，届时再勾选）
+- [x] 7.2 创建 staging 与 production 的 `events-dlq` 队列，设置仓库变量 `RELEASE_PHASE=testing`（2026-10-24 创建 `events-dlq-staging` 并设置变量；2026-10-25 创建 `events-dlq-production`）
 - [ ] 7.3 staging 验收：Stripe test clock 月付切换年付、并发猜验证码被限流、媒体取消三种情况、免费失败第 4 次扣费、CSP 没有违规报告、删号后数据已清理；证据写入 `EVIDENCE_DIR`
