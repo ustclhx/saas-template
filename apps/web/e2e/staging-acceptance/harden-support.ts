@@ -180,3 +180,12 @@ export async function readEvidenceAnyDate<T>(name: string): Promise<T | undefine
     return saved.data as T
   }
 }
+
+/**
+ * 会真实发信的专用账号邮箱：staging 用 Resend 官方测试地址（投递成功、不退信，保护发信域名信誉），
+ * 本地仍用 @example.com（只写 dev 日志，不外发）。
+ */
+export function dedicatedEmail(label: string) {
+  const tag = `${label}-${runId.toLowerCase()}`
+  return local ? `${tag}@example.com` : `delivered+${tag}@resend.dev`
+}

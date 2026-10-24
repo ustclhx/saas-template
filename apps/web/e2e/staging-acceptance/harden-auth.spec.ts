@@ -2,7 +2,12 @@ import { randomBytes, randomInt } from 'node:crypto'
 import { type APIRequestContext, type Page, request as playwrightRequest } from '@playwright/test'
 import { DUMMY_TURNSTILE_TOKEN, stubTurnstile } from '../turnstile.ts'
 import { HUMAN_LOGIN_TIMEOUT } from './accounts.ts'
-import { nextRateLimitWindow, requireHeadedForStaging, sleep } from './harden-support.ts'
+import {
+  dedicatedEmail,
+  nextRateLimitWindow,
+  requireHeadedForStaging,
+  sleep,
+} from './harden-support.ts'
 import {
   ensureRegisteredAccount,
   evidence,
@@ -10,7 +15,6 @@ import {
   local,
   query,
   requireEnv,
-  runId,
   sqlLiteral,
   test,
 } from './support.ts'
@@ -30,7 +34,7 @@ const TOKEN_BURST = 12
 // staging 的窗口边界未知，固定等待超过一个 period。
 const STAGING_COOLDOWN = 65_000
 
-const email = `harden-otp-${runId.toLowerCase()}@example.com`
+const email = dedicatedEmail('harden-otp')
 const password = `Harden-${randomBytes(12).toString('hex')}`
 const origin = () => process.env.STAGING_URL ?? ''
 

@@ -9,7 +9,12 @@ import templateConfig from '../../../../template.config.ts'
 import { fixtureDb } from '../fixtures.ts'
 import { stubTurnstile } from '../turnstile.ts'
 import { ensureAcceptanceCredits, HUMAN_LOGIN_TIMEOUT } from './accounts.ts'
-import { readEvidenceAnyDate, requireHeadedForStaging, unconfirmed } from './harden-support.ts'
+import {
+  dedicatedEmail,
+  readEvidenceAnyDate,
+  requireHeadedForStaging,
+  unconfirmed,
+} from './harden-support.ts'
 import { awaitTerminal, reuseOrSubmit } from './media-support.ts'
 import { deepseekCall, workersImage } from './models.ts'
 import {
@@ -35,8 +40,8 @@ test.describe.configure({ mode: 'serial' })
 
 const tag = createHash('sha256').update(runId).digest('hex').slice(0, 10)
 const accounts = {
-  a: { email: `harden-del-a-${runId.toLowerCase()}@example.com`, name: `Harden Deletion A ${tag}` },
-  b: { email: `harden-del-b-${runId.toLowerCase()}@example.com`, name: `Harden Deletion B ${tag}` },
+  a: { email: dedicatedEmail('harden-del-a'), name: `Harden Deletion A ${tag}` },
+  b: { email: dedicatedEmail('harden-del-b'), name: `Harden Deletion B ${tag}` },
 }
 const password = `Harden-${randomBytes(12).toString('hex')}`
 const teamSlug = `harden-del-${tag}`
