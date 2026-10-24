@@ -38,7 +38,7 @@ export default defineConfig({
   webServer: {
     cwd: new URL('../../', import.meta.url).pathname,
     command:
-      'pnpm exec vite dev --config e2e/staging-acceptance/local.vite.ts > /tmp/staging-acceptance-local.log 2>&1',
+      'pnpm exec vite dev --config e2e/staging-acceptance/local.vite.ts > ../../test-results/staging-acceptance-local.log 2>&1',
     url: `${process.env.STAGING_URL}/api/health`,
     reuseExistingServer: false,
     timeout: 120_000,

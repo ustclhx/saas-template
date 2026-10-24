@@ -6,7 +6,15 @@ import {
   unconfirmed,
   type Violation,
 } from './harden-support.ts'
-import { evidence, expect, local, login, requireEnv, test } from './support.ts'
+import {
+  adminOverviewHeading,
+  evidence,
+  expect,
+  local,
+  login,
+  requireEnv,
+  test,
+} from './support.ts'
 
 // harden-audit-findings 7.3「CSP 没有违规报告」与基础安全头（specs/web-security-headers）。
 // 匿名用例只发 GET，可直接对 staging 运行；登录用例复用 support.ts 的普通用户 / 管理员登录。
@@ -174,9 +182,11 @@ test('安全头覆盖 API、重定向与 404；/assets/* 不经过 Worker 且缓
   }
 })
 
-test('CSP 登录页面：对话、媒体、账单与后台首页无 Report-Only 违规', async ({ page, browser }) => {
+test('CSP 登录页面：对话、媒体、账单与后台首页无 Report-Only 违规', async ({ page }) => {
   requireEnv(['STAGING_URL'])
-  await login(page, 'user')
+  // 页面与 CSP 和账号类型无关；用管理员个人空间，避免普通验收用户的套餐模型权限前提挡住本项。
+  await login(page, 'admin')
+  await page.goto('/app')
   const slug = new URL(page.url()).pathname.split('/')[2] ?? ''
   expect(slug).not.toBe('')
   const results: PageResult[] = []
@@ -184,24 +194,16 @@ test('CSP 登录页面：对话、媒体、账单与后台首页无 Report-Only 
     [`/app/${slug}/chat`, 'chat'],
     [`/app/${slug}/media/new`, 'media'],
     [`/app/${slug}/billing`, 'billing'],
+    ['/admin', 'admin'],
   ] as const) {
     // 复用已登录的上下文，但每页新开标签以重新注册监听。
     const tab = await page.context().newPage()
     try {
       results.push(await visit(tab, path, label))
+      if (label === 'admin') await expect(adminOverviewHeading(tab)).toBeVisible()
     } finally {
       await tab.close()
     }
-  }
-  const adminContext = await browser.newContext({ baseURL: process.env.STAGING_URL ?? '' })
-  try {
-    const adminPage = await adminContext.newPage()
-    await login(adminPage, 'admin')
-    const tab = await adminContext.newPage()
-    results.push(await visit(tab, '/admin', 'admin'))
-    await expect(tab.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible()
-  } finally {
-    await adminContext.close()
   }
   for (const result of results) expect(result.status, `${result.page} status`).toBe(200)
   await record('harden-csp-authenticated', results)

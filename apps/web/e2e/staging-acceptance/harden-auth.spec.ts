@@ -7,6 +7,7 @@ import {
   nextRateLimitWindow,
   requireHeadedForStaging,
   sleep,
+  turnstileTest as test,
 } from './harden-support.ts'
 import {
   ensureRegisteredAccount,
@@ -16,7 +17,6 @@ import {
   query,
   requireEnv,
   sqlLiteral,
-  test,
 } from './support.ts'
 
 // harden-audit-findings 7.3「并发猜验证码被限流」（specs/user-auth「认证入口防刷」）。
@@ -127,7 +127,7 @@ async function preparePage(page: Page, ip: string) {
   }
 }
 
-/** 经登录页「邮箱验证码」表单发信（staging 由人完成 Turnstile），必要时把请求类型改写为目标类型。 */
+/** 经登录页「邮箱验证码」表单发信（staging 由专用 Chrome 或人完成 Turnstile），必要时把请求类型改写为目标类型。 */
 async function issueOtp(page: Page, type: string) {
   if (type !== 'sign-in')
     await page.route('**/api/auth/email-otp/send-verification-otp', async (route) => {

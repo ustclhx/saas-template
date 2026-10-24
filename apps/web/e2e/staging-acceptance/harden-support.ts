@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Page } from '@playwright/test'
+import { chromium, type Page } from '@playwright/test'
 import { evidence, expect, local, runId, test } from './support.ts'
 
 // harden-audit-findings 7.3 验收（auth / CSP / 删号）共用的小工具；登录、只读查询与证据仍走 support.ts。
@@ -22,11 +22,36 @@ export function staging() {
   return !local
 }
 
-/** staging 上 Turnstile、管理员 Google 登录需要人在场；匿名只读用例不受此限。 */
+/** staging 上 Turnstile、管理员 Google 登录需要人在场或专用 Chrome；匿名只读用例不受此限。 */
 export function requireHeadedForStaging() {
-  if (!local && test.info().project.use.headless !== false)
-    throw new Error('[验收准备] staging 写操作需要 headed 模式与人工 Turnstile，请加 --headed')
+  if (!local && !process.env.STAGING_ADMIN_CDP_URL && test.info().project.use.headless !== false)
+    throw new Error(
+      '[验收准备] staging 写操作需要 headed 模式与人工 Turnstile（或设置 STAGING_ADMIN_CDP_URL），请加 --headed',
+    )
 }
+
+/**
+ * staging 的 Turnstile 使用真实密钥，Playwright 自带 Chromium 常被要求人工交互；设置 STAGING_ADMIN_CDP_URL 时
+ * 把 page 换成专用系统 Chrome 中的独立上下文（不带管理员或 Google 会话），无需人工点击。
+ */
+export const turnstileTest = test.extend({
+  page: async ({ page, baseURL }, use) => {
+    const cdpUrl = process.env.STAGING_ADMIN_CDP_URL
+    if (local || !cdpUrl) {
+      await use(page)
+      return
+    }
+    const browser = await chromium.connectOverCDP(cdpUrl)
+    const context = await browser.newContext(baseURL === undefined ? {} : { baseURL })
+    try {
+      await use(await context.newPage())
+    } finally {
+      await context.close()
+      // connectOverCDP 返回的 browser.close() 仅断开连接，不关闭系统 Chrome。
+      await browser.close()
+    }
+  },
+})
 
 export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
