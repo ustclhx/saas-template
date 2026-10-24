@@ -1,3 +1,11 @@
+import { createStripeClient } from '../../../packages/billing/src/stripe/client.ts'
+import { changeStripePlan } from '../../../packages/billing/src/stripe/operations.ts'
+import {
+  classifyStripeBillingReason,
+  stripeInvoiceLines,
+  stripeSubscriptionLines,
+} from '../../../packages/billing/src/stripe/snapshots.ts'
+
 // Stripe 测试时钟辅助：供 harden 7.3「月付↔年付周期末切换」的平台实验与应用端到端用例共用。
 // 只接受 sk_test_ 密钥；请求与报错都不带出凭据、请求 URL 或平台响应正文。
 export const STRIPE_API_VERSION = '2026-09-30.endive'
@@ -332,10 +340,43 @@ export async function subscriptionSummary(id: string): Promise<SubscriptionSumma
   }
 }
 
-/** 产品的开票原因分类（packages/billing/src/stripe/snapshots.ts classifyStripeBillingReason）的验收侧镜像 */
-export function productBillingKind(reason: string | null) {
-  if (reason === 'subscription_create') return 'initial'
-  if (reason === 'subscription_cycle') return 'renewal'
-  if (reason === 'subscription_update') return 'adjustment'
-  return 'unsupported'
+function productStripe() {
+  const secret = process.env.STRIPE_SECRET_KEY
+  if (!secret?.startsWith('sk_test_'))
+    throw new Error('Test-clock acceptance requires a Stripe test-mode secret')
+  return createStripeClient(secret)
+}
+
+/** 直接调用产品的发票分类（含发票订阅行），判断这张发票会按哪类付款入账；不在验收侧另维护镜像 */
+export async function productInvoiceKind(invoiceId: string) {
+  const stripe = productStripe()
+  const invoice = await stripe.invoices.retrieve(invoiceId)
+  return classifyStripeBillingReason(
+    invoice.billing_reason,
+    stripeSubscriptionLines(invoice, await stripeInvoiceLines(stripe, invoice)),
+  )
+}
+
+/** 直接调用产品的 changeStripePlan(atPeriodEnd) 写入 schedule，Stripe 侧参数与线上完全一致 */
+export async function productScheduleChange(
+  subscriptionId: string,
+  target: { providerPriceId: string; interval: 'month' | 'year'; amount: number },
+) {
+  await changeStripePlan(
+    productStripe(),
+    subscriptionId,
+    {
+      id: crypto.randomUUID(),
+      planId: crypto.randomUUID(),
+      provider: 'stripe',
+      providerPriceId: target.providerPriceId,
+      interval: target.interval,
+      amount: target.amount,
+      currency: 'USD',
+      active: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    { atPeriodEnd: true },
+  )
 }

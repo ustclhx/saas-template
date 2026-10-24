@@ -21,7 +21,7 @@ import {
   createTestClock,
   customerInvoices,
   deleteTestClock,
-  productBillingKind,
+  productInvoiceKind,
   scheduleSummary,
   subscriptionSummary,
   type TestClock,
@@ -202,7 +202,7 @@ async function expectSwitchedAtPeriodEnd(
   const transitionSummary = transition && {
     invoiceId: transition.id,
     billingReason: transition.billingReason,
-    productKind: productBillingKind(transition.billingReason),
+    productKind: await productInvoiceKind(transition.id),
     status: transition.status,
     amountPaid: transition.amountPaid,
     lines: transition.lines,
@@ -255,7 +255,7 @@ async function expectSwitchedAtPeriodEnd(
   })
 
   await test.step('应用：新周期付款按续费入账并发放 1000 积分', async () => {
-    // 产品只把 subscription_cycle 当作续费发积分；subscription_update 会被归为 adjustment
+    // 产品分类（classifyStripeBillingReason + 发票行）须把新周期首期归为续费，才会发放积分
     expect(transitionSummary?.productKind).toBe('renewal')
     await expect
       .poll(async () => {

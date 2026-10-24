@@ -1,6 +1,6 @@
 // harden-audit-findings 7.3：月付↔年付周期末切换的 Stripe 平台侧实验，不经过应用、不关联任何 workspace。
-// 用测试时钟复刻 changeStripePlan(atPeriodEnd) 的 schedule 写法，推进到周期末，记录每张发票的
-// billing_reason 与事件序列，并按产品的 classifyStripeBillingReason 判定这张发票会被如何入账。
+// 用测试时钟直接调用产品的 changeStripePlan(atPeriodEnd) 写入 schedule，推进到周期末，记录每张发票的
+// billing_reason 与事件序列，并直接调用产品的 classifyStripeBillingReason（含发票行）判定这张发票会被如何入账。
 //
 //   STRIPE_SECRET_KEY=sk_test_... EVIDENCE_DIR=... \
 //     node --experimental-strip-types apps/web/e2e-live/stripe-test-clock-experiment.ts
@@ -17,7 +17,8 @@ import {
   customerEvents,
   customerInvoices,
   deleteTestClock,
-  productBillingKind,
+  productInvoiceKind,
+  productScheduleChange,
   scheduleSummary,
   stripeApi,
   subscriptionSummary,
@@ -53,51 +54,12 @@ async function experimentPrice(interval: 'month' | 'year', amount: number) {
   return price.id
 }
 
-/** 与 packages/billing/src/stripe/operations.ts changeStripePlan(atPeriodEnd=true) 的 schedule 结构一致 */
-// anchor='phase_start' 不是产品当前写法，只作为修复候选的诊断变体，单独记录、不参与判定。
-async function scheduleAtPeriodEnd(
-  subscriptionId: string,
-  targetPrice: string,
-  interval: string,
-  anchor?: 'phase_start',
-) {
-  const subscription = await subscriptionSummary(subscriptionId)
-  const created = await stripeApi<{ id: string; phases: { start_date: number }[] }>(
-    'POST',
-    'subscription_schedules',
-    { from_subscription: subscriptionId },
-  )
-  const start = created.phases[0]?.start_date
-  if (!start) throw new Error('Schedule has no current phase')
-  await stripeApi('POST', `subscription_schedules/${created.id}`, {
-    end_behavior: 'release',
-    metadata: { saasManaged: 'plan_change' },
-    proration_behavior: 'none',
-    phases: [
-      {
-        start_date: start,
-        end_date: subscription.periodEnd,
-        items: [{ price: subscription.priceId, quantity: 1 }],
-        proration_behavior: 'none',
-      },
-      {
-        start_date: subscription.periodEnd,
-        duration: { interval, interval_count: 1 },
-        items: [{ price: targetPrice, quantity: 1 }],
-        proration_behavior: 'none',
-        ...(anchor ? { billing_cycle_anchor: anchor } : {}),
-      },
-    ],
-  })
-  return created.id
-}
-
 async function runDirection(
   name: string,
   from: string,
   to: string,
   toInterval: 'month' | 'year',
-  anchor?: 'phase_start',
+  toAmount: number,
 ) {
   const startedAt = Math.floor(Date.now() / 1000) - 60
   const clock = await createTestClock(name)
@@ -110,12 +72,24 @@ async function runDirection(
     const created = await stripeApi<{ id: string }>('POST', 'subscriptions', {
       customer: customer.id,
       items: [{ price: from, quantity: 1 }],
-      metadata: { saasAcceptance: ACCEPTANCE_TAG },
+      // 与应用 Checkout 写入的来源一致；changeStripePlan 会保留并改写 planPriceId
+      metadata: {
+        workspaceId: crypto.randomUUID(),
+        userId: crypto.randomUUID(),
+        planPriceId: crypto.randomUUID(),
+      },
       payment_behavior: 'error_if_incomplete',
     })
     const initial = await subscriptionSummary(created.id)
-    const scheduleId = await scheduleAtPeriodEnd(created.id, to, toInterval, anchor)
+    // 直接调用产品的 changeStripePlan(atPeriodEnd)，schedule 参数与线上一致
+    await productScheduleChange(created.id, {
+      providerPriceId: to,
+      interval: toInterval,
+      amount: toAmount,
+    })
     const scheduled = await subscriptionSummary(created.id)
+    const scheduleId = scheduled.scheduleId
+    if (!scheduleId) throw new Error('Product plan change did not create a schedule')
     const schedule = await scheduleSummary(scheduleId)
     const invoicesAfterSchedule = await customerInvoices(customer.id)
     // 周期末之后再多推进 1 天：测试时钟下自动开票约 1 小时后定稿并扣款
@@ -125,6 +99,7 @@ async function runDirection(
     const scheduleAfter = await scheduleSummary(scheduleId)
     const events = await customerEvents(customer.id, startedAt)
     const transition = invoices.find((invoice) => invoice.created >= initial.periodEnd)
+    const productKind = transition ? await productInvoiceKind(transition.id) : null
     // setup：实验前提（schedule 已按产品写法建立、当前周期不开票）；outcome：规格要求的周期末结果
     const setup = {
       noInvoiceAtSchedule:
@@ -154,8 +129,8 @@ async function runDirection(
         transition.lines.length === 1 &&
         transition.lines[0]?.priceId === to &&
         transition.lines[0]?.proration === false,
-      transitionClassifiedAsRenewal:
-        productBillingKind(transition?.billingReason ?? null) === 'renewal',
+      // 产品的 classifyStripeBillingReason（含发票订阅行）必须把新周期首期归为续费
+      transitionClassifiedAsRenewal: productKind === 'renewal',
     }
     return {
       name,
@@ -172,11 +147,10 @@ async function runDirection(
         ? {
             invoiceId: transition.id,
             billingReason: transition.billingReason,
-            productKind: productBillingKind(transition.billingReason),
+            productKind,
             amountPaid: transition.amountPaid,
           }
         : null,
-      anchor: anchor ?? 'product-default',
       setup,
       outcome,
       verdict: !Object.values(setup).every(Boolean)
@@ -194,12 +168,9 @@ async function main() {
   const monthly = await experimentPrice('month', 1900)
   const yearly = await experimentPrice('year', 19000)
   const results = [
-    await runDirection('monthly-to-yearly', monthly, yearly, 'year'),
-    await runDirection('yearly-to-monthly', yearly, monthly, 'month'),
+    await runDirection('monthly-to-yearly', monthly, yearly, 'year', 19000),
+    await runDirection('yearly-to-monthly', yearly, monthly, 'month', 1900),
   ]
-  const diagnostics = process.env.STRIPE_EXPERIMENT_SKIP_DIAGNOSTICS
-    ? []
-    : [await runDirection('monthly-to-yearly-phase-start', monthly, yearly, 'year', 'phase_start')]
   const verdict = results.some((result) => result.verdict === 'inconclusive')
     ? 'inconclusive'
     : results.every((result) => result.verdict === 'pass')
@@ -212,7 +183,6 @@ async function main() {
     prices: { monthly, yearly },
     verdict,
     results,
-    diagnostics,
   }
   const directory = process.env.EVIDENCE_DIR
   if (directory) {
@@ -223,9 +193,9 @@ async function main() {
       { mode: 0o600 },
     )
   }
-  for (const result of [...results, ...diagnostics])
+  for (const result of results)
     console.log(
-      `${result.name} [${result.anchor}] ${result.verdict}: setup=${JSON.stringify(result.setup)} outcome=${JSON.stringify(result.outcome)} transition=${JSON.stringify(result.transition)} renewed=${JSON.stringify({ interval: result.renewed.interval, periodStart: result.renewed.periodStart, periodEnd: result.renewed.periodEnd })}`,
+      `${result.name} ${result.verdict}: setup=${JSON.stringify(result.setup)} outcome=${JSON.stringify(result.outcome)} transition=${JSON.stringify(result.transition)} renewed=${JSON.stringify({ interval: result.renewed.interval, periodStart: result.renewed.periodStart, periodEnd: result.renewed.periodEnd })}`,
     )
   console.log(`verdict: ${verdict}`)
   process.exitCode = verdict === 'pass' ? 0 : verdict === 'product-defect' ? 1 : 2
