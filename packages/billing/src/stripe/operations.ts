@@ -205,6 +205,7 @@ export async function changeStripePlan(
   if (subscription.cancel_at_period_end)
     throw new Error('Resume the subscription before changing plan')
   const metadata = { ...subscription.metadata, planPriceId: newPrice.id }
+  const intervalChange = item.price.recurring?.interval !== newPrice.interval
   if (!opts.atPeriodEnd) {
     await releaseSchedule(stripe, subscription)
     await stripe.subscriptions.update(subId, {
@@ -273,6 +274,9 @@ export async function changeStripePlan(
         items: [{ ...itemSettings, price: target }],
         metadata,
         proration_behavior: 'none',
+        // 月付↔年付：默认锚点在不按比例结算时沿用原锚点、把当前周期直接延长为新周期且不开票；
+        // 从新阶段起点重置锚点，周期末才会按新价格开出整周期发票（同周期降级保持原锚点）。
+        ...(intervalChange ? { billing_cycle_anchor: 'phase_start' as const } : {}),
       },
     ],
   })

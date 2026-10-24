@@ -280,11 +280,59 @@ describe('Stripe payment associations', () => {
   it('classifies upgrades without ever calling them renewal', async () => {
     expect(classifyStripeBillingReason('subscription_update')).toBe('adjustment')
     expect(classifyStripeBillingReason('manual')).toBe('unsupported')
-    const mock = mockStripe(invoiceReplies({ ...invoice, billing_reason: 'subscription_update' }))
-    await expect(
-      mock.snapshots.getPayment({ providerPaymentId: 'pi_test', kind: 'renewal' }),
-    ).rejects.toThrow('adjustment')
+    const proration = {
+      ...line,
+      parent: {
+        ...line.parent,
+        subscription_item_details: { ...line.parent.subscription_item_details, proration: true },
+      },
+    }
+    // 立即升级：未用余额抵扣 + 新价格按比例行，即使另有整周期行也仍是 adjustment
+    for (const data of [
+      [{ ...proration, id: 'il_credit', amount: -500 }, proration],
+      [{ ...proration, id: 'il_credit', amount: -500 }, line],
+    ]) {
+      const mock = mockStripe(
+        invoiceReplies({
+          ...invoice,
+          billing_reason: 'subscription_update',
+          lines: { ...invoice.lines, data },
+        }),
+      )
+      await expect(
+        mock.snapshots.getPayment({ providerPaymentId: 'pi_test', kind: 'renewal' }),
+      ).rejects.toThrow('adjustment')
+      mock.complete()
+    }
+  })
+  it('records an interval-change period restart invoice as a renewal of the new period', async () => {
+    // 月付→年付在 phase_start 锚点开出的首期发票：subscription_update + 唯一一条非按比例整周期行
+    const restart = {
+      ...invoice,
+      billing_reason: 'subscription_update',
+      lines: {
+        ...invoice.lines,
+        data: [{ ...line, period: { start: end, end: end + 31_536_000 } }],
+      },
+    }
+    expect(classifyStripeBillingReason('subscription_update', restart.lines.data as never)).toBe(
+      'renewal',
+    )
+    const mock = mockStripe(invoiceReplies(restart))
+    expect(
+      await mock.snapshots.getPayment({ providerPaymentId: 'pi_test', kind: 'renewal' }),
+    ).toMatchObject({
+      kind: 'renewal',
+      providerSubscriptionId: 'sub_test',
+      providerPriceId: 'price_test',
+      period: { start: new Date(end * 1000), end: new Date((end + 31_536_000) * 1000) },
+    })
     mock.complete()
+    const wrong = mockStripe(invoiceReplies(restart))
+    await expect(
+      wrong.snapshots.getPayment({ providerPaymentId: 'pi_test', kind: 'adjustment' }),
+    ).rejects.toThrow('renewal')
+    wrong.complete()
   })
   it('rejects incorrect initial/renewal association supplied by the caller', async () => {
     const mock = mockStripe(invoiceReplies())

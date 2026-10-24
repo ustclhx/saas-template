@@ -675,6 +675,123 @@ describe('billing event consumer on PostgreSQL', () => {
     expect(await payments()).toHaveLength(1)
     expect(await grants()).toEqual([])
   })
+  it('monthly-to-yearly period-restart invoice records one renewal and grants the yearly first month once', async () => {
+    // 周期末 phase_start 切换：Stripe 先发订阅更新，再以 subscription_update 开出年付首期（适配器归为 renewal）
+    await apply([paid()])
+    const yearlyPrice = id()
+    await db.insert(planPrice).values({
+      id: yearlyPrice,
+      planId,
+      provider: 'stripe',
+      providerPriceId: yearlyPrice,
+      interval: 'year',
+      amount: 10000,
+      currency: 'USD',
+    })
+    const periodStart = new Date('2030-02-28T12:00:00Z')
+    const periodEnd = new Date('2031-02-28T12:00:00Z')
+    const yearlyMetadata = { ...metadata(), planPriceId: yearlyPrice }
+    const updated: NormalizedEvent = {
+      provider: 'stripe',
+      type: 'subscription.updated',
+      subscription: {
+        ...snapshot,
+        providerPriceId: yearlyPrice,
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+        metadata: yearlyMetadata,
+      },
+      occurredAt: periodStart,
+      raw: {},
+    }
+    const renewal = {
+      ...paid({
+        kind: 'renewal',
+        providerPriceId: yearlyPrice,
+        amount: 10000,
+        period: { start: periodStart, end: periodEnd },
+        paidAt: periodStart,
+        metadata: yearlyMetadata,
+      }),
+      occurredAt: periodStart,
+    } as Extract<NormalizedEvent, { type: 'payment.succeeded' }>
+    const renewed: NormalizedEvent = {
+      provider: 'stripe',
+      type: 'subscription.renewed',
+      providerSubscriptionId: subId,
+      providerPaymentId: renewal.payment.providerPaymentId,
+      periodStart,
+      periodEnd,
+      occurredAt: periodStart,
+      raw: {},
+    }
+    const deliveries = { updated: id(), paid: id(), redelivered: id() }
+    const handler = createBillingEventHandler({
+      db,
+      providers: { stripe: provider },
+      now: () => now,
+    })
+    const deliver = (deliveryId: string, type: string, events: NormalizedEvent[]) =>
+      processWebhook({
+        ...handler,
+        db,
+        provider: {
+          ...provider,
+          verifyWebhook: async () => ({ providerEventId: deliveryId, type, events }),
+        },
+        request: new Request('https://example.test'),
+        rawBody: '{}',
+      })
+    try {
+      expect(
+        await deliver(deliveries.updated, 'customer.subscription.updated', [updated]),
+      ).toMatchObject({ status: 'processed' })
+      expect(await deliver(deliveries.paid, 'invoice.paid', [renewal, renewed])).toMatchObject({
+        status: 'processed',
+        delivery: { status: 'processed', error: null },
+      })
+      // 同一事件重放去重；同一付款的另一条投递（不同事件 ID）不重复入账或发积分
+      expect(await deliver(deliveries.paid, 'invoice.paid', [renewal, renewed])).toMatchObject({
+        status: 'duplicate',
+      })
+      expect(
+        await deliver(deliveries.redelivered, 'invoice.paid', [renewal, renewed]),
+      ).toMatchObject({ status: 'processed' })
+      const receipts = await payments()
+      expect(receipts.map((p) => [p.kind, p.amount]).sort()).toEqual([
+        ['initial', 1000],
+        ['renewal', 10000],
+      ])
+      const yearly = receipts.find((p) => p.kind === 'renewal')
+      expect(yearly).toMatchObject({
+        planPriceId: yearlyPrice,
+        status: 'succeeded',
+        periodStart,
+        periodEnd,
+      })
+      const credited = await grants()
+      expect(credited).toHaveLength(2)
+      expect(credited.filter((g) => g.paymentId === yearly?.id)).toMatchObject([
+        {
+          sourceRef: `${yearly?.id}:0`,
+          amount: 10,
+          remaining: 10,
+          // 年付按月发放：首月到下一个月锚点 + 24 小时宽限
+          expiresAt: new Date('2030-03-29T12:00:00Z'),
+        },
+      ])
+      expect((await subs())[0]).toMatchObject({
+        planPriceId: yearlyPrice,
+        status: 'active',
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+      })
+    } finally {
+      await db
+        .delete(webhookEvent)
+        .where(inArray(webhookEvent.providerEventId, Object.values(deliveries)))
+    }
+  })
   it('yearly batches preserve anchor and payment provenance; full refund revokes all remaining including held release', async () => {
     await db.update(planPrice).set({ interval: 'year' }).where(eq(planPrice.id, priceId))
     await apply([paid({ period: { start: now, end: new Date('2031-01-31T12:00:00Z') } })])

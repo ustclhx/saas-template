@@ -50,7 +50,7 @@ const subscription = {
     data: [
       {
         id: 'si_test',
-        price: { id: 'price_current' },
+        price: { id: 'price_current', recurring: { interval: 'month' } },
         quantity: 2,
         current_period_start: 1800000000,
         current_period_end: 1802592000,
@@ -228,7 +228,7 @@ describe('Stripe subscription management', () => {
     mock.complete()
   })
 
-  it('defers downgrade to the item period end and releases after one new interval', async () => {
+  it('defers an interval change to the item period end and restarts the anchor there', async () => {
     const mock = mockStripe([
       { method: 'GET', path: '/v1/subscriptions/sub_test', body: subscription },
       { method: 'POST', path: '/v1/subscription_schedules', body: schedule },
@@ -258,6 +258,24 @@ describe('Stripe subscription management', () => {
     expect(body?.get('proration_behavior')).toBe('none')
     expect(body?.get('phases[1][proration_behavior]')).toBe('none')
     expect(body?.get('end_behavior')).toBe('release')
+    // 周期变更必须从新阶段起点重置锚点，否则 Stripe 把当前周期延长为新周期且不开票
+    expect(body?.get('phases[1][billing_cycle_anchor]')).toBe('phase_start')
+    expect(body?.get('phases[0][billing_cycle_anchor]')).toBeNull()
+    mock.complete()
+  })
+
+  it('keeps the original anchor for a same-interval downgrade', async () => {
+    const mock = mockStripe([
+      { method: 'GET', path: '/v1/subscriptions/sub_test', body: subscription },
+      { method: 'POST', path: '/v1/subscription_schedules', body: schedule },
+      { method: 'POST', path: '/v1/subscription_schedules/sub_sched_test', body: schedule },
+    ])
+    await mock.operations.changePlan('sub_test', targetPrice, { atPeriodEnd: true })
+    const body = mock.requests[2]?.body
+    expect(body?.get('phases[1][duration][interval]')).toBe('month')
+    expect(body?.get('phases[1][items][0][price]')).toBe('price_next')
+    expect(body?.get('phases[0][billing_cycle_anchor]')).toBeNull()
+    expect(body?.get('phases[1][billing_cycle_anchor]')).toBeNull()
     mock.complete()
   })
 
