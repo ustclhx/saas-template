@@ -70,6 +70,7 @@ export default defineConfig({
           SENTRY_ENVIRONMENT: 'staging',
           AI_FAULT_INJECTION: 'enabled',
           SENTRY_DSN: '',
+          LOCAL_WORKFLOW_START_DELAY_MS: process.env.LOCAL_WORKFLOW_START_DELAY_MS ?? '0',
         },
       },
     }),
