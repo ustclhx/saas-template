@@ -45,11 +45,29 @@
   "media_tasks_cancel_confirm_title": "Cancel this task?",
   "media_tasks_cancel_unstarted": "The provider has not started generating. Canceling returns all reserved credits and does not use your free cancellation.",
   "media_tasks_cancel_free_started": "The provider has already started generating. Each workspace gets one free cancellation of a started task; this cancellation uses it and returns all reserved credits. Later cancellations of started tasks are charged in full.",
-  "media_tasks_cancel_charged": "The provider has already started generating and this workspace has used its free cancellation. Canceling charges the full price of {credits} credits.",
+  "media_tasks_cancel_charged": [
+    {
+      "declarations": ["input credits", "local creditsPlural = credits: plural"],
+      "selectors": ["creditsPlural"],
+      "match": {
+        "creditsPlural=one": "The provider has already started generating and this workspace has used its free cancellation. Canceling charges the full price of {credits} credit.",
+        "creditsPlural=other": "The provider has already started generating and this workspace has used its free cancellation. Canceling charges the full price of {credits} credits."
+      }
+    }
+  ],
   "media_tasks_cancel_confirm": "Confirm cancellation",
   "media_tasks_cancel_keep": "Keep generating",
   "media_tasks_cancel_preview_error": "Could not load the cancellation terms. Please retry.",
   "media_tasks_cancel_result_refunded": "The task is canceled and reserved credits have been returned.",
-  "media_tasks_cancel_result_charged": "The task is canceled and the full price of {credits} credits was charged.",
+  "media_tasks_cancel_result_charged": [
+    {
+      "declarations": ["input credits", "local creditsPlural = credits: plural"],
+      "selectors": ["creditsPlural"],
+      "match": {
+        "creditsPlural=one": "The task is canceled and the full price of {credits} credit was charged.",
+        "creditsPlural=other": "The task is canceled and the full price of {credits} credits was charged."
+      }
+    }
+  ],
   "media_tasks_cancel_changed": "The provider status changed while you were confirming; the charge shown above is final."
 }
