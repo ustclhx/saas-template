@@ -74,7 +74,7 @@ type NormalizedEvent =
 | subscription.activated | `customer.subscription.created`（status=active/trialing） | `BILLING.SUBSCRIPTION.ACTIVATED` |
 | subscription.updated | `customer.subscription.updated` | `BILLING.SUBSCRIPTION.UPDATED` |
 | payment.succeeded(initial) | `invoice.paid`（billing_reason=`subscription_create`） | 订阅的首笔 `PAYMENT.SALE.COMPLETED` |
-| subscription.renewed / payment.succeeded(renewal) | `invoice.paid`（billing_reason=`subscription_cycle`） | 后续 `PAYMENT.SALE.COMPLETED`（带 billing_agreement_id） |
+| subscription.renewed / payment.succeeded(renewal) | `invoice.paid`（billing_reason=`subscription_cycle`；月付↔年付周期末切换的新周期首期为 `subscription_update`，见下文） | 后续 `PAYMENT.SALE.COMPLETED`（带 billing_agreement_id） |
 | subscription.past_due | `invoice.payment_failed` | `BILLING.SUBSCRIPTION.PAYMENT.FAILED` / `SUSPENDED` |
 | subscription.canceled | `customer.subscription.deleted` | `BILLING.SUBSCRIPTION.CANCELLED` / `EXPIRED` |
 | payment.succeeded(one_time) | `checkout.session.completed`（mode=payment, paid） | `PAYMENT.CAPTURE.COMPLETED` |
@@ -83,7 +83,7 @@ type NormalizedEvent =
 
 > Stripe 的真实录制见 `packages/billing/src/stripe/fixtures/recorded`。PayPal 已提交此前 8 条及 2026-10-18 新增 4 条真实 Sandbox 回调（Sale 月付/年付首付、部分/全额退款）；自然续费、争议和其他终态事件尚无真实录制，不能视为这些场景已通过。
 
-**订阅积分只由「付款成功」事件发放**：首付与续费都走 `payment.succeeded(initial|renewal)`，`checkout.session.completed` 只负责关联 workspace 与平台客户/订阅，从而避免首付被发两次积分。Stripe 中 `billing_reason=subscription_update`（升级按比例补差价）记为 `payment.kind='adjustment'`，关联原订阅并保留实际付款和退款记录，不发积分；只有 `initial` / `renewal` 付款发放订阅积分，见 §6。
+**订阅积分只由「付款成功」事件发放**：首付与续费都走 `payment.succeeded(initial|renewal)`，`checkout.session.completed` 只负责关联 workspace 与平台客户/订阅，从而避免首付被发两次积分。Stripe 中 `billing_reason=subscription_update`（升级按比例补差价）记为 `payment.kind='adjustment'`，关联原订阅并保留实际付款和退款记录，不发积分；只有 `initial` / `renewal` 付款发放订阅积分，见 §6。例外是月付↔年付在周期末以 `billing_cycle_anchor=phase_start` 切换时开出的新周期首期：Stripe 同样标为 `subscription_update`，但发票的订阅行只有一条非按比例的整周期行、没有任何按比例行，`classifyStripeBillingReason` 据此归为 `renewal`，按发票行的周期入账并按新价格所属套餐发放该周期首月积分（真实录制 `interval-change-renewal-*`）。含按比例行的 `subscription_update` 仍是 adjustment。
 
 **`payment.provider_payment_id` 的取值**（退款/争议事件靠它找回原付款）：
 
@@ -340,7 +340,7 @@ INSERT INTO credit_hold (...), credit_hold_allocation (...);
 |---|---|
 | 升级（Stripe，同一计费周期） | 立即生效，平台按比例计费；权益立即切换；积分在下一次 `invoice.paid` 按新套餐发放，当前实现不提供立即补发差额开关（Q5） |
 | 降级（Stripe，同一计费周期） | 周期结束时生效（schedule） |
-| 月付 ↔ 年付（Stripe） | 无论档位升降，一律在当前周期结束时生效（复用降级的 schedule）：当前周期照常到期，新周期首笔付款按续费入账并发放积分（年付仍按月发放）。立即切换会产生 `subscription_update` 调整账单，年付款无法按续费入账。账单页在确认前提示该生效时间 |
+| 月付 ↔ 年付（Stripe） | 无论档位升降，一律在当前周期结束时生效（复用降级的 schedule，第二段设 `billing_cycle_anchor=phase_start`）：当前周期照常到期，周期末重置锚点并开出新价格的整周期发票，该笔付款按续费入账并发放积分（年付仍按月发放）。未重置锚点时 Stripe 在 `proration_behavior=none` 下会把当前周期直接延长为新周期且不开票（2026-10-24 测试时钟实测）；同周期降级保持原锚点。立即切换会产生按比例的调整账单，年付款无法按续费入账。账单页在确认前提示该生效时间 |
 | PayPal | 首版不支持订阅内升降级：取消当前（周期末生效）+ 新订阅，重叠期见下 |
 
 ### 「一个空间一个订阅」约束与重叠期
