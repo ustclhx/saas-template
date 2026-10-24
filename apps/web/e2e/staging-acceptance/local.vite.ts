@@ -2,6 +2,10 @@ import { defineConfig, type Plugin } from 'vite'
 import appConfig from '../../vite.config.ts'
 
 const helper = new URL('./local-media.ts', import.meta.url).pathname
+function replaceOnce(code: string, needle: string, replacement: string) {
+  if (code.split(needle).length !== 2) throw new Error(`Local transform mismatch: ${needle}`)
+  return code.replace(needle, replacement)
+}
 const mocks: Plugin = {
   name: 'acceptance-local-only',
   enforce: 'pre',
@@ -11,16 +15,29 @@ const mocks: Plugin = {
   },
   transform(code, id) {
     if (this.environment.name !== 'ssr') return
-    if (/\/src\/routes\/api\/ai\/tasks(?:\.ts|\/.*\.ts)$/.test(id)) {
-      return `import { localWorkflow, localProvider } from ${JSON.stringify(helper)}\n${code}`
-        .replace('    env,', "    env: { ...env, MEDIA_WEBHOOK_SECRET: 'local-fixture' },")
-        .replace(
-          'workflow: env.AI_MEDIA_WORKFLOW,',
-          'workflow: localWorkflow(db, env.FILES) as unknown as typeof env.AI_MEDIA_WORKFLOW, providerFactory: localProvider,',
-        )
+    // 媒体路由经 getAiHttpDeps 组装 workflow 与 Provider；在此换上本地夹具，匹配不到时直接报错而非让任务停在 queued。
+    if (id.endsWith('/src/features/ai/runtime.ts')) {
+      const original = replaceOnce(
+        code,
+        'export function getAiHttpDeps()',
+        'function realAiHttpDeps()',
+      )
+      return `import { env as localEnv } from 'cloudflare:workers'
+import { localProvider, localWorkflow } from ${JSON.stringify(helper)}
+${original}
+export function getAiHttpDeps() {
+  const real = realAiHttpDeps()
+  return {
+    ...real,
+    env: { ...real.env, MEDIA_WEBHOOK_SECRET: 'local-fixture' },
+    workflow: { available: true as const, value: localWorkflow(real.db, localEnv.FILES) as never },
+    providerFactory: localProvider,
+  }
+}`
     }
     if (id.endsWith('/src/routes/api/files/$id.ts'))
-      return code.replace(
+      return replaceOnce(
+        code,
         "import { handleFileDownload } from '../../../features/files/http.ts'",
         `import { localDownload as handleFileDownload } from ${JSON.stringify(helper)}`,
       )

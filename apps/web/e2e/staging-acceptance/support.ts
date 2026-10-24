@@ -1,7 +1,15 @@
+import { readFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { type BrowserContext, chromium, expect, type Page, test } from '@playwright/test'
+import {
+  type BrowserContext,
+  chromium,
+  expect,
+  type Locator,
+  type Page,
+  test,
+} from '@playwright/test'
 import { type EntitlementSubscription, selectEntitlements } from '@saas/entitlements'
 import postgres from 'postgres'
 import templateConfig from '../../../../template.config.ts'
@@ -237,10 +245,25 @@ async function confirmAdmin(page: Page) {
   if (new URL(page.url()).pathname !== '/admin')
     throw new Error(`${guidancePrefix}当前账号无法打开 /admin，请使用平台管理员账号登录`)
   try {
-    await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible()
+    await expect(adminOverviewHeading(page)).toBeVisible()
   } catch {
     throw new Error(`${guidancePrefix}当前账号无法打开 /admin，请使用平台管理员账号登录`)
   }
+}
+
+// 后台标题随账号语言变化（账号语言优先于 Cookie），按所有语言的文案匹配，不要求管理员切换界面语言。
+const overviewTitles = ['en', 'zh'].map(
+  (locale) =>
+    (
+      JSON.parse(
+        readFileSync(new URL(`../../messages/${locale}/admin.json`, import.meta.url), 'utf8'),
+      ) as Record<string, string>
+    ).admin_overview ?? '',
+)
+
+export function adminOverviewHeading(page: Page): Locator {
+  const names = overviewTitles.map((title) => title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  return page.getByRole('heading', { name: new RegExp(`^(?:${names.join('|')})$`) })
 }
 
 export async function login(page: Page, account: 'admin' | 'user') {
@@ -305,7 +328,8 @@ export async function login(page: Page, account: 'admin' | 'user') {
           const adminPage = await context.newPage()
           try {
             const origin = new URL(process.env.STAGING_URL ?? '').origin
-            await adminPage.goto(`${origin}/login`)
+            // 专用 profile 已有有效会话时 /app 直接进入空间，无需人工再点登录；失效时跳转登录页等待人工完成。
+            await adminPage.goto(`${origin}/app`)
             await adminPage.waitForURL(
               (url) => url.origin === origin && url.pathname.startsWith('/app/'),
               { timeout: HUMAN_LOGIN_TIMEOUT },

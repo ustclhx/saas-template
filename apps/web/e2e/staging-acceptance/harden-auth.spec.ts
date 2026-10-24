@@ -1,5 +1,11 @@
 import { randomBytes, randomInt } from 'node:crypto'
-import { type APIRequestContext, type Page, request as playwrightRequest } from '@playwright/test'
+import {
+  type APIRequestContext,
+  type Locator,
+  type Page,
+  request as playwrightRequest,
+  type Request,
+} from '@playwright/test'
 import { DUMMY_TURNSTILE_TOKEN, stubTurnstile } from '../turnstile.ts'
 import { HUMAN_LOGIN_TIMEOUT } from './accounts.ts'
 import {
@@ -7,6 +13,7 @@ import {
   nextRateLimitWindow,
   requireHeadedForStaging,
   sleep,
+  turnstileTest as test,
 } from './harden-support.ts'
 import {
   ensureRegisteredAccount,
@@ -16,7 +23,6 @@ import {
   query,
   requireEnv,
   sqlLiteral,
-  test,
 } from './support.ts'
 
 // harden-audit-findings 7.3「并发猜验证码被限流」（specs/user-auth「认证入口防刷」）。
@@ -85,11 +91,15 @@ async function post(
   return { status: response.status(), code }
 }
 
+// Better Auth 发码只新增记录、不清理同一标识的旧记录，过期记录也会留存；只看本次发码之后的记录。
+let issuedSince = '-infinity'
+
 /** 只读取尝试次数与是否存在；验证码本身只在内存中用于最后一步，不写日志或证据。 */
 async function verificationRow(type: string) {
   const rows = await query<{ value: string; expired: boolean }>(
     `select value, expires_at < now() as expired from verification
-      where identifier = ${sqlLiteral(`${type}-otp-${email}`)} order by created_at desc`,
+      where identifier = ${sqlLiteral(`${type}-otp-${email}`)}
+        and created_at >= ${sqlLiteral(issuedSince)}::timestamptz order by created_at desc`,
   )
   expect(rows.length, 'Each OTP identifier holds at most one row').toBeLessThanOrEqual(1)
   const row = rows[0]
@@ -127,13 +137,33 @@ async function preparePage(page: Page, ip: string) {
   }
 }
 
-/** 经登录页「邮箱验证码」表单发信（staging 由人完成 Turnstile），必要时把请求类型改写为目标类型。 */
+/** 前端在 Turnstile 令牌就绪前不发请求（每次请求后令牌重置）；就绪前重复点击，请求发出后不再点击以免重复发送。 */
+async function clickUntilRequest(page: Page, button: Locator, path: string) {
+  const deadline = Date.now() + (local ? 30_000 : HUMAN_LOGIN_TIMEOUT)
+  let sent = false
+  const onRequest = (request: Request) => {
+    if (new URL(request.url()).pathname === path) sent = true
+  }
+  page.on('request', onRequest)
+  try {
+    while (!sent) {
+      if (Date.now() > deadline) throw new Error(`Request not sent before timeout: ${path}`)
+      await button.click({ timeout: Math.max(1, deadline - Date.now()) })
+      for (let waited = 0; !sent && waited < 3_000; waited += 100) await sleep(100)
+    }
+  } finally {
+    page.off('request', onRequest)
+  }
+}
+
+/** 经登录页「邮箱验证码」表单发信（staging 由专用 Chrome 或人完成 Turnstile），必要时把请求类型改写为目标类型。 */
 async function issueOtp(page: Page, type: string) {
   if (type !== 'sign-in')
     await page.route('**/api/auth/email-otp/send-verification-otp', async (route) => {
       const body = route.request().postDataJSON() as Record<string, unknown>
       await route.continue({ postData: JSON.stringify({ ...body, type }) })
     })
+  issuedSince = (await query<{ now: string }>('select now()::text as now'))[0]?.now ?? '-infinity'
   try {
     await page.goto('/login')
     await page.getByRole('button', { name: 'Sign in with email code' }).click()
@@ -142,9 +172,11 @@ async function issueOtp(page: Page, type: string) {
     const sent = page.waitForResponse('**/api/auth/email-otp/send-verification-otp', {
       timeout: local ? 30_000 : HUMAN_LOGIN_TIMEOUT,
     })
-    await form
-      .getByRole('button', { name: 'Send code' })
-      .click({ timeout: local ? 30_000 : HUMAN_LOGIN_TIMEOUT })
+    await clickUntilRequest(
+      page,
+      form.getByRole('button', { name: 'Send code' }),
+      '/api/auth/email-otp/send-verification-otp',
+    )
     expect((await sent).status(), 'OTP send must be accepted').toBe(200)
     await expect(page.getByLabel('Verification code')).toBeVisible()
   } finally {
@@ -163,9 +195,11 @@ async function submitSignInOtp(page: Page, code: string): Promise<Attempt> {
   const response = page.waitForResponse('**/api/auth/sign-in/email-otp', {
     timeout: local ? 30_000 : HUMAN_LOGIN_TIMEOUT,
   })
-  await page
-    .getByRole('button', { name: 'Sign in', exact: true })
-    .click({ timeout: local ? 30_000 : HUMAN_LOGIN_TIMEOUT })
+  await clickUntilRequest(
+    page,
+    page.getByRole('button', { name: 'Sign in', exact: true }),
+    '/api/auth/sign-in/email-otp',
+  )
   const result = await response
   let parsed: string | null = null
   try {
