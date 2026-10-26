@@ -149,6 +149,9 @@ async function fakeProject(t, template, commit = template.first, record = {}) {
     }),
   )
   git(dir, 'init', '--quiet', '--initial-branch=main')
+  // 同步工具用项目自身的 Git 身份提交；CI runner 没有全局身份。
+  git(dir, 'config', 'user.name', 'fixture')
+  git(dir, 'config', 'user.email', 'fixture@example.com')
   git(dir, 'add', '--all')
   git(dir, 'commit', '--quiet', '-m', 'generated')
   const change = async (files, message) => {
@@ -498,13 +501,6 @@ test('--skip-verify merges and ports but never updates the baseline and exits no
     ],
     {
       encoding: 'utf8',
-      env: {
-        ...process.env,
-        GIT_AUTHOR_NAME: 'fixture',
-        GIT_AUTHOR_EMAIL: 'fixture@example.com',
-        GIT_COMMITTER_NAME: 'fixture',
-        GIT_COMMITTER_EMAIL: 'fixture@example.com',
-      },
     },
   )
   assert.equal(cli.status, 1, cli.stderr)
