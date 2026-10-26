@@ -103,7 +103,7 @@
   - 遇到 `requiresDeployed` 边界时只同步到该版本，`--confirm-deployed` 声明后才继续。
 
   测试覆盖：默认目标、跨边界停止、声明后继续、基准位于两个版本之间、清单不一致告警
-- [ ] 5.6 发布首个版本 `template-v0.2.0`：
+- [x] 5.6 发布首个版本 `template-v0.2.0`：
   - 用 draft 起草 `docs/upgrades/0.2.0.md`，`previous: v0.1.3`，覆盖 harden 系列与迁移 `0013`–`0018`，逐个写明类别、兼容性与回滚；
   - 通过 check 后开发版 PR，合并后等 CI 与 staging 发布成功；
   - 推送 tag 前向用户确认，推送后核对 GitHub Release 内容
@@ -138,11 +138,11 @@
   - typecheck 与单元测试通过。
 
   证据写入 `EVIDENCE_DIR`
-- [ ] 7.2 xuanxue-saas 基准推断：
+- [x] 7.2 xuanxue-saas 基准推断：
   - 在 2026-10-16 至 2026-10-20 的时间窗内运行 `infer-base`；
   - 把候选与差异摘要提交给用户确认；
   - 确认后在 xuanxue 仓库提交 `.template-base.json`。这是对外写入，需用户批准
-- [ ] 7.3 xuanxue-saas 同步演练：同步到 `template-v0.2.0`，只到本地分支，不推送。报告内容：
+- [x] 7.3 xuanxue-saas 同步演练：同步到 `template-v0.2.0`，只到本地分支，不推送。报告内容：
   - 冲突；
   - 升级说明待办；
   - 移植的迁移：`0013_node_job_engine` 起应排在 `0013_superb_excalibur` 之后；

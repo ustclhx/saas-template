@@ -363,7 +363,7 @@ test('clean sync applies renamed changes, keeps project values, ports migrations
     [
       'pnpm install --no-frozen-lockfile',
       'pnpm install --frozen-lockfile',
-      'pnpm exec biome format --write packages/db/migrations/meta/0002_snapshot.json',
+      'pnpm exec biome format --write packages/db/migrations/meta',
       'pnpm typecheck',
       'pnpm test',
     ],
