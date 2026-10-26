@@ -54,6 +54,8 @@ selfhost 团队工具可使用同一入口，设 `--target selfhost --image-name
 若明确使用 `--skip-check`，随后按 `scripts/create-project.mjs` 的 `verifyProject()` 方式补做以上三项。
 
 阅读生成的 `PROJECT_SETUP.md` 与 `.dev.vars.example`；资源 ID 是占位值，账号标识已清空。
+副本根的 `.template-base.json` 记录模板提交、版本与生成参数，随首个提交一起提交；
+之后采纳模板更新使用 `template-sync` 技能，缺少该文件时同步只能先做基准推断。
 生成器已把 `@saas/*` 改为 `@<项目名>/*`。后续 filter 从副本 manifest 读取，避免使用模板 scope：
 
 ```sh
