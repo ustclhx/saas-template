@@ -19,25 +19,42 @@ export async function readJournal(dir) {
 
 /**
  * Work out which template migrations to port between two generated copies.
- * A migration present in the baseline copy but changed or removed in the target stops the sync.
+ * A migration present in the baseline copy but changed or removed in the target stops the sync;
+ * changes limited to whole-line SQL comments are reported in `commentOnly` instead.
  * @param {{baseCopy: string, targetCopy: string, recorded: string[], skip?: string[]}} input
  *   Generated copy roots, baseline `migrations`, and template tags the user chose to skip.
- * @returns {Promise<{port: {tag: string, entry: object}[], skipped: string[]}>}
+ * @returns {Promise<{port: {tag: string, entry: object}[], skipped: string[], commentOnly: string[]}>}
  *   `port` keeps template order; `tag` is the original template tag.
  */
+// 只去掉整行注释与行尾空白：模板给已发布迁移补 `-- rollback-safe:` 等说明不改变语义，
+// 行内注释和字符串保持原样，避免把真实语句差异误判为注释。
+const withoutLineComments = (sql) =>
+  sql
+    .replaceAll('\r\n', '\n')
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line && !/^\s*--(?!>)/.test(line))
+    .join('\n')
+
 export async function planMigrations({ baseCopy, targetCopy, recorded, skip = [] }) {
   const baseDir = join(baseCopy, migrationsPath)
   const targetDir = join(targetCopy, migrationsPath)
   const base = await readJournal(baseDir)
   const target = await readJournal(targetDir)
   const targetTags = new Set(target.entries.map((entry) => entry.tag))
+  const commentOnly = []
   for (const { tag } of base.entries) {
     if (!targetTags.has(tag)) throw new Error(`模板删除了已发布迁移 ${tag}，同步停止`)
     const [before, after] = await Promise.all([
       readFile(join(baseDir, `${tag}.sql`)),
       readFile(join(targetDir, `${tag}.sql`)),
     ])
-    if (!before.equals(after)) throw new Error(`模板修改了已发布迁移 ${tag}，同步停止`)
+    if (before.equals(after)) continue
+    if (
+      withoutLineComments(before.toString('utf8')) !== withoutLineComments(after.toString('utf8'))
+    )
+      throw new Error(`模板修改了已发布迁移 ${tag}，同步停止`)
+    commentOnly.push(tag)
   }
   const baseTags = new Set(base.entries.map((entry) => entry.tag))
   const pending = target.entries.filter(
@@ -55,6 +72,7 @@ export async function planMigrations({ baseCopy, targetCopy, recorded, skip = []
       .filter((entry) => !skip.includes(entry.tag))
       .map((entry) => ({ tag: entry.tag, entry })),
     skipped: pending.filter((entry) => skip.includes(entry.tag)).map((entry) => entry.tag),
+    commentOnly,
   }
 }
 

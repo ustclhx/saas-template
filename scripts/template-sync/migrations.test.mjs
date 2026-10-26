@@ -116,6 +116,36 @@ test('a removed or edited published template migration stops planning', async (t
   }
 })
 
+test('comment-only edits to published template migrations are reported, not fatal', async (t) => {
+  const root = await scratch(t)
+  await migrations(join(root, 'base'), [
+    ['0000_init', 1, 'select 1;--> statement-breakpoint\nselect 2;\n'],
+  ])
+  await migrations(join(root, 'target'), [
+    [
+      '0000_init',
+      1,
+      '-- rollback-safe: 只新增说明\nselect 1;--> statement-breakpoint\nselect 2;\n',
+    ],
+  ])
+  await migrations(join(root, 'inline'), [['0000_init', 1, 'select 1; -- x\nselect 2;\n']])
+  const plan = await planMigrations({
+    baseCopy: join(root, 'base'),
+    targetCopy: join(root, 'target'),
+    recorded: [],
+  })
+  assert.deepEqual(plan.commentOnly, ['0000_init'])
+  assert.deepEqual(plan.port, [])
+  await assert.rejects(
+    planMigrations({
+      baseCopy: join(root, 'base'),
+      targetCopy: join(root, 'inline'),
+      recorded: [],
+    }),
+    /修改了已发布迁移 0000_init/,
+  )
+})
+
 test('drizzle-kit output without a result counts as failure even with exit code 0', async (t) => {
   const root = await scratch(t)
   const dir = await migrations(root, [['0000_init', 1, 'select 1;\n']])

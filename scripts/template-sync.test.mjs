@@ -459,6 +459,20 @@ test('conflicts keep markers on the sync branch, list every file and leave the b
   assert.match(report, /`legacy.txt`：模板删除了该文件，项目改过它/)
 })
 
+test('a template edit to a file the project deleted is a named conflict, not a git error', async (t) => {
+  const template = await fakeTemplate(t)
+  const project = await fakeProject(t, template)
+  await project.change({ 'legacy.txt': null }, 'project removes legacy notes')
+  await template.commit({ 'legacy.txt': 'legacy notes\ntemplate addition\n' }, 'template edit')
+  const { runner } = stubRunner()
+  const result = await runSync({ project: project.dir, template: template.dir, runner, log: quiet })
+  assert.equal(result.status, 'conflicts')
+  assert.deepEqual(result.report.conflicts, [
+    { path: 'legacy.txt', reason: '项目已删除该文件，模板修改了它' },
+  ])
+  assert.equal(existsSync(join(project.dir, 'legacy.txt')), false)
+})
+
 test('a failing verification keeps the baseline record and the branch for investigation', async (t) => {
   const template = await fakeTemplate(t)
   const project = await fakeProject(t, template)
