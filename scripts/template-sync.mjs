@@ -7,13 +7,10 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import { readBaseRecord, serializeBaseRecord } from './template-base.mjs'
-import {
-  cloneTemplate,
-  generateAt,
-  releaseVersion,
-  resolveCommit,
-} from './template-sync/generate.mjs'
+import { listReleases } from './template-release.mjs'
+import { cloneTemplate, generateAt, resolveCommit } from './template-sync/generate.mjs'
 import { git, gitRaw } from './template-sync/git.mjs'
+import { inferCommand } from './template-sync/infer.mjs'
 import {
   applyTemplateChanges,
   commitCopies,
@@ -34,6 +31,7 @@ import {
   portMigrations,
 } from './template-sync/migrations.mjs'
 import { diffLockPackages, renderReport } from './template-sync/report.mjs'
+import { planUpgrades, reconcileMigrations } from './template-sync/upgrades.mjs'
 
 /**
  * @callback Runner
@@ -74,9 +72,10 @@ export class PreflightError extends Error {}
 /**
  * @typedef {object} SyncOptions
  * @property {string} project Derived project root (Git top level).
- * @property {string} [to] Target ref; defaults to the template's default branch (HEAD of a fresh clone).
+ * @property {string} [to] Target ref; defaults to the highest annotated template-v release, or HEAD without releases.
  * @property {string} [template] Template URL or path; defaults to the baseline repository.
  * @property {string} [report] Report path; defaults to `<git-dir>/template-sync/<short>.md`.
+ * @property {string[]} [confirmDeployed] Versions explicitly confirmed as deployed.
  * @property {string[]} [skipMigrations] Template migration tags to mark handled without porting.
  * @property {string} [verifyDb] Empty, isolated Postgres URL for the migration path check.
  * @property {boolean} [skipVerify] Tool tests only: skip install/drizzle/typecheck/test; merge and ports still
@@ -130,12 +129,71 @@ export async function runSync(options) {
     })
     const base = resolveCommit(clone, record.commit)
     if (base !== record.commit) throw new PreflightError(`模板中不存在基准提交 ${record.commit}`)
-    const ref = options.to ?? 'HEAD'
-    const target = resolveCommit(clone, ref)
+    const releases = listReleases(clone.dir)
+    const fallback = !options.to && !releases.length
+    const ref = options.to ?? releases.at(-1)?.tag ?? 'HEAD'
+    const requested = resolveCommit(clone, ref)
+    let target = requested
     if (!target) throw new PreflightError(`模板中不存在目标 ${ref}`)
+    const upgrades = planUpgrades({
+      cwd: clone.dir,
+      base,
+      target,
+      params: record.params,
+      repository: record.repository,
+      confirmed: options.confirmDeployed ?? [],
+    })
+    target = upgrades.target
+    const notes = [
+      ...(fallback ? ['没有 template-v* 发布版本，默认目标回退到 HEAD（目标未发布）'] : []),
+      ...(upgrades.boundary
+        ? [
+            `先部署 ${upgrades.boundary.version}，再用 --confirm-deployed ${upgrades.boundary.version} 继续同步到 ${ref}（${upgrades.boundary.requiredBy} 要求）`,
+          ]
+        : []),
+      ...(options.skipVerify ? ['--skip-verify 仅供同步工具自身测试使用，不更新基准记录'] : []),
+    ]
+    for (const note of notes) log(note)
     if (base === target) {
-      log(`已是最新：项目基准已是 ${shortSha(target)}，没有可采纳的模板更新`)
-      return { status: 'up-to-date' }
+      if (!upgrades.boundary) {
+        log(`已是最新：项目基准已是 ${shortSha(target)}，没有可采纳的模板更新`)
+        return { status: 'up-to-date' }
+      }
+      log(`基准已在部署边界 ${upgrades.boundary.version}，等待确认已部署后继续`)
+      const report = {
+        template: source,
+        base: { commit: base, version: record.version },
+        target: {
+          ref: `template-v${upgrades.boundary.version}`,
+          commit: target,
+          version: releases.findLast((release) => release.commit === target)?.version ?? null,
+        },
+        branch: git(project, ['branch', '--show-current']),
+        resumed: false,
+        applied: [],
+        conflicts: [],
+        setupDiff: '',
+        ported: [],
+        skippedMigrations: [],
+        lockChanges: [],
+        checks: [],
+        baseUpdated: false,
+        notes,
+        upgrades,
+        migrationComparison: { actual: [], documented: [], warnings: [] },
+      }
+      const reportPath = resolve(
+        options.report ??
+          join(
+            git(project, ['rev-parse', '--absolute-git-dir']),
+            'template-sync',
+            `${shortSha(target)}.md`,
+          ),
+      )
+      await mkdir(dirname(reportPath), { recursive: true })
+      await writeFile(reportPath, renderReport(report))
+      log(`同步报告：${reportPath}`)
+      return { status: 'up-to-date', report, reportPath }
     }
     const branch = syncBranchName(target)
     const current = gitRaw(project, ['symbolic-ref', '--quiet', '--short', 'HEAD']).stdout.trim()
@@ -180,9 +238,9 @@ export async function runSync(options) {
       template: source,
       base: { commit: base, version: record.version },
       target: {
-        ref: options.to ?? 'HEAD（模板默认分支）',
+        ref: target === requested ? ref : `template-v${upgrades.boundary.version}`,
         commit: target,
-        version: releaseVersion(clone, target),
+        version: releases.findLast((release) => release.commit === target)?.version ?? null,
       },
       branch,
       resumed,
@@ -194,7 +252,9 @@ export async function runSync(options) {
       lockChanges: [],
       checks: [],
       baseUpdated: false,
-      notes: options.skipVerify ? ['--skip-verify 仅供同步工具自身测试使用，不更新基准记录'] : [],
+      notes,
+      upgrades,
+      migrationComparison: reconcileMigrations(upgrades, plan),
     }
     const finish = async (status) => {
       const reportPath = resolve(
@@ -387,7 +447,9 @@ const usage = `用法：node scripts/template-sync.mjs <命令> [参数]
 
 命令：
   sync --project <路径> [--to <ref>] [--template <URL|路径>] [--report <文件>]
-       [--skip-migration <模板迁移 tag>]... [--verify-db <空库 URL>] [--skip-verify]
+       [--confirm-deployed <已部署版本>]... [--skip-migration <模板迁移 tag>]... [--verify-db <空库 URL>] [--skip-verify]
+  infer-base --project <路径> [--template <URL|路径>] [--since <YYYY-MM-DD>] [--until <YYYY-MM-DD>]
+             [--param key=value]... [--threshold <行数，默认 50>] [--write <候选完整 SHA>]
 `
 
 async function syncCommand(args) {
@@ -398,6 +460,7 @@ async function syncCommand(args) {
       to: { type: 'string' },
       template: { type: 'string' },
       report: { type: 'string' },
+      'confirm-deployed': { type: 'string', multiple: true },
       'skip-migration': { type: 'string', multiple: true },
       'verify-db': { type: 'string' },
       'skip-verify': { type: 'boolean' },
@@ -409,6 +472,7 @@ async function syncCommand(args) {
     to: values.to,
     template: values.template,
     report: values.report,
+    confirmDeployed: values['confirm-deployed'] ?? [],
     skipMigrations: values['skip-migration'] ?? [],
     verifyDb: values['verify-db'],
     skipVerify: values['skip-verify'],
@@ -425,8 +489,8 @@ async function syncCommand(args) {
   return ['conflicts', 'failed', 'unverified'].includes(result.status) ? 1 : 0
 }
 
-/** Subcommands; `infer-base` is added by the baseline inference task. */
-export const commands = { sync: syncCommand }
+/** CLI subcommands share the same template checkout. */
+export const commands = { sync: syncCommand, 'infer-base': inferCommand }
 
 /**
  * CLI entry: dispatch the first positional argument to a subcommand.

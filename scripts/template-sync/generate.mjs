@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 import { paramsToArgs } from '../template-base.mjs'
+import { listReleases } from '../template-release.mjs'
 import { git, gitEnv, gitRaw } from './git.mjs'
 
 /**
@@ -58,24 +59,13 @@ export function resolveCommit(clone, ref) {
 }
 
 /**
- * Highest `template-v<SemVer>` tag pointing exactly at a commit.
+ * Highest annotated `template-v<SemVer>` release pointing exactly at a commit.
  * @param {TemplateClone} clone
  * @param {string} commit Full SHA.
  * @returns {string | null} Version without the `template-v` prefix.
  */
 export function releaseVersion(clone, commit) {
-  const tags = git(clone.dir, [
-    'tag',
-    '--points-at',
-    commit,
-    '--list',
-    'template-v*',
-    '--sort=-v:refname',
-  ])
-    .split('\n')
-    .map((tag) => tag.slice('template-v'.length))
-    .filter((version) => /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version))
-  return tags[0] ?? null
+  return listReleases(clone.dir).findLast((release) => release.commit === commit)?.version ?? null
 }
 
 /**

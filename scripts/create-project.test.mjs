@@ -344,6 +344,7 @@ test('模板专用同步测试与发布材料可选，副本保留运行脚本',
   const excluded = [
     'scripts/template-base.test.mjs',
     'scripts/template-sync.test.mjs',
+    'scripts/template-sync/infer.test.mjs',
     'scripts/template-sync/migrations.test.mjs',
     'scripts/template-release.mjs',
     'scripts/template-release.test.mjs',
@@ -353,6 +354,8 @@ test('模板专用同步测试与发布材料可选，副本保留运行脚本',
   const runtime = [
     'scripts/template-base.mjs',
     'scripts/template-sync.mjs',
+    'scripts/template-sync/infer.mjs',
+    'scripts/template-sync/upgrades.mjs',
     'scripts/template-sync/migrations.mjs',
   ]
   for (const present of [false, true]) {

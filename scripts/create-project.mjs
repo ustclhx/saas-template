@@ -79,6 +79,7 @@ const templateOnly = new Set([
   'scripts/create-project.verify.test.mjs',
   'scripts/template-base.test.mjs',
   'scripts/template-sync.test.mjs',
+  'scripts/template-sync/infer.test.mjs',
   'scripts/template-sync/migrations.test.mjs',
   'scripts/template-release.mjs',
   'scripts/template-release.test.mjs',

@@ -164,15 +164,17 @@ git clone --branch template-v0.3.0 https://github.com/ustclhx/saas-template /tmp
 node /tmp/template/scripts/template-sync.mjs sync --project . --to template-v0.3.0
 ```
 
-- `--to` 指定版本 tag、分支或提交，缺省为模板默认分支；目标不是 `template-v*` 时报告标明「目标未发布」，基准记录的 `version` 写 null。
+- `--to` 指定版本 tag、分支或提交，缺省为最高版本的 `template-v*` 发布；没有模板发布时退回模板默认分支，并在报告中注明。目标提交没有发布 tag 时报告标明「目标未发布」，基准记录的 `version` 写 null。
 - `--template` 覆盖 `.template-base.json` 中的仓库地址，可以是本地路径。
 - `--skip-migration <模板迁移 tag>` 可重复：项目有意删除了某些表时，跳过依赖它们的模板迁移。跳过的迁移不移植，但登记为已处理，以后不会再出现；请自行确认项目代码不依赖它。
 - `--verify-db <URL>` 指向一个空的隔离库：先执行项目已有迁移，再执行移植的迁移，确认增量路径会执行全部移植迁移。未提供时报告标为跳过。
+- `--confirm-deployed <版本号>` 可重复，声明该模板版本已部署且线上健康，用于越过升级说明的 `requiresDeployed` 边界。
 - `--skip-verify` 只供同步工具自身的测试使用：仍完成合并与迁移移植，但不更新基准记录，并以非 0 退出。
 
 开始前，同步会检查：基准记录有效且 `clean=true`、工作区干净（含未跟踪文件）、模板可克隆、基准与目标提交都存在。任一项失败都会直接退出，不创建分支，也不改文件。基准与目标相同时报告「已是最新」并以 0 退出。缺少记录时，先做基准推断。
 
 同步过程：
+
 1. 用基准提交和目标提交各自的生成器，按记录的参数各生成一份副本；两份副本之间的差异就是改名后的模板变更。
 2. 在新分支 `template-sync/<目标短 SHA>` 上逐个文件做三方合并，当前分支不动。迁移目录、`.template-base.json`、`PROJECT_SETUP.md` 和 `pnpm-lock.yaml` 不参与合并。
 3. 模板新增的迁移追加到项目迁移序列末尾，见 [迁移约定](02-project-structure.md#4-编码约定)。模板改动或删除了已发布的迁移时，同步停止。
@@ -180,16 +182,41 @@ node /tmp/template/scripts/template-sync.mjs sync --project . --to template-v0.3
 5. 全部通过后，在同步分支上提交基准记录的更新。工具不会推送，也不会合并。
 
 报告默认写到 `<项目 git 目录>/template-sync/<目标短 SHA>.md`，不进入仓库，路径会打印在终端。报告包含：
+
 - 冲突文件及原因；
 - 已应用的变更；
 - 移植的迁移（原 tag → 新 tag）与已跳过的迁移；
+- 按版本顺序排列的升级概要、说明链接，以及按基准参数过滤后的「必须执行的动作」待办；
+- 说明中的迁移清单与实际处理的迁移（包括主动跳过的迁移）不一致、或缺少升级说明时的警告；
 - 锁文件中版本变化的包；
 - 各项验证结果；
 - `PROJECT_SETUP.md` 的变化：只列出，不写入项目。
 
 **冲突处理**：冲突文件保留冲突标记，留在同步分支的工作区，不提交；这时跳过依赖安装、迁移移植和验证，基准记录不变。「模板删除了项目改过的文件」也算冲突，项目文件原样保留。逐个解决并提交后，在同步分支上用相同的 `--to` 再运行一次：工具识别出当前就是该同步分支，跳过文件合并，继续迁移移植、验证和基准更新。验证失败时也一样，修复、提交后重跑即可，已移植的迁移会沿用，不重复追加。
 
-**按版本分段同步**：跨多个版本时，逐个版本运行 `--to template-v<版本>`，每段都读对应的 [升级说明](upgrades/README.md) 并完成「必须执行的动作」。如果某个版本的升级说明声明了 `requiresDeployed: N`，说明它包含收缩迁移，依赖 N 版本的代码已经上线：先同步到 N 并完成部署，确认线上健康后，再继续同步之后的版本。
+**按版本分段同步**：同步读取目标树中的 [升级说明](upgrades/README.md)，依版本顺序汇总，后续对旧说明的勘误也会生效。动作的适用条件来自基准记录的 `params`：列表参数表示包含该值，多个条件必须全部满足。基准位于两个版本之间时，第一份说明会提示「部分动作可能已随基准完成，需逐项核对」。
+
+如果目标区间内的升级说明声明了 `requiresDeployed: N`，工具会先将目标截断到 N，并提示先部署 N，再继续同步。例如从 0.2.0 升至 0.4.0，而 0.4.0 要求先部署 0.3.0：
+
+```bash
+node /tmp/template/scripts/template-sync.mjs sync --project . --to template-v0.4.0
+# 审阅并采纳同步分支，完成 0.3.0 部署，确认线上健康后再运行：
+node /tmp/template/scripts/template-sync.mjs sync --project . --to template-v0.4.0 --confirm-deployed 0.3.0
+```
+
+`--confirm-deployed` 是使用者的部署声明，工具不会替你部署或检查线上环境；有多个边界时逐段完成并重复传入已部署版本。
+
+**已有项目没有基准记录**：用 `infer-base` 从项目首个提交的树还原生成参数，并在模板 main 的首父提交历史中逐一生成候选副本。默认时间窗为项目首个提交前后各 3 天，可指定日期范围：
+
+```bash
+node /tmp/template/scripts/template-sync.mjs infer-base --project . --since 2026-10-16 --until 2026-10-20
+# 无法还原的参数按提示补齐，例如：
+node /tmp/template/scripts/template-sync.mjs infer-base --project . --param media-providers=fal,workers-ai
+# 审阅候选和参数后，明确指定候选完整 SHA 才会写入：
+node /tmp/template/scripts/template-sync.mjs infer-base --project . --write <候选完整SHA>
+```
+
+推断默认使用脚本所在的模板仓库，`--template <URL|路径>` 可覆盖来源；`--param key=value` 可重复。输出包含参数及来源、分数最低的前 5 个候选（SHA、日期、标题、差异行数和差异最大的 5 个文件）。评分只统计生成副本中存在的路径，项目独有文件单独列出，`.template-base.json` 不计分。候选超过 `--threshold <行数>`（默认 50）时拒绝写入；没有 `--write` 时仅展示结果。写出的记录包含候选发布版本和生成副本的迁移 tag，工具不提交到 Git，请审阅后自行提交。
 
 ## Agent Skills
 
