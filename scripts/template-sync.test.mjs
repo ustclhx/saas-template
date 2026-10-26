@@ -617,11 +617,18 @@ test('lockfile diff compares resolved versions by package name', () => {
 
 function upgrade(
   version,
-  { requiresDeployed, summary = `升级 ${version}`, actions = '无', migrations = [] } = {},
+  {
+    previous = 'v0.1.3',
+    requiresDeployed,
+    summary = `升级 ${version}`,
+    actions = '无',
+    migrations = [],
+  } = {},
 ) {
   const skeleton = readFileSync(new URL('../docs/upgrades/_template.md', import.meta.url), 'utf8')
   return skeleton
     .replace('version: 0.2.0', `version: ${version}`)
+    .replace('previous: v0.1.3', `previous: ${previous}`)
     .replace('date: YYYY-MM-DD', 'date: 2026-10-26')
     .replace(
       'breaking: false',
@@ -776,6 +783,7 @@ test('notes use the target-tree corrections, filter AND and list conditions, and
   await template.commit(
     {
       'docs/upgrades/0.2.0.md': upgrade('0.2.0', {
+        previous: '0.1.0',
         summary: '原说明',
         actions:
           '1. 所有人执行。\n2. 启用 AI。（适用：target=cloudflare; ai=text）\n3. selfhost 操作。（适用：target=selfhost; ai=text）\n4. 音频操作。（适用：ai=audio）',
@@ -787,6 +795,7 @@ test('notes use the target-tree corrections, filter AND and list conditions, and
   await template.commit(
     {
       'docs/upgrades/0.2.0.md': upgrade('0.2.0', {
+        previous: '0.1.0',
         summary: '勘误后的说明',
         actions:
           '1. 所有人执行。\n2. 启用 AI。（适用：target=cloudflare; ai=text）\n3. selfhost 操作。（适用：target=selfhost; ai=text）\n4. 音频操作。（适用：ai=audio）',
@@ -809,11 +818,49 @@ test('notes use the target-tree corrections, filter AND and list conditions, and
   )
   assert.match(report, /勘误后的说明/)
   assert.match(report, /部分动作可能已随基准完成/)
+  assert.doesNotMatch(report, /无法将 previous/)
   assert.deepEqual(
     result.report.upgrades.documents[0].actions.map((action) => action.text),
     ['所有人执行。', '启用 AI。'],
   )
   assert.match(report, /\[template-v0.2.0\]\(https:\/\/example.com\/acme\/template\/blob\//)
+})
+
+test('first release checks its ordinary previous tag and warns if that tag cannot be resolved', async (t) => {
+  const template = await fakeTemplate(t)
+  git(template.dir, 'tag', 'v0.1.3')
+  const between = await template.commit({ 'src/partial.ts': 'partial\n' }, 'partial')
+  const target = await template.commit(
+    { 'docs/upgrades/0.2.0.md': upgrade('0.2.0', { previous: 'v0.1.3' }) },
+    'first release',
+    'template-v0.2.0',
+  )
+  for (const base of [template.first, between]) {
+    const project = await fakeProject(t, template, base)
+    const result = await runSync({
+      project: project.dir,
+      template: template.dir,
+      runner: stubRunner().runner,
+      log: quiet,
+    })
+    const report = await readFile(result.reportPath, 'utf8')
+    if (base === between) assert.match(report, /部分动作可能已随基准完成/)
+    else assert.doesNotMatch(report, /部分动作可能已随基准完成/)
+    assert.doesNotMatch(report, /无法将 previous/)
+  }
+  git(template.dir, 'tag', '-d', 'v0.1.3')
+  const project = await fakeProject(t, template)
+  const result = await runSync({
+    project: project.dir,
+    template: template.dir,
+    to: target,
+    runner: stubRunner().runner,
+    log: quiet,
+  })
+  assert.match(
+    await readFile(result.reportPath, 'utf8'),
+    /部分动作可能已随基准完成.*无法将 previous v0\.1\.3 解析为提交：refs\/tags\/v0\.1\.3/,
+  )
 })
 
 test('migration reconciliation includes skipped original tags and warns on mismatches and missing notes', async (t) => {

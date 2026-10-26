@@ -31,6 +31,7 @@ export function planUpgrades({ cwd, base, target, params, repository, confirmed 
         path,
         link,
         summary: parsed.sections.概要 ?? '',
+        previous: parsed.frontmatter.previous,
         requiresDeployed: parsed.frontmatter.requiresDeployed,
         actions: parsed.actions.filter((action) =>
           Object.entries(action.conditions).every(([key, expected]) => {
@@ -72,9 +73,26 @@ export function planUpgrades({ cwd, base, target, params, repository, confirmed 
       interval.filter((release) => ancestor(cwd, release.commit, actual)),
     )
   }
-  const prior = releases.filter((release) => ancestor(cwd, release.commit, base)).at(-1)
-  const partial = prior && prior.commit !== base && included.length > 0
-  if (partial) warnings.push(`${included[0].path} 中部分动作可能已随基准完成，需要逐项核对`)
+  const first = included[0]
+  if (first) {
+    const previous = first.previous
+    const tag =
+      typeof previous === 'string' && previous
+        ? `refs/tags/${previous.startsWith('v') ? previous : `template-v${previous}`}`
+        : null
+    const resolved = tag
+      ? gitRaw(cwd, ['rev-parse', '--verify', '--quiet', `${tag}^{commit}`])
+      : null
+    const commit = resolved?.status === 0 ? resolved.stdout.trim() : null
+    if (commit !== base) {
+      const reason = commit
+        ? ''
+        : tag
+          ? `（无法将 previous ${previous} 解析为提交：${tag} 不存在或未指向提交）`
+          : '（升级说明缺少有效的 previous，无法确定起点提交）'
+      warnings.push(`${first.path} 中部分动作可能已随基准完成，需要逐项核对${reason}`)
+    }
+  }
   return { target: actual, documents: included, warnings, boundary }
 }
 
