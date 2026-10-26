@@ -6,7 +6,15 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!openspec", "!.claude", "!.agents", "!.omp", "!packages/db/lint/fixtures"]
+    "includes": [
+      "**",
+      "!openspec",
+      "!.claude",
+      "!.agents",
+      "!.omp",
+      "!packages/db/lint/fixtures",
+      "!.template-base.json"
+    ]
   },
   "formatter": {
     "enabled": true,

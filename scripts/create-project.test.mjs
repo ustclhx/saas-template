@@ -216,6 +216,10 @@ test('模板基准记录来源状态、完整参数和实际迁移，不继承�
   ])
     assert.ok(!serialized.includes(forbidden), `基准记录泄露：${forbidden}`)
 
+  // 记录由工具读写，不按 biome 排版；副本的 biome 配置必须排除它，否则衍生项目 pnpm check 失败。
+  const biome = JSON.parse(await readFile(join(clean.target, 'biome.json'), 'utf8'))
+  assert.ok(biome.files.includes.includes('!.template-base.json'))
+
   git(source, 'tag', '-a', 'template-v9.9.9', '-m', 'temporary test version')
   git(source, 'remote', 'set-url', 'origin', 'git@github.com:example/template.git')
   const tagged = await createProject({ ...input, output: join(temp, 'tagged') }, source)
