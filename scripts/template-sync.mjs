@@ -347,13 +347,16 @@ export async function runSync(options) {
           report.ported,
           await drizzleGenerate(project, migrationsDir, runner),
         )
-        // 项目的 biome check 覆盖迁移 meta，写回后按项目格式化规则整理。
-        if (written.length) {
-          const format = runner('pnpm', ['exec', 'biome', 'format', '--write', ...written], {
+        // 项目的 biome check 覆盖迁移 meta：中间 snapshot 由移植复制写出，最后一个由 drizzle-kit 生成，
+        // 都要按项目格式化规则整理，只格式化最后一个会让衍生项目 pnpm check 失败。
+        const format = runner(
+          'pnpm',
+          ['exec', 'biome', 'format', '--write', `${migrationsPath}/meta`],
+          {
             cwd: project,
-          })
-          if (format.status !== 0) throw new Error(`biome format 失败：${lastLine(format.output)}`)
-        }
+          },
+        )
+        if (format.status !== 0) throw new Error(`biome format 失败：${lastLine(format.output)}`)
         return written.length ? undefined : '模板迁移未改变 schema，沿用上一个 snapshot'
       })
     }
