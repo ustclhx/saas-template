@@ -55,6 +55,7 @@ const list = (items, render) => (items.length ? items.map(render).join('\n') : '
  * @property {string} setupDiff PROJECT_SETUP.md diff between the copies.
  * @property {{source: string, tag: string}[]} ported
  * @property {string[]} skippedMigrations
+ * @property {string[]} [commentOnlyMigrations] Published template migrations whose change is whole-line comments only.
  * @property {{name: string, before: string[], after: string[]}[]} lockChanges
  * @property {{name: string, command: string, status: 'pass' | 'fail' | 'skip', detail?: string}[]} checks
  * @property {boolean} baseUpdated
@@ -123,6 +124,12 @@ export function renderReport(report) {
     '',
     report.skippedMigrations.length
       ? `${report.skippedMigrations.map((tag) => `- \`${tag}\``).join('\n')}\n\n这些迁移未移植，但已登记为已处理，以后不会再出现。请自行确认项目代码不依赖它们。`
+      : '- 无',
+    '',
+    '## 仅注释变化的已发布迁移',
+    '',
+    report.commentOnlyMigrations?.length
+      ? `${report.commentOnlyMigrations.map((tag) => `- \`${tag}\``).join('\n')}\n\n模板只改了这些迁移的整行注释，语义不变；项目中的文件保持原样，不重新执行。`
       : '- 无',
     '',
     '## 锁文件中版本变化的包',

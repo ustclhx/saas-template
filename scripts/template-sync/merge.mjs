@@ -159,6 +159,12 @@ export function applyTemplateChanges(project, changes) {
       }
       continue
     }
+    const source = change.from ?? change.path
+    if (change.status !== 'A' && blob(project, 'HEAD', source) === null) {
+      // 项目已删除该文件而模板修改了它：git apply 只会报「不在索引中」，这里明确交给使用者决定。
+      conflicts.push({ path: change.path, reason: '项目已删除该文件，模板修改了它' })
+      continue
+    }
     const paths = change.from ? [change.from, change.path] : [change.path]
     const patch = git(
       project,

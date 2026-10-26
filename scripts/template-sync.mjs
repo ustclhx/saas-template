@@ -249,6 +249,7 @@ export async function runSync(options) {
       setupDiff: setupDiff(project),
       ported: [],
       skippedMigrations: plan.skipped,
+      commentOnlyMigrations: plan.commentOnly,
       lockChanges: [],
       checks: [],
       baseUpdated: false,
