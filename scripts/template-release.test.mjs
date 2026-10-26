@@ -378,6 +378,28 @@ test('check accepts first release with v0.1.3 previous', (t) => {
   succeeds(cli(cwd, 'check', '--version', '0.2.0'))
 })
 
+test('check scopes immutable migrations to releases before the checked version', (t) => {
+  const { cwd } = repo(t, {
+    version: null,
+    migrations: { '0000_init': 'CREATE TABLE fixture (id integer);' },
+  })
+  tag(cwd, 'v0.1.3')
+  put(
+    cwd,
+    `${migrationDir}/0000_init.sql`,
+    '-- rollback-safe: 只加注释\nCREATE TABLE fixture (id integer);',
+  )
+  releaseDoc(cwd, { version: '0.2.0', previous: 'v0.1.3', breaking: true })
+  commit(cwd)
+  succeeds(cli(cwd, 'check', '--version', '0.2.0'))
+  tag(cwd, 'template-v0.2.0')
+  succeeds(cli(cwd, 'check', '--version', '0.2.0'))
+  put(cwd, `${migrationDir}/0000_init.sql`, 'CREATE TABLE fixture (id bigint);')
+  releaseDoc(cwd, { version: '0.2.1', previous: '0.2.0' })
+  commit(cwd)
+  fails(cli(cwd, 'check', '--version', '0.2.1'))
+})
+
 const invalidMigrationDocs = [
   ['missing migration', '无'],
   ['extra migration', `${migration()}\n${migration('0002_extra')}`],

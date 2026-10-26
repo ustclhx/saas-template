@@ -357,8 +357,7 @@ function addedMigrations(base, target, cwd) {
     }))
 }
 
-function immutableMigrations(base, target, cwd) {
-  const releases = listReleases(cwd)
+function immutableMigrations(base, target, cwd, releases = listReleases(cwd)) {
   const published = new Set(
     releases.flatMap((release) =>
       treeFiles(release.commit, cwd).filter((path) => migrationPath.test(path)),
@@ -682,7 +681,11 @@ export function checkRelease(version, cwd = process.cwd()) {
   const level = expectedLevel(range.previous, fm.breaking === true || breaking, analysis.feat)
   if (!validBump(range.previous, version, level))
     errors.push(`${range.previous} → ${version} requires ${level} version increase`)
-  errors.push(...immutableMigrations(range.base, range.target, cwd))
+  // 只有早于本版本的发布才算「已发布」；本版本的 tag 存在后不能把区间内的修改算成修改自己。
+  const published = range.releases.filter(
+    (release) => release.version !== version && ancestor(release.commit, range.base, cwd),
+  )
+  errors.push(...immutableMigrations(range.base, range.target, cwd, published))
   const index = readFileSync(join(cwd, 'docs/upgrades/README.md'), 'utf8')
   const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   if (
