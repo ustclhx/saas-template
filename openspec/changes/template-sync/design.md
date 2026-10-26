@@ -66,7 +66,9 @@
 
 1. 两份生成副本依次提交进一个临时 git 仓库，得到 `base` 与 `target` 两个提交。
 2. 在衍生项目中执行 `git fetch <临时仓库> base target`，把这两个提交拉进 `refs/template-sync/*`，补齐 preimage blob。
-3. 在新分支 `template-sync/<目标短 SHA>` 上，执行 `git diff -M base target -- <排除项之外>`，结果交给 `git apply --3way --index`。
+3. 在新分支 `template-sync/<目标短 SHA>` 上，对 `git diff -M base target -- <排除项之外>` 的每个文件，分别执行 `git apply --3way --index`。逐文件应用的原因是：一次性应用时，单个硬失败会让整个补丁被放弃。
+4. 模板删除的文件单独处理，因为 `git apply` 不对删除做三方合并：项目未改过的直接删除；项目改过的保留原样，记为冲突。
+5. 有冲突时，冲突留在工作区，不提交。使用者解决并提交后，在 `template-sync/<短 SHA>` 分支上用相同的 `--to` 重跑 sync：工具跳过文件合并，继续迁移移植、验证和基准更新。已移植且内容相同的 `tpl_` 迁移直接沿用，不重复追加。
 
 排除项：
 - `packages/db/migrations/**`：由 D5 处理；
@@ -82,9 +84,11 @@
 
 锁文件不做文本合并。合并后如果任一 `package.json` 有变化，就运行 `pnpm install`（不加 frozen）重新解析；未变化的版本范围保持现有锁定版本。随后用 `pnpm install --frozen-lockfile` 确认锁文件一致，再进入 typecheck 和 test。
 
+验证以 CI 模式运行（`CI=true`），并清除数据库连接环境变量，与生成器自检一致，避免对使用者的本地库运行集成测试。
+
 ### D5 迁移移植：追加到末尾，并使用新时间戳
 
-drizzle-orm 的 PostgreSQL 迁移器以数据库中最后一次已应用迁移的 `created_at` 为界，只执行 journal 中 `when` 更大的迁移。因此模板迁移如果按原编号插到项目自有迁移之前，已上线的数据库会**静默跳过**它们。这一点在实施时用当前依赖版本先验证（见 tasks 3.1）。
+drizzle-orm 的 PostgreSQL 迁移器以数据库中最后一次已应用迁移的 `created_at` 为界，只执行 journal 中 `when` 更大的迁移。因此模板迁移如果按原编号插到项目自有迁移之前，已上线的数据库会**静默跳过**它们。这一点在实施时用当前依赖版本先验证（见 tasks 3.1）。2026-10-26 用 drizzle-orm 0.45.3 在隔离库实测确认：`when` 早于库中最后一条 `created_at` 的新迁移被静默跳过（不报错、不写记录），`when` 更晚的迁移正常执行；该行为由 `scripts/template-sync/migrations.test.mjs` 的 Postgres 用例持续覆盖。
 
 移植步骤：
 1. 取目标版本相对基准版本**新增**的迁移 tag，排除 `migrations` 中已登记的，按模板顺序处理。基准中已有的模板迁移文件如果内容变了，按 spec 停止。
@@ -92,8 +96,7 @@ drizzle-orm 的 PostgreSQL 迁移器以数据库中最后一次已应用迁移�
 3. 中间迁移的 snapshot 沿用上一个 snapshot，只更新 id 链。最后一个移植迁移的 snapshot，在临时副本中对已合并的 schema 运行 `drizzle-kit generate`，取它生成的 snapshot，丢弃它生成的 SQL。这样项目之后再运行 generate 时，不会重复生成模板的 DDL。
 4. 验证：
    - 在项目中运行 `drizzle-kit generate`，结果应为无 schema 变化；
-   - 有本地隔离数据库时，从空库执行全部迁移；
-   - 在执行到上一个项目迁移为止的库上，执行增量迁移。
+   - 数据库验证由 `--verify-db <空的隔离库 URL>` 提供：先执行项目已有迁移，再执行移植的迁移，并断言移植的迁移全部被执行。工具不建库。未提供时，报告标为「跳过」，不阻止基准更新。
 5. 把模板原 tag 追加到 `migrations`。
 6. 衍生项目有意删除了某些模板表时（例如 xuanxue 删除了 job_engine schema），使用者用 `--skip-migration <tag>` 跳过依赖这些表的模板迁移。被跳过的 tag 同样登记进 `migrations`，含义是「已处理」，报告中单独列出。
 

@@ -1,0 +1,124 @@
+/**
+ * Package versions from the top-level `packages:` section of a pnpm-lock.yaml text.
+ * @param {string} text Lockfile contents ('' when absent).
+ * @returns {Map<string, Set<string>>} Package name → resolved versions.
+ */
+export function lockPackages(text) {
+  const packages = new Map()
+  let inside = false
+  for (const line of text.split('\n')) {
+    if (/^\S/.test(line)) inside = line.startsWith('packages:')
+    if (!inside) continue
+    const key = line.match(/^ {2}(?:'([^']+)'|"([^"]+)"|([^\s'"][^:]*)):\s*$/)
+    if (!key) continue
+    const spec = (key[1] ?? key[2] ?? key[3]).replace(/\(.*$/, '')
+    const at = spec.lastIndexOf('@')
+    if (at <= 0) continue
+    const name = spec.slice(0, at)
+    if (!packages.has(name)) packages.set(name, new Set())
+    packages.get(name).add(spec.slice(at + 1))
+  }
+  return packages
+}
+
+/**
+ * Packages whose resolved versions differ between two lockfiles, sorted by name.
+ * @param {string} before
+ * @param {string} after
+ * @returns {{name: string, before: string[], after: string[]}[]}
+ */
+export function diffLockPackages(before, after) {
+  const a = lockPackages(before)
+  const b = lockPackages(after)
+  return [...new Set([...a.keys(), ...b.keys()])]
+    .sort()
+    .map((name) => ({
+      name,
+      before: [...(a.get(name) ?? [])].sort(),
+      after: [...(b.get(name) ?? [])].sort(),
+    }))
+    .filter((item) => item.before.join(',') !== item.after.join(','))
+}
+
+const statusText = { pass: '通过', fail: '失败', skip: '跳过' }
+const list = (items, render) => (items.length ? items.map(render).join('\n') : '- 无')
+
+/**
+ * @typedef {object} SyncReport
+ * @property {string} template Template source as given.
+ * @property {{commit: string, version: string | null}} base
+ * @property {{ref: string, commit: string, version: string | null}} target
+ * @property {string} branch Sync branch.
+ * @property {boolean} resumed True when the file merge was already done on the branch.
+ * @property {string[]} applied
+ * @property {{path: string, reason: string}[]} conflicts
+ * @property {string} setupDiff PROJECT_SETUP.md diff between the copies.
+ * @property {{source: string, tag: string}[]} ported
+ * @property {string[]} skippedMigrations
+ * @property {{name: string, before: string[], after: string[]}[]} lockChanges
+ * @property {{name: string, command: string, status: 'pass' | 'fail' | 'skip', detail?: string}[]} checks
+ * @property {boolean} baseUpdated
+ * @property {string[]} [notes]
+ */
+
+/**
+ * Render the sync report as Markdown.
+ * @param {SyncReport} report
+ * @returns {string}
+ */
+export function renderReport(report) {
+  const short = (sha) => sha.slice(0, 12)
+  const version = (v) => (v ? ` (template-v${v})` : '')
+  const lines = [
+    `# 模板同步报告 ${short(report.base.commit)}..${short(report.target.commit)}`,
+    '',
+    `- 模板：${report.template}`,
+    `- 基准：${report.base.commit}${version(report.base.version)}`,
+    `- 目标：${report.target.commit}${version(report.target.version)}（--to ${report.target.ref}${report.target.version ? '' : '，目标未发布'}）`,
+    `- 同步分支：${report.branch}${report.resumed ? '（继续：文件合并已在本分支完成）' : ''}`,
+    `- 基准记录：${report.baseUpdated ? '已更新到目标提交' : '未更新'}`,
+    ...(report.notes ?? []).map((note) => `- 注意：${note}`),
+    '',
+    `## 冲突（${report.conflicts.length}）`,
+    '',
+    report.conflicts.length
+      ? `${report.conflicts.map((item) => `- \`${item.path}\`：${item.reason}`).join('\n')}\n\n解决冲突并提交后，在同步分支上用相同的 --to 重新运行同步，继续迁移移植与验证。`
+      : '- 无',
+    '',
+    `## 已应用的模板变更（${report.applied.length}）`,
+    '',
+    list(report.applied, (path) => `- \`${path}\``),
+    '',
+    '## 移植的迁移',
+    '',
+    list(report.ported, (item) => `- \`${item.source}\` → \`${item.tag}\``),
+    '',
+    '## 已跳过的迁移',
+    '',
+    report.skippedMigrations.length
+      ? `${report.skippedMigrations.map((tag) => `- \`${tag}\``).join('\n')}\n\n这些迁移未移植，但已登记为已处理，以后不会再出现。请自行确认项目代码不依赖它们。`
+      : '- 无',
+    '',
+    '## 锁文件中版本变化的包',
+    '',
+    list(
+      report.lockChanges,
+      (item) =>
+        `- \`${item.name}\`：${item.before.join(', ') || '（无）'} → ${item.after.join(', ') || '（无）'}`,
+    ),
+    '',
+    '## 验证',
+    '',
+    list(
+      report.checks,
+      (item) =>
+        `- ${item.name}：${statusText[item.status]}（\`${item.command}\`）${item.detail ? ` — ${item.detail}` : ''}`,
+    ),
+    '',
+    '## PROJECT_SETUP.md 的变化（未写入项目，请人工核对）',
+    '',
+    report.setupDiff.trim() ? `\`\`\`diff\n${report.setupDiff.trimEnd()}\n\`\`\`` : '- 无',
+    '',
+  ]
+  return lines.join('\n')
+}

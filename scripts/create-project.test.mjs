@@ -344,20 +344,25 @@ test('模板专用同步测试与发布材料可选，副本保留运行脚本',
   const excluded = [
     'scripts/template-base.test.mjs',
     'scripts/template-sync.test.mjs',
+    'scripts/template-sync/migrations.test.mjs',
     'scripts/template-release.mjs',
     'scripts/template-release.test.mjs',
     '.github/workflows/template-release.yml',
     '.github/workflows/template-release-checks.yml',
   ]
+  const runtime = [
+    'scripts/template-base.mjs',
+    'scripts/template-sync.mjs',
+    'scripts/template-sync/migrations.mjs',
+  ]
   for (const present of [false, true]) {
     const f = await fixture(t)
-    for (const path of ['scripts/template-base.mjs', 'scripts/template-sync.mjs'])
-      await f.file(path, '// runtime script\n')
+    for (const path of runtime) await f.file(path, '// runtime script\n')
     if (present) for (const path of excluded) await f.file(path, 'TEMPLATE_ONLY_SENTINEL\n')
     const result = await createProject(f.input, f.source)
     const generated = (await files(result.target)).map((path) => relative(result.target, path))
     for (const path of excluded) assert.ok(!generated.includes(path), `模板专用文件仍存在：${path}`)
-    for (const path of ['scripts/template-base.mjs', 'scripts/template-sync.mjs'])
+    for (const path of runtime)
       assert.equal(await readFile(join(result.target, path), 'utf8'), '// runtime script\n')
     const ci = await readFile(join(result.target, '.github/workflows/ci.yml'), 'utf8')
     assert.match(ci, /run: pnpm check/)

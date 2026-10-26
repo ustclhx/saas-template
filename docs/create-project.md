@@ -155,6 +155,42 @@ Neon staging 使用 TLS 直连与两个 Hyperdrive，不需要 Tunnel / Workers 
 限流 namespace 为 Worker 绑定内的独立整数标识，清理时随临时 Worker 移除绑定。
 
 <!-- template-only:end -->
+## 采纳模板更新
+
+同步脚本以目标版本的模板为准，不运行项目里的旧副本。先克隆目标版本，再对项目执行同步：
+
+```bash
+git clone --branch template-v0.3.0 https://github.com/ustclhx/saas-template /tmp/template
+node /tmp/template/scripts/template-sync.mjs sync --project . --to template-v0.3.0
+```
+
+- `--to` 指定版本 tag、分支或提交，缺省为模板默认分支；目标不是 `template-v*` 时报告标明「目标未发布」，基准记录的 `version` 写 null。
+- `--template` 覆盖 `.template-base.json` 中的仓库地址，可以是本地路径。
+- `--skip-migration <模板迁移 tag>` 可重复：项目有意删除了某些表时，跳过依赖它们的模板迁移。跳过的迁移不移植，但登记为已处理，以后不会再出现；请自行确认项目代码不依赖它。
+- `--verify-db <URL>` 指向一个空的隔离库：先执行项目已有迁移，再执行移植的迁移，确认增量路径会执行全部移植迁移。未提供时报告标为跳过。
+- `--skip-verify` 只供同步工具自身的测试使用，不能作为采纳依据。
+
+开始前，同步会检查：基准记录有效且 `clean=true`、工作区干净（含未跟踪文件）、模板可克隆、基准与目标提交都存在。任一项失败都会直接退出，不创建分支，也不改文件。基准与目标相同时报告「已是最新」并以 0 退出。缺少记录时，先做基准推断。
+
+同步过程：
+1. 用基准提交和目标提交各自的生成器，按记录的参数各生成一份副本；两份副本之间的差异就是改名后的模板变更。
+2. 在新分支 `template-sync/<目标短 SHA>` 上逐个文件做三方合并，当前分支不动。迁移目录、`.template-base.json`、`PROJECT_SETUP.md` 和 `pnpm-lock.yaml` 不参与合并。
+3. 模板新增的迁移追加到项目迁移序列末尾，见 [迁移约定](02-project-structure.md#4-编码约定)。模板改动或删除了已发布的迁移时，同步停止。
+4. 任一 `package.json` 有变化时，先 `pnpm install --no-frozen-lockfile` 重新解析锁文件，再用 `--frozen-lockfile` 确认；随后检查 `drizzle-kit generate` 无变化，再运行 `pnpm typecheck` 和 `pnpm test`。
+5. 全部通过后，在同步分支上提交基准记录的更新。工具不会推送，也不会合并。
+
+报告默认写到 `<项目 git 目录>/template-sync/<目标短 SHA>.md`，不进入仓库，路径会打印在终端。报告包含：
+- 冲突文件及原因；
+- 已应用的变更；
+- 移植的迁移（原 tag → 新 tag）与已跳过的迁移；
+- 锁文件中版本变化的包；
+- 各项验证结果；
+- `PROJECT_SETUP.md` 的变化：只列出，不写入项目。
+
+**冲突处理**：冲突文件保留冲突标记，留在同步分支的工作区，不提交；这时跳过依赖安装、迁移移植和验证，基准记录不变。「模板删除了项目改过的文件」也算冲突，项目文件原样保留。逐个解决并提交后，在同步分支上用相同的 `--to` 再运行一次：工具识别出当前就是该同步分支，跳过文件合并，继续迁移移植、验证和基准更新。验证失败时也一样，修复、提交后重跑即可，已移植的迁移会沿用，不重复追加。
+
+**按版本分段同步**：跨多个版本时，逐个版本运行 `--to template-v<版本>`，每段都读对应的 [升级说明](upgrades/README.md) 并完成「必须执行的动作」。如果某个版本的升级说明声明了 `requiresDeployed: N`，说明它包含收缩迁移，依赖 N 版本的代码已经上线：先同步到 N 并完成部署，确认线上健康后，再继续同步之后的版本。
+
 ## Agent Skills
 
 项目内提供 8 个技能，Codex 使用 `.agents/skills/`，Claude 使用 `.claude/skills/`。

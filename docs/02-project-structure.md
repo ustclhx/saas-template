@@ -157,3 +157,7 @@ export default defineTemplateConfig({
 - **外部调用**：一律经过对应 package 的接口（PaymentProvider / MediaProvider / EmailSender），不在 feature 代码里直接用第三方 SDK。
 - **Webhook**：一律「验签 → 去重 → 事务处理 → 异步副作用」四步。
 - **迁移**：只通过 drizzle-kit 生成的 SQL 迁移变更 schema，迁移文件纳入版本控制。
+  - drizzle-orm（0.45.3 实测）只执行 journal 中 `when` 大于库中最后一条已应用迁移 `created_at` 的迁移；`when` 更早的新迁移会被**静默跳过**，不报错，也不留记录。
+  - 已发布的迁移不再修改，修复改用新迁移；迁移不得依赖固定的 idx 或文件名序号。
+  - 衍生项目中，自有迁移沿用 drizzle-kit 默认命名；模板同步移植的迁移命名为 `<idx>_tpl_<原名>`，追加在序列末尾，`when` 晚于已有的全部迁移，原 tag 登记在 `.template-base.json` 的 `migrations` 中。
+  - 先扩展后收缩：每个版本的 schema 必须让上一版本的代码仍可运行。删除、重命名、改类型、加约束等收缩变更至少晚一个版本发布，语句带 `-- template-contract: <原因>` 注释，升级说明声明 `requiresDeployed`，详见 [升级说明](upgrades/README.md)。
