@@ -70,6 +70,7 @@ jobs:
       - run: pnpm check:singletons
       - run: pnpm check:deps
       - run: pnpm check
+      - run: pnpm test:create-project
       - run: pnpm typecheck
       - run: pnpm test
       # turbo run build：没有 build 脚本的包会被跳过

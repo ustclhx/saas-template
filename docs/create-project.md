@@ -48,6 +48,16 @@ robots 与 sitemap 不加入路由，营销页不预渲染，也不生成营销 
 
 生成内容包含改名的包作用域、Worker / Queue / Workflow 名称、站点品牌、
 `template.config.ts`、根目录及两个 app 的 `.dev.vars.example` 和 `PROJECT_SETUP.md`。
+副本根目录还包含 `.template-base.json`，用于之后采纳模板更新，请将它一起提交到项目仓库。
+记录的字段为 `schemaVersion`（当前为 1）、`repository`（去凭据的 HTTPS origin，无 origin 时为 null）、
+`commit`（源模板的完整 40 位 SHA）、`version`（HEAD 上最高的合法 `template-v<SemVer>`
+版本，未打模板 tag 时为 null）、`clean`（源工作区是否干净）、`params`（展开默认值的
+CLI 参数，键排序、列表去重保序，不包含输出目录）和 `migrations`（副本 journal 中的迁移 tag）。
+生成器不记录本机源目录、输出目录或 Git 用户信息；参数中的支持邮箱是项目配置的公开联系地址。
+源目录不是 Git 仓库时，`repository`、`commit`、`version` 为 null，`clean=false`；
+有未提交改动时也标记 `clean=false`，这种来源不能作为可信同步基准。
+用已生成副本再次生成时，会重新记录当前源状态，不继承旧记录。
+同一源与参数的生成文件列表、内容和权限保持一致；普通文件为 0644、可执行文件和目录为 0755。
 Hyperdrive / KV 的部署 ID 重置为零占位值，AI Gateway / R2 账号标识清空，所有环境都需配置新资源；
 Rate Limiting 的 RL_AUTH / RL_AI / RL_API 命名空间需独立分配。Queue 名会同步到 jobs 消费者与测试。
 FILES 桶按项目改名，R2_FILES_BUCKET 与绑定保持一致；文本模式也保留文件清理 Cron 所需的 FILES 桶。

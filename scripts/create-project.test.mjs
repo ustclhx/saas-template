@@ -1,9 +1,20 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { test } from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { createProject, projectOptions } from './create-project.mjs'
 
 async function fixture(t) {
@@ -16,6 +27,14 @@ async function fixture(t) {
   }
   await file('package.json', JSON.stringify({ name: 'fixture-template' }))
   await file('packages/config/package.json', JSON.stringify({ name: '@fixture/config' }))
+  await file(
+    'packages/db/migrations/meta/_journal.json',
+    JSON.stringify({
+      version: '7',
+      dialect: 'postgresql',
+      entries: [{ idx: 0, version: '7', when: 1, tag: '0000_fixture_init', breakpoints: true }],
+    }),
+  )
   await file(
     'template.config.ts',
     `export default defineTemplateConfig({
@@ -85,6 +104,10 @@ async function fixture(t) {
     'env:\n  STAGING_URL: https://old.workers.dev\n',
   )
   await file(
+    '.github/workflows/ci.yml',
+    'jobs:\n  check:\n    steps:\n      - run: pnpm check\n      - run: pnpm test:create-project\n',
+  )
+  await file(
     'scripts/staging/files-cors.json',
     '{"origins":["https://web-staging.old.workers.dev"]}',
   )
@@ -106,6 +129,303 @@ async function files(path) {
     )
   ).flat()
 }
+
+function git(cwd, ...args) {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  return result.stdout.trim()
+}
+
+async function readBase(target) {
+  return JSON.parse(await readFile(join(target, '.template-base.json'), 'utf8'))
+}
+
+test('模板基准记录来源状态、完整参数和实际迁移，不继承副本记录', async (t) => {
+  const temp = await mkdtemp(join(tmpdir(), 'bootstrap-base-'))
+  t.after(() => rm(temp, { recursive: true, force: true }))
+  const source = join(temp, 'source')
+  // 真实 HEAD 的独立 clone：tag、origin 与脏文件都只修改临时仓库。
+  git(fileURLToPath(new URL('..', import.meta.url)), 'clone', '--quiet', '--no-local', '.', source)
+  git(source, 'config', 'user.name', 'Template Personal Identity')
+  git(source, 'config', 'user.email', 'personal-identity@example.invalid')
+  for (const tag of git(source, 'tag', '--points-at', 'HEAD').split('\n').filter(Boolean)) {
+    if (tag.startsWith('template-v')) git(source, 'tag', '-d', tag)
+  }
+  git(
+    source,
+    'remote',
+    'set-url',
+    'origin',
+    'https://token-user:private-token@github.com/example/template.git',
+  )
+  const commit = git(source, 'rev-parse', 'HEAD')
+  const input = { name: 'acme', domain: 'acme.example' }
+  const clean = await createProject({ ...input, output: join(temp, 'clean') }, source)
+  const base = await readBase(clean.target)
+  assert.deepEqual(Object.keys(base).sort(), [
+    'clean',
+    'commit',
+    'migrations',
+    'params',
+    'repository',
+    'schemaVersion',
+    'version',
+  ])
+  assert.equal(base.schemaVersion, 1)
+  assert.equal(base.repository, 'https://github.com/example/template')
+  assert.equal(base.commit, commit)
+  assert.match(base.commit, /^[a-f0-9]{40}$/)
+  assert.equal(base.clean, true)
+  assert.equal(base.version, null)
+  assert.deepEqual(base.params, {
+    ai: ['text', 'image', 'video'],
+    billing: ['stripe', 'paypal'],
+    'billing-enabled': true,
+    'credits-enabled': true,
+    domain: 'https://acme.example',
+    features: ['blog'],
+    i18n: true,
+    'image-namespace': 'ghcr.io/configure-owner/acme',
+    locale: 'en',
+    marketing: true,
+    'media-providers': ['fal', 'workers-ai'],
+    'multi-tenant': false,
+    name: 'acme',
+    oauth: ['google', 'github'],
+    'support-email': 'support@acme.example',
+    target: 'cloudflare',
+    turnstile: true,
+  })
+  const journal = JSON.parse(
+    await readFile(join(clean.target, 'packages/db/migrations/meta/_journal.json'), 'utf8'),
+  )
+  assert.deepEqual(
+    base.migrations,
+    journal.entries.map((entry) => entry.tag),
+  )
+  assert.ok(base.migrations.length > 0)
+  const serialized = JSON.stringify(base)
+  for (const forbidden of [
+    source,
+    clean.target,
+    temp,
+    'token-user',
+    'private-token',
+    'Template Personal Identity',
+    'personal-identity@example.invalid',
+  ])
+    assert.ok(!serialized.includes(forbidden), `基准记录泄露：${forbidden}`)
+
+  git(source, 'tag', '-a', 'template-v9.9.9', '-m', 'temporary test version')
+  git(source, 'remote', 'set-url', 'origin', 'git@github.com:example/template.git')
+  const tagged = await createProject({ ...input, output: join(temp, 'tagged') }, source)
+  assert.deepEqual(await readBase(tagged.target), { ...base, version: '9.9.9' })
+
+  await writeFile(join(source, 'UNCOMMITTED.txt'), 'temporary dirty source\n')
+  const dirty = await createProject({ ...input, output: join(temp, 'dirty') }, source)
+  assert.deepEqual(await readBase(dirty.target), { ...base, clean: false, version: '9.9.9' })
+
+  // 原记录故意使用不同提交与迁移，重新生成必须从新源状态和输出 journal 建立记录。
+  await writeFile(
+    join(clean.target, '.template-base.json'),
+    JSON.stringify({
+      ...base,
+      repository: 'https://example.invalid/stale',
+      commit: 'f'.repeat(40),
+      version: '1.0.0',
+      clean: true,
+      migrations: ['9999_stale'],
+    }),
+  )
+  const regenerated = await createProject(
+    { name: 'second', domain: 'second.example', output: join(temp, 'regenerated') },
+    clean.target,
+  )
+  const next = await readBase(regenerated.target)
+  assert.equal(next.clean, false)
+  assert.equal(next.commit, null)
+  assert.equal(next.repository, null)
+  assert.equal(next.version, null)
+  assert.equal(next.params.name, 'second')
+  assert.equal(next.params.domain, 'https://second.example')
+  const nextJournal = JSON.parse(
+    await readFile(join(regenerated.target, 'packages/db/migrations/meta/_journal.json'), 'utf8'),
+  )
+  assert.deepEqual(
+    next.migrations,
+    nextJournal.entries.map((entry) => entry.tag),
+  )
+  assert.ok(!JSON.stringify(next).includes('9999_stale'))
+
+  await rm(join(source, '.git'), { recursive: true, force: true })
+  const unversioned = await createProject({ ...input, output: join(temp, 'no-git') }, source)
+  assert.deepEqual(await readBase(unversioned.target), {
+    ...base,
+    repository: null,
+    commit: null,
+    clean: false,
+    version: null,
+  })
+})
+
+test('真实模板同源同参数在不同输出、umask 和环境下逐文件确定', async (t) => {
+  const temp = await mkdtemp(join(tmpdir(), 'bootstrap-deterministic-'))
+  t.after(() => rm(temp, { recursive: true, force: true }))
+  const source = join(temp, 'source')
+  git(fileURLToPath(new URL('..', import.meta.url)), 'clone', '--quiet', '--no-local', '.', source)
+  const originalMask = process.umask()
+  const environment = ['TZ', 'USER', 'HOSTNAME', 'SOURCE_DATE_EPOCH']
+  const originalEnvironment = Object.fromEntries(environment.map((key) => [key, process.env[key]]))
+  try {
+    for (const target of ['cloudflare', 'selfhost']) {
+      const input = {
+        name: `deterministic-${target}`,
+        domain: `${target}.example`,
+        target,
+        locale: 'zh',
+        features: 'newsletter,waitlist',
+        oauth: 'github',
+        'media-providers': 'workers-ai',
+        'image-namespace': `ghcr.io/example/deterministic-${target}`,
+      }
+      process.umask(0o022)
+      Object.assign(process.env, {
+        TZ: 'UTC',
+        USER: 'first-user',
+        HOSTNAME: 'first-host',
+        SOURCE_DATE_EPOCH: '1',
+      })
+      const first = await createProject({ ...input, output: join(temp, `${target}-first`) }, source)
+      process.umask(0o077)
+      Object.assign(process.env, {
+        TZ: 'Pacific/Honolulu',
+        USER: 'second-user',
+        HOSTNAME: 'second-host',
+        SOURCE_DATE_EPOCH: '2000000000',
+      })
+      const second = await createProject(
+        { ...input, output: join(temp, `${target}-second`) },
+        source,
+      )
+      const firstFiles = (await files(first.target))
+        .map((path) => relative(first.target, path))
+        .sort()
+      const secondFiles = (await files(second.target))
+        .map((path) => relative(second.target, path))
+        .sort()
+      assert.deepEqual(firstFiles, secondFiles)
+      for (const path of ['PROJECT_SETUP.md', '.dev.vars.example', '.template-base.json'])
+        assert.ok(firstFiles.includes(path), `必须比较生成文件：${path}`)
+      for (const path of firstFiles) {
+        const firstPath = join(first.target, path)
+        const secondPath = join(second.target, path)
+        assert.deepEqual(
+          await readFile(firstPath),
+          await readFile(secondPath),
+          `${target} 内容不一致：${path}`,
+        )
+        assert.equal(
+          (await stat(firstPath)).mode & 0o777,
+          (await stat(secondPath)).mode & 0o777,
+          `${target} 权限不一致：${path}`,
+        )
+      }
+    }
+  } finally {
+    process.umask(originalMask)
+    for (const key of environment) {
+      if (originalEnvironment[key] === undefined) delete process.env[key]
+      else process.env[key] = originalEnvironment[key]
+    }
+  }
+})
+
+test('模板专用同步测试与发布材料可选，副本保留运行脚本', async (t) => {
+  const excluded = [
+    'scripts/template-base.test.mjs',
+    'scripts/template-sync.test.mjs',
+    'scripts/template-release.mjs',
+    'scripts/template-release.test.mjs',
+    '.github/workflows/template-release.yml',
+    '.github/workflows/template-release-checks.yml',
+  ]
+  for (const present of [false, true]) {
+    const f = await fixture(t)
+    for (const path of ['scripts/template-base.mjs', 'scripts/template-sync.mjs'])
+      await f.file(path, '// runtime script\n')
+    if (present) for (const path of excluded) await f.file(path, 'TEMPLATE_ONLY_SENTINEL\n')
+    const result = await createProject(f.input, f.source)
+    const generated = (await files(result.target)).map((path) => relative(result.target, path))
+    for (const path of excluded) assert.ok(!generated.includes(path), `模板专用文件仍存在：${path}`)
+    for (const path of ['scripts/template-base.mjs', 'scripts/template-sync.mjs'])
+      assert.equal(await readFile(join(result.target, path), 'utf8'), '// runtime script\n')
+    const ci = await readFile(join(result.target, '.github/workflows/ci.yml'), 'utf8')
+    assert.match(ci, /run: pnpm check/)
+    assert.doesNotMatch(ci, /test:create-project/)
+  }
+})
+
+test('events-dlq 的默认、staging 和 production 队列与消费者一致改名', async (t) => {
+  const f = await fixture(t)
+  const name = 'my-events-dlq'
+  const queues = (suffix) => ({
+    producers: [{ queue: `events-dlq${suffix}`, binding: 'EVENTS_DLQ' }],
+    consumers: [
+      { queue: `events${suffix}`, dead_letter_queue: `events-dlq${suffix}` },
+      { queue: `events-dlq${suffix}` },
+    ],
+  })
+  await f.file(
+    'apps/jobs/wrangler.jsonc',
+    JSON.stringify({
+      queues: queues(''),
+      env: {
+        staging: { queues: queues('-staging') },
+        production: { queues: queues('-production') },
+      },
+    }),
+  )
+  const names = ['events-dlq', 'events-dlq-staging', 'events-dlq-production']
+  await f.file(
+    'apps/jobs/src/queues/events-dead-letter.ts',
+    "export const sourceQueue = (queue) => queue.replace('events-dlq', 'events')\n",
+  )
+  for (const path of [
+    'apps/jobs/src/handlers.ts',
+    'apps/jobs/test/events-dead-letter.unit.test.ts',
+  ])
+    await f.file(path, `const queues = ${JSON.stringify(names)}\n`)
+  const result = await createProject({ ...f.input, name }, f.source)
+  const config = JSON.parse(await readFile(join(result.target, 'apps/jobs/wrangler.jsonc'), 'utf8'))
+  for (const [environment, suffix] of [
+    [config, ''],
+    [config.env.staging, '-staging'],
+    [config.env.production, '-production'],
+  ]) {
+    assert.deepEqual(environment.queues, {
+      producers: [{ queue: `${name}-events-dlq${suffix}`, binding: 'EVENTS_DLQ' }],
+      consumers: [
+        { queue: `${name}-events${suffix}`, dead_letter_queue: `${name}-events-dlq${suffix}` },
+        { queue: `${name}-events-dlq${suffix}` },
+      ],
+    })
+  }
+  for (const path of [
+    'apps/jobs/src/handlers.ts',
+    'apps/jobs/test/events-dead-letter.unit.test.ts',
+  ])
+    assert.equal(
+      await readFile(join(result.target, path), 'utf8'),
+      `const queues = ${JSON.stringify(names.map((queue) => `${name}-${queue}`))}\n`,
+    )
+  const mapping = await readFile(
+    join(result.target, 'apps/jobs/src/queues/events-dead-letter.ts'),
+    'utf8',
+  )
+  const { sourceQueue } = await import(`data:text/javascript,${encodeURIComponent(mapping)}`)
+  for (const suffix of ['', '-staging', '-production'])
+    assert.equal(sourceQueue(`${name}-events-dlq${suffix}`), `${name}-events${suffix}`)
+})
 
 test('生成副本改名与配置，排除各级密钥、链接和产物', async (t) => {
   const f = await fixture(t)

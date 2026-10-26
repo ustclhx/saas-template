@@ -64,6 +64,60 @@ test('真实副本覆盖 Cloudflare 默认、selfhost 默认和 selfhost 全关�
         source,
       )
       if (scenario.id === 'selfhost') selfhostSource = result.target
+      const base = JSON.parse(await readFile(join(result.target, '.template-base.json'), 'utf8'))
+      assert.deepEqual(Object.keys(base).sort(), [
+        'clean',
+        'commit',
+        'migrations',
+        'params',
+        'repository',
+        'schemaVersion',
+        'version',
+      ])
+      assert.equal(base.schemaVersion, 1)
+      assert.equal(typeof base.clean, 'boolean')
+      if (base.commit !== null) assert.match(base.commit, /^[a-f0-9]{40}$/)
+      if (base.version !== null)
+        assert.match(base.version, /^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/)
+      if (base.repository !== null) {
+        const repository = new URL(base.repository)
+        assert.equal(repository.protocol, 'https:')
+        for (const field of ['username', 'password', 'port', 'search', 'hash'])
+          assert.equal(repository[field], '')
+      }
+      if (source) {
+        assert.equal(base.clean, false)
+        assert.equal(base.commit, null)
+        assert.equal(base.repository, null)
+        assert.equal(base.version, null)
+      }
+      assert.deepEqual(base.params, {
+        ai: scenario.ai === '' ? [] : ['text', 'image', 'video'],
+        billing: ['stripe', 'paypal'],
+        'billing-enabled': scenario['billing-enabled'] !== 'false',
+        'credits-enabled': scenario['credits-enabled'] !== 'false',
+        domain: `https://${name}.example`,
+        features: ['blog'],
+        i18n: scenario.i18n !== 'false',
+        'image-namespace': `ghcr.io/validation-owner/${name}`,
+        locale: scenario.locale,
+        marketing: scenario.marketing !== 'false',
+        'media-providers': ['fal', 'workers-ai'],
+        'multi-tenant': false,
+        name,
+        oauth: ['google', 'github'],
+        'support-email': `support@${name}.example`,
+        target: scenario.target ?? 'cloudflare',
+        turnstile: true,
+      })
+      const journal = JSON.parse(
+        await readFile(join(result.target, 'packages/db/migrations/meta/_journal.json'), 'utf8'),
+      )
+      assert.deepEqual(
+        base.migrations,
+        journal.entries.map((entry) => entry.tag),
+      )
+      for (const tag of base.migrations) assert.match(tag, /^\d{4}_[\w-]+$/)
       let count = 0
       async function inspect(folder) {
         for (const entry of await readdir(folder, { withFileTypes: true })) {
@@ -112,7 +166,12 @@ test('真实副本覆盖 Cloudflare 默认、selfhost 默认和 selfhost 全关�
             assert.ok(!entry.isSymbolicLink())
             const content = await readFile(path)
             if (!content.includes(0)) {
-              assert.ok(!content.toString().includes(sourceName), `原名称仍存在：${path}`)
+              // 基准明确登记来源仓库与原迁移 tag；仅这两个已逐字段验证的值允许保留来源标识。
+              const inspectedContent =
+                projectPath === '.template-base.json'
+                  ? JSON.stringify({ ...base, repository: null, migrations: [] })
+                  : content.toString()
+              assert.ok(!inspectedContent.includes(sourceName), `原名称仍存在：${path}`)
               assert.ok(!content.toString().includes(sentinel), `真值仍存在：${path}`)
               if (/^(?:\.agents|\.claude)\/skills\/.*\.md$/.test(projectPath)) {
                 assert.doesNotMatch(content.toString(), /项目维护约定[、，\s`]+项目维护约定/)
@@ -124,7 +183,7 @@ test('真实副本覆盖 Cloudflare 默认、selfhost 默认和 selfhost 全关�
                 }
               }
               assert.doesNotMatch(
-                content.toString(),
+                inspectedContent,
                 /docs\/runbooks\/evidence|saas-template-evidence|product-res-ecs|170a06d37ad50396b19943eb6b77a21d|ezarouter\.cc|ustclhx|\/Users\/hxlee/,
                 `模板专属标识仍存在：${path}`,
               )

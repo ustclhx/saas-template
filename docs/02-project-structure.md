@@ -47,6 +47,7 @@ saas-template/
 │  ├─ postgres/                   # VPS 上的 docker-compose（PG + cloudflared + WAL-G）
 │  └─ local/                      # 本地开发 docker-compose
 ├─ docs/
+├─ .template-base.json          # 生成副本的模板提交、版本、参数与已包含迁移；需提交
 ├─ .env.example                 # 本地支付配置模板（只含键与占位符）
 ├─ .env.local                   # 本地真值，已 gitignore
 ├─ biome.json  package.json  pnpm-workspace.yaml  turbo.json
