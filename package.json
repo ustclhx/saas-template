@@ -18,7 +18,7 @@
     "billing:seed": "pnpm --filter @saas/billing seed",
     "billing:sync": "pnpm --filter @saas/billing sync",
     "create-project": "node scripts/create-project",
-    "test:create-project": "node --test scripts/create-project.test.mjs",
+    "test:create-project": "node --test scripts/create-project.test.mjs scripts/template-base.test.mjs",
     "test:create-project:verify": "node --test scripts/create-project.verify.test.mjs",
     "staging:check-secrets": "node scripts/staging/check-secrets.mjs",
     "build:node": "node apps/web/scripts/build-node.mjs"

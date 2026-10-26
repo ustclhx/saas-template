@@ -6,15 +6,15 @@
 
 ## 1. 生成器：基准记录与确定性
 
-- [ ] 1.1 `create-project.mjs` 新增参数规范化与序列化：默认值展开、键排序、列表去重保序，不含 `output`。单元测试覆盖交互输入与非交互输入得到相同的规范化结果
-- [ ] 1.2 生成时写入 `.template-base.json`：`schemaVersion`、`repository`（去凭据的 https）、`commit`、`version`、`clean`、`params`、`migrations`。
+- [x] 1.1 `create-project.mjs` 新增参数规范化与序列化：默认值展开、键排序、列表去重保序，不含 `output`。单元测试覆盖交互输入与非交互输入得到相同的规范化结果
+- [x] 1.2 生成时写入 `.template-base.json`：`schemaVersion`、`repository`（去凭据的 https）、`commit`、`version`、`clean`、`params`、`migrations`。
   - `version` 只在源提交恰好是 `template-v*` tag 时填写，否则为 `null`；
   - 源有未提交改动或不是 git 仓库时，`clean=false`；
   - 源副本中已有的记录不复制。
 
   测试覆盖：干净源、打了 tag 的源、带改动的源、用副本再生成，并断言记录中没有绝对路径和个人信息
-- [ ] 1.3 新增确定性测试：同一源、同一参数输出到两个不同目录，比较文件列表、内容与权限位完全一致；Cloudflare 与 selfhost 各覆盖一组参数
-- [ ] 1.4 把 `scripts/template-sync.test.mjs`、`scripts/template-release.mjs` 及其测试加入 `templateOnly`。文档更新：
+- [x] 1.3 新增确定性测试：同一源、同一参数输出到两个不同目录，比较文件列表、内容与权限位完全一致；Cloudflare 与 selfhost 各覆盖一组参数
+- [x] 1.4 把 `scripts/template-sync.test.mjs`、`scripts/template-release.mjs` 及其测试加入 `templateOnly`。文档更新：
   - `docs/create-project.md` 说明 `.template-base.json` 的用途与字段；
   - `docs/02-project-structure.md` 列出该文件
 

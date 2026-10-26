@@ -15,6 +15,7 @@ import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } fr
 import { createInterface } from 'node:readline/promises'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
+import { normalizeParams, serializeBaseRecord, sourceState } from './template-base.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const featureNames = ['publicApi', 'blog', 'docs', 'waitlist', 'newsletter']
@@ -76,6 +77,12 @@ const templateOnly = new Set([
   'scripts/selfhost-features-routes.mjs',
   'scripts/create-project.test.mjs',
   'scripts/create-project.verify.test.mjs',
+  'scripts/template-base.test.mjs',
+  'scripts/template-sync.test.mjs',
+  'scripts/template-release.mjs',
+  'scripts/template-release.test.mjs',
+  '.github/workflows/template-release.yml',
+  '.github/workflows/template-release-checks.yml',
 ])
 const templateOnlyDirectories = [
   ['docs', 'runbooks', 'evidence'].join('/'),
@@ -99,6 +106,8 @@ const acceptanceFixtures = new Set([
 
 function projectText(text, path) {
   if (path === '.gitignore') return text.replaceAll(`/${templateOnlyDirectories[0]}/\n`, '')
+  if (path === '.github/workflows/ci.yml')
+    return text.replace(/^ *- run: pnpm test:create-project\r?\n/gm, '')
   if (!path.endsWith('.md')) return text
   text = text.replace(/^\| `pnpm test:create-project(?::verify)?`.*\n/gm, '')
   text = text.replace(/<!-- template-only:start -->[\s\S]*?<!-- template-only:end -->\n?/g, '')
@@ -138,6 +147,7 @@ function omit(path) {
   const name = parts.at(-1)
   return (
     parts.some((part) => excluded.has(part)) ||
+    path === '.template-base.json' ||
     templateOnly.has(path) ||
     templateOnlyDirectories.some(
       (directory) => path === directory || path.startsWith(`${directory}/`),
@@ -318,9 +328,9 @@ function wranglerConfig(source, options, app) {
   const media = options.ai.includes('image') || options.ai.includes('video')
   let result = source
     .replace(
-      /("(?:name|script_name|queue|bucket_name)"\s*:\s*")([^"\n]+)"/g,
+      /("(?:name|script_name|queue|dead_letter_queue|bucket_name)"\s*:\s*")([^"\n]+)"/g,
       (_match, prefix, value) =>
-        /^(?:web|jobs|email|events|ai-media|files)(?:-staging|-production)?$/.test(value)
+        /^(?:web|jobs|email|events(?:-dlq)?|ai-media|files)(?:-staging|-production)?$/.test(value)
           ? `${prefix}${options.name}-${value}"`
           : `${prefix}${value}"`,
     )
@@ -502,7 +512,7 @@ async function replacements(source, options, app) {
     ['SaaS template', options.name],
   ]
   for (const folder of ['apps', 'packages']) {
-    for (const name of await readdir(join(source, folder))) {
+    for (const name of (await readdir(join(source, folder))).sort()) {
       const file = join(source, folder, name, 'package.json')
       try {
         const pkg = JSON.parse(await readFile(file, 'utf8'))
@@ -532,6 +542,7 @@ async function replacements(source, options, app) {
 export async function createProject(input, source = root) {
   const options = projectOptions(input)
   const sourcePath = await realpath(source)
+  const state = sourceState(sourcePath)
   const lexicalRel = relative(sourcePath, options.output)
   if (
     !lexicalRel ||
@@ -554,8 +565,9 @@ export async function createProject(input, source = root) {
   const config = await readFile(join(sourcePath, 'template.config.ts'), 'utf8')
   const replace = await replacements(sourcePath, options, appValues(config))
   await mkdir(target)
+  await chmod(target, 0o755)
   async function copy(folder = '') {
-    for (const name of await readdir(join(sourcePath, folder))) {
+    for (const name of (await readdir(join(sourcePath, folder))).sort()) {
       const path = folder ? `${folder}/${name}` : name
       if (omit(path)) continue
       // 自托管项目不继承 CF 发布和 Neon 备份工作流，避免要求另一目标的凭据。
@@ -573,6 +585,7 @@ export async function createProject(input, source = root) {
       if (stat.isSymbolicLink()) continue
       if (stat.isDirectory()) {
         await mkdir(to, { recursive: true })
+        await chmod(to, 0o755)
         await copy(path)
       } else if (stat.isFile()) {
         const buffer = await readFile(from)
@@ -604,13 +617,14 @@ export async function createProject(input, source = root) {
             [
               'apps/jobs/src/index.ts',
               'apps/jobs/src/handlers.ts',
+              'apps/jobs/src/queues/events-dead-letter.ts',
               'apps/jobs/src/node/runtime.ts',
               'apps/web/src/node/runtime.ts',
             ].includes(path) ||
             /^apps\/jobs\/test\/.*\.ts$/.test(path)
           ) {
             text = text.replace(
-              /(['"])(email|events)(-staging|-production)?\1/g,
+              /(['"])(email|events(?:-dlq)?)(-staging|-production)?\1/g,
               (_match, quote, queue, suffix = '') =>
                 `${quote}${options.name}-${queue}${suffix}${quote}`,
             )
@@ -701,11 +715,29 @@ export async function createProject(input, source = root) {
           content = Buffer.from(text)
         }
         await writeFile(to, content)
-        await chmod(to, stat.mode & 0o777)
+        // Git 只记录可执行位，统一其余权限，避免源检出的 umask 影响生成结果。
+        await chmod(to, stat.mode & 0o111 ? 0o755 : 0o644)
       }
     }
   }
   await copy()
+  async function writeGenerated(path, content) {
+    const file = join(target, path)
+    await writeFile(file, content)
+    await chmod(file, 0o644)
+  }
+  const journal = JSON.parse(
+    await readFile(join(target, 'packages/db/migrations/meta/_journal.json'), 'utf8'),
+  )
+  await writeGenerated(
+    '.template-base.json',
+    serializeBaseRecord({
+      schemaVersion: 1,
+      ...state,
+      params: normalizeParams(options),
+      migrations: journal.entries.map((entry) => entry.tag),
+    }),
+  )
   const checklist = setupChecklist(options)
   const vars = [...checklist.vars, ...checklist.secrets]
     .map(
@@ -713,9 +745,9 @@ export async function createProject(input, source = root) {
     )
     .join('\n')
   const example = `# 密钥为空，APP_URL 为公开默认值；复制到对应 app 的 .dev.vars 后填写。\n${vars}\n`
-  await writeFile(join(target, '.dev.vars.example'), example)
+  await writeGenerated('.dev.vars.example', example)
   for (const app of ['web', 'jobs']) {
-    await writeFile(join(target, 'apps', app, '.dev.vars.example'), example)
+    await writeGenerated(`apps/${app}/.dev.vars.example`, example)
   }
   let report = `# ${options.name} 初始化清单\n\n## 基础设施与账号\n\n${checklist.resources.map((s) => `- [ ] ${s}`).join('\n')}\n\n## Worker Secrets\n\n${checklist.secrets.map((s) => (s === 'BOOTSTRAP_ADMIN_EMAILS' ? '- BOOTSTRAP_ADMIN_EMAILS（可选，仅 web：逗号分隔邮箱名单；已验证且未封禁才提升，空值禁用）' : `- ${s}`)).join('\n')}\n\n## 非敏感 Worker Vars\n\n${checklist.vars.map((s) => `- ${s}`).join('\n')}\n\n## GitHub staging environment Secrets（不写入 Worker）\n\n${checklist.ciSecrets.map((s) => `- ${s}`).join('\n')}\n\n所有部署资源 ID 为占位值，部署前逐项配置；参考 docs/07-infrastructure.md。\nAI Gateway / R2 账号标识已清空；配置所选功能使用的新资源。\n将 .github/workflows/deploy-staging.yml 的 STAGING_URL 占位值改为实际可访问的 staging URL，并核对该环境的 APP_URL。\nSENTRY_DSN 分别写入 web 与 jobs secrets；SENTRY_ENVIRONMENT 设为 staging、production 或临时验收专用 smoke。\nAPP_VERSION 使用同一个完整提交 SHA，CI 已负责注入并上传 source map；手动部署按 docs/runbooks/sentry.md 操作。\n复制 apps/web 与 apps/jobs 的 .dev.vars.example 后填写，本地密钥不提交；线上 secrets 需分别写入 Worker。\n自检只运行单元测试，集成测试需独立数据库与迁移配置；上线前另做 staging 验收。\n\n## 首次运行\n\n1. 迁移后运行 pnpm billing:seed，首次 free 的 models=[]。\n2. 为 web 配置可选 Worker secret BOOTSTRAP_ADMIN_EMAILS（本地填 apps/web/.dev.vars，逗号分隔、忽略大小写与两侧空白），名单内账号必须先验证邮箱且未封禁。\n3. 用名单账号登录；Google OAuth 返回已验证邮箱可直接提升，邮箱密码账号在账号设置验证后提升，已有账号重新登录也会检查。\n4. 在 /admin/models 创建模型，再到 /admin/billing/plans 为有效套餐（新用户通常为 free）多选模型 key 或 * 并保存；仅建模型或发积分仍不足以授权。\n5. models 在下一次请求生效；历史 key 会警告并保留，其他权益及价格不改。重跑 seed 保留已有 models，其他示例配置仍按 seed 更新。\n\n移除名单不会自动撤销既有管理员；需要撤权时先移除名单，再由运维显式修改数据库中的平台角色（当前后台不提供角色修改入口），否则下次登录会再次提升。\n线上通过 wrangler secret put BOOTSTRAP_ADMIN_EMAILS --env staging 在 web Worker 配置；本地 .dev.vars 不上传。部署流水线不写入或替换此 secret；不要在模板、PR 或日志中保存真实邮箱。\n`
   if (!options.billingEnabled) {
@@ -758,7 +790,7 @@ export async function createProject(input, source = root) {
   }
   const entryChecklist = `## 页面与语言\n\n- ${options.marketing ? '营销页面已启用，/ 为营销首页。' : '营销页面关闭，/ 重定向至 /app，作为应用入口；营销路由不可用。'}\n- ${options.i18n ? `多语言已启用，默认语言 ${options.locale}；其他语言使用语言前缀。` : `仅编译所选默认语言 ${options.locale}；页面路径无语言前缀，其他语言前缀返回 404；不显示语言控件，忽略账号语言、cookie 与 Accept-Language。`}\n`
   report += `\n${entryChecklist}`
-  await writeFile(join(target, 'PROJECT_SETUP.md'), report)
+  await writeGenerated('PROJECT_SETUP.md', report)
   return { target, options, checklist, report }
 }
 
