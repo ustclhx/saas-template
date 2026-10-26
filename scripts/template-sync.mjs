@@ -79,7 +79,8 @@ export class PreflightError extends Error {}
  * @property {string} [report] Report path; defaults to `<git-dir>/template-sync/<short>.md`.
  * @property {string[]} [skipMigrations] Template migration tags to mark handled without porting.
  * @property {string} [verifyDb] Empty, isolated Postgres URL for the migration path check.
- * @property {boolean} [skipVerify] Tool tests only: skip install/drizzle/typecheck/test, reported as skipped.
+ * @property {boolean} [skipVerify] Tool tests only: skip install/drizzle/typecheck/test; merge and ports still
+ *   happen, the baseline is never updated and the status is `unverified`.
  * @property {Runner} [runner] Command runner for pnpm steps (tests inject a stub).
  * @property {(message: string) => void} [log]
  */
@@ -88,7 +89,7 @@ export class PreflightError extends Error {}
  * Sync a derived project to a template commit on branch `template-sync/<short>`.
  * Preflight failures throw PreflightError before any branch or file change.
  * @param {SyncOptions} options
- * @returns {Promise<{status: 'up-to-date' | 'conflicts' | 'failed' | 'synced', branch?: string, reportPath?: string, report?: import('./template-sync/report.mjs').SyncReport}>}
+ * @returns {Promise<{status: 'up-to-date' | 'conflicts' | 'failed' | 'unverified' | 'synced', branch?: string, reportPath?: string, report?: import('./template-sync/report.mjs').SyncReport}>}
  */
 export async function runSync(options) {
   const log = options.log ?? ((message) => console.error(message))
@@ -193,9 +194,7 @@ export async function runSync(options) {
       lockChanges: [],
       checks: [],
       baseUpdated: false,
-      notes: options.skipVerify
-        ? ['--skip-verify 仅供同步工具自身测试使用，验证结果不可作为采纳依据']
-        : [],
+      notes: options.skipVerify ? ['--skip-verify 仅供同步工具自身测试使用，不更新基准记录'] : [],
     }
     const finish = async (status) => {
       const reportPath = resolve(
@@ -350,6 +349,11 @@ export async function runSync(options) {
     step('单元测试', 'pnpm', ['test'])
 
     if (failed) return finish('failed')
+    // 跳过验证不等于验证通过，基准只在验证全部通过后才更新。
+    if (options.skipVerify) {
+      report.notes.push('验证已跳过，基准未更新')
+      return finish('unverified')
+    }
     const migrations = [...record.migrations]
     for (const tag of [...report.ported.map((item) => item.source), ...plan.skipped]) {
       if (!migrations.includes(tag)) migrations.push(tag)
@@ -415,8 +419,10 @@ async function syncCommand(args) {
     )
   if (result.status === 'failed')
     console.error(`验证失败，基准记录未更新；分支 ${result.branch} 保留供排查`)
+  if (result.status === 'unverified')
+    console.error(`验证已跳过，基准记录未更新；分支 ${result.branch} 保留`)
   if (result.status === 'synced') console.error(`同步完成：分支 ${result.branch}，未推送或合并`)
-  return result.status === 'conflicts' || result.status === 'failed' ? 1 : 0
+  return ['conflicts', 'failed', 'unverified'].includes(result.status) ? 1 : 0
 }
 
 /** Subcommands; `infer-base` is added by the baseline inference task. */

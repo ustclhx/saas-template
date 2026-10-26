@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { projectOptions } from './create-project.mjs'
 import { normalizeParams, readBaseRecord, serializeBaseRecord } from './template-base.mjs'
 import { cloneTemplate, generateAt } from './template-sync/generate.mjs'
@@ -471,6 +472,52 @@ test('a failing verification keeps the baseline record and the branch for invest
   assert.match(report, /类型检查：失败（`pnpm typecheck`）/)
   assert.match(report, /单元测试：跳过/)
   assert.match(report, /基准记录：未更新/)
+})
+
+test('--skip-verify merges and ports but never updates the baseline and exits non-zero', async (t) => {
+  const template = await fakeTemplate(t)
+  const project = await fakeProject(t, template)
+  await template.commit(
+    {
+      'src/app.ts': "import { core } from '@saas/core'\n\nexport const app = core('v2')\n",
+      'packages/db/migrations/0001_feature.sql': 'CREATE TABLE "feature" (id int);\n',
+      'packages/db/migrations/meta/_journal.json': journal(['0000_init', '0001_feature']),
+    },
+    'change',
+  )
+  const cli = spawnSync(
+    process.execPath,
+    [
+      fileURLToPath(new URL('./template-sync.mjs', import.meta.url)),
+      'sync',
+      '--project',
+      project.dir,
+      '--template',
+      template.dir,
+      '--skip-verify',
+    ],
+    {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'fixture',
+        GIT_AUTHOR_EMAIL: 'fixture@example.com',
+        GIT_COMMITTER_NAME: 'fixture',
+        GIT_COMMITTER_EMAIL: 'fixture@example.com',
+      },
+    },
+  )
+  assert.equal(cli.status, 1, cli.stderr)
+  assert.match(cli.stderr, /验证已跳过，基准记录未更新/)
+  assert.equal((await readBaseRecord(project.dir)).commit, template.first)
+  assert.match(await readFile(join(project.dir, 'src/app.ts'), 'utf8'), /core\('v2'\)/)
+  assert.equal(existsSync(join(project.dir, 'packages/db/migrations/0001_tpl_feature.sql')), true)
+  assert.equal(git(project.dir, 'rev-list', '--count', 'main..HEAD'), '1')
+  const reportPath = cli.stderr.match(/同步报告：(.+)/)[1].trim()
+  const report = await readFile(reportPath, 'utf8')
+  assert.match(report, /验证已跳过，基准未更新/)
+  assert.match(report, /基准记录：未更新/)
+  assert.match(report, /类型检查：跳过/)
 })
 
 test('a modified published template migration stops the sync before any branch', async (t) => {
