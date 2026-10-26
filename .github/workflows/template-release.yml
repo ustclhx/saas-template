@@ -1,0 +1,76 @@
+name: Template release
+
+on:
+  push:
+    tags: ['template-v*']
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Validate annotated template tag
+        id: tag
+        env:
+          TEMPLATE_TAG: ${{ github.ref_name }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process'
+          import { appendFileSync } from 'node:fs'
+
+          const tag = process.env.TEMPLATE_TAG
+          const semver = '(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?'
+          const match = new RegExp(`^template-v(${semver})$`).exec(tag)
+          if (!match) throw new Error('Expected template-v<SemVer> tag')
+          const ref = `refs/tags/${tag}`
+          const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim()
+          if (git('cat-file', '-t', ref) !== 'tag') {
+            throw new Error('Template releases require an annotated tag')
+          }
+          const sha = git('rev-parse', `${ref}^{commit}`)
+          if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error('Expected a full commit SHA')
+          appendFileSync(process.env.GITHUB_OUTPUT, `version=${match[1]}\nsha=${sha}\n`)
+          NODE
+      - name: Require successful main CI and staging deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.tag.outputs.sha }}
+          # 模板发版不能继承演示站仓库变量中的测试或紧急绕过策略。
+          RELEASE_PHASE: live
+          RELEASE_BYPASS: none
+        run: node scripts/production/check-release.mjs "$RELEASE_SHA"
+      - name: Check upgrade notes
+        env:
+          TEMPLATE_VERSION: ${{ steps.tag.outputs.version }}
+        run: node scripts/template-release.mjs check --version "$TEMPLATE_VERSION"
+      - name: Create GitHub Release from upgrade notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TEMPLATE_TAG: ${{ github.ref_name }}
+          TEMPLATE_VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import { join } from 'node:path'
+
+          const source = readFileSync(`docs/upgrades/${process.env.TEMPLATE_VERSION}.md`, 'utf8')
+          const frontmatter = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/.exec(source)
+          if (!frontmatter) throw new Error('Upgrade notes must start with frontmatter')
+          const notes = join(process.env.RUNNER_TEMP, 'template-release-notes.md')
+          writeFileSync(notes, source.slice(frontmatter[0].length))
+          // tag 与说明均经参数传递，避免把仓库元数据插入 shell。
+          execFileSync('gh', [
+            'release', 'create', process.env.TEMPLATE_TAG, '--verify-tag',
+            '--title', process.env.TEMPLATE_TAG, '--notes-file', notes,
+          ], { stdio: 'inherit' })
+          NODE

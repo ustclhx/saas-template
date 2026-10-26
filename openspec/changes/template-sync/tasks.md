@@ -75,21 +75,21 @@
 
 ## 5. 版本、发版与升级说明
 
-- [ ] 5.1 新增 `docs/upgrades/`：
+- [x] 5.1 新增 `docs/upgrades/`：
   - `README.md`：版本索引，并说明 `template-v*` 与 `v*` 两套 tag 的用途与版本级别规则；
   - `_template.md`：frontmatter 与固定章节骨架，见 spec「每个版本的升级说明」。
 
   `docs/02-project-structure.md` 链接到该目录
-- [ ] 5.2 新增 `scripts/template-release.mjs draft`：
+- [x] 5.2 新增 `scripts/template-release.mjs draft`：
   - 区间：上一个 `template-v*` tag 到 HEAD，没有时从 `v0.1.3` 开始；
   - 内容：PR 分组、迁移语句分类、`template.config.ts`、wrangler 绑定、环境校验键、`.dev.vars.example` 密钥名、`PROJECT_SETUP.md` 清单项的差异、依赖主版本变化、建议的版本级别。
 
   fixture 测试覆盖：扩展、收缩、数据迁移三类语句；没有上一 tag 的起点；新增密钥判定为不兼容
-- [ ] 5.3 新增 `lint-migrations`：检查相对 main 新增的迁移，收缩类语句必须带 `-- template-contract:` 注释，接入 CI。测试覆盖：
+- [x] 5.3 新增 `lint-migrations`：检查相对 main 新增的迁移，收缩类语句必须带 `-- template-contract:` 注释，接入 CI。测试覆盖：
   - 未标注的 `DROP COLUMN` 失败；
   - 已标注的通过；
   - 已发布的迁移不检查
-- [ ] 5.4 新增 `check` 与 `.github/workflows/template-release.yml`：
+- [x] 5.4 新增 `check` 与 `.github/workflows/template-release.yml`：
   - `check` 校验 frontmatter 与 tag 区间一致、迁移清单完整、收缩迁移有说明与 `requiresDeployed`、不兼容时版本级别正确、索引已更新；PR 修改了 `docs/upgrades/**` 时，CI 运行 check；
   - 流水线由 `template-v*` 触发：校验 tag 格式、提交在 main 上、该提交的 CI 与 staging 发布都成功，并通过 check，然后用升级说明创建 GitHub Release；
   - 流水线权限只有 `contents: write`，不部署，也不读取部署凭据。
