@@ -391,6 +391,7 @@ test('clean sync applies renamed changes, keeps project values, ports migrations
   const again = await runSync({
     project: project.dir,
     template: template.dir,
+    to: 'HEAD',
     runner: stubRunner().runner,
     log: quiet,
   })
@@ -612,4 +613,237 @@ test('lockfile diff compares resolved versions by package name', () => {
     { name: 'gone', before: ['1.0.0'], after: [] },
     { name: 'new', before: [], after: ['0.1.0'] },
   ])
+})
+
+function upgrade(
+  version,
+  { requiresDeployed, summary = `升级 ${version}`, actions = '无', migrations = [] } = {},
+) {
+  const skeleton = readFileSync(new URL('../docs/upgrades/_template.md', import.meta.url), 'utf8')
+  return skeleton
+    .replace('version: 0.2.0', `version: ${version}`)
+    .replace('date: YYYY-MM-DD', 'date: 2026-10-26')
+    .replace(
+      'breaking: false',
+      `breaking: true${requiresDeployed ? `\nrequiresDeployed: ${requiresDeployed}` : ''}`,
+    )
+    .replace('## 概要\n\n无', `## 概要\n\n${summary}`)
+    .replace('## 必须执行的动作\n\n无', `## 必须执行的动作\n\n${actions}`)
+    .replace(
+      '## 数据库变更\n\n无',
+      `## 数据库变更\n\n${migrations.length ? migrations.map((tag) => `### ${tag}\n\n- 类别：扩展\n- 兼容上一版本代码：是\n- 锁表与耗时：无\n- 回滚：回退代码`).join('\n\n') : '无'}`,
+    )
+}
+
+test('default target is the highest annotated release and unpublished HEAD needs explicit --to', async (t) => {
+  const template = await fakeTemplate(t)
+  const project = await fakeProject(t, template, template.first, { repository: null })
+  const target = await template.commit(
+    { 'docs/upgrades/0.2.0.md': upgrade('0.2.0'), 'src/release.ts': 'released\n' },
+    'release',
+    'template-v0.2.0',
+  )
+  await template.commit({ 'src/future.ts': 'not released\n' }, 'future')
+  git(template.dir, 'tag', 'template-v9.0.0')
+  const result = await runSync({
+    project: project.dir,
+    template: template.dir,
+    runner: stubRunner().runner,
+    log: quiet,
+  })
+  assert.equal(result.report.target.commit, target)
+  assert.equal(result.report.upgrades.documents[0].link, 'docs/upgrades/0.2.0.md')
+  assert.equal((await readBaseRecord(project.dir)).version, '0.2.0')
+  assert.equal(existsSync(join(project.dir, 'src/future.ts')), false)
+  assert.deepEqual(
+    result.report.upgrades.documents.map((doc) => doc.version),
+    ['0.2.0'],
+  )
+})
+
+test('without release tags the default falls back to unpublished HEAD and reports the fallback', async (t) => {
+  const template = await fakeTemplate(t)
+  const project = await fakeProject(t, template)
+  const head = await template.commit({ 'src/change.ts': 'change\n' }, 'change')
+  const result = await runSync({
+    project: project.dir,
+    template: template.dir,
+    runner: stubRunner().runner,
+    log: quiet,
+  })
+  assert.equal((await readBaseRecord(project.dir)).commit, head)
+  assert.equal((await readBaseRecord(project.dir)).version, null)
+  assert.match(await readFile(result.reportPath, 'utf8'), /默认目标回退到 HEAD（目标未发布）/)
+})
+
+test('deployment boundaries stop at the earliest release, require confirmation at that baseline, and accept repeated confirmations', async (t) => {
+  const template = await fakeTemplate(t)
+  git(template.dir, 'tag', '-a', 'template-v0.1.0', '-m', 'initial')
+  const project = await fakeProject(t, template, template.first, { version: '0.1.0' })
+  const r2 = await template.commit(
+    {
+      'docs/upgrades/0.2.0.md': upgrade('0.2.0', {
+        summary: '边界版本说明',
+        actions: '1. 部署边界版本。',
+      }),
+    },
+    'expand',
+    'template-v0.2.0',
+  )
+  const r3 = await template.commit(
+    { 'docs/upgrades/0.3.0.md': upgrade('0.3.0', { requiresDeployed: '0.2.0' }) },
+    'contract one',
+    'template-v0.3.0',
+  )
+  const r4 = await template.commit(
+    {
+      'docs/upgrades/0.4.0.md': upgrade('0.4.0', { requiresDeployed: '0.3.0' }),
+      'docs/upgrades/0.2.0.md': upgrade('0.2.0', {
+        summary: '未来勘误说明',
+        actions: '1. 未来版本动作。',
+        migrations: ['0099_future'],
+      }),
+    },
+    'contract two',
+    'template-v0.4.0',
+  )
+  const first = await runSync({
+    project: project.dir,
+    template: template.dir,
+    runner: stubRunner().runner,
+    log: quiet,
+  })
+  assert.equal(first.report.target.commit, r2)
+  assert.equal(first.report.upgrades.documents[0].summary, '边界版本说明')
+  assert.deepEqual(
+    first.report.upgrades.documents[0].actions.map((action) => action.text),
+    ['部署边界版本。'],
+  )
+  assert.deepEqual(first.report.migrationComparison.documented, [])
+  assert.ok(first.report.upgrades.documents[0].link.includes(`/blob/${r2}/`))
+  assert.deepEqual(
+    first.report.upgrades.documents.map((doc) => doc.version),
+    ['0.2.0'],
+  )
+  assert.match(await readFile(first.reportPath, 'utf8'), /先部署 0.2.0.*--confirm-deployed 0.2.0/)
+  const branch = git(project.dir, 'branch', '--show-current')
+  const stopped = await runSync({
+    project: project.dir,
+    template: template.dir,
+    runner: stubRunner().runner,
+    log: quiet,
+  })
+  assert.equal(stopped.status, 'up-to-date')
+  assert.equal(stopped.report.target.commit, r2)
+  assert.equal(git(project.dir, 'branch', '--show-current'), branch)
+  assert.equal(git(project.dir, 'status', '--porcelain'), '')
+  const second = await runSync({
+    project: project.dir,
+    template: template.dir,
+    confirmDeployed: ['0.2.0'],
+    runner: stubRunner().runner,
+    log: quiet,
+  })
+  assert.equal(second.report.target.commit, r3)
+  // CLI 接受重复声明；skip-verify 保留旧基准，只验证越过全部已声明边界的目标选择。
+  const cli = spawnSync(
+    process.execPath,
+    [
+      fileURLToPath(new URL('./template-sync.mjs', import.meta.url)),
+      'sync',
+      '--project',
+      project.dir,
+      '--template',
+      template.dir,
+      '--confirm-deployed',
+      '0.2.0',
+      '--confirm-deployed',
+      '0.3.0',
+      '--skip-verify',
+    ],
+    { encoding: 'utf8' },
+  )
+  assert.equal(cli.status, 1, cli.stderr)
+  assert.equal(git(project.dir, 'branch', '--show-current'), `template-sync/${r4.slice(0, 12)}`)
+  assert.equal((await readBaseRecord(project.dir)).commit, r3)
+})
+
+test('notes use the target-tree corrections, filter AND and list conditions, and warn for a baseline between releases', async (t) => {
+  const template = await fakeTemplate(t)
+  git(template.dir, 'tag', '-a', 'template-v0.1.0', '-m', 'initial')
+  const base = await template.commit({ 'src/partial.ts': 'partial\n' }, 'partial')
+  const project = await fakeProject(t, template, base)
+  await template.commit(
+    {
+      'docs/upgrades/0.2.0.md': upgrade('0.2.0', {
+        summary: '原说明',
+        actions:
+          '1. 所有人执行。\n2. 启用 AI。（适用：target=cloudflare; ai=text）\n3. selfhost 操作。（适用：target=selfhost; ai=text）\n4. 音频操作。（适用：ai=audio）',
+      }),
+    },
+    'release',
+    'template-v0.2.0',
+  )
+  await template.commit(
+    {
+      'docs/upgrades/0.2.0.md': upgrade('0.2.0', {
+        summary: '勘误后的说明',
+        actions:
+          '1. 所有人执行。\n2. 启用 AI。（适用：target=cloudflare; ai=text）\n3. selfhost 操作。（适用：target=selfhost; ai=text）\n4. 音频操作。（适用：ai=audio）',
+      }),
+      'docs/upgrades/0.3.0.md': upgrade('0.3.0'),
+    },
+    'correction',
+    'template-v0.3.0',
+  )
+  const result = await runSync({
+    project: project.dir,
+    template: template.dir,
+    runner: stubRunner().runner,
+    log: quiet,
+  })
+  const report = await readFile(result.reportPath, 'utf8')
+  assert.deepEqual(
+    result.report.upgrades.documents.map((doc) => doc.version),
+    ['0.2.0', '0.3.0'],
+  )
+  assert.match(report, /勘误后的说明/)
+  assert.match(report, /部分动作可能已随基准完成/)
+  assert.deepEqual(
+    result.report.upgrades.documents[0].actions.map((action) => action.text),
+    ['所有人执行。', '启用 AI。'],
+  )
+  assert.match(report, /\[template-v0.2.0\]\(https:\/\/example.com\/acme\/template\/blob\//)
+})
+
+test('migration reconciliation includes skipped original tags and warns on mismatches and missing notes', async (t) => {
+  const template = await fakeTemplate(t)
+  const project = await fakeProject(t, template)
+  await template.commit(
+    {
+      'docs/upgrades/0.2.0.md': upgrade('0.2.0', { migrations: ['0001_skip', '0099_documented'] }),
+      'packages/db/migrations/0001_skip.sql': 'CREATE TABLE skipped (id int);\n',
+      'packages/db/migrations/0002_port.sql': 'CREATE TABLE ported (id int);\n',
+      'packages/db/migrations/meta/_journal.json': journal(['0000_init', '0001_skip', '0002_port']),
+    },
+    'release',
+    'template-v0.2.0',
+  )
+  await template.commit({ 'src/no-notes.ts': 'no notes\n' }, 'missing notes', 'template-v0.3.0')
+  const result = await runSync({
+    project: project.dir,
+    template: template.dir,
+    skipMigrations: ['0001_skip'],
+    runner: stubRunner().runner,
+    log: quiet,
+  })
+  assert.deepEqual(result.report.migrationComparison.actual, ['0002_port', '0001_skip'])
+  assert.deepEqual(result.report.migrationComparison.documented, ['0001_skip', '0099_documented'])
+  assert.match(result.report.migrationComparison.warnings.join('\n'), /0002_port/)
+  assert.match(result.report.migrationComparison.warnings.join('\n'), /0099_documented/)
+  assert.doesNotMatch(result.report.migrationComparison.warnings.join('\n'), /0001_skip/)
+  assert.match(
+    await readFile(result.reportPath, 'utf8'),
+    /警告：缺少升级说明：docs\/upgrades\/0.3.0.md/,
+  )
 })

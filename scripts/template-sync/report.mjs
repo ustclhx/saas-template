@@ -58,6 +58,8 @@ const list = (items, render) => (items.length ? items.map(render).join('\n') : '
  * @property {{name: string, before: string[], after: string[]}[]} lockChanges
  * @property {{name: string, command: string, status: 'pass' | 'fail' | 'skip', detail?: string}[]} checks
  * @property {boolean} baseUpdated
+ * @property {{documents: {version: string, link: string, summary: string, actions: {text: string}[]}[], warnings: string[], boundary: object | null}} [upgrades]
+ * @property {{actual: string[], documented: string[], warnings: string[]}} [migrationComparison]
  * @property {string[]} [notes]
  */
 
@@ -78,6 +80,30 @@ export function renderReport(report) {
     `- 同步分支：${report.branch}${report.resumed ? '（继续：文件合并已在本分支完成）' : ''}`,
     `- 基准记录：${report.baseUpdated ? '已更新到目标提交' : '未更新'}`,
     ...(report.notes ?? []).map((note) => `- 注意：${note}`),
+    '',
+    '## 升级说明（按版本顺序）',
+    '',
+    list(
+      report.upgrades?.documents ?? [],
+      (doc) => `- [template-v${doc.version}](${doc.link})：${doc.summary}`,
+    ),
+    '',
+    '## 必须执行的动作',
+    '',
+    list(
+      (report.upgrades?.documents ?? []).flatMap((doc) =>
+        doc.actions.map((action) => ({ ...action, version: doc.version })),
+      ),
+      (action) => `- [ ] ${action.version}：${action.text}`,
+    ),
+    '',
+    '## 升级说明与迁移核对',
+    '',
+    `- 实际迁移计划（含跳过）：${report.migrationComparison?.actual.join(', ') || '无'}`,
+    `- 说明中的迁移：${report.migrationComparison?.documented.join(', ') || '无'}`,
+    ...[...(report.upgrades?.warnings ?? []), ...(report.migrationComparison?.warnings ?? [])].map(
+      (warning) => `- 警告：${warning}`,
+    ),
     '',
     `## 冲突（${report.conflicts.length}）`,
     '',
