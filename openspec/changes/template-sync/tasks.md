@@ -20,30 +20,30 @@
 
 ## 2. 同步工具：生成与三方合并
 
-- [ ] 2.1 新增 `scripts/template-sync.mjs sync`，实现预检：读取并校验基准记录、`clean=true`、工作区干净、模板仓库可达、基准与目标不同。失败时不创建分支。测试覆盖缺少记录、记录不干净、工作区有改动、已是最新四种情况
-- [ ] 2.2 在临时目录浅克隆模板，`git archive` 出基准与目标两棵干净树，在各自树中运行其自带生成器（`--skip-check`），参数由 `params` 还原。旧生成器拒绝参数时，报出参数名与提交后停止。测试用临时 git 仓库模拟两个模板提交
-- [ ] 2.3 把两份副本提交进临时仓库，fetch 到项目的 `refs/template-sync/*`，在新分支 `template-sync/<短 SHA>` 上对排除项之外的 diff 执行 `git apply --3way --index`。排除项：迁移目录、`.template-base.json`、`PROJECT_SETUP.md`、`pnpm-lock.yaml`。测试覆盖：
+- [x] 2.1 新增 `scripts/template-sync.mjs sync`，实现预检：读取并校验基准记录、`clean=true`、工作区干净、模板仓库可达、基准与目标不同。失败时不创建分支。测试覆盖缺少记录、记录不干净、工作区有改动、已是最新四种情况
+- [x] 2.2 在临时目录浅克隆模板，`git archive` 出基准与目标两棵干净树，在各自树中运行其自带生成器（`--skip-check`），参数由 `params` 还原。旧生成器拒绝参数时，报出参数名与提交后停止。测试用临时 git 仓库模拟两个模板提交
+- [x] 2.3 把两份副本提交进临时仓库，fetch 到项目的 `refs/template-sync/*`，在新分支 `template-sync/<短 SHA>` 上对排除项之外的 diff 执行 `git apply --3way --index`。排除项：迁移目录、`.template-base.json`、`PROJECT_SETUP.md`、`pnpm-lock.yaml`。测试覆盖：
   - 无冲突修改；
   - 同一段落冲突，保留冲突标记并列入报告；
   - 项目已填真实资源 ID，模板改了同文件其它位置，ID 保持不变；
   - 模板删除了项目改过的文件，报告冲突
-- [ ] 2.4 合并后处理依赖与验证：
+- [x] 2.4 合并后处理依赖与验证：
   - 任一 `package.json` 有变化时运行 `pnpm install`，再用 `--frozen-lockfile` 确认；
   - 然后运行 typecheck、test；
   - 生成报告：变更、冲突、`PROJECT_SETUP.md` 的 diff、锁文件中版本变化的包、验证结果；
   - 只有无冲突且全部通过时，才更新基准记录的 `commit` 与 `version`。
 
   测试断言验证失败时记录不变
-- [ ] 2.5 `docs/create-project.md` 新增「采纳模板更新」一节：命令、报告解读、按版本分段同步、`requiresDeployed` 边界、冲突处理
+- [x] 2.5 `docs/create-project.md` 新增「采纳模板更新」一节：命令、报告解读、按版本分段同步、`requiresDeployed` 边界、冲突处理
 
 ## 3. 迁移移植
 
-- [ ] 3.1 用当前 drizzle-orm 版本实测迁移器的跳过语义：
+- [x] 3.1 用当前 drizzle-orm 版本实测迁移器的跳过语义：
   - 向已应用迁移的库插入一个 `when` 更早的迁移，确认它被跳过；
   - 再插入一个 `when` 更晚的迁移，确认它被执行。
 
   把结论写入 design D5 与 `docs/02-project-structure.md` 的迁移约定
-- [ ] 3.2 实现移植：
+- [x] 3.2 实现移植：
   - 取目标相对基准新增、且未登记的模板迁移，按序追加为 `<idx>_tpl_<名>.sql`；
   - 写 journal，`when` 递增且晚于项目已有的全部迁移；
   - 中间迁移的 snapshot 沿用前一个并更新 id 链，最后一个 snapshot 由对合并后 schema 运行 `drizzle-kit generate` 得到；
@@ -52,13 +52,13 @@
   - `--skip-migration <tag>` 跳过的迁移不移植，但登记为已处理。
 
   测试用 fixture 覆盖四种情况：与项目自有迁移撞号、再次同步不重复移植、模板修改已发布迁移、跳过迁移
-- [ ] 3.3 移植后的验证接入同步报告：
+- [x] 3.3 移植后的验证接入同步报告：
   - `drizzle-kit generate` 无变化；
   - 有隔离数据库时，空库全量迁移成功；
   - 执行到项目自有最后一个迁移的库，增量迁移成功。
 
   Postgres 集成测试覆盖增量路径会执行移植的迁移
-- [ ] 3.4 `docs/02-project-structure.md` 写明迁移约定：
+- [x] 3.4 `docs/02-project-structure.md` 写明迁移约定：
   - 已发布迁移不修改；
   - 迁移不依赖固定 idx；
   - 项目迁移与 `tpl_` 移植迁移的命名区分；
