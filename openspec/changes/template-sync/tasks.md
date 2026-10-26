@@ -110,7 +110,7 @@
 
 ## 6. template-sync 技能
 
-- [ ] 6.1 新增 `.agents/skills/template-sync/SKILL.md`，并复制到 `.claude/skills/template-sync/SKILL.md`，两份逐字节一致。内容包括：
+- [x] 6.1 新增 `.agents/skills/template-sync/SKILL.md`，并复制到 `.claude/skills/template-sync/SKILL.md`，两份逐字节一致。内容包括：
   - 只读预检：基准、版本区间、升级说明待办、`requiresDeployed` 边界、待移植迁移；
   - 克隆目标版本模板并运行其同步脚本；
   - 读报告，逐个处理冲突；
@@ -121,7 +121,7 @@
   - 常见故障。
 
   用现有的技能一致性检查与引用可解析检查验证
-- [ ] 6.2 在 `quick-start` 技能的生成后步骤中提示 `.template-base.json` 需要提交，并指向 template-sync；更新 agent-skills 相关文档中的技能清单
+- [x] 6.2 在 `quick-start` 技能的生成后步骤中提示 `.template-base.json` 需要提交，并指向 template-sync；更新 agent-skills 相关文档中的技能清单
 
 ## 7. 集成验收
 

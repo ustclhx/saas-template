@@ -220,7 +220,7 @@ node /tmp/template/scripts/template-sync.mjs infer-base --project . --write <候
 
 ## Agent Skills
 
-项目内提供 8 个技能，Codex 使用 `.agents/skills/`，Claude 使用 `.claude/skills/`。
+项目内提供 9 个技能，Codex 使用 `.agents/skills/`，Claude 使用 `.claude/skills/`。
 在项目根按技能名发起请求，例如 Codex `$quick-start`、Claude `/quick-start`；
 也可直接要求 agent 阅读对应 `SKILL.md` 执行。生成副本会一起继承技能并改写包 scope。
 
@@ -234,6 +234,7 @@ node /tmp/template/scripts/template-sync.mjs infer-base --project . --write <候
 | [new-static-page](../.agents/skills/new-static-page/SKILL.md) | 多语言营销/法务 MDX 或静态路由、SEO、sitemap 与预渲染 |
 | [add-ai-model](../.agents/skills/add-ai-model/SKILL.md) | 后台模型编辑器、参数 schema/定价/套餐授权；必要时新增 Provider |
 | [security-scan](../.agents/skills/security-scan/SKILL.md) | 工程检查、敏感路径与凭据扫描、鉴权/注入/账本等 diff 审查 |
+| [template-sync](../.agents/skills/template-sync/SKILL.md) | 衍生项目采纳模板更新：版本区间与升级说明预检、本地分支三方合并、迁移移植与验证、基准推断 |
 
 示例：`$quick-start 创建 acme，目标 selfhost，默认中文，关闭计费和 AI`；
 `/deploy-cloudflare --env staging --domain app.example.com --admin-email <管理员邮箱>`；
@@ -249,7 +250,7 @@ quick-start 的生成/安装/typecheck/unit 与本地/外部验收分开报告�
 新技能两份逐字节一致，不用符号链接（生成器不复制符号链接）。提交前核对：
 
 ```sh
-for skill in quick-start deploy-cloudflare deploy-selfhost new-page new-module new-static-page add-ai-model security-scan; do
+for skill in quick-start deploy-cloudflare deploy-selfhost new-page new-module new-static-page add-ai-model security-scan template-sync; do
   cmp ".agents/skills/$skill/SKILL.md" ".claude/skills/$skill/SKILL.md" || exit 1
 done
 ```
