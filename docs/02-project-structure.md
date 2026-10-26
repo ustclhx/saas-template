@@ -144,6 +144,9 @@ export default defineTemplateConfig({
 
 ## 4. 编码约定
 
+模板版本与逐版本升级动作见 [升级说明](upgrades/README.md)：`template-v*` 是模板发布，
+`v*` 是演示站及衍生项目自身的生产发布，会触发生产部署。
+
 - **ID**：主键统一用 UUIDv7（时间有序，利于索引），列类型为 PG 原生 `uuid`（16 字节，比 `text` 存储的 36 字符更省空间、索引更小）。Better Auth 通过 `advanced.database.generateId` 生成 UUIDv7，其表的 id 与外键列也改为 `uuid`（Better Auth CLI 生成的 Drizzle schema 默认是 `text`，在 `packages/db/src/schema/{auth,tenancy}.ts` 中手动调整；已验证 better-auth 1.7.7 的核心、organization、admin 等插件在 `uuid` 列上可用，无需例外，见 `packages/auth/test/auth.test.ts`）。对外暴露的 ID 与内部一致，不另设公开 ID。
 - **时间**：数据库一律 `timestamptz`，服务端只处理 UTC；展示层用 `Intl.DateTimeFormat` + 用户时区。
 - **金额**：整数最小货币单位（cents）+ `currency` 字段；**积分**：整数。

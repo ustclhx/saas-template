@@ -1,0 +1,50 @@
+name: Template release checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      # 工具只依赖 Node 内置模块，独立检查无需安装整个工作区。
+      - run: node --test scripts/template-release.test.mjs
+      - name: Check migrations and changed upgrade notes
+        env:
+          CHANGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          base="$CHANGE_BASE"
+          if [ -z "$base" ] || [[ "$base" =~ ^0+$ ]]; then
+            base=$(git hash-object -t tree /dev/null)
+          fi
+          node scripts/template-release.mjs lint-migrations --base "$base"
+          CHANGE_BASE="$base" node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process'
+
+          const semver = '(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?'
+          const notePath = new RegExp(`^docs/upgrades/(${semver})\\.md$`)
+          // 禁用重命名识别以同时校验旧路径；删除版本说明也必须失败，不能被过滤掉。
+          const files = execFileSync('git', [
+            'diff', '--no-renames', '--name-only', '-z', process.env.CHANGE_BASE,
+            'HEAD', '--', 'docs/upgrades/',
+          ], { encoding: 'utf8' }).split('\0').filter(Boolean)
+          for (const file of new Set(files)) {
+            const match = notePath.exec(file)
+            if (match) {
+              execFileSync(process.execPath, [
+                'scripts/template-release.mjs', 'check', '--version', match[1],
+              ], { stdio: 'inherit' })
+            }
+          }
+          NODE
