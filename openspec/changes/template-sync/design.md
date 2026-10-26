@@ -95,6 +95,7 @@ drizzle-orm 的 PostgreSQL 迁移器以数据库中最后一次已应用迁移�
    - 有本地隔离数据库时，从空库执行全部迁移；
    - 在执行到上一个项目迁移为止的库上，执行增量迁移。
 5. 把模板原 tag 追加到 `migrations`。
+6. 衍生项目有意删除了某些模板表时（例如 xuanxue 删除了 job_engine schema），使用者用 `--skip-migration <tag>` 跳过依赖这些表的模板迁移。被跳过的 tag 同样登记进 `migrations`，含义是「已处理」，报告中单独列出。
 
 命名约定：项目自有迁移继续用 drizzle-kit 默认命名；移植的模板迁移带 `tpl_` 标记，便于区分来源。模板侧的约定写入 `docs/02-project-structure.md`：
 - 已发布的迁移不再修改，修复改用新迁移；
