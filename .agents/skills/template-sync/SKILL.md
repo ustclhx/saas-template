@@ -6,9 +6,10 @@ description: 在由本模板生成的衍生项目中采纳模板更新：只读�
 # 采纳模板更新
 
 在衍生项目根执行（含 `.template-base.json` 与 `template.config.ts`）。技能接受 `--to <template-v版本|分支|SHA>`，
-默认取最新的 `template-v*` 发布；这是技能输入，不是新 shell CLI。完整阅读 `docs/create-project.md`
-「采纳模板更新」与 `docs/upgrades/README.md`；迁移约定见 `docs/02-project-structure.md` §4。
-同步脚本始终取自**目标版本**的模板克隆，不运行项目里的旧副本。
+默认取最新的 `template-v*` 发布；这是技能输入，不是新 shell CLI。第 1 节克隆目标模板后，完整阅读
+克隆中的 `$TEMPLATE_DIR/docs/create-project.md`「采纳模板更新」与 `$TEMPLATE_DIR/docs/upgrades/README.md`；
+迁移约定见 `$TEMPLATE_DIR/docs/02-project-structure.md` §4。项目里的同名文档停留在基准版本，不以它为准。
+同步脚本同样始终取自**目标版本**的模板克隆，不运行项目里的旧副本。
 
 ## 1. 只读预检
 
@@ -48,12 +49,13 @@ node "$TEMPLATE_DIR/scripts/template-sync.mjs" sync --project . --to <目标> \
 
 ## 3. 读报告与处理冲突
 
-报告路径打印在终端（`<git 目录>/template-sync/<短 SHA>.md`）。逐项核对：已应用变更、冲突文件、
+报告路径打印在终端（`<git 目录>/template-sync/<短 SHA>.md`）。逐项核对：已应用变更、冲突文件、模板已删除的保留文件、
 `PROJECT_SETUP.md` 变化、锁文件版本变化、移植与跳过的迁移、升级说明待办与迁移核对告警、验证结果。
 
 冲突逐个处理：先比较模板侧（`git diff refs/template-sync/base refs/template-sync/target -- <文件>`）
 与项目侧改动，向使用者说明取舍后再改；不得整体采用任一方，不得删除冲突文件了事。
-「模板删除了项目改过的文件」需使用者决定保留或删除。全部解决并提交后，在同步分支上用相同参数重跑第 2 节，
+报告「模板已删除、项目中保留的文件」不会被自动删除：逐个检查项目是否仍引用，列出拟删清单，
+经使用者确认后再 `git rm` 并提交；验证因这些文件失败时，提交后按下文重跑。全部解决并提交后，在同步分支上用相同参数重跑第 2 节，
 工具会跳过文件合并、继续迁移移植与验证。`PROJECT_SETUP.md` 的新增清单项按需手动吸收。
 
 ## 4. 迁移核对与验证

@@ -164,7 +164,7 @@ git clone --branch template-v0.3.0 https://github.com/ustclhx/saas-template /tmp
 node /tmp/template/scripts/template-sync.mjs sync --project . --to template-v0.3.0
 ```
 
-- `--to` 指定版本 tag、分支或提交，缺省为最高版本的 `template-v*` 发布；没有模板发布时退回模板默认分支，并在报告中注明。目标提交没有发布 tag 时报告标明「目标未发布」，基准记录的 `version` 写 null。
+- `--to` 指定版本 tag、分支或提交，缺省为最高版本的 `template-v*` 发布；没有模板发布时退回模板默认分支，并在报告中注明。未指定 `--to` 时报告在目标后标明「默认」；目标提交没有发布 tag 时报告标明「目标未发布」，基准记录的 `version` 写 null。
 - `--template` 覆盖 `.template-base.json` 中的仓库地址，可以是本地路径。
 - `--skip-migration <模板迁移 tag>` 可重复：项目有意删除了某些表时，跳过依赖它们的模板迁移。跳过的迁移不移植，但登记为已处理，以后不会再出现；请自行确认项目代码不依赖它。
 - `--verify-db <URL>` 指向一个空的隔离库：先执行项目已有迁移，再执行移植的迁移，确认增量路径会执行全部移植迁移。未提供时报告标为跳过。
@@ -176,7 +176,7 @@ node /tmp/template/scripts/template-sync.mjs sync --project . --to template-v0.3
 同步过程：
 
 1. 用基准提交和目标提交各自的生成器，按记录的参数各生成一份副本；两份副本之间的差异就是改名后的模板变更。
-2. 在新分支 `template-sync/<目标短 SHA>` 上逐个文件做三方合并，当前分支不动。迁移目录、`.template-base.json`、`PROJECT_SETUP.md` 和 `pnpm-lock.yaml` 不参与合并。
+2. 在新分支 `template-sync/<目标短 SHA>` 上逐个文件做三方合并，当前分支不动。迁移目录、`.template-base.json`、`PROJECT_SETUP.md` 和 `pnpm-lock.yaml` 不参与合并。模板删除的文件不会从项目中删除，只在报告中列出。
 3. 模板新增的迁移追加到项目迁移序列末尾，见 [迁移约定](02-project-structure.md#4-编码约定)。模板改动或删除了已发布的迁移时，同步停止。
 4. 任一 `package.json` 有变化时，先 `pnpm install --no-frozen-lockfile` 重新解析锁文件，再用 `--frozen-lockfile` 确认；随后检查 `drizzle-kit generate` 无变化，再运行 `pnpm typecheck` 和 `pnpm test`。
 5. 全部通过后，在同步分支上提交基准记录的更新。工具不会推送，也不会合并。
@@ -184,6 +184,7 @@ node /tmp/template/scripts/template-sync.mjs sync --project . --to template-v0.3
 报告默认写到 `<项目 git 目录>/template-sync/<目标短 SHA>.md`，不进入仓库，路径会打印在终端。报告包含：
 
 - 冲突文件及原因；
+- 模板已删除、项目中保留的文件（标明项目是否改过）；
 - 已应用的变更；
 - 移植的迁移（原 tag → 新 tag）与已跳过的迁移；
 - 按版本顺序排列的升级概要、说明链接，以及按基准参数过滤后的「必须执行的动作」待办；
@@ -192,7 +193,7 @@ node /tmp/template/scripts/template-sync.mjs sync --project . --to template-v0.3
 - 各项验证结果；
 - `PROJECT_SETUP.md` 的变化：只列出，不写入项目。
 
-**冲突处理**：冲突文件保留冲突标记，留在同步分支的工作区，不提交；这时跳过依赖安装、迁移移植和验证，基准记录不变。「模板删除了项目改过的文件」和「项目已删除、模板修改了的文件」也算冲突，项目一侧保持原样，由使用者决定保留还是删除。模板只改了已发布迁移的整行注释时不会停止同步，报告单列这些迁移。逐个解决并提交后，在同步分支上用相同的 `--to` 再运行一次：工具识别出当前就是该同步分支，跳过文件合并，继续迁移移植、验证和基准更新。验证失败时也一样，修复、提交后重跑即可，已移植的迁移会沿用，不重复追加。
+**冲突处理**：冲突文件保留冲突标记，留在同步分支的工作区，不提交；这时跳过依赖安装、迁移移植和验证，基准记录不变。「项目已删除、模板修改了的文件」也算冲突，项目一侧保持原样，由使用者决定保留还是删除。模板删除的文件不算冲突：确认项目不再使用后自行删除并提交，仍在使用的今后由项目自己维护。模板只改了已发布迁移的整行注释时不会停止同步，报告单列这些迁移。逐个解决并提交后，在同步分支上用相同的 `--to` 再运行一次：工具识别出当前就是该同步分支，跳过文件合并，继续迁移移植、验证和基准更新。验证失败时也一样，修复、提交后重跑即可，已移植的迁移会沿用，不重复追加。
 
 **按版本分段同步**：同步读取目标树中的 [升级说明](upgrades/README.md)，依版本顺序汇总，后续对旧说明的勘误也会生效。动作的适用条件来自基准记录的 `params`：列表参数表示包含该值，多个条件必须全部满足。基准位于两个版本之间时，第一份说明会提示「部分动作可能已随基准完成，需逐项核对」。
 
@@ -216,7 +217,7 @@ node /tmp/template/scripts/template-sync.mjs infer-base --project . --param medi
 node /tmp/template/scripts/template-sync.mjs infer-base --project . --write <候选完整SHA>
 ```
 
-推断默认使用脚本所在的模板仓库，`--template <URL|路径>` 可覆盖来源；`--param key=value` 可重复。输出包含参数及来源、分数最低的前 5 个候选（SHA、日期、标题、差异行数和差异最大的 5 个文件）。评分只统计生成副本中存在的路径，项目独有文件单独列出，`.template-base.json` 不计分。候选超过 `--threshold <行数>`（默认 50）时拒绝写入；没有 `--write` 时仅展示结果。写出的记录包含候选发布版本和生成副本的迁移 tag，工具不提交到 Git，请审阅后自行提交。
+推断默认使用脚本所在的模板仓库，`--template <URL|路径>` 可覆盖来源；`--param key=value` 可重复。cloudflare 项目找不到镜像 namespace 时沿用生成器默认值 `ghcr.io/configure-owner/<项目名称>`，来源标为生成器默认。输出包含参数及来源、分数最低的前 5 个候选（SHA、日期、标题、差异行数和差异最大的 5 个文件）。评分只统计生成副本中存在的路径，项目独有文件单独列出，`.template-base.json` 不计分。候选超过 `--threshold <行数>`（默认 50）时拒绝写入；没有 `--write` 时仅展示结果。写出的记录包含候选发布版本和生成副本的迁移 tag，工具不提交到 Git，请审阅后自行提交。
 
 ## Agent Skills
 

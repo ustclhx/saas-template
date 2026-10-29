@@ -637,6 +637,14 @@ export async function createProject(input, source = root) {
                 `$1${options.name}-$2$3`,
               )
           }
+          // runbook 中创建/删除队列的命令要与改名后的 Wrangler 队列一致，否则照做会建出无人消费的队列。
+          if (/^docs\/.*\.md$/.test(path)) {
+            text = text.replace(
+              /(queues (?:create|delete) )(email|events(?:-dlq)?)(-staging|-production)?\b/g,
+              (_match, command, queue, suffix = '') =>
+                `${command}${options.name}-${queue}${suffix}`,
+            )
+          }
           // 文件桶签名白名单与绑定桶名一致：新项目的 FILES 桶已改名为 <name>-files*，否则上传签名一律 503
           if (
             path === 'packages/storage/src/cloudflare/presign.ts' ||

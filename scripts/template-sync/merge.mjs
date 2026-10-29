@@ -137,8 +137,27 @@ function blob(project, rev, path) {
 }
 
 /**
+ * Files the template deleted that still exist in the project. They are never removed by the sync:
+ * the report lists them and the user decides. Computed from HEAD so a resumed run reports the same list.
+ * @param {string} project Project root.
+ * @param {TemplateChange[]} changes From templateChanges().
+ * @returns {{path: string, modified: boolean}[]}
+ */
+export function retainedDeletions(project, changes) {
+  return changes
+    .filter((change) => change.status === 'D')
+    .map((change) => ({ path: change.path, current: blob(project, 'HEAD', change.path) }))
+    .filter((item) => item.current !== null)
+    .map((item) => ({
+      path: item.path,
+      modified: item.current !== blob(project, baseRef, item.path),
+    }))
+}
+
+/**
  * Apply each template change to the project's index and working tree with a three-way fallback.
  * Changes are applied one at a time so one refused change does not abort the rest.
+ * Deletions are skipped; see retainedDeletions().
  * @param {string} project Project root (on the sync branch, clean before the call).
  * @param {TemplateChange[]} changes From templateChanges().
  * @returns {{applied: string[], conflicts: {path: string, reason: string}[]}}
@@ -147,18 +166,8 @@ export function applyTemplateChanges(project, changes) {
   const applied = []
   const conflicts = []
   for (const change of changes) {
-    if (change.status === 'D') {
-      const current = blob(project, 'HEAD', change.path)
-      if (current === null) continue
-      if (current === blob(project, baseRef, change.path)) {
-        git(project, ['rm', '--quiet', '--', change.path])
-        applied.push(change.path)
-      } else {
-        // git apply 不对删除做三方合并；项目改过的文件保留原样交给使用者决定。
-        conflicts.push({ path: change.path, reason: '模板删除了该文件，项目改过它' })
-      }
-      continue
-    }
+    // 删除不自动执行：模板不再交付的文件可能仍被项目使用，只在报告中提示。
+    if (change.status === 'D') continue
     const source = change.from ?? change.path
     if (change.status !== 'A' && blob(project, 'HEAD', source) === null) {
       // 项目已删除该文件而模板修改了它：git apply 只会报「不在索引中」，这里明确交给使用者决定。

@@ -242,7 +242,7 @@ pnpm --dir apps/jobs exec wrangler queues create events-dlq-staging --env stagin
 pnpm --dir apps/jobs exec wrangler queues create events-dlq-production --env production
 ```
 
-随后部署 jobs，使 `events-staging|events-production` 的 `dead_letter_queue` 与 `EVENTS_DLQ` producer、死信 consumer 同时生效。认证邮件不加 DLQ。不可重试和达到尝试上限的错误用信封保留真实错误、原队列、原 ID 与失败时间，投递成功后确认原消息；原生 DLQ 同时保留意外消费者失败的落点。死信落库或告警失败时继续重试，运营告警直接发渠道，避免循环进入 events。
+随后部署 jobs，使 `apps/jobs/wrangler.jsonc` 中 staging 与 production 的 events 队列的 `dead_letter_queue` 与 `EVENTS_DLQ` producer、死信 consumer 同时生效。认证邮件不加 DLQ。不可重试和达到尝试上限的错误用信封保留真实错误、原队列、原 ID 与失败时间，投递成功后确认原消息；原生 DLQ 同时保留意外消费者失败的落点。死信落库或告警失败时继续重试，运营告警直接发渠道，避免循环进入 events。
 
 Cloudflare 过去只授权 public schema；复用 job-engine 死信表前，在 staging/production 各以 migrator 对已迁移的目标库授予最小权限（不调用 Node/DBOS 迁移，也不授予 app DDL）：
 

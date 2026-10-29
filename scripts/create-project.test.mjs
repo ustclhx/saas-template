@@ -407,7 +407,15 @@ test('events-dlq 的默认、staging 和 production 队列与消费者一致改�
     'apps/jobs/test/events-dead-letter.unit.test.ts',
   ])
     await f.file(path, `const queues = ${JSON.stringify(names)}\n`)
+  await f.file(
+    'docs/runbooks/production-neon.md',
+    'wrangler queues create events-dlq-staging --env staging\n`events-dlq-staging` 已建\n',
+  )
   const result = await createProject({ ...f.input, name }, f.source)
+  assert.equal(
+    await readFile(join(result.target, 'docs/runbooks/production-neon.md'), 'utf8'),
+    `wrangler queues create ${name}-events-dlq-staging --env staging\n\`events-dlq-staging\` 已建\n`,
+  )
   const config = JSON.parse(await readFile(join(result.target, 'apps/jobs/wrangler.jsonc'), 'utf8'))
   for (const [environment, suffix] of [
     [config, ''],

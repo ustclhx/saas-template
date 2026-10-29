@@ -184,18 +184,19 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}-chromium-shell
       # apt 镜像偶发卡死（曾整步挂满 5 分钟）：给 apt 单次请求加超时，并对整次安装限时重试。
+      # runner 启动时的 apt-daily 常占着 dpkg 锁，apt 默认立即失败；改为最多等待 90 秒。
       - name: Configure apt timeouts
-        run: printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/99ci-timeouts >/dev/null
+        run: printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\nDPkg::Lock::Timeout "90";\n' | sudo tee /etc/apt/apt.conf.d/99ci-timeouts >/dev/null
       - name: Install Chromium
         if: steps.browsers.outputs.cache-hit != 'true'
         timeout-minutes: 10
         run: pnpm --filter @saas/web exec playwright install --with-deps --only-shell chromium
       - name: Install Chromium system dependencies
         if: steps.browsers.outputs.cache-hit == 'true'
-        timeout-minutes: 9
+        timeout-minutes: 12
         run: |
           for attempt in 1 2 3; do
-            if timeout -k 10 150 pnpm --filter @saas/web exec playwright install-deps chromium; then exit 0; fi
+            if timeout -k 10 220 pnpm --filter @saas/web exec playwright install-deps chromium; then exit 0; fi
             echo "::warning::playwright install-deps 第 ${attempt} 次失败或超时，重试"
             # 被中断的 dpkg 会留下半配置状态，下一次安装前先修复。
             sudo dpkg --configure -a || true
