@@ -434,10 +434,11 @@ test('conflicts keep markers on the sync branch, list every file and leave the b
   const { runner, calls } = stubRunner()
   const result = await runSync({ project: project.dir, template: template.dir, runner, log: quiet })
   assert.equal(result.status, 'conflicts')
-  assert.deepEqual(result.report.conflicts.map((item) => item.path).sort(), [
-    'docs/guide.md',
-    'legacy.txt',
-  ])
+  assert.deepEqual(
+    result.report.conflicts.map((item) => item.path),
+    ['docs/guide.md'],
+  )
+  assert.deepEqual(result.report.retained, [{ path: 'legacy.txt', modified: true }])
   const guide = await readFile(join(project.dir, 'docs/guide.md'), 'utf8')
   assert.match(
     guide,
@@ -456,7 +457,21 @@ test('conflicts keep markers on the sync branch, list every file and leave the b
   assert.deepEqual(calls, [])
   const report = await readFile(result.reportPath, 'utf8')
   assert.match(report, /`docs\/guide.md`：三方合并冲突/)
-  assert.match(report, /`legacy.txt`：模板删除了该文件，项目改过它/)
+  assert.match(report, /`legacy.txt`（项目改过）/)
+})
+
+test('a file the template deleted is kept and listed, even when the project never changed it', async (t) => {
+  const template = await fakeTemplate(t)
+  const project = await fakeProject(t, template)
+  await template.commit({ 'legacy.txt': null }, 'template drops legacy notes')
+  const { runner } = stubRunner()
+  const result = await runSync({ project: project.dir, template: template.dir, runner, log: quiet })
+  assert.equal(result.status, 'synced')
+  assert.deepEqual(result.report.retained, [{ path: 'legacy.txt', modified: false }])
+  assert.equal(git(project.dir, 'ls-files', 'legacy.txt'), 'legacy.txt')
+  const report = await readFile(result.reportPath, 'utf8')
+  assert.match(report, /## 模板已删除、项目中保留的文件（1）\n\n- `legacy.txt`\n/)
+  assert.match(report, /（--to HEAD，默认，目标未发布）/)
 })
 
 test('a template edit to a file the project deleted is a named conflict, not a git error', async (t) => {

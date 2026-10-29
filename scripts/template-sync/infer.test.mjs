@@ -234,6 +234,21 @@ test('date filtering traverses an out-of-window commit to find in-window ancesto
   assert.equal(result.candidates[1].title, 'latest')
 })
 
+test('a Cloudflare copy without image material gets the generator default namespace', async (t) => {
+  const f = await fixture(t)
+  await rm(join(f.project, '.github/workflows/selfhost-publish.yml'))
+  await files(f.project, { 'PROJECT_SETUP.md': '## Worker Secrets\n' })
+  git(f.project, 'add', '--all')
+  git(f.project, 'commit', '--quiet', '--amend', '--no-edit')
+  const restored = inferParams(f.project, git(f.project, 'rev-parse', 'HEAD'))
+  assert.equal(restored.params['image-namespace'], `ghcr.io/configure-owner/${params.name}`)
+  assert.equal(restored.sources['image-namespace'], '生成器默认（cloudflare）')
+  const override = inferParams(f.project, git(f.project, 'rev-parse', 'HEAD'), [
+    'image-namespace=ghcr.io/acme/app',
+  ])
+  assert.equal(override.params['image-namespace'], 'ghcr.io/acme/app')
+})
+
 test('real generator roundtrip recovers Cloudflare and selfhost parameters', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'template-infer-real-'))
   t.after(() => rm(root, { recursive: true, force: true }))

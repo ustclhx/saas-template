@@ -187,6 +187,11 @@ export function inferParams(project, commit, overrides = []) {
         : raw
     sources[key] = '--param'
   }
+  // cloudflare 副本不含镜像发布材料，生成器此时用默认 namespace，推断沿用同一默认值。
+  if (!Object.hasOwn(params, 'image-namespace') && params.target === 'cloudflare' && params.name) {
+    params['image-namespace'] = `ghcr.io/configure-owner/${params.name}`
+    sources['image-namespace'] = '生成器默认（cloudflare）'
+  }
   const missing = keys.filter((key) => !Object.hasOwn(params, key))
   if (missing.length)
     throw new Error(

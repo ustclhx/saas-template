@@ -15,6 +15,7 @@ import {
   applyTemplateChanges,
   commitCopies,
   fetchCopies,
+  retainedDeletions,
   setupDiff,
   shortSha,
   syncBranchName,
@@ -239,6 +240,7 @@ export async function runSync(options) {
       base: { commit: base, version: record.version },
       target: {
         ref: target === requested ? ref : `template-v${upgrades.boundary.version}`,
+        defaulted: !options.to && target === requested,
         commit: target,
         version: releases.findLast((release) => release.commit === target)?.version ?? null,
       },
@@ -247,6 +249,7 @@ export async function runSync(options) {
       applied: [],
       conflicts: [],
       setupDiff: setupDiff(project),
+      retained: [],
       ported: [],
       skippedMigrations: plan.skipped,
       commentOnlyMigrations: plan.commentOnly,
@@ -272,6 +275,7 @@ export async function runSync(options) {
       return { status, branch, reportPath, report }
     }
 
+    report.retained = retainedDeletions(project, changes)
     if (!resumed) {
       git(project, ['switch', '--quiet', '--create', branch])
       Object.assign(report, applyTemplateChanges(project, changes))
