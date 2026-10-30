@@ -1,3 +1,4 @@
+-- rollback-safe: 只新增表，旧代码不读写它
 SET lock_timeout = '5s';--> statement-breakpoint
 SET statement_timeout = '30s';--> statement-breakpoint
 CREATE TABLE "user_attribution" (
