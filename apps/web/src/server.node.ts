@@ -1,3 +1,4 @@
+import { plausibleSite } from '@saas/config'
 import { AppError } from '@saas/shared'
 import { log, withLogContext } from '@saas/shared/log'
 import { createStartHandler, defaultStreamHandler } from '@tanstack/react-start/server'
@@ -65,6 +66,8 @@ export default {
       https: new URL(request.url).protocol === 'https:',
       nonce,
       sentryDsn: process.env.SENTRY_DSN,
+      analyticsOrigin: plausibleSite(templateConfig.features.analytics, process.env)?.origin,
+      clarity: Boolean(templateConfig.analytics.clarityProjectId.trim()),
       storageOrigin: process.env.S3_ENDPOINT,
     })
     headers.set('x-request-id', runtime.requestMeta.requestId)

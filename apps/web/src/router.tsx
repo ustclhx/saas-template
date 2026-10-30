@@ -1,6 +1,7 @@
 import { createRouter } from '@tanstack/react-router'
 import { createIsomorphicFn } from '@tanstack/react-start'
 import { localeRewrite } from './features/i18n/routing.ts'
+import { NotFoundPage } from './features/marketing/not-found.tsx'
 import { routeTree } from './routeTree.gen'
 import { securityNonce } from './security-context.server.ts'
 import { templateConfig } from './server/template-config.ts'
@@ -15,7 +16,7 @@ export function getRouter() {
     routeTree.addChildren(
       Object.values(routeTree.children ?? {}).filter(
         (route) =>
-          !/^\/(?:pricing|blog|docs|legal|newsletter|waitlist|api\/(?:newsletter|waitlist)|sitemap\.xml|robots\.txt)(?:\/|$)/.test(
+          !/^\/(?:pricing|blog|docs|legal|newsletter|waitlist|api\/(?:newsletter|waitlist)|sitemap\.xml|robots\.txt|llms\.txt|indexnow\.txt|guides)(?:\/|$)/.test(
             route.options.path ?? '',
           ),
       ),
@@ -26,6 +27,7 @@ export function getRouter() {
     routeTree,
     ...(nonce ? { ssr: { nonce } } : {}),
     scrollRestoration: true,
+    defaultNotFoundComponent: NotFoundPage,
     rewrite: localeRewrite,
   })
 }

@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { getLocale } from '../../paraglide/runtime.js'
+import { trackEvent } from '../analytics/track.ts'
 import { createFileShareToken, revokeFileShareToken } from '../files/files.functions.ts'
 import type { WorkspacePage } from '../workspace/components.tsx'
 import { pollMediaTask } from './polling.ts'
@@ -201,10 +202,16 @@ export function MediaTaskDetailPage({ page, taskId }: { page: WorkspacePage; tas
   const [preview, setPreview] = useState<MediaCancelPreview>()
   const [cancelNotice, setCancelNotice] = useState('')
   const polling = useRef<ReturnType<typeof pollMediaTask<MediaTask>> | null>(null)
+  const lastStatus = useRef<MediaTask['status']>(undefined)
   useEffect(() => {
     const poll = pollMediaTask({
       load: (signal) => getMediaTask(page.workspace.id, taskId, signal),
       onTask: (task) => {
+        // 只记录本次观察到的状态转换，重新打开已结束的任务不重复计数。
+        const wasActive = lastStatus.current === 'queued' || lastStatus.current === 'running'
+        if (wasActive && task.status === 'succeeded') trackEvent('generate_success')
+        if (wasActive && task.status === 'failed') trackEvent('generate_fail')
+        lastStatus.current = task.status
         setTask(task)
         setError('')
         setCancelPending(task.errorCode === 'MEDIA_CANCEL_PENDING')

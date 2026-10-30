@@ -24,6 +24,11 @@ export function SiteHeader() {
               {m.marketing_nav_blog()}
             </Link>
           )}
+          {site.guides && (
+            <Link to="/guides" className={navLink}>
+              {m.marketing_nav_guides()}
+            </Link>
+          )}
           {site.docs && (
             <Link to="/docs" className={navLink}>
               {m.marketing_nav_docs()}

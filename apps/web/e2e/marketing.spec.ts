@@ -48,7 +48,11 @@ for (const prefix of prefixes) {
     const article = page.locator('article')
     await expect(article).toContainText(lang === 'zh' ? '默认不退款' : 'not refunded by default')
     await expect(article).toContainText(lang === 'zh' ? '申请退款' : 'Request refund')
-    await expect(article).toContainText(templateConfig.app.supportEmail)
+    // 模板占位邮箱不公开展示，配置真实地址后才显示。
+    if (/@example\./.test(templateConfig.app.supportEmail)) {
+      await expect(article).not.toContainText(templateConfig.app.supportEmail)
+      await expect(article).toContainText(lang === 'zh' ? '尚未配置支持邮箱' : 'not configured')
+    } else await expect(article).toContainText(templateConfig.app.supportEmail)
   })
 
   test(`文档站按 features.docs 开关（${lang}，当前 ${templateConfig.features.docs}）`, async ({

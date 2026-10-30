@@ -1,11 +1,17 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { templateConfig } from '../../server/template-config.ts'
-import { robots, sitemap } from './crawlers.ts'
+import { llmsTxt, robots, sitemap } from './crawlers.ts'
 import { localizedPath, pageHead, privateMeta } from './metadata.ts'
 import { OgCard } from './og-card.ts'
 import { publicPages } from './pages.ts'
-import { articleData, organizationData, pricingData, websiteData } from './structured-data.ts'
+import {
+  articleData,
+  faqData,
+  organizationData,
+  pricingData,
+  websiteData,
+} from './structured-data.ts'
 
 const origin = 'https://seo.example'
 const content = {
@@ -120,6 +126,46 @@ describe('公开页面 SEO（4.1–4.3）', () => {
     }
     for (const path of ['/', '/pricing', '/blog/published', '/legal/terms', '/docs/guide'])
       expect(privateMeta(path)).toEqual([])
+  })
+
+  it('llms.txt 只列默认语言的公开页面，链接都指向本站', () => {
+    const text = llmsTxt(pages, origin)
+    expect(text.startsWith(`# ${templateConfig.app.name}`)).toBe(true)
+    const links = [...text.matchAll(/\]\(([^)]+)\)/g)].map((match) => match[1] ?? '')
+    expect(links.length).toBeGreaterThan(0)
+    for (const link of links) expect(new URL(link).origin).toBe(new URL(origin).origin)
+    expect(text).not.toMatch(/\/(?:app|admin|api)(?:\/|\))/)
+    const defaultCount = pages.filter((p) => p.locale === templateConfig.i18n.defaultLocale).length
+    expect(links).toHaveLength(defaultCount)
+  })
+
+  it('答案页按开关进入公开页面清单，草稿不进入；FAQ 输出 FAQPage', () => {
+    const guide = {
+      slug: 'is-it-free',
+      locale: templateConfig.i18n.defaultLocale,
+      title: 'Free?',
+      answer_summary: 'Yes.',
+      draft: false,
+    }
+    const on = publicPages(
+      { ...content, guides: [guide, { ...guide, slug: 'hidden', draft: true }] },
+      new Date('2026-10-01'),
+      { ...config, features: { ...config.features, guides: true } },
+    )
+    expect(on.map((page) => page.path)).toContain('/guides/is-it-free')
+    expect(on.map((page) => page.path)).not.toContain('/guides/hidden')
+    const off = publicPages({ ...content, guides: [guide] }, new Date('2026-10-01'), {
+      ...config,
+      features: { ...config.features, guides: false },
+    })
+    expect(off.map((page) => page.path).filter((path) => path.startsWith('/guides'))).toEqual([])
+    expect(faqData([{ q: 'Q', a: 'A' }])).toEqual({
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: [
+        { '@type': 'Question', name: 'Q', acceptedAnswer: { '@type': 'Answer', text: 'A' } },
+      ],
+    })
   })
 
   it('地图包含已发布文章的全部语言，排除草稿、未来文章与关闭的功能', () => {

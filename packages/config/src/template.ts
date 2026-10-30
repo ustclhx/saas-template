@@ -101,20 +101,34 @@ export interface TemplateConfig<L extends string = string> {
     readonly defaultPricingMode: { readonly [M in AiModality]: PricingMode }
   }
   readonly features: {
-    /** 产品分析仅在显式开启、用户同意且未设置 DNT 时加载 */
-    readonly analytics: 'posthog' | false
+    /**
+     * 产品漏斗的唯一真相源，单选避免多套并行（docs/analytics.md）。
+     * plausible：无 Cookie 统计，配置 PLAUSIBLE_DOMAIN / PLAUSIBLE_HOST 后才注入，长期词站可设 false；
+     * posthog：用户同意且未设置 DNT 时加载。
+     */
+    readonly analytics: 'plausible' | 'posthog' | false
     /** API Key 调用 /api/v1 */
     readonly publicApi: boolean
     readonly blog: boolean
     readonly docs: boolean
     readonly waitlist: boolean
     readonly newsletter: boolean
+    /** 答案优先指南页（/guides），关闭时路由 404、内容不进入构建产物 */
+    readonly guides: boolean
   }
   /** 这些值会发送到浏览器，只能填写公开的站点 token / 项目 key。 */
   readonly analytics: {
     readonly cloudflareToken: string
     readonly posthogKey: string
     readonly posthogHost: string
+    /**
+     * 只用于 selfhost 构建期预渲染（该目标的 HTML 在镜像内生成，读不到运行时环境）；
+     * Cloudflare 与所有动态页面都以环境变量 PLAUSIBLE_DOMAIN / PLAUSIBLE_HOST 为准。
+     */
+    readonly plausibleDomain: string
+    readonly plausibleHost: string
+    /** Clarity 热力图项目 ID，留空即关闭（默认）；会录制会话，不作为转化真相源，启用前更新隐私政策 */
+    readonly clarityProjectId: string
   }
 }
 
@@ -182,14 +196,22 @@ export const templateConfigDefaults = {
     defaultPricingMode: { text: 'token', image: 'per_call', video: 'per_call' },
   },
   features: {
-    analytics: false,
+    analytics: 'plausible',
     publicApi: false,
     blog: true,
     docs: false,
     waitlist: false,
     newsletter: false,
+    guides: false,
   },
-  analytics: { cloudflareToken: '', posthogKey: '', posthogHost: 'https://us.i.posthog.com' },
+  analytics: {
+    cloudflareToken: '',
+    posthogKey: '',
+    posthogHost: 'https://us.i.posthog.com',
+    plausibleDomain: '',
+    plausibleHost: '',
+    clarityProjectId: '',
+  },
 } as const satisfies Omit<TemplateConfig<DefaultLocale>, 'app'>
 
 /** 合并用户配置与默认值；数组整体替换，不与默认值合并。 */

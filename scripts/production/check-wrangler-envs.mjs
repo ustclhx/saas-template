@@ -80,16 +80,39 @@ export function checkEnvs(app, config) {
   for (const key of FORBIDDEN_PRODUCTION_VARS)
     if (production.vars && key in production.vars)
       problems.push(`${app}: production must not set ${key}`)
+  // 站点串扰：staging 不得复用生产域名或分析 site，否则 sitemap / canonical / 埋点都会串站。
+  if (staging.vars?.APP_URL && staging.vars.APP_URL === production.vars?.APP_URL)
+    problems.push(`${app}: staging and production share APP_URL ${staging.vars.APP_URL}`)
+  if (
+    staging.vars?.PLAUSIBLE_DOMAIN &&
+    staging.vars.PLAUSIBLE_DOMAIN === production.vars?.PLAUSIBLE_DOMAIN
+  )
+    problems.push(
+      `${app}: staging and production share PLAUSIBLE_DOMAIN ${staging.vars.PLAUSIBLE_DOMAIN}`,
+    )
+  return problems
+}
+
+/** 同一环境的 web 与 jobs 必须上报到同一站点，否则服务端事件会串到别的 site。 */
+export function checkSiteVars(web, jobs) {
+  const problems = []
+  for (const environment of ['staging', 'production'])
+    for (const key of ['APP_URL', 'PLAUSIBLE_DOMAIN', 'PLAUSIBLE_HOST']) {
+      const a = web.env?.[environment]?.vars?.[key]
+      const b = jobs.env?.[environment]?.vars?.[key]
+      if ((a ?? '') !== (b ?? ''))
+        problems.push(`${environment}: web and jobs disagree on ${key} (${a ?? ''} / ${b ?? ''})`)
+    }
   return problems
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const problems = ['web', 'jobs'].flatMap((app) =>
-    checkEnvs(
-      app,
-      parseJsonc(readFileSync(resolve(repoRoot, `apps/${app}/wrangler.jsonc`), 'utf8')),
-    ),
-  )
+  const read = (app) =>
+    parseJsonc(readFileSync(resolve(repoRoot, `apps/${app}/wrangler.jsonc`), 'utf8'))
+  const problems = [
+    ...['web', 'jobs'].flatMap((app) => checkEnvs(app, read(app))),
+    ...checkSiteVars(read('web'), read('jobs')),
+  ]
   for (const line of problems) console.error(line)
   process.exitCode = problems.length ? 1 : 0
 }

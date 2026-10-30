@@ -1,5 +1,6 @@
 // 按领域分文件（docs/09-parallel-plan.md §3）；并行分支冲突时合并两边的导出行即可。
 export * from './ai.ts'
+export * from './analytics.ts'
 export * from './auth.ts'
 export * from './billing.ts'
 export * from './billing-compensation.ts'

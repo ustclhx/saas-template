@@ -11,12 +11,14 @@ import {
   runPendingCompensations,
   runSubscriptionReconciliation,
 } from '@saas/billing'
+import { plausibleSite } from '@saas/config'
 import { auditLog, type Database, webhookEvent } from '@saas/db'
 import type { EmailQueueMessage } from '@saas/email/queue'
 import type { DatabaseAccess, KeyValueStore, QueueProducer } from '@saas/platform'
 import { log, withRequestId } from '@saas/shared/log'
 import { and, asc, eq, inArray, notExists, sql } from 'drizzle-orm'
 import templateConfig from '../../../template.config.ts'
+import type { ServerAnalyticsTarget } from './notifications/analytics.ts'
 
 export const BILLING_HOURLY_CRON = '0 * * * *'
 export const BILLING_RETRY_CRON = '*/10 * * * *'
@@ -29,6 +31,18 @@ export interface BillingEnv {
   cache: KeyValueStore
   emailQueue: QueueProducer<EmailQueueMessage>
   eventsQueue?: QueueProducer<unknown>
+  /** 服务端埋点目标；未配置时事件被确认丢弃，付款真相仍在数据库 */
+  analytics?: ServerAnalyticsTarget | null
+}
+
+/** Cloudflare 与 Node 入口共用：模板关闭、未配置或缺站点地址时不投递。 */
+export function serverAnalyticsTarget(env: {
+  APP_URL?: string | undefined
+  PLAUSIBLE_DOMAIN?: string | undefined
+  PLAUSIBLE_HOST?: string | undefined
+}): ServerAnalyticsTarget | null {
+  const site = plausibleSite(templateConfig.features.analytics, env)
+  return site && env.APP_URL ? { site, appUrl: env.APP_URL } : null
 }
 
 // Bindings and database clients belong to each invocation, never to module state.

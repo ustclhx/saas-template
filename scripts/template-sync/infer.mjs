@@ -113,7 +113,8 @@ export function inferParams(project, commit, overrides = []) {
   if (features.every((key) => typeof config.features?.[key] === 'boolean')) {
     put(
       'features',
-      features.filter((key) => config.features[key]),
+      // guides 是后加的开关，旧项目的配置里没有它。
+      [...features, 'guides'].filter((key) => config.features[key] === true),
       'template.config.ts',
     )
   }
@@ -126,7 +127,11 @@ export function inferParams(project, commit, overrides = []) {
   const wranglers = files.filter((path) => /(?:^|\/)wrangler\.jsonc?$/.test(path))
   for (const path of wranglers) {
     const text = read(path)
-    const appUrl = text.match(/["']?APP_URL["']?\s*:\s*["'](https:\/\/[^"']+)["']/)?.[1]
+    // staging 的 APP_URL 不等于项目域名，只从 production 段读取；没有该段时读全文（旧项目两者相同）。
+    const production = text.search(/["']?production["']?\s*:\s*\{/)
+    const appUrl = text
+      .slice(Math.max(production, 0))
+      .match(/["']?APP_URL["']?\s*:\s*["'](https:\/\/[^"']+)["']/)?.[1]
     const route = text.match(/["']pattern["']\s*:\s*["']([^"']+)["']/)?.[1]
     if (appUrl || route) {
       try {
