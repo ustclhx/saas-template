@@ -84,3 +84,23 @@ it('304 不替换缓存 HTML 原有的脚本授权策略', async () => {
   expect(response.headers.get('Content-Security-Policy-Report-Only')).toBeNull()
   expect(response.headers.get('X-Frame-Options')).toBe('DENY')
 })
+
+describe('分析域名的 CSP', () => {
+  it('未配置时不放行任何分析域名，配置后只放行本环境实例', () => {
+    const none = contentSecurityPolicy({ https: true })
+    expect(none).not.toMatch(/plausible|clarity/)
+    const policy = contentSecurityPolicy({
+      https: true,
+      analyticsOrigin: 'https://plausible.example/x',
+    })
+    expect(policy).toMatch(/script-src [^;]*https:\/\/plausible\.example/)
+    expect(policy).toMatch(/connect-src [^;]*https:\/\/plausible\.example/)
+    expect(policy).not.toContain('clarity')
+  })
+
+  it('只有显式配置 Clarity 才放行其域名', () => {
+    const policy = contentSecurityPolicy({ https: true, clarity: true })
+    expect(policy).toMatch(/script-src [^;]*https:\/\/www\.clarity\.ms/)
+    expect(policy).toMatch(/connect-src [^;]*https:\/\/\*\.clarity\.ms/)
+  })
+})

@@ -132,6 +132,10 @@ jobs:
       - name: Confirm deployment health and version
         run: node scripts/staging/wait-healthy.mjs "$STAGING_URL/api/health" "$DEPLOY_SHA"
 
+      # P0 门禁：sitemap / canonical / 分析脚本不得指向他站（docs/analytics.md）
+      - name: Check site isolation
+        run: node scripts/staging/check-site-isolation.mjs staging "$STAGING_URL"
+
       - name: Install Chromium
         run: pnpm --filter @saas/web exec playwright install --with-deps chromium
 

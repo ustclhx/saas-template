@@ -28,6 +28,9 @@ x-app-env: &app-env
   GITHUB_CLIENT_SECRET_FILE: /run/secrets/github_client_secret
   TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:?Template enables Turnstile}
   TURNSTILE_SECRET_KEY_FILE: /run/secrets/turnstile_secret
+  PLAUSIBLE_DOMAIN: ${PLAUSIBLE_DOMAIN:-}
+  PLAUSIBLE_HOST: ${PLAUSIBLE_HOST:-}
+  INDEXNOW_KEY: ${INDEXNOW_KEY:-}
   EMAIL_TRANSPORT: ${EMAIL_TRANSPORT:-log}
 
 x-app-secrets: &app-secrets

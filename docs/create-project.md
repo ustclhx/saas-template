@@ -39,6 +39,12 @@ robots 与 sitemap 不加入路由，营销页不预渲染，也不生成营销 
 
 默认开启文本、图片、视频、Stripe、PayPal、Google、GitHub 与 Turnstile，
 可选功能仅开启 blog。列表传空字符串可全部关闭；交互时输入 `-` 可关闭列表。
+`--analytics plausible|off` 选择产品分析：默认 plausible（新词站），长期词站可 off，写入
+`features.analytics`。`--plausible-domain` 是该站 site_id（默认项目名，staging 自动加 `-staging`），
+`--plausible-host` 是共用的自建实例 HTTPS 地址；未提供地址时脚本不注入，配置后才启用，见
+[埋点文档](analytics.md)。staging 的 APP_URL 默认生成为 `https://staging.<域名>`，不沿用生产域名，
+部署前改成实际 staging 地址。
+`--features guides` 开启答案优先指南页（`/guides`），副本带三类可修改的示例，默认关闭。
 `--turnstile false` 关闭 Turnstile，`--multi-tenant true` 启用团队空间，
 `--support-email` 设置支持邮箱。完整参数见帮助命令。
 

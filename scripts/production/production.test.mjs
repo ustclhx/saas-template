@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { checkRelease } from './check-release.mjs'
-import { checkEnvs, parseJsonc } from './check-wrangler-envs.mjs'
+import { checkEnvs, checkSiteVars, parseJsonc } from './check-wrangler-envs.mjs'
 import { buildChecks, keyTables, migrationCount, pgEnv, verifyRestore } from './verify-restore.mjs'
 
 const wrangler = (app) =>
@@ -142,4 +142,28 @@ test('production requires successful main push CI in addition to staging', async
 test('testing CI bypass still requires main ancestry and staging success', async () => {
   assert.equal((await run({ phase: 'testing', isOnMain: async () => false })).code, 1)
   assert.equal((await run({ phase: 'testing', stagingRuns: async () => [] })).code, 1)
+})
+
+test('site vars: staging must not share production site settings, web and jobs must agree', () => {
+  const env = (vars) => ({
+    env: {
+      staging: { vars },
+      production: { vars: { APP_URL: 'https://a.example', PLAUSIBLE_DOMAIN: 'a' } },
+    },
+  })
+  assert.match(checkEnvs('web', env({ APP_URL: 'https://a.example' })).join(), /share APP_URL/)
+  assert.match(
+    checkEnvs('web', env({ APP_URL: 'https://s.example', PLAUSIBLE_DOMAIN: 'a' })).join(),
+    /share PLAUSIBLE_DOMAIN/,
+  )
+  assert.deepEqual(
+    checkEnvs('web', env({ APP_URL: 'https://s.example', PLAUSIBLE_DOMAIN: 'a-staging' })),
+    [],
+  )
+  const web = env({ APP_URL: 'https://s.example', PLAUSIBLE_DOMAIN: 'a-staging' })
+  assert.deepEqual(checkSiteVars(web, web), [])
+  assert.match(
+    checkSiteVars(web, env({ APP_URL: 'https://s.example', PLAUSIBLE_DOMAIN: 'other' })).join(),
+    /disagree on PLAUSIBLE_DOMAIN/,
+  )
 })

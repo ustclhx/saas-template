@@ -1,3 +1,4 @@
+import { plausibleSite } from '@saas/config'
 import type { NodeEnv } from '@saas/config/node'
 import { createNodeRequestMetadata, withNodeRequestContext } from '@saas/platform/node'
 import { log } from '@saas/shared/log'
@@ -5,6 +6,7 @@ import { useNitroApp as getNitroApp, useNitroHooks as getNitroHooks } from 'nitr
 import type { ServerRequest } from 'srvx'
 import { serve } from 'srvx/node'
 import { withSecurityHeaders, withStaticSecurityHeaders } from '../security-headers.ts'
+import { templateConfig } from '../server/template-config.ts'
 import { captureNodeError, type NodeWebObserver } from './observer-context.ts'
 import { attachWebRuntime } from './request-runtime.ts'
 import { createNodeWebProcess, prerenderRuntime } from './runtime.ts'
@@ -20,6 +22,14 @@ export async function fetch(request: ServerRequest): Promise<Response> {
   const security = {
     https: new URL(request.url).protocol === 'https:',
     sentryDsn: process.env.SENTRY_DSN,
+    analyticsOrigin: (
+      plausibleSite(templateConfig.features.analytics, process.env) ??
+      plausibleSite(templateConfig.features.analytics, {
+        PLAUSIBLE_DOMAIN: templateConfig.analytics.plausibleDomain,
+        PLAUSIBLE_HOST: templateConfig.analytics.plausibleHost,
+      })
+    )?.origin,
+    clarity: Boolean(templateConfig.analytics.clarityProjectId.trim()),
     storageOrigin: process.env.S3_ENDPOINT,
   }
   const meta = (resources?.metadata ?? previewMetadata)(

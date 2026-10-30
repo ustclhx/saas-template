@@ -24,11 +24,16 @@ export function SiteFooter() {
             {m.marketing_nav_get_started()}
           </Link>
         </FooterColumn>
-        {(site.blog || site.docs) && (
+        {(site.blog || site.docs || site.guides) && (
           <FooterColumn title={m.marketing_footer_resources()}>
             {site.blog && (
               <Link to="/blog" className={footerLink}>
                 {m.marketing_nav_blog()}
+              </Link>
+            )}
+            {site.guides && (
+              <Link to="/guides" className={footerLink}>
+                {m.marketing_nav_guides()}
               </Link>
             )}
             {site.docs && (

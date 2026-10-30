@@ -2,8 +2,10 @@ import { parseBillingQueueMessage } from '@saas/billing'
 import type { Database } from '@saas/db'
 import type { DeadLetterSink, QueueBatch, QueueFailure, QueueMessage } from '@saas/platform'
 import { isAppError } from '@saas/shared'
+import { parseServerAnalyticsMessage } from '@saas/shared/analytics'
 import { log, newRequestId, withLogContext } from '@saas/shared/log'
 import { type BillingEnv, createBillingContext, postprocessBillingDelivery } from '../billing.ts'
+import { deliverServerAnalytics } from '../notifications/analytics.ts'
 import { deliverOperations, parseOperationsMessage } from '../notifications/operations.ts'
 import { type JobObserver, logJobObserver, withJobObserver } from '../observer.ts'
 
@@ -22,7 +24,8 @@ export async function handleBillingBatch(
   for (const message of batch.messages) {
     const body = parseBillingQueueMessage(message.body)
     const operations = parseOperationsMessage(message.body)
-    if (!body && !operations) {
+    const analytics = parseServerAnalyticsMessage(message.body)
+    if (!body && !operations && !analytics) {
       log.warn('billing.invalid', { id: message.id })
       message.ack()
       continue
@@ -30,7 +33,10 @@ export async function handleBillingBatch(
     // Restore the enqueuing request's ID; messages enqueued before it existed get a fresh one.
     try {
       await withLogContext(
-        { requestId: body?.requestId ?? operations?.requestId ?? newRequestId() },
+        {
+          requestId:
+            body?.requestId ?? operations?.requestId ?? analytics?.requestId ?? newRequestId(),
+        },
         () =>
           withJobObserver(observer, async () => {
             if (body && options.billingEnabled === false) {
@@ -52,6 +58,9 @@ export async function handleBillingBatch(
                 for (const event of operations.operations)
                   await deliverOperations(operationsDb, event)
                 log.info('operations.delivered', { id: message.id })
+              } else if (analytics) {
+                operationsDb ??= env.db.business()
+                await deliverServerAnalytics(operationsDb, env.analytics, analytics.analytics)
               }
               message.ack()
             } catch (error) {
@@ -64,7 +73,7 @@ export async function handleBillingBatch(
                 error.status === 429
               const terminal =
                 options.deadLetters && (!retryable || message.attempts >= EVENTS_MAX_ATTEMPTS)
-              const kind = body ? 'billing' : 'operations'
+              const kind = body ? 'billing' : operations ? 'operations' : 'analytics'
               log.warn(`${kind}.${terminal ? 'failed' : 'retry'}`, {
                 id: message.id,
                 attempts: message.attempts,

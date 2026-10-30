@@ -52,6 +52,9 @@ export function staticPage(path: string, locale: string): SeoPage {
     '/blog': zh
       ? ['博客', '阅读产品更新、实践指南与创作技巧。']
       : ['Blog', 'Product updates, practical guides and creation tips.'],
+    '/guides': zh
+      ? ['指南', '常见问题的简明答案。']
+      : ['Guides', 'Short answers to common questions.'],
     '/docs': zh
       ? ['文档', '查阅工作空间的入门、配置和内容指南。']
       : ['Documentation', 'Getting started, configuration and content guides for your workspace.'],

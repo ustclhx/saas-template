@@ -60,6 +60,9 @@
       "name": "jobs-staging",
       "vars": {
         "SENTRY_ENVIRONMENT": "staging",
+        "APP_URL": "https://web-staging.saas-jobs.workers.dev",
+        "PLAUSIBLE_DOMAIN": "",
+        "PLAUSIBLE_HOST": "",
         "AI_FAULT_INJECTION": "enabled",
         "PAYMENT_MODE": "test",
         "CRON_PROFILE": "reduced"
@@ -127,6 +130,9 @@
       "preview_urls": false,
       "vars": {
         "SENTRY_ENVIRONMENT": "production",
+        "APP_URL": "https://app.ezarouter.cc",
+        "PLAUSIBLE_DOMAIN": "",
+        "PLAUSIBLE_HOST": "",
         "CRON_PROFILE": "reduced"
       },
       "ai": { "binding": "AI" },

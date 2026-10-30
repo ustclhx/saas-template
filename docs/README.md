@@ -19,6 +19,7 @@
 | [07-infrastructure.md](./07-infrastructure.md) | 自建 Postgres、Hyperdrive + Tunnel、备份、环境、部署、CI |
 | [08-roadmap.md](./08-roadmap.md) | 分阶段开发计划与验收标准、待决事项 |
 | [09-parallel-plan.md](./09-parallel-plan.md) | 用 Orca 并行开发：worktree 隔离、共享文件规则、并行波次与合并流程 |
+| [analytics.md](./analytics.md) | 埋点字典、首触归因、自建 Plausible 开关与发布串扰门禁 |
 | [requirements/analytics-plausible-geo.md](./requirements/analytics-plausible-geo.md) | 需求：埋点 / 自建 Plausible / SEO·GEO 骨架（P0–P2，含 staging 串扰门禁） |
 
 ## 本地配置入口

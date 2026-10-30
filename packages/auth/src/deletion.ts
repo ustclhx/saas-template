@@ -281,6 +281,7 @@ export async function deleteAccount(options: Options) {
     await sql`delete from newsletter_subscriber where email in ${sql(emails)}`
     await sql`delete from waitlist where email in ${sql(emails)}`
     await sql`delete from notification where user_id=${current.id}`
+    await sql`delete from user_attribution where user_id=${current.id}`
     await sql`update "user" set email=${`deleted+${current.id}@invalid`},name='',image=null,locale=null,timezone=null,email_verified=false,two_factor_enabled=false,banned=true,ban_reason='Account deleted',ban_expires=null,updated_at=now() where id=${current.id}`
     await sql`insert into audit_log (id,actor_user_id,action,target_type,target_id,ip,meta) values (${newId()},${current.id},'account.deleted','user',${current.id},${options.clientIp ?? null},${JSON.stringify({ anonymized: true, deletedPersonalWorkspaceIds: personal.map((workspace) => workspace.id) })}::jsonb)`
     return saveCleanup(sql, cacheKeys, options.kv)

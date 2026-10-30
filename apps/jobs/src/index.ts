@@ -17,6 +17,7 @@ import { createCloudflareMediaCopier, createCloudflareStorage } from '@saas/stor
 import { instrumentWorkflowWithSentry, withSentry } from '@sentry/cloudflare'
 import templateConfig from '../../../template.config.ts'
 import { registerAiHoldSweepers } from './ai.ts'
+import { serverAnalyticsTarget } from './billing.ts'
 import { requireEnv } from './env.ts'
 import { consumeJobsBatch, type JobsContext, runJobsSchedule } from './handlers.ts'
 import { createEventsDeadLetterSink } from './queues/events-dead-letter.ts'
@@ -72,6 +73,7 @@ function createJobsContext(env: Cloudflare.Env, queue?: string): JobsContext {
     files: { available: true, value: { delete: (key) => env.FILES.delete(key) } },
     observer: cloudflareJobObserver,
     billingEnabled: features.billing,
+    analytics: serverAnalyticsTarget(env),
   }
 }
 
