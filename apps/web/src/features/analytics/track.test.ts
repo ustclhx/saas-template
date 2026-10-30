@@ -135,6 +135,10 @@ describe('startClarity', () => {
       startClarity('/')
       startClarity('/pricing')
       expect(scripts.map((script) => script.src)).toEqual(['https://www.clarity.ms/tag/abc123'])
+      const reload = vi.fn()
+      browser.location = Object.assign(new URL('https://acme.example/app/x'), { reload })
+      startClarity('/app/x')
+      expect(reload).toHaveBeenCalledTimes(1)
     } finally {
       Object.assign(templateConfig, { analytics })
     }

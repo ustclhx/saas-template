@@ -15,11 +15,16 @@ export function expectedFromWrangler(environment, root = repoRoot) {
   const vars = config.env?.[environment]?.vars
   if (!vars?.APP_URL) throw new Error(`apps/web/wrangler.jsonc: env.${environment}.vars.APP_URL`)
   const template = readFileSync(resolve(root, 'template.config.ts'), 'utf8')
+  // 变量留着但模板选了别的工具或关闭时，页面不会有 Plausible 脚本，门禁也不能要求它。
+  const analytics = /features["']?\s*:\s*\{[^}]*\banalytics["']?\s*:\s*['"]?(\w+)/.exec(
+    template,
+  )?.[1]
+  const plausible = analytics === undefined || analytics === 'plausible'
   return {
     marketing: !/marketing:\s*\{\s*enabled:\s*false/.test(template),
     appUrl: vars.APP_URL,
-    plausibleDomain: vars.PLAUSIBLE_DOMAIN ?? '',
-    plausibleHost: vars.PLAUSIBLE_HOST ?? '',
+    plausibleDomain: plausible ? (vars.PLAUSIBLE_DOMAIN ?? '') : '',
+    plausibleHost: plausible ? (vars.PLAUSIBLE_HOST ?? '') : '',
   }
 }
 

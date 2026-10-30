@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import { submitIndexNow } from '../production/submit-indexnow.mjs'
 import { checkSecrets, secretRequirements } from './check-secrets.mjs'
-import { checkSiteIsolation } from './check-site-isolation.mjs'
+import { checkSiteIsolation, expectedFromWrangler } from './check-site-isolation.mjs'
 import { waitHealthy } from './wait-healthy.mjs'
 
 test('secret check reports the actual staging payment gaps without printing present secrets', async () => {
@@ -344,4 +347,33 @@ test('site isolation handles a marketing-free project and network failures witho
     },
   })
   assert.ok(problems.some((line) => /status 599/.test(line)))
+})
+
+test('gate expectations follow the template analytics switch, not just the env vars', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'site-isolation-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  await mkdir(join(root, 'apps/web'), { recursive: true })
+  await writeFile(
+    join(root, 'apps/web/wrangler.jsonc'),
+    JSON.stringify({
+      env: {
+        staging: {
+          vars: {
+            APP_URL: SITE,
+            PLAUSIBLE_DOMAIN: 'a-staging',
+            PLAUSIBLE_HOST: 'https://p.example',
+          },
+        },
+      },
+    }),
+  )
+  const expected = async (config) => {
+    await writeFile(join(root, 'template.config.ts'), config)
+    return expectedFromWrangler('staging', root).plausibleDomain
+  }
+  assert.equal(await expected("features: { analytics: 'plausible', blog: true }"), 'a-staging')
+  assert.equal(await expected('features: {"analytics":"plausible","blog":true}'), 'a-staging')
+  assert.equal(await expected('features: { blog: true }'), 'a-staging')
+  assert.equal(await expected('features: {"analytics":false,"blog":true}'), '')
+  assert.equal(await expected("features: { analytics: 'posthog' }"), '')
 })

@@ -18,3 +18,9 @@ export const userAttribution = pgTable('user_attribution', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 export type UserAttribution = typeof userAttribution.$inferSelect
+
+/** 服务端事件的投递占位：主键保证并发回调下同一笔付款只发送一次。 */
+export const analyticsDelivery = pgTable('analytics_delivery', {
+  eventKey: text('event_key').primaryKey(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})

@@ -53,6 +53,7 @@ describe('首触归因', () => {
       encodeURIComponent('[]'),
       encodeURIComponent(JSON.stringify({ ...touch, landingPath: 'https://evil.example' })),
       encodeURIComponent(JSON.stringify({ ...touch, firstSeenAt: 'nope' })),
+      encodeURIComponent(JSON.stringify({ ...touch, firstSeenAt: '+275760-09-13T00:00:00.000Z' })),
       encodeURIComponent(JSON.stringify({ ...touch, source: 42 })),
       'a'.repeat(4096),
     ])

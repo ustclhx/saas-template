@@ -1,6 +1,11 @@
 -- rollback-safe: 只新增表，旧代码不读写它
 SET lock_timeout = '5s';--> statement-breakpoint
 SET statement_timeout = '30s';--> statement-breakpoint
+CREATE TABLE "analytics_delivery" (
+	"event_key" text PRIMARY KEY NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "user_attribution" (
 	"user_id" uuid PRIMARY KEY NOT NULL,
 	"source" text NOT NULL,

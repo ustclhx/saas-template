@@ -33,23 +33,30 @@ export function createSignUpRecorder(options: {
 }) {
   return async (user: { readonly id: string }, headers?: Headers) => {
     if (templateConfig.features.analytics === false) return
+    // 与浏览器端同一隐私边界：设置 GPC / DNT 的访客不进入分析系统。
+    if (headers?.get('sec-gpc') === '1' || headers?.get('dnt') === '1') return
     const touch = parseFirstTouch(readCookie(headers?.get('cookie'), FIRST_TOUCH_COOKIE))
     if (touch) {
-      await options.db
-        .insert(userAttribution)
-        .values({
-          userId: user.id,
-          source: touch.source,
-          medium: touch.medium,
-          campaign: touch.campaign,
-          term: touch.term,
-          content: touch.content,
-          referrerHost: touch.referrerHost,
-          landingPath: touch.landingPath,
-          device: touch.device,
-          firstSeenAt: new Date(touch.firstSeenAt),
-        })
-        .onConflictDoNothing()
+      // 归因写失败不能连带丢掉 sign_up 事件，两者分别兜底。
+      try {
+        await options.db
+          .insert(userAttribution)
+          .values({
+            userId: user.id,
+            source: touch.source,
+            medium: touch.medium,
+            campaign: touch.campaign,
+            term: touch.term,
+            content: touch.content,
+            referrerHost: touch.referrerHost,
+            landingPath: touch.landingPath,
+            device: touch.device,
+            firstSeenAt: new Date(touch.firstSeenAt),
+          })
+          .onConflictDoNothing()
+      } catch (error) {
+        log.warn('analytics.attribution_failed', { error })
+      }
     }
     const userAgent = headers?.get('user-agent')
     await enqueueServerAnalytics(options.queue, {

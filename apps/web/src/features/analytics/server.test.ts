@@ -52,6 +52,36 @@ describe('createSignUpRecorder', () => {
       })()
   })
 
+  it('设置 GPC / DNT 时不写归因也不投递事件', async () => {
+    for (const privacy of [{ 'sec-gpc': '1' }, { dnt: '1' }]) {
+      const { rows, db, queue, send } = harness()
+      await createSignUpRecorder({ db, queue })(
+        { id: 'u1' },
+        new Headers({ cookie: `saas_ft=${encodeFirstTouch(touch)}`, ...privacy }),
+      )
+      expect(rows).toEqual([])
+      expect(send).not.toHaveBeenCalled()
+    }
+  })
+
+  it('归因写入失败时仍投递 sign_up', async () => {
+    const { queue, send } = harness()
+    const db = {
+      insert: () => ({
+        values: () => ({
+          onConflictDoNothing: async () => {
+            throw new Error('db down')
+          },
+        }),
+      }),
+    } as unknown as Database
+    await createSignUpRecorder({ db, queue })(
+      { id: 'u1' },
+      new Headers({ cookie: `saas_ft=${encodeFirstTouch(touch)}` }),
+    )
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+
   it('队列故障不影响注册', async () => {
     const send = vi.fn(async () => {
       throw new Error('down')

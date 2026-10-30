@@ -63,12 +63,18 @@ const CLARITY_SCRIPT_ID = 'saas-clarity'
 
 /**
  * 可选热力图：默认关闭，只看公开页面，且不进入任何事件字典（不作为转化真相源）。
- * 由客户端注入才能判断 DNT / GPC；进入应用区后不再新增，已加载的脚本随整页刷新消失。
+ * 由客户端注入才能判断 DNT / GPC。脚本加载后会持续录制，站内导航进入应用区时整页刷新卸载它，
+ * 这一步只影响主动开启 Clarity 的站点。
  */
 export function startClarity(pathname: string) {
   const id = templateConfig.analytics.clarityProjectId.trim()
-  if (!id || !/^[a-z0-9]+$/i.test(id) || isAppAreaPath(pathname) || !trackingAllowed()) return
-  if (document.getElementById(CLARITY_SCRIPT_ID)) return
+  if (!id || !/^[a-z0-9]+$/i.test(id)) return
+  const loaded = Boolean(document.getElementById(CLARITY_SCRIPT_ID))
+  if (isAppAreaPath(pathname)) {
+    if (loaded) window.location.reload()
+    return
+  }
+  if (loaded || !trackingAllowed()) return
   const script = document.createElement('script')
   script.id = CLARITY_SCRIPT_ID
   script.async = true

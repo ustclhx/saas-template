@@ -1,7 +1,7 @@
-// biome-ignore-all lint/plugin: 跨空间的系统投递标记与归因读取没有单一租户归属。
+// biome-ignore-all lint/plugin: 跨空间的付款与归因读取没有单一租户归属。
 import type { PlausibleSite } from '@saas/config'
 import {
-  auditLog,
+  analyticsDelivery,
   type Database,
   member,
   payment,
@@ -32,7 +32,6 @@ interface ResolvedEvent {
   path: string
   props: ReturnType<typeof analyticsProps>
   revenue?: { currency: string; amount: string }
-  workspaceId?: string
   clientIp?: string
   userAgent?: string
 }
@@ -102,7 +101,6 @@ async function resolve(db: Database, event: ServerAnalyticsEvent): Promise<Resol
     name: 'payment_success',
     sourceId: `${event.provider}:${event.providerPaymentId}`,
     path: '/app/billing',
-    workspaceId: paid.workspaceId,
     props: analyticsProps({
       source: row?.source ?? undefined,
       landing_path: row?.landingPath ?? undefined,
@@ -148,7 +146,10 @@ async function send(target: ServerAnalyticsTarget, event: ResolvedEvent, timeout
   }
 }
 
-/** 同一笔付款可能经多个 Webhook 事件到达；发送成功后写标记，重试与重复事件不会重复计数。 */
+/**
+ * 同一笔付款可能经多个 Webhook 事件并发到达。先用主键占位再发送，失败时释放以便重试；
+ * 占位后进程崩溃会少计一次（宁缺勿重，收入不能翻倍），付款真相仍在数据库。
+ */
 export async function deliverServerAnalytics(
   db: Database,
   target: ServerAnalyticsTarget | null | undefined,
@@ -158,19 +159,18 @@ export async function deliverServerAnalytics(
   if (!target) return
   const resolved = await resolve(db, event)
   if (!resolved) return
-  const action = `analytics.sent.${resolved.name}`
-  const [sent] = await db
-    .select({ id: auditLog.id })
-    .from(auditLog)
-    .where(and(eq(auditLog.action, action), eq(auditLog.targetId, resolved.sourceId)))
-    .limit(1)
-  if (sent) return
-  await send(target, resolved, timeoutMs)
-  await db.insert(auditLog).values({
-    action,
-    targetType: 'analytics_event',
-    targetId: resolved.sourceId,
-    ...(resolved.workspaceId ? { workspaceId: resolved.workspaceId } : {}),
-  })
+  const eventKey = `${resolved.name}:${resolved.sourceId}`
+  const claimed = await db
+    .insert(analyticsDelivery)
+    .values({ eventKey })
+    .onConflictDoNothing()
+    .returning({ eventKey: analyticsDelivery.eventKey })
+  if (!claimed.length) return
+  try {
+    await send(target, resolved, timeoutMs)
+  } catch (error) {
+    await db.delete(analyticsDelivery).where(eq(analyticsDelivery.eventKey, eventKey))
+    throw error
+  }
   log.info('analytics.delivered', { event: resolved.name })
 }

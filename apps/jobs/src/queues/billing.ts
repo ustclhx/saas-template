@@ -64,6 +64,19 @@ export async function handleBillingBatch(
               }
               message.ack()
             } catch (error) {
+              // 分析是旁路数据：实例长时间不可用时重试到上限后丢弃，不进死信、不触发运营告警；
+              // 付款与注册的真相仍在数据库。
+              if (!body && !operations) {
+                if (message.attempts >= EVENTS_MAX_ATTEMPTS) {
+                  log.warn('analytics.dropped', { id: message.id, attempts: message.attempts })
+                  message.ack()
+                } else {
+                  message.retry({
+                    delaySeconds: Math.min(30 * 2 ** Math.max(0, message.attempts - 1), 900),
+                  })
+                }
+                return
+              }
               observer.captureException(error)
               // AppError 以 HTTP status 表达失败性质；普通渠道/数据库错误仍按暂时失败处理。
               const retryable =
@@ -73,7 +86,7 @@ export async function handleBillingBatch(
                 error.status === 429
               const terminal =
                 options.deadLetters && (!retryable || message.attempts >= EVENTS_MAX_ATTEMPTS)
-              const kind = body ? 'billing' : operations ? 'operations' : 'analytics'
+              const kind = body ? 'billing' : 'operations'
               log.warn(`${kind}.${terminal ? 'failed' : 'retry'}`, {
                 id: message.id,
                 attempts: message.attempts,

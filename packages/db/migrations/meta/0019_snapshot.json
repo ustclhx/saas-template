@@ -1,5 +1,5 @@
 {
-  "id": "951452ea-0535-416c-836b-799dacb02cc3",
+  "id": "c5460a62-5e72-44b8-aa38-b243882814df",
   "prevId": "dfdd24e4-528d-4f96-90e9-ef0f74de7aed",
   "version": "7",
   "dialect": "postgresql",
@@ -701,6 +701,32 @@
           "value": "\"ai_task\".\"cancel_billing\" in ('free_unstarted', 'free_started', 'charged')"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.analytics_delivery": {
+      "name": "analytics_delivery",
+      "schema": "",
+      "columns": {
+        "event_key": {
+          "name": "event_key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.user_attribution": {

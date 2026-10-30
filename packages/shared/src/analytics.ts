@@ -163,7 +163,9 @@ export function parseFirstTouch(encoded: string | null | undefined): FirstTouch 
     !source ||
     !landingPath?.startsWith('/') ||
     !firstSeenAt ||
-    !Number.isFinite(firstSeenAt.getTime())
+    !Number.isFinite(firstSeenAt.getTime()) ||
+    // 超出四位年份的日期能通过 Date 解析，却会被 Postgres 拒绝。
+    !/^\d{4}-/.test(firstSeenAt.toISOString())
   )
     return null
   return {

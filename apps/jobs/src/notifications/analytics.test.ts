@@ -25,9 +25,10 @@ const attribution = {
   locale: 'zh',
 }
 
-/** 按调用顺序返回查询结果；链式方法都返回自身，结尾 await 得到当前结果。 */
-function fakeDb(results: unknown[][]) {
+/** select 按调用顺序返回结果；insert 模拟主键占位，claimed=false 表示已被占用。 */
+function fakeDb(results: unknown[][], claimed = true) {
   const inserts: unknown[] = []
+  const deletes: unknown[] = []
   const query = () => {
     const rows = results.shift() ?? []
     const chain: Record<string, unknown> = {}
@@ -40,12 +41,22 @@ function fakeDb(results: unknown[][]) {
   const db = {
     select: query,
     insert: () => ({
-      values: async (value: unknown) => {
-        inserts.push(value)
+      values: (value: unknown) => ({
+        onConflictDoNothing: () => ({
+          returning: async () => {
+            inserts.push(value)
+            return claimed ? [value] : []
+          },
+        }),
+      }),
+    }),
+    delete: () => ({
+      where: async (value: unknown) => {
+        deletes.push(value)
       },
     }),
   } as unknown as Database
-  return { db, inserts }
+  return { db, inserts, deletes }
 }
 
 const event = {
@@ -62,7 +73,7 @@ describe('deliverServerAnalytics', () => {
   it('付款事件带首触归因与收入发往本站 site，并写入去重标记', async () => {
     const fetchMock = vi.fn(async () => new Response('ok', { status: 202 }))
     vi.stubGlobal('fetch', fetchMock)
-    const { db, inserts } = fakeDb([[paid], [{ userId: 'u1' }], [attribution], []])
+    const { db, inserts } = fakeDb([[paid], [{ userId: 'u1' }], [attribution]])
     await deliverServerAnalytics(db, target, event)
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('https://plausible.example/api/event')
@@ -79,21 +90,14 @@ describe('deliverServerAnalytics', () => {
       },
       revenue: { currency: 'USD', amount: '19.99' },
     })
-    expect(inserts).toEqual([
-      {
-        action: 'analytics.sent.payment_success',
-        targetType: 'analytics_event',
-        targetId: 'stripe:pi_1',
-        workspaceId: paid.workspaceId,
-      },
-    ])
+    expect(inserts).toEqual([{ eventKey: 'payment_success:stripe:pi_1' }])
   })
 
   it('已发送过、未配置或付款已非成功状态时不发送', async () => {
     const fetchMock = vi.fn(async () => new Response('ok', { status: 202 }))
     vi.stubGlobal('fetch', fetchMock)
     await deliverServerAnalytics(
-      fakeDb([[paid], [{ userId: 'u1' }], [attribution], [{ id: 'sent' }]]).db,
+      fakeDb([[paid], [{ userId: 'u1' }], [attribution]], false).db,
       target,
       event,
     )
@@ -105,7 +109,7 @@ describe('deliverServerAnalytics', () => {
   it('sign_up 用真实访客的 IP 与 UA，便于与页面浏览串联', async () => {
     const fetchMock = vi.fn(async () => new Response('ok', { status: 202 }))
     vi.stubGlobal('fetch', fetchMock)
-    await deliverServerAnalytics(fakeDb([[attribution], []]).db, target, {
+    await deliverServerAnalytics(fakeDb([[attribution]]).db, target, {
       event: 'sign_up',
       userId: 'u1',
       clientIp: '203.0.113.9',
@@ -118,16 +122,16 @@ describe('deliverServerAnalytics', () => {
     })
   })
 
-  it('发送失败时抛出可重试错误且不写标记，错误不含响应细节', async () => {
+  it('发送失败时抛出可重试错误并释放占位，错误不含响应细节', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response('secret detail', { status: 500 })),
     )
-    const { db, inserts } = fakeDb([[paid], [{ userId: 'u1' }], [attribution], []])
+    const { db, deletes } = fakeDb([[paid], [{ userId: 'u1' }], [attribution]])
     await expect(deliverServerAnalytics(db, target, event)).rejects.toMatchObject({
       code: 'ANALYTICS_DELIVERY_FAILED',
       status: 503,
     })
-    expect(inserts).toEqual([])
+    expect(deletes).toHaveLength(1)
   })
 })
