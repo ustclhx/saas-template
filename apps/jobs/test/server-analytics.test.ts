@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers'
 import {
-  auditLog,
+  analyticsDelivery,
   createDb,
   member,
   organization,
@@ -94,12 +94,16 @@ async function paidWorkspace() {
   return { ws, key }
 }
 
-it('付款事件读取真实归因与套餐，重复投递只发送一次，账号归因随用户级联', async () => {
+it('付款事件读取真实归因与套餐，并发与重复投递只发送一次', async () => {
   const fetchMock = vi.fn(async () => new Response('ok', { status: 202 }))
   vi.stubGlobal('fetch', fetchMock)
   const { ws, key } = await paidWorkspace()
   const event = { event: 'payment_success', provider: 'stripe', providerPaymentId: key } as const
-  await deliverServerAnalytics(db, target, event)
+  // 并发到达的重复回调也只发送一次。
+  await Promise.all([
+    deliverServerAnalytics(db, target, event),
+    deliverServerAnalytics(db, target, event),
+  ])
   await deliverServerAnalytics(db, target, event)
   expect(fetchMock).toHaveBeenCalledTimes(1)
   const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1]
@@ -115,11 +119,12 @@ it('付款事件读取真实归因与套餐，重复投递只发送一次，账�
     },
     revenue: { currency: 'USD', amount: '19.99' },
   })
-  const marks = await db
-    .select({ action: auditLog.action })
-    .from(auditLog)
-    .where(eq(auditLog.targetId, `stripe:${key}`))
-  expect(marks).toEqual([{ action: 'analytics.sent.payment_success' }])
+  expect(
+    await db
+      .select()
+      .from(analyticsDelivery)
+      .where(eq(analyticsDelivery.eventKey, `payment_success:stripe:${key}`)),
+  ).toHaveLength(1)
   expect(
     await db.select().from(userAttribution).where(eq(userAttribution.userId, ws)),
   ).toHaveLength(1)

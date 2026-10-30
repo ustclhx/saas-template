@@ -44,7 +44,7 @@
 
 ## Impact
 
-- 数据库：新表 `user_attribution`（迁移 0019），账号删除时清除。
+- 数据库：新表 `user_attribution`、`analytics_delivery`（迁移 0019），账号删除时清除。
 - 代码：`packages/shared`、`config`、`db`、`auth`；`apps/web` 的 analytics、seo、marketing、路由、CSP；`apps/jobs` 的事件消费者。
 - 配置：web / jobs 的 `wrangler.jsonc`、selfhost compose；新增变量 `PLAUSIBLE_DOMAIN`、`PLAUSIBLE_HOST`、`INDEXNOW_KEY`，配置项 `analytics.clarityProjectId`。
 - CI：staging 与生产部署增加门禁步骤，生产部署增加 IndexNow 步骤。

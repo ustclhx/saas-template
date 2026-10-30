@@ -37,7 +37,7 @@
 
 媒体任务的终态只在用户停留在详情页时才记录，离开页面后结束的任务不计入 `generate_success` / `generate_fail`。
 
-服务端事件经 `EVENTS_QUEUE` 交给 jobs（`apps/jobs/src/notifications/analytics.ts`）：消息只带身份标识，消费者从数据库读取归因与套餐，发送成功后写 `audit_log` 标记（`analytics.sent.<事件>`），重试或重复 Webhook 不会重复计数。标记在发送成功后写入，极端情况下（发送成功但写标记失败）可能多计一次。
+服务端事件经 `EVENTS_QUEUE` 交给 jobs（`apps/jobs/src/notifications/analytics.ts`）：消息只带身份标识，消费者从数据库读取归因与套餐，发送前在 `analytics_delivery` 用主键占位，并发或重复的 Webhook 只发送一次，发送失败时释放占位并重试。占位后进程崩溃会少计一次，不会多计。实例长时间不可用时，事件重试到上限后丢弃并记日志 `analytics.dropped`，不进死信、不触发运营告警。`sign_up` 消息带 IP 与 UA，用于串联同一访客。
 
 `payment_success` 没有用户的 IP 和 UA，Plausible 不会把它与同一访客的页面浏览串联，也可能因实例的数据中心 IP 过滤而丢弃（响应头 `x-plausible-dropped`，日志 `analytics.event_dropped`）。按渠道看付款请用事件属性 `source`，或用第 3 节的 SQL。
 
@@ -49,7 +49,7 @@
 2. 注册时，服务端读取并校验 Cookie，写入 `user_attribution`，之后不再更新。
 3. 付款归因到空间所有者：个人空间即付款人，团队空间由最早的所有者代表。
 
-设置了 DNT 或 GPC 的访客不写 Cookie、不上报事件。`features.analytics=false` 时同样关闭。隐私政策模板已说明这个 Cookie；面向欧盟等要求事先同意的地区上线前，请确认是否需要同意流程。
+设置了 DNT 或 GPC 的访客不写 Cookie、不上报事件，注册时服务端同样检查 `DNT` / `Sec-GPC` 请求头。`features.analytics=false` 时同样关闭。隐私政策模板已说明这个 Cookie；面向欧盟等要求事先同意的地区上线前，请确认是否需要同意流程。
 
 **GEO 流量必须带 UTM**：AI 助手常常不传 referrer，发布到这些渠道的链接统一带 `utm_source=chatgpt`（或对应渠道名）与 `utm_medium=geo`。来源优先取 `utm_source`，其次是外站主机名，最后是 `direct`。
 
@@ -114,4 +114,4 @@ order by payments desc;
 
 ## 7. Clarity（默认关闭）
 
-在 `template.config.ts` 设置 `analytics.clarityProjectId` 后才加载，只在公开页面运行，遵守 DNT / GPC。Clarity 会录制会话，启用前须更新隐私政策；它不产生漏斗事件，不作为转化真相源。
+在 `template.config.ts` 设置 `analytics.clarityProjectId` 后才加载，只在公开页面运行，遵守 DNT / GPC；站内导航进入应用区时整页刷新以卸载脚本。Clarity 会录制会话，启用前须更新隐私政策；它不产生漏斗事件，不作为转化真相源。
