@@ -946,7 +946,7 @@ test('selfhost 继承发布和运维材料，排除真值，并再次生成 name
   const f = await fixture(t)
   await f.file(
     'deploy/selfhost/.env.example',
-    'COMPOSE_PROJECT_NAME=fixture-selfhost\nIMAGE_NAMESPACE=ghcr.io/old/fixture\nWEB_IMAGE=fixture-selfhost/web:old\nAPP_URL=https://old.example\nAPP_DOMAIN=old.example\n',
+    'COMPOSE_PROJECT_NAME=fixture-selfhost\n# billing 开启时 PAYMENT_MODE 必填\nPAYMENT_MODE=\nIMAGE_NAMESPACE=ghcr.io/old/fixture\nWEB_IMAGE=fixture-selfhost/web:old\nAPP_URL=https://old.example\nAPP_DOMAIN=old.example\n',
   )
   await f.file('deploy/selfhost/secrets.example', '# 每个 secret 一个文件\n')
   for (const name of ['deploy.sh', 'init-server.sh', 'restore.sh', 'restore-drill.sh']) {
@@ -955,7 +955,7 @@ test('selfhost 继承发布和运维材料，排除真值，并再次生成 name
   await f.file(
     'deploy/selfhost/compose.yaml',
     // biome-ignore lint/suspicious/noTemplateCurlyInString: Compose 插值必须保留字面量。
-    'name: ${COMPOSE_PROJECT_NAME:-fixture-selfhost}\nx-app-env:\n  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?required}\n  GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret\n  TURNSTILE_SECRET_KEY_FILE: /run/secrets/turnstile_secret\nx-app-secrets:\n  - google_client_secret\n  - turnstile_secret\nservices:\n  web:\n    image: ${WEB_IMAGE}\nsecrets:\n  google_client_secret: {file: secrets/google_client_secret}\n  turnstile_secret: {file: secrets/turnstile_secret}\n',
+    'name: ${COMPOSE_PROJECT_NAME:-fixture-selfhost}\nx-app-env:\n  PAYMENT_MODE: ${PAYMENT_MODE:-}\n  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?required}\n  GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret\n  TURNSTILE_SECRET_KEY_FILE: /run/secrets/turnstile_secret\nx-app-secrets:\n  - google_client_secret\n  - turnstile_secret\nservices:\n  web:\n    image: ${WEB_IMAGE}\nsecrets:\n  google_client_secret: {file: secrets/google_client_secret}\n  turnstile_secret: {file: secrets/turnstile_secret}\n',
   )
   await f.file(
     '.github/workflows/selfhost-publish.yml',
@@ -1036,7 +1036,11 @@ test('selfhost 继承发布和运维材料，排除真值，并再次生成 name
   assert.match(result.report, /不显示语言控件，忽略账号语言、cookie 与 Accept-Language/)
   assert.doesNotMatch(
     await readFile(join(result.target, 'deploy/selfhost/compose.yaml'), 'utf8'),
-    /GOOGLE_CLIENT|TURNSTILE_|google_client_secret|turnstile_secret/,
+    /GOOGLE_CLIENT|TURNSTILE_|google_client_secret|turnstile_secret|PAYMENT_MODE/,
+  )
+  assert.doesNotMatch(
+    await readFile(join(result.target, 'deploy/selfhost/.env.example'), 'utf8'),
+    /PAYMENT_MODE/,
   )
   const config = await readFile(join(result.target, 'template.config.ts'), 'utf8')
   for (const section of ['billing', 'credits', 'marketing', 'i18n'])

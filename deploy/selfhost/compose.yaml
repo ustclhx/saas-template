@@ -32,6 +32,7 @@ x-app-env: &app-env
   PLAUSIBLE_HOST: ${PLAUSIBLE_HOST:-}
   INDEXNOW_KEY: ${INDEXNOW_KEY:-}
   EMAIL_TRANSPORT: ${EMAIL_TRANSPORT:-log}
+  PAYMENT_MODE: ${PAYMENT_MODE:-}
 
 x-app-secrets: &app-secrets
   - app_database_url

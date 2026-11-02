@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { EnvValidationError } from './env.ts'
+import { EnvValidationError, resolvePaymentMode } from './env.ts'
 import {
   loadNodeEnv,
   nodeEmailTransportConfig,
@@ -248,6 +248,24 @@ describe('Node runtime config', () => {
       expect(
         loadNodeEnv({ dotenvPath: false, env: { ...valid, ...smtp, SMTP_HOST: host } }).SMTP_HOST,
       ).toBe(host)
+  })
+
+  it('Compose 传入空 PAYMENT_MODE 时按未设置处理，线上报缺失且不默认 test', () => {
+    const load = (env: Record<string, string>) =>
+      loadNodeEnv({ dotenvPath: false, env: { ...valid, ...env } })
+    const blank = load({ PAYMENT_MODE: '' })
+    expect(blank.PAYMENT_MODE).toBeUndefined()
+    try {
+      resolvePaymentMode({ PAYMENT_MODE: blank.PAYMENT_MODE, SENTRY_ENVIRONMENT: 'production' })
+      expect.unreachable()
+    } catch (error) {
+      expect(error).toBeInstanceOf(EnvValidationError)
+      expect((error as EnvValidationError).missing).toEqual(['PAYMENT_MODE'])
+      expect((error as EnvValidationError).invalid).toEqual([])
+    }
+    expect(resolvePaymentMode({ PAYMENT_MODE: load({ PAYMENT_MODE: 'test' }).PAYMENT_MODE })).toBe(
+      'test',
+    )
   })
 
   it('Sentry 环境可选无默认，空 DSN关闭，非法 DSN/环境和生产HTTP拒绝且不泄漏值', () => {

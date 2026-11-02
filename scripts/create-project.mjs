@@ -766,8 +766,11 @@ export async function createProject(input, source = root) {
                 )
             }
             if (!options.turnstile) text = text.replace(/^TURNSTILE_SITE_KEY=.*\n?/m, '')
+            if (!options.billingEnabled)
+              text = text.replace(/^# billing 开启时 PAYMENT_MODE.*\nPAYMENT_MODE=.*\n?/m, '')
           }
           if (options.target === 'selfhost' && path === 'deploy/selfhost/compose.yaml') {
+            if (!options.billingEnabled) text = text.replace(/^  PAYMENT_MODE:.*\n?/m, '')
             for (const provider of ['google', 'github', 'turnstile']) {
               if (provider === 'turnstile' ? options.turnstile : options.oauth.includes(provider))
                 continue
