@@ -39,7 +39,7 @@
 
 服务端事件经 `EVENTS_QUEUE` 交给 jobs（`apps/jobs/src/notifications/analytics.ts`）：消息只带身份标识，消费者从数据库读取归因与套餐，发送前在 `analytics_delivery` 用主键占位，并发或重复的 Webhook 只发送一次，发送失败时释放占位并重试。占位后进程崩溃会少计一次，不会多计。实例长时间不可用时，事件重试到上限后丢弃并记日志 `analytics.dropped`，不进死信、不触发运营告警。`sign_up` 消息带 IP 与 UA，用于串联同一访客。
 
-`payment_success` 没有用户的 IP 和 UA，Plausible 不会把它与同一访客的页面浏览串联，也可能因实例的数据中心 IP 过滤而丢弃（响应头 `x-plausible-dropped`，日志 `analytics.event_dropped`）。按渠道看付款请用事件属性 `source`，或用第 3 节的 SQL。
+`payment_success` 没有用户的 IP 和 UA，Plausible 不会把它与同一访客的页面浏览串联，每次还会多算一个来源为 Direct / None 的访客。按渠道看付款请用事件属性 `source`，或用第 3 节的 SQL。实例丢弃事件时响应头带 `x-plausible-dropped`，记日志 `analytics.event_dropped`。
 
 路径中的空间 slug 与 UUID 替换为 `:slug` / `:id`，URL 查询参数只保留 UTM。
 
@@ -70,6 +70,11 @@ order by payments desc;
 ## 4. Plausible 接入
 
 共用一个自建实例，一站一 site。
+
+社区版（实测 v3.2.1）的限制：
+
+- **没有漏斗和收入目标**。`payment_success` 的 `revenue` 字段会被静默丢弃，事件本身和自定义属性正常保存。收入看第 3 节的 SQL；看流失时对比各目标的转化数，可按属性 `source` 筛选。
+- 不按数据中心 IP 过滤，Webhook 来源的事件不会因此被丢弃。
 
 | 变量（公开，非密钥） | 含义 |
 |---|---|
