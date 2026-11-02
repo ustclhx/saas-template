@@ -50,5 +50,5 @@
 
 - [x] 8.1 `pnpm check`、`pnpm typecheck`、`pnpm check:deps`、`pnpm check:singletons`、`pnpm test`、`pnpm build` 全部通过
 - [x] 8.2 本地启动 web，用收件桩验证脚本注入、`trackEvent` 请求、UTM 首触落库；证据写入 `EVIDENCE_DIR`
-- [ ] 8.3 部署后线上门禁通过（阻塞：需合并并部署 staging，由协调者执行）
-- [ ] 8.4 配置真实 Plausible 实例后验收：staging 仪表盘 24 小时内能回答谁来、卡哪、谁付（阻塞：需实例地址；下一步填 `PLAUSIBLE_DOMAIN` / `PLAUSIBLE_HOST` 并按 `docs/analytics.md` §4 开站，同时确认 Webhook 来源的 `payment_success` 未被实例丢弃）
+- [x] 8.3 部署后线上门禁通过（staging 部署 41398331705 的 Check site isolation 通过；生产在首次发布时由同一门禁校验）
+- [ ] 8.4 配置真实 Plausible 实例后验收：staging 仪表盘 24 小时内能回答谁来、卡哪、谁付（阻塞：需实例地址；下一步填 `PLAUSIBLE_DOMAIN` / `PLAUSIBLE_HOST` 并按 `docs/analytics.md` §4 开站。社区版没有漏斗和收入目标，「卡哪」对比各目标转化数，「谁付」的金额用 SQL）
