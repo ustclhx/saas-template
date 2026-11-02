@@ -262,3 +262,15 @@ test('source state ignores caller git repository, index, and injected configurat
   assert.equal(sourceState(directory).repository, 'https://github.com/example/template')
   assert.equal(sourceState(directory).clean, true)
 })
+
+test('后加的分析参数只在偏离默认值时记录，旧基准不含它们仍然有效', () => {
+  assert.equal(Object.hasOwn(params, 'analytics'), false)
+  assert.equal(paramsToArgs(params).includes('--analytics'), false)
+  const custom = normalizeParams(
+    projectOptions({ ...minimalInput, analytics: 'off', 'plausible-host': 'https://p.example' }),
+  )
+  assert.equal(custom.analytics, 'off')
+  assert.equal(custom['plausible-host'], 'https://p.example')
+  const args = paramsToArgs(custom)
+  assert.equal(args[args.indexOf('--analytics') + 1], 'off')
+})

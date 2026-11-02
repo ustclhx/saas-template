@@ -8,4 +8,5 @@ export const site = {
   name: templateConfig.app.name,
   blog: templateConfig.features.blog,
   docs: templateConfig.features.docs,
+  guides: templateConfig.features.guides,
 } as const

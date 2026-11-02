@@ -6,7 +6,7 @@ import { join } from 'node:path'
 const lists = {
   ai: ['text', 'image', 'video'],
   billing: ['stripe', 'paypal'],
-  features: ['publicApi', 'blog', 'docs', 'waitlist', 'newsletter'],
+  features: ['publicApi', 'blog', 'docs', 'waitlist', 'newsletter', 'guides'],
   'media-providers': ['fal', 'workers-ai'],
   oauth: ['google', 'github'],
 }
@@ -18,6 +18,7 @@ const switches = [
   'multi-tenant',
   'turnstile',
 ]
+const optionalParamKeys = ['analytics', 'plausible-domain', 'plausible-host']
 const paramKeys = [
   ...Object.keys(lists),
   ...switches,
@@ -66,11 +67,30 @@ export function normalizeParams(options) {
     target: options.target ?? 'cloudflare',
     turnstile: options.turnstile ?? true,
   }
+  return {
+    ...Object.fromEntries(
+      paramKeys.map((key) => [
+        key,
+        Array.isArray(values[key]) ? [...new Set(values[key])] : values[key],
+      ]),
+    ),
+    ...optionalParams(options),
+  }
+}
+
+/**
+ * 后加的参数只在偏离默认值时记录：旧项目的基准不含这些键，同步时也不能把它们传给
+ * 基准提交上不认识它们的旧生成器。
+ */
+function optionalParams(options) {
   return Object.fromEntries(
-    paramKeys.map((key) => [
-      key,
-      Array.isArray(values[key]) ? [...new Set(values[key])] : values[key],
-    ]),
+    [
+      ['analytics', options.analytics, 'plausible'],
+      ['plausible-domain', options.plausibleDomain, options.name],
+      ['plausible-host', options.plausibleHost, ''],
+    ]
+      .filter(([, value, fallback]) => value !== undefined && value !== fallback)
+      .map(([key, value]) => [key, value]),
   )
 }
 
@@ -81,10 +101,9 @@ export function normalizeParams(options) {
  */
 export function paramsToArgs(params) {
   validateParams(params)
-  return paramKeys.flatMap((key) => [
-    `--${key}`,
-    Array.isArray(params[key]) ? params[key].join(',') : String(params[key]),
-  ])
+  return [...paramKeys, ...optionalParamKeys.filter((key) => Object.hasOwn(params, key))].flatMap(
+    (key) => [`--${key}`, Array.isArray(params[key]) ? params[key].join(',') : String(params[key])],
+  )
 }
 
 function exactKeys(value, keys, label) {
@@ -100,7 +119,14 @@ function exactKeys(value, keys, label) {
 }
 
 function validateParams(params) {
-  exactKeys(params, paramKeys, 'params')
+  const { analytics, 'plausible-domain': domain_, 'plausible-host': host, ...required } = params
+  exactKeys(required, paramKeys, 'params')
+  if (analytics !== undefined && analytics !== 'plausible' && analytics !== 'off')
+    throw new Error('Invalid params.analytics')
+  if (domain_ !== undefined && typeof domain_ !== 'string')
+    throw new Error('Invalid params.plausible-domain')
+  if (host !== undefined && typeof host !== 'string')
+    throw new Error('Invalid params.plausible-host')
   for (const [key, allowed] of Object.entries(lists)) {
     if (
       !Array.isArray(params[key]) ||

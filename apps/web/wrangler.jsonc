@@ -74,6 +74,8 @@
       "r2_buckets": [{ "binding": "FILES", "bucket_name": "files-staging" }],
       "vars": {
         "SENTRY_ENVIRONMENT": "staging",
+        "PLAUSIBLE_DOMAIN": "",
+        "PLAUSIBLE_HOST": "",
         "AI_FAULT_INJECTION": "enabled",
         "PAYMENT_MODE": "test",
         "APP_URL": "https://web-staging.saas-jobs.workers.dev",
@@ -123,6 +125,8 @@
       "r2_buckets": [{ "binding": "FILES", "bucket_name": "files-production" }],
       "vars": {
         "SENTRY_ENVIRONMENT": "production",
+        "PLAUSIBLE_DOMAIN": "",
+        "PLAUSIBLE_HOST": "",
         "APP_URL": "https://app.ezarouter.cc",
         "TURNSTILE_SITE_KEY": "0x4AAAAAAFXeXLLV-NITAkGX",
         "AI_TEXT_EGRESS": "direct",

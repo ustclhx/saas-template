@@ -28,6 +28,18 @@ export function sitemap(pages: readonly SeoPage[], appUrl: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">${urls}</urlset>`
 }
 
+/** 给 AI 助手读的站点索引（llmstxt.org 约定）；只用默认语言，避免同一内容重复列出。 */
+export function llmsTxt(pages: readonly SeoPage[], appUrl: string): string {
+  const { defaultLocale } = templateConfig.i18n
+  const links = pages
+    .filter((page) => page.locale === defaultLocale)
+    .map(
+      (page) =>
+        `- [${page.title}](${absoluteUrl(appUrl, localizedPath(page.path, page.locale))}): ${page.description}`,
+    )
+  return [`# ${templateConfig.app.name}`, '', '## Pages', '', ...links, ''].join('\n')
+}
+
 export function robots(appUrl: string): string {
   const prefixes = [
     '',

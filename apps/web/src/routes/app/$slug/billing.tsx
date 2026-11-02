@@ -6,6 +6,7 @@ import {
   useRouter,
 } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
+import { trackEvent } from '../../../features/analytics/track.ts'
 import {
   checkoutCustomer,
   getCustomerBilling,
@@ -50,6 +51,7 @@ function BillingPage() {
   const [confirmed, setConfirmed] = useState(false)
   const intent = useRef<{ key: string; uuid: string } | null>(null)
   useEffect(() => setReady(true), [])
+  useEffect(() => trackEvent('paywall_view'), [])
   const owner = page.role === 'owner'
   const disabled = !ready || busy || page.readOnly || !owner
   const renewing = page.subscriptions.find(
@@ -111,6 +113,9 @@ function BillingPage() {
     if (intent.current?.key !== key) intent.current = { key, uuid: crypto.randomUUID() }
     setBusy(true)
     setMessage('')
+    trackEvent('checkout_start', {
+      plan: page.catalog.plans.find((plan) => plan.id === selected.planId)?.key ?? '',
+    })
     try {
       const result = await checkoutCustomer({
         data: {

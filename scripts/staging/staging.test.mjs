@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
+import { submitIndexNow } from '../production/submit-indexnow.mjs'
 import { checkSecrets, secretRequirements } from './check-secrets.mjs'
+import { checkSiteIsolation, expectedFromWrangler } from './check-site-isolation.mjs'
 import { waitHealthy } from './wait-healthy.mjs'
 
 test('secret check reports the actual staging payment gaps without printing present secrets', async () => {
@@ -42,6 +47,7 @@ test('optional secrets do not block an otherwise configured staging environment'
     'web optional: SENTRY_DSN',
     'web optional: R2_ACCESS_KEY_ID',
     'web optional: R2_SECRET_ACCESS_KEY',
+    'web optional: INDEXNOW_KEY',
     'jobs optional: RESEND_API_KEY',
     'jobs optional: AI_GATEWAY_TOKEN',
     'jobs optional: SENTRY_DSN',
@@ -150,4 +156,224 @@ test('invalid response and hanging requests stay bounded and do not reveal respo
   assert.ok(requests >= 2)
   assert.deepEqual(JSON.parse(lines[0]), { status: 200, version: null })
   assert.ok(lines.slice(1).every((line) => line === '{"status":null,"version":null}'))
+})
+
+const SITE = 'https://own.example'
+const page = (head) => `<!doctype html><html><head>${head}</head><body></body></html>`
+const goodHead = `<link rel="canonical" href="${SITE}/"/><link rel="alternate" hreflang="zh" href="${SITE}/zh"/><meta property="og:url" content="${SITE}/"/><link rel="icon" href="/favicon.ico"/>`
+
+function siteFixture(overrides = {}) {
+  const routes = {
+    '/sitemap.xml': [
+      200,
+      `<urlset><url><loc>${SITE}/</loc><xhtml:link rel="alternate" hreflang="zh" href="${SITE}/zh"/></url></urlset>`,
+    ],
+    '/robots.txt': [200, `User-agent: *\nSitemap: ${SITE}/sitemap.xml\n`],
+    '/': [200, page(goodHead)],
+    '/favicon.ico': [200, 'icon'],
+    ...overrides,
+  }
+  return async (url) => {
+    const [status, body] = routes[new URL(url).pathname] ?? [404, 'missing']
+    return new Response(body, { status })
+  }
+}
+
+async function isolationProblems(overrides, options = {}) {
+  return checkSiteIsolation({
+    baseUrl: SITE,
+    appUrl: SITE,
+    fetchImpl: siteFixture(overrides),
+    write: () => {},
+    ...options,
+  })
+}
+
+test('site isolation passes when every public URL stays on the current environment', async () => {
+  assert.deepEqual(await isolationProblems({}), [])
+  const script = `<script defer src="https://plausible.example/js/script.manual.js" data-domain="own-staging"></script>`
+  assert.deepEqual(
+    await isolationProblems(
+      { '/': [200, page(goodHead + script)] },
+      { plausibleDomain: 'own-staging', plausibleHost: 'https://plausible.example' },
+    ),
+    [],
+  )
+})
+
+test('site isolation rejects the staging cross-talk signals', async () => {
+  const cases = [
+    [
+      'sitemap index pointing at a derived site',
+      {
+        '/sitemap.xml': [
+          200,
+          '<sitemapindex><sitemap><loc>https://arcanumber.com/sitemap/en.xml</loc></sitemap></sitemapindex>',
+        ],
+      },
+      /arcanumber\.com/,
+    ],
+    [
+      'child sitemap returning 404',
+      {
+        '/sitemap.xml': [
+          200,
+          `<sitemapindex><sitemap><loc>${SITE}/sitemap/en.xml</loc></sitemap></sitemapindex>`,
+        ],
+      },
+      /sitemap\/en\.xml: status 404/,
+    ],
+    [
+      'hreflang on another host',
+      {
+        '/sitemap.xml': [
+          200,
+          `<urlset><url><loc>${SITE}/</loc><xhtml:link href="https://other.example/zh"/></url></urlset>`,
+        ],
+      },
+      /other\.example/,
+    ],
+    [
+      'robots on another host',
+      { '/robots.txt': [200, 'Sitemap: https://other.example/sitemap.xml'] },
+      /robots\.txt: https:\/\/other/,
+    ],
+    [
+      'canonical on another host',
+      { '/': [200, page('<link rel="canonical" href="https://other.example/"/>')] },
+      /other\.example/,
+    ],
+    ['canonical missing', { '/': [200, page('')] }, /canonical missing/],
+    ['favicon 404', { '/favicon.ico': [404, ''] }, /favicon\.ico: status 404/],
+    [
+      'icon on another host',
+      { '/': [200, page(`${goodHead}<link rel="icon" href="https://other.example/i.png"/>`)] },
+      /other\.example/,
+    ],
+    [
+      'analytics script without a configured site',
+      {
+        '/': [
+          200,
+          page(
+            `${goodHead}<script defer src="https://plausible.example/js/script.manual.js" data-domain="prod"></script>`,
+          ),
+        ],
+      },
+      /no Plausible site/,
+    ],
+  ]
+  for (const [name, overrides, pattern] of cases) {
+    const problems = await isolationProblems(overrides)
+    assert.ok(
+      problems.some((line) => pattern.test(line)),
+      `${name}: ${problems.join('; ')}`,
+    )
+  }
+})
+
+test('site isolation requires this environment Plausible site and host', async () => {
+  const options = { plausibleDomain: 'own-staging', plausibleHost: 'https://plausible.example' }
+  assert.match((await isolationProblems({}, options))[0], /expected one Plausible script/)
+  const wrongSite = `<script src="https://plausible.example/js/script.manual.js" data-domain="own"></script>`
+  assert.match(
+    (await isolationProblems({ '/': [200, page(goodHead + wrongSite)] }, options))[0],
+    /Plausible site own is not own-staging/,
+  )
+  const wrongHost = `<script src="https://evil.example/js/script.manual.js" data-domain="own-staging"></script>`
+  assert.match(
+    (await isolationProblems({ '/': [200, page(goodHead + wrongHost)] }, options))[0],
+    /is not on https:\/\/plausible\.example/,
+  )
+  assert.match(
+    (await isolationProblems({}, { baseUrl: 'https://wrong.example' }))[0],
+    /differs from APP_URL/,
+  )
+})
+
+test('IndexNow submits only this site URLs, skips without a key and never fails the release', async () => {
+  const calls = []
+  const fetchImpl = async (url, init) => {
+    calls.push({ url: String(url), init })
+    if (String(url).endsWith('/sitemap.xml'))
+      return new Response(
+        `<urlset><url><loc>${SITE}/a</loc></url><url><loc>https://other.example/b</loc></url></urlset>`,
+      )
+    return new Response('', { status: 200 })
+  }
+  const lines = []
+  const write = (line) => lines.push(line)
+  assert.deepEqual(await submitIndexNow({ baseUrl: SITE, key: '', fetchImpl, write }), {
+    status: 'skipped',
+  })
+  assert.equal(calls.length, 0)
+  assert.deepEqual(await submitIndexNow({ baseUrl: SITE, key: 'k1', fetchImpl, write }), {
+    status: 'submitted',
+    count: 1,
+  })
+  assert.deepEqual(JSON.parse(calls[1].init.body), {
+    host: 'own.example',
+    key: 'k1',
+    keyLocation: `${SITE}/indexnow.txt`,
+    urlList: [`${SITE}/a`],
+  })
+  assert.deepEqual(
+    await submitIndexNow({
+      baseUrl: SITE,
+      key: 'secret-key',
+      fetchImpl: async () => new Response('', { status: 500 }),
+      write,
+    }),
+    { status: 'failed' },
+  )
+  assert.equal(lines.join('\n').includes('secret-key'), false)
+})
+
+test('site isolation handles a marketing-free project and network failures without crashing', async () => {
+  const fetchImpl = siteFixture({
+    '/sitemap.xml': [404, ''],
+    '/robots.txt': [404, ''],
+    '/': [404, ''],
+    '/login': [200, page('')],
+  })
+  assert.deepEqual(await isolationProblems({}, { marketing: false, fetchImpl }), [])
+  const problems = await checkSiteIsolation({
+    baseUrl: SITE,
+    appUrl: SITE,
+    retryDelayMs: 0,
+    write: () => {},
+    fetchImpl: async () => {
+      throw new Error('socket reset')
+    },
+  })
+  assert.ok(problems.some((line) => /status 599/.test(line)))
+})
+
+test('gate expectations follow the template analytics switch, not just the env vars', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'site-isolation-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  await mkdir(join(root, 'apps/web'), { recursive: true })
+  await writeFile(
+    join(root, 'apps/web/wrangler.jsonc'),
+    JSON.stringify({
+      env: {
+        staging: {
+          vars: {
+            APP_URL: SITE,
+            PLAUSIBLE_DOMAIN: 'a-staging',
+            PLAUSIBLE_HOST: 'https://p.example',
+          },
+        },
+      },
+    }),
+  )
+  const expected = async (config) => {
+    await writeFile(join(root, 'template.config.ts'), config)
+    return expectedFromWrangler('staging', root).plausibleDomain
+  }
+  assert.equal(await expected("features: { analytics: 'plausible', blog: true }"), 'a-staging')
+  assert.equal(await expected('features: {"analytics":"plausible","blog":true}'), 'a-staging')
+  assert.equal(await expected('features: { blog: true }'), 'a-staging')
+  assert.equal(await expected('features: {"analytics":false,"blog":true}'), '')
+  assert.equal(await expected("features: { analytics: 'posthog' }"), '')
 })

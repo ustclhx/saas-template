@@ -52,9 +52,11 @@ export default defineTemplateConfig({
     defaultPricingMode: { text: 'token', image: 'per_call', video: 'per_call' },
   },
   features: {
+    analytics: 'plausible', // 'plausible' | 'posthog' | false；长期词站可设 false，见 docs/analytics.md
     publicApi: false, // API Key 调用 /api/v1
     blog: true,
     docs: false,
     waitlist: false,
+    guides: true, // 答案优先指南页 /guides，见 docs/analytics.md
   },
 })

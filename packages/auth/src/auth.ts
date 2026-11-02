@@ -4,6 +4,7 @@ import type { Database } from '@saas/db'
 import * as schema from '@saas/db/schema'
 import type { KeyValueStore, RateLimiter } from '@saas/platform'
 import { newId } from '@saas/shared'
+import { log } from '@saas/shared/log'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError } from 'better-auth/api'
@@ -32,6 +33,8 @@ export interface CreateAuthDeps {
   /** 可信运行时入口解析的本请求 IP。 */
   readonly clientIp?: string | null | undefined
   readonly beforeUserCreate?: (user: { readonly email: string }, headers?: Headers) => Promise<void>
+  /** 注册提交后调用；headers 缺失表示非浏览器请求。实现方自行兜底，抛错只记日志不影响注册。 */
+  readonly onUserSignedUp?: (user: { readonly id: string }, headers?: Headers) => Promise<void>
   readonly deletionSteps?: readonly DeletionStep[]
   /** 模板配置（`template.config.ts`），决定启用哪些登录方式与插件 */
   readonly config: TemplateConfig
@@ -98,9 +101,20 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
               await deps.beforeUserCreate?.(user, context?.request?.headers ?? context?.headers)
             },
           }),
-          after: async (user) => {
+          after: async (user, context) => {
             await workspaceHooks.user.create.after(user)
             await bootstrapAdmin(user.id, 'user.create')
+            // 后台代建账号带的是管理员的 Cookie，不能当作被创建用户的首触来源。
+            if (deps.onUserSignedUp && !context?.path?.startsWith('/admin/')) {
+              try {
+                await deps.onUserSignedUp(
+                  { id: user.id },
+                  context?.request?.headers ?? context?.headers,
+                )
+              } catch (error) {
+                log.warn('analytics.sign_up_failed', { error })
+              }
+            }
             // Better Auth defers create.after until registration commits. Keep the
             // injected callback outside the workspace hook's best-effort catch.
             if (user.emailVerified && deps.onEmailVerified) {

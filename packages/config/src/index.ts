@@ -1,3 +1,4 @@
+export { type PlausibleSite, plausibleSite } from './analytics.ts'
 export {
   EMAIL_TRANSPORTS,
   type EmailTransport,

@@ -405,7 +405,7 @@ Cloudflare 回滚先读取生产 `/api/health.version`，逐条检查当前版�
 |---|---|
 | 错误 | Sentry（web + jobs，带 release 与 source map） |
 | 日志 | Workers Logs（结构化 JSON，含 requestId、workspaceId、userId） |
-| 流量 | Cloudflare Web Analytics；产品分析可选 PostHog / Umami |
+| 流量 | Cloudflare Web Analytics；产品漏斗默认自建 Plausible，可选 PostHog，见 [埋点](analytics.md) |
 | AI | AI Gateway 仪表盘 |
 | 业务指标 | 管理后台：注册、付费转化、MRR、积分消耗、任务成功率 |
 | 数据库 | pg_stat_statements、导出器指标、备份状态 |

@@ -18,7 +18,7 @@ import { parseArgs } from 'node:util'
 import { normalizeParams, serializeBaseRecord, sourceState } from './template-base.mjs'
 
 const root = resolve(import.meta.dirname, '..')
-const featureNames = ['publicApi', 'blog', 'docs', 'waitlist', 'newsletter']
+const featureNames = ['publicApi', 'blog', 'docs', 'waitlist', 'newsletter', 'guides']
 const aiNames = ['text', 'image', 'video']
 const mediaProviderNames = ['fal', 'workers-ai']
 const excluded = new Set([
@@ -51,6 +51,7 @@ const excluded = new Set([
 // 模板自身的开发、运营和验收材料不属于新项目交付内容。
 const templateOnly = new Set([
   'docs/08-roadmap.md',
+  'docs/requirements/analytics-plausible-geo.md',
   'docs/09-parallel-plan.md',
   'docs/runbooks/hyperdrive-tunnel.md',
   'docs/runbooks/p2-acceptance-paypal.md',
@@ -245,6 +246,18 @@ export function projectOptions(input) {
   const billingEnabled = boolean(input['billing-enabled'] ?? 'true', 'billing-enabled')
   const creditsEnabled = boolean(input['credits-enabled'] ?? 'true', 'credits-enabled')
   const ai = list(input.ai ?? 'text,image,video', aiNames, 'ai')
+  const analytics = input.analytics ?? 'plausible'
+  if (analytics !== 'plausible' && analytics !== 'off')
+    throw new Error('--analytics 只接受 plausible（新词站默认）或 off（长期词站可选关闭）')
+  const plausibleHost = input['plausible-host'] ?? ''
+  if (
+    plausibleHost &&
+    (!URL.canParse(plausibleHost) || new URL(plausibleHost).protocol !== 'https:')
+  )
+    throw new Error('--plausible-host 必须是自建 Plausible 实例的 HTTPS 地址')
+  const plausibleDomain = input['plausible-domain'] ?? input.name
+  if (!/^[a-z0-9][a-z0-9.-]*$/.test(plausibleDomain))
+    throw new Error('--plausible-domain 只接受小写字母、数字、点与连字符')
   if (billingEnabled && !creditsEnabled) throw new Error('启用 billing 必须启用 credits')
   if (!billingEnabled && ai.length)
     throw new Error('关闭 billing 时需使用 --ai "" 关闭 AI（当前额度依赖套餐）')
@@ -268,6 +281,9 @@ export function projectOptions(input) {
     creditsEnabled,
     marketing: boolean(input.marketing ?? 'true', 'marketing'),
     i18n: boolean(input.i18n ?? 'true', 'i18n'),
+    analytics,
+    plausibleDomain,
+    plausibleHost: plausibleHost ? new URL(plausibleHost).origin : '',
     target,
     imageNamespace,
     output: resolve(input.output ?? join('..', input.name)),
@@ -317,12 +333,22 @@ function templateConfig(source, options) {
       `${name}: ${options.ai.includes(name)}`,
     )
   }
+  const site = options.analytics === 'plausible'
   return result.replace(
     /features:\s*\{[^}]*\}/,
-    `features: ${JSON.stringify(
-      Object.fromEntries(featureNames.map((name) => [name, options.features.includes(name)])),
-    )}`,
+    `features: ${JSON.stringify({
+      analytics: site ? 'plausible' : false,
+      ...Object.fromEntries(featureNames.map((name) => [name, options.features.includes(name)])),
+    })},\n  analytics: ${JSON.stringify({
+      // selfhost 预渲染读这里；Cloudflare 以各环境 wrangler vars 为准。
+      plausibleDomain: site && options.target === 'selfhost' ? options.plausibleDomain : '',
+      plausibleHost: site && options.target === 'selfhost' ? options.plausibleHost : '',
+    })}`,
   )
+}
+
+function stagingUrl(options) {
+  return `https://staging.${new URL(options.url).hostname}`
 }
 
 // 仅在配置语义位置改 Worker / Queue 名；资源 ID 清空，避免新项目复用模板的 staging / production。
@@ -338,6 +364,16 @@ function wranglerConfig(source, options, app) {
     )
     .replace(/("id"\s*:\s*")[a-f0-9]{32}"/g, '$100000000000000000000000000000000"')
     .replace(/("APP_URL"\s*:\s*")https:[^"]+"/g, `$1${options.url}"`)
+    // staging 绝不能沿用生产域名：sitemap / canonical / 埋点都由它决定，部署前改成实际 staging 地址。
+    .replace(/("staging"\s*:\s*\{[\s\S]*?"APP_URL"\s*:\s*")[^"]+"/, `$1${stagingUrl(options)}"`)
+    // 一站一 site：生产用项目名，staging 用 -staging 后缀；未启用时留空即不注入。
+    .replace(
+      /("(staging|production)"\s*:\s*\{[\s\S]*?"PLAUSIBLE_DOMAIN"\s*:\s*")[^"]*("\s*,\s*"PLAUSIBLE_HOST"\s*:\s*")[^"]*"/g,
+      (_match, before, environment, between) =>
+        options.analytics === 'plausible'
+          ? `${before}${options.plausibleDomain}${environment === 'staging' ? '-staging' : ''}${between}${options.plausibleHost}"`
+          : `${before}${between}"`,
+    )
     // 模板生产自定义域名与真实 Turnstile 站点 key 不能被新项目复用；部署前按新项目配置（测试 key 1x… 保留）
     .replace(/("TURNSTILE_SITE_KEY"\s*:\s*")0x[^"]*"/g, '$1"')
     .replace(/("pattern"\s*:\s*")[^"]+"/g, '$1configure-production-domain.invalid"')
@@ -387,6 +423,11 @@ function selfhostChecklist(options) {
     'EMAIL_REPLY_TO',
     'SENTRY_ENVIRONMENT',
   ]
+  if (options.analytics === 'plausible') {
+    resources.push(...plausibleChecklist(options))
+    vars.push('PLAUSIBLE_DOMAIN', 'PLAUSIBLE_HOST')
+  }
+  if (options.marketing) resources.push(...searchChecklist(options))
   for (const provider of options.oauth) {
     resources.push(`${provider} OAuth 应用：登记新域名的回调 URL`)
     vars.push(`${provider.toUpperCase()}_CLIENT_ID`)
@@ -423,6 +464,28 @@ function selfhostChecklist(options) {
   return { resources, secrets, vars, ciSecrets: [] }
 }
 
+function plausibleChecklist(options) {
+  const host =
+    options.plausibleHost ||
+    '（未填写：在 web / jobs 的 wrangler vars 或 selfhost .env 配置 PLAUSIBLE_HOST 后才启用）'
+  return [
+    `Plausible：在自建实例 ${host} 添加 site ${options.plausibleDomain}（生产）与 ${options.plausibleDomain}-staging（staging），两者不得共用`,
+    'Plausible 目标（Goals）：添加 sign_up、upload、generate_start、generate_success、generate_fail、paywall_view、checkout_start、payment_success；并在 Site settings 启用自定义属性 source、landing_path、locale、plan、device',
+    'Plausible 开关：长期词站把 template.config.ts 的 features.analytics 改为 false（或生成时 --analytics off）；发布门禁 scripts/staging/check-site-isolation.mjs 会校验脚本 site 与本环境一致',
+    'GEO 链接统一带 utm_source=chatgpt 等 UTM：AI 助手流量常无 referrer，不能只靠来源页判断',
+  ]
+}
+
+function searchChecklist(options) {
+  const sitemap = `${options.url}/sitemap.xml`
+  return [
+    `Google Search Console：添加网域资源 ${new URL(options.url).hostname}，用 DNS TXT 记录验证所有权，在“站点地图”提交 ${sitemap}`,
+    `Bing Webmaster Tools：添加 ${options.url}（可从 Search Console 导入），按提示验证，在 Sitemaps 提交 ${sitemap}`,
+    'IndexNow（可选）：生成密钥后写入 INDEXNOW_KEY（web 运行环境与生产部署 CI secret 相同），生产发布后自动提交站点地图地址',
+    '发布前：替换法律页顶部的模板声明，由法律专业人士审阅；app.supportEmail 必须是可收信的真实地址',
+  ]
+}
+
 export function setupChecklist(options) {
   if (options.target === 'selfhost') return selfhostChecklist(options)
   const media = options.ai.includes('image') || options.ai.includes('video')
@@ -442,6 +505,8 @@ export function setupChecklist(options) {
     `R2：FILES 私有桶 ${options.name}-files（staging 使用 -staging 后缀）；文本模式也保留文件清理 Cron 所需绑定`,
     'Sentry：为 web / jobs 配置 DSN；CI 上传 source map 并使用部署提交 SHA 作为 release',
   ]
+  if (options.analytics === 'plausible') resources.push(...plausibleChecklist(options))
+  if (options.marketing) resources.push(...searchChecklist(options))
   const secrets = ['BETTER_AUTH_SECRET', 'BOOTSTRAP_ADMIN_EMAILS', 'RESEND_API_KEY', 'SENTRY_DSN']
   const vars = [
     'APP_URL',
@@ -832,7 +897,7 @@ export function verifyProject(target, { nodeBuild = false } = {}) {
   }
 }
 
-const help = `用法：pnpm create-project [参数]\n无参数时交互输入；非交互必须提供 --name 与 --domain。\n  --name acme --domain acme.example --target cloudflare|selfhost --output /tmp/acme\n  --image-namespace ghcr.io/owner/acme（selfhost，默认 ghcr.io/configure-owner/acme）\n  --locale en|zh --support-email support@acme.example\n  --ai text,image,video --features blog,docs,waitlist,newsletter,publicApi\n  --media-providers fal,workers-ai\n  --billing stripe,paypal --billing-enabled true|false --credits-enabled true|false\n  --marketing true|false --i18n true|false --oauth google,github\n  --turnstile true|false --multi-tenant true|false\n旧 --target <path> 已迁移至 --output <path>；部署目标默认 cloudflare。\n列表参数传空字符串可关闭全部；默认 ai / billing / oauth 全开，features=blog。\n默认安装依赖并运行 typecheck 与单元测试；--skip-check 仅生成，随后必须自行验证。\n  --help 显示帮助\n`
+const help = `用法：pnpm create-project [参数]\n无参数时交互输入；非交互必须提供 --name 与 --domain。\n  --name acme --domain acme.example --target cloudflare|selfhost --output /tmp/acme\n  --image-namespace ghcr.io/owner/acme（selfhost，默认 ghcr.io/configure-owner/acme）\n  --locale en|zh --support-email support@acme.example\n  --analytics plausible|off（默认 plausible；长期词站可 off）--plausible-domain acme --plausible-host https://plausible.example\n  --ai text,image,video --features blog,docs,waitlist,newsletter,publicApi\n  --media-providers fal,workers-ai\n  --billing stripe,paypal --billing-enabled true|false --credits-enabled true|false\n  --marketing true|false --i18n true|false --oauth google,github\n  --turnstile true|false --multi-tenant true|false\n旧 --target <path> 已迁移至 --output <path>；部署目标默认 cloudflare。\n列表参数传空字符串可关闭全部；默认 ai / billing / oauth 全开，features=blog。\n默认安装依赖并运行 typecheck 与单元测试；--skip-check 仅生成，随后必须自行验证。\n  --help 显示帮助\n`
 
 export async function main() {
   const { values } = parseArgs({
@@ -857,6 +922,9 @@ export async function main() {
           'oauth',
           'turnstile',
           'multi-tenant',
+          'analytics',
+          'plausible-domain',
+          'plausible-host',
         ].map((name) => [name, { type: 'string' }]),
       ),
       help: { type: 'boolean' },
@@ -886,6 +954,7 @@ export async function main() {
         ['oauth', 'OAuth（逗号列表，- 关闭全部）', 'google,github'],
         ['turnstile', 'Turnstile', 'true'],
         ['multi-tenant', '多租户', 'false'],
+        ['analytics', '产品分析（plausible 新词站默认 / off 长期词站可关）', 'plausible'],
       ]) {
         if (values[key] !== undefined) continue
         if (key === 'image-namespace' && values.target !== 'selfhost') continue

@@ -18,6 +18,7 @@ import {
 import { log, newRequestId, withLogContext } from '@saas/shared/log'
 import { createNodeStorage } from '@saas/storage/node'
 import templateConfig from '../../../../template.config.ts'
+import { serverAnalyticsTarget } from '../billing.ts'
 import { consumeJobsBatch, type JobsContext } from '../handlers.ts'
 import { type JobObserver, logJobObserver } from '../observer.ts'
 import { createNodeMediaHandler } from './media.ts'
@@ -108,6 +109,7 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
       : { available: false },
     observer,
     billingEnabled: features.billing,
+    analytics: serverAnalyticsTarget(config),
   }
   try {
     engine = await createNodeJobEngine({

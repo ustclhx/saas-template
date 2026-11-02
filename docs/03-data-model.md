@@ -88,6 +88,8 @@ credit_ledger (只增不改的流水)
 | `setting` | key (pk), value jsonb, updated_by | 运行时可改设置，KV 缓存 |
 | `waitlist` | id, email (unique), source, created_at | 可选 |
 
+`user_attribution`：用户首次进站来源（UTM、来源主机、落地路径、设备），主键 `user_id`，注册时写入一次，账号删除时一并清除。见 [埋点](analytics.md)。
+
 ## 7. 索引与约束要点
 
 - 所有带 `ws` 的表：`(ws, id desc)` 复合索引。UUIDv7 本身按时间有序，按 id 排序即按创建时间排序，列表分页用 id 做游标，不需要再单独建 `created_at` 索引。

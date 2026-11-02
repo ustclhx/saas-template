@@ -12,11 +12,15 @@ declare global {
         StorageEnv,
         SentryEnv {
       AI_FAULT_INJECTION?: string
+      APP_URL?: string
+      PLAUSIBLE_DOMAIN?: string
+      PLAUSIBLE_HOST?: string
       CRON_PROFILE?: string
       FILES: R2Bucket
       EVENTS_QUEUE: Queue<
         | import('@saas/billing').BillingQueueMessage
         | import('./notifications/operations.ts').OperationsQueueMessage
+        | import('@saas/shared/analytics').ServerAnalyticsMessage
       >
       EVENTS_DLQ: Queue<import('./queues/events-dead-letter.ts').EventsDeadLetter>
       EMAIL_QUEUE: Queue<import('@saas/email/queue').EmailQueueMessage>

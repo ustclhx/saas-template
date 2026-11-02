@@ -33,6 +33,12 @@ declare namespace Cloudflare {
     APP_URL: string
     /** Turnstile site key（vars，前端公开）；模板配置启用 Turnstile 时必填 */
     TURNSTILE_SITE_KEY?: string
+    /** 本环境的 Plausible site_id（vars，公开）；staging 与生产不得相同 */
+    PLAUSIBLE_DOMAIN?: string
+    /** 自建 Plausible 实例地址（vars，公开） */
+    PLAUSIBLE_HOST?: string
+    /** IndexNow 密钥（secret；协议要求可公开访问，但不进仓库） */
+    INDEXNOW_KEY?: string
     // 以下为 secrets（wrangler secret / .dev.vars），按模板配置在 checkEnv 中校验
     BETTER_AUTH_SECRET?: string
     /** 可选首次管理员邮箱名单；仅已验证且未封禁账号会被提升 */

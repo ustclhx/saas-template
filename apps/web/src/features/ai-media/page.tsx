@@ -2,6 +2,7 @@ import { Button, Label } from '@saas/ui'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { m } from '../../paraglide/messages.js'
+import { trackEvent } from '../analytics/track.ts'
 import { FormAlert } from '../auth/auth-layout.tsx'
 import { HydratedControls } from '../workspace/components.tsx'
 import { fileUploadActions, type MediaFile, submitMediaTask, uploadMediaFile } from './client.ts'
@@ -152,6 +153,7 @@ function ParameterForm({
       const ready = await uploadMediaFile(page.workspaceId, file, fileUploadActions)
       onFileReady(ready)
       change(name, ready.id)
+      trackEvent('upload')
     } catch (cause) {
       setError(mediaErrorMessage(cause, true))
     } finally {
@@ -179,6 +181,7 @@ function ParameterForm({
     if (credits === undefined) return
     setPending(true)
     onBusyChange(true)
+    trackEvent('generate_start')
     try {
       const result = await submitMediaTask({
         workspaceId: page.workspaceId,
@@ -191,6 +194,7 @@ function ParameterForm({
         params: { slug: page.workspaceSlug, taskId: result.taskId },
       })
     } catch (cause) {
+      trackEvent(isPaywallError(cause) ? 'paywall_view' : 'generate_fail')
       setError(mediaErrorMessage(cause))
     } finally {
       setPending(false)
@@ -248,13 +252,21 @@ function ParameterForm({
   )
 }
 
+function mediaErrorCode(cause: unknown) {
+  return cause instanceof Error && 'code' in cause
+    ? cause.code
+    : cause instanceof Error
+      ? cause.message
+      : undefined
+}
+
+function isPaywallError(cause: unknown) {
+  const code = mediaErrorCode(cause)
+  return code === 'INSUFFICIENT_CREDITS' || code === 'CREDIT_DEBT' || code === 'UPGRADE_REQUIRED'
+}
+
 function mediaErrorMessage(cause: unknown, upload = false) {
-  const code =
-    cause instanceof Error && 'code' in cause
-      ? cause.code
-      : cause instanceof Error
-        ? cause.message
-        : undefined
+  const code = mediaErrorCode(cause)
   if (code === 'INSUFFICIENT_CREDITS' || code === 'CREDIT_DEBT') return m.media_credits_error()
   if (code === 'UPGRADE_REQUIRED') return m.media_upgrade_error()
   if (code === 'QUOTA_EXCEEDED') return m.media_quota_error()

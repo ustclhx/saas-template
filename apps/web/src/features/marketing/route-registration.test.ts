@@ -14,6 +14,10 @@ const publicPaths = [
   '/api/waitlist/',
   '/sitemap.xml',
   '/robots.txt',
+  '/llms.txt',
+  '/indexnow.txt',
+  '/guides/',
+  '/guides/$slug',
 ]
 
 vi.mock('../../server/template-config.ts', async (original) => {
@@ -45,6 +49,10 @@ function mockRouteTree() {
       '/api/waitlist/',
       '/sitemap.xml',
       '/robots.txt',
+      '/llms.txt',
+      '/indexnow.txt',
+      '/guides/',
+      '/guides/$slug',
     ]
     return {
       routeTree: root.addChildren(

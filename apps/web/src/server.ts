@@ -5,7 +5,7 @@
 // 每个请求先建立日志上下文（新生成的 UUIDv7 请求 ID，附 Cloudflare 的 cf-ray 便于对照平台日志），
 // 结束时输出一行 `http.request`（@saas/shared/log）。
 import { type AuthEmail, parseAuthEnv, type SendAuthEmail } from '@saas/auth'
-import { loadEnv } from '@saas/config'
+import { loadEnv, plausibleSite } from '@saas/config'
 import type { Database } from '@saas/db'
 import type { KeyValueStore, RequestMetadata } from '@saas/platform'
 import {
@@ -25,6 +25,7 @@ import { createStartHandler, defaultStreamHandler } from '@tanstack/react-start/
 import { APIError } from 'better-auth/api'
 import { gateAdminRequest } from './features/admin/gate.ts'
 import { handleAuthRequest } from './features/admin/impersonation-http.ts'
+import { createSignUpRecorder } from './features/analytics/server.ts'
 import {
   gatePublicApiRequest,
   isPublicApiPath,
@@ -78,6 +79,8 @@ export default {
       nonce,
       r2AccountId: env.R2_ACCOUNT_ID,
       sentryDsn: env.SENTRY_DSN,
+      analyticsOrigin: plausibleSite(templateConfig.features.analytics, env)?.origin,
+      clarity: Boolean(templateConfig.analytics.clarityProjectId.trim()),
     }
     return withSecurityNonce(nonce, () =>
       withLogContext(context, async () => {
@@ -164,6 +167,9 @@ function createCloudflareWebRuntime(
   const config = {
     ...parseAuthEnv(env, templateConfig),
     TURNSTILE_SITE_KEY: env.TURNSTILE_SITE_KEY,
+    PLAUSIBLE_DOMAIN: env.PLAUSIBLE_DOMAIN,
+    PLAUSIBLE_HOST: env.PLAUSIBLE_HOST,
+    INDEXNOW_KEY: env.INDEXNOW_KEY,
     PAYMENT_MODE: env.PAYMENT_MODE,
     SENTRY_ENVIRONMENT: env.SENTRY_ENVIRONMENT,
     AI_FAULT_INJECTION: env.AI_FAULT_INJECTION,
@@ -203,6 +209,11 @@ function createCloudflareWebRuntime(
       clientIp: requestMeta.clientIp,
       sendEmail,
       deletionSteps: createBillingDeletionSteps(config, db, cache),
+      onUserSignedUp: createSignUpRecorder({
+        db,
+        queue: env.EVENTS_QUEUE && createCloudflareQueue(env.EVENTS_QUEUE),
+        clientIp: requestMeta.clientIp,
+      }),
       beforeUserCreate: async (user, headers) => {
         try {
           await assertSignupAdmission(

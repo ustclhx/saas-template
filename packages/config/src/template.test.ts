@@ -1,4 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
+import { plausibleSite } from './analytics.ts'
 import {
   defineTemplateConfig,
   type MediaProviderId,
@@ -18,7 +19,7 @@ describe('defineTemplateConfig', () => {
     expect(config.credits.enabled).toBe(true)
     expect(config.marketing.enabled).toBe(true)
     expect(config.i18n.enabled).toBe(true)
-    expect(config.features.analytics).toBe(false)
+    expect(config.features.analytics).toBe('plausible')
     expect(config.analytics.cloudflareToken).toBe('')
     expect(config.analytics.posthogKey).toBe('')
     expect(config.billing.overage).toEqual({
@@ -46,6 +47,9 @@ describe('defineTemplateConfig', () => {
       cloudflareToken: '',
       posthogKey: 'public-project-key',
       posthogHost: 'https://us.i.posthog.com',
+      plausibleDomain: '',
+      plausibleHost: '',
+      clarityProjectId: '',
     })
     expect(config.ai).toEqual({
       text: templateConfigDefaults.ai.text,
@@ -197,4 +201,26 @@ it('merges text policy defaults and rejects invalid text policy values', () => {
     // 外部配置可能绕过 TypeScript，运行时也必须拒绝非法策略。
     expect(() => defineTemplateConfig({ app, ai: { text: text as never } })).toThrow()
   }
+})
+
+describe('plausibleSite', () => {
+  const env = { PLAUSIBLE_DOMAIN: 'acme-staging', PLAUSIBLE_HOST: 'https://plausible.example/x' }
+
+  it('按环境变量给出本站脚本与事件地址', () => {
+    expect(plausibleSite('plausible', env)).toEqual({
+      domain: 'acme-staging',
+      origin: 'https://plausible.example',
+      scriptUrl: 'https://plausible.example/js/script.manual.js',
+      eventUrl: 'https://plausible.example/api/event',
+    })
+  })
+
+  it('模板关闭、未配置或地址非法时不启用', () => {
+    expect(plausibleSite(false, env)).toBeNull()
+    expect(plausibleSite('posthog', env)).toBeNull()
+    expect(plausibleSite('plausible', {})).toBeNull()
+    expect(plausibleSite('plausible', { ...env, PLAUSIBLE_DOMAIN: ' ' })).toBeNull()
+    expect(plausibleSite('plausible', { ...env, PLAUSIBLE_HOST: 'not a url' })).toBeNull()
+    expect(plausibleSite('plausible', { ...env, PLAUSIBLE_HOST: 'ftp://x.example' })).toBeNull()
+  })
 })

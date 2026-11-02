@@ -16,6 +16,7 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { createProject, projectOptions } from './create-project.mjs'
+import { parseJsonc } from './production/check-wrangler-envs.mjs'
 
 async function fixture(t) {
   const dir = await mkdtemp(join(tmpdir(), 'bootstrap-test-'))
@@ -523,7 +524,8 @@ test('生成副本改名与配置，排除各级密钥、链接和产物', async
   )
   assert.equal(wrangler.name, 'acme-web')
   assert.equal(wrangler.hyperdrive[0].id, '00000000000000000000000000000000')
-  assert.equal(wrangler.env.staging.vars.APP_URL, 'https://acme.example')
+  assert.equal(wrangler.env.staging.vars.APP_URL, 'https://staging.acme.example')
+  assert.equal(wrangler.env.production.vars.APP_URL, 'https://acme.example')
   assert.equal(wrangler.vars.PAYMENT_MODE, 'test')
   assert.equal(wrangler.env.staging.vars.PAYMENT_MODE, 'test')
   // 生成副本可带 production 环境块，但不得预置支付模式（payment-mode：缺省即关闭支付，live 需另行配置）
@@ -1071,4 +1073,69 @@ test('selfhost 继承发布和运维材料，排除真值，并再次生成 name
     /default: ghcr.io\/second-owner\/second/,
   )
   assert.match(next.report, /second-selfhost|second-owner\/second/)
+})
+
+test('Plausible 一站一 site，staging 不沿用生产域名，长期词站可关闭', async (t) => {
+  const temp = await mkdtemp(join(tmpdir(), 'bootstrap-analytics-'))
+  t.after(() => rm(temp, { recursive: true, force: true }))
+  const source = fileURLToPath(new URL('..', import.meta.url))
+  const wrangler = async (target, app) =>
+    parseJsonc(await readFile(join(target, 'apps', app, 'wrangler.jsonc'), 'utf8'))
+  const on = await createProject(
+    {
+      name: 'acme',
+      domain: 'acme.example',
+      output: join(temp, 'on'),
+      'plausible-host': 'https://p.example/x',
+      features: 'blog,guides',
+    },
+    source,
+  )
+  for (const app of ['web', 'jobs']) {
+    const config = await wrangler(on.target, app)
+    assert.equal(config.env.production.vars.PLAUSIBLE_DOMAIN, 'acme')
+    assert.equal(config.env.staging.vars.PLAUSIBLE_DOMAIN, 'acme-staging')
+    assert.equal(config.env.production.vars.PLAUSIBLE_HOST, 'https://p.example')
+    assert.equal(config.env.production.vars.APP_URL, 'https://acme.example')
+    assert.equal(config.env.staging.vars.APP_URL, 'https://staging.acme.example')
+  }
+  const config = await readFile(join(on.target, 'template.config.ts'), 'utf8')
+  assert.match(config, /"analytics":"plausible"/)
+  assert.match(config, /"guides":true/)
+  const setup = await readFile(join(on.target, 'PROJECT_SETUP.md'), 'utf8')
+  for (const text of [
+    'acme-staging',
+    'https://p.example',
+    'Google Search Console',
+    'Bing Webmaster',
+    'https://acme.example/sitemap.xml',
+    'INDEXNOW_KEY',
+    'app.supportEmail',
+  ])
+    assert.ok(setup.includes(text), text)
+
+  const off = await createProject(
+    {
+      name: 'acme',
+      domain: 'acme.example',
+      output: join(temp, 'off'),
+      analytics: 'off',
+    },
+    source,
+  )
+  assert.equal((await wrangler(off.target, 'web')).env.production.vars.PLAUSIBLE_DOMAIN, '')
+  assert.match(await readFile(join(off.target, 'template.config.ts'), 'utf8'), /"analytics":false/)
+  assert.equal(
+    (await readFile(join(off.target, 'PROJECT_SETUP.md'), 'utf8')).includes('Plausible'),
+    false,
+  )
+  assert.throws(
+    () => projectOptions({ name: 'acme', domain: 'a.example', analytics: 'x' }),
+    /--analytics/,
+  )
+  assert.throws(
+    () =>
+      projectOptions({ name: 'acme', domain: 'a.example', 'plausible-host': 'http://p.example' }),
+    /--plausible-host/,
+  )
 })

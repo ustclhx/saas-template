@@ -17,6 +17,7 @@ import { createNodeStorage } from '@saas/storage/node'
 import { APIError } from 'better-auth/api'
 import { z } from 'zod'
 import { handleAuthRequest } from '../features/admin/impersonation-http.ts'
+import { createSignUpRecorder } from '../features/analytics/server.ts'
 import { createBillingDeletionSteps } from '../features/billing/deletion.server.ts'
 import { assertSignupAdmission } from '../features/growth/service.ts'
 import { createWebAuth } from '../server/auth.ts'
@@ -35,6 +36,8 @@ export function prerenderRuntime(requestMeta: RequestMetadata): WebRuntime {
   return {
     config: {
       APP_URL: templateConfig.app.url,
+      PLAUSIBLE_DOMAIN: templateConfig.analytics.plausibleDomain,
+      PLAUSIBLE_HOST: templateConfig.analytics.plausibleHost,
       BETTER_AUTH_SECRET: '',
       GOOGLE_CLIENT_ID: undefined,
       GOOGLE_CLIENT_SECRET: undefined,
@@ -133,6 +136,9 @@ export async function createNodeWebProcess(
   const config = {
     ...parseAuthEnv(env, templateConfig),
     TURNSTILE_SITE_KEY: env.TURNSTILE_SITE_KEY,
+    PLAUSIBLE_DOMAIN: env.PLAUSIBLE_DOMAIN,
+    PLAUSIBLE_HOST: env.PLAUSIBLE_HOST,
+    INDEXNOW_KEY: env.INDEXNOW_KEY,
     PAYMENT_MODE: env.PAYMENT_MODE,
     SENTRY_ENVIRONMENT: env.SENTRY_ENVIRONMENT,
     AI_FAULT_INJECTION: env.AI_FAULT_INJECTION,
@@ -160,6 +166,11 @@ export async function createNodeWebProcess(
           resolveLocale: userLocaleByEmail(database),
         }),
         deletionSteps: createBillingDeletionSteps(config, database, authCache),
+        onUserSignedUp: createSignUpRecorder({
+          db: database,
+          queue: eventsQueue,
+          clientIp: requestMeta.clientIp,
+        }),
         beforeUserCreate: async (user, headers) => {
           try {
             await assertSignupAdmission(

@@ -5,6 +5,10 @@ export interface SecurityHeaderOptions {
   readonly r2AccountId?: string | undefined
   readonly sentryDsn?: string | undefined
   readonly storageOrigin?: string | undefined
+  /** 本环境 Plausible 实例的 origin；未配置时 CSP 不放行任何分析域名 */
+  readonly analyticsOrigin?: string | undefined
+  /** 配置了 Clarity 项目时放行其域名；默认关闭 */
+  readonly clarity?: boolean | undefined
 }
 
 /** 只列出浏览器实际使用的集成；Sentry 目前仅在服务端运行，预留配置的精确 ingest origin。 */
@@ -20,21 +24,30 @@ export function contentSecurityPolicy(options: SecurityHeaderOptions): string {
     options.storageOrigin && URL.canParse(options.storageOrigin)
       ? new URL(options.storageOrigin).origin
       : ''
+  const analytics =
+    options.analyticsOrigin && URL.canParse(options.analyticsOrigin)
+      ? new URL(options.analyticsOrigin).origin
+      : ''
   const scripts = [
     "'self'",
     ...(options.nonce ? [`'nonce-${options.nonce}'`] : []),
     ...(options.scriptHashes ?? []),
     turnstile,
+    ...(analytics ? [analytics] : []),
+    ...(options.clarity ? ['https://www.clarity.ms', 'https://*.clarity.ms'] : []),
   ]
+  const clarity = options.clarity ? 'https://*.clarity.ms' : ''
   return [
     "default-src 'self'",
     `script-src ${scripts.join(' ')}`,
     // 组件库和主题控件使用内联 style 属性；脚本仍只通过 nonce/hash 授权。
     "style-src 'self' 'unsafe-inline'",
-    `img-src 'self' data: blob: ${r2} ${storage}`.trim(),
+    `img-src 'self' data: blob: ${r2} ${storage} ${clarity}`.replace(/ +/g, ' ').trim(),
     `media-src 'self' blob: ${r2} ${storage}`.trim(),
     "font-src 'self' data:",
-    `connect-src 'self' ${turnstile} ${r2} ${storage} ${sentry}`.trim(),
+    `connect-src 'self' ${turnstile} ${r2} ${storage} ${sentry} ${analytics} ${clarity}`
+      .replace(/ +/g, ' ')
+      .trim(),
     `frame-src ${turnstile}`,
     "form-action 'self' https://checkout.stripe.com https://billing.stripe.com",
     "object-src 'none'",

@@ -14,7 +14,19 @@ import { Route } from '../../routes/__root.tsx'
 import { templateConfig } from '../../server/template-config.ts'
 import { analyticsHeadScripts } from './head.ts'
 
+const site = { domain: 'acme-staging', scriptUrl: 'https://plausible.example/js/script.manual.js' }
+
 describe('分析脚本页面 head', () => {
+  it('Plausible 按环境注入本站 site，应用区加载，后台与接口不加载', () => {
+    for (const pathname of ['/', '/zh/pricing', '/app/personal/chat', '/account'])
+      expect(analyticsHeadScripts(pathname, templateConfig, site)).toEqual([
+        { src: site.scriptUrl, defer: true, 'data-domain': 'acme-staging' },
+      ])
+    for (const pathname of ['/admin', '/admin/users', '/api/health'])
+      expect(analyticsHeadScripts(pathname, templateConfig, site)).toEqual([])
+    expect(analyticsHeadScripts('/', templateConfig, null)).toEqual([])
+  })
+
   it('默认页面 head 无 PostHog 或 beacon，主题内联脚本保持原样', async () => {
     const head = Route.options.head
     if (!head) throw new Error('Root head is missing')

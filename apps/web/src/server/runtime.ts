@@ -34,8 +34,11 @@ export interface WebAiRuntime {
 export interface WebRuntime {
   readonly config: ReturnType<typeof parseAuthEnv> &
     AuthUiEnv &
-    PaymentRuntimeEnv &
-    AiFaultInjectionEnv
+    PaymentRuntimeEnv & {
+      readonly PLAUSIBLE_DOMAIN?: string | undefined
+      readonly PLAUSIBLE_HOST?: string | undefined
+      readonly INDEXNOW_KEY?: string | undefined
+    } & AiFaultInjectionEnv
   readonly db: Database
   /** 公开读取保留目标自身的缓存策略，不拥有连接池。 */
   readonly publicDb: Database

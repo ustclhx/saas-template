@@ -14,7 +14,11 @@ import { ProductAnalytics } from '../features/analytics/analytics.tsx'
 import { analyticsHeadScripts } from '../features/analytics/head.ts'
 import { LanguageControls } from '../features/i18n/language-controls.tsx'
 import { privateMeta } from '../features/seo/metadata.ts'
-import { getSafeImpersonation, getSeoOrigin } from '../features/seo/origin.functions.ts'
+import {
+  getPlausibleSite,
+  getSafeImpersonation,
+  getSeoOrigin,
+} from '../features/seo/origin.functions.ts'
 import { ThemeToggle } from '../features/theme/theme-toggle.tsx'
 import { getLocale } from '../paraglide/runtime.js'
 import { templateConfig } from '../server/template-config.ts'
@@ -22,15 +26,16 @@ import appCss from '../styles/app.css?url'
 
 export const Route = createRootRoute({
   loader: async () => {
-    const [impersonation, announcement, appUrl] = await Promise.all([
+    const [impersonation, announcement, appUrl, plausible] = await Promise.all([
       getSafeImpersonation(),
       getAnnouncement(),
       getSeoOrigin(),
+      getPlausibleSite(),
     ])
-    return { impersonation, announcement, appUrl }
+    return { impersonation, announcement, appUrl, plausible }
   },
   staleTime: Infinity,
-  head: ({ matches }) => ({
+  head: ({ matches, loaderData }) => ({
     meta: [
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
@@ -38,11 +43,18 @@ export const Route = createRootRoute({
       ...privateMeta(matches.at(-1)?.pathname ?? '/'),
     ],
     // 全局样式（Tailwind + @saas/ui 主题），SSR 输出的 <head> 中直接引用，避免首屏无样式闪烁
-    links: [{ rel: 'stylesheet', href: appCss }],
+    links: [
+      { rel: 'stylesheet', href: appCss },
+      { rel: 'icon', href: '/favicon.ico', sizes: 'any' },
+    ],
     // 首屏前按偏好（未设置时跟随系统）给 <html> 设置 dark 类：<head> 内同步执行，避免刷新时先浅后深的闪烁
     scripts: [
       { children: themeInitScript() },
-      ...analyticsHeadScripts(matches.at(-1)?.pathname ?? '/', templateConfig),
+      ...analyticsHeadScripts(
+        matches.at(-1)?.pathname ?? '/',
+        templateConfig,
+        loaderData?.plausible,
+      ),
     ],
   }),
   component: RootComponent,

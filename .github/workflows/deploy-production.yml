@@ -170,6 +170,10 @@ jobs:
       - name: Confirm deployment health and version
         run: node scripts/staging/wait-healthy.mjs "$PRODUCTION_URL/api/health" "$DEPLOY_SHA"
 
+      # P0 门禁：sitemap / canonical / 分析脚本不得指向他站（docs/analytics.md）
+      - name: Check site isolation
+        run: node scripts/staging/check-site-isolation.mjs production "$PRODUCTION_URL"
+
       - name: Install Chromium
         run: pnpm --filter @saas/web exec playwright install --with-deps chromium
 
@@ -177,6 +181,12 @@ jobs:
         env:
           APP_VERSION: ${{ env.DEPLOY_SHA }}
         run: pnpm --filter @saas/web exec playwright test --project production
+
+      # 收录加速，脚本内部吞掉失败；未配置 INDEXNOW_KEY 时跳过（docs/analytics.md）
+      - name: Submit URLs to IndexNow
+        env:
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
+        run: node scripts/production/submit-indexnow.mjs "$PRODUCTION_URL"
 
       - name: Upload smoke traces
         if: failure()
