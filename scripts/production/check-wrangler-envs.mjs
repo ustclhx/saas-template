@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url'
  * production 不含任何 staging 资源 ID 或名称，且不设 PAYMENT_MODE（Q9 前关闭支付）与 AI_FAULT_INJECTION（生产禁止）。
  */
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url))
+/** 各 Cron 档位独有的触发器；档位与 triggers 不一致时 Worker 运行期会拒绝触发。 */
+const CRON_PROFILE_TRIGGERS = { reduced: '*/30 * * * *', default: '*/5 * * * *' }
 const FORBIDDEN_PRODUCTION_VARS = ['PAYMENT_MODE', 'AI_FAULT_INJECTION']
 
 /** 去掉 JSONC 注释与尾逗号；字符串内的 `//`（如 URL）保持不变 */
@@ -90,6 +92,19 @@ export function checkEnvs(app, config) {
     problems.push(
       `${app}: staging and production share PLAUSIBLE_DOMAIN ${staging.vars.PLAUSIBLE_DOMAIN}`,
     )
+  // 成本基线（docs/runbooks/production-neon.md §4）：五分钟心跳会让 Neon 常驻，恢复默认档须显式声明。
+  if (app === 'jobs') {
+    const profile = production.vars?.CRON_PROFILE
+    const crons = production.triggers?.crons ?? []
+    if (!Object.hasOwn(CRON_PROFILE_TRIGGERS, profile))
+      problems.push('jobs: production CRON_PROFILE must be declared as reduced or default')
+    else if (
+      Object.entries(CRON_PROFILE_TRIGGERS).some(
+        ([name, trigger]) => crons.includes(trigger) !== (name === profile),
+      )
+    )
+      problems.push(`jobs: production crons do not match CRON_PROFILE=${profile}`)
+  }
   return problems
 }
 

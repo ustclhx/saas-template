@@ -122,7 +122,7 @@
       }
     },
     // add-cloud-production-neon 2.1：生产资源与 staging 一一对应（production runbook §8.B）。
-    // 测试期沿用 reduced Cron，对外开放注册前改回默认调度（design D7）；不设 PAYMENT_MODE / AI_FAULT_INJECTION。
+    // 无真实用户期间用 reduced Cron，开放支付前显式改回 default（成本基线见 production-neon §4）；不设 PAYMENT_MODE / AI_FAULT_INJECTION。
     "production": {
       "name": "jobs-production",
       "observability": { "enabled": true, "head_sampling_rate": 1, "traces": { "enabled": false } },

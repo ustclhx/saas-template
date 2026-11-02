@@ -104,7 +104,29 @@ psql "$NEON_MIGRATOR_URL" -X -c 'select current_user, current_database()'   # �
 
 ## 4. 项目设置与预算
 
-按恢复目标选择 PITR 保留期、计算上下限与缩容策略，核对当前计划支持范围和组织内其他项目的计费影响。发布后用 Neon Usage 与实际 Cron 频率复核预算；持续定时唤醒可能阻止缩容。记录本项目配置和观察结果，价格与配额以当前平台计划为准。
+按恢复目标选择 PITR 保留期、计算上下限与缩容策略，核对当前计划支持范围和组织内其他项目的计费影响。价格与配额以当前平台计划为准。
+
+### 上线前成本基线（必须遵循）
+
+没有真实用户时，数据库应能缩容到零。某项目（2026-11）曾因固定 1 CU 加五分钟 Cron 全天常驻，算力约 $76/月；按本基线用同期流量模拟约 $9/月。
+
+1. **算力**：创建项目后立即把 endpoint 与项目默认值都改为 0.25–1 CU（新建项目可能默认固定 1 CU），`suspend_timeout_seconds` 保持 0（平台默认 5 分钟）；staging 上限不超过 2 CU。
+2. **Cron**：开放支付或有真实用户依赖定时任务之前，production 使用 `CRON_PROFILE=reduced`（半小时）。五分钟心跳等于五分钟缩容窗口，数据库永远停不下来。恢复时显式写 `CRON_PROFILE=default` 并同步 `triggers.crons`；`scripts/production/check-wrangler-envs.mjs` 校验两者一致。
+3. **扫描流量**：匿名请求的 404 也走 SSR 并读设置，所以每个生产 zone 都配一条 Cloudflare WAF 自定义规则（Block）拦截扫描路径，请求到不了 Worker：
+
+   ```
+   (lower(http.request.uri.path) contains "/wp-"
+    or lower(http.request.uri.path) contains "wlwmanifest"
+    or lower(http.request.uri.path) contains "xmlrpc"
+    or ends_with(lower(http.request.uri.path), ".php")
+    or lower(http.request.uri.path) contains "/.env"
+    or lower(http.request.uri.path) contains "/.git")
+   and not cf.client.bot
+   ```
+
+   只按路径拦截。不要按 User-Agent 或机房 IP 封禁，也不要开启 Bot Fight Mode、Block AI bots，否则会误伤搜索引擎和大模型爬虫。配置后确认首页、博客与 `robots.txt` 仍返回 200。
+4. **轮询**：`/api/health` 每次都查库，只用于发布验证和低频人工检查，不接高频外部监控，也不让 agent 循环调用。验收结束关闭后台页面，已登录页面的轮询同样会让数据库常驻。
+5. **复核**：发布后一周内查看 Neon Usage；运行时长接近 24 小时/天时，先查清是谁在唤醒，再考虑调整配置。
 
 <!-- template-only:start -->
 ## 4. 项目设置与费用（2026-10-15 用户按推荐配置确认）
