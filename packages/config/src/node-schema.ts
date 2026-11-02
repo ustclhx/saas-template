@@ -50,7 +50,11 @@ const nodeEnvBaseSchema = z.object({
   SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().min(1).default(30_000),
   TRUSTED_PROXY_CIDRS: z.string().default(''),
   CACHE_NAMESPACE: secret.default('saas'),
-  PAYMENT_MODE: z.string().optional(),
+  // Compose 的 ${PAYMENT_MODE:-} 会传入空串，按未设置处理：线上报缺失，不默认 test。
+  PAYMENT_MODE: z
+    .string()
+    .optional()
+    .transform((value) => (value === '' ? undefined : value)),
   AI_FAULT_INJECTION: z.string().optional(),
   SENTRY_ENVIRONMENT: z.enum(['development', 'staging', 'production', 'smoke']).optional(),
   SENTRY_DSN: z
