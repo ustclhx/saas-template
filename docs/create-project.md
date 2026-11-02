@@ -153,6 +153,8 @@ AI 关闭且积分模块可按需保留。仅清空支付 Provider 列表时 bil
 Neon staging 使用 TLS 直连与两个 Hyperdrive，不需要 Tunnel / Workers VPC 或自建库备份；
 实际部署顺序为迁移 → seed → jobs → web，再登录后台创建模型及配置套餐模型权限。
 
+上线前按 [成本基线](runbooks/production-neon.md#4-项目设置与预算) 配置：Neon 0.25–1 CU、production reduced Cron、扫描路径 WAF 规则，且不做高频健康轮询。
+
 <!-- template-only:start -->
 2026-10-12 临时 `saas-smoke` 部署验收已通过，临时云资源与本地副本已清理，
 脱敏状态、ID 与界面观察见 6.1 证据（私有证据库 `saas-template-evidence:create-project/2026-10-12/acceptance.json`）

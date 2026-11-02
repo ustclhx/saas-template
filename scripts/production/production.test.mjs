@@ -33,6 +33,23 @@ test('production drift, staging reuse and forbidden vars are reported', () => {
   assert.ok(problems.includes('web: production must not set PAYMENT_MODE'))
 })
 
+test('production jobs must declare a Cron profile that matches its triggers', () => {
+  const missing = wrangler('jobs')
+  delete missing.env.production.vars.CRON_PROFILE
+  assert.ok(
+    checkEnvs('jobs', missing).includes(
+      'jobs: production CRON_PROFILE must be declared as reduced or default',
+    ),
+  )
+  const mismatch = wrangler('jobs')
+  mismatch.env.production.triggers.crons = ['*/5 * * * *']
+  assert.ok(
+    checkEnvs('jobs', mismatch).includes(
+      'jobs: production crons do not match CRON_PROFILE=reduced',
+    ),
+  )
+})
+
 const sha = 'a'.repeat(40)
 
 function run(overrides = {}) {

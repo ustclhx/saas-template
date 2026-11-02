@@ -49,6 +49,7 @@ config/db 不反向依赖 platform。业务包之间允许依赖，检查器没�
 - 模板开关放 `template.config.ts`，运行时设置使用 `packages/db/src/settings.ts`，
   密钥放 Wrangler secrets 或本地 `.dev.vars`。三层配置各自负责，不互相覆盖。
 - 根布局和公开页面的数据读取失败时降级；数据库不可达时营销页与构建期预渲染仍应可用。
+- 新增定时任务、轮询或公开页查库时遵循 Neon 成本基线（`docs/runbooks/production-neon.md` §4）：无真实用户时数据库应能缩容到零。
 - 验收/自测证据写入 `EVIDENCE_DIR`（未设置时使用已忽略的 `test-results/evidence/`），提交到私有证据库 `saas-template-evidence`；主仓库与 PR 只引用，不提交证据。
 - 只修改任务所需内容；复用现有实现与测试，为核心行为和真实回归风险增加精简用例。
 
