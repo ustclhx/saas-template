@@ -61,8 +61,8 @@
       "vars": {
         "SENTRY_ENVIRONMENT": "staging",
         "APP_URL": "https://web-staging.saas-jobs.workers.dev",
-        "PLAUSIBLE_DOMAIN": "",
-        "PLAUSIBLE_HOST": "",
+        "PLAUSIBLE_DOMAIN": "saas-template-staging",
+        "PLAUSIBLE_HOST": "https://stats.ganjiday.com",
         "AI_FAULT_INJECTION": "enabled",
         "PAYMENT_MODE": "test",
         "CRON_PROFILE": "reduced"

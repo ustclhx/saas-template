@@ -86,7 +86,7 @@ order by payments desc;
 
 两个变量任一为空时不注入脚本，也不发送服务端事件。首触归因不依赖它们，仍然写库。
 
-模板仓库自身的 staging / production 两个变量目前为空，实例就绪后填写才会启用。
+模板仓库自身的 staging 已接入 `https://stats.ganjiday.com`（site `saas-template-staging`），production 两个变量为空，不启用。
 
 新站开通：
 
