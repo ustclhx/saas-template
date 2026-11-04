@@ -93,6 +93,11 @@ const nodeEnvBaseSchema = z.object({
   TURNSTILE_SITE_KEY: z.string().optional(),
   PLAUSIBLE_DOMAIN: z.string().optional(),
   PLAUSIBLE_HOST: z.string().optional(),
+  // Compose 的 ${PLAUSIBLE_SITES:-} 会传入空串，按未设置处理：即单站，格式由 plausibleSite 与发布门禁校验。
+  PLAUSIBLE_SITES: z
+    .string()
+    .optional()
+    .transform((value) => (value?.trim() ? value : undefined)),
   INDEXNOW_KEY: z.string().optional(),
   TURNSTILE_SECRET_KEY: secret.optional(),
   STRIPE_SECRET_KEY: secret.optional(),

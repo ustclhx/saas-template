@@ -1,5 +1,5 @@
 // biome-ignore-all lint/plugin: 跨空间的付款与归因读取没有单一租户归属。
-import type { PlausibleSite } from '@saas/config'
+import { normalizeSiteHost, type PlausibleSite } from '@saas/config'
 import {
   analyticsDelivery,
   type Database,
@@ -20,9 +20,12 @@ import {
 import { log } from '@saas/shared/log'
 import { and, asc, eq } from 'drizzle-orm'
 
+/**
+ * site 携带映射（sites）与兜底（domain）：单站时没有映射，一律发往兜底 site。
+ * appUrl 是兜底事件 URL 的站点地址，必须是本环境的 APP_URL，不能指向他站。
+ */
 export interface ServerAnalyticsTarget {
   site: PlausibleSite
-  /** 事件 URL 的站点地址：必须是本环境的 APP_URL，不能指向他站 */
   appUrl: string
 }
 
@@ -34,6 +37,19 @@ interface ResolvedEvent {
   revenue?: { currency: string; amount: string }
   clientIp?: string
   userAgent?: string
+  /** 注册时的访问域名：sign_up 取消息，付款取所有者归因行 */
+  host?: string | null
+}
+
+/**
+ * 多站按注册域名选择 site 与事件 URL；只认映射中登记过的域名（Host 可伪造），
+ * 未登记或缺失时退回兜底 site 与 APP_URL，兜底也没有时返回 null，不发送也不占位。
+ */
+function destination(target: ServerAnalyticsTarget, host: string | null | undefined) {
+  const key = host ? normalizeSiteHost(host) : ''
+  const mapped = key && target.site.sites ? target.site.sites[key] : undefined
+  if (mapped) return { domain: mapped, baseUrl: `https://${key}` }
+  return target.site.domain ? { domain: target.site.domain, baseUrl: target.appUrl } : null
 }
 
 async function attributionOf(db: Database, userId: string) {
@@ -42,6 +58,7 @@ async function attributionOf(db: Database, userId: string) {
       source: userAttribution.source,
       landingPath: userAttribution.landingPath,
       device: userAttribution.device,
+      signupHost: userAttribution.signupHost,
       locale: user.locale,
     })
     .from(user)
@@ -67,6 +84,7 @@ async function resolve(db: Database, event: ServerAnalyticsEvent): Promise<Resol
       }),
       ...(event.clientIp ? { clientIp: event.clientIp } : {}),
       ...(event.userAgent ? { userAgent: event.userAgent } : {}),
+      host: event.host ?? null,
     }
   }
   const [paid] = await db
@@ -109,11 +127,17 @@ async function resolve(db: Database, event: ServerAnalyticsEvent): Promise<Resol
       device: row?.device ?? undefined,
     }),
     revenue: { currency: paid.currency, amount: (paid.amount / 100).toFixed(2) },
+    host: row?.signupHost ?? null,
   }
 }
 
 /** 发送失败抛出由队列重试；响应头标记被丢弃时只告警，重试同样会被丢弃。 */
-async function send(target: ServerAnalyticsTarget, event: ResolvedEvent, timeoutMs: number) {
+async function send(
+  target: ServerAnalyticsTarget,
+  to: { domain: string; baseUrl: string },
+  event: ResolvedEvent,
+  timeoutMs: number,
+) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -129,8 +153,8 @@ async function send(target: ServerAnalyticsTarget, event: ResolvedEvent, timeout
       },
       body: JSON.stringify({
         name: plausibleEventName(event.name),
-        domain: target.site.domain,
-        url: new URL(event.path, target.appUrl).href,
+        domain: to.domain,
+        url: new URL(event.path, to.baseUrl).href,
         props: event.props,
         ...(event.revenue ? { revenue: event.revenue } : {}),
       }),
@@ -159,6 +183,8 @@ export async function deliverServerAnalytics(
   if (!target) return
   const resolved = await resolve(db, event)
   if (!resolved) return
+  const to = destination(target, resolved.host)
+  if (!to) return
   const eventKey = `${resolved.name}:${resolved.sourceId}`
   const claimed = await db
     .insert(analyticsDelivery)
@@ -167,7 +193,7 @@ export async function deliverServerAnalytics(
     .returning({ eventKey: analyticsDelivery.eventKey })
   if (!claimed.length) return
   try {
-    await send(target, resolved, timeoutMs)
+    await send(target, to, resolved, timeoutMs)
   } catch (error) {
     await db.delete(analyticsDelivery).where(eq(analyticsDelivery.eventKey, eventKey))
     throw error

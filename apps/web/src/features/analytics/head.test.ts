@@ -27,6 +27,26 @@ describe('分析脚本页面 head', () => {
     expect(analyticsHeadScripts('/', templateConfig, null)).toEqual([])
   })
 
+  it('多站时只输出内联映射，不带 data-domain 的脚本，后台与接口同样不输出', () => {
+    const multi = { ...site, domain: '', sites: { 'a.example': 'a', 'b.example': 'b</script>' } }
+    for (const pathname of ['/', '/app/personal/chat']) {
+      const scripts = analyticsHeadScripts(pathname, templateConfig, multi)
+      expect(scripts).toEqual([
+        { type: 'application/json', id: 'saas-plausible', children: expect.any(String) },
+      ])
+      const children = (scripts[0] as { children: string }).children
+      expect(children).not.toContain('<')
+      expect(JSON.parse(children)).toEqual({
+        sites: multi.sites,
+        fallback: '',
+        scriptUrl: site.scriptUrl,
+      })
+      expect(JSON.stringify(scripts)).not.toContain('data-domain')
+    }
+    for (const pathname of ['/admin', '/api/health'])
+      expect(analyticsHeadScripts(pathname, templateConfig, multi)).toEqual([])
+  })
+
   it('默认页面 head 无 PostHog 或 beacon，主题内联脚本保持原样', async () => {
     const head = Route.options.head
     if (!head) throw new Error('Root head is missing')

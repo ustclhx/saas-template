@@ -40,6 +40,7 @@ export function serverAnalyticsTarget(env: {
   APP_URL?: string | undefined
   PLAUSIBLE_DOMAIN?: string | undefined
   PLAUSIBLE_HOST?: string | undefined
+  PLAUSIBLE_SITES?: string | undefined
 }): ServerAnalyticsTarget | null {
   const site = plausibleSite(templateConfig.features.analytics, env)
   return site && env.APP_URL ? { site, appUrl: env.APP_URL } : null

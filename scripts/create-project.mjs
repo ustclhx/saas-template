@@ -343,6 +343,8 @@ function templateConfig(source, options) {
       // selfhost 预渲染读这里；Cloudflare 以各环境 wrangler vars 为准。
       plausibleDomain: site && options.target === 'selfhost' ? options.plausibleDomain : '',
       plausibleHost: site && options.target === 'selfhost' ? options.plausibleHost : '',
+      // 多站映射属于衍生项目自己的域名，生成器不继承也不提供参数，需要时手工配置。
+      plausibleSites: '',
     })}`,
   )
 }
@@ -374,6 +376,8 @@ function wranglerConfig(source, options, app) {
           ? `${before}${options.plausibleDomain}${environment === 'staging' ? '-staging' : ''}${between}${options.plausibleHost}"`
           : `${before}${between}"`,
     )
+    // 多站映射指向具体域名，新项目一律清空（--analytics off 时也随之移除）。
+    .replace(/("PLAUSIBLE_SITES"\s*:\s*")[^"]*"/g, '$1"')
     // 模板生产自定义域名与真实 Turnstile 站点 key 不能被新项目复用；部署前按新项目配置（测试 key 1x… 保留）
     .replace(/("TURNSTILE_SITE_KEY"\s*:\s*")0x[^"]*"/g, '$1"')
     .replace(/("pattern"\s*:\s*")[^"]+"/g, '$1configure-production-domain.invalid"')
@@ -757,6 +761,7 @@ export async function createProject(input, source = root) {
               )
               .replace(/^APP_DOMAIN=.*$/m, `APP_DOMAIN=${new URL(options.url).hostname}`)
               .replace(/^APP_URL=.*$/m, `APP_URL=${options.url}`)
+              .replace(/^PLAUSIBLE_SITES=.*$/m, 'PLAUSIBLE_SITES=')
               .replace(/^ACME_EMAIL=.*$/m, `ACME_EMAIL=${options.supportEmail}`)
             for (const provider of ['google', 'github']) {
               if (!options.oauth.includes(provider))
@@ -770,7 +775,7 @@ export async function createProject(input, source = root) {
               text = text.replace(/^# billing 开启时 PAYMENT_MODE.*\nPAYMENT_MODE=.*\n?/m, '')
           }
           if (options.target === 'selfhost' && path === 'deploy/selfhost/compose.yaml') {
-            if (!options.billingEnabled) text = text.replace(/^  PAYMENT_MODE:.*\n?/m, '')
+            if (!options.billingEnabled) text = text.replace(/^ {2}PAYMENT_MODE:.*\n?/m, '')
             for (const provider of ['google', 'github', 'turnstile']) {
               if (provider === 'turnstile' ? options.turnstile : options.oauth.includes(provider))
                 continue

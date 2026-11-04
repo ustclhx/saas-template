@@ -250,6 +250,14 @@ describe('Node runtime config', () => {
       ).toBe(host)
   })
 
+  it('Compose 传入空 PLAUSIBLE_SITES 时按未设置处理（单站），非空原样保留', () => {
+    const load = (env: Record<string, string>) =>
+      loadNodeEnv({ dotenvPath: false, env: { ...valid, ...env } })
+    expect(load({ PLAUSIBLE_SITES: '' }).PLAUSIBLE_SITES).toBeUndefined()
+    expect(load({ PLAUSIBLE_SITES: '  ' }).PLAUSIBLE_SITES).toBeUndefined()
+    expect(load({ PLAUSIBLE_SITES: 'a.example=a' }).PLAUSIBLE_SITES).toBe('a.example=a')
+  })
+
   it('Compose 传入空 PAYMENT_MODE 时按未设置处理，线上报缺失且不默认 test', () => {
     const load = (env: Record<string, string>) =>
       loadNodeEnv({ dotenvPath: false, env: { ...valid, ...env } })

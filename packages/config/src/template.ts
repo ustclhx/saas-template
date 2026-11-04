@@ -127,6 +127,11 @@ export interface TemplateConfig<L extends string = string> {
      */
     readonly plausibleDomain: string
     readonly plausibleHost: string
+    /**
+     * 同上，只用于 selfhost 预渲染：访问域名到 site 的映射 `host=site,host=site`，默认空串即单站。
+     * 一个部署服务多个域名时配置，动态页面以环境变量 PLAUSIBLE_SITES 为准（docs/analytics.md §4）。
+     */
+    readonly plausibleSites: string
     /** Clarity 热力图项目 ID，留空即关闭（默认）；会录制会话，不作为转化真相源，启用前更新隐私政策 */
     readonly clarityProjectId: string
   }
@@ -210,6 +215,7 @@ export const templateConfigDefaults = {
     posthogHost: 'https://us.i.posthog.com',
     plausibleDomain: '',
     plausibleHost: '',
+    plausibleSites: '',
     clarityProjectId: '',
   },
 } as const satisfies Omit<TemplateConfig<DefaultLocale>, 'app'>

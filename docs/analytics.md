@@ -69,7 +69,7 @@ order by payments desc;
 
 ## 4. Plausible 接入
 
-共用一个自建实例，一站一 site。
+共用一个自建实例，默认一站一 site；一个部署按访问域名服务多个站点时见下文「多站」。
 
 社区版（实测 v3.2.1）的限制：
 
@@ -88,6 +88,41 @@ order by payments desc;
 
 模板仓库自身的 staging 已接入 `https://stats.ganjiday.com`（site `saas-template-staging`），production 两个变量为空，不启用。
 
+### 多站（按访问域名选择 site）
+
+一个部署（同一 Worker 或同一 selfhost 实例）按访问域名服务多个站点、且要分开统计时，额外配置可选变量 `PLAUSIBLE_SITES`。未配置时行为与单站完全相同。
+
+| 变量 | 含义 |
+|---|---|
+| `PLAUSIBLE_SITES` | 访问域名到 site_id 的映射，格式 `host=site,host=site`，如 `ganjiday.com=ganjiday.com,arcanumber.com=arcanumber.com` |
+| `PLAUSIBLE_DOMAIN` | 多站时只作未登记域名的兜底，可留空；留空表示 workers.dev 预览等未登记地址不统计 |
+
+- 映射的域名比较时转小写，并去掉端口、结尾的点和开头的 `www.`；任一项缺少 `=`、域名或 site 为空、同一域名出现两次都视为格式错误，运行时整体不启用，`pnpm check` 会拒绝。
+- 写法与单站变量相同：Cloudflare 写在 web 与 jobs 对应环境的 `vars`（两者须一致）；selfhost 写在 `.env`，预渲染取 `template.config.ts` 的 `analytics.plausibleSites`（默认空串）。生成器不提供参数，也不继承映射，需要时手工配置。
+- 所有站点共用一个 `PLAUSIBLE_HOST` 实例，CSP 不变。
+
+**页面事件与预渲染**：预渲染 HTML 被所有访问域名共用，构建时不知道访客从哪个域名进来。多站时 head 不再输出带 `data-domain` 的脚本，而是输出一段不执行的内联配置 `<script type="application/json" id="saas-plausible">`，内容为 `{ sites, fallback, scriptUrl }`。首次 `trackEvent` 前，浏览器按 `location.hostname` 解析出 site，再插入一次 `script.manual.js` 并带上对应的 `data-domain`；脚本加载前的事件留在 `window.plausible` 队列中，加载后补发。解析不出 site 时不插入脚本，并清空队列。
+
+**服务端事件的站点归属**：
+
+- 注册钩子按上面的规则规范化请求的 `Host`，写入 `user_attribution.signup_host`，同时放进 `sign_up` 队列消息的 `host`。没有首触 Cookie 时不写归因行，但消息仍带 `host`。
+- jobs 发送时，`sign_up` 取消息中的 `host`，`payment_success` 取空间所有者归因行的 `signup_host`。该域名在映射中登记过时，site 用映射值，事件 URL 用 `https://<该域名><路径>`；未登记或缺失时退回 `PLAUSIBLE_DOMAIN` 与 `APP_URL`，兜底也为空时不发送。`Host` 可以伪造，所以只认映射中登记过的域名，影响仅限统计口径。
+- `signup_host` 的口径：只有带首触 Cookie 注册的用户才有归因行，所以清过 Cookie 的用户以及引入该列之前注册的老用户都没有它，他们的付款会退回兜底 site（兜底为空时不进 Plausible）。为了不扩大隐私面，不另外记录，也不回填。按站点看付款的准确数字用 SQL：
+
+```sql
+select coalesce(a.signup_host, '(unknown)') as site_host, count(*) as payments, sum(p.amount) as amount, p.currency
+from payment p
+join member m on m.organization_id = p.workspace_id and m.role = 'owner'
+left join user_attribution a on a.user_id = m.user_id
+where p.status = 'succeeded'
+group by 1, p.currency
+order by payments desc;
+```
+
+团队空间有多个所有者时同样会重复计数，处理方式同第 3 节。
+
+回滚：删除 `PLAUSIBLE_SITES` 即退回单站行为，`signup_host` 列可以保留不用。
+
 新站开通：
 
 1. 在实例中添加两个 site（生产、staging）。
@@ -105,8 +140,8 @@ order by payments desc;
 
 | 检查 | 时机 | 内容 |
 |---|---|---|
-| `scripts/production/check-wrangler-envs.mjs` | `pnpm check` | staging 与生产不得共用 `APP_URL` / `PLAUSIBLE_DOMAIN`；web 与 jobs 的站点变量一致 |
-| `scripts/staging/check-site-isolation.mjs <环境> <URL>` | 部署后，失败则阻断发布 | sitemap（含子地图）、robots、canonical、hreflang、`og:url`、favicon 都属于本环境 `APP_URL` 且可访问；Plausible 脚本的 site 与实例和本环境配置一致，本环境未配置时不得出现 |
+| `scripts/production/check-wrangler-envs.mjs` | `pnpm check` | staging 与生产不得共用 `APP_URL` / `PLAUSIBLE_DOMAIN`，也不得共用 `PLAUSIBLE_SITES` 映射中的任一 site（含对方的兜底）；映射必须能解析；web 与 jobs 的站点变量（含 `PLAUSIBLE_SITES`）一致 |
+| `scripts/staging/check-site-isolation.mjs <环境> <URL>` | 部署后，失败则阻断发布 | sitemap（含子地图）、robots、canonical、hreflang、`og:url`、favicon 都属于本环境 `APP_URL` 且可访问；期望的 site 按被检查 URL 的域名在映射中查找，未登记时取 `PLAUSIBLE_DOMAIN`。单站页面比较脚本的 `data-domain`；多站页面读取内联配置 `#saas-plausible`，校验它为本域名解析出的 site 与 `scriptUrl` 的实例地址。期望为空时页面不得出现脚本或内联配置 |
 
 新项目的 staging `APP_URL` 默认是 `https://staging.<域名>`，部署前改成实际地址，否则门禁会失败。selfhost 的部署流程尚未接入这个脚本（它从 `wrangler.jsonc` 读取期望值）。
 

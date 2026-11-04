@@ -15,6 +15,7 @@ declare global {
       APP_URL?: string
       PLAUSIBLE_DOMAIN?: string
       PLAUSIBLE_HOST?: string
+      PLAUSIBLE_SITES?: string
       CRON_PROFILE?: string
       FILES: R2Bucket
       EVENTS_QUEUE: Queue<

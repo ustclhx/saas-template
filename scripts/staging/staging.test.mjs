@@ -291,6 +291,62 @@ test('site isolation requires this environment Plausible site and host', async (
   )
 })
 
+test('multi-site pages: expected site follows the checked host through the inline map', async () => {
+  // SITE 的主机名是 own.example：映射里它对应 own，另一个站 other.example 对应 other。
+  const options = {
+    plausibleDomain: '',
+    plausibleHost: 'https://plausible.example',
+    plausibleSites: 'own.example=own,other.example=other',
+  }
+  const inline = (config) =>
+    `<script type="application/json" id="saas-plausible" nonce="n">${JSON.stringify(config)}</script>`
+  const good = {
+    sites: { 'own.example': 'own', 'other.example': 'other' },
+    fallback: '',
+    scriptUrl: 'https://plausible.example/js/script.manual.js',
+  }
+  assert.deepEqual(
+    await isolationProblems({ '/': [200, page(goodHead + inline(good))] }, options),
+    [],
+  )
+  const crossed = { ...good, sites: { 'own.example': 'other', 'other.example': 'other' } }
+  assert.match(
+    (await isolationProblems({ '/': [200, page(goodHead + inline(crossed))] }, options)).join(),
+    /Plausible site for own\.example is other, not own/,
+  )
+  const wrongHost = { ...good, scriptUrl: 'https://evil.example/js/script.manual.js' }
+  assert.match(
+    (await isolationProblems({ '/': [200, page(goodHead + inline(wrongHost))] }, options)).join(),
+    /is not on https:\/\/plausible\.example/,
+  )
+  assert.match((await isolationProblems({}, options)).join(), /config missing or invalid/)
+  const script = `<script src="https://plausible.example/js/script.manual.js" data-domain="own"></script>`
+  assert.match(
+    (
+      await isolationProblems({ '/': [200, page(goodHead + inline(good) + script)] }, options)
+    ).join(),
+    /expected no static Plausible script/,
+  )
+  // 被检查的域名未登记且无兜底时，页面既不能有脚本也不能有映射。
+  const unmapped = { ...options, plausibleSites: 'other.example=other' }
+  assert.deepEqual(await isolationProblems({}, unmapped), [])
+  assert.match(
+    (await isolationProblems({ '/': [200, page(goodHead + inline(good))] }, unmapped)).join(),
+    /no Plausible site/,
+  )
+  // 未登记但有兜底：期望兜底 site。
+  const fallback = { ...unmapped, plausibleDomain: 'own' }
+  const withFallback = { ...good, sites: { 'other.example': 'other' }, fallback: 'own' }
+  assert.deepEqual(
+    await isolationProblems({ '/': [200, page(goodHead + inline(withFallback))] }, fallback),
+    [],
+  )
+  assert.match(
+    (await isolationProblems({}, { ...options, plausibleSites: 'bad' })).join(),
+    /PLAUSIBLE_SITES/,
+  )
+})
+
 test('IndexNow submits only this site URLs, skips without a key and never fails the release', async () => {
   const calls = []
   const fetchImpl = async (url, init) => {
@@ -376,4 +432,5 @@ test('gate expectations follow the template analytics switch, not just the env v
   assert.equal(await expected('features: { blog: true }'), 'a-staging')
   assert.equal(await expected('features: {"analytics":false,"blog":true}'), '')
   assert.equal(await expected("features: { analytics: 'posthog' }"), '')
+  assert.equal(expectedFromWrangler('staging', root).plausibleSites, '')
 })

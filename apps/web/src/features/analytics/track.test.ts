@@ -9,7 +9,7 @@ import { ensureFirstTouch, startClarity, trackEvent } from './track.ts'
 type Queued = ((...args: unknown[]) => void) & { q?: unknown[][] }
 let browser: { location: URL; plausible?: Queued }
 let nav: { userAgent: string; doNotTrack: string | null }
-let scripts: { id?: string; src?: string }[]
+let scripts: { id?: string; src?: string; textContent?: string; 'data-domain'?: string }[]
 let cookie: string
 
 const go = (path: string) => {
@@ -33,7 +33,11 @@ beforeEach(() => {
       cookie = value.split(';')[0] ?? ''
     },
     getElementById: (id: string) => scripts.find((script) => script.id === id) ?? null,
-    createElement: () => ({}),
+    createElement: () => ({
+      setAttribute(this: Record<string, string>, name: string, value: string) {
+        this[name] = value
+      },
+    }),
     head: { appendChild: (script: { id?: string; src?: string }) => scripts.push(script) },
   })
 })
@@ -113,6 +117,59 @@ describe('trackEvent', () => {
     } finally {
       Object.assign(templateConfig, { features })
     }
+  })
+})
+
+describe('trackEvent 多站', () => {
+  const config = (fallback = '') => ({
+    id: 'saas-plausible',
+    textContent: JSON.stringify({
+      sites: { 'ganjiday.com': 'ganjiday.com', 'arcanumber.com': 'arcanumber.com' },
+      fallback,
+      scriptUrl: 'https://stats.example/js/script.manual.js',
+    }),
+  })
+  const plausibleScripts = () => scripts.filter((script) => script.id === 'saas-plausible-script')
+
+  it('按访问域名插入一次对应 site 的脚本，加载前的事件进队列等待补发', () => {
+    scripts.push(config())
+    browser.location = new URL('https://www.arcanumber.com/pricing')
+    trackEvent('page_view')
+    trackEvent('checkout_start', { plan: 'pro' })
+    expect(plausibleScripts()).toEqual([
+      expect.objectContaining({
+        src: 'https://stats.example/js/script.manual.js',
+        'data-domain': 'arcanumber.com',
+      }),
+    ])
+    expect(queue().map((args) => args[0])).toEqual(['pageview', 'checkout_start'])
+    // 脚本加载后接管 window.plausible，后续事件直接交给它。
+    const loaded = vi.fn()
+    browser.plausible = loaded as Queued
+    trackEvent('paywall_view')
+    expect(loaded).toHaveBeenCalledWith('paywall_view', expect.anything())
+    expect(plausibleScripts()).toHaveLength(1)
+  })
+
+  it('另一个访问域名得到自己的 site', () => {
+    scripts.push(config('fallback-site'))
+    browser.location = new URL('https://ganjiday.com/')
+    trackEvent('page_view')
+    expect(plausibleScripts()[0]?.['data-domain']).toBe('ganjiday.com')
+  })
+
+  it('未登记域名退回兜底；无兜底时不插入脚本并清空队列', () => {
+    scripts.push(config('fallback-site'))
+    browser.location = new URL('https://xuanxue.workers.dev/')
+    trackEvent('page_view')
+    expect(plausibleScripts()[0]?.['data-domain']).toBe('fallback-site')
+
+    scripts = [config()]
+    browser.plausible = Object.assign(vi.fn(), { q: [['pageview', {}]] }) as Queued
+    trackEvent('page_view')
+    expect(plausibleScripts()).toEqual([])
+    expect(queue()).toEqual([])
+    expect(browser.plausible).not.toHaveBeenCalled()
   })
 })
 

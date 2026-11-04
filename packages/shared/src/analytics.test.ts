@@ -127,6 +127,13 @@ describe('服务端事件消息', () => {
     expect(
       parseServerAnalyticsMessage({ v: 1, analytics: { event: 'sign_up', userId: 'u1' } }),
     ).toEqual({ analytics: { event: 'sign_up', userId: 'u1' } })
+    // 多站部署的注册域名随消息传递；旧消息没有该字段时保持原样。
+    expect(
+      parseServerAnalyticsMessage({
+        v: 1,
+        analytics: { event: 'sign_up', userId: 'u1', host: 'arcanumber.com' },
+      }),
+    ).toEqual({ analytics: { event: 'sign_up', userId: 'u1', host: 'arcanumber.com' } })
     for (const bad of [
       null,
       { v: 1, deliveryId: 'x' },

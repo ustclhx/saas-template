@@ -1,3 +1,4 @@
+import { resolvePlausibleSite } from '@saas/config'
 import {
   analyticsDevice,
   analyticsProps,
@@ -15,6 +16,7 @@ import { getLocale } from '../../paraglide/runtime.js'
 import { templateConfig } from '../../server/template-config.ts'
 import { isAppAreaPath } from '../i18n/app-area.ts'
 import { mayCapture } from './client.ts'
+import { type MultiSiteConfig, PLAUSIBLE_CONFIG_ID } from './head.ts'
 
 interface PlausibleQueue {
   (event: string, options: { u: string; props: Record<string, string> }): void
@@ -60,6 +62,40 @@ export function ensureFirstTouch() {
 }
 
 const CLARITY_SCRIPT_ID = 'saas-clarity'
+const PLAUSIBLE_SCRIPT_ID = 'saas-plausible-script'
+
+/** 读取多站内联配置；单站页面没有该元素，内容异常时同样按单站处理（不会自行插入脚本）。 */
+function multiSiteConfig(): MultiSiteConfig | null {
+  const text = document.getElementById(PLAUSIBLE_CONFIG_ID)?.textContent
+  if (!text) return null
+  try {
+    const value = JSON.parse(text) as Partial<MultiSiteConfig>
+    if (
+      !value.sites ||
+      typeof value.sites !== 'object' ||
+      typeof value.fallback !== 'string' ||
+      typeof value.scriptUrl !== 'string'
+    )
+      return null
+    return value as MultiSiteConfig
+  } catch {
+    return null
+  }
+}
+
+/**
+ * manual 脚本只在加载时读取 data-domain，按次调用改不了 site：多站时按当前访问域名选出 site，
+ * 再插入一次脚本；在此之前的事件留在 window.plausible.q，脚本加载后按序补发。
+ */
+function loadPlausible(scriptUrl: string, domain: string) {
+  if (document.getElementById(PLAUSIBLE_SCRIPT_ID)) return
+  const script = document.createElement('script')
+  script.id = PLAUSIBLE_SCRIPT_ID
+  script.defer = true
+  script.src = scriptUrl
+  script.setAttribute('data-domain', domain)
+  document.head.appendChild(script)
+}
 
 /**
  * 可选热力图：默认关闭，只看公开页面，且不进入任何事件字典（不作为转化真相源）。
@@ -101,6 +137,16 @@ export function trackEvent(event: ClientAnalyticsEvent, input: { plan?: string }
     // 页面浏览由 startPostHog 负责，避免重复计数。
     if (event !== 'page_view') target.posthog?.capture(event, { ...props })
     return
+  }
+  const multi = multiSiteConfig()
+  if (multi) {
+    const domain = resolvePlausibleSite(multi.sites, multi.fallback, window.location.hostname)
+    if (!domain) {
+      // 未登记且无兜底的访问域名（如 workers.dev 预览）不统计：不插入脚本，清空队列也不再排队。
+      if (target.plausible?.q) target.plausible.q.length = 0
+      return
+    }
+    loadPlausible(multi.scriptUrl, domain)
   }
   // 不能以 DOM 中的脚本标签判断是否启用：hydration 与导航时 head 会重新插入标签，
   // 此时页面 effect 已先执行。一律先进队列，脚本加载后按序回放；未配置的站点队列无人消费，限长丢弃。

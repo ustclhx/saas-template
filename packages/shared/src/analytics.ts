@@ -198,6 +198,8 @@ export type ServerAnalyticsEvent =
       /** Plausible 用 IP + UA 计算匿名访客，带上后服务端事件能与同一访客的页面浏览串联。 */
       clientIp?: string
       userAgent?: string
+      /** 注册请求的访问域名（已规范化），多站部署据此选择 site；单站不需要 */
+      host?: string
     }
   | { event: 'payment_success'; provider: string; providerPaymentId: string }
 
@@ -230,6 +232,7 @@ export function parseServerAnalyticsMessage(value: unknown): {
         ...(typeof input.userAgent === 'string' && input.userAgent
           ? { userAgent: input.userAgent.slice(0, 512) }
           : {}),
+        ...(typeof input.host === 'string' && input.host ? { host: input.host.slice(0, 253) } : {}),
       },
       ...requestId,
     }
