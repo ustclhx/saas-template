@@ -49,6 +49,7 @@ describe('defineTemplateConfig', () => {
       posthogHost: 'https://us.i.posthog.com',
       plausibleDomain: '',
       plausibleHost: '',
+      plausibleSites: '',
       clarityProjectId: '',
     })
     expect(config.ai).toEqual({

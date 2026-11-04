@@ -27,6 +27,7 @@ export async function fetch(request: ServerRequest): Promise<Response> {
       plausibleSite(templateConfig.features.analytics, {
         PLAUSIBLE_DOMAIN: templateConfig.analytics.plausibleDomain,
         PLAUSIBLE_HOST: templateConfig.analytics.plausibleHost,
+        PLAUSIBLE_SITES: templateConfig.analytics.plausibleSites,
       })
     )?.origin,
     clarity: Boolean(templateConfig.analytics.clarityProjectId.trim()),

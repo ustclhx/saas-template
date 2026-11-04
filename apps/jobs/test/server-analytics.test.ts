@@ -33,7 +33,7 @@ afterEach(() => {
 })
 afterAll(() => db.$client.end())
 
-async function paidWorkspace() {
+async function paidWorkspace(signupHost: string | null = null) {
   const ws = id()
   const key = `analytics-${ws}`
   await db
@@ -47,6 +47,7 @@ async function paidWorkspace() {
     landingPath: '/guides/x',
     device: 'mobile',
     firstSeenAt: new Date(),
+    signupHost,
   })
   const planId = id()
   const priceId = id()
@@ -128,4 +129,28 @@ it('付款事件读取真实归因与套餐，并发与重复投递只发送一�
   expect(
     await db.select().from(userAttribution).where(eq(userAttribution.userId, ws)),
   ).toHaveLength(1)
+})
+
+it('多站付款读取真实归因行的 signup_host，归到注册时所在的 site', async () => {
+  const fetchMock = vi.fn(async () => new Response('ok', { status: 202 }))
+  vi.stubGlobal('fetch', fetchMock)
+  const { key } = await paidWorkspace('arcanumber.com')
+  const multi = {
+    appUrl: 'https://ganjiday.com',
+    site: {
+      ...target.site,
+      domain: '',
+      sites: { 'ganjiday.com': 'ganjiday.com', 'arcanumber.com': 'arcanumber.com' },
+    },
+  }
+  await deliverServerAnalytics(db, multi, {
+    event: 'payment_success',
+    provider: 'stripe',
+    providerPaymentId: key,
+  })
+  const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1]
+  expect(JSON.parse(String(init.body))).toMatchObject({
+    domain: 'arcanumber.com',
+    url: 'https://arcanumber.com/app/billing',
+  })
 })

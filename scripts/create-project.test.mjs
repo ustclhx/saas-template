@@ -1129,6 +1129,9 @@ test('Plausible 一站一 site，staging 不沿用生产域名，长期词站可
   )
   assert.equal((await wrangler(off.target, 'web')).env.production.vars.PLAUSIBLE_DOMAIN, '')
   assert.match(await readFile(join(off.target, 'template.config.ts'), 'utf8'), /"analytics":false/)
+  // 多站映射不随生成器继承，关闭分析时同样为空。
+  for (const target of [on.target, off.target])
+    assert.match(await readFile(join(target, 'template.config.ts'), 'utf8'), /"plausibleSites":""/)
   assert.equal(
     (await readFile(join(off.target, 'PROJECT_SETUP.md'), 'utf8')).includes('Plausible'),
     false,

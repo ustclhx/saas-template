@@ -36,6 +36,50 @@ export function parseJsonc(text) {
   return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1'))
 }
 
+/**
+ * PLAUSIBLE_SITES 解析：与 packages/config/src/analytics.ts 同一规则（门禁是 .mjs，只能复制一份），
+ * 两份实现由 packages/config/src/plausible-sites.cases.json 的同一组用例约束一致。
+ */
+export function normalizeSiteHost(host) {
+  return host
+    .trim()
+    .toLowerCase()
+    .replace(/:\d+$/, '')
+    .replace(/\.$/, '')
+    .replace(/^www\./, '')
+}
+
+export function parsePlausibleSites(raw) {
+  const sites = {}
+  if (!raw?.trim()) return { sites }
+  for (const item of raw.split(',')) {
+    const entry = item.trim()
+    const at = entry.indexOf('=')
+    if (at < 0) return { error: `entry "${entry}" has no "="` }
+    const host = normalizeSiteHost(entry.slice(0, at))
+    const site = entry.slice(at + 1).trim()
+    if (!/^[a-z0-9-]+(?:\.[a-z0-9-]+)*$/.test(host))
+      return { error: `entry "${entry}" has an invalid host` }
+    if (!/^[^\s=,]+$/.test(site)) return { error: `entry "${entry}" has an invalid site` }
+    if (Object.hasOwn(sites, host)) return { error: `host ${host} is mapped twice` }
+    sites[host] = site
+  }
+  return { sites }
+}
+
+export function resolvePlausibleSite(sites, fallback, host) {
+  const key = normalizeSiteHost(host)
+  return sites && Object.hasOwn(sites, key) ? (sites[key] ?? fallback) : fallback
+}
+
+/** 一个环境会上报到的全部 site：映射值加上兜底 PLAUSIBLE_DOMAIN；映射无法解析时为空。 */
+function plausibleSiteIds(vars = {}) {
+  const parsed = parsePlausibleSites(vars.PLAUSIBLE_SITES)
+  return new Set(
+    [...Object.values(parsed.sites ?? {}), vars.PLAUSIBLE_DOMAIN ?? ''].filter(Boolean),
+  )
+}
+
 export function bindingNames(env = {}) {
   const names = [
     ...(env.ai ? [`ai:${env.ai.binding}`] : []),
@@ -92,6 +136,22 @@ export function checkEnvs(app, config) {
     problems.push(
       `${app}: staging and production share PLAUSIBLE_DOMAIN ${staging.vars.PLAUSIBLE_DOMAIN}`,
     )
+  // 多站映射同样不得把 staging 的任何访问域名指向生产 site（含生产兜底），反之亦然。
+  for (const [environment, env] of [
+    ['staging', staging],
+    ['production', production],
+  ]) {
+    const parsed = parsePlausibleSites(env.vars?.PLAUSIBLE_SITES)
+    if (parsed.error) problems.push(`${app}: env.${environment} PLAUSIBLE_SITES ${parsed.error}`)
+  }
+  const productionSites = plausibleSiteIds(production.vars)
+  for (const site of plausibleSiteIds(staging.vars)) {
+    // 两边兜底相同已在上面报告，这里只报涉及映射的共用。
+    const bothFallback =
+      site === staging.vars?.PLAUSIBLE_DOMAIN && site === production.vars?.PLAUSIBLE_DOMAIN
+    if (productionSites.has(site) && !bothFallback)
+      problems.push(`${app}: staging and production share Plausible site ${site}`)
+  }
   // 成本基线（docs/runbooks/production-neon.md §4）：五分钟心跳会让 Neon 常驻，恢复默认档须显式声明。
   if (app === 'jobs') {
     const profile = production.vars?.CRON_PROFILE
@@ -112,7 +172,7 @@ export function checkEnvs(app, config) {
 export function checkSiteVars(web, jobs) {
   const problems = []
   for (const environment of ['staging', 'production'])
-    for (const key of ['APP_URL', 'PLAUSIBLE_DOMAIN', 'PLAUSIBLE_HOST']) {
+    for (const key of ['APP_URL', 'PLAUSIBLE_DOMAIN', 'PLAUSIBLE_HOST', 'PLAUSIBLE_SITES']) {
       const a = web.env?.[environment]?.vars?.[key]
       const b = jobs.env?.[environment]?.vars?.[key]
       if ((a ?? '') !== (b ?? ''))

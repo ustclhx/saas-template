@@ -135,3 +135,68 @@ describe('deliverServerAnalytics', () => {
     expect(deletes).toHaveLength(1)
   })
 })
+
+describe('deliverServerAnalytics 多站', () => {
+  const multi: ServerAnalyticsTarget = {
+    appUrl: 'https://ganjiday.com',
+    site: {
+      ...target.site,
+      domain: '',
+      sites: { 'ganjiday.com': 'ganjiday.com', 'arcanumber.com': 'arcanumber.com' },
+    },
+  }
+  const body = (fetchMock: ReturnType<typeof vi.fn>) =>
+    JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body))
+
+  it('sign_up 按消息中的注册域名选择 site，事件 URL 使用该域名', async () => {
+    const fetchMock = vi.fn(async () => new Response('ok', { status: 202 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await deliverServerAnalytics(fakeDb([[attribution]]).db, multi, {
+      event: 'sign_up',
+      userId: 'u1',
+      host: 'www.arcanumber.com',
+    })
+    expect(body(fetchMock)).toMatchObject({
+      domain: 'arcanumber.com',
+      url: 'https://arcanumber.com/register',
+    })
+  })
+
+  it('付款按所有者归因行的 signup_host 选择 site', async () => {
+    const fetchMock = vi.fn(async () => new Response('ok', { status: 202 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const row = { ...attribution, signupHost: 'ganjiday.com' }
+    await deliverServerAnalytics(fakeDb([[paid], [{ userId: 'u1' }], [row]]).db, multi, event)
+    expect(body(fetchMock)).toMatchObject({
+      domain: 'ganjiday.com',
+      url: 'https://ganjiday.com/app/billing',
+    })
+  })
+
+  it('未登记域名退回兜底 site 与 APP_URL', async () => {
+    const fetchMock = vi.fn(async () => new Response('ok', { status: 202 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const withFallback = { ...multi, site: { ...multi.site, domain: 'fallback-site' } }
+    await deliverServerAnalytics(fakeDb([[attribution]]).db, withFallback, {
+      event: 'sign_up',
+      userId: 'u1',
+      host: 'evil.example',
+    })
+    expect(body(fetchMock)).toMatchObject({
+      domain: 'fallback-site',
+      url: 'https://ganjiday.com/register',
+    })
+  })
+
+  it('注册域名缺失且无兜底时不发送，也不占位', async () => {
+    const fetchMock = vi.fn(async () => new Response('ok', { status: 202 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const row = { ...attribution, signupHost: null }
+    const { db, inserts } = fakeDb([[paid], [{ userId: 'u1' }], [row]])
+    await deliverServerAnalytics(db, multi, event)
+    const signUp = fakeDb([[attribution]])
+    await deliverServerAnalytics(signUp.db, multi, { event: 'sign_up', userId: 'u1' })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect([...inserts, ...signUp.inserts]).toEqual([])
+  })
+})

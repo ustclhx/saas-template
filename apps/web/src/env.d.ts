@@ -37,6 +37,8 @@ declare namespace Cloudflare {
     PLAUSIBLE_DOMAIN?: string
     /** 自建 Plausible 实例地址（vars，公开） */
     PLAUSIBLE_HOST?: string
+    /** 可选：一个部署服务多个域名时的 `host=site,host=site` 映射（vars，公开）；未设置即单站 */
+    PLAUSIBLE_SITES?: string
     /** IndexNow 密钥（secret；协议要求可公开访问，但不进仓库） */
     INDEXNOW_KEY?: string
     // 以下为 secrets（wrangler secret / .dev.vars），按模板配置在 checkEnv 中校验

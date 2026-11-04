@@ -37,6 +37,7 @@ export interface WebRuntime {
     PaymentRuntimeEnv & {
       readonly PLAUSIBLE_DOMAIN?: string | undefined
       readonly PLAUSIBLE_HOST?: string | undefined
+      readonly PLAUSIBLE_SITES?: string | undefined
       readonly INDEXNOW_KEY?: string | undefined
     } & AiFaultInjectionEnv
   readonly db: Database

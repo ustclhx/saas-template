@@ -15,6 +15,8 @@ export const userAttribution = pgTable('user_attribution', {
   landingPath: text('landing_path').notNull(),
   device: text('device'),
   firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull(),
+  /** 注册请求的访问域名（已规范化）：多站部署按它把付款事件归到注册时所在的 site */
+  signupHost: text('signup_host'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 export type UserAttribution = typeof userAttribution.$inferSelect

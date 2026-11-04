@@ -2,7 +2,11 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
-import { parseJsonc } from '../production/check-wrangler-envs.mjs'
+import {
+  parseJsonc,
+  parsePlausibleSites,
+  resolvePlausibleSite,
+} from '../production/check-wrangler-envs.mjs'
 
 /**
  * 发布门禁（docs/analytics.md §门禁）：公开 SEO / 站点地图 / canonical / 分析脚本
@@ -25,6 +29,7 @@ export function expectedFromWrangler(environment, root = repoRoot) {
     appUrl: vars.APP_URL,
     plausibleDomain: plausible ? (vars.PLAUSIBLE_DOMAIN ?? '') : '',
     plausibleHost: plausible ? (vars.PLAUSIBLE_HOST ?? '') : '',
+    plausibleSites: plausible ? (vars.PLAUSIBLE_SITES ?? '') : '',
   }
 }
 
@@ -55,6 +60,9 @@ export function inspectHtml(html) {
     plausible: tags(head, 'script').filter(
       (script) => 'data-domain' in script || /plausible|\/js\/script\./.test(script.src ?? ''),
     ),
+    // 多站页面的内联映射（apps/web features/analytics/head.ts），浏览器据此按访问域名插入脚本。
+    plausibleConfig:
+      /<script\b[^>]*\bid\s*=\s*["']saas-plausible["'][^>]*>([\s\S]*?)<\/script>/i.exec(head)?.[1],
   }
 }
 
@@ -71,6 +79,7 @@ export async function checkSiteIsolation({
   appUrl,
   plausibleDomain = '',
   plausibleHost = '',
+  plausibleSites = '',
   marketing = true,
   fetchImpl = fetch,
   write = console.error,
@@ -139,20 +148,51 @@ export async function checkSiteIsolation({
         if (response.status !== 200) problems.push(`icon ${icon}: status ${response.status}`)
       }
     }
-    const expectScript = Boolean(plausibleDomain && plausibleHost)
-    if (!expectScript && html.plausible.length)
+    // 期望的 site 按被检查地址的访问域名在映射中查找，未登记时取兜底 PLAUSIBLE_DOMAIN。
+    const parsed = parsePlausibleSites(plausibleSites)
+    if (parsed.error) problems.push(`PLAUSIBLE_SITES ${parsed.error}`)
+    const multi = Object.keys(parsed.sites ?? {}).length > 0
+    const hostname = new URL(baseUrl).hostname
+    const expected = plausibleHost
+      ? resolvePlausibleSite(parsed.sites, plausibleDomain, hostname)
+      : ''
+    if (!expected && (html.plausible.length || html.plausibleConfig !== undefined))
       problems.push(`/: analytics script present but this environment has no Plausible site`)
-    if (expectScript && html.plausible.length !== 1)
-      problems.push(`/: expected one Plausible script, found ${html.plausible.length}`)
-    for (const script of html.plausible) {
-      if (expectScript && script['data-domain'] !== plausibleDomain)
-        problems.push(`/: Plausible site ${script['data-domain']} is not ${plausibleDomain}`)
-      if (
-        expectScript &&
-        (!URL.canParse(script.src ?? '') ||
-          new URL(script.src).origin !== new URL(plausibleHost).origin)
-      )
-        problems.push(`/: Plausible script ${script.src} is not on ${plausibleHost}`)
+    if (expected && !multi) {
+      if (html.plausible.length !== 1)
+        problems.push(`/: expected one Plausible script, found ${html.plausible.length}`)
+      if (html.plausibleConfig !== undefined)
+        problems.push('/: unexpected multi-site Plausible config on a single-site environment')
+      for (const script of html.plausible) {
+        if (script['data-domain'] !== expected)
+          problems.push(`/: Plausible site ${script['data-domain']} is not ${expected}`)
+        if (
+          !URL.canParse(script.src ?? '') ||
+          new URL(script.src).origin !== new URL(plausibleHost).origin
+        )
+          problems.push(`/: Plausible script ${script.src} is not on ${plausibleHost}`)
+      }
+    }
+    if (expected && multi) {
+      // 多站页面不带静态 data-domain 脚本，校验内联映射对本访问域名解析出的 site 与脚本地址。
+      if (html.plausible.length)
+        problems.push(`/: expected no static Plausible script, found ${html.plausible.length}`)
+      let config
+      try {
+        config = JSON.parse(html.plausibleConfig ?? '')
+      } catch {
+        problems.push('/: multi-site Plausible config missing or invalid')
+      }
+      if (config) {
+        const site = resolvePlausibleSite(config.sites ?? {}, config.fallback ?? '', hostname)
+        if (site !== expected)
+          problems.push(`/: Plausible site for ${hostname} is ${site || '(none)'}, not ${expected}`)
+        if (
+          !URL.canParse(config.scriptUrl ?? '') ||
+          new URL(config.scriptUrl).origin !== new URL(plausibleHost).origin
+        )
+          problems.push(`/: Plausible script ${config.scriptUrl} is not on ${plausibleHost}`)
+      }
     }
   }
 

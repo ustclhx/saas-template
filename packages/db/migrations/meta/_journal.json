@@ -141,6 +141,13 @@
       "when": 1793383834274,
       "tag": "0019_user_attribution",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793767201731,
+      "tag": "0020_user_attribution_signup_host",
+      "breakpoints": true
     }
   ]
 }
