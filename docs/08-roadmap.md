@@ -22,7 +22,8 @@
 | 流式心跳 | `add-stream-heartbeat` | 5/5；已归档：`archive/2026-10-20-add-stream-heartbeat`（#252） |
 | 模板同步 | `template-sync` | 26/26；已归档：`archive/2026-10-26-template-sync`（#281） |
 | 审计加固 | `harden-audit-findings` | 35/36；进行中，见下文「进行中的 change」 |
-| 埋点与 SEO/GEO | `add-analytics-plausible-geo` | 28/29；进行中，见下文「进行中的 change」 |
+| 埋点与 SEO/GEO | `add-analytics-plausible-geo` | 29/29；已归档：`archive/2026-11-05-add-analytics-plausible-geo`；8.4 于 2026-11-05 在自建实例通过 |
+| Plausible 多站 | `add-plausible-multi-site` | 14/15；进行中，见下文「进行中的 change」 |
 | 汇率模块 | `add-fx-rates` | 4/5；进行中，见下文「进行中的 change」 |
 
 已归档的其他 change：`add-cloud-staging-neon` 29/29（#85）、`add-first-run-admin-setup` 6/6 与 `add-payment-live-mode` 9/9（#184）、`add-text-reasoning-resilience` 9/9（#196）、`add-staging-fault-injection` 20/20（#209）、`add-agent-skills` 8/8（#211）。live 模式只交付代码，生产凭据与外部收款验收见下文「Cloudflare 生产上线」与 Q9。
@@ -187,7 +188,7 @@
 以下三项的实现都已合并到 main，每项只差最后一个验收任务，全部完成后由协调者归档。
 
 - **`harden-audit-findings`（35/36）**：7.3 staging 验收暂停。Cloudflare Rate Limiting 绑定在线上 Worker 不限流（2026-10-25 实测，与上游 [workers-sdk#16097](https://github.com/cloudflare/workers-sdk/issues/16097) 现象一致）；用户决定继续用原生绑定，等上游修复后重测。verify-email 与 reset-password 也还未在 staging 跑通。记录见私有证据库 `saas-template-evidence:harden-audit-findings/2026-10-24-staging-7.3/README.md`，其中列有重测前需要按需还原的 staging 改动。
-- **`add-analytics-plausible-geo`（28/29）**：8.4 需要真实 Plausible 实例；代码路径已用收件桩验证，staging 串扰门禁已通过。社区版的限制与开站步骤见 [analytics](./analytics.md)。
+- **`add-plausible-multi-site`（14/15）**：5.2 由 xuanxue 升级到包含本 change 的模板版本、在生产配置两站映射后验收（xuanxue staging 不接）。社区版的限制与开站步骤见 [analytics](./analytics.md)。
 - **`add-fx-rates`（4/5）**：3.2 由接入项目在页面展示汇率前确认署名链接，模板侧没有待办。
 
 ## 待决事项
@@ -196,7 +197,7 @@
 |---|---|---|---|
 | Q1 | 表单库 | 已决定并接入：TanStack Form + Zod（#20、#22） | 2026-10-04，P1 验收确认 |
 | Q2 | 内容方案 | 已决定并接入（#44、#76）：content-collections。博客、法律页与可选文档站都是 `apps/web/content/<集合>/<locale>/<slug>.mdx`，frontmatter 用 Zod 校验；MDX 在构建期渲染为静态 HTML（Worker 不允许执行 MDX 编译结果），文档搜索使用构建期生成的纯文本索引。不引入 Fumadocs：它的路由与 UI 体系对博客和法律页过重；个别站点需要重型文档站时再单独引入 | 2026-10-10 决定；2026-10-11 P6 验收并归档（#86） |
-| Q3 | 产品分析 | 已改为默认自建 Plausible（#284）：`features.analytics` 单选 `plausible` / `posthog` / `false`，不并行多套；`PLAUSIBLE_*` 留空时不注入脚本。PostHog 仍需用户同意并尊重 DNT。详见 [analytics](./analytics.md) | 2026-10-07 初版（#56、#60）；2026-11-02 改为 Plausible，真实实例验收待 `add-analytics-plausible-geo` 8.4 |
+| Q3 | 产品分析 | 已改为默认自建 Plausible（#284）：`features.analytics` 单选 `plausible` / `posthog` / `false`，不并行多套；`PLAUSIBLE_*` 留空时不注入脚本。PostHog 仍需用户同意并尊重 DNT。详见 [analytics](./analytics.md) | 2026-10-07 初版（#56、#60）；2026-11-02 改为 Plausible，2026-11-05 在自建实例 stats.ganjiday.com 完成真实实例验收（8.4） |
 | Q4 | 订阅积分是否结转 | 已按设计确定：按套餐配置，默认不结转（#24） | 2026-10-04 策略确定；2026-10-15 文档核对 `grantSubscriptionMonth` 与账期过期测试：月付默认周期末 + 24h，不结转；followups 3.1 已用 Test Clocks 验收月付和年付续费；真实年付第 2–12 月观察移交派生项目 |
 | Q5 | 升级时是否立即补发积分差额 | 已按设计确定：默认不立即补发（#24）；Stripe 升级链路已实测（#71） | 2026-10-04 策略确定；2026-10-15 文档核对 `payment.kind=adjustment` 不发积分，仅 initial/renewal 发放；PayPal 换套餐沙箱验收已由 followups 3.2 完成 |
 | Q6 | 退款时已消费积分的处理 | 已决定：已消费不追溯；全额退款收回全部剩余，部分退款按未退款份额比例保留并收回超出部分，年付后续月份按同一份额发放 | 2026-10-04 不追溯策略（#24）；2026-10-15 用户决定部分退款改为按比例回收；Stripe 管理员部分退款已在 staging 实测（admin-61-2026-10-15a，为旧规则下的全部剩余收回）；PayPal 沙箱 Sale 部分/全额退款已由 followups 2.1、3.2 完成 |
