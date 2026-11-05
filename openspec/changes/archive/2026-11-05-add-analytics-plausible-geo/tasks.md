@@ -51,4 +51,4 @@
 - [x] 8.1 `pnpm check`、`pnpm typecheck`、`pnpm check:deps`、`pnpm check:singletons`、`pnpm test`、`pnpm build` 全部通过
 - [x] 8.2 本地启动 web，用收件桩验证脚本注入、`trackEvent` 请求、UTM 首触落库；证据写入 `EVIDENCE_DIR`
 - [x] 8.3 部署后线上门禁通过（staging 部署 41398331705 的 Check site isolation 通过；生产在首次发布时由同一门禁校验）
-- [ ] 8.4 配置真实 Plausible 实例后验收：staging 仪表盘 24 小时内能回答谁来、卡哪、谁付（阻塞：需实例地址；下一步填 `PLAUSIBLE_DOMAIN` / `PLAUSIBLE_HOST` 并按 `docs/analytics.md` §4 开站。社区版没有漏斗和收入目标，「卡哪」对比各目标转化数，「谁付」的金额用 SQL）
+- [x] 8.4 配置真实 Plausible 实例后验收：staging 仪表盘 24 小时内能回答谁来、卡哪、谁付（2026-11-05：自建实例 stats.ganjiday.com、site `saas-template-staging`；带 UTM 的漏斗从落地到 Stripe test 付款，pageview/paywall_view/checkout_start 与服务端 sign_up/payment_success 均进入 site 3，且都带首触 `source`；证据见私有证据库 `analytics-plausible-geo/2026-11-05-8.4`。社区版没有漏斗和收入目标，「卡哪」对比各目标转化数，「谁付」的金额用 SQL）
