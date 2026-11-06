@@ -385,6 +385,29 @@ test('IndexNow submits only this site URLs, skips without a key and never fails 
   assert.equal(lines.join('\n').includes('secret-key'), false)
 })
 
+test('IndexNow expands a sitemap index into page URLs of this site', async () => {
+  const bodies = []
+  const xml = {
+    '/sitemap.xml': `<sitemapindex><sitemap><loc>${SITE}/sitemap/en.xml</loc></sitemap><sitemap><loc>${SITE}/sitemap/ko.xml</loc></sitemap><sitemap><loc>https://other.example/sitemap/en.xml</loc></sitemap></sitemapindex>`,
+    '/sitemap/en.xml': `<urlset><url><loc>${SITE}/en</loc></url><url><loc>${SITE}/en/about</loc></url></urlset>`,
+    '/sitemap/ko.xml': `<urlset><url><loc>${SITE}/ko</loc></url><url><loc>${SITE}/en</loc></url></urlset>`,
+  }
+  const fetchImpl = async (url, init) => {
+    const { origin, pathname } = new URL(url)
+    if (init?.method === 'POST') {
+      bodies.push(JSON.parse(init.body))
+      return new Response('', { status: 200 })
+    }
+    if (origin !== SITE) throw new Error(`fetched other site ${url}`)
+    return new Response(xml[pathname])
+  }
+  assert.deepEqual(await submitIndexNow({ baseUrl: SITE, key: 'k1', fetchImpl, write: () => {} }), {
+    status: 'submitted',
+    count: 3,
+  })
+  assert.deepEqual(bodies[0].urlList, [`${SITE}/en`, `${SITE}/en/about`, `${SITE}/ko`])
+})
+
 test('site isolation handles a marketing-free project and network failures without crashing', async () => {
   const fetchImpl = siteFixture({
     '/sitemap.xml': [404, ''],

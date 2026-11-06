@@ -16,13 +16,18 @@ export async function submitIndexNow({ baseUrl, key, fetchImpl = fetch, write = 
   }
   try {
     const { origin, host } = new URL(baseUrl)
-    const sitemap = await fetchImpl(`${origin}/sitemap.xml`, {
-      signal: AbortSignal.timeout(20_000),
-    })
-    if (!sitemap.ok) throw new Error(`sitemap status ${sitemap.status}`)
-    const urlList = sitemapUrls(await sitemap.text())
-      .locs.filter((url) => URL.canParse(url) && new URL(url).origin === origin)
-      .slice(0, MAX_URLS)
+    const sameSite = (url) => URL.canParse(url) && new URL(url).origin === origin
+    const read = async (url) => {
+      const response = await fetchImpl(url, { signal: AbortSignal.timeout(20_000) })
+      if (!response.ok) throw new Error(`sitemap status ${response.status}`)
+      return sitemapUrls(await response.text())
+    }
+    // 多语言站点的 sitemap.xml 是索引，提交的应是子地图里的页面而不是子地图本身。
+    const root = await read(`${origin}/sitemap.xml`)
+    const pages = root.index
+      ? (await Promise.all(root.locs.filter(sameSite).map(read))).flatMap((child) => child.locs)
+      : root.locs
+    const urlList = [...new Set(pages.filter(sameSite))].slice(0, MAX_URLS)
     if (!urlList.length) throw new Error('sitemap has no URLs on this site')
     const response = await fetchImpl(ENDPOINT, {
       method: 'POST',
