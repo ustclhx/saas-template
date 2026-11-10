@@ -23,7 +23,7 @@
 - [ ] 4.3 新增预览页 `routes/dev/ui.tsx`（D6）：`UI_PREVIEW` 未开启返回 404、排除预渲染与 sitemap，可切换预设/明暗/shape/density；测试覆盖生产 404 与 sitemap 不含该地址；dev 与 staging 的 wrangler 配置设置 `UI_PREVIEW=true`
 - [x] 4.4 悬停与当前项改用 Fluid 交互 token：admin 侧栏悬停/当前项、docs 目录、DataTable 表头与行悬停由 `bg-accent` 改为 `bg-hover` / `bg-active`（`--accent` 保持 Fluid 原值，作为较重的强调底）
 - [x] 4.5 评估 `SelectItem` 的 `index` 在 `SelectContent` 内自动编号：index 同时驱动 fluid-hover 注册与渲染期的高亮判断，自动编号需挂载后按 DOM 顺序测量，可能造成首帧高亮错位；评估通过再改，否则在组件文档中保留显式 index
-- [ ] 4.6 Dialog `closeLabel`、Select `placeholder` 等英文默认值由应用层按语言传入（`apps/web` 封装或调用处传 `m.*()` 文案），并在 `docs/design-system.md` 写明哪些属性必须传多语言文案
+- [x] 4.6 Dialog `closeLabel`、Select `placeholder` 等英文默认值由应用层按语言传入（`apps/web` 封装或调用处传 `m.*()` 文案），并在 `docs/design-system.md` 写明哪些属性必须传多语言文案
 
 ## 5. 替换原生控件与私有组件
 

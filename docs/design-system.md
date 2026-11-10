@@ -122,22 +122,25 @@ grep -nE '^export' packages/ui/src/index.ts
   需要加载态时用 `loading`，图标用 `leadingIcon` / `trailingIcon`，不要在按钮里手写转圈。
 - **选择**：用 `Select` 系列，不用原生 `<select>`。`SelectItem` 需要显式 `index`（从 0 起，与渲染顺序一致），
   它同时驱动悬停高亮注册与渲染期的高亮判断。
-- **确认**：删除等危险操作用确认对话框，不用 `confirm()`；取消后焦点回到触发按钮。确认对话框（AlertDialog）
-  将由 tasks 4.1 提供，未合并前用 `Dialog` 组合。
+- **确认**：删除等危险操作用确认对话框，不用 `confirm()`；取消后焦点回到触发按钮。确认对话框用
+  `AlertDialog`（受控用法替换 `confirm()`，关闭后焦点回到打开前的元素，退场期间按钮不可再次触发）。
 - **列表与表单**：后台列表用 `DataTable` 与 `apps/web/src/features/admin/list.ts`；表单用 `useAppForm` / `TextField`。
-- **多语言文案**：组件内置的英文默认值只作兜底，应用层必须传入 `m.*()` 文案：
+- **多语言文案**：组件不带英文默认文案，类型上要求调用方传入（`apps/web` 中传 `m.*()`）：
 
-  | 组件 | 属性 |
-  |---|---|
-  | `DialogContent` | `closeLabel` |
-  | `SelectTrigger` | `placeholder` |
-  | `DataTable` | `labels` |
+  | 组件 | 属性 | 说明 |
+  |---|---|---|
+  | `DialogContent` | `closeLabel` | 关闭按钮的可读名称；`showCloseButton={false}` 时不需要 |
+  | `SelectTrigger` | `placeholder` | 未选择时显示的文字 |
+  | `AlertDialogAction` / `AlertDialogCancel` | `children` | 按钮文字；标题与说明同样由调用方传入 |
+  | `Switch` | `label` 或 `aria-label` | 不显示标签时传 `aria-label` |
+  | `Tooltip` | `content` | 提示文字 |
+  | `ThemeToggle`、`DataTable` | `labels` | 由调用方传入 |
 
-  完整清单将由 tasks 4.6 补齐。
+  新组件引入新的可读文字时，同步更新本表与 `packages/ui/UPSTREAM.md`。
 - **浮层层级**：自定义吸顶、遮罩与弹层用 `--z-*` 变量，不写任意 `z-[…]`。
 
-将由 tasks 4.1、4.2 接入：AlertDialog、Textarea、Checkbox、Switch、Badge、Tooltip、Tabs、Dropdown、Sidebar、Toast、
-Combobox、Command Menu。缺少的组件先在 `packages/ui` 补齐（模板）或在 `packages/ui/src/project/` 补齐（项目），
+已接入：Button、Input、Textarea、Select、Checkbox、Switch、Badge、Tooltip、Dialog、AlertDialog、Card、Alert、
+Separator、Label、DataTable、Form。将由 tasks 4.2 接入：Tabs、Dropdown、Sidebar、Toast、Combobox、Command Menu。缺少的组件先在 `packages/ui` 补齐（模板）或在 `packages/ui/src/project/` 补齐（项目），
 再实现页面，不在页面里临时写一个。
 
 ## 5. 动效与减少动态效果
