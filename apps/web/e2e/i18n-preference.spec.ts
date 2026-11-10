@@ -79,7 +79,7 @@ test('换设备登录后应用区跟随账号语言，营销页继续按 URL，�
     const preferences = secondPage
       .getByRole('heading', { name: '语言与时区', exact: true })
       .locator('..')
-    await preferences.getByRole('combobox', { name: '语言', exact: true }).selectOption('en')
+    await chooseOption(preferences.getByRole('combobox', { name: '语言', exact: true }), 'en')
     await preferences.getByRole('button', { name: '保存偏好' }).click()
     // 现有账号设置表单保存后，账号和应用首屏均使用英文。
     await expect(secondPage.locator('html')).toHaveAttribute('lang', 'en')

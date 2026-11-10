@@ -7,6 +7,7 @@ import { newId } from '@saas/shared'
 import { loadEnv } from 'vite'
 import templateConfig from '../../../../template.config.ts'
 import { fixtureDb } from '../fixtures.ts'
+import { chooseOption } from '../select.ts'
 import { stubTurnstile } from '../turnstile.ts'
 import { ensureAcceptanceCredits, HUMAN_LOGIN_TIMEOUT } from './accounts.ts'
 import {
@@ -242,16 +243,19 @@ async function chatOnce(page: Page, slug: string, label: string) {
   await page.getByRole('button', { name: 'New chat', exact: true }).click()
   await expect(page).toHaveURL(/\/chat\/[0-9a-f-]{36}$/)
   const conversationId = new URL(page.url()).pathname.split('/').at(-1) ?? ''
-  await expect
-    .poll(
-      async () => {
-        await page.reload()
-        return page.getByLabel('Model', { exact: true }).locator('option[value]').allTextContents()
-      },
-      { timeout: 90_000, intervals: [2_000, 5_000] },
-    )
-    .toContain(deepseekCall.key)
-  await page.getByLabel('Model', { exact: true }).selectOption({ label: deepseekCall.key })
+  await expect(async () => {
+    await page.reload()
+    const trigger = page.getByRole('combobox', { name: 'Model', exact: true })
+    expect(await trigger.count()).toBe(1)
+    await expect(async () => {
+      if (!(await page.getByRole('listbox').isVisible())) await trigger.click({ timeout: 1_000 })
+      await expect(page.getByRole('listbox')).toBeVisible({ timeout: 500 })
+    }).toPass({ timeout: 10_000, intervals: [100, 250, 500] })
+    expect(await page.getByRole('option', { name: deepseekCall.key, exact: true }).count()).toBe(1)
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('listbox')).toHaveCount(0)
+    await chooseOption(trigger, deepseekCall.key)
+  }).toPass({ timeout: 90_000, intervals: [2_000, 5_000] })
   await page
     .getByLabel('Message', { exact: true })
     .fill(`Harden deletion acceptance ${label}. Reply with one short sentence.`)

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { Page } from '@playwright/test'
 import type { Pricing } from '@saas/ai'
+import { chooseOption } from '../select.ts'
 import { guidancePrefix } from './accounts.ts'
 import { type FaultModelDefinition, faultScenarioId } from './fault-definitions.ts'
 import type { FaultWorkspace } from './fault-readiness.ts'
@@ -390,19 +391,19 @@ export async function runTextFaultScenario(
   else {
     must(existing.messageCount === 0, '已有 user 消息但无 assistant，禁止重新发送')
     await page.goto(`/app/${workspace.slug}/chat/${cid}`)
-    await expect
-      .poll(
-        async () => {
-          await page.reload()
-          return page
-            .getByLabel('Model', { exact: true })
-            .locator('option[value]')
-            .allTextContents()
-        },
-        { timeout: 90_000, intervals: [2_000, 5_000] },
-      )
-      .toContain(model.key)
-    await page.getByLabel('Model', { exact: true }).selectOption({ label: model.key })
+    await expect(async () => {
+      await page.reload()
+      const trigger = page.getByRole('combobox', { name: 'Model', exact: true })
+      expect(await trigger.count()).toBe(1)
+      await expect(async () => {
+        if (!(await page.getByRole('listbox').isVisible())) await trigger.click({ timeout: 1_000 })
+        await expect(page.getByRole('listbox')).toBeVisible({ timeout: 500 })
+      }).toPass({ timeout: 10_000, intervals: [100, 250, 500] })
+      expect(await page.getByRole('option', { name: model.key, exact: true }).count()).toBe(1)
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('listbox')).toHaveCount(0)
+      await chooseOption(trigger, model.key)
+    }).toPass({ timeout: 90_000, intervals: [2_000, 5_000] })
     await page.getByLabel('Message', { exact: true }).fill(TEXT_PROMPT)
     // 仅一次点击；响应或流错误后只读原对话，不重新发送。
     await page.getByRole('button', { name: 'Send', exact: true }).click()

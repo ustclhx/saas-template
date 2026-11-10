@@ -1,4 +1,12 @@
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Button,
   Card,
   CardContent,
@@ -6,10 +14,15 @@ import {
   CardTitle,
   Input,
   Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
   useAppForm,
 } from '@saas/ui'
 import { type ReactNode, useEffect, useState } from 'react'
 import { z } from 'zod'
+import { m } from '../../paraglide/messages.js'
 import { FormAlert } from '../auth/auth-layout.tsx'
 import { actionResult, activateWorkspace, workspaceAction } from './client.ts'
 import type { getWorkspacePage } from './workspace.functions.ts'
@@ -28,17 +41,20 @@ export function HydratedControls({ children }: { children: ReactNode }) {
 export function WorkspaceSwitcher({ page }: { page: WorkspacePage }) {
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const spaces = page.spaces.map((space) => ({
+    ...space,
+    label: `${space.name}${space.isPersonal ? ' (personal)' : ''}`,
+  }))
+  const currentSpace = spaces.find((space) => space.id === page.workspace.id)
   if (!page.multiTenant) return null
   return (
     <HydratedControls>
       <Label htmlFor="workspace-switcher">Switch workspace</Label>
-      <select
-        id="workspace-switcher"
-        className="rounded-md border p-2"
-        value={page.workspace.id}
+      <Select
+        value={currentSpace?.id ?? ''}
         disabled={pending}
-        onChange={async (event) => {
-          const space = page.spaces.find((s) => s.id === event.target.value)
+        onValueChange={async (value) => {
+          const space = spaces.find((s) => s.id === value)
           if (!space) return
           setPending(true)
           setError(null)
@@ -50,13 +66,20 @@ export function WorkspaceSwitcher({ page }: { page: WorkspacePage }) {
           }
         }}
       >
-        {page.spaces.map((space) => (
-          <option key={space.id} value={space.id}>
-            {space.name}
-            {space.isPersonal ? ' (personal)' : ''}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger
+          id="workspace-switcher"
+          className="w-full"
+          placeholder="Switch workspace"
+          valueLabel={currentSpace?.label}
+        />
+        <SelectContent>
+          {spaces.map((space, index) => (
+            <SelectItem key={space.id} index={index} value={space.id}>
+              {space.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       <FormAlert message={error} />
       <CreateTeam />
     </HydratedControls>
@@ -120,11 +143,40 @@ function CreateTeam() {
   )
 }
 
+const memberRoles = [
+  { value: 'member', label: 'Member' },
+  { value: 'admin', label: 'Admin' },
+]
+
+type ConfirmationTarget = {
+  action: 'remove' | 'transfer'
+  item: WorkspacePage['members'][number]
+}
+
 export function WorkspaceSettings({ page }: { page: WorkspacePage }) {
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('member')
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmTarget, setConfirmTarget] = useState<ConfirmationTarget | null>(null)
+  const invitationRole = memberRoles.find((option) => option.value === role)
+  const confirmCopy =
+    confirmTarget?.action === 'transfer'
+      ? {
+          title: m.workspace_transfer_confirm_title(),
+          description: m.workspace_transfer_confirm_description({ name: confirmTarget.item.name }),
+          action: 'Transfer ownership',
+          variant: 'default' as const,
+        }
+      : {
+          title: m.workspace_remove_confirm_title(),
+          description: m.workspace_remove_confirm_description({
+            name: confirmTarget?.item.name ?? '',
+          }),
+          action: 'Remove',
+          variant: 'destructive' as const,
+        }
   const seatsFull = page.maxSeats !== null && page.memberCount >= page.maxSeats
   async function run(action: string, body: object) {
     setPending(true)
@@ -136,6 +188,13 @@ export function WorkspaceSettings({ page }: { page: WorkspacePage }) {
       setError(e instanceof Error ? e.message : 'Could not update workspace.')
       setPending(false)
     }
+  }
+  async function confirmAction() {
+    if (!confirmTarget || pending) return
+    const { action, item } = confirmTarget
+    if (action === 'remove') await run('remove-member', { memberIdOrEmail: item.id })
+    else await run('transfer-owner', { memberId: item.id })
+    setConfirmOpen(false)
   }
   return (
     <Card>
@@ -178,10 +237,25 @@ export function WorkspaceSettings({ page }: { page: WorkspacePage }) {
                   onChange={(e) => setEmail(e.target.value)}
                 />
                 <Label htmlFor="invite-role">Invitation role</Label>
-                <select id="invite-role" value={role} onChange={(e) => setRole(e.target.value)}>
-                  <option value="member">Member</option>
-                  <option value="admin">Admin</option>
-                </select>
+                <Select
+                  value={invitationRole?.value ?? ''}
+                  disabled={pending}
+                  onValueChange={setRole}
+                >
+                  <SelectTrigger
+                    id="invite-role"
+                    className="w-full"
+                    placeholder="Invitation role"
+                    valueLabel={invitationRole?.label}
+                  />
+                  <SelectContent>
+                    {memberRoles.map((option, index) => (
+                      <SelectItem key={option.value} index={index} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button type="submit" disabled={seatsFull}>
                   Send invitation
                 </Button>
@@ -189,52 +263,62 @@ export function WorkspaceSettings({ page }: { page: WorkspacePage }) {
             ) : null}
             <h2 className="font-semibold">Members</h2>
             <ul className="grid gap-4">
-              {page.members.map((m) => (
-                <li key={m.id} className="flex flex-wrap items-center gap-3">
-                  <span>
-                    {m.name} ({m.email}) · {m.role}
-                  </span>
-                  {page.canManage && m.role !== 'owner' ? (
-                    <>
-                      <Label htmlFor={`role-${m.id}`}>Role for {m.name}</Label>
-                      <select
-                        id={`role-${m.id}`}
-                        value={m.role}
-                        onChange={(e) =>
-                          void run('update-member-role', { memberId: m.id, role: e.target.value })
-                        }
-                      >
-                        <option value="member">Member</option>
-                        <option value="admin">Admin</option>
-                      </select>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          if (window.confirm(`Remove ${m.name} from this workspace?`))
-                            void run('remove-member', { memberIdOrEmail: m.id })
-                        }}
-                      >
-                        Remove
-                      </Button>
-                      {page.role === 'owner' ? (
+              {page.members.map((member) => {
+                const selectedRole = memberRoles.find((option) => option.value === member.role)
+                return (
+                  <li key={member.id} className="flex flex-wrap items-center gap-3">
+                    <span>
+                      {member.name} ({member.email}) · {member.role}
+                    </span>
+                    {page.canManage && member.role !== 'owner' ? (
+                      <>
+                        <Label htmlFor={`role-${member.id}`}>Role for {member.name}</Label>
+                        <Select
+                          value={selectedRole?.value ?? ''}
+                          disabled={pending}
+                          onValueChange={(value) =>
+                            void run('update-member-role', { memberId: member.id, role: value })
+                          }
+                        >
+                          <SelectTrigger
+                            id={`role-${member.id}`}
+                            className="w-full"
+                            placeholder={`Role for ${member.name}`}
+                            valueLabel={selectedRole?.label}
+                          />
+                          <SelectContent>
+                            {memberRoles.map((option, index) => (
+                              <SelectItem key={option.value} index={index} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <Button
                           variant="outline"
                           onClick={() => {
-                            if (
-                              window.confirm(
-                                `Transfer ownership to ${m.name}? You will become an admin.`,
-                              )
-                            )
-                              void run('transfer-owner', { memberId: m.id })
+                            setConfirmTarget({ action: 'remove', item: member })
+                            setConfirmOpen(true)
                           }}
                         >
-                          Transfer ownership
+                          Remove
                         </Button>
-                      ) : null}
-                    </>
-                  ) : null}
-                </li>
-              ))}
+                        {page.role === 'owner' ? (
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setConfirmTarget({ action: 'transfer', item: member })
+                              setConfirmOpen(true)
+                            }}
+                          >
+                            Transfer ownership
+                          </Button>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </li>
+                )
+              })}
             </ul>
             {!page.workspace.isPersonal && page.invitations.length ? (
               <>
@@ -260,6 +344,32 @@ export function WorkspaceSettings({ page }: { page: WorkspacePage }) {
           </fieldset>
         </HydratedControls>
       </CardContent>
+      <AlertDialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          if (!pending) setConfirmOpen(open)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmCopy.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmCopy.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>{m.common_cancel()}</AlertDialogCancel>
+            <AlertDialogAction
+              variant={confirmCopy.variant}
+              loading={pending}
+              onClick={(event) => {
+                event.preventDefault()
+                void confirmAction()
+              }}
+            >
+              {confirmCopy.action}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }
