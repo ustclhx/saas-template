@@ -9,7 +9,15 @@ description: 在本模板新增或修改公开静态页、法律页、博客与�
 
 ## 1. 检查设计稿，确定内容入口
 
-先判断是否需要设计稿（标准见 `docs/design-system.md` §8.1）：在已有集合（legal、blog、docs、guides）中新增或修改文章、只改文案与小样式、修缺陷时免设计稿，直接继续。新增独立页面、新营销区块或改变现有版式时，所属 OpenSpec change 的 `design.md`「设计稿」一节必须有画布链接与仓库副本路径，且副本文件存在（`rg -n '^## 设计稿' openspec/changes/*/design.md`）；没有时转入 `ui-design` 技能产出设计稿并取得使用者确认，在此之前不创建路由或组件文件。
+先过设计稿关卡：
+
+1. 判断是否需要设计稿：新增独立页面、新营销区块或改变现有版式需要；在已有集合（legal、blog、docs、guides）中新增或修改文章、文案、小样式与缺陷修复免。唯一标准见 `docs/design-system.md` §8.1，拿不准时向使用者确认。
+2. 需要时查原型索引（衍生项目 `docs/design/prototypes/README.md`，模板 `docs/design-system/prototypes/README.md`）：本页面有一行且该行的副本文件存在才算通过。
+   ```sh
+   INDEX=$(test -f .template-base.json && echo docs/design/prototypes/README.md || echo docs/design-system/prototypes/README.md)
+   grep -n '<页面或路由>' "$INDEX"
+   ```
+3. 不通过时转入 `ui-design` 技能；在此之前不创建路由或组件文件。不能与使用者直接对话的 agent 停止并报告。
 
 确认用户给出的 URL、集合、slug、启用语言、标题/描述、正文和上线时间。检查 `template.config.ts` 的 `marketing.enabled`、`i18n.enabled`、`i18n.locales`、默认语言，以及博客/文档功能开关。
 

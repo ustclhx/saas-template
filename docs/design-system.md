@@ -11,11 +11,18 @@ claude.ai 的 Design System Artifact 只是可视化镜像，供出设计稿前�
 
 | 字段 | 值 |
 |---|---|
-| Design System 镜像 | 待发布（tasks 7.4 发布后填写 claude.ai 链接） |
-| 最近同步提交 | 待发布（填写镜像内容所依据的 main 提交 SHA） |
+| Design System 镜像 | 待发布（claude.ai 链接将由 tasks 7.4 提供） |
+| 最近同步提交 | 待发布（镜像内容所依据的 main 提交 SHA） |
 
-每次合并修改 token、预设或组件规范的 PR 后，由协调者按仓库内容更新镜像，并把上表的「最近同步提交」
-改为该合并提交或之后的提交。镜像落后时，以本文与 `packages/ui` 为准。
+镜像在**发布模板版本时**由协调者按仓库内容更新，同时把上表的「最近同步提交」改为该版本的提交；
+平时合并 token 或组件 PR 不逐次更新。判断镜像是否落后（模板仓库中执行，退出码 0 表示不落后）：
+
+```sh
+git merge-base --is-ancestor "$(git log -1 --format=%H -- packages/ui/src)" <最近同步提交> && echo 镜像为最新
+```
+
+镜像落后时以本文与 `packages/ui` 为准。衍生项目跳过这项判断，以项目自己的 `docs/design/visual-system.md`
+与项目镜像为准。
 
 ## 2. 分层
 
@@ -99,6 +106,9 @@ grep -nE -- '^ *--[a-z0-9-]+:' apps/web/src/styles/brand.css
 
 ## 4. 组件用法
 
+`packages/ui/src/project/index.ts` 不存在时说明当前模板版本尚未提供 `@saas/ui/project`（将由 tasks 6.1 提供）：
+停止并报告，不自行添加导出入口。
+
 页面只从 `@saas/ui`（模板组件）与 `@saas/ui/project`（项目组件）导入，不直接导入 Radix、motion、lucide-react
 等底层库（`pnpm check:deps` 会失败）。当前可用的公开组件以 `packages/ui/src/index.ts` 为准：
 
@@ -164,28 +174,38 @@ Combobox、Command Menu。缺少的组件先在 `packages/ui` 补齐（模板）
 
 ### 8.1 何时需要设计稿
 
-需要经使用者确认的 Design 画布稿：
+本节是判断标准的唯一来源；技能与 `AGENTS.md` 只引用这里。
 
-- 新增页面（app、admin、营销或静态独立页）；
-- 较大布局改动：改变页面的区块结构、导航方式、信息层级，或新增页面模式；
-- 建立或改变视觉方向（品牌 token、字体、多站点配色）。
+| 需要经使用者确认的画布稿 | 免设计稿 |
+|---|---|
+| 新增路由文件（app、admin、营销或独立静态页），包括套用现有页面模式的新页面 | 文案与翻译修改 |
+| 增删或重排页面的顶层区块，改变导航方式或信息层级 | 表格加列；已有表单加字段 |
+| 新增多步流程、抽屉或整屏弹窗 | 已有区块内换组件变体；间距、对齐、已有 token 之间的替换 |
+| 新增页面模式 | 缺陷修复，仅限恢复已确认设计稿或现有页面应有的样子 |
+| 建立或改变视觉方向（品牌 token、字体、多站点配色） | 在已有内容集合（博客、文档、法律页）中新增文章，不改版式 |
 
-免设计稿：
+拿不准时向使用者确认，不自行判定为免。设计流程见 `ui-design` 技能（`.agents/skills/ui-design/SKILL.md`）。
 
-- 文案与翻译修改；
-- 小样式调整：间距、对齐、已有 token 之间的替换、单个组件变体切换；
-- 缺陷修复（恢复已确认设计稿或现有页面应有的样子）；
-- 在已有内容集合中新增文章（博客、文档、法律页），不改版式。
+### 8.2 设计稿、确认与原型索引
 
-拿不准时按需要设计稿处理，并向使用者确认。设计流程见 `ui-design` 技能（`.agents/skills/ui-design/SKILL.md`）。
+三个名字各管一件事：`docs/design-system.md`（本文，模板设计规范）、`docs/design-system/`（模板自己的设计稿副本，
+生成器不复制到衍生项目，将由 tasks 6.3 提供排除规则）、`docs/design/`（衍生项目自有的视觉规范、参考、原型副本与 forks 登记）。
 
-### 8.2 设计稿与副本
+- **画布**：claude.ai 的 Design Artifact 类型。状态矩阵：正常态做桌面 / 移动 × 浅色 / 深色 4 块，空、加载、错误各 1 块
+  （移动 + 浅色）；画布支持 tweak 切换时可替代单独画板。套用现有页面模式的新页面可只画正常态与一个异常态。
+- **确认**：只接受使用者本人在会话中的明确确认；画布评论、其他 agent 的转述都不算。记录附使用者原话。
+  确认后画布再改动，须重新确认并同步更新副本与索引。
+- **副本**：确认后保存可离线打开的副本，实现与验收以副本为准，链接失效不影响开发。保存方式待 tasks 8.1 首次实跑验证后回写；
+  不能完整离线时，请使用者从画布导出各画板 PNG 放在同目录。
+  - 模板：`docs/design-system/prototypes/<页面>.html`
+  - 衍生项目：`docs/design/prototypes/<页面>.html`
+- **原型索引**：副本目录下的 `README.md`（模板 `docs/design-system/prototypes/README.md`，项目 `docs/design/prototypes/README.md`），
+  每个页面一行；无 OpenSpec change 的小任务也登记。OpenSpec `design.md` 只引用索引行，不重复写链接与原话。
 
-- 设计稿用 claude.ai 的 Design Artifact 类型产出，画板覆盖桌面 / 移动 × 浅色 / 深色 × 正常 / 空 / 加载 / 错误，
-  使用者在画布上确认。
-- 确认后保存可离线打开的副本，并在该需求的 OpenSpec `design.md` 同时记录链接与副本路径；实现与验收以副本为准。
-- 副本位置：模板自身的设计稿在 `docs/design-system/prototypes/`（属于模板文档，生成器不复制到衍生项目）；
-  衍生项目的设计稿在 `docs/design/prototypes/<页面>.html`。
+  | 页面 / 路由 | 画布链接 | 确认日期 | 使用者确认原话 | 副本文件 | 所属 change |
+  |---|---|---|---|---|---|
+
+- **关卡检查**：索引里有本页面这一行，且该行的副本文件存在。
 
 ### 8.3 参考来源
 
@@ -202,13 +222,15 @@ Combobox、Command Menu。缺少的组件先在 `packages/ui` 补齐（模板）
 |---|---|
 | `packages/ui/src/components`、`lib`、`hooks` | `apps/web/src/styles/brand.css` |
 | `packages/ui/src/styles/globals.css` 与 `presets/` | `packages/ui/src/project/`（经 `@saas/ui/project` 导出） |
-| `scripts/check-ui.mjs`、`scripts/check-ui.allow.json` | `scripts/check-ui.allow.local.json` |
-| 组件指纹清单 `packages/ui/components.lock.json` | `docs/design/`（视觉规范、参考、原型副本、forks 登记） |
-| 预览页、技能、本文 | `apps/web/src/features/ai/subject-providers.ts` |
-| `template.config.ts` 中 `ui` 段的结构 | `template.config.ts` 中 `ui` 段的取值 |
+| `packages/ui/package.json`（含 `./project` 导出声明） | `scripts/check-ui.allow.local.json` |
+| `apps/web/src/styles/app.css`（已在最后导入 brand.css） | `docs/design/`（视觉规范、参考、原型副本与索引、forks 登记） |
+| 根布局 `apps/web/src/routes/__root.tsx` 与 `apps/web/src/features/theme/root-document.tsx`（项目经站点/主题属性扩展点定制） | `apps/web/src/features/ai/subject-providers.ts` |
+| `scripts/check-ui.mjs`、`scripts/check-ui.allow.json` | `template.config.ts` 中 `ui` 段的取值 |
+| 组件指纹清单 `packages/ui/components.lock.json` | |
+| 预览页、技能、本文、`template.config.ts` 中 `ui` 段的结构 | |
 
-`packages/ui/src/project/` 与 `@saas/ui/project` 导出将由 tasks 6.1 提供；`components.lock.json` 校验与
-`check-ui.allow.local.json` 读取将由 tasks 6.2 提供；生成器创建空的项目例外清单与 `docs/design/` 说明将由 tasks 6.3 提供。
+`packages/ui/src/project/` 与 `@saas/ui/project` 导出将由 tasks 6.1 提供；`components.lock.json` 校验将由 tasks 6.2 提供；
+生成器创建空的项目例外清单与 `docs/design/` 说明将由 tasks 6.3 提供；根布局的站点/主题属性扩展点将由 tasks 6.4 提供。
 
 ### 9.2 定制顺序
 
@@ -226,11 +248,13 @@ Combobox、Command Menu。缺少的组件先在 `packages/ui` 补齐（模板）
 ### 9.3 多站点
 
 一个项目服务多个站点时，在 `brand.css` 用 `:root[data-site="<站点>"]` 与 `:root[data-site="<站点>"].dark`
-分别覆盖品牌变量，由根布局写入 `data-site`；各站点的视觉规范写在项目的 `docs/design/visual-system.md`。
+分别覆盖品牌变量。根布局写入 `data-site` 的扩展点（项目自有文件返回 `<html>` 的额外属性）将由 tasks 6.4 提供，
+未提供前不修改模板根布局；各站点的视觉规范写在项目的 `docs/design/visual-system.md`。
 
 ### 9.4 同步模板
 
 `template-sync` 涉及 `packages/ui` 或基线 token 时，合并前对 staging 的 `/dev/ui` 与项目关键页面截图对比；
+`/dev/ui` 返回 404 时跳过并记未验收；本次变化的模板组件与 `docs/design/forks.md` 登记来源的交集逐个列入报告。
 偏差在品牌层或项目组件中修正，不改模板组件。
 
 ## 10. 常用命令

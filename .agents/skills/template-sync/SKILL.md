@@ -76,20 +76,28 @@ git diff --stat refs/template-sync/base refs/template-sync/target -- packages/ui
 有输出时，合并前做截图对比，结果写入同步报告：
 
 1. 列出页面：组件预览页 `/dev/ui`（staging 需开启 `UI_PREVIEW`）与项目关键页（首页、定价、登录、app 主页、
-   项目视觉规范中列出的页面）。
+   项目视觉规范中列出的页面）。`/dev/ui` 返回 404（模板版本尚无预览页或未开启）时跳过该页，报告中记为未验收。
 2. 基线截图取项目 staging（当前版本）；对比截图取同步分支：本地启动 web（`pnpm dev`），或使用者确认后部署到 staging 预览环境。
-   每页在 390 与 1440 宽、浅色与深色下截图，写入 `EVIDENCE_DIR`（未设置时 `test-results/evidence/`）：
+   每页在 390 与 1440 宽、浅色与深色下截图，写入 `EVIDENCE_DIR`（未设置时用已忽略的 `test-results/evidence/`）：
 
 ```sh
 WEB_PACKAGE=$(node -p "JSON.parse(require('fs').readFileSync('apps/web/package.json','utf8')).name")
-OUT=${EVIDENCE_DIR:-test-results/evidence}/template-sync && mkdir -p "$OUT"
-pnpm --filter "$WEB_PACKAGE" exec playwright screenshot --viewport-size=390,844 --full-page --color-scheme=dark "<页面地址>" "$PWD/$OUT/<页面>-390-dark.png"
+OUT=${EVIDENCE_DIR:-$PWD/test-results/evidence}/template-sync && mkdir -p "$OUT" && OUT=$(cd "$OUT" && pwd)
+pnpm --filter "$WEB_PACKAGE" exec playwright screenshot --viewport-size=390,844 --full-page --color-scheme=dark "<页面地址>" "$OUT/<页面>-390-dark.png"
 ```
 
-3. 逐页对照项目视觉规范（`docs/design/` 中的 `visual-system.md` 与 `prototypes/` 副本）。偏差在项目层修正：
+3. 核对项目复制过的模板组件：列出本次区间内变化的模板组件，与 `docs/design/forks.md` 登记的来源文件取交集，
+   逐个列入报告，并对照上游改动手动合并到 `packages/ui/src/project/` 中的副本：
+
+```sh
+git diff --name-only refs/template-sync/base refs/template-sync/target -- packages/ui/src/components
+test -f docs/design/forks.md && cat docs/design/forks.md
+```
+
+4. 逐页对照项目视觉规范（`docs/design/visual-system.md` 与 `docs/design/prototypes/` 中的副本）。偏差在项目层修正：
    品牌 token 写入 `apps/web/src/styles/brand.css`，结构差异写进 `packages/ui/src/project/` 的包装或副本；
    **不修改模板组件与基线 token**。修正提交到同步分支后重跑第 2 节。
-4. 报告列出每页差异、修正方式与仍待使用者确认的视觉变化；未能截图的页面记为未验收。
+5. 报告列出每页差异、forks 交集与处理方式、修正方式、仍待使用者确认的视觉变化；未能截图的页面记为未验收。
 
 ## 6. 基准推断（无记录或记录不可信）
 
