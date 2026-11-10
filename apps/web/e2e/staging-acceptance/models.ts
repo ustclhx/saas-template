@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test'
 import type { Pricing } from '@saas/ai'
+import { DEFAULT_CHARGE_ON } from '../../src/features/ai/admin-model-params.ts'
 import { chooseOption } from '../select.ts'
 import { evidence, expect, query, sqlLiteral, test } from './support.ts'
 
@@ -208,9 +209,9 @@ export async function createAcceptanceModel(
     await form.getByLabel('Minimum charge', { exact: true }).fill(String(model.pricing.minCharge))
   } else {
     await form.getByLabel('Credits per call', { exact: true }).fill(String(model.pricing.credits))
-    // 「默认」在页面上用占位值 'default' 表示（Radix 选项值不能为空字符串）
+    // 「默认」在页面上用占位值 DEFAULT_CHARGE_ON 表示（Radix 选项值不能为空字符串）
     await chooseOption(form.getByRole('combobox', { name: 'Charge on', exact: true }), {
-      value: model.pricing.chargeOn ?? 'default',
+      value: model.pricing.chargeOn ?? DEFAULT_CHARGE_ON,
     })
     await form.getByLabel('Multipliers (JSON, optional)', { exact: true }).fill('')
     await form

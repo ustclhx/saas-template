@@ -18,7 +18,10 @@ import {
 } from '../../features/admin/list.ts'
 import { AdminPage, adminTableLabels } from '../../features/admin/ui.tsx'
 import {
+  CHARGE_ON_VALUES,
+  DEFAULT_CHARGE_ON,
   PARAMS_SCHEMA_TEMPLATES,
+  PRICING_UNITS,
   parseAdminParamsSchema,
 } from '../../features/ai/admin-model-params.ts'
 import {
@@ -41,9 +44,6 @@ type Data = Awaited<ReturnType<typeof getAdminModels>>
 type ModelRow = Data['models'][number]
 type Kind = ModelRow['kind']
 type Mode = 'per_call' | 'token' | 'per_unit'
-
-// Radix Select 的选项值不能是空字符串：「默认」这类真实可选的空值用占位值表示，读写时换回 ''
-const DEFAULT_CHARGE_ON = 'default'
 
 const ERRORS: Record<string, string> = {
   get MISSING_TOKEN_LIMITS() {
@@ -511,7 +511,8 @@ function ModelEditor({
             <Select
               required
               disabled={disabled}
-              value={draft.provider}
+              // 值必须在选项里：已停用的服务商显示占位文字，而不是空白触发器
+              value={mediaProviders.includes(draft.provider) ? draft.provider : ''}
               onValueChange={(provider) => set({ provider })}
             >
               <SelectTrigger
@@ -609,7 +610,12 @@ function ModelEditor({
               </label>
               <Select
                 disabled={disabled}
-                value={draft.chargeOn || DEFAULT_CHARGE_ON}
+                // 「默认」用占位值表示；未知的已存值同样落到「默认」显示
+                value={
+                  CHARGE_ON_VALUES.some((value) => value === draft.chargeOn)
+                    ? draft.chargeOn
+                    : DEFAULT_CHARGE_ON
+                }
                 onValueChange={(value) =>
                   set({ chargeOn: value === DEFAULT_CHARGE_ON ? '' : value })
                 }
@@ -681,7 +687,7 @@ function ModelEditor({
               </label>
               <Select
                 disabled={disabled}
-                value={draft.unit}
+                value={PRICING_UNITS.some((unit) => unit === draft.unit) ? draft.unit : ''}
                 onValueChange={(unit) => set({ unit })}
               >
                 <SelectTrigger

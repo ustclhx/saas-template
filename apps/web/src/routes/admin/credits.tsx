@@ -96,7 +96,8 @@ function Credits() {
     setRevokeOpen(false)
   }
   // 列定义用 useMemo 固定：DataTable 把 cell 当组件渲染，每次渲染新建列会重新挂载单元格，
-  // 打开/关闭确认框时行内按钮被替换，焦点就无法回到触发按钮。依赖里不放对话框状态。
+  // 打开/关闭确认框时行内按钮被替换，焦点就无法回到触发按钮。依赖里不放对话框状态；
+  // busy 在确认请求期间变化仍会重挂载，确认后焦点不回按钮是已知限制（tasks 4.2 在 DataTable 内修复）。
   const columns = useMemo<DataTableColumn<CreditBatch>[]>(
     () => [
       { id: 'id', header: m.admin_batch(), cell: (row) => row.id },

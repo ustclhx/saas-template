@@ -145,17 +145,19 @@ Separator、Label、DataTable、Form。将由 tasks 4.2 接入：Tabs、Dropdown
 
 ### 4.1 替换原生控件
 
-存量的原生 `<select>`、`confirm()` 与 admin 私有的 `Textarea` / `NativeSelect` 按本节逐处替换。样例：
-`apps/web/src/routes/admin/models.tsx`（Select 的各种变体）、`apps/web/src/routes/admin/credits.tsx`（AlertDialog、
-Textarea），对应 e2e 为 `apps/web/e2e/admin-models.spec.ts`、`admin-model-params.spec.ts`、`admin-credits.spec.ts`。
+存量的原生 `<select>`、`confirm()` 与 admin 私有的 `Textarea` / `NativeSelect` 按本节逐处替换；待替换位置以
+`scripts/check-ui.allow.json` 的 `pendingReplacement` 为准（原生 select 在各功能目录，`window.confirm` 只剩
+`features/workspace/components.tsx` 两处）。样例：`apps/web/src/routes/admin/models.tsx`（Select 的各种变体）、
+`apps/web/src/routes/admin/credits.tsx`（AlertDialog、Textarea），对应 e2e 为 `apps/web/e2e/admin-models.spec.ts`、
+`admin-model-params.spec.ts`、`admin-credits.spec.ts`。
 
 每处替换的收尾：
 
 1. 从 `scripts/check-ui.allow.json` 的 `pendingReplacement` 删除该处登记（同一文件的条目全部清除后删掉整个键），
    运行 `pnpm check:ui`。
 2. 查找并更新依赖原生控件的测试：
-   `git grep -nE "selectOption|on(ce)?\('dialog'|option\[value|tagName" -- apps/web/e2e apps/web/e2e-live`，
-   以及该组件的单元测试（见下文「测试」）。
+   `git grep -nE "selectOption|on(ce)?\('dialog'|option\[value|tagName" -- apps/web/e2e apps/web/e2e-live`
+   （包含 `e2e/staging-acceptance`），以及该组件的单元测试（见下文「测试」）。
 3. 只改控件本身与必需的标签结构；页面布局、文案和业务逻辑不顺带调整。
 
 #### Textarea
@@ -172,6 +174,7 @@ admin 页面把 `Textarea` 的导入从 `features/admin/ui.tsx` 改为 `@saas/ui
 | `<select value={v} onChange={(e) => f(e.target.value)}>` | `<Select value={v} onValueChange={f}>` |
 | `value`、`defaultValue`、`disabled`、`required`、`name` | 放在 `Select` 上 |
 | `id`、`aria-label`、`aria-describedby`、`aria-invalid`、`onBlur`、宽度类 | 放在 `SelectTrigger` 上 |
+| 展开的属性对象（`{...common}`、`{...field('x')}`） | 拆开：`value`/`disabled`/`required`/`name` 给 `Select`，`id`/`aria-*` 给 `SelectTrigger`，`onChange` 改写为 `onValueChange` |
 | `<option value={x}>文字</option>` | `SelectContent` 内的 `<SelectItem index={i} value={x}>文字</SelectItem>` |
 | `<option disabled>` | `<SelectItem disabled>`，仍占一个 `index` |
 | `<optgroup label="…">` | `<SelectGroup><SelectLabel>…</SelectLabel>…</SelectGroup>`，组间可放 `<SelectSeparator />` |
@@ -198,7 +201,8 @@ admin 页面把 `Textarea` 的导入从 `features/admin/ui.tsx` 改为 `@saas/ui
 
 - **index**：`SelectContent` 内从 0 起按渲染顺序连续编号，跨分组不重置；`SelectLabel`、`SelectSeparator` 不占编号。
   静态列表手写 0、1、2；动态列表先 `filter` 成最终数组，再用 `map((item, index) => …)` 的下标（不要用过滤前数组的
-  下标）。分组时在渲染函数里累计计数，每次渲染从 0 开始：
+  下标）。条件渲染的选项（`{cond && <option …>}`）先组成数组再 `map`，不要手写会跳号的下标。分组时在渲染函数里
+  累计计数，每次渲染从 0 开始：
 
   ```tsx
   function PlanOptions({ groups }: { groups: PlanGroup[] }) {
@@ -220,37 +224,53 @@ admin 页面把 `Textarea` 的导入从 `features/admin/ui.tsx` 改为 `@saas/ui
   }
   ```
 - **取值必须是非空字符串**：Radix 遇到 `value=""` 的选项会抛错。数字、布尔等非字符串值转成字符串（如枚举用
-  `String(i)` 作值、读回时 `enum[Number(v)]`）。原生的空值选项分两种处理：
-  - 「请选择…」这类提示项（空值不是有效选择）：删除该 `<option>`，文字改作 `SelectTrigger` 的 `placeholder`；
-    值为 `''` 时触发器显示占位文字。例：models.tsx 的服务商（`m.admin_choose_a_provider()`）。
-  - 「默认 / 全部 / 无」这类可以选回去的空值：在模块里定义不会与真实取值冲突的占位值，读写时换回 `''`
-    （或 `undefined`）：
+  `String(i)` 作值、读回时 `enum[Number(v)]`）。原生的空值选项按语义选一种处理：
+  - **必填，或选后不需要再清空**（「请选择…」「Choose a payment」）：删除该 `<option>`，文字改作 `SelectTrigger`
+    的 `placeholder`；值为 `''` 时触发器显示占位文字。例：models.tsx 的服务商（`m.admin_choose_a_provider()`）。
+  - **可选，且需要能选回空值**（「默认 / 全部 / 无」，parameter-form 的非必填参数与文件选择）：保留这一项，值用
+    占位值 `'__default__'`，读写时换回 `''`（或 `undefined`）。常量放在页面已导入的 feature 模块里并导出，
+    e2e 按值选择时导入同一个常量（路由文件不导出非路由内容）：
 
     ```tsx
-    // Radix Select 的选项值不能是空字符串：「默认」用占位值表示，读写时换回 ''
-    const DEFAULT_CHARGE_ON = 'default'
+    // features/ai/admin-model-params.ts
+    export const DEFAULT_CHARGE_ON = '__default__'
+    export const CHARGE_ON_VALUES = ['any_output', 'success'] as const
+
+    // 页面
     <Select
-      value={draft.chargeOn || DEFAULT_CHARGE_ON}
+      value={CHARGE_ON_VALUES.some((v) => v === draft.chargeOn) ? draft.chargeOn : DEFAULT_CHARGE_ON}
       onValueChange={(value) => set({ chargeOn: value === DEFAULT_CHARGE_ON ? '' : value })}
     >
       <SelectTrigger id={…} className="w-full" placeholder={m.admin_default()} />
       <SelectContent>
         <SelectItem index={0} value={DEFAULT_CHARGE_ON}>{m.admin_default()}</SelectItem>
         <SelectItem index={1} value="any_output">{m.admin_any_output()}</SelectItem>
+        <SelectItem index={2} value="success">{m.admin_success()}</SelectItem>
       </SelectContent>
     </Select>
     ```
+- **值必须在选项里**：原生 select 的值不在选项中时显示第一项，Select 的触发器会是空白。动态选项先校验再传值：
+  `value={options.some((o) => o.id === v) ? v : ''}`（值为 `''` 时显示 placeholder）。需要特别处理的：
+  `routes/app/$slug/billing.tsx` 的 `priceId`（切换支付方式后可能不在新列表里）、`features/ai/model-picker.tsx`
+  的 `value ?? models[0]?.id`（`value` 可能是已下架的模型）、`features/ai-media/parameter-form.tsx` 的文件选择
+  （文件可能还未就绪）。样例：models.tsx 的服务商
+  `value={mediaProviders.includes(draft.provider) ? draft.provider : ''}`。
 - **placeholder 必传**：有「请选择…」文案就用它；值总是存在的选择框传字段标签的文案（如 `m.admin_kind()`）。
 - **文案来源**：跟随该页面现有方式。页面用 `m.*()` 时复用或新增 `apps/web/messages/{en,zh}/<feature>.json`
   中的键（两种语言同时加）；通用的「取消」用 `m.common_cancel()`。页面仍是英文字面量的（如
   `features/workspace/components.tsx`），沿用同风格字面量，不在替换时顺带国际化。
-- **标签**：触发器是 `<button>`，不要放进 `<label>` 里。把 `<label …>文字 <select …/></label>` 改为上面的
+- **标签与外层元素**：触发器是 `<button>`，不要放进 `<label>` 里。把 `<label …>文字 <select …/></label>` 改为上面的
   「`div` + 兄弟 `label htmlFor` + `SelectTrigger id`」结构：原 label 的布局类（`grid gap-2`）留在 `div`，文字类
   （`font-medium text-sm`）留在 `label`；admin 表单也可用 `features/admin/ui.tsx` 的 `Field`。原来没有 id 的用
   `useId()` 生成；只有 `aria-label`（无可见标签，如语言切换）的把 `aria-label` 放到 `SelectTrigger`。
+  `SelectTrigger` 最外层是块级 `<div>`，外层不能是 `<p>`、`<label>`、`<span>`，否则 SSR 水合报错：原来包在
+  `<p>` 里的（如 `features/settings/account-sections.tsx`、`features/ai/model-picker.tsx`）改为 `<div>`，包在带
+  样式的 `<label>` 里的（如 `features/i18n/language-controls.tsx`）把该 `label` 改为 `div` 并保留其类名。
 - **宽度**：触发器默认最小 160px、随内容变宽；与输入框并排或同列的表单字段加 `className="w-full"`。
-- **禁用**：外层 `<fieldset disabled>` 不会进入 Select 的状态，需要同时给 `Select` 传 `disabled`（样例：models.tsx
-  把编辑器的 `disabled` 传给每个 Select，并给 `ParamsSchemaEditor` 加了 `disabled` 属性）。水合前禁用的页面同理。
+- **禁用**：外层 `<fieldset disabled>` 不会进入 Select 的状态，fieldset 在水合后仍会禁用的（如请求进行中），
+  需要同时给 `Select` 传 `disabled`（样例：models.tsx 把编辑器的 `disabled` 传给每个 Select，并给
+  `ParamsSchemaEditor` 加了 `disabled` 属性）。只在水合前禁用的 fieldset（如 `HydratedControls`）不需要传；
+  原来直接写在 `<select>` 上的 `disabled={!ready}`、`disabled={pending}` 照搬到 `Select`。
 - **选择后触发动作**（切换空间、修改成员角色、切换语言）：在 `onValueChange` 中执行原 `onChange` 的逻辑。`value`
   继续由当前状态或服务端数据驱动，失败时不改它，触发器自然显示原值；进行中用 `disabled` 防止重复触发。
   选后执行但不保留选择的「动作型」选择框固定 `value=""` 并给 `placeholder`（样例：models.tsx 的参考模板）。
@@ -261,39 +281,76 @@ admin 页面把 `Textarea` 的导入从 `features/admin/ui.tsx` 改为 `@saas/ui
     `<input type="hidden">`，否则同名字段会出现两次。
   - `required`：保留在 `Select` 上（表单内会触发原生校验），但浏览器提示定位在隐藏元素上，提交处理中原有的
     空值检查保留（或在未选择时禁用提交按钮）。
-  - TanStack Form（`form.AppField`）：值同样受控；下例的空值是「跟随默认」，用占位值常量 `LOCALE_DEFAULT`：
+  - TanStack Form（现有代码用 `form.Field`）：值同样受控；下例的空值是「跟随默认」，用占位值常量 `LOCALE_DEFAULT`
+    （`'__default__'`）：
 
     ```tsx
-    {(field) => (
-      <p>
-        <Label htmlFor={field.name}>{copy.locale}</Label>
-        <Select
-          value={field.state.value || LOCALE_DEFAULT}
-          onValueChange={(v) => field.handleChange(v === LOCALE_DEFAULT ? '' : v)}
-        >
-          <SelectTrigger
-            id={field.name}
-            onBlur={field.handleBlur}
-            aria-describedby={`${field.name}-errors`}
-            placeholder={copy.localeDefault}
-          />
-          <SelectContent>…</SelectContent>
-        </Select>
-        <FieldErrors id={`${field.name}-errors`} errors={field.state.meta.errors} />
-      </p>
-    )}
+    <form.Field name="locale">
+      {(field) => (
+        <div className="grid gap-2">
+          <Label htmlFor={field.name}>{copy.locale}</Label>
+          <Select
+            value={field.state.value || LOCALE_DEFAULT}
+            onValueChange={(v) => field.handleChange(v === LOCALE_DEFAULT ? '' : v)}
+          >
+            <SelectTrigger
+              id={field.name}
+              onBlur={field.handleBlur}
+              aria-describedby={`${field.name}-errors`}
+              placeholder={copy.localeDefault}
+            />
+            <SelectContent>…</SelectContent>
+          </Select>
+          <FieldErrors id={`${field.name}-errors`} errors={field.state.meta.errors} />
+        </div>
+      )}
+    </form.Field>
     ```
-- **服务端渲染**：水合前触发器文字为空（选中项文字在客户端才放进触发器），隐藏的原生 select 也没有选项。
-  后台和登录后页面可以接受；公开预渲染页面（如 `routes/pricing.tsx`）替换后检查首屏，并在 PR「需使用者审阅」列出。
+- **服务端渲染与 `valueLabel`**：Radix 要到客户端才把选中项文字放进触发器，SSR 与水合前触发器为空（隐藏的原生
+  select 也没有选项）。公开或预渲染页面（`routes/pricing.tsx`、`features/i18n/language-controls.tsx`）以及任何
+  水合前禁用的选择框（`disabled={!ready}`、`HydratedControls` 内）必须给 `SelectTrigger` 传 `valueLabel`，从渲染
+  选项的同一份数组算出，并加 `className="w-full"` 或固定宽度，避免水合后宽度跳动；`disabled={!ready}` 保留在
+  `Select` 上。后台与登录后页面的其他选择框可以不传。
+
+  以 `routes/pricing.tsx` 的支付方式为例（该页仍用英文字面量，选项文字与原 `<option>` 一致）：
+
+  ```tsx
+  const providerId = useId()
+  const current = catalog.providers.find((p) => p.id === provider)
+  const providerLabel = (p: (typeof catalog.providers)[number]) =>
+    p.available ? p.id : `${p.id} — unavailable`
+
+  <div className="grid gap-2">
+    <label htmlFor={providerId}>Payment method</label>
+    <Select value={current ? provider : ''} disabled={!ready} onValueChange={setProvider}>
+      <SelectTrigger
+        id={providerId}
+        className="w-full"
+        placeholder="Payment method"
+        valueLabel={current ? providerLabel(current) : undefined}
+      />
+      <SelectContent>
+        {catalog.providers.map((p, index) => (
+          <SelectItem key={p.id} index={index} value={p.id} disabled={!p.available}>
+            {providerLabel(p)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  </div>
+  ```
 - **测试**：
   - e2e：`selectOption` 改用 `apps/web/e2e/select.ts` 的 `chooseOption(trigger, '选项文字')`，触发器按可访问名称
-    定位：`form.getByRole('combobox', { name: 'Pricing mode', exact: true })`。只有取值的数据驱动脚本用
-    `chooseOption(trigger, { value: 'per_call' })`（按 `SelectItem` 的 `data-value` 匹配，空值传页面的占位值）。
-    `toHaveValue(x)` 改为 `toHaveText('选项文字')`；`locator('option[value=…]')` 计数改为判断触发器存在或打开后
-    计 `getByRole('option')`；`tagName` 为 `SELECT` 的断言改为 `BUTTON`。
+    定位：`form.getByRole('combobox', { name: 'Pricing mode', exact: true })`。水合前点击无效，函数会重试到列表
+    展开，原来为等水合而包的 `expect.poll` 可以去掉。只有取值的数据驱动脚本用 `chooseOption(trigger, { value })`
+    （按 `SelectItem` 的 `data-value` 匹配，空值传页面导出的占位值常量）。`toHaveValue(x)` 改为
+    `toHaveText('选项文字')`；`locator('option[value=…]')` 计数改为判断触发器存在或打开后计 `getByRole('option')`；
+    `tagName` 为 `SELECT` 的断言改为 `BUTTON`。
   - `apps/web` 单元测试在 node 环境用 `renderToString`：只能断言 `role="combobox"`、id / `aria-label`、
-    占位文字（值为空时）以及表单内隐藏 `<select name>` 的存在；选项列表和选中文字不在 SSR 输出里，改为测试
-    生成选项的纯函数，或移到 e2e。
+    占位文字（值为空时）、传了 `valueLabel` 时的选中文字以及表单内隐藏 `<select name>` 的存在；选项列表不在 SSR
+    输出里，改为测试生成选项的纯函数，或移到 e2e。
+- **已知限制**（后续处理，替换时不用绕开）：触发器上的 `onBlur` 在打开弹层时就会触发（焦点移入列表），校验配在
+  `onBlur` 上时会提前显示错误；语言切换替换后外层 `div` 与触发器各有一层边框，后续去掉外层边框。
 
 #### AlertDialog（替换 `confirm()`）
 
@@ -362,20 +419,35 @@ const [revokeTarget, setRevokeTarget] = useState<Row | null>(null)
 - **不需要等待**（原代码 `confirm` 后同步执行或不关心结果）：`AlertDialogAction` 不调用 `preventDefault()`，
   `onClick={() => run(target)}`，对话框随点击关闭；`busy`、`loading` 不需要。
 
+同一列表有多种需要确认的动作（如成员行的「移除」与「转让所有权」）时，仍只放一个确认框，目标里带上动作，
+标题、说明、按钮文字与 `variant` 按动作取；只有危险操作（删除、移除、撤销）用 `destructive`：
+
+```tsx
+type Pending = { action: 'remove' | 'transfer'; member: Member }
+const [confirmOpen, setConfirmOpen] = useState(false)
+const [pending, setPending] = useState<Pending | null>(null)
+const copy = pending?.action === 'transfer'
+  ? { title: 'Transfer ownership?', body: `${pending.member.name} becomes the owner.`, confirm: 'Transfer', variant: 'default' as const }
+  : { title: 'Remove member?', body: `${pending?.member.name ?? ''} loses access to this workspace.`, confirm: 'Remove', variant: 'destructive' as const }
+// 行内：onClick={() => { setPending({ action: 'remove', member: m }); setConfirmOpen(true) }}
+// AlertDialogTitle/Description/Action 分别用 copy.title、copy.body、copy.confirm，Action 传 variant={copy.variant}
+```
+
 规则：
 
 - **文案**：原 `confirm('…?')` 拆为标题（简短的问句，如「撤销剩余积分？」）与说明（对象名称与后果，如批次号、
-  「此操作无法撤销」）；确认按钮文字用动作动词（通常与行内按钮相同），取消用 `m.common_cancel()`。删除、撤销、
-  移除等危险操作用 `variant="destructive"`。文案来源规则同 Select。
+  「此操作无法撤销」）；确认按钮文字用动作动词（通常与行内按钮相同），取消用 `m.common_cancel()`（英文字面量
+  页面用 `'Cancel'`）。删除、撤销、移除等危险操作用 `variant="destructive"`。文案来源规则同 Select。
 - **焦点返回**：组件记录打开前获得焦点的元素并在关闭后归还，前提是该元素在对话框打开期间没有被重新挂载。
   `DataTable` 把 `cell` 当组件渲染，`columns` 每次渲染新建时，打开对话框引起的重渲染会替换行内按钮。所以行内
-  按钮打开确认框时，`columns` 用 `useMemo` 包裹，依赖只放单元格真正用到的值（如 `busy`、`reason`），不放对话框的
-  `open` / 目标状态（样例 credits.tsx）。非 DataTable 的列表保持行 `key` 稳定即可。确认后所在行被删除时焦点回到
-  页面默认位置，属预期。
+  按钮打开确认框时，`columns` 用 `useMemo` 包裹，依赖只放单元格真正用到的值，不放对话框的 `open` / 目标状态
+  （样例 credits.tsx）。依赖里的 `busy` 这类确认期间会变的值仍会触发重挂载，确认后焦点不回到按钮是已知限制
+  （tasks 4.2 在 DataTable 内修复，届时可去掉 `useMemo`）。非 DataTable 的列表保持行 `key` 稳定即可。确认后
+  所在行被删除时焦点落到 `body`，属已知限制。
 - **防重复**：组件在退场期间吞掉按钮点击；异步时再用 `busy` 守卫函数入口，并给确认按钮 `loading`、取消按钮
   `disabled`。
-- **测试（e2e）**：删除 `page.once('dialog', (d) => d.accept())`，改为点击触发按钮后操作对话框；原
-  `dialog.dismiss()` 改为点「取消」，并断言没有发生写入：
+- **测试（e2e）**：删除 `page.once('dialog', (d) => d.accept())` / `page.on('dialog', …)`，改为点击触发按钮后
+  操作对话框；原 `dialog.dismiss()` 改为点「取消」，并断言没有发生写入：
 
   ```ts
   await row.getByRole('button', { name: 'Revoke batch' }).click()
