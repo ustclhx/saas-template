@@ -28,7 +28,7 @@ import {
 import { requireFreshSession } from '@saas/auth'
 import type { AiFaultInjectionEnv, TemplateConfig } from '@saas/config'
 import type { OveragePolicy } from '@saas/credits'
-import { CreditsError, getCreditBalance, hold } from '@saas/credits'
+import { getCreditBalance, hold } from '@saas/credits'
 import {
   type AiMessage,
   type AiPricingJson,
@@ -121,21 +121,9 @@ export async function handleChatRequest(request: Request, deps: ChatDeps): Promi
   try {
     return await startChat(request, deps)
   } catch (error) {
-    if (!(error instanceof AppError)) log.error('ai.chat.failed', { error })
-    const { status, body } = toErrorResponse(chatAppError(error))
+    if (!(error instanceof AppError) || error.status >= 500) log.error('ai.chat.failed', { error })
+    const { status, body } = toErrorResponse(error)
     return Response.json(body, { status })
-  }
-}
-
-export function chatAppError(error: unknown): unknown {
-  if (!(error instanceof CreditsError)) return error
-  switch (error.code) {
-    case 'CREDIT_DEBT':
-      return new AppError('CREDIT_DEBT', 'Workspace has unpaid credit debt', { status: 402 })
-    case 'INSUFFICIENT_CREDITS':
-      return new AppError('INSUFFICIENT_CREDITS', 'Insufficient credits', { status: 402 })
-    default:
-      return error
   }
 }
 
@@ -500,7 +488,8 @@ export async function handleChatStopRequest(
   try {
     return Response.json(await stopChat(request, messageId, deps))
   } catch (error) {
-    if (!(error instanceof AppError)) log.error('ai.chat.stop_failed', { error })
+    if (!(error instanceof AppError) || error.status >= 500)
+      log.error('ai.chat.stop_failed', { error })
     const { status, body } = toErrorResponse(error)
     return Response.json(body, { status })
   }

@@ -23,7 +23,7 @@ import {
 } from '@saas/ai'
 import { type AuthContextSource, requireFreshSession } from '@saas/auth'
 import type { AiFaultInjectionEnv } from '@saas/config'
-import { CreditsError, hold, lockWorkspaceCredits } from '@saas/credits'
+import { hold, lockWorkspaceCredits } from '@saas/credits'
 import {
   type AiTask,
   aiTask,
@@ -102,18 +102,9 @@ async function response(action: () => Promise<Response>) {
     result.headers.set('cache-control', 'no-store')
     return result
   } catch (error) {
-    let mapped = error
-    if (
-      error instanceof CreditsError &&
-      ['CREDIT_DEBT', 'INSUFFICIENT_CREDITS'].includes(error.code)
-    )
-      mapped = new AppError(
-        error.code,
-        error.code === 'CREDIT_DEBT' ? 'Workspace has unpaid credit debt' : 'Insufficient credits',
-        { status: 402 },
-      )
-    if (!(mapped instanceof AppError)) log.error('ai.media.request_failed', { error: mapped })
-    const result = toErrorResponse(mapped)
+    if (!(error instanceof AppError) || error.status >= 500)
+      log.error('ai.media.request_failed', { error })
+    const result = toErrorResponse(error)
     return Response.json(result.body, {
       status: result.status,
       headers: { 'cache-control': 'no-store' },

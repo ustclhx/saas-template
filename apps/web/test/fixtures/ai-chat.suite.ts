@@ -602,7 +602,11 @@ export function registerAiChatSuite(
       const { response, stream } = await send(me, { modelId, text: 'hi' }, { mock })
       expect(response.status).toBe(402)
       expect(JSON.parse(stream)).toEqual({
-        error: { code: 'INSUFFICIENT_CREDITS', message: 'Insufficient credits' },
+        error: {
+          code: 'INSUFFICIENT_CREDITS',
+          message: 'Insufficient credits',
+          details: { estimatedCredits: 266, availableCredits: 1 },
+        },
       })
       expect(mock.doStreamCalls).toHaveLength(0)
     })

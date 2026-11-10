@@ -3,7 +3,7 @@ import * as schema from '@saas/db/schema'
 import { newId } from '@saas/shared'
 import { expect, it } from 'vitest'
 import { resolveWorkspaceMaxSeats } from '../../../apps/web/src/server/workspace-data.ts'
-import { DEFAULT_FREE_FEATURES, getEntitlements } from '../src/index.ts'
+import { can, DEFAULT_FREE_FEATURES, getEntitlements, requireEntitlement } from '../src/index.ts'
 
 // This integration test lives here because web test files are owned by the coordinator.
 const url = process.env.ENTITLEMENTS_TEST_DATABASE_URL
@@ -62,7 +62,11 @@ it.skipIf(!url)(
               type: 'subscription',
               credits: 0,
               sort: 10,
-              features: { ...DEFAULT_FREE_FEATURES, maxSeats: 5 },
+              features: {
+                ...DEFAULT_FREE_FEATURES,
+                maxSeats: 5,
+                capabilities: { 'exports.advanced': true },
+              },
             })
             .returning()
           if (!plan) throw new Error('missing plan')
@@ -77,6 +81,18 @@ it.skipIf(!url)(
             })
             .returning()
           if (!price) throw new Error('missing price')
+          await tx.insert(schema.creditGrant).values({
+            workspaceId: ws,
+            source: 'purchase',
+            sourceRef: key,
+            amount: 100,
+            remaining: 100,
+          })
+          const packOnly = await getEntitlements(tx, ws, { now })
+          expect(can(packOnly, 'exports.advanced')).toBe(false)
+          expect(() =>
+            requireEntitlement(packOnly, { capability: 'exports.advanced' }),
+          ).toThrowError(expect.objectContaining({ code: 'UPGRADE_REQUIRED', status: 403 }))
           await tx.insert(schema.subscription).values({
             workspaceId: ws,
             planId: plan.id,
@@ -89,7 +105,9 @@ it.skipIf(!url)(
             lastEventAt: now,
           })
           expect((await getEntitlements(tx, ws, { now })).features.maxSeats).toBe(5)
+          expect(can(await getEntitlements(tx, ws, { now }), 'exports.advanced')).toBe(true)
           expect((await getEntitlements(tx, newId(), { now })).key).toBe('free')
+          expect(can(await getEntitlements(tx, newId(), { now }), 'exports.advanced')).toBe(false)
           expect(
             (await getEntitlements(tx, ws, { now: new Date(now.getTime() + 2 * 86_400_000) })).key,
           ).toBe('free')
