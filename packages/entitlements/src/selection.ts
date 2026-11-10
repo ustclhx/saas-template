@@ -81,14 +81,24 @@ export function can(
   capability: 'ai.useModel',
   options: { readonly modelKey: string; readonly tags?: readonly string[] },
 ): boolean
-export function can(ctx: Context, capability: BooleanCapability): boolean
+export function can<const Capability extends string>(
+  ctx: Context,
+  capability: Exclude<Capability, 'ai.useModel'>,
+): boolean
 export function can(
   ctx: Context,
-  capability: 'ai.useModel' | BooleanCapability,
+  capability: string,
   options?: { readonly modelKey: string; readonly tags?: readonly string[] },
 ): boolean {
   const features = featuresOf(ctx)
-  if (capability !== 'ai.useModel') return features[capability]
+  if (capability === 'publicApi' || capability === 'priorityQueue' || capability === 'watermark')
+    return features[capability]
+  if (capability !== 'ai.useModel')
+    return (
+      features.capabilities !== undefined &&
+      Object.hasOwn(features.capabilities, capability) &&
+      features.capabilities[capability] === true
+    )
   return (
     options !== undefined &&
     features.models.some(
@@ -101,8 +111,9 @@ export function limit(ctx: Context, key: EntitlementLimit): number {
   return featuresOf(ctx)[key]
 }
 
-export type EntitlementRequirement =
+export type EntitlementRequirement<Capability extends string = never> =
   | { readonly capability: BooleanCapability }
+  | { readonly capability: Exclude<Capability, 'ai.useModel'> }
   | {
       readonly capability: 'ai.useModel'
       readonly modelKey: string
@@ -113,15 +124,18 @@ export type EntitlementRequirement =
 export const UPGRADE_REQUIRED = 'UPGRADE_REQUIRED'
 
 /** Numeric value is the requested total (e.g. current tasks + the new task). */
-export function requireEntitlement(ctx: Context, requirement: EntitlementRequirement): void {
+export function requireEntitlement<const Capability extends string>(
+  ctx: Context,
+  requirement: EntitlementRequirement<Capability>,
+): void {
   const allowed =
     'limit' in requirement
       ? Number.isFinite(requirement.value) &&
         requirement.value >= 0 &&
         requirement.value <= limit(ctx, requirement.limit)
       : requirement.capability === 'ai.useModel'
-        ? can(ctx, requirement.capability, requirement)
-        : can(ctx, requirement.capability)
+        ? 'modelKey' in requirement && can(ctx, 'ai.useModel', requirement)
+        : can<string>(ctx, requirement.capability)
   if (!allowed)
     throw new AppError(UPGRADE_REQUIRED, 'Upgrade your plan to use this feature', { status: 403 })
 }

@@ -11,6 +11,7 @@ import {
   member,
   payment,
 } from '@saas/db'
+import { AppError, insufficientCreditsError } from '@saas/shared'
 import { and, asc, eq, gt, is, isNull, or, sql } from 'drizzle-orm'
 import { PgTransaction } from 'drizzle-orm/pg-core'
 
@@ -26,13 +27,24 @@ export type CreditsErrorCode =
   | 'HOLD_NOT_ACTIVE'
   | 'INVALID_OVERAGE_POLICY'
 
-export class CreditsError extends Error {
-  readonly code: CreditsErrorCode
+export class CreditsError extends AppError {
+  override readonly name = 'CreditsError'
+  override readonly code: CreditsErrorCode
 
-  constructor(code: CreditsErrorCode) {
-    super(code)
+  constructor(
+    code: CreditsErrorCode,
+    details?: { estimatedCredits: number; availableCredits: number },
+  ) {
+    const insufficient =
+      code === 'INSUFFICIENT_CREDITS' && details
+        ? insufficientCreditsError(details.estimatedCredits, details.availableCredits)
+        : undefined
+    super(
+      code,
+      insufficient?.message ?? code,
+      insufficient ? { status: insufficient.status, details: { ...details } } : {},
+    )
     this.code = code
-    this.name = 'CreditsError'
   }
 }
 
@@ -198,8 +210,12 @@ export async function hold(
       )
       .for('update')
     // Check before any mutation, including when an external caller catches errors.
-    if (batches.reduce((total, batch) => total + batch.remaining, 0) < input.amount) {
-      throw new CreditsError('INSUFFICIENT_CREDITS')
+    const availableCredits = batches.reduce((total, batch) => total + batch.remaining, 0)
+    if (availableCredits < input.amount) {
+      throw new CreditsError('INSUFFICIENT_CREDITS', {
+        estimatedCredits: input.amount,
+        availableCredits,
+      })
     }
     const [created] = await tx.insert(creditHold).values(input).returning()
     if (!created) throw new Error('Credit hold insert returned no row')

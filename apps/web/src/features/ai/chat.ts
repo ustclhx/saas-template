@@ -133,7 +133,7 @@ export function chatAppError(error: unknown): unknown {
     case 'CREDIT_DEBT':
       return new AppError('CREDIT_DEBT', 'Workspace has unpaid credit debt', { status: 402 })
     case 'INSUFFICIENT_CREDITS':
-      return new AppError('INSUFFICIENT_CREDITS', 'Insufficient credits', { status: 402 })
+      return error
     default:
       return error
   }

@@ -3,6 +3,7 @@ import {
   getCreditBalance,
   getCreditBatches,
   getCreditLedger,
+  getCreditSummary,
 } from '@saas/credits'
 import {
   type Database,
@@ -16,6 +17,7 @@ import {
 import { getEntitlements } from '@saas/entitlements'
 import { asc, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { billingSubscriptionSummary } from './summary.ts'
 
 export const creditPageSchema = z.object({
   limit: z.number().int().min(1).max(100).default(25),
@@ -84,13 +86,15 @@ export async function customerBilling(
   const credits =
     role === 'owner' || role === 'admin' ? await getCreditBalance(db, workspaceId) : null
   const scope = scoped(db, workspaceId)
-  const subscriptions = await scope
+  const allSubscriptions = await scope
     .select(subscription, {
       fields: {
         id: subscription.id,
         provider: subscription.provider,
         planPriceId: subscription.planPriceId,
         name: plan.name,
+        plan: { key: plan.key, sort: plan.sort, features: plan.features },
+        pastDueSince: subscription.pastDueSince,
         status: subscription.status,
         currentPeriodEnd: subscription.currentPeriodEnd,
         cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
@@ -98,10 +102,20 @@ export async function customerBilling(
     })
     .innerJoin(plan, eq(subscription.planId, plan.id))
     .orderBy(desc(subscription.createdAt))
-    .limit(50)
+  const summary =
+    role === 'owner' || role === 'admin'
+      ? {
+          ...billingSubscriptionSummary(allSubscriptions, { pastDueGraceDays }),
+          credits: await getCreditSummary(db, workspaceId),
+        }
+      : null
+  const subscriptions = allSubscriptions
+    .slice(0, 50)
+    .map(({ plan: _plan, pastDueSince: _pastDueSince, ...sub }) => sub)
   if (role !== 'owner')
     return {
       entitlements,
+      summary,
       credits,
       subscriptions,
       payments: [],
@@ -134,7 +148,7 @@ export async function customerBilling(
       .orderBy(desc(refundRequest.createdAt))
       .limit(50),
   ])
-  return { entitlements, credits, subscriptions, payments, refunds }
+  return { entitlements, summary, credits, subscriptions, payments, refunds }
 }
 
 export async function customerUsage(

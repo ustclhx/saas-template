@@ -47,10 +47,27 @@ function BillingPage() {
   const [provider, setProvider] = useState(
     page.catalog.providers.find((p) => p.available)?.id ?? page.catalog.providers[0]?.id ?? '',
   )
+  const [purchaseType, setPurchaseType] = useState<'subscription' | 'credit_pack'>(
+    page.catalog.plans.some((plan) => plan.type === 'subscription')
+      ? 'subscription'
+      : 'credit_pack',
+  )
   const [priceId, setPriceId] = useState('')
   const [confirmed, setConfirmed] = useState(false)
   const intent = useRef<{ key: string; uuid: string } | null>(null)
-  useEffect(() => setReady(true), [])
+  useEffect(() => {
+    setReady(true)
+    const applyHash = () => {
+      const hash = window.location.hash
+      if (hash !== '#credit-packs' && hash !== '#subscriptions') return
+      setPurchaseType(hash === '#credit-packs' ? 'credit_pack' : 'subscription')
+      setPriceId('')
+      setConfirmed(false)
+    }
+    applyHash()
+    window.addEventListener('hashchange', applyHash)
+    return () => window.removeEventListener('hashchange', applyHash)
+  }, [])
   useEffect(() => trackEvent('paywall_view'), [])
   const owner = page.role === 'owner'
   const disabled = !ready || busy || page.readOnly || !owner
@@ -146,6 +163,22 @@ function BillingPage() {
           {page.credits.debt}
         </p>
       )}
+      {page.summary && (
+        <section className="grid gap-2">
+          {page.summary.nextRenewalAt && (
+            <p>{m.billing_coexist_renewal({ date: date(new Date(page.summary.nextRenewalAt)) })}</p>
+          )}
+          <p>
+            {m.billing_coexist_subscription_credits({
+              current: page.summary.credits.subscriptionCurrentMonth,
+              total: page.summary.credits.subscriptionAvailable,
+            })}
+          </p>
+          <p>{m.billing_coexist_pack_credits({ count: page.summary.credits.creditPack })}</p>
+          <p>{m.billing_coexist_free_credits(page.summary.credits.free)}</p>
+          <p>{m.billing_coexist_other_credits({ count: page.summary.credits.other })}</p>
+        </section>
+      )}
       <Link to="/app/$slug/usage" params={{ slug }} className="underline">
         Credit balance and usage
       </Link>
@@ -167,8 +200,10 @@ function BillingPage() {
             {sub.provider} · {sub.status}
           </p>
           <p>
-            {sub.cancelAtPeriodEnd ? 'Paid access ends' : 'Next billing'}:{' '}
-            {date(sub.currentPeriodEnd)}
+            {sub.cancelAtPeriodEnd || ['canceled', 'expired', 'paused'].includes(sub.status)
+              ? 'Paid access ends'
+              : 'Next billing'}
+            : {date(sub.currentPeriodEnd)}
           </p>
           {owner && 'id' in sub && sub.id && (
             <div className="flex gap-3">
@@ -199,6 +234,25 @@ function BillingPage() {
       {owner && (
         <section className="grid gap-3 rounded-xl border p-6">
           <h3 className="font-semibold">Choose a plan or credit pack</h3>
+          <div className="flex gap-3">
+            {(['subscription', 'credit_pack'] as const).map((type) => (
+              <Button
+                key={type}
+                id={type === 'subscription' ? 'subscriptions' : 'credit-packs'}
+                aria-pressed={purchaseType === type}
+                variant={purchaseType === type ? 'secondary' : 'outline'}
+                onClick={() => {
+                  setPurchaseType(type)
+                  setPriceId('')
+                  setConfirmed(false)
+                }}
+              >
+                {type === 'subscription'
+                  ? m.billing_coexist_subscriptions()
+                  : m.billing_coexist_packs()}
+              </Button>
+            ))}
+          </div>
           <label>
             Payment method{' '}
             <select
@@ -235,7 +289,9 @@ function BillingPage() {
                 .filter(
                   (price) =>
                     price.provider === provider &&
-                    page.catalog.plans.some((plan) => plan.id === price.planId),
+                    page.catalog.plans.some(
+                      (plan) => plan.id === price.planId && plan.type === purchaseType,
+                    ),
                 )
                 .map((price) => (
                   <option key={price.id} value={price.id} disabled={!price.available}>

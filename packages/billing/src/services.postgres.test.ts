@@ -1,3 +1,4 @@
+import { getCreditBalance, reconcileWorkspaceCredits } from '@saas/credits'
 import {
   auditLog,
   billingCustomer,
@@ -17,7 +18,12 @@ import { getEntitlements } from '@saas/entitlements'
 import { eq, inArray } from 'drizzle-orm'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyBillingEvent, prepareBillingEvents } from './events.ts'
-import type { NormalizedEvent, PaymentProvider, SubscriptionSnapshot } from './provider.ts'
+import type {
+  NormalizedEvent,
+  OrderSnapshot,
+  PaymentProvider,
+  SubscriptionSnapshot,
+} from './provider.ts'
 import {
   type BillingServiceContext,
   cancelSubscription,
@@ -329,6 +335,132 @@ describe('trusted billing services on PostgreSQL', () => {
     expect(grants).toHaveLength(2)
     expect(grants.map((g) => g.amount).sort((a, b) => a - b)).toEqual([10, 30])
     expect(await subs()).toHaveLength(2)
+  })
+
+  it('Stripe subscription and credit-pack payments coexist without cancellation or duplicate grants', async () => {
+    const now = new Date()
+    remote = {
+      ...remote,
+      currentPeriodStart: now,
+      currentPeriodEnd: new Date(now.getTime() + 30 * 86_400_000),
+    }
+    await seedSub()
+    const initial: NormalizedEvent = {
+      provider: 'stripe',
+      type: 'payment.succeeded',
+      occurredAt: now,
+      raw: {},
+      payment: {
+        providerPaymentId: `pi_${id()}`,
+        providerSubscriptionId: remote.providerSubscriptionId,
+        providerPriceId: `price_${sp}`,
+        kind: 'initial',
+        period: { start: remote.currentPeriodStart as Date, end: remote.currentPeriodEnd as Date },
+        providerCustomerId: `cus_${ws}`,
+        amount: 1000,
+        currency: 'USD',
+        paidAt: now,
+        refundedAmount: null,
+        status: 'succeeded',
+        metadata: null,
+        raw: {},
+      },
+    }
+    const preparedInitial = await prepareBillingEvents([initial], db, ctx.providers)
+    await db.transaction((tx) => applyBillingEvent(tx, initial, preparedInitial))
+    const before = await getEntitlements(db, ws)
+    const pack = id(),
+      packPrice = id()
+    extraPlans.push(pack)
+    await db.insert(plan).values({
+      id: pack,
+      key: pack,
+      name: 'Extra credits',
+      type: 'credit_pack',
+      credits: 100,
+      creditExpiryDays: null,
+      sort: 100,
+      // 积分包即便包含更高的权益配置，也不应覆盖当前订阅权益。
+      features: { ...before.features, storageGb: 999 },
+    })
+    await db.insert(planPrice).values({
+      id: packPrice,
+      planId: pack,
+      provider: 'stripe',
+      providerPriceId: `price_${packPrice}`,
+      interval: null,
+      amount: 500,
+      currency: 'USD',
+    })
+    const result = await createCheckout(ctx, { ...checkout(), planPriceId: packPrice })
+    expect(ctx.providers.stripe?.createCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: 'one_time',
+        price: expect.objectContaining({ id: packPrice }),
+      }),
+    )
+    const packPayment: NormalizedEvent = {
+      provider: 'stripe',
+      type: 'payment.succeeded',
+      occurredAt: now,
+      raw: {},
+      payment: {
+        providerPaymentId: `pi_${id()}`,
+        providerOrderId: result.providerRef,
+        providerPriceId: `price_${packPrice}`,
+        kind: 'one_time',
+        period: null,
+        providerCustomerId: `cus_${ws}`,
+        amount: 500,
+        currency: 'USD',
+        paidAt: now,
+        refundedAmount: null,
+        status: 'succeeded',
+        metadata: null,
+        raw: {},
+      },
+    }
+    const stripe = ctx.providers.stripe as PaymentProvider
+    stripe.getOrder = vi.fn(async (providerOrderId: string): Promise<OrderSnapshot> => {
+      noTransaction()
+      return {
+        providerOrderId,
+        providerCustomerId: `cus_${ws}`,
+        providerPriceId: `price_${packPrice}`,
+        status: 'paid',
+        amount: 500,
+        currency: 'USD',
+        metadata: { workspaceId: ws, userId: uid, planPriceId: packPrice },
+        raw: {},
+      }
+    })
+    const preparedPack = await prepareBillingEvents([packPayment], db, ctx.providers)
+    for (let replay = 0; replay < 2; replay++) {
+      await db.transaction(async (tx) => {
+        await applyBillingEvent(tx, initial, preparedInitial)
+        await applyBillingEvent(tx, packPayment, preparedPack)
+      })
+    }
+    expect(ctx.providers.stripe?.cancelSubscription).not.toHaveBeenCalled()
+    expect(await subs()).toMatchObject([{ id: sid, status: 'active', cancelAtPeriodEnd: false }])
+    expect(await getEntitlements(db, ws)).toEqual(before)
+    const grants = await db.select().from(creditGrant).where(eq(creditGrant.workspaceId, ws))
+    expect(grants).toHaveLength(2)
+    expect(grants.find((g) => g.source === 'subscription')).toMatchObject({
+      amount: 10,
+      remaining: 10,
+    })
+    expect(grants.find((g) => g.source === 'purchase')).toMatchObject({
+      amount: 100,
+      remaining: 100,
+      expiresAt: null,
+    })
+    expect(await db.select().from(payment).where(eq(payment.workspaceId, ws))).toHaveLength(2)
+    expect(await getCreditBalance(db, ws)).toEqual({ available: 110, held: 0, debt: 0 })
+    expect(await reconcileWorkspaceCredits(db, ws)).toMatchObject({
+      consistent: true,
+      difference: 0,
+    })
   })
 
   it('rejects same-provider renewing checkout and requires explicit expected-old switch confirmation', async () => {

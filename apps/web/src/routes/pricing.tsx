@@ -3,9 +3,16 @@ import { useEffect, useState } from 'react'
 import { trackEvent } from '../features/analytics/track.ts'
 import { MarketingShell } from '../features/marketing/marketing-shell.tsx'
 import { getMarketingPricing } from '../features/marketing/pricing.functions.ts'
-import { PRICING_TTL_MS } from '../features/marketing/pricing-data.ts'
+import {
+  type BillingInterval,
+  groupPricingPlans,
+  PRICING_TTL_MS,
+  pricingFeatures,
+} from '../features/marketing/pricing-data.ts'
+import { pricingFeatureLabel } from '../features/marketing/sections/pricing.tsx'
 import { originFromMatches, pageHead, staticPage } from '../features/seo/metadata.ts'
 import { pricingData } from '../features/seo/structured-data.ts'
+import { m } from '../paraglide/messages.js'
 import { getLocale } from '../paraglide/runtime.js'
 import { templateConfig } from '../server/template-config.ts'
 
@@ -25,6 +32,8 @@ export const Route = createFileRoute('/pricing')({
 function PricingPage() {
   const initialCatalog = Route.useLoaderData()
   const [catalog, setCatalog] = useState(initialCatalog)
+  const [interval, setInterval] = useState<BillingInterval>('month')
+  const groups = groupPricingPlans(catalog.plans)
   const [ready, setReady] = useState(false)
   const [provider, setProvider] = useState(
     catalog.providers.find((p) => p.available)?.id ?? catalog.providers[0]?.id ?? '',
@@ -52,6 +61,7 @@ function PricingPage() {
       <div className="mx-auto grid max-w-4xl gap-6 p-6">
         <h1 className="text-2xl font-semibold">Pricing</h1>
         <p>Choose a subscription or buy extra credits.</p>
+        <p>{m.billing_coexist_order()}</p>
         <label>
           Payment method{' '}
           <select
@@ -70,37 +80,71 @@ function PricingPage() {
         {!catalog.providers.some((p) => p.available) && (
           <p role="status">Payments are currently unavailable. You can still explore the plans.</p>
         )}
-        <div className="grid gap-4 sm:grid-cols-2">
-          {catalog.plans.map((plan) => (
-            <section key={plan.id} className="grid gap-3 rounded-xl border p-6">
-              <h2 className="text-xl font-semibold">{plan.name}</h2>
-              <p>
-                {plan.credits} credits {plan.type === 'subscription' ? 'each month' : 'per pack'}
-              </p>
-              <p>
-                {plan.features.maxSeats} seats · {plan.features.storageGb} GB storage
-              </p>
-              {plan.creditExpiryDays && <p>Credits expire after {plan.creditExpiryDays} days.</p>}
-              {catalog.prices
-                .filter((price) => price.planId === plan.id && price.provider === provider)
-                .map((price) => (
-                  <p key={price.id}>
-                    {price.currency.toUpperCase() === 'USD'
-                      ? new Intl.NumberFormat('en-US', {
-                          style: 'currency',
-                          currency: 'USD',
-                        }).format(price.amount / 100)
-                      : 'Price unavailable'}
-                    {price.interval ? ` / ${price.interval}` : ''}
-                    {price.available ? '' : ' · Payments unavailable'}
-                  </p>
+        {groups.subscriptions.length > 0 && (
+          <label>
+            {m.billing_coexist_subscriptions()}{' '}
+            <select
+              value={interval}
+              onChange={(event) => setInterval(event.target.value as BillingInterval)}
+            >
+              <option value="month">{m.marketing_pricing_per_month()}</option>
+              <option value="year">{m.marketing_pricing_per_year()}</option>
+            </select>
+          </label>
+        )}
+        {(
+          [
+            ['subscriptions', m.billing_coexist_subscriptions()],
+            ['creditPacks', m.billing_coexist_packs()],
+          ] as const
+        )
+          .filter(([key]) => groups[key].length > 0)
+          .map(([key, label]) => (
+            <div key={key} className="grid gap-4">
+              <h2 className="text-xl font-semibold">{label}</h2>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {groups[key].map((plan) => (
+                  <section key={plan.id} className="grid gap-3 rounded-xl border p-6">
+                    <h2 className="text-xl font-semibold">{plan.name}</h2>
+                    <p>
+                      {plan.credits} credits{' '}
+                      {plan.type === 'subscription' ? 'each month' : 'per pack'}
+                    </p>
+                    <ul>
+                      {pricingFeatures(plan.features).map((item) => (
+                        <li key={item.key}>{pricingFeatureLabel(item)}</li>
+                      ))}
+                    </ul>
+                    {plan.creditExpiryDays && (
+                      <p>Credits expire after {plan.creditExpiryDays} days.</p>
+                    )}
+                    {catalog.prices
+                      .filter(
+                        (price) =>
+                          price.planId === plan.id &&
+                          price.provider === provider &&
+                          price.interval === (plan.type === 'subscription' ? interval : null),
+                      )
+                      .map((price) => (
+                        <p key={price.id}>
+                          {price.currency.toUpperCase() === 'USD'
+                            ? new Intl.NumberFormat('en-US', {
+                                style: 'currency',
+                                currency: 'USD',
+                              }).format(price.amount / 100)
+                            : 'Price unavailable'}
+                          {price.interval ? ` / ${price.interval}` : ''}
+                          {price.available ? '' : ' · Payments unavailable'}
+                        </p>
+                      ))}
+                    <Link to="/app" className="underline">
+                      View in my workspace
+                    </Link>
+                  </section>
                 ))}
-              <Link to="/app" className="underline">
-                View in my workspace
-              </Link>
-            </section>
+              </div>
+            </div>
           ))}
-        </div>
       </div>
     </MarketingShell>
   )

@@ -6,6 +6,10 @@ import {
   creditLedger,
   member,
   organization,
+  payment,
+  plan,
+  planPrice,
+  subscription,
   user,
 } from '@saas/db'
 import * as schema from '@saas/db/schema'
@@ -67,6 +71,10 @@ afterEach(async () => {
   await db.delete(creditHold).where(inArray(creditHold.workspaceId, workspaces))
   await db.delete(creditGrant).where(inArray(creditGrant.workspaceId, workspaces))
   await db.delete(creditDebt).where(inArray(creditDebt.workspaceId, workspaces))
+  await db.delete(payment).where(inArray(payment.workspaceId, workspaces))
+  await db.delete(subscription).where(inArray(subscription.workspaceId, workspaces))
+  await db.delete(planPrice).where(eq(planPrice.planId, ws))
+  await db.delete(plan).where(eq(plan.id, ws))
   await db.delete(member).where(inArray(member.organizationId, workspaces))
   await db.delete(organization).where(inArray(organization.id, workspaces))
   await db.delete(user).where(eq(user.id, userId))
@@ -79,6 +87,7 @@ import {
   getCreditBalance,
   getCreditBatches,
   getCreditLedger,
+  getCreditSummary,
   reconcileWorkspaceCredits,
 } from '../src/queries.ts'
 
@@ -127,6 +136,112 @@ describe('credit queries on PostgreSQL', () => {
     })
     expect(await getCreditBalance(db, otherWs)).toEqual({ available: 99, held: 0, debt: 0 })
     expect(await getCreditBalance(db, newId())).toEqual({ available: 0, held: 0, debt: 0 })
+  })
+
+  it('summarizes spendable sources with held/expired/revoked exclusion and annual month-end rollover', async () => {
+    await grant(db, { ...grantInput(20), source: 'purchase' })
+    await hold(db, holdInput(8))
+    await grant(db, { ...grantInput(5), source: 'signup' })
+    // daily remains text-compatible until R3 extends the TypeScript source union.
+    await db.insert(creditGrant).values({ ...grantInput(3), source: sql`'daily'`, remaining: 3 })
+    await grant(db, grantInput(7))
+    const expired = await grant(db, grantInput(99))
+    await db
+      .update(creditGrant)
+      .set({ expiresAt: new Date(0) })
+      .where(eq(creditGrant.id, expired.id))
+    const revoked = await grant(db, grantInput(99))
+    await db.update(creditGrant).set({ status: 'revoked' }).where(eq(creditGrant.id, revoked.id))
+    await grant(db, { ...grantInput(999), workspaceId: otherWs })
+    await db.insert(plan).values({
+      id: ws,
+      key: ws,
+      name: 'Annual',
+      type: 'subscription',
+      credits: 30,
+      rollover: true,
+      features: {
+        models: [],
+        maxConcurrentTasks: 3,
+        maxSeats: 1,
+        storageGb: 5,
+        publicApi: false,
+        priorityQueue: false,
+        watermark: true,
+      },
+    })
+    const priceId = newId()
+    const subId = newId()
+    const paymentId = newId()
+    const periodStart = new Date('2026-01-31T12:30:00Z')
+    const periodEnd = new Date('2027-01-31T12:30:00Z')
+    await db.insert(planPrice).values({
+      id: priceId,
+      planId: ws,
+      provider: 'stripe',
+      providerPriceId: newId(),
+      interval: 'year',
+      amount: 1000,
+      currency: 'usd',
+    })
+    await db.insert(subscription).values({
+      id: subId,
+      workspaceId: ws,
+      planId: ws,
+      planPriceId: priceId,
+      provider: 'stripe',
+      providerSubscriptionId: newId(),
+      status: 'active',
+      currentPeriodStart: periodStart,
+      currentPeriodEnd: periodEnd,
+      lastEventAt: periodStart,
+    })
+    await db.insert(payment).values({
+      id: paymentId,
+      workspaceId: ws,
+      provider: 'stripe',
+      providerPaymentId: newId(),
+      subscriptionId: subId,
+      planPriceId: priceId,
+      kind: 'initial',
+      periodStart,
+      periodEnd,
+      amount: 1000,
+      currency: 'usd',
+      paidAt: periodStart,
+    })
+    for (const [n, amount] of [
+      [1, 10],
+      [2, 30],
+    ] as const) {
+      await grant(db, {
+        ...grantInput(amount),
+        source: 'subscription',
+        sourceRef: `${paymentId}:${n}`,
+        paymentId,
+      })
+    }
+    // Arrival time does not define the paid monthly grant window.
+    await db
+      .update(creditGrant)
+      .set({ createdAt: new Date(0) })
+      .where(eq(creditGrant.paymentId, paymentId))
+    const before = await getCreditSummary(db, ws, new Date('2026-03-31T12:29:59Z'))
+    expect(before.subscriptionCurrentMonth).toBe(10)
+    const summary = await getCreditSummary(db, ws, new Date('2026-03-31T12:30:00Z'))
+    expect(summary).toEqual({
+      subscriptionAvailable: 40,
+      subscriptionCurrentMonth: 30,
+      creditPack: 12,
+      free: { signup: 5, daily: 3, total: 8 },
+      other: 7,
+      available: 67,
+    })
+    expect(
+      summary.subscriptionAvailable + summary.creditPack + summary.free.total + summary.other,
+    ).toBe(summary.available)
+    expect((await getCreditSummary(db, otherWs)).available).toBe(999)
+    expect((await getCreditSummary(db, newId())).available).toBe(0)
   })
 
   it('paginates tied timestamps newest first by ID without losing microseconds or leaking workspaces', async () => {

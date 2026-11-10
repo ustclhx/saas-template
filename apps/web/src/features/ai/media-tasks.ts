@@ -103,15 +103,8 @@ async function response(action: () => Promise<Response>) {
     return result
   } catch (error) {
     let mapped = error
-    if (
-      error instanceof CreditsError &&
-      ['CREDIT_DEBT', 'INSUFFICIENT_CREDITS'].includes(error.code)
-    )
-      mapped = new AppError(
-        error.code,
-        error.code === 'CREDIT_DEBT' ? 'Workspace has unpaid credit debt' : 'Insufficient credits',
-        { status: 402 },
-      )
+    if (error instanceof CreditsError && error.code === 'CREDIT_DEBT')
+      mapped = new AppError(error.code, 'Workspace has unpaid credit debt', { status: 402 })
     if (!(mapped instanceof AppError)) log.error('ai.media.request_failed', { error: mapped })
     const result = toErrorResponse(mapped)
     return Response.json(result.body, {
