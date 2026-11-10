@@ -11,8 +11,8 @@ claude.ai 的 Design System Artifact 只是可视化镜像，供出设计稿前�
 
 | 字段 | 值 |
 |---|---|
-| Design System 镜像 | 待发布（claude.ai 链接将由 tasks 7.4 提供） |
-| 最近同步提交 | 待发布（镜像内容所依据的 main 提交 SHA） |
+| Design System 镜像 | https://claude.ai/artifact/5bJuRwNuRe7xV5aQcCfULr（私有，需所有者共享后他人可见） |
+| 最近同步提交 | e623daa（2026-11-11） |
 
 镜像在**发布模板版本时**由协调者按仓库内容更新，同时把上表的「最近同步提交」改为该版本的提交；
 平时合并 token 或组件 PR 不逐次更新。判断镜像是否落后（模板仓库中执行，退出码 0 表示不落后）：
