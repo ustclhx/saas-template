@@ -10,6 +10,7 @@ import {
   createContext,
   forwardRef,
   type HTMLAttributes,
+  type MouseEvent,
   type ReactNode,
   useContext,
   useEffect,
@@ -122,8 +123,11 @@ const AlertDialogContent = forwardRef<HTMLDivElement, AlertDialogContentProps>(
             {...props}
           >
             <motion.div
+              // 退场动画期间面板仍在页面上：inert 让其中的按钮不可点击、不可聚焦，避免双击提交两次
+              inert={!open}
               className={cn(
                 'fixed left-1/2 top-1/2 z-[var(--z-modal,50)] w-[calc(100%-2rem)]',
+                !open && 'pointer-events-none',
                 surfaceClasses(dialogLevel),
                 'p-6 focus:outline-none',
                 size === 'sm' && (compact ? 'max-w-[360px]' : 'max-w-[400px]'),
@@ -194,6 +198,18 @@ const AlertDialogDescription = forwardRef<
 })
 AlertDialogDescription.displayName = 'AlertDialogDescription'
 
+/** 已开始关闭（退场动画中）时吞掉点击：不调用回调，也不让 Radix 再次关闭。inert 之外的兜底，
+ *  覆盖不支持 inert 的环境与动画结束前的连击 */
+function guardClosed(open: boolean, onClick: ButtonProps['onClick']) {
+  return (event: MouseEvent<HTMLButtonElement>) => {
+    if (!open) {
+      event.preventDefault()
+      return
+    }
+    onClick?.(event)
+  }
+}
+
 type AlertDialogButtonProps = Omit<ButtonProps, 'asChild' | 'children'> & {
   /** 按钮文字，由应用按语言传入（组件不提供默认文案） */
   children: ReactNode
@@ -201,19 +217,21 @@ type AlertDialogButtonProps = Omit<ButtonProps, 'asChild' | 'children'> & {
 
 /** 确认按钮：默认实心主色；危险操作传 `variant="destructive"`。点击后关闭对话框，
  *  需要等待异步结果时在 onClick 中 `preventDefault()` 并改用受控 `open`。 */
-function AlertDialogAction({ variant = 'default', ...props }: AlertDialogButtonProps) {
+function AlertDialogAction({ variant = 'default', onClick, ...props }: AlertDialogButtonProps) {
+  const open = useContext(AlertDialogOpenContext)
   return (
     <AlertDialogPrimitive.Action asChild>
-      <Button variant={variant} {...props} />
+      <Button variant={variant} onClick={guardClosed(open, onClick)} {...props} />
     </AlertDialogPrimitive.Action>
   )
 }
 
 /** 取消按钮：打开时默认获得焦点（Radix 约定），避免误按 Enter 直接执行危险操作 */
-function AlertDialogCancel({ variant = 'outline', ...props }: AlertDialogButtonProps) {
+function AlertDialogCancel({ variant = 'outline', onClick, ...props }: AlertDialogButtonProps) {
+  const open = useContext(AlertDialogOpenContext)
   return (
     <AlertDialogPrimitive.Cancel asChild>
-      <Button variant={variant} {...props} />
+      <Button variant={variant} onClick={guardClosed(open, onClick)} {...props} />
     </AlertDialogPrimitive.Cancel>
   )
 }

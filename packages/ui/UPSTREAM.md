@@ -20,7 +20,7 @@
 7. token 不放在组件里：registry 的 `cssVars` / `css` 并入 `src/styles/globals.css`。
 8. 动效按需导入：从 `motion/react` 导入 `m as motion`（JSX 仍写 `<motion.div>`，与上游的差异只在导入行），
    并在组件根节点包 `MotionFeatures`（`src/lib/motion-features.tsx`，LazyMotion + domAnimation）；
-   `test/motion-imports.test.ts` 拦截完整 `motion` 导入。需要 layout / 拖拽动画的组件改用 domMax 前先评估包体积。
+   `test/motion-imports.test.ts` 拦截完整 `motion` 导入，`test/motion-features.test.tsx` 不包 UiRoot 实际渲染各组件、断言动画在推进（`m.*` 不在 LazyMotion 之下时静止在 initial 且不报错，静态检查发现不了，如 SelectItem 的勾）。需要 layout / 拖拽动画的组件改用 domMax 前先评估包体积。
 9. 焦点环统一为 2px 描边加 2px 间隙（`outline-2 outline-offset-2 outline-(--focus-ring)`），上游多为 1px ring。
 10. 组件内不写英文默认文案：可读名称、占位文字等由应用按语言传入（见下文「必须传入的多语言文案」）。
 
@@ -29,14 +29,14 @@
 | 本包文件 | 上游 registry 项 | 上游月份 | 模板改动 |
 |---|---|---|---|
 | `src/components/button.tsx` | `button` | 2026-11 | 保留模板公开 API（variant `default/destructive/outline/secondary/ghost/link`、size `default/sm/lg/icon`、`asChild`、`buttonVariants`）；新增 Fluid 变体别名 `primary`、`tertiary`，尺寸 `compact`、`icon-compact`、`icon-sm`，`loading`、`leadingIcon`、`trailingIcon`。底色层由内部 span 改为 `::before`，子元素原样输出；强调色由 `--foreground` 改为 `--primary`（预设可换色），悬停 / 按下用 `color-mix` 掺黑加深（上游降不透明度）；焦点环改为 2px 描边加 2px 间隙（上游 1px ring）；destructive 用 `--destructive` 变量而非 Tailwind 红色，底色 /10、悬停 /15（深色 /15、/20）；未移植 `render`、`nativeButton`、`active`；`sm`/`lg` 为模板原有 32px/40px 尺寸 |
-| `src/components/alert-dialog.tsx` | 无（Fluid 没有 AlertDialog，shadcn `alert-dialog` 补缺） | 2026-11 | 结构与 API 取 shadcn（Radix AlertDialog：Trigger / Content / Header / Footer / Title / Description / Action / Cancel），外观、开合动效与宽度档沿用 `dialog.tsx`；无关闭按钮、点击遮罩不关闭；Action / Cancel 渲染 `Button`（默认 `default` / `outline`，可传 `variant="destructive"`），文字必须由调用方传入；没有 Trigger 的受控用法关闭后把焦点还给打开前的元素（Radix 只还给 Trigger） |
-| `src/components/badge.tsx` | `badge` | 2026-11 | 18 个色值移入 globals.css 的 `--badge-*`（组件不写死颜色），`accent` 取 `--fluid-accent`；圆点加 `aria-hidden` |
+| `src/components/alert-dialog.tsx` | 无（Fluid 没有 AlertDialog，shadcn `alert-dialog` 补缺） | 2026-11 | 结构与 API 取 shadcn（Radix AlertDialog：Trigger / Content / Header / Footer / Title / Description / Action / Cancel），外观、开合动效与宽度档沿用 `dialog.tsx`；无关闭按钮、点击遮罩不关闭；退场动画期间面板 `inert` + `pointer-events-none`，Action / Cancel 在已关闭时吞掉点击（防双击重复提交）；Action / Cancel 渲染 `Button`（默认 `default` / `outline`，可传 `variant="destructive"`），文字必须由调用方传入；没有 Trigger 的受控用法关闭后把焦点还给打开前的元素（Radix 只还给 Trigger） |
+| `src/components/badge.tsx` | `badge` | 2026-11 | 18 个色值移入 globals.css 的 `--badge-*`（组件不写死颜色），`accent` 取 `--fluid-accent`；圆点加 `aria-hidden`；`size` 只公开 `default` / `compact`（不移植上游 sm/md/lg 兼容别名），`badgeVariants` 不从包入口导出 |
 | `src/components/checkbox.tsx` | `checkbox` | 2026-11 | 静止边框 `--control-border`（上游 `--border` 对背景约 1.4:1，未选中方框是唯一状态标识），悬停加深到正文色；焦点环 2px 描边加间隙；勾选图标加 `aria-hidden` |
-| `src/components/dialog.tsx` | `dialog` | 2026-11 | `closeLabel` 必填（显示关闭按钮时；上游写死英文 "Close"），`showCloseButton={false}` 时不需要；DialogTitle 加 `font-semibold`（中文回退字体加粗）；`m as motion` + `MotionFeatures` |
-| `src/components/input.tsx` | `input` | 2026-11 | 保留模板公开 API（原生 input 属性与 ref，始终只渲染 `<input>`），新增 `size`（尺寸阶梯，替代原生 `size` 属性）；吸收边框、悬停底色、高度 / 内边距 / 字号阶梯（触屏 16px 防缩放）；焦点除边框加深外加 2px 描边加间隙；未移植文件图标与数字步进按钮（需要新图标槽位与多语言的「增加 / 减少」名称），`type="file"` / `"number"` 保持浏览器原生外观 |
-| `src/components/select.tsx` | `select` | 2026-11 | 触发器焦点环改为 2px 描边加 2px 间隙；`error` 文字经 `aria-describedby` 关联触发器；`placeholder` 必填（上游默认英文 "Select…"）；`m as motion` + `MotionFeatures` |
-| `src/components/switch.tsx` | `switch` | 2026-11 | 关闭态轨道 `--control-border`（上游 `--accent` 对背景约 1.2:1）；开启态滑块 `--switch-thumb-on`（默认白色，深色预设的浅强调色上改为深色，保证 ≥ 3:1）；焦点环 2px 描边加间隙；减少动态效果时滑块直接落到终点（命令式 `animate()` 不受 MotionConfig 控制）；API 保持上游（`label`、受控 `checked` + `onToggle`，整行可点击、可拖动） |
-| `src/components/textarea.tsx` | `textarea` | 2026-11 | 焦点环与 Input 一致（2px 描边加间隙） |
+| `src/components/dialog.tsx` | `dialog` | 2026-11 | `closeLabel` 必填（显示关闭按钮时；上游写死英文 "Close"），`showCloseButton={false}` 时不需要，传了 `closeLabel` 时 `showCloseButton` 可为布尔变量；退场动画期间面板 `inert` + `pointer-events-none`（上游退场时仍可点击）；DialogTitle 加 `font-semibold`（中文回退字体加粗）；`m as motion` + `MotionFeatures` |
+| `src/components/input.tsx` | `input` | 2026-11 | 保留模板公开 API（原生 input 属性与 ref，始终只渲染 `<input>`），新增 `size`（尺寸阶梯，替代原生 `size` 属性）；吸收边框（`--field-border`）、悬停底色、高度 / 内边距 / 字号阶梯（触屏 16px 防缩放）；焦点除边框加深外加 2px 描边加间隙；错误边框用实色 `--destructive`（上游 /50 对背景约 2.5:1）；未移植文件图标与数字步进按钮（需要新图标槽位与多语言的「增加 / 减少」名称），`type="file"` / `"number"` 保持浏览器原生外观 |
+| `src/components/select.tsx` | `select` | 2026-11 | 触发器焦点环改为 2px 描边加 2px 间隙；`error` 文字经 `aria-describedby` 关联触发器，错误边框用实色 `--destructive`；边框取 `--field-border`；`placeholder` 必填（上游默认英文 "Select…"）；`m as motion` + `MotionFeatures` |
+| `src/components/switch.tsx` | `switch` | 2026-11 | 关闭态轨道 `--control-border`（上游 `--accent` 对背景约 1.2:1）；开启态滑块 `--switch-thumb-on`（默认白色，深色预设的浅强调色上改为深色，保证 ≥ 3:1）；焦点环 2px 描边加间隙；减少动态效果时滑块直接落到终点（命令式 `animate()` 不受 MotionConfig 控制）；受控 `checked` + `onToggle`、整行可点击可拖动保持上游，以下偏离上游：调用方的行处理器与内部处理器合成（上游 props 展开在最后会覆盖内部处理器），`id` / `aria-describedby` / `name` / `value` / `required` 落到 role="switch" 按钮（Radix Root），`label` 放宽为 ReactNode、省略时必须传 `aria-label`，行去掉左右内边距（与其他字段左缘对齐），`touch-none` 改 `touch-pan-y`（允许从开关上开始竖向滚动） |
+| `src/components/textarea.tsx` | `textarea` | 2026-11 | 焦点环与 Input 一致（2px 描边加间隙）；边框 `--field-border`、错误边框实色；只在支持 `field-sizing` 时去掉拖拽把手（`resize-y supports-[field-sizing:content]:resize-none`），其余浏览器可纵向拉伸 |
 | `src/components/tooltip.tsx` | `tooltip` | 2026-11 | 仅统一适配规则（`m as motion` + `MotionFeatures`）；滑入位移在减少动态效果时由 UiRoot 的 MotionConfig 去掉 |
 | `src/components/scroll-area.tsx` | `scroll-area` | 2026-11 | 仅统一适配规则；CSS 只并入 `scroll-fade` 与细滚动条（限内部滚动容器，页面根保持系统默认，放在 base 层），未并入 `scroll-divider` 与 `::-webkit-scrollbar` 规则 |
 | `src/components/fluid-hover-highlight.tsx` | `use-fluid-hover`（附带文件） | 2026-11 | 仅统一适配规则（`m as motion` + `MotionFeatures`） |
@@ -57,7 +57,7 @@
 | `src/lib/surface-context.tsx` | `surface-context` | 2026-11 | 仅统一适配规则 |
 | `src/lib/type-scale.ts` | `type-scale` | 2026-11 | 仅统一适配规则 |
 | `src/lib/utils.ts` | `utils` | 2026-11 | 保留模板 `cn` 签名；登记类型阶梯类名，不含上游站点专用的 `text-site-*` |
-| `src/styles/globals.css` | `tokens`、`surfaces`、`type-scale`、`shape-context`、`scroll-area`、`button`（CSS） | 2026-11 | 语义色取 Fluid 站点 `app/globals.css` 的默认值，基线与预设放在 `@layer base`（brand.css 不分层即可覆盖）；改动：新增 `--primary`（浅 `#171717` / 深 `#f5f5f5`）；`--destructive` 浅色取 red-700（上游 red-500 作文字对比度不足 4.5:1）；`--muted-foreground` 浅 `#6b6b6b` / 深 `#b0b0b0`（上游在 muted 与高层表面上不足 4.5:1）；`--fluid-accent` 浅 `#3b82f6` / 深 `#4f86f7`（焦点环对背景与主按钮 ≥ 3:1）；`--fs-body` 14px（上游 13px）；`--success` 沿用模板原值；`--ring` 指向 `--focus-ring`；新增 `tint` 颜色工具类；4.1 新增 `--control-border`（`--foreground` 52%，复选框边框与开关关闭轨道对页面、卡片、surface-5 ≥ 3:1）、`--switch-thumb-on`、`--badge-*` 色板 |
+| `src/styles/globals.css` | `tokens`、`surfaces`、`type-scale`、`shape-context`、`scroll-area`、`button`（CSS） | 2026-11 | 语义色取 Fluid 站点 `app/globals.css` 的默认值，基线与预设放在 `@layer base`（brand.css 不分层即可覆盖）；改动：新增 `--primary`（浅 `#171717` / 深 `#f5f5f5`）；`--destructive` 浅色取 red-700（上游 red-500 作文字对比度不足 4.5:1）；`--muted-foreground` 浅 `#6b6b6b` / 深 `#b0b0b0`（上游在 muted 与高层表面上不足 4.5:1）；`--fluid-accent` 浅 `#3b82f6` / 深 `#4f86f7`（焦点环对背景与主按钮 ≥ 3:1）；`--fs-body` 14px（上游 13px）；`--success` 沿用模板原值；`--ring` 指向 `--focus-ring`；新增 `tint` 颜色工具类；4.1 新增 `--control-border`（`--foreground` 浅 52% / 深 48%，复选框边框与开关关闭轨道对页面、卡片、surface-5、悬停底 ≥ 3:1，白色滑块对其 ≥ 3:1）、`--field-border`（Input / Textarea / Select 触发器共用，默认等于 `--border`）、`--switch-thumb-on`、`--badge-*` 色板 |
 
 ## 公开接口
 
@@ -73,7 +73,7 @@
 | `DialogContent` | `closeLabel` | 右上角关闭按钮的可读名称；`showCloseButton={false}` 时不需要 |
 | `SelectTrigger` | `placeholder` | 未选择时显示的文字 |
 | `AlertDialogAction` / `AlertDialogCancel` | `children` | 按钮文字；标题与说明同样由调用方传入 |
-| `Switch` | `label` | 可见标签，同时是开关的可读名称 |
+| `Switch` | `label` 或 `aria-label` | 可见标签（同时是可读名称）；不显示标签时传 `aria-label` |
 | `Tooltip` | `content` | 提示文字 |
 | `ThemeToggle`、`DataTable` | `labels` | 模板原有，已由调用方传入 |
 

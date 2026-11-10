@@ -70,25 +70,14 @@ const badgeVariants = cva('inline-flex items-center whitespace-nowrap', {
   },
 })
 
-type BadgeSizeCanonical = 'default' | 'compact'
-
-/** Public size values: the canonical two-size scale plus the pre-sizes-system
- *  aliases, kept so existing call sites keep compiling. Aliases resolve onto
- *  the canonical ladder (sm → compact; md/lg → default). */
-type BadgeSize = BadgeSizeCanonical | 'sm' | 'md' | 'lg'
-
-const legacySizeAliases: Partial<Record<BadgeSize, BadgeSizeCanonical>> = {
-  sm: 'compact',
-  md: 'default',
-  lg: 'default',
-}
+// 模板改动：只公开尺寸阶梯的两档；上游为兼容旧版保留的 sm / md / lg 别名不移植（模板没有旧调用方）
+type BadgeSize = 'default' | 'compact'
 
 interface BadgeProps
   extends Omit<HTMLAttributes<HTMLSpanElement>, 'color'>,
     Omit<VariantProps<typeof badgeVariants>, 'size'> {
   color?: BadgeColor
-  /** Omitted, the badge follows the surrounding SizeProvider. Legacy
-   *  sm/md/lg values still resolve. */
+  /** Omitted, the badge follows the surrounding SizeProvider. */
   size?: BadgeSize
 }
 
@@ -100,14 +89,9 @@ const Badge = forwardRef<HTMLSpanElement, BadgeProps>(
     // Corner radius comes from the shape context (rounded, pill or sharp), so
     // badges follow the rest of the app instead of hard-coding a radius.
     const shape = useShape()
-    // Resolve the size: explicit prop (legacy aliases mapped onto the
-    // canonical ladder) > surrounding SizeProvider > default.
+    // Resolve the size: explicit prop > surrounding SizeProvider > default.
     const contextSize = useSizeVariant()
-    const size: BadgeSizeCanonical = sizeProp
-      ? (legacySizeAliases[sizeProp] ?? (sizeProp as BadgeSizeCanonical))
-      : contextSize === 'compact'
-        ? 'compact'
-        : 'default'
+    const size: BadgeSize = sizeProp ?? (contextSize === 'compact' ? 'compact' : 'default')
     const colorValue = badgeColors[color]
     const isSolid = variant === 'solid'
     const dotSize = size === 'compact' ? 6 : 7

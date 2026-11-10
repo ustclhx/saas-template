@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import type React from 'react'
 import { useState } from 'react'
 import { renderToString } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -15,6 +16,9 @@ import {
   Badge,
   Button,
   Checkbox,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Input,
   Switch,
   Textarea,
@@ -55,7 +59,7 @@ describe('Input / Textarea（Fluid input、textarea）', () => {
     )
     const [input, compact, textarea] = [...html.matchAll(/class="([^"]*)"/g)].map((m) => m[1])
     expect(input).toContain('h-9')
-    expect(input).toContain('border-border')
+    expect(input).toContain('border-field-border')
     expect(input).toContain('text-[length:var(--fs-body')
     expect(input).toContain('focus-visible:outline-offset-2')
     expect(compact).toContain('h-7')
@@ -165,6 +169,112 @@ describe('Switch（Fluid radix/switch）', () => {
   })
 })
 
+describe('Switch 属性与拖动', () => {
+  function Controlled(props: { onToggle?: () => void; onClick?: (e: React.MouseEvent) => void }) {
+    const [on, setOn] = useState(false)
+    return (
+      <Switch
+        label="Sync"
+        checked={on}
+        onToggle={() => {
+          setOn((v) => !v)
+          props.onToggle?.()
+        }}
+        {...(props.onClick && { onClick: props.onClick })}
+      />
+    )
+  }
+
+  it('调用方的行处理器与内部处理器合成；preventDefault() 时不切换', () => {
+    const onClick = vi.fn()
+    const onToggle = vi.fn()
+    const { unmount } = render(<Controlled onClick={onClick} onToggle={onToggle} />)
+    fireEvent.click(screen.getByText('Sync'))
+    expect(onClick).toHaveBeenCalledTimes(1)
+    expect(onToggle).toHaveBeenCalledTimes(1)
+    unmount()
+
+    const blocked = vi.fn()
+    render(<Controlled onClick={(e) => e.preventDefault()} onToggle={blocked} />)
+    fireEvent.click(screen.getByText('Sync'))
+    expect(blocked).not.toHaveBeenCalled()
+  })
+
+  it('id、aria-describedby、name 落到开关按钮上；无标签时用 aria-label；表单提交开关值', () => {
+    render(
+      <form aria-label="Settings">
+        <Switch
+          id="beta"
+          name="beta"
+          value="yes"
+          aria-describedby="beta-help"
+          checked
+          onToggle={() => {}}
+          aria-label="Beta features"
+        />
+        <p id="beta-help">Try new features early.</p>
+      </form>,
+    )
+    const control = screen.getByRole('switch', { name: 'Beta features' })
+    expect(control.id).toBe('beta')
+    expect(control.getAttribute('aria-describedby')).toBe('beta-help')
+    const form = screen.getByRole('form', { name: 'Settings' }) as HTMLFormElement
+    expect(new FormData(form).get('beta')).toBe('yes')
+  })
+
+  // 默认尺寸：轨道 34、滑块 16，拖动时滑块按下宽 20，可拖范围 2–12，中点 7
+  it('拖过中点切换一次，随后的 click 被吞掉', () => {
+    const onToggle = vi.fn()
+    render(<Controlled onToggle={onToggle} />)
+    const row = screen.getByText('Sync').parentElement as HTMLElement
+    const control = screen.getByRole('switch', { name: 'Sync' })
+    fireEvent.pointerDown(row, { pointerId: 1, pointerType: 'mouse', button: 0, clientX: 0 })
+    fireEvent.pointerMove(row, { pointerId: 1, pointerType: 'mouse', clientX: 20 })
+    fireEvent.pointerUp(row, { pointerId: 1, pointerType: 'mouse', clientX: 20 })
+    fireEvent.click(row)
+    expect(onToggle).toHaveBeenCalledTimes(1)
+    expect(control.getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('没拖过中点则回弹、不切换，click 同样被吞掉；死区内的小抖动仍算点击', () => {
+    const onToggle = vi.fn()
+    render(<Controlled onToggle={onToggle} />)
+    const row = screen.getByText('Sync').parentElement as HTMLElement
+    fireEvent.pointerDown(row, { pointerId: 1, pointerType: 'mouse', button: 0, clientX: 0 })
+    fireEvent.pointerMove(row, { pointerId: 1, pointerType: 'mouse', clientX: 3 })
+    fireEvent.pointerUp(row, { pointerId: 1, pointerType: 'mouse', clientX: 3 })
+    fireEvent.click(row)
+    expect(onToggle).not.toHaveBeenCalled()
+
+    // 下一帧 didDrag 复位后，1px 的抖动不进入拖动，click 正常切换
+    return act(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => {
+            fireEvent.pointerDown(row, {
+              pointerId: 2,
+              pointerType: 'mouse',
+              button: 0,
+              clientX: 0,
+            })
+            fireEvent.pointerMove(row, { pointerId: 2, pointerType: 'mouse', clientX: 1 })
+            fireEvent.pointerUp(row, { pointerId: 2, pointerType: 'mouse', clientX: 1 })
+            fireEvent.click(row)
+            expect(onToggle).toHaveBeenCalledTimes(1)
+            resolve()
+          }),
+        ),
+    )
+  })
+
+  it('默认没有左右内边距，可纵向滚动', () => {
+    const html = renderToString(<Switch label="Sync" checked={false} onToggle={() => {}} />)
+    const row = /class="([^"]*touch-pan-y[^"]*)"/.exec(html)?.[1] ?? ''
+    expect(row).not.toMatch(/\bpx-/)
+    expect(row).not.toContain('touch-none')
+  })
+})
+
 describe('Badge（Fluid badge）', () => {
   it('solid 用色值与页面背景混出的淡底，文字保持正文色；dot 的圆点对读屏隐藏', () => {
     const html = renderToString(
@@ -191,7 +301,7 @@ describe('Badge（Fluid badge）', () => {
     const html = renderToString(
       <UiRoot density="compact">
         <Badge>A</Badge>
-        <Badge size="lg">B</Badge>
+        <Badge size="default">B</Badge>
       </UiRoot>,
     )
     const [compact, large] = [...html.matchAll(/class="([^"]*inline-flex[^"]*)"/g)].map((m) => m[1])
@@ -308,6 +418,28 @@ describe('AlertDialog（shadcn 结构 + Fluid dialog 外观）', () => {
     await waitFor(() => expect(document.activeElement).toBe(opener))
   })
 
+  it('退场动画期间再次点击确认不会重复触发', async () => {
+    const onConfirm = vi.fn()
+    render(<Confirm onConfirm={onConfirm} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    const confirm = await screen.findByRole('button', { name: '删除' })
+    fireEvent.click(confirm)
+    // 对话框已开始关闭但仍在页面上：面板 inert，按钮的点击被吞掉
+    expect(confirm.isConnected).toBe(true)
+    expect(confirm.closest('[inert]')).not.toBeNull()
+    fireEvent.click(confirm)
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+  })
+
+  it('确认按钮 onClick 中 preventDefault() 时保持打开（等待异步结果）', async () => {
+    render(<Confirm onConfirm={vi.fn((e?: unknown) => (e as Event).preventDefault())} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    fireEvent.click(await screen.findByRole('button', { name: '删除' }))
+    await act(() => new Promise((resolve) => setTimeout(resolve, 300)))
+    expect(screen.getByRole('alertdialog')).toBeTruthy()
+  })
+
   it('点击遮罩不关闭', async () => {
     render(<Confirm />)
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
@@ -316,4 +448,39 @@ describe('AlertDialog（shadcn 结构 + Fluid dialog 外观）', () => {
     await act(() => new Promise((resolve) => setTimeout(resolve, 300)))
     expect(dialog.isConnected).toBe(true)
   })
+})
+
+describe('Dialog 退场期间不可交互', () => {
+  it('关闭开始后面板 inert，其中按钮的点击不再触发', async () => {
+    const onSave = vi.fn()
+    render(
+      <Dialog defaultOpen>
+        <DialogContent closeLabel="关闭">
+          <DialogTitle>重命名</DialogTitle>
+          <Button onClick={onSave}>保存</Button>
+        </DialogContent>
+      </Dialog>,
+    )
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.hasAttribute('inert')).toBe(false)
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    await waitFor(() => expect(dialog.hasAttribute('inert')).toBe(true))
+    expect(dialog.className).toContain('pointer-events-none')
+  })
+})
+
+// 类型用例（由 typecheck 检查）：传了 closeLabel 时 showCloseButton 可以是布尔变量；不显示关闭按钮时可省略 closeLabel
+function DialogContentTypeCases({ editable }: { editable: boolean }) {
+  return (
+    <>
+      <DialogContent closeLabel="关闭" showCloseButton={editable} />
+      <DialogContent showCloseButton={false} />
+      {/* @ts-expect-error 显示关闭按钮时必须传 closeLabel */}
+      <DialogContent />
+    </>
+  )
+}
+
+it('DialogContent 的类型用例参与 typecheck', () => {
+  expect(typeof DialogContentTypeCases).toBe('function')
 })

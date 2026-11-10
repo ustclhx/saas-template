@@ -118,8 +118,9 @@ interface DialogContentBaseProps extends ComponentPropsWithoutRef<typeof DialogP
 type DialogContentProps = DialogContentBaseProps &
   (
     | {
-        /** The ✕ in the top-right corner. @default true */
-        showCloseButton?: true
+        /** The ✕ in the top-right corner. @default true
+         *  传了 closeLabel 时可用布尔变量控制（`showCloseButton={editable}`） */
+        showCloseButton?: boolean
         /** 右上角关闭按钮的可读名称，由应用按语言传入 */
         closeLabel: string
       }
@@ -193,9 +194,12 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
           </DialogPrimitive.Overlay>
           <DialogPrimitive.Content ref={ref} asChild forceMount {...props}>
             <motion.div
+              // 模板改动：退场动画期间面板仍在页面上，inert 让其中的按钮不可点击、不可聚焦（避免重复提交）
+              inert={!open}
               className={cn(
                 container ? 'absolute' : 'fixed',
                 'left-1/2 z-[var(--z-modal,50)] w-[calc(100%-2rem)]',
+                !open && 'pointer-events-none',
                 position === 'top' ? 'top-[12dvh]' : 'top-1/2',
                 surfaceClasses(dialogLevel),
                 'p-6 focus:outline-none',

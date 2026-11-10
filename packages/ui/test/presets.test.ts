@@ -195,15 +195,26 @@ function checks(vars: Vars, mode: 'light' | 'dark'): Check[] {
     ui('焦点环 / 主按钮', c('--focus-ring'), primary),
     // Input / Textarea：悬停底色上的占位文字
     text('占位文字 / 悬停的输入框', c('--muted-foreground'), onPage(c('--hover'))),
+    // 输入框错误态边框 aria-invalid:border-destructive（页面与弹窗上；上游 /50 只有约 2.5:1）
+    ui('错误边框 / background', destructive, page),
+    ui('错误边框 / surface-5', destructive, c('--surface-5')),
     // Tooltip：反色气泡
     text('Tooltip background / foreground', c('--background'), c('--foreground')),
     // Checkbox 未选中的方框、Switch 关闭态轨道：页面、卡片与弹窗（surface-5）上都要 ≥ 3:1
     ...(['--background', '--card', '--surface-5'] as const).map((surface) =>
       ui(`control-border / ${surface}`, c('--control-border'), c(surface)),
     ),
-    // Switch：开启态轨道与页面、白色滑块与两种轨道
+    // 悬停时复选框所在行 / 开关行的底色
+    ui('control-border / 悬停底色', c('--control-border'), onPage(c('--hover'))),
+    // Switch：开启态轨道与页面、白色滑块与两种轨道（关闭轨道半透明，分别叠在页面、卡片、弹窗上）
     ui('Switch 开启轨道 / background', c('--fluid-accent'), page),
-    ui('Switch 滑块 / 关闭轨道', [1, 1, 1, 1], onPage(c('--control-border'))),
+    ...(['--background', '--card', '--surface-5'] as const).map((surface) =>
+      ui(
+        `Switch 滑块 / 关闭轨道 on ${surface}`,
+        [1, 1, 1, 1],
+        over(c('--control-border'), c(surface)),
+      ),
+    ),
     ui('Switch 滑块 / 开启轨道', c('--switch-thumb-on'), c('--fluid-accent')),
     // Badge solid：正文色文字在「色值 15% + 页面背景」的淡底上；灰色取 --accent
     text('Badge gray', c('--foreground'), c('--accent')),

@@ -12,6 +12,8 @@ import {
   forwardRef,
   type HTMLAttributes,
   type PointerEvent,
+  type ReactNode,
+  type SyntheticEvent,
   useCallback,
   useEffect,
   useId,
@@ -33,8 +35,14 @@ import { cn } from '../lib/utils.ts'
 // switch never flips itself, it only calls onToggle.
 // ---------------------------------------------------------------------------
 
-interface SwitchProps extends HTMLAttributes<HTMLDivElement> {
-  label: string
+// 模板改动：id、aria-describedby、name / value / required 落到 role="switch" 的按钮（Radix Root）上，
+// 外部 <Label htmlFor> 与表单提交都能用；其余属性仍给整行。label 放宽为 ReactNode，省略时必须给 aria-label。
+type SwitchRowProps = Omit<
+  HTMLAttributes<HTMLDivElement>,
+  'id' | 'aria-describedby' | 'aria-label' | 'aria-labelledby' | 'onToggle' | 'children'
+>
+
+type SwitchBaseProps = SwitchRowProps & {
   checked: boolean
   /** Called by a click, the keyboard, or a drag released past the
    *  midpoint. Update `checked` here. */
@@ -45,7 +53,29 @@ interface SwitchProps extends HTMLAttributes<HTMLDivElement> {
   /** Pins the switch to one step of the size ladder.
    *  Omitted, it follows the surrounding SizeProvider. */
   size?: SizeVariant
+  /** 开关按钮的 id（供外部 `<Label htmlFor>` 关联） */
+  id?: string
+  'aria-describedby'?: string
+  /** 表单字段名：位于 <form> 内时，Radix 输出隐藏的 checkbox，开启时提交 value */
+  name?: string
+  /** 开启时提交的值，默认 "on" */
+  value?: string
+  required?: boolean
 }
+
+type SwitchProps = SwitchBaseProps &
+  (
+    | {
+        /** 可见标签，同时是开关的可读名称 */
+        label: ReactNode
+        'aria-label'?: string
+      }
+    | {
+        /** 不显示标签时（如表格行内），必须给可读名称 */
+        label?: undefined
+        'aria-label': string
+      }
+  )
 
 // Track/thumb geometry per ladder step. The hover pill-extend is the same 2px
 // at both steps; only the press extend/squash scales down with the thumb, so the
@@ -79,9 +109,42 @@ const DRAG_DEAD_ZONE = 2
 // 这里的 animate(motionX, …) 是命令式调用，需要自己判断
 const INSTANT = { duration: 0 } as const
 
+/** 先调用调用方的处理器，未 preventDefault() 时再执行内部处理器 */
+function compose<E extends SyntheticEvent>(
+  outer: ((event: E) => void) | undefined,
+  inner: (event: E) => void,
+) {
+  return (event: E) => {
+    outer?.(event)
+    if (!event.defaultPrevented) inner(event)
+  }
+}
+
 const Switch = forwardRef<HTMLDivElement, SwitchProps>(
   (
-    { label, checked, onToggle, disabled = false, thumbTransition, size, className, ...props },
+    {
+      label,
+      checked,
+      onToggle,
+      disabled = false,
+      thumbTransition,
+      size,
+      className,
+      id,
+      name,
+      value,
+      required,
+      'aria-label': ariaLabel,
+      'aria-describedby': ariaDescribedBy,
+      onPointerEnter,
+      onPointerLeave,
+      onPointerDown,
+      onPointerMove,
+      onPointerUp,
+      onPointerCancel,
+      onClick,
+      ...props
+    },
     ref,
   ) => {
     const labelId = useId()
@@ -250,38 +313,46 @@ const Switch = forwardRef<HTMLDivElement, SwitchProps>(
       // biome-ignore lint/a11y/useKeyWithClickEvents: 同上，键盘切换由内部 Radix Switch 处理
       <div
         ref={ref}
+        {...props}
         className={cn(
-          // The whole row is the pointer target. touch-none stops the browser
-          // from claiming a horizontal drag as a scroll (which would cancel
-          // it); select-none keeps a drag from selecting the label.
-          'relative z-10 flex items-center cursor-pointer select-none touch-none',
+          // The whole row is the pointer target. 模板改动：上游 touch-none 会让从开关上开始的竖向滑动
+          // 无法滚动页面；touch-pan-y 保留竖向滚动，横向拖动仍归滑块。select-none keeps a drag from
+          // selecting the label.
+          // 模板改动：去掉上游的左右内边距（sizeClasses.px），开关与表单里其他字段左缘对齐
+          'relative z-10 flex items-center cursor-pointer select-none touch-pan-y',
           sizeClasses.gap,
-          sizeClasses.px,
           sizeClasses.variant === 'compact' ? 'py-1' : 'py-2',
           disabled && 'opacity-50 pointer-events-none',
           className,
         )}
+        // 模板改动：调用方的处理器先执行并与内部处理器合成（上游把 props 展开在最后，会覆盖内部处理器）；
+        // 调用方 preventDefault() 时跳过内部处理
         // Hover is mouse-only: a finger has no hover, so on touch the thumb
         // only ever takes the press shape.
-        onPointerEnter={(e) => {
+        onPointerEnter={compose(onPointerEnter, (e) => {
           if (e.pointerType === 'mouse') setHovered(true)
-        }}
-        onPointerLeave={() => setHovered(false)}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
+        })}
+        onPointerLeave={compose(onPointerLeave, () => setHovered(false))}
+        onPointerDown={compose(onPointerDown, handlePointerDown)}
+        onPointerMove={compose(onPointerMove, handlePointerMove)}
+        onPointerUp={compose(onPointerUp, handlePointerUp)}
+        onPointerCancel={compose(onPointerCancel, handlePointerCancel)}
         // A click anywhere on the row, label included, toggles, unless it is
         // the click that ends a drag.
-        onClick={() => {
+        onClick={compose(onClick, () => {
           if (disabled || didDrag.current) return
           onToggle()
-        }}
-        {...props}
+        })}
       >
         <SwitchPrimitive.Root
           checked={checked}
-          aria-labelledby={labelId}
+          {...(label !== undefined ? { 'aria-labelledby': labelId } : {})}
+          {...(ariaLabel !== undefined && { 'aria-label': ariaLabel })}
+          {...(ariaDescribedBy !== undefined && { 'aria-describedby': ariaDescribedBy })}
+          {...(id !== undefined && { id })}
+          {...(name !== undefined && { name })}
+          {...(value !== undefined && { value })}
+          {...(required !== undefined && { required })}
           onCheckedChange={() => {
             if (didDrag.current) return
             onToggle()
@@ -341,20 +412,22 @@ const Switch = forwardRef<HTMLDivElement, SwitchProps>(
           </MotionFeatures>
         </SwitchPrimitive.Root>
 
-        <span
-          id={labelId}
-          className={cn(
-            // text-box trim recenters the letterforms against the track; the
-            // track is taller than the label, so layout doesn't change.
-            '[text-box:trim-both_cap_alphabetic] transition-[color] duration-80',
-            sizeClasses.text,
-            // Brightens when on (muted → foreground over 80ms), so
-            // on/off reads in the label as well as the track color.
-            checked ? 'text-foreground' : 'text-muted-foreground',
-          )}
-        >
-          {label}
-        </span>
+        {label !== undefined && (
+          <span
+            id={labelId}
+            className={cn(
+              // text-box trim recenters the letterforms against the track; the
+              // track is taller than the label, so layout doesn't change.
+              '[text-box:trim-both_cap_alphabetic] transition-[color] duration-80',
+              sizeClasses.text,
+              // Brightens when on (muted → foreground over 80ms), so
+              // on/off reads in the label as well as the track color.
+              checked ? 'text-foreground' : 'text-muted-foreground',
+            )}
+          >
+            {label}
+          </span>
+        )}
       </div>
     )
   },

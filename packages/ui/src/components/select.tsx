@@ -235,7 +235,8 @@ const triggerVariants = cva(
   {
     variants: {
       variant: {
-        bordered: 'border border-border bg-transparent text-foreground hover:bg-hover',
+        // 模板改动：边框取 --field-border（与 Input、Textarea 共用，默认等于 --border）
+        bordered: 'border border-field-border bg-transparent text-foreground hover:bg-hover',
         borderless: 'border border-transparent bg-transparent text-foreground hover:bg-hover',
       },
     },
@@ -279,7 +280,8 @@ const SelectTrigger = forwardRef<HTMLButtonElement, SelectTriggerProps>(
             sizeClasses.gap,
             compact ? 'min-w-[128px]' : 'min-w-[160px]',
             shape.input,
-            error && 'border-destructive/50 hover:border-destructive/50',
+            // 模板改动：错误边框用实色 --destructive（上游 /50 与背景只有约 2.5:1）
+            error && 'border-destructive hover:border-destructive',
             className,
           )}
           {...props}

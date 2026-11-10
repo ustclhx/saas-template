@@ -17,7 +17,6 @@ export {
   type BadgeColor,
   type BadgeProps,
   type BadgeSize,
-  badgeVariants,
 } from './components/badge.tsx'
 export { Button, type ButtonProps, buttonVariants } from './components/button.tsx'
 export {

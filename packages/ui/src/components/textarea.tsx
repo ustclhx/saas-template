@@ -31,12 +31,15 @@ const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
         ref={ref}
         data-slot="textarea"
         className={cn(
-          'w-full min-w-0 border border-border bg-transparent text-foreground outline-none',
-          'field-sizing-content resize-none',
+          'w-full min-w-0 border border-field-border bg-transparent text-foreground outline-none',
+          // 模板改动：只有支持 field-sizing 的浏览器会随内容长高，才去掉拖拽把手；其余浏览器（Safari、Firefox）
+          // 保留纵向拖拽，否则长文本只能在最小高度里滚动
+          'field-sizing-content resize-y supports-[field-sizing:content]:resize-none',
           'transition-[background-color,border-color] duration-80',
           'placeholder:text-muted-foreground',
           'hover:bg-hover',
-          'aria-invalid:border-destructive/50',
+          // 模板改动：错误边框用实色 --destructive（上游 /50 与背景只有约 2.5:1）
+          'aria-invalid:border-destructive',
           // Focus wins over the error tint while the value is fixed; the
           // stacked variant outranks aria-invalid, which Tailwind sorts last.
           'focus:border-foreground/40 aria-invalid:focus:border-foreground/40 focus:hover:bg-transparent',

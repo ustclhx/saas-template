@@ -67,4 +67,7 @@
 - 裁剪 Inter 子集（只保留实际用到的字符范围）与 surface 6–8 等未用 token
 - 回退字体加 `size-adjust`，减少字体替换时的版面跳动
 - `:focus-visible` 兜底焦点环的圆角跟随元素自身圆角
+- 焦点环类名（`fieldFocusClasses`）抽到 lib 统一复用：目前 Button、Select、Checkbox、Switch 各写一份同样的 `outline-2 outline-offset-2` 串（上游文件，合并时注意）
+- 选中态复选框（方框消失只留勾）与实心 destructive 按钮变体：分别在 4.2、5.x 结合页面再定
+- 开关 hover 宽度动画（`m.span`）未进 `motion-features.test.tsx`，目前只靠静态检查保证在 MotionFeatures 之下
 - `brandFileErrors` 在浅克隆（CI `fetch-depth` 较小）下找不到创建提交时的行为与测试

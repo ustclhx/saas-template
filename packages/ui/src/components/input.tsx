@@ -20,11 +20,12 @@ export const fieldFocusClasses =
 // ---------------------------------------------------------------------------
 
 const inputClasses = [
-  'w-full min-w-0 border border-border bg-transparent text-foreground outline-none',
+  'w-full min-w-0 border border-field-border bg-transparent text-foreground outline-none',
   'transition-[background-color,border-color] duration-80',
   'placeholder:text-muted-foreground',
   'hover:bg-hover',
-  'aria-invalid:border-destructive/50',
+  // 模板改动：错误边框用实色 --destructive（上游 /50 与背景只有约 2.5:1）
+  'aria-invalid:border-destructive',
   // Focus wins over the error tint while the value is fixed. Tailwind sorts
   // aria-* after focus, so the invalid case needs its own stacked variant.
   'focus:border-foreground/40 aria-invalid:focus:border-foreground/40 focus:hover:bg-transparent',

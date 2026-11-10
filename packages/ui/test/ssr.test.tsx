@@ -66,7 +66,7 @@ describe('SSR', () => {
     )
     expect(html).toMatch(/<label[^>]*class="[^"]*text-sm[^"]*"[^>]*for="email"/)
     // Input 与 Select 触发器同一套边框、高度与焦点环（Fluid input）
-    expect(html).toMatch(/<input[^>]*type="email"[^>]*class="[^"]*border-border[^"]*h-9/)
+    expect(html).toMatch(/<input[^>]*type="email"[^>]*class="[^"]*border-field-border[^"]*h-9/)
     expect(html).toMatch(
       /<input[^>]*class="[^"]*focus-visible:outline-2 focus-visible:outline-offset-2/,
     )
