@@ -47,6 +47,10 @@ it('保存设置后清除旧 KV 值，拒绝未受邀注册，并审计每项的
     const before = await readRuntimeSettings(db)
     for (const key of RUNTIME_SETTING_KEYS) await getSetting(ctx, key)
     const input = runtimeSettingsInput.parse({
+      dailyAmount: 20,
+      dailyMaxDaysPerMonth: 15,
+      dailyExpiryDays: 14,
+      dailyRequireVerifiedEmail: false,
       signupEnabled: false,
       announcement: ' Scheduled maintenance ',
       signupBonusDomainBlacklist: [' Mailinator.com. ', 'mailinator.com', 'temp-mail.test'],
@@ -64,6 +68,12 @@ it('保存设置后清除旧 KV 值，拒绝未受邀注册，并审计每项的
       'temp-mail.test',
     ])
     expect(await getSetting(ctx, 'ai.freeFailures')).toEqual({ count: 5, windowSeconds: 1800 })
+    expect(await readRuntimeSettings(db)).toMatchObject({
+      dailyAmount: 20,
+      dailyMaxDaysPerMonth: 15,
+      dailyExpiryDays: 14,
+      dailyRequireVerifiedEmail: false,
+    })
     await expect(
       assertSignupAdmission(
         {
@@ -84,12 +94,20 @@ it('保存设置后清除旧 KV 值，拒绝未受邀注册，并审计每项的
       before.announcement,
       before.signupBonusDomainBlacklist,
       before.freeFailures,
+      before.dailyAmount,
+      before.dailyMaxDaysPerMonth,
+      before.dailyExpiryDays,
+      before.dailyRequireVerifiedEmail,
     ]
     const newValues = [
       input.signupEnabled,
       input.announcement,
       input.signupBonusDomainBlacklist,
       input.freeFailures,
+      input.dailyAmount,
+      input.dailyMaxDaysPerMonth,
+      input.dailyExpiryDays,
+      input.dailyRequireVerifiedEmail,
     ]
     for (const [index, key] of RUNTIME_SETTING_KEYS.entries()) {
       expect(records.find((row) => row.targetId === key)).toMatchObject({
@@ -111,6 +129,10 @@ it('邮箱域黑名单拒绝 URL 和邮箱地址，避免误保存无效规则',
   for (const domain of ['https://mailinator.com', 'user@mailinator.com', 'bad_domain.test']) {
     expect(
       runtimeSettingsInput.safeParse({
+        dailyAmount: 20,
+        dailyMaxDaysPerMonth: 15,
+        dailyExpiryDays: 14,
+        dailyRequireVerifiedEmail: false,
         signupEnabled: true,
         announcement: '',
         signupBonusDomainBlacklist: [domain],
@@ -123,6 +145,10 @@ it('邮箱域黑名单拒绝 URL 和邮箱地址，避免误保存无效规则',
 it('免费失败设置只接受非负整数次数与 1 分钟到 7 天的窗口', () => {
   const parse = (freeFailures: unknown) =>
     runtimeSettingsInput.safeParse({
+      dailyAmount: 20,
+      dailyMaxDaysPerMonth: 15,
+      dailyExpiryDays: 14,
+      dailyRequireVerifiedEmail: false,
       signupEnabled: true,
       announcement: '',
       signupBonusDomainBlacklist: [],
@@ -132,4 +158,30 @@ it('免费失败设置只接受非负整数次数与 1 分钟到 7 天的窗口'
   expect(parse({ count: -1, windowSeconds: 3600 })).toBe(false)
   expect(parse({ count: 1.5, windowSeconds: 3600 })).toBe(false)
   expect(parse({ count: 3, windowSeconds: 59 })).toBe(false)
+})
+
+it('每日参数拒绝错误类型、非整数、越界，允许明确关闭邮箱验证', () => {
+  const input = {
+    signupEnabled: true,
+    announcement: '',
+    signupBonusDomainBlacklist: [],
+    freeFailures: { count: 3, windowSeconds: 3600 },
+    dailyAmount: 10,
+    dailyMaxDaysPerMonth: 10,
+    dailyExpiryDays: 7,
+    dailyRequireVerifiedEmail: false,
+  }
+  expect(runtimeSettingsInput.safeParse(input).success).toBe(true)
+  for (const invalid of [
+    { dailyAmount: 0 },
+    { dailyAmount: 2147483648 },
+    { dailyAmount: 1.5 },
+    { dailyAmount: '10' },
+    { dailyMaxDaysPerMonth: 0 },
+    { dailyMaxDaysPerMonth: 32 },
+    { dailyExpiryDays: 0 },
+    { dailyExpiryDays: 366 },
+    { dailyRequireVerifiedEmail: 'false' },
+  ])
+    expect(runtimeSettingsInput.safeParse({ ...input, ...invalid }).success).toBe(false)
 })

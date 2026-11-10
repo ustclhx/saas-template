@@ -29,8 +29,10 @@ export {
   workspaceColumnOf,
 } from './scoped.ts'
 export {
+  type DailyCreditSettingKey,
   dbSettingStore,
   getSetting,
+  isValidDailyCreditSetting,
   SETTING_CACHE_TTL_SECONDS,
   type SettingCache,
   type SettingKey,

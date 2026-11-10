@@ -1,3 +1,4 @@
+import { isValidDailyCreditSetting } from '@saas/db'
 import { z } from 'zod'
 
 const domain = z
@@ -14,6 +15,16 @@ const domain = z
 
 export const runtimeSettingsInput = z.object({
   signupEnabled: z.boolean(),
+  dailyAmount: z.custom<number>((value) => isValidDailyCreditSetting('credits.dailyAmount', value)),
+  dailyMaxDaysPerMonth: z.custom<number>((value) =>
+    isValidDailyCreditSetting('credits.dailyMaxDaysPerMonth', value),
+  ),
+  dailyExpiryDays: z.custom<number>((value) =>
+    isValidDailyCreditSetting('credits.dailyExpiryDays', value),
+  ),
+  dailyRequireVerifiedEmail: z.custom<boolean>((value) =>
+    isValidDailyCreditSetting('credits.dailyRequireVerifiedEmail', value),
+  ),
   announcement: z.string().trim().max(2000),
   signupBonusDomainBlacklist: z
     .array(domain)
