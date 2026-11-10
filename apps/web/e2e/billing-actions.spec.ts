@@ -252,10 +252,11 @@ for (const realSubmission of [true, false])
           (await db.select().from(refundRequest).where(eq(refundRequest.id, request.id)))[0]
             ?.status,
         ).toBe('refunded')
+        // 部分退款按比例回收（refund-requests「退款后收回积分」）：退款 400/1000，
+        // 批次保留 floor(100 × 600 / 1000) = 60，其余收回；回调重放不重复收回。
         expect(
-          (await db.select().from(creditGrant).where(eq(creditGrant.paymentId, paymentId)))[0]
-            ?.remaining,
-        ).toBe(0)
+          (await db.select().from(creditGrant).where(eq(creditGrant.paymentId, paymentId)))[0],
+        ).toMatchObject({ remaining: 60, status: 'active' })
       } finally {
         await db.$client.end()
       }
