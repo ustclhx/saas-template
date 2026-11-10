@@ -67,7 +67,7 @@ grep -n 'ui:' template.config.ts
    用 claude.ai 的 Design System Artifact 发布项目镜像（Claude Code 中 Artifact 工具 `action: quickstart`、`intent: other`，
    按返回结果从 Design System 类型创建），内容包括浅 / 深色板、字号阶梯、按钮 / 输入 / 卡片样例。
 3. **多站点**：一个项目多个站点时，每个站点给出一组覆盖，写成 `:root[data-site="<站点>"]` 与
-   `:root[data-site="<站点>"].dark`。根布局写入 `data-site` 的扩展点将由 tasks 6.4 提供；未提供前不修改模板根布局，在报告中列为待办。
+   `:root[data-site="<站点>"].dark`。`data-site` 由项目自有的 `apps/web/src/features/theme/html-attributes.ts` 返回，不修改模板根布局。
 4. **对比度**：正文与背景 ≥ 4.5:1；焦点环与背景、与主按钮 ≥ 3:1；浅色与深色都要满足。
 5. **使用者确认后写入项目自有文件**：
    - `apps/web/src/styles/brand.css`：只写变量，浅色与 `.dark` 成对，`.dark` 规则在 `:root` 之后；

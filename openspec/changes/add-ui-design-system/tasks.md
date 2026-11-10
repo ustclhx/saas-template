@@ -36,7 +36,7 @@
 - [x] 6.1 预留 `packages/ui/src/project/`（`.gitkeep` 与空 `index.ts`）与 `@saas/ui/project` 导出；`check-ui` 与依赖检查覆盖该目录；验证在临时生成项目中新增项目组件并使用后检查通过
 - [x] 6.2 生成 `packages/ui/components.lock.json` 与校验：模版内清单过期时失败；存在 `.template-base.json` 时修改模版组件失败并提示定制顺序；`check-ui.allow.local.json` 被读取；测试覆盖三种情况
 - [x] 6.3 生成器在副本中创建空的 `check-ui.allow.local.json` 与 `docs/design/README.md`（说明视觉规范、参考、原型副本与 forks 登记的位置）；`create-project.test.mjs` 断言文件存在且生成结果确定
-- [ ] 6.4 根布局提供项目自有的站点/主题属性扩展点（项目自有文件返回 `<html>` 额外属性，如 `data-site`），避免项目改模板根布局；测试覆盖未注册时输出不变与注册后 SSR 写入属性
+- [x] 6.4 根布局提供项目自有的站点/主题属性扩展点（项目自有文件返回 `<html>` 额外属性，如 `data-site`），避免项目改模板根布局；测试覆盖未注册时输出不变与注册后 SSR 写入属性
 
 ## 7. 设计规范文档、技能与生成器
 

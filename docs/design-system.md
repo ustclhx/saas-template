@@ -242,7 +242,7 @@ Markdown 与代码高亮另行选型，优先轻量方案；替换聊天页与 S
   衍生项目（存在 `.template-base.json`）中 `pnpm check:ui` 对比哈希，不一致即失败并提示下文的定制顺序。
 - 生成器在副本中创建空的 `scripts/check-ui.allow.local.json` 与 `docs/design/README.md`（说明本目录各文件的用途），
   并且不复制 `docs/design-system/prototypes/`。
-- 根布局的站点/主题属性扩展点将由 tasks 6.4 提供。
+- `apps/web/src/features/theme/html-attributes.ts`（项目自有，模板创建后不再修改）：返回加到 `<html>` 的额外属性（如 `data-site`），根布局在服务端首屏合并；`lang`、`data-preset` 由模板写，不可覆盖。
 
 ### 9.2 定制顺序
 
@@ -261,8 +261,8 @@ Markdown 与代码高亮另行选型，优先轻量方案；替换聊天页与 S
 ### 9.3 多站点
 
 一个项目服务多个站点时，在 `brand.css` 用 `:root[data-site="<站点>"]` 与 `:root[data-site="<站点>"].dark`
-分别覆盖品牌变量。根布局写入 `data-site` 的扩展点（项目自有文件返回 `<html>` 的额外属性）将由 tasks 6.4 提供，
-未提供前不修改模板根布局；各站点的视觉规范写在项目的 `docs/design/visual-system.md`。
+分别覆盖品牌变量。`data-site` 在项目自有的 `apps/web/src/features/theme/html-attributes.ts` 中按 host / locale / pathname
+返回（只在服务端首屏计算，客户端导航不重算），不修改模板根布局；各站点的视觉规范写在项目的 `docs/design/visual-system.md`。
 
 ### 9.4 同步模板
 
