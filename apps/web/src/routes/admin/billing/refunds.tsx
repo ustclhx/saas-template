@@ -1,4 +1,4 @@
-import { Button, DataTable, Input } from '@saas/ui'
+import { Button, DataTable, Input, Textarea } from '@saas/ui'
 import {
   createFileRoute,
   notFound as featureNotFound,
@@ -12,13 +12,7 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../../features/admin/list.ts'
-import {
-  AdminPage,
-  adminTableLabels,
-  Field,
-  panelClass,
-  Textarea,
-} from '../../../features/admin/ui.tsx'
+import { AdminPage, adminTableLabels, Field, panelClass } from '../../../features/admin/ui.tsx'
 import {
   completeAdminRefund,
   getAdminRefunds,

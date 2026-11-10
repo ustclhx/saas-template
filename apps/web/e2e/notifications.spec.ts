@@ -79,6 +79,19 @@ test('后台保存运营通知密钥后只显示配置状态，不回显明文',
     await expect(form.getByLabel('Telegram chat ID', { exact: true })).toHaveValue('-456')
     expect(await page.content()).not.toContain(token)
     expect(await page.content()).not.toContain(webhook)
+    await form.getByRole('checkbox', { name: 'Clear Telegram token', exact: true }).check()
+    await form.getByRole('checkbox', { name: 'Clear Discord webhook', exact: true }).check()
+    await form.getByRole('button', { name: 'Save operations notifications' }).click()
+    await expect(form.getByRole('status')).toHaveText('Operations settings saved.')
+    await expect(
+      form.getByRole('checkbox', { name: 'Clear Telegram token', exact: true }),
+    ).not.toBeChecked()
+    await expect(
+      form.getByRole('checkbox', { name: 'Clear Discord webhook', exact: true }),
+    ).not.toBeChecked()
+    await page.reload()
+    await expect(form.getByText('Telegram bot: Not configured')).toBeVisible()
+    await expect(form.getByText('Discord webhook: Not configured')).toBeVisible()
   } finally {
     await sql`delete from setting where key in ${sql(keys)}`
     for (const row of original)

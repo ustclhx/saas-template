@@ -29,7 +29,7 @@
 
 - [x] 5.1 （Claude）以 admin 一个列表页为样例，替换原生 select、confirm 与 `features/admin/ui.tsx` 中的 Textarea/NativeSelect，形成替换模式说明；该页测试与 e2e 通过
 - [ ] 5.2 （Codex，可并行，按功能目录切分）按 5.1 模式替换其余原生 select 与 confirm；每个 PR 的 `pnpm check`、typecheck 与相关测试通过
-- [ ] 5.3 删除 admin 私有的 Textarea、NativeSelect、CheckboxField，并清空 `check-ui.allow.json` 中的待替换登记；`pnpm check` 通过
+- [x] 5.3 删除 admin 私有的 Textarea、NativeSelect、CheckboxField，并清空 `check-ui.allow.json` 中的待替换登记；`pnpm check` 通过
 
 ## 6. 衍生项目继承机制
 

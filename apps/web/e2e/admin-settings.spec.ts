@@ -26,13 +26,15 @@ test('admin saves runtime settings, audits changes and displays a plain text ann
     await expect(page.getByRole('heading', { name: 'Runtime settings' })).toBeVisible()
     const form = page.getByRole('form', { name: 'Runtime settings' })
     original = {
-      signup: await form.getByLabel('Registration enabled').isChecked(),
+      signup: await form
+        .getByRole('checkbox', { name: 'Registration enabled', exact: true })
+        .isChecked(),
       announcement: await form.getByLabel('Site announcement').inputValue(),
       blacklist: await form.getByLabel('Disposable email domains').inputValue(),
     }
     await form.getByLabel('Site announcement').fill(announcement)
     await form.getByLabel('Disposable email domains').fill('Mailinator.com\ntemp-mail.test')
-    await form.getByLabel('Registration enabled').uncheck()
+    await form.getByRole('checkbox', { name: 'Registration enabled', exact: true }).uncheck()
     await form.getByRole('button', { name: 'Save settings' }).click()
     await expect(page.getByRole('status').filter({ hasText: 'Saved.' })).toBeVisible()
     await expect(page.getByRole('status', { name: 'Site announcement' })).toHaveText(announcement)
@@ -53,7 +55,9 @@ test('admin saves runtime settings, audits changes and displays a plain text ann
     if (original) {
       await page.goto('/admin/settings')
       const form = page.getByRole('form', { name: 'Runtime settings' })
-      await form.getByLabel('Registration enabled').setChecked(original.signup)
+      await form
+        .getByRole('checkbox', { name: 'Registration enabled', exact: true })
+        .setChecked(original.signup)
       await form.getByLabel('Site announcement').fill(original.announcement)
       await form.getByLabel('Disposable email domains').fill(original.blacklist)
       await form.getByRole('button', { name: 'Save settings' }).click()

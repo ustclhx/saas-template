@@ -30,23 +30,34 @@ test('admin can save model selections, retain historical keys and explicitly rem
     const editor = page.getByRole('article', { name: `Plan ${key}` })
     await expect(editor.getByRole('alert')).toContainText(historical)
     await expect(editor).toContainText('Credit pack: these selections do not grant model access.')
-    await expect(editor.getByLabel(`${historical} (historical; model missing)`)).toBeChecked()
-    await editor.getByLabel(`${modelKey} (disabled)`).check()
+    await expect(
+      editor.getByRole('checkbox', {
+        name: `${historical} (historical; model missing)`,
+        exact: true,
+      }),
+    ).toBeChecked()
+    await editor.getByRole('checkbox', { name: `${modelKey} (disabled)`, exact: true }).check()
     await editor.getByRole('button', { name: 'Save model access' }).click()
     await expect(editor.getByRole('status')).toHaveText('Saved.')
     await expect
       .poll(async () => (await sql`select features from plan where id=${planId}`)[0]?.features)
       .toEqual({ ...features, models: [historical, modelKey] })
-    await editor.getByLabel(`${historical} (historical; model missing)`).uncheck()
-    await editor.getByLabel('All models (*)').check()
+    await editor
+      .getByRole('checkbox', { name: `${historical} (historical; model missing)`, exact: true })
+      .uncheck()
+    await editor.getByRole('checkbox', { name: 'All models (*)', exact: true }).check()
     await editor.getByRole('button', { name: 'Save model access' }).click()
     await expect
       .poll(async () => (await sql`select features from plan where id=${planId}`)[0]?.features)
       .toEqual({ ...features, models: [modelKey, '*'] })
     await expect(editor.getByRole('alert')).toHaveCount(0)
     await page.reload()
-    await expect(editor.getByLabel('All models (*)')).toBeChecked()
-    await expect(editor.getByLabel(`${modelKey} (disabled)`)).toBeChecked()
+    await expect(
+      editor.getByRole('checkbox', { name: 'All models (*)', exact: true }),
+    ).toBeChecked()
+    await expect(
+      editor.getByRole('checkbox', { name: `${modelKey} (disabled)`, exact: true }),
+    ).toBeChecked()
     const [audit] =
       await sql`select meta from audit_log where target_id=${planId} and action='admin.plan.models.update' order by created_at desc limit 1`
     expect(audit?.meta.models).toEqual({ before: [historical, modelKey], after: [modelKey, '*'] })

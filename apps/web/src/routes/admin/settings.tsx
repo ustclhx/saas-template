@@ -1,9 +1,9 @@
-import { Button, Input } from '@saas/ui'
+import { Button, Checkbox, Input, Label, Textarea } from '@saas/ui'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { type FormEvent, useEffect, useState } from 'react'
 import { getAdminSettings, saveAdminSettings } from '../../features/admin/settings.functions.ts'
 import { OperationsSettingsForm } from '../../features/admin/settings-operations-form.tsx'
-import { AdminPage, CheckboxField, Field, panelClass, Textarea } from '../../features/admin/ui.tsx'
+import { AdminPage, Field, panelClass } from '../../features/admin/ui.tsx'
 import { m } from '../../paraglide/messages.js'
 
 export const Route = createFileRoute('/admin/settings')({
@@ -72,11 +72,14 @@ function Settings() {
       <form onSubmit={submit} aria-label={m.admin_runtime_settings()} className={panelClass()}>
         <fieldset disabled={!hydrated || busy} className="grid min-w-0 gap-5">
           <div className="grid gap-2">
-            <CheckboxField
-              label={m.admin_registration_enabled()}
-              checked={signupEnabled}
-              onChange={(event) => setSignupEnabled(event.target.checked)}
-            />
+            <Label htmlFor="registration-enabled" className="font-normal text-sm leading-normal">
+              <Checkbox
+                id="registration-enabled"
+                checked={signupEnabled}
+                onCheckedChange={setSignupEnabled}
+              />
+              {m.admin_registration_enabled()}
+            </Label>
             <p className="text-muted-foreground text-sm">
               {m.admin_when_registration_is_closed_only_valid_waitlist_invitations()}
             </p>
@@ -184,11 +187,14 @@ function Settings() {
               </Field>
             </div>
             <div className="grid gap-2">
-              <CheckboxField
-                label={m.admin_daily_credits_require_verified_email()}
-                checked={dailyVerifiedEmail}
-                onChange={(event) => setDailyVerifiedEmail(event.target.checked)}
-              />
+              <Label htmlFor="daily-verified-email" className="font-normal text-sm leading-normal">
+                <Checkbox
+                  id="daily-verified-email"
+                  checked={dailyVerifiedEmail}
+                  onCheckedChange={setDailyVerifiedEmail}
+                />
+                {m.admin_daily_credits_require_verified_email()}
+              </Label>
               <p className="text-muted-foreground text-sm">
                 {m.admin_daily_credits_unverified_email_warning()}
               </p>
