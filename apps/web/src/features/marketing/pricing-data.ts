@@ -1,3 +1,4 @@
+import type { PlanFeatures } from '@saas/db'
 import type { customerCatalog } from '../billing/customer-data.ts'
 
 export type BillingInterval = 'month' | 'year'
@@ -12,6 +13,7 @@ export interface PricingPlan {
   readonly type: 'subscription' | 'credit_pack'
   readonly credits: number
   readonly creditExpiryDays: number | null
+  readonly features: PlanFeatures
   readonly maxSeats: number | null
   readonly storageGb: number | null
   readonly highlighted?: boolean
@@ -53,6 +55,7 @@ export function marketingPlans(catalog: PricingCatalog): PricingPlan[] {
     type: plan.type,
     credits: plan.credits,
     creditExpiryDays: plan.creditExpiryDays,
+    features: plan.features,
     maxSeats: plan.features.maxSeats,
     storageGb: plan.features.storageGb,
     highlighted: plan.key === 'pro',
@@ -65,4 +68,40 @@ export function marketingPlans(catalog: PricingCatalog): PricingPlan[] {
           ) === index,
       ),
   }))
+}
+
+export type PricingFeature =
+  | { key: 'maxSeats' | 'storageGb' | 'maxConcurrentTasks'; value: number }
+  | { key: 'publicApi' | 'priorityQueue' | 'watermark'; value: boolean }
+  | { key: 'models'; value: readonly string[] }
+
+/** Stable keys let each UI localize labels without hardcoding plan-specific promises. */
+export function pricingFeatures(features: PlanFeatures): PricingFeature[] {
+  return [
+    { key: 'maxSeats', value: features.maxSeats },
+    { key: 'storageGb', value: features.storageGb },
+    { key: 'maxConcurrentTasks', value: features.maxConcurrentTasks },
+    { key: 'publicApi', value: features.publicApi },
+    { key: 'priorityQueue', value: features.priorityQueue },
+    { key: 'watermark', value: features.watermark },
+    { key: 'models', value: features.models },
+  ]
+}
+
+export function groupPricingPlans<T extends { readonly type: 'subscription' | 'credit_pack' }>(
+  plans: readonly T[],
+) {
+  return {
+    subscriptions: plans.filter((plan) => plan.type === 'subscription'),
+    creditPacks: plans.filter((plan) => plan.type === 'credit_pack'),
+  }
+}
+
+export function pricingForInterval<P extends { readonly interval: BillingInterval | null }>(
+  plan: { readonly type: 'subscription' | 'credit_pack'; readonly prices: readonly P[] },
+  interval: BillingInterval,
+): P[] {
+  return plan.prices.filter(
+    (price) => price.interval === (plan.type === 'subscription' ? interval : null),
+  )
 }

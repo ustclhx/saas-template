@@ -3,9 +3,10 @@ import { useEffect, useState } from 'react'
 import { trackEvent } from '../features/analytics/track.ts'
 import { MarketingShell } from '../features/marketing/marketing-shell.tsx'
 import { getMarketingPricing } from '../features/marketing/pricing.functions.ts'
-import { PRICING_TTL_MS } from '../features/marketing/pricing-data.ts'
+import { groupPricingPlans, PRICING_TTL_MS } from '../features/marketing/pricing-data.ts'
 import { originFromMatches, pageHead, staticPage } from '../features/seo/metadata.ts'
 import { pricingData } from '../features/seo/structured-data.ts'
+import { m } from '../paraglide/messages.js'
 import { getLocale } from '../paraglide/runtime.js'
 import { templateConfig } from '../server/template-config.ts'
 
@@ -25,6 +26,7 @@ export const Route = createFileRoute('/pricing')({
 function PricingPage() {
   const initialCatalog = Route.useLoaderData()
   const [catalog, setCatalog] = useState(initialCatalog)
+  const groups = groupPricingPlans(catalog.plans)
   const [ready, setReady] = useState(false)
   const [provider, setProvider] = useState(
     catalog.providers.find((p) => p.available)?.id ?? catalog.providers[0]?.id ?? '',
@@ -52,6 +54,7 @@ function PricingPage() {
       <div className="mx-auto grid max-w-4xl gap-6 p-6">
         <h1 className="text-2xl font-semibold">Pricing</h1>
         <p>Choose a subscription or buy extra credits.</p>
+        <p>{m.billing_coexist_order()}</p>
         <label>
           Payment method{' '}
           <select
@@ -71,7 +74,7 @@ function PricingPage() {
           <p role="status">Payments are currently unavailable. You can still explore the plans.</p>
         )}
         <div className="grid gap-4 sm:grid-cols-2">
-          {catalog.plans.map((plan) => (
+          {[...groups.subscriptions, ...groups.creditPacks].map((plan) => (
             <section key={plan.id} className="grid gap-3 rounded-xl border p-6">
               <h2 className="text-xl font-semibold">{plan.name}</h2>
               <p>

@@ -7,6 +7,7 @@ import type { PickerModel } from './model-picker.ts'
 const state = vi.hoisted(() => ({
   messages: [] as ChatUIMessage[],
   status: 'ready',
+  error: undefined as Error | undefined,
   transport: undefined as ChatTransport<ChatUIMessage> | undefined,
   text: { thinking: { default: 'off', userToggle: false }, reasoning: { display: false } },
 }))
@@ -17,6 +18,7 @@ vi.mock('@ai-sdk/react', () => ({
     return {
       messages: state.messages,
       status: state.status,
+      error: state.error,
       sendMessage: vi.fn(),
       stop: vi.fn(),
       clearError: vi.fn(),
@@ -25,7 +27,11 @@ vi.mock('@ai-sdk/react', () => ({
 }))
 vi.mock('../../server/template-config.ts', () => ({ templateConfig: { ai: { text: state.text } } }))
 vi.mock('./conversations.functions.ts', () => ({ renameConversation: vi.fn() }))
-vi.mock('@tanstack/react-router', () => ({ Link: () => null }))
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({ children, hash }: { children: React.ReactNode; hash?: string }) => (
+    <a href={hash ? `/app/personal/billing#${hash}` : '#'}>{children}</a>
+  ),
+}))
 
 import { ChatPage } from './chat-page.tsx'
 
@@ -50,6 +56,7 @@ const render = (models: readonly PickerModel[] = [model]) =>
 beforeEach(() => {
   state.messages = []
   state.status = 'ready'
+  state.error = undefined
   state.text.thinking.userToggle = false
   state.text.thinking.default = 'off'
   state.text.reasoning.display = false
@@ -141,5 +148,36 @@ describe('chat reasoning controls', () => {
     message.parts.push({ type: 'reasoning', text: 'Current thought' })
     expect(render()).not.toContain('Retrying…')
     expect(render()).toContain('Current thought')
+  })
+})
+
+describe('insufficient credits guide', () => {
+  it('SDK JSON 错误保留提示并传递数值和两个购买入口', () => {
+    state.error = new Error(
+      JSON.stringify({
+        error: {
+          code: 'INSUFFICIENT_CREDITS',
+          message: 'Insufficient credits',
+          details: { estimatedCredits: 8, availableCredits: 2 },
+        },
+      }),
+    )
+    const markup = render()
+    expect(markup).toContain('Estimated cost: 8 credits. Available: 2 credits.')
+    expect(markup).toContain('/app/personal/billing#credit-packs')
+    expect(markup).toContain('/app/personal/billing#subscriptions')
+    expect(markup).toContain('role="alert"')
+  })
+
+  it('欠费保留既有账单入口，不展示错误的余额数据', () => {
+    state.error = new Error(
+      JSON.stringify({
+        error: { code: 'CREDIT_DEBT', details: { estimatedCredits: 8, availableCredits: 2 } },
+      }),
+    )
+    const markup = render()
+    expect(markup).toContain('Go to billing')
+    expect(markup).not.toContain('/app/personal/billing#credit-packs')
+    expect(markup).not.toContain('Available: 2 credits.')
   })
 })

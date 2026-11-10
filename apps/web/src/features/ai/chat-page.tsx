@@ -1,5 +1,6 @@
 import { useChat } from '@ai-sdk/react'
 import { estimateInputTokens } from '@saas/ai/client'
+import { type InsufficientCreditsDetails, parseInsufficientCredits } from '@saas/shared'
 import { Button, Label } from '@saas/ui'
 import { Link } from '@tanstack/react-router'
 import { DefaultChatTransport } from 'ai'
@@ -140,6 +141,7 @@ export function ChatPage({
     { text: input },
   ])
   const errorCode = error ? chatErrorCode(error) : undefined
+  const insufficientCredits = parseInsufficientCredits(error)
   const blockedByPaywall = errorCode !== undefined && BILLING_CODES.has(errorCode)
   useEffect(() => {
     if (blockedByPaywall) trackEvent('paywall_view')
@@ -257,7 +259,10 @@ export function ChatPage({
       {error ? (
         <div className="grid gap-2">
           <FormAlert message={chatErrorMessage(errorCode)} />
-          {errorCode && BILLING_CODES.has(errorCode) ? (
+          {insufficientCredits ? (
+            <InsufficientCreditsGuide slug={slug} details={insufficientCredits} />
+          ) : null}
+          {!insufficientCredits && errorCode && BILLING_CODES.has(errorCode) ? (
             <Link to="/app/$slug/billing" params={{ slug }} className="underline">
               Go to billing
             </Link>
@@ -360,3 +365,29 @@ function ChatMessage({
 }
 
 const roleName = (role: string) => (role === 'user' ? 'You' : 'Assistant')
+
+/** UI 8.6 可替换此纯展示组件；解析与错误提示由 ChatPage 保留。 */
+export function InsufficientCreditsGuide({
+  slug,
+  details,
+}: {
+  slug: string
+  details: InsufficientCreditsDetails
+}) {
+  return (
+    <section aria-label={m.billing_credit_guide_title()}>
+      <p>
+        {m.billing_credit_guide_amounts({
+          estimatedCredits: details.estimatedCredits,
+          availableCredits: details.availableCredits,
+        })}
+      </p>
+      <Link to="/app/$slug/billing" params={{ slug }} hash="credit-packs" className="underline">
+        {m.billing_credit_guide_packs()}
+      </Link>{' '}
+      <Link to="/app/$slug/billing" params={{ slug }} hash="subscriptions" className="underline">
+        {m.billing_credit_guide_subscriptions()}
+      </Link>
+    </section>
+  )
+}

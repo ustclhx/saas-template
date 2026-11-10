@@ -1,7 +1,7 @@
 import { AppError } from '@saas/shared'
 import { expect, it, vi } from 'vitest'
 import { withEntitlement, withWorkspace } from '../../../apps/web/src/server/middleware.ts'
-import { DEFAULT_FREE_FEATURES, UPGRADE_REQUIRED } from '../src/index.ts'
+import { DEFAULT_FREE_FEATURES, getEntitlements, UPGRADE_REQUIRED } from '../src/index.ts'
 
 // 这些用例验证启用模块的权益行为；关闭模块的 404/无 seed 行为由 web feature-gates 用例覆盖。
 vi.mock('../../../apps/web/src/server/template-config.ts', async (original) => {
@@ -49,6 +49,25 @@ it('middleware keeps read-only team writes blocked before evaluating entitlement
       next: vi.fn(),
     } as never),
   ).rejects.toMatchObject({ code: 'WORKSPACE_READ_ONLY' })
+})
+
+it('middleware blocks a free custom feature before the handler and permits an entitled plan', async () => {
+  const middleware = withEntitlement({ capability: 'exports.advanced' })
+  const next = vi.fn(async (value) => value)
+  await expect(
+    middleware.options.server?.({ context, data: {}, next } as never),
+  ).rejects.toMatchObject({ code: UPGRADE_REQUIRED, status: 403 })
+  expect(next).not.toHaveBeenCalled()
+
+  const paid = {
+    key: 'pro',
+    sort: 10,
+    features: { ...DEFAULT_FREE_FEATURES, capabilities: { 'exports.advanced': true } },
+  }
+  vi.mocked(getEntitlements).mockResolvedValueOnce(paid)
+  await middleware.options.server?.({ context, data: {}, next } as never)
+  expect(next).toHaveBeenCalledOnce()
+  expect(next).toHaveBeenCalledWith({ context: { entitlements: paid } })
 })
 
 it('middleware permits an entitled read and injects request entitlements', async () => {
