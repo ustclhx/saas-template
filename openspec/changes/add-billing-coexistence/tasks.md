@@ -23,4 +23,4 @@
 ## 5. 集成验收与交付
 
 - [x] 5.1 pnpm check、pnpm typecheck、pnpm check:deps、pnpm check:singletons 和相关包 pnpm test（含本 worktree Postgres 集成）全部通过，OpenSpec strict validate 通过，日志写入 EVIDENCE_DIR
-- [ ] 5.2 提交实现、推送当前分支并开 main PR（不合并），PR 写明验证结果、未完成验收、schema 情况及协调事项，Orca 状态更新 in-review
+- [x] 5.2 提交实现、推送当前分支并开 main PR（不合并），PR 写明验证结果、未完成验收、schema 情况及协调事项，Orca 状态更新 in-review
