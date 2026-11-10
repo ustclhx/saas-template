@@ -78,7 +78,6 @@ export {
   UiRoot,
   type UiRootProps,
 } from './components/ui-root.tsx'
-export { fontPreloads } from './fonts.ts'
 export { type IconComponent, type IconName, useIcons } from './lib/icon-context.tsx'
 export { type ShapeVariant, useShape } from './lib/shape-context.tsx'
 export { SizeProvider, type SizeVariant, useSize } from './lib/size-context.tsx'

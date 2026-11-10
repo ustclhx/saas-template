@@ -8,7 +8,8 @@
   ],
   "exports": {
     ".": "./src/index.ts",
-    "./globals.css": "./src/styles/globals.css"
+    "./globals.css": "./src/styles/globals.css",
+    "./fonts": "./src/fonts.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

@@ -1,4 +1,5 @@
-import { fontPreloads, themeInitScript, UiRoot } from '@saas/ui'
+import { themeInitScript, UiRoot } from '@saas/ui'
+import { fontPreloads } from '@saas/ui/fonts'
 import {
   createRootRoute,
   HeadContent,
