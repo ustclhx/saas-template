@@ -1,6 +1,6 @@
 /**
  * 业务错误：带稳定的 `code`，API 返回 `{ error: { code, message, details? } }`，前端按 code 做 i18n。
- * 状态 >=500 的 AppError 与未知异常均隐藏原始信息。
+ * `expose: false` 的 AppError 与未知异常隐藏原始信息；其余 AppError（含有意公开的 503 等）保留 code。
  */
 export class AppError extends Error {
   override readonly name: string = 'AppError'
@@ -8,6 +8,8 @@ export class AppError extends Error {
   readonly status: number
   readonly details: Record<string, unknown> | undefined
   readonly publicDetails: Record<string, unknown> | undefined
+  /** 是否向客户端公开 code/message；内部错误设为 false，统一返回 INTERNAL_ERROR。 */
+  readonly expose: boolean
 
   constructor(
     code: string,
@@ -16,6 +18,7 @@ export class AppError extends Error {
       status?: number
       details?: Record<string, unknown>
       publicDetails?: Record<string, unknown>
+      expose?: boolean
       cause?: unknown
     } = {},
   ) {
@@ -24,6 +27,7 @@ export class AppError extends Error {
     this.status = options.status ?? 400
     this.details = options.details
     this.publicDetails = options.publicDetails
+    this.expose = options.expose ?? true
   }
 
   toJSON(): ErrorBody {
@@ -106,7 +110,7 @@ export function isAppError(value: unknown): value is AppError {
 
 /** 把任意异常转换成可返回给客户端的错误体与状态码。 */
 export function toErrorResponse(error: unknown): { status: number; body: ErrorBody } {
-  if (isAppError(error) && error.status < 500) {
+  if (isAppError(error) && error.expose) {
     return { status: error.status, body: error.toJSON() }
   }
   return {

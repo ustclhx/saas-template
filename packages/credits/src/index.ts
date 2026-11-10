@@ -41,6 +41,8 @@ export class CreditsError extends AppError {
         : undefined
     super(code, insufficient?.message ?? code, {
       status: code === 'INSUFFICIENT_CREDITS' || code === 'CREDIT_DEBT' ? 402 : 500,
+      // 内部积分错误不外泄 code，由 toErrorResponse 统一返回 INTERNAL_ERROR。
+      expose: code === 'INSUFFICIENT_CREDITS' || code === 'CREDIT_DEBT',
       ...(insufficient?.details ? { details: insufficient.details } : {}),
       ...(insufficient?.publicDetails ? { publicDetails: insufficient.publicDetails } : {}),
     })

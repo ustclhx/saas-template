@@ -51,11 +51,25 @@ describe('AppError', () => {
         status: 503,
         details: { secret: 'private' },
         publicDetails: { retryAfter: 60 },
+        expose: false,
       }),
     )
     expect(response).toEqual({
       status: 503,
       body: { error: { code: INTERNAL_ERROR_CODE, message: 'Internal error' } },
+    })
+  })
+
+  it('默认公开的 5xx AppError 保留 code（如缓存不可用的 503）', () => {
+    const response = toErrorResponse(
+      new AppError('CACHE_UNAVAILABLE', 'Cache is unavailable', {
+        status: 503,
+        details: { secret: 'private' },
+      }),
+    )
+    expect(response).toEqual({
+      status: 503,
+      body: { error: { code: 'CACHE_UNAVAILABLE', message: 'Cache is unavailable' } },
     })
   })
 
