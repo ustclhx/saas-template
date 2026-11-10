@@ -17,6 +17,8 @@ cat package.json apps/web/package.json
 cat apps/web/src/features/notifications/notifications.functions.ts apps/web/src/features/notifications/service.ts
 ```
 
+涉及新页面或较大布局改动时，页面部分转 `new-page` 技能（先过设计稿关卡），本技能只做服务与入口。
+
 页面专属编排放 `apps/web/src/features/<领域>`，共享领域能力优先扩展现有 `packages/<领域>`。只有确有独立职责和多个调用方时才建新 package，并按相邻 manifest 的 exports、workspace 依赖、tsconfig 与测试配置接入。优先复用现有表；完成标准是业务入口可调用且有真实行为，不是只有空目录、类型或转发函数。
 
 ## 2. 服务与数据边界
