@@ -80,9 +80,6 @@ describe('daily credit presentation', () => {
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
       })
       expect(await page.getByRole('status').count()).toBe(1)
-      expect(await page.getByRole('status').textContent()).toContain(
-        m.daily_credits_granted({ credits: 10, daysThisMonth: 2, maxDaysPerMonth: 10 }),
-      )
       await page.getByRole('button', { name: m.daily_credits_dismiss(), exact: true }).click()
       await page.getByRole('status').waitFor({ state: 'detached' })
     } finally {

@@ -68,3 +68,5 @@
 - 回退字体加 `size-adjust`，减少字体替换时的版面跳动
 - `:focus-visible` 兜底焦点环的圆角跟随元素自身圆角
 - `brandFileErrors` 在浅克隆（CI `fetch-depth` 较小）下找不到创建提交时的行为与测试
+- 将组件 lock 摘要写入 `.template-base.json`，校验模板指纹清单本身的完整性
+- 评估将指纹范围扩展到 `packages/ui/src/lib/`、`hooks/` 与 `styles/`

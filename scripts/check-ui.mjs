@@ -8,6 +8,8 @@ import { API } from 'typescript/unstable/sync'
 import { componentLockViolations } from './ui-lock.mjs'
 
 const ROOT = resolve(import.meta.dirname, '..')
+const PROJECT_INDEX =
+  '// 项目自有组件入口。模板仅初始化此文件，后续组件与导出由衍生项目维护。\nexport {}\n'
 const RULES = {
   'color-literal': '颜色应使用设计 token',
   'arbitrary-class': 'className 应使用 token 工具类，禁止任意值',
@@ -192,6 +194,31 @@ function readAllowList(root, name, optional = false) {
   return entries
 }
 
+function projectDirectoryViolations(root) {
+  if (existsSync(join(root, '.template-base.json'))) return []
+  const dir = 'packages/ui/src/project'
+  const expected = { '.gitkeep': '', 'index.ts': PROJECT_INDEX }
+  const path = join(root, dir)
+  const entries = existsSync(path) ? readdirSync(path, { withFileTypes: true }) : []
+  const changed = new Set(
+    entries
+      .filter((entry) => !entry.isFile() || !Object.hasOwn(expected, entry.name))
+      .map((entry) => entry.name),
+  )
+  for (const [file, contents] of Object.entries(expected)) {
+    const entry = entries.find((entry) => entry.name === file)
+    if (!entry?.isFile() || readFileSync(join(path, file), 'utf8') !== contents) changed.add(file)
+  }
+  return [...changed].sort().map((file) => ({
+    file: `${dir}/${file}`,
+    line: 1,
+    column: 1,
+    rule: 'project-directory',
+    value:
+      '模板的项目组件目录只能保留空 .gitkeep 与固定的 index.ts 占位内容；项目组件由衍生项目维护',
+  }))
+}
+
 export function checkUi(root = ROOT) {
   const allowances = [
     ...readAllowList(root, 'check-ui.allow.json'),
@@ -222,7 +249,11 @@ export function checkUi(root = ROOT) {
   return {
     files: files.length,
     findings,
-    violations: [...violations, ...componentLockViolations(root)],
+    violations: [
+      ...violations,
+      ...componentLockViolations(root),
+      ...projectDirectoryViolations(root),
+    ],
   }
 }
 

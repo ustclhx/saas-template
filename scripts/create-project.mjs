@@ -15,13 +15,12 @@ import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } fr
 import { createInterface } from 'node:readline/promises'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
-import { normalizeParams, serializeBaseRecord, sourceState } from './template-base.mjs'
+import { normalizeParams, serializeBaseRecord, sourceState, themeNames } from './template-base.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const featureNames = ['publicApi', 'blog', 'docs', 'waitlist', 'newsletter', 'guides']
 const aiNames = ['text', 'image', 'video']
 const mediaProviderNames = ['fal', 'workers-ai']
-const themeNames = ['neutral', 'blue', 'violet', 'green']
 const excluded = new Set([
   '.git',
   'node_modules',
@@ -324,7 +323,9 @@ function templateConfig(source, options) {
       const preset = `preset: '${options.theme}'`
       const configured = /preset:\s*['"][^'"]+['"]/.test(fields)
         ? fields.replace(/preset:\s*['"][^'"]+['"]/, preset)
-        : ` ${preset},${fields}`
+        : fields.trim()
+          ? ` ${preset},${fields}`
+          : ` ${preset} `
       return `${start}${configured}${end}`
     })
   } else {
@@ -698,12 +699,16 @@ export async function createProject(input, source = root) {
             // 无效 UTF-8 为二进制，原样复制。
           }
         }
-        // 模板组件与指纹清单是同一份不可改写的内容；项目改名只发生在调用方与包清单。
-        if (
-          decoded !== null &&
-          !path.startsWith('packages/ui/src/components/') &&
-          path !== 'packages/ui/components.lock.json'
-        ) {
+        // 模板组件与指纹清单必须可原样移植；需要改名的内容会破坏副本或使清单过期。
+        const templateUi =
+          path.startsWith('packages/ui/src/components/') ||
+          path === 'packages/ui/components.lock.json'
+        if (decoded !== null && templateUi && replace(decoded) !== decoded) {
+          throw new Error(
+            `${path} 包含需要项目改名的模板标识；请先移除模板组件或指纹清单中的项目耦合`,
+          )
+        }
+        if (decoded !== null && !templateUi) {
           // 先替换源标识，再插入新名称，避免新名称含旧 scope 前缀时被二次替换。
           let text = replace(projectText(decoded, path))
           if (path === 'package.json') {
@@ -851,7 +856,7 @@ export async function createProject(input, source = root) {
   )
   await writeGenerated(
     'docs/design/README.md',
-    `# 项目设计记录\n\n此目录归项目所有。模板设计规范见 \`docs/design-system.md\`。\n\n- \`visual-system.md\`：项目视觉方向、品牌 token 与多站点规则。\n- \`references/\`：采用的参考网站说明、截图与素材来源。\n- \`prototypes/\`：经确认、可离线打开的设计稿副本；原链接与副本路径同时写入需求的 OpenSpec 设计文档。\n- \`forks.md\`：复制到 \`packages/ui/src/project/\` 的模板组件、来源版本与定制原因。\n\n品牌 token 写入 \`apps/web/src/styles/brand.css\`，项目组件经 \`@${options.name}/ui/project\` 导出；UI 例外登记在 \`scripts/check-ui.allow.local.json\` 并说明原因。\n`,
+    `# 项目设计记录\n\n此目录归项目所有。模板设计规范见 \`docs/design-system.md\`。\n\n- \`visual-system.md\`：项目视觉方向、品牌 token 与多站点规则。\n- \`references/\`：采用的参考网站说明、截图与素材来源。\n- \`prototypes/\`：经确认、可离线打开的设计稿副本；原链接与副本路径同时写入需求的 OpenSpec 设计文档。\n- \`forks.md\`：复制到 \`packages/ui/src/project/\` 的模板组件、来源版本与定制原因。\n\n品牌 token 写入 \`apps/web/src/styles/brand.css\`，项目组件经 \`@${options.name}/ui/project\` 导出；复制的模板组件仍受 UI 规范检查；如需保留上游的 \`arbitrary-class\`、颜色字面量等写法，须在 \`scripts/check-ui.allow.local.json\` 按文件登记所需规则与原因，不能只登记 \`forks.md\`。\n`,
   )
   const journal = JSON.parse(
     await readFile(join(target, 'packages/db/migrations/meta/_journal.json'), 'utf8'),
@@ -949,7 +954,7 @@ export function verifyProject(target, { nodeBuild = false } = {}) {
   }
 }
 
-const help = `用法：pnpm create-project [参数]\n无参数时交互输入；非交互必须提供 --name 与 --domain。\n  --name acme --domain acme.example --target cloudflare|selfhost --output /tmp/acme\n  --image-namespace ghcr.io/owner/acme（selfhost，默认 ghcr.io/configure-owner/acme）\n  --locale en|zh --support-email support@acme.example\n  --theme neutral|blue|violet|green（默认 neutral）\n  --analytics plausible|off（默认 plausible；长期词站可 off）--plausible-domain acme --plausible-host https://plausible.example\n  --ai text,image,video --features blog,docs,waitlist,newsletter,publicApi\n  --media-providers fal,workers-ai\n  --billing stripe,paypal --billing-enabled true|false --credits-enabled true|false\n  --marketing true|false --i18n true|false --oauth google,github\n  --turnstile true|false --multi-tenant true|false\n旧 --target <path> 已迁移至 --output <path>；部署目标默认 cloudflare。\n列表参数传空字符串可关闭全部；默认 ai / billing / oauth 全开，features=blog。\n默认安装依赖并运行 typecheck 与单元测试；--skip-check 仅生成，随后必须自行验证。\n  --help 显示帮助\n`
+const help = `用法：pnpm create-project [参数]\n无参数时交互输入；非交互必须提供 --name 与 --domain。\n  --name acme --domain acme.example --target cloudflare|selfhost --output /tmp/acme\n  --image-namespace ghcr.io/owner/acme（selfhost，默认 ghcr.io/configure-owner/acme）\n  --locale en|zh --support-email support@acme.example\n  --theme ${themeNames.join('|')}（默认 neutral）\n  --analytics plausible|off（默认 plausible；长期词站可 off）--plausible-domain acme --plausible-host https://plausible.example\n  --ai text,image,video --features blog,docs,waitlist,newsletter,publicApi\n  --media-providers fal,workers-ai\n  --billing stripe,paypal --billing-enabled true|false --credits-enabled true|false\n  --marketing true|false --i18n true|false --oauth google,github\n  --turnstile true|false --multi-tenant true|false\n旧 --target <path> 已迁移至 --output <path>；部署目标默认 cloudflare。\n列表参数传空字符串可关闭全部；默认 ai / billing / oauth 全开，features=blog。\n默认安装依赖并运行 typecheck 与单元测试；--skip-check 仅生成，随后必须自行验证。\n  --help 显示帮助\n`
 
 export async function main() {
   const { values } = parseArgs({
@@ -1000,7 +1005,7 @@ export async function main() {
         ['marketing', '启用营销页面', 'true'],
         ['i18n', '启用多语言', 'true'],
         ['locale', '默认语言', 'en'],
-        ['theme', '主题预设（neutral/blue/violet/green）', 'neutral'],
+        ['theme', `主题预设（${themeNames.join('/')}）`, 'neutral'],
         ['ai', 'AI 功能（逗号列表，- 关闭全部）', 'text,image,video'],
         ['media-providers', '媒体服务商（逗号列表，- 关闭全部）', 'fal,workers-ai'],
         ['features', '可选功能（逗号列表，- 关闭全部）', 'blog'],

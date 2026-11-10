@@ -182,11 +182,10 @@ export function checkWorkspace(
 ) {
   const apps = readWorkspace(root, 'apps')
   const packages = readWorkspace(root, 'packages')
-  const workspaceName =
-    [...packages, ...apps].find(({ manifest }) => manifest.name.startsWith('@'))?.manifest.name ??
-    ''
-  const scope = workspaceName.slice(0, workspaceName.indexOf('/') + 1)
-  const uiPackage = `${scope}ui`
+  const uiManifest = join(root, 'packages/ui/package.json')
+  const uiPackage = JSON.parse(readFileSync(uiManifest, 'utf8')).name
+  const scope = /^(@[^/]+\/)ui$/.exec(uiPackage)?.[1]
+  if (!scope) throw new Error(`${uiManifest}：name 必须为 @scope/ui，无法确定内部包 scope`)
   const emailPackage = `${scope}email`
   const platformPackage = `${scope}platform`
   const layers = {

@@ -20,6 +20,7 @@ import { createVirtualFileSystem } from 'typescript/unstable/fs'
 import { API } from 'typescript/unstable/sync'
 import { createProject, projectOptions } from './create-project.mjs'
 import { parseJsonc } from './production/check-wrangler-envs.mjs'
+import { themeNames } from './template-base.mjs'
 
 async function fixture(t) {
   const dir = await mkdtemp(join(tmpdir(), 'bootstrap-test-'))
@@ -145,9 +146,26 @@ async function readBase(target) {
   return JSON.parse(await readFile(join(target, '.template-base.json'), 'utf8'))
 }
 
+test('生成器主题与预设 CSS 文件、配置允许值保持一致', async () => {
+  const styles = new URL('../packages/ui/src/styles/presets/', import.meta.url)
+  const cssThemes = (await readdir(styles))
+    .filter((name) => name.endsWith('.css'))
+    .map((name) => name.slice(0, -4))
+    .sort()
+  const config = await readFile(
+    new URL('../packages/config/src/template.ts', import.meta.url),
+    'utf8',
+  )
+  const declaration = config.match(/export const uiPresets\s*=\s*(\[[^\]]*\])\s*as const/)
+  assert.ok(declaration, '配置应声明 uiPresets 常量名单')
+  const configThemes = JSON.parse(declaration[1].replaceAll("'", '"'))
+  assert.deepEqual([...themeNames].sort(), cssThemes)
+  assert.deepEqual([...themeNames].sort(), configThemes.sort())
+})
+
 test('四套主题写入配置和基准；省略时使用 neutral', async (t) => {
   const f = await fixture(t)
-  for (const theme of [undefined, 'neutral', 'blue', 'violet', 'green']) {
+  for (const theme of [undefined, ...themeNames]) {
     const result = await createProject(
       { ...f.input, theme, output: join(f.dir, theme ?? 'default') },
       f.source,
@@ -205,6 +223,7 @@ test('源配置的 ui 未设置 preset 时插入主题并保留其他选项', as
     const generated = await readFile(join(result.target, 'template.config.ts'), 'utf8')
     assert.match(generated, /ui: \{[^}]*preset: 'blue'/)
     if (id === 'shape') assert.match(generated, /ui: \{[^}]*shape: 'pill'/)
+    if (id === 'empty') assert.match(generated, /ui: \{ preset: 'blue' \}/)
   }
 })
 
@@ -269,9 +288,8 @@ test('从生成副本再次生成仅更新一份主题与分析配置，保留�
 
 test('初始化项目设计记录，排除模板原型并保留模板组件与锁的原始字节', async (t) => {
   const f = await fixture(t)
-  const component =
-    '// fixture-template @fixture/config FixtureApp\r\nexport const Button = () => null\r\n'
-  const lock = '{"src/components/button.tsx":"fixture-template"}\n'
+  const component = '// 可原样移植的模板组件\r\nexport const Button = () => null\r\n'
+  const lock = '{"src/components/button.tsx":"0123456789abcdef"}\n'
   await f.file('packages/ui/src/components/button.tsx', component)
   await f.file('packages/ui/components.lock.json', lock)
   await f.file('docs/design-system/prototypes/review.html', 'TEMPLATE_PROTOTYPE_SENTINEL')
@@ -288,6 +306,9 @@ test('初始化项目设计记录，排除模板原型并保留模板组件与�
     'prototypes/',
     'forks.md',
     '@acme/ui/project',
+    'scripts/check-ui.allow.local.json',
+    'arbitrary-class',
+    '按文件登记所需规则与原因',
   ])
     assert.ok(readme.includes(path), `缺少项目设计位置：${path}`)
   await assert.rejects(stat(join(result.target, 'docs/design-system/prototypes')), {
@@ -301,6 +322,27 @@ test('初始化项目设计记录，排除模板原型并保留模板组件与�
     await readFile(join(result.target, 'packages/ui/components.lock.json'), 'utf8'),
     lock,
   )
+})
+
+test('模板组件与锁清单含需要改名的内容时拒绝生成', async (t) => {
+  const f = await fixture(t)
+  for (const [id, path, content] of [
+    [
+      'component',
+      'packages/ui/src/components/button.tsx',
+      "import { config } from '@fixture/config'\n",
+    ],
+    ['lock', 'packages/ui/components.lock.json', '{"fixture-template":"0123456789abcdef"}\n'],
+  ]) {
+    await t.test(id, async () => {
+      await f.file(path, content)
+      await assert.rejects(
+        createProject({ ...f.input, output: join(f.dir, id) }, f.source),
+        (error) => error.message.includes(path) && /需要项目改名/.test(error.message),
+      )
+      await rm(join(f.source, path))
+    })
+  }
 })
 
 test('模板基准记录来源状态、完整参数和实际迁移，不继承副本记录', async (t) => {
@@ -886,10 +928,9 @@ test('真实副本保留 Cloudflare 操作步骤，技能文档引用存在且�
   })
   const bootstrapDocs = await readFile(join(result.target, 'docs/create-project.md'), 'utf8')
   assert.doesNotMatch(bootstrapDocs, /ustclhx/)
-  assert.ok(
-    bootstrapDocs.includes(
-      `git clone --branch template-v0.3.0 "$(node -p "require('./.template-base.json').repository")" /tmp/template`,
-    ),
+  assert.match(
+    bootstrapDocs,
+    /git clone --branch template-v\S+ "\$\(node -p "require\('\.\/\.template-base\.json'\)\.repository"\)" \/tmp\/template/,
   )
   for (const path of await files(result.target)) {
     if (!path.endsWith('.md')) continue

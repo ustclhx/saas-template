@@ -18,7 +18,10 @@ const emptyRules = () => ({
 function workspace(t, files, rules = emptyRules()) {
   const root = mkdtempSync(join(tmpdir(), 'check-deps-'))
   t.after(() => rmSync(root, { recursive: true, force: true }))
-  for (const [file, text] of Object.entries(files)) {
+  for (const [file, text] of Object.entries({
+    'packages/ui/package.json': manifest('@saas/ui'),
+    ...files,
+  })) {
     const path = join(root, file)
     mkdirSync(dirname(path), { recursive: true })
     writeFileSync(path, typeof text === 'string' ? text : JSON.stringify(text))
@@ -36,6 +39,71 @@ const uiDependencies = [
   'lucide-react',
   'class-variance-authority',
 ]
+
+test('renamed scope uses the UI manifest despite earlier unrelated packages', (t) => {
+  const check = workspace(t, {
+    'packages/aaa/package.json': manifest('@unrelated/aaa'),
+    'packages/ui/package.json': manifest('@renamed/ui', { react: '*', 'radix-ui': '*' }),
+    'packages/ui/src/project/card.tsx': "import 'react'; import 'motion/react'",
+    'apps/web/package.json': manifest('@renamed/web', { '@renamed/ui': '*' }),
+    'apps/web/src/page.tsx': "import '@renamed/ui/project'",
+    'packages/email/package.json': manifest('@renamed/email', { react: '*' }),
+    'packages/email/src/index.tsx': "import '@react-email/render'",
+    'packages/platform/package.json': manifest('@renamed/platform', {
+      '@renamed/db': '*',
+      '@renamed/auth': '*',
+    }),
+    'packages/shared/package.json': manifest('@renamed/shared', { '@renamed/db': '*' }),
+    'packages/config/package.json': manifest('@renamed/config'),
+    'packages/config/src/index.ts': "import '@renamed/platform'",
+    'apps/web/src/adapter.ts': "import '@renamed/platform/node'",
+  })
+  const violations = check()
+  assert.equal(violations.length, 4)
+  for (const text of [
+    '@renamed/shared → @renamed/db（packages/shared/package.json dependencies）',
+    '@renamed/platform → @renamed/auth（packages/platform/package.json dependencies）',
+    '@renamed/config → @renamed/platform（packages/config/src/index.ts:1）',
+    'apps/web/src/adapter.ts:1 → @renamed/platform/node',
+  ]) {
+    assert.ok(
+      violations.some((message) => message.includes(text)),
+      text,
+    )
+  }
+})
+
+test('renamed UI dependency violations name the canonical UI package in manifests and project source', (t) => {
+  const check = workspace(t, {
+    'packages/aaa/package.json': manifest('@unrelated/aaa'),
+    'packages/ui/package.json': manifest('@renamed/ui'),
+    'packages/ui/src/project/card.tsx': "import '@radix-ui/react-dialog'",
+    'apps/web/package.json': manifest('@renamed/web', { 'radix-ui': '*' }),
+    'apps/web/src/page.tsx': "import 'motion/react'",
+  })
+  const violations = check()
+  assert.equal(violations.length, 3)
+  assert.ok(violations.some((message) => message.includes('packages/ui/src/project/card.tsx:1')))
+  for (const path of ['apps/web/package.json dependencies', 'apps/web/src/page.tsx:1']) {
+    assert.ok(
+      violations.some(
+        (message) =>
+          message.includes(path) && message.includes('UI 底层依赖仅允许 @renamed/ui 使用'),
+      ),
+    )
+  }
+})
+
+test('scope discovery fails when the canonical UI manifest is missing or unscoped', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'check-deps-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  assert.throws(() => checkWorkspace(root, emptyRules()), /packages\/ui\/package\.json/)
+  const check = workspace(t, {
+    'packages/ui/package.json': manifest('ui'),
+    'packages/aaa/package.json': manifest('@unrelated/aaa'),
+  })
+  assert.throws(check, /name 必须为 @scope\/ui，无法确定内部包 scope/)
+})
 
 test('UI dependencies are restricted in every manifest dependency field for apps and other packages', (t) => {
   const fields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']

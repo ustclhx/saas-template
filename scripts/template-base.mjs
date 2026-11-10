@@ -3,6 +3,8 @@ import { realpathSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
+export const themeNames = ['neutral', 'blue', 'violet', 'green']
+
 const lists = {
   ai: ['text', 'image', 'video'],
   billing: ['stripe', 'paypal'],
@@ -133,8 +135,7 @@ function validateParams(params) {
     throw new Error('Invalid params.plausible-domain')
   if (host !== undefined && typeof host !== 'string')
     throw new Error('Invalid params.plausible-host')
-  if (theme !== undefined && !['neutral', 'blue', 'violet', 'green'].includes(theme))
-    throw new Error('Invalid params.theme')
+  if (theme !== undefined && !themeNames.includes(theme)) throw new Error('Invalid params.theme')
   for (const [key, allowed] of Object.entries(lists)) {
     if (
       !Array.isArray(params[key]) ||
