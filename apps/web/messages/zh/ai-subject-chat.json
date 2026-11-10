@@ -41,5 +41,9 @@
   "admin_feedback_actions": "操作",
   "admin_feedback_delete": "删除",
   "admin_feedback_deleted": "反馈已删除。",
-  "admin_feedback_delete_failed": "删除反馈失败。"
+  "admin_feedback_delete_failed": "删除反馈失败。",
+  "subject_chat_untitled": "新对话",
+  "subject_chat_send": "发送",
+  "subject_chat_send_label": "发送消息",
+  "subject_chat_message": "消息"
 }

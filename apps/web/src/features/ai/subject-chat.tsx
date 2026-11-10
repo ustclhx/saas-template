@@ -123,6 +123,8 @@ export function SubjectChatView({
   const [active, setActive] = useState<{ id: string; title: string; autoSend?: string } | null>(
     data.conversation,
   )
+  // 本视图内新建的对话立即出现在历史列表中，不必重新加载
+  const [conversations, setConversations] = useState(data.conversations)
   const [startError, setStartError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const [draft, setDraft] = useState('')
@@ -136,6 +138,10 @@ export function SubjectChatView({
     try {
       const id = await start()
       setActive({ id, title: subject.title ?? '', autoSend: text.trim() })
+      setConversations((old) => [
+        { id, title: subject.title ?? '', updatedAt: new Date() },
+        ...old.filter((item) => item.id !== id),
+      ])
     } catch {
       setStartError(m.subject_chat_start_failed())
     } finally {
@@ -169,11 +175,11 @@ export function SubjectChatView({
           </Button>
         ) : null}
       </header>
-      {data.conversations.length > 1 && onSelectConversation ? (
+      {conversations.length > 1 && onSelectConversation ? (
         <details className="text-sm">
           <summary>{m.subject_chat_history()}</summary>
           <ul className="grid gap-1 pt-2">
-            {data.conversations.map((item) => (
+            {conversations.map((item) => (
               <li key={item.id}>
                 <button
                   type="button"
@@ -181,7 +187,7 @@ export function SubjectChatView({
                   aria-current={item.id === active?.id}
                   onClick={() => onSelectConversation(item.id)}
                 >
-                  {item.title || 'New chat'}
+                  {item.title || m.subject_chat_untitled()}
                 </button>
               </li>
             ))}
@@ -220,14 +226,14 @@ export function SubjectChatView({
           <HydratedControls>
             <form
               className="grid gap-2"
-              aria-label="Send a message"
+              aria-label={m.subject_chat_send_label()}
               onSubmit={(event) => {
                 event.preventDefault()
                 void begin(draft)
               }}
             >
               <textarea
-                aria-label="Message"
+                aria-label={m.subject_chat_message()}
                 className="min-h-20 rounded-md border bg-transparent p-2"
                 value={draft}
                 disabled={!canStart || pending}
@@ -238,7 +244,7 @@ export function SubjectChatView({
                 className="w-fit"
                 disabled={!canStart || pending || !draft.trim()}
               >
-                Send
+                {m.subject_chat_send()}
               </Button>
             </form>
           </HydratedControls>

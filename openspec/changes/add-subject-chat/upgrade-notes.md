@@ -57,7 +57,7 @@ breaking: false
 
 | 自建 | 模板 |
 |---|---|
-| `issueChatContext(deps, { userId, context, returnTo })` | `issueSubjectContext({ secret, cache }, { userId, subjectType: kind, context: { version, data: result }, returnTo, suggestions?, title? })` |
+| `issueChatContext(deps, { userId, context, returnTo })` | `issueSubjectContext({ secret, cache }, { userId, workspaceId, subjectType: kind, context: { version, data: result }, returnTo, suggestions?, title? })` |
 | `openChatContext` | `openSubjectContext`（同样返回 ok / expired(returnTo) / invalid） |
 | `/app/<slug>/chat?context=<token>` | `/app/<slug>/chat/context?token=<token>` |
 | `contextSystemText(context)` 的提示文本 | provider 的 `context().text`（模板会在前面加固定头 `[context type=… version=…]`） |

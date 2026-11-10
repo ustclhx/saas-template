@@ -2,13 +2,16 @@ import type { JsonValue } from '@saas/db'
 import type { KeyValueStore } from '@saas/platform'
 import { z } from 'zod'
 import { getConversationSubject, type SubjectSystemContext } from './subjects.ts'
+// 项目注册的对象类型（副作用导入）：签发入口可能在冷启动 isolate 上先于对象对话被调用，
+// 必须在这里确保注册表已就绪。本模块只在服务端引用。
+import './subject-providers.ts'
 
 /**
  * 对象上下文的 system 消息与临时上下文令牌（add-subject-chat design 决策 3、4，
  * specs/ai-chat「对象上下文只写一次」「临时上下文令牌」）。
  *
  * 临时上下文用于没有持久对象的场景（如免费结果页）：服务端把上下文存进短期 KV（随机键），
- * 地址里只放签名令牌 `{v, id, uid, type, returnTo, exp}`。令牌只签名不加密，不携带上下文正文；
+ * 地址里只放签名令牌 `{v, id, uid, ws, type, returnTo, exp}`（绑定用户与空间）。令牌只签名不加密，不携带上下文正文；
  * 凭令牌新建对话时验签、核对用户与有效期，再从 KV 取出上下文写成首条 system 消息。
  */
 
@@ -36,14 +39,20 @@ export function subjectSystemParts(subjectType: string, context: SubjectSystemCo
   ]
 }
 
+/** system 上下文的总长度上限（字符）：控制每轮固定前缀的成本与 KV 单值大小 */
+export const SUBJECT_CONTEXT_MAX_CHARS = 200_000
+
 export const subjectSystemContextSchema = z
   .object({
     version: z.string().min(1).max(64),
-    text: z.string().max(200_000).optional(),
+    text: z.string().max(SUBJECT_CONTEXT_MAX_CHARS).optional(),
     data: z.json().optional(),
   })
   .refine((value) => value.text !== undefined || value.data !== undefined, {
     message: 'Context needs text or data',
+  })
+  .refine((value) => subjectSystemText('_', value).length <= SUBJECT_CONTEXT_MAX_CHARS, {
+    message: 'Context is too large',
   })
 
 const suggestionsSchema = z.array(z.string().trim().min(1).max(200)).max(MAX_SUGGESTIONS)
@@ -60,6 +69,7 @@ const payloadSchema = z.strictObject({
   v: z.literal(1),
   id: z.uuid(),
   uid: z.string().min(1).max(64),
+  ws: z.string().min(1).max(64),
   type: z.string().min(1).max(64),
   returnTo: z.string().max(512),
   exp: z.number().int().positive(),
@@ -108,6 +118,8 @@ export async function issueSubjectContext(
   deps: SubjectContextDeps,
   input: {
     userId: string
+    /** 签发时的空间：令牌只能在同一空间中使用 */
+    workspaceId: string
     subjectType: string
     context: SubjectSystemContext
     title?: string
@@ -134,6 +146,7 @@ export async function issueSubjectContext(
     v: 1,
     id,
     uid: input.userId,
+    ws: input.workspaceId,
     type: input.subjectType,
     returnTo: input.returnTo,
     exp,
@@ -147,10 +160,17 @@ export async function issueSubjectContext(
  */
 export async function openSubjectContext(
   deps: SubjectContextDeps,
-  input: { userId: string; token: string },
+  input: { userId: string; workspaceId: string; token: string },
 ): Promise<OpenedSubjectContext> {
   const payload = await verifyToken(deps.secret, input.token)
-  if (!payload || payload.uid !== input.userId) return { status: 'invalid' }
+  // 用户、空间不符或返回地址不安全（防御签发端遗漏）一律按无效处理
+  if (
+    !payload ||
+    payload.uid !== input.userId ||
+    payload.ws !== input.workspaceId ||
+    !isSafeReturnPath(payload.returnTo)
+  )
+    return { status: 'invalid' }
   const base = { subjectType: payload.type, subjectId: payload.id, returnTo: payload.returnTo }
   if (payload.exp <= (deps.now ?? Date.now())) return { status: 'expired', ...base }
   const raw = await deps.cache.get(`${KV_PREFIX}${payload.id}`)

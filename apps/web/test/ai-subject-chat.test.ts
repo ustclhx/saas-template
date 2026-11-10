@@ -1,6 +1,7 @@
+import { chatHoldSweeper } from '@saas/ai'
 import { createAuth } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
-import { getCreditBalance, grant } from '@saas/credits'
+import { getCreditBalance, grant, hold } from '@saas/credits'
 import { type AiPricingJson, aiModel } from '@saas/db'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import type { KeyValueStore } from '@saas/platform'
@@ -352,6 +353,35 @@ describe('subject conversations', () => {
     expect(JSON.stringify(last)).not.toContain('first question')
   })
 
+  it('refuses provider contexts over the size limit without creating a conversation', async () => {
+    const owner = await member('too-large')
+    const type = `${SUBJECT_TYPE}big`
+    const off = registerConversationSubject(type, {
+      label: () => 'Big',
+      resolve: async () => ({
+        context: async () => ({
+          version: 'v1',
+          text: 'x'.repeat(150_000),
+          data: 'y'.repeat(60_000),
+        }),
+      }),
+    })
+    try {
+      const subjectId = newId()
+      await expect(
+        startSubjectConversation(ctxOf(owner), { type, id: subjectId }),
+      ).rejects.toMatchObject({
+        code: 'INVALID_SUBJECT_CONTEXT',
+        status: 422,
+      })
+      expect(await sql`select id from ai_conversation where subject_id=${subjectId}`).toHaveLength(
+        0,
+      )
+    } finally {
+      off()
+    }
+  })
+
   it('rejects requests that try to inject context text', async () => {
     const owner = await member('inject', 100)
     const subject = doc(owner)
@@ -380,6 +410,7 @@ describe('temporary subject context', () => {
       { secret: SECRET, cache: kv, now },
       {
         userId: who.userId,
+        workspaceId: who.workspaceId,
         subjectType: TEMP_TYPE,
         context: { version: 'r1', text: CONTEXT_BODY },
         suggestions: ['What next?'],
@@ -397,6 +428,14 @@ describe('temporary subject context', () => {
     expect(await startTemporarySubjectConversation(ctxOf(other), deps, token)).toEqual({
       status: 'invalid',
     })
+    // 同一用户换到另一个空间使用：无效
+    expect(
+      await startTemporarySubjectConversation(
+        { ...ctxOf(owner), workspaceId: newId() },
+        deps,
+        token,
+      ),
+    ).toEqual({ status: 'invalid' })
     const [body, signature] = token.split('.') as [string, string]
     const tampered = `${body.slice(0, -2)}${body.endsWith('A') ? 'B' : 'A'}.${signature}`
     expect(await startTemporarySubjectConversation(ctxOf(owner), deps, tampered)).toEqual({
@@ -571,14 +610,17 @@ describe('message feedback', () => {
 })
 
 describe('follow-up questions', () => {
-  async function setupReply(credits: number) {
-    const owner = await member('follow', credits)
-    const model = await textModel({
+  async function setupReply(
+    credits: number,
+    pricing: AiPricingJson = {
       mode: 'token',
       inputPer1k: 10,
       outputPer1k: 10,
       minCharge: 1,
-    } as AiPricingJson)
+    } as AiPricingJson,
+  ) {
+    const owner = await member('follow', credits)
+    const model = await textModel(pricing)
     const { id: conversationId } = await startSubjectConversation(ctxOf(owner), doc(owner))
     await chat(owner, {
       modelId: model.id,
@@ -660,8 +702,92 @@ describe('follow-up questions', () => {
     // 100 输入 + 20 输出 token，按每千 token 10 积分：向上取整为 2
     const after = (await getCreditBalance(db, owner.workspaceId)).available
     expect(before - after).toBeGreaterThan(0)
-    const holds = await sql<{ status: string }[]>`
-      select status from credit_hold where workspace_id=${owner.workspaceId} order by id desc limit 1`
-    expect(holds).toEqual([{ status: 'captured' }])
+    // 预扣挂在被追问的回复上（与原回复的预扣同一 ref），已结算
+    const holds = await sql<{ status: string; ref_id: string }[]>`
+      select status, ref_id from credit_hold where workspace_id=${owner.workspaceId} order by id desc limit 1`
+    expect(holds).toEqual([{ status: 'captured', ref_id: messageId }])
+  })
+
+  const chargeDeps = (languageModelFactory: () => MockLanguageModelV4) => ({
+    db,
+    cache: memoryKv(),
+    env: {},
+    workersAi: false,
+    entitlements,
+    languageModelFactory,
+    config: config({ charge: true }),
+    overage: { maxRatio: 0, maxCredits: 0, dailyBudgetPerWorkspace: 0 },
+  })
+  const holdsOf = (who: Member, messageId: string) =>
+    sql<{ id: string; status: string }[]>`select id, status from credit_hold
+      where workspace_id=${who.workspaceId} and ref_id=${messageId} order by id`
+
+  it('skips per-call models when charging', async () => {
+    const { owner, messageId } = await setupReply(1000, { mode: 'per_call', credits: 1 })
+    const mock = generateModel('["One?"]')
+    const before = (await getCreditBalance(db, owner.workspaceId)).available
+    expect(
+      await generateFollowUps(
+        chargeDeps(() => mock),
+        { workspaceId: owner.workspaceId, userId: owner.userId },
+        messageId,
+      ),
+    ).toEqual({ questions: [] })
+    expect(mock.doGenerateCalls).toHaveLength(0)
+    expect((await getCreditBalance(db, owner.workspaceId)).available).toBe(before)
+  })
+
+  it('releases the hold when generation fails', async () => {
+    const { owner, messageId } = await setupReply(1000)
+    const before = (await getCreditBalance(db, owner.workspaceId)).available
+    const failing = new MockLanguageModelV4({
+      doGenerate: async () => {
+        throw new Error('upstream down')
+      },
+    })
+    expect(
+      await generateFollowUps(
+        chargeDeps(() => failing),
+        { workspaceId: owner.workspaceId, userId: owner.userId },
+        messageId,
+      ),
+    ).toEqual({ questions: [] })
+    expect((await holdsOf(owner, messageId)).map((h) => h.status)).toEqual(['captured', 'released'])
+    expect((await getCreditBalance(db, owner.workspaceId)).available).toBe(before)
+  })
+
+  it('does not double-charge while a hold is in flight; the sweeper releases a stranded hold', async () => {
+    const { owner, messageId } = await setupReply(1000)
+    const before = (await getCreditBalance(db, owner.workspaceId)).available
+    // 模拟另一个标签页的请求已预扣但进程中断
+    const stranded = await hold(db, {
+      workspaceId: owner.workspaceId,
+      userId: owner.userId,
+      amount: 5,
+      refType: 'ai_message',
+      refId: messageId,
+      expiresAt: new Date(Date.now() - 1000),
+    })
+    const mock = generateModel('["One?"]')
+    expect(
+      await generateFollowUps(
+        chargeDeps(() => mock),
+        { workspaceId: owner.workspaceId, userId: owner.userId },
+        messageId,
+      ),
+    ).toEqual({ questions: [] })
+    expect(mock.doGenerateCalls).toHaveLength(0)
+    // 兜底处理器：该预扣不是任何消息的 hold_id，走释放分支
+    await db.transaction((tx) =>
+      chatHoldSweeper({ overage: { maxRatio: 0, maxCredits: 0, dailyBudgetPerWorkspace: 0 } })({
+        db,
+        tx,
+        hold: stranded,
+      }),
+    )
+    expect((await holdsOf(owner, messageId)).find((h) => h.id === stranded.id)?.status).toBe(
+      'released',
+    )
+    expect((await getCreditBalance(db, owner.workspaceId)).available).toBe(before)
   })
 })

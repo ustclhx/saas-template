@@ -17,7 +17,7 @@
 ### 1. 数据模型
 
 - `ai_conversation` 增加 `subject_type text null`、`subject_id text null`，索引 `ai_conversation_workspace_subject_idx (workspace_id, subject_type, subject_id)`；check 约束两者同时为空或同时非空。`subject_id` 必须是不透明 ID（不得放邮箱、姓名等个人信息），删除随对话一起删除。
-- 新表 `ai_message_feedback`：`id`、`workspace_id`、`message_id → ai_message`、`user_id → user`、`rating ('up'|'down')`、`comment text null`、`model_key text null`、`subject_type text null`、时间戳；唯一索引 `(message_id, user_id)` 保证每用户每消息一条；索引 `(workspace_id, id desc)`。`model_key` 与 `subject_type` 是写入时的快照，统计不必联表，也不依赖消息仍存在。
+- 新表 `ai_message_feedback`：`id`、`workspace_id`、`message_id → ai_message`、`user_id → user`、`rating ('up'|'down')`、`comment text null`、`model_key text null`、`subject_type text null`、时间戳；唯一索引 `(message_id, user_id)` 保证每用户每消息一条；索引 `(workspace_id, id desc)` 与 `(created_at)`（后台按日期统计）。`model_key` 与 `subject_type` 是写入时的快照，统计不必联表，也不依赖消息仍存在。
 - 选择新表而不是在 `ai_message` 上加列：评分是用户对消息的独立事实，修改/撤销不触碰带计费快照的消息行，后台统计也只扫小表。
 
 ### 2. 对象 provider 注册表
@@ -55,8 +55,8 @@ registerConversationSubject(type, provider) // type: /^[a-z][a-z0-9_-]{0,47}$/�
 
 `apps/web/src/features/ai/subject-context.ts`：
 
-- `issueSubjectContext({ cache, secret, now? }, { userId, subjectType, context, title?, suggestions?, returnTo })`：类型必须已注册；`returnTo` 必须是站内路径（以单个 `/` 开头、无 `\\`、无协议、≤ 512）；生成随机 `id`，KV 键 `subject-context:<id>` 存 `{ subjectType, context, title, suggestions }`，TTL 30 分钟；令牌 `base64url(payload).base64url(HMAC-SHA256)`，payload `{ v: 1, id, uid, type, returnTo, exp }`，密钥由 `BETTER_AUTH_SECRET` 加用途前缀派生，不含正文。
-- `openSubjectContext` 返回 `ok | expired(returnTo) | invalid`：签名或格式错、`uid` 不符一律 invalid（不回显 returnTo）；过期或 KV 已失效为 expired。
+- `issueSubjectContext({ cache, secret, now? }, { userId, workspaceId, subjectType, context, title?, suggestions?, returnTo })`：类型必须已注册（本模块副作用导入 `subject-providers.ts`，冷启动只调用签发入口也能就绪）；上下文 system 文本总长度 ≤ 20 万字符；`returnTo` 必须是站内路径（以单个 `/` 开头、无 `\\`、无协议、≤ 512）；生成随机 `id`，KV 键 `subject-context:<id>` 存 `{ subjectType, context, title, suggestions }`，TTL 30 分钟；令牌 `base64url(payload).base64url(HMAC-SHA256)`，payload `{ v: 1, id, uid, ws, type, returnTo, exp }`，密钥由 `BETTER_AUTH_SECRET` 加用途前缀派生，不含正文。
+- `openSubjectContext` 返回 `ok | expired(returnTo) | invalid`：签名或格式错、`uid` 或 `ws` 不符、returnTo 复验不通过一律 invalid（不回显 returnTo）；过期或 KV 已失效为 expired。
 - 临时对话的 `subject_type` 为签发类型、`subject_id` 为随机 `id`；令牌有效期内再次打开同一令牌进入已有对话，过期后已有对话仍可在对话列表中继续（上下文已写入）。
 - KV 经 `WebRuntime.cache`（`@saas/platform` 的 `KeyValueStore`），不直接使用 Cloudflare 绑定。
 
@@ -64,7 +64,7 @@ registerConversationSubject(type, provider) // type: /^[a-z][a-z0-9_-]{0,47}$/�
 
 - 开场问题：`ResolvedSubject.suggestions` 或临时上下文中保存的 `suggestions`；只在对话无消息时显示。
 - 后续问题：`templateConfig.ai.text.followUps = { enabled: false, charge: false, count: 3, modelKey: null }`。server function `getFollowUps({ slug, messageId })`：校验消息归属与已完成状态 → 读 KV 缓存 `chat-follow-ups:<messageId>`（1 天）→ 限流 `ai` → 用回复所用模型（或 `modelKey` 指定的可用模型）以 `generateText` 生成 JSON 数组，`maxOutputTokens` 256，输入为 system 前缀 + 最近一轮问答（截断）。
-- `charge: true` 时先 `hold`（`refType: 'ai_message'`、`refId` 为新 ID、2 分钟过期）再 `capture` 实际用量，失败 `release`；进程中断时现有 `chatHoldSweeper` 找不到对应消息会释放预扣，不会多扣。`charge: false` 时由平台承担，不写积分。
+- `charge: true` 时只对按 token 计价的模型生成（按次计价直接跳过）；先检查同一回复是否已有在途预扣（有则不生成），再 `hold`（`refType: 'ai_message'`、`refId` 为被追问的助手消息 ID、2 分钟过期），生成后 `capture` 实际用量，生成失败 `release`；KV 写入在结算之后、失败只记日志。进程中断时 `chatHoldSweeper` 找不到以该预扣为 `hold_id` 的消息，走释放分支，不会多扣；删号清理会等在途预扣结算后再删该消息。`charge: false` 时由平台承担，不写积分。
 - 推荐问题从不写入 `ai_message`；点击后作为普通用户消息经 `/api/ai/chat` 发送。
 
 ### 6. 消息评分

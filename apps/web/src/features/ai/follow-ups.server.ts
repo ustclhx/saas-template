@@ -12,10 +12,10 @@ import {
 } from '@saas/ai'
 import type { TemplateConfig } from '@saas/config'
 import { CreditsError, capture, hold, type OveragePolicy, release } from '@saas/credits'
-import { aiConversation, aiMessage, type Database, scoped } from '@saas/db'
+import { aiConversation, aiMessage, creditHold, type Database, scoped } from '@saas/db'
 import { type Entitlements, getEntitlements } from '@saas/entitlements'
 import type { KeyValueStore, RateLimiter } from '@saas/platform'
-import { AppError, newId } from '@saas/shared'
+import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import { generateText } from 'ai'
 import { and, asc, desc, eq, inArray, lt, type SQL } from 'drizzle-orm'
@@ -26,8 +26,11 @@ import { templateConfig } from '../../server/template-config.ts'
  *
  * - 配置关闭时直接返回空列表，不查模型、不扣积分；
  * - 每条回复只生成一次：结果缓存在 KV（1 天），重复请求复用；
- * - 开启计费时先预扣再按实际用量结算，失败释放；预扣的 ref 指向一个不存在的消息 ID，
- *   进程中断时由现有 chatHoldSweeper 释放，不会多扣；
+ * - 开启计费时先预扣再按实际用量结算，生成失败释放。预扣的 ref 指向被追问的助手消息
+ *   （metrics-daily 据此关联模型，删号清理会等待在途预扣）；该消息的 hold_id 仍是原回复的预扣，
+ *   进程中断时 chatHoldSweeper 找不到以本预扣为 hold_id 的消息，走释放分支，不会多扣；
+ * - 计费只支持按 token 计价的模型：按次计价的模型每次追问都会收一次完整的单轮费用，开启计费时跳过；
+ * - 同一回复已有在途预扣（如两个标签页同时请求）时不再生成，避免重复扣费；
  * - 推荐问题不写入 ai_message，点击后才作为普通用户消息发送。
  */
 
@@ -108,6 +111,8 @@ export async function generateFollowUps(
   )
   const model = models.find((m) => m.key === (config.modelKey ?? message.modelKey))
   if (!model) return { questions: [] }
+  // 按次计价会让每次追问收一次完整单轮费用，计费模式下只用按 token 计价的模型
+  if (config.charge && model.pricing.mode !== 'token') return { questions: [] }
 
   const prompt = await followUpPrompt(deps.db, scope.workspaceId, message, config.count)
   const { tokensPerChar } = textModelConfig(model)
@@ -118,13 +123,25 @@ export async function generateFollowUps(
 
   let holdId: string | undefined
   if (config.charge) {
+    // 同一回复已有在途预扣：另一个请求正在生成，不重复扣费
+    const [inFlight] = await s
+      .select(creditHold, {
+        fields: { id: creditHold.id },
+        where: and(
+          eq(creditHold.refType, 'ai_message'),
+          eq(creditHold.refId, message.id),
+          eq(creditHold.status, 'held'),
+        ) as SQL,
+      })
+      .limit(1)
+    if (inFlight) return { questions: [] }
     try {
       const reservation = await hold(deps.db, {
         workspaceId: scope.workspaceId,
         userId: scope.userId,
         amount: estimateCredits(model.pricing, { inputTokens, maxOutputTokens: MAX_OUTPUT_TOKENS }),
         refType: 'ai_message',
-        refId: newId(),
+        refId: message.id,
         expiresAt: new Date(Date.now() + HOLD_TTL_MS),
       })
       holdId = reservation.id
@@ -135,6 +152,7 @@ export async function generateFollowUps(
     }
   }
 
+  let questions: string[]
   try {
     const languageModel = (deps.languageModelFactory ?? defaultLanguageModelFactory)(
       model,
@@ -147,19 +165,24 @@ export async function generateFollowUps(
       messages: prompt,
       maxOutputTokens: MAX_OUTPUT_TOKENS,
     })
-    const questions = parseQuestions(result.text, config.count)
-    if (holdId)
+    questions = parseQuestions(result.text, config.count)
+    if (holdId) {
+      const amount = actualCredits(model.pricing, {
+        inputTokens: result.usage.inputTokens ?? inputTokens,
+        outputTokens: result.usage.outputTokens ?? 0,
+      })
+      const settled = holdId
       await capture(deps.db, {
         workspaceId: scope.workspaceId,
-        holdId,
-        actualAmount: actualCredits(model.pricing, {
-          inputTokens: result.usage.inputTokens ?? inputTokens,
-          outputTokens: result.usage.outputTokens ?? 0,
-        }),
+        holdId: settled,
+        actualAmount: amount,
         overage: deps.overage ?? templateConfig.billing.overage,
+      }).catch((error) => {
+        // 结算失败时预扣保持 held，到期由 chatHoldSweeper 释放；已生成的问题照常返回
+        log.error('ai.follow_ups.capture_failed', { holdId: settled, error })
       })
-    await deps.cache.put(cacheKey, JSON.stringify(questions), { expirationTtl: CACHE_TTL_SECONDS })
-    return { questions }
+      holdId = undefined
+    }
   } catch (error) {
     if (holdId)
       await release(deps.db, { workspaceId: scope.workspaceId, holdId }).catch((releaseError) =>
@@ -169,6 +192,11 @@ export async function generateFollowUps(
     log.error('ai.follow_ups.failed', { messageId: message.id, error })
     return { questions: [] }
   }
+  // 缓存写入失败只影响复用，不进入释放分支
+  await deps.cache
+    .put(cacheKey, JSON.stringify(questions), { expirationTtl: CACHE_TTL_SECONDS })
+    .catch((error) => log.error('ai.follow_ups.cache_failed', { messageId: message.id, error }))
+  return { questions }
 }
 
 /** 生成提示：对象上下文（若有）+ 本轮问答 + 指令；只取本轮，控制附加请求的输入长度 */

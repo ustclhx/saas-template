@@ -119,7 +119,13 @@ export async function startSubjectConversation(
   ref: SubjectRef,
 ): Promise<{ id: string }> {
   const resolved = await requireSubject(ctx, ref)
-  const context = subjectSystemContextSchema.parse(await resolved.context())
+  // provider 返回的上下文同样受格式与总长度约束；错误信息不含正文
+  const parsed = subjectSystemContextSchema.safeParse(await resolved.context())
+  if (!parsed.success)
+    throw new AppError('INVALID_SUBJECT_CONTEXT', 'Subject context is invalid or too large', {
+      status: 422,
+    })
+  const context = parsed.data
   return insertSubjectConversation(ctx, ref, context, {
     title: resolved.title,
     modelKey: resolved.defaultModelKey,
@@ -133,7 +139,11 @@ export async function loadTemporarySubjectChat(
   deps: SubjectContextDeps,
   token: string,
 ): Promise<TemporarySubjectChat> {
-  const opened = await openSubjectContext(deps, { userId: ctx.userId, token })
+  const opened = await openSubjectContext(deps, {
+    userId: ctx.userId,
+    workspaceId: ctx.workspaceId,
+    token,
+  })
   if (opened.status === 'invalid') return { status: 'invalid' }
   const ref = { type: opened.subjectType, id: opened.subjectId }
   const view: SubjectView = {
@@ -156,7 +166,11 @@ export async function startTemporarySubjectConversation(
   deps: SubjectContextDeps,
   token: string,
 ): Promise<StartTemporaryResult> {
-  const opened = await openSubjectContext(deps, { userId: ctx.userId, token })
+  const opened = await openSubjectContext(deps, {
+    userId: ctx.userId,
+    workspaceId: ctx.workspaceId,
+    token,
+  })
   if (opened.status === 'invalid') return { status: 'invalid' }
   if (opened.status === 'expired') return { status: 'expired', returnTo: opened.returnTo }
   const created = await insertSubjectConversation(

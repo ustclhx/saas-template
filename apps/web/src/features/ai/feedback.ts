@@ -27,20 +27,31 @@ const REDACTED = '[REDACTED]'
 
 /**
  * 反馈文字入库前去除疑似密钥与令牌：反馈用于迭代提示词，会在后台被多人查看。
- * 只做常见形态的保守替换（API Key 前缀、Bearer、AWS Access Key、JWT、长十六进制/base64 串）。
+ * 只做常见形态的保守替换（链接凭据、密码/密钥键值、API Key 前缀、Bearer、AWS / Google / Stripe webhook /
+ * Slack / GitHub 令牌、JWT、长十六进制/base64 串）。
  */
-const SECRET_PATTERNS: readonly RegExp[] = [
-  /\b(?:sk|pk|rk)[-_](?:live|test|proj|ant)?[-_]?[A-Za-z0-9_-]{16,}/g,
-  /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi,
-  /\bAKIA[0-9A-Z]{16}\b/g,
-  /\b(?:ghp|gho|ghs|ghu|github_pat|xox[abpr])_[A-Za-z0-9_]{10,}/g,
-  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
-  /\b[A-Fa-f0-9]{32,}\b/g,
-  /(?<![A-Za-z0-9+/])[A-Za-z0-9+/_-]{40,}={0,2}/g,
+const SECRET_PATTERNS: readonly (readonly [RegExp, string])[] = [
+  // 链接中的用户名与密码：保留协议与主机，便于理解反馈
+  [/:\/\/[^/\s:]+:[^@\s]+@/g, `://${REDACTED}@`],
+  // 形如 password=… / api_key: … 的键值
+  [/\b(?:password|secret|token|api[_-]?key)\s*[:=]\s*\S+/gi, REDACTED],
+  [/\b(?:sk|pk|rk)[-_](?:live|test|proj|ant)?[-_]?[A-Za-z0-9_-]{16,}/g, REDACTED],
+  [/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, REDACTED],
+  [/\bAKIA[0-9A-Z]{16}\b/g, REDACTED],
+  [/\bAIza[0-9A-Za-z_-]{35}/g, REDACTED],
+  [/\bwhsec_[A-Za-z0-9]{24,}/g, REDACTED],
+  [/\bxox[abprs]-[A-Za-z0-9-]{10,}/g, REDACTED],
+  [/\b(?:ghp|gho|ghs|ghu|github_pat|xox[abpr])_[A-Za-z0-9_]{10,}/g, REDACTED],
+  [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, REDACTED],
+  [/\b[A-Fa-f0-9]{32,}\b/g, REDACTED],
+  [/(?<![A-Za-z0-9+/])[A-Za-z0-9+/_-]{40,}={0,2}/g, REDACTED],
 ]
 
 export function scrubSecrets(text: string): string {
-  return SECRET_PATTERNS.reduce((value, pattern) => value.replace(pattern, REDACTED), text)
+  return SECRET_PATTERNS.reduce(
+    (value, [pattern, replacement]) => value.replace(pattern, replacement),
+    text,
+  )
 }
 
 /** 规范化反馈文字：去首尾空白、去密钥，空串存为 null */

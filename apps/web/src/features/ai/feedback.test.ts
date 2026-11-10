@@ -13,6 +13,11 @@ describe('feedback comments', () => {
       'gh ghp_abcdefghijklmnopqrstuvwxyz0123',
       'jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U',
       'hex 0123456789abcdef0123456789abcdef',
+      'google AIzaSyA1234567890abcdefghijklmnopqrstuv',
+      'stripe whsec_abcdefghijklmnopqrstuvwxyz12',
+      'slack xoxb-1234567890-abcdefghij',
+      'db postgres://admin:hunter2@db.internal:5432/app',
+      'cfg password=hunter3 and api_key: abc123def',
     ].join('\n')
     const scrubbed = scrubSecrets(text)
     for (const secret of [
@@ -24,6 +29,7 @@ describe('feedback comments', () => {
       '0123456789abcdef0123',
     ])
       expect(scrubbed).not.toContain(secret)
+    expect(scrubbed).toContain('postgres://[REDACTED]@db.internal:5432/app')
     expect(scrubSecrets('The answer was too long and missed my question.')).toBe(
       'The answer was too long and missed my question.',
     )

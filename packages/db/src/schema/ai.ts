@@ -180,6 +180,8 @@ export const aiMessageFeedback = pgTable(
   (t) => [
     uniqueIndex('ai_message_feedback_message_user_idx').on(t.messageId, t.userId),
     index('ai_message_feedback_workspace_id_id_idx').on(t.workspaceId, t.id.desc()),
+    // 后台按日期范围统计满意率
+    index('ai_message_feedback_created_at_idx').on(t.createdAt),
     check('ai_message_feedback_rating_valid', sql`${t.rating} in ('up', 'down')`),
   ],
 )

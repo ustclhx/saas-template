@@ -4,6 +4,7 @@ import {
   isSafeReturnPath,
   issueSubjectContext,
   openSubjectContext,
+  SUBJECT_CONTEXT_MAX_CHARS,
   SUBJECT_CONTEXT_TTL_MS,
   subjectContextMeta,
   subjectSystemParts,
@@ -43,6 +44,7 @@ async function issued(kv = memoryKv()) {
     { secret: SECRET, cache: kv, now: NOW },
     {
       userId: 'user-a',
+      workspaceId: 'ws-a',
       subjectType: 'result',
       context: CONTEXT,
       title: 'My result',
@@ -53,8 +55,32 @@ async function issued(kv = memoryKv()) {
   return { kv, ...result }
 }
 
-const open = (kv: KeyValueStore, token: string, userId = 'user-a', now = NOW + 1000) =>
-  openSubjectContext({ secret: SECRET, cache: kv, now }, { userId, token })
+const open = (
+  kv: KeyValueStore,
+  token: string,
+  userId = 'user-a',
+  now = NOW + 1000,
+  workspaceId = 'ws-a',
+) => openSubjectContext({ secret: SECRET, cache: kv, now }, { userId, workspaceId, token })
+
+/** 用与实现相同的派生密钥签任意 payload，模拟签发端遗漏校验的情况 */
+async function signRaw(payload: unknown) {
+  const encode = (bytes: Uint8Array) =>
+    btoa(String.fromCharCode(...bytes))
+      .replaceAll('+', '-')
+      .replaceAll('/', '_')
+      .replaceAll('=', '')
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(`subject-context:${SECRET}`),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const body = encode(new TextEncoder().encode(JSON.stringify(payload)))
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body))
+  return `${body}.${encode(new Uint8Array(sig))}`
+}
 
 describe('subject system message', () => {
   it('starts with a fixed header and appends data as JSON; the data part holds no body', () => {
@@ -111,14 +137,35 @@ describe('temporary subject context', () => {
     // 换密钥签发的令牌同样无效
     const other = await issueSubjectContext(
       { secret: `${SECRET}-other`, cache: kv, now: NOW },
-      { userId: 'user-a', subjectType: 'result', context: CONTEXT, returnTo: '/r' },
+      {
+        userId: 'user-a',
+        workspaceId: 'ws-a',
+        subjectType: 'result',
+        context: CONTEXT,
+        returnTo: '/r',
+      },
     )
     expect(await open(kv, other.token)).toEqual({ status: 'invalid' })
   })
 
-  it('treats another user’s token as invalid', async () => {
+  it('treats another user’s or another workspace’s token as invalid', async () => {
     const { kv, token } = await issued()
     expect(await open(kv, token, 'user-b')).toEqual({ status: 'invalid' })
+    expect(await open(kv, token, 'user-a', NOW + 1000, 'ws-b')).toEqual({ status: 'invalid' })
+  })
+
+  it('rechecks returnTo when opening, even for a correctly signed token', async () => {
+    const { kv, subjectId } = await issued()
+    const token = await signRaw({
+      v: 1,
+      id: subjectId,
+      uid: 'user-a',
+      ws: 'ws-a',
+      type: 'result',
+      returnTo: 'https://evil.example',
+      exp: NOW + 60_000,
+    })
+    expect(await open(kv, token)).toEqual({ status: 'invalid' })
   })
 
   it('reports expiry (or a missing KV entry) with the return path', async () => {
@@ -138,7 +185,13 @@ describe('temporary subject context', () => {
 
   it('refuses unregistered types, unsafe return paths and empty contexts', async () => {
     const deps = { secret: SECRET, cache: memoryKv(), now: NOW }
-    const base = { userId: 'u', subjectType: 'result', context: CONTEXT, returnTo: '/ok' }
+    const base = {
+      userId: 'u',
+      workspaceId: 'w',
+      subjectType: 'result',
+      context: CONTEXT,
+      returnTo: '/ok',
+    }
     await expect(issueSubjectContext(deps, { ...base, subjectType: 'unknown' })).rejects.toThrow()
     for (const returnTo of [
       'https://evil.example',
@@ -151,6 +204,27 @@ describe('temporary subject context', () => {
     await expect(
       issueSubjectContext(deps, { ...base, context: { version: 'v1' } }),
     ).rejects.toThrow()
+    // 总长度上限：文本与 JSON 数据合计超过 20 万字符即拒绝
+    await expect(
+      issueSubjectContext(deps, {
+        ...base,
+        context: { version: 'v1', text: 'a'.repeat(150_000), data: { b: 'b'.repeat(60_000) } },
+      }),
+    ).rejects.toThrow()
+    await expect(
+      issueSubjectContext(deps, {
+        ...base,
+        context: { version: 'v1', data: { b: 'b'.repeat(SUBJECT_CONTEXT_MAX_CHARS) } },
+      }),
+    ).rejects.toThrow()
+    expect(
+      (
+        await issueSubjectContext(deps, {
+          ...base,
+          context: { version: 'v1', text: 'a'.repeat(150_000) },
+        })
+      ).token,
+    ).toBeTruthy()
   })
 
   it('accepts same-site paths only', () => {
