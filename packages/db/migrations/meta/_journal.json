@@ -155,6 +155,13 @@
       "when": 1794316633214,
       "tag": "0021_daily_credits",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1794318840103,
+      "tag": "0022_subject_chat",
+      "breakpoints": true
     }
   ]
 }
