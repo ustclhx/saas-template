@@ -15,14 +15,24 @@ import { ThemeToggle } from './theme-toggle.tsx'
 export function RootDocument({
   children,
   floatingControls,
-}: Readonly<{ children: ReactNode; floatingControls: boolean }>) {
+  htmlAttributes,
+}: Readonly<{
+  children: ReactNode
+  floatingControls: boolean
+  htmlAttributes?: Record<string, string>
+}>) {
   // 自托管 Inter 的拉丁子集：经 React 的资源提示输出，React 把字体预加载排在样式表之前，
   // 浏览器尽早下载，缩短字体替换造成的版面跳动（写在 head links 里会被排到样式表之后）
   for (const font of fontPreloads) {
     preload(font.href, { as: 'font', type: font.type, crossOrigin: 'anonymous' })
   }
   return (
-    <html lang={getLocale()} data-preset={templateConfig.ui.preset} suppressHydrationWarning>
+    <html
+      {...htmlAttributes}
+      lang={getLocale()}
+      data-preset={templateConfig.ui.preset}
+      suppressHydrationWarning
+    >
       <head>
         <HeadContent />
       </head>

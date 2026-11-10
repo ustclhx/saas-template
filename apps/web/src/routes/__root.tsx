@@ -12,11 +12,15 @@ import {
   getSafeImpersonation,
   getSeoOrigin,
 } from '../features/seo/origin.functions.ts'
+import { getHtmlAttributes } from '../features/theme/html-attributes.isomorphic.ts'
 import { RootDocument } from '../features/theme/root-document.tsx'
 import { templateConfig } from '../server/template-config.ts'
 import appCss from '../styles/app.css?url'
 
 export const Route = createRootRoute({
+  beforeLoad: ({ location }) => ({
+    htmlAttributes: getHtmlAttributes(location.pathname),
+  }),
   loader: async () => {
     const [impersonation, announcement, appUrl, plausible] = await Promise.all([
       getSafeImpersonation(),
@@ -54,6 +58,7 @@ export const Route = createRootRoute({
 
 function RootComponent() {
   const { impersonation, announcement } = Route.useLoaderData()
+  const { htmlAttributes } = Route.useRouteContext()
   // 后台侧栏与认证页脚自带控件，避免浮动控件遮挡正文。
   const hasInlineControls = useRouterState({
     select: (state) =>
@@ -61,7 +66,7 @@ function RootComponent() {
       /^\/admin(\/|$)/.test(state.location.pathname),
   })
   return (
-    <RootDocument floatingControls={!hasInlineControls}>
+    <RootDocument floatingControls={!hasInlineControls} htmlAttributes={htmlAttributes}>
       <ProductAnalytics />
       <ImpersonationBanner viewer={impersonation} />
       <AnnouncementBanner initial={announcement} />

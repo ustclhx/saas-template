@@ -36,7 +36,7 @@
 - [x] 6.1 预留 `packages/ui/src/project/`（`.gitkeep` 与空 `index.ts`）与 `@saas/ui/project` 导出；`check-ui` 与依赖检查覆盖该目录；验证在临时生成项目中新增项目组件并使用后检查通过
 - [x] 6.2 生成 `packages/ui/components.lock.json` 与校验：模版内清单过期时失败；存在 `.template-base.json` 时修改模版组件失败并提示定制顺序；`check-ui.allow.local.json` 被读取；测试覆盖三种情况
 - [x] 6.3 生成器在副本中创建空的 `check-ui.allow.local.json` 与 `docs/design/README.md`（说明视觉规范、参考、原型副本与 forks 登记的位置）；`create-project.test.mjs` 断言文件存在且生成结果确定
-- [ ] 6.4 根布局提供项目自有的站点/主题属性扩展点（项目自有文件返回 `<html>` 额外属性，如 `data-site`），避免项目改模板根布局；测试覆盖未注册时输出不变与注册后 SSR 写入属性
+- [x] 6.4 根布局提供项目自有的站点/主题属性扩展点（项目自有文件返回 `<html>` 额外属性，如 `data-site`），避免项目改模板根布局；测试覆盖未注册时输出不变与注册后 SSR 写入属性
 
 ## 7. 设计规范文档、技能与生成器
 
@@ -57,7 +57,7 @@
 
 ## 9. 选型与集成验收
 
-- [ ] 9.1 对比 Fluid AI 组件与 AI Elements 接入现有聊天页（基于 `@ai-sdk/react`）的差异，结论写入 `docs/design-system.md` 并另起变更，不在本变更替换
+- [x] 9.1 对比 Fluid AI 组件与 AI Elements 接入现有聊天页（基于 `@ai-sdk/react`）的差异，结论写入 `docs/design-system.md` 并另起变更，不在本变更替换
 - [ ] 9.2 编写模板升级说明（创建 `brand.css`、迁移自定义变量、`ui` 配置段、`UI_PREVIEW`、项目例外清单、`ui.appLayout` 可设 `topbar` 保持原布局、新营销区块与业务组件的接入方式）；以 xuanxue 为例写明迁移：`site-theme.css` 并入 `brand.css`、`app.css` 恢复模版原样、插画组件颜色登记例外，按说明在 xuanxue 的同步分支本地执行检查通过（不推送）
 - [ ] 9.3 staging 验收：首页、定价页、博客中英文 Lighthouse SEO 与可访问性仍为 100；预览页可访问、生产 404；明暗切换无闪烁；新增组件与页面在 390px 宽无横向滚动、浅色与深色正确；证据写入私有证据库
 - [ ] 9.4 发布模版版本后通知 xuanxue 协调会话，附版本号、升级说明与业务组件接口文档
