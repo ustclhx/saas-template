@@ -5,10 +5,12 @@ import { notFound } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { and, asc, desc, eq, inArray, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
+import { getLocale } from '../../paraglide/runtime.js'
 import { withBilling } from '../../server/feature-gates.ts'
 import { withWorkspace } from '../../server/middleware.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import { conversationTitleSchema, messageDisplayParts } from './conversation.ts'
+import { feedbackForMessages } from './feedback.server.ts'
 
 // 对话列表与对话页的数据（tasks.md 3.1，specs/ai-chat「会话管理」）。
 // 对话只对创建者可见：所有读写都在 scoped(ws) 之上再按 user_id 过滤，
@@ -68,6 +70,7 @@ export const listConversations = createServerFn({ method: 'GET' })
       title: aiConversation.title,
       archived: aiConversation.archived,
       updatedAt: aiConversation.updatedAt,
+      subjectType: aiConversation.subjectType,
     }
     const list = (archived: boolean) =>
       s
@@ -80,8 +83,17 @@ export const listConversations = createServerFn({ method: 'GET' })
         })
         .orderBy(desc(aiConversation.id))
         .limit(LIST_LIMIT)
-    const [active, archived] = await Promise.all([list(false), list(true)])
-    return { active, archived, readOnly: context.workspaceReadOnly }
+    const [[active, archived], { subjectLabels }] = await Promise.all([
+      Promise.all([list(false), list(true)]),
+      import('./subject-chat.server.ts'),
+    ])
+    // 来源标签按当前语言由已注册的 provider 给出，不查对象本身
+    const labelled = subjectLabels(getLocale())
+    return {
+      active: active.map(labelled),
+      archived: archived.map(labelled),
+      readOnly: context.workspaceReadOnly,
+    }
   })
 
 export const getConversation = createServerFn({ method: 'GET' })
@@ -114,8 +126,13 @@ export const getConversation = createServerFn({ method: 'GET' })
         ) as SQL,
       })
       .orderBy(asc(aiMessage.id))
+    const feedback = await feedbackForMessages(
+      { db: context.db, workspaceId: context.workspace.id, userId: context.user.id },
+      messages.filter((message) => message.role === 'assistant').map((message) => message.id),
+    )
     return {
       conversation,
+      feedback,
       messages: messages.map((message) => ({
         ...message,
         parts: messageDisplayParts(

@@ -97,11 +97,22 @@ export const aiConversation = pgTable(
     title: text('title').notNull().default(''),
     modelKey: text('model_key').notNull(),
     archived: boolean('archived').notNull().default(false),
+    /**
+     * 绑定的业务对象（add-subject-chat）：类型由 provider 注册，ID 是不透明引用，不得含个人信息。
+     * 两者同时为空表示普通对话。
+     */
+    subjectType: text('subject_type'),
+    subjectId: text('subject_id'),
     ...timestamps,
   },
   (t) => [
     index('ai_conversation_workspace_id_id_idx').on(t.workspaceId, t.id.desc()),
     index('ai_conversation_workspace_user_id_idx').on(t.workspaceId, t.userId, t.id.desc()),
+    index('ai_conversation_workspace_subject_idx').on(t.workspaceId, t.subjectType, t.subjectId),
+    check(
+      'ai_conversation_subject_pair',
+      sql`(${t.subjectType} is null) = (${t.subjectId} is null)`,
+    ),
   ],
 )
 
@@ -140,6 +151,38 @@ export const aiMessage = pgTable(
       'ai_message_usage_nonnegative',
       sql`coalesce(${t.inputTokens}, 0) >= 0 and coalesce(${t.outputTokens}, 0) >= 0 and coalesce(${t.credits}, 0) >= 0`,
     ),
+  ],
+)
+
+/**
+ * 用户对助手回复的评分（add-subject-chat design 决策 1）：每用户每消息一条，撤销即删除。
+ * `model_key` / `subject_type` 为写入时快照，供后台按模型与对象类型统计满意率。
+ */
+export const aiMessageFeedback = pgTable(
+  'ai_message_feedback',
+  {
+    id: uuid('id').primaryKey().$defaultFn(newId),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'restrict' }),
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => aiMessage.id, { onDelete: 'restrict' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'restrict' }),
+    rating: text('rating', { enum: ['up', 'down'] }).notNull(),
+    comment: text('comment'),
+    modelKey: text('model_key'),
+    subjectType: text('subject_type'),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('ai_message_feedback_message_user_idx').on(t.messageId, t.userId),
+    index('ai_message_feedback_workspace_id_id_idx').on(t.workspaceId, t.id.desc()),
+    // 后台按日期范围统计满意率
+    index('ai_message_feedback_created_at_idx').on(t.createdAt),
+    check('ai_message_feedback_rating_valid', sql`${t.rating} in ('up', 'down')`),
   ],
 )
 
@@ -202,5 +245,6 @@ export type AiModel = typeof aiModel.$inferSelect
 export type NewAiModel = typeof aiModel.$inferInsert
 export type AiConversation = typeof aiConversation.$inferSelect
 export type AiMessage = typeof aiMessage.$inferSelect
+export type AiMessageFeedback = typeof aiMessageFeedback.$inferSelect
 export type AiTask = typeof aiTask.$inferSelect
 export type NewAiTask = typeof aiTask.$inferInsert

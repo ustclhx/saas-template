@@ -42,6 +42,7 @@ function ConversationPage() {
       storedMessages={page.messages}
       models={page.models}
       readOnly={page.readOnly}
+      initialFeedback={page.feedback}
     />
   )
 }
