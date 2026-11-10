@@ -1,11 +1,11 @@
-import { Button } from '@saas/ui'
+import { Button, Select, SelectContent, SelectItem, SelectTrigger } from '@saas/ui'
 import {
   createFileRoute,
   notFound as featureNotFound,
   Link,
   useRouter,
 } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { trackEvent } from '../../../features/analytics/track.ts'
 import {
   checkoutCustomer,
@@ -47,6 +47,8 @@ function BillingPage() {
   const [provider, setProvider] = useState(
     page.catalog.providers.find((p) => p.available)?.id ?? page.catalog.providers[0]?.id ?? '',
   )
+  const providerId = useId()
+  const planId = useId()
   const [priceId, setPriceId] = useState('')
   const [confirmed, setConfirmed] = useState(false)
   const intent = useRef<{ key: string; uuid: string } | null>(null)
@@ -58,7 +60,16 @@ function BillingPage() {
     (sub) =>
       !sub.cancelAtPeriodEnd && ['active', 'trialing', 'past_due', 'paused'].includes(sub.status),
   )
-  const selected = page.catalog.prices.find((price) => price.id === priceId)
+  const currentProvider = page.catalog.providers.find((p) => p.id === provider)
+  const providerLabel = (p: (typeof page.catalog.providers)[number]) =>
+    p.available ? p.id : `${p.id} — unavailable`
+  const prices = page.catalog.prices.filter(
+    (price) =>
+      price.provider === provider && page.catalog.plans.some((plan) => plan.id === price.planId),
+  )
+  const priceLabel = (price: (typeof prices)[number]) =>
+    `${page.catalog.plans.find((plan) => plan.id === price.planId)?.name} · ${money(price.amount, price.currency)}${price.interval ? ` / ${price.interval}` : ''}${price.available ? '' : ' · unavailable'}`
+  const selected = prices.find((price) => price.id === priceId)
   const isSubscription =
     page.catalog.plans.find((plan) => plan.id === selected?.planId)?.type === 'subscription'
   const change = isSubscription && renewing?.provider === 'stripe' && provider === 'stripe'
@@ -219,54 +230,64 @@ function BillingPage() {
           <h3 id="subscriptions" className="font-semibold">
             Choose a plan or credit pack
           </h3>
-          <label>
-            Payment method{' '}
-            <select
-              value={provider}
+          <div className="grid gap-2">
+            <label htmlFor={providerId}>Payment method</label>
+            <Select
+              value={currentProvider ? provider : ''}
               disabled={disabled}
-              onChange={(event) => {
-                setProvider(event.target.value)
+              onValueChange={(value) => {
+                setProvider(value)
                 setPriceId('')
                 setConfirmed(false)
                 intent.current = null
               }}
             >
-              {page.catalog.providers.map((p) => (
-                <option key={p.id} value={p.id} disabled={!p.available}>
-                  {p.id}
-                  {p.available ? '' : ' — unavailable'}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Plan{' '}
-            <select
-              value={priceId}
+              <SelectTrigger
+                id={providerId}
+                className="w-full"
+                placeholder="Payment method"
+                valueLabel={currentProvider ? providerLabel(currentProvider) : undefined}
+              />
+              <SelectContent>
+                {page.catalog.providers.map((p, index) => (
+                  <SelectItem key={p.id} index={index} value={p.id} disabled={!p.available}>
+                    {providerLabel(p)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <label htmlFor={planId}>Plan</label>
+            <Select
+              value={selected ? priceId : ''}
               disabled={disabled}
-              onChange={(event) => {
-                setPriceId(event.target.value)
+              onValueChange={(value) => {
+                setPriceId(value)
                 setConfirmed(false)
                 intent.current = null
               }}
             >
-              <option value="">Choose a plan</option>
-              {page.catalog.prices
-                .filter(
-                  (price) =>
-                    price.provider === provider &&
-                    page.catalog.plans.some((plan) => plan.id === price.planId),
-                )
-                .map((price) => (
-                  <option key={price.id} value={price.id} disabled={!price.available}>
-                    {page.catalog.plans.find((plan) => plan.id === price.planId)?.name} ·{' '}
-                    {money(price.amount, price.currency)}
-                    {price.interval ? ` / ${price.interval}` : ''}
-                    {price.available ? '' : ' · unavailable'}
-                  </option>
+              <SelectTrigger
+                id={planId}
+                className="w-full"
+                placeholder="Choose a plan"
+                valueLabel={selected ? priceLabel(selected) : undefined}
+              />
+              <SelectContent>
+                {prices.map((price, index) => (
+                  <SelectItem
+                    key={price.id}
+                    index={index}
+                    value={price.id}
+                    disabled={!price.available}
+                  >
+                    {priceLabel(price)}
+                  </SelectItem>
                 ))}
-            </select>
-          </label>
+              </SelectContent>
+            </Select>
+          </div>
           {!page.catalog.providers.some((p) => p.available) && (
             <p>Payments are currently unavailable.</p>
           )}

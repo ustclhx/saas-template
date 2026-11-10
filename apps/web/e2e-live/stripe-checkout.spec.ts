@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { register } from '../e2e/fixtures.ts'
+import { chooseOption } from '../e2e/select.ts'
 import { liveDb } from './live-env.ts'
 import { expectBillingReturn, payOnStripeCheckout, startStripeCheckout } from './stripe-checkout.ts'
 
@@ -14,7 +15,7 @@ test('Stripe 测试卡订阅：从定价页结账、回跳与回调入账只发�
   const slug = new URL(page.url()).pathname.split('/')[2] as string
 
   await page.goto('/pricing')
-  await page.getByLabel('Payment method').selectOption('stripe')
+  await chooseOption(page.getByRole('combobox', { name: 'Payment method', exact: true }), 'stripe')
   const pro = page.locator('section').filter({ has: page.getByRole('heading', { name: /^Pro\b/ }) })
   await expect(pro.getByText('$19.00 / month')).toBeVisible()
   await pro.getByRole('link', { name: 'View in my workspace' }).click()

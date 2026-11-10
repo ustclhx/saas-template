@@ -26,6 +26,7 @@ import {
 import { eq } from 'drizzle-orm'
 import { actionDb, actor, offlineProviderTransport } from './billing-actions-helper.ts'
 import { register, simulateClientIp } from './fixtures.ts'
+import { chooseOption } from './select.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 async function catalog(db: ReturnType<typeof actionDb>, subscriptionPlan = false) {
@@ -110,7 +111,9 @@ for (const realSubmission of [true, false])
         if (realSubmission) {
           await page.getByRole('link', { name: 'Billing', exact: true }).click()
           const form = page.getByRole('form', { name: 'Request a refund' })
-          await form.getByRole('combobox', { name: 'Payment', exact: true }).selectOption(paymentId)
+          await chooseOption(form.getByRole('combobox', { name: 'Payment', exact: true }), {
+            value: paymentId,
+          })
           await form
             .getByLabel('Reason', { exact: true })
             .fill('Please return part of this payment')

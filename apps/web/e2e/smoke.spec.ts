@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { expect, test } from '@playwright/test'
 import { APP_URL, login, register, simulateClientIp } from './fixtures.ts'
+import { chooseOption } from './select.ts'
 import { SMOKE_PRICE_ID } from './smoke-setup.ts'
 import { stubTurnstile } from './turnstile.ts'
 
@@ -38,8 +39,10 @@ test('register, sign out/in, and buy a credit pack through the local provider', 
 
   await page.getByRole('link', { name: 'Billing', exact: true }).click()
   await expect(page.getByText('Available credits: 0', { exact: false })).toBeVisible()
-  await page.getByLabel('Payment method').selectOption('stripe')
-  await page.getByRole('combobox', { name: 'Plan', exact: true }).selectOption(SMOKE_PRICE_ID)
+  await chooseOption(page.getByRole('combobox', { name: 'Payment method', exact: true }), 'stripe')
+  await chooseOption(page.getByRole('combobox', { name: 'Plan', exact: true }), {
+    value: SMOKE_PRICE_ID,
+  })
   await page.getByRole('button', { name: 'Continue to checkout' }).click()
   await expect(page).toHaveURL(/\/billing-return\?/)
   const providerRef = new URL(page.url()).searchParams.get('providerRef')

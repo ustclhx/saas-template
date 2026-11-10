@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { chooseOption } from './select.ts'
 import { DUMMY_TURNSTILE_TOKEN } from './turnstile.ts'
 
 const password = 'correct-horse-battery-staple'
@@ -51,7 +52,7 @@ test('换设备登录后应用区跟随账号语言，营销页继续按 URL，�
   expect(signup.status()).toBe(200)
   await page.goto('/app')
   await expect(page.getByText('Personal workspace', { exact: true })).toBeVisible()
-  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('zh')
+  await chooseOption(page.getByRole('combobox', { name: 'Language', exact: true }), '中文')
   await expect(page.getByText('个人空间', { exact: true })).toBeVisible()
   await expect(page.locator('html')).toHaveAttribute('lang', 'zh')
 

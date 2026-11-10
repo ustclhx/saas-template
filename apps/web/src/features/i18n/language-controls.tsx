@@ -1,4 +1,4 @@
-import { Button } from '@saas/ui'
+import { Button, Select, SelectContent, SelectItem, SelectTrigger } from '@saas/ui'
 import { useLocation } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { m } from '../../paraglide/messages.js'
@@ -31,6 +31,11 @@ export function LanguageControls({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const locale = getLocale()
+  const options = locales.map((value) => ({
+    value,
+    label: new Intl.DisplayNames([value], { type: 'language' }).of(value) ?? value,
+  }))
+  const currentLocale = options.find((option) => option.value === locale)
   useEffect(() => {
     setReady(true)
     setSuggestion(null)
@@ -100,29 +105,36 @@ export function LanguageControls({
           </Button>
         </aside>
       )}
-      <label
+      <div
         className={
           floating
-            ? 'fixed bottom-4 left-4 z-50 rounded-md border bg-background px-3 py-2 text-sm shadow-sm'
-            : 'inline-flex w-fit rounded-md border bg-background px-3 py-1.5 text-sm shadow-xs'
+            ? 'fixed bottom-4 left-4 z-50 rounded-md bg-background px-3 py-2 text-sm shadow-sm'
+            : 'inline-flex w-fit rounded-md bg-background px-3 py-1.5 text-sm shadow-xs'
         }
       >
         <span className="sr-only">{m.i18n_language()}</span>
-        <select
-          aria-label={m.i18n_language()}
-          value={locale}
+        <Select
+          value={currentLocale ? locale : ''}
           disabled={!ready || busy}
-          onChange={(event) => {
-            if (isLocale(event.target.value)) void select(event.target.value)
+          onValueChange={(value) => {
+            if (isLocale(value)) void select(value)
           }}
         >
-          {locales.map((value) => (
-            <option key={value} value={value}>
-              {new Intl.DisplayNames([value], { type: 'language' }).of(value) ?? value}
-            </option>
-          ))}
-        </select>
-      </label>
+          <SelectTrigger
+            aria-label={m.i18n_language()}
+            className="w-full min-w-0"
+            placeholder={m.i18n_language()}
+            valueLabel={currentLocale?.label}
+          />
+          <SelectContent>
+            {options.map((option, index) => (
+              <SelectItem key={option.value} index={index} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       {error && (
         <p
           role="alert"
