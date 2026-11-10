@@ -52,6 +52,39 @@
   深色的 blue / violet / green 预设改为深色）、`--badge-*` 色板。项目在 brand.css 改强调色或前景色后，
   `pnpm --filter @saas/ui test` 的对比度用例只覆盖模板预设，需自行确认开关滑块与轨道 ≥ 3:1。
 
+## 组件补齐 B 与预览页（tasks 4.2、4.3）
+
+### 破坏性变更（同步后必须处理）
+
+1. **DataTable `labels` 必填**：组件不再带英文默认文案，所有 `<DataTable>` 都要传 `labels`。
+   app 区与公开页传 `labels={dataTableLabels()}`（`apps/web/src/features/i18n/table-labels.ts`，文案在
+   `messages/<locale>/common.json` 的 `common_table_*`），后台列表沿用 `adminTableLabels()`。项目自建的列表一并补上，
+   否则 typecheck 失败。
+2. **DataTable 筛选下拉改为 `@saas/ui` Select**：原生 `<select>` 改为 Radix Select（随表单提交的隐藏原生 select 仍在）。
+   e2e 中对筛选下拉的 `getByLabel(…).selectOption(…)` 改用 `e2e/select.ts` 的 `chooseOption(trigger, 选项文字)`；
+   单元测试里 `fireEvent.change(select)` 改为打开触发器后点击选项。没有空值选项的筛选默认第一项，与原生一致。
+3. **字号**：`CardTitle` 由 `text-xl`（20px）改为 `text-title`（16px）；Card 说明、Alert、Label、DetailList 由 `text-sm`
+   改为 `text-body`（同为 14px，随 density 变化）。`type-scale.ts` 的正文回退值 13px → 14px，与 `--fs-body` 一致。
+   页面若依赖 20px 卡片标题，给 `CardTitle` 传 `className="text-display"` 之类的阶梯类，不写任意字号。
+4. **Button `link` 变体改用 `--primary-text`**（原 `--primary`）：默认等于 `--primary`，模板的深色 blue / violet / green
+   预设改为 400 号色以满足 4.5:1。项目在 brand.css 或自有预设中改了 `--primary` 时，须在 `.dark` 中同时给出
+   `--primary-text`（作文字对页面与卡片 ≥ 4.5:1）。
+5. **新增非密钥变量 `UI_PREVIEW`**：`/dev/ui` 组件预览页只在 `UI_PREVIEW=true` 时开放。项目自有 `wrangler.jsonc`
+   的顶层（开发）与 `env.staging.vars` 设 `"UI_PREVIEW": "true"`，**`env.production` 不设**（`check-wrangler-envs.mjs`
+   会拦截）；自托管默认不传即关闭。该页不预渲染、不进 sitemap、输出 noindex。
+6. **Sidebar 快捷键默认关闭**：`SidebarProvider` 的 `shortcut` 默认 `null`（上游默认 `[` / `]`）；需要时显式传入。
+
+### 新增组件与变量
+
+- 新组件：Tabs、Dropdown（菜单）、Sidebar、Toast（`Toaster` + `toast()`）、Combobox、Command Menu。可读文字全部由
+  调用方传入，清单见 `docs/design-system.md` §4。`Toaster` 含动效库，按 §4 在 app / admin 布局用 `React.lazy` 挂载，
+  不放进根布局。
+- 图标：业务页面从 `@saas/ui/icons` 按名称导入（apps 不能直接依赖 lucide-react）。
+- 变量：`--primary-text`、`--switch-thumb-off`（原写死白色）、`--z-toast`；工具类 `scroll-divider`、`scrollbar-hide`。
+  项目改过开关颜色时同时检查关闭态滑块与轨道 ≥ 3:1。
+- DataTable 表头底色由 `bg-muted/50` 改为 `bg-hover`，容器圆角 `rounded-xl`；单元格按函数调用渲染，调用方不必再为
+  保留行内按钮焦点而 `useMemo` 列定义。
+
 ## 主题预设
 
 `ui.preset` 可选 neutral、blue、violet、green，只换强调色与焦点环，不改圆角；圆角由 `ui.shape`

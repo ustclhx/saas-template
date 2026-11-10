@@ -2,6 +2,7 @@ import { Button, DataTable } from '@saas/ui'
 import { useRouter } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 import { adminListPage, offsetOfPage } from '../admin/list.ts'
+import { dataTableLabels } from '../i18n/table-labels.ts'
 import { getNotifications, readNotifications } from './notifications.functions.ts'
 
 type NotificationPage = Awaited<ReturnType<typeof getNotifications>>
@@ -55,6 +56,7 @@ export function NotificationCenter({ slug }: { slug: string }) {
         </Button>
         {error ? <p role="alert">{error}</p> : null}
         <DataTable
+          labels={dataTableLabels()}
           label="Notifications"
           rows={page.rows}
           getRowId={(row) => row.id}

@@ -81,6 +81,9 @@
     /* Fluid 的主按钮用前景色作底；模板改由 --primary 承载，预设只需改这一处即可换强调色 */
     --primary: #171717;
     --primary-foreground: #fafafa;
+    /* 模板新增（4.2）：强调色作文字（Button link 变体等）。默认即 --primary；深色预设的实心主按钮色
+       作文字不足 4.5:1，由预设在 .dark 中改为更亮的同色系 */
+    --primary-text: var(--primary);
     --secondary: #f4f4f5;
     --secondary-foreground: #171717;
     --muted: #f4f4f5;
@@ -119,6 +122,8 @@
     /* 模板新增：开启态 Switch 的滑块色（上游固定白色）。浅色强调色上白色即可；预设的深色强调色较浅，
        白色滑块不足 3:1，由预设在 .dark 中改为深色 */
     --switch-thumb-on: #ffffff;
+    /* 模板新增（4.2）：关闭态滑块色，原先组件内写死 bg-white；对关闭轨道 ≥ 3:1 由 presets.test.ts 断言 */
+    --switch-thumb-off: #ffffff;
 
     /* ── Badge 色板（Fluid badge：Tailwind 500 色阶，灰色取 400）。文字始终是正文色，色值只用于
        15% 淡底与圆点，浅色与深色共用 ── */
@@ -146,6 +151,8 @@
     --z-modal: 50;
     --z-popover: 60;
     --z-tooltip: 70;
+    /* Toast 在模态与提示之上：通知不被遮罩挡住 */
+    --z-toast: 80;
 
     /* ── 字号阶梯（Fluid type-scale）：六个角色 × default / compact ── */
     --fs-display: 28px;
@@ -270,6 +277,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-text: var(--primary-text);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -446,6 +454,64 @@ html.transitioning *::after {
     animation-range-end: var(--scroll-fade-size), 100%;
   }
 }
+/* scroll-divider：滚动边缘的细线（Fluid scroll-area 的 css 段，4.2 Command Menu 用）。
+   线画在父元素的伪元素上，借子孙 .scroll-fade 视口的滚动时间线；不支持滚动驱动动画的浏览器两者都没有 */
+@keyframes sf-divider-start {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes sf-divider-end {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@supports (timeline-scope: --sf) {
+  .scroll-divider {
+    position: relative;
+    timeline-scope: --sf-scroller;
+    --scroll-divider-size: 48px;
+  }
+  .scroll-divider .scroll-fade {
+    scroll-timeline-name: --sf-scroller;
+  }
+  .scroll-divider::before,
+  .scroll-divider::after {
+    content: "";
+    position: absolute;
+    left: var(--scroll-divider-inset, 0px);
+    right: var(--scroll-divider-inset, 0px);
+    height: 1px;
+    background-color: var(--border);
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0;
+  }
+  .scroll-divider::before {
+    top: 0;
+    animation: sf-divider-start both linear;
+    animation-timeline: --sf-scroller;
+    animation-range: 0 var(--scroll-divider-size);
+  }
+  .scroll-divider:first-child::before {
+    content: none;
+  }
+  .scroll-divider::after {
+    bottom: 0;
+    animation: sf-divider-end both linear;
+    animation-timeline: --sf-scroller;
+    animation-range: calc(100% - var(--scroll-divider-size)) 100%;
+  }
+  .scroll-divider:last-child::after {
+    content: none;
+  }
+}
 /* 细滚动条只用于内部滚动容器（ScrollArea 视口、弹层列表等），页面根保持系统默认 */
 @layer base {
   @media (pointer: fine) {
@@ -453,5 +519,14 @@ html.transitioning *::after {
       scrollbar-width: thin;
       scrollbar-color: rgb(var(--overlay) / 0.08) transparent;
     }
+  }
+}
+
+/* Tabs 横向溢出时隐藏滚动条（Fluid tabs 的 css 段） */
+@utility scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
   }
 }

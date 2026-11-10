@@ -175,7 +175,8 @@ test('UI package including project components may import primitives; similar pac
       '@base-ui-extra/react': '*',
       '@saas/ui': '*',
     }),
-    'apps/web/src/index.ts': "import '@saas/ui'; import 'motion-utils'; import 'radix-ui-extra'",
+    'apps/web/src/index.ts':
+      "import '@saas/ui'; import { Plus } from '@saas/ui/icons'; import 'motion-utils'; import 'radix-ui-extra'",
   })
   assert.deepEqual(check(), [])
 })

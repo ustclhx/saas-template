@@ -56,6 +56,8 @@ const nodeEnvBaseSchema = z.object({
     .optional()
     .transform((value) => (value === '' ? undefined : value)),
   AI_FAULT_INJECTION: z.string().optional(),
+  // 组件预览页 /dev/ui 开关（非密钥）；只有 `true` 时开放，生产不设
+  UI_PREVIEW: z.string().optional(),
   SENTRY_ENVIRONMENT: z.enum(['development', 'staging', 'production', 'smoke']).optional(),
   SENTRY_DSN: z
     .string()

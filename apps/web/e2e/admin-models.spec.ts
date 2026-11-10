@@ -184,13 +184,17 @@ test('platform admin can create, edit, disable and enable a model', async ({ pag
     const [sourceAfterCopy] = await sql`select params_schema from ai_model where key=${key}`
     expect(sourceAfterCopy?.params_schema).toEqual(editedSchema)
 
-    await page.getByLabel('Model type').selectOption('image')
+    // DataTable 筛选下拉为 @saas/ui Select（add-ui-design-system 4.2）
+    await chooseOption(page.getByRole('combobox', { name: 'Model type', exact: true }), 'Image')
     await page.getByRole('button', { name: 'Apply', exact: true }).click()
     await expect(card).toHaveCount(0)
     await expect(copy).toHaveCount(0)
     await expect(page).toHaveURL(/kind=image/)
-    await page.getByLabel('Model type').selectOption('text')
-    await page.getByLabel('Order models').selectOption('key_desc')
+    await chooseOption(page.getByRole('combobox', { name: 'Model type', exact: true }), 'Text')
+    await chooseOption(
+      page.getByRole('combobox', { name: 'Order models', exact: true }),
+      'Key descending',
+    )
     await page.getByRole('button', { name: 'Apply', exact: true }).click()
     await expect(copy).toBeVisible()
     const keys = await page

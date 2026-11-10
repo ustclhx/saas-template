@@ -10,6 +10,8 @@
 :root[data-preset="violet"].dark {
   --primary: #7c3aed;
   --primary-foreground: #ffffff;
+  /* 强调色作文字（link 变体）：实心主按钮色在深色页面上不足 4.5:1，改用 violet 400 号色 */
+  --primary-text: #a78bfa;
   --fluid-accent: #a78bfa;
   --focus-ring: #ddd6fe;
   /* 浅色强调色上白色滑块不足 3:1，开启态滑块改用深色 */
