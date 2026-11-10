@@ -72,6 +72,37 @@
 组件指纹清单随模板维护。Git 仓库只计算已跟踪的组件文件，新增组件须先 `git add`，再运行
 `pnpm ui:lock`。清单冲突在 rebase/merge 后重新生成，并执行 `pnpm check:ui`。
 
+### 多站点根文档属性（6.4）
+
+`apps/web/src/features/theme/html-attributes.ts` 与 `brand.css` 同属项目：模板创建后不再修改，
+生成器原样保留。模板维护旁边的类型、属性过滤和根布局接入。项目只需修改此文件的
+`getProjectHtmlAttributes`，即可在 SSR、构建期预渲染和客户端水合时得到一致的 `<html>` 属性：
+
+```ts
+import type { HtmlAttributesContext, ProjectHtmlAttributes } from './html-attributes.types.ts'
+
+export function getProjectHtmlAttributes(context: HtmlAttributesContext): ProjectHtmlAttributes {
+  return { 'data-site': context.pathname.startsWith('/west') ? 'west' : 'east' }
+}
+```
+
+上下文提供服务端请求 URL 的 `host`（含非默认端口）、当前 `locale`、不含语言前缀和查询参数的
+路由 `pathname`。函数应同步且无副作用，不使用浏览器 API 或数据库。允许字符串值的 `data-*`、
+`title`、`dir`（ltr/rtl/auto）、`translate`（yes/no）；`lang`、`data-preset`、事件、className、style
+等其余属性被忽略并记录 `theme.html_attribute_ignored` 警告（只记录属性名）。`lang` 与主题预设
+继续由模板写入。返回值随根路由上下文序列化，水合时直接复用。只在服务端首屏计算，客户端
+导航从现有 `<html>` 读取白名单属性，不发起服务端请求或按 pathname 重算；需要随路由变化时
+请在页面组件内处理。
+
+xuanxue 迁移：把根布局中 `data-site="east|west"` 的计算移到此函数，在 `brand.css` 中使用
+`:root[data-site="east"]` / `:root[data-site="west"]`（并覆盖深色组合）切换 token，再将
+`__root.tsx` / `root-document.tsx` 恢复为模板版本。
+
+预渲染属性在构建时按当次请求计算。同一静态文件被多个域名复用时，`host` 不会变为访问者域名；
+若按域名切换站点，需要每个域名分别构建对应产物或使用 SSR。按 pathname 分站可正常预渲染。
+同步后核对 SSR 原文含 `data-site`，关闭 JavaScript 检查首屏配色，再启用 JavaScript 检查水合
+无属性变化及 mismatch。`docs/design-system.md` 尚未合入 main，其多站点段落由后续文档任务引用本节。
+
 ### 指纹检查的已知限制
 
 检查以仓库中的 `packages/ui/components.lock.json` 为基准，同时修改组件与清单可以绕过比对。

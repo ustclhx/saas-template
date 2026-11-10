@@ -37,8 +37,15 @@ const paramKeys = new Set([
   'multi-tenant',
 ])
 const migrationPath = /^packages\/db\/migrations\/[^/]+\.sql$/
-// 项目品牌层：模板创建后不再修改，衍生项目 template-sync 时才不会在这里冲突（openspec add-ui-design-system D2）
+// 项目自有文件：模板创建后不再修改，衍生项目 template-sync 时才不会在这里冲突。
 export const brandPath = 'apps/web/src/styles/brand.css'
+const projectOwnedFiles = [
+  { path: brandPath, guidance: 'put template token changes in packages/ui/src/styles' },
+  {
+    path: 'apps/web/src/features/theme/html-attributes.ts',
+    guidance: 'put template HTML attribute handling outside the project-owned extension',
+  },
+]
 
 function git(cwd, ...args) {
   return execFileSync('git', args, {
@@ -384,19 +391,19 @@ export function lintMigrations(base, cwd = process.cwd()) {
   return errors
 }
 
-/** 品牌文件自创建提交之后不得修改或删除；尚未创建（早期版本）时不检查 */
+/** 项目自有文件自创建提交之后不得修改或删除；尚未创建（早期版本）时不检查 */
 export function brandFileErrors(target = 'HEAD', cwd = process.cwd()) {
-  const created = git(cwd, 'log', '--diff-filter=A', '--format=%H', target, '--', brandPath)
-    .split('\n')
-    .filter(Boolean)
-    .at(-1)
-  if (!created) return []
-  const changed = git(cwd, 'diff', '--name-only', created, target, '--', brandPath)
-  return changed
-    ? [
-        `${brandPath}: project-owned brand file must stay as created in ${created.slice(0, 12)}; put template token changes in packages/ui/src/styles`,
-      ]
-    : []
+  return projectOwnedFiles.flatMap(({ path, guidance }) => {
+    const created = git(cwd, 'log', '--diff-filter=A', '--format=%H', target, '--', path)
+      .split('\n')
+      .filter(Boolean)
+      .at(-1)
+    if (!created) return []
+    const changed = git(cwd, 'diff', '--name-only', created, target, '--', path)
+    return changed
+      ? [`${path}: project-owned file must stay as created in ${created.slice(0, 12)}; ${guidance}`]
+      : []
+  })
 }
 
 function keys(text, regex) {
