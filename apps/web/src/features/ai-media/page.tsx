@@ -1,4 +1,4 @@
-import { Button, Label } from '@saas/ui'
+import { Button, Label, Select, SelectContent, SelectItem, SelectTrigger } from '@saas/ui'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { m } from '../../paraglide/messages.js'
@@ -32,19 +32,16 @@ export function MediaSubmitPage({
       {model ? (
         <>
           <Label htmlFor="media-model">{m.media_model()}</Label>
-          <select
-            id="media-model"
-            className="rounded-md border p-2"
-            value={modelKey}
-            disabled={busy}
-            onChange={(event) => setModelKey(event.target.value)}
-          >
-            {page.models.map((model) => (
-              <option key={model.key} value={model.key}>
-                {model.key} · {model.kind === 'image' ? m.media_image() : m.media_video()}
-              </option>
-            ))}
-          </select>
+          <Select value={model.key} disabled={busy} onValueChange={setModelKey}>
+            <SelectTrigger id="media-model" className="w-full" placeholder={m.media_model()} />
+            <SelectContent>
+              {page.models.map((model, index) => (
+                <SelectItem key={model.key} index={index} value={model.key}>
+                  {model.key} · {model.kind === 'image' ? m.media_image() : m.media_video()}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <ModelForm
             key={model.key}
             model={model}
@@ -219,6 +216,7 @@ function ParameterForm({
             params={params}
             files={files}
             errors={errors}
+            disabled={busy || page.readOnly}
             uploading={uploading}
             onChange={change}
             onUpload={(name, file) => void upload(name, file)}

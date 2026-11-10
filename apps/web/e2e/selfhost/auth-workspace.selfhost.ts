@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { delimiter } from 'node:path'
 import { promisify } from 'node:util'
 import { expect, type Page, test } from '@playwright/test'
+import { chooseOption } from '../select.ts'
 
 const runFile = promisify(execFile)
 const PASSWORD = 'correct-horse-battery'
@@ -240,9 +241,10 @@ test('fresh Node Compose: delivered verification, sign-out, password login and t
   await expect(page.getByText(`${name} (${email}) · owner`, { exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Delete team workspace', exact: true })).toBeVisible()
 
-  await page.getByLabel('Switch workspace', { exact: true }).selectOption({
-    label: 'Personal (personal)',
-  })
+  await chooseOption(
+    page.getByRole('combobox', { name: 'Switch workspace', exact: true }),
+    'Personal (personal)',
+  )
   await expect(page).toHaveURL(personalURL)
   await expect(page.getByTestId('workspace-name')).toHaveText('Personal')
   await page.getByRole('link', { name: copy.settings, exact: true }).click()
@@ -250,7 +252,10 @@ test('fresh Node Compose: delivered verification, sign-out, password login and t
   await expect(page.getByRole('link', { name: 'Delete team workspace', exact: true })).toHaveCount(
     0,
   )
-  await page.getByLabel('Switch workspace', { exact: true }).selectOption({ label: teamName })
+  await chooseOption(
+    page.getByRole('combobox', { name: 'Switch workspace', exact: true }),
+    teamName,
+  )
   await expect(page).toHaveURL(`${baseURL}/app/${slug}`)
   await expect(page.getByTestId('workspace-name')).toHaveText(teamName)
   expect(await sessionIdentity(page)).toEqual({ email, verified: true })

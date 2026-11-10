@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import type { APIResponse, Page } from '@playwright/test'
 import type { Pricing } from '@saas/ai'
+import { chooseOption } from '../select.ts'
 import { guidancePrefix } from './accounts.ts'
 import type { FaultModelDefinition } from './fault-definitions.ts'
 import type { FaultWorkspace } from './fault-readiness.ts'
@@ -200,20 +201,19 @@ async function failOnce(page: Page, workspace: FaultWorkspace, model: FaultModel
   await expect(page).toHaveURL(/\/chat\/[0-9a-f-]{36}$/)
   const conversationId = new URL(page.url()).pathname.split('/').at(-1) ?? ''
   // 模型列表有缓存，新启用的故障模型可能稍后才出现。
-  await expect
-    .poll(
-      async () => {
-        const options = await page
-          .getByLabel('Model', { exact: true })
-          .locator('option[value]')
-          .allTextContents()
-        if (!options.includes(model.key)) await page.reload()
-        return options
-      },
-      { timeout: 90_000, intervals: [1_000, 2_000, 5_000] },
-    )
-    .toContain(model.key)
-  await page.getByLabel('Model', { exact: true }).selectOption({ label: model.key })
+  await expect(async () => {
+    await page.reload()
+    const trigger = page.getByRole('combobox', { name: 'Model', exact: true })
+    expect(await trigger.count()).toBe(1)
+    await expect(async () => {
+      if (!(await page.getByRole('listbox').isVisible())) await trigger.click({ timeout: 1_000 })
+      await expect(page.getByRole('listbox')).toBeVisible({ timeout: 500 })
+    }).toPass({ timeout: 10_000, intervals: [100, 250, 500] })
+    expect(await page.getByRole('option', { name: model.key, exact: true }).count()).toBe(1)
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('listbox')).toHaveCount(0)
+    await chooseOption(trigger, model.key)
+  }).toPass({ timeout: 90_000, intervals: [1_000, 2_000, 5_000] })
   await page.getByLabel('Message', { exact: true }).fill(TEXT_PROMPT)
   // 只点击一次；之后只读等待终态，不重新发送。
   await page.getByRole('button', { name: 'Send', exact: true }).click()

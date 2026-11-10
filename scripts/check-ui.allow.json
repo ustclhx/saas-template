@@ -31,54 +31,24 @@
     ]
   },
   "pendingReplacement": {
-    "apps/web/src/features/ai/model-picker.tsx": [
-      {
-        "rule": "native-select",
-        "value": "<select>",
-        "count": 1,
-        "reason": "5.2 负责的功能目录仍存在此违例；本次 5.3 仅删除 admin 私有控件。存量原生选择控件，待第 5 组迁移到 @saas/ui Select（基线第 26 行）。"
-      }
-    ],
-    "apps/web/src/features/ai-media/page.tsx": [
-      {
-        "rule": "native-select",
-        "value": "<select>",
-        "count": 1,
-        "reason": "5.2 负责的功能目录仍存在此违例；本次 5.3 仅删除 admin 私有控件。存量原生选择控件，待第 5 组迁移到 @saas/ui Select（基线第 35 行）。"
-      }
-    ],
-    "apps/web/src/features/ai-media/parameter-form.tsx": [
-      {
-        "rule": "native-select",
-        "value": "<select>",
-        "count": 1,
-        "reason": "5.2 负责的功能目录仍存在此违例；本次 5.3 仅删除 admin 私有控件。存量原生选择控件，待第 5 组迁移到 @saas/ui Select（基线第 50 行）。"
-      },
-      {
-        "rule": "native-select",
-        "value": "<select>",
-        "count": 1,
-        "reason": "5.2 负责的功能目录仍存在此违例；本次 5.3 仅删除 admin 私有控件。存量原生选择控件，待第 5 组迁移到 @saas/ui Select（基线第 79 行）。"
-      }
-    ],
     "apps/web/src/features/ai-media/tasks-page.tsx": [
       {
         "rule": "arbitrary-class",
         "value": "grid-cols-[auto_1fr]",
         "count": 1,
-        "reason": "5.2 负责的功能目录仍存在此违例；本次 5.3 仅删除 admin 私有控件。存量任意值工具类，待第 5 组改用设计 token 工具类或共享组件（基线第 291 行）。"
+        "reason": "存量任意值工具类，待第 5 组改用设计 token 工具类或共享组件（基线第 291 行）。"
       },
       {
         "rule": "arbitrary-class",
         "value": "max-h-[32rem]",
         "count": 1,
-        "reason": "5.2 负责的功能目录仍存在此违例；本次 5.3 仅删除 admin 私有控件。存量任意值工具类，待第 5 组改用设计 token 工具类或共享组件（基线第 406 行）。"
+        "reason": "存量任意值工具类，待第 5 组改用设计 token 工具类或共享组件（基线第 406 行）。"
       },
       {
         "rule": "arbitrary-class",
         "value": "max-h-[32rem]",
         "count": 1,
-        "reason": "5.2 负责的功能目录仍存在此违例；本次 5.3 仅删除 admin 私有控件。存量任意值工具类，待第 5 组改用设计 token 工具类或共享组件（基线第 415 行）。"
+        "reason": "存量任意值工具类，待第 5 组改用设计 token 工具类或共享组件（基线第 415 行）。"
       }
     ],
     "apps/web/src/features/auth/auth-layout.tsx": [
@@ -86,7 +56,7 @@
         "rule": "arbitrary-class",
         "value": "focus-visible:ring-[3px]",
         "count": 1,
-        "reason": "5.2 负责的功能目录仍存在此违例；本次 5.3 仅删除 admin 私有控件。存量任意值工具类，待第 5 组改用设计 token 工具类或共享组件（基线第 37 行）。"
+        "reason": "存量任意值工具类，待第 5 组改用设计 token 工具类或共享组件（基线第 37 行）。"
       }
     ],
     "apps/web/src/features/auth/turnstile.tsx": [
@@ -94,7 +64,7 @@
         "rule": "arbitrary-class",
         "value": "min-h-[65px]",
         "count": 1,
-        "reason": "5.2 负责的功能目录仍存在此违例；本次 5.3 仅删除 admin 私有控件。存量任意值工具类，待第 5 组改用设计 token 工具类或共享组件（基线第 126 行）。"
+        "reason": "存量任意值工具类，待第 5 组改用设计 token 工具类或共享组件（基线第 126 行）。"
       }
     ],
     "apps/web/src/features/marketing/docs-layout.tsx": [
@@ -102,47 +72,7 @@
         "rule": "arbitrary-class",
         "value": "md:grid-cols-[14rem_1fr]",
         "count": 1,
-        "reason": "5.2 负责的功能目录仍存在此违例；本次 5.3 仅删除 admin 私有控件。存量任意值工具类，待第 5 组改用设计 token 工具类或共享组件（基线第 25 行）。"
-      }
-    ],
-    "apps/web/src/features/settings/account-sections.tsx": [
-      {
-        "rule": "native-select",
-        "value": "<select>",
-        "count": 1,
-        "reason": "5.2 负责的功能目录仍存在此违例；本次 5.3 仅删除 admin 私有控件。存量原生选择控件，待第 5 组迁移到 @saas/ui Select（基线第 172 行）。"
-      }
-    ],
-    "apps/web/src/features/workspace/components.tsx": [
-      {
-        "rule": "native-select",
-        "value": "<select>",
-        "count": 1,
-        "reason": "5.2 负责的功能目录仍存在此违例；本次 5.3 仅删除 admin 私有控件。存量原生选择控件，待第 5 组迁移到 @saas/ui Select（基线第 35 行）。"
-      },
-      {
-        "rule": "native-select",
-        "value": "<select>",
-        "count": 1,
-        "reason": "5.2 负责的功能目录仍存在此违例；本次 5.3 仅删除 admin 私有控件。存量原生选择控件，待第 5 组迁移到 @saas/ui Select（基线第 181 行）。"
-      },
-      {
-        "rule": "native-select",
-        "value": "<select>",
-        "count": 1,
-        "reason": "5.2 负责的功能目录仍存在此违例；本次 5.3 仅删除 admin 私有控件。存量原生选择控件，待第 5 组迁移到 @saas/ui Select（基线第 200 行）。"
-      },
-      {
-        "rule": "browser-dialog",
-        "value": "window.confirm",
-        "count": 1,
-        "reason": "5.2 负责的功能目录仍存在此违例；本次 5.3 仅删除 admin 私有控件。存量浏览器确认调用，待第 5 组迁移到共享确认对话框（基线第 213 行）。"
-      },
-      {
-        "rule": "browser-dialog",
-        "value": "window.confirm",
-        "count": 1,
-        "reason": "5.2 负责的功能目录仍存在此违例；本次 5.3 仅删除 admin 私有控件。存量浏览器确认调用，待第 5 组迁移到共享确认对话框（基线第 224 行）。"
+        "reason": "存量任意值工具类，待第 5 组改用设计 token 工具类或共享组件（基线第 25 行）。"
       }
     ]
   }

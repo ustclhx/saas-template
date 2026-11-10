@@ -1,4 +1,4 @@
-import { Label } from '@saas/ui'
+import { Label, Select, SelectContent, SelectItem, SelectTrigger } from '@saas/ui'
 import {
   creditEstimate,
   type EstimateOptions,
@@ -12,7 +12,7 @@ export function ModelPicker({
   models,
   value,
   onChange,
-  disabled,
+  disabled = false,
 }: {
   models: readonly PickerModel[]
   value: string | undefined
@@ -20,24 +20,26 @@ export function ModelPicker({
   disabled?: boolean
 }) {
   if (models.length === 0) return <p role="status">{MODEL_PICKER_COPY.empty}</p>
+  const current = models.find((model) => model.id === (value ?? models[0]?.id))
   return (
-    <p>
+    <div>
       <Label htmlFor="ai-model">{MODEL_PICKER_COPY.label}</Label>
-      <select
-        id="ai-model"
-        name="model"
-        className="rounded-md border p-2"
-        value={value ?? models[0]?.id}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        {models.map((model) => (
-          <option key={model.id} value={model.id}>
-            {model.key}
-          </option>
-        ))}
-      </select>
-    </p>
+      <Select name="model" value={current?.id ?? ''} disabled={disabled} onValueChange={onChange}>
+        <SelectTrigger
+          id="ai-model"
+          className="w-full"
+          placeholder={MODEL_PICKER_COPY.label}
+          valueLabel={current?.key}
+        />
+        <SelectContent>
+          {models.map((model, index) => (
+            <SelectItem key={model.id} index={index} value={model.id}>
+              {model.key}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   )
 }
 

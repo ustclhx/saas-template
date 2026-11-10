@@ -11,6 +11,7 @@ import {
   simulateClientIp,
   verifyInvitation,
 } from './fixtures.ts'
+import { chooseOption } from './select.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 test('workspace creation, invitation entry and personal switching obey tenancy flag', async ({
@@ -85,7 +86,10 @@ test('workspace creation, invitation entry and personal switching obey tenancy f
   })
   await page.getByRole('button', { name: 'Send invitation' }).click()
   await expect(page.getByText(`invite-${key}@example.com`, { exact: false })).toBeVisible()
-  await page.getByLabel('Switch workspace').selectOption({ label: 'Personal (personal)' })
+  await chooseOption(
+    page.getByRole('combobox', { name: 'Switch workspace' }),
+    'Personal (personal)',
+  )
   await expect(page).toHaveURL(personalUrl)
   await expect(page.getByTestId('workspace-name')).toHaveText('Personal')
   await page.goto(`/accept-invitation?id=${invitationId}`)
@@ -123,7 +127,7 @@ test('workspace creation, invitation entry and personal switching obey tenancy f
   await page.context().clearCookies()
   await login(page, ownerEmail)
   await page.goto(teamSettings)
-  await page.getByLabel('Role for Invited Member').selectOption('admin')
+  await chooseOption(page.getByRole('combobox', { name: 'Role for Invited Member' }), 'Admin')
   await expect(
     page.getByText(`Invited Member (invite-${key}@example.com) · admin`, { exact: true }),
   ).toBeVisible()
@@ -132,8 +136,28 @@ test('workspace creation, invitation entry and personal switching obey tenancy f
   const revoked = page.getByRole('listitem').filter({ hasText: `revoke-${key}@example.com` })
   await revoked.getByRole('button', { name: 'Revoke invitation' }).click()
   await expect(revoked).toContainText('canceled')
-  page.on('dialog', (dialog) => dialog.accept())
-  await page.getByRole('button', { name: 'Transfer ownership' }).click()
+  let transferRequests = 0
+  page.on('request', (request) => {
+    if (request.url().endsWith('/api/auth/organization/transfer-owner')) transferRequests += 1
+  })
+  const transferButton = page.getByRole('button', { name: 'Transfer ownership', exact: true })
+  await transferButton.click()
+  const transferDialog = page.getByRole('alertdialog', { name: 'Transfer ownership?' })
+  await expect(transferDialog).toContainText(
+    'Transfer ownership to Invited Member? You will become an admin.',
+  )
+  await transferDialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(transferDialog).toHaveCount(0)
+  await expect(transferButton).toBeFocused()
+  expect(transferRequests).toBe(0)
+  await page.reload()
+  await expect(
+    page.getByText(`Invited Member (invite-${key}@example.com) · admin`, { exact: true }),
+  ).toBeVisible()
+  await transferButton.click()
+  await transferDialog.getByRole('button', { name: 'Transfer ownership', exact: true }).click()
+  await expect(transferDialog).toHaveCount(0)
+  expect(transferRequests).toBe(1)
   await expect(
     page.getByText(`Invited Member (invite-${key}@example.com) · owner`, { exact: true }),
   ).toBeVisible()
@@ -144,8 +168,48 @@ test('workspace creation, invitation entry and personal switching obey tenancy f
   else await login(page, `invite-${key}@example.com`)
   await page.goto(teamSettings)
   const oldOwner = page.getByRole('listitem').filter({ hasText: ownerEmail })
-  await oldOwner.getByRole('button', { name: 'Remove', exact: true }).click()
+  let removeRequests = 0
+  page.on('request', (request) => {
+    if (request.url().endsWith('/api/auth/organization/remove-member')) removeRequests += 1
+  })
+  const removeButton = oldOwner.getByRole('button', { name: 'Remove', exact: true })
+  await removeButton.click()
+  const removeDialog = page.getByRole('alertdialog', { name: 'Remove member?' })
+  await expect(removeDialog).toContainText('Remove Workspace Owner from this workspace?')
+  await removeDialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(removeDialog).toHaveCount(0)
+  await expect(removeButton).toBeFocused()
+  expect(removeRequests).toBe(0)
+  await page.reload()
+  await expect(oldOwner).toBeVisible()
+  let releaseFailure = () => {}
+  const heldFailure = new Promise<void>((resolve) => {
+    releaseFailure = resolve
+  })
+  const removalUrl = '**/api/auth/organization/remove-member'
+  await page.route(removalUrl, async (route) => {
+    await heldFailure
+    await route.fulfill({ status: 403, json: { code: 'WORKSPACE_PERMISSION' } })
+  })
+  await removeButton.click()
+  await removeDialog.getByRole('button', { name: 'Remove', exact: true }).click()
+  await expect(removeDialog.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled()
+  await expect(removeDialog.getByRole('button', { name: 'Remove', exact: true })).toBeDisabled()
+  await page.keyboard.press('Escape')
+  await expect(removeDialog).toBeVisible()
+  releaseFailure()
+  await expect(removeDialog).toHaveCount(0)
+  await expect(page.getByRole('alert')).toHaveText(
+    'You do not have permission to manage these members.',
+  )
+  await expect(oldOwner).toBeVisible()
+  expect(removeRequests).toBe(1)
+  await page.unroute(removalUrl)
+  await removeButton.click()
+  await removeDialog.getByRole('button', { name: 'Remove', exact: true }).click()
+  await expect(removeDialog).toHaveCount(0)
   await expect(oldOwner).toHaveCount(0)
+  expect(removeRequests).toBe(2)
   await page.screenshot({ path: test.info().outputPath('team-member-management.png') })
   await page.context().clearCookies()
   await login(page, ownerEmail)
