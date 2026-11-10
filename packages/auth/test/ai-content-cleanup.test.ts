@@ -27,6 +27,7 @@ afterAll(async () => {
   // 个人空间的 id 即用户 id
   const ids = [...new Set([...users.createdOrgs, ...userIds])]
   if (ids.length) {
+    await sql`delete from ai_message_feedback where workspace_id in ${sql(ids)}`
     await sql`delete from ai_message where workspace_id in ${sql(ids)}`
     await sql`delete from ai_conversation where workspace_id in ${sql(ids)}`
     await sql`delete from file where workspace_id in ${sql(ids)}`
@@ -94,7 +95,10 @@ async function content(
 ) {
   const sql = a.db.$client
   const conversation = newId()
-  await sql`insert into ai_conversation (id,workspace_id,user_id,model_key) values (${conversation},${workspaceId},${userId},'m')`
+  // 对象对话（add-subject-chat）：带 subject 字段与首条 system 上下文，已完成的回复带评分
+  await sql`insert into ai_conversation (id,workspace_id,user_id,model_key,subject_type,subject_id)
+    values (${conversation},${workspaceId},${userId},'m','report',${newId()})`
+  await sql`insert into ai_message (id,conversation_id,workspace_id,role) values (${newId()},${conversation},${workspaceId},'system')`
   const assistant = newId()
   const holdId = await hold(
     a,
@@ -106,6 +110,9 @@ async function content(
   await sql`insert into ai_message (id,conversation_id,workspace_id,role) values (${newId()},${conversation},${workspaceId},'user')`
   await sql`insert into ai_message (id,conversation_id,workspace_id,role,status,hold_id)
     values (${assistant},${conversation},${workspaceId},'assistant',${heldMessage ? 'streaming' : 'completed'},${holdId})`
+  if (!heldMessage)
+    await sql`insert into ai_message_feedback (id,workspace_id,message_id,user_id,rating,comment,model_key,subject_type)
+      values (${newId()},${workspaceId},${assistant},${userId},'down','too long','m','report')`
   const task = newId()
   const taskHold = await hold(
     a,
@@ -135,6 +142,12 @@ async function counts(a: App, workspaceId: string, userId?: string) {
     (select count(*)::int from ai_task where workspace_id=${workspaceId} ${by}) as tasks,
     (select count(*)::int from file where workspace_id=${workspaceId} ${by}) as files`
   return row
+}
+async function feedbackCount(a: App, workspaceId: string, userId?: string) {
+  const sql = a.db.$client
+  const [row] = await sql<{ n: number }[]>`select count(*)::int as n from ai_message_feedback
+    where workspace_id=${workspaceId} ${userId ? sql`and user_id=${userId}` : sql``}`
+  return row?.n
 }
 async function finance(a: App, workspaceId: string) {
   const sql = a.db.$client
@@ -181,6 +194,7 @@ describe('AI content deletion in workerd', () => {
     await sql`update ai_task set status='failed' where id=${pending.task}`
     await cleanupExpiredWorkspaces(a.db)
     expect(await counts(a, id)).toMatchObject({ conversations: 0, messages: 0, tasks: 0 })
+    expect(await feedbackCount(a, id)).toBe(0)
     const after = await finance(a, id)
     expect(after.ledger).toEqual(before.ledger)
     expect(after.holds.map((h) => h.id)).toEqual(before.holds.map((h) => h.id))
@@ -197,7 +211,7 @@ describe('AI content deletion in workerd', () => {
     await content(a, id, owner.id)
     await deleteTeamWorkspace({ ...owner.options, workspaceId: id })
     await cleanupExpiredWorkspaces(a.db)
-    expect(await counts(a, id)).toEqual({ conversations: 1, messages: 2, tasks: 1, files: 1 })
+    expect(await counts(a, id)).toEqual({ conversations: 1, messages: 3, tasks: 1, files: 1 })
   })
 
   it('deletes a deleted member’s team AI content without touching other members or credits', async () => {
@@ -240,16 +254,20 @@ describe('AI content deletion in workerd', () => {
     )
     expect(await counts(a, id, owner.id)).toEqual({
       conversations: 1,
-      messages: 2,
+      messages: 3,
       tasks: 1,
       files: 1,
     })
     expect(await counts(a, member.id, member.id)).toEqual({
       conversations: 1,
-      messages: 2,
+      messages: 3,
       tasks: 1,
       files: 1,
     })
+    // 评分随消息删除，其他成员与个人空间的评分保留
+    expect(await feedbackCount(a, id, member.id)).toBe(0)
+    expect(await feedbackCount(a, id, owner.id)).toBe(1)
+    expect(await feedbackCount(a, member.id)).toBe(1)
     expect(await finance(a, id)).toEqual(before)
   })
 

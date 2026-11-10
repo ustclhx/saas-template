@@ -25,6 +25,20 @@ export const textConfigSchema = z.strictObject({
     .prefault({}),
   reasoning: z.strictObject({ display: z.boolean().default(false) }).prefault({}),
   failedReplyRefund: z.enum(['no-visible-output', 'all']).default('no-visible-output'),
+  /**
+   * 每轮回复后生成的后续推荐问题（add-subject-chat design 决策 5）：默认关闭，每条回复最多生成一次。
+   * charge 为 false 时由平台承担；为 true 时先预扣、按实际 token 用量扣积分，且只对按 token 计价的
+   * 模型生成（按次计价的模型会让每次追问收一次完整单轮费用，直接跳过）。
+   * modelKey 为空时用回复所用的模型；建议配置一个便宜的、按 token 计价的模型 key。
+   */
+  followUps: z
+    .strictObject({
+      enabled: z.boolean().default(false),
+      charge: z.boolean().default(false),
+      count: z.number().int().min(2).max(3).default(3),
+      modelKey: z.string().min(1).max(200).nullable().default(null),
+    })
+    .prefault({}),
 })
 
 export type TextConfig = z.infer<typeof textConfigSchema>
@@ -196,6 +210,7 @@ export const templateConfigDefaults = {
       thinking: { default: 'off', userToggle: false },
       reasoning: { display: false },
       failedReplyRefund: 'no-visible-output',
+      followUps: { enabled: false, charge: false, count: 3, modelKey: null },
     },
     image: true,
     video: true,

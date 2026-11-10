@@ -220,9 +220,11 @@ export async function startWorkspaceChat(
 
   const languageModel = (deps.languageModelFactory ?? defaultLanguageModelFactory)(model, deps.env)
 
-  // 3. 对话与历史：只读创建者自己的对话
+  // 3. 对话与历史：只读创建者自己的对话。首条 system 消息是建对话时写入的对象上下文
+  // （add-subject-chat），作为固定前缀放在提示词最前，截断时保留
   let conversationId = input.conversationId
   let history: { role: 'user' | 'assistant'; text: string }[] = []
+  let systemPrefix: { role: 'system'; text: string } | undefined
   if (conversationId !== undefined) {
     const [conversation] = await s
       .select(aiConversation, {
@@ -234,11 +236,14 @@ export async function startWorkspaceChat(
       .select(aiMessage, {
         where: and(
           eq(aiMessage.conversationId, conversationId),
-          inArray(aiMessage.role, ['user', 'assistant']),
+          inArray(aiMessage.role, ['system', 'user', 'assistant']),
           inArray(aiMessage.status, ['completed', 'aborted', 'failed']),
         ) as SQL,
       })
       .orderBy(asc(aiMessage.id))
+    const first = rows[0]
+    const prefixText = first?.role === 'system' ? messageText(first.parts) : ''
+    if (prefixText) systemPrefix = { role: 'system', text: prefixText }
     history = rows.flatMap((row) => {
       const text = messageText(row.parts)
       return text && (row.role === 'user' || row.role === 'assistant')
@@ -253,10 +258,16 @@ export async function startWorkspaceChat(
     thinking,
     continuation,
   } = textModelConfig(model)
-  let prompt = context.prompt ?? [...history, { role: 'user' as const, text: userText }]
+  let prompt: { role: 'system' | 'user' | 'assistant'; text: string }[] = context.prompt ?? [
+    ...history,
+    { role: 'user' as const, text: userText },
+  ]
+  const prefix = context.prompt ? undefined : systemPrefix
   if (pricing.mode === 'per_call' && pricing.limits?.maxInputTokens !== undefined) {
-    prompt = truncateHistory(prompt, pricing.limits.maxInputTokens, tokensPerChar)
+    const reserved = prefix ? estimateInputTokens([prefix], tokensPerChar) : 0
+    prompt = truncateHistory(prompt, pricing.limits.maxInputTokens - reserved, tokensPerChar)
   }
+  if (prefix) prompt = [prefix, ...prompt]
   const inputTokens = estimateInputTokens(prompt, tokensPerChar)
 
   // 4. 欠费 / 余额：按余额确定最大输出与预扣额（hold 在锁内再次检查）
@@ -359,7 +370,16 @@ export async function startWorkspaceChat(
   const result = createChatStream({
     model: streamModel,
     provider: model.provider,
-    messages: prompt.map((message) => ({ role: message.role, content: message.text })),
+    messages: prompt.map((message, index) =>
+      index === 0 && prefix
+        ? // 固定前缀：Anthropic 需显式标记缓存断点，其他服务商忽略该选项并按前缀自动缓存
+          {
+            role: 'system' as const,
+            content: message.text,
+            providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } },
+          }
+        : { role: message.role, content: message.text },
+    ),
     thinking: supportsTextThinking(model.provider, thinking)
       ? (input.thinking ?? textConfig.thinking.default === 'on')
       : undefined,

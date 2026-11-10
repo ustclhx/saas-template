@@ -4,12 +4,13 @@ import { type InsufficientCreditsDetails, parseInsufficientCredits } from '@saas
 import { Button, Label } from '@saas/ui'
 import { Link } from '@tanstack/react-router'
 import { DefaultChatTransport } from 'ai'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { templateConfig } from '../../server/template-config.ts'
 import { trackEvent } from '../analytics/track.ts'
 import { FormAlert } from '../auth/auth-layout.tsx'
 import { HydratedControls } from '../workspace/components.tsx'
+import { MessageFeedback, SuggestionChips } from './chat-extras.tsx'
 import {
   type ChatMessageStatus,
   type ChatUIMessage,
@@ -27,8 +28,10 @@ import {
   toChatMessages,
 } from './conversation.ts'
 import { renameConversation } from './conversations.functions.ts'
+import type { MessageFeedbackValue } from './feedback.ts'
 import type { PickerModel } from './model-picker.ts'
 import { CreditEstimateText, ModelPicker } from './model-picker.tsx'
+import { getFollowUps, setMessageFeedback } from './subject-chat.functions.ts'
 
 const BILLING_CODES = new Set(['INSUFFICIENT_CREDITS', 'CREDIT_DEBT', 'UPGRADE_REQUIRED'])
 
@@ -43,14 +46,36 @@ export function ChatPage({
   storedMessages,
   models,
   readOnly,
+  variant = 'page',
+  openingSuggestions = [],
+  defaultModelKey,
+  initialFeedback = {},
+  autoSend,
 }: {
   slug: string
   conversation: { id: string; title: string }
   storedMessages: readonly StoredMessage[]
   models: readonly PickerModel[]
   readOnly: boolean
+  /** embedded：嵌入其他页面（对象对话），不显示标题栏与返回链接 */
+  variant?: 'page' | 'embedded'
+  /** 对话无消息时显示的开场推荐问题（add-subject-chat） */
+  openingSuggestions?: readonly string[]
+  /** 对象 provider 给出的默认计费模型 key；不可用时回落到第一个模型 */
+  defaultModelKey?: string | null | undefined
+  /** 当前用户对历史回复的评分 */
+  initialFeedback?: Readonly<Record<string, MessageFeedbackValue>>
+  /** 挂载后立即发送的第一条消息（对象对话新建后发送用户已输入或点击的问题） */
+  autoSend?: string | undefined
 }) {
-  const [modelId, setModelId] = useState(models[0]?.id)
+  const [modelId, setModelId] = useState(
+    (models.find((m) => m.key === defaultModelKey) ?? models[0])?.id,
+  )
+  const [feedback, setFeedback] = useState(initialFeedback)
+  // 最近一条回复的后续推荐问题；推荐问题只在界面上显示，不进入历史
+  const [followUps, setFollowUps] = useState<{ messageId: string; questions: string[] } | null>(
+    null,
+  )
   const model = models.find((m) => m.id === modelId)
   const canToggleThinking = templateConfig.ai.text.thinking.userToggle && model?.supportsThinking
   const [input, setInput] = useState('')
@@ -91,6 +116,14 @@ export function ChatPage({
     transport,
     onFinish: ({ messages, isError, isAbort }) => {
       if (!isAbort) trackEvent(isError ? 'generate_fail' : 'generate_success')
+      const replyId = messages.at(-1)?.metadata?.messageId
+      if (!isError && !isAbort && replyId && templateConfig.ai.text.followUps.enabled)
+        void getFollowUps({ data: { slug, messageId: replyId } })
+          .then((result) => {
+            if (result.questions.length)
+              setFollowUps({ messageId: replyId, questions: result.questions })
+          })
+          .catch(() => {})
       // 新建的对话标题为空：首轮回复完成后取首条消息作为标题
       if (isError || isAbort || titleRef.current) return
       const first = messages.find((message) => message.role === 'user')
@@ -114,14 +147,39 @@ export function ChatPage({
     if (blockedByPaywall) trackEvent('paywall_view')
   }, [blockedByPaywall])
 
-  function submit() {
-    const text = input.trim()
-    if (!text || !modelId || busy) return
+  function submit(value = input) {
+    const text = value.trim()
+    if (!text || !modelId || busy || readOnly) return
     setStopError(null)
+    setFollowUps(null)
     clearError()
-    setInput('')
+    if (value === input) setInput('')
     trackEvent('generate_start')
     void sendMessage({ text })
+  }
+
+  // 对象对话新建后自动发送第一条消息（只发送一次）
+  const autoSent = useRef(false)
+  useEffect(() => {
+    if (!autoSend || autoSent.current || !modelId) return
+    autoSent.current = true
+    submit(autoSend)
+  })
+
+  async function saveFeedback(messageId: string, next: MessageFeedbackValue | null) {
+    const result = await setMessageFeedback({
+      data: {
+        slug,
+        messageId,
+        rating: next?.rating ?? null,
+        ...(next?.comment ? { comment: next.comment } : {}),
+      },
+    })
+    if (!result.ok) throw new Error(result.error)
+    setFeedback((old) => {
+      const { [messageId]: _, ...rest } = old
+      return result.result ? { ...rest, [messageId]: result.result } : rest
+    })
   }
 
   async function stopReply() {
@@ -150,25 +208,54 @@ export function ChatPage({
 
   return (
     <div className="grid gap-6">
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="text-2xl font-semibold" data-testid="conversation-title">
-          {conversationTitle(title)}
-        </h2>
-        <Link to="/app/$slug/chat" params={{ slug }} className="underline">
-          All chats
-        </Link>
-      </div>
+      {variant === 'page' ? (
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-2xl font-semibold" data-testid="conversation-title">
+            {conversationTitle(title)}
+          </h2>
+          <Link to="/app/$slug/chat" params={{ slug }} className="underline">
+            All chats
+          </Link>
+        </div>
+      ) : null}
       <ol aria-label="Messages" className="grid gap-4">
-        {messages.map((message) => (
-          <ChatMessage
-            key={message.id}
-            message={message}
-            status={ended[message.id] ?? message.metadata?.status}
-            live={busy && message === messages.at(-1)}
-          />
-        ))}
+        {messages.map((message) => {
+          const live = busy && message === messages.at(-1)
+          const status = ended[message.id] ?? message.metadata?.status
+          const messageId = message.metadata?.messageId
+          return (
+            <ChatMessage key={message.id} message={message} status={status} live={live}>
+              {message.role === 'assistant' && messageId && !live && status !== 'streaming' ? (
+                <MessageFeedback
+                  messageId={messageId}
+                  value={feedback[messageId] ?? null}
+                  disabled={readOnly}
+                  onChange={(next) => saveFeedback(messageId, next)}
+                />
+              ) : null}
+            </ChatMessage>
+          )
+        })}
       </ol>
-      {messages.length === 0 ? <p>Send a message to start the conversation.</p> : null}
+      {messages.length === 0 ? (
+        openingSuggestions.length > 0 ? (
+          <SuggestionChips
+            suggestions={openingSuggestions}
+            disabled={busy || readOnly || !model}
+            onSelect={(text) => submit(text)}
+          />
+        ) : (
+          <p>Send a message to start the conversation.</p>
+        )
+      ) : null}
+      {!busy && followUps && followUps.messageId === messages.at(-1)?.metadata?.messageId ? (
+        <SuggestionChips
+          label={m.subject_chat_follow_ups()}
+          suggestions={followUps.questions}
+          disabled={readOnly || !model}
+          onSelect={(text) => submit(text)}
+        />
+      ) : null}
       {error ? (
         <div className="grid gap-2">
           <FormAlert message={chatErrorMessage(errorCode)} />
@@ -243,10 +330,12 @@ function ChatMessage({
   message,
   status,
   live,
+  children,
 }: {
   message: ChatUIMessage
   status: ChatMessageStatus | undefined
   live: boolean
+  children?: ReactNode
 }) {
   const reasoning = templateConfig.ai.text.reasoning.display ? messageReasoning(message) : ''
   const retrying = live && messageRetrying(message)
@@ -270,6 +359,7 @@ function ChatMessage({
       <p className="whitespace-pre-wrap">{messageText(message)}</p>
       {retrying ? <span role="status">Retrying…</span> : null}
       {note ? <span className="text-muted-foreground text-sm">{note}</span> : null}
+      {children}
     </li>
   )
 }
