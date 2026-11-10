@@ -76,6 +76,7 @@ describe.each(['cloudflare', 'node'] as const)('%s 响应入口安全头', (targ
     const error = new AppError('PRIVATE_CREDIT_FAILURE', 'private failure', {
       status: 503,
       publicDetails: { secret: 'private' },
+      expose: false,
     })
     mocks.start.mockRejectedValue(error)
     mocks.checkEnv.mockImplementation(() => {

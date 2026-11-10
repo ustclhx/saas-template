@@ -486,7 +486,7 @@ describe('公开 API 媒体任务与共用 Workflow', () => {
       downloadFile: { available: false },
     })
     expect(unavailable.status).toBe(503)
-    expect(await unavailable.json()).toMatchObject({ error: { code: 'INTERNAL_ERROR' } })
+    expect(await unavailable.json()).toMatchObject({ error: { code: 'CAPABILITY_UNAVAILABLE' } })
 
     await scoped(db, who.id).updateById(file, output.id, { deletedAt: new Date() })
     const afterDelete = await detail(key.key, taskId, deps)

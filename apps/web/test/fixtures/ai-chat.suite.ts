@@ -584,12 +584,12 @@ export function registerAiChatSuite(
       expect(await getCreditBalance(db, me.workspaceId)).toMatchObject({ available: 100, held: 0 })
     })
 
-    it('未配置模型工厂时返回脱敏的 503 INTERNAL_ERROR，不预扣', async () => {
+    it('未配置模型工厂时返回 503 AI_PROVIDER_NOT_CONFIGURED，不预扣', async () => {
       const me = await member('no-provider', 100)
       const modelId = await textModel({ mode: 'token', inputPer1k: 1, outputPer1k: 1 })
       const { response, stream } = await send(me, { modelId, text: 'hi' })
       expect(response.status).toBe(503)
-      expect(JSON.parse(stream)).toMatchObject({ error: { code: 'INTERNAL_ERROR' } })
+      expect(JSON.parse(stream)).toMatchObject({ error: { code: 'AI_PROVIDER_NOT_CONFIGURED' } })
       const holds = await sql`select 1 from credit_hold where workspace_id = ${me.workspaceId}`
       expect(holds).toHaveLength(0)
     })

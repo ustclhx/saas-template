@@ -172,7 +172,7 @@ it('refuses unavailable Node file operations before reading auth or database or 
   ])
   for (const response of responses) {
     expect(response.status).toBe(503)
-    expect(await response.json()).toMatchObject({ error: { code: 'INTERNAL_ERROR' } })
+    expect(await response.json()).toMatchObject({ error: { code: 'CAPABILITY_UNAVAILABLE' } })
   }
   expect(mocks.freshSession).not.toHaveBeenCalled()
   expect(mocks.declare).not.toHaveBeenCalled()

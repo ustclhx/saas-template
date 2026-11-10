@@ -650,7 +650,7 @@ describe('media tasks API', () => {
     }
     const response = await submit(who, await model(), deps)
     expect(response.status).toBe(503)
-    expect(await response.json()).toMatchObject({ error: { code: 'INTERNAL_ERROR' } })
+    expect(await response.json()).toMatchObject({ error: { code: 'CAPABILITY_UNAVAILABLE' } })
     expect(calls).toBe(0)
     expect(await scoped(db, who.workspaceId).count(aiTask)).toBe(0)
     expect(
