@@ -52,6 +52,9 @@ export async function grantDailyCredits(input: {
   if (!Number.isFinite(now.getTime())) throw new Error('Invalid daily credits time')
   const day = now.toISOString().slice(0, 10)
   const monthStart = `${day.slice(0, 7)}-01`
+  const previousMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1))
+    .toISOString()
+    .slice(0, 10)
   const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
     .toISOString()
     .slice(0, 10)
@@ -122,11 +125,11 @@ export async function grantDailyCredits(input: {
       .limit(1)
     if (claimed) return { status: 'already_claimed' }
     const [monthly] = await tx
-      .select({ days: sql<number>`count(*)::int` })
+      .select({ days: sql<number>`count(distinct ${creditDailyClaim.day})::int` })
       .from(creditDailyClaim)
       .where(
         and(
-          eq(creditDailyClaim.emailHash, emailHash),
+          or(eq(creditDailyClaim.userId, userId), eq(creditDailyClaim.emailHash, emailHash)),
           gte(creditDailyClaim.day, monthStart),
           lt(creditDailyClaim.day, monthEnd),
         ),
@@ -147,6 +150,15 @@ export async function grantDailyCredits(input: {
       tx,
     )
     await tx.insert(creditDailyClaim).values({ userId, emailHash, day, grantId: batch.id })
+    // 随成功领取惰性清理，只保留本月和上月的邮箱防刷记录。
+    await tx
+      .delete(creditDailyClaim)
+      .where(
+        and(
+          eq(creditDailyClaim.emailHash, emailHash),
+          lt(creditDailyClaim.day, previousMonthStart),
+        ),
+      )
     return {
       status: 'granted',
       grantId: batch.id,

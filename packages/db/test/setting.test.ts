@@ -52,6 +52,32 @@ describe('setting 表（Hyperdrive → 本地 Postgres）', () => {
     expect(await getSetting({ store }, key)).toBe(true)
   })
 
+  it('非 daily 设置同样保留 JSON 标量原类型', async () => {
+    const db = open()
+    const key = 'site.announcement'
+    const store = dbSettingStore(db)
+    const original = await store.find(key)
+    try {
+      for (const value of ['true', '10', 'null', '普通公告', true, 10, null]) {
+        await db
+          .insert(setting)
+          .values({ key, value: sql`${JSON.stringify(value)}::jsonb` })
+          .onConflictDoUpdate({
+            target: setting.key,
+            set: { value: sql`${JSON.stringify(value)}::jsonb` },
+          })
+        expect(await store.find(key)).toBe(value)
+      }
+    } finally {
+      if (original !== undefined)
+        await db
+          .update(setting)
+          .set({ value: sql`${JSON.stringify(original)}::jsonb` })
+          .where(eq(setting.key, key))
+      else await db.delete(setting).where(eq(setting.key, key))
+    }
+  })
+
   it('保留 JSON 字符串类型，拒绝将字符串 true 当成邮箱验证开关', async () => {
     const db = open()
     const key = 'credits.dailyRequireVerifiedEmail'

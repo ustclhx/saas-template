@@ -1,6 +1,7 @@
 import { grantDailyCredits } from '@saas/credits'
 import type { Database } from '@saas/db'
 import type { KeyValueStore } from '@saas/platform'
+import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { checkDailyCredits } from './daily.server.ts'
@@ -51,15 +52,50 @@ describe('daily App checks', () => {
     expect(grantDailyCredits).not.toHaveBeenCalled()
   })
 
-  it('caches a successful check for five minutes without replaying the grant notice', async () => {
+  it.each(['granted', 'already_claimed', 'monthly_limit'] as const)(
+    'caches %s until the next UTC midnight without replaying the grant notice',
+    async (status) => {
+      const { cache, input } = fixture()
+      const result = status === 'granted' ? granted : { status }
+      vi.mocked(grantDailyCredits).mockResolvedValueOnce(result)
+      expect(await checkDailyCredits(input)).toEqual(result)
+      expect(await checkDailyCredits(input)).toEqual({ status: 'cached' })
+      expect(grantDailyCredits).toHaveBeenCalledTimes(1)
+      expect(cache.put).toHaveBeenCalledWith('daily-credits:user:2026-11-10:false', 'checked', {
+        expirationTtl: 16 * 60 * 60,
+      })
+    },
+  )
+
+  it('keeps the cache TTL at least 60 seconds near UTC midnight', async () => {
     const { cache, input } = fixture()
-    expect(await checkDailyCredits(input)).toEqual(granted)
-    expect(await checkDailyCredits(input)).toEqual({ status: 'cached' })
-    expect(grantDailyCredits).toHaveBeenCalledTimes(1)
-    expect(cache.put).toHaveBeenCalledWith('daily-credits:user:2026-11-10:false', 'checked', {
-      expirationTtl: 300,
-    })
+    await checkDailyCredits({ ...input, now: new Date('2026-11-10T23:59:59Z') })
+    expect(cache.put).toHaveBeenCalledWith(expect.any(String), 'checked', { expirationTtl: 60 })
   })
+
+  it.each(['unverified', 'blacklisted'] as const)('caches %s for 300 seconds', async (status) => {
+    const { cache, input } = fixture()
+    vi.mocked(grantDailyCredits).mockResolvedValueOnce({ status })
+    expect(await checkDailyCredits(input)).toEqual({ status })
+    expect(cache.put).toHaveBeenCalledWith(
+      expect.any(String),
+      status === 'unverified' ? 'unverified' : 'checked',
+      { expirationTtl: 300 },
+    )
+  })
+
+  it.each(['ACCOUNT_UNAVAILABLE', 'PERSONAL_WORKSPACE_REQUIRED'])(
+    'caches business rejection %s for 300 seconds and logs its code',
+    async (code) => {
+      const { cache, input } = fixture()
+      vi.mocked(grantDailyCredits).mockRejectedValueOnce(new AppError(code, 'Not eligible'))
+      expect(await checkDailyCredits(input)).toEqual({ status: 'ineligible' })
+      expect(await checkDailyCredits(input)).toEqual({ status: 'cached' })
+      expect(grantDailyCredits).toHaveBeenCalledTimes(1)
+      expect(cache.put).toHaveBeenCalledWith(expect.any(String), 'checked', { expirationTtl: 300 })
+      expect(log.warn).toHaveBeenCalledWith('credits.daily.ineligible', { userId: user.id, code })
+    },
+  )
 
   it('retains the verification entry on cache hits and retries immediately after verification', async () => {
     const { input } = fixture()

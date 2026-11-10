@@ -28,10 +28,7 @@ export function DailyGrantNotice({
 export function DailyCreditsNotice({ result }: { result: DailyCreditsCheck | null }) {
   const [notice, setNotice] = useState<Granted | null>(null)
   useEffect(() => {
-    if (result?.status !== 'granted') {
-      setNotice(null)
-      return
-    }
+    if (result?.status !== 'granted') return
     // sessionStorage 不可用时保留本次通知，避免影响 App 的其他功能。
     try {
       const key = `daily-credits-notice:${result.grantId}`

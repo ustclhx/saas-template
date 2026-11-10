@@ -1,9 +1,10 @@
 import { type DailyCreditsResult, grantDailyCredits } from '@saas/credits'
 import type { Database } from '@saas/db'
 import type { KeyValueStore } from '@saas/platform'
+import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 
-export type DailyCreditsCheck = DailyCreditsResult | { status: 'cached' }
+export type DailyCreditsCheck = DailyCreditsResult | { status: 'cached' | 'ineligible' }
 
 /** KV 只避免近期重复检查，领取资格与额度始终由积分事务决定。 */
 export async function checkDailyCredits({
@@ -31,17 +32,29 @@ export async function checkDailyCredits({
     log.warn('credits.daily.cache_read_failed', { userId: user.id })
   }
 
-  let result: DailyCreditsResult
+  let result: DailyCreditsResult | { status: 'ineligible' }
   try {
     result = await grantDailyCredits({ db, userId: user.id, enabled: true, now })
-  } catch {
-    // 赠送失败不能阻断 App，也不缓存失败，以便下一次真实访问重试。
-    log.warn('credits.daily.check_failed', { userId: user.id })
-    return null
+  } catch (error) {
+    // 业务拒绝短期缓存；未知故障留给下次真实访问重试，均不阻断 App。
+    if (error instanceof AppError) {
+      log.warn('credits.daily.ineligible', { userId: user.id, code: error.code })
+      result = { status: 'ineligible' }
+    } else {
+      log.warn('credits.daily.check_failed', { userId: user.id })
+      return null
+    }
   }
+  const checkedForDay =
+    result.status === 'granted' ||
+    result.status === 'already_claimed' ||
+    result.status === 'monthly_limit'
+  const nextDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)
   try {
     await cache.put(key, result.status === 'unverified' ? 'unverified' : 'checked', {
-      expirationTtl: 300,
+      expirationTtl: checkedForDay
+        ? Math.max(60, Math.ceil((nextDay - now.getTime()) / 1000))
+        : 300,
     })
   } catch {
     log.warn('credits.daily.cache_write_failed', { userId: user.id })

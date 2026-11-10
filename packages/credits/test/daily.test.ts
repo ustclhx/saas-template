@@ -105,6 +105,18 @@ describe('daily credits on PostgreSQL', () => {
     expect(await claim(id)).toEqual({ status: 'already_claimed' })
   })
 
+  it('preserves the monthly limit after changing email', async () => {
+    await configure('credits.dailyMaxDaysPerMonth', 2)
+    const id = await account()
+    expect((await claim(id)).status).toBe('granted')
+    expect((await claim(id, '2026-11-02')).status).toBe('granted')
+    await db
+      .update(user)
+      .set({ email: `${newId()}@example.test` })
+      .where(eq(user.id, id))
+    expect(await claim(id, '2026-11-03')).toEqual({ status: 'monthly_limit' })
+  })
+
   it('shares normalized email days across accounts and retains claims after deletion', async () => {
     const local = newId().replaceAll('-', '')
     const first = await account(`${local}@gmail.com`)
@@ -132,6 +144,65 @@ describe('daily credits on PostgreSQL', () => {
     expect(await claim(id, '2026-11-02')).toMatchObject({ status: 'granted', daysThisMonth: 2 })
     expect(await claim(id, '2026-11-03')).toEqual({ status: 'monthly_limit' })
     expect(await claim(id, '2026-12-01')).toMatchObject({ status: 'granted', daysThisMonth: 1 })
+  })
+
+  it('counts overlapping user and email history as distinct monthly days', async () => {
+    await configure('credits.dailyMaxDaysPerMonth', 2)
+    const id = await account()
+    const local = newId()
+    const other = await account(`${local}@gmail.com`)
+    expect((await claim(id)).status).toBe('granted')
+    expect((await claim(other)).status).toBe('granted')
+    await db
+      .update(user)
+      .set({ email: `${local}+changed@gmail.com` })
+      .where(eq(user.id, id))
+    expect(await claim(id, '2026-11-02')).toMatchObject({ status: 'granted', daysThisMonth: 2 })
+    expect(await claim(id, '2026-11-03')).toEqual({ status: 'monthly_limit' })
+  })
+
+  it('cleans only the claiming email history before the previous UTC month on success', async () => {
+    const id = await account()
+    const other = await account()
+    for (const day of ['2026-09-30', '2026-10-01', '2026-10-31', '2026-11-01']) {
+      expect((await claim(id, day)).status).toBe('granted')
+    }
+    expect((await claim(other, '2026-09-30')).status).toBe('granted')
+    expect(await claim(id, '2026-11-02')).toMatchObject({ status: 'granted', daysThisMonth: 2 })
+    const retained = await db
+      .select({ day: creditDailyClaim.day })
+      .from(creditDailyClaim)
+      .where(eq(creditDailyClaim.userId, id))
+      .orderBy(creditDailyClaim.day)
+    expect(retained.map((row) => row.day)).toEqual([
+      '2026-10-01',
+      '2026-10-31',
+      '2026-11-01',
+      '2026-11-02',
+    ])
+    expect(
+      await db.select().from(creditDailyClaim).where(eq(creditDailyClaim.userId, other)),
+    ).toHaveLength(1)
+    expect(await db.select().from(creditGrant).where(eq(creditGrant.workspaceId, id))).toHaveLength(
+      5,
+    )
+  })
+
+  it('grants separately on either side of UTC midnight', async () => {
+    const id = await account()
+    for (const [now, day, daysThisMonth] of [
+      ['2026-11-01T23:59:59Z', '2026-11-01', 1],
+      ['2026-11-02T00:00:00Z', '2026-11-02', 2],
+    ] as const) {
+      expect(
+        await grantDailyCredits({ db, userId: id, enabled: true, now: new Date(now) }),
+      ).toMatchObject({
+        status: 'granted',
+        day,
+        daysThisMonth,
+      })
+    }
+    expect(await claim(id, '2026-11-02')).toEqual({ status: 'already_claimed' })
   })
 
   it('serializes the final monthly day across different users and dates', async () => {

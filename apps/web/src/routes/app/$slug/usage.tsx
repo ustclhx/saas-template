@@ -112,7 +112,7 @@ function UsagePage() {
                 </td>
                 <td>
                   {item.refType === 'daily' ? m.daily_credits_source() : item.refType}
-                  {item.refId ? ` · ${item.refId}` : ''}
+                  {item.refType !== 'daily' && item.refId ? ` · ${item.refId}` : ''}
                 </td>
                 <td>{item.grantId ?? '—'}</td>
               </tr>

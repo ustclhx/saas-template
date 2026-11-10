@@ -183,11 +183,16 @@ function Settings() {
                 />
               </Field>
             </div>
-            <CheckboxField
-              label={m.admin_daily_credits_require_verified_email()}
-              checked={dailyVerifiedEmail}
-              onChange={(event) => setDailyVerifiedEmail(event.target.checked)}
-            />
+            <div className="grid gap-2">
+              <CheckboxField
+                label={m.admin_daily_credits_require_verified_email()}
+                checked={dailyVerifiedEmail}
+                onChange={(event) => setDailyVerifiedEmail(event.target.checked)}
+              />
+              <p className="text-muted-foreground text-sm">
+                {m.admin_daily_credits_unverified_email_warning()}
+              </p>
+            </div>
           </section>
           <Button type="submit" className="w-fit">
             {m.admin_save_settings()}
