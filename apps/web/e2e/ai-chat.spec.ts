@@ -3,6 +3,7 @@ import { expect, type Page, test } from '@playwright/test'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import { newId } from '@saas/shared'
 import { fixtureDb, login, register, simulateClientIp } from './fixtures.ts'
+import { chooseOption } from './select.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 // 对话列表与对话页（tasks.md 3.1）。本地没有真实模型：发送消息时拦截 POST /api/ai/chat，
@@ -186,16 +187,21 @@ test('chat page picks a model, streams replies, stops and explains errors', asyn
   try {
     const conversationId = await newConversation(page, slug)
     // 模型列表经 KV 缓存（TTL 60 秒）：刷新直到新模型出现在选择器中
-    await expect
-      .poll(
-        async () => {
-          await page.reload()
-          return page.getByLabel('Model').locator(`option[value="${model.modelId}"]`).count()
-        },
-        { timeout: 90_000, intervals: [2_000, 5_000] },
-      )
-      .toBe(1)
-    await page.getByLabel('Model').selectOption(model.modelId)
+    await expect(async () => {
+      await page.reload()
+      const trigger = page.getByRole('combobox', { name: 'Model', exact: true })
+      expect(await trigger.count()).toBe(1)
+      await expect(async () => {
+        if (!(await page.getByRole('listbox').isVisible())) await trigger.click({ timeout: 1_000 })
+        await expect(page.getByRole('listbox')).toBeVisible({ timeout: 500 })
+      }).toPass({ timeout: 10_000, intervals: [100, 250, 500] })
+      expect(
+        await page.locator(`[role="option"][data-value=${JSON.stringify(model.modelId)}]`).count(),
+      ).toBe(1)
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('listbox')).toHaveCount(0)
+      await chooseOption(trigger, { value: model.modelId })
+    }).toPass({ timeout: 90_000, intervals: [2_000, 5_000] })
     await expect(page.getByTestId('credit-estimate')).toHaveText(/2 credits/)
 
     // 1. 正常回复：只提交本轮用户消息，逐段渲染模拟流
@@ -316,16 +322,21 @@ test('stop button calls the stop endpoint with the streaming message id', async 
     })
 
     await newConversation(page, slug)
-    await expect
-      .poll(
-        async () => {
-          await page.reload()
-          return page.getByLabel('Model').locator(`option[value="${model.modelId}"]`).count()
-        },
-        { timeout: 90_000, intervals: [2_000, 5_000] },
-      )
-      .toBe(1)
-    await page.getByLabel('Model').selectOption(model.modelId)
+    await expect(async () => {
+      await page.reload()
+      const trigger = page.getByRole('combobox', { name: 'Model', exact: true })
+      expect(await trigger.count()).toBe(1)
+      await expect(async () => {
+        if (!(await page.getByRole('listbox').isVisible())) await trigger.click({ timeout: 1_000 })
+        await expect(page.getByRole('listbox')).toBeVisible({ timeout: 500 })
+      }).toPass({ timeout: 10_000, intervals: [100, 250, 500] })
+      expect(
+        await page.locator(`[role="option"][data-value=${JSON.stringify(model.modelId)}]`).count(),
+      ).toBe(1)
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('listbox')).toHaveCount(0)
+      await chooseOption(trigger, { value: model.modelId })
+    }).toPass({ timeout: 90_000, intervals: [2_000, 5_000] })
     await page.getByLabel('Message', { exact: true }).fill('Write a long story')
     await page.getByRole('button', { name: 'Send' }).click()
     const replies = page.getByRole('list', { name: 'Messages' }).getByRole('listitem', {

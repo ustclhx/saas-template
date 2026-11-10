@@ -7,6 +7,7 @@ import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import { newId } from '@saas/shared'
 import type { MediaTask } from '../src/features/ai-media/tasks-client.ts'
 import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
+import { chooseOption } from './select.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 const RESULT_PNG = Buffer.from(
@@ -139,16 +140,21 @@ test('submits, follows progress, previews and downloads a result, and manages it
         ${`ws/${workspace.workspaceId}/${fileId}`},'image/png',68)`
     await page.goto(`/app/${workspace.slug}/media/new`)
     // 模型注册表有 60 秒 KV 缓存，等待真实 loader 读到本测试模型。
-    await expect
-      .poll(
-        async () => {
-          await page.reload()
-          return page.getByLabel('Model').locator(`option[value="${model.key}"]`).count()
-        },
-        { timeout: 90_000, intervals: [2_000, 5_000] },
-      )
-      .toBe(1)
-    await page.getByLabel('Model').selectOption(model.key)
+    await expect(async () => {
+      await page.reload()
+      const trigger = page.getByRole('combobox', { name: 'Model', exact: true })
+      expect(await trigger.count()).toBe(1)
+      await expect(async () => {
+        if (!(await page.getByRole('listbox').isVisible())) await trigger.click({ timeout: 1_000 })
+        await expect(page.getByRole('listbox')).toBeVisible({ timeout: 500 })
+      }).toPass({ timeout: 10_000, intervals: [100, 250, 500] })
+      expect(
+        await page.locator(`[role="option"][data-value=${JSON.stringify(model.key)}]`).count(),
+      ).toBe(1)
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('listbox')).toHaveCount(0)
+      await chooseOption(trigger, { value: model.key })
+    }).toPass({ timeout: 90_000, intervals: [2_000, 5_000] })
     await page.getByLabel('Prompt').fill('A forest')
     await expect(page.getByTestId('media-credit-estimate')).toHaveText('Estimated cost: 2 credits')
 

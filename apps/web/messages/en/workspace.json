@@ -1,0 +1,6 @@
+{
+  "workspace_transfer_confirm_title": "Transfer ownership?",
+  "workspace_transfer_confirm_description": "Transfer ownership to {name}? You will become an admin.",
+  "workspace_remove_confirm_title": "Remove member?",
+  "workspace_remove_confirm_description": "Remove {name} from this workspace? They will lose access to this workspace."
+}

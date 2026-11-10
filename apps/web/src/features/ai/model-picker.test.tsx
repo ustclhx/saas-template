@@ -75,18 +75,30 @@ describe('creditEstimate', () => {
 })
 
 describe('ModelPicker', () => {
-  it('只渲染传入的模型（停用与权益不允许的模型已由 listAvailableModels 过滤）', () => {
+  it('SSR 触发器显示当前可用模型，与可访问标签关联', () => {
     const html = renderToString(
       <ModelPicker models={[perCall, perToken]} value={perToken.id} onChange={() => {}} />,
     )
-    const options = [...html.matchAll(/<option value="([^"]+)"[^>]*>([^<]+)<\/option>/g)]
-    expect(options.map((o) => o[2])).toEqual(['fast-chat', 'smart-chat'])
-    expect(html).toMatch(new RegExp(`<option value="${perToken.id}" selected=""`))
+    expect(html).toContain('role="combobox"')
+    expect(html).toContain('for="ai-model"')
+    expect(html).toContain('id="ai-model"')
+    expect(html).toContain('smart-chat')
+    expect(html).not.toContain('fast-chat')
+    expect(html).toMatch(/^<div>/)
+  })
+
+  it('未指定模型时显示第一项，已下架的选值显示占位文字', () => {
+    const render = (value: string | undefined) =>
+      renderToString(<ModelPicker models={[perCall]} value={value} onChange={() => {}} />)
+    expect(render(undefined)).toContain('fast-chat')
+    const unavailable = render('removed-model')
+    expect(unavailable).toContain('data-placeholder=""')
+    expect(unavailable).not.toContain('fast-chat')
   })
 
   it('没有可用模型时显示提示', () => {
     const html = renderToString(<ModelPicker models={[]} value={undefined} onChange={() => {}} />)
     expect(html).toContain('No models are available')
-    expect(html).not.toContain('<select')
+    expect(html).not.toContain('role="combobox"')
   })
 })

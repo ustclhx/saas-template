@@ -11,6 +11,7 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import templateConfig from '../../../template.config.ts'
 import { FINAL_USAGE, LONG_TAIL, PREFIX, SHORT_TAIL } from './ai-chat-disconnect.model.ts'
 import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
+import { chooseOption } from './select.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 // tasks 2.7：实际 POST 路由 + waitUntil + DB 结算，仅模型工厂由测试 Vite 配置替换。
@@ -61,16 +62,21 @@ async function prepare(page: Page, kind: 'short' | 'long') {
     await page.getByRole('button', { name: 'New chat' }).click()
     await expect(page).toHaveURL(/\/chat\/[0-9a-f-]{36}$/)
     const conversationId = new URL(page.url()).pathname.split('/').at(-1) ?? ''
-    await expect
-      .poll(
-        async () => {
-          await page.reload()
-          return page.getByLabel('Model').locator(`option[value="${modelId}"]`).count()
-        },
-        { timeout: 90_000, intervals: [2_000, 5_000] },
-      )
-      .toBe(1)
-    await page.getByLabel('Model').selectOption(modelId)
+    await expect(async () => {
+      await page.reload()
+      const trigger = page.getByRole('combobox', { name: 'Model', exact: true })
+      expect(await trigger.count()).toBe(1)
+      await expect(async () => {
+        if (!(await page.getByRole('listbox').isVisible())) await trigger.click({ timeout: 1_000 })
+        await expect(page.getByRole('listbox')).toBeVisible({ timeout: 500 })
+      }).toPass({ timeout: 10_000, intervals: [100, 250, 500] })
+      expect(
+        await page.locator(`[role="option"][data-value=${JSON.stringify(modelId)}]`).count(),
+      ).toBe(1)
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('listbox')).toHaveCount(0)
+      await chooseOption(trigger, { value: modelId })
+    }).toPass({ timeout: 90_000, intervals: [2_000, 5_000] })
     return { slug, sql, db, workspaceId: workspace.id, modelId, conversationId, initial }
   } catch (error) {
     await db.$client.end()
