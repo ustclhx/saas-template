@@ -1,6 +1,6 @@
 # AI 组件选型（任务 9.1）
 
-`docs/design-system.md` 尚未创建，结论先写在本 change 目录；该文档建立后整节迁入。
+结论摘要已写入 `docs/design-system.md` §6；本文保留完整对比。
 调研日期 2026-11-11，只读取外部 registry 与仓库元数据，未安装任何依赖。
 
 ## 现状
@@ -20,7 +20,7 @@
 | 视觉一致性 | 与本仓库 Fluid 基线同源（spring、shape、size、type-scale），无需改样式 | shadcn 默认风格，需逐个改 token、圆角、动效才能贴合 Fluid |
 | 依赖与体积 | 只需 `motion`、`lucide-react`、Radix Collapsible（均已有或很小）；`input-message` 约 57KB 源码、`ask-user-questions` 约 80KB 源码 | 组件按需拷贝，但 Response/代码块拉入 `streamdown`、`shiki`、`katex`、`mermaid` 等重依赖；需裁剪 |
 | 可访问性 | 有 reduced-motion、触控区处理；需自行补 `aria-live` 流式播报 | Radix/shadcn 原语，基础可访问性较好；同样需补流式播报 |
-| 许可证 | 未在 registry 中查到明确许可证声明，**需确认** | Apache-2.0（npm `ai-elements` 1.9.1） |
+| 许可证 | MIT（GitHub 仓库 `mickadesign/fluid-functionalism`，2026-11-10 经 GitHub API 核实） | Apache-2.0（npm `ai-elements` 1.9.1） |
 | 活跃度 | 单一作者 registry，节奏未知 | vercel/ai-elements 约 2.5k star，2026-10-14 仍有提交 |
 | 移植成本 | 去 `"use client"`、`@/` 路径改为 `@saas/ui` 内部路径、`next/image` 注释无实际依赖；`ask-user-questions` 依赖 `@base-ui/react`，按设计不引入 Base UI，须改写为 Radix | 去 Next.js 假设较少；主要成本在主题改写和重依赖裁剪 |
 | 衍生项目影响 | 落在 `packages/ui`，随主题预设/品牌层自动生效 | 引入第二套视觉语言，衍生项目品牌层覆盖面变大 |
@@ -34,7 +34,7 @@ parts 分发与 Tool 状态设计，但不整体引入。理由：视觉与现�
 
 ## 迁移步骤草案
 
-1. 确认 Fluid 组件许可证；不明确则改为参考实现自写。
+1. 许可证已核实为 MIT，移植时保留版权与许可声明（同 `packages/ui/UPSTREAM.md`）。
 2. 移植 `thinking-indicator`、`chat-message`、`thinking-steps`、`input-message` 到 `packages/ui`
    （依赖 `file-thumbnail`、`badge`、`tooltip`、`tokens` 一并移植），去 `"use client"` 与 `@/` 路径。
 3. `ask-user-questions` 用 Radix 改写，或延后到有追问交互需求时。
@@ -46,7 +46,7 @@ parts 分发与 Tool 状态设计，但不整体引入。理由：视觉与现�
 
 ## 风险
 
-- 许可证未确认；`input-message`/`ask-user-questions` 体量大，移植与维护成本高。
+- `input-message`/`ask-user-questions` 体量大，移植与维护成本高。
 - 上游 registry 更新无版本号，需记录移植基准日期以便后续对比。
 - Markdown/代码高亮引入后影响 Worker 包体积，需在新 change 中给预算。
 
