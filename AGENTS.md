@@ -28,7 +28,7 @@ This block is written and re-added by `turbo` before repository-scoped commands 
   `db`：Drizzle schema、迁移、租户查询和运行时设置；`platform`：目标中立能力契约与 Cloudflare/Node 适配。
 - `packages/auth`：身份、会话和空间；`billing`：支付、订单和订阅；`credits`：积分账本和预扣结算；
   `entitlements`：套餐权益；`ai`：模型和 Provider；`storage`：R2 与安全下载；
-  `email`：邮件模板与发送；`ui`：共享 React 组件。
+  `email`：邮件模板与发送；`ui`：共享 React 组件与设计 token。
 - `infra`：本地及服务器 Postgres；`scripts`：工程检查、项目生成和 Orca 生命周期。
 
 依赖边界以 `scripts/check-deps.mjs` 为准：packages 不依赖 apps；shared 不依赖其他内部包；
@@ -45,6 +45,8 @@ config/db 不反向依赖 platform。业务包之间允许依赖，检查器没�
   Webhook 按验签、去重、事务处理、异步副作用的顺序处理。
 - 后台写入使用 `apps/web/src/features/admin/action.ts` / `action.server.ts` 的 adminAction；
   列表使用 `packages/ui` 的 DataTable 与 `apps/web/src/features/admin/list.ts`。
+- 页面只用 `@saas/ui`（衍生项目另有 `@saas/ui/project`）的组件与设计 token，不写死颜色、任意值尺寸、原生 `<select>` 或 `confirm()`；
+  新页面与较大布局改动先经 `ui-design` 技能取得使用者确认的设计稿，文案、小样式与缺陷修复免。规范见 [设计规范](docs/design-system.md)。
 - 日志使用 `@saas/shared/log`，业务错误使用 AppError；外部服务调用经过对应 package。
 - 模板开关放 `template.config.ts`，运行时设置使用 `packages/db/src/settings.ts`，
   密钥放 Wrangler secrets 或本地 `.dev.vars`。三层配置各自负责，不互相覆盖。

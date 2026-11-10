@@ -1,7 +1,7 @@
 // 来源：fluid-functionalism radix/dialog（2026-11，https://www.fluidfunctionalism.com/r/dialog.json，MIT）
 // 适配：radix-ui 统一包导入、包内相对路径、去掉 "use client"；其余改动见 packages/ui/UPSTREAM.md
 
-import { motion } from 'motion/react'
+import { m as motion } from 'motion/react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import {
   type ComponentPropsWithoutRef,
@@ -15,6 +15,7 @@ import {
 } from 'react'
 import { fontWeights } from '../lib/font-weight.ts'
 import { useIcons } from '../lib/icon-context.tsx'
+import { MotionFeatures } from '../lib/motion-features.tsx'
 import { useShape } from '../lib/shape-context.tsx'
 import { typeClass, useSize, useSizeVariant } from '../lib/size-context.tsx'
 import { exitFallbackMs, spring } from '../lib/springs.ts'
@@ -94,7 +95,7 @@ const DialogClose = forwardRef<HTMLButtonElement, DialogSlotProps>(
 )
 DialogClose.displayName = 'DialogClose'
 
-interface DialogContentProps extends ComponentPropsWithoutRef<typeof DialogPrimitive.Content> {
+interface DialogContentBaseProps extends ComponentPropsWithoutRef<typeof DialogPrimitive.Content> {
   /** Width: sm 400, lg 540, xl 880 (each one notch narrower in compact
    *  regions). `xl` is the canvas for composed layouts — a sidebar beside
    *  a panel — which usually pair it with `className="p-0"` and a fixed
@@ -106,17 +107,30 @@ interface DialogContentProps extends ComponentPropsWithoutRef<typeof DialogPrimi
    *  `<Dialog modal={false}>` — to scope a dialog to a bounded region, e.g. a
    *  docs preview. Defaults to the document body / full-viewport behaviour. */
   container?: HTMLElement | null
-  /** The ✕ in the top-right corner. Drop it when the content has its own
-   *  way out, e.g. a command menu that closes on Escape and on a pick.
-   *  @default true */
-  showCloseButton?: boolean
-  /** 右上角关闭按钮的可读名称（模板改动：上游写死英文，由应用按语言传入） */
-  closeLabel?: string
   /** Where the panel sits: centered, or anchored 12dvh from the top so a
    *  panel whose height follows its content (a command menu) keeps its top
    *  edge still. @default "center" */
   position?: 'center' | 'top'
 }
+
+// 模板改动（tasks 4.6）：上游关闭按钮的可读名称写死英文 "Close"。这里不给默认值：显示关闭按钮时
+// 必须由应用按语言传入 closeLabel（调用处传 `m.*()` 文案）；内容自带出口时传 showCloseButton={false}。
+type DialogContentProps = DialogContentBaseProps &
+  (
+    | {
+        /** The ✕ in the top-right corner. @default true
+         *  传了 closeLabel 时可用布尔变量控制（`showCloseButton={editable}`） */
+        showCloseButton?: boolean
+        /** 右上角关闭按钮的可读名称，由应用按语言传入 */
+        closeLabel: string
+      }
+    | {
+        /** Drop the ✕ when the content has its own way out, e.g. a command
+         *  menu that closes on Escape and on a pick. */
+        showCloseButton: false
+        closeLabel?: never
+      }
+  )
 
 const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
   (
@@ -126,7 +140,7 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
       size = 'sm',
       container,
       showCloseButton = true,
-      closeLabel = 'Close',
+      closeLabel,
       position = 'center',
       ...props
     },
@@ -165,56 +179,61 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
     if (!mounted) return null
 
     return (
-      <DialogPrimitive.Portal forceMount container={container ?? undefined}>
-        <DialogPrimitive.Overlay asChild forceMount>
-          <motion.div
-            className={cn(
-              container ? 'absolute' : 'fixed',
-              'inset-0 z-[var(--z-overlay,40)] bg-black/40 dark:bg-black/80',
-            )}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: open ? 1 : 0 }}
-            transition={open ? spring.slow : spring.slow.exit}
-          />
-        </DialogPrimitive.Overlay>
-        <DialogPrimitive.Content ref={ref} asChild forceMount {...props}>
-          <motion.div
-            className={cn(
-              container ? 'absolute' : 'fixed',
-              'left-1/2 z-[var(--z-modal,50)] w-[calc(100%-2rem)]',
-              position === 'top' ? 'top-[12dvh]' : 'top-1/2',
-              surfaceClasses(dialogLevel),
-              'p-6 focus:outline-none',
-              size === 'sm' && (compact ? 'max-w-[360px]' : 'max-w-[400px]'),
-              size === 'lg' && (compact ? 'max-w-[480px]' : 'max-w-[540px]'),
-              size === 'xl' && (compact ? 'max-w-[800px]' : 'max-w-[880px]'),
-              shape.container,
-              className,
-            )}
-            initial={{ opacity: 0, scale: 0.97, x: '-50%', y: position === 'top' ? 0 : '-50%' }}
-            animate={{
-              opacity: open ? 1 : 0,
-              scale: open ? 1 : 0.97,
-              x: '-50%',
-              y: position === 'top' ? 0 : '-50%',
-            }}
-            transition={open ? spring.slow : spring.slow.exit}
-            onAnimationComplete={handleExitComplete}
-          >
-            <SurfaceProvider value={dialogLevel}>
-              {children}
-              {showCloseButton && (
-                <DialogPrimitive.Close asChild>
-                  <Button variant="ghost" size="icon-sm" className="absolute right-3 top-3">
-                    <XIcon />
-                    <span className="sr-only">{closeLabel}</span>
-                  </Button>
-                </DialogPrimitive.Close>
+      <MotionFeatures>
+        <DialogPrimitive.Portal forceMount container={container ?? undefined}>
+          <DialogPrimitive.Overlay asChild forceMount>
+            <motion.div
+              className={cn(
+                container ? 'absolute' : 'fixed',
+                'inset-0 z-[var(--z-overlay,40)] bg-black/40 dark:bg-black/80',
               )}
-            </SurfaceProvider>
-          </motion.div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
+              initial={{ opacity: 0 }}
+              animate={{ opacity: open ? 1 : 0 }}
+              transition={open ? spring.slow : spring.slow.exit}
+            />
+          </DialogPrimitive.Overlay>
+          <DialogPrimitive.Content ref={ref} asChild forceMount {...props}>
+            <motion.div
+              // 模板改动：退场动画期间面板仍在页面上，inert 让其中的按钮不可点击、不可聚焦（避免重复提交）
+              inert={!open}
+              className={cn(
+                container ? 'absolute' : 'fixed',
+                'left-1/2 z-[var(--z-modal,50)] w-[calc(100%-2rem)]',
+                !open && 'pointer-events-none',
+                position === 'top' ? 'top-[12dvh]' : 'top-1/2',
+                surfaceClasses(dialogLevel),
+                'p-6 focus:outline-none',
+                size === 'sm' && (compact ? 'max-w-[360px]' : 'max-w-[400px]'),
+                size === 'lg' && (compact ? 'max-w-[480px]' : 'max-w-[540px]'),
+                size === 'xl' && (compact ? 'max-w-[800px]' : 'max-w-[880px]'),
+                shape.container,
+                className,
+              )}
+              initial={{ opacity: 0, scale: 0.97, x: '-50%', y: position === 'top' ? 0 : '-50%' }}
+              animate={{
+                opacity: open ? 1 : 0,
+                scale: open ? 1 : 0.97,
+                x: '-50%',
+                y: position === 'top' ? 0 : '-50%',
+              }}
+              transition={open ? spring.slow : spring.slow.exit}
+              onAnimationComplete={handleExitComplete}
+            >
+              <SurfaceProvider value={dialogLevel}>
+                {children}
+                {showCloseButton && (
+                  <DialogPrimitive.Close asChild>
+                    <Button variant="ghost" size="icon-sm" className="absolute right-3 top-3">
+                      <XIcon />
+                      <span className="sr-only">{closeLabel}</span>
+                    </Button>
+                  </DialogPrimitive.Close>
+                )}
+              </SurfaceProvider>
+            </motion.div>
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </MotionFeatures>
     )
   },
 )
@@ -269,7 +288,11 @@ const DialogDescription = forwardRef<
 })
 DialogDescription.displayName = 'DialogDescription'
 
-export type { DialogSlotProps as DialogTriggerProps, DialogSlotProps as DialogCloseProps }
+export type {
+  DialogContentProps,
+  DialogSlotProps as DialogCloseProps,
+  DialogSlotProps as DialogTriggerProps,
+}
 export {
   Dialog,
   DialogClose,

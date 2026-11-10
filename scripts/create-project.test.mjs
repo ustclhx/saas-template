@@ -308,6 +308,7 @@ test('初始化项目设计记录，排除模板原型并保留组件、锁与�
     'visual-system.md',
     'references/',
     'prototypes/',
+    'prototypes/README.md',
     'forks.md',
     '@acme/ui/project',
     'scripts/check-ui.allow.local.json',
@@ -947,6 +948,8 @@ test('真实副本保留 Cloudflare 操作步骤，技能文档引用存在且�
     if (!/[/](?:\.agents|\.claude)[/]skills[/]/.test(path)) continue
     assert.doesNotMatch(text, /项目维护约定[、，\s`]+项目维护约定/, `技能包含重复占位文字：${path}`)
     for (const [reference] of text.matchAll(/docs\/[\w./{},-]+\.md/g)) {
+      // 项目设计目录按需创建；模板设计稿目录不复制到副本
+      if (/^docs\/(?:design|design-system\/prototypes)\//.test(reference)) continue
       const group = reference.match(/\{([^}]+)\}/)
       const targets = group
         ? group[1].split(',').map((name) => reference.replace(group[0], name))
