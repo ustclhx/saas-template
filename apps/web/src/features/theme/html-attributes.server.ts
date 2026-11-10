@@ -1,4 +1,5 @@
 import { log } from '@saas/shared/log'
+import { isAllowedHtmlAttribute } from './html-attributes.allowed.ts'
 import { getProjectHtmlAttributes } from './html-attributes.ts'
 import type { HtmlAttributesContext } from './html-attributes.types.ts'
 
@@ -6,13 +7,7 @@ import type { HtmlAttributesContext } from './html-attributes.types.ts'
 export function resolveHtmlAttributes(context: HtmlAttributesContext): Record<string, string> {
   const attributes: Record<string, string> = {}
   for (const [name, value] of Object.entries(getProjectHtmlAttributes(context))) {
-    const allowed =
-      typeof value === 'string' &&
-      ((name !== 'data-preset' && /^data-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) ||
-        name === 'title' ||
-        (name === 'dir' && ['ltr', 'rtl', 'auto'].includes(value)) ||
-        (name === 'translate' && ['yes', 'no'].includes(value)))
-    if (!allowed) {
+    if (!isAllowedHtmlAttribute(name, value)) {
       log.warn('theme.html_attribute_ignored', { attribute: name })
       continue
     }

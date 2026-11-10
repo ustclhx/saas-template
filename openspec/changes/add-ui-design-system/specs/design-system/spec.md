@@ -63,8 +63,9 @@
 ### Requirement: 项目根文档属性扩展点
 模板 SHALL 创建项目自有的 `features/theme/html-attributes.ts`，之后 MUST NOT 修改它，生成器
 SHALL 原样保留。函数 SHALL 接收服务端 host、locale、pathname，并返回额外的根文档属性。
-SSR 与预渲染 SHALL 合并过滤后的属性，首次客户端水合 SHALL 复用服务端结果；路径切换时
-SHALL 更新属性。仅允许字符串值的 `data-*`、`title`、有效的 `dir` 与 `translate`，MUST NOT
+SSR 与预渲染 SHALL 合并过滤后的属性，首次客户端水合 SHALL 复用服务端结果；客户端导航
+SHALL 从已渲染的 `<html>` 复用白名单属性，不发起服务端请求或重新计算项目扩展。
+需要随路由变化的属性 SHALL 由页面组件处理。仅允许字符串值的 `data-*`、`title`、有效的 `dir` 与 `translate`，MUST NOT
 覆盖 `lang` 或 `data-preset`；被拒绝的属性 SHALL 被忽略并记录警告。发布检查 SHALL 拒绝该
 项目自有文件在创建之后的修改或删除。
 
@@ -75,6 +76,10 @@ SHALL 更新属性。仅允许字符串值的 `data-*`、`title`、有效的 `di
 #### Scenario: 项目返回保留或不安全属性
 - **WHEN** 项目尝试返回 `data-preset`、`lang` 或事件等非白名单属性
 - **THEN** 文档保留模板属性，忽略被拒绝的属性并记录只含属性名的警告
+
+#### Scenario: 客户端导航复用首屏属性
+- **WHEN** 用户在首屏含 `data-site="east"` 的页面中进行客户端导航
+- **THEN** 根路由复用已有白名单属性，不请求服务端计算属性，也不重新执行项目扩展函数
 
 ### Requirement: 衍生项目不修改模板组件
 衍生项目 MUST NOT 直接修改模板提供的共享组件文件；UI 规范检查 SHALL 对照模板随包提供的组件指纹清单，发现差异时失败并提示改用 token、ui 配置、项目组件包装或复制到项目组件目录并登记。模板 SHALL 在每次组件变更时更新指纹清单。

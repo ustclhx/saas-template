@@ -74,7 +74,8 @@
 根文档属性扩展（6.4）：项目拥有 `apps/web/src/features/theme/html-attributes.ts`，模板只创建返回空对象的
 `getProjectHtmlAttributes({ host, locale, pathname })`，之后不再修改，生成器逐字节保留。类型与过滤、
 服务端接入仍由模板维护。根路由 beforeLoad 调用扩展并序列化过滤后的结果，SSR、预渲染与首次水合使用
-同一份属性；pathname 改变时重新读取。pathname 为不含语言前缀和查询参数的路由路径，host 为
+同一份属性。同构入口仅在服务端首屏计算；客户端导航从现有 `<html>` 读取白名单属性，不发起
+服务端请求，也不按 pathname 重算。需要随路由变化的属性由页面组件处理。pathname 为不含语言前缀和查询参数的路由路径，host 为
 请求 URL 的 host（含非默认端口）。允许字符串值的 `data-*`、`title`、`dir`（ltr/rtl/auto）、
 `translate`（yes/no）；`lang`、`data-preset` 与其余属性被忽略并记录不含属性值的警告。
 多站点将 `data-site` 的计算移到此文件，`brand.css` 使用相应选择器，避免修改模板根布局。

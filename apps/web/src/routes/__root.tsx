@@ -12,14 +12,14 @@ import {
   getSafeImpersonation,
   getSeoOrigin,
 } from '../features/seo/origin.functions.ts'
-import { getHtmlAttributes } from '../features/theme/html-attributes.functions.ts'
+import { getHtmlAttributes } from '../features/theme/html-attributes.isomorphic.ts'
 import { RootDocument } from '../features/theme/root-document.tsx'
 import { templateConfig } from '../server/template-config.ts'
 import appCss from '../styles/app.css?url'
 
 export const Route = createRootRoute({
-  beforeLoad: async ({ location }) => ({
-    htmlAttributes: await getHtmlAttributes({ data: { pathname: location.pathname } }),
+  beforeLoad: ({ location }) => ({
+    htmlAttributes: getHtmlAttributes(location.pathname),
   }),
   loader: async () => {
     const [impersonation, announcement, appUrl, plausible] = await Promise.all([

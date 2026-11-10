@@ -69,7 +69,9 @@ export function getProjectHtmlAttributes(context: HtmlAttributesContext): Projec
 路由 `pathname`。函数应同步且无副作用，不使用浏览器 API 或数据库。允许字符串值的 `data-*`、
 `title`、`dir`（ltr/rtl/auto）、`translate`（yes/no）；`lang`、`data-preset`、事件、className、style
 等其余属性被忽略并记录 `theme.html_attribute_ignored` 警告（只记录属性名）。`lang` 与主题预设
-继续由模板写入。返回值随根路由上下文序列化，水合时直接复用，路由 pathname 改变后重新读取。
+继续由模板写入。返回值随根路由上下文序列化，水合时直接复用。只在服务端首屏计算，客户端
+导航从现有 `<html>` 读取白名单属性，不发起服务端请求或按 pathname 重算；需要随路由变化时
+请在页面组件内处理。
 
 xuanxue 迁移：把根布局中 `data-site="east|west"` 的计算移到此函数，在 `brand.css` 中使用
 `:root[data-site="east"]` / `:root[data-site="west"]`（并覆盖深色组合）切换 token，再将
