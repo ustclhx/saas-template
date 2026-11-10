@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
+import { checkWorkspace } from './check-deps.mjs'
 import { checkUi, findingsOf } from './check-ui.mjs'
+import { createProject } from './create-project.mjs'
+import { componentHashes, writeComponentLock } from './ui-lock.mjs'
 
 function workspace(t, files = {}, allow = {}) {
   const root = mkdtempSync(join(tmpdir(), 'check-ui-'))
@@ -14,8 +17,10 @@ function workspace(t, files = {}, allow = {}) {
     writeFileSync(path, typeof contents === 'string' ? contents : JSON.stringify(contents))
   }
   write('scripts/check-ui.allow.json', allow)
+  write('packages/ui/components.lock.json', {})
   for (const [file, contents] of Object.entries(files)) write(file, contents)
-  return { check: () => checkUi(root), write }
+  writeComponentLock(root)
+  return { root, check: () => checkUi(root), write }
 }
 
 test('hex, rgb/rgba, hsl/hsla and oklch colors fail in attributes, styles and templates', () => {
@@ -222,4 +227,90 @@ test('exception registrations require a reason and pending registrations require
     pendingReplacement: { 'apps/web/src/icon.tsx': [{ rule: 'color-literal', reason: '待替换' }] },
   })
   assert.throws(check, /待替换值\/数量/)
+})
+
+test('template component edits, additions, deletions and missing locks require regeneration', (t) => {
+  const file = 'packages/ui/src/components/button.tsx'
+  const { root, check, write } = workspace(t, { [file]: 'export const Button = () => <button />' })
+  assert.equal(check().violations.length, 0)
+  const original = readFileSync(join(root, 'packages/ui/components.lock.json'), 'utf8')
+  writeComponentLock(root)
+  assert.equal(readFileSync(join(root, 'packages/ui/components.lock.json'), 'utf8'), original)
+  assert.match(componentHashes(root)['src/components/button.tsx'], /^[a-f0-9]{64}$/)
+  write(file, 'export const Button = () => <button className="rounded" />')
+  write('packages/ui/src/components/nested/card.tsx', 'export const Card = () => <article />')
+  let violations = check().violations
+  assert.equal(violations.length, 2)
+  assert.ok(violations.every(({ value }) => value.includes('pnpm ui:lock')))
+  writeComponentLock(root)
+  assert.equal(check().violations.length, 0)
+  unlinkSync(join(root, file))
+  violations = check().violations
+  assert.equal(violations[0].file, file)
+  unlinkSync(join(root, 'packages/ui/components.lock.json'))
+  assert.ok(check().violations.some(({ file }) => file.endsWith('components.lock.json')))
+})
+
+test('derived projects reject changed template components with ordered customization guidance', (t) => {
+  const file = 'packages/ui/src/components/button.tsx'
+  const { root, check, write } = workspace(t, { [file]: 'export const Button = () => <button />' })
+  write('.template-base.json', {})
+  assert.equal(check().violations.length, 0)
+  write(file, 'export const Button = () => <button className="rounded" />')
+  write('scripts/check-ui.allow.local.json', {
+    exceptions: { [file]: [{ rule: 'color-literal', reason: '项目例外不能绕过组件指纹' }] },
+  })
+  const [violation] = check().violations
+  assert.equal(violation.file, file)
+  assert.match(violation.value, /token → ui 配置 → project 包装 → 复制到 project/)
+  assert.match(violation.value, /docs\/design\/forks\.md/)
+  assert.doesNotMatch(violation.value, /pnpm ui:lock/)
+  assert.throws(() => writeComponentLock(root), /由模板维护/)
+})
+
+test('generated projects can export and use project components under UI and dependency checks', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'ui-project-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  const { target } = await createProject({
+    name: 'renamed-ui-check',
+    domain: 'project.example',
+    output: join(dir, 'project'),
+  })
+  const manifest = JSON.parse(readFileSync(join(target, 'packages/ui/package.json'), 'utf8'))
+  const uiPackage = manifest.name
+  assert.equal(manifest.exports['./project'], './src/project/index.ts')
+  const component = join(target, 'packages/ui/src/project/project-card.tsx')
+  const source =
+    'import { Card } from \'../components/card.tsx\'\nexport function ProjectCard() { return <Card className="bg-primary">Project</Card> }\n'
+  writeFileSync(component, source)
+  writeFileSync(
+    join(target, 'packages/ui/src/project/index.ts'),
+    "export { ProjectCard } from './project-card.tsx'\n",
+  )
+  mkdirSync(join(target, 'apps/web/src/components'), { recursive: true })
+  writeFileSync(
+    join(target, 'apps/web/src/components/project-example.tsx'),
+    `import { ProjectCard } from '${uiPackage}/project'\nexport const Example = () => <ProjectCard />\n`,
+  )
+  assert.deepEqual(checkUi(target).violations, [])
+  assert.deepEqual(checkWorkspace(target).violations, [])
+  writeFileSync(component, `${source}\nexport const Illustration = () => <svg fill="#fff" />\n`)
+  assert.equal(checkUi(target).violations[0].file, 'packages/ui/src/project/project-card.tsx')
+  writeFileSync(
+    join(target, 'scripts/check-ui.allow.local.json'),
+    JSON.stringify({
+      exceptions: {
+        'packages/ui/src/project/project-card.tsx': [
+          { rule: 'color-literal', reason: '项目插画固定颜色' },
+        ],
+      },
+    }),
+  )
+  assert.deepEqual(checkUi(target).violations, [])
+  writeFileSync(component, `${source}\nimport '${uiPackage.split('/')[0]}/platform/node'\n`)
+  assert.ok(
+    checkWorkspace(target).violations.some((message) =>
+      message.includes('packages/ui/src/project/project-card.tsx'),
+    ),
+  )
 })

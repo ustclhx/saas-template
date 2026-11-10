@@ -15,6 +15,7 @@ const params = normalizeParams({
   name: 'acme',
   url: 'https://acme.example',
   locale: 'zh',
+  theme: 'blue',
   ai: ['text', 'video'],
   features: ['docs', 'blog'],
   oauth: ['github'],
@@ -64,6 +65,7 @@ async function fixture(t) {
   const config = {
     app: { supportEmail: params['support-email'] },
     i18n: { enabled: params.i18n, defaultLocale: params.locale },
+    ui: { preset: params.theme },
     marketing: { enabled: params.marketing },
     billing: { enabled: params['billing-enabled'], providers: params.billing },
     credits: { enabled: params['credits-enabled'] },
@@ -134,9 +136,28 @@ test('recovers every parameter from the root tree with provenance and ignores la
   assert.deepEqual(restored.params, { ...params, features: ['blog', 'docs'] })
   assert.match(restored.sources.name, /:package.json$/)
   assert.match(restored.sources['media-providers'], /:template.config.ts$/)
+  assert.match(restored.sources.theme, /:template.config.ts$/)
   assert.equal(restored.sources.target.includes('deploy-staging'), true)
   assert.equal((await runInfer(options(f))).candidates[0].score, 0)
   assert.equal(existsSync(join(f.project, '.template-base.json')), false)
+})
+
+test('older root configurations omit theme while explicit overrides remain available', async (t) => {
+  const f = await fixture(t)
+  delete f.config.ui
+  await files(f.project, {
+    'template.config.ts': `export default defineTemplateConfig(${JSON.stringify(f.config)})`,
+  })
+  git(f.project, 'add', '--all')
+  git(f.project, 'commit', '--quiet', '--amend', '--no-edit')
+  const root = git(f.project, 'rev-parse', 'HEAD')
+  const restored = inferParams(f.project, root)
+  assert.equal(Object.hasOwn(restored.params, 'theme'), false)
+  assert.equal(Object.hasOwn(restored.sources, 'theme'), false)
+  assert.equal(paramsToArgs(restored.params).includes('--theme'), false)
+  const overridden = inferParams(f.project, root, ['theme=green'])
+  assert.equal(overridden.params.theme, 'green')
+  assert.equal(overridden.sources.theme, '--param')
 })
 
 test('missing parameters require explicit overrides and never use current defaults', async (t) => {

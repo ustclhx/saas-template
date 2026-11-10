@@ -5,13 +5,14 @@ import { pathToFileURL } from 'node:url'
 import * as ts from 'typescript/unstable/ast'
 import { createVirtualFileSystem } from 'typescript/unstable/fs'
 import { API } from 'typescript/unstable/sync'
+import { componentLockViolations } from './ui-lock.mjs'
 
 const ROOT = resolve(import.meta.dirname, '..')
 const RULES = {
   'color-literal': '颜色应使用设计 token',
   'arbitrary-class': 'className 应使用 token 工具类，禁止任意值',
-  'native-select': '请使用 @saas/ui 的 Select',
-  'browser-dialog': '请使用 @saas/ui 的确认对话框',
+  'native-select': '请使用共享组件包的 Select',
+  'browser-dialog': '请使用共享组件包的确认对话框',
 }
 const EXCLUDED_DIRS = new Set([
   'node_modules',
@@ -202,6 +203,7 @@ export function checkUi(root = ROOT) {
         .filter((entry) => entry.isDirectory())
         .flatMap((entry) => sourceFiles(join(apps, entry.name, 'src')))
     : []
+  files.push(...sourceFiles(join(root, 'packages/ui/src/project')))
   const findings = scanSources(
     Object.fromEntries(files.map((file) => [file, readFileSync(file, 'utf8')])),
   ).map((finding) => ({ ...finding, file: relative(root, finding.file).split(sep).join('/') }))
@@ -217,15 +219,23 @@ export function checkUi(root = ROOT) {
     allowance.remaining--
     return false
   })
-  return { files: files.length, findings, violations }
+  return {
+    files: files.length,
+    findings,
+    violations: [...violations, ...componentLockViolations(root)],
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  const uiPackage = JSON.parse(readFileSync(join(ROOT, 'packages/ui/package.json'), 'utf8')).name
   const result = checkUi()
   if (result.violations.length > 0) {
     console.error(`UI 规范检查失败（${result.violations.length} 处）：`)
     for (const { file, line, column, rule, value } of result.violations) {
-      console.error(`  - ${file}:${line}:${column} [${rule}] ${value}：${RULES[rule]}`)
+      const message = RULES[rule]?.replace('共享组件包', uiPackage)
+      console.error(
+        `  - ${file}:${line}:${column} [${rule}] ${value}${message ? `：${message}` : ''}`,
+      )
     }
     process.exitCode = 1
   } else {

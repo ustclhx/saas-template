@@ -53,6 +53,7 @@ test('expanded defaults equal interactive answers and never retain output paths'
     output: '/tmp/unrecorded-local-path',
     target: 'cloudflare',
     locale: 'en',
+    theme: 'neutral',
     ai: 'text,image,video',
     'media-providers': 'fal,workers-ai',
     features: 'blog',
@@ -77,6 +78,7 @@ test('normalized CLI arguments round-trip custom lists, flags, and empty lists',
     ...minimalInput,
     target: 'selfhost',
     locale: 'zh',
+    theme: 'green',
     ai: '',
     'media-providers': '',
     features: 'docs,publicApi',
@@ -127,6 +129,26 @@ test('baseline serialization fixes field order and reads the validated record', 
   assert.deepEqual(
     validateBaseRecord({ ...record, repository: null, commit: null, version: null, clean: false }),
     { ...record, repository: null, commit: null, version: null, clean: false },
+  )
+})
+
+test('theme is recorded for new projects and remains optional for older baselines', () => {
+  assert.equal(params.theme, 'neutral')
+  const legacy = { ...params }
+  delete legacy.theme
+  assert.deepEqual(validateBaseRecord({ ...baseline, params: legacy }).params, legacy)
+  assert.equal(paramsToArgs(legacy).includes('--theme'), false)
+  const custom = normalizeParams(
+    projectOptions({ ...minimalInput, theme: 'blue', analytics: 'off' }),
+  )
+  const serialized = JSON.parse(serializeBaseRecord({ ...baseline, params: custom }))
+  assert.deepEqual(serialized.params, custom)
+  const args = paramsToArgs(serialized.params)
+  assert.equal(args[args.indexOf('--theme') + 1], 'blue')
+  assert.equal(args[args.indexOf('--analytics') + 1], 'off')
+  assert.throws(
+    () => validateBaseRecord({ ...baseline, params: { ...params, theme: 'red' } }),
+    /theme/,
   )
 })
 

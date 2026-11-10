@@ -1,7 +1,9 @@
 import { chromium } from '@playwright/test'
 import { build } from 'esbuild'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { m } from '../../paraglide/messages.js'
+import { baseLocale, overwriteGetLocale } from '../../paraglide/runtime.js'
 import { SignupBonusSection } from '../billing/signup-section.tsx'
 import { EmailVerificationSection } from '../settings/account-sections.tsx'
 import { DailyCreditsNotice, DailyGrantNotice } from './daily-notice.tsx'
@@ -14,6 +16,9 @@ vi.mock('@tanstack/react-router', () => ({
   useRouter: vi.fn(),
 }))
 
+beforeEach(() => overwriteGetLocale(() => baseLocale))
+afterEach(() => overwriteGetLocale(() => baseLocale))
+
 describe('daily credit presentation', () => {
   it('keeps a granted notice through cached rerenders until dismissed', async () => {
     // 在真实浏览器挂载组件，确保领取 effect、sessionStorage 和后续重渲染均被执行。
@@ -22,7 +27,9 @@ describe('daily credit presentation', () => {
         contents: `
           import { createElement } from 'react'
           import { createRoot } from 'react-dom/client'
+          import { baseLocale, overwriteGetLocale } from '../../paraglide/runtime.js'
           import { DailyCreditsNotice } from './daily-notice.tsx'
+          overwriteGetLocale(() => baseLocale)
           const root = createRoot(document.getElementById('root'))
           document.addEventListener('render-notice', (event) => {
             root.render(createElement(DailyCreditsNotice, { result: event.detail }))
@@ -60,7 +67,9 @@ describe('daily credit presentation', () => {
         )
       })
       await page.getByRole('status').waitFor()
-      expect(await page.getByRole('status').textContent()).toContain('10 daily credits')
+      expect(await page.getByRole('status').textContent()).toContain(
+        m.daily_credits_granted({ credits: 10, daysThisMonth: 2, maxDaysPerMonth: 10 }),
+      )
       expect(
         await page.evaluate(() => sessionStorage.getItem('daily-credits-notice:daily-grant')),
       ).toBe('shown')
@@ -71,8 +80,10 @@ describe('daily credit presentation', () => {
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
       })
       expect(await page.getByRole('status').count()).toBe(1)
-      expect(await page.getByRole('status').textContent()).toContain('2/10 days')
-      await page.getByRole('button', { name: 'Dismiss' }).click()
+      expect(await page.getByRole('status').textContent()).toContain(
+        m.daily_credits_granted({ credits: 10, daysThisMonth: 2, maxDaysPerMonth: 10 }),
+      )
+      await page.getByRole('button', { name: m.daily_credits_dismiss(), exact: true }).click()
       await page.getByRole('status').waitFor({ state: 'detached' })
     } finally {
       await browser.close()
@@ -89,9 +100,10 @@ describe('daily credit presentation', () => {
         onDismiss={() => {}}
       />,
     )
-    expect(html).toContain('10 daily credits')
-    expect(html).toContain('2/10 days')
-    expect(html).toContain('2026-11-17')
+    expect(html).toContain(
+      m.daily_credits_granted({ credits: 10, daysThisMonth: 2, maxDaysPerMonth: 10 }),
+    )
+    expect(html).toContain(m.daily_credits_expiry({ expiresAt: '2026-11-17T08:00:00.000Z' }))
   })
 
   it('links unverified users to account verification and renders no success for cached checks', () => {
@@ -118,7 +130,7 @@ describe('daily credit presentation', () => {
         <SignupBonusSection email={user.email} verified={false} credits={0} />
       </>,
     )
-    expect(html).toContain('Send verification email')
+    expect(html).toContain(`>${m.account_verification_send()}</button>`)
     expect(html).not.toContain('Signup credits')
   })
 })

@@ -21,6 +21,7 @@ const root = resolve(import.meta.dirname, '..')
 const featureNames = ['publicApi', 'blog', 'docs', 'waitlist', 'newsletter', 'guides']
 const aiNames = ['text', 'image', 'video']
 const mediaProviderNames = ['fal', 'workers-ai']
+const themeNames = ['neutral', 'blue', 'violet', 'green']
 const excluded = new Set([
   '.git',
   'node_modules',
@@ -90,6 +91,7 @@ const templateOnly = new Set([
 const templateOnlyDirectories = [
   ['docs', 'runbooks', 'evidence'].join('/'),
   'openspec/changes',
+  'docs/design-system/prototypes',
   'scripts/orca',
   'scripts/probes',
 ]
@@ -112,6 +114,11 @@ function projectText(text, path) {
   if (path === '.github/workflows/ci.yml')
     return text.replace(/^ *- run: pnpm test:create-project\r?\n/gm, '')
   if (!path.endsWith('.md')) return text
+  if (path === 'docs/create-project.md')
+    text = text.replace(
+      /(git clone --branch \S+ )https:\/\/github\.com\/\S+/g,
+      `$1"$(node -p "require('./.template-base.json').repository")"`,
+    )
   text = text.replace(/^\| `pnpm test:create-project(?::verify)?`.*\n/gm, '')
   text = text.replace(/<!-- template-only:start -->[\s\S]*?<!-- template-only:end -->\n?/g, '')
   // 保留通用操作说明；模板证据只在主仓库可追溯。
@@ -227,6 +234,8 @@ export function projectOptions(input) {
     throw new Error('域名必须为 HTTPS 主机名，不含端口、路径或凭据')
   }
   if (!['en', 'zh'].includes(input.locale ?? 'en')) throw new Error('语言只接受 en 或 zh')
+  const theme = input.theme ?? 'neutral'
+  if (!themeNames.includes(theme)) throw new Error(`--theme 只接受：${themeNames.join(', ')}`)
   const supportEmail = input['support-email'] ?? `support@${url.hostname}`
   if (!/^[\w.+-]+@[a-z0-9.-]+\.[a-z]+$/i.test(supportEmail)) throw new Error('支持邮箱格式无效')
   const target = input.target ?? 'cloudflare'
@@ -266,6 +275,7 @@ export function projectOptions(input) {
     url: url.origin,
     supportEmail,
     locale: input.locale ?? 'en',
+    theme,
     ai,
     mediaProviders: list(
       input['media-providers'] ?? 'fal,workers-ai',
@@ -309,6 +319,20 @@ function templateConfig(source, options) {
       `mediaProviders: ${JSON.stringify(options.mediaProviders)}`,
     )
     .replace(/providers:\s*\[[^\]]*\]/, `providers: ${JSON.stringify(options.billing)}`)
+  if (/ui:\s*\{/.test(result)) {
+    result = result.replace(/(ui:\s*\{)([^}]*)(\})/, (_match, start, fields, end) => {
+      const preset = `preset: '${options.theme}'`
+      const configured = /preset:\s*['"][^'"]+['"]/.test(fields)
+        ? fields.replace(/preset:\s*['"][^'"]+['"]/, preset)
+        : ` ${preset},${fields}`
+      return `${start}${configured}${end}`
+    })
+  } else {
+    result = result.replace(
+      /(defineTemplateConfig\(\{)/,
+      `$1\n  ui: { preset: '${options.theme}' },`,
+    )
+  }
   for (const [section, enabled] of [
     ['billing', options.billingEnabled],
     ['credits', options.creditsEnabled],
@@ -334,19 +358,24 @@ function templateConfig(source, options) {
     )
   }
   const site = options.analytics === 'plausible'
-  return result.replace(
+  result = result.replace(
     /features:\s*\{[^}]*\}/,
     `features: ${JSON.stringify({
       analytics: site ? 'plausible' : false,
       ...Object.fromEntries(featureNames.map((name) => [name, options.features.includes(name)])),
-    })},\n  analytics: ${JSON.stringify({
-      // selfhost 预渲染读这里；Cloudflare 以各环境 wrangler vars 为准。
-      plausibleDomain: site && options.target === 'selfhost' ? options.plausibleDomain : '',
-      plausibleHost: site && options.target === 'selfhost' ? options.plausibleHost : '',
-      // 多站映射属于衍生项目自己的域名，生成器不继承也不提供参数，需要时手工配置。
-      plausibleSites: '',
     })}`,
   )
+  const analytics = `analytics: ${JSON.stringify({
+    // selfhost 预渲染读这里；Cloudflare 以各环境 wrangler vars 为准。
+    plausibleDomain: site && options.target === 'selfhost' ? options.plausibleDomain : '',
+    plausibleHost: site && options.target === 'selfhost' ? options.plausibleHost : '',
+    // 多站映射属于衍生项目自己的域名，生成器不继承也不提供参数，需要时手工配置。
+    plausibleSites: '',
+  })}`
+  // 衍生项目也可作为生成源；已有分析配置需替换，不能重复插入顶层属性。
+  return /analytics:\s*\{/.test(result)
+    ? result.replace(/analytics:\s*\{[^}]*\}/, analytics)
+    : result.replace(/(features:\s*\{[^}]*\})/, `$1,\n  ${analytics}`)
 }
 
 function stagingUrl(options) {
@@ -669,7 +698,12 @@ export async function createProject(input, source = root) {
             // 无效 UTF-8 为二进制，原样复制。
           }
         }
-        if (decoded !== null) {
+        // 模板组件与指纹清单是同一份不可改写的内容；项目改名只发生在调用方与包清单。
+        if (
+          decoded !== null &&
+          !path.startsWith('packages/ui/src/components/') &&
+          path !== 'packages/ui/components.lock.json'
+        ) {
           // 先替换源标识，再插入新名称，避免新名称含旧 scope 前缀时被二次替换。
           let text = replace(projectText(decoded, path))
           if (path === 'package.json') {
@@ -806,9 +840,19 @@ export async function createProject(input, source = root) {
   await copy()
   async function writeGenerated(path, content) {
     const file = join(target, path)
+    await mkdir(dirname(file), { recursive: true })
+    await chmod(dirname(file), 0o755)
     await writeFile(file, content)
     await chmod(file, 0o644)
   }
+  await writeGenerated(
+    'scripts/check-ui.allow.local.json',
+    `${JSON.stringify({ exceptions: {}, pendingReplacement: {} }, null, 2)}\n`,
+  )
+  await writeGenerated(
+    'docs/design/README.md',
+    `# 项目设计记录\n\n此目录归项目所有。模板设计规范见 \`docs/design-system.md\`。\n\n- \`visual-system.md\`：项目视觉方向、品牌 token 与多站点规则。\n- \`references/\`：采用的参考网站说明、截图与素材来源。\n- \`prototypes/\`：经确认、可离线打开的设计稿副本；原链接与副本路径同时写入需求的 OpenSpec 设计文档。\n- \`forks.md\`：复制到 \`packages/ui/src/project/\` 的模板组件、来源版本与定制原因。\n\n品牌 token 写入 \`apps/web/src/styles/brand.css\`，项目组件经 \`@${options.name}/ui/project\` 导出；UI 例外登记在 \`scripts/check-ui.allow.local.json\` 并说明原因。\n`,
+  )
   const journal = JSON.parse(
     await readFile(join(target, 'packages/db/migrations/meta/_journal.json'), 'utf8'),
   )
@@ -905,7 +949,7 @@ export function verifyProject(target, { nodeBuild = false } = {}) {
   }
 }
 
-const help = `用法：pnpm create-project [参数]\n无参数时交互输入；非交互必须提供 --name 与 --domain。\n  --name acme --domain acme.example --target cloudflare|selfhost --output /tmp/acme\n  --image-namespace ghcr.io/owner/acme（selfhost，默认 ghcr.io/configure-owner/acme）\n  --locale en|zh --support-email support@acme.example\n  --analytics plausible|off（默认 plausible；长期词站可 off）--plausible-domain acme --plausible-host https://plausible.example\n  --ai text,image,video --features blog,docs,waitlist,newsletter,publicApi\n  --media-providers fal,workers-ai\n  --billing stripe,paypal --billing-enabled true|false --credits-enabled true|false\n  --marketing true|false --i18n true|false --oauth google,github\n  --turnstile true|false --multi-tenant true|false\n旧 --target <path> 已迁移至 --output <path>；部署目标默认 cloudflare。\n列表参数传空字符串可关闭全部；默认 ai / billing / oauth 全开，features=blog。\n默认安装依赖并运行 typecheck 与单元测试；--skip-check 仅生成，随后必须自行验证。\n  --help 显示帮助\n`
+const help = `用法：pnpm create-project [参数]\n无参数时交互输入；非交互必须提供 --name 与 --domain。\n  --name acme --domain acme.example --target cloudflare|selfhost --output /tmp/acme\n  --image-namespace ghcr.io/owner/acme（selfhost，默认 ghcr.io/configure-owner/acme）\n  --locale en|zh --support-email support@acme.example\n  --theme neutral|blue|violet|green（默认 neutral）\n  --analytics plausible|off（默认 plausible；长期词站可 off）--plausible-domain acme --plausible-host https://plausible.example\n  --ai text,image,video --features blog,docs,waitlist,newsletter,publicApi\n  --media-providers fal,workers-ai\n  --billing stripe,paypal --billing-enabled true|false --credits-enabled true|false\n  --marketing true|false --i18n true|false --oauth google,github\n  --turnstile true|false --multi-tenant true|false\n旧 --target <path> 已迁移至 --output <path>；部署目标默认 cloudflare。\n列表参数传空字符串可关闭全部；默认 ai / billing / oauth 全开，features=blog。\n默认安装依赖并运行 typecheck 与单元测试；--skip-check 仅生成，随后必须自行验证。\n  --help 显示帮助\n`
 
 export async function main() {
   const { values } = parseArgs({
@@ -922,6 +966,7 @@ export async function main() {
           'marketing',
           'i18n',
           'locale',
+          'theme',
           'support-email',
           'ai',
           'media-providers',
@@ -955,6 +1000,7 @@ export async function main() {
         ['marketing', '启用营销页面', 'true'],
         ['i18n', '启用多语言', 'true'],
         ['locale', '默认语言', 'en'],
+        ['theme', '主题预设（neutral/blue/violet/green）', 'neutral'],
         ['ai', 'AI 功能（逗号列表，- 关闭全部）', 'text,image,video'],
         ['media-providers', '媒体服务商（逗号列表，- 关闭全部）', 'fal,workers-ai'],
         ['features', '可选功能（逗号列表，- 关闭全部）', 'blog'],

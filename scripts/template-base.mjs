@@ -18,7 +18,7 @@ const switches = [
   'multi-tenant',
   'turnstile',
 ]
-const optionalParamKeys = ['analytics', 'plausible-domain', 'plausible-host']
+const optionalParamKeys = ['analytics', 'plausible-domain', 'plausible-host', 'theme']
 const paramKeys = [
   ...Object.keys(lists),
   ...switches,
@@ -65,14 +65,14 @@ export function normalizeParams(options) {
     oauth: options.oauth ?? ['google', 'github'],
     'support-email': options.supportEmail ?? `support@${new URL(options.url).hostname}`,
     target: options.target ?? 'cloudflare',
+    theme: options.theme ?? 'neutral',
     turnstile: options.turnstile ?? true,
   }
   return {
     ...Object.fromEntries(
-      paramKeys.map((key) => [
-        key,
-        Array.isArray(values[key]) ? [...new Set(values[key])] : values[key],
-      ]),
+      [...paramKeys, 'theme']
+        .sort()
+        .map((key) => [key, Array.isArray(values[key]) ? [...new Set(values[key])] : values[key]]),
     ),
     ...optionalParams(options),
   }
@@ -119,7 +119,13 @@ function exactKeys(value, keys, label) {
 }
 
 function validateParams(params) {
-  const { analytics, 'plausible-domain': domain_, 'plausible-host': host, ...required } = params
+  const {
+    analytics,
+    'plausible-domain': domain_,
+    'plausible-host': host,
+    theme,
+    ...required
+  } = params
   exactKeys(required, paramKeys, 'params')
   if (analytics !== undefined && analytics !== 'plausible' && analytics !== 'off')
     throw new Error('Invalid params.analytics')
@@ -127,6 +133,8 @@ function validateParams(params) {
     throw new Error('Invalid params.plausible-domain')
   if (host !== undefined && typeof host !== 'string')
     throw new Error('Invalid params.plausible-host')
+  if (theme !== undefined && !['neutral', 'blue', 'violet', 'green'].includes(theme))
+    throw new Error('Invalid params.theme')
   for (const [key, allowed] of Object.entries(lists)) {
     if (
       !Array.isArray(params[key]) ||
@@ -233,10 +241,12 @@ export function validateBaseRecord(record) {
     version: record.version,
     clean: record.clean,
     params: Object.fromEntries(
-      paramKeys.map((key) => [
-        key,
-        Array.isArray(record.params[key]) ? [...record.params[key]] : record.params[key],
-      ]),
+      [...paramKeys, ...optionalParamKeys.filter((key) => Object.hasOwn(record.params, key))]
+        .sort()
+        .map((key) => [
+          key,
+          Array.isArray(record.params[key]) ? [...record.params[key]] : record.params[key],
+        ]),
     ),
     migrations: [...record.migrations],
   }

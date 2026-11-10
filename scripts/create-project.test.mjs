@@ -15,6 +15,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
+import * as ts from 'typescript/unstable/ast'
+import { createVirtualFileSystem } from 'typescript/unstable/fs'
+import { API } from 'typescript/unstable/sync'
 import { createProject, projectOptions } from './create-project.mjs'
 import { parseJsonc } from './production/check-wrangler-envs.mjs'
 
@@ -44,6 +47,7 @@ async function fixture(t) {
     tenancy: { multiTenant: false }, auth: { oauth: ['google'], turnstile: true },
     billing: { providers: ['stripe'] }, ai: { text: { enabled: true, thinking: { default: 'off', userToggle: false }, reasoning: { display: false }, failedReplyRefund: 'no-visible-output' }, image: true, video: true, mediaProviders: ['fal', 'workers-ai'] },
     features: { blog: true },
+    ui: { preset: 'neutral', shape: 'rounded', density: 'default' },
   })`,
   )
   for (const app of ['web', 'jobs']) {
@@ -141,6 +145,164 @@ async function readBase(target) {
   return JSON.parse(await readFile(join(target, '.template-base.json'), 'utf8'))
 }
 
+test('四套主题写入配置和基准；省略时使用 neutral', async (t) => {
+  const f = await fixture(t)
+  for (const theme of [undefined, 'neutral', 'blue', 'violet', 'green']) {
+    const result = await createProject(
+      { ...f.input, theme, output: join(f.dir, theme ?? 'default') },
+      f.source,
+    )
+    const preset = theme ?? 'neutral'
+    assert.equal(result.options.theme, preset)
+    assert.match(
+      await readFile(join(result.target, 'template.config.ts'), 'utf8'),
+      new RegExp(`ui: \\{ preset: '${preset}', shape: 'rounded', density: 'default' \\}`),
+    )
+    assert.equal((await readBase(result.target)).params.theme, preset)
+  }
+})
+
+test('非法 CLI 主题列出预设且不写输出目录；help 说明主题参数', async (t) => {
+  const f = await fixture(t)
+  const command = fileURLToPath(new URL('./create-project.mjs', import.meta.url))
+  const invalid = spawnSync(
+    process.execPath,
+    [
+      command,
+      '--name',
+      'acme',
+      '--domain',
+      'acme.example',
+      '--theme',
+      'red',
+      '--output',
+      f.input.output,
+      '--skip-check',
+    ],
+    { encoding: 'utf8' },
+  )
+  assert.equal(invalid.status, 1)
+  assert.match(invalid.stderr, /--theme.*neutral, blue, violet, green/)
+  await assert.rejects(stat(f.input.output), { code: 'ENOENT' })
+  const help = spawnSync(process.execPath, [command, '--help'], { encoding: 'utf8' })
+  assert.equal(help.status, 0)
+  assert.match(help.stdout, /--theme neutral\|blue\|violet\|green（默认 neutral）/)
+})
+
+test('源配置的 ui 未设置 preset 时插入主题并保留其他选项', async (t) => {
+  const f = await fixture(t)
+  const config = await readFile(join(f.source, 'template.config.ts'), 'utf8')
+  for (const [id, ui] of [
+    ['shape', "ui: { shape: 'pill' }"],
+    ['empty', 'ui: {}'],
+    ['absent', ''],
+  ]) {
+    await f.file('template.config.ts', config.replace(/ui: \{[^}]+\},/, ui ? `${ui},` : ''))
+    const result = await createProject(
+      { ...f.input, theme: 'blue', output: join(f.dir, id) },
+      f.source,
+    )
+    const generated = await readFile(join(result.target, 'template.config.ts'), 'utf8')
+    assert.match(generated, /ui: \{[^}]*preset: 'blue'/)
+    if (id === 'shape') assert.match(generated, /ui: \{[^}]*shape: 'pill'/)
+  }
+})
+
+test('从生成副本再次生成仅更新一份主题与分析配置，保留其他 UI 选项', async (t) => {
+  const f = await fixture(t)
+  const config = await readFile(join(f.source, 'template.config.ts'), 'utf8')
+  await f.file(
+    'template.config.ts',
+    config.replace("shape: 'rounded', density: 'default'", "shape: 'pill', density: 'compact'"),
+  )
+  const first = await createProject({ ...f.input, theme: 'blue', analytics: 'off' }, f.source)
+  const second = await createProject(
+    {
+      ...f.input,
+      name: 'second',
+      output: join(f.dir, 'second'),
+      target: 'selfhost',
+      theme: 'violet',
+      analytics: 'plausible',
+      'plausible-domain': 'second-site',
+      'plausible-host': 'https://analytics.second.example',
+    },
+    first.target,
+  )
+  const file = '/bootstrap/template.config.ts'
+  const tsconfig = '/bootstrap/tsconfig.json'
+  const api = new API({
+    cwd: '/bootstrap',
+    fs: createVirtualFileSystem({
+      [tsconfig]: JSON.stringify({
+        compilerOptions: { noLib: true, noResolve: true },
+        files: [file],
+      }),
+      [file]: await readFile(join(second.target, 'template.config.ts'), 'utf8'),
+    }),
+  })
+  try {
+    const snapshot = api.updateSnapshot({ openProjects: [tsconfig] })
+    try {
+      const source = snapshot.getProject(tsconfig).program.getSourceFile(file)
+      const root = source.statements.find(ts.isExportAssignment).expression.arguments[0]
+      const property = (object, name) => {
+        const matches = object.properties.filter((entry) => entry.name.text === name)
+        assert.equal(matches.length, 1, `${name} 应只声明一次`)
+        return matches[0].initializer
+      }
+      const ui = property(root, 'ui')
+      assert.equal(property(ui, 'preset').text, 'violet')
+      assert.equal(property(ui, 'shape').text, 'pill')
+      assert.equal(property(ui, 'density').text, 'compact')
+      const analytics = property(root, 'analytics')
+      assert.equal(property(analytics, 'plausibleDomain').text, 'second-site')
+      assert.equal(property(analytics, 'plausibleHost').text, 'https://analytics.second.example')
+      assert.equal(property(property(root, 'features'), 'analytics').text, 'plausible')
+    } finally {
+      snapshot.dispose()
+    }
+  } finally {
+    api.close()
+  }
+})
+
+test('初始化项目设计记录，排除模板原型并保留模板组件与锁的原始字节', async (t) => {
+  const f = await fixture(t)
+  const component =
+    '// fixture-template @fixture/config FixtureApp\r\nexport const Button = () => null\r\n'
+  const lock = '{"src/components/button.tsx":"fixture-template"}\n'
+  await f.file('packages/ui/src/components/button.tsx', component)
+  await f.file('packages/ui/components.lock.json', lock)
+  await f.file('docs/design-system/prototypes/review.html', 'TEMPLATE_PROTOTYPE_SENTINEL')
+  await f.file('scripts/check-ui.allow.local.json', '{"exceptions":{"old-project":[]}}')
+  const result = await createProject(f.input, f.source)
+  assert.deepEqual(
+    JSON.parse(await readFile(join(result.target, 'scripts/check-ui.allow.local.json'), 'utf8')),
+    { exceptions: {}, pendingReplacement: {} },
+  )
+  const readme = await readFile(join(result.target, 'docs/design/README.md'), 'utf8')
+  for (const path of [
+    'visual-system.md',
+    'references/',
+    'prototypes/',
+    'forks.md',
+    '@acme/ui/project',
+  ])
+    assert.ok(readme.includes(path), `缺少项目设计位置：${path}`)
+  await assert.rejects(stat(join(result.target, 'docs/design-system/prototypes')), {
+    code: 'ENOENT',
+  })
+  assert.equal(
+    await readFile(join(result.target, 'packages/ui/src/components/button.tsx'), 'utf8'),
+    component,
+  )
+  assert.equal(
+    await readFile(join(result.target, 'packages/ui/components.lock.json'), 'utf8'),
+    lock,
+  )
+})
+
 test('模板基准记录来源状态、完整参数和实际迁移，不继承副本记录', async (t) => {
   const temp = await mkdtemp(join(tmpdir(), 'bootstrap-base-'))
   t.after(() => rm(temp, { recursive: true, force: true }))
@@ -195,6 +357,7 @@ test('模板基准记录来源状态、完整参数和实际迁移，不继承�
     oauth: ['google', 'github'],
     'support-email': 'support@acme.example',
     target: 'cloudflare',
+    theme: 'neutral',
     turnstile: true,
   })
   const journal = JSON.parse(
@@ -288,6 +451,7 @@ test('真实模板同源同参数在不同输出、umask 和环境下逐文件�
         domain: `${target}.example`,
         target,
         locale: 'zh',
+        theme: 'violet',
         features: 'newsletter,waitlist',
         oauth: 'github',
         'media-providers': 'workers-ai',
@@ -319,7 +483,13 @@ test('真实模板同源同参数在不同输出、umask 和环境下逐文件�
         .map((path) => relative(second.target, path))
         .sort()
       assert.deepEqual(firstFiles, secondFiles)
-      for (const path of ['PROJECT_SETUP.md', '.dev.vars.example', '.template-base.json'])
+      for (const path of [
+        'PROJECT_SETUP.md',
+        '.dev.vars.example',
+        '.template-base.json',
+        'scripts/check-ui.allow.local.json',
+        'docs/design/README.md',
+      ])
         assert.ok(firstFiles.includes(path), `必须比较生成文件：${path}`)
       for (const path of firstFiles) {
         const firstPath = join(first.target, path)
@@ -714,6 +884,13 @@ test('真实副本保留 Cloudflare 操作步骤，技能文档引用存在且�
     target: 'cloudflare',
     output: join(dir, 'acme'),
   })
+  const bootstrapDocs = await readFile(join(result.target, 'docs/create-project.md'), 'utf8')
+  assert.doesNotMatch(bootstrapDocs, /ustclhx/)
+  assert.ok(
+    bootstrapDocs.includes(
+      `git clone --branch template-v0.3.0 "$(node -p "require('./.template-base.json').repository")" /tmp/template`,
+    ),
+  )
   for (const path of await files(result.target)) {
     if (!path.endsWith('.md')) continue
     const text = await readFile(path, 'utf8')
