@@ -7,7 +7,9 @@ description: 在本模板新增或修改公开静态页、法律页、博客与�
 
 从含 `package.json` 与 `template.config.ts` 的项目根执行命令。下列路径均相对项目根；生成后的项目包 scope 可能改变，执行包命令前从 `apps/web/package.json` 读取真实包名，将示例的 `@saas/web` 替换。先读 `AGENTS.md`、`docs/02-project-structure.md` 和 `apps/web/src/features/seo/README.md`。
 
-## 1. 确定内容入口
+## 1. 检查设计稿，确定内容入口
+
+先判断是否需要设计稿（标准见 `docs/design-system.md` §8.1）：在已有集合（legal、blog、docs、guides）中新增或修改文章、只改文案与小样式、修缺陷时免设计稿，直接继续。新增独立页面、新营销区块或改变现有版式时，所属 OpenSpec change 的 `design.md`「设计稿」一节必须有画布链接与仓库副本路径，且副本文件存在（`rg -n '^## 设计稿' openspec/changes/*/design.md`）；没有时转入 `ui-design` 技能产出设计稿并取得使用者确认，在此之前不创建路由或组件文件。
 
 确认用户给出的 URL、集合、slug、启用语言、标题/描述、正文和上线时间。检查 `template.config.ts` 的 `marketing.enabled`、`i18n.enabled`、`i18n.locales`、默认语言，以及博客/文档功能开关。
 

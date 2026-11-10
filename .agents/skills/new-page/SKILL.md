@@ -7,9 +7,11 @@ description: 为本模板新增需要登录的 app 空间页面或 admin 后台�
 
 在含 `package.json` 与 `template.config.ts` 的项目根执行。下文路径均相对项目根；生成器副本已改包 scope，先读 `apps/web/package.json` 的 name/dependencies，示例 `@saas/*` 替换为实际名称。
 
-## 1. 确定边界与参考
+## 1. 检查设计稿，确定边界与参考
 
-先读 `AGENTS.md`、`docs/01-architecture.md`、`docs/02-project-structure.md`；并行修改导航或文案时读 `docs/09-parallel-plan.md` §3/§6。记录路由、角色、读写行为、数据来源、启用语言和开关，寻找同类页面后再创建文件：
+先检查已确认的设计稿：新增页面或较大布局改动必须在所属 OpenSpec change 的 `design.md`「设计稿」一节有画布链接与仓库副本路径，且副本文件存在（`rg -n '^## 设计稿' openspec/changes/*/design.md`）。没有时转入 `ui-design` 技能产出设计稿并取得使用者确认，在此之前不创建路由或组件文件。只改文案、小样式或修缺陷时免设计稿，判断标准见 `docs/design-system.md` §8.1。实现以设计稿副本为准，只用 `@saas/ui` 与 `@saas/ui/project` 的组件，缺组件先补组件。
+
+再读 `AGENTS.md`、`docs/01-architecture.md`、`docs/02-project-structure.md`；并行修改导航或文案时读 `docs/09-parallel-plan.md` §3/§6。记录路由、角色、读写行为、数据来源、启用语言和开关，寻找同类页面后再创建文件：
 
 ```sh
 rg --files apps/web/src/routes apps/web/src/features packages/ui/src

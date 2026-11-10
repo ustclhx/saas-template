@@ -39,8 +39,8 @@
 
 ## 7. 设计规范文档、技能与生成器
 
-- [ ] 7.1 编写 `docs/design-system.md`（分层、token 表、组件用法、动效、页面模式、参考来源、免设计稿标准），更新 `docs/02-project-structure.md` 与 `AGENTS.md` 的 ui 说明；文档中的命令可按原样运行
-- [ ] 7.2 新增 `ui-design` 技能（`.agents/skills` 与 `.claude/skills` 逐字节一致），覆盖索取参考、衍生项目建立视觉方向（`brand.css`、`docs/design/visual-system.md`、多站点）、Design 画布设计稿的状态矩阵、确认、副本存 `docs/design/prototypes/` 并在 OpenSpec 记录链接与副本、实现只用 `@saas/ui` 与 `@saas/ui/project`；template-sync 技能新增「涉及 `packages/ui` 或基线 token 时合并前截图对比」步骤；`new-page`、`new-static-page` 第 1 步改为检查设计稿链接；技能双目录一致性测试通过
+- [x] 7.1 编写 `docs/design-system.md`（分层、token 表、组件用法、动效、页面模式、参考来源、免设计稿标准），更新 `docs/02-project-structure.md` 与 `AGENTS.md` 的 ui 说明；文档中的命令可按原样运行
+- [x] 7.2 新增 `ui-design` 技能（`.agents/skills` 与 `.claude/skills` 逐字节一致），覆盖索取参考、衍生项目建立视觉方向（`brand.css`、`docs/design/visual-system.md`、多站点）、Design 画布设计稿的状态矩阵、确认、副本存 `docs/design/prototypes/` 并在 OpenSpec 记录链接与副本、实现只用 `@saas/ui` 与 `@saas/ui/project`；template-sync 技能新增「涉及 `packages/ui` 或基线 token 时合并前截图对比」步骤；`new-page`、`new-static-page` 第 1 步改为检查设计稿链接；技能双目录一致性测试通过
 - [ ] 7.3 生成器新增 `--theme`（非法值列出可用预设并退出），写入模板配置与 `.template-base.json`；`create-project.test.mjs` 覆盖合法、非法与确定性，`pnpm test:create-project:verify` 通过
 - [ ] 7.4 用 Design System Artifact 发布设计规范镜像，`docs/design-system.md` 记录镜像地址与同步提交
 
