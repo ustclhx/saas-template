@@ -5,13 +5,16 @@ import { pathToFileURL } from 'node:url'
 import * as ts from 'typescript/unstable/ast'
 import { createVirtualFileSystem } from 'typescript/unstable/fs'
 import { API } from 'typescript/unstable/sync'
+import { componentLockViolations } from './ui-lock.mjs'
 
 const ROOT = resolve(import.meta.dirname, '..')
+const PROJECT_INDEX =
+  '// 项目自有组件入口。模板仅初始化此文件，后续组件与导出由衍生项目维护。\nexport {}\n'
 const RULES = {
   'color-literal': '颜色应使用设计 token',
   'arbitrary-class': 'className 应使用 token 工具类，禁止任意值',
-  'native-select': '请使用 @saas/ui 的 Select',
-  'browser-dialog': '请使用 @saas/ui 的确认对话框',
+  'native-select': '请使用共享组件包的 Select',
+  'browser-dialog': '请使用共享组件包的确认对话框',
 }
 const EXCLUDED_DIRS = new Set([
   'node_modules',
@@ -191,6 +194,31 @@ function readAllowList(root, name, optional = false) {
   return entries
 }
 
+function projectDirectoryViolations(root) {
+  if (existsSync(join(root, '.template-base.json'))) return []
+  const dir = 'packages/ui/src/project'
+  const expected = { '.gitkeep': '', 'index.ts': PROJECT_INDEX }
+  const path = join(root, dir)
+  const entries = existsSync(path) ? readdirSync(path, { withFileTypes: true }) : []
+  const changed = new Set(
+    entries
+      .filter((entry) => !entry.isFile() || !Object.hasOwn(expected, entry.name))
+      .map((entry) => entry.name),
+  )
+  for (const [file, contents] of Object.entries(expected)) {
+    const entry = entries.find((entry) => entry.name === file)
+    if (!entry?.isFile() || readFileSync(join(path, file), 'utf8') !== contents) changed.add(file)
+  }
+  return [...changed].sort().map((file) => ({
+    file: `${dir}/${file}`,
+    line: 1,
+    column: 1,
+    rule: 'project-directory',
+    value:
+      '模板的项目组件目录只能保留空 .gitkeep 与固定的 index.ts 占位内容；项目组件由衍生项目维护',
+  }))
+}
+
 export function checkUi(root = ROOT) {
   const allowances = [
     ...readAllowList(root, 'check-ui.allow.json'),
@@ -202,6 +230,7 @@ export function checkUi(root = ROOT) {
         .filter((entry) => entry.isDirectory())
         .flatMap((entry) => sourceFiles(join(apps, entry.name, 'src')))
     : []
+  files.push(...sourceFiles(join(root, 'packages/ui/src/project')))
   const findings = scanSources(
     Object.fromEntries(files.map((file) => [file, readFileSync(file, 'utf8')])),
   ).map((finding) => ({ ...finding, file: relative(root, finding.file).split(sep).join('/') }))
@@ -217,15 +246,27 @@ export function checkUi(root = ROOT) {
     allowance.remaining--
     return false
   })
-  return { files: files.length, findings, violations }
+  return {
+    files: files.length,
+    findings,
+    violations: [
+      ...violations,
+      ...componentLockViolations(root),
+      ...projectDirectoryViolations(root),
+    ],
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  const uiPackage = JSON.parse(readFileSync(join(ROOT, 'packages/ui/package.json'), 'utf8')).name
   const result = checkUi()
   if (result.violations.length > 0) {
     console.error(`UI 规范检查失败（${result.violations.length} 处）：`)
     for (const { file, line, column, rule, value } of result.violations) {
-      console.error(`  - ${file}:${line}:${column} [${rule}] ${value}：${RULES[rule]}`)
+      const message = RULES[rule]?.replace('共享组件包', uiPackage)
+      console.error(
+        `  - ${file}:${line}:${column} [${rule}] ${value}${message ? `：${message}` : ''}`,
+      )
     }
     process.exitCode = 1
   } else {

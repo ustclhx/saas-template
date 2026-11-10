@@ -87,6 +87,7 @@ export function inferParams(project, commit, overrides = []) {
   }
   for (const [key, value] of Object.entries({
     locale: config.i18n?.defaultLocale,
+    theme: config.ui?.preset,
     i18n: config.i18n?.enabled,
     marketing: config.marketing?.enabled,
     'billing-enabled': config.billing?.enabled,
@@ -197,7 +198,8 @@ export function inferParams(project, commit, overrides = []) {
     params['image-namespace'] = `ghcr.io/configure-owner/${params.name}`
     sources['image-namespace'] = '生成器默认（cloudflare）'
   }
-  const missing = keys.filter((key) => !Object.hasOwn(params, key))
+  // theme 为后加参数；旧根提交没有该配置时，不向旧候选生成器传递新 flag。
+  const missing = keys.filter((key) => key !== 'theme' && !Object.hasOwn(params, key))
   if (missing.length)
     throw new Error(
       `无法从首个提交还原参数，请补齐：${missing.map((key) => `--param ${key}=<值>`).join(' ')}`,
@@ -213,6 +215,7 @@ export function inferParams(project, commit, overrides = []) {
     i18n: params.i18n,
     imageNamespace: params['image-namespace'],
     locale: params.locale,
+    theme: params.theme,
     marketing: params.marketing,
     mediaProviders: params['media-providers'],
     multiTenant: params['multi-tenant'],
@@ -221,6 +224,7 @@ export function inferParams(project, commit, overrides = []) {
     target: params.target,
     turnstile: params.turnstile,
   })
+  if (!Object.hasOwn(params, 'theme')) delete normalized.theme
   paramsToArgs(normalized)
   return { params: normalized, sources, files }
 }
