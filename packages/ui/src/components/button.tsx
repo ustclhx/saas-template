@@ -12,12 +12,13 @@ import { cn } from '../lib/utils.ts'
 // 底色画在 ::before 上：它比按钮小 1px，再用同色 1px 外圈（ring）补回整个尺寸；按下时外圈收为 0，
 // 底色每边正好收 1px，任何宽度下都一致（缩放会让宽按钮横向收得更多）。上游用内部 span 实现，
 // 这里改为伪元素，按钮内部仍只有调用方的子元素，现有调用方与 SSR 断言不受影响。
-// 强调色取 --primary（上游取 --foreground），主题预设改它即可换色。
+// 强调色取 --primary（上游取 --foreground），主题预设改它即可换色。悬停 / 按下用 color-mix
+// 掺黑加深（上游降不透明度），保证按钮文字在各状态下的对比度。
 const surface =
   'before:pointer-events-none before:absolute before:inset-px before:-z-10 before:rounded-[inherit] before:transition-[box-shadow,background-color] before:[transition-duration:180ms,80ms] before:[transition-timing-function:cubic-bezier(0.23,1,0.32,1),ease] active:before:[transition-duration:80ms,80ms]'
 
 const primary =
-  'text-primary-foreground before:bg-primary before:ring-1 before:ring-primary hover:before:bg-primary/90 hover:before:ring-primary/90 active:before:bg-primary/80 active:before:ring-0'
+  'text-primary-foreground before:bg-primary before:ring-1 before:ring-primary hover:before:bg-[color-mix(in_oklab,var(--primary)_88%,black)] hover:before:ring-[color-mix(in_oklab,var(--primary)_88%,black)] active:before:bg-[color-mix(in_oklab,var(--primary)_78%,black)] active:before:ring-0'
 const tertiary =
   'text-foreground before:ring-1 before:ring-border hover:before:bg-hover active:before:bg-active active:before:ring-0 active:before:inset-ring-1 active:before:inset-ring-border'
 
@@ -27,7 +28,8 @@ export const buttonVariants = cva(
     'transition-colors duration-80',
     // 加载中的按钮同样 disabled，但保持原有强度：aria-busy 表示「处理中」而不是「不可用」
     'disabled:pointer-events-none disabled:not-aria-busy:opacity-50',
-    'focus-visible:ring-1 focus-visible:ring-(--focus-ring)',
+    // 焦点环：2px 描边加 2px 间隙，环落在页面背景上，与按钮底色无关
+    'focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring)',
     'aria-invalid:ring-1 aria-invalid:ring-destructive',
     "[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
     surface,
@@ -40,7 +42,7 @@ export const buttonVariants = cva(
         primary,
         // Fluid 的 destructive：红色浅底配红字，比实心红更克制
         destructive:
-          'text-destructive before:bg-destructive/15 before:ring-1 before:ring-destructive/15 hover:before:bg-destructive/25 hover:before:ring-destructive/25 active:before:bg-destructive/15 active:before:ring-0 dark:before:bg-destructive/20 dark:before:ring-destructive/20 dark:hover:before:bg-destructive/30 dark:hover:before:ring-destructive/30',
+          'text-destructive before:bg-destructive/10 before:ring-1 before:ring-destructive/10 hover:before:bg-destructive/15 hover:before:ring-destructive/15 active:before:bg-destructive/10 active:before:ring-0 dark:before:bg-destructive/15 dark:before:ring-destructive/15 dark:hover:before:bg-destructive/20 dark:hover:before:ring-destructive/20 dark:active:before:bg-destructive/15',
         // outline 即 Fluid 的 tertiary：1px 边框圈，按下时边框向内收
         outline: tertiary,
         tertiary,

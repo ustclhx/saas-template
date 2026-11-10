@@ -106,6 +106,12 @@ describe('defineTemplateConfig', () => {
     expect(config.ui).toEqual({ preset: 'violet', shape: 'rounded', density: 'compact' })
   })
 
+  it('rejects an unknown UI preset, shape or density at definition time', () => {
+    expect(() => defineTemplateConfig({ app, ui: { preset: 'teal' as never } })).toThrow()
+    expect(() => defineTemplateConfig({ app, ui: { shape: 'square' as never } })).toThrow()
+    expect(() => defineTemplateConfig({ app, ui: { density: 'cozy' as never } })).toThrow()
+  })
+
   it('accepts all modules disabled while retaining their existing parameters', () => {
     const config = defineTemplateConfig({
       app,

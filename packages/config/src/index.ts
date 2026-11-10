@@ -42,4 +42,8 @@ export {
   type UiDensity,
   type UiPreset,
   type UiShape,
+  uiConfigSchema,
+  uiDensities,
+  uiPresets,
+  uiShapes,
 } from './template.ts'

@@ -78,7 +78,8 @@ export {
   UiRoot,
   type UiRootProps,
 } from './components/ui-root.tsx'
-export { type IconComponent, type IconName, useIcons } from './lib/icon-context.tsx'
-export { type ShapeVariant, useShape } from './lib/shape-context.tsx'
-export { SizeProvider, type SizeVariant, useSize } from './lib/size-context.tsx'
+// 上下文 hooks 与 Provider 暂不导出（接口随上游月度变化），应用经 UiRoot 配置
+export type { IconComponent, IconName } from './lib/icon-context.tsx'
+export type { ShapeVariant } from './lib/shape-context.tsx'
+export type { SizeVariant } from './lib/size-context.tsx'
 export { cn } from './lib/utils.ts'

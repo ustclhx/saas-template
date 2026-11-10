@@ -1,13 +1,15 @@
-/* 主题预设 green：绿色强调，圆角偏小。只覆盖强调色、圆角与焦点环，见 neutral.css 的说明。 */
+/* 主题预设 green：只换颜色，见 neutral.css 与 blue.css 的说明。 */
 :root[data-preset="green"] {
-  --radius: 0.375rem;
+  --ui-preset: green;
   --primary: #15803d;
   --primary-foreground: #ffffff;
-  --fluid-accent: #22c55e;
+  --fluid-accent: #16a34a;
+  --focus-ring: #171717;
 }
 
 :root[data-preset="green"].dark {
-  --primary: #4ade80;
-  --primary-foreground: #052e16;
+  --primary: #15803d;
+  --primary-foreground: #ffffff;
   --fluid-accent: #4ade80;
+  --focus-ring: #bbf7d0;
 }

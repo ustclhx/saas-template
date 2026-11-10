@@ -30,8 +30,9 @@ export type UiRootProps = {
 export function UiRoot({ children, shape = 'rounded', density = 'default', icons }: UiRootProps) {
   return (
     <MotionConfig reducedMotion="user">
-      <ShapeProvider defaultShape={shape}>
-        <SizeProvider defaultSize={density}>
+      {/* 受控：shape / density 变化立即生效（预览页运行时切换用） */}
+      <ShapeProvider shape={shape}>
+        <SizeProvider size={density}>
           <IconProvider {...(icons && { icons })}>{children}</IconProvider>
         </SizeProvider>
       </ShapeProvider>

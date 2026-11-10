@@ -12,6 +12,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -227,7 +228,8 @@ const triggerVariants = cva(
     'transition-[color,background-color,border-radius,box-shadow,opacity] duration-80',
     'disabled:opacity-50 disabled:pointer-events-none',
     // data-pointer-focus: focus handed back after a pick with the pointer.
-    'focus-visible:not-data-[pointer-focus]:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]',
+    // 模板改动：焦点环改为 2px 描边加 2px 间隙（与 Button 一致），上游为 1px ring
+    'focus-visible:not-data-[pointer-focus]:outline-solid focus-visible:not-data-[pointer-focus]:outline-2 focus-visible:not-data-[pointer-focus]:outline-offset-2 focus-visible:not-data-[pointer-focus]:outline-(--focus-ring)',
   ],
   {
     variants: {
@@ -258,12 +260,15 @@ const SelectTrigger = forwardRef<HTMLButtonElement, SelectTriggerProps>(
     const shape = useShape()
     const sizeClasses = useSize(size)
     const compact = sizeClasses.variant === 'compact'
+    // 模板改动：错误文字经 aria-describedby 关联到触发器，读屏能读出错误原因
+    const errorId = useId()
 
     return (
       <div className="flex flex-col gap-1">
         <SelectPrimitive.Trigger
           ref={ref}
           aria-invalid={!!error || undefined}
+          {...(error && { 'aria-describedby': errorId })}
           className={cn(
             triggerVariants({ variant }),
             sizeClasses.control,
@@ -313,7 +318,10 @@ const SelectTrigger = forwardRef<HTMLButtonElement, SelectTriggerProps>(
           </SelectPrimitive.Icon>
         </SelectPrimitive.Trigger>
         {error && (
-          <span className="text-[length:var(--fs-caption,12px)] leading-[var(--lh-caption,16px)] text-destructive pl-3">
+          <span
+            id={errorId}
+            className="text-[length:var(--fs-caption,12px)] leading-[var(--lh-caption,16px)] text-destructive pl-3"
+          >
             {error}
           </span>
         )}

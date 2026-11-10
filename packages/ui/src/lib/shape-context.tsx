@@ -124,12 +124,16 @@ function useShapeContext() {
 
 function ShapeProvider({
   children,
+  shape: controlledShape,
   defaultShape = 'rounded',
 }: {
   children: ReactNode
+  /** 模板改动：受控形状（与 SizeProvider 的 size 一致），传入后忽略内部状态，变化即生效 */
+  shape?: ShapeVariant | undefined
   defaultShape?: ShapeVariant
 }) {
-  const [shape, setShapeState] = useState<ShapeVariant>(defaultShape)
+  const [internalShape, setShapeState] = useState<ShapeVariant>(defaultShape)
+  const shape = controlledShape ?? internalShape
   const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Run a state change under the `.transitioning` guard (added + reflow-flushed
@@ -156,9 +160,10 @@ function ShapeProvider({
   // system — e.g. the @layer base :focus-visible fallback ring in
   // globals.css. Set on <html> so portalled content sees it too.
   useEffect(() => {
+    // 模板改动：rounded 跟随圆角 token（预设与 brand.css 可改），其余形状用固定像素
     document.documentElement.style.setProperty(
       '--shape-input-radius',
-      `${shapeMap[shape].bgRadius}px`,
+      shape === 'rounded' ? 'var(--radius)' : `${shapeMap[shape].bgRadius}px`,
     )
   }, [shape])
 

@@ -1,13 +1,18 @@
-/* 主题预设 blue：蓝色强调，圆角略大。只覆盖强调色、圆角与焦点环，见 neutral.css 的说明。 */
+/*
+ * 主题预设 blue：只换颜色，见 neutral.css 的说明。
+ * 焦点环与实心主按钮同为蓝色时对比不足 3:1，因此浅色焦点环用近黑、深色用浅蓝。
+ */
 :root[data-preset="blue"] {
-  --radius: 0.625rem;
+  --ui-preset: blue;
   --primary: #2563eb;
   --primary-foreground: #ffffff;
   --fluid-accent: #3b82f6;
+  --focus-ring: #171717;
 }
 
 :root[data-preset="blue"].dark {
-  --primary: #60a5fa;
-  --primary-foreground: #0f172a;
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
   --fluid-accent: #60a5fa;
+  --focus-ring: #bfdbfe;
 }

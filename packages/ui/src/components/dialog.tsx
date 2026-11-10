@@ -239,7 +239,8 @@ const DialogTitle = forwardRef<
       ref={ref}
       className={cn(
         typeClass('title', compact ? 'compact' : 'default'),
-        'text-foreground',
+        // 模板改动：fontVariationSettings 只作用于 Inter，中文回退字体需要 font-semibold 才会加粗
+        'font-semibold text-foreground',
         className,
       )}
       style={{ fontVariationSettings: fontWeights.semibold }}

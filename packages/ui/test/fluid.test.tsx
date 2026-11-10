@@ -62,6 +62,38 @@ describe('Button（Fluid 适配）', () => {
   })
 })
 
+describe('Button asChild 与 UiRoot 受控', () => {
+  it('asChild 时样式落在子元素上，内部不包额外节点，加载态不作用于链接', () => {
+    const html = renderToString(
+      <Button asChild variant="outline" loading>
+        <a href="/pricing">Pricing</a>
+      </Button>,
+    )
+    expect(html).toMatch(
+      /^<a href="\/pricing" data-slot="button" class="[^"]*before:ring-border[^"]*">Pricing<\/a>$/,
+    )
+    expect(html).not.toContain('<button')
+    expect(html).not.toContain('aria-busy="')
+  })
+
+  it('UiRoot 的 shape 与 density 变化后立即生效', () => {
+    const view = render(
+      <UiRoot shape="rounded">
+        <Button>Go</Button>
+      </UiRoot>,
+    )
+    const button = screen.getByRole('button', { name: 'Go' })
+    expect(button.className).toContain('rounded-lg')
+    view.rerender(
+      <UiRoot shape="pill" density="compact">
+        <Button>Go</Button>
+      </UiRoot>,
+    )
+    expect(button.className).toContain('rounded-[20px]')
+    expect(button.className).toContain('h-7')
+  })
+})
+
 describe('Dialog（Fluid radix/dialog）', () => {
   it('点击触发器打开，Escape 关闭后焦点回到触发器', async () => {
     render(

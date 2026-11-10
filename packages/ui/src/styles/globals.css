@@ -15,10 +15,10 @@
 @import "tw-animate-css";
 /* Inter 可变字体（含 opsz 光学尺寸轴），自托管；按 unicode-range 只下载用到的子集，中文回退系统字体 */
 @import "@fontsource-variable/inter/opsz.css";
-@import "./presets/neutral.css";
-@import "./presets/blue.css";
-@import "./presets/violet.css";
-@import "./presets/green.css";
+@import "./presets/neutral.css" layer(base);
+@import "./presets/blue.css" layer(base);
+@import "./presets/violet.css" layer(base);
+@import "./presets/green.css" layer(base);
 
 /* 本包组件、上下文与 hooks 中使用的类名（路径相对于本文件） */
 @source "../";
@@ -26,189 +26,201 @@
 @custom-variant dark (&:is(.dark *));
 
 /* color-scheme 让原生控件（滚动条等）跟随主题 */
-:root {
-  color-scheme: light;
-  /* 圆角基准：Fluid rounded 形状的控件 8px（rounded-lg）、容器 12px（rounded-xl） */
-  --radius: 0.5rem;
+/*
+ * 基线变量放在 base 层：项目 brand.css 不分层，普通 :root / .dark 选择器即可覆盖基线与预设，
+ * 不用比拼选择器优先级（未分层的声明总是胜过分层声明）。
+ */
+@layer base {
+  :root {
+    color-scheme: light;
+    /* 圆角基准：Fluid rounded 形状的控件 8px（rounded-lg）、容器 12px（rounded-xl） */
+    --radius: 0.5rem;
 
-  /* ── 表面阶梯（Fluid surfaces）：浅色两级灰底后全白，靠阴影区分层级 ── */
-  --surface-1: #fafafa;
-  --surface-2: #fcfcfc;
-  --surface-3: #ffffff;
-  --surface-4: #ffffff;
-  --surface-5: #ffffff;
-  --surface-6: #ffffff;
-  --surface-7: #ffffff;
-  --surface-8: #ffffff;
-  --shadow-color: rgb(0 0 0 / 0.06);
-  --shadow-1: 0 0 0 1px var(--shadow-color);
-  --shadow-2: 0 0 0 1px var(--shadow-color), 0 1px 1px -0.5px var(--shadow-color);
-  --shadow-3:
-    0 0 0 1px var(--shadow-color), 0 1px 1px -0.5px var(--shadow-color),
-    0 3px 3px -1.5px var(--shadow-color);
-  --shadow-4:
-    0 0 0 1px var(--shadow-color), 0 1px 1px -0.5px var(--shadow-color), 0 3px 3px -1.5px
-    var(--shadow-color), 0 6px 6px -3px var(--shadow-color);
-  --shadow-5:
-    0 0 0 1px var(--shadow-color), 0 1px 1px -0.5px var(--shadow-color), 0 3px 3px -1.5px
-    var(--shadow-color), 0 6px 6px -3px var(--shadow-color), 0 12px 12px -6px var(--shadow-color);
-  --shadow-6:
-    0 0 0 1px var(--shadow-color), 0 1px 1px -0.5px var(--shadow-color), 0 3px 3px -1.5px
-    var(--shadow-color), 0 6px 6px -3px var(--shadow-color), 0 12px 12px -6px var(--shadow-color),
-    0 24px 24px -12px var(--shadow-color);
-  --shadow-7:
-    0 0 0 1px var(--shadow-color), 0 1px 1px -0.5px var(--shadow-color), 0 3px 3px -1.5px
-    var(--shadow-color), 0 6px 6px -3px var(--shadow-color), 0 12px 12px -6px var(--shadow-color),
-    0 24px 24px -12px var(--shadow-color), 0 48px 48px -24px var(--shadow-color);
-  --shadow-8:
-    0 0 0 1px var(--shadow-color), 0 1px 1px -0.5px var(--shadow-color), 0 3px 3px -1.5px
-    var(--shadow-color), 0 6px 6px -3px var(--shadow-color), 0 12px 12px -6px var(--shadow-color),
-    0 24px 24px -12px var(--shadow-color), 0 48px 48px -24px var(--shadow-color), 0 96px 96px
-    -48px var(--shadow-color);
+    /* ── 表面阶梯（Fluid surfaces）：浅色两级灰底后全白，靠阴影区分层级 ── */
+    --surface-1: #fafafa;
+    --surface-2: #fcfcfc;
+    --surface-3: #ffffff;
+    --surface-4: #ffffff;
+    --surface-5: #ffffff;
+    --surface-6: #ffffff;
+    --surface-7: #ffffff;
+    --surface-8: #ffffff;
+    --shadow-color: rgb(0 0 0 / 0.06);
+    --shadow-1: 0 0 0 1px var(--shadow-color);
+    --shadow-2: 0 0 0 1px var(--shadow-color), 0 1px 1px -0.5px var(--shadow-color);
+    --shadow-3:
+      0 0 0 1px var(--shadow-color), 0 1px 1px -0.5px var(--shadow-color),
+      0 3px 3px -1.5px var(--shadow-color);
+    --shadow-4:
+      0 0 0 1px var(--shadow-color), 0 1px 1px -0.5px var(--shadow-color), 0 3px 3px -1.5px
+      var(--shadow-color), 0 6px 6px -3px var(--shadow-color);
+    --shadow-5:
+      0 0 0 1px var(--shadow-color), 0 1px 1px -0.5px var(--shadow-color), 0 3px 3px -1.5px
+      var(--shadow-color), 0 6px 6px -3px var(--shadow-color), 0 12px 12px -6px var(--shadow-color);
+    --shadow-6:
+      0 0 0 1px var(--shadow-color), 0 1px 1px -0.5px var(--shadow-color), 0 3px 3px -1.5px
+      var(--shadow-color), 0 6px 6px -3px var(--shadow-color), 0 12px 12px -6px var(--shadow-color),
+      0 24px 24px -12px var(--shadow-color);
+    --shadow-7:
+      0 0 0 1px var(--shadow-color), 0 1px 1px -0.5px var(--shadow-color), 0 3px 3px -1.5px
+      var(--shadow-color), 0 6px 6px -3px var(--shadow-color), 0 12px 12px -6px var(--shadow-color),
+      0 24px 24px -12px var(--shadow-color), 0 48px 48px -24px var(--shadow-color);
+    --shadow-8:
+      0 0 0 1px var(--shadow-color), 0 1px 1px -0.5px var(--shadow-color), 0 3px 3px -1.5px
+      var(--shadow-color), 0 6px 6px -3px var(--shadow-color), 0 12px 12px -6px var(--shadow-color),
+      0 24px 24px -12px var(--shadow-color), 0 48px 48px -24px var(--shadow-color), 0 96px 96px
+      -48px var(--shadow-color);
 
-  /* ── shadcn 语义变量，取 Fluid 站点默认值 ── */
-  --background: var(--surface-1);
-  --foreground: #171717;
-  --card: var(--surface-3);
-  --card-foreground: #171717;
-  --popover: var(--surface-3);
-  --popover-foreground: #171717;
-  /* Fluid 的主按钮用前景色作底；模板改由 --primary 承载，预设只需改这一处即可换强调色 */
-  --primary: #171717;
-  --primary-foreground: #fafafa;
-  --secondary: #f4f4f5;
-  --secondary-foreground: #171717;
-  --muted: #f4f4f5;
-  --muted-foreground: #737373;
-  --accent: #e5e5e5;
-  --accent-foreground: #171717;
-  /* Fluid 用 red-500；作文字时对比度不足 4.5:1，模板取 red-600 */
-  --destructive: #dc2626;
-  --destructive-light: #fef2f2;
-  /* 成功色沿用模板原值（作文字时满足 4.5:1） */
-  --success: oklch(0.527 0.154 150.069);
-  /* 边框由前景色混出，随主题自动变化 */
-  --border: color-mix(in oklab, var(--foreground) 12%, transparent);
-  --input: #e5e5e5;
+    /* ── shadcn 语义变量，取 Fluid 站点默认值 ── */
+    --background: var(--surface-1);
+    --foreground: #171717;
+    --card: var(--surface-3);
+    --card-foreground: #171717;
+    --popover: var(--surface-3);
+    --popover-foreground: #171717;
+    /* Fluid 的主按钮用前景色作底；模板改由 --primary 承载，预设只需改这一处即可换强调色 */
+    --primary: #171717;
+    --primary-foreground: #fafafa;
+    --secondary: #f4f4f5;
+    --secondary-foreground: #171717;
+    --muted: #f4f4f5;
+    /* 模板改动：上游 #737373 在 --muted 上只有 4.3:1，略加深到 AA */
+    --muted-foreground: #6b6b6b;
+    --accent: #e5e5e5;
+    --accent-foreground: #171717;
+    /* Fluid 用 red-500；作文字（含浅红底上）对比度不足 4.5:1，模板取 red-700 */
+    --destructive: #b91c1c;
+    --destructive-light: #fef2f2;
+    /* 成功色沿用模板原值（作文字时满足 4.5:1） */
+    --success: oklch(0.527 0.154 150.069);
+    /* 边框由前景色混出，随主题自动变化 */
+    --border: color-mix(in oklab, var(--foreground) 12%, transparent);
+    --input: #e5e5e5;
 
-  /* ── Fluid 交互变量 ── */
-  --hover: rgb(0 0 0 / 0.04);
-  --active: rgb(0 0 0 / 0.07);
-  --selected: #d4d4d4;
-  --overlay: 0 0 0;
-  --tint: rgb(0 0 0 / 0.08);
-  --tint-hover: rgb(0 0 0 / 0.065);
-  /* 唯一的品牌强调色：开关轨道、选区与所有焦点环（经 --focus-ring）；预设覆盖它 */
-  --fluid-accent: #6b97ff;
-  --focus-ring: var(--fluid-accent);
-  /* shadcn 组件的焦点环同样取强调色，与 Fluid 组件一致 */
-  --ring: var(--focus-ring);
+    /* ── Fluid 交互变量 ── */
+    --hover: rgb(0 0 0 / 0.04);
+    --active: rgb(0 0 0 / 0.07);
+    --selected: #d4d4d4;
+    --overlay: 0 0 0;
+    --tint: rgb(0 0 0 / 0.08);
+    --tint-hover: rgb(0 0 0 / 0.065);
+    /* 唯一的品牌强调色：开关轨道、选区与所有焦点环（经 --focus-ring）；预设覆盖它 */
+    /* 模板改动：浅色取 blue-500（上游 #6b97ff 在 #fafafa 上不足 3:1） */
+    --fluid-accent: #3b82f6;
+    --focus-ring: var(--fluid-accent);
+    /* shadcn 组件的焦点环同样取强调色，与 Fluid 组件一致 */
+    --ring: var(--focus-ring);
 
-  /* ── 层级：离开组件的浮层只用这些值 ── */
-  --z-sticky: 30;
-  --z-overlay: 40;
-  --z-modal: 50;
-  --z-popover: 60;
-  --z-tooltip: 70;
+    /* ── 层级：离开组件的浮层只用这些值 ── */
+    --z-sticky: 30;
+    --z-overlay: 40;
+    --z-modal: 50;
+    --z-popover: 60;
+    --z-tooltip: 70;
 
-  /* ── 字号阶梯（Fluid type-scale）：六个角色 × default / compact ── */
-  --fs-display: 28px;
-  --lh-display: 34px;
-  --fs-display-compact: 24px;
-  --lh-display-compact: 30px;
-  --fs-title: 16px;
-  --lh-title: 22px;
-  --fs-title-compact: 15px;
-  --lh-title-compact: 20px;
-  --fs-subtitle: 14px;
-  --lh-subtitle: 20px;
-  --fs-subtitle-compact: 13px;
-  --lh-subtitle-compact: 18px;
-  --fs-body: 13px;
-  --lh-body: 20px;
-  --fs-body-compact: 12px;
-  --lh-body-compact: 18px;
-  --fs-caption: 12px;
-  --lh-caption: 16px;
-  --fs-caption-compact: 11px;
-  --lh-caption-compact: 14px;
-  --fs-micro: 11px;
-  --lh-micro: 14px;
-  --fs-micro-compact: 10px;
-  --lh-micro-compact: 12px;
-}
+    /* ── 字号阶梯（Fluid type-scale）：六个角色 × default / compact ── */
+    --fs-display: 28px;
+    --lh-display: 34px;
+    --fs-display-compact: 24px;
+    --lh-display-compact: 30px;
+    --fs-title: 16px;
+    --lh-title: 22px;
+    --fs-title-compact: 15px;
+    --lh-title-compact: 20px;
+    --fs-subtitle: 14px;
+    --lh-subtitle: 20px;
+    --fs-subtitle-compact: 13px;
+    --lh-subtitle-compact: 18px;
+    /* 模板改动：正文 14px（上游 13px），中文与长文更易读；compact 仍为 12px */
+    --fs-body: 14px;
+    --lh-body: 20px;
+    --fs-body-compact: 12px;
+    --lh-body-compact: 18px;
+    --fs-caption: 12px;
+    --lh-caption: 16px;
+    --fs-caption-compact: 11px;
+    --lh-caption-compact: 14px;
+    --fs-micro: 11px;
+    --lh-micro: 14px;
+    --fs-micro-compact: 10px;
+    --lh-micro-compact: 12px;
+  }
 
-.dark {
-  color-scheme: dark;
-  /* 暗色表面：在 #171717 上叠加白色，层级越高越亮 */
-  --surface-1: #171717;
-  --surface-2: #1e1e1e;
-  --surface-3: #252525;
-  --surface-4: #2c2c2c;
-  --surface-5: #333333;
-  --surface-6: #3a3a3a;
-  --surface-7: #414141;
-  --surface-8: #484848;
-  --dm-hi-base: rgb(255 255 255 / 0.01);
-  --dm-hi-mid: rgb(255 255 255 / 0.02);
-  --dm-hi-high: rgb(255 255 255 / 0.04);
-  --dm-hi-peak: rgb(255 255 255 / 0.06);
-  --dm-ring-base: rgb(255 255 255 / 0.02);
-  --dm-ring-mid: rgb(255 255 255 / 0.04);
-  --dm-ring-high: rgb(255 255 255 / 0.06);
-  --dm-drop: rgb(0 0 0 / 0.18);
-  --shadow-1: inset 0 0 0 1px var(--dm-ring-base);
-  --shadow-2:
-    inset 0 1px 0 0 var(--dm-hi-base), inset 0 0 0 1px var(--dm-ring-base),
-    0 1px 1px -0.5px var(--dm-drop);
-  --shadow-3:
-    inset 0 1px 0 0 var(--dm-hi-mid), inset 0 0 0 1px var(--dm-ring-base), 0 0 0 1px
-    rgb(0 0 0 / 0.12), 0 1px 1px -0.5px var(--dm-drop), 0 3px 3px -1.5px var(--dm-drop);
-  --shadow-4:
-    inset 0 1px 0 0 var(--dm-hi-mid), inset 0 0 0 1px var(--dm-ring-mid), 0 0 0 1px
-    rgb(0 0 0 / 0.14), 0 1px 1px -0.5px var(--dm-drop), 0 3px 3px -1.5px var(--dm-drop), 0 6px 6px
-    -3px var(--dm-drop);
-  --shadow-5:
-    inset 0 1px 0 0 var(--dm-hi-high), inset 0 0 0 1px var(--dm-ring-mid), 0 0 0 1px
-    rgb(0 0 0 / 0.16), 0 1px 1px -0.5px var(--dm-drop), 0 3px 3px -1.5px var(--dm-drop), 0 6px 6px
-    -3px var(--dm-drop), 0 12px 12px -6px var(--dm-drop);
-  --shadow-6:
-    inset 0 1px 0 0 var(--dm-hi-high), inset 0 0 0 1px var(--dm-ring-high), 0 0 0 1px
-    rgb(0 0 0 / 0.18), 0 1px 1px -0.5px var(--dm-drop), 0 3px 3px -1.5px var(--dm-drop), 0 6px 6px
-    -3px var(--dm-drop), 0 12px 12px -6px var(--dm-drop), 0 24px 24px -12px var(--dm-drop);
-  --shadow-7:
-    inset 0 1px 0 0 var(--dm-hi-peak), inset 0 0 0 1px var(--dm-ring-high), 0 0 0 1px
-    rgb(0 0 0 / 0.2), 0 1px 1px -0.5px var(--dm-drop), 0 3px 3px -1.5px var(--dm-drop), 0 6px 6px
-    -3px var(--dm-drop), 0 12px 12px -6px var(--dm-drop), 0 24px 24px -12px var(--dm-drop), 0 48px
-    48px -24px var(--dm-drop);
-  --shadow-8:
-    inset 0 1px 0 0 var(--dm-hi-peak), inset 0 0 0 1px var(--dm-ring-high), 0 0 0 1px
-    rgb(0 0 0 / 0.22), 0 1px 1px -0.5px var(--dm-drop), 0 3px 3px -1.5px var(--dm-drop), 0 6px 6px
-    -3px var(--dm-drop), 0 12px 12px -6px var(--dm-drop), 0 24px 24px -12px var(--dm-drop), 0 48px
-    48px -24px var(--dm-drop), 0 96px 96px -48px var(--dm-drop);
+  .dark {
+    color-scheme: dark;
+    /* 暗色表面：在 #171717 上叠加白色，层级越高越亮 */
+    --surface-1: #171717;
+    --surface-2: #1e1e1e;
+    --surface-3: #252525;
+    --surface-4: #2c2c2c;
+    --surface-5: #333333;
+    --surface-6: #3a3a3a;
+    --surface-7: #414141;
+    --surface-8: #484848;
+    --dm-hi-base: rgb(255 255 255 / 0.01);
+    --dm-hi-mid: rgb(255 255 255 / 0.02);
+    --dm-hi-high: rgb(255 255 255 / 0.04);
+    --dm-hi-peak: rgb(255 255 255 / 0.06);
+    --dm-ring-base: rgb(255 255 255 / 0.02);
+    --dm-ring-mid: rgb(255 255 255 / 0.04);
+    --dm-ring-high: rgb(255 255 255 / 0.06);
+    --dm-drop: rgb(0 0 0 / 0.18);
+    --shadow-1: inset 0 0 0 1px var(--dm-ring-base);
+    --shadow-2:
+      inset 0 1px 0 0 var(--dm-hi-base), inset 0 0 0 1px var(--dm-ring-base),
+      0 1px 1px -0.5px var(--dm-drop);
+    --shadow-3:
+      inset 0 1px 0 0 var(--dm-hi-mid), inset 0 0 0 1px var(--dm-ring-base), 0 0 0 1px
+      rgb(0 0 0 / 0.12), 0 1px 1px -0.5px var(--dm-drop), 0 3px 3px -1.5px var(--dm-drop);
+    --shadow-4:
+      inset 0 1px 0 0 var(--dm-hi-mid), inset 0 0 0 1px var(--dm-ring-mid), 0 0 0 1px
+      rgb(0 0 0 / 0.14), 0 1px 1px -0.5px var(--dm-drop), 0 3px 3px -1.5px var(--dm-drop), 0 6px 6px
+      -3px var(--dm-drop);
+    --shadow-5:
+      inset 0 1px 0 0 var(--dm-hi-high), inset 0 0 0 1px var(--dm-ring-mid), 0 0 0 1px
+      rgb(0 0 0 / 0.16), 0 1px 1px -0.5px var(--dm-drop), 0 3px 3px -1.5px var(--dm-drop), 0 6px 6px
+      -3px var(--dm-drop), 0 12px 12px -6px var(--dm-drop);
+    --shadow-6:
+      inset 0 1px 0 0 var(--dm-hi-high), inset 0 0 0 1px var(--dm-ring-high), 0 0 0 1px
+      rgb(0 0 0 / 0.18), 0 1px 1px -0.5px var(--dm-drop), 0 3px 3px -1.5px var(--dm-drop), 0 6px 6px
+      -3px var(--dm-drop), 0 12px 12px -6px var(--dm-drop), 0 24px 24px -12px var(--dm-drop);
+    --shadow-7:
+      inset 0 1px 0 0 var(--dm-hi-peak), inset 0 0 0 1px var(--dm-ring-high), 0 0 0 1px
+      rgb(0 0 0 / 0.2), 0 1px 1px -0.5px var(--dm-drop), 0 3px 3px -1.5px var(--dm-drop), 0 6px 6px
+      -3px var(--dm-drop), 0 12px 12px -6px var(--dm-drop), 0 24px 24px -12px var(--dm-drop), 0 48px
+      48px -24px var(--dm-drop);
+    --shadow-8:
+      inset 0 1px 0 0 var(--dm-hi-peak), inset 0 0 0 1px var(--dm-ring-high), 0 0 0 1px
+      rgb(0 0 0 / 0.22), 0 1px 1px -0.5px var(--dm-drop), 0 3px 3px -1.5px var(--dm-drop), 0 6px 6px
+      -3px var(--dm-drop), 0 12px 12px -6px var(--dm-drop), 0 24px 24px -12px var(--dm-drop), 0 48px
+      48px -24px var(--dm-drop), 0 96px 96px -48px var(--dm-drop);
 
-  --foreground: #f5f5f5;
-  --card-foreground: #f5f5f5;
-  --popover-foreground: #f5f5f5;
-  --primary: #f5f5f5;
-  --primary-foreground: #171717;
-  --secondary: #252525;
-  --secondary-foreground: #f5f5f5;
-  --muted: #1e1e1e;
-  --muted-foreground: #a3a3a3;
-  --accent: #525252;
-  --accent-foreground: #f5f5f5;
-  --destructive: #fca5a5;
-  --destructive-light: #450a0a;
-  --success: oklch(0.723 0.219 149.579);
-  --input: #404040;
+    --foreground: #f5f5f5;
+    --card-foreground: #f5f5f5;
+    --popover-foreground: #f5f5f5;
+    --primary: #f5f5f5;
+    --primary-foreground: #171717;
+    --secondary: #252525;
+    --secondary-foreground: #f5f5f5;
+    --muted: #1e1e1e;
+    /* 模板改动：上游 #a3a3a3 在弹窗高层表面（surface-7）上不足 4.5:1 */
+    --muted-foreground: #b0b0b0;
+    --accent: #525252;
+    --accent-foreground: #f5f5f5;
+    --destructive: #fca5a5;
+    --destructive-light: #450a0a;
+    --success: oklch(0.723 0.219 149.579);
+    --input: #404040;
 
-  --hover: rgb(255 255 255 / 0.06);
-  --active: rgb(255 255 255 / 0.1);
-  --selected: #525252;
-  --overlay: 255 255 255;
-  --tint: rgb(255 255 255 / 0.25);
-  --tint-hover: rgb(255 255 255 / 0.2);
+    --hover: rgb(255 255 255 / 0.06);
+    --active: rgb(255 255 255 / 0.1);
+    --selected: #525252;
+    --overlay: 255 255 255;
+    --tint: rgb(255 255 255 / 0.25);
+    --tint-hover: rgb(255 255 255 / 0.2);
+    /* 深色强调色：上游 #6b97ff 与浅色主按钮（#f5f5f5）对比不足 3:1，略加深 */
+    --fluid-accent: #4f86f7;
+  }
 }
 
 @theme inline {
@@ -401,9 +413,12 @@ html.transitioning *::after {
     animation-range-end: var(--scroll-fade-size), 100%;
   }
 }
-@media (pointer: fine) {
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: rgb(var(--overlay) / 0.08) transparent;
+/* 细滚动条只用于内部滚动容器（ScrollArea 视口、弹层列表等），页面根保持系统默认 */
+@layer base {
+  @media (pointer: fine) {
+    *:not(html, body) {
+      scrollbar-width: thin;
+      scrollbar-color: rgb(var(--overlay) / 0.08) transparent;
+    }
   }
 }

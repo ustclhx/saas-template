@@ -1,13 +1,5 @@
-import { themeInitScript, UiRoot } from '@saas/ui'
-import { fontPreloads } from '@saas/ui/fonts'
-import {
-  createRootRoute,
-  HeadContent,
-  Outlet,
-  Scripts,
-  useRouterState,
-} from '@tanstack/react-router'
-import type { ReactNode } from 'react'
+import { themeInitScript } from '@saas/ui'
+import { createRootRoute, Outlet, useRouterState } from '@tanstack/react-router'
 import { ImpersonationBanner } from '../features/admin/impersonation-banner.tsx'
 import { getAnnouncement } from '../features/admin/settings-announcement.functions.ts'
 import { AnnouncementBanner } from '../features/admin/settings-announcement-banner.tsx'
@@ -20,8 +12,7 @@ import {
   getSafeImpersonation,
   getSeoOrigin,
 } from '../features/seo/origin.functions.ts'
-import { ThemeToggle } from '../features/theme/theme-toggle.tsx'
-import { getLocale } from '../paraglide/runtime.js'
+import { RootDocument } from '../features/theme/root-document.tsx'
 import { templateConfig } from '../server/template-config.ts'
 import appCss from '../styles/app.css?url'
 
@@ -46,14 +37,6 @@ export const Route = createRootRoute({
     // 全局样式（Tailwind + @saas/ui 主题），SSR 输出的 <head> 中直接引用，避免首屏无样式闪烁
     links: [
       { rel: 'stylesheet', href: appCss },
-      // 自托管 Inter 的拉丁子集，与样式表并行下载，缩短字体替换造成的版面跳动
-      ...fontPreloads.map((font) => ({
-        rel: 'preload',
-        href: font.href,
-        as: 'font',
-        type: font.type,
-        crossOrigin: 'anonymous' as const,
-      })),
       { rel: 'icon', href: '/favicon.ico', sizes: 'any' },
     ],
     // 首屏前按偏好（未设置时跟随系统）给 <html> 设置 dark 类：<head> 内同步执行，避免刷新时先浅后深的闪烁
@@ -85,27 +68,5 @@ function RootComponent() {
       {templateConfig.i18n.enabled && !hasInlineControls && <LanguageControls />}
       <Outlet />
     </RootDocument>
-  )
-}
-
-function RootDocument({
-  children,
-  floatingControls,
-}: Readonly<{ children: ReactNode; floatingControls: boolean }>) {
-  return (
-    // 主题类名由下方内联脚本在水合前写到 <html> 上，与服务端输出不一致属预期。
-    // 主题预设在服务端直接写入 data-preset，不依赖客户端脚本，首屏即为最终配色。
-    <html lang={getLocale()} data-preset={templateConfig.ui.preset} suppressHydrationWarning>
-      <head>
-        <HeadContent />
-      </head>
-      <body>
-        <UiRoot shape={templateConfig.ui.shape} density={templateConfig.ui.density}>
-          {children}
-          {floatingControls && <ThemeToggle className="fixed right-4 bottom-4" />}
-        </UiRoot>
-        <Scripts />
-      </body>
-    </html>
   )
 }
