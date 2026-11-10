@@ -1,0 +1,9 @@
+/*
+ * 主题预设 neutral：Fluid Functionalism 默认视觉，即 globals.css 的基线取值，不覆盖任何变量。
+ * 保留本文件是为了让四个预设成对出现、便于对照；template.config.ts 中 `ui.preset: 'neutral'` 选用。
+ * 预设只覆盖强调色（--primary、--fluid-accent）、圆角（--radius）与焦点环（随 --fluid-accent），
+ * 每个预设同时给出浅色与 `.dark` 取值；正文对比度由 packages/ui/test/presets.test.ts 断言 ≥ 4.5:1。
+ */
+:root[data-preset="neutral"] {
+  --radius: 0.5rem;
+}

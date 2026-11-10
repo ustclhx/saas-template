@@ -88,6 +88,16 @@ describe('defineTemplateConfig', () => {
     expect(() => defineTemplateConfig({ app, i18n: { locales: [] } })).toThrow(RangeError)
   })
 
+  it('defaults the UI to the neutral rounded preset and merges partial ui settings', () => {
+    expect(defineTemplateConfig({ app }).ui).toEqual({
+      preset: 'neutral',
+      shape: 'rounded',
+      density: 'default',
+    })
+    const config = defineTemplateConfig({ app, ui: { preset: 'violet', density: 'compact' } })
+    expect(config.ui).toEqual({ preset: 'violet', shape: 'rounded', density: 'compact' })
+  })
+
   it('accepts all modules disabled while retaining their existing parameters', () => {
     const config = defineTemplateConfig({
       app,

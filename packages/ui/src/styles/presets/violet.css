@@ -1,0 +1,13 @@
+/* 主题预设 violet：紫色强调，圆角最大。只覆盖强调色、圆角与焦点环，见 neutral.css 的说明。 */
+:root[data-preset="violet"] {
+  --radius: 0.75rem;
+  --primary: #7c3aed;
+  --primary-foreground: #ffffff;
+  --fluid-accent: #8b5cf6;
+}
+
+:root[data-preset="violet"].dark {
+  --primary: #a78bfa;
+  --primary-foreground: #1e1b4b;
+  --fluid-accent: #a78bfa;
+}

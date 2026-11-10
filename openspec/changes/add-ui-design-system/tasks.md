@@ -2,8 +2,8 @@
 
 ## 1. 验证 spike（Claude）
 
-- [ ] 1.1 在独立 worktree 按 design D1 接入 Fluid 的 Button、Dialog、Select（Radix 版），改写为 `radix-ui` 导入与包内相对路径；验证 `pnpm --filter @saas/ui typecheck`、`test` 与 `pnpm check:singletons` 通过
-- [ ] 1.2 接入 Inter 可变字体（opsz）与 `UiRoot` 原型，本地首页切换明暗无闪烁；测量首页 `@saas/ui` bundle 增量（gzip）与本地 Lighthouse，结论写入 design.md「Spike 结论」，超过阈值时按 D9 调整方案后再进入第 2 组
+- [x] 1.1 在独立 worktree 按 design D1 接入 Fluid 的 Button、Dialog、Select（Radix 版），改写为 `radix-ui` 导入与包内相对路径；验证 `pnpm --filter @saas/ui typecheck`、`test` 与 `pnpm check:singletons` 通过
+- [x] 1.2 接入 Inter 可变字体（opsz）与 `UiRoot` 原型，本地首页切换明暗无闪烁；测量首页 `@saas/ui` bundle 增量（gzip）与本地 Lighthouse，结论写入 design.md「Spike 结论」，超过阈值时按 D9 调整方案后再进入第 2 组
 
 ## 2. 依赖边界与规范检查
 
@@ -12,9 +12,9 @@
 
 ## 3. token、预设与品牌层
 
-- [ ] 3.1 以 Fluid 默认视觉为中性基线更新 `globals.css`（不按特定参考调整），新增 neutral、blue、violet、green 四套 `presets/*.css`；测试断言每个预设浅/深色正文对比度 ≥ 4.5:1
-- [ ] 3.2 `template.config.ts` 增加 `ui` 段（preset、shape、density），根布局 SSR 写入 `data-preset` 并用 `UiRoot` 包裹；新增 `apps/web/src/styles/brand.css`（仅注释示例）并在入口 CSS 最后导入；验证切换预设后重新构建，组件强调色与圆角随之变化
-- [ ] 3.3 模板发布检查新增断言：`brand.css` 自创建提交后未被修改；`template-release.test.mjs` 覆盖修改时失败
+- [x] 3.1 以 Fluid 默认视觉为中性基线更新 `globals.css`（不按特定参考调整），新增 neutral、blue、violet、green 四套 `presets/*.css`；测试断言每个预设浅/深色正文对比度 ≥ 4.5:1
+- [x] 3.2 `template.config.ts` 增加 `ui` 段（preset、shape、density），根布局 SSR 写入 `data-preset` 并用 `UiRoot` 包裹；新增 `apps/web/src/styles/brand.css`（仅注释示例）并在入口 CSS 最后导入；验证切换预设后重新构建，组件强调色与圆角随之变化
+- [x] 3.3 模板发布检查新增断言：`brand.css` 自创建提交后未被修改；`template-release.test.mjs` 覆盖修改时失败
 
 ## 4. 组件库补齐（Claude）
 

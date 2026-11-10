@@ -1,0 +1,30 @@
+/*
+ * 项目品牌层（openspec add-ui-design-system design D2 / D10）。
+ *
+ * 本文件归衍生项目所有：模板创建后不再修改它（模板发布检查会断言这一点），
+ * 因此项目在这里写的品牌 token 在 template-sync 时不会冲突，也不会被覆盖。
+ * 它在 app.css 的最后导入，晚于基线（@saas/ui/globals.css）与主题预设，同等优先级下后者胜出。
+ *
+ * 只覆盖变量，不写组件样式；可用变量见 packages/ui/src/styles/globals.css。
+ * 若同时选了主题预设，覆盖预设已改的变量时请用同样的选择器，例如：
+ *
+ * :root,
+ * :root[data-preset] {
+ *   --primary: #0f766e;
+ *   --primary-foreground: #ffffff;
+ *   --fluid-accent: #14b8a6;
+ *   --radius: 0.625rem;
+ * }
+ *
+ * :root.dark,
+ * :root[data-preset].dark {
+ *   --primary: #5eead4;
+ *   --primary-foreground: #042f2e;
+ * }
+ *
+ * 多站点项目可按 <html data-site="…"> 分别覆盖：
+ *
+ * :root[data-site="docs"] {
+ *   --fluid-accent: #6366f1;
+ * }
+ */

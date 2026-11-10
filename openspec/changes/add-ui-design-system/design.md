@@ -93,6 +93,18 @@
 - **营销区块**：放 `apps/web/src/features/marketing/sections/`，内容来自 `template.config.ts` 与文案文件；背书区块没有配置值时返回 null。悬浮入口用 CSS 定位与页脚留白，避免遮挡。
 - **定价与账单**：定价页按套餐类型分组渲染，月付/年付切换只作用于订阅组；账单页按「订阅 / 积分包 / 免费积分」分区，免费积分分区在没有数据来源时不渲染（R3 合并后自动出现）。
 
+## Spike 结论
+
+2026-11-10 在 worktree `ui-foundation` 完成 tasks 1.1–1.2（同一 PR 含 3.1–3.3），测量均为本地 `pnpm --filter @saas/web build` 后 `vite preview`（workerd），证据在私有证据库 `ui-design-system/spike-2026-11-10/`。
+
+- **D1 改写可行**：Button、Dialog、Select 及其 registry 依赖（tokens、surfaces、type-scale、springs、shape/size/icon/surface context、elevated、popup、scroll-area、use-fluid-hover、use-keyboard-nav-gate、use-touch-primary、fluid-provider）共 19 个文件按规则移植；组件源码无 `next/*` 引用，只需 `radix-ui` 命名导入、相对路径、去 `"use client"` 与 `exactOptionalPropertyTypes` 的少量改写。`@saas/ui` typecheck、全部测试与 `check:singletons` 通过；现有 Button 调用方与 SSR 断言未改动即通过（底色层改用 `::before`，见 `packages/ui/UPSTREAM.md`）。
+- **首页 JS 增量**：首页引用的 JS 合计 gzip 从 205,292 B 降到 184,360 B（−20.9 KB）。下降来自给 `@saas/ui` 声明 `"sideEffects": ["*.css"]`：此前 `forwardRef(...)` 等顶层调用让 Rollup 保留了首页未用到的组件（未声明时接入 Dialog/Select 会使首页 +85.6 KB）。只计 Fluid 的增量（与「仅加 sideEffects」的基线 180,151 B 相比）为 **+4.2 KB**：Button 约 +1.9 KB，`UiRoot`（MotionConfig 与三个 Provider）约 +2.0 KB，低于 D9 的 25 KB 阈值，无需改为无动效变体。CSS gzip 7.3 KB → 12.4 KB（预渲染页内联，含字体声明与 token）。
+- **动效库只随交互组件加载**：Dialog + Select 单独打包（esbuild，外置 React）约 105 KB gzip，其中 motion 约 48 KB、Radix 约 36 KB、组件自身约 21 KB；首页与定价页不加载。4.x 在 app/admin 页面大量使用前，评估把 `motion.*` 改为 `LazyMotion` + `m.*`（`domAnimation`）。
+- **Lighthouse**（变更前 → 变更后；性能分在本机波动大，仅供参考）：首页移动端 可访问性/最佳实践/SEO 100/100/100 → 100/100/100，性能 31 → 62，CLS 0.118 → 0.121；首页桌面 性能 87 → 95，CLS 0.045 → 0.047；定价页移动端 100/100/100 不变，性能 66 → 64；定价页桌面 性能 96 → 98。移动端 CLS ≈ 0.12 为变更前已有。
+- **首屏明暗无闪烁**：Playwright 在任何脚本前挂观察器，`/`、`/pricing`、`/zh` × 系统浅/深 × 存储浅/深/未设置共 12 组，`<body>` 出现时 `<html>` 的 `dark` 类即为最终值，首帧与最终背景色一致；`data-preset` 由 SSR 写出。
+- **Inter opsz**：`@fontsource-variable/inter/opsz.css` 自托管，按 unicode-range 分子集，根布局预加载拉丁子集（73 KB woff2）；页面计算字体为 `Inter Variable`，中文回退系统字体。
+- **预设**：同一构建内切换 `data-preset`，主按钮底色、按钮/卡片圆角与焦点环随之变化；改 `template.config.ts` 为 violet 重新构建后 SSR 输出 `data-preset="violet"`，浅/深色主按钮为 `#7c3aed` / `#a78bfa`、圆角 12px。
+
 ## Risks / Trade-offs
 
 - [Fluid 月度破坏性变更] → 复制进仓库、不自动升级；`UPSTREAM.md` 记录每个组件的上游月份，按季度对照 changelog 选择性合并。

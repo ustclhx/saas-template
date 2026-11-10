@@ -138,6 +138,9 @@ export default defineTemplateConfig({
     publicApi: false,            // API Key 调用 /api/v1
     blog: true, docs: false, waitlist: false,
   },
+  // 界面主题：预设 neutral | blue | violet | green（只换强调色、圆角与焦点环）、圆角形状与控件密度；
+  // 品牌 token 不写在这里，放项目自有的 apps/web/src/styles/brand.css
+  ui: { preset: 'neutral', shape: 'rounded', density: 'default' },
 })
 ```
 
