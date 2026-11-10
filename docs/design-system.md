@@ -74,7 +74,7 @@ grep -nE -- '^ *--[a-z0-9-]+:' apps/web/src/styles/brand.css
 | 类别 | 变量 | 工具类 | 用途 |
 |---|---|---|---|
 | 页面与容器 | `--background` `--foreground` `--card(-foreground)` `--popover(-foreground)` | `bg-background` `text-foreground` `bg-card` `bg-popover` | 页面底色取 `--surface-1`，卡片与弹层取 `--surface-3` |
-| 强调 | `--primary` `--primary-foreground` | `bg-primary` `text-primary-foreground` | 主按钮等实心强调；预设与品牌层改这里换色 |
+| 强调 | `--primary` `--primary-foreground` `--primary-text` | `bg-primary` `text-primary-foreground` `text-primary-text` | 主按钮等实心强调；预设与品牌层改这里换色。强调色作文字（链接）用 `--primary-text`，深色预设下为更亮的同色系以满足 4.5:1 |
 | 次级 | `--secondary(-foreground)` `--muted` `--muted-foreground` | `bg-secondary` `bg-muted` `text-muted-foreground` | 次要底色、说明文字（在 muted 与高层表面上满足 4.5:1） |
 | 较重强调底 | `--accent` `--accent-foreground` | `bg-accent` | Fluid 原值，较重；普通悬停与当前项改用 `bg-hover` / `bg-active` |
 | 状态 | `--destructive` `--destructive-light` `--success` | `text-destructive` `bg-destructive-light` `text-success` | 危险与成功；作文字时满足 4.5:1 |
@@ -85,7 +85,8 @@ grep -nE -- '^ *--[a-z0-9-]+:' apps/web/src/styles/brand.css
 | 阴影 | `--shadow-1` … `--shadow-8` | `shadow-surface-1` … `shadow-surface-8` | 与表面层级配对使用 |
 | 圆角 | `--radius` | `rounded-sm/md/lg/xl` | 基准值；控件 `rounded-lg`、容器 `rounded-xl`；按钮、选择器与弹窗的形状另由 `ui.shape` 控制 |
 | 字号阶梯 | `--fs-*` / `--lh-*`（display、title、subtitle、body、caption、micro，各含 `-compact`） | `text-display` `text-title` `text-subtitle` `text-body` `text-caption` `text-micro` | 页面只用这六个角色，不写任意字号 |
-| 层级 | `--z-sticky` `--z-overlay` `--z-modal` `--z-popover` `--z-tooltip` | — | 离开组件流的浮层只用这些值 |
+| 层级 | `--z-sticky` `--z-overlay` `--z-modal` `--z-popover` `--z-tooltip` `--z-toast` | — | 离开组件流的浮层只用这些值；Toast 在模态与提示之上 |
+| 控件 | `--control-border` `--field-border` `--switch-thumb-on` `--switch-thumb-off` | — | 复选框边框与开关关闭轨道、输入类边框、开关滑块 |
 | 字体 | `--font-sans` | `font-sans` | 自托管 Inter 可变字体（opsz），中文回退系统字体 |
 
 新增 token 先改基线（模板）或品牌层（项目），再用工具类引用；页面中不出现原始颜色值。
@@ -134,13 +135,44 @@ grep -nE '^export' packages/ui/src/index.ts
   | `AlertDialogAction` / `AlertDialogCancel` | `children` | 按钮文字；标题与说明同样由调用方传入 |
   | `Switch` | `label` 或 `aria-label` | 不显示标签时传 `aria-label` |
   | `Tooltip` | `content` | 提示文字 |
-  | `ThemeToggle`、`DataTable` | `labels` | 由调用方传入 |
+  | `ThemeToggle` | `labels` | 由调用方传入 |
+  | `DataTable` | `labels` | 全部文案必填（4.2 去掉英文默认值）；`apps/web` 用 `dataTableLabels()`（`features/i18n/table-labels.ts`）或后台的 `adminTableLabels()` |
+  | `Tabs` / `TabsItem` | `aria-label` / `label` | `label` 在仅图标（`activeLabel`）时兼作可读名称；`Tabs` 的 `aria-label` 建议传 |
+  | `DropdownSearch` / `DropdownEmpty` | `placeholder` / `children` | 搜索框占位文字（兼作可读名称）与无结果文字；`MenuItem`、`DropdownSubTrigger` 的 `label` 必填 |
+  | `ComboboxInput` / `ComboboxChips` | `placeholder`；`clearable` 时 `clearLabel` | 占位文字与清除按钮名称 |
+  | `ComboboxChips` | `chipsLabel`、`removeLabel(label)` | 已选标签组名称与每个移除按钮名称 |
+  | `Combobox` / `ComboboxEmpty` | `onCreate` 时 `createLabel(query)` / `children` | 创建行文字与无匹配文字 |
+  | `CommandMenu` | `labels`（`placeholder`、`suggestions`、`tabs`、`selectHint`、`tabsHint`、`closeHint`） | 搜索框占位（兼作可读名称）、建议分组标题、标签栏名称与底部按键提示；键帽字形保留 |
+  | `CommandMenuDialog` | `title`（`description` 可选） | 对话框的可读名称 |
+  | `Toaster` | `labels`（`region`、`announcement`、`close`） | 通知区域名称（可含 `{hotkey}`）、读屏播报前缀、关闭按钮名称；`toast()` 的内容与 `action.label` 由调用方传入 |
+  | `SidebarProvider` | `labels`（`title`、`expand`、`collapse`、`rail`、`railResize`、`railCollapse`；开启 peek 时 `peek`） | 移动抽屉名称、触发按钮与拖拽条的名称和提示；`SidebarMenuButton` 在 `status="unread"` 时必传 `unreadLabel` |
 
   新组件引入新的可读文字时，同步更新本表与 `packages/ui/UPSTREAM.md`。
+  `labels` 对象可以内联传入（`labels={{ … m.*() … }}`）：不会导致重新挂载，Command Menu 内部另按字段稳定引用；
+  放在频繁重渲染的组件里时可提到 `useMemo` 中减少子组件渲染。
+- **图标**：业务页面从 `@saas/ui/icons` 按名称导入（如 `import { Folder } from '@saas/ui/icons'`），传给组件的图标槽位
+  （`Button` 的 `leadingIcon`、`SidebarMenuButton` / `TabsItem` / `CommandMenu` 条目的 `icon` 等）；apps 不直接依赖
+  lucide-react（`pnpm check:deps`）。入口只登记常用图标，项目需要更多时在 `packages/ui/src/project/` 中再导出。
+  组件内部的图标槽位（`UiRoot` 的默认图标表，会进入首页包）目前 9 个；**超过约 15 个或首页 JS 增量超过 5 KB 时**，
+  改为各组件自带回退图标、只在 `UiRoot` 传入替换项，不再扩充默认表。
+- **通知（Toast）**：`toast()` 来自零依赖的 store（`toast-store.ts`），任何地方都可调用；`<Toaster />` 含动效库
+  （约 44 KB gzip），只在 app / admin 布局中用 `React.lazy` 挂载一次，**不放进根布局**，营销页不加载：
+
+  ```tsx
+  const Toaster = lazy(() => import('@saas/ui').then((ui) => ({ default: ui.Toaster })))
+  // 布局中：<Suspense fallback={null}><Toaster labels={{ region: m.…(), announcement: m.…(), close: m.…() }} /></Suspense>
+  ```
+- **侧边栏**：`collapsible="icon"`（收起为图标栏）时每个 `SidebarMenuButton` 都必须传 `icon`，收起后名称由 Tooltip
+  显示（`tooltip` 省略时取行内文字）；默认 `offcanvas`。快捷键 `shortcut` 默认关闭，需要时显式传入（如 `"["`）；
+  嵌入式预览等区域可加 `data-keyboard-scope` 属性，焦点在其中时外层侧栏的快捷键不响应（受支持的属性）。
+  折叠状态由布局在 `onOpenChange` 中写 cookie、服务端读回 `defaultOpen`（tasks 8.3）。
+- **命令面板**：键帽按平台显示 ⌘ 或 Ctrl；SSR 首帧无法得知平台，需要时在布局中用
+  `<CommandMenuPlatform mac={…}>` 包裹，`mac` 取自请求头 `Sec-CH-UA-Platform` 或 User-Agent，避免水合后键帽变宽。
 - **浮层层级**：自定义吸顶、遮罩与弹层用 `--z-*` 变量，不写任意 `z-[…]`。
 
-已接入：Button、Input、Textarea、Select、Checkbox、Switch、Badge、Tooltip、Dialog、AlertDialog、Card、Alert、
-Separator、Label、DataTable、Form。将由 tasks 4.2 接入：Tabs、Dropdown、Sidebar、Toast、Combobox、Command Menu。缺少的组件先在 `packages/ui` 补齐（模板）或在 `packages/ui/src/project/` 补齐（项目），
+已接入：Button、Input、Textarea、Select、Combobox、Checkbox、Switch、Badge、Tooltip、Tabs、Dropdown（菜单）、
+Command Menu、Dialog、AlertDialog、Toast、Sidebar、Card、Alert、Separator、Label、ScrollArea、DataTable、Form。
+`Toaster` 含动效库（约 44 KB gzip），只在需要的页面挂载，不放进根布局；以后全站使用时按需动态加载。缺少的组件先在 `packages/ui` 补齐（模板）或在 `packages/ui/src/project/` 补齐（项目），
 再实现页面，不在页面里临时写一个。
 
 ### 4.1 替换原生控件
@@ -439,11 +471,9 @@ const copy = pending?.action === 'transfer'
   「此操作无法撤销」）；确认按钮文字用动作动词（通常与行内按钮相同），取消用 `m.common_cancel()`（英文字面量
   页面用 `'Cancel'`）。删除、撤销、移除等危险操作用 `variant="destructive"`。文案来源规则同 Select。
 - **焦点返回**：组件记录打开前获得焦点的元素并在关闭后归还，前提是该元素在对话框打开期间没有被重新挂载。
-  `DataTable` 把 `cell` 当组件渲染，`columns` 每次渲染新建时，打开对话框引起的重渲染会替换行内按钮。所以行内
-  按钮打开确认框时，`columns` 用 `useMemo` 包裹，依赖只放单元格真正用到的值，不放对话框的 `open` / 目标状态
-  （样例 credits.tsx）。依赖里的 `busy` 这类确认期间会变的值仍会触发重挂载，确认后焦点不回到按钮是已知限制
-  （tasks 4.2 在 DataTable 内修复，届时可去掉 `useMemo`）。非 DataTable 的列表保持行 `key` 稳定即可。确认后
-  所在行被删除时焦点落到 `body`，属已知限制。
+  `DataTable` 按函数调用渲染单元格（tasks 4.2 已在组件内根治），`columns` 每次渲染新建也不会替换行内按钮，
+  不需要为此 `useMemo` 列定义（`packages/ui/test/data-table.test.tsx` 覆盖）。非 DataTable 的列表保持行 `key`
+  稳定即可。确认后所在行被删除时焦点落到 `body`，属已知限制。
 - **防重复**：组件在退场期间吞掉按钮点击；异步时再用 `busy` 守卫函数入口，并给确认按钮 `loading`、取消按钮
   `disabled`。
 - **测试（e2e）**：删除 `page.once('dialog', (d) => d.accept())` / `page.on('dialog', …)`，改为点击触发按钮后
@@ -487,8 +517,12 @@ Markdown 与代码高亮另行选型，优先轻量方案；替换聊天页与 S
 
 ## 7. 组件预览页
 
-`/dev/ui` 展示全部组件与页面模式的变体，可切换预设、明暗、shape、density；只在开发与 staging（`UI_PREVIEW=true`）
-可访问，生产返回 404 且不进 sitemap。将由 tasks 4.3 提供。
+`/dev/ui`（`apps/web/src/routes/dev/ui.tsx`，页面在 `features/ui-preview/`）按组件分节展示 `@saas/ui` 全部共享组件的
+变体与状态，顶部可运行时切换预设、明暗、shape、density；示例数据为中性领域，文案在
+`messages/<locale>/ui-preview.json`。路由的 `beforeLoad` 经 server function 在服务端读取非密钥变量 `UI_PREVIEW`，
+只有 `true` 时开放：`wrangler.jsonc` 的顶层（开发）与 `env.staging` 设为 `true`，`env.production` 不设
+（`scripts/production/check-wrangler-envs.mjs` 拦截）；自托管未传入该变量即关闭。该页不在预渲染范围与 sitemap 中，
+并输出 `noindex`。新增组件或变体时同步在预览页补一节。
 
 ## 8. 设计关卡
 

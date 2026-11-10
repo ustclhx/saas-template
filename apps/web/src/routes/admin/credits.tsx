@@ -15,7 +15,7 @@ import {
   Textarea,
 } from '@saas/ui'
 import { createFileRoute, notFound as featureNotFound, useRouter } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { adjustCredits, getAdminCredits } from '../../features/admin/credits.functions.ts'
 import {
   adminListPage,
@@ -95,45 +95,40 @@ function Credits() {
     })
     setRevokeOpen(false)
   }
-  // 列定义用 useMemo 固定：DataTable 把 cell 当组件渲染，每次渲染新建列会重新挂载单元格，
-  // 打开/关闭确认框时行内按钮被替换，焦点就无法回到触发按钮。依赖里不放对话框状态；
-  // busy 在确认请求期间变化仍会重挂载，确认后焦点不回按钮是已知限制（tasks 4.2 在 DataTable 内修复）。
-  const columns = useMemo<DataTableColumn<CreditBatch>[]>(
-    () => [
-      { id: 'id', header: m.admin_batch(), cell: (row) => row.id },
-      { id: 'source', header: m.admin_source(), cell: (row) => row.source },
-      {
-        id: 'amount',
-        header: m.admin_amount_remaining(),
-        cell: (row) => `${row.amount} / ${row.remaining}`,
-      },
-      {
-        id: 'expiration',
-        header: m.admin_expiration(),
-        cell: (row) => (row.expiresAt ? formatDateTime(row.expiresAt) : m.admin_never()),
-      },
-      { id: 'status', header: m.admin_status(), cell: (row) => row.status },
-      {
-        id: 'revoke',
-        header: m.admin_revoke_remaining(),
-        cell: (row) => (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={busy || Boolean(pending) || !reason.trim() || row.status !== 'active'}
-            onClick={() => {
-              setRevokeTarget(row)
-              setRevokeOpen(true)
-            }}
-          >
-            {m.admin_revoke_batch()}
-          </Button>
-        ),
-      },
-    ],
-    [busy, pending, reason],
-  )
+  // DataTable 按函数调用渲染单元格（tasks 4.2），每次渲染新建列不会重新挂载行内按钮，确认框关闭后焦点回到按钮
+  const columns: DataTableColumn<CreditBatch>[] = [
+    { id: 'id', header: m.admin_batch(), cell: (row) => row.id },
+    { id: 'source', header: m.admin_source(), cell: (row) => row.source },
+    {
+      id: 'amount',
+      header: m.admin_amount_remaining(),
+      cell: (row) => `${row.amount} / ${row.remaining}`,
+    },
+    {
+      id: 'expiration',
+      header: m.admin_expiration(),
+      cell: (row) => (row.expiresAt ? formatDateTime(row.expiresAt) : m.admin_never()),
+    },
+    { id: 'status', header: m.admin_status(), cell: (row) => row.status },
+    {
+      id: 'revoke',
+      header: m.admin_revoke_remaining(),
+      cell: (row) => (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy || Boolean(pending) || !reason.trim() || row.status !== 'active'}
+          onClick={() => {
+            setRevokeTarget(row)
+            setRevokeOpen(true)
+          }}
+        >
+          {m.admin_revoke_batch()}
+        </Button>
+      ),
+    },
+  ]
   return (
     <AdminPage
       title={m.admin_credit_adjustments()}

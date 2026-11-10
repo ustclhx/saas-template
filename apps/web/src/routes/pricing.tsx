@@ -1,5 +1,6 @@
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@saas/ui'
 import { createFileRoute, notFound as featureNotFound, Link } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { trackEvent } from '../features/analytics/track.ts'
 import { MarketingShell } from '../features/marketing/marketing-shell.tsx'
 import { getMarketingPricing } from '../features/marketing/pricing.functions.ts'
@@ -31,6 +32,10 @@ function PricingPage() {
   const [provider, setProvider] = useState(
     catalog.providers.find((p) => p.available)?.id ?? catalog.providers[0]?.id ?? '',
   )
+  const providerId = useId()
+  const currentProvider = catalog.providers.find((p) => p.id === provider)
+  const providerLabel = (p: (typeof catalog.providers)[number]) =>
+    p.available ? p.id : `${p.id} — unavailable`
   useEffect(() => setReady(true), [])
   useEffect(() => trackEvent('paywall_view'), [])
   useEffect(() => {
@@ -55,21 +60,28 @@ function PricingPage() {
         <h1 className="text-2xl font-semibold">Pricing</h1>
         <p>Choose a subscription or buy extra credits.</p>
         <p>{m.billing_coexist_order()}</p>
-        <label>
-          Payment method{' '}
-          <select
-            value={provider}
+        <div>
+          <label htmlFor={providerId}>Payment method</label>
+          <Select
+            value={currentProvider ? provider : ''}
             disabled={!ready}
-            onChange={(event) => setProvider(event.target.value)}
+            onValueChange={setProvider}
           >
-            {catalog.providers.map((p) => (
-              <option key={p.id} value={p.id} disabled={!p.available}>
-                {p.id}
-                {p.available ? '' : ' — unavailable'}
-              </option>
-            ))}
-          </select>
-        </label>
+            <SelectTrigger
+              id={providerId}
+              className="w-full"
+              placeholder="Payment method"
+              valueLabel={currentProvider ? providerLabel(currentProvider) : undefined}
+            />
+            <SelectContent>
+              {catalog.providers.map((p, index) => (
+                <SelectItem key={p.id} index={index} value={p.id} disabled={!p.available}>
+                  {providerLabel(p)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         {!catalog.providers.some((p) => p.available) && (
           <p role="status">Payments are currently unavailable. You can still explore the plans.</p>
         )}

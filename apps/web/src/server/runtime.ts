@@ -39,6 +39,8 @@ export interface WebRuntime {
       readonly PLAUSIBLE_HOST?: string | undefined
       readonly PLAUSIBLE_SITES?: string | undefined
       readonly INDEXNOW_KEY?: string | undefined
+      /** 组件预览页 /dev/ui 开关，仅 `true` 时开放（features/ui-preview） */
+      readonly UI_PREVIEW?: string | undefined
     } & AiFaultInjectionEnv
   readonly db: Database
   /** 公开读取保留目标自身的缓存策略，不拥有连接池。 */

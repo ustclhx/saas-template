@@ -37,8 +37,9 @@ const typeStyles = {
   },
   /** Control labels, body copy, and paragraphs. 20px also puts a row of
    *  padded text on the 36px ladder (8 + 20 + 8), 18px on the 28px one. */
+  // 模板改动：正文 14px，与 globals.css 的 --fs-body 一致（上游 13px）
   body: {
-    default: { size: 13, leading: 20 },
+    default: { size: 14, leading: 20 },
     compact: { size: 12, leading: 18 },
   },
   /** Secondary text: descriptions, meta rows, errors, group labels. */
@@ -79,7 +80,7 @@ const typeClasses = {
     display: 'text-[length:var(--fs-display,28px)] leading-[var(--lh-display,34px)]',
     title: 'text-[length:var(--fs-title,16px)] leading-[var(--lh-title,22px)]',
     subtitle: 'text-[length:var(--fs-subtitle,14px)] leading-[var(--lh-subtitle,20px)]',
-    body: 'text-[length:var(--fs-body,13px)] leading-[var(--lh-body,20px)]',
+    body: 'text-[length:var(--fs-body,14px)] leading-[var(--lh-body,20px)]',
     caption: 'text-[length:var(--fs-caption,12px)] leading-[var(--lh-caption,16px)]',
     micro: 'text-[length:var(--fs-micro,11px)] leading-[var(--lh-micro,14px)]',
   },

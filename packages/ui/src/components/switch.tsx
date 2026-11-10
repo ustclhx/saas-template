@@ -394,7 +394,7 @@ const Switch = forwardRef<HTMLDivElement, SwitchProps>(
                 className={cn(
                   'absolute top-0 left-0 block shadow-sm transition-colors duration-80',
                   // 模板改动：开启态滑块取 --switch-thumb-on（默认白色，深色预设的浅强调色上改为深色）
-                  checked ? 'bg-(--switch-thumb-on)' : 'bg-white',
+                  checked ? 'bg-(--switch-thumb-on)' : 'bg-(--switch-thumb-off)',
                   sharp ? 'rounded-none' : 'rounded-full',
                 )}
                 initial={false}

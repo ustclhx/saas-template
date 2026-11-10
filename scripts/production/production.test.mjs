@@ -32,11 +32,13 @@ test('production drift, staging reuse and forbidden vars are reported', () => {
   production.hyperdrive[0].id = config.env.staging.hyperdrive[0].id
   production.queues.producers[0].queue = 'email-staging'
   production.vars.PAYMENT_MODE = 'live'
+  production.vars.UI_PREVIEW = 'true'
   const problems = checkEnvs('web', config)
   assert.ok(problems.includes('web: production is missing binding kv:CACHE'))
   assert.ok(problems.some((line) => line.includes('reuses staging resource id')))
   assert.ok(problems.includes('web: production references staging value email-staging'))
   assert.ok(problems.includes('web: production must not set PAYMENT_MODE'))
+  assert.ok(problems.includes('web: production must not set UI_PREVIEW'))
 })
 
 test('production jobs must declare a Cron profile that matches its triggers', () => {
@@ -247,4 +249,12 @@ test('site vars: PLAUSIBLE_SITES must parse, stay apart across environments and 
     checkSiteVars(web, config({}, { PLAUSIBLE_SITES: 'a.example=a' })).join(),
     /production: web and jobs disagree on PLAUSIBLE_SITES/,
   )
+})
+
+test('UI_PREVIEW opens /dev/ui in development and staging only (add-ui-design-system D6)', () => {
+  const config = wrangler('web')
+  assert.equal(config.vars.UI_PREVIEW, 'true')
+  assert.equal(config.env.staging.vars.UI_PREVIEW, 'true')
+  assert.equal('UI_PREVIEW' in config.env.production.vars, false)
+  assert.equal('UI_PREVIEW' in (wrangler('jobs').env.production.vars ?? {}), false)
 })

@@ -14,7 +14,17 @@
 // without the false alarm.
 // ---------------------------------------------------------------------------
 
-import { Check, ChevronDown, X } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  CircleAlert,
+  PanelLeft,
+  PanelRight,
+  Plus,
+  Search,
+  X,
+} from 'lucide-react'
 import { type ComponentType, createContext, type ReactNode, useContext, useMemo } from 'react'
 
 // The whole contract an icon has to meet. Components pass `strokeWidth` and
@@ -34,12 +44,27 @@ export type IconComponent = ComponentType<IconComponentProps>
 // Ellipsis).
 // 模板改动：上游登记 70 个图标槽位并全部导入，Provider 放在根布局时会把它们全部打进首屏包。
 // 这里只保留已接入组件用到的槽位，接入新组件时按上游名称补充（见 packages/ui/UPSTREAM.md）。
-export type IconName = 'x' | 'chevron-down' | 'check'
+export type IconName =
+  | 'x'
+  | 'chevron-down'
+  | 'chevron-right'
+  | 'check'
+  | 'circle-alert'
+  | 'search'
+  | 'panel-left'
+  | 'panel-right'
+  | 'plus'
 
 export const defaultIcons: Record<IconName, IconComponent> = {
   x: X,
   'chevron-down': ChevronDown,
+  'chevron-right': ChevronRight,
   check: Check,
+  'circle-alert': CircleAlert,
+  search: Search,
+  'panel-left': PanelLeft,
+  'panel-right': PanelRight,
+  plus: Plus,
 }
 
 const IconContext = createContext<Record<IconName, IconComponent> | null>(null)

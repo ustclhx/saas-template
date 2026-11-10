@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { expect, type Page, test } from '@playwright/test'
 import { register } from '../e2e/fixtures.ts'
+import { chooseOption } from '../e2e/select.ts'
 import { billingEvidence, expectReconciled, saveBillingEvidence } from './acceptance-evidence.ts'
 import { liveDb } from './live-env.ts'
 import { expectBillingReturn, payOnStripeCheckout, startStripeCheckout } from './stripe-checkout.ts'
@@ -102,9 +103,9 @@ test('Stripe 积分包入账与用户退款申请仅进入 pending', async ({ pa
     // 退款输入在 SSR 已可操作；先等父页面的 ready 控件启用，避免水合覆盖输入。
     await expect(page.getByRole('combobox', { name: 'Payment method', exact: true })).toBeEnabled()
     const form = page.getByRole('form', { name: 'Request a refund' })
-    await form
-      .getByRole('combobox', { name: 'Payment', exact: true })
-      .selectOption(String(paid.payments[0]?.id))
+    await chooseOption(form.getByRole('combobox', { name: 'Payment', exact: true }), {
+      value: String(paid.payments[0]?.id),
+    })
     await form.getByLabel('Reason').fill('Stripe staging acceptance refund request')
     await form.getByLabel('Contact email').fill(owner.email)
     await expect(form.getByRole('button', { name: 'Submit refund request' })).toBeEnabled()

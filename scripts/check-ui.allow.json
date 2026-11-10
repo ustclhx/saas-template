@@ -87,50 +87,12 @@
         "reason": "存量任意值工具类，待第 5 组改用设计 token 工具类或共享组件（基线第 126 行）。"
       }
     ],
-    "apps/web/src/features/billing/refund-section.tsx": [
-      {
-        "rule": "native-select",
-        "value": "<select>",
-        "count": 1,
-        "reason": "存量原生选择控件，待第 5 组迁移到 @saas/ui Select（基线第 69 行）。"
-      }
-    ],
-    "apps/web/src/features/i18n/language-controls.tsx": [
-      {
-        "rule": "native-select",
-        "value": "<select>",
-        "count": 1,
-        "reason": "存量原生选择控件，待第 5 组迁移到 @saas/ui Select（基线第 111 行）。"
-      }
-    ],
     "apps/web/src/features/marketing/docs-layout.tsx": [
       {
         "rule": "arbitrary-class",
         "value": "md:grid-cols-[14rem_1fr]",
         "count": 1,
         "reason": "存量任意值工具类，待第 5 组改用设计 token 工具类或共享组件（基线第 25 行）。"
-      }
-    ],
-    "apps/web/src/routes/app/$slug/billing.tsx": [
-      {
-        "rule": "native-select",
-        "value": "<select>",
-        "count": 1,
-        "reason": "存量原生选择控件，待第 5 组迁移到 @saas/ui Select（基线第 204 行）。"
-      },
-      {
-        "rule": "native-select",
-        "value": "<select>",
-        "count": 1,
-        "reason": "存量原生选择控件，待第 5 组迁移到 @saas/ui Select（基线第 224 行）。"
-      }
-    ],
-    "apps/web/src/routes/pricing.tsx": [
-      {
-        "rule": "native-select",
-        "value": "<select>",
-        "count": 1,
-        "reason": "存量原生选择控件，待第 5 组迁移到 @saas/ui Select（基线第 57 行）。"
       }
     ]
   }
