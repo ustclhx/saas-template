@@ -1,4 +1,5 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
-  "common_site_tagline": "更快地构建并上线你的 AI 应用。"
+  "common_site_tagline": "更快地构建并上线你的 AI 应用。",
+  "common_cancel": "取消"
 }

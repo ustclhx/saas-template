@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import { newId } from '@saas/shared'
 import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
+import { chooseOption } from './select.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 // 后台写入、认证、权益与提交页 loader 均为真实本地链路；只 mock 任务 API，避免调用模型。
@@ -61,17 +62,15 @@ test('saved media parameter schemas drive submit fields, defaults and validation
     await expect(form.getByRole('button', { name: 'Create model' })).toBeEnabled()
     await expect
       .poll(async () => {
-        await form.getByRole('combobox', { name: 'Kind', exact: true }).selectOption('video')
-        return form
-          .getByRole('combobox', { name: 'Provider', exact: true })
-          .locator('option[value="fal"]')
-          .count()
+        await chooseOption(form.getByRole('combobox', { name: 'Kind', exact: true }), 'Video')
+        return form.getByRole('combobox', { name: 'Provider', exact: true }).count()
       })
       .toBe(1)
-    await form.getByRole('combobox', { name: 'Provider', exact: true }).selectOption('fal')
-    await form
-      .getByLabel('Insert reference template', { exact: true })
-      .selectOption('fal-wan-turbo')
+    await chooseOption(form.getByRole('combobox', { name: 'Provider', exact: true }), 'fal')
+    await chooseOption(
+      form.getByRole('combobox', { name: 'Insert reference template', exact: true }),
+      'fal · Wan v2.2 turbo',
+    )
     const wanSchema = JSON.parse(
       await form.getByLabel('Parameters schema (JSON)', { exact: true }).inputValue(),
     )
@@ -81,8 +80,8 @@ test('saved media parameter schemas drive submit fields, defaults and validation
       default: '720p',
     })
     expect(wanSchema.properties).not.toHaveProperty('duration')
-    await form.getByRole('combobox', { name: 'Kind', exact: true }).selectOption('image')
-    await form.getByRole('combobox', { name: 'Provider', exact: true }).selectOption('workers-ai')
+    await chooseOption(form.getByRole('combobox', { name: 'Kind', exact: true }), 'Image')
+    await chooseOption(form.getByRole('combobox', { name: 'Provider', exact: true }), 'workers-ai')
     await form.getByLabel('Key', { exact: true }).fill(key)
     await form.getByLabel('Provider model ID').fill('@cf/black-forest-labs/flux-1-schnell')
     await form.getByLabel('Plan tags (comma separated)').fill(key)
@@ -98,9 +97,10 @@ test('saved media parameter schemas drive submit fields, defaults and validation
       await sql`select id from audit_log where actor_user_id=${actor.user_id} and target_type='ai_model'`,
     ).toHaveLength(0)
 
-    await form
-      .getByLabel('Insert reference template', { exact: true })
-      .selectOption('workers-ai-flux-schnell')
+    await chooseOption(
+      form.getByRole('combobox', { name: 'Insert reference template', exact: true }),
+      'Workers AI · FLUX schnell',
+    )
     const initialSchema = JSON.parse(
       await form.getByLabel('Parameters schema (JSON)', { exact: true }).inputValue(),
     )

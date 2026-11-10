@@ -181,14 +181,6 @@
         "reason": "存量浏览器确认调用，待第 5 组迁移到共享确认对话框（基线第 224 行）。"
       }
     ],
-    "apps/web/src/routes/admin/credits.tsx": [
-      {
-        "rule": "browser-dialog",
-        "value": "window.confirm",
-        "count": 1,
-        "reason": "存量浏览器确认调用，待第 5 组迁移到共享确认对话框（基线第 199 行）。"
-      }
-    ],
     "apps/web/src/routes/app/$slug/billing.tsx": [
       {
         "rule": "native-select",
