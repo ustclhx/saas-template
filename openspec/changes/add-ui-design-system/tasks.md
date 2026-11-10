@@ -2,8 +2,8 @@
 
 ## 1. 验证 spike（Claude）
 
-- [ ] 1.1 在独立 worktree 按 design D1 接入 Fluid 的 Button、Dialog、Select（Radix 版），改写为 `radix-ui` 导入与包内相对路径；验证 `pnpm --filter @saas/ui typecheck`、`test` 与 `pnpm check:singletons` 通过
-- [ ] 1.2 接入 Inter 可变字体（opsz）与 `UiRoot` 原型，本地首页切换明暗无闪烁；测量首页 `@saas/ui` bundle 增量（gzip）与本地 Lighthouse，结论写入 design.md「Spike 结论」，超过阈值时按 D9 调整方案后再进入第 2 组
+- [x] 1.1 在独立 worktree 按 design D1 接入 Fluid 的 Button、Dialog、Select（Radix 版），改写为 `radix-ui` 导入与包内相对路径；验证 `pnpm --filter @saas/ui typecheck`、`test` 与 `pnpm check:singletons` 通过
+- [x] 1.2 接入 Inter 可变字体（opsz）与 `UiRoot` 原型，本地首页切换明暗无闪烁；测量首页 `@saas/ui` bundle 增量（gzip）与本地 Lighthouse，结论写入 design.md「Spike 结论」，超过阈值时按 D9 调整方案后再进入第 2 组
 
 ## 2. 依赖边界与规范检查
 
@@ -12,15 +12,18 @@
 
 ## 3. token、预设与品牌层
 
-- [ ] 3.1 以 Fluid 默认视觉为中性基线更新 `globals.css`（不按特定参考调整），新增 neutral、blue、violet、green 四套 `presets/*.css`；测试断言每个预设浅/深色正文对比度 ≥ 4.5:1
-- [ ] 3.2 `template.config.ts` 增加 `ui` 段（preset、shape、density），根布局 SSR 写入 `data-preset` 并用 `UiRoot` 包裹；新增 `apps/web/src/styles/brand.css`（仅注释示例）并在入口 CSS 最后导入；验证切换预设后重新构建，组件强调色与圆角随之变化
-- [ ] 3.3 模板发布检查新增断言：`brand.css` 自创建提交后未被修改；`template-release.test.mjs` 覆盖修改时失败
+- [x] 3.1 以 Fluid 默认视觉为中性基线更新 `globals.css`（不按特定参考调整），新增 neutral、blue、violet、green 四套 `presets/*.css`；测试断言每个预设浅/深色正文对比度 ≥ 4.5:1
+- [x] 3.2 `template.config.ts` 增加 `ui` 段（preset、shape、density），根布局 SSR 写入 `data-preset` 并用 `UiRoot` 包裹；新增 `apps/web/src/styles/brand.css`（仅注释示例）并在入口 CSS 最后导入；验证切换预设后重新构建，组件强调色与圆角随之变化
+- [x] 3.3 模板发布检查新增断言：`brand.css` 自创建提交后未被修改；`template-release.test.mjs` 覆盖修改时失败
 
 ## 4. 组件库补齐（Claude）
 
-- [ ] 4.1 按 D1 接入 Dialog、AlertDialog（确认对话框，含多语言默认文案与焦点返回）、Select、Textarea、Checkbox、Switch、Badge、Tooltip，并更新 Button、Input 样式（保持公开 API）；每个组件有渲染与键盘交互测试，减少动态效果下无位移动画
+- [ ] 4.1 按 D1 接入 Dialog、AlertDialog（确认对话框，含多语言默认文案与焦点返回）、Select、Textarea、Checkbox、Switch、Badge、Tooltip，并更新 Button、Input 样式（保持公开 API）；每个组件有渲染与键盘交互测试，减少动态效果下无位移动画；Input 与 Button/Select 完整对齐（字号、边框、焦点环改为 2px 描边加间隙，#303 只改了圆角）
 - [ ] 4.2 接入 Tabs、Dropdown、Sidebar、Toast、Combobox、Command Menu；DataTable、Form 吸收新样式且现有调用方测试不变；`UPSTREAM.md` 记录每个组件来源与上游月份
 - [ ] 4.3 新增预览页 `routes/dev/ui.tsx`（D6）：`UI_PREVIEW` 未开启返回 404、排除预渲染与 sitemap，可切换预设/明暗/shape/density；测试覆盖生产 404 与 sitemap 不含该地址；dev 与 staging 的 wrangler 配置设置 `UI_PREVIEW=true`
+- [ ] 4.4 悬停与当前项改用 Fluid 交互 token：admin 侧栏悬停/当前项、docs 目录、DataTable 表头与行悬停由 `bg-accent` 改为 `bg-hover` / `bg-active`（`--accent` 保持 Fluid 原值，作为较重的强调底）
+- [ ] 4.5 评估 `SelectItem` 的 `index` 在 `SelectContent` 内自动编号：index 同时驱动 fluid-hover 注册与渲染期的高亮判断，自动编号需挂载后按 DOM 顺序测量，可能造成首帧高亮错位；评估通过再改，否则在组件文档中保留显式 index
+- [ ] 4.6 Dialog `closeLabel`、Select `placeholder` 等英文默认值由应用层按语言传入（`apps/web` 封装或调用处传 `m.*()` 文案），并在 `docs/design-system.md` 写明哪些属性必须传多语言文案
 
 ## 5. 替换原生控件与私有组件
 
@@ -57,3 +60,11 @@
 - [ ] 9.2 编写模板升级说明（创建 `brand.css`、迁移自定义变量、`ui` 配置段、`UI_PREVIEW`、项目例外清单、`ui.appLayout` 可设 `topbar` 保持原布局、新营销区块与业务组件的接入方式）；以 xuanxue 为例写明迁移：`site-theme.css` 并入 `brand.css`、`app.css` 恢复模版原样、插画组件颜色登记例外，按说明在 xuanxue 的同步分支本地执行检查通过（不推送）
 - [ ] 9.3 staging 验收：首页、定价页、博客中英文 Lighthouse SEO 与可访问性仍为 100；预览页可访问、生产 404；明暗切换无闪烁；新增组件与页面在 390px 宽无横向滚动、浅色与深色正确；证据写入私有证据库
 - [ ] 9.4 发布模版版本后通知 xuanxue 协调会话，附版本号、升级说明与业务组件接口文档
+
+## 后续（不阻塞本变更，按需另开任务）
+
+- 强制颜色模式（`forced-colors`）下按钮底色层、焦点环与 Select 高亮的可见性
+- 裁剪 Inter 子集（只保留实际用到的字符范围）与 surface 6–8 等未用 token
+- 回退字体加 `size-adjust`，减少字体替换时的版面跳动
+- `:focus-visible` 兜底焦点环的圆角跟随元素自身圆角
+- `brandFileErrors` 在浅克隆（CI `fetch-depth` 较小）下找不到创建提交时的行为与测试

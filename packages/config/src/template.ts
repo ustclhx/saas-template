@@ -15,6 +15,25 @@ export type MediaProviderId = 'fal' | 'workers-ai'
 
 export type DefaultLocale = 'en' | 'zh'
 
+/** 主题预设名单（packages/ui/src/styles/presets/*.css）；@saas/web 的测试断言它与 @saas/ui 的 UI_PRESETS 一致 */
+export const uiPresets = ['neutral', 'blue', 'violet', 'green'] as const
+export const uiShapes = ['sharp', 'rounded', 'pill'] as const
+export const uiDensities = ['default', 'compact'] as const
+
+/** `ui` 段在运行时校验：template.config.ts 写了未知预设时构建期即报错，而不是静默回退 */
+export const uiConfigSchema = z.strictObject({
+  preset: z.enum(uiPresets).default('neutral'),
+  shape: z.enum(uiShapes).default('rounded'),
+  /** 控件尺寸阶梯：default 36px，compact 28px */
+  density: z.enum(uiDensities).default('default'),
+})
+
+export type UiPreset = (typeof uiPresets)[number]
+/** 组件圆角形状 */
+export type UiShape = (typeof uiShapes)[number]
+/** 控件尺寸阶梯：default 36px，compact 28px */
+export type UiDensity = (typeof uiDensities)[number]
+
 export const textConfigSchema = z.strictObject({
   enabled: z.boolean().default(true),
   thinking: z
@@ -107,6 +126,13 @@ export interface TemplateConfig<L extends string = string> {
   readonly marketing: {
     readonly enabled: boolean
   }
+  /** 界面主题（openspec add-ui-design-system design D2/D3）；项目品牌色放 apps/web/src/styles/brand.css */
+  readonly ui: {
+    /** 主题预设：强调色、圆角与焦点环；根布局在服务端写到 <html data-preset> */
+    readonly preset: UiPreset
+    readonly shape: UiShape
+    readonly density: UiDensity
+  }
   readonly ai: {
     readonly text: TextConfig
     readonly image: boolean
@@ -171,6 +197,7 @@ export interface TemplateConfigInput<L extends string = DefaultLocale> {
   }
   credits?: Partial<Section<'credits'>>
   marketing?: Partial<Section<'marketing'>>
+  ui?: Partial<Section<'ui'>>
   ai?: Partial<Omit<Section<'ai'>, 'defaultPricingMode' | 'text'>> & {
     text?: z.input<typeof textConfigSchema>
     defaultPricingMode?: Partial<Section<'ai'>['defaultPricingMode']>
@@ -204,6 +231,7 @@ export const templateConfigDefaults = {
   },
   credits: { enabled: true, dailyEnabled: false },
   marketing: { enabled: true },
+  ui: { preset: 'neutral', shape: 'rounded', density: 'default' },
   ai: {
     text: {
       enabled: true,
@@ -264,6 +292,7 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
     },
     credits: { ...d.credits, ...input.credits },
     marketing: { ...d.marketing, ...input.marketing },
+    ui: uiConfigSchema.parse({ ...d.ui, ...input.ui }),
     ai: {
       ...d.ai,
       ...input.ai,

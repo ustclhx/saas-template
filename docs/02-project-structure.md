@@ -138,8 +138,14 @@ export default defineTemplateConfig({
     publicApi: false,            // API Key 调用 /api/v1
     blog: true, docs: false, waitlist: false,
   },
+  // 界面主题：预设 neutral | blue | violet | green（只换强调色与焦点环）、圆角形状与控件密度；
+  // 品牌 token 不写在这里，放项目自有的 apps/web/src/styles/brand.css
+  ui: { preset: 'neutral', shape: 'rounded', density: 'default' },
 })
 ```
+
+`ui.shape` 目前只影响已接入 Fluid 的组件（按钮、选择器、弹窗）：`rounded` 跟随 `--radius`，
+`pill` / `sharp` 使用固定圆角；卡片、输入框等其余组件仍按 `--radius` 渲染，随组件接入（tasks 4.x）逐步统一。
 
 环境变量用 Zod 在启动时校验（`packages/config/env.ts`），缺失即报错，避免线上才发现。
 

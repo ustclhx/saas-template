@@ -1,0 +1,15 @@
+/* 主题预设 green：只换颜色，见 neutral.css 与 blue.css 的说明。 */
+:root[data-preset="green"] {
+  --ui-preset: green;
+  --primary: #15803d;
+  --primary-foreground: #ffffff;
+  --fluid-accent: #16a34a;
+  --focus-ring: #171717;
+}
+
+:root[data-preset="green"].dark {
+  --primary: #15803d;
+  --primary-foreground: #ffffff;
+  --fluid-accent: #4ade80;
+  --focus-ring: #bbf7d0;
+}

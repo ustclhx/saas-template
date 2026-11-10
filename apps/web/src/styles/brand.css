@@ -1,0 +1,40 @@
+/*
+ * 项目品牌层（openspec add-ui-design-system design D2 / D10）。
+ *
+ * 本文件归衍生项目所有：模板创建后不再修改它（模板发布检查会断言这一点），
+ * 因此项目在这里写的品牌 token 在 template-sync 时不会冲突，也不会被覆盖。
+ *
+ * 优先级：基线（@saas/ui/globals.css）与主题预设都在 cascade layer `base` 中，本文件不分层，
+ * 未分层的声明总是胜过分层声明，所以用普通的 :root / .dark 选择器即可覆盖，与选了哪个预设无关。
+ * 也正因如此，:root 中覆盖的变量在深色模式下同样生效：覆盖浅色值时，须同时在 .dark 中给出深色值，
+ * 且 .dark 规则写在 :root 之后。
+ *
+ * 只覆盖变量，不写组件样式；可用变量见 packages/ui/src/styles/globals.css。
+ * 改色后请检查对比度：正文 ≥ 4.5:1，焦点环与背景、与主按钮 ≥ 3:1。
+ *
+ * 示例：
+ *
+ * :root {
+ *   --primary: #0f766e;
+ *   --primary-foreground: #ffffff;
+ *   --fluid-accent: #14b8a6;
+ *   --focus-ring: #171717;
+ * }
+ *
+ * .dark {
+ *   --primary: #0f766e;
+ *   --primary-foreground: #ffffff;
+ *   --fluid-accent: #2dd4bf;
+ *   --focus-ring: #99f6e4;
+ * }
+ *
+ * 多站点项目可按 <html data-site="…"> 分别覆盖（同样成对给出浅色与深色）：
+ *
+ * :root[data-site="docs"] {
+ *   --fluid-accent: #6366f1;
+ * }
+ *
+ * :root[data-site="docs"].dark {
+ *   --fluid-accent: #818cf8;
+ * }
+ */

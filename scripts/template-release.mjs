@@ -37,6 +37,8 @@ const paramKeys = new Set([
   'multi-tenant',
 ])
 const migrationPath = /^packages\/db\/migrations\/[^/]+\.sql$/
+// 项目品牌层：模板创建后不再修改，衍生项目 template-sync 时才不会在这里冲突（openspec add-ui-design-system D2）
+export const brandPath = 'apps/web/src/styles/brand.css'
 
 function git(cwd, ...args) {
   return execFileSync('git', args, {
@@ -382,6 +384,21 @@ export function lintMigrations(base, cwd = process.cwd()) {
   return errors
 }
 
+/** 品牌文件自创建提交之后不得修改或删除；尚未创建（早期版本）时不检查 */
+export function brandFileErrors(target = 'HEAD', cwd = process.cwd()) {
+  const created = git(cwd, 'log', '--diff-filter=A', '--format=%H', target, '--', brandPath)
+    .split('\n')
+    .filter(Boolean)
+    .at(-1)
+  if (!created) return []
+  const changed = git(cwd, 'diff', '--name-only', created, target, '--', brandPath)
+  return changed
+    ? [
+        `${brandPath}: project-owned brand file must stay as created in ${created.slice(0, 12)}; put template token changes in packages/ui/src/styles`,
+      ]
+    : []
+}
+
 function keys(text, regex) {
   return new Set([...text.matchAll(regex)].map((match) => match[1]))
 }
@@ -686,6 +703,7 @@ export function checkRelease(version, cwd = process.cwd()) {
     (release) => release.version !== version && ancestor(release.commit, range.base, cwd),
   )
   errors.push(...immutableMigrations(range.base, range.target, cwd, published))
+  errors.push(...brandFileErrors(range.target, cwd))
   const index = readFileSync(join(cwd, 'docs/upgrades/README.md'), 'utf8')
   const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   if (

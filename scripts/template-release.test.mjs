@@ -355,6 +355,43 @@ for (const [name, mutate] of malformedDocs) {
   })
 }
 
+test('check accepts a brand file left as created, including one created inside the release', (t) => {
+  const { cwd } = repo(t)
+  put(cwd, 'apps/web/src/styles/brand.css', '/* 项目品牌层示例 */\n')
+  commit(cwd, 'fix: add brand layer')
+  releaseDoc(cwd)
+  commit(cwd)
+  succeeds(cli(cwd, 'check', '--version', '0.2.1'))
+})
+
+test('check rejects modifying or deleting the brand file after it was created', (t) => {
+  const { cwd } = repo(t)
+  put(cwd, 'apps/web/src/styles/brand.css', '/* 项目品牌层示例 */\n')
+  commit(cwd, 'fix: add brand layer')
+  tag(cwd, 'template-v0.2.1')
+  put(cwd, 'apps/web/src/styles/brand.css', ':root { --primary: #000000; }\n')
+  releaseDoc(cwd, { version: '0.2.2', previous: '0.2.1' })
+  commit(cwd)
+  const brandError =
+    /^apps\/web\/src\/styles\/brand\.css: project-owned brand file must stay as created/
+  const modified = cli(cwd, 'check', '--version', '0.2.2')
+  fails(modified)
+  // 只因品牌文件失败：其余发版检查都通过
+  assert.deepEqual(
+    modified.stderr
+      .trim()
+      .split('\n')
+      .map((line) => brandError.test(line)),
+    [true],
+  )
+
+  rmSync(path.join(cwd, 'apps/web/src/styles/brand.css'))
+  commit(cwd, 'fix: drop brand layer')
+  const deleted = cli(cwd, 'check', '--version', '0.2.2')
+  fails(deleted)
+  assert.match(deleted.stderr, brandError)
+})
+
 test('check rejects invalid command versions', (t) => {
   const { cwd } = repo(t)
   releaseDoc(cwd)
