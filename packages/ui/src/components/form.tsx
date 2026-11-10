@@ -10,7 +10,7 @@ import {
 } from 'react'
 import { cn } from '../lib/utils.ts'
 import { Button, type ButtonProps } from './button.tsx'
-import { Input } from './input.tsx'
+import { Input, type InputProps } from './input.tsx'
 import { Label } from './label.tsx'
 
 /**
@@ -65,7 +65,7 @@ export function FieldErrors({ id, errors }: { id: string; errors: readonly strin
 const SubmitPressContext = createContext<{ current: boolean } | null>(null)
 
 export interface TextFieldProps
-  extends Omit<ComponentProps<'input'>, 'id' | 'name' | 'value' | 'onChange' | 'onBlur'> {
+  extends Omit<InputProps, 'id' | 'name' | 'value' | 'onChange' | 'onBlur'> {
   label: ReactNode
   /** 字段说明，显示在输入框下方 */
   description?: ReactNode

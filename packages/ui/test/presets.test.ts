@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { badgeColors } from '../src/components/badge.tsx'
 import { UI_PRESETS } from '../src/index.ts'
 
 // 主题预设的对比度：从 globals.css 与 presets/*.css 读取变量，按「基线 → 预设」「浅色 → .dark」的层叠顺序
@@ -108,12 +109,12 @@ function parse(value: string, vars: Vars, depth = 0): Rgba {
     const [l, c, h] = [Number(oklch[1]), Number(oklch[2]), (Number(oklch[3]) * Math.PI) / 180]
     return [...oklabToRgb(l, c * Math.cos(h), c * Math.sin(h)), 1]
   }
-  const mix = /^color-mix\(in oklab,\s*(.+?)\s+([\d.]+)%,\s*(.+)\)$/.exec(v)
+  const mix = /^color-mix\(in (oklab|srgb),\s*(.+?)\s+([\d.]+)%,\s*(.+)\)$/.exec(v)
   if (mix)
-    return mixOklab(
-      parse(mix[1] as string, vars, depth + 1),
-      Number(mix[2]) / 100,
-      parse(mix[3] as string, vars, depth + 1),
+    return (mix[1] === 'srgb' ? mixSrgb : mixOklab)(
+      parse(mix[2] as string, vars, depth + 1),
+      Number(mix[3]) / 100,
+      parse(mix[4] as string, vars, depth + 1),
     )
   throw new Error(`无法解析的颜色 ${value}`)
 }
@@ -128,6 +129,15 @@ function mixOklab(a: Rgba, p: number, b: Rgba): Rgba {
     (i) => ((la[i] as number) * a[3] * p + (lb[i] as number) * b[3] * (1 - p)) / alpha,
   ) as [number, number, number]
   return [...oklabToRgb(...lab), alpha]
+}
+
+/** CSS color-mix(in srgb, A p, B)：按预乘不透明度在 sRGB 中插值（Badge 的淡底） */
+function mixSrgb(a: Rgba, p: number, b: Rgba): Rgba {
+  const alpha = a[3] * p + b[3] * (1 - p)
+  if (alpha === 0) return [0, 0, 0, 0]
+  return [0, 1, 2]
+    .map((i) => ((a[i] as number) * a[3] * p + (b[i] as number) * b[3] * (1 - p)) / alpha)
+    .concat(alpha) as Rgba
 }
 
 /** 半透明前景叠在不透明底色上 */
@@ -183,6 +193,40 @@ function checks(vars: Vars, mode: 'light' | 'dark'): Check[] {
     text('Alert text-destructive/90 / card', alpha(destructive, 0.9), c('--card')),
     ui('焦点环 / background', c('--focus-ring'), page),
     ui('焦点环 / 主按钮', c('--focus-ring'), primary),
+    // Input / Textarea：悬停底色上的占位文字
+    text('占位文字 / 悬停的输入框', c('--muted-foreground'), onPage(c('--hover'))),
+    // 输入框错误态边框 aria-invalid:border-destructive（页面与弹窗上；上游 /50 只有约 2.5:1）
+    ui('错误边框 / background', destructive, page),
+    ui('错误边框 / surface-5', destructive, c('--surface-5')),
+    // Tooltip：反色气泡
+    text('Tooltip background / foreground', c('--background'), c('--foreground')),
+    // Checkbox 未选中的方框、Switch 关闭态轨道：页面、卡片与弹窗（surface-5）上都要 ≥ 3:1
+    ...(['--background', '--card', '--surface-5'] as const).map((surface) =>
+      ui(`control-border / ${surface}`, c('--control-border'), c(surface)),
+    ),
+    // 悬停时复选框所在行 / 开关行的底色
+    ui('control-border / 悬停底色', c('--control-border'), onPage(c('--hover'))),
+    // Switch：开启态轨道与页面、白色滑块与两种轨道（关闭轨道半透明，分别叠在页面、卡片、弹窗上）
+    ui('Switch 开启轨道 / background', c('--fluid-accent'), page),
+    ...(['--background', '--card', '--surface-5'] as const).map((surface) =>
+      ui(
+        `Switch 滑块 / 关闭轨道 on ${surface}`,
+        [1, 1, 1, 1],
+        over(c('--control-border'), c(surface)),
+      ),
+    ),
+    ui('Switch 滑块 / 开启轨道', c('--switch-thumb-on'), c('--fluid-accent')),
+    // Badge solid：正文色文字在「色值 15% + 页面背景」的淡底上；灰色取 --accent
+    text('Badge gray', c('--foreground'), c('--accent')),
+    ...Object.entries(badgeColors)
+      .filter(([name]) => name !== 'gray')
+      .map(([name, value]) =>
+        text(
+          `Badge ${name}`,
+          c('--foreground'),
+          parse(`color-mix(in srgb, ${value} 15%, var(--background))`, vars),
+        ),
+      ),
   ]
 }
 

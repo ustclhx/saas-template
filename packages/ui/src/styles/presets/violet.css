@@ -12,4 +12,6 @@
   --primary-foreground: #ffffff;
   --fluid-accent: #a78bfa;
   --focus-ring: #ddd6fe;
+  /* 浅色强调色上白色滑块不足 3:1，开启态滑块改用深色 */
+  --switch-thumb-on: #171717;
 }

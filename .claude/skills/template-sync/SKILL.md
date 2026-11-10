@@ -15,7 +15,7 @@ description: 在由本模板生成的衍生项目中采纳模板更新：只读�
 
 1. 工作区：`git status --porcelain --untracked-files=all` 必须为空；记录当前分支与完整 SHA。有改动时停止，
    请使用者先提交或清理，不代为 stash 或丢弃。
-2. 基准：读取 `.template-base.json`。文件不存在、校验失败或 `clean=false` 时转到第 5 节「基准推断」。
+2. 基准：读取 `.template-base.json`。文件不存在、校验失败或 `clean=false` 时转到第 6 节「基准推断」。
 3. 克隆目标模板到临时目录，用该克隆查版本区间（不修改项目）：
 
 ```sh
@@ -65,7 +65,41 @@ node "$TEMPLATE_DIR/scripts/template-sync.mjs" sync --project . --to <目标> \
 - 验证失败时修复并提交后重跑；基准记录只在无冲突且验证全部通过时更新到目标。
 - 升级说明里的数据库风险（锁表、全表更新、不可逆数据迁移）写入交付说明，供上线时安排窗口与备份。
 
-## 5. 基准推断（无记录或记录不可信）
+## 5. UI 截图对比（同步涉及 `packages/ui` 或基线 token 时）
+
+先判断本次区间是否改动共享组件或基线 token：
+
+```sh
+git diff --stat refs/template-sync/base refs/template-sync/target -- packages/ui apps/web/src/styles
+```
+
+有输出时，合并前做截图对比，结果写入同步报告：
+
+1. 列出页面：组件预览页 `/dev/ui`（staging 需开启 `UI_PREVIEW`）与项目关键页（首页、定价、登录、app 主页、
+   项目视觉规范中列出的页面）。`/dev/ui` 返回 404（模板版本尚无预览页或未开启）时跳过该页，报告中记为未验收。
+2. 基线截图取项目 staging（当前版本）；对比截图取同步分支：本地启动 web（`pnpm dev`），或使用者确认后部署到 staging 预览环境。
+   每页在 390 与 1440 宽、浅色与深色下截图，写入 `EVIDENCE_DIR`（未设置时用已忽略的 `test-results/evidence/`）：
+
+```sh
+WEB_PACKAGE=$(node -p "JSON.parse(require('fs').readFileSync('apps/web/package.json','utf8')).name")
+OUT=${EVIDENCE_DIR:-$PWD/test-results/evidence}/template-sync && mkdir -p "$OUT" && OUT=$(cd "$OUT" && pwd)
+pnpm --filter "$WEB_PACKAGE" exec playwright screenshot --viewport-size=390,844 --full-page --color-scheme=dark "<页面地址>" "$OUT/<页面>-390-dark.png"
+```
+
+3. 核对项目复制过的模板组件：列出本次区间内变化的模板组件，与 `docs/design/forks.md` 登记的来源文件取交集，
+   逐个列入报告，并对照上游改动手动合并到 `packages/ui/src/project/` 中的副本：
+
+```sh
+git diff --name-only refs/template-sync/base refs/template-sync/target -- packages/ui/src/components
+test -f docs/design/forks.md && cat docs/design/forks.md
+```
+
+4. 逐页对照项目视觉规范（`docs/design/visual-system.md` 与 `docs/design/prototypes/` 中的副本）。偏差在项目层修正：
+   品牌 token 写入 `apps/web/src/styles/brand.css`，结构差异写进 `packages/ui/src/project/` 的包装或副本；
+   **不修改模板组件与基线 token**。修正提交到同步分支后重跑第 2 节。
+5. 报告列出每页差异、forks 交集与处理方式、修正方式、仍待使用者确认的视觉变化；未能截图的页面记为未验收。
+
+## 6. 基准推断（无记录或记录不可信）
 
 ```sh
 node "$TEMPLATE_DIR/scripts/template-sync.mjs" infer-base --project . [--since YYYY-MM-DD --until YYYY-MM-DD] [--param key=value]...
@@ -74,7 +108,7 @@ node "$TEMPLATE_DIR/scripts/template-sync.mjs" infer-base --project . [--since Y
 展示还原的参数（及来源）、前 5 个候选、最佳候选的差异摘要；超过阈值时不写入。使用者选定后
 `--write <sha>` 写入 `.template-base.json`，审阅并由使用者确认后再提交，然后回到第 1 节。
 
-## 6. 交付与授权边界
+## 7. 交付与授权边界
 
 完成条件：同步分支无冲突、验证全部通过、基准记录指向目标；报告与待办清单交给使用者。
 以下动作必须先列出具体清单并获得明确确认，确认范围变化需再次确认：推送同步分支、开 PR、合并；
@@ -86,10 +120,11 @@ secret 只列名称与配置位置，不读取、不输出、不写入其值；�
 
 | 现象 | 处理 |
 | --- | --- |
-| 预检报基准 clean=false 或缺失 | 运行第 5 节基准推断 |
+| 预检报基准 clean=false 或缺失 | 运行第 6 节基准推断 |
 | 旧生成器拒绝参数 | 基准过旧或参数被手改；核对 `.template-base.json` 的 params，必要时重新推断 |
 | 同步分支已存在 | 切到该分支继续，或确认无用后删除再同步 |
 | 模板修改了已发布迁移 | 同步停止；向模板维护者反馈，不手改迁移 |
 | 迁移因缺表失败 | 项目删除了该表；确认后用 `--skip-migration`，并检查依赖它的代码 |
 | `drizzle-kit generate` 有变化 | 合并后 schema 与迁移不一致，多为冲突解决遗漏 schema 文件 |
+| 同步后按钮圆角、颜色与项目规范不符 | 按第 5 节截图对比，在 `brand.css` 或项目组件中修正，不改模板组件 |
 | 停在 `requiresDeployed` 边界 | 先部署边界版本，核实健康版本后用 `--confirm-deployed` 继续 |

@@ -1,7 +1,8 @@
 // 来源：fluid-functionalism use-fluid-hover（2026-11，https://www.fluidfunctionalism.com/r/use-fluid-hover.json，MIT）
 // 适配：radix-ui 统一包导入、包内相对路径、去掉 "use client"；其余改动见 packages/ui/UPSTREAM.md
-import { AnimatePresence, motion, type Transition, useReducedMotion } from 'motion/react'
+import { AnimatePresence, m as motion, type Transition, useReducedMotion } from 'motion/react'
 import type { ItemRect, UseFluidHoverReturn } from '../hooks/use-fluid-hover.ts'
+import { MotionFeatures } from '../lib/motion-features.tsx'
 import { spring } from '../lib/springs.ts'
 import { cn } from '../lib/utils.ts'
 
@@ -115,33 +116,35 @@ export function FluidHoverHighlight(props: FluidHoverHighlightProps) {
   // MotionConfig reduces too.
   const reduceMotion = useReducedMotion() ?? false
   return (
-    <AnimatePresence>
-      {rect && (
-        <motion.div
-          key={session}
-          data-slot="fluid-hover-highlight"
-          // Pinned to the container's padding corner and moved with a
-          // transform, so the travel runs on the compositor instead of
-          // re-laying out every frame. Width and height are real layout
-          // values, but they only change when the target rect's size does,
-          // which in most lists is never.
-          className={cn('pointer-events-none absolute left-0 top-0 bg-hover', className)}
-          initial={{ opacity: fadeIn ? 0 : 1, ...toTarget(from ?? rect) }}
-          animate={{ opacity: 1, ...toTarget(rect) }}
-          exit={{ opacity: 0, transition: spring.fast.exit }}
-          transition={resolveHighlightTransition(transition, reduceMotion)}
-          {...(onFrame && {
-            onUpdate: (latest: Record<string, unknown>) => {
-              const n = (v: unknown, d: number) => (typeof v === 'number' ? v : d)
-              onFrame({
-                y: n(latest.y, rect.top),
-                height: n(latest.height, rect.height),
-                opacity: n(latest.opacity, 1),
-              })
-            },
-          })}
-        />
-      )}
-    </AnimatePresence>
+    <MotionFeatures>
+      <AnimatePresence>
+        {rect && (
+          <motion.div
+            key={session}
+            data-slot="fluid-hover-highlight"
+            // Pinned to the container's padding corner and moved with a
+            // transform, so the travel runs on the compositor instead of
+            // re-laying out every frame. Width and height are real layout
+            // values, but they only change when the target rect's size does,
+            // which in most lists is never.
+            className={cn('pointer-events-none absolute left-0 top-0 bg-hover', className)}
+            initial={{ opacity: fadeIn ? 0 : 1, ...toTarget(from ?? rect) }}
+            animate={{ opacity: 1, ...toTarget(rect) }}
+            exit={{ opacity: 0, transition: spring.fast.exit }}
+            transition={resolveHighlightTransition(transition, reduceMotion)}
+            {...(onFrame && {
+              onUpdate: (latest: Record<string, unknown>) => {
+                const n = (v: unknown, d: number) => (typeof v === 'number' ? v : d)
+                onFrame({
+                  y: n(latest.y, rect.top),
+                  height: n(latest.height, rect.height),
+                  opacity: n(latest.opacity, 1),
+                })
+              },
+            })}
+          />
+        )}
+      </AnimatePresence>
+    </MotionFeatures>
   )
 }
