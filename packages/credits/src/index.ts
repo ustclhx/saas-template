@@ -39,11 +39,11 @@ export class CreditsError extends AppError {
       code === 'INSUFFICIENT_CREDITS' && details
         ? insufficientCreditsError(details.estimatedCredits, details.availableCredits)
         : undefined
-    super(
-      code,
-      insufficient?.message ?? code,
-      insufficient ? { status: insufficient.status, details: { ...details } } : {},
-    )
+    super(code, insufficient?.message ?? code, {
+      status: code === 'INSUFFICIENT_CREDITS' || code === 'CREDIT_DEBT' ? 402 : 500,
+      ...(insufficient?.details ? { details: insufficient.details } : {}),
+      ...(insufficient?.publicDetails ? { publicDetails: insufficient.publicDetails } : {}),
+    })
     this.code = code
   }
 }

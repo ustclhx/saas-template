@@ -36,6 +36,30 @@ export interface EntitlementOptions {
   readonly pastDueGraceDays?: number
 }
 
+/** 与套餐选择和账单摘要共用订阅生效规则。 */
+export function isSubscriptionEffective(
+  sub: Pick<EntitlementSubscription, 'status' | 'pastDueSince' | 'currentPeriodEnd'>,
+  { now = new Date(), pastDueGraceDays = 7 }: EntitlementOptions = {},
+): boolean {
+  // Provider 尚未确认服务周期时，不授予付费权益。
+  if (sub.currentPeriodEnd === null) return false
+  switch (sub.status) {
+    case 'trialing':
+    case 'active':
+      return true
+    case 'past_due':
+      return (
+        sub.pastDueSince !== null &&
+        now.getTime() < new Date(sub.pastDueSince).getTime() + pastDueGraceDays * 86_400_000
+      )
+    case 'canceled':
+    case 'expired':
+      return now.getTime() < new Date(sub.currentPeriodEnd).getTime()
+    case 'paused':
+      return false
+  }
+}
+
 export function selectEntitlements(
   subscriptions: readonly EntitlementSubscription[],
   free: Entitlements | undefined,
@@ -43,28 +67,11 @@ export function selectEntitlements(
 ): Entitlements {
   let highest: Entitlements | undefined
   for (const sub of subscriptions) {
-    // A provider activation without a confirmed period grants no paid entitlement.
-    if (sub.currentPeriodEnd === null) continue
-    let effective: boolean
-    switch (sub.status) {
-      case 'trialing':
-      case 'active':
-        effective = true
-        break
-      case 'past_due':
-        effective =
-          sub.pastDueSince !== null &&
-          now.getTime() < new Date(sub.pastDueSince).getTime() + pastDueGraceDays * 86_400_000
-        break
-      case 'canceled':
-      case 'expired':
-        effective = now.getTime() < new Date(sub.currentPeriodEnd).getTime()
-        break
-      case 'paused':
-        effective = false
-        break
-    }
-    if (effective && (!highest || sub.plan.sort > highest.sort)) highest = sub.plan
+    if (
+      isSubscriptionEffective(sub, { now, pastDueGraceDays }) &&
+      (!highest || sub.plan.sort > highest.sort)
+    )
+      highest = sub.plan
   }
   return highest ?? free ?? { key: 'free', sort: 0, features: DEFAULT_FREE_FEATURES }
 }

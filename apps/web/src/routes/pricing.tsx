@@ -3,13 +3,7 @@ import { useEffect, useState } from 'react'
 import { trackEvent } from '../features/analytics/track.ts'
 import { MarketingShell } from '../features/marketing/marketing-shell.tsx'
 import { getMarketingPricing } from '../features/marketing/pricing.functions.ts'
-import {
-  type BillingInterval,
-  groupPricingPlans,
-  PRICING_TTL_MS,
-  pricingFeatures,
-} from '../features/marketing/pricing-data.ts'
-import { pricingFeatureLabel } from '../features/marketing/sections/pricing.tsx'
+import { groupPricingPlans, PRICING_TTL_MS } from '../features/marketing/pricing-data.ts'
 import { originFromMatches, pageHead, staticPage } from '../features/seo/metadata.ts'
 import { pricingData } from '../features/seo/structured-data.ts'
 import { m } from '../paraglide/messages.js'
@@ -32,7 +26,6 @@ export const Route = createFileRoute('/pricing')({
 function PricingPage() {
   const initialCatalog = Route.useLoaderData()
   const [catalog, setCatalog] = useState(initialCatalog)
-  const [interval, setInterval] = useState<BillingInterval>('month')
   const groups = groupPricingPlans(catalog.plans)
   const [ready, setReady] = useState(false)
   const [provider, setProvider] = useState(
@@ -80,71 +73,37 @@ function PricingPage() {
         {!catalog.providers.some((p) => p.available) && (
           <p role="status">Payments are currently unavailable. You can still explore the plans.</p>
         )}
-        {groups.subscriptions.length > 0 && (
-          <label>
-            {m.billing_coexist_subscriptions()}{' '}
-            <select
-              value={interval}
-              onChange={(event) => setInterval(event.target.value as BillingInterval)}
-            >
-              <option value="month">{m.marketing_pricing_per_month()}</option>
-              <option value="year">{m.marketing_pricing_per_year()}</option>
-            </select>
-          </label>
-        )}
-        {(
-          [
-            ['subscriptions', m.billing_coexist_subscriptions()],
-            ['creditPacks', m.billing_coexist_packs()],
-          ] as const
-        )
-          .filter(([key]) => groups[key].length > 0)
-          .map(([key, label]) => (
-            <div key={key} className="grid gap-4">
-              <h2 className="text-xl font-semibold">{label}</h2>
-              <div className="grid gap-4 sm:grid-cols-2">
-                {groups[key].map((plan) => (
-                  <section key={plan.id} className="grid gap-3 rounded-xl border p-6">
-                    <h2 className="text-xl font-semibold">{plan.name}</h2>
-                    <p>
-                      {plan.credits} credits{' '}
-                      {plan.type === 'subscription' ? 'each month' : 'per pack'}
-                    </p>
-                    <ul>
-                      {pricingFeatures(plan.features).map((item) => (
-                        <li key={item.key}>{pricingFeatureLabel(item)}</li>
-                      ))}
-                    </ul>
-                    {plan.creditExpiryDays && (
-                      <p>Credits expire after {plan.creditExpiryDays} days.</p>
-                    )}
-                    {catalog.prices
-                      .filter(
-                        (price) =>
-                          price.planId === plan.id &&
-                          price.provider === provider &&
-                          price.interval === (plan.type === 'subscription' ? interval : null),
-                      )
-                      .map((price) => (
-                        <p key={price.id}>
-                          {price.currency.toUpperCase() === 'USD'
-                            ? new Intl.NumberFormat('en-US', {
-                                style: 'currency',
-                                currency: 'USD',
-                              }).format(price.amount / 100)
-                            : 'Price unavailable'}
-                          {price.interval ? ` / ${price.interval}` : ''}
-                          {price.available ? '' : ' · Payments unavailable'}
-                        </p>
-                      ))}
-                    <Link to="/app" className="underline">
-                      View in my workspace
-                    </Link>
-                  </section>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {[...groups.subscriptions, ...groups.creditPacks].map((plan) => (
+            <section key={plan.id} className="grid gap-3 rounded-xl border p-6">
+              <h2 className="text-xl font-semibold">{plan.name}</h2>
+              <p>
+                {plan.credits} credits {plan.type === 'subscription' ? 'each month' : 'per pack'}
+              </p>
+              <p>
+                {plan.features.maxSeats} seats · {plan.features.storageGb} GB storage
+              </p>
+              {plan.creditExpiryDays && <p>Credits expire after {plan.creditExpiryDays} days.</p>}
+              {catalog.prices
+                .filter((price) => price.planId === plan.id && price.provider === provider)
+                .map((price) => (
+                  <p key={price.id}>
+                    {price.currency.toUpperCase() === 'USD'
+                      ? new Intl.NumberFormat('en-US', {
+                          style: 'currency',
+                          currency: 'USD',
+                        }).format(price.amount / 100)
+                      : 'Price unavailable'}
+                    {price.interval ? ` / ${price.interval}` : ''}
+                    {price.available ? '' : ' · Payments unavailable'}
+                  </p>
                 ))}
-              </div>
-            </div>
+              <Link to="/app" className="underline">
+                View in my workspace
+              </Link>
+            </section>
           ))}
+        </div>
       </div>
     </MarketingShell>
   )

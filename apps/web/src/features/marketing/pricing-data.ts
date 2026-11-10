@@ -14,7 +14,6 @@ export interface PricingPlan {
   readonly credits: number
   readonly creditExpiryDays: number | null
   readonly features: PlanFeatures
-  readonly featureItems: readonly PricingFeature[]
   readonly maxSeats: number | null
   readonly storageGb: number | null
   readonly highlighted?: boolean
@@ -57,7 +56,6 @@ export function marketingPlans(catalog: PricingCatalog): PricingPlan[] {
     credits: plan.credits,
     creditExpiryDays: plan.creditExpiryDays,
     features: plan.features,
-    featureItems: pricingFeatures(plan.features),
     maxSeats: plan.features.maxSeats,
     storageGb: plan.features.storageGb,
     highlighted: plan.key === 'pro',

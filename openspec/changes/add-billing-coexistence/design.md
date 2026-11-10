@@ -18,7 +18,7 @@
 
 共享模块导出 `INSUFFICIENT_CREDITS`、错误构造及纯客户端解析函数。合同为 `{ error: { code, message, details: { estimatedCredits, availableCredits } } }`，HTTP 402。通用 hold 在锁内以所有可用批次总和构造 AppError；保留 CreditsError 的兼容身份或等价的现有 code 判断。聊天预算用同一构造器，在预检与竞争失败均提供正确数值；媒体预扣同步适配。
 
-只公开该错误经过验证的两个整数数值，其他 AppError.details 继续不外发，避免暴露内部字段。解析器接受公共错误对象以及聊天 SDK 的 JSON message，拒绝不完整、非法或其他 code。最小页面引导通过两个入口传数值，后续可替换为 UI 8.6 纯展示组件，不增加第二套共享视觉组件。
+AppError 通过通用 publicDetails 显式声明可公开字段，内部 details 不外发。余额不足构造器验证并复制两个整数到 publicDetails，解析器继续校验数值。CreditsError 保留继承，余额不足与欠费为 HTTP 402，其余积分错误为 500；toErrorResponse 对所有 status >= 500 的错误统一输出 INTERNAL_ERROR，日志与 Sentry 保留内部诊断。解析器接受公共错误对象以及聊天 SDK 的 JSON message，拒绝不完整、非法或其他 code。最小页面引导通过两个入口传数值，后续可替换为 UI 8.6 纯展示组件，不增加第二套共享视觉组件。
 
 替代方案：只在 web 映射 CreditsError 会遗漏衍生项目的直接 hold；普遍序列化所有 details 会扩大公开合同。
 
@@ -30,11 +30,11 @@
 
 ### D3 账单摘要
 
-扩展现有鉴权 `getCustomerBilling` 返回 `summary`。余额查询在同一快照按来源统计，复用 active、expires_at 和 remaining 的定义，输出 subscriptionAvailable、subscriptionCurrentMonth、creditPack、free.signup、free.daily、free.total、other、available（字段以实现导出的类型为准）。daily 按来源文本归类，不提前修改 R3 的 schema 或发放逻辑。
+扩展现有鉴权 `getCustomerBilling` 返回 `summary`。余额查询在同一快照按来源统计，复用 active、expires_at 和 remaining 的定义，输出 available、subscription.total/currentPeriod、purchase、free.signup/daily/total 和 other。默认时钟使用数据库 now()，与余额和预扣查询一致。daily 按来源文本归类，不提前修改 R3 的 schema 或发放逻辑。
 
-“本月”采用付款周期锚点对应的当前月度批次，而非 UTC 自然月或 grant.created_at。依据现有 `{paymentId}:{n}` 与付款 period_start/end 判定月付/年付当前发放窗口；旧宽限/结转批次仍计入 subscriptionAvailable，但不计入当前月度值。失效、撤销、预扣占用不计入任何可用分类，other 保证分类与 available 对账。
+“本月”采用付款周期锚点对应的当前月度批次，而非 UTC 自然月或 grant.created_at。依据现有 `{paymentId}:{n}` 与付款 period_start/end 判定月付/年付当前发放窗口；旧宽限/结转批次仍计入 subscription.total，但不计入 subscription.currentPeriod。失效、撤销、预扣占用不计入任何可用分类，other 保证分类与 available 对账。
 
-当前订阅复用 getEntitlements 的生效规则取最高套餐，在重叠期保留历史列表。nextRenewalAt 仅来自仍会续费的当前订阅，取消/过期无下一续费。owner/admin 获得摘要；member 保留既有余额不可见约束。积分包购买继续使用现有 owner checkout，不受订阅存在影响。
+当前订阅与 getEntitlements 共用导出的 isSubscriptionEffective 生效规则取最高套餐，通过单独的状态/周期条件查询读取候选项；历史列表在数据库侧 limit(50)，在重叠期保留历史记录。nextRenewalAt 仅来自仍会续费的当前订阅，取消/过期无下一续费。owner/admin 获得摘要；member 保留既有余额不可见约束。积分包购买继续使用现有 owner checkout，不受订阅存在影响。
 
 ### D4 自定义权益
 

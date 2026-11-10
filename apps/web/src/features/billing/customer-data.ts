@@ -15,7 +15,7 @@ import {
   subscription,
 } from '@saas/db'
 import { getEntitlements } from '@saas/entitlements'
-import { asc, desc, eq } from 'drizzle-orm'
+import { asc, desc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { billingSubscriptionSummary } from './summary.ts'
 
@@ -86,32 +86,41 @@ export async function customerBilling(
   const credits =
     role === 'owner' || role === 'admin' ? await getCreditBalance(db, workspaceId) : null
   const scope = scoped(db, workspaceId)
-  const allSubscriptions = await scope
-    .select(subscription, {
-      fields: {
-        id: subscription.id,
-        provider: subscription.provider,
-        planPriceId: subscription.planPriceId,
-        name: plan.name,
-        plan: { key: plan.key, sort: plan.sort, features: plan.features },
-        pastDueSince: subscription.pastDueSince,
-        status: subscription.status,
-        currentPeriodEnd: subscription.currentPeriodEnd,
-        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-      },
-    })
+  const subscriptionFields = {
+    id: subscription.id,
+    provider: subscription.provider,
+    planPriceId: subscription.planPriceId,
+    name: plan.name,
+    plan: { key: plan.key, sort: plan.sort, features: plan.features },
+    pastDueSince: subscription.pastDueSince,
+    status: subscription.status,
+    currentPeriodEnd: subscription.currentPeriodEnd,
+    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+  }
+  const history = await scope
+    .select(subscription, { fields: subscriptionFields })
     .innerJoin(plan, eq(subscription.planId, plan.id))
     .orderBy(desc(subscription.createdAt))
+    .limit(50)
+  const currentSubscriptions =
+    role === 'owner' || role === 'admin'
+      ? await scope
+          .select(subscription, {
+            fields: subscriptionFields,
+            where: sql`(${subscription.status} in ('active', 'trialing', 'past_due')
+              or ${subscription.currentPeriodEnd} > now())`,
+          })
+          .innerJoin(plan, eq(subscription.planId, plan.id))
+          .orderBy(desc(subscription.createdAt))
+      : []
   const summary =
     role === 'owner' || role === 'admin'
       ? {
-          ...billingSubscriptionSummary(allSubscriptions, { pastDueGraceDays }),
+          ...billingSubscriptionSummary(currentSubscriptions, { pastDueGraceDays }),
           credits: await getCreditSummary(db, workspaceId),
         }
       : null
-  const subscriptions = allSubscriptions
-    .slice(0, 50)
-    .map(({ plan: _plan, pastDueSince: _pastDueSince, ...sub }) => sub)
+  const subscriptions = history.map(({ plan: _plan, pastDueSince: _pastDueSince, ...sub }) => sub)
   if (role !== 'owner')
     return {
       entitlements,

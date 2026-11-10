@@ -26,9 +26,9 @@
 
 余额不足公共合同：HTTP 402，`{ error: { code: 'INSUFFICIENT_CREDITS', message, details: { estimatedCredits, availableCredits } } }`。两项均为非负整数，预计消耗为此次预扣/聊天最小可执行预算，余额为服务器检查时的可用值。
 
-从 `@saas/shared` 导入 `parseInsufficientCredits(value)`；可传 AppError、HTTP JSON 或聊天 SDK 的 Error（JSON message），成功返回两个数值，其他错误或非法详情返回 undefined。直接 `hold` 的余额不足保留 CreditsError 身份并具有 AppError 合同。其他错误（如 CREDIT_DEBT/UPGRADE_REQUIRED）继续独立处理，不泄露任意内部 details。
+从 `@saas/shared` 导入 `parseInsufficientCredits(value)`；可传 AppError、HTTP JSON 或聊天 SDK 的 Error（JSON message），成功返回两个数值，其他错误或非法详情返回 undefined。直接 `hold` 的余额不足保留 CreditsError 身份并具有 AppError 合同。CREDIT_DEBT 保持 HTTP 402，UPGRADE_REQUIRED 保持 403。其他 CreditsError 为 500；所有 status >= 500 的 AppError 经 toErrorResponse 输出通用 INTERNAL_ERROR，内部 code、message 和详情只用于服务端诊断。AppError 的通用 publicDetails 选项显式声明可公开字段，内部 details 不自动序列化。
 
-UI 8.7 可从 `groupPricingPlans` / `pricingForInterval` 获取订阅与积分包分组，从 `PricingPlan.features/featureItems` 获取权益展示数据。已鉴权的 `getCustomerBilling` 返回 `summary.currentSubscription`、`nextRenewalAt` 及 `summary.credits`。后者包含 `subscriptionAvailable`、`subscriptionCurrentMonth`、`creditPack`、`free.signup/daily/total`、`other` 和 `available`；当前月按原付款月度锚点统计，旧宽限/结转余额保留在全部订阅余额中。member 不读取分类余额。完整类型与口径见 [数据接口](../../../docs/billing-summary.md)，错误白名单见 [错误合同](../../../docs/billing-credit-errors.md)。
+UI 8.7 可从 `groupPricingPlans` / `pricingForInterval` 获取订阅与积分包分组，从 `PricingPlan.features` 获取完整权益，并调用 `pricingFeatures(plan.features)` 派生展示清单。已鉴权的 `getCustomerBilling` 返回 `summary.currentSubscription`、`nextRenewalAt` 及 `summary.credits`。后者合同为 `{ available, subscription: { total, currentPeriod }, purchase, free: { signup, daily, total }, other }`；当前周期按原付款月度锚点统计，旧宽限/结转余额保留在 `subscription.total` 中且不计入 `subscription.currentPeriod`。查询默认使用数据库 `now()`，与余额和预扣共用时钟；R3 合并前 `free.daily` 默认为 0，并保留来源文本识别。member 不读取分类余额。完整类型与口径见 [数据接口](../../../docs/billing-summary.md)，公共错误详情见 [错误合同](../../../docs/billing-credit-errors.md)。
 
 ## 验证
 

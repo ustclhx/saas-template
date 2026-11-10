@@ -29,6 +29,36 @@ describe('AppError', () => {
     expect(JSON.stringify(error.toJSON())).not.toContain('secret')
   })
 
+  it('公开任意业务的显式 publicDetails，隐藏内部 details', () => {
+    const error = new AppError('RATE_LIMITED', 'Try later', {
+      status: 429,
+      details: { secret: 'private', retryAfter: 99 },
+      publicDetails: { retryAfter: 60, scope: 'workspace' },
+    })
+    expect(error.toJSON()).toEqual({
+      error: {
+        code: 'RATE_LIMITED',
+        message: 'Try later',
+        details: { retryAfter: 60, scope: 'workspace' },
+      },
+    })
+    expect(toErrorResponse(error).body).toEqual(error.toJSON())
+  })
+
+  it('内部 AppError 隐藏 code、message 和所有详情，保留 HTTP 状态', () => {
+    const response = toErrorResponse(
+      new AppError('DATABASE_FAILED', 'private connection', {
+        status: 503,
+        details: { secret: 'private' },
+        publicDetails: { retryAfter: 60 },
+      }),
+    )
+    expect(response).toEqual({
+      status: 503,
+      body: { error: { code: INTERNAL_ERROR_CODE, message: 'Internal error' } },
+    })
+  })
+
   it('hides details of unknown errors', () => {
     const response = toErrorResponse(new Error('connection string postgres://user:pw@host'))
     expect(response.status).toBe(500)

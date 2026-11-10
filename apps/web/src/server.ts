@@ -17,7 +17,7 @@ import {
   createCloudflareRequestMetadata,
   createCloudflareWorkflow,
 } from '@saas/platform/cloudflare'
-import { AppError } from '@saas/shared'
+import { AppError, toErrorResponse } from '@saas/shared'
 import { log, withLogContext } from '@saas/shared/log'
 import { getFileDownload } from '@saas/storage'
 import { createCloudflareStorage } from '@saas/storage/cloudflare'
@@ -111,11 +111,13 @@ export default {
         } catch (error) {
           // 包装器已经捕获异常；返回无敏感细节的响应与请求 ID，便于管理员验收定位。
           log.error('http.unhandled', { error })
-          if (error instanceof AppError)
-            return Response.json(error.toJSON(), {
-              status: error.status,
+          if (error instanceof AppError) {
+            const { status, body } = toErrorResponse(error)
+            return Response.json(body, {
+              status,
               headers: withSecurityHeaders({ 'x-request-id': context.requestId }, security),
             })
+          }
           return new Response('Internal Server Error', {
             status: 500,
             headers: withSecurityHeaders({ 'x-request-id': context.requestId }, security),

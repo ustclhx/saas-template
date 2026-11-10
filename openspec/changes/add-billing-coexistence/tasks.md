@@ -24,3 +24,14 @@
 
 - [x] 5.1 pnpm check、pnpm typecheck、pnpm check:deps、pnpm check:singletons 和相关包 pnpm test（含本 worktree Postgres 集成）全部通过，OpenSpec strict validate 通过，日志写入 EVIDENCE_DIR
 - [x] 5.2 提交实现、推送当前分支并开 main PR（不合并），PR 写明验证结果、未完成验收、schema 情况及协调事项，Orca 状态更新 in-review
+
+## 6. PR #299 审阅修复
+
+- [x] 6.1 修复 CreditsError 的 402/500 状态、安全错误映射与 web 日志，确认 Sentry 上报，移除欠费手工映射并补回归测试（审阅 1）
+- [x] 6.2 提供通用 publicDetails 错误信封，保留余额不足数值校验（审阅 2）
+- [x] 6.3 统一 CreditSummary 分组字段并更新文档和调用方（审阅 3）
+- [x] 6.4 收回定价与账单视觉扩展，恢复首页三项权益，独立权益文案 helper 并移除 featureItems（审阅 4）
+- [x] 6.5 数据库侧限制历史订阅 50 条，通过独立条件查询当前订阅（审阅 5）
+- [x] 6.6 摘要默认使用数据库 now()，账单页面只显示一个可用余额来源（审阅 6）
+- [x] 6.7 导出并复用 isSubscriptionEffective，移除对象同一性判断（审阅 7）
+- [x] 6.8 补月付当前周期、非结转宽限批次及只有积分包目录的回归测试（审阅 8）

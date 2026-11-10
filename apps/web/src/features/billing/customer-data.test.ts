@@ -11,9 +11,8 @@ import { creditPageSchema, customerBilling, customerUsage } from './customer-dat
 vi.mock('@saas/credits', () => ({
   getCreditBalance: vi.fn(),
   getCreditSummary: vi.fn(async () => ({
-    subscriptionAvailable: 0,
-    subscriptionCurrentMonth: 0,
-    creditPack: 12,
+    subscription: { total: 0, currentPeriod: 0 },
+    purchase: 12,
     free: { signup: 0, daily: 0, total: 0 },
     other: 0,
     available: 12,
@@ -69,17 +68,19 @@ describe('customer data visibility', () => {
   })
   it.each(['member', 'admin'])('does not query payment or refund history for %s', async (role) => {
     const select = vi.fn(() => ({
-      innerJoin: () => ({ orderBy: async () => [] }),
+      innerJoin: () => ({
+        orderBy: () => Object.assign(Promise.resolve([]), { limit: async () => [] }),
+      }),
     }))
     vi.mocked(scoped).mockReturnValue({ select } as unknown as ReturnType<typeof scoped>)
     const page = await customerBilling(db, 'workspace', role, 3)
-    expect(select).toHaveBeenCalledTimes(1)
+    expect(select).toHaveBeenCalledTimes(role === 'member' ? 1 : 2)
     expect(page.summary === null).toBe(role === 'member')
     expect(getCreditSummary).toHaveBeenCalledTimes(role === 'member' ? 0 : 1)
     expect(page.payments).toEqual([])
     expect(page.refunds).toEqual([])
   })
-  it('selects effective subscription before truncating the history page', async () => {
+  it('bounds history in the database and queries current subscriptions separately', async () => {
     const features = {
       models: [],
       maxConcurrentTasks: 3,
@@ -106,11 +107,16 @@ describe('customer data visibility', () => {
       status: 'expired',
       currentPeriodEnd: new Date(0),
     }))
-    const select = vi.fn(() => ({
-      innerJoin: () => ({ orderBy: async () => [...history, active] }),
-    }))
+    const limit = vi.fn(async () => history)
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({ innerJoin: () => ({ orderBy: () => ({ limit }) }) })
+      .mockReturnValueOnce({ innerJoin: () => ({ orderBy: async () => [active] }) })
     vi.mocked(scoped).mockReturnValue({ select } as unknown as ReturnType<typeof scoped>)
     const page = await customerBilling(db, 'workspace', 'admin', 3)
+    expect(limit).toHaveBeenCalledWith(50)
+    expect(select).toHaveBeenCalledTimes(2)
+    expect(select.mock.calls[1]?.[1]).toHaveProperty('where')
     expect(page.subscriptions).toHaveLength(50)
     expect(page.summary?.currentSubscription?.id).toBe('older-active')
     expect(page.summary?.nextRenewalAt).toEqual(active.currentPeriodEnd)

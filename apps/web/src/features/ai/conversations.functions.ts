@@ -39,7 +39,8 @@ async function mutation<T>(
       })
     return { ok: true, result: await action() }
   } catch (error) {
-    if (!(error instanceof AppError)) log.error('ai.conversation.failed', { error })
+    if (!(error instanceof AppError) || error.status >= 500)
+      log.error('ai.conversation.failed', { error })
     return { ok: false, error: error instanceof AppError ? error.code : 'CONVERSATION_FAILED' }
   }
 }

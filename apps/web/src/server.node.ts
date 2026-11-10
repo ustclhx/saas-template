@@ -1,5 +1,5 @@
 import { plausibleSite } from '@saas/config'
-import { AppError } from '@saas/shared'
+import { AppError, toErrorResponse } from '@saas/shared'
 import { log, withLogContext } from '@saas/shared/log'
 import { createStartHandler, defaultStreamHandler } from '@tanstack/react-start/server'
 import { gateAdminRequest } from './features/admin/gate.ts'
@@ -55,9 +55,11 @@ export default {
               return result
             } catch (error) {
               runtime.observability?.captureError(error)
-              return error instanceof AppError
-                ? Response.json(error.toJSON(), { status: error.status })
-                : new Response('Internal Server Error', { status: 500 })
+              if (error instanceof AppError) {
+                const { status, body } = toErrorResponse(error)
+                return Response.json(body, { status })
+              }
+              return new Response('Internal Server Error', { status: 500 })
             }
           }),
       ),

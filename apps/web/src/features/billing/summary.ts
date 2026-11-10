@@ -1,5 +1,5 @@
 import type { EntitlementOptions, EntitlementSubscription } from '@saas/entitlements'
-import { selectEntitlements } from '@saas/entitlements'
+import { isSubscriptionEffective } from '@saas/entitlements'
 
 type SummarySubscription = EntitlementSubscription & {
   id: string
@@ -13,8 +13,9 @@ export function billingSubscriptionSummary(
   subscriptions: readonly SummarySubscription[],
   options: EntitlementOptions = {},
 ) {
+  const now = options.now ?? new Date()
   const current = subscriptions
-    .filter((sub) => selectEntitlements([sub], undefined, options) === sub.plan)
+    .filter((sub) => isSubscriptionEffective(sub, { ...options, now }))
     .sort((a, b) => b.plan.sort - a.plan.sort)[0]
   return {
     currentSubscription: current
@@ -32,7 +33,7 @@ export function billingSubscriptionSummary(
       current &&
       !current.cancelAtPeriodEnd &&
       current.currentPeriodEnd !== null &&
-      new Date(current.currentPeriodEnd).getTime() > (options.now ?? new Date()).getTime() &&
+      new Date(current.currentPeriodEnd).getTime() > now.getTime() &&
       ['active', 'trialing', 'past_due'].includes(current.status)
         ? current.currentPeriodEnd
         : null,

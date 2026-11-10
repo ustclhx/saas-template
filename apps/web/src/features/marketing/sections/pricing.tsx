@@ -18,7 +18,6 @@ import {
   groupPricingPlans,
   marketingPlans,
   PRICING_TTL_MS,
-  type PricingFeature,
   type PricingPlan,
   pricingForInterval,
 } from '../pricing-data.ts'
@@ -81,24 +80,11 @@ export function Pricing({ plans: initialPlans }: { plans: readonly PricingPlan[]
           ))}
         </fieldset>
       )}
-      {(
-        [
-          ['subscriptions', m.billing_coexist_subscriptions()],
-          ['creditPacks', m.billing_coexist_packs()],
-        ] as const
-      ).map(
-        ([key, label]) =>
-          groups[key].length > 0 && (
-            <div key={key} className="grid gap-4">
-              <h3 className="text-xl font-semibold">{label}</h3>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {groups[key].map((plan) => (
-                  <PlanCard key={plan.key} plan={plan} interval={interval} />
-                ))}
-              </div>
-            </div>
-          ),
-      )}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[...groups.subscriptions, ...groups.creditPacks].map((plan) => (
+          <PlanCard key={plan.key} plan={plan} interval={interval} />
+        ))}
+      </div>
       <p className="text-center text-sm text-muted-foreground">{m.billing_coexist_order()}</p>
       <p className="text-center">
         <Link to="/pricing" className="text-sm underline underline-offset-4">
@@ -122,10 +108,9 @@ function PlanCard({ plan, interval }: { plan: PricingPlan; interval: BillingInte
     plan.type === 'subscription'
       ? m.marketing_pricing_credits_monthly({ count: plan.credits })
       : m.marketing_pricing_credits_pack({ count: plan.credits }),
-    ...plan.featureItems.map(pricingFeatureLabel),
-    plan.creditExpiryDays !== null
-      ? m.marketing_pricing_expiry({ count: plan.creditExpiryDays })
-      : plan.type === 'credit_pack' && m.billing_coexist_permanent(),
+    plan.maxSeats !== null && m.marketing_pricing_seats({ count: plan.maxSeats }),
+    plan.storageGb !== null && m.marketing_pricing_storage({ count: plan.storageGb }),
+    plan.creditExpiryDays !== null && m.marketing_pricing_expiry({ count: plan.creditExpiryDays }),
   ].filter((item) => item !== false)
   return (
     <Card className={cn(plan.highlighted && 'border-primary ring-1 ring-primary')}>
@@ -159,23 +144,4 @@ function PlanCard({ plan, interval }: { plan: PricingPlan; interval: BillingInte
       </CardFooter>
     </Card>
   )
-}
-
-export function pricingFeatureLabel(item: PricingFeature): string {
-  switch (item.key) {
-    case 'maxSeats':
-      return m.marketing_pricing_seats({ count: item.value })
-    case 'storageGb':
-      return m.marketing_pricing_storage({ count: item.value })
-    case 'maxConcurrentTasks':
-      return m.billing_coexist_tasks({ count: item.value })
-    case 'models':
-      return m.billing_coexist_models({ value: item.value.join(', ') || '—' })
-    default: {
-      const value = item.value ? m.billing_coexist_yes() : m.billing_coexist_no()
-      if (item.key === 'publicApi') return m.billing_coexist_api({ value })
-      if (item.key === 'priorityQueue') return m.billing_coexist_priority({ value })
-      return m.billing_coexist_watermark({ value })
-    }
-  }
 }

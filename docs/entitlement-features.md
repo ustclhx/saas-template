@@ -86,3 +86,15 @@ function ExportButton({ locked, onExport, onUpgrade }) {
 
 以上为最小接线示例，展示组件由项目补齐 props 类型和本地化。锁定态用于提示和购买
 入口，执行导出时服务端仍重新检查；套餐变更后客户端旧状态不能绕过授权。
+
+## 定价权益清单
+
+营销 `PricingPlan` 保留完整的 `features`，调用
+`pricingFeatures(plan.features)` 时按需派生内置权益清单；
+`pricingFeatureLabel` 位于 `features/marketing/pricing-features.ts`，可供不同页面本地化。
+首页卡片只展示原有席位、存储与积分有效期，不展示所有内部权益字段。
+
+自定义 `capabilities` 不自动进入内置清单。衍生项目需要展示时，在自己的展示层明确挑选
+功能键和本地化名称，例如读取 `plan.features.capabilities?.['exports.advanced'] === true`
+后添加“高级导出”条目，再与 `pricingFeatures(plan.features)` 的结果一起渲染。
+不要直接把任意功能键或模型 key 当作面向用户的文案；展示清单不替代服务端权益检查。

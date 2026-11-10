@@ -8,8 +8,10 @@
 {"error":{"code":"INSUFFICIENT_CREDITS","message":"Insufficient credits","details":{"estimatedCredits":8,"availableCredits":2}}}
 ```
 
-两个数值必须是非负安全整数。序列化只复制这两个字段；其他内部 details、cause
-以及其他错误码的 details 均不公开。解析器是浏览器可用纯函数，支持公共响应对象、
+两个数值必须是非负安全整数，构造器和解析器均验证；该构造器只将这两个字段
+放入 `publicDetails`。通用 `AppError.toJSON()` 只公开调用方显式指定的 `publicDetails`，
+内部 `details` 与 `cause` 不外发。`toErrorResponse` 对状态 >=500 的错误统一返回
+`INTERNAL_ERROR`，隐藏原始 code、message 与所有详情；保留原始 HTTP 状态。解析器是浏览器可用纯函数，支持公共响应对象、
 AppError、JSON 字符串以及聊天 SDK 将响应正文包装后的 `Error.message`；不完整或
 非法数值、其他 code 返回 `undefined`。
 
@@ -17,7 +19,9 @@ AppError、JSON 字符串以及聊天 SDK 将响应正文包装后的 `Error.mes
 `AppError`，保留现有 `instanceof CreditsError` 与 code 判断。`estimatedCredits`
 是请求预扣额，`availableCredits` 是竞争结束后锁内的实际余额。媒体接口保留这份详情。
 聊天预算的预计消耗是请求输入与最小输出对应的成本（按次模型为固定成本），
-并发预扣失败则采用 hold 的最新数值。欠费仍使用独立 `CREDIT_DEBT` 错误。
+并发预扣失败则采用 hold 的最新数值。`CreditsError` 对余额不足与独立欠费
+`CREDIT_DEBT` 均返回 HTTP 402（没有数值详情也保持 402）；其他积分错误为内部 500，
+在 Web 入口记录并由观测层上报。
 
 聊天 `ChatPage` 解析 SDK 错误并保留原有错误提示。
 `InsufficientCreditsGuide({ slug, details })` 为 UI 8.6 的纯展示替换接口，显示预计消耗、

@@ -1,26 +1,33 @@
 /**
  * 业务错误：带稳定的 `code`，API 返回 `{ error: { code, message, details? } }`，前端按 code 做 i18n。
- * 非 AppError 的异常一律视为内部错误，不把原始信息暴露给客户端。
+ * 状态 >=500 的 AppError 与未知异常均隐藏原始信息。
  */
 export class AppError extends Error {
   override readonly name: string = 'AppError'
   readonly code: string
   readonly status: number
   readonly details: Record<string, unknown> | undefined
+  readonly publicDetails: Record<string, unknown> | undefined
 
   constructor(
     code: string,
     message: string,
-    options: { status?: number; details?: Record<string, unknown>; cause?: unknown } = {},
+    options: {
+      status?: number
+      details?: Record<string, unknown>
+      publicDetails?: Record<string, unknown>
+      cause?: unknown
+    } = {},
   ) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause })
     this.code = code
     this.status = options.status ?? 400
     this.details = options.details
+    this.publicDetails = options.publicDetails
   }
 
   toJSON(): ErrorBody {
-    const details = this.code === INSUFFICIENT_CREDITS ? creditDetails(this.details) : undefined
+    const details = this.publicDetails
     return { error: { code: this.code, message: this.message, ...(details ? { details } : {}) } }
   }
 }
@@ -33,7 +40,7 @@ export interface InsufficientCreditsDetails {
 }
 
 export type ErrorBody = {
-  error: { code: string; message: string; details?: InsufficientCreditsDetails }
+  error: { code: string; message: string; details?: Record<string, unknown> }
 }
 
 function creditDetails(value: unknown): InsufficientCreditsDetails | undefined {
@@ -56,15 +63,18 @@ export function insufficientCreditsError(
   estimatedCredits: number,
   availableCredits: number,
 ): AppError {
+  const details = creditDetails({ estimatedCredits, availableCredits })
   return new AppError(INSUFFICIENT_CREDITS, 'Insufficient credits', {
     status: 402,
     details: { estimatedCredits, availableCredits },
+    ...(details ? { publicDetails: { ...details } } : {}),
   })
 }
 
 /** 纯客户端解析：HTTP 错误体 / AppError，以及聊天 SDK 包在 Error.message 中的 JSON。 */
 export function parseInsufficientCredits(value: unknown): InsufficientCreditsDetails | undefined {
   if (value instanceof Error) {
+    if (value instanceof AppError) return parseInsufficientCredits(value.toJSON())
     if ('code' in value && value.code === INSUFFICIENT_CREDITS && 'details' in value)
       return creditDetails(value.details)
     value = value.message
@@ -96,11 +106,11 @@ export function isAppError(value: unknown): value is AppError {
 
 /** 把任意异常转换成可返回给客户端的错误体与状态码。 */
 export function toErrorResponse(error: unknown): { status: number; body: ErrorBody } {
-  if (isAppError(error)) {
+  if (isAppError(error) && error.status < 500) {
     return { status: error.status, body: error.toJSON() }
   }
   return {
-    status: 500,
+    status: isAppError(error) ? error.status : 500,
     body: { error: { code: INTERNAL_ERROR_CODE, message: 'Internal error' } },
   }
 }
