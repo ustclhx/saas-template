@@ -15,4 +15,4 @@
 ## 4. 集成与交付
 
 - [x] 4.1 drizzle-kit push 同步隔离 worktree 库，升级草稿记载 schema、配置和 DailyGrantNotice 交接，执行 pnpm check、typecheck、check:deps、check:singletons 及相关包含 Postgres 测试并保存证据
-- [ ] 4.2 复核 diff 与严格 OpenSpec 验证，中文 conventional commit、推送并创建到 main 的 PR，PR 列出 schema 变化、验证结果及协调者待办
+- [x] 4.2 复核 diff 与严格 OpenSpec 验证，中文 conventional commit、推送并创建到 main 的 PR，PR 列出 schema 变化、验证结果及协调者待办
