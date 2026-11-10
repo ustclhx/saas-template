@@ -57,7 +57,7 @@
 
 ## 9. 选型与集成验收
 
-- [ ] 9.1 对比 Fluid AI 组件与 AI Elements 接入现有聊天页（基于 `@ai-sdk/react`）的差异，结论写入 `docs/design-system.md` 并另起变更，不在本变更替换
+- [x] 9.1 对比 Fluid AI 组件与 AI Elements 接入现有聊天页（基于 `@ai-sdk/react`）的差异，结论写入 `docs/design-system.md` 并另起变更，不在本变更替换
 - [ ] 9.2 编写模板升级说明（创建 `brand.css`、迁移自定义变量、`ui` 配置段、`UI_PREVIEW`、项目例外清单、`ui.appLayout` 可设 `topbar` 保持原布局、新营销区块与业务组件的接入方式）；以 xuanxue 为例写明迁移：`site-theme.css` 并入 `brand.css`、`app.css` 恢复模版原样、插画组件颜色登记例外，按说明在 xuanxue 的同步分支本地执行检查通过（不推送）
 - [ ] 9.3 staging 验收：首页、定价页、博客中英文 Lighthouse SEO 与可访问性仍为 100；预览页可访问、生产 404；明暗切换无闪烁；新增组件与页面在 390px 宽无横向滚动、浅色与深色正确；证据写入私有证据库
 - [ ] 9.4 发布模版版本后通知 xuanxue 协调会话，附版本号、升级说明与业务组件接口文档

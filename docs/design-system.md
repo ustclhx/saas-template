@@ -163,6 +163,12 @@ Separator、Label、DataTable、Form。将由 tasks 4.2 接入：Tabs、Dropdown
 | 营销区块 | 数据背书（未配置不渲染）、三步流程、编号产品矩阵、悬浮 AI 入口 | 将由 tasks 8.5 提供 |
 | 业务界面组件 | 推荐追问、消息评分、嵌入式对话、余额不足弹窗、预计消耗、会员锁定、每日领取 | 将由 tasks 8.6 提供，接口写入本节 |
 
+**AI 聊天组件（tasks 9.1 选型结论，待使用者确认）**：倾向移植 Fluid 的 AI 组件（chat-message、thinking-steps、
+thinking-indicator、input-message 等，Radix 版，MIT），另写一层把 AI SDK `UIMessage` 各类 parts（正文、推理、工具调用）
+分发给组件的转换层；Vercel AI Elements 只作参考，不整体引入（shadcn 风格需逐个改样式，依赖重，上游声明 `ai` ^6）。
+Markdown 与代码高亮另行选型，优先轻量方案；替换聊天页与 SubjectChat 另起 change。完整对比见本 change 的
+`ai-components.md`（归档后在 `openspec/changes/archive/` 下）。
+
 每个页面都要设计并实现四种状态：正常、空、加载、错误；在 390px 宽无横向滚动，浅色与深色均正确。
 根布局与公开页面的数据读取失败时降级，不让整页报错。
 
