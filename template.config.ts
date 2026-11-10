@@ -36,7 +36,7 @@ export default defineTemplateConfig({
     },
     refundWindowDays: 30, // 可申请退款的付款时间范围；退款需人工审核，默认不主动退
   },
-  credits: { enabled: true },
+  credits: { enabled: true, dailyEnabled: false },
   marketing: { enabled: true },
   // 界面主题：preset 'neutral' | 'blue' | 'violet' | 'green'；shape 'sharp' | 'rounded' | 'pill'；
   // density 'default'（36px 控件）| 'compact'（28px）。品牌色写在 apps/web/src/styles/brand.css

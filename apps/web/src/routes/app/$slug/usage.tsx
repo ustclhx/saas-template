@@ -2,6 +2,7 @@ import { Button } from '@saas/ui'
 import { createFileRoute, notFound as featureNotFound } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { getCustomerUsage } from '../../../features/billing/customer.functions.ts'
+import { m } from '../../../paraglide/messages.js'
 import { templateConfig } from '../../../server/template-config.ts'
 
 export const Route = createFileRoute('/app/$slug/usage')({
@@ -66,7 +67,7 @@ function UsagePage() {
             <tbody>
               {page.batches.items.map((batch) => (
                 <tr key={batch.id}>
-                  <td>{batch.source}</td>
+                  <td>{batch.source === 'daily' ? m.daily_credits_source() : batch.source}</td>
                   <td>{batch.amount}</td>
                   <td>{batch.remaining}</td>
                   <td>{batch.status}</td>
@@ -110,8 +111,8 @@ function UsagePage() {
                   {item.delta}
                 </td>
                 <td>
-                  {item.refType}
-                  {item.refId ? ` · ${item.refId}` : ''}
+                  {item.refType === 'daily' ? m.daily_credits_source() : item.refType}
+                  {item.refType !== 'daily' && item.refId ? ` · ${item.refId}` : ''}
                 </td>
                 <td>{item.grantId ?? '—'}</td>
               </tr>
