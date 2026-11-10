@@ -708,7 +708,9 @@ export async function createProject(input, source = root) {
             `${path} 包含需要项目改名的模板标识；请先移除模板组件或指纹清单中的项目耦合`,
           )
         }
-        if (decoded !== null && !templateUi) {
+        // 项目自有扩展逐字节保留，包括 BOM、换行与项目标识，不能经过文本替换。
+        const projectHtmlAttributes = path === 'apps/web/src/features/theme/html-attributes.ts'
+        if (decoded !== null && !templateUi && !projectHtmlAttributes) {
           // 先替换源标识，再插入新名称，避免新名称含旧 scope 前缀时被二次替换。
           let text = replace(projectText(decoded, path))
           if (path === 'package.json') {

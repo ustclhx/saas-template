@@ -286,12 +286,16 @@ test('从生成副本再次生成仅更新一份主题与分析配置，保留�
   }
 })
 
-test('初始化项目设计记录，排除模板原型并保留模板组件与锁的原始字节', async (t) => {
+test('初始化项目设计记录，排除模板原型并保留组件、锁与项目 HTML 属性的原始字节', async (t) => {
   const f = await fixture(t)
   const component = '// 可原样移植的模板组件\r\nexport const Button = () => null\r\n'
   const lock = '{"src/components/button.tsx":"0123456789abcdef"}\n'
+  const htmlAttributes = Buffer.from(
+    '\uFEFF// FixtureApp fixture.example @fixture/ui\r\nexport const getProjectHtmlAttributes = () => ({})\r\n',
+  )
   await f.file('packages/ui/src/components/button.tsx', component)
   await f.file('packages/ui/components.lock.json', lock)
+  await f.file('apps/web/src/features/theme/html-attributes.ts', htmlAttributes)
   await f.file('docs/design-system/prototypes/review.html', 'TEMPLATE_PROTOTYPE_SENTINEL')
   await f.file('scripts/check-ui.allow.local.json', '{"exceptions":{"old-project":[]}}')
   const result = await createProject(f.input, f.source)
@@ -321,6 +325,10 @@ test('初始化项目设计记录，排除模板原型并保留模板组件与�
   assert.equal(
     await readFile(join(result.target, 'packages/ui/components.lock.json'), 'utf8'),
     lock,
+  )
+  assert.deepEqual(
+    await readFile(join(result.target, 'apps/web/src/features/theme/html-attributes.ts')),
+    htmlAttributes,
   )
 })
 

@@ -36,6 +36,7 @@
 - [x] 6.1 预留 `packages/ui/src/project/`（`.gitkeep` 与空 `index.ts`）与 `@saas/ui/project` 导出；`check-ui` 与依赖检查覆盖该目录；验证在临时生成项目中新增项目组件并使用后检查通过
 - [x] 6.2 生成 `packages/ui/components.lock.json` 与校验：模版内清单过期时失败；存在 `.template-base.json` 时修改模版组件失败并提示定制顺序；`check-ui.allow.local.json` 被读取；测试覆盖三种情况
 - [x] 6.3 生成器在副本中创建空的 `check-ui.allow.local.json` 与 `docs/design/README.md`（说明视觉规范、参考、原型副本与 forks 登记的位置）；`create-project.test.mjs` 断言文件存在且生成结果确定
+- [x] 6.4 新增项目自有 `features/theme/html-attributes.ts`，接收服务端 host、locale、pathname；SSR 与预渲染合并安全属性并通过路由数据保持水合一致，拒绝覆盖 lang/data-preset 与非白名单属性并警告；发布检查保护创建后不再修改，生成器原样保留；验证并补充多站点升级说明
 
 ## 7. 设计规范文档、技能与生成器
 

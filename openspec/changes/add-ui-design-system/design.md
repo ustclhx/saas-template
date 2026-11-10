@@ -71,6 +71,16 @@
 - 模版拥有：`packages/ui/src/components`、基线与预设 token、`check-ui` 与模版例外清单、预览页、技能、`docs/design-system.md`。
 - 项目拥有：`apps/web/src/styles/brand.css`（模版入口 CSS 已在最后导入它，项目无需改 `app.css`）、`packages/ui/src/project/`（模版只放 `.gitkeep` 并在 `package.json` 预置 `./project` 导出，指向 `src/project/index.ts`，该文件由模版创建后不再修改）、`docs/design/`、`scripts/check-ui.allow.local.json`、`template.config.ts` 中 `ui` 段取值。
 
+根文档属性扩展（6.4）：项目拥有 `apps/web/src/features/theme/html-attributes.ts`，模板只创建返回空对象的
+`getProjectHtmlAttributes({ host, locale, pathname })`，之后不再修改，生成器逐字节保留。类型与过滤、
+服务端接入仍由模板维护。根路由 beforeLoad 调用扩展并序列化过滤后的结果，SSR、预渲染与首次水合使用
+同一份属性；pathname 改变时重新读取。pathname 为不含语言前缀和查询参数的路由路径，host 为
+请求 URL 的 host（含非默认端口）。允许字符串值的 `data-*`、`title`、`dir`（ltr/rtl/auto）、
+`translate`（yes/no）；`lang`、`data-preset` 与其余属性被忽略并记录不含属性值的警告。
+多站点将 `data-site` 的计算移到此文件，`brand.css` 使用相应选择器，避免修改模板根布局。
+预渲染使用构建请求的 host；不同域名需要不同属性时，应按域名分别构建或使用 SSR，不能将同一份
+静态 HTML 按访问域名变化作为此扩展点的能力。
+
 防止项目改模版组件：模版生成 `packages/ui/components.lock.json`（组件文件相对路径 → 内容哈希），模版的 `check-ui` 断言清单与文件一致；在衍生项目中同一检查对比哈希，不一致即失败并给出定制顺序（token → ui 配置 → project 包装 → 复制到 `project/` 并登记 `docs/design/forks.md`）。清单随模版同步更新，因此项目不需要维护它。判断「是否衍生项目」用 `.template-base.json` 是否存在。
 - 备选：不检查、靠约定。放弃原因：agent 修样式时最容易直接改组件，冲突会在下次同步才暴露。
 
