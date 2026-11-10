@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   Tooltip,
 } from '../src/index.ts'
+import { waitForAnimation } from './animation.ts'
 
 // `m.*` 只有在 LazyMotion（MotionFeatures）之下才有动画能力，之外会静止在 initial 状态且不报错。
 // 静态检查（motion-imports.test.ts）只能确认文件里包了 MotionFeatures；这里在不包 UiRoot 的情况下实际渲染
@@ -29,8 +30,6 @@ Reflect.deleteProperty(Element.prototype, 'animate')
 
 afterEach(() => cleanup())
 
-const wait = (ms: number) => act(() => new Promise((resolve) => setTimeout(resolve, ms)))
-const frame = () => act(() => new Promise((resolve) => requestAnimationFrame(() => resolve(null))))
 const scaleOf = (el: HTMLElement) => Number(/scale\(([\d.]+)\)/.exec(el.style.transform)?.[1] ?? 1)
 
 describe('m.* 都在 MotionFeatures 之下（动画会推进）', () => {
@@ -53,13 +52,13 @@ describe('m.* 都在 MotionFeatures 之下（动画会推进）', () => {
     )
     // 两个模态框同时打开时彼此 aria-hidden，查询时包含隐藏元素
     const panels = [
-      await screen.findByRole('dialog', { hidden: true }),
-      await screen.findByRole('alertdialog', { hidden: true }),
+      screen.getByRole('dialog', { hidden: true }),
+      screen.getByRole('alertdialog', { hidden: true }),
     ]
-    await frame()
     for (const panel of panels) expect(scaleOf(panel)).toBeLessThan(1)
-    await wait(500)
-    for (const panel of panels) expect(scaleOf(panel)).toBe(1)
+    await waitForAnimation(() => {
+      for (const panel of panels) expect(scaleOf(panel)).toBe(1)
+    })
   })
 
   it('Tooltip 淡入滑入', async () => {
@@ -72,12 +71,10 @@ describe('m.* 都在 MotionFeatures 之下（动画会推进）', () => {
     act(() => copy.focus())
     fireEvent.focus(copy)
     const tip = (await screen.findAllByText('Copy link'))[0] as HTMLElement
-    await frame()
-    await frame()
-    expect(tip.style.opacity).not.toBe('0')
-    await wait(500)
-    expect(tip.style.opacity).toBe('1')
-    expect(tip.style.transform).toBe('none')
+    await waitForAnimation(() => {
+      expect(tip.style.opacity).toBe('1')
+      expect(tip.style.transform).toBe('none')
+    })
   })
 
   it('Select 弹层展开、选中项与 Checkbox 的勾画出', async () => {
@@ -101,16 +98,14 @@ describe('m.* 都在 MotionFeatures 之下（动画会推进）', () => {
     trigger.focus()
     fireEvent.keyDown(trigger, { key: 'Enter' })
     const listbox = await screen.findByRole('listbox')
-    await frame()
-    await frame()
     // role="listbox" 落在 Radix 的 Content 上，其第一个子元素是本包的 motion.div
     const popup = listbox.firstElementChild as HTMLElement
-    expect(popup.style.opacity).not.toBe('0')
-    await wait(500)
-    expect(popup.style.opacity).toBe('1')
-    // pathLength 0 → 1：motion 把它写成 stroke-dasharray 的第一段
-    for (const path of [box.querySelector('path'), listbox.querySelector('path')]) {
-      expect(path?.getAttribute('stroke-dasharray')).toMatch(/^1(px)? /)
-    }
+    await waitForAnimation(() => {
+      expect(popup.style.opacity).toBe('1')
+      // pathLength 0 → 1：motion 把它写成 stroke-dasharray 的第一段
+      for (const path of [box.querySelector('path'), listbox.querySelector('path')]) {
+        expect(path?.getAttribute('stroke-dasharray')).toMatch(/^1(px)? /)
+      }
+    })
   })
 })

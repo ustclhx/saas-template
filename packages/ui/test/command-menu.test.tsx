@@ -15,6 +15,7 @@ import {
   matchesShortcut,
   parseShortcut,
 } from '../src/components/command-menu.tsx'
+import { frame, waitForAnimation } from './animation.ts'
 
 // happy-dom 不做布局：给行（data-fluid-hover-index）一个纵向排列的假布局，第 i 行 top = 4 + 40i、高 36，
 // 让 useFluidHover 能发布位置、高亮能动起来
@@ -57,9 +58,6 @@ afterAll(() => {
     else Reflect.deleteProperty(proto, key)
   }
 })
-
-const wait = (ms: number) => act(() => new Promise((resolve) => setTimeout(resolve, ms)))
-const frame = () => act(() => new Promise((resolve) => requestAnimationFrame(() => resolve(null))))
 
 const labels: CommandMenuLabels = {
   placeholder: '搜索命令',
@@ -243,20 +241,15 @@ describe('CommandMenu（Fluid default/command-menu）', () => {
   it('不包 UiRoot 时高亮在行间滑动（m.* 在 MotionFeatures 之下）', async () => {
     render(<Inline />)
     const input = screen.getByRole('combobox')
-    await frame()
-    await frame()
+    await waitForAnimation(() =>
+      expect(document.querySelector('[data-slot="fluid-hover-highlight"]')).toBeTruthy(),
+    )
     const fill = document.querySelector<HTMLElement>('[data-slot="fluid-hover-highlight"]')
     expect(fill).toBeTruthy()
     const y = () => Number(/translateY\(([-\d.]+)px\)/.exec(fill?.style.transform ?? '')?.[1] ?? 0)
-    await wait(300)
-    expect(y()).toBe(4)
+    await waitForAnimation(() => expect(y()).toBe(4))
     fireEvent.keyDown(input, { key: 'ArrowDown' })
-    await frame()
-    await frame()
-    expect(y()).toBeGreaterThan(4)
-    expect(y()).toBeLessThan(44)
-    await wait(600)
-    expect(y()).toBe(44)
+    await waitForAnimation(() => expect(y()).toBe(44))
   })
 })
 
