@@ -2,6 +2,8 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { renderToString } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resetToastsForTesting, Toaster, toast } from '../src/components/toast.tsx'
+import { TOAST_EXIT_MS } from '../src/components/toast-store.ts'
+import { exitFallbackMs, spring } from '../src/lib/springs.ts'
 
 Element.prototype.hasPointerCapture ??= () => false
 Element.prototype.setPointerCapture ??= () => {}
@@ -56,7 +58,12 @@ describe('Toast', () => {
     expect(ok?.dataset.variant).toBe('success')
     expect(ok?.querySelector('svg.text-success')).toBeTruthy()
     expect(bad?.dataset.variant).toBe('error')
-    expect(bad?.querySelector('.text-destructive')?.textContent).toBe('支付失败')
+    expect(
+      bad?.querySelector(
+        'div.text-destructive, h2.text-destructive, [class*="font-semibold"].text-destructive',
+      )?.textContent,
+    ).toBe('支付失败')
+    expect(bad?.querySelector('svg.text-destructive')).toBeTruthy()
   })
 
   it('action 回调被调用并关闭通知；preventDefault 时保持打开', async () => {
@@ -145,17 +152,33 @@ describe('Toast', () => {
     expect(document.activeElement?.tagName).toBe('OL')
   })
 
-  it('超过 visibleToasts 的更早几条排队，前面关闭后补上', async () => {
+  it('超过 visibleToasts 时最早的一条直接关闭，之后不会复活', async () => {
     mount({ visibleToasts: 2 })
+    const onDismiss = vi.fn()
+    let cId = ''
     act(() => {
-      toast('A')
+      toast('A', { onDismiss })
       toast('B')
-      toast('C')
+      cId = toast('C')
     })
-    expect(items().map((li) => li.textContent?.slice(0, 1))).toEqual(['B', 'C'])
-    act(() => toast.dismiss())
+    // A 立即进入退场（inert），退场结束后移除
+    expect(onDismiss).toHaveBeenCalledWith(expect.any(String))
     await wait(400)
-    expect(items()).toHaveLength(0)
+    expect(items().map((li) => li.textContent?.slice(0, 1))).toEqual(['B', 'C'])
+    // 再关闭一条后 A 不会补回（旧实现会让排队的 A 重新出现）
+    act(() => toast.dismiss(cId))
+    await wait(400)
+    expect(items().map((li) => li.textContent?.slice(0, 1))).toEqual(['B'])
+  })
+
+  it('error 变体带 circle-alert 图标；store 的退场时长与 spring.moderate 一致', () => {
+    mount()
+    act(() => {
+      toast.error('失败')
+    })
+    const li = items()[0] as HTMLElement
+    expect(li.querySelector('svg.text-destructive')).not.toBeNull()
+    expect(TOAST_EXIT_MS).toBe(exitFallbackMs(spring.moderate))
   })
 
   it('视口宽度不超过 100vw - 2rem（360px 窄屏不溢出）', () => {

@@ -12,9 +12,9 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from '@saas/ui'
+import { Folder, House, Inbox, Settings } from '@saas/ui/icons'
 import { useState } from 'react'
 import { m } from '../../paraglide/messages.js'
-import { FolderIcon, HomeIcon, InboxIcon, SettingsIcon } from './icons.tsx'
 import { PreviewSection, Specimen } from './layout.tsx'
 import { SAMPLE_PROJECTS } from './sample-data.ts'
 
@@ -31,9 +31,9 @@ export function SidebarSection() {
     railCollapse: m.ui_preview_sidebar_rail_collapse(),
   }
   const nav = [
-    { id: 'home', label: m.ui_preview_nav_home(), icon: HomeIcon },
-    { id: 'inbox', label: m.ui_preview_nav_inbox(), icon: InboxIcon, badge: '3' },
-    { id: 'settings', label: m.ui_preview_nav_settings(), icon: SettingsIcon },
+    { id: 'home', label: m.ui_preview_nav_home(), icon: House },
+    { id: 'inbox', label: m.ui_preview_nav_inbox(), icon: Inbox, badge: '3' },
+    { id: 'settings', label: m.ui_preview_nav_settings(), icon: Settings },
   ]
   return (
     <PreviewSection id="sidebar" title="Sidebar" description={m.ui_preview_sidebar_desc()}>
@@ -66,7 +66,7 @@ export function SidebarSection() {
                     {SAMPLE_PROJECTS.slice(0, 4).map((project) => (
                       <SidebarMenuItem key={project.id}>
                         <SidebarMenuButton
-                          icon={FolderIcon}
+                          icon={Folder}
                           isActive={active === project.id}
                           tooltip={project.name}
                           onClick={() => setActive(project.id)}

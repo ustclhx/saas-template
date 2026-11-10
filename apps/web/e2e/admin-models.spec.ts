@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { expect, type Route, test } from '@playwright/test'
 import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
+import { chooseOption } from './select.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 test('model administration is hidden from non-admins', async ({ page }) => {
@@ -177,17 +178,17 @@ test('platform admin can create, edit, disable and enable a model', async ({ pag
     const [sourceAfterCopy] = await sql`select params_schema from ai_model where key=${key}`
     expect(sourceAfterCopy?.params_schema).toEqual(editedSchema)
 
-    // DataTable 筛选下拉为 @saas/ui Select（add-ui-design-system 4.2）：点开触发器再选选项
-    await page.getByRole('combobox', { name: 'Model type' }).click()
-    await page.getByRole('option', { name: 'Image', exact: true }).click()
+    // DataTable 筛选下拉为 @saas/ui Select（add-ui-design-system 4.2）
+    await chooseOption(page.getByRole('combobox', { name: 'Model type', exact: true }), 'Image')
     await page.getByRole('button', { name: 'Apply', exact: true }).click()
     await expect(card).toHaveCount(0)
     await expect(copy).toHaveCount(0)
     await expect(page).toHaveURL(/kind=image/)
-    await page.getByRole('combobox', { name: 'Model type' }).click()
-    await page.getByRole('option', { name: 'Text', exact: true }).click()
-    await page.getByRole('combobox', { name: 'Order models' }).click()
-    await page.getByRole('option', { name: 'Key descending', exact: true }).click()
+    await chooseOption(page.getByRole('combobox', { name: 'Model type', exact: true }), 'Text')
+    await chooseOption(
+      page.getByRole('combobox', { name: 'Order models', exact: true }),
+      'Key descending',
+    )
     await page.getByRole('button', { name: 'Apply', exact: true }).click()
     await expect(copy).toBeVisible()
     const keys = await page

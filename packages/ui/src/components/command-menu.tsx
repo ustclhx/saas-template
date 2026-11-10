@@ -29,6 +29,7 @@ import {
   useRegisterFluidHoverItem,
 } from '../hooks/use-fluid-hover.ts'
 import { type IconComponent, useIcons } from '../lib/icon-context.tsx'
+import { isEditable } from '../lib/keyboard.ts'
 import { MotionFeatures } from '../lib/motion-features.tsx'
 import { isDisabledRow } from '../lib/popup.ts'
 import { usePopupShape } from '../lib/shape-context.tsx'
@@ -313,17 +314,6 @@ function useIsMac(): boolean {
 
 // Layout effects have no server counterpart; on the server they are no-ops.
 const useIsoLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
-
-function isEditable(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null
-  if (!el) return false
-  return (
-    el.tagName === 'INPUT' ||
-    el.tagName === 'TEXTAREA' ||
-    el.tagName === 'SELECT' ||
-    el.isContentEditable
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Filtering

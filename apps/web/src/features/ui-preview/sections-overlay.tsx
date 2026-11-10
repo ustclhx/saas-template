@@ -32,9 +32,9 @@ import {
   Toaster,
   toast,
 } from '@saas/ui'
+import { Folder, House, Inbox, Settings } from '@saas/ui/icons'
 import { useState } from 'react'
 import { m } from '../../paraglide/messages.js'
-import { FolderIcon, HomeIcon, InboxIcon, SettingsIcon } from './icons.tsx'
 import { PreviewSection, Specimen } from './layout.tsx'
 import { SAMPLE_PEOPLE, SAMPLE_PROJECTS } from './sample-data.ts'
 
@@ -132,10 +132,10 @@ export function TabsSection() {
           onSelect={setIconSelected}
           activeLabel
         >
-          <TabsItem index={0} label={m.ui_preview_nav_home()} icon={HomeIcon} />
-          <TabsItem index={1} label={m.ui_preview_nav_projects()} icon={FolderIcon} />
-          <TabsItem index={2} label={m.ui_preview_nav_inbox()} icon={InboxIcon} />
-          <TabsItem index={3} label={m.ui_preview_nav_settings()} icon={SettingsIcon} />
+          <TabsItem index={0} label={m.ui_preview_nav_home()} icon={House} />
+          <TabsItem index={1} label={m.ui_preview_nav_projects()} icon={Folder} />
+          <TabsItem index={2} label={m.ui_preview_nav_inbox()} icon={Inbox} />
+          <TabsItem index={3} label={m.ui_preview_nav_settings()} icon={Settings} />
         </Tabs>
       </Specimen>
     </PreviewSection>
@@ -230,7 +230,7 @@ export function CommandMenuSection() {
       label: m.ui_preview_new_project(),
       group: projects,
       shortcut: 'mod+shift+n',
-      icon: FolderIcon,
+      icon: Folder,
     },
     ...SAMPLE_PROJECTS.slice(0, 3).map((project) => ({
       value: project.id,
@@ -239,12 +239,12 @@ export function CommandMenuSection() {
       group: projects,
     })),
     { value: 'archive', label: m.ui_preview_status_archived(), group: projects, disabled: true },
-    { value: 'home', label: m.ui_preview_nav_home(), group: navigation, icon: HomeIcon },
+    { value: 'home', label: m.ui_preview_nav_home(), group: navigation, icon: House },
     {
       value: 'settings',
       label: m.ui_preview_nav_settings(),
       group: navigation,
-      icon: SettingsIcon,
+      icon: Settings,
     },
   ]
   const onSelect = (item: CommandMenuItemData) => setLast(item.label)

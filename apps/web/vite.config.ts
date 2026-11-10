@@ -66,7 +66,13 @@ export default defineConfig(({ command }) => {
         inspectorPort,
         // 本地开发时 Better Auth 的 baseURL 跟随实际端口（worktree 各不相同）；构建产物沿用 wrangler.jsonc
         ...((command === 'serve' || process.env.APP_URL) && {
-          config: { vars: { APP_URL: process.env.APP_URL ?? `http://localhost:${port}` } },
+          config: {
+            vars: {
+              APP_URL: process.env.APP_URL ?? `http://localhost:${port}`,
+              // 组件预览页开关可由环境变量覆盖（smoke e2e 设为 false，断言未开启时 /dev/ui 返回 404）
+              ...(process.env.UI_PREVIEW !== undefined && { UI_PREVIEW: process.env.UI_PREVIEW }),
+            },
+          },
         }),
       }),
       // 没有 .dev.vars 时（CI）预渲染用的 preview 改用 .dev.vars.example 的假值通过启动校验

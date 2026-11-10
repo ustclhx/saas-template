@@ -47,12 +47,12 @@ import {
   Tooltip,
   useAppForm,
 } from '@saas/ui'
+import { ArrowRight, Plus } from '@saas/ui/icons'
 import { useState } from 'react'
 import { z } from 'zod'
 import { m } from '../../paraglide/messages.js'
 import { dataTableLabels } from '../i18n/table-labels.ts'
 import { ThemeToggle } from '../theme/theme-toggle.tsx'
-import { ArrowRightIcon, PlusIcon } from './icons.tsx'
 import { PreviewSection, Specimen } from './layout.tsx'
 import { SAMPLE_PEOPLE, SAMPLE_PROJECTS, type SampleProject } from './sample-data.ts'
 
@@ -85,12 +85,12 @@ export function ButtonSection() {
         <Button size="sm">sm</Button>
         <Button size="compact">compact</Button>
         <Button size="icon" aria-label={m.ui_preview_add()}>
-          <PlusIcon />
+          <Plus />
         </Button>
       </Specimen>
       <Specimen label={m.ui_preview_states()}>
-        <Button leadingIcon={PlusIcon}>{m.ui_preview_add()}</Button>
-        <Button variant="outline" trailingIcon={ArrowRightIcon}>
+        <Button leadingIcon={Plus}>{m.ui_preview_add()}</Button>
+        <Button variant="outline" trailingIcon={ArrowRight}>
           {m.ui_preview_continue()}
         </Button>
         <Button loading>{m.ui_preview_saving()}</Button>

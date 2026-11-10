@@ -181,6 +181,10 @@ describe('DataTable', () => {
     fireEvent.click(button('Reset'))
     expect(fetches.at(-1)).toEqual({ pageIndex: 0, filters: {} })
     expect(names()).toEqual(['Person 1', 'Person 2', 'Person 3'])
+    // 重置后下拉回显「全部」，不再显示旧选项
+    const reset = screen.getByRole('combobox', { name: 'Role' })
+    expect(reset.textContent).toContain('All')
+    expect(reset.textContent).not.toContain('Admin')
   })
 
   it('没有记录时显示空状态', () => {

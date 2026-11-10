@@ -59,3 +59,13 @@ test('register, sign out/in, and buy a credit pack through the local provider', 
   await expect(page.getByRole('table').getByRole('row')).toHaveCount(2)
   expect(externalRequests).toEqual([])
 })
+
+test('component preview is not served when UI_PREVIEW is off (production parity)', async ({
+  request,
+}) => {
+  // playwright.smoke.config.ts 以 UI_PREVIEW=false 启动，与 production 不设该变量等价
+  for (const path of ['/dev/ui', '/zh/dev/ui']) {
+    const response = await request.get(path)
+    expect(response.status(), path).toBe(404)
+  }
+})

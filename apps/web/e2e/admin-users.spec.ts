@@ -4,6 +4,7 @@ import { capture, grant, hold } from '@saas/credits'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import { actionDb, actor } from './billing-actions-helper.ts'
 import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
+import { chooseOption } from './select.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 /** 调用浏览器实际导入的 Start 客户端桩，POST 仍进入真实服务端中间件与 handler。 */
@@ -244,10 +245,14 @@ test('空间详情展示积分、重叠订阅，并恢复原 owner 的访问', a
     await page.goto('/admin/workspaces')
     await page.getByLabel('Search workspaces').fill(workspaceId)
     // DataTable 筛选下拉为 @saas/ui Select（add-ui-design-system 4.2）
-    await page.getByRole('combobox', { name: 'Status', exact: true }).click()
-    await page.getByRole('option', { name: 'Deleted', exact: true }).click()
+    await chooseOption(page.getByRole('combobox', { name: 'Status', exact: true }), 'Deleted')
     await page.getByRole('button', { name: 'Apply', exact: true }).click()
-    await page.getByRole('link', { name: 'Recoverable workspace' }).click()
+    // 筛选结果加载前旧列表仍在，且可能含同名空间：按本用例的空间 id 定位行
+    await expect(page).toHaveURL(/status=deleted/)
+    await page
+      .getByRole('link', { name: 'Recoverable workspace' })
+      .and(page.locator(`a[href$="/admin/workspaces/${workspaceId}"]`))
+      .click()
     await expect(page.locator('strong').filter({ hasText: 'Overlapping period' })).toHaveCount(2)
     await expect(page.locator('dl')).toContainText('Held credits10')
     await expect(page.locator('dl')).toContainText('Credit debt10')

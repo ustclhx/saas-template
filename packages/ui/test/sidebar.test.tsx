@@ -52,6 +52,7 @@ interface NavProps {
   open?: boolean
   onOpenChange?: (open: boolean) => void
   onBilling?: () => void
+  shortcut?: string | null
 }
 
 function Nav({ collapsible = 'icon', onBilling, ...provider }: NavProps) {
@@ -233,14 +234,41 @@ describe('Sidebar 折叠为图标栏', () => {
     expect(document.querySelector('[data-radix-popper-content-wrapper]')).toBeNull()
   })
 
-  it('裸键 [ 切换，输入框中不触发', () => {
+  it('触发按钮带 aria-expanded，随折叠状态变化', () => {
+    render(<Nav />)
+    const trigger = document.querySelector('[data-sidebar="trigger"]') as HTMLElement
+    expect(trigger.getAttribute('aria-label')).toBe('收起侧栏')
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    expect(trigger.hasAttribute('aria-haspopup')).toBe(false)
+    fireEvent.click(trigger)
+    expect(trigger.getAttribute('aria-label')).toBe('展开侧栏')
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('快捷键默认关闭（WCAG 2.1.4）', () => {
+    render(<Nav />)
+    fireEvent.keyDown(document.body, { key: '[' })
+    expect(shell().dataset.state).toBe('expanded')
+  })
+
+  it('显式开启的裸键 [ 切换；输入框、菜单内、重复与已消费的按键不触发', () => {
     render(
       <>
-        <Nav />
+        <Nav shortcut="[" />
         <input aria-label="搜索" />
+        <div role="menu">
+          <button type="button">菜单项</button>
+        </div>
       </>,
     )
     fireEvent.keyDown(screen.getByLabelText('搜索'), { key: '[' })
+    fireEvent.keyDown(screen.getByRole('button', { name: '菜单项' }), { key: '[' })
+    fireEvent.keyDown(document.body, { key: '[', repeat: true })
+    const consumed = new KeyboardEvent('keydown', { key: '[', bubbles: true, cancelable: true })
+    consumed.preventDefault()
+    act(() => {
+      document.body.dispatchEvent(consumed)
+    })
     expect(shell().dataset.state).toBe('expanded')
     fireEvent.keyDown(document.body, { key: '[' })
     expect(shell().dataset.state).toBe('collapsed')
@@ -254,6 +282,8 @@ describe('Sidebar 移动端抽屉', () => {
     mockNarrowViewport()
     render(<Nav />)
     const trigger = await screen.findByRole('button', { name: '展开侧栏' })
+    expect(trigger.getAttribute('aria-haspopup')).toBe('dialog')
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
     act(() => trigger.focus())
     fireEvent.click(trigger)
 

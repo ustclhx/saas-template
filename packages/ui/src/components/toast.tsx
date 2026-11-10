@@ -6,140 +6,35 @@
 // 区域名称、播报前缀与关闭按钮名称由 Toaster 的 labels 传入，toast 内容由调用方传入。
 import { m as motion, useReducedMotion } from 'motion/react'
 import { Toast as ToastPrimitive } from 'radix-ui'
-import { type MouseEvent, type ReactNode, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useSyncExternalStore } from 'react'
 import { fontWeights } from '../lib/font-weight.ts'
 import { useIcons } from '../lib/icon-context.tsx'
 import { MotionFeatures } from '../lib/motion-features.tsx'
 import { usePopupShape } from '../lib/shape-context.tsx'
 import { typeClass, useSizeVariant } from '../lib/size-context.tsx'
-import { exitFallbackMs, spring } from '../lib/springs.ts'
+import { spring } from '../lib/springs.ts'
 import { surfaceClasses } from '../lib/surface-classes.ts'
 import { SurfaceProvider, useSurface } from '../lib/surface-context.tsx'
 import { cn } from '../lib/utils.ts'
 import { Button } from './button.tsx'
+import {
+  dismiss,
+  getServerSnapshot,
+  getSnapshot,
+  resetToastsForTesting,
+  subscribe,
+  type ToastAction,
+  type ToastOptions,
+  type ToastRecord,
+  type ToastVariant,
+  toast,
+} from './toast-store.ts'
 
 // 与 select / dropdown 弹层相同：背景在所处表面上抬两级，阴影固定第 3 档
 const TOAST_OFFSET = 2
 const TOAST_SHADOW = 3
 
-type ToastVariant = 'default' | 'success' | 'error'
-
-interface ToastAction {
-  /** 按钮文字 */
-  label: string
-  /** 点击回调；调用 `event.preventDefault()` 可阻止随后的关闭 */
-  onClick: (event: MouseEvent<HTMLButtonElement>) => void
-  /** 屏幕阅读器播报时替代按钮的说明（Radix 要求）；省略时用 label */
-  altText?: string
-}
-
-interface ToastOptions {
-  /** 传入已有 id 时更新该条（与 sonner 一致），否则新建 */
-  id?: string
-  description?: ReactNode
-  variant?: ToastVariant
-  /** 毫秒；省略时用 Toaster 的 duration，`Infinity` 表示不自动消失 */
-  duration?: number
-  action?: ToastAction
-  /** 无论以何种方式关闭（计时、关闭按钮、Esc、滑动、action、toast.dismiss）都会调用一次 */
-  onDismiss?: (id: string) => void
-}
-
-interface ToastRecord extends Omit<ToastOptions, 'id'> {
-  id: string
-  title: ReactNode
-  open: boolean
-}
-
-// ---------------------------------------------------------------------------
-// Store：模块级单例。dismiss 先把 open 置 false 播放退场，退场时长后再移除。
-// ---------------------------------------------------------------------------
-
-const EXIT_MS = exitFallbackMs(spring.moderate)
-const EMPTY: ToastRecord[] = []
-
-let records: ToastRecord[] = EMPTY
-let counter = 0
-const listeners = new Set<() => void>()
-const removalTimers = new Map<string, ReturnType<typeof setTimeout>>()
-
-function emit() {
-  for (const listener of listeners) listener()
-}
-
-function subscribe(listener: () => void) {
-  listeners.add(listener)
-  return () => {
-    listeners.delete(listener)
-  }
-}
-
-const getSnapshot = () => records
-// 服务端与水合首帧都不输出 toast
-const getServerSnapshot = () => EMPTY
-
-function show(title: ReactNode, options: ToastOptions = {}): string {
-  const { id: givenId, ...rest } = options
-  const id = givenId ?? `toast-${++counter}`
-  const timer = removalTimers.get(id)
-  if (timer !== undefined) {
-    clearTimeout(timer)
-    removalTimers.delete(id)
-  }
-  const next: ToastRecord = { ...rest, id, title, open: true }
-  const exists = records.some((r) => r.id === id)
-  records = exists ? records.map((r) => (r.id === id ? next : r)) : [...records, next]
-  emit()
-  return id
-}
-
-function dismiss(id?: string) {
-  const closing = records.filter((r) => r.open && (id === undefined || r.id === id))
-  if (closing.length === 0) return
-  const ids = new Set(closing.map((r) => r.id))
-  records = records.map((r) => (ids.has(r.id) ? { ...r, open: false } : r))
-  emit()
-  for (const record of closing) {
-    removalTimers.set(
-      record.id,
-      setTimeout(() => {
-        removalTimers.delete(record.id)
-        records = records.filter((r) => r.id !== record.id)
-        emit()
-      }, EXIT_MS),
-    )
-    record.onDismiss?.(record.id)
-  }
-}
-
-type ToastFn = ((title: ReactNode, options?: ToastOptions) => string) & {
-  success: (title: ReactNode, options?: Omit<ToastOptions, 'variant'>) => string
-  error: (title: ReactNode, options?: Omit<ToastOptions, 'variant'>) => string
-  /** 关闭指定 id；省略 id 时关闭全部 */
-  dismiss: (id?: string) => void
-}
-
-/** 命令式弹出通知，返回 id。需要页面上挂着一个 `<Toaster />`。 */
-const toast: ToastFn = Object.assign(
-  (title: ReactNode, options?: ToastOptions) => show(title, options),
-  {
-    success: (title: ReactNode, options?: Omit<ToastOptions, 'variant'>) =>
-      show(title, { ...options, variant: 'success' }),
-    error: (title: ReactNode, options?: Omit<ToastOptions, 'variant'>) =>
-      show(title, { ...options, variant: 'error' }),
-    dismiss,
-  },
-)
-
-/** 仅供测试：立即清空 store 与计时器（模块级单例在测试之间共享） */
-function resetToastsForTesting() {
-  for (const timer of removalTimers.values()) clearTimeout(timer)
-  removalTimers.clear()
-  records = EMPTY
-  counter = 0
-  emit()
-}
-
+// 与 select / dropdown 弹层相同 —— store 见 toast-store.ts
 // ---------------------------------------------------------------------------
 // Toaster
 // ---------------------------------------------------------------------------
@@ -162,7 +57,7 @@ interface ToasterProps {
   position?: ToasterPosition
   /** 默认停留时长（毫秒）。@default 5000 */
   duration?: number
-  /** 同时显示的最大条数，更早的排队等待。@default 3 */
+  /** 同时显示的最大条数；超出时最早的一条自动关闭（sonner 观感）。@default 3 */
   visibleToasts?: number
   /** 聚焦视口的热键。@default ["F8"] */
   hotkey?: string[]
@@ -192,6 +87,8 @@ const SWIPE_CLASS = {
   down: 'data-[swipe=move]:translate-y-(--radix-toast-swipe-move-y) data-[swipe=end]:translate-y-(--radix-toast-swipe-end-y)',
 } as const
 
+const useIsoLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
+
 function Toaster({
   labels,
   position = 'bottom-right',
@@ -201,8 +98,12 @@ function Toaster({
   className,
 }: ToasterProps) {
   const all = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
-  // 超出上限的更早几条暂不渲染（计时也未开始），前面的关闭后依次补上
-  const visible = all.slice(-visibleToasts)
+  // 超出上限时直接关闭最早的几条（播放退场后移除），不排队，旧通知不会在之后「复活」
+  useIsoLayoutEffect(() => {
+    const open = all.filter((record) => record.open)
+    for (const record of open.slice(0, Math.max(0, open.length - visibleToasts))) dismiss(record.id)
+  }, [all, visibleToasts])
+  const visible = all
   const swipeDirection = SWIPE_DIRECTION[position]
 
   return (
@@ -252,6 +153,7 @@ function ToastItem({
   const icons = useIcons()
   const XIcon = icons.x
   const CheckIcon = icons.check
+  const AlertIcon = icons['circle-alert']
   const shape = usePopupShape()
   const compact = useSizeVariant() === 'compact'
   const level = Math.min(useSurface() + TOAST_OFFSET, 8)
@@ -294,6 +196,15 @@ function ToastItem({
               size={16}
               strokeWidth={2}
               className="mt-0.5 shrink-0 text-success"
+              aria-hidden="true"
+            />
+          )}
+          {variant === 'error' && (
+            // 与标题同为 --destructive（文字 ≥ 4.5:1），图标只作辅助标识
+            <AlertIcon
+              size={16}
+              strokeWidth={2}
+              className="mt-0.5 shrink-0 text-destructive"
               aria-hidden="true"
             />
           )}

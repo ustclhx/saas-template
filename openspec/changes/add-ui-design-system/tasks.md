@@ -74,3 +74,6 @@
 - `brandFileErrors` 在浅克隆（CI `fetch-depth` 较小）下找不到创建提交时的行为与测试
 - 将组件 lock 摘要写入 `.template-base.json`，校验模板指纹清单本身的完整性
 - 评估将指纹范围扩展到 `packages/ui/src/lib/`、`hooks/` 与 `styles/`
+- Toast 与 Tooltip、Dialog 的层级关系（`--z-toast` 在模态之上；Toast 内的 Tooltip、模态打开时视口的 aria-hidden）实测后定稿
+- Sidebar 拖拽调整宽度后的 `onWidthChange` 回调（布局持久化宽度，8.3 需要时补）
+- 预览页补充各组件的状态说明短文案与空 / 加载态示例（8.1 评审时按反馈调整）

@@ -27,6 +27,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { useIcons } from '../lib/icon-context.tsx'
+import { isEditable, isInsidePopup } from '../lib/keyboard.ts'
 import { MotionFeatures } from '../lib/motion-features.tsx'
 import { useShape } from '../lib/shape-context.tsx'
 import { typeClass, useSize, useSizeVariant } from '../lib/size-context.tsx'
@@ -201,8 +202,9 @@ interface SidebarProviderBaseProps extends HTMLAttributes<HTMLDivElement> {
   /** 桌面展开状态变化（受控与非受控都会通知）。工作台布局在这里写 cookie，下次服务端渲染读回
    *  `defaultOpen`；移动抽屉的开合不经过这里。模板改动：上游的 `persist` 由组件直接写 cookie，已去掉 */
   onOpenChange?: (open: boolean) => void
-  /** Bare-key toggle shortcut. Defaults to "[" for a left sidebar and "]"
-   *  for a right one; `null` disables it. */
+  /** Bare-key toggle shortcut, e.g. "[" for a left sidebar and "]" for a right one.
+   *  模板改动：默认关闭（`null`）。单字符快捷键须可关闭或由用户开启（WCAG 2.1.4），由使用方显式传入；
+   *  上游默认按边开启 "[" / "]"。 */
   shortcut?: string | null
   /** Viewport width (px) below which the sidebar renders as a drawer. */
   mobileBreakpoint?: number
@@ -268,13 +270,8 @@ const SidebarProvider = forwardRef<HTMLDivElement, SidebarProviderProps>(
     }
     const [isResizing, setIsResizing] = useState(false)
 
-    // Default shortcut mirrors the sidebar's edge: "[" left, "]" right.
-    const shortcut =
-      shortcutProp === undefined
-        ? side === 'right'
-          ? SIDEBAR_KEYBOARD_SHORTCUT_RIGHT
-          : SIDEBAR_KEYBOARD_SHORTCUT
-        : shortcutProp
+    // 模板改动：省略时不绑定（上游默认按边取 "[" / "]"）
+    const shortcut = shortcutProp ?? null
 
     const [internalOpen, setInternalOpen] = useState(defaultOpen)
     const open = openProp ?? internalOpen
@@ -337,14 +334,10 @@ const SidebarProvider = forwardRef<HTMLDivElement, SidebarProviderProps>(
       const onKeyDown = (event: KeyboardEvent) => {
         if (event.key.toLowerCase() !== shortcut.toLowerCase()) return
         if (event.metaKey || event.ctrlKey || event.altKey) return
+        // 模板改动：按住不放的重复、已被其他处理器消费的按键、菜单 / 列表框 / 对话框内的按键都不切换
+        if (event.repeat || event.defaultPrevented) return
         const target = event.target as HTMLElement
-        if (
-          target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable
-        )
-          return
+        if (isEditable(target) || isInsidePopup(target)) return
         // Only one mounted provider answers (see mountedProviders). Providers
         // can NEST (an app shell wrapping doc previews), so containment alone
         // isn't enough: the innermost provider containing focus wins.
@@ -1003,13 +996,10 @@ function ShortcutKbd({ children }: { children: ReactNode }) {
   )
 }
 
-/** The tooltips always show the toggle keystroke, falling back to the
- *  side's default key even when the provider's binding is disabled. */
-function useShortcutKey(): string {
-  const { side, shortcut } = useSidebar()
-  return (
-    shortcut ?? (side === 'right' ? SIDEBAR_KEYBOARD_SHORTCUT_RIGHT : SIDEBAR_KEYBOARD_SHORTCUT)
-  )
+/** The toggle keystroke shown in tooltips (null when no shortcut is bound). */
+function useShortcutKey(): string | null {
+  // 模板改动：快捷键未开启时提示里不显示键帽（上游回退显示默认键）
+  return useSidebar().shortcut
 }
 
 /** Ghost icon button calling toggleSidebar(). The icon mirrors the
@@ -1053,7 +1043,7 @@ const SidebarTrigger = forwardRef<HTMLButtonElement, SidebarTriggerProps>(
                 re-applies it — otherwise the shortcut row would sit taller
                 than a tooltip without a chip. */}
             <span className="[text-box:trim-both_cap_alphabetic]">{actionLabel}</span>
-            <ShortcutKbd>{shortcutKey}</ShortcutKbd>
+            {shortcutKey && <ShortcutKbd>{shortcutKey}</ShortcutKbd>}
           </span>
         }
       >
@@ -1063,6 +1053,9 @@ const SidebarTrigger = forwardRef<HTMLButtonElement, SidebarTriggerProps>(
           size={size ?? iconSize}
           data-sidebar="trigger"
           aria-label={actionLabel}
+          // 模板改动：读屏可知侧栏当前是否展开；移动端打开的是抽屉（对话框）
+          aria-expanded={!collapsed}
+          {...(isMobile && { 'aria-haspopup': 'dialog' as const })}
           onClick={(event) => {
             onClick?.(event)
             toggleSidebar()
@@ -1198,7 +1191,7 @@ const SidebarRail = forwardRef<HTMLButtonElement, SidebarRailProps>(
             // 模板新增：图标栏收起时拖拽条点击是展开
             <span className="flex items-center gap-1.5">
               <span className="[text-box:trim-both_cap_alphabetic]">{labels.expand}</span>
-              <ShortcutKbd>{shortcutKey}</ShortcutKbd>
+              {shortcutKey && <ShortcutKbd>{shortcutKey}</ShortcutKbd>}
             </span>
           ) : (
             // The flex column escapes the tooltip surface's text-box trim, so
@@ -1209,7 +1202,7 @@ const SidebarRail = forwardRef<HTMLButtonElement, SidebarRailProps>(
               <span className="[text-box:trim-both_cap_alphabetic]">{labels.railResize}</span>
               <span className="flex items-center gap-1.5">
                 <span className="[text-box:trim-both_cap_alphabetic]">{labels.railCollapse}</span>
-                <ShortcutKbd>{shortcutKey}</ShortcutKbd>
+                {shortcutKey && <ShortcutKbd>{shortcutKey}</ShortcutKbd>}
               </span>
             </span>
           )

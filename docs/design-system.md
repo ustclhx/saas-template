@@ -148,6 +148,26 @@ grep -nE '^export' packages/ui/src/index.ts
   | `SidebarProvider` | `labels`（`title`、`expand`、`collapse`、`rail`、`railResize`、`railCollapse`；开启 peek 时 `peek`） | 移动抽屉名称、触发按钮与拖拽条的名称和提示；`SidebarMenuButton` 在 `status="unread"` 时必传 `unreadLabel` |
 
   新组件引入新的可读文字时，同步更新本表与 `packages/ui/UPSTREAM.md`。
+  `labels` 对象可以内联传入（`labels={{ … m.*() … }}`）：不会导致重新挂载，Command Menu 内部另按字段稳定引用；
+  放在频繁重渲染的组件里时可提到 `useMemo` 中减少子组件渲染。
+- **图标**：业务页面从 `@saas/ui/icons` 按名称导入（如 `import { Folder } from '@saas/ui/icons'`），传给组件的图标槽位
+  （`Button` 的 `leadingIcon`、`SidebarMenuButton` / `TabsItem` / `CommandMenu` 条目的 `icon` 等）；apps 不直接依赖
+  lucide-react（`pnpm check:deps`）。入口只登记常用图标，项目需要更多时在 `packages/ui/src/project/` 中再导出。
+  组件内部的图标槽位（`UiRoot` 的默认图标表，会进入首页包）目前 9 个；**超过约 15 个或首页 JS 增量超过 5 KB 时**，
+  改为各组件自带回退图标、只在 `UiRoot` 传入替换项，不再扩充默认表。
+- **通知（Toast）**：`toast()` 来自零依赖的 store（`toast-store.ts`），任何地方都可调用；`<Toaster />` 含动效库
+  （约 44 KB gzip），只在 app / admin 布局中用 `React.lazy` 挂载一次，**不放进根布局**，营销页不加载：
+
+  ```tsx
+  const Toaster = lazy(() => import('@saas/ui').then((ui) => ({ default: ui.Toaster })))
+  // 布局中：<Suspense fallback={null}><Toaster labels={{ region: m.…(), announcement: m.…(), close: m.…() }} /></Suspense>
+  ```
+- **侧边栏**：`collapsible="icon"`（收起为图标栏）时每个 `SidebarMenuButton` 都必须传 `icon`，收起后名称由 Tooltip
+  显示（`tooltip` 省略时取行内文字）；默认 `offcanvas`。快捷键 `shortcut` 默认关闭，需要时显式传入（如 `"["`）；
+  嵌入式预览等区域可加 `data-keyboard-scope` 属性，焦点在其中时外层侧栏的快捷键不响应（受支持的属性）。
+  折叠状态由布局在 `onOpenChange` 中写 cookie、服务端读回 `defaultOpen`（tasks 8.3）。
+- **命令面板**：键帽按平台显示 ⌘ 或 Ctrl；SSR 首帧无法得知平台，需要时在布局中用
+  `<CommandMenuPlatform mac={…}>` 包裹，`mac` 取自请求头 `Sec-CH-UA-Platform` 或 User-Agent，避免水合后键帽变宽。
 - **浮层层级**：自定义吸顶、遮罩与弹层用 `--z-*` 变量，不写任意 `z-[…]`。
 
 已接入：Button、Input、Textarea、Select、Combobox、Checkbox、Switch、Badge、Tooltip、Tabs、Dropdown（菜单）、

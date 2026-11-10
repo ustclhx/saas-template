@@ -250,7 +250,8 @@ function DataTableFilters(props: {
           <div key={filter.id} className="flex flex-col gap-1.5">
             <Label htmlFor={id}>{filter.label}</Label>
             {filter.type === 'select' ? (
-              <FilterSelect id={id} filter={filter} value={value} />
+              // 值变化（重置、前进后退）时重新挂载，非受控的 Select 回显新值
+              <FilterSelect key={value} id={id} filter={filter} value={value} />
             ) : (
               <Input
                 id={id}
@@ -277,7 +278,8 @@ function DataTableFilters(props: {
  * Select 的选项值不能为空串（Radix 约定），「全部」等空值选项用占位值代替，提交时还原为空（即不筛选）。
  * 隐藏的原生 select 随表单提交 `name` 对应的值（Radix Select 的表单支持）。
  */
-const EMPTY_OPTION = '__all__'
+// 以 NUL 开头，不可能与 URL / 表单里的真实筛选值冲突（search 参数不会含 NUL）
+const EMPTY_OPTION = '\u0000empty'
 
 function FilterSelect(props: {
   readonly id: string

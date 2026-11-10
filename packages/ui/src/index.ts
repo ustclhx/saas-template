@@ -223,15 +223,18 @@ export {
   useTheme,
 } from './components/theme.tsx'
 export {
-  type ToastAction,
   Toaster,
   type ToasterLabels,
   type ToasterPosition,
   type ToasterProps,
+} from './components/toast.tsx'
+// 命令式 API 来自零依赖的 store，只调用 toast() 的页面不会带上 Toaster 与动效库
+export {
+  type ToastAction,
   type ToastOptions,
   type ToastVariant,
   toast,
-} from './components/toast.tsx'
+} from './components/toast-store.ts'
 export {
   Tooltip,
   TooltipPortalContainer,
