@@ -14,15 +14,23 @@ import {
   workspaceInvitations,
   workspaceMembers,
 } from '../../server/workspace-data.ts'
+import { checkDailyCredits } from '../credits/daily.server.ts'
 
 export const getWorkspacePage = createServerFn({ method: 'GET' })
   .middleware([withWorkspace])
   .handler(async ({ context }) => {
     const { db, workspace, member, workspaceReadOnly } = context
-    const { user } = await requireFreshSession({
+    const { user, session } = await requireFreshSession({
       auth: getWebRuntime().auth,
       db,
       headers: getRequest().headers,
+    })
+    const dailyCredits = await checkDailyCredits({
+      db,
+      cache: getWebRuntime().cache,
+      user,
+      session,
+      enabled: templateConfig.credits.enabled && templateConfig.credits.dailyEnabled,
     })
     const members = await workspaceMembers(db, workspace.id)
     const canManage =
@@ -30,6 +38,7 @@ export const getWorkspacePage = createServerFn({ method: 'GET' })
       !workspaceReadOnly &&
       (member.role === 'owner' || member.role === 'admin')
     return {
+      dailyCredits,
       user: { id: user.id, name: user.name, email: user.email },
       workspace: {
         id: workspace.id,

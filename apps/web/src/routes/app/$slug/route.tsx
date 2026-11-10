@@ -1,4 +1,5 @@
 import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
+import { DailyCreditsNotice } from '../../../features/credits/daily-notice.tsx'
 import { NotificationCenter } from '../../../features/notifications/center.tsx'
 import { WorkspaceSwitcher } from '../../../features/workspace/components.tsx'
 import { getWorkspacePage } from '../../../features/workspace/workspace.functions.ts'
@@ -38,6 +39,7 @@ function WorkspaceLayout() {
           {page.user.name} ({page.user.email})
         </p>
         {page.readOnly ? <p role="status">{m.app_readonly()}</p> : null}
+        <DailyCreditsNotice result={page.dailyCredits} />
         <WorkspaceSwitcher page={page} />
         <NotificationCenter key={page.workspace.slug} slug={page.workspace.slug} />
         <nav className="flex flex-wrap gap-4">

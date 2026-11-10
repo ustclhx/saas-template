@@ -87,6 +87,8 @@ export interface TemplateConfig<L extends string = string> {
   }
   readonly credits: {
     readonly enabled: boolean
+    /** 真实登录用户访问 App 时领取每日积分，默认关闭。 */
+    readonly dailyEnabled: boolean
   }
   readonly marketing: {
     readonly enabled: boolean
@@ -186,7 +188,7 @@ export const templateConfigDefaults = {
     overage: { maxRatio: 0.2, maxCredits: 50, dailyBudgetPerWorkspace: 200 },
     refundWindowDays: 30,
   },
-  credits: { enabled: true },
+  credits: { enabled: true, dailyEnabled: false },
   marketing: { enabled: true },
   ai: {
     text: {
