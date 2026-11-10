@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
+import { checkWorkspace } from './check-deps.mjs'
 import { checkUi, findingsOf } from './check-ui.mjs'
+import { createProject } from './create-project.mjs'
+import { componentHashes, componentLockViolations, writeComponentLock } from './ui-lock.mjs'
 
 function workspace(t, files = {}, allow = {}) {
   const root = mkdtempSync(join(tmpdir(), 'check-ui-'))
@@ -14,8 +18,15 @@ function workspace(t, files = {}, allow = {}) {
     writeFileSync(path, typeof contents === 'string' ? contents : JSON.stringify(contents))
   }
   write('scripts/check-ui.allow.json', allow)
+  write('packages/ui/components.lock.json', {})
+  write('packages/ui/src/project/.gitkeep', '')
+  write(
+    'packages/ui/src/project/index.ts',
+    '// 项目自有组件入口。模板仅初始化此文件，后续组件与导出由衍生项目维护。\nexport {}\n',
+  )
   for (const [file, contents] of Object.entries(files)) write(file, contents)
-  return { check: () => checkUi(root), write }
+  writeComponentLock(root)
+  return { root, check: () => checkUi(root), write }
 }
 
 test('hex, rgb/rgba, hsl/hsla and oklch colors fail in attributes, styles and templates', () => {
@@ -222,4 +233,166 @@ test('exception registrations require a reason and pending registrations require
     pendingReplacement: { 'apps/web/src/icon.tsx': [{ rule: 'color-literal', reason: '待替换' }] },
   })
   assert.throws(check, /待替换值\/数量/)
+})
+
+test('template component edits, additions, deletions and missing locks require regeneration', (t) => {
+  const file = 'packages/ui/src/components/button.tsx'
+  const { root, check, write } = workspace(t, { [file]: 'export const Button = () => <button />' })
+  assert.equal(check().violations.length, 0)
+  const original = readFileSync(join(root, 'packages/ui/components.lock.json'), 'utf8')
+  writeComponentLock(root)
+  assert.equal(readFileSync(join(root, 'packages/ui/components.lock.json'), 'utf8'), original)
+  assert.match(componentHashes(root)['src/components/button.tsx'], /^[a-f0-9]{64}$/)
+  write(file, 'export const Button = () => <button className="rounded" />')
+  write('packages/ui/src/components/nested/card.tsx', 'export const Card = () => <article />')
+  let violations = check().violations
+  assert.equal(violations.length, 2)
+  assert.ok(violations.every(({ value }) => value.includes('pnpm ui:lock')))
+  writeComponentLock(root)
+  assert.equal(check().violations.length, 0)
+  unlinkSync(join(root, file))
+  violations = check().violations
+  assert.equal(violations[0].file, file)
+  unlinkSync(join(root, 'packages/ui/components.lock.json'))
+  assert.ok(check().violations.some(({ file }) => file.endsWith('components.lock.json')))
+})
+
+test('component fingerprints in Git include only tracked files, relative to the requested root', (t) => {
+  const { root: repository, write } = workspace(t)
+  const root = join(repository, 'nested-project')
+  const prefix = 'nested-project/packages/ui/src/components/'
+  write(`${prefix}z.tsx`, 'export const Z = () => <div />')
+  write(`${prefix}nested/a.ts`, 'export const a = 1')
+  write(`${prefix}notes.md`, 'Tracked component documentation')
+  write('packages/ui/src/components/outside.tsx', 'export const Outside = () => <div />')
+  execFileSync('git', ['init', '--quiet'], { cwd: repository })
+  execFileSync('git', ['add', '--', prefix, 'packages/ui/src/components'], { cwd: repository })
+  writeComponentLock(root)
+  const before = componentHashes(root)
+  assert.deepEqual(Object.keys(before), [
+    'src/components/nested/a.ts',
+    'src/components/notes.md',
+    'src/components/z.tsx',
+  ])
+  write(`${prefix}.DS_Store`, 'Finder metadata')
+  write(`${prefix}untracked.tsx`, 'export const Untracked = () => <div />')
+  assert.deepEqual(componentHashes(root), before)
+  assert.deepEqual(componentLockViolations(root), [])
+  execFileSync('git', ['add', '--', `${prefix}untracked.tsx`], { cwd: repository })
+  assert.equal(componentLockViolations(root)[0].file, 'packages/ui/src/components/untracked.tsx')
+  write(`${prefix}z.tsx`, 'export const Z = () => <article />')
+  assert.notEqual(componentHashes(root)['src/components/z.tsx'], before['src/components/z.tsx'])
+  unlinkSync(join(root, 'packages/ui/src/components/nested/a.ts'))
+  assert.equal(Object.hasOwn(componentHashes(root), 'src/components/nested/a.ts'), false)
+})
+
+test('non-Git component fingerprints ignore dot files and non-source files', (t) => {
+  const { root, check, write } = workspace(t, {
+    'packages/ui/src/components/z.tsx': 'export const Z = () => <div />',
+    'packages/ui/src/components/nested/a.ts': 'export const a = 1',
+    'packages/ui/src/components/nested/b.css': '.panel {}',
+  })
+  const before = componentHashes(root)
+  write('packages/ui/src/components/.DS_Store', 'Finder metadata')
+  write('packages/ui/src/components/.cache/generated.tsx', 'export {}')
+  write('packages/ui/src/components/nested/.hidden.ts', 'export {}')
+  write('packages/ui/src/components/notes.md', 'Not component source')
+  assert.deepEqual(componentHashes(root), before)
+  assert.deepEqual(Object.keys(before), [
+    'src/components/nested/a.ts',
+    'src/components/nested/b.css',
+    'src/components/z.tsx',
+  ])
+  assert.deepEqual(check().violations, [])
+})
+
+test('template project directory keeps only fixed placeholders and derived projects may customize it', (t) => {
+  const { root, check, write } = workspace(t)
+  assert.deepEqual(check().violations, [])
+  write('packages/ui/src/project/card.tsx', 'export const ProjectCard = () => <article />')
+  write('packages/ui/src/project/nested/readme.md', 'Project component notes')
+  write('packages/ui/src/project/index.ts', "export { ProjectCard } from './card.tsx'\n")
+  const violations = check().violations
+  assert.deepEqual(
+    violations.map(({ file, rule }) => ({ file, rule })),
+    [
+      { file: 'packages/ui/src/project/card.tsx', rule: 'project-directory' },
+      { file: 'packages/ui/src/project/index.ts', rule: 'project-directory' },
+      { file: 'packages/ui/src/project/nested', rule: 'project-directory' },
+    ],
+  )
+  write('.template-base.json', {})
+  assert.deepEqual(check().violations, [])
+  unlinkSync(join(root, '.template-base.json'))
+  rmSync(join(root, 'packages/ui/src/project'), { recursive: true })
+  assert.deepEqual(
+    check().violations.map(({ file }) => file),
+    ['packages/ui/src/project/.gitkeep', 'packages/ui/src/project/index.ts'],
+  )
+})
+
+test('derived projects reject changed template components with ordered customization guidance', (t) => {
+  const file = 'packages/ui/src/components/button.tsx'
+  const { root, check, write } = workspace(t, { [file]: 'export const Button = () => <button />' })
+  write('.template-base.json', {})
+  assert.equal(check().violations.length, 0)
+  write(file, 'export const Button = () => <button className="rounded" />')
+  write('scripts/check-ui.allow.local.json', {
+    exceptions: { [file]: [{ rule: 'color-literal', reason: '项目例外不能绕过组件指纹' }] },
+  })
+  const [violation] = check().violations
+  assert.equal(violation.file, file)
+  assert.match(violation.value, /token → ui 配置 → project 包装 → 复制到 project/)
+  assert.match(violation.value, /docs\/design\/forks\.md/)
+  assert.match(violation.value, /scripts\/check-ui\.allow\.local\.json 按文件登记规则与原因/)
+  assert.match(violation.value, /arbitrary-class/)
+  assert.doesNotMatch(violation.value, /pnpm ui:lock/)
+  assert.throws(() => writeComponentLock(root), /由模板维护/)
+})
+
+test('generated projects can export and use project components under UI and dependency checks', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'ui-project-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  const { target } = await createProject({
+    name: 'renamed-ui-check',
+    domain: 'project.example',
+    output: join(dir, 'project'),
+  })
+  const manifest = JSON.parse(readFileSync(join(target, 'packages/ui/package.json'), 'utf8'))
+  const uiPackage = manifest.name
+  assert.equal(manifest.exports['./project'], './src/project/index.ts')
+  const component = join(target, 'packages/ui/src/project/project-card.tsx')
+  const source =
+    'import { Card } from \'../components/card.tsx\'\nexport function ProjectCard() { return <Card className="bg-primary">Project</Card> }\n'
+  writeFileSync(component, source)
+  writeFileSync(
+    join(target, 'packages/ui/src/project/index.ts'),
+    "export { ProjectCard } from './project-card.tsx'\n",
+  )
+  mkdirSync(join(target, 'apps/web/src/components'), { recursive: true })
+  writeFileSync(
+    join(target, 'apps/web/src/components/project-example.tsx'),
+    `import { ProjectCard } from '${uiPackage}/project'\nexport const Example = () => <ProjectCard />\n`,
+  )
+  assert.deepEqual(checkUi(target).violations, [])
+  assert.deepEqual(checkWorkspace(target).violations, [])
+  writeFileSync(component, `${source}\nexport const Illustration = () => <svg fill="#fff" />\n`)
+  assert.equal(checkUi(target).violations[0].file, 'packages/ui/src/project/project-card.tsx')
+  writeFileSync(
+    join(target, 'scripts/check-ui.allow.local.json'),
+    JSON.stringify({
+      exceptions: {
+        'packages/ui/src/project/project-card.tsx': [
+          { rule: 'color-literal', reason: '项目插画固定颜色' },
+        ],
+      },
+    }),
+  )
+  assert.deepEqual(checkUi(target).violations, [])
+  writeFileSync(component, `${source}\nimport '${uiPackage.split('/')[0]}/platform/node'\n`)
+  assert.ok(
+    checkWorkspace(target).violations.some((message) =>
+      message.includes('packages/ui/src/project/project-card.tsx'),
+    ),
+  )
 })

@@ -33,16 +33,16 @@
 
 ## 6. 衍生项目继承机制
 
-- [ ] 6.1 预留 `packages/ui/src/project/`（`.gitkeep` 与空 `index.ts`）与 `@saas/ui/project` 导出；`check-ui` 与依赖检查覆盖该目录；验证在临时生成项目中新增项目组件并使用后检查通过
-- [ ] 6.2 生成 `packages/ui/components.lock.json` 与校验：模版内清单过期时失败；存在 `.template-base.json` 时修改模版组件失败并提示定制顺序；`check-ui.allow.local.json` 被读取；测试覆盖三种情况
-- [ ] 6.3 生成器在副本中创建空的 `check-ui.allow.local.json` 与 `docs/design/README.md`（说明视觉规范、参考、原型副本与 forks 登记的位置）；`create-project.test.mjs` 断言文件存在且生成结果确定
+- [x] 6.1 预留 `packages/ui/src/project/`（`.gitkeep` 与空 `index.ts`）与 `@saas/ui/project` 导出；`check-ui` 与依赖检查覆盖该目录；验证在临时生成项目中新增项目组件并使用后检查通过
+- [x] 6.2 生成 `packages/ui/components.lock.json` 与校验：模版内清单过期时失败；存在 `.template-base.json` 时修改模版组件失败并提示定制顺序；`check-ui.allow.local.json` 被读取；测试覆盖三种情况
+- [x] 6.3 生成器在副本中创建空的 `check-ui.allow.local.json` 与 `docs/design/README.md`（说明视觉规范、参考、原型副本与 forks 登记的位置）；`create-project.test.mjs` 断言文件存在且生成结果确定
 - [ ] 6.4 根布局提供项目自有的站点/主题属性扩展点（项目自有文件返回 `<html>` 额外属性，如 `data-site`），避免项目改模板根布局；测试覆盖未注册时输出不变与注册后 SSR 写入属性
 
 ## 7. 设计规范文档、技能与生成器
 
 - [x] 7.1 编写 `docs/design-system.md`（分层、token 表、组件用法、动效、页面模式、参考来源、免设计稿标准），更新 `docs/02-project-structure.md` 与 `AGENTS.md` 的 ui 说明；文档中的命令可按原样运行
 - [x] 7.2 新增 `ui-design` 技能（`.agents/skills` 与 `.claude/skills` 逐字节一致），覆盖索取参考、衍生项目建立视觉方向（`brand.css`、`docs/design/visual-system.md`、多站点）、Design 画布设计稿的状态矩阵、确认、副本存 `docs/design/prototypes/` 并在 OpenSpec 记录链接与副本、实现只用 `@saas/ui` 与 `@saas/ui/project`；template-sync 技能新增「涉及 `packages/ui` 或基线 token 时合并前截图对比」步骤；`new-page`、`new-static-page` 第 1 步改为检查设计稿链接；技能双目录一致性测试通过
-- [ ] 7.3 生成器新增 `--theme`（非法值列出可用预设并退出），写入模板配置与 `.template-base.json`；`create-project.test.mjs` 覆盖合法、非法与确定性，`pnpm test:create-project:verify` 通过
+- [x] 7.3 生成器新增 `--theme`（非法值列出可用预设并退出），写入模板配置与 `.template-base.json`；`create-project.test.mjs` 覆盖合法、非法与确定性，`pnpm test:create-project:verify` 通过
 - [ ] 7.4 用 Design System Artifact 发布设计规范镜像，`docs/design-system.md` 记录镜像地址与同步提交
 
 ## 8. xuanxue 基础需求 UI（设计关卡实战验证）
@@ -69,3 +69,5 @@
 - 回退字体加 `size-adjust`，减少字体替换时的版面跳动
 - `:focus-visible` 兜底焦点环的圆角跟随元素自身圆角
 - `brandFileErrors` 在浅克隆（CI `fetch-depth` 较小）下找不到创建提交时的行为与测试
+- 将组件 lock 摘要写入 `.template-base.json`，校验模板指纹清单本身的完整性
+- 评估将指纹范围扩展到 `packages/ui/src/lib/`、`hooks/` 与 `styles/`

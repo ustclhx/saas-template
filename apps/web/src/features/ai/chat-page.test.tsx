@@ -1,6 +1,8 @@
 import type { ChatTransport } from 'ai'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { m } from '../../paraglide/messages.js'
+import { baseLocale, overwriteGetLocale } from '../../paraglide/runtime.js'
 import type { ChatUIMessage } from './conversation.ts'
 import type { PickerModel } from './model-picker.ts'
 
@@ -54,6 +56,7 @@ const render = (models: readonly PickerModel[] = [model]) =>
   )
 
 beforeEach(() => {
+  overwriteGetLocale(() => baseLocale)
   state.messages = []
   state.status = 'ready'
   state.error = undefined
@@ -62,7 +65,10 @@ beforeEach(() => {
   state.text.reasoning.display = false
 })
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  overwriteGetLocale(() => baseLocale)
+})
 
 describe('chat reasoning controls', () => {
   it('仅模板允许时显示 thinking 开关，初始值遵循模板默认', () => {
@@ -163,9 +169,15 @@ describe('insufficient credits guide', () => {
       }),
     )
     const markup = render()
-    expect(markup).toContain('Estimated cost: 8 credits. Available: 2 credits.')
-    expect(markup).toContain('/app/personal/billing#credit-packs')
-    expect(markup).toContain('/app/personal/billing#subscriptions')
+    expect(markup).toContain(
+      m.billing_credit_guide_amounts({ estimatedCredits: 8, availableCredits: 2 }),
+    )
+    expect(markup).toContain(
+      `href="/app/personal/billing#credit-packs">${m.billing_credit_guide_packs()}</a>`,
+    )
+    expect(markup).toContain(
+      `href="/app/personal/billing#subscriptions">${m.billing_credit_guide_subscriptions()}</a>`,
+    )
     expect(markup).toContain('role="alert"')
   })
 
@@ -178,6 +190,8 @@ describe('insufficient credits guide', () => {
     const markup = render()
     expect(markup).toContain('Go to billing')
     expect(markup).not.toContain('/app/personal/billing#credit-packs')
-    expect(markup).not.toContain('Available: 2 credits.')
+    expect(markup).not.toContain(
+      m.billing_credit_guide_amounts({ estimatedCredits: 8, availableCredits: 2 }),
+    )
   })
 })

@@ -44,6 +44,7 @@ P0 实现时必须遵守的约定（setup 脚本依赖它们）：
 5. **文案文件**：`apps/web/messages/<locale>/<feature>.json` 按功能拆分，避免多条线同时改一个大文件。
 6. **OpenSpec `tasks.md`**：worker 只勾选分配给自己的任务编号；change 的归档（`/opsx:archive`）只在 main 上、该 change 全部任务合并后进行。
 7. **进程管理**：只结束自己启动的进程（按记录的 PID，或按本 worktree `.env.worktree` 中的端口：`lsof -ti :<端口> | xargs kill`）。**禁止 `pkill -f` / `killall` 等按名称或模式匹配结束进程**：Orca 以 `claude "<任务说明>"` 启动 agent，命令行里含任务说明全文，`pkill -f "vite dev"` 曾误杀其他 worktree 的 agent（P1 W5b）。
+8. **`packages/ui/components.lock.json`**：冲突时不手工合并，rebase/merge 后运行 `pnpm ui:lock` 重新生成并提交，再执行 `pnpm check:ui`。
 
 ## 4. 阶段之间的波次
 
