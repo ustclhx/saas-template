@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { checkWorkspace, importsOf } from './check-deps.mjs'
 
-const emptyRules = () => ({ compositionEntries: [], targetFixtures: {} })
+const { uiOnlyDependencies, forbiddenDependencies } = JSON.parse(
+  readFileSync(new URL('./check-deps.rules.json', import.meta.url), 'utf8'),
+)
+const emptyRules = () => ({
+  compositionEntries: [],
+  targetFixtures: {},
+  uiOnlyDependencies,
+  forbiddenDependencies,
+})
 
 function workspace(t, files, rules = emptyRules()) {
   const root = mkdtempSync(join(tmpdir(), 'check-deps-'))
@@ -19,6 +27,125 @@ function workspace(t, files, rules = emptyRules()) {
 }
 
 const manifest = (name, dependencies = {}) => ({ name, dependencies })
+
+const uiDependencies = [
+  'radix-ui',
+  '@base-ui/react',
+  'motion',
+  'framer-motion',
+  'lucide-react',
+  'class-variance-authority',
+]
+
+test('UI dependencies are restricted in every manifest dependency field for apps and other packages', (t) => {
+  const fields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
+  const dependencies = Object.fromEntries(uiDependencies.map((dep) => [dep, '*']))
+  const allFields = Object.fromEntries(fields.map((field) => [field, dependencies]))
+  const check = workspace(t, {
+    'apps/web/package.json': { name: '@saas/web', ...allFields },
+    'packages/billing/package.json': { name: '@saas/billing', ...allFields },
+    'packages/ui/package.json': { name: '@saas/ui', ...allFields },
+  })
+  const violations = check()
+  assert.equal(violations.length, uiDependencies.length * fields.length * 2)
+  for (const path of ['apps/web', 'packages/billing']) {
+    for (const field of fields) {
+      for (const dep of uiDependencies) {
+        assert.ok(
+          violations.some((message) =>
+            message.includes(`→ ${dep}（${path}/package.json ${field}）`),
+          ),
+        )
+      }
+    }
+  }
+})
+
+const uiImports = [
+  "// import 'motion'",
+  'const example = "require(\'radix-ui\')"',
+  "import type { Dialog } from 'radix-ui'",
+  "import 'radix-ui'",
+  "export { motion } from 'motion/react'",
+  "export * from '@base-ui/react/dialog'",
+  "import /* comment */ ('framer-motion', { with: { type: 'json' } })",
+  'import(`lucide-react`)',
+  "require /* comment */ ('class-variance-authority')",
+  "import radix = require('radix-ui')",
+  "type Icon = import('lucide-react').Icon",
+  "import('motion/' + 'react')",
+  "import('radix\\x2dui')",
+].join('\n')
+
+test('apps and other packages reject UI imports across AST forms and outside src', (t) => {
+  const check = workspace(t, {
+    'apps/web/package.json': manifest('@saas/web'),
+    'apps/web/src/routes/page.tsx': uiImports,
+    'apps/web/test/component.test.tsx': "import 'motion/react'",
+    'packages/billing/package.json': manifest('@saas/billing'),
+    'packages/billing/probe/component.ts': "import '@base-ui/react/dialog'",
+  })
+  const violations = check()
+  assert.equal(violations.length, 13)
+  for (let line = 3; line <= 13; line++) {
+    assert.ok(
+      violations.some((message) => message.includes(`apps/web/src/routes/page.tsx:${line}`)),
+    )
+  }
+  assert.ok(violations.some((message) => message.includes('apps/web/test/component.test.tsx:1')))
+  assert.ok(violations.some((message) => message.includes('packages/billing/probe/component.ts:1')))
+})
+
+test('UI package including project components may import primitives; similar package names remain allowed', (t) => {
+  const check = workspace(t, {
+    'packages/ui/package.json': manifest('@saas/ui'),
+    'packages/ui/src/components/control.tsx': uiImports,
+    'packages/ui/src/project/index.ts': uiImports,
+    'apps/web/package.json': manifest('@saas/web', {
+      'motion-utils': '*',
+      'radix-ui-extra': '*',
+      '@base-ui-extra/react': '*',
+      '@saas/ui': '*',
+    }),
+    'apps/web/src/index.ts': "import '@saas/ui'; import 'motion-utils'; import 'radix-ui-extra'",
+  })
+  assert.deepEqual(check(), [])
+})
+
+test('split Radix dependencies and subpath imports are forbidden even in UI', (t) => {
+  const files = {}
+  for (const [path, name] of [
+    ['.', 'saas-template'],
+    ['apps/web', '@saas/web'],
+    ['packages/ui', '@saas/ui'],
+    ['packages/billing', '@saas/billing'],
+  ]) {
+    files[`${path}/package.json`] = manifest(name, { '@radix-ui/react-dialog': '*' })
+    files[`${path}/src/index.ts`] = "import '@radix-ui/react-dialog/internal'"
+  }
+  const violations = workspace(t, files)()
+  // 根源码不在 workspace 扫描范围，但根 manifest 仍应失败。
+  assert.equal(violations.length, 7)
+  assert.ok(violations.every((message) => message.includes('禁止拆分 Radix 子包')))
+})
+
+test('existing React rules still exempt apps and package test fixtures', (t) => {
+  const check = workspace(t, {
+    'apps/web/package.json': manifest('@saas/web', { react: '*', '@saas/ui': '*' }),
+    'apps/web/src/index.tsx': "import 'react'; import '@saas/ui'",
+    'packages/billing/package.json': manifest('@saas/billing'),
+    'packages/billing/test/component.test.tsx': "import 'react'; import '@saas/ui'",
+    'packages/billing/src/index.ts': "import 'react'",
+    'packages/email/package.json': manifest('@saas/email', {
+      react: '*',
+      '@react-email/render': '*',
+    }),
+    'packages/email/src/index.tsx': "import 'react'; import '@react-email/render'",
+  })
+  const violations = check()
+  assert.equal(violations.length, 1)
+  assert.match(violations[0], /packages\/billing\/src\/index.ts:1/)
+})
 
 test('AST covers import/export/require/type and dynamic syntax without matching comments or strings', () => {
   const source = [
