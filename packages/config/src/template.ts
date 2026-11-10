@@ -25,6 +25,18 @@ export const textConfigSchema = z.strictObject({
     .prefault({}),
   reasoning: z.strictObject({ display: z.boolean().default(false) }).prefault({}),
   failedReplyRefund: z.enum(['no-visible-output', 'all']).default('no-visible-output'),
+  /**
+   * 每轮回复后生成的后续推荐问题（add-subject-chat design 决策 5）：默认关闭；
+   * charge 为 true 时按实际用量扣积分，否则由平台承担；modelKey 为空时用回复所用的模型。
+   */
+  followUps: z
+    .strictObject({
+      enabled: z.boolean().default(false),
+      charge: z.boolean().default(false),
+      count: z.number().int().min(2).max(3).default(3),
+      modelKey: z.string().min(1).max(200).nullable().default(null),
+    })
+    .prefault({}),
 })
 
 export type TextConfig = z.infer<typeof textConfigSchema>
@@ -194,6 +206,7 @@ export const templateConfigDefaults = {
       thinking: { default: 'off', userToggle: false },
       reasoning: { display: false },
       failedReplyRefund: 'no-visible-output',
+      followUps: { enabled: false, charge: false, count: 3, modelKey: null },
     },
     image: true,
     video: true,

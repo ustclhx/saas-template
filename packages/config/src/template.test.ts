@@ -191,12 +191,19 @@ it('merges text policy defaults and rejects invalid text policy values', () => {
     thinking: { default: 'off', userToggle: true },
     reasoning: { display: false },
     failedReplyRefund: 'no-visible-output',
+    followUps: { enabled: false, charge: false, count: 3, modelKey: null },
   })
+  expect(
+    defineTemplateConfig({ app, ai: { text: { followUps: { enabled: true, count: 2 } } } }).ai.text
+      .followUps,
+  ).toEqual({ enabled: true, charge: false, count: 2, modelKey: null })
   for (const text of [
     { enabled: 'false' },
     { thinking: { default: 'auto' } },
     { reasoning: { display: 1 } },
     { failedReplyRefund: 'none' },
+    { followUps: { count: 5 } },
+    { followUps: { enabled: 'yes' } },
     { extra: true },
   ]) {
     // 外部配置可能绕过 TypeScript，运行时也必须拒绝非法策略。

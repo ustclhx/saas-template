@@ -21,7 +21,7 @@ export function addAiPurge(total: AiPurgeResult, batch: AiPurgeResult) {
 }
 
 /**
- * 删除一批 AI 内容，按外键顺序：消息 → 无消息的对话 → 媒体任务。
+ * 删除一批 AI 内容，按外键顺序：评分 → 消息 → 无消息的对话 → 媒体任务。
  * 仍有 held 预扣，或一天内仍在生成（streaming / queued / running）的行跳过，等兜底处理器结算后下一轮再删；
  * 预扣、积分流水等财务记录不删，它们只以 ref_id 文本指向这些行。
  * 团队空间中的产出文件属于空间共享资产，只解除 source_task_id 引用、不删文件。
@@ -38,15 +38,21 @@ export async function purgeAiBatch(
   const taskScope = byWorkspace
     ? sql`t.workspace_id=${scope.workspaceId}`
     : sql`t.user_id=${scope.userId} and exists(select 1 from organization o where o.id=t.workspace_id and not o.is_personal)`
-  const messages = await sql<{ id: string }[]>`
-    delete from ai_message where id in (
-      select m.id from ai_message m join ai_conversation c on c.id=m.conversation_id
-      where ${conversationScope}
-        and not (m.status='streaming' and m.updated_at>now()-interval '1 day')
-        and not exists(select 1 from credit_hold h where h.workspace_id=m.workspace_id and h.status='held'
-          and (h.id=m.hold_id or (h.ref_type='ai_message' and h.ref_id=m.id)))
-      order by m.id limit ${limit}
-    ) returning id`
+  // 先选出本批消息，删除其上的评分（add-subject-chat），再删消息本身
+  const batch = await sql<{ id: string }[]>`
+    select m.id from ai_message m join ai_conversation c on c.id=m.conversation_id
+    where ${conversationScope}
+      and not (m.status='streaming' and m.updated_at>now()-interval '1 day')
+      and not exists(select 1 from credit_hold h where h.workspace_id=m.workspace_id and h.status='held'
+        and (h.id=m.hold_id or (h.ref_type='ai_message' and h.ref_id=m.id)))
+    order by m.id limit ${limit} for update of m skip locked`
+  const messageIds = batch.map((row) => row.id)
+  let messages: { id: string }[] = []
+  if (messageIds.length) {
+    await sql`delete from ai_message_feedback where message_id in ${sql(messageIds)}`
+    messages = await sql<{ id: string }[]>`
+      delete from ai_message where id in ${sql(messageIds)} returning id`
+  }
   const conversations = await sql<{ id: string }[]>`
     delete from ai_conversation where id in (
       select c.id from ai_conversation c where ${conversationScope}
