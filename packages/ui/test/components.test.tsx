@@ -20,6 +20,7 @@ import {
   DialogContent,
   DialogTitle,
   Input,
+  Label,
   Switch,
   Textarea,
   Tooltip,
@@ -89,6 +90,45 @@ describe('Input / Textarea（Fluid input、textarea）', () => {
 })
 
 describe('Checkbox（Fluid radix/checkbox）', () => {
+  it('受控标签点击切换一次，表单仅提交已勾选项的默认 on 值', () => {
+    const onCheckedChange = vi.fn()
+    function Controlled() {
+      const [checked, setChecked] = useState(false)
+      return (
+        <form aria-label="Settings">
+          <Label htmlFor="enabled">
+            <Checkbox
+              id="enabled"
+              name="enabled"
+              checked={checked}
+              onCheckedChange={(value) => {
+                setChecked(value)
+                onCheckedChange(value)
+              }}
+            />
+            Enabled
+          </Label>
+        </form>
+      )
+    }
+    render(<Controlled />)
+    const form = screen.getByRole('form', { name: 'Settings' }) as HTMLFormElement
+    const box = screen.getByRole('checkbox', { name: 'Enabled' })
+    expect(new FormData(form).has('enabled')).toBe(false)
+
+    fireEvent.click(screen.getByText('Enabled'))
+    expect(onCheckedChange).toHaveBeenCalledTimes(1)
+    expect(onCheckedChange).toHaveBeenLastCalledWith(true)
+    expect(box.getAttribute('aria-checked')).toBe('true')
+    expect(new FormData(form).get('enabled')).toBe('on')
+
+    fireEvent.click(screen.getByText('Enabled'))
+    expect(onCheckedChange).toHaveBeenCalledTimes(2)
+    expect(onCheckedChange).toHaveBeenLastCalledWith(false)
+    expect(box.getAttribute('aria-checked')).toBe('false')
+    expect(new FormData(form).has('enabled')).toBe(false)
+  })
+
   it('点击与 Space 切换，Enter 不切换（留给表单提交），不确定态报告 mixed', () => {
     const onCheckedChange = vi.fn()
     render(

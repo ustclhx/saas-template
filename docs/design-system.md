@@ -177,7 +177,7 @@ Command Menu、Dialog、AlertDialog、Toast、Sidebar、Card、Alert、Separator
 
 ### 4.1 替换原生控件
 
-存量的原生 `<select>`、`confirm()` 与 admin 私有的 `Textarea` / `NativeSelect` 按本节逐处替换；待替换位置以
+存量的原生 `<select>`、`confirm()` 与 admin 私有控件按本节逐处替换；待替换位置以
 `scripts/check-ui.allow.json` 的 `pendingReplacement` 为准（原生 select 在各功能目录，`window.confirm` 只剩
 `features/workspace/components.tsx` 两处）。样例：`apps/web/src/routes/admin/models.tsx`（Select 的各种变体）、
 `apps/web/src/routes/admin/credits.tsx`（AlertDialog、Textarea），对应 e2e 为 `apps/web/e2e/admin-models.spec.ts`、
@@ -383,6 +383,26 @@ admin 页面把 `Textarea` 的导入从 `features/admin/ui.tsx` 改为 `@saas/ui
     输出里，改为测试生成选项的纯函数，或移到 e2e。
 - **已知限制**（后续处理，替换时不用绕开）：触发器上的 `onBlur` 在打开弹层时就会触发（焦点移入列表），校验配在
   `onBlur` 上时会提前显示错误；语言切换替换后外层 `div` 与触发器各有一层边框，后续去掉外层边框。
+
+#### Checkbox
+
+用 `@saas/ui` 的 `Checkbox` 替换 `CheckboxField`。受控值保持 `checked={value}`，回调改为
+`onCheckedChange={setValue}`（参数是 boolean，不再读取 `event.target.checked`）。
+
+```tsx
+<Label htmlFor="registration-enabled" className="font-normal text-sm leading-normal">
+  <Checkbox id="registration-enabled" checked={enabled} onCheckedChange={setEnabled} />
+  {m.admin_registration_enabled()}
+</Label>
+```
+
+`Label` 的文字保持原可访问名称，`htmlFor` 与 Checkbox 的 `id` 一致；整行标签仍可点击。
+重复列表的 id 要包含记录标识。需要禁用时保留原 `disabled` / `fieldset disabled`。
+
+依赖 `FormData` 时，把 Checkbox 放在 `<form>` 内并保留 `name` / `value`（非受控用 `defaultChecked`）。
+Radix 会生成携带相同 `name` / `value` 的隐藏 checkbox：未勾选不提交，勾选且未指定 `value` 时提交 `"on"`；
+服务端原解析不变，不再手写隐藏 input。提交时从 state 读取的受控表单无需添加 `name`。
+e2e 用 `getByRole('checkbox', { name: '原标签文字', exact: true })` 勾选，并验证保存后的业务状态。
 
 #### AlertDialog（替换 `confirm()`）
 

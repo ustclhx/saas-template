@@ -48,7 +48,9 @@ async function makeAdmin(page: Page) {
 
 async function banForm(page: Page, reason: string, button: string) {
   await page.getByLabel('Reason', { exact: true }).fill(reason)
-  await page.getByLabel('I confirm this user status change').check()
+  await page
+    .getByRole('checkbox', { name: 'I confirm this user status change', exact: true })
+    .check()
   await page.getByRole('button', { name: button, exact: true }).click()
 }
 
@@ -88,7 +90,9 @@ test('用户封禁后旧会话结账立即被拒绝，解封与自封禁约束�
     ])
     await page.goto(`/admin/users/${admin.userId}`)
     await page.getByLabel('Reason', { exact: true }).fill('Self ban')
-    await page.getByLabel('I confirm this user status change').check()
+    await page
+      .getByRole('checkbox', { name: 'I confirm this user status change', exact: true })
+      .check()
     await expect(page.getByRole('button', { name: 'Ban user', exact: true })).toBeDisabled()
     await expect(page.getByRole('button', { name: 'Impersonate user' })).toBeDisabled()
     const direct = await page.request.post('/api/auth/admin/ban-user', {
@@ -258,7 +262,9 @@ test('空间详情展示积分、重叠订阅，并恢复原 owner 的访问', a
     await expect(page.locator('dl')).toContainText('Credit debt10')
     await expect(page.getByRole('heading', { name: 'Credit batches' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Recent credit ledger' })).toBeVisible()
-    await page.getByLabel('I confirm restoring this workspace').check()
+    await page
+      .getByRole('checkbox', { name: 'I confirm restoring this workspace', exact: true })
+      .check()
     await page.getByRole('button', { name: 'Restore workspace' }).click()
     await expect(
       page.getByText('Workspace restored. Original owners can access it again.'),
