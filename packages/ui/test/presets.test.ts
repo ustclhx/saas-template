@@ -193,6 +193,9 @@ function checks(vars: Vars, mode: 'light' | 'dark'): Check[] {
     text('Alert text-destructive/90 / card', alpha(destructive, 0.9), c('--card')),
     ui('焦点环 / background', c('--focus-ring'), page),
     ui('焦点环 / 主按钮', c('--focus-ring'), primary),
+    // Button link 变体：强调色作文字，页面与卡片上 ≥ 4.5:1
+    text('link 文字 / background', c('--primary-text'), page),
+    text('link 文字 / card', c('--primary-text'), c('--card')),
     // Input / Textarea：悬停底色上的占位文字
     text('占位文字 / 悬停的输入框', c('--muted-foreground'), onPage(c('--hover'))),
     // 输入框错误态边框 aria-invalid:border-destructive（页面与弹窗上；上游 /50 只有约 2.5:1）
@@ -211,7 +214,7 @@ function checks(vars: Vars, mode: 'light' | 'dark'): Check[] {
     ...(['--background', '--card', '--surface-5'] as const).map((surface) =>
       ui(
         `Switch 滑块 / 关闭轨道 on ${surface}`,
-        [1, 1, 1, 1],
+        c('--switch-thumb-off'),
         over(c('--control-border'), c(surface)),
       ),
     ),

@@ -101,7 +101,7 @@ function Metrics() {
       {Object.entries(data.overageByModel).length ? (
         <div className="overflow-x-auto rounded-md border">
           <table className="w-full text-left text-sm">
-            <thead className="bg-muted/50">
+            <thead className="bg-hover">
               <tr className="border-b">
                 <th className="h-10 px-3 font-medium text-muted-foreground">{m.admin_model()}</th>
                 <th className="h-10 px-3 font-medium text-muted-foreground">

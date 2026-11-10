@@ -52,7 +52,8 @@ export const buttonVariants = cva(
         ghost:
           'text-muted-foreground hover:text-foreground hover:before:bg-hover hover:before:ring-1 hover:before:ring-hover active:before:bg-active active:before:ring-0',
         // link 为模板原有变体，Fluid 无对应：不画底色层
-        link: 'text-primary underline-offset-4 before:hidden hover:underline',
+        // 文字色用 --primary-text（深色预设下实心主按钮色作文字不足 4.5:1）
+        link: 'text-primary-text underline-offset-4 before:hidden hover:underline',
       },
       // 尺寸阶梯：default 36px、compact 28px（Fluid）；sm 32px、lg 40px 为模板原有尺寸，保持兼容
       size: {

@@ -243,7 +243,9 @@ test('空间详情展示积分、重叠订阅，并恢复原 owner 的访问', a
     await expect(ownerPage.getByRole('heading', { name: 'Workspace not found' })).toBeVisible()
     await page.goto('/admin/workspaces')
     await page.getByLabel('Search workspaces').fill(workspaceId)
-    await page.getByLabel('Status', { exact: true }).selectOption('deleted')
+    // DataTable 筛选下拉为 @saas/ui Select（add-ui-design-system 4.2）
+    await page.getByRole('combobox', { name: 'Status', exact: true }).click()
+    await page.getByRole('option', { name: 'Deleted', exact: true }).click()
     await page.getByRole('button', { name: 'Apply', exact: true }).click()
     await page.getByRole('link', { name: 'Recoverable workspace' }).click()
     await expect(page.locator('strong').filter({ hasText: 'Overlapping period' })).toHaveCount(2)

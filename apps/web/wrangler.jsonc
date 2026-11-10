@@ -59,6 +59,8 @@
   "vars": {
     "SENTRY_ENVIRONMENT": "development",
     "PAYMENT_MODE": "test",
+    // 组件预览页 /dev/ui（openspec add-ui-design-system D6）：开发与 staging 开启，production 不设（发布门禁拦截）
+    "UI_PREVIEW": "true",
     "APP_URL": "http://localhost:3000",
     "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
     "R2_FILES_BUCKET": "files"
@@ -78,6 +80,7 @@
         "PLAUSIBLE_HOST": "https://stats.ganjiday.com",
         "AI_FAULT_INJECTION": "enabled",
         "PAYMENT_MODE": "test",
+        "UI_PREVIEW": "true",
         "APP_URL": "https://web-staging.saas-jobs.workers.dev",
         "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
         "AI_GATEWAY_ACCOUNT_ID": "170a06d37ad50396b19943eb6b77a21d",
@@ -114,7 +117,7 @@
       }
     },
     // add-cloud-production-neon 2.1：生产资源与 staging 一一对应，不复用任何 staging ID（production runbook §8.B）。
-    // 不设 PAYMENT_MODE（Q9 前支付关闭）与 AI_FAULT_INJECTION（生产禁止）；Turnstile 站点 saas-production 仅允许本项目的生产域名。
+    // 不设 PAYMENT_MODE（Q9 前支付关闭）、AI_FAULT_INJECTION（生产禁止）与 UI_PREVIEW（组件预览页生产 404）；Turnstile 站点 saas-production 仅允许本项目的生产域名。
     "production": {
       "name": "web-production",
       "observability": { "enabled": true, "head_sampling_rate": 1, "traces": { "enabled": false } },

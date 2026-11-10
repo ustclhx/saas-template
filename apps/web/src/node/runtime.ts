@@ -144,6 +144,7 @@ export async function createNodeWebProcess(
     PAYMENT_MODE: env.PAYMENT_MODE,
     SENTRY_ENVIRONMENT: env.SENTRY_ENVIRONMENT,
     AI_FAULT_INJECTION: env.AI_FAULT_INJECTION,
+    UI_PREVIEW: env.UI_PREVIEW,
     ...(env.STRIPE_SECRET_KEY === undefined ? {} : { STRIPE_SECRET_KEY: env.STRIPE_SECRET_KEY }),
     ...(env.STRIPE_WEBHOOK_SECRET === undefined
       ? {}

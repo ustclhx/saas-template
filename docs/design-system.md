@@ -74,7 +74,7 @@ grep -nE -- '^ *--[a-z0-9-]+:' apps/web/src/styles/brand.css
 | 类别 | 变量 | 工具类 | 用途 |
 |---|---|---|---|
 | 页面与容器 | `--background` `--foreground` `--card(-foreground)` `--popover(-foreground)` | `bg-background` `text-foreground` `bg-card` `bg-popover` | 页面底色取 `--surface-1`，卡片与弹层取 `--surface-3` |
-| 强调 | `--primary` `--primary-foreground` | `bg-primary` `text-primary-foreground` | 主按钮等实心强调；预设与品牌层改这里换色 |
+| 强调 | `--primary` `--primary-foreground` `--primary-text` | `bg-primary` `text-primary-foreground` `text-primary-text` | 主按钮等实心强调；预设与品牌层改这里换色。强调色作文字（链接）用 `--primary-text`，深色预设下为更亮的同色系以满足 4.5:1 |
 | 次级 | `--secondary(-foreground)` `--muted` `--muted-foreground` | `bg-secondary` `bg-muted` `text-muted-foreground` | 次要底色、说明文字（在 muted 与高层表面上满足 4.5:1） |
 | 较重强调底 | `--accent` `--accent-foreground` | `bg-accent` | Fluid 原值，较重；普通悬停与当前项改用 `bg-hover` / `bg-active` |
 | 状态 | `--destructive` `--destructive-light` `--success` | `text-destructive` `bg-destructive-light` `text-success` | 危险与成功；作文字时满足 4.5:1 |
@@ -85,7 +85,8 @@ grep -nE -- '^ *--[a-z0-9-]+:' apps/web/src/styles/brand.css
 | 阴影 | `--shadow-1` … `--shadow-8` | `shadow-surface-1` … `shadow-surface-8` | 与表面层级配对使用 |
 | 圆角 | `--radius` | `rounded-sm/md/lg/xl` | 基准值；控件 `rounded-lg`、容器 `rounded-xl`；按钮、选择器与弹窗的形状另由 `ui.shape` 控制 |
 | 字号阶梯 | `--fs-*` / `--lh-*`（display、title、subtitle、body、caption、micro，各含 `-compact`） | `text-display` `text-title` `text-subtitle` `text-body` `text-caption` `text-micro` | 页面只用这六个角色，不写任意字号 |
-| 层级 | `--z-sticky` `--z-overlay` `--z-modal` `--z-popover` `--z-tooltip` | — | 离开组件流的浮层只用这些值 |
+| 层级 | `--z-sticky` `--z-overlay` `--z-modal` `--z-popover` `--z-tooltip` `--z-toast` | — | 离开组件流的浮层只用这些值；Toast 在模态与提示之上 |
+| 控件 | `--control-border` `--field-border` `--switch-thumb-on` `--switch-thumb-off` | — | 复选框边框与开关关闭轨道、输入类边框、开关滑块 |
 | 字体 | `--font-sans` | `font-sans` | 自托管 Inter 可变字体（opsz），中文回退系统字体 |
 
 新增 token 先改基线（模板）或品牌层（项目），再用工具类引用；页面中不出现原始颜色值。
@@ -134,13 +135,24 @@ grep -nE '^export' packages/ui/src/index.ts
   | `AlertDialogAction` / `AlertDialogCancel` | `children` | 按钮文字；标题与说明同样由调用方传入 |
   | `Switch` | `label` 或 `aria-label` | 不显示标签时传 `aria-label` |
   | `Tooltip` | `content` | 提示文字 |
-  | `ThemeToggle`、`DataTable` | `labels` | 由调用方传入 |
+  | `ThemeToggle` | `labels` | 由调用方传入 |
+  | `DataTable` | `labels` | 全部文案必填（4.2 去掉英文默认值）；`apps/web` 用 `dataTableLabels()`（`features/i18n/table-labels.ts`）或后台的 `adminTableLabels()` |
+  | `Tabs` / `TabsItem` | `aria-label` / `label` | `label` 在仅图标（`activeLabel`）时兼作可读名称；`Tabs` 的 `aria-label` 建议传 |
+  | `DropdownSearch` / `DropdownEmpty` | `placeholder` / `children` | 搜索框占位文字（兼作可读名称）与无结果文字；`MenuItem`、`DropdownSubTrigger` 的 `label` 必填 |
+  | `ComboboxInput` / `ComboboxChips` | `placeholder`；`clearable` 时 `clearLabel` | 占位文字与清除按钮名称 |
+  | `ComboboxChips` | `chipsLabel`、`removeLabel(label)` | 已选标签组名称与每个移除按钮名称 |
+  | `Combobox` / `ComboboxEmpty` | `onCreate` 时 `createLabel(query)` / `children` | 创建行文字与无匹配文字 |
+  | `CommandMenu` | `labels`（`placeholder`、`suggestions`、`tabs`、`selectHint`、`tabsHint`、`closeHint`） | 搜索框占位（兼作可读名称）、建议分组标题、标签栏名称与底部按键提示；键帽字形保留 |
+  | `CommandMenuDialog` | `title`（`description` 可选） | 对话框的可读名称 |
+  | `Toaster` | `labels`（`region`、`announcement`、`close`） | 通知区域名称（可含 `{hotkey}`）、读屏播报前缀、关闭按钮名称；`toast()` 的内容与 `action.label` 由调用方传入 |
+  | `SidebarProvider` | `labels`（`title`、`expand`、`collapse`、`rail`、`railResize`、`railCollapse`；开启 peek 时 `peek`） | 移动抽屉名称、触发按钮与拖拽条的名称和提示；`SidebarMenuButton` 在 `status="unread"` 时必传 `unreadLabel` |
 
   新组件引入新的可读文字时，同步更新本表与 `packages/ui/UPSTREAM.md`。
 - **浮层层级**：自定义吸顶、遮罩与弹层用 `--z-*` 变量，不写任意 `z-[…]`。
 
-已接入：Button、Input、Textarea、Select、Checkbox、Switch、Badge、Tooltip、Dialog、AlertDialog、Card、Alert、
-Separator、Label、DataTable、Form。将由 tasks 4.2 接入：Tabs、Dropdown、Sidebar、Toast、Combobox、Command Menu。缺少的组件先在 `packages/ui` 补齐（模板）或在 `packages/ui/src/project/` 补齐（项目），
+已接入：Button、Input、Textarea、Select、Combobox、Checkbox、Switch、Badge、Tooltip、Tabs、Dropdown（菜单）、
+Command Menu、Dialog、AlertDialog、Toast、Sidebar、Card、Alert、Separator、Label、ScrollArea、DataTable、Form。
+`Toaster` 含动效库（约 44 KB gzip），只在需要的页面挂载，不放进根布局；以后全站使用时按需动态加载。缺少的组件先在 `packages/ui` 补齐（模板）或在 `packages/ui/src/project/` 补齐（项目），
 再实现页面，不在页面里临时写一个。
 
 ## 5. 动效与减少动态效果
@@ -168,8 +180,12 @@ Separator、Label、DataTable、Form。将由 tasks 4.2 接入：Tabs、Dropdown
 
 ## 7. 组件预览页
 
-`/dev/ui` 展示全部组件与页面模式的变体，可切换预设、明暗、shape、density；只在开发与 staging（`UI_PREVIEW=true`）
-可访问，生产返回 404 且不进 sitemap。将由 tasks 4.3 提供。
+`/dev/ui`（`apps/web/src/routes/dev/ui.tsx`，页面在 `features/ui-preview/`）按组件分节展示 `@saas/ui` 全部共享组件的
+变体与状态，顶部可运行时切换预设、明暗、shape、density；示例数据为中性领域，文案在
+`messages/<locale>/ui-preview.json`。路由的 `beforeLoad` 经 server function 在服务端读取非密钥变量 `UI_PREVIEW`，
+只有 `true` 时开放：`wrangler.jsonc` 的顶层（开发）与 `env.staging` 设为 `true`，`env.production` 不设
+（`scripts/production/check-wrangler-envs.mjs` 拦截）；自托管未传入该变量即关闭。该页不在预渲染范围与 sitemap 中，
+并输出 `noindex`。新增组件或变体时同步在预览页补一节。
 
 ## 8. 设计关卡
 
