@@ -17,6 +17,7 @@ describe('defineTemplateConfig', () => {
     expect(config).toEqual({ app, ...templateConfigDefaults })
     expect(config.billing.enabled).toBe(true)
     expect(config.credits.enabled).toBe(true)
+    expect(config.credits.dailyEnabled).toBe(false)
     expect(config.marketing.enabled).toBe(true)
     expect(config.i18n.enabled).toBe(true)
     expect(config.features.analytics).toBe('plausible')
@@ -65,6 +66,13 @@ describe('defineTemplateConfig', () => {
     expect(defineTemplateConfig({ app }).auth.requireEmailVerification).toBe(false)
     const strict = defineTemplateConfig({ app, auth: { requireEmailVerification: true } })
     expect(strict.auth).toMatchObject({ requireEmailVerification: true, emailPassword: true })
+  })
+
+  it('enables daily grants explicitly without changing the credits module default', () => {
+    expect(defineTemplateConfig({ app, credits: { dailyEnabled: true } }).credits).toEqual({
+      enabled: true,
+      dailyEnabled: true,
+    })
   })
 
   it('replaces arrays instead of merging them', () => {

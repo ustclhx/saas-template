@@ -509,5 +509,6 @@ export async function release(
   await withCreditsTransaction(db, tx, (tx) => settle(tx, input, undefined))
 }
 
+export * from './daily.ts'
 export * from './lifecycle.ts'
 export * from './queries.ts'

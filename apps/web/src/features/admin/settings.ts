@@ -16,20 +16,44 @@ export const RUNTIME_SETTING_KEYS = [
   'site.announcement',
   'billing.signupBonusDomainBlacklist',
   'ai.freeFailures',
+  'credits.dailyAmount',
+  'credits.dailyMaxDaysPerMonth',
+  'credits.dailyExpiryDays',
+  'credits.dailyRequireVerifiedEmail',
 ] as const satisfies readonly SettingKey[]
 
 export async function readRuntimeSettings(db: Database) {
   // 后台表单直接读事实来源，避免用旧缓存覆盖刚保存的设置。
   const ctx = { store: dbSettingStore(db) }
-  const [signupEnabled, announcement, signupBonusDomainBlacklist, freeFailures] = await Promise.all(
-    [
-      getSetting(ctx, 'auth.signupEnabled'),
-      getSetting(ctx, 'site.announcement'),
-      getSetting(ctx, 'billing.signupBonusDomainBlacklist'),
-      getSetting(ctx, 'ai.freeFailures'),
-    ],
-  )
-  return { signupEnabled, announcement, signupBonusDomainBlacklist, freeFailures }
+  const [
+    signupEnabled,
+    announcement,
+    signupBonusDomainBlacklist,
+    freeFailures,
+    dailyAmount,
+    dailyMaxDaysPerMonth,
+    dailyExpiryDays,
+    dailyRequireVerifiedEmail,
+  ] = await Promise.all([
+    getSetting(ctx, 'auth.signupEnabled'),
+    getSetting(ctx, 'site.announcement'),
+    getSetting(ctx, 'billing.signupBonusDomainBlacklist'),
+    getSetting(ctx, 'ai.freeFailures'),
+    getSetting(ctx, 'credits.dailyAmount'),
+    getSetting(ctx, 'credits.dailyMaxDaysPerMonth'),
+    getSetting(ctx, 'credits.dailyExpiryDays'),
+    getSetting(ctx, 'credits.dailyRequireVerifiedEmail'),
+  ])
+  return {
+    signupEnabled,
+    announcement,
+    signupBonusDomainBlacklist,
+    freeFailures,
+    dailyAmount,
+    dailyMaxDaysPerMonth,
+    dailyExpiryDays,
+    dailyRequireVerifiedEmail,
+  }
 }
 
 /** 业务写入与前后值审计同事务；锁覆盖缺失行，首次保存也不会丢失并发修改的旧值。 */
@@ -42,6 +66,10 @@ export async function writeRuntimeSettings(
     'site.announcement': input.announcement,
     'billing.signupBonusDomainBlacklist': input.signupBonusDomainBlacklist,
     'ai.freeFailures': input.freeFailures,
+    'credits.dailyAmount': input.dailyAmount,
+    'credits.dailyMaxDaysPerMonth': input.dailyMaxDaysPerMonth,
+    'credits.dailyExpiryDays': input.dailyExpiryDays,
+    'credits.dailyRequireVerifiedEmail': input.dailyRequireVerifiedEmail,
   }
   for (const key of RUNTIME_SETTING_KEYS) {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`setting:${key}`}, 0))`)

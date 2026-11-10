@@ -72,6 +72,8 @@ jobs:
       - run: pnpm check
       - run: pnpm test:create-project
       - run: pnpm typecheck
+      # 每日领取提示的组件回归在 Chromium 中验证真实 effect 和重渲染。
+      - run: pnpm --filter @saas/web exec playwright install --with-deps chromium
       - run: pnpm test
       # turbo run build：没有 build 脚本的包会被跳过
       - run: pnpm build

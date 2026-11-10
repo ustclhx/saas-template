@@ -7,8 +7,8 @@
 
 ## 2. 依赖边界与规范检查
 
-- [ ] 2.1 扩展 `scripts/check-deps.rules.json` 与 `check-deps.mjs`：交互原语/动效/图标库仅 `@saas/ui` 可依赖，`@radix-ui/*` 全局禁止；`check-deps.test.mjs` 覆盖 web 直接导入失败与 ui 导入通过
-- [ ] 2.2 新增 `scripts/check-ui.mjs`、`check-ui.allow.json` 与测试，检查颜色字面量、任意值 className、`<select>`、`confirm`/`alert`；登记 OG 图与第三方品牌图标例外，其余现存违例暂登记为待替换（第 5 组清零）；并入 `pnpm check`，验证命令在当前主干通过
+- [x] 2.1 扩展 `scripts/check-deps.rules.json` 与 `check-deps.mjs`：交互原语/动效/图标库仅 `@saas/ui` 可依赖，`@radix-ui/*` 全局禁止；`check-deps.test.mjs` 覆盖 web 直接导入失败与 ui 导入通过
+- [x] 2.2 新增 `scripts/check-ui.mjs`、`check-ui.allow.json` 与测试，检查颜色字面量、任意值 className、`<select>`、`confirm`/`alert`；登记 OG 图与第三方品牌图标例外，其余现存违例暂登记为待替换（第 5 组清零）；并入 `pnpm check`，验证命令在当前主干通过
 
 ## 3. token、预设与品牌层
 

@@ -1,10 +1,16 @@
 import type { TemplateConfig } from '@saas/config'
 import { CreditsError, grant, lockWorkspaceCredits } from '@saas/credits'
 import { creditGrant, type Database, member, organization, setting, user } from '@saas/db'
-import { AppError, normalizeSignupEmail } from '@saas/shared'
+import {
+  AppError,
+  isSignupEmailBlacklisted,
+  normalizeSignupEmail,
+  parseSignupBonusDomainBlacklist,
+  SIGNUP_BONUS_DOMAIN_BLACKLIST_KEY,
+} from '@saas/shared'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 
-export const SIGNUP_BONUS_DOMAIN_BLACKLIST_KEY = 'billing.signupBonusDomainBlacklist'
+export { SIGNUP_BONUS_DOMAIN_BLACKLIST_KEY }
 
 export type SignupBonusResult =
   | { status: 'granted'; credits: number }
@@ -12,18 +18,6 @@ export type SignupBonusResult =
 
 // 增长名单与删号清理共用同一规范化规则，实现放在 shared，避免 auth 反向依赖 billing。
 export { normalizeSignupEmail }
-
-function blacklistDomains(value: unknown): string[] {
-  if (!Array.isArray(value)) throw new Error('Invalid signup bonus domain blacklist')
-  return value.map((entry: unknown) => {
-    if (typeof entry !== 'string') throw new Error('Invalid signup bonus domain blacklist')
-    const domain = entry.trim().toLowerCase().replace(/\.$/, '')
-    if (!/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(domain)) {
-      throw new Error('Invalid signup bonus domain blacklist')
-    }
-    return domain
-  })
-}
 
 /** No session/cookie email or verified flag is accepted. The database owns eligibility. */
 export async function grantSignupBonus(input: {
@@ -63,17 +57,8 @@ export async function grantSignupBonus(input: {
       .select({ value: setting.value })
       .from(setting)
       .where(eq(setting.key, SIGNUP_BONUS_DOMAIN_BLACKLIST_KEY))
-    const domains = persisted ? blacklistDomains(persisted.value) : []
-    const emailDomains = [
-      account.email.trim().toLowerCase().split('@')[1],
-      normalized.split('@')[1],
-    ]
-    if (
-      domains.some((blocked) =>
-        emailDomains.some((domain) => domain === blocked || domain?.endsWith(`.${blocked}`)),
-      )
-    )
-      return { status: 'blacklisted' }
+    const domains = persisted ? parseSignupBonusDomainBlacklist(persisted.value) : []
+    if (isSignupEmailBlacklisted(account.email, domains)) return { status: 'blacklisted' }
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(normalized))
     const sourceRef = Array.from(new Uint8Array(digest), (byte) =>
       byte.toString(16).padStart(2, '0'),

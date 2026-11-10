@@ -36,7 +36,7 @@ export default defineTemplateConfig({
     },
     refundWindowDays: 30, // 可申请退款的付款时间范围；退款需人工审核，默认不主动退
   },
-  credits: { enabled: true },
+  credits: { enabled: true, dailyEnabled: false },
   marketing: { enabled: true },
   ai: {
     text: {
