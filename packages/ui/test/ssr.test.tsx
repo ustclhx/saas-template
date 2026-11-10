@@ -65,7 +65,11 @@ describe('SSR', () => {
       /<div data-slot="card-title" class="[^"]*font-semibold[^"]*"><h2>Title<\/h2>/,
     )
     expect(html).toMatch(/<label[^>]*class="[^"]*text-sm[^"]*"[^>]*for="email"/)
-    expect(html).toMatch(/<input[^>]*type="email"[^>]*class="[^"]*border-input/)
+    // Input 与 Select 触发器同一套边框、高度与焦点环（Fluid input）
+    expect(html).toMatch(/<input[^>]*type="email"[^>]*class="[^"]*border-field-border[^"]*h-9/)
+    expect(html).toMatch(
+      /<input[^>]*class="[^"]*focus-visible:outline-2 focus-visible:outline-offset-2/,
+    )
     expect(html).toMatch(/data-slot="separator"[^>]*class="[^"]*bg-border/)
     expect(html).toMatch(/<div data-slot="alert" role="alert" class="[^"]*text-destructive/)
   })
