@@ -39,14 +39,12 @@ grep -n '<页面或路由>' "$INDEX"
 ```sh
 test -f .template-base.json && echo 衍生项目 || echo 模板仓库
 grep -nE '^export' packages/ui/src/index.ts
-test -f packages/ui/src/project/index.ts && grep -nE '^export' packages/ui/src/project/index.ts || echo '无 project 导出入口'
+grep -nE '^export' packages/ui/src/project/index.ts
 grep -nE -- '^ *--[a-z0-9-]+:' apps/web/src/styles/brand.css
 ls docs/design 2>/dev/null
 grep -n 'ui:' template.config.ts
 ```
 
-- `packages/ui/src/project/index.ts` 不存在时，说明当前模板版本尚未提供 `@saas/ui/project`：停止并报告，
-  不自行添加导出入口（将由 tasks 6.1 提供）。
 - **模板仓库**：基线刻意保持中性（Fluid 默认视觉 + `ui.preset`），**不向使用者索取视觉参考**，设计稿只用现有 token 与组件。
   镜像是否落后（`<同步提交>` 取 `docs/design-system.md` §1 的「最近同步提交」，退出码 0 表示镜像不落后）：
 
@@ -73,7 +71,7 @@ grep -n 'ui:' template.config.ts
 4. **对比度**：正文与背景 ≥ 4.5:1；焦点环与背景、与主按钮 ≥ 3:1；浅色与深色都要满足。
 5. **使用者确认后写入项目自有文件**：
    - `apps/web/src/styles/brand.css`：只写变量，浅色与 `.dark` 成对，`.dark` 规则在 `:root` 之后；
-   - `docs/design/visual-system.md`：参考来源（链接或截图文件）、借鉴点、变量取值、多站点表、镜像链接与同步提交；
+   - `docs/design/visual-system.md`（目录用途见生成器创建的 `docs/design/README.md`）：参考来源（链接或截图文件）、借鉴点、变量取值、多站点表、镜像链接与同步提交；
    - 参考截图放 `docs/design/references/`。
    不修改 `packages/ui/src/styles/` 与 `packages/ui/src/components/`（模板拥有）。
 
@@ -124,7 +122,7 @@ grep -n 'ui:' template.config.ts
 
 - 只从 `@saas/ui` 与 `@saas/ui/project` 导入组件；不直接导入 `radix-ui`、`motion`、`lucide-react`。
 - 缺组件先补组件：模板仓库在 `packages/ui/src/components` 按 `packages/ui/UPSTREAM.md` 接入；
-  衍生项目在 `packages/ui/src/project/` 新增并经 `@saas/ui/project` 导出。项目需要修改模板组件时，
+  衍生项目在 `packages/ui/src/project/` 新增并从 `packages/ui/src/project/index.ts` 导出，页面经 `@saas/ui/project` 使用。项目需要修改模板组件时，
   按 `docs/design-system.md` §9.2 的顺序处理（token → ui 配置 → project 包装 → 复制到 project 并在 forks 登记）。
 - 不写死颜色、任意值尺寸、原生 `<select>`、`confirm()` / `alert()`；组件默认英文文案由应用层传入 `m.*()`。
 - 设计稿中的各状态都要实现；在 390px 宽无横向滚动，浅色与深色与副本一致。
@@ -156,7 +154,7 @@ pnpm --filter "$WEB_PACKAGE" exec playwright screenshot --viewport-size=1440,900
 | `pnpm check:ui` 报颜色字面量或任意值 | 改用 token 工具类；确需例外（插画、第三方品牌图标）时在项目的 `scripts/check-ui.allow.local.json` 逐文件登记原因 |
 | `pnpm check:deps` 报页面导入了 `radix-ui` / `motion` | 把交互封装进 `packages/ui`（模板）或 `packages/ui/src/project/`（项目）后经导出入口使用 |
 | 深色下文字看不清 | brand.css 只覆盖了 `:root`；在 `.dark` 中补齐对应变量并重新核对对比度 |
-| 模板组件指纹校验失败 | 项目改了模板组件；还原后按 `docs/design-system.md` §9.2 的定制顺序处理 |
+| 模板组件指纹校验失败 | 衍生项目：改了模板组件，还原后按 `docs/design-system.md` §9.2 的定制顺序处理；模板仓库：改组件后运行 `pnpm ui:lock` 并提交 `packages/ui/components.lock.json` |
 | 截图全白或停在登录页 | 页面需要会话或数据；用 e2e 夹具登录、本地数据库种子数据后重截 |
 
 交付：判断结论、视觉方向文件（如有）、画布链接、副本与索引行、变更提议与使用者原话、截图对照结果、未验收项。

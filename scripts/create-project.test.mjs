@@ -304,6 +304,7 @@ test('初始化项目设计记录，排除模板原型并保留模板组件与�
     'visual-system.md',
     'references/',
     'prototypes/',
+    'prototypes/README.md',
     'forks.md',
     '@acme/ui/project',
     'scripts/check-ui.allow.local.json',

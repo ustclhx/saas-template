@@ -100,14 +100,12 @@ grep -nE -- '^ *--[a-z0-9-]+:' apps/web/src/styles/brand.css
 | `shape` | `sharp` `rounded`（默认）`pill` | 按钮、选择器与弹窗的圆角形状，经 `UiRoot` 下发 |
 | `density` | `default`（默认，控件 36px）`compact`（28px） | 控件尺寸与字号阶梯 |
 
-省略的键取默认值，未知取值在构建期报错。每个预设同时定义浅色与 `.dark`，对比度由
+省略的键取默认值，未知取值在构建期报错。新建项目时可用生成器参数选预设，写入 `template.config.ts` 与
+`.template-base.json`：`pnpm create-project --name acme --domain acme.example --theme violet`（可选值见 `pnpm create-project --help`）。每个预设同时定义浅色与 `.dark`，对比度由
 `packages/ui/test/presets.test.ts` 断言：正文 ≥ 4.5:1，焦点环与背景、与主按钮 ≥ 3:1。
 明暗主题由 `themeInitScript` 在首屏前设置 `<html class="dark">`，`ThemeToggle` 提供浅色、深色与跟随系统。
 
 ## 4. 组件用法
-
-`packages/ui/src/project/index.ts` 不存在时说明当前模板版本尚未提供 `@saas/ui/project`（将由 tasks 6.1 提供）：
-停止并报告，不自行添加导出入口。
 
 页面只从 `@saas/ui`（模板组件）与 `@saas/ui/project`（项目组件）导入，不直接导入 Radix、motion、lucide-react
 等底层库（`pnpm check:deps` 会失败）。当前可用的公开组件以 `packages/ui/src/index.ts` 为准：
@@ -189,7 +187,7 @@ Combobox、Command Menu。缺少的组件先在 `packages/ui` 补齐（模板）
 ### 8.2 设计稿、确认与原型索引
 
 三个名字各管一件事：`docs/design-system.md`（本文，模板设计规范）、`docs/design-system/`（模板自己的设计稿副本，
-生成器不复制到衍生项目，将由 tasks 6.3 提供排除规则）、`docs/design/`（衍生项目自有的视觉规范、参考、原型副本与 forks 登记）。
+生成器不复制到衍生项目）、`docs/design/`（衍生项目自有的视觉规范、参考、原型副本与 forks 登记）。
 
 - **画布**：claude.ai 的 Design Artifact 类型。状态矩阵：正常态做桌面 / 移动 × 浅色 / 深色 4 块，空、加载、错误各 1 块
   （移动 + 浅色）；画布支持 tweak 切换时可替代单独画板。套用现有页面模式的新页面可只画正常态与一个异常态。
@@ -229,8 +227,13 @@ Combobox、Command Menu。缺少的组件先在 `packages/ui` 补齐（模板）
 | 组件指纹清单 `packages/ui/components.lock.json` | |
 | 预览页、技能、本文、`template.config.ts` 中 `ui` 段的结构 | |
 
-`packages/ui/src/project/` 与 `@saas/ui/project` 导出将由 tasks 6.1 提供；`components.lock.json` 校验将由 tasks 6.2 提供；
-生成器创建空的项目例外清单与 `docs/design/` 说明将由 tasks 6.3 提供；根布局的站点/主题属性扩展点将由 tasks 6.4 提供。
+- `packages/ui/src/project/index.ts` 是项目组件入口，模板只初始化一次（`export {}`），经 `@saas/ui/project` 导出；
+  该目录同样受 `pnpm check:ui` 与 `pnpm check:deps` 约束。
+- `packages/ui/components.lock.json` 记录模板组件文件的内容哈希。模板修改组件后运行 `pnpm ui:lock` 重新生成并提交；
+  衍生项目（存在 `.template-base.json`）中 `pnpm check:ui` 对比哈希，不一致即失败并提示下文的定制顺序。
+- 生成器在副本中创建空的 `scripts/check-ui.allow.local.json` 与 `docs/design/README.md`（说明本目录各文件的用途），
+  并且不复制 `docs/design-system/prototypes/`。
+- 根布局的站点/主题属性扩展点将由 tasks 6.4 提供。
 
 ### 9.2 定制顺序
 
@@ -241,7 +244,8 @@ Combobox、Command Menu。缺少的组件先在 `packages/ui` 补齐（模板）
 2. **ui 配置**：调整 `template.config.ts` 的 `ui.preset` / `shape` / `density`。
 3. **project 包装**：在 `packages/ui/src/project/` 写组合或包装组件，经 `@saas/ui/project` 导出。
 4. **复制到 project 并登记**：把模板组件复制到 `packages/ui/src/project/` 后修改，并在 `docs/design/forks.md`
-   登记来源文件、复制时的模板版本与原因；同步模板后对照上游改动手动合并。
+   登记来源文件、复制时的模板版本与原因；同步模板后对照上游改动手动合并。复制的组件仍受 UI 规范检查，
+   需保留上游的任意值或颜色字面量时，在 `scripts/check-ui.allow.local.json` 按文件登记规则与原因，只登记 forks.md 不够。
 
 项目中写出的通用组件按惯例回流模板；模板发布后，项目同步并删除自己的副本。
 
