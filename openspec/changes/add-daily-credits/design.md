@@ -34,7 +34,7 @@ App 的 getWorkspacePage 在真实会话读取后调用独立服务端 daily 模
 
 ### 指标
 
-复用现有 metrics 汇总，从 daily 来源 grant 账本按 UTC 日计算 dailyGrantCount 与 dailyGrantCredits，写入 metrics_daily 并在既有后台指标展示。仅已提交账本参与汇总，重试和缓存命中不重复统计，沿用现有调度，无额外 Cron。
+复用现有 metrics 汇总，从 daily 来源 grant 账本按 UTC 日计算 dailyGrantCount 与 dailyGrantCredits，写入 metrics_daily 并在既有后台指标展示。总积分列使用 bigint，避免多笔合法 int4 积分发放的汇总溢出。仅已提交账本参与汇总，重试和缓存命中不重复统计，沿用现有调度，无额外 Cron。
 
 ## Risks / Trade-offs
 

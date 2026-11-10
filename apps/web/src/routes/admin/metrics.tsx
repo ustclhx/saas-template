@@ -71,6 +71,8 @@ function Metrics() {
           [m.admin_paid_workspaces(), data.latest?.paidWorkspaces ?? '—'],
           [m.admin_paid_conversion(), percent(data.paidConversion)],
           [m.admin_user_credits_consumed(), data.creditsConsumed],
+          [m.admin_daily_grant_count(), data.dailyGrantCount],
+          [m.admin_daily_grant_credits(), data.dailyGrantCredits],
           [m.admin_platform_overage_absorbed(), data.overageAbsorbed],
           [
             m.admin_text_success_rate(),

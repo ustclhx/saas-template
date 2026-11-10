@@ -1,4 +1,9 @@
-export { normalizeSignupEmail } from './email.ts'
+export {
+  isSignupEmailBlacklisted,
+  normalizeSignupEmail,
+  parseSignupBonusDomainBlacklist,
+  SIGNUP_BONUS_DOMAIN_BLACKLIST_KEY,
+} from './email.ts'
 export {
   AppError,
   type ErrorBody,

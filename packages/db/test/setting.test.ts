@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers'
 import { newId } from '@saas/shared'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { createDb, dbSettingStore, getSetting, setting } from '../src/index.ts'
 
@@ -50,5 +50,25 @@ describe('setting 表（Hyperdrive → 本地 Postgres）', () => {
       await db.delete(setting).where(eq(setting.key, key))
     }
     expect(await getSetting({ store }, key)).toBe(true)
+  })
+
+  it('保留 JSON 字符串类型，拒绝将字符串 true 当成邮箱验证开关', async () => {
+    const db = open()
+    const key = 'credits.dailyRequireVerifiedEmail'
+    const [original] = await db
+      .select({ value: sql<unknown>`${setting.value}` })
+      .from(setting)
+      .where(eq(setting.key, key))
+    try {
+      await db
+        .insert(setting)
+        .values({ key, value: 'true' })
+        .onConflictDoUpdate({ target: setting.key, set: { value: 'true' } })
+      await expect(getSetting({ store: dbSettingStore(db) }, key)).rejects.toThrow(RangeError)
+    } finally {
+      if (original)
+        await db.update(setting).set({ value: original.value }).where(eq(setting.key, key))
+      else await db.delete(setting).where(eq(setting.key, key))
+    }
   })
 })
