@@ -31,6 +31,21 @@
 - 内部滚动容器（弹层列表、ScrollArea 等）使用细滚动条；页面根滚动条保持系统默认。
 - 选中文字使用强调色淡底。
 
+## 组件补齐（tasks 4.1、4.4–4.6）
+
+- 新增组件：AlertDialog（确认对话框）、Textarea、Checkbox、Switch、Badge、Tooltip，均从 `@saas/ui` 导入。
+  项目里自写的同类组件可逐步替换（admin 私有 Textarea / CheckboxField 由 tasks 5.x 替换）。
+- Input 外观：边框由 `--input` 改为 `--border`（与 Select 触发器一致），去掉阴影与深色半透明底，悬停显示浅灰底；
+  聚焦时边框加深并显示 2px 强调色描边加 2px 间隙（原为 3px 半透明 ring）；字号沿用正文 14px、触屏 16px。
+  `size` 属性改为尺寸阶梯（`'default' | 'compact'`），不再是原生字符宽度；`type="file"` / `"number"` 外观不变。
+- 类型变化：`DialogContent` 显示关闭按钮时必须传 `closeLabel`，`SelectTrigger` 必须传 `placeholder`
+  （原默认英文 "Close" / "Select…"）。项目调用处传 `m.*()` 文案；不显示关闭按钮时传 `showCloseButton={false}`。
+- 悬停与当前项：admin 侧栏悬停 `bg-hover`、当前项 `bg-active`，docs 搜索结果与 DataTable 行悬停 `bg-hover`
+  （原 `bg-accent` / `bg-muted/30`）。`--accent` 保持 Fluid 原值，作为较重的强调底（灰色 Badge 使用）。
+- 新增变量：`--control-border`（复选框边框、开关关闭轨道，对背景 ≥ 3:1）、`--switch-thumb-on`（开启态开关滑块，
+  深色的 blue / violet / green 预设改为深色）、`--badge-*` 色板。项目在 brand.css 改强调色或前景色后，
+  `pnpm --filter @saas/ui test` 的对比度用例只覆盖模板预设，需自行确认开关滑块与轨道 ≥ 3:1。
+
 ## 主题预设
 
 `ui.preset` 可选 neutral、blue、violet、green，只换强调色与焦点环，不改圆角；圆角由 `ui.shape`

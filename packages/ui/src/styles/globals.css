@@ -110,6 +110,32 @@
     --focus-ring: var(--fluid-accent);
     /* shadcn 组件的焦点环同样取强调色，与 Fluid 组件一致 */
     --ring: var(--focus-ring);
+    /* 模板新增：未选中的复选框边框与关闭态开关轨道。它们是控件唯一的边界与状态标识，
+       需与页面及弹窗表面 ≥ 3:1（WCAG 1.4.11）；上游用 --border / --accent，只有约 1.2–1.4:1 */
+    --control-border: color-mix(in oklab, var(--foreground) 52%, transparent);
+    /* 模板新增：开启态 Switch 的滑块色（上游固定白色）。浅色强调色上白色即可；预设的深色强调色较浅，
+       白色滑块不足 3:1，由预设在 .dark 中改为深色 */
+    --switch-thumb-on: #ffffff;
+
+    /* ── Badge 色板（Fluid badge：Tailwind 500 色阶，灰色取 400）。文字始终是正文色，色值只用于
+       15% 淡底与圆点，浅色与深色共用 ── */
+    --badge-gray: #a3a3a3;
+    --badge-red: #ef4444;
+    --badge-orange: #f97316;
+    --badge-amber: #f59e0b;
+    --badge-yellow: #eab308;
+    --badge-lime: #84cc16;
+    --badge-green: #22c55e;
+    --badge-emerald: #10b981;
+    --badge-teal: #14b8a6;
+    --badge-cyan: #06b6d4;
+    --badge-blue: #3b82f6;
+    --badge-indigo: #6366f1;
+    --badge-violet: #8b5cf6;
+    --badge-purple: #a855f7;
+    --badge-fuchsia: #d946ef;
+    --badge-pink: #ec4899;
+    --badge-rose: #f43f5e;
 
     /* ── 层级：离开组件的浮层只用这些值 ── */
     --z-sticky: 30;
@@ -258,6 +284,7 @@
   --color-tint: var(--tint);
   --color-tint-hover: var(--tint-hover);
   --color-fluid-accent: var(--fluid-accent);
+  --color-control-border: var(--control-border);
 
   --color-surface-1: var(--surface-1);
   --color-surface-2: var(--surface-2);

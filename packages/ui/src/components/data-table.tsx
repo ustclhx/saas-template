@@ -169,7 +169,7 @@ export function DataTable<TRow extends RowData>(props: DataTableProps<TRow>) {
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={row.id} className="border-b last:border-0 hover:bg-muted/30">
+                <tr key={row.id} className="border-b last:border-0 hover:bg-hover">
                   {row.getAllCells().map((cell) => (
                     <td
                       key={cell.id}
