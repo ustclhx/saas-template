@@ -19,7 +19,13 @@ test('真实副本覆盖 Cloudflare 默认、selfhost 默认和 selfhost 全关�
   let selfhostSource
   for (const scenario of [
     { id: 'cf', label: 'Cloudflare 默认', locale: 'en' },
-    { id: 'selfhost', label: 'selfhost 默认', target: 'selfhost', locale: 'zh' },
+    {
+      id: 'selfhost',
+      label: 'selfhost 默认（blue 主题）',
+      target: 'selfhost',
+      locale: 'zh',
+      theme: 'blue',
+    },
     {
       id: 'minimal',
       label: 'selfhost 全关，从已生成副本再次生成',
@@ -108,6 +114,7 @@ test('真实副本覆盖 Cloudflare 默认、selfhost 默认和 selfhost 全关�
         oauth: ['google', 'github'],
         'support-email': `support@${name}.example`,
         target: scenario.target ?? 'cloudflare',
+        theme: scenario.theme ?? 'neutral',
         turnstile: true,
       })
       const journal = JSON.parse(

@@ -8,6 +8,7 @@
   ],
   "exports": {
     ".": "./src/index.ts",
+    "./project": "./src/project/index.ts",
     "./globals.css": "./src/styles/globals.css",
     "./fonts": "./src/fonts.ts"
   },

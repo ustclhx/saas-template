@@ -8,26 +8,14 @@ import { createVirtualFileSystem } from 'typescript/unstable/fs'
 import { API } from 'typescript/unstable/sync'
 
 const ROOT = resolve(import.meta.dirname, '..')
-const SCOPE = '@saas/'
-const UI_PACKAGE = '@saas/ui'
 const REACT_PACKAGES = new Set([
   'react',
   'react-dom',
   '@types/react',
   '@types/react-dom',
   'react-email',
-  UI_PACKAGE,
 ])
 const REACT_SCOPES = ['@react-email/']
-const REACT_EXCEPTIONS = {
-  '@saas/email': (dep) => dep !== UI_PACKAGE,
-}
-const LAYERS = {
-  '@saas/shared': [],
-  '@saas/config': ['@saas/shared'],
-  '@saas/db': ['@saas/shared', '@saas/config'],
-  '@saas/platform': ['@saas/shared', '@saas/config', '@saas/db'],
-}
 const DEP_FIELDS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
 const BUILD_DIRS = new Set([
   'node_modules',
@@ -161,9 +149,11 @@ export function cloudflareAllowed(file, specifier, rules) {
   return rules.targetFixtures[file]?.includes(specifier) === true
 }
 
-function platformTargetOf(root, file, specifier) {
-  const named = /^@saas\/platform\/(cloudflare|node)(?:\/|$)/.exec(specifier)
-  if (named) return named[1]
+function platformTargetOf(root, file, specifier, platformPackage) {
+  const named = specifier.startsWith(`${platformPackage}/`)
+    ? specifier.slice(platformPackage.length + 1).split('/')[0]
+    : null
+  if (named === 'cloudflare' || named === 'node') return named
   if (!specifier.startsWith('.') && !specifier.startsWith('/')) return null
   const target = relative(root, resolve(join(file, '..'), specifier))
     .split(sep)
@@ -192,6 +182,18 @@ export function checkWorkspace(
 ) {
   const apps = readWorkspace(root, 'apps')
   const packages = readWorkspace(root, 'packages')
+  const uiManifest = join(root, 'packages/ui/package.json')
+  const uiPackage = JSON.parse(readFileSync(uiManifest, 'utf8')).name
+  const scope = /^(@[^/]+\/)ui$/.exec(uiPackage)?.[1]
+  if (!scope) throw new Error(`${uiManifest}：name 必须为 @scope/ui，无法确定内部包 scope`)
+  const emailPackage = `${scope}email`
+  const platformPackage = `${scope}platform`
+  const layers = {
+    [`${scope}shared`]: [],
+    [`${scope}config`]: [`${scope}shared`],
+    [`${scope}db`]: [`${scope}shared`, `${scope}config`],
+    [platformPackage]: [`${scope}shared`, `${scope}config`, `${scope}db`],
+  }
   const appNames = new Set(apps.map((a) => a.manifest.name))
   const violations = []
 
@@ -199,10 +201,10 @@ export function checkWorkspace(
     if (rules.forbiddenDependencies?.some((pattern) => matchesDependency(dep, pattern))) {
       violations.push(`${pkgName} → ${dep}（${where}）：禁止拆分 Radix 子包，请改用 radix-ui`)
     } else if (
-      pkgName !== UI_PACKAGE &&
+      pkgName !== uiPackage &&
       rules.uiOnlyDependencies?.some((pattern) => matchesDependency(dep, pattern))
     ) {
-      violations.push(`${pkgName} → ${dep}（${where}）：UI 底层依赖仅允许 @saas/ui 使用`)
+      violations.push(`${pkgName} → ${dep}（${where}）：UI 底层依赖仅允许 ${uiPackage} 使用`)
     }
   }
 
@@ -210,14 +212,17 @@ export function checkWorkspace(
     if (appNames.has(dep)) {
       violations.push(`${pkgName} → ${dep}（${where}）：packages 不得依赖 apps`)
     }
-    const isReact = REACT_PACKAGES.has(dep) || REACT_SCOPES.some((scope) => dep.startsWith(scope))
-    if (isReact && pkgName !== UI_PACKAGE && REACT_EXCEPTIONS[pkgName]?.(dep) !== true) {
+    const isReact =
+      dep === uiPackage ||
+      REACT_PACKAGES.has(dep) ||
+      REACT_SCOPES.some((scope) => dep.startsWith(scope))
+    if (isReact && pkgName !== uiPackage && !(pkgName === emailPackage && dep !== uiPackage)) {
       violations.push(
         `${pkgName} → ${dep}（${where}）：React 仅允许 ui，email 仅允许 React / React Email，不能依赖 ui`,
       )
     }
-    const allowed = LAYERS[pkgName]
-    if (allowed && dep.startsWith(SCOPE) && dep !== pkgName && !allowed.includes(dep)) {
+    const allowed = layers[pkgName]
+    if (allowed && dep.startsWith(scope) && dep !== pkgName && !allowed.includes(dep)) {
       const rule = allowed.length > 0 ? `只允许依赖 ${allowed.join('、')}` : '不得依赖其他内部包'
       violations.push(`${pkgName} → ${dep}（${where}）：${pkgName} ${rule}`)
     }
@@ -265,7 +270,7 @@ export function checkWorkspace(
           )
           continue
         }
-        const platformTarget = platformTargetOf(root, file, specifier)
+        const platformTarget = platformTargetOf(root, file, specifier, platformPackage)
         if (platformTarget && !platformTargetAllowed(rel, platformTarget, rules)) {
           violations.push(
             `${where} → ${specifier}：业务仅可依赖 platform 中立入口；${platformTarget} 适配器仅允许对应目标目录、显式 composition entry 与目标测试夹具`,

@@ -61,3 +61,20 @@
 
 - 同步后在浅色与深色下检查首页、定价页、登录页与 admin 列表页。
 - 若项目改过品牌色，确认正文对比度 ≥ 4.5:1，焦点环与背景、与主按钮 ≥ 3:1。
+
+## 衍生项目继承检查（6.1–6.3、7.3）
+
+老衍生项目若已创建 `docs/design/README.md`，首次同步本变更时可能产生 add/add 冲突。
+合并时保留项目已有的设计记录，并补入复制组件的登记说明。复制到 `packages/ui/src/project/`
+的组件需在 `docs/design/forks.md` 记录来源，同时在 `scripts/check-ui.allow.local.json` 按文件
+登记 `arbitrary-class` 等必要例外及原因。
+
+组件指纹清单随模板维护。Git 仓库只计算已跟踪的组件文件，新增组件须先 `git add`，再运行
+`pnpm ui:lock`。清单冲突在 rebase/merge 后重新生成，并执行 `pnpm check:ui`。
+
+### 指纹检查的已知限制
+
+检查以仓库中的 `packages/ui/components.lock.json` 为基准，同时修改组件与清单可以绕过比对。
+删除 `.template-base.json` 也会让检查按模板态运行。当前护栏依赖版本审阅，尚未在基准记录中
+固定清单摘要。未被 Git 跟踪的文件不会计入 Git 仓库的指纹。指纹范围目前仅含
+`packages/ui/src/components/`，`lib/`、`hooks/` 与 `styles/` 尚未纳入。
