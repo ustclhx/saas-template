@@ -114,6 +114,10 @@ function packageNameOf(specifier) {
   return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]
 }
 
+function matchesDependency(dep, pattern) {
+  return pattern.endsWith('/*') ? dep.startsWith(pattern.slice(0, -1)) : dep === pattern
+}
+
 // TS 7 使用 native parser API；虚拟项目只解析传入源码，不加载库或解析依赖。
 function parseImports(files) {
   const config = '/check-deps/tsconfig.json'
@@ -191,6 +195,17 @@ export function checkWorkspace(
   const appNames = new Set(apps.map((a) => a.manifest.name))
   const violations = []
 
+  function checkUiDependency(pkgName, dep, where) {
+    if (rules.forbiddenDependencies?.some((pattern) => matchesDependency(dep, pattern))) {
+      violations.push(`${pkgName} → ${dep}（${where}）：禁止拆分 Radix 子包，请改用 radix-ui`)
+    } else if (
+      pkgName !== UI_PACKAGE &&
+      rules.uiOnlyDependencies?.some((pattern) => matchesDependency(dep, pattern))
+    ) {
+      violations.push(`${pkgName} → ${dep}（${where}）：UI 底层依赖仅允许 @saas/ui 使用`)
+    }
+  }
+
   function checkDependency(pkgName, dep, where) {
     if (appNames.has(dep)) {
       violations.push(`${pkgName} → ${dep}（${where}）：packages 不得依赖 apps`)
@@ -208,10 +223,23 @@ export function checkWorkspace(
     }
   }
 
-  for (const { manifest } of packages) {
+  // 根 manifest 同样不能成为 UI 原语的旁路依赖来源。
+  const rootManifest = join(root, 'package.json')
+  if (existsSync(rootManifest)) {
+    const manifest = JSON.parse(readFileSync(rootManifest, 'utf8'))
     for (const field of DEP_FIELDS) {
       for (const dep of Object.keys(manifest[field] ?? {})) {
-        checkDependency(manifest.name, dep, `package.json ${field}`)
+        checkUiDependency(manifest.name, dep, `package.json ${field}`)
+      }
+    }
+  }
+  for (const { path, manifest } of [...packages, ...apps]) {
+    const isPackage = packages.some((pkg) => pkg.path === path)
+    for (const field of DEP_FIELDS) {
+      for (const dep of Object.keys(manifest[field] ?? {})) {
+        const where = `${relative(root, join(path, 'package.json')).split(sep).join('/')} ${field}`
+        checkUiDependency(manifest.name, dep, where)
+        if (isPackage) checkDependency(manifest.name, dep, where)
       }
     }
   }
@@ -227,6 +255,9 @@ export function checkWorkspace(
       const rel = relative(root, file).split(sep).join('/')
       for (const { specifier, line } of parsed.get(file)) {
         const where = `${rel}:${line}`
+        // UI 原语检查覆盖应用和包的所有源码，不能被生产 src 或目标夹具豁免。
+        const dep = packageNameOf(specifier)
+        if (dep) checkUiDependency(manifest.name, dep, where)
         if (specifier.startsWith('cloudflare:')) {
           if (cloudflareAllowed(rel, specifier, rules)) continue
           violations.push(
@@ -258,7 +289,6 @@ export function checkWorkspace(
           }
           continue
         }
-        const dep = packageNameOf(specifier)
         if (dep) checkDependency(manifest.name, dep, where)
       }
     }
