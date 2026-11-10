@@ -137,6 +137,46 @@ describe('Select（Fluid radix/select）', () => {
     expect(html).toContain('Pick a plan')
   })
 
+  it('传 valueLabel 时服务端输出即含选中文字（水合前可见），值为空时仍显示占位文字', () => {
+    const options = [
+      { value: 'free', label: 'Free' },
+      { value: 'pro', label: 'Pro' },
+    ]
+    const render = (value: string) =>
+      renderToString(
+        <Select value={value}>
+          <SelectTrigger
+            placeholder="Pick a plan"
+            aria-label="Plan"
+            valueLabel={options.find((option) => option.value === value)?.label}
+          />
+          <SelectContent>
+            {options.map((option, index) => (
+              <SelectItem key={option.value} index={index} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>,
+      )
+    const selected = render('pro')
+    expect(selected).toContain('Pro')
+    expect(selected).not.toContain('Pick a plan')
+    expect(render('')).toContain('Pick a plan')
+    // 不传 valueLabel 时 Radix 只在客户端填入文字：SSR 输出里没有选中项
+    const without = renderToString(
+      <Select value="pro">
+        <SelectTrigger placeholder="Pick a plan" aria-label="Plan" />
+        <SelectContent>
+          <SelectItem index={0} value="pro">
+            Pro
+          </SelectItem>
+        </SelectContent>
+      </Select>,
+    )
+    expect(without).not.toContain('Pro')
+  })
+
   it('键盘打开并选择选项，onValueChange 收到取值且触发器显示所选文字', async () => {
     const onValueChange = vi.fn()
     render(

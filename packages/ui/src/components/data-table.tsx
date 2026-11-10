@@ -293,7 +293,13 @@ function FilterSelect(props: {
     value || (options.some((option) => !option.value) ? '' : (options[0]?.value ?? ''))
   return (
     <Select name={filter.id} defaultValue={initial || EMPTY_OPTION}>
-      <SelectTrigger id={id} className="w-56" placeholder={filter.placeholder ?? filter.label} />
+      <SelectTrigger
+        id={id}
+        className="w-56"
+        placeholder={filter.placeholder ?? filter.label}
+        // SSR 与水合前即显示选中项文字（Select valueLabel，tasks 5.1）
+        valueLabel={options.find((option) => option.value === initial)?.label}
+      />
       <SelectContent>
         {options.map((option, index) => (
           <SelectItem key={option.value} index={index} value={option.value || EMPTY_OPTION}>

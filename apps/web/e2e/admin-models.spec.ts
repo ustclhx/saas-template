@@ -27,15 +27,20 @@ test('platform admin can create, edit, disable and enable a model', async ({ pag
     await page.getByRole('button', { name: 'New model', exact: true }).click()
     const form = page.getByRole('article', { name: 'New model' })
     // template.config.ts 中文本模型默认按 token 计费
-    await expect(form.getByLabel('Pricing mode')).toHaveValue('token')
+    const pricingMode = form.getByRole('combobox', { name: 'Pricing mode', exact: true })
+    await expect(pricingMode).toHaveText('Per token')
 
     // 页面水合前的操作不会进入 React 状态：重复切换直到按次字段出现
     await expect
       .poll(async () => {
-        await form.getByLabel('Pricing mode').selectOption('per_call')
+        await chooseOption(pricingMode, 'Per call')
         return form.getByLabel('Credits per call').isVisible()
       })
       .toBe(true)
+    // 「默认」用占位值表示，保存时仍省略 chargeOn（见下方 pricing 断言）
+    await expect(form.getByRole('combobox', { name: 'Charge on', exact: true })).toHaveText(
+      'Default',
+    )
     await form.getByLabel('Key').fill(key)
     await form.getByLabel('Provider', { exact: true }).fill('openai')
     await form.getByLabel('Provider model ID').fill('gpt-fixture')
@@ -116,6 +121,7 @@ test('platform admin can create, edit, disable and enable a model', async ({ pag
       params_schema: editedSchema,
       pricing: { mode: 'per_call', credits: 3, limits: { maxInputTokens: 8000 } },
     })
+    expect(saved?.pricing).not.toHaveProperty('chargeOn')
 
     await card.getByRole('button', { name: 'Disable' }).click()
     await expect(card.getByRole('heading')).toContainText('(disabled)')

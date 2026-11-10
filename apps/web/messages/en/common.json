@@ -1,6 +1,7 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "common_site_tagline": "Build and launch your AI app faster.",
+  "common_cancel": "Cancel",
   "common_table_previous": "Previous",
   "common_table_next": "Next",
   "common_table_page": "Page {page}",
