@@ -12,7 +12,7 @@
   "src/components/input.tsx": "306ddd82e8dfc3a9482364ed83230cadc4de5ad7937dcf7733488df7be92b938",
   "src/components/label.tsx": "44d36ce20307e68277510c964176f6a15e32c90735b02bf17d663282e8d869ed",
   "src/components/scroll-area.tsx": "48a2ecfa2cdcdec0574d3aefe59b1f7f6122d5db4e8b25ebc1ee329b74cdb736",
-  "src/components/select.tsx": "b23aa6466dd2eafae9929866adc8a230ac65c18c12bc35b2509ddd48e3f2d0d5",
+  "src/components/select.tsx": "56cdfbb0c165dc35f9af6a57fc9d6738637b2dd8c1caa339f67c12275bbf9e60",
   "src/components/separator.tsx": "15fc23687c0df58be4499128ea349581df2297d3ae2d441f82296993abe05620",
   "src/components/switch.tsx": "a9248703dba0e4bbc9524f086a1ca51c3c451873de3f49e3893e19392e93fd8e",
   "src/components/textarea.tsx": "b3e235cf08189e29244379da68225f326cf87cb3de5d19177af8cde71f6ada90",

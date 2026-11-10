@@ -252,6 +252,9 @@ interface SelectTriggerProps
   icon?: IconComponent
   /** 未选择时显示的文字。模板改动（tasks 4.6）：上游默认英文 "Select…"，这里必须由应用按语言传入 */
   placeholder: string
+  /** 选中项的显示文字。模板改动（tasks 5.1）：Radix 要到客户端才把选中项文字放进触发器，SSR 与水合前为空；
+   *  传入后直接渲染，服务端输出即可见。公开/预渲染页面与水合前禁用的选择框必须传（从同一份选项数组算出） */
+  valueLabel?: ReactNode
   error?: string
   /** Size override for the trigger alone. Prefer the `size` prop on <Select>
    *  (or a surrounding SizeProvider) so the popup matches. */
@@ -259,7 +262,7 @@ interface SelectTriggerProps
 }
 
 const SelectTrigger = forwardRef<HTMLButtonElement, SelectTriggerProps>(
-  ({ className, variant, icon: Icon, placeholder, error, size, ...props }, ref) => {
+  ({ className, variant, icon: Icon, placeholder, valueLabel, error, size, ...props }, ref) => {
     const shape = useShape()
     const sizeClasses = useSize(size)
     const compact = sizeClasses.variant === 'compact'
@@ -300,7 +303,7 @@ const SelectTrigger = forwardRef<HTMLButtonElement, SelectTriggerProps>(
             {/* py-1/-my-1 keeps truncate's overflow:hidden from clipping
                 ascenders/descenders outside the trimmed box. */}
             <span className="min-w-0 flex-1 text-left truncate [text-box:trim-both_cap_alphabetic] py-1 -my-1 group-data-[placeholder]:text-muted-foreground">
-              <SelectPrimitive.Value placeholder={placeholder} />
+              <SelectPrimitive.Value placeholder={placeholder}>{valueLabel}</SelectPrimitive.Value>
             </span>
           </span>
 
