@@ -52,7 +52,7 @@ function LockedFeature({
           <span className="font-semibold text-subtitle">{title}</span>
           {badge ? (
             <Badge size="compact">
-              <Lock aria-hidden className="size-3" strokeWidth={2} />
+              <Lock aria-hidden className="mr-1 inline size-3 align-[-1px]" strokeWidth={2} />
               {badge}
             </Badge>
           ) : null}

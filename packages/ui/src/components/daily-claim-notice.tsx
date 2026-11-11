@@ -77,7 +77,11 @@ function DailyClaimNotice({
       </div>
       {status === 'claimed' ? (
         <Badge color="green" className="shrink-0">
-          <Check aria-hidden className="size-3 text-success" strokeWidth={2.5} />
+          <Check
+            aria-hidden
+            className="mr-1 inline size-3 align-[-1px] text-success"
+            strokeWidth={2.5}
+          />
           {labels.claimed}
         </Badge>
       ) : canClaim ? (
