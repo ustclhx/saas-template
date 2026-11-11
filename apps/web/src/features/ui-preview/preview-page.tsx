@@ -15,6 +15,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { templateConfig } from '../../server/template-config.ts'
 import { ThemeToggle } from '../theme/theme-toggle.tsx'
+import { MarketingSection } from './section-marketing.tsx'
 import {
   BadgeTooltipSection,
   ButtonSection,
@@ -64,6 +65,7 @@ const SECTIONS = [
     'business-credits',
     'InsufficientCreditsDialog · CreditEstimate · LockedFeature · DailyClaimNotice',
   ],
+  ['marketing', 'Marketing blocks'],
 ] as const
 
 /**
@@ -156,6 +158,7 @@ export function UiPreviewPage() {
         </Suspense>
         <AiChatComponentsSection />
         <CreditsComponentsSection />
+        <MarketingSection />
       </div>
     </UiRoot>
   )
