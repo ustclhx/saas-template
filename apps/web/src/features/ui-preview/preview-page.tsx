@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { templateConfig } from '../../server/template-config.ts'
 import { ThemeToggle } from '../theme/theme-toggle.tsx'
+import { ReaderSection } from './section-reader.tsx'
 import {
   BadgeTooltipSection,
   ButtonSection,
@@ -52,6 +53,7 @@ const SECTIONS = [
   ['surface', 'Card · Alert'],
   ['data-table', 'DataTable'],
   ['form', 'Form'],
+  ['reader', 'Reader'],
 ] as const
 
 /**
@@ -139,6 +141,7 @@ export function UiPreviewPage() {
         <SurfaceSection />
         <DataTableSection />
         <FormSection />
+        <ReaderSection />
       </div>
     </UiRoot>
   )

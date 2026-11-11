@@ -146,6 +146,7 @@ grep -nE '^export' packages/ui/src/index.ts
   | `CommandMenuDialog` | `title`（`description` 可选） | 对话框的可读名称 |
   | `Toaster` | `labels`（`region`、`announcement`、`close`） | 通知区域名称（可含 `{hotkey}`）、读屏播报前缀、关闭按钮名称；`toast()` 的内容与 `action.label` 由调用方传入 |
   | `SidebarProvider` | `labels`（`title`、`expand`、`collapse`、`rail`、`railResize`、`railCollapse`；开启 peek 时 `peek`） | 移动抽屉名称、触发按钮与拖拽条的名称和提示；`SidebarMenuButton` 在 `status="unread"` 时必传 `unreadLabel` |
+  | `Reader` | `labels`（`toc`、`progress`、`exportPdf`、`printPdf`、`serverPdf`、`loading`）与 `title` | 目录标题、进度条名称、导出按钮与注册服务端导出后的两个菜单项、加载播报；`ReaderEmpty` / `ReaderError` 的标题、说明与 `retryLabel` 由调用方传入 |
 
   新组件引入新的可读文字时，同步更新本表与 `packages/ui/UPSTREAM.md`。
   `labels` 对象可以内联传入（`labels={{ … m.*() … }}`）：不会导致重新挂载，Command Menu 内部另按字段稳定引用；
@@ -169,9 +170,25 @@ grep -nE '^export' packages/ui/src/index.ts
 - **命令面板**：键帽按平台显示 ⌘ 或 Ctrl；SSR 首帧无法得知平台，需要时在布局中用
   `<CommandMenuPlatform mac={…}>` 包裹，`mac` 取自请求头 `Sec-CH-UA-Platform` 或 User-Agent，避免水合后键帽变宽。
 - **浮层层级**：自定义吸顶、遮罩与弹层用 `--z-*` 变量，不写任意 `z-[…]`。
+- **长文阅读器（tasks 8.4）**：`Reader` 渲染 Markdown 正文（react-markdown + remark-gfm），原始 HTML 一律丢弃，元素按白名单渲染，
+  链接与图片只允许 http、https 与站内地址（`javascript:`、`data:` 等渲染为纯文本），外链新窗口打开并带 `rel="noopener noreferrer"`。
+  目录取正文的二、三级标题；宽屏左侧吸顶目录、窄屏（< lg）为顶栏下的折叠下拉；顶栏含标题、导出按钮与阅读进度，
+  页面滚动与外层滚动容器（如工作台主面板）都适用。状态用 `status`（`ready` / `loading` / `empty` / `error`），
+  空与错误内容用 `ReaderEmpty`、`ReaderError` 传给 `emptyState`、`errorState`；`leading` 放面包屑或返回按钮，
+  `actions` 放顶栏其他操作，`footer` 是正文后的插槽（嵌入式对话或悬浮提问入口，tasks 8.6）。
+  依赖约 70 KB gzip，页面用 `React.lazy` 按需加载，不进入首页包：
+
+  ```tsx
+  const Reader = lazy(() => import('@saas/ui').then((ui) => ({ default: ui.Reader })))
+  ```
+
+  导出 PDF 默认调用浏览器打印；服务端生成 PDF 由项目在启动时 `registerPdfExporter(({ title, markdown }) => …)` 注册，
+  注册后导出按钮变为「浏览器打印 / 服务端生成」菜单，未注册时不显示服务端选项。打印样式隐藏阅读器顶栏、目录与 `footer`，
+  二级标题从新页开始，深色主题在打印期间临时切为浅色；**阅读器之外的页面框架（侧边栏、悬浮控件）需自行加 `print:hidden`**，
+  外层滚动容器在打印时应取消固定高度与 `overflow`，否则只打印可见部分。
 
 已接入：Button、Input、Textarea、Select、Combobox、Checkbox、Switch、Badge、Tooltip、Tabs、Dropdown（菜单）、
-Command Menu、Dialog、AlertDialog、Toast、Sidebar、Card、Alert、Separator、Label、ScrollArea、DataTable、Form。
+Command Menu、Dialog、AlertDialog、Toast、Sidebar、Card、Alert、Separator、Label、ScrollArea、DataTable、Form、Reader。
 `Toaster` 含动效库（约 44 KB gzip），只在需要的页面挂载，不放进根布局；以后全站使用时按需动态加载。缺少的组件先在 `packages/ui` 补齐（模板）或在 `packages/ui/src/project/` 补齐（项目），
 再实现页面，不在页面里临时写一个。
 
@@ -522,7 +539,7 @@ const copy = pending?.action === 'transfer'
 | 工作台 | 侧边栏（分组由项目注册、可折叠、手机抽屉、底部升级与账户入口），与顶部布局经 `ui.appLayout` 二选一 | 将由 tasks 8.3 提供 |
 | 后台列表 | `DataTable` + `adminListSearch` / `adminListPage`，筛选改变回第一页 | 现有 |
 | 表单 | `useAppForm` + 字段组件，提交按钮 `SubmitButton`，错误用 `FieldErrors` | 现有 |
-| 长文阅读 | 安全 Markdown、自动目录、吸顶高亮、阅读进度、打印样式 | 将由 tasks 8.4 提供 |
+| 长文阅读 | `Reader`：安全 Markdown、自动目录、吸顶高亮、阅读进度、打印样式与导出 PDF（`registerPdfExporter` 扩展点），见 §4 | 已提供（tasks 8.4），预览 `/dev/ui#reader` 与整页 `/dev/ui/reader?state=ready\|empty\|loading\|error` |
 | 营销区块 | 数据背书（未配置不渲染）、三步流程、编号产品矩阵、悬浮 AI 入口 | 将由 tasks 8.5 提供 |
 | 业务界面组件 | 推荐追问、消息评分、嵌入式对话、余额不足弹窗、预计消耗、会员锁定、每日领取 | 将由 tasks 8.6 提供，接口写入本节 |
 
