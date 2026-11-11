@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { parseArgs } from 'node:util'
-import { projectOptions } from './create-project.mjs'
 import {
   normalizeParams,
   paramsToArgs,
@@ -15,8 +15,16 @@ import {
   validateBaseRecord,
 } from './template-base.mjs'
 
+const generatorSkip = existsSync(new URL('./create-project.mjs', import.meta.url))
+  ? false
+  : '衍生项目已移除 scripts/create-project.mjs，跳过生成器参数对照用例'
+const { projectOptions } = generatorSkip ? {} : await import('./create-project.mjs')
+const generatorTest = (name, run) => test(name, { skip: generatorSkip }, run)
+
 const minimalInput = { name: 'acme', domain: 'acme.example' }
-const params = normalizeParams(projectOptions(minimalInput))
+// 基准自身的测试不依赖衍生项目可移除的生成器。
+const minimalOptions = { name: 'acme', url: 'https://acme.example' }
+const params = normalizeParams(minimalOptions)
 const baseline = {
   schemaVersion: 1,
   repository: 'https://github.com/example/template',
@@ -46,7 +54,8 @@ async function repository(t) {
   return directory
 }
 
-test('expanded defaults equal interactive answers and never retain output paths', () => {
+generatorTest('expanded defaults equal interactive answers and never retain output paths', () => {
+  assert.deepEqual(normalizeParams(projectOptions(minimalInput)), params)
   const explicit = projectOptions({
     ...minimalInput,
     domain: 'https://acme.example',
@@ -73,7 +82,7 @@ test('expanded defaults equal interactive answers and never retain output paths'
   assert.equal(JSON.stringify(params).includes('/tmp/'), false)
 })
 
-test('normalized CLI arguments round-trip custom lists, flags, and empty lists', () => {
+generatorTest('normalized CLI arguments round-trip custom lists, flags, and empty lists', () => {
   const options = projectOptions({
     ...minimalInput,
     target: 'selfhost',
@@ -104,7 +113,7 @@ test('normalized CLI arguments round-trip custom lists, flags, and empty lists',
 })
 
 test('normalization deduplicates each list without reordering or mutating input', () => {
-  const options = projectOptions(minimalInput)
+  const options = { ...minimalOptions }
   options.ai = ['video', 'text', 'video', 'image']
   options.features = ['docs', 'blog', 'docs']
   options.oauth = ['github', 'github', 'google']
@@ -138,9 +147,7 @@ test('theme is recorded for new projects and remains optional for older baseline
   delete legacy.theme
   assert.deepEqual(validateBaseRecord({ ...baseline, params: legacy }).params, legacy)
   assert.equal(paramsToArgs(legacy).includes('--theme'), false)
-  const custom = normalizeParams(
-    projectOptions({ ...minimalInput, theme: 'blue', analytics: 'off' }),
-  )
+  const custom = normalizeParams({ ...minimalOptions, theme: 'blue', analytics: 'off' })
   const serialized = JSON.parse(serializeBaseRecord({ ...baseline, params: custom }))
   assert.deepEqual(serialized.params, custom)
   const args = paramsToArgs(serialized.params)
@@ -288,9 +295,11 @@ test('source state ignores caller git repository, index, and injected configurat
 test('后加的分析参数只在偏离默认值时记录，旧基准不含它们仍然有效', () => {
   assert.equal(Object.hasOwn(params, 'analytics'), false)
   assert.equal(paramsToArgs(params).includes('--analytics'), false)
-  const custom = normalizeParams(
-    projectOptions({ ...minimalInput, analytics: 'off', 'plausible-host': 'https://p.example' }),
-  )
+  const custom = normalizeParams({
+    ...minimalOptions,
+    analytics: 'off',
+    plausibleHost: 'https://p.example',
+  })
   assert.equal(custom.analytics, 'off')
   assert.equal(custom['plausible-host'], 'https://p.example')
   const args = paramsToArgs(custom)

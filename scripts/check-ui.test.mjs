@@ -1,13 +1,28 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { execFileSync, spawnSync } from 'node:child_process'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { checkWorkspace } from './check-deps.mjs'
 import { checkUi, findingsOf } from './check-ui.mjs'
-import { createProject } from './create-project.mjs'
 import { componentHashes, componentLockViolations, writeComponentLock } from './ui-lock.mjs'
+
+const generatorSkip = existsSync(new URL('./create-project.mjs', import.meta.url))
+  ? false
+  : '衍生项目已移除 scripts/create-project.mjs，跳过生成器集成用例'
+const { createProject } = generatorSkip ? {} : await import('./create-project.mjs')
 
 function workspace(t, files = {}, allow = {}) {
   const root = mkdtempSync(join(tmpdir(), 'check-ui-'))
@@ -350,7 +365,9 @@ test('derived projects reject changed template components with ordered customiza
   assert.throws(() => writeComponentLock(root), /由模板维护/)
 })
 
-test('generated projects can export and use project components under UI and dependency checks', async (t) => {
+test('generated projects can export and use project components under UI and dependency checks', {
+  skip: generatorSkip,
+}, async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'ui-project-'))
   t.after(() => rmSync(dir, { recursive: true, force: true }))
   const { target } = await createProject({
@@ -394,5 +411,53 @@ test('generated projects can export and use project components under UI and depe
     checkWorkspace(target).violations.some((message) =>
       message.includes('packages/ui/src/project/project-card.tsx'),
     ),
+  )
+})
+
+test('UI checks still run after a project removes the generator', {
+  // biome-ignore lint/suspicious/noUndeclaredEnvVars: 仅控制独立测试子进程，不参与 Turbo 任务缓存。
+  skip: process.env.CHECK_UI_GENERATOR_REGRESSION_CHILD
+    ? '子进程只验证生成器缺失，避免递归启动回归测试'
+    : false,
+}, (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'check-ui-without-generator-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  mkdirSync(join(root, 'scripts'))
+  for (const file of ['check-ui.test.mjs', 'check-ui.mjs', 'check-deps.mjs', 'ui-lock.mjs']) {
+    copyFileSync(new URL(file, import.meta.url), join(root, 'scripts', file))
+  }
+  const generator = join(root, 'scripts/create-project.mjs')
+  if (existsSync(new URL('./create-project.mjs', import.meta.url))) {
+    copyFileSync(new URL('./create-project.mjs', import.meta.url), generator)
+  }
+  rmSync(generator, { force: true })
+  symlinkSync(
+    fileURLToPath(new URL('../node_modules', import.meta.url)),
+    join(root, 'node_modules'),
+    'dir',
+  )
+  const env = { ...process.env, CHECK_UI_GENERATOR_REGRESSION_CHILD: '1' }
+  // 子进程必须启动独立测试运行器，不能继承父进程的测试协议。
+  delete env.NODE_TEST_CONTEXT
+  const result = spawnSync(
+    process.execPath,
+    ['--test', '--test-reporter=tap', 'scripts/check-ui.test.mjs'],
+    {
+      cwd: root,
+      encoding: 'utf8',
+      env,
+    },
+  )
+  assert.equal(result.status, 0, result.stdout + result.stderr)
+  assert.match(result.stdout, /# pass 15\b/)
+  assert.match(result.stdout, /# fail 0\b/)
+  assert.match(result.stdout, /# skipped 2\b/)
+  assert.match(
+    result.stdout,
+    /generated projects can export and use project components under UI and dependency checks # SKIP 衍生项目已移除 scripts\/create-project\.mjs/,
+  )
+  assert.match(
+    result.stdout,
+    /UI checks still run after a project removes the generator # SKIP 子进程只验证生成器缺失/,
   )
 })

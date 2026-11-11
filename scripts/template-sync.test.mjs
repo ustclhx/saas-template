@@ -6,13 +6,13 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { projectOptions } from './create-project.mjs'
 import { normalizeParams, readBaseRecord, serializeBaseRecord } from './template-base.mjs'
 import { cloneTemplate, generateAt } from './template-sync/generate.mjs'
 import { diffLockPackages } from './template-sync/report.mjs'
 import { PreflightError, runSync } from './template-sync.mjs'
 
-const params = normalizeParams(projectOptions({ name: 'acme', domain: 'acme.example' }))
+// 同步用例使用自己的生成器桩，通用基准夹具不依赖模板生成器。
+const params = normalizeParams({ name: 'acme', url: 'https://acme.example' })
 const identity = ['-c', 'user.name=fixture', '-c', 'user.email=fixture@example.com']
 
 function git(directory, ...args) {

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import {
   chmod,
   mkdir,
@@ -18,9 +19,14 @@ import { fileURLToPath } from 'node:url'
 import * as ts from 'typescript/unstable/ast'
 import { createVirtualFileSystem } from 'typescript/unstable/fs'
 import { API } from 'typescript/unstable/sync'
-import { createProject, projectOptions } from './create-project.mjs'
 import { parseJsonc } from './production/check-wrangler-envs.mjs'
 import { themeNames } from './template-base.mjs'
+
+const generatorSkip = existsSync(new URL('./create-project.mjs', import.meta.url))
+  ? false
+  : '衍生项目已移除 scripts/create-project.mjs，跳过生成器用例'
+const { createProject, projectOptions } = generatorSkip ? {} : await import('./create-project.mjs')
+const generatorTest = (name, run) => test(name, { skip: generatorSkip }, run)
 
 async function fixture(t) {
   const dir = await mkdtemp(join(tmpdir(), 'bootstrap-test-'))
@@ -163,7 +169,7 @@ test('生成器主题与预设 CSS 文件、配置允许值保持一致', async 
   assert.deepEqual([...themeNames].sort(), configThemes.sort())
 })
 
-test('四套主题写入配置和基准；省略时使用 neutral', async (t) => {
+generatorTest('四套主题写入配置和基准；省略时使用 neutral', async (t) => {
   const f = await fixture(t)
   for (const theme of [undefined, ...themeNames]) {
     const result = await createProject(
@@ -182,7 +188,7 @@ test('四套主题写入配置和基准；省略时使用 neutral', async (t) =>
   }
 })
 
-test('非法 CLI 主题列出预设且不写输出目录；help 说明主题参数', async (t) => {
+generatorTest('非法 CLI 主题列出预设且不写输出目录；help 说明主题参数', async (t) => {
   const f = await fixture(t)
   const command = fileURLToPath(new URL('./create-project.mjs', import.meta.url))
   const invalid = spawnSync(
@@ -209,7 +215,7 @@ test('非法 CLI 主题列出预设且不写输出目录；help 说明主题参�
   assert.match(help.stdout, /--theme neutral\|blue\|violet\|green（默认 neutral）/)
 })
 
-test('源配置的 ui 未设置 preset 时插入主题并保留其他选项', async (t) => {
+generatorTest('源配置的 ui 未设置 preset 时插入主题并保留其他选项', async (t) => {
   const f = await fixture(t)
   const config = await readFile(join(f.source, 'template.config.ts'), 'utf8')
   for (const [id, ui] of [
@@ -229,7 +235,7 @@ test('源配置的 ui 未设置 preset 时插入主题并保留其他选项', as
   }
 })
 
-test('从生成副本再次生成仅更新一份主题与分析配置，保留其他 UI 选项', async (t) => {
+generatorTest('从生成副本再次生成仅更新一份主题与分析配置，保留其他 UI 选项', async (t) => {
   const f = await fixture(t)
   const config = await readFile(join(f.source, 'template.config.ts'), 'utf8')
   await f.file(
@@ -288,54 +294,61 @@ test('从生成副本再次生成仅更新一份主题与分析配置，保留�
   }
 })
 
-test('初始化项目设计记录，排除模板原型并保留组件、锁与项目 HTML 属性的原始字节', async (t) => {
-  const f = await fixture(t)
-  const component = '// 可原样移植的模板组件\r\nexport const Button = () => null\r\n'
-  const lock = '{"src/components/button.tsx":"0123456789abcdef"}\n'
-  const htmlAttributes = Buffer.from(
-    '\uFEFF// FixtureApp fixture.example @fixture/ui\r\nexport const getProjectHtmlAttributes = () => ({})\r\n',
-  )
-  await f.file('packages/ui/src/components/button.tsx', component)
-  await f.file('packages/ui/components.lock.json', lock)
-  await f.file('apps/web/src/features/theme/html-attributes.ts', htmlAttributes)
-  await f.file('docs/design-system/prototypes/review.html', 'TEMPLATE_PROTOTYPE_SENTINEL')
-  await f.file('scripts/check-ui.allow.local.json', '{"exceptions":{"old-project":[]}}')
-  const result = await createProject(f.input, f.source)
-  assert.deepEqual(
-    JSON.parse(await readFile(join(result.target, 'scripts/check-ui.allow.local.json'), 'utf8')),
-    { exceptions: {}, pendingReplacement: {} },
-  )
-  const readme = await readFile(join(result.target, 'docs/design/README.md'), 'utf8')
-  for (const path of [
-    'visual-system.md',
-    'references/',
-    'prototypes/',
-    'prototypes/README.md',
-    'forks.md',
-    '@acme/ui/project',
-    'scripts/check-ui.allow.local.json',
-    'arbitrary-class',
-    '按文件登记所需规则与原因',
-  ])
-    assert.ok(readme.includes(path), `缺少项目设计位置：${path}`)
-  await assert.rejects(stat(join(result.target, 'docs/design-system/prototypes')), {
-    code: 'ENOENT',
-  })
-  assert.equal(
-    await readFile(join(result.target, 'packages/ui/src/components/button.tsx'), 'utf8'),
-    component,
-  )
-  assert.equal(
-    await readFile(join(result.target, 'packages/ui/components.lock.json'), 'utf8'),
-    lock,
-  )
-  assert.deepEqual(
-    await readFile(join(result.target, 'apps/web/src/features/theme/html-attributes.ts')),
-    htmlAttributes,
-  )
-})
+generatorTest(
+  '初始化项目设计记录，排除模板原型并保留组件、锁与项目 HTML 属性的原始字节',
+  async (t) => {
+    const f = await fixture(t)
+    const component = '// 可原样移植的模板组件\r\nexport const Button = () => null\r\n'
+    const lock = '{"src/components/button.tsx":"0123456789abcdef"}\n'
+    const htmlAttributes = Buffer.from(
+      '\uFEFF// FixtureApp fixture.example @fixture/ui\r\nexport const getProjectHtmlAttributes = () => ({})\r\n',
+    )
+    await f.file('packages/ui/src/components/button.tsx', component)
+    await f.file('packages/ui/components.lock.json', lock)
+    await f.file('apps/web/src/features/theme/html-attributes.ts', htmlAttributes)
+    await f.file('docs/design-system/prototypes/review.html', 'TEMPLATE_PROTOTYPE_SENTINEL')
+    await f.file('scripts/check-ui.allow.local.json', '{"exceptions":{"old-project":[]}}')
+    const result = await createProject(f.input, f.source)
+    assert.deepEqual(
+      JSON.parse(await readFile(join(result.target, 'scripts/check-ui.allow.local.json'), 'utf8')),
+      { exceptions: {}, pendingReplacement: {} },
+    )
+    const readme = await readFile(join(result.target, 'docs/design/README.md'), 'utf8')
+    for (const path of [
+      'visual-system.md',
+      'references/',
+      'prototypes/',
+      'prototypes/README.md',
+      'forks.md',
+      '@acme/ui/project',
+      'scripts/check-ui.allow.local.json',
+      'arbitrary-class',
+      '按文件登记所需规则与原因',
+    ])
+      assert.ok(readme.includes(path), `缺少项目设计位置：${path}`)
+    // 技能引用的项目原型索引随生成创建，只有表头
+    const index = await readFile(join(result.target, 'docs/design/prototypes/README.md'), 'utf8')
+    assert.match(index, /\| 页面 \/ 路由 \| 画布链接 \|/)
+    assert.doesNotMatch(index, /TEMPLATE_PROTOTYPE_SENTINEL|JL1raENWEr8nomz7sqvHce/)
+    await assert.rejects(stat(join(result.target, 'docs/design-system/prototypes')), {
+      code: 'ENOENT',
+    })
+    assert.equal(
+      await readFile(join(result.target, 'packages/ui/src/components/button.tsx'), 'utf8'),
+      component,
+    )
+    assert.equal(
+      await readFile(join(result.target, 'packages/ui/components.lock.json'), 'utf8'),
+      lock,
+    )
+    assert.deepEqual(
+      await readFile(join(result.target, 'apps/web/src/features/theme/html-attributes.ts')),
+      htmlAttributes,
+    )
+  },
+)
 
-test('模板组件与锁清单含需要改名的内容时拒绝生成', async (t) => {
+generatorTest('模板组件与锁清单含需要改名的内容时拒绝生成', async (t) => {
   const f = await fixture(t)
   for (const [id, path, content] of [
     [
@@ -356,7 +369,7 @@ test('模板组件与锁清单含需要改名的内容时拒绝生成', async (t
   }
 })
 
-test('模板基准记录来源状态、完整参数和实际迁移，不继承副本记录', async (t) => {
+generatorTest('模板基准记录来源状态、完整参数和实际迁移，不继承副本记录', async (t) => {
   const temp = await mkdtemp(join(tmpdir(), 'bootstrap-base-'))
   t.after(() => rm(temp, { recursive: true, force: true }))
   const source = join(temp, 'source')
@@ -489,7 +502,7 @@ test('模板基准记录来源状态、完整参数和实际迁移，不继承�
   })
 })
 
-test('真实模板同源同参数在不同输出、umask 和环境下逐文件确定', async (t) => {
+generatorTest('真实模板同源同参数在不同输出、umask 和环境下逐文件确定', async (t) => {
   const temp = await mkdtemp(join(tmpdir(), 'bootstrap-deterministic-'))
   t.after(() => rm(temp, { recursive: true, force: true }))
   const source = join(temp, 'source')
@@ -568,7 +581,7 @@ test('真实模板同源同参数在不同输出、umask 和环境下逐文件�
   }
 })
 
-test('模板专用同步测试与发布材料可选，副本保留运行脚本', async (t) => {
+generatorTest('模板专用同步测试与发布材料可选，副本保留运行脚本', async (t) => {
   const excluded = [
     'scripts/template-base.test.mjs',
     'scripts/template-sync.test.mjs',
@@ -601,7 +614,7 @@ test('模板专用同步测试与发布材料可选，副本保留运行脚本',
   }
 })
 
-test('events-dlq 的默认、staging 和 production 队列与消费者一致改名', async (t) => {
+generatorTest('events-dlq 的默认、staging 和 production 队列与消费者一致改名', async (t) => {
   const f = await fixture(t)
   const name = 'my-events-dlq'
   const queues = (suffix) => ({
@@ -671,7 +684,7 @@ test('events-dlq 的默认、staging 和 production 队列与消费者一致改�
     assert.equal(sourceQueue(`${name}-events-dlq${suffix}`), `${name}-events${suffix}`)
 })
 
-test('生成副本改名与配置，排除各级密钥、链接和产物', async (t) => {
+generatorTest('生成副本改名与配置，排除各级密钥、链接和产物', async (t) => {
   const f = await fixture(t)
   for (const path of [
     '.git/config',
@@ -825,7 +838,7 @@ test('生成副本改名与配置，排除各级密钥、链接和产物', async
   await createProject({ ...f.input, name: 'next', output: join(f.dir, 'next') }, result.target)
 })
 
-test('交付只保留项目基线与必需夹具，模板历史及远程验收不复制', async (t) => {
+generatorTest('交付只保留项目基线与必需夹具，模板历史及远程验收不复制', async (t) => {
   const f = await fixture(t)
   const omitted = [
     'docs/runbooks/evidence/selfhost/report.json',
@@ -928,7 +941,7 @@ test('交付只保留项目基线与必需夹具，模板历史及远程验收�
   assert.equal(manifest.scripts['create-project'], 'node scripts/create-project')
 })
 
-test('真实副本保留 Cloudflare 操作步骤，技能文档引用存在且没有重复占位文字', async (t) => {
+generatorTest('真实副本保留 Cloudflare 操作步骤，技能文档引用存在且没有重复占位文字', async (t) => {
   const dir = await mkdtemp(join(tmpdir(), 'bootstrap-docs-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const result = await createProject({
@@ -1000,7 +1013,7 @@ test('真实副本保留 Cloudflare 操作步骤，技能文档引用存在且�
   assert.match(preparation, /pnpm --filter @acme\/db db:migrate/)
 })
 
-test('媒体功能与支付开启时，清单和 Worker 引用同步生成', async (t) => {
+generatorTest('媒体功能与支付开启时，清单和 Worker 引用同步生成', async (t) => {
   const f = await fixture(t)
   const result = await createProject(f.input, f.source)
   const wrangler = JSON.parse(
@@ -1015,7 +1028,7 @@ test('媒体功能与支付开启时，清单和 Worker 引用同步生成', asy
   assert.match(result.report, /GOOGLE_CLIENT_SECRET/)
 })
 
-test('拒绝覆盖、源树递归复制、非法名称和无效功能输入', async (t) => {
+generatorTest('拒绝覆盖、源树递归复制、非法名称和无效功能输入', async (t) => {
   const f = await fixture(t)
   await assert.rejects(createProject({ ...f.input, output: f.source }, f.source), /模板目录内/)
   await assert.rejects(
@@ -1053,7 +1066,7 @@ test('拒绝覆盖、源树递归复制、非法名称和无效功能输入', as
 })
 
 for (const providers of ['fal', 'workers-ai', '']) {
-  test(`媒体服务商 ${providers || 'empty'} 的配置、密钥和所有环境绑定一致`, async (t) => {
+  generatorTest(`媒体服务商 ${providers || 'empty'} 的配置、密钥和所有环境绑定一致`, async (t) => {
     const f = await fixture(t)
     const result = await createProject({ ...f.input, 'media-providers': providers }, f.source)
     const config = await readFile(join(result.target, 'template.config.ts'), 'utf8')
@@ -1076,7 +1089,7 @@ for (const providers of ['fal', 'workers-ai', '']) {
   })
 }
 
-test('文件桶签名白名单与生成项目的桶名一致，备份桶名不受影响', async (t) => {
+generatorTest('文件桶签名白名单与生成项目的桶名一致，备份桶名不受影响', async (t) => {
   const f = await fixture(t)
   await f.file(
     'packages/storage/src/cloudflare/presign.ts',
@@ -1101,7 +1114,7 @@ test('文件桶签名白名单与生成项目的桶名一致，备份桶名不�
   assert.match(spec, /'saas-production-backups'/)
 })
 
-test('模板 production 环境改名、清空 ID 并替换自定义域名', async (t) => {
+generatorTest('模板 production 环境改名、清空 ID 并替换自定义域名', async (t) => {
   const f = await fixture(t)
   const result = await createProject(f.input, f.source)
   const name = JSON.parse(
@@ -1126,7 +1139,7 @@ test('模板 production 环境改名、清空 ID 并替换自定义域名', asyn
 })
 
 // 新名称含源 scope 前缀时，插入的资源名也不能再经过全局替换。
-test('项目名包含旧 scope 前缀时资源只改名一次', async (t) => {
+generatorTest('项目名包含旧 scope 前缀时资源只改名一次', async (t) => {
   const f = await fixture(t)
   const result = await createProject({ ...f.input, name: 'fixture-smoke' }, f.source)
   const config = JSON.parse(await readFile(join(result.target, 'apps/web/wrangler.jsonc'), 'utf8'))
@@ -1138,7 +1151,7 @@ test('项目名包含旧 scope 前缀时资源只改名一次', async (t) => {
   assert.doesNotMatch(worker, /fixture-smoke-smoke/)
 })
 
-test('文本对象开关按 ai 列表裁剪并保留 reasoning 策略', async (t) => {
+generatorTest('文本对象开关按 ai 列表裁剪并保留 reasoning 策略', async (t) => {
   for (const ai of ['', 'text']) {
     const f = await fixture(t)
     const result = await createProject({ ...f.input, ai }, f.source)
@@ -1149,7 +1162,7 @@ test('文本对象开关按 ai 列表裁剪并保留 reasoning 策略', async (t
   }
 })
 
-test('部署目标默认为 Cloudflare，拒绝旧路径并提示 output，参数依赖明确', async (t) => {
+generatorTest('部署目标默认为 Cloudflare，拒绝旧路径并提示 output，参数依赖明确', async (t) => {
   const f = await fixture(t)
   assert.equal(projectOptions(f.input).target, 'cloudflare')
   assert.throws(() => projectOptions({ ...f.input, target: '../old' }), /--output/)
@@ -1173,7 +1186,7 @@ test('部署目标默认为 Cloudflare，拒绝旧路径并提示 output，参�
   )
 })
 
-test('selfhost 继承发布和运维材料，排除真值，并再次生成 namespace', async (t) => {
+generatorTest('selfhost 继承发布和运维材料，排除真值，并再次生成 namespace', async (t) => {
   const f = await fixture(t)
   await f.file(
     'deploy/selfhost/.env.example',
@@ -1310,7 +1323,7 @@ test('selfhost 继承发布和运维材料，排除真值，并再次生成 name
   assert.match(next.report, /second-selfhost|second-owner\/second/)
 })
 
-test('Plausible 一站一 site，staging 不沿用生产域名，长期词站可关闭', async (t) => {
+generatorTest('Plausible 一站一 site，staging 不沿用生产域名，长期词站可关闭', async (t) => {
   const temp = await mkdtemp(join(tmpdir(), 'bootstrap-analytics-'))
   t.after(() => rm(temp, { recursive: true, force: true }))
   const source = fileURLToPath(new URL('..', import.meta.url))
