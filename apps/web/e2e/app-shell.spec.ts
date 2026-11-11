@@ -101,8 +101,11 @@ test.describe('sidebar 布局', () => {
   })
 
   test('390px：抽屉打开、选择条目后关闭并把焦点还给菜单按钮，无横向滚动', async ({ page }) => {
+    // 注册在桌面宽度完成，再切到 390px 并刷新，避免窄屏注册页提交偶发超时影响本用例
+    const home = await newUser(page)
     await page.setViewportSize({ width: 390, height: 844 })
-    await newUser(page)
+    await page.goto(home)
+    await page.waitForLoadState('networkidle')
     await expect(shell(page)).toBeHidden()
     await noHorizontalScroll(page)
 
