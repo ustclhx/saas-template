@@ -148,22 +148,27 @@ test('closing a page preserves the full short reply and settles final usage', as
       input_tokens: FINAL_USAGE.input,
       output_tokens: FINAL_USAGE.output,
     })
-    expect(saved.usage_checkpoint.outputTokens).not.toBe(FINAL_USAGE.output)
+    // 完成结算把最终用量合并进检查点（#170，ai-text-reasoning「reasoning 用量统计」），
+    // 不能再用「检查点 ≠ 最终用量」证明结算未取检查点；改为断言关闭前的估算检查点
+    // 与最终用量金额不同，且流水按最终用量扣费（ai-chat「正常完成」：检查点不影响结算金额）。
+    expect(saved.usage_checkpoint).toMatchObject({
+      inputTokens: FINAL_USAGE.input,
+      outputTokens: FINAL_USAGE.output,
+    })
+    const finalCharge = actualCredits(PRICING, {
+      inputTokens: FINAL_USAGE.input,
+      outputTokens: FINAL_USAGE.output,
+    })
+    expect(
+      actualCredits(PRICING, { inputTokens: PROMPT.length + 8, outputTokens: PREFIX.length }),
+    ).not.toBe(finalCharge)
     const reopened = await context.newPage()
     await reopened.goto(`/app/${f.slug}/chat/${f.conversationId}`)
     const reply = reopened.getByRole('listitem', { name: 'Assistant', exact: true })
     await expect(reply).toContainText(PREFIX + SHORT_TAIL)
     await expect(reply).not.toContainText('Incomplete')
     await expect(reply).not.toContainText('This reply failed.')
-    await assertAccounting(
-      reopened,
-      f,
-      saved.id,
-      actualCredits(PRICING, {
-        inputTokens: FINAL_USAGE.input,
-        outputTokens: FINAL_USAGE.output,
-      }),
-    )
+    await assertAccounting(reopened, f, saved.id, finalCharge)
   } finally {
     await f.sql`update ai_model set enabled = false where id = ${f.modelId}`
     await f.db.$client.end()
