@@ -327,14 +327,17 @@ function MessageFeedback({
           </div>
         </form>
       ) : null}
-      {/* 两个播报区域始终留在无障碍树中（空时高度为 0，用负外边距抵消父级间距）；失败用 alert 立即播报 */}
+      {/* status 区域始终留在无障碍树中（空时高度为 0，用负外边距抵消父级间距），保证「已保存」能被播报；
+          失败用 role="alert"，带着文字插入即立即播报，平时不渲染（页面上不留空的 alert） */}
       <div className={cn('text-caption', !notice && '-mt-1')}>
         <p role="status" className="m-0 text-muted-foreground">
           {notice === 'saved' ? labels.saved : null}
         </p>
-        <p role="alert" className="m-0 text-destructive">
-          {notice === 'failed' ? labels.failed : null}
-        </p>
+        {notice === 'failed' ? (
+          <p role="alert" className="m-0 text-destructive">
+            {labels.failed}
+          </p>
+        ) : null}
       </div>
     </div>
   )

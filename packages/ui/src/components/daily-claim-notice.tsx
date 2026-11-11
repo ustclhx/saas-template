@@ -85,38 +85,41 @@ function DailyClaimNotice({
           <span className="text-caption text-destructive">{error}</span>
         ) : null}
       </div>
-      {status === 'claimed' ? (
-        <Badge color="green" className="shrink-0">
-          <Check
-            aria-hidden
-            className="mr-1 inline size-3 align-[-1px] text-success"
-            strokeWidth={2.5}
-          />
-          {labels.claimed}
-        </Badge>
-      ) : canClaim ? (
-        <Button
-          type="button"
-          size="sm"
-          className="ml-auto shrink-0"
-          loading={status === 'pending'}
-          onClick={onClaim}
-        >
-          {labels.claim}
-        </Button>
-      ) : null}
-      {onDismiss && labels.dismiss ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="shrink-0"
-          aria-label={labels.dismiss}
-          onClick={onDismiss}
-        >
-          <X aria-hidden />
-        </Button>
-      ) : null}
+      {/* 操作区作为一组换行，放不下时整体落到下一行右侧 */}
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        {status === 'claimed' ? (
+          <Badge color="green" className="shrink-0">
+            <Check
+              aria-hidden
+              className="mr-1 inline size-3 align-[-1px] text-success"
+              strokeWidth={2.5}
+            />
+            {labels.claimed}
+          </Badge>
+        ) : canClaim ? (
+          <Button
+            type="button"
+            size="sm"
+            className="shrink-0"
+            loading={status === 'pending'}
+            onClick={onClaim}
+          >
+            {labels.claim}
+          </Button>
+        ) : null}
+        {onDismiss && labels.dismiss ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0"
+            aria-label={labels.dismiss}
+            onClick={onDismiss}
+          >
+            <X aria-hidden />
+          </Button>
+        ) : null}
+      </div>
     </section>
   )
 }
