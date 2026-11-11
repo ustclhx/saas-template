@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto'
 import { expect, test } from '@playwright/test'
 import { APP_URL, login, register, simulateClientIp } from './fixtures.ts'
 import { chooseOption } from './select.ts'
-import { SMOKE_PRICE_ID } from './smoke-setup.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 test('register, sign out/in, and buy a credit pack through the local provider', async ({
@@ -39,11 +38,11 @@ test('register, sign out/in, and buy a credit pack through the local provider', 
 
   await page.getByRole('link', { name: 'Billing', exact: true }).click()
   await expect(page.getByText('Available credits: 0', { exact: false })).toBeVisible()
-  await chooseOption(page.getByRole('combobox', { name: 'Payment method', exact: true }), 'stripe')
-  await chooseOption(page.getByRole('combobox', { name: 'Plan', exact: true }), {
-    value: SMOKE_PRICE_ID,
+  await chooseOption(page.getByRole('combobox', { name: 'Payment method', exact: true }), {
+    value: 'stripe',
   })
-  await page.getByRole('button', { name: 'Continue to checkout' }).click()
+  // 积分包从「购买积分包」分区直接结账（add-ui-design-system 8.7）
+  await page.getByRole('button', { name: 'Buy CI smoke credits', exact: true }).click()
   await expect(page).toHaveURL(/\/billing-return\?/)
   const providerRef = new URL(page.url()).searchParams.get('providerRef')
   expect(providerRef?.startsWith('smoke:')).toBe(true)

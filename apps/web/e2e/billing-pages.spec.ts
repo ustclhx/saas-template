@@ -10,18 +10,19 @@ test('public pricing describes unavailable payments without a checkout success',
   page,
 }) => {
   await page.goto('/pricing')
-  await expect(page.getByRole('heading', { name: 'Pricing', exact: true })).toBeVisible()
+  // 首屏标题随套餐分组变化（订阅与积分包 / 只有订阅 / 只有积分包），只断言 h1 存在
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Frequently asked questions' })).toBeVisible()
+  // 本地离线 suite 不配置支付密钥：有套餐时给出不可用说明，没有套餐时显示空状态
   await expect(
-    page.getByText('Choose a subscription or buy extra credits.', { exact: true }),
+    page
+      .getByText('Payments are currently unavailable', { exact: false })
+      .or(page.getByRole('heading', { name: 'Plans are coming soon' })),
   ).toBeVisible()
-  await expect(page.getByRole('combobox', { name: 'Payment method', exact: true })).toHaveText(
-    'stripe — unavailable',
-  )
-  await expect(page.getByRole('status')).toContainText('Payments are currently unavailable')
   await expect(page.getByRole('button', { name: /checkout|pay now/i })).toHaveCount(0)
 })
 
-test('public pricing shows selected labels before hydration', async ({ browser, baseURL }) => {
+test('public pricing renders before hydration', async ({ browser, baseURL }) => {
   const context = await browser.newContext({
     ...(baseURL ? { baseURL } : {}),
     javaScriptEnabled: false,
@@ -29,9 +30,7 @@ test('public pricing shows selected labels before hydration', async ({ browser, 
   const page = await context.newPage()
   try {
     await page.goto('/pricing')
-    const payment = page.getByRole('combobox', { name: 'Payment method', exact: true })
-    await expect(payment).toHaveText('stripe — unavailable')
-    await expect(payment).toBeDisabled()
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     const language = page.getByRole('combobox', { name: 'Language', exact: true })
     await expect(language).toHaveText('English')
     await expect(language).toBeDisabled()

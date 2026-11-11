@@ -25,11 +25,17 @@ import { Section } from './section.tsx'
 
 export type { BillingInterval, PricingPlan } from '../pricing-data.ts'
 
-export function formatPrice(amount: number, currency: string, locale: string): string {
+/** 营销页整数金额省略小数；`exact` 用于账单等需要与渠道账单逐位一致的场景 */
+export function formatPrice(
+  amount: number,
+  currency: string,
+  locale: string,
+  { exact = false }: { exact?: boolean } = {},
+): string {
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: currency.toUpperCase(),
-    maximumFractionDigits: amount % 100 === 0 ? 0 : 2,
+    ...(exact ? {} : { maximumFractionDigits: amount % 100 === 0 ? 0 : 2 }),
   }).format(amount / 100)
 }
 

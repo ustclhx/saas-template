@@ -14,7 +14,9 @@ export const STRIPE_TEST_CARDS = {
  */
 export async function startStripeCheckout(page: Page, slug: string, price: RegExp) {
   await page.goto(`/app/${slug}/billing`)
-  await chooseOption(page.getByRole('combobox', { name: 'Payment method', exact: true }), 'stripe')
+  await chooseOption(page.getByRole('combobox', { name: 'Payment method', exact: true }), {
+    value: 'stripe',
+  })
   await chooseOption(page.getByRole('combobox', { name: 'Plan', exact: true }), price)
   await page.getByRole('button', { name: 'Continue to checkout' }).click()
   await page.waitForURL(/checkout\.stripe\.com/, { timeout: 60_000 })
@@ -45,6 +47,20 @@ export async function payOnStripeCheckout(
   await page.getByTestId('hosted-payment-submit-button').click()
 }
 
+/**
+ * 在账单页「购买积分包」分区用 Stripe 购买积分包（add-ui-design-system 8.7 起积分包不在 Plan 下拉中）。
+ * `pack` 匹配按钮的无障碍名称「Buy {套餐名}」。
+ */
+export async function buyPackOnStripe(page: Page, slug: string, pack: RegExp) {
+  await page.goto(`/app/${slug}/billing`)
+  await chooseOption(page.getByRole('combobox', { name: 'Payment method', exact: true }), {
+    value: 'stripe',
+  })
+  const packs = page.getByRole('region', { name: 'Buy credit packs' })
+  await packs.getByRole('button', { name: pack }).click()
+  await page.waitForURL(/checkout\.stripe\.com/, { timeout: 60_000 })
+}
+
 /** 付款后回到应用的结账回跳页 */
 export async function expectBillingReturn(page: Page, slug: string) {
   await page.waitForURL(new RegExp(`/app/${slug}/billing-return`), { timeout: 90_000 })
@@ -53,7 +69,9 @@ export async function expectBillingReturn(page: Page, slug: string) {
 
 /** 已有 Stripe 订阅时在账单页选择目标报价并点击 Change plan，返回所选 plan_price id */
 export async function chooseChange(page: Page, price: RegExp, notice?: RegExp) {
-  await chooseOption(page.getByRole('combobox', { name: 'Payment method', exact: true }), 'stripe')
+  await chooseOption(page.getByRole('combobox', { name: 'Payment method', exact: true }), {
+    value: 'stripe',
+  })
   const planPriceId = await chooseOption(
     page.getByRole('combobox', { name: 'Plan', exact: true }),
     price,

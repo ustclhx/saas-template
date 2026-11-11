@@ -81,7 +81,7 @@ test('定价页有站点导航，CTA 未登录经登录页；首页 CTA 到注�
   await page.goto('/pricing')
   await expect(page.locator('header nav')).toBeVisible()
   await expect(page.locator('footer')).toBeVisible()
-  const cta = page.getByRole('link', { name: 'View in my workspace' }).first()
+  const cta = page.getByRole('link', { name: /^Subscribe to / }).first()
   if (await cta.count()) {
     await cta.click()
     await expect(page).toHaveURL(/\/login/)
