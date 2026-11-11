@@ -11,11 +11,10 @@ import {
   type UiPreset,
   UiRoot,
 } from '@saas/ui'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { templateConfig } from '../../server/template-config.ts'
 import { ThemeToggle } from '../theme/theme-toggle.tsx'
-import { ReaderSection } from './section-reader.tsx'
 import {
   BadgeTooltipSection,
   ButtonSection,
@@ -35,6 +34,11 @@ import {
   TabsSection,
   ToastSection,
 } from './sections-overlay.tsx'
+
+// 阅读器依赖 react-markdown 等较重的库，按文档约定的方式懒加载（@saas/ui/reader 子路径形成独立分包）
+const ReaderSection = lazy(() =>
+  import('./section-reader.tsx').then((module) => ({ default: module.ReaderSection })),
+)
 
 /** 目录顺序与页面各节一致（锚点 id → 标题） */
 const SECTIONS = [
@@ -141,7 +145,9 @@ export function UiPreviewPage() {
         <SurfaceSection />
         <DataTableSection />
         <FormSection />
-        <ReaderSection />
+        <Suspense fallback={null}>
+          <ReaderSection />
+        </Suspense>
       </div>
     </UiRoot>
   )

@@ -59,9 +59,10 @@
 | `src/lib/elevated.tsx` | `elevated` | 2026-11 | 仅统一适配规则 |
 | `src/lib/font-weight.ts` | `font-weight` | 2026-11 | 仅统一适配规则 |
 | `src/lib/icon-context.tsx` | `icon-context` | 2026-11 | 图标槽位只保留已接入组件用到的 `x`、`chevron-down`、`chevron-right`、`check`、`circle-alert`、`search`、`plus`、`panel-left`、`panel-right`（上游 70 个全部导入，会随 `UiRoot` 进入首屏包）；接入新组件时按上游槽位名补充 |
-| `src/components/reader.tsx` | 无（模板新增，tasks 8.4） | — | 长文阅读器：react-markdown + remark-gfm，`skipHtml` + 元素白名单 + 协议白名单（`src/lib/markdown.ts`）；目录、吸顶高亮、阅读进度、移动端目录下拉、打印样式；外观按 `docs/design-system/prototypes/ui-review/Reader*.dc.html`；目录与进度图标直接取 lucide（不进入 `UiRoot` 默认图标表，避免首屏包增大），折叠箭头与错误图标用 `chevron-down`、`circle-alert` 槽位 |
-| `src/components/pdf-exporter.ts` | 无（模板新增，tasks 8.4） | — | 服务端 PDF 导出扩展点 `registerPdfExporter`：零依赖模块级注册表 + `useSyncExternalStore`，服务端快照恒为未注册 |
-| `src/lib/markdown.ts` | 无（模板新增，tasks 8.4） | — | Markdown 元素白名单、链接协议白名单 `safeMarkdownUrl`、标题提取与 id 写入；聊天消息以后复用 |
+| `src/components/reader.tsx`、`src/reader.ts` | 无（模板新增，tasks 8.4） | — | 长文阅读器 `Reader` 与组合件 `ReaderProgress`、`ReaderExportButton`、`useReaderController`（进度与文档信息放在外部 store，进度变化只重渲染进度条）；只经 `@saas/ui/reader` 子路径导出，不进主入口；目录、吸顶高亮、移动端目录下拉、打印样式；外观按 `docs/design-system/prototypes/ui-review/Reader*.dc.html`；目录与进度图标直接取 lucide（不进入 `UiRoot` 默认图标表），折叠箭头与错误图标用 `chevron-down`、`circle-alert` 槽位 |
+| `src/components/reader-markdown.tsx` | 无（模板新增，tasks 8.4） | — | react-markdown + remark-gfm 渲染层（`memo`），`skipHtml` + 元素白名单 + 协议白名单 + 图片策略，脚注文案经 `remarkRehypeOptions` 传入 |
+| `src/components/pdf-exporter.ts` | 无（模板新增，tasks 8.4） | — | 服务端 PDF 导出扩展点 `registerPdfExporter`（主入口导出）：零依赖模块级注册表 + `useSyncExternalStore`，服务端快照恒为未注册；载荷含 `exportContext` |
+| `src/lib/markdown.ts` | 无（模板新增，tasks 8.4） | — | Markdown 元素白名单、链接协议白名单 `safeMarkdownUrl`、图片策略、标题提取与 id 写入（跳过脚注区）；聊天消息以后复用 |
 | `src/lib/keyboard.ts` | 无（模板新增） | — | 单键快捷键共用判定（`isEditable`、`isInsidePopup`），由 Command Menu 原有的 `isEditable` 抽出 |
 | `src/icons.ts` | 无（模板新增） | — | `@saas/ui/icons` 入口：按名称重导出常用 lucide 图标，供 apps 使用 |
 | `src/lib/motion-features.tsx` | 无（模板新增） | — | `LazyMotion features={domAnimation}` 的封装，见统一适配规则 8 |
@@ -104,7 +105,8 @@
 | `Toaster` | `labels` | `region`（可含 `{hotkey}`）、`announcement`、`close` |
 | `SidebarProvider` | `labels` | `title`（移动抽屉名称）、`expand` / `collapse`（触发按钮）、`rail`、`railResize` / `railCollapse`（拖拽条），`peek` 只在开启 peek 时必传 |
 | `SidebarMenuButton` | `status="unread"` 时 `unreadLabel` | 追加的读屏文字；`tooltip` 可选（图标栏收起时的名称） |
-| `Reader` | `labels`（`toc`、`progress`、`exportPdf`、`printPdf`、`serverPdf`、`loading`） | 目录标题、进度条名称、导出按钮、注册服务端导出后的菜单项、加载播报 |
+| `Reader` | `labels`（`toc`、`progress`、`exportPdf`、`printPdf`、`serverPdf`、`loading`、`footnotes`、`footnoteBack`） | 目录标题、进度条名称、导出按钮、注册服务端导出后的菜单项、加载播报、脚注区标题与返回链接 |
+| `ReaderProgress` / `ReaderExportButton` | `label` / `labels`（`exportPdf`、`printPdf`、`serverPdf`） | 外壳顶栏中单独使用时 |
 | `ReaderEmpty` / `ReaderError` | `title`；`ReaderError` 显示重试时 `retryLabel` | 空状态与错误状态文字 |
 
 ## SelectItem 的 `index`（tasks 4.5 评估结论：保留显式传入）

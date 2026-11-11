@@ -38,12 +38,14 @@ const ZH = `## 1. 摘要
 }
 \`\`\`
 
-建议对超过阈值的长文本先做摘要，再进入问答；高峰时段的备用模型切换需要单独设置预算。详见[用量页](/dev/ui#data-table)与[外部参考](https://example.com/cost-guide)。
+建议对超过阈值的长文本先做摘要，再进入问答；高峰时段的备用模型切换需要单独设置预算。详见[用量页](/dev/ui#data-table)与[外部参考](https://example.com/cost-guide)。原始导出[^src]：https://example.com/exports/2026-q3/usage_by_model_including_fallback_models_and_long_context_requests.csv
 
 ## 4. 下季度计划
 
 - 恢复渠道 B 投放，并为其单独设置转化目标。
 - 上线长文本摘要，目标是把单次调用成本降低三成。
+
+[^src]: 导出时间为季度结束后第一个工作日，数值为示例。
 `
 
 const EN = `## 1. Summary
@@ -85,12 +87,14 @@ Model costs grew as a share of spend, mostly from long-text requests. Share of c
 }
 \`\`\`
 
-Summarize long inputs above the threshold before Q&A, and give peak-hour fallback models their own budget. See the [usage page](/dev/ui#data-table) and an [external reference](https://example.com/cost-guide).
+Summarize long inputs above the threshold before Q&A, and give peak-hour fallback models their own budget. See the [usage page](/dev/ui#data-table) and an [external reference](https://example.com/cost-guide). Raw export[^src]: https://example.com/exports/2026-q3/usage_by_model_including_fallback_models_and_long_context_requests.csv
 
 ## 4. Next quarter
 
 - Resume channel B spend with its own conversion target.
 - Ship long-text summaries, aiming to cut cost per call by 30%.
+
+[^src]: Exported on the first business day after quarter end; values are samples.
 `
 
 export function sampleReport(locale: string): string {

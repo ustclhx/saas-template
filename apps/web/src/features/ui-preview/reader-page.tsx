@@ -1,4 +1,4 @@
-import type { ReaderStatus } from '@saas/ui'
+import type { ReaderStatus } from '@saas/ui/reader'
 import { ReaderDemo } from './section-reader.tsx'
 
 /**

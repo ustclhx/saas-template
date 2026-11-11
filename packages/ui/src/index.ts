@@ -140,16 +140,6 @@ export {
   type PdfExporter,
   registerPdfExporter,
 } from './components/pdf-exporter.ts'
-export {
-  Reader,
-  ReaderEmpty,
-  type ReaderEmptyProps,
-  ReaderError,
-  type ReaderErrorProps,
-  type ReaderLabels,
-  type ReaderProps,
-  type ReaderStatus,
-} from './components/reader.tsx'
 export { ScrollArea, type ScrollAreaProps, ScrollBar } from './components/scroll-area.tsx'
 export {
   Select,

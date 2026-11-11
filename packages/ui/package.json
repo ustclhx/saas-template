@@ -11,7 +11,8 @@
     "./project": "./src/project/index.ts",
     "./globals.css": "./src/styles/globals.css",
     "./fonts": "./src/fonts.ts",
-    "./icons": "./src/icons.ts"
+    "./icons": "./src/icons.ts",
+    "./reader": "./src/reader.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

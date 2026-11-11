@@ -8,6 +8,8 @@ export interface PdfExportDocument {
   readonly title: string
   /** 阅读器正在显示的 Markdown 源文 */
   readonly markdown: string
+  /** 阅读器 `exportContext` 属性原样传入（如报告 id），供实现取服务端数据 */
+  readonly exportContext?: unknown
 }
 
 /** 服务端导出实现：生成并触发下载；抛出的错误交给阅读器的 `onPdfExportError` */

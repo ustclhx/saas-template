@@ -23,5 +23,9 @@
   "ui_preview_reader_generate": "生成报告",
   "ui_preview_reader_error_title": "报告加载失败",
   "ui_preview_reader_error_desc": "正文暂时无法读取，报告本身没有丢失。",
-  "ui_preview_reader_retry": "重试"
+  "ui_preview_reader_retry": "重试",
+  "ui_preview_reader_footnotes": "脚注",
+  "ui_preview_reader_footnote_back": "返回正文",
+  "ui_preview_reader_shell_bar": "外壳顶栏（bar=false）",
+  "ui_preview_reader_shell_title": "外壳顶栏：进度条与导出按钮由页面放置"
 }

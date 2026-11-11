@@ -98,7 +98,7 @@
 
 - **评审分两批**：第一批确认基线风格与 `/dev/ui` 组件预览（第 3、4 组产物）；第二批一次评审 6 个页面画板：工作台布局、长文阅读器、定价页并列、账单页分区、营销新区块、嵌入式对话与评分。等待评审期间推进不依赖设计稿的任务。确认后的模版设计稿副本放在 `docs/design-system/prototypes/`（模版文档的一部分，生成器不复制到衍生项目）。两批已于 2026-11-11 确认，见 `docs/design-system/prototypes/README.md` 中所属 change 为本 change 的各行；8.3–8.7 以 `ui-review/` 下画板源码为验收依据。
 - **工作台**：`apps/web/src/features/app-shell/` 新增导航注册表 `registerAppNav({ group, items })`，项目在自有文件中注册，避免改热点路由文件。`template.config.ts` 增加 `ui.appLayout: 'sidebar' | 'topbar'`，模版默认 `sidebar`；已有衍生项目在升级说明中可设 `topbar` 保持原样。折叠状态存 cookie，SSR 直接按状态渲染，避免闪烁。
-- **长文阅读器**：放 `packages/ui`，用 `react-markdown` + `remark-gfm`，`skipHtml` 并限制 URL 协议；目录由标题节点生成，进度与吸顶高亮用 IntersectionObserver。打印样式用 `@media print`。PDF 扩展点为 `registerPdfExporter(fn)`，未注册时只显示浏览器打印。聊天消息以后可复用同一渲染器。
+- **长文阅读器**：放 `packages/ui`，经 `@saas/ui/reader` 子路径导出、页面懒加载；用 `react-markdown` + `remark-gfm`，`skipHtml`、元素白名单并限制链接协议，图片默认只显示站内地址；目录由标题节点生成，进度与吸顶高亮在捕获阶段的 scroll 事件中按 rAF 计算（同时适用于页面与外层滚动容器，取「最后越过吸顶物的标题」），点击目录后锁定高亮至滚动停止。默认自带顶栏，`bar={false}` 时由外壳顶栏放 `ReaderProgress` 与 `ReaderExportButton`（共享 `useReaderController`）。打印样式用 `@media print`。PDF 扩展点为 `registerPdfExporter(fn)`，未注册时只显示浏览器打印。聊天消息以后可复用同一渲染器。
   - 备选：复用构建期 MDX（content-collections）。放弃原因：报告正文是运行时数据，Worker 不允许执行 MDX 编译结果。
 - **业务界面组件**：放 `packages/ui`（纯展示，属性进、回调出，无数据请求）；`apps/web` 只在 `/dev/ui` 用示例数据挂载。组件接口在 `docs/design-system.md` 列出，供 R1–R4 的后端变更接入；这些变更可与本变更并行，先用现有界面，本变更合并后再替换。
 - **营销区块**：放 `apps/web/src/features/marketing/sections/`，内容来自 `template.config.ts` 与文案文件；背书区块没有配置值时返回 null。悬浮入口用 CSS 定位与页脚留白，避免遮挡。
