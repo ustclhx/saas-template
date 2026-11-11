@@ -105,3 +105,36 @@ export function pricingForInterval<P extends { readonly interval: BillingInterva
     (price) => price.interval === (plan.type === 'subscription' ? interval : null),
   )
 }
+
+/** 当前周期展示的价格：积分包只有一次性价格，不随月付/年付切换变化 */
+export function planPrice<P extends { readonly interval: BillingInterval | null }>(
+  plan: { readonly type: 'subscription' | 'credit_pack'; readonly prices: readonly P[] },
+  interval: BillingInterval,
+): P | undefined {
+  return pricingForInterval(plan, interval)[0]
+}
+
+/** 年付相对 12 个月月付的最大节省比例（同币种比较），没有可比价格时为 0 */
+export function yearlySavingPercent(subscriptions: readonly Pick<PricingPlan, 'prices'>[]): number {
+  let best = 0
+  for (const plan of subscriptions) {
+    for (const year of plan.prices.filter((price) => price.interval === 'year')) {
+      const month = plan.prices.find(
+        (price) => price.interval === 'month' && price.currency === year.currency,
+      )
+      if (!month || month.amount <= 0) continue
+      best = Math.max(best, Math.round((1 - year.amount / (month.amount * 12)) * 100))
+    }
+  }
+  return best
+}
+
+/** 积分包有效期：全部长期有效时为 null，否则取最短天数，规则说明不夸大有效期 */
+export function packExpiryDays(
+  packs: readonly Pick<PricingPlan, 'creditExpiryDays'>[],
+): number | null {
+  const days = packs
+    .map((pack) => pack.creditExpiryDays)
+    .filter((value): value is number => value !== null)
+  return days.length ? Math.min(...days) : null
+}

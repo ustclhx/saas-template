@@ -53,7 +53,9 @@ test('首页渲染', async ({ page }) => {
 test('定价页渲染', async ({ page }) => {
   const response = await page.goto('/pricing')
   expect(response?.status()).toBe(200)
-  await expect(page.getByRole('heading', { name: 'Pricing', exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { level: 1, name: /Subscribe or buy credit packs/ }),
+  ).toBeVisible()
 })
 
 test('随机邮箱注册后进入个人空间', async ({ page }) => {
