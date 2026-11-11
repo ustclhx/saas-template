@@ -146,10 +146,17 @@ xuanxue 迁移：把根布局中 `data-site="east|west"` 的计算移到此函�
 ## 工作台侧边栏（tasks 8.3）
 
 - App 区（`/app/$slug/*`）默认改为侧边栏工作台布局。想保持原顶部布局的项目在 `template.config.ts` 设
-  `ui: { …, appLayout: 'topbar' }`，页面与测试行为不变。
-- 侧边栏布局下：空间名称（`data-testid="workspace-name"`）在侧边栏顶部，当前用户（`data-testid="current-user"`）在底部
-  账户入口；角色与多空间切换表单在工作台首页 `/app/$slug`；语言与主题切换在顶栏（窄屏在抽屉底部），不再浮动在页面角落。
-  依赖原布局头部位置的项目 e2e 需相应调整。
-- 项目导航条目写在 `apps/web/src/features/app-shell/nav.project.ts`（项目自有）；`nav.default.ts` 为模板条目，
-  不要在其中加项目条目。
+  `ui: { …, appLayout: 'topbar' }`，页面结构不变。
+- **改过 `apps/web/src/routes/app/$slug/route.tsx` 的项目**：旧布局主体（`WorkspaceLayout` 的 JSX）已移到
+  `apps/web/src/features/app-shell/topbar-layout.tsx` 的 `TopbarLayout`，路由文件只按 `ui.appLayout` 选择
+  `SidebarLayout` / `TopbarLayout`，`beforeLoad` 多返回 `sidebarOpen`。同步时路由文件取模板版本；项目对旧布局的改动：
+  - 新增导航链接 → 改为在项目自有的 `features/app-shell/nav.project.ts` 的 `registerProjectAppNav()` 中 `registerAppNav`
+    登记（两种布局都会显示：侧边栏按分组，顶部布局排在原有链接之后）；
+  - 布局结构 / 样式改动 → 用 `appLayout: 'topbar'` 时迁到 `topbar-layout.tsx`（模板文件，之后同步需三方合并），
+    或者采用侧边栏布局，把页面级的标题、操作放进 `<AppShellBar>`。
+- 侧边栏布局下：空间名称（`data-testid="workspace-name"`）在侧边栏顶部，当前用户（`data-testid="current-user"`，名称与邮箱
+  分两行）在底部账户入口；角色与多空间切换表单在工作台首页 `/app/$slug`，其他页面经侧边栏工作区菜单切换；
+  语言与主题切换在顶栏（窄屏在抽屉底部），不再浮动在页面角落；页面 h1 是顶栏标题。依赖原布局头部的项目 e2e 需相应调整
+  （可参考模板 `e2e/workspace-switch.ts`）。
+- 升级入口只在开启计费、空间为免费套餐且当前用户是所有者 / 管理员时显示；`getWorkspacePage` 新增 `planKey`。
 - 新 cookie `app_sidebar`（`expanded` / `collapsed`）记录折叠状态，属于功能性 cookie。

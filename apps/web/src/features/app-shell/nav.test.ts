@@ -45,9 +45,9 @@ describe('registerAppNav', () => {
     registerAppNav({
       group: 'tools',
       items: [
-        item('b', '/app/$slug/b'),
-        item('a', '/app/$slug/a', { order: 5 }),
-        item('c', '/app/$slug/c'),
+        item('b', '/app/$slug/billing'),
+        item('a', '/app/$slug/api-keys', { order: 5 }),
+        item('c', '/app/$slug/chat'),
       ],
     })
     expect(ids()).toEqual([['tools', ['a', 'b', 'c']]])
@@ -113,10 +113,10 @@ describe('当前项高亮', () => {
   it('多个条目匹配时取路径最长的', () => {
     registerAppNav({
       group: 'tools',
-      items: [item('media-all', '/app/$slug/media'), item('media-new', '/app/$slug/media/new')],
+      items: [item('chat', '/app/$slug/chat'), item('context', '/app/$slug/chat/context')],
     })
-    expect(activeAppNavId(resolveAppNav(owner), '/app/acme/media/new', 'acme')).toBe('media-new')
-    expect(activeAppNavId(resolveAppNav(owner), '/app/acme/media/123', 'acme')).toBe('media-all')
+    expect(activeAppNavId(resolveAppNav(owner), '/app/acme/chat/context', 'acme')).toBe('context')
+    expect(activeAppNavId(resolveAppNav(owner), '/app/acme/chat/123', 'acme')).toBe('chat')
   })
 
   it('slug 编码后填入路径', () => {

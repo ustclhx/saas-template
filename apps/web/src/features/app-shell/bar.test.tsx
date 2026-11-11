@@ -18,7 +18,7 @@ describe('AppShellBar', () => {
   })
 
   it('服务端首屏插槽尚未挂载时不输出内容，壳显示默认标题', () => {
-    const slots = { title: null, actions: null, progress: null, setCustomTitle: () => {} }
+    const slots = { title: null, actions: null, progress: null }
     const html = renderToStaticMarkup(
       <AppShellBarContext.Provider value={slots}>
         <Probe />

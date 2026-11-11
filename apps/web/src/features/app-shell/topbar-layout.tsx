@@ -4,9 +4,18 @@ import { templateConfig } from '../../server/template-config.ts'
 import { DailyCreditsNotice } from '../credits/daily-notice.tsx'
 import { NotificationCenter } from '../notifications/center.tsx'
 import { type WorkspacePage, WorkspaceSwitcher } from '../workspace/components.tsx'
+import { resolveAppNav, TEMPLATE_NAV_IDS } from './registry.ts'
 
-/** 原有顶部布局（ui.appLayout: 'topbar'），结构与文案保持不变 */
+/** 原有顶部布局（ui.appLayout: 'topbar'），结构与文案保持不变；另渲染项目注册的导航条目 */
 export function TopbarLayout({ page }: { page: WorkspacePage }) {
+  // 项目经 registerAppNav 新增的条目排在原有链接之后；模板条目已由上面的固定链接渲染
+  const projectItems = resolveAppNav({
+    role: page.role,
+    readOnly: page.readOnly,
+    isPersonal: page.workspace.isPersonal,
+  })
+    .flatMap((group) => group.items)
+    .filter((item) => !(TEMPLATE_NAV_IDS as readonly string[]).includes(item.id))
   return (
     <div className="mx-auto grid max-w-4xl gap-8 p-6">
       <header className="grid gap-4">
@@ -83,6 +92,17 @@ export function TopbarLayout({ page }: { page: WorkspacePage }) {
               {m.app_usage()}
             </Link>
           )}
+          {projectItems.map((item) => (
+            <Link
+              key={item.id}
+              to={item.to as '/app/$slug'}
+              params={{ slug: page.workspace.slug }}
+              {...(item.search && { search: item.search as never })}
+              className="underline"
+            >
+              {item.label()}
+            </Link>
+          ))}
         </nav>
       </header>
       <main>

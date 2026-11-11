@@ -44,6 +44,9 @@ test.describe('sidebar 布局', () => {
     )
     await expect(page.getByTestId('workspace-name')).toHaveText('Personal')
     await expect(page.getByTestId('current-user')).toContainText('Shell Tester')
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Home')
+    // 还没有任何通知时不渲染通知块
+    await expect(page.getByTestId('notification-unread')).toHaveCount(0)
     // 底部升级与账户入口
     await expect(page.getByRole('link', { name: 'View plans' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Account menu: Shell Tester' })).toBeVisible()
@@ -58,7 +61,9 @@ test.describe('sidebar 布局', () => {
       'aria-current',
       'page',
     )
-    await expect(page.getByTestId('app-page-title')).toHaveText('Usage')
+    // 顶部条标题即页面唯一的 h1，正文不再重复「Credit usage」标题
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Usage')
+    await expect(page.getByRole('heading', { name: 'Credit usage' })).toHaveCount(0)
 
     // 内容区：surface-2 圆角面板，与侧边栏之间 8px 外边距
     const inset = page.locator('[data-slot="sidebar-inset"]')
@@ -116,7 +121,7 @@ test.describe('sidebar 布局', () => {
     await expect(page).toHaveURL(/\/settings$/)
     await expect(drawer).toBeHidden()
     await expect(menu).toBeFocused()
-    await expect(page.getByTestId('app-page-title')).toHaveText('Workspace settings')
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Workspace settings')
     await noHorizontalScroll(page)
 
     for (const path of ['usage', 'billing', 'chat']) {

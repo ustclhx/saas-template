@@ -1,4 +1,5 @@
 import type { SidebarMenuButtonProps } from '@saas/ui'
+import type { FileRoutesByTo } from '../../routeTree.gen.ts'
 
 // 工作台侧边栏的导航注册表（openspec add-ui-design-system D11、tasks 8.3）。
 // 模块在自己的文件里调用 registerAppNav 登记条目，不改布局与路由文件；模板默认条目见 nav.default.ts，
@@ -8,8 +9,8 @@ import type { SidebarMenuButtonProps } from '@saas/ui'
 export const APP_NAV_GROUPS = ['tools', 'content', 'settings'] as const
 export type AppNavGroupId = (typeof APP_NAV_GROUPS)[number]
 
-/** 条目链接：App 区路由模板，`$slug` 由当前空间填入 */
-export type AppNavPath = '/app/$slug' | `/app/$slug/${string}`
+/** 条目链接：生成路由树中 `/app/$slug` 下的路由（`$slug` 由当前空间填入），写错路径时类型检查失败 */
+export type AppNavPath = Extract<keyof FileRoutesByTo, '/app/$slug' | `/app/$slug/${string}`>
 
 /** 判断条目是否可见时可用的当前空间信息（权限、只读等） */
 export interface AppNavContext {
@@ -63,7 +64,7 @@ export function unregisterAppNav(...ids: string[]) {
   for (const id of ids) registry.delete(id)
 }
 
-/** 仅测试使用：清空注册表 */
+/** 清空注册表：registry.ts 每次加载先清空再按序登记，热更新后不残留旧条目；测试也用它 */
 export function resetAppNav() {
   registry.clear()
   sequence = 0

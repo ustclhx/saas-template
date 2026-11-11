@@ -541,20 +541,30 @@ Markdown 与代码高亮另行选型，优先轻量方案；替换聊天页与 S
 surface-2 + shadow-2 圆角面板，768px 以下侧边栏收为抽屉、面板铺满。导航条目用注册表登记，不改布局文件：
 
 ```ts
-import { registerAppNav } from './nav.ts'
-registerAppNav({
-  group: 'content', // 固定分组 tools / content / settings，按此顺序显示，空分组不渲染
-  items: [{ id: 'reports', label: m.reports_title, icon: Folder, to: '/app/$slug/reports', order: 10,
-    visible: ({ role, readOnly, isPersonal }) => role !== 'member' }],
-})
+// apps/web/src/features/app-shell/nav.project.ts（项目自有）
+export function registerProjectAppNav() {
+  registerAppNav({
+    group: 'content', // 固定分组 tools / content / settings，按此顺序显示，空分组不渲染
+    items: [{ id: 'reports', label: m.reports_title, icon: Folder, to: '/app/$slug/reports', order: 10,
+      visible: ({ role, readOnly, isPersonal }) => role !== 'member' }],
+  })
+}
 ```
 
-模板条目在 `nav.default.ts`（可见性与原顶部布局一致）；项目条目写在项目自有的 `nav.project.ts`（模板创建后不再修改），
-同 id 覆盖模板条目，`unregisterAppNav(id)` 移除。当前项取路径相同或位于条目之下、路径最长的条目（`exact` 只匹配相同路径）。
-注册表只作用于侧边栏布局；顶部布局保持原有链接。
-页面需要把面包屑、操作按钮或进度条放进工作台顶部条时渲染 `<AppShellBar title={…} actions={…} progress={…} />`
-（`features/app-shell/bar.tsx`，内容经 portal 挂到顶部条的标题、操作插槽与底边进度条位置，水合后出现；服务端首屏显示当前导航项名称）；
-`useAppShellBarAvailable()` 为 false（顶部布局）时页面自行渲染工具条。打印时侧边栏、顶部条与通知入口隐藏，面板去掉外边距与阴影，正文随文档流完整输出。
+模板条目在 `nav.default.ts` 的 `registerDefaultAppNav()`（可见性与原顶部布局一致）；项目条目写在项目自有的
+`nav.project.ts` 的 `registerProjectAppNav()`（模板创建后不再修改），同 id 覆盖模板条目，`unregisterAppNav(id)` 移除；
+`registry.ts` 每次加载先清空注册表再按序调用两者（热更新不残留旧条目）。`to` 取生成路由树中 `/app/$slug` 下的路由，
+写错路径时类型检查失败。当前项取路径相同或位于条目之下、路径最长的条目（`exact` 只匹配相同路径）。
+顶部布局保留原有链接，并在其后渲染项目新增的条目（模板条目 id 之外的）。
+
+顶部条的标题是页面 h1（默认为当前导航项名称），页面正文从 h2 开始，不再重复同名标题。页面需要把面包屑、操作按钮或进度条
+放进顶部条时渲染 `<AppShellBar title={…} actions={…} progress={…} />`（`features/app-shell/bar.tsx`）：内容经 portal
+挂到顶部条 h1 内的标题插槽、操作插槽与底边进度条位置，**水合后才出现**（服务端首屏与水合前显示默认标题）；标题插槽有内容时
+默认标题由 CSS 隐藏，页面卸载后自动恢复，同一页面可渲染多个 AppShellBar。
+`useAppShellBarAvailable()` 为 false（顶部布局）时页面自行渲染工具条。打印时侧边栏、打开的抽屉、顶部条与通知入口隐藏，
+面板去掉外边距与阴影，正文随文档流完整输出。顶部条与抽屉里的语言选择用 `LanguageControls placement="bare"`（无底色与阴影）；
+`SidebarInset as="div"` 让顶部条不落在 `<main>` 地标里；`MenuItem` 的 `render`（如 `<Link to="/account" />`）让菜单项成为真实链接。
+升级入口只对免费套餐空间的所有者 / 管理员显示（`getWorkspacePage` 返回 `planKey`）；还没有任何通知时不渲染通知块。
 
 每个页面都要设计并实现四种状态：正常、空、加载、错误；在 390px 宽无横向滚动，浅色与深色均正确。
 根布局与公开页面的数据读取失败时降级，不让整页报错。

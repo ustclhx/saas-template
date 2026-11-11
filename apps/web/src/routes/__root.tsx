@@ -65,7 +65,11 @@ function RootComponent() {
       state.matches.some(
         (match) =>
           match.routeId.startsWith('/(auth)/') ||
-          (templateConfig.ui.appLayout === 'sidebar' && match.routeId.startsWith('/app/$slug')),
+          // 只在工作台壳实际渲染时；空间不存在或出错时显示浮动控件
+          (templateConfig.ui.appLayout === 'sidebar' &&
+            match.routeId === '/app/$slug' &&
+            match.status !== 'notFound' &&
+            match.status !== 'error'),
       ) || /^\/admin(\/|$)/.test(state.location.pathname),
   })
   return (

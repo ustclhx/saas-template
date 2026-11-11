@@ -23,6 +23,7 @@ import {
 import { type ReactNode, useEffect, useState } from 'react'
 import { z } from 'zod'
 import { m } from '../../paraglide/messages.js'
+import { useAppShellBarAvailable } from '../app-shell/bar.tsx'
 import { FormAlert } from '../auth/auth-layout.tsx'
 import { actionResult, activateWorkspace, workspaceAction } from './client.ts'
 import type { getWorkspacePage } from './workspace.functions.ts'
@@ -154,6 +155,7 @@ type ConfirmationTarget = {
 }
 
 export function WorkspaceSettings({ page }: { page: WorkspacePage }) {
+  const inShell = useAppShellBarAvailable()
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const [email, setEmail] = useState('')
@@ -198,9 +200,12 @@ export function WorkspaceSettings({ page }: { page: WorkspacePage }) {
   }
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Workspace settings</CardTitle>
-      </CardHeader>
+      {/* 工作台顶部条已显示「空间设置」标题（h1），不再重复 */}
+      {inShell ? null : (
+        <CardHeader>
+          <CardTitle>Workspace settings</CardTitle>
+        </CardHeader>
+      )}
       <CardContent className="grid gap-6">
         <p>
           Seats: {page.memberCount} / {page.maxSeats ?? 'Unlimited'}

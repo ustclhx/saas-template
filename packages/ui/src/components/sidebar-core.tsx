@@ -1254,38 +1254,45 @@ SidebarRail.displayName = 'SidebarRail'
 
 // ─── SidebarInset ────────────────────────────────────────────────────────────
 
-export type SidebarInsetProps = HTMLAttributes<HTMLElement>
+export interface SidebarInsetProps extends HTMLAttributes<HTMLElement> {
+  /** 模板新增：面板元素。面板里同时放顶部条与正文时传 `div`，正文自己用 `<main>`，顶部条不落在 main 地标里。
+   *  @default "main" */
+  as?: 'main' | 'div'
+}
 
-const SidebarInset = forwardRef<HTMLElement, SidebarInsetProps>(({ className, ...props }, ref) => {
-  const shape = useShape()
-  return (
-    <main
-      ref={ref}
-      data-slot="sidebar-inset"
-      className={cn(
-        'relative flex min-h-0 w-full min-w-0 flex-1 flex-col bg-background',
-        'peer-data-[variant=inset]:m-2 peer-data-[variant=inset]:peer-data-[side=left]:ml-0 peer-data-[variant=inset]:peer-data-[side=right]:mr-0',
-        // With the rail collapsed away, restore the sidebar-side margin so
-        // the card keeps symmetric insets.
-        // 模板改动：只在 offcanvas 整体收走时补边距；图标栏收起后栏仍在，面板贴着图标栏不加左边距
-        'peer-data-[variant=inset]:peer-data-[collapsible=offcanvas]:peer-data-[side=left]:ml-2 peer-data-[variant=inset]:peer-data-[collapsible=offcanvas]:peer-data-[side=right]:mr-2',
-        // 模板改动：抽屉断点（默认 768px）以下栏已隐藏，面板铺满视口，不留外边距、圆角与阴影
-        'peer-data-[variant=inset]:max-md:m-0 peer-data-[variant=inset]:max-md:rounded-none peer-data-[variant=inset]:max-md:shadow-none',
-        'transition-[margin] duration-80',
-        // Container radius follows the shape system (literal classes so
-        // Tailwind's scanner emits both).
-        {
-          pill: 'peer-data-[variant=inset]:rounded-3xl',
-          rounded: 'peer-data-[variant=inset]:rounded-xl',
-          sharp: 'peer-data-[variant=inset]:rounded-[1px]',
-        }[shape.variant],
-        'peer-data-[variant=inset]:bg-surface-2 peer-data-[variant=inset]:shadow-surface-2',
-        className,
-      )}
-      {...props}
-    />
-  )
-})
+const SidebarInset = forwardRef<HTMLElement, SidebarInsetProps>(
+  ({ as: Tag = 'main', className, ...props }, ref) => {
+    const shape = useShape()
+    return (
+      <Tag
+        // main 与 div 都是 HTMLElement，按 div 的 ref 类型交给 JSX
+        ref={ref as Ref<HTMLDivElement>}
+        data-slot="sidebar-inset"
+        className={cn(
+          'relative flex min-h-0 w-full min-w-0 flex-1 flex-col bg-background',
+          'peer-data-[variant=inset]:m-2 peer-data-[variant=inset]:peer-data-[side=left]:ml-0 peer-data-[variant=inset]:peer-data-[side=right]:mr-0',
+          // With the rail collapsed away, restore the sidebar-side margin so
+          // the card keeps symmetric insets.
+          // 模板改动：只在 offcanvas 整体收走时补边距；图标栏收起后栏仍在，面板贴着图标栏不加左边距
+          'peer-data-[variant=inset]:peer-data-[collapsible=offcanvas]:peer-data-[side=left]:ml-2 peer-data-[variant=inset]:peer-data-[collapsible=offcanvas]:peer-data-[side=right]:mr-2',
+          // 模板改动：抽屉断点（默认 768px）以下栏已隐藏，面板铺满视口，不留外边距、圆角与阴影
+          'peer-data-[variant=inset]:max-md:m-0 peer-data-[variant=inset]:max-md:rounded-none peer-data-[variant=inset]:max-md:shadow-none',
+          'transition-[margin] duration-80',
+          // Container radius follows the shape system (literal classes so
+          // Tailwind's scanner emits both).
+          {
+            pill: 'peer-data-[variant=inset]:rounded-3xl',
+            rounded: 'peer-data-[variant=inset]:rounded-xl',
+            sharp: 'peer-data-[variant=inset]:rounded-[1px]',
+          }[shape.variant],
+          'peer-data-[variant=inset]:bg-surface-2 peer-data-[variant=inset]:shadow-surface-2',
+          className,
+        )}
+        {...props}
+      />
+    )
+  },
+)
 SidebarInset.displayName = 'SidebarInset'
 
 // ─── SidebarInput ────────────────────────────────────────────────────────────

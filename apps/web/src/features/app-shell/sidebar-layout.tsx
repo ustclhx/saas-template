@@ -21,7 +21,7 @@ import {
   Tooltip,
 } from '@saas/ui'
 import { ChevronsUpDown, LogOut, Menu, Sparkles, User, X, Zap } from '@saas/ui/icons'
-import { Link, Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
+import { Link, Outlet, useRouterState } from '@tanstack/react-router'
 import { type ReactNode, useMemo, useState } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { templateConfig } from '../../server/template-config.ts'
@@ -36,6 +36,7 @@ import { AppShellBarContext } from './bar.tsx'
 import type { AppNavGroup, AppNavGroupId, AppNavItem } from './nav.ts'
 import { activeAppNavId, resolveAppNav } from './registry.ts'
 import { rememberSidebarOpen } from './sidebar-state.ts'
+import { showUpgradeEntry } from './upgrade.ts'
 
 // 工作台布局（ui.appLayout: 'sidebar'，验收依据 docs/design-system/prototypes/ui-review/Workbench*.dc.html）：
 // 侧边栏在 surface-1，展开 248px / 收起为 64px 图标栏；内容区是 8px 外边距的 surface-2 + shadow-2 圆角面板；
@@ -79,16 +80,16 @@ export function SidebarLayout({
   const [titleSlot, setTitleSlot] = useState<HTMLElement | null>(null)
   const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null)
   const [progressSlot, setProgressSlot] = useState<HTMLElement | null>(null)
-  const [customTitle, setCustomTitle] = useState(false)
   const barSlots = useMemo(
-    () => ({
-      title: titleSlot,
-      actions: actionsSlot,
-      progress: progressSlot,
-      setCustomTitle,
-    }),
+    () => ({ title: titleSlot, actions: actionsSlot, progress: progressSlot }),
     [titleSlot, actionsSlot, progressSlot],
   )
+  const upgrade = showUpgradeEntry({
+    billingEnabled: templateConfig.billing.enabled,
+    planKey: page.planKey,
+    role: page.role,
+    readOnly: page.readOnly,
+  })
 
   return (
     <SidebarProvider
@@ -110,78 +111,79 @@ export function SidebarLayout({
       widthMobile="18.75rem"
     >
       <Sidebar collapsible="icon" variant="inset" rail={false} className="print:hidden">
-        <SidebarHeader className="gap-4 px-3 pt-1 in-data-[collapsible=icon]:items-center">
-          <div className="flex h-8 items-center justify-between gap-2 pl-1 in-data-[collapsible=icon]:justify-center in-data-[collapsible=icon]:pl-0">
-            <Link
-              to="/app/$slug"
-              params={{ slug }}
-              className="flex min-w-0 items-center gap-2 in-data-[collapsible=icon]:hidden"
-            >
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                <Sparkles size={14} strokeWidth={2} aria-hidden="true" />
-              </span>
-              <span className="truncate font-semibold text-body">{templateConfig.app.name}</span>
-            </Link>
-            <SidebarTrigger className="in-data-[mobile=true]:hidden" />
-            <SidebarTrigger
-              aria-label={m.app_shell_close_nav()}
-              className="hidden in-data-[mobile=true]:inline-flex"
-            >
-              <X />
-            </SidebarTrigger>
-          </div>
-          <WorkspaceEntry page={page} />
-        </SidebarHeader>
-        <SidebarContent>
-          <nav aria-label={m.app_shell_nav_label()} className="flex flex-col gap-2">
-            {groups.map((group) => (
-              <NavGroup key={group.id} group={group} slug={slug} activeId={activeId} />
-            ))}
-          </nav>
-        </SidebarContent>
-        <SidebarFooter className="gap-2 px-3 pb-1 in-data-[collapsible=icon]:items-center">
-          {templateConfig.billing.enabled ? <UpgradeEntry slug={slug} /> : null}
-          <AccountEntry user={page.user} />
-          {/* 窄屏顶栏放不下语言与主题切换，改放在抽屉底部；桌面侧边栏不显示 */}
-          <div className="hidden flex-wrap items-center gap-2 px-2 in-data-[mobile=true]:flex">
-            {templateConfig.i18n.enabled ? <LanguageControls placement="inline" /> : null}
-            <ThemeToggle />
-          </div>
-        </SidebarFooter>
+        <aside aria-label={m.app_shell_navigation()} className="flex h-full min-h-0 flex-col">
+          <SidebarHeader className="gap-4 px-3 pt-1 in-data-[collapsible=icon]:items-center">
+            <div className="flex h-8 items-center justify-between gap-2 pl-1 in-data-[collapsible=icon]:justify-center in-data-[collapsible=icon]:pl-0">
+              <Link
+                to="/app/$slug"
+                params={{ slug }}
+                className="flex min-w-0 items-center gap-2 in-data-[collapsible=icon]:hidden"
+              >
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                  <Sparkles size={14} strokeWidth={2} aria-hidden="true" />
+                </span>
+                <span className="truncate font-semibold text-body">{templateConfig.app.name}</span>
+              </Link>
+              <SidebarTrigger className="in-data-[mobile=true]:hidden" />
+              <SidebarTrigger
+                aria-label={m.app_shell_close_nav()}
+                className="hidden in-data-[mobile=true]:inline-flex"
+              >
+                <X />
+              </SidebarTrigger>
+            </div>
+            <WorkspaceEntry page={page} />
+          </SidebarHeader>
+          <SidebarContent>
+            <nav aria-label={m.app_shell_nav_label()} className="flex flex-col">
+              {groups.map((group) => (
+                <NavGroup key={group.id} group={group} slug={slug} activeId={activeId} />
+              ))}
+            </nav>
+          </SidebarContent>
+          <SidebarFooter className="gap-2 px-3 pb-1 in-data-[collapsible=icon]:items-center">
+            {upgrade ? <UpgradeEntry slug={slug} /> : null}
+            <AccountEntry user={page.user} />
+            {/* 窄屏顶栏放不下语言与主题切换，改放在抽屉底部；桌面侧边栏不显示 */}
+            <div className="hidden flex-wrap items-center gap-2 px-2 in-data-[mobile=true]:flex">
+              {templateConfig.i18n.enabled ? <LanguageControls placement="bare" /> : null}
+              <ThemeToggle />
+            </div>
+          </SidebarFooter>
+        </aside>
       </Sidebar>
       {/* 打印只输出正文：侧边栏、顶部条与抽屉触发器隐藏，面板去掉外边距与阴影 */}
-      <SidebarInset className="print:m-0 print:rounded-none print:shadow-none">
+      <SidebarInset as="div" className="print:m-0 print:rounded-none print:shadow-none">
         <AppShellBarContext.Provider value={barSlots}>
           <header className="relative flex h-14 shrink-0 items-center gap-2 border-border border-b pr-4 pl-2 md:pl-6 print:hidden">
             <SidebarTrigger aria-label={m.app_shell_open_nav()} className="md:hidden">
               <Menu />
             </SidebarTrigger>
-            {/* 当前页名称；不用标题元素，各页面正文已有自己的 h1，避免重复。页面可经 AppShellBar 替换 */}
-            <div ref={setTitleSlot} className="flex min-w-0 flex-1 items-center">
-              {customTitle ? null : (
-                <p className="truncate font-semibold text-title" data-testid="app-page-title">
-                  {activeItem ? activeItem.label() : page.workspace.name}
-                </p>
-              )}
-            </div>
+            {/* 页面标题（h1）：默认为当前导航项名称；页面经 AppShellBar 放入标题时 CSS 隐藏默认标题 */}
+            <h1 className="flex min-w-0 flex-1 items-center font-semibold text-title">
+              <span ref={setTitleSlot} className="peer contents" />
+              <span className="truncate peer-[:not(:empty)]:hidden" data-testid="app-page-title">
+                {activeItem ? activeItem.label() : page.workspace.name}
+              </span>
+            </h1>
             <div ref={setActionsSlot} className="flex shrink-0 items-center gap-2 empty:hidden" />
-            <div className="flex items-center gap-2 max-sm:hidden">
-              {templateConfig.i18n.enabled ? <LanguageControls placement="inline" /> : null}
+            <div className="flex items-center gap-3 max-sm:hidden">
+              {templateConfig.i18n.enabled ? <LanguageControls placement="bare" /> : null}
               <ThemeToggle />
             </div>
             {/* 顶部条底边的进度条位置（AppShellBar 的 progress） */}
             <div ref={setProgressSlot} className="absolute inset-x-0 bottom-0" />
           </header>
-          <div className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-6 px-4 py-6 md:px-8 md:pb-10">
+          <main className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-6 px-4 py-6 md:px-8 md:pb-10">
             {page.readOnly ? <p role="status">{m.app_readonly()}</p> : null}
             <DailyCreditsNotice result={page.dailyCredits} />
-            <div className="print:hidden">
-              <NotificationCenter key={slug} slug={slug} />
+            <div className="empty:hidden print:hidden">
+              <NotificationCenter key={slug} slug={slug} hideWhenEmpty />
             </div>
             <div className="min-w-0">
               <Outlet />
             </div>
-          </div>
+          </main>
         </AppShellBarContext.Provider>
       </SidebarInset>
     </SidebarProvider>
@@ -199,7 +201,10 @@ function NavGroup({
 }) {
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>{GROUP_LABELS[group.id]()}</SidebarGroupLabel>
+      {/* 收起为图标栏时隐藏分组标题，组间只留分组内边距（16px） */}
+      <SidebarGroupLabel className="in-data-[collapsible=icon]:hidden">
+        {GROUP_LABELS[group.id]()}
+      </SidebarGroupLabel>
       <SidebarMenu>
         {group.items.map((item) => (
           <SidebarMenuItem key={item.id}>
@@ -217,7 +222,7 @@ function NavGroup({
   )
 }
 
-/** 注册表的路由模板是字符串，交给类型化 Link 时按 App 区父路由收窄 */
+/** 注册表条目的 to 是生成路由树中的路径；交给 Link 时按父路由收窄，免去逐条的 search 类型 */
 function NavLink({
   item,
   slug,
@@ -246,7 +251,7 @@ function EntryText({
   testId,
 }: {
   title: string
-  caption: string
+  caption: ReactNode
   testId?: string
 }) {
   return (
@@ -266,9 +271,16 @@ const ENTRY_BUTTON = `${ENTRY_BLOCK} outline-none transition-colors hover:bg-hov
 function WorkspaceEntry({ page }: { page: WorkspacePage }) {
   const [error, setError] = useState('')
   const { workspace } = page
-  const caption = workspace.isPersonal
-    ? m.app_personal_workspace()
-    : m.app_shell_workspace_team_members({ count: page.memberCount })
+  // 空间类型单独成段，便于读屏与测试按完整文字定位
+  const caption = workspace.isPersonal ? (
+    m.app_personal_workspace()
+  ) : (
+    <>
+      <span>{m.app_team_workspace()}</span>
+      {' · '}
+      <span>{m.app_shell_workspace_members({ count: page.memberCount })}</span>
+    </>
+  )
   const badge = (
     <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-active font-semibold text-caption">
       {initial(workspace.name)}
@@ -363,8 +375,8 @@ function UpgradeEntry({ slug }: { slug: string }) {
 }
 
 function AccountEntry({ user }: { user: WorkspacePage['user'] }) {
-  const navigate = useNavigate()
   const [error, setError] = useState('')
+  const displayName = user.name || user.email
   async function signOut() {
     setError('')
     try {
@@ -382,17 +394,17 @@ function AccountEntry({ user }: { user: WorkspacePage['user'] }) {
           render={
             <button
               type="button"
-              aria-label={m.app_shell_account_menu({ name: user.name })}
+              aria-label={m.app_shell_account_menu({ name: displayName })}
               className={ENTRY_BUTTON}
             >
               <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-active font-semibold text-caption">
-                {initial(user.name || user.email)}
+                {initial(displayName)}
               </span>
               <span
                 className="flex min-w-0 flex-1 flex-col text-left in-data-[collapsible=icon]:hidden"
                 data-testid="current-user"
               >
-                <span className="truncate font-medium">{user.name}</span>
+                <span className="truncate font-medium">{displayName}</span>
                 <span className="truncate text-caption text-muted-foreground">{user.email}</span>
               </span>
             </button>
@@ -404,7 +416,7 @@ function AccountEntry({ user }: { user: WorkspacePage['user'] }) {
             index={0}
             icon={User}
             label={m.app_shell_account_settings()}
-            onSelect={() => void navigate({ to: '/account' })}
+            render={<Link to="/account" />}
           />
           <DropdownSeparator />
           <MenuItem

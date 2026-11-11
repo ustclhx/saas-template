@@ -13,7 +13,6 @@
   "app_shell_group_settings": "Settings",
   "app_shell_nav_home": "Home",
   "app_shell_nav_api_keys": "API Keys",
-  "app_shell_workspace_team_members": "Team workspace · {count} members",
   "app_shell_change_workspace": "Change workspace, current: {name}",
   "app_shell_switch_failed": "Could not switch workspace.",
   "app_shell_upgrade_title": "Upgrade your plan",
@@ -25,5 +24,6 @@
   "app_shell_sign_out_failed": "Could not sign out. Please try again.",
   "app_shell_welcome": "Welcome back, {name}",
   "app_shell_welcome_desc": "Pick up where you left off, or start something new.",
-  "app_shell_preview_label": "Workbench: inset panel, 64px icon rail, upgrade and account entries"
+  "app_shell_preview_label": "Workbench: inset panel, 64px icon rail, upgrade and account entries",
+  "app_shell_workspace_members": "Members: {count}"
 }

@@ -52,8 +52,9 @@ function isSameTabLinkClick(event: ReactMouseEvent<HTMLElement>) {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
     return false
   const target = event.target instanceof Element ? event.target : null
+  // 不能用 defaultPrevented 判断：客户端路由的链接自己会 preventDefault 再导航
   const link = target?.closest('a[href]')
-  if (!link || !event.currentTarget.contains(link)) return false
+  if (!link || !event.currentTarget.contains(link) || link.hasAttribute('download')) return false
   const linkTarget = link.getAttribute('target')
   return !linkTarget || linkTarget === '_self'
 }
@@ -106,7 +107,7 @@ function SidebarSheet({ side, open, onClose, closeOnNavigate, children }: Sideba
             <DialogPrimitive.Overlay asChild forceMount>
               <motion.div
                 data-sidebar="overlay"
-                className="fixed inset-0 bg-black/40 dark:bg-black/80 z-[var(--z-overlay,40)]"
+                className="fixed inset-0 bg-black/40 dark:bg-black/80 z-[var(--z-overlay,40)] print:hidden"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: open ? 1 : 0 }}
                 transition={open ? { duration: spring.moderate.duration } : spring.moderate.exit}
@@ -147,7 +148,8 @@ function SidebarSheet({ side, open, onClose, closeOnNavigate, children }: Sideba
                 // 模板改动：退场动画期间面板仍在页面上，inert 让其中的链接不可点击、不可聚焦
                 inert={!open}
                 className={cn(
-                  'fixed inset-y-0 z-[var(--z-modal,50)] flex flex-col overflow-hidden outline-none',
+                  // 模板改动：打开的抽屉不进入打印
+                  'fixed inset-y-0 z-[var(--z-modal,50)] flex flex-col overflow-hidden outline-none print:hidden',
                   side === 'left' ? 'left-0' : 'right-0',
                   !open && 'pointer-events-none',
                   surfaceClasses(level, 3),
