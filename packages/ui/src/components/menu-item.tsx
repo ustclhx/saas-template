@@ -3,6 +3,7 @@
 
 import { AnimatePresence, m as motion } from 'motion/react'
 import {
+  cloneElement,
   createContext,
   forwardRef,
   type HTMLAttributes,
@@ -135,6 +136,9 @@ export interface MenuItemProps extends HTMLAttributes<HTMLDivElement> {
   /** Content before the icon, e.g. a drag handle. Its clicks are its own:
    *  they don't activate the item. */
   leading?: ReactNode
+  /** 模板新增：弹出菜单中把菜单项渲染为该元素（如路由 `<Link to="/account" />`），得到真实链接语义
+   *  （href、中键新标签页）；键盘与点击激活仍由菜单处理。只在 DropdownContent 内生效 */
+  render?: ReactElement
 }
 
 const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
@@ -148,6 +152,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
       disabled,
       closeOnClick,
       leading,
+      render,
       className,
       onClick,
       ...props
@@ -295,7 +300,15 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
         // Toggling one of several stays open; picking one of one closes.
         closeOnClick: closeOnClick ?? !multiple,
         onActivate: handleActivate,
-        element: (
+        element: render ? (
+          cloneElement(render, {
+            ref: mergeRef,
+            'data-fluid-hover-index': index,
+            'aria-label': label,
+            className: itemClassName,
+            ...props,
+          } as Record<string, unknown>)
+        ) : (
           // biome-ignore lint/a11y/useAriaPropsSupportedByRole: role 由外层 Radix 菜单项经 asChild 合成到这个 div 上
           <div
             ref={mergeRef}

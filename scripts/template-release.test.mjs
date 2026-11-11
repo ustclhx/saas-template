@@ -362,6 +362,11 @@ for (const [file, initial, modifiedContent] of [
     'export const getProjectHtmlAttributes = () => ({})\n',
     "export const getProjectHtmlAttributes = () => ({ 'data-site': 'example' })\n",
   ],
+  [
+    'apps/web/src/features/app-shell/nav.project.ts',
+    '// 项目导航条目\nexport {}\n',
+    "import './nav.ts'\nexport {}\n",
+  ],
 ]) {
   test(`check accepts ${file} left as created inside the release`, (t) => {
     const { cwd } = repo(t)
@@ -399,6 +404,30 @@ for (const [file, initial, modifiedContent] of [
     )
   })
 }
+
+test('check lets a change keep editing a project-owned file it adds (CHANGE_BASE)', (t) => {
+  const { cwd } = repo(t)
+  const file = 'apps/web/src/features/app-shell/nav.project.ts'
+  const before = commit(cwd, 'fix: before the change')
+  put(cwd, file, '// 项目导航条目\nexport {}\n')
+  const added = commit(cwd, 'fix: add project-owned file')
+  put(cwd, file, 'export function registerProjectAppNav() {}\n')
+  releaseDoc(cwd)
+  commit(cwd)
+  const inChange = spawnSync(process.execPath, [script, 'check', '--version', '0.2.1'], {
+    cwd,
+    env: { ...env, CHANGE_BASE: before },
+    encoding: 'utf8',
+  })
+  succeeds(inChange)
+  // 创建提交已在基准中（文件已发布到 main）时仍然拒绝修改
+  const afterMerge = spawnSync(process.execPath, [script, 'check', '--version', '0.2.1'], {
+    cwd,
+    env: { ...env, CHANGE_BASE: added },
+    encoding: 'utf8',
+  })
+  fails(afterMerge)
+})
 
 test('check rejects invalid command versions', (t) => {
   const { cwd } = repo(t)

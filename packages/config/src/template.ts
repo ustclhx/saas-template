@@ -49,6 +49,8 @@ export interface MarketingProduct<L extends string = string> {
 export const uiPresets = ['neutral', 'blue', 'violet', 'green'] as const
 export const uiShapes = ['sharp', 'rounded', 'pill'] as const
 export const uiDensities = ['default', 'compact'] as const
+/** App 区布局：sidebar 工作台侧边栏（模板默认）| topbar 原有顶部布局 */
+export const uiAppLayouts = ['sidebar', 'topbar'] as const
 
 /** `ui` 段在运行时校验：template.config.ts 写了未知预设时构建期即报错，而不是静默回退 */
 export const uiConfigSchema = z.strictObject({
@@ -56,6 +58,8 @@ export const uiConfigSchema = z.strictObject({
   shape: z.enum(uiShapes).default('rounded'),
   /** 控件尺寸阶梯：default 36px，compact 28px */
   density: z.enum(uiDensities).default('default'),
+  /** App 区布局：sidebar 工作台侧边栏 | topbar 原有顶部布局（已有衍生项目可设为 topbar 保持原样） */
+  appLayout: z.enum(uiAppLayouts).default('sidebar'),
 })
 
 export type UiPreset = (typeof uiPresets)[number]
@@ -63,6 +67,8 @@ export type UiPreset = (typeof uiPresets)[number]
 export type UiShape = (typeof uiShapes)[number]
 /** 控件尺寸阶梯：default 36px，compact 28px */
 export type UiDensity = (typeof uiDensities)[number]
+/** App 区布局 */
+export type UiAppLayout = (typeof uiAppLayouts)[number]
 
 export const textConfigSchema = z.strictObject({
   enabled: z.boolean().default(true),
@@ -176,6 +182,8 @@ export interface TemplateConfig<L extends string = string> {
     readonly preset: UiPreset
     readonly shape: UiShape
     readonly density: UiDensity
+    /** App 区布局：sidebar 工作台侧边栏（默认）| topbar 原有顶部布局 */
+    readonly appLayout: UiAppLayout
   }
   readonly ai: {
     readonly text: TextConfig
@@ -290,7 +298,7 @@ export const templateConfigDefaults = {
     products: [],
     aiEntry: { enabled: false, href: '/app' },
   },
-  ui: { preset: 'neutral', shape: 'rounded', density: 'default' },
+  ui: { preset: 'neutral', shape: 'rounded', density: 'default', appLayout: 'sidebar' },
   ai: {
     text: {
       enabled: true,

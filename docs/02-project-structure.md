@@ -145,8 +145,9 @@ export default defineTemplateConfig({
     blog: true, docs: false, waitlist: false,
   },
   // 界面主题：预设 neutral | blue | violet | green（只换强调色与焦点环）、圆角形状与控件密度；
-  // 品牌 token 不写在这里，放项目自有的 apps/web/src/styles/brand.css
-  ui: { preset: 'neutral', shape: 'rounded', density: 'default' },
+  // 品牌 token 不写在这里，放项目自有的 apps/web/src/styles/brand.css；
+  // appLayout：App 区布局，sidebar 工作台侧边栏（默认）| topbar 原有顶部布局
+  ui: { preset: 'neutral', shape: 'rounded', density: 'default', appLayout: 'sidebar' },
 })
 ```
 

@@ -102,7 +102,8 @@ export default defineTemplateConfig({
   },
   // 界面主题：preset 'neutral' | 'blue' | 'violet' | 'green'；shape 'sharp' | 'rounded' | 'pill'；
   // density 'default'（36px 控件）| 'compact'（28px）。品牌色写在 apps/web/src/styles/brand.css
-  ui: { preset: 'neutral', shape: 'rounded', density: 'default' },
+  // appLayout：App 区布局，'sidebar' 工作台侧边栏 | 'topbar' 原有顶部布局
+  ui: { preset: 'neutral', shape: 'rounded', density: 'default', appLayout: 'sidebar' },
   ai: {
     text: {
       enabled: true,

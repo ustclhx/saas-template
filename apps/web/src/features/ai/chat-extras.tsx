@@ -1,12 +1,15 @@
-import { Button, cn } from '@saas/ui'
-import { useState } from 'react'
+import {
+  MessageFeedback as FeedbackView,
+  InsufficientCreditsDialog,
+  SuggestionChips as SuggestionChipsView,
+} from '@saas/ui'
 import { m } from '../../paraglide/messages.js'
-import type { MessageFeedbackValue } from './feedback.ts'
+import { getLocale } from '../../paraglide/runtime.js'
+import { FEEDBACK_COMMENT_MAX_LENGTH, type MessageFeedbackValue } from './feedback.ts'
 
 /**
- * 推荐追问与消息评分的最小可用实现（add-subject-chat tasks.md 6.1）。
- * 接口见 change design.md 决策 9；最终视觉由 add-ui-design-system 8.6 的展示组件替换，
- * 替换时保持 props 不变。
+ * 推荐追问、消息评分与余额不足弹窗的接线层（add-subject-chat design 决策 9 的接口）：
+ * 展示组件来自 `@saas/ui`（add-ui-design-system tasks 8.6），这里只传入按语言的文案，props 与回调不变。
  */
 
 export interface SuggestionChipsProps {
@@ -18,6 +21,8 @@ export interface SuggestionChipsProps {
   onSelect(text: string): void
   /** 无障碍分组名 */
   readonly label?: string
+  /** 在按钮组上方显示分组名（回复后的「继续追问」） */
+  readonly showLabel?: boolean
   readonly className?: string
 }
 
@@ -26,29 +31,18 @@ export function SuggestionChips({
   disabled,
   onSelect,
   label,
+  showLabel,
   className,
 }: SuggestionChipsProps) {
-  if (suggestions.length === 0) return null
   return (
-    <ul
-      aria-label={label ?? m.subject_chat_suggestions()}
-      className={cn('flex flex-wrap gap-2', className)}
-    >
-      {suggestions.map((text) => (
-        <li key={text}>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-auto whitespace-normal text-left"
-            disabled={disabled}
-            onClick={() => onSelect(text)}
-          >
-            {text}
-          </Button>
-        </li>
-      ))}
-    </ul>
+    <SuggestionChipsView
+      suggestions={suggestions}
+      label={label ?? m.subject_chat_suggestions()}
+      showLabel={showLabel ?? false}
+      disabled={disabled ?? false}
+      onSelect={onSelect}
+      {...(className ? { className } : {})}
+    />
   )
 }
 
@@ -61,110 +55,70 @@ export interface MessageFeedbackProps {
   onChange(next: MessageFeedbackValue | null): Promise<void>
 }
 
-export function MessageFeedback({ messageId, value, disabled, onChange }: MessageFeedbackProps) {
-  const [current, setCurrent] = useState(value)
-  const [comment, setComment] = useState(value?.comment ?? '')
-  const [open, setOpen] = useState(false)
-  const [pending, setPending] = useState(false)
-  const [status, setStatus] = useState<string | null>(null)
-
-  async function save(next: MessageFeedbackValue | null) {
-    const previous = current
-    setCurrent(next)
-    setPending(true)
-    setStatus(null)
-    try {
-      await onChange(next)
-      setStatus(next?.comment ? m.subject_chat_feedback_saved() : null)
-      if (!next) setComment('')
-    } catch {
-      setCurrent(previous)
-      setStatus(m.subject_chat_feedback_failed())
-    } finally {
-      setPending(false)
-    }
-  }
-
-  function rate(rating: MessageFeedbackValue['rating']) {
-    // 再次点击同一评分即撤销
-    if (current?.rating === rating) {
-      setOpen(false)
-      void save(null)
-      return
-    }
-    setOpen(rating === 'down' || Boolean(comment))
-    void save({ rating, comment: comment.trim() || null })
-  }
-
-  const busy = disabled || pending
+export function MessageFeedback({ value, disabled, onChange }: MessageFeedbackProps) {
   return (
-    <fieldset className="grid min-w-0 gap-2">
-      <legend className="sr-only">{m.subject_chat_feedback()}</legend>
-      <div className="flex flex-wrap items-center gap-1">
-        <Button
-          type="button"
-          size="sm"
-          variant={current?.rating === 'up' ? 'default' : 'ghost'}
-          aria-pressed={current?.rating === 'up'}
-          disabled={busy}
-          onClick={() => rate('up')}
-        >
-          {m.subject_chat_feedback_up()}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={current?.rating === 'down' ? 'default' : 'ghost'}
-          aria-pressed={current?.rating === 'down'}
-          disabled={busy}
-          onClick={() => rate('down')}
-        >
-          {m.subject_chat_feedback_down()}
-        </Button>
-        {current ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="link"
-            disabled={busy}
-            onClick={() => {
-              setOpen(false)
-              void save(null)
-            }}
-          >
-            {m.subject_chat_feedback_undo()}
-          </Button>
-        ) : null}
-      </div>
-      {current && open ? (
-        <form
-          className="grid gap-2"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void save({ rating: current.rating, comment: comment.trim() || null })
-          }}
-        >
-          <label className="grid gap-1 text-sm" htmlFor={`feedback-${messageId}`}>
-            {m.subject_chat_feedback_comment()}
-            <textarea
-              id={`feedback-${messageId}`}
-              className="min-h-16 rounded-md border bg-transparent p-2"
-              maxLength={1000}
-              value={comment}
-              disabled={busy}
-              onChange={(event) => setComment(event.target.value)}
-            />
-          </label>
-          <Button type="submit" size="sm" className="w-fit" disabled={busy}>
-            {m.subject_chat_feedback_submit()}
-          </Button>
-        </form>
-      ) : null}
-      {status ? (
-        <p role="status" className="text-muted-foreground text-sm">
-          {status}
-        </p>
-      ) : null}
-    </fieldset>
+    <FeedbackView
+      value={value}
+      disabled={disabled ?? false}
+      commentMaxLength={FEEDBACK_COMMENT_MAX_LENGTH}
+      // 后端只保存评分与文字（ai_message_feedback），不传点踩原因选项
+      onChange={(next) => onChange(next ? { rating: next.rating, comment: next.comment } : null)}
+      labels={{
+        group: m.subject_chat_feedback(),
+        up: m.subject_chat_feedback_up(),
+        down: m.subject_chat_feedback_down(),
+        question: m.chat_ui_feedback_question(),
+        comment: m.subject_chat_feedback_comment(),
+        submit: m.subject_chat_feedback_submit(),
+        cancel: m.common_cancel(),
+        edit: m.chat_ui_feedback_edit(),
+        saved: m.subject_chat_feedback_saved(),
+        failed: m.subject_chat_feedback_failed(),
+      }}
+    />
+  )
+}
+
+export const formatNumber = (value: number) => new Intl.NumberFormat(getLocale()).format(value)
+
+/** 余额不足弹窗（INSUFFICIENT_CREDITS 的 estimatedCredits / availableCredits），两个入口由调用方跳转 */
+export function CreditsDialog({
+  open,
+  onOpenChange,
+  estimatedCredits,
+  availableCredits,
+  onBuyPacks,
+  onSubscribe,
+}: {
+  open: boolean
+  onOpenChange(open: boolean): void
+  estimatedCredits: number
+  availableCredits: number
+  onBuyPacks(): void
+  /** 项目没有订阅套餐时不传，弹窗只显示购买积分包 */
+  onSubscribe?: (() => void) | undefined
+}) {
+  return (
+    <InsufficientCreditsDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      estimatedCredits={estimatedCredits}
+      availableCredits={availableCredits}
+      onBuyPacks={onBuyPacks}
+      {...(onSubscribe ? { onSubscribe } : {})}
+      // 弹窗由接口错误打开时焦点可能在 body：关闭后回到对话输入框
+      fallbackFocus={() => document.getElementById('chat-input')}
+      labels={{
+        title: m.billing_credit_guide_title(),
+        description: m.chat_ui_credits_description(),
+        estimated: m.chat_ui_credits_estimated(),
+        available: m.chat_ui_credits_available(),
+        credits: (value) => m.chat_ui_credits_value({ count: formatNumber(value) }),
+        shortfall: (missing) => m.chat_ui_credits_shortfall({ count: formatNumber(missing) }),
+        buyPacks: m.billing_credit_guide_packs(),
+        subscribe: m.chat_ui_credits_subscribe(),
+        close: m.chat_ui_close(),
+      }}
+    />
   )
 }

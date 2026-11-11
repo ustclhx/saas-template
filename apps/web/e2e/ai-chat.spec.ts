@@ -257,6 +257,33 @@ test('chat page picks a model, streams replies, stops and explains errors', asyn
       await expect(page.getByRole('link', { name: 'Go to billing' })).toHaveCount(billing)
       await page.unroute('**/api/ai/chat')
     }
+
+    // 3. 带数值的积分不足：弹出余额不足弹窗（add-ui-design-system 8.6），Esc 关闭后可再次打开并去购买
+    await page.route('**/api/ai/chat', (route) =>
+      route.fulfill({
+        status: 402,
+        json: {
+          error: {
+            code: 'INSUFFICIENT_CREDITS',
+            message: 'Insufficient credits',
+            details: { estimatedCredits: 30, availableCredits: 10 },
+          },
+        },
+      }),
+    )
+    await message.fill('Trigger the credits dialog')
+    await page.getByRole('button', { name: 'Send' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Insufficient credits' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText('30 credits')
+    await expect(dialog).toContainText('10 credits')
+    await expect(dialog).toContainText('20 more credits needed')
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+    await page.getByRole('button', { name: 'Top up credits' }).click()
+    await dialog.getByRole('button', { name: 'Buy credit packs' }).click()
+    await expect(page).toHaveURL(new RegExp(`/app/${slug}/billing#credit-packs$`))
+    await page.unroute('**/api/ai/chat')
   } finally {
     await removeModel(model.modelId)
   }

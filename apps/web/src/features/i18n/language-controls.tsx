@@ -22,7 +22,7 @@ import { rememberLocale } from './preference.ts'
 export function LanguageControls({
   placement = 'floating',
 }: {
-  placement?: 'floating' | 'inline'
+  placement?: 'floating' | 'inline' | 'bare'
 } = {}) {
   const floating = placement === 'floating'
   const location = useLocation()
@@ -108,8 +108,10 @@ export function LanguageControls({
       <div
         className={
           floating
-            ? 'fixed bottom-4 left-4 z-50 rounded-md bg-background px-3 py-2 text-sm shadow-sm'
-            : 'inline-flex w-fit rounded-md bg-background px-3 py-1.5 text-sm shadow-xs'
+            ? 'fixed bottom-4 left-4 z-50 rounded-md bg-background px-3 py-2 text-sm shadow-sm print:hidden'
+            : placement === 'bare'
+              ? 'inline-flex w-fit text-sm'
+              : 'inline-flex w-fit rounded-md bg-background px-3 py-1.5 text-sm shadow-xs'
         }
       >
         <span className="sr-only">{m.i18n_language()}</span>
