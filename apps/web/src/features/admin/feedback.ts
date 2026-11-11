@@ -1,4 +1,9 @@
-import { aiMessageFeedback, type Database } from '@saas/db'
+import {
+  AI_FEEDBACK_REASONS,
+  type AiFeedbackReason,
+  aiMessageFeedback,
+  type Database,
+} from '@saas/db'
 import { AppError } from '@saas/shared'
 import { and, count, desc, eq, gte, lt, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -7,7 +12,7 @@ import { ADMIN_PAGE_SIZE } from './list.ts'
 
 /**
  * 后台 AI 回复反馈（add-subject-chat tasks.md 4.1，specs/admin-console「AI 回复反馈列表」「满意率统计」）。
- * 只读评分与反馈文字，不联查对话正文或对象上下文；删除经 adminAction 写审计（不含反馈文字）。
+ * 只读评分、点踩原因与反馈文字，不联查对话正文或对象上下文；删除经 adminAction 写审计（不含反馈文字）。
  */
 
 const date = z.iso.date()
@@ -21,6 +26,16 @@ export const feedbackSearchSchema = z
       .max(16)
       .optional()
       .transform((value) => (value === 'up' || value === 'down' ? value : undefined)),
+    // 点踩原因；非法值同样按未筛选处理
+    reason: z
+      .string()
+      .max(32)
+      .optional()
+      .transform((value) =>
+        (AI_FEEDBACK_REASONS as readonly string[]).includes(value ?? '')
+          ? (value as AiFeedbackReason)
+          : undefined,
+      ),
     model: z.string().max(200).optional(),
     subjectType: z.string().max(64).optional(),
     from: date.optional(),
@@ -53,10 +68,11 @@ function range(input: { from?: string | undefined; to?: string | undefined }, no
 /** 「无对象」在筛选中用 `-` 表示，统计中归为一组 */
 export const NO_SUBJECT = '-'
 
-export async function listFeedback(db: Database, input: FeedbackSearch) {
+export async function listFeedback(db: Database, input: z.input<typeof feedbackSearchSchema>) {
   const data = feedbackSearchSchema.parse(input)
   const where = and(
     data.rating ? eq(aiMessageFeedback.rating, data.rating) : undefined,
+    data.reason ? eq(aiMessageFeedback.reason, data.reason) : undefined,
     data.model ? eq(aiMessageFeedback.modelKey, data.model) : undefined,
     data.subjectType
       ? data.subjectType === NO_SUBJECT
@@ -76,6 +92,7 @@ export async function listFeedback(db: Database, input: FeedbackSearch) {
       messageId: aiMessageFeedback.messageId,
       rating: aiMessageFeedback.rating,
       comment: aiMessageFeedback.comment,
+      reason: aiMessageFeedback.reason,
       modelKey: aiMessageFeedback.modelKey,
       subjectType: aiMessageFeedback.subjectType,
     })

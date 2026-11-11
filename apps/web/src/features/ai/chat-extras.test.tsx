@@ -21,7 +21,7 @@ describe('MessageFeedback', () => {
     const html = renderToStaticMarkup(
       <MessageFeedback
         messageId="m"
-        value={{ rating: 'down', comment: null }}
+        value={{ rating: 'down', comment: null, reason: 'incomplete' }}
         onChange={async () => {}}
       />,
     )

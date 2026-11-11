@@ -12,7 +12,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { runAdminAction } from '../src/features/admin/action.ts'
 import { deleteFeedback, feedbackStats, listFeedback } from '../src/features/admin/feedback.ts'
 import { type ChatDeps, handleChatRequest } from '../src/features/ai/chat.ts'
-import { saveMessageFeedback } from '../src/features/ai/feedback.server.ts'
+import { feedbackForMessages, saveMessageFeedback } from '../src/features/ai/feedback.server.ts'
 import { type FollowUpsConfig, generateFollowUps } from '../src/features/ai/follow-ups.server.ts'
 import {
   loadSubjectChat,
@@ -511,6 +511,7 @@ describe('message feedback', () => {
     expect(await saveMessageFeedback(scope, { messageId, rating: 'up' })).toEqual({
       rating: 'up',
       comment: null,
+      reason: null,
     })
     expect(
       await saveMessageFeedback(scope, {
@@ -518,7 +519,7 @@ describe('message feedback', () => {
         rating: 'down',
         comment: 'leaked sk-live-0123456789abcdefABCDEF in reply',
       }),
-    ).toEqual({ rating: 'down', comment: 'leaked [REDACTED] in reply' })
+    ).toEqual({ rating: 'down', comment: 'leaked [REDACTED] in reply', reason: null })
     const rows = await sql`select rating, comment, model_key, subject_type from ai_message_feedback
       where message_id=${messageId}`
     expect(rows).toEqual([
@@ -539,12 +540,55 @@ describe('message feedback', () => {
     expect(chatData.feedback[messageId]).toEqual({
       rating: 'down',
       comment: 'leaked [REDACTED] in reply',
+      reason: null,
     })
 
     expect(await saveMessageFeedback(scope, { messageId, rating: null })).toBeNull()
     expect(
       await sql`select id from ai_message_feedback where message_id=${messageId}`,
     ).toHaveLength(0)
+  })
+
+  it('stores the down-vote reason, returns it on reload and clears it on up or undo', async () => {
+    const owner = await member('reasoner', 100)
+    const { messageId } = await reply(owner)
+    const scope = { db, workspaceId: owner.workspaceId, userId: owner.userId }
+    const stored = async () =>
+      sql<{ rating: string; reason: string | null }[]>`select rating, reason
+        from ai_message_feedback where message_id=${messageId}`
+    const reload = async () => (await feedbackForMessages(scope, [messageId]))[messageId] ?? null
+
+    expect(
+      await saveMessageFeedback(scope, { messageId, rating: 'down', reason: 'no_source' }),
+    ).toEqual({ rating: 'down', comment: null, reason: 'no_source' })
+    expect(await reload()).toEqual({ rating: 'down', comment: null, reason: 'no_source' })
+    // 修改反馈时不选原因即清空
+    await saveMessageFeedback(scope, { messageId, rating: 'down', comment: 'too vague' })
+    expect(await stored()).toEqual([{ rating: 'down', reason: null }])
+    await saveMessageFeedback(scope, { messageId, rating: 'down', reason: 'too_long' })
+    // 切到点赞时原因随之清空
+    expect(await saveMessageFeedback(scope, { messageId, rating: 'up' })).toEqual({
+      rating: 'up',
+      comment: null,
+      reason: null,
+    })
+    expect(await stored()).toEqual([{ rating: 'up', reason: null }])
+    // 点赞或撤销时带原因、未约定的原因：400，记录不变
+    for (const input of [
+      { messageId, rating: 'up' as const, reason: 'inaccurate' },
+      { messageId, rating: null, reason: 'inaccurate' },
+      { messageId, rating: 'down' as const, reason: 'rude' },
+    ])
+      await expect(saveMessageFeedback(scope, input)).rejects.toMatchObject({
+        code: 'INVALID_REQUEST',
+        status: 400,
+      })
+    expect(await stored()).toEqual([{ rating: 'up', reason: null }])
+    // 撤销删除整条记录（含原因）
+    await saveMessageFeedback(scope, { messageId, rating: 'down', reason: 'incomplete' })
+    expect(await saveMessageFeedback(scope, { messageId, rating: null })).toBeNull()
+    expect(await stored()).toHaveLength(0)
+    expect(await reload()).toBeNull()
   })
 
   it('returns 404 for other users’ messages and refuses streaming replies', async () => {
@@ -579,12 +623,28 @@ describe('message feedback', () => {
     const { messageId, model } = await reply(owner)
     await saveMessageFeedback(
       { db, workspaceId: owner.workspaceId, userId: owner.userId },
-      { messageId, rating: 'down', comment: 'SECRET-COMMENT-TEXT' },
+      { messageId, rating: 'down', comment: 'SECRET-COMMENT-TEXT', reason: 'inaccurate' },
     )
     const list = await listFeedback(db, { offset: 0, model: model.key, rating: 'down' })
     expect(list.rows).toMatchObject([
-      { messageId, rating: 'down', comment: 'SECRET-COMMENT-TEXT', subjectType: SUBJECT_TYPE },
+      {
+        messageId,
+        rating: 'down',
+        comment: 'SECRET-COMMENT-TEXT',
+        reason: 'inaccurate',
+        subjectType: SUBJECT_TYPE,
+      },
     ])
+    // 按原因筛选；地址栏中的非法原因按未筛选处理
+    expect(
+      (await listFeedback(db, { offset: 0, model: model.key, reason: 'inaccurate' })).rows,
+    ).toHaveLength(1)
+    expect(
+      (await listFeedback(db, { offset: 0, model: model.key, reason: 'too_long' })).rows,
+    ).toHaveLength(0)
+    expect(
+      (await listFeedback(db, { offset: 0, model: model.key, reason: 'bogus' })).rows,
+    ).toHaveLength(1)
     expect(Object.keys(list.rows[0] ?? {})).not.toContain('parts')
     const stats = await feedbackStats(db, {})
     expect(stats.byModel.find((row) => row.key === model.key)).toEqual({

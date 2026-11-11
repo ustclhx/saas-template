@@ -5,7 +5,13 @@ import {
 } from '@saas/ui'
 import { m } from '../../paraglide/messages.js'
 import { getLocale } from '../../paraglide/runtime.js'
-import { FEEDBACK_COMMENT_MAX_LENGTH, type MessageFeedbackValue } from './feedback.ts'
+import {
+  FEEDBACK_COMMENT_MAX_LENGTH,
+  FEEDBACK_REASONS,
+  type FeedbackReason,
+  isFeedbackReason,
+  type MessageFeedbackValue,
+} from './feedback.ts'
 
 /**
  * 推荐追问、消息评分与余额不足弹窗的接线层（add-subject-chat design 决策 9 的接口）：
@@ -55,14 +61,36 @@ export interface MessageFeedbackProps {
   onChange(next: MessageFeedbackValue | null): Promise<void>
 }
 
+/** 点踩原因的文案（画板 Chat.dc.html 的四个选项）；取值集合来自 `FEEDBACK_REASONS`，与服务端校验一致 */
+const reasonLabels: Record<FeedbackReason, () => string> = {
+  inaccurate: () => m.subject_chat_feedback_reason_inaccurate(),
+  incomplete: () => m.subject_chat_feedback_reason_incomplete(),
+  no_source: () => m.subject_chat_feedback_reason_no_source(),
+  too_long: () => m.subject_chat_feedback_reason_too_long(),
+}
+
+export const feedbackReasonLabel = (reason: FeedbackReason) => reasonLabels[reason]()
+
 export function MessageFeedback({ value, disabled, onChange }: MessageFeedbackProps) {
   return (
     <FeedbackView
       value={value}
       disabled={disabled ?? false}
       commentMaxLength={FEEDBACK_COMMENT_MAX_LENGTH}
-      // 后端只保存评分与文字（ai_message_feedback），不传点踩原因选项
-      onChange={(next) => onChange(next ? { rating: next.rating, comment: next.comment } : null)}
+      reasons={FEEDBACK_REASONS.map((reason) => ({ value: reason, label: reasonLabels[reason]() }))}
+      onChange={(next) =>
+        onChange(
+          next
+            ? {
+                rating: next.rating,
+                comment: next.comment,
+                // 组件只会回传 reasons 中的取值；点赞时为 null
+                reason:
+                  next.rating === 'down' && isFeedbackReason(next.reason) ? next.reason : null,
+              }
+            : null,
+        )
+      }
       labels={{
         group: m.subject_chat_feedback(),
         up: m.subject_chat_feedback_up(),

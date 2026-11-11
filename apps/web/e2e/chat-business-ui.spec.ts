@@ -2,10 +2,12 @@ import { randomUUID } from 'node:crypto'
 import { expect, type Page, test } from '@playwright/test'
 import { newId } from '@saas/shared'
 import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
+import { chooseOption } from './select.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 // 业务界面组件接线（add-ui-design-system tasks 8.6）：对话页的消息评分经真实的 setMessageFeedback
-// 写入 ai_message_feedback；再次点击撤销、点踩展开文字反馈并可修改。回复直接写库，不依赖模型。
+// 写入 ai_message_feedback；再次点击撤销、点踩展开文字反馈与原因并可修改，刷新后原因仍在，
+// 后台反馈列表显示原因并可按原因筛选（add-subject-chat 9.x）。回复直接写库，不依赖模型。
 
 test.beforeEach(async ({ page }) => {
   await simulateClientIp(page)
@@ -20,7 +22,9 @@ test.afterEach(async ({ page }, info) => {
 
 const slugOf = (page: Page) => new URL(page.url()).pathname.split('/')[2] ?? ''
 
-test('rates a reply, undoes the rating and edits written feedback', async ({ page }) => {
+test('rates a reply, keeps the down-vote reason and shows it in the admin list', async ({
+  page,
+}) => {
   test.setTimeout(120_000)
   const email = `chat-feedback-${randomUUID()}@example.com`
   await register(page, email)
@@ -39,7 +43,7 @@ test('rates a reply, undoes the rating and edits written feedback', async ({ pag
     await sql`insert into ai_message (id, workspace_id, conversation_id, role, parts, status) values
       (${replyId}, ${row.workspace_id}, ${conversationId}, 'assistant', ${sql.json([{ type: 'text', text: 'Costs went up.' }])}, 'completed')`
     const feedback = () =>
-      sql`select rating, comment from ai_message_feedback where message_id = ${replyId}`
+      sql`select rating, comment, reason from ai_message_feedback where message_id = ${replyId}`
 
     await page.goto(`/app/${slug}/chat/${conversationId}`)
     const reply = page
@@ -76,19 +80,60 @@ test('rates a reply, undoes the rating and edits written feedback', async ({ pag
       'Missing the staffing costs',
     )
     await reply.getByLabel('Tell us more (optional)').fill('Missing staffing and tooling costs')
+    // 画板的四个原因单选；选中后随反馈一起保存
+    const reasons = reply.getByRole('group', { name: 'What could be better?' })
+    await expect(reasons.getByRole('button')).toHaveText([
+      'Inaccurate',
+      'Incomplete',
+      'No citation',
+      'Too long',
+    ])
+    await reasons.getByRole('button', { name: 'No citation' }).click()
+    await expect(reasons.getByRole('button', { name: 'No citation' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
     await reply.getByRole('button', { name: 'Send feedback' }).click()
     await expect
-      .poll(async () => (await feedback()).map((r) => r.comment))
-      .toEqual(['Missing staffing and tooling costs'])
+      .poll(async () => (await feedback()).map((r) => [r.comment, r.reason]))
+      .toEqual([['Missing staffing and tooling costs', 'no_source']])
 
-    // 刷新后评分仍在
+    // 刷新后评分与原因仍在
     // 服务端按已保存的评分渲染，无需等待水合
     await page.reload()
+    const reloaded = page
+      .getByRole('list', { name: 'Messages' })
+      .getByRole('listitem', { name: 'Assistant' })
     await expect(
-      page
-        .getByRole('list', { name: 'Messages' })
-        .getByRole('button', { name: 'Not helpful', exact: true }),
+      reloaded.getByRole('button', { name: 'Not helpful', exact: true }),
     ).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByLabel('Message', { exact: true })).toBeEnabled({ timeout: 30_000 })
+    await reloaded.getByRole('button', { name: 'Edit feedback' }).click()
+    await expect(
+      reloaded
+        .getByRole('group', { name: 'What could be better?' })
+        .getByRole('button', { name: 'No citation' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    await expect(reloaded.getByLabel('Tell us more (optional)')).toHaveValue(
+      'Missing staffing and tooling costs',
+    )
+
+    // 后台反馈列表：显示原因，可按原因筛选
+    await sql`update "user" set role='admin' where id=${row.user_id}`
+    await page.goto('/admin/feedback')
+    await expect(page.getByRole('heading', { name: 'AI reply feedback' })).toBeVisible()
+    const table = page.getByRole('table', { name: 'AI reply feedback' })
+    const ours = table.locator('tbody tr', { hasText: replyId })
+    await expect(ours).toContainText('No citation')
+    await chooseOption(page.getByRole('combobox', { name: 'Reason', exact: true }), 'Too long')
+    await page.getByRole('button', { name: 'Apply', exact: true }).click()
+    await expect(page).toHaveURL(/reason=too_long/)
+    await expect(ours).toHaveCount(0)
+    await chooseOption(page.getByRole('combobox', { name: 'Reason', exact: true }), 'No citation')
+    await page.getByRole('button', { name: 'Apply', exact: true }).click()
+    await expect(page).toHaveURL(/reason=no_source/)
+    await expect(ours).toContainText('No citation')
+    await expect(table.locator('tbody tr', { hasNotText: 'No citation' })).toHaveCount(0)
   } finally {
     await sql`delete from ai_message_feedback where message_id = ${replyId}`
     await sql`delete from ai_message where conversation_id = ${conversationId}`

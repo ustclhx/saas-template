@@ -71,11 +71,17 @@ registerConversationSubject(type, provider) // type: /^[a-z][a-z0-9_-]{0,47}$/�
 
 - `setMessageFeedback({ slug, messageId, rating: 'up' | 'down' | null, comment? })`：消息必须是自己对话中的 assistant 消息且不在 streaming；`null` 删除记录（撤销）；否则 `insert ... on conflict (message_id, user_id) do update`。评论 ≤ 1000 字，入库前 `scrubSecrets` 替换 `sk-…`、`Bearer …`、`AKIA…`、JWT、≥ 32 位的十六进制/base64 串为 `[REDACTED]`。
 - 只读团队空间（`WORKSPACE_READ_ONLY`）同其他写操作一样拒绝。
-- `getConversation` 与对象对话数据一并返回 `feedback: Record<messageId, { rating, comment }>`。
+- `getConversation` 与对象对话数据一并返回 `feedback: Record<messageId, { rating, comment, reason }>`。
+- 点踩原因（2026-11-11 使用者决定保存，评审清单 #81）：
+  - 取值集合固定为 `inaccurate`、`incomplete`、`no_source`、`too_long`，对应已确认画板 `Chat.dc.html` 的「不准确 / 不完整 / 没引用原文 / 太长」；单选、可不选。值用 snake_case，与库中其他枚举文本一致；`/dev/ui` 的示例值不受影响。
+  - 存储：`ai_message_feedback.reason text null`（迁移 0023），不另建表——每条评分至多一个原因，后台按原因筛选只扫本表。
+  - 校验分两层：数据库 check 约束 `ai_message_feedback_reason_valid`（`reason is null or (rating = 'down' and reason in (…))`）保证取值合法且点赞时为空；server function 的 zod 只接受约定取值，`saveMessageFeedback` 对点赞或撤销时携带原因返回 `AppError('INVALID_REQUEST', 400)`，不静默丢弃。每次保存都整体写入 `reason`，因此改为点赞或点踩时不选原因都会清空旧值；撤销删除整条记录。
+  - 取值在 `@saas/db` 的 `AI_FEEDBACK_REASONS` 与浏览器可用的 `features/ai/feedback.ts` 的 `FEEDBACK_REASONS` 各有一份（前者用于约束与后台筛选，后者避免浏览器包引入 db），单元测试比对两者；增删取值需要新迁移修改约束。
+  - 对话页经 `chat-extras.tsx` 向 `MessageFeedback` 传入 `reasons`（文案在 `ai-subject-chat.json`），后台列表显示原因列并以 DataTable 的 select 筛选 `reason`（非法值按未筛选处理）。
 
 ### 7. 后台
 
-- `/admin/feedback`：DataTable 列表（筛选 `rating`、`model`、`subjectType`、`from`、`to`，每页 50），列：时间、空间、模型、对象类型、评分、反馈文字、消息 ID；不显示对话正文（需使用者审阅：是否展示被评回复的正文）。
+- `/admin/feedback`：DataTable 列表（筛选 `rating`、`reason`、`model`、`subjectType`、`from`、`to`，每页 50），列：时间、空间、模型、对象类型、评分、点踩原因、反馈文字、消息 ID；不显示对话正文（需使用者审阅：是否展示被评回复的正文）。
 - 统计：同一日期范围内按 `model_key`、`coalesce(subject_type, '')` 分组的 up/down 数与满意率，默认最近 30 天。
 - 删除：`adminAction('ai.feedback.delete')`，审计 `targetType: 'ai_message_feedback'`、`meta: { modelKey, subjectType, rating }`，不含反馈文字。
 - 导航放在 AI 分组，随 `billing.enabled` 显示（与模型管理一致）。
@@ -100,7 +106,8 @@ interface SuggestionChipsProps {
 
 // 消息评分与反馈
 type FeedbackRating = 'up' | 'down'
-interface MessageFeedbackValue { rating: FeedbackRating; comment: string | null }
+type FeedbackReason = 'inaccurate' | 'incomplete' | 'no_source' | 'too_long'
+interface MessageFeedbackValue { rating: FeedbackRating; comment: string | null; reason: FeedbackReason | null } // reason 只在点踩时有值
 interface MessageFeedbackProps {
   messageId: string
   value: MessageFeedbackValue | null      // null = 未评分
@@ -136,6 +143,7 @@ interface SubjectChatData {
 ## Migration Plan
 
 - 协调者在 main 上 `drizzle-kit generate` 生成迁移（两列 + 索引 + check、新表）。纯新增，旧代码可在新 schema 上运行，回滚只需回退代码。
+- 点踩原因：迁移 0023 为 `ai_message_feedback` 加可空列 `reason` 与 check 约束，不改数据；旧代码不读写该列，回滚只需回退代码。
 - 衍生项目迁移路径见本目录 `upgrade-notes.md`。
 
 ## Open Questions

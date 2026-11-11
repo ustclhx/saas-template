@@ -30,6 +30,15 @@ breaking: false
 - 锁表与耗时：`ai_conversation` 新增两个可空列（无默认值，元数据变更）、一个 check 约束与一个索引（`create index` 期间短暂阻塞写入，表大时按需改为 `concurrently` 手工执行）；新建空表 `ai_message_feedback`。
 - 回滚：回退代码即可；新增列与表对旧代码无影响。
 
+### 0023_feedback_reason
+
+- 类别：扩展
+- 兼容上一版本代码：是
+- 锁表与耗时：`ai_message_feedback` 新增可空列 `reason`（无默认值，元数据变更）与 check 约束 `ai_message_feedback_reason_valid`（未带 NOT VALID，持 ACCESS EXCLUSIVE 扫描一次全表；新列全为 NULL、表通常很小，校验瞬时完成）。迁移设置 `lock_timeout=5s`、`statement_timeout=30s`，拿不到锁时失败，可重试
+- 数据迁移：无，已有评分的原因为空
+- 回滚：只回退代码，保留新列与约束；旧代码不读写 `reason`，新代码写入的原因保留
+- apps/web 的 `MessageFeedbackValue` 新增必填字段 `reason`（`FeedbackReason | null`），自行构造该值的项目补 `reason: null`；增删点踩原因取值需同时修改 db 包（模板为 `@saas/db`）的 `AI_FEEDBACK_REASONS` 与 `apps/web/src/features/ai/feedback.ts` 的 `FEEDBACK_REASONS`，并新增迁移修改 check 约束 `ai_message_feedback_reason_valid`
+
 ## 部署顺序
 
 先执行迁移，再部署 web 与 jobs（jobs 的 AI 内容清理会删除 `ai_message_feedback`，需与新表同时上线；旧 jobs 在新表有数据前不受影响）。

@@ -10,10 +10,12 @@ import {
   offsetOfPage,
 } from '../../features/admin/list.ts'
 import { AdminPage, adminTableLabels, formatDateTime, Panel } from '../../features/admin/ui.tsx'
+import { feedbackReasonLabel } from '../../features/ai/chat-extras.tsx'
+import { FEEDBACK_REASONS } from '../../features/ai/feedback.ts'
 import { m } from '../../paraglide/messages.js'
 import { templateConfig } from '../../server/template-config.ts'
 
-const filters = ['rating', 'model', 'subjectType', 'from', 'to'] as const
+const filters = ['rating', 'reason', 'model', 'subjectType', 'from', 'to'] as const
 
 export const Route = createFileRoute('/admin/feedback')({
   beforeLoad: () => {
@@ -119,6 +121,11 @@ function FeedbackAdmin() {
                 row.rating === 'up' ? m.admin_feedback_up() : m.admin_feedback_down(),
             },
             {
+              id: 'reason',
+              header: m.admin_feedback_reason(),
+              cell: (row) => (row.reason ? feedbackReasonLabel(row.reason) : '—'),
+            },
+            {
               id: 'comment',
               header: m.admin_feedback_comment(),
               cell: (row) => (
@@ -149,6 +156,18 @@ function FeedbackAdmin() {
           page={adminListPage(search.offset, data)}
           filters={[
             { id: 'rating', label: m.admin_feedback_rating(), placeholder: 'up / down' },
+            {
+              id: 'reason',
+              label: m.admin_feedback_reason(),
+              type: 'select',
+              options: [
+                { value: '', label: m.admin_all() },
+                ...FEEDBACK_REASONS.map((reason) => ({
+                  value: reason,
+                  label: feedbackReasonLabel(reason),
+                })),
+              ],
+            },
             { id: 'model', label: m.admin_feedback_model() },
             {
               id: 'subjectType',
@@ -160,6 +179,7 @@ function FeedbackAdmin() {
           ]}
           filterValues={{
             rating: search.rating,
+            reason: search.reason,
             model: search.model,
             subjectType: search.subjectType,
             from: search.from,

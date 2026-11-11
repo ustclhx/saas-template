@@ -34,6 +34,14 @@
 
 - [x] 7.1 `docs/06-ai.md` 增加对象对话、临时上下文、推荐追问与评分小节；本 change 目录写 `upgrade-notes.md` 草稿（衍生项目自建 chat-context 迁移路径），版本号由协调者确定
 
+## 9. 点踩原因（评审清单 #81）
+
+- [x] 9.1 `ai_message_feedback` 增加可空 `reason` 与 check 约束 `ai_message_feedback_reason_valid`（约定取值、点赞时必须为空），迁移 `0023_feedback_reason`（只加列与约束，不改数据）；db 集成测试覆盖约束
+- [x] 9.2 `setMessageFeedback` / `saveMessageFeedback` 校验并写入原因：点赞或撤销带原因返回 400，每次保存整体写入（改为点赞或不选原因即清空）；`feedbackForMessages` 返回原因，刷新后还原；集成测试覆盖校验、切点赞清空与撤销
+- [x] 9.3 对话页 `chat-extras.tsx` 传入画板的四个原因（`ai-subject-chat.json` 中英文案），取值来自 `FEEDBACK_REASONS`；e2e `chat-business-ui.spec.ts` 覆盖选原因 → 刷新后仍在
+- [x] 9.4 `/admin/feedback` 列表显示原因并可按原因筛选（DataTable select）；集成测试与 e2e 覆盖显示与筛选
+- [x] 9.5 文档：design 决策、本目录 `upgrade-notes.md` 与 `docs/upgrades/0.3.0.md` 的 0023 一节、`docs/design-system.md` §6.1
+
 ## 8. 未做与外部验收
 
 - [ ] 8.1 （P2，本次不做）长对话摘要 R2.3
