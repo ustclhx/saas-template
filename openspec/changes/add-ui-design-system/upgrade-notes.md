@@ -105,6 +105,9 @@
 组件指纹清单随模板维护。Git 仓库只计算已跟踪的组件文件，新增组件须先 `git add`，再运行
 `pnpm ui:lock`。清单冲突在 rebase/merge 后重新生成，并执行 `pnpm check:ui`。
 
+`check-ui` 测试按需加载生成器。衍生项目删除 `scripts/create-project.mjs` 后，依赖生成器的
+用例会跳过并显示原因，其余用例继续运行，沿用模板的 `check:ui` 命令即可。
+
 ### 多站点根文档属性（6.4）
 
 `apps/web/src/features/theme/html-attributes.ts` 与 `brand.css` 同属项目：模板创建后不再修改，

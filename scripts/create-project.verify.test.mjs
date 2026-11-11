@@ -1,12 +1,19 @@
 import assert from 'node:assert/strict'
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { test } from 'node:test'
-import { createProject, verifyProject } from './create-project.mjs'
+
+const generatorSkip = existsSync(new URL('./create-project.mjs', import.meta.url))
+  ? false
+  : '衍生项目已移除 scripts/create-project.mjs，跳过真实生成副本验收'
+const { createProject, verifyProject } = generatorSkip ? {} : await import('./create-project.mjs')
 
 // 显式运行的端到端自检：真正安装与检查完整副本，避免日常边界测试反复安装依赖。
-test('真实副本覆盖 Cloudflare 默认、selfhost 默认和 selfhost 全关组合', async (t) => {
+test('真实副本覆盖 Cloudflare 默认、selfhost 默认和 selfhost 全关组合', {
+  skip: generatorSkip,
+}, async (t) => {
   const temp = await mkdtemp(join(tmpdir(), 'bootstrap-verify-'))
   t.after(() => rm(temp, { recursive: true, force: true }))
   const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
