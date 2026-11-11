@@ -1,6 +1,7 @@
 import { validateMediaParams as validateServerMediaParams } from '@saas/ai'
 import { renderToString } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { m } from '../../paraglide/messages.js'
 import { fileUploadActions, type MediaFile, submitMediaTask, uploadMediaFile } from './client.ts'
 import { MediaParameterFields } from './parameter-form.tsx'
 import {
@@ -115,8 +116,9 @@ describe('媒体 schema 参数组件', () => {
     expect(triggers[0]).toContain('aria-invalid="true"')
     expect(triggers[0]).toContain('-resolution-description')
     expect(triggers[0]).toContain('-resolution-error')
-    expect(html).toContain('Choose an option')
-    expect(html).toContain('Choose a confirmed file')
+    // 期望文案取自 m.*：衍生项目默认语言可能为 zh，不能写死英文
+    expect(html).toContain(m.media_select())
+    expect(html).toContain(m.media_file())
     expect(html).not.toContain(ready.id)
     expect(html).not.toContain(pending.id)
   })

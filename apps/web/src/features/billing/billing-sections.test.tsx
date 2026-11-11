@@ -11,6 +11,7 @@ import {
   CreditBalance,
   dailyNoticeState,
   defaultProvider,
+  formatBillingDate,
   subscriptionCreditsNote,
 } from './billing-sections.tsx'
 
@@ -121,8 +122,12 @@ describe('账单页分区（add-ui-design-system 8.7）', () => {
   })
 
   it('订阅积分卡：月付显示重置日，取消中显示结束日，年付按月发放不显示续费日', () => {
-    expect(subscriptionCreditsNote(monthly)).toContain('Resets')
-    expect(subscriptionCreditsNote({ ...monthly, ending: true })).toContain('Ends')
+    // 期望文案取自 m.*：衍生项目默认语言可能为 zh，不能写死英文
+    const date = formatBillingDate(monthly.periodEnd)
+    expect(subscriptionCreditsNote(monthly)).toBe(m.billing_page_sub_resets({ date }))
+    expect(subscriptionCreditsNote({ ...monthly, ending: true })).toBe(
+      m.billing_page_sub_ends({ date }),
+    )
     expect(subscriptionCreditsNote({ ...monthly, interval: 'year' })).toBe(
       m.billing_page_sub_monthly_grant(),
     )
