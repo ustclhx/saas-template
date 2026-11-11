@@ -38,7 +38,9 @@ test('register, sign out/in, and buy a credit pack through the local provider', 
 
   await page.getByRole('link', { name: 'Billing', exact: true }).click()
   await expect(page.getByText('Available credits: 0', { exact: false })).toBeVisible()
-  await chooseOption(page.getByRole('combobox', { name: 'Payment method', exact: true }), 'stripe')
+  await chooseOption(page.getByRole('combobox', { name: 'Payment method', exact: true }), {
+    value: 'stripe',
+  })
   // 积分包从「购买积分包」分区直接结账（add-ui-design-system 8.7）
   await page.getByRole('button', { name: 'Buy CI smoke credits', exact: true }).click()
   await expect(page).toHaveURL(/\/billing-return\?/)

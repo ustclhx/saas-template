@@ -16,7 +16,9 @@ import {
   PricingFaq,
   PricingGroups,
   PricingHero,
+  type PricingKind,
   PricingSkeleton,
+  pricingKind,
 } from '../features/marketing/pricing-page.tsx'
 import { originFromMatches, pageHead, staticPage } from '../features/seo/metadata.ts'
 import { pricingData } from '../features/seo/structured-data.ts'
@@ -43,10 +45,18 @@ export const Route = createFileRoute('/pricing')({
     ),
 })
 
-function PricingFrame({ children, facts }: { children: ReactNode; facts?: ReactNode }) {
+function PricingFrame({
+  children,
+  facts,
+  kind,
+}: {
+  children: ReactNode
+  facts?: ReactNode
+  kind?: PricingKind
+}) {
   return (
     <MarketingShell>
-      <PricingHero />
+      <PricingHero kind={kind} />
       {facts}
       <PricingBody>{children}</PricingBody>
       <PricingFaq />
@@ -83,15 +93,16 @@ function PricingPage() {
       window.clearInterval(timer)
     }
   }, [initialCatalog])
-  const plans = marketingPlans(catalog)
-  const groups = groupPricingPlans(plans)
-  const both = groups.subscriptions.length > 0 && groups.creditPacks.length > 0
+  const groups = groupPricingPlans(marketingPlans(catalog))
+  const kind = pricingKind(groups)
+  const both = kind === 'both' && groups.subscriptions.length > 0
   return (
     <PricingFrame
+      kind={kind}
       facts={both ? <PricingFacts packExpiry={packExpiryDays(groups.creditPacks)} /> : null}
     >
       <PricingGroups
-        plans={plans}
+        groups={groups}
         paymentsAvailable={catalog.providers.some((provider) => provider.available)}
       />
     </PricingFrame>

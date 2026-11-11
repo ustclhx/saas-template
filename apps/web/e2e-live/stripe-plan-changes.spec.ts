@@ -151,11 +151,11 @@ test('Stripe Pro 月付立即升级 Team 不追加积分，降级 Pro 只预约�
     await saveBillingEvidence('plan-change-pro-initial', pro)
 
     await page.goto(`/app/${slug}/billing`)
-    await expect(page.getByText('Current plan: pro', { exact: true })).toBeVisible()
+    await expect(page.getByText(/^Current plan: Pro\b/)).toBeVisible()
     const teamPriceId = await chooseChange(page, TEAM_MONTHLY)
     await expect(page.getByRole('status')).toHaveText('Subscription updated.')
     // 权益必须由正常操作更新；不得刷新页面掩盖失效的 loader invalidation。
-    await expect(page.getByText('Current plan: team', { exact: true })).toBeVisible()
+    await expect(page.getByText(/^Current plan: Team\b/)).toBeVisible()
     await expect
       .poll(async () => {
         const evidence = await billingEvidence(sql, slug)
@@ -237,7 +237,7 @@ test('Stripe Pro 月付立即升级 Team 不追加积分，降级 Pro 只预约�
     await expect(page.getByRole('status')).toHaveText(
       'Plan change scheduled for the end of your current billing period.',
     )
-    await expect(page.getByText('Current plan: team', { exact: true })).toBeVisible()
+    await expect(page.getByText(/^Current plan: Team\b/)).toBeVisible()
     const scheduledProvider = await providerSubscription(
       String(subscription.provider_subscription_id),
     )

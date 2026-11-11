@@ -1,6 +1,6 @@
 # 共存定价与账单数据接口
 
-`add-billing-coexistence` 只提供最小接线；卡片视觉、分区布局由 UI 8.7 替换。
+`add-billing-coexistence` 提供数据接口；定价页分组与账单页分区由 `add-ui-design-system` 8.7 实现（`features/marketing/pricing-page.tsx`、`features/billing/billing-sections.tsx`）。
 
 ## 定价
 
@@ -22,4 +22,4 @@
 
 默认使用数据库 `now()`，与 `getCreditBalance` / `hold` 的可用性判断一致；可选 `now` 参数仅用于指定周期锚点时间。一个 SQL 快照统计 active 且尚未到期的 remaining；预扣已经扣减 remaining，因此不会重复扣减 held。撤销与过期批次不计入。所有 grant/payment 关联限定当前空间。年付锚点从付款原始日期计算，Jan 31 → Feb 28 → Mar 31；旧月结转和非 rollover 宽限期批次保留在 `subscription.total` 中，但付款周期结束后不再计入 `subscription.currentPeriod`。
 
-账单购买入口 `#subscriptions` / `#credit-packs` 均定位现有购买表单；分区由 UI 8.7 负责。订阅存在不影响积分包 checkout。无物理 schema、新轮询或新定时任务。R3 合并后需协调者用实际 daily 发放复核。
+账单页按「订阅（`#subscriptions`，含 `#choose-plan` 套餐选择）/ 积分余额（`#balance`）/ 购买积分包（`#credit-packs`）」分区，分区只在有生效价格或持有记录时渲染，免费积分另需注册赠送或每日领取配置；积分包在 `#credit-packs` 直接结账，套餐下拉只列订阅价格。订阅存在不影响积分包 checkout。无物理 schema、新轮询或新定时任务。R3 合并后需协调者用实际 daily 发放复核。

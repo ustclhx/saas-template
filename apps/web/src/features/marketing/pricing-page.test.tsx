@@ -3,8 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { examplePricingCatalog } from '../../../scripts/pricing-snapshot.ts'
 import { m } from '../../paraglide/messages.js'
 import { baseLocale, overwriteGetLocale } from '../../paraglide/runtime.js'
-import { marketingPlans, packExpiryDays, planPrice, yearlySavingPercent } from './pricing-data.ts'
-import { PricingGroups } from './pricing-page.tsx'
+import {
+  groupPricingPlans,
+  marketingPlans,
+  type PricingPlan,
+  packExpiryDays,
+  planPrice,
+  subscriptionDisplayPrice,
+  yearlySavings,
+} from './pricing-data.ts'
+import { PricingGroups, PricingHero, pricingKind } from './pricing-page.tsx'
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, to, ...props }: { children: React.ReactNode; to: string }) => (
@@ -20,8 +28,14 @@ afterEach(() => overwriteGetLocale(() => baseLocale))
 const plans = marketingPlans(examplePricingCatalog())
 const subscriptions = plans.filter((plan) => plan.type === 'subscription')
 const packs = plans.filter((plan) => plan.type === 'credit_pack')
-const render = (input: typeof plans, interval: 'month' | 'year' = 'month') =>
-  renderToStaticMarkup(<PricingGroups plans={input} paymentsAvailable initialInterval={interval} />)
+const render = (input: readonly PricingPlan[], interval: 'month' | 'year' = 'month') =>
+  renderToStaticMarkup(
+    <PricingGroups
+      groups={groupPricingPlans(input)}
+      paymentsAvailable
+      initialInterval={interval}
+    />,
+  )
 
 describe('定价页订阅与积分包并列（add-ui-design-system 8.7）', () => {
   it('两组并存时同时显示订阅、积分包与只作用于订阅的周期切换', () => {
@@ -41,12 +55,11 @@ describe('定价页订阅与积分包并列（add-ui-design-system 8.7）', () =
     expect(planPrice(pack, 'month')).toEqual(planPrice(pack, 'year'))
     const monthly = render(plans, 'month')
     const yearly = render(plans, 'year')
-    expect(monthly).toContain('$19')
-    expect(yearly).toContain('$190')
+    expect(monthly).toContain('$19<')
+    expect(yearly).toContain('$190<')
     expect(yearly).not.toContain('$19<')
-    // 积分包价格两种周期下一致
-    expect(monthly).toContain('$10')
-    expect(yearly).toContain('$10')
+    expect(monthly).toContain('$10<')
+    expect(yearly).toContain('$10<')
   })
 
   it('只有积分包时不显示周期切换与订阅组', () => {
@@ -55,7 +68,6 @@ describe('定价页订阅与积分包并列（add-ui-design-system 8.7）', () =
     expect(html).not.toContain(m.pricing_page_subscriptions())
     expect(html).not.toContain(m.pricing_page_cycle())
     expect(html).not.toContain(m.pricing_page_monthly())
-    // 只有一种类型时不提示叠加扣费顺序
     expect(html).not.toContain(m.pricing_page_pack_order())
   })
 
@@ -65,14 +77,63 @@ describe('定价页订阅与积分包并列（add-ui-design-system 8.7）', () =
     expect(html).not.toContain(m.pricing_page_packs())
   })
 
+  it('首屏标题随套餐分组变化', () => {
+    const hero = (input: readonly PricingPlan[]) =>
+      renderToStaticMarkup(<PricingHero kind={pricingKind(groupPricingPlans(input))} />)
+    expect(hero(plans)).toContain(m.pricing_page_title())
+    expect(hero(subscriptions)).toContain(m.pricing_page_title_subscriptions())
+    expect(hero(packs)).toContain(m.pricing_page_title_packs())
+  })
+
   it('没有任何套餐时显示空状态；支付不可用时给出说明', () => {
     expect(render([])).toContain(m.pricing_page_empty_title())
-    const html = renderToStaticMarkup(<PricingGroups plans={plans} paymentsAvailable={false} />)
+    const html = renderToStaticMarkup(
+      <PricingGroups groups={groupPricingPlans(plans)} paymentsAvailable={false} />,
+    )
     expect(html).toContain(m.pricing_page_payments_unavailable())
   })
 
-  it('年付节省比例与积分包有效期来自套餐数据', () => {
-    expect(yearlySavingPercent(subscriptions)).toBe(17)
+  it('推荐套餐有徽章与强调边框，CTA 文案简短、套餐名放在无障碍名称中', () => {
+    const html = render(plans)
+    expect(html).toContain(m.pricing_page_recommended())
+    expect(html).toContain('ring-primary')
+    expect(html).toContain(
+      `aria-label="${m.pricing_page_subscribe_label({ name: 'Pro (template example)' })}"`,
+    )
+    expect(html).toContain(`>${m.pricing_page_subscribe()}</a>`)
+  })
+
+  it('年付模式下只有月价的订阅回退显示月价并说明', () => {
+    const pro = subscriptions.find((plan) => plan.key === 'pro')
+    if (!pro) throw new Error('示例目录缺少 Pro')
+    const monthlyOnly: PricingPlan = {
+      ...pro,
+      key: 'monthly-only',
+      name: 'Monthly only',
+      highlighted: false,
+      prices: [{ interval: 'month', amount: 900, currency: 'USD' }],
+    }
+    expect(subscriptionDisplayPrice(monthlyOnly, 'year')).toMatchObject({
+      interval: 'month',
+      monthlyOnly: true,
+    })
+    const html = render([...subscriptions, monthlyOnly], 'year')
+    expect(html).toContain('$9<')
+    expect(html).toContain(m.pricing_page_note_monthly_only())
+  })
+
+  it('年付节省比例各套餐不同时显示「最高省」，积分包有效期来自套餐数据', () => {
+    expect(yearlySavings(subscriptions)).toEqual({ max: 17, uniform: true })
+    const varied = [
+      ...subscriptions,
+      {
+        prices: [
+          { interval: 'month' as const, amount: 1000, currency: 'USD' },
+          { interval: 'year' as const, amount: 9000, currency: 'USD' },
+        ],
+      },
+    ]
+    expect(yearlySavings(varied)).toEqual({ max: 25, uniform: false })
     expect(packExpiryDays(packs)).toBe(365)
     expect(packExpiryDays([{ creditExpiryDays: null }])).toBeNull()
   })

@@ -1,4 +1,5 @@
 import { Button, Checkbox, Label, Select, SelectContent, SelectItem, SelectTrigger } from '@saas/ui'
+import { ArrowRight } from '@saas/ui/icons'
 import {
   createFileRoute,
   notFound as featureNotFound,
@@ -15,9 +16,14 @@ import {
   BillingSkeleton,
   billingSections,
   CreditBalance,
+  defaultProvider,
   FreePlanCard,
   formatBillingDate,
+  formatCredits,
   PackOption,
+  paymentStatusLabel,
+  providerName,
+  refundStatusLabel,
   SubscriptionStatusBadge,
   subscriptionStatus,
 } from '../../../features/billing/billing-sections.tsx'
@@ -28,6 +34,8 @@ import {
 } from '../../../features/billing/customer.functions.ts'
 import { getCustomerRefunds } from '../../../features/billing/refund.functions.ts'
 import { RefundSection } from '../../../features/billing/refund-section.tsx'
+import { packExpiryDays } from '../../../features/marketing/pricing-data.ts'
+import { formatPrice } from '../../../features/marketing/sections/pricing.tsx'
 import { m } from '../../../paraglide/messages.js'
 import { getLocale } from '../../../paraglide/runtime.js'
 import { templateConfig } from '../../../server/template-config.ts'
@@ -52,16 +60,15 @@ export const Route = createFileRoute('/app/$slug/billing')({
 const workspaceRoute = getRouteApi('/app/$slug')
 
 // 免费积分分区的数据来源：注册赠送或每日领取任一开启（R3 合并后每日领取经配置开启）
-const freeConfigured =
-  templateConfig.credits.enabled &&
-  (templateConfig.billing.signupBonusCredits > 0 || templateConfig.credits.dailyEnabled)
+const signupConfigured =
+  templateConfig.credits.enabled && templateConfig.billing.signupBonusCredits > 0
+const dailyConfigured = templateConfig.credits.enabled && templateConfig.credits.dailyEnabled
+const freeConfigured = signupConfigured || dailyConfigured
 
 // 账单金额保留两位小数，与支付渠道账单一致
+// 账单金额与支付渠道账单一致，保留两位小数
 const money = (amount: number, currency: string) =>
-  new Intl.NumberFormat(getLocale(), {
-    style: 'currency',
-    currency: currency.toUpperCase(),
-  }).format(amount / 100)
+  formatPrice(amount, currency, getLocale(), { exact: true })
 
 function BillingFailed() {
   const router = useRouter()
@@ -76,8 +83,8 @@ function BillingPage() {
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
-  const [provider, setProvider] = useState(
-    page.catalog.providers.find((p) => p.available)?.id ?? page.catalog.providers[0]?.id ?? '',
+  const [provider, setProvider] = useState(() =>
+    defaultProvider(page.catalog.providers, page.catalog.prices),
   )
   const providerId = useId()
   const planId = useId()
@@ -117,19 +124,28 @@ function BillingPage() {
     ).length > 1
   const currentProvider = page.catalog.providers.find((p) => p.id === provider)
   const providerLabel = (p: (typeof page.catalog.providers)[number]) =>
-    p.available ? p.id : m.billing_page_provider_unavailable({ provider: p.id })
+    p.available
+      ? providerName(p.id)
+      : m.billing_page_provider_unavailable({ provider: providerName(p.id) })
   const providerAvailable = (id: string) =>
     page.catalog.providers.some((p) => p.id === id && p.available)
-  const providerPrices = page.catalog.prices.filter(
-    (price) => price.provider === provider && planOf(price.planId),
-  )
-  const planPrices = providerPrices.filter((price) => planOf(price.planId)?.type === 'subscription')
+  // 购买入口只用生效价格；是否显示按全部渠道判断，避免所选渠道无价格时入口整体消失
+  const activePrices = page.catalog.prices.filter((price) => price.active && planOf(price.planId))
+  const typeOf = (price: { planId: string }) => planOf(price.planId)?.type
+  const providerPrices = activePrices.filter((price) => price.provider === provider)
+  const planPrices = providerPrices.filter((price) => typeOf(price) === 'subscription')
+  const hasPlanPrices = activePrices.some((price) => typeOf(price) === 'subscription')
   const packPlans = page.catalog.plans.filter((plan) => plan.type === 'credit_pack')
+  const providerPacks = packPlans.flatMap((plan) => {
+    const price = providerPrices.find((p) => p.planId === plan.id)
+    return price ? [{ plan, price }] : []
+  })
+  const hasPackPrices = activePrices.some((price) => typeOf(price) === 'credit_pack')
   const intervalLabel = (interval: string | null) =>
     interval === 'year'
-      ? ` ${m.pricing_page_per_year()}`
+      ? ` ${m.billing_page_per_year()}`
       : interval === 'month'
-        ? ` ${m.pricing_page_per_month()}`
+        ? ` ${m.billing_page_per_month()}`
         : ''
   const priceLabel = (price: (typeof providerPrices)[number]) =>
     `${planOf(price.planId)?.name} · ${money(price.amount, price.currency)}${intervalLabel(price.interval)}${price.available ? '' : ` · ${m.billing_page_unavailable_suffix()}`}`
@@ -144,16 +160,24 @@ function BillingPage() {
     change &&
     Boolean(selected?.interval && currentInterval) &&
     selected?.interval !== currentInterval
-  const currentPlan = page.catalog.plans.find(
-    (plan) => plan.key === page.summary?.currentSubscription?.planKey,
+  const current = page.summary?.currentSubscription ?? null
+  const currentPlan = page.catalog.plans.find((plan) => plan.key === current?.planKey)
+  const currentPrice = page.catalog.prices.find(
+    (price) => price.id === page.subscriptions.find((sub) => sub.id === current?.id)?.planPriceId,
   )
-  const packExpiry = (() => {
-    const days = packPlans
-      .map((plan) => plan.creditExpiryDays)
-      .filter((value): value is number => value !== null)
-    return days.length ? Math.min(...days) : null
-  })()
-  const showPurchase = owner && providerPrices.length > 0
+  const balanceSubscription = current
+    ? {
+        planCredits: currentPlan?.credits ?? null,
+        interval: currentPrice?.interval ?? null,
+        ending: ['ending', 'ended', 'paused'].includes(subscriptionStatus(current)),
+        periodEnd: current.currentPeriodEnd,
+      }
+    : null
+  const packExpiry = packExpiryDays(packPlans)
+  const showPurchase = owner && activePrices.length > 0
+  const entitlementPlan =
+    page.catalog.plans.find((plan) => plan.key === page.entitlements.key)?.name ??
+    page.entitlements.key
 
   async function manage(subscriptionId: string, action: 'cancel' | 'resume' | 'portal' | 'change') {
     setBusy(true)
@@ -273,11 +297,19 @@ function BillingPage() {
       )}
 
       {sections.subscription && (
-        <BillingSection id="subscriptions" title={m.billing_page_subscription()}>
+        <BillingSection
+          id="subscriptions"
+          title={m.billing_page_subscription()}
+          aside={
+            <span className="text-muted-foreground">
+              {m.billing_page_current_plan({ plan: entitlementPlan })}
+            </span>
+          }
+        >
           {currentSubscriptions.length === 0 ? (
             <FreePlanCard
               action={
-                owner && planPrices.length > 0 ? (
+                owner && hasPlanPrices ? (
                   <Button asChild className="mt-3 sm:mt-0">
                     <a href="#choose-plan">{m.billing_page_view_plans()}</a>
                   </Button>
@@ -304,7 +336,7 @@ function BillingPage() {
                       {[
                         price &&
                           `${money(price.amount, price.currency)}${intervalLabel(price.interval)}`,
-                        sub.provider,
+                        providerName(sub.provider),
                         ending
                           ? m.billing_page_access_ends({
                               date: formatBillingDate(sub.currentPeriodEnd),
@@ -315,13 +347,13 @@ function BillingPage() {
                         !ending &&
                           plan &&
                           plan.credits > 0 &&
-                          m.billing_page_renewal_credits({ count: plan.credits }),
+                          m.billing_page_monthly_credits({ count: formatCredits(plan.credits) }),
                       ]
                         .filter(Boolean)
                         .join(' · ')}
                     </p>
                   </div>
-                  {owner && 'id' in sub && sub.id && (
+                  {owner && 'id' in sub && sub.id && status !== 'ended' && (
                     <div className="mt-3 flex flex-wrap gap-2 md:mt-0">
                       <Button
                         variant="ghost"
@@ -348,40 +380,44 @@ function BillingPage() {
             })
           )}
           {overlapping && <p className="text-muted-foreground">{m.billing_page_overlap()}</p>}
-          {owner && planPrices.length > 0 && (
+          {owner && hasPlanPrices && (
             <BillingCard id="choose-plan" className="scroll-mt-6 gap-3">
               <h4 className="font-medium">{m.billing_page_choose_plan()}</h4>
-              <div className="grid gap-2">
-                <Label htmlFor={planId}>{m.billing_page_plan()}</Label>
-                <Select
-                  value={selected ? priceId : ''}
-                  disabled={disabled}
-                  onValueChange={(value) => {
-                    setPriceId(value)
-                    setConfirmed(false)
-                    intent.current = null
-                  }}
-                >
-                  <SelectTrigger
-                    id={planId}
-                    className="w-full"
-                    placeholder={m.billing_page_plan_placeholder()}
-                    valueLabel={selected ? priceLabel(selected) : undefined}
-                  />
-                  <SelectContent>
-                    {planPrices.map((price, index) => (
-                      <SelectItem
-                        key={price.id}
-                        index={index}
-                        value={price.id}
-                        disabled={!price.available}
-                      >
-                        {priceLabel(price)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {planPrices.length === 0 ? (
+                <p className="text-muted-foreground">{m.billing_page_no_plans_for_provider()}</p>
+              ) : (
+                <div className="grid gap-2">
+                  <Label htmlFor={planId}>{m.billing_page_plan()}</Label>
+                  <Select
+                    value={selected ? priceId : ''}
+                    disabled={disabled}
+                    onValueChange={(value) => {
+                      setPriceId(value)
+                      setConfirmed(false)
+                      intent.current = null
+                    }}
+                  >
+                    <SelectTrigger
+                      id={planId}
+                      className="w-full"
+                      placeholder={m.billing_page_plan_placeholder()}
+                      valueLabel={selected ? priceLabel(selected) : undefined}
+                    />
+                    <SelectContent>
+                      {planPrices.map((price, index) => (
+                        <SelectItem
+                          key={price.id}
+                          index={index}
+                          value={price.id}
+                          disabled={!price.available}
+                        >
+                          {priceLabel(price)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               {replacement && (
                 <div className="flex items-start gap-2">
                   <Checkbox
@@ -420,12 +456,12 @@ function BillingPage() {
         <CreditBalance
           summary={page.summary.credits}
           sections={sections}
-          planCredits={currentPlan?.credits ?? null}
-          renewalAt={page.summary.nextRenewalAt}
+          subscription={balanceSubscription}
           packExpiry={packExpiry}
           daily={dailyCredits}
+          freeRows={{ signup: signupConfigured, daily: dailyConfigured }}
           packAction={
-            showPurchase && packPlans.length > 0 ? (
+            showPurchase && hasPackPrices ? (
               <Button asChild size="sm" variant="outline" className="justify-self-start">
                 <a href="#credit-packs">{m.billing_page_buy_pack_link()}</a>
               </Button>
@@ -435,15 +471,16 @@ function BillingPage() {
             <Link
               to="/app/$slug/usage"
               params={{ slug }}
-              className="text-primary-text underline-offset-4 hover:underline"
+              className="inline-flex items-center gap-1 justify-self-start text-primary-text underline underline-offset-4"
             >
               {m.billing_page_usage_link()}
+              <ArrowRight aria-hidden="true" className="size-4" />
             </Link>
           }
         />
       )}
 
-      {showPurchase && sections.packs && packPlans.length > 0 && (
+      {showPurchase && hasPackPrices && (
         <BillingSection
           id="credit-packs"
           title={m.billing_page_packs_title()}
@@ -453,32 +490,27 @@ function BillingPage() {
             </span>
           }
         >
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {packPlans.map((plan) => {
-              const price = providerPrices.find((p) => p.planId === plan.id)
-              return (
+          {providerPacks.length === 0 ? (
+            <p className="text-muted-foreground">{m.billing_page_no_packs_for_provider()}</p>
+          ) : (
+            <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {providerPacks.map(({ plan, price }) => (
                 <PackOption
                   key={plan.id}
                   name={plan.name}
                   credits={plan.credits}
-                  price={
-                    price
-                      ? money(price.amount, price.currency)
-                      : m.billing_page_payments_unavailable()
-                  }
+                  price={money(price.amount, price.currency)}
                   expiry={
                     plan.creditExpiryDays === null
                       ? m.billing_page_pack_permanent()
                       : m.billing_page_pack_expiry({ count: plan.creditExpiryDays })
                   }
-                  disabled={disabled || !price?.available}
-                  onBuy={() => {
-                    if (price) void checkout(price)
-                  }}
+                  disabled={disabled || !price.available}
+                  onBuy={() => void checkout(price)}
                 />
-              )
-            })}
-          </ul>
+              ))}
+            </ul>
+          )}
         </BillingSection>
       )}
 
@@ -510,11 +542,11 @@ function BillingPage() {
                 {page.payments.map((payment) => (
                   <tr key={payment.id} className="border-b last:border-b-0">
                     <td className="px-3 py-2">{formatBillingDate(payment.paidAt)}</td>
-                    <td className="px-3 py-2">{payment.provider}</td>
+                    <td className="px-3 py-2">{providerName(payment.provider)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       {money(payment.amount, payment.currency)}
                     </td>
-                    <td className="px-3 py-2">{payment.status}</td>
+                    <td className="px-3 py-2">{paymentStatusLabel(payment.status)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       {money(payment.refundedAmount, payment.currency)}
                     </td>
@@ -531,7 +563,7 @@ function BillingPage() {
           <h4 className="font-medium">{m.billing_page_refund_requests()}</h4>
           {page.refunds.map((refund) => (
             <p key={refund.id}>
-              {formatBillingDate(refund.createdAt)} · {refund.status}
+              {formatBillingDate(refund.createdAt)} · {refundStatusLabel(refund.status)}
             </p>
           ))}
           {page.refunds.length === 0 && (

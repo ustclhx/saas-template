@@ -2,7 +2,14 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { m } from '../../paraglide/messages.js'
 import { baseLocale, overwriteGetLocale } from '../../paraglide/runtime.js'
-import { type BillingCreditSummary, billingSections, CreditBalance } from './billing-sections.tsx'
+import {
+  type BalanceSubscription,
+  type BillingCreditSummary,
+  billingSections,
+  CreditBalance,
+  defaultProvider,
+  subscriptionCreditsNote,
+} from './billing-sections.tsx'
 
 beforeEach(() => overwriteGetLocale(() => baseLocale))
 afterEach(() => overwriteGetLocale(() => baseLocale))
@@ -11,6 +18,7 @@ const plans = [
   { id: 'sub', type: 'subscription' as const },
   { id: 'pack', type: 'credit_pack' as const },
 ]
+const price = (planId: string, provider = 'stripe', active = true) => ({ planId, provider, active })
 const summary: BillingCreditSummary = {
   subscription: { total: 800, currentPeriod: 800 },
   purchase: 400,
@@ -18,13 +26,39 @@ const summary: BillingCreditSummary = {
   other: 0,
   available: 1260,
 }
+const noFree = { ...summary, free: { signup: 0, daily: 0, total: 0 } }
+const monthly: BalanceSubscription = {
+  planCredits: 1000,
+  interval: 'month',
+  ending: false,
+  periodEnd: '2026-12-10T00:00:00Z',
+}
+
+function balance(props: {
+  summary?: BillingCreditSummary
+  subscription?: BalanceSubscription | null
+  freeRows?: { signup: boolean; daily: boolean }
+  sections?: { subscription: boolean; packs: boolean; free: boolean }
+  daily?: Parameters<typeof CreditBalance>[0]['daily']
+}) {
+  return renderToStaticMarkup(
+    <CreditBalance
+      summary={props.summary ?? summary}
+      sections={props.sections ?? { subscription: true, packs: true, free: true }}
+      subscription={props.subscription === undefined ? monthly : props.subscription}
+      packExpiry={null}
+      daily={props.daily ?? null}
+      freeRows={props.freeRows ?? { signup: true, daily: true }}
+    />,
+  )
+}
 
 describe('账单页分区（add-ui-design-system 8.7）', () => {
-  it('分区按数据来源渲染：无价格的套餐类型且无持有记录时不渲染', () => {
+  it('分区按生效价格与持有记录渲染', () => {
     expect(
       billingSections({
         plans,
-        prices: [{ planId: 'sub' }, { planId: 'pack' }],
+        prices: [price('sub'), price('pack')],
         subscriptionCount: 0,
         summary,
         freeConfigured: true,
@@ -33,12 +67,22 @@ describe('账单页分区（add-ui-design-system 8.7）', () => {
     expect(
       billingSections({
         plans,
-        prices: [{ planId: 'pack' }],
+        prices: [price('pack')],
         subscriptionCount: 0,
-        summary: { ...summary, free: { signup: 0, daily: 0, total: 0 } },
+        summary: noFree,
         freeConfigured: false,
       }),
     ).toEqual({ subscription: false, packs: true, free: false })
+    // 失效价格不算数据来源
+    expect(
+      billingSections({
+        plans,
+        prices: [price('sub', 'stripe', false), price('pack', 'stripe', false)],
+        subscriptionCount: 0,
+        summary: { ...noFree, purchase: 0 },
+        freeConfigured: false,
+      }),
+    ).toEqual({ subscription: false, packs: false, free: false })
     // 已有订阅或已持有积分包 / 免费积分时，即使目录下架也保留对应分区
     expect(
       billingSections({
@@ -51,40 +95,74 @@ describe('账单页分区（add-ui-design-system 8.7）', () => {
     ).toEqual({ subscription: true, packs: true, free: true })
   })
 
-  it('余额只渲染有来源的分区卡片，免费积分拆分注册赠送与每日领取', () => {
-    const render = (sections: Parameters<typeof billingSections>[0]) =>
-      renderToStaticMarkup(
-        <CreditBalance
-          summary={summary}
-          sections={billingSections(sections)}
-          planCredits={1000}
-          renewalAt="2026-12-10T00:00:00Z"
-          packExpiry={null}
-          daily={{ status: 'already_claimed' }}
-        />,
-      )
-    const all = render({
-      plans,
-      prices: [{ planId: 'sub' }, { planId: 'pack' }],
-      subscriptionCount: 0,
-      summary,
-      freeConfigured: true,
-    })
+  it('默认支付方式取可用且有生效价格的渠道', () => {
+    const providers = [
+      { id: 'stripe', available: true },
+      { id: 'paypal', available: true },
+    ]
+    expect(defaultProvider(providers, [price('sub', 'paypal')])).toBe('paypal')
+    expect(
+      defaultProvider(providers, [price('sub', 'stripe', false), price('sub', 'paypal')]),
+    ).toBe('paypal')
+    // 有价格的渠道都不可用时仍选有价格的渠道，让购买区显示并给出不可用说明
+    expect(
+      defaultProvider(
+        [
+          { id: 'stripe', available: true },
+          { id: 'paypal', available: false },
+        ],
+        [price('sub', 'paypal')],
+      ),
+    ).toBe('paypal')
+    expect(defaultProvider(providers, [])).toBe('stripe')
+  })
+
+  it('订阅积分卡：月付显示重置日，取消中显示结束日，年付按月发放不显示续费日', () => {
+    expect(subscriptionCreditsNote(monthly)).toContain('Resets')
+    expect(subscriptionCreditsNote({ ...monthly, ending: true })).toContain('Ends')
+    expect(subscriptionCreditsNote({ ...monthly, interval: 'year' })).toBe(
+      m.billing_page_sub_monthly_grant(),
+    )
+    expect(subscriptionCreditsNote(null)).toBeNull()
+  })
+
+  it('余额只渲染有来源的分区卡片，未订阅时不显示进度与不结转说明', () => {
+    const all = balance({})
     expect(all).toContain(m.billing_page_sub_credits())
     expect(all).toContain('aria-valuenow="80"')
     expect(all).toContain(m.billing_page_pack_credits())
     expect(all).toContain(m.billing_page_free_credits())
-    expect(all).toContain(m.billing_page_signup())
-    expect(all).toContain(m.billing_page_daily_claimed())
-    const packsOnly = render({
-      plans: [{ id: 'pack', type: 'credit_pack' }],
-      prices: [{ planId: 'pack' }],
-      subscriptionCount: 0,
-      summary: { ...summary, free: { signup: 0, daily: 0, total: 0 } },
-      freeConfigured: false,
+    const free = balance({ subscription: null })
+    expect(free).not.toContain('role="progressbar"')
+    expect(free).not.toContain(m.billing_page_sub_no_rollover())
+    expect(free).toContain(m.billing_page_sub_hint())
+    const packsOnly = balance({
+      summary: noFree,
+      sections: { subscription: false, packs: true, free: false },
     })
     expect(packsOnly).toContain(m.billing_page_pack_credits())
     expect(packsOnly).not.toContain(m.billing_page_sub_credits())
     expect(packsOnly).not.toContain(m.billing_page_free_credits())
+  })
+
+  it('多个付费周期重叠、本期剩余超过套餐额度时不显示分母与进度', () => {
+    const html = balance({
+      summary: { ...summary, subscription: { total: 1500, currentPeriod: 1500 } },
+    })
+    expect(html).not.toContain('role="progressbar"')
+    expect(html).not.toContain('/ 1,000')
+  })
+
+  it('免费积分明细按配置或余额显示，今日已领从 daily 余额推导', () => {
+    const signupOnly = balance({
+      summary: { ...summary, free: { signup: 50, daily: 0, total: 50 } },
+      freeRows: { signup: true, daily: false },
+      daily: { status: 'cached' },
+    })
+    expect(signupOnly).toContain(m.billing_page_signup())
+    expect(signupOnly).not.toContain(m.billing_page_daily())
+    expect(signupOnly).not.toContain(m.billing_page_daily_claimed())
+    const cached = balance({ daily: { status: 'cached' } })
+    expect(cached).toContain(m.billing_page_daily_claimed())
   })
 })

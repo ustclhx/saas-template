@@ -21,7 +21,6 @@
   "pricing_page_yearly": "Yearly",
   "pricing_page_save": "Save {percent}%",
   "pricing_page_recommended": "Recommended",
-  "pricing_page_popular": "Popular",
   "pricing_page_per_month": "/ month",
   "pricing_page_per_year": "/ year",
   "pricing_page_note_monthly": "Billed monthly, cancel anytime",
@@ -29,7 +28,7 @@
   "pricing_page_note_free": "No payment method required",
   "pricing_page_price_unavailable": "—",
   "pricing_page_start_free": "Start for free",
-  "pricing_page_subscribe": "Subscribe to {name}",
+  "pricing_page_subscribe": "Subscribe",
   "pricing_page_buy": "Buy",
   "pricing_page_buy_label": "Buy {name}",
   "pricing_page_credits_monthly": "{count} subscription credits every month",
@@ -55,5 +54,36 @@
   "pricing_page_faq_4_a": "Credits belong to the workspace, so members of the same workspace share one balance.",
   "pricing_page_fact_pack_title_expiry": "Credit packs last longer",
   "pricing_page_fact_pack_desc_expiry": "Valid for {count} days after purchase",
-  "pricing_page_packs_desc_expiry": "One-time purchase, not affected by monthly/yearly billing"
+  "pricing_page_packs_desc_expiry": "One-time purchase, not affected by monthly/yearly billing",
+  "pricing_page_title_subscriptions": "Choose the plan that fits how you work",
+  "pricing_page_subtitle_subscriptions": "Subscription credits are granted every month. Upgrade, downgrade or cancel anytime.",
+  "pricing_page_title_packs": "Buy credits when you need them",
+  "pricing_page_subtitle_packs": "One-time credit packs, no subscription required.",
+  "pricing_page_save_up_to": "Save up to {percent}%",
+  "pricing_page_subscribe_label": "Subscribe to {name}",
+  "pricing_page_note_monthly_only": "Monthly billing only",
+  "pricing_page_feature_seats": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} seat",
+        "countPlural=other": "{count} seats"
+      }
+    }
+  ],
+  "pricing_page_feature_storage": "{count} GB storage",
+  "pricing_page_feature_tasks": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} concurrent task",
+        "countPlural=other": "{count} concurrent tasks"
+      }
+    }
+  ],
+  "pricing_page_feature_models": "Models: {value}",
+  "pricing_page_feature_api": "Public API access",
+  "pricing_page_feature_priority": "Priority queue"
 }

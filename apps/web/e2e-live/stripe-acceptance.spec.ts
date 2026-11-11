@@ -4,12 +4,18 @@ import { register } from '../e2e/fixtures.ts'
 import { chooseOption } from '../e2e/select.ts'
 import { billingEvidence, expectReconciled, saveBillingEvidence } from './acceptance-evidence.ts'
 import { liveDb } from './live-env.ts'
-import { expectBillingReturn, payOnStripeCheckout, startStripeCheckout } from './stripe-checkout.ts'
+import {
+  buyPackOnStripe,
+  expectBillingReturn,
+  payOnStripeCheckout,
+  startStripeCheckout,
+} from './stripe-checkout.ts'
 
 const PRO_MONTHLY = /^Pro\b.* · \$19\.00 \/ month$/
 const PRO_YEARLY = /^Pro\b.* · \$190\.00 \/ year$/
 const TEAM_MONTHLY = /^Team\b.* · \$49\.00 \/ month$/
-const CREDIT_PACK = /^Credit pack\b.* · \$10\.00$/
+// 积分包按钮的无障碍名称为「Buy {套餐名}」
+const CREDIT_PACK = /^Buy Credit pack\b/
 const WEBHOOK_WAIT = { timeout: 90_000, intervals: [2000] }
 
 // 托管页面含联系方式及带 token 的 URL，验收仅保存白名单账务证据。
@@ -24,7 +30,8 @@ async function newOwner(page: Page) {
 }
 
 async function pay(page: Page, owner: { email: string; slug: string }, price: RegExp) {
-  await startStripeCheckout(page, owner.slug, price)
+  if (price === CREDIT_PACK) await buyPackOnStripe(page, owner.slug, price)
+  else await startStripeCheckout(page, owner.slug, price)
   await payOnStripeCheckout(page, owner.email)
   await expectBillingReturn(page, owner.slug)
 }
@@ -246,7 +253,7 @@ test('Stripe Pro 取消后购买 Team：重叠周期各自发积分且只有 Tea
     expect(evidence.balance.available - before.balance.available).toBe(6000)
     expectReconciled(evidence)
     await page.goto(`/app/${owner.slug}/billing`)
-    await expect(page.getByText('Current plan: team', { exact: true })).toBeVisible()
+    await expect(page.getByText(/^Current plan: Team\b/)).toBeVisible()
     await expect(page.getByText(/Paid subscription periods overlap/)).toBeVisible()
     await saveBillingEvidence('pro-team-overlap', evidence)
   } finally {

@@ -1,4 +1,4 @@
-import { Alert, AlertDescription, AlertTitle, Button, cn } from '@saas/ui'
+import { Alert, AlertDescription, AlertTitle, Badge, Button, cn } from '@saas/ui'
 import {
   Calendar,
   Check,
@@ -13,30 +13,50 @@ import { Link } from '@tanstack/react-router'
 import { type ReactNode, useState } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { getLocale } from '../../paraglide/runtime.js'
+import { Bone } from '../shared/bone.tsx'
 import {
   type BillingInterval,
-  groupPricingPlans,
+  type groupPricingPlans,
+  type PricingFeature,
   type PricingPlan,
   packExpiryDays,
   planPrice,
   pricingFeatures,
-  yearlySavingPercent,
+  subscriptionDisplayPrice,
+  yearlySavings,
 } from './pricing-data.ts'
-import { pricingFeatureLabel } from './pricing-features.ts'
 import { formatPrice } from './sections/pricing.tsx'
+
+export type PricingGroupsData = ReturnType<typeof groupPricingPlans<PricingPlan>>
 
 const credits = (count: number) => new Intl.NumberFormat(getLocale()).format(count)
 
-/** 定价页首屏：标题与说明，加载、错误与空状态共用 */
-export function PricingHero() {
+/** 套餐分组决定首屏文案：只有一种类型时不提叠加使用 */
+export type PricingKind = 'both' | 'subscriptions' | 'packs'
+
+export function pricingKind(groups: PricingGroupsData): PricingKind {
+  if (groups.subscriptions.length > 0 && groups.creditPacks.length === 0) return 'subscriptions'
+  if (groups.subscriptions.length === 0 && groups.creditPacks.length > 0) return 'packs'
+  return 'both'
+}
+
+const heroCopy = {
+  both: [m.pricing_page_title, m.pricing_page_subtitle],
+  subscriptions: [m.pricing_page_title_subscriptions, m.pricing_page_subtitle_subscriptions],
+  packs: [m.pricing_page_title_packs, m.pricing_page_subtitle_packs],
+} as const
+
+/** 定价页首屏：标题与说明，加载、错误与空状态用默认文案 */
+export function PricingHero({ kind = 'both' }: { kind?: PricingKind | undefined }) {
+  const [title, subtitle] = heroCopy[kind]
   return (
     <section className="px-4 pt-16 pb-10">
       <div className="mx-auto grid max-w-3xl justify-items-center gap-4 text-center">
         <span className="rounded-full border px-3 py-1 text-caption text-muted-foreground">
           {m.pricing_page_eyebrow()}
         </span>
-        <h1 className="font-bold text-4xl tracking-tight">{m.pricing_page_title()}</h1>
-        <p className="max-w-2xl text-lg text-muted-foreground">{m.pricing_page_subtitle()}</p>
+        <h1 className="font-bold text-4xl tracking-tight">{title()}</h1>
+        <p className="max-w-2xl text-lg text-muted-foreground">{subtitle()}</p>
       </div>
     </section>
   )
@@ -100,23 +120,27 @@ export function PricingFacts({ packExpiry }: { packExpiry: number | null }) {
  * 只有订阅时订阅组占满宽度。两组都没有时显示空状态。
  */
 export function PricingGroups({
-  plans,
+  groups,
   paymentsAvailable,
   initialInterval = 'month',
 }: {
-  plans: readonly PricingPlan[]
+  groups: PricingGroupsData
   paymentsAvailable: boolean
   initialInterval?: BillingInterval
 }) {
   const [interval, setInterval] = useState<BillingInterval>(initialInterval)
-  const groups = groupPricingPlans(plans)
   if (groups.subscriptions.length === 0 && groups.creditPacks.length === 0) return <PricingEmpty />
   const both = groups.subscriptions.length > 0 && groups.creditPacks.length > 0
   const hasYearly = groups.subscriptions.some((plan) =>
     plan.prices.some((price) => price.interval === 'year'),
   )
-  const saving = yearlySavingPercent(groups.subscriptions)
+  const saving = yearlySavings(groups.subscriptions)
   const packExpiry = packExpiryDays(groups.creditPacks)
+  // 免费套餐的 0 元按首个付费订阅的币种显示
+  const currency =
+    groups.subscriptions.flatMap((plan) => plan.prices)[0]?.currency ??
+    groups.creditPacks.flatMap((plan) => plan.prices)[0]?.currency ??
+    'usd'
   return (
     <div className="grid gap-4">
       <div className={cn('grid items-start gap-8', both && 'lg:grid-cols-10')}>
@@ -142,10 +166,12 @@ export function PricingGroups({
                       onClick={() => setInterval(value)}
                     >
                       {value === 'month' ? m.pricing_page_monthly() : m.pricing_page_yearly()}
-                      {value === 'year' && saving > 0 && (
-                        <span className="rounded-full bg-success/10 px-1.5 text-caption text-success">
-                          {m.pricing_page_save({ percent: saving })}
-                        </span>
+                      {value === 'year' && saving.max > 0 && (
+                        <Badge color="green" size="compact">
+                          {saving.uniform
+                            ? m.pricing_page_save({ percent: saving.max })
+                            : m.pricing_page_save_up_to({ percent: saving.max })}
+                        </Badge>
                       )}
                     </Button>
                   ))}
@@ -154,7 +180,12 @@ export function PricingGroups({
             </div>
             <ul className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
               {groups.subscriptions.map((plan) => (
-                <SubscriptionCard key={plan.key} plan={plan} interval={interval} />
+                <SubscriptionCard
+                  key={plan.key}
+                  plan={plan}
+                  interval={interval}
+                  currency={currency}
+                />
               ))}
             </ul>
           </section>
@@ -203,21 +234,58 @@ function GroupHeading({ id, title, desc }: { id: string; title: string; desc: st
   )
 }
 
-function SubscriptionCard({ plan, interval }: { plan: PricingPlan; interval: BillingInterval }) {
+/** 权益文案：布尔权益只列出「有」的项，水印为负向权益不作卖点 */
+function featureLabel(item: PricingFeature): string | null {
+  switch (item.key) {
+    case 'maxSeats':
+      return m.pricing_page_feature_seats({ count: item.value })
+    case 'storageGb':
+      return m.pricing_page_feature_storage({ count: item.value })
+    case 'maxConcurrentTasks':
+      return m.pricing_page_feature_tasks({ count: item.value })
+    case 'models':
+      return item.value.length
+        ? m.pricing_page_feature_models({ value: item.value.join(', ') })
+        : null
+    case 'publicApi':
+      return item.value ? m.pricing_page_feature_api() : null
+    case 'priorityQueue':
+      return item.value ? m.pricing_page_feature_priority() : null
+    default:
+      return null
+  }
+}
+
+function SubscriptionCard({
+  plan,
+  interval,
+  currency,
+}: {
+  plan: PricingPlan
+  interval: BillingInterval
+  currency: string
+}) {
   const locale = getLocale()
-  const price = planPrice(plan, interval)
-  const free = !price && plan.key === 'free'
-  const yearlyMonthly =
-    price && interval === 'year'
-      ? formatPrice(Math.round(price.amount / 12), price.currency, locale)
-      : null
+  const display = subscriptionDisplayPrice(plan, interval)
+  const free = !display && plan.key === 'free'
+  const note = free
+    ? m.pricing_page_note_free()
+    : !display
+      ? '\u00a0'
+      : display.monthlyOnly
+        ? m.pricing_page_note_monthly_only()
+        : display.interval === 'year'
+          ? m.pricing_page_note_yearly({
+              price: formatPrice(
+                Math.round(display.price.amount / 12),
+                display.price.currency,
+                locale,
+              ),
+            })
+          : m.pricing_page_note_monthly()
   const entitlements = [
-    plan.credits > 0 && m.pricing_page_credits_monthly({ count: credits(plan.credits) }),
-    ...pricingFeatures(plan.features)
-      // 布尔权益只列出「有」的项；水印为负向权益，不作为卖点展示
-      .filter((item) => item.key !== 'watermark' && item.value !== false)
-      .filter((item) => item.key !== 'models' || item.value.length > 0)
-      .map(pricingFeatureLabel),
+    plan.credits > 0 ? m.pricing_page_credits_monthly({ count: credits(plan.credits) }) : null,
+    ...pricingFeatures(plan.features).map(featureLabel),
   ].filter((item): item is string => Boolean(item))
   return (
     <li
@@ -227,41 +295,37 @@ function SubscriptionCard({ plan, interval }: { plan: PricingPlan; interval: Bil
       )}
     >
       {plan.highlighted && (
-        <span className="-top-2.5 absolute left-6 inline-flex h-5 items-center rounded-full bg-primary px-2 font-medium text-caption text-primary-foreground">
+        <Badge color="accent" size="compact" className="-top-2.5 absolute left-6">
           {m.pricing_page_recommended()}
-        </span>
+        </Badge>
       )}
       <h3 className="font-semibold text-title">{plan.name}</h3>
       <div className="grid gap-0.5">
         <p className="flex items-baseline gap-1">
           <span className="font-semibold text-display">
-            {price
-              ? formatPrice(price.amount, price.currency, locale)
+            {display
+              ? formatPrice(display.price.amount, display.price.currency, locale)
               : free
-                ? formatPrice(0, 'usd', locale)
+                ? formatPrice(0, currency, locale)
                 : m.pricing_page_price_unavailable()}
           </span>
-          {price && (
+          {display && (
             <span className="text-muted-foreground">
-              {interval === 'month' ? m.pricing_page_per_month() : m.pricing_page_per_year()}
+              {display.interval === 'month'
+                ? m.pricing_page_per_month()
+                : m.pricing_page_per_year()}
             </span>
           )}
         </p>
-        <p className="text-caption text-muted-foreground">
-          {free
-            ? m.pricing_page_note_free()
-            : yearlyMonthly
-              ? m.pricing_page_note_yearly({ price: yearlyMonthly })
-              : price
-                ? m.pricing_page_note_monthly()
-                : ' '}
-        </p>
+        <p className="text-caption text-muted-foreground">{note}</p>
       </div>
       <Button asChild variant={plan.highlighted ? 'default' : 'outline'}>
         {free ? (
           <Link to="/register">{m.pricing_page_start_free()}</Link>
         ) : (
-          <Link to="/app">{m.pricing_page_subscribe({ name: plan.name })}</Link>
+          <Link to="/app" aria-label={m.pricing_page_subscribe_label({ name: plan.name })}>
+            {m.pricing_page_subscribe()}
+          </Link>
         )}
       </Button>
       <ul className="grid gap-2.5 border-t pt-4">
@@ -281,22 +345,15 @@ function PackRow({ plan }: { plan: PricingPlan }) {
   const price = planPrice(plan, 'month')
   return (
     <li className="flex items-center gap-3 rounded-xl bg-card px-5 py-4 shadow-surface-2">
-      <span className="grid min-w-0 flex-1 gap-0.5">
-        <span className="flex flex-wrap items-center gap-1.5">
-          <h3 className="font-semibold text-subtitle">{plan.name}</h3>
-          {plan.highlighted && (
-            <span className="rounded-full bg-active px-2 text-caption">
-              {m.pricing_page_popular()}
-            </span>
-          )}
-        </span>
-        <span className="text-caption text-muted-foreground">
+      <div className="grid min-w-0 flex-1 gap-0.5">
+        <h3 className="font-semibold text-subtitle">{plan.name}</h3>
+        <p className="text-caption text-muted-foreground">
           {m.pricing_page_pack_credits({ count: credits(plan.credits) })} ·{' '}
           {plan.creditExpiryDays === null
             ? m.pricing_page_pack_permanent()
             : m.pricing_page_pack_expiry({ count: plan.creditExpiryDays })}
-        </span>
-      </span>
+        </p>
+      </div>
       <span className="font-semibold text-title">
         {price
           ? formatPrice(price.amount, price.currency, locale)
@@ -364,10 +421,6 @@ export function PricingSkeleton() {
       </div>
     </div>
   )
-}
-
-function Bone({ className }: { className: string }) {
-  return <span className={cn('block animate-pulse rounded-md bg-active', className)} />
 }
 
 export function PricingError({ onRetry }: { onRetry(): void }) {

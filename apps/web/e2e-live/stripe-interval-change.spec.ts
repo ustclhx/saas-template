@@ -129,10 +129,10 @@ async function scheduleIntervalChange(
   if (!subscription) throw new Error('Interval-change acceptance subscription is missing')
   const before = await subscriptionSummary(String(subscription.provider_subscription_id))
   await page.goto(`/app/${owner.slug}/billing`)
-  await expect(page.getByText('Current plan: pro', { exact: true })).toBeVisible()
+  await expect(page.getByText(/^Current plan: Pro\b/)).toBeVisible()
   const targetPriceId = await chooseChange(page, target, INTERVAL_NOTICE)
   await expect(page.getByRole('status')).toHaveText(SCHEDULED)
-  await expect(page.getByText('Current plan: pro', { exact: true })).toBeVisible()
+  await expect(page.getByText(/^Current plan: Pro\b/)).toBeVisible()
   const [mapping] = await sql`select provider_price_id, interval from plan_price
     where id = ${targetPriceId} and provider = 'stripe'`
   if (!mapping) throw new Error('Interval-change target price mapping is missing')

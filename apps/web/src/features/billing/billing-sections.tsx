@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { getLocale } from '../../paraglide/runtime.js'
 import type { DailyCreditsCheck } from '../credits/daily.server.ts'
+import { Bone } from '../shared/bone.tsx'
 
 /** 账单页积分摘要，字段与 `getCreditSummary` 一致 */
 export interface BillingCreditSummary {
@@ -20,9 +21,20 @@ export interface BillingSections {
   readonly free: boolean
 }
 
+type PlanType = 'subscription' | 'credit_pack'
+interface CatalogPlan {
+  readonly id: string
+  readonly type: PlanType
+}
+interface CatalogPrice {
+  readonly planId: string
+  readonly provider: string
+  readonly active: boolean
+}
+
 /**
  * 「订阅 / 积分包 / 免费积分」三个分区各自有数据来源时才渲染：
- * 订阅来自有价格的订阅套餐或已有订阅，积分包来自积分包套餐或已持有的积分包积分，
+ * 订阅来自有生效价格的订阅套餐或已有订阅，积分包来自有生效价格的积分包或已持有的积分包积分，
  * 免费积分来自注册赠送 / 每日领取配置或已持有的免费积分。
  */
 export function billingSections({
@@ -32,19 +44,40 @@ export function billingSections({
   summary,
   freeConfigured,
 }: {
-  plans: readonly { readonly id: string; readonly type: 'subscription' | 'credit_pack' }[]
-  prices: readonly { readonly planId: string }[]
+  plans: readonly CatalogPlan[]
+  prices: readonly CatalogPrice[]
   subscriptionCount: number
   summary: BillingCreditSummary | null
   freeConfigured: boolean
 }): BillingSections {
-  const priced = (type: 'subscription' | 'credit_pack') =>
-    plans.some((plan) => plan.type === type && prices.some((price) => price.planId === plan.id))
+  const priced = (type: PlanType) =>
+    plans.some(
+      (plan) =>
+        plan.type === type && prices.some((price) => price.active && price.planId === plan.id),
+    )
   return {
     subscription: priced('subscription') || subscriptionCount > 0,
     packs: priced('credit_pack') || (summary?.purchase ?? 0) > 0,
     free: freeConfigured || (summary?.free.total ?? 0) > 0,
   }
+}
+
+/**
+ * 默认支付方式：优先「可用且有生效价格」的渠道，其次有价格的渠道，最后按配置顺序。
+ * 默认渠道没有价格时购买区不能整体消失，所以不按所选渠道判断是否显示购买入口。
+ */
+export function defaultProvider(
+  providers: readonly { readonly id: string; readonly available: boolean }[],
+  prices: readonly CatalogPrice[],
+): string {
+  const priced = (id: string) => prices.some((price) => price.active && price.provider === id)
+  return (
+    providers.find((p) => p.available && priced(p.id))?.id ??
+    providers.find((p) => priced(p.id))?.id ??
+    providers.find((p) => p.available)?.id ??
+    providers[0]?.id ??
+    ''
+  )
 }
 
 export const formatCredits = (count: number) => new Intl.NumberFormat(getLocale()).format(count)
@@ -53,6 +86,31 @@ export const formatBillingDate = (value: Date | string | null) =>
   value
     ? new Date(value).toLocaleDateString(getLocale(), { timeZone: 'UTC', dateStyle: 'medium' })
     : m.billing_page_pending()
+
+const providerNames: Record<string, () => string> = {
+  stripe: m.billing_page_provider_stripe,
+  paypal: m.billing_page_provider_paypal,
+  creem: m.billing_page_provider_creem,
+  paddle: m.billing_page_provider_paddle,
+  polar: m.billing_page_provider_polar,
+}
+export const providerName = (id: string) => providerNames[id]?.() ?? id
+
+const paymentStatuses: Record<string, () => string> = {
+  succeeded: m.billing_page_payment_succeeded,
+  refunded: m.billing_page_payment_refunded,
+  partially_refunded: m.billing_page_payment_partially_refunded,
+  disputed: m.billing_page_payment_disputed,
+}
+export const paymentStatusLabel = (status: string) => paymentStatuses[status]?.() ?? status
+
+const refundStatuses: Record<string, () => string> = {
+  pending: m.billing_page_refund_pending,
+  approved: m.billing_page_refund_approved,
+  rejected: m.billing_page_refund_rejected,
+  refunded: m.billing_page_refund_refunded,
+}
+export const refundStatusLabel = (status: string) => refundStatuses[status]?.() ?? status
 
 /** 分区外框：标题在左，补充信息在右 */
 export function BillingSection({
@@ -85,13 +143,16 @@ export function BillingCard({
   ...props
 }: { className?: string; children: ReactNode } & React.ComponentProps<'div'>) {
   return (
-    <div className={cn('grid gap-2.5 rounded-xl border bg-card px-5 py-4', className)} {...props}>
+    <div
+      className={cn('grid content-start gap-2.5 rounded-xl border bg-card px-5 py-4', className)}
+      {...props}
+    >
       {children}
     </div>
   )
 }
 
-type SubscriptionStatus = 'active' | 'trialing' | 'past_due' | 'paused' | 'ending' | 'ended'
+export type SubscriptionStatus = 'active' | 'trialing' | 'past_due' | 'paused' | 'ending' | 'ended'
 
 export function subscriptionStatus(sub: {
   status: string
@@ -134,8 +195,18 @@ export function FreePlanCard({ action }: { action?: ReactNode }) {
   )
 }
 
-export function DailyStatusBadge({ result }: { result: DailyCreditsCheck | null | undefined }) {
-  if (result?.status === 'granted' || result?.status === 'already_claimed')
+/**
+ * 每日领取状态。布局 loader 只在当天首次检查时返回 granted / already_claimed，之后是 cached，
+ * 因此「今日已领」也从仍有剩余的 daily 积分推导（daily 积分当天到期）。
+ */
+export function DailyStatusBadge({
+  result,
+  dailyRemaining,
+}: {
+  result: DailyCreditsCheck | null | undefined
+  dailyRemaining: number
+}) {
+  if (result?.status === 'granted' || result?.status === 'already_claimed' || dailyRemaining > 0)
     return <Badge color="green">{m.billing_page_daily_claimed()}</Badge>
   if (result?.status === 'monthly_limit')
     return <Badge variant="dot">{m.billing_page_daily_limit()}</Badge>
@@ -144,32 +215,56 @@ export function DailyStatusBadge({ result }: { result: DailyCreditsCheck | null 
   return null
 }
 
-/** 积分余额：订阅、积分包、免费积分三张卡片只渲染有数据来源的分区 */
+/** 订阅积分卡需要的当前订阅信息；未订阅时为 null */
+export interface BalanceSubscription {
+  /** 当前套餐每月发放的积分 */
+  readonly planCredits: number | null
+  readonly interval: 'month' | 'year' | null
+  /** 已取消续费或已结束：显示结束日期而非重置日期 */
+  readonly ending: boolean
+  readonly periodEnd: Date | string | null
+}
+
+/** 订阅积分卡右上角：取消中显示结束日，月付显示下次重置日，年付按月发放不显示续费日 */
+export function subscriptionCreditsNote(sub: BalanceSubscription | null): string | null {
+  if (!sub) return null
+  if (sub.ending) return m.billing_page_sub_ends({ date: formatBillingDate(sub.periodEnd) })
+  if (sub.interval === 'year') return m.billing_page_sub_monthly_grant()
+  return sub.periodEnd
+    ? m.billing_page_sub_resets({ date: formatBillingDate(sub.periodEnd) })
+    : null
+}
+
+/** 余额：订阅、积分包、免费积分三张卡片只渲染有数据来源的分区 */
 export function CreditBalance({
   summary,
   sections,
-  planCredits,
-  renewalAt,
+  subscription,
   packExpiry,
   daily,
+  freeRows,
   packAction,
   footer,
 }: {
   summary: BillingCreditSummary
   sections: BillingSections
-  /** 当前订阅套餐每期发放的积分，用于进度条；未订阅时为 null */
-  planCredits: number | null
-  renewalAt: Date | string | null
+  subscription: BalanceSubscription | null
   /** 积分包有效天数；全部长期有效时为 null */
   packExpiry: number | null
   daily: DailyCreditsCheck | null | undefined
+  /** 免费积分明细行：对应来源已配置或已有余额时才显示 */
+  freeRows: { readonly signup: boolean; readonly daily: boolean }
   packAction?: ReactNode
   footer?: ReactNode
 }) {
-  const percent =
-    planCredits && planCredits > 0
-      ? Math.min(100, Math.round((summary.subscription.currentPeriod / planCredits) * 100))
-      : 0
+  const current = summary.subscription.currentPeriod
+  const planCredits = subscription?.planCredits ?? null
+  // 多个付费周期重叠时本期剩余可能超过单个套餐额度，此时不显示分母与进度
+  const ratio = planCredits && planCredits > 0 && current <= planCredits ? planCredits : null
+  const percent = ratio ? Math.round((current / ratio) * 100) : 0
+  const note = subscriptionCreditsNote(subscription)
+  const showSignup = freeRows.signup || summary.free.signup > 0
+  const showDaily = freeRows.daily || summary.free.daily > 0
   return (
     <BillingSection
       id="balance"
@@ -183,47 +278,50 @@ export function CreditBalance({
         </p>
       }
     >
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid items-start gap-3 md:grid-cols-3">
         {sections.subscription && (
           <BillingCard>
             <CardHead
               title={m.billing_page_sub_credits()}
-              aside={
-                renewalAt ? (
-                  <span className="text-caption text-muted-foreground">
-                    {m.billing_page_sub_resets({ date: formatBillingDate(renewalAt) })}
-                  </span>
-                ) : (
-                  <span className="text-caption text-muted-foreground">
-                    {m.billing_page_not_subscribed()}
-                  </span>
-                )
-              }
+              aside={note && <span className="text-caption text-muted-foreground">{note}</span>}
             />
             <p className="font-semibold text-display tabular-nums">
-              {formatCredits(summary.subscription.currentPeriod)}
-              {planCredits ? (
+              {formatCredits(current)}
+              {ratio ? (
                 <span className="font-medium text-muted-foreground text-subtitle">
                   {' '}
-                  / {formatCredits(planCredits)}
+                  / {formatCredits(ratio)}
                 </span>
               ) : null}
             </p>
-            <div
-              role="progressbar"
-              aria-label={m.billing_page_sub_progress()}
-              aria-valuenow={percent}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              className="h-1.5 overflow-hidden rounded-full bg-active"
-            >
-              <div className="h-full rounded-full bg-primary" style={{ width: `${percent}%` }} />
-            </div>
-            <p className="text-caption text-muted-foreground">
-              {summary.subscription.total > summary.subscription.currentPeriod
-                ? m.billing_page_sub_total({ count: formatCredits(summary.subscription.total) })
-                : m.billing_page_sub_no_rollover()}
-            </p>
+            {subscription ? (
+              <>
+                {ratio !== null && (
+                  <div
+                    role="progressbar"
+                    aria-label={m.billing_page_sub_progress()}
+                    aria-valuenow={percent}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    className="h-1.5 overflow-hidden rounded-full bg-active"
+                  >
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: `${percent}%` }}
+                    />
+                  </div>
+                )}
+                <p className="text-caption text-muted-foreground">
+                  {summary.subscription.total > current
+                    ? m.billing_page_sub_total({
+                        count: formatCredits(summary.subscription.total),
+                      })
+                    : m.billing_page_sub_no_rollover()}
+                </p>
+              </>
+            ) : (
+              <p className="text-caption text-muted-foreground">{m.billing_page_sub_hint()}</p>
+            )}
           </BillingCard>
         )}
         {sections.packs && (
@@ -251,24 +349,25 @@ export function CreditBalance({
           <BillingCard>
             <CardHead
               title={m.billing_page_free_credits()}
-              aside={<DailyStatusBadge result={daily} />}
+              aside={
+                showDaily ? (
+                  <DailyStatusBadge result={daily} dailyRemaining={summary.free.daily} />
+                ) : null
+              }
             />
             <p className="font-semibold text-display tabular-nums">
               {formatCredits(summary.free.total)}
             </p>
-            <dl className="grid gap-1 text-caption">
-              <Row label={m.billing_page_signup()} value={formatCredits(summary.free.signup)} />
-              <Row label={m.billing_page_daily()} value={formatCredits(summary.free.daily)} />
-              {daily?.status === 'granted' && (
-                <Row
-                  label={m.billing_page_days_this_month()}
-                  value={m.billing_page_days_value({
-                    days: daily.daysThisMonth,
-                    max: daily.maxDaysPerMonth,
-                  })}
-                />
-              )}
-            </dl>
+            {(showSignup || showDaily) && (
+              <dl className="grid gap-1 text-caption">
+                {showSignup && (
+                  <Row label={m.billing_page_signup()} value={formatCredits(summary.free.signup)} />
+                )}
+                {showDaily && (
+                  <Row label={m.billing_page_daily()} value={formatCredits(summary.free.daily)} />
+                )}
+              </dl>
+            )}
           </BillingCard>
         )}
       </div>
@@ -306,7 +405,6 @@ export function PackOption({
   credits,
   price,
   expiry,
-  highlighted,
   disabled,
   onBuy,
 }: {
@@ -314,17 +412,11 @@ export function PackOption({
   credits: number
   price: string
   expiry: string
-  highlighted?: boolean
   disabled: boolean
   onBuy(): void
 }) {
   return (
-    <li
-      className={cn(
-        'grid gap-2 rounded-lg px-3.5 py-3 ring-1',
-        highlighted ? 'ring-primary' : 'ring-border',
-      )}
-    >
+    <li className="grid gap-2 rounded-lg px-3.5 py-3 ring-1 ring-border">
       <span className="flex items-center justify-between gap-2">
         <span className="font-semibold text-subtitle">{name}</span>
         <span className="text-caption text-muted-foreground tabular-nums">
@@ -337,7 +429,7 @@ export function PackOption({
       <Button
         type="button"
         size="sm"
-        variant={highlighted ? 'default' : 'outline'}
+        variant="outline"
         disabled={disabled}
         aria-label={m.billing_page_buy_label({ name })}
         onClick={onBuy}
@@ -370,10 +462,6 @@ export function BillingSkeleton() {
       </div>
     </div>
   )
-}
-
-function Bone({ className }: { className: string }) {
-  return <span className={cn('block animate-pulse rounded-md bg-active', className)} />
 }
 
 export function BillingError({ onRetry }: { onRetry(): void }) {
