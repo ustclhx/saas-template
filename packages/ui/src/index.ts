@@ -73,7 +73,8 @@ export {
   CommandMenuTabs,
   type CommandMenuTabsProps,
 } from './components/command-menu.tsx'
-// 业务界面组件（tasks 8.6）：纯展示，数据与回调由应用传入，文案无默认值
+// 业务界面组件（tasks 8.6，纯展示、文案无默认值）：CreditEstimate、DailyClaimNotice、EmbeddedChat、
+// InsufficientCreditsDialog、LockedFeature、MessageFeedback、SuggestionChips，随 Biome 排序分布在字母序位置
 export {
   CreditEstimate,
   type CreditEstimateProps,
@@ -165,6 +166,11 @@ export {
   type MessageFeedbackReason,
   type MessageFeedbackValue,
 } from './components/message-feedback.tsx'
+export {
+  type PdfExportDocument,
+  type PdfExporter,
+  registerPdfExporter,
+} from './components/pdf-exporter.ts'
 export { ScrollArea, type ScrollAreaProps, ScrollBar } from './components/scroll-area.tsx'
 export {
   Select,

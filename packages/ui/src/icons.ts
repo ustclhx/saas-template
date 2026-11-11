@@ -9,6 +9,7 @@ export {
   Bell,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   CircleAlert,
   CreditCard,
