@@ -33,6 +33,7 @@ vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, hash }: { children: React.ReactNode; hash?: string }) => (
     <a href={hash ? `/app/personal/billing#${hash}` : '#'}>{children}</a>
   ),
+  useNavigate: () => vi.fn(),
 }))
 
 import { ChatPage } from './chat-page.tsx'
@@ -158,7 +159,7 @@ describe('chat reasoning controls', () => {
 })
 
 describe('insufficient credits guide', () => {
-  it('SDK JSON 错误保留提示并传递数值和两个购买入口', () => {
+  it('SDK JSON 错误保留提示与数值，并提供打开余额不足弹窗的按钮', () => {
     state.error = new Error(
       JSON.stringify({
         error: {
@@ -172,12 +173,10 @@ describe('insufficient credits guide', () => {
     expect(markup).toContain(
       m.billing_credit_guide_amounts({ estimatedCredits: 8, availableCredits: 2 }),
     )
-    expect(markup).toContain(
-      `href="/app/personal/billing#credit-packs">${m.billing_credit_guide_packs()}</a>`,
-    )
-    expect(markup).toContain(
-      `href="/app/personal/billing#subscriptions">${m.billing_credit_guide_subscriptions()}</a>`,
-    )
+    // 弹窗（购买积分包 / 订阅两个入口）在客户端随错误打开，服务端只输出再次打开的按钮；
+    // 打开与跳转由 e2e/ai-chat.spec.ts 覆盖
+    expect(markup).toContain(m.chat_ui_credits_reopen())
+    expect(markup).not.toContain('Go to billing')
     expect(markup).toContain('role="alert"')
   })
 
@@ -189,7 +188,7 @@ describe('insufficient credits guide', () => {
     )
     const markup = render()
     expect(markup).toContain('Go to billing')
-    expect(markup).not.toContain('/app/personal/billing#credit-packs')
+    expect(markup).not.toContain(m.chat_ui_credits_reopen())
     expect(markup).not.toContain(
       m.billing_credit_guide_amounts({ estimatedCredits: 8, availableCredits: 2 }),
     )

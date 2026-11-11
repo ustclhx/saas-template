@@ -26,6 +26,7 @@ import {
   SelectSection,
   SurfaceSection,
 } from './sections-basic.tsx'
+import { AiChatComponentsSection, CreditsComponentsSection } from './sections-business.tsx'
 import {
   ComboboxSection,
   CommandMenuSection,
@@ -52,6 +53,11 @@ const SECTIONS = [
   ['surface', 'Card · Alert'],
   ['data-table', 'DataTable'],
   ['form', 'Form'],
+  ['business-chat', 'SuggestionChips · MessageFeedback · EmbeddedChat'],
+  [
+    'business-credits',
+    'InsufficientCreditsDialog · CreditEstimate · LockedFeature · DailyClaimNotice',
+  ],
 ] as const
 
 /**
@@ -139,6 +145,8 @@ export function UiPreviewPage() {
         <SurfaceSection />
         <DataTableSection />
         <FormSection />
+        <AiChatComponentsSection />
+        <CreditsComponentsSection />
       </div>
     </UiRoot>
   )

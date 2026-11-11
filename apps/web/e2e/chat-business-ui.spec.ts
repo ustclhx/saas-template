@@ -1,0 +1,98 @@
+import { randomUUID } from 'node:crypto'
+import { expect, type Page, test } from '@playwright/test'
+import { newId } from '@saas/shared'
+import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
+import { stubTurnstile } from './turnstile.ts'
+
+// 业务界面组件接线（add-ui-design-system tasks 8.6）：对话页的消息评分经真实的 setMessageFeedback
+// 写入 ai_message_feedback；再次点击撤销、点踩展开文字反馈并可修改。回复直接写库，不依赖模型。
+
+test.beforeEach(async ({ page }) => {
+  await simulateClientIp(page)
+  await stubTurnstile(page)
+})
+
+test.afterEach(async ({ page }, info) => {
+  if (info.status !== info.expectedStatus) {
+    await page.screenshot({ path: info.outputPath('failure.png'), fullPage: true })
+  }
+})
+
+const slugOf = (page: Page) => new URL(page.url()).pathname.split('/')[2] ?? ''
+
+test('rates a reply, undoes the rating and edits written feedback', async ({ page }) => {
+  test.setTimeout(120_000)
+  const email = `chat-feedback-${randomUUID()}@example.com`
+  await register(page, email)
+  const slug = slugOf(page)
+  const sql = fixtureDb()
+  const conversationId = newId()
+  const replyId = newId()
+  try {
+    const [row] = await sql`select o.id as workspace_id, u.id as user_id
+      from organization o join "user" u on u.email = ${email} where o.slug = ${slug}`
+    if (!row) throw new Error('Workspace fixture is missing')
+    await sql`insert into ai_conversation (id, workspace_id, user_id, title, model_key)
+      values (${conversationId}, ${row.workspace_id}, ${row.user_id}, 'Quarterly notes', '')`
+    await sql`insert into ai_message (id, workspace_id, conversation_id, role, parts) values
+      (${newId()}, ${row.workspace_id}, ${conversationId}, 'user', ${sql.json([{ type: 'text', text: 'What changed?' }])})`
+    await sql`insert into ai_message (id, workspace_id, conversation_id, role, parts, status) values
+      (${replyId}, ${row.workspace_id}, ${conversationId}, 'assistant', ${sql.json([{ type: 'text', text: 'Costs went up.' }])}, 'completed')`
+    const feedback = () =>
+      sql`select rating, comment from ai_message_feedback where message_id = ${replyId}`
+
+    await page.goto(`/app/${slug}/chat/${conversationId}`)
+    const reply = page
+      .getByRole('list', { name: 'Messages' })
+      .getByRole('listitem', { name: 'Assistant' })
+    await expect(reply).toContainText('Costs went up.')
+    // 等待水合：输入区在水合前整体禁用（HydratedControls）
+    await expect(page.getByLabel('Message', { exact: true })).toBeEnabled({ timeout: 30_000 })
+    const group = reply.getByRole('group', { name: 'Rate this reply' })
+    const up = group.getByRole('button', { name: 'Helpful', exact: true })
+    const down = group.getByRole('button', { name: 'Not helpful', exact: true })
+
+    // 点赞后再次点击即撤销
+    await up.click()
+    await expect(up).toHaveAttribute('aria-pressed', 'true')
+    await expect.poll(async () => (await feedback()).map((r) => r.rating)).toEqual(['up'])
+    await up.click()
+    await expect(up).toHaveAttribute('aria-pressed', 'false')
+    await expect.poll(async () => (await feedback()).length).toBe(0)
+
+    // 点踩展开文字反馈；提交后收起，可再次修改
+    await down.click()
+    await expect(down).toHaveAttribute('aria-expanded', 'true')
+    const form = reply.getByRole('form', { name: 'What could be better?' })
+    await form.getByLabel('Tell us more (optional)').fill('Missing the staffing costs')
+    await form.getByRole('button', { name: 'Send feedback' }).click()
+    await expect(form).toHaveCount(0)
+    await expect(reply.getByRole('status')).toHaveText('Thanks for your feedback.')
+    await expect
+      .poll(async () => (await feedback()).map((r) => [r.rating, r.comment]))
+      .toEqual([['down', 'Missing the staffing costs']])
+    await reply.getByRole('button', { name: 'Edit feedback' }).click()
+    await expect(reply.getByLabel('Tell us more (optional)')).toHaveValue(
+      'Missing the staffing costs',
+    )
+    await reply.getByLabel('Tell us more (optional)').fill('Missing staffing and tooling costs')
+    await reply.getByRole('button', { name: 'Send feedback' }).click()
+    await expect
+      .poll(async () => (await feedback()).map((r) => r.comment))
+      .toEqual(['Missing staffing and tooling costs'])
+
+    // 刷新后评分仍在
+    // 服务端按已保存的评分渲染，无需等待水合
+    await page.reload()
+    await expect(
+      page
+        .getByRole('list', { name: 'Messages' })
+        .getByRole('button', { name: 'Not helpful', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true')
+  } finally {
+    await sql`delete from ai_message_feedback where message_id = ${replyId}`
+    await sql`delete from ai_message where conversation_id = ${conversationId}`
+    await sql`delete from ai_conversation where id = ${conversationId}`
+    await sql.end()
+  }
+})

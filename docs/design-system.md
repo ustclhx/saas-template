@@ -146,6 +146,7 @@ grep -nE '^export' packages/ui/src/index.ts
   | `CommandMenuDialog` | `title`（`description` 可选） | 对话框的可读名称 |
   | `Toaster` | `labels`（`region`、`announcement`、`close`） | 通知区域名称（可含 `{hotkey}`）、读屏播报前缀、关闭按钮名称；`toast()` 的内容与 `action.label` 由调用方传入 |
   | `SidebarProvider` | `labels`（`title`、`expand`、`collapse`、`rail`、`railResize`、`railCollapse`；开启 peek 时 `peek`） | 移动抽屉名称、触发按钮与拖拽条的名称和提示；`SidebarMenuButton` 在 `status="unread"` 时必传 `unreadLabel` |
+  | 业务界面组件（8.6） | `label` / `labels` 等 | 见 [6.1](#61-业务界面组件) 接口表 |
 
   新组件引入新的可读文字时，同步更新本表与 `packages/ui/UPSTREAM.md`。
   `labels` 对象可以内联传入（`labels={{ … m.*() … }}`）：不会导致重新挂载，Command Menu 内部另按字段稳定引用；
@@ -171,7 +172,8 @@ grep -nE '^export' packages/ui/src/index.ts
 - **浮层层级**：自定义吸顶、遮罩与弹层用 `--z-*` 变量，不写任意 `z-[…]`。
 
 已接入：Button、Input、Textarea、Select、Combobox、Checkbox、Switch、Badge、Tooltip、Tabs、Dropdown（菜单）、
-Command Menu、Dialog、AlertDialog、Toast、Sidebar、Card、Alert、Separator、Label、ScrollArea、DataTable、Form。
+Command Menu、Dialog、AlertDialog、Toast、Sidebar、Card、Alert、Separator、Label、ScrollArea、DataTable、Form；
+业务界面组件（8.6）见 [6.1](#61-业务界面组件)。
 `Toaster` 含动效库（约 44 KB gzip），只在需要的页面挂载，不放进根布局；以后全站使用时按需动态加载。缺少的组件先在 `packages/ui` 补齐（模板）或在 `packages/ui/src/project/` 补齐（项目），
 再实现页面，不在页面里临时写一个。
 
@@ -524,7 +526,7 @@ const copy = pending?.action === 'transfer'
 | 表单 | `useAppForm` + 字段组件，提交按钮 `SubmitButton`，错误用 `FieldErrors` | 现有 |
 | 长文阅读 | 安全 Markdown、自动目录、吸顶高亮、阅读进度、打印样式 | 将由 tasks 8.4 提供 |
 | 营销区块 | 数据背书（未配置不渲染）、三步流程、编号产品矩阵、悬浮 AI 入口 | 将由 tasks 8.5 提供 |
-| 业务界面组件 | 推荐追问、消息评分、嵌入式对话、余额不足弹窗、预计消耗、会员锁定、每日领取 | 将由 tasks 8.6 提供，接口写入本节 |
+| 业务界面组件 | 推荐追问、消息评分、嵌入式对话、余额不足弹窗、预计消耗、会员锁定、每日领取 | 现有（tasks 8.6），接口见 [6.1](#61-业务界面组件) |
 
 **AI 聊天组件（tasks 9.1 选型结论，待使用者确认）**：倾向移植 Fluid 的 AI 组件（chat-message、thinking-steps、
 thinking-indicator、input-message 等，Radix 版，MIT），另写一层把 AI SDK `UIMessage` 各类 parts（正文、推理、工具调用）
@@ -534,6 +536,29 @@ Markdown 与代码高亮另行选型，优先轻量方案；替换聊天页与 S
 
 每个页面都要设计并实现四种状态：正常、空、加载、错误；在 390px 宽无横向滚动，浅色与深色均正确。
 根布局与公开页面的数据读取失败时降级，不让整页报错。
+
+### 6.1 业务界面组件
+
+tasks 8.6 提供，设计稿为 `docs/design-system/prototypes/ui-review/` 的 Chat、ReaderMobile、Reader（面板头部）、
+Billing（`showInsufficient`、会员锁定卡片）与 Workbench（每日领取条）画板。全部为纯展示组件：属性进、回调出，
+不请求数据、不判断权益，文案无默认值（`apps/web` 传 `m.*()`），浅色与深色均用 token 工具类。`/dev/ui` 的
+「SuggestionChips · MessageFeedback · EmbeddedChat」与「InsufficientCreditsDialog · CreditEstimate · LockedFeature ·
+DailyClaimNotice」两节用中性示例数据展示全部状态。
+
+| 组件 | 主要属性 | 回调 | 行为 |
+|---|---|---|---|
+| `SuggestionChips` | `suggestions: readonly string[]`、`label`、`showLabel?`、`disabled?` | `onSelect(text)` | 为空不渲染；长问题换行，不撑出横向滚动 |
+| `MessageFeedback` | `value: { rating: 'up' \| 'down'; comment: string \| null; reason? } \| null`、`labels`、`reasons?: { value; label }[]`、`disabled?`、`actions?`、`meta?`、`commentMaxLength?` | `onChange(next \| null): Promise<void>` | 再次点击同一评分以 `null` 回调（撤销）；点踩展开文字反馈，提交后可「修改反馈」；乐观更新，reject 时回滚并显示 `labels.failed` |
+| `EmbeddedChat` | `labels`、`children`（消息、推荐问题等）、`footer?`（输入框）、`badge?`、`headerAction?`、`open?` / `defaultOpen?`、`showTrigger?` | `onOpenChange(open)` | 桌面（≥ 768px）为右侧非模态面板，页面仍可操作；手机为模态底部抽屉；Esc 关闭，焦点回到悬浮按钮（或打开前的元素） |
+| `InsufficientCreditsDialog` | `open`、`estimatedCredits`、`availableCredits`、`labels` | `onOpenChange`、`onBuyPacks()`、`onSubscribe?()` | 显示预计消耗、当前余额（危险色）与差额；不传 `onSubscribe` 时只显示购买积分包；关闭后焦点回到打开前的元素 |
+| `CreditEstimate` | `estimate: string \| null`、`balance?`、`insufficient?`、`hideIcon?` | — | `null` 显示估算中占位；`insufficient` 用危险色并带 `data-insufficient` |
+| `LockedFeature` | `title`、`description`、`actionLabel`、`badge?`、`children?`（被锁功能预览） | `onUpgrade()` | 预览 `inert` 且点击被拦下，任何点击只触发 `onUpgrade`，不执行功能 |
+| `DailyClaimNotice` | `status: 'available' \| 'pending' \| 'claimed' \| 'error'`、`title`、`description`、`labels`、`error?`、`compact?` | `onClaim?()`、`onDismiss?()` | 自动发放的项目不传 `onClaim`；`claimed` 显示徽标；`pending` 按钮忙碌 |
+
+接线现状：对话页（`features/ai/chat-page.tsx`，含嵌入式 `SubjectChat`）经 `features/ai/chat-extras.tsx` 接入推荐追问、
+消息评分（`setMessageFeedback`）与余额不足弹窗（`INSUFFICIENT_CREDITS` 的数值，入口跳到账单页 `#credit-packs` /
+`#subscriptions`；`CREDIT_DEBT` 等仍为账单链接）。`EmbeddedChat`、`CreditEstimate`、`LockedFeature`、
+`DailyClaimNotice` 暂只在 `/dev/ui` 展示，由后续页面（账单页 8.7、长文阅读器 8.4 等）按需接入。
 
 ## 7. 组件预览页
 

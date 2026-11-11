@@ -1,0 +1,13 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "chat_ui_feedback_question": "What could be better?",
+  "chat_ui_feedback_edit": "Edit feedback",
+  "chat_ui_credits_description": "This request needs more credits than your current balance. Top up, then send it again.",
+  "chat_ui_credits_estimated": "Estimated cost",
+  "chat_ui_credits_available": "Current balance",
+  "chat_ui_credits_value": "{count} credits",
+  "chat_ui_credits_shortfall": "{count} more credits needed. Credit packs never expire; subscriptions add credits every month.",
+  "chat_ui_credits_subscribe": "Subscribe",
+  "chat_ui_credits_reopen": "Top up credits",
+  "chat_ui_close": "Close"
+}
