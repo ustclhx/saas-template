@@ -166,6 +166,9 @@ grep -nE '^export' packages/ui/src/index.ts
   显示（`tooltip` 省略时取行内文字）；默认 `offcanvas`。快捷键 `shortcut` 默认关闭，需要时显式传入（如 `"["`）；
   嵌入式预览等区域可加 `data-keyboard-scope` 属性，焦点在其中时外层侧栏的快捷键不响应（受支持的属性）。
   折叠状态由布局在 `onOpenChange` 中写 cookie、服务端读回 `defaultOpen`（tasks 8.3）。
+  `SidebarProvider` 的 `widthIcon` 设图标栏宽度（工作台用 4rem）；移动抽屉里点击同页链接后自动关闭，焦点回到打开抽屉的按钮
+  （`<Sidebar closeOnNavigate={false}>` 关闭此行为）。收起时才显示 / 隐藏的自定义内容用 `in-data-[collapsible=icon]:` 变体，
+  只在抽屉里显示的内容用 `in-data-[mobile=true]:` 变体。
 - **命令面板**：键帽按平台显示 ⌘ 或 Ctrl；SSR 首帧无法得知平台，需要时在布局中用
   `<CommandMenuPlatform mac={…}>` 包裹，`mac` 取自请求头 `Sec-CH-UA-Platform` 或 User-Agent，避免水合后键帽变宽。
 - **浮层层级**：自定义吸顶、遮罩与弹层用 `--z-*` 变量，不写任意 `z-[…]`。
@@ -519,7 +522,7 @@ const copy = pending?.action === 'transfer'
 
 | 模式 | 组成 | 状态 |
 |---|---|---|
-| 工作台 | 侧边栏（分组由项目注册、可折叠、手机抽屉、底部升级与账户入口），与顶部布局经 `ui.appLayout` 二选一 | 将由 tasks 8.3 提供 |
+| 工作台 | 侧边栏（分组由项目注册、可折叠、手机抽屉、底部升级与账户入口），与顶部布局经 `ui.appLayout` 二选一 | 现有（tasks 8.3），见下文 |
 | 后台列表 | `DataTable` + `adminListSearch` / `adminListPage`，筛选改变回第一页 | 现有 |
 | 表单 | `useAppForm` + 字段组件，提交按钮 `SubmitButton`，错误用 `FieldErrors` | 现有 |
 | 长文阅读 | 安全 Markdown、自动目录、吸顶高亮、阅读进度、打印样式 | 将由 tasks 8.4 提供 |
@@ -531,6 +534,27 @@ thinking-indicator、input-message 等，Radix 版，MIT），另写一层把 AI
 分发给组件的转换层；Vercel AI Elements 只作参考，不整体引入（shadcn 风格需逐个改样式，依赖重，上游声明 `ai` ^6）。
 Markdown 与代码高亮另行选型，优先轻量方案；替换聊天页与 SubjectChat 另起 change。完整对比见本 change 的
 `ai-components.md`（归档后在 `openspec/changes/archive/` 下）。
+
+**工作台（tasks 8.3）**：`template.config.ts` 的 `ui.appLayout` 取 `'sidebar'`（默认）或 `'topbar'`（原顶部布局，
+结构不变），构建期决定。侧边栏布局在 `apps/web/src/features/app-shell/`：侧边栏在 surface-1，展开 248px、收起为 64px
+图标栏，折叠状态存 cookie `app_sidebar`，服务端首屏按 cookie 渲染；内容区是 `SidebarInset` 的 8px 外边距
+surface-2 + shadow-2 圆角面板，768px 以下侧边栏收为抽屉、面板铺满。导航条目用注册表登记，不改布局文件：
+
+```ts
+import { registerAppNav } from './nav.ts'
+registerAppNav({
+  group: 'content', // 固定分组 tools / content / settings，按此顺序显示，空分组不渲染
+  items: [{ id: 'reports', label: m.reports_title, icon: Folder, to: '/app/$slug/reports', order: 10,
+    visible: ({ role, readOnly, isPersonal }) => role !== 'member' }],
+})
+```
+
+模板条目在 `nav.default.ts`（可见性与原顶部布局一致）；项目条目写在项目自有的 `nav.project.ts`（模板创建后不再修改），
+同 id 覆盖模板条目，`unregisterAppNav(id)` 移除。当前项取路径相同或位于条目之下、路径最长的条目（`exact` 只匹配相同路径）。
+注册表只作用于侧边栏布局；顶部布局保持原有链接。
+页面需要把面包屑、操作按钮或进度条放进工作台顶部条时渲染 `<AppShellBar title={…} actions={…} progress={…} />`
+（`features/app-shell/bar.tsx`，内容经 portal 挂到顶部条的标题、操作插槽与底边进度条位置，水合后出现；服务端首屏显示当前导航项名称）；
+`useAppShellBarAvailable()` 为 false（顶部布局）时页面自行渲染工具条。打印时侧边栏、顶部条与通知入口隐藏，面板去掉外边距与阴影，正文随文档流完整输出。
 
 每个页面都要设计并实现四种状态：正常、空、加载、错误；在 390px 宽无横向滚动，浅色与深色均正确。
 根布局与公开页面的数据读取失败时降级，不让整页报错。
@@ -611,6 +635,8 @@ Markdown 与代码高亮另行选型，优先轻量方案；替换聊天页与 S
 - 生成器在副本中创建空的 `scripts/check-ui.allow.local.json` 与 `docs/design/README.md`（说明本目录各文件的用途），
   并且不复制 `docs/design-system/prototypes/`。
 - `apps/web/src/features/theme/html-attributes.ts`（项目自有，模板创建后不再修改）：返回加到 `<html>` 的额外属性（如 `data-site`），根布局在服务端首屏合并；`lang`、`data-preset` 由模板写，不可覆盖。
+- `apps/web/src/features/app-shell/nav.project.ts`（项目自有，模板创建后不再修改）：登记项目的工作台侧边栏条目，
+  或按 id 覆盖 / 移除模板条目（见 [§6](#6-页面模式)）。
 
 ### 9.2 定制顺序
 

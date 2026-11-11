@@ -362,6 +362,11 @@ for (const [file, initial, modifiedContent] of [
     'export const getProjectHtmlAttributes = () => ({})\n',
     "export const getProjectHtmlAttributes = () => ({ 'data-site': 'example' })\n",
   ],
+  [
+    'apps/web/src/features/app-shell/nav.project.ts',
+    '// 项目导航条目\nexport {}\n',
+    "import './nav.ts'\nexport {}\n",
+  ],
 ]) {
   test(`check accepts ${file} left as created inside the release`, (t) => {
     const { cwd } = repo(t)

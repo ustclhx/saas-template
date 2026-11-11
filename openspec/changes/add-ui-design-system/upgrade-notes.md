@@ -142,3 +142,14 @@ xuanxue 迁移：把根布局中 `data-site="east|west"` 的计算移到此函�
 删除 `.template-base.json` 也会让检查按模板态运行。当前护栏依赖版本审阅，尚未在基准记录中
 固定清单摘要。未被 Git 跟踪的文件不会计入 Git 仓库的指纹。指纹范围目前仅含
 `packages/ui/src/components/`，`lib/`、`hooks/` 与 `styles/` 尚未纳入。
+
+## 工作台侧边栏（tasks 8.3）
+
+- App 区（`/app/$slug/*`）默认改为侧边栏工作台布局。想保持原顶部布局的项目在 `template.config.ts` 设
+  `ui: { …, appLayout: 'topbar' }`，页面与测试行为不变。
+- 侧边栏布局下：空间名称（`data-testid="workspace-name"`）在侧边栏顶部，当前用户（`data-testid="current-user"`）在底部
+  账户入口；角色与多空间切换表单在工作台首页 `/app/$slug`；语言与主题切换在顶栏（窄屏在抽屉底部），不再浮动在页面角落。
+  依赖原布局头部位置的项目 e2e 需相应调整。
+- 项目导航条目写在 `apps/web/src/features/app-shell/nav.project.ts`（项目自有）；`nav.default.ts` 为模板条目，
+  不要在其中加项目条目。
+- 新 cookie `app_sidebar`（`expanded` / `collapsed`）记录折叠状态，属于功能性 cookie。

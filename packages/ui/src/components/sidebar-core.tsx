@@ -98,6 +98,8 @@ export interface SidebarContextValue {
   width: string
   setWidth: (width: string) => void
   widthMobile: string
+  /** 模板新增：collapsible="icon" 收起后的图标栏宽度 */
+  widthIcon: string
   mobileBreakpoint: number
   /** Which edge the rendered Sidebar sits on (registered by <Sidebar/>). */
   side: SidebarSide
@@ -210,6 +212,8 @@ interface SidebarProviderBaseProps extends HTMLAttributes<HTMLDivElement> {
   mobileBreakpoint?: number
   width?: string
   widthMobile?: string
+  /** 模板新增：collapsible="icon" 收起后的图标栏宽度，收起的菜单行在栏内居中。@default "3rem" */
+  widthIcon?: string
 }
 
 // peek 模式会渲染边缘条按钮，此时类型上要求 labels.peek
@@ -236,6 +240,7 @@ const SidebarProvider = forwardRef<HTMLDivElement, SidebarProviderProps>(
       peek = 'none',
       width: widthProp = SIDEBAR_WIDTH,
       widthMobile = SIDEBAR_WIDTH_MOBILE,
+      widthIcon = SIDEBAR_WIDTH_ICON,
       labels,
       className,
       style,
@@ -403,6 +408,7 @@ const SidebarProvider = forwardRef<HTMLDivElement, SidebarProviderProps>(
         width,
         setWidth,
         widthMobile,
+        widthIcon,
         mobileBreakpoint,
         side,
         registerSide,
@@ -425,6 +431,7 @@ const SidebarProvider = forwardRef<HTMLDivElement, SidebarProviderProps>(
         toggleSidebar,
         width,
         widthMobile,
+        widthIcon,
         mobileBreakpoint,
         side,
         registerSide,
@@ -453,7 +460,7 @@ const SidebarProvider = forwardRef<HTMLDivElement, SidebarProviderProps>(
               {
                 '--sidebar-width': width,
                 '--sidebar-width-mobile': widthMobile,
-                '--sidebar-width-icon': SIDEBAR_WIDTH_ICON,
+                '--sidebar-width-icon': widthIcon,
                 ...style,
               } as CSSProperties
             }
@@ -645,6 +652,7 @@ const SidebarShell = forwardRef<HTMLDivElement, SidebarShellProps>(
     const {
       open,
       width,
+      widthIcon,
       mobileBreakpoint,
       isMobile,
       isResizing,
@@ -768,7 +776,7 @@ const SidebarShell = forwardRef<HTMLDivElement, SidebarShellProps>(
     // slides into the space instead of snapping when display:none lands.
     const shown = open && !isMobile
     // 模板改动：图标栏收起时外壳保留图标栏宽度
-    const collapsedWidth = iconMode && !isMobile ? SIDEBAR_WIDTH_ICON : '0rem'
+    const collapsedWidth = iconMode && !isMobile ? widthIcon : '0rem'
     const widthTransition = reduceMotion
       ? { duration: 0 }
       : isResizing
@@ -1259,7 +1267,10 @@ const SidebarInset = forwardRef<HTMLElement, SidebarInsetProps>(({ className, ..
         'peer-data-[variant=inset]:m-2 peer-data-[variant=inset]:peer-data-[side=left]:ml-0 peer-data-[variant=inset]:peer-data-[side=right]:mr-0',
         // With the rail collapsed away, restore the sidebar-side margin so
         // the card keeps symmetric insets.
-        'peer-data-[variant=inset]:peer-data-[state=collapsed]:peer-data-[side=left]:ml-2 peer-data-[variant=inset]:peer-data-[state=collapsed]:peer-data-[side=right]:mr-2',
+        // 模板改动：只在 offcanvas 整体收走时补边距；图标栏收起后栏仍在，面板贴着图标栏不加左边距
+        'peer-data-[variant=inset]:peer-data-[collapsible=offcanvas]:peer-data-[side=left]:ml-2 peer-data-[variant=inset]:peer-data-[collapsible=offcanvas]:peer-data-[side=right]:mr-2',
+        // 模板改动：抽屉断点（默认 768px）以下栏已隐藏，面板铺满视口，不留外边距、圆角与阴影
+        'peer-data-[variant=inset]:max-md:m-0 peer-data-[variant=inset]:max-md:rounded-none peer-data-[variant=inset]:max-md:shadow-none',
         'transition-[margin] duration-80',
         // Container radius follows the shape system (literal classes so
         // Tailwind's scanner emits both).
