@@ -11,6 +11,7 @@ export {
   ChartColumn,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ChevronsUpDown,
   CircleAlert,

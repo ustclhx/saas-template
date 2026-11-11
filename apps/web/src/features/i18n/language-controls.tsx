@@ -108,7 +108,7 @@ export function LanguageControls({
       <div
         className={
           floating
-            ? 'fixed bottom-4 left-4 z-50 rounded-md bg-background px-3 py-2 text-sm shadow-sm'
+            ? 'fixed bottom-4 left-4 z-50 rounded-md bg-background px-3 py-2 text-sm shadow-sm print:hidden'
             : placement === 'bare'
               ? 'inline-flex w-fit text-sm'
               : 'inline-flex w-fit rounded-md bg-background px-3 py-1.5 text-sm shadow-xs'

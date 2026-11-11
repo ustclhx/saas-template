@@ -2,15 +2,16 @@ import { useChat } from '@ai-sdk/react'
 import { estimateInputTokens } from '@saas/ai/client'
 import { type InsufficientCreditsDetails, parseInsufficientCredits } from '@saas/shared'
 import { Button, Label } from '@saas/ui'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { DefaultChatTransport } from 'ai'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { templateConfig } from '../../server/template-config.ts'
 import { trackEvent } from '../analytics/track.ts'
 import { FormAlert } from '../auth/auth-layout.tsx'
+import { pricingSnapshot } from '../marketing/pricing-snapshot.ts'
 import { HydratedControls } from '../workspace/components.tsx'
-import { MessageFeedback, SuggestionChips } from './chat-extras.tsx'
+import { CreditsDialog, formatNumber, MessageFeedback, SuggestionChips } from './chat-extras.tsx'
 import {
   type ChatMessageStatus,
   type ChatUIMessage,
@@ -34,6 +35,10 @@ import { CreditEstimateText, ModelPicker } from './model-picker.tsx'
 import { getFollowUps, setMessageFeedback } from './subject-chat.functions.ts'
 
 const BILLING_CODES = new Set(['INSUFFICIENT_CREDITS', 'CREDIT_DEBT', 'UPGRADE_REQUIRED'])
+// 构建时的公开套餐里明确没有订阅时，余额不足弹窗不显示「订阅」；快照为空（构建时数据库不可达）时保留
+const offersSubscriptions =
+  pricingSnapshot.plans.length === 0 ||
+  pricingSnapshot.plans.some((plan) => plan.type === 'subscription')
 
 /**
  * 对话页（tasks.md 3.1）：`useChat` 经 `POST /api/ai/chat` 流式回复，每轮只提交本轮用户消息；
@@ -146,6 +151,11 @@ export function ChatPage({
   useEffect(() => {
     if (blockedByPaywall) trackEvent('paywall_view')
   }, [blockedByPaywall])
+  // 积分不足（带预计消耗与余额）时弹出余额不足弹窗；关闭后可经错误区的按钮再次打开
+  const [creditsDialogOpen, setCreditsDialogOpen] = useState(false)
+  useEffect(() => {
+    setCreditsDialogOpen(Boolean(error && parseInsufficientCredits(error)))
+  }, [error])
 
   function submit(value = input) {
     const text = value.trim()
@@ -251,6 +261,7 @@ export function ChatPage({
       {!busy && followUps && followUps.messageId === messages.at(-1)?.metadata?.messageId ? (
         <SuggestionChips
           label={m.subject_chat_follow_ups()}
+          showLabel
           suggestions={followUps.questions}
           disabled={readOnly || !model}
           onSelect={(text) => submit(text)}
@@ -260,7 +271,12 @@ export function ChatPage({
         <div className="grid gap-2">
           <FormAlert message={chatErrorMessage(errorCode)} />
           {insufficientCredits ? (
-            <InsufficientCreditsGuide slug={slug} details={insufficientCredits} />
+            <InsufficientCreditsGuide
+              slug={slug}
+              details={insufficientCredits}
+              open={creditsDialogOpen}
+              onOpenChange={setCreditsDialogOpen}
+            />
           ) : null}
           {!insufficientCredits && errorCode && BILLING_CODES.has(errorCode) ? (
             <Link to="/app/$slug/billing" params={{ slug }} className="underline">
@@ -366,28 +382,45 @@ function ChatMessage({
 
 const roleName = (role: string) => (role === 'user' ? 'You' : 'Assistant')
 
-/** UI 8.6 可替换此纯展示组件；解析与错误提示由 ChatPage 保留。 */
+/**
+ * 积分不足（add-ui-design-system 8.6）：错误区显示数值与「补充积分」按钮，弹窗给出购买积分包与订阅两个入口。
+ * 解析与错误提示由 ChatPage 保留。
+ */
 export function InsufficientCreditsGuide({
   slug,
   details,
+  open,
+  onOpenChange,
 }: {
   slug: string
   details: InsufficientCreditsDetails
+  open: boolean
+  onOpenChange(open: boolean): void
 }) {
+  const navigate = useNavigate()
+  const goTo = (hash: 'credit-packs' | 'subscriptions') => {
+    onOpenChange(false)
+    void navigate({ to: '/app/$slug/billing', params: { slug }, hash })
+  }
   return (
-    <section aria-label={m.billing_credit_guide_title()}>
+    <section aria-label={m.billing_credit_guide_title()} className="grid justify-items-start gap-2">
       <p>
         {m.billing_credit_guide_amounts({
-          estimatedCredits: details.estimatedCredits,
-          availableCredits: details.availableCredits,
+          estimatedCredits: formatNumber(details.estimatedCredits),
+          availableCredits: formatNumber(details.availableCredits),
         })}
       </p>
-      <Link to="/app/$slug/billing" params={{ slug }} hash="credit-packs" className="underline">
-        {m.billing_credit_guide_packs()}
-      </Link>{' '}
-      <Link to="/app/$slug/billing" params={{ slug }} hash="subscriptions" className="underline">
-        {m.billing_credit_guide_subscriptions()}
-      </Link>
+      <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(true)}>
+        {m.chat_ui_credits_reopen()}
+      </Button>
+      <CreditsDialog
+        open={open}
+        onOpenChange={onOpenChange}
+        estimatedCredits={details.estimatedCredits}
+        availableCredits={details.availableCredits}
+        onBuyPacks={() => goTo('credit-packs')}
+        onSubscribe={offersSubscriptions ? () => goTo('subscriptions') : undefined}
+      />
     </section>
   )
 }
