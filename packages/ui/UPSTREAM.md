@@ -54,7 +54,7 @@
 | `src/components/ui-root.tsx` | `fluid-provider` | 2026-11 | 改名 `UiRoot`，参数 `shape`、`density`、`icons`，取值来自 `template.config.ts` 的 `ui` 段；改为受控（上游为初始值），变化即生效 |
 | `src/components/suggestion-chips.tsx` | 无（模板新增，tasks 8.6） | — | 推荐追问按钮组，按 Chat 画板 `.chip`（32px 药丸、内描边）实现；`label` 必填，`showLabel` 时显示为分组标题 |
 | `src/components/message-feedback.tsx` | 无（模板新增，tasks 8.6） | — | 点赞 / 点踩（再次点击撤销）、点踩展开文字反馈与可选原因、「修改反馈」再次编辑；乐观更新，`onChange` reject 时回滚；文案经 `labels` 传入；图标直接从 lucide-react 导入（不进 UiRoot 默认图标表） |
-| `src/components/embedded-chat.tsx` | 无（模板新增，tasks 8.6） | — | 悬浮按钮 + 桌面右侧非模态面板 / 手机模态底部抽屉（radix-ui `Dialog`，`modal` 随视口切换）；`m as motion` + `MotionFeatures`，减少动态效果时只淡入淡出；没有悬浮按钮的受控用法关闭后把焦点还给打开前的元素 |
+| `src/components/embedded-chat.tsx` | 无（模板新增，tasks 8.6） | — | `inline`（≥ md 正文卡片）/ `panel`（≥ md 右侧非模态面板）两种变体，< md 均为悬浮按钮 + 模态底部抽屉（radix-ui `Dialog`，`modal` 随视口切换、打开期间冻结；断点经 `useSyncExternalStore` 读取）；`[data-escape-scope]` 内的 Esc 不关闭；`m as motion` + `MotionFeatures`，减少动态效果时只淡入淡出；没有悬浮按钮的受控用法关闭后把焦点还给打开前的元素 |
 | `src/components/insufficient-credits-dialog.tsx` | 无（模板新增，tasks 8.6） | — | 基于 `dialog.tsx`；无 Trigger 的受控用法关闭后把焦点还给打开前的元素；数值显示经 `labels.credits(n)` 由调用方格式化 |
 | `src/components/credit-estimate.tsx` | 无（模板新增，tasks 8.6） | — | 预计消耗与余额的单行说明，`estimate={null}` 为估算中占位，`insufficient` 时危险色 |
 | `src/components/locked-feature.tsx` | 无（模板新增，tasks 8.6） | — | 会员锁定态卡片；被锁预览 `inert`，并在捕获阶段拦下点击只调用 `onUpgrade` |

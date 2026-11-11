@@ -62,7 +62,6 @@
   "ui_preview_biz_daily_dismiss": "关闭提示",
   "ui_preview_biz_daily_error": "领取失败，请重试。",
   "ui_preview_biz_daily_compact": "每日领取 · 紧凑（手机）",
-  "ui_preview_biz_chat": "嵌入式对话",
   "ui_preview_biz_chat_hint": "悬浮按钮在桌面打开右侧面板，在手机打开底部抽屉。",
   "ui_preview_biz_chat_show": "显示悬浮按钮",
   "ui_preview_biz_chat_hide": "隐藏悬浮按钮",
@@ -76,5 +75,9 @@
   "ui_preview_biz_chat_message": "消息",
   "ui_preview_biz_chat_placeholder": "继续提问…",
   "ui_preview_biz_chat_send": "发送",
-  "ui_preview_biz_close": "关闭"
+  "ui_preview_biz_close": "关闭",
+  "ui_preview_biz_chat_panel": "嵌入式对话 · 侧面板",
+  "ui_preview_biz_chat_inline": "嵌入式对话 · 内嵌",
+  "ui_preview_biz_chat_inline_hint": "桌面为正文中的卡片；手机为悬浮按钮与底部抽屉。",
+  "ui_preview_biz_estimate_pending_sr": "正在估算消耗"
 }

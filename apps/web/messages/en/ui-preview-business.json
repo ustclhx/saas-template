@@ -62,7 +62,6 @@
   "ui_preview_biz_daily_dismiss": "Dismiss",
   "ui_preview_biz_daily_error": "Could not claim the reward. Please try again.",
   "ui_preview_biz_daily_compact": "Daily credits · compact (phone)",
-  "ui_preview_biz_chat": "Embedded chat",
   "ui_preview_biz_chat_hint": "A floating button opens a side panel on desktop and a bottom sheet on phones.",
   "ui_preview_biz_chat_show": "Show floating button",
   "ui_preview_biz_chat_hide": "Hide floating button",
@@ -76,5 +75,9 @@
   "ui_preview_biz_chat_message": "Message",
   "ui_preview_biz_chat_placeholder": "Ask a follow-up…",
   "ui_preview_biz_chat_send": "Send",
-  "ui_preview_biz_close": "Close"
+  "ui_preview_biz_close": "Close",
+  "ui_preview_biz_chat_panel": "Embedded chat · panel",
+  "ui_preview_biz_chat_inline": "Embedded chat · inline",
+  "ui_preview_biz_chat_inline_hint": "A card in the page flow on desktop; a floating button and bottom sheet on phones.",
+  "ui_preview_biz_estimate_pending_sr": "Estimating credits"
 }

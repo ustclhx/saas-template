@@ -45,6 +45,8 @@ interface InsufficientCreditsDialogProps {
   onBuyPacks: () => void
   /** 次入口：订阅；不传时不显示（如项目没有订阅套餐） */
   onSubscribe?: () => void
+  /** 打开前没有可还焦点的元素（焦点在 body，如由接口错误打开）时，关闭后改把焦点给它，如对话输入框 */
+  fallbackFocus?: () => HTMLElement | null
 }
 
 function InsufficientCreditsDialog({
@@ -55,6 +57,7 @@ function InsufficientCreditsDialog({
   labels,
   onBuyPacks,
   onSubscribe,
+  fallbackFocus,
 }: InsufficientCreditsDialogProps) {
   // 受控打开、没有 Trigger：Radix 关闭时只把焦点还给 Trigger，这里记录打开前的焦点元素并归还
   const returnFocusRef = useRef<HTMLElement | null>(null)
@@ -68,9 +71,11 @@ function InsufficientCreditsDialog({
       <DialogContent
         closeLabel={labels.close}
         onCloseAutoFocus={(event) => {
-          const target = returnFocusRef.current
+          const recorded = returnFocusRef.current
           returnFocusRef.current = null
-          if (!target || target === document.body || !target.isConnected) return
+          const usable = recorded && recorded !== document.body && recorded.isConnected
+          const target = usable ? recorded : (fallbackFocus?.() ?? null)
+          if (!target) return
           event.preventDefault()
           target.focus({ preventScroll: true })
         }}

@@ -2,6 +2,7 @@
 // 「今日奖励可领取」条）：每日领取提示。纯展示：领取与去重由调用方的数据层负责，组件只呈现状态并回调。
 // 状态：available（可领取，显示领取按钮）、pending（领取中）、claimed（已到账，显示徽标）、error（失败可重试）。
 import { Check, Gift, X } from 'lucide-react'
+import { useId } from 'react'
 import { cn } from '../lib/utils.ts'
 import { Badge } from './badge.tsx'
 import { Button } from './button.tsx'
@@ -30,7 +31,7 @@ interface DailyClaimNoticeProps {
   onDismiss?: () => void
   /** error 状态的说明，以危险色显示在描述下方 */
   error?: string
-  /** 紧凑布局（手机顶部）：图标不加圆底，内边距更小 */
+  /** 强制紧凑布局（图标不加圆底、内边距更小）；不传时 < sm 自动紧凑 */
   compact?: boolean
   className?: string
 }
@@ -47,29 +48,38 @@ function DailyClaimNotice({
   className,
 }: DailyClaimNoticeProps) {
   const canClaim = onClaim && status !== 'claimed'
+  const titleId = useId()
   return (
     <section
-      role="status"
-      aria-label={title}
+      aria-labelledby={titleId}
       data-status={status}
       className={cn(
-        'flex min-w-0 items-center rounded-xl border bg-card',
-        compact ? 'gap-2.5 py-2.5 pr-2.5 pl-3' : 'gap-3 py-3 pr-3 pl-4',
+        // < sm 自动用紧凑样式（WorkbenchMobile 画板）；按钮放不下时换到下一行
+        'flex min-w-0 flex-wrap items-center rounded-xl border bg-card',
+        compact
+          ? 'gap-2.5 py-2.5 pr-2.5 pl-3'
+          : 'gap-2.5 py-2.5 pr-2.5 pl-3 sm:gap-3 sm:py-3 sm:pr-3 sm:pl-4',
         className,
       )}
     >
-      {compact ? (
-        <Gift aria-hidden className="size-4.5 shrink-0" strokeWidth={1.5} />
-      ) : (
+      <Gift
+        aria-hidden
+        className={cn('size-4.5 shrink-0', !compact && 'sm:hidden')}
+        strokeWidth={1.5}
+      />
+      {compact ? null : (
         <span
           aria-hidden
-          className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-active"
+          className="hidden size-8 shrink-0 items-center justify-center rounded-full bg-active sm:inline-flex"
         >
           <Gift className="size-4" strokeWidth={1.5} />
         </span>
       )}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="font-medium text-body">{title}</span>
+      {/* 只播报文字（领取结果、错误），按钮不在播报区域内 */}
+      <div role="status" className="flex min-w-0 flex-1 basis-40 flex-col">
+        <span id={titleId} className="font-medium text-body">
+          {title}
+        </span>
         <span className="text-caption text-muted-foreground">{description}</span>
         {status === 'error' && error ? (
           <span className="text-caption text-destructive">{error}</span>
@@ -88,7 +98,7 @@ function DailyClaimNotice({
         <Button
           type="button"
           size="sm"
-          className="shrink-0"
+          className="ml-auto shrink-0"
           loading={status === 'pending'}
           onClick={onClaim}
         >

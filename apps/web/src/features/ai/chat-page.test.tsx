@@ -29,6 +29,7 @@ vi.mock('@ai-sdk/react', () => ({
 }))
 vi.mock('../../server/template-config.ts', () => ({ templateConfig: { ai: { text: state.text } } }))
 vi.mock('./conversations.functions.ts', () => ({ renameConversation: vi.fn() }))
+vi.mock('../marketing/pricing-snapshot.ts', () => ({ pricingSnapshot: { plans: [] } }))
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, hash }: { children: React.ReactNode; hash?: string }) => (
     <a href={hash ? `/app/personal/billing#${hash}` : '#'}>{children}</a>

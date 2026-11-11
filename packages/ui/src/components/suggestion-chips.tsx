@@ -32,9 +32,11 @@ const SuggestionChips = forwardRef<HTMLDivElement, SuggestionChipsProps>(
   ) => {
     const labelId = useId()
     if (suggestions.length === 0) return null
-    const chips = suggestions.map((text) => (
+    const chips = suggestions.map((text, index) => (
       <button
-        key={text}
+        // 推荐问题可能重复，key 带上位置；列表只整体替换，不会重排
+        // biome-ignore lint/suspicious/noArrayIndexKey: 与文字组合使用，位置变化即整组新问题
+        key={`${index}:${text}`}
         type="button"
         className={chipClasses}
         disabled={disabled}

@@ -9,8 +9,9 @@ import { m } from '../../paraglide/messages.js'
 import { templateConfig } from '../../server/template-config.ts'
 import { trackEvent } from '../analytics/track.ts'
 import { FormAlert } from '../auth/auth-layout.tsx'
+import { pricingSnapshot } from '../marketing/pricing-snapshot.ts'
 import { HydratedControls } from '../workspace/components.tsx'
-import { CreditsDialog, MessageFeedback, SuggestionChips } from './chat-extras.tsx'
+import { CreditsDialog, formatNumber, MessageFeedback, SuggestionChips } from './chat-extras.tsx'
 import {
   type ChatMessageStatus,
   type ChatUIMessage,
@@ -34,6 +35,10 @@ import { CreditEstimateText, ModelPicker } from './model-picker.tsx'
 import { getFollowUps, setMessageFeedback } from './subject-chat.functions.ts'
 
 const BILLING_CODES = new Set(['INSUFFICIENT_CREDITS', 'CREDIT_DEBT', 'UPGRADE_REQUIRED'])
+// 构建时的公开套餐里明确没有订阅时，余额不足弹窗不显示「订阅」；快照为空（构建时数据库不可达）时保留
+const offersSubscriptions =
+  pricingSnapshot.plans.length === 0 ||
+  pricingSnapshot.plans.some((plan) => plan.type === 'subscription')
 
 /**
  * 对话页（tasks.md 3.1）：`useChat` 经 `POST /api/ai/chat` 流式回复，每轮只提交本轮用户消息；
@@ -401,8 +406,8 @@ export function InsufficientCreditsGuide({
     <section aria-label={m.billing_credit_guide_title()} className="grid justify-items-start gap-2">
       <p>
         {m.billing_credit_guide_amounts({
-          estimatedCredits: details.estimatedCredits,
-          availableCredits: details.availableCredits,
+          estimatedCredits: formatNumber(details.estimatedCredits),
+          availableCredits: formatNumber(details.availableCredits),
         })}
       </p>
       <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(true)}>
@@ -414,7 +419,7 @@ export function InsufficientCreditsGuide({
         estimatedCredits={details.estimatedCredits}
         availableCredits={details.availableCredits}
         onBuyPacks={() => goTo('credit-packs')}
-        onSubscribe={() => goTo('subscriptions')}
+        onSubscribe={offersSubscriptions ? () => goTo('subscriptions') : undefined}
       />
     </section>
   )

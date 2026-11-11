@@ -79,7 +79,7 @@ export function MessageFeedback({ value, disabled, onChange }: MessageFeedbackPr
   )
 }
 
-const formatNumber = (value: number) => new Intl.NumberFormat(getLocale()).format(value)
+export const formatNumber = (value: number) => new Intl.NumberFormat(getLocale()).format(value)
 
 /** 余额不足弹窗（INSUFFICIENT_CREDITS 的 estimatedCredits / availableCredits），两个入口由调用方跳转 */
 export function CreditsDialog({
@@ -95,7 +95,8 @@ export function CreditsDialog({
   estimatedCredits: number
   availableCredits: number
   onBuyPacks(): void
-  onSubscribe(): void
+  /** 项目没有订阅套餐时不传，弹窗只显示购买积分包 */
+  onSubscribe?: (() => void) | undefined
 }) {
   return (
     <InsufficientCreditsDialog
@@ -104,7 +105,9 @@ export function CreditsDialog({
       estimatedCredits={estimatedCredits}
       availableCredits={availableCredits}
       onBuyPacks={onBuyPacks}
-      onSubscribe={onSubscribe}
+      {...(onSubscribe ? { onSubscribe } : {})}
+      // 弹窗由接口错误打开时焦点可能在 body：关闭后回到对话输入框
+      fallbackFocus={() => document.getElementById('chat-input')}
       labels={{
         title: m.billing_credit_guide_title(),
         description: m.chat_ui_credits_description(),

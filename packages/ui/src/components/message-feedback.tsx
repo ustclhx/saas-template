@@ -86,10 +86,21 @@ function MessageFeedback({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const focusTextarea = useRef(false)
 
-  // 调用方保存成功后会传回新值（或外部重新加载），以它为准
+  // 调用方保存成功后会传回新值（或外部重新加载），以它为准；按字段比较，调用方每次渲染新建对象不会覆盖进行中的修改
+  const valueRating = value?.rating ?? null
+  const valueComment = value?.comment ?? null
+  const valueReason = value?.reason ?? null
   useEffect(() => {
-    setCurrent(value)
-  }, [value])
+    setCurrent(
+      valueRating
+        ? {
+            rating: valueRating,
+            comment: valueComment,
+            ...(valueReason !== null ? { reason: valueReason } : {}),
+          }
+        : null,
+    )
+  }, [valueRating, valueComment, valueReason])
 
   useEffect(() => {
     if (formOpen && focusTextarea.current) {
@@ -98,17 +109,21 @@ function MessageFeedback({
     }
   }, [formOpen])
 
-  async function save(next: MessageFeedbackValue | null, after?: () => void) {
+  async function save(
+    next: MessageFeedbackValue | null,
+    { onSuccess, onFailure }: { onSuccess?: () => void; onFailure?: () => void } = {},
+  ) {
     const previous = current
     setCurrent(next)
     setPending(true)
     setNotice(null)
     try {
       await onChange(next)
-      after?.()
+      onSuccess?.()
     } catch {
       setCurrent(previous)
       setNotice('failed')
+      onFailure?.()
     } finally {
       setPending(false)
     }
@@ -118,19 +133,32 @@ function MessageFeedback({
     // 保存中忽略点击；不用 disabled，避免按钮失焦把焦点丢到 body
     if (pending) return
     // 再次点击同一评分即撤销
+    const wasOpen = formOpen
+    // 失败时表单开合回到点击前（评分已回滚）
+    const restore = () => setFormOpen(wasOpen)
     if (current?.rating === rating) {
       setFormOpen(false)
       setComment('')
       setReason(null)
-      void save(null)
+      void save(null, { onFailure: restore })
       return
     }
     setFormOpen(rating === 'down')
-    void save({
-      rating,
-      comment: current?.comment ?? null,
-      ...(reasons ? { reason: current?.reason ?? null } : {}),
-    })
+    if (rating === 'up') {
+      // 点踩时写的文字与原因只属于点踩，切到点赞时清空
+      setComment('')
+      setReason(null)
+    }
+    void save(
+      rating === 'up'
+        ? { rating, comment: null, ...(reasons ? { reason: null } : {}) }
+        : {
+            rating,
+            comment: current?.comment ?? null,
+            ...(reasons ? { reason: current?.reason ?? null } : {}),
+          },
+      { onFailure: restore },
+    )
   }
 
   function closeForm() {
@@ -225,13 +253,19 @@ function MessageFeedback({
                 comment: text ? text : null,
                 ...(reasons ? { reason } : {}),
               },
-              () => {
-                setFormOpen(false)
-                setNotice('saved')
-                downRef.current?.focus()
+              {
+                onSuccess: () => {
+                  setFormOpen(false)
+                  setNotice('saved')
+                  downRef.current?.focus()
+                },
+                // 表单保持打开，焦点回到文字框便于重试
+                onFailure: () => textareaRef.current?.focus(),
               },
             )
           }}
+          // 外层浮层（如 EmbeddedChat）见到该属性时不处理这次 Esc，只收起表单
+          data-escape-scope=""
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               event.stopPropagation()
@@ -252,7 +286,7 @@ function MessageFeedback({
                     key={item.value}
                     type="button"
                     aria-pressed={pressed}
-                    disabled={busy}
+                    disabled={disabled}
                     onClick={() => setReason(pressed ? null : item.value)}
                     className={cn(
                       'inline-flex h-6 cursor-pointer items-center rounded-full px-2.5 font-medium text-caption',
@@ -278,7 +312,8 @@ function MessageFeedback({
             rows={2}
             maxLength={commentMaxLength}
             value={comment}
-            disabled={busy}
+            // 保存中仍可编辑，只禁用提交
+            disabled={disabled}
             {...(labels.commentPlaceholder ? { placeholder: labels.commentPlaceholder } : {})}
             onChange={(event) => setComment(event.target.value)}
           />
@@ -292,15 +327,15 @@ function MessageFeedback({
           </div>
         </form>
       ) : null}
-      <p
-        role="status"
-        className={cn(
-          'text-caption empty:hidden',
-          notice === 'failed' ? 'text-destructive' : 'text-muted-foreground',
-        )}
-      >
-        {notice === 'failed' ? labels.failed : notice === 'saved' ? labels.saved : null}
-      </p>
+      {/* 两个播报区域始终留在无障碍树中（空时高度为 0，用负外边距抵消父级间距）；失败用 alert 立即播报 */}
+      <div className={cn('text-caption', !notice && '-mt-1')}>
+        <p role="status" className="m-0 text-muted-foreground">
+          {notice === 'saved' ? labels.saved : null}
+        </p>
+        <p role="alert" className="m-0 text-destructive">
+          {notice === 'failed' ? labels.failed : null}
+        </p>
+      </div>
     </div>
   )
 }

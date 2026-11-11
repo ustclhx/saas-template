@@ -539,7 +539,7 @@ Markdown 与代码高亮另行选型，优先轻量方案；替换聊天页与 S
 
 ### 6.1 业务界面组件
 
-tasks 8.6 提供，设计稿为 `docs/design-system/prototypes/ui-review/` 的 Chat、ReaderMobile、Reader（面板头部）、
+tasks 8.6 提供，设计稿为 `docs/design-system/prototypes/ui-review/` 的 Chat、ReaderMobile、Reader（内嵌卡片）、
 Billing（`showInsufficient`、会员锁定卡片）与 Workbench（每日领取条）画板。全部为纯展示组件：属性进、回调出，
 不请求数据、不判断权益，文案无默认值（`apps/web` 传 `m.*()`），浅色与深色均用 token 工具类。`/dev/ui` 的
 「SuggestionChips · MessageFeedback · EmbeddedChat」与「InsufficientCreditsDialog · CreditEstimate · LockedFeature ·
@@ -548,16 +548,16 @@ DailyClaimNotice」两节用中性示例数据展示全部状态。
 | 组件 | 主要属性 | 回调 | 行为 |
 |---|---|---|---|
 | `SuggestionChips` | `suggestions: readonly string[]`、`label`、`showLabel?`、`disabled?` | `onSelect(text)` | 为空不渲染；长问题换行，不撑出横向滚动 |
-| `MessageFeedback` | `value: { rating: 'up' \| 'down'; comment: string \| null; reason? } \| null`、`labels`、`reasons?: { value; label }[]`、`disabled?`、`actions?`、`meta?`、`commentMaxLength?` | `onChange(next \| null): Promise<void>` | 再次点击同一评分以 `null` 回调（撤销）；点踩展开文字反馈，提交后可「修改反馈」；乐观更新，reject 时回滚并显示 `labels.failed` |
-| `EmbeddedChat` | `labels`、`children`（消息、推荐问题等）、`footer?`（输入框）、`badge?`、`headerAction?`、`open?` / `defaultOpen?`、`showTrigger?` | `onOpenChange(open)` | 桌面（≥ 768px）为右侧非模态面板，页面仍可操作；手机为模态底部抽屉；Esc 关闭，焦点回到悬浮按钮（或打开前的元素） |
-| `InsufficientCreditsDialog` | `open`、`estimatedCredits`、`availableCredits`、`labels` | `onOpenChange`、`onBuyPacks()`、`onSubscribe?()` | 显示预计消耗、当前余额（危险色）与差额；不传 `onSubscribe` 时只显示购买积分包；关闭后焦点回到打开前的元素 |
-| `CreditEstimate` | `estimate: string \| null`、`balance?`、`insufficient?`、`hideIcon?` | — | `null` 显示估算中占位；`insufficient` 用危险色并带 `data-insufficient` |
+| `MessageFeedback` | `value: { rating: 'up' \| 'down'; comment: string \| null; reason? } \| null`（按字段比较）、`labels`、`reasons?: { value; label }[]`、`disabled?`、`actions?`、`meta?`、`commentMaxLength?` | `onChange(next \| null): Promise<void>` | 再次点击同一评分以 `null` 回调（撤销）；点踩展开文字反馈，提交后可「修改反馈」；切到点赞时文字与原因清空；乐观更新，reject 时回滚（表单开合一并复位，提交失败焦点回到文字框）并以 `role="alert"` 播报 `labels.failed`；反馈表单带 `data-escape-scope`，其中的 Esc 只收起表单 |
+| `EmbeddedChat` | `variant?: 'inline' \| 'panel'`（默认 panel）、`labels`、`children`（消息、推荐问题等）、`footer?`（输入框）、`badge?`、`headerAction?`、`open?` / `defaultOpen?`、`showTrigger?` | `onOpenChange(open)` | `inline`（Reader 画板，8.4 使用）：≥ 768px 为正文流中的卡片，始终显示；`panel`：≥ 768px 为悬浮按钮 + 右侧非模态面板，页面仍可操作，Esc 只在焦点位于面板内时关闭，关闭时焦点原在面板内才还给悬浮按钮（或打开前的元素）。< 768px 两者都是悬浮按钮 + 模态底部抽屉（含 safe-area）。**面板 / 抽屉关闭时卸载 children**，对话状态（草稿、已加载消息）由调用方保存；打开期间断点变化不切换模态，关闭后再按新断点。`[data-escape-scope]` 内的 Esc 不关闭面板 |
+| `InsufficientCreditsDialog` | `open`、`estimatedCredits`、`availableCredits`、`labels`、`fallbackFocus?` | `onOpenChange`、`onBuyPacks()`、`onSubscribe?()` | 显示预计消耗、当前余额（危险色）与差额；不传 `onSubscribe` 时只显示购买积分包；关闭后焦点回到打开前的元素，打开前焦点在 body 时交给 `fallbackFocus()` |
+| `CreditEstimate` | `estimate: string \| null`、`balance?`、`insufficient?`、`hideIcon?`、`pendingLabel?` | — | `null` 显示估算中占位（`pendingLabel` 给读屏）；`insufficient` 用危险色并换成提示图标，带 `data-insufficient` |
 | `LockedFeature` | `title`、`description`、`actionLabel`、`badge?`、`children?`（被锁功能预览） | `onUpgrade()` | 预览 `inert` 且点击被拦下，任何点击只触发 `onUpgrade`，不执行功能 |
-| `DailyClaimNotice` | `status: 'available' \| 'pending' \| 'claimed' \| 'error'`、`title`、`description`、`labels`、`error?`、`compact?` | `onClaim?()`、`onDismiss?()` | 自动发放的项目不传 `onClaim`；`claimed` 显示徽标；`pending` 按钮忙碌 |
+| `DailyClaimNotice` | `status: 'available' \| 'pending' \| 'claimed' \| 'error'`、`title`、`description`、`labels`、`error?`、`compact?` | `onClaim?()`、`onDismiss?()` | 自动发放的项目不传 `onClaim`；`claimed` 显示徽标；`pending` 按钮忙碌；只有标题、说明与错误在 `role="status"` 内；< 640px 自动紧凑、按钮放不下时换行，`compact` 为强制紧凑 |
 
 接线现状：对话页（`features/ai/chat-page.tsx`，含嵌入式 `SubjectChat`）经 `features/ai/chat-extras.tsx` 接入推荐追问、
 消息评分（`setMessageFeedback`）与余额不足弹窗（`INSUFFICIENT_CREDITS` 的数值，入口跳到账单页 `#credit-packs` /
-`#subscriptions`；`CREDIT_DEBT` 等仍为账单链接）。`EmbeddedChat`、`CreditEstimate`、`LockedFeature`、
+`#subscriptions`，构建时套餐快照中明确没有订阅时不显示订阅入口；`CREDIT_DEBT` 等仍为账单链接）。`EmbeddedChat`、`CreditEstimate`、`LockedFeature`、
 `DailyClaimNotice` 暂只在 `/dev/ui` 展示，由后续页面（账单页 8.7、长文阅读器 8.4 等）按需接入。
 
 ## 7. 组件预览页

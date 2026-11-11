@@ -94,7 +94,7 @@ export function AiChatComponentsSection() {
         suggestions={questions.slice(0, 2)}
         onSelect={setSelected}
       />
-      <div className="max-w-4/5 self-end rounded-xl bg-secondary px-3.5 py-2.5 text-body">
+      <div className="max-w-4/5 self-end rounded-xl bg-active px-3.5 py-2.5 text-body">
         {m.ui_preview_biz_chat_question()}
       </div>
       <div className="flex flex-col gap-1.5">
@@ -184,7 +184,7 @@ export function AiChatComponentsSection() {
         initial={{ rating: 'up', comment: null }}
         fail
       />
-      <Specimen label={m.ui_preview_biz_chat()} className="flex-col items-start">
+      <Specimen label={m.ui_preview_biz_chat_panel()} className="flex-col items-start">
         <p className="m-0 text-body text-muted-foreground">{m.ui_preview_biz_chat_hint()}</p>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" onClick={() => setFab((value) => !value)}>
@@ -200,6 +200,20 @@ export function AiChatComponentsSection() {
           showTrigger={false}
           open={panelOpen}
           onOpenChange={setPanelOpen}
+          headerAction={
+            <Button type="button" variant="link" size="compact">
+              {m.ui_preview_biz_chat_open_full()}
+            </Button>
+          }
+        >
+          {chatBody}
+        </EmbeddedChat>
+      </Specimen>
+      <Specimen label={m.ui_preview_biz_chat_inline()} wide className="flex-col items-stretch">
+        <p className="m-0 text-body text-muted-foreground">{m.ui_preview_biz_chat_inline_hint()}</p>
+        <EmbeddedChat
+          {...chatProps}
+          variant="inline"
           headerAction={
             <Button type="button" variant="link" size="compact">
               {m.ui_preview_biz_chat_open_full()}
@@ -285,7 +299,7 @@ export function CreditsComponentsSection() {
         <span className="text-caption text-muted-foreground">
           {m.ui_preview_biz_estimate_pending()}
         </span>
-        <CreditEstimate estimate={null} />
+        <CreditEstimate estimate={null} pendingLabel={m.ui_preview_biz_estimate_pending_sr()} />
       </Specimen>
       <Specimen label={m.ui_preview_biz_locked()} className="flex-col items-stretch">
         <LockedFeature

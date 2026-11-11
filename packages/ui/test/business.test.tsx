@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { renderToString } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CreditEstimate } from '../src/components/credit-estimate.tsx'
@@ -164,7 +164,8 @@ describe('MessageFeedback', () => {
     await act(async () => fireEvent.click(up))
     expect(save).toHaveBeenCalledWith(null)
     expect(up.getAttribute('aria-pressed')).toBe('true')
-    expect(screen.getByRole('status').textContent).toBe('保存失败')
+    expect(screen.getByRole('alert').textContent).toBe('保存失败')
+    expect(screen.getByRole('status').textContent).toBe('')
   })
 
   it('disabled 时评分按钮不可用', () => {
@@ -240,17 +241,30 @@ describe('InsufficientCreditsDialog', () => {
 
 const chatLabels = { trigger: '就报告提问', title: '就这份报告提问', close: '关闭' }
 
+/** 可切换的视口：change() 触发 matchMedia 监听 */
 function mockViewport(mobile: boolean) {
+  const listeners = new Set<() => void>()
+  const state = { mobile }
   vi.stubGlobal(
     'matchMedia',
     (query: string) =>
       ({
-        matches: mobile,
+        get matches() {
+          return state.mobile
+        },
         media: query,
-        addEventListener: () => {},
-        removeEventListener: () => {},
+        addEventListener: (_: string, listener: () => void) => listeners.add(listener),
+        removeEventListener: (_: string, listener: () => void) => listeners.delete(listener),
       }) as unknown as MediaQueryList,
   )
+  return {
+    change(next: boolean) {
+      state.mobile = next
+      act(() => {
+        for (const listener of listeners) listener()
+      })
+    },
+  }
 }
 
 describe('EmbeddedChat', () => {
@@ -355,7 +369,11 @@ describe('DailyClaimNotice', () => {
         onClaim={onClaim}
       />,
     )
-    expect(screen.getByRole('status', { name: '今日登录奖励可领取' })).toBeTruthy()
+    const region = screen.getByRole('region', { name: '今日登录奖励可领取' })
+    // 播报区域只含文字，不含按钮
+    const status = region.querySelector('[role="status"]') as HTMLElement
+    expect(status.textContent).toContain('每天可领取 10 积分。')
+    expect(status.querySelector('button')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '领取 10 积分' }))
     expect(onClaim).toHaveBeenCalledOnce()
     rerender(
@@ -415,5 +433,213 @@ describe('CreditEstimate', () => {
     rerender(<CreditEstimate estimate={null} />)
     expect(container.textContent).toBe('')
     await wait(0)
+  })
+})
+
+describe('审阅修复（PR #322）', () => {
+  it('从点踩切到点赞时不带上点踩的文字与原因', async () => {
+    const save = vi.fn(async () => {})
+    render(
+      <FeedbackHarness
+        initial={{ rating: 'down', comment: '缺少第三章', reason: 'incomplete' }}
+        save={save}
+        reasons={[{ value: 'incomplete', label: '不完整' }]}
+      />,
+    )
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '有帮助' })))
+    expect(save).toHaveBeenLastCalledWith({ rating: 'up', comment: null, reason: null })
+  })
+
+  it('保存失败时表单开合复位；提交失败焦点回到文字框；保存中文字框仍可编辑', async () => {
+    let reject: (error: Error) => void = () => {}
+    const save = vi.fn(
+      () =>
+        new Promise<void>((_, fail) => {
+          reject = fail
+        }),
+    )
+    render(<FeedbackHarness save={save} />)
+    const down = screen.getByRole('button', { name: '没帮助' })
+    fireEvent.click(down)
+    // 首次保存进行中：表单已展开，文字框可编辑，只禁提交
+    const textarea = screen.getByLabelText('补充说明（可选）') as HTMLTextAreaElement
+    expect(textarea.disabled).toBe(false)
+    expect((screen.getByRole('button', { name: '提交反馈' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    )
+    await act(async () => reject(new Error('network')))
+    // 点踩回滚，表单收起
+    expect(down.getAttribute('aria-pressed')).toBe('false')
+    expect(screen.queryByRole('form')).toBeNull()
+
+    // 提交失败：表单保留，焦点回到文字框
+    save.mockImplementation(async () => {})
+    await act(async () => fireEvent.click(down))
+    save.mockImplementation(async () => {
+      throw new Error('network')
+    })
+    fireEvent.change(screen.getByLabelText('补充说明（可选）'), { target: { value: '再试' } })
+    await act(async () => fireEvent.submit(screen.getByRole('form')))
+    expect(screen.getByRole('form')).toBeTruthy()
+    expect(document.activeElement).toBe(screen.getByLabelText('补充说明（可选）'))
+    expect(screen.getByRole('alert').textContent).toBe('保存失败')
+  })
+
+  it('调用方每次渲染传入新对象（字段相同）不会打断进行中的修改', async () => {
+    function Rerendering() {
+      const [, force] = useState(0)
+      return (
+        <>
+          <button type="button" onClick={() => force((n) => n + 1)}>
+            重绘
+          </button>
+          <MessageFeedback
+            value={{ rating: 'down', comment: null }}
+            labels={feedbackLabels}
+            onChange={() => new Promise<void>(() => {})}
+          />
+        </>
+      )
+    }
+    render(<Rerendering />)
+    fireEvent.click(screen.getByRole('button', { name: '有帮助' }))
+    expect(screen.getByRole('button', { name: '有帮助' }).getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: '重绘' }))
+    expect(screen.getByRole('button', { name: '有帮助' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('反馈表单里的 Esc 只收起表单，不关闭外层 EmbeddedChat', async () => {
+    mockViewport(true)
+    render(
+      <EmbeddedChat labels={chatLabels} defaultOpen>
+        <MessageFeedback
+          value={{ rating: 'down', comment: null }}
+          labels={feedbackLabels}
+          onChange={() => {}}
+        />
+      </EmbeddedChat>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '修改反馈' }))
+    const textarea = screen.getByLabelText('补充说明（可选）')
+    fireEvent.keyDown(textarea, { key: 'Escape' })
+    expect(screen.queryByRole('form')).toBeNull()
+    expect(screen.getByRole('dialog', { name: '就这份报告提问' })).toBeTruthy()
+  })
+
+  it('打开期间断点切换不重新挂载 children，关闭后才按新断点', async () => {
+    const viewport = mockViewport(false)
+    const mounts = vi.fn()
+    function Child() {
+      useEffect(() => mounts(), [])
+      return <p>对话内容</p>
+    }
+    render(
+      <EmbeddedChat labels={chatLabels}>
+        <Child />
+      </EmbeddedChat>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '就报告提问' }))
+    expect(mounts).toHaveBeenCalledOnce()
+    viewport.change(true)
+    expect(mounts).toHaveBeenCalledOnce()
+    expect(screen.getByRole('dialog').getAttribute('data-embedded-chat')).toBe('panel')
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: '就报告提问' }))
+    expect(screen.getByRole('dialog').getAttribute('data-embedded-chat')).toBe('sheet')
+  })
+
+  it('桌面面板：焦点在面板外时 Esc 不关闭；关闭时焦点在面板外则不抢焦点', async () => {
+    mockViewport(false)
+    render(
+      <>
+        <input aria-label="页面输入框" />
+        <EmbeddedChat labels={chatLabels}>
+          <p>对话内容</p>
+        </EmbeddedChat>
+      </>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '就报告提问' }))
+    const outside = screen.getByRole('textbox', { name: '页面输入框' })
+    outside.focus()
+    fireEvent.keyDown(outside, { key: 'Escape' })
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    // 鼠标点关闭按钮（不移动焦点）：焦点留在页面输入框
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(document.activeElement).toBe(outside)
+  })
+
+  it('inline 变体：桌面为正文中的卡片，手机为悬浮按钮 + 底部抽屉', () => {
+    mockViewport(false)
+    const { unmount } = render(
+      <EmbeddedChat variant="inline" labels={chatLabels}>
+        <p>对话内容</p>
+      </EmbeddedChat>,
+    )
+    const card = screen.getByRole('region', { name: '就这份报告提问' })
+    expect(card.getAttribute('data-embedded-chat')).toBe('inline')
+    expect(card.textContent).toContain('对话内容')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('button', { name: '就报告提问' }).className).toContain('md:hidden')
+    unmount()
+
+    mockViewport(true)
+    render(
+      <EmbeddedChat variant="inline" labels={chatLabels}>
+        <p>对话内容</p>
+      </EmbeddedChat>,
+    )
+    expect(screen.getByRole('region', { name: '就这份报告提问' }).textContent).not.toContain(
+      '对话内容',
+    )
+    fireEvent.click(screen.getByRole('button', { name: '就报告提问' }))
+    const sheet = screen.getByRole('dialog', { name: '就这份报告提问' })
+    expect(sheet.getAttribute('data-embedded-chat')).toBe('sheet')
+    expect(sheet.textContent).toContain('对话内容')
+  })
+
+  it('余额不足弹窗：打开前焦点在 body 时关闭后回到 fallbackFocus', async () => {
+    function Harness() {
+      const [open, setOpen] = useState(true)
+      return (
+        <>
+          <textarea id="chat-input" aria-label="消息" />
+          <InsufficientCreditsDialog
+            open={open}
+            onOpenChange={setOpen}
+            estimatedCredits={30}
+            availableCredits={10}
+            labels={creditLabels}
+            onBuyPacks={() => {}}
+            fallbackFocus={() => document.getElementById('chat-input')}
+          />
+        </>
+      )
+    }
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    render(<Harness />)
+    const dialog = screen.getByRole('dialog', { name: '积分不足' })
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true))
+    fireEvent.keyDown(document.activeElement ?? dialog, { key: 'Escape' })
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('textbox', { name: '消息' })),
+    )
+  })
+
+  it('预计消耗：余额不足换成提示图标；估算中给读屏文字', () => {
+    const { container, rerender } = render(
+      <CreditEstimate estimate="本次约 30 积分" insufficient />,
+    )
+    expect(container.querySelector('[data-icon="insufficient"]')).toBeTruthy()
+    rerender(<CreditEstimate estimate={null} pendingLabel="正在估算" />)
+    expect(container.textContent).toBe('正在估算')
+  })
+
+  it('推荐问题重复时各自渲染', () => {
+    render(
+      <SuggestionChips label="推荐问题" suggestions={['同一个', '同一个']} onSelect={() => {}} />,
+    )
+    expect(screen.getAllByRole('button', { name: '同一个' })).toHaveLength(2)
   })
 })
