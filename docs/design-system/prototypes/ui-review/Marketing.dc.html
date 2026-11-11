@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>营销新区块</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:none}a:hover{text-decoration:underline;text-underline-offset:3px}
+.r{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;font-optical-sizing:auto;min-height:100vh;position:relative}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0;margin:0}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.cap{font-size:12px;line-height:16px}
+.sub{font-size:14px;line-height:20px;font-weight:600}
+.ttl{font-size:16px;line-height:22px;font-weight:600}
+.dsp{font-size:28px;line-height:34px;font-weight:600;letter-spacing:-0.01em}
+.wrap{width:100%;max-width:72rem;margin:0 auto;padding:0 2rem}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border-radius:8px;font-size:14px;line-height:20px;font-weight:500;white-space:nowrap;text-decoration:none}
+.btn:hover{text-decoration:none}
+.btn-sm{height:32px;padding:0 12px}
+.btn-lg{height:40px;padding:0 24px;gap:8px}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px}
+.hv:hover{background:rgba(128,128,128,0.1);text-decoration:none}
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:9999px;font-size:12px;line-height:16px;font-weight:500;white-space:nowrap}
+.mnav a{padding:6px 10px;border-radius:8px}
+.seg{display:inline-flex;padding:2px;border-radius:10px;gap:2px}
+.seg button{height:28px;padding:0 12px;border-radius:8px;font-size:14px;line-height:20px;font-weight:500;display:inline-flex;align-items:center;gap:6px}
+.groups{display:grid;grid-template-columns:minmax(0,2.3fr) minmax(0,1fr);gap:32px;align-items:start}
+.plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.plan{position:relative;display:flex;flex-direction:column;gap:16px;padding:24px;border-radius:12px}
+.ent{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.ent li{display:flex;gap:8px;align-items:flex-start}
+.facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.fact{display:flex;gap:12px;padding:16px 20px}
+details{border-radius:0}
+summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0;font-weight:500}
+summary::-webkit-details-marker{display:none}
+.foot{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:32px}
+.foot a{display:block;padding:3px 0}
+.sk{border-radius:6px;animation:sk 1.6s ease-in-out infinite}
+@keyframes sk{0%,100%{opacity:1}50%{opacity:0.5}}
+svg{flex-shrink:0}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:32px}
+.matrix{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+sc-if,sc-for{display:contents}
+</style>
+</helmet>
+<div class="r" style="background:{{t.bg}};color:{{t.fg}}">
+  <header style="position:sticky;top:0;z-index:30;border-bottom:1px solid {{t.border}};background:{{t.bg}}">
+    <div class="wrap row" style="height:64px;gap:24px">
+      <a href="#" class="row" style="gap:8px;text-decoration:none">
+        <span class="row" style="justify-content:center;width:24px;height:24px;border-radius:6px;background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span>
+        <span class="sub">SaaS 模板</span>
+      </a>
+      <nav aria-label="主菜单" class="row mnav" style="gap:2px;flex:1">
+        <a href="#" class="hv" style="{{nav.features}}">功能</a>
+        <a href="#" class="hv" aria-current="{{nav.pricingCur}}" style="{{nav.pricing}}">定价</a>
+        <a href="#" class="hv" style="{{nav.docs}}">文档</a>
+        <a href="#" class="hv" style="{{nav.blog}}">博客</a>
+      </nav>
+      <div class="row" style="gap:8px">
+        <button type="button" class="ib hv" aria-label="{{themeLabel}}" onClick="{{toggleTheme}}" style="color:{{t.mfg}}">
+          <sc-if value="{{isDark}}" hint-placeholder-val="{{false}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg></sc-if>
+          <sc-if value="{{isLight}}" hint-placeholder-val="{{true}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></sc-if>
+        </button>
+        <a href="#" class="btn hv" style="color:{{t.mfg}}">登录</a>
+        <a href="#" class="btn" style="background:{{t.primary}};color:{{t.pfg}}">免费开始</a>
+      </div>
+    </div>
+  </header>
+  <section style="padding:96px 0">
+    <div class="wrap col" style="max-width:48rem;align-items:center;text-align:center;gap:24px">
+      <span class="cap" style="padding:4px 12px;border-radius:9999px;border:1px solid {{t.border}};color:{{t.mfg}}">开源 SaaS 模板</span>
+      <h1 style="margin:0;font-size:48px;line-height:52px;font-weight:700;letter-spacing:-0.025em">几天而不是几个月，上线你的 AI 产品</h1>
+      <p style="margin:0;font-size:18px;line-height:28px;color:{{t.mfg}}">账号、计费、积分、AI 功能、后台与多语言营销站，换上品牌即可上线。</p>
+      <div class="row" style="gap:12px;flex-wrap:wrap;justify-content:center">
+        <a href="#" class="btn btn-lg" style="background:{{t.primary}};color:{{t.pfg}}">免费开始</a>
+        <a href="#" class="btn btn-lg" style="box-shadow:inset 0 0 0 1px {{t.border}}">查看定价</a>
+      </div>
+    </div>
+  </section>
+
+  <section aria-label="数据背书" style="padding-bottom:24px">
+    <div class="wrap">
+      <sc-if value="{{s.stats}}" hint-placeholder-val="{{true}}">
+        <div class="col" style="gap:8px">
+          <div class="stats" style="border-radius:12px;background:{{t.card}};box-shadow:{{t.sh2}}">
+            <sc-for list="{{stats}}" as="x" hint-placeholder-count="4">
+              <div class="col" style="gap:4px;padding:20px 24px;{{x.sep}}">
+                <span class="dsp" style="font-variant-numeric:tabular-nums">{{x.value}}</span>
+                <span style="color:{{t.mfg}}">{{x.label}}</span>
+              </div>
+            </sc-for>
+          </div>
+          <span class="row cap" style="gap:6px;align-self:flex-end;color:{{t.mfg}}"><span class="badge" style="box-shadow:inset 0 0 0 1px {{t.border}};border:1px dashed {{t.border}}">设计注记</span>数值与来源来自 template.config.ts；未配置时整个区块不渲染，模板不提供默认数字</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{s.noStats}}" hint-placeholder-val="{{false}}">
+        <div class="row cap" style="justify-content:center;gap:6px;height:48px;border-radius:12px;border:1px dashed {{t.border}};color:{{t.mfg}}">未配置背书数值 → 数据背书区块不渲染（此虚线框仅用于评审，线上不存在）</div>
+      </sc-if>
+    </div>
+  </section>
+
+  <section aria-labelledby="steps-h" style="padding:80px 0">
+    <div class="wrap col" style="gap:40px">
+      <div class="col" style="gap:8px;align-items:center;text-align:center">
+        <span class="cap" style="font-weight:500;color:{{t.mfg}}">如何开始</span>
+        <h2 id="steps-h" style="margin:0;font-size:30px;line-height:38px;font-weight:700;letter-spacing:-0.02em">三步上线第一个 AI 功能</h2>
+      </div>
+      <ol class="steps" style="list-style:none;margin:0;padding:0">
+        <sc-for list="{{steps}}" as="p" hint-placeholder-count="3">
+          <li class="col" style="gap:12px;position:relative">
+            <div class="row" style="gap:12px">
+              <span class="row sub" aria-hidden="true" style="justify-content:center;width:32px;height:32px;border-radius:9999px;background:{{t.primary}};color:{{t.pfg}}">{{p.n}}</span>
+              <span style="flex:1;height:1px;{{p.line}}"></span>
+            </div>
+            <h3 class="ttl" style="margin:0">{{p.title}}</h3>
+            <p style="margin:0;color:{{t.mfg}}">{{p.desc}}</p>
+          </li>
+        </sc-for>
+      </ol>
+    </div>
+  </section>
+
+  <section aria-labelledby="mx-h" style="padding:0 0 96px">
+    <div class="wrap col" style="gap:32px">
+      <div class="row" style="justify-content:space-between;align-items:flex-end;gap:16px">
+        <div class="col" style="gap:8px">
+          <span class="cap" style="font-weight:500;color:{{t.mfg}}">产品</span>
+          <h2 id="mx-h" style="margin:0;font-size:30px;line-height:38px;font-weight:700;letter-spacing:-0.02em">一个账号，三种工具</h2>
+        </div>
+        <a href="#" class="row" style="gap:4px;color:{{t.mfg}}">查看全部功能<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"></path></svg></a>
+      </div>
+      <sc-if value="{{s.matrix}}" hint-placeholder-val="{{true}}">
+        <ol class="matrix" style="list-style:none;margin:0;padding:0">
+          <sc-for list="{{products}}" as="m" hint-placeholder-count="3">
+            <li class="col" style="border-radius:12px;overflow:hidden;background:{{t.card}};box-shadow:{{t.sh2}}">
+              <div class="row" role="img" aria-label="{{m.alt}}" style="justify-content:center;aspect-ratio:16 / 10;background:{{t.muted}};color:{{t.mfg}};border-bottom:1px solid {{t.border}}">
+                <sc-if value="{{s.loading}}" hint-placeholder-val="{{false}}"><span class="sk" style="width:100%;height:100%;border-radius:0;background:{{t.active}}"></span></sc-if>
+                <sc-if value="{{s.normal}}" hint-placeholder-val="{{true}}"><span class="col cap" style="align-items:center;gap:6px"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path></svg>产品截图 16:10</span></sc-if>
+              </div>
+              <div class="col" style="gap:8px;padding:20px 24px 24px;flex:1">
+                <span class="cap" style="font-weight:600;font-variant-numeric:tabular-nums;color:{{t.mfg}}">{{m.n}}</span>
+                <h3 class="ttl" style="margin:0">{{m.title}}</h3>
+                <p style="margin:0;color:{{t.mfg}};flex:1">{{m.desc}}</p>
+                <div class="row" style="gap:16px;margin-top:12px">
+                  <a href="#" class="btn" style="background:{{t.primary}};color:{{t.pfg}}">{{m.cta}}</a>
+                  <a href="#" class="row" style="gap:4px;color:{{t.fg}}">了解更多<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"></path></svg></a>
+                </div>
+              </div>
+            </li>
+          </sc-for>
+        </ol>
+      </sc-if>
+      <sc-if value="{{s.empty}}" hint-placeholder-val="{{false}}">
+        <div class="col" style="align-items:center;text-align:center;gap:10px;padding:48px 16px;border-radius:12px;border:1px dashed {{t.border}}">
+          <div class="row" aria-hidden="true" style="justify-content:center;width:120px;height:80px;border-radius:12px;background:{{t.active}};color:{{t.mfg}}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg></div>
+          <h3 class="ttl" style="margin:4px 0 0">还没有配置产品</h3>
+          <p style="margin:0;color:{{t.mfg}};max-width:28rem">在 template.config.ts 的营销配置中添加产品项，构建时按编号顺序渲染。</p>
+          <a href="#" class="btn" style="margin-top:4px;box-shadow:inset 0 0 0 1px {{t.border}}">查看配置说明</a>
+        </div>
+      </sc-if>
+      <sc-if value="{{s.error}}" hint-placeholder-val="{{false}}">
+        <div role="alert" style="display:grid;grid-template-columns:16px 1fr auto;align-items:start;gap:2px 12px;padding:12px 16px;border-radius:8px;border:1px solid {{t.border}};background:{{t.card}};color:{{t.destructive}}">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:2px"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
+          <span class="col" style="gap:2px"><span style="font-weight:500">产品信息加载失败</span><span>图片资源暂时无法获取，文字内容不受影响。</span></span>
+          <button type="button" class="btn btn-sm" style="box-shadow:inset 0 0 0 1px {{t.border}};color:{{t.fg}}">重试</button>
+        </div>
+      </sc-if>
+    </div>
+  </section>
+
+  <section style="padding:0 0 96px">
+    <div class="wrap">
+      <div class="col" style="align-items:center;text-align:center;gap:16px;padding:48px 24px;border-radius:12px;background:{{t.card}};box-shadow:{{t.sh2}}">
+        <h2 style="margin:0;font-size:30px;line-height:38px;font-weight:700;letter-spacing:-0.02em">准备好了就开始</h2>
+        <p style="margin:0;color:{{t.mfg}}">注册即送积分，不需要绑定付款方式。</p>
+        <a href="#" class="btn btn-lg" style="background:{{t.primary}};color:{{t.pfg}}">免费开始</a>
+      </div>
+    </div>
+  </section>
+  <footer style="border-top:1px solid {{t.border}}">
+    <div class="wrap" style="padding-top:48px;padding-bottom:88px">
+      <div class="foot">
+        <div class="col" style="gap:10px">
+          <span class="row" style="gap:8px"><span class="row" style="justify-content:center;width:24px;height:24px;border-radius:6px;background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span><span class="sub">SaaS 模板</span></span>
+          <span style="color:{{t.mfg}};max-width:18rem">账号、计费、积分、AI 功能与后台，换上品牌即可上线。</span>
+        </div>
+        <nav aria-label="产品" class="col"><span class="cap" style="font-weight:500;margin-bottom:6px;color:{{t.mfg}}">产品</span><a href="#">功能</a><a href="#">定价</a><a href="#">更新日志</a></nav>
+        <nav aria-label="资源" class="col"><span class="cap" style="font-weight:500;margin-bottom:6px;color:{{t.mfg}}">资源</span><a href="#">文档</a><a href="#">博客</a><a href="#">指南</a></nav>
+        <nav aria-label="法律" class="col"><span class="cap" style="font-weight:500;margin-bottom:6px;color:{{t.mfg}}">法律</span><a href="#">隐私政策</a><a href="#">服务条款</a><a href="#">Cookie 设置</a></nav>
+      </div>
+      <div class="row cap" style="justify-content:space-between;margin-top:40px;padding-top:20px;border-top:1px solid {{t.border}};color:{{t.mfg}}">
+        <span>© 2026 [公司名]</span>
+        <a href="#" class="row" style="gap:4px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>简体中文</a>
+      </div>
+    </div>
+  </footer>
+  <a href="#" aria-label="问问 AI 助手" class="row" style="position:absolute;right:24px;bottom:24px;z-index:30;height:48px;gap:8px;padding:0 18px 0 16px;border-radius:9999px;font-weight:500;text-decoration:none;background:{{t.primary}};color:{{t.pfg}};box-shadow:{{t.sh5}}"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg>问问 AI</a>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"state":{"editor":"enum","options":["normal","empty","loading","error"],"default":"normal"},"$preview":{"width":1440,"height":2300}}'>
+function uiTokens(dark) {
+  var t = dark ? {
+    s: ['#171717', '#1e1e1e', '#252525', '#2c2c2c', '#333333', '#3a3a3a', '#414141', '#484848'],
+    fg: '#f5f5f5', muted: '#1e1e1e', mfg: '#b0b0b0', primary: '#f5f5f5', pfg: '#171717',
+    destructive: '#fca5a5', success: 'oklch(0.723 0.219 149.579)', successSoft: 'rgba(34,197,94,0.15)',
+    border: 'rgba(245,245,245,0.12)', hover: 'rgba(255,255,255,0.06)', active: 'rgba(255,255,255,0.1)'
+  } : {
+    s: ['#fafafa', '#fcfcfc', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff'],
+    fg: '#171717', muted: '#f4f4f5', mfg: '#6b6b6b', primary: '#171717', pfg: '#fafafa',
+    destructive: '#b91c1c', success: 'oklch(0.527 0.154 150.069)', successSoft: 'rgba(21,128,61,0.1)',
+    border: 'rgba(23,23,23,0.12)', hover: 'rgba(0,0,0,0.04)', active: 'rgba(0,0,0,0.07)'
+  };
+  t.bg = t.s[0]; t.panel = t.s[1]; t.card = t.s[2];
+  t.sh2 = dark ? 'inset 0 1px 0 0 rgba(255,255,255,0.01), inset 0 0 0 1px rgba(255,255,255,0.02), 0 1px 1px -0.5px rgba(0,0,0,0.18)' : '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06)';
+  t.sh4 = dark ? 'inset 0 1px 0 0 rgba(255,255,255,0.02), inset 0 0 0 1px rgba(255,255,255,0.04), 0 0 0 1px rgba(0,0,0,0.14), 0 1px 1px -0.5px rgba(0,0,0,0.18), 0 3px 3px -1.5px rgba(0,0,0,0.18), 0 6px 6px -3px rgba(0,0,0,0.18)' : '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06), 0 3px 3px -1.5px rgba(0,0,0,0.06), 0 6px 6px -3px rgba(0,0,0,0.06)';
+  t.sh5 = dark ? 'inset 0 1px 0 0 rgba(255,255,255,0.04), inset 0 0 0 1px rgba(255,255,255,0.04), 0 0 0 1px rgba(0,0,0,0.16), 0 1px 1px -0.5px rgba(0,0,0,0.18), 0 3px 3px -1.5px rgba(0,0,0,0.18), 0 6px 6px -3px rgba(0,0,0,0.18), 0 12px 12px -6px rgba(0,0,0,0.18)' : '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06), 0 3px 3px -1.5px rgba(0,0,0,0.06), 0 6px 6px -3px rgba(0,0,0,0.06), 0 12px 12px -6px rgba(0,0,0,0.06)';
+  return t;
+}
+
+function siteNav(t, current) {
+  var o = {};
+  ['features', 'pricing', 'docs', 'blog'].forEach(function (k) {
+    o[k] = k === current ? 'color:' + t.fg + ';font-weight:500' : 'color:' + t.mfg;
+  });
+  o.pricingCur = current === 'pricing' ? 'page' : 'false';
+  return o;
+}
+
+class Component extends DCLogic {
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var pd = !!this.props.dark;
+    var dark = st.od && st.od.base === pd ? st.od.val : pd;
+    var t = uiTokens(dark);
+    var mode = this.props.state || 'normal';
+    var s = {
+      normal: mode === 'normal', empty: mode === 'empty', loading: mode === 'loading', error: mode === 'error',
+      stats: mode !== 'empty', noStats: mode === 'empty', matrix: mode === 'normal' || mode === 'loading'
+    };
+    var sep = 'border-left:1px solid ' + t.border;
+    var line = 'background:' + t.border;
+    return {
+      t: t, s: s, nav: siteNav(t, ''),
+      isDark: dark, isLight: !dark, themeLabel: dark ? '切换到浅色' : '切换到深色',
+      toggleTheme: function () { self.setState({ od: { base: pd, val: !dark } }); },
+      // 背书数值只用占位符：模板不得提供示例数字
+      stats: [
+        { value: '[用户数]', label: '注册用户', sep: '' },
+        { value: '[生成次数]', label: '累计生成', sep: sep },
+        { value: '[评分]', label: '用户评分', sep: sep },
+        { value: '[国家数]', label: '覆盖国家和地区', sep: sep }
+      ],
+      steps: [
+        { n: '1', title: '注册并创建空间', desc: '邮箱或第三方账号登录，自动获得注册积分和第一个工作区。', line: line },
+        { n: '2', title: '选择工具或上传文档', desc: '对话、图片生成、长文报告，按需选用；积分不足时随时补充。', line: line },
+        { n: '3', title: '导出结果或接入 API', desc: '报告导出 PDF，或用 API 密钥把同样的能力接进你的系统。', line: 'background:transparent' }
+      ],
+      products: [
+        { n: '01', title: '文档助手', desc: '上传文档后直接提问，回答标出引用的章节。', cta: '开始提问', alt: '文档助手截图占位' },
+        { n: '02', title: '图片生成', desc: '用文字描述生成配图，支持多种尺寸与风格。', cta: '生成图片', alt: '图片生成截图占位' },
+        { n: '03', title: '长文报告', desc: '把资料整理成分章报告，自动目录，可导出 PDF。', cta: '生成报告', alt: '长文报告截图占位' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

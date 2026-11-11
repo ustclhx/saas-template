@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>长文阅读器</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:none}a:hover{text-decoration:underline;text-underline-offset:3px}
+.r{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;font-optical-sizing:auto;min-height:100vh;display:flex}
+button,input,textarea{font:inherit;color:inherit;margin:0}
+button{cursor:pointer;border:0;background:none;padding:0}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.cap{font-size:12px;line-height:16px}
+.mic{font-size:11px;line-height:14px}
+.sub{font-size:14px;line-height:20px;font-weight:600}
+.ttl{font-size:16px;line-height:22px;font-weight:600}
+.dsp{font-size:28px;line-height:34px;font-weight:600;letter-spacing:-0.01em}
+.btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border-radius:8px;font-size:14px;line-height:20px;font-weight:500;white-space:nowrap;text-decoration:none}
+.btn:hover{text-decoration:none}
+.btn.ic{padding-left:12px}
+.btn-sm{height:32px;padding:0 12px}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;flex-shrink:0;position:relative}
+.ib-s{width:28px;height:28px}
+.hv:hover{background:rgba(128,128,128,0.1);text-decoration:none}
+.sb{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:16px;flex-shrink:0}
+.grp{font-size:12px;line-height:16px;font-weight:500;padding:0 8px;margin-bottom:4px}
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:9999px;font-size:12px;line-height:16px;font-weight:500;white-space:nowrap}
+.main{flex:1;min-width:0;margin:8px 8px 8px 0;border-radius:12px;display:flex;flex-direction:column}
+.top{height:56px;display:flex;align-items:center;gap:8px;padding:0 16px 0 24px;flex-shrink:0}
+.content{width:100%;max-width:72rem;margin:0 auto;padding:28px 32px 40px;display:flex;flex-direction:column;gap:24px}
+.card{border-radius:12px;display:flex;flex-direction:column}
+.grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:24px}
+.tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.li{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px}
+.bar{height:6px;border-radius:9999px;overflow:hidden}
+.sk{border-radius:6px;animation:sk 1.6s ease-in-out infinite}
+@keyframes sk{0%,100%{opacity:1}50%{opacity:0.5}}
+svg{flex-shrink:0}
+sc-if,sc-for{display:contents}
+.rd{width:100%;max-width:66rem;margin:0 auto;padding:32px 32px 64px;display:grid;grid-template-columns:13rem minmax(0,1fr);gap:48px;align-items:start}
+.toc{position:sticky;top:24px;display:flex;flex-direction:column;gap:2px}
+.toc a{display:block;padding:4px 12px;margin-left:-1px;font-size:14px;line-height:20px;border-left:2px solid transparent}
+.toc a.lv3{padding-left:24px}
+.md{max-width:45rem;font-size:14px;line-height:24px}
+.md h2{font-size:20px;line-height:28px;font-weight:600;margin:40px 0 12px;letter-spacing:-0.005em}
+.md h3{font-size:16px;line-height:22px;font-weight:600;margin:28px 0 8px}
+.md p{margin:0 0 14px}
+.md ul,.md ol{margin:0 0 14px;padding-left:22px}
+.md li{margin:4px 0}
+.md blockquote{margin:0 0 14px;padding:2px 0 2px 16px}
+.md pre{margin:0 0 16px;padding:14px 16px;border-radius:8px;overflow-x:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:18px}
+.md code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;padding:1px 5px;border-radius:4px}
+.md pre code{padding:0;background:none}
+.md table{border-collapse:collapse;width:100%;margin:0 0 16px;font-size:14px;line-height:20px}
+.md th,.md td{padding:8px 12px;text-align:left}
+.md th{font-weight:500}
+.md td.n,.md th.n{text-align:right;font-variant-numeric:tabular-nums}
+.chip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:9999px;font-size:14px;line-height:20px;font-weight:500}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+</style>
+</helmet>
+<div class="r" style="background:{{t.bg}};color:{{t.fg}}">
+  <aside class="sb" aria-label="主导航" style="{{shell.sb}}">
+    <div class="row" style="{{shell.head}}">
+      <sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}">
+        <a href="#" class="row" style="gap:8px;min-width:0">
+          <span class="row" style="justify-content:center;width:24px;height:24px;border-radius:6px;background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span>
+          <span class="sub">SaaS 模板</span>
+        </a>
+      </sc-if>
+      <button type="button" class="ib ib-s hv" aria-label="{{shell.toggleLabel}}" aria-expanded="{{shell.openStr}}" onClick="{{toggleSidebar}}" style="color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 3v18"></path></svg></button>
+    </div>
+
+    <button type="button" aria-label="切换工作区，当前：项目 A" class="row hv" style="{{shell.ws}}">
+      <span class="row cap" style="justify-content:center;width:24px;height:24px;border-radius:6px;background:{{t.active}};font-weight:600">A</span>
+      <sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}">
+        <span class="col" style="flex:1;min-width:0;text-align:left"><span style="font-weight:500">项目 A</span><span class="cap" style="color:{{t.mfg}}">团队空间 · 3 位成员</span></span>
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5M7 9l5-5 5 5"></path></svg>
+      </sc-if>
+    </button>
+
+    <nav class="col" aria-label="工作区" style="gap:16px;flex:1;min-height:0">
+      <div class="col" style="gap:2px">
+        <sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span class="grp" style="color:{{t.mfg}}">工具</span></sc-if>
+        <a href="#" class="hv" aria-label="工作台" aria-current="{{nav.c.home}}" style="{{nav.n.home}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M9 22V12h6v10"></path></svg><sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span>工作台</span></sc-if></a>
+        <a href="#" class="hv" aria-label="对话" aria-current="{{nav.c.chat}}" style="{{nav.n.chat}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span>对话</span></sc-if></a>
+        <a href="#" class="hv" aria-label="图片生成" aria-current="{{nav.c.media}}" style="{{nav.n.media}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path></svg><sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span>图片生成</span></sc-if></a>
+      </div>
+      <div class="col" style="gap:2px">
+        <sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span class="grp" style="color:{{t.mfg}}">内容</span></sc-if>
+        <a href="#" class="hv" aria-label="文档" aria-current="{{nav.c.docs}}" style="{{nav.n.docs}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4M16 13H8M16 17H8"></path></svg><sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span>文档</span></sc-if></a>
+        <a href="#" class="hv" aria-label="报告" aria-current="{{nav.c.reports}}" style="{{nav.n.reports}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg><sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span>报告</span></sc-if></a>
+      </div>
+      <div class="col" style="gap:2px">
+        <sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span class="grp" style="color:{{t.mfg}}">设置</span></sc-if>
+        <a href="#" class="hv" aria-label="账单与积分" aria-current="{{nav.c.billing}}" style="{{nav.n.billing}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg><sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span>账单与积分</span></sc-if></a>
+        <a href="#" class="hv" aria-label="用量" aria-current="{{nav.c.usage}}" style="{{nav.n.usage}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M18 17V9M13 17V5M8 17v-3"></path></svg><sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span>用量</span></sc-if></a>
+        <a href="#" class="hv" aria-label="API 密钥" aria-current="{{nav.c.keys}}" style="{{nav.n.keys}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg><sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span>API 密钥</span></sc-if></a>
+        <a href="#" class="hv" aria-label="空间设置" aria-current="{{nav.c.settings}}" style="{{nav.n.settings}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg><sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span>空间设置</span></sc-if></a>
+      </div>
+    </nav>
+
+    <sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}">
+      <div class="col" style="gap:10px;padding:12px;border-radius:12px;background:{{t.card}};box-shadow:{{t.sh2}}">
+        <div class="col" style="gap:2px">
+          <span class="row sub" style="gap:6px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"></path></svg>升级到专业版</span>
+          <span class="cap" style="color:{{t.mfg}}">每月订阅积分，解锁全部模型</span>
+        </div>
+        <a href="#" class="btn btn-sm" style="background:{{t.primary}};color:{{t.pfg}}">查看套餐</a>
+      </div>
+    </sc-if>
+    <sc-if value="{{shell.closed}}" hint-placeholder-val="{{false}}">
+      <a href="#" class="ib hv" aria-label="升级到专业版" style="color:{{t.fg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"></path></svg></a>
+    </sc-if>
+    <button type="button" class="row hv" aria-label="账户菜单：示例用户" style="{{shell.ws}}">
+      <span class="row cap" style="justify-content:center;width:28px;height:28px;border-radius:9999px;background:{{t.active}};font-weight:600">示</span>
+      <sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}">
+        <span class="col" style="flex:1;min-width:0;text-align:left"><span style="font-weight:500">示例用户</span><span class="cap" style="color:{{t.mfg}}">user@example.com</span></span>
+      </sc-if>
+    </button>
+  </aside>
+  <div class="main" style="background:{{t.panel}};box-shadow:{{t.sh2}}">
+    <header class="top" style="border-bottom:1px solid {{t.border}};position:relative">
+      <nav aria-label="面包屑" class="row" style="flex:1;gap:6px;min-width:0">
+        <a href="#" style="color:{{t.mfg}}">报告</a>
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+        <h1 class="ttl" style="margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">2026 年第三季度报告</h1>
+      </nav>
+      <button type="button" class="btn btn-sm ic" style="box-shadow:inset 0 0 0 1px {{t.border}};margin-right:4px"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>导出 PDF</button>
+      <button type="button" class="ib hv" aria-label="通知，2 条未读" style="color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg><span style="position:absolute;top:8px;right:9px;width:6px;height:6px;border-radius:9999px;background:{{t.destructive}}"></span></button>
+      <button type="button" class="ib hv" aria-label="{{themeLabel}}" onClick="{{toggleTheme}}" style="color:{{t.mfg}}">
+        <sc-if value="{{isDark}}" hint-placeholder-val="{{false}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg></sc-if>
+        <sc-if value="{{isLight}}" hint-placeholder-val="{{true}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></sc-if>
+      </button>
+      <div role="progressbar" aria-label="阅读进度" aria-valuenow="{{progressNum}}" aria-valuemin="0" aria-valuemax="100" style="position:absolute;left:0;right:0;bottom:-1px;height:2px;background:transparent"><div style="height:100%;width:{{progress}};background:{{t.primary}};border-radius:0 2px 2px 0"></div></div>
+    </header>
+
+    <div class="rd">
+      <nav class="toc" aria-label="目录" style="border-left:1px solid {{t.border}}">
+        <span class="cap" style="padding:0 12px 6px;font-weight:500;color:{{t.mfg}}">目录</span>
+        <sc-if value="{{s.ready}}" hint-placeholder-val="{{true}}">
+          <sc-for list="{{toc}}" as="h" hint-placeholder-count="7">
+            <a href="#" class="{{h.cls}}" aria-current="{{h.cur}}" onClick="{{h.pick}}" style="{{h.style}}">{{h.text}}</a>
+          </sc-for>
+        </sc-if>
+        <sc-if value="{{s.loading}}" hint-placeholder-val="{{false}}">
+          <div class="col" style="gap:12px;padding:6px 12px"><span class="sk" style="height:10px;width:70%;background:{{t.active}}"></span><span class="sk" style="height:10px;width:85%;background:{{t.active}}"></span><span class="sk" style="height:10px;width:60%;background:{{t.active}}"></span></div>
+        </sc-if>
+      </nav>
+
+      <div class="col" style="gap:40px;min-width:0">
+        <sc-if value="{{s.loading}}" hint-placeholder-val="{{false}}">
+          <div class="col" style="gap:14px;max-width:45rem">
+            <span class="sk" style="height:30px;width:60%;background:{{t.active}}"></span>
+            <span class="sk" style="height:12px;width:40%;background:{{t.active}}"></span>
+            <span style="height:16px"></span>
+            <sc-for list="{{skLines}}" as="k" hint-placeholder-count="12"><span class="sk" style="height:12px;background:{{t.active}};{{k}}"></span></sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{s.empty}}" hint-placeholder-val="{{false}}">
+          <div class="col" style="align-items:center;text-align:center;gap:10px;padding:96px 16px;max-width:45rem">
+            <div class="row" aria-hidden="true" style="justify-content:center;width:120px;height:88px;border-radius:12px;border:1px dashed {{t.border}};color:{{t.mfg}}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg></div>
+            <h2 class="ttl" style="margin:4px 0 0">这份报告还没有内容</h2>
+            <p style="margin:0;color:{{t.mfg}};max-width:24rem">选择数据来源后生成正文，完成后会自动出现目录。</p>
+            <button type="button" class="btn ic" style="margin-top:4px;background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg>生成报告</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{s.error}}" hint-placeholder-val="{{false}}">
+          <div role="alert" style="max-width:45rem;display:grid;grid-template-columns:16px 1fr;gap:2px 12px;padding:12px 16px;border-radius:8px;border:1px solid {{t.border}};background:{{t.card}};color:{{t.destructive}}">
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:2px"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
+            <span style="font-weight:500">报告加载失败</span>
+            <div class="col" style="grid-column:2;gap:10px;align-items:flex-start"><span>正文暂时无法读取，报告本身没有丢失。</span><button type="button" class="btn btn-sm ic" style="box-shadow:inset 0 0 0 1px {{t.border}};color:{{t.fg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"></path></svg>重试</button></div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{s.normal}}" hint-placeholder-val="{{true}}">
+          <article class="md">
+            <div class="col" style="gap:8px;margin-bottom:8px">
+              <h1 class="dsp" style="margin:0">2026 年第三季度报告</h1>
+              <span class="row cap" style="gap:8px;color:{{t.mfg}}"><span>文档助手生成 · 11 月 8 日 · 约 6 分钟</span><span class="badge" style="background:{{t.active}};color:{{t.fg}}">示例内容</span></span>
+            </div>
+
+            <h2>1. 摘要</h2>
+            <p>本季度整体收入保持增长，但新客增长放缓。引导流程改版后留存改善明显；模型调用成本占比上升，是下季度需要优先处理的问题。</p>
+            <ul>
+              <li>新客增长低于预期，主要受渠道 B 投放收缩影响。</li>
+              <li>次月留存提升，改版后的引导流程贡献最大。</li>
+              <li>长文本请求占比提高，推高了单次调用成本。</li>
+            </ul>
+
+            <h2 style="{{h2Active}}">2. 关键指标</h2>
+            <h3>2.1 新客增长</h3>
+            <p>下表对比两个季度的核心指标。数值为模板示例，衍生项目接入真实数据源后替换。</p>
+            <table style="border:1px solid {{t.border}};border-radius:6px">
+              <thead style="background:{{t.theadBg}}"><tr style="border-bottom:1px solid {{t.border}}"><th scope="col" style="color:{{t.mfg}}">指标</th><th scope="col" class="n" style="color:{{t.mfg}}">Q2</th><th scope="col" class="n" style="color:{{t.mfg}}">Q3</th><th scope="col" class="n" style="color:{{t.mfg}}">变化</th></tr></thead>
+              <tbody>
+                <tr style="border-bottom:1px solid {{t.border}}"><td>新增注册</td><td class="n">[数值]</td><td class="n">[数值]</td><td class="n">−6%</td></tr>
+                <tr style="border-bottom:1px solid {{t.border}}"><td>付费转化率</td><td class="n">[数值]</td><td class="n">[数值]</td><td class="n">+0.4 pt</td></tr>
+                <tr><td>次月留存</td><td class="n">[数值]</td><td class="n">[数值]</td><td class="n">+5 pt</td></tr>
+              </tbody>
+            </table>
+            <blockquote style="border-left:2px solid {{t.border}};color:{{t.mfg}}">渠道 B 的投放在 8 月暂停了三周，新客缺口基本集中在这段时间。</blockquote>
+            <h3>2.2 留存</h3>
+            <ol>
+              <li>首次登录后的引导从 5 步减为 3 步。</li>
+              <li>新增「每日领取」积分，提高了第二周的回访。</li>
+            </ol>
+
+            <h2>3. 成本结构</h2>
+            <p>模型调用成本占比上升，主要来自长文本请求。下面是本季度按模型统计的调用占比（导出自 <code style="background:{{t.active}}">usage_by_model</code>）：</p>
+            <pre style="background:{{t.muted}};box-shadow:inset 0 0 0 1px {{t.border}}"><code>{
+  "通用模型": 0.58,
+  "长文本模型": 0.31,
+  "图像模型": 0.11
+}</code></pre>
+            <p>建议对超过阈值的长文本先做摘要，再进入问答；高峰时段的备用模型切换需要单独设置预算。</p>
+
+            <h2>4. 下季度计划</h2>
+            <ul>
+              <li>恢复渠道 B 投放，并为其单独设置转化目标。</li>
+              <li>上线长文本摘要，目标是把单次调用成本降低三成。</li>
+            </ul>
+          </article>
+
+          <section aria-labelledby="sc-h" class="card" style="max-width:45rem;background:{{t.card}};border:1px solid {{t.border}};box-shadow:{{t.shSm}}">
+            <div class="row" style="gap:10px;padding:14px 16px;border-bottom:1px solid {{t.border}}">
+              <span class="row" aria-hidden="true" style="justify-content:center;width:24px;height:24px;border-radius:9999px;background:{{t.primary}};color:{{t.pfg}}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span>
+              <h2 id="sc-h" class="sub" style="margin:0">就这份报告提问</h2>
+              <span class="badge" style="box-shadow:inset 0 0 0 1px {{t.border}}">季度报告</span>
+              <span style="flex:1"></span>
+              <a href="#" class="cap row" style="gap:4px;color:{{t.mfg}}">在对话中打开<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M7 7h10v10"></path></svg></a>
+            </div>
+            <div class="col" style="gap:16px;padding:16px">
+              <div class="col" style="gap:8px">
+                <span id="open-q" class="cap" style="color:{{t.mfg}}">推荐问题</span>
+                <div class="row" role="group" aria-labelledby="open-q" style="gap:8px;flex-wrap:wrap">
+                  <button type="button" class="chip hv" style="box-shadow:inset 0 0 0 1px {{t.border}}">本季度最值得关注的三点？</button>
+                  <button type="button" class="chip hv" style="box-shadow:inset 0 0 0 1px {{t.border}}">成本上升的原因是什么？</button>
+                  <button type="button" class="chip hv" style="box-shadow:inset 0 0 0 1px {{t.border}}">生成一页摘要</button>
+                </div>
+              </div>
+              <div style="align-self:flex-end;max-width:80%;padding:10px 14px;border-radius:12px;background:{{t.secondary}}">成本上升的原因是什么？</div>
+              <div class="row" style="gap:12px;align-items:flex-start">
+                <span class="row" aria-hidden="true" style="justify-content:center;width:28px;height:28px;border-radius:9999px;background:{{t.primary}};color:{{t.pfg}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span>
+                <div class="col" style="flex:1;gap:6px">
+                  <p style="margin:0;line-height:22px">根据 §3，主要有两个原因：长文本请求占比提高到 31%，单次输入更长；高峰时段切换到了单价更高的备用模型。</p>
+                  <div class="row" role="group" aria-label="评价这条回答" style="gap:2px;margin-left:-6px">
+                    <button type="button" class="ib ib-s hv" aria-label="有帮助" aria-pressed="{{fb.upStr}}" onClick="{{fb.up}}" style="{{fb.upStyle}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="{{fb.upFill}}" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"></path></svg></button>
+                    <button type="button" class="ib ib-s hv" aria-label="没帮助" aria-pressed="{{fb.downStr}}" onClick="{{fb.down}}" style="{{fb.downStyle}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="{{fb.downFill}}" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14V2M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"></path></svg></button>
+                    <span class="cap" style="margin-left:8px;color:{{t.mfg}}">消耗 2 积分</span>
+                  </div>
+                </div>
+              </div>
+              <form class="row" aria-label="发送消息" style="gap:8px;padding:6px 6px 6px 14px;border-radius:12px;border:1px solid {{t.border}};background:{{t.panel}}">
+                <label for="sc-input" class="sr">消息</label>
+                <input id="sc-input" type="text" placeholder="继续提问…" style="flex:1;min-width:0;height:32px;border:0;background:transparent;font-size:14px;outline:none">
+                <span class="cap" style="color:{{t.mfg}};white-space:nowrap">本次约 2 积分</span>
+                <button type="button" class="ib ib-s" aria-label="发送" style="width:32px;height:32px;background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7M12 19V5"></path></svg></button>
+              </form>
+            </div>
+          </section>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"state":{"editor":"enum","options":["normal","empty","loading","error"],"default":"normal"},"$preview":{"width":1440,"height":2400}}'>
+function uiTokens(dark) {
+  var t = dark ? {
+    s: ['#171717', '#1e1e1e', '#252525', '#2c2c2c', '#333333', '#3a3a3a', '#414141', '#484848'],
+    fg: '#f5f5f5', muted: '#1e1e1e', mfg: '#b0b0b0', primary: '#f5f5f5', pfg: '#171717', accent: '#4f86f7', ring: '#4f86f7',
+    destructive: '#fca5a5', destructiveSoft: 'rgba(252,165,165,0.15)',
+    success: 'oklch(0.723 0.219 149.579)', successSoft: 'rgba(34,197,94,0.15)',
+    border: 'rgba(245,245,245,0.12)', input: '#404040', hover: 'rgba(255,255,255,0.06)',
+    active: 'rgba(255,255,255,0.1)', selected: '#525252', tint: 'rgba(255,255,255,0.25)', scrim: 'rgba(0,0,0,0.8)'
+  } : {
+    s: ['#fafafa', '#fcfcfc', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff'],
+    fg: '#171717', muted: '#f4f4f5', mfg: '#6b6b6b', primary: '#171717', pfg: '#fafafa', accent: '#3b82f6', ring: '#3b82f6',
+    destructive: '#b91c1c', destructiveSoft: 'rgba(185,28,28,0.1)',
+    success: 'oklch(0.527 0.154 150.069)', successSoft: 'rgba(21,128,61,0.1)',
+    border: 'rgba(23,23,23,0.12)', input: '#e5e5e5', hover: 'rgba(0,0,0,0.04)',
+    active: 'rgba(0,0,0,0.07)', selected: '#d4d4d4', tint: 'rgba(0,0,0,0.08)', scrim: 'rgba(0,0,0,0.4)'
+  };
+  t.bg = t.s[0]; t.panel = t.s[1]; t.card = t.s[2]; t.dialog = t.s[4];
+  t.secondary = dark ? '#252525' : '#f4f4f5';
+  t.theadBg = dark ? 'rgba(30,30,30,0.5)' : 'rgba(244,244,245,0.5)';
+  t.sh2 = dark ? 'inset 0 1px 0 0 rgba(255,255,255,0.01), inset 0 0 0 1px rgba(255,255,255,0.02), 0 1px 1px -0.5px rgba(0,0,0,0.18)' : '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06)';
+  t.sh5 = dark ? 'inset 0 1px 0 0 rgba(255,255,255,0.04), inset 0 0 0 1px rgba(255,255,255,0.04), 0 0 0 1px rgba(0,0,0,0.16), 0 1px 1px -0.5px rgba(0,0,0,0.18), 0 3px 3px -1.5px rgba(0,0,0,0.18), 0 6px 6px -3px rgba(0,0,0,0.18), 0 12px 12px -6px rgba(0,0,0,0.18)' : '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06), 0 3px 3px -1.5px rgba(0,0,0,0.06), 0 6px 6px -3px rgba(0,0,0,0.06), 0 12px 12px -6px rgba(0,0,0,0.06)';
+  t.shSm = '0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1)';
+  return t;
+}
+
+// 侧边栏：展开 248px / 折叠 64px，当前项用 --active 底色
+function shellVals(t, open, activeKey) {
+  var keys = ['home', 'chat', 'media', 'docs', 'reports', 'billing', 'usage', 'keys', 'settings'];
+  var n = {}, c = {};
+  keys.forEach(function (k) {
+    var a = k === activeKey;
+    n[k] = 'display:flex;align-items:center;gap:8px;height:32px;border-radius:8px;' +
+      (open ? 'padding:0 8px;' : 'justify-content:center;width:36px;') +
+      (a ? 'background:' + t.active + ';color:' + t.fg + ';font-weight:500' : 'color:' + t.mfg);
+    c[k] = a ? 'page' : 'false';
+  });
+  return {
+    nav: { n: n, c: c },
+    shell: {
+      open: open, closed: !open, openStr: open ? 'true' : 'false',
+      toggleLabel: open ? '折叠侧边栏' : '展开侧边栏',
+      sb: 'width:' + (open ? '248px' : '64px') + ';padding:' + (open ? '12px' : '12px 14px') + ';' + (open ? '' : 'align-items:center;'),
+      head: 'height:32px;gap:8px;' + (open ? 'justify-content:space-between;padding-left:4px' : 'justify-content:center'),
+      ws: 'gap:8px;border-radius:8px;text-align:left;' + (open ? 'width:100%;padding:6px 8px' : 'justify-content:center;width:36px;height:36px')
+    }
+  };
+}
+
+class Component extends DCLogic {
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var pd = !!this.props.dark;
+    var dark = st.od && st.od.base === pd ? st.od.val : pd;
+    var t = uiTokens(dark);
+    var mode = this.props.state || 'normal';
+    var open = st.collapsed ? false : true;
+    var sv = shellVals(t, open, 'reports');
+    var s = { normal: mode === 'normal', empty: mode === 'empty', loading: mode === 'loading', error: mode === 'error', ready: mode === 'normal' };
+    var cur = st.toc === undefined ? 1 : st.toc;
+    var heads = [
+      { text: '1. 摘要', lv: 2 }, { text: '2. 关键指标', lv: 2 }, { text: '2.1 新客增长', lv: 3 }, { text: '2.2 留存', lv: 3 },
+      { text: '3. 成本结构', lv: 2 }, { text: '4. 下季度计划', lv: 2 }
+    ];
+    var toc = heads.map(function (h, i) {
+      var a = i === cur;
+      return {
+        text: h.text, cls: h.lv === 3 ? 'lv3' : '', cur: a ? 'location' : 'false',
+        style: a ? 'color:' + t.fg + ';font-weight:500;border-left-color:' + t.primary : 'color:' + t.mfg,
+        pick: function () { self.setState({ toc: i }); }
+      };
+    });
+    var pct = [8, 34, 42, 51, 68, 92][cur];
+    var v = st.fb === undefined ? 'up' : st.fb;
+    var on = 'color:' + t.fg + ';background:' + t.active;
+    var off = 'color:' + t.mfg;
+    var lines = [];
+    for (var i = 0; i < 12; i++) lines.push('width:' + [100, 96, 88, 100, 72, 94, 100, 84, 60, 98, 90, 66][i] + '%');
+    return {
+      t: t, s: s, nav: sv.nav, shell: sv.shell,
+      isDark: dark, isLight: !dark, themeLabel: dark ? '切换到浅色' : '切换到深色',
+      toggleTheme: function () { self.setState({ od: { base: pd, val: !dark } }); },
+      toggleSidebar: function () { self.setState({ collapsed: open }); },
+      toc: toc,
+      progress: (mode === 'normal' ? pct : 0) + '%', progressNum: String(mode === 'normal' ? pct : 0),
+      h2Active: '',
+      skLines: lines,
+      fb: {
+        upStr: v === 'up' ? 'true' : 'false', downStr: v === 'down' ? 'true' : 'false',
+        upStyle: v === 'up' ? on : off, downStyle: v === 'down' ? on : off,
+        upFill: v === 'up' ? 'currentColor' : 'none', downFill: v === 'down' ? 'currentColor' : 'none',
+        up: function () { self.setState({ fb: v === 'up' ? null : 'up' }); },
+        down: function () { self.setState({ fb: v === 'down' ? null : 'down' }); }
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

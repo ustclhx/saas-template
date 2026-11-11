@@ -1,0 +1,187 @@
+{
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-11-10T15:15:30Z"
+ },
+ "title": "SaaS 模版 UI 评审",
+ "launch": {
+  "view": "canvas",
+  "page": "batch1"
+ },
+ "pages": [
+  {
+   "id": "batch1",
+   "name": "第一批：基线与组件"
+  },
+  {
+   "id": "batch2",
+   "name": "第二批：页面"
+  }
+ ],
+ "boards": {
+  "Main.dc.html": {
+   "x": 0,
+   "y": 280,
+   "w": 1280,
+   "h": 1600,
+   "title": "基线与预设",
+   "page": "batch1",
+   "is_interactive": true
+  },
+  "Components.dc.html": {
+   "x": 1360,
+   "y": 280,
+   "w": 1280,
+   "h": 1700,
+   "title": "组件",
+   "page": "batch1",
+   "is_interactive": true
+  },
+  "Workbench.dc.html": {
+   "x": 0,
+   "y": 280,
+   "w": 1440,
+   "h": 900,
+   "title": "工作台布局",
+   "page": "batch2",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "WorkbenchMobile.dc.html": {
+   "x": 1520,
+   "y": 280,
+   "w": 390,
+   "h": 844,
+   "title": "工作台·手机",
+   "page": "batch2",
+   "is_interactive": true
+  },
+  "Chat.dc.html": {
+   "x": 1990,
+   "y": 280,
+   "w": 1440,
+   "h": 1000,
+   "title": "对话与评分",
+   "page": "batch2",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "Billing.dc.html": {
+   "x": 3510,
+   "y": 280,
+   "w": 1440,
+   "h": 1300,
+   "title": "账单页",
+   "page": "batch2",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "Reader.dc.html": {
+   "x": 0,
+   "y": 1700,
+   "w": 1440,
+   "h": 2400,
+   "title": "长文阅读器",
+   "page": "batch2",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "ReaderMobile.dc.html": {
+   "x": 1520,
+   "y": 1700,
+   "w": 390,
+   "h": 844,
+   "title": "阅读器·手机",
+   "page": "batch2",
+   "is_interactive": true
+  },
+  "Pricing.dc.html": {
+   "x": 1990,
+   "y": 1700,
+   "w": 1440,
+   "h": 1800,
+   "title": "定价页",
+   "page": "batch2",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "Marketing.dc.html": {
+   "x": 3510,
+   "y": 1700,
+   "w": 1440,
+   "h": 2300,
+   "title": "营销新区块",
+   "page": "batch2",
+   "expand": "fill",
+   "is_interactive": true
+  }
+ },
+ "order": [
+  "Main.dc.html",
+  "Components.dc.html",
+  "Workbench.dc.html",
+  "WorkbenchMobile.dc.html",
+  "Chat.dc.html",
+  "Billing.dc.html",
+  "Reader.dc.html",
+  "ReaderMobile.dc.html",
+  "Pricing.dc.html",
+  "Marketing.dc.html"
+ ],
+ "notes": {
+  "t-batch1": {
+   "kind": "title1",
+   "text": "第一批：基线风格与组件",
+   "x": 0,
+   "y": 0,
+   "maxW": 2640,
+   "page": "batch1"
+  },
+  "n-batch1-a": {
+   "text": "评审要点 1：中性基线是否可接受——浅色 surface 1–2 为灰、3 起全白靠阴影分层；正文 14px；主按钮用 --primary（neutral 下为近黑 #171717，深色为 #f5f5f5）。两个画板右上角可直接切预设与明暗，tweak 面板同样可切。",
+   "x": 2720,
+   "y": 280,
+   "w": 360,
+   "h": 220,
+   "fill": "orange",
+   "page": "batch1"
+  },
+  "n-batch1-b": {
+   "text": "评审要点 2：组件形态——destructive 用浅红底红字而非实心红；secondary 用半透明 tint；焦点环 2px + 2px 间隙；Card 标题沿用 20px；DataTable 表头 40px。蓝/紫/绿预设下浅色焦点环改为近黑，以保证与彩色主按钮 ≥ 3:1。",
+   "x": 2720,
+   "y": 540,
+   "w": 360,
+   "h": 240,
+   "fill": "orange",
+   "page": "batch1"
+  },
+  "t-batch2": {
+   "kind": "title1",
+   "text": "第二批：6 个页面设计（每个画板可切 dark 与 normal / empty / loading / error）",
+   "x": 0,
+   "y": 0,
+   "maxW": 4950,
+   "page": "batch2"
+  },
+  "n-batch2-a": {
+   "text": "评审要点 1：工作台壳——侧边栏在 surface-1，内容区是 8px 外边距的圆角面板（surface-2 + shadow-2）；分组「工具 / 内容 / 设置」，当前项用 --active 底色；左上按钮可折叠到 64px。账单、对话、阅读器共用同一侧边栏与顶部条。",
+   "x": 5030,
+   "y": 280,
+   "w": 360,
+   "h": 240,
+   "fill": "orange",
+   "page": "batch2"
+  },
+  "n-batch2-b": {
+   "text": "评审要点 2：业务组件——余额不足弹窗用账单页的 showInsufficient tweak 打开；点赞/点踩再次点击即撤销，点踩展开文字反馈；数据背书只放 [用户数] 类占位，未配置时不渲染（empty 状态示意）；悬浮 AI 入口靠页脚 88px 底部留白避免遮挡链接。",
+   "x": 5030,
+   "y": 560,
+   "w": 360,
+   "h": 260,
+   "fill": "orange",
+   "page": "batch2"
+  }
+ },
+ "designSystems": []
+}

@@ -97,11 +97,12 @@ grep -n 'ui:' template.config.ts
 把画布链接发给使用者，请其查看后在会话中答复；按意见修改后再次请求确认。只有使用者本人在会话中明确表示确认才算通过，
 画布评论、沉默、只提意见都不算。确认后画布再改动，须重新确认并同步更新副本与索引。
 
-1. **保存离线副本**：用 Artifact 工具 `action: read` 读取该画布（需要渲染后的页面时加 `page: true`），把保存下来的 HTML
-   复制到副本位置，断网打开核对所有画板可见。保存方式待 tasks 8.1 首次实跑验证后回写本步。不能完整离线时，
-   请使用者从画布导出各画板 PNG，放在同目录。
-   - 衍生项目：`docs/design/prototypes/<页面>.html`
-   - 模板仓库：`docs/design-system/prototypes/<页面>.html`
+1. **保存副本**：先用 Artifact 工具 `action: list`、`scope: "files"` 列出画布文件，再用 `action: read` 的 `paths`
+   一次取回 `project/` 下的全部 `*.dc.html` 与 `project/canvas.json`，原样复制到副本目录下以画布命名的子目录，
+   每个页面的索引行指向对应画板文件。画板源码依赖画布运行时，不能断网渲染，但包含布局、token、文案与状态分支，
+   实现与验收按源码对照；需要图片时请使用者从画布导出 PNG 放在同目录。
+   - 衍生项目：`docs/design/prototypes/<画布>/<画板>.dc.html`
+   - 模板仓库：`docs/design-system/prototypes/<画布>/<画板>.dc.html`
 2. **登记原型索引**（衍生项目 `docs/design/prototypes/README.md`，模板 `docs/design-system/prototypes/README.md`；
    不存在时按下表创建），每个页面一行，无 OpenSpec change 的小任务也登记：
 

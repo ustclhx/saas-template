@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>组件</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:underline;text-underline-offset:3px}a:hover{text-decoration-thickness:2px}
+.r{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;font-optical-sizing:auto;min-height:100vh}
+button,input,textarea{font:inherit;color:inherit;margin:0}
+button{cursor:pointer;border:0;background:none;padding:0}
+.wrap{max-width:74rem;margin:0 auto;padding:32px 2rem 40px}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.wrapr{display:flex;flex-wrap:wrap;align-items:center}
+.cap{font-size:12px;line-height:16px}
+.sub{font-size:14px;line-height:20px;font-weight:600}
+.ttl{font-size:16px;line-height:22px;font-weight:600}
+.dsp{font-size:28px;line-height:34px;font-weight:600;letter-spacing:-0.01em}
+.g2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;margin-top:24px}
+.panel{border-radius:12px;padding:20px 24px;display:flex;flex-direction:column;gap:16px}
+.lbl{font-size:12px;line-height:16px;font-weight:500}
+.btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border-radius:8px;font-size:14px;line-height:20px;font-weight:500;white-space:nowrap}
+.btn.ic{padding-left:12px}
+.btn-sm{height:32px;padding:0 12px}
+.btn-lg{height:40px;padding:0 24px;gap:8px}
+.btn-c{height:28px;padding:0 12px;font-size:12px;line-height:18px;gap:4px}
+.btn-i{width:36px;padding:0}
+.btn-is{width:28px;height:28px;padding:0}
+.seg{display:inline-flex;padding:2px;border-radius:10px;gap:2px}
+.seg button{height:28px;padding:0 12px;border-radius:8px;font-size:14px;line-height:20px;font-weight:500}
+.field{display:flex;flex-direction:column;gap:6px}
+.inp{height:36px;width:100%;border-radius:8px;padding:0 12px;font-size:14px;line-height:20px;outline:none}
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:9999px;font-size:12px;line-height:16px;font-weight:500;white-space:nowrap}
+.tr{display:grid;grid-template-columns:8rem 7rem minmax(0,1fr) 6rem 6rem}
+.th{display:flex;align-items:center;height:40px;padding:0 12px;font-weight:500;white-space:nowrap}
+.td{display:flex;align-items:center;min-height:37px;padding:8px 12px;white-space:nowrap}
+.hvr:hover{background:rgba(128,128,128,0.06)}
+.opt{display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border-radius:8px}
+.hv:hover{background:rgba(128,128,128,0.1)}
+sc-if,sc-for{display:contents}
+</style>
+</helmet>
+<div class="r" style="background:{{t.bg}};color:{{t.fg}}">
+<div class="wrap">
+
+  <div class="row" style="justify-content:space-between;gap:24px;align-items:flex-end">
+    <div class="col" style="gap:6px">
+      <span class="cap" style="color:{{t.mfg}}">@saas/ui · Fluid 中性风格 · Radix 底层</span>
+      <h1 class="dsp" style="margin:0">组件</h1>
+      <p style="margin:0;color:{{t.mfg}};max-width:40rem">尺寸与 packages/ui/src/components 一致：按钮默认 36px、输入 36px、表格表头 40px。标「可点」的控件在画板里真的能切换。</p>
+    </div>
+    <div class="col" style="gap:8px;align-items:flex-end">
+      <div class="seg" role="group" aria-label="主题预设" style="background:{{t.muted}}">
+        <sc-for list="{{presetOpts}}" as="o" hint-placeholder-count="4">
+          <button type="button" aria-pressed="{{o.pressed}}" onClick="{{o.pick}}" style="{{o.style}}">{{o.label}}</button>
+        </sc-for>
+      </div>
+      <div class="row" style="gap:8px">
+        <span id="dark-lbl" class="cap" style="color:{{t.mfg}}">深色模式</span>
+        <button type="button" role="switch" aria-checked="{{darkStr}}" aria-labelledby="dark-lbl" onClick="{{toggleDark}}" style="{{darkSw.track}}"><span style="{{darkSw.thumb}}"></span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="g2">
+    <section class="panel" style="background:{{t.card}};box-shadow:{{t.sh2}}">
+      <h2 class="ttl" style="margin:0">Button</h2>
+      <div class="col" style="gap:6px">
+        <span class="lbl" style="color:{{t.mfg}}">变体</span>
+        <div class="wrapr" style="gap:8px">
+          <button type="button" class="btn" style="background:{{t.primary}};color:{{t.pfg}}">主要</button>
+          <button type="button" class="btn" style="background:{{t.tint}}">次要</button>
+          <button type="button" class="btn" style="box-shadow:inset 0 0 0 1px {{t.border}}">描边</button>
+          <button type="button" class="btn hv" style="color:{{t.mfg}}">幽灵</button>
+          <button type="button" class="btn" style="background:{{t.destructiveSoft}};color:{{t.destructive}}">删除</button>
+          <button type="button" class="btn" style="color:{{t.primary}};padding:0 4px;text-decoration:underline;text-underline-offset:4px">链接</button>
+        </div>
+      </div>
+      <div class="col" style="gap:6px">
+        <span class="lbl" style="color:{{t.mfg}}">尺寸 · compact 28 / sm 32 / default 36 / lg 40</span>
+        <div class="wrapr" style="gap:8px">
+          <button type="button" class="btn btn-c" style="background:{{t.primary}};color:{{t.pfg}}">紧凑</button>
+          <button type="button" class="btn btn-sm" style="background:{{t.primary}};color:{{t.pfg}}">小</button>
+          <button type="button" class="btn" style="background:{{t.primary}};color:{{t.pfg}}">默认</button>
+          <button type="button" class="btn btn-lg" style="background:{{t.primary}};color:{{t.pfg}}">大</button>
+        </div>
+      </div>
+      <div class="col" style="gap:6px">
+        <span class="lbl" style="color:{{t.mfg}}">图标、加载、禁用、焦点</span>
+        <div class="wrapr" style="gap:8px">
+          <button type="button" class="btn ic" style="background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"></path></svg>新对话</button>
+          <button type="button" class="btn ic" style="box-shadow:inset 0 0 0 1px {{t.border}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>导出 PDF</button>
+          <button type="button" class="btn btn-i" aria-label="设置" style="box-shadow:inset 0 0 0 1px {{t.border}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg></button>
+          <button type="button" class="btn" aria-busy="true" disabled="disabled" style="background:{{t.primary}};color:{{t.pfg}};cursor:default"><span style="visibility:hidden">保存</span><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" style="position:absolute;left:50%;top:50%;margin:-8px 0 0 -8px"><circle cx="8" cy="8" r="6.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="26 50" transform="rotate(-90 8 8)"></circle></svg></button>
+          <button type="button" class="btn" disabled="disabled" style="background:{{t.primary}};color:{{t.pfg}};opacity:0.5;cursor:default">禁用</button>
+          <button type="button" class="btn" style="background:{{t.primary}};color:{{t.pfg}};outline:2px solid {{t.ring}};outline-offset:2px">键盘聚焦</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" style="background:{{t.card}};box-shadow:{{t.sh2}}">
+      <div class="row" style="justify-content:space-between">
+        <h2 class="ttl" style="margin:0">Tabs、Badge、Tooltip</h2>
+        <span class="badge" style="background:{{t.accentSoft}};color:{{t.fg}}">可点</span>
+      </div>
+      <div class="col" style="gap:12px">
+        <div class="seg" role="tablist" aria-label="空间设置" style="background:{{t.muted}};align-self:flex-start">
+          <sc-for list="{{tabs}}" as="tb" hint-placeholder-count="3">
+            <button type="button" role="tab" aria-selected="{{tb.selected}}" onClick="{{tb.pick}}" style="{{tb.style}}">{{tb.label}}</button>
+          </sc-for>
+        </div>
+        <div role="tabpanel" style="padding:12px 14px;border-radius:8px;box-shadow:inset 0 0 0 1px {{t.border}};color:{{t.mfg}}">{{tabBody}}</div>
+      </div>
+      <div class="col" style="gap:6px">
+        <span class="lbl" style="color:{{t.mfg}}">Badge</span>
+        <div class="wrapr" style="gap:8px">
+          <span class="badge" style="background:{{t.primary}};color:{{t.pfg}}">推荐</span>
+          <span class="badge" style="background:{{t.tint}}">季度报告</span>
+          <span class="badge" style="box-shadow:inset 0 0 0 1px {{t.border}}">草稿</span>
+          <span class="badge" style="background:{{t.successSoft}};color:{{t.success}}">生效中</span>
+          <span class="badge" style="background:{{t.destructiveSoft}};color:{{t.destructive}}">已逾期</span>
+          <span class="badge" style="background:{{t.tint}}"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>会员</span>
+        </div>
+      </div>
+      <div class="col" style="gap:6px">
+        <span class="lbl" style="color:{{t.mfg}}">Tooltip（静态，悬停 300ms 后出现）</span>
+        <div class="row" style="gap:12px;padding-top:4px">
+          <button type="button" class="btn btn-i" aria-label="复制回答" style="box-shadow:inset 0 0 0 1px {{t.border}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="14" height="14" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg></button>
+          <div class="row" style="gap:0">
+            <span style="width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-right:5px solid {{t.fg}}"></span>
+            <span role="tooltip" class="cap" style="padding:4px 8px;border-radius:6px;background:{{t.fg}};color:{{t.bg}};font-weight:500">复制回答 <span style="opacity:0.7">⌘C</span></span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="g2">
+    <section class="panel" style="background:{{t.card}};box-shadow:{{t.sh2}}">
+      <h2 class="ttl" style="margin:0">表单</h2>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px">
+        <div class="field">
+          <label class="lbl" for="f-name">空间名称</label>
+          <input id="f-name" class="inp" type="text" placeholder="例如：项目 A" style="border:1px solid {{t.input}};background:{{inputBg}};box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)">
+          <span class="cap" style="color:{{t.mfg}}">成员会在空间切换器里看到它。</span>
+        </div>
+        <div class="field">
+          <label class="lbl" for="f-mail">通知邮箱</label>
+          <input id="f-mail" class="inp" type="email" value="team@" aria-invalid="true" aria-describedby="f-mail-err" style="border:1px solid {{t.destructive}};background:{{inputBg}};box-shadow:0 0 0 3px {{t.destructiveRing}}">
+          <span id="f-mail-err" class="cap" style="color:{{t.destructive}}">请输入完整的邮箱地址。</span>
+        </div>
+        <div class="field">
+          <label class="lbl" for="f-focus">聚焦态</label>
+          <input id="f-focus" class="inp" type="text" value="季度报告" style="border:1px solid {{t.ring}};background:{{inputBg}};box-shadow:0 0 0 3px {{t.ringSoft}}">
+        </div>
+        <div class="field">
+          <span id="f-model-lbl" class="lbl">默认模型</span>
+          <button type="button" aria-haspopup="listbox" aria-expanded="true" aria-labelledby="f-model-lbl" class="row" style="height:36px;min-width:160px;justify-content:space-between;gap:8px;padding:0 12px;border-radius:8px;box-shadow:inset 0 0 0 1px {{t.border}}">
+            <span>通用模型</span>
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5M7 9l5-5 5 5"></path></svg>
+          </button>
+          <div role="listbox" aria-label="默认模型" style="padding:4px;border-radius:12px;background:{{t.popover}};box-shadow:{{t.sh3}}">
+            <div role="option" aria-selected="true" class="opt" style="color:{{t.fg}}"><span style="flex:1">通用模型</span><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
+            <div role="option" aria-selected="false" class="opt" style="background:{{t.hover}};color:{{t.fg}}"><span style="flex:1">长文本模型</span></div>
+            <div role="option" aria-selected="false" class="opt" style="color:{{t.mfg}}"><span style="flex:1">图像模型</span></div>
+            <div role="option" aria-selected="false" aria-disabled="true" class="opt" style="color:{{t.mfg}};opacity:0.5"><span style="flex:1">视频模型</span><span class="cap">需升级</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="field">
+        <label class="lbl" for="f-desc">说明</label>
+        <textarea id="f-desc" rows="3" placeholder="写下这个空间的用途，助手会参考它" style="width:100%;resize:none;border-radius:8px;padding:8px 12px;border:1px solid {{t.input}};background:{{inputBg}};font-size:14px;line-height:20px;outline:none"></textarea>
+      </div>
+      <div class="row" style="gap:32px">
+        <div class="row" style="gap:8px">
+          <button type="button" role="checkbox" aria-checked="{{cbStr}}" aria-labelledby="cb-lbl" onClick="{{toggleCb}}" style="{{cb.box}}">
+            <sc-if value="{{cbOn}}" hint-placeholder-val="{{true}}"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>
+          </button>
+          <span id="cb-lbl">每周发送用量摘要</span>
+          <span class="badge" style="background:{{t.accentSoft}}">可点</span>
+        </div>
+        <div class="row" style="gap:8px">
+          <button type="button" role="switch" aria-checked="{{swStr}}" aria-labelledby="sw-lbl" onClick="{{toggleSw}}" style="{{sw.track}}"><span style="{{sw.thumb}}"></span></button>
+          <span id="sw-lbl">余额不足时提醒</span>
+          <span class="badge" style="background:{{t.accentSoft}}">可点</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="col" style="gap:24px">
+      <section class="panel" style="background:{{t.card}};box-shadow:{{t.sh2}}">
+        <h2 class="ttl" style="margin:0">Alert</h2>
+        <div role="status" style="display:grid;grid-template-columns:16px 1fr;gap:2px 12px;padding:12px 16px;border-radius:8px;border:1px solid {{t.border}};background:{{t.card}}">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:2px"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg>
+          <span style="font-weight:500">订阅积分将在 12 月 10 日重置</span>
+          <span style="grid-column:2;color:{{t.mfg}}">本期未用完的订阅积分不结转；积分包长期有效。</span>
+        </div>
+        <div role="alert" style="display:grid;grid-template-columns:16px 1fr;gap:2px 12px;padding:12px 16px;border-radius:8px;border:1px solid {{t.border}};background:{{t.card}};color:{{t.destructive}}">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:2px"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
+          <span style="font-weight:500">付款失败</span>
+          <div class="col" style="grid-column:2;gap:8px;align-items:flex-start"><span>银行卡被拒绝，订阅将在 3 天后暂停。</span><button type="button" class="btn btn-sm" style="background:{{t.destructiveSoft}};color:{{t.destructive}}">更新付款方式</button></div>
+        </div>
+      </section>
+      <section class="panel" style="background:transparent;padding:0">
+        <div class="col" style="gap:24px;padding:24px 0;border-radius:12px;border:1px solid {{t.border}};background:{{t.card}};box-shadow:0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1)">
+          <div class="col" style="gap:6px;padding:0 24px">
+            <span style="font-size:20px;line-height:20px;font-weight:600">Card · 项目 A</span>
+            <span style="color:{{t.mfg}}">CardTitle 20px，CardDescription 14px muted；外框 12px 圆角、1px 边框、shadow-sm。</span>
+          </div>
+          <div class="row" style="padding:0 24px;gap:8px;justify-content:flex-end">
+            <button type="button" class="btn" style="box-shadow:inset 0 0 0 1px {{t.border}}">稍后</button>
+            <button type="button" class="btn" style="background:{{t.primary}};color:{{t.pfg}}">打开项目</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <section class="panel" style="margin-top:24px;background:{{t.card}};box-shadow:{{t.sh2}}">
+    <div class="row" style="justify-content:space-between">
+      <h2 class="ttl" style="margin:0">Dialog 与 AlertDialog</h2>
+      <span class="cap" style="color:{{t.mfg}}">遮罩 black/40（深色 /80）；对话框 surface-5 + shadow-5，12px 圆角，内边距 24px，sm 宽 400px</span>
+    </div>
+    <div class="row" style="gap:32px;justify-content:center;padding:24px;border-radius:12px;background:linear-gradient({{t.scrim}},{{t.scrim}}),{{t.bg}}">
+      <div role="dialog" aria-modal="true" aria-labelledby="dlg1-t" style="position:relative;width:100%;max-width:400px;padding:24px;border-radius:12px;background:{{t.dialog}};box-shadow:{{t.sh5}}">
+        <button type="button" class="btn btn-is hv" aria-label="关闭" style="position:absolute;right:12px;top:12px;color:{{t.mfg}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+        <div class="col" style="gap:6px;margin-bottom:16px">
+          <h3 id="dlg1-t" class="ttl" style="margin:0">重命名对话</h3>
+          <p style="margin:0;color:{{t.mfg}}">新名称会同步到对话列表。</p>
+        </div>
+        <div class="field">
+          <label class="lbl" for="dlg-name">名称</label>
+          <input id="dlg-name" class="inp" type="text" value="季度报告要点" style="border:1px solid {{t.input}};background:{{inputBg}}">
+        </div>
+        <div class="row" style="justify-content:flex-end;gap:8px;margin-top:24px">
+          <button type="button" class="btn" style="box-shadow:inset 0 0 0 1px {{t.border}}">取消</button>
+          <button type="button" class="btn" style="background:{{t.primary}};color:{{t.pfg}}">保存</button>
+        </div>
+      </div>
+      <div role="alertdialog" aria-modal="true" aria-labelledby="dlg2-t" aria-describedby="dlg2-d" style="width:100%;max-width:400px;padding:24px;border-radius:12px;background:{{t.dialog}};box-shadow:{{t.sh5}}">
+        <div class="col" style="gap:6px;margin-bottom:16px">
+          <h3 id="dlg2-t" class="ttl" style="margin:0">删除空间「项目 A」？</h3>
+          <p id="dlg2-d" style="margin:0;color:{{t.mfg}}">空间内的对话、文件和积分流水会一并删除，且无法恢复。</p>
+        </div>
+        <div class="row" style="justify-content:flex-end;gap:8px;margin-top:24px">
+          <button type="button" class="btn" style="box-shadow:inset 0 0 0 1px {{t.border}}">取消</button>
+          <button type="button" class="btn" style="background:{{t.destructiveSoft}};color:{{t.destructive}}">删除空间</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" style="margin-top:24px;background:{{t.card}};box-shadow:{{t.sh2}}">
+    <div class="row" style="justify-content:space-between">
+      <h2 class="ttl" style="margin:0">DataTable</h2>
+      <span class="cap" style="color:{{t.mfg}}">表头 40px、muted/50 底；行 hover muted/30；分页在右下</span>
+    </div>
+    <div style="overflow-x:auto;border-radius:6px;border:1px solid {{t.border}}">
+      <div role="table" aria-label="积分流水">
+        <div role="rowgroup" style="background:{{theadBg}}">
+          <div role="row" class="tr" style="border-bottom:1px solid {{t.border}}">
+            <span role="columnheader" class="th" style="color:{{t.mfg}}">时间</span>
+            <span role="columnheader" class="th" style="color:{{t.mfg}}">来源</span>
+            <span role="columnheader" class="th" style="color:{{t.mfg}}">说明</span>
+            <span role="columnheader" class="th" style="color:{{t.mfg}};justify-content:flex-end">变动</span>
+            <span role="columnheader" class="th" style="color:{{t.mfg}};justify-content:flex-end">余额</span>
+          </div>
+        </div>
+        <div role="rowgroup">
+          <sc-for list="{{rows}}" as="rw" hint-placeholder-count="3">
+            <div role="row" class="tr hvr" style="border-bottom:{{rw.bb}}">
+              <span role="cell" class="td" style="color:{{t.mfg}};font-variant-numeric:tabular-nums">{{rw.time}}</span>
+              <span role="cell" class="td"><span class="badge" style="{{rw.badge}}">{{rw.src}}</span></span>
+              <span role="cell" class="td">{{rw.desc}}</span>
+              <span role="cell" class="td" style="justify-content:flex-end;font-variant-numeric:tabular-nums;{{rw.deltaStyle}}">{{rw.delta}}</span>
+              <span role="cell" class="td" style="justify-content:flex-end;font-variant-numeric:tabular-nums">{{rw.bal}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+    <nav aria-label="分页" class="row" style="justify-content:flex-end;gap:12px">
+      <span style="color:{{t.mfg}}">第 1 页，共 5 页</span>
+      <button type="button" class="btn btn-sm" disabled="disabled" style="box-shadow:inset 0 0 0 1px {{t.border}};opacity:0.5;cursor:default">上一页</button>
+      <button type="button" class="btn btn-sm" style="box-shadow:inset 0 0 0 1px {{t.border}}">下一页</button>
+    </nav>
+  </section>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"preset":{"editor":"enum","options":["neutral","blue","violet","green"],"default":"neutral"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":1700}}'>
+function uiTokens(dark, preset) {
+  var P = {
+    neutral: [['#171717', '#fafafa', '#3b82f6', '#3b82f6'], ['#f5f5f5', '#171717', '#4f86f7', '#4f86f7']],
+    blue: [['#2563eb', '#ffffff', '#3b82f6', '#171717'], ['#2563eb', '#ffffff', '#60a5fa', '#bfdbfe']],
+    violet: [['#7c3aed', '#ffffff', '#8b5cf6', '#171717'], ['#7c3aed', '#ffffff', '#a78bfa', '#ddd6fe']],
+    green: [['#15803d', '#ffffff', '#16a34a', '#171717'], ['#15803d', '#ffffff', '#4ade80', '#bbf7d0']]
+  };
+  var p = (P[preset] || P.neutral)[dark ? 1 : 0];
+  var t = dark ? {
+    s: ['#171717', '#1e1e1e', '#252525', '#2c2c2c', '#333333', '#3a3a3a', '#414141', '#484848'],
+    fg: '#f5f5f5', muted: '#1e1e1e', mfg: '#b0b0b0', secondary: '#252525', accentBg: '#525252',
+    destructive: '#fca5a5', destructiveLight: '#450a0a', destructiveSoft: 'rgba(252,165,165,0.15)',
+    success: 'oklch(0.723 0.219 149.579)', successSoft: 'rgba(34,197,94,0.15)',
+    border: 'rgba(245,245,245,0.12)', input: '#404040', hover: 'rgba(255,255,255,0.06)',
+    active: 'rgba(255,255,255,0.1)', selected: '#525252', tint: 'rgba(255,255,255,0.25)', scrim: 'rgba(0,0,0,0.8)'
+  } : {
+    s: ['#fafafa', '#fcfcfc', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff'],
+    fg: '#171717', muted: '#f4f4f5', mfg: '#6b6b6b', secondary: '#f4f4f5', accentBg: '#e5e5e5',
+    destructive: '#b91c1c', destructiveLight: '#fef2f2', destructiveSoft: 'rgba(185,28,28,0.1)',
+    success: 'oklch(0.527 0.154 150.069)', successSoft: 'rgba(21,128,61,0.1)',
+    border: 'rgba(23,23,23,0.12)', input: '#e5e5e5', hover: 'rgba(0,0,0,0.04)',
+    active: 'rgba(0,0,0,0.07)', selected: '#d4d4d4', tint: 'rgba(0,0,0,0.08)', scrim: 'rgba(0,0,0,0.4)'
+  };
+  t.primary = p[0]; t.pfg = p[1]; t.accent = p[2]; t.ring = p[3];
+  t.accentSoft = 'color-mix(in oklab, ' + p[2] + ' 18%, transparent)';
+  t.ringSoft = 'color-mix(in oklab, ' + p[3] + ' 50%, transparent)';
+  t.destructiveRing = dark ? 'rgba(252,165,165,0.4)' : 'rgba(185,28,28,0.2)';
+  var d = ['0 1px 1px -0.5px', '0 3px 3px -1.5px', '0 6px 6px -3px', '0 12px 12px -6px', '0 24px 24px -12px', '0 48px 48px -24px', '0 96px 96px -48px'];
+  var hi = [0, 0, 0.01, 0.02, 0.02, 0.04, 0.04, 0.06, 0.06];
+  var rg = [0, 0, 0.02, 0.02, 0.04, 0.04, 0.06, 0.06, 0.06];
+  var ko = [0, 0, 0, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22];
+  for (var n = 1; n <= 8; n++) {
+    var parts = [];
+    if (!dark) {
+      parts.push('0 0 0 1px rgba(0,0,0,0.06)');
+      for (var i = 0; i < n - 1; i++) parts.push(d[i] + ' rgba(0,0,0,0.06)');
+    } else if (n === 1) {
+      parts.push('inset 0 0 0 1px rgba(255,255,255,0.02)');
+    } else {
+      parts.push('inset 0 1px 0 0 rgba(255,255,255,' + hi[n] + ')');
+      parts.push('inset 0 0 0 1px rgba(255,255,255,' + rg[n] + ')');
+      if (n >= 3) parts.push('0 0 0 1px rgba(0,0,0,' + ko[n] + ')');
+      for (var j = 0; j < n - 1; j++) parts.push(d[j] + ' rgba(0,0,0,0.18)');
+    }
+    t['sh' + n] = parts.join(', ');
+    t['s' + n] = t.s[n - 1];
+  }
+  t.bg = t.s1; t.panel = t.s2; t.card = t.s3; t.popover = t.s3; t.dialog = t.s5;
+  return t;
+}
+
+function switchStyle(t, on) {
+  return {
+    track: 'position:relative;display:inline-block;width:36px;height:20px;border-radius:9999px;flex-shrink:0;background:' + (on ? t.accent : t.selected) + ';transition:background-color 120ms',
+    thumb: 'position:absolute;top:2px;left:' + (on ? '18px' : '2px') + ';width:16px;height:16px;border-radius:9999px;background:#ffffff;box-shadow:0 1px 2px rgba(0,0,0,0.2);transition:left 160ms cubic-bezier(0.23,1,0.32,1)'
+  };
+}
+
+class Component extends DCLogic {
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var pp = this.props.preset || 'neutral';
+    var pd = !!this.props.dark;
+    // 画板内切换只在对应 tweak 未变时生效；tweak 一变即回到 tweak 的取值
+    var preset = st.op && st.op.base === pp ? st.op.val : pp;
+    var dark = st.od && st.od.base === pd ? st.od.val : pd;
+    var t = uiTokens(dark, preset);
+    var on = 'background:' + t.s3 + ';color:' + t.fg + ';box-shadow:' + t.sh2;
+    var off = 'color:' + t.mfg;
+    var presetOpts = ['neutral', 'blue', 'violet', 'green'].map(function (k) {
+      return {
+        label: k, pressed: k === preset ? 'true' : 'false', style: k === preset ? on : off,
+        pick: function () { self.setState({ op: { base: pp, val: k } }); }
+      };
+    });
+    var tabIdx = st.tab || 0;
+    var bodies = ['概览：本月已用 1,240 积分，较上月少 8%（示例）。', '成员：3 位成员，其中 1 位管理员（示例）。', '设置：空间名称、默认模型与通知方式。'];
+    var tabs = ['概览', '成员', '设置'].map(function (label, i) {
+      return { label: label, selected: i === tabIdx ? 'true' : 'false', style: i === tabIdx ? on : off, pick: function () { self.setState({ tab: i }); } };
+    });
+    var cbOn = st.cb === undefined ? true : st.cb;
+    var swOn = st.sw === undefined ? false : st.sw;
+    var cb = {
+      box: 'display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;flex-shrink:0;' +
+        (cbOn ? 'background:' + t.primary + ';color:' + t.pfg : 'box-shadow:inset 0 0 0 1px ' + t.mfg)
+    };
+    var src = {
+      sub: 'background:' + t.tint,
+      pack: 'background:' + t.tint,
+      daily: 'background:' + t.successSoft + ';color:' + t.success,
+      use: 'box-shadow:inset 0 0 0 1px ' + t.border
+    };
+    var rows = [
+      { time: '11-10 09:12', src: '每日领取', badge: src.daily, desc: '每日登录奖励', delta: '+10', deltaStyle: 'color:' + t.success, bal: '1,280' },
+      { time: '11-09 21:40', src: '消耗', badge: src.use, desc: '对话 · 文档助手', delta: '−3', deltaStyle: '', bal: '1,270' },
+      { time: '11-09 08:00', src: '积分包', badge: src.pack, desc: '标准包（示例）', delta: '+500', deltaStyle: 'color:' + t.success, bal: '1,273' }
+    ].map(function (r, i, a) { r.bb = i === a.length - 1 ? '0' : '1px solid ' + t.border; return r; });
+    return {
+      t: t,
+      presetOpts: presetOpts,
+      darkStr: dark ? 'true' : 'false',
+      darkSw: switchStyle(t, dark),
+      toggleDark: function () { self.setState({ od: { base: pd, val: !dark } }); },
+      tabs: tabs,
+      tabBody: bodies[tabIdx],
+      cb: cb, cbOn: cbOn, cbStr: cbOn ? 'true' : 'false',
+      toggleCb: function () { self.setState({ cb: !cbOn }); },
+      sw: switchStyle(t, swOn), swStr: swOn ? 'true' : 'false',
+      toggleSw: function () { self.setState({ sw: !swOn }); },
+      rows: rows,
+      inputBg: dark ? 'rgba(64,64,64,0.3)' : 'transparent',
+      theadBg: dark ? 'rgba(30,30,30,0.5)' : 'rgba(244,244,245,0.5)'
+    };
+  }
+}
+</script>
+</body>
+</html>
