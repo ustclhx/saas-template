@@ -5,7 +5,9 @@ import { templateConfig } from '../../server/template-config.ts'
 import { AiEntry } from './ai-entry.tsx'
 import { localized, localizeProduct, type ProductItem } from './localized.ts'
 import { ProductMatrix } from './sections/product-matrix.tsx'
+import { ProductsEmptyHint } from './sections/products-empty-hint.tsx'
 import { Stats } from './sections/stats.tsx'
+import { Steps } from './sections/steps.tsx'
 
 // 营销新区块（openspec add-ui-design-system 8.5，marketing-site spec）。链接用页内锚点与外部地址，
 // 渲染时不需要路由器；站内路径走 Link 的情况由 e2e/marketing.spec.ts 覆盖。
@@ -45,7 +47,7 @@ describe('数据背书区块', () => {
 
 describe('编号产品矩阵', () => {
   it('按顺序编号，每张卡片含图片、主按钮与次级链接', () => {
-    const html = renderToString(<ProductMatrix products={products} showEmptyHint={false} />)
+    const html = renderToString(<ProductMatrix products={products} />)
     const order = ['01', '02', '03'].map((n) => html.indexOf(`>${n}<`))
     expect(order.every((index) => index > 0)).toBe(true)
     expect([...order].sort((a, b) => a - b)).toEqual(order)
@@ -61,14 +63,14 @@ describe('编号产品矩阵', () => {
 
   it('没有图片时显示占位框，不输出 img', () => {
     const { image: _image, ...first } = products[0] as ProductItem
-    const html = renderToString(<ProductMatrix products={[first]} showEmptyHint={false} />)
+    const html = renderToString(<ProductMatrix products={[first]} />)
     expect(html).not.toContain('<img')
     expect(html).toContain(first.title)
   })
 
-  it('未配置产品时线上不渲染，开发环境显示配置提示', () => {
-    expect(renderToString(<ProductMatrix products={[]} showEmptyHint={false} />)).toBe('')
-    expect(renderToString(<ProductMatrix products={[]} showEmptyHint />)).toContain(
+  it('未配置产品时不渲染；开发提示是单独组件', () => {
+    expect(renderToString(<ProductMatrix products={[]} />)).toBe('')
+    expect(renderToString(<ProductsEmptyHint />)).toContain(
       escaped(m.marketing_products_empty_title()),
     )
   })
@@ -81,6 +83,23 @@ describe('编号产品矩阵', () => {
         expect(item.title && item.description && item.primary.label).toBeTruthy()
       }
     }
+  })
+})
+
+describe('三步流程', () => {
+  it('按配置渲染为有序列表，未配置时不渲染', () => {
+    expect(renderToString(<Steps steps={[]} />)).toBe('')
+    const html = renderToString(
+      <Steps
+        steps={[
+          { title: 'First', description: 'One' },
+          { title: 'Second', description: 'Two' },
+        ]}
+      />,
+    )
+    expect(html).toContain('role="list"')
+    expect(html.indexOf('First')).toBeLessThan(html.indexOf('Second'))
+    expect(templateConfig.marketing.steps.length).toBeGreaterThan(0)
   })
 })
 

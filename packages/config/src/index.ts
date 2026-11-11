@@ -35,6 +35,7 @@ export {
   type LocalizedText,
   type MarketingProduct,
   type MarketingStat,
+  type MarketingStep,
   type MediaProviderId,
   type OAuthProvider,
   type PaymentProvider,

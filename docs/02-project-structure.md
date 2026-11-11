@@ -98,9 +98,9 @@ saas-template/
 空卷 Compose 登录/空间/heartbeat 验证，步骤见 [创建项目](create-project.md)。
 
 营销首页区块的内容也在 `marketing` 段（openspec add-ui-design-system 8.5）：`stats` 为数据背书的数值与来源，
-`items` 为空时区块不渲染，模板不提供示例数字；`products` 为编号产品矩阵（按顺序编号，`image` 省略时显示占位框）；
+`items` 为空时区块不渲染，模板不提供示例数字；`steps` 为「如何开始」流程（为空不渲染）；`products` 为编号产品矩阵（按顺序编号，`image` 省略时显示占位框）；
 `aiEntry` 为右下角悬浮 AI 入口（`href` 默认 `/app`，关闭文本 AI 时一并隐藏）。文案按 `i18n.locales` 逐语言填写，
-缺语言在类型检查时报错；三步流程等固定文案在 `apps/web/messages/<locale>/marketing-blocks.json`。
+缺语言在类型检查时报错，空值在构建期报错；区块眉标与标题等固定文案在 `apps/web/messages/<locale>/marketing-blocks.json`。
 
 `template.config.ts` 草案：
 

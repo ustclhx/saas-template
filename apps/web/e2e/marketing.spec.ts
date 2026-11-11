@@ -25,13 +25,13 @@ for (const prefix of prefixes) {
   test(`首页新区块：三步流程、编号产品矩阵与悬浮 AI 入口（${lang}）`, async ({ page }) => {
     // openspec add-ui-design-system 8.5：背书数值未配置时整个区块不渲染
     await page.goto(prefix || '/')
-    const { stats, products, aiEntry } = templateConfig.marketing
+    const { stats, steps, products, aiEntry } = templateConfig.marketing
     if (stats.items.length === 0) {
       await expect(
         page.locator('section[aria-label]').filter({ has: page.locator('dl') }),
       ).toHaveCount(0)
     }
-    await expect(page.locator('section#steps ol > li')).toHaveCount(3)
+    await expect(page.locator('section#steps ol > li')).toHaveCount(steps.length)
     const cards = page.locator('section#products ol > li')
     await expect(cards).toHaveCount(products.length)
     for (const [index, card] of (await cards.all()).entries()) {
@@ -53,12 +53,18 @@ for (const prefix of prefixes) {
     for (const width of [390, 1280]) {
       await page.setViewportSize({ width, height: 800 })
       await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
-      const box = await entry.boundingBox()
-      for (const link of await page.locator('footer a').all()) {
-        const linkBox = await link.boundingBox()
-        if (!box || !linkBox) continue
-        expect(linkBox.y + linkBox.height, await link.innerText()).toBeLessThanOrEqual(box.y)
-      }
+      // 整个页脚内容盒（不含底部留白）都在入口上方
+      const gap = await page.evaluate(() => {
+        const footer = document.querySelector('footer')
+        const entryEl = document.querySelector('a.fixed[aria-label]')
+        if (!footer || !entryEl) return null
+        const contentBottom =
+          footer.getBoundingClientRect().bottom -
+          Number.parseFloat(getComputedStyle(footer).paddingBottom)
+        return entryEl.getBoundingClientRect().top - contentBottom
+      })
+      expect(gap, `width ${width}`).not.toBeNull()
+      expect(gap ?? -1, `width ${width}`).toBeGreaterThanOrEqual(0)
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
         width,
       )

@@ -1,4 +1,5 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
+import { lazy, Suspense } from 'react'
 import { GrowthForm } from '../features/growth/forms.tsx'
 import { localized, localizeProduct } from '../features/marketing/localized.ts'
 import { MarketingShell } from '../features/marketing/marketing-shell.tsx'
@@ -18,6 +19,16 @@ import { organizationData, websiteData } from '../features/seo/structured-data.t
 import { getLocale } from '../paraglide/runtime.js'
 import { templateConfig } from '../server/template-config.ts'
 
+// 未配置产品时的开发提示：只在开发环境按需加载。静态导入会让该模块随共享 chunk 进入首页，
+// 生产构建里这个分支被常量折叠删除，提示组件不进入首页 JS。
+const DevProductsEmptyHint = import.meta.env.DEV
+  ? lazy(() =>
+      import('../features/marketing/sections/products-empty-hint.tsx').then((module) => ({
+        default: module.ProductsEmptyHint,
+      })),
+    )
+  : null
+
 // 首页（tasks.md 3.1）：各区块均为静态文案与数据，构建期预渲染，不依赖数据库（features/marketing/prerender.ts）
 export const Route = createFileRoute('/')({
   beforeLoad: () => {
@@ -34,17 +45,30 @@ export const Route = createFileRoute('/')({
 })
 
 function HomePage() {
-  const { stats, products } = site.marketing
+  const { stats, steps, products } = site.marketing
   return (
     <MarketingShell>
       <Hero />
       {/* 新区块（openspec add-ui-design-system 8.5）：背书与产品矩阵未配置时不渲染 */}
       <Stats
-        items={stats.items.map((item) => ({ value: item.value, label: localized(item.label) }))}
+        items={stats.items.map((item) => ({
+          value: localized(item.value),
+          label: localized(item.label),
+        }))}
         source={stats.source === null ? null : localized(stats.source)}
       />
-      <Steps />
+      <Steps
+        steps={steps.map((step) => ({
+          title: localized(step.title),
+          description: localized(step.description),
+        }))}
+      />
       <ProductMatrix products={products.map((product) => localizeProduct(product))} />
+      {DevProductsEmptyHint && products.length === 0 && (
+        <Suspense fallback={null}>
+          <DevProductsEmptyHint />
+        </Suspense>
+      )}
       <Features />
       {templateConfig.billing.enabled && <Pricing plans={placeholderPlans} />}
       <Testimonials />

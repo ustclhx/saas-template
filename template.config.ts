@@ -43,6 +43,30 @@ export default defineTemplateConfig({
     // items: [{ value: '12,000+', label: { en: 'Registered users', zh: '注册用户' } }],
     // source: { en: 'Platform data as of 2026-10', zh: '平台统计，截至 2026-10' },
     stats: { items: [], source: null },
+    // 「如何开始」流程：按顺序编号，为空时区块不渲染
+    steps: [
+      {
+        title: { en: 'Sign up and create a workspace', zh: '注册并创建空间' },
+        description: {
+          en: 'Sign in with email or a third-party account to get signup credits and your first workspace.',
+          zh: '邮箱或第三方账号登录，自动获得注册积分和第一个工作区。',
+        },
+      },
+      {
+        title: { en: 'Pick a tool or upload a document', zh: '选择工具或上传文档' },
+        description: {
+          en: 'Chat, image generation or long-form reports, as you need them; top up credits whenever you run low.',
+          zh: '对话、图片生成、长文报告，按需选用；积分不足时随时补充。',
+        },
+      },
+      {
+        title: { en: 'Export results or connect the API', zh: '导出结果或接入 API' },
+        description: {
+          en: 'Export reports as PDF, or use an API key to bring the same capabilities into your own system.',
+          zh: '报告导出 PDF，或用 API 密钥把同样的能力接进你的系统。',
+        },
+      },
+    ],
     // 编号产品矩阵：按顺序编号；image 省略时显示占位框（16:10 截图放 apps/web/public 后填 src）
     products: [
       {

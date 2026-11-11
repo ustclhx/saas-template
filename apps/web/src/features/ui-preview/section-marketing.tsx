@@ -1,7 +1,8 @@
 import { m } from '../../paraglide/messages.js'
 import { AiEntry } from '../marketing/ai-entry.tsx'
-import { localizeProduct } from '../marketing/localized.ts'
+import { localized, localizeProduct } from '../marketing/localized.ts'
 import { ProductMatrix } from '../marketing/sections/product-matrix.tsx'
+import { ProductsEmptyHint } from '../marketing/sections/products-empty-hint.tsx'
 import { Stats } from '../marketing/sections/stats.tsx'
 import { Steps } from '../marketing/sections/steps.tsx'
 import { site } from '../marketing/site.ts'
@@ -28,6 +29,10 @@ export function MarketingSection() {
     },
   ]
   const products = site.marketing.products.map((product) => localizeProduct(product))
+  const steps = site.marketing.steps.map((step) => ({
+    title: localized(step.title),
+    description: localized(step.description),
+  }))
   // 错误状态：第一项指向不存在的图片，加载失败后卡片退回占位框并出现可重试的提示
   const [first, ...rest] = products
   const broken = first
@@ -44,16 +49,16 @@ export function MarketingSection() {
         <Stats items={stats} source={m.ui_preview_marketing_stat_source()} />
       </Specimen>
       <Specimen label="Steps" wide className="block p-0">
-        <Steps />
+        <Steps steps={steps} />
       </Specimen>
       <Specimen label="ProductMatrix" wide className="block px-0 pt-6 pb-0">
-        <ProductMatrix products={products} showEmptyHint={false} />
+        <ProductMatrix products={products} />
       </Specimen>
       <Specimen label={m.ui_preview_marketing_error()} wide className="block px-0 pt-6 pb-0">
-        <ProductMatrix products={broken} showEmptyHint={false} />
+        <ProductMatrix products={broken} />
       </Specimen>
       <Specimen label={m.ui_preview_marketing_empty()} wide className="block px-0 pt-6 pb-0">
-        <ProductMatrix products={[]} showEmptyHint />
+        <ProductsEmptyHint />
       </Specimen>
       <Specimen label="AiEntry">
         <AiEntry href="/app" inline />

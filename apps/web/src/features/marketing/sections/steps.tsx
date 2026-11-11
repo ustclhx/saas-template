@@ -1,14 +1,17 @@
 import { cn } from '@saas/ui'
 import { m } from '../../../paraglide/messages.js'
 
-const steps = [
-  { title: m.marketing_step_1_title, body: m.marketing_step_1_body },
-  { title: m.marketing_step_2_title, body: m.marketing_step_2_body },
-  { title: m.marketing_step_3_title, body: m.marketing_step_3_body },
-]
+export interface StepItem {
+  readonly title: string
+  readonly description: string
+}
 
-/** 三步流程（openspec add-ui-design-system 8.5）：文案在 messages/<locale>/marketing-blocks.json */
-export function Steps() {
+/**
+ * 「如何开始」流程（openspec add-ui-design-system 8.5）：步骤来自模板配置 `marketing.steps`，为空时不渲染；
+ * 眉标与标题在 messages/<locale>/marketing-blocks.json。
+ */
+export function Steps({ steps }: { steps: readonly StepItem[] }) {
+  if (steps.length === 0) return null
   return (
     <section id="steps" aria-labelledby="steps-title" className="py-20">
       <div className="mx-auto grid max-w-6xl gap-10 px-4">
@@ -20,9 +23,11 @@ export function Steps() {
             {m.marketing_steps_title()}
           </h2>
         </div>
-        <ol className="m-0 grid list-none gap-8 p-0 md:grid-cols-3">
+        {/* biome-ignore lint/a11y/noRedundantRoles: list-none 会让 Safari 读屏丢失列表语义，需显式声明 */}
+        <ol role="list" className="m-0 grid list-none gap-8 p-0 md:grid-cols-3">
           {steps.map((step, index) => (
-            <li key={step.title()} className="grid content-start gap-3">
+            // biome-ignore lint/suspicious/noArrayIndexKey: 配置顺序即序号
+            <li key={index} className="grid content-start gap-3">
               <div className="flex items-center gap-3">
                 {/* 编号由有序列表语义表达，圆形数字只作视觉 */}
                 <span
@@ -39,8 +44,8 @@ export function Steps() {
                   )}
                 />
               </div>
-              <h3 className="font-semibold text-title">{step.title()}</h3>
-              <p className="text-body text-muted-foreground">{step.body()}</p>
+              <h3 className="font-semibold text-title">{step.title}</h3>
+              <p className="text-body text-muted-foreground">{step.description}</p>
             </li>
           ))}
         </ol>

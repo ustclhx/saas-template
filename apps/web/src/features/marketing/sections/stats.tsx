@@ -26,7 +26,8 @@ export function Stats({ items, source }: { items: readonly StatItem[]; source?: 
         >
           {items.map((item, index) => (
             <div
-              key={item.label}
+              // biome-ignore lint/suspicious/noArrayIndexKey: 配置顺序固定，标签允许重复
+              key={index}
               className={cn(
                 'flex flex-col-reverse gap-1 border-border px-6 py-5',
                 // 窄屏 2 列：第二列画左分隔线，第二行起画上分隔线；桌面单行：除首项外画左分隔线

@@ -21,6 +21,7 @@ describe('defineTemplateConfig', () => {
     expect(config.marketing.enabled).toBe(true)
     // 模板不提供背书数值与产品示例：未配置时这两个区块不渲染
     expect(config.marketing.stats).toEqual({ items: [], source: null })
+    expect(config.marketing.steps).toEqual([])
     expect(config.marketing.products).toEqual([])
     expect(config.marketing.aiEntry).toEqual({ enabled: false, href: '/app' })
     expect(config.i18n.enabled).toBe(true)
@@ -55,13 +56,40 @@ describe('defineTemplateConfig', () => {
     ).toThrow(/at most 4/)
     expect(() =>
       defineTemplateConfig({ app, marketing: { stats: { items: [{ ...stat, value: ' ' }] } } }),
-    ).toThrow(/must not be empty/)
-    // 多语言文案缺少语言时类型检查报错
-    defineTemplateConfig({
-      app,
-      // @ts-expect-error zh 缺失
-      marketing: { stats: { items: [{ value: '1', label: { en: 'Users' } }] } },
-    })
+    ).toThrow(/stats.items\[0\].value must not be empty/)
+    // 多语言数值逐语言校验
+    expect(() =>
+      defineTemplateConfig({
+        app,
+        marketing: { stats: { items: [{ value: { en: '1', zh: '' }, label: 'Users' }] } },
+      }),
+    ).toThrow(/stats.items\[0\].value/)
+    const product = {
+      title: 'Atlas',
+      description: '',
+      primary: { label: 'Open', href: '/register' },
+      secondaryHref: '#features',
+    }
+    expect(() =>
+      defineTemplateConfig({ app, marketing: { products: [{ ...product, title: '' }] } }),
+    ).toThrow(/products\[0\].title/)
+    expect(() =>
+      defineTemplateConfig({
+        app,
+        marketing: { products: [{ ...product, primary: { label: 'Open', href: ' ' } }] },
+      }),
+    ).toThrow(/products\[0\].primary.href/)
+    expect(() =>
+      defineTemplateConfig({ app, marketing: { steps: [{ title: '', description: 'x' }] } }),
+    ).toThrow(/steps\[0\].title/)
+    // 多语言文案缺少语言时类型检查报错，绕过类型时运行时同样拒绝
+    expect(() =>
+      defineTemplateConfig({
+        app,
+        // @ts-expect-error zh 缺失
+        marketing: { stats: { items: [{ value: '1', label: { en: 'Users' } }] } },
+      }),
+    ).toThrow(/stats.items\[0\].label/)
   })
 
   it('merges nested sections field by field', () => {

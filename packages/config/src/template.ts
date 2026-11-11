@@ -21,10 +21,16 @@ export type DefaultLocale = 'en' | 'zh'
  */
 export type LocalizedText<L extends string = string> = string | Readonly<Record<L, string>>
 
-/** 数据背书的一项：数值原样展示（如 `12,000+`），模板不提供任何默认数值 */
+/** 数据背书的一项：数值原样展示（如 `12,000+` / `1.2 万+`），模板不提供任何默认数值 */
 export interface MarketingStat<L extends string = string> {
-  readonly value: string
+  readonly value: LocalizedText<L>
   readonly label: LocalizedText<L>
+}
+
+/** 「三步流程」的一步；序号按数组顺序生成 */
+export interface MarketingStep<L extends string = string> {
+  readonly title: LocalizedText<L>
+  readonly description: LocalizedText<L>
 }
 
 /** 编号产品矩阵的一项；编号按数组顺序生成（01、02…） */
@@ -157,6 +163,8 @@ export interface TemplateConfig<L extends string = string> {
       readonly items: readonly MarketingStat<L>[]
       readonly source: LocalizedText<L> | null
     }
+    /** 首页「如何开始」流程（通常 3 步），为空时区块不渲染 */
+    readonly steps: readonly MarketingStep<L>[]
     /** 首页编号产品矩阵，为空时区块不渲染 */
     readonly products: readonly MarketingProduct<L>[]
     /** 营销页右下角的悬浮 AI 入口：链接到 href（默认 /app，登录后进入空间），不内嵌对话 */
@@ -238,6 +246,7 @@ export interface TemplateConfigInput<L extends string = DefaultLocale> {
       items?: readonly MarketingStat<NoInfer<L>>[]
       source?: LocalizedText<NoInfer<L>> | null
     }
+    steps?: readonly MarketingStep<NoInfer<L>>[]
     products?: readonly MarketingProduct<NoInfer<L>>[]
     aiEntry?: Partial<TemplateConfig['marketing']['aiEntry']>
   }
@@ -277,6 +286,7 @@ export const templateConfigDefaults = {
   marketing: {
     enabled: true,
     stats: { items: [], source: null },
+    steps: [],
     products: [],
     aiEntry: { enabled: false, href: '/app' },
   },
@@ -314,6 +324,33 @@ export const templateConfigDefaults = {
   },
 } as const satisfies Omit<TemplateConfig<DefaultLocale>, 'app'>
 
+/** 每种语言下文案都非空（字符串形式视为所有语言共用） */
+function filled(text: LocalizedText, locales: readonly string[]): boolean {
+  if (typeof text === 'string') return text.trim() !== ''
+  const record: Readonly<Record<string, string | undefined>> = text
+  return locales.every((locale) => (record[locale] ?? '').trim() !== '')
+}
+
+/** 营销区块的展示文案与链接不能为空：空串会渲染出空格子或无效按钮 */
+function validateMarketing(marketing: TemplateConfig['marketing'], locales: readonly string[]) {
+  const fail = (path: string) => {
+    throw new RangeError(`template config: marketing.${path} must not be empty`)
+  }
+  marketing.stats.items.forEach((item, i) => {
+    if (!filled(item.value, locales)) fail(`stats.items[${i}].value`)
+    if (!filled(item.label, locales)) fail(`stats.items[${i}].label`)
+  })
+  marketing.steps.forEach((step, i) => {
+    if (!filled(step.title, locales)) fail(`steps[${i}].title`)
+  })
+  marketing.products.forEach((product, i) => {
+    if (!filled(product.title, locales)) fail(`products[${i}].title`)
+    if (!filled(product.primary.label, locales)) fail(`products[${i}].primary.label`)
+    if (!product.primary.href.trim()) fail(`products[${i}].primary.href`)
+    if (!product.secondaryHref.trim()) fail(`products[${i}].secondaryHref`)
+  })
+}
+
 /** 合并用户配置与默认值；数组整体替换，不与默认值合并。 */
 export function defineTemplateConfig<const L extends string = DefaultLocale>(
   input: TemplateConfigInput<L>,
@@ -343,6 +380,7 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
     marketing: {
       enabled: input.marketing?.enabled ?? d.marketing.enabled,
       stats: { ...d.marketing.stats, ...input.marketing?.stats },
+      steps: input.marketing?.steps ?? d.marketing.steps,
       products: input.marketing?.products ?? d.marketing.products,
       aiEntry: { ...d.marketing.aiEntry, ...input.marketing?.aiEntry },
     },
@@ -361,9 +399,7 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
   if (config.marketing.stats.items.length > 4) {
     throw new RangeError('template config: marketing.stats.items allows at most 4 entries')
   }
-  if (config.marketing.stats.items.some((item) => !item.value.trim())) {
-    throw new RangeError('template config: marketing.stats.items[].value must not be empty')
-  }
+  validateMarketing(config.marketing, config.i18n.locales)
 
   if (config.billing.enabled && !config.credits.enabled) {
     throw new RangeError('template config: billing.enabled requires credits.enabled')
