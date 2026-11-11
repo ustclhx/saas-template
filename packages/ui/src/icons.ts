@@ -24,6 +24,7 @@ export {
   Inbox,
   Info,
   KeyRound,
+  LayoutGrid,
   ListChecks,
   LogOut,
   Mail,

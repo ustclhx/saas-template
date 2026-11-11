@@ -15,6 +15,36 @@ export type MediaProviderId = 'fal' | 'workers-ai'
 
 export type DefaultLocale = 'en' | 'zh'
 
+/**
+ * 营销区块的多语言文案：单语言项目可直接写字符串；多语言时按 `i18n.locales` 逐个填写，
+ * 缺少某个语言会在类型检查阶段报错（openspec add-ui-design-system tasks 8.5）。
+ */
+export type LocalizedText<L extends string = string> = string | Readonly<Record<L, string>>
+
+/** 数据背书的一项：数值原样展示（如 `12,000+` / `1.2 万+`），模板不提供任何默认数值 */
+export interface MarketingStat<L extends string = string> {
+  readonly value: LocalizedText<L>
+  readonly label: LocalizedText<L>
+}
+
+/** 「三步流程」的一步；序号按数组顺序生成 */
+export interface MarketingStep<L extends string = string> {
+  readonly title: LocalizedText<L>
+  readonly description: LocalizedText<L>
+}
+
+/** 编号产品矩阵的一项；编号按数组顺序生成（01、02…） */
+export interface MarketingProduct<L extends string = string> {
+  readonly title: LocalizedText<L>
+  readonly description: LocalizedText<L>
+  /** 16:10 产品截图；省略时显示占位框 */
+  readonly image?: { readonly src: string; readonly alt: LocalizedText<L> }
+  /** 主按钮 */
+  readonly primary: { readonly label: LocalizedText<L>; readonly href: string }
+  /** 次级链接，文字固定为「了解更多」 */
+  readonly secondaryHref: string
+}
+
 /** 主题预设名单（packages/ui/src/styles/presets/*.css）；@saas/web 的测试断言它与 @saas/ui 的 UI_PRESETS 一致 */
 export const uiPresets = ['neutral', 'blue', 'violet', 'green'] as const
 export const uiShapes = ['sharp', 'rounded', 'pill'] as const
@@ -131,6 +161,20 @@ export interface TemplateConfig<L extends string = string> {
   }
   readonly marketing: {
     readonly enabled: boolean
+    /**
+     * 数据背书区块（用户数、评分等）：数值与来源由项目填写，`items` 为空时整个区块不渲染。
+     * 最多 4 项；`source` 为数据来源说明（如统计口径与日期），显示在数值下方。
+     */
+    readonly stats: {
+      readonly items: readonly MarketingStat<L>[]
+      readonly source: LocalizedText<L> | null
+    }
+    /** 首页「如何开始」流程（通常 3 步），为空时区块不渲染 */
+    readonly steps: readonly MarketingStep<L>[]
+    /** 首页编号产品矩阵，为空时区块不渲染 */
+    readonly products: readonly MarketingProduct<L>[]
+    /** 营销页右下角的悬浮 AI 入口：链接到 href（默认 /app，登录后进入空间），不内嵌对话 */
+    readonly aiEntry: { readonly enabled: boolean; readonly href: string }
   }
   /** 界面主题（openspec add-ui-design-system design D2/D3）；项目品牌色放 apps/web/src/styles/brand.css */
   readonly ui: {
@@ -204,7 +248,16 @@ export interface TemplateConfigInput<L extends string = DefaultLocale> {
     overage?: Partial<Section<'billing'>['overage']>
   }
   credits?: Partial<Section<'credits'>>
-  marketing?: Partial<Section<'marketing'>>
+  marketing?: {
+    enabled?: boolean
+    stats?: {
+      items?: readonly MarketingStat<NoInfer<L>>[]
+      source?: LocalizedText<NoInfer<L>> | null
+    }
+    steps?: readonly MarketingStep<NoInfer<L>>[]
+    products?: readonly MarketingProduct<NoInfer<L>>[]
+    aiEntry?: Partial<TemplateConfig['marketing']['aiEntry']>
+  }
   ui?: Partial<Section<'ui'>>
   ai?: Partial<Omit<Section<'ai'>, 'defaultPricingMode' | 'text'>> & {
     text?: z.input<typeof textConfigSchema>
@@ -238,7 +291,13 @@ export const templateConfigDefaults = {
     refundWindowDays: 30,
   },
   credits: { enabled: true, dailyEnabled: false },
-  marketing: { enabled: true },
+  marketing: {
+    enabled: true,
+    stats: { items: [], source: null },
+    steps: [],
+    products: [],
+    aiEntry: { enabled: false, href: '/app' },
+  },
   ui: { preset: 'neutral', shape: 'rounded', density: 'default', appLayout: 'sidebar' },
   ai: {
     text: {
@@ -273,6 +332,33 @@ export const templateConfigDefaults = {
   },
 } as const satisfies Omit<TemplateConfig<DefaultLocale>, 'app'>
 
+/** 每种语言下文案都非空（字符串形式视为所有语言共用） */
+function filled(text: LocalizedText, locales: readonly string[]): boolean {
+  if (typeof text === 'string') return text.trim() !== ''
+  const record: Readonly<Record<string, string | undefined>> = text
+  return locales.every((locale) => (record[locale] ?? '').trim() !== '')
+}
+
+/** 营销区块的展示文案与链接不能为空：空串会渲染出空格子或无效按钮 */
+function validateMarketing(marketing: TemplateConfig['marketing'], locales: readonly string[]) {
+  const fail = (path: string) => {
+    throw new RangeError(`template config: marketing.${path} must not be empty`)
+  }
+  marketing.stats.items.forEach((item, i) => {
+    if (!filled(item.value, locales)) fail(`stats.items[${i}].value`)
+    if (!filled(item.label, locales)) fail(`stats.items[${i}].label`)
+  })
+  marketing.steps.forEach((step, i) => {
+    if (!filled(step.title, locales)) fail(`steps[${i}].title`)
+  })
+  marketing.products.forEach((product, i) => {
+    if (!filled(product.title, locales)) fail(`products[${i}].title`)
+    if (!filled(product.primary.label, locales)) fail(`products[${i}].primary.label`)
+    if (!product.primary.href.trim()) fail(`products[${i}].primary.href`)
+    if (!product.secondaryHref.trim()) fail(`products[${i}].secondaryHref`)
+  })
+}
+
 /** 合并用户配置与默认值；数组整体替换，不与默认值合并。 */
 export function defineTemplateConfig<const L extends string = DefaultLocale>(
   input: TemplateConfigInput<L>,
@@ -299,7 +385,13 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
       overage: { ...d.billing.overage, ...input.billing?.overage },
     },
     credits: { ...d.credits, ...input.credits },
-    marketing: { ...d.marketing, ...input.marketing },
+    marketing: {
+      enabled: input.marketing?.enabled ?? d.marketing.enabled,
+      stats: { ...d.marketing.stats, ...input.marketing?.stats },
+      steps: input.marketing?.steps ?? d.marketing.steps,
+      products: input.marketing?.products ?? d.marketing.products,
+      aiEntry: { ...d.marketing.aiEntry, ...input.marketing?.aiEntry },
+    },
     ui: uiConfigSchema.parse({ ...d.ui, ...input.ui }),
     ai: {
       ...d.ai,
@@ -310,6 +402,12 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
     features: { ...d.features, ...input.features },
     analytics: { ...d.analytics, ...input.analytics },
   }
+
+  // 背书条桌面端按 4 列排布；数值为空串时会渲染出空格子
+  if (config.marketing.stats.items.length > 4) {
+    throw new RangeError('template config: marketing.stats.items allows at most 4 entries')
+  }
+  validateMarketing(config.marketing, config.i18n.locales)
 
   if (config.billing.enabled && !config.credits.enabled) {
     throw new RangeError('template config: billing.enabled requires credits.enabled')

@@ -562,7 +562,7 @@ const copy = pending?.action === 'transfer'
 | 后台列表 | `DataTable` + `adminListSearch` / `adminListPage`，筛选改变回第一页 | 现有 |
 | 表单 | `useAppForm` + 字段组件，提交按钮 `SubmitButton`，错误用 `FieldErrors` | 现有 |
 | 长文阅读 | `Reader`：安全 Markdown、自动目录、吸顶高亮、阅读进度、打印样式与导出 PDF（`registerPdfExporter` 扩展点），见 §4 | 已提供（tasks 8.4），预览 `/dev/ui#reader` 与整页 `/dev/ui/reader?state=ready\|empty\|loading\|error` |
-| 营销区块 | 数据背书（未配置不渲染）、三步流程、编号产品矩阵、悬浮 AI 入口 | 将由 tasks 8.5 提供 |
+| 营销区块 | 数据背书（未配置不渲染）、三步流程、编号产品矩阵、悬浮 AI 入口 | `apps/web/src/features/marketing/sections/`（`Stats`、`Steps`、`ProductMatrix`）与 `ai-entry.tsx`，内容来自 `template.config.ts` 的 `marketing` 段；入口叠在浮动主题切换上方，页脚内容盒距页面底部 136px；`/dev/ui#marketing` 预览 |
 | 业务界面组件 | 推荐追问、消息评分、嵌入式对话、余额不足弹窗、预计消耗、会员锁定、每日领取 | 现有（tasks 8.6），接口见 [6.1](#61-业务界面组件) |
 
 **AI 聊天组件（tasks 9.1 选型结论，待使用者确认）**：倾向移植 Fluid 的 AI 组件（chat-message、thinking-steps、
