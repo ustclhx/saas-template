@@ -135,6 +135,11 @@ export {
 } from './components/form.tsx'
 export { Input, type InputProps } from './components/input.tsx'
 export { Label } from './components/label.tsx'
+export {
+  type PdfExportDocument,
+  type PdfExporter,
+  registerPdfExporter,
+} from './components/pdf-exporter.ts'
 export { ScrollArea, type ScrollAreaProps, ScrollBar } from './components/scroll-area.tsx'
 export {
   Select,
