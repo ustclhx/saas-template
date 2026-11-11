@@ -15,6 +15,30 @@ export type MediaProviderId = 'fal' | 'workers-ai'
 
 export type DefaultLocale = 'en' | 'zh'
 
+/**
+ * 营销区块的多语言文案：单语言项目可直接写字符串；多语言时按 `i18n.locales` 逐个填写，
+ * 缺少某个语言会在类型检查阶段报错（openspec add-ui-design-system tasks 8.5）。
+ */
+export type LocalizedText<L extends string = string> = string | Readonly<Record<L, string>>
+
+/** 数据背书的一项：数值原样展示（如 `12,000+`），模板不提供任何默认数值 */
+export interface MarketingStat<L extends string = string> {
+  readonly value: string
+  readonly label: LocalizedText<L>
+}
+
+/** 编号产品矩阵的一项；编号按数组顺序生成（01、02…） */
+export interface MarketingProduct<L extends string = string> {
+  readonly title: LocalizedText<L>
+  readonly description: LocalizedText<L>
+  /** 16:10 产品截图；省略时显示占位框 */
+  readonly image?: { readonly src: string; readonly alt: LocalizedText<L> }
+  /** 主按钮 */
+  readonly primary: { readonly label: LocalizedText<L>; readonly href: string }
+  /** 次级链接，文字固定为「了解更多」 */
+  readonly secondaryHref: string
+}
+
 /** 主题预设名单（packages/ui/src/styles/presets/*.css）；@saas/web 的测试断言它与 @saas/ui 的 UI_PRESETS 一致 */
 export const uiPresets = ['neutral', 'blue', 'violet', 'green'] as const
 export const uiShapes = ['sharp', 'rounded', 'pill'] as const
@@ -125,6 +149,18 @@ export interface TemplateConfig<L extends string = string> {
   }
   readonly marketing: {
     readonly enabled: boolean
+    /**
+     * 数据背书区块（用户数、评分等）：数值与来源由项目填写，`items` 为空时整个区块不渲染。
+     * 最多 4 项；`source` 为数据来源说明（如统计口径与日期），显示在数值下方。
+     */
+    readonly stats: {
+      readonly items: readonly MarketingStat<L>[]
+      readonly source: LocalizedText<L> | null
+    }
+    /** 首页编号产品矩阵，为空时区块不渲染 */
+    readonly products: readonly MarketingProduct<L>[]
+    /** 营销页右下角的悬浮 AI 入口：链接到 href（默认 /app，登录后进入空间），不内嵌对话 */
+    readonly aiEntry: { readonly enabled: boolean; readonly href: string }
   }
   /** 界面主题（openspec add-ui-design-system design D2/D3）；项目品牌色放 apps/web/src/styles/brand.css */
   readonly ui: {
@@ -196,7 +232,15 @@ export interface TemplateConfigInput<L extends string = DefaultLocale> {
     overage?: Partial<Section<'billing'>['overage']>
   }
   credits?: Partial<Section<'credits'>>
-  marketing?: Partial<Section<'marketing'>>
+  marketing?: {
+    enabled?: boolean
+    stats?: {
+      items?: readonly MarketingStat<NoInfer<L>>[]
+      source?: LocalizedText<NoInfer<L>> | null
+    }
+    products?: readonly MarketingProduct<NoInfer<L>>[]
+    aiEntry?: Partial<TemplateConfig['marketing']['aiEntry']>
+  }
   ui?: Partial<Section<'ui'>>
   ai?: Partial<Omit<Section<'ai'>, 'defaultPricingMode' | 'text'>> & {
     text?: z.input<typeof textConfigSchema>
@@ -230,7 +274,12 @@ export const templateConfigDefaults = {
     refundWindowDays: 30,
   },
   credits: { enabled: true, dailyEnabled: false },
-  marketing: { enabled: true },
+  marketing: {
+    enabled: true,
+    stats: { items: [], source: null },
+    products: [],
+    aiEntry: { enabled: false, href: '/app' },
+  },
   ui: { preset: 'neutral', shape: 'rounded', density: 'default' },
   ai: {
     text: {
@@ -291,7 +340,12 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
       overage: { ...d.billing.overage, ...input.billing?.overage },
     },
     credits: { ...d.credits, ...input.credits },
-    marketing: { ...d.marketing, ...input.marketing },
+    marketing: {
+      enabled: input.marketing?.enabled ?? d.marketing.enabled,
+      stats: { ...d.marketing.stats, ...input.marketing?.stats },
+      products: input.marketing?.products ?? d.marketing.products,
+      aiEntry: { ...d.marketing.aiEntry, ...input.marketing?.aiEntry },
+    },
     ui: uiConfigSchema.parse({ ...d.ui, ...input.ui }),
     ai: {
       ...d.ai,
@@ -301,6 +355,14 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
     },
     features: { ...d.features, ...input.features },
     analytics: { ...d.analytics, ...input.analytics },
+  }
+
+  // 背书条桌面端按 4 列排布；数值为空串时会渲染出空格子
+  if (config.marketing.stats.items.length > 4) {
+    throw new RangeError('template config: marketing.stats.items allows at most 4 entries')
+  }
+  if (config.marketing.stats.items.some((item) => !item.value.trim())) {
+    throw new RangeError('template config: marketing.stats.items[].value must not be empty')
   }
 
   if (config.billing.enabled && !config.credits.enabled) {

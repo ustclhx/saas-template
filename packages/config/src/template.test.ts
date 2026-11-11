@@ -19,6 +19,10 @@ describe('defineTemplateConfig', () => {
     expect(config.credits.enabled).toBe(true)
     expect(config.credits.dailyEnabled).toBe(false)
     expect(config.marketing.enabled).toBe(true)
+    // 模板不提供背书数值与产品示例：未配置时这两个区块不渲染
+    expect(config.marketing.stats).toEqual({ items: [], source: null })
+    expect(config.marketing.products).toEqual([])
+    expect(config.marketing.aiEntry).toEqual({ enabled: false, href: '/app' })
     expect(config.i18n.enabled).toBe(true)
     expect(config.features.analytics).toBe('plausible')
     expect(config.analytics.cloudflareToken).toBe('')
@@ -27,6 +31,36 @@ describe('defineTemplateConfig', () => {
       maxRatio: 0.2,
       maxCredits: 50,
       dailyBudgetPerWorkspace: 200,
+    })
+  })
+
+  it('merges marketing blocks and rejects malformed stats', () => {
+    const config = defineTemplateConfig({
+      app,
+      marketing: {
+        stats: { items: [{ value: '1,000+', label: { en: 'Users', zh: '用户' } }] },
+        aiEntry: { enabled: true },
+      },
+    })
+    expect(config.marketing.enabled).toBe(true)
+    expect(config.marketing.stats).toEqual({
+      items: [{ value: '1,000+', label: { en: 'Users', zh: '用户' } }],
+      source: null,
+    })
+    expect(config.marketing.aiEntry).toEqual({ enabled: true, href: '/app' })
+
+    const stat = { value: '1', label: 'Users' }
+    expect(() =>
+      defineTemplateConfig({ app, marketing: { stats: { items: Array(5).fill(stat) } } }),
+    ).toThrow(/at most 4/)
+    expect(() =>
+      defineTemplateConfig({ app, marketing: { stats: { items: [{ ...stat, value: ' ' }] } } }),
+    ).toThrow(/must not be empty/)
+    // 多语言文案缺少语言时类型检查报错
+    defineTemplateConfig({
+      app,
+      // @ts-expect-error zh 缺失
+      marketing: { stats: { items: [{ value: '1', label: { en: 'Users' } }] } },
     })
   })
 

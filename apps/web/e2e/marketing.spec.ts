@@ -22,6 +22,49 @@ for (const prefix of prefixes) {
     await expect(page.locator(`footer a[href="${prefix}/legal/refund"]`)).toBeVisible()
   })
 
+  test(`首页新区块：三步流程、编号产品矩阵与悬浮 AI 入口（${lang}）`, async ({ page }) => {
+    // openspec add-ui-design-system 8.5：背书数值未配置时整个区块不渲染
+    await page.goto(prefix || '/')
+    const { stats, products, aiEntry } = templateConfig.marketing
+    if (stats.items.length === 0) {
+      await expect(
+        page.locator('section[aria-label]').filter({ has: page.locator('dl') }),
+      ).toHaveCount(0)
+    }
+    await expect(page.locator('section#steps ol > li')).toHaveCount(3)
+    const cards = page.locator('section#products ol > li')
+    await expect(cards).toHaveCount(products.length)
+    for (const [index, card] of (await cards.all()).entries()) {
+      await expect(card).toContainText(String(index + 1).padStart(2, '0'))
+      await expect(card.locator('a')).toHaveCount(2)
+    }
+
+    const entry = page.locator('a.fixed[aria-label]')
+    if (!aiEntry.enabled || !templateConfig.ai.text.enabled) {
+      await expect(entry).toHaveCount(0)
+      return
+    }
+    await expect(entry).toHaveAttribute('href', aiEntry.href)
+    // 水合后键盘可聚焦（开发服务器首次编译较慢，放宽等待）
+    await expect(page.locator('[data-theme-option="system"]')).toBeEnabled({ timeout: 30_000 })
+    await entry.focus()
+    await expect(entry).toBeFocused()
+    // 滚到页面底部：页脚链接位于入口与浮动主题切换之上，仍可点击
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 800 })
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+      const box = await entry.boundingBox()
+      for (const link of await page.locator('footer a').all()) {
+        const linkBox = await link.boundingBox()
+        if (!box || !linkBox) continue
+        expect(linkBox.y + linkBox.height, await link.innerText()).toBeLessThanOrEqual(box.y)
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        width,
+      )
+    }
+  })
+
   test(`博客列表、文章与标签（${lang}）`, async ({ page }) => {
     await page.goto(`${prefix}/blog`)
     await expect(page.locator('html')).toHaveAttribute('lang', lang)

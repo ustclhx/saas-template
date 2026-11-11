@@ -5,10 +5,14 @@ import { site } from './site.ts'
 
 const footerLink = 'text-muted-foreground text-sm hover:text-foreground'
 
-/** 页脚区块：产品、资源与法律页链接 */
-export function SiteFooter() {
+/**
+ * 页脚区块：产品、资源与法律页链接。
+ * floatingEntry：页面右下角有悬浮 AI 入口时页脚底部多留 88px（设计稿取值）。入口位于视口底部 72–120px，
+ * 加上版权行自身的下边距，页脚链接最低处距页面底部约 136px，滚到底时不被入口与浮动主题切换遮挡。
+ */
+export function SiteFooter({ floatingEntry = false }: { floatingEntry?: boolean }) {
   return (
-    <footer className="border-t">
+    <footer className={floatingEntry ? 'border-t pb-22' : 'border-t'}>
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:grid-cols-4">
         <div className="grid content-start gap-2">
           <p className="font-semibold">{site.name}</p>

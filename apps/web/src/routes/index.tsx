@@ -1,5 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { GrowthForm } from '../features/growth/forms.tsx'
+import { localized, localizeProduct } from '../features/marketing/localized.ts'
 import { MarketingShell } from '../features/marketing/marketing-shell.tsx'
 import { placeholderPlans } from '../features/marketing/pricing-placeholder.ts'
 import { Cta } from '../features/marketing/sections/cta.tsx'
@@ -7,7 +8,11 @@ import { Faq } from '../features/marketing/sections/faq.tsx'
 import { Features } from '../features/marketing/sections/features.tsx'
 import { Hero } from '../features/marketing/sections/hero.tsx'
 import { Pricing } from '../features/marketing/sections/pricing.tsx'
+import { ProductMatrix } from '../features/marketing/sections/product-matrix.tsx'
+import { Stats } from '../features/marketing/sections/stats.tsx'
+import { Steps } from '../features/marketing/sections/steps.tsx'
 import { Testimonials } from '../features/marketing/sections/testimonials.tsx'
+import { site } from '../features/marketing/site.ts'
 import { originFromMatches, pageHead, staticPage } from '../features/seo/metadata.ts'
 import { organizationData, websiteData } from '../features/seo/structured-data.ts'
 import { getLocale } from '../paraglide/runtime.js'
@@ -29,9 +34,17 @@ export const Route = createFileRoute('/')({
 })
 
 function HomePage() {
+  const { stats, products } = site.marketing
   return (
     <MarketingShell>
       <Hero />
+      {/* 新区块（openspec add-ui-design-system 8.5）：背书与产品矩阵未配置时不渲染 */}
+      <Stats
+        items={stats.items.map((item) => ({ value: item.value, label: localized(item.label) }))}
+        source={stats.source === null ? null : localized(stats.source)}
+      />
+      <Steps />
+      <ProductMatrix products={products.map((product) => localizeProduct(product))} />
       <Features />
       {templateConfig.billing.enabled && <Pricing plans={placeholderPlans} />}
       <Testimonials />

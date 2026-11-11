@@ -37,7 +37,45 @@ export default defineTemplateConfig({
     refundWindowDays: 30, // 可申请退款的付款时间范围；退款需人工审核，默认不主动退
   },
   credits: { enabled: true, dailyEnabled: false },
-  marketing: { enabled: true },
+  marketing: {
+    enabled: true,
+    // 数据背书：只填真实可查的数值与来源，模板不提供示例数字；items 为空时区块不渲染。例如
+    // items: [{ value: '12,000+', label: { en: 'Registered users', zh: '注册用户' } }],
+    // source: { en: 'Platform data as of 2026-10', zh: '平台统计，截至 2026-10' },
+    stats: { items: [], source: null },
+    // 编号产品矩阵：按顺序编号；image 省略时显示占位框（16:10 截图放 apps/web/public 后填 src）
+    products: [
+      {
+        title: { en: 'Document assistant', zh: '文档助手' },
+        description: {
+          en: 'Upload a document and ask questions; answers cite the sections they come from.',
+          zh: '上传文档后直接提问，回答标出引用的章节。',
+        },
+        primary: { label: { en: 'Start asking', zh: '开始提问' }, href: '/register' },
+        secondaryHref: '#features',
+      },
+      {
+        title: { en: 'Image generation', zh: '图片生成' },
+        description: {
+          en: 'Describe a picture in words and generate artwork in several sizes and styles.',
+          zh: '用文字描述生成配图，支持多种尺寸与风格。',
+        },
+        primary: { label: { en: 'Generate images', zh: '生成图片' }, href: '/register' },
+        secondaryHref: '#features',
+      },
+      {
+        title: { en: 'Long-form reports', zh: '长文报告' },
+        description: {
+          en: 'Turn source material into a chaptered report with a table of contents, ready to export as PDF.',
+          zh: '把资料整理成分章报告，自动目录，可导出 PDF。',
+        },
+        primary: { label: { en: 'Create a report', zh: '生成报告' }, href: '/register' },
+        secondaryHref: '#features',
+      },
+    ],
+    // 右下角悬浮 AI 入口：点击跳转 href（未登录先到登录页），不内嵌对话
+    aiEntry: { enabled: true, href: '/app' },
+  },
   // 界面主题：preset 'neutral' | 'blue' | 'violet' | 'green'；shape 'sharp' | 'rounded' | 'pill'；
   // density 'default'（36px 控件）| 'compact'（28px）。品牌色写在 apps/web/src/styles/brand.css
   ui: { preset: 'neutral', shape: 'rounded', density: 'default' },
