@@ -367,3 +367,71 @@ describe('SSR', () => {
     expect(renderToString(<Controlled />)).toMatch(/data-state="collapsed"/)
   })
 })
+
+describe('工作台用法（tasks 8.3）', () => {
+  function LinkNav({ closeOnNavigate }: { closeOnNavigate?: boolean }) {
+    return (
+      <SidebarProvider labels={labels} widthIcon="4rem" defaultOpen={false}>
+        <Sidebar
+          collapsible="icon"
+          variant="inset"
+          {...(closeOnNavigate !== undefined && { closeOnNavigate })}
+        >
+          <SidebarContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton icon={Icon} render={<a href="#chat" />}>
+                  对话
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarContent>
+        </Sidebar>
+        <SidebarInset>
+          <SidebarTrigger />
+        </SidebarInset>
+      </SidebarProvider>
+    )
+  }
+
+  it('图标栏宽度可配置，收起的行在栏内居中；图标栏收起时面板不补左边距', () => {
+    const html = renderToString(<LinkNav />)
+    expect(html).toMatch(/data-slot="sidebar"[^>]*style="width:4rem"/)
+    expect(html).toContain('--sidebar-width-icon:4rem')
+    expect(html).toMatch(/data-sidebar="menu-button"[^>]*class="[^"]*mx-auto w-8/)
+    expect(html).toMatch(/data-collapsible="icon"/)
+  })
+
+  it('抽屉里选择链接条目后关闭，焦点回到菜单按钮', async () => {
+    mockNarrowViewport()
+    render(<LinkNav />)
+    await waitFor(() => expect(trigger().getAttribute('aria-haspopup')).toBe('dialog'))
+    const opener = trigger()
+    act(() => opener.focus())
+    fireEvent.click(opener)
+    const dialog = await screen.findByRole('dialog', { name: '侧栏导航' })
+    const link = dialog.querySelector('a[href="#chat"]') as HTMLAnchorElement
+    fireEvent.click(link)
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await waitFor(() => expect(document.activeElement).toBe(opener))
+  })
+
+  it('closeOnNavigate={false} 或带修饰键点击时抽屉保持打开', async () => {
+    mockNarrowViewport()
+    render(<LinkNav closeOnNavigate={false} />)
+    await waitFor(() => expect(trigger().getAttribute('aria-haspopup')).toBe('dialog'))
+    fireEvent.click(trigger())
+    const dialog = await screen.findByRole('dialog', { name: '侧栏导航' })
+    fireEvent.click(dialog.querySelector('a[href="#chat"]') as HTMLAnchorElement)
+    await wait(50)
+    expect(screen.queryByRole('dialog')).not.toBeNull()
+    cleanup()
+    render(<LinkNav />)
+    await waitFor(() => expect(trigger().getAttribute('aria-haspopup')).toBe('dialog'))
+    fireEvent.click(trigger())
+    const again = await screen.findByRole('dialog', { name: '侧栏导航' })
+    fireEvent.click(again.querySelector('a[href="#chat"]') as HTMLAnchorElement, { metaKey: true })
+    await wait(50)
+    expect(screen.queryByRole('dialog')).not.toBeNull()
+  })
+})

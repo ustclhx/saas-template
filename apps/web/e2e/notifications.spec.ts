@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { expect, test } from '@playwright/test'
 import { createDb } from '@saas/db'
 import { loadEnv } from 'vite'
+import templateConfig from '../../../template.config.ts'
 import { writeNotification } from '../src/features/notifications/service.ts'
 import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
 import { stubTurnstile } from './turnstile.ts'
@@ -19,7 +20,10 @@ test('通用写入服务触发未读加一，点击跳转并归零，支持全�
     const [account] = await sql`select id from "user" where email=${email}`
     const [workspace] = await sql`select id from organization where slug=${slug}`
     if (!account || !workspace) throw new Error('Notification fixture missing')
-    await expect(page.getByTestId('notification-unread')).toHaveText('0')
+    // 工作台侧边栏布局在还没有通知时不渲染通知块
+    if (templateConfig.ui.appLayout === 'sidebar')
+      await expect(page.getByTestId('notification-unread')).toHaveCount(0)
+    else await expect(page.getByTestId('notification-unread')).toHaveText('0')
     await writeNotification(db, workspace.id, {
       userId: account.id,
       type: 'test.completed',

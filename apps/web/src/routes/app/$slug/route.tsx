@@ -1,7 +1,7 @@
-import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
-import { DailyCreditsNotice } from '../../../features/credits/daily-notice.tsx'
-import { NotificationCenter } from '../../../features/notifications/center.tsx'
-import { WorkspaceSwitcher } from '../../../features/workspace/components.tsx'
+import { createFileRoute } from '@tanstack/react-router'
+import { SidebarLayout } from '../../../features/app-shell/sidebar-layout.tsx'
+import { readSidebarOpen } from '../../../features/app-shell/sidebar-state.ts'
+import { TopbarLayout } from '../../../features/app-shell/topbar-layout.tsx'
 import { getWorkspacePage } from '../../../features/workspace/workspace.functions.ts'
 import { m } from '../../../paraglide/messages.js'
 import { templateConfig } from '../../../server/template-config.ts'
@@ -9,6 +9,8 @@ import { templateConfig } from '../../../server/template-config.ts'
 export const Route = createFileRoute('/app/$slug')({
   beforeLoad: async ({ params }) => ({
     workspacePage: await getWorkspacePage({ data: { slug: params.slug } }),
+    // 折叠状态：首屏服务端读 cookie 直接按状态渲染，避免闪动（tasks 8.3）
+    sidebarOpen: readSidebarOpen(),
   }),
   loader: ({ context }) => context.workspacePage,
   staleTime: 0,
@@ -27,87 +29,10 @@ export const Route = createFileRoute('/app/$slug')({
 
 function WorkspaceLayout() {
   const page = Route.useLoaderData()
-  return (
-    <div className="mx-auto grid max-w-4xl gap-8 p-6">
-      <header className="grid gap-4">
-        <h1 data-testid="workspace-name" className="text-2xl font-semibold">
-          {page.workspace.name}
-        </h1>
-        <p>{page.workspace.isPersonal ? m.app_personal_workspace() : m.app_team_workspace()}</p>
-        <p>{m.app_role({ role: page.role })}</p>
-        <p data-testid="current-user">
-          {page.user.name} ({page.user.email})
-        </p>
-        {page.readOnly ? <p role="status">{m.app_readonly()}</p> : null}
-        <DailyCreditsNotice result={page.dailyCredits} />
-        <WorkspaceSwitcher page={page} />
-        <NotificationCenter key={page.workspace.slug} slug={page.workspace.slug} />
-        <nav className="flex flex-wrap gap-4">
-          {templateConfig.billing.enabled &&
-          templateConfig.features.publicApi &&
-          (page.role === 'owner' || page.role === 'admin') ? (
-            <Link
-              to="/app/$slug/api-keys"
-              search={{ page: 0 }}
-              params={{ slug: page.workspace.slug }}
-              className="underline"
-            >
-              API Keys
-            </Link>
-          ) : null}
-          {templateConfig.ai.text.enabled && (
-            <Link to="/app/$slug/chat" params={{ slug: page.workspace.slug }} className="underline">
-              {m.app_chat()}
-            </Link>
-          )}
-          {templateConfig.ai.image || templateConfig.ai.video ? (
-            <Link
-              to="/app/$slug/tasks"
-              params={{ slug: page.workspace.slug }}
-              className="underline"
-            >
-              {m.media_tasks_title()}
-            </Link>
-          ) : null}
-          {templateConfig.ai.image || templateConfig.ai.video ? (
-            <Link
-              to="/app/$slug/media/new"
-              params={{ slug: page.workspace.slug }}
-              className="underline"
-            >
-              {m.media_title()}
-            </Link>
-          ) : null}
-          <Link
-            to="/app/$slug/settings"
-            params={{ slug: page.workspace.slug }}
-            className="underline"
-          >
-            {m.app_workspace_settings()}
-          </Link>
-          {templateConfig.billing.enabled && (
-            <Link
-              to="/app/$slug/billing"
-              params={{ slug: page.workspace.slug }}
-              className="underline"
-            >
-              {m.app_billing()}
-            </Link>
-          )}
-          {templateConfig.credits.enabled && (
-            <Link
-              to="/app/$slug/usage"
-              params={{ slug: page.workspace.slug }}
-              className="underline"
-            >
-              {m.app_usage()}
-            </Link>
-          )}
-        </nav>
-      </header>
-      <main>
-        <Outlet />
-      </main>
-    </div>
+  const { sidebarOpen } = Route.useRouteContext()
+  return templateConfig.ui.appLayout === 'sidebar' ? (
+    <SidebarLayout page={page} defaultOpen={sidebarOpen} />
+  ) : (
+    <TopbarLayout page={page} />
   )
 }

@@ -45,6 +45,11 @@ const projectOwnedFiles = [
     path: 'apps/web/src/features/theme/html-attributes.ts',
     guidance: 'put template HTML attribute handling outside the project-owned extension',
   },
+  {
+    path: 'apps/web/src/features/app-shell/nav.project.ts',
+    guidance:
+      'register template navigation items in apps/web/src/features/app-shell/nav.default.ts',
+  },
 ]
 
 function git(cwd, ...args) {
@@ -391,14 +396,19 @@ export function lintMigrations(base, cwd = process.cwd()) {
   return errors
 }
 
-/** 项目自有文件自创建提交之后不得修改或删除；尚未创建（早期版本）时不检查 */
-export function brandFileErrors(target = 'HEAD', cwd = process.cwd()) {
+/**
+ * 项目自有文件自创建提交之后不得修改或删除；尚未创建（早期版本）时不检查。
+ * 传入 `changeBase`（PR 的基准提交）时，创建提交尚不在基准中的文件属于本次变更新增，
+ * 合并前可以继续修改（squash 合并后整体成为创建提交）。
+ */
+export function brandFileErrors(target = 'HEAD', cwd = process.cwd(), changeBase = undefined) {
   return projectOwnedFiles.flatMap(({ path, guidance }) => {
     const created = git(cwd, 'log', '--diff-filter=A', '--format=%H', target, '--', path)
       .split('\n')
       .filter(Boolean)
       .at(-1)
     if (!created) return []
+    if (changeBase && !ancestor(created, changeBase, cwd)) return []
     const changed = git(cwd, 'diff', '--name-only', created, target, '--', path)
     return changed
       ? [`${path}: project-owned file must stay as created in ${created.slice(0, 12)}; ${guidance}`]
@@ -710,7 +720,9 @@ export function checkRelease(version, cwd = process.cwd()) {
     (release) => release.version !== version && ancestor(release.commit, range.base, cwd),
   )
   errors.push(...immutableMigrations(range.base, range.target, cwd, published))
-  errors.push(...brandFileErrors(range.target, cwd))
+  // CI 在 PR 中设置 CHANGE_BASE（template-release-checks.yml），本地发版检查不设
+  const { CHANGE_BASE: changeBase } = process.env
+  errors.push(...brandFileErrors(range.target, cwd, changeBase || undefined))
   const index = readFileSync(join(cwd, 'docs/upgrades/README.md'), 'utf8')
   const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   if (

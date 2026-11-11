@@ -1215,7 +1215,8 @@ const SidebarMenuButton = forwardRef<HTMLButtonElement, SidebarMenuButtonProps>(
       className: cn(
         sidebarMenuButtonVariants({ variant }),
         heightClass,
-        collapsed && 'w-8',
+        // 模板改动：图标栏宽度可配置（widthIcon），收起的行在栏内水平居中
+        collapsed && 'mx-auto w-8',
         shape.item,
         className,
       ),

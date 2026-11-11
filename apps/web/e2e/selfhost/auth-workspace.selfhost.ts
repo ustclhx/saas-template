@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { delimiter } from 'node:path'
 import { promisify } from 'node:util'
 import { expect, type Page, test } from '@playwright/test'
-import { chooseOption } from '../select.ts'
+import { switchWorkspace } from '../workspace-switch.ts'
 
 const runFile = promisify(execFile)
 const PASSWORD = 'correct-horse-battery'
@@ -183,7 +183,9 @@ test('fresh Node Compose: delivered verification, sign-out, password login and t
   await page.getByRole('link', { name: copy.continue, exact: true }).click()
   await expect(page).toHaveURL(PERSONAL_URL)
   const personalURL = page.url()
-  await expect(page.getByTestId('current-user')).toHaveText(`${name} (${email})`)
+  // 侧边栏账户入口分两行显示名称与邮箱
+  await expect(page.getByTestId('current-user')).toContainText(name)
+  await expect(page.getByTestId('current-user')).toContainText(email)
   expect(await sessionIdentity(page)).toEqual({ email, verified: true })
   const oldCookies = await context.cookies()
   expect(oldCookies.some((cookie) => cookie.name.endsWith('session_token'))).toBe(true)
@@ -234,17 +236,15 @@ test('fresh Node Compose: delivered verification, sign-out, password login and t
   await expect(page).toHaveURL(`${baseURL}/app/${slug}`)
   await expect(page.getByTestId('workspace-name')).toHaveText(teamName)
   await expect(page.getByText(copy.team, { exact: true })).toBeVisible()
-  await expect(page.getByTestId('current-user')).toHaveText(`${name} (${email})`)
+  await expect(page.getByTestId('current-user')).toContainText(name)
+  await expect(page.getByTestId('current-user')).toContainText(email)
   await expect(page.getByText(copy.owner, { exact: true })).toBeVisible()
   await page.getByRole('link', { name: copy.settings, exact: true }).click()
   await expect(page.getByRole('form', { name: 'Invite member', exact: true })).toBeVisible()
   await expect(page.getByText(`${name} (${email}) · owner`, { exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Delete team workspace', exact: true })).toBeVisible()
 
-  await chooseOption(
-    page.getByRole('combobox', { name: 'Switch workspace', exact: true }),
-    'Personal (personal)',
-  )
+  await switchWorkspace(page, `Personal · ${copy.personal}`)
   await expect(page).toHaveURL(personalURL)
   await expect(page.getByTestId('workspace-name')).toHaveText('Personal')
   await page.getByRole('link', { name: copy.settings, exact: true }).click()
@@ -252,10 +252,7 @@ test('fresh Node Compose: delivered verification, sign-out, password login and t
   await expect(page.getByRole('link', { name: 'Delete team workspace', exact: true })).toHaveCount(
     0,
   )
-  await chooseOption(
-    page.getByRole('combobox', { name: 'Switch workspace', exact: true }),
-    teamName,
-  )
+  await switchWorkspace(page, teamName)
   await expect(page).toHaveURL(`${baseURL}/app/${slug}`)
   await expect(page.getByTestId('workspace-name')).toHaveText(teamName)
   expect(await sessionIdentity(page)).toEqual({ email, verified: true })

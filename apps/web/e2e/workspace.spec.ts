@@ -13,6 +13,7 @@ import {
 } from './fixtures.ts'
 import { chooseOption } from './select.ts'
 import { stubTurnstile } from './turnstile.ts'
+import { switchWorkspace } from './workspace-switch.ts'
 
 test('workspace creation, invitation entry and personal switching obey tenancy flag', async ({
   page,
@@ -86,10 +87,14 @@ test('workspace creation, invitation entry and personal switching obey tenancy f
   })
   await page.getByRole('button', { name: 'Send invitation' }).click()
   await expect(page.getByText(`invite-${key}@example.com`, { exact: false })).toBeVisible()
-  await chooseOption(
-    page.getByRole('combobox', { name: 'Switch workspace' }),
-    'Personal (personal)',
-  )
+  // 侧边栏布局在工作区菜单切换；顶部布局沿用页面上的 Switch workspace 下拉
+  if (templateConfig.ui.appLayout === 'sidebar')
+    await switchWorkspace(page, 'Personal · Personal workspace')
+  else
+    await chooseOption(
+      page.getByRole('combobox', { name: 'Switch workspace' }),
+      'Personal (personal)',
+    )
   await expect(page).toHaveURL(personalUrl)
   await expect(page.getByTestId('workspace-name')).toHaveText('Personal')
   await page.goto(`/accept-invitation?id=${invitationId}`)

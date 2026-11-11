@@ -6,6 +6,7 @@ import {
   type CSSProperties,
   forwardRef,
   type HTMLAttributes,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   useEffect,
   useLayoutEffect,
@@ -42,10 +43,23 @@ interface SidebarSheetProps {
   side: SidebarSide
   open: boolean
   onClose: () => void
+  closeOnNavigate: boolean
   children: ReactNode
 }
 
-function SidebarSheet({ side, open, onClose, children }: SidebarSheetProps) {
+/** 模板新增：抽屉内点击了会在当前页导航的链接（非新窗口、无修饰键） */
+function isSameTabLinkClick(event: ReactMouseEvent<HTMLElement>) {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+    return false
+  const target = event.target instanceof Element ? event.target : null
+  // 不能用 defaultPrevented 判断：客户端路由的链接自己会 preventDefault 再导航
+  const link = target?.closest('a[href]')
+  if (!link || !event.currentTarget.contains(link) || link.hasAttribute('download')) return false
+  const linkTarget = link.getAttribute('target')
+  return !linkTarget || linkTarget === '_self'
+}
+
+function SidebarSheet({ side, open, onClose, closeOnNavigate, children }: SidebarSheetProps) {
   const { widthMobile, labels } = useSidebar()
   // Reduced motion drops the slide (the movement) but keeps the scrim's
   // opacity fade — the state change stays legible without the travel.
@@ -93,7 +107,7 @@ function SidebarSheet({ side, open, onClose, children }: SidebarSheetProps) {
             <DialogPrimitive.Overlay asChild forceMount>
               <motion.div
                 data-sidebar="overlay"
-                className="fixed inset-0 bg-black/40 dark:bg-black/80 z-[var(--z-overlay,40)]"
+                className="fixed inset-0 bg-black/40 dark:bg-black/80 z-[var(--z-overlay,40)] print:hidden"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: open ? 1 : 0 }}
                 transition={open ? { duration: spring.moderate.duration } : spring.moderate.exit}
@@ -134,7 +148,8 @@ function SidebarSheet({ side, open, onClose, children }: SidebarSheetProps) {
                 // 模板改动：退场动画期间面板仍在页面上，inert 让其中的链接不可点击、不可聚焦
                 inert={!open}
                 className={cn(
-                  'fixed inset-y-0 z-[var(--z-modal,50)] flex flex-col overflow-hidden outline-none',
+                  // 模板改动：打开的抽屉不进入打印
+                  'fixed inset-y-0 z-[var(--z-modal,50)] flex flex-col overflow-hidden outline-none print:hidden',
                   side === 'left' ? 'left-0' : 'right-0',
                   !open && 'pointer-events-none',
                   surfaceClasses(level, 3),
@@ -150,6 +165,10 @@ function SidebarSheet({ side, open, onClose, children }: SidebarSheetProps) {
                 }
                 onAnimationComplete={() => {
                   if (!open) setMounted(false)
+                }}
+                // 模板改动：选择抽屉里的导航条目后关闭抽屉，焦点照常还给打开前的元素（菜单按钮）
+                onClick={(event) => {
+                  if (closeOnNavigate && isSameTabLinkClick(event)) onClose()
                 }}
               >
                 {/* Radix's TitleWarning checks for a rendered DialogTitle, so
@@ -190,6 +209,8 @@ export interface SidebarProps
   railTooltipOpen?: boolean
   /** Render the built-in resize/collapse rail. Default true. */
   rail?: boolean
+  /** 模板新增：移动抽屉里点击同页导航的链接后关闭抽屉。@default true */
+  closeOnNavigate?: boolean
 }
 
 const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
@@ -201,6 +222,7 @@ const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
       bordered = true,
       rail = true,
       railTooltipOpen,
+      closeOnNavigate = true,
       className,
       style,
       children,
@@ -252,7 +274,12 @@ const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
     return (
       <>
         {isMobile && (
-          <SidebarSheet side={side} open={openMobile} onClose={() => setOpenMobile(false)}>
+          <SidebarSheet
+            side={side}
+            open={openMobile}
+            onClose={() => setOpenMobile(false)}
+            closeOnNavigate={closeOnNavigate}
+          >
             {children}
           </SidebarSheet>
         )}
