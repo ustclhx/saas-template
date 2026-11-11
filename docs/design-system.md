@@ -147,6 +147,7 @@ grep -nE '^export' packages/ui/src/index.ts
   | `Toaster` | `labels`（`region`、`announcement`、`close`） | 通知区域名称（可含 `{hotkey}`）、读屏播报前缀、关闭按钮名称；`toast()` 的内容与 `action.label` 由调用方传入 |
   | `SidebarProvider` | `labels`（`title`、`expand`、`collapse`、`rail`、`railResize`、`railCollapse`；开启 peek 时 `peek`） | 移动抽屉名称、触发按钮与拖拽条的名称和提示；`SidebarMenuButton` 在 `status="unread"` 时必传 `unreadLabel` |
   | `Reader`（`@saas/ui/reader`） | `labels`（`toc`、`progress`、`exportPdf`、`printPdf`、`serverPdf`、`loading`、`footnotes`、`footnoteBack`）与 `title` | 目录标题、进度条名称、导出按钮与注册服务端导出后的两个菜单项、加载播报、脚注区标题与返回链接名称；`ReaderProgress` 的 `label`、`ReaderExportButton` 的 `labels`（导出三项）；`ReaderEmpty` / `ReaderError` 的标题、说明与 `retryLabel` 由调用方传入 |
+  | 业务界面组件（8.6） | `label` / `labels` 等 | 见 [6.1](#61-业务界面组件) 接口表 |
 
   新组件引入新的可读文字时，同步更新本表与 `packages/ui/UPSTREAM.md`。
   `labels` 对象可以内联传入（`labels={{ … m.*() … }}`）：不会导致重新挂载，Command Menu 内部另按字段稳定引用；
@@ -205,7 +206,8 @@ grep -nE '^export' packages/ui/src/index.ts
     否则只打印可见部分。
 
 已接入：Button、Input、Textarea、Select、Combobox、Checkbox、Switch、Badge、Tooltip、Tabs、Dropdown（菜单）、
-Command Menu、Dialog、AlertDialog、Toast、Sidebar、Card、Alert、Separator、Label、ScrollArea、DataTable、Form；Reader 系列经 `@saas/ui/reader` 子路径。
+Command Menu、Dialog、AlertDialog、Toast、Sidebar、Card、Alert、Separator、Label、ScrollArea、DataTable、Form；Reader 系列经 `@saas/ui/reader` 子路径；
+业务界面组件（8.6）见 [6.1](#61-业务界面组件)。
 `Toaster` 含动效库（约 44 KB gzip），只在需要的页面挂载，不放进根布局；以后全站使用时按需动态加载。缺少的组件先在 `packages/ui` 补齐（模板）或在 `packages/ui/src/project/` 补齐（项目），
 再实现页面，不在页面里临时写一个。
 
@@ -558,7 +560,7 @@ const copy = pending?.action === 'transfer'
 | 表单 | `useAppForm` + 字段组件，提交按钮 `SubmitButton`，错误用 `FieldErrors` | 现有 |
 | 长文阅读 | `Reader`：安全 Markdown、自动目录、吸顶高亮、阅读进度、打印样式与导出 PDF（`registerPdfExporter` 扩展点），见 §4 | 已提供（tasks 8.4），预览 `/dev/ui#reader` 与整页 `/dev/ui/reader?state=ready\|empty\|loading\|error` |
 | 营销区块 | 数据背书（未配置不渲染）、三步流程、编号产品矩阵、悬浮 AI 入口 | 将由 tasks 8.5 提供 |
-| 业务界面组件 | 推荐追问、消息评分、嵌入式对话、余额不足弹窗、预计消耗、会员锁定、每日领取 | 将由 tasks 8.6 提供，接口写入本节 |
+| 业务界面组件 | 推荐追问、消息评分、嵌入式对话、余额不足弹窗、预计消耗、会员锁定、每日领取 | 现有（tasks 8.6），接口见 [6.1](#61-业务界面组件) |
 
 **AI 聊天组件（tasks 9.1 选型结论，待使用者确认）**：倾向移植 Fluid 的 AI 组件（chat-message、thinking-steps、
 thinking-indicator、input-message 等，Radix 版，MIT），另写一层把 AI SDK `UIMessage` 各类 parts（正文、推理、工具调用）
@@ -568,6 +570,29 @@ Markdown 与代码高亮另行选型，优先轻量方案；替换聊天页与 S
 
 每个页面都要设计并实现四种状态：正常、空、加载、错误；在 390px 宽无横向滚动，浅色与深色均正确。
 根布局与公开页面的数据读取失败时降级，不让整页报错。
+
+### 6.1 业务界面组件
+
+tasks 8.6 提供，设计稿为 `docs/design-system/prototypes/ui-review/` 的 Chat、ReaderMobile、Reader（内嵌卡片）、
+Billing（`showInsufficient`、会员锁定卡片）与 Workbench（每日领取条）画板。全部为纯展示组件：属性进、回调出，
+不请求数据、不判断权益，文案无默认值（`apps/web` 传 `m.*()`），浅色与深色均用 token 工具类。`/dev/ui` 的
+「SuggestionChips · MessageFeedback · EmbeddedChat」与「InsufficientCreditsDialog · CreditEstimate · LockedFeature ·
+DailyClaimNotice」两节用中性示例数据展示全部状态。
+
+| 组件 | 主要属性 | 回调 | 行为 |
+|---|---|---|---|
+| `SuggestionChips` | `suggestions: readonly string[]`、`label`、`showLabel?`、`disabled?` | `onSelect(text)` | 为空不渲染；长问题换行，不撑出横向滚动 |
+| `MessageFeedback` | `value: { rating: 'up' \| 'down'; comment: string \| null; reason? } \| null`（按字段比较）、`labels`、`reasons?: { value; label }[]`、`disabled?`、`actions?`、`meta?`、`commentMaxLength?` | `onChange(next \| null): Promise<void>` | 再次点击同一评分以 `null` 回调（撤销）；点踩展开文字反馈，提交后可「修改反馈」；切到点赞时文字与原因清空；乐观更新，reject 时回滚（表单开合一并复位，提交失败焦点回到文字框）并以 `role="alert"` 播报 `labels.failed`；反馈表单带 `data-escape-scope`，其中的 Esc 只收起表单 |
+| `EmbeddedChat` | `variant?: 'inline' \| 'panel'`（默认 panel）、`labels`、`children`（消息、推荐问题等）、`footer?`（输入框）、`badge?`、`headerAction?`、`open?` / `defaultOpen?`、`showTrigger?` | `onOpenChange(open)` | `inline`（Reader 画板，8.4 使用）：≥ 768px 为正文流中的卡片，始终显示；`panel`：≥ 768px 为悬浮按钮 + 右侧非模态面板，页面仍可操作，Esc 只在焦点位于面板内时关闭，关闭时焦点原在面板内才还给悬浮按钮（或打开前的元素）。< 768px 两者都是悬浮按钮 + 模态底部抽屉（含 safe-area）。**面板 / 抽屉关闭时卸载 children**，对话状态（草稿、已加载消息）由调用方保存；打开期间断点变化不切换模态，关闭后再按新断点。`[data-escape-scope]` 内的 Esc 不关闭面板 |
+| `InsufficientCreditsDialog` | `open`、`estimatedCredits`、`availableCredits`、`labels`、`fallbackFocus?` | `onOpenChange`、`onBuyPacks()`、`onSubscribe?()` | 显示预计消耗、当前余额（危险色）与差额；不传 `onSubscribe` 时只显示购买积分包；关闭后焦点回到打开前的元素，打开前焦点在 body 时交给 `fallbackFocus()` |
+| `CreditEstimate` | `estimate: string \| null`、`balance?`、`insufficient?`、`hideIcon?`、`pendingLabel?` | — | `null` 显示估算中占位（`pendingLabel` 给读屏）；`insufficient` 用危险色并换成提示图标，带 `data-insufficient` |
+| `LockedFeature` | `title`、`description`、`actionLabel`、`badge?`、`children?`（被锁功能预览） | `onUpgrade()` | 预览 `inert` 且点击被拦下，任何点击只触发 `onUpgrade`，不执行功能 |
+| `DailyClaimNotice` | `status: 'available' \| 'pending' \| 'claimed' \| 'error'`、`title`、`description`、`labels`、`error?`、`compact?` | `onClaim?()`、`onDismiss?()` | 自动发放的项目不传 `onClaim`；`claimed` 显示徽标；`pending` 按钮忙碌；只有标题、说明与错误在 `role="status"` 内；< 640px 自动紧凑、按钮放不下时换行，`compact` 为强制紧凑 |
+
+接线现状：对话页（`features/ai/chat-page.tsx`，含嵌入式 `SubjectChat`）经 `features/ai/chat-extras.tsx` 接入推荐追问、
+消息评分（`setMessageFeedback`）与余额不足弹窗（`INSUFFICIENT_CREDITS` 的数值，入口跳到账单页 `#credit-packs` /
+`#subscriptions`，构建时套餐快照中明确没有订阅时不显示订阅入口；`CREDIT_DEBT` 等仍为账单链接）。`EmbeddedChat`、`CreditEstimate`、`LockedFeature`、
+`DailyClaimNotice` 暂只在 `/dev/ui` 展示，由后续页面（账单页 8.7、长文阅读器 8.4 等）按需接入。
 
 ## 7. 组件预览页
 

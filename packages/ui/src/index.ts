@@ -73,6 +73,18 @@ export {
   CommandMenuTabs,
   type CommandMenuTabsProps,
 } from './components/command-menu.tsx'
+// 业务界面组件（tasks 8.6，纯展示、文案无默认值）：CreditEstimate、DailyClaimNotice、EmbeddedChat、
+// InsufficientCreditsDialog、LockedFeature、MessageFeedback、SuggestionChips，随 Biome 排序分布在字母序位置
+export {
+  CreditEstimate,
+  type CreditEstimateProps,
+} from './components/credit-estimate.tsx'
+export {
+  type DailyClaimLabels,
+  DailyClaimNotice,
+  type DailyClaimNoticeProps,
+  type DailyClaimStatus,
+} from './components/daily-claim-notice.tsx'
 export {
   DataTable,
   type DataTableColumn,
@@ -121,6 +133,11 @@ export {
   type MenuItemProps,
 } from './components/dropdown.tsx'
 export {
+  EmbeddedChat,
+  type EmbeddedChatLabels,
+  type EmbeddedChatProps,
+} from './components/embedded-chat.tsx'
+export {
   errorMessages,
   FieldErrors,
   Form,
@@ -134,7 +151,21 @@ export {
   withForm,
 } from './components/form.tsx'
 export { Input, type InputProps } from './components/input.tsx'
+export {
+  InsufficientCreditsDialog,
+  type InsufficientCreditsDialogProps,
+  type InsufficientCreditsLabels,
+} from './components/insufficient-credits-dialog.tsx'
 export { Label } from './components/label.tsx'
+export { LockedFeature, type LockedFeatureProps } from './components/locked-feature.tsx'
+export {
+  type FeedbackRating,
+  MessageFeedback,
+  type MessageFeedbackLabels,
+  type MessageFeedbackProps,
+  type MessageFeedbackReason,
+  type MessageFeedbackValue,
+} from './components/message-feedback.tsx'
 export {
   type PdfExportDocument,
   type PdfExporter,
@@ -208,6 +239,7 @@ export {
   type SidebarTriggerProps,
   type SidebarVariant,
 } from './components/sidebar.tsx'
+export { SuggestionChips, type SuggestionChipsProps } from './components/suggestion-chips.tsx'
 export { Switch, type SwitchProps } from './components/switch.tsx'
 export {
   Tabs,
