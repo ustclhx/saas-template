@@ -183,6 +183,7 @@ export function ChatPage({
         messageId,
         rating: next?.rating ?? null,
         ...(next?.comment ? { comment: next.comment } : {}),
+        ...(next?.reason ? { reason: next.reason } : {}),
       },
     })
     if (!result.ok) throw new Error(result.error)

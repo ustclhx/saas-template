@@ -155,8 +155,16 @@ export const aiMessage = pgTable(
 )
 
 /**
+ * 点踩原因的取值（add-subject-chat design 决策 6）。与 `apps/web/src/features/ai/feedback.ts` 的
+ * `FEEDBACK_REASONS` 保持一致（单元测试比对）；增删取值需要新迁移改 check 约束。
+ */
+export const AI_FEEDBACK_REASONS = ['inaccurate', 'incomplete', 'no_source', 'too_long'] as const
+export type AiFeedbackReason = (typeof AI_FEEDBACK_REASONS)[number]
+
+/**
  * 用户对助手回复的评分（add-subject-chat design 决策 1）：每用户每消息一条，撤销即删除。
  * `model_key` / `subject_type` 为写入时快照，供后台按模型与对象类型统计满意率。
+ * `reason` 只在点踩时可选填写，由 check 约束保证点赞时为空、取值在约定集合内。
  */
 export const aiMessageFeedback = pgTable(
   'ai_message_feedback',
@@ -173,6 +181,7 @@ export const aiMessageFeedback = pgTable(
       .references(() => user.id, { onDelete: 'restrict' }),
     rating: text('rating', { enum: ['up', 'down'] }).notNull(),
     comment: text('comment'),
+    reason: text('reason', { enum: AI_FEEDBACK_REASONS }),
     modelKey: text('model_key'),
     subjectType: text('subject_type'),
     ...timestamps,
@@ -183,6 +192,10 @@ export const aiMessageFeedback = pgTable(
     // 后台按日期范围统计满意率
     index('ai_message_feedback_created_at_idx').on(t.createdAt),
     check('ai_message_feedback_rating_valid', sql`${t.rating} in ('up', 'down')`),
+    check(
+      'ai_message_feedback_reason_valid',
+      sql`${t.reason} is null or (${t.rating} = 'down' and ${t.reason} in ('inaccurate', 'incomplete', 'no_source', 'too_long'))`,
+    ),
   ],
 )
 

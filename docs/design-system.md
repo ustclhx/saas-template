@@ -624,7 +624,7 @@ DailyClaimNotice」两节用中性示例数据展示全部状态。
 | `DailyClaimNotice` | `status: 'available' \| 'pending' \| 'claimed' \| 'error'`、`title`、`description`、`labels`、`error?`、`compact?` | `onClaim?()`、`onDismiss?()` | 自动发放的项目不传 `onClaim`；`claimed` 显示徽标；`pending` 按钮忙碌；只有标题、说明与错误在 `role="status"` 内；< 640px 自动紧凑、按钮放不下时换行，`compact` 为强制紧凑 |
 
 接线现状：对话页（`features/ai/chat-page.tsx`，含嵌入式 `SubjectChat`）经 `features/ai/chat-extras.tsx` 接入推荐追问、
-消息评分（`setMessageFeedback`）与余额不足弹窗（`INSUFFICIENT_CREDITS` 的数值，入口跳到账单页 `#credit-packs` /
+消息评分（`setMessageFeedback`；点踩原因为画板的四个选项，取值 `FEEDBACK_REASONS` 与服务端校验、`ai_message_feedback.reason` 的约束一致，刷新后还原，后台 `/admin/feedback` 可按原因筛选）与余额不足弹窗（`INSUFFICIENT_CREDITS` 的数值，入口跳到账单页 `#credit-packs` /
 `#subscriptions`，构建时套餐快照中明确没有订阅时不显示订阅入口；`CREDIT_DEBT` 等仍为账单链接）。`EmbeddedChat`、`CreditEstimate`、`LockedFeature`、
 `DailyClaimNotice` 暂只在 `/dev/ui` 展示，由后续页面（账单页 8.7、长文阅读器 8.4 等）按需接入。
 

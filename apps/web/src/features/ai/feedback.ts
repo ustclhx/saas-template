@@ -7,9 +7,21 @@ import { z } from 'zod'
 
 export type FeedbackRating = 'up' | 'down'
 
+/**
+ * 点踩原因（单选、可不选）。取值与 `@saas/db` 的 `AI_FEEDBACK_REASONS` 及 check 约束一致；
+ * 这里另写一份是因为本文件进入浏览器包，不能引入 db 包（单元测试比对两者）。
+ */
+export const FEEDBACK_REASONS = ['inaccurate', 'incomplete', 'no_source', 'too_long'] as const
+export type FeedbackReason = (typeof FEEDBACK_REASONS)[number]
+
+export const isFeedbackReason = (value: unknown): value is FeedbackReason =>
+  (FEEDBACK_REASONS as readonly unknown[]).includes(value)
+
 export interface MessageFeedbackValue {
   readonly rating: FeedbackRating
   readonly comment: string | null
+  /** 只在点踩时可能有值 */
+  readonly reason: FeedbackReason | null
 }
 
 export const FEEDBACK_COMMENT_MAX_LENGTH = 1000
@@ -20,6 +32,8 @@ export const feedbackInputSchema = z.strictObject({
   /** null = 撤销 */
   rating: z.enum(['up', 'down']).nullable(),
   comment: z.string().max(FEEDBACK_COMMENT_MAX_LENGTH).optional(),
+  /** 只允许与点踩一起提交；点赞或撤销时服务端清空 */
+  reason: z.enum(FEEDBACK_REASONS).nullable().optional(),
 })
 export type FeedbackInput = z.infer<typeof feedbackInputSchema>
 

@@ -1,5 +1,12 @@
+import { AI_FEEDBACK_REASONS } from '@saas/db'
 import { describe, expect, it } from 'vitest'
-import { feedbackInputSchema, normalizeFeedbackComment, scrubSecrets } from './feedback.ts'
+import {
+  FEEDBACK_REASONS,
+  feedbackInputSchema,
+  isFeedbackReason,
+  normalizeFeedbackComment,
+  scrubSecrets,
+} from './feedback.ts'
 import { parseQuestions } from './follow-ups.server.ts'
 
 // add-subject-chat tasks.md 3.1、3.2：反馈文字去密钥、输入只接受引用、后续问题解析。
@@ -45,6 +52,23 @@ describe('feedback comments', () => {
     expect(feedbackInputSchema.safeParse({ ...base, comment: 'x'.repeat(1001) }).success).toBe(
       false,
     )
+  })
+
+  it('accepts only the agreed down-vote reasons, matching the database constraint', () => {
+    // 浏览器侧的取值集合必须与 db 包（check 约束）一致
+    expect([...FEEDBACK_REASONS]).toEqual([...AI_FEEDBACK_REASONS])
+    const base = {
+      slug: 's',
+      messageId: '0190f5d8-7a3b-7c3d-8e4f-1234567890ab',
+      rating: 'down',
+    }
+    for (const reason of FEEDBACK_REASONS)
+      expect(feedbackInputSchema.safeParse({ ...base, reason }).success).toBe(true)
+    expect(feedbackInputSchema.safeParse({ ...base, reason: null }).success).toBe(true)
+    expect(feedbackInputSchema.safeParse({ ...base, reason: 'rude' }).success).toBe(false)
+    expect(feedbackInputSchema.safeParse({ ...base, reason: 'too-long' }).success).toBe(false)
+    expect(isFeedbackReason('no_source')).toBe(true)
+    expect(isFeedbackReason(undefined)).toBe(false)
   })
 })
 
