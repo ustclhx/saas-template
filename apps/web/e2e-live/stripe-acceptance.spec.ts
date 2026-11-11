@@ -117,7 +117,10 @@ test('Stripe 积分包入账与用户退款申请仅进入 pending', async ({ pa
     await form.getByLabel('Contact email').fill(owner.email)
     await expect(form.getByRole('button', { name: 'Submit refund request' })).toBeEnabled()
     await form.getByRole('button', { name: 'Submit refund request' }).click()
-    await expect(page.getByRole('status')).toHaveText(/Refund request submitted/)
+    // 页面可能同时有每日领取等其他状态区域，按文字筛选
+    await expect(
+      page.getByRole('status').filter({ hasText: /Refund request submitted/ }),
+    ).toBeVisible()
     await expect
       .poll(async () => {
         const evidence = await billingEvidence(sql, owner.slug)

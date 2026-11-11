@@ -1,8 +1,19 @@
-import { Alert, AlertDescription, AlertTitle, Badge, type BadgeColor, Button, cn } from '@saas/ui'
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  type BadgeColor,
+  Button,
+  cn,
+  DailyClaimNotice,
+  type DailyClaimNoticeProps,
+} from '@saas/ui'
 import { CircleAlert } from '@saas/ui/icons'
 import type { ReactNode } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { getLocale } from '../../paraglide/runtime.js'
+import { useAppShellBarAvailable } from '../app-shell/bar.tsx'
 import type { DailyCreditsCheck } from '../credits/daily.server.ts'
 import { Bone } from '../shared/bone.tsx'
 
@@ -127,9 +138,9 @@ export function BillingSection({
   return (
     <section id={id} aria-labelledby={`${id}-title`} className="grid scroll-mt-6 gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 id={`${id}-title`} className="font-semibold text-title">
+        <h2 id={`${id}-title`} className="font-semibold text-title">
           {title}
-        </h3>
+        </h2>
         {aside}
       </div>
       {children}
@@ -185,7 +196,7 @@ export function FreePlanCard({ action }: { action?: ReactNode }) {
     <BillingCard className="px-6 py-5 shadow-surface-2 sm:flex sm:items-center sm:justify-between sm:gap-6">
       <div className="grid gap-1.5">
         <div className="flex flex-wrap items-center gap-2">
-          <h4 className="font-semibold text-title">{m.billing_page_free_plan()}</h4>
+          <h3 className="font-semibold text-title">{m.billing_page_free_plan()}</h3>
           <Badge variant="dot">{m.billing_page_not_subscribed()}</Badge>
         </div>
         <p className="text-muted-foreground">{m.billing_page_free_desc()}</p>
@@ -196,22 +207,34 @@ export function FreePlanCard({ action }: { action?: ReactNode }) {
 }
 
 /**
- * 每日领取状态。布局 loader 只在当天首次检查时返回 granted / already_claimed，之后是 cached，
- * 因此「今日已领」也从仍有剩余的 daily 积分推导（daily 积分当天到期）。
+ * 每日领取提示的状态。每日积分在进入工作台时自动发放，没有手动领取的 server function，
+ * 所以只展示状态、不显示领取按钮。布局 loader 只在当天首次检查时返回 granted / already_claimed，
+ * 之后是 cached，因此「今日已领」也从仍有剩余的 daily 积分推导（daily 积分当天到期）。
  */
-export function DailyStatusBadge({
-  result,
-  dailyRemaining,
-}: {
-  result: DailyCreditsCheck | null | undefined
-  dailyRemaining: number
-}) {
+export function dailyNoticeState(
+  result: DailyCreditsCheck | null | undefined,
+  dailyRemaining: number,
+): Pick<DailyClaimNoticeProps, 'status' | 'title' | 'description'> | null {
   if (result?.status === 'granted' || result?.status === 'already_claimed' || dailyRemaining > 0)
-    return <Badge color="green">{m.billing_page_daily_claimed()}</Badge>
+    return {
+      status: 'claimed',
+      title: m.billing_page_daily_claimed_title(),
+      description: m.billing_page_daily_claimed_desc({
+        count: formatCredits(result?.status === 'granted' ? result.credits : dailyRemaining),
+      }),
+    }
   if (result?.status === 'monthly_limit')
-    return <Badge variant="dot">{m.billing_page_daily_limit()}</Badge>
+    return {
+      status: 'available',
+      title: m.billing_page_daily_limit(),
+      description: m.billing_page_daily_limit_desc(),
+    }
   if (result?.status === 'unverified')
-    return <Badge variant="dot">{m.billing_page_daily_verify()}</Badge>
+    return {
+      status: 'available',
+      title: m.billing_page_daily_verify(),
+      description: m.billing_page_daily_verify_desc(),
+    }
   return null
 }
 
@@ -265,6 +288,7 @@ export function CreditBalance({
   const note = subscriptionCreditsNote(subscription)
   const showSignup = freeRows.signup || summary.free.signup > 0
   const showDaily = freeRows.daily || summary.free.daily > 0
+  const dailyNotice = dailyNoticeState(daily, summary.free.daily)
   return (
     <BillingSection
       id="balance"
@@ -347,14 +371,7 @@ export function CreditBalance({
         )}
         {sections.free && (
           <BillingCard>
-            <CardHead
-              title={m.billing_page_free_credits()}
-              aside={
-                showDaily ? (
-                  <DailyStatusBadge result={daily} dailyRemaining={summary.free.daily} />
-                ) : null
-              }
-            />
+            <CardHead title={m.billing_page_free_credits()} />
             <p className="font-semibold text-display tabular-nums">
               {formatCredits(summary.free.total)}
             </p>
@@ -367,6 +384,16 @@ export function CreditBalance({
                   <Row label={m.billing_page_daily()} value={formatCredits(summary.free.daily)} />
                 )}
               </dl>
+            )}
+            {showDaily && dailyNotice && (
+              <DailyClaimNotice
+                compact
+                {...dailyNotice}
+                labels={{
+                  claim: m.billing_page_daily_claim(),
+                  claimed: m.billing_page_daily_claimed(),
+                }}
+              />
             )}
           </BillingCard>
         )}
@@ -384,7 +411,7 @@ export function CreditBalance({
 function CardHead({ title, aside }: { title: string; aside?: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <h4 className="font-medium">{title}</h4>
+      <h3 className="font-medium">{title}</h3>
       {aside}
     </div>
   )
@@ -464,10 +491,24 @@ export function BillingSkeleton() {
   )
 }
 
+/**
+ * 页面主标题：侧边栏布局下工作台顶部条的默认标题已是页名 h1，此时不重复；
+ * 顶部布局没有该插槽，由页面自己渲染 h1。
+ */
+export function BillingPageTitle({ children }: { children?: ReactNode }) {
+  if (useAppShellBarAvailable()) return children ? <div>{children}</div> : null
+  return (
+    <header className="grid gap-1">
+      <h1 className="font-semibold text-display">{m.billing_page_title()}</h1>
+      {children}
+    </header>
+  )
+}
+
 export function BillingError({ onRetry }: { onRetry(): void }) {
   return (
     <div className="grid gap-6">
-      <h2 className="font-semibold text-display">{m.billing_page_title()}</h2>
+      <BillingPageTitle />
       <Alert variant="destructive">
         <CircleAlert />
         <AlertTitle>{m.billing_page_error_title()}</AlertTitle>

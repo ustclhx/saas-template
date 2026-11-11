@@ -12,6 +12,7 @@ import { trackEvent } from '../../../features/analytics/track.ts'
 import {
   BillingCard,
   BillingError,
+  BillingPageTitle,
   BillingSection,
   BillingSkeleton,
   billingSections,
@@ -250,10 +251,9 @@ function BillingPage() {
 
   return (
     <div className="grid gap-8">
-      <header className="grid gap-1">
-        <h2 className="font-semibold text-display">{m.billing_page_title()}</h2>
+      <BillingPageTitle>
         <p className="text-muted-foreground">{m.billing_page_desc()}</p>
-      </header>
+      </BillingPageTitle>
 
       {showPurchase && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -329,7 +329,7 @@ function BillingPage() {
                 >
                   <div className="grid gap-1.5">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h4 className="font-semibold text-title">{sub.name}</h4>
+                      <h3 className="font-semibold text-title">{sub.name}</h3>
                       <SubscriptionStatusBadge status={status} />
                     </div>
                     <p className="text-muted-foreground">
@@ -382,7 +382,7 @@ function BillingPage() {
           {overlapping && <p className="text-muted-foreground">{m.billing_page_overlap()}</p>}
           {owner && hasPlanPrices && (
             <BillingCard id="choose-plan" className="scroll-mt-6 gap-3">
-              <h4 className="font-medium">{m.billing_page_choose_plan()}</h4>
+              <h3 className="font-medium">{m.billing_page_choose_plan()}</h3>
               {planPrices.length === 0 ? (
                 <p className="text-muted-foreground">{m.billing_page_no_plans_for_provider()}</p>
               ) : (
@@ -560,7 +560,7 @@ function BillingPage() {
               </p>
             )}
           </div>
-          <h4 className="font-medium">{m.billing_page_refund_requests()}</h4>
+          <h3 className="font-medium">{m.billing_page_refund_requests()}</h3>
           {page.refunds.map((refund) => (
             <p key={refund.id}>
               {formatBillingDate(refund.createdAt)} · {refundStatusLabel(refund.status)}

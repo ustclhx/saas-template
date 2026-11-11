@@ -2,11 +2,14 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { m } from '../../paraglide/messages.js'
 import { baseLocale, overwriteGetLocale } from '../../paraglide/runtime.js'
+import { AppShellBarContext } from '../app-shell/bar.tsx'
 import {
   type BalanceSubscription,
   type BillingCreditSummary,
+  BillingPageTitle,
   billingSections,
   CreditBalance,
+  dailyNoticeState,
   defaultProvider,
   subscriptionCreditsNote,
 } from './billing-sections.tsx'
@@ -164,5 +167,33 @@ describe('账单页分区（add-ui-design-system 8.7）', () => {
     expect(signupOnly).not.toContain(m.billing_page_daily_claimed())
     const cached = balance({ daily: { status: 'cached' } })
     expect(cached).toContain(m.billing_page_daily_claimed())
+  })
+
+  it('每日领取提示只展示状态：已领取、本月上限、待验证，其他情况不显示', () => {
+    expect(dailyNoticeState({ status: 'cached' }, 10)?.status).toBe('claimed')
+    expect(dailyNoticeState({ status: 'already_claimed' }, 0)?.status).toBe('claimed')
+    expect(dailyNoticeState({ status: 'monthly_limit' }, 0)).toMatchObject({
+      status: 'available',
+      title: m.billing_page_daily_limit(),
+    })
+    expect(dailyNoticeState({ status: 'unverified' }, 0)?.title).toBe(m.billing_page_daily_verify())
+    expect(dailyNoticeState({ status: 'cached' }, 0)).toBeNull()
+    expect(dailyNoticeState(null, 0)).toBeNull()
+    const html = balance({ daily: { status: 'cached' } })
+    expect(html).toContain('data-status="claimed"')
+    // 没有领取 server function，不渲染领取按钮
+    expect(html).not.toContain('Claim today&#x27;s credits')
+  })
+
+  it('页面主标题：工作台顶部条可用时不重复，顶部布局下渲染 h1', () => {
+    expect(renderToStaticMarkup(<BillingPageTitle />)).toContain(
+      `<h1 class="font-semibold text-display">${m.billing_page_title()}</h1>`,
+    )
+    const inShell = renderToStaticMarkup(
+      <AppShellBarContext.Provider value={{ title: null, actions: null, progress: null }}>
+        <BillingPageTitle />
+      </AppShellBarContext.Provider>,
+    )
+    expect(inShell).not.toContain('<h1')
   })
 })

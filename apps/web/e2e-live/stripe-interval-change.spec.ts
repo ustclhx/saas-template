@@ -131,7 +131,8 @@ async function scheduleIntervalChange(
   await page.goto(`/app/${owner.slug}/billing`)
   await expect(page.getByText(/^Current plan: Pro\b/)).toBeVisible()
   const targetPriceId = await chooseChange(page, target, INTERVAL_NOTICE)
-  await expect(page.getByRole('status')).toHaveText(SCHEDULED)
+  // 页面可能同时有每日领取等其他状态区域，按文字筛选
+  await expect(page.getByRole('status').filter({ hasText: SCHEDULED })).toBeVisible()
   await expect(page.getByText(/^Current plan: Pro\b/)).toBeVisible()
   const [mapping] = await sql`select provider_price_id, interval from plan_price
     where id = ${targetPriceId} and provider = 'stripe'`

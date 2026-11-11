@@ -92,5 +92,10 @@
   "billing_page_refund_rejected": "已拒绝",
   "billing_page_refund_refunded": "已退款",
   "billing_page_per_month": "/ 月",
-  "billing_page_per_year": "/ 年"
+  "billing_page_per_year": "/ 年",
+  "billing_page_daily_claimed_title": "已领取今日奖励",
+  "billing_page_daily_claimed_desc": "今日 {count} 积分已到账，当天有效。",
+  "billing_page_daily_limit_desc": "本月领取次数已用完，下月恢复。",
+  "billing_page_daily_verify_desc": "验证后每天登录自动发放。",
+  "billing_page_daily_claim": "领取今日积分"
 }

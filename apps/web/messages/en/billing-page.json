@@ -92,5 +92,10 @@
   "billing_page_refund_rejected": "Rejected",
   "billing_page_refund_refunded": "Refunded",
   "billing_page_per_month": "/ month",
-  "billing_page_per_year": "/ year"
+  "billing_page_per_year": "/ year",
+  "billing_page_daily_claimed_title": "Today's credits claimed",
+  "billing_page_daily_claimed_desc": "{count} daily credits are available today.",
+  "billing_page_daily_limit_desc": "Daily credits resume next month.",
+  "billing_page_daily_verify_desc": "After verification, daily credits are granted automatically when you sign in.",
+  "billing_page_daily_claim": "Claim today's credits"
 }
