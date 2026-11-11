@@ -37,6 +37,7 @@ breaking: false
 - 锁表与耗时：`ai_message_feedback` 新增可空列 `reason`（无默认值，元数据变更）与 check 约束 `ai_message_feedback_reason_valid`（未带 NOT VALID，持 ACCESS EXCLUSIVE 扫描一次全表；新列全为 NULL、表通常很小，校验瞬时完成）。迁移设置 `lock_timeout=5s`、`statement_timeout=30s`，拿不到锁时失败，可重试
 - 数据迁移：无，已有评分的原因为空
 - 回滚：只回退代码，保留新列与约束；旧代码不读写 `reason`，新代码写入的原因保留
+- apps/web 的 `MessageFeedbackValue` 新增必填字段 `reason`（`FeedbackReason | null`），自行构造该值的项目补 `reason: null`；增删点踩原因取值需同时修改 db 包（模板为 `@saas/db`）的 `AI_FEEDBACK_REASONS` 与 `apps/web/src/features/ai/feedback.ts` 的 `FEEDBACK_REASONS`，并新增迁移修改 check 约束 `ai_message_feedback_reason_valid`
 
 ## 部署顺序
 

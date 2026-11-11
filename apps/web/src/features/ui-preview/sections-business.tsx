@@ -43,8 +43,8 @@ function reasons() {
   return [
     { value: 'inaccurate', label: m.ui_preview_biz_reason_inaccurate() },
     { value: 'incomplete', label: m.ui_preview_biz_reason_incomplete() },
-    { value: 'no-source', label: m.ui_preview_biz_reason_no_source() },
-    { value: 'too-long', label: m.ui_preview_biz_reason_too_long() },
+    { value: 'no_source', label: m.ui_preview_biz_reason_no_source() },
+    { value: 'too_long', label: m.ui_preview_biz_reason_too_long() },
   ]
 }
 
