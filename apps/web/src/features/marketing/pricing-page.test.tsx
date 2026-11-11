@@ -67,7 +67,9 @@ describe('定价页订阅与积分包并列（add-ui-design-system 8.7）', () =
     expect(html).toContain(m.pricing_page_packs())
     expect(html).not.toContain(m.pricing_page_subscriptions())
     expect(html).not.toContain(m.pricing_page_cycle())
-    expect(html).not.toContain(m.pricing_page_monthly())
+    // 不按“月付”字样断言：zh 的积分包说明文案本身含“月付/年付”，改为断言切换控件未渲染
+    expect(html).not.toContain('<fieldset')
+    expect(html).not.toContain('aria-pressed')
     expect(html).not.toContain(m.pricing_page_pack_order())
   })
 

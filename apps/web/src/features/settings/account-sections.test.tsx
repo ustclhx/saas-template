@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { baseLocale, overwriteGetLocale } from '../../paraglide/runtime.js'
+import { templateConfig } from '../../server/template-config.ts'
 import type { AccountView } from './account.ts'
 import { PreferencesSection } from './account-sections.tsx'
 import { ACCOUNT_COPY } from './copy.ts'
@@ -19,7 +20,8 @@ const user: AccountView['user'] = {
 beforeEach(() => overwriteGetLocale(() => baseLocale))
 afterEach(() => overwriteGetLocale(() => baseLocale))
 
-describe('account language preference', () => {
+// 生成器 --i18n false 时产品有意不渲染语言控件（见 account-sections.tsx），该组用例只在多语言开启时成立
+describe.skipIf(!templateConfig.i18n.enabled)('account language preference', () => {
   it.each([
     { locale: 'zh', expected: 'zh' },
     { locale: null, expected: null },
@@ -32,5 +34,16 @@ describe('account language preference', () => {
     expect(html).toContain('for="locale"')
     expect(trigger).toContain('id="locale"')
     expect(trigger).toContain(expected ?? ACCOUNT_COPY.preferences.localeDefault)
+  })
+})
+
+describe.runIf(!templateConfig.i18n.enabled)('account preferences without i18n', () => {
+  it('does not render the language control', () => {
+    const html = renderToStaticMarkup(
+      <PreferencesSection user={{ ...user, locale: 'zh' }} locales={[baseLocale]} />,
+    )
+    expect(html).not.toContain('for="locale"')
+    expect(html).not.toContain('id="locale"')
+    expect(html).toContain('for="timezone"')
   })
 })

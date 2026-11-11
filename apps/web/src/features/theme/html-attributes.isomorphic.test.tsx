@@ -7,6 +7,7 @@ import {
 import { getRequest } from '@tanstack/react-start/server'
 import { renderToString } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { baseLocale } from '../../paraglide/runtime.js'
 import { Route } from '../../routes/__root.tsx'
 import { getHtmlAttributes } from './html-attributes.isomorphic.ts'
 import { getProjectHtmlAttributes } from './html-attributes.ts'
@@ -52,7 +53,8 @@ describe('根文档属性同构入口', () => {
     const attributes = getHtmlAttributes('/pricing')
     expect(getProjectHtmlAttributes).toHaveBeenCalledWith({
       host: 'east.example.com:8443',
-      locale: 'en',
+      // 无请求上下文时 getLocale 回落到默认语言，衍生项目可能为 zh
+      locale: baseLocale,
       pathname: '/pricing',
     })
     const html = renderToString(
