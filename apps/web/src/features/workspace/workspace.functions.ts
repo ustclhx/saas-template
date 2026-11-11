@@ -9,7 +9,7 @@ import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import {
   recipientInvitation,
-  resolveWorkspaceMaxSeats,
+  resolveWorkspacePlan,
   userWorkspaces,
   workspaceInvitations,
   workspaceMembers,
@@ -57,7 +57,7 @@ export const getWorkspacePage = createServerFn({ method: 'GET' })
           ? await workspaceInvitations(db, workspace.id)
           : [],
       memberCount: members.length,
-      maxSeats: await resolveWorkspaceMaxSeats(workspace.id, db.$client),
+      ...(await resolveWorkspacePlan(workspace.id, db.$client)),
     }
   })
 

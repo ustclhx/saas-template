@@ -48,7 +48,7 @@ async function fixture(t) {
     tenancy: { multiTenant: false }, auth: { oauth: ['google'], turnstile: true },
     billing: { providers: ['stripe'] }, ai: { text: { enabled: true, thinking: { default: 'off', userToggle: false }, reasoning: { display: false }, failedReplyRefund: 'no-visible-output' }, image: true, video: true, mediaProviders: ['fal', 'workers-ai'] },
     features: { blog: true },
-    ui: { preset: 'neutral', shape: 'rounded', density: 'default' },
+    ui: { preset: 'neutral', shape: 'rounded', density: 'default', appLayout: 'sidebar' },
   })`,
   )
   for (const app of ['web', 'jobs']) {
@@ -174,7 +174,9 @@ test('四套主题写入配置和基准；省略时使用 neutral', async (t) =>
     assert.equal(result.options.theme, preset)
     assert.match(
       await readFile(join(result.target, 'template.config.ts'), 'utf8'),
-      new RegExp(`ui: \\{ preset: '${preset}', shape: 'rounded', density: 'default' \\}`),
+      new RegExp(
+        `ui: \\{ preset: '${preset}', shape: 'rounded', density: 'default', appLayout: 'sidebar' \\}`,
+      ),
     )
     assert.equal((await readBase(result.target)).params.theme, preset)
   }

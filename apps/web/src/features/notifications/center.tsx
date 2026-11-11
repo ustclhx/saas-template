@@ -7,7 +7,14 @@ import { getNotifications, readNotifications } from './notifications.functions.t
 
 type NotificationPage = Awaited<ReturnType<typeof getNotifications>>
 
-export function NotificationCenter({ slug }: { slug: string }) {
+/** hideWhenEmpty：还没有任何通知时不渲染（工作台布局；铃铛弹层另行实现） */
+export function NotificationCenter({
+  slug,
+  hideWhenEmpty = false,
+}: {
+  slug: string
+  hideWhenEmpty?: boolean
+}) {
   const router = useRouter()
   const [page, setPage] = useState<NotificationPage>({ rows: [], unread: 0, hasMore: false })
   const [offset, setOffset] = useState(0)
@@ -41,6 +48,8 @@ export function NotificationCenter({ slug }: { slug: string }) {
     }
   }
 
+  if (hideWhenEmpty && !error && page.unread === 0 && page.rows.length === 0 && offset === 0)
+    return null
   return (
     <details
       onToggle={(event) => {
