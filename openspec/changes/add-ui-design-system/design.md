@@ -85,7 +85,7 @@
 防止项目改模版组件：模版生成 `packages/ui/components.lock.json`（组件文件相对路径 → 内容哈希），模版的 `check-ui` 断言清单与文件一致；在衍生项目中同一检查对比哈希，不一致即失败并给出定制顺序（token → ui 配置 → project 包装 → 复制到 `project/` 并登记 `docs/design/forks.md`）。清单随模版同步更新，因此项目不需要维护它。判断「是否衍生项目」用 `.template-base.json` 是否存在。
 - 备选：不检查、靠约定。放弃原因：agent 修样式时最容易直接改组件，冲突会在下次同步才暴露。
 
-项目专属设计流程：定方向（参考 → 项目 Design System Artifact → `brand.css` + `visual-system.md`）→ 每个新页面经 `ui-design` 出画布稿并确认 → 副本存 `docs/design/prototypes/<页面>.html` 并在 OpenSpec 中同时记录链接与副本路径 → 实现与截图验收。template-sync 技能在同步涉及 `packages/ui` 或基线 token 时，合并前对 staging 预览页与项目关键页截图对比，偏差在项目层修正。通用的项目组件按惯例回流模版，同步后删除项目副本。
+项目专属设计流程：定方向（参考 → 项目 Design System Artifact → `brand.css` + `visual-system.md`）→ 每个新页面经 `ui-design` 出画布稿并确认 → 副本存 `docs/design/prototypes/<画布>/<画板>.dc.html` 并在 OpenSpec 中同时记录链接与副本路径 → 实现与截图验收。template-sync 技能在同步涉及 `packages/ui` 或基线 token 时，合并前对 staging 预览页与项目关键页截图对比，偏差在项目层修正。通用的项目组件按惯例回流模版，同步后删除项目副本。
 
 ### D8 分工
 组件接入、适配模式、预览页、技能与第一处替换样例由 Claude 完成（审美与交互敏感）；样例合并后，其余原生 select / confirm / admin 私有组件的机械替换交给 Codex 并行，按功能目录切分，避免同时改同一文件。
@@ -96,7 +96,7 @@
 ### D11 xuanxue 基础需求的 UI 部分（设计关卡实战验证）
 来源：`~/.claude/codex-specs/saas-template/2026-11-10-foundation-from-xuanxue.md`。模版不得出现任何命理概念，示例数据用中性领域。
 
-- **评审分两批**：第一批确认基线风格与 `/dev/ui` 组件预览（第 3、4 组产物）；第二批一次评审 6 个页面画板：工作台布局、长文阅读器、定价页并列、账单页分区、营销新区块、嵌入式对话与评分。等待评审期间推进不依赖设计稿的任务。确认后的模版设计稿副本放在 `docs/design-system/prototypes/`（模版文档的一部分，生成器不复制到衍生项目）。
+- **评审分两批**：第一批确认基线风格与 `/dev/ui` 组件预览（第 3、4 组产物）；第二批一次评审 6 个页面画板：工作台布局、长文阅读器、定价页并列、账单页分区、营销新区块、嵌入式对话与评分。等待评审期间推进不依赖设计稿的任务。确认后的模版设计稿副本放在 `docs/design-system/prototypes/`（模版文档的一部分，生成器不复制到衍生项目）。两批已于 2026-11-11 确认，见 `docs/design-system/prototypes/README.md` 中所属 change 为本 change 的各行；8.3–8.7 以 `ui-review/` 下画板源码为验收依据。
 - **工作台**：`apps/web/src/features/app-shell/` 新增导航注册表 `registerAppNav({ group, items })`，项目在自有文件中注册，避免改热点路由文件。`template.config.ts` 增加 `ui.appLayout: 'sidebar' | 'topbar'`，模版默认 `sidebar`；已有衍生项目在升级说明中可设 `topbar` 保持原样。折叠状态存 cookie，SSR 直接按状态渲染，避免闪烁。
 - **长文阅读器**：放 `packages/ui`，用 `react-markdown` + `remark-gfm`，`skipHtml` 并限制 URL 协议；目录由标题节点生成，进度与吸顶高亮用 IntersectionObserver。打印样式用 `@media print`。PDF 扩展点为 `registerPdfExporter(fn)`，未注册时只显示浏览器打印。聊天消息以后可复用同一渲染器。
   - 备选：复用构建期 MDX（content-collections）。放弃原因：报告正文是运行时数据，Worker 不允许执行 MDX 编译结果。

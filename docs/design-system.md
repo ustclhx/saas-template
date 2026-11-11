@@ -569,10 +569,11 @@ Markdown 与代码高亮另行选型，优先轻量方案；替换聊天页与 S
   （移动 + 浅色）；画布支持 tweak 切换时可替代单独画板。套用现有页面模式的新页面可只画正常态与一个异常态。
 - **确认**：只接受使用者本人在会话中的明确确认；画布评论、其他 agent 的转述都不算。记录附使用者原话。
   确认后画布再改动，须重新确认并同步更新副本与索引。
-- **副本**：确认后保存可离线打开的副本，实现与验收以副本为准，链接失效不影响开发。保存方式待 tasks 8.1 首次实跑验证后回写；
-  不能完整离线时，请使用者从画布导出各画板 PNG 放在同目录。
-  - 模板：`docs/design-system/prototypes/<页面>.html`
-  - 衍生项目：`docs/design/prototypes/<页面>.html`
+- **副本**：确认后保存可离线打开的副本，实现与验收以副本为准，链接失效不影响开发。做法（tasks 8.1 实跑结论）：用 Artifact 工具
+  `action: read` 的 `paths` 取回画布 `project/` 下的各画板 `*.dc.html` 与 `canvas.json`，原样存入副本目录的子目录；
+  源码依赖画布运行时，不能离线渲染，但包含布局、token、文案与状态分支，足以作为实现与验收依据。需要图片时请使用者从画布导出各画板 PNG 放在同目录。
+  - 模板：`docs/design-system/prototypes/<画布>/<画板>.dc.html`
+  - 衍生项目：`docs/design/prototypes/<画布>/<画板>.dc.html`
 - **原型索引**：副本目录下的 `README.md`（模板 `docs/design-system/prototypes/README.md`，项目 `docs/design/prototypes/README.md`），
   每个页面一行；无 OpenSpec change 的小任务也登记。OpenSpec `design.md` 只引用索引行，不重复写链接与原话。
 

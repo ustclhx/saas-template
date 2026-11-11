@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>基线与预设</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:underline;text-underline-offset:3px}a:hover{text-decoration-thickness:2px}
+.r{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;font-optical-sizing:auto;min-height:100vh}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0;margin:0}
+.wrap{max-width:74rem;margin:0 auto;padding:48px 2rem 64px}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.cap{font-size:12px;line-height:16px}
+.mic{font-size:11px;line-height:14px}
+.sub{font-size:14px;line-height:20px;font-weight:600}
+.ttl{font-size:16px;line-height:22px;font-weight:600}
+.dsp{font-size:28px;line-height:34px;font-weight:600;letter-spacing:-0.01em}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:16px}
+.sec{margin-top:36px}
+.sec-h{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:16px}
+.seg{display:inline-flex;padding:2px;border-radius:10px;gap:2px}
+.seg button{height:28px;padding:0 12px;border-radius:8px;font-size:14px;line-height:20px;font-weight:500}
+.grid8{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:12px}
+.grid9{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:16px 12px}
+.grid8s{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+.sw{height:56px;border-radius:8px}
+.type-row{display:grid;grid-template-columns:7rem minmax(0,1fr) 9rem 9rem;align-items:center;gap:16px;padding:10px 0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border-radius:8px;font-size:14px;line-height:20px;font-weight:500;white-space:nowrap}
+sc-if,sc-for{display:contents}
+</style>
+</helmet>
+<div class="r" style="background:{{t.bg}};color:{{t.fg}}">
+<div class="wrap">
+
+  <div class="row" style="justify-content:space-between;gap:24px;align-items:flex-end">
+    <div class="col" style="gap:6px">
+      <span class="cap" style="color:{{t.mfg}}">add-ui-design-system · 第一批评审</span>
+      <h1 class="dsp" style="margin:0">基线与预设</h1>
+      <p style="margin:0;color:{{t.mfg}};max-width:40rem">模板默认采用 Fluid Functionalism 的中性灰阶；预设只换强调色与焦点环，圆角由 ui.shape 与品牌层负责。下方所有取值来自 packages/ui/src/styles/globals.css 与 presets/*.css。</p>
+    </div>
+    <div class="col" style="gap:8px;align-items:flex-end">
+      <div class="seg" role="group" aria-label="主题预设" style="background:{{t.muted}}">
+        <sc-for list="{{presetOpts}}" as="o" hint-placeholder-count="4">
+          <button type="button" aria-pressed="{{o.pressed}}" onClick="{{o.pick}}" style="{{o.style}}">{{o.label}}</button>
+        </sc-for>
+      </div>
+      <div class="seg" role="group" aria-label="明暗模式" style="background:{{t.muted}}">
+        <button type="button" onClick="{{pickLight}}" style="{{modeLight}}">浅色</button>
+        <button type="button" onClick="{{pickDark}}" style="{{modeDark}}">深色</button>
+      </div>
+    </div>
+  </div>
+
+  <section class="sec">
+    <div class="sec-h">
+      <h2 class="ttl" style="margin:0">字号阶梯</h2>
+      <span class="cap" style="color:{{t.mfg}}">六个角色 × default / compact；正文 14px（上游 13px），13px 不再用于正文</span>
+    </div>
+    <div style="border-top:1px solid {{t.border}}">
+      <sc-for list="{{typeScale}}" as="ty" hint-placeholder-count="6">
+        <div class="type-row" style="border-bottom:1px solid {{t.border}}">
+          <div class="col" style="gap:2px">
+            <span class="sub">{{ty.role}}</span>
+            <span class="mono" style="color:{{t.mfg}}">{{ty.token}}</span>
+          </div>
+          <span style="{{ty.sample}}">{{ty.text}}</span>
+          <span class="mono" style="color:{{t.fg}}">{{ty.def}}</span>
+          <span class="mono" style="color:{{t.mfg}}">compact {{ty.compact}}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-h">
+      <h2 class="ttl" style="margin:0">表面阶梯 surface 1–8</h2>
+      <span class="cap" style="color:{{t.mfg}}">浅色两级灰底后全白，靠阴影区分层级；深色在 #171717 上逐级提亮</span>
+    </div>
+    <div class="grid8">
+      <sc-for list="{{surfaces}}" as="c" hint-placeholder-count="8">
+        <div class="col" style="gap:8px">
+          <div class="sw" style="background:{{c.color}};box-shadow:{{c.ring}}"></div>
+          <div class="col" style="gap:2px">
+            <span class="cap" style="font-weight:600">{{c.name}}</span>
+            <span class="mono" style="color:{{t.mfg}}">{{c.hex}}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-h">
+      <h2 class="ttl" style="margin:0">语义颜色与交互状态</h2>
+      <span class="cap" style="color:{{t.mfg}}">正文 ≥ 4.5:1；焦点环与背景、与主按钮 ≥ 3:1（packages/ui/test/presets.test.ts 断言）</span>
+    </div>
+    <div class="grid9">
+      <sc-for list="{{semantic}}" as="c" hint-placeholder-count="18">
+        <div class="col" style="gap:8px">
+          <div class="sw" style="background:{{c.color}};box-shadow:{{c.ring}}"></div>
+          <div class="col" style="gap:2px">
+            <span class="cap" style="font-weight:600;overflow-wrap:anywhere">{{c.name}}</span>
+            <span class="mono" style="color:{{t.mfg}};overflow-wrap:anywhere">{{c.hex}}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div class="row" style="gap:32px;margin-top:24px;padding:20px 24px;border-radius:12px;background:{{t.card}};box-shadow:{{t.sh2}}">
+      <div class="col" style="gap:4px;min-width:12rem">
+        <span class="sub">焦点环</span>
+        <span class="cap" style="color:{{t.mfg}}">2px 描边 + 2px 间隙，环落在页面背景上</span>
+      </div>
+      <button type="button" class="btn" style="background:{{t.primary}};color:{{t.pfg}};outline:2px solid {{t.ring}};outline-offset:2px">主按钮 · 键盘聚焦</button>
+      <button type="button" class="btn" style="box-shadow:inset 0 0 0 1px {{t.border}};outline:2px solid {{t.ring}};outline-offset:2px">描边按钮 · 键盘聚焦</button>
+      <span class="row" style="gap:8px">
+        <span style="width:20px;height:20px;border-radius:6px;background:{{t.ring}}"></span>
+        <span class="mono" style="color:{{t.mfg}}">--focus-ring {{t.ring}}</span>
+      </span>
+      <span class="row" style="gap:8px">
+        <span style="padding:0 4px;border-radius:2px;background:{{t.selection}}">选中文字</span>
+        <span class="mono" style="color:{{t.mfg}}">accent {{selPct}}</span>
+      </span>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-h">
+      <h2 class="ttl" style="margin:0">阴影 shadow 1–8</h2>
+      <span class="cap" style="color:{{t.mfg}}">浅色为 1px 外圈加逐级叠加的投影；深色加内高光与内圈</span>
+    </div>
+    <div class="grid8s" style="padding:32px;border-radius:12px;background:{{t.s1}};box-shadow:inset 0 0 0 1px {{t.border}}">
+      <sc-for list="{{shadows}}" as="s" hint-placeholder-count="8">
+        <div class="col" style="gap:4px;height:96px;padding:16px;border-radius:12px;justify-content:flex-end;background:{{s.bg}};box-shadow:{{s.shadow}}">
+          <span class="sub">{{s.name}}</span>
+          <span class="cap" style="color:{{t.mfg}}">{{s.use}}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-h">
+      <h2 class="ttl" style="margin:0">圆角</h2>
+      <span class="cap" style="color:{{t.mfg}}">--radius 0.5rem；ui.shape = rounded：控件 8px（rounded-lg）、容器 12px（rounded-xl）</span>
+    </div>
+    <div class="grid3">
+      <div class="col" style="gap:12px;padding:24px;border-radius:12px;background:{{t.card}};box-shadow:{{t.sh2}}">
+        <span class="cap" style="color:{{t.mfg}}">按钮 · 8px · 高 36px</span>
+        <div class="row" style="gap:8px">
+          <button type="button" class="btn" style="background:{{t.primary}};color:{{t.pfg}}">保存</button>
+          <button type="button" class="btn" style="box-shadow:inset 0 0 0 1px {{t.border}}">取消</button>
+        </div>
+      </div>
+      <div class="col" style="gap:12px;padding:24px;border-radius:12px;background:{{t.card}};box-shadow:{{t.sh2}}">
+        <label class="cap" for="radius-demo" style="color:{{t.mfg}}">输入框 · 8px · 高 36px</label>
+        <input id="radius-demo" type="text" placeholder="项目名称" style="height:36px;border-radius:8px;border:1px solid {{t.input}};background:{{inputBg}};padding:0 12px;font:inherit;color:{{t.fg}}">
+      </div>
+      <div class="col" style="gap:8px;padding:24px;border-radius:12px;background:{{t.card}};border:1px solid {{t.border}};box-shadow:0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1)">
+        <span class="cap" style="color:{{t.mfg}}">卡片 · 12px · 1px 边框 + shadow-sm</span>
+        <span class="ttl">季度报告</span>
+        <span style="color:{{t.mfg}}">容器圆角 = 内层 8px + 4px 内边距，保持同心。</span>
+      </div>
+    </div>
+  </section>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"preset":{"editor":"enum","options":["neutral","blue","violet","green"],"default":"neutral"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":1600}}'>
+function uiTokens(dark, preset) {
+  var P = {
+    neutral: [['#171717', '#fafafa', '#3b82f6', '#3b82f6'], ['#f5f5f5', '#171717', '#4f86f7', '#4f86f7']],
+    blue: [['#2563eb', '#ffffff', '#3b82f6', '#171717'], ['#2563eb', '#ffffff', '#60a5fa', '#bfdbfe']],
+    violet: [['#7c3aed', '#ffffff', '#8b5cf6', '#171717'], ['#7c3aed', '#ffffff', '#a78bfa', '#ddd6fe']],
+    green: [['#15803d', '#ffffff', '#16a34a', '#171717'], ['#15803d', '#ffffff', '#4ade80', '#bbf7d0']]
+  };
+  var p = (P[preset] || P.neutral)[dark ? 1 : 0];
+  var t = dark ? {
+    s: ['#171717', '#1e1e1e', '#252525', '#2c2c2c', '#333333', '#3a3a3a', '#414141', '#484848'],
+    fg: '#f5f5f5', muted: '#1e1e1e', mfg: '#b0b0b0', secondary: '#252525', accentBg: '#525252',
+    destructive: '#fca5a5', destructiveLight: '#450a0a', destructiveSoft: 'rgba(252,165,165,0.15)',
+    success: 'oklch(0.723 0.219 149.579)', successSoft: 'rgba(34,197,94,0.15)',
+    border: 'rgba(245,245,245,0.12)', input: '#404040', hover: 'rgba(255,255,255,0.06)',
+    active: 'rgba(255,255,255,0.1)', selected: '#525252', tint: 'rgba(255,255,255,0.25)', scrim: 'rgba(0,0,0,0.8)'
+  } : {
+    s: ['#fafafa', '#fcfcfc', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff'],
+    fg: '#171717', muted: '#f4f4f5', mfg: '#6b6b6b', secondary: '#f4f4f5', accentBg: '#e5e5e5',
+    destructive: '#b91c1c', destructiveLight: '#fef2f2', destructiveSoft: 'rgba(185,28,28,0.1)',
+    success: 'oklch(0.527 0.154 150.069)', successSoft: 'rgba(21,128,61,0.1)',
+    border: 'rgba(23,23,23,0.12)', input: '#e5e5e5', hover: 'rgba(0,0,0,0.04)',
+    active: 'rgba(0,0,0,0.07)', selected: '#d4d4d4', tint: 'rgba(0,0,0,0.08)', scrim: 'rgba(0,0,0,0.4)'
+  };
+  t.primary = p[0]; t.pfg = p[1]; t.accent = p[2]; t.ring = p[3];
+  t.selection = 'color-mix(in oklab, ' + p[2] + (dark ? ' 40%' : ' 25%') + ', transparent)';
+  var d = ['0 1px 1px -0.5px', '0 3px 3px -1.5px', '0 6px 6px -3px', '0 12px 12px -6px', '0 24px 24px -12px', '0 48px 48px -24px', '0 96px 96px -48px'];
+  var hi = [0, 0, 0.01, 0.02, 0.02, 0.04, 0.04, 0.06, 0.06];
+  var rg = [0, 0, 0.02, 0.02, 0.04, 0.04, 0.06, 0.06, 0.06];
+  var ko = [0, 0, 0, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22];
+  for (var n = 1; n <= 8; n++) {
+    var parts = [];
+    if (!dark) {
+      parts.push('0 0 0 1px rgba(0,0,0,0.06)');
+      for (var i = 0; i < n - 1; i++) parts.push(d[i] + ' rgba(0,0,0,0.06)');
+    } else if (n === 1) {
+      parts.push('inset 0 0 0 1px rgba(255,255,255,0.02)');
+    } else {
+      parts.push('inset 0 1px 0 0 rgba(255,255,255,' + hi[n] + ')');
+      parts.push('inset 0 0 0 1px rgba(255,255,255,' + rg[n] + ')');
+      if (n >= 3) parts.push('0 0 0 1px rgba(0,0,0,' + ko[n] + ')');
+      for (var j = 0; j < n - 1; j++) parts.push(d[j] + ' rgba(0,0,0,0.18)');
+    }
+    t['sh' + n] = parts.join(', ');
+    t['s' + n] = t.s[n - 1];
+  }
+  t.bg = t.s1; t.panel = t.s2; t.card = t.s3; t.dialog = t.s5;
+  return t;
+}
+
+class Component extends DCLogic {
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var pp = this.props.preset || 'neutral';
+    var pd = !!this.props.dark;
+    // 画板内切换只在对应 tweak 未变时生效；tweak 一变即回到 tweak 的取值
+    var preset = st.op && st.op.base === pp ? st.op.val : pp;
+    var dark = st.od && st.od.base === pd ? st.od.val : pd;
+    var t = uiTokens(dark, preset);
+    var on = 'background:' + t.s3 + ';color:' + t.fg + ';box-shadow:' + t.sh2;
+    var off = 'color:' + t.mfg;
+    var ringOf = function (c) { return 'inset 0 0 0 1px ' + t.border; };
+    var over = function (c) { return 'linear-gradient(' + c + ',' + c + '),' + t.s3; };
+    var presetOpts = ['neutral', 'blue', 'violet', 'green'].map(function (k) {
+      return {
+        label: k, pressed: k === preset ? 'true' : 'false', style: k === preset ? on : off,
+        pick: function () { self.setState({ op: { base: pp, val: k } }); }
+      };
+    });
+    var typeScale = [
+      { role: 'Display', token: '--fs-display', def: '28 / 34 px', compact: '24 / 30', text: '季度报告概览', sample: 'font-size:28px;line-height:34px;font-weight:600;letter-spacing:-0.01em' },
+      { role: 'Title', token: '--fs-title', def: '16 / 22 px', compact: '15 / 20', text: '最近对话', sample: 'font-size:16px;line-height:22px;font-weight:600' },
+      { role: 'Subtitle', token: '--fs-subtitle', def: '14 / 20 px', compact: '13 / 18', text: '订阅积分 · 本期剩余', sample: 'font-size:14px;line-height:20px;font-weight:600' },
+      { role: 'Body', token: '--fs-body', def: '14 / 20 px', compact: '12 / 18', text: '助手会根据文档内容回答问题，并标出引用的章节。', sample: 'font-size:14px;line-height:20px' },
+      { role: 'Caption', token: '--fs-caption', def: '12 / 16 px', compact: '11 / 14', text: '3 分钟前 · 文档助手', sample: 'font-size:12px;line-height:16px;color:' + t.mfg },
+      { role: 'Micro', token: '--fs-micro', def: '11 / 14 px', compact: '10 / 12', text: '快捷键 ⌘K', sample: 'font-size:11px;line-height:14px;color:' + t.mfg }
+    ];
+    var surfaces = [];
+    for (var i = 1; i <= 8; i++) surfaces.push({ name: 'surface-' + i, hex: t['s' + i], color: t['s' + i], ring: ringOf() });
+    var light = !dark;
+    var semantic = [
+      { name: 'foreground', hex: t.fg, color: t.fg },
+      { name: 'muted-foreground', hex: t.mfg, color: t.mfg },
+      { name: 'primary', hex: t.primary, color: t.primary },
+      { name: 'primary-foreground', hex: t.pfg, color: t.pfg },
+      { name: 'secondary / muted', hex: light ? '#f4f4f5' : '#252525 / #1e1e1e', color: t.secondary },
+      { name: 'accent', hex: t.accentBg, color: t.accentBg },
+      { name: 'destructive', hex: t.destructive, color: t.destructive },
+      { name: 'destructive-light', hex: t.destructiveLight, color: t.destructiveLight },
+      { name: 'success', hex: light ? '#15803d（oklch）' : '#22c55e（oklch）', color: t.success },
+      { name: 'border', hex: 'foreground 12%', color: over(t.border) },
+      { name: 'input', hex: t.input, color: t.input },
+      { name: 'fluid-accent', hex: t.accent, color: t.accent },
+      { name: 'hover', hex: light ? 'rgb(0 0 0 / .04)' : 'rgb(255 255 255 / .06)', color: over(t.hover) },
+      { name: 'active', hex: light ? 'rgb(0 0 0 / .07)' : 'rgb(255 255 255 / .10)', color: over(t.active) },
+      { name: 'selected', hex: t.selected, color: t.selected },
+      { name: 'tint（secondary 按钮）', hex: light ? 'rgb(0 0 0 / .08)' : 'rgb(255 255 255 / .25)', color: over(t.tint) },
+      { name: 'focus-ring', hex: t.ring, color: t.ring },
+      { name: 'overlay（弹窗遮罩）', hex: light ? 'black / 40%' : 'black / 80%', color: over(t.scrim) }
+    ].map(function (c) { c.ring = ringOf(); return c; });
+    var uses = ['分隔、表格外框', '轻量按钮、行', '卡片、侧边面板', '悬浮卡片', '对话框（substrate + 4）', '浮层、抽屉', '高层浮层', '最高层'];
+    var shadows = [];
+    for (var n = 1; n <= 8; n++) shadows.push({ name: 'shadow-' + n, use: uses[n - 1], bg: t['s' + n], shadow: t['sh' + n] });
+    return {
+      t: t,
+      presetOpts: presetOpts,
+      modeLight: dark ? off : on,
+      modeDark: dark ? on : off,
+      pickLight: function () { self.setState({ od: { base: pd, val: false } }); },
+      pickDark: function () { self.setState({ od: { base: pd, val: true } }); },
+      typeScale: typeScale,
+      surfaces: surfaces,
+      semantic: semantic,
+      shadows: shadows,
+      selPct: dark ? '40%' : '25%',
+      inputBg: dark ? 'rgba(64,64,64,0.3)' : 'transparent'
+    };
+  }
+}
+</script>
+</body>
+</html>

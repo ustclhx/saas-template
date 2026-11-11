@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>定价页</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:none}a:hover{text-decoration:underline;text-underline-offset:3px}
+.r{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;font-optical-sizing:auto;min-height:100vh;position:relative}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0;margin:0}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.cap{font-size:12px;line-height:16px}
+.sub{font-size:14px;line-height:20px;font-weight:600}
+.ttl{font-size:16px;line-height:22px;font-weight:600}
+.dsp{font-size:28px;line-height:34px;font-weight:600;letter-spacing:-0.01em}
+.wrap{width:100%;max-width:72rem;margin:0 auto;padding:0 2rem}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border-radius:8px;font-size:14px;line-height:20px;font-weight:500;white-space:nowrap;text-decoration:none}
+.btn:hover{text-decoration:none}
+.btn-sm{height:32px;padding:0 12px}
+.btn-lg{height:40px;padding:0 24px;gap:8px}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px}
+.hv:hover{background:rgba(128,128,128,0.1);text-decoration:none}
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:9999px;font-size:12px;line-height:16px;font-weight:500;white-space:nowrap}
+.mnav a{padding:6px 10px;border-radius:8px}
+.seg{display:inline-flex;padding:2px;border-radius:10px;gap:2px}
+.seg button{height:28px;padding:0 12px;border-radius:8px;font-size:14px;line-height:20px;font-weight:500;display:inline-flex;align-items:center;gap:6px}
+.groups{display:grid;grid-template-columns:minmax(0,2.3fr) minmax(0,1fr);gap:32px;align-items:start}
+.plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.plan{position:relative;display:flex;flex-direction:column;gap:16px;padding:24px;border-radius:12px}
+.ent{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.ent li{display:flex;gap:8px;align-items:flex-start}
+.facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.fact{display:flex;gap:12px;padding:16px 20px}
+details{border-radius:0}
+summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0;font-weight:500}
+summary::-webkit-details-marker{display:none}
+.foot{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:32px}
+.foot a{display:block;padding:3px 0}
+.sk{border-radius:6px;animation:sk 1.6s ease-in-out infinite}
+@keyframes sk{0%,100%{opacity:1}50%{opacity:0.5}}
+svg{flex-shrink:0}
+sc-if,sc-for{display:contents}
+</style>
+</helmet>
+<div class="r" style="background:{{t.bg}};color:{{t.fg}}">
+  <header style="position:sticky;top:0;z-index:30;border-bottom:1px solid {{t.border}};background:{{t.bg}}">
+    <div class="wrap row" style="height:64px;gap:24px">
+      <a href="#" class="row" style="gap:8px;text-decoration:none">
+        <span class="row" style="justify-content:center;width:24px;height:24px;border-radius:6px;background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span>
+        <span class="sub">SaaS 模板</span>
+      </a>
+      <nav aria-label="主菜单" class="row mnav" style="gap:2px;flex:1">
+        <a href="#" class="hv" style="{{nav.features}}">功能</a>
+        <a href="#" class="hv" aria-current="{{nav.pricingCur}}" style="{{nav.pricing}}">定价</a>
+        <a href="#" class="hv" style="{{nav.docs}}">文档</a>
+        <a href="#" class="hv" style="{{nav.blog}}">博客</a>
+      </nav>
+      <div class="row" style="gap:8px">
+        <button type="button" class="ib hv" aria-label="{{themeLabel}}" onClick="{{toggleTheme}}" style="color:{{t.mfg}}">
+          <sc-if value="{{isDark}}" hint-placeholder-val="{{false}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg></sc-if>
+          <sc-if value="{{isLight}}" hint-placeholder-val="{{true}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></sc-if>
+        </button>
+        <a href="#" class="btn hv" style="color:{{t.mfg}}">登录</a>
+        <a href="#" class="btn" style="background:{{t.primary}};color:{{t.pfg}}">免费开始</a>
+      </div>
+    </div>
+  </header>
+<!--BODY-->
+  <section style="padding:64px 0 40px">
+    <div class="wrap col" style="align-items:center;text-align:center;gap:16px">
+      <span class="cap" style="padding:4px 12px;border-radius:9999px;border:1px solid {{t.border}};color:{{t.mfg}}">定价</span>
+      <h1 style="margin:0;font-size:36px;line-height:44px;font-weight:700;letter-spacing:-0.02em">订阅或积分包，按你的用法选</h1>
+      <p style="margin:0;font-size:18px;line-height:28px;color:{{t.mfg}};max-width:40rem">订阅适合稳定使用，积分包适合偶尔用或临时加量。两种积分可以同时持有、叠加使用。</p>
+    </div>
+  </section>
+
+  <section aria-label="积分规则" style="padding-bottom:40px">
+    <div class="wrap">
+      <div class="facts" style="border-radius:12px;background:{{t.card}};box-shadow:{{t.sh2}}">
+        <sc-for list="{{facts}}" as="f" hint-placeholder-count="4">
+          <div class="fact" style="{{f.sep}}">
+            <span class="row" aria-hidden="true" style="justify-content:center;width:32px;height:32px;border-radius:8px;background:{{t.active}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{f.icon}}"></path></svg></span>
+            <span class="col" style="gap:2px"><span class="sub">{{f.title}}</span><span class="cap" style="color:{{t.mfg}}">{{f.desc}}</span></span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+
+  <section aria-label="套餐" style="padding-bottom:72px">
+    <div class="wrap">
+      <sc-if value="{{s.error}}" hint-placeholder-val="{{false}}">
+        <div role="alert" style="display:grid;grid-template-columns:16px 1fr auto;align-items:start;gap:2px 12px;padding:12px 16px;border-radius:8px;border:1px solid {{t.border}};background:{{t.card}};color:{{t.destructive}}">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:2px"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
+          <span class="col" style="gap:2px"><span style="font-weight:500">套餐加载失败</span><span>价格信息暂时无法获取，请稍后再试。</span></span>
+          <button type="button" class="btn btn-sm" style="box-shadow:inset 0 0 0 1px {{t.border}};color:{{t.fg}}">重试</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{s.empty}}" hint-placeholder-val="{{false}}">
+        <div class="col" style="align-items:center;text-align:center;gap:10px;padding:48px 16px;border-radius:12px;border:1px dashed {{t.border}}">
+          <div class="row" aria-hidden="true" style="justify-content:center;width:120px;height:80px;border-radius:12px;background:{{t.active}};color:{{t.mfg}}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg></div>
+          <h2 class="ttl" style="margin:4px 0 0">套餐即将上架</h2>
+          <p style="margin:0;color:{{t.mfg}};max-width:26rem">现在注册即可获得免费积分，每天登录还能再领取。</p>
+          <a href="#" class="btn" style="margin-top:4px;background:{{t.primary}};color:{{t.pfg}}">免费开始</a>
+        </div>
+      </sc-if>
+      <sc-if value="{{s.groups}}" hint-placeholder-val="{{true}}">
+        <div class="groups">
+          <div class="col" style="gap:16px">
+            <div class="row" style="justify-content:space-between;gap:16px">
+              <div class="col" style="gap:2px"><h2 class="ttl" style="margin:0">订阅</h2><span class="cap" style="color:{{t.mfg}}">订阅积分每月发放，本期内有效</span></div>
+              <div class="seg" role="group" aria-label="计费周期" style="background:{{t.muted}}">
+                <button type="button" aria-pressed="{{cycle.mStr}}" onClick="{{pickMonthly}}" style="{{cycle.m}}">月付</button>
+                <button type="button" aria-pressed="{{cycle.yStr}}" onClick="{{pickYearly}}" style="{{cycle.y}}">年付<span class="badge" style="height:18px;padding:0 6px;background:{{t.successSoft}};color:{{t.success}}">省 [N]%</span></button>
+              </div>
+            </div>
+            <div class="plans">
+              <sc-for list="{{plans}}" as="p" hint-placeholder-count="3">
+                <div class="plan" style="{{p.box}}">
+                  <sc-if value="{{p.rec}}" hint-placeholder-val="{{false}}"><span class="badge" style="position:absolute;top:-10px;left:24px;background:{{t.primary}};color:{{t.pfg}}">推荐</span></sc-if>
+                  <div class="col" style="gap:4px"><h3 class="ttl" style="margin:0">{{p.name}}</h3><span class="cap" style="color:{{t.mfg}}">{{p.desc}}</span></div>
+                  <sc-if value="{{s.loading}}" hint-placeholder-val="{{false}}"><span class="sk" style="width:120px;height:34px;background:{{t.active}}"></span></sc-if>
+                  <sc-if value="{{s.ready}}" hint-placeholder-val="{{true}}">
+                    <div class="col" style="gap:2px">
+                      <span class="row" style="gap:4px;align-items:baseline"><span class="dsp">{{p.price}}</span><span style="color:{{t.mfg}}">{{p.per}}</span></span>
+                      <span class="cap" style="color:{{t.mfg}}">{{p.note}}</span>
+                    </div>
+                  </sc-if>
+                  <a href="#" class="btn" style="{{p.cta}}">{{p.ctaText}}</a>
+                  <ul class="ent" style="padding-top:16px;border-top:1px solid {{t.border}}">
+                    <sc-if value="{{s.ready}}" hint-placeholder-val="{{true}}">
+                      <sc-for list="{{p.ents}}" as="e" hint-placeholder-count="4">
+                        <li><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="margin-top:2px;color:{{t.success}}"><path d="M20 6 9 17l-5-5"></path></svg><span>{{e}}</span></li>
+                      </sc-for>
+                    </sc-if>
+                    <sc-if value="{{s.loading}}" hint-placeholder-val="{{false}}">
+                      <li><span class="sk" style="height:12px;width:80%;background:{{t.active}}"></span></li>
+                      <li><span class="sk" style="height:12px;width:65%;background:{{t.active}}"></span></li>
+                      <li><span class="sk" style="height:12px;width:72%;background:{{t.active}}"></span></li>
+                    </sc-if>
+                  </ul>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div class="col" style="gap:16px">
+            <div class="col" style="gap:2px;min-height:32px;justify-content:center"><h2 class="ttl" style="margin:0">积分包</h2><span class="cap" style="color:{{t.mfg}}">一次性购买，长期有效，不受月付/年付影响</span></div>
+            <div class="col" style="gap:12px">
+              <sc-for list="{{packs}}" as="k" hint-placeholder-count="3">
+                <div class="row" style="gap:12px;padding:16px 20px;border-radius:12px;{{k.box}}">
+                  <span class="col" style="flex:1;gap:2px">
+                    <span class="row" style="gap:6px"><span class="sub">{{k.amount}}</span><sc-if value="{{k.best}}" hint-placeholder-val="{{false}}"><span class="badge" style="background:{{t.active}}">常用</span></sc-if></span>
+                    <span class="cap" style="color:{{t.mfg}}">{{k.desc}}</span>
+                  </span>
+                  <sc-if value="{{s.loading}}" hint-placeholder-val="{{false}}"><span class="sk" style="width:56px;height:20px;background:{{t.active}}"></span></sc-if>
+                  <sc-if value="{{s.ready}}" hint-placeholder-val="{{true}}"><span class="ttl">[价格]</span></sc-if>
+                  <a href="#" class="btn btn-sm" style="{{k.cta}}">购买</a>
+                </div>
+              </sc-for>
+            </div>
+            <p class="cap" style="margin:0;color:{{t.mfg}}">与订阅同时持有时，扣费按到期时间先后进行：先用订阅积分，积分包留到最后。</p>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </section>
+
+  <section aria-labelledby="faq-h" style="padding:0 0 80px">
+    <div class="wrap" style="max-width:48rem">
+      <h2 id="faq-h" class="dsp" style="margin:0 0 8px;text-align:center">常见问题</h2>
+      <div style="border-top:1px solid {{t.border}};margin-top:24px">
+        <details open="open" style="border-bottom:1px solid {{t.border}}">
+          <summary>订阅积分和积分包有什么区别？<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></summary>
+          <p style="margin:0 0 16px;color:{{t.mfg}}">订阅积分每个计费周期发放一次，本期结束时未用完的部分不结转；积分包一次性购买，长期有效。</p>
+        </details>
+        <details open="open" style="border-bottom:1px solid {{t.border}}">
+          <summary>两种积分同时存在时先扣哪一种？<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></summary>
+          <p style="margin:0 0 16px;color:{{t.mfg}}">先消耗先到期的积分。当天领取的每日积分最先使用，其次是本期订阅积分，长期有效的积分包最后使用。</p>
+        </details>
+        <details style="border-bottom:1px solid {{t.border}}">
+          <summary>可以随时取消订阅吗？<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></summary>
+          <p style="margin:0 0 16px;color:{{t.mfg}}">可以。取消后当期权益保留到周期结束，已购买的积分包不受影响。</p>
+        </details>
+        <details style="border-bottom:1px solid {{t.border}}">
+          <summary>团队成员共用积分吗？<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></summary>
+          <p style="margin:0 0 16px;color:{{t.mfg}}">积分属于工作区，同一工作区的成员共用余额。</p>
+        </details>
+      </div>
+    </div>
+  </section>
+<!--/BODY-->
+  <footer style="border-top:1px solid {{t.border}}">
+    <div class="wrap" style="padding-top:48px;padding-bottom:88px">
+      <div class="foot">
+        <div class="col" style="gap:10px">
+          <span class="row" style="gap:8px"><span class="row" style="justify-content:center;width:24px;height:24px;border-radius:6px;background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span><span class="sub">SaaS 模板</span></span>
+          <span style="color:{{t.mfg}};max-width:18rem">账号、计费、积分、AI 功能与后台，换上品牌即可上线。</span>
+        </div>
+        <nav aria-label="产品" class="col"><span class="cap" style="font-weight:500;margin-bottom:6px;color:{{t.mfg}}">产品</span><a href="#">功能</a><a href="#">定价</a><a href="#">更新日志</a></nav>
+        <nav aria-label="资源" class="col"><span class="cap" style="font-weight:500;margin-bottom:6px;color:{{t.mfg}}">资源</span><a href="#">文档</a><a href="#">博客</a><a href="#">指南</a></nav>
+        <nav aria-label="法律" class="col"><span class="cap" style="font-weight:500;margin-bottom:6px;color:{{t.mfg}}">法律</span><a href="#">隐私政策</a><a href="#">服务条款</a><a href="#">Cookie 设置</a></nav>
+      </div>
+      <div class="row cap" style="justify-content:space-between;margin-top:40px;padding-top:20px;border-top:1px solid {{t.border}};color:{{t.mfg}}">
+        <span>© 2026 [公司名]</span>
+        <a href="#" class="row" style="gap:4px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>简体中文</a>
+      </div>
+    </div>
+  </footer>
+<!--FAB-->
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"state":{"editor":"enum","options":["normal","empty","loading","error"],"default":"normal"},"$preview":{"width":1440,"height":1800}}'>
+function uiTokens(dark) {
+  var t = dark ? {
+    s: ['#171717', '#1e1e1e', '#252525', '#2c2c2c', '#333333', '#3a3a3a', '#414141', '#484848'],
+    fg: '#f5f5f5', muted: '#1e1e1e', mfg: '#b0b0b0', primary: '#f5f5f5', pfg: '#171717',
+    destructive: '#fca5a5', success: 'oklch(0.723 0.219 149.579)', successSoft: 'rgba(34,197,94,0.15)',
+    border: 'rgba(245,245,245,0.12)', hover: 'rgba(255,255,255,0.06)', active: 'rgba(255,255,255,0.1)'
+  } : {
+    s: ['#fafafa', '#fcfcfc', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff'],
+    fg: '#171717', muted: '#f4f4f5', mfg: '#6b6b6b', primary: '#171717', pfg: '#fafafa',
+    destructive: '#b91c1c', success: 'oklch(0.527 0.154 150.069)', successSoft: 'rgba(21,128,61,0.1)',
+    border: 'rgba(23,23,23,0.12)', hover: 'rgba(0,0,0,0.04)', active: 'rgba(0,0,0,0.07)'
+  };
+  t.bg = t.s[0]; t.panel = t.s[1]; t.card = t.s[2];
+  t.sh2 = dark ? 'inset 0 1px 0 0 rgba(255,255,255,0.01), inset 0 0 0 1px rgba(255,255,255,0.02), 0 1px 1px -0.5px rgba(0,0,0,0.18)' : '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06)';
+  t.sh4 = dark ? 'inset 0 1px 0 0 rgba(255,255,255,0.02), inset 0 0 0 1px rgba(255,255,255,0.04), 0 0 0 1px rgba(0,0,0,0.14), 0 1px 1px -0.5px rgba(0,0,0,0.18), 0 3px 3px -1.5px rgba(0,0,0,0.18), 0 6px 6px -3px rgba(0,0,0,0.18)' : '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06), 0 3px 3px -1.5px rgba(0,0,0,0.06), 0 6px 6px -3px rgba(0,0,0,0.06)';
+  t.sh5 = dark ? 'inset 0 1px 0 0 rgba(255,255,255,0.04), inset 0 0 0 1px rgba(255,255,255,0.04), 0 0 0 1px rgba(0,0,0,0.16), 0 1px 1px -0.5px rgba(0,0,0,0.18), 0 3px 3px -1.5px rgba(0,0,0,0.18), 0 6px 6px -3px rgba(0,0,0,0.18), 0 12px 12px -6px rgba(0,0,0,0.18)' : '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06), 0 3px 3px -1.5px rgba(0,0,0,0.06), 0 6px 6px -3px rgba(0,0,0,0.06), 0 12px 12px -6px rgba(0,0,0,0.06)';
+  return t;
+}
+
+function siteNav(t, current) {
+  var o = {};
+  ['features', 'pricing', 'docs', 'blog'].forEach(function (k) {
+    o[k] = k === current ? 'color:' + t.fg + ';font-weight:500' : 'color:' + t.mfg;
+  });
+  o.pricingCur = current === 'pricing' ? 'page' : 'false';
+  return o;
+}
+
+class Component extends DCLogic {
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var pd = !!this.props.dark;
+    var dark = st.od && st.od.base === pd ? st.od.val : pd;
+    var t = uiTokens(dark);
+    var mode = this.props.state || 'normal';
+    var s = {
+      normal: mode === 'normal', empty: mode === 'empty', loading: mode === 'loading', error: mode === 'error',
+      groups: mode === 'normal' || mode === 'loading', ready: mode === 'normal'
+    };
+    var yearly = !!st.yearly;
+    var on = 'background:' + t.s[2] + ';color:' + t.fg + ';box-shadow:' + t.sh2;
+    var off = 'color:' + t.mfg;
+    var outline = 'box-shadow:inset 0 0 0 1px ' + t.border;
+    var solid = 'background:' + t.primary + ';color:' + t.pfg;
+    var per = yearly ? '/ 年' : '/ 月';
+    var plans = [
+      { name: '免费版', desc: '先试用，按天领取积分', price: '0', per: '', note: '无需绑定付款方式', ctaText: '免费开始', rec: false,
+        ents: ['注册赠送积分', '每日登录领取积分', '基础文本模型', '1 个工作区'] },
+      { name: '专业版', desc: '个人日常使用', price: '[价格]', per: per, note: yearly ? '按年计费，折合每月 [价格]' : '按月计费，可随时取消', ctaText: '订阅专业版', rec: true,
+        ents: ['每月 [N] 订阅积分', '全部文本与图片模型', '长文报告导出 PDF', '优先处理队列'] },
+      { name: '团队版', desc: '小团队共享额度', price: '[价格]', per: per, note: yearly ? '按年计费，折合每月 [价格]' : '按月计费，可随时取消', ctaText: '订阅团队版', rec: false,
+        ents: ['每月 [N] 订阅积分，成员共享', '专业版全部权益', '成员与角色管理', '最多 [N] 位成员'] }
+    ].map(function (p) {
+      p.box = p.rec
+        ? 'background:' + t.card + ';box-shadow:inset 0 0 0 1.5px ' + t.primary + ', ' + t.sh4
+        : 'background:' + t.card + ';box-shadow:' + t.sh2;
+      p.cta = p.rec ? solid : outline;
+      return p;
+    });
+    var packs = [
+      { amount: '500 积分', desc: '偶尔使用', best: false },
+      { amount: '2,000 积分', desc: '临时加量最常选', best: true },
+      { amount: '5,000 积分', desc: '批量生成或团队备用', best: false }
+    ].map(function (k) {
+      k.box = 'background:' + t.card + ';box-shadow:' + t.sh2;
+      k.cta = outline;
+      return k;
+    });
+    var sep = 'border-left:1px solid ' + t.border;
+    return {
+      t: t, s: s, nav: siteNav(t, 'pricing'),
+      isDark: dark, isLight: !dark, themeLabel: dark ? '切换到浅色' : '切换到深色',
+      toggleTheme: function () { self.setState({ od: { base: pd, val: !dark } }); },
+      cycle: { m: yearly ? off : on, y: yearly ? on : off, mStr: yearly ? 'false' : 'true', yStr: yearly ? 'true' : 'false' },
+      pickMonthly: function () { self.setState({ yearly: false }); },
+      pickYearly: function () { self.setState({ yearly: true }); },
+      plans: plans, packs: packs,
+      facts: [
+        { title: '订阅积分按月发放', desc: '每个计费周期发放一次', sep: '', icon: 'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z' },
+        { title: '积分包长期有效', desc: '一次购买，不会过期', sep: sep, icon: 'M12 2 3 7v10l9 5 9-5V7zM3 7l9 5 9-5M12 12v10' },
+        { title: '两者叠加使用', desc: '余额合并显示，一起可用', sep: sep, icon: 'M12 5v14M5 12h14' },
+        { title: '先到期的先消耗', desc: '每日 → 订阅 → 积分包', sep: sep, icon: 'M12 6v6l4 2M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
