@@ -860,6 +860,11 @@ export async function createProject(input, source = root) {
     'docs/design/README.md',
     `# 项目设计记录\n\n此目录归项目所有。模板设计规范见 \`docs/design-system.md\`。\n\n- \`visual-system.md\`：项目视觉方向、品牌 token 与多站点规则。\n- \`references/\`：采用的参考网站说明、截图与素材来源。\n- \`prototypes/\`：经使用者确认、可离线打开的设计稿副本；\`prototypes/README.md\` 为原型索引，每页一行（页面/路由、画布链接、确认日期、使用者确认原话、副本文件、所属 change），需求的 OpenSpec 设计文档只引用索引行。流程见 \`ui-design\` 技能与 \`docs/design-system.md\` §8.2。\n- \`forks.md\`：复制到 \`packages/ui/src/project/\` 的模板组件、来源版本与定制原因。\n\n品牌 token 写入 \`apps/web/src/styles/brand.css\`，项目组件经 \`@${options.name}/ui/project\` 导出；复制的模板组件仍受 UI 规范检查；如需保留上游的 \`arbitrary-class\`、颜色字面量等写法，须在 \`scripts/check-ui.allow.local.json\` 按文件登记所需规则与原因，不能只登记 \`forks.md\`。\n`,
   )
+  // 原型索引：new-page / ui-design 技能按它判断设计关卡，生成时就要存在（空表）
+  await writeGenerated(
+    'docs/design/prototypes/README.md',
+    `# 项目设计稿索引\n\n经使用者确认的设计稿副本与索引（流程见 \`ui-design\` 技能与 \`docs/design-system.md\` §8.2）。\n关卡检查：页面在下表中有一行，且「副本文件」（相对本目录）存在。确认只接受使用者本人在会话中的明确确认，附原话。\n\n| 页面 / 路由 | 画布链接 | 确认日期 | 使用者确认原话 | 副本文件 | 所属 change |\n|---|---|---|---|---|---|\n`,
+  )
   const journal = JSON.parse(
     await readFile(join(target, 'packages/db/migrations/meta/_journal.json'), 'utf8'),
   )

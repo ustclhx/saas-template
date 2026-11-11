@@ -326,6 +326,10 @@ generatorTest(
       '按文件登记所需规则与原因',
     ])
       assert.ok(readme.includes(path), `缺少项目设计位置：${path}`)
+    // 技能引用的项目原型索引随生成创建，只有表头
+    const index = await readFile(join(result.target, 'docs/design/prototypes/README.md'), 'utf8')
+    assert.match(index, /\| 页面 \/ 路由 \| 画布链接 \|/)
+    assert.doesNotMatch(index, /TEMPLATE_PROTOTYPE_SENTINEL|JL1raENWEr8nomz7sqvHce/)
     await assert.rejects(stat(join(result.target, 'docs/design-system/prototypes')), {
       code: 'ENOENT',
     })

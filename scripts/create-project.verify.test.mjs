@@ -190,6 +190,9 @@ test('真实副本覆盖 Cloudflare 默认、selfhost 默认和 selfhost 全关�
               if (/^(?:\.agents|\.claude)\/skills\/.*\.md$/.test(projectPath)) {
                 assert.doesNotMatch(content.toString(), /项目维护约定[、，\s`]+项目维护约定/)
                 for (const [reference] of content.toString().matchAll(/docs\/[\w./-]+\.md/g)) {
+                  // 与 create-project.test.mjs 一致：docs/design/ 下的 visual-system、forks 等由项目按需创建，
+                  // 模板自己的原型索引不进衍生项目
+                  if (/^docs\/(?:design|design-system\/prototypes)\//.test(reference)) continue
                   await assert.doesNotReject(
                     () => readFile(join(result.target, reference)),
                     `${projectPath} 引用不存在的文档：${reference}`,
