@@ -1,10 +1,12 @@
 import type { MessageFeedbackProps } from '@saas/ui'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
+import { MessageFeedback } from './chat-extras.tsx'
 import { FEEDBACK_SHARED_PRIOR_MESSAGES } from './feedback.ts'
 
 // 对话页的评分接线必须传入共享对话勾选项的文案（add-subject-chat tasks.md 10.3）；
 // 勾选交互在 packages/ui/test/business.test.tsx 与 e2e/chat-business-ui.spec.ts 覆盖。
+// 静态导入（vi.mock 会提升到导入之前），加载 @saas/ui 的耗时计入收集阶段而不是用例超时。
 
 const captured: MessageFeedbackProps[] = []
 vi.mock('@saas/ui', async (importOriginal) => ({
@@ -17,7 +19,6 @@ vi.mock('@saas/ui', async (importOriginal) => ({
 
 describe('MessageFeedback wiring', () => {
   it('passes share labels naming the shared range and maps consent to a boolean', async () => {
-    const { MessageFeedback } = await import('./chat-extras.tsx')
     const onChange = vi.fn(async () => {})
     renderToStaticMarkup(<MessageFeedback messageId="m" value={null} onChange={onChange} />)
     const props = captured.at(-1)
