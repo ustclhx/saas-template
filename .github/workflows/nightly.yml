@@ -5,6 +5,9 @@ on:
     # UTC 19:00 = 北京时间次日 03:00。
     - cron: '0 19 * * *'
   workflow_dispatch:
+  # 仅用于首次注册分支验收，验收后移除。
+  push:
+    branches: [ustclhx/nightly-e2e]
 
 permissions:
   contents: read
