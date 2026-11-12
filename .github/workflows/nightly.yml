@@ -67,6 +67,63 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+  e2e-multi-tenant:
+    # 验证期间临时放开分支限制（ustclhx/e2e-shell），验证后改回只运行 main
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ustclhx/e2e-shell'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # 默认模板 multiTenant=false，团队空间、邀请与侧边栏工作区菜单只在多空间配置下覆盖；
+    # 独立 runner/PG，夹具要求 saas_wt_ 前缀，服务配置同 e2e-full。
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: saas_wt_multi_tenant
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d saas_wt_multi_tenant"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: postgres://app:app@localhost:5432/saas_wt_multi_tenant
+      CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_CACHED: postgres://app:app@localhost:5432/saas_wt_multi_tenant
+      MIGRATION_DATABASE_URL: postgres://migrator:migrator@localhost:5432/saas_wt_multi_tenant
+      WRANGLER_SEND_METRICS: 'false'
+      PLAYWRIGHT_HTML_OPEN: never
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/prepare-local-tests
+        with:
+          database: saas_wt_multi_tenant
+      - name: Prepare isolated e2e fixtures
+        run: |
+          cat > .env.worktree <<'VARS'
+          DATABASE_URL=postgres://app:app@localhost:5432/saas_wt_multi_tenant
+          MIGRATION_DATABASE_URL=postgres://migrator:migrator@localhost:5432/saas_wt_multi_tenant
+          CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgres://app:app@localhost:5432/saas_wt_multi_tenant
+          CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_CACHED=postgres://app:app@localhost:5432/saas_wt_multi_tenant
+          VARS
+      # 只改 runner 内的检出副本；替换失败（模板字段改名）时直接报错，避免静默跑成单空间
+      - name: Enable multi-tenant template config
+        run: |
+          sed -i 's/multiTenant: false,/multiTenant: true,/' template.config.ts
+          grep -q 'multiTenant: true,' template.config.ts
+      - name: Run multi-tenant e2e
+        run: pnpm --filter @saas/web exec playwright test e2e/workspace.spec.ts e2e/app-shell.spec.ts --reporter=github,html
+      - uses: actions/upload-artifact@v6
+        if: failure()
+        with:
+          name: playwright-multi-tenant-report-and-traces
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
   create-project-verify:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -107,10 +164,11 @@ jobs:
         run: pnpm test:create-project:verify
 
   notify-failure:
-    needs: [e2e-full, create-project-verify]
+    needs: [e2e-full, e2e-multi-tenant, create-project-verify]
     if: >-
       always() && github.ref == 'refs/heads/main' &&
-      (needs.e2e-full.result == 'failure' || needs.create-project-verify.result == 'failure')
+      (needs.e2e-full.result == 'failure' || needs.e2e-multi-tenant.result == 'failure' ||
+       needs.create-project-verify.result == 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
