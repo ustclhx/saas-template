@@ -317,6 +317,11 @@ export function registerAiChatSuite(
       expect(mock.doStreamCalls[0]?.maxOutputTokens).toBe(500)
 
       const { message, hold } = await assistantMessage(conversationId)
+      const [question] = await sql<{ id: string }[]>`
+        select id from ai_message where conversation_id=${conversationId} and role='user'`
+      // UUIDv7 分配顺序必须与同轮问答一致，避免新消息继续产生历史反序数据。
+      expect(question?.id).toBeDefined()
+      expect((question?.id as string) < message.id).toBe(true)
       expect(message).toMatchObject({
         status: 'completed',
         parts: [{ type: 'text', text: 'Hello from the mock model!' }],
