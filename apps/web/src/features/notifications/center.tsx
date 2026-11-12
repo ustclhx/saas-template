@@ -19,7 +19,15 @@ const EMPTY_PAGE: NotificationPage = { rows: [], unread: 0, hasMore: false }
  */
 export function NotificationCenter({ hideWhenEmpty = false }: { hideWhenEmpty?: boolean }) {
   const router = useRouter()
-  const { slug, status, page: firstPage, refresh, markRead } = useNotifications()
+  const {
+    slug,
+    status,
+    page: firstPage,
+    refresh,
+    markRead,
+    revealRequest,
+    acknowledgeReveal,
+  } = useNotifications()
   const [offset, setOffset] = useState(0)
   const [laterPage, setLaterPage] = useState<NotificationPage | null>(null)
   const [error, setError] = useState('')
@@ -40,24 +48,50 @@ export function NotificationCenter({ hideWhenEmpty = false }: { hideWhenEmpty?: 
     void loadLaterPage()
   }, [loadLaterPage])
 
+  // 第一页刷新成功（轮询或标为已读后）时清掉上一次的错误提示
+  const [seenFirstPage, setSeenFirstPage] = useState(firstPage)
+  if (seenFirstPage !== firstPage) {
+    setSeenFirstPage(firstPage)
+    if (offset === 0) setError('')
+  }
+
   const page = (offset === 0 ? firstPage : laterPage) ?? EMPTY_PAGE
   const loadError = offset === 0 && status === 'error' ? m.notifications_unavailable() : ''
   const shownError = error || loadError
   const hidden =
     hideWhenEmpty && !shownError && page.unread === 0 && page.rows.length === 0 && offset === 0
 
-  // 每次导航到 #notifications（包括已在首页时再次点击「查看全部」）都展开并滚动到通知区
-  const hash = useLocation({ select: (location) => location.hash })
-  const navigationKey = useLocation({ select: (location) => location.state.__TSR_key })
-  useEffect(() => {
-    void navigationKey
-    if (hidden || hash !== NOTIFICATION_CENTER_ID) return
-    setOpen(true)
+  const scrollIntoView = useCallback(() => {
     requestAnimationFrame(() => detailsRef.current?.scrollIntoView({ block: 'start' }))
-  }, [hash, navigationKey, hidden])
+  }, [])
+
+  // 「查看全部通知」的展开请求：从其他页面跳来与已在首页时再次点击都经 Provider 的显式请求，
+  // 不依赖路由 key（跳到相同地址时路由不写历史，key 不变）
+  useEffect(() => {
+    if (hidden || !acknowledgeReveal(revealRequest)) return
+    setOpen(true)
+    scrollIntoView()
+  }, [revealRequest, hidden, acknowledgeReveal, scrollIntoView])
+
+  // 地址本身带 #notifications（直接打开链接或后退回来）：首次可见时展开。只有首屏加载（挂载时数据还没到）
+  // 才滚动；后退由路由恢复滚动位置，不强制滚动。挂载时已加载且为空的，第一条通知到达时不自动展开。
+  const hash = useLocation({ select: (location) => location.hash })
+  const initialHash = useRef<{ pending: boolean; scroll: boolean } | null>(null)
+  initialHash.current ??= {
+    pending: hash === NOTIFICATION_CENTER_ID && (status === 'loading' || !hidden),
+    scroll: status === 'loading',
+  }
+  useEffect(() => {
+    const pending = initialHash.current
+    if (hidden || !pending?.pending) return
+    pending.pending = false
+    setOpen(true)
+    if (pending.scroll) scrollIntoView()
+  }, [hidden, scrollIntoView])
 
   async function read(id?: string) {
     setBusy(true)
+    setError('')
     try {
       const { link } = await markRead(id)
       await loadLaterPage()
@@ -99,7 +133,10 @@ export function NotificationCenter({ hideWhenEmpty = false }: { hideWhenEmpty?: 
           rows={page.rows}
           getRowId={(row) => row.id}
           page={adminListPage(offset, page)}
-          onPageChange={(index) => setOffset(offsetOfPage(index))}
+          onPageChange={(index) => {
+            setError('')
+            setOffset(offsetOfPage(index))
+          }}
           columns={[
             {
               id: 'notification',

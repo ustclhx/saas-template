@@ -13,33 +13,43 @@ import { getNotifications, readNotifications } from './notifications.functions.t
 export type NotificationPage = Awaited<ReturnType<typeof getNotifications>>
 export type NotificationRow = NotificationPage['rows'][number]
 
-/** loading：还没有拿到第一页；error：最近一次读取失败（铃铛不显示角标） */
+/** loading：还没有拿到第一页；error：还没有拿到过数据且读取失败（铃铛不显示角标） */
 export type NotificationStatus = 'loading' | 'ready' | 'error'
 
 export interface NotificationsState {
   slug: string
   status: NotificationStatus
-  /** 第一页（offset 0）；loading 时为 null，出错时保留上一次的结果 */
+  /** 第一页（offset 0）；还没有拿到数据时为 null */
   page: NotificationPage | null
   /** 重新读取第一页；showLoading 时先切到加载态（错误态的「重试」） */
   refresh: (options?: { showLoading?: boolean }) => Promise<void>
   /** 标为已读（不传 id 为全部），随后刷新第一页；返回服务端校验过的跳转链接 */
   markRead: (id?: string) => Promise<{ link: string | null }>
+  /** 「查看全部通知」：请求首页通知区展开并滚动到可见位置（同一地址再次点击也生效） */
+  revealCenter: () => void
+  /** 最近一次展开请求的序号，0 为没有请求 */
+  revealRequest: number
+  /** 通知区处理展开请求：该请求尚未处理时返回 true 并标记为已处理 */
+  acknowledgeReveal: (request: number) => boolean
 }
 
 export const POLL_INTERVAL_MS = 30_000
 
-const NotificationsContext = createContext<NotificationsState | null>(null)
+export const NotificationsContext = createContext<NotificationsState | null>(null)
 
 /**
  * 工作台通知数据（评审清单 #90）：铃铛与首页通知区共用这一份第一页数据与 30 秒轮询，
- * 不各自请求。布局按空间渲染一次（key 为 slug）。
+ * 不各自请求。布局按空间渲染一次（key 为 slug）。标签页隐藏时暂停轮询（无人查看时不访问数据库，
+ * 见 Neon 成本基线），回到前台立即刷新一次。
  */
 export function NotificationsProvider({ slug, children }: { slug: string; children: ReactNode }) {
   const [status, setStatus] = useState<NotificationStatus>('loading')
   const [page, setPage] = useState<NotificationPage | null>(null)
+  const [revealRequest, setRevealRequest] = useState(0)
+  const acknowledgedRevealRef = useRef(0)
   // 并发的读取只采用最后发出的一次，避免较早的轮询结果覆盖标为已读后的新结果
   const requestRef = useRef(0)
+  const hasDataRef = useRef(false)
 
   const refresh = useCallback(
     async (options?: { showLoading?: boolean }) => {
@@ -48,20 +58,40 @@ export function NotificationsProvider({ slug, children }: { slug: string; childr
       try {
         const next = await getNotifications({ data: { slug, offset: 0 } })
         if (request !== requestRef.current) return
+        hasDataRef.current = true
         setPage(next)
         setStatus('ready')
       } catch {
-        // 通知读取失败只降级入口，不阻止应用布局使用
-        if (request === requestRef.current) setStatus('error')
+        // 通知读取失败只降级入口，不阻止应用布局使用。已经有数据时单次失败保留列表与角标，
+        // 只有还没拿到过数据时才进入错误态
+        if (request !== requestRef.current) return
+        setStatus(hasDataRef.current ? 'ready' : 'error')
       }
     },
     [slug],
   )
 
   useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | undefined
+    const start = () => {
+      if (timer === undefined) timer = setInterval(() => void refresh(), POLL_INTERVAL_MS)
+    }
+    const stop = () => {
+      if (timer !== undefined) clearInterval(timer)
+      timer = undefined
+    }
+    const onVisibilityChange = () => {
+      if (document.hidden) return stop()
+      void refresh()
+      start()
+    }
     void refresh()
-    const timer = setInterval(() => void refresh(), POLL_INTERVAL_MS)
-    return () => clearInterval(timer)
+    if (!document.hidden) start()
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      stop()
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [refresh])
 
   const markRead = useCallback(
@@ -73,9 +103,25 @@ export function NotificationsProvider({ slug, children }: { slug: string; childr
     [slug, refresh],
   )
 
+  const revealCenter = useCallback(() => setRevealRequest((request) => request + 1), [])
+  const acknowledgeReveal = useCallback((request: number) => {
+    if (request === 0 || request === acknowledgedRevealRef.current) return false
+    acknowledgedRevealRef.current = request
+    return true
+  }, [])
+
   const value = useMemo(
-    () => ({ slug, status, page, refresh, markRead }),
-    [slug, status, page, refresh, markRead],
+    () => ({
+      slug,
+      status,
+      page,
+      refresh,
+      markRead,
+      revealCenter,
+      revealRequest,
+      acknowledgeReveal,
+    }),
+    [slug, status, page, refresh, markRead, revealCenter, revealRequest, acknowledgeReveal],
   )
   return <NotificationsContext.Provider value={value}>{children}</NotificationsContext.Provider>
 }

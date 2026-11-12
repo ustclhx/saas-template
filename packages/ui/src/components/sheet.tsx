@@ -9,6 +9,7 @@ import {
   createContext,
   forwardRef,
   type HTMLAttributes,
+  type ReactElement,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -57,8 +58,42 @@ function Sheet({
   )
 }
 
-const SheetTrigger = SheetPrimitive.Trigger
-const SheetClose = SheetPrimitive.Close
+// 与 Dialog 一致：Trigger 与 Close 既可 `render={<Button/>}`，也可 Radix 风格的 `asChild` 包一个子元素
+interface SheetSlotProps
+  extends Omit<ComponentPropsWithoutRef<typeof SheetPrimitive.Trigger>, 'asChild'> {
+  /** Element to render as the control, e.g. a Button. */
+  render?: ReactElement
+  /** Compose onto the single child element instead. */
+  asChild?: boolean
+}
+
+const SheetTrigger = forwardRef<HTMLButtonElement, SheetSlotProps>(
+  ({ render, asChild, children, ...props }, ref) =>
+    render ? (
+      <SheetPrimitive.Trigger ref={ref} asChild {...props}>
+        {render}
+      </SheetPrimitive.Trigger>
+    ) : (
+      <SheetPrimitive.Trigger ref={ref} asChild={asChild ?? false} {...props}>
+        {children}
+      </SheetPrimitive.Trigger>
+    ),
+)
+SheetTrigger.displayName = 'SheetTrigger'
+
+const SheetClose = forwardRef<HTMLButtonElement, SheetSlotProps>(
+  ({ render, asChild, children, ...props }, ref) =>
+    render ? (
+      <SheetPrimitive.Close ref={ref} asChild {...props}>
+        {render}
+      </SheetPrimitive.Close>
+    ) : (
+      <SheetPrimitive.Close ref={ref} asChild={asChild ?? false} {...props}>
+        {children}
+      </SheetPrimitive.Close>
+    ),
+)
+SheetClose.displayName = 'SheetClose'
 
 const OFFSCREEN: Record<SheetSide, { x?: string; y?: string }> = {
   top: { y: '-100%' },
@@ -67,7 +102,12 @@ const OFFSCREEN: Record<SheetSide, { x?: string; y?: string }> = {
   left: { x: '-100%' },
 }
 
-interface SheetContentBaseProps extends ComponentPropsWithoutRef<typeof SheetPrimitive.Content> {
+interface SheetContentBaseProps
+  extends Omit<ComponentPropsWithoutRef<typeof SheetPrimitive.Content>, 'aria-describedby'> {
+  /** 没有 SheetDescription 时传 undefined 显式清空（避免 Radix 的缺少 Description 警告） */
+  'aria-describedby'?: string | undefined
+  /** Portal 目标；默认 document.body（遮罩与面板仍为 fixed） */
+  container?: HTMLElement | null
   /** 从哪一侧滑入。@default "right" */
   side?: SheetSide
   /** 底部面板顶端的拖拽条样式把手（装饰，读屏隐藏）。@default side === 'bottom' */
@@ -97,6 +137,7 @@ const SheetContent = forwardRef<HTMLDivElement, SheetContentProps>(
       handle = side === 'bottom',
       showCloseButton = true,
       closeLabel,
+      container,
       onCloseAutoFocus,
       ...props
     },
@@ -130,10 +171,14 @@ const SheetContent = forwardRef<HTMLDivElement, SheetContentProps>(
 
     return (
       <MotionFeatures>
-        <SheetPrimitive.Portal forceMount>
+        <SheetPrimitive.Portal forceMount container={container ?? undefined}>
           <SheetPrimitive.Overlay asChild forceMount>
             <motion.div
-              className="fixed inset-0 z-(--z-overlay) bg-black/40 dark:bg-black/80"
+              // 退场动画期间遮罩不再拦截点击
+              className={cn(
+                'fixed inset-0 z-(--z-overlay) bg-black/40 dark:bg-black/80',
+                !open && 'pointer-events-none',
+              )}
               initial={{ opacity: 0 }}
               animate={{ opacity: open ? 1 : 0 }}
               transition={open ? { duration: spring.moderate.duration } : spring.moderate.exit}
@@ -155,7 +200,8 @@ const SheetContent = forwardRef<HTMLDivElement, SheetContentProps>(
               event.preventDefault()
               target.focus({ preventScroll: true })
             }}
-            {...props}
+            // 显式传入的 aria-describedby={undefined} 需要原样覆盖 Radix 的默认值
+            {...(props as ComponentPropsWithoutRef<typeof SheetPrimitive.Content>)}
           >
             <motion.div
               inert={!open}
@@ -241,7 +287,12 @@ const SheetDescription = forwardRef<
 ))
 SheetDescription.displayName = 'SheetDescription'
 
-export type { SheetContentProps, SheetSide }
+export type {
+  SheetContentProps,
+  SheetSide,
+  SheetSlotProps as SheetCloseProps,
+  SheetSlotProps as SheetTriggerProps,
+}
 export {
   Sheet,
   SheetClose,

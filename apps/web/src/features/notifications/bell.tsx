@@ -20,6 +20,7 @@ import {
   type ComponentPropsWithoutRef,
   forwardRef,
   type ReactNode,
+  useEffect,
   useId,
   useState,
   useSyncExternalStore,
@@ -51,7 +52,9 @@ const desktopSnapshot = () => window.matchMedia(DESKTOP_QUERY).matches
 const desktopServerSnapshot = () => true
 
 export function bellLabel(status: NotificationStatus, unread: number) {
-  return status === 'ready' && unread > 0
+  // 加载中或出错时不知道未读数：用中性的「通知」，不说「没有未读」
+  if (status !== 'ready') return m.notifications_title()
+  return unread > 0
     ? m.notifications_bell_label({ count: unread })
     : m.notifications_bell_label_none()
 }
@@ -93,7 +96,7 @@ export const BellButton = forwardRef<
 BellButton.displayName = 'BellButton'
 
 export function NotificationBell() {
-  const { slug, status, page, refresh, markRead } = useNotifications()
+  const { slug, status, page, refresh, markRead, revealCenter } = useNotifications()
   const router = useRouter()
   const desktop = useSyncExternalStore(subscribeDesktop, desktopSnapshot, desktopServerSnapshot)
   const [open, setOpen] = useState(false)
@@ -116,7 +119,21 @@ export function NotificationBell() {
     if (next) void refresh()
   }
 
+  // 操作完成、busy 变回 false 后再移焦点：行尾的勾与「全部标为已读」会消失或禁用，焦点移到对应的行
+  // （全部时为第一行），不落到 body
+  const [focusAfter, setFocusAfter] = useState<{ id: string | undefined } | null>(null)
+  useEffect(() => {
+    if (busy || !focusAfter) return
+    const target = focusAfter.id
+      ? document.getElementById(`${rowIdPrefix}${focusAfter.id}`)
+      : document.querySelector<HTMLElement>(`[id^="${CSS.escape(rowIdPrefix)}"]`)
+    target?.focus()
+    setFocusAfter(null)
+  }, [busy, focusAfter, rowIdPrefix])
+
   async function act(id: string | undefined, follow: boolean) {
+    // busy 期间按钮用 aria-disabled（保持可聚焦），这里拦下重复操作
+    if (busy) return
     setBusy(true)
     setActionError('')
     try {
@@ -126,13 +143,7 @@ export function NotificationBell() {
         await router.navigate({ href: link })
         return
       }
-      // 行尾的勾与「全部标为已读」随后消失或禁用：焦点移到对应的行（全部时为第一行），不落到 body
-      requestAnimationFrame(() => {
-        const target = id
-          ? document.getElementById(`${rowIdPrefix}${id}`)
-          : document.querySelector<HTMLElement>(`[id^="${CSS.escape(rowIdPrefix)}"]`)
-        target?.focus()
-      })
+      setFocusAfter({ id })
     } catch {
       setActionError(m.notifications_action_failed())
     } finally {
@@ -160,7 +171,10 @@ export function NotificationBell() {
           params={{ slug }}
           hash="notifications"
           className={className}
-          onClick={() => setOpen(false)}
+          onClick={() => {
+            setOpen(false)
+            revealCenter()
+          }}
         >
           {children}
         </Link>
@@ -188,7 +202,7 @@ export function NotificationBell() {
         side="bottom"
         showCloseButton={false}
         // 没有描述段落：显式清空 aria-describedby，避免 Radix 的缺少 Description 警告
-        {...({ 'aria-describedby': undefined } as object)}
+        aria-describedby={undefined}
       >
         {panel}
       </SheetContent>
@@ -231,7 +245,8 @@ export function NotificationPanel(props: NotificationPanelProps) {
     <Button
       variant="ghost"
       size="sm"
-      disabled={busy || !ready || unread === 0}
+      disabled={!ready || unread === 0}
+      aria-disabled={busy || undefined}
       onClick={onMarkAll}
       className={cn('text-foreground', sheet ? 'h-11 px-2' : 'px-2.5')}
     >
@@ -308,7 +323,9 @@ export function NotificationPanel(props: NotificationPanelProps) {
             <span className="mt-1 font-semibold text-subtitle">
               {m.notifications_empty_title()}
             </span>
-            <span className="max-w-72 text-muted-foreground">{m.notifications_empty_desc()}</span>
+            <span className="max-w-72 text-balance text-muted-foreground">
+              {m.notifications_empty_desc()}
+            </span>
           </div>
         ) : null}
         {ready && rows.length > 0 ? <PanelList {...props} /> : null}
@@ -360,10 +377,10 @@ function PanelList({
             <button
               type="button"
               id={`${rowIdPrefix}${row.id}`}
-              disabled={busy}
+              aria-disabled={busy || undefined}
               onClick={() => onOpen(row.id)}
               className={cn(
-                'flex min-w-0 flex-1 items-start gap-2.5 rounded-lg pl-3 text-left outline-none hover:bg-hover focus-visible:outline-2 focus-visible:outline-(--focus-ring) disabled:cursor-default',
+                'flex min-w-0 flex-1 items-start gap-2.5 rounded-lg pl-3 text-left outline-none hover:bg-hover focus-visible:outline-2 focus-visible:outline-(--focus-ring) aria-disabled:cursor-default',
                 sheet ? 'py-3 pr-1' : 'py-2.5 pr-2',
               )}
             >
@@ -404,7 +421,7 @@ function PanelList({
                 size={sheet ? 'icon' : 'icon-sm'}
                 aria-label={m.notifications_mark_read({ title: row.title })}
                 title={m.notifications_mark_read_hint()}
-                disabled={busy}
+                aria-disabled={busy || undefined}
                 onClick={() => onMark(row.id)}
                 className={cn('text-muted-foreground', sheet ? 'mt-0.5 size-11' : 'mt-1.5')}
               >

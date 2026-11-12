@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { m } from '../../paraglide/messages.js'
-import { baseLocale } from '../../paraglide/runtime.js'
+import type { Locale } from '../../paraglide/runtime.js'
 import { BellButton, NotificationPanel, type NotificationPanelProps } from './bell.tsx'
 import { badgeText, type NotificationRow } from './store.tsx'
 import { relativeTime } from './time.ts'
@@ -71,13 +71,16 @@ describe('铃铛角标', () => {
     expect(many).toContain('>99+</span>')
     expect(many).toContain(`aria-label="${m.notifications_bell_label({ count: 120 })}"`)
 
+    const none = renderToStaticMarkup(<BellButton status="ready" unread={0} />)
+    expect(none).not.toContain('notification-badge')
+    expect(none).toContain(`aria-label="${m.notifications_bell_label_none()}"`)
+    // 加载中、出错时不知道未读数：中性的「通知」，不说「没有未读」
     for (const html of [
-      renderToStaticMarkup(<BellButton status="ready" unread={0} />),
       renderToStaticMarkup(<BellButton status="loading" unread={5} />),
       renderToStaticMarkup(<BellButton status="error" unread={5} />),
     ]) {
       expect(html).not.toContain('notification-badge')
-      expect(html).toContain(`aria-label="${m.notifications_bell_label_none()}"`)
+      expect(html).toContain(`aria-label="${m.notifications_title()}"`)
     }
   })
 })
@@ -126,16 +129,27 @@ describe('通知弹层内容', () => {
 })
 
 describe('相对时间', () => {
-  it('刚刚、分钟、小时、昨天、更早的日期（与语言无关地比对 Intl 输出）', () => {
-    const ago = (ms: number) => new Date(NOW.getTime() - ms)
-    const rtf = new Intl.RelativeTimeFormat(baseLocale, { numeric: 'auto' })
-    expect(relativeTime(ago(10_000), baseLocale, NOW)).toBe(m.notifications_just_now())
-    expect(relativeTime(ago(3 * 60_000), baseLocale, NOW)).toBe(rtf.format(-3, 'minute'))
-    expect(relativeTime(ago(60 * 60_000), baseLocale, NOW)).toBe(rtf.format(-1, 'hour'))
-    expect(relativeTime(ago(30 * 3600_000), baseLocale, NOW)).toBe(rtf.format(-1, 'day'))
-    const older = ago(20 * 86400_000)
-    expect(relativeTime(older, baseLocale, NOW)).toBe(
-      new Intl.DateTimeFormat(baseLocale, { month: '2-digit', day: '2-digit' }).format(older),
-    )
+  // 生成的单语言副本里 Locale 只含一种语言，这里按字符串传入两种语言
+  const en = 'en' as string as Locale
+  const zh = 'zh' as string as Locale
+  const ago = (ms: number) => new Date(NOW.getTime() - ms)
+
+  it('中文：数字与汉字间加空格，昨天、N 天前，更早为 MM-DD（如 11-08），跨年带年份', () => {
+    expect(relativeTime(ago(10_000), zh, NOW)).toBe(m.notifications_just_now({}, { locale: zh }))
+    expect(relativeTime(ago(3 * 60_000), zh, NOW)).toBe('3 分钟前')
+    expect(relativeTime(ago(60 * 60_000), zh, NOW)).toBe('1 小时前')
+    expect(relativeTime(ago(30 * 3600_000), zh, NOW)).toBe('昨天')
+    expect(relativeTime(ago(2 * 86400_000), zh, NOW)).toBe('2 天前')
+    expect(relativeTime(ago(6 * 86400_000), zh, NOW)).toBe('6 天前')
+    expect(relativeTime(new Date(2026, 10, 1, 9), zh, NOW)).toBe('11-01')
+    expect(relativeTime(new Date(2025, 10, 8, 9), zh, NOW)).toBe('2025-11-08')
+  })
+
+  it('英文：Intl 文案，昨天之后为 N days ago，更早为月/日', () => {
+    expect(relativeTime(ago(3 * 60_000), en, NOW)).toBe('3 minutes ago')
+    expect(relativeTime(ago(60 * 60_000), en, NOW)).toBe('1 hour ago')
+    expect(relativeTime(ago(30 * 3600_000), en, NOW)).toBe('yesterday')
+    expect(relativeTime(ago(2 * 86400_000), en, NOW)).toBe('2 days ago')
+    expect(relativeTime(new Date(2026, 9, 23, 9), en, NOW)).toBe('10/23')
   })
 })

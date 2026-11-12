@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   Button,
   Popover,
+  PopoverClose,
   PopoverContent,
   PopoverTitle,
   PopoverTrigger,
@@ -84,6 +85,35 @@ describe('Popover（shadcn 结构 + Fluid 弹层外观）', () => {
   })
 })
 
+describe('Popover 触发方式与焦点兜底', () => {
+  it('Trigger 支持 render；打开前焦点在 body（Safari 点按钮不聚焦）时，外部点击关闭后焦点还给触发按钮', async () => {
+    render(
+      <Popover>
+        <PopoverTrigger render={<Button>Bell</Button>} />
+        <PopoverContent aria-labelledby="t2">
+          <PopoverTitle id="t2">通知</PopoverTitle>
+          <PopoverClose render={<Button>完成</Button>} />
+        </PopoverContent>
+      </Popover>,
+    )
+    const trigger = screen.getByRole('button', { name: 'Bell' })
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    expect(document.activeElement).toBe(document.body)
+    fireEvent.click(trigger)
+    await screen.findByRole('dialog', { name: '通知' })
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)))
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    fireEvent.pointerDown(document.body, { pointerType: 'mouse', button: 0 })
+    fireEvent.click(document.body)
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
+
+    fireEvent.click(trigger)
+    fireEvent.click(await screen.findByRole('button', { name: '完成' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+})
+
 describe('Sheet（shadcn 结构 + Fluid mobile-drawer 动效）', () => {
   function BottomSheet() {
     return (
@@ -153,6 +183,37 @@ describe('Sheet（shadcn 结构 + Fluid mobile-drawer 动效）', () => {
     fireEvent.click(await screen.findByRole('button', { name: '完成' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     await waitFor(() => expect(document.activeElement).toBe(opener))
+  })
+})
+
+describe('Sheet 的 render、container 与退场遮罩', () => {
+  it('Trigger / Close 支持 render；面板渲染到 container；退场时遮罩不拦截点击', async () => {
+    const host = document.createElement('div')
+    document.body.append(host)
+    render(
+      <Sheet>
+        <SheetTrigger render={<Button>Open</Button>} />
+        <SheetContent
+          side="bottom"
+          showCloseButton={false}
+          container={host}
+          aria-describedby={undefined}
+        >
+          <SheetTitle>通知</SheetTitle>
+          <SheetClose render={<Button>完成</Button>} />
+        </SheetContent>
+      </Sheet>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    const sheet = await screen.findByRole('dialog', { name: '通知' })
+    expect(host.contains(sheet)).toBe(true)
+    expect(sheet.hasAttribute('aria-describedby')).toBe(false)
+    const overlay = host.querySelector('.fixed.inset-0') as HTMLElement
+    expect(overlay.className).not.toContain('pointer-events-none')
+    fireEvent.click(screen.getByRole('button', { name: '完成' }))
+    await waitFor(() => expect(overlay.className).toContain('pointer-events-none'))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    host.remove()
   })
 })
 

@@ -102,6 +102,15 @@ test('桌面铃铛：单条标已读、全部标已读、点击跳转、查看�
     await expect(center).toBeInViewport()
     await expect(page.getByTestId('notification-unread')).toHaveText('0')
 
+    // 已在 #notifications：手动折起通知区，再点「查看全部」仍会展开（相同地址不写历史，靠显式展开请求）
+    await center.locator('summary').click()
+    await expect(center).not.toHaveAttribute('open', '')
+    await bell.click()
+    await dialog.getByRole('link').click()
+    await expect(dialog).toBeHidden()
+    await expect(center).toHaveAttribute('open', '')
+    await expect(center).toBeInViewport()
+
     // Escape 关闭，焦点回到铃铛
     await bell.click()
     await expect(dialog).toBeVisible()
