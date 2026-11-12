@@ -28,7 +28,7 @@ import { templateConfig } from '../../server/template-config.ts'
 import { authClient } from '../auth/auth-client.ts'
 import { DailyCreditsNotice } from '../credits/daily-notice.tsx'
 import { LanguageControls } from '../i18n/language-controls.tsx'
-import { NotificationCenter } from '../notifications/center.tsx'
+import { NotificationBell } from '../notifications/bell.tsx'
 import { ThemeToggle } from '../theme/theme-toggle.tsx'
 import { activateWorkspace } from '../workspace/client.ts'
 import type { WorkspacePage } from '../workspace/components.tsx'
@@ -167,6 +167,7 @@ export function SidebarLayout({
               </span>
             </h1>
             <div ref={setActionsSlot} className="flex shrink-0 items-center gap-2 empty:hidden" />
+            <NotificationBell />
             <div className="flex items-center gap-3 max-sm:hidden">
               {templateConfig.i18n.enabled ? <LanguageControls placement="bare" /> : null}
               <ThemeToggle />
@@ -177,9 +178,6 @@ export function SidebarLayout({
           <main className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-6 px-4 py-6 md:px-8 md:pb-10">
             {page.readOnly ? <p role="status">{m.app_readonly()}</p> : null}
             <DailyCreditsNotice result={page.dailyCredits} />
-            <div className="empty:hidden print:hidden">
-              <NotificationCenter key={slug} slug={slug} hideWhenEmpty />
-            </div>
             <div className="min-w-0">
               <Outlet />
             </div>

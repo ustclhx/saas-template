@@ -144,6 +144,8 @@ grep -nE '^export' packages/ui/src/index.ts
   | `Combobox` / `ComboboxEmpty` | `onCreate` 时 `createLabel(query)` / `children` | 创建行文字与无匹配文字 |
   | `CommandMenu` | `labels`（`placeholder`、`suggestions`、`tabs`、`selectHint`、`tabsHint`、`closeHint`） | 搜索框占位（兼作可读名称）、建议分组标题、标签栏名称与底部按键提示；键帽字形保留 |
   | `CommandMenuDialog` | `title`（`description` 可选） | 对话框的可读名称 |
+  | `SheetContent` | `closeLabel` | 关闭按钮的可读名称；`showCloseButton={false}` 时不需要（内容自带关闭按钮时） |
+  | `PopoverTitle` / `SheetTitle` | `children` | 弹层标题；`PopoverContent` 需传 `aria-labelledby` 指向标题 id（Radix Popover 没有 Title） |
   | `Toaster` | `labels`（`region`、`announcement`、`close`） | 通知区域名称（可含 `{hotkey}`）、读屏播报前缀、关闭按钮名称；`toast()` 的内容与 `action.label` 由调用方传入 |
   | `SidebarProvider` | `labels`（`title`、`expand`、`collapse`、`rail`、`railResize`、`railCollapse`；开启 peek 时 `peek`） | 移动抽屉名称、触发按钮与拖拽条的名称和提示；`SidebarMenuButton` 在 `status="unread"` 时必传 `unreadLabel` |
   | `Reader`（`@saas/ui/reader`） | `labels`（`toc`、`progress`、`exportPdf`、`printPdf`、`serverPdf`、`loading`、`footnotes`、`footnoteBack`）与 `title` | 目录标题、进度条名称、导出按钮与注册服务端导出后的两个菜单项、加载播报、脚注区标题与返回链接名称；`ReaderProgress` 的 `label`、`ReaderExportButton` 的 `labels`（导出三项）；`ReaderEmpty` / `ReaderError` 的标题、说明与 `retryLabel` 由调用方传入 |
@@ -174,6 +176,9 @@ grep -nE '^export' packages/ui/src/index.ts
 - **命令面板**：键帽按平台显示 ⌘ 或 Ctrl；SSR 首帧无法得知平台，需要时在布局中用
   `<CommandMenuPlatform mac={…}>` 包裹，`mac` 取自请求头 `Sec-CH-UA-Platform` 或 User-Agent，避免水合后键帽变宽。
 - **浮层层级**：自定义吸顶、遮罩与弹层用 `--z-*` 变量，不写任意 `z-[…]`。
+- **弹层与底部面板**：触发按钮旁的非模态内容（列表、说明、轻量操作）用 `Popover`（`role="dialog"`，Escape / 点击外部关闭，
+  焦点回到触发按钮；菜单项里不能再放按钮时不用 Dropdown）；手机上的对应形态用 `Sheet side="bottom"`（模态、锁定焦点，
+  触控目标 ≥ 44px）。同一入口按 md 断点在两者之间切换时，打开期间不切换（见通知铃铛 `features/notifications/bell.tsx`）。
 - **长文阅读器（tasks 8.4）**：从子路径 `@saas/ui/reader` 导入（依赖 react-markdown 等，约 56 KB gzip，不在 `@saas/ui`
   主入口中），页面用 `React.lazy` 按需加载，构建时形成独立分包，不进入首页包（`apps/web` 的 `pnpm build` 末尾由
   `scripts/check-home-bundle.mjs` 检查首页静态依赖闭包）：
@@ -209,7 +214,7 @@ grep -nE '^export' packages/ui/src/index.ts
     否则只打印可见部分。
 
 已接入：Button、Input、Textarea、Select、Combobox、Checkbox、Switch、Badge、Tooltip、Tabs、Dropdown（菜单）、
-Command Menu、Dialog、AlertDialog、Toast、Sidebar、Card、Alert、Separator、Label、ScrollArea、DataTable、Form；Reader 系列经 `@saas/ui/reader` 子路径；
+Command Menu、Dialog、AlertDialog、Popover、Sheet、Toast、Sidebar、Card、Alert、Separator、Label、ScrollArea、DataTable、Form；Reader 系列经 `@saas/ui/reader` 子路径；
 业务界面组件（8.6）见 [6.1](#61-业务界面组件)。
 `Toaster` 含动效库（约 44 KB gzip），只在需要的页面挂载，不放进根布局；以后全站使用时按需动态加载。缺少的组件先在 `packages/ui` 补齐（模板）或在 `packages/ui/src/project/` 补齐（项目），
 再实现页面，不在页面里临时写一个。
@@ -600,7 +605,14 @@ export function registerProjectAppNav() {
 `useAppShellBarAvailable()` 为 false（顶部布局）时页面自行渲染工具条。打印时侧边栏、打开的抽屉、顶部条与通知入口隐藏，
 面板去掉外边距与阴影，正文随文档流完整输出。顶部条与抽屉里的语言选择用 `LanguageControls placement="bare"`（无底色与阴影）；
 `SidebarInset as="div"` 让顶部条不落在 `<main>` 地标里；`MenuItem` 的 `render`（如 `<Link to="/account" />`）让菜单项成为真实链接。
-升级入口只对免费套餐空间的所有者 / 管理员显示（`getWorkspacePage` 返回 `planKey`）；还没有任何通知时不渲染通知块。
+升级入口只对免费套餐空间的所有者 / 管理员显示（`getWorkspacePage` 返回 `planKey`）。
+
+**通知铃铛（0.3.1，评审清单 #90，设计稿 `ui-review/Notifications*.dc.html`）**：顶部条（两种布局）右侧的铃铛，桌面为右缘对齐的
+384px `Popover`，< md 为底部 `Sheet`；显示最近 5 条（点一条标为已读并跳到服务端校验的链接，行尾的勾只标已读）、全部标为已读、
+正常 / 空 / 加载 / 错误（重试）四态。角标为未读数（> 99 显示 99+，0、加载中、出错时不显示）。铃铛与首页通知区共用
+`NotificationsProvider`（`features/notifications/store.tsx`，在 `/app/$slug` 布局路由中按空间挂载一次，30 秒轮询一份数据）。
+「查看全部通知」跳到工作台首页 `#notifications`，首页的通知折叠块读取锚点后展开并滚动到可见位置；侧边栏布局下还没有任何
+通知时不渲染这个折叠块，其他页面的内容区不再有通知块。
 
 每个页面都要设计并实现四种状态：正常、空、加载、错误；在 390px 宽无横向滚动，浅色与深色均正确。
 根布局与公开页面的数据读取失败时降级，不让整页报错。

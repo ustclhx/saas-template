@@ -172,6 +172,17 @@ export {
   type PdfExporter,
   registerPdfExporter,
 } from './components/pdf-exporter.ts'
+export {
+  Popover,
+  PopoverAnchor,
+  PopoverClose,
+  PopoverContent,
+  type PopoverContentProps,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from './components/popover.tsx'
 export { ScrollArea, type ScrollAreaProps, ScrollBar } from './components/scroll-area.tsx'
 export {
   Select,
@@ -187,6 +198,18 @@ export {
   type SelectTriggerProps,
 } from './components/select.tsx'
 export { Separator } from './components/separator.tsx'
+export {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  type SheetContentProps,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  type SheetSide,
+  SheetTitle,
+  SheetTrigger,
+} from './components/sheet.tsx'
 export {
   Sidebar,
   type SidebarCollapsible,

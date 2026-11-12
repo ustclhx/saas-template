@@ -125,5 +125,12 @@
   "ui_preview_workspace": "空间",
   "ui_preview_sidebar_rail": "调整宽度或收起侧边栏",
   "ui_preview_sidebar_rail_resize": "拖动调整宽度",
-  "ui_preview_sidebar_rail_collapse": "点击收起"
+  "ui_preview_sidebar_rail_collapse": "点击收起",
+  "ui_preview_dialog_desc_overlays": "Popover 在触发按钮旁显示轻量、非模态的内容；Sheet 从屏幕边缘滑入（底部 Sheet 是 Popover 在手机上的形态）。",
+  "ui_preview_open_popover": "查看详情",
+  "ui_preview_popover_title": "存储用量",
+  "ui_preview_popover_body": "Atlas 已用 2.4 GB / 10 GB，较早的导出文件 30 天后删除。",
+  "ui_preview_open_sheet": "打开底部面板",
+  "ui_preview_sheet_title": "共享项目",
+  "ui_preview_sheet_body": "空间成员都可以查看 Atlas；邀请他人后才能编辑。"
 }
