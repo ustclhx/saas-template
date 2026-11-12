@@ -18,6 +18,9 @@ import { switchWorkspace } from './workspace-switch.ts'
 test('workspace creation, invitation entry and personal switching obey tenancy flag', async ({
   page,
 }) => {
+  // 多空间时本用例是完整旅程：两个账号注册、多次重新登录、邀请与成员管理，整页加载二十余次。
+  // dev server 下远超 30 秒默认时限，此前表现为在重新登录处超时（#92）；单空间分支很快结束
+  if (templateConfig.tenancy.multiTenant) test.setTimeout(240_000)
   await simulateClientIp(page)
   await stubTurnstile(page)
   await page.goto('/register')

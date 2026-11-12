@@ -368,9 +368,10 @@ pnpm --filter @saas/web test:e2e:smoke
 
 ### 夜间全量测试
 
-`.github/workflows/nightly.yml`（Actions 中的 **Nightly**）每日 UTC 19:00（北京时间次日 03:00）定时运行，也支持 `workflow_dispatch` 手动触发；两种入口都仅运行 `main`。两个 job 独立执行，互不阻塞：
+`.github/workflows/nightly.yml`（Actions 中的 **Nightly**）每日 UTC 19:00（北京时间次日 03:00）定时运行，也支持 `workflow_dispatch` 手动触发；两种入口都仅运行 `main`。三个 job 独立执行，互不阻塞：
 
 - `e2e-full`：使用临时 Postgres 17，运行 `pnpm --filter @saas/web test:e2e`，采用默认 `playwright.config.ts` 的离线测试范围，不需要外部服务密钥；不包含 Stripe 专用测试、staging / production 项目及 `ai-chat-disconnect`。
+- `e2e-multi-tenant`：在 runner 的检出副本中用 `sed` 把 `template.config.ts` 改为 `multiTenant: true`，运行 `e2e/workspace.spec.ts` 与 `e2e/app-shell.spec.ts`，覆盖团队空间创建、邀请、成员管理与侧边栏工作区菜单（默认配置只覆盖单空间分支）；使用独立的 `saas_wt_multi_tenant` 库。
 - `create-project-verify`：运行 `pnpm test:create-project:verify`，验证生成项目的真实副本；衍生项目不包含该模板维护脚本，自动省略此步骤。
 
 失败时上传 Playwright report 与 trace，保留 14 天。失败通知自动创建带 `nightly-failure` 标签的 issue；如果已有未关闭且带同标签的 issue，则追加评论。通知包含运行日期、失败 job 和 Actions run 链接。

@@ -41,11 +41,13 @@ describe('Button（Fluid 适配）', () => {
     expect(tertiary).toBe(outline)
   })
 
-  it('加载中禁用并标记 aria-busy，文字保留占位', () => {
+  it('加载中禁用并标记 aria-busy，文字保留占位且仍是按钮名称', () => {
     const html = renderToString(<Button loading>Save</Button>)
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*aria-busy="true"/)
     expect(html).toContain('<svg aria-hidden="true"')
-    expect(html).toMatch(/class="[^"]*invisible[^"]*">Save<\/span>/)
+    // 只用透明度隐藏文字；invisible（visibility:hidden）会让读屏与按名称查找的按钮失去名称
+    expect(html).toMatch(/class="[^"]*opacity-0[^"]*">Save<\/span>/)
+    expect(html).not.toContain('invisible')
   })
 
   it('UiRoot 的 shape 与 density 作用于未指定尺寸的按钮', () => {

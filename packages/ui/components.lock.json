@@ -2,7 +2,7 @@
   "src/components/alert-dialog.tsx": "9659cbeb17bcdd56297dadbb9b0f86b9b8f78ee7002bf6f238c7bc7a39ec9eaf",
   "src/components/alert.tsx": "616f4ebb484586258352bf4f6760cc2dbace3f32a9c2d5238e00e756ea3955e1",
   "src/components/badge.tsx": "dcddc264d07d812a12b1630ec0217b0050289026004c518cd1c9b804947f9f76",
-  "src/components/button.tsx": "e1f9c04c0e601ccf58a8d918cb171fce5d3f97404439f19926f9e288153a543b",
+  "src/components/button.tsx": "f3f6afe7f7d71f2e84d87c63583f85148d06dcef7614e5574845108abc37c233",
   "src/components/card.tsx": "942ed43d735923896519cb930c9654358135293a5ba954a4f6c97085215910d7",
   "src/components/checkbox.tsx": "6fbfb51fed6dd5fe18565c068173a92fd12d702d396c7dc4fd8a0049ee60d066",
   "src/components/combobox.tsx": "31692e7e893c90cd6365e738fd10e29c881b49fa2944fb572e15627a766a5417",

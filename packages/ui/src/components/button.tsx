@@ -143,10 +143,11 @@ export function Button({
             <Spinner size={iconSize} />
           </span>
         ) : null}
+        {/* 加载中只隐藏文字的绘制：visibility:hidden 会把文字移出无障碍树，按钮失去可读名称 */}
         <span
           className={cn(
             'inline-flex items-center justify-center gap-[inherit]',
-            loading && 'invisible',
+            loading && 'opacity-0',
           )}
         >
           {LeadingIcon && !iconOnly ? <LeadingIcon size={iconSize} strokeWidth={1.5} /> : null}

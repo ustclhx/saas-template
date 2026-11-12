@@ -52,7 +52,9 @@ export async function register(page: Page, email: string, name = 'Workspace Owne
   await form.getByLabel('Email', { exact: true }).fill(email)
   await form.getByLabel('Password', { exact: true }).fill(PASSWORD)
   await form.getByRole('button', { name: 'Create account' }).click()
-  await expect(page).toHaveURL(APP_URL)
+  // 注册接口要做密码哈希并创建个人空间，成功后再整页加载 /app；dev server 在并行负载下
+  // 常超过默认 5 秒，此前表现为「停在 /register」，实际注册已成功、只是跳转尚未完成
+  await expect(page).toHaveURL(APP_URL, { timeout: 15_000 })
 }
 export async function login(page: Page, email: string, path = '/login') {
   await page.goto(path)
