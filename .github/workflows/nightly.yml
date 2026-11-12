@@ -68,8 +68,7 @@ jobs:
           if-no-files-found: ignore
 
   e2e-multi-tenant:
-    # 验证期间临时放开分支限制（ustclhx/e2e-shell），验证后改回只运行 main
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ustclhx/e2e-shell'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # 默认模板 multiTenant=false，团队空间、邀请与侧边栏工作区菜单只在多空间配置下覆盖；
