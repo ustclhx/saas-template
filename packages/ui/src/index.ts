@@ -164,6 +164,7 @@ export {
   type MessageFeedbackLabels,
   type MessageFeedbackProps,
   type MessageFeedbackReason,
+  type MessageFeedbackShareLabels,
   type MessageFeedbackValue,
 } from './components/message-feedback.tsx'
 export {

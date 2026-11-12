@@ -22,9 +22,21 @@ export interface MessageFeedbackValue {
   readonly comment: string | null
   /** 只在点踩时可能有值 */
   readonly reason: FeedbackReason | null
+  /**
+   * 是否同意把这段对话共享给平台用于改进（只属于本条反馈，再次提交时不勾选即撤回）。
+   * 缺省视为 false；服务端返回值总是带上该字段。
+   */
+  readonly shareConversation?: boolean
 }
 
 export const FEEDBACK_COMMENT_MAX_LENGTH = 1000
+
+/**
+ * 同意共享时后台可见的范围：被评的回复，加上它之前最近的这么多条 user/assistant 消息
+ * （add-subject-chat design 决策 6「共享对话同意」）。3 条覆盖本轮提问和上一轮完整问答，
+ * 足以看懂追问类问题；更早的内容与 system 消息（对象上下文）不共享。勾选项文案引用同一数值。
+ */
+export const FEEDBACK_SHARED_PRIOR_MESSAGES = 3
 
 export const feedbackInputSchema = z.strictObject({
   slug: z.string().min(1).max(64),
@@ -34,6 +46,8 @@ export const feedbackInputSchema = z.strictObject({
   comment: z.string().max(FEEDBACK_COMMENT_MAX_LENGTH).optional(),
   /** 只允许与点踩一起提交；点赞或撤销时服务端清空 */
   reason: z.enum(FEEDBACK_REASONS).nullable().optional(),
+  /** 共享对话同意；不传按不同意处理（每次保存整体写入，因此不勾选即撤回） */
+  shareConversation: z.boolean().optional(),
 })
 export type FeedbackInput = z.infer<typeof feedbackInputSchema>
 
