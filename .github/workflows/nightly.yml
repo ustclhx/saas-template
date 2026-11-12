@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
   # 仅用于首次注册分支验收，验收后移除。
   push:
-    branches: [ustclhx/nightly-e2e]
+    branches: ['**/nightly-e2e']
 
 permissions:
   contents: read
@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   e2e-full:
-    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ustclhx/nightly-e2e')
+    if: (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' || github.event_name == 'push')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # 服务与连接配置沿用 ci.yml/e2e-smoke；全量夹具要求独立库使用 saas_wt_ 前缀。
@@ -71,7 +71,7 @@ jobs:
           if-no-files-found: ignore
 
   create-project-verify:
-    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ustclhx/nightly-e2e')
+    if: (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' || github.event_name == 'push')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     # 独立 runner/PG，不与 e2e-full 共享状态；服务配置来源同 ci.yml/e2e-smoke。
@@ -105,7 +105,7 @@ jobs:
   notify-failure:
     needs: [e2e-full, create-project-verify]
     if: >-
-      always() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ustclhx/nightly-e2e') &&
+      always() && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' || github.event_name == 'push') &&
       (needs.e2e-full.result == 'failure' || needs.create-project-verify.result == 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 5
