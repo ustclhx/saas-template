@@ -54,11 +54,13 @@ function FeedbackSpecimen({
   initial,
   fail = false,
   withReasons = false,
+  withShare = false,
 }: {
   label: string
   initial: MessageFeedbackValue | null
   fail?: boolean
   withReasons?: boolean
+  withShare?: boolean
 }) {
   const [value, setValue] = useState(initial)
   return (
@@ -69,6 +71,14 @@ function FeedbackSpecimen({
         labels={feedbackLabels()}
         meta={m.ui_preview_biz_meta()}
         {...(withReasons ? { reasons: reasons() } : {})}
+        {...(withShare
+          ? {
+              shareLabels: {
+                label: m.ui_preview_biz_share(),
+                description: m.ui_preview_biz_share_description(),
+              },
+            }
+          : {})}
         onChange={async (next) => {
           await new Promise((resolve) => setTimeout(resolve, 300))
           if (fail) throw new Error('preview')
@@ -178,6 +188,17 @@ export function AiChatComponentsSection() {
         label={m.ui_preview_biz_feedback_down()}
         initial={{ rating: 'down', comment: null, reason: 'incomplete' }}
         withReasons
+      />
+      <FeedbackSpecimen
+        label={m.ui_preview_biz_feedback_share()}
+        initial={{
+          rating: 'down',
+          comment: null,
+          reason: 'no_source',
+          shareConversation: true,
+        }}
+        withReasons
+        withShare
       />
       <FeedbackSpecimen
         label={m.ui_preview_biz_feedback_error()}

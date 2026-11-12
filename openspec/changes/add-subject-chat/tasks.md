@@ -42,6 +42,15 @@
 - [x] 9.4 `/admin/feedback` 列表显示原因并可按原因筛选（DataTable select）；集成测试与 e2e 覆盖显示与筛选
 - [x] 9.5 文档：design 决策、本目录 `upgrade-notes.md` 与 `docs/upgrades/0.3.0.md` 的 0023 一节、`docs/design-system.md` §6.1
 
+## 10. 反馈共享对话同意（评审清单 #8）
+
+- [x] 10.1 `ai_message_feedback` 增加 `share_conversation boolean not null default false` 与可空 `shared_at`、check 约束 `ai_message_feedback_shared_at_consistent`，迁移 `0024_feedback_share`（只加列与约束，不改数据）；db 集成测试覆盖默认值与约束
+- [x] 10.2 `setMessageFeedback` / `saveMessageFeedback` 校验并写入同意：每次保存整体写入（不勾选、改为点赞即撤回并清空同意时间），撤销删除记录、撤销带同意返回 400；`feedbackForMessages` 返回同意，刷新后还原
+- [x] 10.3 `@saas/ui` 的 `MessageFeedback` 增加可选 `shareLabels`（不传不显示，默认不勾选，Checkbox + 说明文案）；对话页传入 en/zh 文案（共享范围与撤回方式）；`/dev/ui` 示例与 `components.lock.json`；组件单测覆盖勾选、修改时带出、取消即撤回、切点赞清除
+- [x] 10.4 后台：`readSharedConversation` / `getAdminFeedbackConversation` 经 adminAction 读取被评回复与之前最近 3 条 user/assistant 消息，服务端检查同意（未同意 404 且不留审计），租户隔离查询，成功写审计 `ai.feedback.view_conversation`（不含正文）；`/admin/feedback` 增加「共享」列与筛选、Dialog 查看片段；集成测试覆盖未同意被拒、同意可读、撤回后又被拒与审计
+- [x] 10.5 e2e：`chat-business-ui.spec.ts` 覆盖勾选共享 → 刷新后仍勾选 → 后台查看对话片段并写审计 → 按共享状态筛选
+- [x] 10.6 文档：design 决策（同意层级、N = 3、撤回、审计）、specs 场景、本目录 `upgrade-notes.md` 与 `docs/upgrades/0.3.1.md` 的 0024 一节与隐私说明、`docs/design-system.md` §6.1、`docs/06-ai.md`
+
 ## 8. 未做与外部验收
 
 - [ ] 8.1 （P2，本次不做）长对话摘要 R2.3

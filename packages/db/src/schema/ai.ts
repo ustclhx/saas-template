@@ -165,6 +165,9 @@ export type AiFeedbackReason = (typeof AI_FEEDBACK_REASONS)[number]
  * 用户对助手回复的评分（add-subject-chat design 决策 1）：每用户每消息一条，撤销即删除。
  * `model_key` / `subject_type` 为写入时快照，供后台按模型与对象类型统计满意率。
  * `reason` 只在点踩时可选填写，由 check 约束保证点赞时为空、取值在约定集合内。
+ * `share_conversation` 是本条反馈上的共享同意（add-subject-chat design 决策 6「共享对话同意」）：
+ * 只有为 true 时后台才能读取被评回复及其之前的少量消息；`shared_at` 记录同意时间，同意时必有、不同意时为空
+ * （约束写成 `is distinct from (shared_at is null)`：模板发版检查把含 NOT NULL 的语句归为收缩迁移）。
  */
 export const aiMessageFeedback = pgTable(
   'ai_message_feedback',
@@ -182,6 +185,8 @@ export const aiMessageFeedback = pgTable(
     rating: text('rating', { enum: ['up', 'down'] }).notNull(),
     comment: text('comment'),
     reason: text('reason', { enum: AI_FEEDBACK_REASONS }),
+    shareConversation: boolean('share_conversation').notNull().default(false),
+    sharedAt: timestamp('shared_at', { withTimezone: true }),
     modelKey: text('model_key'),
     subjectType: text('subject_type'),
     ...timestamps,
@@ -195,6 +200,10 @@ export const aiMessageFeedback = pgTable(
     check(
       'ai_message_feedback_reason_valid',
       sql`${t.reason} is null or (${t.rating} = 'down' and ${t.reason} in ('inaccurate', 'incomplete', 'no_source', 'too_long'))`,
+    ),
+    check(
+      'ai_message_feedback_shared_at_consistent',
+      sql`${t.shareConversation} is distinct from (${t.sharedAt} is null)`,
     ),
   ],
 )

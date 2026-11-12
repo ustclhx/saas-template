@@ -1,18 +1,25 @@
+import { aiMessageOrder, messageText } from '@saas/ai'
 import {
   AI_FEEDBACK_REASONS,
   type AiFeedbackReason,
+  aiConversation,
+  aiMessage,
   aiMessageFeedback,
   type Database,
+  scoped,
 } from '@saas/db'
 import { AppError } from '@saas/shared'
-import { and, count, desc, eq, gte, lt, type SQL, sql } from 'drizzle-orm'
+import { log } from '@saas/shared/log'
+import { and, count, desc, eq, gte, inArray, lt, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
+import { FEEDBACK_SHARED_PRIOR_MESSAGES, scrubSecrets } from '../ai/feedback.ts'
 import type { AdminActionScope } from './action.ts'
 import { ADMIN_PAGE_SIZE } from './list.ts'
 
 /**
- * 后台 AI 回复反馈（add-subject-chat tasks.md 4.1，specs/admin-console「AI 回复反馈列表」「满意率统计」）。
- * 只读评分、点踩原因与反馈文字，不联查对话正文或对象上下文；删除经 adminAction 写审计（不含反馈文字）。
+ * 后台 AI 回复反馈（add-subject-chat tasks.md 4.1、10.x，specs/admin-console「AI 回复反馈列表」「满意率统计」
+ * 「查看用户共享的对话」）。列表只读评分、点踩原因、反馈文字与共享标记，不联查对话正文或对象上下文；
+ * 用户同意共享的条目经 `readSharedConversation` 单独读取对话片段并写审计；删除经 adminAction 写审计（不含反馈文字）。
  */
 
 const date = z.iso.date()
@@ -36,6 +43,12 @@ export const feedbackSearchSchema = z
           ? (value as AiFeedbackReason)
           : undefined,
       ),
+    // 共享对话：yes / no；非法值按未筛选处理
+    shared: z
+      .string()
+      .max(8)
+      .optional()
+      .transform((value) => (value === 'yes' || value === 'no' ? value : undefined)),
     model: z.string().max(200).optional(),
     subjectType: z.string().max(64).optional(),
     from: date.optional(),
@@ -73,6 +86,7 @@ export async function listFeedback(db: Database, input: z.input<typeof feedbackS
   const where = and(
     data.rating ? eq(aiMessageFeedback.rating, data.rating) : undefined,
     data.reason ? eq(aiMessageFeedback.reason, data.reason) : undefined,
+    data.shared ? eq(aiMessageFeedback.shareConversation, data.shared === 'yes') : undefined,
     data.model ? eq(aiMessageFeedback.modelKey, data.model) : undefined,
     data.subjectType
       ? data.subjectType === NO_SUBJECT
@@ -93,6 +107,7 @@ export async function listFeedback(db: Database, input: z.input<typeof feedbackS
       rating: aiMessageFeedback.rating,
       comment: aiMessageFeedback.comment,
       reason: aiMessageFeedback.reason,
+      shareConversation: aiMessageFeedback.shareConversation,
       modelKey: aiMessageFeedback.modelKey,
       subjectType: aiMessageFeedback.subjectType,
     })
@@ -164,4 +179,98 @@ export async function deleteFeedback(scope: AdminActionScope, id: string) {
     meta: { modelKey: row.modelKey, subjectType: row.subjectType, rating: row.rating },
   })
   return { deleted: true }
+}
+
+export interface SharedConversationMessage {
+  readonly id: string
+  readonly role: 'user' | 'assistant'
+  /** 只取文本片段（推理、工具调用与数据片段不展示），并按反馈文字的规则去除疑似密钥 */
+  readonly text: string
+  /** 是否为被评的回复 */
+  readonly rated: boolean
+}
+
+const notFound = () => new AppError('NOT_FOUND', 'Not found', { status: 404 })
+
+/**
+ * 读取用户同意共享的对话片段（design 决策 6「共享对话同意」）：被评回复加上它之前最近
+ * `FEEDBACK_SHARED_PRIOR_MESSAGES` 条 user/assistant 消息，不含 system 消息（对象上下文）与之后的消息。
+ * 同意状态在服务端检查：未同意、记录不存在、已撤回，或被评回复不在该空间、对话不属于评分者，一律 404
+ * （记 warn 日志，事务回滚、不留审计）；
+ * 成功读取时在同一事务内写审计，审计只含反馈 ID、空间、消息 ID 与条数，不含正文。
+ */
+export async function readSharedConversation(scope: AdminActionScope, id: string) {
+  const [feedback] = await scope.tx
+    .select({
+      workspaceId: aiMessageFeedback.workspaceId,
+      messageId: aiMessageFeedback.messageId,
+      userId: aiMessageFeedback.userId,
+      shareConversation: aiMessageFeedback.shareConversation,
+    })
+    // biome-ignore lint/plugin: 平台管理员按反馈 ID 读取；正文随后按该行的空间经 scoped 查询。
+    .from(aiMessageFeedback)
+    .where(eq(aiMessageFeedback.id, id))
+    .limit(1)
+    // 与用户撤回互斥：读取正文期间同意不会被改写
+    .for('share')
+  // 未同意或已撤回时仍被请求正文，可能是直接调用接口；只记管理员与反馈 ID
+  const refuse = () => {
+    log.warn('ai.feedback.view_conversation_refused', { adminId: scope.admin.id, feedbackId: id })
+    return notFound()
+  }
+  if (!feedback?.shareConversation) throw refuse()
+  const tenant = scoped(scope.tx, feedback.workspaceId)
+  const fields = {
+    id: aiMessage.id,
+    role: aiMessage.role,
+    parts: aiMessage.parts,
+    conversationId: aiMessage.conversationId,
+  }
+  const [rated] = await tenant
+    .select(aiMessage, {
+      // created_at 以文本取回，保留微秒精度供下面的比较（JS Date 只到毫秒）
+      fields: { ...fields, createdAt: sql<string>`${aiMessage.createdAt}::text` },
+      where: and(eq(aiMessage.id, feedback.messageId), eq(aiMessage.role, 'assistant')) as SQL,
+    })
+    .limit(1)
+  // 被评回复必须在反馈行所属空间内（租户隔离），且对话属于评分者本人；否则同样拒绝
+  const [conversation] = rated
+    ? await tenant
+        .select(aiConversation, {
+          fields: { id: aiConversation.id },
+          where: and(
+            eq(aiConversation.id, rated.conversationId),
+            eq(aiConversation.userId, feedback.userId),
+          ) as SQL,
+        })
+        .limit(1)
+    : []
+  if (!rated || !conversation) throw refuse()
+  // 顺序与对话页一致，用 @saas/ai 的 aiMessageOrder：(created_at, 同一轮用户在前, id)。
+  // 「早于被评回复」按同一组排序键做行比较；created_at 以文本代入，保留微秒精度
+  const prior = await tenant
+    .select(aiMessage, {
+      fields,
+      where: and(
+        eq(aiMessage.conversationId, rated.conversationId),
+        inArray(aiMessage.role, ['user', 'assistant']),
+        sql`(${aiMessage.createdAt}, case when ${aiMessage.role} = 'user' then 0 else 1 end, ${aiMessage.id}) < (${rated.createdAt}::timestamptz, 1, ${rated.id}::uuid)`,
+      ) as SQL,
+    })
+    .orderBy(...aiMessageOrder('desc'))
+    .limit(FEEDBACK_SHARED_PRIOR_MESSAGES)
+  const messages: SharedConversationMessage[] = [...prior.reverse(), rated].map((row) => ({
+    id: row.id,
+    role: row.role === 'user' ? 'user' : 'assistant',
+    text: scrubSecrets(messageText(Array.isArray(row.parts) ? row.parts : [])),
+    rated: row.id === rated.id,
+  }))
+  await scope.audit({
+    action: 'ai.feedback.view_conversation',
+    targetType: 'ai_message_feedback',
+    targetId: id,
+    workspaceId: feedback.workspaceId,
+    meta: { messageId: feedback.messageId, messageCount: messages.length },
+  })
+  return { messages }
 }

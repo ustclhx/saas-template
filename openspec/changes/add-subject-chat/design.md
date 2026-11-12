@@ -78,10 +78,17 @@ registerConversationSubject(type, provider) // type: /^[a-z][a-z0-9_-]{0,47}$/�
   - 校验分两层：数据库 check 约束 `ai_message_feedback_reason_valid`（`reason is null or (rating = 'down' and reason in (…))`）保证取值合法且点赞时为空；server function 的 zod 只接受约定取值，`saveMessageFeedback` 对点赞或撤销时携带原因返回 `AppError('INVALID_REQUEST', 400)`，不静默丢弃。每次保存都整体写入 `reason`，因此改为点赞或点踩时不选原因都会清空旧值；撤销删除整条记录。
   - 取值在 `@saas/db` 的 `AI_FEEDBACK_REASONS` 与浏览器可用的 `features/ai/feedback.ts` 的 `FEEDBACK_REASONS` 各有一份（前者用于约束与后台筛选，后者避免浏览器包引入 db），单元测试比对两者；增删取值需要新迁移修改约束。
   - 对话页经 `chat-extras.tsx` 向 `MessageFeedback` 传入 `reasons`（文案在 `ai-subject-chat.json`），后台列表显示原因列并以 DataTable 的 select 筛选 `reason`（非法值按未筛选处理）。
+- 共享对话同意（2026-11-12 使用者决定，评审清单 #8）：后台原本为隐私不显示被评回复的正文；改为提交反馈时询问是否共享这段对话，只有同意的反馈后台才可查看正文。
+  - **同意放在反馈记录上，每条反馈单独记录，不做全局同意**：`ai_message_feedback.share_conversation boolean not null default false` 与 `shared_at timestamptz null`（迁移 0024）。同意与具体回复绑定，用户能看清自己共享了哪一段；全局开关会让用户在不知情时持续共享后续对话。check 约束 `ai_message_feedback_shared_at_consistent`（`share_conversation is distinct from (shared_at is null)`，等价于两者一致；不写 `not null` 是因为模板发版检查把含 NOT NULL 的迁移语句归为收缩）保证同意必有时间；已同意的记录再次同意时保留最初的同意时间。
+  - **入口**：勾选项在点踩展开的反馈表单中（文字框之后、提交按钮之前），使用 `@saas/ui` 的 Checkbox，默认不勾选；标题为「共享这条回复及之前几条消息，用于改进回答」，说明写明平台管理员可见的范围（这条回复与之前最多 3 条消息；更早的消息、关联对象的上下文和之后的消息不共享）与撤回方式；保存中禁用。`MessageFeedbackValue.shareConversation` 为可选字段，缺省视为 false，服务端返回值总是带上。点赞没有表单，因此不提供共享（选择更保护隐私的方案：只有用户主动打开表单、看到说明并勾选才算同意）；服务端接口本身不限制评分，留给项目自行扩展。
+  - **撤回**：每次保存都整体写入同意状态（与 `reason` 相同），不传即为不同意。因此再次提交时取消勾选、改为点赞都会撤回并清空 `shared_at`；撤销评分删除整条记录；撤销请求携带同意返回 400。
+  - **后台可见范围 N = 3**：被评的回复，加上它之前最近 3 条 user/assistant 消息（`FEEDBACK_SHARED_PRIOR_MESSAGES`）。3 条覆盖本轮提问与上一轮完整问答，足以看懂「再短一点」「那第二点呢」这类追问；更多上下文会显著扩大暴露面，按隐私优先取较小值。不显示 system 消息（对象上下文）、被评回复之后的消息与非文本片段（推理、工具调用、数据片段）。顺序与对话页一致，使用 `@saas/ai` 的 `aiMessageOrder`（`(created_at, 同一轮用户在前, id)`，兼容回复 ID 早于提问的旧数据）；「早于被评回复」以同一组排序键做行比较，`created_at` 以文本代入保留微秒精度。
+  - **服务端检查与审计**：`getAdminFeedbackConversation` 走 `adminAction('ai.feedback.view_conversation')`（读取也用写包装：实时管理员校验，审计与读取同事务），在事务内 `select … for share` 读取反馈行，`share_conversation` 为否、记录不存在一律 404，不返回正文、事务回滚不留审计；正文经 `scoped(tx, 反馈行的空间)` 读取并校验对话属于评分者。成功时写审计 `targetType: 'ai_message_feedback'`、`meta: { messageId, messageCount }`，不含正文与反馈文字；未同意仍被请求时记 warn 日志 `ai.feedback.view_conversation_refused`（只含管理员 ID 与反馈 ID）。返回的正文只取文本片段，并经与反馈文字相同的 `scrubSecrets` 去除疑似密钥。前端只在列表标为已共享时显示入口，但不依赖前端隐藏。
+  - **隐私说明**：项目上线前应在隐私政策中说明这项共享（共享什么、谁能看、如何撤回、保留多久）；模板不改法律页正文，见升级说明。
 
 ### 7. 后台
 
-- `/admin/feedback`：DataTable 列表（筛选 `rating`、`reason`、`model`、`subjectType`、`from`、`to`，每页 50），列：时间、空间、模型、对象类型、评分、点踩原因、反馈文字、消息 ID；不显示对话正文（需使用者审阅：是否展示被评回复的正文）。
+- `/admin/feedback`：DataTable 列表（筛选 `rating`、`reason`、`shared`、`model`、`subjectType`、`from`、`to`，每页 50），列：时间、空间、模型、对象类型、评分、点踩原因、共享、反馈文字、消息 ID；列表不显示对话正文。用户同意共享的条目在「共享」列显示「已共享」和「查看对话」按钮，点击后在 Dialog 中按时间顺序列出片段（被评回复带标记），每次打开由服务端校验同意并写审计（决策 6「共享对话同意」）。
 - 统计：同一日期范围内按 `model_key`、`coalesce(subject_type, '')` 分组的 up/down 数与满意率，默认最近 30 天。
 - 删除：`adminAction('ai.feedback.delete')`，审计 `targetType: 'ai_message_feedback'`、`meta: { modelKey, subjectType, rating }`，不含反馈文字。
 - 导航放在 AI 分组，随 `billing.enabled` 显示（与模型管理一致）。
@@ -144,9 +151,10 @@ interface SubjectChatData {
 
 - 协调者在 main 上 `drizzle-kit generate` 生成迁移（两列 + 索引 + check、新表）。纯新增，旧代码可在新 schema 上运行，回滚只需回退代码。
 - 点踩原因：迁移 0023 为 `ai_message_feedback` 加可空列 `reason` 与 check 约束，不改数据；旧代码不读写该列，回滚只需回退代码。
+- 共享对话同意：迁移 0024 为 `ai_message_feedback` 加 `share_conversation boolean not null default false`、可空 `shared_at` 与一致性 check 约束，不改数据（已有反馈视为未同意）；旧代码不读写这两列，回滚只需回退代码。
 - 衍生项目迁移路径见本目录 `upgrade-notes.md`。
 
 ## Open Questions
 
-- 后台反馈是否展示被评回复的正文（隐私 vs 提示词迭代效率），当前不展示。
+- ~~后台反馈是否展示被评回复的正文~~：已决定（2026-11-12）只在用户逐条同意共享时展示，见决策 6「共享对话同意」。
 - 后续问题计费时是否在 UI 上展示预计消耗，当前不展示（默认关闭）。

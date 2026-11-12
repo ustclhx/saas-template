@@ -616,7 +616,7 @@ DailyClaimNotice」两节用中性示例数据展示全部状态。
 | 组件 | 主要属性 | 回调 | 行为 |
 |---|---|---|---|
 | `SuggestionChips` | `suggestions: readonly string[]`、`label`、`showLabel?`、`disabled?` | `onSelect(text)` | 为空不渲染；长问题换行，不撑出横向滚动 |
-| `MessageFeedback` | `value: { rating: 'up' \| 'down'; comment: string \| null; reason? } \| null`（按字段比较）、`labels`、`reasons?: { value; label }[]`、`disabled?`、`actions?`、`meta?`、`commentMaxLength?` | `onChange(next \| null): Promise<void>` | 再次点击同一评分以 `null` 回调（撤销）；点踩展开文字反馈，提交后可「修改反馈」；切到点赞时文字与原因清空；乐观更新，reject 时回滚（表单开合一并复位，提交失败焦点回到文字框）并以 `role="alert"` 播报 `labels.failed`；反馈表单带 `data-escape-scope`，其中的 Esc 只收起表单 |
+| `MessageFeedback` | `value: { rating: 'up' \| 'down'; comment: string \| null; reason?; shareConversation? } \| null`（按字段比较）、`labels`、`reasons?: { value; label }[]`、`shareLabels?: { label; description }`、`disabled?`、`actions?`、`meta?`、`commentMaxLength?` | `onChange(next \| null): Promise<void>` | 再次点击同一评分以 `null` 回调（撤销）；点踩展开文字反馈，提交后可「修改反馈」；传入 `shareLabels` 时表单中有「共享对话」Checkbox（默认不勾选，说明文字经 `aria-describedby` 关联，随表单提交，修改时带出、取消勾选再提交即撤回）；切到点赞时文字、原因与共享同意清空；乐观更新，reject 时回滚（表单开合一并复位，提交失败焦点回到文字框）并以 `role="alert"` 播报 `labels.failed`；反馈表单带 `data-escape-scope`，其中的 Esc 只收起表单 |
 | `EmbeddedChat` | `variant?: 'inline' \| 'panel'`（默认 panel）、`labels`、`children`（消息、推荐问题等）、`footer?`（输入框）、`badge?`、`headerAction?`、`open?` / `defaultOpen?`、`showTrigger?` | `onOpenChange(open)` | `inline`（Reader 画板，8.4 使用）：≥ 768px 为正文流中的卡片，始终显示；`panel`：≥ 768px 为悬浮按钮 + 右侧非模态面板，页面仍可操作，Esc 只在焦点位于面板内时关闭，关闭时焦点原在面板内才还给悬浮按钮（或打开前的元素）。< 768px 两者都是悬浮按钮 + 模态底部抽屉（含 safe-area）。**面板 / 抽屉关闭时卸载 children**，对话状态（草稿、已加载消息）由调用方保存；打开期间断点变化不切换模态，关闭后再按新断点。`[data-escape-scope]` 内的 Esc 不关闭面板 |
 | `InsufficientCreditsDialog` | `open`、`estimatedCredits`、`availableCredits`、`labels`、`fallbackFocus?` | `onOpenChange`、`onBuyPacks()`、`onSubscribe?()` | 显示预计消耗、当前余额（危险色）与差额；不传 `onSubscribe` 时只显示购买积分包；关闭后焦点回到打开前的元素，打开前焦点在 body 时交给 `fallbackFocus()` |
 | `CreditEstimate` | `estimate: string \| null`、`balance?`、`insufficient?`、`hideIcon?`、`pendingLabel?` | — | `null` 显示估算中占位（`pendingLabel` 给读屏）；`insufficient` 用危险色并换成提示图标，带 `data-insufficient` |
@@ -624,7 +624,7 @@ DailyClaimNotice」两节用中性示例数据展示全部状态。
 | `DailyClaimNotice` | `status: 'available' \| 'pending' \| 'claimed' \| 'error'`、`title`、`description`、`labels`、`error?`、`compact?` | `onClaim?()`、`onDismiss?()` | 自动发放的项目不传 `onClaim`；`claimed` 显示徽标；`pending` 按钮忙碌；只有标题、说明与错误在 `role="status"` 内；< 640px 自动紧凑、按钮放不下时换行，`compact` 为强制紧凑 |
 
 接线现状：对话页（`features/ai/chat-page.tsx`，含嵌入式 `SubjectChat`）经 `features/ai/chat-extras.tsx` 接入推荐追问、
-消息评分（`setMessageFeedback`；点踩原因为画板的四个选项，取值 `FEEDBACK_REASONS` 与服务端校验、`ai_message_feedback.reason` 的约束一致，刷新后还原，后台 `/admin/feedback` 可按原因筛选）与余额不足弹窗（`INSUFFICIENT_CREDITS` 的数值，入口跳到账单页 `#credit-packs` /
+消息评分（`setMessageFeedback`；点踩原因为画板的四个选项，取值 `FEEDBACK_REASONS` 与服务端校验、`ai_message_feedback.reason` 的约束一致，刷新后还原，后台 `/admin/feedback` 可按原因筛选；共享对话勾选项写入 `ai_message_feedback.share_conversation`，只有同意的反馈后台才能查看被评回复与之前最近 3 条消息）与余额不足弹窗（`INSUFFICIENT_CREDITS` 的数值，入口跳到账单页 `#credit-packs` /
 `#subscriptions`，构建时套餐快照中明确没有订阅时不显示订阅入口；`CREDIT_DEBT` 等仍为账单链接）。`EmbeddedChat`、`CreditEstimate`、`LockedFeature`、
 `DailyClaimNotice` 暂只在 `/dev/ui` 展示，由后续页面（账单页 8.7、长文阅读器 8.4 等）按需接入。
 

@@ -39,6 +39,16 @@ breaking: false
 - 回滚：只回退代码，保留新列与约束；旧代码不读写 `reason`，新代码写入的原因保留
 - apps/web 的 `MessageFeedbackValue` 新增必填字段 `reason`（`FeedbackReason | null`），自行构造该值的项目补 `reason: null`；增删点踩原因取值需同时修改 db 包（模板为 `@saas/db`）的 `AI_FEEDBACK_REASONS` 与 `apps/web/src/features/ai/feedback.ts` 的 `FEEDBACK_REASONS`，并新增迁移修改 check 约束 `ai_message_feedback_reason_valid`
 
+### 0024_feedback_share
+
+- 类别：扩展
+- 兼容上一版本代码：是
+- 锁表与耗时：`ai_message_feedback` 新增 `share_conversation boolean not null default false`（常量默认值，元数据变更）、可空列 `shared_at timestamptz` 与 check 约束 `ai_message_feedback_shared_at_consistent`（未带 NOT VALID，扫描一次全表；已有行恒为 false 与 NULL、表通常很小，校验瞬时完成）。迁移设置 `lock_timeout=5s`、`statement_timeout=30s`，拿不到锁时失败，可重试
+- 数据迁移：无，已有反馈一律视为未同意
+- 回滚：只回退代码，保留新列与约束；旧代码不读写这两列，插入时取默认值仍满足约束；回退期间旧 upsert 不会清除已有的 `share_conversation`
+- apps/web 的 `MessageFeedbackValue` 新增可选字段 `shareConversation`（缺省视为 false）；`@saas/ui` 的 `MessageFeedback` 新增可选 `shareLabels`，不传时不显示勾选项
+- 隐私说明：项目上线前应在隐私政策中说明这项共享（被评回复与之前最多 3 条消息、不含对象上下文、仅平台管理员可见且每次查看有审计、逐条同意可撤回、随对话删除）
+
 ## 部署顺序
 
 先执行迁移，再部署 web 与 jobs（jobs 的 AI 内容清理会删除 `ai_message_feedback`，需与新表同时上线；旧 jobs 在新表有数据前不受影响）。

@@ -73,15 +73,22 @@ const feedbackLabels = {
   failed: '保存失败',
 }
 
+const shareLabels = {
+  label: '共享这段对话',
+  description: '包括这条回复和它之前最多 3 条消息',
+}
+
 /** 模拟调用方：保存成功后把新值传回组件 */
 function FeedbackHarness({
   initial = null,
   save,
   reasons,
+  share = false,
 }: {
   initial?: MessageFeedbackValue | null
   save: (next: MessageFeedbackValue | null) => Promise<void>
   reasons?: { value: string; label: string }[]
+  share?: boolean
 }) {
   const [value, setValue] = useState(initial)
   return (
@@ -89,6 +96,7 @@ function FeedbackHarness({
       value={value}
       labels={feedbackLabels}
       {...(reasons ? { reasons } : {})}
+      {...(share ? { shareLabels } : {})}
       onChange={async (next) => {
         await save(next)
         setValue(next)
@@ -166,6 +174,62 @@ describe('MessageFeedback', () => {
     expect(up.getAttribute('aria-pressed')).toBe('true')
     expect(screen.getByRole('alert').textContent).toBe('保存失败')
     expect(screen.getByRole('status').textContent).toBe('')
+  })
+
+  it('未传 shareLabels 时不显示共享勾选项，回调值也不含 shareConversation', async () => {
+    const save = vi.fn(async () => {})
+    render(<FeedbackHarness save={save} />)
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '没帮助' })))
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(save).toHaveBeenLastCalledWith({ rating: 'down', comment: null })
+  })
+
+  it('共享勾选项默认不勾选，勾选后随反馈提交；再次修改时带出并可取消（撤回）；切到点赞时清除', async () => {
+    const save = vi.fn(async () => {})
+    render(<FeedbackHarness save={save} share />)
+    const down = screen.getByRole('button', { name: '没帮助' })
+    await act(async () => fireEvent.click(down))
+    expect(save).toHaveBeenLastCalledWith({
+      rating: 'down',
+      comment: null,
+      shareConversation: false,
+    })
+    const box = screen.getByRole('checkbox', { name: '共享这段对话' })
+    expect(box.getAttribute('aria-checked')).toBe('false')
+    expect(box.getAttribute('aria-describedby')).toBe(
+      screen.getByText('包括这条回复和它之前最多 3 条消息').id,
+    )
+    fireEvent.click(box)
+    expect(box.getAttribute('aria-checked')).toBe('true')
+    await act(async () =>
+      fireEvent.submit(screen.getByRole('form', { name: '这条回答哪里不满意？' })),
+    )
+    expect(save).toHaveBeenLastCalledWith({
+      rating: 'down',
+      comment: null,
+      shareConversation: true,
+    })
+    // 修改反馈时带出已保存的同意；取消勾选再提交即撤回
+    fireEvent.click(screen.getByRole('button', { name: '修改反馈' }))
+    const reopened = screen.getByRole('checkbox', { name: '共享这段对话' })
+    expect(reopened.getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(reopened)
+    await act(async () =>
+      fireEvent.submit(screen.getByRole('form', { name: '这条回答哪里不满意？' })),
+    )
+    expect(save).toHaveBeenLastCalledWith({
+      rating: 'down',
+      comment: null,
+      shareConversation: false,
+    })
+    // 再次同意后切到点赞：同意随之清除
+    fireEvent.click(screen.getByRole('button', { name: '修改反馈' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '共享这段对话' }))
+    await act(async () =>
+      fireEvent.submit(screen.getByRole('form', { name: '这条回答哪里不满意？' })),
+    )
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '有帮助' })))
+    expect(save).toHaveBeenLastCalledWith({ rating: 'up', comment: null, shareConversation: false })
   })
 
   it('disabled 时评分按钮不可用', () => {

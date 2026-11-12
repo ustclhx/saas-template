@@ -7,7 +7,8 @@ import { stubTurnstile } from './turnstile.ts'
 
 // 业务界面组件接线（add-ui-design-system tasks 8.6）：对话页的消息评分经真实的 setMessageFeedback
 // 写入 ai_message_feedback；再次点击撤销、点踩展开文字反馈与原因并可修改，刷新后原因仍在，
-// 后台反馈列表显示原因并可按原因筛选（add-subject-chat 9.x）。回复直接写库，不依赖模型。
+// 后台反馈列表显示原因并可按原因筛选（add-subject-chat 9.x）；勾选共享对话后刷新仍在，
+// 后台对已共享的条目显示对话片段（add-subject-chat 10.x）。回复直接写库，不依赖模型。
 
 test.beforeEach(async ({ page }) => {
   await simulateClientIp(page)
@@ -43,7 +44,8 @@ test('rates a reply, keeps the down-vote reason and shows it in the admin list',
       (${newId()}, ${row.workspace_id}, ${conversationId}, 'user', ${sql.json([{ type: 'text', text: 'What changed?' }])}, 'completed'),
       (${replyId}, ${row.workspace_id}, ${conversationId}, 'assistant', ${sql.json([{ type: 'text', text: 'Costs went up.' }])}, 'completed')`
     const feedback = () =>
-      sql`select rating, comment, reason from ai_message_feedback where message_id = ${replyId}`
+      sql`select rating, comment, reason, share_conversation from ai_message_feedback
+        where message_id = ${replyId}`
 
     await page.goto(`/app/${slug}/chat/${conversationId}`)
     const messages = page.getByRole('list', { name: 'Messages' }).getByRole('listitem')
@@ -96,10 +98,18 @@ test('rates a reply, keeps the down-vote reason and shows it in the admin list',
       'aria-pressed',
       'true',
     )
+    // 共享对话勾选项默认不勾选，说明文字写明共享范围
+    const share = reply.getByRole('checkbox', {
+      name: /Share this reply and a few earlier messages/,
+    })
+    await expect(share).toHaveAttribute('aria-checked', 'false')
+    await expect(share).toHaveAccessibleDescription(/this reply and up to 3 messages before it/)
+    await share.click()
+    await expect(share).toHaveAttribute('aria-checked', 'true')
     await reply.getByRole('button', { name: 'Send feedback' }).click()
     await expect
-      .poll(async () => (await feedback()).map((r) => [r.comment, r.reason]))
-      .toEqual([['Missing staffing and tooling costs', 'no_source']])
+      .poll(async () => (await feedback()).map((r) => [r.comment, r.reason, r.share_conversation]))
+      .toEqual([['Missing staffing and tooling costs', 'no_source', true]])
 
     // 刷新后评分与原因仍在
     // 服务端按已保存的评分渲染，无需等待水合
@@ -120,6 +130,9 @@ test('rates a reply, keeps the down-vote reason and shows it in the admin list',
     await expect(reloaded.getByLabel('Tell us more (optional)')).toHaveValue(
       'Missing staffing and tooling costs',
     )
+    await expect(
+      reloaded.getByRole('checkbox', { name: /Share this reply and a few earlier messages/ }),
+    ).toHaveAttribute('aria-checked', 'true')
 
     // 后台反馈列表：显示原因，可按原因筛选
     await sql`update "user" set role='admin' where id=${row.user_id}`
@@ -137,6 +150,30 @@ test('rates a reply, keeps the down-vote reason and shows it in the admin list',
     await expect(page).toHaveURL(/reason=no_source/)
     await expect(ours).toContainText('No citation')
     await expect(table.locator('tbody tr', { hasNotText: 'No citation' })).toHaveCount(0)
+
+    // 已共享的条目：可查看对话片段（被评回复与之前的提问），查看写入审计
+    await expect(ours).toContainText('Shared')
+    await ours.getByRole('button', { name: 'View conversation' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Shared conversation' })
+    await expect(dialog).toContainText('What changed?')
+    await expect(dialog).toContainText('Costs went up.')
+    await expect(dialog).toContainText('Rated reply')
+    await expect
+      .poll(
+        async () =>
+          (
+            await sql`select a.action from audit_log a join ai_message_feedback f
+              on a.target_id = f.id::text where f.message_id = ${replyId}
+              and a.action = 'ai.feedback.view_conversation'`
+          ).length,
+      )
+      .toBe(1)
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+    await chooseOption(page.getByRole('combobox', { name: 'Shared', exact: true }), 'Not shared')
+    await page.getByRole('button', { name: 'Apply', exact: true }).click()
+    await expect(page).toHaveURL(/shared=no/)
+    await expect(ours).toHaveCount(0)
   } finally {
     await sql`delete from ai_message_feedback where message_id = ${replyId}`
     await sql`delete from ai_message where conversation_id = ${conversationId}`
