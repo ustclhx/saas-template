@@ -28,4 +28,4 @@
 ## 5. 集成验收
 
 - [x] 5.1 `pnpm check`、`pnpm typecheck`、`pnpm test`、`pnpm build` 全部通过；模板仓库 staging（单站）部署后 `check-site-isolation` 仍通过，且实例 site `saas-template-staging` 照常收到 pageview（2026-11-04：#292 部署后 staging 仍为单站脚本、门禁通过，无头浏览器访问 /pricing 的 pageview 与 paywall_view 进入 site 3）
-- [ ] 5.2 衍生项目验收（需 xuanxue 升级到包含本 change 的模板版本后执行，不随本 change 的 PR 勾选）：生产配置两站映射后，`ganjiday.com` 与 `arcanumber.com` 的 pageview 与 `sign_up` 各自进入实例 site 1 与 site 4
+- [x] 5.2 衍生项目验收（需 xuanxue 升级到包含本 change 的模板版本后执行，不随本 change 的 PR 勾选）：生产配置两站映射后，`ganjiday.com` 与 `arcanumber.com` 的 pageview 与 `sign_up` 各自进入实例 site 1 与 site 4（2026-11-12：xuanxue 生产两站映射已配置，近 14 天 site 1 ganjiday.com 收到 275 次 pageview、2 次 sign_up，site 4 arcanumber.com 收到 198 次 pageview、2 次 sign_up，各自入库互不混入；证据见私有证据库 plausible-multi-site/5.2-2026-11-12）
