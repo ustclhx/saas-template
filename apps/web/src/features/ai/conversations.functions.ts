@@ -1,9 +1,10 @@
+import { aiMessageOrder } from '@saas/ai'
 import { aiConversation, aiMessage, type Database, scoped } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import { notFound } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { and, asc, desc, eq, inArray, type SQL } from 'drizzle-orm'
+import { and, desc, eq, inArray, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
 import { getLocale } from '../../paraglide/runtime.js'
 import { withBilling } from '../../server/feature-gates.ts'
@@ -126,7 +127,7 @@ export const getConversation = createServerFn({ method: 'GET' })
           inArray(aiMessage.role, ['user', 'assistant']),
         ) as SQL,
       })
-      .orderBy(asc(aiMessage.id))
+      .orderBy(...aiMessageOrder())
     const feedback = await feedbackForMessages(
       { db: context.db, workspaceId: context.workspace.id, userId: context.user.id },
       messages.filter((message) => message.role === 'assistant').map((message) => message.id),

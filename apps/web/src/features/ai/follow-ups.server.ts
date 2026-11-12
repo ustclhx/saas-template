@@ -1,5 +1,6 @@
 import {
   actualCredits,
+  aiMessageOrder,
   dbModelStore,
   defaultLanguageModelFactory,
   estimateCredits,
@@ -18,7 +19,7 @@ import type { KeyValueStore, RateLimiter } from '@saas/platform'
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import { generateText } from 'ai'
-import { and, asc, desc, eq, inArray, lt, type SQL } from 'drizzle-orm'
+import { and, eq, lte, type SQL } from 'drizzle-orm'
 import { templateConfig } from '../../server/template-config.ts'
 
 /**
@@ -209,23 +210,33 @@ async function followUpPrompt(
   const s = scoped(db, workspaceId)
   const [system] = await s
     .select(aiMessage, {
-      fields: { role: aiMessage.role, parts: aiMessage.parts },
-      where: eq(aiMessage.conversationId, message.conversationId),
+      fields: { parts: aiMessage.parts },
+      where: and(
+        eq(aiMessage.conversationId, message.conversationId),
+        eq(aiMessage.role, 'system'),
+      ) as SQL,
     })
-    .orderBy(asc(aiMessage.id))
+    .orderBy(...aiMessageOrder())
+    .limit(1)
+  // 同时间的 user 排在 assistant 前；保留数据库时间精度，避免 Date 截掉微秒后漏掉本轮问题。
+  const replyCreatedAt = s
+    .select(aiMessage, {
+      fields: { createdAt: aiMessage.createdAt },
+      where: eq(aiMessage.id, message.id),
+    })
     .limit(1)
   const [question] = await s
     .select(aiMessage, {
       fields: { parts: aiMessage.parts },
       where: and(
         eq(aiMessage.conversationId, message.conversationId),
-        inArray(aiMessage.role, ['user']),
-        lt(aiMessage.id, message.id),
+        eq(aiMessage.role, 'user'),
+        lte(aiMessage.createdAt, replyCreatedAt),
       ) as SQL,
     })
-    .orderBy(desc(aiMessage.id))
+    .orderBy(...aiMessageOrder('desc'))
     .limit(1)
-  const context = system?.role === 'system' ? messageText(system.parts) : ''
+  const context = system ? messageText(system.parts) : ''
   const instruction = [
     `Suggest ${count} short follow-up questions the user is likely to ask next about this conversation.`,
     'Write them in the language the user writes in, from the user’s point of view, each under 80 characters.',
