@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { m } from '../../paraglide/messages.js'
 import { baseLocale, overwriteGetLocale } from '../../paraglide/runtime.js'
 import { templateConfig } from '../../server/template-config.ts'
 import type { AccountView } from './account.ts'
@@ -19,6 +20,14 @@ const user: AccountView['user'] = {
 
 beforeEach(() => overwriteGetLocale(() => baseLocale))
 afterEach(() => overwriteGetLocale(() => baseLocale))
+
+it('renders the preferences heading for the configured i18n mode', () => {
+  const html = renderToStaticMarkup(<PreferencesSection user={user} locales={[baseLocale]} />)
+  const heading = templateConfig.i18n.enabled
+    ? m.account_preferences_heading()
+    : m.account_preferences_timezoneheading()
+  expect(html.match(/<h2[^>]*>(.*?)<\/h2>/)?.[1]).toBe(heading)
+})
 
 // 生成器 --i18n false 时产品有意不渲染语言控件（见 account-sections.tsx），该组用例只在多语言开启时成立
 describe.skipIf(!templateConfig.i18n.enabled)('account language preference', () => {
