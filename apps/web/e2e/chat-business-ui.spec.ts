@@ -39,15 +39,18 @@ test('rates a reply, keeps the down-vote reason and shows it in the admin list',
     if (!row) throw new Error('Workspace fixture is missing')
     await sql`insert into ai_conversation (id, workspace_id, user_id, title, model_key)
       values (${conversationId}, ${row.workspace_id}, ${row.user_id}, 'Quarterly notes', '')`
-    await sql`insert into ai_message (id, workspace_id, conversation_id, role, parts) values
-      (${newId()}, ${row.workspace_id}, ${conversationId}, 'user', ${sql.json([{ type: 'text', text: 'What changed?' }])})`
+    // 旧数据的回复 ID 更早，同一条 INSERT 让问答的 created_at 也相同。
     await sql`insert into ai_message (id, workspace_id, conversation_id, role, parts, status) values
+      (${newId()}, ${row.workspace_id}, ${conversationId}, 'user', ${sql.json([{ type: 'text', text: 'What changed?' }])}, 'completed'),
       (${replyId}, ${row.workspace_id}, ${conversationId}, 'assistant', ${sql.json([{ type: 'text', text: 'Costs went up.' }])}, 'completed')`
     const feedback = () =>
       sql`select rating, comment, reason, share_conversation from ai_message_feedback
         where message_id = ${replyId}`
 
     await page.goto(`/app/${slug}/chat/${conversationId}`)
+    const messages = page.getByRole('list', { name: 'Messages' }).getByRole('listitem')
+    await expect(messages.nth(0)).toContainText('What changed?')
+    await expect(messages.nth(1)).toContainText('Costs went up.')
     const reply = page
       .getByRole('list', { name: 'Messages' })
       .getByRole('listitem', { name: 'Assistant' })

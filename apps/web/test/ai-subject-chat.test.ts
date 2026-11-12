@@ -2,7 +2,7 @@ import { chatHoldSweeper } from '@saas/ai'
 import { createAuth } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
 import { getCreditBalance, grant, hold } from '@saas/credits'
-import { type AiPricingJson, aiModel } from '@saas/db'
+import { type AiPricingJson, aiMessage, aiModel } from '@saas/db'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import type { KeyValueStore } from '@saas/platform'
 import { AppError, newId } from '@saas/shared'
@@ -356,6 +356,81 @@ describe('subject conversations', () => {
     // 第三轮超出输入上限：最早的问答被丢弃，上下文仍在最前
     const last = turns[2]?.doStreamCalls[0]?.prompt ?? []
     expect(JSON.stringify(last)).not.toContain('first question')
+  })
+
+  it('orders legacy replies after their questions on reload, in history and in follow-up prompts', async () => {
+    const owner = await member('legacy-order', 100)
+    const subject = doc(owner)
+    const { id: conversationId } = await startSubjectConversation(ctxOf(owner), subject)
+    const model = await textModel({ mode: 'per_call', credits: 1 })
+    // 旧实现先分配回复 ID，但事务中的问答共享 createdAt；只按 ID 会把回复放在问题前。
+    const assistantId = newId()
+    const userId = newId()
+    const createdAt = new Date()
+    await db.insert(aiMessage).values([
+      {
+        id: userId,
+        workspaceId: owner.workspaceId,
+        conversationId,
+        role: 'user',
+        parts: [{ type: 'text', text: 'legacy question' }],
+        createdAt,
+      },
+      {
+        id: assistantId,
+        workspaceId: owner.workspaceId,
+        conversationId,
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'legacy answer' }],
+        modelKey: model.key,
+        createdAt,
+      },
+    ])
+    // 保留数据库微秒精度：读取为 JS Date 再比较会截断，漏掉与回复同时创建的问题。
+    await sql`update ai_message set created_at=${createdAt.toISOString()}::timestamptz + interval '123 microseconds'
+      where conversation_id=${conversationId}`
+
+    const reloaded = await loadSubjectChat(ctxOf(owner), subject)
+    expect(reloaded.messages.map((message) => message.id)).toEqual([userId, assistantId])
+    const mock = streamModel('next answer')
+    const response = await chat(
+      owner,
+      {
+        modelId: model.id,
+        conversationId,
+        message: { role: 'user', parts: [{ type: 'text', text: 'next question' }] },
+      },
+      mock,
+    )
+    expect(response.status).toBe(200)
+    expect(mock.doStreamCalls[0]?.prompt[0]).toMatchObject({ role: 'system' })
+    expect(mock.doStreamCalls[0]?.prompt.slice(1)).toMatchObject([
+      { role: 'user', content: [{ type: 'text', text: 'legacy question' }] },
+      { role: 'assistant', content: [{ type: 'text', text: 'legacy answer' }] },
+      { role: 'user', content: [{ type: 'text', text: 'next question' }] },
+    ])
+
+    // 追问旧回复时仍取该轮问题，不能因反序 ID 漏掉，也不能误取后来一轮的问题。
+    const followUp = generateModel('["Why?", "How?"]')
+    expect(
+      await generateFollowUps(
+        {
+          db,
+          cache: memoryKv(),
+          env: {},
+          workersAi: false,
+          entitlements,
+          languageModelFactory: () => followUp,
+          config: { enabled: true, charge: false, count: 2, modelKey: null },
+        },
+        { workspaceId: owner.workspaceId, userId: owner.userId },
+        assistantId,
+      ),
+    ).toEqual({ questions: ['Why?', 'How?'] })
+    expect(followUp.doGenerateCalls[0]?.prompt.slice(1, 3)).toMatchObject([
+      { role: 'user', content: [{ type: 'text', text: 'legacy question' }] },
+      { role: 'assistant', content: [{ type: 'text', text: 'legacy answer' }] },
+    ])
   })
 
   it('refuses provider contexts over the size limit without creating a conversation', async () => {

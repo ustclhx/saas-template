@@ -1,7 +1,8 @@
+import { aiMessageOrder } from '@saas/ai'
 import { aiConversation, aiMessage, scoped } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
-import { and, asc, desc, eq, inArray, type SQL } from 'drizzle-orm'
+import { and, desc, eq, inArray, type SQL } from 'drizzle-orm'
 import { templateConfig } from '../../server/template-config.ts'
 import {
   type ChatMessageStatus,
@@ -257,7 +258,7 @@ async function loadChatData(
         inArray(aiMessage.role, ['user', 'assistant']),
       ) as SQL,
     })
-    .orderBy(asc(aiMessage.id))
+    .orderBy(...aiMessageOrder())
   const messages = rows.map((row) => ({
     ...row,
     parts: messageDisplayParts(

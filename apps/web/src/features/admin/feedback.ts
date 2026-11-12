@@ -1,4 +1,4 @@
-import { messageText } from '@saas/ai'
+import { aiMessageOrder, messageText } from '@saas/ai'
 import {
   AI_FEEDBACK_REASONS,
   type AiFeedbackReason,
@@ -246,19 +246,18 @@ export async function readSharedConversation(scope: AdminActionScope, id: string
         .limit(1)
     : []
   if (!rated || !conversation) throw refuse()
-  // 时间顺序按 (created_at, 同一轮内用户在前, id)：同一轮的提问与回复在一个事务内写入、created_at 相同，
-  // 而回复 ID 先于提问生成，只按 ID 排序会把回复排到提问之前。比较在 SQL 内完成，避免 JS Date 丢失微秒
-  const turnOrder = sql`case when ${aiMessage.role} = 'user' then 0 else 1 end`
+  // 顺序与对话页一致，用 @saas/ai 的 aiMessageOrder：(created_at, 同一轮用户在前, id)。
+  // 「早于被评回复」按同一组排序键做行比较；created_at 以文本代入，保留微秒精度
   const prior = await tenant
     .select(aiMessage, {
       fields,
       where: and(
         eq(aiMessage.conversationId, rated.conversationId),
         inArray(aiMessage.role, ['user', 'assistant']),
-        sql`(${aiMessage.createdAt}, ${turnOrder}) < (${rated.createdAt}::timestamptz, 1)`,
+        sql`(${aiMessage.createdAt}, case when ${aiMessage.role} = 'user' then 0 else 1 end, ${aiMessage.id}) < (${rated.createdAt}::timestamptz, 1, ${rated.id}::uuid)`,
       ) as SQL,
     })
-    .orderBy(desc(aiMessage.createdAt), desc(turnOrder), desc(aiMessage.id))
+    .orderBy(...aiMessageOrder('desc'))
     .limit(FEEDBACK_SHARED_PRIOR_MESSAGES)
   const messages: SharedConversationMessage[] = [...prior.reverse(), rated].map((row) => ({
     id: row.id,

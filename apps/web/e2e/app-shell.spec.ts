@@ -127,9 +127,14 @@ test.describe('sidebar 布局', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Workspace settings')
     await noHorizontalScroll(page)
 
-    for (const path of ['usage', 'billing', 'chat']) {
+    for (const [path, title] of [
+      ['usage', 'Usage'],
+      ['billing', 'Billing'],
+      ['chat', 'Chat'],
+    ] as const) {
       await page.goto(`${page.url().replace(/\/settings$/, '')}/${path}`)
-      await page.waitForLoadState('networkidle')
+      // dev 页面会继续发起请求；等待目标内容即可，避免连续 networkidle 耗尽整个用例预算。
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(title)
       await expect(page.locator('[data-slot="sidebar-inset"]')).toBeVisible()
       await noHorizontalScroll(page)
       await page.goBack()

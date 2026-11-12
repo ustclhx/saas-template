@@ -366,6 +366,17 @@ pnpm --filter @saas/web test:e2e:smoke
 
 失败时 CI 只上传 `apps/web/playwright-report/` HTML 报告，保留 7 天；此配置始终禁用 trace、video、截图，不上传 `test-results` 或服务端日志。其余离线 e2e 仍用 `pnpm --filter @saas/web test:e2e`。
 
+### 夜间全量测试
+
+`.github/workflows/nightly.yml`（Actions 中的 **Nightly**）每日 UTC 19:00（北京时间次日 03:00）定时运行，也支持 `workflow_dispatch` 手动触发；两种入口都仅运行 `main`。两个 job 独立执行，互不阻塞：
+
+- `e2e-full`：使用临时 Postgres 17，运行 `pnpm --filter @saas/web test:e2e`，采用默认 `playwright.config.ts` 的离线测试范围，不需要外部服务密钥；不包含 Stripe 专用测试、staging / production 项目及 `ai-chat-disconnect`。
+- `create-project-verify`：运行 `pnpm test:create-project:verify`，验证生成项目的真实副本；衍生项目不包含该模板维护脚本，自动省略此步骤。
+
+失败时上传 Playwright report 与 trace，保留 14 天。失败通知自动创建带 `nightly-failure` 标签的 issue；如果已有未关闭且带同标签的 issue，则追加评论。通知包含运行日期、失败 job 和 Actions run 链接。
+
+在仓库 **Actions → Nightly** 查看运行结果，先按失败 job 下载报告与 trace，再判断是界面或行为变化造成的过时断言，还是真实功能缺陷；修正断言或业务实现，不删除有效用例或增加 retry 掩盖失败。衍生项目同步模板后会继承此 workflow，可按需删除文件或调整 `schedule`。
+
 **阶段二私有 PG 迁移**：CI 可运行 `cloudflared access tcp`（需要 §2 的公网主机名 + Access 备选方式）在本地开转发端口，再执行迁移；或通过 SSH 在生产服务器上执行迁移。
 
 **迁移原则**：只做向后兼容的变更（先加字段/表 → 部署代码 → 再删旧字段），保证 web/jobs 滚动发布期间新旧代码都能运行。staging 与 production 共用 `node scripts/production/migrate.mjs`，强制 `lock_timeout=5s`、`statement_timeout=15min`；锁超时后停止部署。CI 用固定版本 `squawk-cli` 检查相对 base 新增的 SQL；例外必须用 squawk ignore 注释并在同一行说明原因，不修改历史 SQL 来隐藏风险。
