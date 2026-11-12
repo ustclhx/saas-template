@@ -1,3 +1,4 @@
+import { messageText } from '@saas/ai'
 import {
   AI_FEEDBACK_REASONS,
   type AiFeedbackReason,
@@ -8,9 +9,10 @@ import {
   scoped,
 } from '@saas/db'
 import { AppError } from '@saas/shared'
+import { log } from '@saas/shared/log'
 import { and, count, desc, eq, gte, inArray, lt, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { FEEDBACK_SHARED_PRIOR_MESSAGES } from '../ai/feedback.ts'
+import { FEEDBACK_SHARED_PRIOR_MESSAGES, scrubSecrets } from '../ai/feedback.ts'
 import type { AdminActionScope } from './action.ts'
 import { ADMIN_PAGE_SIZE } from './list.ts'
 
@@ -182,7 +184,7 @@ export async function deleteFeedback(scope: AdminActionScope, id: string) {
 export interface SharedConversationMessage {
   readonly id: string
   readonly role: 'user' | 'assistant'
-  /** 只取文本片段；推理、工具调用与数据片段不展示 */
+  /** 只取文本片段（推理、工具调用与数据片段不展示），并按反馈文字的规则去除疑似密钥 */
   readonly text: string
   /** 是否为被评的回复 */
   readonly rated: boolean
@@ -190,21 +192,11 @@ export interface SharedConversationMessage {
 
 const notFound = () => new AppError('NOT_FOUND', 'Not found', { status: 404 })
 
-function partsText(parts: unknown): string {
-  if (!Array.isArray(parts)) return ''
-  return parts
-    .flatMap((part) =>
-      part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string'
-        ? [part.text]
-        : [],
-    )
-    .join('')
-}
-
 /**
  * 读取用户同意共享的对话片段（design 决策 6「共享对话同意」）：被评回复加上它之前最近
  * `FEEDBACK_SHARED_PRIOR_MESSAGES` 条 user/assistant 消息，不含 system 消息（对象上下文）与之后的消息。
- * 同意状态在服务端检查：未同意、记录不存在或已撤回一律 404（此时事务回滚、不留审计）；
+ * 同意状态在服务端检查：未同意、记录不存在、已撤回，或被评回复不在该空间、对话不属于评分者，一律 404
+ * （记 warn 日志，事务回滚、不留审计）；
  * 成功读取时在同一事务内写审计，审计只含反馈 ID、空间、消息 ID 与条数，不含正文。
  */
 export async function readSharedConversation(scope: AdminActionScope, id: string) {
@@ -221,7 +213,12 @@ export async function readSharedConversation(scope: AdminActionScope, id: string
     .limit(1)
     // 与用户撤回互斥：读取正文期间同意不会被改写
     .for('share')
-  if (!feedback?.shareConversation) throw notFound()
+  // 未同意或已撤回时仍被请求正文，可能是直接调用接口；只记管理员与反馈 ID
+  const refuse = () => {
+    log.warn('ai.feedback.view_conversation_refused', { adminId: scope.admin.id, feedbackId: id })
+    return notFound()
+  }
+  if (!feedback?.shareConversation) throw refuse()
   const tenant = scoped(scope.tx, feedback.workspaceId)
   const fields = {
     id: aiMessage.id,
@@ -231,11 +228,12 @@ export async function readSharedConversation(scope: AdminActionScope, id: string
   }
   const [rated] = await tenant
     .select(aiMessage, {
-      fields,
+      // created_at 以文本取回，保留微秒精度供下面的比较（JS Date 只到毫秒）
+      fields: { ...fields, createdAt: sql<string>`${aiMessage.createdAt}::text` },
       where: and(eq(aiMessage.id, feedback.messageId), eq(aiMessage.role, 'assistant')) as SQL,
     })
     .limit(1)
-  // 只展示评分者本人对话中的消息
+  // 被评回复必须在反馈行所属空间内（租户隔离），且对话属于评分者本人；否则同样拒绝
   const [conversation] = rated
     ? await tenant
         .select(aiConversation, {
@@ -247,32 +245,27 @@ export async function readSharedConversation(scope: AdminActionScope, id: string
         })
         .limit(1)
     : []
+  if (!rated || !conversation) throw refuse()
   // 时间顺序按 (created_at, 同一轮内用户在前, id)：同一轮的提问与回复在一个事务内写入、created_at 相同，
   // 而回复 ID 先于提问生成，只按 ID 排序会把回复排到提问之前。比较在 SQL 内完成，避免 JS Date 丢失微秒
   const turnOrder = sql`case when ${aiMessage.role} = 'user' then 0 else 1 end`
-  const prior =
-    rated && conversation
-      ? await tenant
-          .select(aiMessage, {
-            fields,
-            where: and(
-              eq(aiMessage.conversationId, rated.conversationId),
-              inArray(aiMessage.role, ['user', 'assistant']),
-              sql`(${aiMessage.createdAt}, ${turnOrder}) < (select r.created_at, 1 from ai_message r where r.id = ${rated.id})`,
-            ) as SQL,
-          })
-          .orderBy(desc(aiMessage.createdAt), desc(turnOrder), desc(aiMessage.id))
-          .limit(FEEDBACK_SHARED_PRIOR_MESSAGES)
-      : []
-  const messages: SharedConversationMessage[] =
-    rated && conversation
-      ? [...prior.reverse(), rated].map((row) => ({
-          id: row.id,
-          role: row.role === 'user' ? 'user' : 'assistant',
-          text: partsText(row.parts),
-          rated: row.id === rated.id,
-        }))
-      : []
+  const prior = await tenant
+    .select(aiMessage, {
+      fields,
+      where: and(
+        eq(aiMessage.conversationId, rated.conversationId),
+        inArray(aiMessage.role, ['user', 'assistant']),
+        sql`(${aiMessage.createdAt}, ${turnOrder}) < (${rated.createdAt}::timestamptz, 1)`,
+      ) as SQL,
+    })
+    .orderBy(desc(aiMessage.createdAt), desc(turnOrder), desc(aiMessage.id))
+    .limit(FEEDBACK_SHARED_PRIOR_MESSAGES)
+  const messages: SharedConversationMessage[] = [...prior.reverse(), rated].map((row) => ({
+    id: row.id,
+    role: row.role === 'user' ? 'user' : 'assistant',
+    text: scrubSecrets(messageText(Array.isArray(row.parts) ? row.parts : [])),
+    rated: row.id === rated.id,
+  }))
   await scope.audit({
     action: 'ai.feedback.view_conversation',
     targetType: 'ai_message_feedback',

@@ -803,6 +803,61 @@ describe('message feedback', () => {
       saveMessageFeedback(scope, { messageId: third, rating: null, shareConversation: true }),
     ).rejects.toMatchObject({ code: 'INVALID_REQUEST', status: 400 })
   })
+
+  it('shares only text parts with secrets removed, and refuses replies outside the rater’s own conversation', async () => {
+    const owner = await member('share-parts', 100)
+    const other = await member('share-other')
+    const { messageId } = await reply(owner)
+    // 推理、工具调用与数据片段不进入片段；文本中的疑似密钥按反馈文字的规则替换
+    const parts = [
+      { type: 'reasoning', text: 'REASONING-TEXT' },
+      {
+        type: 'tool-search',
+        toolCallId: 't1',
+        state: 'output-available',
+        input: { q: 'TOOL-INPUT' },
+        output: 'TOOL-OUTPUT',
+      },
+      { type: 'data-subject-context', data: { note: 'DATA-PART' } },
+      { type: 'text', text: 'Visible answer with sk-live-0123456789abcdefABCDEF' },
+    ]
+    await sql`update ai_message set parts=${JSON.stringify(parts)}::jsonb where id=${messageId}`
+    await saveMessageFeedback(
+      { db, workspaceId: owner.workspaceId, userId: owner.userId },
+      { messageId, rating: 'down', shareConversation: true },
+    )
+    const [row] = await sql<{ id: string }[]>`
+      select id from ai_message_feedback where message_id=${messageId}`
+    const id = row?.id as string
+    const admin = await member('share-parts-admin')
+    await sql`update "user" set role='admin' where id=${admin.userId}`
+    const view = () =>
+      runAdminAction(
+        { db, admin: { id: admin.userId } },
+        'ai.feedback.view_conversation',
+        (adminScope) => readSharedConversation(adminScope, id),
+      )
+    const shared = await view()
+    expect(shared.messages.at(-1)).toMatchObject({
+      rated: true,
+      text: 'Visible answer with [REDACTED]',
+    })
+    expect(JSON.stringify(shared)).not.toMatch(
+      /REASONING-TEXT|TOOL-INPUT|TOOL-OUTPUT|DATA-PART|sk-live/,
+    )
+
+    // 反馈行指向的评分者不是对话所有者：拒绝
+    await sql`update ai_message_feedback set user_id=${other.userId} where id=${id}`
+    await expect404(view())
+    // 反馈行的空间与消息所在空间不一致（跨空间）：租户隔离查询找不到消息，拒绝
+    await sql`update ai_message_feedback set user_id=${owner.userId}, workspace_id=${other.workspaceId}
+      where id=${id}`
+    await expect404(view())
+    const audits = await sql`select id from audit_log
+      where target_id=${id} and action='ai.feedback.view_conversation'`
+    expect(audits).toHaveLength(1)
+    await sql`update ai_message_feedback set workspace_id=${owner.workspaceId} where id=${id}`
+  })
 })
 
 describe('follow-up questions', () => {

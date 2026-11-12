@@ -22,8 +22,11 @@ export interface MessageFeedbackValue {
   readonly comment: string | null
   /** 只在点踩时可能有值 */
   readonly reason: FeedbackReason | null
-  /** 是否同意把这段对话共享给平台用于改进（只属于本条反馈，默认 false，再次提交时不勾选即撤回） */
-  readonly shareConversation: boolean
+  /**
+   * 是否同意把这段对话共享给平台用于改进（只属于本条反馈，再次提交时不勾选即撤回）。
+   * 缺省视为 false；服务端返回值总是带上该字段。
+   */
+  readonly shareConversation?: boolean
 }
 
 export const FEEDBACK_COMMENT_MAX_LENGTH = 1000

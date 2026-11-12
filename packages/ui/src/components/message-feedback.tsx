@@ -355,7 +355,8 @@ function MessageFeedback({
                 id={shareId}
                 className="mt-0.5"
                 checked={share}
-                disabled={disabled}
+                // 保存中不可改，避免提交的值与界面不一致
+                disabled={disabled || pending}
                 aria-describedby={shareDescriptionId}
                 onCheckedChange={setShare}
               />

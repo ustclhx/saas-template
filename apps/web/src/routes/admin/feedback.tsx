@@ -1,4 +1,5 @@
 import {
+  Badge,
   Button,
   DataTable,
   Dialog,
@@ -104,13 +105,13 @@ function ConversationDialog({ view, onClose }: { view: ConversationView | null; 
             {m.admin_feedback_conversation_failed()}
           </p>
         ) : view?.status === 'ready' ? (
-          view.messages.length === 0 ? (
-            <p className="text-muted-foreground text-sm">{m.admin_feedback_conversation_empty()}</p>
-          ) : (
-            <ol
-              aria-label={m.admin_feedback_conversation_title()}
-              className="grid max-h-96 gap-3 overflow-y-auto"
-            >
+          <section
+            aria-label={m.admin_feedback_conversation_title()}
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: 滚动区需可聚焦，键盘用户才能滚动查看长片段
+            tabIndex={0}
+            className="max-h-96 overflow-y-auto rounded-md outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring)"
+          >
+            <ol className="grid gap-3">
               {view.messages.map((message) => (
                 <li key={message.id} className="grid gap-1 rounded-md border p-3 text-sm">
                   <span className="font-medium text-muted-foreground text-xs">
@@ -123,7 +124,7 @@ function ConversationDialog({ view, onClose }: { view: ConversationView | null; 
                 </li>
               ))}
             </ol>
-          )
+          </section>
         ) : null}
       </DialogContent>
     </Dialog>
@@ -152,6 +153,8 @@ function FeedbackAdmin() {
       )
     } catch {
       setConversation((current) => (current?.id === id ? { id, status: 'failed' } : current))
+      // 多半是用户已撤回共享：刷新列表，让共享标记与入口反映最新状态
+      await router.invalidate()
     }
   }
 
@@ -212,7 +215,9 @@ function FeedbackAdmin() {
               cell: (row) =>
                 row.shareConversation ? (
                   <div className="grid justify-items-start gap-1">
-                    <span>{m.admin_feedback_shared_yes()}</span>
+                    <Badge size="compact" color="green">
+                      {m.admin_feedback_shared_yes()}
+                    </Badge>
                     <Button
                       type="button"
                       size="sm"

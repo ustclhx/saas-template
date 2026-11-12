@@ -166,7 +166,8 @@ export type AiFeedbackReason = (typeof AI_FEEDBACK_REASONS)[number]
  * `model_key` / `subject_type` 为写入时快照，供后台按模型与对象类型统计满意率。
  * `reason` 只在点踩时可选填写，由 check 约束保证点赞时为空、取值在约定集合内。
  * `share_conversation` 是本条反馈上的共享同意（add-subject-chat design 决策 6「共享对话同意」）：
- * 只有为 true 时后台才能读取被评回复及其之前的少量消息；`shared_at` 记录同意时间，与之同时为空或非空。
+ * 只有为 true 时后台才能读取被评回复及其之前的少量消息；`shared_at` 记录同意时间，同意时必有、不同意时为空
+ * （约束写成 `is distinct from (shared_at is null)`：模板发版检查把含 NOT NULL 的语句归为收缩迁移）。
  */
 export const aiMessageFeedback = pgTable(
   'ai_message_feedback',
@@ -202,7 +203,7 @@ export const aiMessageFeedback = pgTable(
     ),
     check(
       'ai_message_feedback_shared_at_consistent',
-      sql`${t.shareConversation} = (${t.sharedAt} is not null)`,
+      sql`${t.shareConversation} is distinct from (${t.sharedAt} is null)`,
     ),
   ],
 )

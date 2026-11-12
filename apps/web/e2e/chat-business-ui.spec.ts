@@ -96,7 +96,9 @@ test('rates a reply, keeps the down-vote reason and shows it in the admin list',
       'true',
     )
     // 共享对话勾选项默认不勾选，说明文字写明共享范围
-    const share = reply.getByRole('checkbox', { name: /Share this conversation/ })
+    const share = reply.getByRole('checkbox', {
+      name: /Share this reply and a few earlier messages/,
+    })
     await expect(share).toHaveAttribute('aria-checked', 'false')
     await expect(share).toHaveAccessibleDescription(/this reply and up to 3 messages before it/)
     await share.click()
@@ -126,7 +128,7 @@ test('rates a reply, keeps the down-vote reason and shows it in the admin list',
       'Missing staffing and tooling costs',
     )
     await expect(
-      reloaded.getByRole('checkbox', { name: /Share this conversation/ }),
+      reloaded.getByRole('checkbox', { name: /Share this reply and a few earlier messages/ }),
     ).toHaveAttribute('aria-checked', 'true')
 
     // 后台反馈列表：显示原因，可按原因筛选

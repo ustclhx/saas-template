@@ -1,5 +1,5 @@
 {
-  "id": "2c35bb9b-97d4-46cf-9945-682950c5eee8",
+  "id": "102193fb-4ecf-4823-800c-7dd87052d815",
   "prevId": "bb18c26f-3887-4571-872c-ee1990d210ae",
   "version": "7",
   "dialect": "postgresql",
@@ -552,7 +552,7 @@
         },
         "ai_message_feedback_shared_at_consistent": {
           "name": "ai_message_feedback_shared_at_consistent",
-          "value": "\"ai_message_feedback\".\"share_conversation\" = (\"ai_message_feedback\".\"shared_at\" is not null)"
+          "value": "\"ai_message_feedback\".\"share_conversation\" is distinct from (\"ai_message_feedback\".\"shared_at\" is null)"
         }
       },
       "isRLSEnabled": false
