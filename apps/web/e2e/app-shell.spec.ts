@@ -9,11 +9,15 @@ import { stubTurnstile } from './turnstile.ts'
 
 const sidebar = templateConfig.ui.appLayout === 'sidebar'
 
-async function newUser(page: Page) {
+async function registerUser(page: Page) {
   await simulateClientIp(page)
   await stubTurnstile(page)
   const key = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
   await register(page, `shell-${key}@example.com`, 'Shell Tester')
+}
+
+async function newUser(page: Page) {
+  await registerUser(page)
   // 等待水合完成，侧边栏按钮的点击才会生效
   await page.waitForLoadState('networkidle')
   return page.url()
@@ -101,15 +105,20 @@ test.describe('sidebar 布局', () => {
   })
 
   test('390px：抽屉打开、选择条目后关闭并把焦点还给菜单按钮，无横向滚动', async ({ page }) => {
-    // 注册在桌面宽度完成，再切到 390px 并刷新，避免窄屏注册页提交偶发超时影响本用例
-    const home = await newUser(page)
+    // 窄屏下直接注册，注册页提交也在回归范围内。本用例要整页加载注册页与 4 个应用页，
+    // dev server 按模块逐个提供源码，并行负载下单页加载与水合可达数秒，30 秒默认时限不够
+    test.slow()
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto(home)
-    await page.waitForLoadState('networkidle')
+    await registerUser(page)
+    const menu = page.getByRole('button', { name: 'Open navigation' })
+    // 移动端判定在水合后的 effect 中生效，此后菜单按钮才声明弹出抽屉对话框；之前的点击会落在
+    // 尚未水合的按钮上而无效。networkidle 只代表网络空闲，不代表水合完成，不能作为点击前的等待条件
+    const hydrated = () =>
+      expect(menu).toHaveAttribute('aria-haspopup', 'dialog', { timeout: 30_000 })
+    await hydrated()
     await expect(shell(page)).toBeHidden()
     await noHorizontalScroll(page)
 
-    const menu = page.getByRole('button', { name: 'Open navigation' })
     await menu.click()
     const drawer = page.getByRole('dialog', { name: 'Navigation' })
     await expect(drawer).toBeVisible()
@@ -127,12 +136,12 @@ test.describe('sidebar 布局', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Workspace settings')
     await noHorizontalScroll(page)
 
+    const base = page.url().replace(/\/settings$/, '')
     for (const path of ['usage', 'billing', 'chat']) {
-      await page.goto(`${page.url().replace(/\/settings$/, '')}/${path}`)
-      await page.waitForLoadState('networkidle')
+      await page.goto(`${base}/${path}`)
+      await hydrated()
       await expect(page.locator('[data-slot="sidebar-inset"]')).toBeVisible()
       await noHorizontalScroll(page)
-      await page.goBack()
     }
   })
 })
