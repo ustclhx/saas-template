@@ -125,5 +125,12 @@
   "ui_preview_workspace": "Workspace",
   "ui_preview_sidebar_rail": "Resize or collapse the sidebar",
   "ui_preview_sidebar_rail_resize": "Drag to resize",
-  "ui_preview_sidebar_rail_collapse": "Click to collapse"
+  "ui_preview_sidebar_rail_collapse": "Click to collapse",
+  "ui_preview_dialog_desc_overlays": "Popovers hold light, non-modal content next to their trigger; sheets slide in from an edge (the bottom sheet is the phone version of a popover).",
+  "ui_preview_open_popover": "Show details",
+  "ui_preview_popover_title": "Storage usage",
+  "ui_preview_popover_body": "Atlas uses 2.4 GB of 10 GB. Older exports are removed after 30 days.",
+  "ui_preview_open_sheet": "Open bottom sheet",
+  "ui_preview_sheet_title": "Share project",
+  "ui_preview_sheet_body": "Anyone in the workspace can view Atlas. Invite people to let them edit."
 }

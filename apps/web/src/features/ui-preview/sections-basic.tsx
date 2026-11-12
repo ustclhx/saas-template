@@ -33,6 +33,12 @@ import {
   DialogTrigger,
   Input,
   Label,
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
   ScrollArea,
   Select,
   SelectContent,
@@ -42,6 +48,12 @@ import {
   SelectSeparator,
   SelectTrigger,
   Separator,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
   Switch,
   Textarea,
   Tooltip,
@@ -250,8 +262,8 @@ export function DialogSection() {
   return (
     <PreviewSection
       id="dialog"
-      title="Dialog · AlertDialog"
-      description={m.ui_preview_dialog_desc()}
+      title="Dialog · AlertDialog · Popover · Sheet"
+      description={`${m.ui_preview_dialog_desc()} ${m.ui_preview_dialog_desc_overlays()}`}
     >
       <Specimen label="Dialog">
         <Dialog>
@@ -269,6 +281,32 @@ export function DialogSection() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      </Specimen>
+      <Specimen label="Popover">
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline">{m.ui_preview_open_popover()}</Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" aria-labelledby="preview-popover-title">
+            <PopoverHeader>
+              <PopoverTitle id="preview-popover-title">{m.ui_preview_popover_title()}</PopoverTitle>
+              <PopoverDescription>{m.ui_preview_popover_body()}</PopoverDescription>
+            </PopoverHeader>
+          </PopoverContent>
+        </Popover>
+      </Specimen>
+      <Specimen label="Sheet · bottom">
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button variant="outline">{m.ui_preview_open_sheet()}</Button>
+          </SheetTrigger>
+          <SheetContent side="bottom" closeLabel={m.ui_preview_close()}>
+            <SheetHeader className="pb-8">
+              <SheetTitle>{m.ui_preview_sheet_title()}</SheetTitle>
+              <SheetDescription>{m.ui_preview_sheet_body()}</SheetDescription>
+            </SheetHeader>
+          </SheetContent>
+        </Sheet>
       </Specimen>
       <Specimen label="AlertDialog">
         <AlertDialog>

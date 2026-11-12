@@ -17,6 +17,10 @@
   {
    "id": "batch2",
    "name": "第二批：页面"
+  },
+  {
+   "id": "v031",
+   "name": "0.3.1：通知铃铛"
   }
  ],
  "boards": {
@@ -115,6 +119,25 @@
    "page": "batch2",
    "expand": "fill",
    "is_interactive": true
+  },
+  "Notifications.dc.html": {
+   "x": 0,
+   "y": 280,
+   "w": 1440,
+   "h": 900,
+   "title": "通知铃铛弹层",
+   "page": "v031",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "NotificationsMobile.dc.html": {
+   "x": 1520,
+   "y": 280,
+   "w": 390,
+   "h": 844,
+   "title": "通知·手机",
+   "page": "v031",
+   "is_interactive": true
   }
  },
  "order": [
@@ -127,7 +150,9 @@
   "Reader.dc.html",
   "ReaderMobile.dc.html",
   "Pricing.dc.html",
-  "Marketing.dc.html"
+  "Marketing.dc.html",
+  "Notifications.dc.html",
+  "NotificationsMobile.dc.html"
  ],
  "notes": {
   "t-batch1": {
@@ -181,6 +206,41 @@
    "h": 260,
    "fill": "orange",
    "page": "batch2"
+  },
+  "t-v031": {
+   "kind": "title1",
+   "text": "0.3.1：通知铃铛弹层（评审项 #90；tweak 可切 dark、normal / empty / loading / error、open）",
+   "x": 0,
+   "y": 0,
+   "maxW": 3270,
+   "page": "v031"
+  },
+  "n-v031-a": {
+   "text": "评审要点 1：行为与数据——点铃铛展开弹层（桌面 384px，右缘对齐铃铛；手机为底部面板 + 遮罩）。列表取现有 getNotifications 第一页的前 5 条，按时间倒序；字段只用 title、body（可空）、createdAt（相对时间）、readAt。未读 = 左侧圆点 + 标题加粗，已读标题变灰。点一条 = 标为已读并跳转到它的 link（沿用现有 readNotifications 返回的服务端校验链接；没有 link 的只标已读）；行尾的勾只标已读、不跳转；「全部标为已读」在未读为 0 时禁用。铃铛角标显示未读数，超过 99 显示 99+，为 0 时不显示角标与红点（沿用已确认规则）；加载中、出错时也不显示角标。空态不显示「查看全部」。画板里点铃铛、勾、全部已读都可操作。",
+   "x": 1990,
+   "y": 280,
+   "w": 400,
+   "h": 520,
+   "fill": "orange",
+   "page": "v031"
+  },
+  "n-v031-b": {
+   "text": "评审要点 2：可访问性——铃铛 aria-label 含未读数（「通知，3 条未读」/「通知，没有未读」），并带 aria-haspopup=\"dialog\"、aria-expanded、aria-controls；数字角标 aria-hidden，避免重复朗读。弹层 role=\"dialog\"，由标题「通知」命名（aria-labelledby）；手机面板另加 aria-modal 并锁定焦点。列表是 ul/li，每行两个真实按钮：主按钮（未读行带屏幕阅读器前缀「未读：」）与「将「标题」标为已读」图标按钮，Tab 顺序为 全部标为已读 → 各行 → 查看全部通知，Enter / 空格触发。Escape 关闭并把焦点还给铃铛；点弹层外同样关闭。加载区 role=\"status\"，错误区 role=\"alert\" 并带「重试」。未读不只靠颜色区分（圆点 + 字重）。手机端触控目标 ≥ 44px。",
+   "x": 2430,
+   "y": 280,
+   "w": 400,
+   "h": 520,
+   "fill": "orange",
+   "page": "v031"
+  },
+  "n-v031-c": {
+   "text": "变更提议（需确认后才实现）——① @saas/ui 目前没有 Popover：现有 Dropdown 是 role=\"menu\"，菜单项里不能再放按钮，所以提议基于已安装的 radix-ui 新增 Popover 封装（不加依赖）。② @saas/ui 没有导出 Sheet / Drawer（侧边栏的抽屉是内部实现）：提议新增底部 Sheet，或给 Dialog 加贴底形态；若不想加组件，手机端退回为点铃铛直接进入通知中心。③ 通知中心现在没有独立路由，只是内容区里的折叠块：「查看全部通知」需要一个落点，提议新增 /app/<空间>/notifications 页面承接现有 NotificationCenter 列表，并去掉内容区顶部的折叠块。④ 现有通知文案是英文硬编码，需要补多语言文案。后端不需要改：列表、未读数、单条已读、全部已读都已具备。",
+   "x": 2870,
+   "y": 280,
+   "w": 400,
+   "h": 520,
+   "fill": "orange",
+   "page": "v031"
   }
  },
  "designSystems": []

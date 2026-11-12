@@ -53,7 +53,7 @@ const SECTIONS = [
   ['tabs', 'Tabs'],
   ['dropdown', 'Dropdown'],
   ['command-menu', 'Command Menu'],
-  ['dialog', 'Dialog'],
+  ['dialog', 'Dialog · Popover · Sheet'],
   ['toast', 'Toast'],
   ['sidebar', 'Sidebar'],
   ['surface', 'Card · Alert'],
