@@ -139,8 +139,14 @@ test.describe('sidebar 布局', () => {
     await noHorizontalScroll(page)
 
     const base = page.url().replace(/\/settings$/, '')
-    for (const path of ['usage', 'billing', 'chat']) {
+    for (const [path, title] of [
+      ['usage', 'Usage'],
+      ['billing', 'Billing'],
+      ['chat', 'Chat'],
+    ] as const) {
       await page.goto(`${base}/${path}`)
+      // dev 页面会继续发起请求，不等 networkidle：等目标页标题与水合信号即可
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(title)
       await hydrated()
       await expect(page.locator('[data-slot="sidebar-inset"]')).toBeVisible()
       await noHorizontalScroll(page)
