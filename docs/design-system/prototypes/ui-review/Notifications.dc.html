@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>通知铃铛弹层</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:none}a:hover{text-decoration:underline;text-underline-offset:3px}
+.r{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;font-optical-sizing:auto;min-height:100vh;display:flex}
+button,input,textarea{font:inherit;color:inherit;margin:0}
+button{cursor:pointer;border:0;background:none;padding:0}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.cap{font-size:12px;line-height:16px}
+.mic{font-size:11px;line-height:14px}
+.sub{font-size:14px;line-height:20px;font-weight:600}
+.ttl{font-size:16px;line-height:22px;font-weight:600}
+.dsp{font-size:28px;line-height:34px;font-weight:600;letter-spacing:-0.01em}
+.btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border-radius:8px;font-size:14px;line-height:20px;font-weight:500;white-space:nowrap;text-decoration:none}
+.btn:hover{text-decoration:none}
+.btn.ic{padding-left:12px}
+.btn-sm{height:32px;padding:0 12px}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;flex-shrink:0;position:relative}
+.ib-s{width:28px;height:28px}
+.hv:hover{background:rgba(128,128,128,0.1);text-decoration:none}
+.sb{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:16px;flex-shrink:0}
+.grp{font-size:12px;line-height:16px;font-weight:500;padding:0 8px;margin-bottom:4px}
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:9999px;font-size:12px;line-height:16px;font-weight:500;white-space:nowrap}
+.main{flex:1;min-width:0;margin:8px 8px 8px 0;border-radius:12px;display:flex;flex-direction:column}
+.top{height:56px;display:flex;align-items:center;gap:8px;padding:0 16px 0 24px;flex-shrink:0}
+.content{width:100%;max-width:72rem;margin:0 auto;padding:28px 32px 40px;display:flex;flex-direction:column;gap:24px}
+.card{border-radius:12px;display:flex;flex-direction:column}
+.grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:24px}
+.tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.li{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px}
+.bar{height:6px;border-radius:9999px;overflow:hidden}
+.sk{border-radius:6px;animation:sk 1.6s ease-in-out infinite}
+@keyframes sk{0%,100%{opacity:1}50%{opacity:0.5}}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+button:disabled{cursor:default;opacity:0.5}
+ul{list-style:none;margin:0;padding:0}
+svg{flex-shrink:0}
+sc-if,sc-for{display:contents}
+</style>
+</helmet>
+<div class="r" style="background:{{t.bg}};color:{{t.fg}}">
+
+  <aside class="sb" aria-label="主导航" style="{{shell.sb}}">
+    <div class="row" style="{{shell.head}}">
+      <sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}">
+        <a href="#" class="row" style="gap:8px;min-width:0">
+          <span class="row" style="justify-content:center;width:24px;height:24px;border-radius:6px;background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span>
+          <span class="sub">SaaS 模板</span>
+        </a>
+      </sc-if>
+      <button type="button" class="ib ib-s hv" aria-label="{{shell.toggleLabel}}" aria-expanded="{{shell.openStr}}" onClick="{{toggleSidebar}}" style="color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 3v18"></path></svg></button>
+    </div>
+
+    <button type="button" aria-label="切换工作区，当前：项目 A" class="row hv" style="{{shell.ws}}">
+      <span class="row cap" style="justify-content:center;width:24px;height:24px;border-radius:6px;background:{{t.active}};font-weight:600">A</span>
+      <sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}">
+        <span class="col" style="flex:1;min-width:0;text-align:left"><span style="font-weight:500">项目 A</span><span class="cap" style="color:{{t.mfg}}">团队空间 · 3 位成员</span></span>
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5M7 9l5-5 5 5"></path></svg>
+      </sc-if>
+    </button>
+
+    <nav class="col" aria-label="工作区" style="gap:16px;flex:1;min-height:0">
+      <div class="col" style="gap:2px">
+        <sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span class="grp" style="color:{{t.mfg}}">工具</span></sc-if>
+        <a href="#" class="hv" aria-label="工作台" aria-current="{{nav.c.home}}" style="{{nav.n.home}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M9 22V12h6v10"></path></svg><sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span>工作台</span></sc-if></a>
+        <a href="#" class="hv" aria-label="对话" aria-current="{{nav.c.chat}}" style="{{nav.n.chat}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span>对话</span></sc-if></a>
+        <a href="#" class="hv" aria-label="图片生成" aria-current="{{nav.c.media}}" style="{{nav.n.media}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path></svg><sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span>图片生成</span></sc-if></a>
+      </div>
+      <div class="col" style="gap:2px">
+        <sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span class="grp" style="color:{{t.mfg}}">内容</span></sc-if>
+        <a href="#" class="hv" aria-label="文档" aria-current="{{nav.c.docs}}" style="{{nav.n.docs}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4M16 13H8M16 17H8"></path></svg><sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span>文档</span></sc-if></a>
+        <a href="#" class="hv" aria-label="报告" aria-current="{{nav.c.reports}}" style="{{nav.n.reports}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg><sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span>报告</span></sc-if></a>
+      </div>
+      <div class="col" style="gap:2px">
+        <sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span class="grp" style="color:{{t.mfg}}">设置</span></sc-if>
+        <a href="#" class="hv" aria-label="账单与积分" aria-current="{{nav.c.billing}}" style="{{nav.n.billing}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg><sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span>账单与积分</span></sc-if></a>
+        <a href="#" class="hv" aria-label="用量" aria-current="{{nav.c.usage}}" style="{{nav.n.usage}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M18 17V9M13 17V5M8 17v-3"></path></svg><sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span>用量</span></sc-if></a>
+        <a href="#" class="hv" aria-label="API 密钥" aria-current="{{nav.c.keys}}" style="{{nav.n.keys}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg><sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span>API 密钥</span></sc-if></a>
+        <a href="#" class="hv" aria-label="空间设置" aria-current="{{nav.c.settings}}" style="{{nav.n.settings}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg><sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}"><span>空间设置</span></sc-if></a>
+      </div>
+    </nav>
+
+    <sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}">
+      <div class="col" style="gap:10px;padding:12px;border-radius:12px;background:{{t.card}};box-shadow:{{t.sh2}}">
+        <div class="col" style="gap:2px">
+          <span class="row sub" style="gap:6px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"></path></svg>升级到专业版</span>
+          <span class="cap" style="color:{{t.mfg}}">每月订阅积分，解锁全部模型</span>
+        </div>
+        <a href="#" class="btn btn-sm" style="background:{{t.primary}};color:{{t.pfg}}">查看套餐</a>
+      </div>
+    </sc-if>
+    <sc-if value="{{shell.closed}}" hint-placeholder-val="{{false}}">
+      <a href="#" class="ib hv" aria-label="升级到专业版" style="color:{{t.fg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"></path></svg></a>
+    </sc-if>
+    <button type="button" class="row hv" aria-label="账户菜单：示例用户" style="{{shell.ws}}">
+      <span class="row cap" style="justify-content:center;width:28px;height:28px;border-radius:9999px;background:{{t.active}};font-weight:600">示</span>
+      <sc-if value="{{shell.open}}" hint-placeholder-val="{{true}}">
+        <span class="col" style="flex:1;min-width:0;text-align:left"><span style="font-weight:500">示例用户</span><span class="cap" style="color:{{t.mfg}}">user@example.com</span></span>
+      </sc-if>
+    </button>
+  </aside>
+
+  <div class="main" style="background:{{t.panel}};box-shadow:{{t.sh2}}">
+    <header class="top" style="border-bottom:1px solid {{t.border}}">
+      <h1 class="ttl" style="margin:0;flex:1">工作台</h1>
+      <span style="position:relative;display:inline-flex" onKeyDown="{{onKey}}">
+        <button id="notif-bell" type="button" class="ib hv" aria-label="{{bell.label}}" aria-haspopup="dialog" aria-expanded="{{bell.openStr}}" aria-controls="notif-pop" title="通知" onClick="{{toggleNotif}}" style="{{bell.style}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg><sc-if value="{{bell.hasUnread}}" hint-placeholder-val="{{true}}"><span aria-hidden="true" class="mic" style="position:absolute;top:1px;right:1px;min-width:16px;height:16px;padding:0 4px;border-radius:9999px;display:inline-flex;align-items:center;justify-content:center;font-weight:600;font-variant-numeric:tabular-nums;background:{{t.destructive}};color:{{t.bg}};box-shadow:0 0 0 2px {{t.panel}}">{{bell.count}}</span></sc-if></button>
+        <sc-if value="{{bell.open}}" hint-placeholder-val="{{true}}">
+          <section id="notif-pop" role="dialog" aria-labelledby="notif-h" class="col" style="position:absolute;z-index:50;top:44px;right:0;width:384px;border-radius:12px;overflow:hidden;background:{{t.card}};box-shadow:{{t.sh5}}">
+            <div class="row" style="gap:8px;padding:10px 10px 10px 16px;border-bottom:1px solid {{t.border}}">
+              <h2 id="notif-h" class="sub" style="margin:0">通知</h2>
+              <sc-if value="{{p.hasUnread}}" hint-placeholder-val="{{true}}"><span class="badge" style="background:{{t.active}}">{{p.unreadText}}</span></sc-if>
+              <span style="flex:1"></span>
+              <button type="button" class="btn btn-sm hv" disabled="{{p.allDisabled}}" onClick="{{markAll}}" style="padding:0 10px;color:{{t.fg}}">全部标为已读</button>
+            </div>
+            <sc-if value="{{p.normal}}" hint-placeholder-val="{{true}}">
+              <ul aria-label="最近通知" class="col" style="gap:2px;padding:4px">
+                <sc-for list="{{items}}" as="n" hint-placeholder-count="5">
+                  <li class="row" style="gap:2px;align-items:flex-start">
+                    <button type="button" class="hv" onClick="{{n.open}}" style="flex:1;min-width:0;display:flex;gap:10px;align-items:flex-start;text-align:left;border-radius:8px;padding:10px 8px 10px 12px">
+                      <span aria-hidden="true" style="{{n.dot}}"></span>
+                      <span class="col" style="flex:1;min-width:0;gap:2px">
+                        <span class="row" style="gap:8px"><sc-if value="{{n.unread}}" hint-placeholder-val="{{true}}"><span class="vh">未读：</span></sc-if><span style="{{n.titleStyle}}">{{n.title}}</span><span class="cap" style="color:{{t.mfg}};white-space:nowrap">{{n.time}}</span></span>
+                        <sc-if value="{{n.hasBody}}" hint-placeholder-val="{{true}}"><span class="cap clamp" style="color:{{t.mfg}}">{{n.body}}</span></sc-if>
+                      </span>
+                    </button>
+                    <sc-if value="{{n.unread}}" hint-placeholder-val="{{true}}"><button type="button" class="ib ib-s hv" aria-label="{{n.markAria}}" title="标为已读" onClick="{{n.mark}}" style="margin-top:6px;color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></button></sc-if>
+                    <sc-if value="{{n.read}}" hint-placeholder-val="{{false}}"><span aria-hidden="true" class="ib ib-s"></span></sc-if>
+                  </li>
+                </sc-for>
+              </ul>
+            </sc-if>
+            <sc-if value="{{p.loading}}" hint-placeholder-val="{{false}}">
+              <div role="status" aria-label="正在加载通知" class="col" style="gap:2px;padding:4px">
+                <sc-for list="{{skRows}}" as="k" hint-placeholder-count="4">
+                  <div style="display:flex;gap:10px;padding:10px 8px 10px 12px"><span class="sk" style="width:8px;height:8px;border-radius:9999px;margin-top:6px;background:{{t.active}}"></span><span class="col" style="flex:1;gap:8px;padding:4px 0"><span class="sk" style="height:12px;background:{{t.active}};{{k.w1}}"></span><span class="sk" style="height:10px;background:{{t.active}};{{k.w2}}"></span></span></div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{p.empty}}" hint-placeholder-val="{{false}}">
+              <div class="col" style="align-items:center;text-align:center;gap:8px;padding:32px 24px 36px">
+                <div class="row" aria-hidden="true" style="justify-content:center;width:96px;height:64px;border-radius:12px;border:1px dashed {{t.border}};color:{{t.mfg}}"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg></div>
+                <span class="sub" style="margin-top:4px">暂无通知</span>
+                <span style="color:{{t.mfg}};max-width:18rem">任务完成、账单变动和团队邀请会出现在这里。</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{p.error}}" hint-placeholder-val="{{false}}">
+              <div role="alert" style="margin:12px;display:grid;grid-template-columns:16px 1fr;gap:2px 12px;padding:12px 16px;border-radius:8px;border:1px solid {{t.border}};background:{{t.card}};color:{{t.destructive}}">
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:2px"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
+                <span style="font-weight:500">通知加载失败</span>
+                <div class="col" style="grid-column:2;gap:10px;align-items:flex-start"><span>网络或服务暂时不可用，通知不会丢失。</span><button type="button" class="btn btn-sm" style="box-shadow:inset 0 0 0 1px {{t.border}};color:{{t.fg}}">重试</button></div>
+              </div>
+            </sc-if>
+            <sc-if value="{{p.normal}}" hint-placeholder-val="{{true}}">
+              <div class="row" style="justify-content:space-between;gap:12px;padding:0 8px 0 16px;height:44px;border-top:1px solid {{t.border}}">
+                <span class="cap" style="color:{{t.mfg}}">仅显示最近 5 条</span>
+                <a href="#" class="btn btn-sm hv" style="padding:0 8px;gap:4px;color:{{t.fg}}">查看全部通知<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></a>
+              </div>
+            </sc-if>
+          </section>
+        </sc-if>
+      </span>
+      <button type="button" class="ib hv" aria-label="{{themeLabel}}" onClick="{{toggleTheme}}" style="color:{{t.mfg}}">
+        <sc-if value="{{isDark}}" hint-placeholder-val="{{false}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg></sc-if>
+        <sc-if value="{{isLight}}" hint-placeholder-val="{{true}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></sc-if>
+      </button>
+    </header>
+
+    <div class="content">
+
+      <sc-if value="{{claimVisible}}" hint-placeholder-val="{{true}}">
+        <div role="status" class="row" style="gap:12px;padding:12px 12px 12px 16px;border-radius:12px;background:{{t.card}};border:1px solid {{t.border}}">
+          <span class="row" style="justify-content:center;width:32px;height:32px;border-radius:9999px;background:{{t.active}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"></rect><path d="M12 8v13M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5"></path></svg></span>
+          <div class="col" style="flex:1;min-width:0">
+            <span style="font-weight:500">{{claim.title}}</span>
+            <span class="cap" style="color:{{t.mfg}}">{{claim.desc}}</span>
+          </div>
+          <sc-if value="{{claim.open}}" hint-placeholder-val="{{true}}">
+            <button type="button" class="btn btn-sm" onClick="{{doClaim}}" style="background:{{t.primary}};color:{{t.pfg}}">领取 10 积分</button>
+          </sc-if>
+          <sc-if value="{{claim.done}}" hint-placeholder-val="{{false}}">
+            <span class="badge" style="background:{{t.successSoft}};color:{{t.success}}"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>今日已领取</span>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <div class="row" style="justify-content:space-between;gap:16px;align-items:flex-end">
+        <sc-if value="{{s.loading}}" hint-placeholder-val="{{false}}">
+          <div class="col" style="gap:10px"><span class="sk" style="width:240px;height:28px;background:{{t.active}}"></span><span class="sk" style="width:320px;height:14px;background:{{t.active}}"></span></div>
+        </sc-if>
+        <sc-if value="{{s.ready}}" hint-placeholder-val="{{true}}">
+          <div class="col" style="gap:4px">
+            <h2 class="dsp" style="margin:0">下午好，示例用户</h2>
+            <p style="margin:0;color:{{t.mfg}}">继续上次的工作，或从一个新问题开始。</p>
+          </div>
+        </sc-if>
+        <div class="row" style="gap:8px">
+          <a href="#" class="btn ic" style="box-shadow:inset 0 0 0 1px {{t.border}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"></path></svg>上传文档</a>
+          <a href="#" class="btn ic" style="background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"></path></svg>新对话</a>
+        </div>
+      </div>
+
+      <div class="grid">
+        <section class="card" aria-labelledby="recent-h" style="background:{{t.card}};border:1px solid {{t.border}};box-shadow:{{t.shSm}}">
+          <div class="row" style="justify-content:space-between;padding:16px 20px 8px">
+            <h3 id="recent-h" class="ttl" style="margin:0">最近对话</h3>
+            <a href="#" class="cap" style="color:{{t.mfg}}">全部对话</a>
+          </div>
+          <div class="col" style="padding:4px 8px 12px;min-height:248px">
+            <sc-if value="{{s.normal}}" hint-placeholder-val="{{true}}">
+              <sc-for list="{{recent}}" as="c" hint-placeholder-count="4">
+                <a href="#" class="li hv">
+                  <span class="row" style="justify-content:center;width:32px;height:32px;border-radius:8px;background:{{t.active}};color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></span>
+                  <span class="col" style="flex:1;min-width:0"><span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{c.title}}</span><span class="cap" style="color:{{t.mfg}}">{{c.preview}}</span></span>
+                  <sc-if value="{{c.hasTag}}" hint-placeholder-val="{{true}}"><span class="badge" style="background:{{t.active}}">{{c.tag}}</span></sc-if>
+                  <span class="cap" style="color:{{t.mfg}};width:56px;text-align:right">{{c.time}}</span>
+                </a>
+              </sc-for>
+            </sc-if>
+            <sc-if value="{{s.loading}}" hint-placeholder-val="{{false}}">
+              <sc-for list="{{skRows}}" as="k" hint-placeholder-count="4">
+                <div class="li"><span class="sk" style="width:32px;height:32px;border-radius:8px;background:{{t.active}}"></span><span class="col" style="flex:1;gap:6px"><span class="sk" style="height:12px;background:{{t.active}};{{k.w1}}"></span><span class="sk" style="height:10px;background:{{t.active}};{{k.w2}}"></span></span></div>
+              </sc-for>
+            </sc-if>
+            <sc-if value="{{s.empty}}" hint-placeholder-val="{{false}}">
+              <div class="col" style="align-items:center;text-align:center;gap:8px;padding:24px 16px">
+                <div class="row" style="justify-content:center;width:120px;height:80px;border-radius:12px;border:1px dashed {{t.border}};background:{{t.bg}};color:{{t.mfg}}" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></div>
+                <span class="sub" style="margin-top:4px">还没有对话</span>
+                <span style="color:{{t.mfg}};max-width:22rem">问一个问题，或上传文档让助手帮你整理要点。</span>
+                <a href="#" class="btn btn-sm ic" style="margin-top:4px;background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"></path></svg>开始第一次对话</a>
+              </div>
+            </sc-if>
+            <sc-if value="{{s.error}}" hint-placeholder-val="{{false}}">
+              <div role="alert" style="margin:8px 12px;display:grid;grid-template-columns:16px 1fr;gap:2px 12px;padding:12px 16px;border-radius:8px;border:1px solid {{t.border}};background:{{t.card}};color:{{t.destructive}}">
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:2px"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
+                <span style="font-weight:500">最近对话加载失败</span>
+                <div class="col" style="grid-column:2;gap:10px;align-items:flex-start"><span>网络或服务暂时不可用，你的对话没有丢失。</span><button type="button" class="btn btn-sm ic" style="box-shadow:inset 0 0 0 1px {{t.border}};color:{{t.fg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"></path></svg>重试</button></div>
+              </div>
+            </sc-if>
+          </div>
+        </section>
+
+        <section class="card" aria-labelledby="bal-h" style="background:{{t.card}};border:1px solid {{t.border}};box-shadow:{{t.shSm}};padding:16px 20px 20px;gap:16px">
+          <div class="row" style="justify-content:space-between">
+            <h3 id="bal-h" class="ttl" style="margin:0">积分余额</h3>
+            <a href="#" class="cap" style="color:{{t.mfg}}">账单与积分</a>
+          </div>
+          <sc-if value="{{s.loading}}" hint-placeholder-val="{{false}}">
+            <div class="col" style="gap:14px"><span class="sk" style="width:120px;height:34px;background:{{t.active}}"></span><span class="sk" style="height:12px;background:{{t.active}}"></span><span class="sk" style="height:12px;width:80%;background:{{t.active}}"></span><span class="sk" style="height:12px;width:60%;background:{{t.active}}"></span></div>
+          </sc-if>
+          <sc-if value="{{s.error}}" hint-placeholder-val="{{false}}">
+            <div class="col" style="gap:8px;align-items:flex-start">
+              <span class="dsp" style="color:{{t.mfg}}">—</span>
+              <span style="color:{{t.mfg}}">暂时无法获取余额。</span>
+              <button type="button" class="btn btn-sm" style="box-shadow:inset 0 0 0 1px {{t.border}}">重试</button>
+            </div>
+          </sc-if>
+          <sc-if value="{{s.balReady}}" hint-placeholder-val="{{true}}">
+            <div class="col" style="gap:16px">
+            <div class="col" style="gap:2px">
+              <span class="dsp" style="font-variant-numeric:tabular-nums">{{bal.total}}</span>
+              <span class="cap" style="color:{{t.mfg}}">可用积分 · 示例数值</span>
+            </div>
+            <div class="col" style="gap:12px">
+              <sc-for list="{{bal.parts}}" as="b" hint-placeholder-count="3">
+                <div class="col" style="gap:6px">
+                  <div class="row" style="justify-content:space-between"><span>{{b.label}}</span><span style="font-variant-numeric:tabular-nums;font-weight:500">{{b.value}}</span></div>
+                  <div class="bar" style="background:{{t.active}}"><div style="height:100%;border-radius:9999px;background:{{t.primary}};width:{{b.pct}}"></div></div>
+                  <span class="cap" style="color:{{t.mfg}}">{{b.note}}</span>
+                </div>
+              </sc-for>
+            </div>
+            <a href="#" class="btn btn-sm" style="box-shadow:inset 0 0 0 1px {{t.border}}">购买积分包</a>
+            </div>
+          </sc-if>
+        </section>
+      </div>
+
+      <section aria-labelledby="tools-h" class="col" style="gap:12px">
+        <h3 id="tools-h" class="ttl" style="margin:0">常用工具</h3>
+        <div class="tools">
+          <sc-for list="{{tools}}" as="tl" hint-placeholder-count="3">
+            <a href="#" class="row hv" style="gap:12px;padding:16px;border-radius:12px;background:{{t.card}};border:1px solid {{t.border}}">
+              <span class="row" style="justify-content:center;width:36px;height:36px;border-radius:8px;background:{{t.active}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{tl.icon}}"></path></svg></span>
+              <span class="col" style="flex:1;min-width:0"><span style="font-weight:500">{{tl.title}}</span><span class="cap" style="color:{{t.mfg}}">{{tl.desc}}</span></span>
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+            </a>
+          </sc-for>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"state":{"editor":"enum","options":["normal","empty","loading","error"],"default":"normal"},"open":{"editor":"boolean","default":true},"$preview":{"width":1440,"height":900}}'>
+function uiTokens(dark) {
+  var t = dark ? {
+    s: ['#171717', '#1e1e1e', '#252525', '#2c2c2c', '#333333', '#3a3a3a', '#414141', '#484848'],
+    fg: '#f5f5f5', muted: '#1e1e1e', mfg: '#b0b0b0', primary: '#f5f5f5', pfg: '#171717', accent: '#4f86f7', ring: '#4f86f7',
+    destructive: '#fca5a5', destructiveSoft: 'rgba(252,165,165,0.15)',
+    success: 'oklch(0.723 0.219 149.579)', successSoft: 'rgba(34,197,94,0.15)',
+    border: 'rgba(245,245,245,0.12)', input: '#404040', hover: 'rgba(255,255,255,0.06)',
+    active: 'rgba(255,255,255,0.1)', selected: '#525252', tint: 'rgba(255,255,255,0.25)', scrim: 'rgba(0,0,0,0.8)'
+  } : {
+    s: ['#fafafa', '#fcfcfc', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff'],
+    fg: '#171717', muted: '#f4f4f5', mfg: '#6b6b6b', primary: '#171717', pfg: '#fafafa', accent: '#3b82f6', ring: '#3b82f6',
+    destructive: '#b91c1c', destructiveSoft: 'rgba(185,28,28,0.1)',
+    success: 'oklch(0.527 0.154 150.069)', successSoft: 'rgba(21,128,61,0.1)',
+    border: 'rgba(23,23,23,0.12)', input: '#e5e5e5', hover: 'rgba(0,0,0,0.04)',
+    active: 'rgba(0,0,0,0.07)', selected: '#d4d4d4', tint: 'rgba(0,0,0,0.08)', scrim: 'rgba(0,0,0,0.4)'
+  };
+  t.bg = t.s[0]; t.panel = t.s[1]; t.card = t.s[2]; t.dialog = t.s[4];
+  t.secondary = dark ? '#252525' : '#f4f4f5';
+  t.theadBg = dark ? 'rgba(30,30,30,0.5)' : 'rgba(244,244,245,0.5)';
+  t.sh2 = dark ? 'inset 0 1px 0 0 rgba(255,255,255,0.01), inset 0 0 0 1px rgba(255,255,255,0.02), 0 1px 1px -0.5px rgba(0,0,0,0.18)' : '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06)';
+  t.sh5 = dark ? 'inset 0 1px 0 0 rgba(255,255,255,0.04), inset 0 0 0 1px rgba(255,255,255,0.04), 0 0 0 1px rgba(0,0,0,0.16), 0 1px 1px -0.5px rgba(0,0,0,0.18), 0 3px 3px -1.5px rgba(0,0,0,0.18), 0 6px 6px -3px rgba(0,0,0,0.18), 0 12px 12px -6px rgba(0,0,0,0.18)' : '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06), 0 3px 3px -1.5px rgba(0,0,0,0.06), 0 6px 6px -3px rgba(0,0,0,0.06), 0 12px 12px -6px rgba(0,0,0,0.06)';
+  t.shSm = '0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1)';
+  return t;
+}
+
+// 侧边栏：展开 248px / 折叠 64px，当前项用 --active 底色
+function shellVals(t, open, activeKey) {
+  var keys = ['home', 'chat', 'media', 'docs', 'reports', 'billing', 'usage', 'keys', 'settings'];
+  var n = {}, c = {};
+  keys.forEach(function (k) {
+    var a = k === activeKey;
+    n[k] = 'display:flex;align-items:center;gap:8px;height:32px;border-radius:8px;' +
+      (open ? 'padding:0 8px;' : 'justify-content:center;width:36px;') +
+      (a ? 'background:' + t.active + ';color:' + t.fg + ';font-weight:500' : 'color:' + t.mfg);
+    c[k] = a ? 'page' : 'false';
+  });
+  return {
+    nav: { n: n, c: c },
+    shell: {
+      open: open, closed: !open, openStr: open ? 'true' : 'false',
+      toggleLabel: open ? '折叠侧边栏' : '展开侧边栏',
+      sb: 'width:' + (open ? '248px' : '64px') + ';padding:' + (open ? '12px' : '12px 14px') + ';' + (open ? '' : 'align-items:center;'),
+      head: 'height:32px;gap:8px;' + (open ? 'justify-content:space-between;padding-left:4px' : 'justify-content:center'),
+      ws: 'gap:8px;border-radius:8px;text-align:left;' + (open ? 'width:100%;padding:6px 8px' : 'justify-content:center;width:36px;height:36px')
+    }
+  };
+}
+
+class Component extends DCLogic {
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var pd = !!this.props.dark;
+    var dark = st.od && st.od.base === pd ? st.od.val : pd;
+    var t = uiTokens(dark);
+    var pmode = this.props.state || 'normal';
+    var mode = 'normal'; // 背景页固定为正常态，state 只切换通知弹层
+    var open = st.collapsed ? false : true;
+    var sv = shellVals(t, open, 'home');
+    var s = {
+      normal: mode === 'normal', empty: mode === 'empty', loading: mode === 'loading', error: mode === 'error',
+      ready: mode !== 'loading', balReady: mode === 'normal' || mode === 'empty'
+    };
+    var claimed = !!st.claimed;
+    var recent = [
+      { title: '季度报告要点整理', preview: '已整理出 5 条关键结论和 3 个风险', tag: '季度报告', time: '3 分钟前' },
+      { title: '项目 A 周会纪要', preview: '待办已按负责人分组', tag: '项目 A', time: '昨天' },
+      { title: '竞品调研提纲', preview: '补充了定价与渠道两个维度', tag: '文档助手', time: '11-07' },
+      { title: '客户邮件润色', preview: '语气改为正式，长度缩短一半', tag: '', time: '11-05' }
+    ].map(function (r) { r.hasTag = !!r.tag; return r; });
+    var bal = mode === 'empty' ? {
+      total: '50',
+      parts: [
+        { label: '订阅积分', value: '—', pct: '0%', note: '尚未订阅' },
+        { label: '积分包', value: '0', pct: '0%', note: '长期有效' },
+        { label: '免费积分', value: '50', pct: '100%', note: '注册赠送 50 · 每日领取 0' }
+      ]
+    } : {
+      total: '1,280',
+      parts: [
+        { label: '订阅积分 · 本期剩余', value: '800 / 1,000', pct: '80%', note: '12 月 10 日重置' },
+        { label: '积分包', value: '400', pct: '40%', note: '长期有效' },
+        { label: '免费积分', value: '80', pct: '16%', note: '注册赠送 50 · 每日领取 30' }
+      ]
+    };
+    // —— 通知（评审项 #90）：字段只用 notification 表已有的 title / body / link / readAt / createdAt ——
+    var propOpen = this.props.open !== false;
+    var nOpen = st.no && st.no.base === propOpen ? st.no.val : propOpen;
+    var readIds = st.readIds || {};
+    var raw = [
+      { id: 'n1', title: '报告生成完成', body: '《季度报告》已生成，共 12 页，可在线阅读或导出 PDF。', time: '3 分钟前', readAt: false },
+      { id: 'n2', title: '团队空间邀请', body: '示例成员邀请你加入团队空间「项目 B」，角色为成员。', time: '1 小时前', readAt: false },
+      { id: 'n3', title: '11 月账单已生成', body: '订阅续费成功，1,000 订阅积分已发放。', time: '昨天', readAt: false },
+      { id: 'n4', title: '积分包已到账', body: '400 积分已加入余额，长期有效。', time: '11-08', readAt: true },
+      { id: 'n5', title: '图片生成任务完成', body: '', time: '11-07', readAt: true }
+    ];
+    var setOpen = function (v) { self.setState({ no: { base: propOpen, val: v }, drawer: false }); };
+    var focusBell = function (el) { var b = el && el.ownerDocument && el.ownerDocument.getElementById('notif-bell'); if (b) b.focus(); };
+    var items = raw.map(function (r) {
+      var unread = !r.readAt && !readIds[r.id] && !st.allRead;
+      var mark = function () { var m = {}; for (var k in readIds) m[k] = true; m[r.id] = true; self.setState({ readIds: m }); };
+      return {
+        title: r.title, body: r.body, time: r.time, hasBody: !!r.body, unread: unread, read: !unread,
+        dot: 'width:8px;height:8px;border-radius:9999px;flex-shrink:0;margin-top:6px;background:' + (unread ? t.primary : 'transparent'),
+        titleStyle: 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (unread ? 'font-weight:600;color:' + t.fg : 'font-weight:400;color:' + t.mfg),
+        markAria: '将「' + r.title + '」标为已读',
+        // 真实实现：readNotifications({ slug, id }) 后按返回的 link 跳转；没有 link 的通知只标为已读
+        open: mark, mark: mark
+      };
+    });
+    var unreadCount = pmode === 'normal' ? items.filter(function (i) { return i.unread; }).length : 0;
+    var p = { normal: pmode === 'normal', empty: pmode === 'empty', loading: pmode === 'loading', error: pmode === 'error' };
+    p.hasUnread = unreadCount > 0;
+    p.unreadText = unreadCount + ' 条未读';
+    p.allDisabled = unreadCount === 0;
+    var bell = {
+      open: nOpen, openStr: nOpen ? 'true' : 'false', hasUnread: unreadCount > 0,
+      count: unreadCount > 99 ? '99+' : String(unreadCount),
+      label: unreadCount > 0 ? '通知，' + unreadCount + ' 条未读' : '通知，没有未读',
+      style: 'color:' + (nOpen ? t.fg : t.mfg) + (nOpen ? ';background:' + t.active : '')
+    };
+    var notifVals = {
+      p: p, bell: bell, items: items,
+      toggleNotif: function () { setOpen(!nOpen); },
+      closeNotif: function (e) { setOpen(false); focusBell(e && e.currentTarget); },
+      onKey: function (e) { if (e.key === 'Escape' && nOpen) { e.stopPropagation(); setOpen(false); focusBell(e.currentTarget); } },
+      markAll: function () { self.setState({ allRead: true }); },
+      skRows: [{ w1: 'width:55%', w2: 'width:80%' }, { w1: 'width:42%', w2: 'width:70%' }, { w1: 'width:60%', w2: 'width:85%' }, { w1: 'width:38%', w2: 'width:60%' }]
+    };
+    return {
+      p: notifVals.p, bell: notifVals.bell, items: notifVals.items, skRows: notifVals.skRows,
+      toggleNotif: notifVals.toggleNotif, closeNotif: notifVals.closeNotif, onKey: notifVals.onKey, markAll: notifVals.markAll,
+      t: t, s: s, nav: sv.nav, shell: sv.shell,
+      isDark: dark, isLight: !dark, themeLabel: dark ? '切换到浅色' : '切换到深色',
+      toggleTheme: function () { self.setState({ od: { base: pd, val: !dark } }); },
+      toggleSidebar: function () { self.setState({ collapsed: open }); },
+      claimVisible: mode !== 'loading' && mode !== 'error',
+      claim: {
+        open: !claimed, done: claimed,
+        title: claimed ? '已领取今日奖励' : '今日登录奖励可领取',
+        desc: claimed ? '10 积分已到账，明天再来。' : '每天可领取 10 积分，按 UTC 日计算（示例数值）。'
+      },
+      doClaim: function () { self.setState({ claimed: true }); },
+      recent: recent,
+      bal: bal,
+      tools: [
+        { title: '文档助手', desc: '基于上传的文档问答', icon: 'M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7ZM14 2v4a2 2 0 0 0 2 2h4M16 13H8M16 17H8' },
+        { title: '图片生成', desc: '文字描述生成配图', icon: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2ZM21 15l-3.1-3.1a2 2 0 0 0-2.8 0L6 21' },
+        { title: '长文报告', desc: '生成可导出的分章报告', icon: 'M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
