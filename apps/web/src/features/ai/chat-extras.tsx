@@ -8,6 +8,7 @@ import { getLocale } from '../../paraglide/runtime.js'
 import {
   FEEDBACK_COMMENT_MAX_LENGTH,
   FEEDBACK_REASONS,
+  FEEDBACK_SHARED_PRIOR_MESSAGES,
   type FeedbackReason,
   isFeedbackReason,
   type MessageFeedbackValue,
@@ -87,10 +88,18 @@ export function MessageFeedback({ value, disabled, onChange }: MessageFeedbackPr
                 // 组件只会回传 reasons 中的取值；点赞时为 null
                 reason:
                   next.rating === 'down' && isFeedbackReason(next.reason) ? next.reason : null,
+                // 只有用户在表单中明确勾选才算同意
+                shareConversation: next.shareConversation === true,
               }
             : null,
         )
       }
+      shareLabels={{
+        label: m.subject_chat_feedback_share(),
+        description: m.subject_chat_feedback_share_description({
+          count: FEEDBACK_SHARED_PRIOR_MESSAGES,
+        }),
+      }}
       labels={{
         group: m.subject_chat_feedback(),
         up: m.subject_chat_feedback_up(),

@@ -1,8 +1,20 @@
-import { Button, DataTable } from '@saas/ui'
+import {
+  Button,
+  DataTable,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@saas/ui'
 import { createFileRoute, notFound as featureNotFound, useRouter } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { deleteAdminFeedback, getAdminFeedback } from '../../features/admin/feedback.functions.ts'
-import type { SatisfactionRow } from '../../features/admin/feedback.ts'
+import {
+  deleteAdminFeedback,
+  getAdminFeedback,
+  getAdminFeedbackConversation,
+} from '../../features/admin/feedback.functions.ts'
+import type { SatisfactionRow, SharedConversationMessage } from '../../features/admin/feedback.ts'
 import {
   adminListPage,
   adminListSearch,
@@ -11,11 +23,11 @@ import {
 } from '../../features/admin/list.ts'
 import { AdminPage, adminTableLabels, formatDateTime, Panel } from '../../features/admin/ui.tsx'
 import { feedbackReasonLabel } from '../../features/ai/chat-extras.tsx'
-import { FEEDBACK_REASONS } from '../../features/ai/feedback.ts'
+import { FEEDBACK_REASONS, FEEDBACK_SHARED_PRIOR_MESSAGES } from '../../features/ai/feedback.ts'
 import { m } from '../../paraglide/messages.js'
 import { templateConfig } from '../../server/template-config.ts'
 
-const filters = ['rating', 'reason', 'model', 'subjectType', 'from', 'to'] as const
+const filters = ['rating', 'reason', 'shared', 'model', 'subjectType', 'from', 'to'] as const
 
 export const Route = createFileRoute('/admin/feedback')({
   beforeLoad: () => {
@@ -63,6 +75,61 @@ function StatsTable({ title, rows }: { title: string; rows: readonly Satisfactio
   )
 }
 
+type ConversationView =
+  | { readonly id: string; readonly status: 'loading' }
+  | { readonly id: string; readonly status: 'failed' }
+  | {
+      readonly id: string
+      readonly status: 'ready'
+      readonly messages: readonly SharedConversationMessage[]
+    }
+
+/** 用户同意共享的对话片段；每次打开都由服务端校验同意并写审计 */
+function ConversationDialog({ view, onClose }: { view: ConversationView | null; onClose(): void }) {
+  return (
+    <Dialog open={view !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent size="lg" closeLabel={m.admin_feedback_close()}>
+        <DialogHeader>
+          <DialogTitle>{m.admin_feedback_conversation_title()}</DialogTitle>
+          <DialogDescription>
+            {m.admin_feedback_conversation_description({ count: FEEDBACK_SHARED_PRIOR_MESSAGES })}
+          </DialogDescription>
+        </DialogHeader>
+        {view?.status === 'loading' ? (
+          <p role="status" className="text-muted-foreground text-sm">
+            {m.subject_chat_loading()}
+          </p>
+        ) : view?.status === 'failed' ? (
+          <p role="alert" className="text-destructive text-sm">
+            {m.admin_feedback_conversation_failed()}
+          </p>
+        ) : view?.status === 'ready' ? (
+          view.messages.length === 0 ? (
+            <p className="text-muted-foreground text-sm">{m.admin_feedback_conversation_empty()}</p>
+          ) : (
+            <ol
+              aria-label={m.admin_feedback_conversation_title()}
+              className="grid max-h-96 gap-3 overflow-y-auto"
+            >
+              {view.messages.map((message) => (
+                <li key={message.id} className="grid gap-1 rounded-md border p-3 text-sm">
+                  <span className="font-medium text-muted-foreground text-xs">
+                    {message.role === 'user'
+                      ? m.admin_feedback_role_user()
+                      : m.admin_feedback_role_assistant()}
+                    {message.rated ? ` · ${m.admin_feedback_rated_reply()}` : ''}
+                  </span>
+                  <p className="whitespace-pre-wrap break-words">{message.text || '—'}</p>
+                </li>
+              ))}
+            </ol>
+          )
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function FeedbackAdmin() {
   // SSR 按钮在水合完成前不可交互，避免首次点击丢失。
   const [ready, setReady] = useState(false)
@@ -73,6 +140,20 @@ function FeedbackAdmin() {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
   const [message, setMessage] = useState('')
+  const [conversation, setConversation] = useState<ConversationView | null>(null)
+
+  async function viewConversation(id: string) {
+    setConversation({ id, status: 'loading' })
+    try {
+      const result = await getAdminFeedbackConversation({ data: { id } })
+      // 期间已关闭或切换到另一条时丢弃结果
+      setConversation((current) =>
+        current?.id === id ? { id, status: 'ready', messages: result.messages } : current,
+      )
+    } catch {
+      setConversation((current) => (current?.id === id ? { id, status: 'failed' } : current))
+    }
+  }
 
   async function remove(id: string) {
     setBusy(id)
@@ -126,6 +207,26 @@ function FeedbackAdmin() {
               cell: (row) => (row.reason ? feedbackReasonLabel(row.reason) : '—'),
             },
             {
+              id: 'shared',
+              header: m.admin_feedback_shared(),
+              cell: (row) =>
+                row.shareConversation ? (
+                  <div className="grid justify-items-start gap-1">
+                    <span>{m.admin_feedback_shared_yes()}</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void viewConversation(row.id)}
+                    >
+                      {m.admin_feedback_view_conversation()}
+                    </Button>
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground">{m.admin_feedback_shared_no()}</span>
+                ),
+            },
+            {
               id: 'comment',
               header: m.admin_feedback_comment(),
               cell: (row) => (
@@ -168,6 +269,16 @@ function FeedbackAdmin() {
                 })),
               ],
             },
+            {
+              id: 'shared',
+              label: m.admin_feedback_shared(),
+              type: 'select',
+              options: [
+                { value: '', label: m.admin_all() },
+                { value: 'yes', label: m.admin_feedback_shared_yes() },
+                { value: 'no', label: m.admin_feedback_shared_no() },
+              ],
+            },
             { id: 'model', label: m.admin_feedback_model() },
             {
               id: 'subjectType',
@@ -180,6 +291,7 @@ function FeedbackAdmin() {
           filterValues={{
             rating: search.rating,
             reason: search.reason,
+            shared: search.shared,
             model: search.model,
             subjectType: search.subjectType,
             from: search.from,
@@ -191,6 +303,7 @@ function FeedbackAdmin() {
           onFiltersChange={(values) => void navigate({ search: filtersToSearch(filters, values) })}
         />
       </fieldset>
+      <ConversationDialog view={conversation} onClose={() => setConversation(null)} />
     </AdminPage>
   )
 }

@@ -1,18 +1,23 @@
 import {
   AI_FEEDBACK_REASONS,
   type AiFeedbackReason,
+  aiConversation,
+  aiMessage,
   aiMessageFeedback,
   type Database,
+  scoped,
 } from '@saas/db'
 import { AppError } from '@saas/shared'
-import { and, count, desc, eq, gte, lt, type SQL, sql } from 'drizzle-orm'
+import { and, count, desc, eq, gte, inArray, lt, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
+import { FEEDBACK_SHARED_PRIOR_MESSAGES } from '../ai/feedback.ts'
 import type { AdminActionScope } from './action.ts'
 import { ADMIN_PAGE_SIZE } from './list.ts'
 
 /**
- * 后台 AI 回复反馈（add-subject-chat tasks.md 4.1，specs/admin-console「AI 回复反馈列表」「满意率统计」）。
- * 只读评分、点踩原因与反馈文字，不联查对话正文或对象上下文；删除经 adminAction 写审计（不含反馈文字）。
+ * 后台 AI 回复反馈（add-subject-chat tasks.md 4.1、10.x，specs/admin-console「AI 回复反馈列表」「满意率统计」
+ * 「查看用户共享的对话」）。列表只读评分、点踩原因、反馈文字与共享标记，不联查对话正文或对象上下文；
+ * 用户同意共享的条目经 `readSharedConversation` 单独读取对话片段并写审计；删除经 adminAction 写审计（不含反馈文字）。
  */
 
 const date = z.iso.date()
@@ -36,6 +41,12 @@ export const feedbackSearchSchema = z
           ? (value as AiFeedbackReason)
           : undefined,
       ),
+    // 共享对话：yes / no；非法值按未筛选处理
+    shared: z
+      .string()
+      .max(8)
+      .optional()
+      .transform((value) => (value === 'yes' || value === 'no' ? value : undefined)),
     model: z.string().max(200).optional(),
     subjectType: z.string().max(64).optional(),
     from: date.optional(),
@@ -73,6 +84,7 @@ export async function listFeedback(db: Database, input: z.input<typeof feedbackS
   const where = and(
     data.rating ? eq(aiMessageFeedback.rating, data.rating) : undefined,
     data.reason ? eq(aiMessageFeedback.reason, data.reason) : undefined,
+    data.shared ? eq(aiMessageFeedback.shareConversation, data.shared === 'yes') : undefined,
     data.model ? eq(aiMessageFeedback.modelKey, data.model) : undefined,
     data.subjectType
       ? data.subjectType === NO_SUBJECT
@@ -93,6 +105,7 @@ export async function listFeedback(db: Database, input: z.input<typeof feedbackS
       rating: aiMessageFeedback.rating,
       comment: aiMessageFeedback.comment,
       reason: aiMessageFeedback.reason,
+      shareConversation: aiMessageFeedback.shareConversation,
       modelKey: aiMessageFeedback.modelKey,
       subjectType: aiMessageFeedback.subjectType,
     })
@@ -164,4 +177,108 @@ export async function deleteFeedback(scope: AdminActionScope, id: string) {
     meta: { modelKey: row.modelKey, subjectType: row.subjectType, rating: row.rating },
   })
   return { deleted: true }
+}
+
+export interface SharedConversationMessage {
+  readonly id: string
+  readonly role: 'user' | 'assistant'
+  /** 只取文本片段；推理、工具调用与数据片段不展示 */
+  readonly text: string
+  /** 是否为被评的回复 */
+  readonly rated: boolean
+}
+
+const notFound = () => new AppError('NOT_FOUND', 'Not found', { status: 404 })
+
+function partsText(parts: unknown): string {
+  if (!Array.isArray(parts)) return ''
+  return parts
+    .flatMap((part) =>
+      part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string'
+        ? [part.text]
+        : [],
+    )
+    .join('')
+}
+
+/**
+ * 读取用户同意共享的对话片段（design 决策 6「共享对话同意」）：被评回复加上它之前最近
+ * `FEEDBACK_SHARED_PRIOR_MESSAGES` 条 user/assistant 消息，不含 system 消息（对象上下文）与之后的消息。
+ * 同意状态在服务端检查：未同意、记录不存在或已撤回一律 404（此时事务回滚、不留审计）；
+ * 成功读取时在同一事务内写审计，审计只含反馈 ID、空间、消息 ID 与条数，不含正文。
+ */
+export async function readSharedConversation(scope: AdminActionScope, id: string) {
+  const [feedback] = await scope.tx
+    .select({
+      workspaceId: aiMessageFeedback.workspaceId,
+      messageId: aiMessageFeedback.messageId,
+      userId: aiMessageFeedback.userId,
+      shareConversation: aiMessageFeedback.shareConversation,
+    })
+    // biome-ignore lint/plugin: 平台管理员按反馈 ID 读取；正文随后按该行的空间经 scoped 查询。
+    .from(aiMessageFeedback)
+    .where(eq(aiMessageFeedback.id, id))
+    .limit(1)
+    // 与用户撤回互斥：读取正文期间同意不会被改写
+    .for('share')
+  if (!feedback?.shareConversation) throw notFound()
+  const tenant = scoped(scope.tx, feedback.workspaceId)
+  const fields = {
+    id: aiMessage.id,
+    role: aiMessage.role,
+    parts: aiMessage.parts,
+    conversationId: aiMessage.conversationId,
+  }
+  const [rated] = await tenant
+    .select(aiMessage, {
+      fields,
+      where: and(eq(aiMessage.id, feedback.messageId), eq(aiMessage.role, 'assistant')) as SQL,
+    })
+    .limit(1)
+  // 只展示评分者本人对话中的消息
+  const [conversation] = rated
+    ? await tenant
+        .select(aiConversation, {
+          fields: { id: aiConversation.id },
+          where: and(
+            eq(aiConversation.id, rated.conversationId),
+            eq(aiConversation.userId, feedback.userId),
+          ) as SQL,
+        })
+        .limit(1)
+    : []
+  // 时间顺序按 (created_at, 同一轮内用户在前, id)：同一轮的提问与回复在一个事务内写入、created_at 相同，
+  // 而回复 ID 先于提问生成，只按 ID 排序会把回复排到提问之前。比较在 SQL 内完成，避免 JS Date 丢失微秒
+  const turnOrder = sql`case when ${aiMessage.role} = 'user' then 0 else 1 end`
+  const prior =
+    rated && conversation
+      ? await tenant
+          .select(aiMessage, {
+            fields,
+            where: and(
+              eq(aiMessage.conversationId, rated.conversationId),
+              inArray(aiMessage.role, ['user', 'assistant']),
+              sql`(${aiMessage.createdAt}, ${turnOrder}) < (select r.created_at, 1 from ai_message r where r.id = ${rated.id})`,
+            ) as SQL,
+          })
+          .orderBy(desc(aiMessage.createdAt), desc(turnOrder), desc(aiMessage.id))
+          .limit(FEEDBACK_SHARED_PRIOR_MESSAGES)
+      : []
+  const messages: SharedConversationMessage[] =
+    rated && conversation
+      ? [...prior.reverse(), rated].map((row) => ({
+          id: row.id,
+          role: row.role === 'user' ? 'user' : 'assistant',
+          text: partsText(row.parts),
+          rated: row.id === rated.id,
+        }))
+      : []
+  await scope.audit({
+    action: 'ai.feedback.view_conversation',
+    targetType: 'ai_message_feedback',
+    targetId: id,
+    workspaceId: feedback.workspaceId,
+    meta: { messageId: feedback.messageId, messageCount: messages.length },
+  })
+  return { messages }
 }

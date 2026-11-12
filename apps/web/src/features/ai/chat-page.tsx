@@ -184,6 +184,7 @@ export function ChatPage({
         rating: next?.rating ?? null,
         ...(next?.comment ? { comment: next.comment } : {}),
         ...(next?.reason ? { reason: next.reason } : {}),
+        ...(next?.shareConversation ? { shareConversation: true } : {}),
       },
     })
     if (!result.ok) throw new Error(result.error)

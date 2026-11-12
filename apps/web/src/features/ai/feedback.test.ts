@@ -52,6 +52,9 @@ describe('feedback comments', () => {
     expect(feedbackInputSchema.safeParse({ ...base, comment: 'x'.repeat(1001) }).success).toBe(
       false,
     )
+    // 共享对话同意只接受布尔值
+    expect(feedbackInputSchema.safeParse({ ...base, shareConversation: true }).success).toBe(true)
+    expect(feedbackInputSchema.safeParse({ ...base, shareConversation: 'yes' }).success).toBe(false)
   })
 
   it('accepts only the agreed down-vote reasons, matching the database constraint', () => {

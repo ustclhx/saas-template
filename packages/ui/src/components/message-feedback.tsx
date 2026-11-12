@@ -1,10 +1,14 @@
 // 模板新增（openspec add-ui-design-system tasks 8.6，设计稿 docs/design-system/prototypes/ui-review/Chat.dc.html）：
 // 消息评分与文字反馈。纯展示：评分经 onChange 交给调用方保存（null = 撤销），失败时 reject，组件回滚并提示。
 // 交互：点赞 / 点踩再次点击即撤销；点踩展开文字反馈，提交后可经「修改反馈」再次编辑。
+// 可选的「共享对话」勾选项（openspec add-subject-chat tasks 10）：传入 `shareLabels` 才显示，默认不勾选，
+// 随表单提交；切到点赞或撤销时清除，再次提交时不勾选即撤回。
 import { ThumbsDown, ThumbsUp } from 'lucide-react'
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import { cn } from '../lib/utils.ts'
 import { Button } from './button.tsx'
+import { Checkbox } from './checkbox.tsx'
+import { Label } from './label.tsx'
 import { Textarea } from './textarea.tsx'
 
 type FeedbackRating = 'up' | 'down'
@@ -15,6 +19,15 @@ interface MessageFeedbackValue {
   comment: string | null
   /** 选中的原因（`reasons` 中的 value）；未传 `reasons` 时不出现 */
   reason?: string | null
+  /** 是否同意共享这段对话；未传 `shareLabels` 时不出现 */
+  shareConversation?: boolean
+}
+
+interface MessageFeedbackShareLabels {
+  /** 勾选项文字，如「把这段对话共享给我们用于改进」 */
+  label: string
+  /** 说明会共享哪些内容，如「包括这条回复和它之前最近 3 条消息」 */
+  description: string
 }
 
 interface MessageFeedbackReason {
@@ -50,6 +63,8 @@ interface MessageFeedbackProps {
   labels: MessageFeedbackLabels
   /** 点踩原因（单选，可再次点击取消）；不传时只有文字框 */
   reasons?: readonly MessageFeedbackReason[]
+  /** 反馈表单中的「共享对话」勾选项文案；不传时不显示勾选项，回调值也不含 `shareConversation` */
+  shareLabels?: MessageFeedbackShareLabels
   /** 只读空间或生成中 */
   disabled?: boolean
   /** 评分按钮之前的操作（如复制按钮） */
@@ -67,6 +82,7 @@ function MessageFeedback({
   onChange,
   labels,
   reasons,
+  shareLabels,
   disabled = false,
   actions,
   meta,
@@ -77,10 +93,13 @@ function MessageFeedback({
   const [formOpen, setFormOpen] = useState(false)
   const [comment, setComment] = useState(value?.comment ?? '')
   const [reason, setReason] = useState<string | null>(value?.reason ?? null)
+  const [share, setShare] = useState(value?.shareConversation ?? false)
   const [pending, setPending] = useState(false)
   const [notice, setNotice] = useState<'saved' | 'failed' | null>(null)
   const formId = useId()
   const textareaId = useId()
+  const shareId = useId()
+  const shareDescriptionId = useId()
   const questionId = useId()
   const downRef = useRef<HTMLButtonElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -90,6 +109,7 @@ function MessageFeedback({
   const valueRating = value?.rating ?? null
   const valueComment = value?.comment ?? null
   const valueReason = value?.reason ?? null
+  const valueShare = value?.shareConversation ?? null
   useEffect(() => {
     setCurrent(
       valueRating
@@ -97,10 +117,11 @@ function MessageFeedback({
             rating: valueRating,
             comment: valueComment,
             ...(valueReason !== null ? { reason: valueReason } : {}),
+            ...(valueShare !== null ? { shareConversation: valueShare } : {}),
           }
         : null,
     )
-  }, [valueRating, valueComment, valueReason])
+  }, [valueRating, valueComment, valueReason, valueShare])
 
   useEffect(() => {
     if (formOpen && focusTextarea.current) {
@@ -140,22 +161,30 @@ function MessageFeedback({
       setFormOpen(false)
       setComment('')
       setReason(null)
+      setShare(false)
       void save(null, { onFailure: restore })
       return
     }
     setFormOpen(rating === 'down')
     if (rating === 'up') {
-      // 点踩时写的文字与原因只属于点踩，切到点赞时清空
+      // 点踩时写的文字、原因与共享同意只属于点踩，切到点赞时清空
       setComment('')
       setReason(null)
+      setShare(false)
     }
     void save(
       rating === 'up'
-        ? { rating, comment: null, ...(reasons ? { reason: null } : {}) }
+        ? {
+            rating,
+            comment: null,
+            ...(reasons ? { reason: null } : {}),
+            ...(shareLabels ? { shareConversation: false } : {}),
+          }
         : {
             rating,
             comment: current?.comment ?? null,
             ...(reasons ? { reason: current?.reason ?? null } : {}),
+            ...(shareLabels ? { shareConversation: current?.shareConversation ?? false } : {}),
           },
       { onFailure: restore },
     )
@@ -165,6 +194,7 @@ function MessageFeedback({
     setFormOpen(false)
     setComment(current?.comment ?? '')
     setReason(current?.reason ?? null)
+    setShare(current?.shareConversation ?? false)
     downRef.current?.focus()
   }
 
@@ -230,6 +260,7 @@ function MessageFeedback({
               // 以已保存的内容为起点修改
               setComment(current?.comment ?? '')
               setReason(current?.reason ?? null)
+              setShare(current?.shareConversation ?? false)
               focusTextarea.current = true
               setFormOpen(true)
             }}
@@ -252,6 +283,7 @@ function MessageFeedback({
                 rating: 'down',
                 comment: text ? text : null,
                 ...(reasons ? { reason } : {}),
+                ...(shareLabels ? { shareConversation: share } : {}),
               },
               {
                 onSuccess: () => {
@@ -317,6 +349,26 @@ function MessageFeedback({
             {...(labels.commentPlaceholder ? { placeholder: labels.commentPlaceholder } : {})}
             onChange={(event) => setComment(event.target.value)}
           />
+          {shareLabels ? (
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id={shareId}
+                className="mt-0.5"
+                checked={share}
+                disabled={disabled}
+                aria-describedby={shareDescriptionId}
+                onCheckedChange={setShare}
+              />
+              <div className="grid gap-0.5">
+                <Label htmlFor={shareId} className="font-normal text-caption leading-normal">
+                  {shareLabels.label}
+                </Label>
+                <p id={shareDescriptionId} className="m-0 text-caption text-muted-foreground">
+                  {shareLabels.description}
+                </p>
+              </div>
+            </div>
+          ) : null}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={closeForm}>
               {labels.cancel}
@@ -348,6 +400,7 @@ export type {
   MessageFeedbackLabels,
   MessageFeedbackProps,
   MessageFeedbackReason,
+  MessageFeedbackShareLabels,
   MessageFeedbackValue,
 }
 export { MessageFeedback }
