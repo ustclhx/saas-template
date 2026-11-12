@@ -37,6 +37,8 @@ test.describe('sidebar 布局', () => {
   test.skip(!sidebar, 'ui.appLayout 不是 sidebar')
 
   test('分组导航、当前项高亮与折叠状态刷新后保持', async ({ page }) => {
+    // 注册加三次整页加载（含两次刷新），dev server 在并行负载下单页可达十秒，30 秒默认时限不够
+    test.slow()
     await page.setViewportSize({ width: 1440, height: 900 })
     const home = await newUser(page)
     const workspaceNav = nav(page)
