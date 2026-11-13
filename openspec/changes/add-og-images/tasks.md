@@ -3,7 +3,7 @@
 ## 1. 可行性验证（先做，决定后续路线）
 
 - [ ] 1.1 在 worktree 中实现最小渲染路由，配合示例版式和 CJK 字体懒加载，用 `wrangler versions upload` 上传到 staging，不切换流量。测量 design 第 7 条的五项指标：压缩体积增量、冷实例 CPU（含 CJK）、热实例 CPU、峰值内存、首页冷启动。数据与结论写入证据库。验证：证据 README 中有五项数值，以及「达标 / 改用常用字子集 / 移到 jobs Worker」三选一的结论。
-- [ ] 1.2 协调者把 1.1 的结论写回 design.md 第 5、7 条。如果路线有变，同步更新本 tasks。验证：design.md 中写明最终选定的路线。
+- [x] 1.2 协调者把 1.1 的结论写回 design.md 第 5、7 条。如果路线有变，同步更新本 tasks。验证：design.md 中写明最终选定的路线。
 
 ## 2. 设计稿（协调者）
 
@@ -23,7 +23,7 @@
   - 示例类型 `sample` 的版式。
 
   验证：单测用固定数据得到版式树，主题值来自 4.1。
-- [ ] 4.3 实现 `render.server.ts`：Workers 与 Node 两个入口，西文字体随包打包，CJK 字体按需加载并在实例内缓存，文本按字数截断，并发上限为 2。验证：Node 单测渲染中文、英文和超长标题，输出 1200×630 PNG；并发超限时返回 503。
+- [ ] 4.3 实现渲染器：经 WebRuntime 注入，Workers 实现在 `src/server/cloudflare/`、Node 实现在 Node 运行时，西文字体随包打包，CJK 字体按需加载并在实例内缓存，文本按字宽加权截断（design 第 5 条），并发上限为 2。验证：Node 单测渲染中文、英文和超长标题，输出 1200×630 PNG；并发超限时返回 503。
 - [ ] 4.4 构建期 `apps/web/scripts/og-images.ts` 改为复用默认版式。验证：静态图测试与 e2e `seo.spec.ts` 通过，图片与 `share-cards/Card.dc.html` 的 `default` 变体一致（附前后截图；颜色从深蓝渐变改为主题 token 是已确认的变更）。
 
 ## 5. 路由、缓存与元数据
