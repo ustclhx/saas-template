@@ -5,6 +5,7 @@ import { ogImagePath } from '../src/features/seo/metadata.ts'
 import { publicPages } from '../src/features/seo/pages.ts'
 import { defaultShareCardLayout } from '../src/features/share-cards/layout.tsx'
 import { defaultShareCardSite, resolveShareCardSite } from '../src/features/share-cards/site.ts'
+import { resolveShareCardTheme } from '../src/features/share-cards/theme.ts'
 import { createNodeShareCardRenderer } from '../src/node/share-card-renderer.ts'
 
 const root = new URL('..', import.meta.url)
@@ -38,12 +39,14 @@ export function renderOgImage(
   title: string,
   page: { locale?: string; path?: string } = {},
 ): Promise<Uint8Array> {
-  const { site, theme } = resolveShareCardSite({
+  const { site, themeOverride } = resolveShareCardSite({
     host: defaultShareCardSite().host,
     locale: page.locale,
     pathname: page.path,
   })
-  return renderer.render(defaultShareCardLayout(title, theme, site))
+  return renderer.render(
+    defaultShareCardLayout(title, resolveShareCardTheme('light', themeOverride), site),
+  )
 }
 
 /** WASM 与完整字体只在 Node 构建阶段使用，PNG 作为客户端静态资源输出。 */

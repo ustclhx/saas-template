@@ -229,20 +229,18 @@ export const getReportShareMeta = createServerFn({ method: 'GET' })
 - 卡片固定用浅色主题渲染；`/dev/ui` 预览可切换深色。
 - **品牌行与域名**：`shareCardLayout` 默认显示模板配置的应用名（方块中为首字大写）与 `app.url` 的域名，
   可用 `brand: { name, initial? }` 与 `host` 覆盖。构建期默认分享图的副标题为「品牌名 · 标语」，
-  标语取站点解析的 `tagline`，未提供时取该语言首页的 SEO 标题（`features/seo/metadata.ts` 的 `staticPage('/')`）。
+  标语取站点解析的 `tagline`，未提供时取该语言首页的 SEO 标题（`features/seo/home-copy.ts`，与 `staticPage('/')` 共用）。
 
 ### 6.1 多站点
 
-一次部署服务多个品牌域名（如 `ganjiday.com` 与 `arcanumber.com`）时，在项目自有的 `share-cards.theme.ts` 中
-**可选**导出 `resolveProjectShareCardSite`，按站点返回覆盖；返回 `undefined` 或不导出时与单站点相同。
+一次部署服务多个品牌域名（如 `ganjiday.com` 与 `arcanumber.com`）时，在项目自有文件 `share-cards.sites.ts` 中
+实现 `resolveProjectShareCardSite`，按站点返回覆盖；返回 `undefined`（模板默认）时与单站点相同。
+模板只创建这个文件，之后不再修改；`template-sync` 只在项目没有它时新增，生成器原样复制。
 上下文与 `theme/html-attributes.ts` 一致（`host`、`locale`、`pathname`），两处可共用同一张域名表。
 
 ```ts
-// apps/web/src/features/share-cards/share-cards.theme.ts
-import type { ShareCardSiteContext, ProjectShareCardSite } from './site.ts'
-import type { ShareCardTheme } from './types.ts'
-
-export const projectShareCardTheme: Partial<ShareCardTheme> = {}
+// apps/web/src/features/share-cards/share-cards.sites.ts
+import type { ProjectShareCardSite, ShareCardSiteContext } from './site.ts'
 
 export function resolveProjectShareCardSite(
   context: ShareCardSiteContext,

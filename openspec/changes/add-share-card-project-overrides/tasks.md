@@ -5,11 +5,11 @@
 - [x] 1.1 新增项目自有文件 `share-cards.fonts.ts`（空列表与注释示例）与 `ProjectShareCardFont` 类型；`fonts.ts` 校验登记、生成文字匹配与指纹
 - [x] 1.2 `text.ts`：`fallbackFontPlan` 区分 Noto 与项目字体，项目字体覆盖的文字不降级；谚文按全角计宽
 - [x] 1.3 渲染核心按需加载项目字体并实例内缓存；Workers 经 `ASSETS.fetch`、Node 与构建期读本地文件；默认版式 `fontFamily` 与标题字重随登记调整
-- [x] 1.4 生成器、`template-sync`、`template-release check` 把 `share-cards.fonts.ts` 登记为项目自有文件
+- [x] 1.4 生成器、`template-sync`、`template-release check` 把 `share-cards.fonts.ts` 与 `share-cards.sites.ts` 登记为项目自有文件
 
 ## 2. 多站点
 
-- [x] 2.1 `site.ts`：检测 `share-cards.theme.ts` 的可选导出 `resolveProjectShareCardSite`，解析主题、品牌、域名、副标题与站点指纹
+- [x] 2.1 新增项目自有文件 `share-cards.sites.ts`；`site.ts` 解析主题覆盖、品牌、规范域名、副标题与站点指纹（不导入主题基线）
 - [x] 2.2 默认版式增加可选 `brand`、`host`；`render` 增加第三个参数 `site`；默认分享图副标题取站点 tagline 或首页 SEO 标题
 - [x] 2.3 卡片路由、分享页、`shareCardMeta`、`/dev/ui` 预览按请求 host 解析站点；构建期默认分享图按页面 locale / pathname 解析
 

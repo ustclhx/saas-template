@@ -130,7 +130,8 @@ describe('多站点解析', () => {
   )
 
   it('没有解析函数（模板默认）时与单站点完全相同', () => {
-    const { site, theme } = resolveShareCardSite({ host: 'ganjiday.com' })
+    const { site, themeOverride } = resolveShareCardSite({ host: 'ganjiday.com' })
+    const theme = resolveShareCardTheme('light', themeOverride)
     expect(theme).toEqual(resolveShareCardTheme('light'))
     expect(site).toMatchObject({
       brand: { name: templateConfig.app.name },
@@ -144,15 +145,16 @@ describe('多站点解析', () => {
   })
 
   it('按 host 替换主题、品牌与域名，其余站点沿用默认', () => {
-    const matched = resolveShareCardSite({ host: 'ganjiday.com' }, 'light', resolver)
-    expect(matched.theme.brandAccent).toBe('#b91c1c')
-    expect(matched.theme.background).toBe(resolveShareCardTheme('light').background)
+    const matched = resolveShareCardSite({ host: 'ganjiday.com' }, resolver)
+    const matchedTheme = resolveShareCardTheme('light', matched.themeOverride)
+    expect(matchedTheme.brandAccent).toBe('#b91c1c')
+    expect(matchedTheme.background).toBe(resolveShareCardTheme('light').background)
     expect(matched.site.brand).toEqual(east.brand)
     expect(matched.site.host).toBe('ganjiday.com')
     const text = collectText(
       sampleShareCardLayout(
         { title: 'Report', description: '', label: '', meta: '' },
-        matched.theme,
+        matchedTheme,
         matched.site,
       ),
     )
@@ -160,15 +162,15 @@ describe('多站点解析', () => {
     expect(text).toContain('ganjiday.com')
     expect(text).not.toContain(templateConfig.app.name)
 
-    const other = resolveShareCardSite({ host: 'arcanumber.com' }, 'light', resolver)
+    const other = resolveShareCardSite({ host: 'arcanumber.com' }, resolver)
     expect(other.site.fingerprint).toBe('')
     expect(other.site.brand.name).toBe(templateConfig.app.name)
   })
 
   it('不同站点的卡片地址不同，绝对地址使用站点声明的规范域名而不是请求 Host', () => {
     const card = { version: 1, digest: () => 'deadbeef00' }
-    const eastSite = resolveShareCardSite({ host: 'ganjiday.com' }, 'light', resolver).site
-    const westSite = resolveShareCardSite({ host: 'arcanumber.com' }, 'light', resolver).site
+    const eastSite = resolveShareCardSite({ host: 'ganjiday.com' }, resolver).site
+    const westSite = resolveShareCardSite({ host: 'arcanumber.com' }, resolver).site
     expect(shareCardVariant(card, null, eastSite, '')).not.toBe(
       shareCardVariant(card, null, westSite, ''),
     )
@@ -178,12 +180,7 @@ describe('多站点解析', () => {
       'https://www.ganjiday.com/s/report/x',
       'https://saas-web-preview.example.workers.dev/s/report/x',
     ]) {
-      const request = resolveRequestShareCardSite(
-        requestUrl,
-        'https://example.com',
-        'light',
-        canonical,
-      )
+      const request = resolveRequestShareCardSite(requestUrl, 'https://example.com', canonical)
       expect(request.origin).toBe('https://ganjiday.com')
       // 同一站点多次解析得到同一地址
       expect(request.site.fingerprint).toBe(eastSite.fingerprint)
@@ -192,7 +189,6 @@ describe('多站点解析', () => {
     const noHost = resolveRequestShareCardSite(
       'https://evil.test/s/report/x',
       'https://example.com',
-      'light',
       () => ({ brand: { name: 'Ganjiday' } }),
     )
     expect(noHost.origin).toBe('https://example.com')
@@ -211,13 +207,12 @@ describe('多站点解析', () => {
     const resolved = resolveRequestShareCardSite(
       'https://ganjiday.com/s/report/x',
       'https://example.com',
-      'light',
       () => ({ ...east, host }),
     )
     expect(resolved.origin).toBe('https://example.com')
     expect(resolved.site.fingerprint).toBe('')
     expect(resolved.site.brand.name).toBe(templateConfig.app.name)
-    expect(resolved.theme).toEqual(resolveShareCardTheme('light'))
+    expect(resolved.themeOverride).toEqual({})
   })
 
   it('裸主机名可带端口，大小写归一', () => {
@@ -225,7 +220,7 @@ describe('多站点解析', () => {
     expect(isBareHost('localhost:3000')).toBe(true)
     expect(isBareHost('Ganjiday.COM')).toBe(true)
     expect(isBareHost('ganjiday.com:99999')).toBe(false)
-    const resolved = resolveShareCardSite({}, 'light', () => ({ host: 'Ganjiday.COM' }))
+    const resolved = resolveShareCardSite({}, () => ({ host: 'Ganjiday.COM' }))
     expect(resolved.site.host).toBe('ganjiday.com')
   })
 })

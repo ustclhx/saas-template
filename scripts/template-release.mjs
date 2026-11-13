@@ -52,6 +52,10 @@ const projectOwnedFiles = [
     path: 'apps/web/src/features/share-cards/share-cards.fonts.ts',
     guidance: 'put template share card font handling in apps/web/src/features/share-cards/fonts.ts',
   },
+  {
+    path: 'apps/web/src/features/share-cards/share-cards.sites.ts',
+    guidance: 'put template share card site handling in apps/web/src/features/share-cards/site.ts',
+  },
   { path: brandPath, guidance: 'put template token changes in packages/ui/src/styles' },
   {
     path: 'apps/web/src/features/theme/html-attributes.ts',

@@ -307,6 +307,7 @@ generatorTest(
     await f.file('packages/ui/components.lock.json', lock)
     await f.file('apps/web/src/features/theme/html-attributes.ts', htmlAttributes)
     const shareCardFiles = [
+      'share-cards.sites.ts',
       'share-cards.project.ts',
       'share-cards.theme.ts',
       'share-cards.fonts.ts',

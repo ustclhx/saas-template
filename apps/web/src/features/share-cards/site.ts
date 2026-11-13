@@ -1,11 +1,11 @@
 // 分享卡片的站点解析：一次部署服务多个品牌域名时，按请求 host（构建期为页面 locale / pathname）
-// 决定卡片的主题、品牌行、域名与默认分享图副标题。项目在自有文件 share-cards.theme.ts 中可选导出
-// resolveProjectShareCardSite；未导出或返回 undefined 时与单站点行为完全相同。
+// 决定卡片的主题、品牌行、域名与默认分享图副标题。项目在自有文件 share-cards.sites.ts 中实现
+// resolveProjectShareCardSite；返回 undefined 时与单站点行为完全相同。
+// 用独立的项目自有文件而不是在 share-cards.theme.ts 中可选导出：可选导出只能用命名空间导入检测，
+// 命名空间对象需要打包器运行时辅助函数，会改变服务端分包（曾使 Node 构建的 icons 分包 source map 为空）。
 import { templateConfig } from '../../server/template-config.ts'
 import { fnv1a } from './hash.ts'
-// 命名空间导入：项目文件由项目维护，旧项目没有该导出，不能用具名导入。
-import * as projectThemeModule from './share-cards.theme.ts'
-import { resolveShareCardTheme, type ShareCardThemeMode } from './theme.ts'
+import { resolveProjectShareCardSite } from './share-cards.sites.ts'
 import type { ShareCardTheme } from './types.ts'
 
 /** 与 html-attributes 的上下文对应；运行时卡片只有 host，构建期默认分享图另有 locale 与 pathname。 */
@@ -59,13 +59,7 @@ export function defaultShareCardSite(locale?: string): ShareCardSite {
   return { brand: { name: templateConfig.app.name }, host: appHost(), locale, fingerprint: '' }
 }
 
-function projectResolver(): ProjectShareCardSiteResolver | undefined {
-  // 遍历导出而不是直接取属性：项目未导出时打包器不会对缺失的具名导出告警。
-  const value = Object.entries(projectThemeModule).find(
-    ([name]) => name === 'resolveProjectShareCardSite',
-  )?.[1]
-  return typeof value === 'function' ? (value as ProjectShareCardSiteResolver) : undefined
-}
+const projectResolver = (): ProjectShareCardSiteResolver => resolveProjectShareCardSite
 
 /**
  * 按请求解析站点（卡片路由、分享页与 shareCardMeta 共用）。站点覆盖返回了 `host`（项目声明的规范域名）时，
@@ -75,11 +69,10 @@ function projectResolver(): ProjectShareCardSiteResolver | undefined {
 export function resolveRequestShareCardSite(
   requestUrl: string,
   appUrl: string,
-  mode: ShareCardThemeMode = 'light',
   resolver: ProjectShareCardSiteResolver | undefined = projectResolver(),
-): { site: ShareCardSite; theme: ShareCardTheme; origin: string } {
+): { site: ShareCardSite; themeOverride: Partial<ShareCardTheme>; origin: string } {
   const { host } = new URL(requestUrl)
-  const { canonicalHost, ...resolved } = resolveShareCardSite({ host }, mode, resolver)
+  const { canonicalHost, ...resolved } = resolveShareCardSite({ host }, resolver)
   const origin = canonicalHost ? `${new URL(appUrl).protocol}//${canonicalHost}` : appUrl
   return { ...resolved, origin }
 }
@@ -95,21 +88,26 @@ export function isBareHost(value: string): boolean {
 }
 
 /**
- * 模板基线叠加项目品牌覆盖与站点覆盖。覆盖的 `host` 不是裸主机名时整个覆盖视为无效，按单站点处理
+ * 解析站点覆盖。只返回主题覆盖 `themeOverride`，由渲染方交给 theme.ts 的 resolveShareCardTheme 叠加：
+ * 本模块被分享页与元数据的服务端模块静态导入，不能把主题基线（@saas/ui/share-card-theme）带进这些分包，
+ * 否则服务端分包合并方式改变（曾使 Node 构建的 icons 分包只剩再导出、source map 为空）。
+ * 覆盖的 `host` 不是裸主机名时整个覆盖视为无效，按单站点处理
  * （本模块也被 /dev/ui 客户端导入，不写服务端日志；单测覆盖该行为）。
  * `canonicalHost` 只在覆盖声明了合法 `host` 时给出，供绝对地址使用。
  */
 export function resolveShareCardSite(
   context: ShareCardSiteContext = {},
-  mode: ShareCardThemeMode = 'light',
   resolver: ProjectShareCardSiteResolver | undefined = projectResolver(),
-): { site: ShareCardSite; theme: ShareCardTheme; canonicalHost?: string | undefined } {
-  const base = resolveShareCardTheme(mode)
+): {
+  site: ShareCardSite
+  themeOverride: Partial<ShareCardTheme>
+  canonicalHost?: string | undefined
+} {
   const fallback = defaultShareCardSite(context.locale)
   const override = resolver?.(context)
-  if (!override) return { site: fallback, theme: base }
+  if (!override) return { site: fallback, themeOverride: {} }
   if (override.host !== undefined && !isBareHost(override.host)) {
-    return { site: fallback, theme: base }
+    return { site: fallback, themeOverride: {} }
   }
   const canonicalHost = override.host?.toLowerCase()
   const site: ShareCardSite = {
@@ -127,5 +125,5 @@ export function resolveShareCardSite(
       ]),
     ),
   }
-  return { site, theme: { ...base, ...override.theme }, canonicalHost }
+  return { site, themeOverride: { ...override.theme }, canonicalHost }
 }
