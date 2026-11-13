@@ -97,7 +97,7 @@ describe('文字与简繁', () => {
     expect((await run(script(), 'whatever'))?.pass).toBe(true)
   })
 
-  it('简体中混入「這們」失败并列出片段，繁体中混入「这们」失败', async () => {
+  it('简体中混入「這們」失败并列出片段，繁体中混入「们说」失败', async () => {
     const hans = await run(
       chineseVariant({ variant: 'zh-Hans' }),
       '这是我们的产品，這些人們都喜欢。',
@@ -108,10 +108,12 @@ describe('文字与简繁', () => {
     expect(hans?.detail).toMatch(/\[這\]/)
     const hant = await run(
       chineseVariant({ variant: 'zh-Hant' }),
-      '這是我們的產品，这些人们都喜歡。',
+      '這是我們的產品，这些人们都说喜歡。',
     )
     expect(hant?.pass).toBe(false)
-    expect(hant?.detail).toContain('这')
+    expect(hant?.detail).toContain('们')
+    expect(hant?.detail).toContain('说')
+    expect(hant?.detail).toMatch(/^2 simplified-only chars/)
     expect((await run(chineseVariant({ variant: 'zh-Hans' }), '这是我们的产品。'))?.pass).toBe(true)
     // 未指定 variant 时沿用样本 expect.script.lang
     const fromLang = await run(chineseVariant(), '這個', { script: { lang: 'zh-Hans' } })
@@ -122,10 +124,20 @@ describe('文字与简繁', () => {
     const traditional = new Set(TRADITIONAL_ONLY)
     const simplified = new Set(SIMPLIFIED_ONLY)
     expect(traditional.size).toBeGreaterThanOrEqual(450)
-    expect(simplified.size).toBeGreaterThanOrEqual(400)
+    expect(simplified.size).toBeGreaterThanOrEqual(300)
     for (const char of traditional) expect(simplified.has(char)).toBe(false)
-    for (const char of '這們來會說時個過還發') expect(traditional.has(char)).toBe(true)
-    for (const char of '这们来会说时个过还发') expect(simplified.has(char)).toBe(true)
+    for (const char of simplified) expect(traditional.has(char)).toBe(false)
+    for (const char of '這們來會說時個過還發麼餘') expect(traditional.has(char)).toBe(true)
+    for (const char of '们来说发') expect(simplified.has(char)).toBe(true)
+    // 繁体文本中同样合法的字（简繁同形、Big5 收录）不进「仅简体」，「於」在通用规范汉字表中，不进「仅繁体」
+    for (const char of '里斗丑于余涂云咸仆丰据筑叶冲适并极术这会个后')
+      expect(simplified.has(char), char).toBe(false)
+    expect(traditional.has('於')).toBe(false)
+  })
+
+  it('繁体文本中的简繁同形字不误报', async () => {
+    for (const text of ['距離約三公里。', '漏斗與小丑。', '於是我們出發了。', '于是他離開了。'])
+      expect((await run(chineseVariant({ variant: 'zh-Hant' }), text))?.pass, text).toBe(true)
   })
 })
 
