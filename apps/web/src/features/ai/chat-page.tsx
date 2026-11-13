@@ -96,6 +96,8 @@ function ConversationActions({ session }: { session: ChatSession }) {
  */
 function ChatPageHeader({ session }: { session: ChatSession }) {
   const state = useChatSessionState(session)
+  // 侧边栏布局：顶部条不显示标题（路由 staticData.shellTitle = false），对话标题是页面 h1；顶部布局的 h1 为空间名
+  const Heading = useAppShellBarAvailable() ? 'h1' : 'h2'
   return (
     <div className="flex min-h-12 min-w-0 items-center gap-2 border-b pb-2">
       <Link
@@ -108,12 +110,12 @@ function ChatPageHeader({ session }: { session: ChatSession }) {
         <span className="max-sm:hidden">{m.chat_ui_all_chats()}</span>
       </Link>
       <span aria-hidden className="h-4 w-px shrink-0 bg-border max-sm:hidden" />
-      <h2
+      <Heading
         className="ml-1 min-w-0 flex-1 truncate font-semibold text-subtitle"
         data-testid="conversation-title"
       >
         {state.title || m.chat_ui_untitled()}
-      </h2>
+      </Heading>
       <ConversationActions session={session} />
     </div>
   )

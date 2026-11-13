@@ -151,6 +151,10 @@ test('chat page renders Markdown replies, copies code, stops and fits 390px (4.5
 
     const input = page.locator('#chat-input')
     await expect(input).toBeEnabled({ timeout: 30_000 })
+    // 只有一行标题：顶部条不显示「对话」，对话区头部的标题是页面唯一的 h1
+    await expect(page.getByTestId('app-page-title')).toHaveCount(0)
+    await expect(page.locator('h1')).toHaveCount(1)
+    await expect(page.locator('h1')).toHaveAttribute('data-testid', 'conversation-title')
     // 空态：输入区贴在底部（Main.dc.html 的 empty）
     await shoot(page, 'chat-page-empty-desktop-light')
     await input.fill('Put last quarter CAC by channel in a table, with sample code.')

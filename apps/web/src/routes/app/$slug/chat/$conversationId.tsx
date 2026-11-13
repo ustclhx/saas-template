@@ -18,6 +18,8 @@ export const Route = createFileRoute('/app/$slug/chat/$conversationId')({
   }),
   component: ConversationPage,
   pendingComponent: ChatPageSkeleton,
+  // 对话区头部即页面标题（版式取舍 2），顶部条不再显示「对话」标题
+  staticData: { shellTitle: false },
   notFoundComponent: () => {
     const { slug } = Route.useParams()
     return (
