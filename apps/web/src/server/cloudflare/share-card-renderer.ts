@@ -23,8 +23,9 @@ export function workersShareCardRenderer(assets: Fetcher): ShareCardRenderer {
       { name: 'Inter', data: inter600, weight: 600, style: 'normal' },
     ],
     loadCjkFont: async () => {
-      // ASSETS 只按路径匹配静态资源，主机名不参与
-      const response = await assets.fetch(new Request(`https://assets.local${CJK_FONT_PATH}`))
+      // ASSETS 只按路径匹配静态资源，主机名不参与；开发时 ASSETS 转发给 vite dev，
+      // 其主机白名单会以 403 拒绝未知主机，所以用 localhost。
+      const response = await assets.fetch(new Request(`http://localhost${CJK_FONT_PATH}`))
       if (!response.ok) {
         await response.body?.cancel()
         throw new Error(`Share card CJK font unavailable: ${response.status}`)

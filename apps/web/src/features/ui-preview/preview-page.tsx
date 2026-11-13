@@ -16,6 +16,7 @@ import { m } from '../../paraglide/messages.js'
 import { templateConfig } from '../../server/template-config.ts'
 import { ThemeToggle } from '../theme/theme-toggle.tsx'
 import { MarketingSection } from './section-marketing.tsx'
+import { ShareCardsSection } from './section-share-cards.tsx'
 import {
   BadgeTooltipSection,
   ButtonSection,
@@ -66,6 +67,7 @@ const SECTIONS = [
     'InsufficientCreditsDialog · CreditEstimate · LockedFeature · DailyClaimNotice',
   ],
   ['marketing', 'Marketing blocks'],
+  ['share-cards', 'Share cards'],
 ] as const
 
 /**
@@ -159,6 +161,7 @@ export function UiPreviewPage() {
         <AiChatComponentsSection />
         <CreditsComponentsSection />
         <MarketingSection />
+        <ShareCardsSection />
       </div>
     </UiRoot>
   )

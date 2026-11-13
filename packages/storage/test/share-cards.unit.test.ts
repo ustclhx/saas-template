@@ -16,6 +16,10 @@ function fixture(indexes: number) {
       const result = page.slice(0, limit)
       return { keys: result, ...(page.length > limit ? { cursor: result.at(-1) ?? '' } : {}) }
     },
+    get: async () => null,
+    put: async (key) => {
+      keys.add(key)
+    },
     async delete(key) {
       keys.delete(key)
     },
