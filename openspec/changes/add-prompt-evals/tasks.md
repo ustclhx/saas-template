@@ -13,10 +13,10 @@
 
 ## 3. 评测核心（可并行）
 
-- [ ] 3.1 套件与锁文件（D2、D4）：`defineSuite`、`samples.json` 的 Zod 校验（ID 唯一、`expect` 结构）、套件解析（`example` 指向 `packages/evals/example/`，其他名字指向根目录 `evals/<name>/suite.ts`，不存在时配置错误）、`prompts.lock.json` 的比对与只追加写入，区分「提示词改动」与「样本改动」两种报错。验证：单测覆盖重复样本 ID、未知提示词版本、改 system 报错且锁不变、改样本输入报不同错误、新增版本与新样本追加、已有条目永不改写。
-- [ ] 3.2 确定性检查（D7）：检查接口与严重级别；内置 `sections`、`length`、`banned`、`script`、`chinese-variant`；样本 `expect` 覆盖套件参数。新增简繁字表数据文件与生成脚本（头部写明 Unihan 字段与字频来源、生成日期），约 500 个常用仅繁体字与对应仅简体字。验证：单测覆盖缺章节与顺序错误、章节内长度、码点计数（emoji 计 1）、禁用正则命中片段、英文输出被判非 `zh-Hans`、简体中混入「這們」失败、繁体中混入「这们」失败、自定义检查返回警告不影响结果、字表中没有简繁同形字。
-- [ ] 3.3 预算账本（D10）：调用前估算（复用 `estimateInputTokens`，按模型 `tokensPerChar`）、预留、结算、用量缺失按估算记账、触顶后拒绝后续调用；缺单价时报配置错误。验证：单测覆盖 spec「美元预算上限」的三个场景，以及并发 4 时已花费与在途之和始终不超过上限（用可控延迟的模拟模型）。
-- [ ] 3.4 评委（D8）：内置评委提示词、Zod 输出 schema、`generateText` + `Output.object`、`temperature: 0`、归一与加权、越界与解析失败记为评委错误。验证：单测用 `MockLanguageModelV4` 覆盖 spec「LLM 评委」两个场景（总分 0.75、无法解析），以及分数越界。
+- [x] 3.1 套件与锁文件（D2、D4）：`defineSuite`、`samples.json` 的 Zod 校验（ID 唯一、`expect` 结构）、套件解析（`example` 指向 `packages/evals/example/`，其他名字指向根目录 `evals/<name>/suite.ts`，不存在时配置错误）、`prompts.lock.json` 的比对与只追加写入，区分「提示词改动」与「样本改动」两种报错。验证：单测覆盖重复样本 ID、未知提示词版本、改 system 报错且锁不变、改样本输入报不同错误、新增版本与新样本追加、已有条目永不改写。
+- [x] 3.2 确定性检查（D7）：检查接口与严重级别；内置 `sections`、`length`、`banned`、`script`、`chinese-variant`；样本 `expect` 覆盖套件参数。新增简繁字表数据文件与生成脚本（头部写明 Unihan 字段与字频来源、生成日期），约 500 个常用仅繁体字与对应仅简体字。验证：单测覆盖缺章节与顺序错误、章节内长度、码点计数（emoji 计 1）、禁用正则命中片段、英文输出被判非 `zh-Hans`、简体中混入「這們」失败、繁体中混入「这们」失败、自定义检查返回警告不影响结果、字表中没有简繁同形字。
+- [x] 3.3 预算账本（D10）：调用前估算（复用 `estimateInputTokens`，按模型 `tokensPerChar`）、预留、结算、用量缺失按估算记账、触顶后拒绝后续调用；缺单价时报配置错误。验证：单测覆盖 spec「美元预算上限」的三个场景，以及并发 4 时已花费与在途之和始终不超过上限（用可控延迟的模拟模型）。
+- [x] 3.4 评委（D8）：内置评委提示词、Zod 输出 schema、`generateText` + `Output.object`、`temperature: 0`、归一与加权、越界与解析失败记为评委错误。验证：单测用 `MockLanguageModelV4` 覆盖 spec「LLM 评委」两个场景（总分 0.75、无法解析），以及分数越界。
 
 ## 4. 运行器、回放与命令行
 

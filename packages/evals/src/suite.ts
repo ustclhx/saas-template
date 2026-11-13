@@ -1,0 +1,194 @@
+import { existsSync, readFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import type { DefinedPrompt } from '@saas/ai'
+import type { Check } from './checks.ts'
+import { EvalConfigError } from './errors.ts'
+import { idPattern, parseSamples, type Sample } from './sample.ts'
+
+/** 模型声明（design D4）：单价为美元 / 百万 token，真实与录制模式必填 */
+export interface ModelSpec {
+  readonly provider: string
+  readonly providerModelId: string
+  readonly priceUsd?: { readonly inputPerMTok: number; readonly outputPerMTok: number }
+  /** 输入 token 估算系数，缺省 1（与 @saas/ai 的保守估算一致） */
+  readonly tokensPerChar?: number
+}
+
+/** 评分标准（design D8） */
+export interface Rubric {
+  readonly version: string
+  readonly instructions?: string
+  readonly criteria: readonly {
+    readonly id: string
+    readonly description: string
+    readonly weight?: number
+  }[]
+  readonly scale: { readonly min: number; readonly max: number }
+}
+
+export interface SuiteDefinition {
+  readonly name: string
+  // biome-ignore lint/suspicious/noExplicitAny: 套件内的提示词共享样本输入，类型由项目决定
+  readonly prompts: readonly DefinedPrompt<any>[]
+  /** 缺省取 prompts 的最后一个 */
+  readonly defaultPrompt?: string
+  readonly models: Readonly<Record<string, ModelSpec>>
+  readonly generator: string
+  readonly judge?: { readonly model: string; readonly rubric: Rubric }
+  readonly checks?: readonly Check[]
+  /** 平均总分下降超过此值判为回退，缺省 0.05 */
+  readonly regressionThreshold?: number
+}
+
+const SUITE_MARK = Symbol.for('saas.evals.suite')
+
+export type Suite = SuiteDefinition & { readonly [SUITE_MARK]: true }
+
+function fail(name: string, message: string): never {
+  throw new EvalConfigError(`suite ${name}: ${message}`)
+}
+
+export function defineSuite(def: SuiteDefinition): Suite {
+  const name = def.name
+  if (!/^[a-z0-9][a-z0-9_-]*$/.test(name))
+    fail(name, 'name must be lowercase letters, digits, - or _')
+  if (def.prompts.length === 0) fail(name, 'prompts must not be empty')
+  const versions = new Set<string>()
+  for (const prompt of def.prompts) {
+    if (versions.has(prompt.promptVersion))
+      fail(name, `duplicate prompt version ${prompt.promptVersion}`)
+    versions.add(prompt.promptVersion)
+  }
+  if (def.defaultPrompt && !versions.has(def.defaultPrompt))
+    fail(name, `defaultPrompt ${def.defaultPrompt} is not in prompts`)
+  for (const [key, model] of Object.entries(def.models)) {
+    if (!idPattern.test(key)) fail(name, `invalid model key ${key}`)
+    if (!model.provider || !model.providerModelId)
+      fail(name, `model ${key} needs provider and providerModelId`)
+    const price = model.priceUsd
+    if (
+      price &&
+      ![price.inputPerMTok, price.outputPerMTok].every(
+        (value) => Number.isFinite(value) && value >= 0,
+      )
+    )
+      fail(name, `model ${key} has an invalid priceUsd`)
+    if (
+      model.tokensPerChar !== undefined &&
+      !(Number.isFinite(model.tokensPerChar) && model.tokensPerChar > 0)
+    )
+      fail(name, `model ${key} has an invalid tokensPerChar`)
+  }
+  if (!def.models[def.generator]) fail(name, `generator ${def.generator} is not in models`)
+  if (def.judge) {
+    if (!def.models[def.judge.model]) fail(name, `judge model ${def.judge.model} is not in models`)
+    const { rubric } = def.judge
+    if (!rubric.version) fail(name, 'rubric.version is required')
+    if (rubric.criteria.length === 0) fail(name, 'rubric.criteria must not be empty')
+    const ids = new Set<string>()
+    for (const criterion of rubric.criteria) {
+      if (!idPattern.test(criterion.id) || ids.has(criterion.id))
+        fail(name, `invalid or duplicate criterion id ${criterion.id}`)
+      ids.add(criterion.id)
+      if (criterion.weight !== undefined && !(criterion.weight > 0))
+        fail(name, `criterion ${criterion.id} weight must be positive`)
+    }
+    if (!(Number.isFinite(rubric.scale.min) && rubric.scale.max > rubric.scale.min))
+      fail(name, 'rubric.scale must have min < max')
+  }
+  const checkIds = new Set<string>()
+  for (const check of def.checks ?? []) {
+    if (!idPattern.test(check.id) || checkIds.has(check.id))
+      fail(name, `invalid or duplicate check id ${check.id}`)
+    checkIds.add(check.id)
+  }
+  if (
+    def.regressionThreshold !== undefined &&
+    !(def.regressionThreshold >= 0 && def.regressionThreshold <= 1)
+  )
+    fail(name, 'regressionThreshold must be between 0 and 1')
+  return Object.freeze({ ...def, [SUITE_MARK]: true as const })
+}
+
+export const isSuite = (value: unknown): value is Suite =>
+  typeof value === 'object' && value !== null && SUITE_MARK in value
+
+/** 默认提示词版本：`defaultPrompt`，缺省为最后一个 */
+export function defaultPromptVersion(suite: SuiteDefinition): string {
+  return suite.defaultPrompt ?? (suite.prompts.at(-1)?.promptVersion as string)
+}
+
+export function findPrompt(suite: SuiteDefinition, promptVersion: string) {
+  const prompt = suite.prompts.find((item) => item.promptVersion === promptVersion)
+  if (!prompt)
+    throw new EvalConfigError(
+      `unknown prompt version ${promptVersion}; suite ${suite.name} has ${suite.prompts
+        .map((item) => item.promptVersion)
+        .join(', ')}`,
+    )
+  return prompt
+}
+
+/** 仓库根目录：本文件位于 packages/evals/src */
+export const REPO_ROOT = resolve(import.meta.dirname, '../../..')
+
+/**
+ * 套件目录（design D12）：`example` 指向模板自带的 `packages/evals/example/`，
+ * 其他名字指向项目自有的根目录 `evals/<name>/`。
+ */
+export function suiteDir(name: string, root = REPO_ROOT): string {
+  if (!/^[a-z0-9][a-z0-9_-]*$/.test(name))
+    throw new EvalConfigError(`invalid suite name ${JSON.stringify(name)}`)
+  return name === 'example' ? join(root, 'packages/evals/example') : join(root, 'evals', name)
+}
+
+export interface LoadedSuite {
+  readonly suite: Suite
+  readonly samples: readonly Sample[]
+  readonly dir: string
+}
+
+/** 读取套件与样本；套件不存在、默认导出不是 defineSuite 结果或样本不合法时为配置错误 */
+export async function loadSuite(name: string, root = REPO_ROOT): Promise<LoadedSuite> {
+  const dir = suiteDir(name, root)
+  const file = join(dir, 'suite.ts')
+  if (!existsSync(file))
+    throw new EvalConfigError(
+      `suite ${name} not found: expected ${name === 'example' ? file : `evals/${name}/suite.ts`}`,
+    )
+  const module = (await import(pathToFileURL(file).href)) as { default?: unknown }
+  if (!isSuite(module.default))
+    throw new EvalConfigError(`suite ${name}: suite.ts must export default defineSuite({...})`)
+  const samplesFile = join(dir, 'samples.json')
+  if (!existsSync(samplesFile)) throw new EvalConfigError(`suite ${name}: samples.json not found`)
+  let data: unknown
+  try {
+    data = JSON.parse(readFileSync(samplesFile, 'utf8'))
+  } catch (error) {
+    throw new EvalConfigError(
+      `suite ${name}: samples.json is not valid JSON (${error instanceof Error ? error.message : error})`,
+    )
+  }
+  const samples = parseSamples(data, `suite ${name} samples.json`)
+  validateExpect(module.default, samples)
+  return { suite: module.default, samples, dir }
+}
+
+/** 样本 `expect` 只能引用套件中的检查，参数按检查的 schema 校验 */
+export function validateExpect(suite: SuiteDefinition, samples: readonly Sample[]) {
+  const byId = new Map((suite.checks ?? []).map((check) => [check.id, check]))
+  for (const sample of samples)
+    for (const [id, params] of Object.entries(sample.expect ?? {})) {
+      const check = byId.get(id)
+      if (!check)
+        throw new EvalConfigError(`sample ${sample.id}: expect.${id} has no matching check`)
+      const parsed = check.expectSchema?.safeParse(params)
+      if (parsed && !parsed.success)
+        throw new EvalConfigError(
+          `sample ${sample.id}: expect.${id} is invalid (${parsed.error.issues
+            .map((issue) => `${issue.path.join('.')} ${issue.message}`)
+            .join('; ')})`,
+        )
+    }
+}
