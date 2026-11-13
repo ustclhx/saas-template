@@ -1,9 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { templateConfig } from '../../server/template-config.ts'
+import { defaultShareCardLayout } from '../share-cards/layout.tsx'
+import { resolveShareCardTheme } from '../share-cards/theme.ts'
 import { llmsTxt, robots, sitemap } from './crawlers.ts'
 import { localizedPath, pageHead, privateMeta } from './metadata.ts'
-import { OgCard } from './og-card.ts'
 import { publicPages } from './pages.ts'
 import {
   articleData,
@@ -303,7 +304,9 @@ describe('分享图与缓存（4.4）', () => {
   it('无封面页面的卡片包含站点名称和页面标题', () => {
     const page = pages.find((page) => page.path === '/legal/terms' && page.locale === locale)
     if (!page) throw new Error('Missing legal page')
-    const markup = renderToStaticMarkup(<OgCard title={page.title} />)
+    const markup = renderToStaticMarkup(
+      defaultShareCardLayout(page.title, resolveShareCardTheme('light')),
+    )
     expect(markup).toContain(templateConfig.app.name)
     expect(markup).toContain(page.title)
   })

@@ -80,9 +80,14 @@ export async function fetch(request: ServerRequest): Promise<Response> {
         try {
           const response = await nitroApp.fetch(nativeRequest)
           // SSR 已授权本请求的 nonce；Nitro 静态资源（含预渲染首页）在这里补头与内容哈希。
-          return response.headers.has('Content-Security-Policy-Report-Only')
-            ? response
-            : await withStaticSecurityHeaders(response, security)
+          if (response.headers.has('Content-Security-Policy-Report-Only')) return response
+          const secured = await withStaticSecurityHeaders(response, security)
+          // 分享卡片字体与 Workers 的 _headers 一致：长期缓存且不被索引
+          if (new URL(request.url).pathname.startsWith('/fonts/share-card/') && secured.ok) {
+            secured.headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+            secured.headers.set('X-Robots-Tag', 'noindex')
+          }
+          return secured
         } catch (error) {
           if (observer) captureNodeError(observer, error, { requestId: meta.requestId })
           return new Response('Internal Server Error', {
