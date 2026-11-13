@@ -4,7 +4,7 @@
 
 ## 1. 提示词定义（`@saas/ai`）
 
-- [ ] 1.1 新增 `packages/ai/src/text/prompt.ts`（design D2）：`PromptDefinition`、`definePrompt`（校验 id 为小写短横线、版本非空，冻结并附 `promptVersion = <id>@<version>`）、`renderPrompt`（system 可为字符串或函数），以及渲染结果的规范化 JSON 与 SHA-256 摘要函数（用 Web Crypto，Workers 与 Node 都可用）；从 `text/index.ts` 导出。不新增依赖、不导入数据库。验证：`packages/ai` 单测覆盖非法 id、`promptVersion` 格式、函数式与字符串 system、相同输入摘要稳定、键顺序不影响摘要、params 变化改变摘要；`pnpm --filter @saas/ai typecheck` 通过。
+- [x] 1.1 新增 `packages/ai/src/text/prompt.ts`（design D2）：`PromptDefinition`、`definePrompt`（校验 id 为小写短横线、版本非空，冻结并附 `promptVersion = <id>@<version>`）、`renderPrompt`（system 可为字符串或函数），以及渲染结果的规范化 JSON 与 SHA-256 摘要函数（用 Web Crypto，Workers 与 Node 都可用）；从 `text/index.ts` 导出。不新增依赖、不导入数据库。验证：`packages/ai` 单测覆盖非法 id、`promptVersion` 格式、函数式与字符串 system、相同输入摘要稳定、键顺序不影响摘要、params 变化改变摘要；`pnpm --filter @saas/ai typecheck` 通过。
 
 ## 2. 评测包骨架与依赖边界
 
