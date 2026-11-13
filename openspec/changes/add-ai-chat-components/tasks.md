@@ -9,7 +9,7 @@
 
 ## 1. 设计稿（协调者）
 
-- [ ] 1.1 用 `ui-design` 技能出 Design 画布，画板见 design D9：对话页桌面 / 390px × 浅色 / 深色、空 / 加载 / 错误态，嵌入式 SubjectChat 的 inline / panel / 底部抽屉（未开始与进行中），消息各状态（思考中、流式、推理折叠 / 展开、工具调用四态、已停止、失败、未完成、重试中），Markdown 样例（表格、长代码行、复制按钮），输入区四态。经使用者确认后保存副本并登记原型索引（原型索引行待使用者确认后登记）；确认结果与 design D6、D7 有出入时同步更新 design 与本 tasks。验证：`docs/design-system/prototypes/README.md` 有对应行，附使用者原话，副本文件存在。
+- [x] 1.1 用 `ui-design` 技能出 Design 画布，画板见 design D9：对话页桌面 / 390px × 浅色 / 深色、空 / 加载 / 错误态，嵌入式 SubjectChat 的 inline / panel / 底部抽屉（未开始与进行中），消息各状态（思考中、流式、推理折叠 / 展开、工具调用四态、已停止、失败、未完成、重试中），Markdown 样例（表格、长代码行、复制按钮），输入区四态。经使用者确认后保存副本并登记原型索引（原型索引行待使用者确认后登记）；确认结果与 design D6、D7 有出入时同步更新 design 与本 tasks。验证：`docs/design-system/prototypes/README.md` 有对应行，附使用者原话，副本文件存在。
 
 ## 2. 组件移植（`packages/ui`，线 A）
 

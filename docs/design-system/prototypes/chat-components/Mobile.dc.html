@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>对话页·手机</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:none}
+.r{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;width:390px;height:844px;display:flex;flex-direction:column;overflow:hidden}
+button,textarea{font:inherit;color:inherit;margin:0}
+button{cursor:pointer;border:0;background:none;padding:0}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.cap{font-size:12px;line-height:16px}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:8px;flex-shrink:0}
+.ib-s{width:32px;height:32px}
+.ubub{align-self:flex-end;max-width:85%;padding:10px 14px;border-radius:12px}
+.av{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:9999px;flex-shrink:0}
+.md{overflow-wrap:anywhere}
+.md p{margin:0 0 10px}
+.md code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;padding:1px 5px;border-radius:5px}
+.tbl{overflow-x:auto;border-radius:8px;margin:0 0 10px}
+.tbl table{border-collapse:collapse;font-size:13px;line-height:18px}
+.tbl th,.tbl td{text-align:left;padding:7px 12px;white-space:nowrap}
+.tbl th{font-weight:600}
+.cb{border-radius:10px;margin:0 0 10px;overflow:hidden}
+.cbh{display:flex;align-items:center;height:34px;padding:0 4px 0 12px;gap:8px}
+.cb pre{margin:0;padding:12px 14px;overflow-x:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:19px}
+.tool{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border-radius:8px;font-size:13px;align-self:flex-start}
+.badge{display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 6px;border-radius:9999px;font-size:12px;font-weight:500}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+svg{flex-shrink:0}
+sc-if,sc-for{display:contents}
+</style>
+</helmet>
+<div class="r" style="background:{{t.panel}};color:{{t.fg}}">
+  <header class="row" style="height:52px;padding:0 4px;gap:2px;border-bottom:1px solid {{t.border}};flex-shrink:0">
+    <a href="#" class="ib" aria-label="全部对话" style="color:{{t.mfg}}"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></a>
+    <h1 style="margin:0;flex:1;min-width:0;font-size:15px;line-height:20px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">渠道获客成本分析</h1>
+    <button type="button" class="ib" aria-label="对话操作" style="color:{{t.mfg}}"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle><circle cx="19" cy="12" r="1.5"></circle></svg></button>
+  </header>
+
+  <div class="col" style="flex:1;min-height:0;overflow:hidden;padding:16px 16px 8px;gap:16px">
+    <div class="ubub" style="background:{{t.secondary}}">把上季度三个渠道的获客成本整理成表格，再给一段计算 CAC 的示例代码。</div>
+    <div class="col" style="gap:8px;min-width:0">
+      <div class="row" style="gap:8px">
+        <span class="av" aria-hidden="true" style="background:{{t.primary}};color:{{t.pfg}}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span>
+        <button type="button" class="row" aria-expanded="false" style="gap:4px;height:28px;font-size:13px;color:{{t.mfg}}">已思考 6 秒<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></button>
+      </div>
+      <div class="tool" style="box-shadow:inset 0 0 0 1px {{t.border}}">
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+        <span style="font-weight:500">查询报告数据</span>
+        <span class="badge" style="background:{{t.successSoft}};color:{{t.success}}">已完成</span>
+      </div>
+      <div class="md">
+        <p>按报告第 3 章的数据，三个渠道上季度的获客成本如下（表格可左右滑动）：</p>
+        <div class="tbl" tabindex="0" role="region" aria-label="表格，可横向滚动" style="box-shadow:inset 0 0 0 1px {{t.border}}">
+          <table>
+            <thead style="background:{{t.theadBg}}"><tr><th>渠道</th><th>新客</th><th>投放（元）</th><th>CAC（元）</th><th>环比</th></tr></thead>
+            <tbody>
+              <tr style="border-top:1px solid {{t.border}}"><td>搜索广告</td><td>1,240</td><td>186,000</td><td>150</td><td>−8%</td></tr>
+              <tr style="border-top:1px solid {{t.border}}"><td>内容合作</td><td>860</td><td>98,900</td><td>115</td><td>+3%</td></tr>
+              <tr style="border-top:1px solid {{t.border}}"><td>线下活动 *</td><td>310</td><td>74,400</td><td>240</td><td>+21%</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="cb" style="box-shadow:inset 0 0 0 1px {{t.border}}">
+          <div class="cbh" style="background:{{t.theadBg}};border-bottom:1px solid {{t.border}}">
+            <span class="cap" style="flex:1;color:{{t.mfg}};font-family:ui-monospace,Menlo,monospace">python</span>
+            <button type="button" class="ib ib-s" aria-label="复制代码" style="color:{{t.mfg}}"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="14" height="14" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg></button>
+          </div>
+          <pre tabindex="0" style="background:{{t.card}}"><code>def cac(spend: dict[str, float], new_users: dict[str, int]) -&gt; dict[str, float]:
+    return {ch: round(spend[ch] / n, 1) for ch, n in new_users.items() if n &gt; 0}</code></pre>
+        </div>
+      </div>
+      <div class="row" role="group" aria-label="这条回答的操作" style="gap:0;margin-left:-6px">
+        <button type="button" class="ib ib-s" aria-label="复制回复" style="color:{{t.mfg}}"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="14" height="14" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg></button>
+        <button type="button" class="ib ib-s" aria-label="有帮助" aria-pressed="false" style="color:{{t.mfg}}"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"></path></svg></button>
+        <button type="button" class="ib ib-s" aria-label="没帮助" aria-pressed="false" style="color:{{t.mfg}}"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14V2M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"></path></svg></button>
+        <span class="cap" style="margin-left:6px;color:{{t.mfg}}">4 积分</span>
+      </div>
+    </div>
+  </div>
+
+  <form aria-label="发送消息" style="padding:8px 12px 12px;border-top:1px solid {{t.border}};background:{{t.panel}};flex-shrink:0">
+    <div class="col" style="border-radius:12px;background:{{t.card}};border:1px solid {{t.border}}">
+      <label for="m-composer" class="sr">消息</label>
+      <textarea id="m-composer" rows="1" placeholder="输入消息" style="width:100%;resize:none;padding:10px 12px 2px;border:0;background:transparent;font-size:16px;line-height:22px;outline:none"></textarea>
+      <div class="row" style="gap:4px;padding:4px 6px 6px">
+        <button type="button" aria-haspopup="listbox" aria-label="选择模型，当前：通用模型" class="row" style="height:32px;gap:2px;padding:0 6px;border-radius:8px;font-size:12px;font-weight:500">通用模型<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button>
+        <button type="button" class="ib ib-s" role="switch" aria-checked="true" aria-label="深度思考" style="color:{{t.fg}};background:{{t.active}}"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"></path><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"></path></svg></button>
+        <span style="flex:1"></span>
+        <span class="cap" style="color:{{t.mfg}}">约 4 积分</span>
+        <button type="button" class="ib ib-s" aria-label="发送" style="background:{{t.primary}};color:{{t.pfg}};opacity:0.5"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7M12 19V5"></path></svg></button>
+      </div>
+    </div>
+  </form>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":390,"height":844}}'>
+function uiTokens(dark) {
+  var t = dark ? {
+    fg: '#f5f5f5', mfg: '#b0b0b0', primary: '#f5f5f5', pfg: '#171717', panel: '#1e1e1e', card: '#252525',
+    success: '#4ade80', successSoft: 'rgba(74,222,128,0.14)', border: 'rgba(245,245,245,0.12)', active: 'rgba(255,255,255,0.1)',
+    secondary: '#2c2c2c', theadBg: 'rgba(30,30,30,0.5)'
+  } : {
+    fg: '#171717', mfg: '#6b6b6b', primary: '#171717', pfg: '#fafafa', panel: '#fcfcfc', card: '#ffffff',
+    success: '#15803d', successSoft: 'rgba(21,128,61,0.1)', border: 'rgba(23,23,23,0.12)', active: 'rgba(0,0,0,0.07)',
+    secondary: '#f4f4f5', theadBg: 'rgba(244,244,245,0.6)'
+  };
+  return t;
+}
+class Component extends DCLogic {
+  renderVals() {
+    return { t: uiTokens(!!this.props.dark) };
+  }
+}
+</script>
+</body>
+</html>
