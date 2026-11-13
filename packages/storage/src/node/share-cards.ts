@@ -1,7 +1,12 @@
-import { DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3'
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+} from '@aws-sdk/client-s3'
 import { AppError } from '@saas/shared'
 import type { ShareCardObjects } from '../share-cards.ts'
-import { createS3Client, type S3StorageConfig, storageError } from './client.ts'
+import { createS3Client, isMissing, type S3StorageConfig, storageError } from './client.ts'
 
 export function createNodeShareCardObjects(config: S3StorageConfig): ShareCardObjects {
   async function operation<T>(
@@ -37,6 +42,33 @@ export function createNodeShareCardObjects(config: S3StorageConfig): ShareCardOb
             ? { cursor: page.NextContinuationToken }
             : {}),
         }
+      }),
+    get: (key) =>
+      operation(key, async (client) => {
+        try {
+          const object = await client.send(
+            new GetObjectCommand({ Bucket: config.bucket, Key: key }),
+          )
+          return {
+            body: (await object.Body?.transformToByteArray()) ?? new Uint8Array(),
+            metadata: object.Metadata ?? {},
+          }
+        } catch (error) {
+          if (isMissing(error)) return null
+          throw error
+        }
+      }),
+    put: (key, body, options = {}) =>
+      operation(key, async (client) => {
+        await client.send(
+          new PutObjectCommand({
+            Bucket: config.bucket,
+            Key: key,
+            Body: body,
+            ...(options.contentType ? { ContentType: options.contentType } : {}),
+            ...(options.metadata ? { Metadata: options.metadata } : {}),
+          }),
+        )
       }),
     delete: (key) =>
       operation(key, async (client) => {

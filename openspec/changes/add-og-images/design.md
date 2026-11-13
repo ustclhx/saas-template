@@ -72,7 +72,7 @@ interface ShareCardDefinition<T> {
 
 - 有效期：`expiresAt` 优先；省略时为 `sharedAt + ttlDays`；`ttlDays` 默认 90 天，常量放 `template.config.ts` 的 `shareCards.defaultTtlDays`，项目可整体或按类型修改。
 - 项目在自有文件 `share-cards.project.ts` 中注册，与 `nav.project.ts` 的模式相同，模板不写这个文件。重名注册在启动时抛错。
-- 模板的示例类型 `sample` 只在测试与 `/dev/ui` 中注册，用内存数据实现 `resolve`。
+- 模板的示例类型 `sample` 用内存数据实现 `resolve`，在测试、开发以及开启 `UI_PREVIEW` 的环境（staging）中注册，供 `/dev/ui` 预览、e2e 与 staging 验收使用；生产不设 `UI_PREVIEW`，从不注册。
 
 ### 3. 地址与缓存
 
@@ -88,10 +88,11 @@ interface ShareCardDefinition<T> {
   5. 都未命中才限流、调用 `resolve`，校验到期，确认当前摘要与 `v` 一致（不一致 302 到新地址），然后渲染，写入 R2 图片、空间索引与 Cache API。
 - **响应头**：
   - `Content-Type: image/png`
-  - `Cache-Control: public, max-age=min(86400, 剩余秒数), s-maxage=min(31536000, 剩余秒数)`；永不过期时加 `immutable`
+  - `Cache-Control: public, max-age=min(86400, 剩余秒数), s-maxage=min(86400, 剩余秒数)`。公共缓存上限 1 天，与 KV 撤销标记的 1 天 TTL 一致：标记过期时边缘缓存条目也已过期，撤销后的旧图不会再从 Cache API 返回。撤销无法清除 `immutable`，所以不使用。
+  - Cache API 条目附带 `x-share-card-expires`（到期时间或 `never`），命中时据此重算缓存头，不发给客户端。
   - `X-Robots-Tag: noindex`
   - `X-Content-Type-Options: nosniff`
-- **失效函数** `invalidateShareCard({ type, token, workspaceId })`：删除 R2 图片前缀与空间索引，写 KV 撤销标记（TTL 一天，覆盖边缘缓存周期）。项目在撤销分享、删除被分享资源时调用。修改资源不必调用，摘要变化会换地址。
+- **失效函数** `invalidateShareCard({ type, token, workspaceId })`：写 KV 撤销标记（TTL 一天，覆盖边缘缓存周期）与 R2 撤销墓碑 `share-cards/revoked/<type>/<token>`，再删除 R2 图片前缀与空间索引。KV 标记是请求开头的廉价预检；KV 读取默认缓存 60 秒，所以渲染后写入前、写入后的两次复查读强一致的 R2 墓碑（自托管的 S3 同样），写入后看到墓碑就撤回本次写入。墓碑永不删除：令牌不复用，空对象成本可以忽略，删除反而会重新打开与渲染并发的窗口。项目在撤销分享、删除被分享资源时调用。修改资源不必调用，摘要变化会换地址。
 - **备选方案**：只用 Cache API，不用 R2。Cache API 按数据中心隔离，各地会重复渲染，所以不采用；R2 保证全局只渲染一次。
 
 ### 4. 渲染器与懒加载
@@ -165,7 +166,7 @@ interface ShareCardDefinition<T> {
 
 ### 10. 删除
 
-- 删空间清理（含删号时的个人空间）按 `share-cards/ws/<workspaceId>/` 列出索引，对每个令牌执行失效函数。
+- 删空间清理（含删号时的个人空间）按 `share-cards/ws/<workspaceId>/` 列出索引，对每个令牌执行失效函数。失效函数同时写入撤销墓碑，墓碑不随清理删除（见第 3 条）。
 - 项目自有的分享表由项目在自己的清理流程中删除；模板文档写明这一点。
 
 ## Risks / Trade-offs

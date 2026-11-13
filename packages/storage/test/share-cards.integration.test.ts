@@ -3,10 +3,13 @@ import { newId } from '@saas/shared'
 import { describe, expect, it } from 'vitest'
 import { createCloudflareStorage } from '../src/cloudflare/index.ts'
 import {
+  createShareCardImageStore,
   createShareCardInvalidator,
   type ShareCardObjects,
+  shareCardImageKey,
   shareCardImagePrefix,
   shareCardRevokedKey,
+  shareCardTombstoneKey,
   shareCardWorkspaceKey,
 } from '../src/index.ts'
 
@@ -38,6 +41,10 @@ describe('share card invalidation with local R2 and KV', () => {
     for (const key of [...images, index]) expect(await env.FILES.head(key)).toBeNull()
     const revoked = shareCardRevokedKey(identity.type, identity.token)
     expect(await env.CACHE.get(revoked)).toBe('1')
+    // 强一致的 R2 墓碑与 KV 标记同时写入，永不删除。
+    expect(
+      await env.FILES.head(shareCardTombstoneKey(identity.type, identity.token)),
+    ).not.toBeNull()
     const record = (await env.CACHE.list({ prefix: revoked })).keys[0]
     expect(record?.expiration).toBeGreaterThan(Math.floor(Date.now() / 1000) + 86_390)
     expect(record?.expiration).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 86_401)
@@ -102,5 +109,45 @@ describe('share card invalidation with local R2 and KV', () => {
     expect(await env.CACHE.get(shareCardRevokedKey(identity.type, identity.token))).toBe('1')
     await createShareCardInvalidator(objects, env.CACHE).invalidateShareCard(identity)
     await env.CACHE.delete(shareCardRevokedKey(identity.type, identity.token))
+  })
+})
+
+describe('share card image store with local R2', () => {
+  it('stores expiry metadata and the workspace index, then invalidation removes both', async () => {
+    const store = createShareCardImageStore(objects)
+    const ref = { type: 'report', token: newId(), variant: '1-abcdef12', workspaceId: newId() }
+    const expiresAt = new Date(Date.now() + 3_600_000)
+    await store.write(ref, new Uint8Array([137, 80, 78, 71]), expiresAt)
+    const hit = await store.read(ref)
+    expect(hit).toEqual({ status: 'hit', body: new Uint8Array([137, 80, 78, 71]), expiresAt })
+    const stored = await env.FILES.head(shareCardImageKey(ref.type, ref.token, ref.variant))
+    expect(stored?.httpMetadata?.contentType).toBe('image/png')
+    expect(stored?.customMetadata).toEqual({
+      'expires-at': expiresAt.toISOString(),
+      'workspace-id': ref.workspaceId,
+    })
+    expect(await env.FILES.head(shareCardWorkspaceKey(ref))).not.toBeNull()
+    await createShareCardInvalidator(objects, env.CACHE).invalidateShareCard(ref)
+    expect(await store.read(ref)).toEqual({ status: 'miss' })
+    expect(await env.FILES.head(shareCardWorkspaceKey(ref))).toBeNull()
+    expect(await store.isRevoked(ref.type, ref.token)).toBe(true)
+    await env.CACHE.delete(shareCardRevokedKey(ref.type, ref.token))
+  })
+
+  it('deletes an expired image on read and keeps never-expiring images', async () => {
+    const store = createShareCardImageStore(objects)
+    const ref = { type: 'report', token: newId(), variant: '2-ffffffff', workspaceId: newId() }
+    expect(await store.isRevoked(ref.type, ref.token)).toBe(false)
+    await store.write(ref, new Uint8Array([1]), new Date(Date.now() + 60_000))
+    expect(await store.read(ref, new Date(Date.now() + 120_000))).toEqual({ status: 'expired' })
+    expect(await env.FILES.head(shareCardImageKey(ref.type, ref.token, ref.variant))).toBeNull()
+    await store.write(ref, new Uint8Array([2]), null)
+    expect(await store.read(ref, new Date('2100-01-01T00:00:00Z'))).toMatchObject({
+      status: 'hit',
+      expiresAt: null,
+    })
+    await store.discard(ref)
+    expect(await store.read(ref)).toEqual({ status: 'miss' })
+    expect(await env.FILES.head(shareCardWorkspaceKey(ref))).toBeNull()
   })
 })

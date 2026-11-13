@@ -53,6 +53,7 @@ export function prerenderRuntime(requestMeta: RequestMetadata): WebRuntime {
     eventsQueue: { available: false },
     files: { available: false },
     shareCardRenderer: { available: false },
+    shareCardCache: { available: false },
     ai: { available: false },
     get db() {
       return unavailable()
@@ -213,6 +214,8 @@ export async function createNodeWebProcess(
             module.createNodeShareCardRenderer(module.nodeShareCardFontDir()),
           ),
       },
+      // 自托管没有 Cache API：卡片由对象存储与 HTTP 缓存头承担，前置 CDN 按响应头缓存。
+      shareCardCache: { available: false },
       ai: {
         available: true,
         value: {

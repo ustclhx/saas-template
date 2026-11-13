@@ -160,6 +160,11 @@ function localized(request: Request): Promise<Response> {
   return localizeRequest(request, getWebRuntime(), () => startHandler(request))
 }
 
+/** Workers 的默认 Cache API；web 的 tsconfig 同时含 DOM 声明，`caches.default` 在此显式取用。 */
+function edgeCache(): Cache {
+  return (caches as unknown as { default: Cache }).default
+}
+
 /** CF bindings 仅在入口装配；getter 保证公开页降级时不提前创建认证/数据库资源。 */
 function createCloudflareWebRuntime(
   env: Cloudflare.Env,
@@ -260,6 +265,16 @@ function createCloudflareWebRuntime(
             ),
         }
       : { available: false },
+    // 分享卡片的数据中心级缓存；写入放进 waitUntil，不阻塞本次响应。
+    shareCardCache: {
+      available: true,
+      value: {
+        match: (url) => edgeCache().match(url),
+        put: async (url, response) => {
+          ctx.waitUntil(edgeCache().put(url, response))
+        },
+      },
+    },
     emailQueue: { available: true, value: queue },
     eventsQueue: env.EVENTS_QUEUE
       ? { available: true, value: createCloudflareQueue(env.EVENTS_QUEUE) }

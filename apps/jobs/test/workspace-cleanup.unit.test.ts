@@ -26,7 +26,12 @@ describe('workspace cleanup cron isolation', () => {
       await runWorkspaceCleanup({
         db: { business: () => ({}) } as unknown as DatabaseAccess,
         cache: {} as KeyValueStore,
-        shareCards: { list: async () => ({ keys: [] }), delete: async () => {} },
+        shareCards: {
+          list: async () => ({ keys: [] }),
+          get: async () => null,
+          put: async () => {},
+          delete: async () => {},
+        },
       })
       expect(purgeDeletedUserAiContent).toHaveBeenCalledOnce()
       expect(error).toHaveBeenCalledTimes(3)
