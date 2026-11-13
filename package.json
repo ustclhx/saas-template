@@ -24,7 +24,7 @@
     "build:node": "node apps/web/scripts/build-node.mjs",
     "check:ui": "node scripts/check-ui.mjs && node --test scripts/check-ui.test.mjs",
     "ui:lock": "node scripts/ui-lock.mjs",
-    "eval:prompts": "node --env-file-if-exists=.env.local --experimental-strip-types packages/evals/src/cli.ts"
+    "eval:prompts": "node --experimental-strip-types packages/evals/src/cli.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

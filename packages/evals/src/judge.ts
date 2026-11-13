@@ -61,6 +61,11 @@ export function judgeSchema(rubric: Rubric) {
   })
 }
 
+/** 评委 schema 的 JSON 文本：Provider 会随请求发送，用于输入 token 估算 */
+export function judgeSchemaText(rubric: Rubric): string {
+  return JSON.stringify(z.toJSONSchema(judgeSchema(rubric)))
+}
+
 export interface JudgeScore {
   readonly criteria: Readonly<Record<string, { score: number; reason: string }>>
   readonly summary: string

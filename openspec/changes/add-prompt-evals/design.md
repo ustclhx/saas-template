@@ -35,7 +35,7 @@
 - 新增私有包 `@saas/evals`，依赖 `@saas/ai`、`ai`、`zod`，测试用 `vitest`。根 `package.json` 增加开发依赖 `@saas/evals: workspace:*`（根目录的 `evals/` 套件需要能解析它），以及脚本：
 
   ```json
-  "eval:prompts": "node --env-file-if-exists=.env.local --experimental-strip-types packages/evals/src/cli.ts"
+  "eval:prompts": "node --experimental-strip-types packages/evals/src/cli.ts"
   ```
 
 - `check-deps` 增加规则：除根 `package.json` 外，任何 app 或 package 的 manifest 与源码都不得依赖 `@saas/evals`，保证它不进 Worker 或自托管运行时。
@@ -63,14 +63,15 @@
   ```
 
   生产代码与评测套件导入同一个定义，评测测的就是线上用的提示词。定义模块应保持纯函数（不导入数据库或 app 别名），才能在命令行中加载。
-- **版本不可变的判定**：不对函数源码做摘要（会漏掉被导入的辅助函数的改动）。改为对每个样本的**渲染结果**（system、user、params、maxOutputTokens 的规范化 JSON）做 SHA-256，写入套件的 `prompts.lock.json`：
+- **版本不可变的判定**：不对函数源码做摘要（会漏掉被导入的辅助函数的改动）。改为对每个样本的**渲染结果**（system、user、params、maxOutputTokens 与期望章节 sections 的规范化 JSON）做 SHA-256，写入套件的 `prompts.lock.json`：
 
   ```json
   { "report@v3": { "sample-01": { "input": "sha256:…", "rendered": "sha256:…" } } }
   ```
 
   - 每次运行（含回放）都重新渲染并比对：已有条目不一致时以退出码 2 失败；`input` 摘要相同而 `rendered` 不同提示「提示词内容已改动，请新建版本」，`input` 摘要不同提示「样本已改动，请新增样本 ID」；
-  - 新版本或新样本的条目自动追加，已有条目从不改写；
+  - 新版本或新样本的条目自动追加，已有条目从不改写；锁文件按 Zod schema 校验，结构不合法即配置错误；
+  - `CI` 为真或给出 `--frozen-lock` 时锁被冻结：任何需要追加的条目都是配置错误（退出码 2），防止删掉条目后在 CI 中把改过的内容重新锁定；
   - 样本输入本身改动也会触发，此时应新增样本 ID 而不是修改旧样本。
 - 备选方案：版本号由内容摘要自动生成。可以杜绝误用，但版本号失去可读性，生成记录里也难以对应人工命名的「v4」，不采用。
 
@@ -120,7 +121,7 @@ defineSuite({
 
 - 真实与录制模式缺少 `--budget-usd`、或用到的模型缺少单价时，在任何调用前以退出码 2 拒绝。
 - `CI` 环境变量为真时拒绝真实与录制模式（退出码 2），不提供绕过开关；需要在流水线中跑真实评测时由项目自行加专门的手动工作流。
-- 模型：按套件声明拼出 `AvailableModel` 形状（`provider`、`providerModelId`，其余字段填中性值），交给 `defaultLanguageModelFactory`，环境变量取自 `process.env`（脚本已用 `--env-file-if-exists=.env.local` 加载）。这样评测与线上走同一套出口代码（direct / gateway）。运行器核心接受注入的 `(modelKey) => LanguageModel`，单测注入模拟模型。
+- 模型：按套件声明拼出 `AvailableModel` 形状（`provider`、`providerModelId`，其余字段填中性值），交给 `defaultLanguageModelFactory`，环境变量取自 `process.env`（命令行入口在存在时用 `process.loadEnvFile` 加载根目录 `.env.local`，Node 21.7 起可用；`--env-file-if-exists` 要 Node 22.9，不用）。这样评测与线上走同一套出口代码（direct / gateway）。运行器核心接受注入的 `(modelKey) => LanguageModel`，单测注入模拟模型。
 - 回放把录制包装成 `MockLanguageModelV4`，与真实模式走同一条 `generateText` 路径，评委的结构化解析也因此在回放中被覆盖。
 - `--prompt <promptVersion>`、`--model <key>`、`--judge-model <key>`、`--samples <id,…>`、`--tag <tag>` 用于选择；`--concurrency` 默认 1、最大 4。
 
@@ -202,9 +203,11 @@ defineSuite({
 
 ### D10. 美元预算
 
-- 每次调用前估算上限：`inputTokens × inputPerMTok / 1e6 + maxOutputTokens × outputPerMTok / 1e6`，其中 `inputTokens = estimateInputTokens([system, user], tokensPerChar)`（评委调用同理，`maxOutputTokens` 固定为 1024）。
-- 预算账本：`已花费 + 在途预留 + 本次估算 > --budget-usd` 时不发出该调用，本样本及之后所有未开始的样本记为 `skipped-budget`，等在途调用结束后写报告，以退出码 3 退出。并发时先预留再调用，保证并发也不会超过上限。
-- 调用结束后按返回的实际用量结算；用量缺失时按估算值记账（与 `ai-text-runtime` 中「未知用量按估算封顶」一致）。
+- 每次调用前估算上限：`inputTokens × inputPerMTok / 1e6 + maxOutputTokens × outputPerMTok / 1e6`，其中 `inputTokens = estimateInputTokens([system, user], tokensPerChar)`；评委调用的输入另计评分标准提示词与结构化输出的 JSON schema 文本，`maxOutputTokens` 固定为 1024。
+- 真实与录制模式要求用到的模型两项单价都大于 0，否则配置错误（单价为 0 时预算形同虚设）。
+- 预算账本：`已花费 + 在途预留 + 本次估算 > --budget-usd` 时不发出该调用，本样本及之后所有未开始的样本记为 `skipped-budget`，等在途调用结束后写报告，以退出码 3 退出。并发时先预留再调用。
+- 调用结束后按返回的实际用量结算；用量缺失时按估算值记账（与 `ai-text-runtime` 中「未知用量按估算封顶」一致），调用失败按预留额记账。实际费用超过该调用的预留，或已花费达到上限时，账本立即标记触顶，之后不再发出任何调用。
+- **保证的范围**：没有一次调用会在其保守估算放不进剩余预算时发出；总费用可能超过上限，超出部分不超过「触顶时已在途调用」的估算误差之和（实际用量减预留额）。估算按每字符 1 token、输出按上限，实际一般低于估算。
 - 回放模式不记费用，但报告按录制用量给出「真实运行约需多少美元」，帮助决定 `--budget-usd`。
 - 单价由套件声明，不读后台模型表（命令行无数据库，且后台单价是积分）。
 

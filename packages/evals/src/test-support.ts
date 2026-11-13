@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { renderedPromptDigest, renderPrompt, sha256Digest } from '@saas/ai'
+import { promptSha256, renderedPromptDigest, renderPrompt } from '@saas/ai'
 import { generationRecordingPath, judgeRecordingPath, writeRecording } from './models.ts'
 import { loadSuite } from './suite.ts'
 
@@ -28,14 +28,18 @@ export function tempSuite(options: {
   /** 追加到 defineSuite({...}) 中的源码片段 */
   extra?: string
   judge?: boolean
-  price?: boolean
+  price?: boolean | 'zero'
 }): TempSuite {
   const name = options.name ?? 'demo'
   const root = mkdtempSync(join(tmpdir(), 'evals-run-'))
   const dir = join(root, 'evals', name)
   mkdirSync(dir, { recursive: true })
   const price =
-    options.price === false ? '' : 'priceUsd: { inputPerMTok: 1000, outputPerMTok: 1000 },'
+    options.price === false
+      ? ''
+      : options.price === 'zero'
+        ? 'priceUsd: { inputPerMTok: 0, outputPerMTok: 0 },'
+        : 'priceUsd: { inputPerMTok: 1000, outputPerMTok: 1000 },'
   writeFileSync(
     join(dir, 'suite.ts'),
     `import { checks, definePrompt, defineSuite } from ${JSON.stringify(INDEX)}
@@ -116,7 +120,7 @@ export default defineSuite({
         kind: 'judge',
         promptVersion,
         rubricVersion: 'r1',
-        outputHash: await sha256Digest(output),
+        outputHash: await promptSha256(output),
         model: { key: 'judge', provider: 'openai', providerModelId: 'gpt-judge' },
         output: text,
         finishReason: 'stop',

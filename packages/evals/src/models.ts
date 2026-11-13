@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { type AvailableModel, defaultLanguageModelFactory, type TextModelEnv } from '@saas/ai'
 import type { LanguageModel } from 'ai'
 import { z } from 'zod'
-import { EvalConfigError } from './errors.ts'
+import { EvalConfigError, TEXT_ENV_KEYS } from './errors.ts'
 import type { ModelSpec } from './suite.ts'
 
 /**
@@ -32,18 +32,6 @@ export function assertModeAllowed(
     )
   if (budgetUsd === undefined) throw new EvalConfigError(`--${mode} requires --budget-usd <usd>`)
 }
-
-const TEXT_ENV_KEYS = [
-  'AI_TEXT_EGRESS',
-  'OPENAI_BASE_URL',
-  'AI_GATEWAY_ACCOUNT_ID',
-  'AI_GATEWAY_ID',
-  'AI_GATEWAY_TOKEN',
-  'OPENAI_API_KEY',
-  'ANTHROPIC_API_KEY',
-  'GOOGLE_API_KEY',
-  'DEEPSEEK_API_KEY',
-] as const
 
 /** 只取文本模型出口需要的变量；这些值只交给模型工厂，不进入报告或录制 */
 export function textModelEnv(env: Readonly<Record<string, string | undefined>>): TextModelEnv {

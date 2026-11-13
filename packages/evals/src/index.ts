@@ -3,15 +3,17 @@
  * （`evals/<suite>/suite.ts`）使用；任何应用或运行时包都不得依赖本包（check-deps）。
  */
 export {
-  canonicalJson,
   type DefinedPrompt,
   definePrompt,
   type PromptDefinition,
   type PromptSection,
+  promptCanonicalJson,
   type RenderedPrompt,
   renderedPromptDigest,
   renderPrompt,
 } from '@saas/ai'
+/** 套件的 `inputSchema` 用同一个 zod 实例声明（根目录不直接依赖 zod） */
+export { z } from 'zod'
 export {
   banned,
   type Check,

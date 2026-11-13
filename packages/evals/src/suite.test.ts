@@ -3,11 +3,19 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { definePrompt } from '@saas/ai'
 import { afterEach, describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import { checks } from './checks.ts'
 import { EvalConfigError } from './errors.ts'
 import { LOCK_FILE, verifyLock } from './lock.ts'
 import { parseSamples } from './sample.ts'
-import { defineSuite, findPrompt, loadSuite, suiteDir, validateExpect } from './suite.ts'
+import {
+  defineSuite,
+  findPrompt,
+  loadSuite,
+  suiteDir,
+  validateExpect,
+  validateInputs,
+} from './suite.ts'
 
 const dirs: string[] = []
 afterEach(() => {
@@ -147,6 +155,36 @@ describe('版本锁', () => {
     const stamp = readFileSync(join(dir, LOCK_FILE), 'utf8')
     expect((await verifyLock(suiteWith([v1(), v2]), more, dir)).appended).toBe(0)
     expect(readFileSync(join(dir, LOCK_FILE), 'utf8')).toBe(stamp)
+  })
+
+  it('冻结时任何追加都是配置错误：删掉条目不能重新锁定改过的内容', async () => {
+    const dir = temp()
+    await verifyLock(suiteWith(), samples(), dir)
+    // 删掉 v1 的条目后，用改过的 system 重新运行
+    writeFileSync(join(dir, LOCK_FILE), '{}\n')
+    await expectConfigError(
+      () => verifyLock(suiteWith([v1('Write at length.')]), samples(), dir, { frozen: true }),
+      /intro@v1 \/ s1 is not in prompts.lock.json; the lock is frozen/,
+    )
+    expect(readFileSync(join(dir, LOCK_FILE), 'utf8')).toBe('{}\n')
+  })
+
+  it('锁文件结构不合法时为配置错误', async () => {
+    const dir = temp()
+    writeFileSync(join(dir, LOCK_FILE), JSON.stringify({ 'intro@v1': { s1: { input: 'x' } } }))
+    await expectConfigError(() => verifyLock(suiteWith(), samples(), dir), /invalid shape/)
+  })
+
+  it('样本输入不符合套件 inputSchema 时为配置错误', async () => {
+    const suite = defineSuite({
+      ...suiteWith(),
+      inputSchema: z.strictObject({ topic: z.string() }),
+    })
+    validateInputs(suite, samples())
+    await expectConfigError(
+      () => validateInputs(suite, parseSamples([{ id: 'bad', input: { topic: 1 } }])),
+      /sample bad: input does not match the suite inputSchema/,
+    )
   })
 
   it('锁文件不是 JSON 时为配置错误', async () => {

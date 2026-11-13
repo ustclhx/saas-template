@@ -37,11 +37,21 @@ export type DefinedPrompt<I> = Readonly<PromptDefinition<I>> & {
   readonly promptVersion: string
 }
 
+/** 期望章节的可序列化形式：正则写成 `/source/flags`，进入渲染摘要 */
+export interface RenderedSection {
+  readonly id: string
+  readonly heading: string
+  readonly regex: boolean
+  readonly required: boolean
+}
+
 export interface RenderedPrompt {
   readonly system: string
   readonly user: string
   readonly params: PromptParams
   readonly maxOutputTokens: number
+  /** 期望章节也影响评测结果（检查与评委），改章节同样要新建版本 */
+  readonly sections: readonly RenderedSection[]
 }
 
 const PROMPT_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -74,25 +84,34 @@ export function renderPrompt<I>(def: PromptDefinition<I>, input: I): RenderedPro
     user: def.user(input),
     params,
     maxOutputTokens: def.maxOutputTokens,
+    sections: (def.sections ?? []).map((section) => ({
+      id: section.id,
+      heading:
+        typeof section.heading === 'string'
+          ? section.heading
+          : `/${section.heading.source}/${section.heading.flags}`,
+      regex: typeof section.heading !== 'string',
+      required: section.required !== false,
+    })),
   }
 }
 
 /** 规范化 JSON：对象键排序、省略 undefined，使摘要与键顺序无关 */
-export function canonicalJson(value: unknown): string {
+export function promptCanonicalJson(value: unknown): string {
   if (value === null || typeof value !== 'object') {
     if (typeof value === 'number' && !Number.isFinite(value))
-      throw new TypeError('canonicalJson does not accept non-finite numbers')
+      throw new TypeError('promptCanonicalJson does not accept non-finite numbers')
     return JSON.stringify(value) ?? 'null'
   }
-  if (Array.isArray(value)) return `[${value.map((item) => canonicalJson(item)).join(',')}]`
+  if (Array.isArray(value)) return `[${value.map((item) => promptCanonicalJson(item)).join(',')}]`
   const entries = Object.entries(value as Record<string, unknown>)
     .filter(([, item]) => item !== undefined && typeof item !== 'function')
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-  return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(',')}}`
+  return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${promptCanonicalJson(item)}`).join(',')}}`
 }
 
 /** `sha256:<hex>`；用 Web Crypto，Workers 与 Node 都可用 */
-export async function sha256Digest(text: string): Promise<string> {
+export async function promptSha256(text: string): Promise<string> {
   const bytes = new Uint8Array(
     await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)),
   )
@@ -101,14 +120,15 @@ export async function sha256Digest(text: string): Promise<string> {
   return `sha256:${hex}`
 }
 
-/** 渲染结果（system、user、params、maxOutputTokens）的摘要，即评测锁文件中的 `rendered` */
+/** 渲染结果（system、user、params、maxOutputTokens、sections）的摘要，即评测锁文件中的 `rendered` */
 export function renderedPromptDigest(rendered: RenderedPrompt): Promise<string> {
-  return sha256Digest(
-    canonicalJson({
+  return promptSha256(
+    promptCanonicalJson({
       system: rendered.system,
       user: rendered.user,
       params: rendered.params,
       maxOutputTokens: rendered.maxOutputTokens,
+      sections: rendered.sections,
     }),
   )
 }

@@ -1,7 +1,7 @@
 {
   "kind": "generation",
   "promptVersion": "product-intro@v1",
-  "renderedHash": "sha256:c7cb7281fd1671755399dfa65ea3da9ca6cc91508c2c1fa4be3551492fb0ca99",
+  "renderedHash": "sha256:290f076ce66c8290ce807f7ae7d2f17b2fa6e645912c69658c776e80866bd7b5",
   "model": {
     "key": "deepseek-chat",
     "provider": "deepseek",

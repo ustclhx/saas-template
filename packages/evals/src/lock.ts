@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { canonicalJson, renderedPromptDigest, renderPrompt, sha256Digest } from '@saas/ai'
+import { promptCanonicalJson, promptSha256, renderedPromptDigest, renderPrompt } from '@saas/ai'
+import { z } from 'zod'
 import { EvalConfigError } from './errors.ts'
 import type { Sample } from './sample.ts'
 import type { SuiteDefinition } from './suite.ts'
@@ -13,6 +14,12 @@ export interface LockEntry {
   readonly input: string
   readonly rendered: string
 }
+
+const digest = z.string().regex(/^sha256:[0-9a-f]{64}$/)
+const lockSchema = z.record(
+  z.string(),
+  z.record(z.string(), z.strictObject({ input: digest, rendered: digest })),
+)
 
 export type PromptLock = Record<string, Record<string, LockEntry>>
 
@@ -27,19 +34,37 @@ export interface LockResult {
 
 function readLock(file: string): PromptLock {
   if (!existsSync(file)) return {}
+  let data: unknown
   try {
-    return JSON.parse(readFileSync(file, 'utf8')) as PromptLock
+    data = JSON.parse(readFileSync(file, 'utf8'))
   } catch (error) {
     throw new EvalConfigError(
       `${LOCK_FILE} is not valid JSON (${error instanceof Error ? error.message : error})`,
     )
   }
+  const parsed = lockSchema.safeParse(data)
+  if (!parsed.success)
+    throw new EvalConfigError(
+      `${LOCK_FILE} has an invalid shape: ${parsed.error.issues
+        .map((issue) => `${issue.path.join('.') || '(root)'} ${issue.message}`)
+        .join('; ')}`,
+    )
+  return parsed.data
+}
+
+export interface VerifyLockOptions {
+  /**
+   * 冻结：任何追加都是配置错误（CI 为真或 `--frozen-lock`）。否则删掉锁条目即可
+   * 让改过内容的旧版本被重新锁定，CI 无法发现。
+   */
+  readonly frozen?: boolean
 }
 
 export async function verifyLock(
   suite: SuiteDefinition,
   samples: readonly Sample[],
   dir: string,
+  options: VerifyLockOptions = {},
 ): Promise<LockResult> {
   const file = join(dir, LOCK_FILE)
   const lock = readLock(file)
@@ -54,7 +79,7 @@ export async function verifyLock(
       let entry: LockEntry
       try {
         entry = {
-          input: await sha256Digest(canonicalJson(sample.input)),
+          input: await promptSha256(promptCanonicalJson(sample.input)),
           rendered: await renderedPromptDigest(renderPrompt(prompt, sample.input)),
         }
       } catch (error) {
@@ -73,6 +98,12 @@ export async function verifyLock(
           conflicts.push(
             `${prompt.promptVersion} content changed for sample ${sample.id}; create a new prompt version instead of editing ${prompt.promptVersion}`,
           )
+        continue
+      }
+      if (options.frozen) {
+        conflicts.push(
+          `${prompt.promptVersion} / ${sample.id} is not in ${LOCK_FILE}; the lock is frozen (CI or --frozen-lock), run the eval locally once and commit the lock`,
+        )
         continue
       }
       next[prompt.promptVersion] ??= {}

@@ -1,4 +1,5 @@
-import { relative, resolve } from 'node:path'
+import { existsSync } from 'node:fs'
+import { join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { EvalConfigError, EXIT, safeErrorMessage } from './errors.ts'
@@ -23,6 +24,7 @@ export const USAGE = `用法：pnpm eval:prompts --suite <name> [选项]
   --samples <id,id>              只跑指定样本
   --tag <tag>                    只跑带此标签的样本
   --concurrency <1-${MAX_CONCURRENCY}>           并发数，缺省 1
+  --frozen-lock                  版本锁只校验不追加（CI 为真时总是如此）
 
 基线：
   --baseline <id@version>        同一次运行中以回放跑基线版本并对比（推荐）
@@ -48,6 +50,7 @@ const OPTIONS = {
   baseline: { type: 'string' },
   'baseline-report': { type: 'string' },
   'max-regression': { type: 'string' },
+  'frozen-lock': { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
 } as const
 
@@ -98,6 +101,7 @@ export function parseCliArgs(argv: readonly string[]): RunOptions | 'help' {
     ...(values.baseline ? { baseline: values.baseline } : {}),
     ...(values['baseline-report'] ? { baselineReport: values['baseline-report'] } : {}),
     ...(maxRegression !== undefined ? { maxRegression } : {}),
+    ...(values['frozen-lock'] ? { frozenLock: true } : {}),
   }
 }
 
@@ -156,5 +160,8 @@ export async function main(
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  // 不用 --env-file-if-exists（Node 22.9 起才有）：loadEnvFile 自 Node 21.7 可用，且不输出任何值
+  const envFile = join(REPO_ROOT, '.env.local')
+  if (existsSync(envFile)) process.loadEnvFile(envFile)
   process.exitCode = await main()
 }

@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { type DefinedPrompt, type RenderedPrompt, renderPrompt, sha256Digest } from '@saas/ai'
+import { type DefinedPrompt, promptSha256, type RenderedPrompt, renderPrompt } from '@saas/ai'
 import { generateText, type LanguageModel } from 'ai'
 import { z } from 'zod'
 import {
@@ -13,8 +13,8 @@ import {
   type Usage,
 } from './budget.ts'
 import { type CheckOutcome, runChecks } from './checks.ts'
-import { EvalConfigError, EXIT, safeErrorMessage } from './errors.ts'
-import { JUDGE_MAX_OUTPUT_TOKENS, judgeMessages, runJudge } from './judge.ts'
+import { EvalConfigError, EXIT, registerSecretValues, safeErrorMessage } from './errors.ts'
+import { JUDGE_MAX_OUTPUT_TOKENS, judgeMessages, judgeSchemaText, runJudge } from './judge.ts'
 import { verifyLock } from './lock.ts'
 import { fixedModel } from './mock.ts'
 import {
@@ -22,6 +22,7 @@ import {
   type GenerationRecording,
   generationRecordingPath,
   generationRecordingSchema,
+  isCi,
   type JudgeRecording,
   judgeRecordingPath,
   judgeRecordingSchema,
@@ -60,6 +61,8 @@ export interface RunOptions {
   readonly baseline?: string
   readonly baselineReport?: string
   readonly maxRegression?: number
+  /** 版本锁只校验、不追加；CI 为真时总是冻结 */
+  readonly frozenLock?: boolean
 }
 
 export interface RunDeps {
@@ -360,10 +363,11 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
   const messages = judgeMessages({ rubric, sampleInput: sample.input, prompt, output: output.text })
   const judgeEstimate = estimateCall(
     judgeSpec,
-    [messages.system, messages.user],
+    // 结构化输出的 JSON schema 也随请求发送，计入输入估算
+    [messages.system, messages.user, judgeSchemaText(rubric)],
     JUDGE_MAX_OUTPUT_TOKENS,
   )
-  const outputHash = await sha256Digest(output.text)
+  const outputHash = await promptSha256(output.text)
   const judgePath = judgeRecordingPath(
     loaded.dir,
     prompt.promptVersion,
@@ -381,7 +385,7 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
     if (!read.ok || stale)
       return {
         ...generated,
-        status: 'no-recording',
+        status: read.ok ? 'stale-recording' : 'no-recording',
         judge: {
           status: read.ok ? 'stale-recording' : 'no-recording',
           model: judgeKey,
@@ -593,6 +597,7 @@ export async function runEval(options: RunOptions, deps: RunDeps = {}): Promise<
   const env = deps.env ?? process.env
   const mode = options.mode ?? 'replay'
   const now = deps.now ?? (() => new Date())
+  registerSecretValues(env)
   assertModeAllowed(mode, options.budgetUsd, env)
   const concurrency = options.concurrency ?? 1
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > MAX_CONCURRENCY)
@@ -631,7 +636,9 @@ export async function runEval(options: RunOptions, deps: RunDeps = {}): Promise<
   if (samples.length === 0) throw new EvalConfigError('no samples selected')
 
   // 版本锁覆盖套件内全部版本与样本（含回放），在任何调用前完成
-  const lock = await verifyLock(suite, loaded.samples, loaded.dir)
+  const lock = await verifyLock(suite, loaded.samples, loaded.dir, {
+    frozen: Boolean(options.frozenLock) || isCi(env),
+  })
 
   let baselinePrompt: DefinedPrompt<unknown> | null = null
   let baselineReport: ReturnType<typeof readBaselineReport> | null = null

@@ -1,4 +1,4 @@
-import { checks, defineSuite } from '../src/index.ts'
+import { checks, defineSuite, z } from '../src/index.ts'
 import { productIntroV1, productIntroV2 } from './prompts.ts'
 
 /**
@@ -9,6 +9,12 @@ import { productIntroV1, productIntroV2 } from './prompts.ts'
 export default defineSuite({
   name: 'example',
   prompts: [productIntroV1, productIntroV2],
+  inputSchema: z.strictObject({
+    product: z.string().min(1),
+    audience: z.string().min(1),
+    features: z.array(z.string().min(1)).min(1),
+    lang: z.enum(['zh-Hans', 'en']),
+  }),
   defaultPrompt: 'product-intro@v2',
   models: {
     'deepseek-chat': {

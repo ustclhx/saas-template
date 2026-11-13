@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
-  canonicalJson,
   definePrompt,
+  promptCanonicalJson,
+  promptSha256,
   renderedPromptDigest,
   renderPrompt,
-  sha256Digest,
 } from './prompt.ts'
 
 const base = {
@@ -39,6 +39,7 @@ describe('renderPrompt', () => {
       user: 'Topic: x',
       params: {},
       maxOutputTokens: 800,
+      sections: [],
     })
     const fn = definePrompt({
       ...base,
@@ -60,9 +61,22 @@ describe('渲染摘要', () => {
       params: { topP: 0.9, temperature: 0.2 },
       user: 'Topic: x',
       system: 'You write reports.',
+      sections: [],
     })
     expect(reordered).toBe(a)
-    expect(canonicalJson({ b: 1, a: { d: undefined, c: [2, 1] } })).toBe('{"a":{"c":[2,1]},"b":1}')
+    expect(promptCanonicalJson({ b: 1, a: { d: undefined, c: [2, 1] } })).toBe(
+      '{"a":{"c":[2,1]},"b":1}',
+    )
+  })
+
+  it('期望章节变化会改变摘要', async () => {
+    const plain = await renderedPromptDigest(renderPrompt(definePrompt(base), { topic: 'x' }))
+    const withSection = definePrompt({ ...base, sections: [{ id: 'a', heading: /^## A$/i }] })
+    const rendered = renderPrompt(withSection, { topic: 'x' })
+    expect(rendered.sections).toEqual([
+      { id: 'a', heading: '/^## A$/i', regex: true, required: true },
+    ])
+    expect(await renderedPromptDigest(rendered)).not.toBe(plain)
   })
 
   it('params 或输入变化会改变摘要', async () => {
@@ -75,8 +89,8 @@ describe('渲染摘要', () => {
     expect(other).not.toBe(plain)
   })
 
-  it('sha256Digest 与标准值一致', async () => {
-    expect(await sha256Digest('abc')).toBe(
+  it('promptSha256 与标准值一致', async () => {
+    expect(await promptSha256('abc')).toBe(
       'sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
     )
   })

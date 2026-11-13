@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { main } from './cli.ts'
 import { EvalConfigError } from './errors.ts'
 import { fixedModel } from './mock.ts'
 import { type RunDeps, type RunOptions, runEval } from './runner.ts'
@@ -110,7 +111,7 @@ describe('模式与录制（4.1）', () => {
     writeFileSync(path, JSON.stringify({ ...recording, rubricVersion: 'r0' }))
     const result = await run(s, { prompt: 'demo@v2', samples: ['s1'] })
     expect(result.report.samples[0]).toMatchObject({
-      status: 'no-recording',
+      status: 'stale-recording',
       judge: { status: 'stale-recording' },
     })
   })
@@ -129,6 +130,11 @@ describe('模式与录制（4.1）', () => {
     await configError(run(s, { mode: 'live' }, { modelFor }), /requires --budget-usd/)
     const unpriced = suite({ name: 'unpriced', price: false })
     await configError(run(unpriced, { mode: 'live', budgetUsd: 1 }, { modelFor }), /no priceUsd/)
+    const free = suite({ name: 'free', price: 'zero' })
+    await configError(
+      run(free, { mode: 'record', budgetUsd: 1 }, { modelFor }),
+      /priceUsd must be positive/,
+    )
     expect(modelFor).not.toHaveBeenCalled()
     expect(fetchSpy).not.toHaveBeenCalled()
     expect(filesUnder(evidence)).toEqual([])
@@ -209,6 +215,49 @@ describe('模式与录制（4.1）', () => {
     const replay = await run(s)
     expect(replay.exitCode).toBe(0)
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('凭据脱敏', () => {
+  it('Provider 401 回显密钥时，报告与终端输出都不含密钥', async () => {
+    const s = suite({ judge: false, samples: [{ id: 's1', input: { topic: 'tea' } }] })
+    fetchSpy.mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: {
+              message: `Incorrect API key provided: ${SECRET}. authorization: Bearer ${SECRET}`,
+              type: 'invalid_request_error',
+              code: 'invalid_api_key',
+            },
+          }),
+          { status: 401, headers: { 'content-type': 'application/json' } },
+        ),
+    )
+    const lines: string[] = []
+    const out = {
+      log: (text: string) => lines.push(text),
+      error: (text: string) => lines.push(text),
+    }
+    const code = await main(
+      ['--suite', s.name, '--live', '--budget-usd', '10'],
+      {
+        root: s.root,
+        gitCommit: null,
+        env: env({ AI_TEXT_EGRESS: 'direct', OPENAI_BASE_URL: 'https://llm.invalid/v1' }),
+      },
+      out,
+    )
+    expect(fetchSpy).toHaveBeenCalled()
+    expect(code).toBe(1)
+    const reportText = filesUnder(evidence)
+      .map((file) => readFileSync(file, 'utf8'))
+      .join('\n')
+    expect(reportText).toContain('generation-error')
+    for (const text of [reportText, lines.join('\n')]) {
+      expect(text).not.toContain(SECRET)
+      expect(text).not.toContain('llm.invalid')
+    }
   })
 })
 
@@ -369,6 +418,39 @@ describe('基线与退出码（4.3）', () => {
 })
 
 describe('真实模式预算（模拟模型）', () => {
+  it('并发 4、实际用量超过估算时：结算后触顶，不再发出新调用，超支只来自在途调用', async () => {
+    const samples = Array.from({ length: 12 }, (_, i) => ({
+      id: `s${i}`,
+      input: { topic: `t${i}` },
+    }))
+    const s = suite({ judge: false, samples })
+    let inFlight = 0
+    let peak = 0
+    const modelFor = vi.fn(() =>
+      fixedModel(async () => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        inFlight--
+        // 输出远超 maxOutputTokens（100）：估算偏低
+        return { text: GOOD, usage: { inputTokens: 10, outputTokens: 400 } }
+      }),
+    )
+    const result = await run(s, { mode: 'live', budgetUsd: 1, concurrency: 4 }, { modelFor })
+    const started = modelFor.mock.calls.length
+    // 首批 4 个并发调用都已预留；第一个结算即触顶，之后不再发出
+    expect(started).toBe(4)
+    expect(peak).toBeLessThanOrEqual(4)
+    expect(result.report.budget.exhausted).toBe(true)
+    expect(
+      result.report.samples.filter((sample) => sample.status === 'skipped-budget'),
+    ).toHaveLength(8)
+    // 每次实际 0.41 美元：总额超过上限 1 美元，超支只来自这 4 个在途调用的估算误差
+    expect(result.report.budget.spentUsd).toBeGreaterThan(1)
+    expect(result.report.budget.spentUsd).toBeCloseTo(4 * 0.41)
+    expect(result.exitCode).toBe(3)
+  })
+
   // 单价 1000 美元 / 百万 token = 0.001 美元 / token
   const generationEstimate = (topic: string) =>
     (8 + 'Write clearly about the topic.'.length + 8 + `Topic: ${topic}`.length + 100) / 1000

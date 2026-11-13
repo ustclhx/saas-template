@@ -14,10 +14,16 @@ export interface CallEstimate {
   readonly usd: number
 }
 
+/** 真实与录制模式要求两项单价都为正数：单价为 0 时预算形同虚设 */
 export function requirePrice(key: string, model: ModelSpec): Price {
-  if (!model.priceUsd)
+  const price = model.priceUsd
+  if (!price)
     throw new EvalConfigError(`model ${key} has no priceUsd; live and record modes need prices`)
-  return model.priceUsd
+  if (!(price.inputPerMTok > 0 && price.outputPerMTok > 0))
+    throw new EvalConfigError(
+      `model ${key} priceUsd must be positive for live and record modes (inputPerMTok and outputPerMTok > 0)`,
+    )
+  return price
 }
 
 export function usdFor(price: Price, inputTokens: number, outputTokens: number): number {
@@ -83,9 +89,14 @@ export class BudgetLedger {
     return { usd }
   }
 
-  /** 调用结束后结算：释放预留并记入实际费用（调用失败时按预留额记账，宁高勿低） */
+  /**
+   * 调用结束后结算：释放预留并记入实际费用（调用失败时按预留额记账，宁高勿低）。
+   * 实际费用超过预留（估算偏低）或已花费达到上限时，账本标记为触顶，之后不再发出新调用；
+   * 因此总超支不超过「已在途调用」的估算误差之和。
+   */
   settle(reservation: Reservation, actualUsd: number = reservation.usd) {
     this.reserved -= reservation.usd
     this.spent += actualUsd
+    if (actualUsd > reservation.usd || this.spent >= this.limitUsd) this.exhausted = true
   }
 }

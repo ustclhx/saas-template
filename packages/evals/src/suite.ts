@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { DefinedPrompt } from '@saas/ai'
+import type { z } from 'zod'
 import type { Check } from './checks.ts'
 import { EvalConfigError } from './errors.ts'
 import { idPattern, parseSamples, type Sample } from './sample.ts'
@@ -31,6 +32,8 @@ export interface SuiteDefinition {
   readonly name: string
   // biome-ignore lint/suspicious/noExplicitAny: 套件内的提示词共享样本输入，类型由项目决定
   readonly prompts: readonly DefinedPrompt<any>[]
+  /** 可选：样本 `input` 的 Zod schema，加载时逐个校验，不符即配置错误 */
+  readonly inputSchema?: z.ZodType
   /** 缺省取 prompts 的最后一个 */
   readonly defaultPrompt?: string
   readonly models: Readonly<Record<string, ModelSpec>>
@@ -172,6 +175,7 @@ export async function loadSuite(name: string, root = REPO_ROOT): Promise<LoadedS
   }
   const samples = parseSamples(data, `suite ${name} samples.json`)
   validateExpect(module.default, samples)
+  validateInputs(module.default, samples)
   return { suite: module.default, samples, dir }
 }
 
@@ -191,4 +195,18 @@ export function validateExpect(suite: SuiteDefinition, samples: readonly Sample[
             .join('; ')})`,
         )
     }
+}
+
+/** 套件声明了 `inputSchema` 时，样本输入必须符合它 */
+export function validateInputs(suite: SuiteDefinition, samples: readonly Sample[]) {
+  if (!suite.inputSchema) return
+  for (const sample of samples) {
+    const parsed = suite.inputSchema.safeParse(sample.input)
+    if (!parsed.success)
+      throw new EvalConfigError(
+        `sample ${sample.id}: input does not match the suite inputSchema (${parsed.error.issues
+          .map((issue) => `${issue.path.join('.') || '(root)'} ${issue.message}`)
+          .join('; ')})`,
+      )
+  }
 }
