@@ -96,6 +96,8 @@
     --destructive-light: #fef2f2;
     /* 成功色沿用模板原值（作文字时满足 4.5:1） */
     --success: oklch(0.527 0.154 150.069);
+    /* 模板新增（add-ai-chat-components）：提醒色，对话「未完成」状态等，作文字（含 10% 淡底上）≥ 4.5:1 */
+    --warning: #a16207;
     /* 边框由前景色混出，随主题自动变化 */
     --border: color-mix(in oklab, var(--foreground) 12%, transparent);
     --input: #e5e5e5;
@@ -111,6 +113,9 @@
     /* 模板改动：浅色取 blue-500（上游 #6b97ff 在 #fafafa 上不足 3:1） */
     --fluid-accent: #3b82f6;
     --focus-ring: var(--fluid-accent);
+    /* 模板新增（add-ai-chat-components）：强调色作小字（工具调用「执行中」徽标）。与正文色混合：浅色更深、深色更亮，
+       随预设换色且 ≥ 4.5:1 */
+    --fluid-accent-text: color-mix(in oklab, var(--fluid-accent) 72%, var(--foreground));
     /* shadcn 组件的焦点环同样取强调色，与 Fluid 组件一致 */
     --ring: var(--focus-ring);
     /* 模板新增：未选中的复选框边框与关闭态开关轨道。它们是控件唯一的边界与状态标识，
@@ -246,6 +251,7 @@
     --destructive: #fca5a5;
     --destructive-light: #450a0a;
     --success: oklch(0.723 0.219 149.579);
+    --warning: #fcd34d;
     --input: #404040;
 
     --hover: rgb(255 255 255 / 0.06);
@@ -287,6 +293,7 @@
   --color-destructive: var(--destructive);
   --color-destructive-light: var(--destructive-light);
   --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -297,6 +304,7 @@
   --color-tint: var(--tint);
   --color-tint-hover: var(--tint-hover);
   --color-fluid-accent: var(--fluid-accent);
+  --color-fluid-accent-text: var(--fluid-accent-text);
   --color-control-border: var(--control-border);
   --color-field-border: var(--field-border);
 
@@ -528,5 +536,33 @@ html.transitioning *::after {
   scrollbar-width: none;
   &::-webkit-scrollbar {
     display: none;
+  }
+}
+
+/* 对话组件（add-ai-chat-components）：流式生成中正文末尾的光标。ChatMessage 在内容列上加 chat-caret，
+   光标画在最后一段文字（段落、标题、列表项）之后；减少动态效果时不闪烁 */
+@keyframes chat-caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+.chat-caret > :is(p, li, h1, h2, h3, h4, h5, h6):last-child::after,
+.chat-caret > :last-child > :is(p, h1, h2, h3, h4, h5, h6):last-child::after,
+.chat-caret > :last-child > :is(ul, ol):last-child > li:last-child::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  margin-left: 2px;
+  vertical-align: -2px;
+  border-radius: 1px;
+  background: currentColor;
+  animation: chat-caret-blink 1s steps(2) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-caret > :is(p, li, h1, h2, h3, h4, h5, h6):last-child::after,
+  .chat-caret > :last-child > :is(p, h1, h2, h3, h4, h5, h6):last-child::after,
+  .chat-caret > :last-child > :is(ul, ol):last-child > li:last-child::after {
+    animation: none;
   }
 }

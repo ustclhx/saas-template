@@ -1,6 +1,16 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  ChatMessage,
+  InputMessage,
+  ThinkingIndicator,
+  ThinkingStep,
+  ThinkingSteps,
+  ThinkingStepsContent,
+  ThinkingStepsHeader,
+  ToolCall,
+} from '../src/chat.ts'
+import {
   AlertDialog,
   AlertDialogCancel,
   AlertDialogContent,
@@ -106,6 +116,54 @@ describe('m.* 都在 MotionFeatures 之下（动画会推进）', () => {
       for (const path of [box.querySelector('path'), listbox.querySelector('path')]) {
         expect(path?.getAttribute('stroke-dasharray')).toMatch(/^1(px)? /)
       }
+    })
+  })
+
+  it('对话组件：ChatMessage 入场、ThinkingIndicator 圆点明暗、ThinkingSteps 与 ToolCall 展开、InputMessage 图标', async () => {
+    render(
+      <>
+        <ChatMessage from="assistant">回答</ChatMessage>
+        <ThinkingIndicator label="正在思考" />
+        <ThinkingSteps>
+          <ThinkingStepsHeader>已思考 6 秒</ThinkingStepsHeader>
+          <ThinkingStepsContent>
+            <ThinkingStep>推理</ThinkingStep>
+          </ThinkingStepsContent>
+        </ThinkingSteps>
+        <ToolCall
+          name="查询报告数据"
+          state="done"
+          labels={{ pending: '准备中', running: '执行中', done: '已完成', error: '出错' }}
+        >
+          详情
+        </ToolCall>
+        <InputMessage
+          value=""
+          onValueChange={() => {}}
+          onSend={() => {}}
+          placeholder="输入消息"
+          labels={{ message: '消息', send: '发送', stop: '停止' }}
+        />
+      </>,
+    )
+    const message = screen.getByText('回答').closest('[data-chat-role]') as HTMLElement
+    const dot = document.querySelector('[data-thinking-dots] > span') as HTMLElement
+    const opacities = new Set<string>()
+    const steps = screen.getByRole('button', { name: '已思考 6 秒' })
+    const tool = screen.getByRole('button', { name: /查询报告数据/ })
+    fireEvent.click(steps)
+    fireEvent.click(tool)
+    const chevrons = [steps, tool].map(
+      (button) => button.querySelector('span[aria-hidden="true"]:last-child') as HTMLElement,
+    )
+    const step = screen.getByText('推理').parentElement as HTMLElement
+    await waitForAnimation(() => {
+      opacities.add(dot.style.opacity)
+      expect(message.style.opacity).toBe('1')
+      expect(step.style.opacity).toBe('1')
+      for (const chevron of chevrons) expect(chevron.style.transform).toContain('rotate(90deg)')
+      // 圆点的透明度在 0.25 与 1 之间循环
+      expect(opacities.size).toBeGreaterThan(1)
     })
   })
 })

@@ -13,11 +13,11 @@
 
 ## 2. 组件移植（`packages/ui`，线 A）
 
-- [ ] 2.1 移植 `thinking-indicator`、`thinking-steps`（design D1）：`labels` 必填，折叠用 radix-ui `Collapsible`，减少动态效果时指示静止。验证：组件单测覆盖折叠按钮的 `aria-expanded` 切换、`labels` 渲染；`test/motion-features.test.tsx` 增加两者并通过；`test/motion-imports.test.ts` 通过。
-- [ ] 2.2 移植 `chat-message`（design D1）：`role`、`status`、`statusLabel`、`actions`、`children`；长单词与长链接不撑出容器。验证：单测覆盖两种角色与五种状态的渲染、`actions` 插槽；390px 容器中长 URL 不产生横向溢出（happy-dom 断言 `overflow-wrap` 类名，截图留到 6.1）。
-- [ ] 2.3 移植 `input-message`（design D1）：去掉附件与 `file-thumbnail`，`leading` / `trailing` 插槽，`busy` 时发送换停止且焦点回到输入框，Enter / Shift+Enter / 输入法组字，空内容与 `disabled` 不发送，高度上限后框内滚动。验证：单测覆盖 Enter 发送、Shift+Enter 换行、`isComposing` 不发送、空内容不发送、busy 切换后 `document.activeElement` 为输入框、停止按钮键盘可触发。
-- [ ] 2.4 新增 `tool-call.tsx`（design D2）：四态、`labels`、可折叠详情，无详情时不渲染展开按钮。验证：单测覆盖四态文案与 `children` 缺省时没有展开按钮。
-- [ ] 2.5 新增子路径入口 `src/chat.ts` 与 `package.json` 的 `./chat` 导出（本组组件经它导出，不进主入口）；`UPSTREAM.md` 登记四个上游项（上游月份、删减附件等改动）与 ToolCall；`docs/design-system.md` §6.1 增加组件表行；`pnpm ui:lock`。验证：`pnpm --filter @saas/ui test`、`pnpm --filter @saas/ui typecheck`、`pnpm check:ui`、`pnpm check:deps` 通过；`index.ts` 中没有新组件的导出。
+- [x] 2.1 移植 `thinking-indicator`、`thinking-steps`（design D1）：`labels` 必填，折叠用 radix-ui `Collapsible`，减少动态效果时指示静止。验证：组件单测覆盖折叠按钮的 `aria-expanded` 切换、`labels` 渲染；`test/motion-features.test.tsx` 增加两者并通过；`test/motion-imports.test.ts` 通过。
+- [x] 2.2 移植 `chat-message`（design D1）：`role`、`status`、`statusLabel`、`actions`、`children`；长单词与长链接不撑出容器。验证：单测覆盖两种角色与五种状态的渲染、`actions` 插槽；390px 容器中长 URL 不产生横向溢出（happy-dom 断言 `overflow-wrap` 类名，截图留到 6.1）。
+- [x] 2.3 移植 `input-message`（design D1）：去掉附件与 `file-thumbnail`，`leading` / `trailing` 插槽，`busy` 时发送换停止且焦点回到输入框，Enter / Shift+Enter / 输入法组字，空内容与 `disabled` 不发送，高度上限后框内滚动。验证：单测覆盖 Enter 发送、Shift+Enter 换行、`isComposing` 不发送、空内容不发送、busy 切换后 `document.activeElement` 为输入框、停止按钮键盘可触发。
+- [x] 2.4 新增 `tool-call.tsx`（design D2）：四态、`labels`、可折叠详情，无详情时不渲染展开按钮。验证：单测覆盖四态文案与 `children` 缺省时没有展开按钮。
+- [x] 2.5 新增子路径入口 `src/chat.ts` 与 `package.json` 的 `./chat` 导出（本组组件经它导出，不进主入口）；`UPSTREAM.md` 登记四个上游项（上游月份、删减附件等改动）与 ToolCall；`docs/design-system.md` §6.1 增加组件表行；`pnpm ui:lock`。验证：`pnpm --filter @saas/ui test`、`pnpm --filter @saas/ui typecheck`、`pnpm check:ui`、`pnpm check:deps` 通过；`index.ts` 中没有新组件的导出。
 
 ## 3. 对话 Markdown（`packages/ui`，线 B）
 
