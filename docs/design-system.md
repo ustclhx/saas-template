@@ -601,7 +601,7 @@ export function registerProjectAppNav() {
 顶部布局保留原有链接，并在其后渲染项目新增的条目（模板条目 id 之外的）。
 
 顶部条的标题是页面 h1（默认为当前导航项名称），页面正文从 h2 开始，不再重复同名标题。页面需要把面包屑、操作按钮或进度条
-放进顶部条时渲染 `<AppShellBar leading={…} title={…} actions={…} progress={…} />`（`features/app-shell/bar.tsx`；`leading` 在 h1 之前，如对话页的返回链接）：内容经 portal
+放进顶部条时渲染 `<AppShellBar title={…} actions={…} progress={…} />`（`features/app-shell/bar.tsx`）：内容经 portal
 挂到顶部条 h1 内的标题插槽、操作插槽与底边进度条位置，**水合后才出现**（服务端首屏与水合前显示默认标题）；标题插槽有内容时
 默认标题由 CSS 隐藏，页面卸载后自动恢复，同一页面可渲染多个 AppShellBar。
 `useAppShellBarAvailable()` 为 false（顶部布局）时页面自行渲染工具条。打印时侧边栏、打开的抽屉、顶部条与通知入口隐藏，

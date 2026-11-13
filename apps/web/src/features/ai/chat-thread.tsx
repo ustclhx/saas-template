@@ -125,9 +125,10 @@ export function CopyReplyButton({ text }: { text: string }) {
           <Copy aria-hidden className="size-3.5" strokeWidth={1.5} />
         )}
       </Button>
-      {/* 可见反馈与读屏播报共用一个状态区 */}
+      {/* 可见反馈与读屏播报共用一个礼貌级实时区域（不用 role="status"：评分组件在同一行另有状态区） */}
       <span
-        role="status"
+        aria-live="polite"
+        data-copy-feedback=""
         className={cn(
           'text-caption',
           state === 'failed' ? 'text-destructive' : 'text-muted-foreground',

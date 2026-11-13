@@ -3,7 +3,7 @@ import { ChevronLeft, Ellipsis } from '@saas/ui/icons'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { m } from '../../paraglide/messages.js'
-import { AppShellBar, useAppShellBarAvailable } from '../app-shell/bar.tsx'
+import { useAppShellBarAvailable } from '../app-shell/bar.tsx'
 import { ChatComposer } from './chat-composer.tsx'
 import { ChatSession, useChatSessionState } from './chat-session.ts'
 import { ChatThread } from './chat-thread.tsx'
@@ -91,46 +91,29 @@ function ConversationActions({ session }: { session: ChatSession }) {
 }
 
 /**
- * 对话页头部（设计稿 chat-components/Main.dc.html、Mobile.dc.html）：「全部对话」返回、标题与对话操作。
- * 侧边栏布局放进壳的顶部条（AppShellBar，水合后出现）；顶部布局没有顶部条插槽，页面自己渲染这一行。
+ * 对话页头部（设计稿 chat-components/Main.dc.html、Mobile.dc.html；版式取舍 2：标题留在对话区头部，不移到顶栏）：
+ * 「全部对话」返回（窄屏只显示图标）、标题与对话操作。
  */
 function ChatPageHeader({ session }: { session: ChatSession }) {
   const state = useChatSessionState(session)
-  const inShell = useAppShellBarAvailable()
-  const back = (
-    <Link
-      to="/app/$slug/chat"
-      params={{ slug: session.slug }}
-      aria-label={m.chat_ui_all_chats()}
-      className="flex h-7 shrink-0 items-center gap-1 rounded-lg pr-2 pl-1 text-muted-foreground outline-none hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-(--focus-ring) max-sm:size-9 max-sm:justify-center max-sm:p-0"
-    >
-      <ChevronLeft aria-hidden className="size-4" strokeWidth={1.5} />
-      <span className="max-sm:hidden">{m.chat_ui_all_chats()}</span>
-    </Link>
-  )
-  const title = (
-    <span className="min-w-0 truncate font-semibold" data-testid="conversation-title">
-      {state.title || m.chat_ui_untitled()}
-    </span>
-  )
-  if (inShell)
-    return (
-      <AppShellBar
-        leading={
-          <>
-            {back}
-            <span aria-hidden className="h-4 w-px bg-border max-sm:hidden" />
-          </>
-        }
-        title={title}
-        actions={<ConversationActions session={session} />}
-      />
-    )
   return (
-    <div className="flex min-w-0 items-center gap-2 border-b pb-3">
-      {back}
-      <span aria-hidden className="h-4 w-px bg-border max-sm:hidden" />
-      <h2 className="ml-1 flex min-w-0 flex-1 text-subtitle">{title}</h2>
+    <div className="flex min-h-12 min-w-0 items-center gap-2 border-b pb-2">
+      <Link
+        to="/app/$slug/chat"
+        params={{ slug: session.slug }}
+        aria-label={m.chat_ui_all_chats()}
+        className="flex h-7 shrink-0 items-center gap-1 rounded-lg pr-2 pl-1 text-body text-muted-foreground outline-none hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-(--focus-ring) max-sm:size-9 max-sm:justify-center max-sm:p-0"
+      >
+        <ChevronLeft aria-hidden className="size-4" strokeWidth={1.5} />
+        <span className="max-sm:hidden">{m.chat_ui_all_chats()}</span>
+      </Link>
+      <span aria-hidden className="h-4 w-px shrink-0 bg-border max-sm:hidden" />
+      <h2
+        className="ml-1 min-w-0 flex-1 truncate font-semibold text-subtitle"
+        data-testid="conversation-title"
+      >
+        {state.title || m.chat_ui_untitled()}
+      </h2>
       <ConversationActions session={session} />
     </div>
   )
@@ -177,7 +160,10 @@ export function ChatPage({
   const inShell = useAppShellBarAvailable()
 
   return (
-    <div className="mx-auto flex w-full min-w-0 max-w-180 flex-col gap-5" data-chat-page="">
+    <div
+      className="mx-auto flex min-h-chat-page w-full min-w-0 max-w-180 flex-col gap-5"
+      data-chat-page=""
+    >
       <ChatPageHeader session={session} />
       <ChatThread
         session={session}
@@ -185,7 +171,7 @@ export function ChatPage({
         inputRef={inputRef}
         jumpContainer={jumpContainer}
         metaWithModel
-        className="pb-2"
+        className="flex-1 pb-2"
       />
       <div
         className={cn(

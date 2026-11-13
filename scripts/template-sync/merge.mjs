@@ -16,6 +16,7 @@ export const projectOwnedPaths = new Set([
   'apps/web/src/features/share-cards/share-cards.theme.ts',
   'apps/web/src/features/share-cards/share-cards.fonts.ts',
   'apps/web/src/features/share-cards/share-cards.sites.ts',
+  'apps/web/src/features/ai/message-parts.project.tsx',
 ])
 export const baseRef = 'refs/template-sync/base'
 export const targetRef = 'refs/template-sync/target'

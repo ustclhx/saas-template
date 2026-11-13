@@ -4,3 +4,9 @@
 @import "./brand.css";
 
 @source "../";
+
+/* 对话页（features/ai/chat-page.tsx）：消息列至少占满内容面板的可视高度，短对话与空态时输入区也贴在底部
+   （设计稿 chat-components/Main.dc.html）。8.5rem 为侧边栏布局的面板外边距、顶部条与正文上下内边距之和 */
+@utility min-h-chat-page {
+  min-height: calc(100svh - 8.5rem);
+}

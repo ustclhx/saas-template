@@ -314,6 +314,7 @@ generatorTest(
     ]
     for (const name of shareCardFiles)
       await f.file(`apps/web/src/features/share-cards/${name}`, htmlAttributes)
+    await f.file('apps/web/src/features/ai/message-parts.project.tsx', htmlAttributes)
     await f.file('docs/design-system/prototypes/review.html', 'TEMPLATE_PROTOTYPE_SENTINEL')
     await f.file('scripts/check-ui.allow.local.json', '{"exceptions":{"old-project":[]}}')
     const result = await createProject(f.input, f.source)
@@ -358,6 +359,10 @@ generatorTest(
         await readFile(join(result.target, `apps/web/src/features/share-cards/${name}`)),
         htmlAttributes,
       )
+    assert.deepEqual(
+      await readFile(join(result.target, 'apps/web/src/features/ai/message-parts.project.tsx')),
+      htmlAttributes,
+    )
   },
 )
 

@@ -23,6 +23,8 @@ export default defineConfig({
     // 只忽略 CI 本地冒烟（由 playwright.smoke.config.ts 运行），不能误伤 e2e/staging/smoke.spec.ts。
     /\/e2e\/smoke\.spec\.ts$/,
     ...(!stagingURL ? ['**/staging/**', '**/ai-chat-disconnect.spec.ts'] : []),
+    // 需要 e2e/subject-chat/vite.ts 的 dev 服务器，由 playwright.subject-chat.config.ts 运行
+    '**/subject-chat.spec.ts',
     ...(!productionURL ? ['**/production/**'] : []),
   ],
   // 认证入口按 IP 限流（RL_AUTH 每分钟 10 次），串行执行避免并发请求触发 429

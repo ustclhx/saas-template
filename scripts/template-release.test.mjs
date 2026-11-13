@@ -383,6 +383,11 @@ for (const [file, initial, modifiedContent] of [
     "export const getProjectHtmlAttributes = () => ({ 'data-site': 'example' })\n",
   ],
   [
+    'apps/web/src/features/ai/message-parts.project.tsx',
+    'export function registerProjectToolRenderers() {}\n',
+    "import { registerToolRenderer } from './tool-renderers.ts'\n",
+  ],
+  [
     'apps/web/src/features/app-shell/nav.project.ts',
     '// 项目导航条目\nexport {}\n',
     "import './nav.ts'\nexport {}\n",
