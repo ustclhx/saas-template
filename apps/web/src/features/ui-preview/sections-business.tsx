@@ -5,7 +5,6 @@ import {
   DailyClaimNotice,
   type DailyClaimStatus,
   EmbeddedChat,
-  Input,
   InsufficientCreditsDialog,
   LockedFeature,
   MessageFeedback,
@@ -13,7 +12,7 @@ import {
   type MessageFeedbackValue,
   SuggestionChips,
 } from '@saas/ui'
-import { ArrowRight } from '@saas/ui/icons'
+import { ChatMessage, InputMessage } from '@saas/ui/chat'
 import { useState } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { getLocale } from '../../paraglide/runtime.js'
@@ -23,7 +22,7 @@ import { PreviewSection, Specimen } from './layout.tsx'
 
 const format = (value: number) => new Intl.NumberFormat(getLocale()).format(value)
 
-function feedbackLabels(): MessageFeedbackLabels {
+export function feedbackLabels(): MessageFeedbackLabels {
   return {
     group: m.ui_preview_biz_rate(),
     up: m.ui_preview_biz_helpful(),
@@ -96,49 +95,52 @@ export function AiChatComponentsSection() {
   const questions = [m.ui_preview_biz_q1(), m.ui_preview_biz_q2(), m.ui_preview_biz_q3()]
   const followUps = [m.ui_preview_biz_q4(), m.ui_preview_biz_q5()]
 
+  const [draft, setDraft] = useState('')
+
+  // 嵌入式对话的消息体与输入区使用对话页同一套组件（openspec add-ai-chat-components design D8，
+  // 设计稿 docs/design-system/prototypes/chat-components/Embedded.dc.html）
   const chatBody = (
     <>
+      <ChatMessage from="user" entrance={false}>
+        {m.ui_preview_biz_chat_question()}
+      </ChatMessage>
+      <ChatMessage
+        from="assistant"
+        entrance={false}
+        actions={
+          <MessageFeedback
+            value={null}
+            labels={feedbackLabels()}
+            meta={m.ui_preview_biz_credits({ count: format(2) })}
+            onChange={() => {}}
+          />
+        }
+      >
+        {m.ui_preview_biz_chat_answer()}
+      </ChatMessage>
       <SuggestionChips
-        label={m.ui_preview_biz_suggestions()}
+        label={m.ui_preview_biz_follow_ups()}
         showLabel
-        suggestions={questions.slice(0, 2)}
+        suggestions={followUps}
         onSelect={setSelected}
       />
-      <div className="max-w-4/5 self-end rounded-xl bg-active px-3.5 py-2.5 text-body">
-        {m.ui_preview_biz_chat_question()}
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <p className="m-0 text-body">{m.ui_preview_biz_chat_answer()}</p>
-        <MessageFeedback
-          value={null}
-          labels={feedbackLabels()}
-          meta={m.ui_preview_biz_credits({ count: format(2) })}
-          onChange={() => {}}
-        />
-      </div>
     </>
   )
   const composer = (
-    <form
-      aria-label={m.ui_preview_biz_chat_message()}
-      className="flex flex-col gap-2"
-      onSubmit={(event) => event.preventDefault()}
-    >
-      <div className="flex items-center gap-2">
-        <Input
-          aria-label={m.ui_preview_biz_chat_message()}
-          placeholder={m.ui_preview_biz_chat_placeholder()}
-        />
-        <Button type="submit" size="icon" aria-label={m.ui_preview_biz_chat_send()}>
-          <ArrowRight />
-        </Button>
-      </div>
-      <CreditEstimate
-        className="self-center"
-        estimate={m.ui_preview_biz_estimate_text({ count: format(2) })}
-        balance={m.ui_preview_biz_balance_text({ count: format(1280) })}
-      />
-    </form>
+    <InputMessage
+      value={draft}
+      onValueChange={setDraft}
+      onSend={() => setDraft('')}
+      placeholder={m.ui_preview_biz_chat_placeholder()}
+      labels={{
+        message: m.ui_preview_biz_chat_message(),
+        send: m.ui_preview_biz_chat_send(),
+        stop: m.ui_preview_chat_stop(),
+      }}
+      trailing={
+        <CreditEstimate hideIcon estimate={m.ui_preview_biz_estimate_text({ count: format(2) })} />
+      }
+    />
   )
   const chatLabels = {
     trigger: m.ui_preview_biz_chat_trigger(),

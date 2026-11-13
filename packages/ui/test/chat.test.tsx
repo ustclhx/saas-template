@@ -368,6 +368,16 @@ describe('InputMessage', () => {
 
   const textarea = () => screen.getByRole('textbox', { name: '消息' }) as HTMLTextAreaElement
 
+  it('查询容器在内层：根节点不是 inline-size 容器，在 flex-wrap 父级中高度不被撑大（版式见 ui-preview e2e）', () => {
+    const { container } = render(<Composer />)
+    const root = container.querySelector('[data-input-message]') as HTMLElement
+    expect(root.className.split(/\s+/)).not.toContain('@container')
+    expect(root.className.split(/\s+/)).toEqual(expect.arrayContaining(['w-full', 'min-w-0']))
+    const body = root.querySelector('[data-input-message-body]') as HTMLElement
+    expect(body.className.split(/\s+/)).toContain('@container')
+    expect(body.contains(textarea())).toBe(true)
+  })
+
   it('Enter 发送去掉首尾空白的内容，Shift+Enter 不发送', () => {
     const onSend = vi.fn()
     render(<Composer initial="  你好  " onSendSpy={onSend} />)
@@ -518,9 +528,9 @@ describe('InputMessage', () => {
   it('不可用时用 --chat-fill 底（深色下比卡片亮），内边距按容器查询', () => {
     const { container } = render(<Composer disabled />)
     const root = container.querySelector('[data-input-message]') as HTMLElement
-    expect(root.className.split(/\s+/)).toEqual(
-      expect.arrayContaining(['bg-chat-fill', '@container']),
-    )
+    expect(root.className.split(/\s+/)).toContain('bg-chat-fill')
+    // 查询容器在内层 [data-input-message-body]（见上方 flex-wrap 用例）
+    expect(textarea().closest('.\\@container')).not.toBeNull()
     expect(textarea().className).toContain('@chat-message:px-3.5')
     expect(textarea().className).not.toMatch(/(^|\s)sm:/)
   })

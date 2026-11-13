@@ -42,6 +42,10 @@ import {
 const ReaderSection = lazy(() =>
   import('./section-reader.tsx').then((module) => ({ default: module.ReaderSection })),
 )
+// 对话组件同理：@saas/ui/chat 含回复 Markdown（react-markdown），懒加载形成独立分包
+const ChatComponentsSection = lazy(() =>
+  import('./section-chat.tsx').then((module) => ({ default: module.ChatComponentsSection })),
+)
 
 /** 目录顺序与页面各节一致（锚点 id → 标题） */
 const SECTIONS = [
@@ -61,6 +65,7 @@ const SECTIONS = [
   ['data-table', 'DataTable'],
   ['form', 'Form'],
   ['reader', 'Reader'],
+  ['chat', 'ChatMessage · ThinkingSteps · ToolCall · InputMessage · ChatMarkdown'],
   ['business-chat', 'SuggestionChips · MessageFeedback · EmbeddedChat'],
   [
     'business-credits',
@@ -157,6 +162,9 @@ export function UiPreviewPage() {
         <FormSection />
         <Suspense fallback={null}>
           <ReaderSection />
+        </Suspense>
+        <Suspense fallback={null}>
+          <ChatComponentsSection />
         </Suspense>
         <AiChatComponentsSection />
         <CreditsComponentsSection />
