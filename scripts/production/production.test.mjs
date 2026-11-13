@@ -11,6 +11,11 @@ import {
 } from './check-wrangler-envs.mjs'
 import { buildChecks, keyTables, migrationCount, pgEnv, verifyRestore } from './verify-restore.mjs'
 
+/** 只验证单项规则的最小 web 配置：三个环境都带 RL_SHARE_CARD，namespace_id 各不相同。 */
+const shareCardLimit = (namespace_id) => [
+  { name: 'RL_SHARE_CARD', namespace_id, simple: { limit: 30, period: 60 } },
+]
+
 const wrangler = (app) =>
   parseJsonc(readFileSync(new URL(`../../apps/${app}/wrangler.jsonc`, import.meta.url), 'utf8'))
 
@@ -39,6 +44,26 @@ test('production drift, staging reuse and forbidden vars are reported', () => {
   assert.ok(problems.includes('web: production references staging value email-staging'))
   assert.ok(problems.includes('web: production must not set PAYMENT_MODE'))
   assert.ok(problems.includes('web: production must not set UI_PREVIEW'))
+})
+
+test('web declares RL_SHARE_CARD in every environment with its own namespace', () => {
+  for (const environment of ['top-level', 'staging', 'production']) {
+    const config = wrangler('web')
+    const env = environment === 'top-level' ? config : config.env[environment]
+    env.ratelimits = env.ratelimits.filter((item) => item.name !== 'RL_SHARE_CARD')
+    // production 缺少时同时触发绑定集合不一致，这里只断言本条规则。
+    assert.ok(
+      checkEnvs('web', config).includes(`web: ${environment} is missing ratelimit RL_SHARE_CARD`),
+    )
+  }
+  const shared = wrangler('web')
+  const card = shared.env.staging.ratelimits.find((item) => item.name === 'RL_SHARE_CARD')
+  card.namespace_id = shared.ratelimits.find((item) => item.name === 'RL_SHARE_CARD').namespace_id
+  assert.ok(
+    checkEnvs('web', shared).some((line) =>
+      line.includes(`namespace_id ${card.namespace_id} is shared by top-level RL_SHARE_CARD`),
+    ),
+  )
 })
 
 test('production jobs must declare a Cron profile that matches its triggers', () => {
@@ -171,9 +196,13 @@ test('testing CI bypass still requires main ancestry and staging success', async
 
 test('site vars: staging must not share production site settings, web and jobs must agree', () => {
   const env = (vars) => ({
+    ratelimits: shareCardLimit('1'),
     env: {
-      staging: { vars },
-      production: { vars: { APP_URL: 'https://a.example', PLAUSIBLE_DOMAIN: 'a' } },
+      staging: { vars, ratelimits: shareCardLimit('2') },
+      production: {
+        vars: { APP_URL: 'https://a.example', PLAUSIBLE_DOMAIN: 'a' },
+        ratelimits: shareCardLimit('3'),
+      },
     },
   })
   assert.match(checkEnvs('web', env({ APP_URL: 'https://a.example' })).join(), /share APP_URL/)
@@ -214,9 +243,16 @@ for (const item of sitesCases)
 
 test('site vars: PLAUSIBLE_SITES must parse, stay apart across environments and match in web/jobs', () => {
   const config = (staging, production) => ({
+    ratelimits: shareCardLimit('1'),
     env: {
-      staging: { vars: { APP_URL: 'https://s.example', ...staging } },
-      production: { vars: { APP_URL: 'https://a.example', ...production } },
+      staging: {
+        vars: { APP_URL: 'https://s.example', ...staging },
+        ratelimits: shareCardLimit('2'),
+      },
+      production: {
+        vars: { APP_URL: 'https://a.example', ...production },
+        ratelimits: shareCardLimit('3'),
+      },
     },
   })
   const production = { PLAUSIBLE_SITES: 'a.example=a,b.example=b' }

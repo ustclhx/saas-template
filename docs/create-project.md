@@ -65,7 +65,7 @@ CLI 参数，键排序、列表去重保序，不包含输出目录）和 `migra
 用已生成副本再次生成时，会重新记录当前源状态，不继承旧记录。
 同一源与参数的生成文件列表、内容和权限保持一致；普通文件为 0644、可执行文件和目录为 0755。
 Hyperdrive / KV 的部署 ID 重置为零占位值，AI Gateway / R2 账号标识清空，所有环境都需配置新资源；
-Rate Limiting 的 RL_AUTH / RL_AI / RL_API 命名空间需独立分配。Queue 名会同步到 jobs 消费者与测试。
+Rate Limiting 的 RL_AUTH / RL_AI / RL_API / RL_SHARE_CARD 命名空间需独立分配。Queue 名会同步到 jobs 消费者与测试。
 FILES 桶按项目改名，R2_FILES_BUCKET 与绑定保持一致；文本模式也保留文件清理 Cron 所需的 FILES 桶。
 清单按 AI、支付、OAuth 与 Turnstile 开关列出资源与密钥；关闭图片和视频时移除 Workflow 绑定，
 清单不包含媒体服务商、Workflow 与媒体 R2 S3 密钥。

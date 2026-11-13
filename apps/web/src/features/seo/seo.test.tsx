@@ -203,6 +203,23 @@ describe('公开页面 SEO（4.1–4.3）', () => {
       expect(robots(origin)).toContain(`Disallow: ${path}`)
   })
 
+  it('分享页与分享卡片：robots 放行，站点地图与 llms.txt 不收录', () => {
+    const text = robots(origin)
+    expect(text).toContain('Allow: /share-card/')
+    expect(text).toContain('Allow: /s/')
+    expect(text).not.toMatch(/Disallow: \/(?:s|share-card)\//)
+    const shared = [
+      ...pages,
+      { path: '/s/sample/abc', title: 'Shared', description: 'Shared', locale },
+      { path: '/share-card/sample/abc.png', title: 'Card', description: 'Card', locale },
+    ]
+    for (const output of [sitemap(shared, origin), llmsTxt(shared, origin)]) {
+      expect(output).not.toContain('/s/sample')
+      expect(output).not.toContain('/share-card/')
+    }
+    expect(pages.some((page) => page.path.startsWith('/s/'))).toBe(false)
+  })
+
   it('三类页面 JSON-LD 为合法 JSON 且具备类型所需字段，价格来自套餐目录', () => {
     const home = pages.find((page) => page.path === '/' && page.locale === locale)
     if (!home) throw new Error('Missing homepage')

@@ -26,7 +26,8 @@ export interface ShareCardDefinition<T> {
   digest(data: T): string
   render(data: T, theme: ShareCardTheme): JSX.Element
   alt(data: T): string
-  page(data: T): { title: string; description: string }
+  /** 通用分享页与元数据使用；label 是分享页标题上方的类型标签，可省略。 */
+  page(data: T): { title: string; description: string; label?: string }
 }
 
 export type RegisteredShareCard<T> = Omit<

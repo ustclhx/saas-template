@@ -538,7 +538,7 @@ export function setupChecklist(options) {
       : []),
     `Workers：${options.name}-web、${options.name}-jobs（staging 使用 -staging 后缀）`,
     'Hyperdrive：HYPERDRIVE（关缓存）/ HYPERDRIVE_CACHED（开缓存），替换所有环境的 id',
-    'KV：CACHE，替换所有环境的 id；Rate Limiting：RL_AUTH / RL_AI / RL_API，分配独立 namespace_id',
+    'KV：CACHE，替换所有环境的 id；Rate Limiting：RL_AUTH / RL_AI / RL_API / RL_SHARE_CARD，分配独立 namespace_id',
     `Queues：${options.name}-email、${options.name}-events（staging 使用 -staging 后缀）`,
     'Resend：验证发件域名；本地 EMAIL_TRANSPORT=log 不需要凭据',
     '域名 / DNS 与 Cloudflare 部署账号；CI 的 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID',

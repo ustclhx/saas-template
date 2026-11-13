@@ -27,6 +27,7 @@ export {
   Info,
   KeyRound,
   LayoutGrid,
+  Link2Off,
   ListChecks,
   LogOut,
   Mail,
