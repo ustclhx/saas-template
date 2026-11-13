@@ -100,6 +100,69 @@ describe('ChatMessage', () => {
     expect(user.getAttribute('role')).toBeNull()
   })
 
+  it('助手消息是查询容器：窄时头像与 leading 同一行、正文通栏在下，宽时头像列 + 内容列', () => {
+    render(
+      <ChatMessage
+        from="assistant"
+        entrance={false}
+        leading={<button type="button">已思考 6 秒</button>}
+        actions={<button type="button">复制回复</button>}
+      >
+        回答
+      </ChatMessage>,
+    )
+    const message = screen.getByText('回答').closest('[data-chat-role]') as HTMLElement
+    const cls = (selector: string) =>
+      (message.querySelector(selector) as HTMLElement).className.split(/\s+/)
+    expect(message.className.split(/\s+/)).toContain('@container')
+    // 头像与 leading 在第一行（容器窄时），宽时 leading 仍在内容列顶部
+    expect(cls('[data-chat-avatar-cell]')).toEqual(
+      expect.arrayContaining(['col-start-1', 'row-start-1']),
+    )
+    expect(cls('[data-chat-leading]')).toEqual(
+      expect.arrayContaining(['col-start-2', 'row-start-1']),
+    )
+    expect(
+      screen.getByRole('button', { name: '已思考 6 秒' }).closest('[data-chat-leading]'),
+    ).not.toBeNull()
+    // 正文与操作区：窄时跨两列在第二行，宽（@chat-message:）时只占内容列
+    expect(cls('[data-chat-body]')).toEqual(
+      expect.arrayContaining([
+        'col-span-2',
+        'row-start-2',
+        '@chat-message:col-span-1',
+        '@chat-message:col-start-2',
+      ]),
+    )
+    expect(cls('[data-chat-body]')).not.toContain('@chat-message:row-start-1')
+    expect(
+      screen.getByRole('button', { name: '复制回复' }).closest('[data-chat-body]'),
+    ).not.toBeNull()
+    // 头像窄时 24px，宽时 28px；网格窄时居中对齐，宽时顶端对齐
+    expect(cls('[data-chat-avatar]')).toEqual(
+      expect.arrayContaining(['size-6', '@chat-message:size-7']),
+    )
+    expect(cls('[data-chat-layout]')).toEqual(
+      expect.arrayContaining([
+        'items-center',
+        '@chat-message:items-start',
+        '@chat-message:gap-x-3',
+      ]),
+    )
+  })
+
+  it('没有 leading 时宽版式正文回到第一行，窄版式仍在头像下方', () => {
+    render(
+      <ChatMessage from="assistant" entrance={false}>
+        回答
+      </ChatMessage>,
+    )
+    const body = screen.getByText('回答').closest('[data-chat-body]') as HTMLElement
+    expect(body.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['row-start-2', '@chat-message:row-start-1']),
+    )
+  })
+
   it('avatar={false} 不显示头像', () => {
     const { container } = render(
       <ChatMessage from="assistant" avatar={false} entrance={false}>

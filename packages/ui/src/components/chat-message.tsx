@@ -1,10 +1,13 @@
 // 来源：fluid-functionalism chat-message（2026-11，https://www.fluidfunctionalism.com/r/chat-message.json，MIT）
 // 适配：包内相对路径、去掉 "use client"、`m as motion` + MotionFeatures；其余改动见 packages/ui/UPSTREAM.md
 // 模板改动（openspec add-ai-chat-components design D1，设计稿 docs/design-system/prototypes/chat-components/Main.dc.html、
-// States.dc.html、Mobile.dc.html、Embedded.dc.html）：
+// States.dc.html、Mobile.dc.html、Embedded.dc.html、EmbeddedMobile.dc.html）：
 // - 角色属性沿用上游 `from`（design D1 写作 `role`：与 HTML role 属性同名，Biome a11y 规则会把调用处当作无效 ARIA role）；
 // - 用户消息为右侧 12px 圆角的 secondary 底气泡（上游为 accent 混色），最宽 80%（窄屏与 compact 85%）；
-//   助手消息为左侧 28px 头像（窄屏与 compact 24px）+ 内容列，正文无底色；
+//   助手消息正文无底色，根节点为查询容器，按消息自身宽度切换版式（阈值 globals.css 的 --container-chat-message，
+//   23rem）：窄时 24px 头像与 `leading`（推理按钮）同一行、正文与操作区通栏在下（Mobile / EmbeddedMobile 画板），
+//   宽时为 28px 头像列（compact 24px）+ 内容列（Main / Embedded 画板）。用容器查询而不是视口断点，
+//   对话页与嵌入式面板、底部抽屉得到同样的版式；
 // - 新增 `status`（streaming / aborted / failed / incomplete / retrying）：流式中正文末尾显示闪烁光标，
 //   其余四种在正文下方显示状态徽标与可选说明 `statusDetail`，已生成的正文保留；状态文字经 `statusLabel` 传入；
 // - 操作区（`actions`）始终可见（设计稿），上游悬停才显示；时间戳 `time` 与附件 `files` 不移植；
@@ -50,6 +53,8 @@ type ChatMessageProps = Omit<
     from: ChatMessageRole
     /** 消息内容；助手消息由调用方按内容类型组合（推理、工具调用、正文），依次竖排 */
     children?: ReactNode
+    /** 助手消息头像旁的内容，如推理按钮（ThinkingSteps）；窄版式中与头像同一行 */
+    leading?: ReactNode
     /** 正文下方的操作区，如复制回复与评分 */
     actions?: ReactNode
     /** 助手头像；默认为强调色圆底上的星形图标，传 `false` 不显示 */
@@ -105,6 +110,7 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
       statusLabel,
       statusDetail,
       actions,
+      leading,
       avatar,
       entrance = true,
       children,
@@ -151,6 +157,82 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
       </div>
     )
 
+    // 助手消息的版式：头像格、leading 与正文区放进两列网格（见文件头说明）
+    function assistantLayout() {
+      const hasLeading = leading != null && leading !== false
+      const body = (hasContent || statusRow || actionsRow) && (
+        <div
+          data-chat-body=""
+          className={cn(
+            'flex min-w-0 flex-col gap-2',
+            avatar !== false &&
+              cn(
+                // 窄：通栏在头像行之下；宽：内容列
+                'col-span-2 row-start-2 @chat-message:col-span-1 @chat-message:col-start-2',
+                !hasLeading && '@chat-message:row-start-1',
+              ),
+          )}
+        >
+          {hasContent && (
+            <div
+              data-chat-content=""
+              className={cn(
+                'flex min-w-0 flex-col gap-2 text-foreground wrap-anywhere',
+                status === 'streaming' && 'chat-caret',
+              )}
+            >
+              {wrapText(children)}
+            </div>
+          )}
+          {statusRow}
+          {actionsRow}
+        </div>
+      )
+      const leadingCell = hasLeading && (
+        <div
+          data-chat-leading=""
+          className={cn('min-w-0', avatar !== false && 'col-start-2 row-start-1')}
+        >
+          {leading}
+        </div>
+      )
+      if (avatar === false) {
+        return (
+          <div className="flex min-w-0 flex-col gap-2">
+            {leadingCell}
+            {body}
+          </div>
+        )
+      }
+      return (
+        <div
+          data-chat-layout=""
+          className={cn(
+            // 两列网格：头像列 + 内容列。窄版式头像与 leading 垂直居中成一行，宽版式顶端对齐
+            'grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 @chat-message:items-start',
+            compact ? '@chat-message:gap-x-2.5' : '@chat-message:gap-x-3',
+          )}
+        >
+          <div data-chat-avatar-cell="" className="col-start-1 row-start-1 flex">
+            {avatar ?? (
+              <span
+                aria-hidden="true"
+                data-chat-avatar=""
+                className={cn(
+                  'flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground',
+                  !compact && '@chat-message:size-7',
+                )}
+              >
+                <Sparkle size={compact ? 12 : 14} strokeWidth={2} />
+              </span>
+            )}
+          </div>
+          {leadingCell}
+          {body}
+        </div>
+      )
+    }
+
     return (
       <MotionFeatures>
         <motion.div
@@ -173,7 +255,8 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
                   'flex-col items-end gap-1.5 self-end',
                   compact ? 'max-w-17/20' : 'max-w-17/20 sm:max-w-4/5',
                 )
-              : cn('w-full self-start', compact ? 'gap-2' : 'gap-2 sm:gap-3'),
+              : // 查询容器：版式随消息自身宽度变化（@chat-message: 即宽度 ≥ --container-chat-message）
+                'w-full flex-col self-start @container',
             className,
           )}
           {...props}
@@ -195,36 +278,7 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
               {actionsRow}
             </>
           ) : (
-            <>
-              {avatar !== false &&
-                (avatar ?? (
-                  <span
-                    aria-hidden="true"
-                    data-chat-avatar=""
-                    className={cn(
-                      'flex shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground',
-                      compact ? 'size-6' : 'size-6 sm:size-7',
-                    )}
-                  >
-                    <Sparkle size={compact ? 12 : 14} strokeWidth={2} />
-                  </span>
-                ))}
-              <div className="flex min-w-0 flex-1 flex-col gap-2">
-                {hasContent && (
-                  <div
-                    data-chat-content=""
-                    className={cn(
-                      'flex min-w-0 flex-col gap-2 text-foreground wrap-anywhere',
-                      status === 'streaming' && 'chat-caret',
-                    )}
-                  >
-                    {wrapText(children)}
-                  </div>
-                )}
-                {statusRow}
-                {actionsRow}
-              </div>
-            </>
+            assistantLayout()
           )}
         </motion.div>
       </MotionFeatures>

@@ -31,7 +31,7 @@
 
 - **文案**：上游英文默认文案（"Thinking…"、"Send"、"Stop" 等）全部改为必填 `labels`（规则 10）。
 - **InputMessage**：不移植附件、拖放与 `file-thumbnail`（对话没有上传能力，以后要加时再按上游合并）；保留自适应高度（`field-sizing` 优先，回退为脚本计算，上限约 8 行后框内滚动）；新增 `leading`（模型选择、Thinking 开关）与 `trailing`（预计消耗）插槽；`busy` 时发送按钮换成停止按钮，换位时若焦点在按钮上，焦点移到输入框（停止按钮卸载会让焦点落到 body）。Enter 发送、Shift+Enter 换行、`isComposing` 不发送沿用现有实现。
-- **ChatMessage**：`role: 'user' | 'assistant'`、`status?`（`streaming` / `aborted` / `failed` / `incomplete` / `retrying`）、`statusLabel?`、`actions?`（放 MessageFeedback 与复制回复）、`children`（内容由调用方按 part 组合）。气泡与对齐以设计稿为准。
+- **ChatMessage**：`from: 'user' | 'assistant'`（沿用上游名；`role` 与 HTML role 属性同名，Biome `a11y/useValidAriaRole` 会把每个调用处判为无效 ARIA role）、`leading?`（头像旁的内容，如推理按钮）、`status?`（`streaming` / `aborted` / `failed` / `incomplete` / `retrying`）、`statusLabel?`、`actions?`（放 MessageFeedback 与复制回复）、`children`（内容由调用方按 part 组合）。气泡与对齐以设计稿为准；助手消息按自身宽度切换版式（容器查询，阈值 `--container-chat-message`）：窄时头像与 `leading` 同一行、正文与操作区通栏在下（Mobile / EmbeddedMobile 画板），宽时为头像列 + 内容列。
 - **ThinkingSteps**：上游的步骤列表用于推理文本时只有一步，接口保留 `steps`，适配层传单步；折叠用 radix-ui `Collapsible`，触发按钮带 `aria-expanded`。
 - **ThinkingIndicator**：等待首个可见输出时显示；闪烁动效在减少动态效果时改为静止（CSS `motion-reduce:` + MotionConfig）。
 - 动效按规则 8 用 `m as motion` + `MotionFeatures`。上游用到的图标（复制、停止、发送等）直接从 lucide 导入，不补进 `icon-context` 与 `UiRoot` 默认图标表：对话组件只在对话路由加载，补进默认表会让图标进入首屏包（同 `message-feedback.tsx` 的做法）。

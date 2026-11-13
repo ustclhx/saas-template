@@ -4,7 +4,7 @@
   "src/components/badge.tsx": "dcddc264d07d812a12b1630ec0217b0050289026004c518cd1c9b804947f9f76",
   "src/components/button.tsx": "f3f6afe7f7d71f2e84d87c63583f85148d06dcef7614e5574845108abc37c233",
   "src/components/card.tsx": "942ed43d735923896519cb930c9654358135293a5ba954a4f6c97085215910d7",
-  "src/components/chat-message.tsx": "02c2a69fe71f144e00d79b4d44e4dbe3fce9d4d624082155c34fbd8a0f1f4fc4",
+  "src/components/chat-message.tsx": "c4e947aa288fc660fdd18ff8318b287432cd4a3742d1a2f4d925f978912b3059",
   "src/components/checkbox.tsx": "6fbfb51fed6dd5fe18565c068173a92fd12d702d396c7dc4fd8a0049ee60d066",
   "src/components/combobox.tsx": "31692e7e893c90cd6365e738fd10e29c881b49fa2944fb572e15627a766a5417",
   "src/components/command-menu.tsx": "0ca02798703d0e97564a729c3c3c75798146d2c0551b5c2c23f962babf4d19fb",

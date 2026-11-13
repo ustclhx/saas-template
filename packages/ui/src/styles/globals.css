@@ -96,8 +96,9 @@
     --destructive-light: #fef2f2;
     /* 成功色沿用模板原值（作文字时满足 4.5:1） */
     --success: oklch(0.527 0.154 150.069);
-    /* 模板新增（add-ai-chat-components）：提醒色，对话「未完成」状态等，作文字（含 10% 淡底上）≥ 4.5:1 */
-    --warning: #a16207;
+    /* 模板新增（add-ai-chat-components）：提醒色，对话「未完成」状态等。设计稿取 yellow-700（#a16207），
+       在自身 10% 淡底上只有约 4.2:1，略加深到 ≥ 4.5:1（页面底与卡片底上约 4.9–5.2:1） */
+    --warning: #8a5a00;
     /* 边框由前景色混出，随主题自动变化 */
     --border: color-mix(in oklab, var(--foreground) 12%, transparent);
     --input: #e5e5e5;
@@ -305,6 +306,10 @@
   --color-tint-hover: var(--tint-hover);
   --color-fluid-accent: var(--fluid-accent);
   --color-fluid-accent-text: var(--fluid-accent-text);
+  /* 模板新增（add-ai-chat-components）：ChatMessage 助手消息的版式阈值（容器查询 @chat-message:）。
+     消息宽度不足 23rem（368px）时头像与推理按钮同一行、正文通栏在下（Mobile / EmbeddedMobile 画板，内容宽约 358px）；
+     达到时为头像列 + 内容列（Embedded 画板的 420px 面板，内容宽约 388px） */
+  --container-chat-message: 23rem;
   --color-control-border: var(--control-border);
   --color-field-border: var(--field-border);
 
