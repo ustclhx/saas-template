@@ -1,12 +1,21 @@
-import { Button, cn } from '@saas/ui'
+import {
+  Button,
+  DropdownContent,
+  DropdownMenu,
+  DropdownSeparator,
+  DropdownTrigger,
+  EmbeddedChat,
+  MenuItem,
+} from '@saas/ui'
+import { History, SquarePen } from '@saas/ui/icons'
 import { Link } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { FormAlert } from '../auth/auth-layout.tsx'
-import { HydratedControls } from '../workspace/components.tsx'
+import { ChatComposer } from './chat-composer.tsx'
 import { SuggestionChips } from './chat-extras.tsx'
-import { ChatPage } from './chat-page.tsx'
-import type { MessageFeedbackValue } from './feedback.ts'
+import { ChatSession } from './chat-session.ts'
+import { ChatThread } from './chat-thread.tsx'
 import { getPickerModels } from './model-picker.functions.ts'
 import type { PickerModel } from './model-picker.ts'
 import {
@@ -17,42 +26,92 @@ import {
 import type { SubjectChatData } from './subject-chat.server.ts'
 
 /**
- * 嵌入式对象对话（add-subject-chat tasks.md 6.1，specs/ai-chat「对话绑定业务对象」）。
+ * 嵌入式对象对话（add-subject-chat tasks.md 6.1；外壳与组件见 openspec add-ai-chat-components design D7，
+ * 设计稿 docs/design-system/prototypes/chat-components/Embedded.dc.html、EmbeddedMobile.dc.html）。
  *
- * `<SubjectChat slug subjectType subjectId />` 可放在任意 App 页面（如报告页底部）：
- * 挂载后读取对象对话数据与可选模型，默认进入最近一个对话；还没有对话时显示开场推荐问题，
- * 第一次发送时由服务端构建上下文并新建对话，再把这条消息发出。发送复用 `POST /api/ai/chat`
- * 的流协议、计费与模型选择。最终视觉由 add-ui-design-system 8.6 替换，props 保持不变。
+ * `<SubjectChat slug subjectType subjectId />` 可放在任意 App 页面（如报告页底部）：渲染 `@saas/ui` 的 EmbeddedChat
+ * 外壳（对象标签为徽标，历史对话与新对话在头部），消息与输入区是对话页同一组 ChatThread / ChatComposer。
+ * 默认进入最近一个对话；还没有对话时显示开场推荐问题与输入框，第一次发送时由服务端构建上下文并新建对话。
+ * 发送复用 `POST /api/ai/chat` 的流协议、计费与模型选择。
+ *
+ * 对话状态（消息、生成中的回复、草稿）按会话保存在外壳之外：外壳关闭时卸载内容，再打开时都还在，
+ * 关闭与切换对话都不停止生成；整个组件卸载（离开页面）时才停止。
  */
 
 export interface SubjectChatProps {
   readonly slug: string
   readonly subjectType: string
   readonly subjectId: string
+  /** inline（默认）：≥ 768px 为正文中的卡片；panel：悬浮按钮 + 右侧面板。< 768px 都是悬浮按钮 + 底部抽屉 */
+  readonly variant?: EmbeddedChatVariant
+  /** 受控打开面板 / 抽屉；不传时由外壳自己管理 */
+  readonly open?: boolean
+  readonly onOpenChange?: (open: boolean) => void
+  /** 页面自带入口时传 false 并受控打开 */
+  readonly showTrigger?: boolean
   readonly className?: string | undefined
 }
 
+/** inline：≥ 768px 为正文中的卡片；panel：悬浮按钮 + 右侧面板（EmbeddedChat 的 variant） */
+type EmbeddedChatVariant = 'inline' | 'panel'
+
 type Loaded = SubjectChatData & { readOnly: boolean; models: readonly PickerModel[] }
 
-export function SubjectChat({ slug, subjectType, subjectId, className }: SubjectChatProps) {
+interface ShellProps {
+  readonly variant?: EmbeddedChatVariant | undefined
+  readonly open?: boolean | undefined
+  readonly defaultOpen?: boolean | undefined
+  readonly onOpenChange?: ((open: boolean) => void) | undefined
+  readonly showTrigger?: boolean | undefined
+  readonly className?: string | undefined
+}
+
+/** EmbeddedChat 的可选属性：只传调用方给出的值（exactOptionalPropertyTypes） */
+function shellProps({
+  variant = 'inline',
+  open,
+  defaultOpen,
+  onOpenChange,
+  showTrigger,
+  className,
+}: ShellProps) {
+  return {
+    variant,
+    ...(open !== undefined ? { open } : {}),
+    ...(defaultOpen !== undefined ? { defaultOpen } : {}),
+    ...(onOpenChange ? { onOpenChange } : {}),
+    ...(showTrigger !== undefined ? { showTrigger } : {}),
+    ...(className ? { className } : {}),
+  }
+}
+
+const shellLabels = (title: string) => ({
+  trigger: m.chat_ui_subject_trigger(),
+  title,
+  close: m.chat_ui_close(),
+})
+
+export function SubjectChat({
+  slug,
+  subjectType,
+  subjectId,
+  variant,
+  open,
+  onOpenChange,
+  showTrigger,
+  className,
+}: SubjectChatProps) {
   const [state, setState] = useState<
     | { status: 'loading' }
     | { status: 'error'; notFound: boolean }
     | { status: 'ready'; data: Loaded }
   >({ status: 'loading' })
-  const [conversationId, setConversationId] = useState<string | undefined>()
 
   useEffect(() => {
     let cancelled = false
     setState({ status: 'loading' })
     Promise.all([
-      getSubjectChat({
-        data: {
-          slug,
-          subject: { type: subjectType, id: subjectId },
-          ...(conversationId ? { conversationId } : {}),
-        },
-      }),
+      getSubjectChat({ data: { slug, subject: { type: subjectType, id: subjectId } } }),
       getPickerModels({ data: { slug, kind: 'text' } }),
     ])
       .then(([chat, models]) => {
@@ -66,25 +125,26 @@ export function SubjectChat({ slug, subjectType, subjectId, className }: Subject
     return () => {
       cancelled = true
     }
-  }, [slug, subjectType, subjectId, conversationId])
+  }, [slug, subjectType, subjectId])
 
-  if (state.status === 'loading')
+  const shell = { variant, open, onOpenChange, showTrigger, className }
+  if (state.status !== 'ready')
     return (
-      <p role="status" className={cn('text-muted-foreground text-sm', className)}>
-        {m.subject_chat_loading()}
-      </p>
-    )
-  if (state.status === 'error')
-    return (
-      <div className={className}>
-        <FormAlert
-          message={state.notFound ? m.subject_chat_not_found() : m.subject_chat_load_failed()}
-        />
-      </div>
+      <EmbeddedChat labels={shellLabels(m.chat_ui_subject_title())} {...shellProps(shell)}>
+        {state.status === 'loading' ? (
+          <p role="status" className="text-muted-foreground">
+            {m.subject_chat_loading()}
+          </p>
+        ) : (
+          <FormAlert
+            message={state.notFound ? m.subject_chat_not_found() : m.subject_chat_load_failed()}
+          />
+        )}
+      </EmbeddedChat>
     )
   return (
     <SubjectChatView
-      className={className}
+      {...shell}
       slug={slug}
       data={state.data}
       models={state.data.models}
@@ -95,163 +155,227 @@ export function SubjectChat({ slug, subjectType, subjectId, className }: Subject
         if (!result.ok) throw new Error(result.error)
         return result.result.id
       }}
-      onSelectConversation={setConversationId}
+      loadConversation={async (conversationId) => {
+        const chat = await getSubjectChat({
+          data: { slug, subject: { type: subjectType, id: subjectId }, conversationId },
+        })
+        return chat
+      }}
     />
   )
 }
 
+/** 还没有对话（或新对话）时会话缓存中的键 */
+const NEW = 'new'
+
 /**
- * 对象对话视图：已有对话时渲染对话；没有时显示开场推荐与输入框，第一次发送前调用 `start`
- * 新建对话。临时上下文页与 `SubjectChat` 共用。
+ * 对象对话视图：EmbeddedChat 外壳 + 按对话缓存的 ChatSession。还没有对话时显示开场推荐与输入框，
+ * 第一次发送前调用 `start` 新建对话。临时上下文页与 `SubjectChat` 共用。
  */
 export function SubjectChatView({
   slug,
   data,
   models,
   start,
-  onSelectConversation,
-  className,
+  loadConversation,
+  ...shell
 }: {
   slug: string
   data: SubjectChatData & { readOnly: boolean }
   models: readonly PickerModel[]
   /** 新建对话并返回其 ID；为 undefined 时不允许新建（如临时令牌已过期） */
   start: (() => Promise<string>) | undefined
-  onSelectConversation?: ((id: string) => void) | undefined
-  className?: string | undefined
-}) {
-  const [active, setActive] = useState<{ id: string; title: string; autoSend?: string } | null>(
-    data.conversation,
-  )
+  /** 读取历史对话的消息；不传时没有历史菜单 */
+  loadConversation?: ((id: string) => Promise<SubjectChatData>) | undefined
+} & ShellProps) {
+  const subject = data.subject
+  const sessions = useRef(new Map<string, ChatSession>())
   // 本视图内新建的对话立即出现在历史列表中，不必重新加载
   const [conversations, setConversations] = useState(data.conversations)
-  const [startError, setStartError] = useState<string | null>(null)
-  const [pending, setPending] = useState(false)
-  const [draft, setDraft] = useState('')
-  const subject = data.subject
-  const canStart = start !== undefined && !data.readOnly && models.length > 0
+  const [activeKey, setActiveKey] = useState(data.conversation?.id ?? NEW)
+  const [loading, setLoading] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
-  async function begin(text: string) {
-    if (!start || pending || !text.trim()) return
-    setPending(true)
-    setStartError(null)
+  function create(key: string, stored?: SubjectChatData) {
+    const conversation = stored?.conversation
+    const session = new ChatSession({
+      slug,
+      conversationId: conversation?.id,
+      title: subject.title ?? '',
+      storedMessages: stored?.messages ?? [],
+      models,
+      defaultModelKey: subject.defaultModelKey,
+      initialFeedback: stored?.feedback ?? {},
+      readOnly: data.readOnly,
+      start,
+      onStarted: (id) => {
+        // 新对话开始后以对话 ID 缓存，「新对话」再次从空白开始
+        sessions.current.delete(NEW)
+        sessions.current.set(id, session)
+        setActiveKey(id)
+        setConversations((old) => [
+          { id, title: subject.title ?? '', updatedAt: new Date() },
+          ...old.filter((item) => item.id !== id),
+        ])
+      },
+    })
+    sessions.current.set(key, session)
+    return session
+  }
+
+  const cached = sessions.current.get(activeKey)
+  const session =
+    cached ??
+    (activeKey === NEW
+      ? create(NEW)
+      : activeKey === data.conversation?.id
+        ? create(activeKey, data)
+        : undefined)
+
+  // 离开页面时停止全部会话的本地读取；关闭外壳与切换对话不停止
+  useEffect(() => {
+    const all = sessions.current
+    return () => {
+      for (const item of all.values()) item.dispose()
+    }
+  }, [])
+
+  async function switchTo(id: string) {
+    if (id === activeKey) return
+    setLoadError(null)
+    if (sessions.current.has(id) || !loadConversation) return setActiveKey(id)
+    setLoading(id)
     try {
-      const id = await start()
-      setActive({ id, title: subject.title ?? '', autoSend: text.trim() })
-      setConversations((old) => [
-        { id, title: subject.title ?? '', updatedAt: new Date() },
-        ...old.filter((item) => item.id !== id),
-      ])
+      const stored = await loadConversation(id)
+      if (!sessions.current.has(id)) create(id, stored)
+      setActiveKey(id)
     } catch {
-      setStartError(m.subject_chat_start_failed())
+      setLoadError(m.subject_chat_load_failed())
     } finally {
-      setPending(false)
+      setLoading(null)
     }
   }
 
+  const blank = activeKey === NEW
+  const canStartNew = start !== undefined && !data.readOnly && models.length > 0
+  const history = loadConversation !== undefined && conversations.length > 0
+  const newConversation = () => {
+    setLoadError(null)
+    setActiveKey(NEW)
+    inputRef.current?.focus()
+  }
+
+  const headerAction = (
+    <>
+      {history ? (
+        <DropdownMenu>
+          <DropdownTrigger
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 text-muted-foreground"
+                aria-label={m.subject_chat_history()}
+              >
+                <History aria-hidden />
+              </Button>
+            }
+          />
+          <DropdownContent
+            align="end"
+            checkedIndex={conversations.findIndex((item) => item.id === activeKey) + 1}
+          >
+            {/* 手机抽屉的头部没有「新对话」按钮，放在菜单第一项 */}
+            <MenuItem
+              index={0}
+              label={m.subject_chat_new()}
+              disabled={blank || !canStartNew}
+              onSelect={newConversation}
+            />
+            <DropdownSeparator />
+            {conversations.map((item, index) => (
+              <MenuItem
+                key={item.id}
+                index={index + 1}
+                label={item.title || m.subject_chat_untitled()}
+                checked={item.id === activeKey}
+                onSelect={() => void switchTo(item.id)}
+              />
+            ))}
+          </DropdownContent>
+        </DropdownMenu>
+      ) : null}
+      {!blank && start ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={
+            history ? 'size-8 text-muted-foreground max-md:hidden' : 'size-8 text-muted-foreground'
+          }
+          aria-label={m.subject_chat_new()}
+          disabled={!canStartNew}
+          onClick={newConversation}
+        >
+          <SquarePen aria-hidden />
+        </Button>
+      ) : null}
+    </>
+  )
+
+  const intro: ReactNode = (
+    <div className="flex flex-col gap-3">
+      <p className="text-muted-foreground">
+        {subject.suggestions.length > 0 ? m.chat_ui_subject_intro() : m.subject_chat_empty()}
+      </p>
+      {session ? (
+        <SuggestionChips
+          suggestions={subject.suggestions}
+          disabled={!session.canSend}
+          onSelect={(text) => {
+            void session.submit(text)
+            inputRef.current?.focus()
+          }}
+        />
+      ) : null}
+    </div>
+  )
+
   return (
-    <section
-      className={cn('grid gap-4', className)}
-      aria-label={subject.title ?? subject.label}
-      data-subject-type={subject.type}
-    >
-      <header className="flex flex-wrap items-center gap-2">
-        <span className="rounded-full border px-2 py-0.5 text-muted-foreground text-xs">
+    <EmbeddedChat
+      labels={shellLabels(subject.title ?? subject.label)}
+      badge={
+        <span className="inline-flex h-5 shrink-0 items-center rounded-full px-2 font-medium text-caption inset-ring inset-ring-border">
           {subject.label}
         </span>
-        {subject.title ? <h2 className="mr-auto font-semibold">{subject.title}</h2> : null}
-        {active && start ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={!canStart}
-            onClick={() => {
-              setActive(null)
-              setDraft('')
-            }}
-          >
-            {m.subject_chat_new()}
-          </Button>
-        ) : null}
-      </header>
-      {conversations.length > 1 && onSelectConversation ? (
-        <details className="text-sm">
-          <summary>{m.subject_chat_history()}</summary>
-          <ul className="grid gap-1 pt-2">
-            {conversations.map((item) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  className="underline"
-                  aria-current={item.id === active?.id}
-                  onClick={() => onSelectConversation(item.id)}
-                >
-                  {item.title || m.subject_chat_untitled()}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-      {active ? (
-        <ChatPage
-          key={active.id}
-          slug={slug}
-          variant="embedded"
-          conversation={active}
-          storedMessages={active.id === data.conversation?.id ? data.messages : []}
-          models={models}
-          readOnly={data.readOnly}
-          openingSuggestions={subject.suggestions}
-          defaultModelKey={subject.defaultModelKey}
-          initialFeedback={
-            active.id === data.conversation?.id
-              ? (data.feedback as Record<string, MessageFeedbackValue>)
-              : {}
-          }
-          autoSend={active.autoSend}
-        />
-      ) : (
-        <div className="grid gap-3">
-          {subject.suggestions.length > 0 ? (
-            <SuggestionChips
-              suggestions={subject.suggestions}
-              disabled={!canStart || pending}
-              onSelect={(text) => void begin(text)}
-            />
-          ) : (
-            <p>{m.subject_chat_empty()}</p>
-          )}
-          <HydratedControls>
-            <form
-              className="grid gap-2"
-              aria-label={m.subject_chat_send_label()}
-              onSubmit={(event) => {
-                event.preventDefault()
-                void begin(draft)
-              }}
-            >
-              <textarea
-                aria-label={m.subject_chat_message()}
-                className="min-h-20 rounded-md border bg-transparent p-2"
-                value={draft}
-                disabled={!canStart || pending}
-                onChange={(event) => setDraft(event.target.value)}
-              />
-              <Button
-                type="submit"
-                className="w-fit"
-                disabled={!canStart || pending || !draft.trim()}
-              >
-                {m.subject_chat_send()}
-              </Button>
-            </form>
-          </HydratedControls>
-          <FormAlert message={startError} />
-        </div>
-      )}
-    </section>
+      }
+      headerAction={headerAction}
+      footer={
+        session && !loading ? (
+          <ChatComposer
+            key={activeKey}
+            session={session}
+            placeholder={m.chat_ui_subject_placeholder({ subject: subject.label })}
+            inputRef={inputRef}
+            compact={shell.variant === 'panel'}
+          />
+        ) : undefined
+      }
+      {...shellProps(shell)}
+    >
+      <div data-subject-type={subject.type} className="flex min-w-0 flex-col gap-3.5">
+        <FormAlert message={loadError} />
+        {loading || !session ? (
+          <p role="status" className="text-muted-foreground">
+            {m.subject_chat_loading()}
+          </p>
+        ) : (
+          <ChatThread key={activeKey} session={session} empty={intro} inputRef={inputRef} />
+        )}
+      </div>
+    </EmbeddedChat>
   )
 }
 
@@ -302,10 +426,12 @@ export function TemporarySubjectChat({
       {page.status === 'expired' ? (
         <p role="status">{m.subject_chat_context_expired_existing()}</p>
       ) : null}
+      {/* 专门的对话页：桌面为卡片，手机直接打开底部抽屉 */}
       <SubjectChatView
         slug={slug}
         data={data}
         models={models}
+        defaultOpen
         start={
           page.status === 'ok'
             ? async () => {

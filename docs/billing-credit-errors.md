@@ -23,7 +23,6 @@ AppError、JSON 字符串以及聊天 SDK 将响应正文包装后的 `Error.mes
 `CREDIT_DEBT` 均返回 HTTP 402（没有数值详情也保持 402）；其他积分错误为内部 500，
 在 Web 入口记录并由观测层上报。
 
-聊天 `ChatPage` 解析 SDK 错误并保留原有错误提示。
-`InsufficientCreditsGuide({ slug, details })` 为 UI 8.6 的纯展示替换接口，显示预计消耗、
-可用余额，并链接到 `/app/$slug/billing#credit-packs` 和
-`/app/$slug/billing#subscriptions`。替换该组件即可调整视觉，无需重做解析或请求逻辑。
+对话输入区（`features/ai/chat-composer.tsx` 的 `ChatComposer`，对话页与嵌入式 SubjectChat 共用）解析 SDK 错误，
+在输入框上方显示错误原因；余额不足时附预计消耗与可用余额，并弹出余额不足弹窗，入口为
+`/app/$slug/billing#credit-packs` 和 `/app/$slug/billing#subscriptions`（add-ai-chat-components）。

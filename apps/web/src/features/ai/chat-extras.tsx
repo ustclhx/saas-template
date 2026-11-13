@@ -3,6 +3,7 @@ import {
   InsufficientCreditsDialog,
   SuggestionChips as SuggestionChipsView,
 } from '@saas/ui'
+import type { ReactNode } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { getLocale } from '../../paraglide/runtime.js'
 import {
@@ -60,6 +61,10 @@ export interface MessageFeedbackProps {
   readonly disabled?: boolean
   /** null = 撤销；失败时 reject，组件回滚并提示 */
   onChange(next: MessageFeedbackValue | null): Promise<void>
+  /** 评分按钮之前的操作（复制回复） */
+  readonly actions?: ReactNode
+  /** 评分按钮之后的说明（消耗积分与模型） */
+  readonly meta?: ReactNode
 }
 
 /** 点踩原因的文案（画板 Chat.dc.html 的四个选项）；取值集合来自 `FEEDBACK_REASONS`，与服务端校验一致 */
@@ -72,9 +77,17 @@ const reasonLabels: Record<FeedbackReason, () => string> = {
 
 export const feedbackReasonLabel = (reason: FeedbackReason) => reasonLabels[reason]()
 
-export function MessageFeedback({ value, disabled, onChange }: MessageFeedbackProps) {
+export function MessageFeedback({
+  value,
+  disabled,
+  onChange,
+  actions,
+  meta,
+}: MessageFeedbackProps) {
   return (
     <FeedbackView
+      actions={actions}
+      meta={meta}
       value={value}
       disabled={disabled ?? false}
       commentMaxLength={FEEDBACK_COMMENT_MAX_LENGTH}
@@ -126,6 +139,7 @@ export function CreditsDialog({
   availableCredits,
   onBuyPacks,
   onSubscribe,
+  fallbackFocus,
 }: {
   open: boolean
   onOpenChange(open: boolean): void
@@ -134,6 +148,8 @@ export function CreditsDialog({
   onBuyPacks(): void
   /** 项目没有订阅套餐时不传，弹窗只显示购买积分包 */
   onSubscribe?: (() => void) | undefined
+  /** 关闭后焦点的去处（打开前焦点在 body 时），默认为对话输入框 */
+  fallbackFocus?: (() => HTMLElement | null) | undefined
 }) {
   return (
     <InsufficientCreditsDialog
@@ -144,7 +160,7 @@ export function CreditsDialog({
       onBuyPacks={onBuyPacks}
       {...(onSubscribe ? { onSubscribe } : {})}
       // 弹窗由接口错误打开时焦点可能在 body：关闭后回到对话输入框
-      fallbackFocus={() => document.getElementById('chat-input')}
+      fallbackFocus={fallbackFocus ?? (() => document.getElementById('chat-input'))}
       labels={{
         title: m.billing_credit_guide_title(),
         description: m.chat_ui_credits_description(),

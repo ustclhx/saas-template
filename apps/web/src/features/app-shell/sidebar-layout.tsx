@@ -77,12 +77,18 @@ export function SidebarLayout({
   const activeId = activeAppNavId(groups, pathname, slug)
   const activeItem = groups.flatMap((group) => group.items).find((item) => item.id === activeId)
   // 顶部条插槽：页面经 <AppShellBar> 放入标题、操作与进度条（bar.tsx）
+  const [leadingSlot, setLeadingSlot] = useState<HTMLElement | null>(null)
   const [titleSlot, setTitleSlot] = useState<HTMLElement | null>(null)
   const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null)
   const [progressSlot, setProgressSlot] = useState<HTMLElement | null>(null)
   const barSlots = useMemo(
-    () => ({ title: titleSlot, actions: actionsSlot, progress: progressSlot }),
-    [titleSlot, actionsSlot, progressSlot],
+    () => ({
+      leading: leadingSlot,
+      title: titleSlot,
+      actions: actionsSlot,
+      progress: progressSlot,
+    }),
+    [leadingSlot, titleSlot, actionsSlot, progressSlot],
   )
   const upgrade = showUpgradeEntry({
     billingEnabled: templateConfig.billing.enabled,
@@ -159,6 +165,8 @@ export function SidebarLayout({
             <SidebarTrigger aria-label={m.app_shell_open_nav()} className="md:hidden">
               <Menu />
             </SidebarTrigger>
+            {/* 标题之前的页面内容（如对话页的「全部对话」返回链接），不进 h1 */}
+            <div ref={setLeadingSlot} className="flex shrink-0 items-center gap-2 empty:hidden" />
             {/* 页面标题（h1）：默认为当前导航项名称；页面经 AppShellBar 放入标题时 CSS 隐藏默认标题 */}
             <h1 className="flex min-w-0 flex-1 items-center font-semibold text-title">
               <span ref={setTitleSlot} className="peer contents" />

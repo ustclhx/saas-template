@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { ChatPage } from '../../../../features/ai/chat-page.tsx'
+import { ChatPage, ChatPageSkeleton } from '../../../../features/ai/chat-page.tsx'
 import { getConversation } from '../../../../features/ai/conversations.functions.ts'
 import { getPickerModels } from '../../../../features/ai/model-picker.functions.ts'
 
@@ -17,6 +17,7 @@ export const Route = createFileRoute('/app/$slug/chat/$conversationId')({
     meta: loaderData ? [{ title: loaderData.conversation.title || 'New chat' }] : [],
   }),
   component: ConversationPage,
+  pendingComponent: ChatPageSkeleton,
   notFoundComponent: () => {
     const { slug } = Route.useParams()
     return (
