@@ -41,6 +41,26 @@ test('production drift, staging reuse and forbidden vars are reported', () => {
   assert.ok(problems.includes('web: production must not set UI_PREVIEW'))
 })
 
+test('web declares RL_SHARE_CARD in every environment with its own namespace', () => {
+  for (const environment of ['top-level', 'staging', 'production']) {
+    const config = wrangler('web')
+    const env = environment === 'top-level' ? config : config.env[environment]
+    env.ratelimits = env.ratelimits.filter((item) => item.name !== 'RL_SHARE_CARD')
+    // production 缺少时同时触发绑定集合不一致，这里只断言本条规则。
+    assert.ok(
+      checkEnvs('web', config).includes(`web: ${environment} is missing ratelimit RL_SHARE_CARD`),
+    )
+  }
+  const shared = wrangler('web')
+  const card = shared.env.staging.ratelimits.find((item) => item.name === 'RL_SHARE_CARD')
+  card.namespace_id = shared.ratelimits.find((item) => item.name === 'RL_SHARE_CARD').namespace_id
+  assert.ok(
+    checkEnvs('web', shared).some((line) =>
+      line.includes(`namespace_id ${card.namespace_id} is shared by top-level RL_SHARE_CARD`),
+    ),
+  )
+})
+
 test('production jobs must declare a Cron profile that matches its triggers', () => {
   const missing = wrangler('jobs')
   delete missing.env.production.vars.CRON_PROFILE

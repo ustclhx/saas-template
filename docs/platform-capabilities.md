@@ -11,7 +11,7 @@
 | env | `PlatformEnv<C>`，只读已校验标量配置及能力表 | `createCloudflareEnv` 接收 app schema 校验后挑选的标量，binding 引用留在入口 |
 | db | `DatabaseAccess.business()/public()`，返回现有 `Database` | `createCloudflareDatabase` 在每请求/事件内创建，分别使用 HYPERDRIVE / HYPERDRIVE_CACHED，闭包限于该次调用，不结束 workerd 客户端 |
 | KV | `KeyValueStore`，text/JSON get、string put、秒 TTL、delete | `createCloudflareKv` 使用原 KV binding，TTL 至少 60 秒 |
-| 限流 | `RateLimiter.limit('auth'|'ai'|'api', key)` | 原 RL_AUTH / RL_AI / RL_API；保留 key 与限额，缺 binding 拒绝执行 |
+| 限流 | `RateLimiter.limit('auth'|'ai'|'api'|'shareCard', key)` | 原 RL_AUTH / RL_AI / RL_API，及分享卡片的 RL_SHARE_CARD；保留 key 与限额，缺 binding 拒绝执行 |
 | 延续 | `BackgroundTasks.waitUntil(promise)` | `createCloudflareBackgroundTasks(ctx)` 保留 ctx receiver 和原 Promise，CF 继续管理生命周期 |
 | 请求 | `RequestMetadata`，应用 requestId、可空 clientIp、可选 cfRay | `createCloudflareRequestMetadata(request)` 仅由可信 CF 入口调用；cf-ray 只是附加字段 |
 
@@ -82,7 +82,7 @@ web 的 `server/cloudflare/env.ts` 与 `server/cloudflare/sentry.ts` 是显式 C
 | --- | --- |
 | `config` | 已校验的认证标量与 Turnstile site key；不含 bindings，不能整个返回前端 |
 | `db` / `auth` | 本请求的业务 facade 与认证实例；实时守卫继续查数据库 |
-| `cache` / `rateLimiter` | 平台 KV / 限流契约，限流传入 auth、ai、api policy |
+| `cache` / `rateLimiter` | 平台 KV / 限流契约，限流传入 auth、ai、api、shareCard policy |
 | `requestMeta` | 入口解析的可信 clientIp、应用 requestId 和可选 cfRay |
 | `createAuth(db, cache?)` | 为后台事务 facade 与延后提交缓存创建认证实例 |
 | `handleAuthRequest(request)` | 保留后台 HTTP 白名单、模拟限制、实时守卫与事务审计 |
