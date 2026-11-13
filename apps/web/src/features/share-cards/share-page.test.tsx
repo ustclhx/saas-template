@@ -6,12 +6,12 @@ import { type WebRuntime, withWebRuntime } from '../../server/runtime.ts'
 import { lookupShare, type ShareLookupDeps } from './lookup.ts'
 import { shareCardMeta } from './meta.server.ts'
 import { shareCardImagePath } from './meta.ts'
-import { loadSharePage } from './page.server.ts'
+import { handleSharePageRequest, loadSharePage } from './page.server.ts'
 import { registerShareCard } from './registry.ts'
 import { SharePage, SharePageGone } from './share-page.tsx'
 import type { ShareCardDefinition, ShareResolution } from './types.ts'
 
-const headers = vi.hoisted(() => ({ values: new Map<string, string>(), status: 200 }))
+const current = vi.hoisted(() => ({ request: new Request('https://app.example/s/x/y') }))
 // 页头页脚的链接只需输出 href，组件测试不搭建完整路由。
 vi.mock('@tanstack/react-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@tanstack/react-router')>()),
@@ -22,12 +22,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => ({
   ),
   useRouterState: () => false,
 }))
-vi.mock('@tanstack/react-start/server', () => ({
-  setResponseHeader: (name: string, value: string) => headers.values.set(name, value),
-  setResponseStatus: (status: number) => {
-    headers.status = status
-  },
-}))
+vi.mock('@tanstack/react-start/server', () => ({ getRequest: () => current.request }))
 
 interface Data {
   title: string
@@ -74,8 +69,7 @@ function deps(overrides: Partial<ShareLookupDeps> = {}) {
 beforeEach(() => {
   shares.clear()
   resolve.mockClear()
-  headers.values.clear()
-  headers.status = 200
+  current.request = new Request('https://app.example/s/x/y')
   shares.set(token, {
     workspaceId: 'workspace-1',
     sharedAt: new Date('2026-11-01T08:00:00Z'),
@@ -152,13 +146,29 @@ function runtime(d: ShareLookupDeps) {
 }
 
 describe('share page loader and metadata', () => {
-  it('renders valid shares with card metadata, noindex and a five-minute edge cache', async () => {
-    const view = await withWebRuntime(runtime(deps().deps), () =>
-      loadSharePage({ type: 'page-test', token }),
+  /** 模拟文档请求：渲染前的处理函数，再在同一请求内由页面 loader 取数据。 */
+  async function documentRequest(d: ShareLookupDeps, type: string, value: string) {
+    let view: Awaited<ReturnType<typeof loadSharePage>> | undefined
+    const next = vi.fn(async () => {
+      view = await loadSharePage({ type, token: value })
+      return { response: new Response('page', { status: view.status === 'ok' ? 200 : 404 }) }
+    })
+    const result = await withWebRuntime(runtime(d), () =>
+      handleSharePageRequest({ request: current.request, params: { type, token: value }, next }),
     )
-    expect(headers.values.get('cache-control')).toBe('public, s-maxage=300')
-    expect(headers.values.get('x-robots-tag')).toBe('noindex')
-    if (view.status !== 'ok') throw new Error(`Unexpected ${view.status}`)
+    const response = result instanceof Response ? result : result.response
+    return { response, view, next }
+  }
+
+  it('renders valid shares with card metadata, noindex and a five-minute edge cache', async () => {
+    const d = deps()
+    const { response, view } = await documentRequest(d.deps, 'page-test', token)
+    expect(response?.headers.get('cache-control')).toBe('public, s-maxage=300')
+    expect(response?.headers.get('x-robots-tag')).toBe('noindex')
+    // 文档请求只查找一次：限流配额与 resolve 都不因页面 loader 重复消耗。
+    expect(d.limit).toHaveBeenCalledTimes(1)
+    expect(resolve).toHaveBeenCalledTimes(1)
+    if (view?.status !== 'ok') throw new Error(`Unexpected ${view?.status}`)
     const image = `https://app.example/share-card/page-test/${token}.png?v=3-digest-2`
     expect(view).toMatchObject({
       title: 'Quarterly survey notes',
@@ -183,7 +193,7 @@ describe('share page loader and metadata', () => {
     expect(JSON.stringify(view)).not.toContain('workspace-1')
   })
 
-  it('maps the four 404 cases and keeps noindex; rate limits answer 429 without caching', async () => {
+  it('maps the four 404 cases and keeps noindex; rate limits answer 429 before rendering', async () => {
     const d = deps()
     d.revoked.add(shareCardRevokedKey('page-test', 'revokedrevokedrevokedrev'))
     shares.set('expiredexpiredexpiredexp', {
@@ -200,20 +210,25 @@ describe('share page loader and metadata', () => {
       ['page-test', 'expiredexpiredexpiredexp', 'expired'],
     ] as const
     for (const [type, value, status] of cases) {
-      headers.values.clear()
-      const view = await withWebRuntime(runtime(d.deps), () =>
-        loadSharePage({ type, token: value }),
-      )
+      current.request = new Request(`https://app.example/s/${type}/${value}`)
+      const { response, view } = await documentRequest(d.deps, type, value)
       expect(view).toEqual({ status })
-      expect(headers.values.get('x-robots-tag')).toBe('noindex')
+      expect(response?.status).toBe(404)
+      expect(response?.headers.get('x-robots-tag')).toBe('noindex')
     }
     d.limit.mockResolvedValueOnce({ success: false })
-    const limited = await withWebRuntime(runtime(d.deps), () =>
-      loadSharePage({ type: 'page-test', token }),
-    )
-    expect(limited).toEqual({ status: 'rate-limited' })
-    expect(headers.status).toBe(429)
-    expect(headers.values.get('cache-control')).toBe('no-store')
+    current.request = new Request('https://app.example/s/page-test/limited')
+    const limited = await documentRequest(d.deps, 'page-test', token)
+    expect(limited.next).not.toHaveBeenCalled()
+    expect(limited.response?.status).toBe(429)
+    expect(limited.response?.headers.get('retry-after')).toBe('60')
+    expect(limited.response?.headers.get('cache-control')).toBe('no-store')
+    // 客户端路由跳转经 server function 请求，没有渲染前结果，自行查找并同样受限流约束。
+    d.limit.mockResolvedValueOnce({ success: false })
+    current.request = new Request('https://app.example/_serverFn/share')
+    expect(
+      await withWebRuntime(runtime(d.deps), () => loadSharePage({ type: 'page-test', token })),
+    ).toEqual({ status: 'rate-limited' })
   })
 
   it('shareCardMeta serves self-built pages and returns null for invalid shares', async () => {
