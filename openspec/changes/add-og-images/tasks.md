@@ -11,7 +11,7 @@
 
 ## 3. 注册、到期与失效
 
-- [x] 3.1 新增 `apps/web/src/features/share-cards/` 的注册表与类型定义（design 第 1、2 条）：`registerShareCard`、`ShareResolution`、`tokenPattern` 默认值、`ttlDays`（默认取 `template.config.ts` 的 `shareCards.defaultTtlDays = 90`）、`sharePage` 开关；`createShareToken()`；到期计算函数。项目自有的 `share-cards.project.ts` 与 `share-cards.theme.ts` 占位文件在生成器与 template-sync 中登记为项目拥有；示例类型 `sample` 用内存数据。验证：单测覆盖重名报错、未注册类型、令牌长度与字符集、`expiresAt` 优先、默认 90 天、按类型改为 30 天、`null` 永不过期。
+- [x] 3.1 新增 `apps/web/src/features/share-cards/` 的注册表与类型定义（design 第 1、2 条）：`registerShareCard`、`ShareResolution`、`tokenPattern` 默认值、`ttlDays`（默认取 `template.config.ts` 的 `shareCards.defaultTtlDays = 90`）、`sharePage` 开关；`createShareToken()`；到期计算函数。项目自有的 `share-cards.project.ts` 与 `share-cards.theme.ts` 占位文件在生成器与 template-sync 中登记为项目拥有；示例类型 `sample`（固定预览令牌在内存，夹具创建的分享存 KV）。验证：单测覆盖重名报错、未注册类型、令牌长度与字符集、`expiresAt` 优先、默认 90 天、按类型改为 30 天、`null` 永不过期。
 - [x] 3.2 实现失效函数 `invalidateShareCard`：删除 R2 图片前缀与空间索引，写 KV 撤销标记。验证：集成测试（本地 R2 / KV 模拟）覆盖失效后图片与索引不存在、标记存在。
 - [x] 3.3 删空间清理流程（含删号时的个人空间）按空间索引对每个令牌执行失效函数。验证：在现有清理测试中扩展用例，覆盖 account-deletion 增量规范里的两个场景。
 
@@ -37,7 +37,7 @@
 ## 6. 预览与示例
 
 - [x] 6.1 在 `/dev/ui` 加分享卡片预览：示例类型用固定数据，展示中文、英文和长标题，浅色和深色各一张，与 2.1 的副本对照。验证：截图与副本一致，`ui-preview.spec.ts` 通过。
-- [x] 6.2 e2e 用例：用示例类型（测试中注册，内存解析）打开分享页，元数据中的 `og:image` 指向卡片地址，抓取得到 1200×630 PNG；调用失效函数后卡片与分享页返回 404。选择器与断言不依赖语言。验证：e2e 通过，并加入夜间全量测试。
+- [x] 6.2 e2e 用例：用示例类型（测试中注册，经 `/api/dev/share-cards` 创建分享）打开分享页，元数据中的 `og:image` 指向卡片地址，抓取得到 1200×630 PNG；调用失效函数后卡片与分享页返回 404。选择器与断言不依赖语言。验证：e2e 通过，并加入夜间全量测试。
 
 ## 7. 文档与升级说明
 

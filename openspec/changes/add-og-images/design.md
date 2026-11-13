@@ -72,7 +72,7 @@ interface ShareCardDefinition<T> {
 
 - 有效期：`expiresAt` 优先；省略时为 `sharedAt + ttlDays`；`ttlDays` 默认 90 天，常量放 `template.config.ts` 的 `shareCards.defaultTtlDays`，项目可整体或按类型修改。
 - 项目在自有文件 `share-cards.project.ts` 中注册，与 `nav.project.ts` 的模式相同，模板不写这个文件。重名注册在启动时抛错。
-- 模板的示例类型 `sample` 用内存数据实现 `resolve`，在测试、开发以及开启 `UI_PREVIEW` 的环境（staging）中注册，供 `/dev/ui` 预览、e2e 与 staging 验收使用；生产不设 `UI_PREVIEW`，从不注册。
+- 模板的示例类型 `sample` 的 `resolve` 读固定预览令牌（内存）与 `/api/dev/share-cards` 创建的分享（KV `share-sample:<token>`，TTL 1 天，跨隔离区可用），在测试、开发以及开启 `UI_PREVIEW` 的环境（staging）中注册，供 `/dev/ui` 预览、e2e 与 staging 验收使用；生产不设 `UI_PREVIEW`，从不注册。
 
 ### 3. 地址与缓存
 
