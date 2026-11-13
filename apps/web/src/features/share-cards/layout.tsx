@@ -3,7 +3,7 @@
 import type { JSX } from 'react'
 import { templateConfig } from '../../server/template-config.ts'
 import type { SampleShareData } from './sample.ts'
-import { truncateText } from './text.ts'
+import { needsFallbackFont, truncateText } from './text.ts'
 import type { ShareCardTheme } from './types.ts'
 
 export const SHARE_CARD_WIDTH = 1200
@@ -43,6 +43,14 @@ function siteHost(): string {
   } catch {
     return templateConfig.app.url
   }
+}
+
+/**
+ * 标题字重：含需要 Noto 回退的字符（CJK 等）时整行用 400。Noto Sans SC 只有常规体，
+ * 混排时拉丁部分若用 Inter 600 会出现两种字重（使用者决定，2026-11-13）；纯拉丁标题保持 600。
+ */
+export function titleWeight(title: string): 400 | 600 {
+  return needsFallbackFont(title) ? 400 : 600
 }
 
 /** 默认版式：品牌行、标题与摘要、底部元信息与站点域名。 */
@@ -144,7 +152,7 @@ export function shareCardLayout(
             lineClamp: 2,
             fontSize: titleSize,
             lineHeight: `${titleLeading}px`,
-            fontWeight: 600,
+            fontWeight: titleWeight(title),
             letterSpacing: -titleSize * 0.01,
             maxHeight: titleLeading * 2,
             overflow: 'hidden',

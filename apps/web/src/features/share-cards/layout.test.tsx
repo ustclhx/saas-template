@@ -3,7 +3,12 @@ import type { ReactElement, ReactNode } from 'react'
 import { isValidElement } from 'react'
 import { describe, expect, it } from 'vitest'
 import { templateConfig } from '../../server/template-config.ts'
-import { defaultShareCardLayout, sampleShareCardLayout, shareCardLayout } from './layout.tsx'
+import {
+  defaultShareCardLayout,
+  sampleShareCardLayout,
+  shareCardLayout,
+  titleWeight,
+} from './layout.tsx'
 import { collectText } from './renderer.ts'
 import { countLines, needsFallbackFont, sanitizeText, textWidth, truncateText } from './text.ts'
 import { resolveShareCardTheme } from './theme.ts'
@@ -45,7 +50,7 @@ describe('分享卡片版式（4.2）', () => {
       background: light.background,
       color: light.foreground,
     })
-    expect(withText(tree, zh.title).props.style).toMatchObject({ fontSize: 60, fontWeight: 600 })
+    expect(withText(tree, zh.title).props.style).toMatchObject({ fontSize: 60, fontWeight: 400 })
     expect(withText(tree, zh.description).props.style).toMatchObject({
       fontSize: 28,
       color: light.mutedForeground,
@@ -214,5 +219,32 @@ describe('emoji 与回退字体', () => {
     expect(sanitizeText('Ąžuolas Γειά')).toBe('Azuolas Γεια')
     // 拼音声调字母 Noto 有字形，保持不变
     expect(sanitizeText('Zhōngwén ǎ')).toBe('Zhōngwén ǎ')
+  })
+})
+
+describe('标题字重', () => {
+  it('含 CJK 或需要 Noto 的字符时整行 400，纯拉丁 600', () => {
+    expect(titleWeight('Q3 2026 user research highlights')).toBe(600)
+    expect(titleWeight('Café crème')).toBe(600)
+    expect(titleWeight('用 Agents 重建 Onboarding')).toBe(400)
+    expect(titleWeight('Привет мир')).toBe(400)
+    expect(titleWeight('Launch 🚀')).toBe(600)
+  })
+
+  it('卡片与大标题都应用同一规则', () => {
+    const mixed = '用 Agents 重建工作流'
+    expect(withText(defaultShareCardLayout(mixed, light), mixed).props.style).toMatchObject({
+      fontSize: 76,
+      fontWeight: 400,
+    })
+    expect(withText(defaultShareCardLayout('Pricing', light), 'Pricing').props.style).toMatchObject(
+      {
+        fontWeight: 600,
+      },
+    )
+    expect(withText(shareCardLayout({ title: mixed }, light), mixed).props.style).toMatchObject({
+      fontSize: 60,
+      fontWeight: 400,
+    })
   })
 })
