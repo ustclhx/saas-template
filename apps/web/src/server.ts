@@ -59,6 +59,11 @@ const worker = instrumentWeb({
     if (invalid) return Promise.resolve(invalid)
     if (new URL(request.url).pathname === SENTRY_TEST_PATH)
       return sentryTest(request, getWebRuntime())
+    // add-og-images 1.1 可行性验证的临时测量路由（不合并）：渲染器经动态 import() 懒加载
+    if (new URL(request.url).pathname === '/share-card/spike.png')
+      return import('./server/cloudflare/share-card-spike/render.server.ts').then((m) =>
+        m.renderSpike(request),
+      )
     return logged(
       request,
       async () =>
