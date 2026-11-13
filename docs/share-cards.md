@@ -247,11 +247,11 @@ export const projectShareCardTheme: Partial<ShareCardTheme> = {}
 export function resolveProjectShareCardSite(
   context: ShareCardSiteContext,
 ): ProjectShareCardSite | undefined {
-  if (context.host === 'ganjiday.com' || context.locale === 'zh') {
+  if (context.host === 'ganjiday.com' || context.host === 'www.ganjiday.com' || context.locale === 'zh') {
     return {
       theme: { brandAccent: '#b91c1c' }, // 与 brand.css 的 :root[data-site="east"] 对应
       brand: { name: '干支日', initial: '干' },
-      host: 'ganjiday.com',
+      host: 'ganjiday.com', // 规范域名（裸主机名）：og:url 与 og:image 使用它，不用请求 Host
       tagline: '每日干支', // 可选：构建期默认分享图副标题
     }
   }
@@ -267,8 +267,12 @@ render: (data, theme, site) =>
 ```
 
 - **运行时卡片**：卡片路由、通用分享页、`shareCardMeta` 与 `/dev/ui` 预览按**请求 URL 的 host** 解析（不读转发头）。
-  返回覆盖的站点，分享页的 `og:url`、`og:image` 改用请求域名（协议沿用 `APP_URL`），`og:site_name` 为站点品牌名；
-  卡片地址的 `v` 追加站点指纹，不同站点的缓存互不混用。没有覆盖时地址与 `APP_URL` 均不变。
+  返回覆盖的站点，`og:site_name` 为站点品牌名，卡片地址的 `v` 追加站点指纹，不同站点的缓存互不混用。
+- **绝对地址用规范域名**：覆盖返回的 `host` 是该站点的规范域名，分享页的 `og:url`、`og:image` 使用
+  `<APP_URL 的协议>//<host>`，从不使用请求的原始 Host（www 变体、预览与 `workers.dev` 域名不会进入对外元数据）。
+  请把 www 与预览域名也映射到同一个覆盖。覆盖不返回 `host` 时绝对地址仍是 `APP_URL`，卡片请求会落到 `APP_URL` 的站点，
+  所以多站点覆盖应总是返回 `host`。`host` 必须是裸主机名（可带端口，不含协议、路径与用户信息），
+  不合法时整个覆盖被忽略、按单站点输出（不报错，单测覆盖）。没有覆盖时地址与 `APP_URL` 均不变。
 - **构建期默认分享图**：没有请求，按 `app.url` 的 host 与页面的 `locale`、`pathname` 解析。静态图按路径输出
   （`/og/<locale>/<path>.png`），所有域名共用同一张；按域名区分品牌的站点需要用语言或路径区分，或分别构建（与 html-attributes 的预渲染限制相同）。
 - 解析函数保持同步、无副作用，每次卡片请求都会调用。

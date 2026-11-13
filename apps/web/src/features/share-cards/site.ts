@@ -68,8 +68,9 @@ function projectResolver(): ProjectShareCardSiteResolver | undefined {
 }
 
 /**
- * 按请求解析站点（卡片路由、分享页与 shareCardMeta 共用）。有站点覆盖时，分享页与卡片的绝对地址
- * 使用当前请求的域名（协议沿用 APP_URL），卡片请求才会落到同一站点；没有覆盖时仍用 APP_URL。
+ * 按请求解析站点（卡片路由、分享页与 shareCardMeta 共用）。站点覆盖返回了 `host`（项目声明的规范域名）时，
+ * 分享页与卡片的绝对地址使用该域名（协议沿用 APP_URL）；否则仍用 APP_URL。
+ * 从不使用请求的原始 Host：www 变体、预览与 workers.dev 域名不进入对外元数据，也不信任任意 Host 头。
  */
 export function resolveRequestShareCardSite(
   requestUrl: string,
@@ -78,24 +79,42 @@ export function resolveRequestShareCardSite(
   resolver: ProjectShareCardSiteResolver | undefined = projectResolver(),
 ): { site: ShareCardSite; theme: ShareCardTheme; origin: string } {
   const { host } = new URL(requestUrl)
-  const resolved = resolveShareCardSite({ host }, mode, resolver)
-  const origin = resolved.site.fingerprint ? `${new URL(appUrl).protocol}//${host}` : appUrl
+  const { canonicalHost, ...resolved } = resolveShareCardSite({ host }, mode, resolver)
+  const origin = canonicalHost ? `${new URL(appUrl).protocol}//${canonicalHost}` : appUrl
   return { ...resolved, origin }
 }
 
-/** 模板基线叠加项目品牌覆盖与站点覆盖。 */
+/** 裸主机名（可带端口）：不含协议、路径、查询、用户信息，且 URL 解析后保持不变。 */
+export function isBareHost(value: string): boolean {
+  if (!/^[A-Za-z0-9.-]+(?::\d{1,5})?$/.test(value)) return false
+  try {
+    return new URL(`https://${value}`).host === value.toLowerCase()
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 模板基线叠加项目品牌覆盖与站点覆盖。覆盖的 `host` 不是裸主机名时整个覆盖视为无效，按单站点处理
+ * （本模块也被 /dev/ui 客户端导入，不写服务端日志；单测覆盖该行为）。
+ * `canonicalHost` 只在覆盖声明了合法 `host` 时给出，供绝对地址使用。
+ */
 export function resolveShareCardSite(
   context: ShareCardSiteContext = {},
   mode: ShareCardThemeMode = 'light',
   resolver: ProjectShareCardSiteResolver | undefined = projectResolver(),
-): { site: ShareCardSite; theme: ShareCardTheme } {
+): { site: ShareCardSite; theme: ShareCardTheme; canonicalHost?: string | undefined } {
   const base = resolveShareCardTheme(mode)
   const fallback = defaultShareCardSite(context.locale)
   const override = resolver?.(context)
   if (!override) return { site: fallback, theme: base }
+  if (override.host !== undefined && !isBareHost(override.host)) {
+    return { site: fallback, theme: base }
+  }
+  const canonicalHost = override.host?.toLowerCase()
   const site: ShareCardSite = {
     brand: override.brand ?? fallback.brand,
-    host: override.host ?? fallback.host,
+    host: canonicalHost ?? fallback.host,
     locale: context.locale,
     tagline: override.tagline,
     // 只对覆盖内容取指纹：同一站点得到同一地址，不同站点的卡片缓存互不混用。
@@ -103,10 +122,10 @@ export function resolveShareCardSite(
       JSON.stringify([
         override.theme ?? null,
         override.brand ?? null,
-        override.host ?? null,
+        canonicalHost ?? null,
         override.tagline ?? null,
       ]),
     ),
   }
-  return { site, theme: { ...base, ...override.theme } }
+  return { site, theme: { ...base, ...override.theme }, canonicalHost }
 }

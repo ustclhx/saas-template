@@ -4,7 +4,7 @@ import { projectFonts, resolveProjectShareCardFonts, shareCardFontFingerprint } 
 import { sampleShareCardLayout } from './layout.tsx'
 import { shareCardVariant } from './meta.ts'
 import { collectText } from './renderer.ts'
-import { resolveRequestShareCardSite, resolveShareCardSite } from './site.ts'
+import { isBareHost, resolveRequestShareCardSite, resolveShareCardSite } from './site.ts'
 import { fallbackFontPlan, needsFallbackFont, sanitizeText, textWidth } from './text.ts'
 import { resolveShareCardTheme } from './theme.ts'
 
@@ -165,21 +165,67 @@ describe('多站点解析', () => {
     expect(other.site.brand.name).toBe(templateConfig.app.name)
   })
 
-  it('不同站点的卡片地址不同，绝对地址使用请求域名', () => {
+  it('不同站点的卡片地址不同，绝对地址使用站点声明的规范域名而不是请求 Host', () => {
     const card = { version: 1, digest: () => 'deadbeef00' }
     const eastSite = resolveShareCardSite({ host: 'ganjiday.com' }, 'light', resolver).site
     const westSite = resolveShareCardSite({ host: 'arcanumber.com' }, 'light', resolver).site
     expect(shareCardVariant(card, null, eastSite, '')).not.toBe(
       shareCardVariant(card, null, westSite, ''),
     )
-    const request = resolveRequestShareCardSite(
+    // www 变体与预览域名都映射到同一站点：绝对地址仍是规范域名
+    const canonical = vi.fn(() => east)
+    for (const requestUrl of [
+      'https://www.ganjiday.com/s/report/x',
+      'https://saas-web-preview.example.workers.dev/s/report/x',
+    ]) {
+      const request = resolveRequestShareCardSite(
+        requestUrl,
+        'https://example.com',
+        'light',
+        canonical,
+      )
+      expect(request.origin).toBe('https://ganjiday.com')
+      // 同一站点多次解析得到同一地址
+      expect(request.site.fingerprint).toBe(eastSite.fingerprint)
+    }
+    // 覆盖未声明 host：绝对地址仍用 APP_URL
+    const noHost = resolveRequestShareCardSite(
+      'https://evil.test/s/report/x',
+      'https://example.com',
+      'light',
+      () => ({ brand: { name: 'Ganjiday' } }),
+    )
+    expect(noHost.origin).toBe('https://example.com')
+    expect(noHost.site.brand.name).toBe('Ganjiday')
+  })
+
+  it.each([
+    'https://ganjiday.com',
+    'ganjiday.com/path',
+    'user@ganjiday.com',
+    'ganjiday.com?x=1',
+    'ganjiday.com#x',
+    'gan jiday.com',
+    '',
+  ])('站点 host %j 不是裸主机名时整个覆盖无效', (host) => {
+    const resolved = resolveRequestShareCardSite(
       'https://ganjiday.com/s/report/x',
       'https://example.com',
       'light',
-      resolver,
+      () => ({ ...east, host }),
     )
-    expect(request.origin).toBe('https://ganjiday.com')
-    // 同一站点多次解析得到同一地址
-    expect(request.site.fingerprint).toBe(eastSite.fingerprint)
+    expect(resolved.origin).toBe('https://example.com')
+    expect(resolved.site.fingerprint).toBe('')
+    expect(resolved.site.brand.name).toBe(templateConfig.app.name)
+    expect(resolved.theme).toEqual(resolveShareCardTheme('light'))
+  })
+
+  it('裸主机名可带端口，大小写归一', () => {
+    expect(isBareHost('ganjiday.com')).toBe(true)
+    expect(isBareHost('localhost:3000')).toBe(true)
+    expect(isBareHost('Ganjiday.COM')).toBe(true)
+    expect(isBareHost('ganjiday.com:99999')).toBe(false)
+    const resolved = resolveShareCardSite({}, 'light', () => ({ host: 'Ganjiday.COM' }))
+    expect(resolved.site.host).toBe('ganjiday.com')
   })
 })

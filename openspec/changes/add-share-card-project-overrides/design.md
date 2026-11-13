@@ -15,12 +15,12 @@
 5. **多站点钩子放在 `share-cards.theme.ts` 的可选导出** `resolveProjectShareCardSite(context)`，上下文沿用 html-attributes 的 `{ host, locale, pathname }`（字段名 `pathname` 与之对应）。模板以命名空间导入并遍历导出查找，旧项目没有该导出时不告警、不报错。返回值可含 `theme`、`brand { name, initial? }`、`host`、`tagline`，省略的字段沿用单站点默认值。
 6. **站点传入版式**：`render(data, theme, site)` 增加第三个参数；`shareCardLayout` 的内容增加可选 `brand`、`host`，省略时用模板配置（行为不变）。多站点项目在自己的 `render` 中把 `site.brand`、`site.host` 传入；模板的 `sample` 与默认分享图已传入。
 7. **地址指纹**：`shareCardVariant` = `<version>-<digest8>`，项目字体指纹（族名、文件、字重、文字，不含字节）或站点覆盖指纹任一非空时追加 `-<fnv8>`。都为空时地址与之前相同，升级不会让已缓存的卡片全部失效。
-8. **站点按请求 host 解析**：卡片路由、分享页与 `shareCardMeta` 共用 `resolveRequestShareCardSite(requestUrl, APP_URL)`。有站点覆盖时，分享页与卡片的绝对地址改用请求域名（协议沿用 `APP_URL`），否则卡片请求会落到 `APP_URL` 的站点、解析出另一个站点。没有覆盖时仍用 `APP_URL`。
+8. **站点按请求 host 解析**：卡片路由、分享页与 `shareCardMeta` 共用 `resolveRequestShareCardSite(requestUrl, APP_URL)`。站点覆盖声明了 `host`（项目的规范域名）时，分享页与卡片的绝对地址改用该域名（协议沿用 `APP_URL`），卡片请求才会落到同一站点；未声明 `host` 或没有覆盖时仍用 `APP_URL`。从不使用请求的原始 Host：www 变体、预览与 workers.dev 域名不进入对外元数据，也不信任任意 Host 头。`host` 必须是裸主机名（可带端口），否则整个覆盖视为无效。
 9. **默认分享图副标题**：去掉写死的「AI workspace」，取站点 `tagline`，未提供时取该语言首页的 SEO 标题（`staticPage('/', locale).title`，项目随产品文案修改）。构建期按页面 locale 解析，中文页面得到中文副标题。
 
 ## Risks / Trade-offs
 
 - **构建期静态分享图按路径输出**：`/og/<locale>/<path>.png` 由所有域名共用，构建期解析只有 `app.url` 的 host 与页面 locale / pathname。按域名区分的站点要么用 locale / 路径区分，要么分别构建（与 html-attributes 预渲染的限制相同），文档写明。
 - **字体登记或站点覆盖变化时所有卡片换地址**：下一次请求重新渲染，旧对象留在 R2 直到失效、到期或删空间清理。变化很少发生，可以接受。
-- **请求 host 用于绝对地址**：只在项目导出站点解析函数且返回覆盖时使用；host 来自请求 URL（Workers 路由的主机名；Node 与 html-attributes 相同），不读转发头。
+- **请求 host 只用于选择站点**：绝对地址只用 `APP_URL` 或项目声明的规范域名。覆盖未声明 `host` 时卡片地址落在 `APP_URL` 的站点，该站点解析出的覆盖不同会 302 到它自己的地址，所以多站点覆盖应总是返回 `host`（文档写明）。
 - **项目字体体积**：完整韩文字体通常 4–16 MB，冷实例首次解析会增加 CPU。文档建议使用子集（如 KS X 1001 常用 2350 音节）或 Regular 单字重。

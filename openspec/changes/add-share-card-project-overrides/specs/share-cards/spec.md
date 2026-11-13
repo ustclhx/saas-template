@@ -31,15 +31,19 @@
 - **THEN** 两个域名的卡片地址不同，各自显示本站点的品牌与域名
 
 ### Requirement: 分享页元数据
-模板 SHALL 提供元数据工具，输出指向分享卡片的 `og:image`、`og:image:width`、`og:image:height`、`og:image:alt`、`twitter:card`（`summary_large_image`）与 `twitter:image`；地址 MUST 为当前环境 `APP_URL` 下的绝对地址，项目站点解析对当前请求返回覆盖时 MUST 改用当前请求的域名（协议沿用 `APP_URL`）。卡片地址 MUST 带 `X-Robots-Tag: noindex`，MUST NOT 进入站点地图。
+模板 SHALL 提供元数据工具，输出指向分享卡片的 `og:image`、`og:image:width`、`og:image:height`、`og:image:alt`、`twitter:card`（`summary_large_image`）与 `twitter:image`；地址 MUST 为当前环境 `APP_URL` 下的绝对地址，项目站点解析对当前请求返回声明了规范域名的覆盖时 MUST 改用该规范域名（协议沿用 `APP_URL`）；MUST NOT 使用请求的原始 Host。规范域名 MUST 为裸主机名（可带端口，不含协议、路径或用户信息），不合法时整个覆盖 MUST 视为无效。卡片地址 MUST 带 `X-Robots-Tag: noindex`，MUST NOT 进入站点地图。
 
 #### Scenario: 社交平台抓取分享页
 - **WHEN** 社交平台抓取一个有效的分享页
 - **THEN** 页面元数据中的 `og:image` 指向本站的分享卡片绝对地址，抓取该地址返回 1200×630 PNG
 
 #### Scenario: 多站点分享页
-- **WHEN** 项目站点解析对域名 B 返回覆盖，社交平台抓取域名 B 下的分享页
-- **THEN** `og:image` 与 `og:url` 使用域名 B，`og:site_name` 为站点 B 的品牌名
+- **WHEN** 项目站点解析对 `www.b.example` 与预览域名都返回规范域名为 `b.example` 的覆盖，社交平台抓取其中任一域名下的分享页
+- **THEN** `og:image` 与 `og:url` 使用 `https://b.example`，不出现请求的原始 Host，`og:site_name` 为站点 B 的品牌名
+
+#### Scenario: 规范域名不合法
+- **WHEN** 项目站点解析返回的域名含协议、路径或用户信息
+- **THEN** 整个覆盖视为无效，卡片与元数据按单站点输出，`og:image` 使用 `APP_URL`
 
 #### Scenario: 不被索引
 - **WHEN** 搜索引擎抓取分享卡片地址或分享页
