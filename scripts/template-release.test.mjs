@@ -439,6 +439,22 @@ test('check lets a change keep editing a project-owned file it adds (CHANGE_BASE
   fails(afterMerge)
 })
 
+test('check accepts the evals package example but rejects tracked files under root evals/', (t) => {
+  const { cwd } = repo(t)
+  put(cwd, 'packages/evals/example/suite.ts', 'export default {}\n')
+  releaseDoc(cwd)
+  commit(cwd)
+  succeeds(cli(cwd, 'check', '--version', '0.2.1'))
+
+  put(cwd, 'evals/report/suite.ts', 'export default {}\n')
+  commit(cwd, 'fix: ship a suite in the project-owned directory')
+  const result = cli(cwd, 'check', '--version', '0.2.1')
+  fails(result)
+  const errors = result.stderr.trim().split('\n')
+  assert.equal(errors.length, 1, result.stderr)
+  assert.match(errors[0], /^evals\/ is reserved for derived projects; .*evals\/report\/suite\.ts/)
+})
+
 test('check rejects invalid command versions', (t) => {
   const { cwd } = repo(t)
   releaseDoc(cwd)
