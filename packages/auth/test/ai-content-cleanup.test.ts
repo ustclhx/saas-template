@@ -1,6 +1,9 @@
 import { newId } from '@saas/shared'
-import { afterAll, describe, expect, it } from 'vitest'
-import { purgeDeletedUserAiContent } from '../src/ai-content-cleanup.ts'
+import { afterAll, describe, expect, it, vi } from 'vitest'
+import {
+  purgeDeletedPersonalWorkspaceShareCards,
+  purgeDeletedUserAiContent,
+} from '../src/ai-content-cleanup.ts'
 import { deleteAccount, deleteTeamWorkspace } from '../src/deletion.ts'
 import { cleanupExpiredWorkspaces } from '../src/workspace-lifecycle.ts'
 import { cookieHeader, setup, signUpBody, testUsers } from './helpers.ts'
@@ -160,6 +163,54 @@ async function finance(a: App, workspaceId: string) {
 }
 
 describe('AI content deletion in workerd', () => {
+  it('invalidates personal share cards immediately on account deletion and retries failures before retention ends', async () => {
+    const a = app()
+    const target = await actor(a, 'share-personal')
+    deletedIds.push(target.id)
+    const other = await actor(a, 'share-other')
+    const cleanupShareCards = vi.fn(async (_workspaceId: string) => {})
+    cleanupShareCards.mockRejectedValueOnce(new Error('storage unavailable'))
+    await expect(deleteAccount({ ...target.options, cleanupShareCards })).rejects.toMatchObject({
+      code: 'DELETION_CLEANUP_FAILED',
+      details: { deletionCompleted: true },
+    })
+    expect(cleanupShareCards).toHaveBeenCalledWith(target.id)
+    cleanupShareCards.mockClear()
+    await purgeDeletedPersonalWorkspaceShareCards(a.db, cleanupShareCards)
+    expect(cleanupShareCards).toHaveBeenCalledWith(target.id)
+    expect(cleanupShareCards).not.toHaveBeenCalledWith(other.id)
+    cleanupShareCards.mockClear()
+    await purgeDeletedPersonalWorkspaceShareCards(a.db, cleanupShareCards)
+    expect(cleanupShareCards).not.toHaveBeenCalledWith(target.id)
+    const [workspace] = await a.db
+      .$client`select deleted_at>now()-interval '30 days' as retained from organization where id=${target.id}`
+    expect(workspace?.retained).toBe(true)
+  })
+
+  it('invalidates expired team share cards, preserves other workspaces and retries storage failures', async () => {
+    const a = app()
+    const owner = await actor(a, 'share-team')
+    const expired = await team(a, [{ id: owner.id, role: 'owner' }])
+    const active = await team(a, [{ id: owner.id, role: 'owner' }])
+    const retained = await team(a, [{ id: owner.id, role: 'owner' }])
+    await deleteTeamWorkspace({ ...owner.options, workspaceId: expired })
+    await deleteTeamWorkspace({ ...owner.options, workspaceId: retained })
+    await a.db
+      .$client`update organization set deleted_at=now()-interval '31 days' where id=${expired}`
+    const cleanupShareCards = vi.fn(async (_workspaceId: string) => {})
+    cleanupShareCards.mockImplementationOnce(async () => {
+      throw new Error('storage unavailable')
+    })
+    await expect(cleanupExpiredWorkspaces(a.db, { cleanupShareCards })).rejects.toThrow(
+      'storage unavailable',
+    )
+    const result = await cleanupExpiredWorkspaces(a.db, { cleanupShareCards })
+    expect(result.cleaned).toBeGreaterThanOrEqual(1)
+    expect(cleanupShareCards).toHaveBeenCalledWith(expired)
+    expect(cleanupShareCards).not.toHaveBeenCalledWith(active)
+    expect(cleanupShareCards).not.toHaveBeenCalledWith(retained)
+  })
+
   it('purges an expired workspace in batches, keeps held rows until settled and finance intact', async () => {
     const a = app()
     const owner = await actor(a, 'owner')

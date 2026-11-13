@@ -43,6 +43,7 @@ registerAiHoldSweepers(features)
 /** 每事件装配并显式挑选标量配置；不把 bindings 传入业务 env。 */
 function createJobsContext(env: Cloudflare.Env, queue?: string): JobsContext {
   const valid = requireEnv(env)
+  const shareCards = createCloudflareStorage(env).shareCards
   return {
     config: {
       ...(valid.PAYMENT_MODE === undefined ? {} : { PAYMENT_MODE: valid.PAYMENT_MODE }),
@@ -70,6 +71,7 @@ function createJobsContext(env: Cloudflare.Env, queue?: string): JobsContext {
       eventsDeadLetters: createEventsDeadLetterSink(queue, createCloudflareQueue(env.EVENTS_DLQ)),
     }),
     emailTransport: emailTransportConfig(valid),
+    ...(shareCards && { shareCards }),
     files: { available: true, value: { delete: (key) => env.FILES.delete(key) } },
     observer: cloudflareJobObserver,
     billingEnabled: features.billing,

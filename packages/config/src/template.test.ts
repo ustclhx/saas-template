@@ -18,6 +18,7 @@ describe('defineTemplateConfig', () => {
     expect(config.billing.enabled).toBe(true)
     expect(config.credits.enabled).toBe(true)
     expect(config.credits.dailyEnabled).toBe(false)
+    expect(config.shareCards.defaultTtlDays).toBe(90)
     expect(config.marketing.enabled).toBe(true)
     // 模板不提供背书数值与产品示例：未配置时这两个区块不渲染
     expect(config.marketing.stats).toEqual({ items: [], source: null })
@@ -32,6 +33,15 @@ describe('defineTemplateConfig', () => {
       maxRatio: 0.2,
       maxCredits: 50,
       dailyBudgetPerWorkspace: 200,
+    })
+  })
+
+  it('lets projects change the shared default expiry or disable it', () => {
+    expect(defineTemplateConfig({ app, shareCards: { defaultTtlDays: 30 } }).shareCards).toEqual({
+      defaultTtlDays: 30,
+    })
+    expect(defineTemplateConfig({ app, shareCards: { defaultTtlDays: null } }).shareCards).toEqual({
+      defaultTtlDays: null,
     })
   })
 

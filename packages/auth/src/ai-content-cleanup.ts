@@ -1,4 +1,28 @@
 import type { Database } from '@saas/db'
+import { newId } from '@saas/shared'
+
+export type CleanupWorkspaceShareCards = (workspaceId: string) => Promise<unknown>
+
+/** 删号后的个人空间不等内容保留期；成功标记与保留期内容清理互不影响。 */
+export async function purgeDeletedPersonalWorkspaceShareCards(
+  db: Database,
+  cleanupShareCards: CleanupWorkspaceShareCards,
+  workspaceId?: string,
+) {
+  const sql = db.$client
+  const workspaces = await sql<{ id: string }[]>`select o.id from organization o
+    where o.is_personal and o.deleted_at is not null
+      ${workspaceId ? sql`and o.id=${workspaceId}` : sql``}
+      and not exists(select 1 from audit_log l where l.workspace_id=o.id
+        and l.action='workspace.share-cards.cleanup.completed')
+    order by o.id`
+  for (const workspace of workspaces) {
+    await cleanupShareCards(workspace.id)
+    await sql`insert into audit_log (id,workspace_id,action,target_type,target_id)
+      values (${newId()},${workspace.id},'workspace.share-cards.cleanup.completed','organization',${workspace.id})`
+  }
+  return { cleaned: workspaces.length }
+}
 
 type Transaction = Parameters<Parameters<Database['$client']['begin']>[1]>[0]
 type Scope = { readonly workspaceId: string } | { readonly userId: string }

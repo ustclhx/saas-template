@@ -8,6 +8,7 @@ import {
   AI_PURGE_BATCH_SIZE,
   AI_PURGE_MAX_BATCHES,
   addAiPurge,
+  type CleanupWorkspaceShareCards,
   emptyAiPurge,
   purgeAiBatch,
 } from './ai-content-cleanup.ts'
@@ -100,7 +101,15 @@ export async function restoreWorkspace(options: {
  */
 export async function cleanupExpiredWorkspaces(
   db: Database,
-  { batchSize = AI_PURGE_BATCH_SIZE, maxBatches = AI_PURGE_MAX_BATCHES } = {},
+  {
+    batchSize = AI_PURGE_BATCH_SIZE,
+    maxBatches = AI_PURGE_MAX_BATCHES,
+    cleanupShareCards,
+  }: {
+    batchSize?: number
+    maxBatches?: number
+    cleanupShareCards?: CleanupWorkspaceShareCards
+  } = {},
 ) {
   const candidates = await db.$client<{ id: string }[]>`select o.id from organization o
     where o.deleted_at<=now()-(${WORKSPACE_RETENTION_DAYS} * interval '1 day')
@@ -113,6 +122,8 @@ export async function cleanupExpiredWorkspaces(
   let remaining = false
   const ai = emptyAiPurge()
   for (const workspace of candidates) {
+    // 存储失效失败时不写 completed；即使没有 AI 内容，下一轮仍会发现该空间。
+    await cleanupShareCards?.(workspace.id)
     const completed = await db.$client.begin(async (sql) => {
       if (!(await lockExpired(sql, workspace.id))) return false
       const deletion = await latestDeletion(sql, workspace.id)

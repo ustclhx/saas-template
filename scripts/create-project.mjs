@@ -21,6 +21,12 @@ const root = resolve(import.meta.dirname, '..')
 const featureNames = ['publicApi', 'blog', 'docs', 'waitlist', 'newsletter', 'guides']
 const aiNames = ['text', 'image', 'video']
 const mediaProviderNames = ['fal', 'workers-ai']
+// 项目自有扩展：首次复制后由项目维护，保持原始字节。
+const projectOwnedFiles = new Set([
+  'apps/web/src/features/theme/html-attributes.ts',
+  'apps/web/src/features/share-cards/share-cards.project.ts',
+  'apps/web/src/features/share-cards/share-cards.theme.ts',
+])
 const excluded = new Set([
   '.git',
   'node_modules',
@@ -709,8 +715,7 @@ export async function createProject(input, source = root) {
           )
         }
         // 项目自有扩展逐字节保留，包括 BOM、换行与项目标识，不能经过文本替换。
-        const projectHtmlAttributes = path === 'apps/web/src/features/theme/html-attributes.ts'
-        if (decoded !== null && !templateUi && !projectHtmlAttributes) {
+        if (decoded !== null && !templateUi && !projectOwnedFiles.has(path)) {
           // 先替换源标识，再插入新名称，避免新名称含旧 scope 前缀时被二次替换。
           let text = replace(projectText(decoded, path))
           if (path === 'package.json') {

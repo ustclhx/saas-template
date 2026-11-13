@@ -96,6 +96,8 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
     eventsQueue: createNodeQueueProducer(db, 'events').producer,
     emailTransport,
     ...(emailSender && { emailSender }),
+    shareCardCache: cache.kv('settings'),
+    ...(storage?.shareCards && { shareCards: storage.shareCards }),
     files: storage
       ? {
           available: true,
