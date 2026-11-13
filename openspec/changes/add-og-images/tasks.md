@@ -28,7 +28,7 @@
 
 ## 5. 路由、缓存与元数据
 
-- [ ] 5.1 实现 `/share-card/<type>/<token>.png` 路由，按 design 第 3 条的顺序处理：令牌格式校验 → KV 撤销标记 → Cache API → R2（检查元数据中的到期时间）→ 调用 `resolve`、校验到期、比对摘要（不一致时 302）→ 渲染 → 写入 R2 图片、空间索引与 Cache API。缓存头受剩余有效期约束。自托管跳过 Cache API。验证：web 集成测试覆盖命中不调用 `resolve`、格式不符 404 且不调用 `resolve`、解析为空 404、失效后 404、R2 命中但已到期 404、摘要变化后 302、剩余 2 小时时 `s-maxage` ≤ 7200。
+- [ ] 5.1 实现 `/share-card/<type>/<token>.png` 路由，按 design 第 3 条的顺序处理：令牌格式校验 → KV 撤销标记 → Cache API → R2（检查元数据中的到期时间）→ 调用 `resolve`、校验到期、比对摘要（不一致时 302）→ 渲染 → 写入 R2 图片、空间索引与 Cache API。缓存头受剩余有效期约束。自托管跳过 Cache API。验证：web 集成测试覆盖命中不调用 `resolve`、格式不符 404 且不调用 `resolve`、解析为空 404、失效后 404、R2 命中但已到期 404、摘要变化后 302、剩余 2 小时时 `s-maxage` ≤ 7200。写入 R2 图片与空间索引前再次检查 KV 撤销标记；补充测试覆盖渲染期间并发失效时不写入图片与索引，避免留下孤儿卡片。
 - [ ] 5.2 新增 `RL_SHARE_CARD` 限流绑定，在各环境的 wrangler 配置和 `check-wrangler-envs` 中声明，卡片缓存未命中与分享页请求时消耗配额。验证：本地 `wrangler dev` 下超过限额返回 429，单测覆盖。
 - [ ] 5.3 实现元数据工具 `shareCardMeta(type, token)`，输出 `og:image`（APP_URL 下的绝对地址加 `v` 参数）、宽高、alt、`twitter:card` 与 `noindex`；robots 放行 `/share-card/` 与 `/s/`，站点地图与 `llms.txt` 不收录。验证：seo 单测与 robots、sitemap 测试。
 - [ ] 5.4 按 2.1 副本实现通用分享页 `/s/$type/$token`（design 第 8 条）：有效时显示卡片、标题、描述与站点入口；无效、到期、失效或 `sharePage: false` 时 404 页；先查 KV 撤销标记；缓存头与 `noindex`；文案进 `messages/{en,zh}`。验证：web 集成测试覆盖四种 404 情况；`ui-design` 第 6 步的四张截图与副本对照。

@@ -1,6 +1,7 @@
 import type { Database } from '@saas/db'
 import type { KeyValueStore } from '@saas/platform'
 import { AppError, newId, normalizeSignupEmail } from '@saas/shared'
+import { log } from '@saas/shared/log'
 import type { BetterAuthPlugin } from 'better-auth'
 import { APIError, createAuthEndpoint } from 'better-auth/api'
 import { z } from 'zod'
@@ -81,7 +82,11 @@ async function runCleanup(
   keys: readonly string[],
 ) {
   const results = await Promise.allSettled(keys.map((key) => kv.delete(`auth:${key}`)))
-  if (results.some((result) => result.status === 'rejected')) return false
+  const failed = results.filter((result) => result.status === 'rejected').length
+  if (failed) {
+    log.warn('deletion.credential-cache.cleanup.failed', { reason: 'cache-delete-failed', failed })
+    return false
+  }
   await db.$client`delete from verification where id=${id} and identifier=${DELETION_CLEANUP_PREFIX + id}`
   return true
 }
@@ -300,10 +305,20 @@ export async function deleteAccount(options: Options) {
             options.db,
             options.cleanupShareCards,
             fresh.user.id,
-          ),
+            { maxIndexes: 20 },
+          ).then((result) => {
+            if (result.failed)
+              throw new AppError('DELETION_CLEANUP_FAILED', 'Share card cleanup failed')
+          }),
         ]
       : []),
   ])
+  for (const [index, result] of cleanup.entries()) {
+    if (result.status === 'rejected')
+      log.warn('deletion.external-cleanup.failed', {
+        reason: index === 0 ? 'credential-cleanup-failed' : 'share-card-cleanup-failed',
+      })
+  }
   if (cleanup.some((result) => result.status === 'rejected'))
     fail('DELETION_CLEANUP_FAILED', 'Deletion completed; external cleanup needs retry', 503, {
       deletionCompleted: true,

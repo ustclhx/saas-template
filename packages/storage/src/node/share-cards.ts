@@ -8,10 +8,8 @@ export function createNodeShareCardObjects(config: S3StorageConfig): ShareCardOb
     key: string,
     run: (client: ReturnType<typeof createS3Client>) => Promise<T>,
   ) {
-    if (
-      !key.startsWith('share-cards/') ||
-      key.split('/').some((part) => part === '..' || part === '.')
-    )
+    // S3 使用字面对象键；列出的坏索引也必须能删除，不按文件系统路径拒绝点段。
+    if (!key.startsWith('share-cards/'))
       throw new AppError('INVALID_SHARE_CARD_KEY', 'Invalid share card key')
     const client = createS3Client(config)
     try {

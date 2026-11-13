@@ -410,6 +410,13 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
     analytics: { ...d.analytics, ...input.analytics },
   }
 
+  const ttlDays = config.shareCards.defaultTtlDays
+  if (ttlDays !== null && (!Number.isInteger(ttlDays) || ttlDays <= 0)) {
+    throw new RangeError(
+      'template config: shareCards.defaultTtlDays must be a positive integer or null',
+    )
+  }
+
   // 背书条桌面端按 4 列排布；数值为空串时会渲染出空格子
   if (config.marketing.stats.items.length > 4) {
     throw new RangeError('template config: marketing.stats.items allows at most 4 entries')

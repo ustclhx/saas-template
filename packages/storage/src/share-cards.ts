@@ -1,5 +1,6 @@
 import type { KeyValueStore } from '@saas/platform'
 import { AppError } from '@saas/shared'
+import { log } from '@saas/shared/log'
 
 /** 分享卡片仅需要按前缀分页与删除，不向业务层暴露目标 SDK。 */
 export interface ShareCardObjects {
@@ -50,22 +51,49 @@ export function createShareCardInvalidator(
     } while (cursor)
     await objects.delete(index)
   }
-  async function cleanupWorkspaceShareCards(workspaceId: string) {
+  async function cleanupWorkspaceShareCards(
+    workspaceId: string,
+    { maxIndexes = Number.POSITIVE_INFINITY }: { maxIndexes?: number } = {},
+  ) {
     const prefix = shareCardWorkspacePrefix(workspaceId)
     let cursor: string | undefined
     let invalidated = 0
+    let processed = 0
     do {
-      const page = await objects.list({ prefix, ...(cursor ? { cursor } : {}) })
+      const page = await objects.list({
+        prefix,
+        ...(cursor ? { cursor } : {}),
+        ...(Number.isFinite(maxIndexes) ? { limit: maxIndexes - processed } : {}),
+      })
       for (const key of page.keys) {
-        const [type, token, extra] = key.slice(prefix.length).split('/')
-        if (!key.startsWith(prefix) || !type || !token || extra !== undefined)
-          throw new AppError('INVALID_SHARE_CARD_KEY', 'Invalid share card workspace index')
+        const [type = '', token = '', extra] = key.slice(prefix.length).split('/')
+        if (processed >= maxIndexes) return { invalidated, complete: false }
+        processed++
+        let valid =
+          key.startsWith(prefix) &&
+          /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(type) &&
+          !!token &&
+          extra === undefined
+        if (valid) {
+          try {
+            segment(type)
+            segment(token)
+          } catch {
+            valid = false
+          }
+        }
+        if (!valid) {
+          log.warn('share-cards.invalid-workspace-index', { workspaceId })
+          await objects.delete(key)
+          continue
+        }
         await invalidateShareCard({ type, token, workspaceId })
         invalidated++
       }
       cursor = page.cursor
+      if (processed >= maxIndexes && cursor) return { invalidated, complete: false }
     } while (cursor)
-    return { invalidated }
+    return { invalidated, complete: true }
   }
   return { invalidateShareCard, cleanupWorkspaceShareCards }
 }

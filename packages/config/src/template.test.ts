@@ -45,6 +45,14 @@ describe('defineTemplateConfig', () => {
     })
   })
 
+  it('rejects default share expiry values that are not positive integers or null', () => {
+    for (const defaultTtlDays of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1, 1.5]) {
+      expect(() => defineTemplateConfig({ app, shareCards: { defaultTtlDays } })).toThrow(
+        /shareCards.defaultTtlDays must be a positive integer or null/,
+      )
+    }
+  })
+
   it('merges marketing blocks and rejects malformed stats', () => {
     const config = defineTemplateConfig({
       app,

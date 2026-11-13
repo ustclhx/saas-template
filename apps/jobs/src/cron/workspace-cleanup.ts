@@ -19,13 +19,25 @@ export async function runWorkspaceCleanup(context: {
   const invalidator = context.shareCards
     ? createShareCardInvalidator(context.shareCards, context.shareCardCache ?? context.cache)
     : undefined
-  if (invalidator)
-    await purgeDeletedPersonalWorkspaceShareCards(db, invalidator.cleanupWorkspaceShareCards)
-  const result = await cleanupExpiredWorkspaces(db, {
-    ...(invalidator && { cleanupShareCards: invalidator.cleanupWorkspaceShareCards }),
-  })
-  log.info('cron.workspace-cleanup', result)
+  try {
+    if (invalidator)
+      await purgeDeletedPersonalWorkspaceShareCards(db, invalidator.cleanupWorkspaceShareCards)
+  } catch {
+    log.error('cron.personal-share-cards-cleanup.failed')
+  }
+  try {
+    const result = await cleanupExpiredWorkspaces(db, {
+      ...(invalidator && { cleanupShareCards: invalidator.cleanupWorkspaceShareCards }),
+    })
+    log.info('cron.workspace-cleanup', result)
+  } catch {
+    log.error('cron.workspace-cleanup.failed')
+  }
   // 删号后团队空间中的 AI 内容不放进删号事务，由这里分批删除，避免长事务持锁。
-  const deletedUsers = await purgeDeletedUserAiContent(db)
-  log.info('cron.deleted-user-ai-cleanup', deletedUsers)
+  try {
+    const deletedUsers = await purgeDeletedUserAiContent(db)
+    log.info('cron.deleted-user-ai-cleanup', deletedUsers)
+  } catch {
+    log.error('cron.deleted-user-ai-cleanup.failed')
+  }
 }

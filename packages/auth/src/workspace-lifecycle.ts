@@ -1,6 +1,7 @@
 import { templateConfigDefaults } from '@saas/config'
 import type { Database } from '@saas/db'
 import { AppError, newId } from '@saas/shared'
+import { log } from '@saas/shared/log'
 import type { BetterAuthPlugin } from 'better-auth'
 import { APIError, createAuthEndpoint } from 'better-auth/api'
 import { z } from 'zod'
@@ -118,41 +119,50 @@ export async function cleanupExpiredWorkspaces(
         or exists(select 1 from ai_task t where t.workspace_id=o.id))
     order by o.id`
   let cleaned = 0
+  let failed = 0
   let batches = 0
   let remaining = false
   const ai = emptyAiPurge()
   for (const workspace of candidates) {
-    // 存储失效失败时不写 completed；即使没有 AI 内容，下一轮仍会发现该空间。
-    await cleanupShareCards?.(workspace.id)
-    const completed = await db.$client.begin(async (sql) => {
-      if (!(await lockExpired(sql, workspace.id))) return false
-      const deletion = await latestDeletion(sql, workspace.id)
-      if (!deletion || (await alreadyCleaned(sql, workspace.id, deletion.id))) return false
-      await sql`delete from notification where workspace_id=${workspace.id}`
-      await sql`delete from invitation where organization_id=${workspace.id}`
-      await sql`insert into audit_log (id,workspace_id,action,target_type,target_id,meta)
-        values (${newId()},${workspace.id},'workspace.cleanup.completed','organization',${workspace.id},${JSON.stringify({ deletionAuditId: deletion.id })}::jsonb)`
-      return true
-    })
-    if (completed) cleaned++
-    for (;;) {
-      if (batches >= maxBatches) {
-        remaining = true
-        break
+    try {
+      // 存储失效失败时不写 completed；即使没有 AI 内容，下一轮仍会发现该空间。
+      const shareCards = await cleanupShareCards?.(workspace.id)
+      if (shareCards?.complete === false) continue
+      for (;;) {
+        if (batches >= maxBatches) {
+          remaining = true
+          break
+        }
+        batches++
+        // 每批重新加空间锁并确认仍已到期，与 restoreWorkspace 串行。
+        const batch = await db.$client.begin(async (sql) =>
+          (await lockExpired(sql, workspace.id))
+            ? purgeAiBatch(sql, { workspaceId: workspace.id }, batchSize)
+            : emptyAiPurge(),
+        )
+        addAiPurge(ai, batch)
+        if (Math.max(batch.messages, batch.conversations, batch.tasks) < batchSize) break
       }
-      batches++
-      // 每批重新加空间锁并确认仍已到期，与 restoreWorkspace 串行。
-      const batch = await db.$client.begin(async (sql) =>
-        (await lockExpired(sql, workspace.id))
-          ? purgeAiBatch(sql, { workspaceId: workspace.id }, batchSize)
-          : emptyAiPurge(),
-      )
-      addAiPurge(ai, batch)
-      if (Math.max(batch.messages, batch.conversations, batch.tasks) < batchSize) break
+      if (!remaining) {
+        const completed = await db.$client.begin(async (sql) => {
+          if (!(await lockExpired(sql, workspace.id))) return false
+          const deletion = await latestDeletion(sql, workspace.id)
+          if (!deletion || (await alreadyCleaned(sql, workspace.id, deletion.id))) return false
+          await sql`delete from notification where workspace_id=${workspace.id}`
+          await sql`delete from invitation where organization_id=${workspace.id}`
+          await sql`insert into audit_log (id,workspace_id,action,target_type,target_id,meta)
+        values (${newId()},${workspace.id},'workspace.cleanup.completed','organization',${workspace.id},${JSON.stringify({ deletionAuditId: deletion.id })}::jsonb)`
+          return true
+        })
+        if (completed) cleaned++
+      }
+      if (remaining) break
+    } catch {
+      failed++
+      log.error('workspace.cleanup.failed', { workspaceId: workspace.id })
     }
-    if (remaining) break
   }
-  return { cleaned, ai: { ...ai, remaining } }
+  return { cleaned, failed, ai: { ...ai, remaining } }
 }
 
 async function lockExpired(sql: Transaction, workspaceId: string) {

@@ -169,16 +169,44 @@ describe('AI content deletion in workerd', () => {
     deletedIds.push(target.id)
     const other = await actor(a, 'share-other')
     const cleanupShareCards = vi.fn(async (_workspaceId: string) => {})
-    cleanupShareCards.mockRejectedValueOnce(new Error('storage unavailable'))
-    await expect(deleteAccount({ ...target.options, cleanupShareCards })).rejects.toMatchObject({
-      code: 'DELETION_CLEANUP_FAILED',
-      details: { deletionCompleted: true },
+    cleanupShareCards.mockRejectedValueOnce(new Error('provider-secret'))
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await expect(deleteAccount({ ...target.options, cleanupShareCards })).rejects.toMatchObject({
+        code: 'DELETION_CLEANUP_FAILED',
+        details: { deletionCompleted: true },
+      })
+      expect(warning).toHaveBeenCalled()
+      expect(JSON.stringify(warning.mock.calls)).toContain('share-card-cleanup-failed')
+      expect(JSON.stringify(warning.mock.calls)).not.toContain('provider-secret')
+    } finally {
+      warning.mockRestore()
+    }
+    expect(cleanupShareCards).toHaveBeenCalledWith(target.id, { maxIndexes: 20 })
+    const second = await actor(a, 'share-second-deleted')
+    deletedIds.push(second.id)
+    await deleteAccount(second.options)
+    cleanupShareCards.mockClear()
+    cleanupShareCards.mockImplementation(async (workspaceId) => {
+      if (workspaceId === target.id) throw new Error('storage unavailable')
+    })
+    expect(await purgeDeletedPersonalWorkspaceShareCards(a.db, cleanupShareCards)).toMatchObject({
+      failed: 1,
     })
     expect(cleanupShareCards).toHaveBeenCalledWith(target.id)
-    cleanupShareCards.mockClear()
-    await purgeDeletedPersonalWorkspaceShareCards(a.db, cleanupShareCards)
-    expect(cleanupShareCards).toHaveBeenCalledWith(target.id)
+    expect(cleanupShareCards).toHaveBeenCalledWith(second.id)
     expect(cleanupShareCards).not.toHaveBeenCalledWith(other.id)
+    const marks = (workspaceId: string) => a.db
+      .$client`select id from audit_log where workspace_id=${workspaceId}
+      and action='workspace.share-cards.cleanup.completed'`
+    expect(await marks(target.id)).toHaveLength(0)
+    expect(await marks(second.id)).toHaveLength(1)
+    cleanupShareCards.mockClear()
+    cleanupShareCards.mockImplementation(async () => {})
+    await purgeDeletedPersonalWorkspaceShareCards(a.db, cleanupShareCards)
+    expect(await marks(target.id)).toHaveLength(1)
+    expect(cleanupShareCards).toHaveBeenCalledWith(target.id)
+    expect(cleanupShareCards).not.toHaveBeenCalledWith(second.id)
     cleanupShareCards.mockClear()
     await purgeDeletedPersonalWorkspaceShareCards(a.db, cleanupShareCards)
     expect(cleanupShareCards).not.toHaveBeenCalledWith(target.id)
@@ -187,26 +215,56 @@ describe('AI content deletion in workerd', () => {
     expect(workspace?.retained).toBe(true)
   })
 
-  it('invalidates expired team share cards, preserves other workspaces and retries storage failures', async () => {
+  it('bounds account deletion cleanup and only marks completion after cron finishes the remainder', async () => {
+    const a = app()
+    const target = await actor(a, 'share-bounded')
+    deletedIds.push(target.id)
+    let indexes = 23
+    const cleanupShareCards = vi.fn(
+      async (_workspaceId: string, options?: { maxIndexes?: number }) => {
+        indexes -= Math.min(indexes, options?.maxIndexes ?? indexes)
+        return { complete: indexes === 0 }
+      },
+    )
+    await expect(deleteAccount({ ...target.options, cleanupShareCards })).resolves.toEqual({
+      deleted: true,
+    })
+    expect(indexes).toBe(3)
+    const marks = () => a.db.$client`select id from audit_log where workspace_id=${target.id}
+      and action='workspace.share-cards.cleanup.completed'`
+    expect(await marks()).toHaveLength(0)
+    await purgeDeletedPersonalWorkspaceShareCards(a.db, cleanupShareCards, target.id)
+    expect(indexes).toBe(0)
+    expect(await marks()).toHaveLength(1)
+  })
+
+  it('isolates expired workspace failures and retries without touching active or retained spaces', async () => {
     const a = app()
     const owner = await actor(a, 'share-team')
     const expired = await team(a, [{ id: owner.id, role: 'owner' }])
+    const otherExpired = await team(a, [{ id: owner.id, role: 'owner' }])
     const active = await team(a, [{ id: owner.id, role: 'owner' }])
     const retained = await team(a, [{ id: owner.id, role: 'owner' }])
-    await deleteTeamWorkspace({ ...owner.options, workspaceId: expired })
-    await deleteTeamWorkspace({ ...owner.options, workspaceId: retained })
-    await a.db
-      .$client`update organization set deleted_at=now()-interval '31 days' where id=${expired}`
-    const cleanupShareCards = vi.fn(async (_workspaceId: string) => {})
-    cleanupShareCards.mockImplementationOnce(async () => {
-      throw new Error('storage unavailable')
+    for (const workspaceId of [expired, otherExpired, retained])
+      await deleteTeamWorkspace({ ...owner.options, workspaceId })
+    for (const workspaceId of [expired, otherExpired])
+      await a.db
+        .$client`update organization set deleted_at=now()-interval '31 days' where id=${workspaceId}`
+    const cleanupShareCards = vi.fn(async (workspaceId: string) => {
+      if (workspaceId === expired) throw new Error('storage unavailable')
     })
-    await expect(cleanupExpiredWorkspaces(a.db, { cleanupShareCards })).rejects.toThrow(
-      'storage unavailable',
-    )
+    expect(await cleanupExpiredWorkspaces(a.db, { cleanupShareCards })).toMatchObject({ failed: 1 })
+    const marks = (workspaceId: string) => a.db
+      .$client`select id from audit_log where workspace_id=${workspaceId}
+      and action='workspace.cleanup.completed'`
+    expect(await marks(expired)).toHaveLength(0)
+    expect(await marks(otherExpired)).toHaveLength(1)
+    cleanupShareCards.mockImplementation(async () => {})
     const result = await cleanupExpiredWorkspaces(a.db, { cleanupShareCards })
     expect(result.cleaned).toBeGreaterThanOrEqual(1)
+    expect(await marks(expired)).toHaveLength(1)
     expect(cleanupShareCards).toHaveBeenCalledWith(expired)
+    expect(cleanupShareCards).toHaveBeenCalledWith(otherExpired)
     expect(cleanupShareCards).not.toHaveBeenCalledWith(active)
     expect(cleanupShareCards).not.toHaveBeenCalledWith(retained)
   })

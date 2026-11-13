@@ -50,6 +50,16 @@ describe('share card registry', () => {
     expect((await sample.resolve(sampleShareToken, ctx))?.data.title).toBe('Project summary')
     expect(await sample.resolve('missing', ctx)).toBeNull()
   })
+
+  it('rejects invalid type TTL values without registering the type', () => {
+    for (const ttlDays of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1, 1.5]) {
+      const type = 'invalid-ttl-test'
+      expect(() => registerShareCard({ ...definition, type, ttlDays })).toThrow(
+        /positive integer or null/,
+      )
+      expect(getShareCard(type)).toBeUndefined()
+    }
+  })
 })
 
 it('creates independent 32-byte base64url tokens within the default format', () => {
@@ -86,5 +96,12 @@ describe('share card expiry', () => {
     expect(shareCardExpiresAt({ sharedAt, expiresAt: null }, 30)).toBeNull()
     expect(shareCardExpiresAt({ sharedAt }, null)).toBeNull()
     expect(isShareCardExpired(null, new Date('2099-01-01T00:00:00Z'))).toBe(false)
+  })
+
+  it('treats invalid explicit or calculated expiry dates as expired', () => {
+    const invalid = new Date(Number.NaN)
+    expect(isShareCardExpired(shareCardExpiresAt({ sharedAt, expiresAt: invalid }))).toBe(true)
+    expect(isShareCardExpired(shareCardExpiresAt({ sharedAt: invalid }))).toBe(true)
+    expect(isShareCardExpired(new Date('2099-01-01T00:00:00Z'), invalid)).toBe(true)
   })
 })

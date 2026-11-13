@@ -11,13 +11,15 @@ export function registerShareCard<T>(definition: ShareCardDefinition<T>): Regist
   if (registry.has(definition.type)) {
     throw new Error(`Share card type already registered: ${definition.type}`)
   }
+  const ttlDays =
+    definition.ttlDays === undefined ? templateConfig.shareCards.defaultTtlDays : definition.ttlDays
+  if (ttlDays !== null && (!Number.isInteger(ttlDays) || ttlDays <= 0)) {
+    throw new RangeError('Share card ttlDays must be a positive integer or null')
+  }
   const registered: RegisteredShareCard<T> = {
     ...definition,
     tokenPattern: definition.tokenPattern ?? defaultShareTokenPattern,
-    ttlDays:
-      definition.ttlDays === undefined
-        ? templateConfig.shareCards.defaultTtlDays
-        : definition.ttlDays,
+    ttlDays,
     sharePage: definition.sharePage !== false,
   }
   // 注册表擦除各业务数据类型；调用方须把同一定义 resolve 的数据交回该定义。

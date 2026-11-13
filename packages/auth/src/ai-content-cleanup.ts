@@ -1,13 +1,21 @@
 import type { Database } from '@saas/db'
 import { newId } from '@saas/shared'
+import { log } from '@saas/shared/log'
 
-export type CleanupWorkspaceShareCards = (workspaceId: string) => Promise<unknown>
+export type CleanupWorkspaceShareCards = (
+  workspaceId: string,
+  options?: { maxIndexes?: number },
+) => Promise<
+  // biome-ignore lint/suspicious/noConfusingVoidType: 保留已有无返回值清理回调的兼容性。
+  { complete: boolean } | void
+>
 
 /** 删号后的个人空间不等内容保留期；成功标记与保留期内容清理互不影响。 */
 export async function purgeDeletedPersonalWorkspaceShareCards(
   db: Database,
   cleanupShareCards: CleanupWorkspaceShareCards,
   workspaceId?: string,
+  options?: { maxIndexes?: number },
 ) {
   const sql = db.$client
   const workspaces = await sql<{ id: string }[]>`select o.id from organization o
@@ -16,12 +24,27 @@ export async function purgeDeletedPersonalWorkspaceShareCards(
       and not exists(select 1 from audit_log l where l.workspace_id=o.id
         and l.action='workspace.share-cards.cleanup.completed')
     order by o.id`
+  let cleaned = 0
+  let failed = 0
+  let remaining = 0
   for (const workspace of workspaces) {
-    await cleanupShareCards(workspace.id)
-    await sql`insert into audit_log (id,workspace_id,action,target_type,target_id)
-      values (${newId()},${workspace.id},'workspace.share-cards.cleanup.completed','organization',${workspace.id})`
+    try {
+      const result = options
+        ? await cleanupShareCards(workspace.id, options)
+        : await cleanupShareCards(workspace.id)
+      if (result?.complete === false) {
+        remaining++
+        continue
+      }
+      await sql`insert into audit_log (id,workspace_id,action,target_type,target_id)
+        values (${newId()},${workspace.id},'workspace.share-cards.cleanup.completed','organization',${workspace.id})`
+      cleaned++
+    } catch {
+      failed++
+      log.error('workspace.personal-share-cards.cleanup.failed', { workspaceId: workspace.id })
+    }
   }
-  return { cleaned: workspaces.length }
+  return { cleaned, failed, remaining }
 }
 
 type Transaction = Parameters<Parameters<Database['$client']['begin']>[1]>[0]

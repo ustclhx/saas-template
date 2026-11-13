@@ -11,5 +11,6 @@ export function shareCardExpiresAt(
 }
 
 export function isShareCardExpired(expiresAt: Date | null, now = new Date()): boolean {
-  return expiresAt !== null && expiresAt.getTime() <= now.getTime()
+  // 非法日期的 NaN 比较同样视为到期，不能意外变为永久有效。
+  return expiresAt !== null && !(expiresAt.getTime() > now.getTime())
 }

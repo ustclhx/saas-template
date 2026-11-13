@@ -52,13 +52,22 @@ describe('share card invalidation with local R2 and KV', () => {
       await env.FILES.put(shareCardWorkspaceKey(identity), '')
       await env.FILES.put(`${shareCardImagePrefix(identity.type, identity.token)}1-digest.png`, '')
     }
+    const malformedIndexes = [
+      `share-cards/ws/${workspaceId}/report/..`,
+      `share-cards/ws/${workspaceId}/report/invalid/extra`,
+    ]
+    for (const key of malformedIndexes) await env.FILES.put(key, '')
     const paged = {
       ...objects,
       list: (input: Parameters<ShareCardObjects['list']>[0]) =>
         objects.list({ ...input, limit: 1 }),
     }
     const invalidator = createShareCardInvalidator(paged, env.CACHE)
-    expect(await invalidator.cleanupWorkspaceShareCards(workspaceId)).toEqual({ invalidated: 3 })
+    expect(await invalidator.cleanupWorkspaceShareCards(workspaceId)).toEqual({
+      invalidated: 3,
+      complete: true,
+    })
+    for (const key of malformedIndexes) expect(await env.FILES.head(key)).toBeNull()
     for (const identity of identities) {
       expect(await env.FILES.head(shareCardWorkspaceKey(identity))).toBeNull()
       expect(
