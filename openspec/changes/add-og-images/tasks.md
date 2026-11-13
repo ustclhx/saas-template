@@ -47,8 +47,8 @@
 
 ## 8. 验收
 
-- [ ] 8.1 `pnpm check`、`pnpm typecheck`、`pnpm check:deps`、`pnpm check:singletons`、`pnpm test`与 `pnpm build` 全部通过，`pnpm test:create-project:verify` 通过。
-- [ ] 8.2 staging 验收：
+- [x] 8.1 `pnpm check`、`pnpm typecheck`、`pnpm check:deps`、`pnpm check:singletons`、`pnpm test`与 `pnpm build` 全部通过，`pnpm test:create-project:verify` 通过。
+- [x] 8.2 staging 验收：
   - 示例卡片的冷、热渲染耗时与 1.1 一致；
   - 第二次请求命中缓存；
   - 失效后卡片与分享页返回 404；
