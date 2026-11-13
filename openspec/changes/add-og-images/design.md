@@ -3,7 +3,7 @@
 ## Context
 
 - **现有分享图**：`apps/web/scripts/og-images.ts` 用 `cf-workers-og@3.0.1` 的 Node 入口（satori 0.18 + resvg-wasm 2.6）在构建期生成公开页面的 1200×630 PNG，输出到 `dist/client/og/`。字体是 Noto Sans SC Regular 的完整简体子集 OTF（约 8.3 MB），只供构建期读取，WASM 也不进 Worker（见 `apps/web/src/features/seo/README.md`）。
-- **Worker 现状**：服务端入口约 0.7 MB，gzip 后约 0.15 MB（2026-10 的构建产物）。新增 `@resvg/resvg-wasm` 约 2.5 MB、yoga 约 0.08 MB、satori JS 约 0.5 MB。按 Workers 付费版 10 MB 的压缩上限仍有余量，但会增加部署体积和首个请求实例化 WASM 的成本。
+- **Worker 现状**：整包 gzip 约 2.25 MiB（2026-11 main，`wrangler deploy --dry-run`）。加入渲染器后约 3.49 MiB，超过 Workers 免费版 3 MiB 上限，付费版 10 MB 仍有余量（见第 7 条结果）。
 - **已有的可复用部分**：
   - R2 `FILES` 绑定与 `packages/storage`；
   - KV `CACHE`；
@@ -96,7 +96,7 @@ interface ShareCardDefinition<T> {
 
 ### 4. 渲染器与懒加载
 
-- 新建 `apps/web/src/features/share-cards/render.server.ts`。路由处理函数用动态 `import()` 加载它，所以 WASM 与 satori 只在分享卡片路由的首次请求时实例化，同一实例内复用。
+- 渲染器经 WebRuntime 注入（Workers 实现在 `src/server/cloudflare/`，Node 实现在 Node 运行时），由分享卡片路由用动态 `import()` 加载，所以 WASM 与 satori 只在分享卡片路由的首次请求时实例化，同一实例内复用。
 - Cloudflare 使用 `cf-workers-og` 的 Workers 入口，Node（自托管与构建期）使用 `/node` 入口。两者共用版式代码 `layout.tsx` 与主题。
 - 构建期生成器 `og-images.ts` 改为复用同一套默认版式。已确认的变更：默认分享图不再用写死的深蓝渐变，改为主题 token 版式（原型索引「分享卡片版式」行，`share-cards/Card.dc.html` 的 `default` 变体）。
 - 首页包检查扩展一条：服务端与客户端的首页闭包中不得出现 `share-cards/render`、`resvg`、`satori`。
@@ -106,12 +106,16 @@ interface ShareCardDefinition<T> {
 - 西文用 Inter 的 Latin 子集（约 100 KB），随渲染器打包。
 - CJK 用现有的 Noto Sans SC Regular OTF，作为静态资源发布到 `/fonts/share-card/` 下，带长期缓存与 `X-Robots-Tag: noindex`。只有待渲染文本含 CJK 字符时才通过 `ASSETS.fetch` 读取，同一实例内缓存解析后的字体。自托管从本地文件读取。
 - 风险是完整 CJK 字体在冷实例上的解析耗时与内存，第 7 条的验证会量化它。不达标时改用 GB2312 一级常用字子集（约 1.5–2 MB）作为运行时字体，构建期仍用完整字体。
+- 验证结论（2026-11-13，本地，证据库 `add-og-images/spike`）：完整字体经 `ASSETS.fetch` 读取 3–11 ms，冷实例首次 CJK 渲染约 0.1 s，热渲染约 18 ms，维持完整字体，不启用常用字子集；8.2 线上冷 CJK CPU 超过 1500 ms 时再切换。
+- CJK 只有 Regular 字重，中文标题加粗不生效，版式据此处理（标题靠字号区分层级）。
+- 截断按字宽加权（CJK 记 1，拉丁字符约 0.55），不按纯字数。
+- 西文 Inter Latin 400/600 用 woff（satori 不支持 woff2），约 61 KB。
 
 ### 6. 主题与版式约束
 
 - `packages/ui` 新增 `share-card-theme.ts`，导出解析后的 token 值，包括 background、foreground、muted、primary、primary-text、border、radius 与字号阶梯。单测保证它与 `tokens.css` 的基线值一致。
 - 项目在自有文件 `share-cards.theme.ts` 中覆盖品牌值，与 `brand.css` 保持对应，并登记到 `check-ui.allow.local.json` 的 exceptions，原因写「分享卡片在服务端渲染，无法读取 CSS 变量」。
-- 版式只用 satori 支持的 flex 子集，文本最长字数由各类型定义；超长时截断并加省略号，在渲染前按字数截断，不依赖 CSS 的 `line-clamp`。
+- 版式只用 satori 支持的 flex 子集，文本最长宽度由各类型定义；超长时截断并加省略号，在渲染前按字宽加权截断（第 5 条），不依赖 CSS 的 `line-clamp`。
 
 ### 7. 可行性验证（先做，决定后续步骤）
 
@@ -129,6 +133,21 @@ interface ShareCardDefinition<T> {
 - **CJK 冷启动超标**：改用第 5 条的常用字子集。
 - **包体积或内存超标**：把渲染移到 jobs Worker（经服务绑定调用），web 路由只负责缓存与转发。
 - 结论写入本文件和证据库，再进入实现。
+
+**结果（2026-11-13，本地 workerd + Node，Apple M4；staging 上传因本机 wrangler 未登录未执行，线上复核放到 8.2，登录后可提前补测）：**
+
+| 指标 | 本地结果 | 判定 |
+|---|---|---|
+| 压缩体积增量 | +1.25 MiB gzip（resvg.wasm 约 0.9 MiB） | 达标 |
+| 冷实例首次 CJK 渲染 CPU | 85–126 ms（高负载 257 ms） | 达标 |
+| 热实例渲染 | p50 18 ms，p95 ≤ 31 ms（高负载 p95 104–169 ms） | 达标，线上复核 |
+| 峰值内存 | 采样 84–86 MB（含未回收垃圾，渲染后常驻约 59 MB） | 达标，余量小 |
+| 首页冷启动 | 启动 CPU 与首请求无可测变化，首页包不变 | 达标 |
+
+- **结论：暂定达标，按本设计继续在 web Worker 渲染。** 线上 cpuTime 或内存超阈值时，按上面的备选方案处理。
+- 部署要求：整包超过 Workers 免费版 3 MiB，升级说明须注明需要付费版。
+- 实现约束：渲染器经 WebRuntime 注入，Workers 实现放在 `src/server/cloudflare/`（`cloudflare:workers` 与 `.bin` 导入只允许在该目录），Node 实现放在 Node 运行时；动态 import 的模块顶层不得调用 `crypto.randomUUID` 等随机 API。
+- cf-workers-og 每次调用新建字体数组，satori 字体缓存不命中；实测影响很小，实现时在实例内复用字体对象。
 
 ### 8. 通用分享页
 
