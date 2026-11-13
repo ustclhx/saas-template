@@ -96,6 +96,9 @@
     --destructive-light: #fef2f2;
     /* 成功色沿用模板原值（作文字时满足 4.5:1） */
     --success: oklch(0.527 0.154 150.069);
+    /* 模板新增（add-ai-chat-components）：提醒色，对话「未完成」状态等。设计稿取 yellow-700（#a16207），
+       在自身 10% 淡底上只有约 4.2:1，略加深到 ≥ 4.5:1（页面底与卡片底上约 4.9–5.2:1） */
+    --warning: #8a5a00;
     /* 边框由前景色混出，随主题自动变化 */
     --border: color-mix(in oklab, var(--foreground) 12%, transparent);
     --input: #e5e5e5;
@@ -111,6 +114,13 @@
     /* 模板改动：浅色取 blue-500（上游 #6b97ff 在 #fafafa 上不足 3:1） */
     --fluid-accent: #3b82f6;
     --focus-ring: var(--fluid-accent);
+    /* 模板新增（add-ai-chat-components）：强调色作小字（工具调用「执行中」徽标）。与正文色混合：浅色更深、深色更亮，
+       随预设换色且 ≥ 4.5:1 */
+    --fluid-accent-text: color-mix(in oklab, var(--fluid-accent) 72%, var(--foreground));
+    /* 模板新增（add-ai-chat-components）：对话中的中性填充（用户气泡、中性状态徽标、不可用的输入框）。
+       半透明前景色叠在所处表面上：深色下 --secondary 与卡片同为 #252525，用它会在卡片（嵌入式面板）上看不出底色；
+       叠加后浅色约 #f1f1f1（设计稿 #f4f4f5），深色在卡片上约 #313131（设计稿 #2c2c2c–#333） */
+    --chat-fill: color-mix(in oklab, var(--foreground) 6%, transparent);
     /* shadcn 组件的焦点环同样取强调色，与 Fluid 组件一致 */
     --ring: var(--focus-ring);
     /* 模板新增：未选中的复选框边框与关闭态开关轨道。它们是控件唯一的边界与状态标识，
@@ -246,6 +256,7 @@
     --destructive: #fca5a5;
     --destructive-light: #450a0a;
     --success: oklch(0.723 0.219 149.579);
+    --warning: #fcd34d;
     --input: #404040;
 
     --hover: rgb(255 255 255 / 0.06);
@@ -287,6 +298,7 @@
   --color-destructive: var(--destructive);
   --color-destructive-light: var(--destructive-light);
   --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -297,6 +309,15 @@
   --color-tint: var(--tint);
   --color-tint-hover: var(--tint-hover);
   --color-fluid-accent: var(--fluid-accent);
+  --color-fluid-accent-text: var(--fluid-accent-text);
+  --color-chat-fill: var(--chat-fill);
+  /* 模板新增（add-ai-chat-components）：思考中三点的明暗循环（animate-chat-dot），减少动态效果时由
+     motion-reduce:animate-none 关闭（同在 utilities 层，SSR 即生效） */
+  --animate-chat-dot: chat-dot 1.2s ease-in-out infinite;
+  /* 模板新增（add-ai-chat-components）：ChatMessage 助手消息的版式阈值（容器查询 @chat-message:）。
+     消息宽度不足 23rem（368px）时头像与推理按钮同一行、正文通栏在下（Mobile / EmbeddedMobile 画板，内容宽约 358px）；
+     达到时为头像列 + 内容列（Embedded 画板的 420px 面板，内容宽约 388px） */
+  --container-chat-message: 23rem;
   --color-control-border: var(--control-border);
   --color-field-border: var(--field-border);
 
@@ -528,5 +549,45 @@ html.transitioning *::after {
   scrollbar-width: none;
   &::-webkit-scrollbar {
     display: none;
+  }
+}
+
+/* 对话组件（add-ai-chat-components）：思考中三点的关键帧（工具类 animate-chat-dot，见 @theme） */
+@keyframes chat-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+/* 对话组件（add-ai-chat-components design D1 / D4）：流式生成中正文末尾的光标。约定与 DOM 层级无关：
+   - ChatMessage 在 status="streaming" 时给内容区加 data-chat-streaming；
+   - 光标只画在其中带 data-chat-tail 的元素之后。ChatMarkdown（线 B）在流式时把它放在最后一个承载文字的块元素上
+     （段落、列表项、标题、引用中的最后一段等）；ChatMessage 自己包段落的纯文本子节点由 ChatMessage 标在最后一段上；
+     其余自定义内容由调用方自行标注，没有标注时不显示光标。
+   减少动态效果时不闪烁 */
+@keyframes chat-caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+[data-chat-streaming] [data-chat-tail]::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  margin-left: 2px;
+  vertical-align: -2px;
+  border-radius: 1px;
+  background: currentColor;
+  animation: chat-caret-blink 1s steps(2) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-chat-streaming] [data-chat-tail]::after {
+    animation: none;
   }
 }
