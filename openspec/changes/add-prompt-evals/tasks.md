@@ -33,7 +33,7 @@
 ## 6. 模板交付
 
 - [x] 6.1 `scripts/template-release.mjs` 增加检查：模板仓库中根目录 `evals/` 下不得有被跟踪的文件（design D12）。验证：`scripts/template-release.test.mjs` 新增正反用例，`node scripts/template-release.mjs check` 通过。
-- [ ] 6.2 生成器：确认 `pnpm create-project` 原样复制 `packages/evals`，生成的项目中示例套件可离线运行。验证：`scripts/create-project.verify.test.mjs` 增加一步在生成的副本中运行 `pnpm eval:prompts --suite example` 并断言退出码 0；`pnpm test:create-project` 与 `pnpm test:create-project:verify` 通过。
+- [x] 6.2 生成器：确认 `pnpm create-project` 原样复制 `packages/evals`，生成的项目中示例套件可离线运行。验证：`scripts/create-project.verify.test.mjs` 增加一步在生成的副本中运行 `pnpm eval:prompts --suite example` 并断言退出码 0；`pnpm test:create-project` 与 `pnpm test:create-project:verify` 通过。
 
 ## 7. 文档与升级说明
 
@@ -43,5 +43,5 @@
 
 ## 8. 验收
 
-- [ ] 8.1 `pnpm check`、`pnpm typecheck`、`pnpm check:deps`、`pnpm check:singletons`、`pnpm test` 与 `pnpm build` 全部通过，`pnpm test:create-project:verify` 通过；确认 `pnpm build` 产物（web 与 jobs Worker、自托管构建）中不含 `@saas/evals` 的模块。
+- [x] 8.1 `pnpm check`、`pnpm typecheck`、`pnpm check:deps`、`pnpm check:singletons`、`pnpm test` 与 `pnpm build` 全部通过，`pnpm test:create-project:verify` 通过；确认 `pnpm build` 产物（web 与 jobs Worker、自托管构建）中不含 `@saas/evals` 的模块。
 - [ ] 8.2 离线与预算验收：断网（或全局 `fetch` 拒绝）下 `pnpm eval:prompts --suite example --baseline product-intro@v1` 以 0 退出并写出报告；`CI=true pnpm eval:prompts --suite example --live --budget-usd 1` 以 2 退出；5.2 的预算触顶运行结果附在证据中。证据写入私有证据库，PR 只引用。
