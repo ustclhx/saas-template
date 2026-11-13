@@ -42,8 +42,8 @@
 
 ## 6. 预览页（`apps/web/src/features/ui-preview`，线 D）
 
-- [ ] 6.1 `/dev/ui` 新增「对话组件」一节 `#chat`（design D8）：ChatMessage 全部状态、ThinkingIndicator、ThinkingSteps 折叠 / 展开、ToolCall 四态、InputMessage 四态、ChatMarkdown 样例（表格、长代码行、危险链接与图片）、可暂停的流式模拟；文案在 `messages/{en,zh}/ui-preview-chat.json`；原 EmbeddedChat 预览的消息体改用 `ChatMessage` 与 `InputMessage`。验证：`ui-preview.spec.ts` 增加 `#chat` 一节的断言并通过；390px 下 `scrollWidth <= 390`；浅色与深色截图与 1.1 副本对照。
-- [ ] 6.2 Lighthouse / axe：`/dev/ui#chat` 无 `scrollable-region-focusable`、`color-contrast`、`aria-*` 类违规（浅色与深色各一次）。验证：e2e 中的 axe 检查通过，结果写入证据库。
+- [x] 6.1 `/dev/ui` 新增「对话组件」一节 `#chat`（design D8）：ChatMessage 全部状态、ThinkingIndicator、ThinkingSteps 折叠 / 展开、ToolCall 四态、InputMessage 四态、ChatMarkdown 样例（表格、长代码行、危险链接与图片）、可暂停的流式模拟；文案在 `messages/{en,zh}/ui-preview-chat.json`；原 EmbeddedChat 预览的消息体改用 `ChatMessage` 与 `InputMessage`。验证：`ui-preview.spec.ts` 增加 `#chat` 一节的断言并通过；390px 下 `scrollWidth <= 390`；浅色与深色截图与 1.1 副本对照。
+- [x] 6.2 Lighthouse / axe：`/dev/ui#chat` 无 `scrollable-region-focusable`、`color-contrast`、`aria-*` 类违规（浅色与深色各一次）。验证：e2e 中的 axe 检查通过，结果写入证据库。
 
 ## 7. 文档与升级说明
 
