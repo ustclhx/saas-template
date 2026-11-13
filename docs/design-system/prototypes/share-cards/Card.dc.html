@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>分享卡片</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+</style>
+</helmet>
+<div style="{{v.root}}">
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px">
+    <div style="display: flex; align-items: center; gap: 16px">
+      <div style="{{v.mark}}">A</div>
+      <div style="font-size: 30px; line-height: 36px; font-weight: 600">Acme</div>
+    </div>
+    <sc-if value="{{v.hasBadge}}" hint-placeholder-val="{{ true }}">
+      <div style="{{v.badge}}">{{v.badgeText}}</div>
+    </sc-if>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 20px; flex-grow: 1; justify-content: center">
+    <div style="{{v.title}}">{{v.titleText}}</div>
+    <sc-if value="{{v.hasSummary}}" hint-placeholder-val="{{ true }}">
+      <div style="{{v.summary}}">{{v.summaryText}}</div>
+    </sc-if>
+  </div>
+  <div style="{{v.foot}}">
+    <div style="display: flex; align-items: center; gap: 12px">{{v.metaText}}</div>
+    <div style="display: flex; align-items: center; gap: 12px">
+      <div style="{{v.dot}}"></div>
+      <div style="{{v.domain}}">acme.example</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"variant":{"editor":"enum","options":["zh","en","long","default"],"default":"zh"},"$preview":{"width":1200,"height":630}}'>
+// 卡片在服务端由 satori 渲染：只用 flex；数值取自 @saas/ui token 的解析值
+function theme(dark) {
+  return dark ? {
+    bg: '#171717', fg: '#f5f5f5', mfg: '#b0b0b0', muted: '#252525', primary: '#f5f5f5', pfg: '#171717',
+    accent: '#4f86f7', border: 'rgba(245,245,245,0.12)'
+  } : {
+    bg: '#fafafa', fg: '#171717', mfg: '#6b6b6b', muted: '#f0f0f1', primary: '#171717', pfg: '#fafafa',
+    accent: '#3b82f6', border: 'rgba(23,23,23,0.12)'
+  };
+}
+// 渲染前按字数截断，不依赖 line-clamp
+function clip(s, n) { return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+
+var DATA = {
+  zh: { badge: '报告摘要', title: '2026 年第三季度用户调研要点', summary: '新用户留存提升 12%，主要来自引导流程简化；移动端满意度仍低于桌面端。', meta: '5 条结论 · 3 个风险' },
+  en: { badge: 'Report', title: 'Q3 2026 user research highlights', summary: 'Retention for new users rose 12%, driven by a simpler onboarding flow. Mobile satisfaction still trails desktop.', meta: '5 findings · 3 risks' },
+  long: { badge: '报告摘要', title: '面向中小团队的跨部门协作流程梳理：从需求收集、优先级评估到交付复盘的完整实践记录与改进建议', summary: '梳理了需求从收集到复盘的 7 个环节，指出评估阶段信息缺失是延期的首要原因，并给出三项可在两周内落地的改进。整理过程中还对比了四个团队的做法。', meta: '7 个环节 · 3 项建议' },
+  'default': { badge: '', title: '定价与套餐', summary: '', meta: 'Acme · AI workspace' }
+};
+
+class Component extends DCLogic {
+  renderVals() {
+    var dark = !!this.props.dark;
+    var key = this.props.variant || 'zh';
+    var d = DATA[key] || DATA.zh;
+    var t = theme(dark);
+    var isEn = key === 'en';
+    var isDefault = key === 'default';
+    var font = (isEn ? 'Inter, ' : '') + '"Noto Sans SC", Inter, sans-serif';
+    return { v: {
+      root: 'width: 1200px; height: 630px; display: flex; flex-direction: column; padding: 64px 72px; background: ' + t.bg + '; color: ' + t.fg + '; font-family: ' + font + ';',
+      mark: 'width: 52px; height: 52px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 600; background: ' + t.primary + '; color: ' + t.pfg + ';',
+      badge: 'display: flex; align-items: center; height: 44px; padding: 0 20px; border-radius: 9999px; font-size: 22px; font-weight: 500; background: ' + t.muted + '; color: ' + t.mfg + ';',
+      title: 'font-weight: 600; letter-spacing: -0.01em; ' + (isDefault ? 'font-size: 76px; line-height: 92px;' : 'font-size: 60px; line-height: 74px;') + ' max-height: 148px; overflow: hidden;',
+      summary: 'font-size: 28px; line-height: 42px; max-height: 84px; overflow: hidden; color: ' + t.mfg + ';',
+      foot: 'display: flex; align-items: center; justify-content: space-between; padding-top: 28px; border-top: 1px solid ' + t.border + '; font-size: 24px; line-height: 32px; color: ' + t.mfg + ';',
+      dot: 'width: 12px; height: 12px; border-radius: 9999px; background: ' + t.accent + ';',
+      domain: 'color: ' + t.fg + '; font-weight: 500;',
+      hasBadge: !!d.badge, badgeText: d.badge,
+      titleText: clip(d.title, isEn ? 60 : 28),
+      hasSummary: !!d.summary, summaryText: clip(d.summary, isEn ? 110 : 52),
+      metaText: d.meta
+    } };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-13T09:00:00Z"
+  },
+  "title": "分享卡片与分享页",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1360,
+      "h": 1700,
+      "title": "分享卡片（1200×630，按 50% 排列）"
+    },
+    "Card.dc.html": {
+      "x": 1440,
+      "y": 0,
+      "w": 1200,
+      "h": 630,
+      "title": "单张卡片（原尺寸，可切换）"
+    },
+    "SharePage.dc.html": {
+      "x": 0,
+      "y": 1820,
+      "w": 1440,
+      "h": 1100,
+      "title": "通用分享页 /s/<类型>/<令牌>",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SharePageMobile.dc.html": {
+      "x": 1520,
+      "y": 1820,
+      "w": 390,
+      "h": 1100,
+      "title": "通用分享页·手机",
+      "is_interactive": true
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Card.dc.html",
+    "SharePage.dc.html",
+    "SharePageMobile.dc.html"
+  ],
+  "notes": {
+    "n1": {
+      "x": 2720,
+      "y": 0,
+      "w": 420,
+      "text": "卡片约束：只用 satori 支持的 flex 布局；颜色、圆角、字号来自 share-card-theme（@saas/ui token 的解析值），项目在 share-cards.theme.ts 覆盖品牌色。标题按字数截断（中文 ≤ 28 字、英文 ≤ 60 字符，最多 2 行），摘要最多 2 行。不放头像与远程图片。",
+      "fill": "gray"
+    },
+    "n2": {
+      "x": 2720,
+      "y": 620,
+      "w": 420,
+      "text": "变更提议：构建期默认分享图（右下）不再使用现在写死的深蓝渐变，改为同一套主题 token 的版式，与 Fluid 基线一致；衍生项目改 brand.css 对应值即可换色。",
+      "fill": "orange"
+    },
+    "n3": {
+      "x": 1990,
+      "y": 1820,
+      "w": 420,
+      "text": "分享页状态：正常 / 不存在或已撤销 / 已到期（右上 Tweaks 切换 state 与 dark）。404 与到期文案不同，但都不显示任何资源信息。无加载态：页面在服务端解析后直出。",
+      "fill": "gray"
+    }
+  },
+  "designSystems": []
+}

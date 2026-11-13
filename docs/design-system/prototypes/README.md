@@ -17,6 +17,8 @@
 | 定价页 `/pricing`（8.7） | https://claude.ai/artifact/JL1raENWEr8nomz7sqvHce | 2026-11-11 | 「画布审批确认，继续8.3-8.7」 | ui-review/Pricing.dc.html | add-ui-design-system |
 | 账单页 `/app/$slug/billing`（8.6、8.7） | https://claude.ai/artifact/JL1raENWEr8nomz7sqvHce | 2026-11-11 | 「画布审批确认，继续8.3-8.7」 | ui-review/Billing.dc.html | add-ui-design-system |
 | 通知铃铛弹层（工作台顶部条，#90） | https://claude.ai/artifact/JL1raENWEr8nomz7sqvHce | 2026-11-12 | 「画布确认，124同意，3选A」 | ui-review/Notifications.dc.html、ui-review/NotificationsMobile.dc.html | —（0.3.1 小任务；变更提议 ①Popover ②底部 Sheet ④通知文案多语言 已同意，③「查看全部」跳工作台首页通知区） |
+| 分享卡片版式（示例类型与构建期默认分享图，1200×630） | https://claude.ai/artifact/Cmugzpfw8WYipVdvUZerwZ | 2026-11-13 | 「cancas 审批通过，开水执行吧」 | share-cards/Main.dc.html、share-cards/Card.dc.html | add-og-images |
+| 通用分享页 /s/$type/$token | https://claude.ai/artifact/Cmugzpfw8WYipVdvUZerwZ | 2026-11-13 | 「cancas 审批通过，开水执行吧」 | share-cards/SharePage.dc.html、share-cards/SharePageMobile.dc.html | add-og-images |
 
 副本格式：`ui-review/` 保存画布确认版本的画板源码（`*.dc.html`）与画布索引 `canvas.json`。源码依赖画布运行时，
 不能脱离 claude.ai 直接渲染，但完整包含布局、token 取值、文案与各状态分支（`state` / `dark` tweak），
