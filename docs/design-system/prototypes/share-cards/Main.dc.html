@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>分享卡片总览</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+</style>
+</helmet>
+<div style="width: 1360px; height: 1700px; padding: 48px; display: flex; flex-direction: column; gap: 32px; background: #ffffff; color: #171717; font-family: Inter, 'Noto Sans SC', sans-serif">
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <div style="font-size: 28px; line-height: 34px; font-weight: 600">分享卡片 · 示例类型与默认版式</div>
+    <div style="font-size: 14px; line-height: 20px; color: #6b6b6b">实际输出 1200×630 PNG，此处按 50% 排列。左列浅色，右列深色。</div>
+  </div>
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 64px; row-gap: 36px">
+    <sc-for list="{{cards}}" as="c" hint-placeholder-count="8">
+      <div style="display: flex; flex-direction: column; gap: 10px">
+        <div style="font-size: 14px; line-height: 20px; font-weight: 500; color: #404040">{{c.label}}</div>
+        <div style="width: 600px; height: 315px; overflow: hidden; border-radius: 8px; box-shadow: 0 0 0 1px rgba(0,0,0,0.08)">
+          <div style="width: 1200px; height: 630px; transform: scale(0.5); transform-origin: 0 0">
+            <dc-import name="Card" dark="{{c.dark}}" variant="{{c.variant}}" hint-size="1200px,630px"></dc-import>
+          </div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":1700}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var rows = [
+      ['zh', '示例类型 · 中文标题'],
+      ['en', '示例类型 · 英文标题'],
+      ['long', '示例类型 · 超长标题与摘要（截断）'],
+      ['default', '构建期默认分享图（公开页面，无摘要）']
+    ];
+    var cards = [];
+    rows.forEach(function (r) {
+      cards.push({ variant: r[0], dark: false, label: r[1] + ' · 浅色' });
+      cards.push({ variant: r[0], dark: true, label: r[1] + ' · 深色' });
+    });
+    return { cards: cards };
+  }
+}
+</script>
+</body>
+</html>

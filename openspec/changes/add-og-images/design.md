@@ -98,7 +98,7 @@ interface ShareCardDefinition<T> {
 
 - 新建 `apps/web/src/features/share-cards/render.server.ts`。路由处理函数用动态 `import()` 加载它，所以 WASM 与 satori 只在分享卡片路由的首次请求时实例化，同一实例内复用。
 - Cloudflare 使用 `cf-workers-og` 的 Workers 入口，Node（自托管与构建期）使用 `/node` 入口。两者共用版式代码 `layout.tsx` 与主题。
-- 构建期生成器 `og-images.ts` 改为复用同一套默认版式，静态图的视觉保持一致。
+- 构建期生成器 `og-images.ts` 改为复用同一套默认版式。已确认的变更：默认分享图不再用写死的深蓝渐变，改为主题 token 版式（原型索引「分享卡片版式」行，`share-cards/Card.dc.html` 的 `default` 变体）。
 - 首页包检查扩展一条：服务端与客户端的首页闭包中不得出现 `share-cards/render`、`resvg`、`satori`。
 
 ### 5. 字体
@@ -134,7 +134,7 @@ interface ShareCardDefinition<T> {
 
 - 路由 `apps/web/src/routes/s.$type.$token.tsx`：服务端调用 `resolve`，有效时渲染卡片图片、`page(data)` 的标题与描述、前往首页 / 注册的入口；无效、到期、撤销或该类型 `sharePage: false` 时渲染 404 页。
 - 每次访问都调用 `resolve`，会查库；访问来自真实访客与平台抓取器，符合 Neon 成本基线。响应带 `Cache-Control: public, s-maxage=300` 与 `X-Robots-Tag: noindex`，撤销后最多 5 分钟失效（失效函数同时写 KV 标记，页面路由也先查标记）。
-- 页面只用 `@saas/ui` 组件，需要设计稿（见 tasks 第 2 组）。
+- 页面只用 `@saas/ui` 组件；设计稿见原型索引 `docs/design-system/prototypes/README.md` 的「通用分享页 /s/$type/$token」行。
 - 自建分享页的项目用 `shareCardMeta(type, token)` 输出同一套元数据。
 
 ### 9. 限流
