@@ -98,8 +98,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const clientDir = resolve(process.argv[2] ?? join(dirname(process.argv[1]), '../dist/client'))
   const serverDir = resolve(process.argv[3] ?? join(clientDir, '../server'))
   const { files, gzipBytes, violations } = checkHomeBundle(clientDir)
+  // 唯一调用方是 `pnpm build`（Cloudflare 构建，必有 dist/server）；缺少服务端产物时失败，避免静默跳过
   const server = existsSync(join(serverDir, 'index.js')) ? checkServerHomeBundle(serverDir) : null
-  if (server && server.routeEntries.length === 0) {
+  if (!server) {
+    console.error(`首页包检查失败：找不到服务端产物 ${join(serverDir, 'index.js')}`)
+    process.exitCode = 1
+  } else if (server.routeEntries.length === 0) {
     console.error('首页包检查失败：服务端 manifest 中找不到首页路由分包（src/routes/index.tsx）')
     process.exitCode = 1
   }
@@ -113,6 +117,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     process.exitCode = 1
   } else if (process.exitCode !== 1) {
     console.log(`首页包检查通过：${files.length} 个脚本，gzip 合计 ${gzipBytes} B`)
-    if (server) console.log(`服务端首页闭包检查通过：${server.files.length} 个模块`)
+    console.log(`服务端首页闭包检查通过：${server?.files.length} 个模块`)
   }
 }

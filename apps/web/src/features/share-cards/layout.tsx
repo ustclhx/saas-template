@@ -9,8 +9,21 @@ import type { ShareCardTheme } from './types.ts'
 export const SHARE_CARD_WIDTH = 1200
 export const SHARE_CARD_HEIGHT = 630
 
-/** 截断上限按字宽计（CJK 记 1，拉丁约 0.55），与设计稿的中文 28 / 52 字一致。 */
-export const SHARE_CARD_TEXT_LIMITS = { title: 28, summary: 52, badge: 12, meta: 36 } as const
+/**
+ * 截断上限（加权字宽，em）：CJK 1、拉丁小写 0.6、大写 0.72。
+ * 卡片标题 28 与设计稿的中文 28 字一致；大标题（76px）每行容量更小，取 24。
+ */
+export const SHARE_CARD_TEXT_LIMITS = {
+  title: 28,
+  heroTitle: 24,
+  summary: 52,
+  badge: 12,
+  meta: 28,
+} as const
+
+const CONTENT_WIDTH = SHARE_CARD_WIDTH - 72 * 2
+// 换行模拟的行宽留 5% 余量，抵消字宽估算与 satori 断行规则的差异
+const lineWidth = (fontSize: number) => (CONTENT_WIDTH / fontSize) * 0.95
 
 export interface ShareCardLayoutContent {
   readonly title: string
@@ -40,8 +53,19 @@ export function shareCardLayout(
   const hero = content.size === 'hero'
   const titleSize = hero ? 76 : 60
   const titleLeading = hero ? 92 : 74
+  const title = truncateText(content.title, {
+    maxWidth: hero ? SHARE_CARD_TEXT_LIMITS.heroTitle : SHARE_CARD_TEXT_LIMITS.title,
+    lineWidth: lineWidth(titleSize),
+    lines: 2,
+  })
   const badge = content.badge && truncateText(content.badge, SHARE_CARD_TEXT_LIMITS.badge)
-  const summary = content.summary && truncateText(content.summary, SHARE_CARD_TEXT_LIMITS.summary)
+  const summary =
+    content.summary &&
+    truncateText(content.summary, {
+      maxWidth: SHARE_CARD_TEXT_LIMITS.summary,
+      lineWidth: lineWidth(28),
+      lines: 2,
+    })
   const meta = content.meta && truncateText(content.meta, SHARE_CARD_TEXT_LIMITS.meta)
   const appName = templateConfig.app.name
   return (
@@ -115,22 +139,24 @@ export function shareCardLayout(
       >
         <div
           style={{
-            display: 'flex',
+            // satori 的 lineClamp 只在 block 上生效；渲染前已截断，这里兜底保证省略号可见
+            display: 'block',
+            lineClamp: 2,
             fontSize: titleSize,
             lineHeight: `${titleLeading}px`,
             fontWeight: 600,
             letterSpacing: -titleSize * 0.01,
-            // 最多两行；截断已在渲染前完成，这里只兜底
             maxHeight: titleLeading * 2,
             overflow: 'hidden',
           }}
         >
-          {truncateText(content.title, SHARE_CARD_TEXT_LIMITS.title)}
+          {title}
         </div>
         {summary ? (
           <div
             style={{
-              display: 'flex',
+              display: 'block',
+              lineClamp: 2,
               fontSize: 28,
               lineHeight: '42px',
               maxHeight: 84,
@@ -154,8 +180,20 @@ export function shareCardLayout(
           color: theme.mutedForeground,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>{meta ?? ''}</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            flexShrink: 1,
+            minWidth: 0,
+            overflow: 'hidden',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {meta ?? ''}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
           <div
             style={{ width: 12, height: 12, borderRadius: 9999, background: theme.brandAccent }}
           />

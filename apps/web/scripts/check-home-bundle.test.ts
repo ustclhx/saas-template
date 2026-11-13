@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -124,5 +125,18 @@ describe('服务端首页闭包（add-og-images 5.5）', () => {
       'assets/renderer.js': renderer,
     })
     expect(checkServerHomeBundle(root).violations.length).toBeGreaterThan(0)
+  })
+
+  it('命令行缺少服务端产物时失败，不静默通过', () => {
+    const root = fixture({
+      'index.html': '<script type="module" src="/assets/entry.js"></script>',
+      'assets/entry.js': '',
+    })
+    const script = new URL('./check-home-bundle.mjs', import.meta.url).pathname
+    const result = spawnSync(process.execPath, [script, root, join(root, 'missing-server')], {
+      encoding: 'utf8',
+    })
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('找不到服务端产物')
   })
 })

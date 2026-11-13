@@ -1,10 +1,10 @@
-// 渲染器的目标中立部分：字体组装与实例内缓存、CJK 按需加载、并发上限。
+// 渲染器的目标中立部分：字体组装与实例内缓存、回退字体（Noto Sans SC）按需加载、并发上限。
 // 目标实现（Workers：server/cloudflare/share-card-renderer.ts；Node：node/share-card-renderer.ts）
 // 只提供图片引擎与字体来源，本模块不导入 satori / resvg。
 import { AppError } from '@saas/shared'
 import { isValidElement, type ReactElement, type ReactNode } from 'react'
 import { SHARE_CARD_HEIGHT, SHARE_CARD_WIDTH } from './layout.tsx'
-import { containsCjk } from './text.ts'
+import { needsFallbackFont } from './text.ts'
 
 export interface ShareCardFont {
   readonly name: string
@@ -36,7 +36,7 @@ export interface ShareCardRendererOptions {
   readonly engine: ShareCardImageEngine
   /** 西文字体（随包或本地文件），首次渲染时读取一次。 */
   readonly loadLatinFonts: () => Promise<ShareCardFont[]> | ShareCardFont[]
-  /** 完整 CJK 字体字节；只在文本含 CJK 时调用，成功后实例内缓存。 */
+  /** 完整 CJK 字体字节（Noto Sans SC，同时覆盖西里尔、希腊与扩展拉丁）；只在文本含 Inter Latin 子集之外的字符时调用，成功后实例内缓存。 */
   readonly loadCjkFont: () => Promise<ArrayBuffer>
   readonly maxConcurrent?: number
 }
@@ -94,7 +94,7 @@ export function createShareCardRenderer(options: ShareCardRendererOptions): Shar
       }
       active += 1
       try {
-        const fonts = await (containsCjk(collectText(element)) ? cjkFonts() : latinFonts())
+        const fonts = await (needsFallbackFont(collectText(element)) ? cjkFonts() : latinFonts())
         const response = await options.engine(element, {
           width: SHARE_CARD_WIDTH,
           height: SHARE_CARD_HEIGHT,

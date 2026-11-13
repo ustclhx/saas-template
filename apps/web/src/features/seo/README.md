@@ -42,6 +42,14 @@ APP_URL=https://example.com pnpm --filter @saas/web build
 - 西文：Inter Latin 400/600 woff（`@fontsource/inter@5.2.8`，satori 不支持 woff2），扩展名为 `.woff.bin`，
   以便 Workers 作为 Data 模块随渲染器打包；许可证 `INTER-LICENSE`（SIL OFL 1.1）。
 
+文字支持范围（分享卡片与构建期分享图共用，`features/share-cards/text.ts`）：
+
+- 文本含 Inter Latin 子集之外的字符时才加载 Noto Sans SC：中日文、基本西里尔与基本希腊字母、拼音声调字母。
+- emoji（含 ZWJ 序列、变体选择符、肤色修饰与旗帜）在渲染前去除，没有 emoji 字体。
+- 两种字体都缺字的带附加符号字母降级为基本字母（如 `Ą`→`A`、`ά`→`α`）。
+- **不支持**：谚文（韩文）、泰文、老挝文、高棉文、缅甸文，以及 Noto 简体子集之外的扩展西里尔字母（如乌克兰文 `і`、`ї`）。
+  这些字符显示为方框，需要时由项目改用含对应字形的字体。
+
 ## 验证
 
 ```sh
