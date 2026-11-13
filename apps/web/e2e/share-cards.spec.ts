@@ -1,7 +1,10 @@
+import { randomUUID } from 'node:crypto'
 import { expect, test } from '@playwright/test'
+import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
+import { stubTurnstile } from './turnstile.ts'
 
-// 分享卡片端到端（openspec add-og-images 6.2）：开发环境登记示例类型 sample（内存解析），
-// 经 /api/dev/share-cards 创建新令牌与调用失效函数。选择器与断言只用元数据、状态码与图片尺寸，不依赖语言。
+// 分享卡片端到端（openspec add-og-images 6.2）：UI_PREVIEW 环境登记示例类型 sample（内存解析），
+// 平台管理员经 /api/dev/share-cards 创建新令牌与调用失效函数。选择器与断言只用元数据、状态码与图片尺寸，不依赖语言。
 
 /** PNG 的 IHDR 块紧跟 8 字节签名，宽高为大端 32 位整数。 */
 function pngSize(body: Buffer) {
@@ -13,7 +16,21 @@ test('share page points og:image at a 1200x630 card and both 404 after invalidat
   page,
   request,
 }) => {
-  const created = await request.post('/api/dev/share-cards', { data: { action: 'create' } })
+  // 夹具接口要求平台管理员：未登录时 404。
+  expect(
+    (await request.post('/api/dev/share-cards', { data: { action: 'create' } })).status(),
+  ).toBe(404)
+  const email = `share-cards-${randomUUID()}@example.com`
+  await simulateClientIp(page)
+  await stubTurnstile(page)
+  await register(page, email)
+  const sql = fixtureDb()
+  try {
+    await sql`update "user" set role='admin' where email=${email}`
+  } finally {
+    await sql.end()
+  }
+  const created = await page.request.post('/api/dev/share-cards', { data: { action: 'create' } })
   expect(created.status()).toBe(200)
   const { token, page: sharePath } = (await created.json()) as { token: string; page: string }
 
@@ -42,7 +59,7 @@ test('share page points og:image at a 1200x630 card and both 404 after invalidat
   expect(image.status()).toBe(200)
   expect(image.headers()['content-type']).toBe('image/png')
   expect(image.headers()['x-robots-tag']).toBe('noindex')
-  expect(image.headers()['cache-control']).toContain('immutable')
+  expect(image.headers()['cache-control']).toBe('public, max-age=86400, s-maxage=86400')
   const body = await image.body()
   expect(pngSize(body)).toEqual({ width: 1200, height: 630 })
   const again = await request.get(cardPath)
@@ -54,7 +71,7 @@ test('share page points og:image at a 1200x630 card and both 404 after invalidat
   expect(stale.status()).toBe(302)
   expect(stale.headers().location).toBe(cardPath)
 
-  const invalidated = await request.post('/api/dev/share-cards', {
+  const invalidated = await page.request.post('/api/dev/share-cards', {
     data: { action: 'invalidate', token },
   })
   expect(invalidated.status()).toBe(200)

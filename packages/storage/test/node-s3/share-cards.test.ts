@@ -43,7 +43,11 @@ describe('self-host share card images on real S3', () => {
       },
     }).invalidateShareCard(ref)
     expect(await store.read(ref)).toEqual({ status: 'miss' })
-    expect((await objects.list({ prefix: 'share-cards/' })).keys).toEqual([])
+    // 只留下永不删除的撤销墓碑。
+    expect((await objects.list({ prefix: 'share-cards/' })).keys).toEqual([
+      `share-cards/revoked/${ref.type}/${ref.token}`,
+    ])
+    expect(await store.isRevoked(ref.type, ref.token)).toBe(true)
     expect(marks.size).toBe(1)
   })
 })

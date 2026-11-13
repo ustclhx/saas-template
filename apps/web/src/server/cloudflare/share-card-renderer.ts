@@ -12,6 +12,12 @@ import {
 /** CJK 字体作为静态资源发布（/fonts/share-card/），不打进 Worker 包。 */
 export const CJK_FONT_PATH = `/fonts/share-card/${CJK_FONT_FILE}`
 
+/**
+ * 线上 ASSETS 只按路径匹配静态资源，主机名不参与。开发时 ASSETS 转发给 vite dev，
+ * 其主机白名单会以 403 拒绝未知主机，所以仅开发时用 localhost。
+ */
+const ASSETS_ORIGIN = import.meta.env.DEV ? 'http://localhost' : 'https://assets.local'
+
 let renderer: ShareCardRenderer | undefined
 
 /** 同一隔离区复用一个渲染器，字体与并发计数随之共享。 */
@@ -23,9 +29,7 @@ export function workersShareCardRenderer(assets: Fetcher): ShareCardRenderer {
       { name: 'Inter', data: inter600, weight: 600, style: 'normal' },
     ],
     loadCjkFont: async () => {
-      // ASSETS 只按路径匹配静态资源，主机名不参与；开发时 ASSETS 转发给 vite dev，
-      // 其主机白名单会以 403 拒绝未知主机，所以用 localhost。
-      const response = await assets.fetch(new Request(`http://localhost${CJK_FONT_PATH}`))
+      const response = await assets.fetch(new Request(`${ASSETS_ORIGIN}${CJK_FONT_PATH}`))
       if (!response.ok) {
         await response.body?.cancel()
         throw new Error(`Share card CJK font unavailable: ${response.status}`)

@@ -31,7 +31,7 @@ const samples = new Map<string, ShareResolution<SampleShareData>>([
 ])
 
 /**
- * 开发环境 e2e 用：在内存中登记一条新的示例分享（同一隔离区内有效），返回其令牌。
+ * e2e 与 staging 验收夹具用：在内存中登记一条新的示例分享（同一隔离区内有效），返回其令牌。
  * 每次测试使用新令牌，避免上一轮写入的撤销标记影响本轮。
  */
 export function addSampleShare(
@@ -79,7 +79,10 @@ export const SAMPLE_SHARE_PREVIEWS = {
 
 export type SampleSharePreview = keyof typeof SAMPLE_SHARE_PREVIEWS
 
-/** 仅测试与 /dev/ui 显式调用；生产注册入口不导入本模块。 */
+/**
+ * 在测试、开发与开放 /dev/ui 的环境（`UI_PREVIEW=true`，即 staging）中由 `registerPreviewShareCards`
+ * 登记；生产不设该变量，从不登记。项目注册入口 share-cards.project.ts 不导入本模块。
+ */
 export function registerSampleShareCard(
   render: ShareCardDefinition<SampleShareData>['render'] = sampleShareCardLayout,
 ) {

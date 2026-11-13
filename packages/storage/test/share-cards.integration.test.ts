@@ -9,6 +9,7 @@ import {
   shareCardImageKey,
   shareCardImagePrefix,
   shareCardRevokedKey,
+  shareCardTombstoneKey,
   shareCardWorkspaceKey,
 } from '../src/index.ts'
 
@@ -40,6 +41,10 @@ describe('share card invalidation with local R2 and KV', () => {
     for (const key of [...images, index]) expect(await env.FILES.head(key)).toBeNull()
     const revoked = shareCardRevokedKey(identity.type, identity.token)
     expect(await env.CACHE.get(revoked)).toBe('1')
+    // 强一致的 R2 墓碑与 KV 标记同时写入，永不删除。
+    expect(
+      await env.FILES.head(shareCardTombstoneKey(identity.type, identity.token)),
+    ).not.toBeNull()
     const record = (await env.CACHE.list({ prefix: revoked })).keys[0]
     expect(record?.expiration).toBeGreaterThan(Math.floor(Date.now() / 1000) + 86_390)
     expect(record?.expiration).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 86_401)
@@ -125,12 +130,14 @@ describe('share card image store with local R2', () => {
     await createShareCardInvalidator(objects, env.CACHE).invalidateShareCard(ref)
     expect(await store.read(ref)).toEqual({ status: 'miss' })
     expect(await env.FILES.head(shareCardWorkspaceKey(ref))).toBeNull()
+    expect(await store.isRevoked(ref.type, ref.token)).toBe(true)
     await env.CACHE.delete(shareCardRevokedKey(ref.type, ref.token))
   })
 
   it('deletes an expired image on read and keeps never-expiring images', async () => {
     const store = createShareCardImageStore(objects)
     const ref = { type: 'report', token: newId(), variant: '2-ffffffff', workspaceId: newId() }
+    expect(await store.isRevoked(ref.type, ref.token)).toBe(false)
     await store.write(ref, new Uint8Array([1]), new Date(Date.now() + 60_000))
     expect(await store.read(ref, new Date(Date.now() + 120_000))).toEqual({ status: 'expired' })
     expect(await env.FILES.head(shareCardImageKey(ref.type, ref.token, ref.variant))).toBeNull()

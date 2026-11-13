@@ -3,6 +3,7 @@ import {
   type ShareCardObjects,
   shareCardImageKey,
   shareCardRevokedKey,
+  shareCardTombstoneKey,
   shareCardWorkspaceKey,
 } from '@saas/storage'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -83,7 +84,11 @@ function setup() {
       const [, , type, file] = url.pathname.split('/')
       return handleShareCardImageRequest(new Request(url), { type, file })
     })
-  return { objects, kv, edge, limit, render, runtime, request }
+  // 撤销墓碑永不删除，不计入「留下的卡片」。
+  const live = () => [...objects.keys()].filter((key) => !key.startsWith('share-cards/revoked/'))
+  const tombstone = (value = token) =>
+    objects.set(shareCardTombstoneKey(TYPE, value), { body: new Uint8Array(), metadata: {} })
+  return { objects, live, tombstone, kv, edge, limit, render, store, runtime, request }
 }
 
 const cardPath = (title: string, value = token) =>
@@ -107,9 +112,7 @@ describe('share card image route', () => {
     expect(first.status).toBe(200)
     expect(new Uint8Array(await first.arrayBuffer())).toEqual(PNG)
     expect(first.headers.get('content-type')).toBe('image/png')
-    expect(first.headers.get('cache-control')).toBe(
-      'public, max-age=86400, s-maxage=31536000, immutable',
-    )
+    expect(first.headers.get('cache-control')).toBe('public, max-age=86400, s-maxage=86400')
     expect(first.headers.get('x-robots-tag')).toBe('noindex')
     expect(first.headers.get('x-content-type-options')).toBe('nosniff')
     expect(resolve).toHaveBeenCalledTimes(1)
@@ -182,7 +185,8 @@ describe('share card image route', () => {
     await withWebRuntime(t.runtime, () =>
       invalidateShareCard({ type: TYPE, token, workspaceId: 'workspace-1' }),
     )
-    expect(t.objects.size).toBe(0)
+    expect(t.live()).toEqual([])
+    expect(t.objects.has(shareCardTombstoneKey(TYPE, token))).toBe(true)
     expect(t.kv.get(shareCardRevokedKey(TYPE, token))).toBe('1')
     // 边缘缓存条目仍在，但撤销标记先于 Cache API 检查。
     expect(t.edge.size).toBe(1)
@@ -251,7 +255,19 @@ describe('share card image route', () => {
       return PNG
     })
     expect((await t.request(cardPath('Survey'))).status).toBe(404)
-    expect(t.objects.size).toBe(0)
+    expect(t.live()).toEqual([])
+    expect(t.edge.size).toBe(0)
+  })
+
+  it('sees a tombstone-only invalidation during rendering even when KV still reads stale', async () => {
+    const t = setup()
+    // KV 读取有缓存：并发失效只让强一致的 R2 墓碑可见，KV 标记仍读不到。
+    t.render.mockImplementationOnce(async () => {
+      t.tombstone()
+      return PNG
+    })
+    expect((await t.request(cardPath('Survey'))).status).toBe(404)
+    expect(t.live()).toEqual([])
     expect(t.edge.size).toBe(0)
   })
 
@@ -265,14 +281,14 @@ describe('share card image route', () => {
     let revoked = false
     store.put = async (key, body, options) => {
       await put(key, body, options)
-      // 失效在列出前缀之后才看到本次写入的图片：标记已写，但图片仍在。
+      // 失效在列出前缀之后才看到本次写入的图片：只有墓碑可见（KV 仍读到旧值），图片仍在。
       if (!revoked && key.includes('/img/')) {
         revoked = true
-        t.kv.set(shareCardRevokedKey(TYPE, token), '1')
+        t.tombstone()
       }
     }
     expect((await t.request(cardPath('Survey'))).status).toBe(404)
-    expect(t.objects.size).toBe(0)
+    expect(t.live()).toEqual([])
     expect(t.edge.size).toBe(0)
   })
 
@@ -308,5 +324,90 @@ describe('share card image route', () => {
     expect((await request(cardPath('Survey'))).status).toBe(200)
     expect(resolve).toHaveBeenCalledTimes(1)
     expect(t.edge.size).toBe(0)
+  })
+
+  it('caps edge entries at one day so they lapse with the KV revocation flag', async () => {
+    const t = setup()
+    expect((await t.request(cardPath('Survey'))).status).toBe(200)
+    const entry = [...t.edge.values()][0]
+    const header = entry?.headers.get('cache-control') ?? ''
+    expect(Number(/s-maxage=(\d+)/.exec(header)?.[1])).toBeLessThanOrEqual(86_400)
+    expect(header).not.toContain('immutable')
+    expect(entry?.headers.get('x-share-card-expires')).toBe('never')
+    // 撤销后 KV 标记过期：即便边缘条目被手动保留，其 s-maxage 也不超过标记的 1 天 TTL。
+    await withWebRuntime(t.runtime, () =>
+      invalidateShareCard({ type: TYPE, token, workspaceId: 'workspace-1' }),
+    )
+    t.kv.delete(shareCardRevokedKey(TYPE, token))
+    expect(Number(/s-maxage=(\d+)/.exec(header)?.[1])).toBeLessThanOrEqual(86_400)
+  })
+
+  it('recomputes cache headers on an edge hit from the stored expiry', async () => {
+    const t = setup()
+    const url = `https://app.example${cardPath('Survey').replace(/\?.*/, '')}?v=${variantOf('Survey')}`
+    t.edge.set(
+      url,
+      new Response(PNG, {
+        headers: {
+          'content-type': 'image/png',
+          'cache-control': 'public, max-age=86400, s-maxage=86400',
+          'x-share-card-expires': new Date(Date.now() + 3600_000).toISOString(),
+        },
+      }),
+    )
+    const hit = await t.request(cardPath('Survey'))
+    expect(hit.status).toBe(200)
+    const header = hit.headers.get('cache-control') ?? ''
+    expect(Number(/s-maxage=(\d+)/.exec(header)?.[1])).toBeLessThanOrEqual(3600)
+    expect(Number(/(?:^|\s)max-age=(\d+)/.exec(header)?.[1])).toBeLessThanOrEqual(3600)
+    expect(hit.headers.get('x-share-card-expires')).toBeNull()
+    expect(resolve).not.toHaveBeenCalled()
+    // 记录已到期的边缘条目视为未命中，交给解析。
+    t.edge.set(
+      url,
+      new Response(PNG, {
+        headers: { 'x-share-card-expires': new Date(Date.now() - 1000).toISOString() },
+      }),
+    )
+    expect((await t.request(cardPath('Survey'))).status).toBe(200)
+    expect(resolve).toHaveBeenCalledTimes(1)
+  })
+
+  it('redirects malformed v values instead of touching cache or storage', async () => {
+    const t = setup()
+    const get = vi.spyOn(t.store, 'get')
+    for (const v of ['..', '.', '%2F', 'a/b', 'x'.repeat(65)]) {
+      const response = await t.request(`/share-card/${TYPE}/${token}.png?v=${v}`)
+      expect(response.status, v).toBe(302)
+      expect(response.headers.get('location')).toBe(cardPath('Survey'))
+    }
+    expect(get).not.toHaveBeenCalled()
+  })
+
+  it('treats a storage read failure as a miss and hides resolve errors as 500', async () => {
+    const t = setup()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const get = t.store.get
+      t.store.get = async (key) => {
+        if (key.includes('/img/')) throw new Error('storage down')
+        return get(key)
+      }
+      const rendered = await t.request(cardPath('Survey'))
+      expect(rendered.status).toBe(200)
+      expect(t.render).toHaveBeenCalledTimes(1)
+      t.edge.clear()
+      resolve.mockRejectedValueOnce(new Error('secret database detail'))
+      const failed = await t.request(cardPath('Survey'))
+      expect(failed.status).toBe(500)
+      expect(failed.headers.get('cache-control')).toBe('no-store')
+      expect(failed.headers.get('x-robots-tag')).toBe('noindex')
+      expect(failed.headers.get('x-content-type-options')).toBe('nosniff')
+      expect(await failed.text()).not.toContain('secret')
+    } finally {
+      warn.mockRestore()
+      error.mockRestore()
+    }
   })
 })

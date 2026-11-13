@@ -43,6 +43,12 @@ export const shareCardWorkspaceKey = ({ type, token, workspaceId }: ShareCardIde
 /** 图片键的最后一段是卡片地址的 `v`（版式版本与摘要前 8 位），编码后作为文件名。 */
 export const shareCardImageKey = (type: string, token: string, variant: string) =>
   `${shareCardImagePrefix(type, token)}${segment(encodeURIComponent(variant))}.png`
+/**
+ * R2 撤销墓碑：对象存储读写强一致，渲染后的撤销复查读它而不是 KV（KV 读取默认缓存 60 秒）。
+ * 墓碑永不删除：令牌不复用，残留的空对象成本可以忽略，删除反而会重新打开与渲染并发的窗口。
+ */
+export const shareCardTombstoneKey = (type: string, token: string) =>
+  `share-cards/revoked/${segment(type)}/${segment(token)}`
 export const shareCardRevokedKey = (type: string, token: string) =>
   `share-revoked:${segment(type)}:${segment(token)}`
 
@@ -57,6 +63,8 @@ export function createShareCardInvalidator(
     await kv.put(shareCardRevokedKey(input.type, input.token), '1', {
       expirationTtl: SHARE_CARD_REVOCATION_TTL,
     })
+    // 强一致的墓碑先于删除写入：与之并发的渲染在写入前后复查它，不会留下孤儿卡片。
+    await objects.put(shareCardTombstoneKey(input.type, input.token), new Uint8Array())
     let cursor: string | undefined
     do {
       const page = await objects.list({ prefix, ...(cursor ? { cursor } : {}) })
@@ -161,10 +169,14 @@ export function createShareCardImageStore(objects: ShareCardObjects) {
       },
     })
   }
+  /** 是否已有撤销墓碑（强一致）；渲染后写入前后各查一次。 */
+  async function isRevoked(type: string, token: string) {
+    return (await objects.get(shareCardTombstoneKey(type, token))) !== null
+  }
   /** 写入后发现已撤销时撤回本次写入的图片与索引。 */
   async function discard(ref: ShareCardImageRef & { readonly workspaceId: string }) {
     await objects.delete(shareCardImageKey(ref.type, ref.token, ref.variant))
     await objects.delete(shareCardWorkspaceKey(ref))
   }
-  return { read, write, discard }
+  return { read, write, discard, isRevoked }
 }

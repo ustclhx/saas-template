@@ -1,10 +1,12 @@
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import { getWebRuntime } from '../../server/runtime.ts'
+import { isAdminNotFound, requireAdmin } from '../admin/guard.ts'
 import { isUiPreviewEnabled } from '../ui-preview/gate.ts'
 import { invalidateShareCard } from './invalidate.server.ts'
 import { defaultShareCardLayout, sampleShareCardLayout } from './layout.tsx'
 import { registerPreviewShareCards } from './meta.server.ts'
+import { defaultShareTokenPattern } from './registry.ts'
 import { renderShareCard } from './render.server.ts'
 import { SHARE_CARD_BUSY } from './renderer.ts'
 import {
@@ -31,11 +33,18 @@ const plain = (status: number, text: string, headers: Record<string, string> = {
  * 与 /dev/ui 同一开关（`UI_PREVIEW=true`），生产 404。
  */
 export async function handleShareCardPreviewRequest(request: Request): Promise<Response> {
-  if (!isUiPreviewEnabled(getWebRuntime().config)) return plain(404, 'Not Found')
+  const runtime = getWebRuntime()
+  if (!isUiPreviewEnabled(runtime.config)) return plain(404, 'Not Found')
   const url = new URL(request.url)
   const variant = url.searchParams.get('variant') ?? ''
   const mode = url.searchParams.get('mode') === 'dark' ? 'dark' : 'light'
   if (!Object.hasOwn(SAMPLE_SHARE_PREVIEWS, variant)) return plain(404, 'Not Found')
+  // staging 也开放预览：每张都会渲染，与卡片缓存未命中共用 shareCard 限流配额。
+  const limited = await runtime.rateLimiter.limit(
+    'shareCard',
+    `share:ip:${runtime.requestMeta.clientIp ?? 'unknown'}`,
+  )
+  if (!limited.success) return plain(429, 'Too Many Requests', { 'retry-after': '60' })
   const data = SAMPLE_SHARE_PREVIEWS[variant as SampleSharePreview]
   try {
     const body = await renderShareCard(
@@ -65,11 +74,19 @@ export async function handleShareCardPreviewRequest(request: Request): Promise<R
 }
 
 /**
- * 开发环境 e2e 夹具（tasks 6.2）：`create` 在内存中登记一条新的示例分享并返回令牌与分享页地址；
- * `invalidate` 调用模板失效函数（与项目撤销分享时相同）。调用方用 devOnly 包裹，生产构建 404。
+ * e2e 与 staging 验收夹具（tasks 6.2、8.2）：`create` 在内存中登记一条新的示例分享（固定数据，不接受
+ * 任意文本）并返回令牌与分享页地址；`invalidate` 对 sample 类型的令牌调用模板失效函数（与项目撤销分享
+ * 时相同）。只在 `UI_PREVIEW=true` 的环境开放，并要求平台管理员会话；其余情况一律 404。
  */
 export async function handleSampleShareFixture(request: Request): Promise<Response> {
   const runtime = getWebRuntime()
+  if (!isUiPreviewEnabled(runtime.config)) return plain(404, 'Not Found')
+  try {
+    await requireAdmin({ auth: runtime.auth, db: runtime.db, headers: request.headers })
+  } catch (error) {
+    if (isAdminNotFound(error)) return plain(404, 'Not Found')
+    throw error
+  }
   registerPreviewShareCards(runtime.config)
   const input = (await request.json().catch(() => null)) as {
     action?: string
@@ -79,7 +96,12 @@ export async function handleSampleShareFixture(request: Request): Promise<Respon
     const token = addSampleShare(createShareToken(), SAMPLE_SHARE_PREVIEWS.en)
     return Response.json({ token, page: `/s/sample/${token}` })
   }
-  if (input?.action === 'invalidate' && typeof input.token === 'string') {
+  // 只接受 sample 的令牌格式，项目类型的分享不能经此失效。
+  if (
+    input?.action === 'invalidate' &&
+    typeof input.token === 'string' &&
+    defaultShareTokenPattern.test(input.token)
+  ) {
     await invalidateShareCard({
       type: 'sample',
       token: input.token,
