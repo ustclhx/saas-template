@@ -1,0 +1,18 @@
+{
+  "kind": "generation",
+  "promptVersion": "product-intro@v1",
+  "renderedHash": "sha256:d638f951d89cdd2e4f85f9ce5994b1084399027e057c3fb61f769d41fc6416c7",
+  "model": {
+    "key": "deepseek-chat",
+    "provider": "deepseek",
+    "providerModelId": "deepseek-chat"
+  },
+  "output": "## 概述\n\n这款恒温电水壶适合每天泡茶的上班族，烧水快，口感更好。\n\n## 亮点\n\n- 五档水温可选，绿茶、红茶都能找到合适的温度\n- 保温两小时，开会回来仍有热水\n- 一点七升容量，一次烧够一个下午",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 212,
+    "outputTokens": 81
+  },
+  "recordedAt": "2026-11-14T00:00:00.000Z",
+  "source": "constructed"
+}

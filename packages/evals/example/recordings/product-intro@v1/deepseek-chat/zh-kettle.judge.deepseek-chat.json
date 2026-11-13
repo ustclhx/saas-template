@@ -1,0 +1,19 @@
+{
+  "kind": "judge",
+  "promptVersion": "product-intro@v1",
+  "rubricVersion": "r1",
+  "outputHash": "sha256:c66614d92f66f79d832d09f3216f1c44770fc28a7e3c6a9243c464dde8cc0e48",
+  "model": {
+    "key": "deepseek-chat",
+    "provider": "deepseek",
+    "providerModelId": "deepseek-chat"
+  },
+  "output": "{\"criteria\":{\"accuracy\":{\"score\":3,\"reason\":\"“口感更好”没有依据\"},\"clarity\":{\"score\":4,\"reason\":\"结构清楚\"},\"audience-fit\":{\"score\":4,\"reason\":\"贴合上班族场景\"}},\"summary\":\"Usable, with room to improve.\"}",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 481,
+    "outputTokens": 148
+  },
+  "recordedAt": "2026-11-14T00:00:00.000Z",
+  "source": "constructed"
+}

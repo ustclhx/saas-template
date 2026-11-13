@@ -20,14 +20,14 @@
 
 ## 4. 运行器、回放与命令行
 
-- [ ] 4.1 模型与模式（D5、D6）：按套件声明构造 `AvailableModel` 形状并调用 `defaultLanguageModelFactory`；回放把录制包装为 `MockLanguageModelV4`；录制缺失记 `no-recording`、`renderedHash` 不符记 `stale-recording`；录制模式写入生成与评委录制（只含 D6 字段）；真实与录制模式缺预算、缺单价、`CI` 为真时配置错误。验证：单测覆盖回放不触发 `fetch`（全局 `fetch` 打桩断言零调用）、录制缺失不回退真实调用、`CI=true` 拒绝、录制文件不含 `authorization` / `x-api-key` / `x-goog-api-key` / 端点 URL。
-- [ ] 4.2 运行器与报告（D9）：样本选择（`--prompt`、`--model`、`--judge-model`、`--samples`、`--tag`、`--no-judge`、`--concurrency` ≤ 4）、逐样本执行（生成 → 检查 → 评委）、报告 `report.json` 与 `report.md` 写到 `$EVIDENCE_DIR/prompt-evals/<suite>/<时间戳>-<版本>-<模式>/`（缺省 `test-results/evidence/`）、回放模式给出按录制用量估算的真实费用。验证：单测断言报告字段完整、不含环境变量值；未设 `EVIDENCE_DIR` 时写入的目录被 `.gitignore` 忽略（`git check-ignore` 断言）。
-- [ ] 4.3 基线与退出码（D9）：`--baseline <promptVersion>`（同次回放运行）、`--baseline-report <path>`、按样本 ID 对齐、`--max-regression`（缺省取套件值再缺省 0.05）、退出码 0–4 的优先级，配置错误不写报告。验证：单测覆盖 spec「分数回退」场景、基线缺录制时的报错、同时出现检查失败与回退时退出码为 1、预算触顶为 3。
-- [ ] 4.4 命令行入口 `cli.ts`：参数解析（`node:util` 的 `parseArgs`）、`--help`、错误信息不打印环境变量值；终端只输出汇总与报告路径。验证：子进程测试运行 `--help`、未知套件（退出码 2）、`--live` 无预算（退出码 2）。
+- [x] 4.1 模型与模式（D5、D6）：按套件声明构造 `AvailableModel` 形状并调用 `defaultLanguageModelFactory`；回放把录制包装为 `MockLanguageModelV4`；录制缺失记 `no-recording`、`renderedHash` 不符记 `stale-recording`；录制模式写入生成与评委录制（只含 D6 字段）；真实与录制模式缺预算、缺单价、`CI` 为真时配置错误。验证：单测覆盖回放不触发 `fetch`（全局 `fetch` 打桩断言零调用）、录制缺失不回退真实调用、`CI=true` 拒绝、录制文件不含 `authorization` / `x-api-key` / `x-goog-api-key` / 端点 URL。
+- [x] 4.2 运行器与报告（D9）：样本选择（`--prompt`、`--model`、`--judge-model`、`--samples`、`--tag`、`--no-judge`、`--concurrency` ≤ 4）、逐样本执行（生成 → 检查 → 评委）、报告 `report.json` 与 `report.md` 写到 `$EVIDENCE_DIR/prompt-evals/<suite>/<时间戳>-<版本>-<模式>/`（缺省 `test-results/evidence/`）、回放模式给出按录制用量估算的真实费用。验证：单测断言报告字段完整、不含环境变量值；未设 `EVIDENCE_DIR` 时写入的目录被 `.gitignore` 忽略（`git check-ignore` 断言）。
+- [x] 4.3 基线与退出码（D9）：`--baseline <promptVersion>`（同次回放运行）、`--baseline-report <path>`、按样本 ID 对齐、`--max-regression`（缺省取套件值再缺省 0.05）、退出码 0–4 的优先级，配置错误不写报告。验证：单测覆盖 spec「分数回退」场景、基线缺录制时的报错、同时出现检查失败与回退时退出码为 1、预算触顶为 3。
+- [x] 4.4 命令行入口 `cli.ts`：参数解析（`node:util` 的 `parseArgs`）、`--help`、错误信息不打印环境变量值；终端只输出汇总与报告路径。验证：子进程测试运行 `--help`、未知套件（退出码 2）、`--live` 无预算（退出码 2）。
 
 ## 5. 示例套件
 
-- [ ] 5.1 新增 `packages/evals/example/`：中性主题（如「产品简介撰写」），两个提示词版本 `product-intro@v1` / `@v2`，中英文样本各 3 个（含一个故意触发长度或章节失败、标为警告级的样本），示例评分标准，套件级检查覆盖全部内置检查；先用手写的 `constructed` 录制（生成与评委）让回放可跑，README 写明来源约定（沿用 `packages/ai/src/media/fixtures/README.md`）。验证：包单测以回放完整运行示例套件（含 `--baseline product-intro@v1`），断言退出码 0、报告中两版本的分数差，且全程零网络调用；`pnpm eval:prompts --suite example` 在本地以 0 退出。
+- [x] 5.1 新增 `packages/evals/example/`：中性主题（如「产品简介撰写」），两个提示词版本 `product-intro@v1` / `@v2`，中英文样本各 3 个（含一个故意触发长度或章节失败、标为警告级的样本），示例评分标准，套件级检查覆盖全部内置检查；先用手写的 `constructed` 录制（生成与评委）让回放可跑，README 写明来源约定（沿用 `packages/ai/src/media/fixtures/README.md`）。验证：包单测以回放完整运行示例套件（含 `--baseline product-intro@v1`），断言退出码 0、报告中两版本的分数差，且全程零网络调用；`pnpm eval:prompts --suite example` 在本地以 0 退出。
 - [ ] 5.2 用真实模型录制示例套件（需要外部凭据，协调者或持有密钥的 worker 执行）：`pnpm eval:prompts --suite example --record --budget-usd 0.5`，选一个低价模型做生成和评委，把 `source` 改为 `recorded`，README 记录日期、模型、实际估算费用与预算。再用 `--live --budget-usd 0.001` 运行一次，确认第一次调用前即触顶、未发出请求。验证：录制提交进仓库，5.1 的回放测试仍通过；两次运行的报告写入私有证据库。
 
 ## 6. 模板交付

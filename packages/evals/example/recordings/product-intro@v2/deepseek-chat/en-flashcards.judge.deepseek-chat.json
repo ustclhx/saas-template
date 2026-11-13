@@ -1,0 +1,19 @@
+{
+  "kind": "judge",
+  "promptVersion": "product-intro@v2",
+  "rubricVersion": "r1",
+  "outputHash": "sha256:e2ccdda827700dbb25eec40d7ad737cda5b20a853ccd20b0b5d0dd280b75e561",
+  "model": {
+    "key": "deepseek-chat",
+    "provider": "deepseek",
+    "providerModelId": "deepseek-chat"
+  },
+  "output": "{\"criteria\":{\"accuracy\":{\"score\":5,\"reason\":\"No invented claims\"},\"clarity\":{\"score\":5,\"reason\":\"Clear\"},\"audience-fit\":{\"score\":4,\"reason\":\"Fits adult learners\"}},\"summary\":\"Accurate and well structured.\"}",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 620,
+    "outputTokens": 165
+  },
+  "recordedAt": "2026-11-14T00:00:00.000Z",
+  "source": "constructed"
+}

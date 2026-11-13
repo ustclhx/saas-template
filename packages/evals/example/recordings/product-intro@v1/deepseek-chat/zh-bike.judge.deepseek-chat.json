@@ -1,0 +1,19 @@
+{
+  "kind": "judge",
+  "promptVersion": "product-intro@v1",
+  "rubricVersion": "r1",
+  "outputHash": "sha256:9312020a78e15e8258b67d3873b01247021184bb0effab4d27397e7768e6ba81",
+  "model": {
+    "key": "deepseek-chat",
+    "provider": "deepseek",
+    "providerModelId": "deepseek-chat"
+  },
+  "output": "{\"criteria\":{\"accuracy\":{\"score\":4,\"reason\":\"基本忠实于给定特性\"},\"clarity\":{\"score\":4,\"reason\":\"简洁\"},\"audience-fit\":{\"score\":3,\"reason\":\"对通勤者的痛点提及较少\"}},\"summary\":\"Usable, with room to improve.\"}",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 468,
+    "outputTokens": 149
+  },
+  "recordedAt": "2026-11-14T00:00:00.000Z",
+  "source": "constructed"
+}

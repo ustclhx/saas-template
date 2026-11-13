@@ -64,7 +64,11 @@ export class BudgetLedger {
   reserved = 0
   exhausted = false
 
-  constructor(readonly limitUsd: number) {
+  readonly limitUsd: number
+
+  // 不用参数属性：命令行经 Node 类型剥离运行，参数属性不是可剥离语法
+  constructor(limitUsd: number) {
+    this.limitUsd = limitUsd
     if (!(Number.isFinite(limitUsd) && limitUsd > 0))
       throw new EvalConfigError('--budget-usd must be a positive number')
   }

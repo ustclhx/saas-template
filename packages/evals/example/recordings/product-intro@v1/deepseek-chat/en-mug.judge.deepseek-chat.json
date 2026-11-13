@@ -1,0 +1,19 @@
+{
+  "kind": "judge",
+  "promptVersion": "product-intro@v1",
+  "rubricVersion": "r1",
+  "outputHash": "sha256:795bf5eeda8e2c8e934f47e8a9eb0427df8856ca806efaf763c7442cfbaf94a1",
+  "model": {
+    "key": "deepseek-chat",
+    "provider": "deepseek",
+    "providerModelId": "deepseek-chat"
+  },
+  "output": "{\"criteria\":{\"accuracy\":{\"score\":5,\"reason\":\"Faithful to the features\"},\"clarity\":{\"score\":4,\"reason\":\"Concise\"},\"audience-fit\":{\"score\":3,\"reason\":\"Mentions remote work only briefly\"}},\"summary\":\"Accurate and well structured.\"}",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 544,
+    "outputTokens": 183
+  },
+  "recordedAt": "2026-11-14T00:00:00.000Z",
+  "source": "constructed"
+}
