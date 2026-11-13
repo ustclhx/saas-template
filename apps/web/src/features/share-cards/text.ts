@@ -1,8 +1,10 @@
 // 分享卡片文本：渲染前清理不支持的字符、判断是否需要回退字体、按字宽与换行截断。
 // 字宽以 em 计，取略偏大的保守值，保证截断后的文字不会被版式的 max-height 裁掉省略号。
+import { projectFonts, type ResolvedShareCardFont } from './fonts.ts'
 
-// 中日韩字形、全角符号：1em
-const WIDE = /[⺀-〾ぁ-㏿㐀-䶿一-鿿豈-﫿︰-﹏＀-｠￠-￦]|[\u{20000}-\u{3fffd}]/u
+// 中日韩字形（含谚文音节与字母）、全角符号：1em
+const WIDE =
+  /[\u1100-\u11ff\ua960-\ua97f\uac00-\ud7af⺀-〾ぁ-㏿㐀-䶿一-鿿豈-﫿︰-﹏＀-｠￠-￦]|[\u{20000}-\u{3fffd}]/u
 
 type Ranges = readonly (readonly [number, number])[]
 
@@ -71,7 +73,7 @@ function inRanges(char: string, ranges: Ranges): boolean {
   return ranges.some(([from, to]) => code >= from && code <= to)
 }
 
-// 两种字体都没有字形的文字（谚文、泰文等）：加载 Noto 也无济于事，见文档中的已知限制。
+// 两种模板字体都没有字形的文字（谚文、泰文等）：加载 Noto 也无济于事，由项目登记字体（share-cards.fonts.ts）补充。
 const UNSUPPORTED_SCRIPT =
   /[\p{Script=Hangul}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u
 
@@ -82,33 +84,58 @@ const EMOJI_ALL = new RegExp(EMOJI_SOURCE, 'gu')
 
 const EXTENDED_RANGE = /[\u0100-\u052f]/gu
 
-const covered = (char: string) => inRanges(char, INTER_LATIN) || inRanges(char, NOTO_EXTENDED)
+type Fonts = readonly ResolvedShareCardFont[]
 
-/** 两种字体都没有的扩展拉丁 / 希腊 / 西里尔字母去掉附加符号（Ą→A、ά→α），去掉后仍无字形则保留原字。 */
-function foldUncovered(char: string): string {
-  if (covered(char)) return char
+const projectCovered = (char: string, fonts: Fonts) => fonts.some((font) => font.pattern.test(char))
+const covered = (char: string, fonts: Fonts) =>
+  inRanges(char, INTER_LATIN) || inRanges(char, NOTO_EXTENDED) || projectCovered(char, fonts)
+
+/**
+ * 模板字体与项目字体都没有的扩展拉丁 / 希腊 / 西里尔字母去掉附加符号（Ą→A、ά→α），去掉后仍无字形则保留原字。
+ * 项目登记了对应文字（如 Cyrillic）的字体时保留原字。
+ */
+function foldUncovered(char: string, fonts: Fonts): string {
+  if (covered(char, fonts)) return char
   const base = char.normalize('NFD').replace(/\p{M}/gu, '')
-  return base !== '' && [...base].every(covered) ? base : char
+  return base !== '' && [...base].every((part) => covered(part, fonts)) ? base : char
 }
 
-/** 清理 emoji 等无法渲染的字符、为缺字的带附加符号字母降级，并折叠空白。 */
-export function sanitizeText(text: string): string {
+/** 清理 emoji 等无法渲染的字符、为缺字的带附加符号字母降级，并折叠空白。`fonts` 默认为项目登记的回退字体。 */
+export function sanitizeText(text: string, fonts: Fonts = projectFonts): string {
   return text
     .replace(EMOJI_ALL, '')
-    .replace(EXTENDED_RANGE, foldUncovered)
+    .replace(EXTENDED_RANGE, (char) => foldUncovered(char, fonts))
     .replace(/\s+/g, ' ')
     .trim()
 }
 
+export interface FallbackFontPlan {
+  /** 需要 Noto Sans SC：含 Inter Latin 子集之外、模板不判定为不支持的字符（CJK、西里尔、希腊、扩展拉丁等）。 */
+  readonly cjk: boolean
+  /** 需要的项目字体（按登记顺序）：文本含其登记文字的字符。 */
+  readonly project: Fonts
+}
+
 /**
- * 文本是否含 Inter Latin 子集之外、且 Noto Sans SC 能显示的字符（CJK、西里尔、希腊、扩展拉丁等）。
- * 谚文、泰文等两种字体都不支持的文字不触发加载。
+ * 待渲染文本需要的回退字体。谚文、泰文等模板字体都不支持的文字不触发 Noto 加载；
+ * 项目登记了对应文字的字体时改为触发该字体。
  */
-export function needsFallbackFont(text: string): boolean {
-  for (const char of sanitizeText(text)) {
-    if (!inRanges(char, INTER_LATIN) && !UNSUPPORTED_SCRIPT.test(char)) return true
+export function fallbackFontPlan(text: string, fonts: Fonts = projectFonts): FallbackFontPlan {
+  let cjk = false
+  const used = new Set<ResolvedShareCardFont>()
+  for (const char of sanitizeText(text, fonts)) {
+    if (inRanges(char, INTER_LATIN)) continue
+    for (const font of fonts) if (font.pattern.test(char)) used.add(font)
+    // 项目字体排在 Noto 之后，只补 Noto 没有的字形；Noto 能显示的字符仍加载 Noto。
+    if (!UNSUPPORTED_SCRIPT.test(char)) cjk = true
   }
-  return false
+  return { cjk, project: fonts.filter((font) => used.has(font)) }
+}
+
+/** 文本是否需要 Inter 之外的回退字体（Noto Sans SC 或项目字体）。 */
+export function needsFallbackFont(text: string, fonts: Fonts = projectFonts): boolean {
+  const plan = fallbackFontPlan(text, fonts)
+  return plan.cjk || plan.project.length > 0
 }
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })

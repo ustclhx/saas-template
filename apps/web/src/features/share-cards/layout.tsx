@@ -2,8 +2,11 @@
 // 尺寸与间距照设计稿副本 docs/design-system/prototypes/share-cards/Card.dc.html。
 import type { JSX } from 'react'
 import { templateConfig } from '../../server/template-config.ts'
+import { homePageCopy } from '../seo/home-copy.ts'
+import { projectFonts } from './fonts.ts'
 import type { SampleShareData } from './sample.ts'
-import { needsFallbackFont, truncateText } from './text.ts'
+import { defaultShareCardSite, type ShareCardBrand, type ShareCardSite } from './site.ts'
+import { fallbackFontPlan, truncateText } from './text.ts'
 import type { ShareCardTheme } from './types.ts'
 
 export const SHARE_CARD_WIDTH = 1200
@@ -32,25 +35,30 @@ export interface ShareCardLayoutContent {
   readonly meta?: string | undefined
   /** `hero`：构建期默认分享图的大标题；`card`：结果卡片。 */
   readonly size?: 'card' | 'hero'
+  /** 品牌行；省略时为模板配置的应用名。多站点项目传入 render 第三个参数 `site.brand`。 */
+  readonly brand?: ShareCardBrand | undefined
+  /** 右下角域名；省略时为 app.url 的域名。多站点项目传入 `site.host`。 */
+  readonly host?: string | undefined
 }
 
-// Inter 优先：拉丁字符使用 Inter 的真实 600 字重，CJK 只有常规体，按需回退到 Noto Sans SC。
-const FONT_FAMILY = 'Inter, "Noto Sans SC"'
-
-function siteHost(): string {
-  try {
-    return new URL(templateConfig.app.url).host
-  } catch {
-    return templateConfig.app.url
-  }
-}
+// Inter 优先：拉丁字符使用 Inter 的真实 600 字重，CJK 只有常规体，按需回退到 Noto Sans SC，再到项目字体。
+const FONT_FAMILY = ['Inter', 'Noto Sans SC', ...new Set(projectFonts.map((font) => font.name))]
+  .map((name) => (name.includes(' ') ? `"${name}"` : name))
+  .join(', ')
 
 /**
  * 标题字重：含需要 Noto 回退的字符（CJK 等）时整行用 400。Noto Sans SC 只有常规体，
  * 混排时拉丁部分若用 Inter 600 会出现两种字重（使用者决定，2026-11-13）；纯拉丁标题保持 600。
+ * 只需要项目字体时，每个所需字体族都登记了 600 才保持 600。
  */
 export function titleWeight(title: string): 400 | 600 {
-  return needsFallbackFont(title) ? 400 : 600
+  const plan = fallbackFontPlan(title)
+  if (plan.cjk) return 400
+  const families = new Set(plan.project.map((font) => font.name))
+  for (const name of families) {
+    if (!projectFonts.some((font) => font.name === name && font.weight === 600)) return 400
+  }
+  return 600
 }
 
 /** 默认版式：品牌行、标题与摘要、底部元信息与站点域名。 */
@@ -75,7 +83,9 @@ export function shareCardLayout(
       lines: 2,
     })
   const meta = content.meta && truncateText(content.meta, SHARE_CARD_TEXT_LIMITS.meta)
-  const appName = templateConfig.app.name
+  const fallback = defaultShareCardSite()
+  const brand = content.brand ?? fallback.brand
+  const host = content.host ?? fallback.host
   return (
     <div
       style={{
@@ -112,10 +122,10 @@ export function shareCardLayout(
               color: theme.primaryForeground,
             }}
           >
-            {(Array.from(appName)[0] ?? '').toUpperCase()}
+            {brand.initial ?? (Array.from(brand.name)[0] ?? '').toUpperCase()}
           </div>
           <div style={{ display: 'flex', fontSize: 30, lineHeight: '36px', fontWeight: 600 }}>
-            {appName}
+            {brand.name}
           </div>
         </div>
         {badge ? (
@@ -205,27 +215,50 @@ export function shareCardLayout(
           <div
             style={{ width: 12, height: 12, borderRadius: 9999, background: theme.brandAccent }}
           />
-          <div style={{ display: 'flex', color: theme.foreground, fontWeight: 500 }}>
-            {siteHost()}
-          </div>
+          <div style={{ display: 'flex', color: theme.foreground, fontWeight: 500 }}>{host}</div>
         </div>
       </div>
     </div>
   )
 }
 
-/** 构建期默认分享图：设计稿 `default` 变体，无标签与摘要。 */
-export function defaultShareCardLayout(title: string, theme: ShareCardTheme): JSX.Element {
+/**
+ * 构建期默认分享图：设计稿 `default` 变体，无标签与摘要。副标题为「品牌名 · 标语」，
+ * 标语取站点解析的 tagline，未提供时取该语言首页的 SEO 标题（`seo/home-copy.ts`，与 `staticPage('/')` 共用，项目随产品文案修改）。
+ */
+export function defaultShareCardLayout(
+  title: string,
+  theme: ShareCardTheme,
+  site: ShareCardSite = defaultShareCardSite(),
+): JSX.Element {
+  const tagline = site.tagline ?? homePageCopy(site.locale ?? templateConfig.i18n.defaultLocale)[0]
   return shareCardLayout(
-    { title, meta: `${templateConfig.app.name} · AI workspace`, size: 'hero' },
+    {
+      title,
+      meta: `${site.brand.name} · ${tagline}`,
+      size: 'hero',
+      brand: site.brand,
+      host: site.host,
+    },
     theme,
   )
 }
 
 /** 示例类型 `sample` 的版式：标签、标题、摘要与元信息。 */
-export function sampleShareCardLayout(data: SampleShareData, theme: ShareCardTheme): JSX.Element {
+export function sampleShareCardLayout(
+  data: SampleShareData,
+  theme: ShareCardTheme,
+  site: ShareCardSite = defaultShareCardSite(),
+): JSX.Element {
   return shareCardLayout(
-    { title: data.title, summary: data.description, badge: data.label, meta: data.meta },
+    {
+      title: data.title,
+      summary: data.description,
+      badge: data.label,
+      meta: data.meta,
+      brand: site.brand,
+      host: site.host,
+    },
     theme,
   )
 }

@@ -412,8 +412,15 @@ test('sync adds share card extensions once and preserves project registration an
   const project = await fakeProject(t, template)
   const registration = 'apps/web/src/features/share-cards/share-cards.project.ts'
   const theme = 'apps/web/src/features/share-cards/share-cards.theme.ts'
+  const fonts = 'apps/web/src/features/share-cards/share-cards.fonts.ts'
+  const sites = 'apps/web/src/features/share-cards/share-cards.sites.ts'
   await template.commit(
-    { [registration]: 'export const registration = 1\n', [theme]: 'export const theme = 1\n' },
+    {
+      [registration]: 'export const registration = 1\n',
+      [theme]: 'export const theme = 1\n',
+      [fonts]: 'export const fonts = 1\n',
+      [sites]: 'export const sites = 1\n',
+    },
     'share card extensions',
     'template-v0.2.0',
   )
@@ -429,9 +436,16 @@ test('sync adds share card extensions once and preserves project registration an
   await project.change({
     [registration]: '// project registrations\n',
     [theme]: '// project brand\n',
+    [fonts]: '// project fonts\n',
+    [sites]: '// project sites\n',
   })
   await template.commit(
-    { [registration]: 'export const registration = 2\n', [theme]: null },
+    {
+      [registration]: 'export const registration = 2\n',
+      [theme]: null,
+      [fonts]: 'export const fonts = 2\n',
+      [sites]: 'export const sites = 2\n',
+    },
     'template extension changes',
     'template-v0.3.0',
   )
@@ -442,6 +456,8 @@ test('sync adds share card extensions once and preserves project registration an
     '// project registrations\n',
   )
   assert.equal(await readFile(join(project.dir, theme), 'utf8'), '// project brand\n')
+  assert.equal(await readFile(join(project.dir, fonts), 'utf8'), '// project fonts\n')
+  assert.equal(await readFile(join(project.dir, sites), 'utf8'), '// project sites\n')
 })
 
 test('conflicts keep markers on the sync branch, list every file and leave the baseline unchanged', async (t) => {

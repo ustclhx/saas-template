@@ -366,6 +366,16 @@ for (const [file, initial, modifiedContent] of [
     'export const projectShareCardTheme = {}\n',
     "export const projectShareCardTheme = { background: '#000000' }\n",
   ],
+  [
+    'apps/web/src/features/share-cards/share-cards.fonts.ts',
+    'export const projectShareCardFonts = []\n',
+    "export const projectShareCardFonts = [{ name: 'Noto Sans KR', file: 'kr.otf', scripts: ['Hangul'] }]\n",
+  ],
+  [
+    'apps/web/src/features/share-cards/share-cards.sites.ts',
+    'export const resolveProjectShareCardSite = () => undefined\n',
+    "export const resolveProjectShareCardSite = () => ({ host: 'example.com' })\n",
+  ],
   ['apps/web/src/styles/brand.css', '/* 项目品牌层示例 */\n', ':root { --primary: #000000; }\n'],
   [
     'apps/web/src/features/theme/html-attributes.ts',
