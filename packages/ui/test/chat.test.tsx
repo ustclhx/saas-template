@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { useState } from 'react'
+import { createRef, useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   ChatMessage,
@@ -92,8 +92,14 @@ describe('ChatMessage', () => {
     const user = screen.getByText('问题').closest('[data-chat-role]') as HTMLElement
     const assistant = screen.getByText('回答').closest('[data-chat-role]') as HTMLElement
     expect(user.dataset.chatRole).toBe('user')
-    expect(user.className).toContain('self-end')
+    // 用户行是查询容器，气泡靠右
+    expect(user.className.split(/\s+/)).toEqual(expect.arrayContaining(['@container', 'items-end']))
     expect(user.querySelector('[data-chat-avatar]')).toBeNull()
+    // 气泡用 --chat-fill（深色下 --secondary 与卡片同色），宽度与内边距按容器查询
+    const bubble = screen.getByText('问题')
+    expect(bubble.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['bg-chat-fill', 'max-w-17/20', '@chat-message:max-w-4/5']),
+    )
     expect(assistant.dataset.chatRole).toBe('assistant')
     expect(assistant.querySelector('[data-chat-avatar]')?.getAttribute('aria-hidden')).toBe('true')
     // 消息本身不是地标或控件，列表语义由调用方的 <ol> / <li> 提供
@@ -172,7 +178,7 @@ describe('ChatMessage', () => {
     expect(container.querySelector('[data-chat-avatar]')).toBeNull()
   })
 
-  it('流式中正文带光标且 aria-busy，没有状态徽标', () => {
+  it('流式中内容区带 data-chat-streaming、末段带 data-chat-tail（光标约定），aria-busy，没有状态徽标', () => {
     render(
       <ChatMessage from="assistant" status="streaming" entrance={false}>
         生成中的正文
@@ -180,7 +186,12 @@ describe('ChatMessage', () => {
     )
     const message = screen.getByText('生成中的正文').closest('[data-chat-role]') as HTMLElement
     expect(message.getAttribute('aria-busy')).toBe('true')
-    expect(message.querySelector('[data-chat-content]')?.className).toContain('chat-caret')
+    const content = message.querySelector('[data-chat-content]') as HTMLElement
+    expect(content.hasAttribute('data-chat-streaming')).toBe(true)
+    // 光标只画在 [data-chat-streaming] [data-chat-tail] 之后：纯文本子节点包成的最后一段带标记
+    const tail = content.querySelector('[data-chat-tail]') as HTMLElement
+    expect(tail.tagName).toBe('P')
+    expect(tail.textContent).toBe('生成中的正文')
     expect(message.querySelector('[data-chat-status]')).toBeNull()
   })
 
@@ -204,7 +215,7 @@ describe('ChatMessage', () => {
     const message = screen.getByText('已生成的部分').closest('[data-chat-role]') as HTMLElement
     const row = message.querySelector(`[data-chat-status="${status}"]`) as HTMLElement
     expect(row.textContent).toBe(`${label}说明文字`)
-    expect(message.querySelector('[data-chat-content]')?.className).not.toContain('chat-caret')
+    expect(message.querySelector('[data-chat-streaming]')).toBeNull()
     // 正文在状态之前
     const content = message.querySelector('[data-chat-content]') as HTMLElement
     expect(content.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -269,6 +280,69 @@ describe('ToolCall', () => {
     fireEvent.click(trigger)
     expect(trigger.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByText('读取了第 3 章')).toBeTruthy()
+  })
+  it('可展开时卡片占满消息列、名称撑开，展开后头部去掉下圆角', () => {
+    render(
+      <ToolCall name="查询报告数据" state="done" labels={labels}>
+        详情
+      </ToolCall>,
+    )
+    const trigger = screen.getByRole('button', { name: /查询报告数据/ })
+    const root = trigger.closest('[data-tool-call]') as HTMLElement
+    expect(root.className.split(/\s+/)).toContain('w-full')
+    expect(screen.getByText('查询报告数据').className.split(/\s+/)).toContain('flex-1')
+    expect(trigger.className).not.toContain('rounded-b-none')
+    fireEvent.click(trigger)
+    expect(trigger.className.split(/\s+/)).toContain('rounded-b-none')
+  })
+
+  it('没有详情时宽度随内容，中性徽标用 --chat-fill', () => {
+    const { container } = render(<ToolCall name="工具" state="pending" labels={labels} />)
+    const root = container.querySelector('[data-tool-call]') as HTMLElement
+    expect(root.className.split(/\s+/)).not.toContain('w-full')
+    expect(container.querySelector('[data-tool-state="pending"]')?.className).toContain(
+      'bg-chat-fill',
+    )
+  })
+
+  it('受控 open：点击只回调 onOpenChange，展开状态以 open 为准', () => {
+    const onOpenChange = vi.fn()
+    const { rerender } = render(
+      <ToolCall name="查询" state="done" labels={labels} open={false} onOpenChange={onOpenChange}>
+        详情
+      </ToolCall>,
+    )
+    const trigger = screen.getByRole('button', { name: /查询/ })
+    fireEvent.click(trigger)
+    expect(onOpenChange).toHaveBeenCalledWith(true)
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+    rerender(
+      <ToolCall name="查询" state="done" labels={labels} open onOpenChange={onOpenChange}>
+        详情
+      </ToolCall>,
+    )
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+  })
+})
+
+describe('ThinkingSteps 受控', () => {
+  it('受控 open：点击只回调 onOpenChange，展开状态以 open 为准', () => {
+    const onOpenChange = vi.fn()
+    const steps = (open: boolean) => (
+      <ThinkingSteps open={open} onOpenChange={onOpenChange}>
+        <ThinkingStepsHeader>已思考</ThinkingStepsHeader>
+        <ThinkingStepsContent>
+          <ThinkingStep>推理</ThinkingStep>
+        </ThinkingStepsContent>
+      </ThinkingSteps>
+    )
+    const { rerender } = render(steps(false))
+    const trigger = screen.getByRole('button', { name: '已思考' })
+    fireEvent.click(trigger)
+    expect(onOpenChange).toHaveBeenCalledWith(true)
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+    rerender(steps(true))
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
   })
 })
 
@@ -398,5 +472,56 @@ describe('InputMessage', () => {
     expect(textarea().className).toContain('field-sizing-content')
     // 没有附件入口
     expect(document.querySelector('input[type="file"]')).toBeNull()
+  })
+
+  it('没有 onStop 时停止按钮不可用', () => {
+    render(<Composer initial="内容" busy />)
+    expect((screen.getByRole('button', { name: '停止生成' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    )
+  })
+
+  it('发送后草稿先清空（按钮变为不可用、焦点离开按钮但不触发 blur），busy 再翻转时焦点仍回到输入框', () => {
+    const labelsProps = {
+      placeholder: '输入消息',
+      labels,
+      onValueChange: () => {},
+      onSend: () => {},
+    }
+    const { rerender } = render(<InputMessage value="内容" {...labelsProps} />)
+    const action = screen.getByRole('button', { name: '发送' })
+    act(() => action.focus())
+    // 调用方在 onSend 中清空草稿：按钮变为 disabled
+    rerender(<InputMessage value="" {...labelsProps} />)
+    // 浏览器让被禁用按钮失去焦点时不一定派发 blur；模拟 activeElement 已回到 body 而 blur 未触发
+    const descriptor = Object.getOwnPropertyDescriptor(Document.prototype, 'activeElement')
+    Object.defineProperty(document, 'activeElement', {
+      configurable: true,
+      get: () => document.body,
+    })
+    try {
+      rerender(<InputMessage value="" busy onStop={() => {}} {...labelsProps} />)
+    } finally {
+      Reflect.deleteProperty(document, 'activeElement')
+      if (descriptor) Object.defineProperty(Document.prototype, 'activeElement', descriptor)
+    }
+    expect(document.activeElement).toBe(textarea())
+  })
+
+  it('textareaRef 指向输入框；textareaProps 不能覆盖可读名称', () => {
+    const ref = createRef<HTMLTextAreaElement>()
+    render(<Composer textareaRef={ref} textareaProps={{ 'aria-label': '被覆盖', name: 'draft' }} />)
+    expect(ref.current).toBe(textarea())
+    expect(textarea().getAttribute('name')).toBe('draft')
+  })
+
+  it('不可用时用 --chat-fill 底（深色下比卡片亮），内边距按容器查询', () => {
+    const { container } = render(<Composer disabled />)
+    const root = container.querySelector('[data-input-message]') as HTMLElement
+    expect(root.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['bg-chat-fill', '@container']),
+    )
+    expect(textarea().className).toContain('@chat-message:px-3.5')
+    expect(textarea().className).not.toMatch(/(^|\s)sm:/)
   })
 })

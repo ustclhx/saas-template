@@ -3,13 +3,14 @@
 // 模板改动（openspec add-ai-chat-components design D1，设计稿 docs/design-system/prototypes/chat-components/Main.dc.html、
 // States.dc.html、Mobile.dc.html、Embedded.dc.html、EmbeddedMobile.dc.html）：
 // - 角色属性沿用上游 `from`（design D1 写作 `role`：与 HTML role 属性同名，Biome a11y 规则会把调用处当作无效 ARIA role）；
-// - 用户消息为右侧 12px 圆角的 secondary 底气泡（上游为 accent 混色），最宽 80%（窄屏与 compact 85%）；
+// - 用户消息为右侧 12px 圆角的气泡（--chat-fill 底，上游为 accent 混色），最宽 80%（消息列窄于阈值与 compact 85%）；
 //   助手消息正文无底色，根节点为查询容器，按消息自身宽度切换版式（阈值 globals.css 的 --container-chat-message，
 //   23rem）：窄时 24px 头像与 `leading`（推理按钮）同一行、正文与操作区通栏在下（Mobile / EmbeddedMobile 画板），
 //   宽时为 28px 头像列（compact 24px）+ 内容列（Main / Embedded 画板）。用容器查询而不是视口断点，
 //   对话页与嵌入式面板、底部抽屉得到同样的版式；
 // - 新增 `status`（streaming / aborted / failed / incomplete / retrying）：流式中正文末尾显示闪烁光标，
 //   其余四种在正文下方显示状态徽标与可选说明 `statusDetail`，已生成的正文保留；状态文字经 `statusLabel` 传入；
+//   光标约定：流式时内容区带 data-chat-streaming，光标只画在其中的 [data-chat-tail] 之后（见 globals.css）；
 // - 操作区（`actions`）始终可见（设计稿），上游悬停才显示；时间戳 `time` 与附件 `files` 不移植；
 // - 去掉上游的 `layout="position"`（需要 domMax，本包统一 domAnimation），只保留入场动效；`entrance={false}`
 //   时不播放（首屏已有的历史消息）；减少动态效果时由 UiRoot 的 MotionConfig 去掉位移与缩放，只保留淡入；
@@ -66,8 +67,9 @@ type ChatMessageProps = Omit<
   }
 
 const STATUS_BADGE: Record<ChatMessageEndStatus, string> = {
-  aborted: 'bg-secondary text-muted-foreground',
-  retrying: 'bg-secondary text-muted-foreground',
+  // 中性填充用 --chat-fill（半透明前景色）：深色下 --secondary 与卡片同色，嵌入式面板里会看不出底色
+  aborted: 'bg-chat-fill text-muted-foreground',
+  retrying: 'bg-chat-fill text-muted-foreground',
   incomplete: 'bg-warning/10 text-warning dark:bg-warning/15',
   failed: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
 }
@@ -91,11 +93,19 @@ function StatusIcon({ status }: { status: ChatMessageEndStatus }) {
   return null
 }
 
-/** 纯文本子节点包进段落，流式光标（globals.css 的 chat-caret）才能接在文字之后 */
+/** 纯文本子节点包进段落；最后一个子节点是纯文本时标上 data-chat-tail，流式光标接在它之后（globals.css） */
 function wrapText(children: ReactNode) {
-  return Children.map(children, (child) =>
+  const items = Children.toArray(children)
+  return items.map((child, index) =>
     typeof child === 'string' || typeof child === 'number' ? (
-      <p className="whitespace-pre-wrap">{child}</p>
+      <p
+        // biome-ignore lint/suspicious/noArrayIndexKey: 子节点顺序即内容顺序，纯文本没有其他稳定标识
+        key={index}
+        className="whitespace-pre-wrap"
+        {...(index === items.length - 1 ? { 'data-chat-tail': '' } : {})}
+      >
+        {child}
+      </p>
     ) : (
       child
     ),
@@ -176,10 +186,8 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
           {hasContent && (
             <div
               data-chat-content=""
-              className={cn(
-                'flex min-w-0 flex-col gap-2 text-foreground wrap-anywhere',
-                status === 'streaming' && 'chat-caret',
-              )}
+              className={cn('flex min-w-0 flex-col gap-2 text-foreground wrap-anywhere')}
+              {...(status === 'streaming' ? { 'data-chat-streaming': '' } : {})}
             >
               {wrapText(children)}
             </div>
@@ -251,10 +259,8 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
             'flex min-w-0',
             typeClass('subtitle', 'default'),
             isUser
-              ? cn(
-                  'flex-col items-end gap-1.5 self-end',
-                  compact ? 'max-w-17/20' : 'max-w-17/20 sm:max-w-4/5',
-                )
+              ? // 同样是查询容器：气泡宽度与内边距随消息列宽度变化（嵌入式面板与对话页一致），不看视口
+                'w-full flex-col items-end gap-1.5 self-end @container'
               : // 查询容器：版式随消息自身宽度变化（@chat-message: 即宽度 ≥ --container-chat-message）
                 'w-full flex-col self-start @container',
             className,
@@ -266,9 +272,11 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
               {hasContent && (
                 <div
                   className={cn(
-                    'min-w-0 whitespace-pre-wrap bg-secondary text-foreground wrap-anywhere',
+                    'min-w-0 max-w-17/20 whitespace-pre-wrap bg-chat-fill text-foreground wrap-anywhere',
                     shape.container,
-                    compact ? 'px-3 py-2.25' : 'px-3 py-2.25 sm:px-3.5 sm:py-2.5',
+                    compact
+                      ? 'px-3 py-2.25'
+                      : 'px-3 py-2.25 @chat-message:max-w-4/5 @chat-message:px-3.5 @chat-message:py-2.5',
                   )}
                 >
                   {children}

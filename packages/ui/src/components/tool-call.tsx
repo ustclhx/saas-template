@@ -39,7 +39,8 @@ interface ToolCallProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 const BADGE: Record<ToolCallState, string> = {
-  pending: 'bg-secondary text-muted-foreground',
+  // 中性填充用 --chat-fill：深色下 --secondary 与卡片同色
+  pending: 'bg-chat-fill text-muted-foreground',
   running: 'bg-fluid-accent/12 text-fluid-accent-text dark:bg-fluid-accent/18',
   done: 'bg-success/10 text-success dark:bg-success/15',
   error: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
@@ -86,7 +87,8 @@ const ToolCall = forwardRef<HTMLDivElement, ToolCallProps>(
             className="shrink-0 text-muted-foreground"
           />
         )}
-        <span className="min-w-0 truncate font-medium">{name}</span>
+        {/* 可展开时卡片占满消息列，名称撑开，徽标靠右（States 画板），展开前后宽度不变 */}
+        <span className={cn('min-w-0 truncate font-medium', expandable && 'flex-1')}>{name}</span>
         <span
           data-tool-state={state}
           className={cn(
@@ -117,6 +119,7 @@ const ToolCall = forwardRef<HTMLDivElement, ToolCallProps>(
         className={cn(
           // 设计稿：8px 圆角、1px 内描边、13px / 18px 文字；宽度随内容，最宽为消息列
           'flex max-w-full flex-col self-start text-foreground inset-ring inset-ring-border',
+          expandable && 'w-full',
           typeClass('subtitle', 'compact'),
           shape.item,
           className,
@@ -131,6 +134,8 @@ const ToolCall = forwardRef<HTMLDivElement, ToolCallProps>(
                 'cursor-pointer outline-none transition-colors duration-80 hover:bg-hover',
                 'focus-visible:outline-2 focus-visible:outline-(--focus-ring) focus-visible:outline-offset-2',
                 shape.item,
+                // 展开时头部只保留上圆角，悬停底色与下方详情区相接
+                isOpen && 'rounded-b-none',
               )}
             >
               {header}

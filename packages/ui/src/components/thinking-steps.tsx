@@ -8,7 +8,7 @@
 // - 展开内容为左侧 2px 竖线 + 12px 次要文字（设计稿）；保留上游 `ThinkingStep` 步骤接口，用于推理文本时只有一步，
 //   步骤的图标列与连接线不移植；ThinkingStepDetails / Sources / Image 不移植（依赖 Badge 与图片，
 //   对话回复不显示图片）。
-import { m as motion } from 'motion/react'
+import { m as motion, useReducedMotion } from 'motion/react'
 import { Collapsible } from 'radix-ui'
 import {
   createContext,
@@ -57,6 +57,8 @@ interface CollapsePanelProps {
  * trigger's `aria-controls` id lives on it).
  */
 function CollapsePanel({ open, children, className }: CollapsePanelProps) {
+  // 模板改动：高度是布局属性，UiRoot 的 MotionConfig 不会去掉；减少动态效果时直接跳到终值（同 command-menu）
+  const reduceMotion = useReducedMotion() ?? false
   // The open height is animated to a self-measured LAYOUT pixel value, not
   // `height: "auto"`: framer resolves an "auto" target by measuring the
   // element's *visual* (transformed) size, so under a scaled ancestor the
@@ -119,7 +121,9 @@ function CollapsePanel({ open, children, className }: CollapsePanelProps) {
             // 模板改动：测量不到高度（如 happy-dom 中 offsetHeight 恒为 0）时展开到 auto，内容不会被裁成 0 高
             animate={{ height: open ? (contentHeight ?? 'auto') : 0 }}
             // bounce: 0 — pure height looks better without overshoot.
-            transition={needsSnap ? { duration: 0 } : { ...spring.moderate, bounce: 0 }}
+            transition={
+              needsSnap || reduceMotion ? { duration: 0 } : { ...spring.moderate, bounce: 0 }
+            }
             onAnimationComplete={() => {
               if (!open) setExitComplete(true)
             }}

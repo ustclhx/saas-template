@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 // 系统开启「减少动态效果」。motion 在首次使用时读取并缓存这一媒体查询，所以单独成文件、在导入组件前设置
@@ -15,26 +15,52 @@ vi.hoisted(() => {
   })) as typeof window.matchMedia
 })
 
-const { ChatMessage, ThinkingIndicator, ThinkingSteps, ThinkingStepsHeader, ToolCall } =
-  await import('../src/chat.ts')
+const {
+  ChatMessage,
+  ThinkingIndicator,
+  ThinkingStep,
+  ThinkingSteps,
+  ThinkingStepsContent,
+  ThinkingStepsHeader,
+  ToolCall,
+} = await import('../src/chat.ts')
+
+const { frame } = await import('./animation.ts')
 
 Reflect.deleteProperty(Element.prototype, 'animate')
 afterEach(() => cleanup())
 
 describe('对话组件 · 减少动态效果', () => {
-  it('思考中的三点静止（不是 motion 元素，没有透明度动画）', () => {
+  it('思考中的三点是 CSS 动画，减少动态效果时由 motion-reduce:animate-none 静止；推理面板高度直接跳到终值', async () => {
     render(
       <>
         <ThinkingIndicator label="正在思考" />
         <ThinkingSteps>
           <ThinkingStepsHeader busy>思考中…</ThinkingStepsHeader>
+          <ThinkingStepsContent>
+            <ThinkingStep>推理</ThinkingStep>
+          </ThinkingStepsContent>
         </ThinkingSteps>
       </>,
     )
     const dots = document.querySelectorAll('[data-thinking-dots] > span')
     expect(dots).toHaveLength(6)
-    for (const dot of dots) expect((dot as HTMLElement).style.opacity).toBe('')
+    for (const dot of dots) {
+      const cls = (dot as HTMLElement).className.split(/\s+/)
+      expect(cls).toEqual(
+        expect.arrayContaining(['animate-chat-dot', 'motion-reduce:animate-none']),
+      )
+      // 不是 motion 元素：没有内联的透明度动画
+      expect((dot as HTMLElement).style.opacity).toBe('')
+    }
     expect(screen.getByText('正在思考')).toBeTruthy()
+
+    // 展开推理：高度动画时长为 0，下一帧就不再是 0 高（不用逐帧等待弹簧）
+    const trigger = screen.getByRole('button', { name: '思考中…' })
+    fireEvent.click(trigger)
+    const panel = trigger.nextElementSibling?.firstElementChild as HTMLElement
+    await frame()
+    expect(panel.style.height).not.toBe('0px')
   })
 
   it('重试中与执行中的转圈在 CSS 中静止，流式光标由 globals.css 的媒体查询静止', () => {

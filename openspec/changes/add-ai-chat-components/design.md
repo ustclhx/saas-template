@@ -31,7 +31,7 @@
 
 - **文案**：上游英文默认文案（"Thinking…"、"Send"、"Stop" 等）全部改为必填 `labels`（规则 10）。
 - **InputMessage**：不移植附件、拖放与 `file-thumbnail`（对话没有上传能力，以后要加时再按上游合并）；保留自适应高度（`field-sizing` 优先，回退为脚本计算，上限约 8 行后框内滚动）；新增 `leading`（模型选择、Thinking 开关）与 `trailing`（预计消耗）插槽；`busy` 时发送按钮换成停止按钮，换位时若焦点在按钮上，焦点移到输入框（停止按钮卸载会让焦点落到 body）。Enter 发送、Shift+Enter 换行、`isComposing` 不发送沿用现有实现。
-- **ChatMessage**：`from: 'user' | 'assistant'`（沿用上游名；`role` 与 HTML role 属性同名，Biome `a11y/useValidAriaRole` 会把每个调用处判为无效 ARIA role）、`leading?`（头像旁的内容，如推理按钮）、`status?`（`streaming` / `aborted` / `failed` / `incomplete` / `retrying`）、`statusLabel?`、`actions?`（放 MessageFeedback 与复制回复）、`children`（内容由调用方按 part 组合）。气泡与对齐以设计稿为准；助手消息按自身宽度切换版式（容器查询，阈值 `--container-chat-message`）：窄时头像与 `leading` 同一行、正文与操作区通栏在下（Mobile / EmbeddedMobile 画板），宽时为头像列 + 内容列。
+- **ChatMessage**：`from: 'user' | 'assistant'`（沿用上游名；`role` 与 HTML role 属性同名，Biome `a11y/useValidAriaRole` 会把每个调用处判为无效 ARIA role）、`leading?`（头像旁的内容，如推理按钮）、`status?`（`streaming` / `aborted` / `failed` / `incomplete` / `retrying`）、`statusLabel?`、`actions?`（放 MessageFeedback 与复制回复）、`children`（内容由调用方按 part 组合）。气泡与对齐以设计稿为准；助手消息按自身宽度切换版式（容器查询，阈值 `--container-chat-message`）：窄时头像与 `leading` 同一行、正文与操作区通栏在下（Mobile / EmbeddedMobile 画板），宽时为头像列 + 内容列。流式光标约定（与 D4 的 ChatMarkdown 共用）：`status="streaming"` 时内容区带 `data-chat-streaming`，光标只画在其中的 `[data-chat-tail]` 之后（`globals.css`），与 DOM 层级无关；ChatMessage 自己包段落的纯文本子节点由它标在最后一段上，其他自定义内容由调用方自行标注。
 - **ThinkingSteps**：上游的步骤列表用于推理文本时只有一步，接口保留 `steps`，适配层传单步；折叠用 radix-ui `Collapsible`，触发按钮带 `aria-expanded`。
 - **ThinkingIndicator**：等待首个可见输出时显示；闪烁动效在减少动态效果时改为静止（CSS `motion-reduce:` + MotionConfig）。
 - 动效按规则 8 用 `m as motion` + `MotionFeatures`。上游用到的图标（复制、停止、发送等）直接从 lucide 导入，不补进 `icon-context` 与 `UiRoot` 默认图标表：对话组件只在对话路由加载，补进默认表会让图标进入首屏包（同 `message-feedback.tsx` 的做法）。
@@ -58,7 +58,7 @@ Fluid 没有工具调用组件，参考 AI Elements `Tool` 的状态划分新写
 ### D4. 流式容错：按块增量渲染
 
 - CommonMark 本身对未闭合结构是容错的（未闭合的代码块延续到文末、只有表头的表格作为段落），不做文本修补，保证完成后的结果与整段渲染一致。
-- 性能：`ChatMarkdown` 接收 `streaming` 标记；流式时用 mdast 的顶层块位置（`remark-parse` 已是依赖）把文本切成「已完成的块」与「最后一块」，已完成的块各自 `memo` 渲染，只有最后一块随输出更新；切分只在代码块外的块边界发生。生成结束后整段渲染一次。
+- 性能：`ChatMarkdown` 接收 `streaming` 标记；流式时用 mdast 的顶层块位置（`remark-parse` 已是依赖）把文本切成「已完成的块」与「最后一块」，已完成的块各自 `memo` 渲染，只有最后一块随输出更新；切分只在代码块外的块边界发生。生成结束后整段渲染一次。流式时 `ChatMarkdown` 在最后一个承载文字的块元素（段落、列表项、标题、引用中的最后一段等）上加 `data-chat-tail`，ChatMessage 的流式光标接在它之后（约定见 D1）；结束后不再输出该属性。
 - `useChat` 设 `experimental_throttle`（约 50ms）降低重渲染频率。
 - 备选：每个 token 整段重新解析——回复较长时主线程占用明显，作为退路（块切分出错时回退整段渲染，单测覆盖二者一致）。
 

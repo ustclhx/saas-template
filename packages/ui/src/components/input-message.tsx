@@ -9,8 +9,8 @@
 // - 生成中（`busy`）发送按钮换成停止按钮（上游有草稿时为排队）；同一个按钮元素换图标，切换时若焦点在按钮上
 //   移到输入框，不会因按钮变为不可用而丢到页面开头；Enter 发送、Shift+Enter 换行、输入法组字（isComposing）
 //   不发送；空内容、`disabled`、`sendDisabled`（如没有可用模型）与生成中不发送；
-// - 外观按设计稿：12px 圆角、1px 边框、卡片底与小阴影，输入区 12px / 14px 内边距（窄屏与 compact 10px / 12px），
-//   底栏 32px 按钮；不可用时 muted 底并降低不透明度；焦点在输入框时整个外框画 2px 焦点环（上游为边框加深）；
+// - 外观按设计稿：12px 圆角、1px 边框、卡片底与小阴影，输入区 12px / 14px 内边距（输入区窄于 --container-chat-message
+//   与 compact 时 10px / 12px，容器查询），底栏 32px 按钮；不可用时 --chat-fill 底并降低不透明度；焦点在输入框时整个外框画 2px 焦点环（上游为边框加深）；
 // - 高度随内容增长：支持 `field-sizing: content` 的浏览器由 CSS 完成，其余浏览器回退为上游的脚本测量，
 //   约 8 行（max-h-44）后框内滚动。
 import { ArrowUp } from 'lucide-react'
@@ -21,6 +21,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
+  type Ref,
   type TextareaHTMLAttributes,
   useCallback,
   useEffect,
@@ -74,7 +75,9 @@ interface InputMessageProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onChan
   trailing?: ReactNode
   /** When false, clicking the surrounding container won't refocus the textarea. */
   clickToFocus?: boolean
-  /** Extra props forwarded to the underlying textarea. */
+  /** 输入框元素的 ref（如外部「回到输入框」） */
+  textareaRef?: Ref<HTMLTextAreaElement>
+  /** Extra props forwarded to the underlying textarea（不能覆盖 value、事件、disabled、placeholder 与 aria-label） */
   textareaProps?: Omit<
     TextareaHTMLAttributes<HTMLTextAreaElement>,
     'value' | 'onChange' | 'onKeyDown' | 'disabled' | 'placeholder'
@@ -111,6 +114,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
       trailing,
       clickToFocus = true,
       textareaProps,
+      textareaRef: externalTextareaRef,
       size,
       className,
       ...props
@@ -119,7 +123,16 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
   ) => {
     const shape = useShape()
     const compact = useSizeVariant(size) === 'compact'
-    const textareaRef = useRef<HTMLTextAreaElement>(null)
+    const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+    // 内部 ref 与调用方的 textareaRef 合并
+    const setTextareaRef = useCallback(
+      (el: HTMLTextAreaElement | null) => {
+        textareaRef.current = el
+        if (typeof externalTextareaRef === 'function') externalTextareaRef(el)
+        else if (externalTextareaRef) externalTextareaRef.current = el
+      },
+      [externalTextareaRef],
+    )
     const actionRef = useRef<HTMLButtonElement>(null)
     // 焦点是否在发送 / 停止按钮上。按钮变为不可用时浏览器不一定触发 blur，所以自己记录
     const actionFocused = useRef(false)
@@ -219,14 +232,19 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
             'flex flex-col border border-border shadow-sm transition-[background-color,opacity] duration-80',
             'has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-(--focus-ring) has-[textarea:focus-visible]:outline-offset-2',
             shape.container,
-            disabled ? 'bg-muted opacity-85' : 'bg-card',
+            // 不可用：设计稿浅色更灰、深色更亮，用半透明的 --chat-fill（深色下 bg-muted 比卡片更暗）
+            disabled ? 'bg-chat-fill opacity-85' : 'bg-card',
+            // 查询容器：内边距随输入区自身宽度变化（嵌入式面板与对话页一致），不看视口
+            '@container',
             clickToFocus && !disabled && 'cursor-text',
             className,
           )}
           {...props}
         >
           <textarea
-            ref={textareaRef}
+            // 调用方的属性先展开，下面的受控值、事件与可读名称不会被覆盖
+            {...restTextareaProps}
+            ref={setTextareaRef}
             value={value}
             onChange={(e) => onValueChange(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -241,20 +259,19 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
               fieldTouchClass,
               compact
                 ? 'min-h-8.5 px-3 pt-2.5 pb-0.5'
-                : 'min-h-8.5 px-3 pt-2.5 pb-0.5 sm:min-h-11 sm:px-3.5 sm:pt-3 sm:pb-1',
+                : 'min-h-8.5 px-3 pt-2.5 pb-0.5 @chat-message:min-h-11 @chat-message:px-3.5 @chat-message:pt-3 @chat-message:pb-1',
               textareaClassName,
             )}
-            {...restTextareaProps}
           />
           <div
             className={cn(
               'flex min-w-0 items-center',
               compact
                 ? 'gap-1 px-1.5 pt-1 pb-1.5'
-                : 'gap-1 px-1.5 pt-1 pb-1.5 sm:gap-1.5 sm:px-2 sm:pt-1.5 sm:pb-2',
+                : 'gap-1 px-1.5 pt-1 pb-1.5 @chat-message:gap-1.5 @chat-message:px-2 @chat-message:pt-1.5 @chat-message:pb-2',
             )}
           >
-            <div className="flex min-w-0 items-center gap-1 sm:gap-1.5">{leading}</div>
+            <div className="flex min-w-0 items-center gap-1 @chat-message:gap-1.5">{leading}</div>
             <span className="flex-1" />
             {trailing != null && (
               <div className={cn('min-w-0 text-muted-foreground', typeClass('caption'))}>

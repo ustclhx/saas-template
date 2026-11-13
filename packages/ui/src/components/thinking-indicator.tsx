@@ -1,50 +1,36 @@
 // 来源：fluid-functionalism thinking-indicator（2026-11，https://www.fluidfunctionalism.com/r/thinking-indicator.json，MIT）
-// 适配：包内相对路径、去掉 "use client"、`m as motion` + MotionFeatures；其余改动见 packages/ui/UPSTREAM.md
+// 适配：包内相对路径、去掉 "use client"；其余改动见 packages/ui/UPSTREAM.md
 // 模板改动（openspec add-ai-chat-components design D1，设计稿 docs/design-system/prototypes/chat-components/States.dc.html）：
 // - 外观按设计稿改为「三个圆点 + 文字」：上游的圆 ⇄ ∞ 变形图标与轮换英文词（Thinking / Moonwalking…）不移植，
 //   文字由调用方经 `label` 传入（上游写死英文）；
 // - 去掉上游根节点的 role="status"：对话页另有只在状态变化时写入的播报区域（design D6），
 //   这里再设实时区域会重复朗读；
-// - 减少动态效果时三点静止（opacity 动画不受 MotionConfig 控制，按 useReducedMotion 显式关闭）。
-import { m as motion, useReducedMotion } from 'motion/react'
+// - 三点用 CSS 关键帧（globals.css 的 animate-chat-dot）而不是 motion：减少动态效果时由 motion-reduce:animate-none
+//   静止，服务端渲染即生效，不依赖 useReducedMotion 在客户端换元素。
 import { forwardRef, type HTMLAttributes, type ReactNode } from 'react'
-import { MotionFeatures } from '../lib/motion-features.tsx'
 import { type SizeVariant, typeClass, useSizeVariant } from '../lib/size-context.tsx'
 import { cn } from '../lib/utils.ts'
 
-const DOT_DELAYS = [0, 0.15, 0.3] as const
+const DOT_DELAYS = ['[animation-delay:0ms]', '[animation-delay:150ms]', '[animation-delay:300ms]']
 
 /** 三个依次明暗的圆点；ThinkingStepsHeader 的「思考中」状态共用 */
 function ThinkingDots({ className }: { className?: string }) {
-  const reduceMotion = useReducedMotion() ?? false
   return (
-    <MotionFeatures>
-      <span
-        aria-hidden="true"
-        data-thinking-dots=""
-        className={cn('inline-flex gap-0.75', className)}
-      >
-        {DOT_DELAYS.map((delay) =>
-          reduceMotion ? (
-            <span key={delay} className="size-1.25 rounded-full bg-current" />
-          ) : (
-            <motion.span
-              key={delay}
-              className="size-1.25 rounded-full bg-current"
-              initial={{ opacity: 0.25 }}
-              animate={{ opacity: [0.25, 1, 0.25, 0.25] }}
-              transition={{
-                duration: 1.2,
-                times: [0, 0.4, 0.8, 1],
-                ease: 'easeInOut',
-                repeat: Number.POSITIVE_INFINITY,
-                delay,
-              }}
-            />
-          ),
-        )}
-      </span>
-    </MotionFeatures>
+    <span
+      aria-hidden="true"
+      data-thinking-dots=""
+      className={cn('inline-flex gap-0.75', className)}
+    >
+      {DOT_DELAYS.map((delay) => (
+        <span
+          key={delay}
+          className={cn(
+            'size-1.25 rounded-full bg-current opacity-25 animate-chat-dot motion-reduce:animate-none motion-reduce:opacity-100',
+            delay,
+          )}
+        />
+      ))}
+    </span>
   )
 }
 

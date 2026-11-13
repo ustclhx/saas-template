@@ -119,7 +119,7 @@ describe('m.* 都在 MotionFeatures 之下（动画会推进）', () => {
     })
   })
 
-  it('对话组件：ChatMessage 入场、ThinkingIndicator 圆点明暗、ThinkingSteps 与 ToolCall 展开、InputMessage 图标', async () => {
+  it('对话组件：ChatMessage 入场、ThinkingSteps 与 ToolCall 展开、InputMessage 图标', async () => {
     render(
       <>
         <ChatMessage from="assistant">回答</ChatMessage>
@@ -147,8 +147,6 @@ describe('m.* 都在 MotionFeatures 之下（动画会推进）', () => {
       </>,
     )
     const message = screen.getByText('回答').closest('[data-chat-role]') as HTMLElement
-    const dot = document.querySelector('[data-thinking-dots] > span') as HTMLElement
-    const opacities = new Set<string>()
     const steps = screen.getByRole('button', { name: '已思考 6 秒' })
     const tool = screen.getByRole('button', { name: /查询报告数据/ })
     fireEvent.click(steps)
@@ -158,12 +156,9 @@ describe('m.* 都在 MotionFeatures 之下（动画会推进）', () => {
     )
     const step = screen.getByText('推理').parentElement as HTMLElement
     await waitForAnimation(() => {
-      opacities.add(dot.style.opacity)
       expect(message.style.opacity).toBe('1')
       expect(step.style.opacity).toBe('1')
       for (const chevron of chevrons) expect(chevron.style.transform).toContain('rotate(90deg)')
-      // 圆点的透明度在 0.25 与 1 之间循环
-      expect(opacities.size).toBeGreaterThan(1)
     })
   })
 })
