@@ -79,6 +79,15 @@ describe('sample share fixture endpoint', () => {
       expirationTtl: 86_400,
     })
     expect(kvPut.mock.calls[0]?.[1]).not.toContain('<script>')
+    const zh = await withWebRuntime(runtime(true), () =>
+      handleSampleShareFixture(post({ action: 'create', variant: 'zh' })),
+    )
+    expect(zh.status).toBe(200)
+    expect(kvPut.mock.calls.at(-1)?.[1]).toContain('第三季度')
+    await withWebRuntime(runtime(true), () =>
+      handleSampleShareFixture(post({ action: 'create', variant: 'constructor' })),
+    )
+    expect(kvPut.mock.calls.at(-1)?.[1]).toContain('Q3 2026')
     const ok = await withWebRuntime(runtime(true), () =>
       handleSampleShareFixture(post({ action: 'invalidate', token })),
     )
