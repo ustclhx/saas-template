@@ -30,7 +30,8 @@ function cli(args: string[], env: Record<string, string> = {}) {
   return { status: result.status, output: `${result.stdout}${result.stderr}` }
 }
 
-describe('命令行（子进程）', () => {
+// 子进程经类型剥离加载 @saas/ai 全部源码，机器繁忙时可能超过默认 5 秒
+describe('命令行（子进程）', { timeout: 60_000 }, () => {
   it('--help 输出用法并以 0 退出', () => {
     const { status, output } = cli(['--help'])
     expect(status).toBe(0)
@@ -56,7 +57,7 @@ describe('命令行（子进程）', () => {
     expect(output).toContain('基线 product-intro@v1')
     expect(output).toContain(`报告：${evidence}`)
     expect(output).not.toContain(SECRET)
-  }, 60_000)
+  })
 })
 
 describe('参数解析', () => {
