@@ -42,7 +42,8 @@ const BADGE: Record<ToolCallState, string> = {
   // 中性填充用 --chat-fill：深色下 --secondary 与卡片同色
   pending: 'bg-chat-fill text-muted-foreground',
   running: 'bg-fluid-accent/12 text-fluid-accent-text dark:bg-fluid-accent/18',
-  done: 'bg-success/10 text-success dark:bg-success/15',
+  // 浅色下 --success 在白底上对比度约 4.95:1，10% 底色降到 4.31:1（axe color-contrast 不通过），6% 为 4.56:1
+  done: 'bg-success/6 text-success dark:bg-success/15',
   error: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
 }
 

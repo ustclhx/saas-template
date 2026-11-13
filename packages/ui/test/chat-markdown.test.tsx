@@ -128,14 +128,28 @@ describe('ChatMarkdown 安全渲染', () => {
         markdown={'| a | b |\n| --- | --- |\n| 1 | 2 |\n\n```python\nprint(1)\n```'}
       />,
     )
-    const table = screen.getByRole('region', { name: labels.table })
+    const table = screen.getByRole('group', { name: labels.table })
     expect(table.tabIndex).toBe(0)
     expect(table.className).toContain('overflow-x-auto')
     expect(table.querySelector('table')).not.toBeNull()
-    const code = screen.getByRole('region', { name: labels.codeBlock })
+    const code = screen.getByRole('group', { name: labels.codeBlock })
     expect(code.tabIndex).toBe(0)
     expect(code.className).toContain('overflow-x-auto')
     expect(code.closest('[data-chat-code]')?.textContent).toContain('python')
+  })
+
+  it('滚动容器不是地标：同一页多个表格与代码块不产生重名 region（axe landmark-unique）', () => {
+    const markdown = '| a |\n| --- |\n| 1 |\n\n```js\na()\n```'
+    const { container } = render(
+      <>
+        <ChatMarkdown id="m1" labels={labels} markdown={markdown} />
+        <ChatMarkdown id="m2" labels={labels} markdown={markdown} />
+      </>,
+    )
+    expect(screen.queryAllByRole('region')).toHaveLength(0)
+    expect(container.querySelectorAll('section[aria-label]')).toHaveLength(0)
+    expect(screen.getAllByRole('group', { name: labels.table })).toHaveLength(2)
+    expect(screen.getAllByRole('group', { name: labels.codeBlock })).toHaveLength(2)
   })
 
   it('两条消息各有脚注时 id 不冲突', () => {
@@ -289,13 +303,13 @@ describe('流式按块增量渲染', { timeout: 60_000 }, () => {
     const text = '代码：\n\n```ts\nconst a = 1\n```\n\n后续'
     const { rerender } = render(<ChatMarkdown id="m1" labels={labels} markdown={text} streaming />)
     const button = screen.getByRole('button', { name: '复制' })
-    const region = screen.getByRole('region', { name: labels.codeBlock })
+    const region = screen.getByRole('group', { name: labels.codeBlock })
     button.focus()
     expect(document.activeElement).toBe(button)
     rerender(<ChatMarkdown id="m1" labels={labels} markdown={`${text}文字。`} streaming />)
     rerender(<ChatMarkdown id="m1" labels={labels} markdown={`${text}文字。`} streaming={false} />)
     expect(document.activeElement).toBe(button)
-    expect(screen.getByRole('region', { name: labels.codeBlock })).toBe(region)
+    expect(screen.getByRole('group', { name: labels.codeBlock })).toBe(region)
   })
 
   it('已完成的块在后续输入时不重新渲染', () => {

@@ -229,89 +229,91 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
           data-busy={busy || undefined}
           onMouseDown={handleContainerMouseDown}
           className={cn(
-            'flex flex-col border border-border shadow-sm transition-[background-color,opacity] duration-80',
+            'flex w-full min-w-0 flex-col border border-border shadow-sm transition-[background-color,opacity] duration-80',
             'has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-(--focus-ring) has-[textarea:focus-visible]:outline-offset-2',
             shape.container,
             // 不可用：设计稿浅色更灰、深色更亮，用半透明的 --chat-fill（深色下 bg-muted 比卡片更暗）
             disabled ? 'bg-chat-fill opacity-85' : 'bg-card',
-            // 查询容器：内边距随输入区自身宽度变化（嵌入式面板与对话页一致），不看视口
-            '@container',
             clickToFocus && !disabled && 'cursor-text',
             className,
           )}
           {...props}
         >
-          <textarea
-            // 调用方的属性先展开，下面的受控值、事件与可读名称不会被覆盖
-            {...restTextareaProps}
-            ref={setTextareaRef}
-            value={value}
-            onChange={(e) => onValueChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={disabled}
-            placeholder={placeholder}
-            rows={1}
-            aria-label={labels.message}
-            className={cn(
-              'field-sizing-content block max-h-44 w-full resize-none overflow-y-auto bg-transparent text-foreground outline-none',
-              'placeholder:text-muted-foreground disabled:cursor-not-allowed',
-              typeClass('body'),
-              fieldTouchClass,
-              compact
-                ? 'min-h-8.5 px-3 pt-2.5 pb-0.5'
-                : 'min-h-8.5 px-3 pt-2.5 pb-0.5 @chat-message:min-h-11 @chat-message:px-3.5 @chat-message:pt-3 @chat-message:pb-1',
-              textareaClassName,
-            )}
-          />
-          <div
-            className={cn(
-              'flex min-w-0 items-center',
-              compact
-                ? 'gap-1 px-1.5 pt-1 pb-1.5'
-                : 'gap-1 px-1.5 pt-1 pb-1.5 @chat-message:gap-1.5 @chat-message:px-2 @chat-message:pt-1.5 @chat-message:pb-2',
-            )}
-          >
-            <div className="flex min-w-0 items-center gap-1 @chat-message:gap-1.5">{leading}</div>
-            <span className="flex-1" />
-            {trailing != null && (
-              <div className={cn('min-w-0 text-muted-foreground', typeClass('caption'))}>
-                {trailing}
-              </div>
-            )}
-            <Button
-              ref={actionRef}
-              type="button"
-              variant="primary"
-              size="icon"
-              className="size-8"
-              data-action={mode}
-              aria-label={mode === 'stop' ? labels.stop : labels.send}
-              disabled={mode === 'stop' ? disabled || !onStop : !canSend}
-              onClick={mode === 'stop' ? onStop : handleSend}
-              onFocus={() => {
-                actionFocused.current = true
-              }}
-              onBlur={() => {
-                actionFocused.current = false
-              }}
+          {/* 查询容器：内边距随输入区自身宽度变化（嵌入式面板与对话页一致），不看视口。放在内层而不是根节点：
+              根节点作为 inline-size 容器时，在 flex-col flex-wrap 父级中 Chromium 会把它的高度撑大（92px → 220px） */}
+          <div data-input-message-body="" className="flex min-w-0 flex-col @container">
+            <textarea
+              // 调用方的属性先展开，下面的受控值、事件与可读名称不会被覆盖
+              {...restTextareaProps}
+              ref={setTextareaRef}
+              value={value}
+              onChange={(e) => onValueChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={disabled}
+              placeholder={placeholder}
+              rows={1}
+              aria-label={labels.message}
+              className={cn(
+                'field-sizing-content block max-h-44 w-full resize-none overflow-y-auto bg-transparent text-foreground outline-none',
+                'placeholder:text-muted-foreground disabled:cursor-not-allowed',
+                typeClass('body'),
+                fieldTouchClass,
+                compact
+                  ? 'min-h-8.5 px-3 pt-2.5 pb-0.5'
+                  : 'min-h-8.5 px-3 pt-2.5 pb-0.5 @chat-message:min-h-11 @chat-message:px-3.5 @chat-message:pt-3 @chat-message:pb-1',
+                textareaClassName,
+              )}
+            />
+            <div
+              className={cn(
+                'flex min-w-0 items-center',
+                compact
+                  ? 'gap-1 px-1.5 pt-1 pb-1.5'
+                  : 'gap-1 px-1.5 pt-1 pb-1.5 @chat-message:gap-1.5 @chat-message:px-2 @chat-message:pt-1.5 @chat-message:pb-2',
+              )}
             >
-              <AnimatePresence mode="popLayout" initial={false}>
-                <motion.span
-                  key={mode}
-                  initial={{ opacity: 0, scale: 0.6 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.6, transition: spring.fast.exit }}
-                  transition={spring.fast}
-                  className="flex items-center justify-center leading-none"
-                >
-                  {mode === 'stop' ? (
-                    <span aria-hidden="true" className="size-2.5 rounded-xs bg-current" />
-                  ) : (
-                    <ArrowUp aria-hidden="true" className="size-4" strokeWidth={1.75} />
-                  )}
-                </motion.span>
-              </AnimatePresence>
-            </Button>
+              <div className="flex min-w-0 items-center gap-1 @chat-message:gap-1.5">{leading}</div>
+              <span className="flex-1" />
+              {trailing != null && (
+                <div className={cn('min-w-0 text-muted-foreground', typeClass('caption'))}>
+                  {trailing}
+                </div>
+              )}
+              <Button
+                ref={actionRef}
+                type="button"
+                variant="primary"
+                size="icon"
+                className="size-8"
+                data-action={mode}
+                aria-label={mode === 'stop' ? labels.stop : labels.send}
+                disabled={mode === 'stop' ? disabled || !onStop : !canSend}
+                onClick={mode === 'stop' ? onStop : handleSend}
+                onFocus={() => {
+                  actionFocused.current = true
+                }}
+                onBlur={() => {
+                  actionFocused.current = false
+                }}
+              >
+                <AnimatePresence mode="popLayout" initial={false}>
+                  <motion.span
+                    key={mode}
+                    initial={{ opacity: 0, scale: 0.6 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.6, transition: spring.fast.exit }}
+                    transition={spring.fast}
+                    className="flex items-center justify-center leading-none"
+                  >
+                    {mode === 'stop' ? (
+                      <span aria-hidden="true" className="size-2.5 rounded-xs bg-current" />
+                    ) : (
+                      <ArrowUp aria-hidden="true" className="size-4" strokeWidth={1.75} />
+                    )}
+                  </motion.span>
+                </AnimatePresence>
+              </Button>
+            </div>
           </div>
         </div>
       </MotionFeatures>
