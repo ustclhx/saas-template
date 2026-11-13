@@ -14,6 +14,8 @@ export const excludedPaths = [
 export const projectOwnedPaths = new Set([
   'apps/web/src/features/share-cards/share-cards.project.ts',
   'apps/web/src/features/share-cards/share-cards.theme.ts',
+  'apps/web/src/features/share-cards/share-cards.fonts.ts',
+  'apps/web/src/features/share-cards/share-cards.sites.ts',
 ])
 export const baseRef = 'refs/template-sync/base'
 export const targetRef = 'refs/template-sync/target'

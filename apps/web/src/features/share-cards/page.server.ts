@@ -1,11 +1,11 @@
 import { getRequest } from '@tanstack/react-start/server'
 import { getWebRuntime } from '../../server/runtime.ts'
-import { templateConfig } from '../../server/template-config.ts'
 import { absoluteUrl } from '../seo/metadata.ts'
 import { lookupShare, remainingSeconds, type ShareLookup } from './lookup.ts'
 import { shareLookupDeps } from './meta.server.ts'
 import { buildShareCardMeta } from './meta.ts'
 import { type SharePageView, sharePageView } from './page.ts'
+import { resolveRequestShareCardSite } from './site.ts'
 
 /** 文档请求在渲染前已查找过的结果；SSR 内调用的 server function 复用它，避免重复消耗限流配额。 */
 const documentLookups = new WeakMap<Request, ShareLookup>()
@@ -69,7 +69,7 @@ export async function loadSharePage(input: {
   const result =
     documentLookups.get(request) ?? (await lookupShare(shareLookupDeps(), { ...input, page: true }))
   if (result.status !== 'ok') return { status: result.status }
-  const appUrl = getWebRuntime().config.APP_URL
+  const { site, origin } = resolveRequestShareCardSite(request.url, getWebRuntime().config.APP_URL)
   const path = `/s/${encodeURIComponent(input.type)}/${encodeURIComponent(input.token)}`
   return sharePageView(
     result,
@@ -77,9 +77,10 @@ export async function loadSharePage(input: {
       card: result.card,
       token: result.token,
       data: result.resolution.data,
-      appUrl,
-      pageUrl: absoluteUrl(appUrl, path),
-      siteName: templateConfig.app.name,
+      appUrl: origin,
+      pageUrl: absoluteUrl(origin, path),
+      siteName: site.brand.name,
+      site,
     }),
   )
 }

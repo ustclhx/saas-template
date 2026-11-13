@@ -1,4 +1,7 @@
 import { absoluteUrl } from '../seo/metadata.ts'
+import { shareCardFontFingerprint } from './fonts.ts'
+import { fnv1a } from './hash.ts'
+import type { ShareCardSite } from './site.ts'
 import type { RegisteredShareCard } from './types.ts'
 
 export const SHARE_CARD_WIDTH = 1200
@@ -16,9 +19,30 @@ export interface ShareCardMeta {
   readonly meta: ReadonlyArray<{ name?: string; property?: string; content: string }>
 }
 
-/** 卡片相对地址：`/share-card/<type>/<token>.png?v=<version>-<digest8>`（design 第 3 条）。 */
-export function shareCardImagePath<T>(card: RegisteredShareCard<T>, token: string, data: T) {
-  const version = `${card.version}-${card.digest(data).slice(0, 8)}`
+/**
+ * 卡片版本 `<version>-<digest8>`；项目登记了回退字体或站点覆盖时追加 `-<指纹8>`，
+ * 字体登记或站点品牌变化时地址随之变化，不同站点的缓存互不混用。两者都没有时与之前完全相同。
+ */
+export function shareCardVariant<T>(
+  card: Pick<RegisteredShareCard<T>, 'version' | 'digest'>,
+  data: T,
+  site?: Pick<ShareCardSite, 'fingerprint'>,
+  fontFingerprint = shareCardFontFingerprint(),
+): string {
+  const base = `${card.version}-${card.digest(data).slice(0, 8)}`
+  const siteFingerprint = site?.fingerprint ?? ''
+  if (fontFingerprint === '' && siteFingerprint === '') return base
+  return `${base}-${fnv1a(`${fontFingerprint}|${siteFingerprint}`)}`
+}
+
+/** 卡片相对地址：`/share-card/<type>/<token>.png?v=<variant>`（design 第 3 条）。 */
+export function shareCardImagePath<T>(
+  card: RegisteredShareCard<T>,
+  token: string,
+  data: T,
+  site?: Pick<ShareCardSite, 'fingerprint'>,
+) {
+  const version = shareCardVariant(card, data, site)
   return `/share-card/${encodeURIComponent(card.type)}/${encodeURIComponent(token)}.png?v=${encodeURIComponent(version)}`
 }
 
@@ -30,10 +54,12 @@ export function buildShareCardMeta<T>(input: {
   /** 分享页自身地址；项目自建页面可传入自己的地址作为 og:url。 */
   pageUrl?: string | undefined
   siteName: string
+  /** 当前站点；与卡片路由按请求 host 解析的结果一致，地址才不会被 302。 */
+  site?: Pick<ShareCardSite, 'fingerprint'> | undefined
 }): ShareCardMeta {
   const { card, data } = input
   const page = card.page(data)
-  const image = absoluteUrl(input.appUrl, shareCardImagePath(card, input.token, data))
+  const image = absoluteUrl(input.appUrl, shareCardImagePath(card, input.token, data, input.site))
   const alt = card.alt(data)
   return {
     image,

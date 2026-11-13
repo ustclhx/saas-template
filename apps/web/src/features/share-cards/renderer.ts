@@ -1,10 +1,11 @@
-// 渲染器的目标中立部分：字体组装与实例内缓存、回退字体（Noto Sans SC）按需加载、并发上限。
+// 渲染器的目标中立部分：字体组装与实例内缓存、回退字体（Noto Sans SC 与项目字体）按需加载、并发上限。
 // 目标实现（Workers：server/cloudflare/share-card-renderer.ts；Node：node/share-card-renderer.ts）
 // 只提供图片引擎与字体来源，本模块不导入 satori / resvg。
 import { AppError } from '@saas/shared'
 import { isValidElement, type ReactElement, type ReactNode } from 'react'
+import { projectFonts, type ResolvedShareCardFont } from './fonts.ts'
 import { SHARE_CARD_HEIGHT, SHARE_CARD_WIDTH } from './layout.tsx'
-import { needsFallbackFont } from './text.ts'
+import { type FallbackFontPlan, fallbackFontPlan } from './text.ts'
 
 export interface ShareCardFont {
   readonly name: string
@@ -38,6 +39,13 @@ export interface ShareCardRendererOptions {
   readonly loadLatinFonts: () => Promise<ShareCardFont[]> | ShareCardFont[]
   /** 完整 CJK 字体字节（Noto Sans SC，同时覆盖西里尔、希腊与扩展拉丁）；只在文本含 Inter Latin 子集之外的字符时调用，成功后实例内缓存。 */
   readonly loadCjkFont: () => Promise<ArrayBuffer>
+  /**
+   * 读取项目回退字体（`share-cards.fonts.ts` 登记的 public/fonts/share-card/ 下文件名）：只在文本含其登记的文字时调用，
+   * 同一文件成功后实例内缓存。省略时不加载项目字体。
+   */
+  readonly loadProjectFont?: (file: string) => Promise<ArrayBuffer>
+  /** 默认为项目登记的字体；测试可传入夹具。 */
+  readonly projectFonts?: readonly ResolvedShareCardFont[]
   readonly maxConcurrent?: number
 }
 
@@ -84,6 +92,52 @@ export function createShareCardRenderer(options: ShareCardRendererOptions): Shar
     return withCjk
   }
 
+  const registered = options.projectFonts ?? projectFonts
+  const loadProjectFont = options.loadProjectFont
+  // 项目字体按文件缓存字节，按所需组合缓存字体数组：同一组合每次传入同一批 ArrayBuffer。
+  const projectData = new Map<string, Promise<ArrayBuffer>>()
+  const combined = new Map<string, Promise<ShareCardFont[]>>()
+  const projectFontData = (fontFile: string, load: (file: string) => Promise<ArrayBuffer>) => {
+    let data = projectData.get(fontFile)
+    if (!data) {
+      data = load(fontFile).catch((error: unknown) => {
+        // 读取失败不缓存，下一次请求重试
+        projectData.delete(fontFile)
+        throw error
+      })
+      projectData.set(fontFile, data)
+    }
+    return data
+  }
+  const fontsFor = (plan: FallbackFontPlan): Promise<ShareCardFont[]> => {
+    const base = plan.cjk ? cjkFonts() : latinFonts()
+    if (plan.project.length === 0 || !loadProjectFont) return base
+    const key = [
+      plan.cjk ? 'cjk' : 'latin',
+      ...plan.project.map((font) => `${font.file}@${font.weight}`),
+    ].join('|')
+    let set = combined.get(key)
+    if (!set) {
+      // 项目字体排在 Inter 与 Noto Sans SC 之后，只补两者没有的字形
+      set = Promise.all([
+        base,
+        ...plan.project.map(async (font) => ({
+          name: font.name,
+          data: await projectFontData(font.file, loadProjectFont),
+          weight: font.weight,
+          style: 'normal' as const,
+        })),
+      ])
+        .then(([head, ...extra]) => [...head, ...extra])
+        .catch((error: unknown) => {
+          combined.delete(key)
+          throw error
+        })
+      combined.set(key, set)
+    }
+    return set
+  }
+
   return {
     async render(element) {
       if (active >= maxConcurrent) {
@@ -94,7 +148,7 @@ export function createShareCardRenderer(options: ShareCardRendererOptions): Shar
       }
       active += 1
       try {
-        const fonts = await (needsFallbackFont(collectText(element)) ? cjkFonts() : latinFonts())
+        const fonts = await fontsFor(fallbackFontPlan(collectText(element), registered))
         const response = await options.engine(element, {
           width: SHARE_CARD_WIDTH,
           height: SHARE_CARD_HEIGHT,

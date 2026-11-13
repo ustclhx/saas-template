@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>嵌入式对话</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:none}
+.r{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;width:1440px;height:900px;display:flex;overflow:hidden}
+button,textarea{font:inherit;color:inherit;margin:0}
+button{cursor:pointer;border:0;background:none;padding:0}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.cap{font-size:12px;line-height:16px}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;flex-shrink:0}
+.hv:hover{background:rgba(128,128,128,0.1)}
+.page{flex:1;min-width:0;overflow:hidden;padding:40px 56px}
+.art{max-width:45rem;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.art h1{font-size:28px;line-height:34px;font-weight:600;margin:0;letter-spacing:-0.01em}
+.art h2{font-size:18px;line-height:26px;font-weight:600;margin:12px 0 0}
+.art p{margin:0;line-height:24px;font-size:15px}
+.shell{display:flex;flex-direction:column;overflow:hidden}
+.shh{display:flex;align-items:center;gap:6px;height:52px;padding:0 8px 0 14px;flex-shrink:0}
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:9999px;font-size:12px;line-height:16px;font-weight:500;white-space:nowrap}
+.ubub{align-self:flex-end;max-width:85%;padding:9px 12px;border-radius:12px}
+.av{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:9999px;flex-shrink:0}
+.chip{display:inline-flex;align-items:center;min-height:32px;padding:6px 12px;border-radius:16px;font-size:13px;line-height:18px;font-weight:500;text-align:left}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+svg{flex-shrink:0}
+sc-if,sc-for{display:contents}
+</style>
+</helmet>
+<div class="r" style="background:{{t.bg}};color:{{t.fg}}">
+  <main class="page">
+    <article class="art">
+      <span class="cap" style="color:{{t.mfg}}">报告 · 2026 年第三季度</span>
+      <h1>季度经营报告</h1>
+      <p style="color:{{t.mfg}}">新客增长放缓，留存改善，模型调用成本占比上升。以下为各章摘要。</p>
+      <h2>2. 用户增长</h2>
+      <p>本季度新增注册 2,410 人，环比下降 6%。下降主要来自搜索广告的投放收缩；内容合作渠道保持增长，CAC 维持在 115 元左右。引导流程改版后，次月留存从 31% 提升到 38%。</p>
+      <h2>3. 成本</h2>
+      <p>模型调用成本占收入比例从 14% 上升到 19%。长文本请求占比提高、高峰时段切换到单价更高的备用模型是两个主要原因。</p>
+
+      <sc-if value="{{inline}}" hint-placeholder-val="{{false}}">
+        <section class="shell" aria-label="就这份报告提问" style="margin-top:20px;border-radius:14px;background:{{t.card}};box-shadow:{{t.sh2}};height:{{inlineH}}">
+          <div class="shh" style="border-bottom:1px solid {{t.border}}">
+            <span class="badge" style="box-shadow:inset 0 0 0 1px {{t.border}}">季度报告</span>
+            <h2 class="sub" style="margin:0 0 0 4px;font-size:14px;line-height:20px;font-weight:600;flex:1">就这份报告提问</h2>
+            <button type="button" class="ib hv" aria-label="历史对话" aria-haspopup="menu" style="color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5M12 7v5l3 2"></path></svg></button>
+            <button type="button" class="ib hv" aria-label="新对话" style="color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg></button>
+          </div>
+          <div class="col" style="flex:1;min-height:0;overflow:hidden;padding:16px 18px;gap:14px">
+            <sc-if value="{{started}}" hint-placeholder-val="{{true}}">
+              <div class="ubub" style="background:{{t.secondary}}">成本上升的两个原因里，哪个影响更大？</div>
+              <div class="row" style="gap:10px;align-items:flex-start">
+                <span class="av" aria-hidden="true" style="background:{{t.primary}};color:{{t.pfg}}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span>
+                <div class="col" style="flex:1;min-width:0;gap:6px"><p style="margin:0">报告 §3 没有给出拆分比例，但从描述看<strong>长文本请求</strong>的影响更大：它持续抬高单次输入长度，而备用模型只在高峰时段使用。</p>
+                  <div class="row" style="gap:0;margin-left:-6px;color:{{t.mfg}}"><button type="button" class="ib hv" aria-label="复制回复"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="14" height="14" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg></button><button type="button" class="ib hv" aria-label="有帮助"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"></path></svg></button><button type="button" class="ib hv" aria-label="没帮助"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14V2M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"></path></svg></button></div>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{notStarted}}" hint-placeholder-val="{{false}}">
+              <p style="margin:0;color:{{t.mfg}}">助手已读取这份报告，可以从下面的问题开始。</p>
+              <div class="row" role="group" aria-label="推荐问题" style="gap:8px;flex-wrap:wrap">
+                <button type="button" class="chip hv" style="box-shadow:inset 0 0 0 1px {{t.border}}">这份报告的核心结论是什么？</button>
+                <button type="button" class="chip hv" style="box-shadow:inset 0 0 0 1px {{t.border}}">列出三个主要风险</button>
+                <button type="button" class="chip hv" style="box-shadow:inset 0 0 0 1px {{t.border}}">生成一页摘要</button>
+              </div>
+            </sc-if>
+          </div>
+          <form aria-label="发送消息" style="padding:10px 12px 12px;border-top:1px solid {{t.border}}">
+            <div class="row" style="gap:6px;padding:6px 6px 6px 12px;border-radius:12px;border:1px solid {{t.border}};background:{{t.panel}}">
+              <label for="emb-in" class="sr">消息</label>
+              <input id="emb-in" placeholder="就「季度报告」提问…" style="flex:1;min-width:0;border:0;background:transparent;font:inherit;color:inherit;outline:none;height:28px">
+              <span class="cap" style="color:{{t.mfg}}">约 3 积分</span>
+              <button type="button" class="ib" aria-label="发送" style="background:{{t.primary}};color:{{t.pfg}};opacity:0.5"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7M12 19V5"></path></svg></button>
+            </div>
+          </form>
+        </section>
+      </sc-if>
+    </article>
+  </main>
+
+  <sc-if value="{{panel}}" hint-placeholder-val="{{true}}">
+    <section class="shell" aria-label="就这份报告提问" style="width:420px;flex-shrink:0;margin:8px 8px 8px 0;border-radius:14px;background:{{t.card}};box-shadow:{{t.sh2}}">
+      <div class="shh" style="border-bottom:1px solid {{t.border}}">
+        <span class="badge" style="box-shadow:inset 0 0 0 1px {{t.border}}">季度报告</span>
+        <h2 style="margin:0 0 0 4px;font-size:14px;line-height:20px;font-weight:600;flex:1">就这份报告提问</h2>
+        <button type="button" class="ib hv" aria-label="历史对话" aria-haspopup="menu" style="color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5M12 7v5l3 2"></path></svg></button>
+        <button type="button" class="ib hv" aria-label="新对话" style="color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg></button>
+        <button type="button" class="ib hv" aria-label="关闭" style="color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+      </div>
+      <div class="col" style="flex:1;min-height:0;overflow:hidden;padding:16px;gap:14px">
+        <sc-if value="{{started}}" hint-placeholder-val="{{true}}">
+          <div class="ubub" style="background:{{t.secondary}}">成本上升的两个原因里，哪个影响更大？</div>
+          <div class="row" style="gap:10px;align-items:flex-start">
+            <span class="av" aria-hidden="true" style="background:{{t.primary}};color:{{t.pfg}}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span>
+            <div class="col" style="flex:1;min-width:0;gap:6px"><p style="margin:0">报告 §3 没有给出拆分比例，但从描述看<strong>长文本请求</strong>的影响更大：它持续抬高单次输入长度，而备用模型只在高峰时段使用。</p>
+              <ul style="margin:0;padding-left:18px"><li>长文本：常态化，影响所有时段；</li><li>备用模型：只在高峰时段触发。</li></ul>
+              <div class="row" style="gap:0;margin-left:-6px;color:{{t.mfg}}"><button type="button" class="ib hv" aria-label="复制回复"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="14" height="14" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg></button><button type="button" class="ib hv" aria-label="有帮助"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"></path></svg></button><button type="button" class="ib hv" aria-label="没帮助"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14V2M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"></path></svg></button><span class="cap" style="margin-left:6px">2 积分</span></div>
+            </div>
+          </div>
+          <div class="col" style="gap:8px;padding-left:34px">
+            <span class="cap" style="color:{{t.mfg}}">继续追问</span>
+            <div class="col" style="gap:6px;align-items:flex-start">
+              <button type="button" class="chip hv" style="box-shadow:inset 0 0 0 1px {{t.border}}">怎样控制长文本请求的成本？</button>
+              <button type="button" class="chip hv" style="box-shadow:inset 0 0 0 1px {{t.border}}">和上季度相比有什么变化？</button>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{notStarted}}" hint-placeholder-val="{{false}}">
+          <div class="col" style="gap:10px;padding-top:24px">
+            <h3 style="margin:0;font-size:16px;line-height:22px;font-weight:600">就「季度报告」提问</h3>
+            <p style="margin:0;color:{{t.mfg}}">助手已读取这份报告，回答会标出引用的章节。</p>
+            <div class="col" role="group" aria-label="推荐问题" style="gap:6px;align-items:flex-start;margin-top:6px">
+              <button type="button" class="chip hv" style="box-shadow:inset 0 0 0 1px {{t.border}}">这份报告的核心结论是什么？</button>
+              <button type="button" class="chip hv" style="box-shadow:inset 0 0 0 1px {{t.border}}">列出三个主要风险</button>
+              <button type="button" class="chip hv" style="box-shadow:inset 0 0 0 1px {{t.border}}">生成一页摘要</button>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+      <form aria-label="发送消息" style="padding:10px 12px 12px;border-top:1px solid {{t.border}}">
+        <div class="col" style="border-radius:12px;border:1px solid {{t.border}};background:{{t.panel}}">
+          <label for="pan-in" class="sr">消息</label>
+          <textarea id="pan-in" rows="2" placeholder="就「季度报告」继续提问…" style="width:100%;resize:none;padding:10px 12px 2px;border:0;background:transparent;font-size:14px;line-height:20px;outline:none"></textarea>
+          <div class="row" style="gap:6px;padding:4px 6px 6px">
+            <span class="row" style="height:28px;gap:4px;padding:0 6px;font-size:12px;font-weight:500">通用模型<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></span>
+            <span style="flex:1"></span>
+            <span class="cap" style="color:{{t.mfg}}">约 3 积分</span>
+            <button type="button" class="ib" aria-label="发送" style="background:{{t.primary}};color:{{t.pfg}};opacity:0.5"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7M12 19V5"></path></svg></button>
+          </div>
+        </div>
+      </form>
+    </section>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"variant":{"editor":"enum","options":["panel","inline"],"default":"panel"},"state":{"editor":"enum","options":["inProgress","notStarted"],"default":"inProgress"},"$preview":{"width":1440,"height":900}}'>
+function uiTokens(dark) {
+  return dark ? {
+    bg: '#171717', panel: '#1e1e1e', card: '#252525', fg: '#f5f5f5', mfg: '#b0b0b0', primary: '#f5f5f5', pfg: '#171717', secondary: '#333333',
+    border: 'rgba(245,245,245,0.12)', sh2: 'inset 0 0 0 1px rgba(255,255,255,0.05), 0 4px 12px -4px rgba(0,0,0,0.4)'
+  } : {
+    bg: '#fafafa', panel: '#fcfcfc', card: '#ffffff', fg: '#171717', mfg: '#6b6b6b', primary: '#171717', pfg: '#fafafa', secondary: '#f4f4f5',
+    border: 'rgba(23,23,23,0.12)', sh2: '0 0 0 1px rgba(0,0,0,0.06), 0 4px 12px -4px rgba(0,0,0,0.08)'
+  };
+}
+class Component extends DCLogic {
+  renderVals() {
+    var variant = this.props.variant || 'panel';
+    var started = (this.props.state || 'inProgress') === 'inProgress';
+    return {
+      t: uiTokens(!!this.props.dark),
+      panel: variant === 'panel', inline: variant === 'inline',
+      started: started, notStarted: !started,
+      inlineH: started ? '420px' : '300px'
+    };
+  }
+}
+</script>
+</body>
+</html>

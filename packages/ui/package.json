@@ -13,6 +13,7 @@
     "./fonts": "./src/fonts.ts",
     "./icons": "./src/icons.ts",
     "./reader": "./src/reader.ts",
+    "./chat": "./src/chat.ts",
     "./share-card-theme": "./src/share-card-theme.ts"
   },
   "scripts": {

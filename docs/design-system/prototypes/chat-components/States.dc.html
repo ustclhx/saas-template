@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>消息状态与输入区</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit}
+.r{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;width:1440px;min-height:1560px;padding:48px 56px;display:flex;flex-direction:column;gap:32px}
+button,textarea{font:inherit;color:inherit;margin:0}
+button{cursor:pointer;border:0;background:none;padding:0}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.cap{font-size:12px;line-height:16px}
+.h{font-size:20px;line-height:28px;font-weight:600;margin:0}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+.spec{border-radius:12px;padding:20px 22px;display:flex;flex-direction:column;gap:14px}
+.lbl{font-size:12px;line-height:16px;font-weight:600;letter-spacing:0.02em}
+.amsg{display:flex;gap:12px}
+.av{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9999px;flex-shrink:0}
+.st{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:9999px;font-size:12px;line-height:16px;font-weight:500;align-self:flex-start}
+.think{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 8px 0 6px;border-radius:8px;font-size:13px;line-height:18px;align-self:flex-start}
+.tool{display:flex;flex-direction:column;border-radius:8px;font-size:13px;line-height:18px}
+.toolh{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px}
+.badge{display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 6px;border-radius:9999px;font-size:12px;line-height:16px;font-weight:500}
+.caret{display:inline-block;width:7px;height:15px;margin-left:2px;vertical-align:-2px;border-radius:1px;animation:bl 1s steps(2) infinite}
+@keyframes bl{50%{opacity:0}}
+.dots{display:inline-flex;gap:3px}.dots span{width:5px;height:5px;border-radius:9999px;animation:dt 1.2s ease-in-out infinite}
+.dots span:nth-child(2){animation-delay:.15s}.dots span:nth-child(3){animation-delay:.3s}
+@keyframes dt{0%,80%,100%{opacity:.25}40%{opacity:1}}
+.spin{animation:sp 1s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+.box{border-radius:12px}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;flex-shrink:0}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+svg{flex-shrink:0}
+sc-if,sc-for{display:contents}
+</style>
+</helmet>
+<div class="r" style="background:{{t.bg}};color:{{t.fg}}">
+  <div class="row" style="gap:16px">
+    <h1 class="h" style="flex:1">消息状态 · 工具调用 · 输入区</h1>
+    <button type="button" class="row" onClick="{{toggleTheme}}" style="gap:6px;height:32px;padding:0 12px;border-radius:8px;box-shadow:inset 0 0 0 1px {{t.border}};font-size:13px;font-weight:500">{{themeLabel}}</button>
+  </div>
+
+  <div class="grid">
+    <div class="col" style="gap:24px">
+      <section class="spec" style="background:{{t.card}};box-shadow:{{t.sh2}}">
+        <span class="lbl" style="color:{{t.mfg}}">ThinkingIndicator · 等待首个输出</span>
+        <div class="amsg"><span class="av" aria-hidden="true" style="background:{{t.primary}};color:{{t.pfg}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span>
+          <span class="think" style="color:{{t.mfg}}"><span class="dots" aria-hidden="true"><span style="background:{{t.mfg}}"></span><span style="background:{{t.mfg}}"></span><span style="background:{{t.mfg}}"></span></span>正在思考</span></div>
+        <span class="cap" style="color:{{t.mfg}}">减少动态效果时三点静止。</span>
+      </section>
+
+      <section class="spec" style="background:{{t.card}};box-shadow:{{t.sh2}}">
+        <span class="lbl" style="color:{{t.mfg}}">ChatMessage · 流式中</span>
+        <div class="amsg"><span class="av" aria-hidden="true" style="background:{{t.primary}};color:{{t.pfg}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span>
+          <p style="margin:0;flex:1">回访邮件可以分三段：先感谢上次的合作，再说明新版本解决了对方提过的导出问题，最后约一个<span class="caret" style="background:{{t.fg}}"></span></p></div>
+      </section>
+
+      <section class="spec" style="background:{{t.card}};box-shadow:{{t.sh2}}">
+        <span class="lbl" style="color:{{t.mfg}}">ThinkingSteps · 推理折叠 / 展开（受 reasoning.display 控制）</span>
+        <button type="button" class="think" aria-expanded="false" style="color:{{t.mfg}};box-shadow:inset 0 0 0 1px {{t.border}}">已思考 6 秒<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></button>
+        <div class="col" style="gap:6px">
+          <button type="button" class="think" aria-expanded="true" style="color:{{t.mfg}};box-shadow:inset 0 0 0 1px {{t.border}}">已思考 6 秒<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(90deg)"><path d="m9 18 6-6-6-6"></path></svg></button>
+          <div class="cap" style="padding:2px 0 2px 12px;border-left:2px solid {{t.border}};color:{{t.mfg}};line-height:18px">用户要的是回访邮件，语气应正式但不生硬。上次沟通提到导出卡顿，新版本已修复，可以作为开场的具体理由。</div>
+        </div>
+        <button type="button" class="think" aria-expanded="false" style="color:{{t.mfg}};box-shadow:inset 0 0 0 1px {{t.border}}"><span class="dots" aria-hidden="true"><span style="background:{{t.mfg}}"></span><span style="background:{{t.mfg}}"></span><span style="background:{{t.mfg}}"></span></span>思考中…<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></button>
+      </section>
+
+      <section class="spec" style="background:{{t.card}};box-shadow:{{t.sh2}}">
+        <span class="lbl" style="color:{{t.mfg}}">ChatMessage · 结束状态（正文保留，状态在正文下方）</span>
+        <div class="col" style="gap:6px">
+          <p style="margin:0">回访邮件可以分三段：先感谢上次的合作，再说明新版本解决了</p>
+          <span class="st" style="background:{{t.secondary}};color:{{t.mfg}}"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"></rect></svg>已停止</span>
+        </div>
+        <div style="height:1px;background:{{t.border}}"></div>
+        <div class="col" style="gap:6px">
+          <p style="margin:0">建议把内容合作的预算提高到每月 12 万元，并在第二个月复核</p>
+          <span class="row" style="gap:8px"><span class="st" style="background:{{t.warnSoft}};color:{{t.warn}}">未完成</span><span class="cap" style="color:{{t.mfg}}">连接中断，已按实际输出结算。</span></span>
+        </div>
+        <div style="height:1px;background:{{t.border}}"></div>
+        <div class="col" style="gap:6px">
+          <span class="row" style="gap:8px"><span class="st" style="background:{{t.destructiveSoft}};color:{{t.destructive}}"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>失败</span><span class="cap" style="color:{{t.mfg}}">模型服务暂时不可用，本次没有扣除积分。可以重新发送。</span></span>
+        </div>
+        <div style="height:1px;background:{{t.border}}"></div>
+        <div class="col" style="gap:6px">
+          <span class="row" style="gap:8px"><span class="st" style="background:{{t.secondary}};color:{{t.mfg}}"><svg class="spin" aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.6"></path></svg>重试中</span><span class="cap" style="color:{{t.mfg}}">首个输出前自动重试，用户无需操作。</span></span>
+        </div>
+      </section>
+
+      <section class="spec" style="background:{{t.card}};box-shadow:{{t.sh2}}">
+        <span class="lbl" style="color:{{t.mfg}}">ChatMarkdown · 安全处理</span>
+        <p style="margin:0">趋势见下图：<span class="cap" style="padding:2px 6px;border-radius:6px;box-shadow:inset 0 0 0 1px {{t.border}};color:{{t.mfg}}">图片：渠道趋势图</span></p>
+        <p style="margin:0">回复里的图片只显示替代文字；<code style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;padding:1px 5px;border-radius:5px;background:{{t.secondary}}">javascript:</code> 与 <code style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;padding:1px 5px;border-radius:5px;background:{{t.secondary}}">data:</code> 链接显示为普通文字；原始 HTML 丢弃。</p>
+      </section>
+    </div>
+
+    <div class="col" style="gap:24px">
+      <section class="spec" style="background:{{t.card}};box-shadow:{{t.sh2}}">
+        <span class="lbl" style="color:{{t.mfg}}">ToolCall · 四态（默认不展示参数与结果；项目注册渲染器后可展开）</span>
+        <div class="tool" style="box-shadow:inset 0 0 0 1px {{t.border}}"><div class="toolh">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+          <span style="font-weight:500;flex:1">查询报告数据</span><span class="badge" style="background:{{t.secondary}};color:{{t.mfg}}">准备中</span></div></div>
+        <div class="tool" style="box-shadow:inset 0 0 0 1px {{t.border}}"><div class="toolh">
+          <svg class="spin" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.6"></path></svg>
+          <span style="font-weight:500;flex:1">查询报告数据</span><span class="badge" style="background:{{t.accentSoft}};color:{{t.accent}}">执行中</span></div></div>
+        <div class="tool" style="box-shadow:inset 0 0 0 1px {{t.border}}">
+          <button type="button" class="toolh" aria-expanded="{{toolStr}}" onClick="{{toggleTool}}" style="width:100%;text-align:left">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+            <span style="font-weight:500;flex:1">查询报告数据</span><span class="badge" style="background:{{t.successSoft}};color:{{t.success}}"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>已完成</span>
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="{{toolChevron}}"><path d="m9 18 6-6-6-6"></path></svg>
+          </button>
+          <sc-if value="{{toolOpen}}" hint-placeholder-val="{{true}}">
+            <div class="cap" style="padding:8px 12px 10px 32px;border-top:1px solid {{t.border}};color:{{t.mfg}};line-height:18px">读取了「季度报告」第 3 章 · 3 个渠道 · 2 张表（由项目注册的渲染器决定显示什么）</div>
+          </sc-if>
+        </div>
+        <div class="tool" style="box-shadow:inset 0 0 0 1px {{t.border}}"><div class="toolh">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+          <span style="font-weight:500;flex:1">查询报告数据</span><span class="badge" style="background:{{t.destructiveSoft}};color:{{t.destructive}}">出错</span></div></div>
+        <div class="tool" style="box-shadow:inset 0 0 0 1px {{t.border}}"><div class="toolh">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+          <span style="font-weight:500;flex:1">工具</span><span class="badge" style="background:{{t.successSoft}};color:{{t.success}}">已完成</span></div></div>
+        <span class="cap" style="color:{{t.mfg}}">最后一行：未注册的工具只显示「工具」，不显示内部名称。</span>
+      </section>
+
+      <section class="spec" style="background:{{t.card}};box-shadow:{{t.sh2}}">
+        <span class="lbl" style="color:{{t.mfg}}">InputMessage · 四态（无附件按钮）</span>
+        <sc-for list="{{inputs}}" as="i" hint-placeholder-count="4">
+          <div class="col" style="gap:6px">
+            <span class="cap" style="color:{{t.mfg}}">{{i.label}}</span>
+            <div class="col box" style="background:{{i.bg}};border:1px solid {{t.border}};{{i.boxStyle}}">
+              <div style="padding:12px 14px 4px;min-height:44px;white-space:pre-line;{{i.textStyle}}">{{i.text}}</div>
+              <div class="row" style="gap:6px;padding:6px 8px 8px">
+                <span class="row" style="height:28px;gap:4px;padding:0 8px;font-size:12px;font-weight:500;{{i.textStyle}}">通用模型<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></span>
+                <span style="flex:1"></span>
+                <span class="cap" style="color:{{t.mfg}}">{{i.meta}}</span>
+                <sc-if value="{{i.stop}}" hint-placeholder-val="{{false}}"><span class="ib" role="img" aria-label="停止生成" style="background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"></rect></svg></span></sc-if>
+                <sc-if value="{{i.send}}" hint-placeholder-val="{{true}}"><span class="ib" role="img" aria-label="发送" style="background:{{t.primary}};color:{{t.pfg}};{{i.sendStyle}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7M12 19V5"></path></svg></span></sc-if>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+      </section>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1560}}'>
+function uiTokens(dark) {
+  return dark ? {
+    bg: '#171717', card: '#1e1e1e', fg: '#f5f5f5', mfg: '#b0b0b0', primary: '#f5f5f5', pfg: '#171717', secondary: '#2c2c2c', disabledBg: '#252525',
+    destructive: '#fca5a5', destructiveSoft: 'rgba(252,165,165,0.15)', success: '#4ade80', successSoft: 'rgba(74,222,128,0.14)',
+    warn: '#fcd34d', warnSoft: 'rgba(252,211,77,0.14)', accent: '#93b4fb', accentSoft: 'rgba(79,134,247,0.18)',
+    border: 'rgba(245,245,245,0.12)', sh2: 'inset 0 0 0 1px rgba(255,255,255,0.04)'
+  } : {
+    bg: '#fafafa', card: '#ffffff', fg: '#171717', mfg: '#6b6b6b', primary: '#171717', pfg: '#fafafa', secondary: '#f4f4f5', disabledBg: '#f4f4f5',
+    destructive: '#b91c1c', destructiveSoft: 'rgba(185,28,28,0.1)', success: '#15803d', successSoft: 'rgba(21,128,61,0.1)',
+    warn: '#a16207', warnSoft: 'rgba(161,98,7,0.1)', accent: '#1d4ed8', accentSoft: 'rgba(59,130,246,0.12)',
+    border: 'rgba(23,23,23,0.12)', sh2: '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06)'
+  };
+}
+class Component extends DCLogic {
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var pd = !!this.props.dark;
+    var dark = st.od && st.od.base === pd ? st.od.val : pd;
+    var t = uiTokens(dark);
+    var toolOpen = st.tool === undefined ? true : st.tool;
+    var muted = 'color:' + t.mfg;
+    var inputs = [
+      { label: '空（发送不可用）', text: '输入消息，Enter 发送，Shift+Enter 换行', textStyle: muted, meta: '预计 4 积分', send: true, stop: false, sendStyle: 'opacity:0.5', bg: t.card, boxStyle: '' },
+      { label: '多行（到上限后框内滚动）', text: '帮我把下面三点写成邮件：\n1. 新版本修复了导出卡顿\n2. 下周二可以安排演示\n3. 续费价格不变', textStyle: '', meta: '预计 4 积分', send: true, stop: false, sendStyle: '', bg: t.card, boxStyle: '' },
+      { label: '生成中（发送换成停止，焦点留在输入框）', text: '', textStyle: muted, meta: '正在生成', send: false, stop: true, sendStyle: '', bg: t.card, boxStyle: '' },
+      { label: '不可用（只读空间）', text: '当前空间为只读，不能发送消息', textStyle: muted, meta: '', send: true, stop: false, sendStyle: 'opacity:0.4', bg: t.disabledBg, boxStyle: 'opacity:0.85' }
+    ];
+    return {
+      t: t, inputs: inputs,
+      themeLabel: dark ? '切换到浅色' : '切换到深色',
+      toggleTheme: function () { self.setState({ od: { base: pd, val: !dark } }); },
+      toolOpen: toolOpen, toolStr: toolOpen ? 'true' : 'false',
+      toolChevron: toolOpen ? 'transform:rotate(90deg)' : '',
+      toggleTool: function () { self.setState({ tool: !toolOpen }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

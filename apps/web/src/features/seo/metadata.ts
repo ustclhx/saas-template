@@ -1,6 +1,7 @@
 import type { AnyRouteMatch } from '@tanstack/react-router'
 import { templateConfig } from '../../server/template-config.ts'
 import { isAppAreaPath } from '../i18n/app-area.ts'
+import { homePageCopy } from './home-copy.ts'
 
 export interface SeoPage {
   path: string
@@ -40,12 +41,7 @@ export function alternateLinks(
 export function staticPage(path: string, locale: string): SeoPage {
   const zh = locale === 'zh'
   const copy: Record<string, [string, string]> = {
-    '/': zh
-      ? ['AI 工作空间', '在一个工作空间中使用 AI 对话、创作与团队协作。']
-      : [
-          'Your AI workspace',
-          'AI conversations, creation and team collaboration in one workspace.',
-        ],
+    '/': homePageCopy(locale),
     '/pricing': zh
       ? ['定价与套餐', '比较订阅套餐与积分包，选择适合你的 AI 工作空间。']
       : ['Pricing and plans', 'Compare subscriptions and credit packs for your AI workspace.'],
