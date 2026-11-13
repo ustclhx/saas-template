@@ -163,11 +163,9 @@ export function checkEnvs(app, config) {
     ['production', production],
   ]
   const namespaces = new Map()
-  // 只校验声明了限流的配置；不含任何 ratelimits 的片段（如单项规则的测试输入）不适用。
-  const declaresRateLimits = environments.some(([, env]) => env.ratelimits)
   for (const [environment, env] of environments) {
     const names = new Set((env.ratelimits ?? []).map((item) => item.name))
-    for (const name of declaresRateLimits ? (REQUIRED_RATE_LIMITS[app] ?? []) : [])
+    for (const name of REQUIRED_RATE_LIMITS[app] ?? [])
       if (!names.has(name)) problems.push(`${app}: ${environment} is missing ratelimit ${name}`)
     for (const item of env.ratelimits ?? []) {
       const owner = namespaces.get(item.namespace_id)

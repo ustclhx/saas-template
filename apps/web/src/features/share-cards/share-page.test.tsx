@@ -48,6 +48,7 @@ const definition = (type: string, extra: Partial<ShareCardDefinition<Data>> = {}
 const card = definition('page-test')
 definition('page-off-test', { sharePage: false })
 definition('page-month-test', { ttlDays: 30 })
+definition('page-long-test', { tokenPattern: /^a+$/ })
 
 function deps(overrides: Partial<ShareLookupDeps> = {}) {
   const revoked = new Set<string>()
@@ -90,6 +91,23 @@ describe('share lookup', () => {
     expect(limit).not.toHaveBeenCalled()
     // 关闭通用分享页只影响 /s/，项目自建页面的元数据仍可解析。
     expect((await lookupShare(d, { type: 'page-off-test', token, page: false })).status).toBe('ok')
+  })
+
+  it('rejects bad and over-long tokens before reading KV', async () => {
+    const get = vi.fn(async () => null)
+    const { deps: base, limit } = deps()
+    const d = { ...base, cache: { get } }
+    for (const bad of ['short', `${token}!`, 'a'.repeat(65), 'a'.repeat(4096)])
+      expect((await lookupShare(d, { type: 'page-test', token: bad, page: true })).status).toBe(
+        'not-found',
+      )
+    // 自定义格式放行超长令牌时，长度上限仍在读 KV 之前拦截（KV 键最长 512 字节）。
+    expect(
+      (await lookupShare(d, { type: 'page-long-test', token: 'a'.repeat(600), page: true })).status,
+    ).toBe('not-found')
+    expect(get).not.toHaveBeenCalled()
+    expect(limit).not.toHaveBeenCalled()
+    expect(resolve).not.toHaveBeenCalled()
   })
 
   it('checks the revocation mark and token format before resolve or rate limiting', async () => {
@@ -191,6 +209,31 @@ describe('share page loader and metadata', () => {
     )
     // 页面数据不下发空间 ID 等解析结果。
     expect(JSON.stringify(view)).not.toContain('workspace-1')
+  })
+
+  it('caps the edge cache at the remaining lifetime and treats under one second as expired', async () => {
+    const d = deps({ now: new Date() })
+    const soon = 'soonsoonsoonsoonsoonsoon'
+    shares.set(soon, {
+      workspaceId: 'workspace-1',
+      sharedAt: new Date(Date.now() - 86_400_000),
+      expiresAt: new Date(Date.now() + 120_500),
+      data: { title: 'Soon', description: 'Soon' },
+    })
+    const { response, view } = await documentRequest(d.deps, 'page-test', soon)
+    expect(view?.status).toBe('ok')
+    const maxAge = Number(/s-maxage=(\d+)/.exec(response?.headers.get('cache-control') ?? '')?.[1])
+    expect(maxAge).toBeGreaterThan(100)
+    expect(maxAge).toBeLessThanOrEqual(120)
+    shares.set(soon, {
+      ...(shares.get(soon) as ShareResolution<Data>),
+      expiresAt: new Date(Date.now() + 500),
+    })
+    current.request = new Request('https://app.example/s/page-test/soon-again')
+    const nearly = await documentRequest(deps({ now: new Date() }).deps, 'page-test', soon)
+    expect(nearly.view).toEqual({ status: 'expired' })
+    expect(nearly.response?.headers.get('x-robots-tag')).toBe('noindex')
+    expect(nearly.response?.status).toBe(404)
   })
 
   it('maps the four 404 cases and keeps noindex; rate limits answer 429 before rendering', async () => {

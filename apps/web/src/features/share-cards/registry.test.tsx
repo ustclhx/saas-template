@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { isShareCardExpired, shareCardExpiresAt } from './expiry.ts'
 import { defaultShareTokenPattern, getShareCard, registerShareCard } from './registry.ts'
 import { registerSampleShareCard, sampleShareToken } from './sample.ts'
@@ -25,6 +25,28 @@ describe('share card registry', () => {
     expect(registered.sharePage).toBe(true)
     expect(() => registerShareCard(definition)).toThrow(/already registered/)
     expect(() => registerShareCard({ ...definition, type: '../invalid' })).toThrow(TypeError)
+  })
+
+  it('replaces a re-registered type on dev reloads and still rejects duplicates otherwise', () => {
+    const type = 'reload-test'
+    registerShareCard({ ...definition, type })
+    // 开发服务器热更新重新执行注册入口：新定义替换旧定义，不让 /s/ 返回 500。
+    vi.stubEnv('MODE', 'development')
+    vi.stubEnv('DEV', true)
+    try {
+      const reloaded = registerShareCard({ ...definition, type, version: 2 })
+      expect(getShareCard(type)).toBe(reloaded)
+      expect(getShareCard(type)?.version).toBe(2)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+    vi.stubEnv('DEV', false)
+    vi.stubEnv('MODE', 'production')
+    try {
+      expect(() => registerShareCard({ ...definition, type })).toThrow(/already registered/)
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('keeps per-type token, expiry and share-page choices', () => {

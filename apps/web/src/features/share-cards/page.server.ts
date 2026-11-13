@@ -2,7 +2,7 @@ import { getRequest } from '@tanstack/react-start/server'
 import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import { absoluteUrl } from '../seo/metadata.ts'
-import { lookupShare, type ShareLookup } from './lookup.ts'
+import { lookupShare, remainingSeconds, type ShareLookup } from './lookup.ts'
 import { shareLookupDeps } from './meta.server.ts'
 import { buildShareCardMeta } from './meta.ts'
 import { type SharePageView, sharePageView } from './page.ts'
@@ -10,15 +10,21 @@ import { type SharePageView, sharePageView } from './page.ts'
 /** 文档请求在渲染前已查找过的结果；SSR 内调用的 server function 复用它，避免重复消耗限流配额。 */
 const documentLookups = new WeakMap<Request, ShareLookup>()
 
-export const sharePageHeaders = {
-  'cache-control': 'public, s-maxage=300',
-  'x-robots-tag': 'noindex',
-} as const
+/** 分享页边缘缓存上限 5 分钟；有效分享不超过剩余有效期，到期后边缘不再返回旧页面。 */
+export const SHARE_PAGE_MAX_AGE = 300
+
+export function sharePageHeaders(result: ShareLookup, now = new Date()) {
+  const seconds =
+    result.status === 'ok'
+      ? Math.min(SHARE_PAGE_MAX_AGE, remainingSeconds(result.expiresAt, now))
+      : SHARE_PAGE_MAX_AGE
+  return { 'cache-control': `public, s-maxage=${seconds}`, 'x-robots-tag': 'noindex' }
+}
 
 /**
  * `/s/$type/$token` 文档请求的服务端入口（design 第 8、9 条）：渲染前完成撤销、格式、限流、
  * 解析与到期检查。限流直接返回 429（页面渲染只能给出 200 / 404 / 500）；其余结果交给页面渲染，
- * 再统一加上 5 分钟边缘缓存与 noindex。每次访问都会调用项目的 resolve（会查库），访问来自
+ * 再统一加上边缘缓存（最多 5 分钟且不超过剩余有效期）与 noindex。每次访问都会调用项目的 resolve（会查库），访问来自
  * 真实访客与平台抓取器；撤销最迟 5 分钟后生效，失效函数写入的 KV 标记先于 resolve 检查。
  */
 export async function handleSharePageRequest<N>({
@@ -49,7 +55,8 @@ export async function handleSharePageRequest<N>({
   const ctx = await next()
   // 渲染结果的响应头可写；404 也带同样的缓存与 noindex。
   const response = (ctx as { response?: Response } | undefined)?.response
-  for (const [name, value] of Object.entries(sharePageHeaders)) response?.headers.set(name, value)
+  for (const [name, value] of Object.entries(sharePageHeaders(result)))
+    response?.headers.set(name, value)
   return ctx
 }
 
