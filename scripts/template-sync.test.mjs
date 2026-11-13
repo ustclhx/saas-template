@@ -407,6 +407,43 @@ test('clean sync applies renamed changes, keeps project values, ports migrations
   assert.match(await readFile(again.reportPath, 'utf8'), /目标未发布/)
 })
 
+test('sync adds share card extensions once and preserves project registration and theme later', async (t) => {
+  const template = await fakeTemplate(t)
+  const project = await fakeProject(t, template)
+  const registration = 'apps/web/src/features/share-cards/share-cards.project.ts'
+  const theme = 'apps/web/src/features/share-cards/share-cards.theme.ts'
+  await template.commit(
+    { [registration]: 'export const registration = 1\n', [theme]: 'export const theme = 1\n' },
+    'share card extensions',
+    'template-v0.2.0',
+  )
+  const { runner } = stubRunner()
+  const first = await runSync({ project: project.dir, template: template.dir, runner, log: quiet })
+  assert.equal(first.status, 'synced')
+  assert.equal(
+    await readFile(join(project.dir, registration), 'utf8'),
+    'export const registration = 1\n',
+  )
+  git(project.dir, 'switch', '--quiet', 'main')
+  git(project.dir, 'merge', '--quiet', '--ff-only', first.branch)
+  await project.change({
+    [registration]: '// project registrations\n',
+    [theme]: '// project brand\n',
+  })
+  await template.commit(
+    { [registration]: 'export const registration = 2\n', [theme]: null },
+    'template extension changes',
+    'template-v0.3.0',
+  )
+  const second = await runSync({ project: project.dir, template: template.dir, runner, log: quiet })
+  assert.equal(second.status, 'synced')
+  assert.equal(
+    await readFile(join(project.dir, registration), 'utf8'),
+    '// project registrations\n',
+  )
+  assert.equal(await readFile(join(project.dir, theme), 'utf8'), '// project brand\n')
+})
+
 test('conflicts keep markers on the sync branch, list every file and leave the baseline unchanged', async (t) => {
   const template = await fakeTemplate(t)
   const project = await fakeProject(t, template)

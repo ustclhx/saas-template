@@ -19,7 +19,7 @@ import {
 } from '@saas/platform/cloudflare'
 import { AppError, toErrorResponse } from '@saas/shared'
 import { log, withLogContext } from '@saas/shared/log'
-import { getFileDownload } from '@saas/storage'
+import { createShareCardInvalidator, getFileDownload } from '@saas/storage'
 import { createCloudflareStorage } from '@saas/storage/cloudflare'
 import { createStartHandler, defaultStreamHandler } from '@tanstack/react-start/server'
 import { APIError } from 'better-auth/api'
@@ -212,6 +212,10 @@ function createCloudflareWebRuntime(
       rateLimiter,
       clientIp: requestMeta.clientIp,
       sendEmail,
+      ...(files.shareCards && {
+        cleanupShareCards: createShareCardInvalidator(files.shareCards, cache)
+          .cleanupWorkspaceShareCards,
+      }),
       deletionSteps: createBillingDeletionSteps(config, db, cache),
       onUserSignedUp: createSignUpRecorder({
         db,

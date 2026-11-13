@@ -306,6 +306,9 @@ generatorTest(
     await f.file('packages/ui/src/components/button.tsx', component)
     await f.file('packages/ui/components.lock.json', lock)
     await f.file('apps/web/src/features/theme/html-attributes.ts', htmlAttributes)
+    const shareCardFiles = ['share-cards.project.ts', 'share-cards.theme.ts']
+    for (const name of shareCardFiles)
+      await f.file(`apps/web/src/features/share-cards/${name}`, htmlAttributes)
     await f.file('docs/design-system/prototypes/review.html', 'TEMPLATE_PROTOTYPE_SENTINEL')
     await f.file('scripts/check-ui.allow.local.json', '{"exceptions":{"old-project":[]}}')
     const result = await createProject(f.input, f.source)
@@ -345,6 +348,11 @@ generatorTest(
       await readFile(join(result.target, 'apps/web/src/features/theme/html-attributes.ts')),
       htmlAttributes,
     )
+    for (const name of shareCardFiles)
+      assert.deepEqual(
+        await readFile(join(result.target, `apps/web/src/features/share-cards/${name}`)),
+        htmlAttributes,
+      )
   },
 )
 

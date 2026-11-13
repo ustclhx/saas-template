@@ -7,6 +7,7 @@ import { defineTemplateConfig } from '@saas/config'
  */
 export default defineTemplateConfig({
   app: { name: 'MyApp', url: 'https://example.com', supportEmail: 'support@example.com' },
+  shareCards: { defaultTtlDays: 90 },
   i18n: { enabled: true, locales: ['en', 'zh'], defaultLocale: 'en' },
   tenancy: {
     multiTenant: false, // false = 仅个人空间；true = 允许团队 workspace

@@ -12,7 +12,8 @@
     "./globals.css": "./src/styles/globals.css",
     "./fonts": "./src/fonts.ts",
     "./icons": "./src/icons.ts",
-    "./reader": "./src/reader.ts"
+    "./reader": "./src/reader.ts",
+    "./share-card-theme": "./src/share-card-theme.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

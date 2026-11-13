@@ -159,6 +159,10 @@ export interface TemplateConfig<L extends string = string> {
     /** 真实登录用户访问 App 时领取每日积分，默认关闭。 */
     readonly dailyEnabled: boolean
   }
+  readonly shareCards: {
+    /** 分享默认有效天数；null 表示永不过期。 */
+    readonly defaultTtlDays: number | null
+  }
   readonly marketing: {
     readonly enabled: boolean
     /**
@@ -248,6 +252,7 @@ export interface TemplateConfigInput<L extends string = DefaultLocale> {
     overage?: Partial<Section<'billing'>['overage']>
   }
   credits?: Partial<Section<'credits'>>
+  shareCards?: Partial<Section<'shareCards'>>
   marketing?: {
     enabled?: boolean
     stats?: {
@@ -291,6 +296,7 @@ export const templateConfigDefaults = {
     refundWindowDays: 30,
   },
   credits: { enabled: true, dailyEnabled: false },
+  shareCards: { defaultTtlDays: 90 },
   marketing: {
     enabled: true,
     stats: { items: [], source: null },
@@ -385,6 +391,7 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
       overage: { ...d.billing.overage, ...input.billing?.overage },
     },
     credits: { ...d.credits, ...input.credits },
+    shareCards: { ...d.shareCards, ...input.shareCards },
     marketing: {
       enabled: input.marketing?.enabled ?? d.marketing.enabled,
       stats: { ...d.marketing.stats, ...input.marketing?.stats },
@@ -401,6 +408,13 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
     },
     features: { ...d.features, ...input.features },
     analytics: { ...d.analytics, ...input.analytics },
+  }
+
+  const ttlDays = config.shareCards.defaultTtlDays
+  if (ttlDays !== null && (!Number.isInteger(ttlDays) || ttlDays <= 0)) {
+    throw new RangeError(
+      'template config: shareCards.defaultTtlDays must be a positive integer or null',
+    )
   }
 
   // 背书条桌面端按 4 列排布；数值为空串时会渲染出空格子

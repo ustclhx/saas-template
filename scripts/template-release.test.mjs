@@ -356,6 +356,16 @@ for (const [name, mutate] of malformedDocs) {
 }
 
 for (const [file, initial, modifiedContent] of [
+  [
+    'apps/web/src/features/share-cards/share-cards.project.ts',
+    'export function registerProjectShareCards() {}\n',
+    "import './registry.ts'\n",
+  ],
+  [
+    'apps/web/src/features/share-cards/share-cards.theme.ts',
+    'export const projectShareCardTheme = {}\n',
+    "export const projectShareCardTheme = { background: '#000000' }\n",
+  ],
   ['apps/web/src/styles/brand.css', '/* 项目品牌层示例 */\n', ':root { --primary: #000000; }\n'],
   [
     'apps/web/src/features/theme/html-attributes.ts',

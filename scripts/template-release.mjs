@@ -40,6 +40,14 @@ const migrationPath = /^packages\/db\/migrations\/[^/]+\.sql$/
 // 项目自有文件：模板创建后不再修改，衍生项目 template-sync 时才不会在这里冲突。
 export const brandPath = 'apps/web/src/styles/brand.css'
 const projectOwnedFiles = [
+  {
+    path: 'apps/web/src/features/share-cards/share-cards.project.ts',
+    guidance: 'put template share card registration outside the project-owned extension',
+  },
+  {
+    path: 'apps/web/src/features/share-cards/share-cards.theme.ts',
+    guidance: 'put template share card tokens in packages/ui/src/share-card-theme.ts',
+  },
   { path: brandPath, guidance: 'put template token changes in packages/ui/src/styles' },
   {
     path: 'apps/web/src/features/theme/html-attributes.ts',

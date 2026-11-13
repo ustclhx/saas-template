@@ -12,7 +12,7 @@ import {
 } from '@saas/platform/node'
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
-import { getFileDownload } from '@saas/storage'
+import { createShareCardInvalidator, getFileDownload } from '@saas/storage'
 import { createNodeStorage } from '@saas/storage/node'
 import { APIError } from 'better-auth/api'
 import { z } from 'zod'
@@ -167,6 +167,10 @@ export async function createNodeWebProcess(
           appName: templateConfig.app.name,
           appUrl: config.APP_URL,
           resolveLocale: userLocaleByEmail(database),
+        }),
+        ...(storage?.shareCards && {
+          cleanupShareCards: createShareCardInvalidator(storage.shareCards, cache.kv('settings'))
+            .cleanupWorkspaceShareCards,
         }),
         deletionSteps: createBillingDeletionSteps(config, database, authCache),
         onUserSignedUp: createSignUpRecorder({

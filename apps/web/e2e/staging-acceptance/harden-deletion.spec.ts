@@ -574,7 +574,14 @@ test('删号后清理任务：团队空间中 B 的对话、消息与媒体任�
     const worktree = loadEnv('worktree', new URL('../../../../', import.meta.url).pathname, '')
     const db = createDb({ connectionString: worktree.DATABASE_URL ?? '' })
     try {
-      await runWorkspaceCleanup({ db: { business: () => db } as never })
+      // 本场景仅清理 AI 内容，不装配分享对象存储；误触 KV 时明确失败。
+      const noCache = async (): Promise<never> => {
+        throw new Error('AI cleanup fixture must not access KV')
+      }
+      await runWorkspaceCleanup({
+        db: { business: () => db } as never,
+        cache: { get: noCache, put: noCache, delete: noCache },
+      })
     } finally {
       await db.$client.end()
     }
