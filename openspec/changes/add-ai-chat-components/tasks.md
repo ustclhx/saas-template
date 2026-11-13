@@ -21,10 +21,10 @@
 
 ## 3. 对话 Markdown（`packages/ui`，线 B）
 
-- [ ] 3.1 从 `reader-markdown.tsx` 抽出阅读器与对话共用的 react-markdown 选项（`skipHtml`、`allowedElements`、`urlTransform`）到 `lib/markdown.ts` 一侧（design D3），阅读器行为不变。验证：阅读器现有单测与 `/dev/ui/reader` 相关 e2e 通过，无快照变化。
-- [ ] 3.2 新增 `chat-markdown.tsx` 与代码块组件（design D3）：对话排版档、图片策略固定 `none`（显示替代文字）、外链 `rel`、按消息 id 的 `clobberPrefix`、代码块等宽 + 语言名 + 复制按钮（`labels.copy` / `copied` / `copyFailed`，`role="status"` 播报）、代码块与表格可聚焦的横向滚动容器。验证：单测覆盖 `<script>` / `<img onerror>` / `<iframe>` 不产生元素、`javascript:` 与 `data:` 链接为纯文字、外部图片不产生 `<img>`、复制按钮写入剪贴板的文本不含语言名、剪贴板拒绝时显示失败文案且无未处理异常、两条消息各有脚注时 id 不冲突。
-- [ ] 3.3 流式按块增量渲染（design D4）：`streaming` 时按顶层块切分，已完成的块 memo，结束后整段渲染；切分异常回退整段。验证：夹具（未闭合代码块、只有表头的表格、未闭合强调与链接、嵌套列表、脚注）逐字符流式渲染，每一步不抛错，最终输出与整段渲染的 HTML 相同；已完成块在后续输入时不重新渲染（渲染计数断言）。
-- [ ] 3.4 `ChatMarkdown` 经 `@saas/ui/chat` 导出（与线 A 同一入口文件，冲突时合并导出行）；`check-home-bundle.mjs` 增加对话代码块标记；`UPSTREAM.md` 登记 `chat-markdown.tsx` 为模板新增；`pnpm ui:lock`。验证：`pnpm --filter @saas/web build` 通过；首页包检查单测中模拟首页静态导入 `@saas/ui/chat` 时检查失败。
+- [x] 3.1 从 `reader-markdown.tsx` 抽出阅读器与对话共用的 react-markdown 选项（`skipHtml`、`allowedElements`、`urlTransform`）到 `lib/markdown.ts` 一侧（design D3），阅读器行为不变。验证：阅读器现有单测与 `/dev/ui/reader` 相关 e2e 通过，无快照变化。
+- [x] 3.2 新增 `chat-markdown.tsx` 与代码块组件（design D3）：对话排版档、图片策略固定 `none`（显示替代文字）、外链 `rel`、按消息 id 的 `clobberPrefix`、代码块等宽 + 语言名 + 复制按钮（`labels.copy` / `copied` / `copyFailed`，`role="status"` 播报）、代码块与表格可聚焦的横向滚动容器。验证：单测覆盖 `<script>` / `<img onerror>` / `<iframe>` 不产生元素、`javascript:` 与 `data:` 链接为纯文字、外部图片不产生 `<img>`、复制按钮写入剪贴板的文本不含语言名、剪贴板拒绝时显示失败文案且无未处理异常、两条消息各有脚注时 id 不冲突。
+- [x] 3.3 流式按块增量渲染（design D4）：`streaming` 时按顶层块切分，已完成的块 memo，结束后整段渲染；切分异常回退整段。验证：夹具（未闭合代码块、只有表头的表格、未闭合强调与链接、嵌套列表、脚注）逐字符流式渲染，每一步不抛错，最终输出与整段渲染的 HTML 相同；已完成块在后续输入时不重新渲染（渲染计数断言）。
+- [x] 3.4 `ChatMarkdown` 经 `@saas/ui/chat` 导出（与线 A 同一入口文件，冲突时合并导出行）；`check-home-bundle.mjs` 增加对话代码块标记；`UPSTREAM.md` 登记 `chat-markdown.tsx` 为模板新增；`pnpm ui:lock`。验证：`pnpm --filter @saas/web build` 通过；首页包检查单测中模拟首页静态导入 `@saas/ui/chat` 时检查失败。
 
 ## 4. 适配层与对话页（`apps/web`，线 C）
 

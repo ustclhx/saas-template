@@ -1,20 +1,16 @@
 // 来源：无（模板新增，openspec add-ui-design-system tasks 8.4）。阅读器的 Markdown 渲染层：
-// react-markdown + remark-gfm，丢弃原始 HTML，元素白名单与链接 / 图片协议白名单见 lib/markdown.ts。
+// react-markdown + remark-gfm，丢弃原始 HTML，元素白名单与链接 / 图片协议白名单见 lib/markdown.ts（与对话 Markdown 共用）。
 import { memo, useMemo } from 'react'
-import Markdown, { type Components, type Options } from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import Markdown, { type Components } from 'react-markdown'
 import {
   isAllowedImage,
   isExternalUrl,
-  MARKDOWN_ALLOWED_ELEMENTS,
+  MARKDOWN_SAFE_OPTIONS,
   type MarkdownImagePolicy,
   type ReaderHeading,
   rehypeHeadingIds,
-  safeMarkdownUrl,
 } from '../lib/markdown.ts'
 import { cn } from '../lib/utils.ts'
-
-const REMARK_PLUGINS: Options['remarkPlugins'] = [remarkGfm]
 
 // 正文排版：桌面与移动两档取自画板的 .md 样式；h2 打印时从新页开始（第一节紧跟标题不分页）
 const baseComponents: Components = {
@@ -224,13 +220,9 @@ export const ReaderMarkdown = memo(function ReaderMarkdown({
   )
   return (
     <Markdown
-      skipHtml
-      allowedElements={MARKDOWN_ALLOWED_ELEMENTS}
-      unwrapDisallowed
-      remarkPlugins={REMARK_PLUGINS}
+      {...MARKDOWN_SAFE_OPTIONS}
       rehypePlugins={rehypePlugins}
       remarkRehypeOptions={remarkRehypeOptions}
-      urlTransform={safeMarkdownUrl}
       components={componentsFor(images)}
     >
       {markdown}
