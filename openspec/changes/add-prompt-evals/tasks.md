@@ -32,14 +32,14 @@
 
 ## 6. 模板交付
 
-- [ ] 6.1 `scripts/template-release.mjs` 增加检查：模板仓库中根目录 `evals/` 下不得有被跟踪的文件（design D12）。验证：`scripts/template-release.test.mjs` 新增正反用例，`node scripts/template-release.mjs check` 通过。
+- [x] 6.1 `scripts/template-release.mjs` 增加检查：模板仓库中根目录 `evals/` 下不得有被跟踪的文件（design D12）。验证：`scripts/template-release.test.mjs` 新增正反用例，`node scripts/template-release.mjs check` 通过。
 - [ ] 6.2 生成器：确认 `pnpm create-project` 原样复制 `packages/evals`，生成的项目中示例套件可离线运行。验证：`scripts/create-project.verify.test.mjs` 增加一步在生成的副本中运行 `pnpm eval:prompts --suite example` 并断言退出码 0；`pnpm test:create-project` 与 `pnpm test:create-project:verify` 通过。
 
 ## 7. 文档与升级说明
 
-- [ ] 7.1 `docs/06-ai.md` 在 §3「对象对话、推荐追问与评分」之后新增「提示词版本与评测（add-prompt-evals）」：`definePrompt` 与版本不可变约定、锁文件与报错含义、项目生成表的 `prompt_version` 建议列与日志字段、套件目录结构、样本须为合成数据、三种模式与 `--budget-usd` 的估算方式、评委与评分标准、报告位置与基线对比、退出码表、真实评测不进 CI、类型剥离对 TS 语法的限制。`docs/02-project-structure.md` 登记 `packages/evals` 与根目录 `evals/`，AGENTS.md 常用命令表加 `pnpm eval:prompts`。验证：文档中的命令在本地照着执行可得到报告。
-- [ ] 7.2 `new-module` 技能加入「AI 生成功能」的提示词版本与评测步骤（定义提示词、保存 `promptVersion`、建套件、先录制后回放）。验证：`.agents/skills/new-module/SKILL.md` 与 `.claude/skills/new-module/SKILL.md` 用 `cmp` 比对一致，`node --test scripts/agent-skills.test.mjs` 通过。
-- [ ] 7.3 起草下一版本升级说明 `docs/upgrades/<下一版本>.md`：无迁移、无部署变化；新包与根脚本、`@saas/ai` 新导出、`check-deps` 新规则、项目自有目录 `evals/`、衍生项目接入步骤（含在自有生成表加 `prompt_version` 的建议）。验证：`node scripts/template-release.mjs check` 通过。
+- [x] 7.1 `docs/06-ai.md` 在 §3「对象对话、推荐追问与评分」之后新增「提示词版本与评测（add-prompt-evals）」：`definePrompt` 与版本不可变约定、锁文件与报错含义、项目生成表的 `prompt_version` 建议列与日志字段、套件目录结构、样本须为合成数据、三种模式与 `--budget-usd` 的估算方式、评委与评分标准、报告位置与基线对比、退出码表、真实评测不进 CI、类型剥离对 TS 语法的限制。`docs/02-project-structure.md` 登记 `packages/evals` 与根目录 `evals/`，AGENTS.md 常用命令表加 `pnpm eval:prompts`。验证：文档中的命令在本地照着执行可得到报告。
+- [x] 7.2 `new-module` 技能加入「AI 生成功能」的提示词版本与评测步骤（定义提示词、保存 `promptVersion`、建套件、先录制后回放）。验证：`.agents/skills/new-module/SKILL.md` 与 `.claude/skills/new-module/SKILL.md` 用 `cmp` 比对一致，`node --test scripts/agent-skills.test.mjs` 通过。
+- [x] 7.3 起草下一版本升级说明 `docs/upgrades/<下一版本>.md`：无迁移、无部署变化；新包与根脚本、`@saas/ai` 新导出、`check-deps` 新规则、项目自有目录 `evals/`、衍生项目接入步骤（含在自有生成表加 `prompt_version` 的建议）。验证：`node scripts/template-release.mjs check` 通过。
 
 ## 8. 验收
 

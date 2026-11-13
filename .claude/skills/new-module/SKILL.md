@@ -52,6 +52,15 @@ cat apps/web/src/features/notifications/notifications.functions.ts apps/web/src/
    新卡片版式或自建分享页先转 `ui-design` 取得设计稿，页面部分按 `new-page` 实现。
 5. 测试覆盖：`resolve` 对撤销、到期、跨空间与已删除资源返回 `null`，撤销与删除流程调用失效函数。
 
+**AI 生成功能（用固定提示词生成并保存报告、文案等）**：完整阅读 `docs/06-ai.md` §3「提示词版本与评测」，按其步骤实现：
+
+1. 用 `@saas/ai` 的 `definePrompt` 在 `apps/web/src/features/<领域>/prompt.ts` 定义提示词（id、版本、system、`user(input)`、期望章节、`maxOutputTokens`），
+   模块保持纯函数、只用可类型剥离的 TS 语法；调用时用 `renderPrompt` 得到 system 与用户消息。已用过的版本内容不再修改，改动即新建版本。
+2. 生成记录保存版本：领域 schema 的生成表加 `prompt_version text not null`，写入 `promptVersion`（如 `report@v2`），结构化日志同时记录该字段。
+3. 在根目录 `evals/<suite>/` 建套件（`suite.ts` 用 `@saas/evals` 的 `defineSuite` 与 `checks`，导入同一个提示词定义；`samples.json` 只放合成或脱敏数据；模型声明美元单价）。
+4. 先 `pnpm eval:prompts --suite <suite> --record --budget-usd <美元>` 录制一次（需要真实模型凭据，不在 CI 中运行），提交录制与 `prompts.lock.json`；
+   之后改提示词时新建版本，用 `--baseline <旧版本>` 离线回放对比，报告写入证据目录、不进仓库。
+
 涉及积分时调用 `packages/credits` 已导出的 grant/hold/capture/release 等领域 API，遵守整数与事务/幂等要求；不直接修改余额/账本表。平台依赖方向、Cloudflare 例外和积分写入由现有检查器验证，不为新增业务扩大豁免。
 
 ## 4. 验证与交付

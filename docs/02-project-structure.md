@@ -42,7 +42,9 @@ saas-template/
 │  ├─ storage/                    # R2 封装、预签名上传、SSRF 安全下载
 │  ├─ email/                      # React Email 模板 + 发送接口
 │  ├─ ui/                         # 共享组件与设计 token（Fluid/Radix），规范见 design-system.md
+│  ├─ evals/                      # 提示词评测命令行（pnpm eval:prompts）与示例套件，仅根目录依赖
 │  └─ shared/                     # 通用类型、错误、id 生成、时间工具
+├─ evals/                         # 项目自有的提示词评测套件 evals/<suite>/（模板不交付文件）
 ├─ infra/
 │  ├─ postgres/                   # VPS 上的 docker-compose（PG + cloudflared + WAL-G）
 │  └─ local/                      # 本地开发 docker-compose
@@ -59,6 +61,7 @@ saas-template/
 - `apps/*` 可依赖 `packages/*`；packages 不依赖 apps。
 - `shared` 不依赖其他内部包；`config` 仅可依赖 shared；`db` 仅可依赖 shared/config。
 - `platform` 仅可依赖 shared/config/db；config/db 不反向依赖 platform。业务包与 apps 可依赖 platform，业务包之间允许互相依赖，检查器没有规定它们的总顺序。
+- `@saas/evals` 只允许根 `package.json` 依赖：任何 app 或 package 的 manifest 与源码（含测试）都不得依赖或引用它，评测工具不进入 Worker 与自托管运行时。说明见 [AI §3「提示词版本与评测」](06-ai.md#提示词版本与评测add-prompt-evals)。
 - React 仅允许用于 `ui`。`email` 用 React Email 在服务端渲染邮件，可依赖 React / React DOM / React Email（`react-email`、`@react-email/*`），但不依赖 ui；其他包依赖 React Email 同样视为依赖 React。
 - 交互原语、动效与图标库（`radix-ui`、`motion`、`lucide-react`、`class-variance-authority` 等）只允许 `ui` 依赖，`@radix-ui/*` 拆分包全局禁止；apps 只经 `@saas/ui` 使用组件。页面颜色与尺寸取设计 token，由 `pnpm check:ui` 检查。分层、token 三层（基线 → 预设 → 项目 `brand.css`）、模板与衍生项目的文件归属见 [设计规范](design-system.md)。
 
