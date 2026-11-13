@@ -1,0 +1,19 @@
+{
+  "kind": "judge",
+  "promptVersion": "product-intro@v2",
+  "rubricVersion": "r1",
+  "outputHash": "sha256:1a79365e232ee86f1de44894fc7da5bf085873771ee41988c1b404d8e4432ed4",
+  "model": {
+    "key": "deepseek-chat",
+    "provider": "deepseek",
+    "providerModelId": "deepseek-chat"
+  },
+  "output": "{\"criteria\":{\"accuracy\":{\"score\":5,\"reason\":\"Accurate\"},\"clarity\":{\"score\":5,\"reason\":\"Clear\"},\"audience-fit\":{\"score\":5,\"reason\":\"Well matched\"}},\"summary\":\"Accurate and well structured.\"}",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 612,
+    "outputTokens": 152
+  },
+  "recordedAt": "2026-11-14T00:00:00.000Z",
+  "source": "constructed"
+}

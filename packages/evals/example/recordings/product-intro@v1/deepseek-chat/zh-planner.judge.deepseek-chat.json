@@ -1,0 +1,19 @@
+{
+  "kind": "judge",
+  "promptVersion": "product-intro@v1",
+  "rubricVersion": "r1",
+  "outputHash": "sha256:eaad9dd0fc14d56da4decc261183b3c73c78af7969bc55bdd4afa89769f6ea1f",
+  "model": {
+    "key": "deepseek-chat",
+    "provider": "deepseek",
+    "providerModelId": "deepseek-chat"
+  },
+  "output": "{\"criteria\":{\"accuracy\":{\"score\":3,\"reason\":\"“封面耐磨”不在给定特性中\"},\"clarity\":{\"score\":3,\"reason\":\"略长\"},\"audience-fit\":{\"score\":4,\"reason\":\"面向学生\"}},\"summary\":\"Usable, with room to improve.\"}",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 533,
+    "outputTokens": 147
+  },
+  "recordedAt": "2026-11-14T00:00:00.000Z",
+  "source": "constructed"
+}

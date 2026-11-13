@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -229,6 +230,13 @@ test('真实副本覆盖 Cloudflare 默认、selfhost 默认和 selfhost 全关�
         assert.doesNotMatch(result.report, /billing:seed|STRIPE_SECRET|PAYPAL_CLIENT/)
       }
       verifyProject(result.target, { nodeBuild: true })
+      // 示例评测套件在生成的项目中离线回放可用；CI 为真保证不会发出真实模型调用。
+      const evals = spawnSync('pnpm', ['eval:prompts', '--suite', 'example'], {
+        cwd: result.target,
+        env: { ...process.env, CI: 'true', EVIDENCE_DIR: join(temp, `${name}-evidence`) },
+        encoding: 'utf8',
+      })
+      assert.equal(evals.status, 0, `${evals.stdout}${evals.stderr}`)
     })
   }
 })

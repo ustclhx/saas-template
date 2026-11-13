@@ -379,3 +379,30 @@ test('relative cross-package imports enforce foundation layers and packages cann
   assert.ok(violations.some((message) => message.includes('@saas/db → @saas/platform')))
   assert.ok(violations.some((message) => message.includes('packages 不得引用 apps')))
 })
+
+test('evals is only allowed as a root dependency, never in app or package manifests and sources', (t) => {
+  const check = workspace(t, {
+    'package.json': { name: 'root', devDependencies: { '@saas/evals': 'workspace:*' } },
+    'packages/evals/package.json': manifest('@saas/evals', { '@saas/ai': '*' }),
+    'packages/evals/src/cli.ts': "import '@saas/ai'; import './run.ts'",
+    'packages/ai/package.json': manifest('@saas/ai'),
+    'apps/web/package.json': {
+      name: '@saas/web',
+      devDependencies: { '@saas/evals': 'workspace:*' },
+    },
+    'apps/jobs/package.json': manifest('@saas/jobs'),
+    'apps/jobs/src/index.ts': "import { defineSuite } from '@saas/evals'",
+    'packages/ai/test/helper.ts': "import '../../evals/src/suite.ts'",
+  })
+  const violations = check()
+  assert.equal(violations.length, 3, violations.join('\n'))
+  for (const text of [
+    '@saas/web → @saas/evals（apps/web/package.json devDependencies）',
+    '@saas/jobs → @saas/evals（apps/jobs/src/index.ts:1）',
+    '@saas/ai → @saas/evals（packages/ai/test/helper.ts:1）',
+  ])
+    assert.ok(
+      violations.some((message) => message.includes(text)),
+      text,
+    )
+})

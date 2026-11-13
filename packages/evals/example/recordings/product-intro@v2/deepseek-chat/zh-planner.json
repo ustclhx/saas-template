@@ -1,0 +1,18 @@
+{
+  "kind": "generation",
+  "promptVersion": "product-intro@v2",
+  "renderedHash": "sha256:9744ac92366281cde24c1a77346c46dabbee85a0a4d61f46c14df7e1afab35ae",
+  "model": {
+    "key": "deepseek-chat",
+    "provider": "deepseek",
+    "providerModelId": "deepseek-chat"
+  },
+  "output": "## 概述\n\n这本手账本把月计划和周计划放在同一本里，方便学生从长期目标拆分到每周安排，也适合记录课程、作业与考试时间。\n\n## 亮点\n\n- 一百二十克纸不洇墨，常见的笔都能使用\n- 月计划与周计划页\n- 可平摊的线装，书写更顺手\n\n## 适合人群\n\n喜欢提前规划学习与生活的学生。",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 379,
+    "outputTokens": 113
+  },
+  "recordedAt": "2026-11-14T00:00:00.000Z",
+  "source": "constructed"
+}

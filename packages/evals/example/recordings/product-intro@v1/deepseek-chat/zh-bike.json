@@ -1,0 +1,18 @@
+{
+  "kind": "generation",
+  "promptVersion": "product-intro@v1",
+  "renderedHash": "sha256:cc4bc4ece1f4008f9a8f30904dd60bb0d52c0dd406881b8bfad98bc64de462d7",
+  "model": {
+    "key": "deepseek-chat",
+    "provider": "deepseek",
+    "providerModelId": "deepseek-chat"
+  },
+  "output": "## 概述\n\n折叠自行车让地铁通勤更轻松，是城市出行的理想选择。\n\n## 亮点\n\n- 十秒折叠，进站不耽误时间\n- 整车十一公斤，上下楼梯也能提\n- 七速变速，上坡更省力",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 211,
+    "outputTokens": 68
+  },
+  "recordedAt": "2026-11-14T00:00:00.000Z",
+  "source": "constructed"
+}

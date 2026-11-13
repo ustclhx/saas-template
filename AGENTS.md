@@ -70,6 +70,7 @@ config/db 不反向依赖 platform。业务包之间允许依赖，检查器没�
 | `pnpm check:singletons` | 关键依赖唯一实例检查 |
 | `pnpm test` | 各包测试；有隔离数据库配置时包含集成测试 |
 | `pnpm build` | web 生产构建与 jobs 部署 dry-run |
+| `pnpm eval:prompts --suite <name>` | 提示词评测，默认离线回放；真实调用须 `--live`/`--record` 与 `--budget-usd` |
 | `pnpm create-project --help` | 查看生成器的交互和非交互参数 |
 | `pnpm test:create-project` | 临时目录中的生成器边界测试 |
 | `pnpm test:create-project:verify` | 真实副本改名、类型检查与单元测试验收 |

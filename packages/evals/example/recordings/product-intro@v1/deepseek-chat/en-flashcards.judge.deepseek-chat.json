@@ -1,0 +1,19 @@
+{
+  "kind": "judge",
+  "promptVersion": "product-intro@v1",
+  "rubricVersion": "r1",
+  "outputHash": "sha256:f8c9d0a905057b46854e547f7ed15510d7d664aae6d37c7cb830a6a05f707af8",
+  "model": {
+    "key": "deepseek-chat",
+    "provider": "deepseek",
+    "providerModelId": "deepseek-chat"
+  },
+  "output": "{\"criteria\":{\"accuracy\":{\"score\":2,\"reason\":\"\\\"Faster than any app\\\" is an unsupported claim\"},\"clarity\":{\"score\":4,\"reason\":\"Clear list\"},\"audience-fit\":{\"score\":3,\"reason\":\"Generic for adults\"}},\"summary\":\"Usable, with room to improve.\"}",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 553,
+    "outputTokens": 192
+  },
+  "recordedAt": "2026-11-14T00:00:00.000Z",
+  "source": "constructed"
+}

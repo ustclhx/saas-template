@@ -1,0 +1,18 @@
+{
+  "kind": "generation",
+  "promptVersion": "product-intro@v1",
+  "renderedHash": "sha256:290f076ce66c8290ce807f7ae7d2f17b2fa6e645912c69658c776e80866bd7b5",
+  "model": {
+    "key": "deepseek-chat",
+    "provider": "deepseek",
+    "providerModelId": "deepseek-chat"
+  },
+  "output": "## Overview\n\nThe solar camping lantern is a bright, reliable light for weekend campers.\n\n## Highlights\n\n- Charges in six hours of sunlight\n- Three brightness levels for cooking, reading or sleeping\n- Folds flat to save space in your pack",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 260,
+    "outputTokens": 190
+  },
+  "recordedAt": "2026-11-14T00:00:00.000Z",
+  "source": "constructed"
+}

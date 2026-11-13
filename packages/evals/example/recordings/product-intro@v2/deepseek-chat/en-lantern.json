@@ -1,0 +1,18 @@
+{
+  "kind": "generation",
+  "promptVersion": "product-intro@v2",
+  "renderedHash": "sha256:3859fd16f3a85ea3a3417e02155776e2e87ab74a619279b4acec1684a4838a63",
+  "model": {
+    "key": "deepseek-chat",
+    "provider": "deepseek",
+    "providerModelId": "deepseek-chat"
+  },
+  "output": "## Overview\n\nA solar camping lantern that recharges during the day and folds away when not in use.\n\n## Highlights\n\n- Charges in six hours of sunlight\n- Three brightness levels\n- Folds flat\n\n## Who it is for\n\nWeekend campers who want a light without spare batteries.",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 424,
+    "outputTokens": 212
+  },
+  "recordedAt": "2026-11-14T00:00:00.000Z",
+  "source": "constructed"
+}

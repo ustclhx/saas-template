@@ -1,0 +1,18 @@
+{
+  "kind": "generation",
+  "promptVersion": "product-intro@v2",
+  "renderedHash": "sha256:d1a2e715a34cf49000bcad2ad7507ce022830a15551e496555577ba643ef7a3b",
+  "model": {
+    "key": "deepseek-chat",
+    "provider": "deepseek",
+    "providerModelId": "deepseek-chat"
+  },
+  "output": "## 概述\n\n这款折叠自行车折叠迅速、重量适中，方便与地铁换乘。\n\n## 亮点\n\n- 十秒折叠\n- 整车十一公斤\n- 七速变速\n\n## 适合人群\n\n需要先骑车再换乘地铁的通勤者。",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 374,
+    "outputTokens": 72
+  },
+  "recordedAt": "2026-11-14T00:00:00.000Z",
+  "source": "constructed"
+}

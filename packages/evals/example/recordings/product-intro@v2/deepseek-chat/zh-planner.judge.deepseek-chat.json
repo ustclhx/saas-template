@@ -1,0 +1,19 @@
+{
+  "kind": "judge",
+  "promptVersion": "product-intro@v2",
+  "rubricVersion": "r1",
+  "outputHash": "sha256:f4b6c298cf66efbf40cbdd3134355ee736e91fed0ffcf99cbdcae485fea6418b",
+  "model": {
+    "key": "deepseek-chat",
+    "provider": "deepseek",
+    "providerModelId": "deepseek-chat"
+  },
+  "output": "{\"criteria\":{\"accuracy\":{\"score\":5,\"reason\":\"只描述给定特性\"},\"clarity\":{\"score\":4,\"reason\":\"内容稍多\"},\"audience-fit\":{\"score\":5,\"reason\":\"面向学生\"}},\"summary\":\"Accurate and well structured.\"}",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 513,
+    "outputTokens": 144
+  },
+  "recordedAt": "2026-11-14T00:00:00.000Z",
+  "source": "constructed"
+}

@@ -1,0 +1,19 @@
+{
+  "kind": "judge",
+  "promptVersion": "product-intro@v2",
+  "rubricVersion": "r1",
+  "outputHash": "sha256:b091d0136b031ca7a062a982056997bedce0b69159aadd33c7c2d3b813610247",
+  "model": {
+    "key": "deepseek-chat",
+    "provider": "deepseek",
+    "providerModelId": "deepseek-chat"
+  },
+  "output": "{\"criteria\":{\"accuracy\":{\"score\":5,\"reason\":\"Accurate\"},\"clarity\":{\"score\":5,\"reason\":\"Concise\"},\"audience-fit\":{\"score\":5,\"reason\":\"Directly addresses remote workers\"}},\"summary\":\"Accurate and well structured.\"}",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 608,
+    "outputTokens": 170
+  },
+  "recordedAt": "2026-11-14T00:00:00.000Z",
+  "source": "constructed"
+}

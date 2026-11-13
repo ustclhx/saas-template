@@ -1,0 +1,19 @@
+{
+  "kind": "judge",
+  "promptVersion": "product-intro@v1",
+  "rubricVersion": "r1",
+  "outputHash": "sha256:3429292c3f27a5faa7ba53f968c1e2c6243ef73dbdda342ccb8a919965479ea6",
+  "model": {
+    "key": "deepseek-chat",
+    "provider": "deepseek",
+    "providerModelId": "deepseek-chat"
+  },
+  "output": "{\"criteria\":{\"accuracy\":{\"score\":4,\"reason\":\"Accurate\"},\"clarity\":{\"score\":4,\"reason\":\"Clear\"},\"audience-fit\":{\"score\":4,\"reason\":\"Fits campers\"}},\"summary\":\"Usable, with room to improve.\"}",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 590,
+    "outputTokens": 152
+  },
+  "recordedAt": "2026-11-14T00:00:00.000Z",
+  "source": "constructed"
+}

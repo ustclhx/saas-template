@@ -188,6 +188,8 @@ export function checkWorkspace(
   if (!scope) throw new Error(`${uiManifest}：name 必须为 @scope/ui，无法确定内部包 scope`)
   const emailPackage = `${scope}email`
   const platformPackage = `${scope}platform`
+  // 评测工具只供根目录命令行使用，不得进入任何应用或运行时包（含其测试与脚本）。
+  const evalsPackage = `${scope}evals`
   const layers = {
     [`${scope}shared`]: [],
     [`${scope}config`]: [`${scope}shared`],
@@ -206,6 +208,11 @@ export function checkWorkspace(
     ) {
       violations.push(`${pkgName} → ${dep}（${where}）：UI 底层依赖仅允许 ${uiPackage} 使用`)
     }
+  }
+
+  function checkEvalsDependency(pkgName, dep, where) {
+    if (dep === evalsPackage && pkgName !== evalsPackage)
+      violations.push(`${pkgName} → ${dep}（${where}）：${evalsPackage} 只允许根目录依赖`)
   }
 
   function checkDependency(pkgName, dep, where) {
@@ -244,6 +251,7 @@ export function checkWorkspace(
       for (const dep of Object.keys(manifest[field] ?? {})) {
         const where = `${relative(root, join(path, 'package.json')).split(sep).join('/')} ${field}`
         checkUiDependency(manifest.name, dep, where)
+        checkEvalsDependency(manifest.name, dep, where)
         if (isPackage) checkDependency(manifest.name, dep, where)
       }
     }
@@ -263,6 +271,13 @@ export function checkWorkspace(
         // UI 原语检查覆盖应用和包的所有源码，不能被生产 src 或目标夹具豁免。
         const dep = packageNameOf(specifier)
         if (dep) checkUiDependency(manifest.name, dep, where)
+        if (dep) checkEvalsDependency(manifest.name, dep, where)
+        else if (specifier.startsWith('.') && manifest.name !== evalsPackage) {
+          const target = resolve(join(file, '..'), specifier)
+          const evals = packages.find((pkg) => pkg.manifest.name === evalsPackage)
+          if (evals && (target === evals.path || target.startsWith(evals.path + sep)))
+            checkEvalsDependency(manifest.name, evalsPackage, where)
+        }
         if (specifier.startsWith('cloudflare:')) {
           if (cloudflareAllowed(rel, specifier, rules)) continue
           violations.push(

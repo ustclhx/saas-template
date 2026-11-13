@@ -1,0 +1,18 @@
+{
+  "kind": "generation",
+  "promptVersion": "product-intro@v1",
+  "renderedHash": "sha256:efe1445419b17a48f3b4fad37a66b225569a40385b4b8acb936567dec3d41bc0",
+  "model": {
+    "key": "deepseek-chat",
+    "provider": "deepseek",
+    "providerModelId": "deepseek-chat"
+  },
+  "output": "## 概述\n\n这本手账本专为喜欢做计划的学生设计，帮助你把每一天、每一周和每一个月都安排得井井有条，让学习和生活更有节奏感，也更容易坚持下去。\n\n## 亮点\n\n- 一百二十克纸不洇墨，钢笔、马克笔都能放心使用\n- 月计划与周计划页，长期目标与每日待办一目了然\n- 可平摊的线装，书写时不用一直按住纸页\n- 封面耐磨，适合每天放进书包",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 216,
+    "outputTokens": 133
+  },
+  "recordedAt": "2026-11-14T00:00:00.000Z",
+  "source": "constructed"
+}

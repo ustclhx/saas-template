@@ -432,6 +432,21 @@ export function brandFileErrors(target = 'HEAD', cwd = process.cwd(), changeBase
   })
 }
 
+/**
+ * 根目录 `evals/` 是衍生项目自有的评测套件目录（add-prompt-evals design D12）：
+ * 模板永远不在其中交付文件，template-sync 才不会与项目套件冲突。示例套件在 packages/evals/example/。
+ */
+export function projectEvalsErrors(target = 'HEAD', cwd = process.cwd()) {
+  const tracked = git(cwd, 'ls-tree', '-r', '--name-only', target, '--', 'evals/')
+    .split('\n')
+    .filter(Boolean)
+  return tracked.length
+    ? [
+        `evals/ is reserved for derived projects; the template must not track ${tracked.join(', ')} (put template examples in packages/evals/example)`,
+      ]
+    : []
+}
+
 function keys(text, regex) {
   return new Set([...text.matchAll(regex)].map((match) => match[1]))
 }
@@ -739,6 +754,7 @@ export function checkRelease(version, cwd = process.cwd()) {
   // CI 在 PR 中设置 CHANGE_BASE（template-release-checks.yml），本地发版检查不设
   const { CHANGE_BASE: changeBase } = process.env
   errors.push(...brandFileErrors(range.target, cwd, changeBase || undefined))
+  errors.push(...projectEvalsErrors(range.target, cwd))
   const index = readFileSync(join(cwd, 'docs/upgrades/README.md'), 'utf8')
   const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   if (
