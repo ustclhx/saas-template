@@ -78,6 +78,8 @@ export async function handleShareCardPreviewRequest(request: Request): Promise<R
  * 不接受任意文本）并返回令牌与分享页地址；`invalidate` 对 sample 类型的令牌调用模板失效函数（与项目撤销分享
  * 时相同）。只在 `UI_PREVIEW=true` 的环境开放，并要求平台管理员会话；其余情况一律 404。
  */
+const sampleFixtureVariants = ['en', 'zh', 'long'] as const
+
 export async function handleSampleShareFixture(request: Request): Promise<Response> {
   const runtime = getWebRuntime()
   if (!isUiPreviewEnabled(runtime.config)) return plain(404, 'Not Found')
@@ -91,9 +93,16 @@ export async function handleSampleShareFixture(request: Request): Promise<Respon
   const input = (await request.json().catch(() => null)) as {
     action?: string
     token?: string
+    variant?: string
   } | null
   if (input?.action === 'create') {
-    const token = await addSampleShare(runtime.cache, createShareToken(), SAMPLE_SHARE_PREVIEWS.en)
+    // 只能选固定变体（staging 验收需要中文卡片），不接受任意文本。
+    const variant = sampleFixtureVariants.find((name) => name === input.variant) ?? 'en'
+    const token = await addSampleShare(
+      runtime.cache,
+      createShareToken(),
+      SAMPLE_SHARE_PREVIEWS[variant],
+    )
     return Response.json({ token, page: `/s/sample/${token}` })
   }
   // 只接受 sample 的令牌格式，项目类型的分享不能经此失效。
