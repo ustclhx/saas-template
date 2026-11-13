@@ -1,12 +1,6 @@
 {
   "description": "exceptions 为正式逐文件/规则例外。pendingReplacement 为第 5 组待替换项，按规则、原值和数量限制，不豁免该文件新增违例。项目自有登记使用同结构的 check-ui.allow.local.json。",
   "exceptions": {
-    "apps/web/src/features/seo/og-card.ts": [
-      {
-        "rule": "color-literal",
-        "reason": "构建期 OG 卡片使用独立图片渲染器，固定颜色保证分享图片可读；当前扫描范围为 TSX，预先登记此 TS 文件。"
-      }
-    ],
     "apps/web/src/routes/(auth)/login.tsx": [
       {
         "rule": "color-literal",

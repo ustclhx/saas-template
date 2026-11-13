@@ -18,13 +18,13 @@
 ## 4. 渲染与主题
 
 - [x] 4.1 `packages/ui` 新增分享卡片主题的 token 值导出。验证：单测确认它与 `tokens.css` 的基线值一致，`pnpm ui:lock` 已更新。
-- [ ] 4.2 在 `apps/web/src/features/share-cards/` 新增版式：
+- [x] 4.2 在 `apps/web/src/features/share-cards/` 新增版式：
   - 默认版式 `layout.tsx`；
   - 示例类型 `sample` 的版式。
 
   验证：单测用固定数据得到版式树，主题值来自 4.1。
-- [ ] 4.3 实现渲染器：经 WebRuntime 注入，Workers 实现在 `src/server/cloudflare/`、Node 实现在 Node 运行时，西文字体随包打包，CJK 字体按需加载并在实例内缓存，文本按字宽加权截断（design 第 5 条），并发上限为 2。验证：Node 单测渲染中文、英文和超长标题，输出 1200×630 PNG；并发超限时返回 503。
-- [ ] 4.4 构建期 `apps/web/scripts/og-images.ts` 改为复用默认版式。验证：静态图测试与 e2e `seo.spec.ts` 通过，图片与 `share-cards/Card.dc.html` 的 `default` 变体一致（附前后截图；颜色从深蓝渐变改为主题 token 是已确认的变更）。
+- [x] 4.3 实现渲染器：经 WebRuntime 注入，Workers 实现在 `src/server/cloudflare/`、Node 实现在 Node 运行时，西文字体随包打包，CJK 字体按需加载并在实例内缓存，文本按字宽加权截断（design 第 5 条），并发上限为 2。验证：Node 单测渲染中文、英文和超长标题，输出 1200×630 PNG；并发超限时返回 503。
+- [x] 4.4 构建期 `apps/web/scripts/og-images.ts` 改为复用默认版式。验证：静态图测试与 e2e `seo.spec.ts` 通过，图片与 `share-cards/Card.dc.html` 的 `default` 变体一致（附前后截图；颜色从深蓝渐变改为主题 token 是已确认的变更）。
 
 ## 5. 路由、缓存与元数据
 
@@ -32,7 +32,7 @@
 - [ ] 5.2 新增 `RL_SHARE_CARD` 限流绑定，在各环境的 wrangler 配置和 `check-wrangler-envs` 中声明，卡片缓存未命中与分享页请求时消耗配额。验证：本地 `wrangler dev` 下超过限额返回 429，单测覆盖。
 - [ ] 5.3 实现元数据工具 `shareCardMeta(type, token)`，输出 `og:image`（APP_URL 下的绝对地址加 `v` 参数）、宽高、alt、`twitter:card` 与 `noindex`；robots 放行 `/share-card/` 与 `/s/`，站点地图与 `llms.txt` 不收录。验证：seo 单测与 robots、sitemap 测试。
 - [ ] 5.4 按 2.1 副本实现通用分享页 `/s/$type/$token`（design 第 8 条）：有效时显示卡片、标题、描述与站点入口；无效、到期、失效或 `sharePage: false` 时 404 页；先查 KV 撤销标记；缓存头与 `noindex`；文案进 `messages/{en,zh}`。验证：web 集成测试覆盖四种 404 情况；`ui-design` 第 6 步的四张截图与副本对照。
-- [ ] 5.5 扩展首页包检查：服务端与客户端的首页闭包中不能出现渲染器、satori、resvg 和字体。验证：`pnpm --filter @saas/web build` 通过；故意把渲染器加进首页导入时检查失败（测试中模拟）。
+- [x] 5.5 扩展首页包检查：服务端与客户端的首页闭包中不能出现渲染器、satori、resvg 和字体。验证：`pnpm --filter @saas/web build` 通过；故意把渲染器加进首页导入时检查失败（测试中模拟）。
 
 ## 6. 预览与示例
 

@@ -37,8 +37,12 @@ describe('分享卡片主题基线', () => {
         ['background', '--background'],
         ['foreground', '--foreground'],
         ['muted', '--muted'],
+        ['mutedForeground', '--muted-foreground'],
+        ['secondary', '--secondary'],
         ['primary', '--primary'],
         ['primaryText', '--primary-text'],
+        ['primaryForeground', '--primary-foreground'],
+        ['brandAccent', '--fluid-accent'],
       ] as const) {
         expect(theme[field], token).toBe(resolve(token, vars))
       }

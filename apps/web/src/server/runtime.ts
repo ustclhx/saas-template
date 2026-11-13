@@ -18,6 +18,7 @@ import type {
 import { AppError } from '@saas/shared'
 import type { Storage } from '@saas/storage'
 import type { AuthUiEnv } from '../features/auth/options.ts'
+import type { ShareCardRenderer } from '../features/share-cards/renderer.ts'
 
 /** AI 模块按目标注入；文件签名留在目标入口，不让公开 API 依赖 R2 类型。 */
 export interface WebAiRuntime {
@@ -61,6 +62,8 @@ export interface WebRuntime {
   readonly files?: Capability<Storage>
   /** 未装配的目标明确报告 unavailable；认证等独立模块不要求 AI 能力。 */
   readonly ai?: Capability<WebAiRuntime>
+  /** 分享卡片渲染器加载函数：目标入口用动态 import() 提供，首页与其他路由不加载 satori / resvg。 */
+  readonly shareCardRenderer?: Capability<() => Promise<ShareCardRenderer>>
   /** 后台认证写入需借用事务 facade 与延后提交的缓存。 */
   createAuth(db: Database, cache?: KeyValueStore): Auth
   handleAuthRequest(request: Request): Promise<Response>

@@ -52,6 +52,7 @@ export function prerenderRuntime(requestMeta: RequestMetadata): WebRuntime {
     emailQueue: { available: false },
     eventsQueue: { available: false },
     files: { available: false },
+    shareCardRenderer: { available: false },
     ai: { available: false },
     get db() {
       return unavailable()
@@ -205,6 +206,13 @@ export async function createNodeWebProcess(
       eventsQueue: { available: true, value: eventsQueue },
       health: { cache: () => cache.ping(), tasks: taskHealth },
       files: storage ? { available: true, value: storage } : { available: false },
+      shareCardRenderer: {
+        available: true,
+        value: () =>
+          import('./share-card-renderer.ts').then((module) =>
+            module.createNodeShareCardRenderer(module.nodeShareCardFontDir()),
+          ),
+      },
       ai: {
         available: true,
         value: {
