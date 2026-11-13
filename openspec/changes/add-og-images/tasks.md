@@ -41,9 +41,9 @@
 
 ## 7. 文档与升级说明
 
-- [ ] 7.1 更新 `apps/web/src/features/seo/README.md`（或新建 `docs/share-cards.md`），写明：注册步骤、项目自建分享表的建议结构（令牌不含资源 ID、部分唯一索引）、撤销与删资源时必须调用失效函数、删空间时清理自己的分享表、到期规则（默认 90 天与修改方式）、通用分享页与自建页面二选一、版式约束、主题覆盖、缓存语义、限流、自托管差异，以及「撤销对已被平台抓取的卡片无效」。验证：文档中的命令可以照着执行。
-- [ ] 7.2 在 `new-module` 技能（或 `new-page`）中加入分享卡片接入步骤；在 `ui-design` 技能中说明卡片版式需要设计稿。验证：`.agents` 与 `.claude` 两份技能文件用 `cmp` 比对一致。
-- [ ] 7.3 起草 `docs/upgrades/0.4.0.md`（或下一个版本），写明：无迁移、新绑定 `RL_SHARE_CARD`、新路由 `/share-card/*` 与 `/s/*`、R2 前缀、`template.config.ts` 新字段、项目自有文件、check-ui 例外、首页包检查变化。验证：`template-release.mjs check` 通过。
+- [x] 7.1 更新 `apps/web/src/features/seo/README.md`（或新建 `docs/share-cards.md`），写明：注册步骤、项目自建分享表的建议结构（令牌不含资源 ID、部分唯一索引）、撤销与删资源时必须调用失效函数、删空间时清理自己的分享表、到期规则（默认 90 天与修改方式）、通用分享页与自建页面二选一、版式约束、主题覆盖、缓存语义、限流、自托管差异，以及「撤销对已被平台抓取的卡片无效」。验证：文档中的命令可以照着执行。
+- [x] 7.2 在 `new-module` 技能（或 `new-page`）中加入分享卡片接入步骤；在 `ui-design` 技能中说明卡片版式需要设计稿。验证：`.agents` 与 `.claude` 两份技能文件用 `cmp` 比对一致。
+- [x] 7.3 起草 `docs/upgrades/0.4.0.md`（或下一个版本），写明：无迁移、新绑定 `RL_SHARE_CARD`、新路由 `/share-card/*` 与 `/s/*`、R2 前缀、`template.config.ts` 新字段、项目自有文件、check-ui 例外、首页包检查变化。验证：`template-release.mjs check` 通过。
 
 ## 8. 验收
 

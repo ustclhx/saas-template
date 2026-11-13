@@ -20,6 +20,7 @@
 | [08-roadmap.md](./08-roadmap.md) | 分阶段开发计划与验收标准、待决事项 |
 | [09-parallel-plan.md](./09-parallel-plan.md) | 用 Orca 并行开发：worktree 隔离、共享文件规则、并行波次与合并流程 |
 | [design-system.md](./design-system.md) | UI 分层、设计 token 三层、组件与动效规范、页面模式、设计关卡与衍生项目定制 |
+| [share-cards.md](./share-cards.md) | 运行时分享卡片与通用分享页：注册、项目分享表、到期、失效、缓存、限流、部署要求 |
 | [analytics.md](./analytics.md) | 埋点字典、首触归因、自建 Plausible 开关与发布串扰门禁 |
 | [requirements/analytics-plausible-geo.md](./requirements/analytics-plausible-geo.md) | 需求：埋点 / 自建 Plausible / SEO·GEO 骨架（P0–P2，含 staging 串扰门禁） |
 
