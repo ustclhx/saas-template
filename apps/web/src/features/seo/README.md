@@ -29,7 +29,8 @@ APP_URL=https://example.com pnpm --filter @saas/web build
 草稿与未到发布时间的文章不生成图片，定时文章到期后需要重新部署以更新预渲染列表、分享图与内容。
 本地开发使用同一生成器，仅对清单中的公开页面响应图片。
 
-版式与运行时分享卡片共用 `features/share-cards/layout.tsx` 的默认版式（设计稿
+运行时分享卡片（项目注册的结果卡片、通用分享页 `/s/<类型>/<令牌>`、到期、失效与缓存）见
+[分享卡片与分享页](../../../../../docs/share-cards.md)。构建期分享图的版式与运行时分享卡片共用 `features/share-cards/layout.tsx` 的默认版式（设计稿
 `docs/design-system/prototypes/share-cards/Card.dc.html` 的 `default` 变体，浅色主题 token），
 渲染经 `src/node/share-card-renderer.ts`。
 

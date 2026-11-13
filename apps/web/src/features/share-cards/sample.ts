@@ -1,3 +1,4 @@
+import type { KeyValueStore } from '@saas/platform'
 import { sampleShareCardLayout } from './layout.tsx'
 import { registerShareCard } from './registry.ts'
 import type { ShareCardDefinition, ShareResolution } from './types.ts'
@@ -30,22 +31,52 @@ const samples = new Map<string, ShareResolution<SampleShareData>>([
   ],
 ])
 
+/** 夹具登记的示例分享在 KV 中的键与 TTL：staging 有多个隔离区，内存登记在其他隔离区不可见。 */
+export const sampleShareKey = (token: string) => `share-sample:${token}`
+export const SAMPLE_SHARE_TTL = 86_400
+
+interface StoredSampleShare {
+  sharedAt: string
+  expiresAt: string | null
+  data: SampleShareData
+}
+
 /**
- * e2e 与 staging 验收夹具用：在内存中登记一条新的示例分享（同一隔离区内有效），返回其令牌。
- * 每次测试使用新令牌，避免上一轮写入的撤销标记影响本轮。
+ * e2e 与 staging 验收夹具用：在 KV（Cloudflare 为 `CACHE`，Node 为同等的 kv）中登记一条新的示例分享，
+ * 1 天后自动过期，返回其令牌。每次测试使用新令牌，避免上一轮写入的撤销标记影响本轮。
  */
-export function addSampleShare(
+export async function addSampleShare(
+  kv: Pick<KeyValueStore, 'put'>,
   token: string,
   data: SampleShareData,
   expiresAt: Date | null = null,
 ) {
-  samples.set(token, {
-    workspaceId: SAMPLE_SHARE_WORKSPACE_ID,
-    sharedAt: new Date(),
-    expiresAt,
+  const stored: StoredSampleShare = {
+    sharedAt: new Date().toISOString(),
+    expiresAt: expiresAt === null ? null : expiresAt.toISOString(),
     data,
+  }
+  await kv.put(sampleShareKey(token), JSON.stringify(stored), {
+    expirationTtl: SAMPLE_SHARE_TTL,
   })
   return token
+}
+
+/** 固定预览令牌在内存中，其余令牌从 KV 读取夹具登记的记录。 */
+async function readSampleShare(
+  kv: Pick<KeyValueStore, 'get'> | undefined,
+  token: string,
+): Promise<ShareResolution<SampleShareData> | null> {
+  const fixed = samples.get(token)
+  if (fixed || !kv) return fixed ?? null
+  const stored = await kv.get<StoredSampleShare>(sampleShareKey(token), 'json')
+  if (!stored) return null
+  return {
+    workspaceId: SAMPLE_SHARE_WORKSPACE_ID,
+    sharedAt: new Date(stored.sharedAt),
+    expiresAt: stored.expiresAt === null ? null : new Date(stored.expiresAt),
+    data: stored.data,
+  }
 }
 
 /**
@@ -85,11 +116,13 @@ export type SampleSharePreview = keyof typeof SAMPLE_SHARE_PREVIEWS
  */
 export function registerSampleShareCard(
   render: ShareCardDefinition<SampleShareData>['render'] = sampleShareCardLayout,
+  /** 请求内取 KV；省略时只解析固定预览令牌。本模块也被 /dev/ui 客户端组件导入，不直接读取运行时。 */
+  kv?: () => Pick<KeyValueStore, 'get'>,
 ) {
   return registerShareCard<SampleShareData>({
     type: 'sample',
     version: 1,
-    resolve: async (token) => samples.get(token) ?? null,
+    resolve: (token) => readSampleShare(kv?.(), token),
     digest: (data) => {
       // 示例仅需稳定的展示摘要；访问权限始终由随机令牌与 resolve 控制。
       let hash = 2166136261

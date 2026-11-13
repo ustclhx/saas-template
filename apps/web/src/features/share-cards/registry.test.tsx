@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import { isShareCardExpired, shareCardExpiresAt } from './expiry.ts'
 import { defaultShareTokenPattern, getShareCard, registerShareCard } from './registry.ts'
-import { registerSampleShareCard, sampleShareToken } from './sample.ts'
+import {
+  addSampleShare,
+  registerSampleShareCard,
+  SAMPLE_SHARE_TTL,
+  sampleShareKey,
+  sampleShareToken,
+} from './sample.ts'
 import { createShareToken } from './token.ts'
 import type { ShareCardDefinition } from './types.ts'
 
@@ -65,12 +71,37 @@ describe('share card registry', () => {
     ).toBeNull()
   })
 
-  it('registers the memory-only sample explicitly', async () => {
+  it('registers the sample explicitly and resolves fixture shares from KV', async () => {
     expect(getShareCard('sample')).toBeUndefined()
-    const sample = registerSampleShareCard(() => <div />)
+    // 两个独立的 Map 模拟 KV：写入与读取发生在不同隔离区时仍能解析。
+    const entries = new Map<string, { value: string; ttl?: number | undefined }>()
+    const kv = {
+      put: vi.fn(async (key: string, value: string, options?: { expirationTtl?: number }) => {
+        entries.set(key, { value, ttl: options?.expirationTtl })
+      }),
+      get: vi.fn(async (key: string) => {
+        const raw = entries.get(key)?.value
+        return raw === undefined ? null : JSON.parse(raw)
+      }),
+    }
+    const sample = registerSampleShareCard(
+      () => <div />,
+      () => kv as never,
+    )
     const ctx = { db: {} as Parameters<typeof sample.resolve>[1]['db'] }
     expect((await sample.resolve(sampleShareToken, ctx))?.data.title).toBe('Project summary')
     expect(await sample.resolve('missing', ctx)).toBeNull()
+
+    const token = createShareToken()
+    const expiresAt = new Date('2030-01-01T00:00:00.000Z')
+    await addSampleShare(kv, token, { title: 'Fixture', description: 'From KV' }, expiresAt)
+    expect(entries.get(sampleShareKey(token))?.ttl).toBe(SAMPLE_SHARE_TTL)
+    expect(sampleShareKey(token)).toBe(`share-sample:${token}`)
+    const resolved = await sample.resolve(token, ctx)
+    expect(resolved?.workspaceId).toBe('sample-workspace')
+    expect(resolved?.data.title).toBe('Fixture')
+    expect(resolved?.expiresAt?.toISOString()).toBe(expiresAt.toISOString())
+    expect(resolved?.sharedAt).toBeInstanceOf(Date)
   })
 
   it('rejects invalid type TTL values without registering the type', () => {

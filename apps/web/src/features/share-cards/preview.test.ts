@@ -15,8 +15,13 @@ vi.mock('../admin/guard.ts', () => ({
 const invalidate = vi.hoisted(() => vi.fn(async () => {}))
 vi.mock('./invalidate.server.ts', () => ({ invalidateShareCard: invalidate }))
 
+const kvPut = vi.hoisted(() =>
+  vi.fn(async (_key: string, _value: string, _options?: { expirationTtl?: number }) => {}),
+)
+
 function runtime(preview: boolean, limited = false) {
   return {
+    cache: { put: kvPut, get: vi.fn(async () => null) },
     config: { APP_URL: 'https://app.example', UI_PREVIEW: preview ? 'true' : undefined },
     db: {},
     auth: {},
@@ -38,6 +43,7 @@ const post = (body: unknown) =>
 beforeEach(() => {
   admin.allowed = false
   invalidate.mockClear()
+  kvPut.mockClear()
 })
 
 describe('sample share fixture endpoint', () => {
@@ -57,6 +63,7 @@ describe('sample share fixture endpoint', () => {
       expect(response.status).toBe(404)
     }
     expect(invalidate).not.toHaveBeenCalled()
+    expect(kvPut).not.toHaveBeenCalled()
   })
 
   it('lets admins create fixed sample shares and invalidate only sample tokens', async () => {
@@ -67,6 +74,11 @@ describe('sample share fixture endpoint', () => {
     expect(created.status).toBe(200)
     const { token, page } = (await created.json()) as { token: string; page: string }
     expect(page).toBe(`/s/sample/${token}`)
+    // 记录写入 KV（1 天 TTL），staging 其他隔离区也能解析；不接受请求中的任意文本。
+    expect(kvPut).toHaveBeenCalledWith(`share-sample:${token}`, expect.any(String), {
+      expirationTtl: 86_400,
+    })
+    expect(kvPut.mock.calls[0]?.[1]).not.toContain('<script>')
     const ok = await withWebRuntime(runtime(true), () =>
       handleSampleShareFixture(post({ action: 'invalidate', token })),
     )

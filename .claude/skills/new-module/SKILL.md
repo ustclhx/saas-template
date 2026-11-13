@@ -40,6 +40,18 @@ cat apps/web/src/features/notifications/notifications.functions.ts apps/web/src/
 
 配置按用途归属：产品开关 `template.config.ts`；不发版的设置 `packages/db/src/settings.ts`，缺失时用代码默认值；凭据使用已有 secret/本地示例入口。服务遵守已关闭的功能开关。
 
+**分享卡片（结果需要分享到社交平台时）**：完整阅读 `docs/share-cards.md`，按其接入步骤实现：
+
+1. 在项目领域 schema 建分享表：令牌由 `createShareToken()` 生成且不含资源 / 用户 / 空间 ID，`token` 唯一，
+   对「资源 + 未撤销」建部分唯一索引；创建与撤销是空间内写入，照上文的 scoped、角色与只读检查处理。
+2. 在项目自有的 `apps/web/src/features/share-cards/share-cards.project.ts` 中 `registerShareCard`（从 `./registry.ts` 导入）：
+   `resolve` 按令牌查未撤销记录，资源已删除或空间已软删除时返回 `null`；`digest` 只覆盖卡片展示字段；
+   有效期用 `expiresAt` / `ttlDays`（默认取 `template.config.ts` 的 `shareCards.defaultTtlDays`）。
+3. 撤销分享、删除被分享资源时调用 `invalidateShareCard({ type, token, workspaceId })`；删空间 / 删号清理步骤中删除项目自己的分享记录（卡片图片由模板清理）。
+4. 通用分享页 `/s/<type>/<token>` 与自建页面二选一：自建时设 `sharePage: false`，页面服务端用 `shareCardMeta` 输出元数据。
+   新卡片版式或自建分享页先转 `ui-design` 取得设计稿，页面部分按 `new-page` 实现。
+5. 测试覆盖：`resolve` 对撤销、到期、跨空间与已删除资源返回 `null`，撤销与删除流程调用失效函数。
+
 涉及积分时调用 `packages/credits` 已导出的 grant/hold/capture/release 等领域 API，遵守整数与事务/幂等要求；不直接修改余额/账本表。平台依赖方向、Cloudflare 例外和积分写入由现有检查器验证，不为新增业务扩大豁免。
 
 ## 4. 验证与交付

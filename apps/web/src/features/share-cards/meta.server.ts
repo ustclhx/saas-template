@@ -10,11 +10,12 @@ import { getShareCard } from './registry.ts'
 import { registerSampleShareCard } from './sample.ts'
 
 /**
- * 开放 /dev/ui 的环境（开发与 staging，`UI_PREVIEW=true`）登记示例类型 `sample`，供预览、e2e 与
+ * 开放 /dev/ui 的环境（开发与 staging，`UI_PREVIEW=true`）登记示例类型 `sample`（夹具记录存 KV，跨隔离区可见），供预览、e2e 与
  * staging 验收使用；生产不设该变量，不登记任何模板类型。项目自己注册了同名类型时不覆盖。
  */
 export function registerPreviewShareCards(config: WebRuntime['config']) {
-  if (isUiPreviewEnabled(config) && !getShareCard('sample')) registerSampleShareCard()
+  if (isUiPreviewEnabled(config) && !getShareCard('sample'))
+    registerSampleShareCard(undefined, () => getWebRuntime().cache)
 }
 
 /** 从当前请求运行时取查找依赖：业务库、KV 撤销标记、限流与可信来源 IP。 */

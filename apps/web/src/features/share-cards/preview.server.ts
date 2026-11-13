@@ -74,8 +74,8 @@ export async function handleShareCardPreviewRequest(request: Request): Promise<R
 }
 
 /**
- * e2e 与 staging 验收夹具（tasks 6.2、8.2）：`create` 在内存中登记一条新的示例分享（固定数据，不接受
- * 任意文本）并返回令牌与分享页地址；`invalidate` 对 sample 类型的令牌调用模板失效函数（与项目撤销分享
+ * e2e 与 staging 验收夹具（tasks 6.2、8.2）：`create` 在 KV 中登记一条新的示例分享（TTL 1 天，固定数据，
+ * 不接受任意文本）并返回令牌与分享页地址；`invalidate` 对 sample 类型的令牌调用模板失效函数（与项目撤销分享
  * 时相同）。只在 `UI_PREVIEW=true` 的环境开放，并要求平台管理员会话；其余情况一律 404。
  */
 export async function handleSampleShareFixture(request: Request): Promise<Response> {
@@ -93,7 +93,7 @@ export async function handleSampleShareFixture(request: Request): Promise<Respon
     token?: string
   } | null
   if (input?.action === 'create') {
-    const token = addSampleShare(createShareToken(), SAMPLE_SHARE_PREVIEWS.en)
+    const token = await addSampleShare(runtime.cache, createShareToken(), SAMPLE_SHARE_PREVIEWS.en)
     return Response.json({ token, page: `/s/sample/${token}` })
   }
   // 只接受 sample 的令牌格式，项目类型的分享不能经此失效。
