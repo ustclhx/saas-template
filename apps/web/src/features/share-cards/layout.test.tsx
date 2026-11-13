@@ -30,6 +30,9 @@ function withText(tree: ReactNode, text: string): Node {
 }
 
 const light = shareCardThemes.light
+// 生成器会改名与改域名，断言从项目配置推导，不写死模板默认值。
+const brandInitial = (Array.from(templateConfig.app.name)[0] ?? '').toUpperCase()
+const brandHost = new URL(templateConfig.app.url).host
 const zh = {
   title: '2026 年第三季度用户调研要点',
   description: '新用户留存提升 12%，主要来自引导流程简化；移动端满意度仍低于桌面端。',
@@ -60,13 +63,13 @@ describe('分享卡片版式（4.2）', () => {
       background: light.secondary,
       color: light.mutedForeground,
     })
-    expect(withText(tree, 'M').props.style).toMatchObject({
+    expect(withText(tree, brandInitial).props.style).toMatchObject({
       width: 52,
       borderRadius: light.radius + 4,
       background: light.primary,
       color: light.primaryForeground,
     })
-    expect(withText(tree, 'example.com').props.style).toMatchObject({ color: light.foreground })
+    expect(withText(tree, brandHost).props.style).toMatchObject({ color: light.foreground })
     const footer = elements(tree).find((node) => node.props.style?.borderTop)
     expect(footer?.props.style?.borderTop).toBe(`1px solid ${light.border}`)
     expect(elements(tree).some((node) => node.props.style?.background === light.brandAccent)).toBe(
@@ -164,7 +167,7 @@ describe('标题截断保证两行内且省略号可见', () => {
     // 先序遍历中最后一个包含域名的元素即域名所在的那一行
     const domain = elements(tree)
       .filter((node) =>
-        elements(node.props.children).some((child) => child.props.children === 'example.com'),
+        elements(node.props.children).some((child) => child.props.children === brandHost),
       )
       .at(-1)
     expect(domain?.props.style).toMatchObject({ flexShrink: 0 })
