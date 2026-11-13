@@ -35,6 +35,8 @@ export function createNodeShareCardRenderer(fontDir: string): ShareCardRenderer 
         })),
       ),
     loadCjkFont: () => readArrayBuffer(join(fontDir, CJK_FONT_FILE)),
+    // 文件名已在登记时校验为不含路径分隔符，只能读取字体目录内的文件。
+    loadProjectFont: (file) => readArrayBuffer(join(fontDir, file)),
   })
   renderers.set(fontDir, renderer)
   return renderer

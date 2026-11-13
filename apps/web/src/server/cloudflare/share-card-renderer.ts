@@ -28,14 +28,18 @@ export function workersShareCardRenderer(assets: Fetcher): ShareCardRenderer {
       { name: 'Inter', data: inter400, weight: 400, style: 'normal' },
       { name: 'Inter', data: inter600, weight: 600, style: 'normal' },
     ],
-    loadCjkFont: async () => {
-      const response = await assets.fetch(new Request(`${ASSETS_ORIGIN}${CJK_FONT_PATH}`))
-      if (!response.ok) {
-        await response.body?.cancel()
-        throw new Error(`Share card CJK font unavailable: ${response.status}`)
-      }
-      return response.arrayBuffer()
-    },
+    loadCjkFont: () => fetchFont(assets, CJK_FONT_PATH),
+    // 项目字体同样作为静态资源发布，不打进 Worker 包；文件名已在登记时校验为不含路径分隔符。
+    loadProjectFont: (file) => fetchFont(assets, `/fonts/share-card/${file}`),
   })
   return renderer
+}
+
+async function fetchFont(assets: Fetcher, path: string): Promise<ArrayBuffer> {
+  const response = await assets.fetch(new Request(`${ASSETS_ORIGIN}${path}`))
+  if (!response.ok) {
+    await response.body?.cancel()
+    throw new Error(`Share card font unavailable: ${path} ${response.status}`)
+  }
+  return response.arrayBuffer()
 }

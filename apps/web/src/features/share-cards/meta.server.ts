@@ -1,6 +1,6 @@
 import { AppError } from '@saas/shared'
+import { getRequest } from '@tanstack/react-start/server'
 import { getWebRuntime, type WebRuntime } from '../../server/runtime.ts'
-import { templateConfig } from '../../server/template-config.ts'
 import { isUiPreviewEnabled } from '../ui-preview/gate.ts'
 // index.ts 在加载时登记项目类型；首页与其他页面不加载本模块。
 import './index.ts'
@@ -8,6 +8,7 @@ import { lookupShare, type ShareLookupDeps } from './lookup.ts'
 import { buildShareCardMeta, type ShareCardMeta } from './meta.ts'
 import { getShareCard } from './registry.ts'
 import { registerSampleShareCard } from './sample.ts'
+import { resolveRequestShareCardSite } from './site.ts'
 
 /**
  * 开放 /dev/ui 的环境（开发与 staging，`UI_PREVIEW=true`）登记示例类型 `sample`（夹具记录存 KV，跨隔离区可见），供预览、e2e 与
@@ -44,12 +45,17 @@ export async function shareCardMeta(
   if (result.status === 'rate-limited')
     throw new AppError('RATE_LIMITED', 'Too many share requests', { status: 429 })
   if (result.status !== 'ok') return null
+  const { site, origin } = resolveRequestShareCardSite(
+    getRequest().url,
+    getWebRuntime().config.APP_URL,
+  )
   return buildShareCardMeta({
     card: result.card,
     token: result.token,
     data: result.resolution.data,
-    appUrl: getWebRuntime().config.APP_URL,
+    appUrl: origin,
     pageUrl: options.pageUrl,
-    siteName: templateConfig.app.name,
+    siteName: site.brand.name,
+    site,
   })
 }

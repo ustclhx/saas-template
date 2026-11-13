@@ -1,6 +1,7 @@
 import { requireCapability } from '@saas/platform'
 import { getWebRuntime } from '../../server/runtime.ts'
 import type { ShareCardRenderer } from './renderer.ts'
+import { defaultShareCardSite, type ShareCardSite } from './site.ts'
 import { resolveShareCardTheme } from './theme.ts'
 import type { RegisteredShareCard, ShareCardTheme } from './types.ts'
 
@@ -22,7 +23,8 @@ export async function renderShareCard<T>(
   card: Pick<RegisteredShareCard<T>, 'render'>,
   data: T,
   theme: ShareCardTheme = resolveShareCardTheme('light'),
+  site: ShareCardSite = defaultShareCardSite(),
 ): Promise<Uint8Array> {
   const renderer = await loadShareCardRenderer()
-  return renderer.render(card.render(data, theme))
+  return renderer.render(card.render(data, theme, site))
 }

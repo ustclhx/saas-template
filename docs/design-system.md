@@ -77,14 +77,16 @@ grep -nE -- '^ *--[a-z0-9-]+:' apps/web/src/styles/brand.css
 | 强调 | `--primary` `--primary-foreground` `--primary-text` | `bg-primary` `text-primary-foreground` `text-primary-text` | 主按钮等实心强调；预设与品牌层改这里换色。强调色作文字（链接）用 `--primary-text`，深色预设下为更亮的同色系以满足 4.5:1 |
 | 次级 | `--secondary(-foreground)` `--muted` `--muted-foreground` | `bg-secondary` `bg-muted` `text-muted-foreground` | 次要底色、说明文字（在 muted 与高层表面上满足 4.5:1） |
 | 较重强调底 | `--accent` `--accent-foreground` | `bg-accent` | Fluid 原值，较重；普通悬停与当前项改用 `bg-hover` / `bg-active` |
-| 状态 | `--destructive` `--destructive-light` `--success` | `text-destructive` `bg-destructive-light` `text-success` | 危险与成功；作文字时满足 4.5:1 |
+| 状态 | `--destructive` `--destructive-light` `--success` `--warning` | `text-destructive` `bg-destructive-light` `text-success` `text-warning` | 危险、成功与提醒（对话「未完成」，浅 `#8a5a00` / 深 `#fcd34d`）；作文字时（含自身 10%–15% 淡底上）满足 4.5:1 |
 | 边框与输入 | `--border` `--input` | `border-border` `border-input` | 边框由前景色混出，随明暗自动变化 |
+| 对话填充 | `--chat-fill` | `bg-chat-fill` | 前景色 6% 半透明：用户气泡、中性状态徽标、不可用的输入框。叠在所处表面上，卡片上同样可见（深色下 `--secondary` 与卡片同色） |
 | 交互态 | `--hover` `--active` `--selected` `--tint` `--tint-hover` | `bg-hover` `bg-active` `bg-selected` `bg-tint` | 悬停、按下、选中与按钮底色层 |
-| 焦点与品牌强调 | `--fluid-accent` `--focus-ring` `--ring` | `bg-fluid-accent` `ring-ring` | 唯一的品牌强调色：开关、选区与焦点环；焦点环与背景、与主按钮 ≥ 3:1 |
+| 焦点与品牌强调 | `--fluid-accent` `--fluid-accent-text` `--focus-ring` `--ring` | `bg-fluid-accent` `text-fluid-accent-text` `ring-ring` | 唯一的品牌强调色：开关、选区与焦点环；焦点环与背景、与主按钮 ≥ 3:1。`--fluid-accent-text` 为强调色作小字（强调色 72% 与正文色混合，默认浅约 `#3362b1` / 深约 `#7da7f9`，浅色更深、深色更亮，随预设换色） |
 | 表面阶梯 | `--surface-1` … `--surface-8` | `bg-surface-1` … `bg-surface-8` | 浅色靠阴影分层，深色层级越高越亮 |
 | 阴影 | `--shadow-1` … `--shadow-8` | `shadow-surface-1` … `shadow-surface-8` | 与表面层级配对使用 |
 | 圆角 | `--radius` | `rounded-sm/md/lg/xl` | 基准值；控件 `rounded-lg`、容器 `rounded-xl`；按钮、选择器与弹窗的形状另由 `ui.shape` 控制 |
 | 字号阶梯 | `--fs-*` / `--lh-*`（display、title、subtitle、body、caption、micro，各含 `-compact`） | `text-display` `text-title` `text-subtitle` `text-body` `text-caption` `text-micro` | 页面只用这六个角色，不写任意字号 |
+| 容器查询 | `--container-chat-message`（23rem） | `@chat-message:` | ChatMessage 助手消息的版式阈值，见 §6.1 |
 | 层级 | `--z-sticky` `--z-overlay` `--z-modal` `--z-popover` `--z-tooltip` `--z-toast` | — | 离开组件流的浮层只用这些值；Toast 在模态与提示之上 |
 | 控件 | `--control-border` `--field-border` `--switch-thumb-on` `--switch-thumb-off` | — | 复选框边框与开关关闭轨道、输入类边框、开关滑块 |
 | 字体 | `--font-sans` | `font-sans` | 自托管 Inter 可变字体（opsz），中文回退系统字体 |
@@ -634,6 +636,11 @@ DailyClaimNotice」两节用中性示例数据展示全部状态。
 | `CreditEstimate` | `estimate: string \| null`、`balance?`、`insufficient?`、`hideIcon?`、`pendingLabel?` | — | `null` 显示估算中占位（`pendingLabel` 给读屏）；`insufficient` 用危险色并换成提示图标，带 `data-insufficient` |
 | `LockedFeature` | `title`、`description`、`actionLabel`、`badge?`、`children?`（被锁功能预览） | `onUpgrade()` | 预览 `inert` 且点击被拦下，任何点击只触发 `onUpgrade`，不执行功能 |
 | `DailyClaimNotice` | `status: 'available' \| 'pending' \| 'claimed' \| 'error'`、`title`、`description`、`labels`、`error?`、`compact?` | `onClaim?()`、`onDismiss?()` | 自动发放的项目不传 `onClaim`；`claimed` 显示徽标；`pending` 按钮忙碌；只有标题、说明与错误在 `role="status"` 内；< 640px 自动紧凑、按钮放不下时换行，`compact` 为强制紧凑 |
+| `ChatMessage`（`@saas/ui/chat`） | `from: 'user' \| 'assistant'`、`status?: 'streaming' \| 'aborted' \| 'failed' \| 'incomplete' \| 'retrying'`、`statusLabel`（结束状态必填）、`statusDetail?`、`actions?`、`leading?`（头像旁，如推理按钮）、`avatar?`（`false` 不显示）、`entrance?`、`children` | — | 用户消息为右侧 `--chat-fill` 气泡（最宽 80%，消息列窄于 23rem 时 85%）；助手消息按自身宽度切换版式（容器查询，阈值 `--container-chat-message` = 23rem）：窄时头像与 `leading` 同一行、正文与操作区通栏在下，宽时为头像列 + 内容列；子元素（工具调用、正文）依次竖排；`streaming` 时正文末尾闪烁光标并 `aria-busy`，其余状态在正文下方显示徽标与说明，正文保留；操作区始终可见；长词与长链接换行 |
+| `ThinkingIndicator`（`@saas/ui/chat`） | `label`、`showIcon?` | — | 等待首个输出时的三点 + 文字；不是实时区域（页面另有状态播报）；减少动态效果时三点静止 |
+| `ThinkingSteps` / `ThinkingStepsHeader` / `ThinkingStepsContent` / `ThinkingStep`（`@saas/ui/chat`） | 根：`defaultOpen?`（默认折叠）/ `open?`；标题：`children`、`busy?`；步骤：`label?`、`children`、`status?` | `onOpenChange(open)` | radix-ui `Collapsible`，按钮带 `aria-expanded`；推理文本作为单步传入，原样换行 |
+| `ToolCall`（`@saas/ui/chat`） | `name`、`state: 'pending' \| 'running' \| 'done' \| 'error'`、`labels`、`children?`（详情）、`defaultOpen?` / `open?` | `onOpenChange(open)` | 默认不显示参数与结果；有 `children` 时头部才是展开按钮；`running` 转圈在减少动态效果时静止 |
+| `InputMessage`（`@saas/ui/chat`） | `value`、`placeholder`、`labels`、`busy?`、`disabled?`、`sendDisabled?`、`leading?`、`trailing?` | `onValueChange(value)`、`onSend(trimmed)`、`onStop?()` | Enter 发送、Shift+Enter 换行、输入法组字不发送；空内容、`disabled`、`sendDisabled` 与 `busy` 不发送；`busy` 时发送换成停止，焦点在按钮上时移到输入框；`textareaRef` 取输入框元素；内边距按输入区宽度（容器查询）；高度随内容增长，约 8 行后框内滚动；没有附件 |
 
 接线现状：对话页（`features/ai/chat-page.tsx`，含嵌入式 `SubjectChat`）经 `features/ai/chat-extras.tsx` 接入推荐追问、
 消息评分（`setMessageFeedback`；点踩原因为画板的四个选项，取值 `FEEDBACK_REASONS` 与服务端校验、`ai_message_feedback.reason` 的约束一致，刷新后还原，后台 `/admin/feedback` 可按原因筛选；共享对话勾选项写入 `ai_message_feedback.share_conversation`，只有同意的反馈后台才能查看被评回复与之前最近 3 条消息）与余额不足弹窗（`INSUFFICIENT_CREDITS` 的数值，入口跳到账单页 `#credit-packs` /
