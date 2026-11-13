@@ -1,0 +1,85 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-14T10:00:00Z"
+  },
+  "title": "0.5：AI 对话组件",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1000,
+      "title": "对话页 /app/$slug/chat/$id（桌面，可切换状态与深色）",
+      "is_interactive": true
+    },
+    "Mobile.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "对话页·390px",
+      "is_interactive": true
+    },
+    "States.dc.html": {
+      "x": 0,
+      "y": 1240,
+      "w": 1440,
+      "h": 1560,
+      "title": "消息状态、工具调用与输入区四态",
+      "is_interactive": true
+    },
+    "Embedded.dc.html": {
+      "x": 0,
+      "y": 3040,
+      "w": 1440,
+      "h": 900,
+      "title": "嵌入式 SubjectChat（inline / panel）",
+      "is_interactive": true
+    },
+    "EmbeddedMobile.dc.html": {
+      "x": 1520,
+      "y": 3040,
+      "w": 390,
+      "h": 844,
+      "title": "嵌入式 SubjectChat·390px 底部抽屉",
+      "is_interactive": true
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Mobile.dc.html",
+    "States.dc.html",
+    "Embedded.dc.html",
+    "EmbeddedMobile.dc.html"
+  ],
+  "notes": {
+    "n1": {
+      "x": 2000,
+      "y": 0,
+      "w": 440,
+      "fill": "gray",
+      "text": "已定（2026-11-14）：移植 Fluid 的 chat-message / thinking / input-message 到 @saas/ui/chat；回复 Markdown 复用阅读器管线，不做语法高亮，代码块等宽 + 语言名 + 复制；对话页与 SubjectChat 都切换，只留一个嵌入式外壳 EmbeddedChat。"
+    },
+    "n2": {
+      "x": 2000,
+      "y": 600,
+      "w": 440,
+      "fill": "orange",
+      "text": "待确认的版式取舍（画在稿里）：\n1. 消息列宽 720px 居中；输入区固定在底部。\n2. 对话标题留在对话区头部（含「全部对话」返回），不移到顶栏。\n3. 生成中且用户上滑时，输入区上方出现「回到最新」按钮。\n4. 失败只显示原因，不提供重试按钮；手动「重新生成」与编辑已发消息不在本次。\n5. 回复中的图片不显示，只显示替代文字。\n6. 未注册的工具只显示「工具」与状态，不显示内部工具名与参数。\n7. SubjectChat 默认 inline，panel 由调用方选择；手机上统一为底部抽屉。"
+    },
+    "n3": {
+      "x": 2000,
+      "y": 1240,
+      "w": 440,
+      "fill": "gray",
+      "text": "去掉的东西：上游输入框的附件按钮与文件缩略图（模板没有附件能力）。新增：ToolCall（参考 AI Elements 的 Tool，四态）。读屏：状态区只在开始生成、完成、停止、失败时播报，不逐字朗读。"
+    }
+  },
+  "designSystems": []
+}

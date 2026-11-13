@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>嵌入式对话·手机抽屉</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+.r{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;width:390px;height:844px;position:relative;overflow:hidden}
+button,textarea{font:inherit;color:inherit;margin:0}
+button{cursor:pointer;border:0;background:none;padding:0}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.cap{font-size:12px;line-height:16px}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:8px;flex-shrink:0}
+.ib-s{width:32px;height:32px}
+.badge{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.ubub{align-self:flex-end;max-width:85%;padding:9px 12px;border-radius:12px}
+.av{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:9999px;flex-shrink:0}
+.chip{display:inline-flex;align-items:center;min-height:36px;padding:8px 12px;border-radius:18px;font-size:13px;line-height:18px;font-weight:500;text-align:left}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+svg{flex-shrink:0}
+sc-if,sc-for{display:contents}
+</style>
+</helmet>
+<div class="r" style="background:{{t.bg}};color:{{t.fg}}">
+  <div aria-hidden="true" style="padding:24px 20px;display:flex;flex-direction:column;gap:10px">
+    <span class="cap" style="color:{{t.mfg}}">报告 · 2026 年第三季度</span>
+    <span style="font-size:22px;line-height:28px;font-weight:600">季度经营报告</span>
+    <span style="line-height:22px;color:{{t.mfg}}">新客增长放缓，留存改善，模型调用成本占比上升。</span>
+  </div>
+  <div aria-hidden="true" style="position:absolute;inset:0;background:{{t.scrim}}"></div>
+
+  <section role="dialog" aria-modal="true" aria-label="就这份报告提问" class="col" style="position:absolute;left:0;right:0;bottom:0;height:86%;border-radius:16px 16px 0 0;background:{{t.card}};box-shadow:0 -8px 24px -8px rgba(0,0,0,0.25)">
+    <div aria-hidden="true" style="align-self:center;width:36px;height:4px;border-radius:9999px;margin-top:8px;background:{{t.border}}"></div>
+    <div class="row" style="gap:2px;height:52px;padding:0 4px 0 16px;border-bottom:1px solid {{t.border}};flex-shrink:0">
+      <span class="badge" style="box-shadow:inset 0 0 0 1px {{t.border}}">季度报告</span>
+      <h2 style="margin:0 0 0 6px;font-size:15px;line-height:20px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">就这份报告提问</h2>
+      <button type="button" class="ib" aria-label="历史对话" aria-haspopup="menu" style="color:{{t.mfg}}"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5M12 7v5l3 2"></path></svg></button>
+      <button type="button" class="ib" aria-label="关闭" style="color:{{t.mfg}}"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+    </div>
+    <div class="col" style="flex:1;min-height:0;overflow:hidden;padding:16px;gap:14px">
+      <sc-if value="{{started}}" hint-placeholder-val="{{true}}">
+        <div class="ubub" style="background:{{t.secondary}}">成本上升的两个原因里，哪个影响更大？</div>
+        <div class="col" style="gap:6px">
+          <span class="av" aria-hidden="true" style="background:{{t.primary}};color:{{t.pfg}}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span>
+          <p style="margin:0;line-height:22px">报告 §3 没有给出拆分比例，但从描述看<strong>长文本请求</strong>的影响更大：它持续抬高单次输入长度，而备用模型只在高峰时段使用。</p>
+          <div class="row" style="margin-left:-6px;color:{{t.mfg}}"><button type="button" class="ib ib-s" aria-label="复制回复"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="14" height="14" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg></button><button type="button" class="ib ib-s" aria-label="有帮助"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"></path></svg></button><button type="button" class="ib ib-s" aria-label="没帮助"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14V2M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"></path></svg></button></div>
+        </div>
+        <div class="col" style="gap:6px;align-items:flex-start">
+          <span class="cap" style="color:{{t.mfg}}">继续追问</span>
+          <button type="button" class="chip" style="box-shadow:inset 0 0 0 1px {{t.border}}">怎样控制长文本请求的成本？</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{notStarted}}" hint-placeholder-val="{{false}}">
+        <p style="margin:0;color:{{t.mfg}}">助手已读取这份报告，可以从下面的问题开始。</p>
+        <div class="col" role="group" aria-label="推荐问题" style="gap:8px;align-items:flex-start">
+          <button type="button" class="chip" style="box-shadow:inset 0 0 0 1px {{t.border}}">这份报告的核心结论是什么？</button>
+          <button type="button" class="chip" style="box-shadow:inset 0 0 0 1px {{t.border}}">列出三个主要风险</button>
+          <button type="button" class="chip" style="box-shadow:inset 0 0 0 1px {{t.border}}">生成一页摘要</button>
+        </div>
+      </sc-if>
+    </div>
+    <form aria-label="发送消息" style="padding:8px 12px 16px;border-top:1px solid {{t.border}}">
+      <div class="row" style="gap:4px;padding:4px 4px 4px 12px;border-radius:12px;border:1px solid {{t.border}};background:{{t.panel}}">
+        <label for="dr-in" class="sr">消息</label>
+        <textarea id="dr-in" rows="1" placeholder="继续提问…" style="flex:1;min-width:0;resize:none;border:0;background:transparent;font-size:16px;line-height:22px;padding:6px 0;outline:none"></textarea>
+        <span class="cap" style="color:{{t.mfg}}">约 3 积分</span>
+        <button type="button" class="ib ib-s" aria-label="发送" style="background:{{t.primary}};color:{{t.pfg}};opacity:0.5"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7M12 19V5"></path></svg></button>
+      </div>
+    </form>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"state":{"editor":"enum","options":["inProgress","notStarted"],"default":"inProgress"},"$preview":{"width":390,"height":844}}'>
+function uiTokens(dark) {
+  return dark ? {
+    bg: '#171717', panel: '#1e1e1e', card: '#252525', fg: '#f5f5f5', mfg: '#b0b0b0', primary: '#f5f5f5', pfg: '#171717', secondary: '#333333',
+    border: 'rgba(245,245,245,0.12)', scrim: 'rgba(0,0,0,0.7)'
+  } : {
+    bg: '#fafafa', panel: '#fcfcfc', card: '#ffffff', fg: '#171717', mfg: '#6b6b6b', primary: '#171717', pfg: '#fafafa', secondary: '#f4f4f5',
+    border: 'rgba(23,23,23,0.12)', scrim: 'rgba(0,0,0,0.4)'
+  };
+}
+class Component extends DCLogic {
+  renderVals() {
+    var started = (this.props.state || 'inProgress') === 'inProgress';
+    return { t: uiTokens(!!this.props.dark), started: started, notStarted: !started };
+  }
+}
+</script>
+</body>
+</html>
