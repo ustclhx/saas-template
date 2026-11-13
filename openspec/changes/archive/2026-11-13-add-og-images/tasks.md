@@ -2,7 +2,8 @@
 
 ## 1. 可行性验证（先做，决定后续路线）
 
-- [ ] 1.1 在 worktree 中实现最小渲染路由，配合示例版式和 CJK 字体懒加载，用 `wrangler versions upload` 上传到 staging，不切换流量。测量 design 第 7 条的五项指标：压缩体积增量、冷实例 CPU（含 CJK）、热实例 CPU、峰值内存、首页冷启动。数据与结论写入证据库。验证：证据 README 中有五项数值，以及「达标 / 改用常用字子集 / 移到 jobs Worker」三选一的结论。
+- [x] 1.1 在 worktree 中实现最小渲染路由，配合示例版式和 CJK 字体懒加载，用 `wrangler versions upload` 上传到 staging，不切换流量。测量 design 第 7 条的五项指标：压缩体积增量、冷实例 CPU（含 CJK）、热实例 CPU、峰值内存、首页冷启动。数据与结论写入证据库。验证：证据 README 中有五项数值，以及「达标 / 改用常用字子集 / 移到 jobs Worker」三选一的结论。
+  - 实际执行：spike 在本地测量（证据库 `add-og-images/spike`，结论写入 design 第 7 条，#343），未做 staging versions upload；线上冷 / 热 CPU 由 8.2 在 staging 补测（335 / 89–95 ms，证据库 `add-og-images/staging-8.2`），均达标。峰值内存 tail 不提供数值，以无 exceededMemory 记录。
 - [x] 1.2 协调者把 1.1 的结论写回 design.md 第 5、7 条。如果路线有变，同步更新本 tasks。验证：design.md 中写明最终选定的路线。
 
 ## 2. 设计稿（协调者）
