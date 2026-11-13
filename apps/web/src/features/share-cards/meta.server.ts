@@ -1,5 +1,6 @@
 import { AppError } from '@saas/shared'
 import { getRequest } from '@tanstack/react-start/server'
+import { getLocale } from '../../paraglide/runtime.js'
 import { getWebRuntime, type WebRuntime } from '../../server/runtime.ts'
 import { isUiPreviewEnabled } from '../ui-preview/gate.ts'
 // index.ts 在加载时登记项目类型；首页与其他页面不加载本模块。
@@ -48,6 +49,8 @@ export async function shareCardMeta(
   const { site, origin } = resolveRequestShareCardSite(
     getRequest().url,
     getWebRuntime().config.APP_URL,
+    undefined,
+    getLocale(),
   )
   return buildShareCardMeta({
     card: result.card,

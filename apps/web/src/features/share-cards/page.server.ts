@@ -1,4 +1,5 @@
 import { getRequest } from '@tanstack/react-start/server'
+import { getLocale } from '../../paraglide/runtime.js'
 import { getWebRuntime } from '../../server/runtime.ts'
 import { absoluteUrl } from '../seo/metadata.ts'
 import { lookupShare, remainingSeconds, type ShareLookup } from './lookup.ts'
@@ -69,7 +70,13 @@ export async function loadSharePage(input: {
   const result =
     documentLookups.get(request) ?? (await lookupShare(shareLookupDeps(), { ...input, page: true }))
   if (result.status !== 'ok') return { status: result.status }
-  const { site, origin } = resolveRequestShareCardSite(request.url, getWebRuntime().config.APP_URL)
+  // 页面语言随卡片地址的 `l` 传给卡片路由，多语言站点的卡片与页面使用同一品牌。
+  const { site, origin } = resolveRequestShareCardSite(
+    request.url,
+    getWebRuntime().config.APP_URL,
+    undefined,
+    getLocale(),
+  )
   const path = `/s/${encodeURIComponent(input.type)}/${encodeURIComponent(input.token)}`
   return sharePageView(
     result,

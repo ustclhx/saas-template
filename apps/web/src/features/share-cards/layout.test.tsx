@@ -6,13 +6,21 @@ import { templateConfig } from '../../server/template-config.ts'
 import { staticPage } from '../seo/metadata.ts'
 import {
   defaultShareCardLayout,
+  metaLimit,
   sampleShareCardLayout,
   shareCardLayout,
   titleWeight,
 } from './layout.tsx'
 import { collectText } from './renderer.ts'
 import { defaultShareCardSite } from './site.ts'
-import { countLines, needsFallbackFont, sanitizeText, textWidth, truncateText } from './text.ts'
+import {
+  countLines,
+  keepsWords,
+  needsFallbackFont,
+  sanitizeText,
+  textWidth,
+  truncateText,
+} from './text.ts'
 import { resolveShareCardTheme } from './theme.ts'
 
 type Style = Record<string, unknown>
@@ -185,7 +193,13 @@ describe('标题截断保证两行内且省略号可见', () => {
     const metaNode = elements(tree).find(
       (node) => typeof node.props.children === 'string' && node.props.children.startsWith('A very'),
     )
-    expect(metaNode?.props.style).toMatchObject({ flexShrink: 1, minWidth: 0, overflow: 'hidden' })
+    expect(metaNode?.props.style).toMatchObject({
+      flexGrow: 1,
+      flexShrink: 1,
+      minWidth: 0,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+    })
     expect(textWidth(metaNode?.props.children as string)).toBeLessThanOrEqual(28)
     // 先序遍历中最后一个包含域名的元素即域名所在的那一行
     const domain = elements(tree)
@@ -194,6 +208,99 @@ describe('标题截断保证两行内且省略号可见', () => {
       )
       .at(-1)
     expect(domain?.props.style).toMatchObject({ flexShrink: 0 })
+  })
+})
+
+describe('韩文（0.5.0：xuanxue 反馈）', () => {
+  const capacity = (fontSize: number) => 1056 / fontSize
+  const metaOf = (tree: ReactNode, prefix: string) => {
+    const node = elements(tree).find(
+      (element) =>
+        typeof element.props.children === 'string' && element.props.children.startsWith(prefix),
+    )
+    if (!node) throw new Error(`missing ${prefix}`)
+    return node
+  }
+
+  it('只有谚文（不含汉字、假名）按词断行；中日文与拉丁保持原断行规则', () => {
+    expect(keepsWords('자주 묻는 질문: 크레딧, 환불, 개인정보')).toBe(true)
+    expect(keepsWords('AI 리포트 2026')).toBe(true)
+    expect(keepsWords('万年历与八字')).toBe(false)
+    expect(keepsWords('レポート')).toBe(false)
+    expect(keepsWords('Quarterly report')).toBe(false)
+    // 韩汉混排仍逐字可断，保持中文断行不变
+    expect(keepsWords('大韓民國 헌법')).toBe(false)
+  })
+
+  it('韩文标题与摘要设置 keep-all，其余标题不带 wordBreak（版式与之前相同）', () => {
+    const ko = '자주 묻는 질문: 크레딧, 환불, 개인정보'
+    expect(withText(defaultShareCardLayout(ko, light), ko).props.style).toMatchObject({
+      wordBreak: 'keep-all',
+    })
+    const summary = '크레딧 사용 내역과 환불 기준을 안내합니다.'
+    const card = sampleShareCardLayout(
+      { title: ko, description: summary, label: '', meta: '' },
+      light,
+    )
+    expect(withText(card, summary).props.style).toMatchObject({ wordBreak: 'keep-all' })
+    for (const title of ['万年历', 'Pricing', zh.title]) {
+      const style = withText(defaultShareCardLayout(title, light), title).props.style ?? {}
+      expect(style).not.toHaveProperty('wordBreak')
+    }
+  })
+
+  it('keep-all 下换行模拟不在音节之间断开；没有断点的长词就地断开', () => {
+    // 逐字可断时「나다」留在第一行；按词断行时整个词移到下一行，超长部分再断开
+    expect(countLines('가 나다라마바사', 4, false)).toBe(2)
+    expect(countLines('가 나다라마바사', 4, true)).toBe(3)
+    expect(countLines('가 나다라마바사', 4)).toBe(3)
+    // 中文与拉丁的结果不随参数默认值变化
+    expect(countLines('面向中小团队的协作', 4)).toBe(countLines('面向中小团队的协作', 4, false))
+  })
+
+  it('截断后的韩文长标题在 keep-all 下仍不超过两行', () => {
+    const title = '자주 묻는 질문: 크레딧 충전, 환불 정책, 개인정보 처리방침과 계정 삭제 절차 안내'
+    const text = titleOf(defaultShareCardLayout(title, light), '자주')
+    expect(text.endsWith('…')).toBe(true)
+    expect(countLines(text, capacity(76), true)).toBeLessThanOrEqual(2)
+    const card = titleOf(shareCardLayout({ title }, light), '자주')
+    expect(countLines(card, capacity(60), true)).toBeLessThanOrEqual(2)
+  })
+
+  it('元信息完整显示或在字素边界以省略号截断，盒子占满域名左侧不按测量宽度裁切', () => {
+    const host = 'ganjiday.com'
+    // 反馈中的副标题：加权宽度远低于上限，应完整保留
+    const reported = '간지데이 · 무료 만세력·사주·타로'
+    const shown = metaOf(
+      defaultShareCardLayout('만세력', light, {
+        ...defaultShareCardSite(),
+        brand: { name: '간지데이' },
+        host,
+        tagline: '무료 만세력·사주·타로',
+      }),
+      '간지데이 ·',
+    )
+    expect(shown.props.children).toBe(reported)
+    expect(shown.props.style).toMatchObject({
+      flexGrow: 1,
+      overflow: 'hidden',
+      whiteSpace: 'nowrap',
+    })
+
+    const long = `${reported} · 궁합 · 오늘의 운세 · 꿈해몽 · 작명 · 택일 · 토정비결`
+    const cut = metaOf(shareCardLayout({ title: 't', meta: long, host }, light), '간지데이 ·').props
+      .children as string
+    expect(cut.endsWith('…')).toBe(true)
+    expect(long.startsWith(cut.slice(0, -1))).toBe(true)
+    expect(textWidth(cut)).toBeLessThanOrEqual(metaLimit(host))
+  })
+
+  it('域名很长时元信息上限随底部行剩余宽度收紧', () => {
+    expect(metaLimit('ganjiday.com')).toBe(28)
+    const longHost = `${'very-long-subdomain-name.'.repeat(2)}example.com`
+    expect(metaLimit(longHost)).toBeLessThan(28)
+    // 元信息 + 域名 + 圆点与间距不超过内容区宽度
+    expect(metaLimit(longHost) * 24 + textWidth(longHost) * 24 + 48).toBeLessThanOrEqual(1056)
   })
 })
 

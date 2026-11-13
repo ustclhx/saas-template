@@ -9,6 +9,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ShareCardEdgeCache, WebRuntime } from '../../server/runtime.ts'
 import { withWebRuntime } from '../../server/runtime.ts'
+import { templateConfig } from '../../server/template-config.ts'
 import { handleShareCardImageRequest } from './image.server.ts'
 import { invalidateShareCard } from './invalidate.server.ts'
 import { registerShareCard } from './registry.ts'
@@ -221,6 +222,17 @@ describe('share card image route', () => {
     expect(bare.headers.get('location')).toBe(cardPath('Renamed'))
     expect(t.render).not.toHaveBeenCalled()
     expect(t.objects.size).toBe(0)
+  })
+
+  it('ignores the locale parameter when the project has no site overrides', async () => {
+    const t = setup()
+    // 没有站点覆盖时 l 不进入 v：任何语言（含未知值）都是同一地址、同一缓存条目。
+    for (const locale of [templateConfig.i18n.defaultLocale, 'xx', '../en']) {
+      const response = await t.request(`${cardPath('Survey')}&l=${encodeURIComponent(locale)}`)
+      expect(response.status).toBe(200)
+    }
+    expect(t.render).toHaveBeenCalledTimes(1)
+    expect(t.edge.size).toBe(1)
   })
 
   it('bounds browser and edge cache to the remaining lifetime', async () => {

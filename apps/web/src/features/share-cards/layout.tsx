@@ -6,7 +6,7 @@ import { homePageCopy } from '../seo/home-copy.ts'
 import { projectFonts } from './fonts.ts'
 import type { SampleShareData } from './sample.ts'
 import { defaultShareCardSite, type ShareCardBrand, type ShareCardSite } from './site.ts'
-import { fallbackFontPlan, truncateText } from './text.ts'
+import { fallbackFontPlan, keepsWords, textWidth, truncateText } from './text.ts'
 import type { ShareCardTheme } from './types.ts'
 
 export const SHARE_CARD_WIDTH = 1200
@@ -27,6 +27,20 @@ export const SHARE_CARD_TEXT_LIMITS = {
 const CONTENT_WIDTH = SHARE_CARD_WIDTH - 72 * 2
 // 换行模拟的行宽留 5% 余量，抵消字宽估算与 satori 断行规则的差异
 const lineWidth = (fontSize: number) => (CONTENT_WIDTH / fontSize) * 0.95
+const META_SIZE = 24
+// 底部行右侧：圆点 12、间距 12，与元信息之间再留 24
+const HOST_CHROME = 12 + 12 + 24
+
+/** 韩文（不含汉字与假名）按词断行；其余文本不设置，版式与之前完全相同。 */
+const wordBreak = (text: string) => (keepsWords(text) ? { wordBreak: 'keep-all' as const } : {})
+
+/**
+ * 元信息的加权字宽上限：默认 28，域名很长时按底部行剩余宽度收紧，使元信息不会伸到域名下方。
+ */
+export function metaLimit(host: string): number {
+  const available = (CONTENT_WIDTH - textWidth(host) * META_SIZE - HOST_CHROME) / META_SIZE
+  return Math.max(0, Math.min(SHARE_CARD_TEXT_LIMITS.meta, Math.floor(available)))
+}
 
 export interface ShareCardLayoutContent {
   readonly title: string
@@ -82,10 +96,10 @@ export function shareCardLayout(
       lineWidth: lineWidth(28),
       lines: 2,
     })
-  const meta = content.meta && truncateText(content.meta, SHARE_CARD_TEXT_LIMITS.meta)
   const fallback = defaultShareCardSite()
   const brand = content.brand ?? fallback.brand
   const host = content.host ?? fallback.host
+  const meta = content.meta && truncateText(content.meta, metaLimit(host))
   return (
     <div
       style={{
@@ -166,6 +180,7 @@ export function shareCardLayout(
             letterSpacing: -titleSize * 0.01,
             maxHeight: titleLeading * 2,
             overflow: 'hidden',
+            ...wordBreak(title),
           }}
         >
           {title}
@@ -180,6 +195,7 @@ export function shareCardLayout(
               maxHeight: 84,
               overflow: 'hidden',
               color: theme.mutedForeground,
+              ...wordBreak(summary),
             }}
           >
             {summary}
@@ -193,7 +209,7 @@ export function shareCardLayout(
           justifyContent: 'space-between',
           paddingTop: 28,
           borderTop: `1px solid ${theme.border}`,
-          fontSize: 24,
+          fontSize: META_SIZE,
           lineHeight: '32px',
           color: theme.mutedForeground,
         }}
@@ -203,10 +219,17 @@ export function shareCardLayout(
             display: 'flex',
             alignItems: 'center',
             gap: 12,
+            // 占满域名左侧的剩余宽度：裁切边界是域名前的空白，而不是 satori 测得的文字宽度。
+            // satori 逐字用首个含该字形的字体测宽（·、空格取 Inter），绘制时同一词段却用段首字符的字体
+            // （谚文段用项目字体、汉字段用 Noto Sans SC，其 · 宽 0.56em / 1em，Inter 为 0.29em），
+            // 绘制宽度大于测量宽度；盒宽等于测量宽度时 overflow: hidden 会把末字裁掉一半。
+            flexGrow: 1,
             flexShrink: 1,
             minWidth: 0,
+            marginRight: 24,
             overflow: 'hidden',
             whiteSpace: 'nowrap',
+            textOverflow: 'ellipsis',
           }}
         >
           {meta ?? ''}

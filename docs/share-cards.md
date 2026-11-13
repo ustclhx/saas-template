@@ -201,6 +201,12 @@ export const getReportShareMeta = createServerFn({ method: 'GET' })
   `.tsx` 版式文件仍受 `pnpm check:ui` 检查。
 - **截断**：不要依赖 CSS 截断。用 `truncateText(text, { maxWidth, lineWidth, lines })` 在渲染前按字宽加权截断
   （CJK 记 1，拉丁小写约 0.6、大写约 0.72），超长时以省略号结尾；`SHARE_CARD_TEXT_LIMITS` 是默认版式的上限。
+- **韩文断行**：标题与摘要含谚文且不含汉字、假名时设置 `wordBreak: 'keep-all'`，按空格分词换行，不在音节之间断开；
+  中日文仍逐字可断，韩汉混排按中文规则。`truncateText` / `countLines` 用同一规则模拟行数（`keepsWords`），
+  截断后的标题仍在两行内。自建版式显示韩文段落时同样设置 `keep-all`。
+- **底部元信息**：单行，占满域名左侧的剩余宽度后才裁切（satori 绘制中日韩词段时，段内 `·`、空格等用该段首字的字体，
+  比测量时用的 Inter 宽，盒宽等于测量宽度会把末字裁掉一半）；上限默认 28，域名很长时按剩余宽度收紧（`metaLimit`），
+  仍超出时 satori 在字素边界加省略号。
 - **含 CJK 的标题整行 400 字重**：Noto Sans SC 只有常规体，含需要回退字体的字符时整行用 400；纯拉丁标题用 Inter 600。
   中文标题靠字号区分层级，不要依赖加粗。
 - **主题覆盖**：模板基线在 `packages/ui/src/share-card-theme.ts`（与 `tokens.css` 基线一致，有单测保证）。
@@ -273,6 +279,11 @@ render: (data, theme, site) =>
   不合法时整个覆盖被忽略、按单站点输出（不报错，单测覆盖）。没有覆盖时地址与 `APP_URL` 均不变。
 - **构建期默认分享图**：没有请求，按 `app.url` 的 host 与页面的 `locale`、`pathname` 解析。静态图按路径输出
   （`/og/<locale>/<path>.png`），所有域名共用同一张；按域名区分品牌的站点需要用语言或路径区分，或分别构建（与 html-attributes 的预渲染限制相同）。
+- **运行时语言**（0.5.0）：通用分享页与 `shareCardMeta` 把页面语言（Paraglide 的 `getLocale()`，`/<locale>/s/...`）
+  作为 `context.locale` 传给解析函数；站点覆盖生效且语言不是默认语言时，卡片地址追加 `&l=<locale>`，该语言同时计入 `v`，
+  各语言的卡片缓存互不混用。卡片路由与 `/dev/ui` 预览从 `l` 读取语言，只接受 `template.config.ts` 中启用的语言，
+  缺省或未知值按默认语言解析（`v` 不符时 302 到当前地址）。默认语言与没有站点覆盖的项目地址不变，`l` 被忽略。
+  运行时 `context.locale` 总有值（缺省为默认语言），解析函数不要用 `locale === undefined` 判断默认语言。
 - 解析函数保持同步、无副作用，每次卡片请求都会调用。
 
 ## 7. 字体与文字支持

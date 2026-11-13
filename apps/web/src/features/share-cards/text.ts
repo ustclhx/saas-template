@@ -161,12 +161,33 @@ const isWide = (char: string) => WIDE.test(char)
 const isWordChar = (char: string | undefined) =>
   char !== undefined && !isWide(char) && /^[\p{L}\p{N}]/u.test(char)
 
+const HANGUL = /\p{Script=Hangul}/u
+// 汉字与假名逐字可断；与谚文混排时不启用按词断行，保持中日文的断行不变。
+const PER_CHAR_CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u
+
+/**
+ * 是否按词断行（CSS `word-break: keep-all`）：含谚文且不含汉字与假名时为真。
+ * 韩文以空格分词，默认断行规则会在音节之间换行（「개 / 인정보」）；版式据此给 satori 设置 keep-all，
+ * countLines 用同一规则模拟，保证截断后的标题仍在行数之内。
+ */
+export function keepsWords(text: string): boolean {
+  return HANGUL.test(text) && !PER_CHAR_CJK.test(text)
+}
+
 /**
  * 模拟换行（拉丁按空格断行，CJK 逐字可断），返回占用的行数。
- * 没有断点的超长单词按字断开。
+ * `keepAll`（默认按 keepsWords 判断）时谚文与拉丁一样按词断行。没有断点的超长单词按字断开。
  */
-export function countLines(text: string, lineWidth: number): number {
+export function countLines(
+  text: string,
+  lineWidth: number,
+  keepAll: boolean = keepsWords(text),
+): number {
   const chars = graphemes(text)
+  // keep-all 时谚文按单词字符处理：音节之间不可断
+  const breaksBefore = (char: string) => isWide(char) && !(keepAll && HANGUL.test(char))
+  const joins = (char: string | undefined) =>
+    isWordChar(char) || (keepAll && char !== undefined && HANGUL.test(char))
   let lines = 1
   let width = 0
   // 当前行最后一个可断点之后的宽度
@@ -180,7 +201,7 @@ export function countLines(text: string, lineWidth: number): number {
       sinceBreak = 0
       continue
     }
-    if (isWide(char) || !isWordChar(chars[i - 1])) sinceBreak = 0
+    if (breaksBefore(char) || !joins(chars[i - 1])) sinceBreak = 0
     if (width + w > lineWidth && width > 0) {
       lines += 1
       // 在最后一个断点处换行，断点后的内容移到新行；没有断点时就地断开

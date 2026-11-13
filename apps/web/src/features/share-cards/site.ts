@@ -8,10 +8,14 @@ import { fnv1a } from './hash.ts'
 import { resolveProjectShareCardSite } from './share-cards.sites.ts'
 import type { ShareCardTheme } from './types.ts'
 
-/** 与 html-attributes 的上下文对应；运行时卡片只有 host，构建期默认分享图另有 locale 与 pathname。 */
+/**
+ * 与 html-attributes 的上下文对应。运行时卡片有 host 与 locale（分享页的语言，经卡片地址的 `l` 参数传给卡片路由），
+ * 构建期默认分享图另有 pathname。
+ */
 export interface ShareCardSiteContext {
   /** 请求 URL 的 host（含非默认端口），不是转发头。 */
   readonly host?: string | undefined
+  /** 已按模板配置校验的语言；运行时未知或缺省时为默认语言。 */
   readonly locale?: string | undefined
   /** 不含语言前缀的页面路径。 */
   readonly pathname?: string | undefined
@@ -61,18 +65,43 @@ export function defaultShareCardSite(locale?: string): ShareCardSite {
 
 const projectResolver = (): ProjectShareCardSiteResolver => resolveProjectShareCardSite
 
+/** 运行时卡片的语言：只接受模板配置启用的语言，其余（含缺省与未启用多语言）一律为默认语言。 */
+export function shareCardLocale(value: string | null | undefined): string {
+  const { enabled, locales, defaultLocale } = templateConfig.i18n
+  return enabled && value && (locales as readonly string[]).includes(value) ? value : defaultLocale
+}
+
+/**
+ * 进入卡片地址 `l` 参数的语言：只在站点覆盖生效（指纹非空）且不是默认语言时给出。
+ * 没有站点覆盖的项目与默认语言的卡片地址保持不变。
+ */
+export function shareCardUrlLocale(
+  site: Pick<ShareCardSite, 'fingerprint' | 'locale'>,
+): string | undefined {
+  return site.fingerprint !== '' &&
+    site.locale !== undefined &&
+    site.locale !== templateConfig.i18n.defaultLocale
+    ? site.locale
+    : undefined
+}
+
 /**
  * 按请求解析站点（卡片路由、分享页与 shareCardMeta 共用）。站点覆盖返回了 `host`（项目声明的规范域名）时，
  * 分享页与卡片的绝对地址使用该域名（协议沿用 APP_URL）；否则仍用 APP_URL。
  * 从不使用请求的原始 Host：www 变体、预览与 workers.dev 域名不进入对外元数据，也不信任任意 Host 头。
+ * `locale`：分享页传入页面语言，卡片路由传入地址的 `l` 参数；经 shareCardLocale 校验，未知或缺省为默认语言。
  */
 export function resolveRequestShareCardSite(
   requestUrl: string,
   appUrl: string,
   resolver: ProjectShareCardSiteResolver | undefined = projectResolver(),
+  locale?: string | null,
 ): { site: ShareCardSite; themeOverride: Partial<ShareCardTheme>; origin: string } {
   const { host } = new URL(requestUrl)
-  const { canonicalHost, ...resolved } = resolveShareCardSite({ host }, resolver)
+  const { canonicalHost, ...resolved } = resolveShareCardSite(
+    { host, locale: shareCardLocale(locale) },
+    resolver,
+  )
   const origin = canonicalHost ? `${new URL(appUrl).protocol}//${canonicalHost}` : appUrl
   return { ...resolved, origin }
 }
@@ -116,12 +145,17 @@ export function resolveShareCardSite(
     locale: context.locale,
     tagline: override.tagline,
     // 只对覆盖内容取指纹：同一站点得到同一地址，不同站点的卡片缓存互不混用。
+    // 非默认语言另计入指纹：项目版式可按 site.locale 输出不同文字，各语言的卡片不能共用缓存；
+    // 默认语言不计入，0.4.x 已发出的卡片地址不变。
     fingerprint: fnv1a(
       JSON.stringify([
         override.theme ?? null,
         override.brand ?? null,
         canonicalHost ?? null,
         override.tagline ?? null,
+        ...(context.locale !== undefined && context.locale !== templateConfig.i18n.defaultLocale
+          ? [context.locale]
+          : []),
       ]),
     ),
   }
