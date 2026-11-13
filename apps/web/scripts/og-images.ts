@@ -4,7 +4,7 @@ import type { Plugin } from 'vite'
 import { ogImagePath } from '../src/features/seo/metadata.ts'
 import { publicPages } from '../src/features/seo/pages.ts'
 import { defaultShareCardLayout } from '../src/features/share-cards/layout.tsx'
-import { resolveShareCardTheme } from '../src/features/share-cards/theme.ts'
+import { defaultShareCardSite, resolveShareCardSite } from '../src/features/share-cards/site.ts'
 import { createNodeShareCardRenderer } from '../src/node/share-card-renderer.ts'
 
 const root = new URL('..', import.meta.url)
@@ -30,9 +30,20 @@ function pages() {
   })
 }
 
-/** 设计稿 `default` 变体（浅色主题 token），取代原先写死的深蓝渐变。 */
-export function renderOgImage(title: string): Promise<Uint8Array> {
-  return renderer.render(defaultShareCardLayout(title, resolveShareCardTheme('light')))
+/**
+ * 设计稿 `default` 变体（浅色主题 token），取代原先写死的深蓝渐变。站点按 app.url 的域名与页面的
+ * locale / pathname 解析（构建期没有请求 host；静态图按路径输出，各站点共用同一路径的图片）。
+ */
+export function renderOgImage(
+  title: string,
+  page: { locale?: string; path?: string } = {},
+): Promise<Uint8Array> {
+  const { site, theme } = resolveShareCardSite({
+    host: defaultShareCardSite().host,
+    locale: page.locale,
+    pathname: page.path,
+  })
+  return renderer.render(defaultShareCardLayout(title, theme, site))
 }
 
 /** WASM 与完整字体只在 Node 构建阶段使用，PNG 作为客户端静态资源输出。 */
@@ -46,7 +57,7 @@ export function ogImages(): Plugin {
         this.emitFile({
           type: 'asset',
           fileName: decodeURIComponent(ogImagePath(page).slice(1)),
-          source: await renderOgImage(page.title),
+          source: await renderOgImage(page.title, page),
         })
       }
       this.emitFile({
@@ -70,7 +81,7 @@ export function ogImages(): Plugin {
             return
           }
           response.setHeader('Content-Type', 'image/png')
-          response.end(await renderOgImage(page.title))
+          response.end(await renderOgImage(page.title, page))
         } catch (error) {
           next(error)
         }

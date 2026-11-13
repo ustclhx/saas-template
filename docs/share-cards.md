@@ -4,7 +4,7 @@
 模板只负责渲染、缓存、到期、失效与元数据；**分享关系由项目自己的表维护**，模板不存储谁分享了什么。
 设计依据见 OpenSpec change `add-og-images`（归档后在 `openspec/specs/share-cards/`）。
 
-- 卡片图片：`GET /share-card/<type>/<token>.png?v=<version>-<digest8>`，1200×630 PNG。
+- 卡片图片：`GET /share-card/<type>/<token>.png?v=<version>-<digest8>`（登记了项目字体或站点覆盖时再加 `-<指纹8>`），1200×630 PNG。
 - 通用分享页：`GET /s/<type>/<token>`，显示卡片、标题、描述与站点入口，`noindex`。
 - 代码：`apps/web/src/features/share-cards/`；对象存储与失效：`packages/storage/src/share-cards.ts`；
   主题基线：`packages/ui/src/share-card-theme.ts`。
@@ -73,7 +73,7 @@ export function registerProjectShareCards() {
 
 - `share-cards.project.ts` 从 `./registry.ts` 导入 `registerShareCard`，不要从 `./index.ts` 导入（`index.ts` 会调用本文件，形成循环）。
 - 同一类型名重复注册在启动时抛错；开发服务器热更新时以新定义替换旧定义。
-- `digest` 返回值只取前 8 位进入地址（`v=<version>-<digest8>`），应是对展示字段的稳定摘要；
+- `digest` 返回值只取前 8 位进入地址（`v=<version>-<digest8>`，项目字体与站点指纹见第 6.1、7.1 节），应是对展示字段的稳定摘要；
   它不承担访问控制，访问始终由随机令牌与 `resolve` 决定。
 - `resolve` 每次缓存未命中、每次打开分享页都会被调用，应只查必要的一两行；数据库不可达时抛错，卡片返回 500。
 - 资源被删除、所属空间已软删除或项目判定不可再分享时，`resolve` 返回 `null`。
@@ -227,6 +227,51 @@ export const getReportShareMeta = createServerFn({ method: 'GET' })
 
   当前 `check:ui` 只扫描 `.tsx`，该 `.ts` 文件不会报错；登记是为了扫描范围扩大后不被拦截，并留下原因。
 - 卡片固定用浅色主题渲染；`/dev/ui` 预览可切换深色。
+- **品牌行与域名**：`shareCardLayout` 默认显示模板配置的应用名（方块中为首字大写）与 `app.url` 的域名，
+  可用 `brand: { name, initial? }` 与 `host` 覆盖。构建期默认分享图的副标题为「品牌名 · 标语」，
+  标语取站点解析的 `tagline`，未提供时取该语言首页的 SEO 标题（`features/seo/metadata.ts` 的 `staticPage('/')`）。
+
+### 6.1 多站点
+
+一次部署服务多个品牌域名（如 `ganjiday.com` 与 `arcanumber.com`）时，在项目自有的 `share-cards.theme.ts` 中
+**可选**导出 `resolveProjectShareCardSite`，按站点返回覆盖；返回 `undefined` 或不导出时与单站点相同。
+上下文与 `theme/html-attributes.ts` 一致（`host`、`locale`、`pathname`），两处可共用同一张域名表。
+
+```ts
+// apps/web/src/features/share-cards/share-cards.theme.ts
+import type { ShareCardSiteContext, ProjectShareCardSite } from './site.ts'
+import type { ShareCardTheme } from './types.ts'
+
+export const projectShareCardTheme: Partial<ShareCardTheme> = {}
+
+export function resolveProjectShareCardSite(
+  context: ShareCardSiteContext,
+): ProjectShareCardSite | undefined {
+  if (context.host === 'ganjiday.com' || context.locale === 'zh') {
+    return {
+      theme: { brandAccent: '#b91c1c' }, // 与 brand.css 的 :root[data-site="east"] 对应
+      brand: { name: '干支日', initial: '干' },
+      host: 'ganjiday.com',
+      tagline: '每日干支', // 可选：构建期默认分享图副标题
+    }
+  }
+  return undefined
+}
+```
+
+项目卡片类型的 `render` 第三个参数是解析后的站点，把品牌与域名交给版式：
+
+```tsx
+render: (data, theme, site) =>
+  shareCardLayout({ title: data.title, summary: data.summary, brand: site.brand, host: site.host }, theme),
+```
+
+- **运行时卡片**：卡片路由、通用分享页、`shareCardMeta` 与 `/dev/ui` 预览按**请求 URL 的 host** 解析（不读转发头）。
+  返回覆盖的站点，分享页的 `og:url`、`og:image` 改用请求域名（协议沿用 `APP_URL`），`og:site_name` 为站点品牌名；
+  卡片地址的 `v` 追加站点指纹，不同站点的缓存互不混用。没有覆盖时地址与 `APP_URL` 均不变。
+- **构建期默认分享图**：没有请求，按 `app.url` 的 host 与页面的 `locale`、`pathname` 解析。静态图按路径输出
+  （`/og/<locale>/<path>.png`），所有域名共用同一张；按域名区分品牌的站点需要用语言或路径区分，或分别构建（与 html-attributes 的预渲染限制相同）。
+- 解析函数保持同步、无副作用，每次卡片请求都会调用。
 
 ## 7. 字体与文字支持
 
@@ -238,11 +283,43 @@ export const getReportShareMeta = createServerFn({ method: 'GET' })
 
 文字覆盖范围（分享卡片与构建期分享图相同，实现见 `features/share-cards/text.ts`）：
 
-- 支持：英文与西欧拉丁字母、中日文（简体子集）、基本西里尔与基本希腊字母（部分覆盖）、拼音声调字母；
-- 两种字体都缺字的带附加符号字母降级为基本字母（如 `Ą`→`A`、`ά`→`α`）；
+- 支持：英文与西欧拉丁字母、中日文（简体子集，繁体中文也在其中）、基本西里尔与基本希腊字母（部分覆盖）、拼音声调字母；
+- 两种字体都缺字的带附加符号字母降级为基本字母（如 `Ą`→`A`、`ά`→`α`）；项目字体覆盖的文字不降级；
 - emoji（含 ZWJ 序列、变体选择符、肤色修饰与旗帜）在渲染前去除；
-- **不支持**：谚文（韩文）、泰文、老挝文、高棉文、缅甸文，以及简体子集之外的扩展西里尔字母（如乌克兰文 `і`、`ї`），
-  这些字符显示为方框；需要时由项目换用含对应字形的字体。
+- **模板字体不支持**：谚文（韩文）、泰文、老挝文、高棉文、缅甸文，以及简体子集之外的扩展西里尔字母（如乌克兰文 `і`、`ї`），
+  这些字符显示为方框；需要时由项目登记回退字体（下一节）。
+
+### 7.1 项目回退字体
+
+项目自有文件 `apps/web/src/features/share-cards/share-cards.fonts.ts` 登记 Inter 与 Noto Sans SC 之外的字体。
+模板只创建这个文件（空列表），之后不再修改；`template-sync` 只在项目没有它时新增，生成器原样复制。
+
+```ts
+// apps/web/src/features/share-cards/share-cards.fonts.ts
+import type { ProjectShareCardFont } from './types.ts'
+
+export const projectShareCardFonts: readonly ProjectShareCardFont[] = [
+  { name: 'Noto Sans KR', file: 'NotoSansKR-Regular.otf', scripts: ['Hangul'] },
+  // 需要韩文标题保持粗体时再登记 600：
+  // { name: 'Noto Sans KR', file: 'NotoSansKR-SemiBold.otf', scripts: ['Hangul'], weight: 600 },
+]
+```
+
+- **文件与许可证**：字体放在 `apps/web/public/fonts/share-card/`，同目录放许可证（如 Noto 系列的 SIL OFL 1.1，
+  命名为 `NOTO-KR-LICENSE`）。模板不附带这些字体。`file` 只能是该目录下的文件名（`.otf`、`.ttf` 或 `.woff`，
+  satori 不支持 woff2），不能含 `/`、`\` 或 `..`。
+- **文字名** `scripts`：Unicode Script 值，如 `Hangul`（韩文）、`Thai`、`Arabic`、`Devanagari`、`Cyrillic`。
+  文本含这些文字的字符时才读取该字体；不能登记 `Common` / `Inherited`（标点与组合符号会让每张卡片都读取字体）。
+  登记不合法（文件名、文字名、与 Inter / Noto Sans SC 重名、同族同字重重复）时模块加载即抛错，构建与测试会失败。
+- **顺序**：Inter → Noto Sans SC → 项目字体。项目字体只补前两者没有的字形，不能用来替换中日文字形。
+- **加载**：与 Noto 相同，只在需要时读取（Workers 经 `ASSETS.fetch`、Node 与构建期读本地文件），同一实例内缓存，不进 Worker 包。
+  文件缺失时渲染失败（500），不会输出缺字的图片。
+- **字重**：标题含需要 Noto 的字符时整行 400；只需要项目字体时，所需字体族都登记了 600 才保持 600。
+- **体积**：完整韩文字体常见 4–16 MB，冷实例首次解析更慢。建议用常用音节子集（如 KS X 1001 的 2350 个音节）
+  或只登记 Regular。
+- **构建期默认分享图**（`dist/client/og/`）使用同一份登记：韩文公开页面的分享图也会显示韩文字形。
+- 登记变化时卡片地址的 `v` 追加指纹（族名、文件、字重、文字，不含字体字节），已缓存的卡片在下一次请求时重新渲染；
+  只替换字体文件内容而不改登记时，地址不变，需要按第 3 节失效或等待到期。
 
 ## 8. 缓存语义
 

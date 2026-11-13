@@ -306,7 +306,11 @@ generatorTest(
     await f.file('packages/ui/src/components/button.tsx', component)
     await f.file('packages/ui/components.lock.json', lock)
     await f.file('apps/web/src/features/theme/html-attributes.ts', htmlAttributes)
-    const shareCardFiles = ['share-cards.project.ts', 'share-cards.theme.ts']
+    const shareCardFiles = [
+      'share-cards.project.ts',
+      'share-cards.theme.ts',
+      'share-cards.fonts.ts',
+    ]
     for (const name of shareCardFiles)
       await f.file(`apps/web/src/features/share-cards/${name}`, htmlAttributes)
     await f.file('docs/design-system/prototypes/review.html', 'TEMPLATE_PROTOTYPE_SENTINEL')

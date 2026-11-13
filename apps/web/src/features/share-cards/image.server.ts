@@ -5,9 +5,10 @@ import { getWebRuntime } from '../../server/runtime.ts'
 import { isShareRevoked, precheckShare, remainingSeconds, resolveShare } from './lookup.ts'
 // meta.server.ts 引入 index.ts，加载时登记项目类型。
 import { shareLookupDeps } from './meta.server.ts'
-import { shareCardImagePath } from './meta.ts'
+import { shareCardImagePath, shareCardVariant } from './meta.ts'
 import { renderShareCard } from './render.server.ts'
 import { SHARE_CARD_BUSY } from './renderer.ts'
+import { resolveRequestShareCardSite } from './site.ts'
 
 /**
  * 浏览器与公共缓存上限都是 1 天，且不超过剩余有效期（design 第 3 条）：与 KV 撤销标记的 1 天 TTL 一致，
@@ -133,12 +134,14 @@ export async function handleShareCardImageRequest(
   if (result.status === 'rate-limited') return failure(429, { 'retry-after': '60' })
   if (result.status !== 'ok') return failure(404)
   const { card, resolution, expiresAt } = result
-  const expected = `${card.version}-${card.digest(resolution.data).slice(0, 8)}`
+  // 站点按本次请求的 host 解析，与分享页元数据一致；站点覆盖进入 v，不同站点不共用缓存。
+  const { site, theme } = resolveRequestShareCardSite(request.url, runtime.config.APP_URL)
+  const expected = shareCardVariant(card, resolution.data, site)
   if (variant !== expected)
     return new Response(null, {
       status: 302,
       headers: {
-        location: shareCardImagePath(card, token, resolution.data),
+        location: shareCardImagePath(card, token, resolution.data, site),
         'cache-control': 'no-store',
         'x-robots-tag': 'noindex',
       },
@@ -146,7 +149,7 @@ export async function handleShareCardImageRequest(
 
   let body: Uint8Array
   try {
-    body = await renderShareCard(card, resolution.data)
+    body = await renderShareCard(card, resolution.data, theme, site)
   } catch (error) {
     if (error instanceof AppError && error.code === SHARE_CARD_BUSY)
       return failure(503, { 'retry-after': String(BUSY_RETRY_AFTER) })

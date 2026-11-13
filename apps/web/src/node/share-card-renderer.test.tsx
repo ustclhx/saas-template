@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { AppError } from '@saas/shared'
 import { describe, expect, it, vi } from 'vitest'
+import { resolveProjectShareCardFonts } from '../features/share-cards/fonts.ts'
 import { sampleShareCardLayout } from '../features/share-cards/layout.tsx'
 import {
   createShareCardRenderer,
@@ -79,6 +80,54 @@ describe('渲染核心', () => {
     expect(fonts[1]?.map((font) => font.name)).toEqual(['Inter', 'Noto Sans SC'])
     // 字体数组在实例内复用
     expect(fonts[2]).toBe(fonts[1])
+  })
+
+  it('项目字体只在文本含其登记文字时读取，排在 Noto 之后并在实例内缓存', async () => {
+    const projectFonts = resolveProjectShareCardFonts([
+      { name: 'Noto Sans KR', file: 'NotoSansKR-Regular.otf', scripts: ['Hangul'] },
+    ])
+    const loadCjkFont = vi.fn(async () => new ArrayBuffer(2))
+    const loadProjectFont = vi.fn(async (_file: string) => new ArrayBuffer(3))
+    const engine = vi.fn<ShareCardImageEngine>(ok)
+    const renderer = createShareCardRenderer({
+      engine,
+      loadLatinFonts: () => latin,
+      loadCjkFont,
+      loadProjectFont,
+      projectFonts,
+    })
+    await renderer.render(<div>English only</div>)
+    await renderer.render(<div>中文标题</div>)
+    expect(loadProjectFont).not.toHaveBeenCalled()
+    await renderer.render(<div>보고서</div>)
+    await renderer.render(<div>보고서 报告</div>)
+    await renderer.render(<div>다른 보고서</div>)
+    expect(loadProjectFont).toHaveBeenCalledTimes(1)
+    expect(loadProjectFont).toHaveBeenCalledWith('NotoSansKR-Regular.otf')
+    expect(loadCjkFont).toHaveBeenCalledTimes(1)
+    const fonts = engine.mock.calls.map(([, options]) => options.fonts.map((font) => font.name))
+    expect(fonts[2]).toEqual(['Inter', 'Noto Sans KR'])
+    expect(fonts[3]).toEqual(['Inter', 'Noto Sans SC', 'Noto Sans KR'])
+    expect(engine.mock.calls[4]?.[1].fonts).toBe(engine.mock.calls[2]?.[1].fonts)
+  })
+
+  it('项目字体读取失败不缓存，下次重试', async () => {
+    const loadProjectFont = vi
+      .fn<(file: string) => Promise<ArrayBuffer>>()
+      .mockRejectedValueOnce(new Error('asset 404'))
+      .mockResolvedValue(new ArrayBuffer(3))
+    const renderer = createShareCardRenderer({
+      engine: ok,
+      loadLatinFonts: () => latin,
+      loadCjkFont: async () => new ArrayBuffer(2),
+      loadProjectFont,
+      projectFonts: resolveProjectShareCardFonts([
+        { name: 'Noto Sans KR', file: 'NotoSansKR-Regular.otf', scripts: ['Hangul'] },
+      ]),
+    })
+    await expect(renderer.render(<div>보고서</div>)).rejects.toThrow('asset 404')
+    await expect(renderer.render(<div>보고서</div>)).resolves.toBeInstanceOf(Uint8Array)
+    expect(loadProjectFont).toHaveBeenCalledTimes(2)
   })
 
   it('CJK 字体读取失败不缓存，下次重试', async () => {

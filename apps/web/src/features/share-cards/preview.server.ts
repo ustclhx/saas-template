@@ -15,7 +15,7 @@ import {
   SAMPLE_SHARE_WORKSPACE_ID,
   type SampleSharePreview,
 } from './sample.ts'
-import { resolveShareCardTheme } from './theme.ts'
+import { resolveRequestShareCardSite } from './site.ts'
 import { createShareToken } from './token.ts'
 
 const plain = (status: number, text: string, headers: Record<string, string> = {}) =>
@@ -46,16 +46,19 @@ export async function handleShareCardPreviewRequest(request: Request): Promise<R
   )
   if (!limited.success) return plain(429, 'Too Many Requests', { 'retry-after': '60' })
   const data = SAMPLE_SHARE_PREVIEWS[variant as SampleSharePreview]
+  // 与卡片路由相同按请求 host 解析站点，多站点项目可在各自域名下预览。
+  const { site, theme } = resolveRequestShareCardSite(request.url, runtime.config.APP_URL, mode)
   try {
     const body = await renderShareCard(
       {
-        render: (value, theme) =>
+        render: (value, theme, site) =>
           variant === 'default'
-            ? defaultShareCardLayout(value.title, theme)
-            : sampleShareCardLayout(value, theme),
+            ? defaultShareCardLayout(value.title, theme, site)
+            : sampleShareCardLayout(value, theme, site),
       },
       data,
-      resolveShareCardTheme(mode),
+      theme,
+      site,
     )
     return new Response(new Uint8Array(body), {
       headers: {

@@ -26,6 +26,7 @@ const projectOwnedFiles = new Set([
   'apps/web/src/features/theme/html-attributes.ts',
   'apps/web/src/features/share-cards/share-cards.project.ts',
   'apps/web/src/features/share-cards/share-cards.theme.ts',
+  'apps/web/src/features/share-cards/share-cards.fonts.ts',
 ])
 const excluded = new Set([
   '.git',
