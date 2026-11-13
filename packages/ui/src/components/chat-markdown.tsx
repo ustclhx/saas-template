@@ -2,11 +2,16 @@
 // 与阅读器共用 lib/markdown.ts 的安全选项（GFM、丢弃原始 HTML、元素白名单、协议白名单），排版为紧凑的对话档，
 // 外观按 docs/design-system/prototypes/chat-components/{Main,Mobile,States}.dc.html 的 .md / .tbl / .cb 样式。
 // 只经本包的 `chat` 子路径（src/chat.ts）导出，不进主入口与首页包。
-import type { Element, ElementContent, Nodes as HastNodes, Root as HastRoot } from 'hast'
+import type { Element, Nodes as HastNodes, Root as HastRoot } from 'hast'
 import { Check, Copy } from 'lucide-react'
-import { memo, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, memo, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import Markdown, { type Components, type Options } from 'react-markdown'
-import { isExternalUrl, MARKDOWN_SAFE_OPTIONS, splitMarkdownBlocks } from '../lib/markdown.ts'
+import {
+  hastText,
+  isExternalUrl,
+  MARKDOWN_SAFE_OPTIONS,
+  splitMarkdownBlocks,
+} from '../lib/markdown.ts'
 import { cn } from '../lib/utils.ts'
 
 export interface ChatMarkdownLabels {
@@ -20,8 +25,10 @@ export interface ChatMarkdownLabels {
   readonly codeBlock: string
   /** 表格横向滚动区域的可读名称 */
   readonly table: string
-  /** 图片替代文字的显示文案，如 `图片：${alt}`；回复中的图片不加载，只显示这段文字 */
-  readonly image: (alt: string) => string
+  /** 没有替代文字的图片显示的文案，如「图片」；回复中的图片不加载，只显示文字 */
+  readonly image: string
+  /** 有替代文字时的显示模板，`{alt}` 替换为替代文字，如「图片：{alt}」 */
+  readonly imageAlt: string
   /** 脚注区标题与「返回正文」链接的可读名称（remark-rehype 默认是英文） */
   readonly footnotes: string
   readonly footnoteBack: string
@@ -32,7 +39,10 @@ export interface ChatMarkdownProps {
   /** 消息 id：作为脚注 id 前缀，同一页多条回复各有脚注时 id 不冲突 */
   readonly id: string
   readonly labels: ChatMarkdownLabels
-  /** 生成中：按顶层块增量渲染，已完成的块不再重新渲染；结束后整段渲染一次 */
+  /**
+   * 生成中：根节点标记 `aria-busy`。渲染始终按顶层块增量进行（已完成的块不重新渲染），
+   * 结束时不整段重建，焦点、选区、复制状态与代码块滚动位置都保留
+   */
   readonly streaming?: boolean
   readonly className?: string
 }
@@ -43,10 +53,12 @@ const FOCUS_RING =
   'focus-visible:outline-2 focus-visible:outline-(--focus-ring) focus-visible:outline-offset-2'
 const COPY_RESET_MS = 1500
 
-function hastText(node: ElementContent): string {
-  if (node.type === 'text') return node.value
-  if (node.type === 'element') return node.children.map(hastText).join('')
-  return ''
+type Labels = ChatMarkdownLabels
+
+/** 图片的显示文字：有替代文字时套模板，没有时只显示通用文案（不留下悬空的「图片：」） */
+function imageText(labels: Pick<Labels, 'image' | 'imageAlt'>, alt: string): string {
+  const text = alt.trim()
+  return text ? labels.imageAlt.replaceAll('{alt}', text) : labels.image
 }
 
 function codeElement(node: Element | undefined): Element | undefined {
@@ -85,7 +97,7 @@ function CodeBlock({ code, language, labels }: { code: string; language: string;
   return (
     <div
       data-chat-code=""
-      className="mb-2.5 overflow-hidden rounded-lg inset-ring-1 inset-ring-border last:mb-0"
+      className="mb-2.5 overflow-hidden rounded-lg border border-border last:mb-0"
     >
       <div className="flex h-8.5 items-center gap-2 border-border border-b bg-muted/50 pr-1.5 pl-3">
         <span className="min-w-0 flex-1 truncate font-mono text-caption text-muted-foreground">
@@ -127,8 +139,6 @@ function CodeBlock({ code, language, labels }: { code: string; language: string;
     </div>
   )
 }
-
-type Labels = ChatMarkdownLabels
 
 const heading = 'mt-3.5 mb-1.5 font-semibold text-subtitle first:mt-0'
 
@@ -214,7 +224,7 @@ function chatComponents(labels: Labels): Components {
     // 图片固定不加载（模型输出的图片地址可把对话内容编码进查询串，自动加载即外泄）：显示替代文字小标签
     img: ({ node: _node, alt }) => (
       <span className="rounded-md px-1.5 py-0.5 text-caption text-muted-foreground inset-ring-1 inset-ring-border">
-        {labels.image(alt ?? '')}
+        {imageText(labels, alt ?? '')}
       </span>
     ),
     hr: ({ node: _node, className, ...props }) => (
@@ -227,7 +237,7 @@ function chatComponents(labels: Labels): Components {
         tabIndex={0}
         aria-label={labels.table}
         className={cn(
-          'mb-2.5 overflow-x-auto rounded-lg inset-ring-1 inset-ring-border last:mb-0',
+          'mb-2.5 overflow-x-auto rounded-lg border border-border last:mb-0',
           FOCUS_RING,
         )}
       >
@@ -290,6 +300,48 @@ function rehypePrefixFootnoteLabel(prefix: string) {
   }
 }
 
+// 流式光标的约定（与 chat 组件的样式共用）：生成中根节点带 `data-chat-streaming`，输出末尾承载文字的块元素带
+// `data-chat-tail`，样式用 `[data-chat-streaming] [data-chat-tail]::after` 画光标。
+const TEXT_BLOCKS = new Set(['p', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'td', 'th'])
+const CONTAINER_BLOCKS = new Set(['ul', 'ol', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'pre'])
+
+function isFootnoteSection(node: HastNodes): boolean {
+  return node.type === 'element' && node.tagName === 'section' && 'dataFootnotes' in node.properties
+}
+
+/** 节点的最后一个有内容的子节点（跳过块之间的空白文本与文末脚注区） */
+function lastChildOf(node: HastRoot | Element): HastNodes | undefined {
+  for (let index = node.children.length - 1; index >= 0; index -= 1) {
+    const child = node.children[index] as HastNodes
+    if (child.type === 'text' && child.value.trim() === '') continue
+    if (child.type === 'comment' || isFootnoteSection(child)) continue
+    return child
+  }
+  return undefined
+}
+
+/** 末尾最深的文字块；以代码块结尾时返回 `stop`（光标不进代码块，也不放到别处） */
+function findTail(node: HastRoot | Element): Element | 'stop' | null {
+  if (node.type === 'element' && node.tagName === 'pre') return 'stop'
+  const last = lastChildOf(node)
+  if (
+    last?.type === 'element' &&
+    (TEXT_BLOCKS.has(last.tagName) || CONTAINER_BLOCKS.has(last.tagName))
+  ) {
+    const found = findTail(last)
+    if (found) return found
+  }
+  return node.type === 'element' && TEXT_BLOCKS.has(node.tagName) ? node : null
+}
+
+/** rehype 插件：只用于生成中的最后一块（或整段渲染的退路），给末尾文字块加 `data-chat-tail` */
+function rehypeMarkTail() {
+  return (tree: HastRoot) => {
+    const tail = findTail(tree)
+    if (tail && tail !== 'stop') tail.properties.dataChatTail = ''
+  }
+}
+
 interface RenderConfig {
   readonly components: Components
   readonly rehypePlugins: NonNullable<Options['rehypePlugins']>
@@ -345,10 +397,8 @@ export const ChatMarkdown = memo(function ChatMarkdown({
   streaming = false,
   className,
 }: ChatMarkdownProps) {
-  const { copy, copied, copyFailed, codeBlock, table, footnotes, footnoteBack } = labels
-  // `image` 是函数，调用方常以内联箭头函数传入：经 ref 读取最新值，不让它的引用变化使已完成的块失效
-  const imageRef = useRef(labels.image)
-  imageRef.current = labels.image
+  const { copy, copied, copyFailed, codeBlock, table, image, imageAlt, footnotes, footnoteBack } =
+    labels
   // 只依赖文案的值：调用方每次传新的 labels 对象时，已完成的块仍保持 memo
   const config = useMemo<RenderConfig>(
     () => ({
@@ -358,7 +408,8 @@ export const ChatMarkdown = memo(function ChatMarkdown({
         copyFailed,
         codeBlock,
         table,
-        image: (alt) => imageRef.current(alt),
+        image,
+        imageAlt,
         footnotes,
         footnoteBack,
       }),
@@ -369,18 +420,40 @@ export const ChatMarkdown = memo(function ChatMarkdown({
         footnoteBackLabel: footnoteBack,
       },
     }),
-    [id, copy, copied, copyFailed, codeBlock, table, footnotes, footnoteBack],
+    [id, copy, copied, copyFailed, codeBlock, table, image, imageAlt, footnotes, footnoteBack],
   )
-  const blocks = streaming ? safeSplit(markdown) : null
+  // 生成中与结束后都走同一条按块渲染路径：结束时若换成整段渲染，React 会重建全部 DOM，丢失焦点、选区、
+  // 「已复制」状态与代码块的横向滚动位置。切分失败或含跨块节点（脚注、引用定义）时才整段渲染。
+  // 生成中的最后一块多一个标记光标位置的 rehype 步骤；已完成的块用不带它的 config，memo 不受影响
+  const tailConfig = useMemo<RenderConfig>(
+    () => ({ ...config, rehypePlugins: [...config.rehypePlugins, rehypeMarkTail] }),
+    [config],
+  )
+  const blocks = useMemo(() => safeSplit(markdown), [markdown])
   let content: ReactNode
   if (blocks) {
-    // 按位置作 key：已完成的块源文不再变化，memo 跳过；只有最后一块随输出更新
+    // 按位置作 key：已完成的块源文不再变化，memo 跳过；只有最后一块随输出更新。
+    // 块之间补上整段渲染在顶层元素之间输出的换行文本，两条路径的 DOM 一致
     content = blocks.map((source, index) => (
       // biome-ignore lint/suspicious/noArrayIndexKey: 块按出现顺序只增不减，位置即身份
-      <MarkdownBlock key={index} source={source} config={config} />
+      <Fragment key={index}>
+        {index > 0 ? '\n' : null}
+        <MarkdownBlock
+          source={source}
+          config={streaming && index === blocks.length - 1 ? tailConfig : config}
+        />
+      </Fragment>
     ))
   } else {
-    content = <MarkdownBlock source={markdown} config={config} />
+    content = <MarkdownBlock source={markdown} config={streaming ? tailConfig : config} />
   }
-  return <div className={cn('wrap-anywhere text-body', className)}>{content}</div>
+  return (
+    <div
+      className={cn('min-w-0 wrap-anywhere text-body', className)}
+      aria-busy={streaming || undefined}
+      data-chat-streaming={streaming ? '' : undefined}
+    >
+      {content}
+    </div>
+  )
 })

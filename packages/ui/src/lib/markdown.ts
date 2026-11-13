@@ -66,7 +66,9 @@ export function safeMarkdownUrl(url: string): string {
   const normalized = url.replace(LEADING_CONTROL, '').replace(TAB_OR_NEWLINE, '')
   const scheme = SCHEME.exec(normalized)
   if (!scheme) {
-    // 没有协议：站内相对地址。`\\host` 在部分浏览器中等同 `//host`，一并当作外链处理前先规范成 `//`
+    // 没有协议：站内相对地址。浏览器把反斜杠当作 `/`，开头两个及以上的斜杠 / 反斜杠（如 `/\evil.com`）都解析为
+    // `//evil.com`（外站），规范成 `//` 使 isExternalUrl 判为外链；单个反斜杠开头沿用原规则，同样按外链处理
+    if (/^[/\\]{2,}/.test(normalized)) return normalized.replace(/^[/\\]+/, '//')
     return normalized.startsWith('\\') ? normalized.replace(/^\\+/, '//') : normalized
   }
   const protocol = scheme[1]?.toLowerCase()
@@ -108,7 +110,7 @@ function textOf(node: MdastNodes): string {
   return ''
 }
 
-function hastText(node: HastNodes): string {
+export function hastText(node: HastNodes): string {
   if (node.type === 'text') return node.value
   if ('children' in node) return node.children.map((child) => hastText(child as HastNodes)).join('')
   return ''
@@ -198,19 +200,13 @@ export function rehypeHeadingIds(slots: readonly ReaderHeading[], title?: string
  * 流式渲染的按块切分（add-ai-chat-components design D4）：按 mdast 顶层块把源文切成若干段，最后一段是仍在增长的块，
  * 其余各段在后续输入下保持不变，可以各自缓存渲染结果。切分点取顶层块起始行的行首（保留缩进，围栏代码块内的缩进
  * 与整段解析一致），块之间的空行归前一块；只在顶层块边界切分，不会切进代码块、列表或表格内部。
- * 链接引用定义与脚注会跨块生效（后出现的定义改变前面块的渲染、脚注区汇总到文末），出现时返回 `null`，调用方整段渲染。
+ * 链接引用定义与脚注会跨块生效（后出现的定义改变前面块的渲染、脚注区汇总到文末），树中任何位置出现时返回 `null`，调用方整段渲染。
  */
 export function splitMarkdownBlocks(markdown: string): string[] | null {
   const tree = parser.parse(markdown)
   const lineStarts: number[] = []
   for (const child of tree.children) {
-    if (
-      child.type === 'definition' ||
-      child.type === 'footnoteDefinition' ||
-      hasFootnoteReference(child)
-    ) {
-      return null
-    }
+    if (hasCrossBlockNode(child)) return null
     const offset = child.position?.start.offset
     if (offset === undefined) return null
     lineStarts.push(markdown.lastIndexOf('\n', offset - 1) + 1)
@@ -220,9 +216,14 @@ export function splitMarkdownBlocks(markdown: string): string[] | null {
   return lineStarts.map((start, index) => markdown.slice(start, lineStarts[index + 1]))
 }
 
-function hasFootnoteReference(node: MdastNodes): boolean {
-  if (node.type === 'footnoteReference') return true
-  return (
-    'children' in node && node.children.some((child) => hasFootnoteReference(child as MdastNodes))
-  )
+/** 会跨块生效的节点：链接引用定义、脚注定义与引用，嵌在引用块或列表里的定义同样作用于全文 */
+function hasCrossBlockNode(node: MdastNodes): boolean {
+  if (
+    node.type === 'definition' ||
+    node.type === 'footnoteDefinition' ||
+    node.type === 'footnoteReference'
+  ) {
+    return true
+  }
+  return 'children' in node && node.children.some((child) => hasCrossBlockNode(child as MdastNodes))
 }

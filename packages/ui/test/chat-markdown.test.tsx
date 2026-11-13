@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ChatMarkdown, type ChatMarkdownLabels } from '../src/chat.ts'
-import { splitMarkdownBlocks } from '../src/lib/markdown.ts'
+import { isExternalUrl, safeMarkdownUrl, splitMarkdownBlocks } from '../src/lib/markdown.ts'
 
 // 记录每次 react-markdown 渲染的源文，用于断言已完成的块不重新渲染
 const renders = vi.hoisted(() => [] as string[])
@@ -16,13 +16,25 @@ vi.mock('react-markdown', async (importOriginal) => {
   }
 })
 
+// 切分开关：打开时 splitMarkdownBlocks 返回 null，ChatMarkdown 走整段渲染，作为按块渲染的对照
+const whole = vi.hoisted(() => ({ force: false }))
+vi.mock('../src/lib/markdown.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/lib/markdown.ts')>()
+  return {
+    ...actual,
+    splitMarkdownBlocks: (markdown: string) =>
+      whole.force ? null : actual.splitMarkdownBlocks(markdown),
+  }
+})
+
 const labels: ChatMarkdownLabels = {
   copy: '复制',
   copied: '已复制',
   copyFailed: '复制失败',
   codeBlock: '代码，可横向滚动',
   table: '表格，可横向滚动',
-  image: (alt) => `图片：${alt}`,
+  image: '图片',
+  imageAlt: '图片：{alt}',
   footnotes: '脚注',
   footnoteBack: '返回正文',
 }
@@ -84,6 +96,28 @@ describe('ChatMarkdown 安全渲染', () => {
     expect(container.querySelector('img')).toBeNull()
     expect(container.textContent).toContain('图片：渠道趋势图')
     expect(container.innerHTML).not.toContain('evil.example')
+  })
+
+  it('没有替代文字的图片只显示通用文案', () => {
+    const { container } = render(
+      <ChatMarkdown id="m1" labels={labels} markdown={'前 ![](https://evil.example/x.png) 后'} />,
+    )
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.textContent).toBe('前 图片 后')
+  })
+
+  it('开头两个及以上斜杠 / 反斜杠的地址按外链处理', () => {
+    expect(safeMarkdownUrl('/\\evil.com/x')).toBe('//evil.com/x')
+    expect(safeMarkdownUrl('\\/evil.com')).toBe('//evil.com')
+    expect(safeMarkdownUrl('///evil.com')).toBe('//evil.com')
+    expect(isExternalUrl(safeMarkdownUrl('/\\evil.com'))).toBe(true)
+    expect(safeMarkdownUrl('/app/x')).toBe('/app/x')
+    const { container } = render(
+      <ChatMarkdown id="m1" labels={labels} markdown={'[看](/\\evil.com/x)'} />,
+    )
+    // Markdown 链接中的反斜杠在生成 href 前已被百分号编码，渲染结果解析后仍是站内地址
+    const href = container.querySelector('a')?.getAttribute('href') ?? ''
+    expect(new URL(href, 'https://app.example').origin).toBe('https://app.example')
   })
 
   it('表格与代码块在可聚焦、带名称的容器内横向滚动', () => {
@@ -177,39 +211,92 @@ const FIXTURES = {
   脚注: '正文[^a]，还有一处[^b]。\n\n[^a]: 第一条。\n[^b]: 第二条 **粗**。\n\n尾段。',
   标题与分隔线:
     '# 标题\n\n段落一\n段落一续\n\n---\n\n## 小标题\n\n    缩进代码\n\n  ```js\n  const x = 1\n  ```\n',
+  嵌套的引用定义:
+    '见 [文档][d] 与 [列表][e]。\n\n> [d]: https://example.com/d\n\n- 项\n\n  [e]: /e\n\n尾段 [d]。',
+  原始HTML块:
+    '<div class="x">\n<script>alert(1)</script>\n</div>\n\n段落 <span onclick="x()">行内</span> 文字\n\n<!-- 注释 -->\n\n<iframe src="https://evil.example"></iframe>\n尾段。',
 } as const satisfies Record<string, string>
 
-function html(markdown: string, streaming: boolean) {
+/** 整段渲染的结果（切分关闭），作为对照；只取根节点内部，不比较根上的 aria-busy */
+function wholeHtml(markdown: string) {
+  whole.force = true
   const { container, unmount } = render(
-    <ChatMarkdown id="m1" labels={labels} markdown={markdown} streaming={streaming} />,
+    <ChatMarkdown id="m1" labels={labels} markdown={markdown} />,
   )
-  const result = container.innerHTML
+  const result = container.firstElementChild?.innerHTML
   unmount()
+  whole.force = false
   return result
 }
 
-describe('流式按块增量渲染', () => {
+/** 只折叠标签之间的空白，代码块内的换行不受影响；去掉生成中才有的光标标记 */
+function normalize(value: string | undefined) {
+  return value?.replace(/>\s+</g, '><').replaceAll(' data-chat-tail=""', '')
+}
+
+// 逐字符渲染每个前缀两次（按块与整段），机器繁忙时超过默认 5 秒；放宽超时
+describe('流式按块增量渲染', { timeout: 60_000 }, () => {
   for (const [name, fixture] of Object.entries(FIXTURES)) {
-    it(`${name}：逐字符流式不报错，结束后与整段渲染相同`, () => {
+    it(`${name}：逐字符流式不报错，每一步都与整段渲染相同`, () => {
       const errors = vi.spyOn(console, 'error')
       const { container, rerender } = render(
         <ChatMarkdown id="m1" labels={labels} markdown="" streaming />,
       )
       for (let end = 1; end <= fixture.length; end += 1) {
-        rerender(
-          <ChatMarkdown id="m1" labels={labels} markdown={fixture.slice(0, end)} streaming />,
-        )
+        const prefix = fixture.slice(0, end)
+        rerender(<ChatMarkdown id="m1" labels={labels} markdown={prefix} streaming />)
+        const actual = container.firstElementChild?.innerHTML
+        const expected = wholeHtml(prefix)
+        expect(normalize(actual), `前 ${end} 个字符`).toBe(normalize(expected))
       }
-      // 流式中最后一步的结构与整段渲染一致（只差块之间的换行文本）
-      expect(container.innerHTML.replaceAll('>\n<', '><')).toBe(
-        html(fixture, false).replaceAll('>\n<', '><'),
-      )
       rerender(<ChatMarkdown id="m1" labels={labels} markdown={fixture} />)
-      expect(container.innerHTML).toBe(html(fixture, false))
+      // 结束后与整段渲染逐字相同（块之间的换行文本也一致）
+      expect(container.firstElementChild?.innerHTML).toBe(wholeHtml(fixture))
+      expect(container.firstElementChild?.hasAttribute('aria-busy')).toBe(false)
+      expect(container.querySelector('script, iframe, [onclick]')).toBeNull()
       expect(errors).not.toHaveBeenCalled()
       errors.mockRestore()
     })
   }
+
+  it('生成中末尾文字块带光标标记，结束后去掉', () => {
+    function tails(markdown: string, streaming = true) {
+      const { container, unmount } = render(
+        <ChatMarkdown id="m1" labels={labels} markdown={markdown} streaming={streaming} />,
+      )
+      const marked = [...container.querySelectorAll('[data-chat-tail]')].map(
+        (element) => `${element.tagName.toLowerCase()}:${element.textContent}`,
+      )
+      const root = container.firstElementChild?.hasAttribute('data-chat-streaming')
+      unmount()
+      return { marked, root }
+    }
+    expect(tails('第一段\n\n第二段')).toEqual({ marked: ['p:第二段'], root: true })
+    expect(tails('- 一\n  - 一点一\n    1. 甲').marked).toEqual(['li:甲'])
+    expect(tails('- 一\n\n  段落\n- 二\n\n  末段').marked).toEqual(['p:末段'])
+    expect(tails('前文\n\n> 引用\n>\n> 末行 **粗**').marked).toEqual(['p:末行 粗'])
+    expect(tails('| a | b |\n| --- | --- |\n| 1 | 2 |').marked).toEqual(['td:2'])
+    expect(tails('## 标题').marked).toEqual(['h2:标题'])
+    // 以代码块结尾（含未闭合的围栏）时不放光标
+    expect(tails('前文\n\n```ts\nconst a = 1').marked).toEqual([])
+    expect(tails('- 项\n\n  ```\n  x\n  ```').marked).toEqual([])
+    // 整段渲染的退路同样标记，脚注区不算末尾
+    expect(tails('正文[^1]。\n\n[^1]: 注释。').marked).toEqual(['p:正文1。'])
+    expect(tails('第一段\n\n第二段', false)).toEqual({ marked: [], root: false })
+  })
+
+  it('生成结束时不重建 DOM：聚焦的复制按钮保持焦点', () => {
+    const text = '代码：\n\n```ts\nconst a = 1\n```\n\n后续'
+    const { rerender } = render(<ChatMarkdown id="m1" labels={labels} markdown={text} streaming />)
+    const button = screen.getByRole('button', { name: '复制' })
+    const region = screen.getByRole('region', { name: labels.codeBlock })
+    button.focus()
+    expect(document.activeElement).toBe(button)
+    rerender(<ChatMarkdown id="m1" labels={labels} markdown={`${text}文字。`} streaming />)
+    rerender(<ChatMarkdown id="m1" labels={labels} markdown={`${text}文字。`} streaming={false} />)
+    expect(document.activeElement).toBe(button)
+    expect(screen.getByRole('region', { name: labels.codeBlock })).toBe(region)
+  })
 
   it('已完成的块在后续输入时不重新渲染', () => {
     const fixture = `${FIXTURES.未闭合代码块}\n\n${FIXTURES.嵌套列表}\n\n${FIXTURES.只有表头的表格}`
@@ -232,6 +319,9 @@ describe('流式按块增量渲染', () => {
   it('有脚注或链接引用定义时回退整段渲染', () => {
     expect(splitMarkdownBlocks(FIXTURES.脚注)).toBeNull()
     expect(splitMarkdownBlocks('见 [文档][d]。\n\n[d]: https://example.com')).toBeNull()
+    // 嵌在引用块或列表里的定义同样作用于全文
+    expect(splitMarkdownBlocks('见 [文档][d]。\n\n> [d]: https://example.com')).toBeNull()
+    expect(splitMarkdownBlocks(FIXTURES.嵌套的引用定义)).toBeNull()
     renders.length = 0
     render(<ChatMarkdown id="m1" labels={labels} markdown={FIXTURES.脚注} streaming />)
     expect(renders).toEqual([FIXTURES.脚注])
