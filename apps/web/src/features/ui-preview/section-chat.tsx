@@ -126,7 +126,7 @@ function InputSpecimen({
     )
   }
   return (
-    <Specimen label={label} className="flex-col flex-nowrap items-stretch">
+    <Specimen label={label} className="flex-col items-stretch">
       <InputMessage
         data-preview-input={busy ? 'busy' : disabled ? 'disabled' : initial ? 'multiline' : 'empty'}
         value={value}
@@ -170,11 +170,7 @@ function StreamingSimulation() {
   }, [playing, done, total])
 
   return (
-    <Specimen
-      label={m.ui_preview_chat_stream()}
-      wide
-      className="flex-col flex-nowrap items-stretch"
-    >
+    <Specimen label={m.ui_preview_chat_stream()} wide className="flex-col items-stretch">
       <div className="flex flex-wrap items-center gap-3">
         {done ? (
           <Button
@@ -234,10 +230,7 @@ export function ChatComponentsSection() {
       title="ChatMessage · ThinkingSteps · ToolCall · InputMessage · ChatMarkdown"
       description={m.ui_preview_chat_desc()}
     >
-      <Specimen
-        label={m.ui_preview_chat_indicator()}
-        className="flex-col flex-nowrap items-stretch"
-      >
+      <Specimen label={m.ui_preview_chat_indicator()} className="flex-col items-stretch">
         <ChatMessage from="assistant" entrance={false} data-preview-indicator="">
           <ThinkingIndicator label={m.ui_preview_chat_thinking()} />
         </ChatMessage>
@@ -245,10 +238,7 @@ export function ChatComponentsSection() {
           {m.ui_preview_chat_indicator_hint()}
         </p>
       </Specimen>
-      <Specimen
-        label={m.ui_preview_chat_streaming()}
-        className="flex-col flex-nowrap items-stretch"
-      >
+      <Specimen label={m.ui_preview_chat_streaming()} className="flex-col items-stretch">
         <ChatMessage from="user" entrance={false}>
           {m.ui_preview_chat_user_text()}
         </ChatMessage>
@@ -259,7 +249,7 @@ export function ChatComponentsSection() {
       <Specimen
         label={m.ui_preview_chat_end_states()}
         wide
-        className="flex-col flex-nowrap items-stretch gap-6"
+        className="flex-col items-stretch gap-6"
       >
         <ChatMessage
           from="assistant"
@@ -307,11 +297,7 @@ export function ChatComponentsSection() {
           {m.ui_preview_chat_answer_done()}
         </ChatMessage>
       </Specimen>
-      <Specimen
-        label={m.ui_preview_chat_user()}
-        wide
-        className="flex-col flex-nowrap items-stretch gap-4"
-      >
+      <Specimen label={m.ui_preview_chat_user()} wide className="flex-col items-stretch gap-4">
         <ChatMessage from="user" entrance={false}>
           {m.ui_preview_chat_user_link()}
         </ChatMessage>
@@ -354,11 +340,7 @@ export function ChatComponentsSection() {
           {m.ui_preview_chat_user_text()}
         </ChatMessage>
       </Specimen>
-      <Specimen
-        label={m.ui_preview_chat_steps()}
-        wide
-        className="flex-col flex-nowrap items-stretch gap-6"
-      >
+      <Specimen label={m.ui_preview_chat_steps()} wide className="flex-col items-stretch gap-6">
         <ChatMessage
           from="assistant"
           entrance={false}
@@ -382,11 +364,7 @@ export function ChatComponentsSection() {
           data-preview-steps="busy"
         />
       </Specimen>
-      <Specimen
-        label={m.ui_preview_chat_tools()}
-        wide
-        className="flex-col flex-nowrap items-stretch"
-      >
+      <Specimen label={m.ui_preview_chat_tools()} wide className="flex-col items-stretch">
         {TOOL_STATES.map((state) => (
           <ToolCall
             key={state}
@@ -414,10 +392,7 @@ export function ChatComponentsSection() {
       />
       <InputSpecimen label={m.ui_preview_chat_input_busy()} busy />
       <InputSpecimen label={m.ui_preview_chat_input_disabled()} disabled />
-      <Specimen
-        label={m.ui_preview_chat_markdown_basic()}
-        className="flex-col flex-nowrap items-stretch"
-      >
+      <Specimen label={m.ui_preview_chat_markdown_basic()} className="flex-col items-stretch">
         <ChatMessage from="assistant" entrance={false}>
           <ChatMarkdown
             id="preview-basic"
@@ -426,10 +401,7 @@ export function ChatComponentsSection() {
           />
         </ChatMessage>
       </Specimen>
-      <Specimen
-        label={m.ui_preview_chat_markdown_safety()}
-        className="flex-col flex-nowrap items-stretch"
-      >
+      <Specimen label={m.ui_preview_chat_markdown_safety()} className="flex-col items-stretch">
         <ChatMessage from="assistant" entrance={false} data-preview-safety="">
           <ChatMarkdown
             id="preview-safety"
@@ -438,11 +410,7 @@ export function ChatComponentsSection() {
           />
         </ChatMessage>
       </Specimen>
-      <Specimen
-        label={m.ui_preview_chat_markdown_table()}
-        wide
-        className="flex-col flex-nowrap items-stretch"
-      >
+      <Specimen label={m.ui_preview_chat_markdown_table()} wide className="flex-col items-stretch">
         <ChatMessage
           from="assistant"
           entrance={false}
@@ -458,11 +426,7 @@ export function ChatComponentsSection() {
         </ChatMessage>
       </Specimen>
       <StreamingSimulation />
-      <Specimen
-        label={m.ui_preview_chat_widths()}
-        wide
-        className="flex-col flex-nowrap items-start gap-6"
-      >
+      <Specimen label={m.ui_preview_chat_widths()} wide className="flex-col items-start gap-6">
         {(
           [
             ['358', 'w-89.5', m.ui_preview_chat_width_narrow()],

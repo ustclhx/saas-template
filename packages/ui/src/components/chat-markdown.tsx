@@ -124,18 +124,21 @@ function CodeBlock({ code, language, labels }: { code: string; language: string;
           {state === 'copied' ? labels.copied : state === 'failed' ? labels.copyFailed : ''}
         </span>
       </div>
-      {/* 超长行在块内横向滚动；滚动区域是带名称的 section，可聚焦以便键盘滚动（axe scrollable-region-focusable）。
+      {/* 超长行在块内横向滚动；滚动区域可聚焦以便键盘滚动（axe scrollable-region-focusable），用带名称的 group
+          而不是 section：带名称的 section 是 region 地标，一页多个代码块时地标重名（axe landmark-unique）。
           外层 overflow-hidden 会裁掉外扩的焦点环，这里改为内缩 */}
-      <section
+      {/* biome-ignore lint/a11y/useSemanticElements: fieldset 是表单分组且带默认边框与 legend 语义；这里只需非地标的命名滚动区域 */}
+      <div
         // biome-ignore lint/a11y/noNoninteractiveTabindex: 可滚动区域需要键盘可达
         tabIndex={0}
+        role="group"
         aria-label={labels.codeBlock}
         className="overflow-x-auto bg-card focus-visible:outline-2 focus-visible:outline-(--focus-ring) focus-visible:-outline-offset-2"
       >
         <pre className={cn('m-0 w-max min-w-full px-3.5 py-3', MONO)}>
           <code>{code}</code>
         </pre>
-      </section>
+      </div>
     </div>
   )
 }
@@ -232,9 +235,11 @@ function chatComponents(labels: Labels): Components {
     ),
     // 表格在自身容器内横向滚动；容器可聚焦以便键盘滚动
     table: ({ node: _node, className, ...props }) => (
-      <section
+      // biome-ignore lint/a11y/useSemanticElements: fieldset 是表单分组且带默认边框与 legend 语义；这里只需非地标的命名滚动区域
+      <div
         // biome-ignore lint/a11y/noNoninteractiveTabindex: 可滚动区域需要键盘可达
         tabIndex={0}
+        role="group"
         aria-label={labels.table}
         className={cn(
           'mb-2.5 overflow-x-auto rounded-lg border border-border last:mb-0',
@@ -248,7 +253,7 @@ function chatComponents(labels: Labels): Components {
           )}
           {...props}
         />
-      </section>
+      </div>
     ),
     thead: ({ node: _node, className, ...props }) => (
       <thead className={cn('bg-muted/50', className)} {...props} />

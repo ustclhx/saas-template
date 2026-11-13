@@ -112,6 +112,16 @@ test('chat section shows every component state', async ({ page, context }) => {
   await expect(input('busy')).toHaveAttribute('data-busy', 'true')
   await expect(input('busy').locator('button').last()).toBeEnabled()
   await expect(input('disabled').locator('textarea')).toBeDisabled()
+  // 预览格是 flex-col flex-wrap：输入区高度等于内容高度，不被查询容器撑大
+  for (const state of ['empty', 'multiline', 'busy', 'disabled']) {
+    const heights = await input(state).evaluate((root) => ({
+      root: (root as HTMLElement).offsetHeight,
+      body: (root.querySelector('[data-input-message-body]') as HTMLElement).offsetHeight,
+      parentWrap: getComputedStyle(root.parentElement as HTMLElement).flexWrap,
+    }))
+    expect(heights.parentWrap).toBe('wrap')
+    expect(heights.root - heights.body).toBeLessThanOrEqual(2)
+  }
   await input('empty').locator('textarea').fill('hello')
   await input('empty').locator('textarea').press('Enter')
   await expect(input('empty').locator('textarea')).toHaveValue('')
@@ -126,9 +136,9 @@ test('chat section shows every component state', async ({ page, context }) => {
   )
   const table = chat.locator('[data-preview-table]')
   await expect(table.locator('table')).toHaveCount(1)
-  await expect(table.locator('[tabindex="0"]:has(table)')).toHaveCount(1)
+  await expect(table.locator('[role="group"][tabindex="0"]:has(table)')).toHaveCount(1)
   const code = table.locator('[data-chat-code]')
-  await expect(code.locator('section[tabindex="0"]')).toHaveCount(1)
+  await expect(code.locator('[role="group"][tabindex="0"]')).toHaveCount(1)
   await code.locator('button').click()
   const copied = await page.evaluate(() => navigator.clipboard.readText())
   expect(copied.startsWith('def cac(')).toBe(true)
@@ -184,6 +194,9 @@ for (const colorScheme of ['light', 'dark'] as const) {
       .screenshot({ path: resolve(chatEvidenceDir, `business-chat-1280-${colorScheme}.png`) })
 
     // axe：对话组件一节与改用对话组件的嵌入式对话示例，桌面与 390px 各一次
+    // 本节同时有多个表格与代码块（表格示例与流式模拟各一组）：滚动容器不能成为重名地标
+    expect(await chat.locator('[data-chat-code]').count()).toBeGreaterThanOrEqual(2)
+    expect(await chat.locator('table').count()).toBeGreaterThanOrEqual(2)
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 900 })
       const results = await new AxeBuilder({ page })
@@ -216,6 +229,8 @@ for (const colorScheme of ['light', 'dark'] as const) {
           (rule) =>
             rule.id === 'scrollable-region-focusable' ||
             rule.id === 'color-contrast' ||
+            rule.id === 'landmark-unique' ||
+            rule.id === 'region' ||
             rule.id.startsWith('aria-'),
         )
         .map((rule) => ({ id: rule.id, targets: rule.nodes.map((node) => node.target) }))
