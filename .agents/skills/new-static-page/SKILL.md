@@ -49,7 +49,7 @@ UI 文案写入 `apps/web/messages/<locale>/<feature>.json`，沿用现有键名
 
 内容动态路由沿用 `apps/web/src/features/seo/metadata.ts` 的 `pageHead` 和 `originFromMatches`，得到标题、描述、canonical、hreflang、OG/Twitter。独立路由也使用此入口，避免重复写元标签。
 
-`apps/web/src/features/seo/pages.ts` 的 `publicPages` 是 sitemap 与 OG 的共同清单：现有集合自动收录；新增独立页面须在清单及 `metadata.ts` 的 `staticPage` 中补齐语言元数据。核对 `apps/web/src/routes/sitemap[.]xml.ts` 与 `apps/web/src/features/seo/og-card.ts`，地图和图片不能出现草稿、未来内容或关闭功能的路由。新语言的标题/描述也应补入元数据，当前 `staticPage` 内置文案只区分 zh 与其他语言。
+`apps/web/src/features/seo/pages.ts` 的 `publicPages` 是 sitemap 与 OG 的共同清单：现有集合自动收录；新增独立页面须在清单及 `metadata.ts` 的 `staticPage` 中补齐语言元数据。核对 `apps/web/src/routes/sitemap[.]xml.ts` 与 `apps/web/scripts/og-images.ts`（版式为 `apps/web/src/features/share-cards/layout.tsx` 的 `defaultShareCardLayout`），地图和图片不能出现草稿、未来内容或关闭功能的路由。新语言的标题/描述也应补入元数据，当前 `staticPage` 内置文案只区分 zh 与其他语言。
 
 答案优先指南页放在 `apps/web/content/guides/<locale>/<slug>.mdx`（需 `features.guides`），frontmatter 必填 `title`、`answer_summary`、`faq[]`、`kind`、`updatedAt`，FAQ JSON-LD 自动生成，见 `docs/analytics.md` §6。
 

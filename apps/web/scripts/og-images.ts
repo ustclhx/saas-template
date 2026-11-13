@@ -1,16 +1,16 @@
 import { readFileSync } from 'node:fs'
-import { CustomFont, ImageResponse } from 'cf-workers-og/node'
-import { createElement } from 'react'
+import { fileURLToPath } from 'node:url'
 import type { Plugin } from 'vite'
 import { ogImagePath } from '../src/features/seo/metadata.ts'
-import { OgCard } from '../src/features/seo/og-card.ts'
 import { publicPages } from '../src/features/seo/pages.ts'
+import { defaultShareCardLayout } from '../src/features/share-cards/layout.tsx'
+import { resolveShareCardTheme } from '../src/features/share-cards/theme.ts'
+import { createNodeShareCardRenderer } from '../src/node/share-card-renderer.ts'
 
 const root = new URL('..', import.meta.url)
-const font = new CustomFont(
-  'Noto Sans SC',
-  readFileSync(new URL('./seo/NotoSansSC-Regular.otf', import.meta.url)),
-  { weight: 400 },
+// 与运行时分享卡片共用字体目录与渲染核心；构建期逐页串行渲染，不触及并发上限。
+const renderer = createNodeShareCardRenderer(
+  fileURLToPath(new URL('../public/fonts/share-card', import.meta.url)),
 )
 
 function pages() {
@@ -30,13 +30,9 @@ function pages() {
   })
 }
 
-export async function renderOgImage(title: string): Promise<Uint8Array> {
-  const response = await ImageResponse.create(createElement(OgCard, { title }), {
-    width: 1200,
-    height: 630,
-    fonts: [font],
-  })
-  return new Uint8Array(await response.arrayBuffer())
+/** 设计稿 `default` 变体（浅色主题 token），取代原先写死的深蓝渐变。 */
+export function renderOgImage(title: string): Promise<Uint8Array> {
+  return renderer.render(defaultShareCardLayout(title, resolveShareCardTheme('light')))
 }
 
 /** WASM 与完整字体只在 Node 构建阶段使用，PNG 作为客户端静态资源输出。 */
@@ -57,7 +53,9 @@ export function ogImages(): Plugin {
         type: 'asset',
         fileName: '_headers',
         source:
-          '/og/*\n  Cache-Control: public, max-age=86400\n  X-Robots-Tag: noindex\n  X-Content-Type-Options: nosniff\n',
+          '/og/*\n  Cache-Control: public, max-age=86400\n  X-Robots-Tag: noindex\n  X-Content-Type-Options: nosniff\n' +
+          // 分享卡片字体：文件名不变但内容稳定，长期缓存；不被索引
+          '/fonts/share-card/*\n  Cache-Control: public, max-age=31536000, immutable\n  X-Robots-Tag: noindex\n  X-Content-Type-Options: nosniff\n',
       })
     },
     configureServer(server) {

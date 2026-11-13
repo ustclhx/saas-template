@@ -250,6 +250,16 @@ function createCloudflareWebRuntime(
     requestMeta,
     observability: { enabled: sentryEnabled(env), captureError: captureServerError },
     files: { available: true, value: files },
+    // 渲染器只在分享卡片路由首次调用时加载；首页与其他路由的闭包不含 satori / resvg / 字体
+    shareCardRenderer: env.ASSETS
+      ? {
+          available: true,
+          value: () =>
+            import('./server/cloudflare/share-card-renderer.ts').then((module) =>
+              module.workersShareCardRenderer(env.ASSETS),
+            ),
+        }
+      : { available: false },
     emailQueue: { available: true, value: queue },
     eventsQueue: env.EVENTS_QUEUE
       ? { available: true, value: createCloudflareQueue(env.EVENTS_QUEUE) }
