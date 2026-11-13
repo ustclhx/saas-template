@@ -1,7 +1,8 @@
 // 长文阅读器的 Markdown 安全与目录工具（openspec add-ui-design-system tasks 8.4，design D11）。
-// 与渲染组件分开：聊天消息以后复用同一套白名单与链接规则。
+// 与渲染组件分开：阅读器与对话 Markdown（add-ai-chat-components design D3）共用同一套白名单、链接规则与渲染选项。
 import type { Element, Nodes as HastNodes, Root as HastRoot } from 'hast'
 import type { Nodes as MdastNodes } from 'mdast'
+import type { Options } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkParse from 'remark-parse'
 import { unified } from 'unified'
@@ -76,6 +77,18 @@ export function safeMarkdownUrl(url: string): string {
 export function isExternalUrl(url: string): boolean {
   return /^(?:https?:|\/\/)/i.test(url)
 }
+
+/**
+ * 阅读器与对话共用的 react-markdown 安全选项：GFM、丢弃原始 HTML、元素白名单（白名单外的元素展开为子内容）、
+ * 链接与图片协议白名单。两处渲染都从这里展开，安全规则只有一个来源；排版组件与 rehype 插件各自传入。
+ */
+export const MARKDOWN_SAFE_OPTIONS = {
+  skipHtml: true,
+  allowedElements: MARKDOWN_ALLOWED_ELEMENTS,
+  unwrapDisallowed: true,
+  remarkPlugins: [remarkGfm],
+  urlTransform: safeMarkdownUrl,
+} as const satisfies Options
 
 export type MarkdownImagePolicy = 'all' | 'same-origin' | 'none'
 
@@ -179,4 +192,37 @@ export function rehypeHeadingIds(slots: readonly ReaderHeading[], title?: string
     }
     walk(tree)
   }
+}
+
+/**
+ * 流式渲染的按块切分（add-ai-chat-components design D4）：按 mdast 顶层块把源文切成若干段，最后一段是仍在增长的块，
+ * 其余各段在后续输入下保持不变，可以各自缓存渲染结果。切分点取顶层块起始行的行首（保留缩进，围栏代码块内的缩进
+ * 与整段解析一致），块之间的空行归前一块；只在顶层块边界切分，不会切进代码块、列表或表格内部。
+ * 链接引用定义与脚注会跨块生效（后出现的定义改变前面块的渲染、脚注区汇总到文末），出现时返回 `null`，调用方整段渲染。
+ */
+export function splitMarkdownBlocks(markdown: string): string[] | null {
+  const tree = parser.parse(markdown)
+  const lineStarts: number[] = []
+  for (const child of tree.children) {
+    if (
+      child.type === 'definition' ||
+      child.type === 'footnoteDefinition' ||
+      hasFootnoteReference(child)
+    ) {
+      return null
+    }
+    const offset = child.position?.start.offset
+    if (offset === undefined) return null
+    lineStarts.push(markdown.lastIndexOf('\n', offset - 1) + 1)
+  }
+  if (lineStarts.length <= 1) return [markdown]
+  lineStarts[0] = 0
+  return lineStarts.map((start, index) => markdown.slice(start, lineStarts[index + 1]))
+}
+
+function hasFootnoteReference(node: MdastNodes): boolean {
+  if (node.type === 'footnoteReference') return true
+  return (
+    'children' in node && node.children.some((child) => hasFootnoteReference(child as MdastNodes))
+  )
 }

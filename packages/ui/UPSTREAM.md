@@ -70,8 +70,9 @@
 | `src/lib/icon-context.tsx` | `icon-context` | 2026-11 | 图标槽位只保留已接入组件用到的 `x`、`chevron-down`、`chevron-right`、`check`、`circle-alert`、`search`、`plus`、`panel-left`、`panel-right`（上游 70 个全部导入，会随 `UiRoot` 进入首屏包）；接入新组件时按上游槽位名补充 |
 | `src/components/reader.tsx`、`src/reader.ts` | 无（模板新增，tasks 8.4） | — | 长文阅读器 `Reader` 与组合件 `ReaderProgress`、`ReaderExportButton`、`useReaderController`（进度与文档信息放在外部 store，进度变化只重渲染进度条）；只经 `@saas/ui/reader` 子路径导出，不进主入口；目录、吸顶高亮、移动端目录下拉、打印样式；外观按 `docs/design-system/prototypes/ui-review/Reader*.dc.html`；目录与进度图标直接取 lucide（不进入 `UiRoot` 默认图标表），折叠箭头与错误图标用 `chevron-down`、`circle-alert` 槽位 |
 | `src/components/reader-markdown.tsx` | 无（模板新增，tasks 8.4） | — | react-markdown + remark-gfm 渲染层（`memo`），`skipHtml` + 元素白名单 + 协议白名单 + 图片策略，脚注文案经 `remarkRehypeOptions` 传入 |
+| `src/components/chat-markdown.tsx` | 无（模板新增，add-ai-chat-components 3.2–3.3） | — | 对话回复 Markdown（`ChatMarkdown`，只经 `@saas/ui/chat` 子路径导出）：与阅读器共用 `lib/markdown.ts` 的 `MARKDOWN_SAFE_OPTIONS`；紧凑对话排版（标题统一 subtitle 粗体，无 id）；图片固定不加载，显示替代文字小标签；外链 `rel="noopener noreferrer nofollow ugc"`；脚注 id 按消息 id 加前缀（含写死的 `footnote-label`）；代码块等宽不高亮，头部为语言名与复制按钮（`role="status"` 播报），代码块与表格为可聚焦的横向滚动区域；流式时按顶层块增量渲染（`splitMarkdownBlocks`），有脚注或引用定义时整段渲染；复制图标直接取 lucide |
 | `src/components/pdf-exporter.ts` | 无（模板新增，tasks 8.4） | — | 服务端 PDF 导出扩展点 `registerPdfExporter`（主入口导出）：零依赖模块级注册表 + `useSyncExternalStore`，服务端快照恒为未注册；载荷含 `exportContext` |
-| `src/lib/markdown.ts` | 无（模板新增，tasks 8.4） | — | Markdown 元素白名单、链接协议白名单 `safeMarkdownUrl`、图片策略、标题提取与 id 写入（跳过脚注区）；聊天消息以后复用 |
+| `src/lib/markdown.ts` | 无（模板新增，tasks 8.4） | — | Markdown 元素白名单、链接协议白名单 `safeMarkdownUrl`、图片策略、标题提取与 id 写入（跳过脚注区）；阅读器与对话共用的渲染选项 `MARKDOWN_SAFE_OPTIONS` 与流式按块切分 `splitMarkdownBlocks`（add-ai-chat-components 3.1、3.3） |
 | `src/lib/keyboard.ts` | 无（模板新增） | — | 单键快捷键共用判定（`isEditable`、`isInsidePopup`），由 Command Menu 原有的 `isEditable` 抽出 |
 | `src/icons.ts` | 无（模板新增） | — | `@saas/ui/icons` 入口：按名称重导出常用 lucide 图标，供 apps 使用 |
 | `src/lib/motion-features.tsx` | 无（模板新增） | — | `LazyMotion features={domAnimation}` 的封装，见统一适配规则 8 |

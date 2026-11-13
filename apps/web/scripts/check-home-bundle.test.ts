@@ -58,6 +58,18 @@ describe('首页包检查', () => {
     ])
   })
 
+  it('首页静态导入 @saas/ui/chat 时报错（对话代码块标记）', () => {
+    // 模拟首页路由静态导入对话组件：chat 分包含代码块的 data-chat-code 属性
+    const root = fixture({
+      'index.html': '<script type="module" src="/assets/entry.js"></script>',
+      'assets/entry.js': 'import{ChatMarkdown as c}from"./chat.js";',
+      'assets/chat.js': 'const e=t("div",{"data-chat-code":"",className:"mb-2.5"});',
+    })
+    expect(checkHomeBundle(root).violations).toEqual([
+      { asset: '/assets/chat.js', marker: 'data-chat-code' },
+    ])
+  })
+
   it('客户端首页静态依赖中出现分享卡片渲染器时报错', () => {
     const root = fixture({
       'index.html': '<script type="module" src="/assets/entry.js"></script>',

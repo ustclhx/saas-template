@@ -9,8 +9,16 @@ import { dirname, join, posix, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { gzipSync } from 'node:zlib'
 
-/** 首页不应出现的代码特征：mdast-util-to-hast 的 id 前缀、GFM 脚注区属性、阅读器自身的标记 */
-export const FORBIDDEN_MARKERS = ['user-content-', 'data-footnotes', 'reader-mobile-toc']
+/**
+ * 首页不应出现的代码特征：mdast-util-to-hast 的 id 前缀、GFM 脚注区属性、阅读器自身的标记、
+ * 对话 Markdown 代码块的标记（`@saas/ui/chat`，add-ai-chat-components 3.4）
+ */
+export const FORBIDDEN_MARKERS = [
+  'user-content-',
+  'data-footnotes',
+  'reader-mobile-toc',
+  'data-chat-code',
+]
 
 /** 分享卡片渲染器的代码特征：cf-workers-og、satori、resvg 的 WASM 初始化与 CJK 字体文件名 */
 export const RENDERER_MARKERS = [
@@ -109,7 +117,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   }
   if (violations.length > 0 || (server?.violations.length ?? 0) > 0) {
     console.error(
-      '首页包检查失败：首页静态依赖中出现了只应懒加载的代码（阅读器 / Markdown / 分享卡片渲染器与字体）',
+      '首页包检查失败：首页静态依赖中出现了只应懒加载的代码（阅读器 / 对话 / Markdown / 分享卡片渲染器与字体）',
     )
     for (const { asset, marker } of violations) console.error(`  - 客户端 ${asset} 含 "${marker}"`)
     for (const { asset, marker } of server?.violations ?? [])
