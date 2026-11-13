@@ -1,7 +1,7 @@
 import { absoluteUrl } from '../seo/metadata.ts'
 import { shareCardFontFingerprint } from './fonts.ts'
 import { fnv1a } from './hash.ts'
-import type { ShareCardSite } from './site.ts'
+import { type ShareCardSite, shareCardUrlLocale } from './site.ts'
 import type { RegisteredShareCard } from './types.ts'
 
 export const SHARE_CARD_WIDTH = 1200
@@ -35,15 +35,19 @@ export function shareCardVariant<T>(
   return `${base}-${fnv1a(`${fontFingerprint}|${siteFingerprint}`)}`
 }
 
-/** 卡片相对地址：`/share-card/<type>/<token>.png?v=<variant>`（design 第 3 条）。 */
+/**
+ * 卡片相对地址：`/share-card/<type>/<token>.png?v=<variant>`（design 第 3 条）。
+ * 站点覆盖生效且分享页不是默认语言时追加 `&l=<locale>`，卡片路由据此按同一语言解析站点；该语言已计入 `v`。
+ */
 export function shareCardImagePath<T>(
   card: RegisteredShareCard<T>,
   token: string,
   data: T,
-  site?: Pick<ShareCardSite, 'fingerprint'>,
+  site?: Pick<ShareCardSite, 'fingerprint' | 'locale'>,
 ) {
   const version = shareCardVariant(card, data, site)
-  return `/share-card/${encodeURIComponent(card.type)}/${encodeURIComponent(token)}.png?v=${encodeURIComponent(version)}`
+  const locale = site ? shareCardUrlLocale(site) : undefined
+  return `/share-card/${encodeURIComponent(card.type)}/${encodeURIComponent(token)}.png?v=${encodeURIComponent(version)}${locale ? `&l=${encodeURIComponent(locale)}` : ''}`
 }
 
 export function buildShareCardMeta<T>(input: {
@@ -55,7 +59,7 @@ export function buildShareCardMeta<T>(input: {
   pageUrl?: string | undefined
   siteName: string
   /** 当前站点；与卡片路由按请求 host 解析的结果一致，地址才不会被 302。 */
-  site?: Pick<ShareCardSite, 'fingerprint'> | undefined
+  site?: Pick<ShareCardSite, 'fingerprint' | 'locale'> | undefined
 }): ShareCardMeta {
   const { card, data } = input
   const page = card.page(data)

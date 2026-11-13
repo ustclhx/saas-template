@@ -29,3 +29,10 @@
 - [x] 5.2 升级说明 `docs/upgrades/0.4.1.md`（草稿）与索引
 - [x] 5.3 `pnpm check`、`pnpm typecheck`、`pnpm check:deps`、`pnpm test`、`pnpm build`（首页包检查）、`template-release check --version 0.4.1`、`pnpm test:create-project` 通过
 - [ ] 5.4 衍生项目 xuanxue 放入 Noto Sans KR 后线上验收韩文分享卡片与双站点品牌（由接入项目验收）
+
+## 6. 韩文与运行时语言（0.5.0，xuanxue 接入 0.4.1 后的反馈）
+
+- [x] 6.1 底部元信息不再按测量宽度裁切：盒子占满域名左侧剩余宽度、上限随域名宽度收紧、satori 省略号兜底；回归单测
+- [x] 6.2 韩文标题与摘要 `wordBreak: 'keep-all'`，`countLines` 按同一规则模拟；中日文与拉丁版式树不变；单测
+- [x] 6.3 运行时语言：分享页与 `shareCardMeta` 传入页面语言，非默认语言且有站点覆盖时以 `l` 参数带到卡片地址并计入 `v`；卡片路由与预览校验 `l`；单测
+- [x] 6.4 `docs/share-cards.md` 与升级说明 `docs/upgrades/0.5.0.md` 小节

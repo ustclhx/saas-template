@@ -17,6 +17,10 @@
 7. **地址指纹**：`shareCardVariant` = `<version>-<digest8>`，项目字体指纹（族名、文件、字重、文字，不含字节）或站点覆盖指纹任一非空时追加 `-<fnv8>`。都为空时地址与之前相同，升级不会让已缓存的卡片全部失效。
 8. **站点按请求 host 解析**：卡片路由、分享页与 `shareCardMeta` 共用 `resolveRequestShareCardSite(requestUrl, APP_URL)`。站点覆盖声明了 `host`（项目的规范域名）时，分享页与卡片的绝对地址改用该域名（协议沿用 `APP_URL`），卡片请求才会落到同一站点；未声明 `host` 或没有覆盖时仍用 `APP_URL`。从不使用请求的原始 Host：www 变体、预览与 workers.dev 域名不进入对外元数据，也不信任任意 Host 头。`host` 必须是裸主机名（可带端口），否则整个覆盖视为无效。
 9. **默认分享图副标题**：去掉写死的「AI workspace」，取站点 `tagline`，未提供时取该语言首页的 SEO 标题。首页文案抽到 `seo/home-copy.ts`，`staticPage('/')` 与版式共用，版式不导入 `metadata.ts`。构建期按页面 locale 解析，中文页面得到中文副标题。
+10. **韩文断行与元信息裁切（0.5.0，xuanxue 接入 0.4.1 后的反馈）**：
+    - 元信息被裁掉半个字的根因不在截断：satori 测量时逐字取首个含该字形的字体（`·`、空格取 Inter），绘制时同一行内以空格分隔的词段整段用段首字符解析出的字体（谚文段用项目字体、汉字段用 Noto Sans SC，`·` 分别宽 0.56em、1em，Inter 为 0.29em）。元信息盒宽等于测量宽度，`overflow: hidden` 把多出的绘制宽度裁掉。改为盒子 `flexGrow: 1` 占满域名左侧的剩余宽度，裁切边界移到域名前；上限按域名宽度收紧（`metaLimit`），再以 satori 的 `textOverflow: 'ellipsis'` 兜底。没有触发该差异的卡片像素不变。
+    - 标题与摘要含谚文且不含汉字、假名时设置 `wordBreak: 'keep-all'`（satori 0.18 以 `Intl.Segmenter` 词段为断点）；`countLines` 用同一规则（`keepsWords`）模拟，保证截断后不超过两行。中日文与韩汉混排保持逐字断行，其余卡片的版式树不带 `wordBreak`，输出不变。
+11. **运行时语言**：分享页与 `shareCardMeta` 以 Paraglide 的 `getLocale()` 作为 `context.locale` 解析站点；站点覆盖生效（指纹非空）且语言不是默认语言时，卡片地址追加 `&l=<locale>`，该语言计入站点指纹（因此进入 `v`、缓存键与对象键，各语言不共用缓存）。卡片路由与预览从 `l` 读取，只接受模板配置启用的语言，缺省或未知为默认语言。默认语言不计入指纹，0.4.x 已发出的地址不变；没有站点覆盖时 `l` 不出现、被忽略。不从路径前缀推断：卡片路由 `/share-card/...` 不带语言前缀，改路由会改变所有地址。
 
 ## Risks / Trade-offs
 

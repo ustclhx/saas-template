@@ -2,9 +2,15 @@ import { describe, expect, it, vi } from 'vitest'
 import { templateConfig } from '../../server/template-config.ts'
 import { projectFonts, resolveProjectShareCardFonts, shareCardFontFingerprint } from './fonts.ts'
 import { sampleShareCardLayout } from './layout.tsx'
-import { shareCardVariant } from './meta.ts'
+import { shareCardImagePath, shareCardVariant } from './meta.ts'
 import { collectText } from './renderer.ts'
-import { isBareHost, resolveRequestShareCardSite, resolveShareCardSite } from './site.ts'
+import {
+  isBareHost,
+  resolveRequestShareCardSite,
+  resolveShareCardSite,
+  shareCardLocale,
+  shareCardUrlLocale,
+} from './site.ts'
 import { fallbackFontPlan, needsFallbackFont, sanitizeText, textWidth } from './text.ts'
 import { resolveShareCardTheme } from './theme.ts'
 
@@ -213,6 +219,81 @@ describe('多站点解析', () => {
     expect(resolved.site.fingerprint).toBe('')
     expect(resolved.site.brand.name).toBe(templateConfig.app.name)
     expect(resolved.themeOverride).toEqual({})
+  })
+
+  describe('运行时语言（0.5.0）', () => {
+    const { defaultLocale, locales, enabled } = templateConfig.i18n
+    const other = enabled ? locales.find((locale) => locale !== defaultLocale) : undefined
+    // 地址只用到 type、version 与 digest
+    const card = {
+      type: 'report',
+      version: 1,
+      digest: () => 'deadbeef00',
+    } as unknown as Parameters<typeof shareCardImagePath>[0]
+    const byLocale = vi.fn((context: { locale?: string | undefined }) => ({
+      ...east,
+      brand: { name: context.locale === defaultLocale ? 'Ganjiday' : `Ganjiday ${context.locale}` },
+    }))
+
+    it('只接受模板配置的语言，其余为默认语言', () => {
+      expect(shareCardLocale(undefined)).toBe(defaultLocale)
+      expect(shareCardLocale(null)).toBe(defaultLocale)
+      expect(shareCardLocale('xx')).toBe(defaultLocale)
+      expect(shareCardLocale('../en')).toBe(defaultLocale)
+      if (other) expect(shareCardLocale(other)).toBe(other)
+    })
+
+    it('默认语言的指纹与地址与 0.4.x（不传语言）相同', () => {
+      const legacy = resolveShareCardSite({ host: 'ganjiday.com' }, resolver).site
+      const page = resolveRequestShareCardSite(
+        'https://ganjiday.com/s/report/x',
+        'https://example.com',
+        resolver,
+        defaultLocale,
+      ).site
+      expect(page.fingerprint).toBe(legacy.fingerprint)
+      expect(shareCardUrlLocale(page)).toBeUndefined()
+      expect(shareCardImagePath(card, 'tok', null, page)).not.toContain('&l=')
+    })
+
+    it.skipIf(!other)('非默认语言传给解析函数、计入 v 并以 l 参数带到卡片地址', () => {
+      const page = resolveRequestShareCardSite(
+        'https://ganjiday.com/s/report/x',
+        'https://example.com',
+        byLocale,
+        other,
+      ).site
+      expect(byLocale).toHaveBeenLastCalledWith(expect.objectContaining({ locale: other }))
+      expect(page.brand.name).toBe(`Ganjiday ${other}`)
+      const fallback = resolveRequestShareCardSite(
+        'https://ganjiday.com/s/report/x',
+        'https://example.com',
+        byLocale,
+        'xx',
+      ).site
+      expect(page.fingerprint).not.toBe(fallback.fingerprint)
+      const path = shareCardImagePath(card, 'tok', null, page)
+      expect(path).toMatch(new RegExp(`\\?v=[^&]+&l=${other}$`))
+      // 卡片路由用地址里的 l 解析，得到同一站点与同一 v
+      const route = resolveRequestShareCardSite(
+        `https://ganjiday.com${path}`,
+        'https://example.com',
+        byLocale,
+        new URL(path, 'https://ganjiday.com').searchParams.get('l'),
+      ).site
+      expect(route.fingerprint).toBe(page.fingerprint)
+    })
+
+    it.skipIf(!other)('没有站点覆盖时非默认语言也不改变地址', () => {
+      const site = resolveRequestShareCardSite(
+        'https://ganjiday.com/s/report/x',
+        'https://example.com',
+        () => undefined,
+        other,
+      ).site
+      expect(site.fingerprint).toBe('')
+      expect(shareCardImagePath(card, 'tok', null, site)).not.toContain('&l=')
+    })
   })
 
   it('裸主机名可带端口，大小写归一', () => {

@@ -96,7 +96,7 @@ export async function handleShareCardImageRequest(
 
   const url = new URL(request.url)
   const variant = url.searchParams.get('v') ?? ''
-  // 缓存键只保留 v，其余查询参数不能制造新的缓存条目。
+  // 缓存键只保留 v，其余查询参数不能制造新的缓存条目；语言 `l` 已计入 v。
   const cacheKey = `${url.origin}${url.pathname}?v=${encodeURIComponent(variant)}`
   const edge = runtime.shareCardCache?.available ? runtime.shareCardCache.value : undefined
   const objects = runtime.files?.available ? runtime.files.value.shareCards : undefined
@@ -135,8 +135,14 @@ export async function handleShareCardImageRequest(
   if (result.status === 'rate-limited') return failure(429, { 'retry-after': '60' })
   if (result.status !== 'ok') return failure(404)
   const { card, resolution, expiresAt } = result
-  // 站点按本次请求的 host 解析，与分享页元数据一致；站点覆盖进入 v，不同站点不共用缓存。
-  const { site, themeOverride } = resolveRequestShareCardSite(request.url, runtime.config.APP_URL)
+  // 站点按本次请求的 host 与地址中的语言 `l` 解析，与分享页元数据一致；站点覆盖与非默认语言进入 v，
+  // 不同站点、不同语言不共用缓存。`l` 只接受模板配置的语言，其余按默认语言处理（v 不符时 302）。
+  const { site, themeOverride } = resolveRequestShareCardSite(
+    request.url,
+    runtime.config.APP_URL,
+    undefined,
+    url.searchParams.get('l'),
+  )
   const expected = shareCardVariant(card, resolution.data, site)
   if (variant !== expected)
     return new Response(null, {

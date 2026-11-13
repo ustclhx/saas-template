@@ -47,8 +47,13 @@ export async function handleShareCardPreviewRequest(request: Request): Promise<R
   )
   if (!limited.success) return plain(429, 'Too Many Requests', { 'retry-after': '60' })
   const data = SAMPLE_SHARE_PREVIEWS[variant as SampleSharePreview]
-  // 与卡片路由相同按请求 host 解析站点，多站点项目可在各自域名下预览。
-  const { site, themeOverride } = resolveRequestShareCardSite(request.url, runtime.config.APP_URL)
+  // 与卡片路由相同按请求 host 与 `l` 参数解析站点，多站点项目可在各自域名、各语言下预览。
+  const { site, themeOverride } = resolveRequestShareCardSite(
+    request.url,
+    runtime.config.APP_URL,
+    undefined,
+    url.searchParams.get('l'),
+  )
   try {
     const body = await renderShareCard(
       {
