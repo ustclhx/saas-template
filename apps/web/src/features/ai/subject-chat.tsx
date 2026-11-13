@@ -127,7 +127,18 @@ export function SubjectChat({
     }
   }, [slug, subjectType, subjectId])
 
-  const shell = { variant, open, onOpenChange, showTrigger, className }
+  // 加载完成时外壳换成对话视图（重新挂载）：打开状态放在这里，加载中点开的面板不会随之关闭
+  const [innerOpen, setInnerOpen] = useState(false)
+  const shell = {
+    variant,
+    open: open ?? innerOpen,
+    onOpenChange: (next: boolean) => {
+      setInnerOpen(next)
+      onOpenChange?.(next)
+    },
+    showTrigger,
+    className,
+  }
   if (state.status !== 'ready')
     return (
       <EmbeddedChat labels={shellLabels(m.chat_ui_subject_title())} {...shellProps(shell)}>
