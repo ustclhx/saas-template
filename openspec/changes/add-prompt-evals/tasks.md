@@ -8,8 +8,8 @@
 
 ## 2. 评测包骨架与依赖边界
 
-- [ ] 2.1 新增私有包 `packages/evals`（`@saas/evals`，`type: module`，依赖 `@saas/ai`、`ai`、`zod`，开发依赖 `vitest`），含 `typecheck` 与 `test` 脚本和 tsconfig；根 `package.json` 增加开发依赖 `@saas/evals: workspace:*` 与 `eval:prompts` 脚本（design D1，`--env-file-if-exists=.env.local --experimental-strip-types`）；`cli.ts` 先只打印用法。验证：`pnpm install` 后 `pnpm eval:prompts --help` 在 Node 22 下输出用法；`pnpm check:singletons`、`pnpm dedupe --check` 通过。
-- [ ] 2.2 `scripts/check-deps.mjs` 增加规则：除根 `package.json` 外，任何 app 或 package 的 manifest 与源码 import 都不得依赖 `@saas/evals`。验证：`scripts/check-deps.test.mjs` 新增用例（app 依赖与源码导入各一例被拒绝、根目录允许），`pnpm check:deps` 通过。
+- [x] 2.1 新增私有包 `packages/evals`（`@saas/evals`，`type: module`，依赖 `@saas/ai`、`ai`、`zod`，开发依赖 `vitest`），含 `typecheck` 与 `test` 脚本和 tsconfig；根 `package.json` 增加开发依赖 `@saas/evals: workspace:*` 与 `eval:prompts` 脚本（design D1，`--env-file-if-exists=.env.local --experimental-strip-types`）；`cli.ts` 先只打印用法。验证：`pnpm install` 后 `pnpm eval:prompts --help` 在 Node 22 下输出用法；`pnpm check:singletons`、`pnpm dedupe --check` 通过。
+- [x] 2.2 `scripts/check-deps.mjs` 增加规则：除根 `package.json` 外，任何 app 或 package 的 manifest 与源码 import 都不得依赖 `@saas/evals`。验证：`scripts/check-deps.test.mjs` 新增用例（app 依赖与源码导入各一例被拒绝、根目录允许），`pnpm check:deps` 通过。
 
 ## 3. 评测核心（可并行）
 
