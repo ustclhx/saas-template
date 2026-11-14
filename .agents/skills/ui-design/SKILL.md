@@ -50,15 +50,10 @@ grep -n 'ui:' template.config.ts
 ```
 
 - **模板仓库**：基线刻意保持中性（Fluid 默认视觉 + `ui.preset`），**不向使用者索取视觉参考**，设计稿只用现有 token 与组件。
-  镜像是否落后（`<同步提交>` 取 `docs/design-system.md` §1 的「最近同步提交」，退出码 0 表示镜像不落后）：
-
-  ```sh
-  git merge-base --is-ancestor "$(git log -1 --format=%H -- packages/ui/src)" <同步提交> && echo 镜像为最新
-  ```
-
-  落后时以仓库 token 为准，并在交付中提示协调者在下次发布模板版本时更新镜像。
-- **衍生项目，已有视觉方向**（`docs/design/visual-system.md` 存在、`brand.css` 有覆盖）：以它和项目自己的 Design System 镜像为准，
-  跳过模板镜像的落后判断，不索取参考。
+  规范只读仓库（`docs/design-system.md` §1）；Design System 镜像是按账号私有的可选缓存，打不开时不申请共享，
+  需要对照时在当前账号按仓库重建（见该节），落后时以仓库 token 为准。
+- **衍生项目，已有视觉方向**（`docs/design/visual-system.md` 存在、`brand.css` 有覆盖）：以它与 `brand.css` 为准（项目镜像同为可选缓存），
+  不索取参考。
 - **衍生项目，尚无视觉方向，或本次要改变方向**：先执行第 3 步。
 
 完成标准：列出本次可用的组件、token 来源（基线 / 预设 / 品牌）与视觉方向文件；缺少的组件记为待补，不在页面里临时写。
@@ -75,7 +70,7 @@ grep -n 'ui:' template.config.ts
 4. **对比度**：正文与背景 ≥ 4.5:1；焦点环与背景、与主按钮 ≥ 3:1；浅色与深色都要满足。
 5. **使用者确认后写入项目自有文件**：
    - `apps/web/src/styles/brand.css`：只写变量，浅色与 `.dark` 成对，`.dark` 规则在 `:root` 之后；
-   - `docs/design/visual-system.md`（目录用途见生成器创建的 `docs/design/README.md`）：参考来源（链接或截图文件）、借鉴点、变量取值、多站点表、镜像链接与同步提交；
+   - `docs/design/visual-system.md`（目录用途见生成器创建的 `docs/design/README.md`）：参考来源（链接或截图文件）、借鉴点、变量取值、多站点表（镜像链接不写入，镜像只是个人缓存）；
    - 参考截图放 `docs/design/references/`。
    不修改 `packages/ui/src/styles/` 与 `packages/ui/src/components/`（模板拥有）。
 
@@ -157,7 +152,7 @@ pnpm --filter "$WEB_PACKAGE" exec playwright screenshot --viewport-size=1440,900
 
 | 现象 | 处理 |
 |---|---|
-| 无法创建或打开 Design Artifact | 当前 agent 不支持时停止并报告，由协调者完成第 3–5 步；链接失效时读取仓库副本继续 |
+| 无法创建或打开 Design Artifact | 当前 agent 不支持时停止并报告，由协调者完成第 3–5 步；链接失效或属于其他账号时读取仓库副本继续，不申请共享 |
 | 原型索引没有本页面 | 需要设计稿：回到第 2 步；worker 停止并报告 |
 | 设计稿需要规范外颜色或字体 | 回到第 4 步单列变更提议，确认后改 token，不在页面写死 |
 | `pnpm check:ui` 报颜色字面量或任意值 | 改用 token 工具类；确需例外（插画、第三方品牌图标）时在项目的 `scripts/check-ui.allow.local.json` 逐文件登记原因 |

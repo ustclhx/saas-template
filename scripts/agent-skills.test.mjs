@@ -88,10 +88,11 @@ test('文档中「将由 tasks N.M」对应的任务仍未勾选', () => {
   }
 })
 
-test('设计规范文档记录镜像与同步提交字段，相对链接存在', () => {
+test('设计规范文档以仓库为唯一来源、不登记 Artifact 链接，相对链接存在', () => {
   const doc = read('docs/design-system.md')
-  assert.match(doc, /\| Design System 镜像 \|/)
-  assert.match(doc, /\| 最近同步提交 \|/)
+  assert.match(doc, /唯一规范来源是本仓库/)
+  // Artifact 按账号私有，规范文档不登记镜像链接（原型索引中的画布链接只是确认记录）
+  assert.doesNotMatch(doc, /claude\.ai\/artifact\//)
   for (const [, link] of doc.matchAll(/\]\((\.{1,2}\/[^)#\s]+)/g)) {
     assert.ok(existsSync(resolve(ROOT, 'docs', link)), `docs/design-system.md 链接不存在：${link}`)
   }
