@@ -1,13 +1,13 @@
 import type { Pricing } from '@saas/ai'
 import { renderToString } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { m } from '../../paraglide/messages.js'
 import {
   creditEstimate,
   DEFAULT_MAX_OUTPUT_TOKENS,
   formatEstimate,
   type PickerModel,
 } from './model-picker.ts'
-import { m } from '../../paraglide/messages.js'
 import { CreditEstimateText, ModelPicker } from './model-picker.tsx'
 
 const perCall: PickerModel = {
