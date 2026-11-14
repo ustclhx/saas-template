@@ -8,6 +8,7 @@ import {
   type ChatMessageStatus,
   type ChatUIMessage,
   chatRequestBody,
+  mergeStoredReply,
   messageText,
   type StoredMessage,
   stopResponseSchema,
@@ -15,7 +16,7 @@ import {
   titleFromText,
   toChatMessages,
 } from './conversation.ts'
-import { renameConversation } from './conversations.functions.ts'
+import { getChatMessage, renameConversation } from './conversations.functions.ts'
 import type { MessageFeedbackValue } from './feedback.ts'
 import type { PickerModel } from './model-picker.ts'
 import { getFollowUps, setMessageFeedback } from './subject-chat.functions.ts'
@@ -62,7 +63,16 @@ export interface ChatSessionOptions {
   readonly start?: (() => Promise<string>) | undefined
   /** 新建对话成功（SubjectChat 据此更新历史列表与缓存） */
   readonly onStarted?: ((id: string) => void) | undefined
+  /** 与已保存消息对齐的读取间隔，默认 `RECONCILE_DELAYS_MS`；测试可调 */
+  readonly reconcileDelays?: readonly number[]
 }
+
+/**
+ * 回复结束后读取已保存消息的间隔（毫秒），读到结束状态即停：正常完成与出错时服务端在关闭流之前已结算，
+ * 停止时停止接口返回前已结算，第一次读取通常就够；断开或本地结算失败时消息仍为 streaming，
+ * 按退避再读几次（最长约 7.5 秒），仍未结束则保留本地内容。
+ */
+export const RECONCILE_DELAYS_MS: readonly number[] = [0, 500, 1000, 2000, 4000]
 
 let sequence = 0
 
@@ -77,9 +87,11 @@ export class ChatSession {
   readonly #listeners = new Set<() => void>()
   readonly #start: (() => Promise<string>) | undefined
   readonly #onStarted: ((id: string) => void) | undefined
+  readonly #reconcileDelays: readonly number[]
 
   constructor(options: ChatSessionOptions) {
     this.slug = options.slug
+    this.#reconcileDelays = options.reconcileDelays ?? RECONCILE_DELAYS_MS
     this.readOnly = options.readOnly
     this.conversationId = options.conversationId
     this.#models = options.models
@@ -232,6 +244,38 @@ export class ChatSession {
     } catch {
       this.set({ stopping: false, stopError: m.chat_ui_stop_failed() })
     }
+    // 服务端从客户端停止到真正中止之间可能多生成一段并计费：换成已保存的正文与积分
+    void this.reconcile(messageId)
+  }
+
+  /**
+   * 回复结束后把本地消息换成已保存的版本（正文、状态、结算积分与模型），界面与保存、计费的内容一致。
+   * 消息仍为 streaming 时按 `reconcileDelays` 重读；读取失败或始终未结束时保留本地内容。
+   */
+  async reconcile(messageId: string): Promise<void> {
+    for (const delay of this.#reconcileDelays) {
+      if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay))
+      if (this.#disposed) return
+      let row: Awaited<ReturnType<typeof getChatMessage>>
+      try {
+        row = await getChatMessage({ data: { slug: this.slug, messageId } })
+      } catch {
+        continue
+      }
+      if (this.#disposed || !row) return
+      if (row.status === 'streaming') continue
+      const index = this.chat.messages.findIndex(
+        (message) => message.id === messageId || message.metadata?.messageId === messageId,
+      )
+      const local = this.chat.messages[index]
+      if (!local) return
+      const merged = mergeStoredReply(local, row as StoredMessage)
+      this.chat.messages = this.chat.messages.map((message, i) => (i === index ? merged : message))
+      // 停止接口返回的状态覆盖消息状态；以保存的状态为准
+      if (this.#state.ended[messageId])
+        this.set({ ended: { ...this.#state.ended, [messageId]: row.status } })
+      return
+    }
   }
 
   async saveFeedback(messageId: string, next: MessageFeedbackValue | null): Promise<void> {
@@ -268,6 +312,8 @@ export class ChatSession {
     if (isError && last?.role === 'user' && !this.#state.draft)
       this.set({ draft: messageText(last) })
     const replyId = last?.metadata?.messageId
+    // 结束（完成、出错、断开）后与已保存的消息对齐；停止由 stop() 在停止接口返回后对齐
+    if (!isAbort && last?.role === 'assistant' && replyId) void this.reconcile(replyId)
     if (!isError && !isAbort && replyId && templateConfig.ai.text.followUps.enabled)
       void getFollowUps({ data: { slug: this.slug, messageId: replyId } })
         .then((result) => {

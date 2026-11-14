@@ -10,7 +10,7 @@ import {
   seedChatModel,
   slugOf,
 } from './chat-fixtures.ts'
-import { register, simulateClientIp } from './fixtures.ts'
+import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 // 对话页切换到 @saas/ui/chat 组件（openspec add-ai-chat-components tasks 4.5）：Markdown 表格与代码块、
@@ -120,6 +120,31 @@ async function fakeModel(page: Page, messageIds: string[], reply: string) {
   )
 }
 
+/**
+ * 写入服务端「已保存、已结算」的回复：页面的流是模拟的，回复结束后对话页按消息 ID 读取保存的版本
+ * （正文、状态、积分、模型）替换本地消息。停止的那条比页面看到的多一段，模拟服务端中止前多生成的内容。
+ */
+async function seedSettledReplies(
+  slug: string,
+  conversationId: string,
+  replies: { id: string; text: string; status: 'completed' | 'aborted'; credits: number }[],
+  modelKey: string,
+) {
+  const sql = fixtureDb()
+  try {
+    const [workspace] = await sql`select id from organization where slug = ${slug}`
+    if (!workspace) throw new Error('Workspace fixture is missing')
+    for (const reply of replies)
+      await sql`insert into ai_message (id,conversation_id,workspace_id,role,parts,model_key,status,credits)
+        values (${reply.id},${conversationId},${workspace.id},'assistant',
+          ${sql.json([{ type: 'text', text: reply.text }])},${modelKey},${reply.status},${reply.credits})`
+  } finally {
+    await sql.end()
+  }
+}
+
+const SERVER_TAIL = '\n\nServer kept generating this tail before the abort landed.'
+
 async function noHorizontalScroll(page: Page) {
   const width = await page.evaluate(() => document.documentElement.scrollWidth)
   expect(width).toBeLessThanOrEqual(390)
@@ -150,9 +175,24 @@ test('chat page renders Markdown replies, copies code, stops and fits 390px (4.5
   try {
     await page.setViewportSize({ width: 1440, height: 1000 })
     await page.emulateMedia({ colorScheme: 'light' })
-    await newConversation(page, slug)
+    const conversationId = await newConversation(page, slug)
     await fakeModel(page, messageIds, REPLY)
     await chooseSeededModel(page, model.modelId)
+    // 选中模型时页面已刷新，之后写入的消息只能经回复结束后的对齐出现
+    await seedSettledReplies(
+      slug,
+      conversationId,
+      [
+        { id: messageIds[0] as string, text: REPLY, status: 'completed', credits: 2 },
+        {
+          id: messageIds[1] as string,
+          text: `Partial answer${SERVER_TAIL}`,
+          status: 'aborted',
+          credits: 2,
+        },
+      ],
+      model.key,
+    )
 
     const input = page.locator('[data-input-message] textarea')
     await expect(input).toBeEnabled({ timeout: 30_000 })
@@ -178,6 +218,8 @@ test('chat page renders Markdown replies, copies code, stops and fits 390px (4.5
     // 生成结束：输入区换回发送，回复下方有操作区
     await expect(page.locator('[data-action="send"]')).toBeVisible()
     await expect(first.locator('[data-chat-actions]')).toBeVisible()
+    // 不刷新即显示本条回复的结算积分与模型（回复结束后读取保存的消息）
+    await expect(first.locator('[data-chat-actions]')).toContainText(`2 credits · ${model.key}`)
 
     // 代码块复制：剪贴板得到代码原文（不含语言名）
     await code.locator('button').click()
@@ -232,6 +274,15 @@ test('chat page renders Markdown replies, copies code, stops and fits 390px (4.5
     await expect(second).toContainText('Partial answer')
     await expect(page.locator('[data-action="send"]')).toBeVisible()
     await noHorizontalScroll(page)
+    // 停止后显示的正文换成服务端保存（并计费）的版本，刷新前后一致
+    await expect(second).toContainText('Server kept generating this tail')
+    await expect(second).not.toContainText('Paragraph 11')
+    await expect(second.locator('[data-chat-actions]')).toContainText(`2 credits · ${model.key}`)
+    const shown = await second.locator('[data-chat-content]').innerText()
+    await page.reload()
+    const reloaded = page.locator('li[data-role="assistant"]').nth(1)
+    await expect(reloaded.locator('[data-chat-status="aborted"]')).toBeVisible()
+    expect(await reloaded.locator('[data-chat-content]').innerText()).toBe(shown)
   } finally {
     await removeModel(model.modelId)
   }

@@ -1586,6 +1586,20 @@ export function registerAiChatSuite(
       expect(peek).toMatchObject({ status: 404, body: { error: { code: 'NOT_FOUND' } } })
       expect((await stop(owner, newId())).status).toBe(404)
       expect((await stop(owner, 'not-a-uuid')).status).toBe(404)
+
+      // 同 isolate 的提前中止只认发起者：他人请求不触发 abort，发起者鉴权后即中止
+      const aborted: string[] = []
+      const pendingId = newId()
+      const activeChats = new Map([
+        [
+          pendingId,
+          { userId: owner.userId, abort: () => aborted.push('abort'), done: Promise.resolve() },
+        ],
+      ])
+      await stop({ slug: owner.slug, cookie: other.cookie }, pendingId, { activeChats })
+      expect(aborted).toEqual([])
+      await stop(owner, pendingId, { activeChats })
+      expect(aborted).toEqual(['abort'])
     })
   })
 

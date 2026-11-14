@@ -120,6 +120,43 @@ export function toChatMessages(rows: readonly StoredMessage[]): ChatUIMessage[] 
   })
 }
 
+/**
+ * 回复结束后用已保存的消息校正本地消息（正文、状态、结算积分与模型）：停止后服务端可能多生成一段，
+ * 断开时可能只保存到最后一个检查点，界面以保存并计费的内容为准。
+ * 只改各 part 的内容、不增删已有 part：正文块的 key 取自 part 下标，保持不变即不会重新挂载 Markdown。
+ */
+export function mergeStoredReply(local: ChatUIMessage, row: StoredMessage): ChatUIMessage {
+  const stored = toChatMessages([row])[0]
+  const text = textOf(row.parts)
+  const reasoning = row.parts
+    .flatMap((part) => {
+      const parsed = z.object({ type: z.literal('reasoning'), text: z.string() }).safeParse(part)
+      return parsed.success ? [parsed.data.text] : []
+    })
+    .join('')
+  // 只替换最后一次尝试的 reasoning（与 messageReasoning 的展示范围一致）
+  const retry = local.parts.findLastIndex((part) => part.type === 'data-retry')
+  let textPlaced = false
+  let reasoningPlaced = false
+  const parts = local.parts.map((part, index) => {
+    if (part.type === 'text') {
+      const next = textPlaced ? '' : text
+      textPlaced = true
+      return { ...part, text: next, state: 'done' as const }
+    }
+    if (part.type === 'reasoning' && index > retry && reasoning) {
+      const next = reasoningPlaced ? '' : reasoning
+      reasoningPlaced = true
+      return { ...part, text: next, state: 'done' as const }
+    }
+    return part
+  })
+  if (reasoning && !reasoningPlaced)
+    parts.push({ type: 'reasoning', text: reasoning, state: 'done' })
+  if (text && !textPlaced) parts.push({ type: 'text', text, state: 'done' })
+  return { ...local, parts, metadata: { ...local.metadata, ...stored?.metadata } }
+}
+
 /** 每轮请求体：只发送最后一条用户消息的文本部分 */
 export function chatRequestBody(input: {
   slug: string

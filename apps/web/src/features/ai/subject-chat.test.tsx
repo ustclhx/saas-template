@@ -17,7 +17,10 @@ const state = vi.hoisted(() => ({
 
 vi.mock('../../server/template-config.ts', () => ({ templateConfig: { ai: { text: state.text } } }))
 vi.mock('../analytics/track.ts', () => ({ trackEvent: vi.fn() }))
-vi.mock('./conversations.functions.ts', () => ({ renameConversation: vi.fn() }))
+vi.mock('./conversations.functions.ts', () => ({
+  renameConversation: vi.fn(),
+  getChatMessage: vi.fn(async () => null),
+}))
 vi.mock('../marketing/pricing-snapshot.ts', () => ({ pricingSnapshot: { plans: [] } }))
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: React.ReactNode }) => <a href="/">{children}</a>,
