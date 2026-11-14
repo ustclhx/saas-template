@@ -10,12 +10,17 @@ const footerLink = 'text-muted-foreground text-sm hover:text-foreground'
 /**
  * 页脚区块：产品、资源与法律页链接。
  * floatingEntry：页面右下角有悬浮 AI 入口时，页脚内容盒底部留白，滚到底时页脚内容在入口之上。
- * md 及以上入口叠在浮动主题切换上方（视口底部 72–120px），留 136px；手机端入口贴底（16–64px），留 80px。
+ * md 及以上入口叠在浮动主题切换上方（视口底部 72–120px），留 136px。
+ * 手机端无论有无 Ask AI 都留 80px：页面还可能有其他右下悬浮按钮（如 SubjectChat 触发器，底部 24–68px），
+ * 不能遮挡设置行与版权（9.3 UI-03）。
  * 手机端语言与主题设置行放在版权行上方（设计稿 docs/design-system/prototypes/mobile-footer-controls）。
  */
 export function SiteFooter({ floatingEntry = false }: { floatingEntry?: boolean }) {
   return (
-    <footer data-site-footer className={floatingEntry ? 'border-t pb-20 md:pb-34' : 'border-t'}>
+    <footer
+      data-site-footer
+      className={cn('border-t pb-20', floatingEntry ? 'md:pb-34' : 'md:pb-0')}
+    >
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:grid-cols-4">
         <div className="grid content-start gap-2">
           <p className="font-semibold">{site.name}</p>
@@ -68,7 +73,7 @@ export function SiteFooter({ floatingEntry = false }: { floatingEntry?: boolean 
       <p
         className={cn(
           'mx-auto max-w-6xl px-4 text-muted-foreground text-xs',
-          !floatingEntry && 'pb-8',
+          !floatingEntry && 'md:pb-8',
         )}
       >
         {m.marketing_footer_copyright({ year: new Date().getFullYear(), name: site.name })}
