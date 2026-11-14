@@ -570,13 +570,18 @@ const copy = pending?.action === 'transfer'
 | 表单 | `useAppForm` + 字段组件，提交按钮 `SubmitButton`，错误用 `FieldErrors` | 现有 |
 | 长文阅读 | `Reader`：安全 Markdown、自动目录、吸顶高亮、阅读进度、打印样式与导出 PDF（`registerPdfExporter` 扩展点），见 §4 | 已提供（tasks 8.4），预览 `/dev/ui#reader` 与整页 `/dev/ui/reader?state=ready\|empty\|loading\|error` |
 | 营销区块 | 数据背书（未配置不渲染）、三步流程、编号产品矩阵、悬浮 AI 入口 | `apps/web/src/features/marketing/sections/`（`Stats`、`Steps`、`ProductMatrix`）与 `ai-entry.tsx`，内容来自 `template.config.ts` 的 `marketing` 段；入口叠在浮动主题切换上方，页脚内容盒距页面底部 136px；`/dev/ui#marketing` 预览 |
+| 对话 | 对话页 `ChatThread` + `ChatComposer`（消息列 720px 居中、输入区固定底部、生成中上滑出现「回到最新」、状态只在变化时播报）；嵌入式 `SubjectChat` 在 `EmbeddedChat` 中（inline / panel，手机为底部抽屉） | 已提供（add-ai-chat-components），组件预览 `/dev/ui#chat` |
 | 业务界面组件 | 推荐追问、消息评分、嵌入式对话、余额不足弹窗、预计消耗、会员锁定、每日领取 | 现有（tasks 8.6），接口见 [6.1](#61-业务界面组件) |
 
-**AI 聊天组件（tasks 9.1 选型结论，待使用者确认）**：倾向移植 Fluid 的 AI 组件（chat-message、thinking-steps、
-thinking-indicator、input-message 等，Radix 版，MIT），另写一层把 AI SDK `UIMessage` 各类 parts（正文、推理、工具调用）
-分发给组件的转换层；Vercel AI Elements 只作参考，不整体引入（shadcn 风格需逐个改样式，依赖重，上游声明 `ai` ^6）。
-Markdown 与代码高亮另行选型，优先轻量方案；替换聊天页与 SubjectChat 另起 change。完整对比见本 change 的
-`ai-components.md`（归档后在 `openspec/changes/archive/` 下）。
+**AI 聊天组件（已确认，2026-11-14，OpenSpec change add-ai-chat-components）**：使用者确认三点——
+① 移植 Fluid 的 AI 组件（`ChatMessage`、`ThinkingIndicator`、`ThinkingSteps`、`InputMessage`，Radix 版，MIT）并新增模板自写的
+`ToolCall`，全部经 `@saas/ui/chat` 子路径导出（不进主入口与首页包），纯展示、文案由应用传入、不依赖 `ai` 包；
+② 回复 Markdown（`ChatMarkdown`）复用阅读器的安全管线（丢弃原始 HTML、元素与链接协议白名单），不做语法高亮，代码块等宽 + 语言名 +
+复制按钮，表格与代码块在块内横向滚动，回复中的图片只显示替代文字，流式时按块增量渲染；
+③ 对话页与嵌入式 SubjectChat 都切换到这些组件，只保留 `EmbeddedChat` 一个嵌入式外壳。AI SDK `UIMessage` 的 parts 由
+`apps/web/src/features/ai/message-parts.tsx` 分发，项目工具卡片在项目自有的 `message-parts.project.tsx` 中按工具名注册。
+设计稿与已确认的偏离见原型索引「对话页」「嵌入式 SubjectChat」两行与该 change 的 design.md；选型对比见归档的 add-ui-design-system
+`ai-components.md`。
 
 **工作台（tasks 8.3）**：`template.config.ts` 的 `ui.appLayout` 取 `'sidebar'`（默认）或 `'topbar'`（原顶部布局，
 结构不变），构建期决定。侧边栏布局在 `apps/web/src/features/app-shell/`：侧边栏在 surface-1，展开 248px、收起为 64px
@@ -725,6 +730,8 @@ DailyClaimNotice」两节用中性示例数据展示全部状态。
 - 生成器在副本中创建空的 `scripts/check-ui.allow.local.json` 与 `docs/design/README.md`（说明本目录各文件的用途），
   并且不复制 `docs/design-system/prototypes/`。
 - `apps/web/src/features/theme/html-attributes.ts`（项目自有，模板创建后不再修改）：返回加到 `<html>` 的额外属性（如 `data-site`），根布局在服务端首屏合并；`lang`、`data-preset` 由模板写，不可覆盖。
+- `apps/web/src/features/ai/message-parts.project.tsx`（项目自有，模板创建后不再修改）：按工具名注册工具卡片的显示名与详情渲染；
+  未注册的工具只显示通用标签与状态。对话外观的定制按 [§9.2](#92-定制顺序) 的顺序进行（token → ui 配置 → project 包装），不改模板组件。
 - `apps/web/src/features/app-shell/nav.project.ts`（项目自有，模板创建后不再修改）：登记项目的工作台侧边栏条目，
   或按 id 覆盖 / 移除模板条目（见 [§6](#6-页面模式)）。
 

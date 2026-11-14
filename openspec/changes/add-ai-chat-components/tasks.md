@@ -47,8 +47,8 @@
 
 ## 7. 文档与升级说明
 
-- [ ] 7.1 `docs/design-system.md` §6 的「AI 聊天组件（tasks 9.1 选型结论，待使用者确认）」改为已确认（2026-11-14，附三条决定的摘要与本 change 链接），删去「Markdown 与代码高亮另行选型」「另起 change」等过时说法；§6 页面模式表增加「对话」一行；§9 写明 `message-parts.project.tsx` 为项目拥有、对话外观按 §9.2 定制。验证：文档中不再出现「待使用者确认」字样指向本选型。
-- [ ] 7.2 起草或追加下一版本的升级说明（`docs/upgrades/<下一版本>.md`）：对话页与 SubjectChat 外观变化、`ChatPage variant="embedded"` 删除及替换写法、新子路径 `@saas/ui/chat`、项目自有 `message-parts.project.tsx`、回复图片不再显示、`reader-markdown.tsx` 与 `embedded-chat.tsx` 指纹变化、首页包检查新标记。验证：`node scripts/template-release.mjs check` 通过。
+- [x] 7.1 `docs/design-system.md` §6 的「AI 聊天组件（tasks 9.1 选型结论，待使用者确认）」改为已确认（2026-11-14，附三条决定的摘要与本 change 链接），删去「Markdown 与代码高亮另行选型」「另起 change」等过时说法；§6 页面模式表增加「对话」一行；§9 写明 `message-parts.project.tsx` 为项目拥有、对话外观按 §9.2 定制。验证：文档中不再出现「待使用者确认」字样指向本选型。
+- [x] 7.2 起草或追加下一版本的升级说明（`docs/upgrades/<下一版本>.md`）：对话页与 SubjectChat 外观变化、`ChatPage variant="embedded"` 删除及替换写法、新子路径 `@saas/ui/chat`、项目自有 `message-parts.project.tsx`、回复图片不再显示、`reader-markdown.tsx` 与 `embedded-chat.tsx` 指纹变化、首页包检查新标记。验证：`node scripts/template-release.mjs check` 通过。
 
 ## 8. 验收
 
