@@ -28,7 +28,7 @@
 - [x] 5.1 `docs/share-cards.md` 项目字体与多站点章节；SEO README 文字支持范围
 - [x] 5.2 升级说明 `docs/upgrades/0.4.1.md`（草稿）与索引
 - [x] 5.3 `pnpm check`、`pnpm typecheck`、`pnpm check:deps`、`pnpm test`、`pnpm build`（首页包检查）、`template-release check --version 0.4.1`、`pnpm test:create-project` 通过
-- [ ] 5.4 衍生项目 xuanxue 放入 Noto Sans KR 后线上验收韩文分享卡片与双站点品牌（由接入项目验收）
+- [x] 5.4 衍生项目 xuanxue 放入 Noto Sans KR 后线上验收韩文分享卡片与双站点品牌（由接入项目验收）
 
 ## 6. 韩文与运行时语言（0.5.0，xuanxue 接入 0.4.1 后的反馈）
 
