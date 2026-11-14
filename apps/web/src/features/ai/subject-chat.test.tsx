@@ -55,9 +55,14 @@ const data: SubjectChatData & { readOnly: boolean } = {
   readOnly: false,
 }
 
-vi.mock('./subject-chat.functions.ts', () => ({
-  getSubjectChat: vi.fn(async () => data),
+const api = vi.hoisted(() => ({
+  getSubjectChat: vi.fn(),
   startSubjectConversation: vi.fn(),
+}))
+
+vi.mock('./subject-chat.functions.ts', () => ({
+  getSubjectChat: api.getSubjectChat,
+  startSubjectConversation: api.startSubjectConversation,
   startTemporarySubjectConversation: vi.fn(),
   getFollowUps: vi.fn(async () => ({ questions: [] })),
   setMessageFeedback: vi.fn(),
@@ -88,7 +93,33 @@ function desktop() {
   )
 }
 
+const otherId = '01900000-0000-7000-8000-000000000002'
+const other: SubjectChatData & { readOnly: boolean } = {
+  ...data,
+  conversation: { id: otherId, title: 'Older chat' },
+  messages: [
+    {
+      id: 'u9',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Older question' }],
+      status: 'completed',
+    },
+  ],
+}
+const blank: SubjectChatData & { readOnly: boolean } = {
+  ...data,
+  conversation: null,
+  conversations: [],
+  messages: [],
+}
+
 beforeEach(() => {
+  api.getSubjectChat.mockReset()
+  api.startSubjectConversation.mockReset()
+  api.getSubjectChat.mockImplementation(
+    async ({ data: input }: { data: { conversationId?: string } }) =>
+      input.conversationId === otherId ? other : data,
+  )
   overwriteGetLocale(() => baseLocale)
   desktop()
   window.scrollTo = vi.fn() as typeof window.scrollTo
@@ -169,5 +200,130 @@ describe('SubjectChat 嵌入式外壳', () => {
     act(() => startReply(stream, 'r1', data.conversation?.id))
     unmount()
     await waitFor(() => expect(stream.aborted).toBe(true))
+  })
+
+  it('第一次发送（推荐问题）新建对话后输入框保留焦点，状态区只播报一次「正在生成」', async () => {
+    api.getSubjectChat.mockImplementation(async () => ({
+      ...blank,
+      conversations: [],
+    }))
+    api.startSubjectConversation.mockResolvedValue({
+      ok: true,
+      result: { id: data.conversation?.id },
+    })
+    const server = fakeChatServer()
+    vi.stubGlobal('fetch', server.fetch)
+    render(<SubjectChat slug="personal" subjectType="report" subjectId="r1" variant="panel" />)
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: m.chat_ui_subject_trigger() }))
+    const panel = await screen.findByRole('dialog')
+    const input = within(panel).getByRole('textbox', { name: m.chat_ui_message() })
+    const region = panel.querySelector('[data-chat-announcer]')
+    if (!region) throw new Error('no status region')
+    const writes: string[] = []
+    const observer = new MutationObserver(() => {
+      const text = region.textContent ?? ''
+      if (writes.at(-1) !== text) writes.push(text)
+    })
+    observer.observe(region, { childList: true, characterData: true, subtree: true })
+    fireEvent.click(within(panel).getByRole('button', { name: 'What changed?' }))
+    await waitFor(() => expect(server.streams).toHaveLength(1))
+    const stream = server.streams[0]
+    if (!stream) throw new Error('no stream')
+    act(() => startReply(stream, 'r1', data.conversation?.id))
+    await waitFor(() => expect(region.textContent).toBe(m.chat_ui_announce_generating()))
+    // 线程与输入区没有重新挂载：同一个元素、焦点仍在
+    expect(panel.querySelector('[data-chat-announcer]')).toBe(region)
+    expect(within(panel).getByRole('textbox', { name: m.chat_ui_message() })).toBe(input)
+    expect(document.activeElement).toBe(input)
+    observer.disconnect()
+    expect(writes).toEqual([m.chat_ui_announce_generating()])
+  })
+
+  it('新建对话失败时恢复草稿并提示', async () => {
+    api.getSubjectChat.mockImplementation(async () => blank)
+    api.startSubjectConversation.mockResolvedValue({ ok: false, error: 'FAILED' })
+    const server = fakeChatServer()
+    vi.stubGlobal('fetch', server.fetch)
+    render(<SubjectChat slug="personal" subjectType="report" subjectId="r1" variant="panel" />)
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: m.chat_ui_subject_trigger() }))
+    const panel = await screen.findByRole('dialog')
+    const input = within(panel).getByRole('textbox', { name: m.chat_ui_message() })
+    fireEvent.change(input, { target: { value: 'My question' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(panel.textContent).toContain(m.subject_chat_start_failed()))
+    expect((input as HTMLTextAreaElement).value).toBe('My question')
+    expect(server.streams).toHaveLength(0)
+  })
+
+  it('生成中切换到历史对话，流继续；切回时回复已完成', async () => {
+    api.getSubjectChat.mockImplementation(
+      async ({ data: input }: { data: { conversationId?: string } }) =>
+        input.conversationId === otherId
+          ? {
+              ...other,
+              conversations: [
+                ...data.conversations,
+                { id: otherId, title: 'Older chat', updatedAt: new Date() },
+              ],
+            }
+          : {
+              ...data,
+              conversations: [
+                ...data.conversations,
+                { id: otherId, title: 'Older chat', updatedAt: new Date() },
+              ],
+            },
+    )
+    const server = fakeChatServer()
+    vi.stubGlobal('fetch', server.fetch)
+    render(<SubjectChat slug="personal" subjectType="report" subjectId="r1" variant="panel" />)
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: m.chat_ui_subject_trigger() }))
+    const panel = await screen.findByRole('dialog')
+    const input = within(panel).getByRole('textbox', { name: m.chat_ui_message() })
+    fireEvent.change(input, { target: { value: 'Live question' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(server.streams).toHaveLength(1))
+    const stream = server.streams[0]
+    if (!stream) throw new Error('no stream')
+    act(() => {
+      startReply(stream, 'r1', data.conversation?.id)
+      stream.send({ type: 'text-start', id: 't1' })
+      stream.send({ type: 'text-delta', id: 't1', delta: 'First half' })
+    })
+    await waitFor(() => expect(panel.textContent).toContain('First half'))
+
+    // 用键盘在历史菜单中选中指定对话
+    const choose = async (title: string) => {
+      const trigger = within(panel).getByRole('button', { name: m.subject_chat_history() })
+      trigger.focus()
+      fireEvent.keyDown(trigger, { key: 'Enter' })
+      await screen.findByRole('menu')
+      for (let i = 0; i < 6 && !document.activeElement?.textContent?.includes(title); i++) {
+        fireEvent.keyDown(document.activeElement as Element, { key: 'ArrowDown' })
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 20))
+        })
+      }
+      expect(document.activeElement?.textContent).toContain(title)
+      fireEvent.keyDown(document.activeElement as Element, { key: 'Enter' })
+    }
+    await choose('Older chat')
+    await waitFor(() => expect(api.getSubjectChat).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.getByRole('dialog').textContent).toContain('Older question'))
+    expect(panel.textContent).not.toContain('First half')
+
+    await act(async () => {
+      stream.send({ type: 'text-delta', id: 't1', delta: ' and the rest.' })
+      stream.send({ type: 'text-end', id: 't1' })
+      stream.finish()
+      await new Promise((resolve) => setTimeout(resolve, 80))
+    })
+    expect(stream.aborted).toBe(false)
+
+    await choose('Report chat')
+    await waitFor(() => expect(panel.textContent).toContain('First half and the rest.'))
   })
 })

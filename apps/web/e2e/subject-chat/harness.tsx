@@ -15,6 +15,8 @@ export function TemporarySubjectChat({ slug, token }: { slug: string; token: str
         subjectId="report-1"
         variant={token === 'panel' ? 'panel' : 'inline'}
       />
+      {/* 宿主页面比视口高：嵌入式对话挂载或切换历史时不能滚动宿主页面 */}
+      <div aria-hidden style={{ height: '150vh' }} />
     </section>
   )
 }

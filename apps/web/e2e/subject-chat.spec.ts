@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { expect, type Locator, type Page, test } from '@playwright/test'
+import { newId } from '@saas/shared'
 import { removeModel, seedChatModel, slugOf } from './chat-fixtures.ts'
-import { register, simulateClientIp } from './fixtures.ts'
+import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 // 嵌入式 SubjectChat（openspec add-ai-chat-components tasks 5.2）：390px 下打开底部抽屉发送，生成中关闭，
@@ -194,5 +195,64 @@ test('desktop inline card and side panel (5.2 screenshots)', async ({ page }) =>
     await shoot(page, 'subject-chat-panel-in-progress-dark')
   } finally {
     await removeModel(model.modelId)
+  }
+})
+
+test('inline chat with history never scrolls the host page (mount and history switch)', async ({
+  page,
+}) => {
+  test.setTimeout(180_000)
+  const email = `subject-chat-scroll-${randomUUID()}@example.com`
+  await register(page, email)
+  const slug = slugOf(page)
+  const sql = fixtureDb()
+  const older = newId()
+  const latest = newId()
+  try {
+    const [row] = await sql`select o.id as workspace_id, u.id as user_id
+      from organization o join "user" u on u.email = ${email} where o.slug = ${slug}`
+    if (!row) throw new Error('Workspace fixture is missing')
+    for (const [id, title, age] of [
+      [older, 'Older chat', '2 hours'],
+      [latest, 'Latest chat', '1 hour'],
+    ] as const) {
+      await sql`insert into ai_conversation (id, workspace_id, user_id, title, model_key, subject_type, subject_id, created_at, updated_at)
+        values (${id}, ${row.workspace_id}, ${row.user_id}, ${title}, '', 'e2e-note', 'report-1',
+          now() - ${age}::interval, now() - ${age}::interval)`
+      const messages: [string, string, string][] = Array.from({ length: 6 }, (_, i) => [
+        [newId(), 'user', `${title} question ${i}`] as [string, string, string],
+        [newId(), 'assistant', `${title} answer ${i}: ${'detail '.repeat(30)}`] as [
+          string,
+          string,
+          string,
+        ],
+      ]).flat()
+      for (const [messageId, role, text] of messages)
+        await sql`insert into ai_message (id, workspace_id, conversation_id, role, parts, status)
+          values (${messageId}, ${row.workspace_id}, ${id}, ${role}, ${sql.json([{ type: 'text', text }])}, 'completed')`
+    }
+    await page.setViewportSize({ width: 1440, height: 900 })
+    const card = page.locator('[data-embedded-chat="inline"]')
+    await page.goto(`/app/${slug}/chat/context`)
+    await expect(card).toContainText('Latest chat answer 5')
+    await page.waitForTimeout(300)
+    expect(await page.evaluate(() => window.scrollY)).toBe(0)
+    // 卡片自己的消息区停在最新消息
+    const body = card.locator('li[data-role]').last()
+    await expect(body).toBeInViewport()
+
+    const history = card.locator('button[aria-haspopup="menu"]')
+    await expect(async () => {
+      await history.click()
+      await expect(page.getByRole('menu')).toBeVisible({ timeout: 1_000 })
+    }).toPass({ timeout: 30_000 })
+    await page.getByRole('menu').locator('[role^="menuitem"]', { hasText: 'Older chat' }).click()
+    await expect(card).toContainText('Older chat answer 5')
+    await page.waitForTimeout(300)
+    expect(await page.evaluate(() => window.scrollY)).toBe(0)
+  } finally {
+    await sql`delete from ai_message where conversation_id in (${older}, ${latest})`
+    await sql`delete from ai_conversation where id in (${older}, ${latest})`
+    await sql.end()
   }
 })

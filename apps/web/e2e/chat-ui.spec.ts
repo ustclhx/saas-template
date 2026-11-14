@@ -89,6 +89,11 @@ async function fakeModel(page: Page, messageIds: string[], reply: string) {
             )
             if (call > 0) {
               controller.enqueue(line({ type: 'text-delta', id: 't1', delta: 'Partial answer' }))
+              // 测试经 window.__push 追加正文（跟随滚动与「回到最新」）
+              Object.assign(window, {
+                __push: (delta: string) =>
+                  controller.enqueue(line({ type: 'text-delta', id: 't1', delta })),
+              })
               return
             }
             for (let i = 0; i < reply.length; i += 40) {
@@ -202,6 +207,25 @@ test('chat page renders Markdown replies, copies code, stops and fits 390px (4.5
     await input.press('Enter')
     const second = replies.nth(1)
     await expect(second).toContainText('Partial answer')
+    // 跟随滚动：位于底部时新内容到达自动滚到最新
+    const push = (delta: string) =>
+      page.evaluate((d) => (window as unknown as { __push(d: string): void }).__push(d), delta)
+    const toBottom = () =>
+      page.evaluate(
+        () => document.documentElement.scrollHeight - window.scrollY - window.innerHeight,
+      )
+    for (let i = 0; i < 12; i++) await push(`\n\nParagraph ${i}: ${'budget detail '.repeat(20)}`)
+    await expect(second).toContainText('Paragraph 11')
+    await expect.poll(toBottom).toBeLessThan(120)
+    // 上翻阅读时不抢滚动位置，出现「回到最新」
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await expect(page.locator('[data-chat-jump]')).toBeVisible()
+    await push('\n\nMore text arriving while reading.')
+    await expect(second).toContainText('More text arriving')
+    expect(await page.evaluate(() => window.scrollY)).toBeLessThan(10)
+    await page.locator('[data-chat-jump]').click()
+    await expect.poll(toBottom).toBeLessThan(120)
+    await expect(page.locator('[data-chat-jump]')).toHaveCount(0)
     await page.locator('[data-action="stop"]').click()
     await expect.poll(() => stops).toEqual([`/api/ai/chat/${messageIds[1]}/stop`])
     await expect(second.locator('[data-chat-status="aborted"]')).toBeVisible()

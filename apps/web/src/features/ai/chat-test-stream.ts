@@ -27,6 +27,8 @@ export interface FakeChatServer {
 export function fakeChatServer(
   options: {
     stopStatus?: 'aborted' | 'failed' | 'completed'
+    /** 停止接口返回 500 */
+    stopFails?: boolean
     reject?: { status: number; json: unknown }
   } = {},
 ): FakeChatServer {
@@ -36,6 +38,7 @@ export function fakeChatServer(
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     if (url.endsWith('/stop')) {
       stops.push(url)
+      if (options.stopFails) return new Response('error', { status: 500 })
       return Response.json({ status: options.stopStatus ?? 'aborted' })
     }
     if (options.reject)

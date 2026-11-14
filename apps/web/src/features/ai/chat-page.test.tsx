@@ -152,6 +152,25 @@ describe('消息状态', () => {
     expect(stream.aborted).toBe(true)
   })
 
+  it('停止接口失败时提示可能仍在后台生成', async () => {
+    const server = fakeChatServer({ stopFails: true })
+    vi.stubGlobal('fetch', server.fetch)
+    renderPage()
+    await send('Write a story')
+    await waitFor(() => expect(server.streams).toHaveLength(1))
+    const stream = server.streams[0]
+    if (!stream) throw new Error('no stream')
+    act(() => {
+      startReply(stream, 'r1')
+      stream.send({ type: 'text-start', id: 't1' })
+      stream.send({ type: 'text-delta', id: 't1', delta: 'Partial' })
+    })
+    await waitFor(() => expect(assistantItems()[0]?.textContent).toContain('Partial'))
+    fireEvent.click(screen.getByRole('button', { name: m.chat_ui_stop() }))
+    expect((await screen.findByRole('alert')).textContent).toContain(m.chat_ui_stop_failed())
+    expect(stream.aborted).toBe(true)
+  })
+
   it('失败与未完成的历史回复显示状态与说明，正文保留', () => {
     renderPage({
       stored: [
