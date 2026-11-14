@@ -112,6 +112,8 @@ const CONVERSATION_TITLE_LENGTH = 80
  * 已生成内容结算。Workers 不保证停止请求与原请求在同一 isolate，见 `handleChatStopRequest`。
  */
 interface ActiveChat {
+  /** 发起者：停止请求在本 isolate 命中时，鉴权后先按发起者中止，再查库 */
+  readonly userId?: string
   abort(): void
   /** 读流与结算完成 */
   readonly done: Promise<void>
@@ -456,7 +458,7 @@ export async function startWorkspaceChat(
     },
   })
   const done = result.done.then(() => {})
-  activeChats.set(assistantId, { abort: () => controller.abort('stop'), done })
+  activeChats.set(assistantId, { userId, abort: () => controller.abort('stop'), done })
   deps.waitUntil(done)
 
   return { result, metadata, done }
@@ -511,6 +513,10 @@ async function stopChat(
   const parsed = stopRequestSchema.safeParse(await request.json().catch(() => undefined))
   if (!parsed.success) throw new AppError('INVALID_REQUEST', 'Invalid stop request')
   const notFound = () => new AppError('NOT_FOUND', 'Not found', { status: 404 })
+  // 本 isolate 中发起者本人的进行中回复：先中止上游再解析空间、查库，缩短从点停止到真正停止之间
+  // 多生成（并保存、计费）的那一段。只有发起者能命中；之后的归属校验与结算流程不变。
+  const local = (deps.activeChats ?? activeChats).get(messageId)
+  if (local?.userId === user.id) local.abort()
   const resolved = await resolveWorkspaceBySlug(db, user.id, parsed.data.slug)
   if (!resolved || !z.uuid().safeParse(messageId).success) throw notFound()
   setLogContext({ workspaceId: resolved.workspace.id, userId: user.id })
@@ -540,7 +546,6 @@ async function stopChat(
     status === 'streaming' ? null : { status: status as ChatStopResponse['status'] }
 
   let message = await load()
-  const local = (deps.activeChats ?? activeChats).get(messageId)
   if (message.status === 'streaming' && local) {
     local.abort()
     await local.done

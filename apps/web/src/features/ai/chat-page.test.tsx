@@ -8,6 +8,9 @@ import type { StoredMessage } from './conversation.ts'
 import type { PickerModel } from './model-picker.ts'
 
 const state = vi.hoisted(() => ({
+  /** getChatMessage 依次返回的结果；为 Error 时抛出，用尽后返回 null */
+  stored: [] as unknown[],
+  storedCalls: [] as unknown[],
   text: {
     thinking: { default: 'off', userToggle: false },
     reasoning: { display: false },
@@ -18,6 +21,12 @@ const state = vi.hoisted(() => ({
 vi.mock('../../server/template-config.ts', () => ({ templateConfig: { ai: { text: state.text } } }))
 vi.mock('../analytics/track.ts', () => ({ trackEvent: vi.fn() }))
 vi.mock('./conversations.functions.ts', () => ({
+  getChatMessage: vi.fn(async (input: unknown) => {
+    state.storedCalls.push(input)
+    const next = state.stored.shift()
+    if (next instanceof Error) throw next
+    return next ?? null
+  }),
   renameConversation: vi.fn(async () => ({ ok: true })),
   createConversation: vi.fn(),
   setConversationArchived: vi.fn(),
@@ -85,6 +94,8 @@ const reply = (id: string, text: string, status: StoredMessage['status']): Store
 Object.defineProperty(Element.prototype, 'animate', { value: undefined, configurable: true })
 
 beforeEach(() => {
+  state.stored = []
+  state.storedCalls = []
   overwriteGetLocale(() => baseLocale)
   state.text.thinking.userToggle = false
   state.text.thinking.default = 'off'
@@ -308,5 +319,99 @@ describe('状态播报', () => {
     expect(screen.getByRole('list', { name: m.chat_ui_messages() }).getAttribute('aria-live')).toBe(
       null,
     )
+  })
+})
+
+describe('回复结束后与保存的消息对齐', () => {
+  const saved = (
+    id: string,
+    text: string,
+    status: StoredMessage['status'],
+    credits: number | null = 3,
+  ) => ({
+    id,
+    role: 'assistant',
+    parts: [{ type: 'text', text }],
+    status,
+    credits,
+    modelKey: 'deepseek',
+  })
+
+  async function streamReply(text: string) {
+    const server = fakeChatServer({ stopStatus: 'aborted' })
+    vi.stubGlobal('fetch', server.fetch)
+    renderPage()
+    await send('Question')
+    await waitFor(() => expect(server.streams).toHaveLength(1))
+    const stream = server.streams[0]
+    if (!stream) throw new Error('no stream')
+    act(() => {
+      startReply(stream, 'r1')
+      stream.send({ type: 'text-start', id: 't1' })
+      stream.send({ type: 'text-delta', id: 't1', delta: text })
+    })
+    await waitFor(() => expect(assistantItems()[0]?.textContent).toContain(text))
+    return { server, stream }
+  }
+
+  const meta = (credits: number) =>
+    m.chat_ui_reply_meta({ credits: String(credits), model: 'deepseek' })
+
+  it('完成后不刷新即显示消耗积分与模型', async () => {
+    state.stored = [saved('r1', 'Full answer', 'completed')]
+    const { stream } = await streamReply('Full answer')
+    expect(assistantItems()[0]?.textContent).not.toContain(meta(3))
+    act(() => {
+      stream.send({ type: 'text-end', id: 't1' })
+      stream.finish()
+    })
+    await waitFor(() => expect(assistantItems()[0]?.textContent).toContain(meta(3)))
+    expect(state.storedCalls).toEqual([{ data: { slug: 'personal', messageId: 'r1' } }])
+  })
+
+  it('停止后正文换成服务端保存的版本，状态为已停止', async () => {
+    state.stored = [saved('r1', 'Partial answer and the rest saved by the server', 'aborted', 2)]
+    const { server, stream } = await streamReply('Partial answer')
+    const markdown = assistantItems()[0]?.querySelector('[id]')
+    fireEvent.click(screen.getByRole('button', { name: m.chat_ui_stop() }))
+    await waitFor(() => expect(server.stops).toEqual(['/api/ai/chat/r1/stop']))
+    await waitFor(() =>
+      expect(assistantItems()[0]?.textContent).toContain('and the rest saved by the server'),
+    )
+    const item = assistantItems()[0]
+    expect(item?.textContent).toContain(m.chat_ui_status_stopped())
+    expect(item?.textContent).toContain(meta(2))
+    expect(stream.aborted).toBe(true)
+    // 正文块原地更新，不重新挂载
+    if (markdown) expect(item?.contains(markdown)).toBe(true)
+  })
+
+  it('结算尚未完成时按退避重读，结束后显示', async () => {
+    state.stored = [saved('r1', 'Answer', 'streaming', null), saved('r1', 'Answer', 'completed', 4)]
+    const { stream } = await streamReply('Answer')
+    act(() => {
+      stream.send({ type: 'text-end', id: 't1' })
+      stream.finish()
+    })
+    await waitFor(() => expect(assistantItems()[0]?.textContent).toContain(meta(4)), {
+      timeout: 2000,
+    })
+    expect(state.storedCalls).toHaveLength(2)
+  })
+
+  it('读取失败时保留本地正文，不报错', async () => {
+    state.stored = [new Error('network'), new Error('network')]
+    const { stream } = await streamReply('Local answer')
+    act(() => {
+      stream.send({ type: 'text-end', id: 't1' })
+      stream.finish()
+    })
+    await waitFor(() => expect(state.storedCalls.length).toBeGreaterThanOrEqual(2), {
+      timeout: 2000,
+    })
+    const item = assistantItems()[0]
+    expect(item?.textContent).toContain('Local answer')
+    expect(item?.textContent).not.toContain(m.chat_ui_status_failed())
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })
