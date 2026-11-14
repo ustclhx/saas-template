@@ -52,7 +52,7 @@
 
 ## 8. 验收
 
-- [ ] 8.1 `pnpm check`、`pnpm typecheck`、`pnpm check:deps`、`pnpm check:singletons`、`pnpm check:ui`、`pnpm test`、`pnpm build` 全部通过，`pnpm test:create-project:verify` 通过。
+- [x] 8.1 `pnpm check`、`pnpm typecheck`、`pnpm check:deps`、`pnpm check:singletons`、`pnpm check:ui`、`pnpm test`、`pnpm build` 全部通过，`pnpm test:create-project:verify` 通过。
 - [ ] 8.2 staging 验收：
   - `/dev/ui#chat` 逐个组件与 1.1 副本一致，390px 无横向滚动，浅色与深色正确；
   - 对话页真实对话一次：Markdown（表格、代码块与复制）、推理折叠、停止、失败（故障注入）各一次；
