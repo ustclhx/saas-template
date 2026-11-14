@@ -14,6 +14,11 @@ export interface ModelSpec {
   readonly priceUsd?: { readonly inputPerMTok: number; readonly outputPerMTok: number }
   /** 输入 token 估算系数，缺省 1（与 @saas/ai 的保守估算一致） */
   readonly tokensPerChar?: number
+  /**
+   * 与线上模型行 `x-text.thinking` 同一语义：缺省不改请求（Provider 默认）；
+   * true / false 在 Provider 可控时显式下发开启 / 关闭。只作用于生成调用，评委用 `judge.thinking`。
+   */
+  readonly thinking?: boolean
 }
 
 /** 评分标准（design D8） */
@@ -89,6 +94,8 @@ export function defineSuite(def: SuiteDefinition): Suite {
       !(Number.isFinite(model.tokensPerChar) && model.tokensPerChar > 0)
     )
       fail(name, `model ${key} has an invalid tokensPerChar`)
+    if (model.thinking !== undefined && typeof model.thinking !== 'boolean')
+      fail(name, `model ${key} thinking must be true or false`)
   }
   if (!def.models[def.generator]) fail(name, `generator ${def.generator} is not in models`)
   if (def.judge) {

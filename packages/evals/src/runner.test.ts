@@ -529,6 +529,35 @@ describe('真实模式预算（模拟模型）', () => {
     expect(judge?.reasoning).toBeUndefined()
   })
 
+  it.each([
+    { provider: 'openai', thinking: undefined, expected: undefined },
+    { provider: 'deepseek', thinking: undefined, expected: undefined },
+    { provider: 'deepseek', thinking: false, expected: 'disabled' },
+    { provider: 'deepseek', thinking: true, expected: 'enabled' },
+    { provider: 'openai', thinking: false, expected: undefined },
+  ] as const)(
+    '生成模型声明 thinking=$thinking（$provider）与线上模型行同一语义下发',
+    async ({ provider, thinking, expected }) => {
+      const s = suite({
+        judge: false,
+        samples: [{ id: 's1', input: { topic: 'tea' } }],
+        gen: { provider, extra: thinking === undefined ? '' : `thinking: ${thinking},` },
+      })
+      const model = fixedModel({ text: GOOD, usage: { inputTokens: 10, outputTokens: 10 } })
+      await run(s, { mode: 'live', budgetUsd: 100 }, { modelFor: () => model })
+      const request = model.doGenerateCalls[0]
+      if (expected === undefined) {
+        expect(request?.providerOptions?.deepseek).toBeUndefined()
+        expect(request?.reasoning).toBeUndefined()
+      } else {
+        expect(request?.providerOptions).toMatchObject({
+          deepseek: { thinking: { type: expected } },
+        })
+        expect(request?.reasoning).toBe(expected === 'enabled' ? 'high' : 'none')
+      }
+    },
+  )
+
   it('模型未返回用量时按调用前估算记账', async () => {
     const s = suite({ judge: false, samples: [{ id: 's1', input: { topic: 'tea' } }] })
     const result = await run(

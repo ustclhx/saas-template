@@ -109,6 +109,20 @@ describe('样本与套件定义', () => {
         () => defineSuite({ ...suiteWith(), judge: { model: 'gen', rubric, maxOutputTokens } }),
         /judge.maxOutputTokens/,
       )
+    await expectConfigError(
+      () =>
+        defineSuite({
+          ...suiteWith(),
+          models: {
+            gen: {
+              provider: 'deepseek',
+              providerModelId: 'x',
+              thinking: 'off' as unknown as boolean,
+            },
+          },
+        }),
+      /thinking must be true or false/,
+    )
     expect(
       defineSuite({ ...suiteWith(), judge: { model: 'gen', rubric, maxOutputTokens: 8000 } }).judge
         ?.maxOutputTokens,
