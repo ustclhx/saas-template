@@ -17,8 +17,9 @@ export function AiEntry({ href, inline = false }: { href: string; inline?: boole
         'inline-flex h-12 items-center gap-2 rounded-full bg-primary pr-4.5 pl-4 font-medium text-body text-primary-foreground shadow-surface-5',
         'transition-colors hover:bg-primary/90 motion-reduce:transition-none',
         'outline-none focus-visible:outline-2 focus-visible:outline-(--focus-ring) focus-visible:outline-offset-2 focus-visible:outline-solid',
-        // 根布局在营销页右下角已有浮动主题切换（right-4 bottom-4，高 42px），入口叠在它上方并右对齐
-        inline ? 'w-fit' : 'fixed right-4 bottom-18 z-(--z-sticky)',
+        // md 及以上根布局右下角有浮动主题切换（right-4 bottom-4，高 42px），入口叠在它上方；
+        // 手机端主题切换移到页脚设置行，入口贴底（设计稿 mobile-footer-controls）
+        inline ? 'w-fit' : 'fixed right-4 bottom-4 z-(--z-sticky) md:bottom-18',
       )}
     >
       <Sparkles aria-hidden="true" className="size-4.5" strokeWidth={1.75} />

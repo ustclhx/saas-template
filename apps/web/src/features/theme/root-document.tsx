@@ -40,7 +40,7 @@ export function RootDocument({
         <UiRoot shape={templateConfig.ui.shape} density={templateConfig.ui.density}>
           {children}
           {floatingControls && (
-            <ThemeToggle className="fixed right-4 bottom-4 z-(--z-sticky) print:hidden" />
+            <ThemeToggle className="fixed right-4 bottom-4 z-(--z-sticky) max-md:hidden print:hidden" />
           )}
         </UiRoot>
         <Scripts />
