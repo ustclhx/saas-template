@@ -199,6 +199,24 @@ describe('Stripe subscription snapshots', () => {
     mock.complete()
   })
   it.each([
+    // Customer Portal 周期末取消：cancel_at=周期末而 cancel_at_period_end=false
+    [{ cancel_at_period_end: false, cancel_at: end }, true],
+    // 早于周期末的定时取消同样不会续费
+    [{ cancel_at_period_end: false, cancel_at: end - 3600 }, true],
+    // 远期定时取消：当前周期末仍会续费
+    [{ cancel_at_period_end: false, cancel_at: end + 86400 * 60 }, false],
+    [{ cancel_at_period_end: false, cancel_at: null }, false],
+  ])('maps cancellation shape %o to cancelAtPeriodEnd=%s', async (shape, expected) => {
+    const mock = mockStripe([
+      { path: '/v1/subscriptions/sub_test', body: { ...subscription, ...shape } },
+    ])
+    expect(await mock.snapshots.getSubscription('sub_test')).toMatchObject({
+      cancelAtPeriodEnd: expected,
+      canceledAt: new Date((start + 100) * 1000),
+    })
+    mock.complete()
+  })
+  it.each([
     { ...subscription, items: { ...subscription.items, data: [] } },
     { ...subscription, items: { ...subscription.items, has_more: true } },
     { ...subscription, status: 'future_status' },

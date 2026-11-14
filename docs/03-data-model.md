@@ -94,7 +94,7 @@ credit_ledger (只增不改的流水)
 
 - 所有带 `ws` 的表：`(ws, id desc)` 复合索引。UUIDv7 本身按时间有序，按 id 排序即按创建时间排序，列表分页用 id 做游标，不需要再单独建 `created_at` 索引。
 - 幂等唯一键：`webhook_event(provider, provider_event_id)`、`credit_grant(source, source_ref)`、`payment(provider, provider_payment_id)`。
-- 订阅：`unique (ws) where status in ('trialing','active','past_due','paused') and cancel_at_period_end = false`（部分唯一索引），保证同一空间只有一个「会续费的」订阅；已设置周期末取消的旧订阅不计入，允许换套餐 / 换支付平台时新旧订阅短暂重叠（见 05-billing §6）。
+- 订阅：`unique (ws) where status in ('trialing','active','past_due','paused') and cancel_at_period_end = false`（部分唯一索引），保证同一空间只有一个「会续费的」订阅；已设置周期末取消的旧订阅不计入，允许换套餐 / 换支付平台时新旧订阅短暂重叠（见 05-billing §6）。Stripe Customer Portal 以 `cancel_at`（≤ 当前周期末）表达的周期末取消同样写为 `cancel_at_period_end=true`（见 05-billing「Stripe 实现要点」）。
 - 删除策略：
   - `organization` 与 `user` **只软删 / 匿名化，从不物理删除**，因此所有外键统一使用 `on delete restrict`（作为防误删的保险），不使用 `cascade`。
   - 软删后的数据清理由 Cron 执行（jobs 每日 03:00 UTC 的 `workspace-cleanup` 与十分钟一次的 `files-cleanup`）：

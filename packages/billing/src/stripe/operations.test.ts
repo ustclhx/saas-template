@@ -345,6 +345,11 @@ describe('Stripe subscription management', () => {
 
   it('resumes renewal and opens the portal with the supplied return URL', async () => {
     const mock = mockStripe([
+      {
+        method: 'GET',
+        path: '/v1/subscriptions/sub_test',
+        body: { ...subscription, cancel_at_period_end: true, cancel_at: 1802592000 },
+      },
       { method: 'POST', path: '/v1/subscriptions/sub_test', body: subscription },
       {
         method: 'POST',
@@ -353,12 +358,54 @@ describe('Stripe subscription management', () => {
       },
     ])
     await mock.operations.resumeSubscription('sub_test')
-    expect(mock.requests[0]?.body.get('cancel_at_period_end')).toBe('false')
+    expect(mock.requests[1]?.body.get('cancel_at_period_end')).toBe('false')
+    expect(mock.requests[1]?.body.has('cancel_at')).toBe(false)
     expect(await mock.operations.getPortalUrl('cus_test', 'https://app.example/billing')).toBe(
       'https://billing.stripe.com/offline',
     )
-    expect(mock.requests[1]?.body.get('customer')).toBe('cus_test')
-    expect(mock.requests[1]?.body.get('return_url')).toBe('https://app.example/billing')
+    expect(mock.requests[2]?.body.get('customer')).toBe('cus_test')
+    expect(mock.requests[2]?.body.get('return_url')).toBe('https://app.example/billing')
+  })
+
+  // Customer Portal 的周期末取消：cancel_at=周期末、cancel_at_period_end 仍为 false（xuanxue 实测）
+  const portalCanceled = { ...subscription, cancel_at: 1802592000, canceled_at: 1801000000 }
+
+  it('resumes a portal-style cancellation by clearing cancel_at', async () => {
+    const mock = mockStripe([
+      { method: 'GET', path: '/v1/subscriptions/sub_test', body: portalCanceled },
+      { method: 'POST', path: '/v1/subscriptions/sub_test', body: subscription },
+    ])
+    await mock.operations.resumeSubscription('sub_test')
+    expect(mock.requests[1]?.body.get('cancel_at')).toBe('')
+    expect(mock.requests[1]?.body.has('cancel_at_period_end')).toBe(false)
+    mock.complete()
+  })
+
+  it.each([true, false])(
+    'rejects plan changes (atPeriodEnd=%s) while a portal cancellation is pending',
+    async (atPeriodEnd) => {
+      const mock = mockStripe([
+        { method: 'GET', path: '/v1/subscriptions/sub_test', body: portalCanceled },
+      ])
+      await expect(
+        mock.operations.changePlan('sub_test', targetPrice, { atPeriodEnd }),
+      ).rejects.toThrow('Resume the subscription')
+      mock.complete()
+    },
+  )
+
+  it('does not treat a far-future cancel_at as a period-end cancellation', async () => {
+    const mock = mockStripe([
+      {
+        method: 'GET',
+        path: '/v1/subscriptions/sub_test',
+        body: { ...subscription, cancel_at: 1802592000 + 86400 * 60 },
+      },
+      { method: 'POST', path: '/v1/subscriptions/sub_test', body: subscription },
+    ])
+    await mock.operations.changePlan('sub_test', targetPrice, { atPeriodEnd: false })
+    expect(mock.requests[1]?.body.get('items[0][price]')).toBe('price_next')
+    mock.complete()
   })
 
   it('rejects multi-item subscriptions before a destructive plan update', async () => {
