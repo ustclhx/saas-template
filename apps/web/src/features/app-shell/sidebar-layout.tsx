@@ -64,6 +64,10 @@ export function SidebarLayout({
 }) {
   const [open, setOpen] = useState(defaultOpen)
   const pathname = useRouterState({ select: (state) => state.location.pathname })
+  // 路由声明 staticData.shellTitle = false 时（对话页）页面自己渲染带标题的头部，顶部条不再显示标题，避免两行标题
+  const hideTitle = useRouterState({
+    select: (state) => state.matches.some((match) => match.staticData.shellTitle === false),
+  })
   const slug = page.workspace.slug
   const groups = useMemo(
     () =>
@@ -159,13 +163,18 @@ export function SidebarLayout({
             <SidebarTrigger aria-label={m.app_shell_open_nav()} className="md:hidden">
               <Menu />
             </SidebarTrigger>
-            {/* 页面标题（h1）：默认为当前导航项名称；页面经 AppShellBar 放入标题时 CSS 隐藏默认标题 */}
-            <h1 className="flex min-w-0 flex-1 items-center font-semibold text-title">
-              <span ref={setTitleSlot} className="peer contents" />
-              <span className="truncate peer-[:not(:empty)]:hidden" data-testid="app-page-title">
-                {activeItem ? activeItem.label() : page.workspace.name}
-              </span>
-            </h1>
+            {/* 页面标题（h1）：默认为当前导航项名称；页面经 AppShellBar 放入标题时 CSS 隐藏默认标题。
+                路由声明 shellTitle: false 时不渲染（页面自己的头部是 h1） */}
+            {hideTitle ? (
+              <span className="flex-1" />
+            ) : (
+              <h1 className="flex min-w-0 flex-1 items-center font-semibold text-title">
+                <span ref={setTitleSlot} className="peer contents" />
+                <span className="truncate peer-[:not(:empty)]:hidden" data-testid="app-page-title">
+                  {activeItem ? activeItem.label() : page.workspace.name}
+                </span>
+              </h1>
+            )}
             <div ref={setActionsSlot} className="flex shrink-0 items-center gap-2 empty:hidden" />
             <NotificationBell />
             <div className="flex items-center gap-3 max-sm:hidden">

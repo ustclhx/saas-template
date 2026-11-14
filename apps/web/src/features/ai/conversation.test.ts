@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { m } from '../../paraglide/messages.js'
 import { baseLocale, locales, overwriteGetLocale } from '../../paraglide/runtime.js'
 import {
-  CHAT_ERROR_FALLBACK,
   type ChatUIMessage,
   chatErrorCode,
   chatErrorMessage,
@@ -16,7 +16,7 @@ import {
 } from './conversation.ts'
 
 const locale = locales.find((locale) => String(locale) === 'en') ?? baseLocale
-const fallback = String(locale) === 'zh' ? '操作失败，请重试。' : CHAT_ERROR_FALLBACK
+const fallback = () => m.chat_error_unknown()
 beforeEach(() => overwriteGetLocale(() => locale))
 afterEach(() => overwriteGetLocale(() => baseLocale))
 
@@ -164,13 +164,13 @@ describe('chat errors', () => {
       'UPGRADE_REQUIRED',
       'MODEL_UNAVAILABLE',
     ])
-      expect(chatErrorMessage(code)).not.toBe(fallback)
+      expect(chatErrorMessage(code)).not.toBe(fallback())
   })
 
   it('无法识别的错误使用通用提示', () => {
     expect(chatErrorCode(new Error('Failed to fetch'))).toBeUndefined()
-    expect(chatErrorMessage(undefined)).toBe(fallback)
-    expect(chatErrorMessage('SOMETHING_NEW')).toBe(fallback)
+    expect(chatErrorMessage(undefined)).toBe(fallback())
+    expect(chatErrorMessage('SOMETHING_NEW')).toBe(fallback())
   })
 })
 

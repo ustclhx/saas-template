@@ -15,6 +15,9 @@ export interface ChatUIMetadata {
   readonly conversationId?: string
   readonly messageId?: string
   readonly status?: ChatMessageStatus
+  /** 历史回复的结算积分与模型 key（流式回复刷新后才有） */
+  readonly credits?: number
+  readonly modelKey?: string
 }
 
 export type ChatUIMessage = UIMessage<ChatUIMetadata, { retry: { n: number } }>
@@ -78,6 +81,8 @@ export interface StoredMessage {
   readonly role: string
   readonly parts: readonly unknown[]
   readonly status: ChatMessageStatus
+  readonly credits?: number | null
+  readonly modelKey?: string | null
 }
 
 /** reasoning 只用于助手展示；请求与输入 token 估算仍只取正文。 */
@@ -102,7 +107,14 @@ export function toChatMessages(rows: readonly StoredMessage[]): ChatUIMessage[] 
         id: row.id,
         role: row.role,
         parts: [...reasoning, ...(text ? [{ type: 'text' as const, text }] : [])],
-        metadata: { messageId: row.id, status: row.status },
+        metadata: {
+          messageId: row.id,
+          status: row.status,
+          ...(row.role === 'assistant' && typeof row.credits === 'number'
+            ? { credits: row.credits }
+            : {}),
+          ...(row.role === 'assistant' && row.modelKey ? { modelKey: row.modelKey } : {}),
+        },
       },
     ]
   })
@@ -155,8 +167,6 @@ const CHAT_ERRORS: Record<string, () => string> = {
   NOT_FOUND: () => m.chat_error_not_found(),
   INVALID_REQUEST: () => m.chat_error_invalid_request(),
 }
-
-export const CHAT_ERROR_FALLBACK = 'Something went wrong. Please try again.'
 
 export function chatErrorMessage(code: string | undefined): string {
   return (code && CHAT_ERRORS[code]?.()) || m.chat_error_unknown()

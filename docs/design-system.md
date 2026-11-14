@@ -642,9 +642,11 @@ DailyClaimNotice」两节用中性示例数据展示全部状态。
 | `ToolCall`（`@saas/ui/chat`） | `name`、`state: 'pending' \| 'running' \| 'done' \| 'error'`、`labels`、`children?`（详情）、`defaultOpen?` / `open?` | `onOpenChange(open)` | 默认不显示参数与结果；有 `children` 时头部才是展开按钮；`running` 转圈在减少动态效果时静止 |
 | `InputMessage`（`@saas/ui/chat`） | `value`、`placeholder`、`labels`、`busy?`、`disabled?`、`sendDisabled?`、`leading?`、`trailing?` | `onValueChange(value)`、`onSend(trimmed)`、`onStop?()` | Enter 发送、Shift+Enter 换行、输入法组字不发送；空内容、`disabled`、`sendDisabled` 与 `busy` 不发送；`busy` 时发送换成停止，焦点在按钮上时移到输入框；`textareaRef` 取输入框元素；内边距按输入区宽度（容器查询）；高度随内容增长，约 8 行后框内滚动；没有附件 |
 
-接线现状：对话页（`features/ai/chat-page.tsx`，含嵌入式 `SubjectChat`）经 `features/ai/chat-extras.tsx` 接入推荐追问、
+接线现状：对话页（`features/ai/chat-page.tsx`）与嵌入式 `SubjectChat`（`features/ai/subject-chat.tsx`）共用 `ChatThread` / `ChatComposer`
+（`@saas/ui/chat` 组件 + 适配层 `message-parts.tsx`）；**SubjectChat 使用 EmbeddedChat**（inline / panel，手机底部抽屉），对话状态按会话
+保存在外壳之外（`chat-session.ts`）。二者经 `features/ai/chat-extras.tsx` 接入推荐追问、
 消息评分（`setMessageFeedback`；点踩原因为画板的四个选项，取值 `FEEDBACK_REASONS` 与服务端校验、`ai_message_feedback.reason` 的约束一致，刷新后还原，后台 `/admin/feedback` 可按原因筛选；共享对话勾选项写入 `ai_message_feedback.share_conversation`，只有同意的反馈后台才能查看被评回复与之前最近 3 条消息）与余额不足弹窗（`INSUFFICIENT_CREDITS` 的数值，入口跳到账单页 `#credit-packs` /
-`#subscriptions`，构建时套餐快照中明确没有订阅时不显示订阅入口；`CREDIT_DEBT` 等仍为账单链接）。`EmbeddedChat`、`CreditEstimate`、`LockedFeature`、
+`#subscriptions`，构建时套餐快照中明确没有订阅时不显示订阅入口；`CREDIT_DEBT` 等仍为账单链接）。`CreditEstimate`、`LockedFeature`、
 `DailyClaimNotice` 暂只在 `/dev/ui` 展示，由后续页面（账单页 8.7、长文阅读器 8.4 等）按需接入。
 
 ## 7. 组件预览页

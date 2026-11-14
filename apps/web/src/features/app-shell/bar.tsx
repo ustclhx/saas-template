@@ -6,6 +6,16 @@ import { createPortal } from 'react-dom'
 // 显示默认标题（当前导航项名称）。标题插槽有内容时默认标题由 CSS 隐藏，页面卸载（路由切换）后自动恢复；
 // 同一页面可渲染多个 AppShellBar，内容按渲染顺序追加。
 
+declare module '@tanstack/react-router' {
+  interface StaticDataRouteOption {
+    /**
+     * false：页面自己渲染带 h1 标题的头部（如对话页的「全部对话」+ 标题行），侧边栏布局的顶部条不显示标题，
+     * 只保留菜单、通知与语言 / 主题切换（openspec add-ai-chat-components，设计稿 chat-components/Main.dc.html）
+     */
+    shellTitle?: boolean
+  }
+}
+
 export interface AppShellBarSlots {
   title: HTMLElement | null
   actions: HTMLElement | null

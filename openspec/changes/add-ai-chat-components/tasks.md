@@ -28,17 +28,17 @@
 
 ## 4. 适配层与对话页（`apps/web`，线 C）
 
-- [ ] 4.1 新增 `features/ai/message-parts.tsx` 与项目自有的 `message-parts.project.tsx`（design D5）：text / reasoning / tool / 未知 part 的分发、ThinkingIndicator 与 retrying 判定、`registerToolRenderer`；生成器与 template-sync 把 `message-parts.project.tsx` 登记为项目拥有。验证：单测覆盖 reasoning 展示开关两种取值、未注册工具只显示通用标签与状态且不含工具原名与参数、已注册工具显示名与详情、未知 part 被忽略、等待首个输出时显示 ThinkingIndicator；`pnpm test:create-project` 通过。
-- [ ] 4.2 拆出 `ChatThread` 与 `ChatComposer`（design D6），`ChatPage` 组合二者并按 1.1 副本改布局；消息改用适配层；ModelPicker、Thinking `Switch`、CreditEstimate 放进 `InputMessage` 插槽；「复制回复」进 `MessageFeedback` 的 `actions`；自动滚动只在用户位于底部附近时发生；`useChat` 设 `experimental_throttle`。验证：`chat-page.test.tsx` 更新后通过，新增用例覆盖停止后显示已停止且保留正文、失败与未完成状态、复制回复写入原文、只读空间不能发送。
-- [ ] 4.3 页面文字全部进 `messages/{en,zh}/ai-chat-ui.json`（状态、按钮、可读名称、空态、只读提示、"All chats"、复制反馈、工具四态与通用标签），`chat-page.tsx`、`message-parts.tsx` 中不再有英文字面量。验证：`pnpm typecheck` 生成文案通过；`rg` 检查上述文件无 "Stopped" / "Incomplete" / "Retrying" / "Reasoning" / "Send" 等字面量；切到中文后单测断言状态文字为中文。
-- [ ] 4.4 状态播报（design D6）：视觉隐藏的 `role="status"` 区域只在状态变化时写入，消息列表不设 `aria-live`。验证：单测模拟 submitted → streaming（多次正文更新）→ ready，状态区只变化两次（正在生成、已完成）。
-- [ ] 4.5 e2e：对话页发送消息（本地故障注入或测试模型），断言回复中的 Markdown 表格与代码块渲染、复制按钮可用、停止后显示已停止；390px 下 `document.documentElement.scrollWidth <= 390`；浅色与深色各截图与 1.1 副本对照。选择器与断言不依赖语言。验证：e2e 通过，截图与副本一致。
+- [x] 4.1 新增 `features/ai/message-parts.tsx` 与项目自有的 `message-parts.project.tsx`（design D5）：text / reasoning / tool / 未知 part 的分发、ThinkingIndicator 与 retrying 判定、`registerToolRenderer`；生成器与 template-sync 把 `message-parts.project.tsx` 登记为项目拥有。验证：单测覆盖 reasoning 展示开关两种取值、未注册工具只显示通用标签与状态且不含工具原名与参数、已注册工具显示名与详情、未知 part 被忽略、等待首个输出时显示 ThinkingIndicator；`pnpm test:create-project` 通过。
+- [x] 4.2 拆出 `ChatThread` 与 `ChatComposer`（design D6），`ChatPage` 组合二者并按 1.1 副本改布局；消息改用适配层；ModelPicker、Thinking `Switch`、CreditEstimate 放进 `InputMessage` 插槽；「复制回复」进 `MessageFeedback` 的 `actions`；自动滚动只在用户位于底部附近时发生；`useChat` 设 `experimental_throttle`。验证：`chat-page.test.tsx` 更新后通过，新增用例覆盖停止后显示已停止且保留正文、失败与未完成状态、复制回复写入原文、只读空间不能发送。
+- [x] 4.3 页面文字全部进 `messages/{en,zh}/ai-chat-ui.json`（状态、按钮、可读名称、空态、只读提示、"All chats"、复制反馈、工具四态与通用标签），`chat-page.tsx`、`message-parts.tsx` 中不再有英文字面量。验证：`pnpm typecheck` 生成文案通过；`rg` 检查上述文件无 "Stopped" / "Incomplete" / "Retrying" / "Reasoning" / "Send" 等字面量；切到中文后单测断言状态文字为中文。
+- [x] 4.4 状态播报（design D6）：视觉隐藏的 `role="status"` 区域只在状态变化时写入，消息列表不设 `aria-live`。验证：单测模拟 submitted → streaming（多次正文更新）→ ready，状态区只变化两次（正在生成、已完成）。
+- [x] 4.5 e2e：对话页发送消息（本地故障注入或测试模型），断言回复中的 Markdown 表格与代码块渲染、复制按钮可用、停止后显示已停止；390px 下 `document.documentElement.scrollWidth <= 390`；浅色与深色各截图与 1.1 副本对照。选择器与断言不依赖语言。验证：e2e 通过，截图与副本一致。
 
 ## 5. 单一嵌入式外壳（`apps/web`，线 C 或接续）
 
-- [ ] 5.1 `SubjectChat` 改为渲染 `EmbeddedChat`（design D7）：徽标、标题、新对话与历史 `Dropdown`、`ChatThread` 为 children、`ChatComposer` 为 footer；未开始时的推荐问题与输入框也在外壳内；`variant` 由调用方传入，默认 `inline`；删除 `ChatPage variant="embedded"`。验证：`subject-chat` 相关单测更新后通过；`rg "variant=\"embedded\""` 在 `apps/web/src` 中无结果。
-- [ ] 5.2 对话状态上提：`SubjectChat` 按会话 id 持有 `Chat` 实例与草稿，`useChat({ chat })`；外壳关闭不 stop，离开页面时 stop。验证：单测覆盖 panel 关闭再打开后消息与草稿仍在、关闭期间流继续并完成；e2e 在 390px 下打开抽屉发送、生成中关闭、再打开看到完成的回复。
-- [ ] 5.3 SubjectChat 的新增文字进 `ai-chat-ui.json`（历史菜单、新对话等沿用 `ai-subject-chat.json` 已有键）；`docs/design-system.md` §6.1 的接线现状改为「SubjectChat 使用 EmbeddedChat」。验证：`pnpm typecheck` 通过；文档中不再写 `EmbeddedChat` 只在 `/dev/ui` 展示。
+- [x] 5.1 `SubjectChat` 改为渲染 `EmbeddedChat`（design D7）：徽标、标题、新对话与历史 `Dropdown`、`ChatThread` 为 children、`ChatComposer` 为 footer；未开始时的推荐问题与输入框也在外壳内；`variant` 由调用方传入，默认 `inline`；删除 `ChatPage variant="embedded"`。验证：`subject-chat` 相关单测更新后通过；`rg "variant=\"embedded\""` 在 `apps/web/src` 中无结果。
+- [x] 5.2 对话状态上提：`SubjectChat` 按会话 id 持有 `Chat` 实例与草稿，`useChat({ chat })`；外壳关闭不 stop，离开页面时 stop。验证：单测覆盖 panel 关闭再打开后消息与草稿仍在、关闭期间流继续并完成；e2e 在 390px 下打开抽屉发送、生成中关闭、再打开看到完成的回复。
+- [x] 5.3 SubjectChat 的新增文字进 `ai-chat-ui.json`（历史菜单、新对话等沿用 `ai-subject-chat.json` 已有键）；`docs/design-system.md` §6.1 的接线现状改为「SubjectChat 使用 EmbeddedChat」。验证：`pnpm typecheck` 通过；文档中不再写 `EmbeddedChat` 只在 `/dev/ui` 展示。
 
 ## 6. 预览页（`apps/web/src/features/ui-preview`，线 D）
 

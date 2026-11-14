@@ -407,19 +407,21 @@ test('clean sync applies renamed changes, keeps project values, ports migrations
   assert.match(await readFile(again.reportPath, 'utf8'), /目标未发布/)
 })
 
-test('sync adds share card extensions once and preserves project registration and theme later', async (t) => {
+test('sync adds share card and chat tool extensions once and preserves project registration and theme later', async (t) => {
   const template = await fakeTemplate(t)
   const project = await fakeProject(t, template)
   const registration = 'apps/web/src/features/share-cards/share-cards.project.ts'
   const theme = 'apps/web/src/features/share-cards/share-cards.theme.ts'
   const fonts = 'apps/web/src/features/share-cards/share-cards.fonts.ts'
   const sites = 'apps/web/src/features/share-cards/share-cards.sites.ts'
+  const tools = 'apps/web/src/features/ai/message-parts.project.tsx'
   await template.commit(
     {
       [registration]: 'export const registration = 1\n',
       [theme]: 'export const theme = 1\n',
       [fonts]: 'export const fonts = 1\n',
       [sites]: 'export const sites = 1\n',
+      [tools]: 'export const tools = 1\n',
     },
     'share card extensions',
     'template-v0.2.0',
@@ -438,6 +440,7 @@ test('sync adds share card extensions once and preserves project registration an
     [theme]: '// project brand\n',
     [fonts]: '// project fonts\n',
     [sites]: '// project sites\n',
+    [tools]: '// project tools\n',
   })
   await template.commit(
     {
@@ -445,6 +448,7 @@ test('sync adds share card extensions once and preserves project registration an
       [theme]: null,
       [fonts]: 'export const fonts = 2\n',
       [sites]: 'export const sites = 2\n',
+      [tools]: 'export const tools = 2\n',
     },
     'template extension changes',
     'template-v0.3.0',
@@ -458,6 +462,7 @@ test('sync adds share card extensions once and preserves project registration an
   assert.equal(await readFile(join(project.dir, theme), 'utf8'), '// project brand\n')
   assert.equal(await readFile(join(project.dir, fonts), 'utf8'), '// project fonts\n')
   assert.equal(await readFile(join(project.dir, sites), 'utf8'), '// project sites\n')
+  assert.equal(await readFile(join(project.dir, tools), 'utf8'), '// project tools\n')
 })
 
 test('conflicts keep markers on the sync branch, list every file and leave the baseline unchanged', async (t) => {

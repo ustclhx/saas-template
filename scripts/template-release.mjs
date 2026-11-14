@@ -62,6 +62,10 @@ const projectOwnedFiles = [
     guidance: 'put template HTML attribute handling outside the project-owned extension',
   },
   {
+    path: 'apps/web/src/features/ai/message-parts.project.tsx',
+    guidance: 'register template tool cards in apps/web/src/features/ai/message-parts.tsx',
+  },
+  {
     path: 'apps/web/src/features/app-shell/nav.project.ts',
     guidance:
       'register template navigation items in apps/web/src/features/app-shell/nav.default.ts',

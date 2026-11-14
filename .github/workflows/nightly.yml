@@ -57,6 +57,13 @@ jobs:
       # 沿用默认配置的全部离线用例，不选用 Stripe/AI 联通配置，也不增加测试 retry。
       - name: Run full local e2e
         run: pnpm --filter @saas/web test:e2e --reporter=github,html
+      # 嵌入式 SubjectChat（add-ai-chat-components 5.2）：独立 dev 配置登记测试对象类型，默认配置忽略该用例。
+      # 前一步失败时仍运行，两份报告都保留。
+      - name: Run embedded subject chat e2e
+        if: success() || failure()
+        run: pnpm --filter @saas/web exec playwright test -c playwright.subject-chat.config.ts --reporter=github,html --output test-results/subject-chat
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/subject-chat
       - uses: actions/upload-artifact@v6
         if: failure()
         with:

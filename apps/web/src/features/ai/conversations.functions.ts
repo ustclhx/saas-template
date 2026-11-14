@@ -121,6 +121,8 @@ export const getConversation = createServerFn({ method: 'GET' })
           role: aiMessage.role,
           parts: aiMessage.parts,
           status: aiMessage.status,
+          credits: aiMessage.credits,
+          modelKey: aiMessage.modelKey,
         },
         where: and(
           eq(aiMessage.conversationId, conversation.id),

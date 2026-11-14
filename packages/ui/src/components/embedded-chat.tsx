@@ -5,7 +5,10 @@
 // - inline（Reader 画板）：≥ md 在正文流中渲染为卡片，始终显示；< md 为悬浮按钮 + 模态底部抽屉。
 // - panel：≥ md 为悬浮按钮 + 右侧非模态侧面板（页面仍可操作）；< md 同样为悬浮按钮 + 模态底部抽屉。
 // 面板 / 抽屉关闭时卸载 children（对话状态由调用方保存）；打开期间不随断点切换模态，避免子树重挂载。
-import { MessageCircle, Sparkles, X } from 'lucide-react'
+// openspec add-ai-chat-components（SubjectChat 改用本外壳）按 chat-components/Embedded*.dc.html 调整：标题栏为
+// 徽标、标题、操作与关闭（去掉 inline 卡片的头像），inline 卡片最高 420px、消息区在卡片内滚动，输入区上边线分隔，
+// 侧面板宽 420px，手机抽屉固定 86% 视口高。
+import { MessageCircle, X } from 'lucide-react'
 import { AnimatePresence, m as motion, useReducedMotion } from 'motion/react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import {
@@ -36,6 +39,13 @@ function subscribeMobile(onChange: () => void) {
 const mobileSnapshot = () => window.matchMedia(MOBILE_QUERY).matches
 // 服务端按桌面渲染；水合时先用服务端值、随后切到客户端值，不产生水合不一致。客户端新挂载时直接读 matchMedia。
 const mobileServerSnapshot = () => false
+
+// 设计稿 chat-components/Embedded.dc.html、EmbeddedMobile.dc.html：52px 标题栏（徽标、标题、操作、关闭）、
+// 16px 内边距的消息区（14px 间距）、上边线分隔的输入区（10px / 12px 内边距）
+const HEADER = 'flex h-13 shrink-0 items-center gap-1.5 border-b pr-2 pl-3.5'
+const TITLE = 'm-0 ml-1 min-w-0 flex-1 truncate font-semibold text-subtitle'
+const BODY = 'flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto overscroll-contain p-4'
+const FOOTER = 'shrink-0 border-t px-3 pt-2.5 pb-3'
 
 /** 位于带该属性元素内的 Esc 由内部处理（如消息评分的反馈表单），不关闭外层面板 */
 const ESCAPE_SCOPE = '[data-escape-scope]'
@@ -125,29 +135,23 @@ function EmbeddedChat({
           aria-labelledby={titleId}
           data-embedded-chat="inline"
           className={cn(
-            'hidden min-w-0 flex-col rounded-xl border bg-card shadow-sm md:flex print:hidden',
+            // 设计稿 Embedded.dc.html：卡片最高 420px，消息在卡片内滚动，输入区固定在底部
+            'hidden max-h-105 min-w-0 flex-col overflow-hidden rounded-xl border bg-card shadow-sm md:flex print:hidden',
             className,
           )}
         >
-          <div className="flex items-center gap-2.5 border-b px-4 py-3.5">
-            <span
-              aria-hidden
-              className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
-            >
-              <Sparkles className="size-3" strokeWidth={2} />
-            </span>
-            <h2 id={titleId} className="m-0 min-w-0 truncate font-semibold text-subtitle">
+          <div className={HEADER}>
+            {badge}
+            <h2 id={titleId} className={TITLE}>
               {labels.title}
             </h2>
-            {badge}
-            <span className="flex-1" />
             {headerAction}
           </div>
           {inlineCard ? (
-            <div className="flex min-w-0 flex-col gap-4 p-4">
-              {children}
-              {footer}
-            </div>
+            <>
+              <div className={BODY}>{children}</div>
+              {footer ? <div className={FOOTER}>{footer}</div> : null}
+            </>
           ) : null}
         </section>
       ) : null}
@@ -233,8 +237,8 @@ function EmbeddedChat({
                     className={cn(
                       'fixed z-(--z-modal) flex flex-col overflow-hidden outline-none print:hidden',
                       mobile
-                        ? 'inset-x-0 bottom-0 max-h-[85dvh] rounded-t-2xl pb-[env(safe-area-inset-bottom)]'
-                        : 'top-2 right-2 bottom-2 w-[min(25rem,calc(100vw-1rem))] rounded-xl',
+                        ? 'inset-x-0 bottom-0 h-[86dvh] rounded-t-2xl pb-[env(safe-area-inset-bottom)]'
+                        : 'top-2 right-2 bottom-2 w-[min(26.25rem,calc(100vw-1rem))] rounded-xl',
                       surfaceClasses(level, 5),
                       variant === 'panel' && className,
                     )}
@@ -253,23 +257,18 @@ function EmbeddedChat({
                         className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-selected"
                       />
                     ) : null}
-                    <div
-                      className={cn(
-                        'flex shrink-0 items-center gap-2.5',
-                        mobile ? 'px-4 pt-2 pb-1' : 'border-b px-4 py-3',
-                      )}
-                    >
-                      <DialogPrimitive.Title className="m-0 min-w-0 truncate font-semibold text-title">
+                    <div className={cn(HEADER, mobile && 'pr-1 pl-4')}>
+                      {badge}
+                      <DialogPrimitive.Title className={TITLE}>
                         {labels.title}
                       </DialogPrimitive.Title>
-                      {badge}
-                      <span className="flex-1" />
                       {headerAction}
                       <DialogPrimitive.Close asChild>
                         <Button
                           type="button"
                           variant="ghost"
-                          size="icon-sm"
+                          size="icon"
+                          className="size-8 text-muted-foreground"
                           aria-label={labels.close}
                         >
                           <X aria-hidden />
@@ -277,10 +276,8 @@ function EmbeddedChat({
                       </DialogPrimitive.Close>
                     </div>
                     <SurfaceProvider value={level}>
-                      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 py-4">
-                        {children}
-                      </div>
-                      {footer ? <div className="shrink-0 px-4 pb-4">{footer}</div> : null}
+                      <div className={BODY}>{children}</div>
+                      {footer ? <div className={FOOTER}>{footer}</div> : null}
                     </SurfaceProvider>
                   </motion.div>
                 </DialogPrimitive.Content>
