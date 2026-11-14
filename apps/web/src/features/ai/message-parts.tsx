@@ -108,10 +108,12 @@ function contentBlocks(message: ChatUIMessage): Block[] {
   return blocks.filter((block) => block.kind !== 'text' || block.text)
 }
 
-function ToolPart({ part }: { part: Part }) {
+function ToolPart({ part, live }: { part: Part; live: boolean }) {
   if (!isToolUIPart(part)) return null
   const toolName = getToolName(part)
-  const state = toolCallState(part.state)
+  // 回复已不在生成中（停止、失败、刷新后）而工具仍停在准备 / 执行：不会再有结果，按出错显示
+  const raw = toolCallState(part.state)
+  const state = !live && (raw === 'pending' || raw === 'running') ? 'error' : raw
   const renderer = toolRenderer(toolName)
   const call: ToolCallView = {
     toolName,
@@ -232,7 +234,7 @@ export function ChatMessageView({
                 streaming={live && block === blocks.at(-1)}
               />
             ) : (
-              <ToolPart key={block.key} part={block.part} />
+              <ToolPart key={block.key} part={block.part} live={live} />
             ),
           )}
           {waiting ? <ThinkingIndicator label={m.chat_ui_status_thinking()} /> : null}

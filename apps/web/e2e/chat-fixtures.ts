@@ -87,7 +87,7 @@ export const STREAM_HEADERS = {
 export async function chooseSeededModel(page: Page, modelId: string) {
   await expect(async () => {
     await page.reload()
-    const trigger = page.locator('#ai-model')
+    const trigger = page.locator('[data-model-picker] [role="combobox"]')
     expect(await trigger.count()).toBe(1)
     await expect(async () => {
       if (!(await page.getByRole('listbox').isVisible())) await trigger.click({ timeout: 1_000 })

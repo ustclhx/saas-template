@@ -71,7 +71,8 @@ export class ChatSession {
   readonly slug: string
   readonly readOnly: boolean
   conversationId: string | undefined
-  models: readonly PickerModel[]
+  #models: readonly PickerModel[]
+  #disposed = false
   #state: ChatSessionState
   readonly #listeners = new Set<() => void>()
   readonly #start: (() => Promise<string>) | undefined
@@ -81,7 +82,7 @@ export class ChatSession {
     this.slug = options.slug
     this.readOnly = options.readOnly
     this.conversationId = options.conversationId
-    this.models = options.models
+    this.#models = options.models
     this.#start = options.start
     this.#onStarted = options.onStarted
     const model =
@@ -139,8 +140,19 @@ export class ChatSession {
     for (const listener of this.#listeners) listener()
   }
 
+  get models(): readonly PickerModel[] {
+    return this.#models
+  }
+
+  /** 路由数据重新加载后的模型列表；通知订阅者重新渲染（模型选择、预计消耗、能否发送） */
+  setModels(models: readonly PickerModel[]) {
+    if (models === this.#models) return
+    this.#models = models
+    this.set({})
+  }
+
   get model(): PickerModel | undefined {
-    return this.models.find((item) => item.id === this.#state.modelId)
+    return this.#models.find((item) => item.id === this.#state.modelId)
   }
 
   get canToggleThinking(): boolean {
@@ -174,6 +186,8 @@ export class ChatSession {
       this.set({ starting: true })
       try {
         const id = await (this.#start as () => Promise<string>)()
+        // 新建期间持有者已卸载（离开页面）：不再发送
+        if (this.#disposed) return
         this.conversationId = id
         this.#onStarted?.(id)
       } catch {
@@ -186,6 +200,7 @@ export class ChatSession {
         this.set({ starting: false })
       }
     }
+    if (this.#disposed) return
     trackEvent('generate_start')
     void this.chat.sendMessage({ text })
   }
@@ -235,8 +250,14 @@ export class ChatSession {
     this.set({ feedback: result.result ? { ...rest, [messageId]: result.result } : rest })
   }
 
-  /** 离开页面：停止本地读取（与 useChat 卸载时的行为一致） */
+  /** 持有者挂载（含 StrictMode 的重新挂载）时调用，撤销之前的 dispose */
+  attach(): void {
+    this.#disposed = false
+  }
+
+  /** 离开页面：停止本地读取（与 useChat 卸载时的行为一致），之后不再发送 */
   dispose(): void {
+    this.#disposed = true
     void this.chat.stop()
   }
 

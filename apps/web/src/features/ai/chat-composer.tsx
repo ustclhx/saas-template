@@ -5,7 +5,7 @@ import { Button, cn, Switch } from '@saas/ui'
 import { InputMessage } from '@saas/ui/chat'
 import { CircleAlert } from '@saas/ui/icons'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { type RefObject, useEffect, useState } from 'react'
+import { type RefObject, useEffect, useId, useState } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { trackEvent } from '../analytics/track.ts'
 import { pricingSnapshot } from '../marketing/pricing-snapshot.ts'
@@ -31,6 +31,8 @@ export interface ChatComposerProps {
   readonly inputRef?: RefObject<HTMLTextAreaElement | null>
   /** 嵌入式侧面板与底部抽屉：紧凑内边距（设计稿 Embedded 的 10px / 12px） */
   readonly compact?: boolean
+  /** 对话还没有消息时，水合后把焦点放到输入框（对话页空态） */
+  readonly autoFocus?: boolean
   /** 输入区下方的「回答由 AI 生成」说明（对话页） */
   readonly disclaimer?: boolean
   readonly className?: string
@@ -148,6 +150,7 @@ export function ChatComposer({
   inputRef,
   compact = false,
   disclaimer = false,
+  autoFocus = false,
   className,
 }: ChatComposerProps) {
   const { messages, status, error } = useChat<ChatUIMessage>({
@@ -158,8 +161,13 @@ export function ChatComposer({
   const busy = status === 'submitted' || status === 'streaming'
   const model = session.model
   // 水合前输入区不可用：受控输入在水合前的键入会丢失
+  const inputId = useId()
   const [hydrated, setHydrated] = useState(false)
   useEffect(() => setHydrated(true), [])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 只在水合完成时判断一次
+  useEffect(() => {
+    if (hydrated && autoFocus && session.chat.messages.length === 0) inputRef?.current?.focus()
+  }, [hydrated])
   const inputTokens = estimateInputTokens([
     ...messages.map((message) => ({ text: messageText(message) })),
     { text: state.draft },
@@ -196,7 +204,7 @@ export function ChatComposer({
             stop: m.chat_ui_stop(),
           }}
           {...(inputRef ? { textareaRef: inputRef } : {})}
-          textareaProps={{ id: 'chat-input' }}
+          textareaProps={{ id: inputId }}
           {...(compact ? { size: 'compact' as const } : {})}
           leading={
             <>

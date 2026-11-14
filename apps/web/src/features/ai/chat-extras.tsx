@@ -148,7 +148,7 @@ export function CreditsDialog({
   onBuyPacks(): void
   /** 项目没有订阅套餐时不传，弹窗只显示购买积分包 */
   onSubscribe?: (() => void) | undefined
-  /** 关闭后焦点的去处（打开前焦点在 body 时），默认为对话输入框 */
+  /** 关闭后焦点的去处（打开前焦点在 body 时），如对话输入框 */
   fallbackFocus?: (() => HTMLElement | null) | undefined
 }) {
   return (
@@ -160,7 +160,7 @@ export function CreditsDialog({
       onBuyPacks={onBuyPacks}
       {...(onSubscribe ? { onSubscribe } : {})}
       // 弹窗由接口错误打开时焦点可能在 body：关闭后回到对话输入框
-      fallbackFocus={fallbackFocus ?? (() => document.getElementById('chat-input'))}
+      fallbackFocus={fallbackFocus ?? (() => null)}
       labels={{
         title: m.billing_credit_guide_title(),
         description: m.chat_ui_credits_description(),

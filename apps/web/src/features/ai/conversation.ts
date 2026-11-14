@@ -168,8 +168,6 @@ const CHAT_ERRORS: Record<string, () => string> = {
   INVALID_REQUEST: () => m.chat_error_invalid_request(),
 }
 
-export const CHAT_ERROR_FALLBACK = 'Something went wrong. Please try again.'
-
 export function chatErrorMessage(code: string | undefined): string {
   return (code && CHAT_ERRORS[code]?.()) || m.chat_error_unknown()
 }

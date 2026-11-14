@@ -30,6 +30,8 @@ export interface ChatThreadProps {
   readonly inputRef?: RefObject<HTMLTextAreaElement | null>
   /** 「回到最新」按钮的位置（对话页放在吸底的输入区上方）；不传时在消息列底部吸附 */
   readonly jumpContainer?: HTMLElement | null
+  /** 嵌入式外壳中：只滚动外壳自己的消息区，永远不滚动宿主页面 */
+  readonly embedded?: boolean
   /** 回复的消耗说明是否带模型名（对话页；嵌入式只显示积分） */
   readonly metaWithModel?: boolean
   readonly className?: string
@@ -180,6 +182,7 @@ export function ChatThread({
   inputRef,
   jumpContainer,
   metaWithModel = false,
+  embedded = false,
   className,
 }: ChatThreadProps) {
   const { messages, status, error } = useChat<ChatUIMessage>({
@@ -211,33 +214,44 @@ export function ChatThread({
   })
   if (next !== phase) setPhase(next)
 
-  // 跟随滚动
+  // 跟随滚动。滚动容器在第一次需要时解析（布局副作用早于普通副作用执行）；嵌入式线程找不到容器时不滚动窗口，
+  // 否则宿主页面会被拉到底部
   const listRef = useRef<HTMLDivElement>(null)
-  const scroller = useRef<HTMLElement | null>(null)
+  const scroller = useRef<HTMLElement | null | undefined>(undefined)
   const following = useRef(true)
   const [away, setAway] = useState(false)
+  const resolveScroller = () => {
+    if (scroller.current === undefined) scroller.current = scrollParent(listRef.current)
+    return scroller.current
+  }
+  const scrollLatest = (smooth = false) => {
+    const target = resolveScroller()
+    if (!target && embedded) return
+    scrollToBottom(target, smooth)
+  }
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 只在换会话时重新订阅；解析函数读 ref
   useEffect(() => {
-    scroller.current = scrollParent(listRef.current)
-    const target: HTMLElement | Window = scroller.current ?? window
+    const element = resolveScroller()
+    if (!element && embedded) return
+    const target: HTMLElement | Window = element ?? window
     const onScroll = () => {
-      const near = distanceToBottom(scroller.current) <= FOLLOW_THRESHOLD_PX
+      const near = distanceToBottom(element) <= FOLLOW_THRESHOLD_PX
       following.current = near
       setAway(!near)
     }
     target.addEventListener('scroll', onScroll, { passive: true })
-    // 打开对话时停在最新消息
-    if (session.chat.messages.length) scrollToBottom(scroller.current)
     return () => target.removeEventListener('scroll', onScroll)
-  }, [session])
+  }, [session, embedded])
   const lastUserId = messages.findLast((message) => message.role === 'user')?.id
   const previousUserId = useRef(lastUserId)
   const followUpsShown = Boolean(state.followUps)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 消息、追问变化时跟随；滚动函数读 ref
   useLayoutEffect(() => {
-    // 自己刚发送的消息总是滚到可见；其余新内容只在用户位于底部附近时跟随
+    // 打开对话时停在最新消息；自己刚发送的消息总是滚到可见；其余新内容只在用户位于底部附近时跟随
     const sent = lastUserId !== previousUserId.current
     previousUserId.current = lastUserId
     if (sent) following.current = true
-    if (following.current && (messages.length || followUpsShown)) scrollToBottom(scroller.current)
+    if (following.current && (messages.length || followUpsShown)) scrollLatest()
   }, [messages, lastUserId, followUpsShown])
 
   const jump = away && busy && (
@@ -251,7 +265,7 @@ export function ChatThread({
       onClick={() => {
         following.current = true
         setAway(false)
-        scrollToBottom(scroller.current, true)
+        scrollLatest(true)
       }}
     >
       {m.chat_ui_jump_latest()}

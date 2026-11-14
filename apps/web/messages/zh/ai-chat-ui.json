@@ -68,5 +68,15 @@
   "chat_ui_subject_trigger": "就此提问",
   "chat_ui_subject_title": "提问",
   "chat_ui_subject_intro": "助手已读取这份内容，可以从下面的问题开始。",
-  "chat_ui_subject_placeholder": "就「{subject}」提问…"
+  "chat_ui_subject_placeholder": "就「{subject}」提问…",
+  "chat_ui_model": "模型",
+  "chat_ui_model_empty": "当前套餐没有可用的模型。",
+  "chat_ui_estimate": "预计消耗",
+  "chat_ui_credit_one": "{count} 积分",
+  "chat_ui_credit_other": "{count} 积分",
+  "chat_ui_unit_image": "张",
+  "chat_ui_unit_second": "秒",
+  "chat_ui_not_found_title": "找不到这个对话",
+  "chat_ui_not_found_body": "对话不存在，或你没有访问权限。",
+  "chat_ui_back_to_chats": "返回对话列表"
 }

@@ -221,10 +221,10 @@ export function SubjectChatView({
       readOnly: data.readOnly,
       start,
       onStarted: (id) => {
-        // 新对话开始后以对话 ID 缓存，「新对话」再次从空白开始
-        sessions.current.delete(NEW)
+        // 新对话开始后以对话 ID 缓存，「新对话」再次从空白开始；用户在新建期间已切到别的对话时不切回来
+        if (sessions.current.get(NEW) === session) sessions.current.delete(NEW)
         sessions.current.set(id, session)
-        setActiveKey(id)
+        setActiveKey((current) => (current === NEW ? id : current))
         setConversations((old) => [
           { id, title: subject.title ?? '', updatedAt: new Date() },
           ...old.filter((item) => item.id !== id),
@@ -247,6 +247,7 @@ export function SubjectChatView({
   // 离开页面时停止全部会话的本地读取；关闭外壳与切换对话不停止
   useEffect(() => {
     const all = sessions.current
+    for (const item of all.values()) item.attach()
     return () => {
       for (const item of all.values()) item.dispose()
     }
@@ -366,7 +367,8 @@ export function SubjectChatView({
       footer={
         session && !loading ? (
           <ChatComposer
-            key={activeKey}
+            // 按会话本身作 key：第一次发送时键从「新对话」换成对话 ID，会话不变，输入框与状态区不重新挂载
+            key={session.chat.id}
             session={session}
             placeholder={m.chat_ui_subject_placeholder({ subject: subject.label })}
             inputRef={inputRef}
@@ -383,7 +385,15 @@ export function SubjectChatView({
             {m.subject_chat_loading()}
           </p>
         ) : (
-          <ChatThread key={activeKey} session={session} empty={intro} inputRef={inputRef} />
+          // 消息列不超过 720px、居中（设计稿 Embedded.dc.html 的 inline 卡片）
+          <ChatThread
+            key={session.chat.id}
+            session={session}
+            empty={intro}
+            inputRef={inputRef}
+            embedded
+            className="mx-auto w-full max-w-180"
+          />
         )}
       </div>
     </EmbeddedChat>

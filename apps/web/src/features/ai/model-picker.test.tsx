@@ -80,11 +80,10 @@ describe('ModelPicker', () => {
       <ModelPicker models={[perCall, perToken]} value={perToken.id} onChange={() => {}} />,
     )
     expect(html).toContain('role="combobox"')
-    expect(html).toContain('for="ai-model"')
-    expect(html).toContain('id="ai-model"')
+    expect(html).toMatch(/for="([^"]+)"[\s\S]*id="\1"/)
     expect(html).toContain('smart-chat')
     expect(html).not.toContain('fast-chat')
-    expect(html).toMatch(/^<div>/)
+    expect(html).toMatch(/^<div data-model-picker="">/)
   })
 
   it('未指定模型时显示第一项，已下架的选值显示占位文字', () => {

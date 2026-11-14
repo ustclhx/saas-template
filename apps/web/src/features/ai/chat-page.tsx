@@ -152,10 +152,13 @@ export function ChatPage({
   )
   // 路由数据重新加载时模型列表可能变化（权益或启用状态）
   useEffect(() => {
-    session.models = models
+    session.setModels(models)
   }, [session, models])
   // 离开页面时停止本地读取
-  useEffect(() => () => session.dispose(), [session])
+  useEffect(() => {
+    session.attach()
+    return () => session.dispose()
+  }, [session])
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const [jumpContainer, setJumpContainer] = useState<HTMLDivElement | null>(null)
   // 吸底输入区的底色与所在面板一致（侧边栏布局为 surface-2 面板，顶部布局为页面背景）
@@ -173,7 +176,7 @@ export function ChatPage({
         inputRef={inputRef}
         jumpContainer={jumpContainer}
         metaWithModel
-        className="flex-1 pb-2"
+        className="flex-1 pb-4"
       />
       <div
         className={cn(
@@ -190,6 +193,7 @@ export function ChatPage({
           placeholder={m.chat_ui_placeholder()}
           inputRef={inputRef}
           disclaimer
+          autoFocus
         />
       </div>
     </div>

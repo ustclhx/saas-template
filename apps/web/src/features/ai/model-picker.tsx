@@ -1,4 +1,5 @@
 import { cn, Label, Select, SelectContent, SelectItem, SelectTrigger } from '@saas/ui'
+import { useId } from 'react'
 import {
   creditEstimate,
   type EstimateOptions,
@@ -22,6 +23,7 @@ export function ModelPicker({
   /** 对话输入区的左下角：标签只给读屏，触发器为无边框的小按钮（设计稿 chat-components/Main.dc.html） */
   compact?: boolean
 }) {
+  const id = useId()
   if (models.length === 0)
     return (
       <p role="status" className={cn(compact && 'px-2 text-caption text-muted-foreground')}>
@@ -31,8 +33,8 @@ export function ModelPicker({
   const current = models.find((model) => model.id === (value ?? models[0]?.id))
   if (compact)
     return (
-      <div className="min-w-0">
-        <Label htmlFor="ai-model" className="sr-only">
+      <div className="min-w-0" data-model-picker="">
+        <Label htmlFor={id} className="sr-only">
           {MODEL_PICKER_COPY.label}
         </Label>
         <Select
@@ -43,7 +45,7 @@ export function ModelPicker({
           onValueChange={onChange}
         >
           <SelectTrigger
-            id="ai-model"
+            id={id}
             variant="borderless"
             className="min-w-0 max-w-48 px-2 font-medium text-caption"
             placeholder={MODEL_PICKER_COPY.label}
@@ -60,11 +62,11 @@ export function ModelPicker({
       </div>
     )
   return (
-    <div>
-      <Label htmlFor="ai-model">{MODEL_PICKER_COPY.label}</Label>
+    <div data-model-picker="">
+      <Label htmlFor={id}>{MODEL_PICKER_COPY.label}</Label>
       <Select name="model" value={current?.id ?? ''} disabled={disabled} onValueChange={onChange}>
         <SelectTrigger
-          id="ai-model"
+          id={id}
           className="w-full"
           placeholder={MODEL_PICKER_COPY.label}
           valueLabel={current?.key}
