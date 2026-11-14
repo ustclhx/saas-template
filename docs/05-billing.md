@@ -99,6 +99,11 @@ type NormalizedEvent =
 - SDK 初始化使用 `httpClient: Stripe.createFetchHttpClient()`；验签使用 `constructEventAsync`（Web Crypto）。
 - Checkout Session 的 `metadata` / `subscription_data.metadata` 写入 `workspaceId`、`planPriceId`。
 - 自助管理直接用 Customer Portal（`getPortalUrl`）。
+- **周期末取消的两种形态**：应用经 API 取消时 Stripe 置 `cancel_at_period_end=true`；Customer Portal 的「周期末取消」
+  （API `2026-09-30.endive` 实测）改为设置 `cancel_at`=当前周期末，`cancel_at_period_end` 仍为 false、`canceled_at` 已有值。
+  `stripeCancelsAtPeriodEnd`（`packages/billing/src/stripe/snapshots.ts`）把 `cancel_at_period_end || cancel_at <= 订阅项 current_period_end`
+  都映射为本地 `cancel_at_period_end=true`，换套餐的「先恢复」检查用同一判断。`cancel_at` 晚于当前周期末（远期定时取消，模板不会设置）
+  时下一周期仍会续费，不视为周期末取消。恢复时先读取订阅：Portal 形态以 `cancel_at: ''` 清除，API 形态以 `cancel_at_period_end: false` 撤销。
 - 税务：暂不启用 Stripe Tax；接入 MoR 时由 MoR 处理。
 - **限制**：正式收款需要 Stripe 支持地区的主体；无主体阶段仅用测试模式开发与联调。
 

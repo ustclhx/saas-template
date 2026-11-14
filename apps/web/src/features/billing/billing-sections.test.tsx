@@ -11,6 +11,7 @@ import {
   CreditBalance,
   dailyNoticeState,
   defaultProvider,
+  entitlementPlanName,
   formatBillingDate,
   subscriptionCreditsNote,
 } from './billing-sections.tsx'
@@ -200,5 +201,13 @@ describe('账单页分区（add-ui-design-system 8.7）', () => {
       </AppShellBarContext.Provider>,
     )
     expect(inShell).not.toContain('<h1')
+  })
+
+  it('当前套餐显示套餐名而不是权益 key：含已下架套餐与未落库的免费兜底', () => {
+    const catalog = [{ key: 'plus', name: 'Plus 会员' }]
+    expect(entitlementPlanName({ key: 'plus', name: 'Plus 会员' }, [])).toBe('Plus 会员')
+    expect(entitlementPlanName({ key: 'plus' }, catalog)).toBe('Plus 会员')
+    expect(entitlementPlanName({ key: 'free' }, catalog)).toBe(m.billing_page_free_plan())
+    expect(entitlementPlanName({ key: 'legacy' }, catalog)).toBe('legacy')
   })
 })

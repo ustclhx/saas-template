@@ -18,6 +18,7 @@ import {
   billingSections,
   CreditBalance,
   defaultProvider,
+  entitlementPlanName,
   FreePlanCard,
   formatBillingDate,
   formatCredits,
@@ -176,9 +177,7 @@ function BillingPage() {
     : null
   const packExpiry = packExpiryDays(packPlans)
   const showPurchase = owner && activePrices.length > 0
-  const entitlementPlan =
-    page.catalog.plans.find((plan) => plan.key === page.entitlements.key)?.name ??
-    page.entitlements.key
+  const entitlementPlan = entitlementPlanName(page.entitlements, page.catalog.plans)
 
   async function manage(subscriptionId: string, action: 'cancel' | 'resume' | 'portal' | 'change') {
     setBusy(true)

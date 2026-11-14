@@ -97,6 +97,23 @@ export async function stripeInvoiceLines(
     : invoice.lines.data
 }
 
+/**
+ * 订阅是否会在当前周期末停止续费。
+ * API 置 cancel_at_period_end=true；Customer Portal 的“周期末取消”（2026-09-30.endive 实测）
+ * 改为设置 cancel_at=当前周期末且 cancel_at_period_end 仍为 false。两种形态都视为周期末取消。
+ * cancel_at 晚于当前周期末（远期定时取消）时下一周期仍会续费，不算周期末取消。
+ * currentPeriodEnd 取订阅项的 current_period_end（Unix 秒），与快照周期一致。
+ */
+export function stripeCancelsAtPeriodEnd(
+  subscription: Pick<Stripe.Subscription, 'cancel_at_period_end' | 'cancel_at'>,
+  currentPeriodEnd: number,
+): boolean {
+  return (
+    subscription.cancel_at_period_end ||
+    (subscription.cancel_at != null && subscription.cancel_at <= currentPeriodEnd)
+  )
+}
+
 export function mapStripeSubscription(subscription: Stripe.Subscription): SubscriptionSnapshot {
   const item = subscription.items.data[0]
   if (!item || subscription.items.has_more || subscription.items.data.length !== 1) {
@@ -110,7 +127,7 @@ export function mapStripeSubscription(subscription: Stripe.Subscription): Subscr
     remoteStatus: subscription.status,
     currentPeriodStart: stripeDate(item.current_period_start),
     currentPeriodEnd: stripeDate(item.current_period_end),
-    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    cancelAtPeriodEnd: stripeCancelsAtPeriodEnd(subscription, item.current_period_end),
     canceledAt: subscription.canceled_at === null ? null : stripeDate(subscription.canceled_at),
     trialEnd: subscription.trial_end === null ? null : stripeDate(subscription.trial_end),
     // Stripe has no timestamp for the transition to past_due; don't invent a grace-period start.

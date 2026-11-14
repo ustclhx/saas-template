@@ -191,6 +191,21 @@ export function SubscriptionStatusBadge({ status }: { status: SubscriptionStatus
 }
 
 /** 未订阅时的订阅分区卡片 */
+/**
+ * 当前权益套餐的显示名：优先权益自带的套餐名（已下架套餐不在目录中也能显示），
+ * 再按目录 key 匹配；未落库的免费兜底显示本地化文案，不把权益 key 直接展示给用户。
+ */
+export function entitlementPlanName(
+  entitlements: { key: string; name?: string | null },
+  plans: readonly { key: string; name: string }[],
+): string {
+  return (
+    entitlements.name ||
+    plans.find((plan) => plan.key === entitlements.key)?.name ||
+    (entitlements.key === 'free' ? m.billing_page_free_plan() : entitlements.key)
+  )
+}
+
 export function FreePlanCard({ action }: { action?: ReactNode }) {
   return (
     <BillingCard className="px-6 py-5 shadow-surface-2 sm:flex sm:items-center sm:justify-between sm:gap-6">

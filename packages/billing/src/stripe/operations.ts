@@ -2,6 +2,7 @@ import type { PlanPrice } from '@saas/db/schema'
 import Stripe from 'stripe'
 import type { CheckoutInput, PaymentProvider, PlanSyncInput, RefundInput } from '../provider.ts'
 import { parseStripeMetadata } from './metadata.ts'
+import { stripeCancelsAtPeriodEnd } from './snapshots.ts'
 
 export type StripeOperations = Required<
   Pick<
@@ -183,9 +184,22 @@ export async function cancelStripeSubscription(
   else await stripe.subscriptions.cancel(subId, { invoice_now: false, prorate: false })
 }
 
-/** Restore a period-end cancellation; an already canceled subscription cannot be restored. */
+/**
+ * Restore a period-end cancellation; an already canceled subscription cannot be restored.
+ * Customer Portal 以 cancel_at 表达周期末取消，cancel_at_period_end=false 无法清除它，
+ * 需按 Stripe 约定传空字符串清空 cancel_at；API 形态仍只撤销 cancel_at_period_end。
+ */
 export async function resumeStripeSubscription(stripe: Stripe, subId: string): Promise<void> {
-  await stripe.subscriptions.update(subId, { cancel_at_period_end: false })
+  const subscription = await stripe.subscriptions.retrieve(subId)
+  const item = subscription.items.data[0]
+  const portalStyle =
+    !subscription.cancel_at_period_end &&
+    item !== undefined &&
+    stripeCancelsAtPeriodEnd(subscription, item.current_period_end)
+  await stripe.subscriptions.update(
+    subId,
+    portalStyle ? { cancel_at: '' } : { cancel_at_period_end: false },
+  )
 }
 
 export async function changeStripePlan(
@@ -202,7 +216,7 @@ export async function changeStripePlan(
     throw new Error('Plan changes require a single subscription item')
   }
   if (subscription.pending_update) throw new Error('Subscription has a pending payment update')
-  if (subscription.cancel_at_period_end)
+  if (stripeCancelsAtPeriodEnd(subscription, item.current_period_end))
     throw new Error('Resume the subscription before changing plan')
   const metadata = { ...subscription.metadata, planPriceId: newPrice.id }
   const intervalChange = item.price.recurring?.interval !== newPrice.interval

@@ -20,6 +20,8 @@ export const DEFAULT_FREE_FEATURES: PlanFeatures = {
 
 export interface Entitlements {
   readonly key: string
+  /** 套餐显示名；只有内置免费兜底没有名称（账单页据此显示本地化文案而不是 key） */
+  readonly name?: string
   readonly sort: number
   readonly features: PlanFeatures
 }
