@@ -1,6 +1,13 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { type DefinedPrompt, promptSha256, type RenderedPrompt, renderPrompt } from '@saas/ai'
+import {
+  type DefinedPrompt,
+  getTextProviderCapabilities,
+  promptSha256,
+  type RenderedPrompt,
+  renderPrompt,
+  resolveTextThinking,
+} from '@saas/ai'
 import { generateText, type LanguageModel } from 'ai'
 import { z } from 'zod'
 import {
@@ -14,7 +21,7 @@ import {
 } from './budget.ts'
 import { type CheckOutcome, runChecks } from './checks.ts'
 import { EvalConfigError, EXIT, registerSecretValues, safeErrorMessage } from './errors.ts'
-import { JUDGE_MAX_OUTPUT_TOKENS, judgeMessages, judgeSchemaText, runJudge } from './judge.ts'
+import { judgeMessages, judgeSchemaText, judgeSettings, runJudge } from './judge.ts'
 import { verifyLock } from './lock.ts'
 import { fixedModel } from './mock.ts'
 import {
@@ -207,13 +214,28 @@ function replayEstimate(model: ModelSpec, estimate: CallEstimate, usage: Usage):
   return price ? settledUsd(price, estimate, usage) : null
 }
 
+/**
+ * 生成调用的 thinking 参数：与线上模型行 `x-text.thinking` 同一语义。
+ * 未声明时不改请求（Provider 默认）；声明后经 resolveTextThinking 计算，Provider 可控时下发开 / 关。
+ */
+function generationThinking(model: ModelSpec) {
+  if (model.thinking === undefined) return {}
+  const thinking = resolveTextThinking(model.provider, model.thinking, model.thinking)
+  return thinking === undefined
+    ? {}
+    : getTextProviderCapabilities(model.provider).applyThinking({}, thinking)
+}
+
 async function generate(
   model: LanguageModel,
   rendered: RenderedPrompt,
+  spec: ModelSpec,
 ): Promise<{ text: string; finishReason: string; usage: Usage }> {
   const result = await generateText({
+    ...generationThinking(spec),
     model,
-    system: rendered.system,
+    // AI SDK 7 以 instructions 传入 system 文本（system 参数已弃用）；回放与真实模式走同一形状
+    instructions: rendered.system,
     prompt: rendered.user,
     maxOutputTokens: rendered.maxOutputTokens,
     ...(rendered.params.temperature !== undefined
@@ -287,6 +309,7 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
         usage: read.recording.usage,
       }),
       rendered,
+      generatorSpec,
     )
     estimatedCostUsd = replayEstimate(generatorSpec, estimate, output.usage)
   } else {
@@ -297,7 +320,11 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
       return { ...base, status: 'skipped-budget', usage: {}, costUsd: 0, estimatedCostUsd: null }
     }
     try {
-      output = await generate((ctx.modelFor as ModelFor)(ctx.generatorKey, generatorSpec), rendered)
+      output = await generate(
+        (ctx.modelFor as ModelFor)(ctx.generatorKey, generatorSpec),
+        rendered,
+        generatorSpec,
+      )
     } catch (error) {
       // 失败的请求也可能计费：按预留额记账
       ctx.ledger?.settle(reservation)
@@ -361,11 +388,13 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
   const judgeSpec = spec(ctx, judgeKey)
   const { rubric } = judgeConfig
   const messages = judgeMessages({ rubric, sampleInput: sample.input, prompt, output: output.text })
+  // 回放与真实模式按同一评委设置构造请求；thinking 由评委模型的 Provider 决定是否下发
+  const settings = judgeSettings(judgeSpec.provider, judgeConfig)
   const judgeEstimate = estimateCall(
     judgeSpec,
-    // 结构化输出的 JSON schema 也随请求发送，计入输入估算
+    // 结构化输出的 JSON schema 也随请求发送，计入输入估算；输出上限已含 reasoning token
     [messages.system, messages.user, judgeSchemaText(rubric)],
-    JUDGE_MAX_OUTPUT_TOKENS,
+    settings.maxOutputTokens,
   )
   const outputHash = await promptSha256(output.text)
   const judgePath = judgeRecordingPath(
@@ -418,7 +447,7 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
     }
     judgeModel = (ctx.modelFor as ModelFor)(judgeKey, judgeSpec)
   }
-  const call = await runJudge(judgeModel, rubric, messages)
+  const call = await runJudge(judgeModel, rubric, messages, settings)
   let judgeCost = 0
   if (reservation) {
     judgeCost = call.callFailed

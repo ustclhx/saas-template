@@ -99,6 +99,34 @@ describe('样本与套件定义', () => {
       () => defineSuite({ ...suiteWith(), prompts: [v1(), v1()] }),
       /duplicate/,
     )
+    const rubric = {
+      version: 'r1',
+      criteria: [{ id: 'a', description: 'A' }],
+      scale: { min: 1, max: 5 },
+    }
+    for (const maxOutputTokens of [0, 1.5, -1])
+      await expectConfigError(
+        () => defineSuite({ ...suiteWith(), judge: { model: 'gen', rubric, maxOutputTokens } }),
+        /judge.maxOutputTokens/,
+      )
+    await expectConfigError(
+      () =>
+        defineSuite({
+          ...suiteWith(),
+          models: {
+            gen: {
+              provider: 'deepseek',
+              providerModelId: 'x',
+              thinking: 'off' as unknown as boolean,
+            },
+          },
+        }),
+      /thinking must be true or false/,
+    )
+    expect(
+      defineSuite({ ...suiteWith(), judge: { model: 'gen', rubric, maxOutputTokens: 8000 } }).judge
+        ?.maxOutputTokens,
+    ).toBe(8000)
   })
 
   it('example 指向包内示例，其他名字指向根目录 evals/，不存在时配置错误', async () => {

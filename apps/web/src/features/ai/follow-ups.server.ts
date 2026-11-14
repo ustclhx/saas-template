@@ -5,9 +5,11 @@ import {
   defaultLanguageModelFactory,
   estimateCredits,
   estimateInputTokens,
+  getTextProviderCapabilities,
   type LanguageModelFactory,
   listAvailableModels,
   messageText,
+  resolveTextThinking,
   type TextModelEnv,
   textModelConfig,
 } from '@saas/ai'
@@ -116,7 +118,8 @@ export async function generateFollowUps(
   if (config.charge && model.pricing.mode !== 'token') return { questions: [] }
 
   const prompt = await followUpPrompt(deps.db, scope.workspaceId, message, config.count)
-  const { tokensPerChar } = textModelConfig(model)
+  const { tokensPerChar, thinking } = textModelConfig(model)
+  const followUpThinking = resolveTextThinking(model.provider, thinking, false)
   const inputTokens = estimateInputTokens(
     prompt.map((m) => ({ text: m.content })),
     tokensPerChar,
@@ -165,6 +168,10 @@ export async function generateFollowUps(
       allowSystemInMessages: true,
       messages: prompt,
       maxOutputTokens: MAX_OUTPUT_TOKENS,
+      // 推荐问题是短输出：Provider 可控时显式关闭 thinking，避免 reasoning 耗尽 256 token 的输出预算
+      ...(followUpThinking === undefined
+        ? {}
+        : getTextProviderCapabilities(model.provider).applyThinking({}, followUpThinking)),
     })
     questions = parseQuestions(result.text, config.count)
     if (holdId) {

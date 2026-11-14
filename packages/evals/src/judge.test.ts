@@ -1,6 +1,12 @@
 import { definePrompt } from '@saas/ai'
 import { describe, expect, it } from 'vitest'
-import { judgeMessages, runJudge, scoreJudgement } from './judge.ts'
+import {
+  JUDGE_MAX_OUTPUT_TOKENS,
+  judgeMessages,
+  judgeSettings,
+  runJudge,
+  scoreJudgement,
+} from './judge.ts'
 import { fixedModel } from './mock.ts'
 import type { Rubric } from './suite.ts'
 
@@ -80,5 +86,39 @@ describe('评委', () => {
     const call = await runJudge(model, rubric, messages)
     expect(call.callFailed).toBe(true)
     expect(call.outcome).toEqual({ ok: false, error: 'fetch failed for <url>' })
+  })
+
+  it('system 经 instructions 作为首条 system 消息发送；缺省输出上限 4096、不可控 Provider 不下发 thinking', async () => {
+    const model = fixedModel({
+      text: reply({ accuracy: { score: 5, reason: 'a' }, readability: { score: 5, reason: 'b' } }),
+    })
+    const call = await runJudge(model, rubric, messages, judgeSettings('openai'))
+    expect(call.outcome.ok).toBe(true)
+    const request = model.doGenerateCalls[0]
+    expect(request?.prompt[0]).toEqual({ role: 'system', content: messages.system })
+    expect(request?.prompt.filter((message) => message.role === 'system')).toHaveLength(1)
+    expect(request?.prompt[1]).toMatchObject({ role: 'user' })
+    expect(request?.maxOutputTokens).toBe(JUDGE_MAX_OUTPUT_TOKENS)
+    expect(JUDGE_MAX_OUTPUT_TOKENS).toBe(4096)
+    expect(request?.providerOptions?.deepseek).toBeUndefined()
+    expect(request?.reasoning).toBeUndefined()
+  })
+
+  it('可控 Provider 的评委缺省显式关闭 thinking，并使用套件配置的输出上限', async () => {
+    const settings = judgeSettings('deepseek', { maxOutputTokens: 2000 })
+    expect(settings).toEqual({ maxOutputTokens: 2000, thinking: false, provider: 'deepseek' })
+    const model = fixedModel({
+      text: reply({ accuracy: { score: 4, reason: 'a' }, readability: { score: 4, reason: 'b' } }),
+    })
+    await runJudge(model, rubric, messages, settings)
+    const request = model.doGenerateCalls[0]
+    expect(request?.maxOutputTokens).toBe(2000)
+    expect(request?.providerOptions).toMatchObject({
+      deepseek: { thinking: { type: 'disabled' } },
+    })
+    expect(request?.reasoning).toBe('none')
+    // 套件显式开启时下发开启形式
+    expect(judgeSettings('deepseek', { thinking: true }).thinking).toBe(true)
+    expect(judgeSettings('openai', { thinking: true }).thinking).toBeUndefined()
   })
 })

@@ -14,6 +14,11 @@ export interface ModelSpec {
   readonly priceUsd?: { readonly inputPerMTok: number; readonly outputPerMTok: number }
   /** 输入 token 估算系数，缺省 1（与 @saas/ai 的保守估算一致） */
   readonly tokensPerChar?: number
+  /**
+   * 与线上模型行 `x-text.thinking` 同一语义：缺省不改请求（Provider 默认）；
+   * true / false 在 Provider 可控时显式下发开启 / 关闭。只作用于生成调用，评委用 `judge.thinking`。
+   */
+  readonly thinking?: boolean
 }
 
 /** 评分标准（design D8） */
@@ -38,7 +43,14 @@ export interface SuiteDefinition {
   readonly defaultPrompt?: string
   readonly models: Readonly<Record<string, ModelSpec>>
   readonly generator: string
-  readonly judge?: { readonly model: string; readonly rubric: Rubric }
+  readonly judge?: {
+    readonly model: string
+    readonly rubric: Rubric
+    /** 评委输出上限（含推理模型的 reasoning token），缺省 4096 */
+    readonly maxOutputTokens?: number
+    /** 评委是否开启 thinking；缺省 false，Provider 可控时显式下发关闭 */
+    readonly thinking?: boolean
+  }
   readonly checks?: readonly Check[]
   /** 平均总分下降超过此值判为回退，缺省 0.05 */
   readonly regressionThreshold?: number
@@ -82,11 +94,16 @@ export function defineSuite(def: SuiteDefinition): Suite {
       !(Number.isFinite(model.tokensPerChar) && model.tokensPerChar > 0)
     )
       fail(name, `model ${key} has an invalid tokensPerChar`)
+    if (model.thinking !== undefined && typeof model.thinking !== 'boolean')
+      fail(name, `model ${key} thinking must be true or false`)
   }
   if (!def.models[def.generator]) fail(name, `generator ${def.generator} is not in models`)
   if (def.judge) {
     if (!def.models[def.judge.model]) fail(name, `judge model ${def.judge.model} is not in models`)
     const { rubric } = def.judge
+    const max = def.judge.maxOutputTokens
+    if (max !== undefined && !(Number.isInteger(max) && max > 0))
+      fail(name, 'judge.maxOutputTokens must be a positive integer')
     if (!rubric.version) fail(name, 'rubric.version is required')
     if (rubric.criteria.length === 0) fail(name, 'rubric.criteria must not be empty')
     const ids = new Set<string>()

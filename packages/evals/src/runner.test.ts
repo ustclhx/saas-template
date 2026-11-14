@@ -494,6 +494,70 @@ describe('真实模式预算（模拟模型）', () => {
     expect(result.exitCode).toBe(3)
   })
 
+  it('真实模式请求形状：system 经 instructions 发送，评委按缺省输出上限估算并下发', async () => {
+    const s = suite({ samples: [{ id: 's1', input: { topic: 'tea' } }] })
+    const models = new Map<string, ReturnType<typeof fixedModel>>()
+    const modelFor = vi.fn((key: string) => {
+      const model = fixedModel({
+        text:
+          key === 'gen'
+            ? GOOD
+            : JSON.stringify({
+                criteria: {
+                  accuracy: { score: 5, reason: 'a' },
+                  clarity: { score: 5, reason: 'b' },
+                },
+                summary: 'ok',
+              }),
+        usage: { inputTokens: 10, outputTokens: 10 },
+      })
+      models.set(key, model)
+      return model
+    })
+    const result = await run(s, { mode: 'live', budgetUsd: 100 }, { modelFor })
+    expect(result.report.samples[0]?.status).toBe('passed')
+    const generation = models.get('gen')?.doGenerateCalls[0]
+    expect(generation?.prompt).toEqual([
+      { role: 'system', content: 'Write clearly about the topic.' },
+      { role: 'user', content: [{ type: 'text', text: 'Topic: tea' }] },
+    ])
+    expect(generation?.maxOutputTokens).toBe(100)
+    const judge = models.get('judge')?.doGenerateCalls[0]
+    expect(judge?.prompt[0]).toMatchObject({ role: 'system' })
+    expect(judge?.maxOutputTokens).toBe(4096)
+    // openai 无 thinking 适配器：不改变请求
+    expect(judge?.reasoning).toBeUndefined()
+  })
+
+  it.each([
+    { provider: 'openai', thinking: undefined, expected: undefined },
+    { provider: 'deepseek', thinking: undefined, expected: undefined },
+    { provider: 'deepseek', thinking: false, expected: 'disabled' },
+    { provider: 'deepseek', thinking: true, expected: 'enabled' },
+    { provider: 'openai', thinking: false, expected: undefined },
+  ] as const)(
+    '生成模型声明 thinking=$thinking（$provider）与线上模型行同一语义下发',
+    async ({ provider, thinking, expected }) => {
+      const s = suite({
+        judge: false,
+        samples: [{ id: 's1', input: { topic: 'tea' } }],
+        gen: { provider, extra: thinking === undefined ? '' : `thinking: ${thinking},` },
+      })
+      const model = fixedModel({ text: GOOD, usage: { inputTokens: 10, outputTokens: 10 } })
+      await run(s, { mode: 'live', budgetUsd: 100 }, { modelFor: () => model })
+      const request = model.doGenerateCalls[0]
+      if (expected === undefined) {
+        expect(request?.providerOptions?.deepseek).toBeUndefined()
+        expect(request?.reasoning).toBeUndefined()
+      } else {
+        expect(request?.providerOptions).toMatchObject({
+          deepseek: { thinking: { type: expected } },
+        })
+        expect(request?.reasoning).toBe(expected === 'enabled' ? 'high' : 'none')
+      }
+    },
+  )
+
   it('模型未返回用量时按调用前估算记账', async () => {
     const s = suite({ judge: false, samples: [{ id: 's1', input: { topic: 'tea' } }] })
     const result = await run(

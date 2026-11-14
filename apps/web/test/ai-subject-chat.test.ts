@@ -8,6 +8,7 @@ import type { KeyValueStore } from '@saas/platform'
 import { AppError, newId } from '@saas/shared'
 import { simulateReadableStream } from 'ai'
 import { MockLanguageModelV4 } from 'ai/test'
+import { eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { runAdminAction } from '../src/features/admin/action.ts'
 import {
@@ -1005,6 +1006,36 @@ describe('follow-up questions', () => {
         messageId,
       ),
     )
+  })
+
+  it('explicitly disables thinking for controllable providers, including x-text.thinking=false', async () => {
+    const { owner, messageId } = await setupReply(1000)
+    const scope = { workspaceId: owner.workspaceId, userId: owner.userId }
+    for (const paramsSchema of [null, { 'x-text': { thinking: false } }]) {
+      const model = await textModel({ mode: 'token', inputPer1k: 1, outputPer1k: 1 })
+      await db
+        .update(aiModel)
+        .set({ provider: 'deepseek', paramsSchema })
+        .where(eq(aiModel.id, model.id))
+      const mock = generateModel('["One?"]')
+      await generateFollowUps(
+        {
+          db,
+          cache: memoryKv(),
+          env: {},
+          workersAi: false,
+          entitlements,
+          languageModelFactory: () => mock,
+          config: config({ modelKey: model.key }),
+        },
+        scope,
+        messageId,
+      )
+      expect(mock.doGenerateCalls[0]?.providerOptions).toMatchObject({
+        deepseek: { thinking: { type: 'disabled' } },
+      })
+      expect(mock.doGenerateCalls[0]?.maxOutputTokens).toBe(256)
+    }
   })
 
   it('charges actual usage when billing is enabled', async () => {

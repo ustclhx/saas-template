@@ -29,6 +29,8 @@ export function tempSuite(options: {
   extra?: string
   judge?: boolean
   price?: boolean | 'zero'
+  /** 覆盖生成模型的 provider 与额外字段（如 thinking） */
+  gen?: { provider?: string; extra?: string }
 }): TempSuite {
   const name = options.name ?? 'demo'
   const root = mkdtempSync(join(tmpdir(), 'evals-run-'))
@@ -57,7 +59,7 @@ export default defineSuite({
   name: ${JSON.stringify(name)},
   prompts: [v1, v2],
   models: {
-    gen: { provider: 'openai', providerModelId: 'gpt-test', ${price} },
+    gen: { provider: ${JSON.stringify(options.gen?.provider ?? 'openai')}, providerModelId: 'gpt-test', ${price} ${options.gen?.extra ?? ''} },
     judge: { provider: 'openai', providerModelId: 'gpt-judge', ${price} },
   },
   generator: 'gen',
