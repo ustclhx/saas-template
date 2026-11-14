@@ -1339,7 +1339,7 @@ export function registerAiChatSuite(
       expect(plain.doStreamCalls[0]?.reasoning).toBeUndefined()
     })
 
-    it('thinking 按模板与单条请求映射；禁止切换时拒绝，不支持的模型忽略', async () => {
+    it('thinking 按模板与单条请求映射；禁止切换时拒绝，显式禁用的模型下发关闭', async () => {
       const me = await member('thinking-policy', 100)
       const modelId = await resilientModel(callPricing)
       const denied = attempts([{ text: 'unused' }])
@@ -1375,7 +1375,11 @@ export function registerAiChatSuite(
           textConfig: policy({ thinking: { default: 'on', userToggle: true } }),
         },
       )
-      expect(unsupported.doStreamCalls[0]?.providerOptions?.deepseek).toBeUndefined()
+      // 模型显式 thinking=false：忽略请求开关，但向可控 Provider 显式下发关闭形式
+      expect(unsupported.doStreamCalls[0]?.providerOptions).toMatchObject({
+        deepseek: { thinking: { type: 'disabled' } },
+      })
+      expect(unsupported.doStreamCalls[0]?.reasoning).toBe('none')
       expect(stream).not.toContain('hidden')
       expect(
         (await assistantMessage(response.headers.get('x-conversation-id') as string)).message.parts,

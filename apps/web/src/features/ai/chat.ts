@@ -14,10 +14,10 @@ import {
   parseAcceptanceFault,
   planTextBudget,
   requireAvailableModel,
+  resolveTextThinking,
   settleChatMessage,
   settleFromCheckpoint,
   settleInterruptedChatMessage,
-  supportsTextThinking,
   TEXT_FAULT_MAX_OUTPUT_TOKENS,
   type TextModelEnv,
   textModelConfig,
@@ -383,9 +383,12 @@ export async function startWorkspaceChat(
           }
         : { role: message.role, content: message.text },
     ),
-    thinking: supportsTextThinking(model.provider, thinking)
-      ? (input.thinking ?? textConfig.thinking.default === 'on')
-      : undefined,
+    // 模型显式 thinking=false 时下发关闭形式，而不是省略（默认推理的模型会把输出预算耗在 reasoning 上）
+    thinking: resolveTextThinking(
+      model.provider,
+      thinking,
+      input.thinking ?? textConfig.thinking.default === 'on',
+    ),
     continuation: continuation === 'native' && !faultMode,
     displayReasoning: textConfig.reasoning.display,
     inputTokens,

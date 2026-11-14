@@ -1,4 +1,4 @@
-import type { DefinedPrompt } from '@saas/ai'
+import { type DefinedPrompt, getTextProviderCapabilities, resolveTextThinking } from '@saas/ai'
 import { generateText, type LanguageModel, NoObjectGeneratedError, Output } from 'ai'
 import { z } from 'zod'
 import { safeErrorMessage } from './errors.ts'
@@ -8,7 +8,33 @@ import type { Rubric } from './suite.ts'
  * LLM 评委（design D8）：评委提示词由本包内置、业务无关；评分标准由套件提供。
  * 输出用 Zod schema 结构化解析，`temperature: 0`。分数越界或解析失败记为评委错误，不当作 0 分。
  */
-export const JUDGE_MAX_OUTPUT_TOKENS = 1024
+/**
+ * 评委输出上限缺省值。推理模型的 reasoning token 同样计入 maxOutputTokens，
+ * 过小的上限（早期为 1024）会在输出 JSON 前被思考耗尽，因此缺省放宽；套件可用 `judge.maxOutputTokens` 覆盖。
+ */
+export const JUDGE_MAX_OUTPUT_TOKENS = 4096
+
+/** 评委调用设置：由套件 `judge` 配置与评委模型声明解析得到 */
+export interface JudgeSettings {
+  /** 本次调用的输出上限（含 reasoning token），预算估算按它计算 */
+  readonly maxOutputTokens: number
+  /** 实际下发的 thinking；undefined 表示 Provider 不可控、不改变请求 */
+  readonly thinking: boolean | undefined
+  /** 评委模型的 Provider，用于选择 thinking 映射 */
+  readonly provider: string
+}
+
+/** 评委缺省关闭 thinking：Provider 可控时显式下发关闭形式，套件可设 `judge.thinking: true` 开启 */
+export function judgeSettings(
+  provider: string,
+  judge: { readonly maxOutputTokens?: number; readonly thinking?: boolean } = {},
+): JudgeSettings {
+  return {
+    maxOutputTokens: judge.maxOutputTokens ?? JUDGE_MAX_OUTPUT_TOKENS,
+    thinking: resolveTextThinking(provider, undefined, judge.thinking ?? false),
+    provider,
+  }
+}
 
 export interface JudgeMessages {
   readonly system: string
@@ -111,16 +137,22 @@ export async function runJudge(
   model: LanguageModel,
   rubric: Rubric,
   messages: JudgeMessages,
+  settings: JudgeSettings = judgeSettings('unknown'),
 ): Promise<JudgeCall> {
   let result: Awaited<ReturnType<typeof generateText>>
   try {
     result = await generateText({
       model,
-      system: messages.system,
+      // AI SDK 7 以 instructions 传入 system 文本（system 参数已弃用）；不把 system 放进 messages，
+      // 否则需要 allowSystemInMessages，且各 Provider 均以同一形式接收
+      instructions: messages.system,
       prompt: messages.user,
       output: Output.object({ schema: judgeSchema(rubric) }),
       temperature: 0,
-      maxOutputTokens: JUDGE_MAX_OUTPUT_TOKENS,
+      maxOutputTokens: settings.maxOutputTokens,
+      ...(settings.thinking === undefined
+        ? {}
+        : getTextProviderCapabilities(settings.provider).applyThinking({}, settings.thinking)),
       // 重试会产生预算外的费用；失败即记为评委错误
       maxRetries: 0,
     })

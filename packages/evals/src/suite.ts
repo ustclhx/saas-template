@@ -38,7 +38,14 @@ export interface SuiteDefinition {
   readonly defaultPrompt?: string
   readonly models: Readonly<Record<string, ModelSpec>>
   readonly generator: string
-  readonly judge?: { readonly model: string; readonly rubric: Rubric }
+  readonly judge?: {
+    readonly model: string
+    readonly rubric: Rubric
+    /** 评委输出上限（含推理模型的 reasoning token），缺省 4096 */
+    readonly maxOutputTokens?: number
+    /** 评委是否开启 thinking；缺省 false，Provider 可控时显式下发关闭 */
+    readonly thinking?: boolean
+  }
   readonly checks?: readonly Check[]
   /** 平均总分下降超过此值判为回退，缺省 0.05 */
   readonly regressionThreshold?: number
@@ -87,6 +94,9 @@ export function defineSuite(def: SuiteDefinition): Suite {
   if (def.judge) {
     if (!def.models[def.judge.model]) fail(name, `judge model ${def.judge.model} is not in models`)
     const { rubric } = def.judge
+    const max = def.judge.maxOutputTokens
+    if (max !== undefined && !(Number.isInteger(max) && max > 0))
+      fail(name, 'judge.maxOutputTokens must be a positive integer')
     if (!rubric.version) fail(name, 'rubric.version is required')
     if (rubric.criteria.length === 0) fail(name, 'rubric.criteria must not be empty')
     const ids = new Set<string>()

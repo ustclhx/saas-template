@@ -14,7 +14,7 @@ import {
 } from './budget.ts'
 import { type CheckOutcome, runChecks } from './checks.ts'
 import { EvalConfigError, EXIT, registerSecretValues, safeErrorMessage } from './errors.ts'
-import { JUDGE_MAX_OUTPUT_TOKENS, judgeMessages, judgeSchemaText, runJudge } from './judge.ts'
+import { judgeMessages, judgeSchemaText, judgeSettings, runJudge } from './judge.ts'
 import { verifyLock } from './lock.ts'
 import { fixedModel } from './mock.ts'
 import {
@@ -213,7 +213,8 @@ async function generate(
 ): Promise<{ text: string; finishReason: string; usage: Usage }> {
   const result = await generateText({
     model,
-    system: rendered.system,
+    // AI SDK 7 以 instructions 传入 system 文本（system 参数已弃用）；回放与真实模式走同一形状
+    instructions: rendered.system,
     prompt: rendered.user,
     maxOutputTokens: rendered.maxOutputTokens,
     ...(rendered.params.temperature !== undefined
@@ -361,11 +362,13 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
   const judgeSpec = spec(ctx, judgeKey)
   const { rubric } = judgeConfig
   const messages = judgeMessages({ rubric, sampleInput: sample.input, prompt, output: output.text })
+  // 回放与真实模式按同一评委设置构造请求；thinking 由评委模型的 Provider 决定是否下发
+  const settings = judgeSettings(judgeSpec.provider, judgeConfig)
   const judgeEstimate = estimateCall(
     judgeSpec,
-    // 结构化输出的 JSON schema 也随请求发送，计入输入估算
+    // 结构化输出的 JSON schema 也随请求发送，计入输入估算；输出上限已含 reasoning token
     [messages.system, messages.user, judgeSchemaText(rubric)],
-    JUDGE_MAX_OUTPUT_TOKENS,
+    settings.maxOutputTokens,
   )
   const outputHash = await promptSha256(output.text)
   const judgePath = judgeRecordingPath(
@@ -418,7 +421,7 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
     }
     judgeModel = (ctx.modelFor as ModelFor)(judgeKey, judgeSpec)
   }
-  const call = await runJudge(judgeModel, rubric, messages)
+  const call = await runJudge(judgeModel, rubric, messages, settings)
   let judgeCost = 0
   if (reservation) {
     judgeCost = call.callFailed
