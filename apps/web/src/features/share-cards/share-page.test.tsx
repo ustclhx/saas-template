@@ -23,6 +23,8 @@ vi.mock('@tanstack/react-router', async (importOriginal) => ({
   useRouterState: () => false,
 }))
 vi.mock('@tanstack/react-start/server', () => ({ getRequest: () => current.request }))
+// 页脚的手机端设置行含语言选择（依赖路由位置），与本测试无关
+vi.mock('../i18n/language-controls.tsx', () => ({ LanguageControls: () => null }))
 
 interface Data {
   title: string

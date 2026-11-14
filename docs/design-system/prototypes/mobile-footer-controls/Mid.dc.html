@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mobile page mid-scroll, light</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#171717}a:hover{color:#171717}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; background: #fafafa; color: #171717; font-family: Inter, -apple-system, 'PingFang SC', sans-serif; font-size: 14px; line-height: 20px">
+  <div style="display: flex; flex-direction: column; gap: 32px; padding: 32px 16px">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <p style="margin: 0; color: #6b6b6b; font-size: 12px; line-height: 16px; font-weight: 500">How it works</p>
+      <h2 style="margin: 0; font-size: 24px; line-height: 30px; font-weight: 700">Launch your first AI feature in three steps</h2>
+      <p style="margin: 0; color: #6b6b6b">Connect a model, set a credit price and ship the page. Billing, usage and limits are already wired.</p>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: 12px; background: #ffffff; box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06)">
+        <p style="margin: 0; font-weight: 600">1. Pick a model</p>
+        <p style="margin: 0; color: #6b6b6b">Choose from the providers you enabled in the admin console.</p>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: 12px; background: #ffffff; box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06)">
+        <p style="margin: 0; font-weight: 600">2. Price it in credits</p>
+        <p style="margin: 0; color: #6b6b6b">Each request reserves credits and settles on the actual usage.</p>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: 12px; background: #ffffff; box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06)">
+        <p style="margin: 0; font-weight: 600">3. Ship the page</p>
+        <p style="margin: 0; color: #6b6b6b">Add a route with the page skill and deploy to staging.</p>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <h3 style="margin: 0; font-size: 16px; line-height: 22px; font-weight: 600">Both add up</h3>
+      <p style="margin: 0; color: #6b6b6b">Subscription credits and credit packs combine in one balance. Text at the bottom of the screen stays readable: only the Ask AI button floats.</p>
+    </div>
+  </div>
+  <a href="#" aria-label="Ask AI about this site" style="position: absolute; right: 16px; bottom: 16px; display: inline-flex; align-items: center; gap: 8px; height: 48px; padding: 0 18px 0 16px; border-radius: 9999px; background: #171717; color: #fafafa; font-weight: 500; text-decoration: none; box-shadow: 0 6px 6px -3px rgba(0,0,0,0.12), 0 12px 12px -6px rgba(0,0,0,0.12)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg>Ask AI</a>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

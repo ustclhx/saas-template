@@ -22,6 +22,7 @@
 | 通用分享页 /s/$type/$token | https://claude.ai/artifact/Cmugzpfw8WYipVdvUZerwZ | 2026-11-13 | 「cancas 审批通过，开水执行吧」 | share-cards/SharePage.dc.html、share-cards/SharePageMobile.dc.html | add-og-images |
 | 对话页 /app/$slug/chat/$conversationId（含消息各状态、Markdown、输入区） | https://claude.ai/artifact/5VgoViLrF6DXiagXomEMoj | 2026-11-14 | 「approve the design canvas for the chat components」 | chat-components/Main.dc.html、chat-components/Mobile.dc.html、chat-components/States.dc.html | add-ai-chat-components |
 | 嵌入式 SubjectChat（inline / panel / 手机底部抽屉） | https://claude.ai/artifact/5VgoViLrF6DXiagXomEMoj | 2026-11-14 | 「approve the design canvas for the chat components」 | chat-components/Embedded.dc.html、chat-components/EmbeddedMobile.dc.html | add-ai-chat-components |
+| 手机端页脚设置行（< 768px 公开页：语言与主题移入页脚，只留 Ask AI 悬浮） | https://claude.ai/artifact/9WTKL7Waxb7HMp3VdAC4ot | 2026-11-15 | 「确认」 | mobile-footer-controls/Main.dc.html、mobile-footer-controls/Mid.dc.html、mobile-footer-controls/Dark.dc.html | add-ui-design-system（9.3 验收缺陷 UI-01，0.5.1） |
 
 副本格式：`ui-review/` 保存画布确认版本的画板源码（`*.dc.html`）与画布索引 `canvas.json`。源码依赖画布运行时，
 不能脱离 claude.ai 直接渲染，但完整包含布局、token 取值、文案与各状态分支（`state` / `dark` tweak），

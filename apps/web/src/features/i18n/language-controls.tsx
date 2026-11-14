@@ -17,12 +17,16 @@ import { rememberLocale } from './preference.ts'
 
 /**
  * 独立组件，预渲染页只在水合后获取 Accept-Language 建议，不改变 URL。
- * 默认固定在左下角；`placement="inline"` 用于后台侧栏等自带位置的容器，避免浮层遮挡内容。
+ * 默认固定在左下角（仅 md 及以上；手机端改由页脚设置行 SiteSettings 渲染）；
+ * `placement="inline"` 用于后台侧栏等自带位置的容器，避免浮层遮挡内容。
+ * `suggest={false}`：同页已有另一实例负责语言建议时关闭，避免重复横幅与请求。
  */
 export function LanguageControls({
   placement = 'floating',
+  suggest = true,
 }: {
   placement?: 'floating' | 'inline' | 'bare'
+  suggest?: boolean
 } = {}) {
   const floating = placement === 'floating'
   const location = useLocation()
@@ -40,6 +44,7 @@ export function LanguageControls({
     setReady(true)
     setSuggestion(null)
     if (
+      !suggest ||
       !(isPrerenderedPath(location.pathname, locales) || location.pathname === '/pricing') ||
       locale !== baseLocale
     )
@@ -56,7 +61,7 @@ export function LanguageControls({
     return () => {
       active = false
     }
-  }, [location.pathname, locale])
+  }, [location.pathname, locale, suggest])
 
   async function select(next: Locale) {
     setBusy(true)
@@ -108,7 +113,7 @@ export function LanguageControls({
       <div
         className={
           floating
-            ? 'fixed bottom-4 left-4 z-(--z-sticky) rounded-md bg-background px-3 py-2 text-sm shadow-sm print:hidden'
+            ? 'fixed bottom-4 left-4 z-(--z-sticky) rounded-md max-md:hidden bg-background px-3 py-2 text-sm shadow-sm print:hidden'
             : placement === 'bare'
               ? 'inline-flex w-fit text-sm'
               : 'inline-flex w-fit rounded-md bg-background px-3 py-1.5 text-sm shadow-xs'
@@ -141,7 +146,9 @@ export function LanguageControls({
         <p
           role="alert"
           className={
-            floating ? 'fixed bottom-16 left-4 z-(--z-sticky)' : 'text-destructive text-sm'
+            floating
+              ? 'fixed bottom-16 left-4 z-(--z-sticky) max-md:hidden'
+              : 'text-destructive text-sm'
           }
         >
           {error}

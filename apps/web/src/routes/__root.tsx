@@ -14,6 +14,7 @@ import {
 } from '../features/seo/origin.functions.ts'
 import { getHtmlAttributes } from '../features/theme/html-attributes.isomorphic.ts'
 import { RootDocument } from '../features/theme/root-document.tsx'
+import { SiteSettings } from '../features/theme/site-settings.tsx'
 import { templateConfig } from '../server/template-config.ts'
 import appCss from '../styles/app.css?url'
 
@@ -79,6 +80,10 @@ function RootComponent() {
       <AnnouncementBanner initial={announcement} />
       {templateConfig.i18n.enabled && !hasInlineControls && <LanguageControls />}
       <Outlet />
+      {/* 手机端没有站点页脚的公开页：设置行放在页面末尾；有页脚时由页脚渲染，这里隐藏 */}
+      {!hasInlineControls && (
+        <SiteSettings className="border-t p-4 md:hidden print:hidden [body:has([data-site-footer])_&]:hidden" />
+      )}
     </RootDocument>
   )
 }
