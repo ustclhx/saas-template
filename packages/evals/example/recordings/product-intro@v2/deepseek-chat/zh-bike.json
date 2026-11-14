@@ -7,12 +7,12 @@
     "provider": "deepseek",
     "providerModelId": "deepseek-chat"
   },
-  "output": "## 概述\n\n这款折叠自行车折叠迅速、重量适中，方便与地铁换乘。\n\n## 亮点\n\n- 十秒折叠\n- 整车十一公斤\n- 七速变速\n\n## 适合人群\n\n需要先骑车再换乘地铁的通勤者。",
+  "output": "## 概述\n\n这是一款面向通勤场景的折叠自行车，适合需要结合地铁与骑行的出行方式。整车支持十秒折叠，便于在换乘时快速收折携带。\n\n## 亮点\n\n- 十秒折叠：可在短时间内完成收折，方便进出地铁及存放。\n- 整车十一公斤：重量为十一公斤，便于手提与搬运。\n- 七速变速：配备七速变速系统，可应对不同路况的骑行需求。\n\n## 适合人群\n\n适合采用“地铁加骑行”方式通勤的人群，以及需要在公共交通与骑行之间频繁切换、对折叠速度和整车重量有要求的城市出行者。",
   "finishReason": "stop",
   "usage": {
-    "inputTokens": 374,
-    "outputTokens": 72
+    "inputTokens": 131,
+    "outputTokens": 136
   },
-  "recordedAt": "2026-11-14T00:00:00.000Z",
-  "source": "constructed"
+  "recordedAt": "2026-11-14T07:12:22.587Z",
+  "source": "recorded"
 }

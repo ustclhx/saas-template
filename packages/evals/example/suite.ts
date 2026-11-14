@@ -21,6 +21,7 @@ export default defineSuite({
       provider: 'deepseek',
       providerModelId: 'deepseek-chat',
       priceUsd: { inputPerMTok: 0.6, outputPerMTok: 2.2 },
+      thinking: false,
     },
   },
   generator: 'deepseek-chat',

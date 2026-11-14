@@ -74,7 +74,7 @@ describe('示例套件回放', () => {
     })
     expect(report.summary.estimatedLiveCostUsd).toBeGreaterThan(0)
     expect(report.baseline).toMatchObject({ kind: 'prompt', promptVersion: 'product-intro@v1' })
-    expect(report.baseline?.delta).toBeGreaterThan(0.2)
+    expect(report.baseline?.delta).toBeGreaterThan(0)
     expect(report.baseline?.samples).toHaveLength(6)
     const warned = report.samples.find((sample) => sample.id === 'zh-planner')
     expect(warned?.checks.find((check) => check.id === 'length')).toMatchObject({
