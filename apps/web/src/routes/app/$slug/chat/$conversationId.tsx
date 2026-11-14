@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { ChatPage, ChatPageSkeleton } from '../../../../features/ai/chat-page.tsx'
+import { ChatPage } from '../../../../features/ai/chat-page.tsx'
+import { ChatPageSkeleton } from '../../../../features/ai/chat-page-skeleton.tsx'
 import { getConversation } from '../../../../features/ai/conversations.functions.ts'
 import { getPickerModels } from '../../../../features/ai/model-picker.functions.ts'
 import { useAppShellBarAvailable } from '../../../../features/app-shell/bar.tsx'
