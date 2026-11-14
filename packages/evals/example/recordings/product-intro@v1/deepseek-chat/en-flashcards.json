@@ -7,12 +7,12 @@
     "provider": "deepseek",
     "providerModelId": "deepseek-chat"
   },
-  "output": "## Overview\n\nThis vocabulary flashcard deck helps adults learn Spanish faster than any app.\n\n## Highlights\n\n- 500 everyday words\n- An example sentence on every card\n- A spaced review schedule",
+  "output": "## Overview\nBuild a practical Spanish vocabulary with a flashcard deck designed for busy adults. This set covers 500 everyday words, each presented with an example sentence that shows how the word is used in real conversation. A built-in spaced review schedule helps you revisit words at the right time, so new vocabulary moves from short-term recognition to lasting memory.\n\n## Highlights\n- 500 everyday words selected for real-life situations\n- Example sentence on every card for context-based learning\n- Spaced review schedule that reinforces words at optimal intervals\n- Designed for adult learners who want steady, efficient progress",
   "finishReason": "stop",
   "usage": {
-    "inputTokens": 274,
-    "outputTokens": 153
+    "inputTokens": 83,
+    "outputTokens": 118
   },
-  "recordedAt": "2026-11-14T00:00:00.000Z",
-  "source": "constructed"
+  "recordedAt": "2026-11-14T07:12:01.867Z",
+  "source": "recorded"
 }

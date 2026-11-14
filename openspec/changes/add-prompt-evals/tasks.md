@@ -28,7 +28,7 @@
 ## 5. 示例套件
 
 - [x] 5.1 新增 `packages/evals/example/`：中性主题（如「产品简介撰写」），两个提示词版本 `product-intro@v1` / `@v2`，中英文样本各 3 个（含一个故意触发长度或章节失败、标为警告级的样本），示例评分标准，套件级检查覆盖全部内置检查；先用手写的 `constructed` 录制（生成与评委）让回放可跑，README 写明来源约定（沿用 `packages/ai/src/media/fixtures/README.md`）。验证：包单测以回放完整运行示例套件（含 `--baseline product-intro@v1`），断言退出码 0、报告中两版本的分数差，且全程零网络调用；`pnpm eval:prompts --suite example` 在本地以 0 退出。
-- [ ] 5.2 用真实模型录制示例套件（需要外部凭据，协调者或持有密钥的 worker 执行）：`pnpm eval:prompts --suite example --record --budget-usd 0.5`，选一个低价模型做生成和评委，把 `source` 改为 `recorded`，README 记录日期、模型、实际估算费用与预算。再用 `--live --budget-usd 0.001` 运行一次，确认第一次调用前即触顶、未发出请求。验证：录制提交进仓库，5.1 的回放测试仍通过；两次运行的报告写入私有证据库。
+- [x] 5.2 用真实模型录制示例套件（需要外部凭据，协调者或持有密钥的 worker 执行）：`pnpm eval:prompts --suite example --record --budget-usd 0.5`，选一个低价模型做生成和评委，把 `source` 改为 `recorded`，README 记录日期、模型、实际估算费用与预算。再用 `--live --budget-usd 0.001` 运行一次，确认第一次调用前即触顶、未发出请求。验证：录制提交进仓库，5.1 的回放测试仍通过；两次运行的报告写入私有证据库。
 
 ## 6. 模板交付
 
@@ -44,4 +44,4 @@
 ## 8. 验收
 
 - [x] 8.1 `pnpm check`、`pnpm typecheck`、`pnpm check:deps`、`pnpm check:singletons`、`pnpm test` 与 `pnpm build` 全部通过，`pnpm test:create-project:verify` 通过；确认 `pnpm build` 产物（web 与 jobs Worker、自托管构建）中不含 `@saas/evals` 的模块。
-- [ ] 8.2 离线与预算验收：断网（或全局 `fetch` 拒绝）下 `pnpm eval:prompts --suite example --baseline product-intro@v1` 以 0 退出并写出报告；`CI=true pnpm eval:prompts --suite example --live --budget-usd 1` 以 2 退出；5.2 的预算触顶运行结果附在证据中。证据写入私有证据库，PR 只引用。
+- [x] 8.2 离线与预算验收：断网（或全局 `fetch` 拒绝）下 `pnpm eval:prompts --suite example --baseline product-intro@v1` 以 0 退出并写出报告；`CI=true pnpm eval:prompts --suite example --live --budget-usd 1` 以 2 退出；5.2 的预算触顶运行结果附在证据中。证据写入私有证据库，PR 只引用。

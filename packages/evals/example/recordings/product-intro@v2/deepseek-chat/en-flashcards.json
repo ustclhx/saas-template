@@ -7,12 +7,12 @@
     "provider": "deepseek",
     "providerModelId": "deepseek-chat"
   },
-  "output": "## Overview\n\nA deck of Spanish vocabulary flashcards built around everyday words and regular review.\n\n## Highlights\n\n- 500 everyday words\n- Example sentence on every card\n- Spaced review schedule\n\n## Who it is for\n\nAdults learning Spanish who prefer short, regular practice.",
+  "output": "## Overview\nThis vocabulary flashcard deck contains 500 everyday Spanish words for adult learners. Each card includes an example sentence.\n\n## Highlights\n- 500 everyday words\n- An example sentence on every card\n- A spaced review schedule\n\n## Who it is for\nAdults learning Spanish who want to build everyday vocabulary with example sentences and a spaced review schedule.",
   "finishReason": "stop",
   "usage": {
-    "inputTokens": 437,
-    "outputTokens": 220
+    "inputTokens": 127,
+    "outputTokens": 73
   },
-  "recordedAt": "2026-11-14T00:00:00.000Z",
-  "source": "constructed"
+  "recordedAt": "2026-11-14T07:12:31.724Z",
+  "source": "recorded"
 }
