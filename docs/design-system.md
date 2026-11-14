@@ -2,27 +2,32 @@
 
 模板与衍生项目的 UI 分层、设计 token、组件用法、动效、页面模式与设计关卡。规范以仓库为准：
 token 在 `packages/ui/src/styles/`，组件在 `packages/ui/src/components/`，本文说明如何使用它们。
-claude.ai 的 Design System Artifact 只是可视化镜像，供出设计稿前读取，二者不一致时以仓库为准。
+claude.ai 的 Design System Artifact 只是可选的可视化镜像，属于某个账号的私有缓存，不是规范来源，二者不一致时以仓库为准。
 
 决策来源：OpenSpec change `add-ui-design-system`（design D1–D11）。组件来源与上游月份见
 [`packages/ui/UPSTREAM.md`](../packages/ui/UPSTREAM.md)。
 
-## 1. 镜像与同步记录
+## 1. 规范来源与镜像
 
-| 字段 | 值 |
-|---|---|
-| Design System 镜像 | https://claude.ai/artifact/5bJuRwNuRe7xV5aQcCfULr（私有，需所有者共享后他人可见） |
-| 最近同步提交 | 36d5928（2026-11-13，模板 0.4.0）。**镜像落后于 0.5.0**：0.5.0 新增对话组件（`@saas/ui/chat`）与 token `--warning`、`--fluid-accent-text`、`--chat-fill`、`--container-chat-message`；发布时镜像 Artifact 无法访问，待使用者确认镜像去向后重建或同步 |
+**唯一规范来源是本仓库**：`packages/ui`（token 与组件）、本文、原型副本（`docs/design-system/prototypes/`）。
+claude.ai 的 Artifact（Design System 镜像、Design 画布）都是私有、按账号归属的，换账号或换开发者就看不到；
+因此任何开发、评审与验收都不得依赖 Artifact 链接，只读仓库。
 
-镜像在**发布模板版本时**由协调者按仓库内容更新，同时把上表的「最近同步提交」改为该版本的提交；
-平时合并 token 或组件 PR 不逐次更新。判断镜像是否落后（模板仓库中执行，退出码 0 表示不落后）：
+镜像是可选的个人缓存，供出设计稿时在 claude.ai 里对照：
+
+- 打不开（换了账号、新开发者、链接失效）时，**不申请共享**，在当前账号用 Design System Artifact 类型按仓库重建一份
+  （来源：`packages/ui/src/styles/` 的 token、`packages/ui/src/index.ts` 与 `chat.ts` 的公开组件、本文的用法与对比度说明）。
+  重建的镜像只给自己用，链接不写回仓库。
+- 镜像内的 README 记录它对应的仓库提交；判断是否落后（退出码 0 表示不落后）：
 
 ```sh
-git merge-base --is-ancestor "$(git log -1 --format=%H -- packages/ui/src)" <最近同步提交> && echo 镜像为最新
+git merge-base --is-ancestor "$(git log -1 --format=%H -- packages/ui/src)" <镜像记录的提交> && echo 镜像为最新
 ```
 
-镜像落后时以本文与 `packages/ui` 为准。衍生项目跳过这项判断，以项目自己的 `docs/design/visual-system.md`
-与项目镜像为准。
+- 落后时以本文与 `packages/ui` 为准；需要时按仓库差异增量同步或直接重建，不必随每次发版同步。
+- 设计画布同理：确认后的画布以副本文件为准（§8、`ui-design` 技能），原型索引里的画布链接只是确认时的记录，可能只对确认者的账号可见。
+
+衍生项目同样以自己仓库的 `docs/design/visual-system.md`、`brand.css` 与原型副本为准，项目镜像也是可选缓存。
 
 ## 2. 分层
 
