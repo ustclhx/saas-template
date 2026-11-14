@@ -80,9 +80,9 @@ function RootComponent() {
       <AnnouncementBanner initial={announcement} />
       {templateConfig.i18n.enabled && !hasInlineControls && <LanguageControls />}
       <Outlet />
-      {/* 手机端没有站点页脚的公开页：设置行放在页面末尾；有页脚时由页脚渲染，这里隐藏 */}
+      {/* 手机端没有站点页脚的公开页：设置行放在页面末尾，底部留 80px 给右下悬浮按钮；有页脚时由页脚渲染，这里隐藏 */}
       {!hasInlineControls && (
-        <SiteSettings className="border-t p-4 md:hidden print:hidden [body:has([data-site-footer])_&]:hidden" />
+        <SiteSettings className="border-t px-4 pt-4 pb-20 md:hidden print:hidden [body:has([data-site-footer])_&]:hidden" />
       )}
     </RootDocument>
   )
