@@ -1,7 +1,13 @@
 import type { Pricing } from '@saas/ai'
 import { renderToString } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { creditEstimate, DEFAULT_MAX_OUTPUT_TOKENS, type PickerModel } from './model-picker.ts'
+import {
+  creditEstimate,
+  DEFAULT_MAX_OUTPUT_TOKENS,
+  formatEstimate,
+  type PickerModel,
+} from './model-picker.ts'
+import { m } from '../../paraglide/messages.js'
 import { CreditEstimateText, ModelPicker } from './model-picker.tsx'
 
 const perCall: PickerModel = {
@@ -26,11 +32,11 @@ const perToken: PickerModel = {
 describe('CreditEstimateText', () => {
   it('按次计费显示确定值，并按参数倍率加权', () => {
     const html = renderToString(<CreditEstimateText model={perCall} inputTokens={1500} />)
-    expect(html).toContain('>5 credits</span>')
+    expect(html).toContain(`>${formatEstimate({ kind: 'exact', credits: 5 })}</span>`)
     const weighted = renderToString(
       <CreditEstimateText model={perCall} inputTokens={0} params={{ quality: 'high' }} />,
     )
-    expect(weighted).toContain('>10 credits</span>')
+    expect(weighted).toContain(`>${formatEstimate({ kind: 'exact', credits: 10 })}</span>`)
     expect(html).not.toContain('~')
   })
 
@@ -39,7 +45,7 @@ describe('CreditEstimateText', () => {
     const html = renderToString(
       <CreditEstimateText model={perToken} inputTokens={1500} maxOutputTokens={2000} />,
     )
-    expect(html).toContain('>~3–23 credits</span>')
+    expect(html).toContain(`>${formatEstimate({ kind: 'range', min: 3, max: 23 })}</span>`)
   })
 
   it('按 token 计费的上限按余额压低最大输出', () => {
@@ -47,7 +53,7 @@ describe('CreditEstimateText', () => {
     const html = renderToString(
       <CreditEstimateText model={perToken} inputTokens={1500} maxOutputTokens={2000} balance={8} />,
     )
-    expect(html).toContain('>~3–8 credits</span>')
+    expect(html).toContain(`>${formatEstimate({ kind: 'range', min: 3, max: 8 })}</span>`)
   })
 
   it('未选择模型时不渲染', () => {
@@ -97,7 +103,7 @@ describe('ModelPicker', () => {
 
   it('没有可用模型时显示提示', () => {
     const html = renderToString(<ModelPicker models={[]} value={undefined} onChange={() => {}} />)
-    expect(html).toContain('No models are available')
+    expect(html).toContain(m.chat_ui_model_empty())
     expect(html).not.toContain('role="combobox"')
   })
 })
