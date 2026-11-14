@@ -12,7 +12,7 @@ claude.ai 的 Design System Artifact 只是可视化镜像，供出设计稿前�
 | 字段 | 值 |
 |---|---|
 | Design System 镜像 | https://claude.ai/artifact/5bJuRwNuRe7xV5aQcCfULr（私有，需所有者共享后他人可见） |
-| 最近同步提交 | 36d5928（2026-11-13，模板 0.4.0；本版 `packages/ui` 只新增分享卡片主题常量与一个图标导出，镜像无视觉变化） |
+| 最近同步提交 | 36d5928（2026-11-13，模板 0.4.0）。**镜像落后于 0.5.0**：0.5.0 新增对话组件（`@saas/ui/chat`）与 token `--warning`、`--fluid-accent-text`、`--chat-fill`、`--container-chat-message`；发布时镜像 Artifact 无法访问，待使用者确认镜像去向后重建或同步 |
 
 镜像在**发布模板版本时**由协调者按仓库内容更新，同时把上表的「最近同步提交」改为该版本的提交；
 平时合并 token 或组件 PR 不逐次更新。判断镜像是否落后（模板仓库中执行，退出码 0 表示不落后）：
