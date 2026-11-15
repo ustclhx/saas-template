@@ -24,7 +24,7 @@
 | 审计加固 | `harden-audit-findings` | 35/36，已归档（2026-11-15）：7.3 staging 验收降为 P2，转入 Phase 7 待重测 |
 | 埋点与 SEO/GEO | `add-analytics-plausible-geo` | 29/29；已归档：`archive/2026-11-05-add-analytics-plausible-geo`；8.4 于 2026-11-05 在自建实例通过 |
 | Plausible 多站 | `add-plausible-multi-site` | 15/15；已归档：`archive/2026-11-14-add-plausible-multi-site` |
-| 汇率模块 | `add-fx-rates` | 4/5；进行中，见下文「进行中的 change」 |
+| 汇率模块 | `add-fx-rates` | 4/5，已归档（2026-11-16）：3.2 署名由接入项目上线前确认，见 [计费 §7](./05-billing.md) |
 | 衍生项目基础能力 R1/R2 | `add-subject-chat` | 25/26，已归档（2026-11-15）：8.2 由 xuanxue staging 验收；8.1 长对话摘要（P2）转入 Phase 7 待排期 |
 | 衍生项目基础能力 R3 | `add-daily-credits` | 5/5；已归档：`archive/2026-11-14-add-daily-credits` |
 | 衍生项目基础能力 R4 | `add-billing-coexistence` | 18/18；已归档：`archive/2026-11-15-add-billing-coexistence`；4.3 于 2026-11-15 在 staging Stripe 测试模式验收（同空间月付订阅后追加积分包、重放不重复入账） |
@@ -194,9 +194,7 @@
 
 ## 进行中的 change
 
-以下各项的实现都已合并到 main，只差验收或明确延后的任务，全部完成后由协调者归档。
-
-- **`add-fx-rates`（4/5）**：3.2 由接入项目在页面展示汇率前确认署名链接，模板侧没有待办。
+无（2026-11-16）。未完成的延后项（长对话摘要、审计加固 staging 整体验收）记在 Phase 7。
 
 ## 待决事项
 
