@@ -2,7 +2,7 @@
 
 每个阶段结束时都应该能部署到 staging 并完成验收。阶段内顺序即建议的实现顺序。
 
-**进度基线（2026-11-02，main `ea03a73` / #286）**：以下状态已核对 `openspec list --json`、各 change 的 `tasks.md`、归档与 main 已合并 PR。功能项勾选表示对应任务的实现与规定验证已完成；阶段整体验收另列，代码合并或本地模拟通过不替代 staging 验收。进行中的其他 worktree 不计入完成项。
+**进度基线（2026-11-15，模板版本 `template-v0.5.1`，其后已合并 #380–#383）**：以下状态已核对 `openspec list --json`、各 change 的 `tasks.md`、归档与 main 已合并 PR。功能项勾选表示对应任务的实现与规定验证已完成；阶段整体验收另列，代码合并或本地模拟通过不替代 staging 验收。进行中的其他 worktree 不计入完成项。
 
 每个阶段对应一个 OpenSpec change（`openspec/changes/<name>/`），实现时用 `/opsx:apply <name>` 按其 `tasks.md` 推进，全部验收完成后由协调者归档：
 
@@ -23,8 +23,15 @@
 | 模板同步 | `template-sync` | 26/26；已归档：`archive/2026-10-26-template-sync`（#281） |
 | 审计加固 | `harden-audit-findings` | 35/36；进行中，见下文「进行中的 change」 |
 | 埋点与 SEO/GEO | `add-analytics-plausible-geo` | 29/29；已归档：`archive/2026-11-05-add-analytics-plausible-geo`；8.4 于 2026-11-05 在自建实例通过 |
-| Plausible 多站 | `add-plausible-multi-site` | 14/15；进行中，见下文「进行中的 change」 |
+| Plausible 多站 | `add-plausible-multi-site` | 15/15；已归档：`archive/2026-11-14-add-plausible-multi-site` |
 | 汇率模块 | `add-fx-rates` | 4/5；进行中，见下文「进行中的 change」 |
+| 衍生项目基础能力 R1/R2 | `add-subject-chat` | 24/26；进行中（8.1 P2 未排期、8.2 待 xuanxue staging 回报） |
+| 衍生项目基础能力 R3 | `add-daily-credits` | 5/5；已归档：`archive/2026-11-14-add-daily-credits` |
+| 衍生项目基础能力 R4 | `add-billing-coexistence` | 17/18；进行中（4.3 staging Stripe 测试模式购买） |
+| 衍生项目基础能力 R5.3 | `add-og-images` | 22/22；已归档：`archive/2026-11-13-add-og-images`；项目覆盖 `add-share-card-project-overrides` 19/19 已归档 |
+| 衍生项目基础能力 R5 | `add-ui-design-system` | 35/35；已归档：`archive/2026-11-15-add-ui-design-system`（0.3.0–0.5.1） |
+| 对话组件 | `add-ai-chat-components` | 24/24；已归档：`archive/2026-11-14-add-ai-chat-components` |
+| 衍生项目基础能力 R6 | `add-prompt-evals` | 20/20；已归档：`archive/2026-11-14-add-prompt-evals` |
 
 已归档的其他 change：`add-cloud-staging-neon` 29/29（#85）、`add-first-run-admin-setup` 6/6 与 `add-payment-live-mode` 9/9（#184）、`add-text-reasoning-resilience` 9/9（#196）、`add-staging-fault-injection` 20/20（#209）、`add-agent-skills` 8/8（#211）。live 模式只交付代码，生产凭据与外部收款验收见下文「Cloudflare 生产上线」与 Q9。
 
@@ -185,10 +192,11 @@
 
 ## 进行中的 change
 
-以下三项的实现都已合并到 main，每项只差最后一个验收任务，全部完成后由协调者归档。
+以下各项的实现都已合并到 main，只差验收或明确延后的任务，全部完成后由协调者归档。
 
 - **`harden-audit-findings`（35/36）**：7.3 staging 验收暂停。Cloudflare Rate Limiting 绑定在线上 Worker 不限流（2026-10-25 实测，与上游 [workers-sdk#16097](https://github.com/cloudflare/workers-sdk/issues/16097) 现象一致）；用户决定继续用原生绑定，等上游修复后重测。verify-email 与 reset-password 也还未在 staging 跑通。记录见私有证据库 `saas-template-evidence:harden-audit-findings/2026-10-24-staging-7.3/README.md`，其中列有重测前需要按需还原的 staging 改动。
-- **`add-plausible-multi-site`（14/15）**：5.2 由 xuanxue 升级到包含本 change 的模板版本、在生产配置两站映射后验收（xuanxue staging 不接）。社区版的限制与开站步骤见 [analytics](./analytics.md)。
+- **`add-subject-chat`（24/26）**：8.2 staging 真实模型验收依赖已注册对象类型的项目，模板 staging 不注册任何类型，由 xuanxue 的报告内追问验收回报后勾选（2026-11-15 约定当日回报）；8.1 长对话摘要（R2.3）为 P2，未排期。
+- **`add-billing-coexistence`（17/18）**：4.3 staging Stripe 测试模式下同一空间订阅后追加积分包并核对入账，2026-11-15 进行中。
 - **`add-fx-rates`（4/5）**：3.2 由接入项目在页面展示汇率前确认署名链接，模板侧没有待办。
 
 ## 待决事项
