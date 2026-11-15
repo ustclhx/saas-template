@@ -29,6 +29,12 @@ import { register, simulateClientIp } from './fixtures.ts'
 import { chooseOption } from './select.ts'
 import { stubTurnstile } from './turnstile.ts'
 
+// offlineProviderTransport 拦截全部 _serverFn：测试结束时仍在途的 GET 会让 route.fetch 抛「Test ended」（2026-11-14 nightly），
+// 结束前撤掉路由并忽略在途请求的错误
+test.afterEach(async ({ page }) => {
+  await page.unrouteAll({ behavior: 'ignoreErrors' })
+})
+
 async function catalog(db: ReturnType<typeof actionDb>, subscriptionPlan = false) {
   const planId = randomUUID()
   const priceId = randomUUID()
