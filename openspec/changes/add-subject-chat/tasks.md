@@ -54,4 +54,9 @@
 ## 8. 未做与外部验收
 
 - [ ] 8.1 （P2，本次不做）长对话摘要 R2.3
-- [ ] 8.2 staging 真实模型验收：嵌入式对话基于对象上下文回答、开启后续问题时的计费结算（需 staging AI 服务商凭据）
+- [x] 8.2 staging 真实模型验收：嵌入式对话基于对象上下文回答、开启后续问题时的计费结算（需 staging AI 服务商凭据）
+  - 2026-11-15 由衍生项目 xuanxue 在其 staging（模板 0.5.1，deepseek-flash 按 token 计费，followUps count=3、charge=false）完成：
+    回复引用对象上下文（两站点、桌面与 390px、持久对象与临时上下文），每个对话只有一条 system 上下文；
+    8 次调用对应 8 个主预扣，推荐追问无额外预扣，定价快照、message.credits、预扣 captured 与消费账本逐条一致，余额不足 402；
+    停止按停止结算并释放差额，客户端失败不建消息与预扣。证据在项目私有验收目录 adopt-subject-chat-readings/staging-7.1。
+  - 未在 staging 覆盖：`followUps.charge=true` 的计费路径与服务端 failed 全额释放，由集成测试覆盖（ai-subject-chat.test.ts）。
