@@ -65,26 +65,14 @@ test('页面技能第 1 步检查原型索引，缺失时转入 ui-design', () =
   }
 })
 
-test('文档中「将由 tasks N.M」对应的任务仍未勾选', () => {
-  const tasksPath = 'openspec/changes/add-ui-design-system/tasks.md'
-  if (derived || !existsSync(join(ROOT, tasksPath))) return
-  const tasks = read(tasksPath)
+test('add-ui-design-system 已归档，文档与技能不再写「将由 tasks N.M」', () => {
+  if (derived) return
   const sources = [
     'docs/design-system.md',
     ...SKILLS.map((name) => `.agents/skills/${name}/SKILL.md`),
   ]
   for (const path of sources) {
-    for (const [, list] of read(path).matchAll(/将由 tasks ([\d.、]+)/g)) {
-      for (const id of list.split('、').filter(Boolean)) {
-        const line = tasks.match(new RegExp(`^- \\[( |x)\\] ${id.replace('.', '\\.')} `, 'm'))
-        assert.ok(line, `${path} 引用的任务 ${id} 不在 tasks.md 中`)
-        assert.equal(
-          line[1],
-          ' ',
-          `${path} 仍写「将由 tasks ${id}」，但该任务已勾选，请改为现成路径`,
-        )
-      }
-    }
+    assert.doesNotMatch(read(path), /将由 tasks [\d.]/, `${path} 仍引用未来任务，请改为现成路径`)
   }
 })
 
