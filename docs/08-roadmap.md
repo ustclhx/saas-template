@@ -25,7 +25,7 @@
 | 埋点与 SEO/GEO | `add-analytics-plausible-geo` | 29/29；已归档：`archive/2026-11-05-add-analytics-plausible-geo`；8.4 于 2026-11-05 在自建实例通过 |
 | Plausible 多站 | `add-plausible-multi-site` | 15/15；已归档：`archive/2026-11-14-add-plausible-multi-site` |
 | 汇率模块 | `add-fx-rates` | 4/5；进行中，见下文「进行中的 change」 |
-| 衍生项目基础能力 R1/R2 | `add-subject-chat` | 24/26；进行中（8.1 P2 未排期、8.2 待 xuanxue staging 回报） |
+| 衍生项目基础能力 R1/R2 | `add-subject-chat` | 25/26；8.2 已由 xuanxue staging 验收（2026-11-15），仅余 8.1（P2 长对话摘要，未排期） |
 | 衍生项目基础能力 R3 | `add-daily-credits` | 5/5；已归档：`archive/2026-11-14-add-daily-credits` |
 | 衍生项目基础能力 R4 | `add-billing-coexistence` | 18/18；已归档：`archive/2026-11-15-add-billing-coexistence`；4.3 于 2026-11-15 在 staging Stripe 测试模式验收（同空间月付订阅后追加积分包、重放不重复入账） |
 | 衍生项目基础能力 R5.3 | `add-og-images` | 22/22；已归档：`archive/2026-11-13-add-og-images`；项目覆盖 `add-share-card-project-overrides` 19/19 已归档 |
@@ -195,7 +195,7 @@
 以下各项的实现都已合并到 main，只差验收或明确延后的任务，全部完成后由协调者归档。
 
 - **`harden-audit-findings`（35/36）**：7.3 staging 验收暂停。Cloudflare Rate Limiting 绑定在线上 Worker 不限流（2026-10-25 实测，与上游 [workers-sdk#16097](https://github.com/cloudflare/workers-sdk/issues/16097) 现象一致）；用户决定继续用原生绑定，等上游修复后重测。verify-email 与 reset-password 也还未在 staging 跑通。记录见私有证据库 `saas-template-evidence:harden-audit-findings/2026-10-24-staging-7.3/README.md`，其中列有重测前需要按需还原的 staging 改动。
-- **`add-subject-chat`（24/26）**：8.2 staging 真实模型验收依赖已注册对象类型的项目，模板 staging 不注册任何类型，由 xuanxue 的报告内追问验收回报后勾选（2026-11-15 约定当日回报）；8.1 长对话摘要（R2.3）为 P2，未排期。
+- **`add-subject-chat`（25/26）**：8.2 已由 xuanxue 在其 staging 验收（2026-11-15，上下文引用、追问开启时的预扣与结算、停止与客户端失败结算均通过；`followUps.charge=true` 与服务端 failed 释放仅集成测试覆盖）；8.1 长对话摘要（R2.3）为 P2，未排期。
 - **`add-fx-rates`（4/5）**：3.2 由接入项目在页面展示汇率前确认署名链接，模板侧没有待办。
 
 ## 待决事项
