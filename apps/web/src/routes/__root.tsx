@@ -60,12 +60,14 @@ export const Route = createRootRoute({
 function RootComponent() {
   const { impersonation, announcement } = Route.useLoaderData()
   const { htmlAttributes } = Route.useRouteContext()
-  // 后台侧栏、认证页脚与工作台侧边栏布局自带控件，避免浮动控件遮挡正文。
+  // 后台侧栏、认证页脚与工作台侧边栏布局自带控件，路由也可用 staticData.floatingControls = false 声明不需要，
+  // 避免浮动控件遮挡正文。
   const hasInlineControls = useRouterState({
     select: (state) =>
       state.matches.some(
         (match) =>
           match.routeId.startsWith('/(auth)/') ||
+          match.staticData.floatingControls === false ||
           // 只在工作台壳实际渲染时；空间不存在或出错时显示浮动控件
           (templateConfig.ui.appLayout === 'sidebar' &&
             match.routeId === '/app/$slug' &&

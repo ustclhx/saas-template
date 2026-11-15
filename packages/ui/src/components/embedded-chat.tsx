@@ -162,9 +162,10 @@ function EmbeddedChat({
               type="button"
               leadingIcon={MessageCircle}
               data-embedded-chat-trigger=""
-              // 打开时隐藏但保留：Radix 关闭后把焦点还给它；inline 变体在桌面不显示
+              // 打开时隐藏但保留：Radix 关闭后把焦点还给它；inline 变体在桌面不显示。
+              // --floating-controls-offset：应用在右下另有浮动控件时设置，触发器叠在其上方
               className={cn(
-                'fixed right-4 bottom-[calc(1.5rem+env(safe-area-inset-bottom))] z-(--z-sticky) h-11 rounded-full pr-4 pl-3.5 shadow-surface-5 before:rounded-full',
+                'fixed right-4 bottom-[calc(var(--floating-controls-offset,0px)+1.5rem+env(safe-area-inset-bottom))] z-(--z-sticky) h-11 rounded-full pr-4 pl-3.5 shadow-surface-5 before:rounded-full',
                 'print:hidden',
                 variant === 'inline' && 'md:hidden',
                 open && 'invisible',

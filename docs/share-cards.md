@@ -251,7 +251,8 @@ import type { ProjectShareCardSite, ShareCardSiteContext } from './site.ts'
 export function resolveProjectShareCardSite(
   context: ShareCardSiteContext,
 ): ProjectShareCardSite | undefined {
-  if (context.host === 'ganjiday.com' || context.host === 'www.ganjiday.com' || context.locale === 'zh') {
+  // 运行时按 host 判断站点；locale 只描述页面语言，不能代表站点（见下文「按 host 判断站点」）
+  if (context.host === 'ganjiday.com' || context.host === 'www.ganjiday.com') {
     return {
       theme: { brandAccent: '#b91c1c' }, // 与 brand.css 的 :root[data-site="east"] 对应
       brand: { name: '干支日', initial: '干' },
@@ -284,6 +285,10 @@ render: (data, theme, site) =>
   各语言的卡片缓存互不混用。卡片路由与 `/dev/ui` 预览从 `l` 读取语言，只接受 `template.config.ts` 中启用的语言，
   缺省或未知值按默认语言解析（`v` 不符时 302 到当前地址）。默认语言与没有站点覆盖的项目地址不变，`l` 被忽略。
   运行时 `context.locale` 总有值（缺省为默认语言），解析函数不要用 `locale === undefined` 判断默认语言。
+- **按 host 判断站点，不要靠语言**（#373）：运行时 `context.locale` 总有值，用户在 A 站切到默认语言、或在 B 站打开
+  非默认语言页面都很常见，「语言为默认值」「语言为 zh」都不能用来推断站点。运行时只用 `host` 判断；
+  `locale` / `pathname` 只在构建期（没有请求，`host` 固定为 `APP_URL` 的 host）用来区分按语言或路径划分的站点。
+  `html-attributes.ts` 的 `data-site` 同理（[设计规范 §9.3](design-system.md#93-多站点)）。
 - 解析函数保持同步、无副作用，每次卡片请求都会调用。
 
 ## 7. 字体与文字支持

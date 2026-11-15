@@ -388,6 +388,11 @@ for (const [file, initial, modifiedContent] of [
     "import { registerToolRenderer } from './tool-renderers.ts'\n",
   ],
   [
+    'apps/web/src/features/ai/chat-composer.project.tsx',
+    'export const ProjectComposerEstimate = undefined\n',
+    'export const ProjectComposerEstimate = () => null\n',
+  ],
+  [
     'apps/web/src/features/app-shell/nav.project.ts',
     '// 项目导航条目\nexport {}\n',
     "import './nav.ts'\nexport {}\n",

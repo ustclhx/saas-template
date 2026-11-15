@@ -6,7 +6,15 @@
   // HTML / 动态路由走安全头入口；构建静态资源、OG 图片与分享卡片字体直接由 Asset Worker 返回。
   "assets": {
     "binding": "ASSETS",
-    "run_worker_first": ["/*", "!/assets/*", "!/og/*", "!/fonts/share-card/*"]
+    "run_worker_first": [
+      "/*",
+      "!/assets/*",
+      "!/og/*",
+      "!/fonts/share-card/*",
+      // 本地 dev：嵌入式对话 e2e 的测试模块（e2e/subject-chat，playwright.subject-chat.config.ts）由 Vite 提供，
+      // 不经 Worker（项目的站点守卫会拦下）；生产没有 /e2e 下的资源，由 Asset Worker 返回 404（#373）
+      "!/e2e/*"
+    ]
   },
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
