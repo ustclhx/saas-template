@@ -164,6 +164,7 @@ export function chatRequestBody(input: {
   conversationId: string
   messages: readonly UIMessage[]
   thinking?: boolean
+  requestId?: string
 }): ChatRequest {
   const last = input.messages.findLast((message) => message.role === 'user')
   const parts = (last?.parts ?? []).flatMap((part) =>
@@ -175,6 +176,7 @@ export function chatRequestBody(input: {
     conversationId: input.conversationId,
     message: { role: 'user', parts },
     ...(input.thinking === undefined ? {} : { thinking: input.thinking }),
+    ...(input.requestId === undefined ? {} : { requestId: input.requestId }),
   }
 }
 
@@ -227,3 +229,8 @@ export function chatErrorCode(error: unknown): string | undefined {
  * 先前已因出错结束时为 `failed`
  */
 export const stopResponseSchema = z.object({ status: z.enum(['aborted', 'completed', 'failed']) })
+
+/** `POST /api/ai/chat/stop`（按请求 ID 停止）的响应；`messageId` 为 null 表示回复没有入库 */
+export const requestStopResponseSchema = stopResponseSchema.extend({
+  messageId: z.string().nullable(),
+})

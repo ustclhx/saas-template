@@ -42,7 +42,7 @@ import { type Entitlements, getEntitlements } from '@saas/entitlements'
 import type { BackgroundTasks, RateLimiter } from '@saas/platform'
 import { AppError, newId, toErrorResponse } from '@saas/shared'
 import { log, setLogContext } from '@saas/shared/log'
-import { and, eq, inArray, type SQL } from 'drizzle-orm'
+import { and, eq, inArray, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { templateConfig } from '../../server/template-config.ts'
 import { resolveWorkspaceBySlug } from '../../server/workspace-context.ts'
@@ -90,6 +90,11 @@ export const chatRequestSchema = z.strictObject({
   thinking: z.boolean().optional(),
   /** 省略时新建对话 */
   conversationId: z.uuid().optional(),
+  /**
+   * 客户端为本轮生成的请求 ID（issue #362）：收到 start 事件（带回复 ID）之前点停止时，
+   * 客户端改用 `POST /api/ai/chat/stop` 按它停止。旧客户端与 API 入口省略。
+   */
+  requestId: z.uuid().optional(),
   /** 本轮的用户消息；首版只接受文本 */
   message: z.object({
     role: z.literal('user'),
@@ -119,6 +124,32 @@ interface ActiveChat {
   readonly done: Promise<void>
 }
 const activeChats = new Map<string, ActiveChat>()
+
+/** 按请求 ID 索引本 isolate 的进行中回复；键含用户 ID，他人猜到请求 ID 也命中不了。 */
+const activeRequests = new Map<string, ActiveChat & { readonly messageId: string }>()
+
+/**
+ * 「停止已请求」标记（issue #362）：停止先于回复入库到达本 isolate 时登记，聊天请求建好消息后、
+ * 调用模型前检查，命中即不调用上游、直接按停止结算。只在本 isolate 有效；落在其他 isolate 时由
+ * 停止接口等待消息入库后按检查点结算（见 `handleChatRequestStopRequest`）。条目短期过期。
+ */
+const pendingStops = new Map<string, number>()
+const PENDING_STOP_TTL_MS = 60_000
+
+const requestKey = (userId: string, requestId: string) => `${userId}:${requestId}`
+
+function markPendingStop(stops: Map<string, number>, key: string, now = Date.now()) {
+  // 顺手清理过期条目，避免长寿 isolate 中积累
+  for (const [k, expiresAt] of stops) if (expiresAt <= now) stops.delete(k)
+  stops.set(key, now + PENDING_STOP_TTL_MS)
+}
+
+function takePendingStop(key: string, now = Date.now()): boolean {
+  const expiresAt = pendingStops.get(key)
+  if (expiresAt === undefined) return false
+  pendingStops.delete(key)
+  return expiresAt > now
+}
 
 export async function handleChatRequest(request: Request, deps: ChatDeps): Promise<Response> {
   try {
@@ -345,6 +376,7 @@ export async function startWorkspaceChat(
         reasoningTokens: 0,
         failedReplyRefund: textConfig.failedReplyRefund,
         at: new Date().toISOString(),
+        ...(input.requestId ? { clientRequestId: input.requestId } : {}),
         ...(faultMode
           ? {
               acceptanceFaultProof: {
@@ -370,6 +402,9 @@ export async function startWorkspaceChat(
   // 6. 流式调用；结算与客户端连接解耦
   const overage = deps.overage ?? templateConfig.billing.overage
   const controller = new AbortController()
+  const activeKey = input.requestId ? requestKey(userId, input.requestId) : undefined
+  // 停止先于消息入库到达本 isolate：不调用上游，读流循环直接以 aborted 结束并按停止规则结算
+  if (activeKey && takePendingStop(activeKey)) controller.abort('stop')
   let schedule = checkpointSchedule(deps.checkpoint)
   let checkpoints: Promise<unknown> = Promise.resolve()
   const result = createChatStream({
@@ -454,11 +489,14 @@ export async function startWorkspaceChat(
         log.error('ai.chat.settle_failed', { messageId: assistantId, error })
       } finally {
         activeChats.delete(assistantId)
+        if (activeKey) activeRequests.delete(activeKey)
       }
     },
   })
   const done = result.done.then(() => {})
-  activeChats.set(assistantId, { userId, abort: () => controller.abort('stop'), done })
+  const active: ActiveChat = { userId, abort: () => controller.abort('stop'), done }
+  activeChats.set(assistantId, active)
+  if (activeKey) activeRequests.set(activeKey, { ...active, messageId: assistantId })
   deps.waitUntil(done)
 
   return { result, metadata, done }
@@ -503,6 +541,18 @@ export async function handleChatStopRequest(
   }
 }
 
+const notFound = () => new AppError('NOT_FOUND', 'Not found', { status: 404 })
+
+/** 只认创建者自己对话中的回复 */
+const ownReply = (s: ReturnType<typeof scoped>, userId: string) =>
+  inArray(
+    aiMessage.conversationId,
+    s.select(aiConversation, {
+      where: eq(aiConversation.userId, userId),
+      fields: { id: aiConversation.id },
+    }),
+  )
+
 async function stopChat(
   request: Request,
   messageId: string,
@@ -512,7 +562,6 @@ async function stopChat(
   const { user } = await requireFreshSession({ auth: deps.auth, db, headers: request.headers })
   const parsed = stopRequestSchema.safeParse(await request.json().catch(() => undefined))
   if (!parsed.success) throw new AppError('INVALID_REQUEST', 'Invalid stop request')
-  const notFound = () => new AppError('NOT_FOUND', 'Not found', { status: 404 })
   // 本 isolate 中发起者本人的进行中回复：先中止上游再解析空间、查库，缩短从点停止到真正停止之间
   // 多生成（并保存、计费）的那一段。只有发起者能命中；之后的归属校验与结算流程不变。
   const local = (deps.activeChats ?? activeChats).get(messageId)
@@ -522,30 +571,37 @@ async function stopChat(
   setLogContext({ workspaceId: resolved.workspace.id, userId: user.id })
   const s = scoped(db, resolved.workspace.id)
 
-  // 只认创建者自己对话中的回复
   const load = async () => {
     const [row] = await s
       .select(aiMessage, {
         where: and(
           eq(aiMessage.id, messageId),
           eq(aiMessage.role, 'assistant'),
-          inArray(
-            aiMessage.conversationId,
-            s.select(aiConversation, {
-              where: eq(aiConversation.userId, user.id),
-              fields: { id: aiConversation.id },
-            }),
-          ),
+          ownReply(s, user.id),
         ) as SQL,
       })
       .limit(1)
     if (!row) throw notFound()
     return row
   }
+  return settleStop(db, await load(), load, local, deps.overage)
+}
+
+/**
+ * 已找到属于本人的回复后的停止流程，两个停止入口共用：本 isolate 有该流时中止并等待内存结算；
+ * 否则（或本地结算失败仍为 streaming）按最后一个检查点结算；已结束的消息幂等返回当前状态。
+ */
+async function settleStop(
+  db: Database,
+  found: AiMessage,
+  load: () => Promise<AiMessage>,
+  local: ActiveChat | undefined,
+  overage: OveragePolicy | undefined,
+): Promise<ChatStopResponse> {
   const ended = (status: AiMessage['status']) =>
     status === 'streaming' ? null : { status: status as ChatStopResponse['status'] }
 
-  let message = await load()
+  let message = found
   if (message.status === 'streaming' && local) {
     local.abort()
     await local.done
@@ -558,9 +614,130 @@ async function stopChat(
   const settled = await settleFromCheckpoint(
     db,
     { ...message, holdId: message.holdId, pricing: message.pricing as Pricing },
-    { status: 'aborted', overage: deps.overage ?? templateConfig.billing.overage },
+    { status: 'aborted', overage: overage ?? templateConfig.billing.overage },
   )
   if (settled) return { status: 'aborted' }
   // 并发的另一方（原请求或兜底处理器）先结算
   return ended((await load()).status) ?? { status: 'aborted' }
+}
+
+export interface ChatRequestStopDeps extends Omit<ChatStopDeps, 'activeChats'> {
+  /** 默认本 isolate 按请求 ID 索引的进行中回复；测试传入空表模拟停止请求落在其他 isolate */
+  readonly activeRequests?: ReadonlyMap<string, ActiveChat & { readonly messageId: string }>
+  /** 默认本 isolate 的「停止已请求」标记；测试传入独立的表模拟停止请求落在其他 isolate */
+  readonly pendingStops?: Map<string, number>
+  /**
+   * 回复还没入库时重读的间隔（毫秒）。聊天请求在入库前只做鉴权、权益、限流、历史与余额读取，
+   * 通常一秒内完成；默认最长等约 6 秒，期间只按会话索引做少量查询。
+   */
+  readonly waitDelays?: readonly number[]
+}
+
+export const REQUEST_STOP_WAIT_MS: readonly number[] = [0, 100, 200, 400, 800, 1600, 3200]
+
+const requestStopSchema = z.object({
+  slug: z.string().min(1).max(64),
+  conversationId: z.uuid(),
+  requestId: z.uuid(),
+})
+
+/** 按请求 ID 停止的响应；`messageId` 为 null 表示等待期内回复没有入库（请求被拒或尚未建好） */
+export interface ChatRequestStopResponse {
+  readonly status: ChatStopResponse['status']
+  readonly messageId: string | null
+}
+
+/**
+ * `POST /api/ai/chat/stop`（issue #362）：请求体 `{ slug, conversationId, requestId }`。客户端在收到
+ * start 事件、拿到回复 ID 之前点停止时使用；拿到回复 ID 后仍走 `/api/ai/chat/:messageId/stop`。
+ * 只能停止自己在该空间的对话中的回复，对话不属于本人或不存在返回 404。
+ *
+ * - 先在本 isolate 登记「停止已请求」：聊天请求若还没建好消息，建好后不调用上游，直接以 aborted 结算。
+ * - 按 (对话, 请求 ID) 查回复，查不到时按 `waitDelays` 等待入库（覆盖原请求在其他 isolate 的情况），
+ *   找到后与按回复 ID 停止完全相同：本 isolate 中止并按内存结算，其他 isolate 按检查点结算。
+ * - 等待期内仍没有回复：返回 `{ status: 'aborted', messageId: null }`，本 isolate 的标记短期保留。
+ */
+export async function handleChatRequestStopRequest(
+  request: Request,
+  deps: ChatRequestStopDeps,
+): Promise<Response> {
+  try {
+    return Response.json(await stopChatRequest(request, deps))
+  } catch (error) {
+    if (!(error instanceof AppError) || error.status >= 500)
+      log.error('ai.chat.stop_failed', { error })
+    const { status, body } = toErrorResponse(error)
+    return Response.json(body, { status })
+  }
+}
+
+async function stopChatRequest(
+  request: Request,
+  deps: ChatRequestStopDeps,
+): Promise<ChatRequestStopResponse> {
+  const { db } = deps
+  const { user } = await requireFreshSession({ auth: deps.auth, db, headers: request.headers })
+  const parsed = requestStopSchema.safeParse(await request.json().catch(() => undefined))
+  if (!parsed.success) throw new AppError('INVALID_REQUEST', 'Invalid stop request')
+  const { slug, conversationId, requestId } = parsed.data
+  // 标记与本地索引都以用户 ID 为前缀：只影响本人带该请求 ID 的聊天请求，无需先查库即可登记，
+  // 尽量赶在原请求建好消息、调用上游之前
+  const key = requestKey(user.id, requestId)
+  const actives = deps.activeRequests ?? activeRequests
+  let local = actives.get(key)
+  if (local) local.abort()
+  else markPendingStop(deps.pendingStops ?? pendingStops, key)
+
+  const resolved = await resolveWorkspaceBySlug(db, user.id, slug)
+  if (!resolved) throw notFound()
+  setLogContext({ workspaceId: resolved.workspace.id, userId: user.id })
+  const s = scoped(db, resolved.workspace.id)
+  const [conversation] = await s
+    .select(aiConversation, {
+      where: and(eq(aiConversation.id, conversationId), eq(aiConversation.userId, user.id)) as SQL,
+      fields: { id: aiConversation.id },
+    })
+    .limit(1)
+  if (!conversation) throw notFound()
+
+  const find = async () => {
+    const [row] = await s
+      .select(aiMessage, {
+        where: and(
+          eq(aiMessage.conversationId, conversationId),
+          eq(aiMessage.role, 'assistant'),
+          sql`${aiMessage.usageCheckpoint}->>'clientRequestId' = ${requestId}`,
+        ) as SQL,
+      })
+      .orderBy(...aiMessageOrder('desc'))
+      .limit(1)
+    return row
+  }
+  let found: AiMessage | undefined
+  for (const delay of deps.waitDelays ?? REQUEST_STOP_WAIT_MS) {
+    if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay))
+    found = await find()
+    if (found) break
+  }
+  if (!found) return { status: 'aborted', messageId: null }
+  // 标记不在此删除：原请求可能刚建好消息、尚未检查标记；请求 ID 一次性，残留标记到期即清理
+  local ??= actives.get(key)
+  const messageId = found.id
+  const load = async () => {
+    const [row] = await s
+      .select(aiMessage, {
+        where: and(eq(aiMessage.id, messageId), ownReply(s, user.id)) as SQL,
+      })
+      .limit(1)
+    if (!row) throw notFound()
+    return row
+  }
+  const result = await settleStop(
+    db,
+    found,
+    load,
+    local?.messageId === messageId ? local : undefined,
+    deps.overage,
+  )
+  return { ...result, messageId }
 }

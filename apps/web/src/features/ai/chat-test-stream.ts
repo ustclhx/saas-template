@@ -18,6 +18,8 @@ export interface FakeChatServer {
   readonly streams: FakeStream[]
   /** 停止接口收到的请求路径 */
   readonly stops: string[]
+  /** 停止接口收到的请求体（与 `stops` 同序） */
+  readonly stopBodies: Record<string, unknown>[]
 }
 
 /**
@@ -34,11 +36,16 @@ export function fakeChatServer(
 ): FakeChatServer {
   const streams: FakeStream[] = []
   const stops: string[] = []
+  const stopBodies: Record<string, unknown>[] = []
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     if (url.endsWith('/stop')) {
       stops.push(url)
+      stopBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>)
       if (options.stopFails) return new Response('error', { status: 500 })
+      // 按请求 ID 停止（收到 start 之前）另带回复 ID；模拟回复尚未入库
+      if (url.endsWith('/api/ai/chat/stop'))
+        return Response.json({ status: options.stopStatus ?? 'aborted', messageId: null })
       return Response.json({ status: options.stopStatus ?? 'aborted' })
     }
     if (options.reject)
@@ -77,7 +84,7 @@ export function fakeChatServer(
       headers: { 'content-type': 'text/event-stream', 'x-vercel-ai-ui-message-stream': 'v1' },
     })
   }
-  return { fetch, streams, stops }
+  return { fetch, streams, stops, stopBodies }
 }
 
 /** 流的开头：start（带消息 ID 元数据）与正文段开始 */
