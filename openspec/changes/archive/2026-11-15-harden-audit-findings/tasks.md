@@ -60,4 +60,4 @@
 
 - [x] 7.1 第 4 组合并后，在 main 上生成 `ai_task.cancel_billing` 迁移（如第 6 组需要死信字段，一并生成），加 `rollback-safe` 注释，并在本地 `saas_dev` 验证
 - [x] 7.2 创建 staging 与 production 的 `events-dlq` 队列，设置仓库变量 `RELEASE_PHASE=testing`（2026-10-24 创建 `events-dlq-staging` 并设置变量；2026-10-25 创建 `events-dlq-production`）
-- [ ] 7.3 staging 验收：Stripe test clock 月付切换年付、并发猜验证码被限流、媒体取消三种情况、免费失败第 4 次扣费、CSP 没有违规报告、删号后数据已清理；证据写入 `EVIDENCE_DIR`
+- [ ] 7.3 staging 验收：Stripe test clock 月付切换年付、并发猜验证码被限流、媒体取消三种情况、免费失败第 4 次扣费、CSP 没有违规报告、删号后数据已清理；证据写入 `EVIDENCE_DIR` —— 2026-11-15 使用者决定降为 P2 并归档本变更：验证码限流因 Cloudflare Rate Limiting 绑定线上不生效（workers-sdk#16097）未通过，其余各项已有原始记录但未统一下结论；转入路线图待上游修复后重测
