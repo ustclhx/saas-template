@@ -48,6 +48,11 @@ export interface AiUsageCheckpoint extends AiTextUsage {
   failedReplyRefund?: 'no-visible-output' | 'all'
   /** ISO 时间 */
   at: string
+  /**
+   * 站内客户端为本轮生成的请求 ID（issue #362）：收到 start 事件前就点停止时，停止接口据此找到回复。
+   * 放在检查点 JSON 中、各写入以 `||` 合并保留，避免为一个短期查找键新增列与迁移。
+   */
+  clientRequestId?: string
   /** 验收包装器的最小执行证明；不包含提示词或输出正文。 */
   acceptanceFaultProof?: {
     mode: 'chat-before-stream' | 'chat-mid-stream'

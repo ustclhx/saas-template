@@ -163,6 +163,29 @@ describe('消息状态', () => {
     expect(stream.aborted).toBe(true)
   })
 
+  it('收到 start 之前停止：按本轮请求 ID 通知服务端（issue #362）', async () => {
+    const server = fakeChatServer({ stopStatus: 'aborted' })
+    vi.stubGlobal('fetch', server.fetch)
+    renderPage()
+    await send('Write a story')
+    await waitFor(() => expect(server.streams).toHaveLength(1))
+    const stream = server.streams[0]
+    if (!stream) throw new Error('no stream')
+    const requestId = stream.body.requestId
+    expect(requestId).toEqual(expect.stringMatching(/^[0-9a-f-]{36}$/))
+    fireEvent.click(screen.getByRole('button', { name: m.chat_ui_stop() }))
+    await waitFor(() => expect(server.stops).toEqual(['/api/ai/chat/stop']))
+    expect(server.stopBodies[0]).toEqual({ slug: 'personal', conversationId: 'c', requestId })
+    await waitFor(() => expect(screen.getByRole('button', { name: m.chat_ui_send() })).toBeTruthy())
+    expect(stream.aborted).toBe(true)
+    expect(screen.queryByRole('alert')).toBeNull()
+
+    // 下一轮使用新的请求 ID
+    await send('Another one')
+    await waitFor(() => expect(server.streams).toHaveLength(2))
+    expect(server.streams[1]?.body.requestId).not.toBe(requestId)
+  })
+
   it('停止接口失败时提示可能仍在后台生成', async () => {
     const server = fakeChatServer({ stopFails: true })
     vi.stubGlobal('fetch', server.fetch)

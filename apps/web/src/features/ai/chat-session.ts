@@ -10,6 +10,7 @@ import {
   chatRequestBody,
   mergeStoredReply,
   messageText,
+  requestStopResponseSchema,
   type StoredMessage,
   stopResponseSchema,
   streamingMessageId,
@@ -88,6 +89,8 @@ export class ChatSession {
   readonly #start: (() => Promise<string>) | undefined
   readonly #onStarted: ((id: string) => void) | undefined
   readonly #reconcileDelays: readonly number[]
+  /** 本轮发送的请求 ID：收到 start 事件（回复 ID）之前点停止时据此通知服务端 */
+  #requestId: string | undefined
 
   constructor(options: ChatSessionOptions) {
     this.slug = options.slug
@@ -122,6 +125,7 @@ export class ChatSession {
           conversationId: this.conversationId ?? '',
           messages,
           ...(this.canToggleThinking ? { thinking: this.#state.thinking } : {}),
+          ...(this.#requestId ? { requestId: this.#requestId } : {}),
         }),
       }),
     })
@@ -214,38 +218,57 @@ export class ChatSession {
     }
     if (this.#disposed) return
     trackEvent('generate_start')
+    this.#requestId = crypto.randomUUID()
     void this.chat.sendMessage({ text })
   }
 
-  /** 先通知服务端停止上游生成，再中断本地读取（服务端在客户端断开后仍会继续读完模型流） */
+  /**
+   * 先通知服务端停止上游生成，再中断本地读取（服务端在客户端断开后仍会继续读完模型流）。
+   * 已收到 start 事件时按回复 ID 停止；之前（submitted 且还没有回复 ID）按本轮请求 ID 停止，
+   * 否则只中断本地读取，服务端会生成并结算完整回复（issue #362）。
+   */
   async stop(): Promise<void> {
     const messageId = streamingMessageId(this.chat.messages, this.chat.status)
+    const requestId = !messageId && this.busy ? this.#requestId : undefined
+    const conversationId = this.conversationId
     this.set({ stopError: null, stopping: true })
+    const post = (url: string, body: unknown) =>
+      fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
     const request = messageId
-      ? fetch(`/api/ai/chat/${messageId}/stop`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ slug: this.slug }),
-        })
-      : undefined
+      ? post(`/api/ai/chat/${messageId}/stop`, { slug: this.slug })
+      : requestId && conversationId
+        ? post('/api/ai/chat/stop', { slug: this.slug, conversationId, requestId })
+        : undefined
     await this.chat.stop()
-    if (!messageId || !request) {
+    if (!request) {
       this.set({ stopping: false })
       return
     }
+    let stoppedId = messageId
     try {
       const response = await request
-      const parsed = stopResponseSchema.safeParse(await response.json())
+      const json: unknown = await response.json()
+      const parsed = stopResponseSchema.safeParse(json)
       if (!response.ok || !parsed.success) throw new Error('stop failed')
+      if (!messageId) {
+        // 按请求 ID 停止时回复 ID 来自响应；为 null 表示回复没有入库，没有可对齐的消息
+        const byRequest = requestStopResponseSchema.safeParse(json)
+        if (!byRequest.success) throw new Error('stop failed')
+        stoppedId = byRequest.data.messageId ?? undefined
+      }
       this.set({
         stopping: false,
-        ended: { ...this.#state.ended, [messageId]: parsed.data.status },
+        ...(stoppedId ? { ended: { ...this.#state.ended, [stoppedId]: parsed.data.status } } : {}),
       })
     } catch {
       this.set({ stopping: false, stopError: m.chat_ui_stop_failed() })
     }
     // 服务端从客户端停止到真正中止之间可能多生成一段并计费：换成已保存的正文与积分
-    void this.reconcile(messageId)
+    if (stoppedId) void this.reconcile(stoppedId)
   }
 
   /**
