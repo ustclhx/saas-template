@@ -21,11 +21,11 @@
 | 自托管 | `add-selfhost-*`（四个 change） | 116/116；2026-10-17 已同步规格并归档（#239） |
 | 流式心跳 | `add-stream-heartbeat` | 5/5；已归档：`archive/2026-10-20-add-stream-heartbeat`（#252） |
 | 模板同步 | `template-sync` | 26/26；已归档：`archive/2026-10-26-template-sync`（#281） |
-| 审计加固 | `harden-audit-findings` | 35/36；进行中，见下文「进行中的 change」 |
+| 审计加固 | `harden-audit-findings` | 35/36，已归档（2026-11-15）：7.3 staging 验收降为 P2，转入 Phase 7 待重测 |
 | 埋点与 SEO/GEO | `add-analytics-plausible-geo` | 29/29；已归档：`archive/2026-11-05-add-analytics-plausible-geo`；8.4 于 2026-11-05 在自建实例通过 |
 | Plausible 多站 | `add-plausible-multi-site` | 15/15；已归档：`archive/2026-11-14-add-plausible-multi-site` |
 | 汇率模块 | `add-fx-rates` | 4/5；进行中，见下文「进行中的 change」 |
-| 衍生项目基础能力 R1/R2 | `add-subject-chat` | 25/26；8.2 已由 xuanxue staging 验收（2026-11-15），仅余 8.1（P2 长对话摘要，未排期） |
+| 衍生项目基础能力 R1/R2 | `add-subject-chat` | 25/26，已归档（2026-11-15）：8.2 由 xuanxue staging 验收；8.1 长对话摘要（P2）转入 Phase 7 待排期 |
 | 衍生项目基础能力 R3 | `add-daily-credits` | 5/5；已归档：`archive/2026-11-14-add-daily-credits` |
 | 衍生项目基础能力 R4 | `add-billing-coexistence` | 18/18；已归档：`archive/2026-11-15-add-billing-coexistence`；4.3 于 2026-11-15 在 staging Stripe 测试模式验收（同空间月付订阅后追加积分包、重放不重复入账） |
 | 衍生项目基础能力 R5.3 | `add-og-images` | 22/22；已归档：`archive/2026-11-13-add-og-images`；项目覆盖 `add-share-card-project-overrides` 19/19 已归档 |
@@ -188,14 +188,14 @@
 - [x] Waitlist、Newsletter（#46）
 - [x] `CLAUDE.md` / `AGENTS.md`：模块说明、约定、常用命令（#52）
 - [x] 「从模板创建新项目」的清单与脚本（改名、换配置、初始化基础设施；#52、#92、#100）
+- [ ] 长对话摘要（衍生项目需求 R2.3，P2，未排期）：原 `add-subject-chat` 8.1。该 change 于 2026-11-15 按使用者决定归档（8.2 由 xuanxue staging 验收；`followUps.charge=true` 与服务端 failed 全额释放仅集成测试覆盖），需要时另起 change。
+- [ ] 审计加固 staging 整体验收（P2，原 `harden-audit-findings` 7.3）：该 change 于 2026-11-15 按使用者决定归档。验证码限流未通过——Cloudflare Rate Limiting 绑定在线上 Worker 不限流（2026-10-25 实测、2026-11-12 重测仍无 429，与上游 [workers-sdk#16097](https://github.com/cloudflare/workers-sdk/issues/16097) 一致），用户决定继续用原生绑定，等上游修复后重测；verify-email 与 reset-password 未在 staging 跑通；Stripe test clock、媒体取消、免费失败计费、CSP、删号清理已有原始记录待统一结论。记录与需还原的 staging 改动见私有证据库 `saas-template-evidence:harden-audit-findings/2026-10-24-staging-7.3/README.md`。
 - [x] **新项目阶段验收（observability 6.1）**：#100 从模板生成独立文本 AI 项目，配置新 Neon / Cloudflare staging，健康、注册到首次 AI 调用、精确积分结算和 Sentry 源码堆栈均通过；临时资源已清理（2026-10-12；脱敏证据（私有证据库 `saas-template-evidence:create-project/2026-10-12/acceptance.json`））。原 staging 的 Sentry 1.2 已另行验收。
 
 ## 进行中的 change
 
 以下各项的实现都已合并到 main，只差验收或明确延后的任务，全部完成后由协调者归档。
 
-- **`harden-audit-findings`（35/36）**：7.3 staging 验收暂停。Cloudflare Rate Limiting 绑定在线上 Worker 不限流（2026-10-25 实测，与上游 [workers-sdk#16097](https://github.com/cloudflare/workers-sdk/issues/16097) 现象一致）；用户决定继续用原生绑定，等上游修复后重测。verify-email 与 reset-password 也还未在 staging 跑通。记录见私有证据库 `saas-template-evidence:harden-audit-findings/2026-10-24-staging-7.3/README.md`，其中列有重测前需要按需还原的 staging 改动。
-- **`add-subject-chat`（25/26）**：8.2 已由 xuanxue 在其 staging 验收（2026-11-15，上下文引用、追问开启时的预扣与结算、停止与客户端失败结算均通过；`followUps.charge=true` 与服务端 failed 释放仅集成测试覆盖）；8.1 长对话摘要（R2.3）为 P2，未排期。
 - **`add-fx-rates`（4/5）**：3.2 由接入项目在页面展示汇率前确认署名链接，模板侧没有待办。
 
 ## 待决事项
