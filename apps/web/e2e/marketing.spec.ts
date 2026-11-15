@@ -46,7 +46,9 @@ for (const prefix of prefixes) {
     }
     await expect(entry).toHaveAttribute('href', aiEntry.href)
     // 水合后键盘可聚焦（开发服务器首次编译较慢，放宽等待）
-    await expect(page.locator('[data-theme-option="system"]')).toBeEnabled({ timeout: 30_000 })
+    await expect(
+      page.locator('[data-theme-option="system"]').filter({ visible: true }),
+    ).toBeEnabled({ timeout: 30_000 })
     await entry.focus()
     await expect(entry).toBeFocused()
     // 滚到页面底部：页脚链接位于入口与浮动主题切换之上，仍可点击
@@ -118,7 +120,9 @@ for (const prefix of prefixes) {
     }
     await page.goto(`${prefix}/docs`)
     // 搜索在客户端执行：等水合完成（主题切换按钮在水合后才可用）再输入
-    await expect(page.locator('[data-theme-option="system"]')).toBeEnabled()
+    await expect(
+      page.locator('[data-theme-option="system"]').filter({ visible: true }),
+    ).toBeEnabled()
     await page.getByRole('searchbox').fill('template.config')
     await expect(page.locator(`search a[href="${prefix}/docs/configuration"]`)).toBeVisible()
   })
