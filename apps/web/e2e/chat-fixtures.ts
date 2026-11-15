@@ -11,16 +11,35 @@ export const UUID = '[0-9a-f-]{36}'
 
 export const slugOf = (page: Page) => new URL(page.url()).pathname.split('/')[2] ?? ''
 
+/**
+ * 打开对话列表并新建对话。模型列表经 KV 缓存（TTL 60 秒），项目也可能在没有可用模型时隐藏入口，
+ * 因此刷新直到「New chat」出现（#373）。
+ */
 export async function newConversation(page: Page, slug: string) {
-  await page.goto(`/app/${slug}/chat`)
+  const create = page.getByRole('button', { name: 'New chat' })
+  await expect
+    .poll(
+      async () => {
+        await page.goto(`/app/${slug}/chat`)
+        return create.count()
+      },
+      { timeout: 90_000, intervals: [2_000, 5_000] },
+    )
+    .toBe(1)
   await expect(page.getByRole('heading', { name: 'Chats' })).toBeVisible()
-  await page.getByRole('button', { name: 'New chat' }).click()
+  await create.click()
   await expect(page).toHaveURL(new RegExp(`/app/${slug}/chat/${UUID}$`))
   return new URL(page.url()).pathname.split('/').at(-1) ?? ''
 }
 
-/** 让空间的权益包含一个按次计费的测试模型（模型标签写入套餐 features.models） */
-export async function seedChatModel(slug: string) {
+/**
+ * 让空间的权益包含一个按次计费的测试模型（模型标签写入套餐 features.models）。
+ * Provider 默认 openai；离线 e2e 只为某个 Provider 配置了占位凭据的项目用 `E2E_CHAT_PROVIDER` 或参数改写（#373）。
+ */
+export async function seedChatModel(
+  slug: string,
+  { provider = process.env.E2E_CHAT_PROVIDER || 'openai' }: { provider?: string } = {},
+) {
   const sql = fixtureDb()
   const tag = `e2e-chat-${randomUUID().slice(0, 8)}`
   const modelId = newId()
@@ -45,7 +64,7 @@ export async function seedChatModel(slug: string) {
       limits: { maxInputTokens: 8000, maxOutputTokens: 2000 },
     }
     await sql`insert into ai_model (id,key,kind,provider,provider_model_id,pricing,min_plan_features,sort)
-      values (${modelId},${tag},'text','openai','gpt-fixture',${sql.json(pricing)},${sql.json([tag])},-1000)`
+      values (${modelId},${tag},'text',${provider},'gpt-fixture',${sql.json(pricing)},${sql.json([tag])},-1000)`
   } finally {
     await sql.end()
   }

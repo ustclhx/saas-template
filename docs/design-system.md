@@ -759,6 +759,9 @@ DailyClaimNotice」两节用中性示例数据展示全部状态。
 一个项目服务多个站点时，在 `brand.css` 用 `:root[data-site="<站点>"]` 与 `:root[data-site="<站点>"].dark`
 分别覆盖品牌变量。`data-site` 在项目自有的 `apps/web/src/features/theme/html-attributes.ts` 中按 host / locale / pathname
 返回（只在服务端首屏计算，客户端导航不重算），不修改模板根布局；各站点的视觉规范写在项目的 `docs/design/visual-system.md`。
+运行时 `locale` 总有值（缺省为默认语言），只能描述页面语言，不能推断站点：SSR 请求按 `host` 判断站点，
+`locale` / `pathname` 只用于预渲染（构建请求的 host 固定）时按语言或路径划分的站点；分享卡片的站点解析规则相同
+（[分享卡片 §6.1](share-cards.md#61-多站点)）。
 
 ### 9.4 同步模板
 

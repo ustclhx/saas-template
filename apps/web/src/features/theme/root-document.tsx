@@ -7,6 +7,16 @@ import { getLocale } from '../../paraglide/runtime.js'
 import { templateConfig } from '../../server/template-config.ts'
 import { ThemeToggle } from './theme-toggle.tsx'
 
+declare module '@tanstack/react-router' {
+  interface StaticDataRouteOption {
+    /**
+     * false：本页不显示根布局的浮动语言 / 主题控件与手机端页末设置行（#373）。
+     * 用于贴底输入区等占满视口底部的页面（如对话页），或页面自己提供了这些控件。
+     */
+    floatingControls?: boolean
+  }
+}
+
 /**
  * 根布局的 HTML 外壳：从路由文件中拆出，便于单测服务端输出。
  * 主题类名由 <head> 内联脚本在水合前写到 <html> 上，与服务端输出不一致属预期；
@@ -36,7 +46,9 @@ export function RootDocument({
       <head>
         <HeadContent />
       </head>
-      <body>
+      {/* 浮动控件存在时声明在 body 上：md 及以上 --floating-controls-offset 让右下的其他悬浮按钮
+          （SubjectChat 触发器）叠在主题切换上方（app.css） */}
+      <body data-floating-controls={floatingControls ? '' : undefined}>
         <UiRoot shape={templateConfig.ui.shape} density={templateConfig.ui.density}>
           {children}
           {floatingControls && (

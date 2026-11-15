@@ -415,6 +415,7 @@ test('sync adds share card and chat tool extensions once and preserves project r
   const fonts = 'apps/web/src/features/share-cards/share-cards.fonts.ts'
   const sites = 'apps/web/src/features/share-cards/share-cards.sites.ts'
   const tools = 'apps/web/src/features/ai/message-parts.project.tsx'
+  const estimate = 'apps/web/src/features/ai/chat-composer.project.tsx'
   await template.commit(
     {
       [registration]: 'export const registration = 1\n',
@@ -422,6 +423,7 @@ test('sync adds share card and chat tool extensions once and preserves project r
       [fonts]: 'export const fonts = 1\n',
       [sites]: 'export const sites = 1\n',
       [tools]: 'export const tools = 1\n',
+      [estimate]: 'export const estimate = 1\n',
     },
     'share card extensions',
     'template-v0.2.0',
@@ -441,6 +443,7 @@ test('sync adds share card and chat tool extensions once and preserves project r
     [fonts]: '// project fonts\n',
     [sites]: '// project sites\n',
     [tools]: '// project tools\n',
+    [estimate]: '// project estimate\n',
   })
   await template.commit(
     {
@@ -449,6 +452,7 @@ test('sync adds share card and chat tool extensions once and preserves project r
       [fonts]: 'export const fonts = 2\n',
       [sites]: 'export const sites = 2\n',
       [tools]: 'export const tools = 2\n',
+      [estimate]: 'export const estimate = 2\n',
     },
     'template extension changes',
     'template-v0.3.0',
@@ -463,6 +467,7 @@ test('sync adds share card and chat tool extensions once and preserves project r
   assert.equal(await readFile(join(project.dir, fonts), 'utf8'), '// project fonts\n')
   assert.equal(await readFile(join(project.dir, sites), 'utf8'), '// project sites\n')
   assert.equal(await readFile(join(project.dir, tools), 'utf8'), '// project tools\n')
+  assert.equal(await readFile(join(project.dir, estimate), 'utf8'), '// project estimate\n')
 })
 
 test('conflicts keep markers on the sync branch, list every file and leave the baseline unchanged', async (t) => {

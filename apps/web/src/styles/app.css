@@ -10,3 +10,12 @@
 @utility min-h-chat-page {
   min-height: calc(100svh - 8.5rem);
 }
+
+/* 根布局有浮动主题切换时（body[data-floating-controls]，md 及以上右下 bottom-4、高约 42px），
+   右下的其他悬浮按钮（SubjectChat 触发器）上移 3rem 叠在它上方，与 Ask AI 的 md:bottom-18 一致（#373）。
+   手机端浮动控件已移入页脚设置行，不需要偏移 */
+@media (width >= 48rem) {
+  body[data-floating-controls] {
+    --floating-controls-offset: 3rem;
+  }
+}
