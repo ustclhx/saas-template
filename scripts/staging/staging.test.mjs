@@ -95,7 +95,10 @@ test('health waits through an old version, database downtime and non-200 before 
   assert.equal(
     await waitHealthy(url, 'new-sha', {
       intervalMs: 200,
-      timeoutMs: 2_000,
+      // CI 冷启动时首个 fetch 可能超过 200ms：请求被中止而 mock 已消费第一条响应，日志多出 null 行（#212）。
+      // 本用例验证的是响应序列的处理，单次请求时限与间隔分开设置
+      requestTimeoutMs: 2_000,
+      timeoutMs: 5_000,
       write: (line) => lines.push(line),
     }),
     0,
