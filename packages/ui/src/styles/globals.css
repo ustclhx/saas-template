@@ -91,6 +91,9 @@
     --muted-foreground: #6b6b6b;
     --accent: #e5e5e5;
     --accent-foreground: #171717;
+    /* 模板新增（0.5.7）：中性填充（灰色实心 Badge 等）。与 --accent 同值但独立：品牌层常把 --accent 改成品牌主色，
+       中性徽标不应随之变色（衍生项目反馈对比度降到 1.38） */
+    --neutral-fill: #e5e5e5;
     /* Fluid 用 red-500；作文字（含浅红底上）对比度不足 4.5:1，模板取 red-700 */
     --destructive: #b91c1c;
     --destructive-light: #fef2f2;
@@ -253,6 +256,7 @@
     --muted-foreground: #b0b0b0;
     --accent: #525252;
     --accent-foreground: #f5f5f5;
+    --neutral-fill: #525252;
     --destructive: #fca5a5;
     --destructive-light: #450a0a;
     --success: oklch(0.723 0.219 149.579);
@@ -295,6 +299,7 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-neutral-fill: var(--neutral-fill);
   --color-destructive: var(--destructive);
   --color-destructive-light: var(--destructive-light);
   --color-success: var(--success);

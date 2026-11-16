@@ -42,7 +42,8 @@ test('share page points og:image at a 1200x630 card and both 404 after invalidat
   expect(ogImage).toBeTruthy()
   const card = new URL(ogImage ?? '')
   expect(card.pathname).toBe(`/share-card/sample/${token}.png`)
-  expect(card.searchParams.get('v')).toMatch(/^1-[0-9a-f]{8}$/)
+  // 项目登记回退字体或站点覆盖时 v 追加一段 8 位指纹（share-cards/meta.ts），两种形态都接受。
+  expect(card.searchParams.get('v')).toMatch(/^1-[0-9a-f]{8}(?:-[0-9a-f]{8})?$/)
   await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute('content', ogImage ?? '')
   await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute(
     'content',
@@ -67,7 +68,10 @@ test('share page points og:image at a 1200x630 card and both 404 after invalidat
   expect(Buffer.compare(await again.body(), body)).toBe(0)
 
   // 地址中的摘要过期时 302 到当前地址。
-  const stale = await request.get(`${card.pathname}?v=1-00000000`, { maxRedirects: 0 })
+  // 只改 v，保留 l 等其余参数，按同一站点与语言解析。
+  const staleURL = new URL(card)
+  staleURL.searchParams.set('v', '1-00000000')
+  const stale = await request.get(`${staleURL.pathname}${staleURL.search}`, { maxRedirects: 0 })
   expect(stale.status()).toBe(302)
   expect(stale.headers().location).toBe(cardPath)
 

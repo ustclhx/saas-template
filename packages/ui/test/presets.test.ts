@@ -187,6 +187,7 @@ function checks(vars: Vars, mode: 'light' | 'dark'): Check[] {
     text('主按钮按下', c('--primary-foreground'), mixOklab(primary, 0.78, [0, 0, 0, 1])),
     text('secondary 按钮', c('--secondary-foreground'), onPage(c('--tint'))),
     text('ghost 按钮悬停', c('--foreground'), onPage(c('--hover'))),
+    text('灰色实心 Badge', c('--foreground'), onPage(c('--neutral-fill'))),
     text('destructive 文字 / background', destructive, page),
     text('destructive 按钮', destructive, onPage(alpha(destructive, rest))),
     text('destructive 按钮悬停', destructive, onPage(alpha(destructive, hover))),

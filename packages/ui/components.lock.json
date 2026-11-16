@@ -1,7 +1,7 @@
 {
   "src/components/alert-dialog.tsx": "9659cbeb17bcdd56297dadbb9b0f86b9b8f78ee7002bf6f238c7bc7a39ec9eaf",
   "src/components/alert.tsx": "616f4ebb484586258352bf4f6760cc2dbace3f32a9c2d5238e00e756ea3955e1",
-  "src/components/badge.tsx": "dcddc264d07d812a12b1630ec0217b0050289026004c518cd1c9b804947f9f76",
+  "src/components/badge.tsx": "9f8db3e370af26a6f997ea57d3ee71f4189f278f9230bba02e96574601385709",
   "src/components/button.tsx": "f3f6afe7f7d71f2e84d87c63583f85148d06dcef7614e5574845108abc37c233",
   "src/components/card.tsx": "942ed43d735923896519cb930c9654358135293a5ba954a4f6c97085215910d7",
   "src/components/chat-markdown.tsx": "e3da4a5d09c8aee4c50a791d6d745e3ab69a6cb07185630bd355d6881ad4a64c",
@@ -31,7 +31,7 @@
   "src/components/reader-markdown.tsx": "65968c4110cabff0aebc07b49a4e3b283e5cbd07a4c99816b7a7e452708ac8ff",
   "src/components/reader.tsx": "57cb26242f2d87e6151ad8567a71c6a49b92b4ac0d470e9721bd9ffee33da49d",
   "src/components/scroll-area.tsx": "48a2ecfa2cdcdec0574d3aefe59b1f7f6122d5db4e8b25ebc1ee329b74cdb736",
-  "src/components/select.tsx": "56cdfbb0c165dc35f9af6a57fc9d6738637b2dd8c1caa339f67c12275bbf9e60",
+  "src/components/select.tsx": "d1626154c63537c78fa13e22ad217e3e14237138541a4ecb4dca6ae53c94de79",
   "src/components/separator.tsx": "15fc23687c0df58be4499128ea349581df2297d3ae2d441f82296993abe05620",
   "src/components/sheet.tsx": "f7237a00f078f0d80383e4daae6e84591a02f5a5404c782a32f55a5c47d33ba0",
   "src/components/sidebar-core.tsx": "b7b8d2745853a3bbb109c3c428a19fe9057e8cadf4fee83e4c6cf58d980f562d",

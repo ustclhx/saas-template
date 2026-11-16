@@ -270,7 +270,8 @@ const SelectTrigger = forwardRef<HTMLButtonElement, SelectTriggerProps>(
     const errorId = useId()
 
     return (
-      <div className="flex flex-col gap-1">
+      // 模板改动：外层包装与触发器都可收缩（min-w-0），放进 grid / flex 列时长选项文字截断而不撑开所在列
+      <div className="flex min-w-0 flex-col gap-1">
         <SelectPrimitive.Trigger
           ref={ref}
           aria-invalid={!!error || undefined}
@@ -282,6 +283,7 @@ const SelectTrigger = forwardRef<HTMLButtonElement, SelectTriggerProps>(
             sizeClasses.px,
             sizeClasses.gap,
             compact ? 'min-w-[128px]' : 'min-w-[160px]',
+            'max-w-full',
             shape.input,
             // 模板改动：错误边框用实色 --destructive（上游 /50 与背景只有约 2.5:1）
             error && 'border-destructive hover:border-destructive',

@@ -82,6 +82,7 @@ grep -nE -- '^ *--[a-z0-9-]+:' apps/web/src/styles/brand.css
 | 强调 | `--primary` `--primary-foreground` `--primary-text` | `bg-primary` `text-primary-foreground` `text-primary-text` | 主按钮等实心强调；预设与品牌层改这里换色。强调色作文字（链接）用 `--primary-text`，深色预设下为更亮的同色系以满足 4.5:1 |
 | 次级 | `--secondary(-foreground)` `--muted` `--muted-foreground` | `bg-secondary` `bg-muted` `text-muted-foreground` | 次要底色、说明文字（在 muted 与高层表面上满足 4.5:1） |
 | 较重强调底 | `--accent` `--accent-foreground` | `bg-accent` | Fluid 原值，较重；普通悬停与当前项改用 `bg-hover` / `bg-active` |
+| 中性填充 | `--neutral-fill` | `bg-neutral-fill` | 灰色实心 Badge 等中性底（与 `--accent` 默认同值但独立）；品牌层改 `--accent` 不影响它，一般不需要覆盖 |
 | 状态 | `--destructive` `--destructive-light` `--success` `--warning` | `text-destructive` `bg-destructive-light` `text-success` `text-warning` | 危险、成功与提醒（对话「未完成」，浅 `#8a5a00` / 深 `#fcd34d`）；作文字时（含自身 10%–15% 淡底上）满足 4.5:1 |
 | 边框与输入 | `--border` `--input` | `border-border` `border-input` | 边框由前景色混出，随明暗自动变化 |
 | 对话填充 | `--chat-fill` | `bg-chat-fill` | 前景色 6% 半透明：用户气泡、中性状态徽标、不可用的输入框。叠在所处表面上，卡片上同样可见（深色下 `--secondary` 与卡片同色） |
