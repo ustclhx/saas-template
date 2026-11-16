@@ -59,10 +59,13 @@ export function afterPaintLoader({ styles = [], scripts = [] }) {
 /**
  * 无论是否匹配都保留的规则：
  * - `.dark`：深色模式类名由 head 内联脚本在首帧前写入 <html>，预渲染 DOM 中没有；
- * - `:has(`：beasties 无法静态求值，会整条丢弃，这类规则很少（模板约 3KB），全部保留。
- * 另外 usedCss 总会保留「选择器中的类名全部出现在本页」的规则（见 ClassTokenRule）。
+ * - `:has(`：beasties 无法静态求值，会整条丢弃，这类规则很少（模板约 3KB），全部保留；
+ * - `::before` / `::after` 以外的伪元素（preflight 的 `::placeholder`、`::file-selector-button`、
+ *   `::-webkit-*` 与滚动条工具类）：beasties 会整条丢弃，表单占位文字颜色等因此与完整样式不一致；体积很小，全部保留。
+ * 另外 usedCss 总会保留「选择器中的类名全部出现在本页」（ClassTokenRule）与
+ * 「根元素属性条件与本页 `<html>` 相符」（RootAttributeRule）的规则；项目可经 critical-css.project.mjs 追加。
  */
-export const DEFAULT_ALLOW_RULES = [/\.dark\b/, /:has\(/]
+export const DEFAULT_ALLOW_RULES = [/\.dark\b/, /:has\(/, /::(?!before\b|after\b)[\w-]/]
 
 const CLASS_TOKEN = /\.((?:\\[0-9a-fA-F]{1,6}\s?|\\.|[\w-])+)/g
 
@@ -101,6 +104,54 @@ class ClassTokenRule extends RegExp {
   }
 }
 
+/** 预渲染 HTML 中 `<html>` 标签的属性（名称小写，无值属性记为空串） */
+export function rootAttributes(html) {
+  const tag = html.match(/<html\b[^>]*>/i)?.[0] ?? ''
+  const attrs = new Map()
+  for (const [, name, dq, sq, bare] of tag
+    .slice(5)
+    .matchAll(/\s([\w:-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g))
+    attrs.set(name.toLowerCase(), dq ?? sq ?? bare ?? '')
+  return attrs
+}
+
+// 选择器开头的根元素复合选择器（`:root[data-site=east]`、`html[lang|=x]:lang(ko)`）中的条件部分
+const ROOT_COMPOUND = /^(?::root|html)((?:\[[^\]]*\]|:lang\([^)]*\)|\.[\w-]+)*)/
+const ROOT_CONDITION =
+  /\[\s*([\w:-]+)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\]\s]*)))?\s*\]|:lang\(\s*([^)\s]+)\s*\)/g
+
+/**
+ * beasties 求值时不认 `<html>` 上的属性：`:root[data-site=east]`、`:root[data-site]:lang(ko)` 这类按根元素属性
+ * 切换品牌 token 的规则会被整条丢弃，关键样式失去品牌色与字体变量（衍生项目 xuanxue 反馈，模板 0.5.5 吸收）。
+ * 根元素复合选择器带属性或 `:lang()` 条件、且全部条件与本页 `<html>` 相符时保留；类名条件（`.dark`）
+ * 由 DEFAULT_ALLOW_RULES 另行保留，这里不判断。只支持 `[a]` 与 `[a=v]`，其他属性运算符不保留（仍随完整样式表加载）。
+ */
+export class RootAttributeRule extends RegExp {
+  constructor(attrs) {
+    // 同 ClassTokenRule：永不匹配的模式，只经 test 判断
+    super('(?!)')
+    this.attrs = attrs
+  }
+
+  test(selector) {
+    const compound = selector.trim().match(ROOT_COMPOUND)?.[1]
+    if (!compound) return false
+    const conditions = [...compound.matchAll(ROOT_CONDITION)]
+    if (conditions.length === 0) return false
+    return conditions.every(([, name, dq, sq, bare, lang]) => {
+      if (lang) {
+        const own = (this.attrs.get('lang') ?? '').toLowerCase()
+        const want = lang.replace(/^["']|["']$/g, '').toLowerCase()
+        return own === want || own.startsWith(`${want}-`)
+      }
+      const key = name.toLowerCase()
+      if (!this.attrs.has(key)) return false
+      const value = dq ?? sq ?? bare
+      return value === undefined || this.attrs.get(key) === value
+    })
+  }
+}
+
 const ENTITIES = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>' }
 
 /**
@@ -126,7 +177,7 @@ export function decodeClassAttributes(html) {
 /**
  * 用 beasties 按该页 DOM 裁剪样式：只把结果中的 CSS 文本取回，HTML 仍用原文拼接，
  * 避免 beasties 重新序列化文档影响水合。
- * allowRules：默认见 DEFAULT_ALLOW_RULES。
+ * allowRules：默认见 DEFAULT_ALLOW_RULES；传入时整体替换（项目扩展由 critical-css.project.mjs 在默认值基础上增减）。
  */
 export async function usedCss(html, css, { allowRules = DEFAULT_ALLOW_RULES } = {}) {
   // 外链样式表先去掉：beasties 只处理标记的内联样式，不去读取文件
@@ -144,7 +195,11 @@ export async function usedCss(html, css, { allowRules = DEFAULT_ALLOW_RULES } = 
     compress: false,
     pruneSource: false,
     logLevel: 'error',
-    allowRules: [...allowRules, new ClassTokenRule(documentClasses(decoded))],
+    allowRules: [
+      ...allowRules,
+      new ClassTokenRule(documentClasses(decoded)),
+      new RootAttributeRule(rootAttributes(decoded)),
+    ],
   })
   const out = await beasties.process(marked)
   const match = out.match(new RegExp(`<style ${CRITICAL_MARK}[^>]*>([\\s\\S]*?)</style>`))
@@ -158,7 +213,7 @@ export async function usedCss(html, css, { allowRules = DEFAULT_ALLOW_RULES } = 
  * - hydration after-paint：去掉 modulepreload，水合入口改由首帧后加载器插入。
  * 处理前后 head 的 SEO 内容必须一致，否则抛错。
  */
-export async function optimizeHtml(html, performance, readCss) {
+export async function optimizeHtml(html, performance, readCss, { allowRules } = {}) {
   const options = { ...DEFAULT_PERFORMANCE, ...performance }
   let out = html
   let inlined = 0
@@ -172,7 +227,7 @@ export async function optimizeHtml(html, performance, readCss) {
     if (css.includes('</style')) throw new Error(`${href} 含有 </style>，无法内联`)
     let inline = css
     if (options.criticalCss === 'used') {
-      inline = `${fontFaceRules(css).join('')}${await usedCss(html, css)}`
+      inline = `${fontFaceRules(css).join('')}${await usedCss(html, css, { allowRules })}`
       styles.push(href)
     }
     // 用函数替换，避免 CSS 中的 `$&`、`$'` 等被当作替换模式

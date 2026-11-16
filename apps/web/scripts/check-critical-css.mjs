@@ -1,6 +1,8 @@
 // 关键样式视觉核对（openspec add-marketing-critical-path 4.1，验收用，不在 pnpm build 中运行）：
 // 对预渲染页分别以「只有内联关键样式」（拦截完整样式表）和「完整样式」渲染，阻止水合脚本使两次都停在预渲染 DOM，
 // 在手机与桌面宽度、浅色与深色下整页截图并逐字节比较。需要先 `pnpm build` 并启动 `vite preview`。
+// 只拦截构建后处理延后的样式表（页面 <noscript> 回退中列出的那些）；项目在首帧后自行插入的样式表（如站点字体）
+// 两次都正常加载，避免因字体不同误判（衍生项目 xuanxue 反馈，0.5.5）。
 // 用法：node scripts/check-critical-css.mjs <base-url> [输出目录] [路径,…]
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -15,21 +17,39 @@ const viewports = [
 ]
 const schemes = ['light', 'dark']
 
-async function shot(browser, url, viewport, colorScheme, fullCss) {
+/** 页面 <noscript> 回退中列出的样式表：即构建后处理延后、由首帧后加载器追加的完整样式表 */
+function deferredStylesheets(html) {
+  const hrefs = []
+  for (const [, block] of html.matchAll(/<noscript>([\s\S]*?)<\/noscript>/gi))
+    for (const [, href] of block.matchAll(/<link\b[^>]*\brel="stylesheet"[^>]*\bhref="([^"]+)"/g))
+      hrefs.push(href)
+  return hrefs
+}
+
+async function shot(browser, url, viewport, colorScheme, fullCss, deferred) {
   const context = await browser.newContext({ viewport, colorScheme, reducedMotion: 'reduce' })
   const page = await context.newPage()
   // 两次都不水合：比较的只是样式
   await page.route(/\/assets\/.*\.js$/, (route) => route.abort())
-  if (!fullCss) await page.route(/\/assets\/.*\.css$/, (route) => route.abort())
+  if (!fullCss)
+    await page.route(
+      (target) => deferred.includes(target.pathname),
+      (route) => route.abort(),
+    )
   const sheets = []
   page.on('requestfinished', (request) => {
-    if (request.url().endsWith('.css')) sheets.push(request.url())
+    if (deferred.includes(new URL(request.url()).pathname)) sheets.push(request.url())
   })
-  await page.goto(url, { waitUntil: 'load' })
-  // 加载器在首帧后追加样式表：等它完成，再等字体
+  // networkidle：等项目在首帧后插入的样式表与字体也加载完
+  await page.goto(url, { waitUntil: 'networkidle' })
+  // 加载器在首帧后追加完整样式表：等它完成，再等字体
   if (fullCss)
-    await page.waitForFunction(() =>
-      [...document.styleSheets].some((sheet) => sheet.href?.includes('/assets/')),
+    await page.waitForFunction(
+      (hrefs) =>
+        hrefs.every((href) =>
+          [...document.styleSheets].some((sheet) => sheet.href?.endsWith(href)),
+        ),
+      deferred,
     )
   await page.evaluate(() => document.fonts.ready)
   await page.waitForTimeout(300)
@@ -46,8 +66,15 @@ for (const path of paths)
   for (const viewport of viewports)
     for (const scheme of schemes) {
       const url = new URL(path, base).href
-      const critical = await shot(browser, url, viewport, scheme, false)
-      const full = await shot(browser, url, viewport, scheme, true)
+      const deferred = deferredStylesheets(await (await fetch(url)).text())
+      if (deferred.length === 0) {
+        failures.push(
+          `${path}: 页面没有延后的样式表（criticalCss 不是 'used'，或该页不是预渲染页）`,
+        )
+        continue
+      }
+      const critical = await shot(browser, url, viewport, scheme, false, deferred)
+      const full = await shot(browser, url, viewport, scheme, true, deferred)
       if (full.sheets.length === 0)
         failures.push(`${path} ${viewport.name} ${scheme}: 完整样式表未加载`)
       const name = `${path.replace(/\W+/g, '_') || 'home'}-${viewport.name}-${scheme}`

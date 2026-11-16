@@ -17,9 +17,14 @@ export function optimizeHtml(
   html: string,
   performance: Partial<MarketingPerformance>,
   readCss: (href: string) => Promise<string>,
+  options?: { allowRules?: (string | RegExp)[] },
 ): Promise<{ html: string; inlined: number; styles: string[]; scripts: string[] }>
 export function assertSameHead(before: string, after: string): void
 export function decodeClassAttributes(html: string): string
 export const DEFAULT_ALLOW_RULES: readonly RegExp[]
 export function selectorClasses(selector: string): string[]
 export function documentClasses(html: string): Set<string>
+export function rootAttributes(html: string): Map<string, string>
+export class RootAttributeRule extends RegExp {
+  constructor(attrs: Map<string, string>)
+}

@@ -70,6 +70,10 @@ const projectOwnedFiles = [
     guidance: 'put template font preload changes in packages/ui/src/fonts.ts',
   },
   {
+    path: 'apps/web/scripts/critical-css.project.mjs',
+    guidance: 'put template critical CSS allow rules in apps/web/scripts/marketing-html.mjs',
+  },
+  {
     path: 'apps/web/src/features/ai/chat-composer.project.tsx',
     guidance: 'put template composer estimate changes in apps/web/src/features/ai/model-picker.tsx',
   },

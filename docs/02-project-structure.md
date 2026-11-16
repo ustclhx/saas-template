@@ -111,12 +111,12 @@ saas-template/
 | 字段 | 取值 | 作用 |
 |---|---|---|
 | `hydration` | `'eager'`（默认）/ `'after-paint'` | `after-paint` 去掉 modulepreload，水合入口在首次内容绘制后才下载；首帧更早，可交互稍晚 |
-| `criticalCss` | `'full'`（默认）/ `'used'` | `used` 每页只内联本页 DOM 用到的规则（另保留全部 `@font-face`、`.dark` 与 `:has()` 规则），完整样式表首帧后加载 |
+| `criticalCss` | `'full'`（默认）/ `'used'` | `used` 每页只内联本页 DOM 用到的规则（另保留全部 `@font-face`、`.dark`、`:has()`、`::before`/`::after` 以外的伪元素规则，以及条件与本页 `<html>` 属性相符的 `:root[...]`/`:lang()` 规则），完整样式表首帧后加载；项目可在 `apps/web/scripts/critical-css.project.mjs` 追加保留规则 |
 | `homeScriptGzipBudget` | `null`（默认）/ 字节数 | 首页客户端静态闭包 gzip 合计上限，超出时 `pnpm build` 失败；同时把首页闭包中的 zod schema 从警告升为失败 |
 
 构建后处理（`apps/web/scripts/inline-critical-css.mjs` + `marketing-html.mjs`）逐页比对改写前后 head 中的 title、meta、
 canonical、alternate、图标与 JSON-LD，不一致即构建失败。开启 `used` 后用
-`node apps/web/scripts/check-critical-css.mjs <preview 地址>` 核对「只有关键样式」与「完整样式」的截图逐像素一致
+`node apps/web/scripts/check-critical-css.mjs <preview 地址>` 核对「只有关键样式」与「完整样式」的截图逐像素一致（只拦截页面 `<noscript>` 中列出的延后样式表，项目自行插入的样式表两次都加载）
 （需先 `pnpm --filter @<scope>/web build` 并 `vite preview`）。客户端加载 `template.config.ts` 时由构建期解析好的 JSON 代替，
 zod 与配置校验不进入浏览器；客户端首页闭包中出现 zod schema 实现时，首页包检查在设置了 `homeScriptGzipBudget` 时判失败，
 未设置时只警告。`criticalCss: 'used'` 时另输出 `<noscript>` 引入完整样式表，关闭 JS 的访客样式完整。
