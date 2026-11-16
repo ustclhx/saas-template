@@ -92,7 +92,13 @@ export function zodSources(clientDir, files, offending) {
     if (!offending.some((target) => target === asset || imports.includes(target))) continue
     const mapFile = join(clientDir, `${asset}.map`)
     if (!existsSync(mapFile)) continue
-    const map = JSON.parse(readFileSync(mapFile, 'utf8'))
+    let map
+    try {
+      map = JSON.parse(readFileSync(mapFile, 'utf8'))
+    } catch {
+      continue
+    }
+    if (!Array.isArray(map.sources)) continue
     map.sources.forEach((source, index) => {
       if (source.includes('node_modules')) return
       if (/\bfrom\s*["']zod(?:\/[^"']*)?["']/.test(map.sourcesContent?.[index] ?? ''))

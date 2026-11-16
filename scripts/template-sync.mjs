@@ -86,12 +86,6 @@ export class PreflightError extends Error {}
  * @property {(message: string) => void} [log]
  */
 
-/**
- * Sync a derived project to a template commit on branch `template-sync/<short>`.
- * Preflight failures throw PreflightError before any branch or file change.
- * @param {SyncOptions} options
- * @returns {Promise<{status: 'up-to-date' | 'conflicts' | 'failed' | 'unverified' | 'synced', branch?: string, reportPath?: string, report?: import('./template-sync/report.mjs').SyncReport}>}
- */
 /** `--trailer <尾注>` 参数；尾注须为 `键: 值` 形式 */
 export function trailerArgs(trailers = []) {
   for (const trailer of trailers)
@@ -100,6 +94,12 @@ export function trailerArgs(trailers = []) {
   return trailers.flatMap((trailer) => ['--trailer', trailer])
 }
 
+/**
+ * Sync a derived project to a template commit on branch `template-sync/<short>`.
+ * Preflight failures throw PreflightError before any branch or file change.
+ * @param {SyncOptions} options
+ * @returns {Promise<{status: 'up-to-date' | 'conflicts' | 'failed' | 'unverified' | 'synced', branch?: string, reportPath?: string, report?: import('./template-sync/report.mjs').SyncReport}>}
+ */
 export async function runSync(options) {
   const log = options.log ?? ((message) => console.error(message))
   const runner = options.runner ?? defaultRunner
