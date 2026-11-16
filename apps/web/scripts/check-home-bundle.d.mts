@@ -6,7 +6,17 @@ export function checkHomeBundle(clientDir: string): {
   files: string[]
   gzipBytes: number
   violations: { asset: string; marker: string }[]
+  hydration: string[]
+  hydrationGzipBytes: number
+  zodSources: string[]
 }
+export function entryScripts(html: string): string[]
+export function entryDynamicImports(clientDir: string, entries: readonly string[]): string[]
+export function zodSources(
+  clientDir: string,
+  files: readonly string[],
+  offending: readonly string[],
+): string[]
 export function checkServerHomeBundle(serverDir: string): {
   files: string[]
   routeEntries: string[]

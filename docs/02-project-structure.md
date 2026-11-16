@@ -118,8 +118,12 @@ saas-template/
 canonical、alternate、图标与 JSON-LD，不一致即构建失败。开启 `used` 后用
 `node apps/web/scripts/check-critical-css.mjs <preview 地址>` 核对「只有关键样式」与「完整样式」的截图逐像素一致（只拦截页面 `<noscript>` 中列出的延后样式表，项目自行插入的样式表两次都加载）
 （需先 `pnpm --filter @<scope>/web build` 并 `vite preview`）。客户端加载 `template.config.ts` 时由构建期解析好的 JSON 代替，
-zod 与配置校验不进入浏览器；客户端首页闭包中出现 zod schema 实现时，首页包检查在设置了 `homeScriptGzipBudget` 时判失败，
-未设置时只警告。`criticalCss: 'used'` 时另输出 `<noscript>` 引入完整样式表，关闭 JS 的访客样式完整。
+zod 与配置校验不进入浏览器；首页水合闭包（静态闭包加上水合入口立即 `import()` 的路由树分包）中出现 zod schema 实现时，
+首页包检查在设置了 `homeScriptGzipBudget` 时判失败，未设置时只警告，并按 sourcemap 列出引用 zod 的源文件。
+路由树分包随每个页面的水合加载，因此：路由 `validateSearch` 用 `apps/web/src/features/routing/search.ts` 而不是 zod；
+server function 的 schema 写在 `.validator()` / `.inputValidator()` 调用内（客户端编译时整段删除）；模块顶层的 zod 链式调用
+在客户端构建中视为无副作用（`apps/web/scripts/client-pure-schemas.ts`），未被引用即摇掉，但参数里调用了 schema 变量方法
+（如 `secret.optional()`）时需用 `/* @__PURE__ */ (() => z.object({...}))()` 包裹。`criticalCss: 'used'` 时另输出 `<noscript>` 引入完整样式表，关闭 JS 的访客样式完整。
 
 `template.config.ts` 草案：
 

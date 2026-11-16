@@ -6,6 +6,7 @@ import viteReact from '@vitejs/plugin-react'
 import templateConfig from '../../../template.config.ts'
 import { APP_AREA_PREFIXES } from '../src/features/i18n/app-area.ts'
 import { isPrerenderedPath, prerenderEntryPages } from '../src/features/marketing/prerender.ts'
+import { clientPureSchemas } from './client-pure-schemas.ts'
 import { clientTemplateConfig, marketingPerformanceOptions } from './client-template-config.ts'
 import { activeLocales, i18nMessages } from './i18n-project.ts'
 
@@ -20,6 +21,7 @@ export function sitePlugins(serverEntry?: string) {
   const locales = activeLocales(i18n)
   return [
     clientTemplateConfig(templateConfigFile, templateConfig),
+    clientPureSchemas(),
     marketingPerformanceOptions(performanceOptionsFile, marketing.performance),
     tailwindcss(),
     i18nMessages({ i18n, appAreaPrefixes: APP_AREA_PREFIXES }),

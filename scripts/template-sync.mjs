@@ -79,6 +79,7 @@ export class PreflightError extends Error {}
  * @property {string[]} [confirmDeployed] Versions explicitly confirmed as deployed.
  * @property {string[]} [skipMigrations] Template migration tags to mark handled without porting.
  * @property {string} [verifyDb] Empty, isolated Postgres URL for the migration path check.
+ * @property {string[]} [trailers] 追加到同步提交上的 Git 提交尾注（如项目约定的 `Co-Authored-By: …`）
  * @property {boolean} [skipVerify] Tool tests only: skip install/drizzle/typecheck/test; merge and ports still
  *   happen, the baseline is never updated and the status is `unverified`.
  * @property {Runner} [runner] Command runner for pnpm steps (tests inject a stub).
@@ -91,6 +92,14 @@ export class PreflightError extends Error {}
  * @param {SyncOptions} options
  * @returns {Promise<{status: 'up-to-date' | 'conflicts' | 'failed' | 'unverified' | 'synced', branch?: string, reportPath?: string, report?: import('./template-sync/report.mjs').SyncReport}>}
  */
+/** `--trailer <尾注>` 参数；尾注须为 `键: 值` 形式 */
+export function trailerArgs(trailers = []) {
+  for (const trailer of trailers)
+    if (!/^[A-Za-z][\w-]*:\s*\S/.test(trailer))
+      throw new PreflightError(`--trailer 须为「键: 值」形式：${trailer}`)
+  return trailers.flatMap((trailer) => ['--trailer', trailer])
+}
+
 export async function runSync(options) {
   const log = options.log ?? ((message) => console.error(message))
   const runner = options.runner ?? defaultRunner
@@ -112,6 +121,7 @@ export async function runSync(options) {
       `基准记录无效：${error.message}；可运行 template-sync infer-base 重新推断`,
     )
   }
+  trailerArgs(options.trailers)
   if (!record.clean || !record.commit) {
     throw new PreflightError(
       '基准记录 clean=false：项目生成自有未提交改动的模板，无法确定基准；请运行 template-sync infer-base',
@@ -370,6 +380,7 @@ export async function runSync(options) {
         'commit',
         '--quiet',
         '--no-verify',
+        ...trailerArgs(options.trailers),
         '-m',
         `chore(template-sync): 采纳模板 ${shortSha(base)}..${shortSha(target)}`,
       ])
@@ -440,6 +451,7 @@ export async function runSync(options) {
       'commit',
       '--quiet',
       '--no-verify',
+      ...trailerArgs(options.trailers),
       '-m',
       `chore(template-sync): 更新模板基准到 ${shortSha(target)}`,
     ])
@@ -456,6 +468,7 @@ const usage = `用法：node scripts/template-sync.mjs <命令> [参数]
 命令：
   sync --project <路径> [--to <ref>] [--template <URL|路径>] [--report <文件>]
        [--confirm-deployed <已部署版本>]... [--skip-migration <模板迁移 tag>]... [--verify-db <空库 URL>] [--skip-verify]
+       [--trailer "<键>: <值>"]...（追加到同步提交，如 Co-Authored-By）
   infer-base --project <路径> [--template <URL|路径>] [--since <YYYY-MM-DD>] [--until <YYYY-MM-DD>]
              [--param key=value]... [--threshold <行数，默认 50>] [--write <候选完整 SHA>]
 `
@@ -472,6 +485,7 @@ async function syncCommand(args) {
       'skip-migration': { type: 'string', multiple: true },
       'verify-db': { type: 'string' },
       'skip-verify': { type: 'boolean' },
+      trailer: { type: 'string', multiple: true },
     },
   })
   if (!values.project) throw new Error(`缺少 --project\n${usage}`)
@@ -484,6 +498,7 @@ async function syncCommand(args) {
     skipMigrations: values['skip-migration'] ?? [],
     verifyDb: values['verify-db'],
     skipVerify: values['skip-verify'],
+    trailers: values.trailer ?? [],
   })
   if (result.status === 'conflicts')
     console.error(

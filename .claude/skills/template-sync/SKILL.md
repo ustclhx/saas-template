@@ -39,8 +39,11 @@ git -C "$TEMPLATE_DIR" log --oneline <基准 commit>..<目标>
 
 ```sh
 node "$TEMPLATE_DIR/scripts/template-sync.mjs" sync --project . --to <目标> \
-  [--skip-migration <tag>]... [--confirm-deployed <版本>]... [--verify-db <空的隔离库 URL>]
+  [--skip-migration <tag>]... [--confirm-deployed <版本>]... [--verify-db <空的隔离库 URL>] \
+  [--trailer "Co-Authored-By: …"]...
 ```
+
+- 项目约定提交尾注（如 `Co-Authored-By`）时用 `--trailer` 传入，两个同步提交都会带上，不必事后 amend。
 
 - `--verify-db` 只能指向使用者提供的空的隔离库，绝不使用 staging/production 或开发主库。
   未提供时报告中数据库验证为跳过，需在交付中说明。

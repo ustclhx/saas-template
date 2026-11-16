@@ -5,6 +5,8 @@
 // satori、resvg 与字体；渲染器只能经动态 import() 在分享卡片路由中加载。
 // add-marketing-critical-path：客户端首页闭包不得含 zod schema 实现（模板配置在客户端是构建期 JSON），
 // 模板配置 marketing.performance.homeScriptGzipBudget 为数字时，闭包 gzip 合计不得超出。
+// 0.5.6：zod 检查改看「水合闭包」——静态闭包加上水合入口直接 import() 的分包（TanStack Start 入口立即动态加载
+// StartClient 与整棵路由树，水合必然下载）；发现 zod 时按 sourcemap 列出引用 zod 的源文件，便于定位。
 // 用法：node scripts/check-home-bundle.mjs [dist/client] [dist/server]；`pnpm build` 在预渲染后自动执行。
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, posix, resolve } from 'node:path'
@@ -51,6 +53,55 @@ export function htmlScripts(html) {
   return [...new Set([...html.matchAll(HTML_SCRIPT)].map((match) => match[1]))]
 }
 
+// 水合入口：`<script type="module" src>`，或 after-paint 加载器中的 `js=[...]`
+const ENTRY_SCRIPT = /<script\b[^>]*\btype="module"[^>]*\bsrc="(\/assets\/[^"]+\.js)"/g
+const LOADER_SCRIPTS = /\bjs=(\[[^\]]*\])/
+// 动态 import：引号或反引号包住的相对路径，不含插值
+const DYNAMIC_IMPORT = /\bimport\(\s*["'`]([^"'`$]+\.js)["'`]\s*\)/g
+
+/** 首页 HTML 的水合入口脚本 */
+export function entryScripts(html) {
+  const entries = [...html.matchAll(ENTRY_SCRIPT)].map((match) => match[1])
+  const loader = html.match(LOADER_SCRIPTS)?.[1]
+  if (loader) entries.push(...JSON.parse(loader))
+  return [...new Set(entries)]
+}
+
+/** 入口文件自身（不递归）中的动态 import 目标，以 `/assets/...` 表示 */
+export function entryDynamicImports(clientDir, entries) {
+  const targets = new Set()
+  for (const asset of entries) {
+    const file = join(clientDir, asset)
+    if (!existsSync(file)) continue
+    for (const [, specifier] of readFileSync(file, 'utf8').matchAll(DYNAMIC_IMPORT))
+      targets.add(
+        specifier.startsWith('/') ? specifier : posix.join(posix.dirname(asset), specifier),
+      )
+  }
+  return [...targets]
+}
+
+/** 引用 zod 的源文件（从静态导入 offending 分包的各分包的 sourcemap 中找；可能含已被摇掉的导入，供排查） */
+export function zodSources(clientDir, files, offending) {
+  const sources = new Set()
+  for (const asset of files) {
+    const code = readFileSync(join(clientDir, asset), 'utf8')
+    const imports = [...code.matchAll(STATIC_IMPORT)].map(([, specifier]) =>
+      posix.join(posix.dirname(asset), specifier),
+    )
+    if (!offending.some((target) => target === asset || imports.includes(target))) continue
+    const mapFile = join(clientDir, `${asset}.map`)
+    if (!existsSync(mapFile)) continue
+    const map = JSON.parse(readFileSync(mapFile, 'utf8'))
+    map.sources.forEach((source, index) => {
+      if (source.includes('node_modules')) return
+      if (/\bfrom\s*["']zod(?:\/[^"']*)?["']/.test(map.sourcesContent?.[index] ?? ''))
+        sources.add(source.replace(/^(?:\.\.\/)+/, ''))
+    })
+  }
+  return [...sources].sort()
+}
+
 /** 从入口脚本（以 `/assets/...` 表示）出发的静态 import 闭包 */
 export function staticClosure(clientDir, entries) {
   const seen = new Set()
@@ -92,11 +143,29 @@ function scan(dir, files, markers) {
 
 export function checkHomeBundle(clientDir) {
   const html = readFileSync(join(clientDir, 'index.html'), 'utf8')
-  const files = staticClosure(clientDir, htmlScripts(html))
+  const scripts = htmlScripts(html)
+  const files = staticClosure(clientDir, scripts)
+  // 水合闭包：静态闭包加上水合入口立即 import() 的分包（路由树等），只用于 zod 检查与信息输出
+  const boot = entryDynamicImports(clientDir, entryScripts(html))
+  const hydration = staticClosure(clientDir, [...scripts, ...boot])
+  const zod = scan(clientDir, hydration, ZOD_MARKERS)
   return {
     files,
-    ...scan(clientDir, files, [...FORBIDDEN_MARKERS, ...RENDERER_MARKERS, ...ZOD_MARKERS]),
+    hydration,
+    hydrationGzipBytes: zod.gzipBytes,
+    zodSources: zod.violations.length
+      ? zodSources(
+          clientDir,
+          hydration,
+          zod.violations.map(({ asset }) => asset),
+        )
+      : [],
+    ...mergeViolations(scan(clientDir, files, [...FORBIDDEN_MARKERS, ...RENDERER_MARKERS]), zod),
   }
+}
+
+function mergeViolations(main, zod) {
+  return { gzipBytes: main.gzipBytes, violations: [...main.violations, ...zod.violations] }
 }
 
 /** 预算检查：budget 为 null 时不检查；返回超出时的说明，未超出返回 null */
@@ -130,7 +199,14 @@ export function checkServerHomeBundle(serverDir) {
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const clientDir = resolve(process.argv[2] ?? join(dirname(process.argv[1]), '../dist/client'))
   const serverDir = resolve(process.argv[3] ?? join(clientDir, '../server'))
-  const { files, gzipBytes, violations: all } = checkHomeBundle(clientDir)
+  const {
+    files,
+    gzipBytes,
+    violations: all,
+    hydration,
+    hydrationGzipBytes,
+    zodSources: zodFrom,
+  } = checkHomeBundle(clientDir)
   // 唯一调用方是 `pnpm build`（Cloudflare 构建，必有 dist/server）；缺少服务端产物时失败，避免静默跳过
   const server = existsSync(join(serverDir, 'index.js')) ? checkServerHomeBundle(serverDir) : null
   const budget = readPerformanceOptions(join(clientDir, '..'))?.homeScriptGzipBudget ?? null
@@ -139,12 +215,21 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   // 衍生项目的首页可能在浏览器端用 zod 校验表单，升级模板不应因此构建失败
   const zod = all.filter(({ marker }) => ZOD_MARKERS.includes(marker))
   const violations = budget === null ? all.filter((item) => !zod.includes(item)) : all
+  const zodHint = () => {
+    if (zodFrom.length === 0) return
+    console.warn(
+      '  引用 zod 的源文件（sourcemap，可能含已被摇掉的导入）：路由 validateSearch 改用 features/routing/search.ts，' +
+        'server function 的 schema 写在 .validator() 调用内或只在服务端模块定义，模块顶层 schema 用 /* @__PURE__ */ 标注',
+    )
+    for (const source of zodFrom) console.warn(`    · ${source}`)
+  }
   if (budget === null && zod.length > 0) {
     console.warn(
-      '首页包检查警告：客户端首页静态依赖中有 zod schema 实现（设置 homeScriptGzipBudget 后此项判为失败）',
+      '首页包检查警告：首页水合闭包（静态依赖与入口立即加载的路由树）中有 zod schema 实现（设置 homeScriptGzipBudget 后此项判为失败）',
     )
     for (const { asset, marker } of zod) console.warn(`  - 客户端 ${asset} 含 "${marker}"`)
-  }
+    zodHint()
+  } else if (zod.length > 0) zodHint()
   if (overBudget) {
     console.error(`首页包检查失败：${overBudget}`)
     process.exitCode = 1
@@ -166,7 +251,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     process.exitCode = 1
   } else if (process.exitCode !== 1) {
     console.log(
-      `首页包检查通过：${files.length} 个脚本，gzip 合计 ${gzipBytes} B${budget === null ? '' : ` / 预算 ${budget} B`}`,
+      `首页包检查通过：${files.length} 个脚本，gzip 合计 ${gzipBytes} B${budget === null ? '' : ` / 预算 ${budget} B`}` +
+        `；水合闭包 ${hydration.length} 个脚本，gzip 合计 ${hydrationGzipBytes} B`,
     )
     console.log(`服务端首页闭包检查通过：${server?.files.length} 个模块`)
   }

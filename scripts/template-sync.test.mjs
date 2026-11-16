@@ -537,6 +537,33 @@ test('a file the template deleted is kept and listed, even when the project neve
   assert.match(report, /（--to HEAD，默认，目标未发布）/)
 })
 
+test('--trailer adds the project trailer to both sync commits; malformed trailers stop in preflight', async (t) => {
+  const template = await fakeTemplate(t)
+  const project = await fakeProject(t, template)
+  await template.commit({ 'legacy.txt': null }, 'template drops legacy notes')
+  await assert.rejects(
+    runSync({ project: project.dir, template: template.dir, log: quiet, trailers: ['oops'] }),
+    (error) => error instanceof PreflightError && /--trailer/.test(error.message),
+  )
+  assert.deepEqual(await branches(project.dir), ['main'])
+  const { runner } = stubRunner()
+  const trailer = 'Co-Authored-By: Bot <bot@example.com>'
+  const result = await runSync({
+    project: project.dir,
+    template: template.dir,
+    runner,
+    log: quiet,
+    trailers: [trailer],
+  })
+  assert.equal(result.status, 'synced')
+  const bodies = git(project.dir, 'log', '--format=%B%x00', 'main..HEAD')
+    .split('\0')
+    .map((body) => body.trim())
+    .filter(Boolean)
+  assert.ok(bodies.length >= 1)
+  for (const body of bodies) assert.ok(body.endsWith(trailer), body)
+})
+
 test('a template edit to a file the project deleted is a named conflict, not a git error', async (t) => {
   const template = await fakeTemplate(t)
   const project = await fakeProject(t, template)

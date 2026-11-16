@@ -26,6 +26,28 @@ function deferredStylesheets(html) {
   return hrefs
 }
 
+/**
+ * 经 Chromium 取页面原始 HTML：Node 的 fetch 解析 `*.localhost` 走系统 DNS，
+ * 在使用 fake-IP 代理的机器上会解析到代理地址而失败，Chromium 固定解析到回环地址
+ */
+async function pageHtml(browser, url) {
+  const page = await browser.newPage()
+  await page.route(/\/assets\//, (route) => route.abort())
+  const response = await page.goto(url, { waitUntil: 'domcontentloaded' })
+  const html = (await response?.text()) ?? ''
+  await page.close()
+  return html
+}
+
+/** 截图文件名：保留各语言的字母与数字（CJK 路径不再塌缩成同名），其余字符换成下划线 */
+function shotName(path) {
+  let decoded = path
+  try {
+    decoded = decodeURIComponent(path)
+  } catch {}
+  return decoded.replace(/[^\p{L}\p{N}-]+/gu, '_').replace(/^_+|_+$/g, '') || 'home'
+}
+
 async function shot(browser, url, viewport, colorScheme, fullCss, deferred) {
   const context = await browser.newContext({ viewport, colorScheme, reducedMotion: 'reduce' })
   const page = await context.newPage()
@@ -66,7 +88,7 @@ for (const path of paths)
   for (const viewport of viewports)
     for (const scheme of schemes) {
       const url = new URL(path, base).href
-      const deferred = deferredStylesheets(await (await fetch(url)).text())
+      const deferred = deferredStylesheets(await pageHtml(browser, url))
       if (deferred.length === 0) {
         failures.push(
           `${path}: 页面没有延后的样式表（criticalCss 不是 'used'，或该页不是预渲染页）`,
@@ -77,7 +99,7 @@ for (const path of paths)
       const full = await shot(browser, url, viewport, scheme, true, deferred)
       if (full.sheets.length === 0)
         failures.push(`${path} ${viewport.name} ${scheme}: 完整样式表未加载`)
-      const name = `${path.replace(/\W+/g, '_') || 'home'}-${viewport.name}-${scheme}`
+      const name = `${shotName(path)}-${viewport.name}-${scheme}`
       compared += 1
       if (!critical.image.equals(full.image)) {
         writeFileSync(join(out, `${name}.critical.png`), critical.image)
