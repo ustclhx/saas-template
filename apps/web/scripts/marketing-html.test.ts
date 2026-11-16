@@ -8,7 +8,10 @@ import {
   fontFaceRules,
   headSignature,
   optimizeHtml,
+  RootAttributeRule,
+  rootAttributes,
   selectorClasses,
+  usedCss,
 } from './marketing-html.mjs'
 
 // 与预渲染产物同形的夹具：字体 preload、modulepreload、外链样式表、SEO head、水合入口
@@ -188,5 +191,69 @@ describe('营销页构建后处理', () => {
       false,
     )
     expect(brandOverridesFontSans(':root{--font-serif:x}')).toBe(false)
+  })
+})
+
+describe('关键样式保留规则（衍生项目反馈，0.5.5）', () => {
+  const page = (htmlAttrs: string) =>
+    `<!DOCTYPE html><html ${htmlAttrs}><head></head><body><main class="hero"><input class="field" placeholder="x"/></main></body></html>`
+  const css = [
+    ':root{--brand:#000}',
+    ':root[data-site=east]{--brand:#c00}',
+    ':root[data-site="west"]{--brand:#00c}',
+    ':root[data-site]:lang(ko){--font:Pretendard}',
+    'html[data-site=east] .hero{padding:1px}',
+    '.hero{display:grid}',
+    '.field::placeholder{color:gray}',
+    '::file-selector-button{border:0}',
+    '.unused::after{content:""}',
+  ].join('')
+
+  it('rootAttributes 读出 <html> 属性', () => {
+    const attrs = rootAttributes(page('lang="ko" data-site=east class="x" hidden'))
+    expect(Object.fromEntries(attrs)).toEqual({
+      lang: 'ko',
+      'data-site': 'east',
+      class: 'x',
+      hidden: '',
+    })
+  })
+
+  it('RootAttributeRule 只保留条件全部与本页 <html> 相符的根元素规则', () => {
+    const rule = new RootAttributeRule(rootAttributes(page('lang="ko-KR" data-site="east"')))
+    expect(rule.test(':root[data-site=east]')).toBe(true)
+    expect(rule.test(':root[data-site]:lang(ko)')).toBe(true)
+    expect(rule.test('html[data-site="east"] .hero')).toBe(true)
+    expect(rule.test(':root[data-site=west]')).toBe(false)
+    expect(rule.test(':root:lang(en)')).toBe(false)
+    expect(rule.test(':root')).toBe(false)
+    expect(rule.test('.hero[data-site=east]')).toBe(false)
+    // 解析不了或未核对的条件不保留（评审：避免别站 token 进入首帧）
+    expect(rule.test(':root[lang=ko][data-site^=w]')).toBe(false)
+    expect(rule.test(':root[data-site=east i]')).toBe(false)
+    expect(rule.test(':root.theme-x[data-site=east]')).toBe(false)
+    expect(rule.test(':root[data-site=east]:not([lang=ko])')).toBe(false)
+    expect(rule.test(':root[data-site=east]>body')).toBe(true)
+  })
+
+  it('usedCss 保留本站根元素 token 与伪元素规则，丢弃别站与未用规则', async () => {
+    const out = await usedCss(page('lang="ko" data-site="east"'), css)
+    expect(out).toContain(':root[data-site=east]')
+    expect(out).toContain(':root[data-site]:lang(ko)')
+    expect(out).toContain('::placeholder')
+    expect(out).toContain('::file-selector-button')
+    expect(out).not.toContain('data-site="west"')
+    expect(out).not.toContain('.unused')
+  })
+
+  it('optimizeHtml 接受项目追加的保留规则', async () => {
+    const html = `<!DOCTYPE html><html lang="en"><head><link rel="stylesheet" href="/assets/app-1.css"/></head><body><p class="a">x</p></body></html>`
+    const read = async () => '.a{color:red}.js-only{color:blue}'
+    const base = await optimizeHtml(html, { criticalCss: 'used' }, read)
+    expect(base.html).not.toContain('.js-only')
+    const extra = await optimizeHtml(html, { criticalCss: 'used' }, read, {
+      allowRules: [/\.js-only/],
+    })
+    expect(extra.html).toContain('.js-only')
   })
 })

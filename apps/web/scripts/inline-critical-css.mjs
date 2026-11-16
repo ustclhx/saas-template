@@ -7,7 +7,13 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { join, relative } from 'node:path'
-import { brandOverridesFontSans, DEFAULT_PERFORMANCE, optimizeHtml } from './marketing-html.mjs'
+import { projectCriticalCssAllowRules } from './critical-css.project.mjs'
+import {
+  brandOverridesFontSans,
+  DEFAULT_ALLOW_RULES,
+  DEFAULT_PERFORMANCE,
+  optimizeHtml,
+} from './marketing-html.mjs'
 
 const dist = new URL('../dist/', import.meta.url).pathname
 const root = join(dist, 'client')
@@ -16,6 +22,7 @@ const optionsFile = join(dist, '.build/marketing-performance.json')
 const performance = existsSync(optionsFile)
   ? { ...DEFAULT_PERFORMANCE, ...JSON.parse(readFileSync(optionsFile, 'utf8')) }
   : DEFAULT_PERFORMANCE
+const allowRules = [...projectCriticalCssAllowRules(DEFAULT_ALLOW_RULES)]
 
 async function* htmlFiles(dir) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -37,7 +44,7 @@ for await (const file of htmlFiles(root)) {
   const html = await readFile(file, 'utf8')
   let result
   try {
-    result = await optimizeHtml(html, performance, readCss)
+    result = await optimizeHtml(html, performance, readCss, { allowRules })
   } catch (error) {
     throw new Error(`${relative(root, file)}: ${error instanceof Error ? error.message : error}`)
   }

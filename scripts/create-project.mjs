@@ -31,6 +31,7 @@ const projectOwnedFiles = new Set([
   'apps/web/src/features/ai/message-parts.project.tsx',
   'apps/web/src/features/ai/chat-composer.project.tsx',
   'apps/web/src/features/theme/fonts.project.ts',
+  'apps/web/scripts/critical-css.project.mjs',
 ])
 const excluded = new Set([
   '.git',

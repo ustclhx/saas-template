@@ -398,6 +398,11 @@ for (const [file, initial, modifiedContent] of [
     'export const projectFontPreloads = () => []\n',
   ],
   [
+    'apps/web/scripts/critical-css.project.mjs',
+    'export const projectCriticalCssAllowRules = (defaults) => defaults\n',
+    'export const projectCriticalCssAllowRules = (defaults) => [...defaults, /x/]\n',
+  ],
+  [
     'apps/web/src/features/app-shell/nav.project.ts',
     '// 项目导航条目\nexport {}\n',
     "import './nav.ts'\nexport {}\n",
