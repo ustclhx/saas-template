@@ -228,6 +228,12 @@ describe('关键样式保留规则（衍生项目反馈，0.5.5）', () => {
     expect(rule.test(':root:lang(en)')).toBe(false)
     expect(rule.test(':root')).toBe(false)
     expect(rule.test('.hero[data-site=east]')).toBe(false)
+    // 解析不了或未核对的条件不保留（评审：避免别站 token 进入首帧）
+    expect(rule.test(':root[lang=ko][data-site^=w]')).toBe(false)
+    expect(rule.test(':root[data-site=east i]')).toBe(false)
+    expect(rule.test(':root.theme-x[data-site=east]')).toBe(false)
+    expect(rule.test(':root[data-site=east]:not([lang=ko])')).toBe(false)
+    expect(rule.test(':root[data-site=east]>body')).toBe(true)
   })
 
   it('usedCss 保留本站根元素 token 与伪元素规则，丢弃别站与未用规则', async () => {

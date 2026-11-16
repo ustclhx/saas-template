@@ -115,16 +115,18 @@ export function rootAttributes(html) {
   return attrs
 }
 
-// 选择器开头的根元素复合选择器（`:root[data-site=east]`、`html[lang|=x]:lang(ko)`）中的条件部分
-const ROOT_COMPOUND = /^(?::root|html)((?:\[[^\]]*\]|:lang\([^)]*\)|\.[\w-]+)*)/
-const ROOT_CONDITION =
-  /\[\s*([\w:-]+)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\]\s]*)))?\s*\]|:lang\(\s*([^)\s]+)\s*\)/g
+// 选择器开头的根元素复合选择器（`:root[data-site=east]`、`html[data-x]:lang(ko)`）：条件只允许属性与 `:lang()`，
+// 之后必须是选择器结束或组合符；带类名、`:not()` 等其他条件的不在此保留（宁可随完整样式表到达，也不内联不该生效的 token）
+const ROOT_COMPOUND = /^(?::root|html)((?:\[[^\]]*\]|:lang\([^)]*\))+)(?=$|[\s>+~])/
+const ROOT_SEGMENT = /\[[^\]]*\]|:lang\([^)]*\)/g
+const ROOT_ATTRIBUTE = /^\[\s*([\w:-]+)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\]\s"']+)))?\s*\]$/
+const ROOT_LANG = /^:lang\(\s*["']?([\w-]+)["']?\s*\)$/
 
 /**
  * beasties 求值时不认 `<html>` 上的属性：`:root[data-site=east]`、`:root[data-site]:lang(ko)` 这类按根元素属性
  * 切换品牌 token 的规则会被整条丢弃，关键样式失去品牌色与字体变量（衍生项目 xuanxue 反馈，模板 0.5.5 吸收）。
- * 根元素复合选择器带属性或 `:lang()` 条件、且全部条件与本页 `<html>` 相符时保留；类名条件（`.dark`）
- * 由 DEFAULT_ALLOW_RULES 另行保留，这里不判断。只支持 `[a]` 与 `[a=v]`，其他属性运算符不保留（仍随完整样式表加载）。
+ * 根元素复合选择器只由 `[a]`、`[a=v]`、`:lang(x)` 条件组成、且全部与本页 `<html>` 相符时保留；
+ * 其他属性运算符（`^=`、`|=`、`i` 标志等）、类名与否定条件一律不在此保留（仍随完整样式表加载）。
  */
 export class RootAttributeRule extends RegExp {
   constructor(attrs) {
@@ -136,14 +138,16 @@ export class RootAttributeRule extends RegExp {
   test(selector) {
     const compound = selector.trim().match(ROOT_COMPOUND)?.[1]
     if (!compound) return false
-    const conditions = [...compound.matchAll(ROOT_CONDITION)]
-    if (conditions.length === 0) return false
-    return conditions.every(([, name, dq, sq, bare, lang]) => {
+    return (compound.match(ROOT_SEGMENT) ?? []).every((segment) => {
+      const lang = segment.match(ROOT_LANG)?.[1]
       if (lang) {
         const own = (this.attrs.get('lang') ?? '').toLowerCase()
-        const want = lang.replace(/^["']|["']$/g, '').toLowerCase()
+        const want = lang.toLowerCase()
         return own === want || own.startsWith(`${want}-`)
       }
+      const attribute = segment.match(ROOT_ATTRIBUTE)
+      if (!attribute) return false
+      const [, name, dq, sq, bare] = attribute
       const key = name.toLowerCase()
       if (!this.attrs.has(key)) return false
       const value = dq ?? sq ?? bare
