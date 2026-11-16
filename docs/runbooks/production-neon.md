@@ -125,7 +125,7 @@ psql "$NEON_MIGRATOR_URL" -X -c 'select current_user, current_database()'   # �
    ```
 
    只按路径拦截。不要按 User-Agent 或机房 IP 封禁，也不要开启 Bot Fight Mode、Block AI bots，否则会误伤搜索引擎和大模型爬虫。配置后确认首页、博客与 `robots.txt` 仍返回 200。
-4. **轮询**：`/api/health` 每次都查库，只用于发布验证和低频人工检查，不接高频外部监控，也不让 agent 循环调用。验收结束关闭后台页面，已登录页面的轮询同样会让数据库常驻。
+4. **轮询**：`/api/health` 每次都查库，只用于发布验证和低频人工检查，不接高频外部监控，也不让 agent 循环调用。验收结束关闭后台页面，已登录页面的轮询同样会让数据库常驻。前端新增轮询必须在 `document.hidden` 时暂停（参照通知与公告横幅）；间隔不长于设置 KV 缓存 TTL（60 秒）的轮询每次都会穿透到数据库。2026-11 saas-staging 曾因四个遗忘的后台标签页每分钟读公告而全天常驻（约 6 CU-h/天）。
 5. **复核**：发布后一周内查看 Neon Usage；运行时长接近 24 小时/天时，先查清是谁在唤醒，再考虑调整配置。
 
 <!-- template-only:start -->
