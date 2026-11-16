@@ -13,13 +13,23 @@ export interface TempSuite {
   readonly dir: string
   readonly name: string
   cleanup(): void
-  /** 写入一条生成录制与（可选）评委录制；评委三项分数按 1–5 */
+  /** 写入一条生成录制与（可选）评委录制；评委两项分数按 1–5 */
   record(
     promptVersion: string,
     sampleId: string,
     output: string,
     judge?: readonly [number, number] | string,
+    options?: RecordOptions,
   ): Promise<void>
+}
+
+export interface RecordOptions {
+  readonly outputTokens?: number
+  readonly durationMs?: number
+  /** 评委录制绑定的被评正文（缺省为原文） */
+  readonly judgedOutput?: string
+  /** 评委录制的 prepareOutput 版本 */
+  readonly prepareVersion?: string
 }
 
 export function tempSuite(options: {
@@ -31,6 +41,8 @@ export function tempSuite(options: {
   price?: boolean | 'zero'
   /** 覆盖生成模型的 provider 与额外字段（如 thinking） */
   gen?: { provider?: string; extra?: string }
+  /** 覆盖套件 checks 数组的源码 */
+  checks?: string
 }): TempSuite {
   const name = options.name ?? 'demo'
   const root = mkdtempSync(join(tmpdir(), 'evals-run-'))
@@ -44,7 +56,7 @@ export function tempSuite(options: {
         : 'priceUsd: { inputPerMTok: 1000, outputPerMTok: 1000 },'
   writeFileSync(
     join(dir, 'suite.ts'),
-    `import { checks, definePrompt, defineSuite } from ${JSON.stringify(INDEX)}
+    `import { checks, collect, definePrompt, defineSuite, mean, percentile } from ${JSON.stringify(INDEX)}
 const v1 = definePrompt<{ topic: string }>({
   id: 'demo', version: 'v1', system: 'Write about the topic.',
   user: (input) => 'Topic: ' + input.topic, maxOutputTokens: 100,
@@ -71,7 +83,7 @@ export default defineSuite({
     { id: 'clarity', description: 'Clear', weight: 1 },
   ] } },`
   }
-  checks: [checks.sections(), checks.length({ min: 5 })],
+  checks: ${options.checks ?? '[checks.sections(), checks.length({ min: 5 })]'},
   ${options.extra ?? ''}
 })
 `,
@@ -90,7 +102,7 @@ export default defineSuite({
     dir,
     name,
     cleanup: () => rmSync(root, { recursive: true, force: true }),
-    async record(promptVersion, sampleId, output, judge) {
+    async record(promptVersion, sampleId, output, judge, extra = {}) {
       const { suite, samples } = await loadSuite(name, root)
       const prompt = suite.prompts.find((item) => item.promptVersion === promptVersion)
       const sample = samples.find((item) => item.id === sampleId)
@@ -103,9 +115,10 @@ export default defineSuite({
         model,
         output,
         finishReason: 'stop',
-        usage: { inputTokens: 10, outputTokens: 20 },
+        usage: { inputTokens: 10, outputTokens: extra.outputTokens ?? 20 },
         recordedAt: '2026-11-14T00:00:00.000Z',
         source: 'constructed',
+        ...(extra.durationMs !== undefined ? { durationMs: extra.durationMs } : {}),
       })
       if (judge === undefined) return
       const text =
@@ -122,7 +135,8 @@ export default defineSuite({
         kind: 'judge',
         promptVersion,
         rubricVersion: 'r1',
-        outputHash: await promptSha256(output),
+        outputHash: await promptSha256(extra.judgedOutput ?? output),
+        ...(extra.prepareVersion !== undefined ? { prepareVersion: extra.prepareVersion } : {}),
         model: { key: 'judge', provider: 'openai', providerModelId: 'gpt-judge' },
         output: text,
         finishReason: 'stop',

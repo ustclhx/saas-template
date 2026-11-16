@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { DefinedPrompt } from '@saas/ai'
 import type { z } from 'zod'
+import type { EvaluateRun } from './assess.ts'
 import type { Check } from './checks.ts'
 import { EvalConfigError } from './errors.ts'
 import { idPattern, parseSamples, type Sample } from './sample.ts'
@@ -33,6 +34,26 @@ export interface Rubric {
   readonly scale: { readonly min: number; readonly max: number }
 }
 
+/** 被评正文转换的结果（design D1）：annotations 限 JSON 可序列化的普通对象 */
+export interface PreparedOutput {
+  readonly output: string
+  readonly annotations?: Readonly<Record<string, unknown>>
+}
+
+/**
+ * 被评正文转换（design D1）：在确定性检查与评委之前，把模型原文转换为被评正文。
+ * 必须是无网络副作用、结果可重复的纯函数；`version` 变化会使旧评委录制过期。
+ */
+export interface PrepareOutput {
+  readonly version: string
+  run(ctx: {
+    readonly rawOutput: string
+    readonly sample: Sample
+    // biome-ignore lint/suspicious/noExplicitAny: 转换对任意输入类型的提示词通用
+    readonly prompt: DefinedPrompt<any>
+  }): PreparedOutput | Promise<PreparedOutput>
+}
+
 export interface SuiteDefinition {
   readonly name: string
   // biome-ignore lint/suspicious/noExplicitAny: 套件内的提示词共享样本输入，类型由项目决定
@@ -54,6 +75,10 @@ export interface SuiteDefinition {
   readonly checks?: readonly Check[]
   /** 平均总分下降超过此值判为回退，缺省 0.05 */
   readonly regressionThreshold?: number
+  /** 可选：检查与评委之前的被评正文转换 */
+  readonly prepareOutput?: PrepareOutput
+  /** 可选：候选与基线全部完成后的聚合门槛判定（design D4） */
+  readonly evaluateRun?: EvaluateRun
 }
 
 const SUITE_MARK = Symbol.for('saas.evals.suite')
@@ -123,6 +148,14 @@ export function defineSuite(def: SuiteDefinition): Suite {
       fail(name, `invalid or duplicate check id ${check.id}`)
     checkIds.add(check.id)
   }
+  if (def.prepareOutput !== undefined) {
+    if (!idPattern.test(def.prepareOutput.version ?? ''))
+      fail(name, 'prepareOutput.version must be a short id (letters, digits, . _ -)')
+    if (typeof def.prepareOutput.run !== 'function')
+      fail(name, 'prepareOutput.run must be a function')
+  }
+  if (def.evaluateRun !== undefined && typeof def.evaluateRun !== 'function')
+    fail(name, 'evaluateRun must be a function')
   if (
     def.regressionThreshold !== undefined &&
     !(def.regressionThreshold >= 0 && def.regressionThreshold <= 1)

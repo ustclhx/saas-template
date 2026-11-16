@@ -129,6 +129,33 @@ describe('样本与套件定义', () => {
     ).toBe(8000)
   })
 
+  it('prepareOutput 需要短标识版本与函数，evaluateRun 必须是函数', async () => {
+    const run = ({ rawOutput }: { rawOutput: string }) => ({ output: rawOutput })
+    for (const version of ['', 'has space', undefined as unknown as string])
+      await expectConfigError(
+        () => defineSuite({ ...suiteWith(), prepareOutput: { version, run } }),
+        /prepareOutput.version/,
+      )
+    await expectConfigError(
+      () =>
+        defineSuite({
+          ...suiteWith(),
+          prepareOutput: { version: 'g1', run: 'x' as unknown as typeof run },
+        }),
+      /prepareOutput.run/,
+    )
+    await expectConfigError(
+      () => defineSuite({ ...suiteWith(), evaluateRun: {} as unknown as () => { gates: [] } }),
+      /evaluateRun must be a function/,
+    )
+    const ok = defineSuite({
+      ...suiteWith(),
+      prepareOutput: { version: 'guard.v4', run },
+      evaluateRun: () => ({ gates: [] }),
+    })
+    expect(ok.prepareOutput?.version).toBe('guard.v4')
+  })
+
   it('example 指向包内示例，其他名字指向根目录 evals/，不存在时配置错误', async () => {
     const root = temp()
     expect(suiteDir('example', root)).toBe(join(root, 'packages/evals/example'))
