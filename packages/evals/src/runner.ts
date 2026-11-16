@@ -11,6 +11,14 @@ import {
 import { generateText, type LanguageModel } from 'ai'
 import { z } from 'zod'
 import {
+  type AssessmentReport,
+  type EvaluationGroup,
+  type EvaluationResult,
+  isJsonRecord,
+  type RunScope,
+  runAssessment,
+} from './assess.ts'
+import {
   BudgetLedger,
   type CallEstimate,
   estimateCall,
@@ -48,6 +56,7 @@ import {
   type LoadedSuite,
   loadSuite,
   type ModelSpec,
+  type PrepareOutput,
   REPO_ROOT,
 } from './suite.ts'
 
@@ -87,6 +96,7 @@ export type SampleStatus =
   | 'no-recording'
   | 'stale-recording'
   | 'generation-error'
+  | 'prepare-error'
   | 'judge-error'
   | 'skipped-budget'
 
@@ -95,6 +105,19 @@ export interface CallUsage {
   readonly outputTokens?: number | undefined
   /** 调用前的输入估算，用于报告估算与实际用量的比值 */
   readonly estimatedInputTokens: number
+  /** 调用耗时（毫秒）：真实 / 录制模式实测，回放生成取录制值；缺失时不出现 */
+  readonly durationMs?: number
+}
+
+/** 被评正文转换的证据（design D2）：仅套件声明 prepareOutput 时出现 */
+export interface PreparedInfo {
+  readonly version: string
+  readonly rawSha256: string
+  readonly outputSha256: string
+  readonly rawChars: number
+  readonly outputChars: number
+  readonly changed: boolean
+  readonly annotations?: Readonly<Record<string, unknown>>
 }
 
 export interface JudgeResult {
@@ -112,7 +135,9 @@ export interface SampleResult {
   readonly status: SampleStatus
   readonly renderedHash: string
   readonly finishReason?: string
+  /** 被评正文的字符数（码点）；未声明转换时即原文 */
   readonly outputChars?: number
+  readonly prepared?: PreparedInfo
   readonly checks: readonly CheckOutcome[]
   readonly judge: JudgeResult | null
   readonly usage: { readonly generation?: CallUsage; readonly judge?: CallUsage }
@@ -129,6 +154,10 @@ export interface BaselineComparison {
   readonly source?: string
   readonly threshold: number
   readonly comparedSamples: number
+  /** 两侧都有分数、实际参与平均分对比的样本数；少于 comparedSamples 时回退判定只覆盖部分样本 */
+  readonly scoredPairs: number
+  /** 同次回放基线中失败的样本（如评委录制过期、转换错误），这些样本不参与平均分对比 */
+  readonly baselineFailures: readonly { readonly id: string; readonly status: SampleStatus }[]
   readonly baselineAverage: number | null
   readonly currentAverage: number | null
   readonly delta: number | null
@@ -164,6 +193,9 @@ export interface Report {
     readonly spentUsd: number
     readonly exhausted: boolean
   }
+  readonly scope: RunScope
+  /** 套件声明 prepareOutput 时的转换版本 */
+  readonly prepareVersion: string | null
   readonly samples: readonly SampleResult[]
   readonly summary: {
     readonly total: number
@@ -173,6 +205,8 @@ export interface Report {
     readonly passRate: number
     readonly averageScore: number | null
     readonly scoredSamples: number
+    /** 评委开启时应有的评分数（选定样本数），否则 0 */
+    readonly expectedScores: number
     readonly warnings: number
     readonly costUsd: number
     readonly estimatedLiveCostUsd: number | null
@@ -180,6 +214,8 @@ export interface Report {
     readonly inputTokenRatio: number | null
   }
   readonly baseline: BaselineComparison | null
+  /** 套件声明 evaluateRun 时的门槛结果，否则为 null */
+  readonly assessment: AssessmentReport | null
   readonly exitCode: number
 }
 
@@ -200,6 +236,8 @@ interface Context {
   readonly ledger: BudgetLedger | null
   readonly modelFor: ModelFor | null
   readonly now: () => Date
+  /** 声明 prepareOutput 时收集原文与被评正文，写入报告目录 */
+  readonly texts: Map<string, { readonly raw: string; readonly output?: string }>
   stopped: boolean
 }
 
@@ -274,6 +312,7 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
   let costUsd = 0
   let estimatedCostUsd: number | null = null
   let output: { text: string; finishReason: string; usage: Usage }
+  let durationMs: number | undefined
 
   // 1. 生成
   if (mode === 'replay') {
@@ -311,6 +350,8 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
       rendered,
       generatorSpec,
     )
+    // 回放读取录制的真实生成耗时，不用本机回放耗时代替
+    durationMs = read.recording.durationMs
     estimatedCostUsd = replayEstimate(generatorSpec, estimate, output.usage)
   } else {
     const price = requirePrice(ctx.generatorKey, generatorSpec)
@@ -319,12 +360,14 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
       ctx.stopped = true
       return { ...base, status: 'skipped-budget', usage: {}, costUsd: 0, estimatedCostUsd: null }
     }
+    const started = performance.now()
     try {
       output = await generate(
         (ctx.modelFor as ModelFor)(ctx.generatorKey, generatorSpec),
         rendered,
         generatorSpec,
       )
+      durationMs = Math.round(performance.now() - started)
     } catch (error) {
       // 失败的请求也可能计费：按预留额记账
       ctx.ledger?.settle(reservation)
@@ -352,17 +395,50 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
           usage: definedUsage(output.usage),
           recordedAt: ctx.now().toISOString(),
           source: 'recorded',
+          durationMs,
         } satisfies GenerationRecording,
       )
   }
   const generationUsage: CallUsage = {
     ...definedUsage(output.usage),
     estimatedInputTokens: estimate.inputTokens,
+    ...(durationMs !== undefined ? { durationMs } : {}),
   }
 
-  // 2. 确定性检查
+  // 2. 被评正文转换（三种模式同一路径；失败不回退为原文）
+  const hook = loaded.suite.prepareOutput
+  let evaluated = output.text
+  let prepared: PreparedInfo | undefined
+  if (hook) {
+    const result = await prepareOutput(hook, output.text, sample, prompt)
+    // 转换失败时也保留原文（真实模式没有录制，否则无从排查）
+    if (!result.ok) ctx.texts.set(sample.id, { raw: output.text })
+    if (!result.ok)
+      return {
+        ...base,
+        status: 'prepare-error',
+        finishReason: output.finishReason,
+        usage: { generation: generationUsage },
+        costUsd,
+        estimatedCostUsd,
+        error: result.error,
+      }
+    evaluated = result.output
+    prepared = {
+      version: hook.version,
+      rawSha256: await promptSha256(output.text),
+      outputSha256: await promptSha256(evaluated),
+      rawChars: [...output.text].length,
+      outputChars: [...evaluated].length,
+      changed: evaluated !== output.text,
+      ...(result.annotations !== undefined ? { annotations: result.annotations } : {}),
+    }
+    ctx.texts.set(sample.id, { raw: output.text, output: evaluated })
+  }
+
+  // 3. 确定性检查
   const checks = await runChecks(loaded.suite.checks ?? [], {
-    output: output.text,
+    output: evaluated,
     sample,
     prompt,
   })
@@ -370,11 +446,12 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
   const generated = {
     ...base,
     finishReason: output.finishReason,
-    outputChars: [...output.text].length,
+    outputChars: [...evaluated].length,
+    ...(prepared ? { prepared } : {}),
     checks,
   }
 
-  // 3. 评委（有 error 级检查失败时仍评分，便于对比）
+  // 4. 评委（有 error 级检查失败时仍评分，便于对比）
   const judgeConfig = loaded.suite.judge
   if (!ctx.judgeKey || !judgeConfig)
     return {
@@ -387,7 +464,7 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
   const judgeKey = ctx.judgeKey
   const judgeSpec = spec(ctx, judgeKey)
   const { rubric } = judgeConfig
-  const messages = judgeMessages({ rubric, sampleInput: sample.input, prompt, output: output.text })
+  const messages = judgeMessages({ rubric, sampleInput: sample.input, prompt, output: evaluated })
   // 回放与真实模式按同一评委设置构造请求；thinking 由评委模型的 Provider 决定是否下发
   const settings = judgeSettings(judgeSpec.provider, judgeConfig)
   const judgeEstimate = estimateCall(
@@ -396,7 +473,8 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
     [messages.system, messages.user, judgeSchemaText(rubric)],
     settings.maxOutputTokens,
   )
-  const outputHash = await promptSha256(output.text)
+  // 评委录制绑定被评正文与转换版本：任一变化都使旧录制过期
+  const outputHash = await promptSha256(evaluated)
   const judgePath = judgeRecordingPath(
     loaded.dir,
     prompt.promptVersion,
@@ -410,7 +488,9 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
     const read = readRecording(judgePath, judgeRecordingSchema)
     const stale =
       read.ok &&
-      (read.recording.rubricVersion !== rubric.version || read.recording.outputHash !== outputHash)
+      (read.recording.rubricVersion !== rubric.version ||
+        read.recording.outputHash !== outputHash ||
+        read.recording.prepareVersion !== hook?.version)
     if (!read.ok || stale)
       return {
         ...generated,
@@ -419,7 +499,7 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
           status: read.ok ? 'stale-recording' : 'no-recording',
           model: judgeKey,
           error: read.ok
-            ? 'judge recording was made for a different output or rubric version'
+            ? 'judge recording was made for a different output, rubric version or prepareOutput version'
             : read.reason,
         },
         usage: { generation: generationUsage },
@@ -447,7 +527,10 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
     }
     judgeModel = (ctx.modelFor as ModelFor)(judgeKey, judgeSpec)
   }
+  const judgeStarted = performance.now()
   const call = await runJudge(judgeModel, rubric, messages, settings)
+  // 回放的评委耗时没有意义，只在真实 / 录制模式记录
+  const judgeDuration = reservation ? Math.round(performance.now() - judgeStarted) : undefined
   let judgeCost = 0
   if (reservation) {
     judgeCost = call.callFailed
@@ -465,6 +548,7 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
       promptVersion: prompt.promptVersion,
       rubricVersion: rubric.version,
       outputHash,
+      ...(hook ? { prepareVersion: hook.version } : {}),
       model: modelRef(judgeKey, judgeSpec),
       output: call.text,
       finishReason: call.finishReason ?? 'other',
@@ -487,10 +571,71 @@ async function runSample(ctx: Context, sample: Sample): Promise<SampleResult> {
     judge,
     usage: {
       generation: generationUsage,
-      judge: { ...definedUsage(call.usage), estimatedInputTokens: judgeEstimate.inputTokens },
+      judge: {
+        ...definedUsage(call.usage),
+        estimatedInputTokens: judgeEstimate.inputTokens,
+        ...(judgeDuration !== undefined ? { durationMs: judgeDuration } : {}),
+      },
     },
     costUsd: costUsd + judgeCost,
     estimatedCostUsd,
+  }
+}
+
+type Prepared =
+  | { readonly ok: true; readonly output: string; readonly annotations?: Record<string, unknown> }
+  | { readonly ok: false; readonly error: string }
+
+async function prepareOnce(
+  hook: PrepareOutput,
+  rawOutput: string,
+  sample: Sample,
+  prompt: DefinedPrompt<unknown>,
+): Promise<Prepared> {
+  // 每次传入样本副本，hook 改动样本不会影响第二次执行或后续检查
+  const result = (await hook.run({ rawOutput, sample: structuredClone(sample), prompt })) as {
+    output?: unknown
+    annotations?: unknown
+  } | null
+  if (typeof result?.output !== 'string')
+    return { ok: false, error: 'prepareOutput must return { output: string }' }
+  if (result.annotations !== undefined && !isJsonRecord(result.annotations))
+    return {
+      ok: false,
+      error: 'prepareOutput annotations must be a JSON-serialisable plain object',
+    }
+  return {
+    ok: true,
+    output: result.output,
+    ...(result.annotations !== undefined
+      ? { annotations: result.annotations as Record<string, unknown> }
+      : {}),
+  }
+}
+
+/** 执行两次并比对，拦住依赖时间或随机数的实现（design D1） */
+async function prepareOutput(
+  hook: PrepareOutput,
+  rawOutput: string,
+  sample: Sample,
+  prompt: DefinedPrompt<unknown>,
+): Promise<Prepared> {
+  try {
+    const first = await prepareOnce(hook, rawOutput, sample, prompt)
+    if (!first.ok) return first
+    const second = await prepareOnce(hook, rawOutput, sample, prompt)
+    if (
+      !second.ok ||
+      second.output !== first.output ||
+      JSON.stringify(second.annotations) !== JSON.stringify(first.annotations)
+    )
+      return {
+        ok: false,
+        error: 'prepareOutput is not repeatable: two runs on the same input differ',
+      }
+    return first
+  } catch (error) {
+    return { ok: false, error: `prepareOutput threw: ${safeErrorMessage(error)}` }
   }
 }
 
@@ -523,6 +668,7 @@ const isFailure = (sample: SampleResult) =>
   sample.status === 'no-recording' ||
   sample.status === 'stale-recording' ||
   sample.status === 'generation-error' ||
+  sample.status === 'prepare-error' ||
   sample.status === 'judge-error' ||
   sample.checks.some((check) => !check.pass && check.severity === 'error')
 
@@ -538,7 +684,13 @@ interface BaselineSample {
 export function compareBaseline(
   current: readonly SampleResult[],
   baseline: readonly BaselineSample[],
-  meta: { kind: 'prompt' | 'report'; promptVersion: string; source?: string; threshold: number },
+  meta: {
+    kind: 'prompt' | 'report'
+    promptVersion: string
+    source?: string
+    threshold: number
+    baselineFailures?: readonly { id: string; status: SampleStatus }[]
+  },
 ): BaselineComparison {
   const byId = new Map(baseline.map((sample) => [sample.id, sample]))
   const samples = current.flatMap((sample) => {
@@ -570,7 +722,9 @@ export function compareBaseline(
     baselineAverage !== null && currentAverage !== null ? currentAverage - baselineAverage : null
   return {
     ...meta,
+    baselineFailures: meta.baselineFailures ?? [],
     comparedSamples: samples.length,
+    scoredPairs: scored.length,
     baselineAverage,
     currentAverage,
     delta,
@@ -580,9 +734,17 @@ export function compareBaseline(
   }
 }
 
+const modelRefSchema = z.looseObject({
+  key: z.string(),
+  provider: z.string(),
+  providerModelId: z.string(),
+})
 const reportSchema = z.looseObject({
   suite: z.string(),
   prompt: z.looseObject({ promptVersion: z.string() }),
+  generator: modelRefSchema.optional(),
+  prepareVersion: z.string().nullable().optional(),
+  judge: modelRefSchema.extend({ rubricVersion: z.string() }).nullable().optional(),
   samples: z.array(
     z.looseObject({
       id: z.string(),
@@ -592,7 +754,58 @@ const reportSchema = z.looseObject({
   ),
 })
 
-function readBaselineReport(path: string, suite: string) {
+/** 旧报告的样本宽松读取为 EvaluationResult：缺字段保持缺省，交由项目判 incomplete */
+function reportResult(sample: Record<string, unknown>): EvaluationResult {
+  const usage = sample.usage as { generation?: Record<string, unknown> } | undefined
+  const generation = usage?.generation
+  const num = (value: unknown) =>
+    typeof value === 'number' && Number.isFinite(value) ? value : undefined
+  return {
+    id: sample.id as string,
+    tags: Array.isArray(sample.tags) ? (sample.tags as string[]) : [],
+    status: (typeof sample.status === 'string' ? sample.status : 'failed') as SampleStatus,
+    checks: sample.checks as CheckOutcome[],
+    judge: (sample.judge as JudgeResult | null | undefined) ?? null,
+    usage: generation
+      ? {
+          generation: {
+            inputTokens: num(generation.inputTokens),
+            outputTokens: num(generation.outputTokens),
+            durationMs: num(generation.durationMs),
+          },
+        }
+      : {},
+    ...(typeof sample.finishReason === 'string' ? { finishReason: sample.finishReason } : {}),
+    ...(sample.prepared ? { prepared: sample.prepared as PreparedInfo } : {}),
+    ...(typeof sample.error === 'string' ? { error: sample.error } : {}),
+  }
+}
+
+/** 本次运行结果交给 evaluateRun 的稳定子集 */
+function runResult(sample: SampleResult): EvaluationResult {
+  const generation = sample.usage.generation
+  return {
+    id: sample.id,
+    tags: sample.tags,
+    status: sample.status,
+    checks: sample.checks,
+    judge: sample.judge,
+    usage: generation
+      ? {
+          generation: {
+            inputTokens: generation.inputTokens,
+            outputTokens: generation.outputTokens,
+            durationMs: generation.durationMs,
+          },
+        }
+      : {},
+    ...(sample.finishReason !== undefined ? { finishReason: sample.finishReason } : {}),
+    ...(sample.prepared ? { prepared: sample.prepared } : {}),
+    ...(sample.error !== undefined ? { error: sample.error } : {}),
+  }
+}
+
+function readBaselineReport(path: string, suite: string, selected: ReadonlySet<string>) {
   if (!existsSync(path)) throw new EvalConfigError(`--baseline-report ${path} not found`)
   let parsed: z.infer<typeof reportSchema>
   try {
@@ -609,6 +822,30 @@ function readBaselineReport(path: string, suite: string) {
       score: sample.judge?.score ?? null,
       checks: sample.checks,
     })),
+    group: {
+      promptVersion: parsed.prompt.promptVersion,
+      source: 'report',
+      generator: parsed.generator
+        ? {
+            key: parsed.generator.key,
+            provider: parsed.generator.provider,
+            providerModelId: parsed.generator.providerModelId,
+          }
+        : null,
+      judge: parsed.judge
+        ? {
+            key: parsed.judge.key,
+            provider: parsed.judge.provider,
+            providerModelId: parsed.judge.providerModelId,
+            rubricVersion: parsed.judge.rubricVersion,
+          }
+        : null,
+      prepareVersion: typeof parsed.prepareVersion === 'string' ? parsed.prepareVersion : null,
+      // 只交选定范围内的样本，与候选组同一口径
+      results: parsed.samples
+        .filter((sample) => selected.has(sample.id))
+        .map((sample) => reportResult(sample)),
+    } satisfies EvaluationGroup,
   }
 }
 
@@ -702,7 +939,11 @@ export async function runEval(options: RunOptions, deps: RunDeps = {}): Promise<
       )
   }
   if (options.baselineReport)
-    baselineReport = readBaselineReport(options.baselineReport, suite.name)
+    baselineReport = readBaselineReport(
+      options.baselineReport,
+      suite.name,
+      new Set(samples.map((sample) => sample.id)),
+    )
 
   let ledger: BudgetLedger | null = null
   let modelFor: ModelFor | null = null
@@ -723,14 +964,43 @@ export async function runEval(options: RunOptions, deps: RunDeps = {}): Promise<
     ledger: targetMode === 'replay' ? null : ledger,
     modelFor: targetMode === 'replay' ? null : modelFor,
     now,
+    texts: new Map(),
     stopped: false,
   })
+
+  const generatorRef = modelRef(generatorKey, suite.models[generatorKey] as ModelSpec)
+  const judgeRef =
+    judgeKey && suite.judge
+      ? {
+          ...modelRef(judgeKey, suite.models[judgeKey] as ModelSpec),
+          rubricVersion: suite.judge.rubric.version,
+        }
+      : null
+  const runGroup = (
+    target: DefinedPrompt<unknown>,
+    results: readonly SampleResult[],
+  ): EvaluationGroup => ({
+    promptVersion: target.promptVersion,
+    source: 'run',
+    prepareVersion: suite.prepareOutput?.version ?? null,
+    generator: generatorRef,
+    judge: judgeRef,
+    results: results.map(runResult),
+  })
+  const scope: RunScope = {
+    totalSamples: loaded.samples.length,
+    selectedSamples: samples.length,
+    filtered: samples.length !== loaded.samples.length,
+    ...(options.samples?.length ? { sampleFilter: [...options.samples] } : {}),
+    ...(options.tag ? { tag: options.tag } : {}),
+  }
 
   const resolvedThreshold = threshold ?? suite.regressionThreshold ?? DEFAULT_REGRESSION_THRESHOLD
   let baseline: BaselineComparison | null = null
   if (baselinePrompt) {
     const before = await runSamples(context(baselinePrompt, 'replay'), samples, concurrency)
-    const current = await runSamples(context(prompt, mode), samples, concurrency)
+    const currentContext = context(prompt, mode)
+    const current = await runSamples(currentContext, samples, concurrency)
     baseline = compareBaseline(
       current,
       before.map((sample) => ({
@@ -738,11 +1008,19 @@ export async function runEval(options: RunOptions, deps: RunDeps = {}): Promise<
         score: sample.judge?.score ?? null,
         checks: sample.checks,
       })),
-      { kind: 'prompt', promptVersion: baselinePrompt.promptVersion, threshold: resolvedThreshold },
+      {
+        kind: 'prompt',
+        promptVersion: baselinePrompt.promptVersion,
+        threshold: resolvedThreshold,
+        baselineFailures: before
+          .filter(isFailure)
+          .map((sample) => ({ id: sample.id, status: sample.status })),
+      },
     )
-    return finish(current, baseline)
+    return finish(current, baseline, runGroup(baselinePrompt, before), currentContext.texts)
   }
-  const current = await runSamples(context(prompt, mode), samples, concurrency)
+  const currentContext = context(prompt, mode)
+  const current = await runSamples(currentContext, samples, concurrency)
   if (baselineReport)
     baseline = compareBaseline(current, baselineReport.samples, {
       kind: 'report',
@@ -750,9 +1028,25 @@ export async function runEval(options: RunOptions, deps: RunDeps = {}): Promise<
       source: options.baselineReport as string,
       threshold: resolvedThreshold,
     })
-  return finish(current, baseline)
+  return finish(current, baseline, baselineReport?.group ?? null, currentContext.texts)
 
-  function finish(results: SampleResult[], comparison: BaselineComparison | null): RunResult {
+  async function finish(
+    results: SampleResult[],
+    comparison: BaselineComparison | null,
+    baselineGroup: EvaluationGroup | null,
+    texts: Context['texts'],
+  ): Promise<RunResult> {
+    // 评测后判定：拿到全部结果（不只是通过或有分数的样本）后调用一次
+    const assessment = suite.evaluateRun
+      ? await runAssessment(suite.evaluateRun, {
+          samples,
+          scope,
+          mode,
+          rubric: judgeKey && suite.judge ? suite.judge.rubric : null,
+          candidate: runGroup(prompt, results),
+          baseline: baselineGroup,
+        })
+      : null
     const failed = results.filter(isFailure).length
     const skippedBudget = results.filter((sample) => sample.status === 'skipped-budget').length
     const scores = results.flatMap((sample) =>
@@ -762,6 +1056,8 @@ export async function runEval(options: RunOptions, deps: RunDeps = {}): Promise<
       failed ? EXIT.failed : 0,
       skippedBudget ? EXIT.budget : 0,
       comparison?.regressed ? EXIT.regression : 0,
+      // 门槛码排在最后：不掩盖检查 / 生成失败、预算触顶与回退
+      assessment?.failed ? EXIT.gates : 0,
     ].filter(Boolean)
     const exitCode = codes.length ? Math.min(...codes) : EXIT.ok
     const calls = results.flatMap((sample) =>
@@ -773,8 +1069,6 @@ export async function runEval(options: RunOptions, deps: RunDeps = {}): Promise<
     const estimates = results
       .filter((sample) => sample.status !== 'skipped-budget')
       .map((sample) => sample.estimatedCostUsd)
-    const generatorSpec = suite.models[generatorKey] as ModelSpec
-    const judgeSpec = judgeKey ? (suite.models[judgeKey] as ModelSpec) : null
     const report: Report = {
       suite: suite.name,
       mode,
@@ -789,16 +1083,15 @@ export async function runEval(options: RunOptions, deps: RunDeps = {}): Promise<
           ]),
         ),
       },
-      generator: modelRef(generatorKey, generatorSpec),
-      judge:
-        judgeKey && judgeSpec && suite.judge
-          ? { ...modelRef(judgeKey, judgeSpec), rubricVersion: suite.judge.rubric.version }
-          : null,
+      generator: generatorRef,
+      judge: judgeRef,
       budget: {
         limitUsd: ledger?.limitUsd ?? null,
         spentUsd: ledger?.spent ?? 0,
         exhausted: ledger?.exhausted ?? false,
       },
+      scope,
+      prepareVersion: suite.prepareOutput?.version ?? null,
       samples: results,
       summary: {
         total: results.length,
@@ -810,6 +1103,7 @@ export async function runEval(options: RunOptions, deps: RunDeps = {}): Promise<
           : 0,
         averageScore: average(scores),
         scoredSamples: scores.length,
+        expectedScores: judgeKey ? results.length : 0,
         warnings: results.reduce(
           (sum, sample) =>
             sum + sample.checks.filter((check) => !check.pass && check.severity === 'warn').length,
@@ -825,9 +1119,10 @@ export async function runEval(options: RunOptions, deps: RunDeps = {}): Promise<
           : null,
       },
       baseline: comparison,
+      assessment,
       exitCode,
     }
-    const reportDir = writeReport(report, { root, env, now: now() })
+    const reportDir = writeReport(report, { root, env, now: now() }, texts)
     return { exitCode, report, reportDir }
   }
 }

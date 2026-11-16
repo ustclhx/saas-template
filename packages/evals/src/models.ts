@@ -90,12 +90,16 @@ export const generationRecordingSchema = z.strictObject({
   kind: z.literal('generation'),
   renderedHash: z.string(),
   ...common,
+  /** 真实生成耗时（毫秒）；回放读取此值，旧录制缺省 */
+  durationMs: z.number().int().nonnegative().optional(),
 })
 export const judgeRecordingSchema = z.strictObject({
   kind: z.literal('judge'),
   rubricVersion: z.string(),
-  /** 被评输出的摘要；与当前输出不符时视为录制缺失 */
+  /** 被评正文（套件声明 prepareOutput 时为转换后正文）的摘要；与当前不符时视为过期 */
   outputHash: z.string(),
+  /** 录制时的 prepareOutput 版本；未声明转换时缺省 */
+  prepareVersion: z.string().optional(),
   ...common,
 })
 export type GenerationRecording = z.infer<typeof generationRecordingSchema>

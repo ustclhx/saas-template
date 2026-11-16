@@ -15,6 +15,22 @@ export {
 /** 套件的 `inputSchema` 用同一个 zod 实例声明（根目录不直接依赖 zod） */
 export { z } from 'zod'
 export {
+  type AssessmentReport,
+  type Collected,
+  collect,
+  type EvaluateRun,
+  type EvaluateRunContext,
+  type EvaluationGroup,
+  type EvaluationResult,
+  type GateStatus,
+  type ModelRef,
+  mean,
+  percentile,
+  type RunAssessment,
+  type RunGate,
+  type RunScope,
+} from './assess.ts'
+export {
   banned,
   type Check,
   type CheckContext,
@@ -29,11 +45,22 @@ export {
   sections,
 } from './checks.ts'
 export { EvalConfigError, EXIT } from './errors.ts'
-export { type Report, type RunOptions, runEval, type SampleResult } from './runner.ts'
+export {
+  type CallUsage,
+  type JudgeResult,
+  type PreparedInfo,
+  type Report,
+  type RunOptions,
+  runEval,
+  type SampleResult,
+  type SampleStatus,
+} from './runner.ts'
 export type { Sample } from './sample.ts'
 export {
   defineSuite,
   type ModelSpec,
+  type PreparedOutput,
+  type PrepareOutput,
   type Rubric,
   type Suite,
   type SuiteDefinition,

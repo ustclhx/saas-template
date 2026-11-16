@@ -31,7 +31,8 @@ export const USAGE = `用法：pnpm eval:prompts --suite <name> [选项]
   --baseline-report <path>       与以前的 report.json 对比
   --max-regression <0-1>         平均总分下降超过此值判为回退（缺省取套件值，再缺省 0.05）
 
-退出码：0 通过；1 检查 / 生成 / 评委失败或录制缺失、过期；2 配置错误；3 预算触顶；4 回退。
+退出码：0 通过；1 检查 / 转换 / 生成 / 评委失败或录制缺失、过期；2 配置错误；3 预算触顶；4 回退；
+      5 套件 evaluateRun 门槛未达成或必需门槛证据不足。多种情况同时出现时取最小的非零码。
 报告写入 $EVIDENCE_DIR/prompt-evals/<suite>/，未设置时为 test-results/evidence/（不进仓库）。
 `
 
@@ -139,7 +140,21 @@ export async function main(
       lines.push(
         `基线 ${report.baseline.promptVersion}：平均分差 ${
           report.baseline.delta === null ? '—' : report.baseline.delta.toFixed(3)
-        }${report.baseline.regressed ? '（回退）' : ''}`,
+        }${report.baseline.regressed ? '（回退）' : ''}，两侧有分 ${report.baseline.scoredPairs} / ${report.baseline.comparedSamples}${
+          report.baseline.baselineFailures.length
+            ? `；基线回放失败 ${report.baseline.baselineFailures.length} 个，需重录基线`
+            : ''
+        }`,
+      )
+    if (report.scope.filtered)
+      lines.push(
+        `范围：${report.scope.selectedSamples} / ${report.scope.totalSamples} 个样本（已筛选）`,
+      )
+    if (report.assessment)
+      lines.push(
+        `门槛${report.assessment.failed ? '未达成' : '达成'}：${report.assessment.gates
+          .map((gate) => `${gate.id} ${gate.status}${gate.required ? '' : '（非必需）'}`)
+          .join('，')}`,
       )
     const root = deps.root ?? REPO_ROOT
     const shown = relative(root, reportDir)

@@ -9,6 +9,8 @@ export const EXIT = {
   config: 2,
   budget: 3,
   regression: 4,
+  /** 套件 evaluateRun 的门槛未达成或必需门槛证据不足 */
+  gates: 5,
 } as const
 
 /** 文本模型出口读取的环境变量；值只交给模型工厂，并从任何错误信息中抹去 */

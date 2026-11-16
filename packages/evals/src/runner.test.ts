@@ -196,8 +196,10 @@ describe('模式与录制（4.1）', () => {
     const recording = JSON.parse(
       readFileSync(join(s.dir, 'recordings/demo@v2/gen/s1.json'), 'utf8'),
     )
+    expect(recording.durationMs).toEqual(expect.any(Number))
     expect(Object.keys(recording).sort()).toEqual(
       [
+        'durationMs',
         'finishReason',
         'kind',
         'model',
@@ -272,6 +274,7 @@ describe('运行器与报告（4.2）', () => {
     const { report } = all
     expect(Object.keys(report).sort()).toEqual(
       [
+        'assessment',
         'baseline',
         'budget',
         'createdAt',
@@ -280,8 +283,10 @@ describe('运行器与报告（4.2）', () => {
         'gitCommit',
         'judge',
         'mode',
+        'prepareVersion',
         'prompt',
         'samples',
+        'scope',
         'suite',
         'summary',
       ].sort(),
