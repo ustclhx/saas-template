@@ -137,6 +137,9 @@ describe('Select（Fluid radix/select）', () => {
     )
     expect(html).toContain('role="combobox"')
     expect(html).toContain('Pick a plan')
+    // 外层包装与触发器可收缩：放进 grid / flex 列时长文字截断而不撑开所在列
+    expect(html).toMatch(/^<div class="flex min-w-0 flex-col gap-1">/)
+    expect(html).toMatch(/<button[^>]*class="[^"]*\bmax-w-full\b/)
   })
 
   it('传 valueLabel 时服务端输出即含选中文字（水合前可见），值为空时仍显示占位文字', () => {

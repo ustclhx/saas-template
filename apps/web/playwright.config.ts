@@ -54,6 +54,8 @@ export default defineConfig({
         ]
       : [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   ...(!remoteURL && {
+    // 用例前写入价格目录夹具，避免开发服务器缓存空目录（e2e/catalog-setup.ts）
+    globalSetup: './e2e/catalog-setup.ts',
     webServer: [
       {
         command: `pnpm dev > ${quotedAuthLogPath} 2>&1`,

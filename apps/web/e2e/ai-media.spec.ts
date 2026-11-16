@@ -9,6 +9,7 @@ import type { MediaTask } from '../src/features/ai-media/tasks-client.ts'
 import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
 import { chooseOption } from './select.ts'
 import { stubTurnstile } from './turnstile.ts'
+import { workersAiSkipReason } from './workers-ai.ts'
 
 const RESULT_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPZkAAAAASUVORK5CYII=',
@@ -114,6 +115,9 @@ async function seedMediaModel(workspaceId: string) {
 test('submits, follows progress, previews and downloads a result, and manages its share', async ({
   page,
 }) => {
+  // seedMediaModel 写入 workers-ai 模型；项目未启用 Workers AI 时提交页没有可用模型。
+  const skipReason = workersAiSkipReason()
+  test.skip(skipReason !== null, skipReason ?? '')
   test.setTimeout(150_000)
   const workspace = await workspaceFixture(page)
   const model = await seedMediaModel(workspace.workspaceId)

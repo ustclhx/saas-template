@@ -326,7 +326,7 @@ describe('Badge（Fluid badge）', () => {
         </Badge>
       </>,
     )
-    expect(html).toContain('background-color:var(--accent);color:var(--foreground)')
+    expect(html).toContain('background-color:var(--neutral-fill);color:var(--foreground)')
     expect(html).toContain(
       'color:var(--foreground);background-color:color-mix(in srgb, var(--badge-green) 15%, var(--background))',
     )

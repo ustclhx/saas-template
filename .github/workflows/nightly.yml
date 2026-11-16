@@ -102,10 +102,23 @@ jobs:
       PLAYWRIGHT_HTML_OPEN: never
     steps:
       - uses: actions/checkout@v7
+      # 衍生项目（有 .template-base.json）未开启 multiTenant 时不需要多空间覆盖：工作区菜单等可能已被项目裁掉，
+      # 强行开启必然失败。模板仓库没有基准记录，照常开启后运行。
+      - name: Decide multi-tenant coverage
+        id: scope
+        run: |
+          if [ -f .template-base.json ] && ! grep -Eq 'multiTenant:[[:space:]]*true' template.config.ts; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "衍生项目未开启 multiTenant，跳过多空间 e2e" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: ./.github/actions/prepare-local-tests
+        if: steps.scope.outputs.skip != 'true'
         with:
           database: saas_wt_multi_tenant
       - name: Prepare isolated e2e fixtures
+        if: steps.scope.outputs.skip != 'true'
         run: |
           cat > .env.worktree <<'VARS'
           DATABASE_URL=postgres://app:app@localhost:5432/saas_wt_multi_tenant
@@ -115,10 +128,12 @@ jobs:
           VARS
       # 只改 runner 内的检出副本；替换失败（模板字段改名）时直接报错，避免静默跑成单空间
       - name: Enable multi-tenant template config
+        if: steps.scope.outputs.skip != 'true'
         run: |
           sed -i 's/multiTenant: false,/multiTenant: true,/' template.config.ts
           grep -q 'multiTenant: true,' template.config.ts
       - name: Run multi-tenant e2e
+        if: steps.scope.outputs.skip != 'true'
         run: pnpm --filter @saas/web exec playwright test e2e/workspace.spec.ts e2e/app-shell.spec.ts --reporter=github,html
       - uses: actions/upload-artifact@v6
         if: failure()

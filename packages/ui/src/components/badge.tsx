@@ -98,11 +98,11 @@ const Badge = forwardRef<HTMLSpanElement, BadgeProps>(
 
     // 15% of the hue mixed into the page background: a tint that sits at the
     // right depth in either theme, under plain foreground text. Gray skips
-    // the mix and takes the theme's neutral fill (`--accent`), so a gray
-    // badge matches the other neutral fills around it.
+    // the mix and takes the theme's neutral fill (`--neutral-fill`). 模板改动：
+    // 不用 `--accent`——衍生项目常把它改成品牌主色，灰色徽标会随之变色、对比度不足。
     const colorStyle = isSolid
       ? color === 'gray'
-        ? { backgroundColor: 'var(--accent)', color: 'var(--foreground)' }
+        ? { backgroundColor: 'var(--neutral-fill)', color: 'var(--foreground)' }
         : {
             color: 'var(--foreground)',
             backgroundColor: `color-mix(in srgb, ${colorValue} 15%, var(--background))`,

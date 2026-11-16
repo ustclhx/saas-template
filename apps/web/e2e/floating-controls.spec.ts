@@ -67,6 +67,11 @@ for (const viewport of [
       // 手机端（< 768px）语言与主题不再悬浮，移入页脚设置行（0.5.1，设计稿 mobile-footer-controls）
       const mobile = viewport.width < 768
       await page.goto('/')
+      // 衍生项目可在营销布局内联语言与主题控件，此时根文档不声明浮动控件，用例不适用。
+      test.skip(
+        (await page.locator('body[data-floating-controls]').count()) === 0,
+        '首页未声明 body[data-floating-controls]，没有浮动控件',
+      )
       if (mobile) {
         await expect(themeControl(page)).toBeHidden()
         await expect(languageControl(page)).toBeHidden()
