@@ -98,6 +98,12 @@ grep -nE -- '^ *--[a-z0-9-]+:' apps/web/src/styles/brand.css
 
 新增 token 先改基线（模板）或品牌层（项目），再用工具类引用；页面中不出现原始颜色值。
 
+**字体预加载**（add-marketing-critical-path）：根布局对 `apps/web/src/features/theme/fonts.project.ts` 的
+`projectFontPreloads(defaults)` 返回的每一项输出 `<link rel="preload" as="font">`，默认是模板的 Inter 拉丁子集（约 71KB）。
+预加载在首帧前占用带宽，只预加载首屏正文确实使用的字体：品牌层用 `--font-sans` 换掉 Inter 时返回 `[]`；
+要预加载自己的字体，在该文件 `import url from './brand.woff2?url'` 后返回 `[{ href: url, type: 'font/woff2' }]`（追加用 `[...defaults, …]`）。
+该文件归项目所有，模板同步不覆盖。`brand.css` 覆盖了 `--font-sans` 而首页仍预加载 Inter 时，`pnpm build` 会打印警告。
+
 ### 3.3 主题预设与 ui 配置
 
 `template.config.ts` 的 `ui` 段：

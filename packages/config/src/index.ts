@@ -33,6 +33,7 @@ export {
   type DefaultLocale,
   defineTemplateConfig,
   type LocalizedText,
+  type MarketingPerformance,
   type MarketingProduct,
   type MarketingStat,
   type MarketingStep,

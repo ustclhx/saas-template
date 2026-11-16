@@ -45,6 +45,18 @@ export interface MarketingProduct<L extends string = string> {
   readonly secondaryHref: string
 }
 
+/**
+ * 预渲染营销页的首屏关键路径（apps/web 构建后处理，只改写预渲染 HTML）：
+ * - hydration：eager 照常输出 modulepreload 与水合入口；after-paint 去掉 modulepreload，首次内容绘制后再加载入口
+ * - criticalCss：full 内联整份样式表；used 只内联该页用到的规则，完整样式表在首次内容绘制后加载
+ * - homeScriptGzipBudget：首页客户端静态闭包 gzip 合计上限（字节），null 不检查
+ */
+export interface MarketingPerformance {
+  readonly hydration: 'eager' | 'after-paint'
+  readonly criticalCss: 'full' | 'used'
+  readonly homeScriptGzipBudget: number | null
+}
+
 /** 主题预设名单（packages/ui/src/styles/presets/*.css）；@saas/web 的测试断言它与 @saas/ui 的 UI_PRESETS 一致 */
 export const uiPresets = ['neutral', 'blue', 'violet', 'green'] as const
 export const uiShapes = ['sharp', 'rounded', 'pill'] as const
@@ -179,6 +191,8 @@ export interface TemplateConfig<L extends string = string> {
     readonly products: readonly MarketingProduct<L>[]
     /** 营销页右下角的悬浮 AI 入口：链接到 href（默认 /app，登录后进入空间），不内嵌对话 */
     readonly aiEntry: { readonly enabled: boolean; readonly href: string }
+    /** 预渲染营销页的首屏关键路径（openspec add-marketing-critical-path）；默认与改动前一致 */
+    readonly performance: MarketingPerformance
   }
   /** 界面主题（openspec add-ui-design-system design D2/D3）；项目品牌色放 apps/web/src/styles/brand.css */
   readonly ui: {
@@ -262,6 +276,7 @@ export interface TemplateConfigInput<L extends string = DefaultLocale> {
     steps?: readonly MarketingStep<NoInfer<L>>[]
     products?: readonly MarketingProduct<NoInfer<L>>[]
     aiEntry?: Partial<TemplateConfig['marketing']['aiEntry']>
+    performance?: Partial<MarketingPerformance>
   }
   ui?: Partial<Section<'ui'>>
   ai?: Partial<Omit<Section<'ai'>, 'defaultPricingMode' | 'text'>> & {
@@ -303,6 +318,7 @@ export const templateConfigDefaults = {
     steps: [],
     products: [],
     aiEntry: { enabled: false, href: '/app' },
+    performance: { hydration: 'eager', criticalCss: 'full', homeScriptGzipBudget: null },
   },
   ui: { preset: 'neutral', shape: 'rounded', density: 'default', appLayout: 'sidebar' },
   ai: {
@@ -398,6 +414,7 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
       steps: input.marketing?.steps ?? d.marketing.steps,
       products: input.marketing?.products ?? d.marketing.products,
       aiEntry: { ...d.marketing.aiEntry, ...input.marketing?.aiEntry },
+      performance: { ...d.marketing.performance, ...input.marketing?.performance },
     },
     ui: uiConfigSchema.parse({ ...d.ui, ...input.ui }),
     ai: {
@@ -422,6 +439,20 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
     throw new RangeError('template config: marketing.stats.items allows at most 4 entries')
   }
   validateMarketing(config.marketing, config.i18n.locales)
+  const performance = config.marketing.performance
+  if (!['eager', 'after-paint'].includes(performance.hydration))
+    throw new RangeError(
+      "template config: marketing.performance.hydration must be 'eager' or 'after-paint'",
+    )
+  if (!['full', 'used'].includes(performance.criticalCss))
+    throw new RangeError(
+      "template config: marketing.performance.criticalCss must be 'full' or 'used'",
+    )
+  const budget = performance.homeScriptGzipBudget
+  if (budget !== null && !(Number.isInteger(budget) && budget > 0))
+    throw new RangeError(
+      'template config: marketing.performance.homeScriptGzipBudget must be a positive integer or null',
+    )
 
   if (config.billing.enabled && !config.credits.enabled) {
     throw new RangeError('template config: billing.enabled requires credits.enabled')

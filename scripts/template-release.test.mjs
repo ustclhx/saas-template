@@ -393,6 +393,11 @@ for (const [file, initial, modifiedContent] of [
     'export const ProjectComposerEstimate = () => null\n',
   ],
   [
+    'apps/web/src/features/theme/fonts.project.ts',
+    'export const projectFontPreloads = (defaults) => defaults\n',
+    'export const projectFontPreloads = () => []\n',
+  ],
+  [
     'apps/web/src/features/app-shell/nav.project.ts',
     '// 项目导航条目\nexport {}\n',
     "import './nav.ts'\nexport {}\n",

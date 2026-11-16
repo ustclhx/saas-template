@@ -4,9 +4,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  budgetViolation,
   checkHomeBundle,
   checkServerHomeBundle,
   htmlScripts,
+  readPerformanceOptions,
   staticClosure,
 } from './check-home-bundle.mjs'
 
@@ -79,6 +81,115 @@ describe('首页包检查', () => {
     expect(checkHomeBundle(root).violations).toEqual([
       { asset: '/assets/og.js', marker: 'cf-workers-og' },
     ])
+  })
+
+  it('客户端首页静态依赖中出现 zod schema 实现时报错；只有 jitless 配置时通过', () => {
+    const ok = fixture({
+      'index.html': '<script type="module" src="/assets/entry.js"></script>',
+      'assets/entry.js': 'const c={};function config(o){Object.assign(c,o)}config({jitless:!0});',
+    })
+    expect(checkHomeBundle(ok).violations).toEqual([])
+    rmSync(dir, { recursive: true, force: true })
+    const bad = fixture({
+      'index.html': '<script type="module" src="/assets/entry.js"></script>',
+      'assets/entry.js': 'import"./schema.js";',
+      'assets/schema.js': 'class ZodError extends Error{};const i={code:"invalid_type"};',
+    })
+    expect(checkHomeBundle(bad).violations.map((v) => v.marker)).toEqual([
+      'invalid_type',
+      'ZodError',
+    ])
+  })
+
+  it('加载器内联脚本中的入口路径也计入首页闭包', () => {
+    const root = fixture({
+      'index.html':
+        '<script>(function(){var css=["/assets/app.css"],js=["/assets/entry.js"]})()</script>',
+      'assets/entry.js': 'import"./schema.js";',
+      'assets/schema.js': 'const i={code:"invalid_type"};',
+    })
+    expect(checkHomeBundle(root).files.sort()).toEqual(['/assets/entry.js', '/assets/schema.js'])
+  })
+})
+
+describe('首页包预算（add-marketing-critical-path）', () => {
+  it('未设置预算不检查；未超出返回 null；超出给出实际值与预算', () => {
+    expect(budgetViolation(500_000, null)).toBeNull()
+    expect(budgetViolation(500_000, undefined)).toBeNull()
+    expect(budgetViolation(1000, 1000)).toBeNull()
+    expect(budgetViolation(1001, 1000)).toMatch(/1001 B.*预算 1000 B/)
+  })
+
+  it('读取构建写出的 marketing.performance，缺失时为 null', () => {
+    const root = fixture({})
+    expect(readPerformanceOptions(root)).toBeNull()
+    mkdirSync(join(root, '.build'))
+    writeFileSync(
+      join(root, '.build/marketing-performance.json'),
+      JSON.stringify({ homeScriptGzipBudget: 1234 }),
+    )
+    expect(readPerformanceOptions(root)).toEqual({ homeScriptGzipBudget: 1234 })
+  })
+
+  it('命令行：未设置预算时 zod 只警告，设置预算后判失败', () => {
+    const root = fixture({})
+    const files: Record<string, string> = {
+      'client/index.html': '<script type="module" src="/assets/entry.js"></script>',
+      'client/assets/entry.js': 'const i={code:"invalid_type"};',
+      'server/index.js': '',
+      'server/assets/home.js': '',
+      'server/.vite/manifest.json': JSON.stringify({
+        'src/routes/index.tsx': { file: 'assets/home.js' },
+      }),
+    }
+    for (const [path, content] of Object.entries(files)) {
+      mkdirSync(join(root, path, '..'), { recursive: true })
+      writeFileSync(join(root, path), content)
+    }
+    const script = new URL('./check-home-bundle.mjs', import.meta.url).pathname
+    const run = () =>
+      spawnSync(process.execPath, [script, join(root, 'client'), join(root, 'server')], {
+        encoding: 'utf8',
+      })
+    const warned = run()
+    expect(warned.status).toBe(0)
+    expect(warned.stderr).toMatch(/zod schema/)
+    mkdirSync(join(root, '.build'))
+    writeFileSync(
+      join(root, '.build/marketing-performance.json'),
+      JSON.stringify({ homeScriptGzipBudget: 1_000_000 }),
+    )
+    const failed = run()
+    expect(failed.status).toBe(1)
+    expect(failed.stderr).toMatch(/invalid_type/)
+  })
+
+  it('命令行超出预算时失败', () => {
+    // 目录结构同构建产物：<root>/client（客户端）、<root>/server（服务端）、<root>/.build（构建配置）
+    const root = fixture({})
+    const files: Record<string, string> = {
+      'client/index.html': '<script type="module" src="/assets/entry.js"></script>',
+      // 不易压缩的内容，确保 gzip 后超过 100 B
+      'client/assets/entry.js': `const big="${Array.from({ length: 400 }, (_, i) => (i * 7919).toString(36)).join(',')}";`,
+      'server/index.js': '',
+      'server/assets/home.js': '',
+      'server/.vite/manifest.json': JSON.stringify({
+        'src/routes/index.tsx': { file: 'assets/home.js' },
+      }),
+      '.build/marketing-performance.json': JSON.stringify({ homeScriptGzipBudget: 100 }),
+    }
+    for (const [path, content] of Object.entries(files)) {
+      mkdirSync(join(root, path, '..'), { recursive: true })
+      writeFileSync(join(root, path), content)
+    }
+    const script = new URL('./check-home-bundle.mjs', import.meta.url).pathname
+    const result = spawnSync(
+      process.execPath,
+      [script, join(root, 'client'), join(root, 'server')],
+      { encoding: 'utf8' },
+    )
+    expect(result.status).toBe(1)
+    expect(result.stderr).toMatch(/超出预算 100 B/)
   })
 })
 

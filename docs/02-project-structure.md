@@ -105,6 +105,22 @@ saas-template/
 `aiEntry` 为右下角悬浮 AI 入口（`href` 默认 `/app`，关闭文本 AI 时一并隐藏）。文案按 `i18n.locales` 逐语言填写，
 缺语言在类型检查时报错，空值在构建期报错；区块眉标与标题等固定文案在 `apps/web/messages/<locale>/marketing-blocks.json`。
 
+`marketing.performance` 控制预渲染营销页的首屏关键路径（openspec add-marketing-critical-path；只作用于 Cloudflare 构建
+`pnpm build` 的预渲染 HTML，Worker 动态渲染页与自托管构建不变）。`@saas/config` 默认值与此前行为一致，模板示例全部开启：
+
+| 字段 | 取值 | 作用 |
+|---|---|---|
+| `hydration` | `'eager'`（默认）/ `'after-paint'` | `after-paint` 去掉 modulepreload，水合入口在首次内容绘制后才下载；首帧更早，可交互稍晚 |
+| `criticalCss` | `'full'`（默认）/ `'used'` | `used` 每页只内联本页 DOM 用到的规则（另保留全部 `@font-face`、`.dark` 与 `:has()` 规则），完整样式表首帧后加载 |
+| `homeScriptGzipBudget` | `null`（默认）/ 字节数 | 首页客户端静态闭包 gzip 合计上限，超出时 `pnpm build` 失败；同时把首页闭包中的 zod schema 从警告升为失败 |
+
+构建后处理（`apps/web/scripts/inline-critical-css.mjs` + `marketing-html.mjs`）逐页比对改写前后 head 中的 title、meta、
+canonical、alternate、图标与 JSON-LD，不一致即构建失败。开启 `used` 后用
+`node apps/web/scripts/check-critical-css.mjs <preview 地址>` 核对「只有关键样式」与「完整样式」的截图逐像素一致
+（需先 `pnpm --filter @<scope>/web build` 并 `vite preview`）。客户端加载 `template.config.ts` 时由构建期解析好的 JSON 代替，
+zod 与配置校验不进入浏览器；客户端首页闭包中出现 zod schema 实现时，首页包检查在设置了 `homeScriptGzipBudget` 时判失败，
+未设置时只警告。`criticalCss: 'used'` 时另输出 `<noscript>` 引入完整样式表，关闭 JS 的访客样式完整。
+
 `template.config.ts` 草案：
 
 ```ts
