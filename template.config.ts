@@ -42,7 +42,7 @@ export default defineTemplateConfig({
     enabled: true,
     // 预渲染营销页的首屏关键路径（docs/02-project-structure.md §3）：
     // after-paint 首帧后再加载水合脚本；used 只内联本页用到的样式；预算为首页客户端脚本 gzip 合计上限（字节）
-    performance: { hydration: 'after-paint', criticalCss: 'used', homeScriptGzipBudget: 220_000 },
+    performance: { hydration: 'after-paint', criticalCss: 'used', homeScriptGzipBudget: 220000 },
     // 数据背书：只填真实可查的数值与来源，模板不提供示例数字；items 为空时区块不渲染。例如
     // items: [{ value: '12,000+', label: { en: 'Registered users', zh: '注册用户' } }],
     // source: { en: 'Platform data as of 2026-10', zh: '平台统计，截至 2026-10' },
