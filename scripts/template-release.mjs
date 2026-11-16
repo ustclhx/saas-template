@@ -66,6 +66,10 @@ const projectOwnedFiles = [
     guidance: 'register template tool cards in apps/web/src/features/ai/message-parts.tsx',
   },
   {
+    path: 'apps/web/src/features/theme/fonts.project.ts',
+    guidance: 'put template font preload changes in packages/ui/src/fonts.ts',
+  },
+  {
     path: 'apps/web/src/features/ai/chat-composer.project.tsx',
     guidance: 'put template composer estimate changes in apps/web/src/features/ai/model-picker.tsx',
   },

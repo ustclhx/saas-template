@@ -53,6 +53,34 @@ describe('defineTemplateConfig', () => {
     }
   })
 
+  it('marketing.performance defaults to the previous behaviour, merges partially and rejects bad values', () => {
+    expect(defineTemplateConfig({ app }).marketing.performance).toEqual({
+      hydration: 'eager',
+      criticalCss: 'full',
+      homeScriptGzipBudget: null,
+    })
+    expect(
+      defineTemplateConfig({ app, marketing: { performance: { hydration: 'after-paint' } } })
+        .marketing.performance,
+    ).toEqual({ hydration: 'after-paint', criticalCss: 'full', homeScriptGzipBudget: null })
+    expect(() =>
+      defineTemplateConfig({
+        app,
+        marketing: { performance: { hydration: 'lazy' as 'eager' } },
+      }),
+    ).toThrow(/performance.hydration/)
+    expect(() =>
+      defineTemplateConfig({
+        app,
+        marketing: { performance: { criticalCss: 'none' as 'full' } },
+      }),
+    ).toThrow(/performance.criticalCss/)
+    for (const homeScriptGzipBudget of [0, -1, 1.5, Number.NaN])
+      expect(() =>
+        defineTemplateConfig({ app, marketing: { performance: { homeScriptGzipBudget } } }),
+      ).toThrow(/homeScriptGzipBudget/)
+  })
+
   it('merges marketing blocks and rejects malformed stats', () => {
     const config = defineTemplateConfig({
       app,

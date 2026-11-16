@@ -3,6 +3,8 @@
 // 只看 index.html 直接列出的文件不够：路由文件中未被拆分的部分（如 validateSearch）会让入口静态导入重的分包。
 // add-og-images 5.5：服务端（Worker 入口与首页路由分包）与客户端首页闭包都不得出现分享卡片渲染器、
 // satori、resvg 与字体；渲染器只能经动态 import() 在分享卡片路由中加载。
+// add-marketing-critical-path：客户端首页闭包不得含 zod schema 实现（模板配置在客户端是构建期 JSON），
+// 模板配置 marketing.performance.homeScriptGzipBudget 为数字时，闭包 gzip 合计不得超出。
 // 用法：node scripts/check-home-bundle.mjs [dist/client] [dist/server]；`pnpm build` 在预渲染后自动执行。
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, posix, resolve } from 'node:path'
@@ -19,6 +21,12 @@ export const FORBIDDEN_MARKERS = [
   'reader-mobile-toc',
   'data-chat-code',
 ]
+
+/**
+ * zod schema 实现的特征（issue 码与错误类名）；只设置 jitless 的 `config` 不含这些字符串。
+ * 首页依赖在客户端运行时解析 schema 时会带入整套实现（约 125KB），应改为服务端校验或按需加载。
+ */
+export const ZOD_MARKERS = ['invalid_type', 'ZodError']
 
 /** 分享卡片渲染器的代码特征：cf-workers-og、satori、resvg 的 WASM 初始化与 CJK 字体文件名 */
 export const RENDERER_MARKERS = [
@@ -85,7 +93,24 @@ function scan(dir, files, markers) {
 export function checkHomeBundle(clientDir) {
   const html = readFileSync(join(clientDir, 'index.html'), 'utf8')
   const files = staticClosure(clientDir, htmlScripts(html))
-  return { files, ...scan(clientDir, files, [...FORBIDDEN_MARKERS, ...RENDERER_MARKERS]) }
+  return {
+    files,
+    ...scan(clientDir, files, [...FORBIDDEN_MARKERS, ...RENDERER_MARKERS, ...ZOD_MARKERS]),
+  }
+}
+
+/** 预算检查：budget 为 null 时不检查；返回超出时的说明，未超出返回 null */
+export function budgetViolation(gzipBytes, budget) {
+  if (budget === null || budget === undefined) return null
+  return gzipBytes > budget
+    ? `首页客户端脚本 gzip 合计 ${gzipBytes} B，超出预算 ${budget} B（template.config.ts marketing.performance.homeScriptGzipBudget）`
+    : null
+}
+
+/** 构建时写出的 marketing.performance（dist/.build/marketing-performance.json），缺失时为 null */
+export function readPerformanceOptions(distDir) {
+  const file = join(distDir, '.build/marketing-performance.json')
+  return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : null
 }
 
 /**
@@ -105,9 +130,25 @@ export function checkServerHomeBundle(serverDir) {
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const clientDir = resolve(process.argv[2] ?? join(dirname(process.argv[1]), '../dist/client'))
   const serverDir = resolve(process.argv[3] ?? join(clientDir, '../server'))
-  const { files, gzipBytes, violations } = checkHomeBundle(clientDir)
+  const { files, gzipBytes, violations: all } = checkHomeBundle(clientDir)
   // 唯一调用方是 `pnpm build`（Cloudflare 构建，必有 dist/server）；缺少服务端产物时失败，避免静默跳过
   const server = existsSync(join(serverDir, 'index.js')) ? checkServerHomeBundle(serverDir) : null
+  const budget = readPerformanceOptions(join(clientDir, '..'))?.homeScriptGzipBudget ?? null
+  const overBudget = budgetViolation(gzipBytes, budget)
+  // zod 标记只在项目设置了首页包预算（选择接受首页包约束）时判失败，否则只警告：
+  // 衍生项目的首页可能在浏览器端用 zod 校验表单，升级模板不应因此构建失败
+  const zod = all.filter(({ marker }) => ZOD_MARKERS.includes(marker))
+  const violations = budget === null ? all.filter((item) => !zod.includes(item)) : all
+  if (budget === null && zod.length > 0) {
+    console.warn(
+      '首页包检查警告：客户端首页静态依赖中有 zod schema 实现（设置 homeScriptGzipBudget 后此项判为失败）',
+    )
+    for (const { asset, marker } of zod) console.warn(`  - 客户端 ${asset} 含 "${marker}"`)
+  }
+  if (overBudget) {
+    console.error(`首页包检查失败：${overBudget}`)
+    process.exitCode = 1
+  }
   if (!server) {
     console.error(`首页包检查失败：找不到服务端产物 ${join(serverDir, 'index.js')}`)
     process.exitCode = 1
@@ -117,14 +158,16 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   }
   if (violations.length > 0 || (server?.violations.length ?? 0) > 0) {
     console.error(
-      '首页包检查失败：首页静态依赖中出现了只应懒加载的代码（阅读器 / 对话 / Markdown / 分享卡片渲染器与字体）',
+      '首页包检查失败：首页静态依赖中出现了只应懒加载的代码（阅读器 / 对话 / Markdown / 分享卡片渲染器与字体 / zod schema）',
     )
     for (const { asset, marker } of violations) console.error(`  - 客户端 ${asset} 含 "${marker}"`)
     for (const { asset, marker } of server?.violations ?? [])
       console.error(`  - 服务端 ${asset} 含 "${marker}"`)
     process.exitCode = 1
   } else if (process.exitCode !== 1) {
-    console.log(`首页包检查通过：${files.length} 个脚本，gzip 合计 ${gzipBytes} B`)
+    console.log(
+      `首页包检查通过：${files.length} 个脚本，gzip 合计 ${gzipBytes} B${budget === null ? '' : ` / 预算 ${budget} B`}`,
+    )
     console.log(`服务端首页闭包检查通过：${server?.files.length} 个模块`)
   }
 }

@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { preload } from 'react-dom'
 import { getLocale } from '../../paraglide/runtime.js'
 import { templateConfig } from '../../server/template-config.ts'
+import { projectFontPreloads } from './fonts.project.ts'
 import { ThemeToggle } from './theme-toggle.tsx'
 
 declare module '@tanstack/react-router' {
@@ -31,9 +32,9 @@ export function RootDocument({
   floatingControls: boolean
   htmlAttributes?: Record<string, string>
 }>) {
-  // 自托管 Inter 的拉丁子集：经 React 的资源提示输出，React 把字体预加载排在样式表之前，
-  // 浏览器尽早下载，缩短字体替换造成的版面跳动（写在 head links 里会被排到样式表之后）
-  for (const font of fontPreloads) {
+  // 字体预加载（默认自托管 Inter 的拉丁子集，项目在 fonts.project.ts 替换或清空）：经 React 的资源提示输出，
+  // React 把字体预加载排在样式表之前，浏览器尽早下载，缩短字体替换造成的版面跳动（写在 head links 里会被排到样式表之后）
+  for (const font of projectFontPreloads(fontPreloads)) {
     preload(font.href, { as: 'font', type: font.type, crossOrigin: 'anonymous' })
   }
   return (
