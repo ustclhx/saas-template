@@ -105,7 +105,8 @@ grep -nE -- '^ *--[a-z0-9-]+:' apps/web/src/styles/brand.css
 要预加载自己的字体，在该文件 `import url from './brand.woff2?url'` 后返回 `[{ href: url, type: 'font/woff2' }]`（追加用 `[...defaults, …]`）。
 该文件归项目所有，模板同步不覆盖。`brand.css` 覆盖了 `--font-sans` 而首页仍预加载 Inter 时，`pnpm build` 会打印警告。
 
-**度量匹配回退字体**：字体栈中 Inter 之后是 `"Inter Fallback"`（`globals.css`，本地 Arial / Liberation Sans 按 Inter 的宽度与纵向度量缩放），
+**度量匹配回退字体**：字体栈中 Inter 之后是 `"Inter Fallback"`（`globals.css`，本地 Arial / Liberation Sans 按 Inter 的宽度与纵向度量缩放）
+与 `"Inter Fallback Roboto"`（没有 Arial 的 Android 上用系统 Roboto，按同样方法缩放），
 慢网下 Inter 晚于首帧到达时换字不再改变换行，避免版面跳动（CLS）。它只覆盖 Inter 拉丁子集的字符，加载完成后的外观不变。
 项目换掉 Inter 时新字体栈不含它，规则自然不生效；若自己的字体也以 `font-display: swap` 加载，可按同样方法定义回退字体。
 

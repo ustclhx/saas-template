@@ -18,18 +18,26 @@ const descriptor = (face: string, name: string) =>
   face.match(new RegExp(`(?:^|[;{\\s])${name}\\s*:\\s*([^;}]+)`))?.[1]?.trim() ?? ''
 const percent = (value: string) => Number.parseFloat(value)
 
-const fallbacks = faces(globals).filter((face) => face.includes('"Inter Fallback"'))
+const family = (name: string) => faces(globals).filter((face) => face.includes(`"${name}"`))
+// Arial 一组用于桌面，Roboto 一组用于没有 Arial 的 Android
+const fallbacks = [...family('Inter Fallback'), ...family('Inter Fallback Roboto')]
 // Inter 拉丁子集（根布局预加载的文件）的 unicode-range
 const latin = faces(interCss).find((face) => /inter-latin-opsz-normal/.test(face)) ?? ''
 
 describe('Inter 的度量匹配回退字体', () => {
   it('字体栈中紧跟在 Inter 之后', () => {
     const stack = globals.match(/--font-sans:\s*([^;]+);/)?.[1] ?? ''
-    expect(stack.replace(/\s+/g, ' ')).toMatch(/^"Inter Variable", "Inter Fallback", /)
+    expect(stack.replace(/\s+/g, ' ')).toMatch(
+      /^"Inter Variable", "Inter Fallback", "Inter Fallback Roboto", /,
+    )
   })
 
   it('常规与粗体各一条，只引用本地字体，不下载文件', () => {
-    expect(fallbacks.map((face) => descriptor(face, 'font-weight'))).toEqual(['100 549', '550 900'])
+    for (const name of ['Inter Fallback', 'Inter Fallback Roboto'])
+      expect(family(name).map((face) => descriptor(face, 'font-weight'))).toEqual([
+        '100 549',
+        '550 900',
+      ])
     for (const face of fallbacks) {
       expect(descriptor(face, 'src')).toMatch(/^local\(/)
       expect(face).not.toMatch(/url\(/)
