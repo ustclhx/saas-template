@@ -12,14 +12,16 @@ import {
 } from '../../paraglide/runtime.js'
 import { isPrerenderedPath } from '../marketing/prerender.ts'
 import { isAppAreaPath } from './app-area.ts'
-import { getLanguageSuggestion, saveLanguagePreference } from './preference.functions.ts'
+import { saveLanguagePreference } from './preference.functions.ts'
 import { rememberLocale } from './preference.ts'
+import { SUGGESTION_ATTRIBUTE, suggestionCss } from './suggestion.ts'
 
 /**
- * 独立组件，预渲染页只在水合后获取 Accept-Language 建议，不改变 URL。
+ * 独立组件，语言建议只提示、不改变 URL。建议在首帧前由 <head> 脚本决定（suggestion.ts）：
+ * 这里在服务端就输出每个候选语言的横幅（默认隐藏），水合后不再插入或移除，避免整页下移的版面跳动。
  * 默认固定在左下角（仅 md 及以上；手机端改由页脚设置行 SiteSettings 渲染）；
  * `placement="inline"` 用于后台侧栏等自带位置的容器，避免浮层遮挡内容。
- * `suggest={false}`：同页已有另一实例负责语言建议时关闭，避免重复横幅与请求。
+ * `suggest={false}`：同页已有另一实例负责语言建议时关闭，避免重复横幅。
  */
 export function LanguageControls({
   placement = 'floating',
@@ -30,7 +32,7 @@ export function LanguageControls({
 } = {}) {
   const floating = placement === 'floating'
   const location = useLocation()
-  const [suggestion, setSuggestion] = useState<Locale | null>(null)
+  const [dismissed, setDismissed] = useState(false)
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -42,26 +44,22 @@ export function LanguageControls({
   const currentLocale = options.find((option) => option.value === locale)
   useEffect(() => {
     setReady(true)
-    setSuggestion(null)
-    if (
-      !suggest ||
-      !(isPrerenderedPath(location.pathname, locales) || location.pathname === '/pricing') ||
-      locale !== baseLocale
-    )
-      return
-    let active = true
-    void getLanguageSuggestion().then(
-      (value) => {
-        if (active) setSuggestion(value)
-      },
-      () => {
-        if (active) setError(m.i18n_suggestion_failed())
-      },
-    )
-    return () => {
-      active = false
-    }
-  }, [location.pathname, locale, suggest])
+  }, [])
+  // 只在默认语言的营销页（预渲染页与定价页）建议；服务端与水合首次渲染一致，显示与否只由首帧前脚本写入的属性决定
+  const suggestions =
+    suggest &&
+    !dismissed &&
+    locale === baseLocale &&
+    (isPrerenderedPath(location.pathname, locales) || location.pathname === '/pricing')
+      ? locales.filter((value) => value !== baseLocale)
+      : []
+
+  function dismiss() {
+    rememberLocale(locale)
+    // 去掉首帧脚本写入的属性：之后客户端导航回到营销页也不再显示
+    document.documentElement.removeAttribute(SUGGESTION_ATTRIBUTE)
+    setDismissed(true)
+  }
 
   async function select(next: Locale) {
     setBusy(true)
@@ -83,10 +81,13 @@ export function LanguageControls({
 
   return (
     <>
-      {suggestion && (
+      {suggestions.length > 0 && <style>{suggestionCss(suggestions)}</style>}
+      {suggestions.map((suggestion) => (
         <aside
+          key={suggestion}
+          data-locale-suggestion-for={suggestion}
           aria-label={m.i18n_suggestion_label()}
-          className="flex flex-wrap items-center justify-center gap-3 border-b bg-muted px-4 py-3"
+          className="hidden flex-wrap items-center justify-center gap-3 border-b bg-muted px-4 py-3"
         >
           <p>
             {m.i18n_suggestion({
@@ -98,18 +99,11 @@ export function LanguageControls({
           <Button type="button" disabled={busy} onClick={() => void select(suggestion)}>
             {m.i18n_switch()}
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => {
-              rememberLocale(locale)
-              setSuggestion(null)
-            }}
-          >
+          <Button type="button" variant="ghost" onClick={dismiss}>
             {m.i18n_dismiss()}
           </Button>
         </aside>
-      )}
+      ))}
       <div
         className={
           floating

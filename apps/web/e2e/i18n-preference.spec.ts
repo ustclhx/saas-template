@@ -4,11 +4,9 @@ import { DUMMY_TURNSTILE_TOKEN } from './turnstile.ts'
 
 const password = 'correct-horse-battery-staple'
 
-test('Accept-Language 只建议不跳转，手动选择和关闭建议会记住偏好', async ({ browser, baseURL }) => {
-  const context = await browser.newContext({
-    ...(baseURL ? { baseURL } : {}),
-    extraHTTPHeaders: { 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.5' },
-  })
+test('浏览器语言偏好只建议不跳转，手动选择和关闭建议会记住偏好', async ({ browser, baseURL }) => {
+  // 建议由首帧前脚本按 navigator.languages 决定（suggestion.ts），locale 同时设置它与 Accept-Language
+  const context = await browser.newContext({ ...(baseURL ? { baseURL } : {}), locale: 'zh-CN' })
   const page = await context.newPage()
   try {
     await page.goto('/pricing')
