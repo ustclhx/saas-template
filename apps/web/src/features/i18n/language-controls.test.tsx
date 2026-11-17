@@ -33,6 +33,8 @@ describe('语言建议横幅（首帧即在最终位置）', () => {
           new RegExp(`<a[^>]*href="${target}"[^>]*data-locale-suggestion-action="switch"`),
         )
         expect(html).toMatch(/<button[^>]*data-locale-suggestion-action="dismiss"/)
+        // 横幅文案不进入搜索摘要
+        expect(html.match(/<div data-nosnippet=""/g)).toHaveLength(candidates.length)
       }
     },
   )
