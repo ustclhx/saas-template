@@ -284,7 +284,10 @@
  * （常规体以 14–18px 正文为准；粗体在小字与 opsz 收窄的大标题之间折中）；纵向度量取 Inter 的
  * ascender 1984 / descender -494 / unitsPerEm 2048，再除以 size-adjust。
  * unicode-range 与 Inter 拉丁子集一致：Inter 加载后这些字符都由 Inter 显示，回退字体不会改变加载完成后的外观；
- * 其他字符（中文等）仍按原顺序回退到系统字体。没有这些本地字体的平台（如 Android）跳过此项，回退到系统字体。
+ * 其他字符（中文等）仍按原顺序回退到系统字体。
+ * Android 没有 Arial，由紧随其后的 "Inter Fallback Roboto" 接手：系统 Roboto 比 Inter 窄 6%–8%，
+ * 按同一方法取常规 106%、粗体 103%（对营销页文案在 343–700px 宽度下统计换行差异，比未缩放的 Roboto 少约 40%–100%，
+ * 与 Arial 一档持平）。有 Arial 的平台上拉丁字符已由 "Inter Fallback" 覆盖，这一组不会被用到；两者都没有时回退到系统字体。
  * 项目在 brand.css 用 --font-sans 换掉 Inter 时，新字体栈不含 "Inter Fallback"，这里的规则不生效、也不下载任何文件；
  * 若自己的字体同样以 swap 加载，可按同样方法为它定义度量匹配的回退字体并放进字体栈。
  */
@@ -320,10 +323,39 @@
     U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+@font-face {
+  font-family: "Inter Fallback Roboto";
+  font-style: normal;
+  font-weight: 100 549;
+  src: local("Roboto"), local("Roboto-Regular"), local("Roboto Regular");
+  size-adjust: 106%;
+  ascent-override: 91.39%;
+  descent-override: 22.76%;
+  line-gap-override: 0%;
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Inter Fallback Roboto";
+  font-style: normal;
+  font-weight: 550 900;
+  src: local("Roboto Bold"), local("Roboto-Bold");
+  size-adjust: 103%;
+  ascent-override: 94.05%;
+  descent-override: 23.42%;
+  line-gap-override: 0%;
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 @theme inline {
   --font-sans:
-    "Inter Variable", "Inter Fallback", ui-sans-serif, system-ui, -apple-system, "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    "Inter Variable", "Inter Fallback", "Inter Fallback Roboto", ui-sans-serif, system-ui,
+    -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC",
+    sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
