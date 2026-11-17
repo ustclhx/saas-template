@@ -23,7 +23,8 @@ async function support() {
   return import('../../../e2e/staging-acceptance/support.ts')
 }
 
-describe('fault evidence safety', () => {
+// 每个用例重新导入 staging-acceptance support（含 Playwright 辅助模块），完整 pnpm test 并发负载下可超过默认 5 秒
+describe('fault evidence safety', { timeout: 30_000 }, () => {
   it('只写本地已忽略目录，保留纯 ID、注入布尔值及用量', async () => {
     const { evidence } = await support()
     const data = {

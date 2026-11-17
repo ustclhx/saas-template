@@ -6,7 +6,8 @@
 // add-marketing-critical-path：客户端首页闭包不得含 zod schema 实现（模板配置在客户端是构建期 JSON），
 // 模板配置 marketing.performance.homeScriptGzipBudget 为数字时，闭包 gzip 合计不得超出。
 // 0.5.6：zod 检查改看「水合闭包」——静态闭包加上水合入口直接 import() 的分包（TanStack Start 入口立即动态加载
-// StartClient 与整棵路由树，水合必然下载）；发现 zod 时按 sourcemap 列出引用 zod 的源文件，便于定位。
+// StartClient 与整棵路由树，水合必然下载）；发现 zod 时按 sourcemap 列出引用 zod 的源文件，便于定位
+// （0.5.8 起只列生成代码实际使用 zod 绑定的文件）。
 // 用法：node scripts/check-home-bundle.mjs [dist/client] [dist/server]；`pnpm build` 在预渲染后自动执行。
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, posix, resolve } from 'node:path'
@@ -81,9 +82,63 @@ export function entryDynamicImports(clientDir, entries) {
   return [...targets]
 }
 
-/** 引用 zod 的源文件（从静态导入 offending 分包的各分包的 sourcemap 中找；可能含已被摇掉的导入，供排查） */
+const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+/** 解码 sourcemap mappings，返回带源文件的段 [源文件下标, 名称下标或 -1]（不区分生成行） */
+export function decodeMappings(mappings) {
+  const segments = []
+  let source = 0
+  let name = 0
+  for (const line of mappings.split(';'))
+    for (const segment of line.split(',')) {
+      if (!segment) continue
+      const fields = []
+      let value = 0
+      let shift = 0
+      for (const char of segment) {
+        const digit = BASE64.indexOf(char)
+        value += (digit & 31) << shift
+        if (digit & 32) shift += 5
+        else {
+          fields.push(value & 1 ? -(value >>> 1) : value >>> 1)
+          value = 0
+          shift = 0
+        }
+      }
+      if (fields.length < 4) continue
+      source += fields[1]
+      if (fields.length >= 5) name += fields[4]
+      segments.push([source, fields.length >= 5 ? name : -1])
+    }
+  return segments
+}
+
+// 源码中的 zod 值导入：`import { z } from 'zod'`、`import * as z from 'zod/v4'`、`import z, { object as o } from 'zod'`
+const ZOD_IMPORT = /\bimport\s+(?!type\b)([\w$*{}\s,]+?)\s*from\s*["']zod(?:\/[^"']*)?["']/g
+
+/** 源码中 zod 导入的本地绑定名（跳过 `type` 导入） */
+export function zodBindings(sourceCode) {
+  const names = new Set()
+  for (const [, clause] of sourceCode.matchAll(ZOD_IMPORT))
+    for (const part of clause.replace(/[{}]/g, ',').split(',')) {
+      const words = part.trim().split(/\s+/)
+      if (words[0] === 'type') continue
+      const name = words.at(-1)
+      if (name && /^[\w$]+$/.test(name)) names.add(name)
+    }
+  return names
+}
+
+/**
+ * 实际把 zod 带进首页的源文件：offending 分包及静态导入它的分包中，生成代码映射回项目源文件、
+ * 且映射的原名是该文件 zod 导入绑定（`z`、`z.object` 等）的位置。只出现在 sources 中而 zod 用法已被
+ * 摇掉（如 server function 的 .validator() 在客户端被移除）的模块不计入。sourcemap 无 names、或按名称
+ * 一个也没找到时，退回为列出有生成代码且导入 zod 的项目源文件（宁可多列，不让提示为空）。
+ */
 export function zodSources(clientDir, files, offending) {
   const sources = new Set()
+  const mapped = new Set()
+  const clean = (source) => source.replace(/^(?:\.\.\/)+/, '').replace(/\?.*$/, '')
   for (const asset of files) {
     const code = readFileSync(join(clientDir, asset), 'utf8')
     const imports = [...code.matchAll(STATIC_IMPORT)].map(([, specifier]) =>
@@ -98,14 +153,20 @@ export function zodSources(clientDir, files, offending) {
     } catch {
       continue
     }
-    if (!Array.isArray(map.sources)) continue
-    map.sources.forEach((source, index) => {
-      if (source.includes('node_modules')) return
-      if (/\bfrom\s*["']zod(?:\/[^"']*)?["']/.test(map.sourcesContent?.[index] ?? ''))
-        sources.add(source.replace(/^(?:\.\.\/)+/, ''))
-    })
+    if (!Array.isArray(map.sources) || typeof map.mappings !== 'string') continue
+    const bindings = map.sources.map((source, index) =>
+      source.includes('node_modules') ? new Set() : zodBindings(map.sourcesContent?.[index] ?? ''),
+    )
+    for (const [index, name] of decodeMappings(map.mappings)) {
+      const names = bindings[index]
+      if (!names || names.size === 0) continue
+      mapped.add(clean(map.sources[index]))
+      const original = Array.isArray(map.names) ? map.names[name] : undefined
+      if (typeof original === 'string' && names.has(original.split('.')[0]))
+        sources.add(clean(map.sources[index]))
+    }
   }
-  return [...sources].sort()
+  return [...(sources.size > 0 ? sources : mapped)].sort()
 }
 
 /** 从入口脚本（以 `/assets/...` 表示）出发的静态 import 闭包 */
@@ -224,7 +285,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const zodHint = () => {
     if (zodFrom.length === 0) return
     console.warn(
-      '  引用 zod 的源文件（sourcemap，可能含已被摇掉的导入）：路由 validateSearch 改用 features/routing/search.ts，' +
+      '  引用 zod 的源文件（按 sourcemap 映射到使用 zod 绑定的代码）：路由 validateSearch 改用 features/routing/search.ts，' +
         'server function 的 schema 写在 .validator() 调用内或只在服务端模块定义，模块顶层 schema 用 /* @__PURE__ */ 标注',
     )
     for (const source of zodFrom) console.warn(`    · ${source}`)

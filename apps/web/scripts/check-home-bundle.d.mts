@@ -12,6 +12,8 @@ export function checkHomeBundle(clientDir: string): {
 }
 export function entryScripts(html: string): string[]
 export function entryDynamicImports(clientDir: string, entries: readonly string[]): string[]
+export function decodeMappings(mappings: string): [number, number][]
+export function zodBindings(sourceCode: string): Set<string>
 export function zodSources(
   clientDir: string,
   files: readonly string[],
