@@ -8,13 +8,19 @@ import {
   isLocale,
   type Locale,
   locales,
+  localizeHref,
   localizeUrl,
 } from '../../paraglide/runtime.js'
 import { isPrerenderedPath } from '../marketing/prerender.ts'
 import { isAppAreaPath } from './app-area.ts'
 import { saveLanguagePreference } from './preference.functions.ts'
 import { rememberLocale } from './preference.ts'
-import { SUGGESTION_ATTRIBUTE, suggestionCss } from './suggestion.ts'
+import {
+  detachPrehydrationListener,
+  handledBeforeHydration,
+  SUGGESTION_ATTRIBUTE,
+  suggestionCss,
+} from './suggestion.ts'
 
 /**
  * 独立组件，语言建议只提示、不改变 URL。建议在首帧前由 <head> 脚本决定（suggestion.ts）：
@@ -44,6 +50,8 @@ export function LanguageControls({
   const currentLocale = options.find((option) => option.value === locale)
   useEffect(() => {
     setReady(true)
+    // 水合完成：横幅的点击改由 React 处理，摘除首帧脚本注册的水合前监听
+    detachPrehydrationListener()
   }, [])
   // 只在默认语言的营销页（预渲染页与定价页）建议；服务端与水合首次渲染一致，显示与否只由首帧前脚本写入的属性决定
   const suggestions =
@@ -96,10 +104,29 @@ export function LanguageControls({
                 suggestion,
             })}
           </p>
-          <Button type="button" disabled={busy} onClick={() => void select(suggestion)}>
-            {m.i18n_switch()}
+          {/* 真实链接：水合前与关闭 JS 时也能切换（水合前的 Cookie 由首帧脚本写入）；水合后保存账号语言再导航 */}
+          <Button asChild aria-disabled={busy || undefined}>
+            <a
+              href={localizeHref(location.pathname, { locale: suggestion })}
+              data-locale-suggestion-action="switch"
+              onClick={(event) => {
+                if (handledBeforeHydration(event.nativeEvent)) return
+                event.preventDefault()
+                if (!busy) void select(suggestion)
+              }}
+            >
+              {m.i18n_switch()}
+            </a>
           </Button>
-          <Button type="button" variant="ghost" onClick={dismiss}>
+          <Button
+            type="button"
+            variant="ghost"
+            data-locale-suggestion-action="dismiss"
+            onClick={(event) => {
+              if (handledBeforeHydration(event.nativeEvent)) setDismissed(true)
+              else dismiss()
+            }}
+          >
             {m.i18n_dismiss()}
           </Button>
         </aside>

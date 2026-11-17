@@ -6,7 +6,7 @@ import { AnnouncementBanner } from '../features/admin/settings-announcement-bann
 import { ProductAnalytics } from '../features/analytics/analytics.tsx'
 import { analyticsHeadScripts } from '../features/analytics/head.ts'
 import { LanguageControls } from '../features/i18n/language-controls.tsx'
-import { PREFERENCE_COOKIE } from '../features/i18n/preference.ts'
+import { LOCALE_COOKIE_MAX_AGE, PREFERENCE_COOKIE } from '../features/i18n/preference.ts'
 import { localeSuggestionScript } from '../features/i18n/suggestion.ts'
 import { privateMeta } from '../features/seo/metadata.ts'
 import {
@@ -17,7 +17,7 @@ import {
 import { getHtmlAttributes } from '../features/theme/html-attributes.isomorphic.ts'
 import { RootDocument } from '../features/theme/root-document.tsx'
 import { SiteSettings } from '../features/theme/site-settings.tsx'
-import { baseLocale, locales } from '../paraglide/runtime.js'
+import { baseLocale, cookieName, locales } from '../paraglide/runtime.js'
 import { templateConfig } from '../server/template-config.ts'
 import appCss from '../styles/app.css?url'
 
@@ -58,6 +58,8 @@ export const Route = createRootRoute({
                 baseLocale,
                 locales,
                 preferenceCookie: PREFERENCE_COOKIE,
+                localeCookie: cookieName,
+                cookieMaxAge: LOCALE_COOKIE_MAX_AGE,
               }),
             },
           ]

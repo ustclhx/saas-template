@@ -27,6 +27,12 @@ describe('语言建议横幅（首帧即在最终位置）', () => {
         expect(banners(html)).toHaveLength(candidates.length)
         for (const banner of banners(html)) expect(banner).toMatch(/class="hidden /)
         expect(html).toContain(`[data-locale-suggestion-for="${candidates[0]}"]{display:flex}`)
+        // 「切换」是指向目标语言地址的真实链接（水合前、无 JS 也可用），两个按钮带委托监听识别的属性
+        const target = `/${candidates[0]}${pathname === '/' ? '' : pathname}`
+        expect(html).toMatch(
+          new RegExp(`<a[^>]*href="${target}"[^>]*data-locale-suggestion-action="switch"`),
+        )
+        expect(html).toMatch(/<button[^>]*data-locale-suggestion-action="dismiss"/)
       }
     },
   )

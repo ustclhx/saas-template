@@ -10,10 +10,10 @@ vi.mock('../admin/impersonation-banner.tsx', () => ({ ImpersonationBanner: () =>
 vi.mock('../admin/settings-announcement-banner.tsx', () => ({ AnnouncementBanner: () => null }))
 vi.mock('../i18n/language-controls.tsx', () => ({ LanguageControls: () => null }))
 
-import { baseLocale, locales } from '../../paraglide/runtime.js'
+import { baseLocale, cookieName, locales } from '../../paraglide/runtime.js'
 import { Route } from '../../routes/__root.tsx'
 import { templateConfig } from '../../server/template-config.ts'
-import { PREFERENCE_COOKIE } from '../i18n/preference.ts'
+import { LOCALE_COOKIE_MAX_AGE, PREFERENCE_COOKIE } from '../i18n/preference.ts'
 import { localeSuggestionScript } from '../i18n/suggestion.ts'
 import { analyticsHeadScripts } from './head.ts'
 
@@ -62,6 +62,8 @@ describe('分析脚本页面 head', () => {
                 baseLocale,
                 locales,
                 preferenceCookie: PREFERENCE_COOKIE,
+                localeCookie: cookieName,
+                cookieMaxAge: LOCALE_COOKIE_MAX_AGE,
               }),
             },
           ]
