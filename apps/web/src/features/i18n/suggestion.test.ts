@@ -23,11 +23,15 @@ function load({
   languages,
   cookie = '',
   protocol = 'https:',
+  search = '',
+  hash = '',
 }: {
   lang?: string
   languages: readonly string[] | undefined
   cookie?: string
   protocol?: string
+  search?: string
+  hash?: string
 }) {
   const attributes = new Map<string, string>()
   const writes: string[] = []
@@ -54,19 +58,25 @@ function load({
   const navigator = { languages, language: languages?.[0] }
   new Function('document', 'navigator', 'window', 'location', script)(document, navigator, window, {
     protocol,
+    search,
+    hash,
   })
   /** 模拟点击横幅中某个操作按钮（或横幅外的元素） */
-  const click = (action: 'switch' | 'dismiss' | null, target = 'zh') => {
+  const click = (action: 'switch' | 'dismiss' | null, target = 'zh', href = '/zh/pricing') => {
     const banner = { getAttribute: () => target }
     const button = {
-      getAttribute: () => action,
+      href,
+      getAttribute: (name: string) => (name === 'href' ? button.href : action),
+      setAttribute: (_name: string, value: string) => {
+        button.href = value
+      },
       closest: (selector: string) => (selector.includes('-for') ? banner : action ? button : null),
     }
     const event: Record<string, unknown> = {
       target: { closest: (selector: string) => (action ? button.closest(selector) : null) },
     }
     for (const listener of listeners) listener(event)
-    return event
+    return Object.assign(event, { href: button.href })
   }
   return {
     suggestion: attributes.get(SUGGESTION_ATTRIBUTE) ?? null,
@@ -113,6 +123,13 @@ describe('首帧前的语言建议脚本', () => {
     for (const listener of page.listeners) listener(event)
     expect(page.writes).toHaveLength(2)
     expect(page.attributes.get(SUGGESTION_ATTRIBUTE)).toBe('zh')
+  })
+
+  it('水合前点击「切换」保留当前地址的查询参数与锚点（如 UTM）', () => {
+    const page = load({ languages: ['zh-CN'], search: '?utm_source=x', hash: '#faq' })
+    expect(page.click('switch').href).toBe('/zh/pricing?utm_source=x#faq')
+    expect(load({ languages: ['zh-CN'] }).click('switch').href).toBe('/zh/pricing')
+    expect(page.click('dismiss').href).toBe('/zh/pricing')
   })
 
   it('水合前点击「保留当前语言」记住当前语言并隐藏横幅；横幅外的点击不处理', () => {
