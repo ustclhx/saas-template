@@ -330,13 +330,12 @@ describe('DropdownMenu（Fluid radix/dropdown）', () => {
     )
     const trigger = screen.getByRole('button', { name: 'Hover' })
     fireEvent.pointerOver(trigger, { pointerType: 'mouse' })
-    await wait(30)
-    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    // 等待状态而不是固定时长：完整并行测试负载下计时器可能晚于 30ms 触发
+    await waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'))
     // 悬停打开只是预览，不抢焦点
     expect(document.activeElement).not.toBe(screen.getByRole('menuitem', { name: 'Rename' }))
     fireEvent.pointerOut(trigger, { pointerType: 'mouse' })
-    await wait(30)
-    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+    await waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('false'))
   })
 })
 

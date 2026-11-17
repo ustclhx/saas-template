@@ -58,6 +58,8 @@ async function paidWorkspace(signupHost: string | null = null) {
     type: 'credit_pack',
     credits: 10,
     features: {} as never,
+    // 夹具停用：同一隔离库随后跑 e2e 时不进入公开定价目录（消费者按 id 关联，不看 active）
+    active: false,
   })
   await db.insert(planPrice).values({
     id: priceId,
@@ -66,6 +68,7 @@ async function paidWorkspace(signupHost: string | null = null) {
     providerPriceId: key,
     amount: 1999,
     currency: 'USD',
+    active: false,
   })
   const purchaseId = id()
   await db.insert(purchase).values({

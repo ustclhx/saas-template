@@ -270,7 +270,9 @@ const SelectTrigger = forwardRef<HTMLButtonElement, SelectTriggerProps>(
     const errorId = useId()
 
     return (
-      // 模板改动：外层包装与触发器都可收缩（min-w-0），放进 grid / flex 列时长选项文字截断而不撑开所在列
+      // 模板改动：外层包装可收缩（min-w-0），触发器 max-w-full 让长选项在不窄于最小宽度的列中截断而不撑开列。
+      // 最小宽度（160px / compact 128px）优先于 max-w-full：列比它还窄时由调用方传 className="min-w-0" 覆盖；
+      // 默认不用 min(160px,100%)——工具栏（inline-flex、grid auto 列）里百分比无法解析，会把触发器缩到文字宽度。
       <div className="flex min-w-0 flex-col gap-1">
         <SelectPrimitive.Trigger
           ref={ref}
