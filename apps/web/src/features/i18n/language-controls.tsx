@@ -20,6 +20,7 @@ import {
   handledBeforeHydration,
   SUGGESTION_ATTRIBUTE,
   suggestionCss,
+  suggestionTargets,
 } from './suggestion.ts'
 
 /**
@@ -28,13 +29,17 @@ import {
  * 默认固定在左下角（仅 md 及以上；手机端改由页脚设置行 SiteSettings 渲染）；
  * `placement="inline"` 用于后台侧栏等自带位置的容器，避免浮层遮挡内容。
  * `suggest={false}`：同页已有另一实例负责语言建议时关闭，避免重复横幅。
+ * `suggestableLocales`：只建议这些语言（省略时为全部非默认语言），须与首帧脚本收到的值一致。
+ * 横幅在水合后的 effect 中带上 data-hydrated（仅属性，无样式与版面变化），供测试判断水合完成。
  */
 export function LanguageControls({
   placement = 'floating',
   suggest = true,
+  suggestableLocales,
 }: {
   placement?: 'floating' | 'inline' | 'bare'
   suggest?: boolean
+  suggestableLocales?: readonly string[] | undefined
 } = {}) {
   const floating = placement === 'floating'
   const location = useLocation()
@@ -59,7 +64,7 @@ export function LanguageControls({
     !dismissed &&
     locale === baseLocale &&
     (isPrerenderedPath(location.pathname, locales) || location.pathname === '/pricing')
-      ? locales.filter((value) => value !== baseLocale)
+      ? suggestionTargets({ baseLocale, locales, suggestableLocales })
       : []
 
   function dismiss() {
@@ -94,6 +99,7 @@ export function LanguageControls({
         <aside
           key={suggestion}
           data-locale-suggestion-for={suggestion}
+          data-hydrated={ready ? '' : undefined}
           aria-label={m.i18n_suggestion_label()}
           className="hidden flex-wrap items-center justify-center gap-3 border-b bg-muted px-4 py-3"
         >

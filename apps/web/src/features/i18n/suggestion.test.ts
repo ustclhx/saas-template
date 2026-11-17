@@ -4,16 +4,21 @@ import {
   localeSuggestionScript,
   PREHYDRATION_DETACH_KEY,
   SUGGESTION_ATTRIBUTE,
+  scriptKey,
   suggestionCss,
+  suggestionTargets,
 } from './suggestion.ts'
 
-const script = localeSuggestionScript({
-  baseLocale: 'en',
-  locales: ['en', 'zh', 'pt-BR'],
-  preferenceCookie: 'locale-preference',
-  localeCookie: 'PARAGLIDE_LOCALE',
-  cookieMaxAge: 100,
-})
+const scriptFor = (options: Partial<Parameters<typeof localeSuggestionScript>[0]> = {}): string =>
+  localeSuggestionScript({
+    baseLocale: 'en',
+    locales: ['en', 'zh', 'pt-BR'],
+    preferenceCookie: 'locale-preference',
+    localeCookie: 'PARAGLIDE_LOCALE',
+    cookieMaxAge: 100,
+    ...options,
+  })
+const script = scriptFor()
 
 type Listener = (event: Record<string, unknown>) => void
 
@@ -25,7 +30,13 @@ function load({
   protocol = 'https:',
   search = '',
   hash = '',
+  source = script,
+  intl = Intl,
 }: {
+  /** 首帧脚本，默认为 en / zh / pt-BR 配置 */
+  source?: string
+  /** 替换全局 Intl，模拟不支持 Intl.Locale 的浏览器 */
+  intl?: unknown
   lang?: string
   languages: readonly string[] | undefined
   cookie?: string
@@ -56,11 +67,13 @@ function load({
     removeEventListener: (_type: string, listener: Listener) => listeners.delete(listener),
   }
   const navigator = { languages, language: languages?.[0] }
-  new Function('document', 'navigator', 'window', 'location', script)(document, navigator, window, {
-    protocol,
-    search,
-    hash,
-  })
+  new Function('document', 'navigator', 'window', 'location', 'Intl', source)(
+    document,
+    navigator,
+    window,
+    { protocol, search, hash },
+    intl,
+  )
   /** 模拟点击横幅中某个操作按钮（或横幅外的元素） */
   const click = (action: 'switch' | 'dismiss' | null, target = 'zh', href = '/zh/pricing') => {
     const banner = { getAttribute: () => target }
@@ -95,6 +108,40 @@ describe('首帧前的语言建议脚本', () => {
     expect(run({ languages: ['fr', 'zh-CN', 'en'] })).toBe('zh')
     expect(run({ languages: ['pt-BR', 'zh'] })).toBe('pt-BR')
     expect(run({ languages: ['ZH-tw'] })).toBe('zh')
+  })
+
+  it('配置按书写系统区分的语言时，地区标签按补全后的书写系统匹配', () => {
+    const source = scriptFor({ locales: ['en', 'zh-Hant', 'zh-Hans'] })
+    for (const tag of ['zh-TW', 'zh-HK', 'zh-MO', 'zh-Hant'])
+      expect(run({ source, languages: [tag] }), tag).toBe('zh-Hant')
+    for (const tag of ['zh-CN', 'zh-SG', 'zh', 'zh-hans-cn'])
+      expect(run({ source, languages: [tag] }), tag).toBe('zh-Hans')
+    // 完整标签仍优先于书写系统
+    expect(
+      run({ source: scriptFor({ locales: ['en', 'zh-Hans', 'zh-TW'] }), languages: ['zh-TW'] }),
+    ).toBe('zh-TW')
+    // 不支持 Intl.Locale 时跳过这一步，退回主语言子标签（zh 不在配置中，不建议）
+    expect(run({ source, languages: ['zh-TW'], intl: null })).toBeNull()
+    expect(run({ languages: ['zh-TW'], intl: {} })).toBe('zh')
+  })
+
+  it('只配置 zh 时结果与此前相同：繁体地区标签由主语言子标签兜底', () => {
+    for (const tag of ['zh-TW', 'zh-HK', 'zh-CN', 'zh-Hant', 'zh'])
+      expect(run({ languages: [tag] }), tag).toBe('zh')
+    expect(run({ languages: ['en-GB', 'zh'] })).toBeNull()
+    expect(run({ languages: ['pt-PT'] })).toBe('pt-BR')
+    expect(run({ languages: ['pt'] })).toBe('pt-BR')
+  })
+
+  it('只建议允许的语言：最先匹配的语言不允许时不建议、不写属性、不注册监听', () => {
+    const source = scriptFor({ suggestableLocales: ['pt-BR'] })
+    expect(run({ source, languages: ['pt-BR'] })).toBe('pt-BR')
+    const page = load({ source, languages: ['zh-CN', 'pt-BR'] })
+    // 不跳到后面的 pt-BR：zh 是使用者更想要的语言
+    expect(page.attributes.size).toBe(0)
+    expect(page.listeners.size).toBe(0)
+    // 不在配置中的允许值被忽略
+    expect(run({ source: scriptFor({ suggestableLocales: ['fr'] }), languages: ['fr'] })).toBeNull()
   })
 
   it('默认语言排在前面、没有匹配或缺少 languages 时不建议', () => {
@@ -151,6 +198,24 @@ describe('首帧前的语言建议脚本', () => {
     expect(page.writes).toEqual([])
     expect(handledBeforeHydration(event as unknown as Event)).toBe(false)
     expect(load({ languages: ['en-US'] }).listeners.size).toBe(0)
+  })
+
+  it('scriptKey 与可建议语言', () => {
+    expect(scriptKey('zh-TW')).toBe('zh-hant')
+    expect(scriptKey('zh')).toBe('zh-hans')
+    expect(scriptKey('en')).toBe('en-latn')
+    expect(scriptKey('not a tag')).toBe('')
+    expect(suggestionTargets({ baseLocale: 'en', locales: ['en', 'zh', 'pt-BR'] })).toEqual([
+      'zh',
+      'pt-BR',
+    ])
+    expect(
+      suggestionTargets({
+        baseLocale: 'en',
+        locales: ['en', 'zh', 'pt-BR'],
+        suggestableLocales: ['pt-BR', 'en', 'fr'],
+      }),
+    ).toEqual(['pt-BR'])
   })
 
   it('显示规则只匹配与 <html> 属性相同的候选横幅', () => {

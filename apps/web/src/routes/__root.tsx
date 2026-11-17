@@ -7,7 +7,7 @@ import { ProductAnalytics } from '../features/analytics/analytics.tsx'
 import { analyticsHeadScripts } from '../features/analytics/head.ts'
 import { LanguageControls } from '../features/i18n/language-controls.tsx'
 import { LOCALE_COOKIE_MAX_AGE, PREFERENCE_COOKIE } from '../features/i18n/preference.ts'
-import { localeSuggestionScript } from '../features/i18n/suggestion.ts'
+import { localeSuggestionScript, SUGGESTABLE_LOCALES } from '../features/i18n/suggestion.ts'
 import { privateMeta } from '../features/seo/metadata.ts'
 import {
   getPlausibleSite,
@@ -60,6 +60,7 @@ export const Route = createRootRoute({
                 preferenceCookie: PREFERENCE_COOKIE,
                 localeCookie: cookieName,
                 cookieMaxAge: LOCALE_COOKIE_MAX_AGE,
+                suggestableLocales: SUGGESTABLE_LOCALES,
               }),
             },
           ]
@@ -97,7 +98,9 @@ function RootComponent() {
       <ProductAnalytics />
       <ImpersonationBanner viewer={impersonation} />
       <AnnouncementBanner initial={announcement} />
-      {templateConfig.i18n.enabled && !hasInlineControls && <LanguageControls />}
+      {templateConfig.i18n.enabled && !hasInlineControls && (
+        <LanguageControls suggestableLocales={SUGGESTABLE_LOCALES} />
+      )}
       <Outlet />
       {/* 手机端没有站点页脚的公开页：设置行放在页面末尾，底部留 80px 给右下悬浮按钮；有页脚时由页脚渲染，这里隐藏 */}
       {!hasInlineControls && (
