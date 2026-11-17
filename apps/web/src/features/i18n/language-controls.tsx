@@ -97,38 +97,42 @@ export function LanguageControls({
           aria-label={m.i18n_suggestion_label()}
           className="hidden flex-wrap items-center justify-center gap-3 border-b bg-muted px-4 py-3"
         >
-          <p>
-            {m.i18n_suggestion({
-              language:
-                new Intl.DisplayNames([suggestion], { type: 'language' }).of(suggestion) ??
-                suggestion,
-            })}
-          </p>
-          {/* 真实链接：水合前与关闭 JS 时也能切换（水合前的 Cookie 由首帧脚本写入）；水合后保存账号语言再导航 */}
-          <Button asChild aria-disabled={busy || undefined}>
-            <a
-              href={localizeHref(location.pathname, { locale: suggestion })}
-              data-locale-suggestion-action="switch"
+          {/* 横幅文案属于界面提示而非页面内容：data-nosnippet 让搜索引擎不把它用作摘要
+              （Google 仅认 div/span/section 上的该属性；display: contents 保持外层 flex 布局） */}
+          <div data-nosnippet="" className="contents">
+            <p>
+              {m.i18n_suggestion({
+                language:
+                  new Intl.DisplayNames([suggestion], { type: 'language' }).of(suggestion) ??
+                  suggestion,
+              })}
+            </p>
+            {/* 真实链接：水合前与关闭 JS 时也能切换（水合前的 Cookie 由首帧脚本写入）；水合后保存账号语言再导航 */}
+            <Button asChild aria-disabled={busy || undefined}>
+              <a
+                href={localizeHref(location.pathname, { locale: suggestion })}
+                data-locale-suggestion-action="switch"
+                onClick={(event) => {
+                  if (handledBeforeHydration(event.nativeEvent)) return
+                  event.preventDefault()
+                  if (!busy) void select(suggestion)
+                }}
+              >
+                {m.i18n_switch()}
+              </a>
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              data-locale-suggestion-action="dismiss"
               onClick={(event) => {
-                if (handledBeforeHydration(event.nativeEvent)) return
-                event.preventDefault()
-                if (!busy) void select(suggestion)
+                if (handledBeforeHydration(event.nativeEvent)) setDismissed(true)
+                else dismiss()
               }}
             >
-              {m.i18n_switch()}
-            </a>
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            data-locale-suggestion-action="dismiss"
-            onClick={(event) => {
-              if (handledBeforeHydration(event.nativeEvent)) setDismissed(true)
-              else dismiss()
-            }}
-          >
-            {m.i18n_dismiss()}
-          </Button>
+              {m.i18n_dismiss()}
+            </Button>
+          </div>
         </aside>
       ))}
       <div
