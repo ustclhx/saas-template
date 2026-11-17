@@ -132,11 +132,13 @@ export function zodBindings(sourceCode) {
 /**
  * 实际把 zod 带进首页的源文件：offending 分包及静态导入它的分包中，生成代码映射回项目源文件、
  * 且映射的原名是该文件 zod 导入绑定（`z`、`z.object` 等）的位置。只出现在 sources 中而 zod 用法已被
- * 摇掉（如 server function 的 .validator() 在客户端被移除）的模块不计入。sourcemap 无 names 时退回为
- * 列出有生成代码且导入 zod 的项目源文件。
+ * 摇掉（如 server function 的 .validator() 在客户端被移除）的模块不计入。sourcemap 无 names、或按名称
+ * 一个也没找到时，退回为列出有生成代码且导入 zod 的项目源文件（宁可多列，不让提示为空）。
  */
 export function zodSources(clientDir, files, offending) {
   const sources = new Set()
+  const mapped = new Set()
+  const clean = (source) => source.replace(/^(?:\.\.\/)+/, '').replace(/\?.*$/, '')
   for (const asset of files) {
     const code = readFileSync(join(clientDir, asset), 'utf8')
     const imports = [...code.matchAll(STATIC_IMPORT)].map(([, specifier]) =>
@@ -152,19 +154,19 @@ export function zodSources(clientDir, files, offending) {
       continue
     }
     if (!Array.isArray(map.sources) || typeof map.mappings !== 'string') continue
-    const hasNames = Array.isArray(map.names) && map.names.length > 0
     const bindings = map.sources.map((source, index) =>
       source.includes('node_modules') ? new Set() : zodBindings(map.sourcesContent?.[index] ?? ''),
     )
     for (const [index, name] of decodeMappings(map.mappings)) {
       const names = bindings[index]
       if (!names || names.size === 0) continue
-      const original = hasNames ? map.names[name] : undefined
-      if (hasNames && !(typeof original === 'string' && names.has(original.split('.')[0]))) continue
-      sources.add(map.sources[index].replace(/^(?:\.\.\/)+/, '').replace(/\?.*$/, ''))
+      mapped.add(clean(map.sources[index]))
+      const original = Array.isArray(map.names) ? map.names[name] : undefined
+      if (typeof original === 'string' && names.has(original.split('.')[0]))
+        sources.add(clean(map.sources[index]))
     }
   }
-  return [...sources].sort()
+  return [...(sources.size > 0 ? sources : mapped)].sort()
 }
 
 /** 从入口脚本（以 `/assets/...` 表示）出发的静态 import 闭包 */

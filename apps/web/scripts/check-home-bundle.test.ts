@@ -226,7 +226,7 @@ describe('水合闭包中的 zod（0.5.6）', () => {
     ]).toEqual(['z', 'v', 'd', 'o'])
   })
 
-  it('sourcemap 无 names 时列出有生成代码且导入 zod 的项目源文件', () => {
+  it('sourcemap 无 names（或按名称找不到）时列出有生成代码且导入 zod 的项目源文件', () => {
     const root = fixture({
       'assets/client.js': 'import"./schemas.js";const s=1;const f=2',
       'assets/client.js.map': JSON.stringify({
