@@ -18,6 +18,7 @@ import { rememberLocale } from './preference.ts'
 import {
   detachPrehydrationListener,
   handledBeforeHydration,
+  SUGGESTABLE_LOCALES,
   SUGGESTION_ATTRIBUTE,
   suggestionCss,
   suggestionTargets,
@@ -29,13 +30,13 @@ import {
  * 默认固定在左下角（仅 md 及以上；手机端改由页脚设置行 SiteSettings 渲染）；
  * `placement="inline"` 用于后台侧栏等自带位置的容器，避免浮层遮挡内容。
  * `suggest={false}`：同页已有另一实例负责语言建议时关闭，避免重复横幅。
- * `suggestableLocales`：只建议这些语言（省略时为全部非默认语言），须与首帧脚本收到的值一致。
+ * `suggestableLocales`：只建议这些语言，默认取 SUGGESTABLE_LOCALES（与首帧脚本相同），所有实例自动一致。
  * 横幅在水合后的 effect 中带上 data-hydrated（仅属性，无样式与版面变化），供测试判断水合完成。
  */
 export function LanguageControls({
   placement = 'floating',
   suggest = true,
-  suggestableLocales,
+  suggestableLocales = SUGGESTABLE_LOCALES,
 }: {
   placement?: 'floating' | 'inline' | 'bare'
   suggest?: boolean

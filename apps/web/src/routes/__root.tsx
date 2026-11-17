@@ -98,9 +98,7 @@ function RootComponent() {
       <ProductAnalytics />
       <ImpersonationBanner viewer={impersonation} />
       <AnnouncementBanner initial={announcement} />
-      {templateConfig.i18n.enabled && !hasInlineControls && (
-        <LanguageControls suggestableLocales={SUGGESTABLE_LOCALES} />
-      )}
+      {templateConfig.i18n.enabled && !hasInlineControls && <LanguageControls />}
       <Outlet />
       {/* 手机端没有站点页脚的公开页：设置行放在页面末尾，底部留 80px 给右下悬浮按钮；有页脚时由页脚渲染，这里隐藏 */}
       {!hasInlineControls && (
