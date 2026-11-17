@@ -1,14 +1,37 @@
-import { expect, test } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 import { chooseOption } from './select.ts'
 import { DUMMY_TURNSTILE_TOKEN } from './turnstile.ts'
 
 const password = 'correct-horse-battery-staple'
 
-test('Accept-Language 只建议不跳转，手动选择和关闭建议会记住偏好', async ({ browser, baseURL }) => {
-  const context = await browser.newContext({
-    ...(baseURL ? { baseURL } : {}),
-    extraHTTPHeaders: { 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.5' },
+/** 水合完成的信号：浮动语言选择器在水合后的 effect 中才可用 */
+const hydrated = (page: Page) =>
+  expect(page.getByRole('combobox', { name: 'Language', exact: true })).toBeEnabled({
+    timeout: 30_000,
   })
+
+/** 挂起页面脚本请求，模拟营销页首帧后、水合前的时间窗；返回放行函数 */
+async function holdScripts(page: Page) {
+  let release = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/*', async (route) => {
+    if (route.request().resourceType() === 'script') await gate
+    await route.fallback().catch(() => {})
+  })
+  return async () => {
+    release()
+    await page.unrouteAll({ behavior: 'ignoreErrors' })
+  }
+}
+
+const preferenceCookie = async (page: Page) =>
+  (await page.context().cookies()).find((cookie) => cookie.name === 'locale-preference')?.value
+
+test('浏览器语言偏好只建议不跳转，手动选择和关闭建议会记住偏好', async ({ browser, baseURL }) => {
+  // 建议由首帧前脚本按 navigator.languages 决定（suggestion.ts），locale 同时设置它与 Accept-Language
+  const context = await browser.newContext({ ...(baseURL ? { baseURL } : {}), locale: 'zh-CN' })
   const page = await context.newPage()
   try {
     await page.goto('/pricing')
@@ -16,12 +39,11 @@ test('Accept-Language 只建议不跳转，手动选择和关闭建议会记住�
     await expect(page.locator('html')).toHaveAttribute('lang', 'en')
     const banner = page.getByRole('complementary', { name: 'Language suggestion' })
     await expect(banner).toBeVisible()
-    await banner.getByRole('button', { name: 'Switch language' }).click()
+    await hydrated(page)
+    await banner.getByRole('link', { name: 'Switch language' }).click()
     await expect(page).toHaveURL(/\/zh\/pricing$/)
     await expect(page.locator('html')).toHaveAttribute('lang', 'zh')
-    expect(
-      (await context.cookies()).find((cookie) => cookie.name === 'locale-preference')?.value,
-    ).toBe('zh')
+    expect(await preferenceCookie(page)).toBe('zh')
     // Cookie 记住选择，但直接访问默认语言 URL 仍显示默认语言。
     await page.goto('/pricing')
     await expect(page.locator('html')).toHaveAttribute('lang', 'en')
@@ -29,9 +51,45 @@ test('Accept-Language 只建议不跳转，手动选择和关闭建议会记住�
     await context.clearCookies()
     await page.reload()
     await expect(banner).toBeVisible()
+    await hydrated(page)
     await banner.getByRole('button', { name: 'Keep current language' }).click()
+    await expect(banner).toBeHidden()
     await page.reload()
     await expect(banner).toHaveCount(0)
+  } finally {
+    await context.close()
+  }
+})
+
+test('横幅首帧即可操作：水合前点击切换与保留当前语言同样生效', async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ ...(baseURL ? { baseURL } : {}), locale: 'zh-CN' })
+  const page = await context.newPage()
+  const banner = page.getByRole('complementary', { name: 'Language suggestion' })
+  const language = page.getByRole('combobox', { name: 'Language', exact: true })
+  try {
+    // 保留当前语言：首帧脚本的委托监听写入 Cookie 并隐藏横幅
+    let release = await holdScripts(page)
+    await page.goto('/pricing', { waitUntil: 'commit' })
+    await expect(banner).toBeVisible()
+    await expect(language).toBeDisabled()
+    await banner.getByRole('button', { name: 'Keep current language' }).click()
+    await expect(banner).toBeHidden()
+    expect(await preferenceCookie(page)).toBe('en')
+    await release()
+    await page.reload()
+    await expect(banner).toHaveCount(0)
+
+    // 切换：真实链接直接导航，委托监听同时记住选择
+    await context.clearCookies()
+    release = await holdScripts(page)
+    await page.goto('/pricing', { waitUntil: 'commit' })
+    await expect(banner).toBeVisible()
+    await expect(language).toBeDisabled()
+    await banner.getByRole('link', { name: 'Switch language' }).click()
+    await expect(page).toHaveURL(/\/zh\/pricing$/)
+    await release()
+    await expect(page.locator('html')).toHaveAttribute('lang', 'zh')
+    expect(await preferenceCookie(page)).toBe('zh')
   } finally {
     await context.close()
   }

@@ -6,6 +6,8 @@ import { AnnouncementBanner } from '../features/admin/settings-announcement-bann
 import { ProductAnalytics } from '../features/analytics/analytics.tsx'
 import { analyticsHeadScripts } from '../features/analytics/head.ts'
 import { LanguageControls } from '../features/i18n/language-controls.tsx'
+import { LOCALE_COOKIE_MAX_AGE, PREFERENCE_COOKIE } from '../features/i18n/preference.ts'
+import { localeSuggestionScript } from '../features/i18n/suggestion.ts'
 import { privateMeta } from '../features/seo/metadata.ts'
 import {
   getPlausibleSite,
@@ -15,6 +17,7 @@ import {
 import { getHtmlAttributes } from '../features/theme/html-attributes.isomorphic.ts'
 import { RootDocument } from '../features/theme/root-document.tsx'
 import { SiteSettings } from '../features/theme/site-settings.tsx'
+import { baseLocale, cookieName, locales } from '../paraglide/runtime.js'
 import { templateConfig } from '../server/template-config.ts'
 import appCss from '../styles/app.css?url'
 
@@ -47,6 +50,20 @@ export const Route = createRootRoute({
     // 首屏前按偏好（未设置时跟随系统）给 <html> 设置 dark 类：<head> 内同步执行，避免刷新时先浅后深的闪烁
     scripts: [
       { children: themeInitScript() },
+      // 语言建议同样在首帧前决定，横幅随首帧出现在最终位置，不在水合后把整页下推（suggestion.ts）
+      ...(templateConfig.i18n.enabled
+        ? [
+            {
+              children: localeSuggestionScript({
+                baseLocale,
+                locales,
+                preferenceCookie: PREFERENCE_COOKIE,
+                localeCookie: cookieName,
+                cookieMaxAge: LOCALE_COOKIE_MAX_AGE,
+              }),
+            },
+          ]
+        : []),
       ...analyticsHeadScripts(
         matches.at(-1)?.pathname ?? '/',
         templateConfig,

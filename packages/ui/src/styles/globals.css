@@ -276,10 +276,54 @@
   }
 }
 
+/*
+ * Inter 的度量匹配回退字体：Inter 以 font-display: swap 加载，慢网下首帧先用回退字体排版，Inter 到达后换字。
+ * 系统字体（如 SF）与 Inter 宽度相差 3%–6%，换字时正文换行改变、整段下移（实测定价页、博客页手机端 CLS 约 0.02 / 0.013）。
+ * 这里把本地 Arial（Linux 上为度量兼容的 Liberation Sans / Arimo）按 Inter 的宽度与纵向度量缩放后放在 Inter 之后，
+ * 首帧排版与 Inter 基本一致。Arial 只有常规与粗体两种字重，按字重分两个字体：数值在 Chromium 中按营销页实测换字位移取得
+ * （常规体以 14–18px 正文为准；粗体在小字与 opsz 收窄的大标题之间折中）；纵向度量取 Inter 的
+ * ascender 1984 / descender -494 / unitsPerEm 2048，再除以 size-adjust。
+ * unicode-range 与 Inter 拉丁子集一致：Inter 加载后这些字符都由 Inter 显示，回退字体不会改变加载完成后的外观；
+ * 其他字符（中文等）仍按原顺序回退到系统字体。没有这些本地字体的平台（如 Android）跳过此项，回退到系统字体。
+ * 项目在 brand.css 用 --font-sans 换掉 Inter 时，新字体栈不含 "Inter Fallback"，这里的规则不生效、也不下载任何文件；
+ * 若自己的字体同样以 swap 加载，可按同样方法为它定义度量匹配的回退字体并放进字体栈。
+ */
+@font-face {
+  font-family: "Inter Fallback";
+  font-style: normal;
+  font-weight: 100 549;
+  src:
+    local("Arial"), local("ArialMT"), local("Liberation Sans"), local("LiberationSans"),
+    local("Arimo");
+  size-adjust: 105.5%;
+  ascent-override: 91.82%;
+  descent-override: 22.86%;
+  line-gap-override: 0%;
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Inter Fallback";
+  font-style: normal;
+  font-weight: 550 900;
+  src:
+    local("Arial Bold"), local("Arial-BoldMT"), local("Liberation Sans Bold"),
+    local("LiberationSans-Bold"), local("Arimo Bold");
+  size-adjust: 97%;
+  ascent-override: 99.87%;
+  descent-override: 24.87%;
+  line-gap-override: 0%;
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 @theme inline {
   --font-sans:
-    "Inter Variable", ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB",
-    "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    "Inter Variable", "Inter Fallback", ui-sans-serif, system-ui, -apple-system, "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
