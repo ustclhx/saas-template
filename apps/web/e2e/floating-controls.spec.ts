@@ -72,12 +72,15 @@ for (const viewport of [
         (await page.locator('body[data-floating-controls]').count()) === 0,
         '首页未声明 body[data-floating-controls]，没有浮动控件',
       )
+      // 衍生项目可只保留其中一个浮动控件（如语言菜单移入页头、主题切换仍浮动）：只核对实际存在的控件
+      const present: Locator[] = []
+      for (const control of [languageControl(page), themeControl(page)])
+        if ((await control.count()) > 0) present.push(control)
+      test.skip(present.length === 0, '首页没有浮动的语言或主题控件')
       if (mobile) {
-        await expect(themeControl(page)).toBeHidden()
-        await expect(languageControl(page)).toBeHidden()
+        for (const control of present) await expect(control).toBeHidden()
       } else {
-        await expectPageLayer(languageControl(page))
-        await expectPageLayer(themeControl(page))
+        for (const control of present) await expectPageLayer(control)
       }
       // 营销页没有模态入口，核对真实 AI 入口采用同一个页面层 token。
       if (templateConfig.marketing.aiEntry.enabled) {
@@ -91,7 +94,7 @@ for (const viewport of [
       // 手机端唯一的页面层悬浮按钮是预览中 SubjectChat 的触发器
       const floating = mobile
         ? [page.locator('[data-embedded-chat-trigger]').filter({ visible: true }).first()]
-        : [languageControl(page), themeControl(page)]
+        : present
       for (const control of floating) await expectPageLayer(control)
       const positions = await Promise.all(floating.map(center))
       const overlay = page.locator('body > [data-state="open"][class*="--z-overlay"]')

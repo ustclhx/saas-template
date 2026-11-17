@@ -263,7 +263,7 @@ admin 页面把 `Textarea` 的导入从 `features/admin/ui.tsx` 改为 `@saas/ui
 |---|---|
 | `<select value={v} onChange={(e) => f(e.target.value)}>` | `<Select value={v} onValueChange={f}>` |
 | `value`、`defaultValue`、`disabled`、`required`、`name` | 放在 `Select` 上 |
-| `id`、`aria-label`、`aria-describedby`、`aria-invalid`、`onBlur`、宽度类 | 放在 `SelectTrigger` 上 |
+| `id`、`aria-label`、`aria-describedby`、`aria-invalid`、`onBlur`、宽度类 | 放在 `SelectTrigger` 上；触发器默认最小宽度 160px（compact 128px），放进比它更窄的 grid / flex 列时传 `className="min-w-0"` |
 | 展开的属性对象（`{...common}`、`{...field('x')}`） | 拆开：`value`/`disabled`/`required`/`name` 给 `Select`，`id`/`aria-*` 给 `SelectTrigger`，`onChange` 改写为 `onValueChange` |
 | `<option value={x}>文字</option>` | `SelectContent` 内的 `<SelectItem index={i} value={x}>文字</SelectItem>` |
 | `<option disabled>` | `<SelectItem disabled>`，仍占一个 `index` |

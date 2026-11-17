@@ -142,6 +142,22 @@ describe('Select（Fluid radix/select）', () => {
     expect(html).toMatch(/<button[^>]*class="[^"]*\bmax-w-full\b/)
   })
 
+  it('比最小宽度更窄的列：className="min-w-0" 覆盖触发器的最小宽度', () => {
+    const html = renderToString(
+      <Select>
+        <SelectTrigger placeholder="Model" aria-label="Model" className="min-w-0" />
+        <SelectContent>
+          <SelectItem index={0} value="a">
+            A
+          </SelectItem>
+        </SelectContent>
+      </Select>,
+    )
+    const button = html.match(/<button[^>]*class="([^"]*)"/)?.[1] ?? ''
+    expect(button.split(' ')).toContain('min-w-0')
+    expect(button).not.toContain('min-w-[160px]')
+  })
+
   it('传 valueLabel 时服务端输出即含选中文字（水合前可见），值为空时仍显示占位文字', () => {
     const options = [
       { value: 'free', label: 'Free' },
