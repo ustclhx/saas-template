@@ -6,6 +6,11 @@ import templateConfig from '../../../template.config.ts'
 import { register, simulateClientIp } from './fixtures.ts'
 import { stubTurnstile } from './turnstile.ts'
 
+// /dev/ui 会自动请求分享卡片预览，不能与其他用例共用默认 IP 限流桶。
+test.beforeEach(async ({ page }) => {
+  await simulateClientIp(page)
+})
+
 // #46/#65：全局浮动入口属于页面层，任何模态遮罩与面板都应盖过它们。
 const evidenceDir = resolve(
   process.env.EVIDENCE_DIR ?? new URL('../../../test-results/evidence', import.meta.url).pathname,
@@ -142,7 +147,6 @@ for (const viewport of [
 test('390px：真实 App 导航抽屉盖住页面，inline 控件不泄漏到遮罩上', async ({ page }) => {
   test.setTimeout(60_000)
   test.skip(templateConfig.ui.appLayout !== 'sidebar', '需要 sidebar 布局')
-  await simulateClientIp(page)
   await stubTurnstile(page)
   await register(page, `floating-${Date.now()}@example.com`, 'Floating Controls Tester')
   const home = page.url()

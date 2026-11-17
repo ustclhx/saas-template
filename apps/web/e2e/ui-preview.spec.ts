@@ -3,7 +3,13 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, type Page, test } from '@playwright/test'
+import { simulateClientIp } from './fixtures.ts'
 import { chooseOption } from './select.ts'
+
+// 每次访问 /dev/ui 都会加载分享卡片预览，按用例隔离真实限流桶。
+test.beforeEach(async ({ page }) => {
+  await simulateClientIp(page)
+})
 
 // 组件预览页（add-ui-design-system D6）：开发环境 wrangler 顶层设 UI_PREVIEW=true，页面可达且不被索引；
 // 关闭时的 404 由 smoke.spec.ts（UI_PREVIEW=false）覆盖。

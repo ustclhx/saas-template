@@ -56,14 +56,15 @@ test('share page points og:image at a 1200x630 card and both 404 after invalidat
 
   // 抓取卡片地址：首次渲染，第二次从缓存或对象存储返回同样的字节。
   const cardPath = `${card.pathname}${card.search}`
-  const image = await request.get(cardPath)
+  // 与页面共用模拟 IP，避免独立 request fixture 累计到其他用例的默认限流桶。
+  const image = await page.request.get(cardPath)
   expect(image.status()).toBe(200)
   expect(image.headers()['content-type']).toBe('image/png')
   expect(image.headers()['x-robots-tag']).toBe('noindex')
   expect(image.headers()['cache-control']).toBe('public, max-age=86400, s-maxage=86400')
   const body = await image.body()
   expect(pngSize(body)).toEqual({ width: 1200, height: 630 })
-  const again = await request.get(cardPath)
+  const again = await page.request.get(cardPath)
   expect(again.status()).toBe(200)
   expect(Buffer.compare(await again.body(), body)).toBe(0)
 
@@ -71,7 +72,9 @@ test('share page points og:image at a 1200x630 card and both 404 after invalidat
   // 只改 v，保留 l 等其余参数，按同一站点与语言解析。
   const staleURL = new URL(card)
   staleURL.searchParams.set('v', '1-00000000')
-  const stale = await request.get(`${staleURL.pathname}${staleURL.search}`, { maxRedirects: 0 })
+  const stale = await page.request.get(`${staleURL.pathname}${staleURL.search}`, {
+    maxRedirects: 0,
+  })
   expect(stale.status()).toBe(302)
   expect(stale.headers().location).toBe(cardPath)
 
@@ -79,7 +82,7 @@ test('share page points og:image at a 1200x630 card and both 404 after invalidat
     data: { action: 'invalidate', token },
   })
   expect(invalidated.status()).toBe(200)
-  expect((await request.get(cardPath)).status()).toBe(404)
+  expect((await page.request.get(cardPath)).status()).toBe(404)
   expect((await page.goto(sharePath))?.status()).toBe(404)
   await expect(page.locator('meta[property="og:image"]')).toHaveCount(0)
 })
