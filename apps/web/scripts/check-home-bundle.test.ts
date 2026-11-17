@@ -7,11 +7,14 @@ import {
   budgetViolation,
   checkHomeBundle,
   checkServerHomeBundle,
+  decodeMappings,
   entryDynamicImports,
   entryScripts,
   htmlScripts,
   readPerformanceOptions,
   staticClosure,
+  zodBindings,
+  zodSources,
 } from './check-home-bundle.mjs'
 
 let dir = ''
@@ -114,6 +117,38 @@ describe('首页包检查', () => {
   })
 })
 
+// sourcemap mappings 编码（单行；段为 [生成列, 源文件下标, 名称下标?]，源行列取 0）
+function mappings(segments: [number, number, number?][]) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  const vlq = (value: number) => {
+    let rest = value < 0 ? (-value << 1) | 1 : value << 1
+    let out = ''
+    do {
+      let digit = rest & 31
+      rest >>>= 5
+      if (rest > 0) digit |= 32
+      out += chars[digit]
+    } while (rest > 0)
+    return out
+  }
+  let column = 0
+  let source = 0
+  let name = 0
+  return segments
+    .map(([at, index, nameIndex]) => {
+      let out = vlq(at - column) + vlq(index - source) + vlq(0) + vlq(0)
+      if (nameIndex !== undefined) {
+        out += vlq(nameIndex - name)
+        name = nameIndex
+      }
+      column = at
+      source = index
+      return out
+    })
+    .join(',')
+}
+const clientCode = 'import{a as e}from"./schemas.js";const s=e.object();const f=r(1);const a=2'
+
 describe('水合闭包中的 zod（0.5.6）', () => {
   it('入口脚本：module script 与 after-paint 加载器的 js 列表', () => {
     expect(
@@ -127,14 +162,28 @@ describe('水合闭包中的 zod（0.5.6）', () => {
     const root = fixture({
       'index.html': '<script type="module" src="/assets/index.js"></script>',
       'assets/index.js': 'const s=async()=>{let{StartClient:e}=await import(`./client.js`)};',
-      'assets/client.js': 'import{a as z}from"./schemas.js";const l=()=>import("./lazy.js");',
+      'assets/client.js': `${clientCode};const l=()=>import("./lazy.js");`,
       'assets/client.js.map': JSON.stringify({
         sources: [
-          '../../../src/routes/login.tsx',
+          '../../../src/routes/login.tsx?tsr-shared=1',
           '../../../node_modules/x.js',
           '../../../src/a.ts',
+          '../../../src/features/x.functions.ts',
         ],
-        sourcesContent: ["import { z } from 'zod'\n", "import 'zod'", 'export const a = 1'],
+        sourcesContent: [
+          "import { z } from 'zod'\n",
+          "import { z } from 'zod'",
+          'export const a = 1',
+          "import { z } from 'zod'\nimport { createServerFn } from 'x'\n",
+        ],
+        names: ['z.object', 'createServerFn', 'z'],
+        // 生成代码：login.tsx 使用导入的 z；x.functions.ts 只留下 server function 桩（zod 用法已被摇掉）
+        mappings: mappings([
+          [clientCode.indexOf('e.object'), 0, 0],
+          [clientCode.indexOf('r(1)'), 3, 1],
+          [clientCode.indexOf('const a'), 2],
+          [clientCode.length - 1, 1, 2],
+        ]),
       }),
       'assets/schemas.js': 'class ZodError{};const c="invalid_type";',
       'assets/lazy.js': 'import"./schemas.js";',
@@ -152,6 +201,44 @@ describe('水合闭包中的 zod（0.5.6）', () => {
       'invalid_type',
     ])
     expect(result.zodSources).toEqual(['src/routes/login.tsx'])
+  })
+
+  it('mappings 解码：多行、负增量、名称与无源段', () => {
+    expect(
+      decodeMappings(
+        `${mappings([
+          [3, 2],
+          [7, 0, 4],
+        ])};;A,${mappings([[1, 1, 2]])}`,
+      ),
+    ).toEqual([
+      [2, -1],
+      [0, 4],
+      [1, 6],
+    ])
+  })
+
+  it('zod 绑定：命名、别名、命名空间与默认导入，跳过类型导入', () => {
+    expect([
+      ...zodBindings(
+        "import { z } from 'zod'\nimport * as v from 'zod/v4'\nimport d, { object as o, type ZodType } from 'zod'\nimport type { infer as I } from 'zod'",
+      ),
+    ]).toEqual(['z', 'v', 'd', 'o'])
+  })
+
+  it('sourcemap 无 names 时列出有生成代码且导入 zod 的项目源文件', () => {
+    const root = fixture({
+      'assets/client.js': 'import"./schemas.js";const s=1;const f=2',
+      'assets/client.js.map': JSON.stringify({
+        sources: ['../../../src/a.ts', '../../../src/b.ts', '../../../src/c.ts'],
+        sourcesContent: ["import { z } from 'zod'", "import { z } from 'zod'", 'export {}'],
+        mappings: mappings([
+          [0, 0],
+          [30, 2],
+        ]),
+      }),
+    })
+    expect(zodSources(root, ['/assets/client.js'], ['/assets/schemas.js'])).toEqual(['src/a.ts'])
   })
 
   it('路由树分包不含 zod 时通过（深层懒加载分包不计入）', () => {
