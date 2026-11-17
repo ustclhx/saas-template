@@ -7,7 +7,7 @@ import { ProductAnalytics } from '../features/analytics/analytics.tsx'
 import { analyticsHeadScripts } from '../features/analytics/head.ts'
 import { LanguageControls } from '../features/i18n/language-controls.tsx'
 import { LOCALE_COOKIE_MAX_AGE, PREFERENCE_COOKIE } from '../features/i18n/preference.ts'
-import { localeSuggestionScript } from '../features/i18n/suggestion.ts'
+import { localeSuggestionScript, SUGGESTABLE_LOCALES } from '../features/i18n/suggestion.ts'
 import { privateMeta } from '../features/seo/metadata.ts'
 import {
   getPlausibleSite,
@@ -60,6 +60,7 @@ export const Route = createRootRoute({
                 preferenceCookie: PREFERENCE_COOKIE,
                 localeCookie: cookieName,
                 cookieMaxAge: LOCALE_COOKIE_MAX_AGE,
+                suggestableLocales: SUGGESTABLE_LOCALES,
               }),
             },
           ]
