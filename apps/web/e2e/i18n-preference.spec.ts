@@ -82,11 +82,12 @@ test('横幅首帧即可操作：水合前点击切换与保留当前语言同�
     // 切换：真实链接直接导航，委托监听同时记住选择
     await context.clearCookies()
     release = await holdScripts(page)
-    await page.goto('/pricing', { waitUntil: 'commit' })
+    await page.goto('/pricing?utm_source=e2e', { waitUntil: 'commit' })
     await expect(banner).toBeVisible()
     await expect(language).toBeDisabled()
     await banner.getByRole('link', { name: 'Switch language' }).click()
-    await expect(page).toHaveURL(/\/zh\/pricing$/)
+    // 查询参数（如 UTM）随导航保留
+    await expect(page).toHaveURL(/\/zh\/pricing\?utm_source=e2e$/)
     await release()
     await expect(page.locator('html')).toHaveAttribute('lang', 'zh')
     expect(await preferenceCookie(page)).toBe('zh')
