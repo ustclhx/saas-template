@@ -449,7 +449,7 @@ test('clean sync applies renamed changes, keeps project values, ports migrations
   assert.match(await readFile(again.reportPath, 'utf8'), /目标未发布/)
 })
 
-test('sync adds share card and chat tool extensions once and preserves project registration and theme later', async (t) => {
+test('sync delivers project-owned extensions once and skips later template changes to those paths', async (t) => {
   const template = await fakeTemplate(t)
   const project = await fakeProject(t, template)
   const registration = 'apps/web/src/features/share-cards/share-cards.project.ts'
@@ -458,6 +458,8 @@ test('sync adds share card and chat tool extensions once and preserves project r
   const sites = 'apps/web/src/features/share-cards/share-cards.sites.ts'
   const tools = 'apps/web/src/features/ai/message-parts.project.tsx'
   const estimate = 'apps/web/src/features/ai/chat-composer.project.tsx'
+  const html = 'apps/web/src/features/theme/html-attributes.ts'
+  const webFonts = 'apps/web/src/features/theme/fonts.project.ts'
   await template.commit(
     {
       [registration]: 'export const registration = 1\n',
@@ -466,6 +468,8 @@ test('sync adds share card and chat tool extensions once and preserves project r
       [sites]: 'export const sites = 1\n',
       [tools]: 'export const tools = 1\n',
       [estimate]: 'export const estimate = 1\n',
+      [html]: 'export const attributes = {}\n',
+      [webFonts]: "import type { FontPreload } from '@old-scope/ui/fonts'\n",
     },
     'share card extensions',
     'template-v0.2.0',
@@ -477,6 +481,8 @@ test('sync adds share card and chat tool extensions once and preserves project r
     await readFile(join(project.dir, registration), 'utf8'),
     'export const registration = 1\n',
   )
+  assert.ok(first.report.applied.includes(html))
+  assert.ok(first.report.applied.includes(webFonts))
   git(project.dir, 'switch', '--quiet', 'main')
   git(project.dir, 'merge', '--quiet', '--ff-only', first.branch)
   await project.change({
@@ -486,6 +492,8 @@ test('sync adds share card and chat tool extensions once and preserves project r
     [sites]: '// project sites\n',
     [tools]: '// project tools\n',
     [estimate]: '// project estimate\n',
+    [html]: "export const attributes = { 'data-site': 'acme' }\n",
+    [webFonts]: "export const preloads = ['project.woff2']\n",
   })
   await template.commit(
     {
@@ -495,6 +503,8 @@ test('sync adds share card and chat tool extensions once and preserves project r
       [sites]: 'export const sites = 2\n',
       [tools]: 'export const tools = 2\n',
       [estimate]: 'export const estimate = 2\n',
+      [html]: "export const attributes = { 'data-site': 'template' }\n",
+      [webFonts]: "import type { FontPreload } from '@saas/ui/fonts'\n",
     },
     'template extension changes',
     'template-v0.3.0',
@@ -510,6 +520,14 @@ test('sync adds share card and chat tool extensions once and preserves project r
   assert.equal(await readFile(join(project.dir, sites), 'utf8'), '// project sites\n')
   assert.equal(await readFile(join(project.dir, tools), 'utf8'), '// project tools\n')
   assert.equal(await readFile(join(project.dir, estimate), 'utf8'), '// project estimate\n')
+  assert.equal(
+    await readFile(join(project.dir, html), 'utf8'),
+    "export const attributes = { 'data-site': 'acme' }\n",
+  )
+  assert.equal(
+    await readFile(join(project.dir, webFonts), 'utf8'),
+    "export const preloads = ['project.woff2']\n",
+  )
 })
 
 test('conflicts keep markers on the sync branch, list every file and leave the baseline unchanged', async (t) => {

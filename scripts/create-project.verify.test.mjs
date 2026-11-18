@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -12,7 +12,7 @@ const generatorSkip = existsSync(new URL('./create-project.mjs', import.meta.url
 const { createProject, verifyProject } = generatorSkip ? {} : await import('./create-project.mjs')
 
 // 显式运行的端到端自检：真正安装与检查完整副本，避免日常边界测试反复安装依赖。
-test('真实副本覆盖 Cloudflare 默认、selfhost 默认和 selfhost 全关组合', {
+test('真实副本通过 check，覆盖 Cloudflare 默认、selfhost 默认和 selfhost 全关组合', {
   skip: generatorSkip,
 }, async (t) => {
   const temp = await mkdtemp(join(tmpdir(), 'bootstrap-verify-'))
@@ -33,6 +33,7 @@ test('真实副本覆盖 Cloudflare 默认、selfhost 默认和 selfhost 全关�
       target: 'selfhost',
       locale: 'zh',
       theme: 'blue',
+      name: 'product-resources',
     },
     {
       id: 'minimal',
@@ -46,8 +47,8 @@ test('真实副本覆盖 Cloudflare 默认、selfhost 默认和 selfhost 全关�
       i18n: 'false',
     },
   ]) {
-    await t.test(`${scenario.label}：安装、类型、单元测试和 Node 构建通过`, async () => {
-      const name = `validation-${scenario.id}-${process.pid.toString(36)}`
+    await t.test(`${scenario.label}：安装、check、类型、单元测试和 Node 构建通过`, async () => {
+      const name = scenario.name ?? `validation-${scenario.id}-${process.pid.toString(36)}`
       const source = scenario.id === 'minimal' ? selfhostSource : undefined
       if (scenario.id === 'minimal') assert.ok(source, '全关组合必须从已生成的 selfhost 副本创建')
       const sourceName = source
@@ -229,7 +230,15 @@ test('真实副本覆盖 Cloudflare 默认、selfhost 默认和 selfhost 全关�
         )
         assert.doesNotMatch(result.report, /billing:seed|STRIPE_SECRET|PAYPAL_CLIENT/)
       }
-      verifyProject(result.target, { nodeBuild: true })
+      // pnpm check 用 Git 索引枚举文件；保留无提交副本再次生成的测试条件。
+      const gitOptions = { cwd: result.target }
+      execFileSync('git', ['init', '--quiet'], gitOptions)
+      try {
+        execFileSync('git', ['add', '--all'], gitOptions)
+        verifyProject(result.target, { nodeBuild: true })
+      } finally {
+        await rm(join(result.target, '.git'), { recursive: true, force: true })
+      }
       // 示例评测套件在生成的项目中离线回放可用；CI 为真保证不会发出真实模型调用。
       const evals = spawnSync('pnpm', ['eval:prompts', '--suite', 'example'], {
         cwd: result.target,

@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url'
 import * as ts from 'typescript/unstable/ast'
 import { createVirtualFileSystem } from 'typescript/unstable/fs'
 import { API } from 'typescript/unstable/sync'
-import { parseJsonc } from './production/check-wrangler-envs.mjs'
+import { checkEnvs, parseJsonc } from './production/check-wrangler-envs.mjs'
 import { themeNames } from './template-base.mjs'
 
 const generatorSkip = existsSync(new URL('./create-project.mjs', import.meta.url))
@@ -295,30 +295,56 @@ generatorTest('从生成副本再次生成仅更新一份主题与分析配置�
 })
 
 generatorTest(
-  '初始化项目设计记录，排除模板原型并保留组件、锁与项目 HTML 属性的原始字节',
+  '初始化项目设计记录，保留模板组件和锁的字节，并改名、格式化项目自有扩展',
   async (t) => {
     const f = await fixture(t)
+    const { devDependencies } = JSON.parse(
+      await readFile(new URL('../package.json', import.meta.url)),
+    )
+    await f.file(
+      'package.json',
+      JSON.stringify({
+        name: 'fixture-template',
+        devDependencies: { '@biomejs/biome': devDependencies['@biomejs/biome'] },
+      }),
+    )
+    await symlink(
+      fileURLToPath(new URL('../node_modules', import.meta.url)),
+      join(f.source, 'node_modules'),
+    )
+    await f.file(
+      'biome.json',
+      JSON.stringify({
+        files: { includes: ['**', '!.template-base.json'] },
+        formatter: { indentStyle: 'space', lineWidth: 100 },
+        javascript: { formatter: { quoteStyle: 'single', semicolons: 'asNeeded' } },
+      }),
+    )
     const component = '// 可原样移植的模板组件\r\nexport const Button = () => null\r\n'
     const lock = '{"src/components/button.tsx":"0123456789abcdef"}\n'
-    const htmlAttributes = Buffer.from(
-      '\uFEFF// FixtureApp fixture.example @fixture/ui\r\nexport const getProjectHtmlAttributes = () => ({})\r\n',
-    )
+    const extension = '// FixtureApp @fixture/ui\nexport const configure = () => ({})\n'
     await f.file('packages/ui/src/components/button.tsx', component)
     await f.file('packages/ui/components.lock.json', lock)
-    await f.file('apps/web/src/features/theme/html-attributes.ts', htmlAttributes)
-    const shareCardFiles = [
-      'share-cards.sites.ts',
-      'share-cards.project.ts',
-      'share-cards.theme.ts',
-      'share-cards.fonts.ts',
+    const extensions = [
+      'apps/web/src/features/theme/html-attributes.ts',
+      'apps/web/src/features/share-cards/share-cards.sites.ts',
+      'apps/web/src/features/share-cards/share-cards.project.ts',
+      'apps/web/src/features/share-cards/share-cards.theme.ts',
+      'apps/web/src/features/share-cards/share-cards.fonts.ts',
+      'apps/web/src/features/ai/message-parts.project.tsx',
+      'apps/web/src/features/ai/chat-composer.project.tsx',
+      'apps/web/scripts/critical-css.project.mjs',
     ]
-    for (const name of shareCardFiles)
-      await f.file(`apps/web/src/features/share-cards/${name}`, htmlAttributes)
-    await f.file('apps/web/src/features/ai/message-parts.project.tsx', htmlAttributes)
-    await f.file('apps/web/src/features/ai/chat-composer.project.tsx', htmlAttributes)
+    for (const path of extensions) await f.file(path, extension)
+    const fonts = 'apps/web/src/features/theme/fonts.project.ts'
+    await f.file(
+      fonts,
+      "import type { OptionalProjectFontPreload, ProjectFontPreload } from '@fixture/ui/fonts'\n",
+    )
     await f.file('docs/design-system/prototypes/review.html', 'TEMPLATE_PROTOTYPE_SENTINEL')
     await f.file('scripts/check-ui.allow.local.json', '{"exceptions":{"old-project":[]}}')
-    const result = await createProject(f.input, f.source)
+    const name = 'product-resources-with-long-scope'
+    const result = await createProject({ ...f.input, name }, f.source)
     assert.deepEqual(
       JSON.parse(await readFile(join(result.target, 'scripts/check-ui.allow.local.json'), 'utf8')),
       { exceptions: {}, pendingReplacement: {} },
@@ -330,7 +356,7 @@ generatorTest(
       'prototypes/',
       'prototypes/README.md',
       'forks.md',
-      '@acme/ui/project',
+      `@${name}/ui/project`,
       'scripts/check-ui.allow.local.json',
       'arbitrary-class',
       '按文件登记所需规则与原因',
@@ -351,22 +377,14 @@ generatorTest(
       await readFile(join(result.target, 'packages/ui/components.lock.json'), 'utf8'),
       lock,
     )
-    assert.deepEqual(
-      await readFile(join(result.target, 'apps/web/src/features/theme/html-attributes.ts')),
-      htmlAttributes,
-    )
-    for (const name of shareCardFiles)
-      assert.deepEqual(
-        await readFile(join(result.target, `apps/web/src/features/share-cards/${name}`)),
-        htmlAttributes,
+    for (const path of extensions)
+      assert.equal(
+        await readFile(join(result.target, path), 'utf8'),
+        `// ${name} @${name}/ui\nexport const configure = () => ({})\n`,
       )
-    assert.deepEqual(
-      await readFile(join(result.target, 'apps/web/src/features/ai/message-parts.project.tsx')),
-      htmlAttributes,
-    )
-    assert.deepEqual(
-      await readFile(join(result.target, 'apps/web/src/features/ai/chat-composer.project.tsx')),
-      htmlAttributes,
+    assert.equal(
+      await readFile(join(result.target, fonts), 'utf8'),
+      `import type {\n  OptionalProjectFontPreload,\n  ProjectFontPreload,\n} from '@${name}/ui/fonts'\n`,
     )
   },
 )
@@ -1137,7 +1155,7 @@ generatorTest('文件桶签名白名单与生成项目的桶名一致，备份�
   assert.match(spec, /'saas-production-backups'/)
 })
 
-generatorTest('模板 production 环境改名、清空 ID 并替换自定义域名', async (t) => {
+generatorTest('模板 production 环境改名、重置 ID 并替换自定义域名', async (t) => {
   const f = await fixture(t)
   const result = await createProject(f.input, f.source)
   const name = JSON.parse(
@@ -1151,7 +1169,7 @@ generatorTest('模板 production 环境改名、清空 ID 并替换自定义域�
     assert.equal(production.r2_buckets[0].bucket_name, `${name}-files-production`)
     assert.equal(production.vars.R2_FILES_BUCKET, `${name}-files-production`)
     assert.equal(production.queues.producers[0].queue, `${name}-email-production`)
-    assert.equal(production.hyperdrive[0].id, '0'.repeat(32))
+    assert.equal(production.hyperdrive[0].id, `${'0'.repeat(31)}1`)
     assert.equal(production.vars.R2_ACCOUNT_ID, '')
     assert.deepEqual(production.routes, [
       { pattern: 'configure-production-domain.invalid', custom_domain: true },
@@ -1364,6 +1382,7 @@ generatorTest('Plausible 一站一 site，staging 不沿用生产域名，长期
   )
   for (const app of ['web', 'jobs']) {
     const config = await wrangler(on.target, app)
+    assert.deepEqual(checkEnvs(app, config), [])
     assert.equal(config.env.production.vars.PLAUSIBLE_DOMAIN, 'acme')
     assert.equal(config.env.staging.vars.PLAUSIBLE_DOMAIN, 'acme-staging')
     assert.equal(config.env.production.vars.PLAUSIBLE_HOST, 'https://p.example')
@@ -1371,8 +1390,8 @@ generatorTest('Plausible 一站一 site，staging 不沿用生产域名，长期
     assert.equal(config.env.staging.vars.APP_URL, 'https://staging.acme.example')
   }
   const config = await readFile(join(on.target, 'template.config.ts'), 'utf8')
-  assert.match(config, /"analytics":"plausible"/)
-  assert.match(config, /"guides":true/)
+  assert.match(config, /analytics: 'plausible'/)
+  assert.match(config, /guides: true/)
   const setup = await readFile(join(on.target, 'PROJECT_SETUP.md'), 'utf8')
   for (const text of [
     'acme-staging',
@@ -1395,10 +1414,10 @@ generatorTest('Plausible 一站一 site，staging 不沿用生产域名，长期
     source,
   )
   assert.equal((await wrangler(off.target, 'web')).env.production.vars.PLAUSIBLE_DOMAIN, '')
-  assert.match(await readFile(join(off.target, 'template.config.ts'), 'utf8'), /"analytics":false/)
+  assert.match(await readFile(join(off.target, 'template.config.ts'), 'utf8'), /analytics: false/)
   // 多站映射不随生成器继承，关闭分析时同样为空。
   for (const target of [on.target, off.target])
-    assert.match(await readFile(join(target, 'template.config.ts'), 'utf8'), /"plausibleSites":""/)
+    assert.match(await readFile(join(target, 'template.config.ts'), 'utf8'), /plausibleSites: ''/)
   assert.equal(
     (await readFile(join(off.target, 'PROJECT_SETUP.md'), 'utf8')).includes('Plausible'),
     false,
