@@ -141,6 +141,14 @@ const VITEST_CONFIG = /^vitest\.config\.[cm]?[jt]s$/
 const ENV_READ =
   /process\.env\.([A-Z_][A-Z0-9_]*)\b(?!\s*=(?!=))|readLocalEnv\(\s*['"`]([A-Z_][A-Z0-9_]*)['"`]/g
 const ENV_IGNORE = 'turbo-env-ignore'
+// @saas/db/test-database 的 resolveTestDatabase() 在配置文件之外读取这些变量，调用处按字面读取计入
+const RESOLVE_TEST_DATABASE = /\bresolveTestDatabase\(/
+const RESOLVE_TEST_DATABASE_ENV = [
+  'CI',
+  'CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE',
+  'MIGRATION_DATABASE_URL',
+  'ALLOW_TEST_ON_DEV_DATABASE',
+]
 
 /** 任务配置合并：包内数组替换根配置，含 $TURBO_EXTENDS$ 时追加 */
 function taskEnv(root, pkg, key) {
@@ -184,6 +192,8 @@ export function findEnvHazards(repo) {
           const name = viaEnv ?? viaLocal
           if (!covered(name)) missing.add(name)
         }
+        if (RESOLVE_TEST_DATABASE.test(line))
+          for (const name of RESOLVE_TEST_DATABASE_ENV) if (!covered(name)) missing.add(name)
       })
       for (const name of missing)
         violations.push(

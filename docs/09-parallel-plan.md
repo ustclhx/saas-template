@@ -20,7 +20,7 @@
 |---|---|
 | 依赖 | 每个 worktree 自己 `pnpm install`（pnpm 全局内容寻址存储，安装很快）。**不共享 `node_modules`**：并行分支会安装不同依赖 |
 | 构建缓存 | `.turbo` 通过 `worktree.sharedDirectories` 共享（内容寻址，可安全共享） |
-| 本地数据库 | 所有 worktree 共用一个本地 PG 容器 `saas-template-pg`；每个 worktree 使用独立数据库 `saas_wt_<worktree 名>`，setup 时创建、archive 时删除。主 checkout 使用 `saas_dev` |
+| 本地数据库 | 所有 worktree 共用一个本地 PG 容器 `saas-template-pg`；每个 worktree 使用独立数据库 `saas_wt_<worktree 名>`，setup 时创建、archive 时删除。主 checkout 使用 `saas_dev`。测试（vitest 配置与 `@saas/db/test/global-setup`）只接受隔离库：本地 `*_wt_*` / `*_test`，CI 另接受 `*_ci`；未配置或指向 `saas_dev` 时立即失败，不会对开发库执行迁移，`ALLOW_TEST_ON_DEV_DATABASE=1` 显式放行。普通 `git worktree` 先运行 `bash scripts/orca/setup.sh` 建库，用完 `bash scripts/orca/archive.sh` |
 | 端口 | 按 worktree 名哈希分配 `20000–29990` 中一个 10 个端口的段，写入 `.env.worktree`（`WEB_PORT`、`JOBS_PORT`、两个 inspector 端口） |
 | Hyperdrive 本地连接 | `.env.worktree` 中的 `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE(_CACHED)` 指向该 worktree 的数据库（`app` 账号）；`MIGRATION_DATABASE_URL` 为同一库的 `migrator` 账号，供 drizzle-kit 使用 |
 | 本地认证配置 | 主 checkout 的 app `.dev.vars` 经 `.worktreeinclude` 复制，认证模板为 `apps/web/.dev.vars.example` |

@@ -183,6 +183,19 @@ test('任务 env/passThroughEnv、$TURBO_EXTENDS$、全局与通配声明都算�
   assert.equal(findEnvHazards(repo(sources, { packages: replaced, root })).length, 1)
 })
 
+test('resolveTestDatabase() 调用视为读取连接串、CI 与开发库开关', () => {
+  const sources = { 'packages/a/vitest.config.ts': "const db = resolveTestDatabase('@x/a')" }
+  const packages = [
+    pkg('packages/a', '@x/a', [], {
+      tasks: { test: { passThroughEnv: ['CI', 'MIGRATION_DATABASE_URL'] } },
+    }),
+  ]
+  assert.deepEqual(
+    findEnvHazards(repo(sources, { packages })).map((v) => v.match(/读取 (\w+)/)[1]),
+    ['CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE', 'ALLOW_TEST_ON_DEV_DATABASE'],
+  )
+})
+
 test('当前仓库 test 任务的环境变量声明完整', () => {
   assert.deepEqual(findEnvHazards(readRepo()), [])
 })
