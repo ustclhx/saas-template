@@ -1,3 +1,4 @@
+import { assertIsolatedTestDatabase } from '@saas/db/test-database'
 import { readLocalEnv } from '@saas/db/worktree-env'
 import { defineConfig } from 'vitest/config'
 
@@ -6,13 +7,8 @@ const migrator = readLocalEnv('MIGRATION_DATABASE_URL')
 if (!app || !migrator) throw new Error('Node media integration requires worktree PG configuration')
 const appUrl = new URL(app)
 const migrationUrl = new URL(migrator)
-if (
-  !appUrl.pathname.startsWith('/saas_wt_') ||
-  appUrl.pathname !== migrationUrl.pathname ||
-  appUrl.host !== migrationUrl.host ||
-  appUrl.username !== 'app' ||
-  migrationUrl.username !== 'migrator'
-)
+assertIsolatedTestDatabase({ app, migrator }, '@saas/jobs node media')
+if (appUrl.username !== 'app' || migrationUrl.username !== 'migrator')
   throw new Error('Node media integration requires app/migrator on the same isolated worktree PG')
 process.env.TEST_JOB_DATABASE_URL = app
 process.env.MIGRATION_DATABASE_URL = migrator

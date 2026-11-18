@@ -1,20 +1,13 @@
 import { fileURLToPath } from 'node:url'
+import { resolveTestDatabase } from '@saas/db/test-database'
 import { readLocalEnv } from '@saas/db/worktree-env'
 import { defineConfig } from 'vitest/config'
 
-const appUrl = readLocalEnv('CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE')
-const migratorUrl = readLocalEnv('MIGRATION_DATABASE_URL')
+const { appUrl, migratorUrl } =
+  resolveTestDatabase('@saas/web billing node', { required: true }) ?? {}
 const valkeyUrl = readLocalEnv('TEST_VALKEY_URL')
 if (!appUrl || !migratorUrl || !valkeyUrl)
   throw new Error('Node billing/admin tests require isolated database URLs and TEST_VALKEY_URL')
-const app = new URL(appUrl)
-const migrator = new URL(migratorUrl)
-if (
-  app.host !== migrator.host ||
-  app.pathname !== migrator.pathname ||
-  (!app.pathname.startsWith('/saas_wt_') && !(process.env.CI && app.pathname === '/saas_ci'))
-)
-  throw new Error('Node billing/admin tests require matching isolated worktree or CI databases')
 process.env.NODE_ADMIN_DATABASE_URL = appUrl
 process.env.MIGRATION_DATABASE_URL = migratorUrl
 process.env.TEST_VALKEY_URL = valkeyUrl

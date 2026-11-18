@@ -1,22 +1,12 @@
-import { readLocalEnv } from '@saas/db/worktree-env'
+import { resolveTestDatabase } from '@saas/db/test-database'
 import { defineConfig } from 'vitest/config'
 
-const appUrl = readLocalEnv('CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE')
-const migrationUrl = readLocalEnv('MIGRATION_DATABASE_URL')
-const integration = Boolean(appUrl && migrationUrl)
-if (appUrl || migrationUrl) {
-  if (!appUrl || !migrationUrl) throw new Error('Billing tests require both database URLs')
-  const app = new URL(appUrl)
-  const migration = new URL(migrationUrl)
-  if (
-    app.host !== migration.host ||
-    app.pathname !== migration.pathname ||
-    !(app.pathname.startsWith('/saas_wt_') || (process.env.CI && app.pathname === '/saas_ci'))
-  ) {
-    throw new Error('Billing tests require matching isolated worktree or CI databases')
-  }
-  process.env.BILLING_TEST_DATABASE_URL = appUrl
-  process.env.MIGRATION_DATABASE_URL = migrationUrl
+// 未配置数据库时只跑离线项目；配置了则必须是同一个隔离库（@saas/db/test-database）。
+const database = resolveTestDatabase('@saas/billing')
+const integration = Boolean(database)
+if (database) {
+  process.env.BILLING_TEST_DATABASE_URL = database.appUrl
+  process.env.MIGRATION_DATABASE_URL = database.migratorUrl
 }
 
 export default defineConfig({

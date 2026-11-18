@@ -38,6 +38,8 @@
   - 影响行为的环境变量写进任务级 `env`/`passThroughEnv`（优先于全局）。Turbo 默认 strict env 模式，
     未声明的变量在任务进程里不存在：各包 `vitest.config` 读不到连接串时会**静默跳过**集成测试，
     本地 Orca worktree 又因 `readLocalEnv` 回退到 `.env.worktree` 而照常运行，问题只在 CI 暴露。
+    连接串统一经 `@saas/db/test-database` 的 `resolveTestDatabase()` 解析并做隔离检查（检查脚本把该调用计为读取
+    连接串、`CI` 与 `ALLOW_TEST_ON_DEV_DATABASE`）；CI 库名须匹配 `*_ci` / `*_ci_*`，且 `CI` 为真；
     同一检查脚本会核对默认 `vitest.config` 字面读取的 `process.env.X` / `readLocalEnv('X')` 已在 test 任务中声明；
     不经 turbo 传入的变量（如手动探针开关）在该行或上一行注明 `turbo-env-ignore`；
   - 依赖数据库的测试（db、auth、billing、credits、entitlements、storage、jobs、web）设 `cache: false`，
@@ -47,6 +49,7 @@
     例：web `typecheck` 生成 `.content-collections/generated`、`src/routeTree.gen.ts`、`src/paraglide`，
     `build` 也生成内容集合，二者都已声明。
 - Playwright 浏览器统一用 `.github/actions/install-chromium`（只装 shell，缓存浏览器，apt 带超时），不直接 `playwright install --with-deps`。
+  安装前它会停止并屏蔽 apt-daily / unattended-upgrades，最多等待 5 分钟让 dpkg/apt 锁释放。
 
 ## 4. 并发
 
