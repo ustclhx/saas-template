@@ -54,6 +54,7 @@ config/db 不反向依赖 platform。业务包之间允许依赖，检查器没�
 - 新增定时任务、轮询或公开页查库时遵循 Neon 成本基线（`docs/runbooks/production-neon.md` §4）：无真实用户时数据库应能缩容到零。
 - 验收/自测证据写入 `EVIDENCE_DIR`（未设置时使用已忽略的 `test-results/evidence/`），提交到私有证据库 `saas-template-evidence`；主仓库与 PR 只引用，不提交证据。
 - 只修改任务所需内容；复用现有实现与测试，为核心行为和真实回归风险增加精简用例。
+- 修改 `.github/workflows/`、`.github/actions/` 或 Turbo 配置前阅读 [CI 规范](docs/ci.md)：合并前必须通过的检查、CI 模式、缓存输入与并发规则以该文档为准。
 
 ## 常用命令
 
