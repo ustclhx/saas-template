@@ -105,11 +105,20 @@ test -f docs/design/forks.md && cat docs/design/forks.md
 ## 6. 基准推断（无记录或记录不可信）
 
 ```sh
-node "$TEMPLATE_DIR/scripts/template-sync.mjs" infer-base --project . [--since YYYY-MM-DD --until YYYY-MM-DD] [--param key=value]...
+node "$TEMPLATE_DIR/scripts/template-sync.mjs" infer-base --project . \
+  [--generation-commit <完整 SHA>] [--since YYYY-MM-DD --until YYYY-MM-DD] [--param key=value]...
 ```
 
-展示还原的参数（及来源）、前 5 个候选、最佳候选的差异摘要；超过阈值时不写入。使用者选定后
-`--write <sha>` 写入 `.template-base.json`，审阅并由使用者确认后再提交，然后回到第 1 节。
+默认从最早的根提交还原参数并确定搜索时间窗。若生成结果并入已有仓库，用
+`--generation-commit <完整 SHA>` 指定保存生成结果的提交。该提交必须是 HEAD 或 HEAD 的祖先。
+`--param domain=acme.example` 和 `create-project --domain acme.example` 一样会补上 `https://`，
+也可填写不带末尾斜线的 HTTPS origin，例如 `https://acme.example`。生成器接受末尾斜线并在记录中去掉。
+
+输出还原的参数、来源、前 5 个候选的差异摘要和需人工核对的二进制文件。候选按文本差异行数、
+二进制差异文件数从少到多排序，再按提交日期从新到旧和 SHA 排序。阈值只比较文本差异行数。
+选定后用 `--write <候选完整 SHA>` 写入 `.template-base.json`。候选超过阈值且使用者核对后仍决定采用时，
+同时传入 `--write <候选完整 SHA> --force`，工具会显示分数与警告。审阅记录并由使用者确认后再提交，
+然后回到第 1 节。
 
 ## 7. 交付与授权边界
 
