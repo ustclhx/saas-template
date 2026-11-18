@@ -21,6 +21,7 @@
 | `full` | 其他情况 | 全部任务 |
 
 - `apps/`、`packages/`、`scripts/`、`deploy/` 下的 `.md/.mdx` 不算文档（内容集合与测试夹具会读取）。
+- 衍生项目可在 `.github/ci-docs-paths.json` 中配置由以 `/` 结尾的仓库相对目录前缀组成的数组（例如 `["doc/"]`），将这些目录加入文档路径。
 - `reuse` 的条件全部满足才成立：提交恰好是一个本仓库 PR 的合并提交；该 PR head 最近一次 CI 已完成且成功；
   该次运行恰好有一个成功的 `tested-tree <T>` job；`T` 等于本次提交树。PR 合并后 main 有其他提交时自然回退 `full`。
 - 手动运行 `ci.yml` 并填 `probe_sha` 可只打印某个提交的复用判断（本次运行仍为 `full`，不部署）。

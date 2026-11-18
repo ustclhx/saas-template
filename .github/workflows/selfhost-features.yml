@@ -45,11 +45,11 @@ jobs:
         with:
           node-version: 22
       - uses: docker/setup-buildx-action@v4
-      - name: Install locked browser test dependencies
+      - name: Install locked workspace dependencies
         run: |
           corepack enable
           pnpm install --frozen-lockfile
-          pnpm --filter @saas/web exec playwright install --with-deps chromium
+      - uses: ./.github/actions/install-chromium
       - name: Generate, build and accept the disabled-feature project on fresh Compose volumes
         run: node scripts/selfhost-features.mjs feature-artifacts
       # 只上传固定字段的验收报告，不上传副本、邮件、运行日志或临时凭据。

@@ -322,7 +322,7 @@ export async function runInfer(options) {
     Date.parse(since) > Date.parse(until)
   )
     throw new Error('无效的 --since/--until 时间窗')
-  const clone = await cloneTemplate(template)
+  const clone = await cloneTemplate(template, log)
   const work = await mkdtemp(join(tmpdir(), 'template-infer-'))
   try {
     const original = join(work, 'original')
