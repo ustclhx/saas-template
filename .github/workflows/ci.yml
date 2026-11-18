@@ -258,9 +258,12 @@ jobs:
           database: saas_ci
       - name: Build Node production outputs
         run: pnpm build:node
-      # 拆分前由同 job 的 test:node 先迁移数据库；生产入口不自行迁移，独立 job 需显式执行
+      # 拆分前由同 job 的前序测试迁移业务库与 DBOS 系统表（apps/jobs/test/node-jobs-setup.ts）；
+      # 生产入口不自行迁移，独立 job 需显式执行，否则 jobs 以 JOB_ENGINE_START_FAILED 退出。
       - name: Migrate temporary database
-        run: pnpm --filter @saas/db db:migrate
+        run: |
+          pnpm --filter @saas/db db:migrate
+          pnpm --filter @saas/platform dbos:migrate
       - name: Smoke Node production HTTP server
         run: pnpm --filter @saas/web test:node:production
 
