@@ -141,6 +141,32 @@ test('baseline serialization fixes field order and reads the validated record', 
   )
 })
 
+test('bare domains produce the same canonical generation parameters and baseline', () => {
+  const bareDomain = 'acme.example'
+  assert.deepEqual(normalizeParams({ ...minimalOptions, url: bareDomain }), params)
+  const bareParams = { ...params, domain: bareDomain }
+  assert.deepEqual(paramsToArgs(bareParams), paramsToArgs(params))
+  assert.equal(
+    serializeBaseRecord({ ...baseline, params: bareParams }),
+    serializeBaseRecord(baseline),
+  )
+})
+
+test('domain validation rejects non-HTTPS origins, credentials, ports, and paths', () => {
+  for (const domain of [
+    'http://acme.example',
+    'https://user:pass@acme.example',
+    'https://acme.example/path',
+    'acme.example:443',
+    'acme.example/path',
+    'user@acme.example',
+  ]) {
+    assert.throws(() => validateBaseRecord({ ...baseline, params: { ...params, domain } }), {
+      message: 'Invalid params.domain',
+    })
+  }
+})
+
 test('theme is recorded for new projects and remains optional for older baselines', () => {
   assert.equal(params.theme, 'neutral')
   const legacy = { ...params }
@@ -177,8 +203,6 @@ test('baseline schema rejects malformed records and incomplete generation parame
     { ...baseline, params: { ...params, ai: ['invalid'] } },
     { ...baseline, params: { ...params, oauth: ['github', 'github'] } },
     { ...baseline, params: { ...params, turnstile: 'true' } },
-    { ...baseline, params: { ...params, domain: 'https://user:pass@acme.example' } },
-    { ...baseline, params: { ...params, domain: 'https://acme.example/path' } },
     { ...baseline, params: { ...params, 'billing-enabled': false } },
   ]
   const incomplete = structuredClone(baseline)

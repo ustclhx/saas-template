@@ -94,9 +94,9 @@ async function fixture(t) {
     'packages/db/migrations/meta/_journal.json': '{"entries":[{"tag":"0000_init"}]}\n',
     'app.txt': 'correct version\n',
   })
-  const commit = (title) => {
+  const commit = (title, date = '2026-10-19T12:00:00Z') => {
     git(template, 'add', '--all')
-    git(template, 'commit', '--quiet', '-m', title)
+    gitAt(date, template, 'commit', '--quiet', '-m', title)
     return git(template, 'rev-parse', 'HEAD')
   }
   const first = commit('correct')
@@ -122,6 +122,20 @@ const options = (f, extra = {}) => ({
   log() {},
   ...extra,
 })
+const inferCli = (f, ...args) =>
+  execFileSync(
+    process.execPath,
+    [
+      fileURLToPath(new URL('../template-sync.mjs', import.meta.url)),
+      'infer-base',
+      '--project',
+      f.project,
+      '--template',
+      f.template,
+      ...args,
+    ],
+    { encoding: 'utf8' },
+  )
 
 test('recovers every parameter from the root tree with provenance and ignores later edits', async (t) => {
   const f = await fixture(t)
@@ -140,6 +154,55 @@ test('recovers every parameter from the root tree with provenance and ignores la
   assert.equal(restored.sources.target.includes('deploy-staging'), true)
   assert.equal((await runInfer(options(f))).candidates[0].score, 0)
   assert.equal(existsSync(join(f.project, '.template-base.json')), false)
+})
+
+test('uses a selected generation commit in a repository with unrelated roots', async (t) => {
+  const f = await fixture(t)
+  git(f.project, 'switch', '--quiet', '--orphan', 'legacy')
+  await files(f.project, { 'legacy.py': 'print("legacy")\n' })
+  git(f.project, 'add', '--all')
+  gitAt('2020-01-01T12:00:00Z', f.project, 'commit', '--quiet', '-m', 'legacy application')
+  await assert.rejects(runInfer(options(f, { generationCommit: f.initial })), /HEAD 的祖先/)
+
+  gitAt(
+    '2026-10-20T12:00:00Z',
+    f.project,
+    'merge',
+    '--quiet',
+    '--allow-unrelated-histories',
+    '--no-edit',
+    'main',
+  )
+  const generationCommit = git(f.project, 'rev-parse', 'HEAD')
+  const logs = []
+  await assert.rejects(
+    runInfer(options(f, { log: (message) => logs.push(message) })),
+    /无法从生成提交还原参数/,
+  )
+  assert.match(logs.join('\n'), /多个根提交.*--generation-commit/)
+  await assert.rejects(
+    runInfer(options(f, { generationCommit: generationCommit.slice(0, 12) })),
+    /完整的提交 SHA/,
+  )
+
+  const output = inferCli(
+    f,
+    '--generation-commit',
+    generationCommit,
+    '--param',
+    'domain=acme.example',
+  )
+  assert.match(output, /domain="https:\/\/acme\.example"（--param）/)
+  await files(f.project, { 'package.json': '{"name":"@different/root"}' })
+  git(f.project, 'add', '--all')
+  gitAt('2026-10-21T12:00:00Z', f.project, 'commit', '--quiet', '-m', 'customization')
+  const result = await runInfer(options(f, { generationCommit }))
+  assert.equal(result.params.name, 'acme')
+  assert.equal(result.since, '2026-10-17T12:00:00.000Z')
+  assert.equal(result.until, '2026-10-23T12:00:00.000Z')
+  assert.equal(result.candidates[0].commit, f.first)
+  assert.equal(result.candidates[0].score, 0)
+  assert.deepEqual(result.candidates[0].projectOnly, ['legacy.py', 'project-only.md'])
 })
 
 test('older root configurations omit theme while explicit overrides remain available', async (t) => {
@@ -225,19 +288,63 @@ test('scores every main first-parent candidate and only writes an explicitly sel
   )
 })
 
-test('refuses selected candidate above 50 even when another candidate matches', async (t) => {
+test('ranks by text lines before binary file count and lists binary differences for review', async (t) => {
+  const f = await fixture(t)
+  const projectBinary = Buffer.from([0, 1])
+  const differentBinary = Buffer.from([0, 2])
+  await files(f.project, { 'icons/a.bin': projectBinary, 'icons/b.bin': projectBinary })
+  git(f.project, 'add', '--all')
+  git(f.project, 'commit', '--quiet', '--amend', '--no-edit')
+  await files(f.template, { 'icons/a.bin': differentBinary, 'icons/b.bin': projectBinary })
+  const oneBinary = f.commit('one binary difference', '2026-10-20T12:00:00Z')
+  await files(f.template, { 'icons/b.bin': differentBinary })
+  const twoBinary = f.commit('two binary differences', '2026-10-21T12:00:00Z')
+  await files(f.template, {
+    'icons/a.bin': projectBinary,
+    'icons/b.bin': projectBinary,
+    'app.txt': 'correct version\nextra text\n',
+  })
+  const textOnly = f.commit('text difference', '2026-10-22T12:00:00Z')
+
+  const logs = []
+  const result = await runInfer(
+    options(f, { threshold: 0, write: oneBinary, log: (message) => logs.push(message) }),
+  )
+  assert.deepEqual(
+    result.candidates
+      .slice(1)
+      .map(({ commit, score, binaryFiles }) => ({ commit, score, binaryFiles })),
+    [
+      { commit: oneBinary, score: 0, binaryFiles: ['icons/a.bin'] },
+      { commit: twoBinary, score: 0, binaryFiles: ['icons/a.bin', 'icons/b.bin'] },
+      { commit: textOnly, score: 1, binaryFiles: [] },
+    ],
+  )
+  assert.match(
+    logs.map((message) => message.trim()).join('\n'),
+    /分数=0 二进制差异=2\n请人工核对[^\n]*\n"icons\/a.bin"\n"icons\/b.bin"/,
+  )
+  assert.equal(result.record.commit, oneBinary)
+})
+
+test('requires an explicit force flag to write a selected candidate above the threshold', async (t) => {
   const f = await fixture(t)
   await files(f.template, { 'app.txt': 'different\n'.repeat(51), 'new.txt': 'new\n' })
   const bad = f.commit('too different')
   const result = await runInfer(options(f))
   assert.equal(result.candidates[1].score, 53)
   await assert.rejects(runInfer(options(f, { write: bad })), /超过 50/)
+  await assert.rejects(inferCommand(['--project', f.project, '--force']), /必须与 --write/)
+  await assert.rejects(runInfer(options(f, { write: bad.slice(0, 12), force: true })), /完整 SHA/)
   assert.equal(existsSync(join(f.project, '.template-base.json')), false)
   await assert.rejects(
     runInfer(options(f, { since: '2030-01-01', until: '2030-02-01' })),
     /没有 main 候选/,
   )
   await assert.rejects(inferCommand([]), /--project/)
+  const output = inferCli(f, '--write', bad, '--force')
+  assert.match(output, /警告：候选差异 53 超过 50 行阈值，已使用 --force 写入基准/)
+  assert.equal((await readBaseRecord(f.project)).commit, bad)
 })
 
 test('date filtering traverses an out-of-window commit to find in-window ancestors', async (t) => {
