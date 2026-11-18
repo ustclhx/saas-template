@@ -1013,12 +1013,13 @@ export function verifyProject(target, { nodeBuild = false, webBuild = false } = 
   // 完整矩阵逐包执行测试，避免多个 Node 构建探针争抢 CPU；保持用例断言与时限不变。
   const commands = [
     ['install', '--frozen-lockfile'],
+    // web 生产构建只依赖安装，直接验证无预渲染产物的全关副本。
+    ...(webBuild ? [['--dir', 'apps/web', 'build']] : []),
     ...(nodeBuild ? [['check']] : []),
     ['typecheck'],
     nodeBuild ? ['test', '--concurrency=1'] : ['test'],
   ]
   if (nodeBuild) commands.push(['build:node'])
-  if (webBuild) commands.push(['--dir', 'apps/web', 'build'])
   for (const args of commands) {
     const result = spawnSync('pnpm', args, { cwd: target, env, stdio: 'inherit' })
     if (result.error) throw result.error
