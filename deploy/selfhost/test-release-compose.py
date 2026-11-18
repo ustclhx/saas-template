@@ -405,6 +405,13 @@ class Acceptance:
         self.mark('metadata-only local registry second version', sha=self.b)
         return bundle
 
+    def require_release_platform(self):
+        # 新发布只含 linux/amd64；arm64 Docker 只能验收此前的双架构发布，否则在拉取前明确拒绝。
+        platforms = json.loads((self.bundle / 'image-set.json').read_text()).get('platforms', [])
+        require('linux/' + self.arch in platforms,
+                f'release images do not include linux/{self.arch} (published releases are linux/amd64); '
+                'run this acceptance on amd64 Docker or with a legacy two-platform release')
+
     def execute(self):
         for port in [80, 443]:
             try:
@@ -418,6 +425,7 @@ class Acceptance:
         self.arch = info['Architecture']
         require(self.arch in ['aarch64', 'arm64', 'x86_64', 'amd64'], 'unsupported daemon architecture')
         self.arch = 'arm64' if self.arch in ['aarch64', 'arm64'] else 'amd64'
+        self.require_release_platform()
         require(not self.docker('volume', 'ls', '-q', '--filter', 'label=com.docker.compose.project=' + self.project), 'project not empty')
         self.stage = 'GHCR pull (15 minute maximum)'
         pull_deadline = time.monotonic() + 900

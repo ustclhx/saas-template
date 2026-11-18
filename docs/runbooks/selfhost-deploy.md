@@ -6,7 +6,7 @@
 
 ## 准备
 
-确认成功发布 run、完整 SHA、namespace、八服务 digest / revision / 双架构，并从受信
+确认成功发布 run、完整 SHA、namespace、八服务 digest / revision / linux/amd64，并从受信
 Actions artifact 取得同 SHA bundle。核对来源后解压到独立目录，运行：
 
 ```sh

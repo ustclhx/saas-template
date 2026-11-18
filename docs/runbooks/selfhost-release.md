@@ -5,7 +5,7 @@
 
 ## 来源与信任
 
-正式输入是 `selfhost-publish.yml` **全部服务、两架构成功后**上传的
+正式输入是 `selfhost-publish.yml` **全部服务的 linux/amd64 构建与 smoke 成功后**上传的
 `selfhost-image-set-<sha>/image-set.json`，以及同一完整 main commit 的可信 Git 对象。
 操作者须确认发布 run URL、成功结论、完整 SHA、namespace 和来源仓库；不要以存在某个
 SHA tag 代替成功集合。发布成功后 workflow 将同 SHA 的上述材料打包为 `selfhost-release-<sha>` artifact；
@@ -16,7 +16,8 @@ SHA tag 代替成功集合。发布成功后 workflow 将同 SHA 的上述材料
 
 目前正式 image-set 使用 `ghcr.io/<owner>/<project>/<service>`。每个服务同时记录
 `tag: ...:<sha>`、`digest: sha256:...` 和 `reference: ...@sha256:...`，平台恰为
-`linux/amd64`、`linux/arm64`（显式本地fixture只记录实际单架构）。catalog 与集合必须包含 web/jobs/migrate/postgres/valkey/
+`linux/amd64`（2026-11 起停止 arm64 发布；此前已发布的 `linux/amd64`、`linux/arm64` 集合仍可校验、
+回滚和验收；显式本地fixture只记录实际单架构，可为 arm64）。catalog 与集合必须包含 web/jobs/migrate/postgres/valkey/
 caddy/object-storage/backup；pending、重复、缺失、混 SHA 或非 digest 引用均拒绝。
 
 ## 打包与干净目录验证
@@ -89,7 +90,7 @@ symlink 拒绝、前成功版本保护以及显式 fixture 门。`build --fixtur
 Docker save 的 config 内容 hash、本地 image ID 与 registry manifest/index digest 必须分别核对；
 本机 containerd store 的 inspect.Id 可能对应导出包的另一个 OCI blob，并不等于 config hash。
 本机 tar/digest 夹具只能证明打包结构；即使本地 registry 返回真实 manifest digest，
-也不证明正式 GHCR 两架构 revision/发布信任门。首次发布已在用户授权后成功，见下文；后续先确认main CI与两架构smoke成功，再下载
+也不证明正式 GHCR revision/发布信任门。首次发布已在用户授权后成功，见下文；后续先确认main CI与 amd64 smoke成功，再下载
 成功image-set，按同SHA build/verify/config验收。不要自行触发publish workflow。
 
 备份、restore/drill与副本脚本已经交付；第二次正式release已包含完整运行白名单。

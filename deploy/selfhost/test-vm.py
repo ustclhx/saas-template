@@ -272,6 +272,7 @@ secrets:
         require(not self.desktop, 'VM harness refuses Docker Desktop')
         self.arch = 'arm64' if info['Architecture'] in ['aarch64', 'arm64'] else 'amd64'
         require(info['Architecture'] in ['aarch64', 'arm64', 'x86_64', 'amd64'], 'unsupported VM architecture')
+        self.require_release_platform()
         self.save_control()
         self.stage = 'anonymous GHCR eight-image pull'
         deadline = time.monotonic() + 900
