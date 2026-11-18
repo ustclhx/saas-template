@@ -135,7 +135,7 @@ export async function runSync(options) {
   const work = await mkdtemp(join(tmpdir(), 'template-sync-'))
   let clone
   try {
-    clone = await cloneTemplate(source).catch((error) => {
+    clone = await cloneTemplate(source, log).catch((error) => {
       throw new PreflightError(error.message)
     })
     const base = resolveCommit(clone, record.commit)

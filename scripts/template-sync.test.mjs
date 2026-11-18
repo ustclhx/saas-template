@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { normalizeParams, readBaseRecord, serializeBaseRecord } from './template-base.mjs'
 import { cloneTemplate, generateAt } from './template-sync/generate.mjs'
 import { diffLockPackages } from './template-sync/report.mjs'
@@ -246,6 +246,48 @@ test('already up to date reports no update and leaves the project untouched', as
   assert.match(messages.join('\n'), /已是最新/)
   assert.deepEqual(await branches(project.dir), ['main'])
   assert.equal(git(project.dir, 'status', '--porcelain'), '')
+})
+
+test('sync uses the local HEAD of a partial clone and fetches a missing baseline blob from its origin', async (t) => {
+  const template = await fakeTemplate(t)
+  const project = await fakeProject(t, template)
+  await template.commit({ 'src/app.ts': 'export const app = "remote"\n' }, 'remote change')
+  const parent = await scratch(t, 'template-sync-partial-')
+  const origin = join(parent, 'origin.git')
+  const partial = join(parent, 'partial clone')
+  git(parent, 'clone', '--quiet', '--bare', template.dir, origin)
+  git(origin, 'config', 'uploadpack.allowFilter', 'true')
+  git(parent, 'clone', '--quiet', '--filter=blob:none', pathToFileURL(origin).href, partial)
+  await writeFiles(partial, { 'src/app.ts': 'export const app = "local"\n' })
+  git(partial, 'commit', '--quiet', '-am', 'local-only change')
+  const target = git(partial, 'rev-parse', 'HEAD')
+  const baseBlob = git(template.dir, 'rev-parse', `${template.first}:src/app.ts`)
+  const availableObjects = () => git(partial, 'rev-list', '--objects', '--all', '--missing=print')
+  assert.ok(availableObjects().split('\n').includes(`?${baseBlob}`))
+
+  const messages = []
+  const result = await runSync({
+    project: project.dir,
+    template: partial,
+    to: 'HEAD',
+    runner: stubRunner().runner,
+    log: (message) => messages.push(message),
+  })
+  assert.equal(result.status, 'synced')
+  assert.equal(result.report.target.commit, target)
+  assert.equal(
+    await readFile(join(project.dir, 'src/app.ts'), 'utf8'),
+    'export const app = "local"\n',
+  )
+  assert.match(messages.join('\n'), /通过其 origin 按需获取缺失对象/)
+  assert.ok(availableObjects().split('\n').includes(`?${baseBlob}`))
+})
+
+test('a partial clone with a relative origin requests an explicit template URL', async (t) => {
+  const template = await fakeTemplate(t)
+  git(template.dir, 'remote', 'add', 'origin', '../origin.git')
+  git(template.dir, 'config', 'remote.origin.promisor', 'true')
+  await assert.rejects(cloneTemplate(template.dir), /部分克隆.*--template 指定原远端仓库 URL/)
 })
 
 test('a generator that rejects a recorded parameter stops with the parameter and commit', async (t) => {

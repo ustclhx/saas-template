@@ -136,8 +136,13 @@ jobs:
       - name: Check site isolation
         run: node scripts/staging/check-site-isolation.mjs staging "$STAGING_URL"
 
-      - name: Install Chromium
-        run: pnpm --filter @saas/web exec playwright install --with-deps chromium
+      # 本地 action 必须位于 workspace，使用发布工具版本，兼容较旧的部署提交。
+      - name: Prepare Chromium installer
+        run: |
+          mkdir .release-tools
+          cp -R "$RUNNER_TEMP/release-tools/.github/actions/install-chromium" .release-tools/
+
+      - uses: ./.release-tools/install-chromium
 
       - name: Smoke test staging
         env:
