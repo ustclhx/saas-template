@@ -53,3 +53,5 @@ ShipAny、MkSaaS、TanStarter（功能清单参考）、Aceternity UI / Magic UI
 完整清单、调用示例、默认只读部署边界与双目录维护规则见
 [创建项目 · Agent Skills](create-project.md#agent-skills)。
 Codex 从 `.agents/skills/` 读取，Claude 从 `.claude/skills/` 读取；可直接指定技能文件执行。
+
+<!-- CI 文档快速通道演练，PR 关闭后删除 -->
