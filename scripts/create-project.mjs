@@ -994,7 +994,7 @@ export async function createProject(input, source = root) {
   return { target, options, checklist, report }
 }
 
-export function verifyProject(target, { nodeBuild = false } = {}) {
+export function verifyProject(target, { nodeBuild = false, webBuild = false } = {}) {
   // 清除调用者的数据库真值，CI 模式关闭本地库 fallback；不对模板数据库执行测试。
   const env = { ...process.env, CI: 'true', TURBO_ENV_MODE: 'loose', TURBO_TELEMETRY_DISABLED: '1' }
   // 矩阵由 node --test 启动，副本中的各级测试需要自己的运行器。
@@ -1018,6 +1018,7 @@ export function verifyProject(target, { nodeBuild = false } = {}) {
     nodeBuild ? ['test', '--concurrency=1'] : ['test'],
   ]
   if (nodeBuild) commands.push(['build:node'])
+  if (webBuild) commands.push(['--dir', 'apps/web', 'build'])
   for (const args of commands) {
     const result = spawnSync('pnpm', args, { cwd: target, env, stdio: 'inherit' })
     if (result.error) throw result.error
