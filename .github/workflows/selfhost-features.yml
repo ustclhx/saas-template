@@ -2,10 +2,21 @@ name: Selfhost disabled features
 
 on:
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - 'openspec/**'
-      - '**/*.md'
+    # PR 只在影响功能裁剪生成与自托管验收的改动上运行：模板开关、配置包、生成器、
+    # selfhost 材料、本验收脚本与其浏览器夹具及本 workflow。main push 与手动触发始终全量覆盖。
+    paths:
+      - 'template.config.ts'
+      - 'packages/config/**'
+      - 'scripts/create-project'
+      - 'scripts/create-project.mjs'
+      - 'scripts/template-base.mjs'
+      - 'scripts/selfhost-features.mjs'
+      - 'scripts/selfhost-features-routes.mjs'
+      - 'apps/web/e2e/selfhost/**'
+      - 'apps/web/playwright.selfhost.config.ts'
+      - 'deploy/selfhost/**'
+      - '.github/workflows/selfhost-features.yml'
+      - '!**/*.md'
   push:
     branches: [main]
     paths-ignore:
@@ -16,6 +27,11 @@ on:
 
 permissions:
   contents: read
+
+# 同一 PR 的新推送取消旧验收；main push 与手动触发各自独立，不被取消。
+concurrency:
+  group: selfhost-features-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   compose:

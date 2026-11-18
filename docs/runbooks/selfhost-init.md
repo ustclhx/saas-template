@@ -19,7 +19,7 @@ sudo bash ./init-server.sh --dir /opt/saas-selfhost
 | 项目 | 固定范围 |
 | --- | --- |
 | OS | Ubuntu 24.04 / noble；Debian 12 / bookworm；原生 systemd |
-| 架构 | dpkg amd64 / arm64 |
+| 架构 | dpkg amd64（正式镜像只发布 linux/amd64）；arm64 只限显式 `--local-arm64-fixture` 的本机 VM 夹具 |
 | Docker Engine / CLI | 28.5.1（apt epoch `5:`） |
 | Docker Compose plugin | 2.40.3 |
 | containerd.io | 1.7.28，发行修订 `-2` |

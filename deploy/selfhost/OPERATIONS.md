@@ -5,10 +5,10 @@
 <!-- template-only:end -->
 
 仅使用受信 Actions 发布成功的 `image-set.json` / 同 SHA bundle。校验 checksum 用于传输
-完整性；不替代来源核实。先校验源 SHA、发布 run、所有镜像两架构、namespace/revision。
+完整性；不替代来源核实。先校验源 SHA、发布 run、所有镜像 linux/amd64、namespace/revision。
 发布需要明确授权；首次模板发布的源 SHA 与 run 见仓库发布 runbook，本地 fixture 不能用于服务器。
 
-1. 在明确选择的**空白** Ubuntu24.04 / Debian12 amd64/arm64 上，单命令运行
+1. 在明确选择的**空白** Ubuntu24.04 / Debian12 amd64 上（正式镜像只发布 linux/amd64，arm64 主机被拒绝），单命令运行
    `sudo ./init-server.sh --dir /srv/saas-selfhost`。已有主机只使用经审阅的既有 Docker / 入口，
    不运行空白初始化。初始化不部署应用或安装 Dokploy。
 2. 部署目录0700，`.env`0600。复制本 bundle `.env.example`，填写域名、APP_URL和公开集成
