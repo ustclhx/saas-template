@@ -100,8 +100,13 @@ node deploy/selfhost/images/smoke.mjs <full-sha> arm64 /tmp/selfhost-images
 build.mjs/smoke.mjs 仍接受 `arm64`：上游固定基础 digest 仍为 multiarch，`install-walg.sh`
 保留 aarch64 checksum，本机 arm64 构建和 `test-deploy-compose.py` / `test-release-compose.py`
 的本地夹具（fixture 只记录实际单架构）照常可用。发布侧 `policy.architectures` 只含
-amd64，publish 只读取 amd64 证据。层缓存默认关闭，只有设置 `SELFHOST_BUILD_CACHE=gha`
-（CI）时才读写 GitHub Actions 缓存，本机构建不受影响。
+amd64，publish 只读取 amd64 证据。
+
+CI 构建使用 runner 自带 dockerd 的默认 docker driver（不经 setup-buildx 的
+docker-container builder），镜像直接进入本机镜像库，省去每个镜像导出 tarball 再 load。
+2026-11-18 PR #411 实测构建 197–213s（原 docker-container 约 470s）；同时试验的
+docker-container + `type=gha` 层缓存（mode=max）冷 553s、热 675s：`COPY . .` 之后的
+依赖安装与构建随源码失效，缓存写入数百 MB 层反而更慢，因此未采用远端层缓存。
 
 本机 Docker Desktop credential helper/代理可能挂起；用只含 CLI plugin 路径的临时
 匿名 DOCKER_CONFIG 并保持当前 Docker endpoint，不能复制宿主 auths。连续卡住超过

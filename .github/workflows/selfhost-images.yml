@@ -51,11 +51,6 @@ jobs:
         include:
           - arch: amd64
             runner: ubuntu-24.04
-            builder: container-gha
-          # 临时对照：默认 docker driver（无远端层缓存，但无需导出 tarball 再 load）。
-          - arch: amd64
-            runner: ubuntu-24.04
-            builder: docker
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     permissions:
@@ -68,23 +63,11 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - uses: docker/setup-buildx-action@v4
-        if: matrix.builder == 'container-gha'
-        with:
-          # 托管 runner 用完即弃；跳过 post 阶段移除 builder 及其构建状态的清理耗时。
-          cleanup: false
-      - name: Expose the Actions cache endpoint to the build step only
-        id: cache
-        if: matrix.builder == 'container-gha'
-        uses: actions/github-script@v8
-        with:
-          script: |
-            // buildx 的 type=gha 需要 runtime token；只作为 step output 交给构建步骤，
-            // 不写入 GITHUB_ENV，后续运行镜像的 smoke 与上传步骤拿不到。
-            core.setSecret(process.env.ACTIONS_RUNTIME_TOKEN)
-            core.setOutput('token', process.env.ACTIONS_RUNTIME_TOKEN)
-            core.setOutput('results-url', process.env.ACTIONS_RESULTS_URL ?? '')
-            core.setOutput('cache-url', process.env.ACTIONS_CACHE_URL ?? '')
+      # 不使用 setup-buildx 的 docker-container builder：直接用 runner 自带 dockerd 的默认
+      # docker driver 构建，镜像直接进入本机镜像库，省去每个镜像导出 tarball 再 load 的耗时
+      # 与 post 清理。2026-11-18 PR 实测：docker driver 构建 197–213s；docker-container 加
+      # type=gha 层缓存（mode=max）冷 553s、热 675s，应用层每次随源码失效，缓存写入反而更慢。
+      # 本机构建沿用当前 builder；--provenance=false、revision 标签与 image ID 核对不变。
       - name: Resolve actual checked-out revision
         id: source
         run: |
@@ -96,12 +79,6 @@ jobs:
       - name: Verify pinned bases include the published platform
         run: node deploy/selfhost/images/check-bases.mjs
       - name: Build and export native images
-        env:
-          SELFHOST_BUILD_CACHE: ${{ matrix.builder == 'container-gha' && 'gha' || '' }}
-          ACTIONS_RUNTIME_TOKEN: ${{ steps.cache.outputs.token }}
-          ACTIONS_RESULTS_URL: ${{ steps.cache.outputs.results-url }}
-          ACTIONS_CACHE_URL: ${{ steps.cache.outputs.cache-url }}
-          ACTIONS_CACHE_SERVICE_V2: ${{ matrix.builder == 'container-gha' && 'true' || '' }}
         run: node deploy/selfhost/images/build.mjs '${{ steps.source.outputs.sha }}' '${{ matrix.arch }}' image-artifacts
       - name: Smoke images and real runtime readiness
         run: node deploy/selfhost/images/smoke.mjs '${{ steps.source.outputs.sha }}' '${{ matrix.arch }}' image-artifacts
@@ -109,7 +86,7 @@ jobs:
       # 镜像 tar 只在发布调用（workflow_call 带 sha 输入）时上传，供同 run 的 publish 作业加载；
       # PR/main 只保留 build/smoke 证据 JSON，省去数 GB 的压缩上传。
       - uses: actions/upload-artifact@v6
-        if: inputs.sha && matrix.builder == 'container-gha'
+        if: inputs.sha
         with:
           name: selfhost-images-${{ steps.source.outputs.sha }}-${{ matrix.arch }}
           path: image-artifacts/
@@ -120,7 +97,7 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: '!inputs.sha'
         with:
-          name: selfhost-image-evidence-${{ steps.source.outputs.sha }}-${{ matrix.arch }}-${{ matrix.builder }}
+          name: selfhost-image-evidence-${{ steps.source.outputs.sha }}-${{ matrix.arch }}
           path: image-artifacts/*.json
           if-no-files-found: error
           retention-days: 3

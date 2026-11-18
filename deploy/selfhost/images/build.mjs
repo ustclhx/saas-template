@@ -13,21 +13,6 @@ if (
 )
   throw new Error('Usage: build.mjs <fullSha> <amd64|arm64> <output-dir>')
 const output = resolve(directory)
-// 层缓存只在显式设置时启用（CI 设为 gha），本机默认不读写任何远端缓存。
-// biome-ignore lint/suspicious/noUndeclaredEnvVars: 此脚本由 Actions/本机直接执行，不进入 Turbo 缓存。
-const cache = process.env.SELFHOST_BUILD_CACHE ?? ''
-if (!['', 'gha'].includes(cache)) throw new Error('SELFHOST_BUILD_CACHE must be empty or gha')
-// 每个镜像/架构独立 scope，避免共用 Dockerfile 的不同 target 互相覆盖缓存索引；
-// 缓存只影响构建耗时，镜像仍以 --load 后的实际 ID、架构与 revision 标签为准，导出失败不阻断构建。
-const cacheArgs = (name) =>
-  cache === 'gha'
-    ? [
-        '--cache-from',
-        `type=gha,scope=selfhost-${name}-${architecture}`,
-        '--cache-to',
-        `type=gha,mode=max,ignore-error=true,scope=selfhost-${name}-${architecture}`,
-      ]
-    : []
 const catalog = JSON.parse(readFileSync(join(import.meta.dirname, 'catalog.json'), 'utf8'))
 if (catalog.schemaVersion !== 1 || !Array.isArray(catalog.services) || !catalog.services.length)
   throw new Error('Invalid image catalog')
@@ -57,7 +42,6 @@ for (const { name, dockerfile, target } of services) {
       '-f',
       dockerfile,
       ...(target ? ['--target', target] : []),
-      ...cacheArgs(name),
       '--build-arg',
       `APP_VERSION=${version}`,
       '--label',
