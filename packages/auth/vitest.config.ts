@@ -58,7 +58,7 @@ export default defineConfig({
             },
           ]
         : []),
-      // 2.4 的 CPU 时间测量（probe/README.md），只在 `pnpm probe:cpu` 时运行
+      // 2.4 的 CPU 时间测量（probe/README.md），只在 `pnpm probe:cpu` 时运行，不经 turbo（turbo-env-ignore）
       ...(integration && process.env.AUTH_CPU_PROBE
         ? [
             {

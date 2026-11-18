@@ -33,9 +33,18 @@
 - `build` 与 `test-packages` 用 Turbo 本地缓存（actions/cache，键含 OS、job、lockfile 与 sha）。
   缓存只在任务输入声明完整时安全：
   - 包内源码按字面相对路径引用包外文件时，必须进入该任务的 `inputs` 或根 `globalDependencies`；
-    `scripts/check-turbo-inputs.mjs`（`pnpm check` 内）会检查，动态拼出的路径仍需评审留意；
-  - 影响行为的环境变量写进 `env`/`passThroughEnv`；
-  - 依赖数据库的测试（db、auth、jobs、web 等）不缓存。
+    `scripts/check-turbo-inputs.mjs`（`pnpm check` 内，经其测试运行）会检查，动态拼出的路径仍需评审留意；
+  - 影响行为的环境变量写进任务级 `env`/`passThroughEnv`（优先于全局）。Turbo 默认 strict env 模式，
+    未声明的变量在任务进程里不存在：各包 `vitest.config` 读不到连接串时会**静默跳过**集成测试，
+    本地 Orca worktree 又因 `readLocalEnv` 回退到 `.env.worktree` 而照常运行，问题只在 CI 暴露。
+    同一检查脚本会核对默认 `vitest.config` 字面读取的 `process.env.X` / `readLocalEnv('X')` 已在 test 任务中声明；
+    不经 turbo 传入的变量（如手动探针开关）在该行或上一行注明 `turbo-env-ignore`；
+  - 依赖数据库的测试（db、auth、billing、credits、entitlements、storage、jobs、web）设 `cache: false`，
+    并透传 `CI`、`CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`、`MIGRATION_DATABASE_URL`；
+    迁移由各包 globalSetup（`@saas/db/test/global-setup`，带 advisory lock）完成，不需要额外排序；
+  - 任务生成、且后续步骤会读取的文件必须写进该任务的 `outputs`，否则缓存命中时只回放日志、文件缺失。
+    例：web `typecheck` 生成 `.content-collections/generated`、`src/routeTree.gen.ts`、`src/paraglide`，
+    `build` 也生成内容集合，二者都已声明。
 - Playwright 浏览器统一用 `.github/actions/install-chromium`（只装 shell，缓存浏览器，apt 带超时），不直接 `playwright install --with-deps`。
 
 ## 4. 并发
