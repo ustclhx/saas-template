@@ -47,7 +47,9 @@ test('真实副本通过 check，覆盖 Cloudflare 默认、selfhost 默认和 s
       i18n: 'false',
     },
   ]) {
-    await t.test(`${scenario.label}：安装、check、类型、单元测试和 Node 构建通过`, async () => {
+    const webBuild = scenario.marketing === 'false'
+    const builds = webBuild ? 'Node 与 web 生产构建' : 'Node 构建'
+    await t.test(`${scenario.label}：安装、check、类型、单元测试及 ${builds}通过`, async () => {
       const name = scenario.name ?? `validation-${scenario.id}-${process.pid.toString(36)}`
       const source = scenario.id === 'minimal' ? selfhostSource : undefined
       if (scenario.id === 'minimal') assert.ok(source, '全关组合必须从已生成的 selfhost 副本创建')
@@ -235,7 +237,7 @@ test('真实副本通过 check，覆盖 Cloudflare 默认、selfhost 默认和 s
       execFileSync('git', ['init', '--quiet'], gitOptions)
       try {
         execFileSync('git', ['add', '--all'], gitOptions)
-        verifyProject(result.target, { nodeBuild: true })
+        verifyProject(result.target, { nodeBuild: true, webBuild })
       } finally {
         await rm(join(result.target, '.git'), { recursive: true, force: true })
       }
