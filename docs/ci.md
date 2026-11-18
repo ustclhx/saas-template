@@ -56,6 +56,9 @@
 - 每个 PR 触发的 workflow 都设 `concurrency`，PR 上 `cancel-in-progress: true`。
 - main push 与发布调用不得被取消：按 SHA 或 `run_id` 分组，`cancel-in-progress` 只在 `pull_request` 时为真。
   被取消的 main CI 会让该 SHA 永远不部署、不能发布。
+- 部署流水线（`deploy-staging`、`deploy-production`）用固定 `concurrency` 分组且不取消时，GitHub 每组只保留**一个**排队中的 run：
+  正在运行时又来两个 run，较早排队的那个会被较新的替换（状态为 cancelled）。例如连推两个 `v*` tag，中间那个版本不会部署。
+  需要逐个部署时，等上一个完成再推下一个；被替换的版本可用 `workflow_dispatch` 指定 tag 补发。
 
 ## 5. 自托管镜像
 
