@@ -406,8 +406,10 @@ test('clean sync applies renamed changes, keeps project values, ports migrations
       'pnpm install --no-frozen-lockfile',
       'pnpm install --frozen-lockfile',
       'pnpm exec biome format --write packages/db/migrations/meta',
+      'pnpm dedupe --check',
       'pnpm typecheck',
       'pnpm test',
+      'pnpm build',
     ],
   )
   assert.equal(calls.filter((call) => call.includes('drizzle-kit generate')).length, 2)
@@ -654,7 +656,44 @@ test('a failing verification keeps the baseline record and the branch for invest
   const report = await readFile(result.reportPath, 'utf8')
   assert.match(report, /类型检查：失败（`pnpm typecheck`）/)
   assert.match(report, /单元测试：跳过/)
+  assert.match(report, /生产构建：跳过/)
   assert.match(report, /基准记录：未更新/)
+})
+
+test('a failing dedupe check reports how to fix the lockfile and stops later checks', async (t) => {
+  const template = await fakeTemplate(t)
+  const project = await fakeProject(t, template)
+  await template.commit({ 'src/feature.ts': 'export const feature = true\n' }, 'change')
+  const { runner, calls } = stubRunner({ fail: ['pnpm dedupe --check'] })
+  const messages = []
+  const result = await runSync({
+    project: project.dir,
+    template: template.dir,
+    runner,
+    log: (message) => messages.push(message),
+  })
+  assert.equal(result.status, 'failed')
+  assert.equal((await readBaseRecord(project.dir)).commit, template.first)
+  assert.deepEqual(
+    calls.filter((call) => !call.includes('drizzle-kit')),
+    ['pnpm dedupe --check'],
+  )
+  const report = await readFile(result.reportPath, 'utf8')
+  assert.match(report, /锁文件去重检查：失败（`pnpm dedupe --check`）/)
+  const hint = /请运行 pnpm dedupe，提交 pnpm-lock\.yaml 的变更后重跑同步/
+  assert.match(report, hint)
+  assert.match(messages.join('\n'), hint)
+})
+
+test('a failing production build keeps the previous template baseline', async (t) => {
+  const template = await fakeTemplate(t)
+  const project = await fakeProject(t, template)
+  await template.commit({ 'src/feature.ts': 'export const feature = true\n' }, 'change')
+  const { runner } = stubRunner({ fail: ['pnpm build'] })
+  const result = await runSync({ project: project.dir, template: template.dir, runner, log: quiet })
+  assert.equal(result.status, 'failed')
+  assert.equal((await readBaseRecord(project.dir)).commit, template.first)
+  assert.match(await readFile(result.reportPath, 'utf8'), /生产构建：失败（`pnpm build`）/)
 })
 
 test('--skip-verify merges and ports but never updates the baseline and exits non-zero', async (t) => {
@@ -693,7 +732,9 @@ test('--skip-verify merges and ports but never updates the baseline and exits no
   const report = await readFile(reportPath, 'utf8')
   assert.match(report, /验证已跳过，基准未更新/)
   assert.match(report, /基准记录：未更新/)
+  assert.match(report, /锁文件去重检查：跳过（`pnpm dedupe --check`）/)
   assert.match(report, /类型检查：跳过/)
+  assert.match(report, /生产构建：跳过（`pnpm build`）/)
 })
 
 test('a modified published template migration stops the sync before any branch', async (t) => {
