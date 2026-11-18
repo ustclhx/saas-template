@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # 与 CI 相同：只取消同一 PR 的旧运行，main 每个提交都保留完整检查结果。
+  group: template-release-checks-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     runs-on: ubuntu-latest
