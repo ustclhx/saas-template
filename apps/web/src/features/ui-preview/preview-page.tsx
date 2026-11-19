@@ -15,6 +15,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { templateConfig } from '../../server/template-config.ts'
 import { ThemeToggle } from '../theme/theme-toggle.tsx'
+import { LinkingSection } from './section-linking.tsx'
 import { MarketingSection } from './section-marketing.tsx'
 import { ShareCardsSection } from './section-share-cards.tsx'
 import {
@@ -71,6 +72,7 @@ const SECTIONS = [
     'business-credits',
     'InsufficientCreditsDialog · CreditEstimate · LockedFeature · DailyClaimNotice',
   ],
+  ['linking', 'Breadcrumb · Pagination · LinkCard · LinkList'],
   ['marketing', 'Marketing blocks'],
   ['share-cards', 'Share cards'],
 ] as const
@@ -168,6 +170,7 @@ export function UiPreviewPage() {
         </Suspense>
         <AiChatComponentsSection />
         <CreditsComponentsSection />
+        <LinkingSection />
         <MarketingSection />
         <ShareCardsSection />
       </div>

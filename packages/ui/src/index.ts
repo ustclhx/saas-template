@@ -18,6 +18,11 @@ export {
   type BadgeProps,
   type BadgeSize,
 } from './components/badge.tsx'
+export {
+  Breadcrumb,
+  type BreadcrumbItem,
+  type BreadcrumbProps,
+} from './components/breadcrumb.tsx'
 export { Button, type ButtonProps, buttonVariants } from './components/button.tsx'
 export {
   Card,
@@ -157,6 +162,20 @@ export {
   type InsufficientCreditsLabels,
 } from './components/insufficient-credits-dialog.tsx'
 export { Label } from './components/label.tsx'
+// 公开页内链组件（openspec seo-internal-linking 组 3）：Breadcrumb、LinkCard / LinkCardGrid / SeriesNav、LinkList、
+// Pagination，默认输出原生 <a href>，renderLink 可换成路由 Link
+export {
+  LinkCard,
+  LinkCardGrid,
+  type LinkCardGridProps,
+  type LinkCardItem,
+  type LinkCardProps,
+  SeriesNav,
+  type SeriesNavLink,
+  type SeriesNavProps,
+} from './components/link-card.tsx'
+export { LinkList, type LinkListItem, type LinkListProps } from './components/link-list.tsx'
+export type { LinkRenderProps, LinkZone, RenderLink } from './components/link-render.tsx'
 export { LockedFeature, type LockedFeatureProps } from './components/locked-feature.tsx'
 export {
   type FeedbackRating,
@@ -167,6 +186,13 @@ export {
   type MessageFeedbackShareLabels,
   type MessageFeedbackValue,
 } from './components/message-feedback.tsx'
+export {
+  Pagination,
+  type PaginationLabels,
+  type PaginationProps,
+  type PaginationRangeItem,
+  paginationRange,
+} from './components/pagination.tsx'
 export {
   type PdfExportDocument,
   type PdfExporter,

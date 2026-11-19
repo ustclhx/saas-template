@@ -168,6 +168,9 @@ grep -nE '^export' packages/ui/src/index.ts
   | `Toaster` | `labels`（`region`、`announcement`、`close`） | 通知区域名称（可含 `{hotkey}`）、读屏播报前缀、关闭按钮名称；`toast()` 的内容与 `action.label` 由调用方传入 |
   | `SidebarProvider` | `labels`（`title`、`expand`、`collapse`、`rail`、`railResize`、`railCollapse`；开启 peek 时 `peek`） | 移动抽屉名称、触发按钮与拖拽条的名称和提示；`SidebarMenuButton` 在 `status="unread"` 时必传 `unreadLabel` |
   | `Reader`（`@saas/ui/reader`） | `labels`（`toc`、`progress`、`exportPdf`、`printPdf`、`serverPdf`、`loading`、`footnotes`、`footnoteBack`）与 `title` | 目录标题、进度条名称、导出按钮与注册服务端导出后的两个菜单项、加载播报、脚注区标题与返回链接名称；`ReaderProgress` 的 `label`、`ReaderExportButton` 的 `labels`（导出三项）；`ReaderEmpty` / `ReaderError` 的标题、说明与 `retryLabel` 由调用方传入 |
+  | `Breadcrumb` / `SeriesNav` | `label`；`SeriesNav` 的 `previous.label` / `next.label` | nav 的可读名称（「面包屑」「系列导航」）与方向标签（「上一篇」「下一篇」） |
+  | `Pagination` | `labels`（`nav`、`previous`、`next`、`page(n)`） | 分页 nav 名称、上一页 / 下一页文字与页码的可读名称 |
+  | `LinkCardGrid` / `LinkList` | `title`；`LinkList` 的 `viewAll.label` | 区块标题与「查看全部」锚文本；各链接的锚文本取目标页 `titleMain` / `anchorShort` |
   | 业务界面组件（8.6） | `label` / `labels` 等 | 见 [6.1](#61-业务界面组件) 接口表 |
 
   新组件引入新的可读文字时，同步更新本表与 `packages/ui/UPSTREAM.md`。
@@ -198,6 +201,11 @@ grep -nE '^export' packages/ui/src/index.ts
 - **弹层与底部面板**：触发按钮旁的非模态内容（列表、说明、轻量操作）用 `Popover`（`role="dialog"`，Escape / 点击外部关闭，
   焦点回到触发按钮；菜单项里不能再放按钮时不用 Dropdown）；手机上的对应形态用 `Sheet side="bottom"`（模态、锁定焦点，
   触控目标 ≥ 44px）。同一入口按 md 断点在两者之间切换时，打开期间不切换（见通知铃铛 `features/notifications/bell.tsx`）。
+- **公开页内链（seo-internal-linking）**：`Breadcrumb`、`Pagination`、`LinkCard` / `LinkCardGrid` / `SeriesNav`、`LinkList`
+  只输出真实 `<a href>`（链接检查只计入 `<a href>`），需要客户端导航时传 `renderLink={({ href, ...props }) => <Link to={href} {...props} />}`，
+  渲染结果必须仍是带 href 的 `<a>`。外层带 `data-link-zone`（面包屑 `nav`、系列 `series`、相关 `related`、同组 `siblings`，`zone` 可覆盖，
+  `null` 不输出）；同组区块的 `LinkList` 传 `group`（页面的 group key），外层输出 `data-link-group`，链接检查据此识别声明了 group 的详情页；当前页（面包屑当前项、分页当前页码）不是链接，带 `aria-current="page"`；数据为空的区块整块不渲染。
+  设计稿与区块顺序见原型索引「公开页内链区块」一行，预览 `/dev/ui#linking`。
 - **长文阅读器（tasks 8.4）**：从子路径 `@saas/ui/reader` 导入（依赖 react-markdown 等，约 56 KB gzip，不在 `@saas/ui`
   主入口中），页面用 `React.lazy` 按需加载，构建时形成独立分包，不进入首页包（`apps/web` 的 `pnpm build` 末尾由
   `scripts/check-home-bundle.mjs` 检查首页静态依赖闭包）：
@@ -233,7 +241,8 @@ grep -nE '^export' packages/ui/src/index.ts
     否则只打印可见部分。
 
 已接入：Button、Input、Textarea、Select、Combobox、Checkbox、Switch、Badge、Tooltip、Tabs、Dropdown（菜单）、
-Command Menu、Dialog、AlertDialog、Popover、Sheet、Toast、Sidebar、Card、Alert、Separator、Label、ScrollArea、DataTable、Form；Reader 系列经 `@saas/ui/reader` 子路径；
+Command Menu、Dialog、AlertDialog、Popover、Sheet、Toast、Sidebar、Card、Alert、Separator、Label、ScrollArea、DataTable、Form、
+Breadcrumb、Pagination、LinkCard（含 LinkCardGrid、SeriesNav）、LinkList（公开页内链，见下文）；Reader 系列经 `@saas/ui/reader` 子路径；
 业务界面组件（8.6）见 [6.1](#61-业务界面组件)。
 `Toaster` 含动效库（约 44 KB gzip），只在需要的页面挂载，不放进根布局；以后全站使用时按需动态加载。缺少的组件先在 `packages/ui` 补齐（模板）或在 `packages/ui/src/project/` 补齐（项目），
 再实现页面，不在页面里临时写一个。
