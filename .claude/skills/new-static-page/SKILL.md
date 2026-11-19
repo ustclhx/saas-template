@@ -5,7 +5,7 @@ description: 在本模板新增或修改公开静态页、法律页、博客与�
 
 # 新增静态页
 
-从含 `package.json` 与 `template.config.ts` 的项目根执行命令。下列路径均相对项目根；生成后的项目包 scope 可能改变，执行包命令前从 `apps/web/package.json` 读取真实包名，将示例的 `@saas/web` 替换。先读 `AGENTS.md`、`docs/02-project-structure.md` 和 `apps/web/src/features/seo/README.md`。
+从含 `package.json` 与 `template.config.ts` 的项目根执行命令。下列路径均相对项目根；生成后的项目包 scope 可能改变，执行包命令前从 `apps/web/package.json` 读取真实包名，将示例的 `@saas/web` 替换。先读 `AGENTS.md`、`docs/02-project-structure.md`、`apps/web/src/features/seo/README.md` 和 `docs/seo-internal-linking.md`（站内链接规范）。
 
 ## 1. 检查设计稿，确定内容入口
 
@@ -35,6 +35,7 @@ description: 在本模板新增或修改公开静态页、法律页、博客与�
 |---|---|
 | legal | `title`、`description`、`updatedAt`（ISO 日期） |
 | blog | `title`、`summary`、`date`；可选 `cover`、`tags`、`draft` |
+| 各集合通用 | 可选内链字段 `parent`（默认集合列表页）、`anchor_short`、`related`（不带语言前缀的站内地址） |
 | docs | `title`、`description`、`section`；可选 `order`、`requires: publicApi` |
 
 可从 `apps/web/content/legal/en/privacy.mdx` 复制结构；法律与文档可复用 `{{appName}}`、`{{appUrl}}`、`{{supportEmail}}`、`{{refundWindowDays}}` 占位符。保留用户提供的条款与授权范围，法律内容审核和发布仍由用户决定。
@@ -57,7 +58,9 @@ UI 文案写入 `apps/web/messages/<locale>/<feature>.json`，沿用现有键名
 
 新增营销路由时同步检查 `apps/web/src/router.tsx` 的营销关闭裁剪规则，以及 `apps/web/vite.config.ts` 的预渲染配置。关闭营销时页面、地图、预渲染都应按现有开关消失；公开页读取失败时维持降级，数据库不可达不应阻止静态构建。导航入口放到现有营销布局的适当位置，使新页可被发现。
 
-完成标准：路由 head、公开清单、可爬取链接、预渲染和功能关闭行为一致。
+站内链接按 `docs/seo-internal-linking.md`：新页面在清单中声明 `titleMain` 与 `parent`（项目自有页面写在 `apps/web/src/features/seo/pages.project.ts`），独立路由接入面包屑、BreadcrumbList 与内链区块（`apps/web/src/features/marketing/page-links.tsx`）；锚文本取目标主词，不写「了解更多」等禁用词，转化按钮标 `data-link-zone="action"`。
+
+完成标准：路由 head、公开清单、可爬取链接、预渲染和功能关闭行为一致；链接图检查无失败项。
 
 ## 4. 验证与交付
 
@@ -66,6 +69,7 @@ pnpm check
 pnpm --filter @saas/web typecheck
 pnpm --filter @saas/web test --project unit src/features/marketing/content.test.ts src/features/marketing/prerender.test.ts src/features/seo
 APP_URL=https://example.com pnpm --filter @saas/web build
+pnpm --filter @saas/web check:links
 git diff --check
 ```
 
@@ -79,5 +83,6 @@ git diff --check
 
 - 内容缺失：检查路径、schema、集合开关、草稿/日期及构建是否重新执行；`CONTENT_DRAFTS=1` 只用于明确的草稿预览。
 - 路由或文案类型缺失：运行 web 的 typecheck，它包含路由、文案和内容生成；修正源文件后重跑，不修生成文件。
+- 链接图检查报孤岛或缺 parent：补 `parent`／hub 链接或 `pages.project.ts` 声明，见 `docs/seo-internal-linking.md` §5。
 - 新页有 HTML 但无地图/OG：核对 `publicPages` 与新页链接；有错误域名则核对构建时 `APP_URL` 并重建。
 - 关闭营销仍能访问：补齐 `router.tsx` 裁剪及公开清单/预渲染开关，再按关闭配置验证。
