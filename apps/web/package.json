@@ -8,6 +8,7 @@
     "build": "vite build && node scripts/inline-critical-css.mjs && node scripts/check-home-bundle.mjs",
     "deploy:staging": "CLOUDFLARE_ENV=staging vite build && wrangler deploy",
     "preview": "vite preview",
+    "check:links": "node scripts/check-links.mjs",
     "typecheck": "node scripts/generate-route-tree.mjs && node scripts/compile-messages.mjs && node scripts/build-content.mjs && tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p tsconfig.node.json && tsc -p tsconfig.neutral.json",
     "test": "vitest run",
     "test:e2e": "playwright test",

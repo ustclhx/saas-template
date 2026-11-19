@@ -6,9 +6,10 @@ import { site } from './site.ts'
 
 const navLink = 'text-muted-foreground text-sm transition-colors hover:text-foreground'
 
+// data-link-zone="nav"：链接图检查（scripts/check-links.mjs）据此把页头当作导航层，登录等入口不算正文链接
 export function SiteHeader() {
   return (
-    <header className="border-b">
+    <header data-link-zone="nav" className="border-b">
       {/* 窄屏允许换行：导航独占第二行（过长时行内横向滚动），登录与注册留在第一行，避免 390px 下整页横向溢出 */}
       <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2 sm:flex-nowrap sm:py-0">
         <Link to="/" className="font-semibold">
