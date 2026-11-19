@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import { plausibleSite } from './analytics.ts'
 import {
+  defaultBannedAnchors,
   defineTemplateConfig,
   type MediaProviderId,
   type PaymentProvider,
@@ -79,6 +80,76 @@ describe('defineTemplateConfig', () => {
       expect(() =>
         defineTemplateConfig({ app, marketing: { performance: { homeScriptGzipBudget } } }),
       ).toThrow(/homeScriptGzipBudget/)
+  })
+
+  it('seo.linking defaults to report mode, merges thresholds and only adds banned anchors', () => {
+    const defaults = defineTemplateConfig({ app }).seo.linking
+    expect(defaults.mode).toBe('report')
+    expect(defaults.hubPageSize).toBe(100)
+    expect(defaults.thresholds).toEqual({
+      headerLinksMin: 3,
+      headerLinksMax: 7,
+      groupBodyLinksMin: 2,
+      maxDepth: 3,
+      moneyInlinksMin: 3,
+      footerLinksMax: 10,
+    })
+    expect(defaults.bannedAnchors).toEqual([])
+    expect(defaultBannedAnchors).toEqual(
+      expect.arrayContaining([
+        '点击这里',
+        '了解更多',
+        '查看详情',
+        'here',
+        'read more',
+        'learn more',
+      ]),
+    )
+    const linking = defineTemplateConfig({
+      app,
+      seo: {
+        linking: {
+          mode: 'enforce',
+          thresholds: { maxDepth: 4, headerLinksMax: 8 },
+          bannedAnchors: ['  详情 ', 'Read More', '详情'],
+          moneyPages: ['/pricing'],
+          sisterDomains: ['West.Example.com'],
+          series: [{ group: '/tarot/major' }, { group: '/numbers', orderBy: 'titleMain' }],
+        },
+      },
+    }).seo.linking
+    expect(linking.mode).toBe('enforce')
+    expect(linking.thresholds.maxDepth).toBe(4)
+    expect(linking.thresholds.headerLinksMax).toBe(8)
+    expect(linking.thresholds.headerLinksMin).toBe(3)
+    expect(linking.thresholds.footerLinksMax).toBe(10)
+    // 只保留增补词：去掉首尾空白、忽略大小写去重，与内置词重复的不再列出
+    expect(linking.bannedAnchors).toEqual(['详情'])
+    expect(linking.sisterDomains).toEqual(['west.example.com'])
+    expect(linking.series).toEqual([
+      { group: '/tarot/major', orderBy: 'declared' },
+      { group: '/numbers', orderBy: 'titleMain' },
+    ])
+  })
+
+  it('rejects malformed seo.linking values', () => {
+    const bad: NonNullable<Parameters<typeof defineTemplateConfig>[0]['seo']>[] = [
+      { linking: { mode: 'strict' as 'report' } },
+      { linking: { thresholds: { maxDepth: -1 } } },
+      { linking: { thresholds: { headerLinksMin: 8 } } },
+      { linking: { thresholds: { footerLinksMax: 1.5 } } },
+      { linking: { hubPageSize: 0 } },
+      { linking: { bannedAnchors: [' '] } },
+      { linking: { moneyPages: ['pricing'] } },
+      { linking: { moneyPages: ['/pricing?plan=pro'] } },
+      { linking: { sisterDomains: ['https://west.example.com'] } },
+      { linking: { series: [{ group: '/a' }, { group: '/a' }] } },
+      { linking: { series: [{ group: '/a', orderBy: 'random' as 'date' }] } },
+    ]
+    for (const seo of bad)
+      expect(() => defineTemplateConfig({ app, seo }), JSON.stringify(seo)).toThrow(
+        /template config: seo\.linking\./,
+      )
   })
 
   it('merges marketing blocks and rejects malformed stats', () => {

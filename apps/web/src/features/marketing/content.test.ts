@@ -7,6 +7,7 @@ import {
   loadDocsPage,
   type PostLike,
   searchDocs,
+  translationLocales,
 } from './content.ts'
 
 const now = new Date('2026-10-07T00:00:00Z')
@@ -24,6 +25,11 @@ const posts = [
 ]
 
 describe('博客（tasks.md 3.3）', () => {
+  it('translationLocales 只列出真实存在译文的语言（seo-internal-linking 2.2）', () => {
+    expect(translationLocales(posts, 'welcome')).toEqual(['en', 'zh'])
+    expect(translationLocales(posts, 'english-only')).toEqual(['en'])
+  })
+
   it('列表按发布时间倒序，定时发布的文章到期前不出现', () => {
     const list = listPosts(posts, { locale: 'en', defaultLocale: 'en', now })
     expect(list.map((p) => p.slug)).toEqual(['english-only', 'welcome'])

@@ -19,9 +19,11 @@ export const Route = createFileRoute('/blog/$slug')({
       description: loaderData.summary,
       cover: loaderData.cover,
       date: loaderData.date,
+      // 缺少译文时 loaderData 是默认语言条目：canonical 指向原语言，hreflang 只列真实译文
+      sourceLocale: loaderData.locale,
     }
     const appUrl = originFromMatches(matches)
-    return pageHead(page, appUrl, [articleData(page, appUrl)])
+    return pageHead(page, appUrl, [articleData(page, appUrl)], loaderData.translations)
   },
   component: BlogPostPage,
 })

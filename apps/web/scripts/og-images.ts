@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { Plugin } from 'vite'
+import { assertSeoPages } from '../src/features/seo/linking.ts'
 import { ogImagePath } from '../src/features/seo/metadata.ts'
 import { publicPages } from '../src/features/seo/pages.ts'
 import { defaultShareCardLayout } from '../src/features/share-cards/layout.tsx'
@@ -28,6 +29,7 @@ function pages() {
     posts: read<Content['posts']>('allPosts'),
     legal: read<Content['legal']>('allLegalPages'),
     docs: read<Content['docs']>('allDocs'),
+    guides: read<NonNullable<Content['guides']>>('allGuides'),
   })
 }
 
@@ -56,7 +58,14 @@ export function ogImages(): Plugin {
     enforce: 'pre',
     applyToEnvironment: (environment) => environment.name === 'client',
     async generateBundle() {
-      for (const page of pages()) {
+      const list = pages()
+      // 页面层级与主词的静态校验（openspec seo-internal-linking 1.5）：两种构建目标都经过这里，失败时中止构建
+      try {
+        assertSeoPages(list, (message) => this.warn(message))
+      } catch (error) {
+        this.error(error instanceof Error ? error.message : String(error))
+      }
+      for (const page of list) {
         this.emitFile({
           type: 'asset',
           fileName: decodeURIComponent(ogImagePath(page).slice(1)),

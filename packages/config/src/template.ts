@@ -57,6 +57,71 @@ export interface MarketingPerformance {
   readonly homeScriptGzipBudget: number | null
 }
 
+/** 内链检查模式：report 只输出报告；enforce 在失败级问题存在时构建失败 */
+export type SeoLinkingMode = 'report' | 'enforce'
+
+/** 有序系列的排序字段：declared 按页面清单中的声明顺序，date 按发布时间，titleMain 按主词 */
+export type SeoSeriesOrder = 'declared' | 'date' | 'titleMain'
+
+/** 模板内置的禁用锚文本；项目配置的 `bannedAnchors` 在此基础上增补 */
+export const defaultBannedAnchors = [
+  '点击这里',
+  '了解更多',
+  '查看详情',
+  'here',
+  'click here',
+  'read more',
+  'learn more',
+] as const
+
+/**
+ * 站内链接规范（openspec seo-internal-linking design 决策 5）。页面层级声明在 SeoPage，
+ * 这里只放阈值与项目级清单；构建后的链接图检查与模板区块读取同一份配置。
+ */
+export interface SeoLinkingConfig {
+  /** 未配置时为 report，衍生项目同步后构建不立即失败；模板仓库自身为 enforce */
+  readonly mode: SeoLinkingMode
+  /** 警告级规则的阈值 */
+  readonly thresholds: {
+    /** 页头频道链接数下限 */
+    readonly headerLinksMin: number
+    /** 页头频道链接数上限 */
+    readonly headerLinksMax: number
+    /** 声明了 group 的详情页正文链接下限 */
+    readonly groupBodyLinksMin: number
+    /** 从首页出发的最短点击深度上限 */
+    readonly maxDepth: number
+    /** 钱页站内入链下限 */
+    readonly moneyInlinksMin: number
+    /** 页脚链接数上限 */
+    readonly footerLinksMax: number
+  }
+  /**
+   * 项目增补的禁用锚文本（去掉首尾空白、忽略大小写去重）；检查时与 `defaultBannedAnchors` 合并，
+   * 内置词不能移除。
+   */
+  readonly bannedAnchors: readonly string[]
+  /** 钱页地址（不带语言前缀的 path）；也可在 SeoPage 上声明 `priority: 'money'` */
+  readonly moneyPages: readonly string[]
+  /** 姊妹站域名（只写主机名，如 west.example.com）；指向它们的链接须 nofollow 且不在导航层 */
+  readonly sisterDomains: readonly string[]
+  /** 有序系列：`group` 为分组地址（与 SeoPage.group 相同），同组页面按 `orderBy` 排出上一篇／下一篇 */
+  readonly series: readonly { readonly group: string; readonly orderBy: SeoSeriesOrder }[]
+  /** hub 列表单页最多列出的下级数，超出时分页 */
+  readonly hubPageSize: number
+}
+
+export interface SeoLinkingInput {
+  mode?: SeoLinkingMode
+  thresholds?: Partial<SeoLinkingConfig['thresholds']>
+  /** 增补的禁用锚文本，与模板内置词合并，不能移除内置词 */
+  bannedAnchors?: readonly string[]
+  moneyPages?: readonly string[]
+  sisterDomains?: readonly string[]
+  series?: readonly { group: string; orderBy?: SeoSeriesOrder }[]
+  hubPageSize?: number
+}
+
 /** 主题预设名单（packages/ui/src/styles/presets/*.css）；@saas/web 的测试断言它与 @saas/ui 的 UI_PRESETS 一致 */
 export const uiPresets = ['neutral', 'blue', 'violet', 'green'] as const
 export const uiShapes = ['sharp', 'rounded', 'pill'] as const
@@ -194,6 +259,10 @@ export interface TemplateConfig<L extends string = string> {
     /** 预渲染营销页的首屏关键路径（openspec add-marketing-critical-path）；默认与改动前一致 */
     readonly performance: MarketingPerformance
   }
+  readonly seo: {
+    /** 站内链接规范与构建后链接图检查（docs/seo-internal-linking.md） */
+    readonly linking: SeoLinkingConfig
+  }
   /** 界面主题（openspec add-ui-design-system design D2/D3）；项目品牌色放 apps/web/src/styles/brand.css */
   readonly ui: {
     /** 主题预设：强调色、圆角与焦点环；根布局在服务端写到 <html data-preset> */
@@ -278,6 +347,7 @@ export interface TemplateConfigInput<L extends string = DefaultLocale> {
     aiEntry?: Partial<TemplateConfig['marketing']['aiEntry']>
     performance?: Partial<MarketingPerformance>
   }
+  seo?: { linking?: SeoLinkingInput }
   ui?: Partial<Section<'ui'>>
   ai?: Partial<Omit<Section<'ai'>, 'defaultPricingMode' | 'text'>> & {
     text?: z.input<typeof textConfigSchema>
@@ -319,6 +389,24 @@ export const templateConfigDefaults = {
     products: [],
     aiEntry: { enabled: false, href: '/app' },
     performance: { hydration: 'eager', criticalCss: 'full', homeScriptGzipBudget: null },
+  },
+  seo: {
+    linking: {
+      mode: 'report',
+      thresholds: {
+        headerLinksMin: 3,
+        headerLinksMax: 7,
+        groupBodyLinksMin: 2,
+        maxDepth: 3,
+        moneyInlinksMin: 3,
+        footerLinksMax: 10,
+      },
+      bannedAnchors: [],
+      moneyPages: [],
+      sisterDomains: [],
+      series: [],
+      hubPageSize: 100,
+    },
   },
   ui: { preset: 'neutral', shape: 'rounded', density: 'default', appLayout: 'sidebar' },
   ai: {
@@ -381,6 +469,65 @@ function validateMarketing(marketing: TemplateConfig['marketing'], locales: read
   })
 }
 
+/** 合并并校验内链配置：禁用词与内置词取并集（项目只能增补），其余数组整体替换。 */
+function resolveSeoLinking(input: SeoLinkingInput | undefined): SeoLinkingConfig {
+  const d = templateConfigDefaults.seo.linking
+  const fail = (message: string): never => {
+    throw new RangeError(`template config: seo.linking.${message}`)
+  }
+  const thresholds = { ...d.thresholds, ...input?.thresholds }
+  // 与内置词重复的增补不再列出
+  const banned = new Map<string, string>(
+    defaultBannedAnchors.map((word) => [word.toLowerCase(), ''] as const),
+  )
+  for (const word of input?.bannedAnchors ?? []) {
+    const trimmed = word.trim()
+    if (!trimmed) fail('bannedAnchors must not contain empty entries')
+    if (!banned.has(trimmed.toLowerCase())) banned.set(trimmed.toLowerCase(), trimmed)
+  }
+  const linking: SeoLinkingConfig = {
+    mode: input?.mode ?? d.mode,
+    thresholds,
+    bannedAnchors: [...banned.values()].filter(Boolean),
+    moneyPages: input?.moneyPages ?? d.moneyPages,
+    // 主机名不区分大小写，统一小写便于检查脚本直接比较
+    sisterDomains: (input?.sisterDomains ?? d.sisterDomains).map((host) => host.toLowerCase()),
+    series: (input?.series ?? d.series).map((series) => ({
+      group: series.group,
+      orderBy: series.orderBy ?? 'declared',
+    })),
+    hubPageSize: input?.hubPageSize ?? d.hubPageSize,
+  }
+  if (!['report', 'enforce'].includes(linking.mode)) fail("mode must be 'report' or 'enforce'")
+  const count = (value: number, path: string, min = 0) => {
+    if (!Number.isInteger(value) || value < min)
+      fail(`${path} must be an integer of at least ${min}`)
+  }
+  for (const key of Object.keys(d.thresholds) as (keyof typeof thresholds)[])
+    count(thresholds[key], `thresholds.${key}`)
+  if (thresholds.headerLinksMin > thresholds.headerLinksMax)
+    fail('thresholds.headerLinksMin must not exceed headerLinksMax')
+  count(linking.hubPageSize, 'hubPageSize', 1)
+  // 地址统一写不带语言前缀、以 / 开头的 path，与 SeoPage.path 一致
+  const path = (value: string, where: string) => {
+    if (!value.startsWith('/') || value.startsWith('//') || /[?#]/.test(value))
+      fail(`${where} must be a site path starting with / (got ${JSON.stringify(value)})`)
+  }
+  for (const page of linking.moneyPages) path(page, 'moneyPages')
+  for (const host of linking.sisterDomains)
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host))
+      fail(`sisterDomains must be bare host names (got ${JSON.stringify(host)})`)
+  const groups = new Set<string>()
+  for (const series of linking.series) {
+    path(series.group, 'series[].group')
+    if (groups.has(series.group)) fail(`series declares ${series.group} more than once`)
+    groups.add(series.group)
+    if (!['declared', 'date', 'titleMain'].includes(series.orderBy))
+      fail("series[].orderBy must be 'declared', 'date' or 'titleMain'")
+  }
+  return linking
+}
+
 /** 合并用户配置与默认值；数组整体替换，不与默认值合并。 */
 export function defineTemplateConfig<const L extends string = DefaultLocale>(
   input: TemplateConfigInput<L>,
@@ -416,6 +563,7 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
       aiEntry: { ...d.marketing.aiEntry, ...input.marketing?.aiEntry },
       performance: { ...d.marketing.performance, ...input.marketing?.performance },
     },
+    seo: { linking: resolveSeoLinking(input.seo?.linking) },
     ui: uiConfigSchema.parse({ ...d.ui, ...input.ui }),
     ai: {
       ...d.ai,

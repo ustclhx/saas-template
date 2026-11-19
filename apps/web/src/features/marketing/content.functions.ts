@@ -6,10 +6,12 @@ import { templateConfig } from '../../server/template-config.ts'
 import {
   findLocalized,
   findPost,
+  isPublished,
   listPosts,
   listTags,
   loadDocsPage,
   localizedEntries,
+  translationLocales,
 } from './content.ts'
 
 /**
@@ -17,6 +19,8 @@ import {
  * 页面经预渲染输出静态 HTML，客户端路由跳转时才调用这些 server function。
  *
  * 语言由调用方传入：server function 的请求地址不带语言前缀，服务端无法从 URL 得到页面语言。
+ * 详情数据附带 `translations`（真实存在译文的语言），条目自身的 `locale` 是内容的真实语言，
+ * 页面据此输出回退页的 canonical 与 hreflang（openspec seo-internal-linking 2.2）。
  */
 
 const { locales, defaultLocale } = templateConfig.i18n
@@ -46,9 +50,11 @@ export const getBlogPost = createServerFn({ method: 'GET' })
   .inputValidator(z.object({ locale, slug }))
   .handler(({ data }) => {
     requireBlog()
-    const post = findPost(allPosts, { ...data, defaultLocale, now: new Date() })
+    const now = new Date()
+    const post = findPost(allPosts, { ...data, defaultLocale, now })
     if (!post) throw notFound()
-    return post
+    const published = allPosts.filter((entry) => isPublished(entry, now))
+    return { ...post, translations: translationLocales(published, post.slug) }
   })
 
 export const getLegalPage = createServerFn({ method: 'GET' })
@@ -56,7 +62,7 @@ export const getLegalPage = createServerFn({ method: 'GET' })
   .handler(({ data }) => {
     const page = findLocalized(allLegalPages, data.slug, data.locale, defaultLocale)
     if (!page) throw notFound()
-    return page
+    return { ...page, translations: translationLocales(allLegalPages, page.slug) }
   })
 
 export const getDocsPage = createServerFn({ method: 'GET' })
@@ -69,7 +75,7 @@ export const getDocsPage = createServerFn({ method: 'GET' })
       defaultLocale,
     })
     if (!result) throw notFound()
-    return result
+    return { ...result, translations: translationLocales(allDocs, result.page.slug) }
   })
 
 function requireGuides() {
@@ -91,5 +97,5 @@ export const getGuide = createServerFn({ method: 'GET' })
     requireGuides()
     const guide = findLocalized(allGuides, data.slug, data.locale, defaultLocale)
     if (!guide) throw notFound()
-    return guide
+    return { ...guide, translations: translationLocales(allGuides, guide.slug) }
   })

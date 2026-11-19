@@ -41,6 +41,11 @@ export function localizedEntries<T extends Localized>(
   return [...bySlug.values()]
 }
 
+/** 某 slug 真实存在译文的语言（不含回退），供 hreflang 只关联真实译文 */
+export function translationLocales(entries: readonly Localized[], slug: string): string[] {
+  return [...new Set(entries.filter((entry) => entry.slug === slug).map((entry) => entry.locale))]
+}
+
 export function findLocalized<T extends Localized>(
   entries: readonly T[],
   slug: string,

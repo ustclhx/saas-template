@@ -1,6 +1,6 @@
 import { templateConfig } from '../../server/template-config.ts'
 import type { SeoPage } from './metadata.ts'
-import { absoluteUrl, alternateLinks, localizedPath } from './metadata.ts'
+import { absoluteUrl, alternateLinks, indexedPages, localizedPath } from './metadata.ts'
 
 export function escapeXml(text: string): string {
   return text.replace(
@@ -15,12 +15,16 @@ export function isSharePath(path: string): boolean {
   return /^\/(?:s|share-card)(?:\/|$)/.test(path)
 }
 
-const indexable = (pages: readonly SeoPage[]) => pages.filter((page) => !isSharePath(page.path))
+/** 站点地图与 llms.txt 只列可索引的真实页面：排除分享页、`indexable: false` 与缺少译文的回退页 */
+const indexable = (pages: readonly SeoPage[]) =>
+  indexedPages(pages).filter((page) => !isSharePath(page.path))
 
 export function sitemap(pages: readonly SeoPage[], appUrl: string): string {
-  const urls = indexable(pages)
+  const listed = indexable(pages)
+  const urls = listed
     .map((page) => {
-      const languages = indexable(pages)
+      // hreflang 只关联真实存在译文的语言
+      const languages = listed
         .filter((other) => other.path === page.path)
         .map((other) => other.locale)
       const links = alternateLinks(appUrl, page.path, languages)
