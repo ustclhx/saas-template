@@ -32,6 +32,7 @@ import {
  * `suggest={false}`：同页已有另一实例负责语言建议时关闭，避免重复横幅。
  * `suggestableLocales`：只建议这些语言，默认取 SUGGESTABLE_LOCALES（与首帧脚本相同），所有实例自动一致。
  * 横幅在水合后的 effect 中带上 data-hydrated（仅属性，无样式与版面变化），供测试判断水合完成。
+ * 横幅与选择器外层带 data-link-zone="nav"：语言切换属于导航层，链接图检查不把它计为正文链接。
  */
 export function LanguageControls({
   placement = 'floating',
@@ -100,6 +101,7 @@ export function LanguageControls({
         <aside
           key={suggestion}
           data-locale-suggestion-for={suggestion}
+          data-link-zone="nav"
           data-hydrated={ready ? '' : undefined}
           aria-label={m.i18n_suggestion_label()}
           className="hidden flex-wrap items-center justify-center gap-3 border-b bg-muted px-4 py-3"
@@ -143,6 +145,7 @@ export function LanguageControls({
         </aside>
       ))}
       <div
+        data-link-zone="nav"
         className={
           floating
             ? 'fixed bottom-4 left-4 z-(--z-sticky) rounded-md max-md:hidden bg-background px-3 py-2 text-sm shadow-sm print:hidden'

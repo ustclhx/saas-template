@@ -14,11 +14,13 @@ const footerLink = 'text-muted-foreground text-sm hover:text-foreground'
  * 手机端无论有无 Ask AI 都留 80px：页面还可能有其他右下悬浮按钮（如 SubjectChat 触发器，底部 24–68px），
  * 不能遮挡设置行与版权（9.3 UI-03）。
  * 手机端语言与主题设置行放在版权行上方（设计稿 docs/design-system/prototypes/mobile-footer-controls）。
+ * data-link-zone="nav"：链接图检查把页脚当作导航层，并只在此区域统计页脚链接数（seo-internal-linking）。
  */
 export function SiteFooter({ floatingEntry = false }: { floatingEntry?: boolean }) {
   return (
     <footer
       data-site-footer
+      data-link-zone="nav"
       className={cn('border-t pb-20', floatingEntry ? 'md:pb-34' : 'md:pb-0')}
     >
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:grid-cols-4">
