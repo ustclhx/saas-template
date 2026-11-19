@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>边界状态与组件变更提议</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:none}a:hover{text-decoration:underline;text-underline-offset:3px}
+svg{flex-shrink:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1120px; padding: 48px; background: #fafafa; color: #171717; font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 14px; line-height: 20px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; align-content: start">
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 16px; line-height: 22px; font-weight: 600">① 系列第一篇：没有上一篇</h2>
+    <div style="padding: 24px; background: #ffffff; border: 1px solid rgba(23,23,23,0.12); border-radius: 12px">
+      <nav aria-label="系列导航" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+        <div aria-hidden="true"></div>
+        <a href="#" style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding: 16px; border: 1px solid rgba(23,23,23,0.12); border-radius: 12px; text-decoration: none">
+          <span style="font-size: 12px; line-height: 16px; color: #6b6b6b">下一篇 →</span>
+          <span style="font-weight: 550">第 2 课：选对模型</span>
+        </a>
+      </nav>
+    </div>
+    <p style="margin: 0; font-size: 12px; line-height: 16px; color: #6b6b6b">占位保持网格，不显示禁用态卡片；最后一篇同理，只显示上一篇。</p>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 16px; line-height: 22px; font-weight: 600">② 没有 related、没有 group 的页面</h2>
+    <div style="padding: 24px; background: #ffffff; border: 1px solid rgba(23,23,23,0.12); border-radius: 12px; display: flex; flex-direction: column; gap: 12px">
+      <p style="margin: 0; font-size: 16px; line-height: 28px">[正文最后一段]</p>
+      <div style="height: 1px; background: rgba(23,23,23,0.12)"></div>
+      <p style="margin: 0; font-size: 12px; line-height: 16px; color: #6b6b6b">正文后直接是页脚：不渲染空标题、不出现「暂无相关文章」。面包屑仍在。</p>
+    </div>
+    <p style="margin: 0; font-size: 12px; line-height: 16px; color: #6b6b6b">本页为静态预渲染内容，没有加载态与错误态；数据缺失时区块整块不渲染。</p>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 16px; line-height: 22px; font-weight: 600">③ 超长标题（桌面面包屑）</h2>
+    <div style="padding: 24px; background: #ffffff; border: 1px solid rgba(23,23,23,0.12); border-radius: 12px">
+      <nav aria-label="面包屑" style="font-size: 12px; line-height: 16px; color: #6b6b6b">
+        <ol style="list-style: none; margin: 0; padding: 0; display: flex; align-items: center; gap: 6px; min-width: 0">
+          <li style="flex-shrink: 0"><a href="#">首页</a></li>
+          <li aria-hidden="true">›</li>
+          <li style="flex-shrink: 0"><a href="#">指南</a></li>
+          <li aria-hidden="true">›</li>
+          <li aria-current="page" style="color: #171717; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 28rem">免费的 AI 写作工具有哪些，它们在中文长文写作上的表现差别有多大</li>
+        </ol>
+      </nav>
+    </div>
+    <p style="margin: 0; font-size: 12px; line-height: 16px; color: #6b6b6b">只有当前页截断加省略号；上级链接不截断。</p>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 16px; line-height: 22px; font-weight: 600">④ 页数较多的分页</h2>
+    <div style="padding: 24px; background: #ffffff; border: 1px solid rgba(23,23,23,0.12); border-radius: 12px; display: flex; justify-content: center">
+      <nav aria-label="分页" style="display: flex; align-items: center; gap: 4px">
+        <a href="#" style="display: inline-flex; align-items: center; height: 36px; padding: 0 12px; border-radius: 8px">← 上一页</a>
+        <a href="#" style="display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 8px">1</a>
+        <span aria-hidden="true" style="width: 24px; text-align: center; color: #6b6b6b">…</span>
+        <a href="#" style="display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 8px">4</a>
+        <span aria-current="page" style="display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 8px; background: #171717; color: #fafafa; font-weight: 550">5</span>
+        <a href="#" style="display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 8px">6</a>
+        <span aria-hidden="true" style="width: 24px; text-align: center; color: #6b6b6b">…</span>
+        <a href="#" style="display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 8px">12</a>
+        <a href="#" style="display: inline-flex; align-items: center; height: 36px; padding: 0 12px; border-radius: 8px">下一页 →</a>
+      </nav>
+    </div>
+    <p style="margin: 0; font-size: 12px; line-height: 16px; color: #6b6b6b">首页、末页、当前页前后各一页；手机只显示上一页 / 当前页码 / 下一页。</p>
+  </section>
+
+  <section style="grid-column: 1 / -1; display: flex; flex-direction: column; gap: 12px; padding: 24px; background: #ffffff; border: 1px solid rgba(23,23,23,0.12); border-radius: 12px">
+    <h2 style="margin: 0; font-size: 16px; line-height: 22px; font-weight: 600">组件变更提议（packages/ui 新增，需确认）</h2>
+    <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px">
+      <li><b style="font-weight: 600">Breadcrumb</b>：<code>items: {label, href}[]</code> 加 <code>current</code>；分隔符用 chevron 图标；caption 字号、muted-foreground；当前项 foreground 且不是链接；手机 &lt; 768px 隐藏当前项。</li>
+      <li><b style="font-weight: 600">Pagination</b>：真实 <code>&lt;a href&gt;</code>，<code>hrefFor(page)</code> 由调用方给；当前页 primary 实底；首末页 + 当前前后各一；全部文案由调用方传入（上一页、下一页、页码 aria-label）。</li>
+      <li><b style="font-weight: 600">LinkCard</b>：标题（subtitle 字重 550）+ 可选一行说明（caption）；card 底、border 外框、radius-xl；用于相关文章与系列上一篇/下一篇。</li>
+      <li><b style="font-weight: 600">LinkList</b>：纯文字链接列表，桌面两列、手机单列（行高 ≥ 44px）；用于同组列表。</li>
+      <li>不新增颜色、字号或圆角 token；全部取现有 background / card / border / muted-foreground / primary / primary-text。</li>
+      <li>区块顺序：正文 → 系列上一篇/下一篇 → 相关文章 → 同组列表 → 页脚。面包屑替换现在文章顶部的「← 返回博客」链接。</li>
+    </ul>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1120}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
