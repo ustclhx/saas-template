@@ -532,6 +532,58 @@ test('sync delivers project-owned extensions once and skips later template chang
   )
 })
 
+test('sync ignores new generator formatting and placeholder numbering while applying template edits', async (t) => {
+  const template = await fakeTemplate(t)
+  const values = 'src/values.ts'
+  const worker = 'apps/web/wrangler.jsonc'
+  const zero = '0'.repeat(32)
+  const bindingConfig = (first, second) =>
+    JSON.stringify({ hyperdrive: [{ id: first }, { id: second }] })
+  const base = await template.commit(
+    {
+      [values]: 'export const values={ message:"template" };\n',
+      [worker]: bindingConfig(zero, zero),
+      'biome.json': '{"javascript":{"formatter":{"quoteStyle":"double"}}}\n',
+    },
+    'old generator does not format or number placeholders',
+  )
+  const project = await fakeProject(t, template, base)
+  const projectValues = "export const values = { message: 'project' }\n"
+  const projectBindings = bindingConfig('a'.repeat(32), 'b'.repeat(32))
+  await project.change({ [values]: projectValues, [worker]: projectBindings }, 'project edits')
+
+  const { devDependencies } = JSON.parse(
+    await readFile(new URL('../package.json', import.meta.url)),
+  )
+  const formattedValues = "export const values = { message: 'template' }\n"
+  const numberedBindings = bindingConfig(zero, `${zero.slice(1)}1`)
+  await template.commit(
+    {
+      'scripts/create-project.mjs': `${generatorStub(allOptions)}
+writeFileSync(join(values.output, ${JSON.stringify(values)}), ${JSON.stringify(formattedValues)})
+writeFileSync(join(values.output, ${JSON.stringify(worker)}), ${JSON.stringify(numberedBindings)})
+`,
+      'package.json': JSON.stringify({
+        name: '@saas/root',
+        private: true,
+        devDependencies: { '@biomejs/biome': devDependencies['@biomejs/biome'] },
+      }),
+      'biome.json':
+        '{"javascript":{"formatter":{"quoteStyle":"single","semicolons":"asNeeded"}}}\n',
+      'docs/guide.md': paragraphs('New template content.'),
+    },
+    'generator postprocessing and new template content',
+  )
+
+  const { runner } = stubRunner()
+  const result = await runSync({ project: project.dir, template: template.dir, runner, log: quiet })
+  assert.deepEqual(result.report.conflicts, [])
+  assert.equal(result.status, 'synced')
+  assert.ok(result.report.applied.includes('docs/guide.md'))
+  assert.equal(await readFile(join(project.dir, values), 'utf8'), projectValues)
+  assert.equal(await readFile(join(project.dir, worker), 'utf8'), projectBindings)
+})
+
 test('conflicts keep markers on the sync branch, list every file and leave the baseline unchanged', async (t) => {
   const template = await fakeTemplate(t)
   const project = await fakeProject(t, template)

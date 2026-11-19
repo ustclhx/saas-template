@@ -243,6 +243,26 @@ test('missing parameters require explicit overrides and never use current defaul
   assert.throws(() => inferParams(f.project, root, ['turnstile=maybe']), /true 或 false/)
 })
 
+test('normalizes the generation commit and historical candidates before scoring', async (t) => {
+  const f = await fixture(t)
+  await files(f.template, { 'app.ts': "export const app = { name: 'acme' }\n" })
+  const formatted = f.commit('formatted version')
+  await files(f.template, { 'app.ts': 'export const app={name:"acme"};\n' })
+  const unformatted = f.commit('unformatted version')
+  await files(f.project, { 'app.ts': "export const app= {name: 'acme'};\n" })
+  git(f.project, 'add', '--all')
+  git(f.project, 'commit', '--quiet', '-m', 'import generated files')
+  const generationCommit = git(f.project, 'rev-parse', 'HEAD')
+  await files(f.project, { 'app.ts': 'export const app = null\n' })
+  git(f.project, 'commit', '--quiet', '-am', 'later project change')
+
+  const { candidates } = await runInfer(options(f, { generationCommit }))
+  const scores = new Map(candidates.map(({ commit, score }) => [commit, score]))
+  assert.equal(scores.get(formatted), 0)
+  assert.equal(scores.get(unformatted), 0)
+  assert.equal(await readFile(join(f.project, 'app.ts'), 'utf8'), 'export const app = null\n')
+})
+
 test('scores every main first-parent candidate and only writes an explicitly selected eligible SHA', async (t) => {
   const f = await fixture(t)
   git(f.template, 'tag', 'template-v9.0.0')
