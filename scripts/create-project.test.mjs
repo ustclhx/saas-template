@@ -25,7 +25,9 @@ import { themeNames } from './template-base.mjs'
 const generatorSkip = existsSync(new URL('./create-project.mjs', import.meta.url))
   ? false
   : '衍生项目已移除 scripts/create-project.mjs，跳过生成器用例'
-const { createProject, projectOptions } = generatorSkip ? {} : await import('./create-project.mjs')
+const { createProject, postprocessProject, projectOptions } = generatorSkip
+  ? {}
+  : await import('./create-project.mjs')
 const generatorTest = (name, run) => test(name, { skip: generatorSkip }, run)
 
 async function fixture(t) {
@@ -386,6 +388,11 @@ generatorTest(
       await readFile(join(result.target, fonts), 'utf8'),
       `import type {\n  OptionalProjectFontPreload,\n  ProjectFontPreload,\n} from '@${name}/ui/fonts'\n`,
     )
+    const generated = (await files(result.target)).sort()
+    const before = await Promise.all(generated.map((path) => readFile(path)))
+    await postprocessProject(result.target, { source: f.source })
+    assert.deepEqual((await files(result.target)).sort(), generated)
+    assert.deepEqual(await Promise.all(generated.map((path) => readFile(path))), before)
   },
 )
 
