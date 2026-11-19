@@ -13,7 +13,9 @@ export function Cta() {
         <h2 className="font-bold text-3xl tracking-tight">{m.marketing_cta_title()}</h2>
         <p className="max-w-xl text-body text-muted-foreground">{m.marketing_cta_body()}</p>
         <Button asChild size="lg">
-          <Link to="/register">{m.marketing_cta_button()}</Link>
+          <Link to="/register" data-link-zone="action">
+            {m.marketing_cta_button()}
+          </Link>
         </Button>
       </div>
     </section>

@@ -25,8 +25,8 @@
 - [x] 4.1 `apps/web/scripts/check-links.mjs`：启动 preview，以站点地图地址与各语言首页为种子抓取，解析 `<a href>` 与区域标记，构建链接图
 - [x] 4.2 实现失败级规则（孤岛、死链、正文指向不可索引页、禁用锚文本、图片链接缺 alt、姊妹站链接缺 nofollow／在导航层／镜像互指、H1 不是恰好一个）与警告级规则（H1 重复、页头频道数、正文链接数、深度、钱页入链、页脚数量、主词重复），`report`／`enforce` 两种模式
 - [x] 4.3 规则单元测试使用固定的 HTML 夹具，不依赖真实构建
-- [ ] 4.4 对模板当前站点以 `report` 运行，修正模板自身的问题后切到 `enforce`；在 PR 中贴出报告摘要与耗时
-- [ ] 4.5 接入 CI e2e-smoke job（Playwright 之前），更新 `docs/ci.md` 的 job 说明
+- [x] 4.4 对模板当前站点以 `report` 运行，修正模板自身的问题后切到 `enforce`；在 PR 中贴出报告摘要与耗时
+- [x] 4.5 接入 CI（实际放在 build job 的 `pnpm build` 之后，见 design 决策 6），更新 `docs/ci.md` 的 job 说明
 
 ## 5. 文档与验收
 

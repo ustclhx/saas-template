@@ -81,6 +81,8 @@ export default defineTemplateConfig({
         },
         primary: { label: { en: 'Start asking', zh: '开始提问' }, href: '/register' },
         secondaryHref: '#features',
+        // 次级链接文字写目标的主词或具体说明，不用「了解更多」（docs/seo-internal-linking.md）
+        secondaryLabel: { en: 'Feature overview', zh: '功能概览' },
       },
       {
         title: { en: 'Image generation', zh: '图片生成' },
@@ -90,6 +92,7 @@ export default defineTemplateConfig({
         },
         primary: { label: { en: 'Generate images', zh: '生成图片' }, href: '/register' },
         secondaryHref: '#features',
+        secondaryLabel: { en: 'Feature overview', zh: '功能概览' },
       },
       {
         title: { en: 'Long-form reports', zh: '长文报告' },
@@ -99,6 +102,7 @@ export default defineTemplateConfig({
         },
         primary: { label: { en: 'Create a report', zh: '生成报告' }, href: '/register' },
         secondaryHref: '#features',
+        secondaryLabel: { en: 'Feature overview', zh: '功能概览' },
       },
     ],
     // 右下角悬浮 AI 入口：点击跳转 href（未登录先到登录页），不内嵌对话

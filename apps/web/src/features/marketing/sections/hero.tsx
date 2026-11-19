@@ -17,7 +17,9 @@ export function Hero() {
         </p>
         <div className="flex flex-wrap justify-center gap-3">
           <Button asChild size="lg">
-            <Link to="/register">{m.marketing_hero_cta_primary()}</Link>
+            <Link to="/register" data-link-zone="action">
+              {m.marketing_hero_cta_primary()}
+            </Link>
           </Button>
           <Button asChild size="lg" variant="outline">
             <a href="#pricing">{m.marketing_hero_cta_secondary()}</a>

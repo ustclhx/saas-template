@@ -12,6 +12,8 @@ export function AiEntry({ href, inline = false }: { href: string; inline?: boole
   return (
     <ConfigLink
       href={href}
+      // 转化入口：不计入正文链接，指向应用区不算「正文链接到不可索引页」
+      data-link-zone="action"
       aria-label={m.marketing_ai_entry_label()}
       className={cn(
         'inline-flex h-12 items-center gap-2 rounded-full bg-primary pr-4.5 pl-4 font-medium text-body text-primary-foreground shadow-surface-5',

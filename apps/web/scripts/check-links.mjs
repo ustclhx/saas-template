@@ -6,7 +6,7 @@
 //   --base-url <地址>：检查已在运行的服务，不启动 preview。
 // report 只报告并以 0 退出；enforce 有失败项时以 1 退出。未传 --mode 时取 template config 的 seo.linking.mode。
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
@@ -20,6 +20,7 @@ import {
   resolveLinkingConfig,
   sitemapLocations,
 } from './check-links-graph.mjs'
+import { fallbackDevVars } from './prerender-env.ts'
 
 const WEB_ROOT = new URL('..', import.meta.url).pathname
 const CONCURRENCY = 8
@@ -48,6 +49,20 @@ function freePort() {
 async function startPreview() {
   if (!existsSync(resolve(WEB_ROOT, 'dist/server/index.js')))
     throw new Error('缺少构建产物 apps/web/dist，请先运行 pnpm --filter @saas/web build')
+  // Turbo 缓存命中恢复的产物不含 .dev.vars（刻意不缓存），没有它时 Worker 启动校验让所有页面返回 500；
+  // 与构建期预渲染一样补一份示例值，检查结束后删除
+  const devVars = resolve(WEB_ROOT, 'dist/server/.dev.vars')
+  let wroteDevVars = false
+  if (!existsSync(devVars)) {
+    const source = fallbackDevVars()
+    if (source !== null) {
+      writeFileSync(devVars, source, { mode: 0o600 })
+      wroteDevVars = true
+    }
+  }
+  const removeDevVars = () => {
+    if (wroteDevVars) rmSync(devVars, { force: true })
+  }
   const port = await freePort()
   const child = spawn('pnpm', ['exec', 'vite', 'preview', '--port', String(port), '--strictPort'], {
     cwd: WEB_ROOT,
@@ -62,6 +77,7 @@ async function startPreview() {
   child.stdout.on('data', keep)
   child.stderr.on('data', keep)
   const stop = () => {
+    removeDevVars()
     if (child.exitCode !== null) return
     try {
       process.kill(-child.pid, 'SIGTERM')
@@ -72,8 +88,10 @@ async function startPreview() {
   const baseUrl = `http://localhost:${port}`
   const deadline = Date.now() + START_TIMEOUT_MS
   while (Date.now() < deadline) {
-    if (child.exitCode !== null)
+    if (child.exitCode !== null) {
+      removeDevVars()
       throw new Error(`vite preview 已退出（${child.exitCode}）：\n${log}`)
+    }
     try {
       const response = await fetch(`${baseUrl}/`, { redirect: 'manual' })
       if (response.status < 500) return { baseUrl, stop }

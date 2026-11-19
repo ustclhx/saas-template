@@ -145,7 +145,9 @@ function PlanCard({ plan, interval }: { plan: PricingPlan; interval: BillingInte
       </CardContent>
       <CardFooter className="mt-auto">
         <Button asChild className="w-full" variant={plan.highlighted ? 'default' : 'outline'}>
-          <Link to="/register">{m.marketing_pricing_cta()}</Link>
+          <Link to="/register" data-link-zone="action">
+            {m.marketing_pricing_cta()}
+          </Link>
         </Button>
       </CardFooter>
     </Card>

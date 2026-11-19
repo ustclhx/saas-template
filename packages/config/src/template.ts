@@ -41,8 +41,13 @@ export interface MarketingProduct<L extends string = string> {
   readonly image?: { readonly src: string; readonly alt: LocalizedText<L> }
   /** 主按钮 */
   readonly primary: { readonly label: LocalizedText<L>; readonly href: string }
-  /** 次级链接，文字固定为「了解更多」 */
+  /** 次级链接的地址 */
   readonly secondaryHref: string
+  /**
+   * 次级链接的文字：写目标页的主词或具体说明（如「功能概览」），不要写「了解更多」等禁用锚文本
+   * （docs/seo-internal-linking.md）；省略时用产品标题
+   */
+  readonly secondaryLabel?: LocalizedText<L>
 }
 
 /**
@@ -470,6 +475,8 @@ function validateMarketing(marketing: TemplateConfig['marketing'], locales: read
     if (!filled(product.primary.label, locales)) fail(`products[${i}].primary.label`)
     if (!product.primary.href.trim()) fail(`products[${i}].primary.href`)
     if (!product.secondaryHref.trim()) fail(`products[${i}].secondaryHref`)
+    if (product.secondaryLabel !== undefined && !filled(product.secondaryLabel, locales))
+      fail(`products[${i}].secondaryLabel`)
   })
 }
 

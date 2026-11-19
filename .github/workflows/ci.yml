@@ -99,6 +99,10 @@ jobs:
       - run: pnpm typecheck
       # turbo run build：没有 build 脚本的包会被跳过
       - run: pnpm build
+      # 构建后链接图检查（docs/seo-internal-linking.md）：复用上一步的 web 生产构建产物启动 vite preview 抓取，
+      # 不重复构建、不需要数据库；模式取 template.config.ts 的 seo.linking.mode（模板为 enforce）
+      - name: Check internal link graph
+        run: pnpm --filter @saas/web check:links
 
   # pnpm test 拆成两个 job：web 的 vitest 最慢，且它与 jobs 共享 jobs.lastCronAt 键而在同一库中串行；
   # 各用独立的临时 Postgres 后可以并行。两个 job 合起来仍是 turbo run test 的全部任务。

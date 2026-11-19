@@ -1,20 +1,7 @@
-export interface LinkingThresholds {
-  headerLinksMin: number
-  headerLinksMax: number
-  groupBodyLinksMin: number
-  maxDepth: number
-  moneyInlinksMin: number
-  footerLinksMax: number
-}
-export interface LinkingConfig {
-  mode: 'report' | 'enforce'
-  bannedAnchors: string[]
-  moneyPages: string[]
-  sisterDomains: string[]
-  series: unknown[]
-  hubPageSize: number
-  thresholds: LinkingThresholds
-}
+import type { SeoLinkingConfig } from '@saas/config'
+
+export type LinkingThresholds = SeoLinkingConfig['thresholds']
+export type LinkingConfig = SeoLinkingConfig
 export interface ParsedLink {
   href: string
   rel: string[]
@@ -62,8 +49,7 @@ export type ClassifiedHref =
   | { kind: 'invalid'; href: string }
   | null
 
-export const BUILTIN_BANNED_ANCHORS: readonly string[]
-export const DEFAULT_LINKING: Readonly<LinkingConfig>
+export const LINK_TO_NOINDEX_EXEMPT: ReadonlySet<string>
 export const FAILURE_RULES: readonly string[]
 export const WARNING_RULES: readonly string[]
 export function resolveLinkingConfig(raw: unknown): LinkingConfig

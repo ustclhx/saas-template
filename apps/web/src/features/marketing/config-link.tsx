@@ -12,6 +12,8 @@ export function ConfigLink({
   href: string
   className?: string
   'aria-label'?: string
+  /** 链接区域标记（design.md 决策 3）：转化入口传 action */
+  'data-link-zone'?: string
   children: ReactNode
 }) {
   if (href.startsWith('/') && !href.startsWith('//')) {

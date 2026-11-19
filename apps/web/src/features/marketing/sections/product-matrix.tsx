@@ -74,16 +74,16 @@ export function ProductMatrix({ products }: { products: readonly ProductItem[] }
               <p className="flex-1 text-body text-muted-foreground">{product.description}</p>
               <div className="mt-3 flex flex-wrap items-center gap-4">
                 <Button asChild>
-                  <ConfigLink href={product.primary.href}>{product.primary.label}</ConfigLink>
+                  <ConfigLink href={product.primary.href} data-link-zone="action">
+                    {product.primary.label}
+                  </ConfigLink>
                 </Button>
                 <ConfigLink
                   href={product.secondaryHref}
                   className="inline-flex items-center gap-1 text-body underline-offset-4 hover:underline"
                 >
-                  {m.marketing_products_more()}
-                  <span className="sr-only">
-                    {m.marketing_products_more_about({ title: product.title })}
-                  </span>
+                  {/* 锚文本取配置的具体文案或产品名，不用「了解更多」（seo-internal-linking「锚文本来源」） */}
+                  {product.secondaryLabel}
                   <ArrowRight aria-hidden="true" className="size-3.5" />
                 </ConfigLink>
               </div>
