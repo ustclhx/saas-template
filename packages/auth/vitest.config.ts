@@ -3,8 +3,8 @@ import { isPostgresSocketRejection } from '@saas/db/test/postgres-socket-rejecti
 import { resolveTestDatabase } from '@saas/db/test-database'
 import { defineConfig } from 'vitest/config'
 
-// 集成测试连接的本地库：环境变量 → .env.worktree，且必须是隔离库（@saas/db/test-database）。
-// 本地未配置时立即失败，不回退到主 checkout 的开发库；ALLOW_TEST_ON_DEV_DATABASE=1 时才使用它。
+// 测试库按环境变量、.env.worktree、本地 <项目>_test 的顺序解析。
+// ALLOW_TEST_ON_DEV_DATABASE=1 时允许使用开发库。
 // CI 中未显式提供连接串时跳过集成测试，只跑单元测试（与 @saas/db 一致）。
 const HYPERDRIVE_ENV = 'CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE'
 const database = resolveTestDatabase('@saas/auth', { devFallback: true })
