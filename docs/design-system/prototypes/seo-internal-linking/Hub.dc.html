@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>列表页 hub 与分页</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:none}a:hover{text-decoration:underline;text-underline-offset:3px}
+sc-if,sc-for{display:contents}
+svg{flex-shrink:0}
+</style>
+</helmet>
+<div style="min-height: 100vh; width: 100%; background: {{t.bg}}; color: {{t.fg}}; font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 14px; line-height: 20px; -webkit-font-smoothing: antialiased">
+  <header data-link-zone="nav" style="height: 64px; border-bottom: 1px solid {{t.border}}; display: flex; align-items: center">
+    <div style="width: 100%; max-width: 72rem; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; gap: 32px">
+      <a href="#" style="font-size: 16px; line-height: 22px; font-weight: 700">Acme</a>
+      <nav aria-label="主导航" style="display: flex; gap: 24px; color: {{t.muted}}">
+        <a href="#">产品</a><a href="#">定价</a><a href="#" style="color: {{t.fg}}; font-weight: 550">博客</a><a href="#">指南</a><a href="#">文档</a>
+      </nav>
+    </div>
+  </header>
+
+  <main style="width: 100%; max-width: 64rem; margin: 0 auto; padding: 40px 24px 64px; display: flex; flex-direction: column; gap: 24px">
+    <nav aria-label="面包屑" data-link-zone="nav" style="font-size: 12px; line-height: 16px; color: {{t.muted}}">
+      <ol style="list-style: none; margin: 0; padding: 0; display: flex; align-items: center; gap: 6px">
+        <li><a href="#">首页</a></li>
+        <li aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></li>
+        <li aria-current="page" style="color: {{t.fg}}">博客</li>
+      </ol>
+    </nav>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <h1 style="margin: 0; font-size: 36px; line-height: 40px; font-weight: 700; letter-spacing: -0.02em">博客</h1>
+      <p style="margin: 0; font-size: 16px; line-height: 24px; color: {{t.muted}}">产品更新、实践指南与创作技巧。共 142 篇，第 2 / 2 页。</p>
+    </div>
+
+    <nav aria-label="同级栏目" style="display: flex; flex-wrap: wrap; gap: 8px">
+      <a href="#" style="display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 9999px; background: {{t.tint}}">指南</a>
+      <a href="#" style="display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 9999px; background: {{t.tint}}">文档</a>
+      <a href="#" style="display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 9999px; background: {{t.tint}}">更新日志</a>
+    </nav>
+
+    <ul style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+      <sc-for list="{{posts}}" as="p" hint-placeholder-count="6">
+        <li><a href="#" style="display: flex; flex-direction: column; gap: 6px; padding: 16px; height: 100%; border: 1px solid {{t.border}}; border-radius: 12px; background: {{t.card}}; text-decoration: none">
+          <span style="font-size: 12px; line-height: 16px; color: {{t.muted}}">{{p.date}}</span>
+          <span style="font-weight: 550">{{p.title}}</span>
+          <span style="font-size: 12px; line-height: 16px; color: {{t.muted}}">{{p.summary}}</span>
+        </a></li>
+      </sc-for>
+    </ul>
+
+    <nav aria-label="分页" style="display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 8px">
+      <a href="#" style="display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 12px; border-radius: 8px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>上一页
+      </a>
+      <a href="#" style="display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 8px">1</a>
+      <span aria-current="page" style="display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 8px; background: {{t.primary}}; color: {{t.primaryFg}}; font-weight: 550">2</span>
+      <span aria-disabled="true" style="display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 12px; border-radius: 8px; color: {{t.muted}}">下一页
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
+      </span>
+    </nav>
+    <p style="margin: 0; text-align: center; font-size: 12px; line-height: 16px; color: {{t.muted}}">每页上限默认 100 篇（示意图为缩略）。分页是真实链接 /blog/page/2，第 1 页即 /blog；当前页不是链接。</p>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1300}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const t = dark
+      ? { bg: '#171717', fg: '#f5f5f5', muted: '#b0b0b0', card: '#252525', border: 'rgba(245,245,245,0.12)', tint: 'rgba(255,255,255,0.1)', primary: '#f5f5f5', primaryFg: '#171717' }
+      : { bg: '#fafafa', fg: '#171717', muted: '#6b6b6b', card: '#ffffff', border: 'rgba(23,23,23,0.12)', tint: 'rgba(0,0,0,0.05)', primary: '#171717', primaryFg: '#fafafa' };
+    const posts = [
+      { date: '2026-03-02', title: '第 1 课：什么是提示词', summary: '从一句话请求到结构化任务。' },
+      { date: '2026-02-21', title: '如何选择模型', summary: '按任务类型对比速度与质量。' },
+      { date: '2026-02-10', title: '长文档摘要', summary: '分段摘要再合并的做法。' },
+      { date: '2026-01-28', title: '产品更新：团队空间', summary: '多人协作与权限设置。' },
+      { date: '2026-01-15', title: '提示词检查清单', summary: '发送前逐项核对的十个问题。' },
+      { date: '2026-01-03', title: '输出格式模板', summary: '五种常用结构，复制即可用。' }
+    ];
+    return { t, posts };
+  }
+}
+</script>
+</body>
+</html>

@@ -64,6 +64,10 @@
 - 本地：`pnpm --filter @saas/web check:links`，要求先 `pnpm build`。
 - CI：放在已经产出 web 构建并启动 preview 的 job（e2e-smoke）中，作为 Playwright 之前的一步，避免再次构建。按 `docs/ci.md` 更新 job 说明与耗时预算。
 
+### 7. 区块设计稿
+
+组 3 的区块以模板原型索引（`docs/design-system/prototypes/README.md`）中「公开页内链区块」一行为准，副本在 `docs/design-system/prototypes/seo-internal-linking/`。已确认的组件变更：`packages/ui` 新增 Breadcrumb、Pagination、LinkCard、LinkList，不新增 token；面包屑替换文章顶部的「← 返回」链接；区块顺序为正文 → 系列上一篇／下一篇 → 相关 → 同组 → 页脚。
+
 ## Risks / Trade-offs
 
 - [preview 抓取增加 CI 耗时] → 只抓公开页面；模板约百个地址，目标 30 秒内；在 PR 中记录实测耗时。

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>详情页内链区块（桌面）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:none}a:hover{text-decoration:underline;text-underline-offset:3px}
+sc-if,sc-for{display:contents}
+svg{flex-shrink:0}
+</style>
+</helmet>
+<div style="min-height: 100vh; width: 100%; background: {{t.bg}}; color: {{t.fg}}; font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 14px; line-height: 20px; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column">
+  <header data-link-zone="nav" style="height: 64px; border-bottom: 1px solid {{t.border}}; display: flex; align-items: center">
+    <div style="width: 100%; max-width: 72rem; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; gap: 32px">
+      <a href="#" style="font-size: 16px; line-height: 22px; font-weight: 700">Acme</a>
+      <nav aria-label="主导航" style="display: flex; gap: 24px; flex: 1; color: {{t.muted}}">
+        <a href="#">产品</a><a href="#">定价</a><a href="#" style="color: {{t.fg}}; font-weight: 550">博客</a><a href="#">指南</a><a href="#">文档</a>
+      </nav>
+      <a href="#" style="display: inline-flex; align-items: center; height: 36px; padding: 0 16px; border-radius: 8px; background: {{t.primary}}; color: {{t.primaryFg}}; font-weight: 500">登录</a>
+    </div>
+  </header>
+
+  <main style="width: 100%; max-width: 48rem; margin: 0 auto; padding: 40px 24px 64px; display: flex; flex-direction: column; gap: 24px">
+    <nav aria-label="面包屑" data-link-zone="nav" style="font-size: 12px; line-height: 16px; color: {{t.muted}}">
+      <ol style="list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px">
+        <li><a href="#">首页</a></li>
+        <li aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></li>
+        <li><a href="#">博客</a></li>
+        <li aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></li>
+        <li><a href="#">AI 写作入门</a></li>
+        <li aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></li>
+        <li aria-current="page" style="color: {{t.fg}}">第 5 课：给模型清晰的结构</li>
+      </ol>
+    </nav>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <p style="margin: 0; color: {{t.muted}}"><time>2026-11-12</time> · 系列第 5 / 9 篇</p>
+      <h1 style="margin: 0; font-size: 36px; line-height: 40px; font-weight: 700; letter-spacing: -0.02em">第 5 课：给模型清晰的结构</h1>
+      <p style="margin: 0; font-size: 18px; line-height: 28px; color: {{t.muted}}">把任务拆成角色、输入和输出格式三部分，模型的回答会更稳定。</p>
+    </div>
+
+    <div style="font-size: 16px; line-height: 28px; display: flex; flex-direction: column; gap: 16px">
+      <p style="margin: 0">上一课我们讨论了为什么提示词越长不一定越好。这一课换个角度：与其堆叠要求，不如先给出结构。</p>
+      <h2 style="margin: 8px 0 0; font-size: 20px; line-height: 28px; font-weight: 600">从三段式开始</h2>
+      <p style="margin: 0">先写明角色，再给出输入材料，最后约定输出格式。具体写法可以对照 <a href="#" style="color: {{t.primaryText}}; text-decoration: underline; text-underline-offset: 3px">输出格式模板</a>，常见错误见 <a href="#" style="color: {{t.primaryText}}; text-decoration: underline; text-underline-offset: 3px">提示词检查清单</a>。</p>
+      <p style="margin: 0">[正文其余段落]</p>
+    </div>
+
+    <nav aria-label="系列导航" data-link-zone="series" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px">
+      <a href="#" style="display: flex; flex-direction: column; gap: 4px; padding: 16px; border: 1px solid {{t.border}}; border-radius: 12px; background: {{t.card}}; text-decoration: none">
+        <span style="font-size: 12px; line-height: 16px; color: {{t.muted}}; display: flex; align-items: center; gap: 4px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>上一篇</span>
+        <span style="font-weight: 550">第 4 课：提示词越长越好吗</span>
+      </a>
+      <a href="#" style="display: flex; flex-direction: column; gap: 4px; padding: 16px; border: 1px solid {{t.border}}; border-radius: 12px; background: {{t.card}}; text-align: right; align-items: flex-end; text-decoration: none">
+        <span style="font-size: 12px; line-height: 16px; color: {{t.muted}}; display: flex; align-items: center; gap: 4px">下一篇<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></span>
+        <span style="font-weight: 550">第 6 课：用示例约束风格</span>
+      </a>
+    </nav>
+
+    <section aria-labelledby="related-h" data-link-zone="related" style="display: flex; flex-direction: column; gap: 12px; margin-top: 16px">
+      <h2 id="related-h" style="margin: 0; font-size: 16px; line-height: 22px; font-weight: 600">相关文章</h2>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+        <a href="#" style="display: flex; flex-direction: column; gap: 6px; padding: 16px; border: 1px solid {{t.border}}; border-radius: 12px; background: {{t.card}}; text-decoration: none">
+          <span style="font-weight: 550">输出格式模板</span>
+          <span style="font-size: 12px; line-height: 16px; color: {{t.muted}}">五种常用结构，复制即可用。</span>
+        </a>
+        <a href="#" style="display: flex; flex-direction: column; gap: 6px; padding: 16px; border: 1px solid {{t.border}}; border-radius: 12px; background: {{t.card}}; text-decoration: none">
+          <span style="font-weight: 550">提示词检查清单</span>
+          <span style="font-size: 12px; line-height: 16px; color: {{t.muted}}">发送前逐项核对的十个问题。</span>
+        </a>
+        <a href="#" style="display: flex; flex-direction: column; gap: 6px; padding: 16px; border: 1px solid {{t.border}}; border-radius: 12px; background: {{t.card}}; text-decoration: none">
+          <span style="font-weight: 550">长文档摘要</span>
+          <span style="font-size: 12px; line-height: 16px; color: {{t.muted}}">分段摘要再合并的做法。</span>
+        </a>
+      </div>
+    </section>
+
+    <section aria-labelledby="group-h" data-link-zone="siblings" style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding-top: 24px; border-top: 1px solid {{t.border}}">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px">
+        <h2 id="group-h" style="margin: 0; font-size: 16px; line-height: 22px; font-weight: 600">AI 写作入门 · 本系列其他课程</h2>
+        <a href="#" style="font-size: 12px; line-height: 16px; color: {{t.primaryText}}">AI 写作入门（全部 9 课）</a>
+      </div>
+      <ul style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px">
+        <li><a href="#" style="display: block; padding: 8px 0">第 1 课：什么是提示词</a></li>
+        <li><a href="#" style="display: block; padding: 8px 0">第 2 课：选对模型</a></li>
+        <li><a href="#" style="display: block; padding: 8px 0">第 3 课：一次只问一件事</a></li>
+        <li><a href="#" style="display: block; padding: 8px 0">第 7 课：让模型先列提纲</a></li>
+        <li><a href="#" style="display: block; padding: 8px 0">第 8 课：检查与改写</a></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer data-link-zone="nav" style="border-top: 1px solid {{t.border}}; margin-top: auto">
+    <div style="width: 100%; max-width: 72rem; margin: 0 auto; padding: 32px 24px; display: flex; flex-wrap: wrap; gap: 24px; justify-content: space-between; color: {{t.muted}}; font-size: 12px; line-height: 16px">
+      <span>© 2026 Acme</span>
+      <nav aria-label="页脚" style="display: flex; flex-wrap: wrap; gap: 20px">
+        <a href="#">定价</a><a href="#">博客</a><a href="#">指南</a><a href="#">文档</a><a href="#">隐私政策</a><a href="#">服务条款</a><a href="#">退款政策</a>
+      </nav>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const t = dark
+      ? { bg: '#171717', fg: '#f5f5f5', muted: '#b0b0b0', card: '#252525', border: 'rgba(245,245,245,0.12)', primary: '#f5f5f5', primaryFg: '#171717', primaryText: '#f5f5f5' }
+      : { bg: '#fafafa', fg: '#171717', muted: '#6b6b6b', card: '#ffffff', border: 'rgba(23,23,23,0.12)', primary: '#171717', primaryFg: '#fafafa', primaryText: '#171717' };
+    return { t };
+  }
+}
+</script>
+</body>
+</html>
