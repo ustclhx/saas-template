@@ -61,6 +61,11 @@
 | `src/components/credit-estimate.tsx` | 无（模板新增，tasks 8.6） | — | 预计消耗与余额的单行说明，`estimate={null}` 为估算中占位，`insufficient` 时危险色 |
 | `src/components/locked-feature.tsx` | 无（模板新增，tasks 8.6） | — | 会员锁定态卡片；被锁预览 `inert`，并在捕获阶段拦下点击只调用 `onUpgrade` |
 | `src/components/daily-claim-notice.tsx` | 无（模板新增，tasks 8.6） | — | 每日领取提示（available / pending / claimed / error），`compact` 为手机顶部样式 |
+| `src/components/breadcrumb.tsx` | 无（模板新增，seo-internal-linking 3.1） | — | 公开页面包屑，设计稿 `docs/design-system/prototypes/seo-internal-linking/`；上级为 `<a href>`、当前项为 `aria-current="page"` 的文字；桌面可换行且只截断当前项（`max-w-md`），< 768px 隐藏当前项、最后一级上级可截断；`label`（nav 名称）必填；JSON-LD 由页面层输出；分隔符直接取 lucide `ChevronRight`（不进 UiRoot 默认图标表） |
+| `src/components/pagination.tsx` | 无（模板新增，seo-internal-linking 3.2） | — | hub 分页：`hrefFor(page)` 由调用方给，页码窗口 `paginationRange`（首末页、当前页前后各一，只隔一页时显示该页而不是省略号）；当前页 `bg-primary` 实底、不是链接；首页 / 末页的上一页 / 下一页为 `aria-disabled` 文字（不是链接）；< 768px 只显示上一页、当前页、下一页；`labels`（`nav`、`previous`、`next`、`page(n)`）必填；悬停用 `bg-hover`（设计稿为下划线） |
+| `src/components/link-card.tsx` | 无（模板新增，seo-internal-linking 3.3） | — | `LinkCard`（整卡一个 `<a href>`，标题 semibold + 可选说明 / 方向标签，悬停标题下划线）、`LinkCardGrid`（相关文章 3 列 / hub 列表 2 列，手机单列，空列表不渲染，`zone` 默认 `related`）、`SeriesNav`（上一篇 / 下一篇，缺一侧时桌面保留占位、两侧都缺不渲染，`zone` 默认 `series`）；方向图标直接取 lucide |
+| `src/components/link-list.tsx` | 无（模板新增，seo-internal-linking 3.3） | — | 同组文字链接列表：桌面两列、手机单列行高 44px；可选「查看全部」（桌面在标题行右侧 caption，手机为列表后 44px 一行，同一个元素靠 `order` 换位）；空列表不渲染；`zone` 默认 `siblings`；`group`（页面的 group key）输出为外层 `data-link-group`，链接检查据此识别声明了 group 的详情页 |
+| `src/components/link-render.tsx` | 无（模板新增，seo-internal-linking 组 3） | — | 内链组件共用的 `renderLink`（默认原生 `<a>`，可换成路由 Link）、`LinkZone` 类型与链接焦点环 |
 | `src/hooks/use-fluid-hover.ts` | `use-fluid-hover` | 2026-11 | 仅统一适配规则 |
 | `src/hooks/use-merge-split.tsx` | `use-merge-split` | 2026-11 | 仅统一适配规则（`SelectionBackgrounds` 包 `MotionFeatures`）；`bridgePair` 为 `noUncheckedIndexedAccess` 补判空 |
 | `src/hooks/use-keyboard-nav-gate.ts` | `use-keyboard-nav-gate` | 2026-11 | 仅统一适配规则 |
