@@ -57,10 +57,11 @@ describe('博客草稿', () => {
     expect(posts.length).toBeGreaterThan(0)
     expect(posts.filter((post) => post.draft)).toEqual([])
     expect(posts.map((post) => post.slug)).not.toContain('draft-example')
-    // 内链字段（seo-internal-linking 1.3）：未写 parent 时取集合的列表页，related 默认为空
+    // 内链字段（seo-internal-linking 1.3）：未写 parent 时取集合的列表页，related 默认为空；
+    // 示例文章 welcome 声明了 related
     for (const post of posts) {
       expect(post.parent).toBe('/blog')
-      expect(post.related).toEqual([])
+      expect(post.related).toEqual(post.slug === 'welcome' ? ['/blog/writing-posts'] : [])
     }
   })
 

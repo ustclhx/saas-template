@@ -23,7 +23,7 @@
 | 对话页 /app/$slug/chat/$conversationId（含消息各状态、Markdown、输入区） | https://claude.ai/artifact/5VgoViLrF6DXiagXomEMoj | 2026-11-14 | 「approve the design canvas for the chat components」 | chat-components/Main.dc.html、chat-components/Mobile.dc.html、chat-components/States.dc.html | add-ai-chat-components |
 | 嵌入式 SubjectChat（inline / panel / 手机底部抽屉） | https://claude.ai/artifact/5VgoViLrF6DXiagXomEMoj | 2026-11-14 | 「approve the design canvas for the chat components」 | chat-components/Embedded.dc.html、chat-components/EmbeddedMobile.dc.html | add-ai-chat-components |
 | 手机端页脚设置行（< 768px 公开页：语言与主题移入页脚，只留 Ask AI 悬浮） | https://claude.ai/artifact/9WTKL7Waxb7HMp3VdAC4ot | 2026-11-15 | 「确认」 | mobile-footer-controls/Main.dc.html、mobile-footer-controls/Mid.dc.html、mobile-footer-controls/Dark.dc.html | add-ui-design-system（9.3 验收缺陷 UI-01，0.5.1） |
-| 公开页内链区块：面包屑、系列上一篇／下一篇、相关文章、同组列表、hub 分页（博客 / 文档 / 答案页 / 法律页） | https://claude.ai/artifact/NSHAVaDkrvs6og9n4Q6zVp | 2026-11-19 | 「canvas确认没问题，开发吧」 | seo-internal-linking/Main.dc.html、seo-internal-linking/Mobile.dc.html、seo-internal-linking/Hub.dc.html、seo-internal-linking/States.dc.html | seo-internal-linking（新组件 Breadcrumb、Pagination、LinkCard、LinkList 已同意） |
+| 公开页内链区块：面包屑、系列上一篇／下一篇、相关文章、同组列表、hub 分页（博客 / 文档 / 答案页 / 法律页） | https://claude.ai/artifact/NSHAVaDkrvs6og9n4Q6zVp | 2026-11-19 | 「canvas确认没问题，开发吧」 | seo-internal-linking/Main.dc.html、seo-internal-linking/Mobile.dc.html、seo-internal-linking/Hub.dc.html、seo-internal-linking/States.dc.html | seo-internal-linking（新组件 Breadcrumb、Pagination、LinkCard、LinkList 已同意）；已接受偏离：分页隔一页不省略、分页悬停底色、卡片悬停下划线、手机系列卡片 chevron（使用者 2026-11-19 确认） |
 
 副本格式：`ui-review/` 保存画布确认版本的画板源码（`*.dc.html`）与画布索引 `canvas.json`。源码依赖画布运行时，
 不能脱离 claude.ai 直接渲染，但完整包含布局、token 取值、文案与各状态分支（`state` / `dark` tweak），

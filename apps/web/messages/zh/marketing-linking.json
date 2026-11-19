@@ -1,0 +1,16 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "marketing_linking_breadcrumb": "面包屑",
+  "marketing_linking_series": "系列导航",
+  "marketing_linking_previous": "上一篇",
+  "marketing_linking_next": "下一篇",
+  "marketing_linking_related": "相关内容",
+  "marketing_linking_group": "{group} · 同组其他页面",
+  "marketing_linking_group_other": "同组其他页面",
+  "marketing_linking_pagination": "分页",
+  "marketing_linking_previous_page": "上一页",
+  "marketing_linking_next_page": "下一页",
+  "marketing_linking_page": "第 {page} 页",
+  "marketing_linking_page_title": "{title} · 第 {page} 页",
+  "marketing_linking_page_summary": "共 {total} 篇，第 {page} / {pageCount} 页。"
+}

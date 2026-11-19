@@ -109,6 +109,8 @@ export interface SeoLinkingConfig {
   readonly series: readonly { readonly group: string; readonly orderBy: SeoSeriesOrder }[]
   /** hub 列表单页最多列出的下级数，超出时分页 */
   readonly hubPageSize: number
+  /** 详情页「同组」区块最多列出的同组页面数（建议 3–5），同组页面更少时全部列出 */
+  readonly groupLinksMax: number
 }
 
 export interface SeoLinkingInput {
@@ -120,6 +122,7 @@ export interface SeoLinkingInput {
   sisterDomains?: readonly string[]
   series?: readonly { group: string; orderBy?: SeoSeriesOrder }[]
   hubPageSize?: number
+  groupLinksMax?: number
 }
 
 /** 主题预设名单（packages/ui/src/styles/presets/*.css）；@saas/web 的测试断言它与 @saas/ui 的 UI_PRESETS 一致 */
@@ -406,6 +409,7 @@ export const templateConfigDefaults = {
       sisterDomains: [],
       series: [],
       hubPageSize: 100,
+      groupLinksMax: 5,
     },
   },
   ui: { preset: 'neutral', shape: 'rounded', density: 'default', appLayout: 'sidebar' },
@@ -469,8 +473,11 @@ function validateMarketing(marketing: TemplateConfig['marketing'], locales: read
   })
 }
 
-/** 合并并校验内链配置：禁用词与内置词取并集（项目只能增补），其余数组整体替换。 */
-function resolveSeoLinking(input: SeoLinkingInput | undefined): SeoLinkingConfig {
+/**
+ * 合并并校验内链配置：禁用词与内置词取并集（项目只能增补），其余数组整体替换。
+ * 对已解析的配置再次调用结果不变；构建后链接图检查（apps/web/scripts/check-links.mjs）也用它补全默认值。
+ */
+export function resolveSeoLinking(input: SeoLinkingInput | undefined): SeoLinkingConfig {
   const d = templateConfigDefaults.seo.linking
   const fail = (message: string): never => {
     throw new RangeError(`template config: seo.linking.${message}`)
@@ -497,6 +504,7 @@ function resolveSeoLinking(input: SeoLinkingInput | undefined): SeoLinkingConfig
       orderBy: series.orderBy ?? 'declared',
     })),
     hubPageSize: input?.hubPageSize ?? d.hubPageSize,
+    groupLinksMax: input?.groupLinksMax ?? d.groupLinksMax,
   }
   if (!['report', 'enforce'].includes(linking.mode)) fail("mode must be 'report' or 'enforce'")
   const count = (value: number, path: string, min = 0) => {
@@ -508,6 +516,7 @@ function resolveSeoLinking(input: SeoLinkingInput | undefined): SeoLinkingConfig
   if (thresholds.headerLinksMin > thresholds.headerLinksMax)
     fail('thresholds.headerLinksMin must not exceed headerLinksMax')
   count(linking.hubPageSize, 'hubPageSize', 1)
+  count(linking.groupLinksMax, 'groupLinksMax', 1)
   // 地址统一写不带语言前缀、以 / 开头的 path，与 SeoPage.path 一致
   const path = (value: string, where: string) => {
     if (!value.startsWith('/') || value.startsWith('//') || /[?#]/.test(value))

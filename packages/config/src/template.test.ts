@@ -6,6 +6,7 @@ import {
   type MediaProviderId,
   type PaymentProvider,
   type PricingMode,
+  resolveSeoLinking,
   type TemplateConfig,
   templateConfigDefaults,
 } from './template.ts'
@@ -86,6 +87,7 @@ describe('defineTemplateConfig', () => {
     const defaults = defineTemplateConfig({ app }).seo.linking
     expect(defaults.mode).toBe('report')
     expect(defaults.hubPageSize).toBe(100)
+    expect(defaults.groupLinksMax).toBe(5)
     expect(defaults.thresholds).toEqual({
       headerLinksMin: 3,
       headerLinksMax: 7,
@@ -132,6 +134,15 @@ describe('defineTemplateConfig', () => {
     ])
   })
 
+  it('resolveSeoLinking is idempotent on a resolved config', () => {
+    const linking = defineTemplateConfig({
+      app,
+      seo: { linking: { bannedAnchors: ['详情'], series: [{ group: '/a' }], groupLinksMax: 3 } },
+    }).seo.linking
+    expect(resolveSeoLinking(linking)).toEqual(linking)
+    expect(resolveSeoLinking(undefined)).toEqual(defineTemplateConfig({ app }).seo.linking)
+  })
+
   it('rejects malformed seo.linking values', () => {
     const bad: NonNullable<Parameters<typeof defineTemplateConfig>[0]['seo']>[] = [
       { linking: { mode: 'strict' as 'report' } },
@@ -139,6 +150,7 @@ describe('defineTemplateConfig', () => {
       { linking: { thresholds: { headerLinksMin: 8 } } },
       { linking: { thresholds: { footerLinksMax: 1.5 } } },
       { linking: { hubPageSize: 0 } },
+      { linking: { groupLinksMax: 0 } },
       { linking: { bannedAnchors: [' '] } },
       { linking: { moneyPages: ['pricing'] } },
       { linking: { moneyPages: ['/pricing?plan=pro'] } },

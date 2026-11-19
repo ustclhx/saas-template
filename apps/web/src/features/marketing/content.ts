@@ -69,6 +69,18 @@ export function listPosts<T extends PostLike>(
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 }
 
+/** hub 列表的页数：至少 1 页（没有下级时仍有空列表页） */
+export function hubPageCount(total: number, pageSize: number): number {
+  return Math.max(1, Math.ceil(total / pageSize))
+}
+
+/** hub 列表第 `page` 页的条目；页码超出范围时返回 null（路由返回 404） */
+export function hubSlice<T>(items: readonly T[], page: number, pageSize: number): T[] | null {
+  if (!Number.isInteger(page) || page < 1 || page > hubPageCount(items.length, pageSize))
+    return null
+  return items.slice((page - 1) * pageSize, page * pageSize)
+}
+
 /** 已发布文章中出现过的标签，按名称排序 */
 export function listTags(posts: readonly PostLike[]): string[] {
   return [...new Set(posts.flatMap((post) => post.tags))].sort()
