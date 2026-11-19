@@ -17,9 +17,11 @@ export const Route = createFileRoute('/guides/$slug')({
         locale: getLocale(),
         title: loaderData.title,
         description: loaderData.answer_summary,
+        sourceLocale: loaderData.locale,
       },
       originFromMatches(matches),
       [faqData(loaderData.faq)],
+      loaderData.translations,
     )
   },
   component: GuidePage,

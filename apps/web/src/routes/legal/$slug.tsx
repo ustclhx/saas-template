@@ -18,8 +18,11 @@ export const Route = createFileRoute('/legal/$slug')({
             locale: getLocale(),
             title: loaderData.title,
             description: loaderData.description,
+            sourceLocale: loaderData.locale,
           },
           originFromMatches(matches),
+          [],
+          loaderData.translations,
         )
       : {},
   component: LegalPage,

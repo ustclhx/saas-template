@@ -11,6 +11,7 @@ import * as ReactDOM from 'react-dom'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { z } from 'zod'
 import templateConfig from '../../template.config.ts'
+import { contentParents, sitePathPattern } from './src/features/seo/content-parents.ts'
 
 /**
  * 是否保留草稿：`vite dev` 中显示草稿便于预览，生产构建（NODE_ENV=production）直接跳过，
@@ -73,6 +74,17 @@ export function fillPlaceholders(text: string, locale = 'en'): string {
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:\d{2}))?$/)
 
+/**
+ * 内链字段（openspec seo-internal-linking）：`parent` 省略时取集合的列表页，`anchor_short` 为锚文本短变体，
+ * `related` 为相关页地址。地址写不带语言前缀的站内 path，构建时校验目标存在且可索引。
+ */
+const sitePath = z.string().regex(sitePathPattern, 'must be a site path starting with /')
+const linking = {
+  parent: sitePath.optional(),
+  anchor_short: z.string().trim().min(1).optional(),
+  related: z.array(sitePath).default([]),
+}
+
 const posts = defineCollection({
   name: 'posts',
   directory: 'content/blog',
@@ -85,13 +97,19 @@ const posts = defineCollection({
     cover: z.string().optional(),
     tags: z.array(z.string()).default([]),
     draft: z.boolean().default(false),
+    ...linking,
     content: z.string(),
   }),
   transform: async (document, context) => {
     if (!templateConfig.features.blog) return context.skip('features.blog=false')
     if (document.draft && !includeDrafts) return context.skip('draft')
     const { content, ...data } = document
-    return { ...data, ...localeAndSlug(document._meta), html: await renderMdx(context, document) }
+    return {
+      ...data,
+      parent: data.parent ?? contentParents.posts,
+      ...localeAndSlug(document._meta),
+      html: await renderMdx(context, document),
+    }
   },
 })
 
@@ -103,6 +121,7 @@ const legalPages = defineCollection({
     title: z.string(),
     description: z.string(),
     updatedAt: isoDate,
+    ...linking,
     content: z.string(),
   }),
   transform: async (document, context) => {
@@ -110,6 +129,7 @@ const legalPages = defineCollection({
     const { locale, slug } = localeAndSlug(document._meta)
     return {
       ...data,
+      parent: data.parent ?? contentParents.legal,
       locale,
       slug,
       title: fillPlaceholders(data.title, locale),
@@ -131,6 +151,7 @@ const docs = defineCollection({
     order: z.number().default(0),
     /** 依赖的功能开关：对应开关关闭时该页不进入构建产物（如公开 API 文档依赖 features.publicApi） */
     requires: z.enum(['publicApi']).optional(),
+    ...linking,
     content: z.string(),
   }),
   transform: async (document, context) => {
@@ -144,7 +165,13 @@ const docs = defineCollection({
       content: fillPlaceholders(content, localeAndSlug(document._meta).locale),
     })
     // 构建期生成的搜索文本，客户端按它做全文匹配（design.md 决策 1）
-    return { ...data, ...localeAndSlug(document._meta), html, searchText: plainText(html) }
+    return {
+      ...data,
+      parent: data.parent ?? contentParents.docs,
+      ...localeAndSlug(document._meta),
+      html,
+      searchText: plainText(html),
+    }
   },
 })
 
@@ -161,13 +188,19 @@ const guides = defineCollection({
     kind: z.enum(['how-to', 'is-it-free', 'trends']),
     updatedAt: isoDate,
     draft: z.boolean().default(false),
+    ...linking,
     content: z.string(),
   }),
   transform: async (document, context) => {
     if (!templateConfig.features.guides) return context.skip('features.guides=false')
     if (document.draft && !includeDrafts) return context.skip('draft')
     const { content, ...data } = document
-    return { ...data, ...localeAndSlug(document._meta), html: await renderMdx(context, document) }
+    return {
+      ...data,
+      parent: data.parent ?? contentParents.guides,
+      ...localeAndSlug(document._meta),
+      html: await renderMdx(context, document),
+    }
   },
 })
 

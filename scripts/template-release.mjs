@@ -78,6 +78,10 @@ const projectOwnedFiles = [
     guidance: 'put template composer estimate changes in apps/web/src/features/ai/model-picker.tsx',
   },
   {
+    path: 'apps/web/src/features/seo/pages.project.ts',
+    guidance: 'put template public pages in apps/web/src/features/seo/pages.ts',
+  },
+  {
     path: 'apps/web/src/features/app-shell/nav.project.ts',
     guidance:
       'register template navigation items in apps/web/src/features/app-shell/nav.default.ts',

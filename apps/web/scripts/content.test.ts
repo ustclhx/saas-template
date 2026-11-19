@@ -11,7 +11,9 @@ const appRoot = new URL('..', import.meta.url).pathname
 const tempRoot = new URL('../.content-collections/test', import.meta.url).pathname
 const outputs: string[] = []
 
-async function buildPosts(nodeEnv: string): Promise<{ slug: string; draft: boolean }[]> {
+async function buildPosts(
+  nodeEnv: string,
+): Promise<{ slug: string; draft: boolean; parent: string; related: string[] }[]> {
   mkdirSync(tempRoot, { recursive: true })
   const outputDir = mkdtempSync(join(tempRoot, 'build-'))
   outputs.push(outputDir)
@@ -27,6 +29,7 @@ const templateConfig = defineTemplateConfig({
 })`,
     )
     .replaceAll("directory: 'content/", `directory: '${relative(outputDir, appRoot)}/content/`)
+    .replaceAll("from './src/", `from '${relative(outputDir, appRoot)}/src/`)
   writeFileSync(fixturePath, fixture)
   const previous = process.env.NODE_ENV
   process.env.NODE_ENV = nodeEnv
@@ -54,6 +57,11 @@ describe('博客草稿', () => {
     expect(posts.length).toBeGreaterThan(0)
     expect(posts.filter((post) => post.draft)).toEqual([])
     expect(posts.map((post) => post.slug)).not.toContain('draft-example')
+    // 内链字段（seo-internal-linking 1.3）：未写 parent 时取集合的列表页，related 默认为空
+    for (const post of posts) {
+      expect(post.parent).toBe('/blog')
+      expect(post.related).toEqual([])
+    }
   })
 
   it('开发环境保留草稿供预览', async () => {

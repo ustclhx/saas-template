@@ -104,6 +104,9 @@ export default defineTemplateConfig({
     // 右下角悬浮 AI 入口：点击跳转 href（未登录先到登录页），不内嵌对话
     aiEntry: { enabled: true, href: '/app' },
   },
+  // 站内链接规范（docs/seo-internal-linking.md）：模板自身以 enforce 运行构建后链接图检查；
+  // 衍生项目未配置时为 report（只报告），修正孤岛与死链后再改为 enforce
+  seo: { linking: { mode: 'enforce' } },
   // 界面主题：preset 'neutral' | 'blue' | 'violet' | 'green'；shape 'sharp' | 'rounded' | 'pill'；
   // density 'default'（36px 控件）| 'compact'（28px）。品牌色写在 apps/web/src/styles/brand.css
   // appLayout：App 区布局，'sidebar' 工作台侧边栏 | 'topbar' 原有顶部布局

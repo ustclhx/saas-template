@@ -55,6 +55,34 @@ for (const locale of locales) {
   })
 }
 
+// 只有默认语言版本的文章（seo-internal-linking 2.3）：e2e 使用 vite dev，草稿示例可访问且只有英文版本。
+// 回退页显示原文，canonical 指向原语言地址，hreflang 不列出缺少译文的语言；站点地图的回退过滤由单元测试覆盖。
+const otherLocale = locales.find((locale) => locale !== defaultLocale)
+test('缺少译文的文章：canonical 指向原语言，hreflang 只列真实译文', async ({ page }) => {
+  test.skip(!templateConfig.features.blog || !otherLocale, '需要博客与至少两种语言')
+  const response = await page.goto(`/${otherLocale}/blog/draft-example`)
+  expect(response?.status()).toBe(200)
+  await expect(page.locator('h1')).toHaveText('Draft example')
+  const canonical = await page.locator('link[rel="canonical"]').getAttribute('href')
+  expect(new URL(canonical ?? '').pathname).toBe('/blog/draft-example')
+  await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', canonical ?? '')
+  await expect(page.locator(`link[rel="alternate"][hreflang="${otherLocale}"]`)).toHaveCount(0)
+  await expect(page.locator(`link[rel="alternate"][hreflang="${defaultLocale}"]`)).toHaveAttribute(
+    'href',
+    canonical ?? '',
+  )
+  await expect(page.locator('link[rel="alternate"][hreflang="x-default"]')).toHaveAttribute(
+    'href',
+    canonical ?? '',
+  )
+  // 有译文的文章照常互相关联
+  await page.goto(`/${otherLocale}/blog/welcome`)
+  await expect(page.locator(`link[rel="alternate"][hreflang="${otherLocale}"]`)).toHaveCount(1)
+  expect(
+    new URL((await page.locator('link[rel="canonical"]').getAttribute('href')) ?? '').pathname,
+  ).toBe(`/${otherLocale}/blog/welcome`)
+})
+
 test('地图发布过滤、robots 与 构建期 PNG 输出', async ({ request }) => {
   const response = await request.get('/sitemap.xml')
   expect(response.status()).toBe(200)

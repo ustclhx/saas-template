@@ -3,6 +3,10 @@ import { templateConfig } from '../../server/template-config.ts'
 import { isAppAreaPath } from '../i18n/app-area.ts'
 import { homePageCopy } from './home-copy.ts'
 
+/**
+ * 公开页面清单的一项（openspec seo-internal-linking design 决策 1）。地址类字段（`path`、`parent`、
+ * `group`、`related`）都是不带语言前缀的 path，按本页的 `locale` 解析。
+ */
 export interface SeoPage {
   path: string
   title: string
@@ -10,6 +14,32 @@ export interface SeoPage {
   locale: string
   cover?: string | undefined
   date?: string | undefined
+  /** 上级页面；除首页外每个可索引页面都必须声明，且指向存在的可索引页面 */
+  parent?: string | undefined
+  /** 主词：模板内链区块与面包屑的锚文本；内容集合默认取 title */
+  titleMain?: string | undefined
+  /** 锚文本的短变体（只允许一个） */
+  anchorShort?: string | undefined
+  /** 同级分组的地址（该分组的列表页），同组页面互为同级 */
+  group?: string | undefined
+  /** 相关页地址 */
+  related?: readonly string[] | undefined
+  /** 默认 true；false 时输出 noindex、不进站点地图，也不能作为 parent／group／related 的目标 */
+  indexable?: boolean | undefined
+  /** `'money'` 表示钱页，链接图检查统计其站内入链 */
+  priority?: 'money' | undefined
+  /** 内容的真实语言；与 `locale` 不同表示缺少译文、以该语言内容回退显示的页面 */
+  sourceLocale?: string | undefined
+}
+
+/** 缺少译文、以其他语言内容回退显示的页面：canonical 指向原语言，不进站点地图 */
+export function isFallbackPage(page: Pick<SeoPage, 'locale' | 'sourceLocale'>): boolean {
+  return page.sourceLocale !== undefined && page.sourceLocale !== page.locale
+}
+
+/** 进入站点地图的页面：可索引且不是回退页 */
+export function indexedPages<T extends SeoPage>(pages: readonly T[]): T[] {
+  return pages.filter((page) => page.indexable !== false && !isFallbackPage(page))
 }
 
 const { defaultLocale, enabled } = templateConfig.i18n
@@ -23,18 +53,21 @@ export function absoluteUrl(appUrl: string, path: string): string {
   return new URL(path, appUrl).href
 }
 
+/**
+ * hreflang 关联：`languages` 为该页真实存在译文的语言（回退页不算）。x-default 指向默认语言，
+ * 默认语言没有该页时指向列出的第一种语言。
+ */
 export function alternateLinks(
   appUrl: string,
   path: string,
   languages: readonly string[] = locales,
 ) {
-  return [...languages, 'x-default'].map((language) => ({
+  const real = locales.filter((locale) => languages.includes(locale))
+  const fallback = real.includes(defaultLocale) ? defaultLocale : (real[0] ?? defaultLocale)
+  return [...real, 'x-default'].map((language) => ({
     rel: 'alternate',
     hrefLang: language,
-    href: absoluteUrl(
-      appUrl,
-      localizedPath(path, language === 'x-default' ? defaultLocale : language),
-    ),
+    href: absoluteUrl(appUrl, localizedPath(path, language === 'x-default' ? fallback : language)),
   }))
 }
 
@@ -62,7 +95,26 @@ export function staticPage(path: string, locale: string): SeoPage {
       : ['Join the waitlist', 'Join the waitlist to hear when the product is ready.'],
   }
   const [title, description] = copy[path] ?? [path, path]
-  return { path, title, description, locale }
+  // 层级与主词：主词是面包屑和内链区块的锚文本，取频道名而不是 SEO 标题
+  const main: Record<string, [string, string]> = {
+    '/': [templateConfig.app.name, zh ? '首页' : 'Home'],
+    '/pricing': [zh ? '定价' : 'Pricing', zh ? '定价' : 'Pricing'],
+    '/blog': [zh ? '博客' : 'Blog', zh ? '博客' : 'Blog'],
+    '/guides': [zh ? '指南' : 'Guides', zh ? '指南' : 'Guides'],
+    '/docs': [zh ? '文档' : 'Documentation', zh ? '文档' : 'Docs'],
+    '/newsletter': [zh ? '订阅通讯' : 'Newsletter', zh ? '通讯' : 'Newsletter'],
+    '/waitlist': [zh ? '候补名单' : 'Waitlist', zh ? '候补' : 'Waitlist'],
+  }
+  const [titleMain, anchorShort] = main[path] ?? [title, undefined]
+  return {
+    path,
+    title,
+    description,
+    locale,
+    titleMain,
+    ...(anchorShort !== undefined && anchorShort !== titleMain && { anchorShort }),
+    ...(path !== '/' && { parent: '/' }),
+  }
 }
 
 export function privateMeta(path: string) {
@@ -82,8 +134,17 @@ export function ogImagePath(page: Pick<SeoPage, 'path' | 'locale'>): string {
   return `/og/${page.locale}${page.path === '/' ? '/index' : page.path}.png`
 }
 
-export function pageHead(page: SeoPage, appUrl: string, structuredData: readonly unknown[] = []) {
-  const url = absoluteUrl(appUrl, localizedPath(page.path, page.locale))
+/**
+ * `languages`：该页真实存在译文的语言，省略时为全部启用语言（模板静态页各语言都有译文）。
+ * 回退页（`sourceLocale` 与 `locale` 不同）的 canonical 与 og:url 指向原语言地址。
+ */
+export function pageHead(
+  page: SeoPage,
+  appUrl: string,
+  structuredData: readonly unknown[] = [],
+  languages: readonly string[] = locales,
+) {
+  const url = absoluteUrl(appUrl, localizedPath(page.path, page.sourceLocale ?? page.locale))
   const title = `${page.title} | ${templateConfig.app.name}`
   const image = page.cover
     ? absoluteUrl(appUrl, page.cover)
@@ -106,7 +167,7 @@ export function pageHead(page: SeoPage, appUrl: string, structuredData: readonly
       { name: 'twitter:image', content: image },
       { name: 'twitter:image:alt', content: title },
     ],
-    links: [{ rel: 'canonical', href: url }, ...alternateLinks(appUrl, page.path)],
+    links: [{ rel: 'canonical', href: url }, ...alternateLinks(appUrl, page.path, languages)],
     scripts: structuredData.map((data) => ({
       type: 'application/ld+json',
       children: JSON.stringify(data).replace(/</g, '\\u003c'),

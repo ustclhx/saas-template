@@ -15,8 +15,11 @@ export const Route = createFileRoute('/docs/$slug')({
             locale: getLocale(),
             title: loaderData.page.title,
             description: loaderData.page.description,
+            sourceLocale: loaderData.page.locale,
           },
           originFromMatches(matches),
+          [],
+          loaderData.translations,
         )
       : {},
   component: DocsPage,

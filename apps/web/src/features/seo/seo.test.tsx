@@ -317,6 +317,75 @@ it('关闭营销时没有公开页面，单语言只生成默认语言页面', (
   }
 })
 
+describe.runIf(config.i18n.enabled && locales.length > 1)('缺少译文的回退页（2.1–2.3）', () => {
+  const other = locales.find((item) => item !== config.i18n.defaultLocale) ?? ''
+  const withFallback = publicPages(
+    {
+      ...content,
+      posts: [
+        ...content.posts,
+        {
+          slug: 'only-default',
+          locale: config.i18n.defaultLocale,
+          title: 'Only in the default language',
+          summary: 'Not translated yet',
+          date: '2026-01-01',
+          tags: [],
+          draft: false,
+        },
+      ],
+    },
+    new Date('2026-10-01'),
+    config,
+  )
+  const fallback = withFallback.find(
+    (page) => page.path === '/blog/only-default' && page.locale === other,
+  )
+
+  it('回退页记录原语言，站点地图跳过回退页', () => {
+    expect(fallback?.sourceLocale).toBe(config.i18n.defaultLocale)
+    expect(
+      withFallback.find((page) => page.path === '/blog/published' && page.locale === other)
+        ?.sourceLocale,
+    ).toBe(other)
+    const xml = sitemap(withFallback, origin)
+    expect(xml).toContain(`<loc>${origin}/blog/only-default</loc>`)
+    expect(xml).not.toContain(`${origin}/${other}/blog/only-default`)
+    expect(xml).toContain(`<loc>${origin}/${other}/blog/published</loc>`)
+  })
+
+  it('回退页 canonical 指向原语言地址，hreflang 只列出真实译文', () => {
+    if (!fallback) throw new Error('Missing fallback page')
+    const head = pageHead(fallback, origin, [], [config.i18n.defaultLocale])
+    expect(head.links.find((link) => link.rel === 'canonical')?.href).toBe(
+      `${origin}/blog/only-default`,
+    )
+    expect(head.meta).toContainEqual({ property: 'og:url', content: `${origin}/blog/only-default` })
+    expect(head.links.filter((link) => link.rel === 'alternate')).toEqual([
+      {
+        rel: 'alternate',
+        hrefLang: config.i18n.defaultLocale,
+        href: `${origin}/blog/only-default`,
+      },
+      { rel: 'alternate', hrefLang: 'x-default', href: `${origin}/blog/only-default` },
+    ])
+    expect(articleData(fallback, origin)).toMatchObject({
+      url: `${origin}/blog/only-default`,
+      inLanguage: config.i18n.defaultLocale,
+    })
+  })
+
+  it('只有非默认语言版本时 x-default 指向该语言', () => {
+    const page = { path: '/blog/only-other', locale: other, title: 'T', description: 'D' }
+    expect(
+      pageHead(page, origin, [], [other]).links.filter((link) => link.rel === 'alternate'),
+    ).toEqual([
+      { rel: 'alternate', hrefLang: other, href: `${origin}/${other}/blog/only-other` },
+      { rel: 'alternate', hrefLang: 'x-default', href: `${origin}/${other}/blog/only-other` },
+    ])
+  })
+})
+
 describe('分享图与缓存（4.4）', () => {
   it('无封面页面的卡片包含站点名称和页面标题', () => {
     const page = pages.find((page) => page.path === '/legal/terms' && page.locale === locale)

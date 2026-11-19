@@ -21,6 +21,7 @@ export const projectOwnedPaths = new Set([
   'apps/web/src/features/ai/chat-composer.project.tsx',
   'apps/web/src/features/theme/fonts.project.ts',
   'apps/web/scripts/critical-css.project.mjs',
+  'apps/web/src/features/seo/pages.project.ts',
 ])
 export const baseRef = 'refs/template-sync/base'
 export const targetRef = 'refs/template-sync/target'

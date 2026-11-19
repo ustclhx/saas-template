@@ -336,6 +336,7 @@ generatorTest(
       'apps/web/src/features/ai/message-parts.project.tsx',
       'apps/web/src/features/ai/chat-composer.project.tsx',
       'apps/web/scripts/critical-css.project.mjs',
+      'apps/web/src/features/seo/pages.project.ts',
     ]
     for (const path of extensions) await f.file(path, extension)
     const fonts = 'apps/web/src/features/theme/fonts.project.ts'

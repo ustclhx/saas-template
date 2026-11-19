@@ -403,6 +403,11 @@ for (const [file, initial, modifiedContent] of [
     'export const projectCriticalCssAllowRules = (defaults) => [...defaults, /x/]\n',
   ],
   [
+    'apps/web/src/features/seo/pages.project.ts',
+    'export function projectPages() {\n  return []\n}\n',
+    "export function projectPages() {\n  return [{ path: '/tarot' }]\n}\n",
+  ],
+  [
     'apps/web/src/features/app-shell/nav.project.ts',
     '// 项目导航条目\nexport {}\n',
     "import './nav.ts'\nexport {}\n",

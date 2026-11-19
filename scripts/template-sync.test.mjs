@@ -462,6 +462,7 @@ test('sync delivers project-owned extensions once and skips later template chang
   const estimate = 'apps/web/src/features/ai/chat-composer.project.tsx'
   const html = 'apps/web/src/features/theme/html-attributes.ts'
   const webFonts = 'apps/web/src/features/theme/fonts.project.ts'
+  const seoPages = 'apps/web/src/features/seo/pages.project.ts'
   await template.commit(
     {
       [registration]: 'export const registration = 1\n',
@@ -472,6 +473,7 @@ test('sync delivers project-owned extensions once and skips later template chang
       [estimate]: 'export const estimate = 1\n',
       [html]: 'export const attributes = {}\n',
       [webFonts]: "import type { FontPreload } from '@old-scope/ui/fonts'\n",
+      [seoPages]: 'export const projectPages = () => []\n',
     },
     'share card extensions',
     'template-v0.2.0',
@@ -485,6 +487,7 @@ test('sync delivers project-owned extensions once and skips later template chang
   )
   assert.ok(first.report.applied.includes(html))
   assert.ok(first.report.applied.includes(webFonts))
+  assert.ok(first.report.applied.includes(seoPages))
   git(project.dir, 'switch', '--quiet', 'main')
   git(project.dir, 'merge', '--quiet', '--ff-only', first.branch)
   await project.change({
@@ -496,6 +499,7 @@ test('sync delivers project-owned extensions once and skips later template chang
     [estimate]: '// project estimate\n',
     [html]: "export const attributes = { 'data-site': 'acme' }\n",
     [webFonts]: "export const preloads = ['project.woff2']\n",
+    [seoPages]: "export const projectPages = () => [{ path: '/tarot' }]\n",
   })
   await template.commit(
     {
@@ -507,6 +511,7 @@ test('sync delivers project-owned extensions once and skips later template chang
       [estimate]: 'export const estimate = 2\n',
       [html]: "export const attributes = { 'data-site': 'template' }\n",
       [webFonts]: "import type { FontPreload } from '@saas/ui/fonts'\n",
+      [seoPages]: 'export const projectPages = () => [] // template v2\n',
     },
     'template extension changes',
     'template-v0.3.0',
@@ -529,6 +534,10 @@ test('sync delivers project-owned extensions once and skips later template chang
   assert.equal(
     await readFile(join(project.dir, webFonts), 'utf8'),
     "export const preloads = ['project.woff2']\n",
+  )
+  assert.equal(
+    await readFile(join(project.dir, seoPages), 'utf8'),
+    "export const projectPages = () => [{ path: '/tarot' }]\n",
   )
 })
 

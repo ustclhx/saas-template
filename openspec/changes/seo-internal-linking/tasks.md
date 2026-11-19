@@ -1,16 +1,16 @@
 ## 1. 页面元数据与配置
 
-- [ ] 1.1 `packages/config` 增加 `seo.linking` 类型与默认值（`mode` 默认 `report`、阈值、禁用词、`moneyPages`、`sisterDomains`、`series`、hub 分页上限），模板 `template.config.ts` 设为 `enforce`；补类型与默认值测试
-- [ ] 1.2 `SeoPage` 增加 `parent`、`titleMain`、`anchorShort`、`group`、`related`、`indexable`、`priority`、`sourceLocale`；`staticPage()` 声明模板静态页的上级与主词
-- [ ] 1.3 内容集合 frontmatter 增加可选 `parent`、`anchor_short`、`related`，按集合推导默认 `parent` 与 `titleMain`
-- [ ] 1.4 新增项目所有的 `pages.project.ts` 注册入口，与模板清单合并；登记到生成器的项目自有文件，并补生成器测试
-- [ ] 1.5 元数据静态校验：`url` 唯一、`parent`／`related`／`group` 目标存在且可索引、主词重复警告；单元测试覆盖各失败与警告分支
+- [x] 1.1 `packages/config` 增加 `seo.linking` 类型与默认值（`mode` 默认 `report`、阈值、禁用词、`moneyPages`、`sisterDomains`、`series`、hub 分页上限），模板 `template.config.ts` 设为 `enforce`；补类型与默认值测试
+- [x] 1.2 `SeoPage` 增加 `parent`、`titleMain`、`anchorShort`、`group`、`related`、`indexable`、`priority`、`sourceLocale`；`staticPage()` 声明模板静态页的上级与主词
+- [x] 1.3 内容集合 frontmatter 增加可选 `parent`、`anchor_short`、`related`，按集合推导默认 `parent` 与 `titleMain`
+- [x] 1.4 新增项目所有的 `pages.project.ts` 注册入口，与模板清单合并；登记到生成器的项目自有文件，并补生成器测试
+- [x] 1.5 元数据静态校验：`url` 唯一、`parent`／`related`／`group` 目标存在且可索引、主词重复警告；单元测试覆盖各失败与警告分支
 
 ## 2. 多语言回退
 
-- [ ] 2.1 `publicPages()` 为回退页写入 `sourceLocale`，站点地图跳过回退页
-- [ ] 2.2 `pageHead()` 回退页 canonical 指向原语言地址，`alternateLinks()` 只列出真实译文
-- [ ] 2.3 单元测试与 `seo.spec.ts` e2e 覆盖「只有英文的文章」场景
+- [x] 2.1 `publicPages()` 为回退页写入 `sourceLocale`，站点地图跳过回退页
+- [x] 2.2 `pageHead()` 回退页 canonical 指向原语言地址，`alternateLinks()` 只列出真实译文
+- [x] 2.3 单元测试与 `seo.spec.ts` e2e 覆盖「只有英文的文章」场景
 
 ## 3. 内链区块
 

@@ -31,6 +31,7 @@ export { type NodeEnv, nodeEnvSchema, nodeEnvSchemaFor, nodeSecretNames } from '
 export {
   type AiModality,
   type DefaultLocale,
+  defaultBannedAnchors,
   defineTemplateConfig,
   type LocalizedText,
   type MarketingPerformance,
@@ -41,6 +42,10 @@ export {
   type OAuthProvider,
   type PaymentProvider,
   type PricingMode,
+  type SeoLinkingConfig,
+  type SeoLinkingInput,
+  type SeoLinkingMode,
+  type SeoSeriesOrder,
   type TemplateConfig,
   type TemplateConfigInput,
   templateConfigDefaults,
