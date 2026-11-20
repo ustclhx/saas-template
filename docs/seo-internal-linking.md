@@ -117,7 +117,7 @@ parent 成环时构建失败并给出页面地址；主词重复只警告。
 | 失败 | `hreflang-target` | hreflang 目标不可访问（4xx/5xx）或不在站点地图中 |
 | 失败 | `accept-language-vary` | 以 `zh-CN,zh;q=0.9` 与 `en-US,en;q=0.9` 两种 Accept-Language 请求同一地址时，状态码、`Location`、`<html lang>` 或规范化正文不同。对比各语言首页与等距抽样的可索引页（`--accept-language-samples`，默认 3）；规范化去掉 CSP nonce 与 13 位毫秒时间戳 |
 | 失败 | `language-set-cookie` | 可索引页、上述对比请求或前缀请求的响应 `Set-Cookie` 了语言 Cookie：Paraglide 的 `cookieName`、旧版 `locale-preference`、`seo.linking.languageCookies` 中的名称、名称含 lang／locale，或值是某个语言 id |
-| 警告（暂缓） | `default-locale-prefix` | 不跟随重定向请求 `/<默认语言>` 与 `/<默认语言>/pricing`（没有定价页时取一个可索引页），不是 301 到无前缀地址 |
+| 失败 | `default-locale-prefix` | 不跟随重定向请求 `/<默认语言>` 与 `/<默认语言>/pricing`（没有定价页时取一个可索引页），不是 301 到无前缀地址 |
 | 警告（暂缓） | `language-prompt-ssr` | 服务端 HTML 中有 `data-language-prompt` 或 `data-locale-suggestion*` 元素（语言提示应在水合后挂载） |
 
 规范中这两条为失败级。模板实现默认语言前缀 301 与水合后的语言提示条（change 任务 2.2、4.1）之前暂按警告报告，

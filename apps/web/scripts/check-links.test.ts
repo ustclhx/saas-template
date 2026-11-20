@@ -97,7 +97,11 @@ describe('check-links 多站点', () => {
     ])
     // 多语言请求规则按站点执行：默认语言前缀只在以无前缀地址服务默认语言的站点（localhost）检查，
     // east.localhost 没有 `/en`（404）也不报告
-    expect(result.warnings.filter((item) => item.rule === 'default-locale-prefix')).toEqual([])
+    expect(
+      [...result.failures, ...result.warnings].filter(
+        (item) => item.rule === 'default-locale-prefix',
+      ),
+    ).toEqual([])
   })
 })
 
@@ -199,8 +203,8 @@ describe('check-links 多语言请求规则', () => {
       { rule: 'default-locale-prefix', page: '/en' },
       { rule: 'default-locale-prefix', page: '/en/pricing' },
     ])
-    // 按浏览器语言跳转为失败级，enforce 下退出码非零；前缀 301 在任务 5.3 前为警告级
+    // 按浏览器语言跳转与默认语言前缀未 301 均为失败级，enforce 下退出码非零
     expect(exitCode(result, mode)).toBe(1)
-    expect(result.warnings.map((item) => item.rule)).toContain('default-locale-prefix')
+    expect(result.failures.map((item) => item.rule)).toContain('default-locale-prefix')
   })
 })

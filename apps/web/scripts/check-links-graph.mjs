@@ -27,10 +27,10 @@ export const FAILURE_RULES = Object.freeze([
   'hreflang-target',
   'accept-language-vary',
   'language-set-cookie',
+  'default-locale-prefix',
 ])
-// TODO(multilingual-seo 5.3)：默认语言前缀 301（任务 2.2）与移除 SSR 语言提示（任务 4.1）合并、
-// 模板自身通过后，把 `default-locale-prefix` 与 `language-prompt-ssr` 移到 FAILURE_RULES（spec 规定为失败级）。
-// 在此之前只警告，避免 CI 的 enforce 检查在这两个改动合并前失败。
+// TODO(multilingual-seo 5.3)：移除 SSR 语言提示（任务 4.1）合并、模板自身通过后，把 `language-prompt-ssr`
+// 移到 FAILURE_RULES（spec 规定为失败级）。在此之前只警告，避免 CI 的 enforce 检查失败。
 export const WARNING_RULES = Object.freeze([
   'h1-duplicate',
   'header-links',
@@ -40,7 +40,6 @@ export const WARNING_RULES = Object.freeze([
   'money-inlinks',
   'footer-links',
   'no-nav-zone',
-  'default-locale-prefix',
   'language-prompt-ssr',
 ])
 

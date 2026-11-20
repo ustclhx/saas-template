@@ -572,8 +572,12 @@ describe('多语言规则', () => {
 
   it('多语言规则计入规则统计与报告', () => {
     const counts = countByRule(run(mlSite({ '/zh': html('', { lang: 'zh', h1: '首页' }) })))
-    expect(counts.failures).toMatchObject({ 'hreflang-reciprocal': 1, 'accept-language-vary': 0 })
-    expect(counts.warnings).toMatchObject({ 'default-locale-prefix': 0, 'language-prompt-ssr': 0 })
+    expect(counts.failures).toMatchObject({
+      'hreflang-reciprocal': 1,
+      'accept-language-vary': 0,
+      'default-locale-prefix': 0,
+    })
+    expect(counts.warnings).toMatchObject({ 'language-prompt-ssr': 0 })
   })
 })
 
@@ -676,10 +680,10 @@ describe('多语言请求规则的纯函数', () => {
       stats: { pages: 0, links: 0, edges: 0, maxDepth: 0 },
     }
     const cookie = { rule: 'language-set-cookie', page: '/', message: 'x' }
-    const prefix = { rule: 'default-locale-prefix', page: '/en', message: 'y' }
-    addFindings(result, [cookie, cookie, prefix])
+    const prompt = { rule: 'language-prompt-ssr', page: '/en', message: 'y' }
+    addFindings(result, [cookie, cookie, prompt])
     expect(result.failures).toEqual([cookie])
-    expect(result.warnings).toEqual([prefix])
+    expect(result.warnings).toEqual([prompt])
   })
 })
 
