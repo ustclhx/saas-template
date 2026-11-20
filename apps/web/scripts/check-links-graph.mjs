@@ -28,9 +28,8 @@ export const FAILURE_RULES = Object.freeze([
   'accept-language-vary',
   'language-set-cookie',
   'default-locale-prefix',
+  'language-prompt-ssr',
 ])
-// TODO(multilingual-seo 5.3)：移除 SSR 语言提示（任务 4.1）合并、模板自身通过后，把 `language-prompt-ssr`
-// 移到 FAILURE_RULES（spec 规定为失败级）。在此之前只警告，避免 CI 的 enforce 检查失败。
 export const WARNING_RULES = Object.freeze([
   'h1-duplicate',
   'header-links',
@@ -40,7 +39,6 @@ export const WARNING_RULES = Object.freeze([
   'money-inlinks',
   'footer-links',
   'no-nav-zone',
-  'language-prompt-ssr',
 ])
 
 /** 站内链接中表示语言的查询参数（ML-01：语言只由路径表达） */
