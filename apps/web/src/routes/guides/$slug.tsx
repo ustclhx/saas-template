@@ -1,9 +1,10 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { getGuide } from '../../features/marketing/content.functions.ts'
 import { MarketingShell } from '../../features/marketing/marketing-shell.tsx'
+import { PageBreadcrumb, PageLinkSections } from '../../features/marketing/page-links.tsx'
 import { RichContent } from '../../features/marketing/rich-content.tsx'
 import { originFromMatches, pageHead } from '../../features/seo/metadata.ts'
-import { faqData } from '../../features/seo/structured-data.ts'
+import { breadcrumbData, faqData } from '../../features/seo/structured-data.ts'
 import { m } from '../../paraglide/messages.js'
 import { getLocale } from '../../paraglide/runtime.js'
 
@@ -11,6 +12,7 @@ export const Route = createFileRoute('/guides/$slug')({
   loader: ({ params }) => getGuide({ data: { locale: getLocale(), slug: params.slug } }),
   head: ({ loaderData, params, matches }) => {
     if (!loaderData) return {}
+    const appUrl = originFromMatches(matches)
     return pageHead(
       {
         path: `/guides/${encodeURIComponent(params.slug)}`,
@@ -19,8 +21,11 @@ export const Route = createFileRoute('/guides/$slug')({
         description: loaderData.answer_summary,
         sourceLocale: loaderData.locale,
       },
-      originFromMatches(matches),
-      [faqData(loaderData.faq)],
+      appUrl,
+      [
+        faqData(loaderData.faq),
+        breadcrumbData(loaderData.links.breadcrumb, loaderData.title, appUrl, getLocale()),
+      ],
       loaderData.translations,
     )
   },
@@ -31,10 +36,8 @@ function GuidePage() {
   const guide = Route.useLoaderData()
   return (
     <MarketingShell>
-      <article lang={guide.locale} className="mx-auto grid max-w-3xl gap-6 px-4 py-16">
-        <Link to="/guides" className="text-muted-foreground text-sm hover:text-foreground">
-          ← {m.marketing_guides_back()}
-        </Link>
+      <article lang={guide.locale} className="mx-auto grid max-w-3xl gap-6 px-4 pt-10 pb-16">
+        <PageBreadcrumb trail={guide.links.breadcrumb} current={guide.title} />
         <h1 className="font-bold text-4xl tracking-tight">{guide.title}</h1>
         {/* 结论置顶：读者与 AI 助手都先看到答案，正文只做展开。 */}
         <p data-testid="answer-summary" className="rounded-xl border p-4 text-lg">
@@ -50,6 +53,7 @@ function GuidePage() {
             </div>
           ))}
         </section>
+        <PageLinkSections links={guide.links} />
       </article>
     </MarketingShell>
   )

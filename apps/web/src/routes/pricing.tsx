@@ -2,6 +2,7 @@ import { createFileRoute, notFound as featureNotFound, useRouter } from '@tansta
 import { type ReactNode, useEffect, useState } from 'react'
 import { trackEvent } from '../features/analytics/track.ts'
 import { MarketingShell } from '../features/marketing/marketing-shell.tsx'
+import { StaticPageBreadcrumb, staticTrail } from '../features/marketing/page-links.tsx'
 import { getMarketingPricing } from '../features/marketing/pricing.functions.ts'
 import {
   groupPricingPlans,
@@ -21,7 +22,8 @@ import {
   pricingKind,
 } from '../features/marketing/pricing-page.tsx'
 import { originFromMatches, pageHead, staticPage } from '../features/seo/metadata.ts'
-import { pricingData } from '../features/seo/structured-data.ts'
+import { mainLabel } from '../features/seo/page-links.ts'
+import { breadcrumbData, pricingData } from '../features/seo/structured-data.ts'
 import { getLocale } from '../paraglide/runtime.js'
 import { templateConfig } from '../server/template-config.ts'
 
@@ -37,12 +39,14 @@ export const Route = createFileRoute('/pricing')({
     </PricingFrame>
   ),
   errorComponent: PricingFailed,
-  head: ({ matches, loaderData }) =>
-    pageHead(
-      staticPage('/pricing', getLocale()),
-      originFromMatches(matches),
-      loaderData ? pricingData(loaderData, originFromMatches(matches), getLocale()) : [],
-    ),
+  head: ({ matches, loaderData }) => {
+    const page = staticPage('/pricing', getLocale())
+    const appUrl = originFromMatches(matches)
+    return pageHead(page, appUrl, [
+      breadcrumbData(staticTrail(page.path, page.locale), mainLabel(page), appUrl, page.locale),
+      ...(loaderData ? pricingData(loaderData, appUrl, page.locale) : []),
+    ])
+  },
 })
 
 function PricingFrame({
@@ -56,6 +60,7 @@ function PricingFrame({
 }) {
   return (
     <MarketingShell>
+      <StaticPageBreadcrumb path="/pricing" className="mx-auto max-w-6xl px-4 pt-10" />
       <PricingHero kind={kind} />
       {facts}
       <PricingBody>{children}</PricingBody>

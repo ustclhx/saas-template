@@ -23,6 +23,21 @@ async function* serverMaps(directory) {
 }
 
 /**
+ * 只做具名转导出的仓库源码（如 packages/ui/src/icons.ts 的 `export { … } from 'lucide-react'`）单独成块时，
+ * 产物只有导入导出语句，没有可映射的代码，mappings 为空是正常的。
+ */
+function reexportOnly(sources, contents = []) {
+  return sources.every((source, index) => {
+    if (source.includes('node_modules') || /^[a-z][a-z0-9+.-]*:/i.test(source)) return false
+    const code = (contents[index] ?? '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '')
+      .replace(/export\s+(?:type\s+)?(?:\*|\{[^}]*\})\s+from\s+(['"])[^'"]+\1;?/g, '')
+    return typeof contents[index] === 'string' && code.trim() === ''
+  })
+}
+
+/**
  * 上传前拦截无法在 Sentry 读出源码的 map：仓库源码缺 sourcesContent、mappings 被清空，
  * 或仍指向带自身 map 的 Nitro/Vite 中间产物（二次打包未串接）。至少要有一份 TypeScript 源码。
  */
@@ -32,7 +47,8 @@ export async function assertNodeMaps(directory) {
     const map = JSON.parse(await readFile(path, 'utf8'))
     const sources = map.sources ?? []
     const name = path.slice(directory.length + 1)
-    if (sources.length > 0 && !map.mappings) throw new Error(`Empty source map mappings: ${name}`)
+    if (sources.length > 0 && !map.mappings && !reexportOnly(sources, map.sourcesContent))
+      throw new Error(`Empty source map mappings: ${name}`)
     for (const [index, source] of sources.entries()) {
       const content = map.sourcesContent?.[index]
       if (

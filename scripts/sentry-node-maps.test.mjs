@@ -93,6 +93,29 @@ test('Node map guard rejects maps Sentry cannot resolve to readable TypeScript',
     // 来源全在 node_modules（含中间产物）时 Nitro 清空 mappings。
     await write({ sources: [intermediate], mappings: '' })
     await assert.rejects(assertNodeMaps(directory), /Empty source map mappings/)
+    // 只有转导出的仓库源码单独成块时没有可映射的代码，空 mappings 允许；含实际代码时仍拦截
+    await write(JSON.parse(validMap))
+    await writeFile(
+      join(directory, 'icons.mjs.map'),
+      JSON.stringify({
+        sources: ['../../packages/ui/src/icons.ts'],
+        sourcesContent: [
+          "// 图标入口\nexport {\n  Check,\n  ChevronRight,\n} from 'lucide-react'\n",
+        ],
+        mappings: '',
+      }),
+    )
+    await assertNodeMaps(directory)
+    await writeFile(
+      join(directory, 'icons.mjs.map'),
+      JSON.stringify({
+        sources: ['../../packages/ui/src/icons.ts'],
+        sourcesContent: ["export { Check } from 'lucide-react'\nexport const x = 1\n"],
+        mappings: '',
+      }),
+    )
+    await assert.rejects(assertNodeMaps(directory), /Empty source map mappings: icons/)
+    await rm(join(directory, 'icons.mjs.map'))
     // 二次打包未串接 Vite service map，源码只停在中间 JS。
     await write({
       sources: [intermediate],

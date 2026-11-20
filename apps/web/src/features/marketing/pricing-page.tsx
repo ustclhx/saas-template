@@ -50,7 +50,7 @@ const heroCopy = {
 export function PricingHero({ kind = 'both' }: { kind?: PricingKind | undefined }) {
   const [title, subtitle] = heroCopy[kind]
   return (
-    <section className="px-4 pt-16 pb-10">
+    <section className="px-4 pt-8 pb-10">
       <div className="mx-auto grid max-w-3xl justify-items-center gap-4 text-center">
         <span className="rounded-full border px-3 py-1 text-caption text-muted-foreground">
           {m.pricing_page_eyebrow()}

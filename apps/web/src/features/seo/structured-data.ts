@@ -73,6 +73,31 @@ export function pricingData(catalog: PricingCatalog, appUrl: string, locale: str
   })
 }
 
+/**
+ * BreadcrumbList（openspec seo-internal-linking spec「面包屑」）：与页面上的面包屑一致，沿 parent 链从首页到当前页。
+ * 上级写当前语言的地址；当前页只写名称（最后一项可省略 item，回退页也不会与 canonical 冲突）。
+ */
+export function breadcrumbData(
+  trail: readonly { href: string; label: string }[],
+  current: string,
+  appUrl: string,
+  locale: string,
+) {
+  return {
+    '@context': context,
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      ...trail.map((item, index) => ({
+        '@type': 'ListItem',
+        position: index + 1,
+        name: item.label,
+        item: absoluteUrl(appUrl, localizedPath(item.href, locale)),
+      })),
+      { '@type': 'ListItem', position: trail.length + 1, name: current },
+    ],
+  }
+}
+
 export function faqData(faq: readonly { q: string; a: string }[]) {
   return {
     '@context': context,

@@ -42,6 +42,7 @@ export {
   type OAuthProvider,
   type PaymentProvider,
   type PricingMode,
+  resolveSeoLinking,
   type SeoLinkingConfig,
   type SeoLinkingInput,
   type SeoLinkingMode,

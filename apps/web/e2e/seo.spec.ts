@@ -83,6 +83,56 @@ test('缺少译文的文章：canonical 指向原语言，hreflang 只列真实�
   ).toBe(`/${otherLocale}/blog/welcome`)
 })
 
+// 面包屑与内链区块（seo-internal-linking 3.1–3.3）：真实 <a href>、与面包屑一致的 BreadcrumbList、
+// 声明了 related 的文章才有相关区块，hub 列表链接到全部文章。
+for (const locale of locales) {
+  test(`面包屑、BreadcrumbList 与相关区块（${locale}）`, async ({ page }) => {
+    test.skip(!templateConfig.features.blog, '需要博客')
+    const prefix = locale === defaultLocale ? '' : `/${locale}`
+    await page.goto(`${prefix}/blog/welcome`)
+    const crumbs = page.locator('nav[data-slot="breadcrumb"][data-link-zone="nav"]')
+    await expect(crumbs.locator('a')).toHaveCount(2)
+    const links = await crumbs
+      .locator('a')
+      .evaluateAll((anchors) =>
+        anchors.map((a) => ({ href: a.getAttribute('href'), text: a.textContent?.trim() })),
+      )
+    expect(links.map((link) => link.href)).toEqual([prefix || '/', `${prefix}/blog`])
+    await expect(crumbs.locator('[aria-current="page"]')).toHaveText(
+      (await page.locator('h1').textContent()) ?? '',
+    )
+    // 文章顶部不再有「← 返回」链接
+    await expect(page.locator('article a', { hasText: '←' })).toHaveCount(0)
+    const scripts = await page
+      .locator('script[type="application/ld+json"]')
+      .evaluateAll((nodes) => nodes.map((node) => JSON.parse(node.textContent ?? '{}')))
+    const list = scripts.find((data) => data['@type'] === 'BreadcrumbList')
+    expect(list.itemListElement.map((item: { name: string }) => item.name)).toEqual([
+      ...links.map((link) => link.text),
+      await page.locator('h1').textContent(),
+    ])
+    expect(
+      list.itemListElement
+        .slice(0, -1)
+        .map((item: { item: string }) => new URL(item.item).pathname),
+    ).toEqual(links.map((link) => link.href))
+    // welcome 声明了 related：相关区块在正文之后，锚文本为目标标题
+    const related = page.locator('section[data-link-zone="related"]')
+    await expect(related.locator(`a[href="${prefix}/blog/writing-posts"]`)).toHaveCount(1)
+    // writing-posts 没有声明 related，也不属于任何 group：没有相关与同组区块
+    await page.goto(`${prefix}/blog/writing-posts`)
+    await expect(page.locator('[data-link-zone="related"]')).toHaveCount(0)
+    await expect(
+      page.locator('[data-link-zone="siblings"], [data-link-zone="series"]'),
+    ).toHaveCount(0)
+    // hub：博客列表链接到文章，单页时没有分页
+    await page.goto(`${prefix}/blog`)
+    await expect(page.locator(`main a[href="${prefix}/blog/welcome"]`)).toHaveCount(1)
+    await expect(page.locator('nav[data-slot="pagination"]')).toHaveCount(0)
+    expect((await page.goto(`${prefix}/blog/page/2`))?.status()).toBe(404)
+  })
+}
+
 test('地图发布过滤、robots 与 构建期 PNG 输出', async ({ request }) => {
   const response = await request.get('/sitemap.xml')
   expect(response.status()).toBe(200)

@@ -1,6 +1,8 @@
+import { LinkCardGrid } from '@saas/ui'
 import { Link } from '@tanstack/react-router'
 import { m } from '../../../paraglide/messages.js'
 import { getLocale } from '../../../paraglide/runtime.js'
+import { routerLink } from '../page-links.tsx'
 
 export interface PostSummary {
   readonly slug: string
@@ -35,26 +37,29 @@ export function TagLinks({ tags }: { tags: readonly string[] }) {
   )
 }
 
+/**
+ * hub 列表（openspec seo-internal-linking 3.2，设计稿 seo-internal-linking/Hub.dc.html）：桌面两列卡片，
+ * 标题即文章主词（titleMain 默认取标题），整张卡片是一个链接；链接按正文统计（不加区域标记）。
+ */
 export function PostList({ posts }: { posts: readonly PostSummary[] }) {
   const locale = getLocale()
   if (posts.length === 0) return <p className="text-muted-foreground">{m.marketing_blog_empty()}</p>
   return (
-    <ul className="grid gap-8">
-      {posts.map((post) => (
-        <li key={post.slug} className="grid gap-2">
-          <p className="text-muted-foreground text-sm">
+    <LinkCardGrid
+      columns={2}
+      zone={null}
+      renderLink={routerLink}
+      items={posts.map((post) => ({
+        href: `/blog/${encodeURIComponent(post.slug)}`,
+        title: post.title,
+        eyebrow: (
+          <>
             <time dateTime={post.date}>{formatDate(post.date, locale)}</time>
             {post.draft && ` · ${m.marketing_blog_draft()}`}
-          </p>
-          <h2 className="font-semibold text-xl">
-            <Link to="/blog/$slug" params={{ slug: post.slug }} className="hover:underline">
-              {post.title}
-            </Link>
-          </h2>
-          <p className="text-muted-foreground">{post.summary}</p>
-          <TagLinks tags={post.tags} />
-        </li>
-      ))}
-    </ul>
+          </>
+        ),
+        description: post.summary,
+      }))}
+    />
   )
 }

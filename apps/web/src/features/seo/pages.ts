@@ -1,8 +1,9 @@
 import { templateConfig } from '../../server/template-config.ts'
-import { listPosts, listTags, localizedEntries } from '../marketing/content.ts'
+import { hubPageCount, listPosts, listTags, localizedEntries } from '../marketing/content.ts'
 import { contentParents } from './content-parents.ts'
 import type { SeoPage } from './metadata.ts'
 import { localizedPath, staticPage } from './metadata.ts'
+import { hubPagePath } from './page-links.ts'
 import { projectPages } from './pages.project.ts'
 
 /** 内容集合 frontmatter 中的内链字段（content-collections.ts 已按集合补上默认 parent） */
@@ -93,18 +94,23 @@ export function publicPages(
           cover: post.cover,
         })),
       )
+      const { hubPageSize } = config.seo.linking
+      const blog = staticPage('/blog', locale)
+      pages.push(...hubPages(blog, posts.length, hubPageSize))
       // 标签页按当前语言生成（含回退文章），各语言都是真实页面
-      pages.push(
-        ...listTags(posts).map((tag) => ({
+      for (const tag of listTags(posts)) {
+        const hub: SeoPage = {
           path: `/blog/tags/${encodeURIComponent(tag)}`,
           locale,
           title: locale === 'zh' ? `标签“${tag}”下的文章` : `Posts tagged “${tag}”`,
           titleMain: locale === 'zh' ? `标签：${tag}` : `Tag: ${tag}`,
           anchorShort: tag,
           parent: '/blog',
-          description: `${staticPage('/blog', locale).description} · ${tag}`,
-        })),
-      )
+          description: `${blog.description} · ${tag}`,
+        }
+        const count = posts.filter((post) => post.tags.includes(tag)).length
+        pages.push(hub, ...hubPages(hub, count, hubPageSize))
+      }
     }
     pages.push(
       ...localizedEntries(content.legal, locale, defaultLocale).map((page) => ({
@@ -152,6 +158,27 @@ export function publicPages(
     // 项目自有页面（pages.project.ts）与模板清单合并
     pages.push(...projectPages({ locale, defaultLocale, now, config }))
     return pages
+  })
+}
+
+/**
+ * hub 第 2 页起的分页（openspec seo-internal-linking spec「列表页列出下级」）：下级超过 `hubPageSize` 时分页，
+ * 各分页进入站点地图，上级是 hub 首页；分页之间由分页导航互相链接，都可从 hub 首页到达。
+ */
+export function hubPages(hub: SeoPage, total: number, pageSize: number): SeoPage[] {
+  const zh = hub.locale === 'zh'
+  const main = hub.titleMain ?? hub.title
+  return Array.from({ length: Math.max(0, hubPageCount(total, pageSize) - 1) }, (_, index) => {
+    const page = index + 2
+    const suffix = zh ? `第 ${page} 页` : `Page ${page}`
+    return {
+      path: hubPagePath(hub.path, page),
+      locale: hub.locale,
+      title: `${hub.title} · ${suffix}`,
+      titleMain: `${main} · ${suffix}`,
+      parent: hub.path,
+      description: `${hub.description} · ${suffix}`,
+    }
   })
 }
 
