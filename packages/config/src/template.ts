@@ -123,6 +123,12 @@ export interface SeoLinkingConfig {
    * - 构建后链接图检查：声明了 `previewHost` 的站点各自成图，以该主机名作 Host 请求 preview，不做 DNS 解析。
    */
   readonly sites: readonly SeoLinkingSite[]
+  /**
+   * 链接图多语言检查中额外视为「语言 Cookie」的名称（公开页响应不得 `Set-Cookie`，ML-03／ML-05）。
+   * Paraglide 的 Cookie 名与旧版偏好 Cookie 名已内置，名称含 lang／locale 的 Cookie 也会被识别；只在项目用了
+   * 其他名称时填写。
+   */
+  readonly languageCookies: readonly string[]
 }
 
 export interface SeoLinkingSite {
@@ -146,6 +152,7 @@ export interface SeoLinkingInput {
   hubPageSize?: number
   groupLinksMax?: number
   sites?: readonly SeoLinkingSite[]
+  languageCookies?: readonly string[]
 }
 
 /** 主题预设名单（packages/ui/src/styles/presets/*.css）；@saas/web 的测试断言它与 @saas/ui 的 UI_PRESETS 一致 */
@@ -452,6 +459,7 @@ export const templateConfigDefaults = {
       hubPageSize: 100,
       groupLinksMax: 5,
       sites: [],
+      languageCookies: [],
     },
   },
   ui: { preset: 'neutral', shape: 'rounded', density: 'default', appLayout: 'sidebar' },
@@ -554,6 +562,7 @@ export function resolveSeoLinking(input: SeoLinkingInput | undefined): SeoLinkin
       locales: [...site.locales],
       ...(site.previewHost !== undefined && { previewHost: site.previewHost.toLowerCase() }),
     })),
+    languageCookies: [...(input?.languageCookies ?? d.languageCookies)],
   }
   if (!['report', 'enforce'].includes(linking.mode)) fail("mode must be 'report' or 'enforce'")
   const count = (value: number, path: string, min = 0) => {
@@ -591,6 +600,10 @@ export function resolveSeoLinking(input: SeoLinkingInput | undefined): SeoLinkin
     if (previewHosts.has(host)) fail(`sites declares previewHost ${host} more than once`)
     previewHosts.add(host)
   }
+  // Cookie 名为 RFC 6265 的 token
+  for (const name of linking.languageCookies)
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name))
+      fail(`languageCookies must be cookie names (got ${JSON.stringify(name)})`)
   const groups = new Set<string>()
   for (const series of linking.series) {
     path(series.group, 'series[].group')
