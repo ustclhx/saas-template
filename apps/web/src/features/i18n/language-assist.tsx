@@ -1,15 +1,13 @@
-import { LanguagePrompt } from '@saas/ui'
 import { useLocation } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
-import { m } from '../../paraglide/messages.js'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { baseLocale, getLocale, type Locale, locales } from '../../paraglide/runtime.js'
 import { templateConfig } from '../../server/template-config.ts'
 import type { PageAlternates } from '../seo/alternates.ts'
 import { browserLanguages, preferredLocale } from './browser-locale.ts'
-import { textDirection } from './direction.ts'
 import { homeLocaleTarget, readHomeLocale, signedInHint } from './home-locale.ts'
 import { usePageAlternates } from './page-alternates.ts'
-import { rememberLocale } from './preference.ts'
+
+const LanguagePromptView = lazy(() => import('./language-prompt-view.tsx'))
 
 /** 本浏览器关闭过语言提示的记录（localStorage）；任何语言的提示关闭一次后都不再出现 */
 export const PROMPT_DISMISSED_KEY = 'saas:language-prompt-dismissed'
@@ -109,24 +107,17 @@ export function LanguageAssist() {
   }, [pathname, locale, alternates])
 
   if (!prompt) return null
-  const options = { locale: prompt.locale }
   return (
-    <LanguagePrompt
-      key={prompt.locale}
-      href={prompt.href}
-      hrefLang={prompt.locale}
-      dir={textDirection(prompt.locale)}
-      labels={{
-        region: m.i18n_prompt_region({}, options),
-        message: m.i18n_prompt_message({}, options),
-        action: m.i18n_prompt_action({}, options),
-        close: m.i18n_prompt_close({}, options),
-      }}
-      onFollow={() => rememberLocale(prompt.locale)}
-      onDismiss={() => {
-        dismissPrompt()
-        setPrompt(null)
-      }}
-    />
+    <Suspense fallback={null}>
+      <LanguagePromptView
+        key={prompt.locale}
+        locale={prompt.locale}
+        href={prompt.href}
+        onDismiss={() => {
+          dismissPrompt()
+          setPrompt(null)
+        }}
+      />
+    </Suspense>
   )
 }

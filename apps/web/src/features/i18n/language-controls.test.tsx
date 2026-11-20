@@ -91,7 +91,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 20)))
+const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 100)))
 
 describe.runIf(other !== undefined)('语言提示条（multilingual-seo 4.2）', () => {
   const target = other as Locale
@@ -105,10 +105,10 @@ describe.runIf(other !== undefined)('语言提示条（multilingual-seo 4.2）',
     browser([`${target}-CN`, 'en'])
     render(<LanguageAssist />)
     expect(document.querySelector('[data-language-prompt]')).toBeNull()
-    await settle()
+    // 提示条组件按需懒加载：首次加载模块较慢
+    const link = await screen.findByRole('link', {}, { timeout: 5_000 })
     const prompt = document.querySelector('[data-language-prompt]') as HTMLElement
     expect(prompt.getAttribute('lang')).toBe(target)
-    const link = screen.getByRole('link')
     expect(link.getAttribute('href')).toBe(`${prefix}/pricing`)
     expect(link.getAttribute('hreflang')).toBe(target)
     expect(link.textContent).toBe(m.i18n_prompt_action({}, { locale: target }))

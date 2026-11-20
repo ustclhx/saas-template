@@ -4,11 +4,11 @@
 import { Check } from 'lucide-react'
 import type { MouseEvent } from 'react'
 import type { IconComponentProps } from '../lib/icon-context.tsx'
+import { triggerVariants } from '../lib/select-trigger.ts'
 import { useShape } from '../lib/shape-context.tsx'
 import { useSize } from '../lib/size-context.tsx'
 import { cn } from '../lib/utils.ts'
 import { DropdownContent, DropdownMenu, DropdownTrigger, MenuItem } from './dropdown.tsx'
-import { triggerVariants } from './select.tsx'
 
 export interface LanguageMenuItem {
   /** 语言 id，同时作为链接的 hreflang 与文字的 lang */
