@@ -9,9 +9,9 @@ import {
   type Locale,
   locales,
   localizeHref,
-  localizeUrl,
 } from '../../paraglide/runtime.js'
 import { isPrerenderedPath } from '../marketing/prerender.ts'
+import { documentAlternates, localeSwitchHref } from '../seo/alternates.ts'
 import { isAppAreaPath } from './app-area.ts'
 import { saveLanguagePreference } from './preference.functions.ts'
 import { rememberLocale } from './preference.ts'
@@ -82,11 +82,12 @@ export function LanguageControls({
     try {
       await saveLanguagePreference({ data: next })
       rememberLocale(next)
-      // 完整导航让账号语言、SSR 与客户端同时刷新；营销页始终以目的 URL 为准。
+      // 完整导航让账号语言、SSR 与客户端同时刷新；营销页始终以目的 URL 为准，
+      // 目标取本页 hreflang 声明的该语言版本（本地化 slug、未翻译页见 seo/alternates.ts）。
       window.location.assign(
         isAppAreaPath(window.location.pathname)
           ? window.location.href
-          : localizeUrl(window.location.href, { locale: next }).href,
+          : localeSwitchHref(window.location.href, next, documentAlternates()),
       )
     } catch {
       setError(m.i18n_save_failed())

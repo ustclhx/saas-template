@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>语言提示条（桌面 · 深色）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; background: #171717; color: #f5f5f5; font-family: Inter, ui-sans-serif, system-ui, sans-serif">
+  <dc-import name="Main" dark="{{yes}}" corner="{{corner}}" hint-size="1440px,900px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"corner":{"editor":"enum","options":["right","left"],"default":"right"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { yes: true, corner: this.props.corner ?? 'right' };
+  }
+}
+</script>
+</body>
+</html>

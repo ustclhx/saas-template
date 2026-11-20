@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>语言提示条规格与变更提议</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+sc-if,sc-for{display:contents}
+svg{flex-shrink:0}
+th,td{text-align:start;vertical-align:top;padding:8px 12px;border-bottom:1px solid rgba(23,23,23,0.12)}
+th{font-weight:600;color:#6b6b6b;font-size:12px;line-height:16px}
+</style>
+</helmet>
+<div style="width: 1100px; min-height: 1500px; padding: 48px; background: #fafafa; color: #171717; font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans Arabic', sans-serif; font-size: 14px; line-height: 20px; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; gap: 36px">
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 16px; line-height: 22px; font-weight: 600">1 · 构成与 token（全部取现有基线）</h2>
+    <table style="border-collapse: collapse; width: 100%; background: #ffffff; border-radius: 12px; box-shadow: 0 0 0 1px rgba(0,0,0,0.06)">
+      <thead><tr><th>部分</th><th>实现</th><th>说明</th></tr></thead>
+      <tbody>
+        <sc-for list="{{anatomy}}" as="row" hint-placeholder-count="8">
+          <tr><td style="font-weight: 500; white-space: nowrap">{{row.part}}</td><td><code>{{row.impl}}</code></td><td style="color: #6b6b6b">{{row.note}}</td></tr>
+        </sc-for>
+      </tbody>
+    </table>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 16px; line-height: 22px; font-weight: 600">2 · 文案变体（用建议语言书写，容器带 lang / dir）</h2>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+      <sc-for list="{{variants}}" as="v" hint-placeholder-count="6">
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <p style="margin: 0; font-size: 12px; line-height: 16px; color: #6b6b6b">{{v.note}}</p>
+          <aside lang="{{v.lang}}" dir="{{v.dir}}" aria-label="{{v.region}}" style="width: 360px; padding: 12px 8px 14px 14px; border-radius: 12px; background: #ffffff; box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06), 0 3px 3px -1.5px rgba(0,0,0,0.06), 0 6px 6px -3px rgba(0,0,0,0.06), 0 12px 12px -6px rgba(0,0,0,0.06); display: flex; gap: 10px; align-items: flex-start">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b6b6b" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-top: 2px"><path d="m5 8 6 6"></path><path d="m4 14 6-6 2-3"></path><path d="M2 5h12"></path><path d="M7 2h1"></path><path d="m22 22-5-10-5 10"></path><path d="M14 18h6"></path></svg>
+            <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+              <p style="margin: 0; font-weight: 500">{{v.message}}</p>
+              <a href="#" hreflang="{{v.lang}}" style="align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px 0 12px; border-radius: 8px; background: #171717; color: #fafafa; font-weight: 500; text-decoration: none">{{v.action}}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform: {{v.arrowFlip}}"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></a>
+            </div>
+            <button type="button" aria-label="{{v.close}}" style="width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: #6b6b6b; display: inline-flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
+          </aside>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 16px; line-height: 22px; font-weight: 600">3 · 不占版面：服务端 HTML 与水合后对比</h2>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+      <sc-for list="{{flow}}" as="col" hint-placeholder-count="2">
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <p style="margin: 0; font-size: 12px; line-height: 16px; color: #6b6b6b">{{col.label}}</p>
+          <div style="position: relative; height: 200px; border-radius: 8px; background: #ffffff; box-shadow: 0 0 0 1px rgba(0,0,0,0.06); padding: 16px; display: flex; flex-direction: column; gap: 8px; overflow: hidden">
+            <span style="height: 12px; width: 40%; border-radius: 4px; background: #e5e5e5"></span>
+            <span style="height: 8px; width: 90%; border-radius: 4px; background: #f4f4f5"></span>
+            <span style="height: 8px; width: 84%; border-radius: 4px; background: #f4f4f5"></span>
+            <span style="height: 8px; width: 88%; border-radius: 4px; background: #f4f4f5"></span>
+            <span style="height: 8px; width: 60%; border-radius: 4px; background: #f4f4f5"></span>
+            <sc-if value="{{col.prompt}}" hint-placeholder-val="{{false}}">
+              <div style="position: absolute; right: 12px; bottom: 12px; width: 200px; padding: 8px 10px; border-radius: 12px; background: #ffffff; box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 3px 3px -1.5px rgba(0,0,0,0.06), 0 12px 12px -6px rgba(0,0,0,0.06); font-size: 12px; line-height: 16px; font-weight: 500">本页有中文版本 · position: fixed</div>
+            </sc-if>
+          </div>
+          <p style="margin: 0; font-size: 12px; line-height: 16px">{{col.note}}</p>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: 12px; background: #ffffff; box-shadow: 0 0 0 1px rgba(0,0,0,0.06)">
+      <p style="margin: 0; font-weight: 600">不出现的情况（无空 / 加载 / 错误态：组件只有「显示」与「不渲染」两种）</p>
+      <sc-for list="{{hidden}}" as="h" hint-placeholder-count="6"><p style="margin: 0; color: #6b6b6b">· {{h}}</p></sc-for>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 16px; line-height: 22px; font-weight: 600">4 · token / 组件变更提议（待使用者确认）</h2>
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <sc-for list="{{proposals}}" as="pr" hint-placeholder-count="5">
+        <div style="display: flex; gap: 12px; padding: 14px 16px; border-radius: 12px; background: #ffffff; box-shadow: 0 0 0 1px rgba(0,0,0,0.06)">
+          <span style="font-weight: 700; color: #3362b1; width: 20px">{{pr.n}}</span>
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <p style="margin: 0; font-weight: 600">{{pr.title}}</p>
+            <p style="margin: 0; color: #6b6b6b">{{pr.body}}</p>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <p style="margin: 0; color: #6b6b6b">无新增颜色、字号、圆角或阴影 token。</p>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1100,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      anatomy: [
+        { part: '容器', impl: 'aside[lang][dir] · fixed · z-(--z-sticky) · bg-surface-5 shadow-surface-5 rounded-xl', note: '与 Ask AI 同一阴影层级；深色下 surface-5 更亮，与页面区分。aria-label 用建议语言。print:hidden' },
+        { part: '宽度与位置', impl: '桌面 w-90（360px）右下 · 手机 inset-x-3 底部', note: '叠在右下浮动组（主题切换、Ask AI）之上 12px；没有浮动组时贴底 16px（手机 12px + safe-area）' },
+        { part: '图标', impl: 'Languages size-4 text-muted-foreground', note: '装饰，aria-hidden；需在 @saas/ui/icons 新增导出（提议 ②）' },
+        { part: '文案', impl: 'text-body font-medium text-foreground', note: '一句话，取目标语言的 messages；可换行，不截断' },
+        { part: '链接', impl: 'Button asChild size="sm"（手机 lg）→ <a href hreflang> + trailingIcon ArrowRight', note: '普通链接整页跳转；目标取本页 hreflang 中对应语言的地址，不拼路径' },
+        { part: '关闭', impl: 'Button variant="ghost" size="icon-sm"（手机 44px 触控区）+ X', note: 'aria-label 必传（建议语言）；写 localStorage（try/catch），本浏览器不再提示' },
+        { part: '焦点', impl: 'focus-visible:outline-(--focus-ring)', note: '不抢焦点；Tab 顺序在页尾；Esc 不处理（非对话框）' },
+        { part: '链接图', impl: 'data-link-zone="nav" · data-language-prompt', note: '不在服务端 HTML 中出现，检查脚本据此断言' }
+      ],
+      variants: [
+        { note: '中文（英文页上，浏览器 zh-CN）', lang: 'zh', dir: 'ltr', region: '语言建议', message: '本页有中文版本', action: '查看中文版', close: '关闭语言提示', arrowFlip: 'none' },
+        { note: 'English（中文页上，浏览器 en-US）', lang: 'en', dir: 'ltr', region: 'Language suggestion', message: 'This page is available in English', action: 'View in English', close: 'Dismiss language suggestion', arrowFlip: 'none' },
+        { note: '繁體中文（前缀 /zh-hant）', lang: 'zh-Hant', dir: 'ltr', region: '語言建議', message: '本頁有繁體中文版本', action: '查看繁體中文版', close: '關閉語言提示', arrowFlip: 'none' },
+        { note: '日本語', lang: 'ja', dir: 'ltr', region: '言語の提案', message: 'このページは日本語でもご覧いただけます', action: '日本語で見る', close: '言語の提案を閉じる', arrowFlip: 'none' },
+        { note: 'Deutsch（较长文案，换行不截断）', lang: 'de', dir: 'ltr', region: 'Sprachvorschlag', message: 'Diese Seite ist auch auf Deutsch verfügbar', action: 'Auf Deutsch ansehen', close: 'Sprachvorschlag schließen', arrowFlip: 'none' },
+        { note: 'العربية（RTL：整体镜像，箭头翻转）', lang: 'ar', dir: 'rtl', region: 'اقتراح اللغة', message: 'هذه الصفحة متاحة باللغة العربية', action: 'عرض بالعربية', close: 'إغلاق اقتراح اللغة', arrowFlip: 'scaleX(-1)' }
+      ],
+      flow: [
+        { label: '服务端 / 预渲染 HTML、关闭 JS', prompt: false, note: '没有提示条、没有首帧脚本、没有 data-locale-suggestion 属性；正文位置即最终位置。' },
+        { label: '水合后（浏览器语言 ≠ 页面语言，且 hreflang 有该语言）', prompt: true, note: '提示条浮在内容之上，正文不移动：CLS 增量 0。手机上可能遮住正文底部一小块，关闭即可。' }
+      ],
+      hidden: [
+        '服务端渲染、预渲染与未启用 JS 时',
+        'navigator.languages 的首选匹配就是当前页语言',
+        '本页 hreflang 中没有匹配语言（未翻译页不提示）',
+        '本浏览器已关闭过（localStorage 有记录；读取失败时只是本次照常显示）',
+        '应用区、后台与打印时；只在公开页挂载',
+        '首页记住语言（ML-09）已经触发跳转时'
+      ],
+      proposals: [
+        { n: '①', title: '新组件 LanguagePrompt（packages/ui）', body: '纯展示：属性 href、hrefLang、lang、dir、labels（region、message、action、close）与 onDismiss；挂载时机、候选语言与 localStorage 由 apps/web 负责。/dev/ui 补一节，§4 可读文字表登记。' },
+        { n: '②', title: '@saas/ui/icons 新增 Languages 图标', body: '仅一个图标导出（lucide），按需打包。若不同意，去掉图标，文案左侧不留空。' },
+        { n: '③', title: 'globals.css 新增浮层进入 / 退出关键帧', body: 'float-enter（opacity + translateY 8px，160ms）、float-exit（120ms）及只含 opacity 的 reduce 版本；时长对应 spring.moderate。纯 CSS，营销页不加载 motion。' },
+        { n: '④', title: '语言切换器改为链接菜单', body: '现为 Select（选择后 JS 跳转）；规范要求普通链接。改为 Dropdown + MenuItem render <a href>（或新 LanguageMenu），触发器外观不变，选中项 aria-current="page"。' },
+        { n: '⑤', title: '右下浮动组的堆叠偏移', body: '提示条需知道右下已有控件的高度；沿用 body 上的 --floating-controls-offset 思路，新增一个「右下浮动组总高度」变量，不在页面写死 132px。' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

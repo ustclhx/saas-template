@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { templateConfig } from '../../server/template-config.ts'
 import { contentParents } from '../seo/content-parents.ts'
 import { hubPagePath } from '../seo/page-links.ts'
-import { getPageLinks, getPublicPage } from '../seo/pages.server.ts'
+import { getPageLanguages, getPageLinks, getPublicPage } from '../seo/pages.server.ts'
 import {
   findLocalized,
   findPost,
@@ -26,10 +26,12 @@ import {
  * 语言由调用方传入：server function 的请求地址不带语言前缀，服务端无法从 URL 得到页面语言。
  * 详情数据附带 `translations`（真实存在译文的语言），条目自身的 `locale` 是内容的真实语言，
  * 页面据此输出回退页的 canonical 与 hreflang（openspec seo-internal-linking 2.2）。
+ * 缺少译文的条目按 `i18n.untranslated` 处理：默认 `'hide'` 时详情 404、列表不列出（multilingual-seo 3.1）。
+ * hub（列表、标签与分页）的 `translations` 取公开页面清单中存在该地址的语言，hreflang 只列真实版本。
  * `links` 是面包屑与内链区块（seo-internal-linking 3.1–3.3），由公开页面清单在服务端计算。
  */
 
-const { locales, defaultLocale } = templateConfig.i18n
+const { locales, defaultLocale, untranslated } = templateConfig.i18n
 const locale = z
   .string()
   .transform((value) => ((locales as readonly string[]).includes(value) ? value : defaultLocale))
@@ -51,7 +53,7 @@ export const getBlogIndex = createServerFn({ method: 'GET' })
   .handler(({ data }) => {
     requireBlog()
     const now = new Date()
-    const options = { locale: data.locale, defaultLocale, now }
+    const options = { locale: data.locale, defaultLocale, now, untranslated }
     const all = listPosts(allPosts, { ...options, tag: data.tag }).map(
       ({ html, ...summary }) => summary,
     )
@@ -68,6 +70,7 @@ export const getBlogIndex = createServerFn({ method: 'GET' })
       pageCount: hubPageCount(all.length, hubPageSize),
       tags: listTags(listPosts(allPosts, options)),
       breadcrumb: getPageLinks(path, data.locale).breadcrumb,
+      translations: getPageLanguages(path),
       // 第 2 页起的标题、描述与主词来自公开页面清单（与站点地图一致）
       seo: data.page > 1 ? (getPublicPage(path, data.locale) ?? null) : null,
     }
@@ -78,7 +81,7 @@ export const getBlogPost = createServerFn({ method: 'GET' })
   .handler(({ data }) => {
     requireBlog()
     const now = new Date()
-    const post = findPost(allPosts, { ...data, defaultLocale, now })
+    const post = findPost(allPosts, { ...data, defaultLocale, now, untranslated })
     if (!post) throw notFound()
     const published = allPosts.filter((entry) => isPublished(entry, now))
     return {
@@ -95,7 +98,7 @@ export const getBlogPost = createServerFn({ method: 'GET' })
 export const getLegalPage = createServerFn({ method: 'GET' })
   .inputValidator(z.object({ locale, slug }))
   .handler(({ data }) => {
-    const page = findLocalized(allLegalPages, data.slug, data.locale, defaultLocale)
+    const page = findLocalized(allLegalPages, data.slug, data.locale, defaultLocale, untranslated)
     if (!page) throw notFound()
     return {
       ...page,
@@ -112,6 +115,7 @@ export const getDocsPage = createServerFn({ method: 'GET' })
       slug: data.slug,
       locale: data.locale,
       defaultLocale,
+      untranslated,
     })
     if (!result) throw notFound()
     // 文档首页（/docs）显示第一篇的正文，面包屑与区块按 /docs 本身计算
@@ -132,7 +136,7 @@ export const getGuideIndex = createServerFn({ method: 'GET' })
   .handler(({ data }) => {
     requireGuides()
     return {
-      guides: localizedEntries(allGuides, data.locale, defaultLocale).map(
+      guides: localizedEntries(allGuides, data.locale, defaultLocale, untranslated).map(
         ({ html, faq, ...summary }) => summary,
       ),
       breadcrumb: getPageLinks('/guides', data.locale).breadcrumb,
@@ -143,7 +147,7 @@ export const getGuide = createServerFn({ method: 'GET' })
   .inputValidator(z.object({ locale, slug }))
   .handler(({ data }) => {
     requireGuides()
-    const guide = findLocalized(allGuides, data.slug, data.locale, defaultLocale)
+    const guide = findLocalized(allGuides, data.slug, data.locale, defaultLocale, untranslated)
     if (!guide) throw notFound()
     return {
       ...guide,

@@ -1,6 +1,6 @@
 import { allDocs, allGuides, allLegalPages, allPosts } from 'content-collections'
 import { templateConfig } from '../../server/template-config.ts'
-import type { SeoPage } from './metadata.ts'
+import { indexedPages, type SeoPage } from './metadata.ts'
 import { type PageLinks, pageLinks } from './page-links.ts'
 import { publicPages } from './pages.ts'
 
@@ -32,4 +32,14 @@ export function getPageLinks(path: string, locale: string, fallbackParent?: stri
 /** 公开页面清单中的一页（不带语言前缀的 path），用于由清单生成的页面（如 hub 分页）输出 head */
 export function getPublicPage(path: string, locale: string): SeoPage | undefined {
   return currentPages().find((page) => page.path === path && page.locale === locale)
+}
+
+/**
+ * 清单中存在该地址的可索引真实页面的语言（回退页除外），供由清单生成的 hub 页面（标签、分页）输出 hreflang：
+ * `'hide'` 下各语言的标签与页数可能不同，hreflang 只能列出真实存在的版本。
+ */
+export function getPageLanguages(path: string): string[] {
+  return indexedPages(currentPages())
+    .filter((page) => page.path === path)
+    .map((page) => page.locale)
 }

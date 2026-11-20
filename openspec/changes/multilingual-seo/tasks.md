@@ -1,20 +1,20 @@
 ## 1. 设计关卡（协调者 + 使用者）
 
-- [ ] 1.1 按 `ui-design` 产出语言提示条设计稿：手机底部、桌面右下 × 浅色 / 深色，含关闭按钮、进入动画与 `prefers-reduced-motion`；同一画布给出语言切换器在「本页无该语言版本」时的两种处理，供使用者选择
-- [ ] 1.2 使用者在会话中确认设计稿与切换器处理方式；保存副本到 `docs/design-system/prototypes/multilingual-seo/` 并在原型索引登记
+- [x] 1.1 按 `ui-design` 产出语言提示条设计稿：手机底部、桌面右下 × 浅色 / 深色，含关闭按钮、进入动画与 `prefers-reduced-motion`；同一画布给出语言切换器在「本页无该语言版本」时的两种处理，供使用者选择
+- [x] 1.2 使用者在会话中确认设计稿与切换器处理方式；保存副本到 `docs/design-system/prototypes/multilingual-seo/` 并在原型索引登记
 
 ## 2. 配置与路由（可与第 1 组并行）
 
-- [ ] 2.1 `packages/config`：`i18n.untranslated`（`'hide'` 默认 | `'fallback'`）与 `i18n.rememberHomeLocale`（默认 `false`），补类型、默认值与校验测试
+- [x] 2.1 `packages/config`：`i18n.untranslated`（`'hide'` 默认 | `'fallback'`）与 `i18n.rememberHomeLocale`（默认 `false`），补类型、默认值与校验测试
 - [x] 2.2 Paraglide URL 规则输出小写前缀；请求中间件对大小写不同的前缀与默认语言前缀做 301（只看路径）；单测与 e2e 覆盖 `/en/pricing`、`/zh-Hant/…` 形态
 - [x] 2.3 根路由按语言输出 `lang` 与 `dir`（`Intl.Locale` 文本方向，加内置 RTL 表兜底），补单测
 - [x] 2.4 确认公开页在任意 Accept-Language、Cookie 下不跳转、不渲染不同语言；补请求级测试
 
 ## 3. 未翻译页与 hreflang
 
-- [ ] 3.1 `localizedEntries()` 按 `i18n.untranslated` 返回真实条目或补齐；博客、文档、答案页、法律页详情在 `'hide'` 下找不到条目时返回 404，列表与区块只列真实条目
-- [ ] 3.2 `SeoPage.alternates`：hreflang 与语言切换器使用声明的地址；静态校验检查语言合法与双向声明；单测覆盖本地化 slug 场景
-- [ ] 3.3 canonical 一律指向自身（`'fallback'` 下的回退页除外）；站点地图与可索引集合一致；更新 `seo.spec.ts` e2e（未翻译 404、回退开启时的原有场景）
+- [x] 3.1 `localizedEntries()` 按 `i18n.untranslated` 返回真实条目或补齐；博客、文档、答案页、法律页详情在 `'hide'` 下找不到条目时返回 404，列表与区块只列真实条目
+- [x] 3.2 `SeoPage.alternates`：hreflang 与语言切换器使用声明的地址；静态校验检查语言合法与双向声明；单测覆盖本地化 slug 场景
+- [x] 3.3 canonical 一律指向自身（`'fallback'` 下的回退页除外）；站点地图与可索引集合一致；更新 `seo.spec.ts` e2e（未翻译 404、回退开启时的原有场景）
 
 ## 4. 语言提示条与 ML-09（依赖 1.2）
 
