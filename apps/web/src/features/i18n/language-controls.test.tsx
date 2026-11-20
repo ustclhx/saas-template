@@ -167,7 +167,13 @@ describe.runIf(other !== undefined)('首页记住语言（ML-09）', () => {
   let replace: ReturnType<typeof vi.fn>
   beforeEach(() => {
     route.pathname = '/'
-    route.links = hreflang({ [baseLocale]: '/', [target]: prefix })
+    // 关闭多语言的生成项目中 Locale 只有一个取值，两个计算键写在同一字面量里会报重复属性
+    route.links = hreflang(
+      Object.fromEntries([
+        [baseLocale, '/'],
+        [target, prefix],
+      ]),
+    )
     replace = vi.fn()
     vi.spyOn(window, 'location', 'get').mockReturnValue({
       ...window.location,
@@ -210,7 +216,7 @@ describe.runIf(other !== undefined)('语言切换器（multilingual-seo 4.3）',
 
   async function open() {
     render(<LanguageControls placement="bare" />)
-    const trigger = screen.getByRole('button', { name: 'Language' })
+    const trigger = screen.getByRole('button', { name: m.i18n_language() })
     act(() => trigger.focus())
     fireEvent.keyDown(trigger, { key: 'Enter' })
     await screen.findByRole('menu')
@@ -219,7 +225,10 @@ describe.runIf(other !== undefined)('语言切换器（multilingual-seo 4.3）',
 
   it('服务端输出触发器与当前语言，水合前禁用；菜单项不进入服务端 HTML', () => {
     const html = renderToString(<LanguageControls />)
-    expect(html).toContain('English')
+    // 当前语言的自称（默认语言为 zh 的生成项目是「中文」）
+    expect(html).toContain(
+      new Intl.DisplayNames([baseLocale], { type: 'language' }).of(baseLocale) ?? baseLocale,
+    )
     expect(html).toMatch(/<button[^>]*disabled=""/)
     expect(html).not.toContain(`${prefix}/pricing`)
     expect(html).not.toContain('data-locale-suggestion')
