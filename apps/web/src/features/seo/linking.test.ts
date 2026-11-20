@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { templateConfig } from '../../server/template-config.ts'
 import { assertSeoPages, validateSeoPages } from './linking.ts'
 import type { SeoPage } from './metadata.ts'
-import { localizedPath, staticPage } from './metadata.ts'
+import { localizedPath, sameSiteLocales, staticPage } from './metadata.ts'
 import { publicPages } from './pages.ts'
 
 // 项目注册入口返回的页面与模板清单合并（tasks.md 1.4）
@@ -187,20 +187,26 @@ describe('元数据静态校验（1.5）', () => {
     ])
   })
 
-  it('回退页与不可索引页不检查自身声明，地址按语言加前缀', () => {
-    const zh = (path: string, fields: Partial<SeoPage> = {}) => ({
+  it('回退页与不可索引页不检查自身声明，地址按语言加前缀', ({ skip }) => {
+    // 跨站同文页会各自索引，只有同站的非默认语言才能构造回退页。
+    const locale = templateConfig.i18n.enabled
+      ? templateConfig.i18n.locales.find((locale) => locale !== en && sameSiteLocales(locale, en))
+      : undefined
+    if (!locale) return skip()
+
+    const translated = (path: string, fields: Partial<SeoPage> = {}) => ({
       ...page(path, fields),
-      locale: other,
+      locale,
     })
     const report = validateSeoPages([
-      zh('/'),
-      zh('/fallback', { sourceLocale: en, parent: '/missing' }),
-      zh('/private', { indexable: false, parent: undefined }),
-      zh('/broken', { parent: '/missing' }),
+      translated('/'),
+      translated('/fallback', { sourceLocale: en, parent: '/missing' }),
+      translated('/private', { indexable: false, parent: undefined }),
+      translated('/broken', { parent: '/missing' }),
     ])
     expect(report.errors).toEqual([
       expect.stringContaining(
-        `${localizedPath('/broken', other)}: parent 指向不存在的页面 ${localizedPath('/missing', other)}（`,
+        `${localizedPath('/broken', locale)}: parent 指向不存在的页面 ${localizedPath('/missing', locale)}（`,
       ),
     ])
   })

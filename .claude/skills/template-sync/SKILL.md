@@ -6,7 +6,7 @@ description: 在由本模板生成的衍生项目中采纳模板更新：只读�
 # 采纳模板更新
 
 在衍生项目根执行（含 `.template-base.json` 与 `template.config.ts`）。技能接受 `--to <template-v版本|分支|SHA>`，
-默认取最新的 `template-v*` 发布；这是技能输入，不是新 shell CLI。第 1 节克隆目标模板后，完整阅读
+默认取最新的 `template-v*` 发布。技能也接受 `--branch <名称>`。第 1 节克隆目标模板后，完整阅读
 克隆中的 `$TEMPLATE_DIR/docs/create-project.md`「采纳模板更新」与 `$TEMPLATE_DIR/docs/upgrades/README.md`；
 迁移约定见 `$TEMPLATE_DIR/docs/02-project-structure.md` §4。项目里的同名文档停留在基准版本，不以它为准。
 同步脚本同样始终取自**目标版本**的模板克隆，不运行项目里的旧副本。
@@ -35,10 +35,11 @@ git -C "$TEMPLATE_DIR" log --oneline <基准 commit>..<目标>
 
 ## 2. 在本地分支同步
 
-使用者确认后执行；工具只在新分支 `template-sync/<目标短 SHA>` 上提交，不推送、不合并：
+使用者确认后执行。工具在本地同步分支上提交，分支名默认为 `template-sync/<目标短 SHA>`：
 
 ```sh
 node "$TEMPLATE_DIR/scripts/template-sync.mjs" sync --project . --to <目标> \
+  [--branch <名称>] \
   [--skip-migration <tag>]... [--confirm-deployed <版本>]... [--verify-db <空的隔离库 URL>] \
   [--trailer "Co-Authored-By: …"]...
 ```
@@ -62,7 +63,7 @@ node "$TEMPLATE_DIR/scripts/template-sync.mjs" sync --project . --to <目标> \
 冲突逐个处理：先比较模板侧（`git diff refs/template-sync/base refs/template-sync/target -- <文件>`）
 与项目侧改动，向使用者说明取舍后再改；不得整体采用任一方，不得删除冲突文件了事。
 报告「模板已删除、项目中保留的文件」不会被自动删除：逐个检查项目是否仍引用，列出拟删清单，
-经使用者确认后再 `git rm` 并提交；验证因这些文件失败时，提交后按下文重跑。全部解决并提交后，在同步分支上用相同参数重跑第 2 节，
+经使用者确认后再 `git rm` 并提交；验证因这些文件失败时，提交后按下文重跑。全部解决并提交后，在同步分支上保留原参数（包括已指定的 `--branch` 和 `--to`）重跑第 2 节，
 工具会跳过文件合并、继续迁移移植与验证。`PROJECT_SETUP.md` 的新增清单项按需手动吸收。
 
 ## 4. 迁移核对与验证
@@ -150,7 +151,7 @@ secret 只列名称与配置位置，不读取、不输出、不写入其值；�
 | --- | --- |
 | 预检报基准 clean=false 或缺失 | 运行第 6 节基准推断 |
 | 旧生成器拒绝参数 | 基准过旧或参数被手改；核对 `.template-base.json` 的 params，必要时重新推断 |
-| 同步分支已存在 | 切到该分支继续，或确认无用后删除再同步 |
+| 同步分支已存在 | 若是本次同步创建的分支，切到该分支并用原参数继续；否则指定新的 `--branch` |
 | 模板修改了已发布迁移 | 同步停止；向模板维护者反馈，不手改迁移 |
 | 迁移因缺表失败 | 项目删除了该表；确认后用 `--skip-migration`，并检查依赖它的代码 |
 | `drizzle-kit generate` 有变化 | 合并后 schema 与迁移不一致，多为冲突解决遗漏 schema 文件 |

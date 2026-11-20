@@ -497,26 +497,60 @@ describe('多站点与语言前缀（planLinkGraphs）', () => {
     )
   })
 
-  it('多张图的结果合并时明细带主机名，单站点结果原样返回', () => {
+  it('单站点保留原始结果和文本报告', () => {
+    const one = {
+      failures: [{ rule: 'orphan', page: '/a', message: 'x' }],
+      warnings: [],
+      stats: { pages: 2, links: 3, edges: 1, maxDepth: 1 },
+    }
+    const result = mergeGraphResults([{ host: null, result: one }])
+    expect(result).toBe(one)
+    expect(formatReport(result, { mode: 'report' })).toBe(
+      [
+        '链接图检查（mode=report）：2 页，3 个链接，1 条可索引页之间的边，最大点击深度 1',
+        '失败 1 项：',
+        '  orphan: 1',
+        '    - /a  x',
+        '警告 0 项：',
+      ].join('\n'),
+    )
+  })
+
+  it('多站点合并明细与总计，同时按主机报告规则命中和点击深度', () => {
     const finding = { rule: 'orphan', page: '/a', message: 'x' }
+    const warning = { rule: 'depth', page: '/b', message: 'y' }
     const one = {
       failures: [finding],
       warnings: [],
       stats: { pages: 2, links: 3, edges: 1, maxDepth: 1 },
     }
-    expect(mergeGraphResults([{ host: null, result: one }])).toBe(one)
-    expect(
-      mergeGraphResults([
-        { host: 'localhost', result: one },
-        { host: 'east.localhost', result: { ...one, stats: { ...one.stats, maxDepth: 3 } } },
-      ]),
-    ).toEqual({
-      failures: [
-        { ...finding, page: 'localhost/a' },
-        { ...finding, page: 'east.localhost/a' },
-      ],
-      warnings: [],
-      stats: { pages: 4, links: 6, edges: 2, maxDepth: 3 },
+    const two = {
+      failures: [],
+      warnings: [warning],
+      stats: { pages: 4, links: 7, edges: 4, maxDepth: 3 },
+    }
+    const result = mergeGraphResults([
+      { host: 'localhost', result: one },
+      { host: 'east.localhost', result: two },
+    ])
+    expect(result).toEqual({
+      failures: [{ ...finding, page: 'localhost/a' }],
+      warnings: [{ ...warning, page: 'east.localhost/b' }],
+      stats: { pages: 6, links: 10, edges: 5, maxDepth: 3 },
+      sites: {
+        localhost: { pages: 2, links: 3, maxDepth: 1, counts: countByRule(one) },
+        'east.localhost': { pages: 4, links: 7, maxDepth: 3, counts: countByRule(two) },
+      },
     })
+    expect(formatReport(result, { mode: 'report', limit: 0 })).toContain(
+      [
+        '站点 localhost：2 页，3 个链接，最大点击深度 1',
+        '  失败 orphan: 1',
+        '  警告 0 项',
+        '站点 east.localhost：4 页，7 个链接，最大点击深度 3',
+        '  失败 0 项',
+        '  警告 depth: 1',
+      ].join('\n'),
+    )
   })
 })

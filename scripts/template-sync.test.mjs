@@ -233,6 +233,25 @@ test('preflight refuses a dirty working tree and keeps the uncommitted change', 
   assert.equal(await readFile(join(project.dir, 'notes.txt'), 'utf8'), 'draft\n')
 })
 
+test('--branch refuses an invalid name or an unrelated current branch during preflight', async (t) => {
+  const template = await fakeTemplate(t)
+  const project = await fakeProject(t, template)
+  await template.commit({ 'src/app.ts': "export const app = 'v2'\n" }, 'change')
+  const options = { project: project.dir, template: template.dir, log: quiet }
+  await assert.rejects(
+    runSync({ ...options, branch: 'invalid branch' }),
+    (error) =>
+      error instanceof PreflightError && /--branch 必须是有效的 Git 分支名/.test(error.message),
+  )
+  await assert.rejects(
+    runSync({ ...options, branch: 'main' }),
+    (error) => error instanceof PreflightError && /没有匹配的同步记录/.test(error.message),
+  )
+  assert.deepEqual(await branches(project.dir), ['main'])
+  assert.equal(git(project.dir, 'status', '--porcelain'), '')
+  assert.equal((await readBaseRecord(project.dir)).commit, template.first)
+})
+
 test('already up to date reports no update and leaves the project untouched', async (t) => {
   const template = await fakeTemplate(t)
   const project = await fakeProject(t, template)
@@ -593,7 +612,7 @@ writeFileSync(join(values.output, ${JSON.stringify(worker)}), ${JSON.stringify(n
   assert.equal(await readFile(join(project.dir, worker), 'utf8'), projectBindings)
 })
 
-test('conflicts keep markers on the sync branch, list every file and leave the baseline unchanged', async (t) => {
+test('conflicts keep markers and resume on the custom sync branch after resolution', async (t) => {
   const template = await fakeTemplate(t)
   const project = await fakeProject(t, template)
   await project.change(
@@ -604,7 +623,7 @@ test('conflicts keep markers on the sync branch, list every file and leave the b
     'project edits',
   )
   const mainHead = git(project.dir, 'rev-parse', 'HEAD')
-  await template.commit(
+  const target = await template.commit(
     {
       'docs/guide.md': paragraphs(
         'First paragraph rewritten by the template.',
@@ -618,8 +637,12 @@ test('conflicts keep markers on the sync branch, list every file and leave the b
     'template edits',
   )
   const { runner, calls } = stubRunner()
-  const result = await runSync({ project: project.dir, template: template.dir, runner, log: quiet })
+  const branch = 'upgrade/template'
+  const options = { project: project.dir, template: template.dir, branch, runner, log: quiet }
+  const result = await runSync({ ...options, to: target })
   assert.equal(result.status, 'conflicts')
+  assert.equal(result.branch, branch)
+  assert.equal(result.report.branch, branch)
   assert.deepEqual(
     result.report.conflicts.map((item) => item.path),
     ['docs/guide.md'],
@@ -641,9 +664,38 @@ test('conflicts keep markers on the sync branch, list every file and leave the b
   assert.equal((await readBaseRecord(project.dir)).commit, template.first)
   assert.equal(existsSync(join(project.dir, 'packages/db/migrations/0001_tpl_feature.sql')), false)
   assert.deepEqual(calls, [])
+  assert.equal(
+    result.reportPath,
+    join(
+      git(project.dir, 'rev-parse', '--absolute-git-dir'),
+      'template-sync',
+      `${target.slice(0, 12)}.md`,
+    ),
+  )
   const report = await readFile(result.reportPath, 'utf8')
   assert.match(report, /`docs\/guide.md`：三方合并冲突/)
   assert.match(report, /`legacy.txt`（项目改过）/)
+
+  const resolved = paragraphs(
+    'Resolved first paragraph.',
+    'Second paragraph updated by the template.',
+  )
+  await project.change({ 'docs/guide.md': resolved }, 'resolve conflict')
+  const next = await template.commit(
+    { 'src/app.ts': "export const app = 'v3'\n" },
+    'another update',
+  )
+  await assert.rejects(
+    runSync({ ...options, to: next }),
+    (error) => error instanceof PreflightError && /没有匹配的同步记录/.test(error.message),
+  )
+  const resumed = await runSync({ ...options, to: target })
+  assert.equal(resumed.status, 'synced')
+  assert.equal(resumed.branch, branch)
+  assert.equal(resumed.report.resumed, true)
+  assert.equal(await readFile(join(project.dir, 'docs/guide.md'), 'utf8'), resolved)
+  assert.equal(existsSync(join(project.dir, 'packages/db/migrations/0001_tpl_feature.sql')), true)
+  assert.equal((await readBaseRecord(project.dir)).commit, target)
 })
 
 test('a file the template deleted is kept and listed, even when the project never changed it', async (t) => {
@@ -777,6 +829,8 @@ test('--skip-verify merges and ports but never updates the baseline and exits no
       project.dir,
       '--template',
       template.dir,
+      '--branch',
+      'upgrade/skip-verify',
       '--skip-verify',
     ],
     {
@@ -785,6 +839,7 @@ test('--skip-verify merges and ports but never updates the baseline and exits no
   )
   assert.equal(cli.status, 1, cli.stderr)
   assert.match(cli.stderr, /验证已跳过，基准记录未更新/)
+  assert.equal(git(project.dir, 'branch', '--show-current'), 'upgrade/skip-verify')
   assert.equal((await readBaseRecord(project.dir)).commit, template.first)
   assert.match(await readFile(join(project.dir, 'src/app.ts'), 'utf8'), /core\('v2'\)/)
   assert.equal(existsSync(join(project.dir, 'packages/db/migrations/0001_tpl_feature.sql')), true)
