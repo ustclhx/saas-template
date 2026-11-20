@@ -55,6 +55,9 @@ describe('语言路由（默认语言与其他配置语言）', () => {
       expect(gated(path)).toBe(NOT_FOUND_PATH)
     }
     expect(gated('/en/admin')).toBe(NOT_FOUND_PATH)
+    // 前缀忽略大小写，直接 404，不先经过大小写 301
+    expect(gated('/ZH/app')).toBe(NOT_FOUND_PATH)
+    expect(gated('/En/account')).toBe(NOT_FOUND_PATH)
     expect(gated('/app')).toBe('/app')
     expect(gated('/zh/apple')).toBe(enabled ? '/zh/apple' : NOT_FOUND_PATH)
     overwriteGetLocale(() => otherLocale)

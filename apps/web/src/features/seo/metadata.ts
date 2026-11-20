@@ -1,6 +1,7 @@
 import type { AnyRouteMatch } from '@tanstack/react-router'
 import { templateConfig } from '../../server/template-config.ts'
 import { isAppAreaPath } from '../i18n/app-area.ts'
+import { localePrefix } from '../i18n/locale-url.ts'
 import { homePageCopy } from './home-copy.ts'
 
 /**
@@ -88,7 +89,9 @@ const { defaultLocale, enabled } = templateConfig.i18n
 const locales = enabled ? templateConfig.i18n.locales : [defaultLocale]
 export function localizedPath(path: string, locale: string): string {
   const clean = path.replace(/\/+$/, '') || '/'
-  return !enabled || locale === defaultLocale ? clean : `/${locale}${clean === '/' ? '' : clean}`
+  return !enabled || locale === defaultLocale
+    ? clean
+    : `/${localePrefix(locale)}${clean === '/' ? '' : clean}`
 }
 
 export function absoluteUrl(appUrl: string, path: string): string {

@@ -3,7 +3,9 @@ import { UI_PRESETS } from '@saas/ui'
 import type { FontPreload } from '@saas/ui/fonts'
 import { renderToString } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { baseLocale } from '../../paraglide/runtime.js'
 import { templateConfig } from '../../server/template-config.ts'
+import { textDirection } from '../i18n/direction.ts'
 
 // HeadContent / Scripts 依赖路由上下文，这里只关心 <html> 与 <body> 外壳
 vi.mock('@tanstack/react-router', () => ({ HeadContent: () => null, Scripts: () => null }))
@@ -39,6 +41,19 @@ describe('根布局外壳', () => {
     const html = render()
     expect(html).toMatch(new RegExp(`<html[^>]*data-preset="${templateConfig.ui.preset}"`))
     expect(html).toContain('<main>content</main>')
+  })
+
+  it('<html> 输出页面语言的 lang 与 dir；项目扩展可按约定覆盖 dir，不能覆盖 lang', () => {
+    const html = render()
+    expect(html).toMatch(new RegExp(`<html[^>]*lang="${baseLocale}"`))
+    expect(html).toMatch(new RegExp(`<html[^>]*dir="${textDirection(baseLocale)}"`))
+    const overridden = renderToString(
+      <RootDocument floatingControls={false} htmlAttributes={{ dir: 'auto', lang: 'xx' }}>
+        <main />
+      </RootDocument>,
+    )
+    expect(overridden).toMatch(/<html[^>]*dir="auto"/)
+    expect(overridden).toMatch(new RegExp(`<html[^>]*lang="${baseLocale}"`))
   })
 
   it('预设名单只有一个来源：配置校验与组件包一致，当前预设在名单内', () => {

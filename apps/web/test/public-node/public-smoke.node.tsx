@@ -59,7 +59,8 @@ async function main() {
 
   for (const locale of ['en', 'zh']) {
     const response = await localizeRequest(
-      new Request(`https://public.example/${locale}/pricing`),
+      // 默认语言无前缀（/en/pricing 会 301 到 /pricing，openspec multilingual-seo 2.2）
+      new Request(`https://public.example${locale === 'en' ? '' : `/${locale}`}/pricing`),
       runtime,
       async () => {
         assert.equal(getLocale(), locale)

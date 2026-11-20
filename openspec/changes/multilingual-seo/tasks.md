@@ -6,9 +6,9 @@
 ## 2. 配置与路由（可与第 1 组并行）
 
 - [x] 2.1 `packages/config`：`i18n.untranslated`（`'hide'` 默认 | `'fallback'`）与 `i18n.rememberHomeLocale`（默认 `false`），补类型、默认值与校验测试
-- [ ] 2.2 Paraglide URL 规则输出小写前缀；请求中间件对大小写不同的前缀与默认语言前缀做 301（只看路径）；单测与 e2e 覆盖 `/en/pricing`、`/zh-Hant/…` 形态
-- [ ] 2.3 根路由按语言输出 `lang` 与 `dir`（`Intl.Locale` 文本方向，加内置 RTL 表兜底），补单测
-- [ ] 2.4 确认公开页在任意 Accept-Language、Cookie 下不跳转、不渲染不同语言；补请求级测试
+- [x] 2.2 Paraglide URL 规则输出小写前缀；请求中间件对大小写不同的前缀与默认语言前缀做 301（只看路径）；单测与 e2e 覆盖 `/en/pricing`、`/zh-Hant/…` 形态
+- [x] 2.3 根路由按语言输出 `lang` 与 `dir`（`Intl.Locale` 文本方向，加内置 RTL 表兜底），补单测
+- [x] 2.4 确认公开页在任意 Accept-Language、Cookie 下不跳转、不渲染不同语言；补请求级测试
 
 ## 3. 未翻译页与 hreflang
 
