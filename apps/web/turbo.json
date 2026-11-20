@@ -23,7 +23,13 @@
     },
     "build": {
       // vite 的 content-collections 插件在构建时生成内容集合，同样需要随缓存恢复
-      "outputs": ["$TURBO_EXTENDS$", "!dist/**/.dev.vars", ".content-collections/generated/**"]
+      "outputs": [
+        "$TURBO_EXTENDS$",
+        "!dist/**/.dev.vars",
+        ".content-collections/generated/**",
+        // Cloudflare 插件写出的部署配置；vite preview（链接图检查）读取它，缓存命中时也要恢复
+        ".wrangler/deploy/config.json"
+      ]
     },
     "test": {
       // web 与 jobs 的集成测试读写同一个 jobs.lastCronAt 键，串行运行避免互相覆盖
