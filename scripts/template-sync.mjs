@@ -75,6 +75,7 @@ export class PreflightError extends Error {}
  * @typedef {object} SyncOptions
  * @property {string} project Derived project root (Git top level).
  * @property {string} [to] Target ref; defaults to the highest annotated template-v release, or HEAD without releases.
+ * @property {string} [branch] Local sync branch; defaults to `template-sync/<short>`.
  * @property {string} [template] Template URL or path; defaults to the baseline repository.
  * @property {string} [report] Report path; defaults to `<git-dir>/template-sync/<short>.md`.
  * @property {string[]} [confirmDeployed] Versions explicitly confirmed as deployed.
@@ -96,7 +97,7 @@ export function trailerArgs(trailers = []) {
 }
 
 /**
- * Sync a derived project to a template commit on branch `template-sync/<short>`.
+ * Sync a derived project to a template commit on a local sync branch.
  * Preflight failures throw PreflightError before any branch or file change.
  * @param {SyncOptions} options
  * @returns {Promise<{status: 'up-to-date' | 'conflicts' | 'failed' | 'unverified' | 'synced', branch?: string, reportPath?: string, report?: import('./template-sync/report.mjs').SyncReport}>}
@@ -123,6 +124,12 @@ export async function runSync(options) {
     )
   }
   trailerArgs(options.trailers)
+  if (options.branch !== undefined) {
+    const checked = gitRaw(project, ['check-ref-format', '--branch', options.branch])
+    if (checked.status !== 0 || checked.stdout.replace(/\r?\n$/, '') !== options.branch) {
+      throw new PreflightError(`--branch 必须是有效的 Git 分支名：${options.branch}`)
+    }
+  }
   if (!record.clean || !record.commit) {
     throw new PreflightError(
       '基准记录 clean=false：项目生成自有未提交改动的模板，无法确定基准；请运行 template-sync infer-base',
@@ -207,13 +214,25 @@ export async function runSync(options) {
       log(`同步报告：${reportPath}`)
       return { status: 'up-to-date', report, reportPath }
     }
-    const branch = syncBranchName(target)
-    const current = gitRaw(project, ['symbolic-ref', '--quiet', '--short', 'HEAD']).stdout.trim()
-    const resumed = current === branch
-    if (
-      !resumed &&
-      gitRaw(project, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]).status === 0
-    ) {
+    const defaultBranch = syncBranchName(target)
+    const branch = options.branch ?? defaultBranch
+    const branchRef = `refs/heads/${branch}`
+    const current = gitRaw(project, ['symbolic-ref', '--quiet', 'HEAD']).stdout.replace(
+      /\r?\n$/,
+      '',
+    )
+    const resumed = current === branchRef
+    const syncKey = `branch.${branch}.template-sync`
+    const syncRange = `${base}..${target}`
+    if (resumed) {
+      // 自定义分支名不含目标 SHA，恢复时须确认该分支已合并本次区间的文件变更。
+      const previous = gitRaw(project, ['config', '--local', '--get', syncKey]).stdout.trim()
+      if ((previous || branch !== defaultBranch) && previous !== syncRange) {
+        throw new PreflightError(
+          `分支 ${branch} 没有匹配的同步记录；请在同步分支使用原目标，或切回原分支并指定新的 --branch`,
+        )
+      }
+    } else if (gitRaw(project, ['show-ref', '--verify', '--quiet', branchRef]).status === 0) {
       throw new PreflightError(`同步分支 ${branch} 已存在；切换到该分支继续，或删除后重新同步`)
     }
 
@@ -290,6 +309,7 @@ export async function runSync(options) {
     if (!resumed) {
       git(project, ['switch', '--quiet', '--create', branch])
       Object.assign(report, applyTemplateChanges(project, changes))
+      if (branch !== defaultBranch) git(project, ['config', '--local', syncKey, syncRange])
       if (report.conflicts.length) {
         report.checks.push({
           name: '依赖安装与验证',
@@ -473,9 +493,10 @@ export async function runSync(options) {
 const usage = `用法：node scripts/template-sync.mjs <命令> [参数]
 
 命令：
-  sync --project <路径> [--to <ref>] [--template <URL|路径>] [--report <文件>]
+  sync --project <路径> [--to <ref>] [--branch <名称>] [--template <URL|路径>] [--report <文件>]
        [--confirm-deployed <已部署版本>]... [--skip-migration <模板迁移 tag>]... [--verify-db <空库 URL>] [--skip-verify]
        [--trailer "<键>: <值>"]...（追加到同步提交，如 Co-Authored-By）
+       --branch 指定创建或继续的本地同步分支，默认 template-sync/<目标短 SHA>。
   infer-base --project <路径> [--template <URL|路径>] [--since <YYYY-MM-DD>] [--until <YYYY-MM-DD>]
              [--generation-commit <完整 SHA>] [--param key=value]... [--threshold <行数，默认 50>]
              [--write <候选完整 SHA> [--force]]
@@ -491,6 +512,7 @@ async function syncCommand(args) {
     options: {
       project: { type: 'string' },
       to: { type: 'string' },
+      branch: { type: 'string' },
       template: { type: 'string' },
       report: { type: 'string' },
       'confirm-deployed': { type: 'string', multiple: true },
@@ -504,6 +526,7 @@ async function syncCommand(args) {
   const result = await runSync({
     project: values.project,
     to: values.to,
+    branch: values.branch,
     template: values.template,
     report: values.report,
     confirmDeployed: values['confirm-deployed'] ?? [],

@@ -110,7 +110,7 @@ export function renderReport(report) {
     `## 冲突（${report.conflicts.length}）`,
     '',
     report.conflicts.length
-      ? `${report.conflicts.map((item) => `- \`${item.path}\`：${item.reason}`).join('\n')}\n\n解决冲突并提交后，在同步分支上用相同的 --to 重新运行同步，继续迁移移植与验证。`
+      ? `${report.conflicts.map((item) => `- \`${item.path}\`：${item.reason}`).join('\n')}\n\n解决冲突并提交后，在同步分支上用原参数重新运行同步（包括已指定的 --to 和 --branch），继续迁移移植与验证。`
       : '- 无',
     '',
     `## 模板已删除、项目中保留的文件（${report.retained?.length ?? 0}）`,

@@ -18,6 +18,7 @@ const WEB_ROOT = new URL('..', import.meta.url).pathname
  * - 环境变量 APP_URL 覆盖示例值（CI 以此指定站点地址）。
  * 构建后链接图检查（check-links.mjs）在 dist/server/.dev.vars 缺失时也用它：Turbo 缓存刻意不保存
  * .dev.vars（apps/web/turbo.json），缓存命中恢复的产物里没有这个文件。结果只写入已忽略的 dist，不进入提交。
+ * 项目插件用 `mergeDevVars(base, overrides)` 添加或覆盖变量，因为空密钥已自动填值，直接追加会产生重复键。
  */
 export function fallbackDevVars(root = WEB_ROOT): string | null {
   const example = join(root, '.dev.vars.example')
@@ -32,19 +33,36 @@ export function fallbackDevVars(root = WEB_ROOT): string | null {
   return source
 }
 
-/** 把 `overrides` 中的 `KEY=value` 行写入 `base`：已有的键原位替换，新键追加到末尾 */
+/**
+ * 项目插件用此函数添加或覆盖 preview 变量。已有键保留首次出现的位置，同一键以最后赋值为准，
+ * `overrides` 优先于 `base`，新键追加到末尾。
+ */
 export function mergeDevVars(base: string, overrides: string): string {
-  let merged = base
-  const extra: string[] = []
-  for (const line of overrides.split(/\r?\n/)) {
-    const key = /^([A-Za-z_][A-Za-z0-9_]*)=/.exec(line)?.[1]
-    if (!key) continue
-    const pattern = new RegExp(`^${key}=.*$`, 'm')
-    if (pattern.test(merged)) merged = merged.replace(pattern, () => line)
-    else extra.push(line)
+  const assignment = /^([A-Za-z_][A-Za-z0-9_]*)=/
+  const newline = base.includes('\r\n') ? '\r\n' : '\n'
+  const lines: string[] = []
+  const positions = new Map<string, number>()
+  for (const line of base.split(/\r?\n/)) {
+    const key = assignment.exec(line)?.[1]
+    const position = key ? positions.get(key) : undefined
+    if (position !== undefined) lines[position] = line
+    else {
+      if (key) positions.set(key, lines.length)
+      lines.push(line)
+    }
   }
-  if (extra.length === 0) return merged
-  return `${merged.replace(/\n*$/, '\n')}${extra.join('\n')}\n`
+
+  const extra = new Map<string, string>()
+  for (const line of overrides.split(/\r?\n/)) {
+    const key = assignment.exec(line)?.[1]
+    if (!key) continue
+    const position = positions.get(key)
+    if (position !== undefined) lines[position] = line
+    else extra.set(key, line)
+  }
+  const merged = lines.join(newline)
+  if (extra.size === 0) return merged
+  return `${merged.replace(/(?:\r?\n)*$/, newline)}${[...extra.values()].join(newline)}${newline}`
 }
 
 export function prerenderEnvFallback(root = WEB_ROOT): Plugin {

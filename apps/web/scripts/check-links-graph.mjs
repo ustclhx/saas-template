@@ -258,7 +258,7 @@ export function planLinkGraphs({ baseUrl, i18n, sites = [], localize }) {
   }))
 }
 
-/** 多张链接图的结果合并为一份：明细的页面地址前加主机名以区分站点，统计求和（最大深度取最大值） */
+/** 多站点保留各站点的摘要，明细带主机名；汇总统计求和，最大深度取最大值 */
 export function mergeGraphResults(entries) {
   if (entries.length === 1 && entries[0].host === null) return entries[0].result
   const label = (host, items) => items.map((item) => ({ ...item, page: `${host}${item.page}` }))
@@ -271,6 +271,12 @@ export function mergeGraphResults(entries) {
       edges: entries.reduce((sum, { result }) => sum + result.stats.edges, 0),
       maxDepth: Math.max(0, ...entries.map(({ result }) => result.stats.maxDepth)),
     },
+    sites: Object.fromEntries(
+      entries.map(({ host, result }) => {
+        const { pages, links, maxDepth } = result.stats
+        return [host, { pages, links, maxDepth, counts: countByRule(result) }]
+      }),
+    ),
   }
 }
 
@@ -503,7 +509,7 @@ export function countByRule(result) {
   }
 }
 
-/** 文本报告：各规则命中数与每条规则最多 `limit` 条明细 */
+/** 文本报告：各规则命中数与每条规则最多 `limit` 条明细，多站点附各站点摘要 */
 export function formatReport(result, { mode, limit = 20 } = {}) {
   const counts = countByRule(result)
   const lines = [
@@ -522,6 +528,18 @@ export function formatReport(result, { mode, limit = 20 } = {}) {
       lines.push(`  ${rule}: ${total}`)
       for (const item of hits.slice(0, limit)) lines.push(`    - ${item.page}  ${item.message}`)
       if (hits.length > limit) lines.push(`    … 另有 ${hits.length - limit} 条`)
+    }
+  }
+  for (const [host, { pages, links, maxDepth, counts }] of Object.entries(result.sites ?? {})) {
+    lines.push(`站点 ${host}：${pages} 页，${links} 个链接，最大点击深度 ${maxDepth}`)
+    for (const [level, rules] of [
+      ['失败', counts.failures],
+      ['警告', counts.warnings],
+    ]) {
+      const hits = Object.entries(rules)
+        .filter(([, count]) => count > 0)
+        .map(([rule, count]) => `${rule}: ${count}`)
+      lines.push(`  ${level} ${hits.join('，') || '0 项'}`)
     }
   }
   return lines.join('\n')

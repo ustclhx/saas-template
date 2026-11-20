@@ -170,6 +170,8 @@ pnpm --filter @saas/web check:links --json test-results/evidence/links.json --li
 - Turbo 缓存命中恢复的产物没有 `dist/server/.dev.vars` 时，检查按 `.dev.vars.example` 临时补一份（结束后删除）：
   示例中值为空的 `*_SECRET`／`*_TOKEN` 随机生成，本地存在 `apps/web/.dev.vars` 时叠加其中的值。项目新增的
   Worker 启动必填变量写进 `.dev.vars.example`（密钥写空值）即可，不需要改检查脚本；该文件只写在已忽略的 dist 中。
+  项目插件添加或覆盖变量时，使用 `apps/web/scripts/prerender-env.ts` 导出的 `mergeDevVars(base, overrides)`。
+  自动填值后键已经存在，直接追加 `KEY=value` 会产生重复键。合并时同一键以最后一次赋值为准，覆盖项优先于基础内容。
 
 ## 7. 多站点
 
@@ -194,5 +196,6 @@ seo: {
 - **链接图分站检查**：声明了 `previewHost` 的站点各自成图。检查脚本以 `<previewHost>:<preview 端口>` 作 Host 请求头访问
   preview（等价于 `curl --resolve`），不依赖 DNS 解析 `*.localhost`；种子为该站点的站点地图与其语言首页，
   指向其他站点主机的链接不跟随、不并入本图（需要约束时把正式域名写进 `sisterDomains`）。报告与 `--json` 中的明细
-  以主机名开头（如 `second.localhost/zh-hant`）。没有任何站点声明 `previewHost` 时仍按单站点检查整个 preview。
+  以主机名开头（如 `second.localhost/zh-hant`）。总览保留整次检查的统计，并按主机名列出各站点的页面数、链接数、
+  最大点击深度和各规则命中数。JSON 对应的字段为 `sites`。没有任何站点声明 `previewHost` 时仍按单站点检查整个 preview。
 - `previewHost` 是 preview 中区分站点用的主机名（不含协议与端口），由项目的 Host 路由决定；生产域名不写在这里。

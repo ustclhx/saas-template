@@ -72,7 +72,16 @@ describe('check-links 多站点', () => {
         },
       },
     })
-    expect(result.stats.pages).toBe(4)
+    expect(result.stats).toEqual({ pages: 4, links: 18, edges: 4, maxDepth: 1 })
+    expect(result.sites).toMatchObject({
+      localhost: { pages: 2, links: 9, maxDepth: 1, counts: { failures: { 'dead-link': 0 } } },
+      'east.localhost': {
+        pages: 2,
+        links: 9,
+        maxDepth: 1,
+        counts: { failures: { 'dead-link': 1 } },
+      },
+    })
     expect(result.failures).toEqual([
       expect.objectContaining({
         rule: 'dead-link',

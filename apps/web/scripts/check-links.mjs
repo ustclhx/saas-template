@@ -291,7 +291,7 @@ async function checkGraph({ graph, send, config, locales, appUrl }) {
 
 /**
  * 按 seo.linking 检查 `baseUrl` 上运行的站点。未声明 `seo.linking.sites[].previewHost` 时整个 preview 为一张图；
- * 声明后每个站点各自成图（docs/seo-internal-linking.md「多站点」），结果合并、明细带主机名。
+ * 声明后每个站点各自成图（docs/seo-internal-linking.md「多站点」），结果合并并保留各主机摘要，明细带主机名。
  */
 export async function checkLinks({ baseUrl, templateConfig, mode, localize }) {
   const config = resolveLinkingConfig(templateConfig.seo?.linking)

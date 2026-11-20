@@ -42,6 +42,10 @@ export interface LinkGraphResult {
   failures: Finding[]
   warnings: Finding[]
   stats: { pages: number; links: number; edges: number; maxDepth: number }
+  sites?: Record<
+    string,
+    { pages: number; links: number; maxDepth: number; counts: ReturnType<typeof countByRule> }
+  >
 }
 export type ClassifiedHref =
   | { kind: 'internal'; path: string }

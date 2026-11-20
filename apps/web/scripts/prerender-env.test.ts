@@ -50,4 +50,12 @@ describe('mergeDevVars', () => {
   it('已有键原位替换、新键追加，忽略注释与空行', () => {
     expect(mergeDevVars('# a\nA=1\nB=2', '# x\n\nB=3\nC=$4\n')).toBe('# a\nA=1\nB=3\nC=$4\n')
   })
+
+  it('每个键仅保留最后的赋值，覆盖项优先于基础内容', () => {
+    const base = 'A=first\r\nSITE_TOKEN=generated\r\n# 保留注释\r\nA=last\r\nSITE_TOKEN=old\r\n'
+    const overrides = 'SITE_TOKEN=\nNEW=first\nNEW=last\n'
+    expect(mergeDevVars(base, overrides)).toBe(
+      'A=last\r\nSITE_TOKEN=\r\n# 保留注释\r\nNEW=last\r\n',
+    )
+  })
 })
