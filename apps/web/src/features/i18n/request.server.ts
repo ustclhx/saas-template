@@ -3,18 +3,9 @@ import { baseLocale, cookieName, isLocale, type Locale } from '../../paraglide/r
 import { paraglideMiddleware } from '../../paraglide/server.js'
 import type { WebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
-import { type LocaleRouting, localeRedirect } from './locale-url.ts'
+import { localeRedirect, requestLocaleRouting } from './locale-url.ts'
 import { languageUrl, localeCookie, readCookie, usesAccountLocale } from './preference.ts'
 import { readRequestSession, withSessionCache } from './session.server.ts'
-
-/**
- * 本次请求所在站点的地址规则，决定哪个语言前缀 301 到无前缀地址。模板只知道全局默认语言；
- * 多站点项目（`seo.linking.sites` 各站点默认语言不同）在这里按 Host 选出站点，返回
- * `siteRouting(site, templateConfig.i18n, templateConfig.seo.linking.sites)`（docs/multilingual-seo.md「多站点」）。
- */
-function requestRouting(_request: Request): LocaleRouting {
-  return templateConfig.i18n
-}
 
 /**
  * 中间件内用修改后的 Cookie 决定语言，交给路由器的仍是原地址与原请求头。
@@ -28,7 +19,15 @@ export function localizeRequest(
 ): Promise<Response> {
   // 单语言构建只使用 baseLocale，不读取账号或 Cookie，也不按 URL 自动跳转。
   if (!templateConfig.i18n.enabled) return paraglideMiddleware(request, next)
-  const redirect = localeRedirect(request, requestRouting(request))
+  // 多站点按 Host 选出站点（seo.linking.sites[].hosts／previewHost），按站点默认语言规范化；未匹配时按全局 i18n
+  const redirect = localeRedirect(
+    request,
+    requestLocaleRouting(
+      new URL(request.url),
+      templateConfig.i18n,
+      templateConfig.seo.linking.sites,
+    ),
+  )
   if (redirect) return Promise.resolve(redirect)
   const url = new URL(request.url)
   // 认证端点可能修改会话；不读取、不缓存会话，也不改 Cookie。

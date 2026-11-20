@@ -180,7 +180,7 @@ describe('defineTemplateConfig', () => {
       seo: {
         linking: {
           sites: [
-            { locales: ['en'], defaultLocale: null },
+            { locales: ['en'], defaultLocale: null, hosts: ['West.Example.com'] },
             { locales: ['zh'], defaultLocale: 'zh', xDefaultLocales: ['zh'] },
           ],
           xDefaultLocales: ['en'],
@@ -189,7 +189,7 @@ describe('defineTemplateConfig', () => {
       },
     }).seo.linking
     expect(linking.sites).toEqual([
-      { locales: ['en'], defaultLocale: null },
+      { locales: ['en'], defaultLocale: null, hosts: ['west.example.com'] },
       { locales: ['zh'], defaultLocale: 'zh', xDefaultLocales: ['zh'] },
     ])
     expect(linking.xDefaultLocales).toEqual(['en'])
@@ -203,6 +203,15 @@ describe('defineTemplateConfig', () => {
       { xDefaultLocales: [''] },
       { promptMarkers: ['data prompt'] },
       { promptMarkers: ['*'] },
+      { sites: [{ locales: ['en'], hosts: ['https://west.example.com'] }] },
+      { sites: [{ locales: ['en'], hosts: ['west.example.com:443'] }] },
+      { sites: [{ locales: ['en'], hosts: ['localhost'] }] },
+      {
+        sites: [
+          { locales: ['en'], hosts: ['a.example.com'] },
+          { locales: ['zh'], hosts: ['A.example.com'] },
+        ],
+      },
     ]
     for (const entry of bad)
       expect(

@@ -8,6 +8,8 @@ import {
   localeUrlPatterns,
   pageXDefaultLocale,
   prefixLocale,
+  requestLocaleRouting,
+  siteOfHost,
   siteRouting,
   xDefaultLocale,
 } from './locale-url.ts'
@@ -153,6 +155,32 @@ describe('多站点地址规则与 x-default', () => {
     expect(
       localeRedirect(new Request('https://e.example/zh-hant/a'), routing)?.headers.get('location'),
     ).toBe('/a')
+  })
+
+  it('按请求 Host 选站点：hosts 或 previewHost 匹配（忽略端口与大小写），未匹配时按全局 i18n', () => {
+    const sites = [
+      { ...west, hosts: ['west.example.com'], previewHost: 'west.localhost' },
+      { ...east, defaultLocale: null, hosts: ['east.example.com', 'www.east.example.com'] },
+    ]
+    const redirect = (url: string) => {
+      const request = new Request(url)
+      const routing = requestLocaleRouting(new URL(url), i18n, sites)
+      const response = localeRedirect(request, routing)
+      return response ? `${response.status} ${response.headers.get('location')}` : null
+    }
+    // 东方站没有 en：/en 不跳（项目自有的东方站英文入口），大写前缀仍规范为小写
+    expect(redirect('https://east.example.com/en')).toBeNull()
+    expect(redirect('https://www.east.example.com/en/pricing')).toBeNull()
+    expect(redirect('https://EAST.example.com:8443/ZH-Hant/x')).toBe('301 /zh-hant/x')
+    // 西方站 en 为默认语言：/en 301 到 /
+    expect(redirect('https://west.example.com/en/pricing?a=1')).toBe('301 /pricing?a=1')
+    expect(redirect('http://west.localhost:4173/en')).toBe('301 /')
+    // 未登记的 Host（staging、预览）与未配置分组：全局 i18n，与单站点相同
+    expect(redirect('https://staging.example.net/en')).toBe('301 /')
+    expect(redirect('https://staging.example.net/zh-hant/x')).toBeNull()
+    expect(requestLocaleRouting(new URL('https://a.example/'), i18n, [])).toBe(i18n)
+    expect(siteOfHost('', sites)).toBeUndefined()
+    expect(siteOfHost('east.example.com.', sites)).toBe(sites[1])
   })
 
   it('localePath：站点默认语言无前缀，其余小写前缀', () => {

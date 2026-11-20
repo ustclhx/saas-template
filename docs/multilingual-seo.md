@@ -86,42 +86,42 @@
 seo: {
   linking: {
     sites: [
-      { locales: ['en'], previewHost: 'west.localhost' }, // 省略 defaultLocale：含全局默认语言 en，en 无前缀
-      { locales: ['zh-Hant', 'zh-Hans'], previewHost: 'east.localhost', defaultLocale: 'zh-Hant' },
-      // defaultLocale: null 表示该站点所有语言都带前缀
+      // 省略 defaultLocale：含全局默认语言 en，en 无前缀
+      { locales: ['en'], hosts: ['west.example.com'], previewHost: 'west.localhost' },
+      {
+        locales: ['zh-Hant', 'zh-Hans'],
+        hosts: ['east.example.com', 'www.east.example.com'],
+        previewHost: 'east.localhost',
+        defaultLocale: null, // 该站点所有语言都带前缀；也可写本站点的某个语言
+      },
     ],
     xDefaultLocales: ['en'], // 可选；站点也可写自己的 xDefaultLocales
   },
 },
 ```
 
-`defaultLocale` 必须是该站点的语言。省略时：站点包含 `i18n.defaultLocale` 则为它，否则为 `null`。未配置 `sites` 时行为与单站点完全相同。
+- `defaultLocale` 必须是该站点的语言。省略时：站点包含 `i18n.defaultLocale` 则为它，否则为 `null`。
+- `hosts` 为该站点的生产主机名：只写主机名，不含协议与端口，各站点之间不能重复。
+- 未配置 `sites` 时行为与单站点完全相同。
 
-模板自动按站点处理的部分：
-- 链接图检查：`default-locale-prefix` 对每个声明了 `previewHost` 的站点请求 `/<站点默认语言>`，期望 301 到无前缀地址；
+模板按站点处理的部分（不需要改模板文件）：
+- **请求时的 301**：`request.server.ts` 进入 Paraglide 前，用 `requestLocaleRouting()`（`features/i18n/locale-url.ts`）选出站点。
+  - 按请求 Host（忽略端口与大小写）匹配站点的 `hosts` 或 `previewHost`。
+  - 匹配到站点时只处理该站点的语言：站点默认语言前缀 301 到无前缀地址，大小写不同的前缀 301 到小写；其他站点语言的前缀原样放行，例如东方站的 `/en` 不会被跳到 `/`。
+  - 没有匹配（staging、未登记的域名）时按全局 `i18n` 处理。
+- **链接图检查**：`default-locale-prefix` 对每个声明了 `previewHost` 的站点请求 `/<站点默认语言>`，期望 301 到无前缀地址。
   站点默认语言的首页为 `/`；没有无前缀语言的站点不检查。
-- hreflang 输出与检查：x-default 的默认规则先取本页站点的默认语言，站点的 `xDefaultLocales` 优先于全局列表。
+- **hreflang 输出与检查**：x-default 的默认规则先取本页站点的默认语言，站点的 `xDefaultLocales` 优先于全局列表。
 
-需要项目接线的部分——模板配置里没有生产域名，无法在请求时把 Host 对应到站点，所以模板只提供纯函数
-（`apps/web/src/features/i18n/locale-url.ts`）：
-- `siteRouting(site, i18n, sites)`：站点的 `{ locales, defaultLocale }`；`site` 为 undefined 时是未列入分组的语言组成的隐含站点。
-- `localeRedirect(request, routing)`／`canonicalLocalePath(url, routing)`：只处理 `routing.locales` 中的语言。站点默认语言前缀
-  301 到无前缀地址，其他站点语言的前缀原样放行，例如东方站的 `/en` 不会被跳到 `/`。
-- `localePath(path, locale, defaultLocale)`：按站点默认语言生成地址。
-- `pageXDefaultLocale(available, locale, i18n, linking)`：x-default 的选择规则。
+项目自有代码可直接使用 `locale-url.ts` 的纯函数：
+- `siteOfHost`：按 Host 找站点；
+- `siteRouting`：站点的 `{ locales, defaultLocale }`；
+- `localePath`：按站点默认语言生成地址；
+- `pageXDefaultLocale`：x-default 的选择规则。
 
-接线位置是 `apps/web/src/features/i18n/request.server.ts` 的 `requestRouting()`，按请求 Host 选出站点后返回该站点的规则：
-
-```ts
-function requestRouting(request: Request): LocaleRouting {
-  const site = mySiteForHost(new URL(request.url).host) // 项目自己的 Host → seo.linking.sites[] 映射
-  return siteRouting(site, templateConfig.i18n, templateConfig.seo.linking.sites)
-}
-```
-
-站点默认语言不是全局 `i18n.defaultLocale` 时，该站点的无前缀地址还要在 Paraglide 中解析为站点默认语言。Paraglide 的
-URL 规则（`localeUrlPatterns`）和 `localizeHref` 只认全局默认语言，所以项目要按 Host 生成 URL 规则或自行本地化链接。
-做不到时，把 `defaultLocale` 设为 `null`（站点内全部带前缀），或让站点默认语言与全局默认语言一致。
+限制：站点默认语言不是全局 `i18n.defaultLocale` 时，该站点的无前缀地址还要在 Paraglide 中解析为站点默认语言。
+Paraglide 的 URL 规则（`localeUrlPatterns`）、`localizeHref` 与预渲染只认全局默认语言，模板目前无法通用地按 Host 解析。
+这种站点要么把 `defaultLocale` 设为 `null`（站点内全部带前缀），要么让站点默认语言与全局默认语言一致；否则项目需要自行按 Host 生成 URL 规则并本地化链接。
 
 ## 验收与检查规则对照
 

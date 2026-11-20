@@ -19,6 +19,8 @@ export interface LocaleRouting {
 /** `seo.linking.sites[]` 中与地址相关的字段（结构与 @saas/config 的 SeoLinkingSite 一致，这里不引用该包） */
 export interface LocaleSite {
   readonly locales: readonly string[]
+  readonly hosts?: readonly string[] | undefined
+  readonly previewHost?: string | undefined
   readonly defaultLocale?: string | null | undefined
   readonly xDefaultLocales?: readonly string[] | undefined
 }
@@ -124,6 +126,28 @@ export function siteRouting(
     locales,
     defaultLocale: locales.includes(i18n.defaultLocale) ? i18n.defaultLocale : null,
   }
+}
+
+/**
+ * 按请求 Host 选出站点：Host 去掉端口、转小写后与站点的 `hosts` 或 `previewHost` 比较；没有匹配时返回 undefined。
+ */
+export function siteOfHost<S extends LocaleSite>(host: string, sites: readonly S[]): S | undefined {
+  const name = host.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '')
+  if (!name) return undefined
+  return sites.find((site) => site.previewHost === name || site.hosts?.includes(name))
+}
+
+/**
+ * 请求所在站点的地址规则（request.server.ts 在进入 Paraglide 前用它做 301）：Host 匹配到站点时为该站点的规则
+ * （siteRouting），未配置分组或没有匹配（staging、未登记的域名）时为全局 `i18n`，与单站点行为相同。
+ */
+export function requestLocaleRouting(
+  url: URL,
+  i18n: { readonly locales: readonly string[]; readonly defaultLocale: string },
+  sites: readonly LocaleSite[],
+): LocaleRouting {
+  const site = siteOfHost(url.host, sites)
+  return site ? siteRouting(site, i18n, sites) : i18n
 }
 
 /**

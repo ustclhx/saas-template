@@ -151,9 +151,15 @@ export interface SeoLinkingSite {
    */
   readonly previewHost?: string | undefined
   /**
+   * 该站点的生产主机名（只写主机名，如 `example.com`、`www.example.com`，不含协议与端口），各站点之间不能重复。
+   * 请求时按 Host（忽略端口）匹配 `hosts` 或 `previewHost` 选出站点，按站点做默认语言前缀的 301；
+   * 没有匹配（如 staging、未登记的域名）时按全局 `i18n` 处理。
+   */
+  readonly hosts?: readonly string[] | undefined
+  /**
    * 该站点以无前缀地址服务的语言（站点内的默认语言），必须是本站点的语言；`null` 表示该站点所有语言都带前缀。
    * 省略时：站点包含 `i18n.defaultLocale` 则为它，否则为 `null`。用于默认语言前缀的 301、链接图检查的
-   * `default-locale-prefix` 与 x-default 的默认规则；按 Host 选择站点由项目接线（docs/multilingual-seo.md「多站点」）。
+   * `default-locale-prefix` 与 x-default 的默认规则；请求按 Host 匹配 `hosts`／`previewHost` 选出站点（docs/multilingual-seo.md「多站点」）。
    */
   readonly defaultLocale?: string | null | undefined
   /** 该站点页面的 x-default 语言偏好，覆盖 `seo.linking.xDefaultLocales` */
@@ -584,6 +590,7 @@ export function resolveSeoLinking(input: SeoLinkingInput | undefined): SeoLinkin
     sites: (input?.sites ?? d.sites).map((site) => ({
       locales: [...site.locales],
       ...(site.previewHost !== undefined && { previewHost: site.previewHost.toLowerCase() }),
+      ...(site.hosts !== undefined && { hosts: site.hosts.map((host) => host.toLowerCase()) }),
       ...(site.defaultLocale !== undefined && { defaultLocale: site.defaultLocale }),
       ...(site.xDefaultLocales !== undefined && { xDefaultLocales: [...site.xDefaultLocales] }),
     })),
@@ -624,6 +631,7 @@ export function resolveSeoLinking(input: SeoLinkingInput | undefined): SeoLinkin
       fail(`promptMarkers must be HTML attribute names (got ${JSON.stringify(name)})`)
   const siteLocales = new Set<string>()
   const previewHosts = new Set<string>()
+  const siteHosts = new Set<string>()
   for (const site of linking.sites) {
     if (site.locales.length === 0) fail('sites[].locales must not be empty')
     for (const locale of site.locales) {
@@ -639,6 +647,13 @@ export function resolveSeoLinking(input: SeoLinkingInput | undefined): SeoLinkin
       fail(`sites[].defaultLocale ${site.defaultLocale} must be one of that site's locales or null`)
     if (site.xDefaultLocales !== undefined)
       xDefaults(site.xDefaultLocales, 'sites[].xDefaultLocales')
+    // 生产主机名与 sisterDomains 相同的写法：小写裸主机名，不带协议、端口或路径
+    for (const host of site.hosts ?? []) {
+      if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host))
+        fail(`sites[].hosts must be bare host names (got ${JSON.stringify(host)})`)
+      if (siteHosts.has(host)) fail(`sites lists host ${host} more than once`)
+      siteHosts.add(host)
+    }
     const host = site.previewHost
     if (host === undefined) continue
     if (!/^[a-z0-9-]+(\.[a-z0-9-]+)*$/.test(host))
