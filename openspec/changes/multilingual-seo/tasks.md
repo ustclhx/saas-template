@@ -1,7 +1,7 @@
 ## 1. 设计关卡（协调者 + 使用者）
 
-- [ ] 1.1 按 `ui-design` 产出语言提示条设计稿：手机底部、桌面右下 × 浅色 / 深色，含关闭按钮、进入动画与 `prefers-reduced-motion`；同一画布给出语言切换器在「本页无该语言版本」时的两种处理，供使用者选择
-- [ ] 1.2 使用者在会话中确认设计稿与切换器处理方式；保存副本到 `docs/design-system/prototypes/multilingual-seo/` 并在原型索引登记
+- [x] 1.1 按 `ui-design` 产出语言提示条设计稿：手机底部、桌面右下 × 浅色 / 深色，含关闭按钮、进入动画与 `prefers-reduced-motion`；同一画布给出语言切换器在「本页无该语言版本」时的两种处理，供使用者选择
+- [x] 1.2 使用者在会话中确认设计稿与切换器处理方式；保存副本到 `docs/design-system/prototypes/multilingual-seo/` 并在原型索引登记
 
 ## 2. 配置与路由（可与第 1 组并行）
 
