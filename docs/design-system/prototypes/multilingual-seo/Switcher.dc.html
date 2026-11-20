@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>语言切换器：本页无某语言版本</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:none}
+sc-if,sc-for{display:contents}
+svg{flex-shrink:0}
+</style>
+</helmet>
+<div style="width: 1440px; min-height: 1060px; padding: 48px; background: {{t.bg}}; color: {{t.fg}}; font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 14px; line-height: 20px; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; gap: 32px">
+  <div style="display: flex; flex-direction: column; gap: 8px; max-width: 960px">
+    <h1 style="margin: 0; font-size: 28px; line-height: 34px; font-weight: 700">本页没有某种语言版本时，语言切换器怎么显示</h1>
+    <p style="margin: 0; color: {{t.muted}}">示例：当前页 <code>/blog/ai-writing-basics</code>（English）；已发布 English、中文；日本語未翻译（<code>i18n.untranslated: 'hide'</code> 下 <code>/ja/blog/ai-writing-basics</code> 为 404）。两种方案中切换器都改为链接菜单：每项是普通 <code>&lt;a href&gt;</code>，触发器外观沿用现有 SelectTrigger。</p>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px">
+    <sc-for list="{{options}}" as="opt" hint-placeholder-count="2">
+      <section aria-label="{{opt.title}}" style="display: flex; flex-direction: column; gap: 20px; padding: 24px; border-radius: 12px; background: {{t.card}}; box-shadow: {{t.shadow2}}">
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <h2 style="margin: 0; font-size: 16px; line-height: 22px; font-weight: 600">{{opt.title}}</h2>
+          <p style="margin: 0; color: {{t.muted}}">{{opt.summary}}</p>
+        </div>
+
+        <!-- 桌面：左下浮动语言选择，菜单向上展开 -->
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <p style="margin: 0; font-size: 12px; line-height: 16px; color: {{t.muted}}">桌面 · 左下浮动语言选择（展开）</p>
+          <div style="position: relative; height: 250px; border-radius: 8px; background: {{t.bg}}; box-shadow: {{t.shadow1}}; overflow: hidden">
+            <div style="position: absolute; left: 16px; bottom: 56px; width: 240px; padding: 4px; border-radius: 10px; background: {{t.surface5}}; box-shadow: {{t.shadow5}}">
+              <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column">
+                <sc-for list="{{opt.items}}" as="it" hint-placeholder-count="3">
+                  <li>
+                    <a href="{{it.href}}" hreflang="{{it.code}}" aria-current="{{it.current}}" aria-label="{{it.aria}}" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: 6px; background: {{it.bgDesk}}; color: {{t.fg}}">
+                      <span style="width: 16px; display: inline-flex; color: {{t.fg}}">
+                        <sc-if value="{{it.isCurrent}}" hint-placeholder-val="{{false}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>
+                      </span>
+                      <span lang="{{it.code}}" style="flex: 1">{{it.label}}</span>
+                      <sc-if value="{{it.home}}" hint-placeholder-val="{{false}}">
+                        <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 12px; line-height: 16px; color: {{t.muted}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>{{it.homeLabel}}</span>
+                      </sc-if>
+                    </a>
+                  </li>
+                </sc-for>
+              </ul>
+            </div>
+            <div style="position: absolute; left: 16px; bottom: 8px; padding: 4px; border-radius: 8px; background: {{t.bg}}; box-shadow: {{t.shadow2}}">
+              <button type="button" aria-label="Language" aria-expanded="true" style="display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; width: 132px; height: 32px; padding: 0 10px; border: 1px solid {{t.focus}}; border-radius: 8px; background: {{t.card}}; color: {{t.fg}}; font: inherit">English<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"></path></svg></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 手机：页脚设置行，菜单向上展开，行高 44 -->
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <p style="margin: 0; font-size: 12px; line-height: 16px; color: {{t.muted}}">手机 390 · 页脚设置行（展开）</p>
+          <div style="position: relative; width: 390px; height: 300px; border-radius: 8px; background: {{t.bg}}; box-shadow: {{t.shadow1}}; overflow: hidden">
+            <div style="position: absolute; left: 16px; bottom: 64px; width: 240px; padding: 4px; border-radius: 10px; background: {{t.surface5}}; box-shadow: {{t.shadow5}}">
+              <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column">
+                <sc-for list="{{opt.items}}" as="it" hint-placeholder-count="3">
+                  <li>
+                    <a href="{{it.href}}" hreflang="{{it.code}}" aria-current="{{it.current}}" aria-label="{{it.aria}}" style="display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 10px; border-radius: 6px; color: {{t.fg}}">
+                      <span style="width: 16px; display: inline-flex">
+                        <sc-if value="{{it.isCurrent}}" hint-placeholder-val="{{false}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>
+                      </span>
+                      <span lang="{{it.code}}" style="flex: 1">{{it.label}}</span>
+                      <sc-if value="{{it.home}}" hint-placeholder-val="{{false}}">
+                        <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 12px; line-height: 16px; color: {{t.muted}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>{{it.homeLabel}}</span>
+                      </sc-if>
+                    </a>
+                  </li>
+                </sc-for>
+              </ul>
+            </div>
+            <div style="position: absolute; left: 16px; right: 16px; bottom: 0; padding: 12px 0 14px; border-top: 1px solid {{t.border}}; display: flex; align-items: center; justify-content: space-between; gap: 12px">
+              <button type="button" aria-label="Language" aria-expanded="true" style="display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; width: 132px; height: 36px; padding: 0 12px; border: 1px solid {{t.focus}}; border-radius: 8px; background: {{t.card}}; color: {{t.fg}}; font: inherit">English<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"></path></svg></button>
+              <span style="font-size: 12px; line-height: 16px; color: {{t.muted}}">Light · Dark · System</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding-top: 16px; border-top: 1px solid {{t.border}}">
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <p style="margin: 0; font-size: 12px; line-height: 16px; font-weight: 600; color: {{t.successText}}">优点</p>
+            <sc-for list="{{opt.pros}}" as="line" hint-placeholder-count="2"><p style="margin: 0; font-size: 12px; line-height: 16px">{{line}}</p></sc-for>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <p style="margin: 0; font-size: 12px; line-height: 16px; font-weight: 600; color: {{t.warningText}}">代价</p>
+            <sc-for list="{{opt.cons}}" as="line" hint-placeholder-count="2"><p style="margin: 0; font-size: 12px; line-height: 16px">{{line}}</p></sc-for>
+          </div>
+        </div>
+      </section>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1060}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const t = dark
+      ? { bg: '#171717', fg: '#f5f5f5', muted: '#b0b0b0', card: '#252525', surface5: '#333333', border: 'rgba(245,245,245,0.12)', hover: 'rgba(255,255,255,0.06)', focus: '#4f86f7', successText: 'oklch(0.723 0.219 149.579)', warningText: '#fcd34d',
+          shadow1: 'inset 0 0 0 1px rgba(255,255,255,0.06)',
+          shadow2: 'inset 0 1px 0 0 rgba(255,255,255,0.01), inset 0 0 0 1px rgba(255,255,255,0.02), 0 1px 1px -0.5px rgba(0,0,0,0.18)',
+          shadow5: 'inset 0 1px 0 0 rgba(255,255,255,0.04), inset 0 0 0 1px rgba(255,255,255,0.04), 0 0 0 1px rgba(0,0,0,0.16), 0 1px 1px -0.5px rgba(0,0,0,0.18), 0 3px 3px -1.5px rgba(0,0,0,0.18), 0 6px 6px -3px rgba(0,0,0,0.18), 0 12px 12px -6px rgba(0,0,0,0.18)' }
+      : { bg: '#fafafa', fg: '#171717', muted: '#6b6b6b', card: '#ffffff', surface5: '#ffffff', border: 'rgba(23,23,23,0.12)', hover: 'rgba(0,0,0,0.04)', focus: '#3b82f6', successText: 'oklch(0.527 0.154 150.069)', warningText: '#8a5a00',
+          shadow1: '0 0 0 1px rgba(0,0,0,0.06)',
+          shadow2: '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06)',
+          shadow5: '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06), 0 3px 3px -1.5px rgba(0,0,0,0.06), 0 6px 6px -3px rgba(0,0,0,0.06), 0 12px 12px -6px rgba(0,0,0,0.06)' };
+    const en = { code: 'en', label: 'English', href: '#', current: 'page', isCurrent: true, home: false, homeLabel: '', aria: 'English', bgDesk: 'transparent' };
+    const zh = { code: 'zh', label: '中文', href: '#', current: 'false', isCurrent: false, home: false, homeLabel: '', aria: '中文', bgDesk: t.hover };
+    const ja = { code: 'ja', label: '日本語', href: '#', current: 'false', isCurrent: false, home: true, homeLabel: 'Home', aria: '日本語 – Japanese homepage (this page is not available in Japanese)', bgDesk: 'transparent' };
+    return {
+      t,
+      options: [
+        {
+          title: '方案 A：隐藏该语言',
+          summary: '菜单只列出本页真实存在的版本（来自本页 hreflang）。日本語不出现。',
+          items: [en, zh],
+          pros: ['与 hreflang 完全一致，链接图检查零例外', '不会把用户带离当前内容', '实现最简单，无需额外文案'],
+          cons: ['语言列表随页面变化，用户可能以为站点不支持日本語', '本页只有一种语言时菜单只剩当前项（建议此时整体隐藏触发器或保持只读）']
+        },
+        {
+          title: '方案 B：显示并指向该语言首页',
+          summary: '日本語仍列出，链接到 /ja；行尾以弱化的房子图标与当前页语言的「Home」标明不是本页译文；可读名称说明会去首页。',
+          items: [en, zh, ja],
+          pros: ['语言列表全站固定，站点支持哪些语言一目了然', '读者仍能进入该语言的站点'],
+          cons: ['点击后离开当前内容，需额外文案（「首页」及可读名称）', '每页都多一条指向其他语言首页的导航链接（nav 区，不计正文链接）']
+        }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
