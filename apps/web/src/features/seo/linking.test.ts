@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { templateConfig } from '../../server/template-config.ts'
 import { assertSeoPages, validateSeoPages } from './linking.ts'
 import type { SeoPage } from './metadata.ts'
-import { staticPage } from './metadata.ts'
+import { localizedPath, staticPage } from './metadata.ts'
 import { publicPages } from './pages.ts'
 
 // 项目注册入口返回的页面与模板清单合并（tasks.md 1.4）
@@ -29,6 +29,8 @@ vi.mock('./pages.project.ts', () => ({
 }))
 
 const en = templateConfig.i18n.defaultLocale
+// 另一种语言取项目配置中的非默认语言（衍生项目不一定有 zh，默认语言也不一定是 en）
+const other = templateConfig.i18n.locales.find((locale) => locale !== en) ?? `${en}-x`
 const page = (path: string, fields: Partial<SeoPage> = {}): SeoPage => ({
   path,
   locale: en,
@@ -83,7 +85,7 @@ describe('页面层级与主词声明（1.2–1.4）', () => {
     expect(staticPage('/', en)).toMatchObject({ titleMain: templateConfig.app.name })
     expect(staticPage('/', en).parent).toBeUndefined()
     for (const path of ['/pricing', '/blog', '/guides', '/docs', '/newsletter', '/waitlist']) {
-      const declared = staticPage(path, 'zh')
+      const declared = staticPage(path, other)
       expect(declared.parent).toBe('/')
       expect(declared.titleMain).toBeTruthy()
     }
@@ -121,8 +123,8 @@ describe('元数据静态校验（1.5）', () => {
       home,
       page('/a'),
       page('/a', { title: 'Again' }),
-      { ...page('/a'), locale: 'zh' },
-      { ...home, locale: 'zh' },
+      { ...page('/a'), locale: other },
+      { ...home, locale: other },
     ])
     expect(errors).toEqual([expect.stringMatching(/^\/a: 同一语言中地址重复/)])
   })
@@ -188,7 +190,7 @@ describe('元数据静态校验（1.5）', () => {
   it('回退页与不可索引页不检查自身声明，地址按语言加前缀', () => {
     const zh = (path: string, fields: Partial<SeoPage> = {}) => ({
       ...page(path, fields),
-      locale: 'zh',
+      locale: other,
     })
     const report = validateSeoPages([
       zh('/'),
@@ -197,7 +199,9 @@ describe('元数据静态校验（1.5）', () => {
       zh('/broken', { parent: '/missing' }),
     ])
     expect(report.errors).toEqual([
-      expect.stringMatching(/^\/zh\/broken: parent 指向不存在的页面 \/zh\/missing/),
+      expect.stringContaining(
+        `${localizedPath('/broken', other)}: parent 指向不存在的页面 ${localizedPath('/missing', other)}（`,
+      ),
     ])
   })
 
@@ -206,8 +210,8 @@ describe('元数据静态校验（1.5）', () => {
       home,
       page('/a', { titleMain: 'Tarot' }),
       page('/b', { titleMain: 'Tarot' }),
-      { ...page('/c', { titleMain: 'Tarot' }), locale: 'zh' },
-      { ...home, locale: 'zh' },
+      { ...page('/c', { titleMain: 'Tarot' }), locale: other },
+      { ...home, locale: other },
     ])
     expect(report.errors).toEqual([])
     expect(report.warnings).toEqual([`主词「Tarot」在 ${en} 中重复：/a、/b`])
