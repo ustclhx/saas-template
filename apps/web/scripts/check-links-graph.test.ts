@@ -138,7 +138,8 @@ describe('resolveLinkingConfig', () => {
     expect(config.mode).toBe('enforce')
     expect(config.sisterDomains).toEqual(['west.example.org'])
     expect(config.thresholds).toMatchObject({ maxDepth: 5, footerLinksMax: 10 })
-    expect(resolveLinkingConfig({ mode: 'strict' }).mode).toBe('report')
+    // 与 template config 同一套解析：非法值报错，不静默回退
+    expect(() => resolveLinkingConfig({ mode: 'strict' })).toThrow(/seo\.linking\.mode/)
   })
 })
 
@@ -212,12 +213,34 @@ describe('analyzeLinkGraph', () => {
     expect(result.failures.every((item) => item.page === '/blog/a')).toBe(true)
   })
 
+  it('转化入口（链接自身或祖先 data-link-zone="action"）指向应用区不失败，也不计入正文链接', () => {
+    const result = run(
+      {
+        ...base,
+        '/blog/a': html(
+          [
+            '<a href="/register" data-link-zone="action">Start free</a>',
+            '<div data-link-zone="action"><a href="/app">Ask AI</a></div>',
+            '<a href="/guides">Guides</a>',
+          ].join(''),
+          { h1: 'Post A' },
+        ),
+      },
+      { extraTargets: { '/app': { status: 200 } } },
+    )
+    expect(result.failures).toEqual([])
+    const links = parsePage(
+      '<div data-link-zone="nav"><a href="/register" data-link-zone="action">Go</a></div>',
+    ).links
+    expect(links[0]).toMatchObject({ zone: 'action', region: 'a' })
+  })
+
   it('禁用锚文本：默认词与项目增补，忽略大小写与箭头', () => {
     const result = run(
       {
         ...base,
         '/blog/a': html(
-          '<a href="/guides">点击这里</a><a href="/pricing">Read More →</a><a href="/blog">Go now</a>',
+          '<a href="/guides">点击这里</a><a href="/pricing">Read More →</a><a href="/blog">Go now</a><a href="/">Click here</a>',
           { h1: 'Post A' },
         ),
       },
@@ -225,7 +248,7 @@ describe('analyzeLinkGraph', () => {
     )
     expect(
       result.failures.filter((item) => item.rule === 'banned-anchor').map((item) => item.target),
-    ).toEqual(['/guides', '/pricing', '/blog'])
+    ).toEqual(['/guides', '/pricing', '/blog', '/'])
   })
 
   it('只含图片的链接缺 alt 失败，有 alt 时通过', () => {

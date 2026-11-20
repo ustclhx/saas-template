@@ -19,6 +19,8 @@ export interface ProductItem {
   readonly image?: { readonly src: string; readonly alt: string }
   readonly primary: { readonly label: string; readonly href: string }
   readonly secondaryHref: string
+  /** 次级链接文字：配置的 secondaryLabel，省略时为产品标题（不使用「了解更多」等禁用锚文本） */
+  readonly secondaryLabel: string
 }
 
 export function localizeProduct(product: MarketingProduct, locale?: string): ProductItem {
@@ -30,5 +32,6 @@ export function localizeProduct(product: MarketingProduct, locale?: string): Pro
     }),
     primary: { label: localized(product.primary.label, locale), href: product.primary.href },
     secondaryHref: product.secondaryHref,
+    secondaryLabel: localized(product.secondaryLabel ?? product.title, locale),
   }
 }

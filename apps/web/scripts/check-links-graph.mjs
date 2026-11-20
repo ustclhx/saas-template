@@ -1,37 +1,9 @@
 // 构建后链接图检查的纯函数部分（openspec seo-internal-linking design 决策 2、3，tasks 4.1–4.3）。
 // HTML 解析、配置合并与规则判断都在这里，便于用固定夹具单测；启动 preview 与抓取由 check-links.mjs 负责。
 // 只解析 `<a href>`：按钮、onclick 与脚本跳转不进入链接图（spec「只有真实链接计入链接图」）。
-
-/** 规范要求的默认禁用锚文本；项目配置的 `bannedAnchors` 只做增补 */
-export const BUILTIN_BANNED_ANCHORS = Object.freeze([
-  '点击这里',
-  '了解更多',
-  '查看详情',
-  'here',
-  'read more',
-  'learn more',
-])
-
-/**
- * `seo.linking` 的默认值（字段名照 design 决策 5）。类型与默认值的权威来源将是 `packages/config`；
- * 在它合并前，检查脚本用这份默认值与 template config 中的 `seo?.linking` 合并，未配置时为 report。
- */
-export const DEFAULT_LINKING = Object.freeze({
-  mode: 'report',
-  bannedAnchors: Object.freeze([]),
-  moneyPages: Object.freeze([]),
-  sisterDomains: Object.freeze([]),
-  series: Object.freeze([]),
-  hubPageSize: 100,
-  thresholds: Object.freeze({
-    headerLinksMin: 3,
-    headerLinksMax: 7,
-    groupBodyLinksMin: 2,
-    maxDepth: 3,
-    moneyInlinksMin: 3,
-    footerLinksMax: 10,
-  }),
-})
+// 默认值、禁用词与配置合并只在 packages/config 维护一份：template.config.ts 已经过 defineTemplateConfig 解析，
+// 这里再经 resolveSeoLinking 补全（对已解析的配置结果不变），衍生项目旧配置缺字段时同样取默认值。
+import { defaultBannedAnchors, resolveSeoLinking } from '@saas/config'
 
 /** 失败级与警告级规则；报告按此顺序输出各规则命中数 */
 export const FAILURE_RULES = Object.freeze([
@@ -56,20 +28,9 @@ export const WARNING_RULES = Object.freeze([
   'no-nav-zone',
 ])
 
-/** 合并项目配置与默认值：数组整体替换，阈值逐项覆盖，未知或非法的 mode 回退 report */
+/** 合并项目配置与默认值（`@saas/config` 的 resolveSeoLinking）：非法配置直接报错，不静默回退 */
 export function resolveLinkingConfig(raw) {
-  const input = raw && typeof raw === 'object' ? raw : {}
-  const list = (value, fallback) => (Array.isArray(value) ? [...value] : [...fallback])
-  return {
-    mode: input.mode === 'enforce' ? 'enforce' : 'report',
-    bannedAnchors: list(input.bannedAnchors, DEFAULT_LINKING.bannedAnchors),
-    moneyPages: list(input.moneyPages, DEFAULT_LINKING.moneyPages),
-    sisterDomains: list(input.sisterDomains, DEFAULT_LINKING.sisterDomains),
-    series: list(input.series, DEFAULT_LINKING.series),
-    hubPageSize:
-      typeof input.hubPageSize === 'number' ? input.hubPageSize : DEFAULT_LINKING.hubPageSize,
-    thresholds: { ...DEFAULT_LINKING.thresholds, ...(input.thresholds ?? {}) },
-  }
+  return resolveSeoLinking(raw && typeof raw === 'object' ? raw : undefined)
 }
 
 const VOID_ELEMENTS = new Set([
@@ -168,7 +129,10 @@ export function parsePage(html) {
     if (name === 'img' && link) link.images.push(attributes.alt ?? null)
     if (name === 'a' && attributes.href !== undefined) {
       if (link) links.push(finishLink(link))
-      const zoneEntry = stack.findLast((entry) => entry.zone)
+      // 链接自身的 data-link-zone（如转化按钮 action）优先于祖先区域
+      const zoneEntry = attributes['data-link-zone']
+        ? { name: 'a', zone: attributes['data-link-zone'] }
+        : stack.findLast((entry) => entry.zone)
       link = {
         href: attributes.href,
         rel: (attributes.rel ?? '').toLowerCase().split(/\s+/).filter(Boolean),
@@ -204,6 +168,12 @@ function finishLink(link) {
     anchor: text || alts.join(' ') || collapse(link.ariaLabel ?? ''),
   }
 }
+
+/**
+ * 「链接到不可索引页」豁免的区域（design.md 决策 3）：nav 导航层（登录、账户入口），
+ * action 转化入口（注册、进入应用的 CTA 与悬浮 AI 入口，不参与正文链接计数）
+ */
+export const LINK_TO_NOINDEX_EXEMPT = new Set(['nav', 'action'])
 
 /** 规范化站内路径：去掉 hash 与末尾斜杠，保留查询参数（带查询参数的地址视为不可索引） */
 export function normalizePath(pathname, search = '') {
@@ -291,7 +261,7 @@ export function analyzeLinkGraph({
   }
   const warn = (rule, page, message, target) => warnings.push({ rule, page, target, message })
   const banned = new Set(
-    [...BUILTIN_BANNED_ANCHORS, ...config.bannedAnchors].map((word) => normalizeAnchor(word)),
+    [...defaultBannedAnchors, ...config.bannedAnchors].map((word) => normalizeAnchor(word)),
   )
   const { thresholds } = config
   const inlinks = new Map()
@@ -373,7 +343,10 @@ export function analyzeLinkGraph({
         out.add(target.path)
         if (!inlinks.has(target.path)) inlinks.set(target.path, new Set())
         inlinks.get(target.path).add(page.path)
-      } else if (link.zone !== 'nav' && !isAliasOfIndexable(status, indexable, internalHosts)) {
+      } else if (
+        !LINK_TO_NOINDEX_EXEMPT.has(link.zone) &&
+        !isAliasOfIndexable(status, indexable, internalHosts)
+      ) {
         fail(
           'link-to-noindex',
           page.path,

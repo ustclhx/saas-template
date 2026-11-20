@@ -20,6 +20,7 @@ const products: ProductItem[] = ['Atlas', 'Beacon', 'Cobalt'].map((title) => ({
   image: { src: `/shots/${title}.png`, alt: `${title} screenshot` },
   primary: { label: `Open ${title}`, href: `https://example.com/${title}` },
   secondaryHref: `#${title}`,
+  secondaryLabel: `${title} features`,
 }))
 
 describe('数据背书区块', () => {
@@ -56,8 +57,8 @@ describe('编号产品矩阵', () => {
       expect(html).toContain(`alt="${product.image?.alt}"`)
       expect(html).toContain(`href="${product.primary.href}"`)
       expect(html).toContain(`href="${product.secondaryHref}"`)
-      // 次级链接文字「了解更多」带读屏可见的产品名，避免多处同名链接
-      expect(html).toContain(escaped(m.marketing_products_more_about({ title: product.title })))
+      // 次级链接文字取配置的具体文案，不出现禁用锚文本
+      expect(html).toContain(`${product.secondaryLabel}<`)
     }
   })
 

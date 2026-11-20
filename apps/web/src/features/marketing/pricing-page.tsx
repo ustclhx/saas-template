@@ -321,9 +321,15 @@ function SubscriptionCard({
       </div>
       <Button asChild variant={plan.highlighted ? 'default' : 'outline'}>
         {free ? (
-          <Link to="/register">{m.pricing_page_start_free()}</Link>
+          <Link to="/register" data-link-zone="action">
+            {m.pricing_page_start_free()}
+          </Link>
         ) : (
-          <Link to="/app" aria-label={m.pricing_page_subscribe_label({ name: plan.name })}>
+          <Link
+            to="/app"
+            data-link-zone="action"
+            aria-label={m.pricing_page_subscribe_label({ name: plan.name })}
+          >
             {m.pricing_page_subscribe()}
           </Link>
         )}
@@ -360,7 +366,11 @@ function PackRow({ plan }: { plan: PricingPlan }) {
           : m.pricing_page_price_unavailable()}
       </span>
       <Button asChild size="sm" variant="outline">
-        <Link to="/app" aria-label={m.pricing_page_buy_label({ name: plan.name })}>
+        <Link
+          to="/app"
+          data-link-zone="action"
+          aria-label={m.pricing_page_buy_label({ name: plan.name })}
+        >
           {m.pricing_page_buy()}
         </Link>
       </Button>
@@ -380,7 +390,9 @@ function PricingEmpty() {
       <h2 className="mt-1 font-semibold text-title">{m.pricing_page_empty_title()}</h2>
       <p className="max-w-md text-muted-foreground">{m.pricing_page_empty_desc()}</p>
       <Button asChild className="mt-1">
-        <Link to="/register">{m.pricing_page_start_free()}</Link>
+        <Link to="/register" data-link-zone="action">
+          {m.pricing_page_start_free()}
+        </Link>
       </Button>
     </div>
   )

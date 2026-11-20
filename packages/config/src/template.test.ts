@@ -209,6 +209,12 @@ describe('defineTemplateConfig', () => {
       }),
     ).toThrow(/products\[0\].primary.href/)
     expect(() =>
+      defineTemplateConfig({
+        app,
+        marketing: { products: [{ ...product, secondaryLabel: { en: 'Features', zh: ' ' } }] },
+      }),
+    ).toThrow(/products\[0\].secondaryLabel/)
+    expect(() =>
       defineTemplateConfig({ app, marketing: { steps: [{ title: '', description: 'x' }] } }),
     ).toThrow(/steps\[0\].title/)
     // 多语言文案缺少语言时类型检查报错，绕过类型时运行时同样拒绝

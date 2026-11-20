@@ -11,6 +11,23 @@ import type { Plugin } from 'vite'
 
 const WEB_ROOT = new URL('..', import.meta.url).pathname
 
+/**
+ * 由 .dev.vars.example 生成的本地 preview 变量（签名密钥随机生成）；没有示例文件时返回 null。
+ * 构建后链接图检查（check-links.mjs）在 dist/server/.dev.vars 缺失时也用它：Turbo 缓存刻意不保存
+ * .dev.vars（apps/web/turbo.json），缓存命中恢复的产物里没有这个文件。
+ */
+export function fallbackDevVars(root = WEB_ROOT): string | null {
+  const example = join(root, '.dev.vars.example')
+  if (!existsSync(example)) return null
+  let source = readFileSync(example, 'utf8').replace(
+    /^BETTER_AUTH_SECRET=.*$/m,
+    `BETTER_AUTH_SECRET=${randomBytes(32).toString('base64')}`,
+  )
+  if (process.env.APP_URL)
+    source = source.replace(/^APP_URL=.*$/m, `APP_URL=${process.env.APP_URL}`)
+  return source
+}
+
 export function prerenderEnvFallback(root = WEB_ROOT): Plugin {
   return {
     name: 'saas:prerender-env-fallback',
@@ -18,7 +35,6 @@ export function prerenderEnvFallback(root = WEB_ROOT): Plugin {
     enforce: 'post',
     applyToEnvironment: (environment) => environment.name === 'ssr',
     generateBundle(_options, bundle) {
-      const example = join(root, '.dev.vars.example')
       if ('.dev.vars' in bundle) {
         const asset = bundle['.dev.vars']
         if (process.env.APP_URL && asset.type === 'asset') {
@@ -29,14 +45,8 @@ export function prerenderEnvFallback(root = WEB_ROOT): Plugin {
         }
         return
       }
-      if (!existsSync(example)) return
-      let source = readFileSync(example, 'utf8').replace(
-        /^BETTER_AUTH_SECRET=.*$/m,
-        `BETTER_AUTH_SECRET=${randomBytes(32).toString('base64')}`,
-      )
-      if (process.env.APP_URL)
-        source = source.replace(/^APP_URL=.*$/m, `APP_URL=${process.env.APP_URL}`)
-      this.emitFile({ type: 'asset', fileName: '.dev.vars', source })
+      const source = fallbackDevVars(root)
+      if (source !== null) this.emitFile({ type: 'asset', fileName: '.dev.vars', source })
     },
   }
 }
