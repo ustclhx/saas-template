@@ -1,4 +1,5 @@
 import { templateConfig } from '../../server/template-config.ts'
+import { localePrefix } from '../i18n/locale-url.ts'
 import type { SeoPage } from './metadata.ts'
 import { absoluteUrl, alternateLinks, indexedPages, localizedPath } from './metadata.ts'
 
@@ -55,7 +56,7 @@ export function robots(appUrl: string): string {
   const prefixes = [
     '',
     ...(templateConfig.i18n.enabled
-      ? templateConfig.i18n.locales.map((locale) => `/${locale}`)
+      ? templateConfig.i18n.locales.map((locale) => `/${localePrefix(locale)}`)
       : []),
   ]
   return [

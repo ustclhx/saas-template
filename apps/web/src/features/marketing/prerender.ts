@@ -1,3 +1,5 @@
+import { localePrefix, prefixLocale } from '../i18n/locale-url.ts'
+
 /**
  * 预渲染范围（openspec add-marketing-i18n-seo design.md 决策 2）：首页、博客、法律页与文档页在构建期
  * 生成静态 HTML，访客请求不经过数据库（specs/marketing-site「营销页预渲染」）。
@@ -11,7 +13,7 @@ export const PRERENDERED_PREFIXES = ['/blog', '/legal', '/docs', '/guides'] as c
 export function isPrerenderedPath(path: string, locales: readonly string[]): boolean {
   const pathname = (path.split(/[?#]/)[0] ?? '').replace(/\/+$/, '') || '/'
   const [, first = '', ...rest] = pathname.split('/')
-  const delocalized = locales.includes(first)
+  const delocalized = prefixLocale(first, locales)
     ? `/${rest.join('/')}`.replace(/\/$/, '') || '/'
     : pathname
   if (delocalized === '/') return true
@@ -20,10 +22,12 @@ export function isPrerenderedPath(path: string, locales: readonly string[]): boo
   )
 }
 
-/** 预渲染的入口页面：各语言首页，其余页面由链接爬取得到 */
+/** 预渲染的入口页面：各语言首页（小写前缀，默认语言无前缀），其余页面由链接爬取得到 */
 export function prerenderEntryPages(
   locales: readonly string[],
   defaultLocale: string,
 ): { path: string }[] {
-  return locales.map((locale) => ({ path: locale === defaultLocale ? '/' : `/${locale}` }))
+  return locales.map((locale) => ({
+    path: locale === defaultLocale ? '/' : `/${localePrefix(locale)}`,
+  }))
 }
