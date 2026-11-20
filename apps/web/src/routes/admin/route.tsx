@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react'
 import { getAdminViewer } from '../../features/admin/admin.functions.ts'
 import { ADMIN_COPY } from '../../features/admin/copy.ts'
 import { getAdminNavGroups } from '../../features/admin/nav.ts'
-import { authClient } from '../../features/auth/auth-client.ts'
+import { signOut as signOutClient } from '../../features/auth/auth-client.ts'
 import { LanguageControls } from '../../features/i18n/language-controls.tsx'
+import { useSignedInHint } from '../../features/i18n/signed-in.ts'
 import { ThemeToggle } from '../../features/theme/theme-toggle.tsx'
 import { templateConfig } from '../../server/template-config.ts'
 
@@ -19,6 +20,7 @@ export const Route = createFileRoute('/admin')({
 })
 
 function AdminLayout() {
+  useSignedInHint()
   const { admin } = Route.useRouteContext()
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
@@ -85,7 +87,7 @@ function SignOutButton() {
     setBusy(true)
     setError('')
     try {
-      const result = await authClient().signOut()
+      const result = await signOutClient()
       if (result.error) throw new Error(result.error.message)
       window.location.assign('/login')
     } catch {

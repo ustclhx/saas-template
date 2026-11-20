@@ -5,9 +5,9 @@ import { getAnnouncement } from '../features/admin/settings-announcement.functio
 import { AnnouncementBanner } from '../features/admin/settings-announcement-banner.tsx'
 import { ProductAnalytics } from '../features/analytics/analytics.tsx'
 import { analyticsHeadScripts } from '../features/analytics/head.ts'
+import { isAppAreaPath } from '../features/i18n/app-area.ts'
+import { LanguageAssist } from '../features/i18n/language-assist.tsx'
 import { LanguageControls } from '../features/i18n/language-controls.tsx'
-import { LOCALE_COOKIE_MAX_AGE, PREFERENCE_COOKIE } from '../features/i18n/preference.ts'
-import { localeSuggestionScript, SUGGESTABLE_LOCALES } from '../features/i18n/suggestion.ts'
 import { privateMeta } from '../features/seo/metadata.ts'
 import {
   getPlausibleSite,
@@ -17,7 +17,6 @@ import {
 import { getHtmlAttributes } from '../features/theme/html-attributes.isomorphic.ts'
 import { RootDocument } from '../features/theme/root-document.tsx'
 import { SiteSettings } from '../features/theme/site-settings.tsx'
-import { baseLocale, cookieName, locales } from '../paraglide/runtime.js'
 import { templateConfig } from '../server/template-config.ts'
 import appCss from '../styles/app.css?url'
 
@@ -50,21 +49,6 @@ export const Route = createRootRoute({
     // 首屏前按偏好（未设置时跟随系统）给 <html> 设置 dark 类：<head> 内同步执行，避免刷新时先浅后深的闪烁
     scripts: [
       { children: themeInitScript() },
-      // 语言建议同样在首帧前决定，横幅随首帧出现在最终位置，不在水合后把整页下推（suggestion.ts）
-      ...(templateConfig.i18n.enabled
-        ? [
-            {
-              children: localeSuggestionScript({
-                baseLocale,
-                locales,
-                preferenceCookie: PREFERENCE_COOKIE,
-                localeCookie: cookieName,
-                cookieMaxAge: LOCALE_COOKIE_MAX_AGE,
-                suggestableLocales: SUGGESTABLE_LOCALES,
-              }),
-            },
-          ]
-        : []),
       ...analyticsHeadScripts(
         matches.at(-1)?.pathname ?? '/',
         templateConfig,
@@ -93,6 +77,9 @@ function RootComponent() {
             match.status !== 'error'),
       ) || /^\/admin(\/|$)/.test(state.location.pathname),
   })
+  const publicPage = useRouterState({
+    select: (state) => !isAppAreaPath(state.location.pathname),
+  })
   return (
     <RootDocument floatingControls={!hasInlineControls} htmlAttributes={htmlAttributes}>
       <ProductAnalytics />
@@ -100,6 +87,8 @@ function RootComponent() {
       <AnnouncementBanner initial={announcement} />
       {templateConfig.i18n.enabled && !hasInlineControls && <LanguageControls />}
       <Outlet />
+      {/* 语言提示条与首页记住语言：只在公开页、水合后挂载，服务端 HTML 中没有（multilingual-seo 4.2、4.4） */}
+      {templateConfig.i18n.enabled && publicPage && <LanguageAssist />}
       {/* 手机端没有站点页脚的公开页：设置行放在页面末尾，底部留 80px 给右下悬浮按钮；有页脚时由页脚渲染，这里隐藏 */}
       {!hasInlineControls && (
         <SiteSettings className="border-t px-4 pt-4 pb-20 md:hidden print:hidden [body:has([data-site-footer])_&]:hidden" />

@@ -18,16 +18,16 @@
 
 ## 4. 语言提示条与 ML-09（依赖 1.2）
 
-- [ ] 4.1 删除首帧脚本、`data-locale-suggestion*`、SSR 隐藏横幅与建议偏好 Cookie；保留并迁移语言匹配函数及其测试
-- [ ] 4.2 按设计稿实现 `LanguagePrompt`：水合后挂载，候选取本页 hreflang，`<a href>` 跳转，关闭状态存 localStorage（try/catch）；组件测试与 e2e 覆盖「SSR HTML 中没有提示」「中文浏览器出现提示」「对应语言未发布不提示」，CLS 断言为 0 增量
-- [ ] 4.3 语言切换器按设计稿只链接真实存在的版本，使用普通 `<a>`
-- [ ] 4.4 ML-09：手动选择语言时写 localStorage 标记，退出登录清除；首页在配置开启、已登录、标记有效且本页 hreflang 含该语言时 `location.replace`；单测覆盖开关、匿名、标记无效与内页不跳
+- [x] 4.1 删除首帧脚本、`data-locale-suggestion*`、SSR 隐藏横幅与建议偏好 Cookie；保留并迁移语言匹配函数及其测试
+- [x] 4.2 按设计稿实现 `LanguagePrompt`：水合后挂载，候选取本页 hreflang，`<a href>` 跳转，关闭状态存 localStorage（try/catch）；组件测试与 e2e 覆盖「SSR HTML 中没有提示」「中文浏览器出现提示」「对应语言未发布不提示」，CLS 断言为 0 增量
+- [x] 4.3 语言切换器按设计稿只链接真实存在的版本，使用普通 `<a>`
+- [x] 4.4 ML-09：手动选择语言时写 localStorage 标记，退出登录清除；首页在配置开启、已登录、标记有效且本页 hreflang 含该语言时 `location.replace`；单测覆盖开关、匿名、标记无效与内页不跳
 
 ## 5. 多语言检查
 
 - [x] 5.1 `check-links-graph.mjs`：每页规则（canonical 自身、`html lang`、语言查询参数、提示条标记）与 hreflang 图规则（双向、同域、x-default 恰一条、目标可索引），使用固定 HTML 夹具测试
 - [x] 5.2 `check-links.mjs`：Accept-Language 对比（首页、各语言首页、抽样页）、语言 `Set-Cookie`、默认语言前缀 301；多站点按站点执行；补 HTTP 夹具测试
-- [ ] 5.3 模板自身以 `enforce` 通过；记录报告摘要与耗时
+- [x] 5.3 模板自身以 `enforce` 通过；记录报告摘要与耗时
 
 ## 6. 文档、升级说明与发布
 

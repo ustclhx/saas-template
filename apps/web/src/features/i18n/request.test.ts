@@ -132,7 +132,7 @@ describe('公开页语言只由 URL 决定（multilingual-seo 2.2、2.4）', () 
     { 'accept-language': 'en-US,en;q=0.9' },
     { 'accept-language': 'ar' },
     { cookie: `PARAGLIDE_LOCALE=${other ?? defaultLocale}` },
-    { cookie: `PARAGLIDE_LOCALE=${defaultLocale}; locale-preference=${defaultLocale}` },
+    { cookie: `PARAGLIDE_LOCALE=${defaultLocale}` },
     { 'sec-fetch-dest': 'document', 'accept-language': 'zh-CN', cookie: 'PARAGLIDE_LOCALE=zh' },
   ]
 

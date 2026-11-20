@@ -395,6 +395,13 @@
   /* 模板新增（add-ai-chat-components）：思考中三点的明暗循环（animate-chat-dot），减少动态效果时由
      motion-reduce:animate-none 关闭（同在 utilities 层，SSR 即生效） */
   --animate-chat-dot: chat-dot 1.2s ease-in-out infinite;
+  /* 模板新增（multilingual-seo 4.2，设计稿 multilingual-seo/Motion）：右下浮层（LanguagePrompt 等）的纯 CSS 进入 / 退出，
+     时长对应 spring.moderate 的进入 160ms / 退出 120ms，营销页不加载 motion。减少动态效果时改用只有不透明度的
+     float-fade-in / float-fade-out（motion-reduce: 变体），位置始终固定 */
+  --animate-float-enter: float-enter 160ms cubic-bezier(0.2, 0, 0, 1) both;
+  --animate-float-exit: float-exit 120ms ease-in both;
+  --animate-float-fade-in: float-fade-in 160ms linear both;
+  --animate-float-fade-out: float-fade-out 120ms linear both;
   /* 模板新增（add-ai-chat-components）：ChatMessage 助手消息的版式阈值（容器查询 @chat-message:）。
      消息宽度不足 23rem（368px）时头像与推理按钮同一行、正文通栏在下（Mobile / EmbeddedMobile 画板，内容宽约 358px）；
      达到时为头像列 + 内容列（Embedded 画板的 420px 面板，内容宽约 388px） */
@@ -630,6 +637,31 @@ html.transitioning *::after {
   scrollbar-width: none;
   &::-webkit-scrollbar {
     display: none;
+  }
+}
+
+/* 右下浮层的进入 / 退出关键帧（工具类 animate-float-*，见 @theme）：淡入并上移 8px，淡出并下移 4px；
+   fade 版本只有不透明度，供 prefers-reduced-motion: reduce 使用 */
+@keyframes float-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes float-exit {
+  to {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@keyframes float-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes float-fade-out {
+  to {
+    opacity: 0;
   }
 }
 

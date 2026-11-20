@@ -555,7 +555,7 @@ describe('多语言规则', () => {
     ])
   })
 
-  it('服务端 HTML 中的语言提示：在任务 5.3 前为警告级', () => {
+  it('服务端 HTML 中的语言提示为失败级', () => {
     const result = run(
       mlSite({
         '/': html('<a href="/zh">中文</a><div data-locale-suggestion-for="zh" hidden>切换</div>', {
@@ -567,7 +567,7 @@ describe('多语言规则', () => {
     expect(mlFindings(result)).toEqual([
       expect.objectContaining({ rule: 'language-prompt-ssr', page: '/' }),
     ])
-    expect(rules(result.failures)).not.toContain('language-prompt-ssr')
+    expect(rules(result.failures)).toContain('language-prompt-ssr')
   })
 
   it('多语言规则计入规则统计与报告', () => {
@@ -576,8 +576,8 @@ describe('多语言规则', () => {
       'hreflang-reciprocal': 1,
       'accept-language-vary': 0,
       'default-locale-prefix': 0,
+      'language-prompt-ssr': 0,
     })
-    expect(counts.warnings).toMatchObject({ 'language-prompt-ssr': 0 })
   })
 })
 
@@ -681,9 +681,10 @@ describe('多语言请求规则的纯函数', () => {
     }
     const cookie = { rule: 'language-set-cookie', page: '/', message: 'x' }
     const prompt = { rule: 'language-prompt-ssr', page: '/en', message: 'y' }
-    addFindings(result, [cookie, cookie, prompt])
-    expect(result.failures).toEqual([cookie])
-    expect(result.warnings).toEqual([prompt])
+    const depth = { rule: 'depth', page: '/deep', message: 'z' }
+    addFindings(result, [cookie, cookie, prompt, depth])
+    expect(result.failures).toEqual([cookie, prompt])
+    expect(result.warnings).toEqual([depth])
   })
 })
 

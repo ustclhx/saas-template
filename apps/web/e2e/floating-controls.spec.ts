@@ -19,7 +19,7 @@ const evidenceDir = resolve(
 const themeControl = (page: Page) => page.locator('[data-slot="theme-toggle"].fixed')
 const languageControl = (page: Page) =>
   page.locator('div.fixed').filter({
-    has: page.getByRole('combobox', { name: 'Language', includeHidden: true }),
+    has: page.getByRole('button', { name: 'Language', includeHidden: true }),
   })
 
 async function center(locator: Locator) {

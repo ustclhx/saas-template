@@ -1,7 +1,7 @@
 // 来源：fluid-functionalism radix/select（2026-11，https://www.fluidfunctionalism.com/r/select.json，MIT）
 // 适配：radix-ui 统一包导入、包内相对路径、去掉 "use client"；其余改动见 packages/ui/UPSTREAM.md
 
-import { cva, type VariantProps } from 'class-variance-authority'
+import type { VariantProps } from 'class-variance-authority'
 import { AnimatePresence, m as motion } from 'motion/react'
 import { Select as SelectPrimitive } from 'radix-ui'
 import {
@@ -33,6 +33,7 @@ import {
   popupScrollAreaClass,
   popupViewportClass,
 } from '../lib/popup.ts'
+import { triggerVariants } from '../lib/select-trigger.ts'
 import { usePopupShape, useShape } from '../lib/shape-context.tsx'
 import { SizeProvider, type SizeVariant, typeClass, useSize } from '../lib/size-context.tsx'
 import { exitFallbackMs, spring } from '../lib/springs.ts'
@@ -220,31 +221,6 @@ Select.displayName = 'Select'
 // ---------------------------------------------------------------------------
 // SelectTrigger
 // ---------------------------------------------------------------------------
-
-const triggerVariants = cva(
-  [
-    'group inline-flex items-center justify-between outline-none cursor-pointer',
-    // Listed, never `all`: a size change snaps instead of easing the
-    // trigger's height and padding.
-    'transition-[color,background-color,border-radius,box-shadow,opacity] duration-80',
-    'disabled:opacity-50 disabled:pointer-events-none',
-    // data-pointer-focus: focus handed back after a pick with the pointer.
-    // 模板改动：焦点环改为 2px 描边加 2px 间隙（与 Button 一致），上游为 1px ring
-    'focus-visible:not-data-[pointer-focus]:outline-solid focus-visible:not-data-[pointer-focus]:outline-2 focus-visible:not-data-[pointer-focus]:outline-offset-2 focus-visible:not-data-[pointer-focus]:outline-(--focus-ring)',
-  ],
-  {
-    variants: {
-      variant: {
-        // 模板改动：边框取 --field-border（与 Input、Textarea 共用，默认等于 --border）
-        bordered: 'border border-field-border bg-transparent text-foreground hover:bg-hover',
-        borderless: 'border border-transparent bg-transparent text-foreground hover:bg-hover',
-      },
-    },
-    defaultVariants: {
-      variant: 'bordered',
-    },
-  },
-)
 
 interface SelectTriggerProps
   extends Omit<HTMLAttributes<HTMLButtonElement>, 'children'>,

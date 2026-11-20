@@ -1,150 +1,81 @@
-import { Button, Select, SelectContent, SelectItem, SelectTrigger } from '@saas/ui'
+import { LanguageMenu, type LanguageMenuItem } from '@saas/ui'
 import { useLocation } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { type MouseEvent, useEffect, useState } from 'react'
 import { m } from '../../paraglide/messages.js'
-import {
-  baseLocale,
-  getLocale,
-  isLocale,
-  type Locale,
-  locales,
-  localizeHref,
-} from '../../paraglide/runtime.js'
-import { isPrerenderedPath } from '../marketing/prerender.ts'
-import { documentAlternates, localeSwitchHref } from '../seo/alternates.ts'
+import { getLocale, isLocale, type Locale } from '../../paraglide/runtime.js'
+import { languageOptions } from '../seo/alternates.ts'
 import { isAppAreaPath } from './app-area.ts'
+import { rememberHomeLocale, signedInHint } from './home-locale.ts'
+import { usePageAlternates } from './page-alternates.ts'
 import { saveLanguagePreference } from './preference.functions.ts'
 import { rememberLocale } from './preference.ts'
-import {
-  detachPrehydrationListener,
-  handledBeforeHydration,
-  SUGGESTABLE_LOCALES,
-  SUGGESTION_ATTRIBUTE,
-  suggestionCss,
-  suggestionTargets,
-} from './suggestion.ts'
+
+/** 语言的自称（如「中文」「English」） */
+function languageName(locale: string): string {
+  return new Intl.DisplayNames([locale], { type: 'language' }).of(locale) ?? locale
+}
 
 /**
- * 独立组件，语言建议只提示、不改变 URL。建议在首帧前由 <head> 脚本决定（suggestion.ts）：
- * 这里在服务端就输出每个候选语言的横幅（默认隐藏），水合后不再插入或移除，避免整页下移的版面跳动。
+ * 语言切换器（multilingual-seo 4.3，设计稿 multilingual-seo/Switcher 方案 A）：链接菜单，每项是普通
+ * `<a href hreflang>`，只列本页 hreflang 中真实存在的语言版本；应用区列出全部语言，选择后写 Cookie 并保存到账号。
  * 默认固定在左下角（仅 md 及以上；手机端改由页脚设置行 SiteSettings 渲染）；
- * `placement="inline"` 用于后台侧栏等自带位置的容器，避免浮层遮挡内容。
- * `suggest={false}`：同页已有另一实例负责语言建议时关闭，避免重复横幅。
- * `suggestableLocales`：只建议这些语言，默认取 SUGGESTABLE_LOCALES（与首帧脚本相同），所有实例自动一致。
- * 横幅在水合后的 effect 中带上 data-hydrated（仅属性，无样式与版面变化），供测试判断水合完成。
- * 横幅与选择器外层带 data-link-zone="nav"：语言切换属于导航层，链接图检查不把它计为正文链接。
+ * `placement="inline"` 用于后台侧栏等自带位置的容器，`bare` 用于设置行与工作台侧栏。
+ * 外层带 data-link-zone="nav"：语言切换属于导航层，链接图检查不把它计为正文链接。
+ *
+ * 点击某一项：
+ * - 浏览器端写 Paraglide Cookie（应用区按它选语言），公开页不产生服务端 Set-Cookie；
+ * - 应用区，或客户端认为已登录（home-locale.ts 的登录信号）时，先保存到账号设置再跳转，其他设备的应用区随之生效；
+ *   已登录时同时写首页记住语言的标记（ML-09）。匿名访客不请求服务端，由链接直接跳转。
  */
 export function LanguageControls({
   placement = 'floating',
-  suggest = true,
-  suggestableLocales = SUGGESTABLE_LOCALES,
 }: {
   placement?: 'floating' | 'inline' | 'bare'
-  suggest?: boolean
-  suggestableLocales?: readonly string[] | undefined
 } = {}) {
   const floating = placement === 'floating'
-  const location = useLocation()
-  const [dismissed, setDismissed] = useState(false)
+  const pathname = useLocation({ select: (location) => location.pathname })
+  const alternates = usePageAlternates()
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const locale = getLocale()
-  const options = locales.map((value) => ({
-    value,
-    label: new Intl.DisplayNames([value], { type: 'language' }).of(value) ?? value,
-  }))
-  const currentLocale = options.find((option) => option.value === locale)
-  useEffect(() => {
-    setReady(true)
-    // 水合完成：横幅的点击改由 React 处理，摘除首帧脚本注册的水合前监听
-    detachPrehydrationListener()
-  }, [])
-  // 只在默认语言的营销页（预渲染页与定价页）建议；服务端与水合首次渲染一致，显示与否只由首帧前脚本写入的属性决定
-  const suggestions =
-    suggest &&
-    !dismissed &&
-    locale === baseLocale &&
-    (isPrerenderedPath(location.pathname, locales) || location.pathname === '/pricing')
-      ? suggestionTargets({ baseLocale, locales, suggestableLocales })
-      : []
+  const appArea = isAppAreaPath(pathname)
+  const items: LanguageMenuItem[] = languageOptions({ locale, pathname, alternates, appArea }).map(
+    (option) => ({ ...option, label: languageName(option.locale) }),
+  )
+  useEffect(() => setReady(true), [])
 
-  function dismiss() {
-    rememberLocale(locale)
-    // 去掉首帧脚本写入的属性：之后客户端导航回到营销页也不再显示
-    document.documentElement.removeAttribute(SUGGESTION_ATTRIBUTE)
-    setDismissed(true)
-  }
-
-  async function select(next: Locale) {
+  async function save(next: Locale, href: string) {
     setBusy(true)
     setError(null)
     try {
       await saveLanguagePreference({ data: next })
-      rememberLocale(next)
-      // 完整导航让账号语言、SSR 与客户端同时刷新；营销页始终以目的 URL 为准，
-      // 目标取本页 hreflang 声明的该语言版本（本地化 slug、未翻译页见 seo/alternates.ts）。
-      window.location.assign(
-        isAppAreaPath(window.location.pathname)
-          ? window.location.href
-          : localeSwitchHref(window.location.href, next, documentAlternates()),
-      )
+      // 完整导航让账号语言、SSR 与客户端同时刷新；应用区停留在当前地址（含查询参数）
+      window.location.assign(appArea ? window.location.href : href)
     } catch {
       setError(m.i18n_save_failed())
       setBusy(false)
     }
   }
 
+  function select(item: LanguageMenuItem, event: MouseEvent<HTMLElement>) {
+    if (!isLocale(item.locale)) return
+    const next = item.locale
+    if (busy) {
+      event.preventDefault()
+      return
+    }
+    rememberLocale(next)
+    rememberHomeLocale(next)
+    if (appArea || signedInHint()) {
+      event.preventDefault()
+      void save(next, item.href)
+    }
+    // 其他情况：普通链接自行跳转
+  }
+
   return (
     <>
-      {suggestions.length > 0 && <style>{suggestionCss(suggestions)}</style>}
-      {suggestions.map((suggestion) => (
-        <aside
-          key={suggestion}
-          data-locale-suggestion-for={suggestion}
-          data-link-zone="nav"
-          data-hydrated={ready ? '' : undefined}
-          aria-label={m.i18n_suggestion_label()}
-          className="hidden flex-wrap items-center justify-center gap-3 border-b bg-muted px-4 py-3"
-        >
-          {/* 横幅文案属于界面提示而非页面内容：data-nosnippet 让搜索引擎不把它用作摘要
-              （Google 仅认 div/span/section 上的该属性；display: contents 保持外层 flex 布局） */}
-          <div data-nosnippet="" className="contents">
-            <p>
-              {m.i18n_suggestion({
-                language:
-                  new Intl.DisplayNames([suggestion], { type: 'language' }).of(suggestion) ??
-                  suggestion,
-              })}
-            </p>
-            {/* 真实链接：水合前与关闭 JS 时也能切换（水合前的 Cookie 由首帧脚本写入）；水合后保存账号语言再导航 */}
-            <Button asChild aria-disabled={busy || undefined}>
-              <a
-                href={localizeHref(location.pathname, { locale: suggestion })}
-                data-locale-suggestion-action="switch"
-                onClick={(event) => {
-                  if (handledBeforeHydration(event.nativeEvent)) return
-                  event.preventDefault()
-                  if (!busy) void select(suggestion)
-                }}
-              >
-                {m.i18n_switch()}
-              </a>
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              data-locale-suggestion-action="dismiss"
-              onClick={(event) => {
-                if (handledBeforeHydration(event.nativeEvent)) setDismissed(true)
-                else dismiss()
-              }}
-            >
-              {m.i18n_dismiss()}
-            </Button>
-          </div>
-        </aside>
-      ))}
       <div
         data-link-zone="nav"
         className={
@@ -155,28 +86,13 @@ export function LanguageControls({
               : 'inline-flex w-fit rounded-md bg-background px-3 py-1.5 text-sm shadow-xs'
         }
       >
-        <span className="sr-only">{m.i18n_language()}</span>
-        <Select
-          value={currentLocale ? locale : ''}
+        <LanguageMenu
+          label={m.i18n_language()}
+          items={items}
           disabled={!ready || busy}
-          onValueChange={(value) => {
-            if (isLocale(value)) void select(value)
-          }}
-        >
-          <SelectTrigger
-            aria-label={m.i18n_language()}
-            className="w-full min-w-0"
-            placeholder={m.i18n_language()}
-            valueLabel={currentLocale?.label}
-          />
-          <SelectContent>
-            {options.map((option, index) => (
-              <SelectItem key={option.value} index={index} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          className="w-full"
+          onItemClick={select}
+        />
       </div>
       {error && (
         <p

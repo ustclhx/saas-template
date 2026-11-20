@@ -1,4 +1,7 @@
+import { LanguageMenu, LanguagePrompt } from '@saas/ui'
 import { m } from '../../paraglide/messages.js'
+import { baseLocale, locales, localizeHref } from '../../paraglide/runtime.js'
+import { textDirection } from '../i18n/direction.ts'
 import { AiEntry } from '../marketing/ai-entry.tsx'
 import { localized, localizeProduct } from '../marketing/localized.ts'
 import { ProductMatrix } from '../marketing/sections/product-matrix.tsx'
@@ -62,6 +65,38 @@ export function MarketingSection() {
       </Specimen>
       <Specimen label="AiEntry">
         <AiEntry href="/app" inline />
+      </Specimen>
+      {/* 语言提示条与切换菜单（multilingual-seo 4.2、4.3）：每种语言的文案取该语言的 messages */}
+      <Specimen label="LanguagePrompt" className="flex-col items-stretch">
+        {locales.map((locale) => (
+          <LanguagePrompt
+            key={locale}
+            inline
+            href={localizeHref('/pricing', { locale })}
+            hrefLang={locale}
+            dir={textDirection(locale)}
+            labels={{
+              region: m.i18n_prompt_region({}, { locale }),
+              message: m.i18n_prompt_message({}, { locale }),
+              action: m.i18n_prompt_action({}, { locale }),
+              close: m.i18n_prompt_close({}, { locale }),
+            }}
+            onDismiss={() => {}}
+          />
+        ))}
+      </Specimen>
+      <Specimen label="LanguageMenu">
+        <LanguageMenu
+          label={m.i18n_language()}
+          items={locales.map((locale) => ({
+            locale,
+            label: new Intl.DisplayNames([locale], { type: 'language' }).of(locale) ?? locale,
+            href: localizeHref('/pricing', { locale }),
+            current: locale === baseLocale,
+          }))}
+          side="bottom"
+          onItemClick={(_item, event) => event.preventDefault()}
+        />
       </Specimen>
     </PreviewSection>
   )

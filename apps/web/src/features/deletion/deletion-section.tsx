@@ -1,6 +1,7 @@
 import { Button } from '@saas/ui'
 import { useEffect, useState } from 'react'
-import { authClient } from '../auth/auth-client.ts'
+import { signOut as signOutClient } from '../auth/auth-client.ts'
+import { forgetSignedIn } from '../i18n/home-locale.ts'
 import { removeAccount, removeWorkspace } from './deletion.functions.ts'
 
 export function DeletionSection({
@@ -28,6 +29,8 @@ export function DeletionSection({
         ? await removeWorkspace({ data: { workspaceId: workspace.id } })
         : await removeAccount()
       if (result.ok) {
+        // 账号已删除：清除客户端登录信号与首页语言标记
+        if (!workspace) forgetSignedIn()
         window.location.assign(workspace ? '/app' : '/login')
         return
       }
@@ -47,7 +50,7 @@ export function DeletionSection({
   async function signInAgain() {
     setBusy(true)
     try {
-      const result = await authClient().signOut()
+      const result = await signOutClient()
       if (result.error) throw new Error(result.error.message)
       window.location.assign('/login?redirect=%2Faccount')
     } catch {

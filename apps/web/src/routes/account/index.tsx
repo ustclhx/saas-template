@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { SignupBonusSection } from '../../features/billing/signup-section.tsx'
 import { DeletionSection } from '../../features/deletion/deletion-section.tsx'
+import { useSignedInHint } from '../../features/i18n/signed-in.ts'
 import { compactSearch, optionalString } from '../../features/routing/search.ts'
 import { getAccount } from '../../features/settings/account.functions.ts'
 import {
@@ -25,6 +26,7 @@ export const Route = createFileRoute('/account/')({
 })
 
 function AccountPage() {
+  useSignedInHint()
   const account = Route.useLoaderData()
   const { error } = Route.useSearch()
   const { user } = account

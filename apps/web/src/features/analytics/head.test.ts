@@ -10,11 +10,8 @@ vi.mock('../admin/impersonation-banner.tsx', () => ({ ImpersonationBanner: () =>
 vi.mock('../admin/settings-announcement-banner.tsx', () => ({ AnnouncementBanner: () => null }))
 vi.mock('../i18n/language-controls.tsx', () => ({ LanguageControls: () => null }))
 
-import { baseLocale, cookieName, locales } from '../../paraglide/runtime.js'
 import { Route } from '../../routes/__root.tsx'
 import { templateConfig } from '../../server/template-config.ts'
-import { LOCALE_COOKIE_MAX_AGE, PREFERENCE_COOKIE } from '../i18n/preference.ts'
-import { localeSuggestionScript } from '../i18n/suggestion.ts'
 import { analyticsHeadScripts } from './head.ts'
 
 const site = { domain: 'acme-staging', scriptUrl: 'https://plausible.example/js/script.manual.js' }
@@ -50,29 +47,14 @@ describe('分析脚本页面 head', () => {
       expect(analyticsHeadScripts(pathname, templateConfig, multi)).toEqual([])
   })
 
-  it('默认页面 head 无 PostHog 或 beacon，主题与语言建议内联脚本保持原样', async () => {
+  it('默认页面 head 无 PostHog 或 beacon，只有主题内联脚本（不再输出首帧语言建议脚本）', async () => {
     const head = Route.options.head
     if (!head) throw new Error('Root head is missing')
-    const inline = [
-      { children: themeInitScript() },
-      ...(templateConfig.i18n.enabled
-        ? [
-            {
-              children: localeSuggestionScript({
-                baseLocale,
-                locales,
-                preferenceCookie: PREFERENCE_COOKIE,
-                localeCookie: cookieName,
-                cookieMaxAge: LOCALE_COOKIE_MAX_AGE,
-              }),
-            },
-          ]
-        : []),
-    ]
+    const inline = [{ children: themeInitScript() }]
     for (const pathname of ['/', '/zh/pricing', '/app/personal/chat', '/admin/users']) {
       const result = await head({ matches: [{ pathname }] } as Parameters<typeof head>[0])
       expect(result?.scripts).toEqual(inline)
-      expect(JSON.stringify(result?.scripts)).not.toMatch(/posthog|beacon/i)
+      expect(JSON.stringify(result?.scripts)).not.toMatch(/posthog|beacon|locale-suggestion/i)
     }
   })
 

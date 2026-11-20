@@ -162,6 +162,16 @@ export {
   type InsufficientCreditsLabels,
 } from './components/insufficient-credits-dialog.tsx'
 export { Label } from './components/label.tsx'
+export {
+  LanguageMenu,
+  type LanguageMenuItem,
+  type LanguageMenuProps,
+} from './components/language-menu.tsx'
+export {
+  LanguagePrompt,
+  type LanguagePromptLabels,
+  type LanguagePromptProps,
+} from './components/language-prompt.tsx'
 // 公开页内链组件（openspec seo-internal-linking 组 3）：Breadcrumb、LinkCard / LinkCardGrid / SeriesNav、LinkList、
 // Pagination，默认输出原生 <a href>，renderLink 可换成路由 Link
 export {

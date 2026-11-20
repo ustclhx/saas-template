@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { SidebarLayout } from '../../../features/app-shell/sidebar-layout.tsx'
 import { readSidebarOpen } from '../../../features/app-shell/sidebar-state.ts'
 import { TopbarLayout } from '../../../features/app-shell/topbar-layout.tsx'
+import { useSignedInHint } from '../../../features/i18n/signed-in.ts'
 import { NotificationsProvider } from '../../../features/notifications/store.tsx'
 import { getWorkspacePage } from '../../../features/workspace/workspace.functions.ts'
 import { m } from '../../../paraglide/messages.js'
@@ -29,6 +30,7 @@ export const Route = createFileRoute('/app/$slug')({
 })
 
 function WorkspaceLayout() {
+  useSignedInHint()
   const page = Route.useLoaderData()
   const { sidebarOpen } = Route.useRouteContext()
   // 顶部条铃铛与首页通知区共用一份通知数据与 30 秒轮询（评审清单 #90），按空间重建
