@@ -20,6 +20,7 @@
 | [08-roadmap.md](./08-roadmap.md) | 分阶段开发计划与验收标准、待决事项 |
 | [09-parallel-plan.md](./09-parallel-plan.md) | 用 Orca 并行开发：worktree 隔离、共享文件规则、并行波次与合并流程 |
 | [design-system.md](./design-system.md) | UI 分层、设计 token 三层、组件与动效规范、页面模式、设计关卡与衍生项目定制 |
+| [multilingual-seo.md](./multilingual-seo.md) | 多语言 SEO 规范 ML-01～ML-10：前缀与 301、未翻译页、hreflang 与本地化 slug、语言提示条、首页记住语言、验收规则对照 |
 | [seo-internal-linking.md](./seo-internal-linking.md) | 站内链接规范：页面层级与主词字段、面包屑与内链区块、链接图检查规则、配置与 report／enforce 切换 |
 | [share-cards.md](./share-cards.md) | 运行时分享卡片与通用分享页：注册、项目分享表、到期、失效、缓存、限流、部署要求 |
 | [analytics.md](./analytics.md) | 埋点字典、首触归因、自建 Plausible 开关与发布串扰门禁 |
