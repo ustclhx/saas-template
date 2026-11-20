@@ -3,7 +3,7 @@ import { BlogHub } from '../../features/marketing/blog/blog-hub.tsx'
 import { TagLinks } from '../../features/marketing/blog/post-list.tsx'
 import { getBlogIndex } from '../../features/marketing/content.functions.ts'
 import { originFromMatches, pageHead, staticPage } from '../../features/seo/metadata.ts'
-import { breadcrumbData } from '../../features/seo/structured-data.ts'
+import { breadcrumbListData } from '../../features/seo/structured-data.ts'
 import { m } from '../../paraglide/messages.js'
 import { getLocale } from '../../paraglide/runtime.js'
 
@@ -16,7 +16,7 @@ export const Route = createFileRoute('/blog/')({
       page,
       appUrl,
       loaderData
-        ? [breadcrumbData(loaderData.breadcrumb, m.marketing_blog_title(), appUrl, page.locale)]
+        ? [breadcrumbListData(loaderData.breadcrumb, m.marketing_blog_title(), appUrl, page.locale)]
         : [],
     )
   },

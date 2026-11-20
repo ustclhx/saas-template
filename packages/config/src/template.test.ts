@@ -12,6 +12,8 @@ import {
 } from './template.ts'
 
 const app = { name: 'MyApp', url: 'https://example.com', supportEmail: 'support@example.com' }
+// 多语言文案的夹具语言：显式传入，不依赖项目的默认语言（衍生项目可能没有 zh）
+const i18n = { locales: ['en', 'zh'] } as const
 
 describe('defineTemplateConfig', () => {
   it('fills every omitted option with the documented default', () => {
@@ -134,6 +136,34 @@ describe('defineTemplateConfig', () => {
     ])
   })
 
+  it('seo.linking.sites groups locales per site and validates them', () => {
+    expect(defineTemplateConfig({ app }).seo.linking.sites).toEqual([])
+    const sites = defineTemplateConfig({
+      app,
+      i18n: { locales: ['en', 'zh'] },
+      seo: {
+        linking: { sites: [{ locales: ['en'], previewHost: 'LocalHost' }, { locales: ['zh'] }] },
+      },
+    }).seo.linking.sites
+    expect(sites).toEqual([{ locales: ['en'], previewHost: 'localhost' }, { locales: ['zh'] }])
+    expect(resolveSeoLinking({ sites })).toEqual(resolveSeoLinking({ sites }))
+    const bad = [
+      [{ locales: [] }],
+      [{ locales: ['en'] }, { locales: ['en'] }],
+      [{ locales: ['en'], previewHost: 'http://localhost' }],
+      [
+        { locales: ['en'], previewHost: 'a.localhost' },
+        { locales: ['zh'], previewHost: 'a.localhost' },
+      ],
+      [{ locales: ['fr'] }],
+    ]
+    for (const entry of bad)
+      expect(
+        () => defineTemplateConfig({ app, i18n, seo: { linking: { sites: entry } } }),
+        JSON.stringify(entry),
+      ).toThrow(/template config: seo\.linking\.sites/)
+  })
+
   it('resolveSeoLinking is idempotent on a resolved config', () => {
     const linking = defineTemplateConfig({
       app,
@@ -167,6 +197,7 @@ describe('defineTemplateConfig', () => {
   it('merges marketing blocks and rejects malformed stats', () => {
     const config = defineTemplateConfig({
       app,
+      i18n,
       marketing: {
         stats: { items: [{ value: '1,000+', label: { en: 'Users', zh: '用户' } }] },
         aiEntry: { enabled: true },
@@ -190,6 +221,7 @@ describe('defineTemplateConfig', () => {
     expect(() =>
       defineTemplateConfig({
         app,
+        i18n,
         marketing: { stats: { items: [{ value: { en: '1', zh: '' }, label: 'Users' }] } },
       }),
     ).toThrow(/stats.items\[0\].value/)
@@ -211,6 +243,7 @@ describe('defineTemplateConfig', () => {
     expect(() =>
       defineTemplateConfig({
         app,
+        i18n,
         marketing: { products: [{ ...product, secondaryLabel: { en: 'Features', zh: ' ' } }] },
       }),
     ).toThrow(/products\[0\].secondaryLabel/)
@@ -221,6 +254,7 @@ describe('defineTemplateConfig', () => {
     expect(() =>
       defineTemplateConfig({
         app,
+        i18n,
         // @ts-expect-error zh 缺失
         marketing: { stats: { items: [{ value: '1', label: { en: 'Users' } }] } },
       }),

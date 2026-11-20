@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { templateConfig } from '../../server/template-config.ts'
 import { hubSlice } from '../marketing/content.ts'
 import { validateSeoPages } from './linking.ts'
-import type { SeoPage } from './metadata.ts'
+import { localizedPath, type SeoPage } from './metadata.ts'
 import { breadcrumbTrail, hubPagePath, pageLinks, parseHubPage } from './page-links.ts'
 import { hubPages, publicPages } from './pages.ts'
-import { breadcrumbData } from './structured-data.ts'
+import { breadcrumbListData } from './structured-data.ts'
 
 // 内链区块数据（openspec seo-internal-linking 3.1–3.3）：锚文本只取 titleMain / anchorShort，未声明的区块为空
 const page = (path: string, extra: Partial<SeoPage> = {}): SeoPage => ({
@@ -36,6 +36,10 @@ const pages: SeoPage[] = [
   page('/blog/a', { locale: 'zh', parent: '/blog', titleMain: '甲' }),
 ]
 const linking = { series: [], groupLinksMax: 5 }
+// 地址前缀取决于项目的默认语言：取一种非默认语言，期望值按 localizedPath 推出
+const other =
+  templateConfig.i18n.locales.find((locale) => locale !== templateConfig.i18n.defaultLocale) ??
+  'x-other'
 
 describe('面包屑', () => {
   it('沿 parent 链从首页列出全部上级，上级优先用 anchorShort', () => {
@@ -60,18 +64,19 @@ describe('面包屑', () => {
   })
 
   it('BreadcrumbList 与面包屑一致：上级为当前语言地址，当前页只有名称', () => {
-    const data = breadcrumbData(
+    const data = breadcrumbListData(
       [
         { href: '/', label: '首页' },
         { href: '/blog', label: '博客' },
       ],
       '文章',
       'https://seo.example',
-      'zh',
+      other,
     )
+    const url = (path: string) => new URL(localizedPath(path, other), 'https://seo.example').href
     expect(data.itemListElement).toEqual([
-      { '@type': 'ListItem', position: 1, name: '首页', item: 'https://seo.example/zh' },
-      { '@type': 'ListItem', position: 2, name: '博客', item: 'https://seo.example/zh/blog' },
+      { '@type': 'ListItem', position: 1, name: '首页', item: url('/') },
+      { '@type': 'ListItem', position: 2, name: '博客', item: url('/blog') },
       { '@type': 'ListItem', position: 3, name: '文章' },
     ])
   })
@@ -176,9 +181,10 @@ describe('hub 分页', () => {
 
 describe('公开页面清单中的 hub 分页', () => {
   it('博客与标签页超过 hubPageSize 时分页进入清单，上级为 hub 首页且通过静态校验', () => {
+    // 关闭多语言后只有默认语言，文章写默认语言
     const post = (slug: string, tags: string[]) => ({
       slug,
-      locale: 'en',
+      locale: templateConfig.i18n.defaultLocale,
       title: slug,
       summary: slug,
       date: '2026-01-01',

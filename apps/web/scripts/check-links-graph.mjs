@@ -216,9 +216,62 @@ function isSister(host, sisterDomains) {
   })
 }
 
-function delocalize(path, locales) {
+function delocalize(path, prefixes) {
   const [, first = '', ...rest] = path.split('/')
-  return locales.includes(first) ? `/${rest.join('/')}`.replace(/\/$/, '') || '/' : path
+  return prefixes.includes(first) ? `/${rest.join('/')}`.replace(/\/$/, '') || '/' : path
+}
+
+/**
+ * 链接图的抓取计划（docs/seo-internal-linking.md「多站点」）。`localize(locale)` 返回该语言首页的 path，
+ * 须与路由的语言前缀一致（check-links.mjs 用 Paraglide 运行时的 localizeUrl，路由前缀不是语言 id 本身时也正确）。
+ * - 没有站点声明 `previewHost`（模板默认）：整个 preview 为一张图，种子含全部语言首页；
+ * - 否则每个声明了 `previewHost` 的站点各成一张图：以 `<previewHost>:<preview 端口>` 访问，种子只含该站点语言的首页，
+ *   其他站点的主机不算站内（指向它们的链接不跟随、不并入本图）。
+ * `localePrefixes` 是全部语言首页的首段（如 `zh`），钱页统计据此去掉语言前缀。
+ */
+export function planLinkGraphs({ baseUrl, i18n, sites = [], localize }) {
+  const locales = i18n?.enabled === false ? [i18n.defaultLocale] : (i18n?.locales ?? [])
+  const homesOf = (list) =>
+    list.length ? [...new Set(list.map((locale) => normalizePath(localize(locale))))] : ['/']
+  const localePrefixes = locales
+    .map((locale) => normalizePath(localize(locale)).split('/')[1])
+    .filter(Boolean)
+  const base = new URL(baseUrl)
+  const checked = sites.filter((site) => site.previewHost)
+  if (checked.length === 0)
+    return [
+      { host: null, origin: base.origin, homes: homesOf(locales), localePrefixes, otherHosts: [] },
+    ]
+  const originOf = (host) => {
+    const url = new URL(base.origin)
+    url.hostname = host
+    return url.origin
+  }
+  return checked.map((site) => ({
+    host: site.previewHost,
+    origin: originOf(site.previewHost),
+    homes: homesOf(site.locales.filter((locale) => locales.includes(locale))),
+    localePrefixes,
+    otherHosts: checked
+      .filter((other) => other !== site)
+      .map((other) => new URL(originOf(other.previewHost)).host),
+  }))
+}
+
+/** 多张链接图的结果合并为一份：明细的页面地址前加主机名以区分站点，统计求和（最大深度取最大值） */
+export function mergeGraphResults(entries) {
+  if (entries.length === 1 && entries[0].host === null) return entries[0].result
+  const label = (host, items) => items.map((item) => ({ ...item, page: `${host}${item.page}` }))
+  return {
+    failures: entries.flatMap(({ host, result }) => label(host, result.failures)),
+    warnings: entries.flatMap(({ host, result }) => label(host, result.warnings)),
+    stats: {
+      pages: entries.reduce((sum, { result }) => sum + result.stats.pages, 0),
+      links: entries.reduce((sum, { result }) => sum + result.stats.links, 0),
+      edges: entries.reduce((sum, { result }) => sum + result.stats.edges, 0),
+      maxDepth: Math.max(0, ...entries.map(({ result }) => result.stats.maxDepth)),
+    },
+  }
 }
 
 /**
@@ -237,7 +290,7 @@ function isAliasOfIndexable(target, indexable, internalHosts) {
  * - `pages`：抓取到的可索引页面（站点地图地址与各语言首页），`{ path, url, status, parsed }`；
  * - `targets`：所有站内链接目标的抓取结果，`Map<path, { url, status, canonical, robots }>`；
  * - `indexable`：站点地图中的路径集合；`homes`：各语言首页路径；
- * - `internalHosts`：本站 host 集合；`locales`：模板语言列表。
+ * - `internalHosts`：本站 host 集合；`locales`：语言前缀（URL 首段，见 planLinkGraphs 的 `localePrefixes`）。
  * 返回失败与警告明细，以及链接图统计。
  */
 export function analyzeLinkGraph({

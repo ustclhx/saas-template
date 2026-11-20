@@ -116,6 +116,23 @@ export interface SeoLinkingConfig {
   readonly hubPageSize: number
   /** 详情页「同组」区块最多列出的同组页面数（建议 3–5），同组页面更少时全部列出 */
   readonly groupLinksMax: number
+  /**
+   * 多站点项目（同一部署按 Host 服务多个站点、各站点使用不同 origin）按站点分组的语言；为空（默认）时全部语言属于
+   * 同一站点。未列入任何分组的语言同属一个隐含站点。
+   * - 回退页：原语言与页面语言属于同一站点时 canonical 才指向原语言，否则按普通页面处理，避免跨站 canonical；
+   * - 构建后链接图检查：声明了 `previewHost` 的站点各自成图，以该主机名作 Host 请求 preview，不做 DNS 解析。
+   */
+  readonly sites: readonly SeoLinkingSite[]
+}
+
+export interface SeoLinkingSite {
+  /** 该站点服务的语言（`i18n.locales` 中的语言 id），一种语言只能属于一个站点 */
+  readonly locales: readonly string[]
+  /**
+   * 链接图检查在 preview 中访问该站点使用的主机名（不含协议与端口，如 `localhost`、`docs.localhost`），
+   * 端口取 preview 地址；省略时该站点不单独检查
+   */
+  readonly previewHost?: string | undefined
 }
 
 export interface SeoLinkingInput {
@@ -128,6 +145,7 @@ export interface SeoLinkingInput {
   series?: readonly { group: string; orderBy?: SeoSeriesOrder }[]
   hubPageSize?: number
   groupLinksMax?: number
+  sites?: readonly SeoLinkingSite[]
 }
 
 /** 主题预设名单（packages/ui/src/styles/presets/*.css）；@saas/web 的测试断言它与 @saas/ui 的 UI_PRESETS 一致 */
@@ -415,6 +433,7 @@ export const templateConfigDefaults = {
       series: [],
       hubPageSize: 100,
       groupLinksMax: 5,
+      sites: [],
     },
   },
   ui: { preset: 'neutral', shape: 'rounded', density: 'default', appLayout: 'sidebar' },
@@ -512,6 +531,11 @@ export function resolveSeoLinking(input: SeoLinkingInput | undefined): SeoLinkin
     })),
     hubPageSize: input?.hubPageSize ?? d.hubPageSize,
     groupLinksMax: input?.groupLinksMax ?? d.groupLinksMax,
+    // 主机名不区分大小写；未声明 previewHost 时不写出该键，保持解析结果可重复解析且与 JSON 往返一致
+    sites: (input?.sites ?? d.sites).map((site) => ({
+      locales: [...site.locales],
+      ...(site.previewHost !== undefined && { previewHost: site.previewHost.toLowerCase() }),
+    })),
   }
   if (!['report', 'enforce'].includes(linking.mode)) fail("mode must be 'report' or 'enforce'")
   const count = (value: number, path: string, min = 0) => {
@@ -533,6 +557,22 @@ export function resolveSeoLinking(input: SeoLinkingInput | undefined): SeoLinkin
   for (const host of linking.sisterDomains)
     if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host))
       fail(`sisterDomains must be bare host names (got ${JSON.stringify(host)})`)
+  const siteLocales = new Set<string>()
+  const previewHosts = new Set<string>()
+  for (const site of linking.sites) {
+    if (site.locales.length === 0) fail('sites[].locales must not be empty')
+    for (const locale of site.locales) {
+      if (!locale) fail('sites[].locales must not contain empty entries')
+      if (siteLocales.has(locale)) fail(`sites lists locale ${locale} more than once`)
+      siteLocales.add(locale)
+    }
+    const host = site.previewHost
+    if (host === undefined) continue
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)*$/.test(host))
+      fail(`sites[].previewHost must be a bare host name (got ${JSON.stringify(host)})`)
+    if (previewHosts.has(host)) fail(`sites declares previewHost ${host} more than once`)
+    previewHosts.add(host)
+  }
   const groups = new Set<string>()
   for (const series of linking.series) {
     path(series.group, 'series[].group')
@@ -590,6 +630,13 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
     features: { ...d.features, ...input.features },
     analytics: { ...d.analytics, ...input.analytics },
   }
+
+  for (const site of config.seo.linking.sites)
+    for (const locale of site.locales)
+      if (!(locales as readonly string[]).includes(locale))
+        throw new RangeError(
+          `template config: seo.linking.sites locale ${locale} must be one of i18n.locales`,
+        )
 
   const ttlDays = config.shareCards.defaultTtlDays
   if (ttlDays !== null && (!Number.isInteger(ttlDays) || ttlDays <= 0)) {

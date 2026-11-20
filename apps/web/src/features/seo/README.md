@@ -4,7 +4,8 @@
 根布局从 Worker 的 `APP_URL` 下发站点地址；`/app`、`/account`、`/admin`、`/api` 禁止索引。
 站点地图与 OG 接口共用 `publicPages`，只收录功能开关已开启的页面、已发布的文章，排除草稿与未来文章。
 默认语言无前缀，其他语言使用 `/<locale>`，缺少译文时沿用内容模块已有的默认语言回退；
-回退页记录 `sourceLocale`，canonical 指向原语言地址，hreflang 只列出真实译文，站点地图不收录回退页。
+回退页记录 `sourceLocale`，canonical 指向原语言地址，hreflang 只列出真实译文，站点地图不收录回退页；
+多站点项目（`seo.linking.sites`）中原语言在另一站点时不按回退页处理，canonical 不跨站。
 页面层级与主词（`parent`、`titleMain` 等）在构建时由 `linking.ts` 校验，项目自有页面在 `pages.project.ts` 注册。
 面包屑、BreadcrumbList 与内链区块的数据由 `page-links.ts` 计算，构建后的链接图检查为 `pnpm --filter @saas/web check:links`；
 字段、区块、规则分级、配置与 report／enforce 切换见 [站内链接规范](../../../../../docs/seo-internal-linking.md)。

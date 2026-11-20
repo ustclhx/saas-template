@@ -1,7 +1,7 @@
 import { templateConfig } from '../../server/template-config.ts'
 import type { PricingCatalog } from '../marketing/pricing-data.ts'
 import type { SeoPage } from './metadata.ts'
-import { absoluteUrl, localizedPath, ogImagePath } from './metadata.ts'
+import { absoluteUrl, fallbackSourceLocale, localizedPath, ogImagePath } from './metadata.ts'
 
 const context = 'https://schema.org'
 export function organizationData(appUrl: string) {
@@ -23,9 +23,11 @@ export function websiteData(appUrl: string) {
   }
 }
 export function articleData(page: SeoPage, appUrl: string) {
-  // 回退页与 canonical 一致，指向原语言地址并标注内容的真实语言
-  const contentLocale = page.sourceLocale ?? page.locale
-  const url = absoluteUrl(appUrl, localizedPath(page.path, contentLocale))
+  // 地址与 canonical 一致（同站点回退页指向原语言地址，原语言在另一站点时为本页地址）；inLanguage 标注内容的真实语言
+  const url = absoluteUrl(
+    appUrl,
+    localizedPath(page.path, fallbackSourceLocale(page) ?? page.locale),
+  )
   const image = page.cover
     ? absoluteUrl(appUrl, page.cover)
     : absoluteUrl(appUrl, ogImagePath(page))
@@ -41,7 +43,7 @@ export function articleData(page: SeoPage, appUrl: string) {
     mainEntityOfPage: url,
     url,
     image,
-    inLanguage: contentLocale,
+    inLanguage: page.sourceLocale ?? page.locale,
   }
 }
 
@@ -77,7 +79,7 @@ export function pricingData(catalog: PricingCatalog, appUrl: string, locale: str
  * BreadcrumbList（openspec seo-internal-linking spec「面包屑」）：与页面上的面包屑一致，沿 parent 链从首页到当前页。
  * 上级写当前语言的地址；当前页只写名称（最后一项可省略 item，回退页也不会与 canonical 冲突）。
  */
-export function breadcrumbData(
+export function breadcrumbListData(
   trail: readonly { href: string; label: string }[],
   current: string,
   appUrl: string,

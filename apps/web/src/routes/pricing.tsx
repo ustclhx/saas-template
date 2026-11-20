@@ -23,7 +23,7 @@ import {
 } from '../features/marketing/pricing-page.tsx'
 import { originFromMatches, pageHead, staticPage } from '../features/seo/metadata.ts'
 import { mainLabel } from '../features/seo/page-links.ts'
-import { breadcrumbData, pricingData } from '../features/seo/structured-data.ts'
+import { breadcrumbListData, pricingData } from '../features/seo/structured-data.ts'
 import { getLocale } from '../paraglide/runtime.js'
 import { templateConfig } from '../server/template-config.ts'
 
@@ -43,7 +43,7 @@ export const Route = createFileRoute('/pricing')({
     const page = staticPage('/pricing', getLocale())
     const appUrl = originFromMatches(matches)
     return pageHead(page, appUrl, [
-      breadcrumbData(staticTrail(page.path, page.locale), mainLabel(page), appUrl, page.locale),
+      breadcrumbListData(staticTrail(page.path, page.locale), mainLabel(page), appUrl, page.locale),
       ...(loaderData ? pricingData(loaderData, appUrl, page.locale) : []),
     ])
   },

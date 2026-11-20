@@ -46,6 +46,7 @@ export {
   type SeoLinkingConfig,
   type SeoLinkingInput,
   type SeoLinkingMode,
+  type SeoLinkingSite,
   type SeoSeriesOrder,
   type TemplateConfig,
   type TemplateConfigInput,

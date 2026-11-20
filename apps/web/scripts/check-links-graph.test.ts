@@ -8,13 +8,17 @@ import {
   type FetchedTarget,
   formatReport,
   type LinkingConfig,
+  mergeGraphResults,
   parsePage,
+  planLinkGraphs,
   resolveLinkingConfig,
   sitemapLocations,
 } from './check-links-graph.mjs'
 
 const ORIGIN = 'http://localhost:4000'
-const HOSTS = new Set(['localhost:4000', 'example.com'])
+// 站点地址写完整 URL：生成新项目时 create-project 只替换 `https://<模板域名>`，主机集合由它推出才能保持一致
+const SITE = 'https://example.com'
+const HOSTS = new Set(['localhost:4000', new URL(SITE).host])
 
 // 与模板渲染同形的夹具：页头（导航层，含 3 个频道与登录）、正文、页脚（导航层）
 const header = (extra = '') =>
@@ -412,5 +416,107 @@ describe('报告与退出码', () => {
         '<urlset><url><loc>https://example.com/</loc></url><url><loc> https://example.com/a?x=1&amp;y=2 </loc></url></urlset>',
       ),
     ).toEqual(['https://example.com/', 'https://example.com/a?x=1&y=2'])
+  })
+})
+
+describe('多站点与语言前缀（planLinkGraphs）', () => {
+  // 路由把语言 id 写成小写前缀（与 Paraglide urlPatterns 一致）的项目
+  const localize = (locale: string) => (locale === 'en' ? '/' : `/${locale.toLowerCase()}`)
+  const i18n = { enabled: true, locales: ['en', 'zh-Hant', 'ja'], defaultLocale: 'en' }
+
+  it('单站点：一张图，语言首页取路由的前缀而不是语言 id', () => {
+    expect(planLinkGraphs({ baseUrl: 'http://localhost:4000', i18n, localize })).toEqual([
+      {
+        host: null,
+        origin: 'http://localhost:4000',
+        homes: ['/', '/zh-hant', '/ja'],
+        localePrefixes: ['zh-hant', 'ja'],
+        otherHosts: [],
+      },
+    ])
+    // 关闭多语言时只有默认语言首页；未声明 previewHost 的站点分组不影响抓取
+    expect(
+      planLinkGraphs({
+        baseUrl: 'http://localhost:4000',
+        i18n: { ...i18n, enabled: false },
+        sites: [{ locales: ['ja'] }],
+        localize,
+      }).map((graph) => graph.homes),
+    ).toEqual([['/']])
+  })
+
+  it('多站点：每个 previewHost 各成一图，种子只含本站语言首页，其他站点主机不算站内', () => {
+    const graphs = planLinkGraphs({
+      baseUrl: 'http://localhost:4000',
+      i18n,
+      sites: [
+        { locales: ['en'], previewHost: 'localhost' },
+        { locales: ['zh-Hant', 'ja'], previewHost: 'east.localhost' },
+      ],
+      localize,
+    })
+    expect(graphs).toEqual([
+      {
+        host: 'localhost',
+        origin: 'http://localhost:4000',
+        homes: ['/'],
+        localePrefixes: ['zh-hant', 'ja'],
+        otherHosts: ['east.localhost:4000'],
+      },
+      {
+        host: 'east.localhost',
+        origin: 'http://east.localhost:4000',
+        homes: ['/zh-hant', '/ja'],
+        localePrefixes: ['zh-hant', 'ja'],
+        otherHosts: ['localhost:4000'],
+      },
+    ])
+  })
+
+  it('钱页统计按路由前缀去掉语言段', () => {
+    const page = (path: string, links: string[]) => ({
+      path,
+      url: `${ORIGIN}${path}`,
+      status: 200,
+      parsed: parsePage(
+        `<html lang="x"><body><header data-link-zone="nav"></header><h1>${path}</h1>${links.map((href) => `<a href="${href}">${href}</a>`).join('')}</body></html>`,
+      ),
+    })
+    const pages = [page('/zh-hant', ['/zh-hant/pricing']), page('/zh-hant/pricing', ['/zh-hant'])]
+    const result = analyzeLinkGraph({
+      pages,
+      targets: new Map(pages.map((item) => [item.path, item])),
+      indexable: new Set(pages.map((item) => item.path)),
+      homes: ['/zh-hant'],
+      internalHosts: HOSTS,
+      locales: ['zh-hant'],
+      config: resolveLinkingConfig({ moneyPages: ['/pricing'] }),
+    })
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({ rule: 'money-inlinks', page: '/zh-hant/pricing' }),
+    )
+  })
+
+  it('多张图的结果合并时明细带主机名，单站点结果原样返回', () => {
+    const finding = { rule: 'orphan', page: '/a', message: 'x' }
+    const one = {
+      failures: [finding],
+      warnings: [],
+      stats: { pages: 2, links: 3, edges: 1, maxDepth: 1 },
+    }
+    expect(mergeGraphResults([{ host: null, result: one }])).toBe(one)
+    expect(
+      mergeGraphResults([
+        { host: 'localhost', result: one },
+        { host: 'east.localhost', result: { ...one, stats: { ...one.stats, maxDepth: 3 } } },
+      ]),
+    ).toEqual({
+      failures: [
+        { ...finding, page: 'localhost/a' },
+        { ...finding, page: 'east.localhost/a' },
+      ],
+      warnings: [],
+      stats: { pages: 4, links: 6, edges: 2, maxDepth: 3 },
+    })
   })
 })
