@@ -70,7 +70,8 @@ beforeEach(() => {
   mockRouteTree()
 })
 
-describe('营销入口注册', () => {
+// 首个用例冷启动转译整棵路由（router.tsx 及全部页面），新生成副本中常超过默认 5 秒
+describe('营销入口注册', { timeout: 30_000 }, () => {
   it('启用时注册营销页面、订阅接口与 SEO 端点', async () => {
     const { getRouter } = await import('../../router.tsx')
     const paths = Object.keys(getRouter().routesByPath)

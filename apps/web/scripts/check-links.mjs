@@ -210,7 +210,7 @@ export function hostRequest(baseUrl, hosts) {
  * 抓取一个站内地址；3xx 跟随至多 5 次，记录最终状态、canonical 与 robots。
  * 重定向到本图站内主机（如 canonical 的正式域名）时改回 `origin` 请求，不访问线上站点。
  */
-async function fetchPage({ origin, send, internalHosts }, path, parse) {
+async function fetchPage({ origin, send, internalHosts, promptMarkers }, path, parse) {
   let url = new URL(path, origin).href
   // 各跳响应的 Set-Cookie（公开页不得写语言 Cookie）
   const setCookies = []
@@ -236,7 +236,7 @@ async function fetchPage({ origin, send, internalHosts }, path, parse) {
       await response.cancel()
       return { url, status: response.status, setCookies }
     }
-    const parsed = parsePage(await response.text())
+    const parsed = parsePage(await response.text(), { promptMarkers })
     return {
       url,
       status: response.status,
@@ -359,7 +359,7 @@ async function checkLanguageRequests({
 }
 
 /** 检查一张链接图（单站点为整个 preview，多站点为一个站点） */
-async function checkGraph({ graph, send, config, locales, appUrl, language }) {
+async function checkGraph({ graph, send, config, i18n, locales, appUrl, language }) {
   const { origin, homes } = graph
   const locations = await readSitemap(origin, send)
   const internalHosts = new Set([new URL(origin).host])
@@ -367,7 +367,7 @@ async function checkGraph({ graph, send, config, locales, appUrl, language }) {
   if (appUrl) internalHosts.add(new URL(appUrl).host)
   // 多站点：其他站点即使出现在本站站点地图中也不并入本图
   for (const host of graph.otherHosts) internalHosts.delete(host)
-  const context = { origin, send, internalHosts }
+  const context = { origin, send, internalHosts, promptMarkers: config.promptMarkers }
   const indexable = new Set(
     locations.map((loc) => classifyHref(loc, origin, internalHosts)?.path).filter(Boolean),
   )
@@ -396,6 +396,7 @@ async function checkGraph({ graph, send, config, locales, appUrl, language }) {
     internalHosts,
     locales,
     config,
+    i18n,
   })
   const findings = await checkLanguageRequests({
     origin,
@@ -452,13 +453,14 @@ export async function checkLinks({
       graph,
       send,
       config,
+      i18n,
       locales: graph.localePrefixes,
       language: {
         ...language,
-        // 默认语言以无前缀地址服务的站点（单站点即整个 preview）检查 `/<默认语言>` 的 301
+        // 有无前缀默认语言的站点（单站点即整个 preview，多站点取站点默认语言）检查 `/<默认语言>` 的 301
         defaultPrefix:
-          multilingual && i18n && graph.homes.includes('/')
-            ? `/${i18n.defaultLocale.toLowerCase()}`
+          multilingual && graph.defaultLocale && graph.homes.includes('/')
+            ? `/${graph.defaultLocale.toLowerCase()}`
             : null,
       },
       // 单站点沿用 app.url 作为站内主机；多站点各站点的正式域名以各自站点地图为准

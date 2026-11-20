@@ -34,7 +34,7 @@ export function sitemap(pages: readonly SeoPage[], appUrl: string): string {
       const languages = listed
         .filter((other) => other.path === page.path)
         .map((other) => other.locale)
-      const links = alternateLinks(appUrl, page.path, languages, pageAlternates(page))
+      const links = alternateLinks(appUrl, page.path, languages, pageAlternates(page), page.locale)
         .map(
           (link) =>
             `<xhtml:link rel="alternate" hreflang="${escapeXml(link.hrefLang)}" href="${escapeXml(link.href)}"/>`,

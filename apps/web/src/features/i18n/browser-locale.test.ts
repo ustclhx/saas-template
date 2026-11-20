@@ -23,8 +23,21 @@ describe('浏览器语言偏好匹配', () => {
   it('只配置 zh 时繁体地区标签由主语言子标签兜底', () => {
     for (const tag of ['zh-TW', 'zh-HK', 'zh-CN', 'zh-Hant', 'zh'])
       expect(preferredLocale([tag], locales), tag).toBe('zh')
-    expect(preferredLocale(['pt-PT'], locales)).toBe('pt-BR')
     expect(preferredLocale(['pt'], locales)).toBe('pt-BR')
+  })
+
+  it('主语言回退不跨地区：pt-PT 不匹配 pt-BR，只回退到没写地区或地区相同的配置语言', () => {
+    expect(preferredLocale(['pt-PT'], locales)).toBeNull()
+    expect(preferredLocale(['pt-PT', 'en'], locales)).toBe('en')
+    expect(preferredLocale(['pt-PT'], ['en', 'pt-BR', 'pt'])).toBe('pt')
+    expect(preferredLocale(['pt-pt'], ['pt-BR', 'pt-PT'])).toBe('pt-PT')
+    expect(preferredLocale(['en-US'], ['en-GB', 'fr'])).toBeNull()
+    expect(preferredLocale(['en-US'], ['en-GB', 'en'])).toBe('en')
+    // 写了地区的书写系统匹配同样不跨地区；没写地区的配置语言照常匹配
+    expect(preferredLocale(['zh-HK'], ['en', 'zh-TW'])).toBeNull()
+    expect(preferredLocale(['zh-HK'], ['en', 'zh-TW', 'zh-Hant'])).toBe('zh-Hant')
+    // 主语言回退不跨书写系统：只配置简体时繁体标签不匹配
+    expect(preferredLocale(['zh-TW'], ['en', 'zh-Hans'])).toBeNull()
   })
 
   it('最先匹配的是默认语言时返回默认语言；没有匹配或缺少 languages 时为 null', () => {

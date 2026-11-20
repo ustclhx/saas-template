@@ -46,13 +46,15 @@ function run(
     extraTargets?: Record<string, Partial<FetchedTarget>>
     homes?: string[]
     sitemap?: string[]
+    i18n?: { locales: string[]; defaultLocale: string }
   } = {},
 ) {
+  const config = resolveLinkingConfig(options.config)
   const pages: CheckedPage[] = Object.entries(site).map(([path, source]) => ({
     path,
     url: `${ORIGIN}${path}`,
     status: 200,
-    parsed: parsePage(source),
+    parsed: parsePage(source, { promptMarkers: config.promptMarkers }),
   }))
   const targets = new Map<string, FetchedTarget>(pages.map((page) => [page.path, page]))
   const defaults: Record<string, Partial<FetchedTarget>> = {
@@ -68,7 +70,8 @@ function run(
     homes: options.homes ?? ['/'],
     internalHosts: HOSTS,
     locales: ['en', 'zh'],
-    config: resolveLinkingConfig(options.config),
+    config,
+    i18n: options.i18n,
   })
 }
 
@@ -570,6 +573,62 @@ describe('多语言规则', () => {
     expect(rules(result.failures)).toContain('language-prompt-ssr')
   })
 
+  it('项目配置的 promptMarkers 也计为服务端语言提示，结尾 * 按前缀匹配', () => {
+    const custom = html('<a href="/zh">中文</a><div data-locale-prompt="zh">切换</div>', {
+      h1: 'Home',
+      head: head('/', pair),
+    })
+    expect(mlFindings(run(mlSite({ '/': custom })))).toEqual([])
+    for (const promptMarkers of [['data-locale-prompt'], ['DATA-LOCALE-*']])
+      expect(mlFindings(run(mlSite({ '/': custom }), { config: { promptMarkers } }))).toEqual([
+        expect.objectContaining({ rule: 'language-prompt-ssr', page: '/' }),
+      ])
+    expect(
+      parsePage('<p data-locale-prompt-close></p>', { promptMarkers: ['data-locale-prompt'] }),
+    ).toMatchObject({ languagePrompts: 0 })
+  })
+
+  it('配置 xDefaultLocales 时 x-default 必须指向本页存在的第一个偏好语言（按站点覆盖）', () => {
+    const i18n = { locales: ['en', 'zh', 'ja'], defaultLocale: 'en' }
+    const group = (xDefault: string): [string, string][] => [
+      ['en', '/'],
+      ['zh', '/zh'],
+      ['x-default', xDefault],
+    ]
+    const site = (xDefault: string) =>
+      mlSite({
+        '/': html('<a href="/zh">中文</a>', { h1: 'Home', head: head('/', group(xDefault)) }),
+        '/zh': html('<a href="/">English</a>', {
+          lang: 'zh',
+          h1: '首页',
+          head: head('/zh', group(xDefault)),
+        }),
+      })
+    // 未配置：只检查条数（默认规则不强制）
+    expect(mlFindings(run(site('/zh'), { i18n }))).toEqual([])
+    // 偏好 ja（本页没有）→ zh：指向 / 的两页都失败
+    const config = { xDefaultLocales: ['ja', 'zh'] }
+    expect(mlFindings(run(site('/zh'), { i18n, config }))).toEqual([])
+    expect(
+      mlFindings(run(site('/'), { i18n, config })).map(({ rule, page, target }) => ({
+        rule,
+        page,
+        target,
+      })),
+    ).toEqual([
+      { rule: 'hreflang-x-default', page: '/', target: `${SITE}/` },
+      { rule: 'hreflang-x-default', page: '/zh', target: `${SITE}/` },
+    ])
+    // 站点的 xDefaultLocales 覆盖全局列表；按本页语言选站点
+    const sites = [{ locales: ['en', 'zh'], xDefaultLocales: ['en'] }]
+    expect(mlFindings(run(site('/'), { i18n, config: { ...config, sites } }))).toEqual([])
+    // 偏好都不存在时退回默认规则（默认语言版本）
+    expect(mlFindings(run(site('/'), { i18n, config: { xDefaultLocales: ['ja'] } }))).toEqual([])
+    expect(
+      rules(mlFindings(run(site('/zh'), { i18n, config: { xDefaultLocales: ['ja'] } }))),
+    ).toEqual(['hreflang-x-default', 'hreflang-x-default'])
+  })
+
   it('多语言规则计入规则统计与报告', () => {
     const counts = countByRule(run(mlSite({ '/zh': html('', { lang: 'zh', h1: '首页' }) })))
     expect(counts.failures).toMatchObject({
@@ -720,6 +779,7 @@ describe('多站点与语言前缀（planLinkGraphs）', () => {
         homes: ['/', '/zh-hant', '/ja'],
         localePrefixes: ['zh-hant', 'ja'],
         otherHosts: [],
+        defaultLocale: 'en',
       },
     ])
     // 关闭多语言时只有默认语言首页；未声明 previewHost 的站点分组不影响抓取
@@ -750,6 +810,7 @@ describe('多站点与语言前缀（planLinkGraphs）', () => {
         homes: ['/'],
         localePrefixes: ['zh-hant', 'ja'],
         otherHosts: ['east.localhost:4000'],
+        defaultLocale: 'en',
       },
       {
         host: 'east.localhost',
@@ -757,8 +818,26 @@ describe('多站点与语言前缀（planLinkGraphs）', () => {
         homes: ['/zh-hant', '/ja'],
         localePrefixes: ['zh-hant', 'ja'],
         otherHosts: ['localhost:4000'],
+        defaultLocale: null,
       },
     ])
+  })
+
+  it('多站点：站点声明的 defaultLocale 以 / 为首页，全局默认语言在该站点带前缀', () => {
+    const graphs = planLinkGraphs({
+      baseUrl: 'http://localhost:4000',
+      i18n,
+      sites: [
+        { locales: ['ja'], previewHost: 'localhost', defaultLocale: null },
+        { locales: ['zh-Hant', 'en'], previewHost: 'east.localhost', defaultLocale: 'zh-Hant' },
+      ],
+      localize,
+    })
+    expect(graphs.map(({ homes, defaultLocale }) => ({ homes, defaultLocale }))).toEqual([
+      { homes: ['/ja'], defaultLocale: null },
+      { homes: ['/', '/en'], defaultLocale: 'zh-Hant' },
+    ])
+    expect(graphs[0]?.localePrefixes).toEqual(['zh-hant', 'ja', 'en'])
   })
 
   it('钱页统计按路由前缀去掉语言段', () => {

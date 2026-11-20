@@ -23,7 +23,7 @@ export interface ParsedPage {
   hasNavZone: boolean
   /** `<link rel="alternate" hreflang>`，按出现顺序 */
   alternates: { hreflang: string; href: string }[]
-  /** 服务端 HTML 中带 data-language-prompt／data-locale-suggestion* 的元素数 */
+  /** 服务端 HTML 中带语言提示标记（内置 data-language-prompt／data-locale-suggestion* 与 promptMarkers）的元素数 */
   languagePrompts: number
 }
 export interface FetchedTarget {
@@ -66,7 +66,12 @@ export const LEGACY_LANGUAGE_COOKIES: readonly string[]
 export const ACCEPT_LANGUAGE_VARIANTS: readonly string[]
 export function resolveLinkingConfig(raw: unknown): LinkingConfig
 export function decodeEntities(text: string): string
-export function parsePage(html: string): ParsedPage
+export const BUILTIN_PROMPT_MARKERS: readonly string[]
+export function isPromptMarker(name: string, markers?: readonly string[]): boolean
+export function parsePage(
+  html: string,
+  options?: { promptMarkers?: readonly string[] | undefined },
+): ParsedPage
 export function normalizePath(pathname: string, search?: string): string
 export function classifyHref(
   href: string,
@@ -81,6 +86,8 @@ export function analyzeLinkGraph(input: {
   internalHosts: Set<string>
   locales?: readonly string[]
   config: LinkingConfig
+  /** 提供时按 xDefaultLocales 检查 x-default 的指向 */
+  i18n?: { enabled?: boolean; locales: readonly string[]; defaultLocale: string } | undefined
 }): LinkGraphResult
 export function countByRule(result: LinkGraphResult): {
   failures: Record<string, number>
@@ -99,6 +106,8 @@ export interface LinkGraphPlan {
   homes: string[]
   localePrefixes: string[]
   otherHosts: string[]
+  /** 该图以无前缀地址服务的语言；null 表示所有语言都带前缀 */
+  defaultLocale: string | null
 }
 export function planLinkGraphs(input: {
   baseUrl: string

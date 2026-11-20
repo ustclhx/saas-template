@@ -7,6 +7,7 @@ import {
   type PaymentProvider,
   type PricingMode,
   resolveSeoLinking,
+  type SeoLinkingInput,
   type TemplateConfig,
   templateConfigDefaults,
 } from './template.ts'
@@ -167,6 +168,56 @@ describe('defineTemplateConfig', () => {
         () => defineTemplateConfig({ app, i18n, seo: { linking: { sites: entry } } }),
         JSON.stringify(entry),
       ).toThrow(/template config: seo\.linking\.sites/)
+  })
+
+  it('seo.linking per-site defaultLocale, xDefaultLocales and promptMarkers (0.8.1)', () => {
+    const defaults = defineTemplateConfig({ app, i18n }).seo.linking
+    expect(defaults.xDefaultLocales).toEqual([])
+    expect(defaults.promptMarkers).toEqual([])
+    const linking = defineTemplateConfig({
+      app,
+      i18n,
+      seo: {
+        linking: {
+          sites: [
+            { locales: ['en'], defaultLocale: null, hosts: ['West.Example.com'] },
+            { locales: ['zh'], defaultLocale: 'zh', xDefaultLocales: ['zh'] },
+          ],
+          xDefaultLocales: ['en'],
+          promptMarkers: ['Data-Locale-Prompt', 'data-hint-*'],
+        },
+      },
+    }).seo.linking
+    expect(linking.sites).toEqual([
+      { locales: ['en'], defaultLocale: null, hosts: ['west.example.com'] },
+      { locales: ['zh'], defaultLocale: 'zh', xDefaultLocales: ['zh'] },
+    ])
+    expect(linking.xDefaultLocales).toEqual(['en'])
+    expect(linking.promptMarkers).toEqual(['data-locale-prompt', 'data-hint-*'])
+    expect(resolveSeoLinking(linking)).toEqual(linking)
+    const bad: SeoLinkingInput[] = [
+      { sites: [{ locales: ['en'], defaultLocale: 'zh' }] },
+      { sites: [{ locales: ['en'], xDefaultLocales: ['en', 'en'] }] },
+      { sites: [{ locales: ['en'], xDefaultLocales: ['fr'] }] },
+      { xDefaultLocales: ['fr'] },
+      { xDefaultLocales: [''] },
+      { promptMarkers: ['data prompt'] },
+      { promptMarkers: ['*'] },
+      { sites: [{ locales: ['en'], hosts: ['https://west.example.com'] }] },
+      { sites: [{ locales: ['en'], hosts: ['west.example.com:443'] }] },
+      { sites: [{ locales: ['en'], hosts: ['localhost'] }] },
+      {
+        sites: [
+          { locales: ['en'], hosts: ['a.example.com'] },
+          { locales: ['zh'], hosts: ['A.example.com'] },
+        ],
+      },
+    ]
+    for (const entry of bad)
+      expect(
+        () => defineTemplateConfig({ app, i18n, seo: { linking: entry } }),
+        JSON.stringify(entry),
+      ).toThrow(/template config: seo\.linking/)
   })
 
   it('resolveSeoLinking is idempotent on a resolved config', () => {
@@ -344,9 +395,10 @@ describe('defineTemplateConfig', () => {
       app,
       i18n: { untranslated: 'fallback', rememberHomeLocale: true },
     })
+    // 默认语言列表取自 templateConfigDefaults：衍生项目可能改了默认语言（0.8.1）
     expect(custom.i18n).toMatchObject({
-      locales: ['en', 'zh'],
-      defaultLocale: 'en',
+      locales: templateConfigDefaults.i18n.locales,
+      defaultLocale: templateConfigDefaults.i18n.locales[0],
       untranslated: 'fallback',
       rememberHomeLocale: true,
     })

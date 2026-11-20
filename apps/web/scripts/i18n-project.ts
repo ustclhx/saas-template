@@ -66,19 +66,71 @@ export function writeInlangProject(i18n: I18nConfig, root = WEB_ROOT): void {
   writeFileSync(path, content)
 }
 
+/** `project.inlang/settings.json` 中的语言配置；文件不存在或无法解析时为 undefined */
+function readInlangI18n(root: string): I18nConfig | undefined {
+  try {
+    const settings = JSON.parse(
+      readFileSync(join(root, 'project.inlang/settings.json'), 'utf8'),
+    ) as {
+      baseLocale?: unknown
+      locales?: unknown
+    }
+    const { baseLocale, locales } = settings
+    return typeof baseLocale === 'string' &&
+      Array.isArray(locales) &&
+      locales.every((locale) => typeof locale === 'string')
+      ? { locales, defaultLocale: baseLocale }
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * Paraglide 编译选项（design.md 决策 3）：公开页面按 URL 前缀确定语言（默认语言无前缀），
  * 其他配置语言 `/<locale>/...`；应用区不进入 URL，按 Cookie 取语言、没有时用默认语言。
  * 两者都不含 preferredLanguage，首次访问不会按浏览器语言自动跳转。
- * 传入 `i18n` 时前缀取语言 id 的小写形式（multilingual-seo 决策 2：`zh-Hant` → `/zh-hant`），
+ * 前缀取语言 id 的小写形式（multilingual-seo 决策 2：`zh-Hant` → `/zh-hant`），
  * 大小写不同的写法与默认语言前缀由 request.server.ts 在进入 Paraglide 前 301。
+ *
+ * 两种调用形式（0.8.1 起都支持，衍生项目不必改调用处）：
+ * - 位置参数 `paraglideOptions(appAreaPrefixes, root?, enabled?, i18n?)`：0.7.x 的三参数写法与 0.8.0 追加的 `i18n`；
+ *   省略 `i18n` 时从 `<root>/project.inlang/settings.json`（writeInlangProject 生成）读取语言，
+ *   保证 URL 规则与 301 规范化一致（否则 `zh-Hant` 的前缀会是 Paraglide 默认的 `/zh-Hant`，被 301 后无法识别）；
+ * - 语言配置在前 `paraglideOptions(i18n, appAreaPrefixes, root?)`：多语言开关取 `i18n.enabled`。
  */
 export function paraglideOptions(
   appAreaPrefixes: readonly string[],
-  root = WEB_ROOT,
-  enabled = true,
+  root?: string,
+  enabled?: boolean,
   i18n?: I18nConfig,
+): CompilerOptions
+export function paraglideOptions(
+  i18n: I18nConfig,
+  appAreaPrefixes: readonly string[],
+  root?: string,
+): CompilerOptions
+export function paraglideOptions(
+  first: readonly string[] | I18nConfig,
+  second?: string | readonly string[],
+  third?: string | boolean,
+  fourth?: I18nConfig,
 ): CompilerOptions {
+  let appAreaPrefixes: readonly string[]
+  let root: string
+  let enabled: boolean
+  let i18n: I18nConfig | undefined
+  if (isI18nConfig(first)) {
+    i18n = first
+    appAreaPrefixes = Array.isArray(second) ? second : []
+    root = typeof third === 'string' ? third : WEB_ROOT
+    enabled = first.enabled !== false
+  } else {
+    appAreaPrefixes = first
+    root = typeof second === 'string' ? second : WEB_ROOT
+    enabled = typeof third === 'boolean' ? third : true
+    i18n = fourth ?? (enabled ? readInlangI18n(root) : undefined)
+  }
   return {
     project: join(root, 'project.inlang'),
     outdir: join(root, 'src/paraglide'),
@@ -100,6 +152,10 @@ export function paraglideOptions(
       strategy: ['cookie', 'baseLocale'],
     })),
   }
+}
+
+function isI18nConfig(value: readonly string[] | I18nConfig): value is I18nConfig {
+  return !Array.isArray(value)
 }
 
 function readKeys(path: string): Set<string> {
@@ -156,7 +212,7 @@ export function i18nMessages({
   )
   if (unsupported.length) throw new Error(`[i18n] 邮件模板缺少语言：${unsupported.join(', ')}`)
   writeInlangProject(i18n)
-  const options = paraglideOptions(appAreaPrefixes, WEB_ROOT, i18n.enabled !== false, i18n)
+  const options = paraglideOptions(i18n, appAreaPrefixes)
   let reported = false
   return [
     paraglideVitePlugin(options) as Plugin,

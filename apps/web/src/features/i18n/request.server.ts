@@ -3,7 +3,7 @@ import { baseLocale, cookieName, isLocale, type Locale } from '../../paraglide/r
 import { paraglideMiddleware } from '../../paraglide/server.js'
 import type { WebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
-import { localeRedirect } from './locale-url.ts'
+import { localeRedirect, requestLocaleRouting } from './locale-url.ts'
 import { languageUrl, localeCookie, readCookie, usesAccountLocale } from './preference.ts'
 import { readRequestSession, withSessionCache } from './session.server.ts'
 
@@ -19,7 +19,15 @@ export function localizeRequest(
 ): Promise<Response> {
   // 单语言构建只使用 baseLocale，不读取账号或 Cookie，也不按 URL 自动跳转。
   if (!templateConfig.i18n.enabled) return paraglideMiddleware(request, next)
-  const redirect = localeRedirect(request, templateConfig.i18n)
+  // 多站点按 Host 选出站点（seo.linking.sites[].hosts／previewHost），按站点默认语言规范化；未匹配时按全局 i18n
+  const redirect = localeRedirect(
+    request,
+    requestLocaleRouting(
+      new URL(request.url),
+      templateConfig.i18n,
+      templateConfig.seo.linking.sites,
+    ),
+  )
   if (redirect) return Promise.resolve(redirect)
   const url = new URL(request.url)
   // 认证端点可能修改会话；不读取、不缓存会话，也不改 Cookie。

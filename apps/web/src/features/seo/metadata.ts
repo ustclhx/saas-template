@@ -1,7 +1,7 @@
 import type { AnyRouteMatch } from '@tanstack/react-router'
 import { templateConfig } from '../../server/template-config.ts'
 import { isAppAreaPath } from '../i18n/app-area.ts'
-import { localePrefix } from '../i18n/locale-url.ts'
+import { localePath, pageXDefaultLocale } from '../i18n/locale-url.ts'
 import { homePageCopy } from './home-copy.ts'
 
 /**
@@ -88,10 +88,7 @@ export function indexedPages<T extends SeoPage>(pages: readonly T[]): T[] {
 const { defaultLocale, enabled } = templateConfig.i18n
 const locales = enabled ? templateConfig.i18n.locales : [defaultLocale]
 export function localizedPath(path: string, locale: string): string {
-  const clean = path.replace(/\/+$/, '') || '/'
-  return !enabled || locale === defaultLocale
-    ? clean
-    : `/${localePrefix(locale)}${clean === '/' ? '' : clean}`
+  return localePath(path, locale, enabled ? defaultLocale : locale)
 }
 
 export function absoluteUrl(appUrl: string, path: string): string {
@@ -101,18 +98,23 @@ export function absoluteUrl(appUrl: string, path: string): string {
 /**
  * hreflang 关联：`languages` 为该页真实存在译文的语言（回退页不算），各语言按同路径加前缀。
  * 传入 `alternates`（`pageAlternates()` 的结果）时改用声明的各语言地址，`languages` 不再参与。
- * x-default 指向默认语言版本，默认语言没有该页时指向按配置顺序存在的第一种语言。
+ * x-default：按 `seo.linking.xDefaultLocales`（`locale` 所在站点声明了 `sites[].xDefaultLocales` 时用站点的）
+ * 取本页存在的第一个语言；未配置或都不存在时指向默认语言版本，默认语言没有该页时指向按配置顺序存在的第一种语言。
+ * 链接图检查的 `hreflang-x-default` 用同一规则（locale-url.ts 的 xDefaultLocale）。
  */
 export function alternateLinks(
   appUrl: string,
   path: string,
   languages: readonly string[] = locales,
   alternates?: Readonly<Record<string, string>>,
+  locale?: string,
 ) {
   const real = alternates
     ? locales.filter((locale) => alternates[locale] !== undefined)
     : locales.filter((locale) => languages.includes(locale))
-  const fallback = real.includes(defaultLocale) ? defaultLocale : (real[0] ?? defaultLocale)
+  const fallback =
+    pageXDefaultLocale(real, locale, { locales, defaultLocale }, templateConfig.seo.linking) ??
+    defaultLocale
   const href = (locale: string) =>
     absoluteUrl(appUrl, localizedPath(alternates?.[locale] ?? path, locale))
   return [...real, 'x-default'].map((language) => ({
@@ -225,7 +227,7 @@ export function pageHead(
     ],
     links: [
       { rel: 'canonical', href: url },
-      ...alternateLinks(appUrl, page.path, languages, pageAlternates(page)),
+      ...alternateLinks(appUrl, page.path, languages, pageAlternates(page), page.locale),
     ],
     scripts: structuredData.map((data) => ({
       type: 'application/ld+json',

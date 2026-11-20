@@ -10,6 +10,7 @@
 - 两个语言 id 只差大小写时配置直接报错。
 - `/<默认语言>/…` 一律 301 到无前缀地址；大小写不同的前缀写法 301 到小写地址。只看路径，保留查询参数。
 - 语言只由路径表达：不用 `?lang=`，不按 Cookie 或脚本在同一地址渲染不同语言。
+- 多站点项目的各站点可以有自己的无前缀语言（`seo.linking.sites[].defaultLocale`），见下文「多站点」。
 - 各语言路径可以不同（本地化 slug）：项目自有页面在 `SeoPage.alternates` 中声明各语言地址（见 ML-05）。
   模板内置的博客、文档、答案页、法律页仍按同一 slug 对应。
 
@@ -24,7 +25,10 @@
 
 - 语言提示条 `LanguagePrompt`（`@saas/ui`）只在公开页水合、且浏览器空闲后挂载，服务端与预渲染 HTML 中没有它。
 - 候选语言取自本页 `<link rel="alternate" hreflang>`，与 `navigator.languages` 匹配（完整标签 → 语言加书写系统 → 主语言），
-  所以只会提示本页已发布的语言。
+  所以只会提示本页已发布的语言。后两步不跨地区：配置了 `pt-BR` 时 `pt-PT` 不匹配，只回退到没写地区的 `pt`
+  或地区相同的语言；`zh-TW` → `zh-Hant` 这类书写系统匹配照常。
+- 项目自有的提示组件不用模板的 `data-language-prompt` 标记时，把它的属性名写进 `seo.linking.promptMarkers`
+  （如 `['data-locale-prompt']`，结尾 `*` 表示前缀），`language-prompt-ssr` 才能检查到。
 - 提示条固定定位在桌面右下、手机底部，叠在 Ask AI 上方，不占版面、不引起布局位移。
   提示文案来自目标语言的文案，链接是普通 `<a href hreflang>`。
 - 关闭后记在 localStorage，不写 Cookie。设计稿见原型索引「语言提示条」一行。
@@ -40,7 +44,10 @@
 ## ML-05 hreflang 完整一套
 
 - 每页输出自身、该页真实存在的其他语言版本，以及恰好一条 x-default；绝对地址，双向互指，不跨域名。
-- x-default 指向默认语言版本；该页没有默认语言版本时指向配置顺序中第一个存在的版本。
+- x-default 默认指向默认语言版本（多站点时先取本页站点的默认语言）；该页没有默认语言版本时指向配置顺序中第一个存在的版本。
+- 需要指定时写 `seo.linking.xDefaultLocales`（有序，如 `['en', 'zh-Hant']`）：x-default 指向列表中本页存在的第一个语言，
+  都不存在时按上一条。站点可用 `sites[].xDefaultLocales` 覆盖。模板的 hreflang 输出与 `hreflang-x-default` 检查用同一个函数
+  （`locale-url.ts` 的 `pageXDefaultLocale`）；配置了列表时检查还会核对 x-default 的指向，未配置时只检查条数。
 - 本地化 slug：在页面清单的条目上写 `alternates: { en: '/four-pillars', ko: '/만세력' }`（路径不带语言前缀）。
   构建时校验：键必须是已配置语言，目标页存在且可索引，双方互相声明同一组。
 - 语言切换器 `LanguageMenu` 是普通链接的下拉菜单，公开页只列出本页 hreflang 中的语言。
@@ -71,6 +78,51 @@
 
 新站先做默认语言加 3～5 个有真实需求的语言；每个语言验证「独立找词 → 独立收录 → 有曝光」后再扩，不一上来铺十几种。
 
+## 多站点
+
+同一部署按 Host 服务多个站点的项目（[站内链接规范 §7](seo-internal-linking.md#7-多站点)），各站点可以有不同的无前缀语言：
+
+```ts
+seo: {
+  linking: {
+    sites: [
+      // 省略 defaultLocale：含全局默认语言 en，en 无前缀
+      { locales: ['en'], hosts: ['west.example.com'], previewHost: 'west.localhost' },
+      {
+        locales: ['zh-Hant', 'zh-Hans'],
+        hosts: ['east.example.com', 'www.east.example.com'],
+        previewHost: 'east.localhost',
+        defaultLocale: null, // 该站点所有语言都带前缀；也可写本站点的某个语言
+      },
+    ],
+    xDefaultLocales: ['en'], // 可选；站点也可写自己的 xDefaultLocales
+  },
+},
+```
+
+- `defaultLocale` 必须是该站点的语言。省略时：站点包含 `i18n.defaultLocale` 则为它，否则为 `null`。
+- `hosts` 为该站点的生产主机名：只写主机名，不含协议与端口，各站点之间不能重复。
+- 未配置 `sites` 时行为与单站点完全相同。
+
+模板按站点处理的部分（不需要改模板文件）：
+- **请求时的 301**：`request.server.ts` 进入 Paraglide 前，用 `requestLocaleRouting()`（`features/i18n/locale-url.ts`）选出站点。
+  - 按请求 Host（忽略端口与大小写）匹配站点的 `hosts` 或 `previewHost`。
+  - 匹配到站点时只处理该站点的语言：站点默认语言前缀 301 到无前缀地址，大小写不同的前缀 301 到小写；其他站点语言的前缀原样放行，例如东方站的 `/en` 不会被跳到 `/`。
+  - 没有匹配（staging、未登记的域名）时按全局 `i18n` 处理。
+- **链接图检查**：`default-locale-prefix` 对每个声明了 `previewHost` 的站点请求 `/<站点默认语言>`，期望 301 到无前缀地址。
+  站点默认语言的首页为 `/`；没有无前缀语言的站点不检查。
+- **hreflang 输出与检查**：x-default 的默认规则先取本页站点的默认语言，站点的 `xDefaultLocales` 优先于全局列表。
+
+项目自有代码可直接使用 `locale-url.ts` 的纯函数：
+- `siteOfHost`：按 Host 找站点；
+- `siteRouting`：站点的 `{ locales, defaultLocale }`；
+- `localePath`：按站点默认语言生成地址；
+- `pageXDefaultLocale`：x-default 的选择规则。
+
+限制：站点默认语言不是全局 `i18n.defaultLocale` 时，该站点的无前缀地址还要在 Paraglide 中解析为站点默认语言。
+Paraglide 的 URL 规则（`localeUrlPatterns`）、`localizeHref` 与预渲染只认全局默认语言，模板目前无法通用地按 Host 解析。
+这种站点要么把 `defaultLocale` 设为 `null`（站点内全部带前缀），要么让站点默认语言与全局默认语言一致；否则项目需要自行按 Host 生成 URL 规则并本地化链接。
+
 ## 验收与检查规则对照
 
 `pnpm --filter @saas/web check:links` 在构建后运行（CI 的 build job 中也会运行）：
@@ -79,13 +131,13 @@
 |---|---|
 | 不同 Accept-Language 结果一致、没有 `Location` | `accept-language-vary`（首页、各语言首页与抽样页，`--accept-language-samples` 调整抽样数） |
 | canonical 指向自身 | `canonical-self` |
-| hreflang 正确、双向、同域、x-default 恰一条 | `hreflang-reciprocal`、`hreflang-cross-host`、`hreflang-x-default`、`hreflang-target` |
+| hreflang 正确、双向、同域、x-default 恰一条（配置了 `xDefaultLocales` 时指向偏好语言） | `hreflang-reciprocal`、`hreflang-cross-host`、`hreflang-x-default`、`hreflang-target` |
 | `html lang` 正确 | `html-lang` |
 | 公开页没有语言 `Set-Cookie` | `language-set-cookie`（项目自有的语言 Cookie 名写进 `seo.linking.languageCookies`） |
 | 没有 `?lang=` 链接 | `lang-query-link` |
-| `/` 与 `/<默认语言>` 不并存 | `default-locale-prefix` |
+| `/` 与 `/<默认语言>` 不并存 | `default-locale-prefix`（多站点按各站点默认语言） |
 | 站点地图等于可索引集合 | `dead-link`、`link-to-noindex` 与站点地图种子 |
-| 语言提示不在服务端 HTML 中 | `language-prompt-ssr` |
+| 语言提示不在服务端 HTML 中 | `language-prompt-ssr`（项目自有标记写进 `seo.linking.promptMarkers`） |
 | 提示条不增加 CLS | e2e `i18n-preference.spec.ts` |
 
 以上都是失败级规则，按 `seo.linking.mode` 处理：`report` 只报告，`enforce` 有失败项时退出码为 1。
