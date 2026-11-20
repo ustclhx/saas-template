@@ -55,12 +55,15 @@ for (const locale of locales) {
   })
 }
 
-// 只有默认语言版本的文章（seo-internal-linking 2.3）：e2e 使用 vite dev，草稿示例可访问且只有英文版本。
-// 回退页显示原文，canonical 指向原语言地址，hreflang 不列出缺少译文的语言；站点地图的回退过滤由单元测试覆盖。
+// 只有默认语言版本的文章（multilingual-seo ML-04）：e2e 使用 vite dev，草稿示例可访问且只有英文版本。
+// 默认 `i18n.untranslated: 'hide'`：其他语言地址 404，原文 canonical 指向自身、hreflang 不列出缺少译文的语言。
+// 'fallback' 模式（回退页 canonical 指向原语言）与站点地图过滤由单元测试覆盖（seo.test.tsx）。
 const otherLocale = locales.find((locale) => locale !== defaultLocale)
-test('缺少译文的文章：canonical 指向原语言，hreflang 只列真实译文', async ({ page }) => {
+test('缺少译文的文章：其他语言 404，原文 hreflang 只列真实译文', async ({ page }) => {
   test.skip(!templateConfig.features.blog || !otherLocale, '需要博客与至少两种语言')
-  const response = await page.goto(`/${otherLocale}/blog/draft-example`)
+  test.skip(templateConfig.i18n.untranslated === 'fallback', "项目使用 'fallback'，由单元测试覆盖")
+  expect((await page.goto(`/${otherLocale}/blog/draft-example`))?.status()).toBe(404)
+  const response = await page.goto('/blog/draft-example')
   expect(response?.status()).toBe(200)
   await expect(page.locator('h1')).toHaveText('Draft example')
   const canonical = await page.locator('link[rel="canonical"]').getAttribute('href')
@@ -75,7 +78,7 @@ test('缺少译文的文章：canonical 指向原语言，hreflang 只列真实�
     'href',
     canonical ?? '',
   )
-  // 有译文的文章照常互相关联
+  // 有译文的文章照常互相关联，canonical 指向自身
   await page.goto(`/${otherLocale}/blog/welcome`)
   await expect(page.locator(`link[rel="alternate"][hreflang="${otherLocale}"]`)).toHaveCount(1)
   expect(

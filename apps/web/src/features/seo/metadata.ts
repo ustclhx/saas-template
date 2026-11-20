@@ -1,6 +1,7 @@
 import type { AnyRouteMatch } from '@tanstack/react-router'
 import { templateConfig } from '../../server/template-config.ts'
 import { isAppAreaPath } from '../i18n/app-area.ts'
+import { localePrefix } from '../i18n/locale-url.ts'
 import { homePageCopy } from './home-copy.ts'
 
 /**
@@ -30,6 +31,19 @@ export interface SeoPage {
   priority?: 'money' | undefined
   /** 内容的真实语言；与 `locale` 不同表示缺少译文、以该语言内容回退显示的页面 */
   sourceLocale?: string | undefined
+  /**
+   * 各语言版本的地址（语言 → 不带语言前缀的 path），用于各语言路径不同的页面（本地化 slug，
+   * openspec multilingual-seo 决策 4）。声明后 hreflang 与语言切换器只用这些地址（自身总在其中）；
+   * 每个语言版本都要出现在清单中并声明同一组地址，构建期校验（linking.ts）。未声明时按同路径加前缀关联。
+   */
+  alternates?: Readonly<Record<string, string>> | undefined
+}
+
+/** 页面声明的完整语言版本组（含自身）；未声明 `alternates` 时返回 undefined */
+export function pageAlternates(
+  page: Pick<SeoPage, 'path' | 'locale' | 'alternates'>,
+): Record<string, string> | undefined {
+  return page.alternates ? { ...page.alternates, [page.locale]: page.path } : undefined
 }
 
 /**
@@ -75,7 +89,9 @@ const { defaultLocale, enabled } = templateConfig.i18n
 const locales = enabled ? templateConfig.i18n.locales : [defaultLocale]
 export function localizedPath(path: string, locale: string): string {
   const clean = path.replace(/\/+$/, '') || '/'
-  return !enabled || locale === defaultLocale ? clean : `/${locale}${clean === '/' ? '' : clean}`
+  return !enabled || locale === defaultLocale
+    ? clean
+    : `/${localePrefix(locale)}${clean === '/' ? '' : clean}`
 }
 
 export function absoluteUrl(appUrl: string, path: string): string {
@@ -83,20 +99,26 @@ export function absoluteUrl(appUrl: string, path: string): string {
 }
 
 /**
- * hreflang 关联：`languages` 为该页真实存在译文的语言（回退页不算）。x-default 指向默认语言，
- * 默认语言没有该页时指向列出的第一种语言。
+ * hreflang 关联：`languages` 为该页真实存在译文的语言（回退页不算），各语言按同路径加前缀。
+ * 传入 `alternates`（`pageAlternates()` 的结果）时改用声明的各语言地址，`languages` 不再参与。
+ * x-default 指向默认语言版本，默认语言没有该页时指向按配置顺序存在的第一种语言。
  */
 export function alternateLinks(
   appUrl: string,
   path: string,
   languages: readonly string[] = locales,
+  alternates?: Readonly<Record<string, string>>,
 ) {
-  const real = locales.filter((locale) => languages.includes(locale))
+  const real = alternates
+    ? locales.filter((locale) => alternates[locale] !== undefined)
+    : locales.filter((locale) => languages.includes(locale))
   const fallback = real.includes(defaultLocale) ? defaultLocale : (real[0] ?? defaultLocale)
+  const href = (locale: string) =>
+    absoluteUrl(appUrl, localizedPath(alternates?.[locale] ?? path, locale))
   return [...real, 'x-default'].map((language) => ({
     rel: 'alternate',
     hrefLang: language,
-    href: absoluteUrl(appUrl, localizedPath(path, language === 'x-default' ? fallback : language)),
+    href: href(language === 'x-default' ? fallback : language),
   }))
 }
 
@@ -164,8 +186,10 @@ export function ogImagePath(page: Pick<SeoPage, 'path' | 'locale'>): string {
 }
 
 /**
- * `languages`：该页真实存在译文的语言，省略时为全部启用语言（模板静态页各语言都有译文）。
- * 回退页（`sourceLocale` 与 `locale` 不同且同站点）的 canonical 与 og:url 指向原语言地址。
+ * `languages`：该页真实存在译文的语言，省略时为全部启用语言（模板静态页各语言都有译文）；
+ * 页面声明了 `alternates` 时 hreflang 改用声明的地址。
+ * canonical 一律指向自身，只有 `'fallback'` 模式下的回退页（`sourceLocale` 与 `locale` 不同且同站点）
+ * 的 canonical 与 og:url 指向原语言地址（`'hide'` 模式下回退页不发布，构建期校验拒绝）。
  */
 export function pageHead(
   page: SeoPage,
@@ -199,7 +223,10 @@ export function pageHead(
       { name: 'twitter:image', content: image },
       { name: 'twitter:image:alt', content: title },
     ],
-    links: [{ rel: 'canonical', href: url }, ...alternateLinks(appUrl, page.path, languages)],
+    links: [
+      { rel: 'canonical', href: url },
+      ...alternateLinks(appUrl, page.path, languages, pageAlternates(page)),
+    ],
     scripts: structuredData.map((data) => ({
       type: 'application/ld+json',
       children: JSON.stringify(data).replace(/</g, '\\u003c'),

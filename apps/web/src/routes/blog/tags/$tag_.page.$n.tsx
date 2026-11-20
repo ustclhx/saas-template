@@ -28,9 +28,12 @@ export const Route = createFileRoute('/blog/tags/$tag_/page/$n')({
       title: m.marketing_blog_tag_title({ tag: params.tag }),
       page: loaderData.page,
     })
-    return pageHead(page, appUrl, [
-      breadcrumbListData(loaderData.breadcrumb, current, appUrl, page.locale),
-    ])
+    return pageHead(
+      page,
+      appUrl,
+      [breadcrumbListData(loaderData.breadcrumb, current, appUrl, page.locale)],
+      loaderData.translations,
+    )
   },
   component: BlogTagPaginatedPage,
 })

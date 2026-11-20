@@ -208,6 +208,9 @@ export const textConfigSchema = z.strictObject({
 
 export type TextConfig = z.infer<typeof textConfigSchema>
 
+/** 缺少译文时的处理方式：`hide` 不发布（404），`fallback` 以默认语言内容回退显示。 */
+export type UntranslatedMode = 'hide' | 'fallback'
+
 /** 解析后的完整配置：所有选项都有值。 */
 export interface TemplateConfig<L extends string = string> {
   readonly app: {
@@ -219,6 +222,13 @@ export interface TemplateConfig<L extends string = string> {
     readonly enabled: boolean
     readonly locales: readonly L[]
     readonly defaultLocale: L
+    /**
+     * 缺少译文的公开内容如何处理（ML-04）：`'hide'`（默认）不发布，该语言地址返回 404，
+     * 不进站点地图、hreflang 与站内链接；`'fallback'` 以默认语言内容显示，canonical 指向原语言页
+     */
+    readonly untranslated: UntranslatedMode
+    /** 已登录且主动切换过语言的用户打开默认语言首页时，带到所选语言首页（ML-09），默认关闭 */
+    readonly rememberHomeLocale: boolean
   }
   readonly tenancy: {
     /** false = 仅个人空间；true = 允许团队 workspace */
@@ -361,6 +371,8 @@ export interface TemplateConfigInput<L extends string = DefaultLocale> {
     locales?: readonly L[]
     /** 必须是 `locales` 之一；省略时取 `locales[0]` */
     defaultLocale?: NoInfer<L>
+    untranslated?: UntranslatedMode
+    rememberHomeLocale?: boolean
   }
   tenancy?: Partial<Section<'tenancy'>>
   auth?: Partial<Section<'auth'>>
@@ -392,7 +404,13 @@ export interface TemplateConfigInput<L extends string = DefaultLocale> {
 
 /** 除 `app` 外的默认值，与 docs/02-project-structure.md §3 草案一致。 */
 export const templateConfigDefaults = {
-  i18n: { enabled: true, locales: ['en', 'zh'], defaultLocale: 'en' },
+  i18n: {
+    enabled: true,
+    locales: ['en', 'zh'],
+    defaultLocale: 'en',
+    untranslated: 'hide',
+    rememberHomeLocale: false,
+  },
   tenancy: { multiTenant: false, maxWorkspacesPerUser: 5 },
   auth: {
     emailPassword: true,
@@ -614,7 +632,13 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
 
   const config: TemplateConfig<L> = {
     app: { ...input.app },
-    i18n: { enabled: input.i18n?.enabled ?? d.i18n.enabled, locales, defaultLocale },
+    i18n: {
+      enabled: input.i18n?.enabled ?? d.i18n.enabled,
+      locales,
+      defaultLocale,
+      untranslated: input.i18n?.untranslated ?? (d.i18n.untranslated as UntranslatedMode),
+      rememberHomeLocale: input.i18n?.rememberHomeLocale ?? d.i18n.rememberHomeLocale,
+    },
     tenancy: { ...d.tenancy, ...input.tenancy },
     auth: { ...d.auth, ...input.auth },
     billing: {
@@ -643,6 +667,12 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
     features: { ...d.features, ...input.features },
     analytics: { ...d.analytics, ...input.analytics },
   }
+
+  // 配置文件可能由 JS 或生成器写入，运行时再校验一次取值
+  if (!['hide', 'fallback'].includes(config.i18n.untranslated))
+    throw new RangeError("template config: i18n.untranslated must be 'hide' or 'fallback'")
+  if (typeof config.i18n.rememberHomeLocale !== 'boolean')
+    throw new RangeError('template config: i18n.rememberHomeLocale must be a boolean')
 
   for (const site of config.seo.linking.sites)
     for (const locale of site.locales)

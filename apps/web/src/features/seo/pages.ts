@@ -55,7 +55,10 @@ function contentPage(
   }
 }
 
-/** 地图与 OG 共用公开页面清单，始终排除草稿、未来文章和关闭的功能。 */
+/**
+ * 地图与 OG 共用公开页面清单，始终排除草稿、未来文章和关闭的功能。缺少译文的内容按 `i18n.untranslated`
+ * 处理：`'hide'`（默认）不生成该语言的条目，`'fallback'` 生成回退页（`sourceLocale` 为原语言）。
+ */
 export function publicPages(
   content: {
     posts: readonly Post[]
@@ -69,7 +72,7 @@ export function publicPages(
   if (!config.marketing.enabled) return []
   const locales = config.i18n.enabled ? config.i18n.locales : [config.i18n.defaultLocale]
   return locales.flatMap((locale) => {
-    const { defaultLocale } = config.i18n
+    const { defaultLocale, untranslated } = config.i18n
     const pages = ['/', ...(config.billing.enabled ? ['/pricing'] : [])].map((path) =>
       staticPage(path, locale),
     )
@@ -79,7 +82,7 @@ export function publicPages(
       pages.push(staticPage('/blog', locale))
       const posts = listPosts(
         content.posts.filter((post) => !post.draft),
-        { locale, defaultLocale, now },
+        { locale, defaultLocale, now, untranslated },
       )
       pages.push(
         ...posts.map((post) => ({
@@ -97,7 +100,7 @@ export function publicPages(
       const { hubPageSize } = config.seo.linking
       const blog = staticPage('/blog', locale)
       pages.push(...hubPages(blog, posts.length, hubPageSize))
-      // 标签页按当前语言生成（含回退文章），各语言都是真实页面
+      // 标签页按当前语言的文章生成（'fallback' 下含回退文章），各语言都是真实页面
       for (const tag of listTags(posts)) {
         const hub: SeoPage = {
           path: `/blog/tags/${encodeURIComponent(tag)}`,
@@ -113,7 +116,7 @@ export function publicPages(
       }
     }
     pages.push(
-      ...localizedEntries(content.legal, locale, defaultLocale).map((page) => ({
+      ...localizedEntries(content.legal, locale, defaultLocale, untranslated).map((page) => ({
         ...contentPage(
           page,
           locale,
@@ -130,6 +133,7 @@ export function publicPages(
           (content.guides ?? []).filter((guide) => !guide.draft),
           locale,
           defaultLocale,
+          untranslated,
         ).map((guide) => ({
           ...contentPage(
             guide,
@@ -144,7 +148,7 @@ export function publicPages(
     if (config.features.docs) {
       pages.push(staticPage('/docs', locale))
       pages.push(
-        ...localizedEntries(content.docs, locale, defaultLocale).map((page) => ({
+        ...localizedEntries(content.docs, locale, defaultLocale, untranslated).map((page) => ({
           ...contentPage(
             page,
             locale,

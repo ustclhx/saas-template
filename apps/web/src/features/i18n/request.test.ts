@@ -117,3 +117,78 @@ it('账号语言只在多语言模式读取，单语言忽略 Cookie 和账号�
     expect(response.headers.get('location')).toBeNull()
   }
 })
+
+describe('公开页语言只由 URL 决定（multilingual-seo 2.2、2.4）', () => {
+  const { enabled, defaultLocale } = templateConfig.i18n
+  const other = templateConfig.i18n.locales.find((locale) => locale !== defaultLocale)
+  // 模拟路由器：返回本次请求的语言；交给路由器的地址不变
+  const render = (path: string, headers: Record<string, string>) =>
+    localizeRequest(new Request(`${origin}${path}`, { headers }), runtime, async () =>
+      Response.json({ locale: getLocale() }),
+    )
+  const variants: Record<string, string>[] = [
+    {},
+    { 'accept-language': 'zh-CN,zh;q=0.9' },
+    { 'accept-language': 'en-US,en;q=0.9' },
+    { 'accept-language': 'ar' },
+    { cookie: `PARAGLIDE_LOCALE=${other ?? defaultLocale}` },
+    { cookie: `PARAGLIDE_LOCALE=${defaultLocale}; locale-preference=${defaultLocale}` },
+    { 'sec-fetch-dest': 'document', 'accept-language': 'zh-CN', cookie: 'PARAGLIDE_LOCALE=zh' },
+  ]
+
+  it('带默认语言前缀的地址 301 到无前缀地址，保留查询串，不看请求头', async () => {
+    if (!enabled) return
+    for (const headers of variants) {
+      for (const [from, to] of [
+        [`/${defaultLocale}/pricing`, '/pricing'],
+        [`/${defaultLocale}`, '/'],
+        [`/${defaultLocale.toUpperCase()}/pricing?ref=a`, '/pricing?ref=a'],
+      ]) {
+        const response = await render(from as string, headers)
+        expect(response.status, from).toBe(301)
+        expect(response.headers.get('location'), from).toBe(to)
+        expect(response.headers.get('set-cookie')).toBeNull()
+      }
+    }
+  })
+
+  it('不同 Accept-Language 与 Cookie 下状态、Location 与语言一致，且没有语言 Set-Cookie', async () => {
+    const paths = [
+      '/',
+      '/pricing',
+      '/blog',
+      ...(enabled && other ? [`/${other}`, `/${other}/pricing`] : []),
+    ]
+    for (const path of paths) {
+      const results = await Promise.all(
+        variants.map(async (headers) => {
+          const response = await render(path, headers)
+          expect(response.headers.get('set-cookie'), path).toBeNull()
+          return {
+            status: response.status,
+            location: response.headers.get('location'),
+            body: await response.json(),
+          }
+        }),
+      )
+      const expected = {
+        status: 200,
+        location: null,
+        body: { locale: enabled && path.startsWith(`/${other}`) ? other : baseLocale },
+      }
+      for (const result of results) expect(result, path).toEqual(expected)
+    }
+  })
+
+  it('应用区仍按账号语言写 Cookie（不属于公开页）', async () => {
+    if (!enabled || !other) return
+    const response = await localizeRequest(
+      new Request(`${origin}/account`, { headers: { 'x-user': 'one', 'x-locale': other } }),
+      runtime,
+      async () => new Response(getLocale()),
+    )
+    expect(await response.text()).toBe(other)
+    expect(response.headers.get('set-cookie')).toContain(`PARAGLIDE_LOCALE=${other}`)
+    expect(response.headers.get('cache-control')).toBe('private, no-store')
+  })
+})

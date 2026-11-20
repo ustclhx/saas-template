@@ -19,7 +19,8 @@
 | `related` | 否 | 相关页地址列表，目标必须存在且可索引；显示相关区块 |
 | `indexable` | 否 | 默认 `true`；`false` 时 noindex、不进站点地图，也不能作为 parent／group／related 的目标 |
 | `priority` | 否 | `'money'` 表示钱页，检查其站内入链数 |
-| `sourceLocale` | 自动 | 内容的真实语言；与 `locale` 不同即回退页：canonical 指向原语言，不进站点地图（多站点项目中原语言在另一站点时例外，见 §7） |
+| `sourceLocale` | 自动 | 内容的真实语言；与 `locale` 不同即回退页：canonical 指向原语言，不进站点地图（多站点项目中原语言在另一站点时例外，见 §7）。只在 `i18n.untranslated: 'fallback'` 时允许，默认 `'hide'` 下构建失败 |
+| `alternates` | 否 | 各语言版本的地址（语言 → 不带前缀的 path），用于本地化 slug；hreflang 与语言切换器使用这些地址。键必须是已配置语言，每个版本都要在清单中并声明同一组地址，同路径的其他语言页也要声明，否则构建失败 |
 
 各来源怎么填：
 
@@ -168,7 +169,8 @@ export function projectPages({ locale }: { locale: string; defaultLocale: string
 
 步骤：
 
-1. 为每个页面写 `titleMain` 与 `parent`；hub 与分类页本身也要返回条目。缺译文的语言写 `sourceLocale: <原语言>`。
+1. 为每个页面写 `titleMain` 与 `parent`；hub 与分类页本身也要返回条目。缺译文的语言默认不返回条目；
+   项目设置 `i18n.untranslated: 'fallback'` 时才写 `sourceLocale: <原语言>` 的回退条目。各语言 slug 不同时写 `alternates`。
 2. 页面由 `apps/web/src/routes/` 下的路由渲染：`head` 用 `pageHead()`，并输出 `breadcrumbListData()`；
    页面数据由 server function 返回 `getPageLinks(path, locale)`，组件用 `PageBreadcrumb` 与 `PageLinkSections` 渲染区块。
 3. hub 页链接到全部下级；下级超过 `hubPageSize` 时用 `hubPages()` 生成分页条目、`hubSlice()` 切分列表、`HubPagination` 渲染分页。

@@ -4,6 +4,7 @@ import { templateConfig } from '../../server/template-config.ts'
 import { defaultShareCardLayout } from '../share-cards/layout.tsx'
 import { resolveShareCardTheme } from '../share-cards/theme.ts'
 import { llmsTxt, robots, sitemap } from './crawlers.ts'
+import { validateSeoPages } from './linking.ts'
 import {
   fallbackSourceLocale,
   localizedPath,
@@ -323,10 +324,11 @@ it('关闭营销时没有公开页面，单语言只生成默认语言页面', (
   }
 })
 
-describe.runIf(config.i18n.enabled && locales.length > 1)('缺少译文的回退页（2.1–2.3）', () => {
-  const other = locales.find((item) => item !== config.i18n.defaultLocale) ?? ''
-  const withFallback = publicPages(
-    {
+describe.runIf(config.i18n.enabled && locales.length > 1)(
+  '缺少译文的页面（2.1–2.3、ML-04）',
+  () => {
+    const other = locales.find((item) => item !== config.i18n.defaultLocale) ?? ''
+    const withUntranslated = {
       ...content,
       posts: [
         ...content.posts,
@@ -336,72 +338,166 @@ describe.runIf(config.i18n.enabled && locales.length > 1)('缺少译文的回退
           title: 'Only in the default language',
           summary: 'Not translated yet',
           date: '2026-01-01',
-          tags: [],
+          tags: ['solo'],
           draft: false,
         },
       ],
-    },
-    new Date('2026-10-01'),
-    config,
-  )
-  const fallback = withFallback.find(
-    (page) => page.path === '/blog/only-default' && page.locale === other,
-  )
-
-  it('回退页记录原语言，站点地图跳过回退页', () => {
-    expect(fallback?.sourceLocale).toBe(config.i18n.defaultLocale)
-    expect(
-      withFallback.find((page) => page.path === '/blog/published' && page.locale === other)
-        ?.sourceLocale,
-    ).toBe(other)
-    const xml = sitemap(withFallback, origin)
-    expect(xml).toContain(`<loc>${origin}/blog/only-default</loc>`)
-    expect(xml).not.toContain(`${origin}/${other}/blog/only-default`)
-    expect(xml).toContain(`<loc>${origin}/${other}/blog/published</loc>`)
-  })
-
-  it('回退页 canonical 指向原语言地址，hreflang 只列出真实译文', () => {
-    if (!fallback) throw new Error('Missing fallback page')
-    const head = pageHead(fallback, origin, [], [config.i18n.defaultLocale])
-    expect(head.links.find((link) => link.rel === 'canonical')?.href).toBe(
-      `${origin}/blog/only-default`,
-    )
-    expect(head.meta).toContainEqual({ property: 'og:url', content: `${origin}/blog/only-default` })
-    expect(head.links.filter((link) => link.rel === 'alternate')).toEqual([
-      {
-        rel: 'alternate',
-        hrefLang: config.i18n.defaultLocale,
-        href: `${origin}/blog/only-default`,
-      },
-      { rel: 'alternate', hrefLang: 'x-default', href: `${origin}/blog/only-default` },
-    ])
-    expect(articleData(fallback, origin)).toMatchObject({
-      url: `${origin}/blog/only-default`,
-      inLanguage: config.i18n.defaultLocale,
+    }
+    const hidden = publicPages(withUntranslated, new Date('2026-10-01'), {
+      ...config,
+      i18n: { ...config.i18n, untranslated: 'hide' },
     })
+    const withFallback = publicPages(withUntranslated, new Date('2026-10-01'), {
+      ...config,
+      i18n: { ...config.i18n, untranslated: 'fallback' },
+    })
+
+    it("'hide'（默认）：缺少译文的语言没有该页，标签页、站点地图与 hreflang 只基于真实条目", () => {
+      const at = (path: string, locale: string) =>
+        hidden.find((page) => page.path === path && page.locale === locale)
+      expect(at('/blog/only-default', config.i18n.defaultLocale)?.sourceLocale).toBe(
+        config.i18n.defaultLocale,
+      )
+      expect(at('/blog/only-default', other)).toBeUndefined()
+      expect(at('/blog/tags/solo', config.i18n.defaultLocale)).toBeDefined()
+      expect(at('/blog/tags/solo', other)).toBeUndefined()
+      expect(
+        hidden.some((page) => page.sourceLocale !== undefined && page.sourceLocale !== page.locale),
+      ).toBe(false)
+      expect(validateSeoPages(hidden, { untranslated: 'hide' }).errors).toEqual([])
+      const xml = sitemap(hidden, origin)
+      expect(xml).toContain(`<loc>${origin}/blog/only-default</loc>`)
+      expect(xml).not.toContain(`${origin}/${other}/blog/only-default`)
+      expect(xml).not.toContain(`${origin}/${other}/blog/tags/solo`)
+      expect(xml).not.toContain(`hreflang="${other}" href="${origin}/${other}/blog/only-default"`)
+      // 站点地图等于可索引页面集合：每个清单页面恰好一条 <loc>
+      expect(xml.match(/<loc>/g)).toHaveLength(
+        hidden.filter((page) => page.indexable !== false).length,
+      )
+    })
+
+    const fallback = withFallback.find(
+      (page) => page.path === '/blog/only-default' && page.locale === other,
+    )
+
+    it("'fallback'：回退页记录原语言，站点地图跳过回退页", () => {
+      expect(fallback?.sourceLocale).toBe(config.i18n.defaultLocale)
+      expect(
+        withFallback.find((page) => page.path === '/blog/published' && page.locale === other)
+          ?.sourceLocale,
+      ).toBe(other)
+      const xml = sitemap(withFallback, origin)
+      expect(xml).toContain(`<loc>${origin}/blog/only-default</loc>`)
+      expect(xml).not.toContain(`${origin}/${other}/blog/only-default`)
+      expect(xml).toContain(`<loc>${origin}/${other}/blog/published</loc>`)
+    })
+
+    it("'fallback'：回退页 canonical 指向原语言地址，hreflang 只列出真实译文", () => {
+      if (!fallback) throw new Error('Missing fallback page')
+      const head = pageHead(fallback, origin, [], [config.i18n.defaultLocale])
+      expect(head.links.find((link) => link.rel === 'canonical')?.href).toBe(
+        `${origin}/blog/only-default`,
+      )
+      expect(head.meta).toContainEqual({
+        property: 'og:url',
+        content: `${origin}/blog/only-default`,
+      })
+      expect(head.links.filter((link) => link.rel === 'alternate')).toEqual([
+        {
+          rel: 'alternate',
+          hrefLang: config.i18n.defaultLocale,
+          href: `${origin}/blog/only-default`,
+        },
+        { rel: 'alternate', hrefLang: 'x-default', href: `${origin}/blog/only-default` },
+      ])
+      expect(articleData(fallback, origin)).toMatchObject({
+        url: `${origin}/blog/only-default`,
+        inLanguage: config.i18n.defaultLocale,
+      })
+    })
+
+    it('多站点：原语言在另一站点时不算回退页，canonical 不跨站（seo.linking.sites）', () => {
+      const page = { locale: 'b', sourceLocale: 'a' }
+      // 未配置分组（模板默认）时全部语言同站
+      expect(fallbackSourceLocale(page, [])).toBe('a')
+      expect(fallbackSourceLocale(page, [{ locales: ['a', 'b'] }])).toBe('a')
+      expect(fallbackSourceLocale(page, [{ locales: ['a'] }, { locales: ['b'] }])).toBeUndefined()
+      // 未列入分组的语言同属隐含站点
+      expect(fallbackSourceLocale(page, [{ locales: ['c'] }])).toBe('a')
+      expect(fallbackSourceLocale(page, [{ locales: ['a'] }])).toBeUndefined()
+      expect(fallbackSourceLocale({ locale: 'a', sourceLocale: 'a' }, [])).toBeUndefined()
+      expect(sameSiteLocales('a', 'b', [{ locales: ['b', 'a'] }])).toBe(true)
+    })
+
+    it('只有非默认语言版本时 x-default 指向该语言', () => {
+      const page = { path: '/blog/only-other', locale: other, title: 'T', description: 'D' }
+      expect(
+        pageHead(page, origin, [], [other]).links.filter((link) => link.rel === 'alternate'),
+      ).toEqual([
+        { rel: 'alternate', hrefLang: other, href: `${origin}/${other}/blog/only-other` },
+        { rel: 'alternate', hrefLang: 'x-default', href: `${origin}/${other}/blog/only-other` },
+      ])
+    })
+  },
+)
+
+// 本地化 slug（multilingual-seo 3.2）：默认语言 /four-pillars 与另一语言 /<other>/四柱 互为语言版本
+describe.runIf(config.i18n.enabled && locales.length > 1)('alternates 与 hreflang', () => {
+  const { defaultLocale } = config.i18n
+  const other = locales.find((item) => item !== defaultLocale) ?? ''
+  const pillars = {
+    path: '/four-pillars',
+    locale: defaultLocale,
+    title: 'Four pillars',
+    description: 'D',
+    titleMain: 'Four pillars',
+    parent: '/',
+    alternates: { [other]: '/四柱' },
+  }
+  const localized = {
+    ...pillars,
+    path: '/四柱',
+    locale: other,
+    alternates: { [defaultLocale]: '/four-pillars' },
+  }
+  const group = [
+    { rel: 'alternate', hrefLang: defaultLocale, href: `${origin}/four-pillars` },
+    { rel: 'alternate', hrefLang: other, href: `${origin}/${other}/${encodeURIComponent('四柱')}` },
+    { rel: 'alternate', hrefLang: 'x-default', href: `${origin}/four-pillars` },
+  ].sort((a, b) =>
+    a.hrefLang === 'x-default'
+      ? 1
+      : b.hrefLang === 'x-default'
+        ? -1
+        : (locales as readonly string[]).indexOf(a.hrefLang) -
+          (locales as readonly string[]).indexOf(b.hrefLang),
+  )
+
+  it('两页的 hreflang 都列出两个地址，canonical 指向自身', () => {
+    for (const page of [pillars, localized]) {
+      const head = pageHead(page, origin)
+      expect(head.links.filter((link) => link.rel === 'alternate')).toEqual(group)
+      expect(head.links.find((link) => link.rel === 'canonical')?.href).toBe(
+        group.find((link) => link.hrefLang === page.locale)?.href,
+      )
+    }
   })
 
-  it('多站点：原语言在另一站点时不算回退页，canonical 不跨站（seo.linking.sites）', () => {
-    const page = { locale: 'b', sourceLocale: 'a' }
-    // 未配置分组（模板默认）时全部语言同站
-    expect(fallbackSourceLocale(page, [])).toBe('a')
-    expect(fallbackSourceLocale(page, [{ locales: ['a', 'b'] }])).toBe('a')
-    expect(fallbackSourceLocale(page, [{ locales: ['a'] }, { locales: ['b'] }])).toBeUndefined()
-    // 未列入分组的语言同属隐含站点
-    expect(fallbackSourceLocale(page, [{ locales: ['c'] }])).toBe('a')
-    expect(fallbackSourceLocale(page, [{ locales: ['a'] }])).toBeUndefined()
-    expect(fallbackSourceLocale({ locale: 'a', sourceLocale: 'a' }, [])).toBeUndefined()
-    expect(sameSiteLocales('a', 'b', [{ locales: ['b', 'a'] }])).toBe(true)
+  it('站点地图按声明的地址输出 hreflang，不按同路径猜测', () => {
+    const xml = sitemap([pillars, localized], origin)
+    expect(xml.match(/<url>/g)).toHaveLength(2)
+    for (const link of group)
+      expect(xml.split(`hreflang="${link.hrefLang}" href="${link.href}"`)).toHaveLength(3)
+    expect(xml).not.toContain(`${origin}/${other}/four-pillars`)
   })
 
-  it('只有非默认语言版本时 x-default 指向该语言', () => {
-    const page = { path: '/blog/only-other', locale: other, title: 'T', description: 'D' }
-    expect(
-      pageHead(page, origin, [], [other]).links.filter((link) => link.rel === 'alternate'),
-    ).toEqual([
-      { rel: 'alternate', hrefLang: other, href: `${origin}/${other}/blog/only-other` },
-      { rel: 'alternate', hrefLang: 'x-default', href: `${origin}/${other}/blog/only-other` },
-    ])
+  it('默认语言没有版本时 x-default 指向按配置顺序的第一个版本', () => {
+    const page = { ...localized, alternates: { [other]: '/四柱' } }
+    expect(pageHead(page, origin).links.at(-1)).toEqual({
+      rel: 'alternate',
+      hrefLang: 'x-default',
+      href: `${origin}/${other}/${encodeURIComponent('四柱')}`,
+    })
   })
 })
 

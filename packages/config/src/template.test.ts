@@ -326,8 +326,39 @@ describe('defineTemplateConfig', () => {
 
   it('defaults defaultLocale to the first locale', () => {
     const config = defineTemplateConfig({ app, i18n: { locales: ['ja', 'en'] } })
-    expect(config.i18n).toEqual({ enabled: true, locales: ['ja', 'en'], defaultLocale: 'ja' })
+    expect(config.i18n).toEqual({
+      enabled: true,
+      locales: ['ja', 'en'],
+      defaultLocale: 'ja',
+      untranslated: 'hide',
+      rememberHomeLocale: false,
+    })
     expectTypeOf(config.i18n.defaultLocale).toEqualTypeOf<'ja' | 'en'>()
+  })
+
+  it('hides untranslated pages and keeps home-locale memory off by default', () => {
+    const config = defineTemplateConfig({ app })
+    expect(config.i18n.untranslated).toBe('hide')
+    expect(config.i18n.rememberHomeLocale).toBe(false)
+    const custom = defineTemplateConfig({
+      app,
+      i18n: { untranslated: 'fallback', rememberHomeLocale: true },
+    })
+    expect(custom.i18n).toMatchObject({
+      locales: ['en', 'zh'],
+      defaultLocale: 'en',
+      untranslated: 'fallback',
+      rememberHomeLocale: true,
+    })
+  })
+
+  it('rejects invalid untranslated and rememberHomeLocale values at runtime', () => {
+    expect(() => defineTemplateConfig({ app, i18n: { untranslated: 'show' as 'hide' } })).toThrow(
+      /i18n.untranslated/,
+    )
+    expect(() =>
+      defineTemplateConfig({ app, i18n: { rememberHomeLocale: 'yes' as unknown as boolean } }),
+    ).toThrow(/i18n.rememberHomeLocale/)
   })
 
   it('rejects an empty locale list at runtime', () => {
@@ -370,7 +401,13 @@ describe('defineTemplateConfig', () => {
     expect(config.billing).toEqual({ ...templateConfigDefaults.billing, enabled: false })
     expect(config.credits.enabled).toBe(false)
     expect(config.marketing.enabled).toBe(false)
-    expect(config.i18n).toEqual({ enabled: false, locales: ['ja', 'en'], defaultLocale: 'ja' })
+    expect(config.i18n).toEqual({
+      enabled: false,
+      locales: ['ja', 'en'],
+      defaultLocale: 'ja',
+      untranslated: 'hide',
+      rememberHomeLocale: false,
+    })
     expect(config.auth).toEqual(templateConfigDefaults.auth)
   })
 
@@ -444,6 +481,8 @@ describe('defineTemplateConfig types', () => {
       defineTemplateConfig({ app, i18n: { locales: ['en', 'zh'], defaultLocale: 'fr' } }),
       // @ts-expect-error 省略 locales 时 defaultLocale 只能是默认语言之一
       defineTemplateConfig({ app, i18n: { defaultLocale: 'fr' } }),
+      // @ts-expect-error 未支持的未翻译处理方式
+      defineTemplateConfig({ app, i18n: { untranslated: 'show' } }),
       // @ts-expect-error app 必填
       defineTemplateConfig({}),
     ]

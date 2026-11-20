@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { type CompilerOptions, compile, paraglideVitePlugin } from '@inlang/paraglide-js'
 import { EMAIL_LOCALES } from '@saas/email/queue'
 import type { Plugin } from 'vite'
+import { localeUrlPatterns } from '../src/features/i18n/locale-url.ts'
 
 export interface I18nConfig {
   readonly enabled?: boolean
@@ -69,11 +70,14 @@ export function writeInlangProject(i18n: I18nConfig, root = WEB_ROOT): void {
  * Paraglide 编译选项（design.md 决策 3）：公开页面按 URL 前缀确定语言（默认语言无前缀），
  * 其他配置语言 `/<locale>/...`；应用区不进入 URL，按 Cookie 取语言、没有时用默认语言。
  * 两者都不含 preferredLanguage，首次访问不会按浏览器语言自动跳转。
+ * 传入 `i18n` 时前缀取语言 id 的小写形式（multilingual-seo 决策 2：`zh-Hant` → `/zh-hant`），
+ * 大小写不同的写法与默认语言前缀由 request.server.ts 在进入 Paraglide 前 301。
  */
 export function paraglideOptions(
   appAreaPrefixes: readonly string[],
   root = WEB_ROOT,
   enabled = true,
+  i18n?: I18nConfig,
 ): CompilerOptions {
   return {
     project: join(root, 'project.inlang'),
@@ -83,6 +87,14 @@ export function paraglideOptions(
     strategy: enabled ? ['url', 'baseLocale'] : ['baseLocale'],
     // 与路由器一致：去掉末尾的 `/`（否则 `/zh` 会被本地化为 `/zh/`，再被路由器 307 回来）
     trailingSlash: 'never',
+    ...(enabled && i18n
+      ? {
+          urlPatterns: localeUrlPatterns({
+            locales: activeLocales(i18n),
+            defaultLocale: i18n.defaultLocale,
+          }),
+        }
+      : {}),
     routeStrategies: (enabled ? [...appAreaPrefixes, '/_serverFn'] : []).map((prefix) => ({
       match: `${prefix}/:path(.*)?`,
       strategy: ['cookie', 'baseLocale'],
@@ -144,7 +156,7 @@ export function i18nMessages({
   )
   if (unsupported.length) throw new Error(`[i18n] 邮件模板缺少语言：${unsupported.join(', ')}`)
   writeInlangProject(i18n)
-  const options = paraglideOptions(appAreaPrefixes, WEB_ROOT, i18n.enabled)
+  const options = paraglideOptions(appAreaPrefixes, WEB_ROOT, i18n.enabled !== false, i18n)
   let reported = false
   return [
     paraglideVitePlugin(options) as Plugin,

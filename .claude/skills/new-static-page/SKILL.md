@@ -25,7 +25,7 @@ description: 在本模板新增或修改公开静态页、法律页、博客与�
 - 法律页由 `apps/web/src/routes/legal/$slug.tsx` 自动承接；博客和文档也已有动态路由。已有集合新增内容无需逐页创建 TSX 路由。
 - 独立页面才在 `apps/web/src/routes/` 添加文件路由，参考法律页的 `MarketingShell`、`loader`、`head`。登录后页面使用 `new-page` 技能。
 
-完成标准：确定一个现有内容集合或一个确需新增的路由；明确哪些启用语言提供译文，哪些按现有默认语言规则回退。
+完成标准：确定一个现有内容集合或一个确需新增的路由；明确哪些启用语言提供译文；缺译文的语言默认不发布，项目设置 `i18n.untranslated: 'fallback'` 时才回退。
 
 ## 2. 写内容与文案
 
@@ -42,7 +42,7 @@ description: 在本模板新增或修改公开静态页、法律页、博客与�
 
 MDX 在 Node 构建期渲染 HTML，Worker 页面读取静态结果。正文仅接受可信仓库作者内容；不要把用户提交的 MDX 或 HTML直接交给此链路。博客草稿生产构建排除，未来日期到期前不可见；到期后需要重新构建才能更新预渲染、地图和图片。
 
-UI 文案写入 `apps/web/messages/<locale>/<feature>.json`，沿用现有键名和 `m` 调用。单语言只要求默认语言；多语言覆盖启用语言。`apps/web/src/features/marketing/content.ts` 定义缺译文的回退，沿用它而非自建回退。内容目录中的占位路径是约定，创建实际文件时替换集合、语言与 slug。
+UI 文案写入 `apps/web/messages/<locale>/<feature>.json`，沿用现有键名和 `m` 调用。单语言只要求默认语言；多语言覆盖启用语言。`apps/web/src/features/marketing/content.ts` 按 `i18n.untranslated` 处理缺译文（默认 `'hide'` 不发布、404；`'fallback'` 回退到默认语言），沿用它而非自建回退。内容目录中的占位路径是约定，创建实际文件时替换集合、语言与 slug。
 
 完成标准：frontmatter 满足现有 schema，文案没有硬编码到共享页面，译文或回退策略可逐项核验。
 

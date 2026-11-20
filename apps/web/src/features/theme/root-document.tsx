@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { preload } from 'react-dom'
 import { getLocale } from '../../paraglide/runtime.js'
 import { templateConfig } from '../../server/template-config.ts'
+import { textDirection } from '../i18n/direction.ts'
 import { projectFontPreloads } from './fonts.project.ts'
 import { ThemeToggle } from './theme-toggle.tsx'
 
@@ -37,10 +38,14 @@ export function RootDocument({
   for (const font of projectFontPreloads(fontPreloads)) {
     preload(font.href, { as: 'font', type: font.type, crossOrigin: 'anonymous' })
   }
+  const locale = getLocale()
   return (
+    // lang 与 dir 跟随页面语言（multilingual-seo 决策 5）；dir 写在扩展属性之前，项目扩展
+    // （html-attributes.ts）仍可按约定覆盖，lang 写在之后，不可覆盖
     <html
+      dir={textDirection(locale)}
       {...htmlAttributes}
-      lang={getLocale()}
+      lang={locale}
       data-preset={templateConfig.ui.preset}
       suppressHydrationWarning
     >

@@ -94,3 +94,63 @@ it('关闭 i18n 后真实编译仅保留默认中文，账号 Cookie 和语言 U
     rmSync(singleRoot, { recursive: true, force: true })
   }
 })
+
+it('含大写字母的语言 id 编译为小写前缀，localize / deLocalize 与中间件一致（multilingual-seo 2.2）', async () => {
+  const mixedRoot = mkdtempSync(join(tmpdir(), 'saas-i18n-mixed-'))
+  try {
+    symlinkSync(
+      new URL('../node_modules', import.meta.url).pathname,
+      join(mixedRoot, 'node_modules'),
+    )
+    const mixed = { locales: ['en', 'zh-Hant'], defaultLocale: 'en' }
+    for (const [locale, text] of [
+      ['en', 'Save'],
+      ['zh-Hant', '儲存'],
+    ] as const) {
+      mkdirSync(join(mixedRoot, 'messages', locale), { recursive: true })
+      writeFileSync(
+        join(mixedRoot, 'messages', locale, 'common.json'),
+        JSON.stringify({ common_save: text }),
+      )
+    }
+    writeInlangProject(mixed, mixedRoot)
+    const options = paraglideOptions(['/app'], mixedRoot, true, mixed)
+    await compile({ ...options, emitTsDeclarations: false })
+    const runtime = await import(join(mixedRoot, 'src/paraglide/runtime.js'))
+    const { paraglideMiddleware } = await import(join(mixedRoot, 'src/paraglide/server.js'))
+    const origin = 'https://example.com'
+    const localize = (path: string, locale: string) =>
+      runtime.localizeUrl(`${origin}${path}`, { locale }).pathname
+    expect(localize('/pricing', 'zh-Hant')).toBe('/zh-hant/pricing')
+    expect(localize('/', 'zh-Hant')).toBe('/zh-hant')
+    expect(localize('/zh-hant/pricing', 'en')).toBe('/pricing')
+    expect(runtime.deLocalizeUrl(`${origin}/zh-hant/pricing?x=1`).href).toBe(
+      `${origin}/pricing?x=1`,
+    )
+    expect(runtime.extractLocaleFromUrl(`${origin}/zh-hant/pricing`)).toBe('zh-Hant')
+    expect(runtime.extractLocaleFromUrl(`${origin}/pricing`)).toBe('en')
+    // 请求头与 Cookie 不影响公开页语言，也不触发跳转
+    for (const [path, locale, routed] of [
+      ['/zh-hant/pricing', 'zh-Hant', '/pricing'],
+      ['/zh-hant', 'zh-Hant', '/'],
+      ['/pricing', 'en', '/pricing'],
+    ] as const) {
+      const response = await paraglideMiddleware(
+        new Request(`${origin}${path}`, {
+          headers: {
+            'sec-fetch-dest': 'document',
+            'accept-language': 'zh-TW',
+            cookie: 'PARAGLIDE_LOCALE=zh-Hant',
+          },
+        }),
+        ({ request }: { request: Request }) =>
+          new Response(`${runtime.getLocale()} ${new URL(request.url).pathname}`),
+      )
+      expect(response.status, path).toBe(200)
+      expect(response.headers.get('location')).toBeNull()
+      expect(await response.text()).toBe(`${locale} ${routed}`)
+    }
+  } finally {
+    rmSync(mixedRoot, { recursive: true, force: true })
+  }
+})

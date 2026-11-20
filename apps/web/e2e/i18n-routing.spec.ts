@@ -1,28 +1,76 @@
 import { expect, test } from '@playwright/test'
 import templateConfig from '../../../template.config.ts'
 
-// 语言路由（openspec add-marketing-i18n-seo tasks.md 1.1）：默认语言无前缀、其他配置语言加前缀、
-// 未配置的前缀 404；应用区不加语言前缀。
+// 语言路由（openspec add-marketing-i18n-seo tasks.md 1.1，multilingual-seo 2.2/2.4）：默认语言无前缀、
+// 其他配置语言加小写前缀、未配置的前缀 404；应用区不加语言前缀；公开页不按请求头或 Cookie 跳转。
 const { defaultLocale } = templateConfig.i18n
 const locales: readonly string[] = templateConfig.i18n.locales
 const otherLocales = locales.filter((locale) => locale !== defaultLocale)
 const unconfigured = ['fr', 'de', 'ja', 'es'].find((locale) => !locales.includes(locale))
 
-test('默认语言使用无前缀地址，带默认语言前缀的地址 307 到无前缀地址', async ({ page, request }) => {
+test('默认语言使用无前缀地址，带默认语言前缀的地址 301 到无前缀地址', async ({ page, request }) => {
   await page.goto('/pricing')
   await expect(page.locator('html')).toHaveAttribute('lang', defaultLocale)
+  await expect(page.locator('html')).toHaveAttribute('dir', 'ltr')
   await expect(page).toHaveURL(/\/pricing$/)
 
   for (const [from, to] of [
     [`/${defaultLocale}`, '/'],
     [`/${defaultLocale}/pricing`, '/pricing'],
+    [`/${defaultLocale.toUpperCase()}/pricing?ref=e2e`, '/pricing?ref=e2e'],
   ] as const) {
-    const response = await request.get(from, {
-      maxRedirects: 0,
-      headers: { 'Sec-Fetch-Dest': 'document' },
-    })
-    expect(response.status()).toBe(307)
-    expect(new URL(response.headers().location ?? '', 'http://localhost').pathname).toBe(to)
+    // 只看路径：有无 Sec-Fetch-Dest 都跳转
+    for (const headers of [{ 'Sec-Fetch-Dest': 'document' }, {}]) {
+      const response = await request.get(from, { maxRedirects: 0, headers })
+      expect(response.status(), from).toBe(301)
+      const location = new URL(response.headers().location ?? '', 'http://localhost')
+      expect(`${location.pathname}${location.search}`).toBe(to)
+    }
+  }
+})
+
+test('大小写不同的语言前缀 301 到小写前缀', async ({ request }) => {
+  test.skip(otherLocales.length === 0, '没有非默认语言')
+  for (const locale of otherLocales) {
+    const prefix = locale.toLowerCase()
+    const response = await request.get(`/${prefix.toUpperCase()}/pricing`, { maxRedirects: 0 })
+    expect(response.status()).toBe(301)
+    expect(response.headers().location).toBe(`/${prefix}/pricing`)
+  }
+})
+
+test('公开页在不同 Accept-Language 与 Cookie 下状态、Location 与 html lang 一致，且不写语言 Cookie', async ({
+  request,
+}) => {
+  const other = otherLocales[0]
+  const paths = ['/', '/pricing', ...(other ? [`/${other.toLowerCase()}`] : [])]
+  const variants: Record<string, string>[] = [
+    { 'Accept-Language': 'zh-CN,zh;q=0.9' },
+    { 'Accept-Language': 'en-US,en;q=0.9' },
+    { 'Accept-Language': 'en-US', Cookie: `PARAGLIDE_LOCALE=${other ?? defaultLocale}` },
+    { 'Accept-Language': 'zh-CN', Cookie: `PARAGLIDE_LOCALE=${defaultLocale}` },
+  ]
+  for (const path of paths) {
+    const results = []
+    for (const headers of variants) {
+      const response = await request.get(path, {
+        maxRedirects: 0,
+        headers: { 'Sec-Fetch-Dest': 'document', ...headers },
+      })
+      const setCookie = response
+        .headersArray()
+        .filter(({ name }) => name.toLowerCase() === 'set-cookie')
+        .map(({ value }) => value)
+      expect(
+        setCookie.filter((value) => /locale|lang|paraglide/i.test(value)),
+        path,
+      ).toEqual([])
+      const lang = (await response.text()).match(/<html[^>]*\slang="([^"]+)"/)?.[1]
+      results.push({ status: response.status(), location: response.headers().location, lang })
+    }
+    const expectedLang = path === '/' || path === '/pricing' ? defaultLocale : other
+    for (const result of results)
+      expect(result, path).toEqual({ status: 200, location: undefined, lang: expectedLang })
   }
 })
 
