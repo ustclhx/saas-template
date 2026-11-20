@@ -65,6 +65,8 @@
 | `src/components/pagination.tsx` | 无（模板新增，seo-internal-linking 3.2） | — | hub 分页：`hrefFor(page)` 由调用方给，页码窗口 `paginationRange`（首末页、当前页前后各一，只隔一页时显示该页而不是省略号）；当前页 `bg-primary` 实底、不是链接；首页 / 末页的上一页 / 下一页为 `aria-disabled` 文字（不是链接）；< 768px 只显示上一页、当前页、下一页；`labels`（`nav`、`previous`、`next`、`page(n)`）必填；悬停用 `bg-hover`（设计稿为下划线） |
 | `src/components/link-card.tsx` | 无（模板新增，seo-internal-linking 3.3） | — | `LinkCard`（整卡一个 `<a href>`，标题 semibold + 可选说明 / 方向标签，悬停标题下划线）、`LinkCardGrid`（相关文章 3 列 / hub 列表 2 列，手机单列，空列表不渲染，`zone` 默认 `related`）、`SeriesNav`（上一篇 / 下一篇，缺一侧时桌面保留占位、两侧都缺不渲染，`zone` 默认 `series`）；方向图标直接取 lucide |
 | `src/components/link-list.tsx` | 无（模板新增，seo-internal-linking 3.3） | — | 同组文字链接列表：桌面两列、手机单列行高 44px；可选「查看全部」（桌面在标题行右侧 caption，手机为列表后 44px 一行，同一个元素靠 `order` 换位）；空列表不渲染；`zone` 默认 `siblings`；`group`（页面的 group key）输出为外层 `data-link-group`，链接检查据此识别声明了 group 的详情页 |
+| `src/components/language-prompt.tsx` | 无（模板新增，multilingual-seo 4.2） | — | 语言提示条，按设计稿 `multilingual-seo/`（Main、Mobile、Motion、Spec）实现：固定定位（桌面右下 360px，手机左右 12px），底部取 `--floating-stack-height` + 12px；纯 CSS 进入 / 退出（`animate-float-*`，减少动态效果只淡入淡出），关闭在退出动画结束后回调 `onDismiss`；容器带建议语言的 `lang` / `dir`、`data-language-prompt` 与 `data-link-zone="nav"`；`inline` 用于预览 |
+| `src/components/language-menu.tsx` | 无（模板新增，multilingual-seo 4.3） | — | 语言切换菜单：`DropdownMenu` + `MenuItem render={<a href hreflang>}`，触发器复用 `select.tsx` 的 `triggerVariants`（外观同 SelectTrigger）；当前项 `aria-current="page"` 与前置勾选，其他项同宽占位；手机行高 44px |
 | `src/components/link-render.tsx` | 无（模板新增，seo-internal-linking 组 3） | — | 内链组件共用的 `renderLink`（默认原生 `<a>`，可换成路由 Link）、`LinkZone` 类型与链接焦点环 |
 | `src/hooks/use-fluid-hover.ts` | `use-fluid-hover` | 2026-11 | 仅统一适配规则 |
 | `src/hooks/use-merge-split.tsx` | `use-merge-split` | 2026-11 | 仅统一适配规则（`SelectionBackgrounds` 包 `MotionFeatures`）；`bridgePair` 为 `noUncheckedIndexedAccess` 补判空 |
@@ -144,6 +146,8 @@
 | `ThinkingStepsHeader` | `children` | 如「已思考 6 秒」「思考中…」 |
 | `ToolCall` | `name`、`labels` | 显示名（未登记的工具传通用文案）；`labels.pending` / `running` / `done` / `error` |
 | `InputMessage` | `placeholder`、`labels` | `labels.message`（输入框可读名称）、`send`、`stop` |
+| `LanguagePrompt` | `labels` | `region`、`message`、`action`、`close`，用建议语言书写 |
+| `LanguageMenu` | `label`、`items[].label` | 触发器名称与各语言自称 |
 
 ## SelectItem 的 `index`（tasks 4.5 评估结论：保留显式传入）
 

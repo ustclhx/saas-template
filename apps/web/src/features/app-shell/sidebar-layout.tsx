@@ -25,7 +25,7 @@ import { Link, Outlet, useRouterState } from '@tanstack/react-router'
 import { type ReactNode, useMemo, useState } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { templateConfig } from '../../server/template-config.ts'
-import { authClient } from '../auth/auth-client.ts'
+import { signOut as signOutClient } from '../auth/auth-client.ts'
 import { DailyCreditsNotice } from '../credits/daily-notice.tsx'
 import { LanguageControls } from '../i18n/language-controls.tsx'
 import { NotificationBell } from '../notifications/bell.tsx'
@@ -387,7 +387,7 @@ function AccountEntry({ user }: { user: WorkspacePage['user'] }) {
   async function signOut() {
     setError('')
     try {
-      const result = await authClient().signOut()
+      const result = await signOutClient()
       if (result.error) throw new Error(result.error.message)
       window.location.assign('/login')
     } catch {

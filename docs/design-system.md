@@ -171,6 +171,8 @@ grep -nE '^export' packages/ui/src/index.ts
   | `Breadcrumb` / `SeriesNav` | `label`；`SeriesNav` 的 `previous.label` / `next.label` | nav 的可读名称（「面包屑」「系列导航」）与方向标签（「上一篇」「下一篇」） |
   | `Pagination` | `labels`（`nav`、`previous`、`next`、`page(n)`） | 分页 nav 名称、上一页 / 下一页文字与页码的可读名称 |
   | `LinkCardGrid` / `LinkList` | `title`；`LinkList` 的 `viewAll.label` | 区块标题与「查看全部」锚文本；各链接的锚文本取目标页 `titleMain` / `anchorShort` |
+  | `LanguagePrompt` | `labels`（`region`、`message`、`action`、`close`） | 区域名称、一句话提示、链接文字与关闭按钮名称，全部用**建议语言**书写（`apps/web` 传 `m.*({}, { locale: 目标语言 })`） |
+  | `LanguageMenu` | `label`；`items[].label` | 触发器的可读名称（「语言」）与各语言的自称 |
   | 业务界面组件（8.6） | `label` / `labels` 等 | 见 [6.1](#61-业务界面组件) 接口表 |
 
   新组件引入新的可读文字时，同步更新本表与 `packages/ui/UPSTREAM.md`。
@@ -198,6 +200,13 @@ grep -nE '^export' packages/ui/src/index.ts
 - **命令面板**：键帽按平台显示 ⌘ 或 Ctrl；SSR 首帧无法得知平台，需要时在布局中用
   `<CommandMenuPlatform mac={…}>` 包裹，`mac` 取自请求头 `Sec-CH-UA-Platform` 或 User-Agent，避免水合后键帽变宽。
 - **浮层层级**：自定义吸顶、遮罩与弹层用 `--z-*` 变量，不写任意 `z-[…]`。
+- **语言提示条与切换菜单（multilingual-seo）**：`LanguagePrompt` 是纯展示的固定浮层（桌面右下 360px、手机左右 12px），
+  叠在右下浮动组（主题切换、Ask AI）上方 12px，底部距离取 body 上的 `--floating-stack-height`（右下浮动组从视口底部算起的总高度，
+  由应用按实际控件设置，模板在 `apps/web/src/styles/app.css`），不写死像素；进入 / 退出用 `animate-float-enter` / `animate-float-exit`，
+  减少动态效果时 `motion-reduce:animate-float-fade-in` / `-fade-out`。何时挂载、候选语言与关闭记录由应用负责，水合后才挂载，
+  不进入服务端 HTML（带 `data-language-prompt`，链接检查据此断言）。`LanguageMenu` 是语言切换器：触发器外观同 `SelectTrigger`，
+  菜单项是普通 `<a href hreflang>`（当前项 `aria-current="page"` 与勾选），只传本页真实存在的语言版本；手机行高 44px。
+  设计稿见原型索引 multilingual-seo 一行，预览 `/dev/ui#marketing`。
 - **弹层与底部面板**：触发按钮旁的非模态内容（列表、说明、轻量操作）用 `Popover`（`role="dialog"`，Escape / 点击外部关闭，
   焦点回到触发按钮；菜单项里不能再放按钮时不用 Dropdown）；手机上的对应形态用 `Sheet side="bottom"`（模态、锁定焦点，
   触控目标 ≥ 44px）。同一入口按 md 断点在两者之间切换时，打开期间不切换（见通知铃铛 `features/notifications/bell.tsx`）。
@@ -243,7 +252,7 @@ grep -nE '^export' packages/ui/src/index.ts
 已接入：Button、Input、Textarea、Select、Combobox、Checkbox、Switch、Badge、Tooltip、Tabs、Dropdown（菜单）、
 Command Menu、Dialog、AlertDialog、Popover、Sheet、Toast、Sidebar、Card、Alert、Separator、Label、ScrollArea、DataTable、Form、
 Breadcrumb、Pagination、LinkCard（含 LinkCardGrid、SeriesNav）、LinkList（公开页内链，见下文）；Reader 系列经 `@saas/ui/reader` 子路径；
-业务界面组件（8.6）见 [6.1](#61-业务界面组件)。
+业务界面组件（8.6）见 [6.1](#61-业务界面组件)；LanguagePrompt、LanguageMenu（multilingual-seo）。
 `Toaster` 含动效库（约 44 KB gzip），只在需要的页面挂载，不放进根布局；以后全站使用时按需动态加载。缺少的组件先在 `packages/ui` 补齐（模板）或在 `packages/ui/src/project/` 补齐（项目），
 再实现页面，不在页面里临时写一个。
 
@@ -584,6 +593,8 @@ const copy = pending?.action === 'transfer'
   （移动的东西越大越慢），不手写时长；退出用对应档位的 `.exit`。
 - `UiRoot` 以 `MotionConfig reducedMotion="user"` 包裹：系统开启「减少动态效果」时去掉位移与布局动画，
   只保留淡入淡出或直接切换。纯 CSS 动画用 Tailwind 的 `motion-reduce:` 变体降级。
+- 右下浮层（语言提示条）的纯 CSS 进入 / 退出：`animate-float-enter`（160ms，淡入并上移 8px）、`animate-float-exit`（120ms，
+  淡出并下移 4px），对应 `spring.moderate` 的进入 / 退出档位；减少动态效果时用只有不透明度的 `animate-float-fade-in` / `-fade-out`。
 - 营销页优先用 CSS 过渡；`motion` 只随交互组件按需加载，不进入营销首屏。新增动效区块须保持营销页
   Lighthouse SEO 与可访问性分数不下降，并在数据库不可用时仍可预渲染。
 

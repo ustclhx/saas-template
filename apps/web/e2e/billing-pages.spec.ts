@@ -31,7 +31,7 @@ test('public pricing renders before hydration', async ({ browser, baseURL }) => 
   try {
     await page.goto('/pricing')
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
-    const language = page.getByRole('combobox', { name: 'Language', exact: true })
+    const language = page.getByRole('button', { name: 'Language', exact: true })
     await expect(language).toHaveText('English')
     await expect(language).toBeDisabled()
   } finally {

@@ -5,6 +5,7 @@
 // 这里只登记模板页面用到的常用图标；项目需要更多时在 packages/ui/src/project/ 中按同样方式再导出。
 // 工作台侧边栏（tasks 8.3）：默认导航条目、抽屉菜单按钮与底部升级入口
 // 对话页与嵌入式对话（openspec add-ai-chat-components）：复制回复、回到最新、历史对话、新对话、归档
+// 语言提示条（openspec multilingual-seo 4.2）：Languages
 export {
   Archive,
   ArrowDown,
@@ -31,6 +32,7 @@ export {
   Inbox,
   Info,
   KeyRound,
+  Languages,
   LayoutGrid,
   Link2Off,
   ListChecks,

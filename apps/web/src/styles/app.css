@@ -19,3 +19,25 @@
     --floating-controls-offset: 3rem;
   }
 }
+
+/* 右下浮动组（主题切换、Ask AI）从视口底部算起的总高度（multilingual-seo 4.2，设计稿 multilingual-seo/Main、Mobile）：
+   语言提示条等后来的右下浮层叠在其上方 12px（LanguagePrompt 的 bottom 取该变量）。按实际出现的控件取值，不在组件里写死：
+   - md 及以上：只有浮动主题切换时 3.75rem（bottom-4 + 高约 42px，再留 2px，与 Ask AI 的 md:bottom-18 同一档位）；
+     有 Ask AI 时 7.5rem（md:bottom-18 + 高 48px）；都没有时 0.25rem（提示条贴底 16px）；
+   - 手机：主题与语言在页脚设置行，只有 Ask AI 浮动，4rem（bottom-4 + 高 48px）；没有时 0（提示条贴底 12px + safe-area） */
+@media (width >= 48rem) {
+  body {
+    --floating-stack-height: 0.25rem;
+  }
+  body[data-floating-controls] {
+    --floating-stack-height: 3.75rem;
+  }
+  body:has([data-ai-entry]) {
+    --floating-stack-height: 7.5rem;
+  }
+}
+@media (width < 48rem) {
+  body:has([data-ai-entry]) {
+    --floating-stack-height: 4rem;
+  }
+}

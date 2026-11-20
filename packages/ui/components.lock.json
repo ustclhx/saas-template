@@ -24,6 +24,8 @@
   "src/components/input.tsx": "306ddd82e8dfc3a9482364ed83230cadc4de5ad7937dcf7733488df7be92b938",
   "src/components/insufficient-credits-dialog.tsx": "b86e35bf24e296b3b3a5614357779a6272b7ddecce2e4577dc48af7e1f67fed7",
   "src/components/label.tsx": "930916832309c57da489541b383b4ca7c969b2607e6ab4caf9654a39140492c8",
+  "src/components/language-menu.tsx": "c5b345dbd2614430c038e30467e94b9db21d4a9e3665c4c72cd159c5b04efb42",
+  "src/components/language-prompt.tsx": "5dd3761464f69f77c04f1f0dce24d2b7db49bd9e2b190b15251aeafb673a23e1",
   "src/components/link-card.tsx": "2cafa852fdd6460fafdd0e2d0285eeceed1a43ad2b9739d0f99dc6f803babeaf",
   "src/components/link-list.tsx": "65770b2c8007cd95adae209b30780efb5d9912302d19064e4bcf56e1313a02eb",
   "src/components/link-render.tsx": "4a4a0eb5f99b6fddc3d5b925a245c707ec4171c16decdc868889a78f6f3147de",
