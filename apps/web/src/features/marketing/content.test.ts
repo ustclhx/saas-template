@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   type DocLike,
+  findLocalized,
   findPost,
   listPosts,
   listTags,
   loadDocsPage,
+  localizedEntries,
   type PostLike,
   searchDocs,
   translationLocales,
@@ -42,12 +44,24 @@ describe('博客（tasks.md 3.3）', () => {
     ).toBeDefined()
   })
 
-  it('优先当前语言的版本，缺少翻译时回退到默认语言', () => {
-    const list = listPosts(posts, { locale: 'zh', defaultLocale: 'en', now })
+  it("'hide'（默认）只列出该语言的真实文章，缺少译文的详情找不到（路由 404）", () => {
+    for (const untranslated of [undefined, 'hide'] as const) {
+      const options = { locale: 'zh', defaultLocale: 'en', now, untranslated }
+      expect(listPosts(posts, options).map((p) => `${p.locale}/${p.slug}`)).toEqual(['zh/welcome'])
+      expect(findPost(posts, { ...options, slug: 'english-only' })).toBeUndefined()
+      expect(findPost(posts, { ...options, slug: 'welcome' })?.locale).toBe('zh')
+      expect(listTags(listPosts(posts, options))).toEqual(['guide'])
+    }
+    expect(localizedEntries(posts, 'zh', 'en').map((p) => p.slug)).toEqual(['welcome'])
+    expect(findLocalized(posts, 'english-only', 'zh', 'en')).toBeUndefined()
+  })
+
+  it("'fallback' 优先当前语言的版本，缺少翻译时回退到默认语言", () => {
+    const options = { locale: 'zh', defaultLocale: 'en', now, untranslated: 'fallback' as const }
+    const list = listPosts(posts, options)
     expect(list.map((p) => `${p.locale}/${p.slug}`)).toEqual(['en/english-only', 'zh/welcome'])
-    expect(
-      findPost(posts, { slug: 'english-only', locale: 'zh', defaultLocale: 'en', now })?.locale,
-    ).toBe('en')
+    expect(findPost(posts, { ...options, slug: 'english-only' })?.locale).toBe('en')
+    expect(findLocalized(posts, 'english-only', 'zh', 'en', 'fallback')?.locale).toBe('en')
   })
 
   it('按标签筛选，标签列表只来自已发布文章', () => {
@@ -110,9 +124,25 @@ describe('文档站（tasks.md 3.4）', () => {
     expect(searchDocs(index, '  ')).toEqual([])
   })
 
-  it('其他语言使用该语言的文档，缺失的页面回退到默认语言', () => {
-    const zh = loadDocsPage(docs, { locale: 'zh', defaultLocale: 'en', enabled: true })
+  it("'hide' 下其他语言只有该语言的文档，缺少译文的页面 404", () => {
+    const options = { locale: 'zh', defaultLocale: 'en', enabled: true }
+    const zh = loadDocsPage(docs, options)
+    expect(zh?.page.locale).toBe('zh')
+    expect(zh?.nav.map((s) => s.title)).toEqual(['基础'])
+    expect(zh?.searchIndex.map((e) => e.slug)).toEqual(['getting-started'])
+    expect(loadDocsPage(docs, { ...options, slug: 'deploy' })).toBeNull()
+  })
+
+  it("'fallback' 下其他语言使用该语言的文档，缺失的页面回退到默认语言", () => {
+    const options = {
+      locale: 'zh',
+      defaultLocale: 'en',
+      enabled: true,
+      untranslated: 'fallback' as const,
+    }
+    const zh = loadDocsPage(docs, options)
     expect(zh?.page.locale).toBe('zh')
     expect(zh?.nav.map((s) => s.title)).toEqual(['基础', 'Basics', 'Guides'])
+    expect(loadDocsPage(docs, { ...options, slug: 'deploy' })?.page.locale).toBe('en')
   })
 })

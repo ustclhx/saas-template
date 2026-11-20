@@ -26,9 +26,12 @@ export const Route = createFileRoute('/blog/page/$n')({
       title: m.marketing_blog_title(),
       page: loaderData.page,
     })
-    return pageHead(page, appUrl, [
-      breadcrumbListData(loaderData.breadcrumb, current, appUrl, page.locale),
-    ])
+    return pageHead(
+      page,
+      appUrl,
+      [breadcrumbListData(loaderData.breadcrumb, current, appUrl, page.locale)],
+      loaderData.translations,
+    )
   },
   component: BlogPaginatedPage,
 })

@@ -20,6 +20,8 @@ export const Route = createFileRoute('/blog/tags/$tag')({
       },
       appUrl,
       loaderData ? [breadcrumbListData(loaderData.breadcrumb, title, appUrl, getLocale())] : [],
+      // 'hide' 下各语言的标签集合可能不同：hreflang 只列存在该标签页的语言
+      loaderData?.translations,
     )
   },
   component: BlogTagPage,
