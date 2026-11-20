@@ -3,6 +3,7 @@
 // 只解析 `<a href>`：按钮、onclick 与脚本跳转不进入链接图（spec「只有真实链接计入链接图」）。
 // 默认值、禁用词与配置合并只在 packages/config 维护一份：template.config.ts 已经过 defineTemplateConfig 解析，
 // 这里再经 resolveSeoLinking 补全（对已解析的配置结果不变），衍生项目旧配置缺字段时同样取默认值。
+import { createHash } from 'node:crypto'
 import { defaultBannedAnchors, resolveSeoLinking } from '@saas/config'
 
 /** 失败级与警告级规则；报告按此顺序输出各规则命中数 */
@@ -16,7 +17,20 @@ export const FAILURE_RULES = Object.freeze([
   'sister-in-nav',
   'sister-mirror',
   'h1-count',
+  // 多语言规则（openspec multilingual-seo design 决策 7，docs/multilingual-seo.md）
+  'canonical-self',
+  'html-lang',
+  'lang-query-link',
+  'hreflang-reciprocal',
+  'hreflang-cross-host',
+  'hreflang-x-default',
+  'hreflang-target',
+  'accept-language-vary',
+  'language-set-cookie',
 ])
+// TODO(multilingual-seo 5.3)：默认语言前缀 301（任务 2.2）与移除 SSR 语言提示（任务 4.1）合并、
+// 模板自身通过后，把 `default-locale-prefix` 与 `language-prompt-ssr` 移到 FAILURE_RULES（spec 规定为失败级）。
+// 在此之前只警告，避免 CI 的 enforce 检查在这两个改动合并前失败。
 export const WARNING_RULES = Object.freeze([
   'h1-duplicate',
   'header-links',
@@ -26,7 +40,14 @@ export const WARNING_RULES = Object.freeze([
   'money-inlinks',
   'footer-links',
   'no-nav-zone',
+  'default-locale-prefix',
+  'language-prompt-ssr',
 ])
+
+/** 站内链接中表示语言的查询参数（ML-01：语言只由路径表达） */
+export const LANGUAGE_QUERY_PARAMS = Object.freeze(['lang', 'locale', 'language', 'lng', 'hl'])
+/** 旧版语言建议使用的偏好 Cookie 名（0.8.0 起移除）；与 Paraglide 的 cookieName 一起视为语言 Cookie */
+export const LEGACY_LANGUAGE_COOKIES = Object.freeze(['locale-preference'])
 
 /** 合并项目配置与默认值（`@saas/config` 的 resolveSeoLinking）：非法配置直接报错，不静默回退 */
 export function resolveLinkingConfig(raw) {
@@ -74,7 +95,8 @@ function parseAttributes(source) {
 const collapse = (text) => text.replace(/\s+/g, ' ').trim()
 
 /**
- * 解析一页 HTML：链接（含区域、锚文本、图片 alt）、h1、语言、canonical、robots 与 `data-link-group`。
+ * 解析一页 HTML：链接（含区域、锚文本、图片 alt）、h1、语言、canonical、robots、`data-link-group`、
+ * hreflang（`<link rel="alternate" hreflang>`）与服务端 HTML 中的语言提示标记数。
  * 区域取最近的 `data-link-zone` 祖先，未标记为 `body`；`region` 是该祖先的标签名，用来区分页头与页脚。
  */
 export function parsePage(html) {
@@ -82,7 +104,18 @@ export function parsePage(html) {
   const links = []
   const h1 = []
   const groups = new Set()
-  const page = { lang: null, canonical: null, robots: null, links, h1, groups, hasNavZone: false }
+  const alternates = []
+  const page = {
+    lang: null,
+    canonical: null,
+    robots: null,
+    links,
+    h1,
+    groups,
+    hasNavZone: false,
+    alternates,
+    languagePrompts: 0,
+  }
   let link = null
   let heading = null
   let rawUntil = null
@@ -117,6 +150,20 @@ export function parsePage(html) {
     if (name === 'html' && attributes.lang) page.lang = attributes.lang
     if (name === 'link' && /(?:^|\s)canonical(?:\s|$)/i.test(attributes.rel ?? ''))
       page.canonical = attributes.href ?? null
+    if (
+      name === 'link' &&
+      /(?:^|\s)alternate(?:\s|$)/i.test(attributes.rel ?? '') &&
+      attributes.hreflang &&
+      attributes.href
+    )
+      alternates.push({ hreflang: attributes.hreflang, href: attributes.href })
+    // 服务端 HTML 中的语言提示（ML-03）：新提示条的标记与旧版建议横幅的 data-locale-suggestion*
+    if (
+      Object.keys(attributes).some(
+        (key) => key === 'data-language-prompt' || key.startsWith('data-locale-suggestion'),
+      )
+    )
+      page.languagePrompts += 1
     if (name === 'meta' && attributes.name?.toLowerCase() === 'robots')
       page.robots = attributes.content ?? null
     if ('data-link-group' in attributes && attributes['data-link-group'])
@@ -319,6 +366,11 @@ export function analyzeLinkGraph({
     failures.push({ rule, page, target, message })
   }
   const warn = (rule, page, message, target) => warnings.push({ rule, page, target, message })
+  // 多语言规则按所在级别（FAILURE_RULES／WARNING_RULES）报告，便于暂缓的规则只改清单
+  const flag = (rule, page, message, target) =>
+    FAILURE_RULES.includes(rule)
+      ? fail(rule, page, message, target)
+      : warn(rule, page, message, target)
   const banned = new Set(
     [...defaultBannedAnchors, ...config.bannedAnchors].map((word) => normalizeAnchor(word)),
   )
@@ -339,6 +391,7 @@ export function analyzeLinkGraph({
     let headerNavLinks = 0
     let footerLinks = 0
     let bodyLinks = 0
+    checkPageLanguage(page, indexable, internalHosts, flag)
     for (const link of parsed.links) {
       if (link.imageAltMissing)
         fail('image-link-alt', page.path, `只含图片的链接缺少 alt：${link.href}`, link.href)
@@ -379,6 +432,13 @@ export function analyzeLinkGraph({
         fail('dead-link', page.path, `无法解析的链接：${link.href}`, link.href)
         continue
       }
+      if (languageQuery(link.href, page.url))
+        flag(
+          'lang-query-link',
+          page.path,
+          `站内链接使用语言查询参数：${link.href}（语言只由路径前缀表达）`,
+          target.path,
+        )
       if (link.zone === 'body') bodyLinks += 1
       if (banned.has(normalizeAnchor(link.anchor)))
         fail(
@@ -459,6 +519,8 @@ export function analyzeLinkGraph({
           `「${text}」在 ${locale || '未标注语言'} 中重复：${paths.join('、')}`,
         )
 
+  checkHreflang({ pages, targets, indexable, internalHosts, flag })
+
   // 点击深度：从各语言首页同时出发的最短路径（语言切换也是真实链接）
   const depth = new Map(homes.filter((home) => edges.has(home)).map((home) => [home, 0]))
   const queue = [...depth.keys()]
@@ -495,6 +557,265 @@ export function analyzeLinkGraph({
       maxDepth: Math.max(0, ...depth.values()),
     },
   }
+}
+
+/** 链接中的语言查询参数名（如 `?lang=zh`），没有时为 null */
+export function languageQuery(href, pageUrl) {
+  try {
+    const { searchParams } = new URL(href, pageUrl)
+    return (
+      [...searchParams.keys()].find((key) => LANGUAGE_QUERY_PARAMS.includes(key.toLowerCase())) ??
+      null
+    )
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 单页多语言规则：可索引页 canonical 指向自身；`<html lang>` 与本页在 hreflang 组中的语言一致；
+ * 服务端 HTML 中没有语言提示。canonical 缺失不算失败（搜索引擎按自身处理）；canonical 指向别处的回退页
+ * 不进站点地图（design.md 决策 7），所以这里只检查站点地图中的页面。
+ */
+function checkPageLanguage(page, indexable, internalHosts, flag) {
+  const { parsed } = page
+  if (indexable.has(page.path) && parsed.canonical && !/noindex/i.test(parsed.robots ?? '')) {
+    const canonical = classifyHref(parsed.canonical, page.url, internalHosts)
+    if (canonical?.kind !== 'internal' || canonical.path !== page.path)
+      flag(
+        'canonical-self',
+        page.path,
+        `可索引页的 canonical 指向 ${parsed.canonical}，应指向本页`,
+        parsed.canonical,
+      )
+  }
+  if (parsed.languagePrompts > 0)
+    flag(
+      'language-prompt-ssr',
+      page.path,
+      `服务端 HTML 中有 ${parsed.languagePrompts} 个语言提示元素（data-language-prompt／data-locale-suggestion*），提示应在水合后挂载`,
+    )
+  const self = parsed.alternates.find((entry) => {
+    if (entry.hreflang.toLowerCase() === 'x-default') return false
+    const target = classifyHref(entry.href, page.url, internalHosts)
+    return target?.kind === 'internal' && target.path === page.path
+  })
+  if (self && self.hreflang.toLowerCase() !== (parsed.lang ?? '').toLowerCase())
+    flag(
+      'html-lang',
+      page.path,
+      `<html lang="${parsed.lang ?? ''}"> 与本页 hreflang「${self.hreflang}」不一致`,
+    )
+}
+
+/**
+ * hreflang 图规则：同域、x-default 恰好一条、目标可访问且可索引、包含本页并与各语言版本双向互指。
+ * 只检查声明了 hreflang 的页面（关闭多语言的项目没有 hreflang）。
+ */
+function checkHreflang({ pages, targets, indexable, internalHosts, flag }) {
+  const groups = new Map()
+  const parsedPaths = new Set(
+    pages.filter((page) => page.status < 400 && page.parsed).map((page) => page.path),
+  )
+  for (const page of pages) {
+    if (page.status >= 400 || !page.parsed?.alternates.length) continue
+    groups.set(
+      page.path,
+      page.parsed.alternates.map((entry) => ({
+        ...entry,
+        target: classifyHref(entry.href, page.url, internalHosts),
+      })),
+    )
+  }
+  for (const [path, entries] of groups) {
+    const defaults = entries.filter((entry) => entry.hreflang.toLowerCase() === 'x-default')
+    if (defaults.length !== 1)
+      flag('hreflang-x-default', path, `x-default 有 ${defaults.length} 条，应恰好一条`)
+    let hasSelf = false
+    for (const { hreflang, href, target } of entries) {
+      if (target?.kind !== 'internal') {
+        flag(
+          target?.kind === 'external' ? 'hreflang-cross-host' : 'hreflang-target',
+          path,
+          `hreflang「${hreflang}」指向${target?.kind === 'external' ? '其他域名' : '无法解析的地址'} ${href}`,
+          href,
+        )
+        continue
+      }
+      const fetched = targets.get(target.path)
+      if (!fetched || fetched.status >= 400) {
+        flag(
+          'hreflang-target',
+          path,
+          `hreflang「${hreflang}」指向不可访问的地址 ${target.path}（${fetched?.status ?? '无响应'}）`,
+          target.path,
+        )
+        continue
+      }
+      if (!indexable.has(target.path)) {
+        flag(
+          'hreflang-target',
+          path,
+          `hreflang「${hreflang}」指向不可索引的地址 ${target.path}（不在站点地图中）`,
+          target.path,
+        )
+        continue
+      }
+      if (hreflang.toLowerCase() === 'x-default') continue
+      if (target.path === path) {
+        hasSelf = true
+        continue
+      }
+      // 对方页也在本次抓取中（可索引页都会抓取）时才能判断回指；没有 hreflang 的页面视为空组
+      if (!parsedPaths.has(target.path)) continue
+      const back = groups.get(target.path) ?? []
+      // x-default 不算回指：对方必须以某个语言代码列出本页
+      const listed = back.some(
+        (entry) =>
+          entry.hreflang.toLowerCase() !== 'x-default' &&
+          entry.target?.kind === 'internal' &&
+          entry.target.path === path,
+      )
+      if (!listed)
+        flag(
+          'hreflang-reciprocal',
+          path,
+          `hreflang「${hreflang}」列出 ${target.path}，但该页的 hreflang 没有列出本页`,
+          target.path,
+        )
+    }
+    if (!hasSelf) flag('hreflang-reciprocal', path, 'hreflang 组没有列出本页自身')
+  }
+}
+
+/** Accept-Language 对比使用的两种请求头（ML-05：公开页不按浏览器语言改变响应） */
+export const ACCEPT_LANGUAGE_VARIANTS = Object.freeze(['zh-CN,zh;q=0.9', 'en-US,en;q=0.9'])
+
+/**
+ * 规范化正文用于对比，去掉每次请求都不同、与语言无关的部分：
+ * - CSP nonce：属性中的取值，以及同一取值在水合数据等处的出现；
+ * - 毫秒时间戳（13 位数字，如路由水合数据中的 `u:1795181709237`）。
+ * 其余原样保留。预渲染页面逐字节相同；按请求渲染的页面（如定价页）规范化后相同。
+ */
+export function normalizeBody(html) {
+  const nonces = new Set(
+    [...html.matchAll(/\snonce=["']?([^"'\s>]+)/gi)].map(([, value]) => value).filter(Boolean),
+  )
+  let body = html
+  for (const nonce of nonces) body = body.split(nonce).join('')
+  return body.replace(/(?<![\w.-])1\d{12}(?![\w.-])/g, '0')
+}
+
+/** 一次请求的对比摘要：状态、Location、`<html lang>` 与规范化正文的 SHA-256 */
+export function responseSignature({ status, location = null, body = null }) {
+  return {
+    status,
+    location: location ?? null,
+    lang: body === null ? null : (/<html\b[^>]*\slang=["']?([^"'\s>]+)/i.exec(body)?.[1] ?? null),
+    digest: body === null ? null : createHash('sha256').update(normalizeBody(body)).digest('hex'),
+  }
+}
+
+/**
+ * 以不同 Accept-Language 请求同一地址的结果是否一致（spec「按浏览器语言跳转」）。
+ * `responses` 为 `{ acceptLanguage, status, location, body }`，返回 `accept-language-vary` 发现项。
+ */
+export function compareAcceptLanguage(path, responses) {
+  const [first, ...rest] = responses.map((response) => ({
+    acceptLanguage: response.acceptLanguage,
+    ...responseSignature(response),
+  }))
+  const findings = []
+  for (const other of rest)
+    for (const [field, label] of [
+      ['status', '状态码'],
+      ['location', 'Location'],
+      ['lang', '<html lang>'],
+      ['digest', '正文'],
+    ])
+      if (first[field] !== other[field]) {
+        const detail =
+          field === 'digest' ? '规范化正文摘要不同' : `${first[field]} ≠ ${other[field]}`
+        findings.push({
+          rule: 'accept-language-vary',
+          page: path,
+          message: `Accept-Language「${first.acceptLanguage}」与「${other.acceptLanguage}」的${label}不同：${detail}`,
+        })
+        break
+      }
+  return findings
+}
+
+/**
+ * 从 `Set-Cookie` 列表中找出语言相关的 Cookie 名：名称在 `names` 中（Paraglide cookieName、旧偏好 Cookie、
+ * 项目配置）、名称含 lang／locale，或值就是某个语言 id。
+ */
+export function languageCookies(setCookies, { names = [], locales = [] } = {}) {
+  const known = new Set(names.map((name) => name.toLowerCase()))
+  const localeIds = new Set(locales.map((locale) => locale.toLowerCase()))
+  const found = []
+  for (const header of setCookies) {
+    const [pair = ''] = header.split(';')
+    const index = pair.indexOf('=')
+    const name = (index < 0 ? pair : pair.slice(0, index)).trim()
+    const value =
+      index < 0
+        ? ''
+        : pair
+            .slice(index + 1)
+            .trim()
+            .replace(/^"|"$/g, '')
+    if (!name) continue
+    if (
+      known.has(name.toLowerCase()) ||
+      /lang|locale/i.test(name) ||
+      localeIds.has(value.toLowerCase())
+    )
+      found.push(name)
+  }
+  return [...new Set(found)]
+}
+
+/**
+ * 默认语言前缀（ML-02：默认语言只有一套地址）：`/<默认语言>/…` 应 301 到无前缀地址。
+ * `location` 按 `url` 解析后只比较 path；返回 `default-locale-prefix` 发现项或 null。
+ */
+export function checkDefaultPrefix({ path, expected, url, status, location }) {
+  const target = location ? new URL(location, url) : null
+  const actual = target ? normalizePath(target.pathname, target.search) : null
+  if (status === 301 && actual === expected) return null
+  return {
+    rule: 'default-locale-prefix',
+    page: path,
+    target: expected,
+    message: `${path} 返回 ${status}${actual ? ` → ${actual}` : ''}，应 301 到 ${expected}`,
+  }
+}
+
+/**
+ * Accept-Language 对比的地址：语言首页必测，其余从可索引页中等距抽取至多 `samples` 个（结果确定，便于复现）。
+ */
+export function acceptLanguagePaths({ homes, indexable, samples }) {
+  const rest = [...indexable].filter((path) => !homes.includes(path) && !path.includes('?')).sort()
+  const count = Math.min(Math.max(0, samples), rest.length)
+  const picked = Array.from(
+    { length: count },
+    (_, index) => rest[Math.floor((index * rest.length) / count)],
+  )
+  return [...new Set([...homes, ...picked])]
+}
+
+/** 把检查脚本按 HTTP 得到的多语言发现项按规则级别并入结果（同一规则、页面与说明只记一次） */
+export function addFindings(result, findings) {
+  const keyOf = (item) => `${item.rule}\n${item.page}\n${item.message}`
+  const seen = new Set([...result.failures, ...result.warnings].map(keyOf))
+  for (const finding of findings) {
+    if (seen.has(keyOf(finding))) continue
+    seen.add(keyOf(finding))
+    if (FAILURE_RULES.includes(finding.rule)) result.failures.push(finding)
+    else result.warnings.push(finding)
+  }
+  return result
 }
 
 /** 各规则命中数，按失败级、警告级的固定顺序 */

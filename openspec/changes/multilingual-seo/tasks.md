@@ -25,8 +25,8 @@
 
 ## 5. 多语言检查
 
-- [ ] 5.1 `check-links-graph.mjs`：每页规则（canonical 自身、`html lang`、语言查询参数、提示条标记）与 hreflang 图规则（双向、同域、x-default 恰一条、目标可索引），使用固定 HTML 夹具测试
-- [ ] 5.2 `check-links.mjs`：Accept-Language 对比（首页、各语言首页、抽样页）、语言 `Set-Cookie`、默认语言前缀 301；多站点按站点执行；补 HTTP 夹具测试
+- [x] 5.1 `check-links-graph.mjs`：每页规则（canonical 自身、`html lang`、语言查询参数、提示条标记）与 hreflang 图规则（双向、同域、x-default 恰一条、目标可索引），使用固定 HTML 夹具测试
+- [x] 5.2 `check-links.mjs`：Accept-Language 对比（首页、各语言首页、抽样页）、语言 `Set-Cookie`、默认语言前缀 301；多站点按站点执行；补 HTTP 夹具测试
 - [ ] 5.3 模板自身以 `enforce` 通过；记录报告摘要与耗时
 
 ## 6. 文档、升级说明与发布

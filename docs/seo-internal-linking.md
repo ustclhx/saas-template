@@ -99,6 +99,29 @@ parent 成环时构建失败并给出页面地址；主词重复只警告。
 | 警告 | `footer-links` | 页脚链接数超过 `footerLinksMax` |
 | 警告 | `no-nav-zone` | 页面没有 `nav` 区域 |
 
+### 多语言规则
+
+同一次检查还按多语言 SEO 规范（ML-01～ML-10，规范与模板职责见 `docs/multilingual-seo.md`，设计见 OpenSpec change
+`multilingual-seo` design.md 决策 7）检查以下规则，处理方式与上表相同（`report` 只报告，`enforce` 有失败项时退出码为 1）。
+多站点（§7）时按站点各自执行。页面级与 hreflang 规则只读已抓取的 HTML；最后三条需要额外请求。
+
+| 级别 | 规则 | 说明 |
+|---|---|---|
+| 失败 | `canonical-self` | 站点地图中的页面 canonical 不指向本页（canonical 指向原语言的回退页不进站点地图，不检查；缺少 canonical 不算） |
+| 失败 | `html-lang` | `<html lang>` 与本页在 hreflang 组中的语言代码不一致（忽略大小写） |
+| 失败 | `lang-query-link` | 站内链接带 `lang`、`locale`、`language`、`lng`、`hl` 等语言查询参数 |
+| 失败 | `hreflang-reciprocal` | hreflang 组没有列出本页，或列出的语言版本没有以语言代码回指本页（x-default 不算回指） |
+| 失败 | `hreflang-cross-host` | hreflang 指向其他域名（多站点项目中指向其他站点主机也算） |
+| 失败 | `hreflang-x-default` | x-default 不是恰好一条 |
+| 失败 | `hreflang-target` | hreflang 目标不可访问（4xx/5xx）或不在站点地图中 |
+| 失败 | `accept-language-vary` | 以 `zh-CN,zh;q=0.9` 与 `en-US,en;q=0.9` 两种 Accept-Language 请求同一地址时，状态码、`Location`、`<html lang>` 或规范化正文不同。对比各语言首页与等距抽样的可索引页（`--accept-language-samples`，默认 3）；规范化去掉 CSP nonce 与 13 位毫秒时间戳 |
+| 失败 | `language-set-cookie` | 可索引页、上述对比请求或前缀请求的响应 `Set-Cookie` 了语言 Cookie：Paraglide 的 `cookieName`、旧版 `locale-preference`、`seo.linking.languageCookies` 中的名称、名称含 lang／locale，或值是某个语言 id |
+| 警告（暂缓） | `default-locale-prefix` | 不跟随重定向请求 `/<默认语言>` 与 `/<默认语言>/pricing`（没有定价页时取一个可索引页），不是 301 到无前缀地址 |
+| 警告（暂缓） | `language-prompt-ssr` | 服务端 HTML 中有 `data-language-prompt` 或 `data-locale-suggestion*` 元素（语言提示应在水合后挂载） |
+
+规范中这两条为失败级。模板实现默认语言前缀 301 与水合后的语言提示条（change 任务 2.2、4.1）之前暂按警告报告，
+避免 CI 的 enforce 检查先行失败；两项合并、模板自身通过后改为失败级（任务 5.3）。
+
 ## 4. 配置
 
 `template.config.ts` 的 `seo.linking`（类型、默认值与解析在 `packages/config` 的 `resolveSeoLinking`，检查脚本读同一份）：
@@ -115,6 +138,7 @@ seo: {
     hubPageSize: 100, // hub 单页最多列出的下级数
     groupLinksMax: 5, // 同组区块最多列出的页面数，建议 3–5
     sites: [], // 多站点项目按站点分组语言，默认为空（单站点），见 §7
+    languageCookies: [], // 额外视为语言 Cookie 的名称（§3 多语言规则），内置名称不用写
   },
 },
 ```
@@ -162,6 +186,7 @@ pnpm --filter @saas/web check:links --json test-results/evidence/links.json --li
 
 - 报告列出页面数、链接数、各规则命中数与每条规则最多 `--limit` 条明细（默认 20），以及耗时。
 - `--base-url <地址>` 检查已在运行的服务，不启动 preview。
+- `--accept-language-samples <n>` 设置除各语言首页外做 Accept-Language 对比的抽样页数（默认 3，`0` 只测语言首页）。
 - CI 在 `build` job 的 `pnpm build` 之后运行（`docs/ci.md` §3），复用同一份生产构建产物，不需要数据库。
 - 模板自身为 `enforce`。衍生项目未配置时为 `report`：同步后构建不失败，先按报告补 `pages.project.ts` 声明、修正孤岛与死链，
   报告的失败项清零后在 `template.config.ts` 设 `mode: 'enforce'`。

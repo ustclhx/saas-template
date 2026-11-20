@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import {
+  acceptLanguagePaths,
+  addFindings,
   analyzeLinkGraph,
   type CheckedPage,
+  checkDefaultPrefix,
   classifyHref,
+  compareAcceptLanguage,
   countByRule,
   exitCode,
   type FetchedTarget,
   formatReport,
   type LinkingConfig,
+  languageCookies,
   mergeGraphResults,
+  normalizeBody,
   parsePage,
   planLinkGraphs,
   resolveLinkingConfig,
@@ -397,6 +403,283 @@ describe('analyzeLinkGraph', () => {
     expect(result.warnings).toEqual([
       expect.objectContaining({ rule: 'no-nav-zone', page: '/guides' }),
     ])
+  })
+})
+
+// 多语言规则（openspec multilingual-seo design 决策 7）：与模板渲染同形的 head（canonical、hreflang 用 app.url 绝对地址）
+const ML_RULES = [
+  'canonical-self',
+  'html-lang',
+  'lang-query-link',
+  'language-prompt-ssr',
+  'hreflang-reciprocal',
+  'hreflang-cross-host',
+  'hreflang-x-default',
+  'hreflang-target',
+]
+const head = (path: string, alternates: [string, string][], canonical = path) =>
+  [
+    `<link rel="canonical" href="${SITE}${canonical}"/>`,
+    ...alternates.map(
+      ([lang, href]) =>
+        `<link rel="alternate" hrefLang="${lang}" href="${href.startsWith('http') ? href : `${SITE}${href}`}"/>`,
+    ),
+  ].join('')
+const pair: [string, string][] = [
+  ['en', '/'],
+  ['zh', '/zh'],
+  ['x-default', '/'],
+]
+const mlSite = (overrides: Site = {}): Site => ({
+  '/': html('<a href="/zh">中文</a>', { h1: 'Home', head: head('/', pair) }),
+  '/zh': html('<a href="/">English</a>', { lang: 'zh', h1: '首页', head: head('/zh', pair) }),
+  ...overrides,
+})
+const mlFindings = (result: ReturnType<typeof run>) =>
+  [...result.failures, ...result.warnings].filter((item) => ML_RULES.includes(item.rule))
+
+describe('多语言规则', () => {
+  it('解析 hreflang（含 React 输出的 hrefLang）与服务端语言提示标记，脚本中的字符串不算', () => {
+    const page = parsePage(
+      `<html lang="zh"><head>${head('/zh', pair)}<script>el.setAttribute('data-locale-suggestion','zh')</script></head><body><div data-locale-suggestion-for="zh" hidden></div><aside data-language-prompt></aside></body></html>`,
+    )
+    expect(page.alternates).toEqual([
+      { hreflang: 'en', href: `${SITE}/` },
+      { hreflang: 'zh', href: `${SITE}/zh` },
+      { hreflang: 'x-default', href: `${SITE}/` },
+    ])
+    expect(page.languagePrompts).toBe(2)
+  })
+
+  it('canonical 指向自身、hreflang 双向同域且恰有一条 x-default 时没有多语言问题', () => {
+    expect(mlFindings(run(mlSite(), { homes: ['/', '/zh'] }))).toEqual([])
+  })
+
+  it('hreflang 单向：英文页列出中文页而中文页没有列出英文页', () => {
+    const zhOnly: [string, string][] = [
+      ['zh', '/zh'],
+      ['x-default', '/'],
+    ]
+    const result = run(
+      mlSite({
+        '/zh': html('<a href="/">English</a>', {
+          lang: 'zh',
+          h1: '首页',
+          head: head('/zh', zhOnly),
+        }),
+      }),
+    )
+    expect(mlFindings(result)).toEqual([
+      expect.objectContaining({ rule: 'hreflang-reciprocal', page: '/', target: '/zh' }),
+    ])
+    expect(exitCode(result, 'enforce')).toBe(1)
+  })
+
+  it('hreflang 组缺少本页、跨域名、x-default 数量不对、目标不可访问或不可索引', () => {
+    const result = run(
+      mlSite({
+        '/': html('<a href="/zh">中文</a>', {
+          h1: 'Home',
+          head: head('/', [
+            ['zh', '/zh'],
+            ['ja', 'https://ja.example.org/'],
+            ['ko', '/ko'],
+            ['fr', '/fr'],
+          ]),
+        }),
+        '/zh': html('<a href="/">English</a>', {
+          lang: 'zh',
+          h1: '首页',
+          head: head('/zh', [...pair, ['x-default', '/zh']]),
+        }),
+      }),
+      { extraTargets: { '/ko': { status: 404 }, '/fr': { status: 200 } } },
+    )
+    expect(mlFindings(result).map(({ rule, page, target }) => ({ rule, page, target }))).toEqual([
+      { rule: 'hreflang-x-default', page: '/', target: undefined },
+      { rule: 'hreflang-cross-host', page: '/', target: 'https://ja.example.org/' },
+      { rule: 'hreflang-target', page: '/', target: '/ko' },
+      { rule: 'hreflang-target', page: '/', target: '/fr' },
+      { rule: 'hreflang-reciprocal', page: '/', target: undefined },
+      { rule: 'hreflang-x-default', page: '/zh', target: undefined },
+    ])
+  })
+
+  it('<html lang> 与本页 hreflang 不一致失败，大小写不同不算', () => {
+    const result = run(
+      mlSite({
+        '/zh': html('<a href="/">English</a>', { lang: 'en', h1: '首页', head: head('/zh', pair) }),
+      }),
+    )
+    expect(mlFindings(result)).toEqual([
+      expect.objectContaining({ rule: 'html-lang', page: '/zh' }),
+    ])
+    const upper = run(
+      mlSite({
+        '/zh': html('<a href="/">English</a>', { lang: 'ZH', h1: '首页', head: head('/zh', pair) }),
+      }),
+    )
+    expect(mlFindings(upper)).toEqual([])
+  })
+
+  it('可索引页 canonical 不指向自身失败；noindex 与站点地图之外的页面不检查', () => {
+    const elsewhere = html('<a href="/">English</a>', {
+      lang: 'zh',
+      h1: '首页',
+      head: head('/zh', pair, '/'),
+    })
+    expect(mlFindings(run(mlSite({ '/zh': elsewhere })))).toEqual([
+      expect.objectContaining({ rule: 'canonical-self', page: '/zh', target: `${SITE}/` }),
+    ])
+    // 回退页（canonical 指向原语言）不在站点地图中：作为语言首页抓取时也不检查 canonical
+    const fallback = run(mlSite({ '/zh': elsewhere }), { sitemap: ['/'], homes: ['/', '/zh'] })
+    expect(rules(mlFindings(fallback))).not.toContain('canonical-self')
+  })
+
+  it('站内链接使用 ?lang= 一类语言查询参数失败', () => {
+    const result = run(
+      mlSite({
+        '/': html(
+          '<a href="/zh">中文</a><a href="/?lang=zh">中文版</a><a href="/?Locale=zh">中文</a>',
+          {
+            h1: 'Home',
+            head: head('/', pair),
+          },
+        ),
+      }),
+      { extraTargets: { '/?lang=zh': { status: 200 }, '/?Locale=zh': { status: 200 } } },
+    )
+    expect(mlFindings(result)).toEqual([
+      expect.objectContaining({ rule: 'lang-query-link', page: '/', target: '/?lang=zh' }),
+      expect.objectContaining({ rule: 'lang-query-link', page: '/', target: '/?Locale=zh' }),
+    ])
+  })
+
+  it('服务端 HTML 中的语言提示：在任务 5.3 前为警告级', () => {
+    const result = run(
+      mlSite({
+        '/': html('<a href="/zh">中文</a><div data-locale-suggestion-for="zh" hidden>切换</div>', {
+          h1: 'Home',
+          head: head('/', pair),
+        }),
+      }),
+    )
+    expect(mlFindings(result)).toEqual([
+      expect.objectContaining({ rule: 'language-prompt-ssr', page: '/' }),
+    ])
+    expect(rules(result.failures)).not.toContain('language-prompt-ssr')
+  })
+
+  it('多语言规则计入规则统计与报告', () => {
+    const counts = countByRule(run(mlSite({ '/zh': html('', { lang: 'zh', h1: '首页' }) })))
+    expect(counts.failures).toMatchObject({ 'hreflang-reciprocal': 1, 'accept-language-vary': 0 })
+    expect(counts.warnings).toMatchObject({ 'default-locale-prefix': 0, 'language-prompt-ssr': 0 })
+  })
+})
+
+describe('多语言请求规则的纯函数', () => {
+  const nonce = 'c07bc551-9b74-404f-811c-09d298b05dbc'
+  const page = (n: string, updated: number, lang = 'en') =>
+    `<html lang="${lang}"><head><meta charSet="utf-8" nonce="${n}"/></head><body><script nonce="${n}">$R={u:${updated},n:"${n}"}</script></body></html>`
+
+  it('规范化正文去掉 nonce 与毫秒时间戳，保留其他差异', () => {
+    expect(normalizeBody(page(nonce, 1795181709237))).toBe(
+      normalizeBody(page('ca8e0939-19e5-4e9e-9ef0-3037256928af', 1795181709253)),
+    )
+    expect(normalizeBody(page(nonce, 1795181709237))).not.toBe(
+      normalizeBody(page(nonce, 1795181709237, 'zh')),
+    )
+  })
+
+  it('Accept-Language 对比状态、Location、html lang 与正文', () => {
+    const same = { status: 200, body: page(nonce, 1795181709237) }
+    expect(
+      compareAcceptLanguage('/', [
+        { acceptLanguage: 'zh', ...same },
+        { acceptLanguage: 'en', status: 200, body: page('other', 1795181709999) },
+      ]),
+    ).toEqual([])
+    expect(
+      compareAcceptLanguage('/', [
+        { acceptLanguage: 'zh', status: 302, location: '/zh' },
+        { acceptLanguage: 'en', ...same },
+      ]),
+    ).toEqual([
+      expect.objectContaining({
+        rule: 'accept-language-vary',
+        page: '/',
+        message: expect.stringContaining('状态码'),
+      }),
+    ])
+    expect(
+      compareAcceptLanguage('/', [
+        { acceptLanguage: 'zh', status: 200, body: page(nonce, 1, 'zh') },
+        { acceptLanguage: 'en', status: 200, body: page(nonce, 1, 'en') },
+      ])[0]?.message,
+    ).toContain('<html lang>')
+    expect(
+      compareAcceptLanguage('/', [
+        { acceptLanguage: 'zh', status: 200, body: '<html lang="en"><body>你好</body></html>' },
+        { acceptLanguage: 'en', status: 200, body: '<html lang="en"><body>Hello</body></html>' },
+      ])[0]?.message,
+    ).toContain('正文')
+  })
+
+  it('识别语言 Cookie：配置名称、名称含 lang／locale、值为语言 id', () => {
+    expect(
+      languageCookies(
+        [
+          'PARAGLIDE_LOCALE=zh; Path=/',
+          'ui_pref=x; Path=/',
+          'site_lang=en',
+          'choice="zh"; Path=/',
+          '__cf_bm=abc; HttpOnly; Expires=Wed, 21 Oct 2026 07:28:00 GMT',
+        ],
+        { names: ['ui_pref'], locales: ['en', 'zh'] },
+      ),
+    ).toEqual(['PARAGLIDE_LOCALE', 'ui_pref', 'site_lang', 'choice'])
+    expect(languageCookies(['session=abc; HttpOnly'], { locales: ['en'] })).toEqual([])
+  })
+
+  it('默认语言前缀只接受 301 到无前缀地址', () => {
+    const url = 'http://localhost:4000/en/pricing'
+    const input = { path: '/en/pricing', expected: '/pricing', url }
+    expect(checkDefaultPrefix({ ...input, status: 301, location: '/pricing' })).toBeNull()
+    expect(
+      checkDefaultPrefix({ ...input, status: 301, location: 'https://example.com/pricing/' }),
+    ).toBeNull()
+    expect(checkDefaultPrefix({ ...input, status: 307, location: '/pricing' })).toMatchObject({
+      rule: 'default-locale-prefix',
+      message: '/en/pricing 返回 307 → /pricing，应 301 到 /pricing',
+    })
+    expect(checkDefaultPrefix({ ...input, status: 200, location: null })?.message).toBe(
+      '/en/pricing 返回 200，应 301 到 /pricing',
+    )
+  })
+
+  it('Accept-Language 抽样：语言首页必测，其余等距抽取', () => {
+    const indexable = new Set(['/', '/zh', '/a', '/b', '/c', '/d', '/e', '/f'])
+    expect(acceptLanguagePaths({ homes: ['/', '/zh'], indexable, samples: 3 })).toEqual([
+      '/',
+      '/zh',
+      '/a',
+      '/c',
+      '/e',
+    ])
+    expect(acceptLanguagePaths({ homes: ['/'], indexable, samples: 0 })).toEqual(['/'])
+  })
+
+  it('请求规则的发现项按规则级别并入结果并去重', () => {
+    const result = {
+      failures: [],
+      warnings: [],
+      stats: { pages: 0, links: 0, edges: 0, maxDepth: 0 },
+    }
+    const cookie = { rule: 'language-set-cookie', page: '/', message: 'x' }
+    const prefix = { rule: 'default-locale-prefix', page: '/en', message: 'y' }
+    addFindings(result, [cookie, cookie, prefix])
+    expect(result.failures).toEqual([cookie])
+    expect(result.warnings).toEqual([prefix])
   })
 })
 
