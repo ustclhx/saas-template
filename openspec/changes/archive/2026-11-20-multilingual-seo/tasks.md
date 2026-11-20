@@ -33,4 +33,4 @@
 
 - [x] 6.1 新增 `docs/multilingual-seo.md`（ML-01～ML-10、模板与项目职责、验收与检查规则对照）；在 `docs/seo-internal-linking.md`、`features/seo/README.md`、`new-static-page` 技能加入口
 - [x] 6.2 `docs/upgrades/0.8.0.md`：必须执行的动作（未翻译页处理方式、移除旧建议组件引用、大写前缀、先跑 report）与回滚；`template-release.mjs check --version 0.8.0` 通过
-- [ ] 6.3 合并后确认 main 流水线与 staging 部署成功，再打 `template-v0.8.0`；通知 xuanxue 与 product-res
+- [x] 6.3 合并后确认 main 流水线与 staging 部署成功，再打 `template-v0.8.0`；通知 xuanxue 与 product-res
