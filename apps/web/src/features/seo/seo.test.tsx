@@ -491,6 +491,28 @@ describe.runIf(config.i18n.enabled && locales.length > 1)('alternates 与 hrefla
     expect(xml).not.toContain(`${origin}/${other}/four-pillars`)
   })
 
+  it('配置 seo.linking.xDefaultLocales 时 x-default 指向本页存在的第一个偏好语言', () => {
+    const linking = templateConfig.seo.linking
+    const seo = templateConfig.seo as { linking: typeof linking }
+    seo.linking = { ...linking, xDefaultLocales: ['not-configured', other] }
+    try {
+      for (const page of [pillars, localized])
+        expect(pageHead(page, origin).links.at(-1)).toEqual({
+          rel: 'alternate',
+          hrefLang: 'x-default',
+          href: `${origin}/${other}/${encodeURIComponent('四柱')}`,
+        })
+      // 站点的 xDefaultLocales 覆盖全局列表
+      seo.linking = {
+        ...seo.linking,
+        sites: [{ locales: [...locales], xDefaultLocales: [defaultLocale] }],
+      }
+      expect(pageHead(localized, origin).links.at(-1)?.href).toBe(`${origin}/four-pillars`)
+    } finally {
+      seo.linking = linking
+    }
+  })
+
   it('默认语言没有版本时 x-default 指向按配置顺序的第一个版本', () => {
     const page = { ...localized, alternates: { [other]: '/四柱' } }
     expect(pageHead(page, origin).links.at(-1)).toEqual({

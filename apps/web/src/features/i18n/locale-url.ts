@@ -7,9 +7,20 @@
  * vite 配置（scripts/i18n-project.ts、prerender.ts）也引用这里，因此不引用任何运行时模块。
  */
 
+/**
+ * 一组语言的地址规则：`defaultLocale` 以无前缀地址服务，其余 `/<小写 id>/…`。
+ * 单站点即 `i18n` 本身；多站点项目按站点取 `siteRouting()`，`defaultLocale` 为 null 表示该站点所有语言都带前缀。
+ */
 export interface LocaleRouting {
   readonly locales: readonly string[]
-  readonly defaultLocale: string
+  readonly defaultLocale: string | null
+}
+
+/** `seo.linking.sites[]` 中与地址相关的字段（结构与 @saas/config 的 SeoLinkingSite 一致，这里不引用该包） */
+export interface LocaleSite {
+  readonly locales: readonly string[]
+  readonly defaultLocale?: string | null | undefined
+  readonly xDefaultLocales?: readonly string[] | undefined
 }
 
 /** 语言在 URL 中的前缀段（不含斜杠） */
@@ -31,7 +42,13 @@ const ORIGIN = ':protocol://:domain(.*)::port?'
  * 规则带上 origin 部分（Paraglide 文档的写法）：纯路径规则会走 Paraglide 的快速路径，
  * 该路径不做末尾斜杠规范化，`/` 会被本地化为 `/zh/` 而不是 `/zh`。
  */
-export function localeUrlPatterns({ locales, defaultLocale }: LocaleRouting) {
+export function localeUrlPatterns({
+  locales,
+  defaultLocale,
+}: {
+  readonly locales: readonly string[]
+  readonly defaultLocale: string
+}) {
   const seen = new Set<string>()
   for (const locale of locales) {
     if (seen.has(localePrefix(locale)))
@@ -53,6 +70,7 @@ export function localeUrlPatterns({ locales, defaultLocale }: LocaleRouting) {
  * 地址规范化：返回 301 的目标（路径 + 查询串），已是唯一地址时返回 null。
  * - `/<默认语言>`、`/<默认语言>/...`（任意大小写）→ 无前缀地址；
  * - 其他语言大小写不同的前缀 → 小写前缀。
+ * 只处理 `routing.locales` 中的语言：多站点按站点传入时，其他站点语言的前缀原样放行。
  */
 export function canonicalLocalePath(url: URL, routing: LocaleRouting): string | null {
   const [, first = '', ...rest] = url.pathname.split('/')
@@ -72,4 +90,84 @@ export function localeRedirect(request: Request, routing: LocaleRouting): Respon
   if (request.method !== 'GET' && request.method !== 'HEAD') return null
   const location = canonicalLocalePath(new URL(request.url), routing)
   return location === null ? null : new Response(null, { status: 301, headers: { location } })
+}
+
+/** 语言 `locale` 的页面地址：站点默认语言无前缀，其余加小写前缀；`path` 为不带语言前缀的 path */
+export function localePath(path: string, locale: string, defaultLocale: string | null): string {
+  const clean = path.replace(/\/+$/, '') || '/'
+  return locale === defaultLocale ? clean : `/${localePrefix(locale)}${clean === '/' ? '' : clean}`
+}
+
+/** 服务 `locale` 的站点；未列入任何分组（含未配置分组）时返回 undefined，即隐含站点 */
+export function siteOfLocale<S extends LocaleSite>(
+  locale: string,
+  sites: readonly S[],
+): S | undefined {
+  return sites.find((site) => site.locales.includes(locale))
+}
+
+/**
+ * 站点的地址规则（多站点，openspec multilingual-seo 0.8.1 补充）。`site` 为 undefined 表示未列入分组的语言组成的
+ * 隐含站点（未配置分组时即全部语言）。站点默认语言：声明了 `defaultLocale`（含 null）时取声明值，否则站点包含全局
+ * 默认语言时为它，否则为 null（所有语言带前缀）。
+ */
+export function siteRouting(
+  site: LocaleSite | undefined,
+  i18n: { readonly locales: readonly string[]; readonly defaultLocale: string },
+  sites: readonly LocaleSite[] = site ? [site] : [],
+): LocaleRouting {
+  const locales = site
+    ? site.locales.filter((locale) => i18n.locales.includes(locale))
+    : i18n.locales.filter((locale) => !siteOfLocale(locale, sites))
+  if (site?.defaultLocale !== undefined) return { locales, defaultLocale: site.defaultLocale }
+  return {
+    locales,
+    defaultLocale: locales.includes(i18n.defaultLocale) ? i18n.defaultLocale : null,
+  }
+}
+
+/**
+ * x-default 指向的语言（openspec multilingual-seo 0.8.1 补充）：按 `preference`、站点默认语言、`locales`
+ * 的顺序取第一个在 `available`（本页存在的语言版本）中的语言，比较不区分大小写；都不在时取 `available[0]`。
+ * 返回 `available` 中的原写法；`available` 为空时返回 undefined。
+ */
+export function xDefaultLocale(
+  available: readonly string[],
+  {
+    preference = [],
+    defaultLocale,
+    locales = [],
+  }: {
+    readonly preference?: readonly string[] | undefined
+    readonly defaultLocale?: string | null | undefined
+    readonly locales?: readonly string[] | undefined
+  },
+): string | undefined {
+  const order = [...preference, ...(defaultLocale ? [defaultLocale] : []), ...locales]
+  for (const wanted of order) {
+    const found = available.find((locale) => locale.toLowerCase() === wanted.toLowerCase())
+    if (found !== undefined) return found
+  }
+  return available[0]
+}
+
+/**
+ * 一页的 x-default 语言：`locale` 为本页语言，用于选出所在站点——站点声明的 `xDefaultLocales` 优先于全局列表，
+ * 默认规则先取站点默认语言（siteRouting），再取全局默认语言与 `i18n.locales` 顺序。模板的 hreflang 输出
+ * （seo/metadata.ts）与链接图检查（scripts/check-links-graph.mjs）共用这一实现。
+ */
+export function pageXDefaultLocale(
+  available: readonly string[],
+  locale: string | undefined,
+  i18n: { readonly locales: readonly string[]; readonly defaultLocale: string },
+  linking: { readonly sites: readonly LocaleSite[]; readonly xDefaultLocales: readonly string[] },
+): string | undefined {
+  const site = locale === undefined ? undefined : siteOfLocale(locale, linking.sites)
+  const siteDefault =
+    locale === undefined ? null : siteRouting(site, i18n, linking.sites).defaultLocale
+  return xDefaultLocale(available, {
+    preference: site?.xDefaultLocales ?? linking.xDefaultLocales,
+    defaultLocale: siteDefault,
+    locales: [i18n.defaultLocale, ...i18n.locales],
+  })
 }

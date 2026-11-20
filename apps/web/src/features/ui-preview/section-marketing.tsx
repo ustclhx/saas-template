@@ -11,6 +11,15 @@ import { Steps } from '../marketing/sections/steps.tsx'
 import { site } from '../marketing/site.ts'
 import { PreviewSection, Specimen } from './layout.tsx'
 
+/** 语言的自称（如「中文」「العربية」），预览的示例文案只用它 */
+function languageName(locale: string): string {
+  try {
+    return new Intl.DisplayNames([locale], { type: 'language' }).of(locale) ?? locale
+  } catch {
+    return locale
+  }
+}
+
 /**
  * 营销区块预览（openspec add-ui-design-system 8.5）：区块在 apps/web 的 features/marketing，这里用中性示例数据
  * 展示正常、空与错误状态。背书数值只用方括号占位，模板不提供示例数字。
@@ -66,31 +75,35 @@ export function MarketingSection() {
       <Specimen label="AiEntry">
         <AiEntry href="/app" inline />
       </Specimen>
-      {/* 语言提示条与切换菜单（multilingual-seo 4.2、4.3）：每种语言的文案取该语言的 messages */}
+      {/* 语言提示条与切换菜单（multilingual-seo 4.2、4.3）：示例文案只用语言自称（Intl.DisplayNames），
+          不依赖 i18n_prompt_* 文案——不使用 LanguagePrompt 的项目可以删掉这些文案键 */}
       <Specimen label="LanguagePrompt" className="flex-col items-stretch">
-        {locales.map((locale) => (
-          <LanguagePrompt
-            key={locale}
-            inline
-            href={localizeHref('/pricing', { locale })}
-            hrefLang={locale}
-            dir={textDirection(locale)}
-            labels={{
-              region: m.i18n_prompt_region({}, { locale }),
-              message: m.i18n_prompt_message({}, { locale }),
-              action: m.i18n_prompt_action({}, { locale }),
-              close: m.i18n_prompt_close({}, { locale }),
-            }}
-            onDismiss={() => {}}
-          />
-        ))}
+        {locales.map((locale) => {
+          const name = languageName(locale)
+          return (
+            <LanguagePrompt
+              key={locale}
+              inline
+              href={localizeHref('/pricing', { locale })}
+              hrefLang={locale}
+              dir={textDirection(locale)}
+              labels={{
+                region: `LanguagePrompt · ${locale}`,
+                message: name,
+                action: locale,
+                close: 'Dismiss',
+              }}
+              onDismiss={() => {}}
+            />
+          )
+        })}
       </Specimen>
       <Specimen label="LanguageMenu">
         <LanguageMenu
           label={m.i18n_language()}
           items={locales.map((locale) => ({
             locale,
-            label: new Intl.DisplayNames([locale], { type: 'language' }).of(locale) ?? locale,
+            label: languageName(locale),
             href: localizeHref('/pricing', { locale }),
             current: locale === baseLocale,
           }))}

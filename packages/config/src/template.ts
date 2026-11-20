@@ -129,6 +129,17 @@ export interface SeoLinkingConfig {
    * 其他名称时填写。
    */
   readonly languageCookies: readonly string[]
+  /**
+   * hreflang x-default 的语言偏好（有序）：x-default 指向本页存在的第一个列出语言的版本，都不存在时按默认规则
+   * （站点或全局默认语言，再按 `i18n.locales` 顺序）。为空（默认）时模板输出用默认规则，链接图检查只校验
+   * x-default 恰好一条。站点可用 `sites[].xDefaultLocales` 覆盖。
+   */
+  readonly xDefaultLocales: readonly string[]
+  /**
+   * 链接图检查 `language-prompt-ssr` 额外识别的语言提示标记（HTML 属性名，小写；以 `*` 结尾表示前缀匹配，
+   * 如 `data-locale-prompt*`）。内置 `data-language-prompt` 与 `data-locale-suggestion*`，只在项目有自己的提示组件时填写。
+   */
+  readonly promptMarkers: readonly string[]
 }
 
 export interface SeoLinkingSite {
@@ -139,6 +150,14 @@ export interface SeoLinkingSite {
    * 端口取 preview 地址；省略时该站点不单独检查
    */
   readonly previewHost?: string | undefined
+  /**
+   * 该站点以无前缀地址服务的语言（站点内的默认语言），必须是本站点的语言；`null` 表示该站点所有语言都带前缀。
+   * 省略时：站点包含 `i18n.defaultLocale` 则为它，否则为 `null`。用于默认语言前缀的 301、链接图检查的
+   * `default-locale-prefix` 与 x-default 的默认规则；按 Host 选择站点由项目接线（docs/multilingual-seo.md「多站点」）。
+   */
+  readonly defaultLocale?: string | null | undefined
+  /** 该站点页面的 x-default 语言偏好，覆盖 `seo.linking.xDefaultLocales` */
+  readonly xDefaultLocales?: readonly string[] | undefined
 }
 
 export interface SeoLinkingInput {
@@ -153,6 +172,8 @@ export interface SeoLinkingInput {
   groupLinksMax?: number
   sites?: readonly SeoLinkingSite[]
   languageCookies?: readonly string[]
+  xDefaultLocales?: readonly string[]
+  promptMarkers?: readonly string[]
 }
 
 /** 主题预设名单（packages/ui/src/styles/presets/*.css）；@saas/web 的测试断言它与 @saas/ui 的 UI_PRESETS 一致 */
@@ -460,6 +481,8 @@ export const templateConfigDefaults = {
       groupLinksMax: 5,
       sites: [],
       languageCookies: [],
+      xDefaultLocales: [],
+      promptMarkers: [],
     },
   },
   ui: { preset: 'neutral', shape: 'rounded', density: 'default', appLayout: 'sidebar' },
@@ -561,8 +584,13 @@ export function resolveSeoLinking(input: SeoLinkingInput | undefined): SeoLinkin
     sites: (input?.sites ?? d.sites).map((site) => ({
       locales: [...site.locales],
       ...(site.previewHost !== undefined && { previewHost: site.previewHost.toLowerCase() }),
+      ...(site.defaultLocale !== undefined && { defaultLocale: site.defaultLocale }),
+      ...(site.xDefaultLocales !== undefined && { xDefaultLocales: [...site.xDefaultLocales] }),
     })),
     languageCookies: [...(input?.languageCookies ?? d.languageCookies)],
+    xDefaultLocales: [...(input?.xDefaultLocales ?? d.xDefaultLocales)],
+    // 属性名不区分大小写，统一小写便于检查脚本直接比较
+    promptMarkers: (input?.promptMarkers ?? d.promptMarkers).map((name) => name.toLowerCase()),
   }
   if (!['report', 'enforce'].includes(linking.mode)) fail("mode must be 'report' or 'enforce'")
   const count = (value: number, path: string, min = 0) => {
@@ -584,6 +612,16 @@ export function resolveSeoLinking(input: SeoLinkingInput | undefined): SeoLinkin
   for (const host of linking.sisterDomains)
     if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host))
       fail(`sisterDomains must be bare host names (got ${JSON.stringify(host)})`)
+  // x-default 偏好：非空、不重复；语言是否已配置由 defineTemplateConfig 校验（这里不知道 i18n.locales）
+  const xDefaults = (list: readonly string[], where: string) => {
+    if (new Set(list).size !== list.length) fail(`${where} must not repeat a locale`)
+    for (const locale of list) if (!locale) fail(`${where} must not contain empty entries`)
+  }
+  xDefaults(linking.xDefaultLocales, 'xDefaultLocales')
+  // HTML 属性名（小写），可带结尾 `*` 表示前缀
+  for (const name of linking.promptMarkers)
+    if (!/^[a-z_:][a-z0-9_.:-]*\*?$/.test(name))
+      fail(`promptMarkers must be HTML attribute names (got ${JSON.stringify(name)})`)
   const siteLocales = new Set<string>()
   const previewHosts = new Set<string>()
   for (const site of linking.sites) {
@@ -593,6 +631,14 @@ export function resolveSeoLinking(input: SeoLinkingInput | undefined): SeoLinkin
       if (siteLocales.has(locale)) fail(`sites lists locale ${locale} more than once`)
       siteLocales.add(locale)
     }
+    if (
+      site.defaultLocale !== undefined &&
+      site.defaultLocale !== null &&
+      !site.locales.includes(site.defaultLocale)
+    )
+      fail(`sites[].defaultLocale ${site.defaultLocale} must be one of that site's locales or null`)
+    if (site.xDefaultLocales !== undefined)
+      xDefaults(site.xDefaultLocales, 'sites[].xDefaultLocales')
     const host = site.previewHost
     if (host === undefined) continue
     if (!/^[a-z0-9-]+(\.[a-z0-9-]+)*$/.test(host))
@@ -679,6 +725,16 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
       if (!(locales as readonly string[]).includes(locale))
         throw new RangeError(
           `template config: seo.linking.sites locale ${locale} must be one of i18n.locales`,
+        )
+  const { linking } = config.seo
+  for (const list of [
+    linking.xDefaultLocales,
+    ...linking.sites.map((site) => site.xDefaultLocales),
+  ])
+    for (const locale of list ?? [])
+      if (!(locales as readonly string[]).includes(locale))
+        throw new RangeError(
+          `template config: seo.linking xDefaultLocales locale ${locale} must be one of i18n.locales`,
         )
 
   const ttlDays = config.shareCards.defaultTtlDays

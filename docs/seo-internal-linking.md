@@ -113,12 +113,12 @@ parent 成环时构建失败并给出页面地址；主词重复只警告。
 | 失败 | `lang-query-link` | 站内链接带 `lang`、`locale`、`language`、`lng`、`hl` 等语言查询参数 |
 | 失败 | `hreflang-reciprocal` | hreflang 组没有列出本页，或列出的语言版本没有以语言代码回指本页（x-default 不算回指） |
 | 失败 | `hreflang-cross-host` | hreflang 指向其他域名（多站点项目中指向其他站点主机也算） |
-| 失败 | `hreflang-x-default` | x-default 不是恰好一条 |
+| 失败 | `hreflang-x-default` | x-default 不是恰好一条；配置了 `xDefaultLocales`（全局或本页站点的）时，x-default 没有指向本页 hreflang 中第一个偏好语言的版本（偏好语言都不存在时按默认规则：站点默认语言、全局默认语言、配置顺序） |
 | 失败 | `hreflang-target` | hreflang 目标不可访问（4xx/5xx）或不在站点地图中 |
 | 失败 | `accept-language-vary` | 以 `zh-CN,zh;q=0.9` 与 `en-US,en;q=0.9` 两种 Accept-Language 请求同一地址时，状态码、`Location`、`<html lang>` 或规范化正文不同。对比各语言首页与等距抽样的可索引页（`--accept-language-samples`，默认 3）；规范化去掉 CSP nonce 与 13 位毫秒时间戳 |
 | 失败 | `language-set-cookie` | 可索引页、上述对比请求或前缀请求的响应 `Set-Cookie` 了语言 Cookie：Paraglide 的 `cookieName`、旧版 `locale-preference`、`seo.linking.languageCookies` 中的名称、名称含 lang／locale，或值是某个语言 id |
-| 失败 | `default-locale-prefix` | 不跟随重定向请求 `/<默认语言>` 与 `/<默认语言>/pricing`（没有定价页时取一个可索引页），不是 301 到无前缀地址 |
-| 失败 | `language-prompt-ssr` | 服务端 HTML 中有 `data-language-prompt` 或 `data-locale-suggestion*` 元素（语言提示应在水合后挂载） |
+| 失败 | `default-locale-prefix` | 不跟随重定向请求 `/<默认语言>` 与 `/<默认语言>/pricing`（没有定价页时取一个可索引页），不是 301 到无前缀地址。多站点按站点默认语言（`sites[].defaultLocale`），没有无前缀语言的站点不检查 |
+| 失败 | `language-prompt-ssr` | 服务端 HTML 中有 `data-language-prompt`、`data-locale-suggestion*` 或 `seo.linking.promptMarkers` 中的属性（语言提示应在水合后挂载） |
 
 ## 4. 配置
 
@@ -137,12 +137,15 @@ seo: {
     groupLinksMax: 5, // 同组区块最多列出的页面数，建议 3–5
     sites: [], // 多站点项目按站点分组语言，默认为空（单站点），见 §7
     languageCookies: [], // 额外视为语言 Cookie 的名称（§3 多语言规则），内置名称不用写
+    promptMarkers: [], // 项目自有语言提示的属性名，如 ['data-locale-prompt']；结尾 * 为前缀匹配
+    xDefaultLocales: [], // x-default 的语言偏好（有序），为空时指向默认语言版本
   },
 },
 ```
 
 默认阈值：`headerLinksMin` 3、`headerLinksMax` 7、`groupBodyLinksMin` 2、`maxDepth` 3、`moneyInlinksMin` 3、`footerLinksMax` 10。
-配置写错（未知 mode、负数阈值、带查询参数的地址、带协议的域名、重复的系列、站点分组中重复或未启用的语言）时构建与检查都直接报错。
+配置写错（未知 mode、负数阈值、带查询参数的地址、带协议的域名、重复的系列、站点分组中重复或未启用的语言、
+站点 `defaultLocale` 不属于该站点、`xDefaultLocales` 中重复或未启用的语言、不是属性名的 `promptMarkers`）时构建与检查都直接报错。
 
 ## 5. 注册项目自有页面
 
@@ -207,13 +210,17 @@ seo: {
   linking: {
     sites: [
       { locales: ['en'], previewHost: 'localhost' },
-      { locales: ['zh-Hant', 'ja'], previewHost: 'second.localhost' },
+      { locales: ['zh-Hant', 'ja'], previewHost: 'second.localhost', defaultLocale: null },
     ],
   },
 },
 ```
 
 - `locales`：该站点服务的语言，一种语言只能属于一个站点；未列入任何分组的语言同属一个隐含站点。
+- `defaultLocale`（可选）：该站点以无前缀地址服务的语言，必须是本站点的语言；`null` 表示全部带前缀。省略时站点包含
+  `i18n.defaultLocale` 则为它，否则为 `null`。链接图检查据此确定站点首页（`/`）与 `default-locale-prefix`；请求时的
+  301 规范化由项目按 Host 接线，见 [多语言 SEO 规范「多站点」](multilingual-seo.md#多站点)。
+- `xDefaultLocales`（可选）：该站点页面的 x-default 语言偏好，覆盖全局 `seo.linking.xDefaultLocales`。
 - **回退页 canonical 不跨站**：`sourceLocale` 与页面语言属于同一站点时才按回退页处理（canonical 指向原语言、不进站点地图）。
   原语言在另一站点时按普通页面处理——canonical 指向本页、进入本站站点地图，`articleData` 的 `inLanguage` 仍标注内容的真实语言。
   判断函数是 `metadata.ts` 的 `fallbackSourceLocale()`／`sameSiteLocales()`，项目自有代码判断回退页时也用它们。

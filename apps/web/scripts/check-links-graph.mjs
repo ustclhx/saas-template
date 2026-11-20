@@ -5,6 +5,12 @@
 // 这里再经 resolveSeoLinking 补全（对已解析的配置结果不变），衍生项目旧配置缺字段时同样取默认值。
 import { createHash } from 'node:crypto'
 import { defaultBannedAnchors, resolveSeoLinking } from '@saas/config'
+import {
+  localePrefix,
+  pageXDefaultLocale,
+  siteOfLocale,
+  siteRouting,
+} from '../src/features/i18n/locale-url.ts'
 
 /** 失败级与警告级规则；报告按此顺序输出各规则命中数 */
 export const FAILURE_RULES = Object.freeze([
@@ -45,6 +51,20 @@ export const WARNING_RULES = Object.freeze([
 export const LANGUAGE_QUERY_PARAMS = Object.freeze(['lang', 'locale', 'language', 'lng', 'hl'])
 /** 旧版语言建议使用的偏好 Cookie 名（0.8.0 起移除）；与 Paraglide 的 cookieName 一起视为语言 Cookie */
 export const LEGACY_LANGUAGE_COOKIES = Object.freeze(['locale-preference'])
+
+/** 内置的服务端语言提示标记：新提示条的 data-language-prompt 与旧版建议横幅的 data-locale-suggestion* */
+export const BUILTIN_PROMPT_MARKERS = Object.freeze([
+  'data-language-prompt',
+  'data-locale-suggestion*',
+])
+
+/** 属性名是否为语言提示标记；`markers` 中以 `*` 结尾的项按前缀匹配 */
+export function isPromptMarker(name, markers = BUILTIN_PROMPT_MARKERS) {
+  const key = name.toLowerCase()
+  return markers.some((marker) =>
+    marker.endsWith('*') ? key.startsWith(marker.slice(0, -1)) : key === marker,
+  )
+}
 
 /** 合并项目配置与默认值（`@saas/config` 的 resolveSeoLinking）：非法配置直接报错，不静默回退 */
 export function resolveLinkingConfig(raw) {
@@ -95,8 +115,10 @@ const collapse = (text) => text.replace(/\s+/g, ' ').trim()
  * 解析一页 HTML：链接（含区域、锚文本、图片 alt）、h1、语言、canonical、robots、`data-link-group`、
  * hreflang（`<link rel="alternate" hreflang>`）与服务端 HTML 中的语言提示标记数。
  * 区域取最近的 `data-link-zone` 祖先，未标记为 `body`；`region` 是该祖先的标签名，用来区分页头与页脚。
+ * `promptMarkers`：项目额外的语言提示属性名（`seo.linking.promptMarkers`），与内置标记一起计数。
  */
-export function parsePage(html) {
+export function parsePage(html, { promptMarkers = [] } = {}) {
+  const markers = [...BUILTIN_PROMPT_MARKERS, ...promptMarkers]
   const stack = []
   const links = []
   const h1 = []
@@ -154,12 +176,8 @@ export function parsePage(html) {
       attributes.href
     )
       alternates.push({ hreflang: attributes.hreflang, href: attributes.href })
-    // 服务端 HTML 中的语言提示（ML-03）：新提示条的标记与旧版建议横幅的 data-locale-suggestion*
-    if (
-      Object.keys(attributes).some(
-        (key) => key === 'data-language-prompt' || key.startsWith('data-locale-suggestion'),
-      )
-    )
+    // 服务端 HTML 中的语言提示（ML-03）：内置标记与项目配置的 promptMarkers
+    if (Object.keys(attributes).some((key) => isPromptMarker(key, markers)))
       page.languagePrompts += 1
     if (name === 'meta' && attributes.name?.toLowerCase() === 'robots')
       page.robots = attributes.content ?? null
@@ -272,34 +290,67 @@ function delocalize(path, prefixes) {
  * - 否则每个声明了 `previewHost` 的站点各成一张图：以 `<previewHost>:<preview 端口>` 访问，种子只含该站点语言的首页，
  *   其他站点的主机不算站内（指向它们的链接不跟随、不并入本图）。
  * `localePrefixes` 是全部语言首页的首段（如 `zh`），钱页统计据此去掉语言前缀。
+ * `defaultLocale` 为该图以无前缀地址服务的语言（单站点为 i18n.defaultLocale；多站点为站点默认语言，见
+ * locale-url.ts 的 siteRouting），check-links.mjs 据此检查 `/<默认语言>` 的 301；为 null 时不检查。
+ * 站点默认语言与全局默认语言不同时，站点默认语言的首页为 `/`，全局默认语言（若也在该站点）为 `/<小写 id>`。
  */
 export function planLinkGraphs({ baseUrl, i18n, sites = [], localize }) {
-  const locales = i18n?.enabled === false ? [i18n.defaultLocale] : (i18n?.locales ?? [])
-  const homesOf = (list) =>
-    list.length ? [...new Set(list.map((locale) => normalizePath(localize(locale))))] : ['/']
-  const localePrefixes = locales
-    .map((locale) => normalizePath(localize(locale)).split('/')[1])
-    .filter(Boolean)
+  const enabled = i18n?.enabled !== false
+  const locales = enabled ? (i18n?.locales ?? []) : [i18n.defaultLocale]
+  const homeOf = (locale, defaultLocale) => {
+    if (locale === defaultLocale) return '/'
+    const path = normalizePath(localize(locale))
+    return path === '/' ? `/${localePrefix(locale)}` : path
+  }
+  const homesOf = (list, defaultLocale) =>
+    list.length ? [...new Set(list.map((locale) => homeOf(locale, defaultLocale)))] : ['/']
+  const localePrefixes = [
+    ...new Set([
+      ...locales.map((locale) => normalizePath(localize(locale)).split('/')[1]).filter(Boolean),
+      // 站点默认语言不是全局默认语言时，全局默认语言在该站点也带前缀
+      ...(sites.some((site) => site.defaultLocale !== undefined)
+        ? locales.map((locale) => localePrefix(locale))
+        : []),
+    ]),
+  ]
   const base = new URL(baseUrl)
   const checked = sites.filter((site) => site.previewHost)
+  // 关闭多语言时唯一的语言也以无前缀地址服务
+  const globalDefault = i18n?.defaultLocale ?? null
   if (checked.length === 0)
     return [
-      { host: null, origin: base.origin, homes: homesOf(locales), localePrefixes, otherHosts: [] },
+      {
+        host: null,
+        origin: base.origin,
+        homes: homesOf(locales, globalDefault),
+        localePrefixes,
+        otherHosts: [],
+        defaultLocale: globalDefault,
+      },
     ]
   const originOf = (host) => {
     const url = new URL(base.origin)
     url.hostname = host
     return url.origin
   }
-  return checked.map((site) => ({
-    host: site.previewHost,
-    origin: originOf(site.previewHost),
-    homes: homesOf(site.locales.filter((locale) => locales.includes(locale))),
-    localePrefixes,
-    otherHosts: checked
-      .filter((other) => other !== site)
-      .map((other) => new URL(originOf(other.previewHost)).host),
-  }))
+  return checked.map((site) => {
+    const defaultLocale = i18n
+      ? siteRouting(site, { locales, defaultLocale: i18n.defaultLocale }).defaultLocale
+      : null
+    return {
+      host: site.previewHost,
+      origin: originOf(site.previewHost),
+      homes: homesOf(
+        site.locales.filter((locale) => locales.includes(locale)),
+        defaultLocale,
+      ),
+      localePrefixes,
+      otherHosts: checked
+        .filter((other) => other !== site)
+        .map((other) => new URL(originOf(other.previewHost)).host),
+      defaultLocale,
+    }
+  })
 }
 
 /** 多站点保留各站点的摘要，明细带主机名；汇总统计求和，最大深度取最大值 */
@@ -351,6 +402,7 @@ export function analyzeLinkGraph({
   internalHosts,
   locales = [],
   config,
+  i18n,
 }) {
   const failures = []
   const warnings = []
@@ -516,7 +568,7 @@ export function analyzeLinkGraph({
           `「${text}」在 ${locale || '未标注语言'} 中重复：${paths.join('、')}`,
         )
 
-  checkHreflang({ pages, targets, indexable, internalHosts, flag })
+  checkHreflang({ pages, targets, indexable, internalHosts, flag, i18n, config })
 
   // 点击深度：从各语言首页同时出发的最短路径（语言切换也是真实链接）
   const depth = new Map(homes.filter((home) => edges.has(home)).map((home) => [home, 0]))
@@ -590,7 +642,7 @@ function checkPageLanguage(page, indexable, internalHosts, flag) {
     flag(
       'language-prompt-ssr',
       page.path,
-      `服务端 HTML 中有 ${parsed.languagePrompts} 个语言提示元素（data-language-prompt／data-locale-suggestion*），提示应在水合后挂载`,
+      `服务端 HTML 中有 ${parsed.languagePrompts} 个语言提示元素（data-language-prompt／data-locale-suggestion*／seo.linking.promptMarkers），提示应在水合后挂载`,
     )
   const self = parsed.alternates.find((entry) => {
     if (entry.hreflang.toLowerCase() === 'x-default') return false
@@ -606,10 +658,41 @@ function checkPageLanguage(page, indexable, internalHosts, flag) {
 }
 
 /**
- * hreflang 图规则：同域、x-default 恰好一条、目标可访问且可索引、包含本页并与各语言版本双向互指。
- * 只检查声明了 hreflang 的页面（关闭多语言的项目没有 hreflang）。
+ * x-default 的指向（`seo.linking.xDefaultLocales` 或本页站点的 `sites[].xDefaultLocales` 非空时才检查）：
+ * 应指向本页 hreflang 中按偏好排第一的语言版本（locale-url.ts 的 pageXDefaultLocale，与模板输出同一规则）。
+ * 本页语言取 hreflang 中指向本页的条目，没有时取 `<html lang>`。返回发现项消息或 null。
  */
-function checkHreflang({ pages, targets, indexable, internalHosts, flag }) {
+function xDefaultMismatch({ path, page, entries, xDefault, i18n, config }) {
+  if (!i18n || i18n.enabled === false || !config) return null
+  const configured = (code) =>
+    i18n.locales.find((locale) => locale.toLowerCase() === code?.toLowerCase())
+  const languages = entries.filter((entry) => entry.hreflang.toLowerCase() !== 'x-default')
+  const self = languages.find(
+    (entry) => entry.target?.kind === 'internal' && entry.target.path === path,
+  )
+  const locale = configured(self?.hreflang ?? page?.parsed?.lang)
+  const preference =
+    (locale === undefined ? undefined : siteOfLocale(locale, config.sites)?.xDefaultLocales) ??
+    config.xDefaultLocales
+  if (!preference.length) return null
+  const expected = pageXDefaultLocale(
+    languages.map((entry) => entry.hreflang),
+    locale,
+    i18n,
+    config,
+  )
+  const wanted = languages.find((entry) => entry.hreflang === expected)
+  if (!wanted || wanted.target?.kind !== 'internal' || xDefault.target?.kind !== 'internal')
+    return null
+  if (wanted.target.path === xDefault.target.path) return null
+  return `x-default 指向 ${xDefault.target.path}，按 x-default 语言偏好（${preference.join(', ')}）应指向「${expected}」版本 ${wanted.target.path}`
+}
+
+/**
+ * hreflang 图规则：同域、x-default 恰好一条（配置了 xDefaultLocales 时还须指向偏好语言）、目标可访问且可索引、
+ * 包含本页并与各语言版本双向互指。只检查声明了 hreflang 的页面（关闭多语言的项目没有 hreflang）。
+ */
+function checkHreflang({ pages, targets, indexable, internalHosts, flag, i18n, config }) {
   const groups = new Map()
   const parsedPaths = new Set(
     pages.filter((page) => page.status < 400 && page.parsed).map((page) => page.path),
@@ -628,6 +711,11 @@ function checkHreflang({ pages, targets, indexable, internalHosts, flag }) {
     const defaults = entries.filter((entry) => entry.hreflang.toLowerCase() === 'x-default')
     if (defaults.length !== 1)
       flag('hreflang-x-default', path, `x-default 有 ${defaults.length} 条，应恰好一条`)
+    else {
+      const page = pages.find((item) => item.path === path)
+      const message = xDefaultMismatch({ path, page, entries, xDefault: defaults[0], i18n, config })
+      if (message) flag('hreflang-x-default', path, message, defaults[0].href)
+    }
     let hasSelf = false
     for (const { hreflang, href, target } of entries) {
       if (target?.kind !== 'internal') {

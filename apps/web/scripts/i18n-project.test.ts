@@ -154,3 +154,34 @@ it('含大写字母的语言 id 编译为小写前缀，localize / deLocalize �
     rmSync(mixedRoot, { recursive: true, force: true })
   }
 })
+
+// 0.8.0 在位置参数末尾追加了 i18n，0.7.x 的三参数调用不再生成小写前缀规则；0.8.1 起各写法等价（升级说明 0.8.1）
+describe('paraglideOptions 调用形式兼容（0.8.1）', () => {
+  const mixed = { locales: ['en', 'zh-Hant'], defaultLocale: 'en' }
+  let compatRoot: string
+  beforeAll(() => {
+    compatRoot = mkdtempSync(join(tmpdir(), 'saas-i18n-compat-'))
+    writeInlangProject(mixed, compatRoot)
+  })
+  afterAll(() => rmSync(compatRoot, { recursive: true, force: true }))
+
+  it('0.7.x 位置参数、0.8.0 追加 i18n 与语言配置在前三种写法结果相同', () => {
+    const current = paraglideOptions(['/app'], compatRoot, true, mixed)
+    expect(current.urlPatterns?.[0]?.localized).toContainEqual([
+      'zh-Hant',
+      ':protocol://:domain(.*)::port?/zh-hant/:path(.*)?',
+    ])
+    // 0.7.x：省略 i18n 时从 project.inlang/settings.json 读取语言
+    expect(paraglideOptions(['/app'], compatRoot, true)).toEqual(current)
+    expect(paraglideOptions(['/app'], compatRoot)).toEqual(current)
+    expect(paraglideOptions(mixed, ['/app'], compatRoot)).toEqual(current)
+  })
+
+  it('关闭多语言时两种写法都只用 baseLocale', () => {
+    const single = { ...mixed, enabled: false }
+    const positional = paraglideOptions(['/app'], compatRoot, false)
+    expect(positional.strategy).toEqual(['baseLocale'])
+    expect(positional.urlPatterns).toBeUndefined()
+    expect(paraglideOptions(single, ['/app'], compatRoot)).toEqual(positional)
+  })
+})
