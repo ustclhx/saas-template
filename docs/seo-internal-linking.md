@@ -19,7 +19,7 @@
 | `related` | 否 | 相关页地址列表，目标必须存在且可索引；显示相关区块 |
 | `indexable` | 否 | 默认 `true`；`false` 时 noindex、不进站点地图，也不能作为 parent／group／related 的目标 |
 | `priority` | 否 | `'money'` 表示钱页，检查其站内入链数 |
-| `sourceLocale` | 自动 | 内容的真实语言；与 `locale` 不同即回退页：canonical 指向原语言，不进站点地图 |
+| `sourceLocale` | 自动 | 内容的真实语言；与 `locale` 不同即回退页：canonical 指向原语言，不进站点地图（多站点项目中原语言在另一站点时例外，见 §7） |
 
 各来源怎么填：
 
@@ -114,12 +114,13 @@ seo: {
     series: [{ group: '/templates/writing', orderBy: 'declared' }], // declared | date | titleMain
     hubPageSize: 100, // hub 单页最多列出的下级数
     groupLinksMax: 5, // 同组区块最多列出的页面数，建议 3–5
+    sites: [], // 多站点项目按站点分组语言，默认为空（单站点），见 §7
   },
 },
 ```
 
 默认阈值：`headerLinksMin` 3、`headerLinksMax` 7、`groupBodyLinksMin` 2、`maxDepth` 3、`moneyInlinksMin` 3、`footerLinksMax` 10。
-配置写错（未知 mode、负数阈值、带查询参数的地址、带协议的域名、重复的系列）时构建与检查都直接报错。
+配置写错（未知 mode、负数阈值、带查询参数的地址、带协议的域名、重复的系列、站点分组中重复或未启用的语言）时构建与检查都直接报错。
 
 ## 5. 注册项目自有页面
 
@@ -144,7 +145,7 @@ export function projectPages({ locale }: { locale: string; defaultLocale: string
 步骤：
 
 1. 为每个页面写 `titleMain` 与 `parent`；hub 与分类页本身也要返回条目。缺译文的语言写 `sourceLocale: <原语言>`。
-2. 页面由 `apps/web/src/routes/` 下的路由渲染：`head` 用 `pageHead()`，并输出 `breadcrumbData()`；
+2. 页面由 `apps/web/src/routes/` 下的路由渲染：`head` 用 `pageHead()`，并输出 `breadcrumbListData()`；
    页面数据由 server function 返回 `getPageLinks(path, locale)`，组件用 `PageBreadcrumb` 与 `PageLinkSections` 渲染区块。
 3. hub 页链接到全部下级；下级超过 `hubPageSize` 时用 `hubPages()` 生成分页条目、`hubSlice()` 切分列表、`HubPagination` 渲染分页。
 4. 有阅读顺序的分组在 `seo.linking.series` 中声明，详情页即显示上一篇／下一篇。
@@ -164,3 +165,34 @@ pnpm --filter @saas/web check:links --json test-results/evidence/links.json --li
 - CI 在 `build` job 的 `pnpm build` 之后运行（`docs/ci.md` §3），复用同一份生产构建产物，不需要数据库。
 - 模板自身为 `enforce`。衍生项目未配置时为 `report`：同步后构建不失败，先按报告补 `pages.project.ts` 声明、修正孤岛与死链，
   报告的失败项清零后在 `template.config.ts` 设 `mode: 'enforce'`。
+- 语言首页按路由的实际前缀抓取（取 Paraglide 编译出的运行时 `localizeUrl`）：项目把 URL 前缀改成与语言 id 不同的写法
+  （如 `zh-Hant` → `/zh-hant`）时不会误报死链。运行时缺失时退回 `/<语言 id>` 并打印提示。
+- Turbo 缓存命中恢复的产物没有 `dist/server/.dev.vars` 时，检查按 `.dev.vars.example` 临时补一份（结束后删除）：
+  示例中值为空的 `*_SECRET`／`*_TOKEN` 随机生成，本地存在 `apps/web/.dev.vars` 时叠加其中的值。项目新增的
+  Worker 启动必填变量写进 `.dev.vars.example`（密钥写空值）即可，不需要改检查脚本；该文件只写在已忽略的 dist 中。
+
+## 7. 多站点
+
+同一部署按 Host 服务多个站点、各站点使用不同 origin 的项目，在 `seo.linking.sites` 中按站点分组语言（模板默认为空，
+全部语言属于同一站点，以下行为都不生效）：
+
+```ts
+seo: {
+  linking: {
+    sites: [
+      { locales: ['en'], previewHost: 'localhost' },
+      { locales: ['zh-Hant', 'ja'], previewHost: 'second.localhost' },
+    ],
+  },
+},
+```
+
+- `locales`：该站点服务的语言，一种语言只能属于一个站点；未列入任何分组的语言同属一个隐含站点。
+- **回退页 canonical 不跨站**：`sourceLocale` 与页面语言属于同一站点时才按回退页处理（canonical 指向原语言、不进站点地图）。
+  原语言在另一站点时按普通页面处理——canonical 指向本页、进入本站站点地图，`articleData` 的 `inLanguage` 仍标注内容的真实语言。
+  判断函数是 `metadata.ts` 的 `fallbackSourceLocale()`／`sameSiteLocales()`，项目自有代码判断回退页时也用它们。
+- **链接图分站检查**：声明了 `previewHost` 的站点各自成图。检查脚本以 `<previewHost>:<preview 端口>` 作 Host 请求头访问
+  preview（等价于 `curl --resolve`），不依赖 DNS 解析 `*.localhost`；种子为该站点的站点地图与其语言首页，
+  指向其他站点主机的链接不跟随、不并入本图（需要约束时把正式域名写进 `sisterDomains`）。报告与 `--json` 中的明细
+  以主机名开头（如 `second.localhost/zh-hant`）。没有任何站点声明 `previewHost` 时仍按单站点检查整个 preview。
+- `previewHost` 是 preview 中区分站点用的主机名（不含协议与端口），由项目的 Host 路由决定；生产域名不写在这里。

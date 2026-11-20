@@ -32,9 +32,38 @@ export interface SeoPage {
   sourceLocale?: string | undefined
 }
 
-/** 缺少译文、以其他语言内容回退显示的页面：canonical 指向原语言，不进站点地图 */
+/**
+ * 两种语言是否由同一站点（同一 origin）服务：按 `seo.linking.sites` 分组，未列入任何分组的语言同属一个隐含站点；
+ * 未配置分组（模板默认）时全部语言同站。
+ */
+export function sameSiteLocales(
+  a: string,
+  b: string,
+  sites: readonly { readonly locales: readonly string[] }[] = templateConfig.seo.linking.sites,
+): boolean {
+  const site = (locale: string) => sites.findIndex((entry) => entry.locales.includes(locale))
+  return site(a) === site(b)
+}
+
+/**
+ * 回退页的原语言：内容语言与页面语言不同、且原语言由同一站点服务时返回原语言。原语言在另一站点时返回
+ * undefined——按普通页面处理（自指 canonical、进站点地图），不输出跨站 canonical。
+ */
+export function fallbackSourceLocale(
+  page: Pick<SeoPage, 'locale' | 'sourceLocale'>,
+  sites?: readonly { readonly locales: readonly string[] }[],
+): string | undefined {
+  const { locale, sourceLocale } = page
+  return sourceLocale !== undefined &&
+    sourceLocale !== locale &&
+    sameSiteLocales(locale, sourceLocale, sites)
+    ? sourceLocale
+    : undefined
+}
+
+/** 缺少译文、以同站点其他语言内容回退显示的页面：canonical 指向原语言，不进站点地图 */
 export function isFallbackPage(page: Pick<SeoPage, 'locale' | 'sourceLocale'>): boolean {
-  return page.sourceLocale !== undefined && page.sourceLocale !== page.locale
+  return fallbackSourceLocale(page) !== undefined
 }
 
 /** 进入站点地图的页面：可索引且不是回退页 */
@@ -136,7 +165,7 @@ export function ogImagePath(page: Pick<SeoPage, 'path' | 'locale'>): string {
 
 /**
  * `languages`：该页真实存在译文的语言，省略时为全部启用语言（模板静态页各语言都有译文）。
- * 回退页（`sourceLocale` 与 `locale` 不同）的 canonical 与 og:url 指向原语言地址。
+ * 回退页（`sourceLocale` 与 `locale` 不同且同站点）的 canonical 与 og:url 指向原语言地址。
  */
 export function pageHead(
   page: SeoPage,
@@ -144,7 +173,10 @@ export function pageHead(
   structuredData: readonly unknown[] = [],
   languages: readonly string[] = locales,
 ) {
-  const url = absoluteUrl(appUrl, localizedPath(page.path, page.sourceLocale ?? page.locale))
+  const url = absoluteUrl(
+    appUrl,
+    localizedPath(page.path, fallbackSourceLocale(page) ?? page.locale),
+  )
   const title = `${page.title} | ${templateConfig.app.name}`
   const image = page.cover
     ? absoluteUrl(appUrl, page.cover)

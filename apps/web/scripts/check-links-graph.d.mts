@@ -80,3 +80,20 @@ export function formatReport(
 ): string
 export function exitCode(result: LinkGraphResult, mode: string): number
 export function sitemapLocations(xml: string): string[]
+export interface LinkGraphPlan {
+  /** 多站点时为该站点的 previewHost；单站点为 null */
+  host: string | null
+  origin: string
+  homes: string[]
+  localePrefixes: string[]
+  otherHosts: string[]
+}
+export function planLinkGraphs(input: {
+  baseUrl: string
+  i18n?: { enabled?: boolean; locales?: readonly string[]; defaultLocale: string } | undefined
+  sites?: LinkingConfig['sites']
+  localize: (locale: string) => string
+}): LinkGraphPlan[]
+export function mergeGraphResults(
+  entries: { host: string | null; result: LinkGraphResult }[],
+): LinkGraphResult

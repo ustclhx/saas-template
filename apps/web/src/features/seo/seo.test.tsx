@@ -4,7 +4,13 @@ import { templateConfig } from '../../server/template-config.ts'
 import { defaultShareCardLayout } from '../share-cards/layout.tsx'
 import { resolveShareCardTheme } from '../share-cards/theme.ts'
 import { llmsTxt, robots, sitemap } from './crawlers.ts'
-import { localizedPath, pageHead, privateMeta } from './metadata.ts'
+import {
+  fallbackSourceLocale,
+  localizedPath,
+  pageHead,
+  privateMeta,
+  sameSiteLocales,
+} from './metadata.ts'
 import { publicPages } from './pages.ts'
 import {
   articleData,
@@ -373,6 +379,19 @@ describe.runIf(config.i18n.enabled && locales.length > 1)('缺少译文的回退
       url: `${origin}/blog/only-default`,
       inLanguage: config.i18n.defaultLocale,
     })
+  })
+
+  it('多站点：原语言在另一站点时不算回退页，canonical 不跨站（seo.linking.sites）', () => {
+    const page = { locale: 'b', sourceLocale: 'a' }
+    // 未配置分组（模板默认）时全部语言同站
+    expect(fallbackSourceLocale(page, [])).toBe('a')
+    expect(fallbackSourceLocale(page, [{ locales: ['a', 'b'] }])).toBe('a')
+    expect(fallbackSourceLocale(page, [{ locales: ['a'] }, { locales: ['b'] }])).toBeUndefined()
+    // 未列入分组的语言同属隐含站点
+    expect(fallbackSourceLocale(page, [{ locales: ['c'] }])).toBe('a')
+    expect(fallbackSourceLocale(page, [{ locales: ['a'] }])).toBeUndefined()
+    expect(fallbackSourceLocale({ locale: 'a', sourceLocale: 'a' }, [])).toBeUndefined()
+    expect(sameSiteLocales('a', 'b', [{ locales: ['b', 'a'] }])).toBe(true)
   })
 
   it('只有非默认语言版本时 x-default 指向该语言', () => {

@@ -4,7 +4,7 @@ import { getGuideIndex } from '../../features/marketing/content.functions.ts'
 import { MarketingShell } from '../../features/marketing/marketing-shell.tsx'
 import { PageBreadcrumb, routerLink } from '../../features/marketing/page-links.tsx'
 import { originFromMatches, pageHead, staticPage } from '../../features/seo/metadata.ts'
-import { breadcrumbData } from '../../features/seo/structured-data.ts'
+import { breadcrumbListData } from '../../features/seo/structured-data.ts'
 import { m } from '../../paraglide/messages.js'
 import { getLocale } from '../../paraglide/runtime.js'
 
@@ -17,7 +17,14 @@ export const Route = createFileRoute('/guides/')({
       page,
       appUrl,
       loaderData
-        ? [breadcrumbData(loaderData.breadcrumb, m.marketing_guides_title(), appUrl, page.locale)]
+        ? [
+            breadcrumbListData(
+              loaderData.breadcrumb,
+              m.marketing_guides_title(),
+              appUrl,
+              page.locale,
+            ),
+          ]
         : [],
     )
   },

@@ -5,7 +5,7 @@ import { validateSeoPages } from './linking.ts'
 import type { SeoPage } from './metadata.ts'
 import { breadcrumbTrail, hubPagePath, pageLinks, parseHubPage } from './page-links.ts'
 import { hubPages, publicPages } from './pages.ts'
-import { breadcrumbData } from './structured-data.ts'
+import { breadcrumbListData } from './structured-data.ts'
 
 // 内链区块数据（openspec seo-internal-linking 3.1–3.3）：锚文本只取 titleMain / anchorShort，未声明的区块为空
 const page = (path: string, extra: Partial<SeoPage> = {}): SeoPage => ({
@@ -60,7 +60,7 @@ describe('面包屑', () => {
   })
 
   it('BreadcrumbList 与面包屑一致：上级为当前语言地址，当前页只有名称', () => {
-    const data = breadcrumbData(
+    const data = breadcrumbListData(
       [
         { href: '/', label: '首页' },
         { href: '/blog', label: '博客' },

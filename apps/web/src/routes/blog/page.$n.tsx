@@ -4,7 +4,7 @@ import { TagLinks } from '../../features/marketing/blog/post-list.tsx'
 import { getBlogIndex } from '../../features/marketing/content.functions.ts'
 import { originFromMatches, pageHead } from '../../features/seo/metadata.ts'
 import { parseHubPage } from '../../features/seo/page-links.ts'
-import { breadcrumbData } from '../../features/seo/structured-data.ts'
+import { breadcrumbListData } from '../../features/seo/structured-data.ts'
 import { m } from '../../paraglide/messages.js'
 import { getLocale } from '../../paraglide/runtime.js'
 
@@ -27,7 +27,7 @@ export const Route = createFileRoute('/blog/page/$n')({
       page: loaderData.page,
     })
     return pageHead(page, appUrl, [
-      breadcrumbData(loaderData.breadcrumb, current, appUrl, page.locale),
+      breadcrumbListData(loaderData.breadcrumb, current, appUrl, page.locale),
     ])
   },
   component: BlogPaginatedPage,

@@ -12,20 +12,39 @@ import type { Plugin } from 'vite'
 const WEB_ROOT = new URL('..', import.meta.url).pathname
 
 /**
- * 由 .dev.vars.example 生成的本地 preview 变量（签名密钥随机生成）；没有示例文件时返回 null。
+ * 本地 preview 变量：以 .dev.vars.example 为基础（没有示例文件时返回 null）。
+ * - 示例中值为空的 `*_SECRET` / `*_TOKEN` 每次随机生成：项目新增的必填密钥（如预渲染令牌）只需在示例中写空值；
+ * - 本地有 apps/web/.dev.vars 时叠加其中的值（与 Cloudflare 插件构建时复制的内容一致；CI 的构建任务没有这个文件，仍只用示例值）；
+ * - 环境变量 APP_URL 覆盖示例值（CI 以此指定站点地址）。
  * 构建后链接图检查（check-links.mjs）在 dist/server/.dev.vars 缺失时也用它：Turbo 缓存刻意不保存
- * .dev.vars（apps/web/turbo.json），缓存命中恢复的产物里没有这个文件。
+ * .dev.vars（apps/web/turbo.json），缓存命中恢复的产物里没有这个文件。结果只写入已忽略的 dist，不进入提交。
  */
 export function fallbackDevVars(root = WEB_ROOT): string | null {
   const example = join(root, '.dev.vars.example')
   if (!existsSync(example)) return null
   let source = readFileSync(example, 'utf8').replace(
-    /^BETTER_AUTH_SECRET=.*$/m,
-    `BETTER_AUTH_SECRET=${randomBytes(32).toString('base64')}`,
+    /^([A-Z0-9_]+_(?:SECRET|TOKEN))=[ \t]*$/gm,
+    (_line, key: string) => `${key}=${randomBytes(32).toString('base64')}`,
   )
-  if (process.env.APP_URL)
-    source = source.replace(/^APP_URL=.*$/m, `APP_URL=${process.env.APP_URL}`)
+  const local = join(root, '.dev.vars')
+  if (existsSync(local)) source = mergeDevVars(source, readFileSync(local, 'utf8'))
+  if (process.env.APP_URL) source = mergeDevVars(source, `APP_URL=${process.env.APP_URL}`)
   return source
+}
+
+/** 把 `overrides` 中的 `KEY=value` 行写入 `base`：已有的键原位替换，新键追加到末尾 */
+export function mergeDevVars(base: string, overrides: string): string {
+  let merged = base
+  const extra: string[] = []
+  for (const line of overrides.split(/\r?\n/)) {
+    const key = /^([A-Za-z_][A-Za-z0-9_]*)=/.exec(line)?.[1]
+    if (!key) continue
+    const pattern = new RegExp(`^${key}=.*$`, 'm')
+    if (pattern.test(merged)) merged = merged.replace(pattern, () => line)
+    else extra.push(line)
+  }
+  if (extra.length === 0) return merged
+  return `${merged.replace(/\n*$/, '\n')}${extra.join('\n')}\n`
 }
 
 export function prerenderEnvFallback(root = WEB_ROOT): Plugin {
