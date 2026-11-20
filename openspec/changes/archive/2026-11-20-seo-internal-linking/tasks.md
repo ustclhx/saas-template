@@ -18,7 +18,7 @@
 - [x] 3.2 hub 列表：下级全列与超上限分页，接入博客列表与标签页
 - [x] 3.3 同级区块、相关区块、系列上一篇／下一篇组件，锚文本只取 `titleMain`／`anchorShort`
 - [x] 3.4 页头、页脚、面包屑、语言切换器与各区块加 `data-link-zone` 标记
-- [ ] 3.5 组件单元测试：真实 `<a href>`、锚文本来源、未声明时不渲染
+- [x] 3.5 组件单元测试：真实 `<a href>`、锚文本来源、未声明时不渲染
 
 ## 4. 链接图检查
 
@@ -32,4 +32,4 @@
 
 - [x] 5.1 新增 `docs/seo-internal-linking.md`：字段、区块、规则分级、配置、项目自有页面注册方法；`apps/web/src/features/seo/README.md` 与 `new-static-page` 技能加入口
 - [x] 5.2 用 xuanxue 的只读副本以 `report` 模式运行一次，记录孤岛与死链数量，作为升级说明的参考（不修改 xuanxue）
-- [ ] 5.3 升级说明草稿要点（发版时写入 `docs/upgrades/`）：默认 `report`、迁移步骤、回退页 canonical 变化
+- [x] 5.3 升级说明草稿要点（发版时写入 `docs/upgrades/`）：默认 `report`、迁移步骤、回退页 canonical 变化
