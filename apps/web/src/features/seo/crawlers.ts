@@ -1,6 +1,12 @@
 import { templateConfig } from '../../server/template-config.ts'
 import type { SeoPage } from './metadata.ts'
-import { absoluteUrl, alternateLinks, indexedPages, localizedPath } from './metadata.ts'
+import {
+  absoluteUrl,
+  alternateLinks,
+  indexedPages,
+  localizedPath,
+  pageAlternates,
+} from './metadata.ts'
 
 export function escapeXml(text: string): string {
   return text.replace(
@@ -23,11 +29,11 @@ export function sitemap(pages: readonly SeoPage[], appUrl: string): string {
   const listed = indexable(pages)
   const urls = listed
     .map((page) => {
-      // hreflang 只关联真实存在译文的语言
+      // hreflang 只关联真实存在译文的语言；声明了 alternates 的页面用声明的各语言地址
       const languages = listed
         .filter((other) => other.path === page.path)
         .map((other) => other.locale)
-      const links = alternateLinks(appUrl, page.path, languages)
+      const links = alternateLinks(appUrl, page.path, languages, pageAlternates(page))
         .map(
           (link) =>
             `<xhtml:link rel="alternate" hreflang="${escapeXml(link.hrefLang)}" href="${escapeXml(link.href)}"/>`,

@@ -198,16 +198,20 @@ describe('元数据静态校验（1.5）', () => {
       ...page(path, fields),
       locale,
     })
-    const report = validateSeoPages([
+    const pages = [
       translated('/'),
       translated('/fallback', { sourceLocale: en, parent: '/missing' }),
       translated('/private', { indexable: false, parent: undefined }),
       translated('/broken', { parent: '/missing' }),
-    ])
-    expect(report.errors).toEqual([
-      expect.stringContaining(
-        `${localizedPath('/broken', locale)}: parent 指向不存在的页面 ${localizedPath('/missing', locale)}（`,
-      ),
+    ]
+    const broken = expect.stringContaining(
+      `${localizedPath('/broken', locale)}: parent 指向不存在的页面 ${localizedPath('/missing', locale)}（`,
+    )
+    expect(validateSeoPages(pages, { untranslated: 'fallback' }).errors).toEqual([broken])
+    // 'hide'（默认）下回退页不发布：清单中出现回退页即构建失败
+    expect(validateSeoPages(pages, { untranslated: 'hide' }).errors).toEqual([
+      broken,
+      expect.stringContaining(`${localizedPath('/fallback', locale)}: 缺少译文的回退页`),
     ])
   })
 
@@ -227,5 +231,70 @@ describe('元数据静态校验（1.5）', () => {
     expect(() => assertSeoPages([home, page('/a', { parent: '/nope' })], warn)).toThrow(
       /公开页面元数据校验失败（1 项）：\n\/a: parent 指向不存在的页面 \/nope/,
     )
+  })
+})
+
+// 本地化 slug（openspec multilingual-seo 3.2）：英文 /four-pillars 与韩语 /만세력 互为语言版本
+describe.runIf(templateConfig.i18n.enabled)('alternates 静态校验', () => {
+  const options = { locales: [en, 'ko'], untranslated: 'hide' as const }
+  const ko = (path: string, fields: Partial<SeoPage> = {}) => ({
+    ...page(path, fields),
+    locale: 'ko',
+  })
+  const pillars = page('/four-pillars', { alternates: { ko: '/만세력' } })
+  const manse = ko('/만세력', { alternates: { [en]: '/four-pillars' } })
+  const base = [home, ko('/')]
+
+  it('双向声明且语言合法时通过', () => {
+    expect(validateSeoPages([...base, pillars, manse], options).errors).toEqual([])
+    // alternates 可以包含自身（与本页地址一致）
+    const withSelf = { ...pillars, alternates: { [en]: '/four-pillars', ko: '/만세력' } }
+    expect(validateSeoPages([...base, withSelf, manse], options).errors).toEqual([])
+  })
+
+  it('键不是已配置语言、目标缺失、未反向声明或组不一致时失败', () => {
+    const unknown = page('/a', { alternates: { fr: '/a-fr' } })
+    expect(validateSeoPages([...base, unknown], options).errors).toEqual([
+      '/a: alternates 的键 fr 不是已配置的语言（i18n.locales）',
+    ])
+    expect(validateSeoPages([...base, pillars], options).errors).toEqual([
+      `/four-pillars: alternates.ko 指向不存在的页面 ${localizedPath('/만세력', 'ko')}`,
+    ])
+    expect(validateSeoPages([...base, pillars, ko('/만세력')], options).errors).toEqual([
+      `/four-pillars: alternates.ko 指向的 ${localizedPath('/만세력', 'ko')} 没有反向声明 ${en}=/four-pillars`,
+    ])
+    const noindex = ko('/만세력', { alternates: { [en]: '/four-pillars' }, indexable: false })
+    expect(validateSeoPages([...base, pillars, noindex], options).errors).toEqual([
+      `/four-pillars: alternates.ko 指向不可索引的页面 ${localizedPath('/만세력', 'ko')}`,
+    ])
+    const self = page('/b', { alternates: { [en]: '/c' } })
+    expect(validateSeoPages([...base, self], options).errors).toEqual([
+      `/b: alternates.${en} 必须是本页地址 /b`,
+    ])
+  })
+
+  it('各成员声明的语言版本组不一致时失败', () => {
+    const three = { ...options, locales: [en, 'ko', 'ja'] }
+    const all = page('/four-pillars', { alternates: { ko: '/만세력', ja: '/shichu' } })
+    const ja = {
+      ...page('/shichu', { alternates: { [en]: '/four-pillars', ko: '/만세력' } }),
+      locale: 'ja',
+    }
+    const errors = validateSeoPages(
+      [...base, { ...home, locale: 'ja' }, all, manse, ja],
+      three,
+    ).errors
+    expect(errors).toContainEqual(
+      expect.stringContaining(
+        `/four-pillars: 与 ${localizedPath('/만세력', 'ko')} 声明的语言版本不一致`,
+      ),
+    )
+  })
+
+  it('同路径的其他语言页面未声明 alternates 时失败（hreflang 无法互指）', () => {
+    const errors = validateSeoPages([...base, pillars, manse, ko('/four-pillars')], options).errors
+    expect(errors).toEqual([
+      `${localizedPath('/four-pillars', 'ko')}: 同路径的 /four-pillars 声明了 alternates，本页也需声明`,
+    ])
   })
 })

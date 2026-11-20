@@ -130,7 +130,12 @@ server function 的 schema 写在 `.validator()` / `.inputValidator()` 调用内
 ```ts
 export default defineTemplateConfig({
   app: { name: 'MyApp', url: 'https://example.com', supportEmail: 'support@example.com' },
-  i18n: { locales: ['en', 'zh'], defaultLocale: 'en' },
+  i18n: {
+    locales: ['en', 'zh'],
+    defaultLocale: 'en',
+    untranslated: 'hide',        // 缺少译文：'hide' 不发布（404）；'fallback' 以默认语言内容回退显示
+    rememberHomeLocale: false,   // 已登录且主动选过语言的用户打开首页时带到所选语言首页
+  },
   tenancy: {
     multiTenant: false,          // false = 仅个人空间；true = 允许团队 workspace
     maxWorkspacesPerUser: 5,
