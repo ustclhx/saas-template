@@ -5,7 +5,7 @@ description: 在本模板新增或修改公开静态页、法律页、博客与�
 
 # 新增静态页
 
-从含 `package.json` 与 `template.config.ts` 的项目根执行命令。下列路径均相对项目根；生成后的项目包 scope 可能改变，执行包命令前从 `apps/web/package.json` 读取真实包名，将示例的 `@saas/web` 替换。先读 `AGENTS.md`、`docs/02-project-structure.md`、`apps/web/src/features/seo/README.md` 和 `docs/seo-internal-linking.md`（站内链接规范）。
+从含 `package.json` 与 `template.config.ts` 的项目根执行命令。下列路径均相对项目根；生成后的项目包 scope 可能改变，执行包命令前从 `apps/web/package.json` 读取真实包名，将示例的 `@saas/web` 替换。先读 `AGENTS.md`、`docs/02-project-structure.md`、`apps/web/src/features/seo/README.md` 、`docs/seo-internal-linking.md`（站内链接规范）和 `docs/multilingual-seo.md`（多语言 SEO 规范：各语言单独写 TDK 与 slug，项目页面的本地化 slug 用 `SeoPage.alternates`）。
 
 ## 1. 检查设计稿，确定内容入口
 

@@ -10,7 +10,8 @@
 各语言路径不同的页面（本地化 slug）在清单中声明 `alternates`，hreflang 与语言切换器（`alternates.ts`）使用声明的地址。
 页面层级与主词（`parent`、`titleMain` 等）在构建时由 `linking.ts` 校验，项目自有页面在 `pages.project.ts` 注册。
 面包屑、BreadcrumbList 与内链区块的数据由 `page-links.ts` 计算，构建后的链接图检查为 `pnpm --filter @saas/web check:links`；
-字段、区块、规则分级、配置与 report／enforce 切换见 [站内链接规范](../../../../../docs/seo-internal-linking.md)。
+字段、区块、规则分级、配置与 report／enforce 切换见 [站内链接规范](../../../../../docs/seo-internal-linking.md)；
+语言前缀、hreflang、未翻译页与语言提示见 [多语言 SEO 规范](../../../../../docs/multilingual-seo.md)。
 
 ## 构建与部署
 
