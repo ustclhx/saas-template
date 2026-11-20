@@ -99,6 +99,11 @@ describe('defineTemplateConfig', () => {
       footerLinksMax: 10,
     })
     expect(defaults.bannedAnchors).toEqual([])
+    expect(defaults.languageCookies).toEqual([])
+    expect(
+      defineTemplateConfig({ app, seo: { linking: { languageCookies: ['ui_lang'] } } }).seo.linking
+        .languageCookies,
+    ).toEqual(['ui_lang'])
     expect(defaultBannedAnchors).toEqual(
       expect.arrayContaining([
         '点击这里',
@@ -187,6 +192,8 @@ describe('defineTemplateConfig', () => {
       { linking: { sisterDomains: ['https://west.example.com'] } },
       { linking: { series: [{ group: '/a' }, { group: '/a' }] } },
       { linking: { series: [{ group: '/a', orderBy: 'random' as 'date' }] } },
+      { linking: { languageCookies: ['bad name'] } },
+      { linking: { languageCookies: [''] } },
     ]
     for (const seo of bad)
       expect(() => defineTemplateConfig({ app, seo }), JSON.stringify(seo)).toThrow(

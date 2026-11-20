@@ -21,6 +21,10 @@ export interface ParsedPage {
   h1: string[]
   groups: string[]
   hasNavZone: boolean
+  /** `<link rel="alternate" hreflang>`，按出现顺序 */
+  alternates: { hreflang: string; href: string }[]
+  /** 服务端 HTML 中带 data-language-prompt／data-locale-suggestion* 的元素数 */
+  languagePrompts: number
 }
 export interface FetchedTarget {
   url: string
@@ -31,6 +35,7 @@ export interface FetchedTarget {
 export interface CheckedPage extends FetchedTarget {
   path: string
   parsed?: ParsedPage | undefined
+  setCookies?: string[] | undefined
 }
 export interface Finding {
   rule: string
@@ -56,6 +61,9 @@ export type ClassifiedHref =
 export const LINK_TO_NOINDEX_EXEMPT: ReadonlySet<string>
 export const FAILURE_RULES: readonly string[]
 export const WARNING_RULES: readonly string[]
+export const LANGUAGE_QUERY_PARAMS: readonly string[]
+export const LEGACY_LANGUAGE_COOKIES: readonly string[]
+export const ACCEPT_LANGUAGE_VARIANTS: readonly string[]
 export function resolveLinkingConfig(raw: unknown): LinkingConfig
 export function decodeEntities(text: string): string
 export function parsePage(html: string): ParsedPage
@@ -101,3 +109,37 @@ export function planLinkGraphs(input: {
 export function mergeGraphResults(
   entries: { host: string | null; result: LinkGraphResult }[],
 ): LinkGraphResult
+export function languageQuery(href: string, pageUrl: string): string | null
+export function normalizeBody(html: string): string
+export interface ProbeResponse {
+  status: number
+  location?: string | null
+  body?: string | null
+}
+export function responseSignature(response: ProbeResponse): {
+  status: number
+  location: string | null
+  lang: string | null
+  digest: string | null
+}
+export function compareAcceptLanguage(
+  path: string,
+  responses: (ProbeResponse & { acceptLanguage: string })[],
+): Finding[]
+export function languageCookies(
+  setCookies: readonly string[],
+  options?: { names?: readonly string[]; locales?: readonly string[] },
+): string[]
+export function checkDefaultPrefix(input: {
+  path: string
+  expected: string
+  url: string
+  status: number
+  location: string | null
+}): Finding | null
+export function acceptLanguagePaths(input: {
+  homes: readonly string[]
+  indexable: ReadonlySet<string>
+  samples: number
+}): string[]
+export function addFindings(result: LinkGraphResult, findings: readonly Finding[]): LinkGraphResult
