@@ -30,6 +30,6 @@
 
 ## 5. 文档与验收
 
-- [ ] 5.1 新增 `docs/seo-internal-linking.md`：字段、区块、规则分级、配置、项目自有页面注册方法；`apps/web/src/features/seo/README.md` 与 `new-static-page` 技能加入口
-- [ ] 5.2 用 xuanxue 的只读副本以 `report` 模式运行一次，记录孤岛与死链数量，作为升级说明的参考（不修改 xuanxue）
+- [x] 5.1 新增 `docs/seo-internal-linking.md`：字段、区块、规则分级、配置、项目自有页面注册方法；`apps/web/src/features/seo/README.md` 与 `new-static-page` 技能加入口
+- [x] 5.2 用 xuanxue 的只读副本以 `report` 模式运行一次，记录孤岛与死链数量，作为升级说明的参考（不修改 xuanxue）
 - [ ] 5.3 升级说明草稿要点（发版时写入 `docs/upgrades/`）：默认 `report`、迁移步骤、回退页 canonical 变化
