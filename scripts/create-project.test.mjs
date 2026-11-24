@@ -1177,9 +1177,23 @@ async function pluginFixture(t) {
         ...(app === 'web' ? { producers: [{ binding: 'STORY_QUEUE', queue: 'story' }] } : {}),
         consumers: [{ queue: 'core' }],
       },
+      durable_objects: {
+        bindings: [
+          {
+            name: 'STORY_AGENT',
+            class_name: 'StoryAgent',
+            ...(app === 'jobs' ? { script_name: 'web' } : {}),
+          },
+          ...(app === 'web' ? [{ name: 'STORY_ARCHIVE', class_name: 'StoryArchive' }] : []),
+          { name: 'CORE_ACTOR', class_name: 'CoreActor' },
+        ],
+      },
       ...(app === 'web'
         ? {
-            durable_objects: { bindings: [{ name: 'STORY_AGENT', class_name: 'StoryAgent' }] },
+            migrations: [
+              { tag: 'initial', new_sqlite_classes: ['StoryAgent', 'CoreActor'] },
+              { tag: 'story-only', new_sqlite_classes: ['StoryArchive'] },
+            ],
           }
         : {}),
     }
@@ -1202,11 +1216,14 @@ async function pluginFixture(t) {
     import { z } from 'zod'
     export default definePlugin({
       id: 'story-agent', targets: ['cloudflare'],
+      requires: { features: ['billing', 'credits'] },
       config: z.object({ prompts: z.object({ welcome: z.string() }) }),
       bindings: {
         web: [{ name: 'STORY_AGENT', kind: 'durable_object', className: 'StoryAgent' },
+          { name: 'STORY_ARCHIVE', kind: 'durable_object', className: 'StoryArchive' },
           { name: 'STORY_QUEUE', kind: 'queue' }],
-        jobs: [{ name: 'STORY_WORKFLOW', kind: 'workflow', className: 'StoryWorkflow' }],
+        jobs: [{ name: 'STORY_AGENT', kind: 'durable_object', className: 'StoryAgent' },
+          { name: 'STORY_WORKFLOW', kind: 'workflow', className: 'StoryWorkflow' }],
       },
       secrets: ['STORY_SECRET'],
     })`,
@@ -1230,7 +1247,7 @@ generatorTest('显式选择插件时保留默认配置段和各环境的插件�
   const example = await readFile(join(result.target, '.dev.vars.example'), 'utf8')
   assert.match(example, /^STORY_SECRET=$/m)
   const base = JSON.parse(await readFile(join(result.target, '.template-base.json'), 'utf8'))
-  assert.deepEqual(base.params.plugins, ['story-agent'])
+  assert.equal(Object.hasOwn(base.params, 'plugins'), false)
   for (const app of ['web', 'jobs']) {
     const source = await readFile(join(result.target, `apps/${app}/wrangler.jsonc`), 'utf8')
     assert.match(source, /^\/\/ 保留其他绑定/)
@@ -1241,6 +1258,12 @@ generatorTest('显式选择插件时保留默认配置段和各环境的插件�
         app === 'jobs' ? ['STORY_WORKFLOW', 'CORE_WORKFLOW'] : ['CORE_WORKFLOW'],
       )
       assert.equal(env.ai, undefined)
+      assert.ok(env.durable_objects.bindings.some(({ name }) => name === 'STORY_AGENT'))
+      if (app === 'web')
+        assert.deepEqual(
+          env.migrations.map(({ tag }) => tag),
+          ['initial', 'story-only'],
+        )
     }
   }
   assert.ok(existsSync(join(result.target, 'plugins/media/plugin.ts')))
@@ -1248,6 +1271,7 @@ generatorTest('显式选择插件时保留默认配置段和各环境的插件�
 
 generatorTest('图片自动启用 media，selfhost 剔除未选插件的绑定并拒绝显式选择', async (t) => {
   const f = await pluginFixture(t)
+  const notices = t.mock.method(console, 'warn', () => {})
   await assert.rejects(
     createProject({ ...f.input, target: 'selfhost', plugins: 'story-agent' }, f.source),
     /story-agent.*只支持 cloudflare/,
@@ -1261,6 +1285,7 @@ generatorTest('图片自动启用 media，selfhost 剔除未选插件的绑定�
   assert.match(config, /plugins: \{ "media": \{ providers: \["fal"\] \} \}/)
   assert.match(result.report, /### media\n[\s\S]*配置密钥 `FAL_KEY`/)
   assert.doesNotMatch(result.report, /STORY_SECRET|### story-agent|配置绑定/)
+  assert.match(notices.mock.calls[0].arguments[0], /story-agent.*仅支持 cloudflare/)
   const base = JSON.parse(await readFile(join(result.target, '.template-base.json'), 'utf8'))
   assert.equal(Object.hasOwn(base.params, 'plugins'), false)
   const wrangler = parseJsonc(
@@ -1268,7 +1293,11 @@ generatorTest('图片自动启用 media，selfhost 剔除未选插件的绑定�
   )
   for (const env of [wrangler, wrangler.env.staging, wrangler.env.production]) {
     assert.equal(env.ai, undefined)
-    assert.equal(env.durable_objects, undefined)
+    assert.deepEqual(
+      env.durable_objects.bindings.map(({ name }) => name),
+      ['CORE_ACTOR'],
+    )
+    assert.deepEqual(env.migrations, [{ tag: 'initial', new_sqlite_classes: ['CoreActor'] }])
     assert.deepEqual(env.queues, { consumers: [{ queue: 'core' }] })
     assert.deepEqual(
       env.workflows.map(({ binding }) => binding),
@@ -1278,10 +1307,58 @@ generatorTest('图片自动启用 media，selfhost 剔除未选插件的绑定�
   const jobs = parseJsonc(await readFile(join(result.target, 'apps/jobs/wrangler.jsonc'), 'utf8'))
   for (const env of [jobs, jobs.env.staging, jobs.env.production]) {
     assert.deepEqual(
+      env.durable_objects.bindings.map(({ name }) => name),
+      ['CORE_ACTOR'],
+    )
+    assert.deepEqual(
       env.workflows.map(({ binding }) => binding),
       ['AI_MEDIA_WORKFLOW', 'CORE_WORKFLOW'],
     )
   }
+})
+
+generatorTest('关闭计费或积分时自动跳过不满足依赖的插件及其 Durable Object 配置', async (t) => {
+  const notices = t.mock.method(console, 'warn', () => {})
+  for (const creditsEnabled of ['true', 'false']) {
+    const f = await pluginFixture(t)
+    const result = await createProject(
+      { ...f.input, ai: '', 'billing-enabled': 'false', 'credits-enabled': creditsEnabled },
+      f.source,
+    )
+    assert.deepEqual(result.options.plugins, [])
+    assert.match(await readFile(join(result.target, 'template.config.ts'), 'utf8'), /plugins: \{\}/)
+    assert.doesNotMatch(result.report, /STORY_SECRET|story-agent/)
+    assert.ok(existsSync(join(result.target, 'plugins/story-agent/plugin.ts')))
+    for (const app of ['web', 'jobs']) {
+      const wrangler = parseJsonc(
+        await readFile(join(result.target, `apps/${app}/wrangler.jsonc`), 'utf8'),
+      )
+      for (const env of [wrangler, wrangler.env.staging, wrangler.env.production]) {
+        assert.deepEqual(
+          env.durable_objects.bindings.map(({ name }) => name),
+          ['CORE_ACTOR'],
+        )
+        assert.deepEqual(
+          env.migrations,
+          app === 'web' ? [{ tag: 'initial', new_sqlite_classes: ['CoreActor'] }] : undefined,
+        )
+      }
+    }
+  }
+  assert.deepEqual(
+    notices.mock.calls.map(({ arguments: [message] }) => message),
+    [
+      '已跳过插件 story-agent，需要启用 billing',
+      '已跳过插件 story-agent，需要启用 billing、credits',
+    ],
+  )
+})
+
+generatorTest('显式空插件列表覆盖模板默认插件并写入模板基准', async (t) => {
+  const f = await pluginFixture(t)
+  const result = await createProject({ ...f.input, ai: 'text', plugins: '' }, f.source)
+  assert.deepEqual(result.options.plugins, [])
+  assert.deepEqual((await readBase(result.target)).params.plugins, [])
 })
 
 generatorTest('文件桶签名白名单与生成项目的桶名一致，备份桶名不受影响', async (t) => {

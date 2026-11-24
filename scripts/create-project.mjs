@@ -222,7 +222,41 @@ function appValues(source) {
   )
 }
 
-export function projectOptions(input, manifests = []) {
+function selectPlugins(manifests, ids, deployment, features) {
+  const selected = new Map(
+    manifests.filter(({ id }) => ids.includes(id)).map((plugin) => [plugin.id, plugin]),
+  )
+  const skipped = []
+  const remove = (id, reason) => {
+    selected.delete(id)
+    skipped.push({ id, reason })
+  }
+  for (const [id, plugin] of selected) {
+    const missing = (plugin.requires?.features ?? []).filter(
+      (feature) => features[feature] !== true,
+    )
+    if (!plugin.targets.includes(deployment)) {
+      remove(id, `仅支持 ${plugin.targets.join(' / ')}`)
+    } else if (missing.length) {
+      remove(id, `需要启用 ${missing.join('、')}`)
+    }
+  }
+  // 一个插件停用后，它的依赖者也必须停用，与清单或配置中的顺序无关。
+  let changed
+  do {
+    changed = false
+    for (const [id, plugin] of selected) {
+      const missing = (plugin.requires?.plugins ?? []).filter((required) => !selected.has(required))
+      if (missing.length) {
+        remove(id, `需要插件 ${missing.join('、')}`)
+        changed = true
+      }
+    }
+  } while (changed)
+  return { selected: [...selected.values()], skipped }
+}
+
+export function projectOptions(input, manifests = [], templatePlugins = []) {
   if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(input.name ?? '') || input.name.length > 40) {
     throw new Error('名称必须为小写字母开头的 kebab-case，最多 40 字符')
   }
@@ -276,30 +310,51 @@ export function projectOptions(input, manifests = []) {
   if (billingEnabled && !creditsEnabled) throw new Error('启用 billing 必须启用 credits')
   if (!billingEnabled && ai.length)
     throw new Error('关闭 billing 时需使用 --ai "" 关闭 AI（当前额度依赖套餐）')
-  const hasMedia = manifests.some(({ id }) => id === 'media')
-  const mediaKinds = ai.includes('image') || ai.includes('video')
-  const defaultPlugins = hasMedia && mediaKinds ? ['media'] : []
-  const plugins = [
-    ...new Set([
-      ...defaultPlugins,
-      ...list(
-        input.plugins ?? '',
-        manifests.map(({ id }) => id),
-        'plugins',
-      ),
-    ]),
-  ].sort()
-  const selectedPlugins = manifests.filter(({ id }) => plugins.includes(id))
-  for (const manifest of selectedPlugins) {
-    const deployment = target === 'selfhost' ? 'node' : 'cloudflare'
-    if (!manifest.targets.includes(deployment))
-      throw new Error(
-        `插件 ${manifest.id} 只支持 ${manifest.targets.join(' / ')}，不能用于 ${target}`,
-      )
-    for (const required of manifest.requires?.plugins ?? []) {
-      if (!plugins.includes(required))
-        throw new Error(`插件 ${manifest.id} 依赖 ${required}，请在 --plugins 中一并选择`)
+  const features = list(input.features ?? 'blog', featureNames, 'features')
+  const marketing = boolean(input.marketing ?? 'true', 'marketing')
+  const i18n = boolean(input.i18n ?? 'true', 'i18n')
+  const pluginFeatures = {
+    billing: billingEnabled,
+    credits: creditsEnabled,
+    marketing,
+    i18n,
+    'ai.text': ai.includes('text'),
+    'ai.image': ai.includes('image'),
+    'ai.video': ai.includes('video'),
+    publicApi: features.includes('publicApi'),
+  }
+  const available = manifests.map(({ id }) => id)
+  const includeMedia =
+    available.includes('media') && (pluginFeatures['ai.image'] || pluginFeatures['ai.video'])
+  const implicitMedia = includeMedia ? ['media'] : []
+  const templateDefaults = templatePlugins.filter((id) => id !== 'media')
+  const deployment = target === 'selfhost' ? 'node' : 'cloudflare'
+  const defaults = selectPlugins(
+    manifests,
+    [...templateDefaults, ...implicitMedia],
+    deployment,
+    pluginFeatures,
+  )
+  let selection = defaults
+  if (input.plugins !== undefined) {
+    const requested = list(input.plugins, available, 'plugins')
+    for (const plugin of manifests) {
+      if (requested.includes(plugin.id) && !plugin.targets.includes(deployment)) {
+        throw new Error(
+          `插件 ${plugin.id} 只支持 ${plugin.targets.join(' / ')}，不能用于 ${target}`,
+        )
+      }
     }
+    selection = selectPlugins(
+      manifests,
+      [...requested, ...implicitMedia],
+      deployment,
+      pluginFeatures,
+    )
+  }
+  if (includeMedia && !selection.selected.some(({ id }) => id === 'media')) {
+    const { reason } = selection.skipped.find(({ id }) => id === 'media')
+    throw new Error(`media ${reason}，请关闭图片和视频 AI`)
   }
   return {
     name: input.name,
@@ -309,23 +364,24 @@ export function projectOptions(input, manifests = []) {
     theme,
     ai,
     manifests,
-    selectedPlugins,
-    plugins,
-    defaultPlugins,
+    selectedPlugins: selection.selected,
+    skippedPlugins: selection.skipped,
+    plugins: selection.selected.map(({ id }) => id).sort(),
+    defaultPlugins: defaults.selected.map(({ id }) => id).sort(),
     mediaProviders: list(
       input['media-providers'] ?? 'fal,workers-ai',
       mediaProviderNames,
       'media-providers',
     ),
-    features: list(input.features ?? 'blog', featureNames, 'features'),
+    features,
     billing: list(input.billing ?? 'stripe,paypal', ['stripe', 'paypal'], 'billing'),
     oauth: list(input.oauth ?? 'google,github', ['google', 'github'], 'oauth'),
     turnstile: boolean(input.turnstile ?? 'true', 'turnstile'),
     multiTenant: boolean(input['multi-tenant'] ?? 'false', 'multi-tenant'),
     billingEnabled,
     creditsEnabled,
-    marketing: boolean(input.marketing ?? 'true', 'marketing'),
-    i18n: boolean(input.i18n ?? 'true', 'i18n'),
+    marketing,
+    i18n,
     analytics,
     plausibleDomain,
     plausibleHost: plausibleHost ? new URL(plausibleHost).origin : '',
@@ -333,6 +389,10 @@ export function projectOptions(input, manifests = []) {
     imageNamespace,
     output: resolve(input.output ?? join('..', input.name)),
   }
+}
+
+function templatePluginField(source) {
+  return configCall(source, 'defineTemplateConfig').members.find(({ key }) => key === 'plugins')
 }
 
 function pluginConfig(source, options, original, originalField) {
@@ -362,9 +422,7 @@ function pluginConfig(source, options, original, originalField) {
 }
 
 function templateConfig(source, options) {
-  const plugins = configCall(source, 'defineTemplateConfig').members.find(
-    ({ key }) => key === 'plugins',
-  )
+  const plugins = templatePluginField(source)
   const core = plugins
     ? `${source.slice(0, plugins.valueStart)}{}${source.slice(plugins.end)}`
     : source
@@ -500,7 +558,7 @@ function wranglerConfig(source, options, app) {
       (binding) =>
         !retained.some(({ kind, name }) => binding.kind === kind && binding.name === name),
     )
-  result = prunePluginBindings(result, disabled)
+  result = prunePluginBindings(result, disabled, retained)
   if (app === 'web' && !options.turnstile) {
     result = result.replace(/,?\s*"TURNSTILE_SITE_KEY"\s*:\s*"[^"]*"/g, '')
   }
@@ -840,7 +898,12 @@ export async function postprocessProject(target, { source = root, reference = ta
 
 export async function createProject(input, source = root) {
   const sourcePath = await realpath(source)
-  const options = projectOptions(input, await loadProjectPlugins(sourcePath))
+  const config = await readFile(join(sourcePath, 'template.config.ts'), 'utf8')
+  const pluginField = templatePluginField(config)
+  const defaults = pluginField
+    ? staticCollection(config, pluginField.valueStart).members.map(({ key }) => key)
+    : []
+  const options = projectOptions(input, await loadProjectPlugins(sourcePath), defaults)
   const state = sourceState(sourcePath)
   const lexicalRel = relative(sourcePath, options.output)
   if (
@@ -861,7 +924,6 @@ export async function createProject(input, source = root) {
   } catch (error) {
     if (error.code !== 'ENOENT') throw error
   }
-  const config = await readFile(join(sourcePath, 'template.config.ts'), 'utf8')
   const manifest = JSON.parse(await readFile(join(sourcePath, 'package.json'), 'utf8'))
   const replace = await replacements(sourcePath, manifest.name, options, appValues(config))
   await mkdir(target)
@@ -1142,6 +1204,7 @@ export async function createProject(input, source = root) {
   }
   await writeGenerated('PROJECT_SETUP.md', report)
   await postprocessProject(target, { source: sourcePath })
+  for (const { id, reason } of options.skippedPlugins) console.warn(`已跳过插件 ${id}，${reason}`)
   return { target, options, checklist, report }
 }
 
@@ -1183,7 +1246,7 @@ export function verifyProject(
   }
 }
 
-const help = `用法：pnpm create-project [参数]\n无参数时交互输入；非交互必须提供 --name 与 --domain。\n  --name acme --domain acme.example --target cloudflare|selfhost --output /tmp/acme\n  --image-namespace ghcr.io/owner/acme（selfhost，默认 ghcr.io/configure-owner/acme）\n  --locale en|zh --support-email support@acme.example\n  --theme ${themeNames.join('|')}（默认 neutral）\n  --analytics plausible|off（默认 plausible；长期词站可 off）--plausible-domain acme --plausible-host https://plausible.example\n  --ai text,image,video --features blog,docs,waitlist,newsletter,publicApi\n  --plugins media,agents（按清单选择；图片或视频自动启用 media）\n  --media-providers fal,workers-ai\n  --billing stripe,paypal --billing-enabled true|false --credits-enabled true|false\n  --marketing true|false --i18n true|false --oauth google,github\n  --turnstile true|false --multi-tenant true|false\n旧 --target <path> 已迁移至 --output <path>；部署目标默认 cloudflare。\n列表参数传空字符串可关闭全部；默认 ai / billing / oauth 全开，features=blog。\n生成后使用 Biome 格式化并整理 import。默认安装依赖并运行 typecheck 与单元测试；--skip-check 只跳过安装与自检。\n  --help 显示帮助\n`
+const help = `用法：pnpm create-project [参数]\n无参数时交互输入；非交互必须提供 --name 与 --domain。\n  --name acme --domain acme.example --target cloudflare|selfhost --output /tmp/acme\n  --image-namespace ghcr.io/owner/acme（selfhost，默认 ghcr.io/configure-owner/acme）\n  --locale en|zh --support-email support@acme.example\n  --theme ${themeNames.join('|')}（默认 neutral）\n  --analytics plausible|off（默认 plausible；长期词站可 off）--plausible-domain acme --plausible-host https://plausible.example\n  --ai text,image,video --features blog,docs,waitlist,newsletter,publicApi\n  --plugins media,agents（省略时按目标和依赖筛选模板默认插件；图片或视频自动启用 media）\n  --media-providers fal,workers-ai\n  --billing stripe,paypal --billing-enabled true|false --credits-enabled true|false\n  --marketing true|false --i18n true|false --oauth google,github\n  --turnstile true|false --multi-tenant true|false\n旧 --target <path> 已迁移至 --output <path>；部署目标默认 cloudflare。\n列表参数传空字符串可关闭全部；默认 ai / billing / oauth 全开，features=blog。\n生成后使用 Biome 格式化并整理 import。默认安装依赖并运行 typecheck 与单元测试；--skip-check 只跳过安装与自检。\n  --help 显示帮助\n`
 
 export async function main() {
   const { values } = parseArgs({
@@ -1238,7 +1301,7 @@ export async function main() {
         ['locale', '默认语言', 'en'],
         ['theme', `主题预设（${themeNames.join('/')}）`, 'neutral'],
         ['ai', 'AI 功能（逗号列表，- 关闭全部）', 'text,image,video'],
-        ['plugins', '额外插件（逗号列表，图片或视频自动启用 media）', ''],
+        ['plugins', '插件（留空使用模板默认值，- 仅保留自动启用的 media）', ''],
         ['media-providers', '媒体服务商（逗号列表，- 关闭全部）', 'fal,workers-ai'],
         ['features', '可选功能（逗号列表，- 关闭全部）', 'blog'],
         ['billing', '支付（逗号列表，- 关闭全部）', 'stripe,paypal'],
@@ -1269,7 +1332,7 @@ export async function main() {
             `${label}${available.length ? `，可选 ${available.join('/')}` : ''}${suggestion ? ` [${suggestion}]` : ''}：`,
           )
         ).trim()
-        values[key] = answer === '-' ? '' : answer || suggestion
+        if (key !== 'plugins' || answer) values[key] = answer === '-' ? '' : answer || suggestion
       }
     } finally {
       rl.close()

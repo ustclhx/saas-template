@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { createProject, projectOptions } from '../create-project.mjs'
+import { createProject } from '../create-project.mjs'
 import { normalizeParams, paramsToArgs, readBaseRecord } from '../template-base.mjs'
 import { cloneTemplate, generateAt } from './generate.mjs'
 import { inferCommand, inferParams, runInfer } from './infer.mjs'
@@ -246,6 +246,46 @@ test('infers plugin keys and migrated media providers without running the config
   const implicit = inferParams(f.project, await commit())
   assert.deepEqual(implicit.plugins, ['media'])
   assert.equal(paramsToArgs(implicit.params).includes('--plugins'), false)
+
+  await files(f.project, { 'plugins/other-plugin/plugin.ts': 'unused manifest\n' })
+  const pinned = inferParams(f.project, await commit())
+  assert.deepEqual(pinned.params.plugins, ['media'])
+})
+
+test('rebuilds a project that explicitly disabled all default plugins', async (t) => {
+  const f = await fixture(t)
+  f.config.app = { ...f.config.app, name: 'acme', url: 'https://acme.example' }
+  f.config.ai.video = false
+  delete f.config.ai.mediaProviders
+  f.config.plugins = { agents: {} }
+  const config = JSON.stringify(f.config, null, 2).replace(/^(\s*)"(\w+)":/gm, '$1$2:')
+  const createProjectUrl = new URL('../create-project.mjs', import.meta.url).href
+  await files(f.template, {
+    'template.config.ts': `export default defineTemplateConfig(${config})\n`,
+    'plugins/agents/plugin.ts': `export default definePlugin({ id: 'agents', targets: ['cloudflare'] })\n`,
+    'scripts/create-project.mjs': `import { fileURLToPath } from 'node:url'
+import { createProject } from ${JSON.stringify(createProjectUrl)}
+const args = process.argv.slice(2, -1)
+const input = {}
+for (let i = 0; i < args.length; i += 2) input[args[i].slice(2)] = args[i + 1]
+await createProject(input, fileURLToPath(new URL('..', import.meta.url)))
+`,
+  })
+  const target = f.commit('enable agents by default', '2026-11-01T12:00:00Z')
+  const project = join(f.root, 'no-plugins')
+  const generated = await createProject(
+    { name: 'acme', domain: 'acme.example', ai: 'text', plugins: '', output: project },
+    f.template,
+  )
+  assert.deepEqual(generated.options.defaultPlugins, ['agents'])
+  await rm(join(project, '.template-base.json'))
+  git(project, 'init', '--quiet', '--initial-branch=main')
+  git(project, 'add', '--all')
+  gitAt('2026-11-01T12:00:00Z', project, 'commit', '--quiet', '-m', 'generated')
+
+  const result = await runInfer(options(f, { project, write: target, threshold: 0 }))
+  assert.deepEqual(result.record.params.plugins, [])
+  assert.equal(result.candidates[0].score, 0)
 })
 
 test('infers an explicit plugin selection across commits before plugin support', async (t) => {
@@ -471,17 +511,17 @@ test('real generator roundtrip recovers Cloudflare and selfhost parameters', asy
         args[index * 2 + 1],
       ]),
     )
-    await createProject(
+    const generated = await createProject(
       { ...input, output: project },
       fileURLToPath(new URL('../../', import.meta.url)),
     )
     git(project, 'init', '--quiet', '--initial-branch=main')
     git(project, 'add', '--all')
     git(project, 'commit', '--quiet', '-m', 'generated')
-    assert.deepEqual(
-      inferParams(project, git(project, 'rev-parse', 'HEAD')).params,
-      normalizeParams(projectOptions(input)),
-    )
+    if (generated.options.manifests.some(({ id }) => id !== 'media')) {
+      expected.plugins = generated.options.plugins
+    }
+    assert.deepEqual(inferParams(project, git(project, 'rev-parse', 'HEAD')).params, expected)
   }
 })
 

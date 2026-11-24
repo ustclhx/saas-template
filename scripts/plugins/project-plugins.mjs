@@ -51,7 +51,7 @@ const wranglerBindings = {
   workflow: ['workflows'],
 }
 
-function dropMembers(source, collection, removed) {
+function removalEdits(collection, removed) {
   const edits = []
   const { members } = collection
   for (let index = 0; index < members.length; index++) {
@@ -60,14 +60,22 @@ function dropMembers(source, collection, removed) {
     while (removed.has(members[index + 1])) index++
     const last = members[index]
     const before = members[first - 1]
+    if (last.comma === undefined && before) {
+      edits.push({ start: before.comma, end: before.comma + 1, value: '' })
+    }
     edits.push({
-      start: last.comma === undefined && before ? before.comma : members[first].start,
+      start: members[first].start,
       end: last.comma === undefined ? last.end : last.comma + 1,
+      value: '',
     })
   }
   return edits
-    .reverse()
-    .reduce((text, { start, end }) => text.slice(0, start) + text.slice(end), source)
+}
+
+function applyEdits(source, edits) {
+  return edits
+    .sort((a, b) => b.start - a.start)
+    .reduce((text, { start, end, value }) => text.slice(0, start) + value + text.slice(end), source)
 }
 
 function dropBindingKind(source, scopePath, fieldPath, names, nameKey) {
@@ -84,16 +92,104 @@ function dropBindingKind(source, scopePath, fieldPath, names, nameKey) {
   if (source[field.valueStart] === '[') {
     const removed = new Set(collection.members.filter((member) => names.has(bindingName(member))))
     if (!removed.size) return source
-    if (removed.size < collection.members.length) return dropMembers(source, collection, removed)
+    if (removed.size < collection.members.length) {
+      return applyEdits(source, removalEdits(collection, removed))
+    }
   } else if (!names.has(bindingName(field))) return source
 
   // 整段只含停用绑定时可删除字段；共享的 queues 等容器保留其他配置。
   let index = parents.length - 1
   while (index > scopePath.length && parents[index].collection.members.length === 1) index--
-  return dropMembers(source, parents[index].collection, new Set([parents[index].field]))
+  return applyEdits(
+    source,
+    removalEdits(parents[index].collection, new Set([parents[index].field])),
+  )
 }
 
-export function prunePluginBindings(source, disabled) {
+// 从目标类向前追溯迁移，删除同一个 Durable Object 的旧类名及其创建操作。
+const migrationOperations = [
+  'transferred_classes',
+  'new_sqlite_classes',
+  'new_classes',
+  'renamed_classes',
+  'deleted_classes',
+]
+
+function pruneMigration(source, disabledClasses, historicalClasses) {
+  const migration = staticCollection(source)
+  const removed = new Set()
+  const edits = []
+  let hasRetainedOperation = false
+  for (const kind of migrationOperations) {
+    const field = migration.members.find(({ key }) => key === kind)
+    if (!field) continue
+    const operations = staticCollection(source, field.valueStart)
+    const omitted = new Set()
+    for (const operation of operations.members.toReversed()) {
+      const value = staticValue(source.slice(operation.valueStart, operation.end))
+      if (kind === 'deleted_classes') {
+        if (!disabledClasses.has(value)) continue
+        historicalClasses.add(value)
+      } else {
+        const target = typeof value === 'string' ? value : value.to
+        if (!historicalClasses.delete(target)) continue
+        if (kind === 'renamed_classes') historicalClasses.add(value.from)
+      }
+      omitted.add(operation)
+    }
+    if (omitted.size < operations.members.length) hasRetainedOperation = true
+    if (!omitted.size) continue
+    if (omitted.size === operations.members.length) removed.add(field)
+    else edits.push(...removalEdits(operations, omitted))
+  }
+  if (!removed.size && !edits.length) return source
+  return hasRetainedOperation
+    ? applyEdits(source, [...edits, ...removalEdits(migration, removed)])
+    : null
+}
+
+function pruneMigrations(source, scope, classes, inheritsRootMigrations = false) {
+  if (!classes.size) return source
+  let collection = staticCollection(source)
+  for (const key of scope) {
+    const field = collection.members.find((member) => member.key === key)
+    collection = staticCollection(source, field.valueStart)
+  }
+  const field = collection.members.find(({ key }) => key === 'migrations')
+  if (!field) return source
+  const migrations = staticCollection(source, field.valueStart)
+  const removed = new Set()
+  const edits = []
+  const historicalClasses = new Set(classes)
+  for (const migration of migrations.members.toReversed()) {
+    const original = source.slice(migration.valueStart, migration.end)
+    const value = pruneMigration(original, classes, historicalClasses)
+    if (value === null) removed.add(migration)
+    else if (value !== original)
+      edits.push({ start: migration.valueStart, end: migration.end, value })
+  }
+  if (!edits.length && !removed.size) return source
+  // Wrangler 环境移除空数组后会继承根迁移，保留原有的覆盖行为。
+  if (!inheritsRootMigrations && removed.size === migrations.members.length) {
+    return applyEdits(source, removalEdits(collection, new Set([field])))
+  }
+  return applyEdits(source, [...edits, ...removalEdits(migrations, removed)])
+}
+
+function unusedClasses(classes, configs) {
+  const unused = new Set(classes)
+  for (const config of configs) {
+    for (const binding of config.durable_objects?.bindings ?? []) {
+      if (binding.script_name === undefined) unused.delete(binding.class_name)
+    }
+  }
+  return unused
+}
+
+export function prunePluginBindings(source, disabled, retained = []) {
+  if (!disabled.length) return source
+  const environments = Object.keys(staticValue(source).env ?? {})
+  const scopes = [[], ...environments.map((name) => ['env', name])]
   let result = source
   for (const [kind, fields] of Object.entries(wranglerBindings)) {
     const names = new Set(
@@ -101,9 +197,35 @@ export function prunePluginBindings(source, disabled) {
     )
     if (!names.size) continue
     const nameKey = kind === 'rate_limit' || kind === 'durable_object' ? 'name' : 'binding'
-    for (const scope of [[], ['env', 'staging'], ['env', 'production']]) {
+    for (const scope of scopes) {
       result = dropBindingKind(result, scope, fields, names, nameKey)
     }
+  }
+  const classes = new Set(
+    disabled
+      .filter(({ kind, className }) => kind === 'durable_object' && className)
+      .map(({ className }) => className),
+  )
+  for (const { kind, className } of retained) {
+    if (kind === 'durable_object') classes.delete(className)
+  }
+  if (!classes.size) return result
+  const config = staticValue(result)
+  const inheritingEnvironments = Object.values(config.env ?? {}).filter(
+    ({ migrations }) => !migrations,
+  )
+  const rootClasses = unusedClasses(classes, [config, ...inheritingEnvironments])
+  result = pruneMigrations(result, [], rootClasses)
+  const rootHasMigrations = Boolean(staticValue(result).migrations?.length)
+  for (const name of environments) {
+    const environment = config.env[name]
+    if (!environment.migrations?.length) continue
+    result = pruneMigrations(
+      result,
+      ['env', name],
+      unusedClasses(classes, [environment]),
+      rootHasMigrations,
+    )
   }
   return result
 }

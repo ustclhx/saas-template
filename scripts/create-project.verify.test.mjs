@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { test } from 'node:test'
 import { scanArtifacts } from './plugins/check-artifacts.mjs'
+import { parseJsonc } from './production/check-wrangler-envs.mjs'
 
 const generatorSkip = existsSync(new URL('./create-project.mjs', import.meta.url))
   ? false
@@ -16,10 +17,12 @@ const { createProject, verifyProject } = generatorSkip ? {} : await import('./cr
 test('真实副本通过 check、类型检查、单元测试和目标构建', {
   skip: generatorSkip,
 }, async (t) => {
-  assert.ok(
-    existsSync(new URL('../plugins/media/plugin.ts', import.meta.url)),
-    '验收需要已合并的 media 插件',
-  )
+  for (const id of ['media', 'agents']) {
+    assert.ok(
+      existsSync(new URL(`../plugins/${id}/plugin.ts`, import.meta.url)),
+      `验收需要已合并的 ${id} 插件`,
+    )
+  }
   const temp = await mkdtemp(join(tmpdir(), 'bootstrap-verify-'))
   t.after(() => rm(temp, { recursive: true, force: true }))
   const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
@@ -32,6 +35,13 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
   let selfhostSource
   for (const scenario of [
     { id: 'cf', label: 'Cloudflare 默认', locale: 'en' },
+    {
+      id: 'billing-off',
+      label: 'Cloudflare 关闭计费',
+      locale: 'en',
+      ai: '',
+      'billing-enabled': 'false',
+    },
     {
       id: 'selfhost',
       label: 'selfhost 默认（blue 主题）',
@@ -46,6 +56,7 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
       target: 'selfhost',
       locale: 'zh',
       ai: '',
+      plugins: '',
       'billing-enabled': 'false',
       'credits-enabled': 'false',
       marketing: 'false',
@@ -53,8 +64,8 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
     },
   ]) {
     const webBuild = scenario.marketing === 'false'
-    const cloudflareBuild = scenario.id === 'cf'
     const nodeBuild = scenario.target === 'selfhost'
+    const cloudflareBuild = !nodeBuild
     const builds = cloudflareBuild
       ? 'Cloudflare 构建'
       : webBuild
@@ -243,8 +254,28 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
         )
         assert.doesNotMatch(result.report, /billing:seed|STRIPE_SECRET|PAYPAL_CLIENT/)
       }
-      assert.ok(existsSync(join(result.target, 'plugins/media/plugin.ts')))
-      assert.deepEqual(result.options.plugins, scenario.id === 'minimal' ? [] : ['media'])
+      for (const id of ['media', 'agents']) {
+        assert.ok(existsSync(join(result.target, `plugins/${id}/plugin.ts`)))
+      }
+      assert.equal(result.options.plugins.includes('media'), scenario.ai !== '')
+      assert.equal(result.options.plugins.includes('agents'), scenario.id === 'cf')
+      if (scenario.id === 'minimal') assert.deepEqual(result.options.plugins, [])
+      for (const app of ['web', 'jobs']) {
+        const wrangler = parseJsonc(
+          await readFile(join(result.target, `apps/${app}/wrangler.jsonc`), 'utf8'),
+        )
+        if (scenario.id === 'cf') {
+          for (const scope of [wrangler, wrangler.env.staging, wrangler.env.production]) {
+            assert.ok(
+              scope.durable_objects.bindings.some(({ name }) => name === 'AGENT_CONVERSATION'),
+            )
+          }
+          if (app === 'web')
+            assert.match(JSON.stringify(wrangler.migrations), /"AgentConversation"/)
+        } else {
+          assert.doesNotMatch(JSON.stringify(wrangler), /AGENT_CONVERSATION|AgentConversation/)
+        }
+      }
       // pnpm check 用 Git 索引枚举文件；保留无提交副本再次生成的测试条件。
       const gitOptions = { cwd: result.target }
       execFileSync('git', ['init', '--quiet'], gitOptions)
@@ -254,12 +285,18 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
       } finally {
         await rm(join(result.target, '.git'), { recursive: true, force: true })
       }
-      if (scenario.id === 'minimal') {
+      if (scenario.ai === '') {
         const hits = scanArtifacts(
-          ['AiMediaWorkflow', 'fal.media', 'MediaSubmitPage', 'MediaTasksPage'],
+          [
+            'AiMediaWorkflow',
+            'fal.media',
+            'MediaSubmitPage',
+            'MediaTasksPage',
+            'AgentConversation',
+          ],
           {
             root: result.target,
-            only: ['web', 'web-node', 'jobs-node'],
+            only: scenario.id === 'minimal' ? ['web', 'web-node', 'jobs-node'] : ['web', 'jobs'],
           },
         )
         for (const [artifact, matches] of Object.entries(hits)) {

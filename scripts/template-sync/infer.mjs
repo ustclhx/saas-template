@@ -235,6 +235,13 @@ export function inferParams(project, commit, overrides = []) {
     target: params.target,
     turnstile: params.turnstile,
   })
+  // 副本保留全部插件清单，无法判断源模板默认启用了哪些非媒体插件。
+  if (
+    params.plugins !== undefined &&
+    files.some((path) => /^plugins\/(?!media\/)[^/]+\/plugin\.ts$/.test(path))
+  ) {
+    normalized.plugins = params.plugins
+  }
   if (!Object.hasOwn(params, 'theme')) delete normalized.theme
   paramsToArgs(normalized)
   return { params: normalized, sources, files, plugins: params.plugins }
