@@ -8,9 +8,11 @@ export default definePlugin({
   id: 'agents',
   targets: ['cloudflare'],
   requires: { features: ['billing', 'credits'] },
-  entries: { worker: 'src/worker/index.ts' },
+  routes: { dir: 'routes', mount: '' },
+  entries: { web: 'src/web/web.ts', worker: 'src/worker/index.ts' },
   bindings: {
     web: [{ name: 'AGENT_CONVERSATION', kind: 'durable_object', className: 'AgentConversation' }],
   },
+  messages: 'messages',
   config: agentsConfigSchema,
 })

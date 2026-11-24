@@ -11,7 +11,7 @@ import {
   type ToolCallLabels,
   type ToolCallState,
 } from '@saas/ui/chat'
-import { getToolName, isToolUIPart } from 'ai'
+import { type DynamicToolUIPart, getToolName, isToolUIPart, type ToolUIPart } from 'ai'
 import type { ReactNode } from 'react'
 import { m } from '../../paraglide/messages.js'
 import webPlugins from '../../plugins.gen.ts'
@@ -65,7 +65,7 @@ export function chatMarkdownLabels(): ChatMarkdownLabels {
   }
 }
 
-const toolLabels = (): ToolCallLabels => ({
+export const toolLabels = (): ToolCallLabels => ({
   pending: m.chat_ui_tool_pending(),
   running: m.chat_ui_tool_running(),
   done: m.chat_ui_tool_done(),
@@ -99,6 +99,15 @@ export function toolCallState(state: ToolPartState): ToolCallState {
 
 type Part = ChatUIMessage['parts'][number]
 
+/** 工具调用部件（`tool-<name>` 或 `dynamic-tool`） */
+export type ToolPartView = ToolUIPart | DynamicToolUIPart
+
+/**
+ * 替换某个工具部件的渲染（如 agent 对话的确认卡片）；返回 `undefined` 时按默认的 ToolCall 卡片渲染。
+ * `live`：所在回复仍在生成。
+ */
+export type RenderToolPart = (part: ToolPartView, live: boolean) => ReactNode | undefined
+
 /** 正文段与工具调用按出现顺序排列；相邻正文段合并（重试后的续写与首段连续） */
 type Block = { kind: 'text'; key: string; text: string } | { kind: 'tool'; key: string; part: Part }
 
@@ -116,8 +125,18 @@ function contentBlocks(message: ChatUIMessage): Block[] {
   return blocks.filter((block) => block.kind !== 'text' || block.text)
 }
 
-function ToolPart({ part, live }: { part: Part; live: boolean }) {
+function ToolPart({
+  part,
+  live,
+  renderToolPart,
+}: {
+  part: Part
+  live: boolean
+  renderToolPart: RenderToolPart | undefined
+}) {
   if (!isToolUIPart(part)) return null
+  const custom = renderToolPart?.(part, live)
+  if (custom !== undefined) return custom
   const toolName = getToolName(part)
   // 回复已不在生成中（停止、失败、刷新后）而工具仍停在准备 / 执行：不会再有结果，按出错显示
   const raw = toolCallState(part.state)
@@ -166,6 +185,10 @@ export interface ChatMessageViewProps {
   readonly actions?: ReactNode
   /** 是否播放入场动效；首屏的历史消息不播放 */
   readonly entrance?: boolean
+  /** 替换工具部件的渲染（agent 对话的工具与确认卡片）；不传时一律为 ToolCall 卡片 */
+  readonly renderToolPart?: RenderToolPart
+  /** 助手头像；不传时为 ChatMessage 的默认头像 */
+  readonly avatar?: ReactNode
 }
 
 type StatusProps =
@@ -209,6 +232,8 @@ export function ChatMessageView({
   status,
   actions,
   entrance = true,
+  renderToolPart,
+  avatar,
 }: ChatMessageViewProps) {
   if (message.role === 'user')
     return (
@@ -226,6 +251,7 @@ export function ChatMessageView({
     <ChatMessage
       from="assistant"
       entrance={entrance}
+      {...(avatar === undefined ? {} : { avatar })}
       leading={reasoning ? <Reasoning text={reasoning} busy={live && !hasText} /> : undefined}
       actions={actions}
       {...statusProps(live, retrying, status)}
@@ -242,7 +268,12 @@ export function ChatMessageView({
                 streaming={live && block === blocks.at(-1)}
               />
             ) : (
-              <ToolPart key={block.key} part={block.part} live={live} />
+              <ToolPart
+                key={block.key}
+                part={block.part}
+                live={live}
+                renderToolPart={renderToolPart}
+              />
             ),
           )}
           {waiting ? <ThinkingIndicator label={m.chat_ui_status_thinking()} /> : null}
