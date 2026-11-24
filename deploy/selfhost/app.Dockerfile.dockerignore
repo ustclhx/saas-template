@@ -11,14 +11,20 @@
 !apps/**
 !packages/
 !packages/**
+!plugins/
+!plugins/**
 !deploy/
 !deploy/selfhost/
 deploy/selfhost/*
 !deploy/selfhost/migrate.mjs
-# Node 构建在镜像内注入 Sentry debug ID，需要这一个脚本；其余 scripts 不进入镜像上下文。
+# Node 构建在镜像内注入 Sentry debug ID，需要这一个脚本；插件注册生成器（scripts/plugins）在构建前运行。
+# 其余 scripts 不进入镜像上下文。
 !scripts/
 scripts/*
 !scripts/sentry-node-maps.mjs
+!scripts/plugins/
+!scripts/plugins/**
+scripts/plugins/*.test.mjs
 **/node_modules
 **/.output
 **/dist
@@ -38,6 +44,8 @@ scripts/*
 **/project.inlang
 **/.content-collections
 **/routeTree.gen.ts
+**/plugins*.gen.ts
+**/plugins*.gen.css
 
 **/*.tsbuildinfo
 

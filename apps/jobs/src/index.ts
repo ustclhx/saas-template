@@ -1,4 +1,6 @@
 // Cloudflare composition entry：绑定、WorkflowEntrypoint 与 Sentry SDK 只在目标入口装配。
+// 启用插件的 jobs 入口来自生成文件 plugins.gen.ts：具名导出（Workflow 类）原样导出，
+// 队列、定时任务与积分预扣清理器合并到核心注册表。
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers'
 import { createTaskMediaProvider, getMediaOutputHosts, readMediaTaskInput } from '@saas/ai'
 import { emailTransportConfig, MEDIA_MAX_FILE_BYTES, MEDIA_OUTPUT_MIME_TYPES } from '@saas/config'
@@ -20,6 +22,8 @@ import { registerAiHoldSweepers } from './ai.ts'
 import { serverAnalyticsTarget } from './billing.ts'
 import { requireEnv } from './env.ts'
 import { consumeJobsBatch, type JobsContext, runJobsSchedule } from './handlers.ts'
+import { registerPluginHoldSweepers } from './plugins/register.ts'
+import jobsPlugins from './plugins.gen.ts'
 import { createEventsDeadLetterSink } from './queues/events-dead-letter.ts'
 import {
   captureJobException,
@@ -39,6 +43,10 @@ const features = {
   media: templateConfig.ai.image || templateConfig.ai.video,
 }
 registerAiHoldSweepers(features)
+const pluginModules = jobsPlugins.flatMap((plugin) => (plugin.entry ? [plugin.entry] : []))
+registerPluginHoldSweepers(pluginModules, templateConfig)
+
+export * from './plugins.gen.ts'
 
 /** 每事件装配并显式挑选标量配置；不把 bindings 传入业务 env。 */
 function createJobsContext(env: Cloudflare.Env, queue?: string): JobsContext {
@@ -76,6 +84,7 @@ function createJobsContext(env: Cloudflare.Env, queue?: string): JobsContext {
     observer: cloudflareJobObserver,
     billingEnabled: features.billing,
     analytics: serverAnalyticsTarget(env),
+    plugins: pluginModules,
   }
 }
 

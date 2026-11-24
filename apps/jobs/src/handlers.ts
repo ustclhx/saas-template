@@ -24,6 +24,8 @@ import { HEARTBEAT_CRON, runHeartbeat } from './cron/heartbeat.ts'
 import { runMetricsDaily } from './cron/metrics-daily.ts'
 import { runWorkspaceCleanup, WORKSPACE_CLEANUP_CRON } from './cron/workspace-cleanup.ts'
 import { type JobObserver, withJobObserver } from './observer.ts'
+import type { JobsPluginModule, PluginCronGroup } from './plugins/contract.ts'
+import { pluginCronTasks, pluginQueueHandler } from './plugins/register.ts'
 import { handleBillingBatch } from './queues/billing.ts'
 import { handleEmailBatch, type JobsEmailTransport } from './queues/email.ts'
 import { handleEventsDeadLetterBatch } from './queues/events-dead-letter.ts'
@@ -39,6 +41,8 @@ export interface JobsContext extends BillingEnv {
   emailDeadLetters?: DeadLetterSink<unknown>
   eventsDeadLetters?: DeadLetterSink<unknown>
   billingEnabled?: boolean
+  /** 启用插件的 jobs 入口（各目标入口从生成文件传入）：队列消费者与挂在已有触发器上的定时任务 */
+  plugins?: readonly JobsPluginModule[]
 }
 
 const EMAIL_QUEUES = new Set(['email', 'email-staging', 'email-production'])
@@ -66,6 +70,8 @@ async function consumeBatch(batch: QueueBatch<unknown>, context: JobsContext) {
       ...(context.billingEnabled !== undefined && { billingEnabled: context.billingEnabled }),
     })
   }
+  const plugin = pluginQueueHandler(context.plugins, batch.queue)
+  if (plugin) return plugin.handle(batch, context)
   throw new Error(`Unknown queue: ${batch.queue}`)
 }
 
@@ -161,7 +167,38 @@ async function runSchedule(
     )
 }
 
+/** 插件定时任务所挂的触发器 */
+const PLUGIN_CRON_GROUPS = new Map<string, PluginCronGroup>([
+  [HEARTBEAT_CRON, 'heartbeat'],
+  [BILLING_RETRY_CRON, 'ten-minute'],
+  [WORKSPACE_CLEANUP_CRON, 'daily'],
+])
+
+/** 核心任务组与同组插件任务并行执行；任一失败仍等待其余完成，并让本次触发记为失败 */
 async function runJobsTaskGroup(
+  cron: string,
+  scheduledAt: Date,
+  context: JobsContext,
+  options: JobsScheduleOptions,
+) {
+  const group = PLUGIN_CRON_GROUPS.get(cron)
+  const tasks = group ? pluginCronTasks(context.plugins, group) : []
+  if (tasks.length === 0) return runCoreTaskGroup(cron, scheduledAt, context, options)
+  const results = await Promise.allSettled([
+    runCoreTaskGroup(cron, scheduledAt, context, options),
+    ...tasks.map((task) =>
+      withLogContext({ pluginTask: task.id }, () => task.run(context, scheduledAt)),
+    ),
+  ])
+  const failed = results.filter((result) => result.status === 'rejected')
+  if (failed.length)
+    throw new AggregateError(
+      failed.map((result) => result.reason),
+      `Cron ${cron} with plugin tasks failed`,
+    )
+}
+
+async function runCoreTaskGroup(
   cron: string,
   scheduledAt: Date,
   context: JobsContext,

@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url'
 import { resolveTestDatabase } from '@saas/db/test-database'
 import { readLocalEnv } from '@saas/db/worktree-env'
 import { defineConfig } from 'vitest/config'
+import { webAlias } from './scripts/web-alias.ts'
 
 const { appUrl, migratorUrl } =
   resolveTestDatabase('@saas/web billing node', { required: true }) ?? {}
@@ -13,6 +14,8 @@ process.env.MIGRATION_DATABASE_URL = migratorUrl
 process.env.TEST_VALKEY_URL = valkeyUrl
 
 export default defineConfig({
+  // 插件代码经 @web/* 访问 web 核心模块
+  plugins: [webAlias()],
   resolve: {
     alias: [
       {

@@ -79,7 +79,8 @@
     "apps/web/src/node/runtime.ts",
     "apps/web/src/node/http.ts",
     "apps/jobs/src/node/runtime.ts",
-    "apps/jobs/src/node/registration.ts"
+    "apps/jobs/src/node/registration.ts",
+    "apps/jobs/src/node/plugins.ts"
   ],
   "targetAdapterFixtures": {
     "apps/web/test/sentry-local/probe.node.ts": ["node"],

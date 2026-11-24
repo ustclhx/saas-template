@@ -1,21 +1,21 @@
 ## 1. 技术验证（先于其余各组）
 
-- [ ] 1.1 在临时分支建一个最小插件 `plugins/example`（workspace 包，含一个 `app/$slug/example` 路由与一个 `createServerFn`），通过 `virtualRouteConfig`（`rootRoute` + `physical('', 'routes')` + 插件目录）挂载；验证 dev、`pnpm build`（Cloudflare）、`vite.node.config.ts` 构建、`generate-route-tree.mjs` + `tsc` 类型化路由、Tailwind 能扫描到插件组件类名。把结论写进 design.md 决策 1、4 的「验证结果」，失败则切到备选方案并在 PR 说明
-- [ ] 1.2 验证剔除效果：同一最小插件关闭后，web Worker、Node 与 jobs 产物中搜索不到插件特有字符串；记录检查命令，供 5.4 复用
+- [x] 1.1 在临时分支建一个最小插件 `plugins/example`（workspace 包，含一个 `app/$slug/example` 路由与一个 `createServerFn`），通过 `virtualRouteConfig`（`rootRoute` + `physical('', 'routes')` + 插件目录）挂载；验证 dev、`pnpm build`（Cloudflare）、`vite.node.config.ts` 构建、`generate-route-tree.mjs` + `tsc` 类型化路由、Tailwind 能扫描到插件组件类名。把结论写进 design.md 决策 1、4 的「验证结果」，失败则切到备选方案并在 PR 说明
+- [x] 1.2 验证剔除效果：同一最小插件关闭后，web Worker、Node 与 jobs 产物中搜索不到插件特有字符串；记录检查命令，供 5.4 复用
 
 ## 2. 清单、配置与校验
 
-- [ ] 2.1 `packages/config` 新增 `definePlugin` 类型（id、targets、requires、routes、entries、bindings、secrets、messages）与 `plugins` 配置段；插件配置 schema 校验、未知 id、`requires` 闭包、`ai.image || ai.video` 需 `media`；单元测试覆盖每条失败分支与错误信息
-- [ ] 2.2 `pnpm-workspace.yaml` 加 `plugins/*`；apps 依赖插件包；tsconfig `include` 与 Turbo inputs 加入 `plugins/*`（按 `docs/ci.md` 更新缓存输入说明）；`pnpm install --frozen-lockfile` 与 `pnpm typecheck` 通过
+- [x] 2.1 `packages/config` 新增 `definePlugin` 类型（id、targets、requires、routes、entries、bindings、secrets、messages）与 `plugins` 配置段；插件配置 schema 校验、未知 id、`requires` 闭包、`ai.image || ai.video` 需 `media`；单元测试覆盖每条失败分支与错误信息
+- [x] 2.2 `pnpm-workspace.yaml` 加 `plugins/*`；apps 依赖插件包；tsconfig `include` 与 Turbo inputs 加入 `plugins/*`（按 `docs/ci.md` 更新缓存输入说明）；`pnpm install --frozen-lockfile` 与 `pnpm typecheck` 通过
 
 ## 3. 构建期生成与扩展点
 
-- [ ] 3.1 `scripts/plugins/generate.mjs`：读取配置与清单，输出 `apps/web/src/plugins.gen.ts`、`plugins.worker.gen.ts`、`plugins.node.gen.ts`、`apps/jobs/src/plugins.gen.ts`、`plugins.node.gen.ts`（gitignored）；Node 产物跳过仅 Cloudflare 插件并打印提示；同一配置输出确定。Node test 覆盖启用、关闭、目标排除
-- [ ] 3.2 接入时机：web Vite 配置（含虚拟路由）、jobs `build` / `build:node` / `dev`、`typecheck`、`test` 前置；`pnpm typecheck`、`pnpm test` 在干净工作树通过
-- [ ] 3.3 `i18n-project.ts` 只加入启用插件的 `messages/`；关闭插件时 Paraglide 输出中没有其消息键（单元测试）
-- [ ] 3.4 web 扩展点：应用区导航、顶栏入口、后台菜单从 `plugins.gen.ts` 合并；`src/server.ts` 增加 fetch 前置处理链与 `export * from './plugins.worker.gen.ts'`；消息部件渲染器注册入口。组件 / 单元测试覆盖导航合并顺序与前置处理短路
-- [ ] 3.5 jobs 扩展点：Workflow 类导出、队列处理器、Cron、积分预扣清理器从生成文件合并，Cloudflare 与 Node 两套入口；现有 jobs 测试通过
-- [ ] 3.6 运行时绑定校验：`server/cloudflare/env.ts` 与 `node/runtime.ts` 按启用插件清单校验必需绑定，去掉写死的媒体判断；单元测试覆盖缺失绑定的报错
+- [x] 3.1 `scripts/plugins/generate.mjs`：读取配置与清单，输出 `apps/web/src/plugins.gen.ts`、`plugins.worker.gen.ts`、`plugins.node.gen.ts`、`apps/jobs/src/plugins.gen.ts`、`plugins.node.gen.ts`（gitignored）；Node 产物跳过仅 Cloudflare 插件并打印提示；同一配置输出确定。Node test 覆盖启用、关闭、目标排除
+- [x] 3.2 接入时机：web Vite 配置（含虚拟路由）、jobs `build` / `build:node` / `dev`、`typecheck`、`test` 前置；`pnpm typecheck`、`pnpm test` 在干净工作树通过
+- [x] 3.3 `i18n-project.ts` 只加入启用插件的 `messages/`；关闭插件时 Paraglide 输出中没有其消息键（单元测试）
+- [x] 3.4 web 扩展点：应用区导航、顶栏入口、后台菜单从 `plugins.gen.ts` 合并；`src/server.ts` 增加 fetch 前置处理链与 `export * from './plugins.worker.gen.ts'`；消息部件渲染器注册入口。组件 / 单元测试覆盖导航合并顺序与前置处理短路
+- [x] 3.5 jobs 扩展点：Workflow 类导出、队列处理器、Cron、积分预扣清理器从生成文件合并，Cloudflare 与 Node 两套入口；现有 jobs 测试通过
+- [x] 3.6 运行时绑定校验：`server/cloudflare/env.ts` 与 `node/runtime.ts` 按启用插件清单校验必需绑定，去掉写死的媒体判断；单元测试覆盖缺失绑定的报错
 
 ## 4. 检查
 

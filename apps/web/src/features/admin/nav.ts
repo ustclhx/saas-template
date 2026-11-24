@@ -1,5 +1,8 @@
 import { linkOptions } from '@tanstack/react-router'
+import webPlugins from '../../plugins.gen.ts'
 import { templateConfig } from '../../server/template-config.ts'
+import type { AdminNavGroupId } from '../plugins/contract.ts'
+import { pluginAdminNav } from '../plugins/extensions.ts'
 import { ADMIN_COPY } from './copy.ts'
 
 /**
@@ -114,10 +117,26 @@ function enabled(to: string) {
   return true
 }
 
+/** 启用插件的后台菜单（plugins.gen.ts），追加在对应分组末尾 */
+function pluginItems(group: string) {
+  if (group === 'overview') return []
+  return pluginAdminNav(webPlugins, group as AdminNavGroupId).map((item) =>
+    linkOptions({
+      to: item.to,
+      ...(item.search && { search: item.search }),
+      label: item.label(),
+      activeOptions: list,
+    }),
+  )
+}
+
 /** 按模板开关过滤后的分组导航；整组都被关闭时不显示组标题 */
 export const getAdminNavGroups = () =>
   groups()
-    .map((group) => ({ ...group, items: group.items.filter((item) => enabled(item.to)) }))
+    .map((group) => ({
+      ...group,
+      items: [...group.items.filter((item) => enabled(item.to)), ...pluginItems(group.id)],
+    }))
     .filter((group) => group.items.length > 0)
 
 /** 扁平导航（概览页快捷入口等复用） */

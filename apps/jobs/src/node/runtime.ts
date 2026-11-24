@@ -21,8 +21,11 @@ import templateConfig from '../../../../template.config.ts'
 import { serverAnalyticsTarget } from '../billing.ts'
 import { consumeJobsBatch, type JobsContext } from '../handlers.ts'
 import { type JobObserver, logJobObserver } from '../observer.ts'
+import { pluginQueueNames } from '../plugins/register.ts'
+import nodePlugins from '../plugins.node.gen.ts'
 import { createNodeMediaHandler } from './media.ts'
 import { createNodeMediaWorkflowHttpHandler } from './media-http.ts'
+import type { NodePluginWorkflows } from './plugins.ts'
 import { getNodeJobFeatures, registerNodeJobsSchedules } from './registration.ts'
 
 export interface NodeJobsOptions {
@@ -62,6 +65,8 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
     | ReturnType<typeof createNodeWorkflow<{ taskId: string; requestId?: string }>>
     | undefined
   let dispose = () => {}
+  // 启用插件（plugins.node.gen.ts）注册的 Node 持久任务与内部 HTTP 路由
+  const pluginWorkflows: NodePluginWorkflows[] = []
   let engine: NodeJobEngine
   const template = options.template ?? templateConfig
   const features = getNodeJobFeatures(template)
@@ -112,6 +117,7 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
     observer,
     billingEnabled: features.billing,
     analytics: serverAnalyticsTarget(config),
+    plugins: nodePlugins.map((plugin) => plugin.entry),
   }
   try {
     engine = await createNodeJobEngine({
@@ -136,6 +142,9 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
         queues.register('events', (batch, sink) =>
           consumeJobsBatch(batch, { ...context, eventsDeadLetters: sink }),
         )
+        // 启用插件的队列：按基础队列名注册，由 consumeJobsBatch 交给插件消费
+        for (const name of pluginQueueNames(context.plugins))
+          queues.register(name, (batch) => consumeJobsBatch(batch, context))
         if (features.media && storageConfig && config.MEDIA_WEBHOOK_SECRET) {
           mediaWorkflow = createNodeWorkflow({
             engine,
@@ -152,6 +161,16 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
             }),
           })
         }
+        for (const { entry } of nodePlugins) {
+          const registered = entry.registerWorkflows?.({
+            engine,
+            config,
+            template,
+            observer,
+            storage: storageConfig,
+          })
+          if (registered) pluginWorkflows.push(registered)
+        }
         scheduler = createNodeScheduler({ engine })
         dispose = registerNodeJobsSchedules(scheduler, context, template)
         await queues.prepare()
@@ -163,6 +182,7 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
       },
       stopReceiving() {
         mediaWorkflow?.stopReceiving()
+        for (const workflows of pluginWorkflows) workflows.stopReceiving?.()
         queues?.stopReceiving()
         scheduler?.stopReceiving()
       },
@@ -237,7 +257,12 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
         )
       } else if (request.url === '/internal/workflows/ai-media') {
         background.waitUntil(mediaHttp(request, response))
-      } else response.writeHead(404).end()
+      } else {
+        const url = request.url ?? ''
+        const pluginHttp = pluginWorkflows.map((workflows) => workflows.http?.[url]).find(Boolean)
+        if (pluginHttp) background.waitUntil(pluginHttp(request, response))
+        else response.writeHead(404).end()
+      }
     })
   })
   server.on('connection', (socket) => {

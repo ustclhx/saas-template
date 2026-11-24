@@ -15,13 +15,24 @@
         "!$TURBO_ROOT$/apps/jobs/.turbo",
         "!$TURBO_ROOT$/apps/jobs/.dev.vars",
         "$TURBO_ROOT$/scripts/production/check-wrangler-envs.*",
-        "$TURBO_ROOT$/scripts/sentry-node-maps.mjs"
+        "$TURBO_ROOT$/scripts/sentry-node-maps.mjs",
+        // 启用插件的源码只经生成的注册文件（scripts/plugins）进入构建与类型检查
+        "$TURBO_ROOT$/plugins/**",
+        "!$TURBO_ROOT$/plugins/*/node_modules/**",
+        "$TURBO_ROOT$/scripts/plugins/**"
       ],
       // typecheck 脚本先生成路由树、文案与内容集合，后续步骤（build、衍生项目的检查）会读取；
       // 声明为 outputs 才能在缓存命中时恢复，否则命中后这些文件缺失
       "outputs": [".content-collections/generated/**", "src/routeTree.gen.ts", "src/paraglide/**"]
     },
     "build": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        // 启用插件的源码只经生成的注册文件（scripts/plugins）进入构建与类型检查
+        "$TURBO_ROOT$/plugins/**",
+        "!$TURBO_ROOT$/plugins/*/node_modules/**",
+        "$TURBO_ROOT$/scripts/plugins/**"
+      ],
       // vite 的 content-collections 插件在构建时生成内容集合，同样需要随缓存恢复
       "outputs": [
         "$TURBO_EXTENDS$",

@@ -3,7 +3,12 @@
   "compilerOptions": {
     "types": ["node"],
     // 构建期分享图（scripts/og-images.ts）复用 src 中的 JSX 版式
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    // e2e 夹具经对话组件导入插件注册（plugins.gen.ts → 类型化路由树），与 tsconfig.json 同一别名
+    "paths": {
+      "content-collections": ["./.content-collections/generated"],
+      "@web/*": ["./src/*"]
+    }
   },
   "include": [
     "vite.config.ts",
@@ -16,6 +21,7 @@
     "playwright.disconnect.config.ts",
     "playwright.stripe.config.ts",
     "scripts",
+    "src/version.d.ts",
     "test/global-setup.ts",
     "e2e",
     "e2e-live",

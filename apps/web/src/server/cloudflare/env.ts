@@ -4,10 +4,12 @@ import {
   EnvValidationError,
   envSchema,
   loadEnv,
+  pluginBindingsShape,
   validateAiFaultInjectionEnv,
 } from '@saas/config'
 import { log } from '@saas/shared/log'
 import { z } from 'zod'
+import workerPlugins from '../../plugins.worker.gen.ts'
 import { templateConfig } from '../template-config.ts'
 
 /** 绑定对象上必须存在的方法（只检查形状，不读取任何取值） */
@@ -18,6 +20,11 @@ const bindingWith = <T>(...methods: string[]) =>
       value !== null &&
       methods.every((m) => typeof (value as Record<string, unknown>)[m] === 'function'),
   )
+
+/** 启用插件清单声明的 web 绑定（plugins.worker.gen.ts）：必需绑定缺失时与核心绑定一样启动校验失败 */
+export const pluginBindingsSchema = z.object(
+  pluginBindingsShape(workerPlugins.flatMap((plugin) => plugin.bindings)),
+)
 
 /** apps/web 需要的环境变量与绑定：共享 schema 加上 web 独有的绑定。 */
 // 支付模式由支付工厂单独校验，避免支付配置错误阻断公开页面与普通认证。
@@ -53,6 +60,7 @@ function validate(env: unknown): EnvValidationError | null {
   for (const check of [
     () => validateAiFaultInjectionEnv((env ?? {}) as AiFaultInjectionEnv),
     () => loadEnv(env, webEnvSchema),
+    () => loadEnv(env, pluginBindingsSchema),
     () => loadEnv(env, authUiEnvSchema),
     () => parseAuthEnv((env ?? {}) as Parameters<typeof parseAuthEnv>[0], templateConfig),
   ]) {

@@ -4,6 +4,8 @@
 // 之后由 Paraglide 按 URL 前缀 / Cookie 确定本次请求的语言（features/i18n/routing.ts）。
 // 每个请求先建立日志上下文（新生成的 UUIDv7 请求 ID，附 Cloudflare 的 cf-ray 便于对照平台日志），
 // 结束时输出一行 `http.request`（@saas/shared/log）。
+// 启用插件（plugins.worker.gen.ts）的 fetch 前置处理在网关与 Start 之前依次调用，返回 Response 即结束；
+// 插件入口的具名导出（Durable Object 类等）由本入口原样导出，wrangler 绑定按类名引用。
 import { type AuthEmail, parseAuthEnv, type SendAuthEmail } from '@saas/auth'
 import { loadEnv, plausibleSite } from '@saas/config'
 import type { Database } from '@saas/db'
@@ -35,6 +37,8 @@ import { createBillingDeletionSteps } from './features/billing/deletion.server.t
 import { assertSignupAdmission } from './features/growth/service.ts'
 import { gateLocaleRequest } from './features/i18n/gate.ts'
 import { localizeRequest } from './features/i18n/request.server.ts'
+import { runPluginFetch } from './features/plugins/extensions.ts'
+import workerPlugins from './plugins.worker.gen.ts'
 import { withSecurityNonce } from './security-context.server.ts'
 import { withSecurityHeaders, withStaticSecurityHeaders } from './security-headers.ts'
 import { createWebAuth } from './server/auth.ts'
@@ -45,6 +49,8 @@ import { getWebRuntime, type WebRuntime, withWebRuntime } from './server/runtime
 import { SENTRY_TEST_PATH, sentryTest } from './server/sentry-test.ts'
 import { templateConfig } from './server/template-config.ts'
 
+export * from './plugins.worker.gen.ts'
+
 // Router 的 loader 错误已经转换为 SSR 匹配状态，不会再从 fetch 抛出。
 const startHandler = createStartHandler((context) => {
   for (const match of context.router.stores.matches.get()) {
@@ -54,7 +60,7 @@ const startHandler = createStartHandler((context) => {
 })
 
 const worker = instrumentWeb({
-  fetch(request, env) {
+  fetch(request, env, ctx) {
     const invalid = checkEnv(env)
     if (invalid) return Promise.resolve(invalid)
     if (new URL(request.url).pathname === SENTRY_TEST_PATH)
@@ -62,6 +68,7 @@ const worker = instrumentWeb({
     return logged(
       request,
       async () =>
+        (await runPluginFetch(workerPlugins, request, env, ctx)) ??
         gatePublicApiRequest(request, templateConfig) ??
         (await localized(gateLocaleRequest(await gateAdminRequest(request, getWebRuntime())))),
     )
@@ -100,6 +107,8 @@ export default {
             (await withWebRuntime(createCloudflareWebRuntime(env, requestMeta, ctx), () =>
               worker.fetch(request, env, ctx),
             ))
+          // WebSocket 升级（插件前置处理，如 Durable Object 连接）不能重新构造，原样返回
+          if (response.status === 101) return response
           // 重定向与静态响应的 headers 可能只读，复制后再附请求 ID。
           const headers = withSecurityHeaders(response.headers, security)
           headers.set('x-request-id', context.requestId)

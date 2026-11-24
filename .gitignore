@@ -22,6 +22,11 @@ dist/
 # TanStack Router 生成文件（构建时生成，避免并行分支冲突）
 routeTree.gen.ts
 
+# 插件注册文件：scripts/plugins/generate.mjs 按 template.config.ts 的 plugins 段生成
+apps/web/src/plugins*.gen.ts
+apps/web/src/styles/plugins*.gen.css
+apps/jobs/src/plugins*.gen.ts
+
 # Paraglide：inlang 项目由 apps/web/scripts/i18n-project.ts 按模板配置生成，编译产物构建时生成
 apps/web/project.inlang/
 apps/web/src/paraglide/

@@ -4,7 +4,7 @@
 // project.inlang/settings.json 由这里按模板配置的 i18n 与现有文案文件生成（已 gitignore），
 // 语言列表只在 template.config.ts 中维护。
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import { type CompilerOptions, compile, paraglideVitePlugin } from '@inlang/paraglide-js'
 import { EMAIL_LOCALES } from '@saas/email/queue'
 import type { Plugin } from 'vite'
@@ -26,9 +26,8 @@ const WEB_ROOT = new URL('..', import.meta.url).pathname
 // settings.json 中的相对路径以 project.inlang 的上级目录为基准；文案格式插件从本地加载，构建不依赖 CDN
 const MESSAGE_FORMAT_PLUGIN = './node_modules/@inlang/plugin-message-format/dist/index.js'
 
-/** messages/ 下所有语言目录中出现过的功能文件名（不含 .json） */
-export function listFeatures(root = WEB_ROOT): string[] {
-  const messagesDir = join(root, 'messages')
+/** messages/ 下所有语言目录中出现过的功能文件名（不含 .json）；messagesDir 默认为 `<root>/messages` */
+export function listFeatures(root = WEB_ROOT, messagesDir = join(root, 'messages')): string[] {
   if (!existsSync(messagesDir)) return []
   const features = new Set<string>()
   for (const locale of readdirSync(messagesDir, { withFileTypes: true })) {
@@ -45,8 +44,30 @@ export function activeLocales(i18n: I18nConfig): readonly string[] {
   return i18n.enabled === false ? [i18n.defaultLocale] : i18n.locales
 }
 
+/**
+ * 全部文案文件的路径模式（相对 root）：核心 messages/ 加上启用插件的文案目录（scripts/plugins 按目标给出，绝对路径）。
+ * 未启用插件的目录不在列表中，其消息键不进入 Paraglide 输出。
+ */
+export function messagePathPatterns(
+  root = WEB_ROOT,
+  messageDirs: readonly string[] = [],
+): string[] {
+  const patterns = listFeatures(root).map((feature) => `./messages/{locale}/${feature}.json`)
+  for (const dir of messageDirs) {
+    const base = relative(root, dir).split(sep).join('/')
+    const prefix = base.startsWith('.') ? base : `./${base}`
+    for (const feature of listFeatures(root, dir))
+      patterns.push(`${prefix}/{locale}/${feature}.json`)
+  }
+  return patterns
+}
+
 /** 写入 `<root>/project.inlang/settings.json`；内容未变化时不写，避免触发 Paraglide 重新编译 */
-export function writeInlangProject(i18n: I18nConfig, root = WEB_ROOT): void {
+export function writeInlangProject(
+  i18n: I18nConfig,
+  root = WEB_ROOT,
+  messageDirs: readonly string[] = [],
+): void {
   const { defaultLocale } = i18n
   const locales = activeLocales(i18n)
   const settings = {
@@ -55,7 +76,7 @@ export function writeInlangProject(i18n: I18nConfig, root = WEB_ROOT): void {
     locales: [...locales],
     modules: [MESSAGE_FORMAT_PLUGIN],
     'plugin.inlang.messageFormat': {
-      pathPattern: listFeatures(root).map((feature) => `./messages/{locale}/${feature}.json`),
+      pathPattern: messagePathPatterns(root, messageDirs),
     },
   }
   const projectDir = join(root, 'project.inlang')
@@ -171,15 +192,17 @@ function readKeys(path: string): Set<string> {
 export function findMissingMessages(
   { locales, defaultLocale }: I18nConfig,
   root = WEB_ROOT,
+  messageDirs: readonly string[] = [],
 ): MissingMessage[] {
-  const messagesDir = join(root, 'messages')
   const missing: MissingMessage[] = []
-  for (const feature of listFeatures(root)) {
-    const base = readKeys(join(messagesDir, defaultLocale, `${feature}.json`))
-    for (const locale of locales) {
-      if (locale === defaultLocale) continue
-      const keys = readKeys(join(messagesDir, locale, `${feature}.json`))
-      for (const key of base) if (!keys.has(key)) missing.push({ locale, feature, key })
+  for (const messagesDir of [join(root, 'messages'), ...messageDirs]) {
+    for (const feature of listFeatures(root, messagesDir)) {
+      const base = readKeys(join(messagesDir, defaultLocale, `${feature}.json`))
+      for (const locale of locales) {
+        if (locale === defaultLocale) continue
+        const keys = readKeys(join(messagesDir, locale, `${feature}.json`))
+        for (const key of base) if (!keys.has(key)) missing.push({ locale, feature, key })
+      }
     }
   }
   return missing
@@ -203,15 +226,18 @@ export function formatMissingMessages(missing: readonly MissingMessage[]): strin
 export function i18nMessages({
   i18n,
   appAreaPrefixes,
+  messageDirs = [],
 }: {
   readonly i18n: I18nConfig
   readonly appAreaPrefixes: readonly string[]
+  /** 启用插件的文案目录（绝对路径） */
+  readonly messageDirs?: readonly string[]
 }): Plugin[] {
   const unsupported = activeLocales(i18n).filter(
     (locale) => !(EMAIL_LOCALES as readonly string[]).includes(locale),
   )
   if (unsupported.length) throw new Error(`[i18n] 邮件模板缺少语言：${unsupported.join(', ')}`)
-  writeInlangProject(i18n)
+  writeInlangProject(i18n, WEB_ROOT, messageDirs)
   const options = paraglideOptions(i18n, appAreaPrefixes)
   let reported = false
   return [
@@ -224,7 +250,7 @@ export function i18nMessages({
         if (reported) return
         reported = true
         const report = formatMissingMessages(
-          findMissingMessages({ ...i18n, locales: activeLocales(i18n) }),
+          findMissingMessages({ ...i18n, locales: activeLocales(i18n) }, WEB_ROOT, messageDirs),
         )
         if (report) this.warn(report)
       },

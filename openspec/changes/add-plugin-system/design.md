@@ -49,6 +49,15 @@ plugins/<id>/
 
 备选：放在 `apps/web/src/plugins/` 与 `apps/jobs/src/plugins/` 两处。更接近现有结构，但一个插件拆到两个地方，依赖只能加到 app 上（无论是否启用都声明）。如果第 1 组的验证任务发现 TanStack Start 无法编译 workspace 包里的 `createServerFn` 或路由文件，就退回这个方案，其余设计不变。
 
+**验证结果（1.1，2026-11-24，不切备选方案）**：用临时插件 `plugins/example`（workspace 包，含 `app/$slug/example` 路由、`createServerFn`、web / worker / jobs / webNode / jobsNode 五个入口与文案）验证：
+
+- `vite dev`：路由挂在 `/app/$slug` 布局下；客户端拿到的插件 `createServerFn` 已编译为 `createClientRpc` 存根，经 `/_serverFn/<id>` 调用返回服务端结果。
+- `pnpm build`（Cloudflare）、`vite.node.config.ts` 构建、jobs `wrangler deploy --dry-run` 与 `build:node` 全部通过；服务端函数体只在服务端产物，Worker 入口的具名导出（类）出现在 `dist/server/index.js`，jobs 入口的类出现在 `apps/jobs/dist/index.js`。
+- 插件包要自己声明运行时依赖（`@tanstack/react-router`、`@tanstack/react-start`、`react`，开发依赖 `@types/react`）：Vite 与 `tsc` 从插件目录解析这些导入。
+- Tailwind：`app.css` 的 `@source "../"` 只扫描 `apps/web/src`，插件类名不会进入样式。生成器另写 `src/styles/plugins.gen.css`（只含启用插件目录的 `@source`），`app.css` 导入它；验证插件的类名出现在两目标的 CSS 中。
+- tsconfig 不把 `plugins/*` 整体加进 `include`：未启用插件的路由文件引用不在路由树上的路径，会让类型化路由检查失败。启用插件的代码经生成文件的导入链进入 web / jobs 的类型检查（2.2 的 tsconfig 部分按此落实）。
+- 插件代码需要使用 web 核心模块（Paraglide 的 `m`、app-shell 组件、`getWebRuntime`、导航与路由类型）。协调者确认（2026-11-24）：web 的 Vite 与 tsconfig 配置路径别名 `@web/*` → `apps/web/src/*`，只在 web 构建与类型检查中可解析；4.2 的 check-deps 只允许插件的 web 代码（`routes/`、`src/web/`、`src/node/` 的 web 入口）使用它，jobs 入口不得使用。
+
 ### 2. 清单与启用配置
 
 `plugin.ts` 导出 `definePlugin({...})`，只含可静态读取的数据：
@@ -87,6 +96,13 @@ plugins: {
 
 用生成文件而不用 Vite 虚拟模块，原因：`tsc` 与 vitest 都要能解析导入；jobs 由 wrangler/esbuild 打包，不走 Vite；生成文件可读，排查方便。
 
+**实现说明（3.1–3.3）**：
+
+- 生成器分为库 `scripts/plugins/plugins.mjs`（读取清单、`@saas/config` 的 `resolvePlugins` 校验、渲染文件、虚拟路由与文案目录）与命令 `generate.mjs`。web 的 Vite 配置（`vite-shared.ts`）、`vitest.config.ts` 在解析时直接调用库；`typecheck`、`test`、jobs 的 `build` / `build:node` / `dev` / `deploy:staging`，以及部署 workflow 的 jobs 构建步骤先运行 `generate.mjs`。
+- 生成文件的 default 导出为 `{ id, entry?, bindings? }` 列表，`entry` 为入口模块的 default 导出；`plugins.worker.gen.ts` 与 jobs 的 `plugins.gen.ts` 另 `export *` 入口的具名导出（类），列表带上清单的 `bindings` 供运行时校验，只声明绑定、没有入口的插件也在列表中。
+- 除上面五个文件外另生成 `src/styles/plugins.gen.css` 与 `plugins.node.gen.css`（`@source`）。两目标共用的代码（导航、后台菜单、消息部件）只导入 `plugins.gen.ts` / `plugins.gen.css`；Node 构建用 `resolveId` 把它们解析为 `plugins.node.gen.*`，排除仅 Cloudflare 的插件。`plugins.node.gen.ts` 的 default 导出与 `plugins.gen.ts` 同形，`nodePlugins` 为 webNode 入口。
+- 内容不变时不重写文件，避免 dev 热更新与重复编译。
+
 **构建期剔除依赖静态导入链**：核心代码只从 `*.gen.ts` 进入插件，未启用插件不在任何导入链上，自然不进入产物。验证方式见第 1、5 组任务：对构建产物做字符串检查（例如关闭媒体时产物中没有 `fal.media`、`AiMediaWorkflow`）。
 
 ### 4. 路由：虚拟路由配置
@@ -104,6 +120,34 @@ rootRoute('__root.tsx', [
 
 风险：`physical('')` 挂根目录、跨包目录挂载、`routeFileIgnorePattern` 与现有 `-components` 等约定的组合需在第 1 组验证。退路：核心路由仍用默认 `routesDirectory`，插件路由用生成器把插件 `routes/` 同步复制到 `src/routes/(plugins)/<id>/`（gitignored）。复制方案对类型与编辑器跳转不友好，只作为退路。
 
+**验证结果（1.1，2026-11-24，不切退路）**：
+
+- 路径相对 `routesDirectory`（`apps/web/src/routes`）：核心挂载写作 `{ type: 'physical', pathPrefix: '', directory: '.' }`，插件为 `../../../../plugins/<id>/routes`。配置用普通对象传给 `tanstackStart({ router: { virtualRouteConfig } })`，不需要新增 `@tanstack/virtual-file-routes` 依赖。
+- 与默认配置相比，生成的 `routeTree.gen.ts` 中全部路由 id / path / fullPath（976 处）完全一致，只有导入变量名不同（如 `indexnow[.]txt` 由 `IndexnowDottxt` 变为 `IndexnowChar91DotChar93txt`），`-components` 等忽略约定不受影响。
+- 插件路由文件 `app/$slug/example.tsx` 挂到核心的 `/app/$slug` 布局下（`getParentRoute: () => AppSlugRouteRoute`）；`createFileRoute` 写错路径时 `tsc` 报错，类型化路由覆盖插件。
+- 多语言路由（main 最近合并的语言前缀与多站点）：语言前缀由路由器 rewrite 与 `request.server.ts` 处理，插件路由与核心路由在同一棵树上，规则相同；应用区（`/app`）按 Cookie 取语言，不受影响。
+- Node 构建按目标挂载：`targets` 不含 `node` 的插件不挂路由（`pluginRouteConfig(..., 'node')`）。
+- 剔除效果（1.2）见下方「构建期剔除验证」。
+
+### 构建期剔除验证（1.2，2026-11-24）
+
+同一临时插件 `plugins/example`（每个入口、页面、服务端函数、文案与 Tailwind 类名各带一个特有字符串）分别启用与关闭，构建四个产物后用 `scripts/plugins/check-artifacts.mjs` 搜索（含 source map）：
+
+```sh
+APP_VERSION=$(git rev-parse HEAD)
+pnpm --filter @saas/web build                                   # apps/web/dist（Cloudflare）
+(cd apps/web && pnpm exec vite build --config vite.node.config.ts && node scripts/build-node-bootstrap.mjs)  # apps/web/.output
+pnpm --filter @saas/jobs build                                  # apps/jobs/dist（wrangler --dry-run）
+pnpm --filter @saas/jobs build:node                             # apps/jobs/.output
+node scripts/plugins/check-artifacts.mjs --present <特有字符串...> [--only web,web-node,jobs,jobs-node]
+node scripts/plugins/check-artifacts.mjs --absent <特有字符串...>
+```
+
+- 启用：页面、服务端函数与 web 入口的字符串出现在 web 两个产物；Worker 入口的 fetch 前置处理与具名导出类只在 `dist/server/index.js`；jobs 入口的类与定时任务在 `apps/jobs/dist/index.js`；Node 入口只在对应的 `.output`；插件类名进入两目标的 CSS。`vite dev` 中 Worker 前置处理先于路由返回，带请求日志与 `x-request-id`。
+- 关闭：四个产物中插件的全部特有字符串、`plugins/example` 路径、消息键与类名均为 0 处。
+- 仅 Cloudflare：把插件 `targets` 改为 `['cloudflare']` 后，两个 Node 构建成功并打印「插件 example 仅支持 Cloudflare，selfhost（Node）构建已排除」，Node 产物中没有其字符串与类名（`plugins.gen.ts` / `plugins.gen.css` 经别名解析为 Node 版本）。
+- 5.4 复用上述命令，字符串换成 `AiMediaWorkflow`、`fal.media` 与媒体页面组件名。验证完成后 `plugins/example` 已删除，不合并进 main；仓库目前没有插件，`apps/web`、`apps/jobs` 在新增插件时于 package.json 声明对 `@saas/plugin-<id>` 的 `workspace:*` 依赖。
+
 ### 5. 核心扩展点
 
 只开放以下扩展点，插件通过 web / jobs 入口导出：
@@ -120,6 +164,13 @@ rootRoute('__root.tsx', [
 | 运行时依赖（env、能力） | `server/cloudflare/env.ts`、`node/runtime.ts` 写死媒体 | 插件声明所需绑定；核心按清单校验存在性，插件自己读取 |
 
 不做通用的事件总线或依赖注入容器；扩展点不够用时再按需新增，并记录在 `docs/plugins.md`。
+
+**实现说明（3.4–3.6）**：
+
+- web 约定在 `apps/web/src/features/plugins/contract.ts`（`appNav`、`adminNav`、`toolRenderers`、Node 的 `fetch`），Cloudflare Worker 约定在 `server/cloudflare/plugins.ts`（`fetch(request, env, ctx)`，具名导出原样导出）。导航登记顺序为模板 → 插件 → 项目（同 id 后者覆盖）；后台菜单追加到已有分组（people / billing / ai / operations）末尾。fetch 前置处理在网关与 Start 之前、日志与运行时上下文之内调用；Worker 外层对 101（WebSocket 升级）原样返回，不重新构造响应。
+- jobs 约定在 `apps/jobs/src/plugins/contract.ts`：`crons` 挂在已有触发器上（heartbeat / ten-minute / daily，不新增 wrangler cron），与同组核心任务并行、任一失败则本次触发失败；`queues` 以基础队列名声明（Cloudflare 匹配 `name` / `name-staging` / `name-production`，Node 以 `name` 注册到持久队列）；`holdSweepers` 由入口登记；Node 入口另有 `registerWorkflows`，在 `engine.register` 内注册持久任务并返回内部 HTTP 路由与停止接收。
+- 运行时绑定校验：`@saas/config` 的 `pluginBindingsShape` 按种类检查绑定形状；web 的 `checkEnv` 与 jobs 的 `requireEnv` 合并启用插件声明的绑定，必需绑定缺失时与核心绑定一样启动校验失败。Node 目标没有 Cloudflare 绑定，插件在自己的 Node 入口校验所需配置。`server/cloudflare/env.ts` 与 `node/runtime.ts` 中写死的媒体判断随第 5 组（media 清单声明 `AI_MEDIA_WORKFLOW`）一并删除（协调者确认，2026-11-24）。
+- `ai.image || ai.video` 需要 `media` 的校验只在仓库存在 `media` 插件时生效：迁移前没有该插件，规则无法满足。
 
 ### 6. 部署目标
 
