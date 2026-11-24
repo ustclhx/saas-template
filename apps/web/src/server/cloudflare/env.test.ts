@@ -26,6 +26,8 @@ function completeEnv() {
   return {
     HYPERDRIVE: { connectionString: SECRET },
     AI_MEDIA_WORKFLOW: { create: fn, get: fn },
+    // 模板启用的 agents 插件声明的 Durable Object 绑定（plugins.worker.gen.ts）
+    AGENT_CONVERSATION: { idFromName: fn, get: fn },
     EMAIL_QUEUE: { send: fn },
     CACHE: { get: fn, put: fn, delete: fn },
     RL_AUTH: { limit: fn },

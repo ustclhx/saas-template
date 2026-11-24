@@ -1,13 +1,13 @@
 ## 1. 技术验证（依赖 add-plugin-system 第 3 组合并后进行）
 
-- [ ] 1.1 spike：在 `plugins/agents` 中用精确锁定的 `agents` / `@cloudflare/ai-chat` 实现一个最小 chat agent，经 `plugins.worker.gen.ts` 导出、fetch 前置处理接管 `/agents/*`；确认 TanStack Start Worker 入口、Cloudflare Vite 插件 dev 与 `pnpm build` 均可用，不引入 `agents/vite`、不用装饰器、tsconfig 不开 `experimentalDecorators`；jobs 经 `script_name` 绑定能 RPC 调用 web 中的实例。把结论写进 design.md「验证结果」
-- [ ] 1.2 spike：在 `onChatMessage` 内自调 `streamText`（tools + `stopWhen` + `onStepFinish` / `onFinish`）能拿到逐步与总用量；用 `wrangler dev` 下强制重启实例，记录恢复时的 `requestId` 与模型调用重放行为、`needsApproval` 暂停期间的状态。确认 `maxInterruptedAttempts` 与 `shouldKeepRecovering` 生效。若 chat agent 不满足，按 design 风险项切到 Agent 基类方案并在 PR 说明
+- [x] 1.1 spike：在 `plugins/agents` 中用精确锁定的 `agents` / `@cloudflare/ai-chat` 实现一个最小 chat agent，经 `plugins.worker.gen.ts` 导出、fetch 前置处理接管 `/agents/*`；确认 TanStack Start Worker 入口、Cloudflare Vite 插件 dev 与 `pnpm build` 均可用，不引入 `agents/vite`、不用装饰器、tsconfig 不开 `experimentalDecorators`；jobs 经 `script_name` 绑定能 RPC 调用 web 中的实例（已验证后放弃该路径，见 design 决策 12）。把结论写进 design.md「验证结果」
+- [x] 1.2 spike：在 `onChatMessage` 内自调 `streamText`（tools + `stopWhen` + `onStepFinish` / `onFinish`）能拿到逐步与总用量；用 `wrangler dev` 下强制重启实例，记录恢复时的 `requestId` 与模型调用重放行为、`needsApproval` 暂停期间的状态。确认 `maxInterruptedAttempts` 与 `shouldKeepRecovering` 生效。若 chat agent 不满足，按 design 风险项切到 Agent 基类方案并在 PR 说明
 
 ## 2. 契约、数据与配置
 
 - [x] 2.1 `packages/ai/src/agents/tool.ts`：`defineAgentTool`、工具上下文接口（含 `idempotencyKey`）、输入 schema 到 AI SDK tool 的转换；名称格式校验。单元测试
 - [x] 2.2 迁移：`ai_conversation.kind` / `agent_id` 与检查约束、`ai_model.supports_tools`、`ai_agent_turn` 表与索引；`credit_hold.ref_type` 加 `agent_turn`；现有对话列表查询加 `kind = 'chat'`。迁移在本地 PG 应用，现有对话集成测试通过；`docs/03-data-model.md` 更新
-- [ ] 2.3 `plugins/agents` 清单：targets `['cloudflare']`、requires billing+credits、bindings（web Durable Object + SQLite 类，jobs 指向 web 类的 Durable Object 绑定）；配置段 `maxSteps`（默认 8）、`maxTurnCredits`、`maxPersistedMessages`（默认 200）、`retentionDays`（默认不设置即关闭）、`defaultAgent`。模板 `template.config.ts` 启用并补齐 web / jobs wrangler 各环境绑定，`pnpm check` 通过
+- [x] 2.3 `plugins/agents` 清单：targets `['cloudflare']`、requires billing+credits、bindings（web Durable Object + SQLite 类；jobs 不绑定，见 design 决策 12）；配置段 `maxSteps`（默认 8）、`maxTurnCredits`、`maxPersistedMessages`（默认 200）、`retentionDays`（默认不设置即关闭）、`defaultAgent`。模板 `template.config.ts` 启用并补齐 web wrangler 各环境绑定，`pnpm check` 通过
 - [x] 2.4 后台模型编辑器增加「支持工具调用」开关，`requireAvailableModel` 增加按能力过滤；种子数据为已知支持工具的模型打标。单元测试与后台页组件测试
 
 ## 3. 身份与路由
@@ -20,7 +20,7 @@
 - [ ] 4.1 与 SDK 无关的轮次服务：调用前检查（成员资格、模型权益与工具能力、限流、欠费、余额）、建 turn 行与预扣（单步预算 × maxSteps，按 `maxTurnCredits` 封顶）、按 `(conversation_id, request_id)` 复用。集成测试覆盖各拒绝分支与重复请求不重复预扣
 - [ ] 4.2 结算：完成按 `totalUsage` 与定价快照 capture；停止 / 中断按检查点，被驱逐调用的用量按检查点加已输出字符保守估算；无可见输出失败按 `failedReplyRefund`；超额容忍与欠费复用 credits。集成测试逐分支核对账本金额
 - [ ] 4.3 实例适配层：`onChatMessage` 组装 agent 定义、工具集、`streamText`（abortSignal 透传、`onStepFinish` 写检查点）；`chatRecovery` 类字段（`maxInterruptedAttempts` 2，`shouldKeepRecovering` 按预扣封顶停止恢复）；每轮更新 `ai_conversation.updated_at`；租户状态不放模块级变量。用测试替身模型跑多步工具与恢复场景的集成测试
-- [ ] 4.4 `agentTurnHoldSweeper` 经插件 jobs 入口注册到现有清理 Cron：过期 running 轮次按检查点结算并标记 `expired`，等待确认中的调用标记过期。集成测试
+- [ ] 4.4 `agentTurnHoldSweeper` 经插件 jobs 入口注册到现有清理 Cron，只操作 PG：过期 running 轮次按检查点结算并标记 `expired`；实例下次唤醒时清除已终态的开放轮次，并把等待确认中的调用标记过期。集成测试
 - [ ] 4.5 日志与 Sentry：每轮结构化日志（turnId、步数、工具名、耗时、积分，不记内容），Durable Object 中的错误上报 Sentry；单元测试确认日志不含消息与工具参数
 
 ## 5. 工具与 agent 定义
@@ -38,13 +38,13 @@
 ## 7. 删除与清理
 
 - [ ] 7.1 用户删除对话：按现有对话删除语义处理 PG 行，并调用实例清理；集成测试确认之后连接返回 404
-- [ ] 7.2 删号 / 删空间清理接入：jobs 经 Durable Object 绑定逐个清理实例，再删 turn 与对话行；幂等、失败可重试。集成测试覆盖部分失败重试
-- [ ] 7.3 保留期清理器：经插件 jobs 入口注册到现有清理 Cron；未设置 `retentionDays` 时直接返回且不查库；开启后按 `updated_at` 分批删除超期且无 running 轮次的 agent 对话（复用 7.1 流程）。集成测试覆盖关闭、超期、跳过执行中三种情况
+- [ ] 7.2 删号 / 删空间清理接入：web 经 `packages/auth` 的 `deletionSteps` 注册清理 step，按 PG 对话表逐个调用实例 `deleteAll()`，再删 turn 与对话行；幂等、失败可重试。实例 alarm 自清理兜底：空闲时按「最近活动 + min(retentionDays, 30) 天」设置 alarm，到期查 PG，对话不存在则 `deleteAll()`，否则顺延。集成测试覆盖部分失败重试与 alarm 自清理
+- [ ] 7.3 保留期清理：由实例 alarm 执行（不需要 jobs 清理器、不新增 Cron）；未设置 `retentionDays` 时 alarm 只检查对话是否存在；开启后对话超出保留期且无 running 轮次时按 7.1 流程删 PG 行并 `deleteAll()`，否则顺延 alarm。集成测试覆盖关闭、超期、跳过执行中三种情况
 
 ## 8. 异步工具结果（依赖 media 插件）
 
-- [ ] 8.1 `generate_image` / `generate_video` 工具由 media 插件的 `agentTools` 提供（agents 未启用时不导出），提交任务时记录 `agentConversationId`，返回 pending 结果
-- [ ] 8.2 媒体 Workflow 完成 / 失败通知时，经 jobs 的 Durable Object 绑定调用实例 `onTaskDone`，写入结果部件，默认不自动续轮。集成测试确认无新增模型费用
+- [ ] 8.1 `generate_image` / `generate_video` 工具由 media 插件的 `agentTools` 提供（agents 未启用时不导出），提交任务后返回含 `taskId` 的 pending 结果（媒体任务不记录 agent 信息，结果由实例拉取，见 8.2）
+- [ ] 8.2 实例拉取任务状态：记录待完成 `taskId`，用实例 alarm 退避轮询 PG 中 `ai_task`（5 秒起、上限 60 秒、任务超时后停止），客户端连接或新一轮开始时立即检查；终态时用 `saveMessages` 写入结果部件，默认不自动续轮。媒体 Workflow 不需要知道 agent。集成测试确认无新增模型费用
 
 ## 9. 文档与验收
 

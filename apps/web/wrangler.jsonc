@@ -46,6 +46,15 @@
       "script_name": "jobs"
     }
   ],
+  // agents 插件（plugins/agents）：每个 agent 对话一个 Durable Object，类由本 Worker 导出（经 plugins.worker.gen.ts）。
+  // 实例只由本 Worker 访问；jobs 不绑定它（web 已绑定 jobs 的 Workflow，反向绑定会形成部署循环依赖）。
+  // durable_objects 不从顶层继承，各环境重复声明。
+  "durable_objects": {
+    "bindings": [{ "name": "AGENT_CONVERSATION", "class_name": "AgentConversation" }]
+  },
+  // Durable Object 迁移从顶层继承到各环境；只能追加，已发布的 tag 不能修改或删除。
+  // 删除类需要 deleted_classes 迁移并会清空全部对话（openspec add-ai-agents Migration Plan）。
+  "migrations": [{ "tag": "agents-v1", "new_sqlite_classes": ["AgentConversation"] }],
   // web 为 producer，apps/jobs 为 consumer
   "queues": {
     "producers": [
@@ -120,6 +129,9 @@
           "script_name": "jobs-staging"
         }
       ],
+      "durable_objects": {
+        "bindings": [{ "name": "AGENT_CONVERSATION", "class_name": "AgentConversation" }]
+      },
       "queues": {
         "producers": [
           { "binding": "EMAIL_QUEUE", "queue": "email-staging" },
@@ -167,6 +179,9 @@
           "script_name": "jobs-production"
         }
       ],
+      "durable_objects": {
+        "bindings": [{ "name": "AGENT_CONVERSATION", "class_name": "AgentConversation" }]
+      },
       "queues": {
         "producers": [
           { "binding": "EMAIL_QUEUE", "queue": "email-production" },

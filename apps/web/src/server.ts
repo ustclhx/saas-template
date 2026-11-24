@@ -92,7 +92,15 @@ export default {
       withLogContext(context, async () => {
         try {
           const invalid = checkEnv(env)
-          if (!invalid && (request.method === 'GET' || request.method === 'HEAD') && env.ASSETS) {
+          // WebSocket 升级（agents 插件的 /agents/*）不查静态资源：本地 dev 中 ASSETS 是 Vite 的 Node 服务，
+          // 收到升级请求会让 miniflare 断言失败并退出 dev 进程
+          const upgrade = request.headers.get('upgrade')?.toLowerCase() === 'websocket'
+          if (
+            !invalid &&
+            !upgrade &&
+            (request.method === 'GET' || request.method === 'HEAD') &&
+            env.ASSETS
+          ) {
             const asset = await env.ASSETS.fetch(request)
             if (asset.status !== 404) {
               const response = await withStaticSecurityHeaders(asset, security)
