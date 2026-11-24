@@ -26,16 +26,29 @@ export interface AgentTool<Schema extends z.ZodType, Output, Context extends Age
   readonly execute: (input: z.output<Schema>, ctx: Context) => Promise<Output>
 }
 
+type ToolCall = { toolCallId: string; abortSignal?: AbortSignal | undefined }
+
+/** 异构注册表通过绑定函数保留具体工具的 schema 与输入类型。 */
+export interface RegisteredAgentTool<Context extends AgentToolContext> {
+  readonly name: string
+  readonly bind: (createContext: (call: ToolCall) => Context) => Tool
+}
+
+export type AgentToolContribution<Context extends AgentToolContext> =
+  | readonly RegisteredAgentTool<Context>[]
+  | (() => readonly RegisteredAgentTool<Context>[])
+
 export function defineAgentTool<Schema extends z.ZodType, Output, Context extends AgentToolContext>(
   definition: AgentTool<Schema, Output, Context>,
-): AgentTool<Schema, Output, Context> {
+): AgentTool<Schema, Output, Context> & RegisteredAgentTool<Context> {
   if (!/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(definition.name)) {
     throw new Error(`Invalid agent tool name "${definition.name}": expected snake_case`)
   }
-  return definition
+  return {
+    ...definition,
+    bind: (createContext) => toAiSdkTool(definition, createContext),
+  }
 }
-
-type ToolCall = { toolCallId: string; abortSignal?: AbortSignal | undefined }
 
 export function toAiSdkTool<Schema extends z.ZodType, Output, Context extends AgentToolContext>(
   definition: AgentTool<Schema, Output, Context>,
