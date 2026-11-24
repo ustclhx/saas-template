@@ -46,8 +46,9 @@
       "script_name": "jobs"
     }
   ],
-  // agents 插件（plugins/agents）：每个 agent 对话一个 Durable Object，类由本 Worker 导出（经 plugins.worker.gen.ts）；
-  // apps/jobs 用同名绑定 + script_name 调用实例。durable_objects 不从顶层继承，各环境重复声明。
+  // agents 插件（plugins/agents）：每个 agent 对话一个 Durable Object，类由本 Worker 导出（经 plugins.worker.gen.ts）。
+  // 实例只由本 Worker 访问；jobs 不绑定它（web 已绑定 jobs 的 Workflow，反向绑定会形成部署循环依赖）。
+  // durable_objects 不从顶层继承，各环境重复声明。
   "durable_objects": {
     "bindings": [{ "name": "AGENT_CONVERSATION", "class_name": "AgentConversation" }]
   },

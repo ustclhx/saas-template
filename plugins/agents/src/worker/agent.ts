@@ -109,7 +109,8 @@ export class AgentConversation extends AIChatAgent<Cloudflare.Env> {
 
   /**
    * 仅本地开发（前置处理已拦截其他环境）的验证端点：
-   * POST …/spike/abort 重置实例（模拟驱逐 / 部署）；POST …/spike/stop-recovery?root=<id> 让该轮停止恢复。
+   * POST …/spike/abort 重置实例（模拟驱逐 / 部署）；POST …/spike/stop-recovery?root=<id> 让该轮停止恢复；
+   * POST …/spike/schedule?s=<秒> 用 SDK 的 schedule（实例 alarm）安排一次 spikeAlarm，验证 alarm 可触发。
    * TODO(4.3)：随技术验证代码一起删除。
    */
   override async onRequest(request: Request): Promise<Response> {
@@ -122,12 +123,19 @@ export class AgentConversation extends AIChatAgent<Cloudflare.Env> {
       this.ctx.storage.kv.put(`spike:stop-recovery:${url.searchParams.get('root')}`, true)
       return Response.json({ ok: true })
     }
+    if (request.method === 'POST' && url.pathname.endsWith('/spike/schedule')) {
+      const seconds = Number(url.searchParams.get('s') ?? '5')
+      const task = await this.schedule(seconds, 'spikeAlarm', { scheduledAt: Date.now() })
+      return Response.json({ id: task.id, seconds })
+    }
     return new Response('Not found', { status: 404 })
   }
 
-  /** jobs 经 script_name 绑定的 RPC 入口（验证用）；TODO(7.1/8.2)：换成清理与 onTaskDone */
-  async spikePing(from: string) {
-    log.info('agents.rpc.ping', { conversationId: this.name, from })
-    return { name: this.name, messages: this.messages.length }
+  /** 技术验证：alarm 回调。TODO(7.2/7.3/8.2)：换成自清理、保留期与任务状态检查 */
+  async spikeAlarm(payload: { scheduledAt: number }) {
+    log.info('agents.spike.alarm', {
+      conversationId: this.name,
+      delayMs: Date.now() - payload.scheduledAt,
+    })
   }
 }

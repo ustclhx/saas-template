@@ -27,13 +27,6 @@
   "workflows": [
     { "name": "ai-media", "binding": "AI_MEDIA_WORKFLOW", "class_name": "AiMediaWorkflow" }
   ],
-  // agents 插件：AgentConversation 定义在 apps/web，这里按 script_name 绑定（删除清理、异步结果写回）。
-  // durable_objects 不从顶层继承，各环境重复声明，script_name 指向同环境的 web Worker。
-  "durable_objects": {
-    "bindings": [
-      { "name": "AGENT_CONVERSATION", "class_name": "AgentConversation", "script_name": "web" }
-    ]
-  },
   // web 投递业务事件，jobs 消费并从 Cron 投递对账告警。
   // max_retries 与 src/queues/email.ts 的 EMAIL_MAX_ATTEMPTS（首次 + 5 次重试）一致；
   // 邮件不配置死信队列：最后一次投递仍失败时由消费者确认并记录 email.dropped（原因见该文件注释）。
@@ -95,15 +88,6 @@
           "class_name": "AiMediaWorkflow"
         }
       ],
-      "durable_objects": {
-        "bindings": [
-          {
-            "name": "AGENT_CONVERSATION",
-            "class_name": "AgentConversation",
-            "script_name": "web-staging"
-          }
-        ]
-      },
       "queues": {
         "producers": [
           { "queue": "email-staging", "binding": "EMAIL_QUEUE" },
@@ -165,15 +149,6 @@
           "class_name": "AiMediaWorkflow"
         }
       ],
-      "durable_objects": {
-        "bindings": [
-          {
-            "name": "AGENT_CONVERSATION",
-            "class_name": "AgentConversation",
-            "script_name": "web-production"
-          }
-        ]
-      },
       "queues": {
         "producers": [
           { "queue": "email-production", "binding": "EMAIL_QUEUE" },

@@ -11,7 +11,7 @@
   - `routeAgentRequest` 提供 `onBeforeConnect` / `onBeforeRequest` 钩子，可拒绝或改写请求。
   - SDK 不回报 token 用量（`_onFinish` 为空操作）；恢复时会重新调用模型（`continueLastTurn`），被驱逐的那次调用用量丢失，工具可能执行两次。
   - `AIChatAgent` 继承 `Agent`，`Agent` 建在官方标为 Stable 的 Lifecycle 之上。
-- 依赖 `add-plugin-system` 提供的扩展点：Worker 导出、fetch 前置处理、jobs 清理器、消息部件渲染器、仅 Cloudflare 目标。
+- 依赖 `add-plugin-system` 提供的扩展点：Worker 导出、fetch 前置处理、jobs 积分预扣清理器（只操作 PG）、消息部件渲染器、仅 Cloudflare 目标。
 
 ## Goals / Non-Goals
 
@@ -59,9 +59,11 @@ WebSocket 升级请求同源会带 Cookie，不需要额外 token。跨域访问
   → 限流 rateLimiter.limit('ai')
   → 欠费与余额检查
   → 事务：插入 ai_agent_turn(status=running, request_id) + hold(refType='agent_turn')
-  → streamText({ tools, stopWhen: stepCountIs(maxSteps), abortSignal, onStepFinish, onFinish })
-      onStepFinish：累计用量写入 turn.usage_checkpoint
-      onFinish：按定价快照计算实际积分 → capture → turn.status=completed
+  → 实例存储记录「当前开放轮次」{ turnId, rootRequestId, holdId, userMessageId }
+  → streamText({ tools, stopWhen: stepCountIs(maxSteps), abortSignal, onStepEnd, onEnd })
+      onStepEnd：累计用量写入 turn.usage_checkpoint
+      onEnd：最后一步停在等待确认 → 不结算（决策 5）；
+             否则按定价快照计算实际积分 → capture → turn.status=completed → 清除开放轮次
   → 停止或中断：按最后检查点结算（与文本 settleInterrupted 同规则）
   → 出错且没有可见输出：按现有 failedReplyRefund 规则 release
 ```
@@ -70,18 +72,18 @@ WebSocket 升级请求同源会带 Cookie，不需要额外 token。跨域访问
 - 一轮的实际消耗超过预扣时，走现有超额容忍与欠费规则。
 - 定价快照写在 turn 行上，结算只读这份快照，规则同文本对话。
 
-取得用量的方式：在 `onChatMessage` 内自己调用 `streamText`，用 AI SDK 的 `onStepFinish` / `onFinish` 拿 `usage` 与 `totalUsage`，不依赖 SDK 的回调。第 1 组验证这条路径，以及 SDK 在恢复时重放模型调用的行为。
+取得用量的方式：在 `onChatMessage` 内自己调用 `streamText`，用 AI SDK 的 `onStepEnd` / `onEnd`（ai 7 中 `onStepFinish` / `onFinish` 的新名称）拿 `usage` 与 `totalUsage`，不依赖 SDK 的回调。第 1 组已验证这条路径与恢复时的重放行为（见「验证结果」）。
 
 计费只信自己的账本：被驱逐的那次模型调用拿不到用量，按最后检查点加已输出字符做保守估算，规则与现有文本对话的中断结算一致。
 
-**恢复去重：**
-- `ai_agent_turn` 对 `(conversation_id, request_id)` 唯一。
-- SDK 恢复或续跑同一轮时，复用已有的 turn 行与预扣，不新建预扣。
-- 已终态的轮次不再结算。
-- `chatRecovery` 写成类字段，`maxInterruptedAttempts` 设为 2。
-- `shouldKeepRecovering` 按 `recoveryRootRequestId` 读取本轮已记录的消耗，超过预扣封顶就停止恢复并按检查点结算。
+**恢复去重（按 1.2 验证结果修订）：** SDK 的续轮（确认后、恢复后）都使用服务端新生成的 `requestId`，`retry` 类恢复的 `continuation` 还是 false，所以不能用 `requestId` 识别同一轮。
+- 按实例存储中的「当前开放轮次」匹配 turn 行：`onChatMessage` 开始时如果存在开放轮次，且没有新的用户消息（最后一条用户消息的 id 等于开放轮次的 `userMessageId`），就复用该 turn 行与预扣，不新建预扣；有新的用户消息时才建新的一轮。
+- `ai_agent_turn` 对 `(conversation_id, request_id)` 唯一，`request_id` 取首轮的客户端 id（等于恢复钩子中的 `recoveryRootRequestId`），作为重复建行的最后防线。
+- 已终态的轮次不再结算；结算后清除开放轮次。
+- **每次续跑开始时检查预扣封顶**：复用开放轮次的续轮在调用模型前比较已记录消耗（检查点加被驱逐调用的估算）与预扣封顶，超过即按检查点结算、清除开放轮次并不再调用模型。
+- `chatRecovery` 写成类字段，`maxInterruptedAttempts` 设为 2；`shouldKeepRecovering` 按 `recoveryRootRequestId` 做同样的封顶判断，只作补充（它从第 2 次恢复才调用，见「验证结果」）；`onExhausted` 按检查点结算。
 
-**兜底：** jobs 注册 `agentTurnHoldSweeper`（插件 jobs 入口导出），对预扣过期但仍为 running 的轮次按检查点结算，规则与 `chatHoldSweeper` 一致。它复用现有清理 Cron，不新增定时任务。
+**兜底：** jobs 注册 `agentTurnHoldSweeper`（插件 jobs 入口导出），对预扣过期但仍为 running 的轮次按检查点结算，规则与 `chatHoldSweeper` 一致。它复用现有清理 Cron，不新增定时任务，**只操作 PG**，不访问实例（jobs 不持有 Durable Object 绑定，见决策 12）。实例下次被唤醒时发现开放轮次在 PG 中已是终态，直接清除开放轮次。
 
 ### 4. 工具契约与注册
 
@@ -129,8 +131,10 @@ defineAgent({
 
 工具 `needsApproval` 映射到 SDK 的工具确认。暂停期间：
 
-- 预扣保持不变。等待确认的轮次不受恢复预算限制（SDK 行为）；但预扣会到期，到期前没有确认的，由清理器按检查点结算，并把该工具调用标记为过期。
-- 用户批准后继续执行；拒绝时把拒绝结果交给模型，同一轮继续。
+- SDK 行为（1.2 验证）：模型请求确认后本次流即结束，`onEnd` 触发，消息以 `approval-requested` 持久化；没有进行中的 fiber，不消耗恢复预算，实例可休眠。
+- **等待确认期间不结算**：`onEnd` 时最后一步停在等待确认，turn 保持 running，预扣不动，开放轮次保留。
+- 用户批准或拒绝后，SDK 以新的 `requestId` 发起续轮；续轮按决策 3 复用开放轮次与预扣，并先做封顶检查。批准时执行工具；拒绝时工具不执行，拒绝结果（`output-denied`）交给模型，同一轮继续，在续轮的 `onEnd` 结算。
+- 预扣会到期：到期前没有确认的，由 `agentTurnHoldSweeper` 在 PG 中按检查点结算并标记过期；实例下次唤醒时清除开放轮次，并把该工具调用标记为过期。
 
 确认卡片由插件 web 入口注册到消息部件渲染器。
 
@@ -159,14 +163,26 @@ defineAgent({
 
 ### 7. 删除与清理
 
-- **用户删除对话：** web 先在 PG 软删（`archived` 改为删除标记沿用现有字段语义；若现有删除是硬删则同样硬删），再通过 Durable Object 绑定调用实例的清理方法（`destroy`），清空实例存储。
-- **删号、删空间：** 现有 AI 内容清理在 jobs 中执行。jobs 增加指向 web 类的 Durable Object 绑定（wrangler `script_name`），逐个调用实例清理，再删 PG 的 turn 与对话行；清理幂等，可重试。
+所有实例操作都在 web 内发生（jobs 不持有 Durable Object 绑定，见决策 12）。清理与枚举以 PG 对话表为唯一依据。
+
+- **用户删除对话：** web 先按现有对话删除语义处理 PG 行（软删沿用现有字段语义；若现有删除是硬删则同样硬删），再经 web 的 Durable Object 绑定调用实例清理方法（`deleteAll()` 清空实例存储）。实例调用失败不回滚 PG，由下面的 alarm 自清理兜底。
+- **删号、删空间：** 删号沿用 `packages/auth` 的 `deletionSteps`：web 注册一个清理 agent 实例的 step，按 PG 对话表逐个调用实例 `deleteAll()`，再删 PG 的 turn 与对话行；幂等，可重试，单个实例失败不阻塞其余数据的清理。删空间同样在 web 执行；若空间数据由其他流程（例如 jobs 的保留期清理）直接删除 PG 行，实例由 alarm 自清理。
+- **alarm 自清理（兜底）：** 每个实例在空闲时（一轮结束且没有开放轮次）用 SDK 的 `schedule` 设置一次 alarm，下次检查时间 = 最近活动 + min(`retentionDays`, 30) 天（未设置保留期时为 30 天）。到期时查 PG：
+  - 对话不存在 → `deleteAll()` 自清理；
+  - 对话存在且已超出保留期（`retentionDays` 已设置、`updated_at` 早于期限、没有 running 轮次）→ 按用户删除对话的流程删 PG 行并 `deleteAll()`；
+  - 否则顺延 alarm。
+  删除失败因此总有自愈路径，且只有存在过的实例才会被唤醒，没有全表扫描。1.2 补充验证确认 alarm 在 `wrangler dev` 下可触发，且进程重启后无请求也会触发。
 - **保留上限：** `maxPersistedMessages` 取 `plugins.agents.maxPersistedMessages`（默认 200）。
-- **保留期（使用者决定，2026-11-24）：** 配置项 `plugins.agents.retentionDays`，默认不设置（关闭）。开启后由插件 jobs 入口注册的清理器在现有清理 Cron 中执行：按 `updated_at` 找出超期且没有 running 轮次的 agent 对话，每次处理有上限的一批，按用户删除对话的同一流程清实例、删行。未开启时清理器直接返回，不查库，符合 Neon 成本基线。
+- **保留期（使用者决定，2026-11-24）：** 配置项 `plugins.agents.retentionDays`，默认不设置（关闭）。开启后由上面的实例 alarm 执行，不需要 jobs 清理器，也不新增 Cron；未开启时 alarm 只检查对话是否存在。每个实例最多每 30 天查一次 PG，空闲实例不产生持续的数据库访问，符合 Neon 成本基线。
 
 ### 8. 异步工具结果
 
-长任务工具（媒体）返回 `{ taskId, status: 'pending' }`，并在任务 `input` 中记录 `agentConversationId`。媒体 Workflow 完成通知时，如果有这个字段，就通过 jobs 的 Durable Object 绑定调用实例方法 `onTaskDone(taskId, result)`，实例用 `saveMessages` 写入结果部件。
+长任务工具（媒体）返回 `{ taskId, status: 'pending' }`。结果由**实例拉取**，jobs 的媒体 Workflow 不需要知道 agent：
+
+- 实例在存储中记录待完成的 `taskId`（含提交时间）。
+- 存在待完成任务时，用 SDK 的 `schedule`（实例 alarm）退避轮询 PG 中 `ai_task` 的状态：5 秒起、逐次加倍、上限 60 秒；超过任务超时时间后停止轮询，并写入超时结果。
+- 客户端连接或新一轮开始时也立即检查一次。
+- 任务到终态（成功或失败）时，实例用 `saveMessages` 写入结果部件，并移除该 `taskId`；没有待完成任务时不再设置轮询 alarm（只保留决策 7 的空闲 alarm）。
 
 是否让模型在结果写回后自动继续一轮，由工具声明，默认不继续，避免无人值守的消耗。本组依赖 `media` 插件，`media` 未启用时不注册相关工具。
 
@@ -181,9 +197,9 @@ defineAgent({
 
 - `agents`、`@cloudflare/ai-chat` 精确锁定版本。
 - SDK 类与钩子只出现在 `plugins/agents/src/worker/`，计费、权限与工具执行写成与 SDK 无关的函数并单测；升级 SDK 时只改 worker 目录的适配层。
-- 不使用 `@callable` 等装饰器，因此不需要 `agents/vite` 插件（也避开它在 pnpm 下的已知问题），tsconfig 不开启 `experimentalDecorators`。实例方法（清理、`onTaskDone`）经 Durable Object RPC 调用。
+- 不使用 `@callable` 等装饰器，因此不需要 `agents/vite` 插件（也避开它在 pnpm 下的已知问题），tsconfig 不开启 `experimentalDecorators`。实例清理方法由 web 经 Durable Object RPC 调用；异步任务结果由实例自己拉取（决策 8）。
 - 升级 SDK 时阅读 CHANGELOG，并回归「流式进行中部署」；SDK 的存储迁移不可回滚，升级按单向操作规划。
-- 不使用 SDK 的 workflows 表与调度；长任务继续走 jobs 中的 Workflow。
+- 不使用 SDK 的 workflows 表；SDK 的 `schedule` 只用于实例自身的 alarm（决策 7 的自清理与保留期、决策 8 的任务轮询）；长任务继续走 jobs 中的 Workflow。
 
 ### 11. 多租户与存储规范
 
@@ -198,7 +214,7 @@ defineAgent({
 使用者决定（2026-11-24）：Durable Object 类由 web Worker 导出（经 `plugins.worker.gen.ts`），不单独建 agents Worker，也不跨项目共用。
 
 - 前置处理、会话、数据库、限流等绑定直接复用 web 的。
-- jobs 通过带 `script_name` 的 Durable Object 绑定调用实例（删除清理、异步结果写回），与现有 web 调用 jobs Workflow 的方式对称。
+- **jobs 不持有 Durable Object 绑定**（协调者决定，2026-11-24）：web 已经按 `script_name` 绑定 jobs 的 Workflow（jobs 必须先部署）；若 jobs 再按 `script_name` 绑定 web 的类，两个 Worker 互相依赖，新生成项目的首次部署在任何顺序下都可能失败。所以所有实例操作只在 web 内发生：删除清理由 web 调用（决策 7），异步结果由实例拉取（决策 8），保留期与兜底清理由实例 alarm 执行。jobs 只处理 PG（`agentTurnHoldSweeper`）。
 - 每次 web 部署时，活跃实例最多继续运行旧代码 300 秒；已休眠的 WebSocket 跨部署保留，进行中的流由 SDK 恢复（计费按决策 3 处理）。
 - 实例数据跟随定义它的 Worker，上线后再改放法无法迁移旧对话。若以后改为独立 Worker，需另起 change 并接受旧对话不迁移或自写迁移。
 
@@ -221,10 +237,12 @@ defineAgent({
   - `pnpm --filter @saas/web build`（含预渲染）通过。
   - `wrangler dev -c apps/web/dist/server/wrangler.json` 运行构建产物时行为相同。
   - 注意：本 worktree 的 dev 服务器运行时，预渲染会因为 inspector 端口被占用而报 `Failed to fetch /: Internal Server Error`。这是本地端口冲突，与插件无关。
-- **jobs 经 `script_name` RPC**：jobs 用 `env.AGENT_CONVERSATION.getByName(id).method()` 调用 web 中的实例。
-  - 在同一 workerd 中可以调用成功，返回实例名与消息数，命令为 `wrangler dev -c apps/jobs/wrangler.jsonc -c apps/web/dist/server/wrangler.json`。
-  - 分开启动时（web `vite dev` + jobs `wrangler dev`，经 dev registry），绑定显示 connected，但 Agent 抛出「could not determine its Durable Object name」，因为跨进程代理没有带上 `ctx.id.name`。
-  - 因此 7.x / 8.x 的本地联调用上面的多配置命令或单元测试，线上行为在 9.3 staging 验收中确认。
+- **jobs 经 `script_name` RPC（已放弃该路径）**：验证时 jobs 可以用 `env.AGENT_CONVERSATION.getByName(id).method()` 调用 web 中的实例（同一 workerd 中，`wrangler dev -c apps/jobs/wrangler.jsonc -c apps/web/dist/server/wrangler.json`）；分进程经 dev registry 时 Agent 抛出「could not determine its Durable Object name」，因为跨进程代理没有带上 `ctx.id.name`。
+  - 但 web 已经按 `script_name` 绑定 jobs 的 Workflow，jobs 再绑定 web 的类会让两个 Worker 互相依赖，新项目首次部署在任何顺序下都可能失败（现有部署流程先部署 jobs，此时 web 中还没有该类）。协调者决定 jobs 不持有该绑定，所有实例操作只在 web 内发生（决策 7、8、12）。清单与 wrangler 只在 web 声明绑定。
+- **实例 alarm（补充验证）**：用 SDK 的 `this.schedule(秒数, 'method', payload)` 安排回调。在 `wrangler dev`（构建产物，`--persist-to`）中：
+  - 5 秒的 alarm 约 4.7 秒后触发；
+  - 安排 20 秒的 alarm 后立即结束并重启进程，重启后没有任何请求，alarm 仍在约 22.7 秒时触发。
+  决策 7 的自清理、保留期与决策 8 的任务轮询按此实现。注意 `Agent` 自己占用 `alarm()`（调度与 fiber 恢复），不要覆盖它，统一用 `schedule`。
 - **selfhost**：web Node 构建与 jobs `build:node` 打印「插件 agents 仅支持 Cloudflare，selfhost（Node）构建已排除」。
   - `check-artifacts.mjs --absent AgentConversation cf_agent_use_chat_request plugins/agents spike-scripted --only web-node,jobs-node` 全部 0 处。
   - Cloudflare jobs 产物与 web 客户端产物中也没有 agents 代码。
@@ -258,7 +276,7 @@ defineAgent({
   - 因此在 `maxInterruptedAttempts: 2` 且每次都被驱逐时，次数上限会先封住本轮，钩子没有机会被调用。
   - 临时改为 5 并让钩子返回 false 后，第 2 次尝试时 `reason = recovery_aborted`，没有再调用模型。
 
-**对第 3–5 组的影响（建议 4.1 / 4.3 / 5.3 实施时按此调整，不改变对外行为）：**
+**对第 3–5 组的影响（协调者已采纳，2026-11-24，已写入决策 3、5）：**
 
 1. **恢复去重不能只靠 `(conversation_id, request_id)`**：续轮与恢复的 `requestId` 都会变，`retry` 恢复的 `continuation` 甚至为 false。
    - 建议：建 turn 行时把 `{ turnId, rootRequestId, holdId }` 记入实例存储，作为「未结算轮次」。
@@ -282,7 +300,7 @@ defineAgent({
 
 - 新增迁移只加列和表，默认值保证现有数据不变。
 - 未启用 `agents` 的项目会得到空表与默认列，没有行为变化。
-- 启用时，在 web wrangler 各环境加入 Durable Object 绑定与 SQLite 类声明，在 jobs 各环境加入指向 web 类的绑定；`check-plugins` 会给出缺失项。
+- 启用时，在 web wrangler 各环境加入 Durable Object 绑定，并在顶层加入 SQLite 类迁移（各环境继承）；jobs 不需要改动。`check-plugins` 会给出缺失项。
 - 回滚：停用插件并删除绑定。Durable Object 类删除需要 wrangler 的删除迁移，会清空所有实例数据，所以文档写明这个后果，并要求先确认。
 
 ## Open Questions

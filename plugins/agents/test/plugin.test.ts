@@ -28,16 +28,12 @@ describe('agents 插件清单', () => {
     expect(agentsConfigSchema.safeParse({ defaultAgent: 'My Agent' }).success).toBe(false)
   })
 
-  it('仅 Cloudflare，web 导出 Durable Object 类，jobs 用同名绑定指向它', () => {
+  it('仅 Cloudflare，web 导出 Durable Object 类，jobs 不绑定（避免两个 Worker 循环依赖）', () => {
     expect(manifest.targets).toEqual(['cloudflare'])
-    const web = manifest.bindings.web[0]
-    const jobs = manifest.bindings.jobs[0]
-    expect(web).toEqual({
-      name: 'AGENT_CONVERSATION',
-      kind: 'durable_object',
-      className: 'AgentConversation',
-    })
-    expect(jobs).toEqual(web)
+    expect(manifest.bindings.web).toEqual([
+      { name: 'AGENT_CONVERSATION', kind: 'durable_object', className: 'AgentConversation' },
+    ])
+    expect(manifest.bindings).not.toHaveProperty('jobs')
   })
 
   it('需要计费与积分开关', () => {
