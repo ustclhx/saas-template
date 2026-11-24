@@ -55,7 +55,7 @@ mkdirSync(out)
 for (const entry of readdirSync(root)) if (entry !== 'scripts') cpSync(join(root, entry), join(out, entry), { recursive: true })
 writeFileSync(join(out, '.template-base.json'), 'excluded metadata')
 `
-async function fixture(t) {
+async function fixture(t, initialGenerator = generator) {
   const root = await mkdtemp(join(tmpdir(), 'template-infer-test-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const template = join(root, 'template')
@@ -85,7 +85,7 @@ async function fixture(t) {
     ),
   }
   await files(template, {
-    'scripts/create-project.mjs': generator,
+    'scripts/create-project.mjs': initialGenerator,
     'template.config.ts': `export default defineTemplateConfig(${JSON.stringify(config, null, 2)})\n`,
     'package.json': '{"name":"@acme/root"}\n',
     'apps/web/wrangler.jsonc': '{"vars":{"APP_URL":"https://acme.example"}}\n',
@@ -209,7 +209,7 @@ test('older root configurations omit theme while explicit overrides remain avail
   const f = await fixture(t)
   delete f.config.ui
   await files(f.project, {
-    'template.config.ts': `export default defineTemplateConfig(${JSON.stringify(f.config)})`,
+    'template.config.ts': `const config = defineTemplateConfig(${JSON.stringify(f.config)})\nexport default config\n`,
   })
   git(f.project, 'add', '--all')
   git(f.project, 'commit', '--quiet', '--amend', '--no-edit')
@@ -221,6 +221,67 @@ test('older root configurations omit theme while explicit overrides remain avail
   const overridden = inferParams(f.project, root, ['theme=green'])
   assert.equal(overridden.params.theme, 'green')
   assert.equal(overridden.sources.theme, '--param')
+})
+
+test('infers plugin keys and migrated media providers without running the configuration', async (t) => {
+  const f = await fixture(t)
+  delete f.config.ai.mediaProviders
+  f.config.plugins = { media: { providers: ['workers-ai', 'fal'] }, 'other-plugin': {} }
+  const commit = async () => {
+    const config = JSON.stringify(f.config).replace('"other-plugin":{}', '"other-plugin": options')
+    await files(f.project, {
+      'plugins/media/plugin.ts': 'media manifest exists in the generated tree\n',
+      'template.config.ts': `throw new Error('do not execute this module')\nexport default defineTemplateConfig(${config})\n`,
+    })
+    git(f.project, 'add', '--all')
+    git(f.project, 'commit', '--quiet', '-m', 'plugin configuration')
+    return git(f.project, 'rev-parse', 'HEAD')
+  }
+  const explicit = inferParams(f.project, await commit())
+  assert.deepEqual(explicit.params.plugins, ['media', 'other-plugin'])
+  assert.match(explicit.sources.plugins, /:template.config.ts$/)
+  assert.deepEqual(explicit.params['media-providers'], ['workers-ai', 'fal'])
+
+  delete f.config.plugins['other-plugin']
+  const implicit = inferParams(f.project, await commit())
+  assert.deepEqual(implicit.plugins, ['media'])
+  assert.equal(paramsToArgs(implicit.params).includes('--plugins'), false)
+})
+
+test('infers an explicit plugin selection across commits before plugin support', async (t) => {
+  const legacy = generator.replace(
+    'const out =',
+    `if (args.includes('--plugins')) throw new Error("Unknown option '--plugins'")\nconst out =`,
+  )
+  const f = await fixture(t, legacy)
+  f.config.ai.video = false
+  delete f.config.ai.mediaProviders
+  f.config.plugins = { example: {} }
+  const pluginConfig = {
+    'template.config.ts': `export default defineTemplateConfig(${JSON.stringify(f.config, null, 2)})\n`,
+  }
+  const supported = generator.replace(
+    'const out =',
+    `if (args[args.indexOf('--plugins') + 1] !== 'example') throw new Error('missing plugin selection')\nconst out =`,
+  )
+  await files(f.template, { ...pluginConfig, 'scripts/create-project.mjs': supported })
+  const target = f.commit('support plugin options')
+  await files(f.project, pluginConfig)
+  git(f.project, 'commit', '--quiet', '-am', 'update generated configuration')
+  const generationCommit = git(f.project, 'rev-parse', 'HEAD')
+  const logs = []
+  const result = await runInfer(
+    options(f, { generationCommit, write: target, log: (message) => logs.push(message) }),
+  )
+  assert.deepEqual(result.record.params.plugins, ['example'])
+  assert.deepEqual(result.record.params['media-providers'], ['fal', 'workers-ai'])
+  assert.deepEqual(
+    result.candidates.map(({ commit, score }) => [commit, score]),
+    [[target, 0]],
+  )
+  assert.ok(logs.includes(`跳过候选 ${f.first}：生成器不支持 --plugins`))
+  assert.match(logs.join('\n'), /plugins=\["example"\].*template.config.ts/)
+  assert.deepEqual(inferParams(f.project, generationCommit, ['plugins=']).plugins, [])
 })
 
 test('missing parameters require explicit overrides and never use current defaults', async (t) => {

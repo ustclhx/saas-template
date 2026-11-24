@@ -116,6 +116,13 @@ export function releaseVersion(clone, commit) {
   return listReleases(clone.dir).findLast((release) => release.commit === commit)?.version ?? null
 }
 
+export class UnsupportedGeneratorOption extends Error {
+  constructor(message, option) {
+    super(message)
+    this.option = option
+  }
+}
+
 /**
  * Generate a project copy from a clean archive of `rev`, using that commit's own generator.
  * Throws with the commit and the rejected parameter when the generator refuses the params.
@@ -151,9 +158,9 @@ export async function generateAt(clone, rev, params, outDir) {
       const named =
         unknown?.[1] ??
         args.find((arg, index) => index % 2 === 0 && message.includes(arg))?.slice(2)
-      throw new Error(
-        `模板提交 ${rev} 的生成器拒绝参数${named ? ` --${named}` : ''}：${message.split('\n')[0]}`,
-      )
+      const diagnostic = `模板提交 ${rev} 的生成器拒绝参数${named ? ` --${named}` : ''}：${message.split('\n')[0]}`
+      if (unknown) throw new UnsupportedGeneratorOption(diagnostic, unknown[1])
+      throw new Error(diagnostic)
     }
     if (!existsSync(outDir)) throw new Error(`模板提交 ${rev} 的生成器没有产生输出目录`)
   } finally {

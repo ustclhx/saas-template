@@ -44,6 +44,11 @@ function copy(rel) {
 }
 mkdirSync(values.output, { recursive: true })
 copy('')
+if (names.includes('plugins')) {
+  if (values.plugins === undefined) throw new Error('missing --plugins')
+  const plugins = Object.fromEntries(values.plugins.split(',').filter(Boolean).map((id) => [id, {}]))
+  writeFileSync(join(values.output, 'template.config.json'), JSON.stringify({ plugins }))
+}
 writeFileSync(join(values.output, 'PROJECT_SETUP.md'), '# ' + values.name + '\\n' + readFileSync(join(root, 'setup.txt'), 'utf8'))
 `
 }
@@ -131,7 +136,7 @@ async function fakeProject(t, template, commit = template.first, record = {}) {
   const dir = join(parent, 'acme')
   const clone = await cloneTemplate(template.dir)
   try {
-    await generateAt(clone, commit, params, dir)
+    await generateAt(clone, commit, record.params ?? params, dir)
   } finally {
     await clone.cleanup()
   }
@@ -328,6 +333,36 @@ test('a generator that rejects a recorded parameter stops with the parameter and
       error.message.includes(target),
   )
   assert.deepEqual(await branches(project.dir), ['main'])
+})
+
+test('sync replays plugin selection and merges disabled plugin source as ordinary files', async (t) => {
+  const template = await fakeTemplate(t)
+  const source = 'plugins/example/src/index.ts'
+  const base = await template.commit(
+    {
+      'scripts/create-project.mjs': generatorStub([...allOptions, 'plugins']),
+      [source]: "export const example = 'v1'\n",
+    },
+    'add optional plugins',
+  )
+  const recorded = { ...params, plugins: ['other'] }
+  const project = await fakeProject(t, template, base, { params: recorded })
+  assert.equal(await readFile(join(project.dir, source), 'utf8'), "export const example = 'v1'\n")
+  const target = await template.commit(
+    { [source]: "export const example = 'v2'\n" },
+    'update plugin',
+  )
+  const { runner } = stubRunner()
+  const result = await runSync({ project: project.dir, template: template.dir, runner, log: quiet })
+  assert.equal(result.status, 'synced')
+  assert.deepEqual(result.report.conflicts, [])
+  assert.equal(await readFile(join(project.dir, source), 'utf8'), "export const example = 'v2'\n")
+  assert.deepEqual(JSON.parse(await readFile(join(project.dir, 'template.config.json'), 'utf8')), {
+    plugins: { other: {} },
+  })
+  const updated = await readBaseRecord(project.dir)
+  assert.equal(updated.commit, target)
+  assert.deepEqual(updated.params.plugins, recorded.plugins)
 })
 
 test('clean sync applies renamed changes, keeps project values, ports migrations and updates the baseline', async (t) => {

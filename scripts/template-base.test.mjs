@@ -185,6 +185,31 @@ test('theme is recorded for new projects and remains optional for older baseline
   )
 })
 
+test('plugins are replayed only when selection differs from the generator default', () => {
+  assert.equal(paramsToArgs(params).includes('--plugins'), false)
+  const defaults = { ...minimalOptions, defaultPlugins: ['media'] }
+  assert.deepEqual(normalizeParams({ ...defaults, plugins: ['media'] }), params)
+  for (const [selection, expected] of [
+    [
+      ['media', 'future-plugin', 'future-plugin'],
+      ['media', 'future-plugin'],
+    ],
+    [[], []],
+  ]) {
+    const normalized = normalizeParams({ ...defaults, plugins: selection })
+    const serialized = JSON.parse(serializeBaseRecord({ ...baseline, params: normalized }))
+    assert.deepEqual(serialized.params.plugins, expected)
+    const args = paramsToArgs(serialized.params)
+    assert.deepEqual(args.slice(args.indexOf('--plugins'), args.indexOf('--plugins') + 2), [
+      '--plugins',
+      expected.join(','),
+    ])
+  }
+  for (const plugins of ['media', ['media,agents'], ['media', 'media'], [42]]) {
+    assert.throws(() => paramsToArgs({ ...params, plugins }), /Invalid params.plugins/)
+  }
+})
+
 test('baseline schema rejects malformed records and incomplete generation parameters', async (t) => {
   const invalid = [
     null,

@@ -5,16 +5,23 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { postprocessProject } from '../create-project.mjs'
+import { staticCollection, staticValue } from '../plugins/static-config.mjs'
 import {
   normalizeParams,
   paramsToArgs,
   serializeBaseRecord,
   sourceState,
 } from '../template-base.mjs'
-import { cloneTemplate, generateAt, releaseVersion, resolveCommit } from './generate.mjs'
+import {
+  cloneTemplate,
+  generateAt,
+  releaseVersion,
+  resolveCommit,
+  UnsupportedGeneratorOption,
+} from './generate.mjs'
 import { git, gitRaw } from './git.mjs'
 
-const listKeys = ['ai', 'billing', 'features', 'media-providers', 'oauth']
+const listKeys = ['ai', 'billing', 'features', 'media-providers', 'oauth', 'plugins']
 const booleanKeys = [
   'billing-enabled',
   'credits-enabled',
@@ -26,45 +33,34 @@ const booleanKeys = [
 const keys = Object.keys(normalizeParams({ name: 'fixture', url: 'https://fixture.example' }))
 const toolRoot = fileURLToPath(new URL('../../', import.meta.url))
 
-// 只解析静态字面量；不执行生成提交中的配置代码。
-function literal(text) {
-  const tokens =
-    text
-      .match(
-        /\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[A-Za-z_$][\w$-]*|-?\d+(?:\.\d+)?|[^\s]/g,
-      )
-      ?.filter((token) => !token.startsWith('//') && !token.startsWith('/*')) ?? []
-  let index = 0
-  const value = () => {
-    const token = tokens[index++]
-    if (token === '{' || token === '[') {
-      const object = token === '{'
-      const result = object ? {} : []
-      const end = object ? '}' : ']'
-      while (tokens[index] !== end) {
-        if (index >= tokens.length) throw new Error('配置不是静态字面量')
-        if (object) {
-          const key = tokens[index++]
-          if (tokens[index++] !== ':') throw new Error('配置不是静态字面量')
-          result[key.startsWith('"') || key.startsWith("'") ? string(key) : key] = value()
-        } else result.push(value())
-        if (tokens[index] === ',') index++
-        else if (tokens[index] !== end) throw new Error('配置不是静态字面量')
-      }
-      index++
-      return result
-    }
-    if (token?.startsWith('"') || token?.startsWith("'")) return string(token)
-    if (token === 'true' || token === 'false') return token === 'true'
-    if (token === 'null') return null
-    if (/^-?\d/.test(token ?? '')) return Number(token)
-    throw new Error('配置不是静态字面量')
+function inferMediaProviders(text, offset) {
+  if (text[offset] !== '{') return undefined
+  try {
+    const member = staticCollection(text, offset).members.find(({ key }) => key === 'providers')
+    if (member) return staticValue(text.slice(member.valueStart, member.end))
+  } catch {
+    // 无法静态读取的媒体配置由 --param media-providers 补齐。
   }
-  return value()
 }
-function string(token) {
-  if (token.startsWith('"')) return JSON.parse(token)
-  return token.slice(1, -1).replace(/\\(['\\])/g, '$1')
+
+function readConfig(text) {
+  // 旧副本的 defineTemplateConfig 调用不一定直接导出。
+  const offset = text.search(/defineTemplateConfig\s*\(\s*\{/)
+  if (offset < 0) return {}
+  const { members } = staticCollection(text, text.indexOf('{', offset))
+  return Object.fromEntries(
+    members.map(({ key, valueStart, end }) => {
+      if (key !== 'plugins' || text[valueStart] !== '{') {
+        return [key, staticValue(text.slice(valueStart, end))]
+      }
+      // 插件配置值可能引用常量。只有启用键与媒体 providers 是生成参数。
+      const plugins = staticCollection(text, valueStart).members.map((plugin) => [
+        plugin.key,
+        plugin.key === 'media' ? { providers: inferMediaProviders(text, plugin.valueStart) } : {},
+      ])
+      return [key, Object.fromEntries(plugins)]
+    }),
+  )
 }
 
 /** Recover complete generator parameters exclusively from the selected Git commit. */
@@ -81,9 +77,7 @@ export function inferParams(project, commit, overrides = []) {
   }
   let config = {}
   try {
-    const text = read('template.config.ts')
-    const offset = text.search(/defineTemplateConfig\s*\(\s*\{/)
-    if (offset >= 0) config = literal(text.slice(text.indexOf('{', offset)))
+    config = readConfig(read('template.config.ts'))
   } catch {
     // 非静态配置必须由使用者明确补参，不能执行项目代码或套用当前默认值。
   }
@@ -99,9 +93,17 @@ export function inferParams(project, commit, overrides = []) {
     turnstile: config.auth?.turnstile,
     'multi-tenant': config.tenancy?.multiTenant,
     'support-email': config.app?.supportEmail,
-    'media-providers': config.ai?.mediaProviders,
+    'media-providers': config.plugins?.media?.providers ?? config.ai?.mediaProviders,
   }))
     put(key, value, 'template.config.ts')
+  if (config.plugins && typeof config.plugins === 'object' && !Array.isArray(config.plugins)) {
+    put('plugins', Object.keys(config.plugins), 'template.config.ts')
+    // 关闭媒体后新配置不再记录 providers；重放时使用生成器的默认值。
+    if (!Object.hasOwn(config.plugins, 'media') && !Object.hasOwn(params, 'media-providers')) {
+      params['media-providers'] = ['fal', 'workers-ai']
+      sources['media-providers'] = '生成器默认（未启用 media）'
+    }
+  }
   const ai = ['text', 'image', 'video'].map((name) =>
     typeof config.ai?.[name] === 'object' ? config.ai[name]?.enabled : config.ai?.[name],
   )
@@ -184,7 +186,7 @@ export function inferParams(project, commit, overrides = []) {
     const separator = entry.indexOf('=')
     const key = entry.slice(0, separator)
     const raw = entry.slice(separator + 1)
-    if (separator < 1 || !keys.includes(key))
+    if (separator < 1 || (!keys.includes(key) && key !== 'plugins'))
       throw new Error(`无效 --param ${key}，应为已知的 key=value`)
     if (booleanKeys.includes(key) && !['true', 'false'].includes(raw))
       throw new Error(`--param ${key} 必须为 true 或 false`)
@@ -206,6 +208,11 @@ export function inferParams(project, commit, overrides = []) {
     throw new Error(
       `无法从生成提交还原参数，请补齐：${missing.map((key) => `--param ${key}=<值>`).join(' ')}`,
     )
+  const defaultPlugins =
+    files.includes('plugins/media/plugin.ts') &&
+    (params.ai.includes('image') || params.ai.includes('video'))
+      ? ['media']
+      : []
   const normalized = normalizeParams({
     name: params.name,
     url: params.domain,
@@ -222,13 +229,15 @@ export function inferParams(project, commit, overrides = []) {
     mediaProviders: params['media-providers'],
     multiTenant: params['multi-tenant'],
     oauth: params.oauth,
+    plugins: params.plugins,
+    defaultPlugins,
     supportEmail: params['support-email'],
     target: params.target,
     turnstile: params.turnstile,
   })
   if (!Object.hasOwn(params, 'theme')) delete normalized.theme
   paramsToArgs(normalized)
-  return { params: normalized, sources, files }
+  return { params: normalized, sources, files, plugins: params.plugins }
 }
 
 /** Compare only generated paths; project-only additions do not contribute to the score. */
@@ -311,7 +320,7 @@ export async function runInfer(options) {
   if (resolve(git(project, ['rev-parse', '--show-toplevel'])) !== project)
     throw new Error('--project 必须是 Git 仓库根目录')
   const generation = selectGenerationCommit(project, options.generationCommit, log)
-  const { params, sources, files } = inferParams(project, generation.sha, options.params)
+  const { params, sources, files, plugins } = inferParams(project, generation.sha, options.params)
   const since = options.since?.match(/^\d{4}-\d{2}-\d{2}$/)
     ? `${options.since}T00:00:00.000Z`
     : (options.since ?? new Date((generation.time - 3 * 86400) * 1000).toISOString())
@@ -353,7 +362,19 @@ export async function runInfer(options) {
       const directory = join(work, commit)
       await mkdir(directory)
       const copy = join(directory, 'generated')
-      await generateAt(clone, commit, params, copy)
+      try {
+        await generateAt(clone, commit, params, copy)
+      } catch (error) {
+        if (
+          !Object.hasOwn(params, 'plugins') ||
+          !(error instanceof UnsupportedGeneratorOption) ||
+          error.option !== 'plugins'
+        ) {
+          throw error
+        }
+        log(`跳过候选 ${commit}：生成器不支持 --plugins`)
+        continue
+      }
       await postprocessProject(copy, postprocess)
       const scored = await scoreCopy(copy, original, directory, files)
       const [date, title] = git(clone.dir, ['show', '-s', '--format=%cI%n%s', commit]).split('\n')
@@ -384,6 +405,7 @@ export async function runInfer(options) {
     const commitLabel = options.generationCommit === undefined ? '首个提交' : '生成提交'
     log(`${commitLabel}：${generation.sha}\n时间窗：${since} 至 ${until}\n还原参数：`)
     for (const key of keys) log(`${key}=${JSON.stringify(params[key])}（${sources[key]}）`)
+    if (plugins !== undefined) log(`plugins=${JSON.stringify(plugins)}（${sources.plugins}）`)
     const shown = candidates.slice(0, 5)
     for (const candidate of shown) logCandidate(log, candidate)
     const result = {
@@ -395,7 +417,12 @@ export async function runInfer(options) {
       sources,
       candidates,
     }
-    if (!candidates.length) throw new Error('时间窗内没有 main 候选提交，请调整 --since/--until')
+    if (!candidates.length) {
+      const reason = commits.length
+        ? '时间窗内的 main 候选提交均不支持 --plugins'
+        : '时间窗内没有 main 候选提交'
+      throw new Error(`${reason}，请调整 --since/--until`)
+    }
     if (!options.write) {
       log(
         candidates[0].score > threshold
