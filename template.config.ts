@@ -129,6 +129,14 @@ export default defineTemplateConfig({
   },
   plugins: {
     media: { providers: ['fal', 'workers-ai'] }, // Workers AI 使用 AI 绑定，无外部密钥
+    // agent 对话（仅 Cloudflare；需要 web wrangler 的 AGENT_CONVERSATION 绑定）
+    agents: {
+      maxSteps: 8, // 每轮最多步数，预扣 = 单步预算 × maxSteps
+      // maxTurnCredits: 200, // 单轮预扣封顶（积分），不设置时不另外封顶
+      maxPersistedMessages: 200, // 每个对话实例保留的消息条数
+      // retentionDays: 90, // 对话保留期，不设置即关闭
+      defaultAgent: 'assistant',
+    },
   },
   features: {
     analytics: 'plausible', // 'plausible' | 'posthog' | false；长期词站可设 false，见 docs/analytics.md

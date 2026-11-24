@@ -202,6 +202,71 @@ defineAgent({
 - 每次 web 部署时，活跃实例最多继续运行旧代码 300 秒；已休眠的 WebSocket 跨部署保留，进行中的流由 SDK 恢复（计费按决策 3 处理）。
 - 实例数据跟随定义它的 Worker，上线后再改放法无法迁移旧对话。若以后改为独立 Worker，需另起 change 并接受旧对话不迁移或自写迁移。
 
+## 验证结果（1.1 / 1.2，2026-11-24）
+
+结论：`AIChatAgent` 满足需要，**不切换**到「Agent 基类 + 自写 `streamText`」方案。最小实现留在 `plugins/agents/src/worker/`（`agent.ts`、脚本化测试模型 `spike-model.ts`），作为 4.3 的雏形；身份、计费与 agent 定义用 `TODO(3.x/4.x)` 标出边界。在 3.1 完成前，前置处理只在 `SENTRY_ENVIRONMENT=development`（本地）放行 `/agents/*`，staging / production 一律 404。
+
+验证用脚本化模型（固定用量：每次调用输入 100 token，工具步输出 10、文本步输出 20 个块），不调用真实 LLM。驱逐用开发专用端点调用 `ctx.abort()` 模拟，另做一次「流式进行中结束 `wrangler dev` 进程再用同一 `--persist-to` 重启」。
+
+### 1.1 入口、路由、构建与 RPC
+
+- **Worker 导出**：`plugins.worker.gen.ts` 对 worker 入口 `export *`，`AgentConversation` 出现在 `dist/server/index.js`；构建后的 `dist/server/wrangler.json` 带 Durable Object 绑定与 `agents-v1` 迁移。没有用装饰器、`agents/vite`，tsconfig 没开 `experimentalDecorators`。
+- **前置处理**：只匹配 `/agents/`，调用 `routeAgentRequest`。URL 为 `/agents/agent-conversation/<conversationId>`（绑定 `AGENT_CONVERSATION` 转成 kebab-case）。
+  - `routeAgentRequest` 会把 env 中**所有** Durable Object 绑定按 kebab-case 名暴露出来，所以只传入 `{ AGENT_CONVERSATION }`。以后 web 增加其他 Durable Object 时，它们也不会被路由到。
+  - SDK 自带 HTTP 端点 `…/<id>/get-messages`，会返回全部消息。3.1 的身份校验必须同时覆盖 `onBeforeConnect`（WebSocket）与 `onBeforeRequest`（HTTP）；3.2 的实例侧比对也要同时覆盖两条路径。
+- **WebSocket 101 透传**：日志记一行 `http.request status=101`。外层包装原样返回 101，客户端收到 `cf_agent_identity` 与后续帧。
+  - 核心改动：`apps/web/src/server.ts` 遇到 WebSocket 升级请求时不再先查 `ASSETS`。原因是本地 dev 中 `ASSETS` 是 Vite 的 Node 服务，升级请求会让 miniflare 的 loopback 断言失败，整个 dev 进程退出。
+- **dev 与构建**：
+  - `vite dev`（Cloudflare Vite 插件）下，HTTP 与 WebSocket 对话、工具步、续流都正常。
+  - `pnpm --filter @saas/web build`（含预渲染）通过。
+  - `wrangler dev -c apps/web/dist/server/wrangler.json` 运行构建产物时行为相同。
+  - 注意：本 worktree 的 dev 服务器运行时，预渲染会因为 inspector 端口被占用而报 `Failed to fetch /: Internal Server Error`。这是本地端口冲突，与插件无关。
+- **jobs 经 `script_name` RPC**：jobs 用 `env.AGENT_CONVERSATION.getByName(id).method()` 调用 web 中的实例。
+  - 在同一 workerd 中可以调用成功，返回实例名与消息数，命令为 `wrangler dev -c apps/jobs/wrangler.jsonc -c apps/web/dist/server/wrangler.json`。
+  - 分开启动时（web `vite dev` + jobs `wrangler dev`，经 dev registry），绑定显示 connected，但 Agent 抛出「could not determine its Durable Object name」，因为跨进程代理没有带上 `ctx.id.name`。
+  - 因此 7.x / 8.x 的本地联调用上面的多配置命令或单元测试，线上行为在 9.3 staging 验收中确认。
+- **selfhost**：web Node 构建与 jobs `build:node` 打印「插件 agents 仅支持 Cloudflare，selfhost（Node）构建已排除」。
+  - `check-artifacts.mjs --absent AgentConversation cf_agent_use_chat_request plugins/agents spike-scripted --only web-node,jobs-node` 全部 0 处。
+  - Cloudflare jobs 产物与 web 客户端产物中也没有 agents 代码。
+- **依赖**：`agents` 0.34.0 经 `mimetext` 带入 `core-js-pure`（postinstall 只打印赞助信息），已在 `allowBuilds` 中设为 false。
+
+### 1.2 用量、requestId、重放与确认
+
+- **用量**：`onChatMessage` 内自调 `streamText`（tools + `stopWhen: stepCountIs(maxSteps)`）可以拿到用量。
+  - ai 7 中 `onStepFinish` / `onFinish` 已标为弃用，改用同义的 `onStepEnd` / `onEnd`。
+  - `onStepEnd` 给出逐步用量（工具步 100/10、文本步 100/20），`onEnd` 的 `totalUsage` 为合计（200/30）。
+  - 4.3 按此实现。注意 `@saas/shared/log` 会把名为 `messages` 的字段脱敏，日志字段改用 `messageCount`。
+- **requestId**：只有用户发起的首轮使用客户端在 `cf_agent_use_chat_request` 中给出的 id。确认后的续轮与恢复都使用服务端新生成的 id，详情如下：
+
+| 情形 | `requestId` | `continuation` |
+|---|---|---|
+| 用户消息 | 客户端 id | false |
+| 批准 / 拒绝后的续轮 | 新 id | true |
+| 恢复（已有部分输出，`continue`） | 新 id | true |
+| 恢复（尚无可持久化输出，`retry`） | 新 id | **false** |
+
+只有 `chatRecovery` 钩子（`shouldKeepRecovering` / `onExhausted`）中的 `recoveryRootRequestId` 等于首轮的客户端 id。
+- **重放**：
+  - 驱逐时已输出的部分会保留在 assistant 消息中，恢复后模型被**重新调用**，并接着写入同一条消息。被中断的那次调用拿不到 `onStepEnd`，用量丢失。这与决策 3「按检查点加已输出字符保守估算」的假设一致。
+  - 恢复由实例的 alarm 触发，不需要客户端在线：`wrangler dev` 中约 30 秒后自动执行，进程重启后也会执行。有新请求唤醒实例时会立即执行。
+- **`needsApproval` 暂停**：
+  - 模型调用需确认的工具后，本次流随即结束：发出 `tool-approval-request`，`onEnd` 触发（只含第 1 步用量）。消息以 `approval-requested` 状态持久化。
+  - 此时没有进行中的 fiber，不消耗恢复预算，实例可以休眠。
+  - 批准后工具执行，模型在新的续轮中继续。拒绝时工具不执行，消息部件为 `output-denied`，模型照样继续回复。
+- **`maxInterruptedAttempts: 2` 生效**：首轮与第 1 次恢复都被驱逐后，`onExhausted` 以 `reason = interrupted_attempts_exceeded`、`attempt = 2` 触发。模型共调用 2 次，之后不再恢复。
+- **`shouldKeepRecovering` 生效**：它**不在**第 1 次恢复时调用，只从第 2 次恢复尝试起调用。
+  - 因此在 `maxInterruptedAttempts: 2` 且每次都被驱逐时，次数上限会先封住本轮，钩子没有机会被调用。
+  - 临时改为 5 并让钩子返回 false 后，第 2 次尝试时 `reason = recovery_aborted`，没有再调用模型。
+
+**对第 3–5 组的影响（建议 4.1 / 4.3 / 5.3 实施时按此调整，不改变对外行为）：**
+
+1. **恢复去重不能只靠 `(conversation_id, request_id)`**：续轮与恢复的 `requestId` 都会变，`retry` 恢复的 `continuation` 甚至为 false。
+   - 建议：建 turn 行时把 `{ turnId, rootRequestId, holdId }` 记入实例存储，作为「未结算轮次」。
+   - 之后的 `onChatMessage` 如果没有新的用户消息（最后一条用户消息的 id 与该轮相同），就复用这一轮与它的预扣；结算后清除记录。
+   - `(conversation_id, request_id)` 唯一约束保留，用首轮的客户端 id（即 `recoveryRootRequestId`）。
+2. **等待确认时不结算**：`onEnd` 时如果最后一步停在 `approval-requested`，turn 保持 running（或新增等待确认状态），预扣不动。批准或拒绝后的续轮复用同一轮，在续轮的 `onEnd` 结算。确认超时仍由 4.4 的清理器处理。
+3. **封顶检查放在续轮开始时**：`shouldKeepRecovering` 在首次恢复与「每次都被驱逐」时不会调用。所以每个续轮在调用模型前都要比较已记录消耗与预扣封顶，超过即按检查点结算并不再调用模型。`shouldKeepRecovering` 只作为补充。
+
 ## Risks / Trade-offs
 
 - [SDK 未到 1.0，近半年 minor 多带破坏性变更] → 锁版本、适配层隔离；第 1 组先用 spike 确认 chat agent 在 TanStack Start 的 Worker 入口中可用、用量可取、恢复行为可控。若 chat agent 不可用，退回「Agent 基类 + 自写 `streamText` + SDK 的 fiber 与续流」。长期备选为 `PiHarness`（pi-durable），切换触发条件见 `research.md` §6；工具契约与 SDK 无关，切换时保留。

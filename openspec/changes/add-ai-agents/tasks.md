@@ -1,13 +1,13 @@
 ## 1. 技术验证（依赖 add-plugin-system 第 3 组合并后进行）
 
-- [ ] 1.1 spike：在 `plugins/agents` 中用精确锁定的 `agents` / `@cloudflare/ai-chat` 实现一个最小 chat agent，经 `plugins.worker.gen.ts` 导出、fetch 前置处理接管 `/agents/*`；确认 TanStack Start Worker 入口、Cloudflare Vite 插件 dev 与 `pnpm build` 均可用，不引入 `agents/vite`、不用装饰器、tsconfig 不开 `experimentalDecorators`；jobs 经 `script_name` 绑定能 RPC 调用 web 中的实例。把结论写进 design.md「验证结果」
-- [ ] 1.2 spike：在 `onChatMessage` 内自调 `streamText`（tools + `stopWhen` + `onStepFinish` / `onFinish`）能拿到逐步与总用量；用 `wrangler dev` 下强制重启实例，记录恢复时的 `requestId` 与模型调用重放行为、`needsApproval` 暂停期间的状态。确认 `maxInterruptedAttempts` 与 `shouldKeepRecovering` 生效。若 chat agent 不满足，按 design 风险项切到 Agent 基类方案并在 PR 说明
+- [x] 1.1 spike：在 `plugins/agents` 中用精确锁定的 `agents` / `@cloudflare/ai-chat` 实现一个最小 chat agent，经 `plugins.worker.gen.ts` 导出、fetch 前置处理接管 `/agents/*`；确认 TanStack Start Worker 入口、Cloudflare Vite 插件 dev 与 `pnpm build` 均可用，不引入 `agents/vite`、不用装饰器、tsconfig 不开 `experimentalDecorators`；jobs 经 `script_name` 绑定能 RPC 调用 web 中的实例。把结论写进 design.md「验证结果」
+- [x] 1.2 spike：在 `onChatMessage` 内自调 `streamText`（tools + `stopWhen` + `onStepFinish` / `onFinish`）能拿到逐步与总用量；用 `wrangler dev` 下强制重启实例，记录恢复时的 `requestId` 与模型调用重放行为、`needsApproval` 暂停期间的状态。确认 `maxInterruptedAttempts` 与 `shouldKeepRecovering` 生效。若 chat agent 不满足，按 design 风险项切到 Agent 基类方案并在 PR 说明
 
 ## 2. 契约、数据与配置
 
 - [x] 2.1 `packages/ai/src/agents/tool.ts`：`defineAgentTool`、工具上下文接口（含 `idempotencyKey`）、输入 schema 到 AI SDK tool 的转换；名称格式校验。单元测试
 - [x] 2.2 迁移：`ai_conversation.kind` / `agent_id` 与检查约束、`ai_model.supports_tools`、`ai_agent_turn` 表与索引；`credit_hold.ref_type` 加 `agent_turn`；现有对话列表查询加 `kind = 'chat'`。迁移在本地 PG 应用，现有对话集成测试通过；`docs/03-data-model.md` 更新
-- [ ] 2.3 `plugins/agents` 清单：targets `['cloudflare']`、requires billing+credits、bindings（web Durable Object + SQLite 类，jobs 指向 web 类的 Durable Object 绑定）；配置段 `maxSteps`（默认 8）、`maxTurnCredits`、`maxPersistedMessages`（默认 200）、`retentionDays`（默认不设置即关闭）、`defaultAgent`。模板 `template.config.ts` 启用并补齐 web / jobs wrangler 各环境绑定，`pnpm check` 通过
+- [x] 2.3 `plugins/agents` 清单：targets `['cloudflare']`、requires billing+credits、bindings（web Durable Object + SQLite 类，jobs 指向 web 类的 Durable Object 绑定）；配置段 `maxSteps`（默认 8）、`maxTurnCredits`、`maxPersistedMessages`（默认 200）、`retentionDays`（默认不设置即关闭）、`defaultAgent`。模板 `template.config.ts` 启用并补齐 web / jobs wrangler 各环境绑定，`pnpm check` 通过
 - [x] 2.4 后台模型编辑器增加「支持工具调用」开关，`requireAvailableModel` 增加按能力过滤；种子数据为已知支持工具的模型打标。单元测试与后台页组件测试
 
 ## 3. 身份与路由

@@ -4,6 +4,8 @@ packages:
   - plugins/*
 allowBuilds:
   '@sentry/cli': true
+  # agents → mimetext → @babel/runtime-corejs3 的 postinstall 只打印赞助信息
+  core-js-pure: false
   esbuild: true
   workerd: true
 minimumReleaseAgeExclude:
