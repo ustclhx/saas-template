@@ -27,7 +27,7 @@ pnpm create-project --name acme --domain acme.example --target selfhost --output
 `--billing-enabled`、`--credits-enabled`、`--marketing`、`--i18n` 接受 true/false，默认 true，
 分别写入模板的 billing.enabled、credits.enabled、marketing.enabled、i18n.enabled。
 `--billing` 仍为支付 Provider 列表，空列表与关闭模块分别处理。
-启用 billing 要求启用 credits；关闭 billing 时必须 `--ai ''`（现有 AI 额度依赖套餐）。
+启用 billing 要求启用 credits。关闭 billing 时，生成器默认关闭 AI 并跳过依赖计费的插件。显式启用 AI 会报错，因为额度依赖套餐。
 可以保留 credits 开启并关闭 billing，用于赠送积分；生成清单不要求支付 secret 或 billing seed。
 开关写入模板，副本继续使用同一套业务源码。关闭营销后，`/` 转向 `/app`：未登录进入
 登录页，已登录进入活跃或个人空间；定价、博客、文档、法律页、增长页面、公开增长 API、
@@ -37,7 +37,7 @@ robots 与 sitemap 不加入路由，营销页不预渲染，也不生成营销 
 已有未接入 Paraglide 的固定文案仍按原页面显示；关闭开关不额外翻译这些文案。
 生成器修改 ai.text.enabled 时保留其 thinking、reasoning、failedReplyRefund 等设置。
 
-默认开启文本、图片、视频、Stripe、PayPal、Google、GitHub 与 Turnstile，
+启用计费时默认开启文本、图片和视频。Stripe、PayPal、Google、GitHub 与 Turnstile 默认开启，
 可选功能仅开启 blog。一般列表传空字符串可全部关闭，交互时输入 `-` 可清空列表。
 省略 `--plugins` 时，继承源模板 `template.config.ts` 中启用的插件。有可选插件时，交互会列出适用于
 所选部署目标的插件，直接回车使用模板默认值。输入逗号分隔的插件 ID 会替换默认选择。`--plugins ''`（交互输入 `-`）
@@ -134,11 +134,11 @@ backups/backup-data/、releases/release-state/、state/.state/ 等运行目录�
 
 <!-- template-only:start -->
 完整副本验证使用 `pnpm test:create-project:verify`，需要已合并的 `media` 和 `agents` 插件。
-矩阵覆盖 Cloudflare 默认、Cloudflare 关闭计费与 AI 并保留积分、selfhost 默认，以及从默认 selfhost 副本
+矩阵覆盖 Cloudflare 默认、Cloudflare 仅关闭计费（自动关闭 AI 与两个插件，保留积分）、selfhost 默认，以及从默认 selfhost 副本
 再次生成的全关组合（计费、积分、营销、i18n、AI 与插件）。四个副本逐文件检查模板原名称与排除目录，
 安装依赖并运行 check、typecheck、单元测试和各自部署目标的构建。Cloudflare 关闭计费的副本验证
 web 的 `agents` Durable Object 绑定与迁移条目已移除。全关 selfhost 副本还运行 Cloudflare web 构建，
-两个关闭 AI 的副本都检查构建产物中已移除媒体和 `agents` 的执行代码。验收结束后清理临时目录。
+两个关闭 AI 的副本都检查构建产物中已移除媒体和 `agents` 的执行代码。selfhost 默认副本也检查 Node 产物已排除 `agents`。验收结束后清理临时目录。
 独立只读 `selfhost-features.yml` 从真实源生成全关副本、构建镜像并在空卷 Compose 启动，
 实际验证 SSR/静态资源、登录/空间、关闭入口、成功 heartbeat 与完整 SHA。
 完整副本矩阵单独运行，避免日常边界测试重复安装完整依赖。

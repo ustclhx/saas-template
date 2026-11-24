@@ -35,7 +35,7 @@
 
 - [x] 6.1 `create-project`：`--plugins` 参数与交互询问；`--ai` 含 image/video 自动加 `media`，`--media-providers` 写入插件配置；按清单删除未启用插件的 wrangler 绑定（替换写死的 `workflows` / `ai` 删除逻辑）；selfhost 拒绝仅 Cloudflare 插件；`PROJECT_SETUP.md` 清单按插件列出绑定与密钥。`create-project.test.mjs` 覆盖
 - [x] 6.2 `template-base` 记录 `plugins` 参数（遵循 `optionalParams`）；template-sync 用其重建副本；`infer` 静态解析 `plugins` 键。`template-base.test.mjs`、`template-sync.test.mjs` 覆盖「未启用插件的项目合并插件源码改动无冲突」
-- [ ] 6.3 `pnpm test:create-project:verify`：CF 默认（含 media）、selfhost 默认、selfhost 全关三个副本通过 check、typecheck、单元测试与 build；全关副本产物不含媒体代码
+- [x] 6.3 `pnpm test:create-project:verify`：CF 默认（含 media）、selfhost 默认、selfhost 全关三个副本通过 check、typecheck、单元测试与 build；全关副本产物不含媒体代码
 - [x] 6.4 更新 `docs/create-project.md`、`docs/06-ai.md`（媒体由插件提供、配置位置）、`docs/08-roadmap.md`（新增「插件与 Agent」阶段：本 change、`add-ai-agents`、生图站、视频站）；升级说明草稿（BREAKING：`plugins.media`、`ai.mediaProviders` 迁移、xuanxue 删除媒体绑定步骤），发版时写入 `docs/upgrades/`
 
 ## 7. 验收
