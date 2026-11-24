@@ -43,6 +43,8 @@ plugins/<id>/
 | `webNode` | Node Web 的 `fetch(request)`，采用同样的请求链约定。 |
 | `jobsNode` | 共用 jobs 的队列、Cron 与清理器。`registerWorkflows` 装配 Node 持久任务，可以返回内部 HTTP 路由与停机时停止接收的回调。 |
 
+插件可在 `web` 入口具名导出 `agentTools` 数组或返回数组的同步函数，使用 `@saas/ai` 的 `defineAgentTool` 定义工具。工具依赖服务端模块时，用 `createServerOnlyFn(() => tools)` 导出同步函数，将工具实现模块仅引用在函数体内。启用 `agents` 后，Cloudflare Worker 启动时汇总工具，名称须与所有已启用插件和项目工具中的名称互不重复。有副作用的工具须声明 `needsApproval`，用 `ctx.idempotencyKey` 在业务写入边界去重，并在重放时返回已有结果。
+
 接口定义见 [Web](../apps/web/src/features/plugins/contract.ts)、[Cloudflare Web Worker](../apps/web/src/server/cloudflare/plugins.ts)、[jobs](../apps/jobs/src/plugins/contract.ts) 与 [Node jobs](../apps/jobs/src/node/plugins.ts)。
 
 ## 依赖边界

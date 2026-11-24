@@ -2,6 +2,7 @@ import { log } from '@saas/shared/log'
 import { routeAgentRequest } from 'agents'
 import type { AgentConversation } from './agent.ts'
 
+export { registerPluginAgentTools } from '../registry.ts'
 // agents 插件的 Worker 入口（openspec add-ai-agents 决策 2、12）：具名导出 Durable Object 类，
 // default 导出 fetch 前置处理，只接管 `/agents/` 前缀。
 export { AgentConversation } from './agent.ts'

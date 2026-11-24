@@ -41,6 +41,14 @@ const migrationPath = /^packages\/db\/migrations\/[^/]+\.sql$/
 export const brandPath = 'apps/web/src/styles/brand.css'
 const projectOwnedFiles = [
   {
+    path: 'plugins/agents/src/agents.project.ts',
+    guidance: 'put template agent behavior outside the project-owned extension',
+  },
+  {
+    path: 'plugins/agents/src/tools.project.ts',
+    guidance: 'put template agent tools outside the project-owned extension',
+  },
+  {
     path: 'apps/web/src/features/share-cards/share-cards.project.ts',
     guidance: 'put template share card registration outside the project-owned extension',
   },

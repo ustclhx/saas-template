@@ -25,9 +25,9 @@
 
 ## 5. 工具与 agent 定义
 
-- [ ] 5.1 工具注册汇总：内置示例、`tools.project.ts`、其他插件 `agentTools`；重名在生成时失败。agent 只能调用其定义列出的工具；有副作用的工具按 `idempotencyKey` 去重，集成测试模拟恢复后只产生一次副作用
-- [ ] 5.2 示例工具 `current_time`、`list_workspace_files`（`scoped` 查询，只返回名称、类型、大小）与示例 agent `assistant`（`agents.project.ts`）；把 `agents.project.ts`、`tools.project.ts` 登记为 template-sync 项目自有文件。跨空间隔离的集成测试
-- [ ] 5.3 人工确认：`needsApproval` 映射、拒绝结果回给模型、确认超时处理。集成测试覆盖批准、拒绝、超时
+- [x] 5.1 工具注册汇总：内置示例、`tools.project.ts`、其他插件 `agentTools`；重名在生成时失败。agent 只能调用其定义列出的工具；有副作用的工具按 `idempotencyKey` 去重，集成测试模拟恢复后只产生一次副作用
+- [x] 5.2 示例工具 `current_time`、`list_workspace_files`（`scoped` 查询，只返回名称、类型、大小）与示例 agent `assistant`（`agents.project.ts`）；把 `agents.project.ts`、`tools.project.ts` 登记为 template-sync 项目自有文件。跨空间隔离的集成测试
+- [x] 5.3 人工确认：`needsApproval` 映射、拒绝结果回给模型、确认超时处理。集成测试覆盖批准、拒绝、超时
 
 ## 6. 界面（新页面，先设计确认）
 

@@ -2,7 +2,9 @@
 // 由 scripts/plugins/generate.mjs 生成的 plugins*.gen.ts 汇总；核心只从生成文件读取，不直接导入插件。
 // 只开放这些扩展点，不够用时再按需新增并记录在 docs/plugins.md。Cloudflare Worker 入口的约定见
 // server/cloudflare/plugins.ts（含 Cloudflare 类型，不进入目标中立的类型检查）。
+import type { AgentToolContext, AgentToolContribution } from '@saas/ai'
 import type { NodeEnv } from '@saas/config'
+import type { Database } from '@saas/db'
 import type { Storage } from '@saas/storage'
 import type { FileRoutesByTo } from '../../routeTree.gen.ts'
 import type { WebAiRuntime } from '../../server/runtime.ts'
@@ -50,6 +52,15 @@ export interface WebNodePluginModule {
 export interface WebPluginRegistration {
   readonly id: string
   readonly entry: WebPluginModule
+}
+
+/** web 入口可具名导出 agentTools，只有启用 agents 的 Worker 会读取它。 */
+export interface WebAgentToolRegistration {
+  readonly id: string
+  readonly entry: {
+    readonly default: WebPluginModule
+    readonly agentTools?: AgentToolContribution<AgentToolContext<Database>>
+  }
 }
 export interface WebNodePluginRegistration {
   readonly id: string

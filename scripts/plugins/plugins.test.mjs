@@ -139,6 +139,26 @@ test('关闭：生成文件不含任何插件导入，注册列表为空', async
   }
 })
 
+test('工具扩展点随 Cloudflare agents 启用，只在 Worker 启动时登记', async () => {
+  const loaded = await loadPluginManifests(root)
+  const other = loaded.find(({ manifest }) => manifest.id === 'cf-only')
+  const agents = {
+    dir: other.dir,
+    manifest: { ...other.manifest, id: 'agents', entries: { worker: 'src/worker.ts' } },
+  }
+  const files = renderPluginFiles(
+    root,
+    resolveEnabledPlugins(config({ agents: {}, both: {} }), [...loaded, agents]),
+  )
+
+  assert.match(files[GENERATED_FILES.web], /import \* as bothAgentTools from /)
+  assert.match(files[GENERATED_FILES.web], /\{ id: 'both', entry: bothAgentTools \}/)
+  assert.match(files[GENERATED_FILES.worker], /registerPluginAgentTools\(agentToolPlugins\)/)
+  assert.doesNotMatch(files[GENERATED_FILES.webNode], /agentToolPlugins/)
+  const withoutAgents = renderPluginFiles(root, resolveEnabledPlugins(config({ both: {} }), loaded))
+  assert.doesNotMatch(withoutAgents[GENERATED_FILES.web], /agentToolPlugins/)
+})
+
 test('路由与文案按目标挂载：Node 不挂仅 Cloudflare 插件的路由与文案', async () => {
   const plugins = resolveEnabledPlugins(
     config({ both: {}, 'cf-only': {} }),

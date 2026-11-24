@@ -105,7 +105,13 @@ function bindingsLiteral(bindings = []) {
  * 列表声明 `bindings`（web / jobs）时，声明了该侧绑定但没有入口的插件也在列表中，供运行时校验绑定；
  * `reexport` 时另 `export *` 入口的具名导出（Durable Object / Workflow 类等，由 Worker 入口原样导出）。
  */
-function registry(root, generated, plugins, lists, { typeFrom, reexport = false }) {
+function registry(
+  root,
+  generated,
+  plugins,
+  lists,
+  { typeFrom, reexport = false, agentToolEntries, agentsWorker },
+) {
   const lines = [HEADER]
   lines.push(`import type { ${lists.map((list) => list.type).join(', ')} } from '${typeFrom}'`)
   for (const list of lists)
@@ -114,6 +120,20 @@ function registry(root, generated, plugins, lists, { typeFrom, reexport = false 
         lines.push(
           `import ${entryName(manifest.id, list.kind)} from '${importPath(root, generated, dir, manifest.entries[list.kind])}'`,
         )
+  if (agentToolEntries) {
+    lines.push(`import type { WebAgentToolRegistration } from '${typeFrom}'`)
+    for (const { manifest, dir } of agentToolEntries)
+      lines.push(
+        `import * as ${entryName(manifest.id, 'agentTools')} from '${importPath(root, generated, dir, manifest.entries.web)}'`,
+      )
+  }
+  if (agentsWorker) {
+    const { dir, manifest } = agentsWorker
+    lines.push("import { agentToolPlugins } from './plugins.gen.ts'")
+    lines.push(
+      `import { registerPluginAgentTools } from '${importPath(root, generated, dir, manifest.entries.worker)}'`,
+    )
+  }
   if (reexport)
     for (const { manifest, dir } of plugins)
       if (manifest.entries?.[lists[0].kind])
@@ -135,6 +155,15 @@ function registry(root, generated, plugins, lists, { typeFrom, reexport = false 
     if (lines.at(-1)?.endsWith('= [')) lines[lines.length - 1] += ']'
     else lines.push(']')
   }
+  if (agentToolEntries) {
+    const entries = agentToolEntries.map(
+      ({ manifest }) => `{ id: '${manifest.id}', entry: ${entryName(manifest.id, 'agentTools')} }`,
+    )
+    lines.push(
+      `export const agentToolPlugins: readonly WebAgentToolRegistration[] = [${entries.join(', ')}]`,
+    )
+  }
+  if (agentsWorker) lines.push('registerPluginAgentTools(agentToolPlugins)')
   lines.push(`export default ${lists[0].name}`)
   return `${lines.join('\n')}\n`
 }
@@ -161,20 +190,26 @@ export function renderPluginFiles(root, plugins) {
   const cloudflare = pluginsForTarget(plugins, 'cloudflare').included
   const web = { typeFrom: './features/plugins/contract.ts' }
   const jobs = { typeFrom: './plugins/contract.ts' }
+  const agentsWorker = cloudflare.find(
+    ({ manifest }) => manifest.id === 'agents' && manifest.entries?.worker,
+  )
+  const agentToolEntries = agentsWorker
+    ? cloudflare.filter(({ manifest }) => manifest.id !== 'agents' && manifest.entries?.web)
+    : undefined
   return {
     [GENERATED_FILES.web]: registry(
       root,
       GENERATED_FILES.web,
       cloudflare,
       [{ name: 'plugins', kind: 'web', type: 'WebPluginRegistration' }],
-      web,
+      { ...web, agentToolEntries },
     ),
     [GENERATED_FILES.worker]: registry(
       root,
       GENERATED_FILES.worker,
       cloudflare,
       [{ name: 'plugins', kind: 'worker', type: 'WorkerPluginRegistration', bindings: 'web' }],
-      { typeFrom: './server/cloudflare/plugins.ts', reexport: true },
+      { typeFrom: './server/cloudflare/plugins.ts', reexport: true, agentsWorker },
     ),
     // default 导出与 plugins.gen.ts 同形（Node 构建的别名目标），nodePlugins 为 webNode 入口
     [GENERATED_FILES.webNode]: registry(

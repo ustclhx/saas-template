@@ -12,10 +12,13 @@
   },
   "dependencies": {
     "@cloudflare/ai-chat": "0.12.3",
+    "@saas/ai": "workspace:*",
     "@saas/config": "workspace:*",
+    "@saas/db": "workspace:*",
     "@saas/shared": "workspace:*",
     "agents": "0.34.0",
     "ai": "^7.0.127",
+    "drizzle-orm": "^0.45.3",
     "zod": "^4.6.5"
   },
   "devDependencies": {
