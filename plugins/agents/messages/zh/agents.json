@@ -38,10 +38,6 @@
   "agents_new_cancel": "取消",
   "agents_new_start": "开始对话",
   "agents_error_agent_not_found": "这个 Agent 已不可用，请选择其他 Agent。",
-  "agents_default_agent_name": "工作区助手",
-  "agents_default_agent_description": "可以查看当前空间的文件、查询时间，并分多步完成任务。会产生变更的操作执行前会先请你确认。",
-  "agents_default_agent_suggestion_1": "列出本空间最近上传的文件",
-  "agents_default_agent_suggestion_2": "统计各类型文件的总大小",
   "agents_all_chats": "全部 Agent 对话",
   "agents_header_mobile_meta": "{agent} · {model}",
   "agents_not_found_title": "找不到这个对话",
@@ -72,5 +68,7 @@
   "agents_approval_badge": "等待确认",
   "agents_approval_approve": "批准并执行",
   "agents_approval_deny": "拒绝",
-  "agents_approval_timeout": "长时间未确认将自动取消"
+  "agents_approval_timeout": "长时间未确认将自动取消",
+  "agents_tool_expired": "已过期",
+  "agents_tool_expired_detail": "确认超时，工具未执行。"
 }

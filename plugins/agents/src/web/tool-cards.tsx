@@ -11,6 +11,7 @@ import { type ToolCallView, toolRenderer } from '@web/features/ai/tool-renderers
 import { m } from '@web/paraglide/messages.js'
 import { getToolName } from 'ai'
 import { type ReactNode, useId, useState } from 'react'
+import { APPROVAL_EXPIRED_ERROR } from '../approval.ts'
 
 // agent 对话的工具卡片与确认卡片（设计稿 agents/Main.dc.html、Mobile.dc.html）：经 ChatMessageView 的
 // renderToolPart 接入消息部件渲染器。显示名与结果摘要查 toolRenderers 注册表（插件、项目可按工具名登记），
@@ -68,6 +69,8 @@ export function AgentToolCard({ part, live }: { part: ToolPartView; live: boolea
   const toolName = getToolName(part)
   const renderer = toolRenderer(toolName)
   const denied = part.state === 'output-denied'
+  // 等待确认超过预扣有效期：实例把调用写成 output-error（5.3，approval.ts）
+  const expired = part.state === 'output-error' && part.errorText === APPROVAL_EXPIRED_ERROR
   const state = agentToolState(part, live)
   const view = callView(part, state)
   const result = renderer?.render?.(view)
@@ -82,6 +85,7 @@ export function AgentToolCard({ part, live }: { part: ToolPartView; live: boolea
     ])
   if (result != null && result !== false) rows.push([m.agents_tool_result(), result])
   if (denied) rows.push([m.agents_tool_result(), m.agents_tool_denied_detail()])
+  else if (expired) rows.push([m.agents_tool_result(), m.agents_tool_expired_detail()])
   else if (part.state === 'output-error')
     rows.push([m.agents_tool_result(), m.agents_tool_failed_detail()])
   return (
@@ -96,7 +100,11 @@ export function AgentToolCard({ part, live }: { part: ToolPartView; live: boolea
         </span>
       }
       state={state}
-      labels={{ ...toolLabels(), ...(denied ? { error: m.agents_tool_denied() } : {}) }}
+      labels={{
+        ...toolLabels(),
+        ...(denied ? { error: m.agents_tool_denied() } : {}),
+        ...(expired ? { error: m.agents_tool_expired() } : {}),
+      }}
     >
       {rows.length ? <KeyValues rows={rows} /> : undefined}
     </ToolCall>

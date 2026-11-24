@@ -11,8 +11,9 @@ vi.mock('@web/server/template-config.ts', () => ({
 
 import { ChatMessageView } from '@web/features/ai/message-parts.tsx'
 import { registerToolRenderer, resetToolRenderers } from '@web/features/ai/tool-renderers.ts'
+import { APPROVAL_EXPIRED_ERROR } from '../approval.ts'
 import { agentToolPartRenderer, inputEntries } from './tool-cards.tsx'
-import { exampleToolRenderers, fileCountSummary } from './tool-renderers.tsx'
+import { currentTimeSummary, exampleToolRenderers, fileCountSummary } from './tool-renderers.tsx'
 
 // happy-dom 的 Web Animations 在取消时让 finished 拒绝（未处理）；去掉 animate，motion 改用脚本动画
 Object.defineProperty(Element.prototype, 'animate', { value: undefined, configurable: true })
@@ -54,7 +55,10 @@ describe('工具卡片', () => {
       reply(
         filesCall({
           state: 'output-available',
-          output: { files: [{ name: 'a.png' }, { name: 'b.mp4' }] },
+          output: [
+            { name: 'a.png', type: 'image/png', size: 1 },
+            { name: 'b.mp4', type: 'video/mp4', size: 2 },
+          ],
         }),
       ),
     )
@@ -64,7 +68,7 @@ describe('工具卡片', () => {
     expect(card.querySelector('[data-tool-state="done"]')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: new RegExp(m.agents_tool_list_files()) }))
     expect(card.textContent).toContain('{"limit":200}')
-    expect(card.textContent).toContain(fileCountSummary({ files: [1, 2] }) as string)
+    expect(card.textContent).toContain(fileCountSummary([1, 2]) as string)
     // 不原样输出工具结果
     expect(card.textContent).not.toContain('a.png')
   })
@@ -83,6 +87,18 @@ describe('工具卡片', () => {
     )
     const badge = document.querySelector('[data-tool-state="error"]') as HTMLElement
     expect(badge.textContent).toBe(m.agents_tool_denied())
+  })
+
+  it('确认超时（实例写成 output-error）显示「已过期」', () => {
+    renderReply(reply(filesCall({ state: 'output-error', errorText: APPROVAL_EXPIRED_ERROR })))
+    const badge = document.querySelector('[data-tool-state="error"]') as HTMLElement
+    expect(badge.textContent).toBe(m.agents_tool_expired())
+  })
+
+  it('current_time 的结果显示为本地时间，非法输出不显示', () => {
+    expect(currentTimeSummary({ time: '2026-11-24T12:00:00.000Z' })).toContain('2026')
+    expect(currentTimeSummary({ now: 'x' })).toBeNull()
+    expect(fileCountSummary({ files: [] })).toBeNull()
   })
 
   it('未登记的工具显示通用名称与工具名', () => {

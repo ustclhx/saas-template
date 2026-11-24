@@ -5,7 +5,7 @@ import { getLocale } from '@web/paraglide/runtime.js'
 // 示例工具（任务 5.2 的 current_time、list_workspace_files）的显示名与结果摘要，经插件 web 入口的
 // toolRenderers 扩展点注册到消息部件渲染器；项目可在 message-parts.project.tsx 中按同名覆盖。
 // 只显示对用户有意义的摘要，不原样输出工具结果。
-// 接口假设（5.2）：current_time 返回 `{ now: ISO 字符串 }`；list_workspace_files 返回 `{ files: [...] }`。
+// 输出形状见 ../example-tools.ts：current_time 返回 `{ time: ISO 字符串 }`，list_workspace_files 返回文件数组。
 
 const record = (value: unknown): Record<string, unknown> | undefined =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -13,9 +13,9 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
     : undefined
 
 export function currentTimeSummary(output: unknown): string | null {
-  const now = record(output)?.now
-  if (typeof now !== 'string') return null
-  const date = new Date(now)
+  const time = record(output)?.time
+  if (typeof time !== 'string') return null
+  const date = new Date(time)
   if (Number.isNaN(date.getTime())) return null
   return new Intl.DateTimeFormat(getLocale(), { dateStyle: 'medium', timeStyle: 'medium' }).format(
     date,
@@ -23,9 +23,8 @@ export function currentTimeSummary(output: unknown): string | null {
 }
 
 export function fileCountSummary(output: unknown): string | null {
-  const files = record(output)?.files
-  if (!Array.isArray(files)) return null
-  return m.agents_tool_files_result({ count: files.length })
+  if (!Array.isArray(output)) return null
+  return m.agents_tool_files_result({ count: output.length })
 }
 
 export const exampleToolRenderers: Readonly<Record<string, ToolRenderer>> = {

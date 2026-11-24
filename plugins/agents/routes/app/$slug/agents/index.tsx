@@ -1,7 +1,8 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { m } from '@web/paraglide/messages.js'
 import { listAgentConversations } from '../../../../src/web/agents.functions.ts'
-import { AgentListError, AgentListPage, AgentListSkeleton } from '../../../../src/web/list-page.tsx'
+import { AgentListPage } from '../../../../src/web/list-page.tsx'
+import { AgentListError, AgentListSkeleton } from '../../../../src/web/list-states.tsx'
 
 export const Route = createFileRoute('/app/$slug/agents/')({
   loader: ({ params }) => listAgentConversations({ data: { slug: params.slug } }),

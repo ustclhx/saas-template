@@ -38,10 +38,6 @@
   "agents_new_cancel": "Cancel",
   "agents_new_start": "Start conversation",
   "agents_error_agent_not_found": "This agent is no longer available. Choose another agent.",
-  "agents_default_agent_name": "Workspace assistant",
-  "agents_default_agent_description": "Browses files in this workspace, checks the time, and finishes tasks in several steps. Actions that change anything ask for your approval first.",
-  "agents_default_agent_suggestion_1": "List files recently uploaded to this workspace",
-  "agents_default_agent_suggestion_2": "Sum up file sizes by type",
   "agents_all_chats": "All agent conversations",
   "agents_header_mobile_meta": "{agent} · {model}",
   "agents_not_found_title": "Conversation not found",
@@ -72,5 +68,7 @@
   "agents_approval_badge": "Waiting",
   "agents_approval_approve": "Approve and run",
   "agents_approval_deny": "Deny",
-  "agents_approval_timeout": "Cancels automatically if not approved in time"
+  "agents_approval_timeout": "Cancels automatically if not approved in time",
+  "agents_tool_expired": "Expired",
+  "agents_tool_expired_detail": "Approval timed out. The tool didn't run."
 }
