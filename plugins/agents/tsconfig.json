@@ -5,5 +5,7 @@
     "types": ["@cloudflare/workers-types"]
   },
   // 页面与 web 入口（routes、src/web）依赖 @web/* 别名，由 apps/web 的类型检查与单元测试覆盖
-  "include": ["plugin.ts", "src/config.ts", "src/worker", "test"]
+  "include": ["plugin.ts", "src/config.ts", "src/core", "src/jobs", "src/worker", "test"],
+  // Worker 入口经 @web 别名访问 web 运行时，随 apps/web 的类型检查（plugins.worker.gen.ts）一起检查
+  "exclude": ["src/worker/index.ts"]
 }

@@ -1,7 +1,7 @@
 import type { LanguageModel } from 'ai'
 
 // 技术验证（add-ai-agents 1.1 / 1.2）用的脚本化模型：不访问外部服务，按对话状态决定输出，
-// 用量为固定可核对的数字。TODO(4.3)：换成模型注册表解析的真实模型；本文件保留为测试替身。
+// 用量为固定可核对的数字。生产走模型注册表；本文件保留为测试替身（集成测试与本地 AGENTS_SCRIPTED_MODEL=1）。
 
 type LanguageModelV4 = Extract<LanguageModel, { specificationVersion: 'v4' }>
 type CallOptions = Parameters<LanguageModelV4['doStream']>[0]
@@ -60,11 +60,11 @@ export function createSpikeModel(options: SpikeModelOptions = {}): LanguageModel
     modelId: 'spike-scripted',
     supportedUrls: {},
     doGenerate: () => Promise.reject(new Error('spike model only supports streaming')),
-    async doStream({ prompt, abortSignal }) {
+    async doStream({ prompt, abortSignal, tools }) {
       calls += 1
       const last = prompt.at(-1)
       const text = lastUserText(prompt)
-      const toolName =
+      const wanted =
         last?.role === 'tool'
           ? undefined
           : text.includes('approve')
@@ -72,6 +72,8 @@ export function createSpikeModel(options: SpikeModelOptions = {}): LanguageModel
             : text.includes('tool')
               ? 'current_time'
               : undefined
+      // 只调用本轮实际提供的工具（agent 定义未列出的工具不会出现在 tools 中）
+      const toolName = tools?.some((tool) => tool.name === wanted) ? wanted : undefined
       options.onCall?.({ kind: toolName ? 'tool' : 'text', call: calls })
       const stream = new ReadableStream<StreamPart>({
         async start(controller) {
