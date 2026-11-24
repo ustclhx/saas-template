@@ -27,6 +27,7 @@ export default defineConfig({
     '**/subject-chat.spec.ts',
     // 测试模型由 playwright.agents.config.ts 的独立 Vite 配置注入。
     '**/agents.spec.ts',
+    '**/agents-lifecycle.spec.ts',
     ...(!productionURL ? ['**/production/**'] : []),
   ],
   // 认证入口按 IP 限流（RL_AUTH 每分钟 10 次），串行执行避免并发请求触发 429

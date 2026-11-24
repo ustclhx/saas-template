@@ -1,5 +1,5 @@
 import type { LanguageModel } from 'ai'
-import { APPROVAL_TOOL } from './project.ts'
+import { APPROVAL_TOOL, ASYNC_TOOL } from './project.ts'
 
 type Model = Extract<LanguageModel, { specificationVersion: 'v4' }>
 type CallOptions = Parameters<Model['doStream']>[0]
@@ -11,6 +11,8 @@ export const APPROVE = 'Approve the fixture note'
 export const DENY = 'Deny the fixture note'
 export const STOP = 'Stop the long reply'
 export const RESUME = 'Resume the long reply'
+export const ASYNC = 'Submit the fixture task'
+export const SUBMITTED = 'The fixture task was submitted.'
 export const PARTIAL = 'The reply is still streaming.'
 export const TAIL = 'The reply finished after reconnect.'
 
@@ -68,12 +70,15 @@ export const model: Model = {
           ? 'current_time'
           : (text === APPROVE || text === DENY) && results.length === 0
             ? APPROVAL_TOOL
-            : undefined
+            : text === ASYNC && results.length === 0
+              ? ASYNC_TOOL
+              : undefined
     if (toolName && !tools?.some((tool) => tool.name === toolName))
       throw new Error(`Missing fixture tool: ${toolName}`)
 
     const reply = (() => {
       if (text === MULTI_STEP) return 'Both workspace tools returned results.'
+      if (text === ASYNC) return SUBMITTED
       if (text === STOP || text === RESUME) return PARTIAL
       const output = results.at(-1)?.output
       // AI SDK 在供应商调用边界把拒绝结果转为 error-text。
