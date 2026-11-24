@@ -174,7 +174,7 @@ defineAgent({
 
 - 路由：`app/$slug/agents/index.tsx`（列表与新建，选择 agent 与模型）、`app/$slug/agents/$conversationId.tsx`（对话）。
 - 对话页用 `@cloudflare/ai-chat/react` 的 `useAgentChat`，消息部件复用现有渲染与工具渲染注册；工具调用展示状态（运行中、完成、失败、等待确认），确认卡片提供批准与拒绝。
-- 新页面先经 `ui-design` 产出设计稿，得到使用者确认后再实现。
+- 设计稿已确认（2026-11-24）：见 `docs/design-system/prototypes/README.md` 的「Agent 列表与新建」「Agent 对话页」两行，副本在 `docs/design-system/prototypes/agents/`。
 - 错误码（余额不足、欠费、模型不可用、限流）复用现有对话的提示与充值入口。
 
 ### 10. SDK 隔离与版本

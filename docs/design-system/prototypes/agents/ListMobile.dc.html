@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Agent 对话列表（手机）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:none}
+.r{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;width:390px;height:844px;display:flex;flex-direction:column;overflow:hidden;position:relative}
+button{font:inherit;color:inherit;margin:0;cursor:pointer;border:0;background:none;padding:0}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.cap{font-size:12px;line-height:16px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:44px;padding:0 16px;border-radius:8px;font-size:14px;line-height:20px;font-weight:500;white-space:nowrap}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:8px;flex-shrink:0}
+.pick{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:10px;text-align:left;min-height:44px}
+svg{flex-shrink:0}
+sc-if,sc-for{display:contents}
+</style>
+</helmet>
+<div class="r" style="background:{{t.panel}};color:{{t.fg}}">
+  <header class="row" style="height:52px;gap:4px;padding:0 4px 0 4px;border-bottom:1px solid {{t.border}};flex-shrink:0">
+    <button type="button" class="ib" aria-label="打开导航" style="color:{{t.mfg}}"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"></path></svg></button>
+    <h1 style="margin:0;flex:1;font-size:16px;line-height:22px;font-weight:600">Agent</h1>
+    <button type="button" class="ib" aria-label="{{themeLabel}}" onClick="{{toggleTheme}}" style="color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+  </header>
+  <div class="col" style="flex:1;min-height:0;overflow:hidden">
+    <sc-for list="{{rows}}" as="row" hint-placeholder-count="5">
+      <a href="Mobile.dc.html" class="col" style="gap:2px;padding:12px 16px;min-height:64px;border-bottom:1px solid {{t.border}}">
+        <span class="row" style="gap:8px"><span style="font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{row.title}}</span><span class="cap" style="color:{{t.mfg}}">{{row.time}}</span></span>
+        <span class="cap" style="color:{{row.stateColor}}">{{row.state}} · 工作区助手</span>
+      </a>
+    </sc-for>
+  </div>
+  <div style="padding:12px 16px 16px;flex-shrink:0">
+    <button type="button" class="btn" onClick="{{openNew}}" style="width:100%;background:{{t.primary}};color:{{t.pfg}}">新建对话</button>
+  </div>
+
+  <sc-if value="{{newOpen}}" hint-placeholder-val="{{false}}">
+    <div class="col" style="position:absolute;inset:0;justify-content:flex-end;background:{{t.overlay}}">
+      <div role="dialog" aria-modal="true" aria-labelledby="mnd-t" class="col" style="gap:16px;padding:16px 16px 24px;border-radius:16px 16px 0 0;background:{{t.card}}">
+        <span aria-hidden="true" style="align-self:center;width:36px;height:4px;border-radius:9999px;background:{{t.border}}"></span>
+        <h2 id="mnd-t" style="margin:0;font-size:16px;line-height:22px;font-weight:600">新建 Agent 对话</h2>
+        <button type="button" class="pick" aria-pressed="true" style="box-shadow:inset 0 0 0 2px {{t.fg}}"><span style="font-weight:500">工作区助手</span><span class="cap" style="color:{{t.mfg}}">查看空间文件、查询时间</span></button>
+        <button type="button" aria-haspopup="listbox" aria-label="选择模型，当前：通用模型" class="row" style="height:44px;padding:0 12px;border-radius:8px;box-shadow:inset 0 0 0 1px {{t.border}};justify-content:space-between">模型：通用模型<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button>
+        <a href="Mobile.dc.html" class="btn" style="background:{{t.primary}};color:{{t.pfg}}">开始对话</a>
+        <button type="button" class="btn" onClick="{{closeNew}}" style="box-shadow:inset 0 0 0 1px {{t.border}}">取消</button>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"sheet":{"editor":"boolean","default":false},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var pd = !!this.props.dark;
+    var dark = st.od && st.od.base === pd ? st.od.val : pd;
+    var ps = !!this.props.sheet;
+    var newOpen = st.no && st.no.base === ps ? st.no.val : ps;
+    var t = dark ? {
+      panel: '#1e1e1e', card: '#252525', fg: '#f5f5f5', mfg: '#b0b0b0', primary: '#f5f5f5', pfg: '#171717',
+      destructive: '#fca5a5', warn: '#fcd34d', border: 'rgba(245,245,245,0.12)', overlay: 'rgba(0,0,0,0.6)'
+    } : {
+      panel: '#fcfcfc', card: '#ffffff', fg: '#171717', mfg: '#6b6b6b', primary: '#171717', pfg: '#fafafa',
+      destructive: '#b91c1c', warn: '#a16207', border: 'rgba(23,23,23,0.12)', overlay: 'rgba(0,0,0,0.4)'
+    };
+    var data = [
+      ['空间文件统计', '等待你确认', t.warn, '1 分钟前'],
+      ['整理本周上传的图片', '已完成', t.mfg, '2 小时前'],
+      ['季度回顾封面', '已停止', t.mfg, '昨天'],
+      ['文档大小清单', '已完成', t.mfg, '11/20'],
+      ['查询各时区时间', '失败', t.destructive, '11/18']
+    ];
+    return {
+      t: t, newOpen: newOpen,
+      rows: data.map(function (d) { return { title: d[0], state: d[1], stateColor: d[2], time: d[3] }; }),
+      themeLabel: dark ? '切换到浅色' : '切换到深色',
+      toggleTheme: function () { self.setState({ od: { base: pd, val: !dark } }); },
+      openNew: function () { self.setState({ no: { base: ps, val: true } }); },
+      closeNew: function () { self.setState({ no: { base: ps, val: false } }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

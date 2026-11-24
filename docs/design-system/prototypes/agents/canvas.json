@@ -1,0 +1,62 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-24T10:00:00Z"
+  },
+  "title": "AI Agents 页面",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1000,
+      "title": "Agent 对话页 /app/$slug/agents/$id（桌面；Tweaks 切换状态与深色）",
+      "is_interactive": true
+    },
+    "Mobile.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "Agent 对话页·390px（Tweaks 切换状态与深色）",
+      "is_interactive": true
+    },
+    "List.dc.html": {
+      "x": 0,
+      "y": 1240,
+      "w": 1440,
+      "h": 900,
+      "title": "Agent 列表与新建 /app/$slug/agents（桌面；Tweaks 切换状态与深色）",
+      "is_interactive": true
+    },
+    "ListMobile.dc.html": {
+      "x": 1520,
+      "y": 1240,
+      "w": 390,
+      "h": 844,
+      "title": "Agent 列表·390px",
+      "is_interactive": true
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Mobile.dc.html",
+    "List.dc.html",
+    "ListMobile.dc.html"
+  ],
+  "notes": {
+    "rules": {
+      "x": 2000,
+      "y": 0,
+      "w": 360,
+      "text": "说明\n· 只用模板基线 token（与 0.5 对话组件画布同一套），无新颜色、新字号。\n· 工具调用卡片四态：运行中 / 已完成 / 失败 / 等待确认；确认卡片在消息流内，批准与拒绝两个按钮。\n· 错误条复用对话页的积分不足样式（余额不足、欠费、模型不可用、限流同一形态，只换文案与按钮）。\n· 每轮消耗显示在回答下方：「本轮 N 步 · 消耗 X 积分」。\n· 组件提议：无新组件；工具卡片与确认卡片为消息部件渲染器中的两个新渲染器，用现有 Card / Button / Badge 组合。",
+      "fill": "orange"
+    }
+  },
+  "designSystems": []
+}
