@@ -19,9 +19,9 @@
 
 ## 4. 检查
 
-- [ ] 4.1 `scripts/check-plugins.mjs` 并入 `pnpm check`：绑定在 web / jobs 顶层与 staging、production 都存在且种类一致；wrangler 不引用未启用插件的类；清单路径存在。Node test 用 wrangler 夹具覆盖各失败分支
-- [ ] 4.2 `check-deps` 扫描 `plugins/`：核心不得导入 `@saas/plugin-*`（`*.gen.ts` 例外）；插件只能导入声明的插件；插件内 `cloudflare:*` 等导入只允许在 worker / jobs 入口目录。扩展 `check-deps.test.mjs`
-- [ ] 4.3 `docs/plugins.md`：目录结构、清单字段、扩展点、启停步骤、部署目标、检查命令、如何新增插件；`02-project-structure.md` §1 与依赖边界、`AGENTS.md` 模块职责各加一行入口
+- [x] 4.1 `scripts/check-plugins.mjs` 并入 `pnpm check`：绑定在 web / jobs 顶层与 staging、production 都存在且种类一致；wrangler 不引用未启用插件的类；清单路径存在。Node test 用 wrangler 夹具覆盖各失败分支
+- [x] 4.2 `check-deps` 扫描 `plugins/`：核心不得导入 `@saas/plugin-*`（`*.gen.ts` 例外）；插件只能导入声明的插件；插件内 `cloudflare:*` 等导入只允许在 worker / jobs 入口目录。扩展 `check-deps.test.mjs`
+- [x] 4.3 `docs/plugins.md`：目录结构、清单字段、扩展点、启停步骤、部署目标、检查命令、如何新增插件；`02-project-structure.md` §1 与依赖边界、`AGENTS.md` 模块职责各加一行入口
 
 ## 5. 媒体迁移为 `media` 插件
 

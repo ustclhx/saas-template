@@ -406,3 +406,160 @@ test('evals is only allowed as a root dependency, never in app or package manife
       text,
     )
 })
+
+test('core plugin imports require generated files except in app integration tests', (t) => {
+  const dep = '@renamed/plugin-media'
+  const violations = workspace(t, {
+    'packages/ui/package.json': manifest('@renamed/ui'),
+    'packages/billing/package.json': manifest('@renamed/billing'),
+    'apps/web/package.json': manifest('@renamed/web', { [dep]: 'workspace:*' }),
+    'apps/jobs/package.json': manifest('@renamed/jobs', { [dep]: 'workspace:*' }),
+    'plugins/media/package.json': manifest(dep),
+    'apps/web/src/index.ts': `import '${dep}/web'`,
+    'apps/web/src/route.ts': "export * from '../../../plugins/media/routes/images.ts'",
+    'apps/web/src/plugins.gen.ts': "export * from '../../../plugins/media/routes/images.ts'",
+    'apps/jobs/src/index.ts': `type Jobs = import('${dep}/jobs').Jobs`,
+    'apps/jobs/src/plugins.gen.ts': `export * from '${dep}/jobs'`,
+    'packages/billing/src/plugin.ts': "require('../../../plugins/media/src/service.ts')",
+    'scripts/config.mjs': "import('../plugins/media/plugin.ts')",
+    'scripts/config.test.mjs': "import('../plugins/media/plugin.ts')",
+    'apps/web/test/media.ts': `import '${dep}/web'`,
+    'apps/jobs/test/media.ts': "import '../../../plugins/media/src/jobs/jobs.ts'",
+    'apps/web/e2e/media.ts': "import '../../../plugins/media/routes/images.ts'",
+  })()
+  assert.deepEqual(violations.map((message) => message.split(' → ')[0]).sort(), [
+    'apps/jobs/src/index.ts:1',
+    'apps/web/src/index.ts:1',
+    'apps/web/src/route.ts:1',
+    'packages/billing/src/plugin.ts:1',
+    'scripts/config.mjs:1',
+    'scripts/config.test.mjs:1',
+  ])
+})
+
+test('plugin dependencies use manifest ids for both workspace packages and relative imports', (t) => {
+  const violations = workspace(t, {
+    'packages/ui/package.json': manifest('@renamed/ui'),
+    'plugins/example/package.json': manifest('@renamed/plugin-example', {
+      '@renamed/plugin-media': 'workspace:*',
+      '@renamed/plugin-agents': 'workspace:*',
+    }),
+    'plugins/example/plugin.ts': `
+      const plugins = ['media'] as const
+      const requires = { plugins }
+      export default definePlugin({ requires })
+    `,
+    'plugins/example/src/index.ts': [
+      "import '@renamed/plugin-example/self'",
+      "import '@renamed/plugin-media/web'",
+      "require('../../media/src/service.ts')",
+      "export * from '../../agents/src/service.ts'",
+      "import '@renamed/plugin-agents/web'",
+    ].join('\n'),
+    'plugins/media/package.json': manifest('@renamed/plugin-media'),
+    'plugins/agents/package.json': manifest('@renamed/plugin-agents'),
+  })()
+  assert.equal(violations.length, 3)
+  assert.ok(violations.every((message) => message.endsWith('须在 requires.plugins 声明 agents')))
+  assert.match(violations[0], /plugins\/example\/package\.json dependencies/)
+  assert.match(violations[1], /plugins\/example\/src\/index\.ts:4.*\.\.\/\.\.\/agents/)
+  assert.match(violations[2], /plugins\/example\/src\/index\.ts:5.*@renamed\/plugin-agents/)
+})
+
+test('Cloudflare-only modules stay in plugin worker and jobs entries and their dedicated directories', (t) => {
+  const violations = workspace(t, {
+    'plugins/example/package.json': manifest('@saas/plugin-example', {
+      agents: '*',
+      '@cloudflare/ai-chat': '*',
+      '@sentry/cloudflare': '*',
+    }),
+    'plugins/example/plugin.ts': `export default definePlugin({ entries: {
+      worker: 'src/web/worker.ts', jobs: 'src/jobs/index.ts', jobsNode: 'src/node/jobs.ts',
+    } })`,
+    'plugins/example/src/web/worker.ts':
+      "import '@cloudflare/ai-chat'; import '@saas/platform/cloudflare'",
+    'plugins/example/src/worker/agent.ts': "require('agents/agent')",
+    'plugins/example/src/jobs/index.ts':
+      "export * from 'cloudflare:workflows'\nimport 'cloudflare:test'",
+    'plugins/example/src/jobs/workflow.ts':
+      "import '@sentry/cloudflare'; import 'cloudflare:workers'",
+    'plugins/example/src/jobs-extra/jobs.ts': "import 'cloudflare:workers'",
+    'plugins/example/src/shared/worker.ts': "type Agent = import('agents').Agent",
+    'plugins/example/src/web/other-worker.ts': "import '@cloudflare/ai-chat'",
+    'plugins/example/src/node/jobs.ts':
+      "import '@saas/platform/node'; import 'cloudflare:workers'; import '../jobs/node-helper.ts'",
+    'plugins/example/src/jobs/node-helper.ts': "import 'agents'",
+    'plugins/example/src/node/jobs/worker.ts': "import '@saas/platform/cloudflare'",
+  })()
+  assert.deepEqual(violations.map((message) => message.split(' → ')[0]).sort(), [
+    'plugins/example/src/jobs-extra/jobs.ts:1',
+    'plugins/example/src/jobs/index.ts:2',
+    'plugins/example/src/jobs/node-helper.ts:1',
+    'plugins/example/src/node/jobs.ts:1',
+    'plugins/example/src/node/jobs/worker.ts:1',
+    'plugins/example/src/shared/worker.ts:1',
+    'plugins/example/src/web/other-worker.ts:1',
+  ])
+})
+
+test('@web is allowed in web-only plugin modules and rejected throughout the jobs import graph', (t) => {
+  const alias = "import type { Web } from '@web/server/runtime.ts'"
+  const violations = workspace(t, {
+    'plugins/example/package.json': manifest('@saas/plugin-example', {
+      '@saas/plugin-companion': 'workspace:*',
+    }),
+    'plugins/example/plugin.ts': `
+      const entries = {
+        worker: 'src/worker/worker.ts', webNode: 'src/node/web.ts', web: 'src/web/index.ts',
+        jobs: 'src/jobs/jobs.ts', jobsNode: 'src/node/jobs.ts',
+      } as const
+      const plugin = definePlugin({ requires: { plugins: ['companion'] }, entries })
+      export default plugin
+    `,
+    'plugins/example/routes/page.ts': alias,
+    'plugins/example/src/web/index.ts': `${alias}\nimport '../shared/web-only'`,
+    'plugins/example/src/worker/worker.ts': `${alias}\nimport './helper.ts'`,
+    'plugins/example/src/worker/helper.ts': alias,
+    'plugins/example/src/node/web.ts': alias,
+    'plugins/example/src/shared/web-only.ts': `${alias}\nimport '../web/index'`,
+    'plugins/example/src/shared/unreachable.ts': alias,
+    'plugins/example/src/jobs/jobs.ts': "export * from '../shared/jobs-bridge.js'",
+    'plugins/example/src/shared/jobs-bridge.ts': "type Shared = import('../web/shared').Shared",
+    'plugins/example/src/web/shared/index.ts': alias,
+    'plugins/example/src/node/jobs.ts': `${alias}\nrequire('@saas/plugin-companion/bridge')`,
+    'plugins/companion/package.json': {
+      ...manifest('@saas/plugin-companion'),
+      exports: { './*': { import: './src/web/*.ts' } },
+    },
+    'plugins/companion/src/web/bridge.ts': alias,
+  })()
+  assert.deepEqual(violations.map((message) => message.split(' → ')[0]).sort(), [
+    'plugins/companion/src/web/bridge.ts:1',
+    'plugins/example/src/node/jobs.ts:1',
+    'plugins/example/src/shared/unreachable.ts:1',
+    'plugins/example/src/web/shared/index.ts:1',
+  ])
+  assert.ok(violations.every((message) => message.includes('@web/* 仅允许插件 web 构建入口使用')))
+})
+
+test('a non-static jobs entry fails dependency validation instead of skipping its graph', (t) => {
+  const violations = workspace(t, {
+    'plugins/example/package.json': manifest('@saas/plugin-example'),
+    'plugins/example/plugin.ts': `
+      const entries = { jobs: makeJobsPath() }
+      export default definePlugin({ entries })
+    `,
+  })()
+  assert.deepEqual(violations, ['plugins/example/plugin.ts：无法静态读取 entries.jobs'])
+})
+
+test('plugin imports cannot bypass the web alias by reaching the web app directly', (t) => {
+  const violations = workspace(t, {
+    'apps/web/package.json': manifest('@saas/web'),
+    'plugins/example/package.json': manifest('@saas/plugin-example'),
+    'plugins/example/src/jobs/jobs.ts': "import '../../../../apps/web/src/server/runtime.ts'",
+    'plugins/example/src/web/page.ts': "import '@saas/web/server/runtime'",
+  })()
+  assert.equal(violations.length, 2)
+  assert.ok(violations.every((message) => message.includes('须通过 @web/* 导入 web 核心模块')))
+})
