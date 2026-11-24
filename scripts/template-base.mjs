@@ -20,7 +20,7 @@ const switches = [
   'multi-tenant',
   'turnstile',
 ]
-const optionalParamKeys = ['analytics', 'plausible-domain', 'plausible-host', 'theme']
+const optionalParamKeys = ['analytics', 'plausible-domain', 'plausible-host', 'plugins', 'theme']
 const paramKeys = [
   ...Object.keys(lists),
   ...switches,
@@ -86,7 +86,7 @@ export function normalizeParams(options) {
  * 基准提交上不认识它们的旧生成器。
  */
 function optionalParams(options) {
-  return Object.fromEntries(
+  const params = Object.fromEntries(
     [
       ['analytics', options.analytics, 'plausible'],
       ['plausible-domain', options.plausibleDomain, options.name],
@@ -95,6 +95,14 @@ function optionalParams(options) {
       .filter(([, value, fallback]) => value !== undefined && value !== fallback)
       .map(([key, value]) => [key, value]),
   )
+  if (options.plugins !== undefined) {
+    const plugins = [...new Set(options.plugins)]
+    const defaults = options.defaultPlugins ?? []
+    if (plugins.length !== defaults.length || plugins.some((id, i) => id !== defaults[i])) {
+      params.plugins = plugins
+    }
+  }
+  return params
 }
 
 /**
@@ -148,6 +156,7 @@ function validateParams(params) {
     analytics,
     'plausible-domain': domain_,
     'plausible-host': host,
+    plugins,
     theme,
     ...required
   } = params
@@ -158,6 +167,14 @@ function validateParams(params) {
     throw new Error('Invalid params.plausible-domain')
   if (host !== undefined && typeof host !== 'string')
     throw new Error('Invalid params.plausible-host')
+  if (
+    Object.hasOwn(params, 'plugins') &&
+    (!Array.isArray(plugins) ||
+      [...plugins].some((id) => typeof id !== 'string' || !/^[a-z][a-z0-9-]*$/.test(id)) ||
+      new Set(plugins).size !== plugins.length)
+  ) {
+    throw new Error('Invalid params.plugins')
+  }
   if (theme !== undefined && !themeNames.includes(theme)) throw new Error('Invalid params.theme')
   for (const [key, allowed] of Object.entries(lists)) {
     if (

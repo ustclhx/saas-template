@@ -54,10 +54,24 @@ async function fixture(t) {
     app: { name: 'FixtureApp', url: 'https://fixture.example', supportEmail: 'support@fixture.example' },
     i18n: { locales: ['en', 'zh'], defaultLocale: 'en' },
     tenancy: { multiTenant: false }, auth: { oauth: ['google'], turnstile: true },
-    billing: { providers: ['stripe'] }, ai: { text: { enabled: true, thinking: { default: 'off', userToggle: false }, reasoning: { display: false }, failedReplyRefund: 'no-visible-output' }, image: true, video: true, mediaProviders: ['fal', 'workers-ai'] },
+    billing: { providers: ['stripe'] }, ai: { text: { enabled: true, thinking: { default: 'off', userToggle: false }, reasoning: { display: false }, failedReplyRefund: 'no-visible-output' }, image: true, video: true },
     features: { blog: true },
+    plugins: { media: { providers: ['fal', 'workers-ai'] } },
     ui: { preset: 'neutral', shape: 'rounded', density: 'default', appLayout: 'sidebar' },
   })`,
+  )
+  await file(
+    'plugins/media/plugin.ts',
+    `import { z } from 'zod'
+    import { definePlugin } from '@fixture/config'
+    const workflow = { name: 'AI_MEDIA_WORKFLOW', kind: 'workflow', className: 'AiMediaWorkflow' } as const
+    const workersAi = { name: 'AI', kind: 'ai', optional: true } as const
+    export default definePlugin({
+      id: 'media', targets: ['cloudflare', 'node'],
+      config: z.object({ providers: z.array(z.enum(['fal', 'workers-ai'])) }),
+      bindings: { web: [workflow, workersAi], jobs: [workflow, workersAi] },
+      secrets: ['FAL_KEY', 'MEDIA_WEBHOOK_SECRET'],
+    })`,
   )
   for (const app of ['web', 'jobs']) {
     await file(`apps/${app}/package.json`, JSON.stringify({ name: `@fixture/${app}` }))
@@ -69,7 +83,7 @@ async function fixture(t) {
         r2_buckets: [{ binding: 'FILES', bucket_name: 'files' }],
         vars: { R2_FILES_BUCKET: 'files', PAYMENT_MODE: 'test' },
         hyperdrive: [{ binding: 'HYPERDRIVE', id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }],
-        workflows: [{ name: 'ai-media', script_name: 'jobs' }],
+        workflows: [{ name: 'ai-media', script_name: 'jobs', binding: 'AI_MEDIA_WORKFLOW' }],
         queues: { producers: [{ queue: 'email' }] },
         env: {
           staging: {
@@ -1120,7 +1134,7 @@ for (const providers of ['fal', 'workers-ai', '']) {
     const result = await createProject({ ...f.input, 'media-providers': providers }, f.source)
     const config = await readFile(join(result.target, 'template.config.ts'), 'utf8')
     const list = providers ? providers.split(',') : []
-    assert.ok(config.includes(`mediaProviders: ${JSON.stringify(list)}`))
+    assert.ok(config.includes(`plugins: { "media": { providers: ${JSON.stringify(list)} } }`))
     const example = await readFile(join(result.target, '.dev.vars.example'), 'utf8')
     assert.equal(example.includes('FAL_KEY='), list.includes('fal'))
     assert.equal(example.includes('MEDIA_WEBHOOK_SECRET='), list.includes('fal'))
@@ -1137,6 +1151,215 @@ for (const providers of ['fal', 'workers-ai', '']) {
     }
   })
 }
+
+async function pluginFixture(t) {
+  const f = await fixture(t)
+  const configPath = join(f.source, 'template.config.ts')
+  const config = await readFile(configPath, 'utf8')
+  await f.file(
+    'template.config.ts',
+    config.replace(
+      "providers: ['fal', 'workers-ai'] } },",
+      "providers: ['fal', 'workers-ai'] }, 'story-agent': { prompts: { welcome: 'Hello, {user}' } } },",
+    ),
+  )
+  for (const app of ['web', 'jobs']) {
+    const scope = {
+      workflows: [
+        { name: 'ai-media', binding: 'AI_MEDIA_WORKFLOW', class_name: 'AiMediaWorkflow' },
+        ...(app === 'jobs'
+          ? [{ name: 'story', binding: 'STORY_WORKFLOW', class_name: 'StoryWorkflow' }]
+          : []),
+        { name: 'core', binding: 'CORE_WORKFLOW', class_name: 'CoreWorkflow' },
+      ],
+      ai: { binding: 'AI' },
+      queues: {
+        ...(app === 'web' ? { producers: [{ binding: 'STORY_QUEUE', queue: 'story' }] } : {}),
+        consumers: [{ queue: 'core' }],
+      },
+      durable_objects: {
+        bindings: [
+          {
+            name: 'STORY_AGENT',
+            class_name: 'StoryAgent',
+            ...(app === 'jobs' ? { script_name: 'web' } : {}),
+          },
+          ...(app === 'web' ? [{ name: 'STORY_ARCHIVE', class_name: 'StoryArchive' }] : []),
+          { name: 'CORE_ACTOR', class_name: 'CoreActor' },
+        ],
+      },
+      ...(app === 'web'
+        ? {
+            migrations: [
+              { tag: 'initial', new_sqlite_classes: ['StoryAgent', 'CoreActor'] },
+              { tag: 'story-only', new_sqlite_classes: ['StoryArchive'] },
+            ],
+          }
+        : {}),
+    }
+    await f.file(
+      `apps/${app}/wrangler.jsonc`,
+      `// 保留其他绑定（如 {CORE_WORKFLOW}）\n${JSON.stringify(
+        {
+          name: app,
+          ...scope,
+          env: { staging: scope, production: scope },
+        },
+        null,
+        2,
+      )}\n`,
+    )
+  }
+  await f.file(
+    'plugins/story-agent/plugin.ts',
+    `import { definePlugin } from '@fixture/config'
+    import { z } from 'zod'
+    export default definePlugin({
+      id: 'story-agent', targets: ['cloudflare'],
+      requires: { features: ['billing', 'credits'] },
+      config: z.object({ prompts: z.object({ welcome: z.string() }) }),
+      bindings: {
+        web: [{ name: 'STORY_AGENT', kind: 'durable_object', className: 'StoryAgent' },
+          { name: 'STORY_ARCHIVE', kind: 'durable_object', className: 'StoryArchive' },
+          { name: 'STORY_QUEUE', kind: 'queue' }],
+        jobs: [{ name: 'STORY_AGENT', kind: 'durable_object', className: 'StoryAgent' },
+          { name: 'STORY_WORKFLOW', kind: 'workflow', className: 'StoryWorkflow' }],
+      },
+      secrets: ['STORY_SECRET'],
+    })`,
+  )
+  return f
+}
+
+generatorTest('显式选择插件时保留默认配置段和各环境的插件绑定', async (t) => {
+  const f = await pluginFixture(t)
+  const result = await createProject({ ...f.input, ai: 'text', plugins: 'story-agent' }, f.source)
+  const config = await readFile(join(result.target, 'template.config.ts'), 'utf8')
+  assert.match(
+    config,
+    /plugins: \{ "story-agent": \{ prompts: \{ welcome: 'Hello, \{user\}' \} \} \}/,
+  )
+  assert.match(
+    result.report,
+    /### story-agent\n[\s\S]*配置绑定 `web` 的 `STORY_AGENT`[\s\S]*配置密钥 `STORY_SECRET`/,
+  )
+  assert.doesNotMatch(result.report, /### media|FAL_KEY|AI_MEDIA_WORKFLOW/)
+  const example = await readFile(join(result.target, '.dev.vars.example'), 'utf8')
+  assert.match(example, /^STORY_SECRET=$/m)
+  const base = JSON.parse(await readFile(join(result.target, '.template-base.json'), 'utf8'))
+  assert.equal(Object.hasOwn(base.params, 'plugins'), false)
+  for (const app of ['web', 'jobs']) {
+    const source = await readFile(join(result.target, `apps/${app}/wrangler.jsonc`), 'utf8')
+    assert.match(source, /^\/\/ 保留其他绑定/)
+    const wrangler = parseJsonc(source)
+    for (const env of [wrangler, wrangler.env.staging, wrangler.env.production]) {
+      assert.deepEqual(
+        env.workflows.map(({ binding }) => binding),
+        app === 'jobs' ? ['STORY_WORKFLOW', 'CORE_WORKFLOW'] : ['CORE_WORKFLOW'],
+      )
+      assert.equal(env.ai, undefined)
+      assert.ok(env.durable_objects.bindings.some(({ name }) => name === 'STORY_AGENT'))
+      if (app === 'web')
+        assert.deepEqual(
+          env.migrations.map(({ tag }) => tag),
+          ['initial', 'story-only'],
+        )
+    }
+  }
+  assert.ok(existsSync(join(result.target, 'plugins/media/plugin.ts')))
+})
+
+generatorTest('图片自动启用 media，selfhost 剔除未选插件的绑定并拒绝显式选择', async (t) => {
+  const f = await pluginFixture(t)
+  const notices = t.mock.method(console, 'warn', () => {})
+  await assert.rejects(
+    createProject({ ...f.input, target: 'selfhost', plugins: 'story-agent' }, f.source),
+    /story-agent.*只支持 cloudflare/,
+  )
+  assert.equal(existsSync(f.input.output), false)
+  const result = await createProject(
+    { ...f.input, target: 'selfhost', ai: 'image', 'media-providers': 'fal' },
+    f.source,
+  )
+  const config = await readFile(join(result.target, 'template.config.ts'), 'utf8')
+  assert.match(config, /plugins: \{ "media": \{ providers: \["fal"\] \} \}/)
+  assert.match(result.report, /### media\n[\s\S]*配置密钥 `FAL_KEY`/)
+  assert.doesNotMatch(result.report, /STORY_SECRET|### story-agent|配置绑定/)
+  assert.match(notices.mock.calls[0].arguments[0], /story-agent.*仅支持 cloudflare/)
+  const base = JSON.parse(await readFile(join(result.target, '.template-base.json'), 'utf8'))
+  assert.equal(Object.hasOwn(base.params, 'plugins'), false)
+  const wrangler = parseJsonc(
+    await readFile(join(result.target, 'apps/web/wrangler.jsonc'), 'utf8'),
+  )
+  for (const env of [wrangler, wrangler.env.staging, wrangler.env.production]) {
+    assert.equal(env.ai, undefined)
+    assert.deepEqual(
+      env.durable_objects.bindings.map(({ name }) => name),
+      ['CORE_ACTOR'],
+    )
+    assert.deepEqual(env.migrations, [{ tag: 'initial', new_sqlite_classes: ['CoreActor'] }])
+    assert.deepEqual(env.queues, { consumers: [{ queue: 'core' }] })
+    assert.deepEqual(
+      env.workflows.map(({ binding }) => binding),
+      ['AI_MEDIA_WORKFLOW', 'CORE_WORKFLOW'],
+    )
+  }
+  const jobs = parseJsonc(await readFile(join(result.target, 'apps/jobs/wrangler.jsonc'), 'utf8'))
+  for (const env of [jobs, jobs.env.staging, jobs.env.production]) {
+    assert.deepEqual(
+      env.durable_objects.bindings.map(({ name }) => name),
+      ['CORE_ACTOR'],
+    )
+    assert.deepEqual(
+      env.workflows.map(({ binding }) => binding),
+      ['AI_MEDIA_WORKFLOW', 'CORE_WORKFLOW'],
+    )
+  }
+})
+
+generatorTest('关闭计费或积分时自动跳过不满足依赖的插件及其 Durable Object 配置', async (t) => {
+  const notices = t.mock.method(console, 'warn', () => {})
+  for (const creditsEnabled of ['true', 'false']) {
+    const f = await pluginFixture(t)
+    const result = await createProject(
+      { ...f.input, ai: '', 'billing-enabled': 'false', 'credits-enabled': creditsEnabled },
+      f.source,
+    )
+    assert.deepEqual(result.options.plugins, [])
+    assert.match(await readFile(join(result.target, 'template.config.ts'), 'utf8'), /plugins: \{\}/)
+    assert.doesNotMatch(result.report, /STORY_SECRET|story-agent/)
+    assert.ok(existsSync(join(result.target, 'plugins/story-agent/plugin.ts')))
+    for (const app of ['web', 'jobs']) {
+      const wrangler = parseJsonc(
+        await readFile(join(result.target, `apps/${app}/wrangler.jsonc`), 'utf8'),
+      )
+      for (const env of [wrangler, wrangler.env.staging, wrangler.env.production]) {
+        assert.deepEqual(
+          env.durable_objects.bindings.map(({ name }) => name),
+          ['CORE_ACTOR'],
+        )
+        assert.deepEqual(
+          env.migrations,
+          app === 'web' ? [{ tag: 'initial', new_sqlite_classes: ['CoreActor'] }] : undefined,
+        )
+      }
+    }
+  }
+  assert.deepEqual(
+    notices.mock.calls.map(({ arguments: [message] }) => message),
+    [
+      '已跳过插件 story-agent，需要启用 billing',
+      '已跳过插件 story-agent，需要启用 billing、credits',
+    ],
+  )
+})
+
+generatorTest('显式空插件列表覆盖模板默认插件并写入模板基准', async (t) => {
+  const f = await pluginFixture(t)
+  const result = await createProject({ ...f.input, ai: 'text', plugins: '' }, f.source)
+  assert.deepEqual(result.options.plugins, [])
+  assert.deepEqual((await readBase(result.target)).params.plugins, [])
+})
 
 generatorTest('文件桶签名白名单与生成项目的桶名一致，备份桶名不受影响', async (t) => {
   const f = await fixture(t)

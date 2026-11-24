@@ -4,7 +4,7 @@
 
 **进度基线（2026-11-15，模板版本 `template-v0.5.1`，其后已合并 #380–#383）**：以下状态已核对 `openspec list --json`、各 change 的 `tasks.md`、归档与 main 已合并 PR。功能项勾选表示对应任务的实现与规定验证已完成；阶段整体验收另列，代码合并或本地模拟通过不替代 staging 验收。进行中的其他 worktree 不计入完成项。
 
-每个阶段对应一个 OpenSpec change（`openspec/changes/<name>/`），实现时用 `/opsx:apply <name>` 按其 `tasks.md` 推进，全部验收完成后由协调者归档：
+每个阶段对应一个或多个 OpenSpec change（`openspec/changes/<name>/`）。实现时用 `/opsx:apply <name>` 按其 `tasks.md` 推进，全部验收完成后由协调者归档。
 
 | 阶段 | OpenSpec change | 已验收任务 / 状态 |
 |---|---|---|
@@ -192,9 +192,12 @@
 - [ ] 审计加固 staging 整体验收（P2，原 `harden-audit-findings` 7.3）：该 change 于 2026-11-15 按使用者决定归档。验证码限流未通过——Cloudflare Rate Limiting 绑定在线上 Worker 不限流（2026-10-25 实测、2026-11-12 重测仍无 429，与上游 [workers-sdk#16097](https://github.com/cloudflare/workers-sdk/issues/16097) 一致），用户决定继续用原生绑定，等上游修复后重测；verify-email 与 reset-password 未在 staging 跑通；Stripe test clock、媒体取消、免费失败计费、CSP、删号清理已有原始记录待统一结论。记录与需还原的 staging 改动见私有证据库 `saas-template-evidence:harden-audit-findings/2026-10-24-staging-7.3/README.md`。
 - [x] **新项目阶段验收（observability 6.1）**：#100 从模板生成独立文本 AI 项目，配置新 Neon / Cloudflare staging，健康、注册到首次 AI 调用、精确积分结算和 Sentry 源码堆栈均通过；临时资源已清理（2026-10-12；脱敏证据（私有证据库 `saas-template-evidence:create-project/2026-10-12/acceptance.json`））。原 staging 的 Sentry 1.2 已另行验收。
 
-## 进行中的 change
+## 插件与 Agent
 
-无（2026-11-16）。未完成的延后项（长对话摘要、审计加固 staging 整体验收）记在 Phase 7。
+- [ ] `add-plugin-system`（进行中）。引入构建期插件机制，将现有图片与视频任务迁入 `media` 插件，更新项目生成器与模板同步。阶段验收包括关闭媒体后的产物检查，以及开启媒体时的 staging 图片与视频回归。见 [插件系统 change](../openspec/changes/add-plugin-system/proposal.md)。
+- [ ] `add-ai-agents`（进行中，依赖插件机制）。以 Cloudflare 专用的 `agents` 插件提供可恢复对话、多步工具执行、人工确认与积分结算。见 [Agent change](../openspec/changes/add-ai-agents/proposal.md)。
+- [ ] 生图站（待提案）。基于 `media` 插件交付图片生成产品功能，按需接入 Agent 工具。
+- [ ] 视频站（待提案）。基于 `media` 插件交付视频生成产品功能，按需接入 Agent 工具。
 
 ## 待决事项
 

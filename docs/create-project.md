@@ -1,7 +1,7 @@
 # 从模板创建项目
 
 在已安装 Node >=22 与本仓库 pnpm 版本的环境中，运行根目录 create-project 脚本。
-无参数会询问项目名称、域名、目标目录、默认语言与功能开关。名称采用小写 kebab-case，
+无参数会询问项目名称、域名、目标目录、默认语言、功能开关与插件。名称采用小写 kebab-case，
 域名采用 HTTPS 主机名，语言支持 en、zh。部署目标 `--target cloudflare|selfhost` 默认
 为 cloudflare；输出目录 `--output` 默认是当前目录的同级项目目录
 （`../<项目名称>`），必须是模板目录之外尚不存在的目录。
@@ -38,7 +38,16 @@ robots 与 sitemap 不加入路由，营销页不预渲染，也不生成营销 
 生成器修改 ai.text.enabled 时保留其 thinking、reasoning、failedReplyRefund 等设置。
 
 默认开启文本、图片、视频、Stripe、PayPal、Google、GitHub 与 Turnstile，
-可选功能仅开启 blog。列表传空字符串可全部关闭；交互时输入 `-` 可关闭列表。
+可选功能仅开启 blog。一般列表传空字符串可全部关闭，交互时输入 `-` 可清空列表。
+省略 `--plugins` 时，继承源模板 `template.config.ts` 中启用的插件。有可选插件时，交互会列出适用于
+所选部署目标的插件，直接回车使用模板默认值。输入逗号分隔的插件 ID 会替换默认选择。`--plugins ''`（交互输入 `-`）
+清空选择。`--ai` 含 `image` 或 `video` 时会自动加入 `media`，包括选择为空时。
+生成器会跳过部署目标不支持的默认插件，以及依赖的插件或功能未启用的插件，并打印原因。
+为 `--target selfhost` 显式选择仅支持 Cloudflare 的插件会在创建目录前报错。
+启用 `media` 时，`--media-providers` 接受逗号分隔的服务商 ID，写入 `template.config.ts` 的
+`plugins.media.providers`，默认值为 `['fal', 'workers-ai']`。要生成不含媒体能力的项目，请关闭
+`image` 和 `video`。若传入显式插件列表，列表也应省去 `media`。见 [媒体配置](06-ai.md#4-图片--视频异步任务)。
+
 `--analytics plausible|off` 选择产品分析：默认 plausible（新词站），长期词站可 off，写入
 `features.analytics`。`--plausible-domain` 是该站 site_id（默认项目名，staging 自动加 `-staging`），
 `--plausible-host` 是共用的自建实例 HTTPS 地址；未提供地址时脚本不注入，配置后才启用，见
@@ -60,6 +69,8 @@ robots 与 sitemap 不加入路由，营销页不预渲染，也不生成营销 
 `commit`（源模板的完整 40 位 SHA）、`version`（HEAD 上最高的合法 `template-v<SemVer>`
 版本，未打模板 tag 时为 null）、`clean`（源工作区是否干净）、`params`（展开默认值的
 CLI 参数，键排序、列表去重保序，不包含输出目录）和 `migrations`（副本 journal 中的迁移 tag）。
+实际启用的插件与同一部署目标和功能开关下的有效默认值不同时，生成器将其写入 `params.plugins`，
+供同步时重建副本。例如，显式清空模板默认启用的插件且未自动加入 `media` 时，记录为 `[]`。
 生成器不记录本机源目录、输出目录或 Git 用户信息；参数中的支持邮箱是项目配置的公开联系地址。
 源目录不是 Git 仓库时，`repository`、`commit`、`version` 为 null，`clean=false`；
 有未提交改动时也标记 `clean=false`，这种来源不能作为可信同步基准。
@@ -68,8 +79,11 @@ CLI 参数，键排序、列表去重保序，不包含输出目录）和 `migra
 Hyperdrive / KV 的部署 ID 重置为互不相同的占位值，AI Gateway / R2 账号标识清空，所有环境都需配置新资源；
 Rate Limiting 的 RL_AUTH / RL_AI / RL_API / RL_SHARE_CARD 命名空间需独立分配。Queue 名会同步到 jobs 消费者与测试。
 FILES 桶按项目改名，R2_FILES_BUCKET 与绑定保持一致；文本模式也保留文件清理 Cron 所需的 FILES 桶。
-清单按 AI、支付、OAuth 与 Turnstile 开关列出资源与密钥；关闭图片和视频时移除 Workflow 绑定，
-清单不包含媒体服务商、Workflow 与媒体 R2 S3 密钥。
+清单按 AI、支付、OAuth 与 Turnstile 开关列出资源与密钥，并按启用的插件列出所需绑定与密钥。
+生成器按插件清单移除未启用插件在 Wrangler 顶层、staging 与 production 的绑定。
+生成新副本时，Durable Object 迁移会移除停用插件的类，同一迁移 tag 下的其他类继续保留。
+关闭 `media` 时会移除它声明的 Workflow 和 Workers AI 绑定，清单也省略媒体服务商与媒体 R2 S3 密钥。
+所有插件源码都随副本保留。日后启停插件时，更新 `template.config.ts` 的 `plugins` 键和部署绑定，再重新构建。
 密钥模板只包含空值，APP_URL 使用公开默认地址，来自固定的变量名清单；脚本不读取本地真值生成模板。
 
 PROJECT_SETUP.md 分别列出 Worker 配置与 GitHub staging environment secrets。
@@ -119,12 +133,15 @@ backups/backup-data/、releases/release-state/、state/.state/ 等运行目录�
 无论成功或失败均清理测试目录；不向源树注入测试密钥。
 
 <!-- template-only:start -->
-完整副本验证使用 `pnpm test:create-project:verify`：从真实工作树生成 CF 默认、selfhost 默认、
-selfhost 全关计费/积分/营销/i18n/AI 三个临时项目，逐文件确认模板原名称与排除目录不存在，
-安装依赖并运行 check、typecheck、单元测试与 Node build，同时验证副本再次生成。结束后清理临时目录。
+完整副本验证使用 `pnpm test:create-project:verify`，需要已合并的 `media` 和 `agents` 插件。
+矩阵覆盖 Cloudflare 默认、Cloudflare 关闭计费与 AI 并保留积分、selfhost 默认，以及从默认 selfhost 副本
+再次生成的全关组合（计费、积分、营销、i18n、AI 与插件）。四个副本逐文件检查模板原名称与排除目录，
+安装依赖并运行 check、typecheck、单元测试和各自部署目标的构建。Cloudflare 关闭计费的副本验证
+web 的 `agents` Durable Object 绑定与迁移条目已移除。全关 selfhost 副本还运行 Cloudflare web 构建，
+两个关闭 AI 的副本都检查构建产物中已移除媒体和 `agents` 的执行代码。验收结束后清理临时目录。
 独立只读 `selfhost-features.yml` 从真实源生成全关副本、构建镜像并在空卷 Compose 启动，
 实际验证 SSR/静态资源、登录/空间、关闭入口、成功 heartbeat 与完整 SHA。
-该命令单独运行，避免日常边界测试重复安装完整依赖。
+完整副本矩阵单独运行，避免日常边界测试重复安装完整依赖。
 
 <!-- template-only:end -->
 新库初始化时，先以 migrator 应用已有迁移，再将新库 app 连接通过进程环境传给
@@ -185,7 +202,7 @@ node /tmp/template/scripts/template-sync.mjs sync --project . --to template-v0.3
 
 同步过程：
 
-1. 用基准提交和目标提交各自的生成器，按记录的参数各生成一份副本。支持格式化的生成器也会格式化同步参照。旧版基准保留当时的生成结果，因此首次同步到支持格式化的版本会带入格式调整，可能与项目同一行的修改重叠。
+1. 用基准提交和目标提交各自的生成器，按记录的参数各生成一份副本。已记录的插件选择也参与重建，未启用插件的源码照常合并。支持格式化的生成器也会格式化同步参照。旧版基准保留当时的生成结果，因此首次同步到支持格式化的版本会带入格式调整，可能与项目同一行的修改重叠。
 2. 在新建的同步分支上逐个文件做三方合并，原分支不动。迁移目录、`.template-base.json`、`PROJECT_SETUP.md` 和 `pnpm-lock.yaml` 不参与合并。项目自有扩展只在首次生成或由模板新增时交付，生成时同步改名，之后由项目自行维护。模板删除的文件不会从项目中删除，只在报告中列出。
 3. 模板新增的迁移追加到项目迁移序列末尾，见 [迁移约定](02-project-structure.md#4-编码约定)。模板改动或删除了已发布的迁移时，同步停止。
 4. 任一 `package.json` 有变化时，先 `pnpm install --no-frozen-lockfile` 重新解析锁文件，再用 `--frozen-lockfile` 确认；随后检查 `drizzle-kit generate` 无变化，再运行 `pnpm typecheck` 和 `pnpm test`。工具以 CI 模式、清除数据库连接串运行测试，只验单元测试。同步后要在本地跑集成测试时，按[本地集成测试数据库](02-project-structure.md#5-本地集成测试数据库)为同步目录准备空的隔离库。
@@ -220,7 +237,8 @@ node /tmp/template/scripts/template-sync.mjs sync --project . --to template-v0.4
 
 `--confirm-deployed` 是使用者的部署声明，工具不会替你部署或检查线上环境；有多个边界时逐段完成并重复传入已部署版本。
 
-**已有项目没有基准记录**：用 `infer-base` 从项目首个提交的树还原生成参数，并在模板 main 的首父提交历史中逐一生成候选副本。默认时间窗为项目首个提交前后各 3 天，可指定日期范围：
+**已有项目没有基准记录**可用 `infer-base` 从项目首个提交的树还原生成参数，包括 `template.config.ts` 中 `plugins` 的键，再在模板 main 的首父提交历史中逐一生成候选副本。默认时间窗为项目首个提交前后各 3 天，可指定日期范围。
+若生成提交保留非媒体插件清单，推断会将静态读取的插件列表（含空列表）写入基准。重建时使用该列表，避免继承候选模板不同的默认选择。
 
 ```bash
 node /tmp/template/scripts/template-sync.mjs infer-base --project . --since 2026-10-16 --until 2026-10-20

@@ -5,6 +5,8 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { test } from 'node:test'
+import { scanArtifacts } from './plugins/check-artifacts.mjs'
+import { parseJsonc } from './production/check-wrangler-envs.mjs'
 
 const generatorSkip = existsSync(new URL('./create-project.mjs', import.meta.url))
   ? false
@@ -12,9 +14,15 @@ const generatorSkip = existsSync(new URL('./create-project.mjs', import.meta.url
 const { createProject, verifyProject } = generatorSkip ? {} : await import('./create-project.mjs')
 
 // 显式运行的端到端自检：真正安装与检查完整副本，避免日常边界测试反复安装依赖。
-test('真实副本通过 check，覆盖 Cloudflare 默认、selfhost 默认和 selfhost 全关组合', {
+test('真实副本通过 check、类型检查、单元测试和目标构建', {
   skip: generatorSkip,
 }, async (t) => {
+  for (const id of ['media', 'agents']) {
+    assert.ok(
+      existsSync(new URL(`../plugins/${id}/plugin.ts`, import.meta.url)),
+      `验收需要已合并的 ${id} 插件`,
+    )
+  }
   const temp = await mkdtemp(join(tmpdir(), 'bootstrap-verify-'))
   t.after(() => rm(temp, { recursive: true, force: true }))
   const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
@@ -27,6 +35,13 @@ test('真实副本通过 check，覆盖 Cloudflare 默认、selfhost 默认和 s
   let selfhostSource
   for (const scenario of [
     { id: 'cf', label: 'Cloudflare 默认', locale: 'en' },
+    {
+      id: 'billing-off',
+      label: 'Cloudflare 关闭计费',
+      locale: 'en',
+      ai: '',
+      'billing-enabled': 'false',
+    },
     {
       id: 'selfhost',
       label: 'selfhost 默认（blue 主题）',
@@ -41,6 +56,7 @@ test('真实副本通过 check，覆盖 Cloudflare 默认、selfhost 默认和 s
       target: 'selfhost',
       locale: 'zh',
       ai: '',
+      plugins: '',
       'billing-enabled': 'false',
       'credits-enabled': 'false',
       marketing: 'false',
@@ -48,7 +64,13 @@ test('真实副本通过 check，覆盖 Cloudflare 默认、selfhost 默认和 s
     },
   ]) {
     const webBuild = scenario.marketing === 'false'
-    const builds = webBuild ? 'Node 与 web 生产构建' : 'Node 构建'
+    const nodeBuild = scenario.target === 'selfhost'
+    const cloudflareBuild = !nodeBuild
+    const builds = cloudflareBuild
+      ? 'Cloudflare 构建'
+      : webBuild
+        ? 'Node 与 web 生产构建'
+        : 'Node 构建'
     await t.test(`${scenario.label}：安装、check、类型、单元测试及 ${builds}通过`, async () => {
       const name = scenario.name ?? `validation-${scenario.id}-${process.pid.toString(36)}`
       const source = scenario.id === 'minimal' ? selfhostSource : undefined
@@ -232,14 +254,59 @@ test('真实副本通过 check，覆盖 Cloudflare 默认、selfhost 默认和 s
         )
         assert.doesNotMatch(result.report, /billing:seed|STRIPE_SECRET|PAYPAL_CLIENT/)
       }
+      for (const id of ['media', 'agents']) {
+        assert.ok(existsSync(join(result.target, `plugins/${id}/plugin.ts`)))
+      }
+      assert.equal(result.options.plugins.includes('media'), scenario.ai !== '')
+      assert.equal(result.options.plugins.includes('agents'), scenario.id === 'cf')
+      if (scenario.id === 'minimal') assert.deepEqual(result.options.plugins, [])
+      for (const app of ['web', 'jobs']) {
+        const wrangler = parseJsonc(
+          await readFile(join(result.target, `apps/${app}/wrangler.jsonc`), 'utf8'),
+        )
+        if (scenario.id === 'cf' && app === 'web') {
+          for (const scope of [wrangler, wrangler.env.staging, wrangler.env.production]) {
+            assert.ok(
+              scope.durable_objects?.bindings.some(
+                ({ name, class_name }) =>
+                  name === 'AGENT_CONVERSATION' && class_name === 'AgentConversation',
+              ),
+            )
+          }
+          assert.match(JSON.stringify(wrangler.migrations), /"AgentConversation"/)
+        } else {
+          assert.doesNotMatch(JSON.stringify(wrangler), /AGENT_CONVERSATION|AgentConversation/)
+        }
+      }
       // pnpm check 用 Git 索引枚举文件；保留无提交副本再次生成的测试条件。
       const gitOptions = { cwd: result.target }
       execFileSync('git', ['init', '--quiet'], gitOptions)
       try {
         execFileSync('git', ['add', '--all'], gitOptions)
-        verifyProject(result.target, { nodeBuild: true, webBuild })
+        verifyProject(result.target, { nodeBuild, cloudflareBuild, webBuild })
       } finally {
         await rm(join(result.target, '.git'), { recursive: true, force: true })
+      }
+      if (scenario.ai === '') {
+        const hits = scanArtifacts(
+          [
+            'AiMediaWorkflow',
+            'fal.media',
+            'MediaSubmitPage',
+            'MediaTasksPage',
+            'AgentConversation',
+          ],
+          {
+            root: result.target,
+            only: scenario.id === 'minimal' ? ['web', 'web-node', 'jobs-node'] : ['web', 'jobs'],
+          },
+        )
+        for (const [artifact, matches] of Object.entries(hits)) {
+          assert.ok(matches, `产物 ${artifact} 不存在`)
+          for (const [marker, paths] of Object.entries(matches)) {
+            assert.deepEqual(paths, [], `产物 ${artifact} 中仍包含 ${marker}`)
+          }
+        }
       }
       // 示例评测套件在生成的项目中离线回放可用；CI 为真保证不会发出真实模型调用。
       const evals = spawnSync('pnpm', ['eval:prompts', '--suite', 'example'], {
