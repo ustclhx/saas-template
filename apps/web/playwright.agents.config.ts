@@ -7,7 +7,7 @@ if (process.env.STAGING_URL || process.env.PRODUCTION_URL || !webServer)
 
 export default defineConfig({
   ...base,
-  testMatch: 'agents.spec.ts',
+  testMatch: /agents(-lifecycle)?\.spec\.ts$/,
   testIgnore: [],
   webServer: {
     ...webServer,
