@@ -200,3 +200,38 @@ export function evictedCallUsage(input: {
     estimated: true,
   }
 }
+
+/** 某条用户消息之后、下一条用户消息之前 assistant 消息的可见输出字符（被取代的旧轮估算用） */
+export function outputCharsForTurn(
+  messages: readonly MessageLike[],
+  userMessageId: string,
+): number {
+  const start = messages.findLastIndex((m) => m.role === 'user' && m.id === userMessageId)
+  if (start === -1) return 0
+  let total = 0
+  for (const message of messages.slice(start + 1)) {
+    if (message.role === 'user') break
+    if (message.role === 'assistant')
+      for (const part of message.parts) total += partOutputChars(part)
+  }
+  return total
+}
+
+/**
+ * 单次运行内的预扣封顶（决策 3）：已用量加下一步的保守估算（输入按上一步输入加输出增长，
+ * 输出按单步上限）达到预扣额时不再开始下一步。返回 true 表示应停止。
+ */
+export function nextStepExceedsHold(input: {
+  pricing: Pricing
+  used: TurnUsage
+  nextInputTokens: number
+  maxOutputTokens: number
+  holdAmount: number
+}): boolean {
+  const projected = addTurnUsage(input.used, {
+    inputTokens: input.nextInputTokens,
+    outputTokens: input.maxOutputTokens,
+    steps: 1,
+  })
+  return turnCredits(input.pricing, projected) > input.holdAmount
+}

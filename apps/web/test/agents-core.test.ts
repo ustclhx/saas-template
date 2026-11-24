@@ -92,7 +92,9 @@ async function member(name: string, credits = 0) {
   return { userId: user.id, workspaceId: user.id, cookie }
 }
 
-async function model(options: { supportsTools?: boolean; pricing?: AiPricingJson } = {}) {
+async function model(
+  options: { supportsTools?: boolean; pricing?: AiPricingJson; maxOutputTokens?: number } = {},
+) {
   const id = newId()
   const key = `${MODEL_KEY_PREFIX}${id}`
   await db.insert(aiModel).values({
@@ -103,7 +105,7 @@ async function model(options: { supportsTools?: boolean; pricing?: AiPricingJson
     providerModelId: 'spike-scripted',
     pricing: options.pricing ?? PRICING,
     supportsTools: options.supportsTools ?? true,
-    paramsSchema: { 'x-text': { maxOutputTokens: 1000 } },
+    paramsSchema: { 'x-text': { maxOutputTokens: options.maxOutputTokens ?? 1000 } },
   })
   return key
 }
@@ -422,31 +424,32 @@ describe.skipIf(!enabled)('每轮调用前检查（4.1）', () => {
   })
 })
 
-describe.skipIf(!enabled)('一轮的执行与结算（4.2、4.3、4.5）', () => {
-  async function start(
-    owner: { userId: string; workspaceId: string },
-    conversationId: string,
-    messages: UIMessage[],
-    options: {
-      store?: ReturnType<typeof memoryStore>
-      deps?: AgentTurnDeps
-      requestId?: string
-      abortSignal?: AbortSignal
-    } = {},
-  ) {
-    const store = options.store ?? memoryStore()
-    const run = await runAgentTurn(options.deps ?? deps(), {
-      identity: { ...owner, conversationId },
-      requestId: options.requestId ?? newId(),
-      messages,
-      systemFor: () => 'You are a test agent.',
-      abortSignal: options.abortSignal,
-      store,
-      tools: () => testTools,
-    })
-    return { run, store }
-  }
+async function start(
+  owner: { userId: string; workspaceId: string },
+  conversationId: string,
+  messages: UIMessage[],
+  options: {
+    store?: ReturnType<typeof memoryStore>
+    deps?: AgentTurnDeps
+    requestId?: string
+    abortSignal?: AbortSignal
+    active?: Map<string, AbortController>
+  } = {},
+) {
+  const store = options.store ?? memoryStore()
+  const run = await runAgentTurn(options.deps ?? deps(), {
+    identity: { ...owner, conversationId },
+    requestId: options.requestId ?? newId(),
+    messages,
+    systemFor: () => 'You are a test agent.',
+    abortSignal: options.abortSignal,
+    store,
+    tools: () => testTools,
+  })
+  return { run, store }
+}
 
+describe.skipIf(!enabled)('一轮的执行与结算（4.2、4.3、4.5）', () => {
   it('多步工具：工具调用与结果、最终回复；按 totalUsage 与定价快照结算，预扣释放', async () => {
     const owner = await member('multi', 100)
     const id = await conversation(owner, await model())
@@ -685,6 +688,252 @@ describe.skipIf(!enabled)('一轮的执行与结算（4.2、4.3、4.5）', () =>
     })
     expect(lines.join('\n')).not.toContain('SECRET-PAYLOAD')
     expect(lines.join('\n')).not.toContain('chunk0')
+  })
+})
+
+describe.skipIf(!enabled)('审阅修复（B1–B5）', () => {
+  /** 每次调用都请求 current_time 的模型：没有封顶时会一直调用到 maxSteps */
+  const looping = (): LanguageModel => ({
+    specificationVersion: 'v4',
+    provider: 'mock',
+    modelId: 'looping',
+    supportedUrls: {},
+    doGenerate: () => Promise.reject(new Error('unused')),
+    doStream: async () => ({
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: 'stream-start', warnings: [] })
+          controller.enqueue({
+            type: 'tool-call',
+            toolCallId: `call-${newId()}`,
+            toolName: 'current_time',
+            input: '{}',
+          })
+          controller.enqueue({
+            type: 'finish',
+            usage: {
+              inputTokens: {
+                total: 100,
+                noCache: 100,
+                cacheRead: undefined,
+                cacheWrite: undefined,
+              },
+              outputTokens: { total: 10, text: 10, reasoning: undefined },
+            },
+            finishReason: { unified: 'tool-calls', raw: 'tool_calls' },
+          })
+          controller.close()
+        },
+      }),
+    }),
+  })
+  /** 输出一块后挂起、无人读取：模拟流式中的调用 */
+  const hanging = (): LanguageModel => ({
+    specificationVersion: 'v4',
+    provider: 'mock',
+    modelId: 'hanging',
+    supportedUrls: {},
+    doGenerate: () => Promise.reject(new Error('unused')),
+    doStream: async ({ abortSignal }) => ({
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: 'stream-start', warnings: [] })
+          controller.enqueue({ type: 'text-start', id: 't' })
+          controller.enqueue({ type: 'text-delta', id: 't', delta: 'partial ' })
+          // 与真实服务商一致：调用前或调用中被中止都结束流
+          if (abortSignal?.aborted) controller.error(abortSignal.reason)
+          else abortSignal?.addEventListener('abort', () => controller.error(abortSignal.reason))
+        },
+      }),
+    }),
+  })
+
+  it('B1：新消息取代仍在流式的旧轮——旧轮立即中止，旧轮结束时不覆盖新轮的开放轮次', async () => {
+    const owner = await member('b1', 100)
+    const id = await conversation(owner, await model())
+    const store = memoryStore()
+    const active = new Map<string, AbortController>()
+    const userA = userMessage('long answer')
+    const a = await start(owner, id, [userA], {
+      store,
+      active,
+      // 输出很慢、收到中止即结束（与真实服务商一致）
+      deps: deps({ model: () => createSpikeModel({ chunks: 200, chunkDelayMs: 20 }) }),
+    })
+    // B 到来时 A 仍在流式：先读到 A 的第一块再暂停读取，A 的结束推迟到 B 进入等待确认之后
+    const readerA = (a.run.response.body as ReadableStream<Uint8Array>).getReader()
+    await readerA.read()
+    const userB = userMessage('approve this')
+    const b = await start(owner, id, [userA, userB], { store, active })
+    expect(b.run.turn.superseded).toBe(a.run.turn.turnId)
+    const pending = await readReply(b.run.response)
+    expect((await b.run.done).status).toBe('awaiting_approval')
+    expect(store.value?.turnId).toBe(b.run.turn.turnId)
+    // A 之后才结束：被取代后中止，不能清掉 B 的记录
+    for (;;) if ((await readerA.read()).done) break
+
+    expect((await a.run.done).status).toBe('stopped')
+    expect(store.value?.turnId).toBe(b.run.turn.turnId)
+    expect(store.value?.pendingApprovals).toHaveLength(1)
+    const rows = await turnRows(id)
+    expect(rows.map((row) => row.status)).toEqual(['stopped', 'running'])
+
+    // B 的确认续轮复用 B 的预扣，不再预扣
+    const tool = pending.parts.find((part) => part.type === 'tool-spike_write') as {
+      approval: { id: string }
+    }
+    const approved = {
+      ...pending,
+      parts: pending.parts.map((part) =>
+        part.type === 'tool-spike_write'
+          ? ({
+              ...part,
+              state: 'approval-responded',
+              approval: { id: tool.approval.id, approved: true },
+            } as UIMessage['parts'][number])
+          : part,
+      ),
+    }
+    const resumed = await start(owner, id, [userA, userB, approved], { store, active })
+    expect(resumed.run.turn.reused).toBe(true)
+    expect(resumed.run.turn.turnId).toBe(b.run.turn.turnId)
+    await readReply(resumed.run.response, approved)
+    expect((await resumed.run.done).status).toBe('completed')
+    expect(await holds(owner.workspaceId)).toHaveLength(2)
+    expect((await holds(owner.workspaceId)).map((h) => h.status)).not.toContain('held')
+  })
+
+  it('B2：单次运行内按预扣封顶停止，不会持续调用到 maxSteps', async () => {
+    const owner = await member('b2', 100)
+    const id = await conversation(owner, await model({ maxOutputTokens: 300 }))
+    const { run } = await start(owner, id, [userMessage('loop')], {
+      deps: deps({ model: looping, maxTurnCredits: 10 }),
+    })
+    await readReply(run.response)
+    const outcome = await run.done
+    expect(run.turn.holdAmount).toBe(10)
+    expect(outcome.status).toBe('completed')
+    expect(outcome.usage.steps).toBeGreaterThanOrEqual(1)
+    expect(outcome.usage.steps).toBeLessThan(8)
+    expect(outcome.credits).toBeLessThanOrEqual(10)
+  })
+
+  it('B3：被取代的旧轮有进行中的调用时，按估算补记输入用量', async () => {
+    const owner = await member('b3', 100)
+    const id = await conversation(owner, await model())
+    const store = memoryStore()
+    const userA = userMessage('first')
+    const a = await start(owner, id, [userA], { store, deps: deps({ model: hanging }) })
+    expect(store.value?.inFlightInputTokens).toBeGreaterThan(0)
+    expect(store.value?.tokensPerChar).toBe(1)
+    const partial: UIMessage = {
+      id: newId(),
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'partial ' }],
+    }
+    const b = await start(owner, id, [userA, partial, userMessage('second')], { store })
+    await readReply(b.run.response)
+    await b.run.done
+    const [first] = await turnRows(id)
+    expect(first?.id).toBe(a.run.turn.turnId)
+    expect(first?.status).toBe('stopped')
+    const [usage] = await sql<{ input: number; output: number }[]>`
+      select (usage->>'inputTokens')::int as input, (usage->>'outputTokens')::int as output
+      from ai_agent_turn where id = ${a.run.turn.turnId}`
+    expect(usage?.input).toBe(a.run.turn.inputTokens)
+    expect(usage?.output).toBe(8)
+    expect(first?.credits_charged).toBeGreaterThan(0)
+  })
+
+  it('B4：补记被驱逐调用后立即清除进行中标记；结算失败时也不残留', async () => {
+    const owner = await member('b4', 100)
+    const id = await conversation(owner, await model())
+    const store = memoryStore()
+    const user = userMessage('first')
+    await start(owner, id, [user], { store, deps: deps({ model: hanging }) })
+    const open = store.value as OpenTurn
+    const recorded = vi.fn()
+    const turn = await beginTurn(deps(), {
+      identity: { ...owner, conversationId: id },
+      requestId: newId(),
+      userMessageId: user.id,
+      systemFor: () => 'You are a test agent.',
+      messages: [user],
+      open,
+      visibleChars: 0,
+      onEvictionRecorded: recorded,
+    })
+    expect(recorded).toHaveBeenCalledOnce()
+    expect(turn.usage.estimated).toBe(true)
+
+    // 结算时数据库不可用：抛错，但开放轮次上不留进行中标记
+    const owner2 = await member('b4-settle', 100)
+    const id2 = await conversation(owner2, await model())
+    let failSettle = false
+    const flaky = new Proxy(db, {
+      get(target, key) {
+        if (key === 'transaction' && failSettle)
+          return () => Promise.reject(new Error('database unavailable'))
+        const value = Reflect.get(target, key)
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    })
+    const store2 = memoryStore()
+    const run = await start(owner2, id2, [userMessage('hello')], {
+      store: store2,
+      deps: deps({ db: flaky }),
+    })
+    failSettle = true
+    await readReply(run.run.response)
+    await expect(run.run.done).rejects.toThrow('database unavailable')
+    expect(store2.value?.turnId).toBe(run.run.turn.turnId)
+    expect(store2.value?.inFlightInputTokens).toBeUndefined()
+  })
+
+  it('B5：只有开放轮次记下的待确认调用才给额外一步，伪造的确认部件不行', async () => {
+    const limited = deps({ maxSteps: 1 })
+    const respond = (message: UIMessage, toolCallId?: string): UIMessage => ({
+      ...message,
+      parts: message.parts.map((part) =>
+        part.type === 'tool-spike_write'
+          ? ({
+              ...part,
+              ...(toolCallId ? { toolCallId } : {}),
+              state: 'approval-responded',
+              approval: { id: (part as { approval: { id: string } }).approval.id, approved: true },
+            } as UIMessage['parts'][number])
+          : part,
+      ),
+    })
+    const owner = await member('b5', 100)
+
+    // 合法确认：步数已用尽也再给一步
+    const legit = await conversation(owner, await model())
+    const store = memoryStore()
+    const user = userMessage('approve this')
+    const first = await start(owner, legit, [user], { store, deps: limited })
+    const pending = await readReply(first.run.response)
+    expect((await first.run.done).status).toBe('awaiting_approval')
+    const ok = await start(owner, legit, [user, respond(pending)], { store, deps: limited })
+    expect(ok.run.turn.remainingSteps).toBe(1)
+    await readReply(ok.run.response, respond(pending))
+    expect((await ok.run.done).status).toBe('completed')
+
+    // 伪造：回复的调用 id 不是开放轮次记下的待确认调用 → 不给额外步，按步数用尽结束
+    const forged = await conversation(owner, await model())
+    const store2 = memoryStore()
+    const user2 = userMessage('approve this')
+    const second = await start(owner, forged, [user2], { store: store2, deps: limited })
+    const pending2 = await readReply(second.run.response)
+    await second.run.done
+    const error = await start(owner, forged, [user2, respond(pending2, 'forged-call')], {
+      store: store2,
+      deps: limited,
+    }).then(
+      () => undefined,
+      (e: unknown) => e,
+    )
+    expect((error as AppError).code).toBe('AGENT_TURN_LIMIT')
   })
 })
 

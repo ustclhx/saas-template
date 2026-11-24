@@ -41,6 +41,7 @@ import {
   addTurnUsage,
   EMPTY_TURN_USAGE,
   estimatePromptTokens,
+  evictedCallUsage,
   hasTurnOutput,
   interruptedTurnCredits,
   readTurnUsage,
@@ -75,6 +76,10 @@ export interface OpenTurn {
   readonly maxOutputTokens: number
   /** 调用模型前写入、正常结束后清除；续轮时仍存在说明上次调用被驱逐，按估算补记用量 */
   readonly inFlightInputTokens?: number | undefined
+  /** 建轮时模型的估算系数：被驱逐调用的估算在任何入口（续轮、恢复钩子、取代）口径一致 */
+  readonly tokensPerChar?: number | undefined
+  /** 停在等待确认时记下的工具调用 id；只有这些调用的确认结果才给额外一步（防客户端伪造） */
+  readonly pendingApprovals?: readonly string[] | undefined
 }
 
 export interface TurnServiceDeps {
@@ -109,10 +114,14 @@ export interface BeginTurnInput {
   readonly maxStepsFor?: (agentId: string) => number | undefined
   readonly messages: readonly { id: string; role: string; parts: readonly unknown[] }[]
   readonly open?: OpenTurn | undefined
-  /** 续轮是为了处理用户的确认结果：即使步数用尽也至少再给一步 */
-  readonly resolvingApproval?: boolean
+  /** 消息中已回复确认（approval-responded）的工具调用 id；与开放轮次记下的待确认调用匹配才给额外一步 */
+  readonly respondedApprovals?: readonly string[]
   /** 当前可见的输出字符（被驱逐调用的估算依据） */
   readonly visibleChars: number
+  /** 被新消息取代的旧轮在消息中已可见的输出字符（旧轮被驱逐调用的估算依据） */
+  readonly openVisibleChars?: number
+  /** 被驱逐调用的估算已写入检查点：调用方应立即清除开放轮次上的进行中标记，避免重复估算 */
+  readonly onEvictionRecorded?: () => void
 }
 
 export interface TurnHandle {
@@ -133,6 +142,8 @@ export interface TurnHandle {
   readonly open: OpenTurn
   /** 本次调用前的输入估算 */
   readonly inputTokens: number
+  /** 本次新建轮次时被结算取代的旧轮 id：调用方应立即中止其仍在进行的生成 */
+  readonly superseded?: string | undefined
 }
 
 const notFound = () => new AppError('NOT_FOUND', 'Not found', { status: 404 })
@@ -184,8 +195,10 @@ function handle(
   remainingSteps: number,
   inputTokens: number,
   reused: boolean,
+  superseded?: string,
 ): TurnHandle {
   return {
+    superseded,
     turnId: turn.id,
     ...agent,
     holdId: open.holdId,
@@ -229,6 +242,7 @@ export async function beginTurn(deps: TurnServiceDeps, input: BeginTurnInput): P
   const inputTokens = estimatePromptTokens(agent.system, input.messages, tokensPerChar)
   const maxSteps = input.maxStepsFor?.(conversation.agentId) ?? deps.maxSteps
 
+  let superseded: string | undefined
   if (input.open) {
     const open = input.open
     const turn = await loadTurn(db, workspaceId, open.turnId)
@@ -240,20 +254,22 @@ export async function beginTurn(deps: TurnServiceDeps, input: BeginTurnInput): P
       let usage = readTurnUsage(turn.usageCheckpoint)
       if (open.inFlightInputTokens !== undefined) {
         // 被驱逐的那次调用拿不到用量：输入按调用前估算，输出按检查点之后新增的可见字符（决策 3）
-        const delta = {
+        const delta = evictedCallUsage({
           inputTokens: open.inFlightInputTokens,
-          outputTokens: Math.ceil(
-            Math.max(0, input.visibleChars - usage.outputChars) * tokensPerChar,
-          ),
-          outputChars: Math.max(input.visibleChars, usage.outputChars),
-          estimated: true,
-        }
+          visibleChars: input.visibleChars,
+          checkpointChars: usage.outputChars,
+          tokensPerChar: open.tokensPerChar ?? tokensPerChar,
+        })
         await writeTurnCheckpoint(db, { workspaceId, turnId: turn.id, delta })
+        input.onEvictionRecorded?.()
         usage = addTurnUsage(usage, delta)
       }
       const pricing = turn.pricing as Pricing
       const left = maxSteps - usage.steps
-      const remainingSteps = input.resolvingApproval ? Math.max(1, left) : left
+      // 只有开放轮次记下的待确认调用得到回复时才给额外一步；客户端无法靠伪造确认部件多拿步数
+      const resolvingApproval =
+        open.pendingApprovals?.some((id) => input.respondedApprovals?.includes(id)) ?? false
+      const remainingSteps = resolvingApproval ? Math.max(1, left) : left
       if (turnCredits(pricing, usage) >= open.holdAmount || remainingSteps <= 0) {
         // 预扣封顶或步数用尽：按检查点结算，不再调用模型（每次续跑开始时检查，决策 3）
         await settleAgentTurn(db, {
@@ -272,23 +288,37 @@ export async function beginTurn(deps: TurnServiceDeps, input: BeginTurnInput): P
         turn,
         agent,
         model,
-        { ...open, inFlightInputTokens: undefined },
+        { ...open, inFlightInputTokens: undefined, pendingApprovals: undefined, tokensPerChar },
         usage,
         remainingSteps,
         inputTokens,
         true,
       )
     } else {
-      // 用户在旧轮未结束（例如等待确认）时发来新消息：旧轮按已记录用量结束
+      // 用户在旧轮未结束（例如等待确认）时发来新消息：旧轮按已记录用量结束；
+      // 旧轮仍有进行中（或被驱逐）的调用时，一并按估算补记
+      const recorded = readTurnUsage(turn.usageCheckpoint)
       await settleAgentTurn(db, {
         turn: { ...turn, holdId: open.holdId },
         status: 'stopped',
-        usage: readTurnUsage(turn.usageCheckpoint),
+        usage:
+          open.inFlightInputTokens === undefined
+            ? recorded
+            : addTurnUsage(
+                recorded,
+                evictedCallUsage({
+                  inputTokens: open.inFlightInputTokens,
+                  visibleChars: input.openVisibleChars ?? 0,
+                  checkpointChars: recorded.outputChars,
+                  tokensPerChar: open.tokensPerChar ?? tokensPerChar,
+                }),
+              ),
         overage: deps.overage,
         failedReplyRefund: deps.failedReplyRefund,
         errorCode: 'SUPERSEDED',
         freeFailures: deps.freeFailures,
       })
+      superseded = open.turnId
     }
   }
 
@@ -381,6 +411,7 @@ export async function beginTurn(deps: TurnServiceDeps, input: BeginTurnInput): P
       rootRequestId: input.requestId,
       userMessageId: input.userMessageId,
       maxOutputTokens: step.maxOutputTokens,
+      tokensPerChar,
     }
     const usage = readTurnUsage(existing.usageCheckpoint)
     return handle(
@@ -392,6 +423,7 @@ export async function beginTurn(deps: TurnServiceDeps, input: BeginTurnInput): P
       Math.max(0, maxSteps - usage.steps),
       inputTokens,
       true,
+      superseded,
     )
   }
   const open: OpenTurn = {
@@ -401,6 +433,7 @@ export async function beginTurn(deps: TurnServiceDeps, input: BeginTurnInput): P
     rootRequestId: input.requestId,
     userMessageId: input.userMessageId,
     maxOutputTokens: step.maxOutputTokens,
+    tokensPerChar,
   }
   return handle(
     { id: turnId, holdId: created.id, pricing: model.pricing as AiPricingJson },
@@ -411,6 +444,7 @@ export async function beginTurn(deps: TurnServiceDeps, input: BeginTurnInput): P
     maxSteps,
     inputTokens,
     false,
+    superseded,
   )
 }
 

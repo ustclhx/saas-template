@@ -1,4 +1,4 @@
-// 续轮是否在处理确认结果（openspec add-ai-agents 决策 5）：是则即使步数用尽也再给一步，让模型看到工具结果。
+// 续轮是否在处理确认结果（openspec add-ai-agents 决策 5）：与开放轮次记下的待确认调用匹配时，即使步数用尽也再给一步。
 // 过期确认的改写见 src/approval.ts 的 expireTurnApprovals（任务 5.3）。
 
 interface MessageLike {
@@ -22,11 +22,20 @@ const pending = (part: unknown): part is ToolPart & { approval: { id: string } }
   )
 }
 
-/** 消息中是否有等待处理的确认（用于判断续轮是否在处理确认结果） */
-export function hasApprovalResponse(messages: readonly MessageLike[]): boolean {
-  const last = messages.at(-1)
-  return (
-    last?.role === 'assistant' &&
-    last.parts.some((part) => pending(part) && (part as ToolPart).state === 'approval-responded')
-  )
+/**
+ * 最后一条用户消息之后已回复确认（approval-responded）的工具调用 id。
+ * 消息来自客户端，只用于与开放轮次记下的待确认调用比对，不能单独据此放宽步数。
+ */
+export function respondedApprovalIds(messages: readonly MessageLike[]): string[] {
+  const ids: string[] = []
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index] as MessageLike
+    if (message.role === 'user') break
+    for (const part of message.parts)
+      if (pending(part) && part.state === 'approval-responded') {
+        const id = (part as { toolCallId?: unknown }).toolCallId
+        if (typeof id === 'string') ids.push(id)
+      }
+  }
+  return ids
 }

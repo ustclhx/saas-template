@@ -10,7 +10,7 @@ import {
   type UIMessage,
 } from 'ai'
 import { expireTurnApprovals } from '../approval.ts'
-import { hasApprovalResponse } from '../core/approvals.ts'
+import { respondedApprovalIds } from '../core/approvals.ts'
 import type { AgentIdentity } from '../core/identity.ts'
 import { errorCodeOf, turnLogFields } from '../core/log.ts'
 import {
@@ -28,7 +28,9 @@ import {
 import {
   addTurnUsage,
   lastUserMessageId,
+  nextStepExceedsHold,
   outputCharsAfterUser,
+  outputCharsForTurn,
   partOutputChars,
   type TurnUsage,
 } from '../core/usage.ts'
@@ -60,6 +62,11 @@ export interface RunAgentTurnInput {
   readonly abortSignal?: AbortSignal | undefined
   readonly store: OpenTurnStore
   readonly tools: (turn: { agentId: string; turnId: string; signal: AbortSignal }) => ToolSet
+  /**
+   * 本实例中仍在进行的轮次（按 turnId）：新消息取代旧轮时立即中止旧轮的生成。
+   * 由实例字段持有（不放模块级变量，决策 11）；省略时不中止。
+   */
+  readonly active?: Map<string, AbortController>
   /** 轮次已过期时把等待中的确认改为过期并持久化 */
   readonly persistMessages?: (messages: UIMessage[]) => Promise<void>
 }
@@ -126,6 +133,7 @@ export async function runAgentTurn(
   const started = Date.now()
   const userMessageId = lastUserMessageId(messages) ?? input.requestId
   const visibleChars = outputCharsAfterUser(messages)
+  const open = store.get()
   let turn: TurnHandle
   try {
     turn = await beginTurn(deps, {
@@ -135,9 +143,15 @@ export async function runAgentTurn(
       systemFor: input.systemFor,
       ...(input.maxStepsFor ? { maxStepsFor: input.maxStepsFor } : {}),
       messages,
-      open: store.get(),
-      resolvingApproval: hasApprovalResponse(messages),
+      open,
+      respondedApprovals: respondedApprovalIds(messages),
       visibleChars,
+      ...(open ? { openVisibleChars: outputCharsForTurn(messages, open.userMessageId) } : {}),
+      // 估算已写入检查点：立即清除进行中标记，之后再被驱逐也不会重复估算
+      onEvictionRecorded: () => {
+        const current = store.get()
+        if (current) store.set({ ...current, inFlightInputTokens: undefined })
+      },
     })
   } catch (error) {
     const code = errorCodeOf(error)
@@ -159,8 +173,12 @@ export async function runAgentTurn(
 
   // 调用模型前记下「进行中」：实例在本次调用结束前被驱逐时，续轮据此补记估算用量
   store.set({ ...turn.open, inFlightInputTokens: turn.inputTokens })
+  // 只有本轮仍是开放轮次时才能改写或清除记录：被新消息取代后不能覆盖新轮的记录
+  const ownsOpen = () => store.get()?.turnId === turn.turnId
 
   const controller = new AbortController()
+  if (turn.superseded) input.active?.get(turn.superseded)?.abort('superseded')
+  input.active?.set(turn.turnId, controller)
   const signal = input.abortSignal
     ? AbortSignal.any([input.abortSignal, controller.signal])
     : controller.signal
@@ -171,6 +189,7 @@ export async function runAgentTurn(
   let aborted = false
   let failure: unknown
   let approvalPending = false
+  let pendingApprovals: string[] = []
   const tools = new Set<string>()
   const toolStarts = new Map<string, number>()
   const toolDurations = new Map<string, number>()
@@ -182,7 +201,43 @@ export async function runAgentTurn(
     system: turn.system,
     messages: await convertToModelMessages(messages),
     tools: input.tools({ agentId: turn.agentId, turnId: turn.turnId, signal }),
-    stopWhen: stepCountIs(turn.remainingSteps),
+    stopWhen: [
+      stepCountIs(turn.remainingSteps),
+      // 单次运行内也按预扣封顶（决策 3）：已用量加下一步估算超过预扣即不再开始下一步。
+      // 用量取自 stopWhen 收到的各步结果，不依赖 onStepEnd 与停止判断的先后。
+      ({ steps: done }) => {
+        let used = turn.usage
+        for (const step of done)
+          used = addTurnUsage(used, {
+            inputTokens: step.usage.inputTokens ?? turn.inputTokens,
+            outputTokens:
+              step.usage.outputTokens ?? Math.ceil(stepChars(step) * turn.tokensPerChar),
+            steps: 1,
+          })
+        const last = done.at(-1)
+        // 下一步的输入 ≈ 上一步输入 + 上一步输出 + 工具结果（按字符保守估算）
+        const toolOutput = last
+          ? last.content.reduce(
+              (total, part) =>
+                part.type === 'tool-result'
+                  ? total + (JSON.stringify(part.output)?.length ?? 0)
+                  : total,
+              0,
+            )
+          : 0
+        const nextInputTokens =
+          (last?.usage.inputTokens ?? turn.inputTokens) +
+          (last?.usage.outputTokens ?? 0) +
+          Math.ceil(toolOutput * turn.tokensPerChar)
+        return nextStepExceedsHold({
+          pricing: turn.pricing,
+          used,
+          nextInputTokens,
+          maxOutputTokens: turn.maxOutputTokens,
+          holdAmount: turn.holdAmount,
+        })
+      },
+    ],
     maxOutputTokens: turn.maxOutputTokens,
     maxRetries: 0,
     abortSignal: signal,
@@ -231,8 +286,13 @@ export async function runAgentTurn(
       })
     },
     onEnd: (event) => {
-      approvalPending =
-        event.steps.at(-1)?.content.some((part) => part.type === 'tool-approval-request') ?? false
+      pendingApprovals =
+        event.steps
+          .at(-1)
+          ?.content.flatMap((part) =>
+            part.type === 'tool-approval-request' ? [part.toolCall.toolCallId] : [],
+          ) ?? []
+      approvalPending = pendingApprovals.length > 0
     },
     onAbort: () => {
       aborted = true
@@ -254,9 +314,11 @@ export async function runAgentTurn(
   const finish = () => {
     finishing ??= (async (): Promise<AgentTurnOutcome> => {
       await checkpoints
+      input.active?.delete(turn.turnId)
       if (approvalPending && !aborted && failure === undefined && !signal.aborted) {
         // 等待确认：不结算，预扣与开放轮次保留；续轮按开放轮次复用（决策 5）
-        store.set({ ...turn.open, inFlightInputTokens: undefined })
+        if (ownsOpen())
+          store.set({ ...turn.open, inFlightInputTokens: undefined, pendingApprovals })
         log.info(
           'agents.turn.awaiting_approval',
           turnLogFields({
@@ -281,6 +343,8 @@ export async function runAgentTurn(
           outputTokens: Math.ceil(liveChars * turn.tokensPerChar),
           estimated: true,
         })
+      // 结算前清除进行中标记：结算失败时清理器按检查点兜底，续轮不会对已结束的调用重复估算
+      if (ownsOpen()) store.set({ ...turn.open, inFlightInputTokens: undefined })
       let credits: number | undefined
       try {
         const settled = await settleAgentTurn(deps.db, {
@@ -304,7 +368,7 @@ export async function runAgentTurn(
         deps.captureError?.(error, tags)
         throw error
       }
-      store.clear()
+      if (ownsOpen()) store.clear()
       log.info(
         'agents.turn.end',
         turnLogFields({

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hasApprovalResponse } from '../src/core/approvals.ts'
+import { respondedApprovalIds } from '../src/core/approvals.ts'
 import {
   checkOwner,
   IDENTITY_HEADERS,
@@ -12,8 +12,11 @@ import { errorCodeOf, turnLogFields } from '../src/core/log.ts'
 import {
   addTurnUsage,
   EMPTY_TURN_USAGE,
+  evictedCallUsage,
   interruptedTurnCredits,
+  nextStepExceedsHold,
   outputCharsAfterUser,
+  outputCharsForTurn,
   readTurnUsage,
   turnCredits,
   turnHoldAmount,
@@ -140,6 +143,39 @@ describe('轮次用量与积分（4.1 / 4.2）', () => {
   })
 })
 
+describe('预扣封顶与估算（B2 / B3）', () => {
+  const token = { mode: 'token', inputPer1k: 10, outputPer1k: 10 } as const
+  it('已用量加下一步估算超过预扣时停止', () => {
+    const used = addTurnUsage(EMPTY_TURN_USAGE, { inputTokens: 300, outputTokens: 30, steps: 2 })
+    const next = { pricing: token, used, nextInputTokens: 200, maxOutputTokens: 100 }
+    // 330 + 300 = 630 token → 7 积分
+    expect(nextStepExceedsHold({ ...next, holdAmount: 7 })).toBe(false)
+    expect(nextStepExceedsHold({ ...next, holdAmount: 6 })).toBe(true)
+  })
+
+  it('被驱逐调用按模型的 tokensPerChar 估算输出', () => {
+    expect(
+      evictedCallUsage({
+        inputTokens: 50,
+        visibleChars: 30,
+        checkpointChars: 10,
+        tokensPerChar: 1.5,
+      }),
+    ).toEqual({ inputTokens: 50, outputTokens: 30, outputChars: 30, estimated: true })
+  })
+
+  it('旧轮的可见输出只计到下一条用户消息为止', () => {
+    const messages = [
+      { id: 'u1', role: 'user', parts: [] },
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'abcd' }] },
+      { id: 'u2', role: 'user', parts: [] },
+      { id: 'a2', role: 'assistant', parts: [{ type: 'text', text: 'xyz' }] },
+    ]
+    expect(outputCharsForTurn(messages, 'u1')).toBe(4)
+    expect(outputCharsForTurn(messages, 'missing')).toBe(0)
+  })
+})
+
 describe('确认续轮', () => {
   const pending = {
     id: 'a',
@@ -155,13 +191,15 @@ describe('确认续轮', () => {
     ],
   }
 
-  it('续轮是否在处理确认结果', () => {
+  it('只取最后一条用户消息之后已回复确认的工具调用 id', () => {
     const responded = {
       ...pending,
       parts: [{ ...pending.parts[1], state: 'approval-responded' }],
     }
-    expect(hasApprovalResponse([pending])).toBe(false)
-    expect(hasApprovalResponse([responded])).toBe(true)
+    const user = { id: 'u', role: 'user', parts: [] }
+    expect(respondedApprovalIds([user, pending])).toEqual([])
+    expect(respondedApprovalIds([user, responded])).toEqual(['c1'])
+    expect(respondedApprovalIds([responded, user])).toEqual([])
   })
 })
 

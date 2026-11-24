@@ -1,5 +1,5 @@
 import { AIChatAgent, type OnChatMessageOptions } from '@cloudflare/ai-chat'
-import type { Pricing } from '@saas/ai'
+import { DEFAULT_TOKENS_PER_CHAR, type Pricing } from '@saas/ai'
 import { aiAgentTurn, scoped } from '@saas/db'
 import { AppError, toErrorResponse } from '@saas/shared'
 import { log } from '@saas/shared/log'
@@ -17,6 +17,7 @@ import {
 } from '../core/turn.ts'
 import {
   addTurnUsage,
+  evictedCallUsage,
   outputCharsAfterUser,
   readTurnUsage,
   type TurnUsage,
@@ -75,6 +76,9 @@ export class AgentConversation extends AIChatAgent<Cloudflare.Env> {
       this.ctx.storage.kv.delete(OPEN_TURN_KEY)
     },
   }
+
+  /** 本实例中仍在进行的轮次，新消息取代旧轮时据此中止旧轮（实例字段，不放模块级变量） */
+  private readonly activeTurns = new Map<string, AbortController>()
 
   private owner(): AgentOwner | undefined {
     return this.ctx.storage.kv.get<AgentOwner>(OWNER_KEY)
@@ -147,6 +151,7 @@ export class AgentConversation extends AIChatAgent<Cloudflare.Env> {
         maxStepsFor: (agentId) => getAgent(agentId)?.maxSteps,
         abortSignal: options?.abortSignal,
         store: this.openTurns,
+        active: this.activeTurns,
         tools: ({ agentId, turnId, signal }) =>
           resolveAgentTools(agentId, {
             workspaceId: owner.workspaceId,
@@ -241,12 +246,16 @@ export class AgentConversation extends AIChatAgent<Cloudflare.Env> {
   /** 被驱逐调用的保守估算：输入按调用前估算，输出按检查点之后新增的可见字符（每字符 1 token） */
   private withEvicted(open: OpenTurn, usage: TurnUsage) {
     if (open.inFlightInputTokens === undefined) return usage
-    const chars = Math.max(0, outputCharsAfterUser(this.messages) - usage.outputChars)
-    return addTurnUsage(usage, {
-      inputTokens: open.inFlightInputTokens,
-      outputTokens: chars,
-      estimated: true,
-    })
+    return addTurnUsage(
+      usage,
+      evictedCallUsage({
+        inputTokens: open.inFlightInputTokens,
+        visibleChars: outputCharsAfterUser(this.messages),
+        checkpointChars: usage.outputChars,
+        // 与续轮的估算同一口径（建轮时记下的模型系数）
+        tokensPerChar: open.tokensPerChar ?? DEFAULT_TOKENS_PER_CHAR,
+      }),
+    )
   }
 
   private async loadTurn(owner: AgentOwner, turnId: string) {
