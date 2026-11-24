@@ -19,6 +19,7 @@
   ],
   "targetFixtures": {
     "apps/web/test/admin-test-resources.ts": ["cloudflare:workers"],
+    "apps/jobs/test/agent-turn-hold-sweep.test.ts": ["cloudflare:workers"],
     "apps/jobs/test/ai-hold-sweep.test.ts": ["cloudflare:test", "cloudflare:workers"],
     "apps/jobs/test/email-queue.test.ts": ["cloudflare:test", "cloudflare:workers"],
     "apps/jobs/test/jobs.test.ts": ["cloudflare:test", "cloudflare:workers"],
@@ -32,6 +33,7 @@
     "apps/web/e2e/staging-acceptance/local-media.ts": ["cloudflare:workers"],
     "apps/web/e2e/staging-acceptance/fault-local-media.ts": ["cloudflare:workers"],
     "apps/web/test/agent-example-tools.test.ts": ["cloudflare:workers"],
+    "apps/web/test/agents-core.test.ts": ["cloudflare:workers"],
     "apps/web/test/ai-chat.test.ts": ["cloudflare:workers"],
     "apps/web/test/ai-media-tasks.test.ts": ["cloudflare:workers"],
     "apps/web/test/auth-email.test.ts": ["cloudflare:workers"],

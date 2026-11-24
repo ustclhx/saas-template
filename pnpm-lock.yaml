@@ -907,6 +907,9 @@ importers:
       '@saas/ai':
         specifier: workspace:*
         version: link:../../packages/ai
+      '@saas/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@saas/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -919,12 +922,18 @@ importers:
       '@saas/entitlements':
         specifier: workspace:*
         version: link:../../packages/entitlements
+      '@saas/platform':
+        specifier: workspace:*
+        version: link:../../packages/platform
       '@saas/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@saas/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@sentry/cloudflare':
+        specifier: ^11.6.0
+        version: 11.6.0(@cloudflare/workers-types@5.20261002.1)(wrangler@4.146.0(@cloudflare/workers-types@5.20261002.1)(@types/node@22.20.5))
       '@tanstack/react-router':
         specifier: ^1.170.41
         version: 1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0)

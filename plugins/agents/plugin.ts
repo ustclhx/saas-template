@@ -9,7 +9,7 @@ export default definePlugin({
   targets: ['cloudflare'],
   requires: { features: ['billing', 'credits'] },
   routes: { dir: 'routes', mount: '' },
-  entries: { web: 'src/web/web.ts', worker: 'src/worker/index.ts' },
+  entries: { web: 'src/web/web.ts', worker: 'src/worker/index.ts', jobs: 'src/jobs/index.ts' },
   bindings: {
     web: [{ name: 'AGENT_CONVERSATION', kind: 'durable_object', className: 'AgentConversation' }],
   },

@@ -12,16 +12,16 @@
 
 ## 3. 身份与路由
 
-- [ ] 3.1 fetch 前置处理：剥离 `x-saas-*`、会话校验（401）、对话归属与成员资格查询（404）、写入身份头转发；单元测试覆盖未登录、他人对话、已退出空间、伪造头
-- [ ] 3.2 实例侧：首次记住归属，之后逐请求比对（403 + 安全日志）；PG 对话不存在时拒绝并自清理。单元测试
+- [x] 3.1 fetch 前置处理：剥离 `x-saas-*`、会话校验（401）、对话归属与成员资格查询（404）、写入身份头转发；单元测试覆盖未登录、他人对话、已退出空间、伪造头
+- [x] 3.2 实例侧：首次记住归属，之后逐请求比对（403 + 安全日志）；PG 对话不存在时拒绝并自清理。单元测试
 
 ## 4. 执行与计费
 
-- [ ] 4.1 与 SDK 无关的轮次服务：调用前检查（成员资格、模型权益与工具能力、限流、欠费、余额）、建 turn 行与预扣（单步预算 × maxSteps，按 `maxTurnCredits` 封顶）、按 `(conversation_id, request_id)` 复用。集成测试覆盖各拒绝分支与重复请求不重复预扣
-- [ ] 4.2 结算：完成按 `totalUsage` 与定价快照 capture；停止 / 中断按检查点，被驱逐调用的用量按检查点加已输出字符保守估算；无可见输出失败按 `failedReplyRefund`；超额容忍与欠费复用 credits。集成测试逐分支核对账本金额
-- [ ] 4.3 实例适配层：`onChatMessage` 组装 agent 定义、工具集、`streamText`（abortSignal 透传、`onStepFinish` 写检查点）；`chatRecovery` 类字段（`maxInterruptedAttempts` 2，`shouldKeepRecovering` 按预扣封顶停止恢复）；每轮更新 `ai_conversation.updated_at`；租户状态不放模块级变量。用测试替身模型跑多步工具与恢复场景的集成测试
-- [ ] 4.4 `agentTurnHoldSweeper` 经插件 jobs 入口注册到现有清理 Cron，只操作 PG：过期 running 轮次按检查点结算并标记 `expired`；实例下次唤醒时清除已终态的开放轮次，并把等待确认中的调用标记过期。集成测试
-- [ ] 4.5 日志与 Sentry：每轮结构化日志（turnId、步数、工具名、耗时、积分，不记内容），Durable Object 中的错误上报 Sentry；单元测试确认日志不含消息与工具参数
+- [x] 4.1 与 SDK 无关的轮次服务：调用前检查（成员资格、模型权益与工具能力、限流、欠费、余额）、建 turn 行与预扣（单步预算 × maxSteps，按 `maxTurnCredits` 封顶）、按 `(conversation_id, request_id)` 复用。集成测试覆盖各拒绝分支与重复请求不重复预扣
+- [x] 4.2 结算：完成按 `totalUsage` 与定价快照 capture；停止 / 中断按检查点，被驱逐调用的用量按检查点加已输出字符保守估算；无可见输出失败按 `failedReplyRefund`；超额容忍与欠费复用 credits。集成测试逐分支核对账本金额
+- [x] 4.3 实例适配层：`onChatMessage` 组装 agent 定义、工具集、`streamText`（abortSignal 透传、`onStepFinish` 写检查点）；`chatRecovery` 类字段（`maxInterruptedAttempts` 2，`shouldKeepRecovering` 按预扣封顶停止恢复）；每轮更新 `ai_conversation.updated_at`；租户状态不放模块级变量。用测试替身模型跑多步工具与恢复场景的集成测试
+- [x] 4.4 `agentTurnHoldSweeper` 经插件 jobs 入口注册到现有清理 Cron，只操作 PG：过期 running 轮次按检查点结算并标记 `expired`；实例下次唤醒时清除已终态的开放轮次，并把等待确认中的调用标记过期。集成测试
+- [x] 4.5 日志与 Sentry：每轮结构化日志（turnId、步数、工具名、耗时、积分，不记内容），Durable Object 中的错误上报 Sentry；单元测试确认日志不含消息与工具参数
 
 ## 5. 工具与 agent 定义
 
