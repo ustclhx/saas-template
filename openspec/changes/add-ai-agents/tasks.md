@@ -38,7 +38,7 @@
 ## 7. 删除与清理
 
 - [x] 7.1 用户删除对话：按现有对话删除语义处理 PG 行，并调用实例清理；集成测试确认之后连接返回 404
-- [x] 7.2 删号 / 删空间清理接入：web 经 `packages/auth` 的 `deletionSteps` 注册清理 step，按 PG 对话表逐个调用实例 `deleteAll()`，再删 turn 与对话行；幂等、失败可重试。实例 alarm 自清理兜底：空闲时按「最近活动 + min(retentionDays, 30) 天」设置 alarm，到期查 PG，对话不存在则 `deleteAll()`，否则顺延。集成测试覆盖部分失败重试与 alarm 自清理
+- [x] 7.2 删号 / 删空间清理接入：删号由 web 经 `packages/auth` 的 `deletionSteps` 注册清理 step，删 turn 与对话行后逐个调用实例 `deleteAll()`；删团队空间按保留期保留，期满由 jobs 过期空间清理先删 turn 再删对话、实例由 alarm 清理；幂等、失败可重试。实例 alarm 自清理兜底：空闲时按「最近活动 + min(retentionDays, 30) 天」设置 alarm，到期查 PG，对话不存在则 `deleteAll()`，否则顺延。集成测试覆盖部分失败重试与 alarm 自清理
 - [x] 7.3 保留期清理：由实例 alarm 执行（不需要 jobs 清理器、不新增 Cron）；未设置 `retentionDays` 时 alarm 只检查对话是否存在；开启后对话超出保留期且无 running 轮次时按 7.1 流程删 PG 行并 `deleteAll()`，否则顺延 alarm。集成测试覆盖关闭、超期、跳过执行中三种情况
 
 ## 8. 异步工具结果（依赖 media 插件）

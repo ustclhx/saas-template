@@ -1,5 +1,11 @@
 import { env } from 'cloudflare:workers'
-import { createAuth, type DeletionContext } from '@saas/auth'
+import {
+  cleanupExpiredWorkspaces,
+  createAuth,
+  type DeletionContext,
+  deleteTeamWorkspace,
+  restoreWorkspace,
+} from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
 import { grant } from '@saas/credits'
 import {
@@ -21,8 +27,8 @@ import {
   readTaskResults,
 } from '../../../plugins/agents/src/core/async-tasks.ts'
 import {
-  createAgentDeletionStep,
-  deleteAgentConversationRows,
+  createAgentAccountDeletionStep,
+  registerAgentDeletionSteps,
 } from '../../../plugins/agents/src/core/deletion.ts'
 import {
   deleteOwnAgentConversation,
@@ -48,6 +54,7 @@ const MODEL_KEY_PREFIX = `agents-lifecycle-${newId()}-`
 const PRICING: AiPricingJson = { mode: 'token', inputPer1k: 10, outputPer1k: 10 }
 const DAY_MS = 86_400_000
 const plans: string[] = []
+const teamWorkspaces: string[] = []
 
 const auth = createAuth(
   { BETTER_AUTH_SECRET: 'test-secret-0123456789-abcdefghijklmnopqrstuvwxyz', APP_URL },
@@ -160,6 +167,13 @@ afterAll(async () => {
   await sql`delete from session where user_id in (${ids})`
   await sql`delete from account where user_id in (${ids})`
   await sql`delete from member where user_id in (${ids})`
+  // audit_log 对 app 只追加：删空间与恢复写入的审计行改用 migrator 清理
+  const migrator = createDb(env.HYPERDRIVE_MIGRATOR).$client
+  await migrator`delete from audit_log where actor_user_id in (${migrator`select id from "user" where email like ${`%@${EMAIL_DOMAIN}`}`})`
+  if (teamWorkspaces.length) {
+    await migrator`delete from audit_log where workspace_id in ${migrator(teamWorkspaces)}`
+    await sql`delete from organization where id in ${sql(teamWorkspaces)}`
+  }
   await sql`delete from organization where id in (${ids})`
   await sql`delete from "user" where id in (${ids})`
   await sql`delete from ai_model where key like ${`${MODEL_KEY_PREFIX}%`}`
@@ -221,42 +235,14 @@ describe.skipIf(!enabled)('用户删除对话（7.1）', () => {
   })
 })
 
-describe.skipIf(!enabled)('删号 / 删空间清理步骤（7.2）', () => {
-  async function runStep(
-    kind: 'account' | 'workspace',
-    context: DeletionContext,
-    cleaner: (id: string) => Promise<void>,
-  ) {
-    const step = createAgentDeletionStep(kind, () => cleaner)
+describe.skipIf(!enabled)('删号清理步骤（7.2）', () => {
+  async function runStep(context: DeletionContext, cleaner: (id: string) => Promise<void>) {
+    const step = createAgentAccountDeletionStep(() => cleaner)
     await sql.begin((tx) => step.execute?.(context, tx))
     await step.after?.(context)
   }
 
-  it('删空间：在事务中先删轮次再删对话（restrict 外键），提交后逐个清理实例；其他空间不受影响', async () => {
-    const owner = await member('owner')
-    const other = await member('other')
-    const first = await conversation(owner)
-    const second = await conversation(owner)
-    const kept = await conversation(other)
-    await turn(owner, first, 'completed')
-    await turn(owner, first, 'running')
-    await turn(other, kept, 'completed')
-
-    const cleaner = vi.fn(async (_id: string) => {})
-    await runStep(
-      'workspace',
-      { actorUserId: owner.userId, workspaceIds: [owner.workspaceId], db },
-      cleaner,
-    )
-    expect(await conversationRow(first)).toBeUndefined()
-    expect(await conversationRow(second)).toBeUndefined()
-    expect(await turnCount(first)).toBe(0)
-    expect(cleaner.mock.calls.map(([id]) => id).sort()).toEqual([first, second].sort())
-    expect(await conversationRow(kept)).toEqual({ archived: false })
-    expect(await turnCount(kept)).toBe(1)
-  })
-
-  it('删号：删除该用户在所有空间中的 agent 对话；部分实例失败不阻塞其余，之后由 alarm 兜底；重复执行幂等', async () => {
+  it('删除该用户在个人与团队空间中的 agent 对话（先删轮次）；部分实例失败不阻塞其余，之后由 alarm 兜底；重复执行幂等', async () => {
     const leaving = await member('leaving')
     const teammate = await member('teammate')
     // 该用户在他人空间（如团队空间）中的对话同样删除：对话只对创建者可见
@@ -266,6 +252,7 @@ describe.skipIf(!enabled)('删号 / 删空间清理步骤（7.2）', () => {
     const elsewhere = await conversation({ ...leaving, workspaceId: teammate.workspaceId })
     const teammates = await conversation(teammate)
     await turn(leaving, own, 'completed')
+    await turn(teammate, teammates, 'completed')
 
     const calls: string[] = []
     const cleaner = async (id: string) => {
@@ -273,11 +260,13 @@ describe.skipIf(!enabled)('删号 / 删空间清理步骤（7.2）', () => {
       if (id === own) throw new Error('instance call failed')
     }
     const context = { actorUserId: leaving.userId, workspaceIds: [leaving.workspaceId], db }
-    await runStep('account', context, cleaner)
+    await runStep(context, cleaner)
     expect(calls.sort()).toEqual([own, elsewhere].sort())
     expect(await conversationRow(own)).toBeUndefined()
+    expect(await turnCount(own)).toBe(0)
     expect(await conversationRow(elsewhere)).toBeUndefined()
     expect(await conversationRow(teammates)).toEqual({ archived: false })
+    expect(await turnCount(teammates)).toBe(1)
     // 实例调用失败的对话：PG 已无记录，实例 alarm 到期时自清理
     expect(
       await reviewAgentConversation(db, { workspaceId: leaving.workspaceId, conversationId: own }),
@@ -285,12 +274,74 @@ describe.skipIf(!enabled)('删号 / 删空间清理步骤（7.2）', () => {
 
     // 重试（再次执行）不报错、不再触碰其他数据
     const retry = vi.fn(async () => {})
-    await runStep('account', context, retry)
+    await runStep(context, retry)
     expect(retry).not.toHaveBeenCalled()
-    expect(await sql.begin((tx) => deleteAgentConversationRows(tx, { workspaceIds: [] }))).toEqual(
-      [],
-    )
     expect(await conversationRow(teammates)).toEqual({ archived: false })
+  })
+})
+
+describe.skipIf(!enabled)('删团队空间：保留期内可恢复，期满由 jobs 清理（7.2）', () => {
+  it('软删时不清 agent 数据、访问 404；恢复后对话完整可访问；保留期满清理后实例在下次检查时自清理', async () => {
+    const owner = await member('team-owner')
+    const admin = await member('team-admin')
+    await sql`update "user" set role='admin' where id=${admin.userId}`
+    const workspaceId = newId()
+    await sql`insert into organization (id, name, slug, is_personal) values (${workspaceId}, 'Agents team', ${`agents-team-${workspaceId}`}, false)`
+    teamWorkspaces.push(workspaceId)
+    await sql`insert into member (id, organization_id, user_id, role, created_at)
+      values (${newId()}, ${workspaceId}, ${owner.userId}, 'owner', now())`
+    const team = { ...owner, workspaceId }
+    const id = await conversation(team)
+    await turn(team, id, 'completed')
+    // 与生产一致：只注册删号步骤
+    const cleaner = vi.fn(async (_id: string) => {})
+    const dispose = registerAgentDeletionSteps(() => cleaner)
+    try {
+      await deleteTeamWorkspace({
+        db,
+        auth,
+        headers: new Headers({ cookie: owner.cookie }),
+        workspaceId,
+        multiTenant: true,
+      })
+    } finally {
+      dispose()
+    }
+    expect(cleaner).not.toHaveBeenCalled()
+    expect(await conversationRow(id)).toEqual({ archived: false })
+    expect(await turnCount(id)).toBe(1)
+    expect(((await gate(id, owner)) as Response).status).toBe(404)
+    // 软删期间实例 alarm 只顺延，不清空
+    expect(await reviewAgentConversation(db, { workspaceId, conversationId: id })).toMatchObject({
+      action: 'reschedule',
+    })
+
+    await restoreWorkspace({
+      db,
+      auth,
+      headers: new Headers({ cookie: admin.cookie }),
+      workspaceId,
+    })
+    const restored = await gate(id, owner)
+    expect(restored).toBeInstanceOf(Request)
+    expect(await turnCount(id)).toBe(1)
+
+    // 再次删除并超过保留期：jobs 的过期空间清理先删轮次再删对话；实例下次检查时发现对话不存在
+    await deleteTeamWorkspace({
+      db,
+      auth,
+      headers: new Headers({ cookie: owner.cookie }),
+      workspaceId,
+      multiTenant: true,
+    })
+    await sql`update organization set deleted_at=now()-interval '31 days' where id=${workspaceId}`
+    await cleanupExpiredWorkspaces(db)
+    expect(await conversationRow(id)).toBeUndefined()
+    expect(await turnCount(id)).toBe(0)
+    expect(await reviewAgentConversation(db, { workspaceId, conversationId: id })).toEqual({
+      action: 'purge',
+      reason: 'missing',
+    })
   })
 })
 

@@ -1,11 +1,10 @@
 import { env as workerEnv } from 'cloudflare:workers'
-import { registerDeletionStep } from '@saas/auth'
 import { log } from '@saas/shared/log'
 import { instrumentAgentWithSentry } from '@sentry/cloudflare'
 import { sentryEnabled, sentryOptions } from '@web/server/cloudflare/sentry.ts'
 import { getWebRuntime } from '@web/server/runtime.ts'
 import { routeAgentRequest } from 'agents'
-import { createAgentDeletionStep } from '../core/deletion.ts'
+import { registerAgentDeletionSteps } from '../core/deletion.ts'
 import { agentInstanceCleaner, setAgentInstanceCleaner } from '../instances.ts'
 import { registerPluginAgentTools as registerAgentTools } from '../registry.ts'
 import { AgentConversation as AgentConversationBase } from './agent.ts'
@@ -37,14 +36,13 @@ export function registerPluginAgentTools(
   registerWorkerPlugins(workerPlugins)
 }
 
-// 实例清理只在 web 内经 Durable Object 绑定发起（决策 7、12）：删除对话与删号 / 删空间共用。
+// 实例清理只在 web 内经 Durable Object 绑定发起（决策 7、12）：删除对话与删号共用。
 // 绑定缺失（未部署）时不登记，实例由自己的 alarm 自清理。
 const namespace = (workerEnv as unknown as Partial<AgentsEnv>).AGENT_CONVERSATION
 if (namespace)
   setAgentInstanceCleaner((conversationId) => namespace.getByName(conversationId).requestPurge())
-// 删号 / 删空间（7.2）：删除事务中删轮次与对话行，提交后清理实例
-registerDeletionStep('account', createAgentDeletionStep('account', agentInstanceCleaner))
-registerDeletionStep('workspace', createAgentDeletionStep('workspace', agentInstanceCleaner))
+// 删号（7.2）：删除事务中删轮次与对话行，提交后清理实例。删团队空间按保留期处理，不注册步骤
+registerAgentDeletionSteps(agentInstanceCleaner)
 
 const PREFIX = '/agents/'
 
