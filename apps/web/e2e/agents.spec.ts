@@ -1,6 +1,7 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { stripVTControlCharacters } from 'node:util'
 import { expect, type Page, test } from '@playwright/test'
 import { getCreditBalance, grant } from '@saas/credits'
 import type { Database } from '@saas/db'
@@ -17,6 +18,36 @@ import { chooseOption } from './select.ts'
 test.skip(!templateConfig.plugins.agents, 'agents plugin is disabled')
 
 type Sql = ReturnType<typeof fixtureDb>
+const serverLog = new URL('../.wrangler/agents-e2e.log', import.meta.url)
+
+async function stopDiagnostics(offset: number, conversationId: string) {
+  const log = (await readFile(serverLog)).subarray(offset).toString()
+  const entries = stripVTControlCharacters(log)
+    .split('\n')
+    .slice(0, -1)
+    .filter((line) => line.startsWith('{"level":'))
+    .map(
+      (line) =>
+        JSON.parse(line) as {
+          level: string
+          event: string
+          conversationId?: string
+          status?: string
+          errorCode?: string
+        },
+    )
+  const end = entries.find(
+    (entry) =>
+      entry.event === 'agents.turn.end' &&
+      entry.conversationId === conversationId &&
+      entry.status === 'stopped',
+  )
+  if (end)
+    return {
+      errorEvents: entries.filter((entry) => entry.level === 'error').map((entry) => entry.event),
+      errorCode: end.errorCode,
+    }
+}
 const assistant = (page: Page) => page.getByRole('listitem', { name: 'E2E assistant', exact: true })
 const sendButton = (page: Page) => page.getByRole('button', { name: 'Send', exact: true })
 
@@ -190,15 +221,22 @@ test('agents run tools, wait for approval, stop and reconnect with real local st
       })
     }
 
-    await test.step('Stop during the second model step and preserve the partial reply', async () => {
+    await test.step('Stop during the second step without logging an error', async () => {
       await send(page, STOP)
       const reply = assistant(page).last()
       await expect(reply).toContainText(PARTIAL)
+      const logOffset = (await stat(serverLog)).size
       await page.getByRole('button', { name: 'Stop', exact: true }).click()
       await expect(reply).toContainText('Stopped')
       await expect(reply).toContainText(PARTIAL)
       await expect(reply).not.toContainText(TAIL)
       await expect.poll(async () => (await turns()).at(-1)?.status).toBe('stopped')
+      await expect
+        .poll(() => stopDiagnostics(logOffset, id))
+        .toStrictEqual({
+          errorEvents: [],
+          errorCode: undefined,
+        })
       await capture('stopped')
     })
 

@@ -402,21 +402,26 @@ export async function runAgentTurn(
   // 结束时机取自响应流本身（读完、出错或被取消），不改动发给 SDK 的分块：
   // UI 流的 onEnd 需要 originalMessages 重建消息，确认后的续轮会因找不到工具调用而报错。
   const reader = (raw.body as ReadableStream<Uint8Array>).getReader()
+  let canceled = false
   const body = new ReadableStream<Uint8Array>({
     async pull(sink) {
       try {
         const next = await reader.read()
+        // 下游取消已关闭外层流，reader.cancel() 会让仍在等待的 read() 返回 done。
+        if (canceled) return
         if (next.done) {
           sink.close()
           await finish().catch(() => {})
         } else sink.enqueue(next.value)
       } catch (error) {
         failure ??= error
+        if (canceled) return
         sink.error(error)
         await finish().catch(() => {})
       }
     },
     async cancel(reason) {
+      canceled = true
       await reader.cancel(reason).catch(() => {})
       await finish().catch(() => {})
     },
