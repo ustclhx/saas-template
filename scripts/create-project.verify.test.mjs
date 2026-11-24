@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { test } from 'node:test'
 import { scanArtifacts } from './plugins/check-artifacts.mjs'
+import { GENERATED_FILES } from './plugins/plugins.mjs'
 import { parseJsonc } from './production/check-wrangler-envs.mjs'
 
 const generatorSkip = existsSync(new URL('./create-project.mjs', import.meta.url))
@@ -33,14 +34,14 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
     Date.now().toString(36),
   ].join('_')
   let selfhostSource
-  for (const scenario of [
-    { id: 'cf', label: 'Cloudflare 默认', locale: 'en' },
+  for (const { id, label, expectedPlugins, ...scenario } of [
+    { id: 'cf', label: 'Cloudflare 默认', locale: 'en', expectedPlugins: ['agents', 'media'] },
     {
       id: 'billing-off',
       label: 'Cloudflare 关闭计费',
       locale: 'en',
-      ai: '',
       'billing-enabled': 'false',
+      expectedPlugins: [],
     },
     {
       id: 'selfhost',
@@ -49,6 +50,7 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
       locale: 'zh',
       theme: 'blue',
       name: 'product-resources',
+      expectedPlugins: ['media'],
     },
     {
       id: 'minimal',
@@ -61,6 +63,7 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
       'credits-enabled': 'false',
       marketing: 'false',
       i18n: 'false',
+      expectedPlugins: [],
     },
   ]) {
     const webBuild = scenario.marketing === 'false'
@@ -71,10 +74,10 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
       : webBuild
         ? 'Node 与 web 生产构建'
         : 'Node 构建'
-    await t.test(`${scenario.label}：安装、check、类型、单元测试及 ${builds}通过`, async () => {
-      const name = scenario.name ?? `validation-${scenario.id}-${process.pid.toString(36)}`
-      const source = scenario.id === 'minimal' ? selfhostSource : undefined
-      if (scenario.id === 'minimal') assert.ok(source, '全关组合必须从已生成的 selfhost 副本创建')
+    await t.test(`${label}：安装、check、类型、单元测试及 ${builds}通过`, async () => {
+      const name = scenario.name ?? `validation-${id}-${process.pid.toString(36)}`
+      const source = id === 'minimal' ? selfhostSource : undefined
+      if (id === 'minimal') assert.ok(source, '全关组合必须从已生成的 selfhost 副本创建')
       const sourceName = source
         ? JSON.parse(await readFile(join(source, 'package.json'), 'utf8')).name
         : manifest.name
@@ -102,7 +105,10 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
         },
         source,
       )
-      if (scenario.id === 'selfhost') selfhostSource = result.target
+      if (id === 'selfhost') selfhostSource = result.target
+      for (const path of Object.values(GENERATED_FILES)) {
+        assert.ok(!existsSync(join(result.target, path)), `副本继承了插件生成文件：${path}`)
+      }
       const base = JSON.parse(await readFile(join(result.target, '.template-base.json'), 'utf8'))
       assert.deepEqual(Object.keys(base).sort(), [
         'clean',
@@ -131,7 +137,7 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
         assert.equal(base.version, null)
       }
       assert.deepEqual(base.params, {
-        ai: scenario.ai === '' ? [] : ['text', 'image', 'video'],
+        ai: scenario['billing-enabled'] === 'false' ? [] : ['text', 'image', 'video'],
         billing: ['stripe', 'paypal'],
         'billing-enabled': scenario['billing-enabled'] !== 'false',
         'credits-enabled': scenario['credits-enabled'] !== 'false',
@@ -247,24 +253,25 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
           new RegExp(`default: ghcr.io/validation-owner/${name}`),
         )
       }
-      if (scenario.id === 'minimal') {
+      if (id === 'minimal') {
         assert.match(
           result.report,
           /billing=false \/ credits=false \/ marketing=false \/ i18n=false/,
         )
         assert.doesNotMatch(result.report, /billing:seed|STRIPE_SECRET|PAYPAL_CLIENT/)
       }
-      for (const id of ['media', 'agents']) {
-        assert.ok(existsSync(join(result.target, `plugins/${id}/plugin.ts`)))
+      for (const pluginId of ['media', 'agents']) {
+        assert.ok(existsSync(join(result.target, `plugins/${pluginId}/plugin.ts`)))
       }
-      assert.equal(result.options.plugins.includes('media'), scenario.ai !== '')
-      assert.equal(result.options.plugins.includes('agents'), scenario.id === 'cf')
-      if (scenario.id === 'minimal') assert.deepEqual(result.options.plugins, [])
+      assert.deepEqual(result.options.plugins, expectedPlugins)
       for (const app of ['web', 'jobs']) {
         const wrangler = parseJsonc(
           await readFile(join(result.target, `apps/${app}/wrangler.jsonc`), 'utf8'),
         )
-        if (scenario.id === 'cf' && app === 'web') {
+        if (!expectedPlugins.includes('media')) {
+          assert.doesNotMatch(JSON.stringify(wrangler), /AI_MEDIA_WORKFLOW|AiMediaWorkflow/)
+        }
+        if (expectedPlugins.includes('agents') && app === 'web') {
           for (const scope of [wrangler, wrangler.env.staging, wrangler.env.production]) {
             assert.ok(
               scope.durable_objects?.bindings.some(
@@ -287,26 +294,33 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
       } finally {
         await rm(join(result.target, '.git'), { recursive: true, force: true })
       }
-      if (scenario.ai === '') {
-        const hits = scanArtifacts(
-          [
-            'AiMediaWorkflow',
-            'fal.media',
-            'MediaSubmitPage',
-            'MediaTasksPage',
-            'AgentConversation',
-          ],
-          {
-            root: result.target,
-            only: scenario.id === 'minimal' ? ['web', 'web-node', 'jobs-node'] : ['web', 'jobs'],
-          },
+      const excludedMarkers = []
+      if (!expectedPlugins.includes('media')) {
+        excludedMarkers.push(
+          'AiMediaWorkflow',
+          'fal.media',
+          'MediaSubmitPage',
+          'MediaTasksPage',
+          '/internal/workflows/ai-media',
         )
+      }
+      if (!expectedPlugins.includes('agents')) {
+        excludedMarkers.push('AgentConversation', 'routeAgentRequest', 'agents.turn.start')
+      }
+      if (excludedMarkers.length) {
+        const only = [
+          ...(cloudflareBuild || webBuild ? ['web'] : []),
+          ...(cloudflareBuild ? ['jobs'] : []),
+          ...(nodeBuild ? ['web-node', 'jobs-node'] : []),
+        ]
+        const hits = scanArtifacts(excludedMarkers, { root: result.target, only })
         for (const [artifact, matches] of Object.entries(hits)) {
           assert.ok(matches, `产物 ${artifact} 不存在`)
           for (const [marker, paths] of Object.entries(matches)) {
             assert.deepEqual(paths, [], `产物 ${artifact} 中仍包含 ${marker}`)
           }
         }
+        console.log(`已检查 ${label} 的 ${only.join('、')} 产物，排除的插件标识均未命中`)
       }
       // 示例评测套件在生成的项目中离线回放可用；CI 为真保证不会发出真实模型调用。
       const evals = spawnSync('pnpm', ['eval:prompts', '--suite', 'example'], {

@@ -107,6 +107,7 @@ const acceptanceFixtures = new Set([
   'diagnostic.ts',
   'fault-definitions.ts',
   'fault-local-media.ts',
+  'fault-local-runtime.ts',
   'local-admin.ts',
   'local-media.ts',
   'local-text-model.ts',
@@ -175,6 +176,8 @@ function omit(path) {
       name.startsWith('.dev.vars.')) &&
       !name.endsWith('.example')) ||
     name === 'routeTree.gen.ts' ||
+    /^apps\/(?:web|jobs)\/src\/plugins[^/]*\.gen\.ts$/.test(path) ||
+    /^apps\/web\/src\/styles\/plugins[^/]*\.gen\.css$/.test(path) ||
     (path.startsWith('deploy/selfhost/') &&
       parts.some((part) =>
         [
@@ -294,7 +297,7 @@ export function projectOptions(input, manifests = [], templatePlugins = []) {
   }
   const billingEnabled = boolean(input['billing-enabled'] ?? 'true', 'billing-enabled')
   const creditsEnabled = boolean(input['credits-enabled'] ?? 'true', 'credits-enabled')
-  const ai = list(input.ai ?? 'text,image,video', aiNames, 'ai')
+  const ai = list(input.ai ?? (billingEnabled ? aiNames.join(',') : ''), aiNames, 'ai')
   const analytics = input.analytics ?? 'plausible'
   if (analytics !== 'plausible' && analytics !== 'off')
     throw new Error('--analytics 只接受 plausible（新词站默认）或 off（长期词站可选关闭）')
@@ -309,7 +312,7 @@ export function projectOptions(input, manifests = [], templatePlugins = []) {
     throw new Error('--plausible-domain 只接受小写字母、数字、点与连字符')
   if (billingEnabled && !creditsEnabled) throw new Error('启用 billing 必须启用 credits')
   if (!billingEnabled && ai.length)
-    throw new Error('关闭 billing 时需使用 --ai "" 关闭 AI（当前额度依赖套餐）')
+    throw new Error('关闭 billing 时不能启用 AI（当前额度依赖套餐）')
   const features = list(input.features ?? 'blog', featureNames, 'features')
   const marketing = boolean(input.marketing ?? 'true', 'marketing')
   const i18n = boolean(input.i18n ?? 'true', 'i18n')
@@ -1246,7 +1249,7 @@ export function verifyProject(
   }
 }
 
-const help = `用法：pnpm create-project [参数]\n无参数时交互输入；非交互必须提供 --name 与 --domain。\n  --name acme --domain acme.example --target cloudflare|selfhost --output /tmp/acme\n  --image-namespace ghcr.io/owner/acme（selfhost，默认 ghcr.io/configure-owner/acme）\n  --locale en|zh --support-email support@acme.example\n  --theme ${themeNames.join('|')}（默认 neutral）\n  --analytics plausible|off（默认 plausible；长期词站可 off）--plausible-domain acme --plausible-host https://plausible.example\n  --ai text,image,video --features blog,docs,waitlist,newsletter,publicApi\n  --plugins media,agents（省略时按目标和依赖筛选模板默认插件；图片或视频自动启用 media）\n  --media-providers fal,workers-ai\n  --billing stripe,paypal --billing-enabled true|false --credits-enabled true|false\n  --marketing true|false --i18n true|false --oauth google,github\n  --turnstile true|false --multi-tenant true|false\n旧 --target <path> 已迁移至 --output <path>；部署目标默认 cloudflare。\n列表参数传空字符串可关闭全部；默认 ai / billing / oauth 全开，features=blog。\n生成后使用 Biome 格式化并整理 import。默认安装依赖并运行 typecheck 与单元测试；--skip-check 只跳过安装与自检。\n  --help 显示帮助\n`
+const help = `用法：pnpm create-project [参数]\n无参数时交互输入；非交互必须提供 --name 与 --domain。\n  --name acme --domain acme.example --target cloudflare|selfhost --output /tmp/acme\n  --image-namespace ghcr.io/owner/acme（selfhost，默认 ghcr.io/configure-owner/acme）\n  --locale en|zh --support-email support@acme.example\n  --theme ${themeNames.join('|')}（默认 neutral）\n  --analytics plausible|off（默认 plausible；长期词站可 off）--plausible-domain acme --plausible-host https://plausible.example\n  --ai text,image,video --features blog,docs,waitlist,newsletter,publicApi\n  --plugins media,agents（省略时按目标和依赖筛选模板默认插件；图片或视频自动启用 media）\n  --media-providers fal,workers-ai\n  --billing stripe,paypal --billing-enabled true|false --credits-enabled true|false\n  --marketing true|false --i18n true|false --oauth google,github\n  --turnstile true|false --multi-tenant true|false\n旧 --target <path> 已迁移至 --output <path>；部署目标默认 cloudflare。\n列表参数传空字符串可关闭全部。启用计费时默认全开 AI，关闭计费时默认关闭 AI。\n默认 billing / oauth 列表全开，features=blog。\n生成后使用 Biome 格式化并整理 import。默认安装依赖并运行 typecheck 与单元测试；--skip-check 只跳过安装与自检。\n  --help 显示帮助\n`
 
 export async function main() {
   const { values } = parseArgs({
@@ -1300,7 +1303,7 @@ export async function main() {
         ['i18n', '启用多语言', 'true'],
         ['locale', '默认语言', 'en'],
         ['theme', `主题预设（${themeNames.join('/')}）`, 'neutral'],
-        ['ai', 'AI 功能（逗号列表，- 关闭全部）', 'text,image,video'],
+        ['ai', 'AI 功能（逗号列表，- 关闭全部）', aiNames.join(',')],
         ['plugins', '插件（留空使用模板默认值，- 仅保留自动启用的 media）', ''],
         ['media-providers', '媒体服务商（逗号列表，- 关闭全部）', 'fal,workers-ai'],
         ['features', '可选功能（逗号列表，- 关闭全部）', 'blog'],
@@ -1312,6 +1315,7 @@ export async function main() {
       ]) {
         if (values[key] !== undefined) continue
         if (key === 'image-namespace' && values.target !== 'selfhost') continue
+        if (key === 'ai' && values['billing-enabled'] === 'false') continue
         const available =
           key === 'plugins'
             ? manifests

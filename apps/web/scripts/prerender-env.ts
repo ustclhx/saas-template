@@ -10,9 +10,16 @@ import { join } from 'node:path'
 import type { Plugin } from 'vite'
 
 const WEB_ROOT = new URL('..', import.meta.url).pathname
+const previewAuthDefaults: Record<string, string> = {
+  GITHUB_CLIENT_ID: 'fake-github-client-id',
+  GOOGLE_CLIENT_ID: 'fake-google-client-id',
+  TURNSTILE_SITE_KEY: '1x00000000000000000000AA',
+  TURNSTILE_SECRET_KEY: '1x0000000000000000000000000000000AA',
+}
 
 /**
  * 本地 preview 变量：以 .dev.vars.example 为基础（没有示例文件时返回 null）。
+ * - 生成副本示例中的空 OAuth ID 与 Turnstile 凭据用假 ID 和公开测试值填充。
  * - 示例中值为空的 `*_SECRET` / `*_TOKEN` 每次随机生成：项目新增的必填密钥（如预渲染令牌）只需在示例中写空值；
  * - 本地有 apps/web/.dev.vars 时叠加其中的值（与 Cloudflare 插件构建时复制的内容一致；CI 的构建任务没有这个文件，仍只用示例值）；
  * - 环境变量 APP_URL 覆盖示例值（CI 以此指定站点地址）。
@@ -24,8 +31,15 @@ export function fallbackDevVars(root = WEB_ROOT): string | null {
   const example = join(root, '.dev.vars.example')
   if (!existsSync(example)) return null
   let source = readFileSync(example, 'utf8').replace(
-    /^([A-Z0-9_]+_(?:SECRET|TOKEN))=[ \t]*$/gm,
-    (_line, key: string) => `${key}=${randomBytes(32).toString('base64')}`,
+    /^([A-Z0-9_]+)=[ \t]*$/gm,
+    (line, key: string) => {
+      const authDefault = previewAuthDefaults[key]
+      if (authDefault) return `${key}=${authDefault}`
+      if (key.endsWith('_SECRET') || key.endsWith('_TOKEN')) {
+        return `${key}=${randomBytes(32).toString('base64')}`
+      }
+      return line
+    },
   )
   const local = join(root, '.dev.vars')
   if (existsSync(local)) source = mergeDevVars(source, readFileSync(local, 'utf8'))

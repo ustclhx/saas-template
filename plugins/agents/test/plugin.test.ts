@@ -5,7 +5,6 @@ import {
   resolvePlugins,
 } from '@saas/config'
 import { describe, expect, it } from 'vitest'
-import templateConfig from '../../../template.config.ts'
 import manifest from '../plugin.ts'
 import { agentsConfigSchema } from '../src/config.ts'
 
@@ -55,13 +54,12 @@ describe('agents 插件清单', () => {
     }
   })
 
-  it('模板配置启用 agents 且通过校验；selfhost 目标排除', () => {
-    // 只校验 agents 配置段：模板同时启用的其他插件（如 media）不在本测试的清单列表中
-    const agentsOnly = {
-      ...templateConfig,
-      plugins: { agents: templateConfig.plugins.agents ?? {} },
-    }
-    expect(templateConfig.plugins).toHaveProperty('agents')
+  it('启用 agents 的配置通过校验，selfhost 目标排除', () => {
+    const agentsOnly = defineTemplateConfig({
+      app,
+      ai: { image: false, video: false },
+      plugins: { agents: {} },
+    })
     const resolved = resolvePlugins(agentsOnly, [manifest])
     expect(resolved.map((plugin) => plugin.manifest.id)).toEqual(['agents'])
     expect(pluginsForTarget(resolved, 'node').excluded).toHaveLength(1)

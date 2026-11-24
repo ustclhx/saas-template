@@ -25,12 +25,20 @@ describe('fallbackDevVars', () => {
     expect(fallbackDevVars(root({}))).toBeNull()
   })
 
-  it('示例中值为空的 *_SECRET / *_TOKEN 随机生成，其余保留示例值', () => {
+  it('补全预渲染需要的空认证值和密钥，保留其他示例值', () => {
     vi.stubEnv('APP_URL', '')
-    const vars = fallbackDevVars(root({ '.dev.vars.example': example })) ?? ''
+    const generatedExample =
+      `${example}GOOGLE_CLIENT_ID=\nGITHUB_CLIENT_ID=\nTURNSTILE_SITE_KEY=\nTURNSTILE_SECRET_KEY=\n` +
+      'EMAIL_FROM=\n'
+    const vars = fallbackDevVars(root({ '.dev.vars.example': generatedExample })) ?? ''
     expect(vars).toMatch(/^BETTER_AUTH_SECRET=\S{40,}$/m)
     expect(vars).toMatch(/^SITE_TOKEN=\S{40,}$/m)
     expect(vars).toContain('GOOGLE_CLIENT_SECRET=fake\n')
+    expect(vars).toMatch(/^GOOGLE_CLIENT_ID=\S+$/m)
+    expect(vars).toMatch(/^GITHUB_CLIENT_ID=\S+$/m)
+    expect(vars).toMatch(/^TURNSTILE_SITE_KEY=\S+$/m)
+    expect(vars).toMatch(/^TURNSTILE_SECRET_KEY=\S+$/m)
+    expect(vars).toContain('EMAIL_FROM=\n')
     expect(vars).toContain('APP_URL=http://localhost:3000\n')
   })
 

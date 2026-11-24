@@ -922,6 +922,8 @@ generatorTest('交付只保留项目基线与必需夹具，模板历史及远�
     'apps/web/e2e/staging-acceptance/acceptance.spec.ts',
     'apps/web/e2e/staging-acceptance/playwright.config.ts',
     'apps/web/e2e/staging-acceptance/local-setup.ts',
+    'apps/web/src/plugins.worker.gen.ts',
+    'apps/web/src/styles/plugins.node.gen.css',
     '.github/workflows/selfhost-features.yml',
     '.github/workflows/selfhost-release-acceptance.yml',
     'scripts/selfhost-features.mjs',
@@ -940,6 +942,8 @@ generatorTest('交付只保留项目基线与必需夹具，模板历史及远�
     'apps/web/e2e/staging-acceptance/local-text-model.ts',
     'apps/web/e2e/staging-acceptance/accounts.ts',
     'apps/web/e2e/staging-acceptance/support.ts',
+    'apps/web/e2e/staging-acceptance/fault-local-media.ts',
+    'apps/web/e2e/staging-acceptance/fault-local-runtime.ts',
     'docs/runbooks/selfhost-deploy.md',
     'docs/runbooks/staging-neon.md',
     'docs/runbooks/production-neon.md',
@@ -1447,15 +1451,14 @@ generatorTest('部署目标默认为 Cloudflare，拒绝旧路径并提示 outpu
     () => projectOptions({ ...f.input, 'image-namespace': 'ghcr.io/Owner/project' }),
     /小写/,
   )
-  assert.throws(() => projectOptions({ ...f.input, 'billing-enabled': 'false' }), /关闭 AI/)
+  const billingOff = { ...f.input, 'billing-enabled': 'false' }
+  assert.deepEqual(projectOptions(billingOff).ai, [])
+  assert.throws(() => projectOptions({ ...billingOff, ai: 'text' }), /不能启用 AI/)
   assert.throws(
     () => projectOptions({ ...f.input, 'credits-enabled': 'false' }),
     /必须启用 credits/,
   )
-  assert.equal(
-    projectOptions({ ...f.input, ai: '', 'billing-enabled': 'false' }).creditsEnabled,
-    true,
-  )
+  assert.equal(projectOptions(billingOff).creditsEnabled, true)
 })
 
 generatorTest('selfhost 继承发布和运维材料，排除真值，并再次生成 namespace', async (t) => {
