@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { respondedApprovalIds } from '../src/core/approvals.ts'
 import {
   checkOwner,
+  IDENTITY_HEADER_PREFIX,
   IDENTITY_HEADERS,
   isConversationId,
   readIdentity,
@@ -28,7 +29,11 @@ const identity = { userId: 'u1', workspaceId: 'w1', conversationId: CONVERSATION
 describe('身份头（3.1）', () => {
   it('剥离全部 x-saas-*（大小写不敏感），保留其他头', () => {
     const headers = stripIdentityHeaders(
-      new Headers({ 'X-SAAS-USER-ID': 'evil', 'x-saas-anything': '1', cookie: 'a=b' }),
+      new Headers({
+        [IDENTITY_HEADERS.userId.toUpperCase()]: 'evil',
+        [`${IDENTITY_HEADER_PREFIX}anything`]: '1',
+        cookie: 'a=b',
+      }),
     )
     expect([...headers.keys()]).toEqual(['cookie'])
   })

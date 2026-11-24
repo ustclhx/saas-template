@@ -112,6 +112,7 @@ PY
 | 边界 | 核查重点与现有入口 |
 |---|---|
 | 身份与租户 | `apps/web/src/server/auth.ts`、`workspace-context.ts`；会话/可信 workspace、角色与资源归属检查在服务端，租户查询复用 `packages/db/src/scoped.ts`。后台写入复用 `features/admin/action.ts` / `action.server.ts` 的 adminAction，列表沿用 admin/list.ts。客户端隐藏按钮不能替代权限。 |
+| Agent 工具与实例 | 从 `plugins/agents/src/worker/index.ts` 跟踪 WebSocket 与 HTTP（含 `get-messages`），核对两条路径均校验会话、对话所有者与成员资格，并在转发前剥离客户端全部 `x-saas-*` 头、以服务端身份重建三项可信头。实例逐请求比对身份与归属。工具采用 `ctx` 提供的身份、请求级 DB 与 `scoped`，检查角色和资源归属，副作用经确认并以 `ctx.idempotencyKey` 在写入边界去重。检查模块级和闭包内的 DB、缓存及可变状态，租户数据仅限请求上下文、实例字段或实例存储。见 `docs/06-ai.md` §8。 |
 | 输入与注入 | Server Functions / HTTP 入参使用共享 schema；SQL 参数化，排序/字段由白名单决定；正文/HTML 与 URL 各走可信内容或既有校验链路；命令参数使用结构化参数或正确 shell 引用。检查 `dangerouslySetInnerHTML` 和动态 SQL 的来源。 |
 | Webhook | `apps/web/src/features/billing/webhook-http.ts`、`packages/billing/src/`、`apps/web/src/routes/api/webhooks/media/$provider.ts`；先原始体验签，投递去重，事务处理业务，异步副作用；媒体先落库再唤醒。重放不能再次发积分，网络失败不能被吞成成功。 |
 | SSRF/文件 | `packages/storage/src/media-validation.ts`；精确域名、协议、重定向、大小/MIME；上传完成用真实对象大小核验；下载按 tenant/ready/权限检查。客户端不能任意指定服务端端点。 |

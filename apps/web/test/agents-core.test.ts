@@ -25,7 +25,10 @@ import {
 import { eq } from 'drizzle-orm'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { IDENTITY_HEADERS } from '../../../plugins/agents/src/core/identity.ts'
+import {
+  IDENTITY_HEADER_PREFIX,
+  IDENTITY_HEADERS,
+} from '../../../plugins/agents/src/core/identity.ts'
 import {
   beginTurn,
   type OpenTurn,
@@ -307,8 +310,8 @@ describe.skipIf(!enabled)('前置处理身份校验（3.1）', () => {
         headers: {
           cookie: owner.cookie,
           [IDENTITY_HEADERS.userId]: victim.userId,
-          'X-SAAS-WORKSPACE-ID': victim.workspaceId,
-          'x-saas-role': 'admin',
+          [IDENTITY_HEADERS.workspaceId.toUpperCase()]: victim.workspaceId,
+          [`${IDENTITY_HEADER_PREFIX}role`]: 'admin',
         },
       }),
       id,
@@ -319,7 +322,7 @@ describe.skipIf(!enabled)('前置处理身份校验（3.1）', () => {
     expect(headers.get(IDENTITY_HEADERS.userId)).toBe(owner.userId)
     expect(headers.get(IDENTITY_HEADERS.workspaceId)).toBe(owner.workspaceId)
     expect(headers.get(IDENTITY_HEADERS.conversationId)).toBe(id)
-    expect(headers.get('x-saas-role')).toBeNull()
+    expect(headers.get(`${IDENTITY_HEADER_PREFIX}role`)).toBeNull()
     expect(headers.get('cookie')).toBe(owner.cookie)
   })
 })

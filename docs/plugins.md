@@ -61,6 +61,15 @@ plugins/<id>/
 
 Cloudflare 使用声明了 `cloudflare` 的插件。`pnpm build:node` 只打包启用且支持 `node` 的插件，并提示已排除的仅 Cloudflare 插件。使用生成器创建 selfhost 项目时，只能选择支持 `node` 的插件。启停和目标筛选在构建时生效。数据库表与迁移统一由 `packages/db` 管理。
 
+## 内置插件
+
+| 插件 | 部署目标 | 功能与依赖 |
+|---|---|---|
+| `media` | Cloudflare、Node | 图片和视频任务，依赖 `billing` 与 `credits`。[媒体任务](./06-ai.md#4-图片--视频异步任务) |
+| `agents` | Cloudflare | 持久对话、多步工具和人工确认，依赖 `billing` 与 `credits`。web 提供 `AGENT_CONVERSATION` SQLite Durable Object，jobs 复用现有清理 Cron 处理 PG 预扣。[Agent 对话](./06-ai.md#8-agent-对话pluginsagents) |
+
+生成 Cloudflare 项目时可用 `--plugins agents` 选择 Agent。web 的 `AGENT_CONVERSATION` 绑定指向同一 Worker 内的 `AgentConversation`，并用 `agents-v1` SQLite 类迁移。jobs 沿用先部署的顺序。`plugins.agents` 可配置 `maxSteps`、`maxTurnCredits`、`maxPersistedMessages`、`retentionDays` 与 `defaultAgent`。详见 [插件清单](../plugins/agents/plugin.ts) 与 [配置 schema](../plugins/agents/src/config.ts)。
+
 ## 新增插件与验证
 
 1. 新建 `plugins/<id>/package.json` 和 `plugin.ts`，声明入口、配置、绑定及所需依赖。在 `apps/web/package.json` 与 `apps/jobs/package.json` 声明该插件的 `workspace:*` 依赖，运行 `pnpm install` 更新锁文件。

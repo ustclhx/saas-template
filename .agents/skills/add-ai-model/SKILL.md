@@ -22,6 +22,7 @@ description: 在本模板配置文本、图片或视频模型的参数、定价�
 后台先用「Insert reference template」，核对覆盖原 JSON 的影响，再填写模型实际参数。参考与保存校验在 `apps/web/src/features/ai/admin-model-params.ts`。
 
 - 文本 `params_schema` 可为 `{}`；`x-text` 只允许 `tokensPerChar`（正数）、`maxOutputTokens`（正整数）、可选 `thinking`（boolean）与 `continuation`（native/none）。默认系数 1、输出 4096、continuation none。thinking/续写还须 `packages/ai/src/text/capabilities.ts` 的 adapter 支持，设置 schema 不会创造新能力。
+- 为 Agent 配置文本模型时，核对具体 `providerModelId` 与目标出口支持工具调用，再启用后台「支持工具调用」（`supportsTools`，数据库 `supports_tools`，默认关闭）。Agent 的模型列表和执行都要求此标记及正常套餐权益。媒体模型始终关闭该标记。工具规则见 `docs/06-ai.md` §8。
 - 媒体 `params_schema` 使用 `packages/ai/src/media/params.ts` 的 `parseMediaSchema`；现有表单支持平面 string/number/integer/boolean、枚举与范围，嵌套对象需另行设计。参数名、默认值和边界与服务商协议一致。
 - `pricing` 由 `packages/ai/src/pricing.ts` 校验：token、per_call、per_unit。按次文本必填 `limits.maxInputTokens` 和 `limits.maxOutputTokens`；按单位媒体需要真实可获得的 image/second 用量，不能把任务运行时间当作视频秒数。积分计算向上取整，复用现有预算与定价快照。
 - 模型 key 或标签（数据库 `min_plan_features`）必须匹配套餐 `features.models` 的授权；核对 `/admin/billing/plans` 与 `packages/entitlements/src/index.ts`。启用模型不等于所有用户可用；提交还检查空间权益、积分余额、并发和限流。通过既有 billing/credits 流程解决授权与余额，不直接改账本。
@@ -70,6 +71,8 @@ git diff --check
 修改生成器时执行 `pnpm test:create-project`；有新增配置组合时在一次性副本验证生成结果及目标构建，使用现有 `pnpm test:create-project:verify` 承载需要真实生成/安装的验收。
 
 用户已授权真实服务调用时，以允许套餐且有足够积分的本地/测试空间发起一次调用：文本检查流式输出、最终状态、定价快照与 hold 结算；媒体检查提交、终态、文件落存储和预扣释放/扣款。复核禁止套餐或余额不足在外部调用前拒绝。真实调用会消耗服务商额度，配置准备本身不代表调用授权。测试 fixture 和假 fetch 仅证明离线行为。
+
+验收 Agent 模型时，先核对开关保存后的模型可选性，再用同一出口验证一次工具调用及续步。未执行真实工具调用时记录待验收。
 
 - `PARAMS_SCHEMA_INVALID`：检查 JSON 对象、x-text 类型/未知键或媒体平面 schema，按具体模型模板修正。
 - `MISSING_TOKEN_LIMITS`：补齐按次文本的两项 token 上限。

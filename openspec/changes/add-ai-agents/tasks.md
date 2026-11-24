@@ -33,7 +33,7 @@
 
 - [x] 6.1 经 `ui-design` 产出 agent 列表页与对话页设计稿（含工具调用状态、确认卡片、错误与空状态、移动端），取得使用者确认并登记原型索引
 - [x] 6.2 实现 `app/$slug/agents/index.tsx` 与 `$conversationId.tsx`：新建（选 agent 与模型）、列表、删除、`useAgentChat` 对话、停止、续流；工具与确认卡片注册到消息部件渲染器；导航入口经插件扩展点；文案进插件 `messages/`。组件测试与 `pnpm check`（含 UI 规范检查）通过
-- [ ] 6.3 e2e（本地，测试替身模型）：创建对话 → 多步工具 → 确认卡片批准与拒绝 → 停止 → 刷新续流 → 余额不足提示；他人访问 404。证据写入 `EVIDENCE_DIR`
+- [x] 6.3 e2e（本地，测试替身模型）：创建对话 → 多步工具 → 确认卡片批准与拒绝 → 停止 → 刷新续流 → 余额不足提示；他人访问 404。证据写入 `EVIDENCE_DIR`
 
 ## 7. 删除与清理
 
@@ -48,6 +48,6 @@
 
 ## 9. 文档与验收
 
-- [ ] 9.1 文档：`docs/06-ai.md` 新增 agent 章节（架构与部署形态、每轮流程、计费、工具编写规范与空间隔离 / 幂等 / 不用模块级状态要求、确认、删除与保留期、消息不在 PG 备份范围内、SDK 升级流程）；`docs/plugins.md` 登记 agents；`security-scan` 技能检查清单加入 agent 工具、身份头与模块级租户状态；`add-ai-model` 技能说明工具调用标记；`docs/08-roadmap.md` 更新
-- [ ] 9.2 生成器验证：`--plugins agents` 的 CF 副本通过 check、typecheck、test、build；`--target selfhost --plugins agents` 被拒绝；selfhost 构建产物不含 agents 代码
+- [x] 9.1 文档：`docs/06-ai.md` 新增 agent 章节（架构与部署形态、每轮流程、计费、工具编写规范与空间隔离 / 幂等 / 不用模块级状态要求、确认、删除与保留期、消息不在 PG 备份范围内、SDK 升级流程）；`docs/plugins.md` 登记 agents；`security-scan` 技能检查清单加入 agent 工具、身份头与模块级租户状态；`add-ai-model` 技能说明工具调用标记；`docs/08-roadmap.md` 更新
+- [x] 9.2 生成器验证：`--plugins agents` 的 CF 副本通过 check、typecheck、test、build；`--target selfhost --plugins agents` 被拒绝；selfhost 构建产物不含 agents 代码
 - [ ] 9.3 staging 验收（需真实 LLM 凭据）：真实模型多步工具、确认、停止、续流、余额不足、账本核对、删除对话后实例数据清除；证据写入私有证据库。未执行时在 PR 中标为未完成验收
