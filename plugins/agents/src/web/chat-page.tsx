@@ -225,6 +225,17 @@ function AgentChatHeader({
   )
 }
 
+/** 助手头像：agent 图标（设计稿 Main.dc.html 的 .av），尺寸随 ChatMessage 的版式切换 */
+const AGENT_AVATAR = (
+  <span
+    aria-hidden
+    data-chat-avatar=""
+    className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground @chat-message:size-7"
+  >
+    <Bot className="size-3.5" strokeWidth={1.75} />
+  </span>
+)
+
 // ---------------------------------------------------------------------------
 // 消息区的空、加载、错误态
 // ---------------------------------------------------------------------------
@@ -247,7 +258,7 @@ function AgentEmptyState({
       >
         <Bot className="size-4.5" strokeWidth={1.75} />
       </span>
-      <h2 className="mt-1.5 font-semibold text-subtitle">{agent.name}</h2>
+      <h2 className="mt-1.5 font-semibold text-title">{agent.name}</h2>
       <p className="max-w-112 text-muted-foreground">{agent.description}</p>
       {agent.tools.length ? (
         <ul
@@ -514,6 +525,7 @@ function AgentChat({
                     live={live}
                     status={ended}
                     renderToolPart={renderToolPart}
+                    avatar={AGENT_AVATAR}
                     actions={
                       done && (text || (turn && turn.status !== 'running')) ? (
                         <div className="-ml-1.5 flex min-w-0 flex-wrap items-center gap-0.5">

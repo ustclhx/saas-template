@@ -50,7 +50,7 @@ plugins/<id>/
 ## 依赖边界
 
 - 核心的运行时代码与脚本经 `*.gen.ts` 接入插件。`apps/web/test`、`apps/jobs/test`、`apps/web/e2e` 可用包名或相对路径直接导入插件做集成验证。依赖插件的用例须检查 `template.config.ts` 的 `plugins`，并在插件未启用时跳过。
-- 插件通过 `requires.plugins` 声明其他插件，通过各共享包的公开入口复用能力。Cloudflare 专用导入，如 `cloudflare:workers` 与 `agents`，限于插件的 Cloudflare `worker` 或 `jobs` 入口代码。
+- 插件通过 `requires.plugins` 声明其他插件，通过各共享包的公开入口复用能力。Cloudflare 专用导入，如 `cloudflare:workers` 与 `agents`，限于插件的 Cloudflare `worker` 或 `jobs` 入口代码。浏览器端的连接 hook `agents/react` 与 `@cloudflare/ai-chat/react` 例外，可在插件页面中使用。
 - `@web/*` 指向 `apps/web/src/*`。插件路由、`src/web`、清单声明的 `web`、`worker`、`webNode` 入口及其导入链可由 Web 构建解析该别名。`jobs`、`jobsNode` 入口及其导入链和未归属 Web 入口的共享代码禁止使用该别名。类型导入遵守同样规则。
 
 ## 启用、停用与部署

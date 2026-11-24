@@ -48,7 +48,7 @@ function ListHeader({ onNew, disabled }: { onNew: () => void; disabled: boolean 
   return (
     <div className="flex items-center gap-3">
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <Heading className="font-semibold text-title">{m.agents_title()}</Heading>
+        <Heading className="font-semibold text-xl">{m.agents_title()}</Heading>
         <p className="text-muted-foreground max-md:hidden">{m.agents_list_description()}</p>
       </div>
       <Button

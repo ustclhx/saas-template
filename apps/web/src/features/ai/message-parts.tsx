@@ -187,6 +187,8 @@ export interface ChatMessageViewProps {
   readonly entrance?: boolean
   /** 替换工具部件的渲染（agent 对话的工具与确认卡片）；不传时一律为 ToolCall 卡片 */
   readonly renderToolPart?: RenderToolPart
+  /** 助手头像；不传时为 ChatMessage 的默认头像 */
+  readonly avatar?: ReactNode
 }
 
 type StatusProps =
@@ -231,6 +233,7 @@ export function ChatMessageView({
   actions,
   entrance = true,
   renderToolPart,
+  avatar,
 }: ChatMessageViewProps) {
   if (message.role === 'user')
     return (
@@ -248,6 +251,7 @@ export function ChatMessageView({
     <ChatMessage
       from="assistant"
       entrance={entrance}
+      {...(avatar === undefined ? {} : { avatar })}
       leading={reasoning ? <Reasoning text={reasoning} busy={live && !hasText} /> : undefined}
       actions={actions}
       {...statusProps(live, retrying, status)}
