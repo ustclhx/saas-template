@@ -26,6 +26,30 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
   }
   const temp = await mkdtemp(join(tmpdir(), 'bootstrap-verify-'))
   t.after(() => rm(temp, { recursive: true, force: true }))
+  await t.test('selfhost 拒绝 --plugins agents，且不创建副本', () => {
+    const output = join(temp, 'invalid-selfhost-agents')
+    const result = spawnSync(
+      process.execPath,
+      [
+        'scripts/create-project',
+        '--name',
+        'invalid-selfhost-agents',
+        '--domain',
+        'invalid-selfhost-agents.example',
+        '--target',
+        'selfhost',
+        '--plugins',
+        'agents',
+        '--output',
+        output,
+        '--skip-check',
+      ],
+      { cwd: new URL('../', import.meta.url), encoding: 'utf8' },
+    )
+    assert.equal(result.status, 1, `${result.stdout}${result.stderr}`)
+    assert.match(result.stderr, /插件 agents 只支持 cloudflare，不能用于 selfhost/)
+    assert.ok(!existsSync(output))
+  })
   const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
   const sentinel = [
     'SELFHOST',
@@ -35,7 +59,13 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
   ].join('_')
   let selfhostSource
   for (const { id, label, expectedPlugins, ...scenario } of [
-    { id: 'cf', label: 'Cloudflare 默认', locale: 'en', expectedPlugins: ['agents', 'media'] },
+    {
+      id: 'cf',
+      label: 'Cloudflare 显式选择 --plugins agents',
+      locale: 'en',
+      plugins: 'agents',
+      expectedPlugins: ['agents', 'media'],
+    },
     {
       id: 'billing-off',
       label: 'Cloudflare 关闭计费',
@@ -264,6 +294,7 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
         assert.ok(existsSync(join(result.target, `plugins/${pluginId}/plugin.ts`)))
       }
       assert.deepEqual(result.options.plugins, expectedPlugins)
+      if (id === 'cf') assert.deepEqual(result.options.defaultPlugins, expectedPlugins)
       for (const app of ['web', 'jobs']) {
         const wrangler = parseJsonc(
           await readFile(join(result.target, `apps/${app}/wrangler.jsonc`), 'utf8'),
@@ -305,7 +336,14 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
         )
       }
       if (!expectedPlugins.includes('agents')) {
-        excludedMarkers.push('AgentConversation', 'routeAgentRequest', 'agents.turn.start')
+        excludedMarkers.push(
+          'AgentConversation',
+          'routeAgentRequest',
+          'agents.turn.start',
+          'agents.turn.expired',
+          '/app/$slug/agents',
+          'plugins/agents/',
+        )
       }
       if (excludedMarkers.length) {
         const only = [
