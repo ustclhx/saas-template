@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 依赖规则见 docs/02-project-structure.md；manifest 与源码均检查。
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, relative, resolve, sep } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import * as ts from 'typescript/unstable/ast'
 import { createVirtualFileSystem } from 'typescript/unstable/fs'
@@ -16,6 +16,13 @@ const REACT_PACKAGES = new Set([
   'react-email',
 ])
 const REACT_SCOPES = ['@react-email/']
+const PLUGIN_CLOUDFLARE_PACKAGES = new Set([
+  'agents',
+  '@cloudflare/ai-chat',
+  '@cloudflare/workers-types',
+  '@sentry/cloudflare',
+])
+const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.d.ts']
 const DEP_FIELDS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
 const BUILD_DIRS = new Set([
   'node_modules',
@@ -107,7 +114,7 @@ function matchesDependency(dep, pattern) {
 }
 
 // TS 7 使用 native parser API；虚拟项目只解析传入源码，不加载库或解析依赖。
-function parseImports(files) {
+function parseSources(files, read) {
   const config = '/check-deps/tsconfig.json'
   const virtual = {
     [config]: JSON.stringify({
@@ -122,7 +129,7 @@ function parseImports(files) {
     try {
       const program = snapshot.getProject(config).program
       return new Map(
-        Object.keys(files).map((file) => [file, importsOfSource(program.getSourceFile(file))]),
+        Object.keys(files).map((file) => [file, read(program.getSourceFile(file), file)]),
       )
     } finally {
       snapshot.dispose()
@@ -134,7 +141,200 @@ function parseImports(files) {
 
 export function importsOf(text, file = 'source.ts') {
   const path = resolve('/check-deps', file)
-  return parseImports({ [path]: text }).get(path)
+  return parseSources({ [path]: text }, importsOfSource).get(path)
+}
+
+function unwrapExpression(node) {
+  while (
+    node &&
+    (ts.isParenthesizedExpression(node) ||
+      ts.isAsExpression(node) ||
+      ts.isSatisfiesExpression(node))
+  ) {
+    node = node.expression
+  }
+  return node
+}
+
+// 生成器执行清单；依赖检查只读静态字段，以便在安装依赖前检查生成的项目。
+function pluginBoundaries(source, dir) {
+  const bindings = new Map()
+  for (const statement of source.statements) {
+    if (
+      !ts.isVariableStatement(statement) ||
+      !(statement.declarationList.flags & ts.NodeFlags.Const)
+    )
+      continue
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name)) {
+        bindings.set(declaration.name.text, declaration.initializer)
+      }
+    }
+  }
+  const unreadable = new Set()
+  function value(node, seen = new Set()) {
+    node = unwrapExpression(node)
+    if (node && ts.isIdentifier(node) && bindings.has(node.text) && !seen.has(node.text)) {
+      seen.add(node.text)
+      return value(bindings.get(node.text), seen)
+    }
+    return node
+  }
+
+  function property(node, key, field = key, seen = new Set()) {
+    if (!node) return undefined
+    if (!ts.isObjectLiteralExpression(node) || seen.has(node)) {
+      unreadable.add(field)
+      return undefined
+    }
+    const ancestors = new Set(seen).add(node)
+    for (const member of [...node.properties].reverse()) {
+      if (ts.isSpreadAssignment(member)) {
+        const spreadValue = property(value(member.expression), key, field, ancestors)
+        if (spreadValue) return spreadValue
+        continue
+      }
+      const name = member.name
+      const keyText = ts.isComputedPropertyName(name)
+        ? staticString(value(name.expression))
+        : name.text
+      if (keyText === null) unreadable.add(field)
+      if (keyText !== key) continue
+      if (ts.isPropertyAssignment(member)) return value(member.initializer)
+      if (ts.isShorthandPropertyAssignment(member)) return value(name)
+      unreadable.add(field)
+      return undefined
+    }
+  }
+
+  const declaration = source.statements.find(
+    (node) => ts.isExportAssignment(node) && !node.isExportEquals,
+  )
+  let manifest = value(declaration?.expression)
+  if (manifest && ts.isCallExpression(manifest)) {
+    const callee = manifest.expression
+    if (ts.isIdentifier(callee) && callee.text === 'definePlugin') {
+      manifest = value(manifest.arguments[0])
+    }
+  }
+  if (!manifest || !ts.isObjectLiteralExpression(manifest)) {
+    return { requires: new Set(), unreadable: new Set(['default export']) }
+  }
+  const dependencies = property(property(manifest, 'requires'), 'plugins', 'requires.plugins')
+  const requires = new Set()
+  if (dependencies) {
+    if (!ts.isArrayLiteralExpression(dependencies)) unreadable.add('requires.plugins')
+    else {
+      for (const element of dependencies.elements) {
+        const plugin = staticString(value(element))
+        if (plugin === null) unreadable.add('requires.plugins')
+        else requires.add(plugin)
+      }
+    }
+  }
+  const entries = property(manifest, 'entries')
+  const entry = (object, key, field) => {
+    const node = property(object, key, field)
+    if (!node) return undefined
+    const file = staticString(node)
+    if (file === null) unreadable.add(field)
+    else return resolve(dir, file)
+  }
+  return {
+    requires,
+    unreadable,
+    routes: entry(property(manifest, 'routes'), 'dir', 'routes.dir'),
+    web: entry(entries, 'web', 'entries.web'),
+    worker: entry(entries, 'worker', 'entries.worker'),
+    jobs: entry(entries, 'jobs', 'entries.jobs'),
+    webNode: entry(entries, 'webNode', 'entries.webNode'),
+    jobsNode: entry(entries, 'jobsNode', 'entries.jobsNode'),
+  }
+}
+
+function isInside(path, dir) {
+  return path.startsWith(dir + sep)
+}
+
+function pathImport(file, specifier) {
+  if (specifier.startsWith('.') || specifier.startsWith('/')) {
+    return resolve(dirname(file), specifier.split(/[?#]/, 1)[0])
+  }
+}
+
+function exportedPaths(value) {
+  if (typeof value === 'string') return [value]
+  if (value && typeof value === 'object') return Object.values(value).flatMap(exportedPaths)
+  return []
+}
+
+function pluginEntryPaths(manifest, subpath) {
+  const exports = manifest.exports
+  if (exports === undefined) return [subpath || manifest.main || 'index.js']
+  const key = subpath ? `./${subpath}` : '.'
+  if (exports && Object.hasOwn(exports, key)) return exportedPaths(exports[key])
+  if (exports && typeof exports === 'object') {
+    for (const [pattern, value] of Object.entries(exports)) {
+      if (!pattern.startsWith('./') || !pattern.includes('*')) continue
+      const [prefix, suffix] = pattern.split('*')
+      if (
+        key.startsWith(prefix) &&
+        key.endsWith(suffix) &&
+        key.length >= prefix.length + suffix.length
+      ) {
+        const match = key.slice(prefix.length, key.length - suffix.length)
+        return exportedPaths(value).map((path) => path.replaceAll('*', match))
+      }
+    }
+    if (Object.keys(exports).some((key) => key.startsWith('.'))) return []
+  }
+  return subpath ? [] : exportedPaths(exports)
+}
+
+function resolvePluginSource(path, pluginSources) {
+  if (pluginSources.has(path)) return path
+  const stem = path.replace(/\.[cm]?jsx?$/, '')
+  for (const extension of SOURCE_EXTENSIONS) {
+    if (pluginSources.has(stem + extension)) return stem + extension
+    const index = join(path, `index${extension}`)
+    if (pluginSources.has(index)) return index
+  }
+}
+
+function reachablePluginFiles(entries, parsed, pluginSources, pluginNames) {
+  const reachable = new Set()
+  const pending = entries.filter((file) => pluginSources.has(file))
+  while (pending.length) {
+    const file = pending.pop()
+    if (reachable.has(file)) continue
+    reachable.add(file)
+    for (const { specifier } of parsed.get(file).imports) {
+      const dep = packageNameOf(specifier)
+      const plugin = pluginNames.get(dep)
+      const target = pathImport(file, specifier)
+      const paths = target ? [target] : []
+      if (plugin) {
+        for (const path of pluginEntryPaths(plugin.manifest, specifier.slice(dep.length + 1))) {
+          paths.push(resolve(plugin.path, path))
+        }
+      }
+      for (const path of paths) {
+        const imported = resolvePluginSource(path, pluginSources)
+        if (imported) pending.push(imported)
+      }
+    }
+  }
+  return reachable
+}
+
+function pluginCloudflareEntry(file, dir, plugin) {
+  if (isInside(file, join(dir, 'src/node'))) return false
+  return (
+    file === plugin?.worker ||
+    file === plugin?.jobs ||
+    isInside(file, join(dir, 'src/worker')) ||
+    isInside(file, join(dir, 'src/jobs'))
+  )
 }
 
 export function cloudflareAllowed(file, specifier, rules) {
@@ -182,6 +382,10 @@ export function checkWorkspace(
 ) {
   const apps = readWorkspace(root, 'apps')
   const packages = readWorkspace(root, 'packages')
+  const plugins = readWorkspace(root, 'plugins')
+  const pluginRoot = join(root, 'plugins')
+  const webPath = join(root, 'apps/web')
+  const webPackage = apps.find(({ path }) => path === webPath)?.manifest.name
   const uiManifest = join(root, 'packages/ui/package.json')
   const uiPackage = JSON.parse(readFileSync(uiManifest, 'utf8')).name
   const scope = /^(@[^/]+\/)ui$/.exec(uiPackage)?.[1]
@@ -197,7 +401,27 @@ export function checkWorkspace(
     [platformPackage]: [`${scope}shared`, `${scope}config`, `${scope}db`],
   }
   const appNames = new Set(apps.map((a) => a.manifest.name))
+  const packagePaths = new Set(packages.map((pkg) => pkg.path))
+  const pluginNames = new Map(plugins.map((plugin) => [plugin.manifest.name, plugin]))
+  const pluginManifestPaths = new Map(plugins.map(({ path }) => [join(path, 'plugin.ts'), path]))
   const violations = []
+
+  function pluginIdOf(dep, target) {
+    const plugin = pluginNames.get(dep)
+    if (plugin) return relative(pluginRoot, plugin.path)
+    const prefix = `${scope}plugin-`
+    if (dep?.startsWith(prefix)) return dep.slice(prefix.length)
+    if (target && isInside(target, pluginRoot)) return relative(pluginRoot, target).split(sep)[0]
+  }
+
+  function checkPluginDependency(id, required, where, specifier, plugin, generated = false) {
+    if (!required || generated || id === required) return
+    if (!id) {
+      violations.push(`${where} → ${specifier}：核心只可通过 *.gen.ts 导入插件`)
+    } else if (!plugin?.requires.has(required)) {
+      violations.push(`${where} → ${specifier}：插件 ${id} 须在 requires.plugins 声明 ${required}`)
+    }
+  }
 
   function checkUiDependency(pkgName, dep, where) {
     if (rules.forbiddenDependencies?.some((pattern) => matchesDependency(dep, pattern))) {
@@ -245,38 +469,123 @@ export function checkWorkspace(
       }
     }
   }
-  for (const { path, manifest } of [...packages, ...apps]) {
-    const isPackage = packages.some((pkg) => pkg.path === path)
+  const workspaces = [...packages, ...apps, ...plugins].map((workspace) => ({
+    ...workspace,
+    files: sourceFiles(workspace.path),
+  }))
+  const scriptFiles = sourceFiles(join(root, 'scripts'))
+  const files = Object.fromEntries(
+    [...workspaces.flatMap(({ files }) => files), ...scriptFiles].map((file) => [
+      file,
+      readFileSync(file, 'utf8'),
+    ]),
+  )
+  const parsed = parseSources(files, (source, file) => ({
+    imports: importsOfSource(source),
+    ...(pluginManifestPaths.has(file)
+      ? { plugin: pluginBoundaries(source, pluginManifestPaths.get(file)) }
+      : {}),
+  }))
+  const pluginWorkspaces = workspaces.filter(({ path }) => isInside(path, pluginRoot))
+  const pluginSources = new Set(pluginWorkspaces.flatMap(({ files }) => files))
+  const webEntries = []
+  const jobsEntries = []
+  const nodeEntries = []
+  for (const { path, files } of pluginWorkspaces) {
+    const plugin = parsed.get(join(path, 'plugin.ts'))?.plugin
+    const routes = plugin?.routes ?? join(path, 'routes')
+    if (plugin?.unreadable.size) {
+      const manifest = relative(root, join(path, 'plugin.ts')).split(sep).join('/')
+      violations.push(`${manifest}：无法静态读取 ${[...plugin.unreadable].join('、')}`)
+    }
+    webEntries.push(
+      plugin?.web,
+      plugin?.worker,
+      plugin?.webNode,
+      ...files.filter((file) => isInside(file, routes) || isInside(file, join(path, 'src/web'))),
+    )
+    jobsEntries.push(plugin?.jobs, plugin?.jobsNode)
+    nodeEntries.push(plugin?.webNode, plugin?.jobsNode)
+  }
+  const webFiles = reachablePluginFiles(webEntries, parsed, pluginSources, pluginNames)
+  const jobsFiles = reachablePluginFiles(jobsEntries, parsed, pluginSources, pluginNames)
+  const nodeFiles = reachablePluginFiles(nodeEntries, parsed, pluginSources, pluginNames)
+  for (const file of scriptFiles) {
+    if (file.endsWith('.gen.ts')) continue
+    const rel = relative(root, file).split(sep).join('/')
+    for (const { specifier, line } of parsed.get(file).imports) {
+      const required = pluginIdOf(packageNameOf(specifier), pathImport(file, specifier))
+      checkPluginDependency(undefined, required, `${rel}:${line}`, specifier)
+    }
+  }
+  for (const { path, manifest, files } of workspaces) {
+    const isPackage = packagePaths.has(path)
+    const isPlugin = isInside(path, pluginRoot)
+    const id = isPlugin ? relative(pluginRoot, path) : undefined
+    const plugin = isPlugin ? parsed.get(join(path, 'plugin.ts'))?.plugin : undefined
     for (const field of DEP_FIELDS) {
       for (const dep of Object.keys(manifest[field] ?? {})) {
         const where = `${relative(root, join(path, 'package.json')).split(sep).join('/')} ${field}`
         checkUiDependency(manifest.name, dep, where)
         checkEvalsDependency(manifest.name, dep, where)
+        // 应用声明 workspace 依赖以安装插件，但源码只通过生成入口接入。
+        if (isPlugin || isPackage) checkPluginDependency(id, pluginIdOf(dep), where, dep, plugin)
         if (isPackage) checkDependency(manifest.name, dep, where)
       }
     }
-  }
-  const files = Object.fromEntries(
-    [...packages, ...apps].flatMap(({ path }) =>
-      sourceFiles(path).map((file) => [file, readFileSync(file, 'utf8')]),
-    ),
-  )
-  const parsed = parseImports(files)
-  for (const { path, manifest } of [...packages, ...apps]) {
-    const isPackage = packages.some((pkg) => pkg.path === path)
-    for (const file of sourceFiles(path)) {
+    for (const file of files) {
       const rel = relative(root, file).split(sep).join('/')
-      for (const { specifier, line } of parsed.get(file)) {
+      const cloudflareEntry =
+        isPlugin && !nodeFiles.has(file) && pluginCloudflareEntry(file, path, plugin)
+      for (const { specifier, line } of parsed.get(file).imports) {
         const where = `${rel}:${line}`
-        // UI 原语检查覆盖应用和包的所有源码，不能被生产 src 或目标夹具豁免。
         const dep = packageNameOf(specifier)
+        const target = pathImport(file, specifier)
+        const corePluginImportAllowed =
+          !isPlugin &&
+          (file.endsWith('.gen.ts') || /^apps\/(web\/(test|e2e)|jobs\/test)\//.test(rel))
+        checkPluginDependency(
+          id,
+          pluginIdOf(dep, target),
+          where,
+          specifier,
+          plugin,
+          corePluginImportAllowed,
+        )
+        if (
+          isPlugin &&
+          specifier.startsWith('@web/') &&
+          (!webFiles.has(file) || jobsFiles.has(file))
+        ) {
+          violations.push(
+            `${where} → ${specifier}：@web/* 仅允许插件 web 构建入口使用，jobs 及其依赖不可使用`,
+          )
+        }
+        if (
+          isPlugin &&
+          ((dep && dep === webPackage) ||
+            (target && (target === webPath || isInside(target, webPath))))
+        ) {
+          violations.push(`${where} → ${specifier}：插件的 web 入口须通过 @web/* 导入 web 核心模块`)
+        }
+        // UI 原语检查覆盖所有源码，不能被生产 src 或目标夹具豁免。
         if (dep) checkUiDependency(manifest.name, dep, where)
         if (dep) checkEvalsDependency(manifest.name, dep, where)
-        else if (specifier.startsWith('.') && manifest.name !== evalsPackage) {
-          const target = resolve(join(file, '..'), specifier)
+        else if (target && manifest.name !== evalsPackage) {
           const evals = packages.find((pkg) => pkg.manifest.name === evalsPackage)
-          if (evals && (target === evals.path || target.startsWith(evals.path + sep)))
+          if (evals && (target === evals.path || isInside(target, evals.path)))
             checkEvalsDependency(manifest.name, evalsPackage, where)
+        }
+        if (
+          isPlugin &&
+          specifier !== 'cloudflare:test' &&
+          (specifier.startsWith('cloudflare:') || PLUGIN_CLOUDFLARE_PACKAGES.has(dep))
+        ) {
+          if (!cloudflareEntry)
+            violations.push(
+              `${where} → ${specifier}：Cloudflare 专用导入仅允许插件 worker / jobs 入口`,
+            )
+          continue
         }
         if (specifier.startsWith('cloudflare:')) {
           if (cloudflareAllowed(rel, specifier, rules)) continue
@@ -286,7 +595,15 @@ export function checkWorkspace(
           continue
         }
         const platformTarget = platformTargetOf(root, file, specifier, platformPackage)
-        if (platformTarget && !platformTargetAllowed(rel, platformTarget, rules)) {
+        const pluginAdapterEntry =
+          platformTarget === 'cloudflare'
+            ? cloudflareEntry
+            : isPlugin && (file === plugin?.webNode || file === plugin?.jobsNode)
+        if (
+          platformTarget &&
+          !pluginAdapterEntry &&
+          !platformTargetAllowed(rel, platformTarget, rules)
+        ) {
           violations.push(
             `${where} → ${specifier}：业务仅可依赖 platform 中立入口；${platformTarget} 适配器仅允许对应目标目录、显式 composition entry 与目标测试夹具`,
           )
@@ -313,7 +630,7 @@ export function checkWorkspace(
       }
     }
   }
-  return { violations, packages: packages.length, apps: apps.length }
+  return { violations, packages: packages.length, apps: apps.length, plugins: plugins.length }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
@@ -323,6 +640,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     for (const violation of result.violations) console.error(`  - ${violation}`)
     process.exitCode = 1
   } else {
-    console.log(`依赖方向检查通过：${result.packages} 个包，${result.apps} 个应用`)
+    console.log(
+      `依赖方向检查通过：${result.packages} 个包，${result.apps} 个应用，${result.plugins} 个插件`,
+    )
   }
 }

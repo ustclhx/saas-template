@@ -24,6 +24,7 @@ This block is written and re-added by `turbo` before repository-scoped commands 
 
 - `apps/web`：TanStack Start 路由、页面、Server Functions 和 HTTP 接口。
 - `apps/jobs`：Cloudflare Workflows、Queue 消费者和 Cron；web 经绑定调用 jobs。
+- `plugins/<id>` 承载可选功能。新增、启停或调整插件入口时，见 [插件开发与部署](docs/plugins.md)。
 - `packages/shared`：类型、错误、ID、结构化日志；`config`：模板类型、默认值和环境校验；
   `db`：Drizzle schema、迁移、租户查询和运行时设置；`platform`：目标中立能力契约与 Cloudflare/Node 适配。
 - `packages/auth`：身份、会话和空间；`billing`：支付、订单和订阅；`credits`：积分账本和预扣结算；

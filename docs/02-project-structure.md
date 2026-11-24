@@ -44,6 +44,7 @@ saas-template/
 │  ├─ ui/                         # 共享组件与设计 token（Fluid/Radix），规范见 design-system.md
 │  ├─ evals/                      # 提示词评测命令行（pnpm eval:prompts）与示例套件，仅根目录依赖
 │  └─ shared/                     # 通用类型、错误、id 生成、时间工具
+├─ plugins/<id>/                  # 构建期插件，包含清单、路由和各部署目标的入口（见 plugins.md）
 ├─ evals/                         # 项目自有的提示词评测套件 evals/<suite>/（模板不交付文件）
 ├─ infra/
 │  ├─ postgres/                   # VPS 上的 docker-compose（PG + cloudflared + WAL-G）
@@ -59,6 +60,7 @@ saas-template/
 **依赖方向**由 `pnpm check:deps`（`scripts/check-deps.mjs`）检查 manifest 与源码：
 
 - `apps/*` 可依赖 `packages/*`；packages 不依赖 apps。
+- 核心通过生成文件接入插件，插件之间通过 `requires.plugins` 声明依赖。入口、平台别名与测试规则见 [插件依赖边界](plugins.md#依赖边界)。
 - `shared` 不依赖其他内部包；`config` 仅可依赖 shared；`db` 仅可依赖 shared/config。
 - `platform` 仅可依赖 shared/config/db；config/db 不反向依赖 platform。业务包与 apps 可依赖 platform，业务包之间允许互相依赖，检查器没有规定它们的总顺序。
 - `@saas/evals` 只允许根 `package.json` 依赖：任何 app 或 package 的 manifest 与源码（含测试）都不得依赖或引用它，评测工具不进入 Worker 与自托管运行时。说明见 [AI §3「提示词版本与评测」](06-ai.md#提示词版本与评测add-prompt-evals)。
