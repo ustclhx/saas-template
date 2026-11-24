@@ -49,10 +49,23 @@ export default defineConfig({
             messageDirs: pluginMessageDirs(enabledPlugins, 'cloudflare'),
           }),
         ],
+        // 启用仅 Cloudflare 的插件（如 agents）时，Worker 入口链会导入 `cloudflare:*`；Node 中换成替身
+        resolve: {
+          alias: {
+            'cloudflare:workers': new URL(
+              './test/unit-stubs/cloudflare-workers.ts',
+              import.meta.url,
+            ).pathname,
+            'cloudflare:email': new URL('./test/unit-stubs/cloudflare-email.ts', import.meta.url)
+              .pathname,
+          },
+        },
         test: {
           name: 'unit',
           include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts', ...pluginUnitTests],
           environment: 'node',
+          // 外部依赖默认由 Node 直接加载、不经别名；SDK 需经 Vite 转换，`cloudflare:workers` 别名才生效
+          server: { deps: { inline: ['agents', '@cloudflare/ai-chat'] } },
         },
       },
       ...(integration
