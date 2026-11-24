@@ -9,6 +9,8 @@ export interface AgentDefinition {
   ) => string
   readonly defaultModel?: string
   readonly tools: readonly string[]
+  /** 可选工具：仅在提供它的插件启用时加入（如媒体插件的 generate_image），未注册时跳过而不报错 */
+  readonly optionalTools?: readonly string[]
   readonly maxSteps?: number
 }
 

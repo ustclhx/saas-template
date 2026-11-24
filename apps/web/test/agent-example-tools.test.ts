@@ -140,3 +140,36 @@ it.skipIf(!templateConfig.plugins.agents)(
     }
   },
 )
+
+it.skipIf(!templateConfig.plugins.agents)('可选工具仅在已注册时加入，未注册时跳过而不报错', () => {
+  const tool = (name: string) =>
+    defineAgentTool({
+      name,
+      description: name,
+      input: z.object({}),
+      execute: async () => name,
+    })
+  const definition = defineAgent({
+    id: 'creator',
+    name: 'Creator',
+    description: 'Optional tools fixture',
+    systemPrompt: () => 'Use tools.',
+    tools: ['base'],
+    optionalTools: ['present', 'absent', 'base'],
+  })
+  const context = {
+    db: undefined as never,
+    turnId: newId(),
+    workspaceId: newId(),
+    userId: newId(),
+    conversationId: newId(),
+    log,
+    signal: undefined,
+    services: undefined,
+  } satisfies Parameters<ReturnType<typeof createAgentRegistry>['resolveAgentTools']>[1]
+  const tools = createAgentRegistry(
+    [definition],
+    [{ id: 'fixture', tools: [tool('base'), tool('present')] }],
+  ).resolveAgentTools(definition.id, context)
+  expect(Object.keys(tools)).toEqual(['base', 'present'])
+})
