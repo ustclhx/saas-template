@@ -321,6 +321,21 @@ describe('subject conversations', () => {
     expect(logged.join('\n')).toContain('ai.subject_conversation.created')
   })
 
+  it('excludes agent conversations bound to the same subject', async () => {
+    const owner = await member('subject-agent')
+    const subject = doc(owner)
+    const chat = await startSubjectConversation(ctxOf(owner), subject)
+    const agentId = newId()
+    await sql`insert into ai_conversation (id, workspace_id, user_id, model_key, kind,
+      agent_id, subject_type, subject_id)
+      values (${agentId}, ${owner.workspaceId}, ${owner.userId}, '', 'agent', 'assistant',
+        ${subject.type}, ${subject.id})`
+
+    const loaded = await loadSubjectChat(ctxOf(owner), subject, agentId)
+    expect(loaded.conversations.map((conversation) => conversation.id)).toEqual([chat.id])
+    expect(loaded.conversation?.id).toBe(chat.id)
+  })
+
   it('sends the stored context first on every turn and keeps it when history is truncated', async () => {
     const owner = await member('prefix', 1000)
     const subject = doc(owner)

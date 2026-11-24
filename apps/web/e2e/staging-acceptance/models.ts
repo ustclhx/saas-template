@@ -79,11 +79,13 @@ export const falVideo = {
   },
 } as const
 
+// deepseek-flash 支持工具调用：https://api-docs.deepseek.com/guides/tool_calls/
 export const deepseekToken = {
   key: 'acceptance-deepseek-token',
   kind: 'text',
   provider: 'deepseek',
   providerModelId: 'deepseek-flash',
+  supportsTools: true,
   pricing: { mode: 'token', inputPer1k: 1, outputPer1k: 2, minCharge: 1 },
   sort: -997,
   paramsSchema: {},
@@ -94,6 +96,7 @@ export const deepseekCall = {
   kind: 'text',
   provider: 'deepseek',
   providerModelId: 'deepseek-flash',
+  supportsTools: true,
   pricing: {
     mode: 'per_call',
     credits: 2,
@@ -106,11 +109,11 @@ export const deepseekCall = {
 
 export const ACCEPTANCE_MODELS = [workersImage, falImage, falVideo, deepseekToken, deepseekCall]
 type Model = (typeof ACCEPTANCE_MODELS)[number]
-type ModelRow = Record<string, unknown> & { id: string }
+type ModelRow = Record<string, unknown> & { id: string; supports_tools: boolean }
 
 async function readModel(model: Model) {
   return query<ModelRow>(`select id, key, kind, provider, provider_model_id, pricing,
-    min_plan_features, params_schema, enabled, sort from ai_model
+    min_plan_features, params_schema, enabled, sort, supports_tools from ai_model
     where key = ${sqlLiteral(model.key)}`)
 }
 
@@ -118,7 +121,8 @@ export async function verifyAcceptanceModel(model: Model) {
   const rows = await readModel(model)
   expect(rows, `Expected one configured acceptance model: ${model.key}`).toHaveLength(1)
   const row = rows[0] as ModelRow
-  expect(row).toEqual({
+  const { supports_tools: _supportsTools, ...configuration } = row
+  expect(configuration).toEqual({
     id: expect.any(String),
     key: model.key,
     kind: model.kind,
@@ -139,6 +143,7 @@ export interface AcceptanceModelDefinition {
   provider: string
   providerModelId: string
   pricing: Pricing
+  supportsTools?: boolean
   sort: number
   paramsSchema: Record<string, unknown>
   tags?: readonly string[]
@@ -198,6 +203,11 @@ export async function createAcceptanceModel(
     .fill((model.tags ?? []).join(','))
   await form.getByLabel('Sort', { exact: true }).fill(String(model.sort))
   await form.getByLabel('Enabled', { exact: true }).check()
+  if (model.supportsTools) {
+    const supportsTools = form.getByRole('switch', { name: 'Supports tool calls' })
+    await supportsTools.click()
+    await expect(supportsTools).toHaveAttribute('aria-checked', 'true')
+  }
   if (await schema.count()) await schema.fill(JSON.stringify(model.paramsSchema))
   if (model.pricing.mode === 'token') {
     await form
@@ -244,6 +254,9 @@ export async function ensureAcceptanceModels(
       await expect.poll(async () => (await readModel(model)).length).toBe(1)
     }
     const row = await verifyAcceptanceModel(model)
+    if (existing.length === 0) {
+      expect(row.supports_tools).toBe('supportsTools' in model && model.supportsTools)
+    }
     const audit = await query<{ id: string }>(`select id from audit_log
       where action='ai.model_created' and target_id=${sqlLiteral(row.id)} order by id desc limit 1`)
     if (existing.length === 0) expect(audit).toHaveLength(1)

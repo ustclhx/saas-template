@@ -59,6 +59,7 @@ const modelInput = z.object({
   paramsSchema: z.string(),
   tags: z.array(z.string().trim().max(64)).max(50),
   enabled: z.boolean(),
+  supportsTools: z.boolean().optional(),
   sort: z.number().int().min(-1_000_000).max(1_000_000),
 })
 
@@ -123,6 +124,7 @@ export const getAdminModels = createServerFn({ method: 'GET' })
         paramsSchema: aiModel.paramsSchema,
         tags: aiModel.minPlanFeatures,
         enabled: aiModel.enabled,
+        supportsTools: aiModel.supportsTools,
         sort: aiModel.sort,
       })
       .from(aiModel)
@@ -169,7 +171,11 @@ export const saveAdminModel = createServerFn({ method: 'POST' })
         // 锁住旧行，保证并发编辑时审计中的旧值是本次实际覆盖的值。
         const [before] = data.id
           ? await tx
-              .select({ pricing: aiModel.pricing, paramsSchema: aiModel.paramsSchema })
+              .select({
+                pricing: aiModel.pricing,
+                paramsSchema: aiModel.paramsSchema,
+                supportsTools: aiModel.supportsTools,
+              })
               .from(aiModel)
               .where(eq(aiModel.id, data.id))
               .for('update')
@@ -190,6 +196,7 @@ export const saveAdminModel = createServerFn({ method: 'POST' })
             oldPricing: before?.pricing ?? null,
             newPricing: saved.pricing,
             enabled: saved.enabled,
+            supportsTools: { before: before?.supportsTools ?? null, after: saved.supportsTools },
             paramsSchema: {
               before: await schemaHash(before?.paramsSchema ?? null),
               after: await schemaHash(saved.paramsSchema),
@@ -295,6 +302,7 @@ export const copyAdminModel = createServerFn({ method: 'POST' })
             key: saved.key,
             pricing: saved.pricing,
             enabled: saved.enabled,
+            supportsTools: saved.supportsTools,
             paramsSchema: {
               before: await schemaHash(source.paramsSchema),
               after: await schemaHash(saved.paramsSchema),

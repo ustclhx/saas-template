@@ -80,6 +80,7 @@
   "admin_pricing": "Pricing",
   "admin_sort": "Sort",
   "admin_enabled": "Enabled",
+  "admin_supports_tool_calls": "Supports tool calls",
   "admin_disabled": "Disabled",
   "admin_model_type": "Model type",
   "admin_text": "Text",

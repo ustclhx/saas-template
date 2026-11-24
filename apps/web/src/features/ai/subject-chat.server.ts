@@ -233,6 +233,7 @@ async function loadChatData(
       },
       where: and(
         eq(aiConversation.userId, ctx.userId),
+        eq(aiConversation.kind, 'chat'),
         eq(aiConversation.subjectType, ref.type),
         eq(aiConversation.subjectId, ref.id),
         eq(aiConversation.archived, false),

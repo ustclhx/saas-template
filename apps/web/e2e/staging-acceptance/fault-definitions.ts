@@ -38,6 +38,7 @@ export const FAULT_MODELS: readonly FaultModelDefinition[] = [
   ...(['chat-before-stream', 'chat-mid-stream'] as const).flatMap((mode, index) =>
     [deepseekToken, deepseekCall].map((base, pricingIndex) => ({
       ...base,
+      supportsTools: false,
       key: `acceptance-fault-${mode}-${base.pricing.mode}`,
       mode,
       sort: -1990 + index * 2 + pricingIndex,
