@@ -6,12 +6,14 @@
 // 工作台侧边栏（tasks 8.3）：默认导航条目、抽屉菜单按钮与底部升级入口
 // 对话页与嵌入式对话（openspec add-ai-chat-components）：复制回复、回到最新、历史对话、新对话、归档
 // 语言提示条（openspec multilingual-seo 4.2）：Languages
+// agent 对话（openspec add-ai-agents 6.2）：导航与头像 Bot、确认卡片 ShieldCheck、工具卡片 Wrench
 export {
   Archive,
   ArrowDown,
   ArrowLeft,
   ArrowRight,
   Bell,
+  Bot,
   Calendar,
   ChartColumn,
   Check,
@@ -45,6 +47,7 @@ export {
   Plus,
   Search,
   Settings,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkle,
   Sparkles,
@@ -52,6 +55,7 @@ export {
   Trash2,
   User,
   Users,
+  Wrench,
   X,
   Zap,
 } from 'lucide-react'

@@ -39,13 +39,16 @@ export interface ChatComposerProps {
   readonly className?: string
 }
 
-/** 错误提示（设计稿 Main.dc.html 的 error）：标题为错误原因，余额不足时附数值与补充积分入口 */
-function ChatErrorAlert({
-  session,
+/**
+ * 错误提示（设计稿 Main.dc.html 的 error）：标题为错误原因，余额不足时附数值与补充积分入口。
+ * agent 对话页（plugins/agents）复用同一提示与充值入口。
+ */
+export function ChatErrorAlert({
+  slug,
   error,
   inputRef,
 }: {
-  session: ChatSession
+  slug: string
   error: Error
   inputRef: RefObject<HTMLTextAreaElement | null> | undefined
 }) {
@@ -80,7 +83,7 @@ function ChatErrorAlert({
             {m.chat_ui_credits_reopen()}
           </Button>
           <CreditsGuideDialog
-            slug={session.slug}
+            slug={slug}
             details={insufficient}
             open={dialogOpen}
             onOpenChange={setDialogOpen}
@@ -89,7 +92,7 @@ function ChatErrorAlert({
         </>
       ) : code && BILLING_CODES.has(code) ? (
         <Button size="sm" className="ml-7 sm:ml-0" asChild>
-          <Link to="/app/$slug/billing" params={{ slug: session.slug }}>
+          <Link to="/app/$slug/billing" params={{ slug }}>
             {m.chat_ui_go_billing()}
           </Link>
         </Button>
@@ -177,7 +180,7 @@ export function ChatComposer({
 
   return (
     <div className={cn('flex min-w-0 flex-col gap-2.5', className)}>
-      {error ? <ChatErrorAlert session={session} error={error} inputRef={inputRef} /> : null}
+      {error ? <ChatErrorAlert slug={session.slug} error={error} inputRef={inputRef} /> : null}
       {notices.map((notice) => (
         <p key={notice} role="alert" className="text-caption text-destructive">
           {notice}

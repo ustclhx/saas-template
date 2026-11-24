@@ -486,6 +486,8 @@ test('Cloudflare-only modules stay in plugin worker and jobs entries and their d
     'plugins/example/src/jobs-extra/jobs.ts': "import 'cloudflare:workers'",
     'plugins/example/src/shared/worker.ts': "type Agent = import('agents').Agent",
     'plugins/example/src/web/other-worker.ts': "import '@cloudflare/ai-chat'",
+    'plugins/example/src/web/page.tsx':
+      "import { useAgent } from 'agents/react'\nimport { useAgentChat } from '@cloudflare/ai-chat/react'",
     'plugins/example/src/node/jobs.ts':
       "import '@saas/platform/node'; import 'cloudflare:workers'; import '../jobs/node-helper.ts'",
     'plugins/example/src/jobs/node-helper.ts': "import 'agents'",

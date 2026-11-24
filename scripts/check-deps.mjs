@@ -22,6 +22,8 @@ const PLUGIN_CLOUDFLARE_PACKAGES = new Set([
   '@cloudflare/workers-types',
   '@sentry/cloudflare',
 ])
+// 浏览器端的连接与对话 hook（无 `cloudflare:*` 依赖），插件 web 页面经它们连接 Durable Object
+const PLUGIN_CLOUDFLARE_CLIENT_ENTRIES = new Set(['agents/react', '@cloudflare/ai-chat/react'])
 const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.d.ts']
 const DEP_FIELDS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
 const BUILD_DIRS = new Set([
@@ -579,6 +581,7 @@ export function checkWorkspace(
         if (
           isPlugin &&
           specifier !== 'cloudflare:test' &&
+          !PLUGIN_CLOUDFLARE_CLIENT_ENTRIES.has(specifier) &&
           (specifier.startsWith('cloudflare:') || PLUGIN_CLOUDFLARE_PACKAGES.has(dep))
         ) {
           if (!cloudflareEntry)
