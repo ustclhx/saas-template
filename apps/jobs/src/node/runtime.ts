@@ -12,19 +12,21 @@ import {
   createNodeScheduler,
   createNodeTaskHealth,
   createNodeTaskHealthResponse,
-  createNodeWorkflow,
   type NodeJobEngine,
 } from '@saas/platform/node'
-import { log, newRequestId, withLogContext } from '@saas/shared/log'
+import {
+  type JobObserver,
+  log,
+  logJobObserver,
+  newRequestId,
+  withLogContext,
+} from '@saas/shared/log'
 import { createNodeStorage } from '@saas/storage/node'
 import templateConfig from '../../../../template.config.ts'
 import { serverAnalyticsTarget } from '../billing.ts'
 import { consumeJobsBatch, type JobsContext } from '../handlers.ts'
-import { type JobObserver, logJobObserver } from '../observer.ts'
 import { pluginQueueNames } from '../plugins/register.ts'
 import nodePlugins from '../plugins.node.gen.ts'
-import { createNodeMediaHandler } from './media.ts'
-import { createNodeMediaWorkflowHttpHandler } from './media-http.ts'
 import type { NodePluginWorkflows } from './plugins.ts'
 import { getNodeJobFeatures, registerNodeJobsSchedules } from './registration.ts'
 
@@ -61,9 +63,6 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
   }
   let queues!: ReturnType<typeof createNodeQueueAdapter>
   let scheduler!: ReturnType<typeof createNodeScheduler>
-  let mediaWorkflow:
-    | ReturnType<typeof createNodeWorkflow<{ taskId: string; requestId?: string }>>
-    | undefined
   let dispose = () => {}
   // 启用插件（plugins.node.gen.ts）注册的 Node 持久任务与内部 HTTP 路由
   const pluginWorkflows: NodePluginWorkflows[] = []
@@ -145,22 +144,6 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
         // 启用插件的队列：按基础队列名注册，由 consumeJobsBatch 交给插件消费
         for (const name of pluginQueueNames(context.plugins))
           queues.register(name, (batch) => consumeJobsBatch(batch, context))
-        if (features.media && storageConfig && config.MEDIA_WEBHOOK_SECRET) {
-          mediaWorkflow = createNodeWorkflow({
-            engine,
-            name: 'ai-media-v1',
-            handler: createNodeMediaHandler(engine.database, {
-              storage: storageConfig,
-              providerEnv: {
-                ...(config.FAL_KEY === undefined ? {} : { FAL_KEY: config.FAL_KEY }),
-              },
-              callbackOrigin: config.APP_URL,
-              callbackSecret: config.MEDIA_WEBHOOK_SECRET,
-              template,
-              observer,
-            }),
-          })
-        }
         for (const { entry } of nodePlugins) {
           const registered = entry.registerWorkflows?.({
             engine,
@@ -181,7 +164,6 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
         scheduler.start()
       },
       stopReceiving() {
-        mediaWorkflow?.stopReceiving()
         for (const workflows of pluginWorkflows) workflows.stopReceiving?.()
         queues?.stopReceiving()
         scheduler?.stopReceiving()
@@ -232,10 +214,6 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
       { status: ready ? 200 : 503, headers: { 'cache-control': 'no-store' } },
     )
   }
-  const mediaHttp = createNodeMediaWorkflowHttpHandler({
-    workflow: mediaWorkflow ? { available: true, value: mediaWorkflow } : { available: false },
-    secret: config.MEDIA_WEBHOOK_SECRET ?? '',
-  })
   const sockets = new Set<Socket>()
   let stopping = false
   const server = createServer((request, response) => {
@@ -255,8 +233,6 @@ export async function startNodeJobs(config: NodeEnv, options: NodeJobsOptions) {
             response.writeHead(result.status).end(await result.text())
           }),
         )
-      } else if (request.url === '/internal/workflows/ai-media') {
-        background.waitUntil(mediaHttp(request, response))
       } else {
         const url = request.url ?? ''
         const pluginHttp = pluginWorkflows.map((workflows) => workflows.http?.[url]).find(Boolean)

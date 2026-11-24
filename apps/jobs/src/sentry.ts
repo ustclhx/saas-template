@@ -1,3 +1,4 @@
+import type { JobObserver } from '@saas/shared/log'
 import { getLogContext, sentryBeforeSend } from '@saas/shared/log'
 import {
   type CloudflareOptions,
@@ -5,7 +6,6 @@ import {
   getClient,
   getIsolationScope,
 } from '@sentry/cloudflare'
-import type { JobObserver } from './observer.ts'
 
 export interface SentryEnv {
   SENTRY_DSN?: string

@@ -2,7 +2,7 @@
 
 import { registerHoldSweeper } from '@saas/billing'
 import type { TemplateConfig } from '@saas/config'
-import type { JobsPluginModule, PluginCronGroup, PluginCronTask } from './contract.ts'
+import type { JobsPluginModule, PluginCronGroup, PluginCronTask } from './module.ts'
 
 /** 登记插件的积分预扣清理器；返回注销函数（停机与测试用） */
 export function registerPluginHoldSweepers(
@@ -10,9 +10,10 @@ export function registerPluginHoldSweepers(
   template: TemplateConfig,
 ) {
   const dispose = plugins.flatMap((plugin) =>
-    (plugin.holdSweepers ?? []).map((sweeper) =>
-      registerHoldSweeper(sweeper.refType, sweeper.create(template)),
-    ),
+    (plugin.holdSweepers ?? []).flatMap((sweeper) => {
+      const handler = sweeper.create(template)
+      return handler ? [registerHoldSweeper(sweeper.refType, handler)] : []
+    }),
   )
   return () => {
     for (const unregister of dispose) unregister()

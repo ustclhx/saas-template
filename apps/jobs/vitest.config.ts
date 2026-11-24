@@ -2,6 +2,7 @@ import { cloudflareTest } from '@cloudflare/vitest-plugin'
 import { isPostgresSocketRejection } from '@saas/db/test/postgres-socket-rejection'
 import { resolveTestDatabase } from '@saas/db/test-database'
 import { defineConfig } from 'vitest/config'
+import templateConfig from '../../template.config.ts'
 
 // 测试库按环境变量、.env.worktree、本地 <项目>_test 的顺序解析。
 // ALLOW_TEST_ON_DEV_DATABASE=1 时允许使用开发库。
@@ -10,6 +11,7 @@ const HYPERDRIVE_ENV = 'CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE
 const database = resolveTestDatabase('@saas/jobs', { devFallback: true })
 const appUrl = database?.appUrl
 const migratorUrl = database?.migratorUrl
+const mediaEnabled = Boolean(templateConfig.plugins.media)
 
 const integration = appUrl && migratorUrl
 if (integration) {
@@ -41,7 +43,7 @@ export default defineConfig({
                   miniflare: {
                     compatibilityDate: '2026-08-01',
                     // 跨绑定 smoke 测试 mock 所有外部步骤，只需通过 Provider 的配置校验。
-                    bindings: { FAL_KEY: 'workflow-fixture-only' },
+                    ...(mediaEnabled && { bindings: { FAL_KEY: 'workflow-fixture-only' } }),
                     // audit_log 对 app 只追加（@saas/db 迁移 0009），清理审计行改用 migrator
                     hyperdrives: { HYPERDRIVE_MIGRATOR: migratorUrl },
                   },
@@ -50,7 +52,17 @@ export default defineConfig({
               test: {
                 name: 'integration',
                 include: ['test/**/*.test.ts'],
-                exclude: ['test/**/*.unit.test.ts', 'test/node-*.integration.test.ts'],
+                exclude: [
+                  'test/**/*.unit.test.ts',
+                  'test/node-*.integration.test.ts',
+                  ...(mediaEnabled
+                    ? []
+                    : [
+                        'test/media-hold-sweep.test.ts',
+                        'test/media-settlement.test.ts',
+                        'test/media-workflow.test.ts',
+                      ]),
+                ],
                 globalSetup: ['@saas/db/test/global-setup'],
               },
             },

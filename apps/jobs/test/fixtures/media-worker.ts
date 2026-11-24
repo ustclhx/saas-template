@@ -1,11 +1,12 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { DBOS } from '@dbos-inc/dbos-sdk'
+import { defineTemplateConfig } from '@saas/config'
 import type { NodeStorageConfig } from '@saas/config/node'
 import { createDb } from '@saas/db'
-import { createNodeJobEngine, createNodeWorkflow } from '@saas/platform/node'
-import { type AiMediaParams, createNodeMediaHandler } from '../../src/node/media.ts'
-import { createNodeMediaWorkflowHttpHandler } from '../../src/node/media-http.ts'
+import { createNodeJobEngine } from '@saas/platform/node'
+import { logJobObserver } from '@saas/shared/log'
+import mediaJobs from '../../../../plugins/media/src/node/jobs.ts'
 
 interface Config {
   executorId: string
@@ -64,7 +65,16 @@ DBOS.runStep = async <T>(
     return value
   }, options)
 
-let workflow: ReturnType<typeof createNodeWorkflow<AiMediaParams>> | undefined
+const template = defineTemplateConfig({
+  app: {
+    name: 'Media fixture',
+    url: 'https://app.example.test',
+    supportEmail: 'support@app.example.test',
+  },
+  ai: { image: true },
+  plugins: { media: { providers: ['fal'] } },
+})
+let workflows: ReturnType<typeof mediaJobs.registerWorkflows> | undefined
 const engine = await createNodeJobEngine({
   database: db,
   databaseUrl,
@@ -74,26 +84,24 @@ const engine = await createNodeJobEngine({
   nativePoolMax: 3,
   shutdownTimeoutMs: 100,
   register(engine) {
-    workflow = createNodeWorkflow({
+    workflows = mediaJobs.registerWorkflows({
       engine,
-      name: 'ai-media-v1',
-      handler: createNodeMediaHandler(db, {
-        storage: config.storage,
-        providerEnv: { FAL_KEY: 'local-fixture' },
-        callbackOrigin: 'https://app.example.test',
-        callbackSecret: config.secret,
-      }),
+      config: {
+        APP_URL: template.app.url,
+        FAL_KEY: 'local-fixture',
+        MEDIA_WEBHOOK_SECRET: config.secret,
+      },
+      template,
+      storage: config.storage,
+      observer: logJobObserver,
     })
   },
   stopReceiving() {
-    workflow?.stopReceiving()
+    workflows?.stopReceiving()
   },
 })
-if (!workflow) throw new Error('Node media fixture workflow was not registered')
-const handler = createNodeMediaWorkflowHttpHandler({
-  workflow: { available: true, value: workflow },
-  secret: config.secret,
-})
+const handler = workflows?.http['/internal/workflows/ai-media']
+if (!handler) throw new Error('Node media fixture workflow was not registered')
 const server = createServer((request, response) => {
   void handler(request, response)
 })

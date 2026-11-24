@@ -3,7 +3,10 @@ import type { AddressInfo } from 'node:net'
 import type { Workflow } from '@saas/platform'
 import { AppError, newId } from '@saas/shared'
 import { expect, it, vi } from 'vitest'
-import { createNodeMediaWorkflowHttpHandler } from '../src/node/media-http.ts'
+import { createNodeMediaWorkflowHttpHandler } from '../../../plugins/media/src/node/media-http.ts'
+import templateConfig from '../../../template.config.ts'
+
+const mediaTest = it.runIf(Boolean(templateConfig.plugins.media))
 
 async function serve(workflow: Workflow<{ taskId: string }>) {
   const handler = createNodeMediaWorkflowHttpHandler({
@@ -31,24 +34,27 @@ async function serve(workflow: Workflow<{ taskId: string }>) {
   }
 }
 
-it('rejects unauthenticated, mismatched task identity and oversized input before creating work', async () => {
-  const create = vi.fn()
-  const get = vi.fn()
-  const http = await serve({ create, get })
-  try {
-    const taskId = newId()
-    const body = { operation: 'create', id: taskId, params: { taskId } }
-    expect((await http.request(body, false)).status).toBe(401)
-    expect((await http.request({ ...body, id: newId() })).status).toBe(400)
-    expect((await http.request({ ...body, padding: 'x'.repeat(16_384) })).status).toBe(400)
-    expect(create).not.toHaveBeenCalled()
-    expect(get).not.toHaveBeenCalled()
-  } finally {
-    await http.close()
-  }
-})
+mediaTest(
+  'rejects unauthenticated, mismatched task identity and oversized input before creating work',
+  async () => {
+    const create = vi.fn()
+    const get = vi.fn()
+    const http = await serve({ create, get })
+    try {
+      const taskId = newId()
+      const body = { operation: 'create', id: taskId, params: { taskId } }
+      expect((await http.request(body, false)).status).toBe(401)
+      expect((await http.request({ ...body, id: newId() })).status).toBe(400)
+      expect((await http.request({ ...body, padding: 'x'.repeat(16_384) })).status).toBe(400)
+      expect(create).not.toHaveBeenCalled()
+      expect(get).not.toHaveBeenCalled()
+    } finally {
+      await http.close()
+    }
+  },
+)
 
-it('keeps terminal platform errors and redacts unknown engine failures', async () => {
+mediaTest('keeps terminal platform errors and redacts unknown engine failures', async () => {
   const get = vi
     .fn()
     .mockRejectedValueOnce(new AppError('WORKFLOW_TERMINAL', 'unsafe upstream body'))

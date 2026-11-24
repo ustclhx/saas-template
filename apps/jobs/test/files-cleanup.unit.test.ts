@@ -30,8 +30,8 @@ vi.mock('../src/cron/workspace-cleanup.ts', () => ({
   runWorkspaceCleanup: mocks.workspace,
 }))
 
+import { logJobObserver } from '@saas/shared/log'
 import { type JobsContext, runJobsSchedule } from '../src/handlers.ts'
-import { logJobObserver } from '../src/observer.ts'
 
 const bucket = { delete: vi.fn() }
 const context = {

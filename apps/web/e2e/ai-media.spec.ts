@@ -5,11 +5,14 @@ import type { AddressInfo } from 'node:net'
 import { expect, type Page, test } from '@playwright/test'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import { newId } from '@saas/shared'
-import type { MediaTask } from '../src/features/ai-media/tasks-client.ts'
+import type { MediaTask } from '../../../plugins/media/src/web/ai-media/tasks-client.ts'
+import templateConfig from '../../../template.config.ts'
 import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
 import { chooseOption } from './select.ts'
 import { stubTurnstile } from './turnstile.ts'
 import { workersAiSkipReason } from './workers-ai.ts'
+
+test.skip(!templateConfig.plugins.media, 'The media plugin is disabled')
 
 const RESULT_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPZkAAAAASUVORK5CYII=',

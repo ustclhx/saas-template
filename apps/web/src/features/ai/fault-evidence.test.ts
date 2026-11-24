@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import templateConfig from '../../../../../template.config.ts'
 
 // support 在导入时固定 target/run ID；单测必须先设本地目标，不能碰真实证据目录。
 vi.mock('@playwright/test', () => ({ chromium: {}, expect: vi.fn(), test: {} }))
@@ -91,10 +92,12 @@ describe('fault scenario subset', () => {
     return import('../../../e2e/staging-acceptance/fault-definitions.ts')
   }
 
-  it('缺省为完整矩阵，子集只保留指定场景', async () => {
+  it('缺省为已启用的场景，子集只保留指定场景', async () => {
     const { FAULT_MODELS, selectFaultModels } = await definitions()
     expect(selectFaultModels('')).toBe(FAULT_MODELS)
-    expect(selectFaultModels(undefined)).toHaveLength(11)
+    expect(selectFaultModels(undefined)).toHaveLength(templateConfig.plugins.media ? 11 : 4)
+    if (!templateConfig.plugins.media)
+      expect(FAULT_MODELS.every(({ kind }) => kind === 'text')).toBe(true)
     expect(selectFaultModels(' chat-mid-stream-per_call ').map((m) => m.key)).toEqual([
       'acceptance-fault-chat-mid-stream-per_call',
     ])

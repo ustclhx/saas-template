@@ -13,6 +13,7 @@ import { aiModel, createDb, plan, planPrice, subscription } from '@saas/db'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import { newId } from '@saas/shared'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
+import { templateConfig } from '../../../src/server/template-config.ts'
 
 const root = fileURLToPath(new URL('../../../', import.meta.url))
 const databaseUrl = process.env.NODE_PRODUCTION_DATABASE_URL
@@ -336,7 +337,24 @@ it('passes native production requests to all auth endpoints without clone failur
   expect((await signedOut.json()) === null).toBe(true)
 })
 
-it('uses real jobs readiness and refuses media before any hold while files are unavailable', async () => {
+it.skipIf(!templateConfig.plugins.media)(
+  'refuses media before any hold while files are unavailable',
+  async () => {
+    const before =
+      await sql`select count(*)::int as count from credit_hold where workspace_id = ${userId}`
+    const media = await fetch(`${base}/api/ai/tasks`, {
+      method: 'POST',
+      headers: { cookie, origin: appUrl, 'content-type': 'application/json' },
+      body: JSON.stringify({ slug, modelId, params: {} }),
+    })
+    expect(media.status).toBe(503)
+    expect(
+      await sql`select count(*)::int as count from credit_hold where workspace_id = ${userId}`,
+    ).toEqual(before)
+  },
+)
+
+it('reports real jobs readiness and degrades when jobs stops', async () => {
   const jobsHealth = (await (await fetch(`${jobsBase}/internal/ready`)).json()) as {
     queue: { status: string }
     scheduler: { status: string; lastCronAt: string | null }
@@ -350,17 +368,6 @@ it('uses real jobs readiness and refuses media before any hold while files are u
     queue: jobsHealth.queue,
     scheduler: jobsHealth.scheduler,
   })
-  const before =
-    await sql`select count(*)::int as count from credit_hold where workspace_id = ${userId}`
-  const media = await fetch(`${base}/api/ai/tasks`, {
-    method: 'POST',
-    headers: { cookie, origin: appUrl, 'content-type': 'application/json' },
-    body: JSON.stringify({ slug, modelId, params: {} }),
-  })
-  expect(media.status).toBe(503)
-  expect(
-    await sql`select count(*)::int as count from credit_hold where workspace_id = ${userId}`,
-  ).toEqual(before)
   jobs.kill('SIGTERM')
   expect(await jobsExit).toEqual([0, null])
   const stopped = await fetch(`${base}/api/health`)

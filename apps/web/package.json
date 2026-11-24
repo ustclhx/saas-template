@@ -31,6 +31,7 @@
     "@saas/email": "workspace:*",
     "@saas/entitlements": "workspace:*",
     "@saas/platform": "workspace:*",
+    "@saas/plugin-media": "workspace:*",
     "@saas/shared": "workspace:*",
     "@saas/storage": "workspace:*",
     "@saas/ui": "workspace:*",

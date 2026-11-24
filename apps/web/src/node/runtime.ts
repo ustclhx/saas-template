@@ -20,11 +20,12 @@ import { handleAuthRequest } from '../features/admin/impersonation-http.ts'
 import { createSignUpRecorder } from '../features/analytics/server.ts'
 import { createBillingDeletionSteps } from '../features/billing/deletion.server.ts'
 import { assertSignupAdmission } from '../features/growth/service.ts'
+import { createPluginAiWorkflow } from '../features/plugins/extensions.ts'
+import { nodePlugins } from '../plugins.node.gen.ts'
 import { createWebAuth } from '../server/auth.ts'
 import { createQueueAuthEmailSender, userLocaleByEmail } from '../server/auth-email.ts'
 import type { WebRuntime } from '../server/runtime.ts'
 import { templateConfig } from '../server/template-config.ts'
-import { createNodeMediaWorkflowClient } from './media-workflow.ts'
 import type { NodeWebObserver } from './observer-context.ts'
 
 function unavailable(): never {
@@ -238,18 +239,11 @@ export async function createNodeWebProcess(
           },
           workersAi: { available: false },
           background,
-          workflow:
-            storage &&
-            (templateConfig.ai.image || templateConfig.ai.video) &&
-            env.MEDIA_WEBHOOK_SECRET
-              ? {
-                  available: true,
-                  value: createNodeMediaWorkflowClient({
-                    jobsUrl: jobsConfig.JOBS_URL,
-                    secret: env.MEDIA_WEBHOOK_SECRET,
-                  }),
-                }
-              : { available: false },
+          workflow: createPluginAiWorkflow(nodePlugins, {
+            env,
+            storage,
+            jobsUrl: jobsConfig.JOBS_URL,
+          }),
           downloadFile: storage
             ? { available: true, value: (input) => getFileDownload(db, storage, input) }
             : { available: false },

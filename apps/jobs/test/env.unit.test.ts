@@ -1,8 +1,15 @@
 import { EnvValidationError } from '@saas/config'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { requireEnv } from '../src/env.ts'
 
-const valid = { HYPERDRIVE: { connectionString: 'fixture' } }
+vi.mock('../src/plugins.gen.ts', () => ({
+  default: [{ id: 'fixture', bindings: [{ name: 'WORKFLOW', kind: 'workflow' }] }],
+}))
+
+const valid = {
+  HYPERDRIVE: { connectionString: 'fixture' },
+  WORKFLOW: { create() {}, get() {} },
+}
 
 describe('jobs fault environment gate', () => {
   it('所有 jobs 事件入口拒绝不安全故障配置，错误只含变量名', () => {

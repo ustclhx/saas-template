@@ -5,7 +5,10 @@
     "jsx": "react-jsx",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     // 与 tsconfig.json 相同：插件代码经 @web/* 访问 web 核心模块
-    "paths": { "@web/*": ["./src/*"] }
+    "paths": {
+      "content-collections": ["./.content-collections/generated"],
+      "@web/*": ["./src/*"]
+    }
   },
   "include": [
     "test",

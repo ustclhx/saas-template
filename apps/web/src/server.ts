@@ -17,7 +17,6 @@ import {
   createCloudflareQueue,
   createCloudflareRateLimiter,
   createCloudflareRequestMetadata,
-  createCloudflareWorkflow,
 } from '@saas/platform/cloudflare'
 import { AppError, toErrorResponse } from '@saas/shared'
 import { log, withLogContext } from '@saas/shared/log'
@@ -37,7 +36,7 @@ import { createBillingDeletionSteps } from './features/billing/deletion.server.t
 import { assertSignupAdmission } from './features/growth/service.ts'
 import { gateLocaleRequest } from './features/i18n/gate.ts'
 import { localizeRequest } from './features/i18n/request.server.ts'
-import { runPluginFetch } from './features/plugins/extensions.ts'
+import { createPluginAiWorkflow, runPluginFetch } from './features/plugins/extensions.ts'
 import workerPlugins from './plugins.worker.gen.ts'
 import { withSecurityNonce } from './security-context.server.ts'
 import { withSecurityHeaders, withStaticSecurityHeaders } from './security-headers.ts'
@@ -312,9 +311,7 @@ function createCloudflareWebRuntime(
           ? { available: true, value: { run: (model, params) => workersAi.run(model, params) } }
           : { available: false },
         background: createCloudflareBackgroundTasks(ctx),
-        workflow: env.AI_MEDIA_WORKFLOW
-          ? { available: true, value: createCloudflareWorkflow(env.AI_MEDIA_WORKFLOW) }
-          : { available: false },
+        workflow: createPluginAiWorkflow(workerPlugins, env),
         downloadFile: {
           available: true,
           value: (input) => getFileDownload(databases.business(), files, input),

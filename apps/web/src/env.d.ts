@@ -15,8 +15,6 @@ declare namespace Cloudflare {
     HYPERDRIVE: Hyperdrive
     /** 带查询缓存（app-db-cached）：可容忍短暂旧数据的读 */
     HYPERDRIVE_CACHED: Hyperdrive
-    /** 定义在 apps/jobs 的 AiMediaWorkflow（script_name: jobs）；参数类型在 P4 移入 packages/ai */
-    AI_MEDIA_WORKFLOW: Workflow<{ taskId: string }>
     /** 邮件队列 producer，apps/jobs 消费（消息格式见 @saas/email/queue） */
     EVENTS_QUEUE: Queue<
       | import('@saas/billing').BillingQueueMessage

@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from 'node:util'
+import templateConfig from '../../../../template.config.ts'
 import { FAULT_MODELS, type FaultModelDefinition } from './fault-definitions.ts'
 import { withFaultModels } from './fault-models.ts'
 import { prepareFaultReadiness } from './fault-readiness.ts'
@@ -103,6 +104,7 @@ test('harden-ai-text：同一空间窗口内前 3 次无正文失败全退、第
 test('harden-ai-media：已开始任务首次取消免费、再次取消全价、排队中取消免费 @harden-ai-media', async ({
   page,
 }) => {
+  test.skip(!templateConfig.plugins.media, 'The media plugin is disabled')
   test.setTimeout(30 * 60_000)
   const stalled = fault('workers-timeout')
   if (stalled.pricing.mode !== 'per_call') throw new Error('Unexpected stalled pricing')
@@ -151,6 +153,7 @@ test('harden-ai-media：已开始任务首次取消免费、再次取消全价�
 })
 
 test('harden-ai-media：不确定提交保留预扣并进入提交确认中 @harden-ai-media', async ({ page }) => {
+  test.skip(!templateConfig.plugins.media, 'The media plugin is disabled')
   // staging 上这是一次真实 fal 图片提交（约 1 张 512² flux/schnell），默认不跑，需显式开启。
   test.skip(
     !local && process.env.STAGING_HARDEN_AI_UNCERTAIN !== '1',

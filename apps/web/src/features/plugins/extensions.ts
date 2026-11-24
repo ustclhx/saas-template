@@ -1,4 +1,5 @@
 // 把生成文件中的插件入口合并到核心注册表；纯函数，便于单元测试。
+import type { WebAiRuntime } from '../../server/runtime.ts'
 import type { ToolRenderer } from '../ai/tool-renderers.ts'
 import type { AppNavGroupId, AppNavItem } from '../app-shell/nav.ts'
 import type {
@@ -50,4 +51,18 @@ export async function runPluginFetch<Args extends unknown[]>(
     if (response) return response
   }
   return undefined
+}
+
+/** 装配 AI 工作流能力；按生成顺序采用首个可用的实现。 */
+export function createPluginAiWorkflow<Args extends unknown[]>(
+  plugins: readonly {
+    readonly entry?: { createAiWorkflow?: (...args: Args) => WebAiRuntime['workflow'] }
+  }[],
+  ...args: Args
+): WebAiRuntime['workflow'] {
+  for (const { entry } of plugins) {
+    const workflow = entry?.createAiWorkflow?.(...args)
+    if (workflow?.available) return workflow
+  }
+  return { available: false }
 }

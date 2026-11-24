@@ -1,9 +1,9 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import { plausibleSite } from './analytics.ts'
+import { getMediaProviders } from './media.ts'
 import {
   defaultBannedAnchors,
   defineTemplateConfig,
-  type MediaProviderId,
   type PaymentProvider,
   type PricingMode,
   resolveSeoLinking,
@@ -346,7 +346,6 @@ describe('defineTemplateConfig', () => {
       text: templateConfigDefaults.ai.text,
       image: true,
       video: false,
-      mediaProviders: ['fal', 'workers-ai'],
       defaultPricingMode: { text: 'token', image: 'per_call', video: 'per_unit' },
     })
   })
@@ -368,11 +367,19 @@ describe('defineTemplateConfig', () => {
     const config = defineTemplateConfig({
       app,
       auth: { oauth: ['github'] },
-      ai: { mediaProviders: [] },
+      plugins: { media: { providers: [] } },
     })
-    expect(config.ai.mediaProviders).toEqual([])
+    expect(getMediaProviders(config)).toEqual([])
     expect(config.auth.oauth).toEqual(['github'])
     expect(config.auth.emailPassword).toBe(true)
+  })
+
+  it('uses default providers only when the media plugin is enabled', () => {
+    expect(getMediaProviders(defineTemplateConfig({ app }))).toEqual([])
+    expect(getMediaProviders(defineTemplateConfig({ app, plugins: { media: {} } }))).toEqual([
+      'fal',
+      'workers-ai',
+    ])
   })
 
   it('defaults defaultLocale to the first locale', () => {
@@ -508,7 +515,6 @@ describe('defineTemplateConfig types', () => {
     expectTypeOf(config).toEqualTypeOf<TemplateConfig<'en' | 'zh'>>()
     expectTypeOf(config.billing.overage.maxRatio).toEqualTypeOf<number>()
     expectTypeOf(config.ai.defaultPricingMode.video).toEqualTypeOf<PricingMode>()
-    expectTypeOf(config.ai.mediaProviders).toEqualTypeOf<readonly MediaProviderId[]>()
     expectTypeOf(config.billing.providers).toEqualTypeOf<readonly PaymentProvider[]>()
   })
 
@@ -518,7 +524,7 @@ describe('defineTemplateConfig types', () => {
       // @ts-expect-error 未定义的计费方式
       defineTemplateConfig({ app, ai: { defaultPricingMode: { video: 'per_minute' } } }),
       // @ts-expect-error 未支持的媒体服务商
-      defineTemplateConfig({ app, ai: { mediaProviders: ['replicate'] } }),
+      defineTemplateConfig({ app, plugins: { media: { providers: ['replicate'] } } }),
       // @ts-expect-error 未知的 OAuth 登录方式
       defineTemplateConfig({ app, auth: { oauth: ['google', 'facebook'] } }),
       // @ts-expect-error 未知的支付方式

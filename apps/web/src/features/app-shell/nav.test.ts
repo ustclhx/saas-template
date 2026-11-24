@@ -27,9 +27,9 @@ describe('registerAppNav', () => {
   it('项目注册「工具」分组及两个条目后按分组返回', () => {
     registerAppNav({
       group: 'tools',
-      items: [item('chat', '/app/$slug/chat'), item('media', '/app/$slug/media/new')],
+      items: [item('chat', '/app/$slug/chat'), item('usage', '/app/$slug/usage')],
     })
-    expect(ids()).toEqual([['tools', ['chat', 'media']]])
+    expect(ids()).toEqual([['tools', ['chat', 'usage']]])
   })
 
   it('分组按 工具 / 内容 / 设置 固定顺序，与注册先后无关；空分组不返回', () => {
@@ -85,13 +85,9 @@ describe('当前项高亮', () => {
   function groups() {
     registerAppNav({
       group: 'tools',
-      items: [
-        item('home', '/app/$slug', { exact: true }),
-        item('chat', '/app/$slug/chat'),
-        item('media', '/app/$slug/media/new'),
-      ],
+      items: [item('home', '/app/$slug', { exact: true }), item('chat', '/app/$slug/chat')],
     })
-    registerAppNav({ group: 'content', items: [item('tasks', '/app/$slug/tasks')] })
+    registerAppNav({ group: 'content', items: [item('settings', '/app/$slug/settings')] })
     return resolveAppNav(owner)
   }
 
@@ -99,7 +95,7 @@ describe('当前项高亮', () => {
     const nav = groups()
     expect(activeAppNavId(nav, '/app/acme/chat', 'acme')).toBe('chat')
     expect(activeAppNavId(nav, '/app/acme/chat/0193-uuid', 'acme')).toBe('chat')
-    expect(activeAppNavId(nav, '/app/acme/tasks/', 'acme')).toBe('tasks')
+    expect(activeAppNavId(nav, '/app/acme/settings/', 'acme')).toBe('settings')
   })
 
   it('exact 条目只在完全相同时高亮，前缀相同的其他路径不算', () => {

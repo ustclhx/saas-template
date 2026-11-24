@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { getMediaProviders } from '@saas/config'
 // 复用门禁脚本的 JSONC 解析（容忍注释与尾逗号）
 import { parseJsonc } from '../../../scripts/production/check-wrangler-envs.mjs'
 import templateConfig from '../../../template.config.ts'
@@ -8,8 +9,9 @@ import templateConfig from '../../../template.config.ts'
  * 且 web 的 wrangler.jsonc 声明了 `ai` 绑定（运行时才能调用）。任一缺失时返回跳过原因，否则返回 null。
  */
 export function workersAiSkipReason(): string | null {
-  if (!templateConfig.ai.mediaProviders.includes('workers-ai'))
-    return 'ai.mediaProviders 未包含 workers-ai'
+  if (!templateConfig.plugins.media) return 'The media plugin is disabled'
+  if (!getMediaProviders(templateConfig).includes('workers-ai'))
+    return 'plugins.media.providers 未包含 workers-ai'
   const wrangler = (parseJsonc as (text: string) => { ai?: { binding?: string } })(
     readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8'),
   )

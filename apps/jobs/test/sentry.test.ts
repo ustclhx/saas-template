@@ -7,9 +7,17 @@ import { env, type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers'
 import { NonRetryableError } from '@saas/platform'
 import { instrumentWorkflowWithSentry } from '@sentry/cloudflare'
 import { afterEach, expect, it, vi } from 'vitest'
-import worker, { AiMediaWorkflow } from '../src/index.ts'
+import * as mediaRunner from '../../../plugins/media/src/jobs/media-runner.ts'
+import templateConfig from '../../../template.config.ts'
+import * as jobsModule from '../src/index.ts'
 import { sentryOptions } from '../src/sentry.ts'
-import * as mediaRunner from '../src/workflows/media-runner.ts'
+
+const worker = jobsModule.default
+const AiMediaWorkflow = Reflect.get(
+  jobsModule,
+  'AiMediaWorkflow',
+) as typeof import('../../../plugins/media/src/jobs/workflow.ts').AiMediaWorkflow
+const workflowTest = it.runIf(Boolean(templateConfig.plugins.media))
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -49,7 +57,7 @@ function workflowFixture() {
   return { send, ctx, workflow, event }
 }
 
-it.each(['run', 'runner'] as const)(
+workflowTest.each(['run', 'runner'] as const)(
   'reports a step failure once through the SDK when caught by %s',
   async (caughtBy) => {
     const { send, ctx, workflow, event } = workflowFixture()
@@ -101,7 +109,7 @@ it.each(['run', 'runner'] as const)(
   },
 )
 
-it('still reports a run error after a handled step failure', async () => {
+workflowTest('still reports a run error after a handled step failure', async () => {
   const { send, ctx, workflow, event } = workflowFixture()
   const outside = new Error('fixture outside step')
   const step = {
@@ -121,7 +129,7 @@ it('still reports a run error after a handled step failure', async () => {
   expect(sentryEvents(send).at(-1)).toMatchObject({ tags: { requestId: 'workflow-request' } })
 })
 
-it('reports a step engine rejection when its callback never failed', async () => {
+workflowTest('reports a step engine rejection when its callback never failed', async () => {
   const { send, ctx, workflow, event } = workflowFixture()
   const engineError = new Error('fixture engine validation failure')
   vi.spyOn(mediaRunner, 'runMediaTask').mockImplementationOnce(async (_taskId, step) =>
@@ -139,7 +147,7 @@ it('reports a step engine rejection when its callback never failed', async () =>
   expect(sentryEvents(send)[0].exception.values[0].value).toBe(engineError.message)
 })
 
-it.each([Error, NonRetryableError])(
+workflowTest.each([Error, NonRetryableError])(
   'reports the original %s on early step termination without SDK capture',
   async (ErrorType) => {
     const { send, ctx, workflow, event } = workflowFixture()
@@ -188,7 +196,7 @@ it.each([Error, NonRetryableError])(
   },
 )
 
-it.each([false, true])(
+workflowTest.each([false, true])(
   'clears a failed attempt after retry success (later engine rejection: %s)',
   async (engineRejects) => {
     const { send, ctx, workflow, event } = workflowFixture()
@@ -219,7 +227,7 @@ it.each([false, true])(
   },
 )
 
-it('associates concurrent engine rejections with their own step errors', async () => {
+workflowTest('associates concurrent engine rejections with their own step errors', async () => {
   const { send, ctx, workflow, event } = workflowFixture()
   const originals = [new Error('fixture first step'), new Error('fixture second step')]
   let releaseFirst!: () => void
@@ -260,7 +268,7 @@ it('associates concurrent engine rejections with their own step errors', async (
   ).toEqual(originals.map((error) => error.message).sort())
 })
 
-it('keeps original error associations isolated between runs', async () => {
+workflowTest('keeps original error associations isolated between runs', async () => {
   const { send, ctx, workflow, event } = workflowFixture()
   const original = new Error('fixture first run failure')
   const wrapped = new Error('fixture engine error reused across runs')

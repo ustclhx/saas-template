@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { parseEnv } from 'node:util'
 import { cloudflare } from '@cloudflare/vite-plugin'
 import { defineConfig, type Plugin } from 'vite'
+import templateConfig from '../../../../template.config.ts'
 import { sitePlugins } from '../../scripts/vite-shared.ts'
 
 const root = new URL('../../../../', import.meta.url)
@@ -15,7 +16,9 @@ if (
   throw new Error('Local fault Vite requires an isolated loopback database')
 for (const binding of ['HYPERDRIVE', 'HYPERDRIVE_CACHED'])
   process.env[`CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_${binding}`] = database.toString()
-const helper = new URL('./fault-local-media.ts', import.meta.url).pathname
+const runtimeHelper = new URL('./fault-local-runtime.ts', import.meta.url).pathname
+const mediaHelper = new URL('./fault-local-media.ts', import.meta.url).pathname
+const mediaEnabled = Boolean(templateConfig.plugins.media)
 function replaceOnce(code: string, needle: string, replacement: string) {
   if (code.split(needle).length !== 2) throw new Error(`Local fault transform mismatch: ${needle}`)
   return code.replace(needle, replacement)
@@ -29,19 +32,30 @@ const fixture: Plugin = {
   },
   transform(code, id) {
     if (this.environment.name !== 'ssr') return
-    if (id.endsWith('/src/server/runtime.ts'))
-      return `import { localWebRuntime } from ${JSON.stringify(helper)}\n${replaceOnce(code, '  return runtime\n}', '  return localWebRuntime(runtime)\n}')}`
+    if (id.endsWith('/src/server/runtime.ts')) {
+      const mediaImport = mediaEnabled
+        ? `import { localMediaAi } from ${JSON.stringify(mediaHelper)}\n`
+        : ''
+      const runtime = mediaEnabled
+        ? 'localWebRuntime(runtime, localMediaAi)'
+        : 'localWebRuntime(runtime)'
+      return `import { localWebRuntime } from ${JSON.stringify(runtimeHelper)}\n${mediaImport}${replaceOnce(code, '  return runtime\n}', `  return ${runtime}\n}`)}`
+    }
+    // 启动校验与 Sentry 包装读取的 bindings 也清空，.dev.vars 无法恢复真实外部凭据。
+    if (id.endsWith('/src/server.ts')) {
+      const entry = 'export default {\n  fetch(request, env, ctx) {'
+      return `import { localBindings } from ${JSON.stringify(runtimeHelper)}\n${replaceOnce(code, entry, `${entry}\n    env = localBindings(env)`)}`
+    }
+
+    if (!mediaEnabled) return
     if (id.endsWith('/src/features/ai/runtime.ts')) {
       const original = replaceOnce(
         code,
         'export function getAiHttpDeps()',
         'function realAiHttpDeps()',
       )
-      return `import { localHttpDeps } from ${JSON.stringify(helper)}\n${original}\nexport function getAiHttpDeps() { return localHttpDeps(realAiHttpDeps()) }`
+      return `import { localHttpDeps } from ${JSON.stringify(mediaHelper)}\n${original}\nexport function getAiHttpDeps() { return localHttpDeps(realAiHttpDeps()) }`
     }
-    // 启动校验与 Sentry 包装读取的 bindings 也清空，.dev.vars 无法恢复真实外部凭据。
-    if (id.endsWith('/src/server.ts'))
-      return `import { localBindings } from ${JSON.stringify(helper)}\n${replaceOnce(code, '  fetch(request, env, ctx) {', '  fetch(request, env, ctx) {\n    env = localBindings(env)')}`
     if (id.endsWith('/src/routes/api/files/$id.ts'))
       return replaceOnce(
         code,

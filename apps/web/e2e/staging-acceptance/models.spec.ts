@@ -1,3 +1,4 @@
+import templateConfig from '../../../../template.config.ts'
 import {
   deepseekCall,
   deepseekToken,
@@ -15,6 +16,7 @@ test('configure or verify text acceptance models through the admin UI', async ({
 })
 
 test('configure or verify media acceptance models through the admin UI', async ({ page }) => {
+  test.skip(!templateConfig.plugins.media, 'The media plugin is disabled')
   requireEnv(['NEON_READONLY_URL'])
   await login(page, 'admin')
   await ensureAcceptanceModels(page, [workersImage, falImage, falVideo])

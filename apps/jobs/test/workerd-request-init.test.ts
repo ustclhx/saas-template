@@ -1,7 +1,10 @@
 import { createFalMediaProvider, FalProviderError } from '@saas/ai'
 import { createCloudflareMediaCopier } from '@saas/storage/cloudflare'
 import { afterEach, expect, it, vi } from 'vitest'
+import templateConfig from '../../../template.config.ts'
 import { sendOperationsChannel } from '../src/notifications/operations.ts'
+
+const mediaTest = it.runIf(Boolean(templateConfig.plugins.media))
 
 // 普通 mock fetch 不会执行 workerd 的 RequestInit 校验；这里先用真实 Request 构造一次，
 // 让运行时拒绝的选项（如 redirect: 'error'）在测试中同样失败。
@@ -15,11 +18,11 @@ function validatingFetch(respond: () => Response) {
 afterEach(() => vi.restoreAllMocks())
 
 it('workerd 拒绝 redirect: error，外部请求必须改用 manual', () => {
-  expect(() => new Request('https://queue.fal.run/x', { redirect: 'error' })).toThrow(TypeError)
-  expect(() => new Request('https://queue.fal.run/x', { redirect: 'manual' })).not.toThrow()
+  expect(() => new Request('https://example.test/x', { redirect: 'error' })).toThrow(TypeError)
+  expect(() => new Request('https://example.test/x', { redirect: 'manual' })).not.toThrow()
 })
 
-it('fal 提交与状态查询的 RequestInit 可在 workerd 中发出，3xx 视为明确拒绝', async () => {
+mediaTest('fal 提交与状态查询的 RequestInit 可在 workerd 中发出，3xx 视为明确拒绝', async () => {
   const modelId = 'fal-ai/flux/schnell'
   const fetch = validatingFetch(() => Response.json({ request_id: 'req-1', status: 'IN_QUEUE' }))
   const provider = createFalMediaProvider({ apiKey: 'test-placeholder', modelId, fetch })
@@ -45,7 +48,7 @@ it('fal 提交与状态查询的 RequestInit 可在 workerd 中发出，3xx 视�
   })
 })
 
-it('fal 传输失败保留底层异常类名，供 submit_uncertain 日志定位', async () => {
+mediaTest('fal 传输失败保留底层异常类名，供 submit_uncertain 日志定位', async () => {
   const provider = createFalMediaProvider({
     apiKey: 'test-placeholder',
     modelId: 'fal-ai/flux/schnell',
@@ -62,7 +65,7 @@ it('fal 传输失败保留底层异常类名，供 submit_uncertain 日志定位
   })
 })
 
-it('Cloudflare 媒体转存与运维通知的 RequestInit 可在 workerd 中发出', async () => {
+mediaTest('Cloudflare 媒体转存的 RequestInit 可在 workerd 中发出', async () => {
   const put = vi.fn(async (_key: string, body: ReadableStream) => {
     await new Response(body).arrayBuffer()
     return null
@@ -91,7 +94,9 @@ it('Cloudflare 媒体转存与运维通知的 RequestInit 可在 workerd 中发�
       },
     ),
   ).resolves.toEqual({ mime: 'image/png', size: 3 })
+})
 
+it('运维通知的 RequestInit 可在 workerd 中发出', async () => {
   vi.spyOn(globalThis, 'fetch').mockImplementation(
     validatingFetch(() => new Response(null, { status: 204 })),
   )

@@ -5,7 +5,7 @@ import {
   PricingError,
   parseAcceptanceFault,
 } from '@saas/ai'
-import { isAiFaultInjectionEnabled } from '@saas/config'
+import { getMediaProviders, isAiFaultInjectionEnabled } from '@saas/config'
 import { aiModel } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
@@ -146,7 +146,7 @@ export const getAdminModels = createServerFn({ method: 'GET' })
         paramsSchema: row.paramsSchema as { [key: string]: Json } | null,
       })),
       mediaProviders: availableMediaProviders(
-        templateConfig.ai.mediaProviders,
+        getMediaProviders(templateConfig),
         workersAiAvailable(),
       ),
       defaults: Object.fromEntries(kinds.map((kind) => [kind, defaultPricing(kind, modes)])),
@@ -162,7 +162,7 @@ export const saveAdminModel = createServerFn({ method: 'POST' })
         assertModelProviderEnabled(
           data.kind,
           data.provider,
-          templateConfig.ai.mediaProviders,
+          getMediaProviders(templateConfig),
           workersAiAvailable(),
         )
         const paramsSchema = parseAdminParamsSchema(data.kind, data.paramsSchema)
@@ -227,7 +227,7 @@ export const setAdminModelEnabled = createServerFn({ method: 'POST' })
             assertModelProviderEnabled(
               before.kind,
               before.provider,
-              templateConfig.ai.mediaProviders,
+              getMediaProviders(templateConfig),
               workersAiAvailable(),
             )
           }
@@ -266,7 +266,7 @@ export const copyAdminModel = createServerFn({ method: 'POST' })
         assertModelProviderEnabled(
           source.kind,
           source.provider,
-          templateConfig.ai.mediaProviders,
+          getMediaProviders(templateConfig),
           workersAiAvailable(),
         )
         const sourceFault = assertAdminFaultConfig(source)

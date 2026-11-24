@@ -66,7 +66,10 @@ describe('resolvePlugins', () => {
   it('rejects a config section that fails the plugin schema', () => {
     expect(
       issuesOf(() =>
-        resolvePlugins(config({ plugins: { media: { providers: ['openai'] } } }), manifests),
+        resolvePlugins(
+          config({ plugins: { media: { providers: ['openai' as never] } } }),
+          manifests,
+        ),
       ),
     ).toEqual([expect.stringMatching(/^plugins\.media\.providers\.0: /)])
     expect(

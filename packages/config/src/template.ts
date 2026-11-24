@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { MediaPluginConfig } from './media.ts'
 import type { PluginConfigSection } from './plugins.ts'
 
 /**
@@ -12,7 +13,6 @@ export type PaymentProvider = 'stripe' | 'paypal'
 /** 'per_call' 按次 | 'token' 按 token | 'per_unit' 按张/秒 */
 export type PricingMode = 'per_call' | 'token' | 'per_unit'
 export type AiModality = 'text' | 'image' | 'video'
-export type MediaProviderId = 'fal' | 'workers-ai'
 
 export type DefaultLocale = 'en' | 'zh'
 
@@ -347,8 +347,6 @@ export interface TemplateConfig<L extends string = string> {
     readonly text: TextConfig
     readonly image: boolean
     readonly video: boolean
-    /** 启用的媒体服务商；凭据与绑定仍由运行环境提供 */
-    readonly mediaProviders: readonly MediaProviderId[]
     /** 新建模型时的默认计费方式，后台可逐个模型修改 */
     readonly defaultPricingMode: { readonly [M in AiModality]: PricingMode }
   }
@@ -356,7 +354,9 @@ export interface TemplateConfig<L extends string = string> {
    * 启用的构建期插件：键为插件 id，值为该插件的配置段（openspec add-plugin-system）。
    * 未出现的插件不进入路由树、服务端与 jobs 入口；配置段由插件清单的 schema 在生成注册文件时校验。
    */
-  readonly plugins: Readonly<Record<string, PluginConfigSection>>
+  readonly plugins: Readonly<Record<string, PluginConfigSection>> & {
+    readonly media?: MediaPluginConfig
+  }
   readonly features: {
     /**
      * 产品漏斗的唯一真相源，单选避免多套并行（docs/analytics.md）。
@@ -509,7 +509,6 @@ export const templateConfigDefaults = {
     },
     image: true,
     video: true,
-    mediaProviders: ['fal', 'workers-ai'],
     defaultPricingMode: { text: 'token', image: 'per_call', video: 'per_call' },
   },
   plugins: {},

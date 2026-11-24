@@ -346,11 +346,15 @@ export async function runFreeFailureGroup(
 
 // ---------------------------------------------------------------- 媒体取消（ai-media-tasks / D2）
 
-const mediaMessages = JSON.parse(
-  readFileSync(new URL('../../messages/en/ai-media-tasks.json', import.meta.url), 'utf8'),
-) as Record<string, string | [{ match: Record<string, string> }]>
+let mediaMessages: Record<string, string | [{ match: Record<string, string> }]> | undefined
 // 文案可能是 inlang 复数变体（`creditsPlural=one/other`），按英文复数规则选取后再代入数值。
 const copy = (key: string, credits?: number) => {
+  mediaMessages ??= JSON.parse(
+    readFileSync(
+      new URL('../../../../plugins/media/messages/en/ai-media-tasks.json', import.meta.url),
+      'utf8',
+    ),
+  ) as NonNullable<typeof mediaMessages>
   const entry = mediaMessages[key]
   const value =
     typeof entry === 'string'

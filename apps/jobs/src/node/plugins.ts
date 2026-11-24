@@ -1,10 +1,10 @@
-// Node（selfhost）jobs 侧插件扩展点；两目标共用部分见 ../plugins/contract.ts。
+// Node（selfhost）jobs 侧插件扩展点；两目标共用部分见 ../plugins/module.ts。
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { TemplateConfig } from '@saas/config'
 import type { NodeEnv, NodeStorageConfig } from '@saas/config/node'
 import type { createNodeWorkflow } from '@saas/platform/node'
-import type { JobObserver } from '../observer.ts'
-import type { JobsPluginModule } from '../plugins/contract.ts'
+import type { JobObserver } from '@saas/shared/log'
+import type { JobsPluginModule } from '../plugins/module.ts'
 
 /** Node 持久任务装配所需的资源；在 engine.register 内调用 */
 export interface NodePluginWorkflowContext {

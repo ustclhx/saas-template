@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { Page } from '@playwright/test'
-import type { MediaTask } from '../../src/features/ai-media/tasks-client.ts'
+import type { MediaTask } from '../../../../plugins/media/src/web/ai-media/tasks-client.ts'
 import { evidence, expect, query, reconcile, runId, sqlLiteral } from './support.ts'
 
 export type MediaModel = {

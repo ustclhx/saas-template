@@ -24,7 +24,7 @@ import {
   type MediaRunnerDeps,
   runMediaTask,
   submitMediaOnce,
-} from '../src/workflows/media-runner.ts'
+} from '../../../plugins/media/src/jobs/media-runner.ts'
 
 const db = createDb(env.HYPERDRIVE)
 const sql = db.$client
@@ -104,7 +104,7 @@ function harness(
   options: {
     replay?: string[]
     onWait?: () => Promise<void>
-    onSleep?: (duration: number, now: number) => Promise<void>
+    onSleep?: (duration: number, now: number) => number | Promise<void>
     start?: number
   } = {},
 ) {
@@ -163,8 +163,8 @@ function harness(
     },
     async sleep(_name: string, duration: number) {
       sleeps.push(duration)
-      await options.onSleep?.(duration, now)
-      now += duration
+      const elapsed = await options.onSleep?.(duration, now)
+      now += elapsed ?? duration
     },
   } as unknown as WorkflowStep
   return { deps, step, names, sleeps, waits, fetcher, values, now: () => now }
@@ -779,11 +779,15 @@ it('fal early barrier observes a committed callback before normal checking witho
 it('fal early barrier fails when no callback is committed and never falls back to successful polling', async () => {
   const f = await faultFixture('fal-callback-early')
   const fake = faultProvider()
-  const h = harness(fake, { start: f.start })
+  const h = harness(fake, {
+    start: f.start,
+    // 模拟第一次唤醒延迟到期限前一秒，保留真实十分钟策略和最后一次探测。
+    onSleep: (duration, now) => (now === f.start ? f.fault.barrierMs - 1_000 : duration),
+  })
   enableFaults(h)
   await runMediaTask(f.taskId, h.step, h.deps)
   expect(h.now()).toBe(f.start + 10 * 60_000)
-  expect(h.sleeps.reduce((total, duration) => total + duration, 0)).toBe(10 * 60_000)
+  expect(h.sleeps).toEqual([2_000, 1_000])
   expect(fake.submit).toHaveBeenCalledTimes(1)
   expect(fake.getStatus).not.toHaveBeenCalled()
   expect(h.waits).toEqual([])

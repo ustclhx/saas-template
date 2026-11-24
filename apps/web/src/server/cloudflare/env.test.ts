@@ -1,6 +1,10 @@
 import { withLogContext } from '@saas/shared/log'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { templateConfig } from '../template-config.ts'
 import { checkEnv } from './env.ts'
+
+// Node 单元测试只校验清单声明的绑定形状，不装配 Workerd Workflow adapter。
+vi.mock('@saas/platform/cloudflare', () => ({ createCloudflareWorkflow: vi.fn() }))
 
 // 校验用例固定要求 OAuth 与 Turnstile，生成项目关闭登录方式时仍覆盖缺失变量。
 vi.mock('../template-config.ts', async (original) => {
@@ -8,7 +12,6 @@ vi.mock('../template-config.ts', async (original) => {
   return {
     templateConfig: {
       ...templateConfig,
-      ai: { ...templateConfig.ai, image: true, video: true },
       auth: { ...templateConfig.auth, oauth: ['google', 'github'], turnstile: true },
       features: { ...templateConfig.features, publicApi: false },
     },
@@ -87,18 +90,30 @@ describe('checkEnv（请求入口的环境校验）', () => {
     expect(logged).not.toContain(SECRET)
   })
 
-  it('缺少 Workflow / Queue 绑定时返回 500 并列出绑定名', () => {
+  it('Queue 绑定形状非法时返回 500 并列出绑定名', () => {
     const error = captureErrors()
-    const { AI_MEDIA_WORKFLOW: _, ...env } = completeEnv()
-    const response = checkEnv({ ...env, EMAIL_QUEUE: {} })
-    expect(response?.status).toBe(500)
-    expect(JSON.parse(error.mock.calls.flat().join(' '))).toEqual({
-      level: 'error',
-      event: 'env.invalid',
-      missing: ['AI_MEDIA_WORKFLOW'],
+    expect(checkEnv({ ...completeEnv(), EMAIL_QUEUE: {} })?.status).toBe(500)
+    expect(JSON.parse(error.mock.calls.flat().join(' '))).toMatchObject({
+      missing: [],
       invalid: ['EMAIL_QUEUE'],
     })
   })
+
+  it.skipIf(!templateConfig.plugins.media)(
+    '媒体清单要求 Workflow 绑定，可选 AI 绑定可以省略',
+    () => {
+      const error = captureErrors()
+      const { AI_MEDIA_WORKFLOW: _, ...env } = completeEnv()
+      const response = checkEnv(env)
+      expect(response?.status).toBe(500)
+      expect(JSON.parse(error.mock.calls.flat().join(' '))).toEqual({
+        level: 'error',
+        event: 'env.invalid',
+        missing: ['AI_MEDIA_WORKFLOW'],
+        invalid: [],
+      })
+    },
+  )
 
   it('缺少 KV / Rate Limiting 绑定与认证变量时一并列出（按模板配置要求）', () => {
     const error = captureErrors()

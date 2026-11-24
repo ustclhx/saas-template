@@ -30,6 +30,8 @@ export interface AppNavItem {
   search?: Record<string, unknown>
   /** 分组内排序，数值小的在前；相同时按注册先后。@default 100 */
   order?: number
+  /** 顶栏中位于设置链接之前的排序；未声明时放在默认链接之后。 */
+  topbarOrder?: number
   /** 只在路径完全相同时高亮（工作台首页这类父路径用） */
   exact?: boolean
   /** 可见性：模板开关与角色权限；省略时始终可见 */

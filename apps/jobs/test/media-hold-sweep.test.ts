@@ -7,6 +7,7 @@ import {
   settleMediaTask,
 } from '@saas/ai'
 import { runHoldSweep } from '@saas/billing'
+import { defineTemplateConfig } from '@saas/config'
 import { getCreditBalance, grant, hold } from '@saas/credits'
 import {
   aiTask,
@@ -21,14 +22,24 @@ import {
 import type { WorkflowStep } from '@saas/platform'
 import { sql as query } from 'drizzle-orm'
 import { afterAll, afterEach, expect, it, vi } from 'vitest'
-import { registerAiHoldSweepers } from '../src/ai.ts'
-import { type MediaRunnerDeps, runMediaTask } from '../src/workflows/media-runner.ts'
+import { holdSweepers } from '../../../plugins/media/src/jobs/hold-sweep.ts'
+import { type MediaRunnerDeps, runMediaTask } from '../../../plugins/media/src/jobs/media-runner.ts'
+import { registerPluginHoldSweepers } from '../src/plugins/register.ts'
 
 const db = createDb(env.HYPERDRIVE)
 const sql = db.$client
 const id = () => crypto.randomUUID()
 const workspaces: string[] = []
-const unregister = registerAiHoldSweepers({ text: false, media: true })
+const template = defineTemplateConfig({
+  app: {
+    name: 'Media hold sweep fixture',
+    url: 'https://media-sweep.example.test',
+    supportEmail: 'support@media-sweep.example.test',
+  },
+  ai: { image: true },
+  plugins: { media: {} },
+})
+const unregister = registerPluginHoldSweepers([{ holdSweepers }], template)
 afterAll(unregister)
 
 async function fixture() {

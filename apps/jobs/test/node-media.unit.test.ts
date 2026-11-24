@@ -8,7 +8,10 @@ import {
   createNodeMediaHandler,
   createNodeMediaRunnerDeps,
   type NodeMediaWorkflowOptions,
-} from '../src/node/media.ts'
+} from '../../../plugins/media/src/node/media.ts'
+import templateConfig from '../../../template.config.ts'
+
+const mediaTest = it.runIf(Boolean(templateConfig.plugins.media))
 
 const mocks = vi.hoisted(() => ({
   storage: { delete: vi.fn(), head: vi.fn(), presignUpload: vi.fn(), presignDownload: vi.fn() },
@@ -34,7 +37,7 @@ vi.mock('@saas/storage', () => ({
   persistMediaOutputs: mocks.persist,
 }))
 vi.mock('@saas/entitlements', () => ({ getEntitlements: mocks.entitlements }))
-vi.mock('../src/workflows/media-runner.ts', () => ({ runMediaTask: mocks.runner }))
+vi.mock('../../../plugins/media/src/jobs/media-runner.ts', () => ({ runMediaTask: mocks.runner }))
 
 const db = {} as Database
 const task = {
@@ -52,7 +55,7 @@ const task = {
 } as unknown as AiTask
 const template = defineTemplateConfig({
   app: { name: 'fixture', url: 'https://example.test', supportEmail: 'support@example.test' },
-  ai: { mediaProviders: ['fal'] },
+  plugins: { media: { providers: ['fal'] } },
   billing: { pastDueGraceDays: 4 },
 })
 const options: NodeMediaWorkflowOptions = {
@@ -80,47 +83,53 @@ beforeEach(() => {
   mocks.persist.mockResolvedValue([])
 })
 
-it('resolves tenant file parameters without mutating the task snapshot and keeps provider allowlist', async () => {
-  const deps = createNodeMediaRunnerDeps(db, options)
-  expect(await deps.params(task)).toEqual({
-    prompt: 'fixture',
-    image_url: 'https://s3.example.test/signed',
-  })
-  expect(task.input.params).toEqual({ prompt: 'fixture', image_url: 'file-owned' })
-  expect(mocks.download).toHaveBeenCalledExactlyOnceWith(db, mocks.storage, {
-    workspaceId: task.workspaceId,
-    fileId: 'file-owned',
-  })
-  deps.provider(task)
-  expect(mocks.provider).toHaveBeenCalledExactlyOnceWith(options.providerEnv, task, ['fal'])
-  expect(deps).not.toHaveProperty('faultEnv')
-})
+mediaTest(
+  'resolves tenant file parameters without mutating the task snapshot and keeps provider allowlist',
+  async () => {
+    const deps = createNodeMediaRunnerDeps(db, options)
+    expect(await deps.params(task)).toEqual({
+      prompt: 'fixture',
+      image_url: 'https://s3.example.test/signed',
+    })
+    expect(task.input.params).toEqual({ prompt: 'fixture', image_url: 'file-owned' })
+    expect(mocks.download).toHaveBeenCalledExactlyOnceWith(db, mocks.storage, {
+      workspaceId: task.workspaceId,
+      fileId: 'file-owned',
+    })
+    deps.provider(task)
+    expect(mocks.provider).toHaveBeenCalledExactlyOnceWith(options.providerEnv, task, ['fal'])
+    expect(deps).not.toHaveProperty('faultEnv')
+  },
+)
 
-it('uses Node storage with the smaller snapshot/current quota and existing media security limits', async () => {
-  const deps = createNodeMediaRunnerDeps(db, options)
-  await deps.persist(task, result)
-  expect(mocks.createStorage).toHaveBeenCalledExactlyOnceWith(options.storage)
-  expect(mocks.createCopier).toHaveBeenCalledExactlyOnceWith(options.storage)
-  expect(mocks.entitlements).toHaveBeenCalledWith(db, task.workspaceId, { pastDueGraceDays: 4 })
-  expect(mocks.persist).toHaveBeenCalledWith({
-    db,
-    storage: mocks.storage,
-    copyOutput: mocks.copier,
-    task,
-    result,
-    limits: {
-      maxFileBytes: MEDIA_MAX_FILE_BYTES,
-      allowedHosts: ['fal.media', 'v3.fal.media', 'v3b.fal.media'],
-      allowedMimeTypes: MEDIA_OUTPUT_MIME_TYPES.image,
-      storageBytes: 2 * 1024 ** 3,
-    },
-  })
-  mocks.entitlements.mockResolvedValueOnce({ features: { storageGb: 5 } })
-  await deps.persist(task, result)
-  expect(mocks.persist.mock.lastCall?.[0].limits.storageBytes).toBe(task.input.storageBytes)
-})
+mediaTest(
+  'uses Node storage with the smaller snapshot/current quota and existing media security limits',
+  async () => {
+    const deps = createNodeMediaRunnerDeps(db, options)
+    await deps.persist(task, result)
+    expect(mocks.createStorage).toHaveBeenCalledExactlyOnceWith(options.storage)
+    expect(mocks.createCopier).toHaveBeenCalledExactlyOnceWith(options.storage)
+    expect(mocks.entitlements).toHaveBeenCalledWith(db, task.workspaceId, { pastDueGraceDays: 4 })
+    expect(mocks.persist).toHaveBeenCalledWith({
+      db,
+      storage: mocks.storage,
+      copyOutput: mocks.copier,
+      task,
+      result,
+      limits: {
+        maxFileBytes: MEDIA_MAX_FILE_BYTES,
+        allowedHosts: ['fal.media', 'v3.fal.media', 'v3b.fal.media'],
+        allowedMimeTypes: MEDIA_OUTPUT_MIME_TYPES.image,
+        storageBytes: 2 * 1024 ** 3,
+      },
+    })
+    mocks.entitlements.mockResolvedValueOnce({ features: { storageGb: 5 } })
+    await deps.persist(task, result)
+    expect(mocks.persist.mock.lastCall?.[0].limits.storageBytes).toBe(task.input.storageBytes)
+  },
+)
 
-it('isolates task/request identity while observing runner failures', async () => {
+mediaTest('isolates task/request identity while observing runner failures', async () => {
   const scope = vi.fn()
   const observer = {
     tagContext: vi.fn(),

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { Page, Route } from '@playwright/test'
+import templateConfig from '../../../../template.config.ts'
 import { FAULT_MODELS, type FaultModelDefinition } from './fault-definitions.ts'
 import {
   cleanupFaultModels,
@@ -43,7 +44,11 @@ test('partial preparation failure disables models prepared before the rejected c
   page,
 }) => {
   const first = ownedModel('partial-first')
-  const invalid = { ...ownedModel('partial-rejected', 1), providerModelId: 'invalid-fixture-model' }
+  const rejected = ownedModel('partial-rejected', 1)
+  const invalid =
+    rejected.kind === 'text'
+      ? { ...rejected, paramsSchema: { ...rejected.paramsSchema, 'x-text': { tokensPerChar: 0 } } }
+      : { ...rejected, providerModelId: 'invalid-fixture-model' }
   let cleanup: FaultCleanupResult[] = []
   let sceneRan = false
   try {
@@ -233,8 +238,10 @@ test('same key configuration conflict is neither overwritten nor added to cleanu
 test('repeated same run reuses one business task and Enable does not rewrite model config', async ({
   page,
 }) => {
+  test.skip(!templateConfig.plugins.media, 'The media plugin is disabled')
   test.setTimeout(360_000)
-  const model = FAULT_MODELS[0] as FaultModelDefinition
+  const model = FAULT_MODELS.find((item) => item.mode === 'workers-error')
+  if (!model) throw new Error('Missing Workers AI fault model')
   const run = async (current: Page) => {
     const workspace = await prepareFaultReadiness(current)
     return runMediaFaultScenario(current, workspace, model)

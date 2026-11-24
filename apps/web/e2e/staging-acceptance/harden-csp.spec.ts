@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import templateConfig from '../../../../template.config.ts'
 import {
   checkSecurityHeaders,
   collectViolations,
@@ -182,7 +183,9 @@ test('安全头覆盖 API、重定向与 404；/assets/* 不经过 Worker 且缓
   }
 })
 
-test('CSP 登录页面：对话、媒体、账单与后台首页无 Report-Only 违规', async ({ page }) => {
+test('CSP 登录页面：对话、账单、后台首页与已启用的媒体页面无 Report-Only 违规', async ({
+  page,
+}) => {
   requireEnv(['STAGING_URL'])
   // 页面与 CSP 和账号类型无关；用管理员个人空间，避免普通验收用户的套餐模型权限前提挡住本项。
   await login(page, 'admin')
@@ -192,7 +195,7 @@ test('CSP 登录页面：对话、媒体、账单与后台首页无 Report-Only 
   const results: PageResult[] = []
   for (const [path, label] of [
     [`/app/${slug}/chat`, 'chat'],
-    [`/app/${slug}/media/new`, 'media'],
+    ...(templateConfig.plugins.media ? [[`/app/${slug}/media/new`, 'media'] as const] : []),
     [`/app/${slug}/billing`, 'billing'],
     ['/admin', 'admin'],
   ] as const) {
