@@ -34,6 +34,7 @@
     "apps/web/e2e/staging-acceptance/fault-local-media.ts": ["cloudflare:workers"],
     "apps/web/test/agent-example-tools.test.ts": ["cloudflare:workers"],
     "apps/web/test/agents-core.test.ts": ["cloudflare:workers"],
+    "apps/web/test/agents-lifecycle.test.ts": ["cloudflare:workers"],
     "apps/web/test/ai-chat.test.ts": ["cloudflare:workers"],
     "apps/web/test/ai-media-tasks.test.ts": ["cloudflare:workers"],
     "apps/web/test/auth-email.test.ts": ["cloudflare:workers"],

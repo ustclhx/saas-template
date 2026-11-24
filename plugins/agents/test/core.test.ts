@@ -1,5 +1,11 @@
+import type { UIMessage } from 'ai'
 import { describe, expect, it } from 'vitest'
 import { respondedApprovalIds } from '../src/core/approvals.ts'
+import {
+  applyTaskResults,
+  findPendingTasks,
+  taskPollDelaySeconds,
+} from '../src/core/async-tasks.ts'
 import {
   checkOwner,
   IDENTITY_HEADER_PREFIX,
@@ -9,6 +15,7 @@ import {
   stripIdentityHeaders,
   withIdentity,
 } from '../src/core/identity.ts'
+import { nextLifecycleCheck } from '../src/core/lifecycle.ts'
 import { errorCodeOf, turnLogFields } from '../src/core/log.ts'
 import {
   addTurnUsage,
@@ -238,5 +245,94 @@ describe('每轮日志（4.5）', () => {
     )
     expect(errorCodeOf(new TypeError('user text'))).toBe('TypeError')
     expect(errorCodeOf('raw string')).toBe('UNKNOWN')
+  })
+})
+
+describe('实例 alarm 的检查时间（7.2 / 7.3）', () => {
+  const DAY = 86_400_000
+  const now = new Date('2026-11-24T00:00:00Z')
+  const daysAgo = (days: number) => new Date(now.getTime() - days * DAY)
+
+  it('未开启保留期：最近活动 + 30 天，已过去则从现在起算 30 天', () => {
+    expect(nextLifecycleCheck({ now, lastActivity: daysAgo(1) })).toEqual(
+      new Date(now.getTime() + 29 * DAY),
+    )
+    expect(nextLifecycleCheck({ now, lastActivity: daysAgo(45) })).toEqual(
+      new Date(now.getTime() + 30 * DAY),
+    )
+  })
+
+  it('开启保留期：窗口为 min(retentionDays, 30)，且不晚于保留期到期时刻', () => {
+    expect(nextLifecycleCheck({ now, lastActivity: daysAgo(1), retentionDays: 7 })).toEqual(
+      new Date(now.getTime() + 6 * DAY),
+    )
+    // 90 天保留期、65 天前活动：30 天窗口已过，从现在起 30 天会超过到期时刻（还剩 25 天）
+    expect(nextLifecycleCheck({ now, lastActivity: daysAgo(65), retentionDays: 90 })).toEqual(
+      new Date(now.getTime() + 25 * DAY),
+    )
+  })
+
+  it('最短间隔 1 分钟', () => {
+    expect(nextLifecycleCheck({ now, lastActivity: now, retentionDays: 0.00001 })).toEqual(
+      new Date(now.getTime() + 60_000),
+    )
+  })
+})
+
+describe('异步任务结果（8.2）', () => {
+  const message = (parts: unknown[]): UIMessage =>
+    ({ id: crypto.randomUUID(), role: 'assistant', parts }) as UIMessage
+  const tool = (toolCallId: string, output: unknown, state = 'output-available') => ({
+    type: 'tool-generate_image',
+    toolCallId,
+    state,
+    input: {},
+    output,
+  })
+
+  it('轮询间隔 5 秒起逐次加倍，上限 60 秒', () => {
+    expect([0, 1, 2, 3, 4, 10].map(taskPollDelaySeconds)).toEqual([5, 10, 20, 40, 60, 60])
+  })
+
+  it('只找出已输出且为 pending 的长任务结果，同一任务只取一次', () => {
+    const messages = [
+      { id: 'u', role: 'user', parts: [{ type: 'text', text: 'hi' }] } as UIMessage,
+      message([
+        tool('a', { taskId: 't1', status: 'pending', kind: 'image' }),
+        tool('b', { taskId: 't2', status: 'succeeded' }),
+        tool('c', { taskId: 't3', status: 'pending' }, 'input-available'),
+        {
+          type: 'dynamic-tool',
+          toolName: 'x',
+          toolCallId: 'd',
+          state: 'output-available',
+          output: { taskId: 't4', status: 'pending' },
+        },
+        tool('e', { taskId: 't1', status: 'pending' }),
+      ]),
+    ]
+    expect(findPendingTasks(messages)).toEqual([
+      { toolCallId: 'a', taskId: 't1', kind: 'image' },
+      { toolCallId: 'd', taskId: 't4', kind: undefined },
+    ])
+  })
+
+  it('只改写对应工具调用的 pending 输出，其余部件与消息保持原对象', () => {
+    const untouched = message([{ type: 'text', text: 'x' }])
+    const target = message([
+      tool('a', { taskId: 't1', status: 'pending' }),
+      { type: 'text', text: 'ok' },
+    ])
+    const messages = [untouched, target]
+    const updated = applyTaskResults(
+      messages,
+      new Map([['a', { taskId: 't1', status: 'failed' as const, errorCode: 'X' }]]),
+    )
+    expect(updated[0]).toBe(untouched)
+    expect(updated[1]?.parts[0]).toMatchObject({ output: { taskId: 't1', status: 'failed' } })
+    expect(updated[1]?.parts[1]).toBe(target.parts[1])
+    expect(
+      applyTaskResults(messages, new Map([['zz', { taskId: 't9', status: 'timeout' as const }]])),
+    ).toBe(messages)
   })
 })

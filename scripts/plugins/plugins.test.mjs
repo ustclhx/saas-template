@@ -153,7 +153,10 @@ test('工具扩展点随 Cloudflare agents 启用，只在 Worker 启动时登�
 
   assert.match(files[GENERATED_FILES.web], /import \* as bothAgentTools from /)
   assert.match(files[GENERATED_FILES.web], /\{ id: 'both', entry: bothAgentTools \}/)
-  assert.match(files[GENERATED_FILES.worker], /registerPluginAgentTools\(agentToolPlugins\)/)
+  assert.match(
+    files[GENERATED_FILES.worker],
+    /registerPluginAgentTools\(agentToolPlugins, plugins\)/,
+  )
   assert.doesNotMatch(files[GENERATED_FILES.webNode], /agentToolPlugins/)
   const withoutAgents = renderPluginFiles(root, resolveEnabledPlugins(config({ both: {} }), loaded))
   assert.doesNotMatch(withoutAgents[GENERATED_FILES.web], /agentToolPlugins/)

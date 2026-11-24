@@ -21,6 +21,8 @@ import { getWebRuntime } from '@web/server/runtime.ts'
 import { templateConfig } from '@web/server/template-config.ts'
 import { and, desc, eq, inArray, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
+import { deleteOwnAgentConversation } from '../core/lifecycle.ts'
+import { agentInstanceCleaner } from '../instances.ts'
 import { findAgentOption, listAgentOptions } from './catalog.ts'
 import { agentsWebConfig } from './config.ts'
 import { type AgentTurnView, toTurnView } from './turns.ts'
@@ -293,7 +295,7 @@ export const createAgentConversation = createServerFn({ method: 'POST' })
 async function updateOwn(
   context: RequestContext,
   conversationId: string,
-  set: { title?: string; archived?: boolean; modelKey?: string },
+  set: { title?: string; modelKey?: string },
 ) {
   const rows = await scoped(context.db, context.workspace.id)
     .update(aiConversation, set, ownAgentConversation(context.user.id, conversationId))
@@ -328,17 +330,25 @@ export const setAgentConversationModel = createServerFn({ method: 'POST' })
   )
 
 /**
- * 删除对话（决策 7）：按现有对话的删除语义处理 PG 行——文本对话没有硬删，用 `archived = true` 软删；
- * agent 对话没有「取消归档」入口，软删后列表、对话页与前置处理都视同不存在。轮次记录保留供审计与结算
- * （执行中的轮次仍由清理器按检查点结算）。
+ * 删除对话（决策 7，任务 7.1）：按现有对话的删除语义处理 PG 行——文本对话没有硬删，用 `archived = true`
+ * 软删；agent 对话没有「取消归档」入口，软删后列表、对话页与前置处理都视同不存在（之后连接返回 404）。
+ * 轮次记录保留供审计与结算（执行中的轮次仍由清理器按检查点结算）。PG 写入后经 web 的 Durable Object
+ * 绑定清空实例；实例调用失败不回滚 PG，由实例 alarm 自清理兜底。
  */
 export const deleteAgentConversation = createServerFn({ method: 'POST' })
   .middleware([withBilling, withWorkspace])
   .inputValidator(conversationInput)
   .handler(({ context, data }) =>
     mutation(context.workspaceReadOnly, async () => {
-      const result = await updateOwn(context, data.conversationId, { archived: true })
-      // TODO(7.1)：经 web 的 Durable Object 绑定调用实例清理（deleteAll）；失败不回滚 PG，由实例 alarm 自清理兜底
-      return result
+      const { id } = await deleteOwnAgentConversation(
+        context.db,
+        {
+          workspaceId: context.workspace.id,
+          userId: context.user.id,
+          conversationId: data.conversationId,
+        },
+        agentInstanceCleaner(),
+      )
+      return { id }
     }),
   )

@@ -163,7 +163,8 @@ function registry(
       `export const agentToolPlugins: readonly WebAgentToolRegistration[] = [${entries.join(', ')}]`,
     )
   }
-  if (agentsWorker) lines.push('registerPluginAgentTools(agentToolPlugins)')
+  // 第二个参数为 Worker 插件注册表：对话实例据此取得插件提供的 AI 任务工作流（工具的 services）
+  if (agentsWorker) lines.push('registerPluginAgentTools(agentToolPlugins, plugins)')
   lines.push(`export default ${lists[0].name}`)
   return `${lines.join('\n')}\n`
 }

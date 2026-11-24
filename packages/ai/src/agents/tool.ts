@@ -62,3 +62,23 @@ export function toAiSdkTool<Schema extends z.ZodType, Output, Context extends Ag
       definition.execute(input, createContext({ toolCallId, abortSignal })),
   } satisfies Tool
 }
+
+/**
+ * 长任务工具的「已提交」结果（openspec add-ai-agents 决策 8）：工具提交任务后立即返回，
+ * 对话实例按 taskId 拉取任务状态，终态时把同一工具调用的输出改写为最终结果。
+ */
+export interface AgentPendingTaskOutput {
+  readonly taskId: string
+  readonly status: 'pending'
+  readonly kind?: string | undefined
+}
+
+export function pendingTaskOutput(taskId: string, kind?: string): AgentPendingTaskOutput {
+  return kind === undefined ? { taskId, status: 'pending' } : { taskId, status: 'pending', kind }
+}
+
+export function isPendingTaskOutput(value: unknown): value is AgentPendingTaskOutput {
+  if (typeof value !== 'object' || value === null) return false
+  const output = value as Record<string, unknown>
+  return output.status === 'pending' && typeof output.taskId === 'string' && output.taskId !== ''
+}

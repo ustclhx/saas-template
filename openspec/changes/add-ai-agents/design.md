@@ -167,12 +167,13 @@ defineAgent({
 所有实例操作都在 web 内发生（jobs 不持有 Durable Object 绑定，见决策 12）。清理与枚举以 PG 对话表为唯一依据。
 
 - **用户删除对话：** web 先按现有对话删除语义处理 PG 行（软删沿用现有字段语义；若现有删除是硬删则同样硬删），再经 web 的 Durable Object 绑定调用实例清理方法（`deleteAll()` 清空实例存储）。实例调用失败不回滚 PG，由下面的 alarm 自清理兜底。
-- **删号、删空间：** 删号沿用 `packages/auth` 的 `deletionSteps`：web 注册一个清理 agent 实例的 step，按 PG 对话表逐个调用实例 `deleteAll()`，再删 PG 的 turn 与对话行；幂等，可重试，单个实例失败不阻塞其余数据的清理。删空间同样在 web 执行；若空间数据由其他流程（例如 jobs 的保留期清理）直接删除 PG 行，实例由 alarm 自清理。
+- **删号：** 沿用 `packages/auth` 的 `deletionSteps`，不等保留期（与 `ai-content-cleanup.ts` 对删号的现有规则一致）。agents worker 入口注册删号 step：在删除事务中删除该用户在所有空间（个人空间与团队空间）的 agent 轮次与对话行（`ai_agent_turn` → `ai_conversation` 为 restrict 外键，先删轮次）；事务提交后（`DeletionStep.after`）逐个调用实例清理。幂等，单个实例失败不阻塞其余数据的清理，失败的实例由下面的 alarm 自清理。
+- **删团队空间（协调者决定，2026-11-24）：** 与文本对话一致，空间软删、保留期（`WORKSPACE_RETENTION_DAYS`，30 天）内可由平台管理员恢复，**软删时不清 agent 数据**。软删期间前置处理按成员资格与空间状态拒绝访问（404）；恢复后对话与轮次完整回来。保留期满由 jobs 现有的过期空间清理（`purgeAiBatch`）先删没有 held 预扣的 `ai_agent_turn`，再删对话行（仍有 held 预扣的轮次等兜底处理器结算后下一轮再删）；jobs 不访问实例，实例在下一次 alarm 检查时发现对话不存在并 `deleteAll()`。
 - **alarm 自清理（兜底）：** 每个实例在空闲时（一轮结束且没有开放轮次）用 SDK 的 `schedule` 设置一次 alarm，下次检查时间 = 最近活动 + min(`retentionDays`, 30) 天（未设置保留期时为 30 天）。到期时查 PG：
   - 对话不存在 → `deleteAll()` 自清理；
   - 对话存在且已超出保留期（`retentionDays` 已设置、`updated_at` 早于期限、没有 running 轮次）→ 按用户删除对话的流程删 PG 行并 `deleteAll()`；
   - 否则顺延 alarm。
-  删除失败因此总有自愈路径，且只有存在过的实例才会被唤醒，没有全表扫描。1.2 补充验证确认 alarm 在 `wrangler dev` 下可触发，且进程重启后无请求也会触发。
+  删除失败因此总有自愈路径，且只有存在过的实例才会被唤醒，没有全表扫描。实例首次记住归属时即安排第一次检查，之后同一时刻只保留一个检查，每次间隔不超过 30 天，所以 PG 行被删除（jobs 保留期清理、删号时实例调用失败）后，孤儿实例最晚在 30 天内被清空（超出保留期但有 running 轮次时 1 小时后重查）。1.2 补充验证确认 alarm 在 `wrangler dev` 下可触发，且进程重启后无请求也会触发。
 - **保留上限：** `maxPersistedMessages` 取 `plugins.agents.maxPersistedMessages`（默认 200）。
 - **保留期（使用者决定，2026-11-24）：** 配置项 `plugins.agents.retentionDays`，默认不设置（关闭）。开启后由上面的实例 alarm 执行，不需要 jobs 清理器，也不新增 Cron；未开启时 alarm 只检查对话是否存在。每个实例最多每 30 天查一次 PG，空闲实例不产生持续的数据库访问，符合 Neon 成本基线。
 
