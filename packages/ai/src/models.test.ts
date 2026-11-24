@@ -30,6 +30,7 @@ function row(overrides: Partial<AiModel> & Pick<AiModel, 'id' | 'key'>): AiModel
     minPlanFeatures: [],
     paramsSchema: null,
     enabled: true,
+    supportsTools: false,
     sort: 0,
     createdAt: new Date(0),
     updatedAt: new Date(0),
@@ -228,6 +229,29 @@ describe('listAvailableModels', () => {
     ).toEqual(['flux'])
   })
 
+  it('Agent 选模在每次请求按当前工具调用标记、文本类型和空间权益过滤', async () => {
+    const text = row({ id: 'm1', key: 'tool-text', supportsTools: true })
+    const { store, rows } = memoryStore([
+      text,
+      row({ id: 'm2', key: 'plain-text' }),
+      row({ id: 'm3', key: 'image', kind: 'image', supportsTools: true }),
+      row({ id: 'm4', key: 'disabled', enabled: false, supportsTools: true }),
+    ])
+    const { cache, data } = memoryCache()
+    const ctx = { store, cache }
+    const options = { requiresTools: true }
+    await listAvailableModels(ctx, all)
+    const cached = data.get(MODEL_CACHE_KEY)
+
+    expect((await listAvailableModels(ctx, all, options)).map((model) => model.key)).toEqual([
+      'tool-text',
+    ])
+    expect(await listAvailableModels(ctx, plan(['plain-text']), options)).toEqual([])
+    rows[0] = { ...text, supportsTools: false }
+    expect(await listAvailableModels(ctx, all, options)).toEqual([])
+    expect(data.get(MODEL_CACHE_KEY)).toBe(cached)
+  })
+
   it('计费方式不合法的模型不出现在列表中', async () => {
     const { store } = memoryStore([
       row({ id: 'm1', key: 'gpt-a', pricing: { mode: 'per_call', credits: 1 } }),
@@ -313,6 +337,27 @@ describe('requireAvailableModel', () => {
     expect(model.pricing).toEqual({ mode: 'token', inputPer1k: 2, outputPer1k: 8 })
   })
 
+  it('调用需要工具能力时按实时标记拒绝，普通调用仍可用', async () => {
+    const text = row({ id: 'm1', key: 'tool-text', supportsTools: true })
+    const { store, rows } = memoryStore([text])
+    const ctx = { store }
+    const options = { requiresTools: true }
+
+    expect(await requireAvailableModel(ctx, all, text.id, options)).toMatchObject({
+      id: text.id,
+    })
+    expect((await rejection(requireAvailableModel(ctx, plan([]), text.id, options))).code).toBe(
+      UPGRADE_REQUIRED,
+    )
+
+    rows[0] = { ...text, supportsTools: false }
+    expect(await rejection(requireAvailableModel(ctx, all, text.id, options))).toMatchObject({
+      code: MODEL_UNAVAILABLE,
+      status: 404,
+    })
+    expect(await requireAvailableModel(ctx, all, text.id)).toMatchObject({ id: text.id })
+  })
+
   it('停用模型被拒绝，即使列表缓存中仍有该模型', async () => {
     const { store, rows } = memoryStore([row({ id: 'm1', key: 'gpt-a' })])
     const { cache } = memoryCache()
@@ -384,6 +429,19 @@ describe('modelValues', () => {
 
   it('不合法的计费方式被拒绝', () => {
     expect(() => modelValues({ ...base, pricing: { mode: 'free' } })).toThrow(PricingError)
+  })
+
+  it('保存文本模型的工具调用标记，媒体模型关闭标记', () => {
+    const pricing = { mode: 'token', inputPer1k: 1, outputPer1k: 1 }
+    expect(modelValues({ ...base, pricing, supportsTools: true }).supportsTools).toBe(true)
+    expect(
+      modelValues({
+        ...base,
+        pricing: { mode: 'per_call', credits: 1 },
+        kind: 'image',
+        supportsTools: true,
+      }).supportsTools,
+    ).toBe(false)
   })
 
   it('后台保存也拒绝缺元数据的专用 key，合法配对可通过共享校验', () => {

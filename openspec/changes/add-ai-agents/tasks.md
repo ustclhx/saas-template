@@ -5,10 +5,10 @@
 
 ## 2. 契约、数据与配置
 
-- [ ] 2.1 `packages/ai/src/agents/tool.ts`：`defineAgentTool`、工具上下文接口（含 `idempotencyKey`）、输入 schema 到 AI SDK tool 的转换；名称格式校验。单元测试
-- [ ] 2.2 迁移：`ai_conversation.kind` / `agent_id` 与检查约束、`ai_model.supports_tools`、`ai_agent_turn` 表与索引；`credit_hold.ref_type` 加 `agent_turn`；现有对话列表查询加 `kind = 'chat'`。迁移在本地 PG 应用，现有对话集成测试通过；`docs/03-data-model.md` 更新
+- [x] 2.1 `packages/ai/src/agents/tool.ts`：`defineAgentTool`、工具上下文接口（含 `idempotencyKey`）、输入 schema 到 AI SDK tool 的转换；名称格式校验。单元测试
+- [x] 2.2 迁移：`ai_conversation.kind` / `agent_id` 与检查约束、`ai_model.supports_tools`、`ai_agent_turn` 表与索引；`credit_hold.ref_type` 加 `agent_turn`；现有对话列表查询加 `kind = 'chat'`。迁移在本地 PG 应用，现有对话集成测试通过；`docs/03-data-model.md` 更新
 - [ ] 2.3 `plugins/agents` 清单：targets `['cloudflare']`、requires billing+credits、bindings（web Durable Object + SQLite 类，jobs 指向 web 类的 Durable Object 绑定）；配置段 `maxSteps`（默认 8）、`maxTurnCredits`、`maxPersistedMessages`（默认 200）、`retentionDays`（默认不设置即关闭）、`defaultAgent`。模板 `template.config.ts` 启用并补齐 web / jobs wrangler 各环境绑定，`pnpm check` 通过
-- [ ] 2.4 后台模型编辑器增加「支持工具调用」开关，`requireAvailableModel` 增加按能力过滤；种子数据为已知支持工具的模型打标。单元测试与后台页组件测试
+- [x] 2.4 后台模型编辑器增加「支持工具调用」开关，`requireAvailableModel` 增加按能力过滤；种子数据为已知支持工具的模型打标。单元测试与后台页组件测试
 
 ## 3. 身份与路由
 

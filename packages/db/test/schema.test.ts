@@ -4,6 +4,7 @@ import { eq, inArray } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   AI_FEEDBACK_REASONS,
+  aiAgentTurn,
   aiConversation,
   aiMessage,
   aiMessageFeedback,
@@ -180,6 +181,64 @@ describe('认证与租户表（Hyperdrive → 本地 Postgres）', () => {
       expect(error).toEqual({ code: '23505', constraint: 'organization_slug_unique' })
     } finally {
       await cleanup(db, [a.userId], [a.orgId, otherOrg])
+    }
+  })
+})
+
+describe('agent 对话与轮次约束（Hyperdrive → 本地 Postgres）', () => {
+  it('旧写入方式仍创建文本对话，数据库拒绝不一致的 agent 标记', async () => {
+    const db = open()
+    const { userId, orgId } = await seed(db)
+    const base = { workspaceId: orgId, userId, modelKey: 'test' }
+    try {
+      const [chat] = await db.insert(aiConversation).values(base).returning()
+      expect(chat).toMatchObject({ kind: 'chat', agentId: null })
+      const [agent] = await db
+        .insert(aiConversation)
+        .values({ ...base, kind: 'agent', agentId: 'assistant' })
+        .returning()
+      expect(agent).toMatchObject({ kind: 'agent', agentId: 'assistant' })
+
+      for (const values of [{ kind: 'agent' }, { kind: 'chat', agentId: 'assistant' }] as const) {
+        expect(await pgError(db.insert(aiConversation).values({ ...base, ...values }))).toEqual({
+          code: '23514',
+          constraint: 'ai_conversation_agent_pair',
+        })
+      }
+    } finally {
+      await db.delete(aiConversation).where(eq(aiConversation.workspaceId, orgId))
+      await cleanup(db, [userId], [orgId])
+    }
+  })
+
+  it('只在同一 agent 对话内拒绝重复的轮次请求 ID', async () => {
+    const db = open()
+    const { userId, orgId } = await seed(db)
+    const base = { workspaceId: orgId, userId, modelKey: 'test' }
+    try {
+      const agent = { ...base, kind: 'agent', agentId: 'assistant' } as const
+      const first = newId()
+      const second = newId()
+      await db.insert(aiConversation).values([
+        { ...agent, id: first },
+        { ...agent, id: second },
+      ])
+      const turn = {
+        ...base,
+        conversationId: first,
+        requestId: 'request-1',
+        pricing: { mode: 'per_call', credits: 3 } as const,
+      }
+      await db.insert(aiAgentTurn).values(turn)
+      expect(await pgError(db.insert(aiAgentTurn).values(turn))).toEqual({
+        code: '23505',
+        constraint: 'ai_agent_turn_conversation_request_unique',
+      })
+      await db.insert(aiAgentTurn).values({ ...turn, conversationId: second })
+    } finally {
+      await db.delete(aiAgentTurn).where(eq(aiAgentTurn.workspaceId, orgId))
+      await db.delete(aiConversation).where(eq(aiConversation.workspaceId, orgId))
+      await cleanup(db, [userId], [orgId])
     }
   })
 })

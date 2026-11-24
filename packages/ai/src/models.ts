@@ -51,6 +51,11 @@ export interface ModelRegistryContext {
   faultAccess?: FaultAccessContext | undefined
 }
 
+export interface ModelAvailabilityOptions {
+  readonly kind?: AiModality
+  readonly requiresTools?: boolean
+}
+
 export const MODEL_CACHE_KEY = 'ai:models'
 /** KV 允许的最小 TTL；后台保存时主动失效，TTL 只兜底其他地域的旧副本 */
 export const MODEL_CACHE_TTL_SECONDS = 60
@@ -59,6 +64,10 @@ export const MODEL_UNAVAILABLE = 'MODEL_UNAVAILABLE'
 
 const providerAvailable = (ctx: Pick<ModelRegistryContext, 'workersAi'>, provider: string) =>
   provider !== 'workers-ai' || ctx.workersAi !== false
+
+function supportsToolCalls(model: Pick<AiModel, 'kind' | 'supportsTools'>): boolean {
+  return model.kind === 'text' && model.supportsTools === true
+}
 
 export function dbModelStore(db: Database): ModelStore {
   return {
@@ -118,15 +127,23 @@ function faultAvailable(
   }
 }
 
-/** 当前目标可用的已启用模型（不按权益过滤），优先读缓存 */
-export async function listEnabledModels(ctx: ModelRegistryContext): Promise<AvailableModel[]> {
-  const cached = await ctx.cache?.get(MODEL_CACHE_KEY)
+/** 当前目标可用的已启用模型（不按权益过滤） */
+export async function listEnabledModels(
+  ctx: ModelRegistryContext,
+  { requiresTools }: Pick<ModelAvailabilityOptions, 'requiresTools'> = {},
+): Promise<AvailableModel[]> {
+  // KV 跨地域生效有延迟，Agent 的选模须在下一次请求反映标记变更。
+  const cache = requiresTools ? undefined : ctx.cache
+  const cached = await cache?.get(MODEL_CACHE_KEY)
   if (cached != null)
     return (JSON.parse(cached) as AvailableModel[]).filter(
       (model) => providerAvailable(ctx, model.provider) && faultAvailable(ctx, model),
     )
-  const models = (await ctx.store.listEnabled()).flatMap((row) => toAvailable(row) ?? [])
-  await ctx.cache?.put(MODEL_CACHE_KEY, JSON.stringify(models), {
+  const models = (await ctx.store.listEnabled()).flatMap((row) => {
+    if (requiresTools && !supportsToolCalls(row)) return []
+    return toAvailable(row) ?? []
+  })
+  await cache?.put(MODEL_CACHE_KEY, JSON.stringify(models), {
     expirationTtl: MODEL_CACHE_TTL_SECONDS,
   })
   // 缓存保留完整注册表，每次读取后按目标、环境和身份过滤，避免共享缓存串权。
@@ -142,9 +159,9 @@ const allowed = (entitlements: Entitlements, model: AvailableModel) =>
 export async function listAvailableModels(
   ctx: ModelRegistryContext,
   entitlements: Entitlements,
-  options: { readonly kind?: AiModality } = {},
+  options: ModelAvailabilityOptions = {},
 ): Promise<AvailableModel[]> {
-  const models = await listEnabledModels(ctx)
+  const models = await listEnabledModels(ctx, options)
   return models.filter(
     (model) =>
       (options.kind === undefined || model.kind === options.kind) && allowed(entitlements, model),
@@ -152,16 +169,21 @@ export async function listAvailableModels(
 }
 
 /**
- * 发起调用前按 id 取模型：不存在、已停用、目标能力缺失或计费方式不合法时抛出 `MODEL_UNAVAILABLE`（404），
+ * 发起调用前按 id 取模型：不存在、已停用、不符合类型或能力要求、目标能力缺失或计费方式不合法时抛出 `MODEL_UNAVAILABLE`（404），
  * 权益不允许时抛出 `UPGRADE_REQUIRED`（403）。直接读库，不受列表缓存延迟影响。
  */
 export async function requireAvailableModel(
   ctx: Pick<ModelRegistryContext, 'store' | 'workersAi' | 'faultAccess'>,
   entitlements: Entitlements,
   id: string,
+  { kind, requiresTools }: ModelAvailabilityOptions = {},
 ): Promise<AvailableModel> {
   const row = await ctx.store.findEnabled(id)
-  const model = row && toAvailable(row)
+  const model =
+    row &&
+    (kind === undefined || row.kind === kind) &&
+    (!requiresTools || supportsToolCalls(row)) &&
+    toAvailable(row)
   if (!model || !faultAvailable(ctx, model))
     throw new AppError(MODEL_UNAVAILABLE, 'Model is not available', { status: 404 })
   if (!providerAvailable(ctx, model.provider))
@@ -209,6 +231,7 @@ export interface ModelInput {
   readonly pricing: unknown
   readonly tags: readonly string[]
   readonly enabled: boolean
+  readonly supportsTools?: boolean | undefined
   readonly sort: number
   readonly paramsSchema?: Record<string, unknown> | null | undefined
 }
@@ -233,6 +256,7 @@ export function modelValues(input: ModelInput) {
     pricing,
     minPlanFeatures: [...new Set(input.tags.map((tag) => tag.trim()).filter(Boolean))],
     enabled: input.enabled,
+    supportsTools: input.kind === 'text' ? input.supportsTools : false,
     sort: input.sort,
   } satisfies Partial<NewAiModel>
 }

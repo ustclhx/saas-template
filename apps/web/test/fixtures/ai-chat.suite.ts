@@ -665,6 +665,23 @@ export function registerAiChatSuite(
       )
       expect(denied.response.status).toBe(404)
     })
+
+    it('文本对话接口拒绝创建者向自己的 agent 对话发送消息', async () => {
+      const owner = await member('agent-owner', 100)
+      const modelId = await textModel({ mode: 'token', inputPer1k: 1, outputPer1k: 1 }, 500)
+      const conversationId = newId()
+      await scoped(db, owner.workspaceId).insert(aiConversation, {
+        id: conversationId,
+        userId: owner.userId,
+        modelKey: '',
+        kind: 'agent',
+        agentId: 'assistant',
+      })
+      const mock = mockModel('unexpected', { input: 1, output: 1 })
+      const { response } = await send(owner, { modelId, text: 'Hello', conversationId }, { mock })
+      expect(response.status).toBe(404)
+      expect(mock.doStreamCalls).toHaveLength(0)
+    })
   })
 
   const USAGE_FINISH = (input: number, output: number) => ({

@@ -26,6 +26,7 @@ const LIST_LIMIT = 100
 const ownConversation = (userId: string, conversationId?: string) =>
   and(
     eq(aiConversation.userId, userId),
+    eq(aiConversation.kind, 'chat'),
     conversationId === undefined ? undefined : eq(aiConversation.id, conversationId),
   ) as SQL
 

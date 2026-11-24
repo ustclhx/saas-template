@@ -9,6 +9,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
@@ -81,6 +82,7 @@ export const aiModel = pgTable(
     pricing: jsonb('pricing').$type<AiPricingJson>().notNull(),
     minPlanFeatures: jsonb('min_plan_features').$type<string[]>().notNull().default([]),
     paramsSchema: jsonb('params_schema').$type<Record<string, unknown>>(),
+    supportsTools: boolean('supports_tools').notNull().default(false),
     enabled: boolean('enabled').notNull().default(true),
     sort: integer('sort').notNull().default(0),
     ...timestamps,
@@ -88,7 +90,7 @@ export const aiModel = pgTable(
   (t) => [index('ai_model_enabled_sort_idx').on(t.enabled, t.sort)],
 )
 
-/** 文本对话；只对创建者可见，查询在 scoped(ws) 之上再加 user_id 过滤 */
+/** 文本与 agent 对话，只对创建者可见；查询在 scoped(ws) 之上再加 user_id 和 kind 过滤。 */
 export const aiConversation = pgTable(
   'ai_conversation',
   {
@@ -102,9 +104,13 @@ export const aiConversation = pgTable(
     title: text('title').notNull().default(''),
     modelKey: text('model_key').notNull(),
     archived: boolean('archived').notNull().default(false),
+    kind: text('kind', { enum: ['chat', 'agent'] })
+      .notNull()
+      .default('chat'),
+    agentId: text('agent_id'),
     /**
      * 绑定的业务对象（add-subject-chat）：类型由 provider 注册，ID 是不透明引用，不得含个人信息。
-     * 两者同时为空表示普通对话。
+     * 两者同时为空表示未绑定业务对象。
      */
     subjectType: text('subject_type'),
     subjectId: text('subject_id'),
@@ -114,10 +120,55 @@ export const aiConversation = pgTable(
     index('ai_conversation_workspace_id_id_idx').on(t.workspaceId, t.id.desc()),
     index('ai_conversation_workspace_user_id_idx').on(t.workspaceId, t.userId, t.id.desc()),
     index('ai_conversation_workspace_subject_idx').on(t.workspaceId, t.subjectType, t.subjectId),
+    check('ai_conversation_kind_valid', sql`${t.kind} in ('chat', 'agent')`),
+    check('ai_conversation_agent_pair', sql`(${t.kind} = 'chat') = (${t.agentId} is null)`),
     check(
       'ai_conversation_subject_pair',
       sql`(${t.subjectType} is null) = (${t.subjectId} is null)`,
     ),
+  ],
+)
+
+/** Agent 轮次只保存审计与结算数据，消息正文由对应的 Durable Object 保存。 */
+export const aiAgentTurn = pgTable(
+  'ai_agent_turn',
+  {
+    id: uuid('id').primaryKey().$defaultFn(newId),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'restrict' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'restrict' }),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => aiConversation.id, { onDelete: 'restrict' }),
+    requestId: text('request_id').notNull(),
+    modelKey: text('model_key').notNull(),
+    pricing: jsonb('pricing').$type<AiPricingJson>().notNull(),
+    holdId: uuid('hold_id').references(() => creditHold.id, { onDelete: 'restrict' }),
+    status: text('status', { enum: ['running', 'completed', 'stopped', 'failed', 'expired'] })
+      .notNull()
+      .default('running'),
+    usageCheckpoint: jsonb('usage_checkpoint').$type<AiUsageCheckpoint>(),
+    usage: jsonb('usage').$type<AiTextUsage>(),
+    creditsCharged: integer('credits_charged').notNull().default(0),
+    steps: integer('steps').notNull().default(0),
+    toolCalls: jsonb('tool_calls')
+      .$type<{ name: string; status: string; durationMs?: number }[]>()
+      .notNull()
+      .default([]),
+    errorCode: text('error_code'),
+    ...timestamps,
+  },
+  (t) => [
+    unique('ai_agent_turn_conversation_request_unique').on(t.conversationId, t.requestId),
+    index('ai_agent_turn_workspace_user_id_idx').on(t.workspaceId, t.userId, t.id.desc()),
+    check(
+      'ai_agent_turn_status_valid',
+      sql`${t.status} in ('running', 'completed', 'stopped', 'failed', 'expired')`,
+    ),
+    check('ai_agent_turn_usage_nonnegative', sql`${t.creditsCharged} >= 0 and ${t.steps} >= 0`),
   ],
 )
 
@@ -271,6 +322,7 @@ export const aiTask = pgTable(
 export type AiModel = typeof aiModel.$inferSelect
 export type NewAiModel = typeof aiModel.$inferInsert
 export type AiConversation = typeof aiConversation.$inferSelect
+export type AiAgentTurn = typeof aiAgentTurn.$inferSelect
 export type AiMessage = typeof aiMessage.$inferSelect
 export type AiMessageFeedback = typeof aiMessageFeedback.$inferSelect
 export type AiTask = typeof aiTask.$inferSelect

@@ -90,6 +90,34 @@ afterAll(async () => {
   await Promise.all([db.$client.end(), migrator.$client.end()])
 })
 
+it('保存、复制与关闭文本模型的工具调用标记', async () => {
+  const key = `tools-${runId}`
+  const data = input({
+    key,
+    provider: 'openai',
+    providerModelId: 'gpt-fixture',
+    paramsSchema: '{}',
+  })
+  const id = await create(data)
+  expect(await row(id)).toMatchObject({ supportsTools: false })
+
+  expect(await call(saveAdminModel, { ...data, id, supportsTools: true })).toEqual({ ok: true, id })
+  expect(await row(id)).toMatchObject({ supportsTools: true })
+
+  const copy = await call(copyAdminModel, { id, key: `${key}-copy`, paramsSchema: '{}' })
+  if (!copy.ok) throw new Error(`Model copy failed: ${copy.error}`)
+  modelIds.push(copy.id)
+  expect(await row(copy.id)).toMatchObject({ supportsTools: true, enabled: false })
+
+  cacheValues.set(MODEL_CACHE_KEY, 'cached')
+  expect(await call(saveAdminModel, { ...data, id, supportsTools: false })).toEqual({
+    ok: true,
+    id,
+  })
+  expect(await row(id)).toMatchObject({ supportsTools: false })
+  expect(cacheValues.has(MODEL_CACHE_KEY)).toBe(false)
+})
+
 describe('后台故障模型配置边界', () => {
   it.each([
     { paramsSchema: '{}' },

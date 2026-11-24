@@ -13,6 +13,7 @@ language js
 
 pattern workspace_table() {
   or {
+    `aiAgentTurn`,
     `aiConversation`,
     `aiMessage`,
     `aiMessageFeedback`,

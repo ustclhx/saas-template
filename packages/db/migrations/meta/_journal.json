@@ -176,6 +176,13 @@
       "when": 1794477465344,
       "tag": "0024_feedback_share",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795512539417,
+      "tag": "0025_ai_agent_turn",
+      "breakpoints": true
     }
   ]
 }

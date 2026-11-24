@@ -6,6 +6,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
+  Switch,
   Textarea,
 } from '@saas/ui'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
@@ -73,6 +74,7 @@ interface Draft {
   tags: string
   sort: string
   enabled: boolean
+  supportsTools: boolean
   mode: Mode
   credits: string
   chargeOn: string
@@ -115,6 +117,7 @@ function toDraft(model: ModelRow): Draft {
     tags: model.tags.join(', '),
     sort: String(model.sort),
     enabled: model.enabled,
+    supportsTools: model.supportsTools,
     ...pricingDraft(model.pricing),
   }
 }
@@ -129,6 +132,7 @@ function newDraft(defaults: Data['defaults'], kind: Kind = 'text'): Draft {
     tags: '',
     sort: '0',
     enabled: true,
+    supportsTools: false,
     ...pricingDraft(defaults[kind] as Record<string, unknown>),
   }
 }
@@ -429,6 +433,7 @@ function ModelEditor({
           pricing: pricingOf(draft),
           tags: draft.tags.split(','),
           enabled: draft.enabled,
+          supportsTools: draft.kind === 'text' && draft.supportsTools,
           sort: Number(draft.sort) || 0,
         },
       }),
@@ -552,6 +557,14 @@ function ModelEditor({
           />{' '}
           {m.admin_enabled()}
         </label>
+        {draft.kind === 'text' && (
+          <Switch
+            checked={draft.supportsTools}
+            disabled={disabled}
+            label={m.admin_supports_tool_calls()}
+            onToggle={() => set({ supportsTools: !draft.supportsTools })}
+          />
+        )}
       </fieldset>
       <fieldset disabled={disabled} className="grid min-w-0 gap-3">
         <legend className="mb-3 font-medium">{m.admin_parameters()}</legend>

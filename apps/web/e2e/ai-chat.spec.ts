@@ -65,6 +65,35 @@ test('creates, renames and archives own conversations', async ({ page }) => {
   await expect(list.getByRole('listitem', { name: 'Trip planning' })).toBeVisible()
 })
 
+test('text chat pages exclude agent conversations', async ({ page }) => {
+  test.setTimeout(60_000)
+  await register(page, `chat-agent-owner-${randomUUID()}@example.com`)
+  const slug = slugOf(page)
+  const sql = fixtureDb()
+  const chatId = newId()
+  const agentId = newId()
+  const archivedAgentId = newId()
+  try {
+    const [workspace] = await sql`select id from organization where slug = ${slug}`
+    if (!workspace) throw new Error('Personal workspace missing from isolated database')
+    await sql`insert into ai_conversation (id, workspace_id, user_id, title, model_key, kind, agent_id, archived)
+      values
+        (${chatId}, ${workspace.id}, ${workspace.id}, 'Text chat', '', 'chat', null, false),
+        (${agentId}, ${workspace.id}, ${workspace.id}, 'Active agent', '', 'agent', 'assistant', false),
+        (${archivedAgentId}, ${workspace.id}, ${workspace.id}, 'Archived agent', '', 'agent', 'assistant', true)`
+
+    await page.goto(`/app/${slug}/chat`)
+    await expect(page.getByRole('listitem', { name: 'Text chat' })).toBeVisible()
+    await expect(page.getByText('Active agent', { exact: true })).toHaveCount(0)
+    await expect(page.getByText('Archived agent', { exact: true })).toHaveCount(0)
+    const response = await page.goto(`/app/${slug}/chat/${agentId}`)
+    expect(response?.status()).toBe(404)
+  } finally {
+    await sql`delete from ai_conversation where id in ${sql([chatId, agentId, archivedAgentId])}`
+    await sql.end()
+  }
+})
+
 test('another member of the workspace gets 404 for a conversation', async ({ page }) => {
   const ownerEmail = `chat-owner-${randomUUID()}@example.com`
   const otherEmail = `chat-other-${randomUUID()}@example.com`

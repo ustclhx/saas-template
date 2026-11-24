@@ -80,6 +80,7 @@
   "admin_pricing": "定价",
   "admin_sort": "排序值",
   "admin_enabled": "已启用",
+  "admin_supports_tool_calls": "支持工具调用",
   "admin_disabled": "已禁用",
   "admin_model_type": "模型类型",
   "admin_text": "文本",

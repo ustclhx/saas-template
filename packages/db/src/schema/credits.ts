@@ -70,7 +70,7 @@ export const creditHold = pgTable(
     status: text('status', { enum: ['held', 'captured', 'released'] })
       .notNull()
       .default('held'),
-    refType: text('ref_type', { enum: ['ai_task', 'ai_message'] }).notNull(),
+    refType: text('ref_type', { enum: ['ai_task', 'ai_message', 'agent_turn'] }).notNull(),
     refId: uuid('ref_id').notNull(),
     capturedAmount: integer('captured_amount').notNull().default(0),
     overageAbsorbed: integer('overage_absorbed').notNull().default(0),
