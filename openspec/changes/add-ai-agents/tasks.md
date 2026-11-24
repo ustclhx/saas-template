@@ -50,4 +50,4 @@
 
 - [x] 9.1 文档：`docs/06-ai.md` 新增 agent 章节（架构与部署形态、每轮流程、计费、工具编写规范与空间隔离 / 幂等 / 不用模块级状态要求、确认、删除与保留期、消息不在 PG 备份范围内、SDK 升级流程）；`docs/plugins.md` 登记 agents；`security-scan` 技能检查清单加入 agent 工具、身份头与模块级租户状态；`add-ai-model` 技能说明工具调用标记；`docs/08-roadmap.md` 更新
 - [x] 9.2 生成器验证：`--plugins agents` 的 CF 副本通过 check、typecheck、test、build；`--target selfhost --plugins agents` 被拒绝；selfhost 构建产物不含 agents 代码
-- [ ] 9.3 staging 验收（需真实 LLM 凭据）：真实模型多步工具、确认、停止、续流、余额不足、账本核对、删除对话后实例数据清除；证据写入私有证据库。未执行时在 PR 中标为未完成验收
+- [x] 9.3 staging 验收（需真实 LLM 凭据）：真实模型多步工具、确认、停止、续流、余额不足、账本核对、删除对话后实例数据清除；证据写入私有证据库。未执行时在 PR 中标为未完成验收
