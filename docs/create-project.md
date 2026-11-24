@@ -137,7 +137,7 @@ backups/backup-data/、releases/release-state/、state/.state/ 等运行目录�
 矩阵覆盖 Cloudflare 默认、Cloudflare 关闭计费与 AI 并保留积分、selfhost 默认，以及从默认 selfhost 副本
 再次生成的全关组合（计费、积分、营销、i18n、AI 与插件）。四个副本逐文件检查模板原名称与排除目录，
 安装依赖并运行 check、typecheck、单元测试和各自部署目标的构建。Cloudflare 关闭计费的副本验证
-`agents` 的 Durable Object 绑定与迁移条目已移除。全关 selfhost 副本还运行 Cloudflare web 构建，
+web 的 `agents` Durable Object 绑定与迁移条目已移除。全关 selfhost 副本还运行 Cloudflare web 构建，
 两个关闭 AI 的副本都检查构建产物中已移除媒体和 `agents` 的执行代码。验收结束后清理临时目录。
 独立只读 `selfhost-features.yml` 从真实源生成全关副本、构建镜像并在空卷 Compose 启动，
 实际验证 SSR/静态资源、登录/空间、关闭入口、成功 heartbeat 与完整 SHA。

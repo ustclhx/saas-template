@@ -264,14 +264,16 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
         const wrangler = parseJsonc(
           await readFile(join(result.target, `apps/${app}/wrangler.jsonc`), 'utf8'),
         )
-        if (scenario.id === 'cf') {
+        if (scenario.id === 'cf' && app === 'web') {
           for (const scope of [wrangler, wrangler.env.staging, wrangler.env.production]) {
             assert.ok(
-              scope.durable_objects.bindings.some(({ name }) => name === 'AGENT_CONVERSATION'),
+              scope.durable_objects?.bindings.some(
+                ({ name, class_name }) =>
+                  name === 'AGENT_CONVERSATION' && class_name === 'AgentConversation',
+              ),
             )
           }
-          if (app === 'web')
-            assert.match(JSON.stringify(wrangler.migrations), /"AgentConversation"/)
+          assert.match(JSON.stringify(wrangler.migrations), /"AgentConversation"/)
         } else {
           assert.doesNotMatch(JSON.stringify(wrangler), /AGENT_CONVERSATION|AgentConversation/)
         }
