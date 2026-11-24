@@ -33,6 +33,10 @@ export function createAgentRegistry(
       if (!registration) throw new Error(`Agent "${agent.id}" uses unknown tool "${name}"`)
       return registration.tool
     })
+    for (const name of agent.optionalTools ?? []) {
+      const registration = registered.get(name)
+      if (registration && !agent.tools.includes(name)) tools.push(registration.tool)
+    }
     agents.set(agent.id, tools)
   }
 
