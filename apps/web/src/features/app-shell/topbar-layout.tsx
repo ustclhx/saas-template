@@ -4,19 +4,36 @@ import { templateConfig } from '../../server/template-config.ts'
 import { DailyCreditsNotice } from '../credits/daily-notice.tsx'
 import { NotificationBell } from '../notifications/bell.tsx'
 import { type WorkspacePage, WorkspaceSwitcher } from '../workspace/components.tsx'
+import type { AppNavItem } from './nav.ts'
 import { resolveAppNav, TEMPLATE_NAV_IDS } from './registry.ts'
+
+function navLink(item: AppNavItem, slug: string) {
+  return (
+    <Link
+      key={item.id}
+      to={item.to as '/app/$slug'}
+      params={{ slug }}
+      {...(item.search && { search: item.search as never })}
+      className="underline"
+    >
+      {item.label()}
+    </Link>
+  )
+}
 
 /** 原有顶部布局（ui.appLayout: 'topbar'），结构与文案保持不变；另渲染项目注册的导航条目。
  * 通知入口改为与侧边栏布局相同的铃铛，完整列表在首页 #notifications */
 export function TopbarLayout({ page }: { page: WorkspacePage }) {
-  // 项目经 registerAppNav 新增的条目排在原有链接之后；模板条目已由上面的固定链接渲染
-  const projectItems = resolveAppNav({
+  const extraItems = resolveAppNav({
     role: page.role,
     readOnly: page.readOnly,
     isPersonal: page.workspace.isPersonal,
   })
     .flatMap((group) => group.items)
     .filter((item) => !(TEMPLATE_NAV_IDS as readonly string[]).includes(item.id))
+  const topbarItems = extraItems
+    .flatMap((item) => (item.topbarOrder === undefined ? [] : [{ item, order: item.topbarOrder }]))
+    .sort((a, b) => a.order - b.order)
   return (
     <div className="mx-auto grid max-w-4xl gap-8 p-6">
       <header className="grid gap-4">
@@ -52,24 +69,7 @@ export function TopbarLayout({ page }: { page: WorkspacePage }) {
               {m.app_chat()}
             </Link>
           )}
-          {templateConfig.ai.image || templateConfig.ai.video ? (
-            <Link
-              to="/app/$slug/tasks"
-              params={{ slug: page.workspace.slug }}
-              className="underline"
-            >
-              {m.media_tasks_title()}
-            </Link>
-          ) : null}
-          {templateConfig.ai.image || templateConfig.ai.video ? (
-            <Link
-              to="/app/$slug/media/new"
-              params={{ slug: page.workspace.slug }}
-              className="underline"
-            >
-              {m.media_title()}
-            </Link>
-          ) : null}
+          {topbarItems.map(({ item }) => navLink(item, page.workspace.slug))}
           <Link
             to="/app/$slug/settings"
             params={{ slug: page.workspace.slug }}
@@ -95,17 +95,9 @@ export function TopbarLayout({ page }: { page: WorkspacePage }) {
               {m.app_usage()}
             </Link>
           )}
-          {projectItems.map((item) => (
-            <Link
-              key={item.id}
-              to={item.to as '/app/$slug'}
-              params={{ slug: page.workspace.slug }}
-              {...(item.search && { search: item.search as never })}
-              className="underline"
-            >
-              {item.label()}
-            </Link>
-          ))}
+          {extraItems
+            .filter((item) => item.topbarOrder === undefined)
+            .map((item) => navLink(item, page.workspace.slug))}
         </nav>
       </header>
       <main>

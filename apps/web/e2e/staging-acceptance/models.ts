@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test'
 import type { Pricing } from '@saas/ai'
+import templateConfig from '../../../../template.config.ts'
 import { DEFAULT_CHARGE_ON } from '../../src/features/ai/admin-model-params.ts'
 import { chooseOption } from '../select.ts'
 import { evidence, expect, query, sqlLiteral, test } from './support.ts'
@@ -107,7 +108,11 @@ export const deepseekCall = {
   paramsSchema: {},
 } as const
 
-export const ACCEPTANCE_MODELS = [workersImage, falImage, falVideo, deepseekToken, deepseekCall]
+export const ACCEPTANCE_MODELS = [
+  ...(templateConfig.plugins.media ? [workersImage, falImage, falVideo] : []),
+  deepseekToken,
+  deepseekCall,
+]
 type Model = (typeof ACCEPTANCE_MODELS)[number]
 type ModelRow = Record<string, unknown> & { id: string; supports_tools: boolean }
 

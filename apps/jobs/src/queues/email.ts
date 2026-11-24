@@ -11,9 +11,15 @@ import {
 } from '@saas/email'
 import { type EmailQueueMessage, parseEmailQueueMessage } from '@saas/email/queue'
 import type { DeadLetterSink, QueueBatch, QueueMessage } from '@saas/platform'
-import { log, newRequestId, withLogContext } from '@saas/shared/log'
+import {
+  type JobObserver,
+  log,
+  logJobObserver,
+  newRequestId,
+  withJobObserver,
+  withLogContext,
+} from '@saas/shared/log'
 import templateConfig from '../../../../template.config.ts'
-import { type JobObserver, logJobObserver, withJobObserver } from '../observer.ts'
 
 /**
  * EMAIL_QUEUE 消费者（tasks.md 3.2，specs/user-auth「认证邮件异步发送」）：

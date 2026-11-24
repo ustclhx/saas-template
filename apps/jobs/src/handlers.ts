@@ -8,7 +8,13 @@ import type {
   ScheduledHandler,
   Scheduler,
 } from '@saas/platform'
-import { log, newRequestId, withLogContext } from '@saas/shared/log'
+import {
+  type JobObserver,
+  log,
+  newRequestId,
+  withJobObserver,
+  withLogContext,
+} from '@saas/shared/log'
 import type { ShareCardObjects } from '@saas/storage'
 import {
   BILLING_DAILY_CRON,
@@ -23,8 +29,7 @@ import { runFilesCleanup } from './cron/files-cleanup.ts'
 import { HEARTBEAT_CRON, runHeartbeat } from './cron/heartbeat.ts'
 import { runMetricsDaily } from './cron/metrics-daily.ts'
 import { runWorkspaceCleanup, WORKSPACE_CLEANUP_CRON } from './cron/workspace-cleanup.ts'
-import { type JobObserver, withJobObserver } from './observer.ts'
-import type { JobsPluginModule, PluginCronGroup } from './plugins/contract.ts'
+import type { JobsPluginModule, PluginCronGroup } from './plugins/module.ts'
 import { pluginCronTasks, pluginQueueHandler } from './plugins/register.ts'
 import { handleBillingBatch } from './queues/billing.ts'
 import { handleEmailBatch, type JobsEmailTransport } from './queues/email.ts'

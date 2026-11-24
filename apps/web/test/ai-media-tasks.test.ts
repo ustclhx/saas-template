@@ -30,7 +30,7 @@ import {
   handleMediaWebhook,
   type MediaHttpDeps,
   submitWorkspaceMedia,
-} from '../src/features/ai/media-tasks.ts'
+} from '../../../plugins/media/src/web/media-tasks.ts'
 import { templateConfig } from '../src/server/template-config.ts'
 
 const APP_URL = 'http://localhost:3000'
@@ -323,6 +323,7 @@ async function submitted(
 }
 
 afterAll(async () => {
+  if (!templateConfig.plugins.media) return
   const ids = sql`select id from "user" where email like ${`%@${EMAIL_DOMAIN}`}`
   await sql`delete from file where workspace_id in (${ids})`
   await sql`delete from notification where workspace_id in (${ids})`
@@ -341,7 +342,7 @@ afterAll(async () => {
   await sql`delete from ai_model where key like ${`acceptance-fault-${MODEL_PREFIX}%`}`
 })
 
-describe('media tasks API', () => {
+describe.skipIf(!templateConfig.plugins.media)('media tasks API', () => {
   it.each(['workers-timeout', 'fal-timeout'] as const)(
     '%s 冻结管理员故障策略和 60 秒 deadline，模型停用与并发证明更新不改变输入',
     async (mode) => {
@@ -664,15 +665,17 @@ describe('media tasks API', () => {
     const { deps } = dependencies()
     expect((await submit(who, await model({}, 'unknown'), deps)).status).toBe(404)
     expect((await submit(who, await model({}, 'workers-ai', 'video'), deps)).status).toBe(404)
-    const enabled = templateConfig.ai.mediaProviders
+    const media = templateConfig.plugins.media
+    if (!media) throw new Error('The media plugin must be enabled')
+    const enabled = media.providers
     try {
-      Object.defineProperty(templateConfig.ai, 'mediaProviders', {
+      Object.defineProperty(media, 'providers', {
         value: ['fal'],
         configurable: true,
       })
       expect((await submit(who, await model({}, 'workers-ai'), deps)).status).toBe(404)
     } finally {
-      Object.defineProperty(templateConfig.ai, 'mediaProviders', {
+      Object.defineProperty(media, 'providers', {
         value: enabled,
         configurable: true,
       })
@@ -949,7 +952,7 @@ describe('media tasks API', () => {
   })
 })
 
-describe('媒体取消计费、不确定提交回调与存储配额', () => {
+describe.skipIf(!templateConfig.plugins.media)('媒体取消计费、不确定提交回调与存储配额', () => {
   const cancelUrl = (who: { workspaceId: string }, taskId: string) =>
     `${APP_URL}/api/ai/tasks/${taskId}/cancel?workspaceId=${who.workspaceId}`
   async function preview(

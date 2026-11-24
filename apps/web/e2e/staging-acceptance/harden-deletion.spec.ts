@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import type { Page } from '@playwright/test'
 import { grant } from '@saas/credits'
-import { createDb } from '@saas/db'
+import { createDb, writeNotification } from '@saas/db'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import { newId } from '@saas/shared'
 import { loadEnv } from 'vite'
@@ -40,6 +40,7 @@ import {
 test.describe.configure({ mode: 'serial' })
 
 const tag = createHash('sha256').update(runId).digest('hex').slice(0, 10)
+const mediaEnabled = Boolean(templateConfig.plugins.media)
 const accounts = {
   a: { email: dedicatedEmail('harden-del-a'), name: `Harden Deletion A ${tag}` },
   b: { email: dedicatedEmail('harden-del-b'), name: `Harden Deletion B ${tag}` },
@@ -126,15 +127,16 @@ async function passwordLogin(page: Page, account: 'a' | 'b') {
 }
 
 /** 本地夹具：给指定空间授予验收模型权益与积分，不调用支付服务商（同 local-setup.ts）。 */
-async function seedLocalWorkspace(workspaceId: string) {
+async function seedLocalWorkspace(workspaceId: string, notificationUserId?: string) {
   const sql = fixtureDb()
   const worktree = loadEnv('worktree', new URL('../../../../', import.meta.url).pathname, '')
   const db = createDb({ connectionString: worktree.DATABASE_URL ?? '' })
   try {
     const key = `harden-deletion:${runId}`
+    const models = [...(mediaEnabled ? [workersImage] : []), deepseekCall]
     await sql`insert into plan(id,key,name,type,credits,features,sort,active)
       values(${newId()},${key},'Harden deletion','subscription',0,
-        ${sql.json({ ...DEFAULT_FREE_FEATURES, models: [workersImage.key, deepseekCall.key] })},1000,false)
+        ${sql.json({ ...DEFAULT_FREE_FEATURES, models: models.map((model) => model.key) })},1000,false)
       on conflict(key) do nothing`
     const [plan] = await sql`select id from plan where key=${key}`
     if (!plan) throw new Error('Missing local plan')
@@ -150,7 +152,7 @@ async function seedLocalWorkspace(workspaceId: string) {
       values(${newId()},${workspaceId},${plan.id},${price.id},'stripe',${`${key}:${workspaceId}`},
         'canceled',now(),now()+interval '1 day',true,now(),now())
       on conflict(provider,provider_subscription_id) do nothing`
-    for (const model of [workersImage, deepseekCall])
+    for (const model of models)
       await sql`insert into ai_model(id,key,kind,provider,provider_model_id,pricing,min_plan_features,params_schema,enabled,sort)
         values(${newId()},${model.key},${model.kind},${model.provider},${model.providerModelId},
           ${sql.json(model.pricing)},'[]'::jsonb,${sql.json(model.paramsSchema)},true,${model.sort})
@@ -161,6 +163,12 @@ async function seedLocalWorkspace(workspaceId: string) {
       sourceRef: `${key}:${workspaceId}`,
       amount: 50,
     })
+    if (notificationUserId)
+      await writeNotification(db, workspaceId, {
+        userId: notificationUserId,
+        type: 'test.completed',
+        title: 'Deletion fixture notification',
+      })
   } finally {
     await db.$client.end()
     await sql.end()
@@ -408,17 +416,18 @@ test('删号：个人空间进入保留期，增长名单与通知立即删除�
     const a = pageA ? await register(pageA, 'a') : null
     const team = a ? await seedLocalTeam(a.userId, b.userId) : null
     if (local) {
-      await seedLocalWorkspace(b.personal.id)
+      // 关闭媒体时，单独准备通知以保留本地删号清理断言。
+      await seedLocalWorkspace(b.personal.id, mediaEnabled ? undefined : b.userId)
       if (team) await seedLocalWorkspace(team.id)
       await seedLocalGrowth(accounts.b.email)
     } else await adminCredits(page, b.personal.id)
 
-    // B：个人空间与团队空间各一条对话 + 一个媒体任务；A：团队空间一条对话。
+    // B 在个人与团队空间各发送一条对话，启用媒体时再各提交一个任务；A 在团队空间发送一条对话。
     await chatOnce(page, b.personal.slug, 'b-personal')
-    await mediaOnce(page, b.personal.id, b.userId, `harden-del-${tag}-b-personal`)
+    if (mediaEnabled) await mediaOnce(page, b.personal.id, b.userId, `harden-del-${tag}-b-personal`)
     if (team && pageA && a) {
       await chatOnce(page, team.slug, 'b-team')
-      await mediaOnce(page, team.id, b.userId, `harden-del-${tag}-b-team`)
+      if (mediaEnabled) await mediaOnce(page, team.id, b.userId, `harden-del-${tag}-b-team`)
       await chatOnce(pageA, team.slug, 'a-team')
       await convertLocalTeam(team.id)
     }
@@ -436,16 +445,18 @@ test('删号：个人空间进入保留期，增长名单与通知立即删除�
     )
     const before = growthBefore[0]
     if (!before) throw new Error('Missing growth snapshot')
-    // 媒体任务终态写入站内通知（packages/ai/src/media/tasks.ts）。
-    expect(before.notifications, 'B must own notifications before deletion').toBeGreaterThan(0)
+    // 通知由媒体任务或本地夹具创建。
+    if (mediaEnabled || local)
+      expect(before.notifications, 'B must own notifications before deletion').toBeGreaterThan(0)
     if (local) {
       expect(before.newsletter).toBe(1)
       expect(before.waitlist).toBe(1)
     }
+    const expectedContent = { conversations: 1, messages: 2, tasks: mediaEnabled ? 1 : 0 }
     const personalContent = await content(b.personal.id, b.userId)
-    expect(personalContent).toEqual({ conversations: 1, messages: 2, tasks: 1 })
+    expect(personalContent).toEqual(expectedContent)
     const teamContentB = team ? await content(team.id, b.userId) : null
-    if (team) expect(teamContentB).toEqual({ conversations: 1, messages: 2, tasks: 1 })
+    if (team) expect(teamContentB).toEqual(expectedContent)
     const teamContentA = team && a ? await contentDigest(team.id, a.userId) : null
     const teamFiles = team ? await fileDigest(team.id) : null
     const workspaceIds = [b.personal.id, ...(team ? [team.id] : [])]

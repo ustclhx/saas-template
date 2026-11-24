@@ -3,11 +3,17 @@ import type { Database } from '@saas/db'
 import type { DeadLetterSink, QueueBatch, QueueFailure, QueueMessage } from '@saas/platform'
 import { isAppError } from '@saas/shared'
 import { parseServerAnalyticsMessage } from '@saas/shared/analytics'
-import { log, newRequestId, withLogContext } from '@saas/shared/log'
+import {
+  type JobObserver,
+  log,
+  logJobObserver,
+  newRequestId,
+  withJobObserver,
+  withLogContext,
+} from '@saas/shared/log'
 import { type BillingEnv, createBillingContext, postprocessBillingDelivery } from '../billing.ts'
 import { deliverServerAnalytics } from '../notifications/analytics.ts'
 import { deliverOperations, parseOperationsMessage } from '../notifications/operations.ts'
-import { type JobObserver, logJobObserver, withJobObserver } from '../observer.ts'
 
 const EVENTS_MAX_ATTEMPTS = 6
 

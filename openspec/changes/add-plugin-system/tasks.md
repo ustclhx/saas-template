@@ -25,11 +25,11 @@
 
 ## 5. 媒体迁移为 `media` 插件
 
-- [ ] 5.1 建 `plugins/media`：清单（targets 含 node、requires billing+credits、bindings `AI_MEDIA_WORKFLOW` / jobs workflows / 可选 `AI`、secrets `FAL_KEY` / `MEDIA_WEBHOOK_SECRET`）、配置段 `providers`；`ai.mediaProviders` 迁到 `plugins.media.providers`，读取处改为插件配置
-- [ ] 5.2 迁移 web：`features/ai-media/*`、`features/ai/media-tasks.ts`、媒体路由（`app/$slug/media/new`、`app/$slug/tasks/*`、`api/ai/tasks*`、`api/webhooks/media/$provider`、`api/v1/tasks*`）、`node/media-workflow.ts`、文案；核心中对这些文件的引用改为扩展点。只改路径与导入，不改逻辑；对应单元测试随迁并通过
-- [ ] 5.3 迁移 jobs：`workflows/media-runner.ts`、`node/media.ts`、`node/media-http.ts`、`mediaTaskHoldSweeper` 注册；`AiMediaWorkflow` 只经生成文件导出；e2e 夹具 `local-media.ts`、`fault-local-media.ts` 的导入路径更新。媒体集成测试与 jobs 测试通过
-- [ ] 5.4 剔除验证：分别以启用 / 关闭 `media` 构建 web（Cloudflare、Node）与 jobs，用 1.2 的命令确认关闭时产物中无 `AiMediaWorkflow`、`fal.media`、媒体页面组件；关闭时媒体页面与 Webhook 返回 404 的 e2e 或集成测试
-- [ ] 5.5 本地媒体端到端回归：启用 `media` 跑现有本地媒体 e2e（`local-media`），结果与迁移前一致；证据写入 `EVIDENCE_DIR`
+- [x] 5.1 建 `plugins/media`：清单（targets 含 node、requires billing+credits、bindings `AI_MEDIA_WORKFLOW` / jobs workflows / 可选 `AI`、secrets `FAL_KEY` / `MEDIA_WEBHOOK_SECRET`）、配置段 `providers`；`ai.mediaProviders` 迁到 `plugins.media.providers`，读取处改为插件配置
+- [x] 5.2 迁移 web：`features/ai-media/*`、`features/ai/media-tasks.ts`、媒体路由（`app/$slug/media/new`、`app/$slug/tasks/*`、`api/ai/tasks*`、`api/webhooks/media/$provider`、`api/v1/tasks*`）、`node/media-workflow.ts`、文案；核心中对这些文件的引用改为扩展点。只改路径与导入，不改逻辑；对应单元测试随迁并通过
+- [x] 5.3 迁移 jobs：`workflows/media-runner.ts`、`node/media.ts`、`node/media-http.ts`、`mediaTaskHoldSweeper` 注册；`AiMediaWorkflow` 只经生成文件导出；e2e 夹具 `local-media.ts`、`fault-local-media.ts` 的导入路径更新。媒体集成测试与 jobs 测试通过
+- [x] 5.4 剔除验证：分别以启用 / 关闭 `media` 构建 web（Cloudflare、Node）与 jobs，用 1.2 的命令确认关闭时产物中无 `AiMediaWorkflow`、`fal.media`、媒体页面组件；关闭时媒体页面与 Webhook 返回 404 的 e2e 或集成测试。关闭媒体后运行 Web / jobs 相关测试与本地 e2e，确认媒体专属用例跳过且其他用例通过
+- [x] 5.5 本地媒体端到端回归：启用 `media` 跑现有本地媒体 e2e（`local-media`），结果与迁移前一致；证据写入 `EVIDENCE_DIR`
 
 ## 6. 生成器与模板同步
 

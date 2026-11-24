@@ -19,12 +19,12 @@ import { MEDIA_DONE_EVENT, newId } from '@saas/shared'
 import { createNodeStorage } from '@saas/storage/node'
 import { eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
+import { createNodeMediaWorkflowClient } from '../../../plugins/media/src/node/web-workflow.ts'
 import {
   handleMediaCancel,
   handleMediaWebhook,
   type MediaHttpDeps,
-} from '../../web/src/features/ai/media-tasks.ts'
-import { createNodeMediaWorkflowClient } from '../../web/src/node/media-workflow.ts'
+} from '../../../plugins/media/src/web/media-tasks.ts'
 import { startMediaS3Fixture } from './fixtures/media-s3.ts'
 import { startMediaWorker } from './fixtures/media-worker.helpers.ts'
 

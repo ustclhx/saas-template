@@ -2,7 +2,6 @@ import { createHash, randomUUID } from 'node:crypto'
 import { expect, test } from '@playwright/test'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import { newId } from '@saas/shared'
-import { EMPTY_MEDIA_PARAMETER } from '../src/features/ai-media/schema.ts'
 import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
 import { chooseOption } from './select.ts'
 import { stubTurnstile } from './turnstile.ts'
@@ -16,6 +15,9 @@ test('saved media parameter schemas drive submit fields, defaults and validation
   const skipReason = workersAiSkipReason()
   test.skip(skipReason !== null, skipReason ?? '')
   test.setTimeout(150_000)
+  const { EMPTY_MEDIA_PARAMETER } = await import(
+    '../../../plugins/media/src/web/ai-media/schema.ts'
+  )
   const sql = fixtureDb()
   const email = `admin-schema-${randomUUID()}@example.com`
   const key = `e2e-schema-${randomUUID().slice(0, 8)}`

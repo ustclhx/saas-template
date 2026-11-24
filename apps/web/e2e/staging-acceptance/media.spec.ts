@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import templateConfig from '../../../../template.config.ts'
 import {
   awaitTerminal,
   isWorkersUpstream8007,
@@ -22,6 +23,7 @@ async function requireMediaModel(model: typeof workersImage | typeof falImage | 
 }
 
 async function loginMedia(page: Page) {
+  test.skip(!templateConfig.plugins.media, 'The media plugin is disabled')
   test.skip(!process.env.NEON_READONLY_URL, '媒体验收需要 NEON_READONLY_URL 只读对账及幂等恢复')
   await login(page, 'user')
 }

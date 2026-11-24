@@ -11,12 +11,10 @@ import { registerPluginHoldSweepers } from '../plugins/register.ts'
 export function getNodeJobFeatures(config: TemplateConfig = templateConfig) {
   const billing = config.billing.enabled
   const text = config.ai.text.enabled
-  const media = config.ai.image || config.ai.video
   return {
     billing,
     credits: config.credits.enabled,
     text,
-    media,
   }
 }
 

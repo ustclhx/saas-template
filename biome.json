@@ -39,7 +39,14 @@
   "plugins": [
     {
       "path": "./packages/db/lint/no-unscoped-workspace-query.grit",
-      "includes": ["**/apps/web/src/features/**", "**/apps/jobs/src/**", "!**/*.test.ts"]
+      "includes": [
+        "**/apps/web/src/features/**",
+        "**/apps/jobs/src/**",
+        "**/plugins/*/src/web/**",
+        "**/plugins/*/src/jobs/**",
+        "**/plugins/*/src/node/**",
+        "!**/*.test.ts"
+      ]
     }
   ],
   "assist": {

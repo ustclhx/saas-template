@@ -1,11 +1,15 @@
 import { expect, it, vi } from 'vitest'
 
+// 模拟文字项目构建时生成的空 Worker 插件注册表。
+vi.mock('../../plugins.worker.gen.ts', () => ({ default: [] }))
+
 vi.mock('../template-config.ts', async (original) => {
   const { templateConfig } = await original<typeof import('../template-config.ts')>()
   return {
     templateConfig: {
       ...templateConfig,
       ai: { ...templateConfig.ai, image: false, video: false },
+      plugins: {},
       auth: { ...templateConfig.auth, oauth: [], turnstile: false },
       features: { ...templateConfig.features, publicApi: false },
     },

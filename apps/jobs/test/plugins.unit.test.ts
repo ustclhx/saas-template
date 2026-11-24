@@ -31,9 +31,9 @@ vi.mock('../src/cron/workspace-cleanup.ts', () => ({
 }))
 
 import type { TemplateConfig } from '@saas/config'
+import { logJobObserver } from '@saas/shared/log'
 import { consumeJobsBatch, type JobsContext, runJobsSchedule } from '../src/handlers.ts'
-import { logJobObserver } from '../src/observer.ts'
-import type { JobsPluginModule } from '../src/plugins/contract.ts'
+import type { JobsPluginModule } from '../src/plugins/module.ts'
 import { registerPluginHoldSweepers } from '../src/plugins/register.ts'
 
 const daily = vi.fn()

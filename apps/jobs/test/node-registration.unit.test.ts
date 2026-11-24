@@ -38,22 +38,34 @@ vi.mock('../src/cron/workspace-cleanup.ts', () => ({
 }))
 vi.mock('../src/cron/metrics-daily.ts', () => ({ runMetricsDaily: mocks.metrics }))
 
-import { registerAiHoldSweepers } from '../src/ai.ts'
+import { holdSweepers } from '../../../plugins/media/src/jobs/hold-sweep.ts'
+import templateConfig from '../../../template.config.ts'
 import type { JobsContext } from '../src/handlers.ts'
 import { getNodeJobFeatures, registerNodeJobsSchedules } from '../src/node/registration.ts'
 
+const mediaEnabled = Boolean(templateConfig.plugins.media)
+const mediaTest = it.runIf(mediaEnabled)
 const disabled = defineTemplateConfig({
   app: { name: 'test', url: 'https://example.test', supportEmail: 'support@example.test' },
   billing: { enabled: false },
   credits: { enabled: false },
   ai: { text: { enabled: false }, image: false, video: false },
 })
+const mediaConfig = {
+  ...disabled,
+  billing: { ...disabled.billing, enabled: true },
+  credits: { ...disabled.credits, enabled: true },
+  ai: { ...disabled.ai, image: true },
+  plugins: { media: {} },
+}
 const business = vi.fn(() => ({}) as ReturnType<JobsContext['db']['business']>)
 const context = {
   db: { business },
   files: { available: false },
   observer: { tagContext: vi.fn(), captureException: vi.fn() },
 } as unknown as JobsContext
+const mediaContext = { ...context, plugins: [{ holdSweepers }] }
+
 function scheduler() {
   const runs = new Map<string, ScheduledHandler>()
   const definitions: ScheduleDefinition[] = []
@@ -96,15 +108,22 @@ it('keeps core UTC schedules and heartbeat with billing, credits and AI disabled
   dispose()
 })
 
-it('keeps text and media hold registrations explicit and removable without a media workflow', () => {
+it('keeps hold registrations explicit and removable without a workflow', () => {
   expect(getNodeJobFeatures(disabled)).toEqual({
     billing: false,
     credits: false,
     text: false,
-    media: false,
   })
-  const dispose = registerAiHoldSweepers({ text: true, media: true })
-  expect(mocks.hold.mock.calls.map(([type]) => type)).toEqual(['ai_message', 'ai_task'])
+  const base = mediaEnabled ? mediaConfig : defineTemplateConfig({ app: disabled.app })
+  const config = { ...base, ai: { ...base.ai, text: { ...base.ai.text, enabled: true } } }
+  const dispose = registerNodeJobsSchedules(
+    scheduler(),
+    mediaEnabled ? mediaContext : context,
+    config,
+  )
+  expect(mocks.hold.mock.calls.map(([type]) => type)).toEqual(
+    mediaEnabled ? ['ai_message', 'ai_task'] : ['ai_message'],
+  )
   dispose()
   for (const result of mocks.hold.mock.results) expect(result.value).toHaveBeenCalledOnce()
 })
@@ -120,26 +139,22 @@ it('does not advance the Node heartbeat when deletion cache compensation fails',
   dispose()
 })
 
-it('retains enabled media hold recovery while unavailable files skip object cleanup', async () => {
-  const config = {
-    ...disabled,
-    billing: { ...disabled.billing, enabled: true },
-    credits: { ...disabled.credits, enabled: true },
-    ai: { ...disabled.ai, image: true },
-  }
-  const registered = scheduler()
-  const dispose = registerNodeJobsSchedules(registered, context, config)
-  await registered.runs.get('jobs-ten-minute-maintenance-v1')?.({ scheduledAt: new Date() })
-  expect(mocks.hold.mock.calls.map(([type]) => type)).toEqual(['ai_task'])
-  expect(mocks.billing).toHaveBeenCalledWith('*/10 * * * *', context, {
-    billing: true,
-    credits: true,
-    text: false,
-    media: true,
-  })
-  expect(mocks.files).not.toHaveBeenCalled()
-  dispose()
-})
+mediaTest(
+  'retains enabled media hold recovery while unavailable files skip object cleanup',
+  async () => {
+    const registered = scheduler()
+    const dispose = registerNodeJobsSchedules(registered, mediaContext, mediaConfig)
+    await registered.runs.get('jobs-ten-minute-maintenance-v1')?.({ scheduledAt: new Date() })
+    expect(mocks.hold.mock.calls.map(([type]) => type)).toEqual(['ai_task'])
+    expect(mocks.billing).toHaveBeenCalledWith('*/10 * * * *', mediaContext, {
+      billing: true,
+      credits: true,
+      text: false,
+    })
+    expect(mocks.files).not.toHaveBeenCalled()
+    dispose()
+  },
+)
 
 it('enables ten-minute object cleanup only for assembled file capability', async () => {
   const registered = scheduler()
@@ -161,6 +176,5 @@ it('uses explicit module and text.enabled flags rather than payment provider pre
     billing: true,
     credits: true,
     text: true,
-    media: false,
   })
 })

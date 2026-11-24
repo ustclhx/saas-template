@@ -1,4 +1,3 @@
-import type { MediaRuntimeEnv } from '@saas/ai'
 import type { PaymentRuntimeEnv } from '@saas/billing'
 import type { StorageEnv } from '@saas/storage/cloudflare'
 import type { SentryEnv } from './sentry.ts'
@@ -6,11 +5,7 @@ import type { SentryEnv } from './sentry.ts'
 declare global {
   /** wrangler.jsonc 中声明的绑定（`import { env } from 'cloudflare:workers'` 与各 handler 的 env 类型） */
   declare namespace Cloudflare {
-    interface Env
-      extends Omit<PaymentRuntimeEnv, 'SENTRY_ENVIRONMENT'>,
-        MediaRuntimeEnv,
-        StorageEnv,
-        SentryEnv {
+    interface Env extends Omit<PaymentRuntimeEnv, 'SENTRY_ENVIRONMENT'>, StorageEnv, SentryEnv {
       AI_FAULT_INJECTION?: string
       APP_URL?: string
       PLAUSIBLE_DOMAIN?: string
@@ -31,7 +26,6 @@ declare global {
       CACHE: KVNamespace
       /** 带查询缓存（app-db-cached） */
       HYPERDRIVE_CACHED: Hyperdrive
-      AI_MEDIA_WORKFLOW: Workflow<import('./index.ts').AiMediaParams>
     }
   }
 }

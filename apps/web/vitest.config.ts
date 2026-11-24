@@ -1,3 +1,4 @@
+import { relative, sep } from 'node:path'
 import { cloudflareTest } from '@cloudflare/vitest-plugin'
 import { isPostgresSocketRejection } from '@saas/db/test/postgres-socket-rejection'
 import { resolveTestDatabase } from '@saas/db/test-database'
@@ -18,6 +19,12 @@ const migratorUrl = database?.migratorUrl
 
 // 与 vite dev / build 一致：生成插件注册文件，并编译启用插件的文案
 const { plugins: enabledPlugins } = await generatePlugins({ config: templateConfig })
+const pluginUnitTests = enabledPlugins.map(({ dir }) => {
+  const pluginDir = relative(import.meta.dirname, dir)
+    .split(sep)
+    .join('/')
+  return `${pluginDir}/src/{web,node}/**/*.test.{ts,tsx}`
+})
 
 const integration = appUrl && migratorUrl
 if (integration) {
@@ -44,7 +51,7 @@ export default defineConfig({
         ],
         test: {
           name: 'unit',
-          include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts'],
+          include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts', ...pluginUnitTests],
           environment: 'node',
         },
       },

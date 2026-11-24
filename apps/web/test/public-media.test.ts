@@ -20,7 +20,12 @@ import {
   type StorageEnv,
 } from '@saas/storage/cloudflare'
 import { afterAll, describe, expect, it, vi } from 'vitest'
-import { runMediaTask } from '../../jobs/src/workflows/media-runner.ts'
+import { runMediaTask } from '../../../plugins/media/src/jobs/media-runner.ts'
+import {
+  handlePublicMediaDetail,
+  handlePublicMediaSubmit,
+  type PublicMediaDeps,
+} from '../../../plugins/media/src/web/public-tasks.ts'
 import enApiDoc from '../content/docs/en/public-api.mdx?raw'
 import zhApiDoc from '../content/docs/zh/public-api.mdx?raw'
 import {
@@ -28,11 +33,7 @@ import {
   createWorkspaceKey,
   editWorkspaceKey,
 } from '../src/features/api-keys/service.ts'
-import {
-  handlePublicMediaDetail,
-  handlePublicMediaSubmit,
-  type PublicMediaDeps,
-} from '../src/features/api-keys/tasks.ts'
+import { templateConfig } from '../src/server/template-config.ts'
 
 type WorkflowStep = Parameters<typeof runMediaTask>[1]
 
@@ -209,6 +210,7 @@ async function noReservation(workspaceId: string, available = 100) {
 }
 
 afterAll(async () => {
+  if (!templateConfig.plugins.media) return
   await env.FILES.delete(objectKeys)
   const ids = sql`select id from "user" where email like ${`%@${domain}`}`
   await sql`delete from file where workspace_id in (${ids})`
@@ -229,7 +231,7 @@ afterAll(async () => {
   await sql.end()
 })
 
-describe('公开 API 媒体任务与共用 Workflow', () => {
+describe.skipIf(!templateConfig.plugins.media)('公开 API 媒体任务与共用 Workflow', () => {
   it('平台管理员创建的 Key 在 staging 开启故障时仍不可选媒体故障模型，且无业务或积分副作用', async () => {
     const who = await owner()
     await sql`update "user" set role='admin' where id=${who.id}`

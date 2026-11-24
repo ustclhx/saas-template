@@ -1,4 +1,5 @@
 import type { AcceptanceFaultMode, Pricing } from '@saas/ai'
+import templateConfig from '../../../../template.config.ts'
 import { deepseekCall, deepseekToken, falImage, workersImage } from './models.ts'
 
 export interface FaultModelDefinition {
@@ -24,7 +25,7 @@ const mediaModes = [
 ] as const
 
 export const FAULT_MODELS: readonly FaultModelDefinition[] = [
-  ...mediaModes.map((mode, index) => {
+  ...(templateConfig.plugins.media ? mediaModes : []).map((mode, index) => {
     const base = mode.startsWith('workers-') ? workersImage : falImage
     return {
       ...base,

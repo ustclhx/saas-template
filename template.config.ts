@@ -124,9 +124,11 @@ export default defineTemplateConfig({
     },
     image: true,
     video: true,
-    mediaProviders: ['fal', 'workers-ai'], // 只启用需要的媒体服务商；Workers AI 使用 AI 绑定，无外部密钥
     // 新建模型时的默认计费方式，后台可逐个模型修改：'per_call' 按次 | 'token' 按 token | 'per_unit' 按张/秒
     defaultPricingMode: { text: 'token', image: 'per_call', video: 'per_call' },
+  },
+  plugins: {
+    media: { providers: ['fal', 'workers-ai'] }, // Workers AI 使用 AI 绑定，无外部密钥
   },
   features: {
     analytics: 'plausible', // 'plausible' | 'posthog' | false；长期词站可设 false，见 docs/analytics.md

@@ -5,37 +5,15 @@ import type { JsonValue, Workflow, WorkflowInstance, WorkflowStep } from '@saas/
 import { AppError } from '@saas/shared'
 import { persistMediaOutputs } from '@saas/storage'
 import { createCloudflareMediaCopier } from '@saas/storage/cloudflare'
-import { runMediaTask } from '../../../jobs/src/workflows/media-runner.ts'
-import { handleMediaWebhook, type MediaHttpDeps } from '../../src/features/ai/media-tasks.ts'
-import type { WebRuntime } from '../../src/server/runtime.ts'
+import { runMediaTask } from '../../../../plugins/media/src/jobs/media-runner.ts'
+import {
+  handleMediaWebhook,
+  type MediaHttpDeps,
+} from '../../../../plugins/media/src/web/media-tasks.ts'
+import type { WebAiRuntime } from '../../src/server/runtime.ts'
+import { faultEnv } from './fault-local-runtime.ts'
 
-const faultEnv = { SENTRY_ENVIRONMENT: 'staging', AI_FAULT_INJECTION: 'enabled' } as const
 const secret = 'fault-local-only-fixture'
-const externalKeys = [
-  'STRIPE_SECRET_KEY',
-  'STRIPE_WEBHOOK_SECRET',
-  'PAYPAL_CLIENT_ID',
-  'PAYPAL_CLIENT_SECRET',
-  'PAYPAL_WEBHOOK_ID',
-  'SENTRY_DSN',
-  'OPENAI_API_KEY',
-  'ANTHROPIC_API_KEY',
-  'GOOGLE_API_KEY',
-  'DEEPSEEK_API_KEY',
-  'AI_GATEWAY_TOKEN',
-  'AI_GATEWAY_ACCOUNT_ID',
-  'AI_GATEWAY_ID',
-  'RESEND_API_KEY',
-]
-export function localBindings<T extends object>(bindings: T): T {
-  return {
-    ...bindings,
-    ...Object.fromEntries(externalKeys.map((key) => [key, ''])),
-    ...faultEnv,
-    FAL_KEY: 'local-fake',
-    MEDIA_WEBHOOK_SECRET: secret,
-  }
-}
 const bytes = Uint8Array.from(
   atob(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPZkAAAAASUVORK5CYII=',
@@ -219,42 +197,14 @@ export function localHttpDeps<T extends MediaHttpDeps>(real: T): T {
   return { ...deps, workflow: { available: true, value: localWorkflow(deps) } }
 }
 
-// getter 保留请求原有 DB、auth、R2 和 cache；任务健康只报告本地夹具，不访问 jobs。
-export function localWebRuntime(runtime: WebRuntime): WebRuntime {
-  if (!runtime.ai?.available) throw new Error('Local fault runtime requires AI composition')
-  const realAi = runtime.ai.value
-  const ai = {
-    ...realAi,
+export function localMediaAi(ai: WebAiRuntime): WebAiRuntime {
+  return {
+    ...ai,
     config: {
-      ...faultEnv,
-      AI_TEXT_EGRESS: 'direct' as const,
-      DEEPSEEK_API_KEY: 'local-fake',
+      ...ai.config,
       FAL_KEY: 'local-fake',
       MEDIA_WEBHOOK_SECRET: secret,
     },
-    workersAi: { available: true as const, value: { run: async () => bytes } },
+    workersAi: { available: true, value: { run: async () => bytes } },
   }
-  const local = Object.create(runtime) as WebRuntime
-  Object.defineProperties(local, {
-    config: {
-      value: {
-        ...runtime.config,
-        ...faultEnv,
-        ...Object.fromEntries(externalKeys.map((key) => [key, ''])),
-      },
-    },
-    ai: { value: { available: true, value: ai } },
-    health: {
-      value: {
-        cache: async () => {
-          await runtime.cache.get('fault-local-health')
-        },
-        tasks: {
-          queue: async () => ({ status: 'up' }),
-          scheduler: async () => ({ status: 'up', lastCronAt: new Date().toISOString() }),
-        },
-      },
-    },
-  })
-  return local
 }

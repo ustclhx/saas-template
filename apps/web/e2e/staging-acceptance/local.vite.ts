@@ -1,4 +1,5 @@
 import { defineConfig, type Plugin } from 'vite'
+import templateConfig from '../../../../template.config.ts'
 import appConfig from '../../vite.config.ts'
 
 const helper = new URL('./local-media.ts', import.meta.url).pathname
@@ -14,7 +15,7 @@ const mocks: Plugin = {
       return new URL('./local-text-model.ts', import.meta.url).pathname
   },
   transform(code, id) {
-    if (this.environment.name !== 'ssr') return
+    if (this.environment.name !== 'ssr' || !templateConfig.plugins.media) return
     // 媒体路由经 getAiHttpDeps 组装 workflow 与 Provider；在此换上本地夹具，匹配不到时直接报错而非让任务停在 queued。
     if (id.endsWith('/src/features/ai/runtime.ts')) {
       const original = replaceOnce(

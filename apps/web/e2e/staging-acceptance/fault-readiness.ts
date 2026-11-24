@@ -72,13 +72,11 @@ export async function prepareFaultReadiness(page: Page): Promise<FaultWorkspace>
     ? FAULT_MODELS.filter((model) => !features.models.includes(model.key)).length
     : 0
   const capacity = features.storageGb * 1024 ** 3
-  if (
-    missingModels ||
-    snapshot.balance < 30 ||
-    snapshot.debt !== 0 ||
-    snapshot.activeTasks >= features.maxConcurrentTasks ||
-    capacity - snapshot.storageBytes < 10 * 1024 ** 2
-  )
+  const insufficientMediaCapacity =
+    templateConfig.plugins.media &&
+    (snapshot.activeTasks >= features.maxConcurrentTasks ||
+      capacity - snapshot.storageBytes < 10 * 1024 ** 2)
+  if (missingModels || snapshot.balance < 30 || snapshot.debt !== 0 || insufficientMediaCapacity)
     throw new Error(
       `${guidancePrefix}故障套件：请管理员核对 user=${admin.id} workspace=${workspaceId}：缺模型权限=${missingModels}，余额=${snapshot.balance}（至少30），欠费=${snapshot.debt}，在途=${snapshot.activeTasks}，并发上限=${features.maxConcurrentTasks}，剩余存储字节=${capacity - snapshot.storageBytes}（至少10485760）；准备完成后用同一 run ID 重跑`,
     )
