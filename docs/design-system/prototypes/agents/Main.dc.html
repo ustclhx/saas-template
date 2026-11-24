@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Agent 对话页</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:none}a:hover{text-decoration:underline;text-underline-offset:3px}
+.r{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;height:1000px;display:flex;overflow:hidden}
+button,input,textarea{font:inherit;color:inherit;margin:0}
+button{cursor:pointer;border:0;background:none;padding:0}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.cap{font-size:12px;line-height:16px}
+.sub{font-size:14px;line-height:20px;font-weight:600}
+.ttl{font-size:16px;line-height:22px;font-weight:600}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border-radius:8px;font-size:14px;line-height:20px;font-weight:500;white-space:nowrap}
+.btn-sm{height:32px;padding:0 12px}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;flex-shrink:0;position:relative}
+.ib-s{width:28px;height:28px}
+.hv:hover{background:rgba(128,128,128,0.1);text-decoration:none}
+.sb{width:248px;padding:12px;display:flex;flex-direction:column;gap:16px;flex-shrink:0}
+.grp{font-size:12px;line-height:16px;font-weight:500;padding:0 8px;margin-bottom:4px}
+.nav{display:flex;align-items:center;gap:8px;height:32px;border-radius:8px;padding:0 8px}
+.badge{display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 6px;border-radius:9999px;font-size:12px;line-height:16px;font-weight:500;white-space:nowrap}
+.main{flex:1;min-width:0;margin:8px 8px 8px 0;border-radius:12px;display:flex;flex-direction:column;overflow:hidden}
+.top{height:56px;display:flex;align-items:center;gap:8px;padding:0 16px 0 24px;flex-shrink:0}
+.thread{flex:1;min-height:0;overflow:hidden;padding:24px 32px 8px;position:relative}
+.col720{max-width:45rem;margin:0 auto;display:flex;flex-direction:column;gap:20px;width:100%}
+.ubub{align-self:flex-end;max-width:80%;padding:10px 14px;border-radius:12px}
+.amsg{display:flex;gap:12px}
+.av{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9999px;flex-shrink:0}
+.md p{margin:0 0 10px}.md ul{margin:0 0 10px;padding-left:20px}.md li{margin:3px 0}
+.tool{display:flex;flex-direction:column;border-radius:8px;font-size:13px;line-height:18px;align-self:stretch}
+.toolh{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px}
+.toolb{padding:0 10px 10px 32px;display:flex;flex-direction:column;gap:4px}
+.kv{display:grid;grid-template-columns:72px 1fr;gap:2px 8px;font-size:12px;line-height:18px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+.sk{border-radius:6px;animation:sk 1.6s ease-in-out infinite}
+@keyframes sk{0%,100%{opacity:1}50%{opacity:0.5}}
+.spin{animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.caret{display:inline-block;width:7px;height:15px;margin-left:2px;vertical-align:-2px;border-radius:1px;animation:bl 1s steps(2) infinite}
+@keyframes bl{50%{opacity:0}}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+svg{flex-shrink:0}
+sc-if,sc-for{display:contents}
+</style>
+</helmet>
+<div class="r" style="background:{{t.bg}};color:{{t.fg}}">
+  <aside class="sb" aria-label="主导航">
+    <div class="row" style="height:32px;gap:8px;padding-left:4px">
+      <span class="row" style="justify-content:center;width:24px;height:24px;border-radius:6px;background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span>
+      <span class="sub">SaaS 模板</span>
+    </div>
+    <nav class="col" aria-label="工作区" style="gap:2px;flex:1">
+      <span class="grp" style="color:{{t.mfg}}">工具</span>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>工作台</a>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>对话</a>
+      <a href="List.dc.html" class="nav" aria-current="page" style="background:{{t.active}};font-weight:500"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="2"></rect><path d="M12 8V4M8 4h8M9 13v1M15 13v1"></path></svg>Agent</a>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path></svg>图片生成</a>
+    </nav>
+    <button type="button" class="row hv" aria-label="账户菜单：示例用户" style="gap:8px;border-radius:8px;padding:6px 8px;text-align:left">
+      <span class="row cap" style="justify-content:center;width:28px;height:28px;border-radius:9999px;background:{{t.active}};font-weight:600">示</span>
+      <span class="col" style="flex:1;min-width:0"><span style="font-weight:500">示例用户</span><span class="cap" style="color:{{t.mfg}}">user@example.com</span></span>
+    </button>
+  </aside>
+
+  <div class="main" style="background:{{t.panel}};box-shadow:{{t.sh2}}">
+    <header class="top" style="border-bottom:1px solid {{t.border}}">
+      <a href="List.dc.html" class="row hv" style="gap:4px;height:28px;padding:0 8px 0 4px;border-radius:8px;color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>全部 Agent 对话</a>
+      <span aria-hidden="true" style="width:1px;height:16px;background:{{t.border}}"></span>
+      <h1 class="sub" style="margin:0 0 0 4px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{title}}</h1>
+      <span class="badge" style="background:{{t.secondary}};color:{{t.mfg}}">工作区助手</span>
+      <span style="flex:1"></span>
+      <button type="button" class="ib hv" aria-label="对话操作" style="color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle><circle cx="19" cy="12" r="1.5"></circle></svg></button>
+      <button type="button" class="ib hv" aria-label="{{themeLabel}}" onClick="{{toggleTheme}}" style="color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+    </header>
+
+    <div class="thread">
+      <div class="col720">
+        <sc-if value="{{s.loading}}" hint-placeholder-val="{{false}}">
+          <div class="col" style="gap:24px">
+            <span class="sk" style="align-self:flex-end;width:300px;height:40px;border-radius:12px;background:{{t.active}}"></span>
+            <div class="row" style="gap:12px;align-items:flex-start"><span class="sk" style="width:28px;height:28px;border-radius:9999px;background:{{t.active}}"></span><span class="col" style="flex:1;gap:8px"><span class="sk" style="height:34px;border-radius:8px;background:{{t.active}}"></span><span class="sk" style="height:12px;width:92%;background:{{t.active}}"></span><span class="sk" style="height:12px;width:64%;background:{{t.active}}"></span></span></div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{s.empty}}" hint-placeholder-val="{{false}}">
+          <div class="col" style="align-items:center;text-align:center;gap:10px;padding-top:110px">
+            <span class="av" aria-hidden="true" style="width:40px;height:40px;background:{{t.primary}};color:{{t.pfg}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="2"></rect><path d="M12 8V4M8 4h8M9 13v1M15 13v1"></path></svg></span>
+            <h2 class="ttl" style="margin:6px 0 0">工作区助手</h2>
+            <p style="margin:0;color:{{t.mfg}};max-width:28rem">可以查看当前空间的文件、查询时间，并分多步完成任务。会产生变更的操作执行前会先请你确认。</p>
+            <div class="row" style="gap:6px;flex-wrap:wrap;justify-content:center;margin-top:4px">
+              <span class="badge" style="background:{{t.secondary}};color:{{t.mfg}}">current_time</span>
+              <span class="badge" style="background:{{t.secondary}};color:{{t.mfg}}">list_workspace_files</span>
+            </div>
+            <div class="row" role="group" aria-label="示例任务" style="gap:8px;flex-wrap:wrap;justify-content:center;margin-top:10px">
+              <button type="button" class="btn btn-sm hv" style="border-radius:9999px;box-shadow:inset 0 0 0 1px {{t.border}}">列出本空间最近上传的文件</button>
+              <button type="button" class="btn btn-sm hv" style="border-radius:9999px;box-shadow:inset 0 0 0 1px {{t.border}}">统计各类型文件的总大小</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{s.thread}}" hint-placeholder-val="{{true}}">
+          <div class="ubub" style="background:{{t.secondary}}">统计一下本空间的文件，按类型汇总大小，再把超过 50 MB 的视频生成一张封面图。</div>
+          <div class="amsg">
+            <span class="av" aria-hidden="true" style="background:{{t.primary}};color:{{t.pfg}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="2"></rect><path d="M12 8V4M8 4h8M9 13v1M15 13v1"></path></svg></span>
+            <div class="col" style="flex:1;min-width:0;gap:8px">
+
+              <div class="tool" style="box-shadow:inset 0 0 0 1px {{t.border}}">
+                <button type="button" class="toolh" aria-expanded="{{tool1Str}}" onClick="{{toggleTool1}}" style="text-align:left">
+                  <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+                  <span style="font-weight:500">列出空间文件</span>
+                  <span class="mono" style="color:{{t.mfg}}">list_workspace_files</span>
+                  <span style="flex:1"></span>
+                  <span class="badge" style="background:{{t.successSoft}};color:{{t.success}}"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>已完成 · 0.4 秒</span>
+                  <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="{{tool1Chevron}}"><path d="m9 18 6-6-6-6"></path></svg>
+                </button>
+                <sc-if value="{{tool1Open}}" hint-placeholder-val="{{false}}">
+                  <div class="toolb">
+                    <div class="kv"><span style="color:{{t.mfg}}">参数</span><span class="mono">{ "limit": 200 }</span><span style="color:{{t.mfg}}">结果</span><span>共 48 个文件（图片 31、视频 9、文档 8）</span></div>
+                  </div>
+                </sc-if>
+              </div>
+
+              <div class="md">
+                <p>本空间共有 48 个文件，按类型汇总：图片 31 个共 212 MB，视频 9 个共 1.8 GB，文档 8 个共 36 MB。超过 50 MB 的视频有 3 个，下面为其中第一个生成封面图。</p>
+              </div>
+
+              <sc-if value="{{s.done}}" hint-placeholder-val="{{true}}">
+                <div class="tool" style="box-shadow:inset 0 0 0 1px {{t.border}}">
+                  <div class="toolh">
+                    <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path></svg>
+                    <span style="font-weight:500">生成图片</span>
+                    <span class="mono" style="color:{{t.mfg}}">generate_image</span>
+                    <span style="flex:1"></span>
+                    <span class="badge" style="background:{{t.destructiveSoft}};color:{{t.destructive}}"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>失败</span>
+                  </div>
+                  <div class="toolb"><span class="cap" style="color:{{t.mfg}}">图片模型暂不可用，本次未扣除生成费用。</span></div>
+                </div>
+                <div class="md"><p>封面图生成失败，图片模型暂不可用。你可以稍后让我重试，或换一个图片模型。</p></div>
+                <div class="row" role="group" aria-label="这条回答的操作" style="gap:2px;margin-left:-6px">
+                  <button type="button" class="ib ib-s hv" aria-label="复制回复" style="color:{{t.mfg}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="14" height="14" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg></button>
+                  <span class="cap" style="margin-left:8px;color:{{t.mfg}}">本轮 3 步 · 消耗 6 积分 · 通用模型</span>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{s.running}}" hint-placeholder-val="{{false}}">
+                <div class="tool" style="box-shadow:inset 0 0 0 1px {{t.border}}">
+                  <div class="toolh">
+                    <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path></svg>
+                    <span style="font-weight:500">生成图片</span>
+                    <span class="mono" style="color:{{t.mfg}}">generate_image</span>
+                    <span style="flex:1"></span>
+                    <span class="badge" style="background:{{t.secondary}};color:{{t.mfg}}"><svg class="spin" aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.6"></path></svg>运行中</span>
+                  </div>
+                </div>
+                <div class="md"><p>正在提交生成任务<span class="caret" style="background:{{t.fg}}"></span></p></div>
+              </sc-if>
+
+              <sc-if value="{{s.approval}}" hint-placeholder-val="{{false}}">
+                <div class="col" role="group" aria-labelledby="ap-t" style="gap:12px;padding:14px 16px;border-radius:10px;background:{{t.card}};border:1px solid {{t.border}};box-shadow:{{t.shSm}}">
+                  <div class="row" style="gap:8px">
+                    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                    <span id="ap-t" style="font-weight:600">需要你确认：生成图片</span>
+                    <span style="flex:1"></span>
+                    <span class="badge" style="background:{{t.warnSoft}};color:{{t.warn}}">等待确认</span>
+                  </div>
+                  <div class="kv" style="grid-template-columns:96px 1fr;font-size:13px;line-height:20px">
+                    <span style="color:{{t.mfg}}">提示词</span><span>产品演示视频封面，浅色背景，居中标题「季度回顾」</span>
+                    <span style="color:{{t.mfg}}">模型</span><span>通用图片模型 · 1024×576</span>
+                    <span style="color:{{t.mfg}}">预计消耗</span><span>8 积分（另计，不含本轮对话）</span>
+                  </div>
+                  <div class="row" style="gap:8px">
+                    <button type="button" class="btn btn-sm" style="background:{{t.primary}};color:{{t.pfg}}">批准并执行</button>
+                    <button type="button" class="btn btn-sm hv" style="box-shadow:inset 0 0 0 1px {{t.border}}">拒绝</button>
+                    <span style="flex:1"></span>
+                    <span class="cap" style="color:{{t.mfg}}">30 分钟内未确认将自动取消</span>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <div style="padding:8px 32px 20px;flex-shrink:0">
+      <form class="col720" aria-label="发送消息" style="gap:0">
+        <sc-if value="{{s.error}}" hint-placeholder-val="{{false}}">
+          <div role="alert" style="display:grid;grid-template-columns:16px 1fr auto;gap:2px 12px;align-items:start;padding:12px 16px;margin-bottom:10px;border-radius:10px;border:1px solid {{t.border}};background:{{t.card}}">
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{t.destructive}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:2px"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
+            <span class="col" style="gap:2px"><span style="font-weight:500;color:{{t.destructive}}">积分不足</span><span style="color:{{t.mfg}}">Agent 每轮最多执行 8 步，开始前需预留 24 积分，当前余额 5。充值或升级套餐后再发送，草稿会保留。</span></span>
+            <a href="#" class="btn btn-sm" style="background:{{t.primary}};color:{{t.pfg}}">查看套餐</a>
+          </div>
+        </sc-if>
+        <div class="col" style="border-radius:12px;background:{{t.card}};border:1px solid {{t.border}};box-shadow:{{t.shSm}}">
+          <label for="composer" class="sr">消息</label>
+          <textarea id="composer" rows="2" placeholder="{{placeholder}}" style="width:100%;resize:none;padding:12px 14px 4px;border:0;background:transparent;font-size:14px;line-height:20px;outline:none">{{draft}}</textarea>
+          <div class="row" style="gap:6px;padding:6px 8px 8px">
+            <span class="row" style="height:28px;gap:4px;padding:0 8px;font-size:12px;line-height:18px;font-weight:500;color:{{t.mfg}}">通用模型 · 最多 8 步</span>
+            <span style="flex:1"></span>
+            <span class="cap" style="color:{{t.mfg}}">每轮预留 ≤ 24 积分 · 余额 {{balance}}</span>
+            <sc-if value="{{s.busy}}" hint-placeholder-val="{{false}}">
+              <button type="button" class="ib ib-s" aria-label="停止" style="width:32px;height:32px;background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"></rect></svg></button>
+            </sc-if>
+            <sc-if value="{{s.idle}}" hint-placeholder-val="{{true}}">
+              <button type="button" class="ib ib-s" aria-label="发送" style="width:32px;height:32px;background:{{t.primary}};color:{{t.pfg}};{{sendStyle}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7M12 19V5"></path></svg></button>
+            </sc-if>
+          </div>
+        </div>
+        <span class="cap" style="text-align:center;margin-top:8px;color:{{t.mfg}}">Agent 会调用工具并分多步执行，按实际用量扣除积分。</span>
+        <span class="sr" role="status">{{statusText}}</span>
+      </form>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"state":{"editor":"enum","options":["normal","running","approval","empty","loading","error"],"default":"normal"},"$preview":{"width":1440,"height":1000}}'>
+function uiTokens(dark) {
+  var t = dark ? {
+    s: ['#171717', '#1e1e1e', '#252525', '#2c2c2c', '#333333'],
+    fg: '#f5f5f5', mfg: '#b0b0b0', primary: '#f5f5f5', pfg: '#171717',
+    destructive: '#fca5a5', destructiveSoft: 'rgba(252,165,165,0.14)', success: '#4ade80', successSoft: 'rgba(74,222,128,0.14)',
+    warn: '#fcd34d', warnSoft: 'rgba(252,211,77,0.14)',
+    border: 'rgba(245,245,245,0.12)', active: 'rgba(255,255,255,0.1)'
+  } : {
+    s: ['#fafafa', '#fcfcfc', '#ffffff', '#ffffff', '#ffffff'],
+    fg: '#171717', mfg: '#6b6b6b', primary: '#171717', pfg: '#fafafa',
+    destructive: '#b91c1c', destructiveSoft: 'rgba(185,28,28,0.08)', success: '#15803d', successSoft: 'rgba(21,128,61,0.1)',
+    warn: '#a16207', warnSoft: 'rgba(161,98,7,0.1)',
+    border: 'rgba(23,23,23,0.12)', active: 'rgba(0,0,0,0.07)'
+  };
+  t.bg = t.s[0]; t.panel = t.s[1]; t.card = t.s[2];
+  t.secondary = dark ? '#252525' : '#f4f4f5';
+  t.sh2 = dark ? 'inset 0 0 0 1px rgba(255,255,255,0.02), 0 1px 1px -0.5px rgba(0,0,0,0.18)' : '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06)';
+  t.shSm = '0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1)';
+  return t;
+}
+class Component extends DCLogic {
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var pd = !!this.props.dark;
+    var dark = st.od && st.od.base === pd ? st.od.val : pd;
+    var t = uiTokens(dark);
+    var mode = this.props.state || 'normal';
+    var open1 = !!st.tool1;
+    var s = {
+      done: mode === 'normal' || mode === 'error', running: mode === 'running', approval: mode === 'approval',
+      empty: mode === 'empty', loading: mode === 'loading', error: mode === 'error',
+      thread: mode === 'normal' || mode === 'running' || mode === 'approval' || mode === 'error',
+      busy: mode === 'running' || mode === 'approval', idle: !(mode === 'running' || mode === 'approval')
+    };
+    return {
+      t: t, s: s,
+      title: mode === 'empty' ? '新对话' : '空间文件统计',
+      themeLabel: dark ? '切换到浅色' : '切换到深色',
+      toggleTheme: function () { self.setState({ od: { base: pd, val: !dark } }); },
+      tool1Open: open1, tool1Str: open1 ? 'true' : 'false',
+      tool1Chevron: open1 ? 'transform:rotate(90deg)' : '',
+      toggleTool1: function () { self.setState({ tool1: !open1 }); },
+      draft: mode === 'error' ? '再试一次生成封面图' : '',
+      placeholder: mode === 'approval' ? '等待你确认后继续，也可以输入补充说明' : '描述要完成的任务，Enter 发送',
+      balance: mode === 'error' ? '5' : '1,280',
+      sendStyle: mode === 'empty' || mode === 'loading' ? 'opacity:0.5' : '',
+      statusText: mode === 'running' ? '正在执行工具' : (mode === 'approval' ? '等待确认' : '')
+    };
+  }
+}
+</script>
+</body>
+</html>
