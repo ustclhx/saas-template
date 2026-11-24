@@ -5,6 +5,7 @@
 import type { AgentToolContext, AgentToolContribution } from '@saas/ai'
 import type { NodeEnv } from '@saas/config'
 import type { Database } from '@saas/db'
+import type { RateLimiter } from '@saas/platform'
 import type { Storage } from '@saas/storage'
 import type { FileRoutesByTo } from '../../routeTree.gen.ts'
 import type { WebAiRuntime } from '../../server/runtime.ts'
@@ -54,12 +55,28 @@ export interface WebPluginRegistration {
   readonly entry: WebPluginModule
 }
 
+/**
+ * agent 工具在对话实例（Durable Object）中执行时可用的服务。实例不在 web 的请求运行时中，
+ * 这些依赖由 agents 插件按 Worker 绑定装配；工具只读取自己需要的密钥与绑定。
+ * 与 plugins/agents/src/tool-context.ts 同形（agents 插件不经 @web 引用本类型，便于独立类型检查）。
+ */
+export interface AgentToolServices {
+  /** Worker 的绑定与变量（只读） */
+  readonly env: Readonly<Record<string, unknown>>
+  /** 插件 Worker 入口提供的 AI 任务工作流，与 web 运行时的 `ai.workflow` 同源 */
+  readonly aiWorkflow: WebAiRuntime['workflow']
+  readonly rateLimiter: RateLimiter
+}
+
+/** 插件工具的执行上下文；`services` 只在对话实例中提供，测试等场景可能缺省 */
+export type PluginAgentToolContext = AgentToolContext<Database, AgentToolServices | undefined>
+
 /** web 入口可具名导出 agentTools，只有启用 agents 的 Worker 会读取它。 */
 export interface WebAgentToolRegistration {
   readonly id: string
   readonly entry: {
     readonly default: WebPluginModule
-    readonly agentTools?: AgentToolContribution<AgentToolContext<Database>>
+    readonly agentTools?: AgentToolContribution<PluginAgentToolContext>
   }
 }
 export interface WebNodePluginRegistration {

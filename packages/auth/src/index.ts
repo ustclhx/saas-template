@@ -6,6 +6,7 @@ export { type Auth, type CreateAuthDeps, createAuth } from './auth.ts'
 export {
   DELETION_CLEANUP_PREFIX,
   type DeletionContext,
+  type DeletionKind,
   type DeletionStep,
   type DeletionTransaction,
   deleteAccount,

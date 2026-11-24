@@ -24,6 +24,11 @@ export interface DeletionStep {
   readonly before?: (context: DeletionContext) => Promise<void>
   /** Database writes only; throwing rolls back the entire deletion. */
   readonly execute?: (context: DeletionContext, sql: DeletionTransaction) => Promise<void>
+  /**
+   * 删除事务提交后的外部清理（例如 agent 对话实例）。失败只记日志、不影响已完成的删除，
+   * 步骤须自带兜底（重试或自清理）；`context` 与 before / execute 收到的是同一对象。
+   */
+  readonly after?: (context: DeletionContext) => Promise<void>
 }
 const steps: Record<DeletionKind, DeletionStep[]> = { account: [], workspace: [] }
 /** Register once at application startup; the returned disposer is useful in tests. */
@@ -42,6 +47,19 @@ interface Options {
   readonly headers: Headers
   readonly kv?: Pick<KeyValueStore, 'delete'> | undefined
   readonly clientIp?: string | null | undefined
+}
+/** 提交后的清理逐个执行，单个失败不阻塞其余步骤 */
+async function runAfterSteps(steps: readonly DeletionStep[], context: DeletionContext) {
+  for (const step of steps) {
+    if (!step.after) continue
+    try {
+      await step.after(context)
+    } catch (error) {
+      log.warn('deletion.after-step.failed', {
+        errorName: error instanceof Error ? error.name : typeof error,
+      })
+    }
+  }
 }
 function fail(
   code: string,
@@ -197,6 +215,7 @@ export async function deleteTeamWorkspace(
     const keys = await softDelete(sql, workspaceId, fresh.user.id, options.clientIp ?? null)
     return saveCleanup(sql, keys, options.kv)
   })
+  await runAfterSteps(registered, context)
   await finishCleanup(options.db, options.kv, keys)
   return { deleted: true }
 }
@@ -297,6 +316,7 @@ export async function deleteAccount(options: Options) {
     await sql`insert into audit_log (id,actor_user_id,action,target_type,target_id,ip,meta) values (${newId()},${current.id},'account.deleted','user',${current.id},${options.clientIp ?? null},${JSON.stringify({ anonymized: true, deletedPersonalWorkspaceIds: personal.map((workspace) => workspace.id) })}::jsonb)`
     return saveCleanup(sql, cacheKeys, options.kv)
   })
+  await runAfterSteps(registered, context)
   const cleanup = await Promise.allSettled([
     finishCleanup(options.db, options.kv, keys),
     ...(options.cleanupShareCards

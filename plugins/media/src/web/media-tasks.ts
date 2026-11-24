@@ -42,7 +42,7 @@ import { getStorageUsage } from '@saas/storage'
 import { sessionFaultAccess } from '@web/features/ai/fault-access.ts'
 import { templateConfig } from '@web/server/template-config.ts'
 import type { ResolvedWorkspace } from '@web/server/workspace-context.ts'
-import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, inArray, isNull, lt, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 export interface MediaHttpEnv extends MediaProviderEnv, AiFaultInjectionEnv {
@@ -167,14 +167,43 @@ export type WorkspaceMediaDeps = Omit<MediaHttpDeps, 'auth' | 'rateLimiter'> & {
   faultAccess?: FaultAccessContext
 }
 
-/** 入口已解析空间及成员；计费、配额和任务创建由站内与公开 API 共用。 */
+/** 幂等键查重的时间范围：agent 工具的重放发生在同一轮的恢复中，远小于此范围 */
+const IDEMPOTENCY_WINDOW_MS = 7 * 86_400_000
+
+/** 同一空间内按幂等键（agent 工具的 `idempotencyKey`）找已提交的任务 */
+async function findIdempotentTask(
+  db: Database | Parameters<Parameters<Database['transaction']>[0]>[0],
+  workspaceId: string,
+  idempotencyKey: string,
+): Promise<AiTask | undefined> {
+  const [task] = await scoped(db as Database, workspaceId)
+    .select(aiTask, {
+      where: and(
+        sql`${aiTask.input}->>'idempotencyKey' = ${idempotencyKey}`,
+        gt(aiTask.createdAt, new Date(Date.now() - IDEMPOTENCY_WINDOW_MS)),
+      ) as SQL,
+    })
+    .limit(1)
+  return task
+}
+
+/**
+ * 入口已解析空间及成员；计费、配额和任务创建由站内、公开 API 与 agent 工具共用。
+ * 带 `idempotencyKey` 时（agent 工具，openspec add-ai-agents 决策 4）：同一空间已有该键的任务就直接
+ * 返回它，不再限流、预扣或启动工作流；查重在空间锁内完成，并发重放也只创建一个任务。
+ */
 export async function submitWorkspaceMedia(
-  input: { modelKey: string; params: Record<string, unknown> },
+  input: { modelKey: string; params: Record<string, unknown>; idempotencyKey?: string | undefined },
   resolved: ResolvedWorkspace,
   deps: WorkspaceMediaDeps,
 ): Promise<AiTask> {
   const workflow = requireCapability(deps.workflow, 'Media workflow')
   const callbackOrigin = deps.callbackOrigin
+  const { idempotencyKey } = input
+  if (idempotencyKey) {
+    const existing = await findIdempotentTask(deps.db, resolved.workspace.id, idempotencyKey)
+    if (existing) return existing
+  }
   if (
     deps.rateLimiter &&
     !(await deps.rateLimiter.limit('ai', `ai:${resolved.workspace.id}:${resolved.member.userId}`))
@@ -188,11 +217,15 @@ export async function submitWorkspaceMedia(
   })
   if (!modelRow) throw new AppError('MODEL_UNAVAILABLE', 'Model is not available', { status: 404 })
   requireSubmissionProvider(modelRow.provider, modelRow.kind, deps)
-  const task = await deps.db.transaction(async (tx) => {
+  const submitted = await deps.db.transaction(async (tx) => {
     // 与 billing 回收器统一为 ws → credits → task，防止锁顺序反转。
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${`ws:${resolved.workspace.id}`}, 0))`,
     )
+    if (idempotencyKey) {
+      const existing = await findIdempotentTask(tx, resolved.workspace.id, idempotencyKey)
+      if (existing) return { task: existing, created: false }
+    }
     await lockWorkspaceCredits(tx, resolved.workspace.id)
     const current = await entitlements(deps, tx, resolved.workspace.id)
     const model = await requireAvailableModel(
@@ -260,6 +293,7 @@ export async function submitWorkspaceMedia(
         deadlineAt: new Date(Date.now() + (acceptanceFault?.deadlineMs ?? MEDIA_TASK_TTL_MS)),
         input: {
           ...validated,
+          ...(idempotencyKey ? { idempotencyKey } : {}),
           providerModelId: model.providerModelId,
           storageBytes,
           callbackOrigin,
@@ -281,8 +315,13 @@ export async function submitWorkspaceMedia(
       refId: taskId,
       expiresAt: new Date(created.deadlineAt.getTime() + MEDIA_HOLD_SWEEP_BUFFER_MS),
     })
-    return tenant.updateById(aiTask, taskId, { holdId: reservation.id })
+    return {
+      task: await tenant.updateById(aiTask, taskId, { holdId: reservation.id }),
+      created: true,
+    }
   })
+  const { task } = submitted
+  if (!submitted.created) return task
   try {
     await workflow.create({ id: task.id, params: { taskId: task.id } })
   } catch {

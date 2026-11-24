@@ -68,7 +68,7 @@ export function addAiPurge(total: AiPurgeResult, batch: AiPurgeResult) {
 }
 
 /**
- * 删除一批 AI 内容，按外键顺序：评分 → 消息 → 无消息的对话 → 媒体任务。
+ * 删除一批 AI 内容，按外键顺序：评分 → 消息 → agent 轮次 → 无消息与轮次的对话 → 媒体任务。
  * 仍有 held 预扣，或一天内仍在生成（streaming / queued / running）的行跳过，等兜底处理器结算后下一轮再删；
  * 预扣、积分流水等财务记录不删，它们只以 ref_id 文本指向这些行。
  * 团队空间中的产出文件属于空间共享资产，只解除 source_task_id 引用、不删文件。
@@ -100,10 +100,19 @@ export async function purgeAiBatch(
     messages = await sql<{ id: string }[]>`
       delete from ai_message where id in ${sql(messageIds)} returning id`
   }
+  // agent 对话的轮次记录（add-ai-agents）对对话是 restrict 外键：先删没有 held 预扣的轮次，
+  // 仍在预扣中的轮次等兜底处理器结算后下一轮再删，其对话本批跳过
+  await sql`delete from ai_agent_turn where id in (
+    select t.id from ai_agent_turn t join ai_conversation c on c.id=t.conversation_id
+    where ${conversationScope}
+      and not exists(select 1 from credit_hold h where h.workspace_id=t.workspace_id and h.status='held'
+        and (h.id=t.hold_id or (h.ref_type='agent_turn' and h.ref_id=t.id)))
+    order by t.id limit ${limit})`
   const conversations = await sql<{ id: string }[]>`
     delete from ai_conversation where id in (
       select c.id from ai_conversation c where ${conversationScope}
         and not exists(select 1 from ai_message m where m.conversation_id=c.id)
+        and not exists(select 1 from ai_agent_turn t where t.conversation_id=c.id)
       order by c.id limit ${limit}
     ) returning id`
   const tasks = await sql<{ id: string }[]>`

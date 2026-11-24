@@ -6,8 +6,15 @@ import { log } from '@saas/shared/log'
 import { captureException } from '@sentry/cloudflare'
 import { eq } from 'drizzle-orm'
 import { expireTurnApprovals } from '../approval.ts'
+import {
+  applyTaskResults,
+  findPendingTasks,
+  readTaskResults,
+  taskPollDelaySeconds,
+} from '../core/async-tasks.ts'
 import { checkConversationAccess } from '../core/conversation.ts'
 import { type AgentOwner, checkOwner, readIdentity } from '../core/identity.ts'
+import { nextLifecycleCheck, reviewAgentConversation } from '../core/lifecycle.ts'
 import { errorCodeOf } from '../core/log.ts'
 import {
   AGENT_CONVERSATION_GONE,
@@ -27,6 +34,7 @@ import { getAgent, resolveAgentTools } from '../registry.ts'
 import { agentsConfig } from './config.ts'
 import { type AgentEnv, createAgentTurnDeps } from './deps.ts'
 import { type OpenTurnStore, runAgentTurn } from './runner.ts'
+import { createToolServices } from './services.ts'
 
 // 每个 agent 对话一个实例（openspec add-ai-agents 决策 1），实例名为 PG ai_conversation.id。
 // 本文件是 Agents SDK 的适配层（决策 10）：身份比对（3.2）、开放轮次存储、chatRecovery 与 SDK 钩子；
@@ -35,8 +43,21 @@ import { type OpenTurnStore, runAgentTurn } from './runner.ts'
 
 const OWNER_KEY = 'agents:owner'
 const OPEN_TURN_KEY = 'agents:open-turn'
+/** 已安排的空闲检查（7.2 自清理 / 7.3 保留期）：同一时刻只保留一个 */
+const LIFECYCLE_KEY = 'agents:lifecycle-check'
+/** 已安排的异步任务轮询（8.2）与当前退避次数 */
+const TASK_POLL_KEY = 'agents:task-poll'
 
-const { maxPersistedMessages } = agentsConfig
+interface ScheduledCheck {
+  readonly id: string
+  readonly at: number
+}
+interface TaskPoll {
+  readonly id: string
+  readonly attempt: number
+}
+
+const { maxPersistedMessages, retentionDays } = agentsConfig
 
 export class AgentConversation extends AIChatAgent<Cloudflare.Env> {
   override maxPersistedMessages = maxPersistedMessages
@@ -105,7 +126,11 @@ export class AgentConversation extends AIChatAgent<Cloudflare.Env> {
         { status: 403 },
       )
     }
-    if (check.first) this.ctx.storage.kv.put(OWNER_KEY, check.owner)
+    if (check.first) {
+      this.ctx.storage.kv.put(OWNER_KEY, check.owner)
+      // 只有存在过的实例才会被唤醒检查：首次记住归属时安排空闲检查（7.2 兜底）
+      await this.ensureLifecycleCheck(new Date())
+    }
     return super.fetch(request)
   }
 
@@ -126,6 +151,9 @@ export class AgentConversation extends AIChatAgent<Cloudflare.Env> {
         errorCode: errorCodeOf(error),
       })
     }
+    // 客户端连接时立即检查待完成的异步任务（8.2）；部署前创建的实例在此补上空闲检查
+    await this.checkAgentTasks().catch((error) => this.logTaskCheckFailed(error))
+    await this.ensureLifecycleCheck(new Date()).catch(() => {})
     return super.onConnect(...args)
   }
 
@@ -138,6 +166,8 @@ export class AgentConversation extends AIChatAgent<Cloudflare.Env> {
     if (!owner || !conversationId) throw rejection(new AppError('FORBIDDEN', 'Forbidden'))
     const deps = this.turnDeps()
     const requestId = options?.requestId ?? crypto.randomUUID()
+    // 新一轮开始前先写回已完成的异步任务结果（8.2），模型能在本轮看到
+    await this.checkAgentTasks().catch((error) => this.logTaskCheckFailed(error))
     try {
       const run = await runAgentTurn(deps, {
         identity: { ...owner, conversationId },
@@ -161,11 +191,16 @@ export class AgentConversation extends AIChatAgent<Cloudflare.Env> {
             db: deps.db,
             signal,
             log,
-            services: undefined,
+            services: createToolServices(this.env),
           }),
         persistMessages: (messages) => this.persistMessages(messages),
       })
-      this.ctx.waitUntil(run.done.catch(() => {}))
+      this.ctx.waitUntil(
+        run.done
+          .catch(() => {})
+          .then(() => this.afterTurn())
+          .catch(() => {}),
+      )
       return run.response
     } catch (error) {
       if (errorCodeOf(error) === AGENT_CONVERSATION_GONE) {
@@ -180,20 +215,124 @@ export class AgentConversation extends AIChatAgent<Cloudflare.Env> {
   }
 
   /**
-   * alarm 回调：PG 中对话确实不存在时清空实例（`destroy()` 删除全部存储与 alarm）。
-   * 7.2 的空闲自清理与保留期会复用此入口。
+   * alarm 回调：PG 中对话确实不存在（或已删除）时清空实例（`destroy()` 删除全部存储与 alarm）。
+   * 没有记住归属的实例从未保存过对话内容，直接清空。
    */
   async purgeIfDeleted() {
     const owner = this.owner()
     const conversationId = this.ctx.id.name
-    if (!owner || !conversationId) return
-    const access = await checkConversationAccess(this.turnDeps().db, {
-      ...owner,
-      conversationId,
-    })
-    if (access.kind !== 'gone') return
-    log.warn('agents.instance.purged', { conversationId })
+    if (owner && conversationId) {
+      const access = await checkConversationAccess(this.turnDeps().db, {
+        ...owner,
+        conversationId,
+      })
+      if (access.kind !== 'gone') return
+    }
+    log.warn('agents.instance.purged', { conversationId, reason: owner ? 'gone' : 'unowned' })
     await this.destroy()
+  }
+
+  /**
+   * web 内经 Durable Object RPC 调用的实例清理（7.1 删除对话、7.2 删号 / 删空间）。只安排一次立即的
+   * alarm，由 `purgeIfDeleted` 在新的调用中核对 PG 后清空：RPC 不能清空仍存在的对话，
+   * 且 `destroy()` 会中止实例，不在 RPC 调用中直接执行。
+   */
+  async requestPurge(): Promise<void> {
+    await this.schedule(1, 'purgeIfDeleted')
+  }
+
+  /**
+   * 空闲检查 alarm（7.2 自清理兜底、7.3 保留期）：对话不存在或已删除 → 清空；超出保留期且没有
+   * running 轮次 → 删除 PG 行并清空；否则按最近活动顺延。
+   */
+  async checkLifecycle() {
+    this.ctx.storage.kv.delete(LIFECYCLE_KEY)
+    const owner = this.owner()
+    const conversationId = this.ctx.id.name
+    if (!owner || !conversationId) {
+      await this.purgeIfDeleted()
+      return
+    }
+    const review = await reviewAgentConversation(this.turnDeps().db, {
+      workspaceId: owner.workspaceId,
+      conversationId,
+      retentionDays,
+    })
+    if (review.action === 'reschedule') {
+      await this.ensureLifecycleCheck(review.at)
+      return
+    }
+    log.warn('agents.instance.purged', {
+      conversationId,
+      reason: review.action === 'expired' ? 'retention' : review.reason,
+    })
+    await this.destroy()
+  }
+
+  /** 异步任务轮询 alarm（8.2）：仍有待完成任务时按退避再次安排 */
+  async pollAgentTasks(payload?: { attempt?: number }) {
+    this.ctx.storage.kv.delete(TASK_POLL_KEY)
+    const attempt = payload?.attempt ?? 0
+    const remaining = await this.checkAgentTasks()
+    if (remaining > 0) await this.scheduleTaskPoll(attempt + 1)
+  }
+
+  /** 安排空闲检查；已有检查时保留原时间（到期时按 PG 的最近活动顺延） */
+  private async ensureLifecycleCheck(at: Date) {
+    if (this.ctx.storage.kv.get<ScheduledCheck>(LIFECYCLE_KEY)) return
+    const when =
+      at.getTime() > Date.now() + 1000
+        ? at
+        : nextLifecycleCheck({ now: new Date(), lastActivity: new Date(), retentionDays })
+    const schedule = await this.schedule(when, 'checkLifecycle')
+    this.ctx.storage.kv.put(LIFECYCLE_KEY, { id: schedule.id, at: when.getTime() })
+  }
+
+  /** 一轮结束（含等待确认）后：保证有空闲检查，并开始轮询本轮可能提交的异步任务 */
+  private async afterTurn() {
+    await this.ensureLifecycleCheck(new Date())
+    await this.scheduleTaskPoll(0, { restart: true })
+  }
+
+  private async scheduleTaskPoll(attempt: number, options?: { restart?: boolean }) {
+    const existing = this.ctx.storage.kv.get<TaskPoll>(TASK_POLL_KEY)
+    if (existing) {
+      if (!options?.restart || existing.attempt === 0) return
+      await this.cancelSchedule(existing.id)
+    }
+    const schedule = await this.schedule(taskPollDelaySeconds(attempt), 'pollAgentTasks', {
+      attempt,
+    })
+    this.ctx.storage.kv.put(TASK_POLL_KEY, { id: schedule.id, attempt })
+  }
+
+  /**
+   * 读取消息中仍为 pending 的异步任务，终态的写回结果部件（只改消息、不调用模型、不自动续轮）。
+   * 返回仍待完成的任务数；有轮次在流式输出时不写消息，留给下一次轮询。
+   */
+  private async checkAgentTasks(): Promise<number> {
+    const pending = findPendingTasks(this.messages)
+    const owner = this.owner()
+    if (pending.length === 0 || !owner) return 0
+    if (this.activeTurns.size > 0) return pending.length
+    const results = await readTaskResults(this.turnDeps().db, owner.workspaceId, pending)
+    if (results.size > 0) {
+      const updated = applyTaskResults(this.messages, results)
+      if (updated !== this.messages) await this.persistMessages(updated)
+      log.info('agents.task.results', {
+        conversationId: this.ctx.id.name,
+        resolved: results.size,
+        remaining: pending.length - results.size,
+      })
+    }
+    return pending.length - results.size
+  }
+
+  private logTaskCheckFailed(error: unknown) {
+    log.error('agents.task.check_failed', {
+      conversationId: this.ctx.id.name,
+      errorCode: errorCodeOf(error),
+    })
   }
 
   /** 开放轮次在 PG 中已终态（清理器结算）时清除，并把等待中的确认标记为过期（任务 4.4） */

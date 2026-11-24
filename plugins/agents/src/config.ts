@@ -13,7 +13,7 @@ export const agentsConfigSchema = z
     maxTurnCredits: z.number().int().positive().optional(),
     /** 每个对话实例保留的消息条数上限（AIChatAgent.maxPersistedMessages） */
     maxPersistedMessages: z.number().int().min(1).default(200),
-    /** 对话保留期（天）；不设置即关闭，开启后清理器删除超期无活动的对话 */
+    /** 对话保留期（天）；不设置即关闭，开启后由各对话实例的 alarm 删除超期无活动的对话（不新增 Cron） */
     retentionDays: z.number().int().positive().optional(),
     /** 新建对话的默认 agent id（agents.project.ts 中定义） */
     defaultAgent: z

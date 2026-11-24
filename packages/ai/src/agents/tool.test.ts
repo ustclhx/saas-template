@@ -1,7 +1,13 @@
 import { asSchema } from 'ai'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { type AgentToolContext, defineAgentTool, toAiSdkTool } from './tool.ts'
+import {
+  type AgentToolContext,
+  defineAgentTool,
+  isPendingTaskOutput,
+  pendingTaskOutput,
+  toAiSdkTool,
+} from './tool.ts'
 
 describe('defineAgentTool', () => {
   it.each(['', 'Generate_image', 'generate-image', '1_tool', 'generate__image', 'tool_'])(
@@ -70,5 +76,19 @@ describe('toAiSdkTool', () => {
       { count: 2 },
       { ...context, idempotencyKey: 'turn:call', signal },
     )
+  })
+})
+
+describe('pendingTaskOutput', () => {
+  it('只把带 taskId 的 pending 输出识别为待完成任务', () => {
+    expect(pendingTaskOutput('t1', 'image')).toEqual({
+      taskId: 't1',
+      status: 'pending',
+      kind: 'image',
+    })
+    expect(isPendingTaskOutput(pendingTaskOutput('t1'))).toBe(true)
+    expect(isPendingTaskOutput({ taskId: 't1', status: 'succeeded' })).toBe(false)
+    expect(isPendingTaskOutput({ taskId: '', status: 'pending' })).toBe(false)
+    expect(isPendingTaskOutput('pending')).toBe(false)
   })
 })

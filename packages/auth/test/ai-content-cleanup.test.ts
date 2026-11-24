@@ -32,6 +32,7 @@ afterAll(async () => {
   if (ids.length) {
     await sql`delete from ai_message_feedback where workspace_id in ${sql(ids)}`
     await sql`delete from ai_message where workspace_id in ${sql(ids)}`
+    await sql`delete from ai_agent_turn where workspace_id in ${sql(ids)}`
     await sql`delete from ai_conversation where workspace_id in ${sql(ids)}`
     await sql`delete from file where workspace_id in ${sql(ids)}`
     await sql`delete from ai_task where workspace_id in ${sql(ids)}`
@@ -80,7 +81,7 @@ async function hold(
   a: App,
   workspaceId: string,
   userId: string,
-  ref: { type: 'ai_task' | 'ai_message'; id: string },
+  ref: { type: 'ai_task' | 'ai_message' | 'agent_turn'; id: string },
   status: 'held' | 'captured',
 ) {
   const id = newId()
@@ -311,6 +312,43 @@ describe('AI content deletion in workerd', () => {
       cleaned: 0,
       ai: { messages: 0, conversations: 0, tasks: 0 },
     })
+  })
+
+  it('purges agent conversations with their turns; a turn with a held hold waits for settlement', async () => {
+    const a = app()
+    const owner = await actor(a, 'agent-owner')
+    const id = await team(a, [{ id: owner.id, role: 'owner' }])
+    const sql = a.db.$client
+    const agentConversation = async (held: boolean) => {
+      const conversation = newId()
+      await sql`insert into ai_conversation (id,workspace_id,user_id,model_key,kind,agent_id)
+        values (${conversation},${id},${owner.id},'m','agent','assistant')`
+      const turn = newId()
+      const holdId = await hold(
+        a,
+        id,
+        owner.id,
+        { type: 'agent_turn', id: turn },
+        held ? 'held' : 'captured',
+      )
+      await sql`insert into ai_agent_turn (id,workspace_id,user_id,conversation_id,request_id,model_key,pricing,hold_id,status)
+        values (${turn},${id},${owner.id},${conversation},${newId()},'m',${JSON.stringify(pricing)}::jsonb,${holdId},${held ? 'running' : 'completed'})`
+      return { conversation, holdId }
+    }
+    await agentConversation(false)
+    const running = await agentConversation(true)
+    await deleteTeamWorkspace({ ...owner.options, workspaceId: id })
+    await sql`update organization set deleted_at=now()-interval '31 days' where id=${id}`
+
+    await cleanupExpiredWorkspaces(a.db)
+    expect(
+      await sql`select id from ai_conversation where workspace_id=${id} and kind='agent'`,
+    ).toMatchObject([{ id: running.conversation }])
+    await sql`update credit_hold set status='released' where id=${running.holdId}`
+    await cleanupExpiredWorkspaces(a.db)
+    expect(await sql`select id from ai_conversation where workspace_id=${id}`).toHaveLength(0)
+    expect(await sql`select id from ai_agent_turn where workspace_id=${id}`).toHaveLength(0)
+    expect(await sql`select id from credit_hold where workspace_id=${id}`).toHaveLength(2)
   })
 
   it('keeps AI content of a soft-deleted workspace inside the retention period', async () => {
