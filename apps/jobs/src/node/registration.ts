@@ -5,6 +5,7 @@ import templateConfig from '../../../../template.config.ts'
 import { registerAiHoldSweepers } from '../ai.ts'
 import { runDeletionCleanup } from '../cron/deletion-cleanup.ts'
 import { type JobsContext, registerJobsSchedules } from '../handlers.ts'
+import { registerPluginHoldSweepers } from '../plugins/register.ts'
 
 /** 任务注册使用明确功能开关，关闭功能不依赖 provider 或赠送数值。 */
 export function getNodeJobFeatures(config: TemplateConfig = templateConfig) {
@@ -26,7 +27,12 @@ export function registerNodeJobsSchedules(
   config: TemplateConfig = templateConfig,
 ) {
   const features = getNodeJobFeatures(config)
-  const dispose = registerAiHoldSweepers(features)
+  const disposeAi = registerAiHoldSweepers(features)
+  const disposePlugins = registerPluginHoldSweepers(context.plugins ?? [], config)
+  const dispose = () => {
+    disposeAi()
+    disposePlugins()
+  }
   registerJobsSchedules(scheduler, context, {
     features,
     skipUnavailableFiles: true,

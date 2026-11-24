@@ -10,7 +10,9 @@ import {
 } from './features/api-keys/gate.ts'
 import { gateLocaleRequest } from './features/i18n/gate.ts'
 import { localizeRequest } from './features/i18n/request.server.ts'
+import { runPluginFetch } from './features/plugins/extensions.ts'
 import { requestWebRuntime } from './node/request-runtime.ts'
+import { nodePlugins } from './plugins.node.gen.ts'
 import { withSecurityNonce } from './security-context.server.ts'
 import { withSecurityHeaders } from './security-headers.ts'
 import { withWebRuntime } from './server/runtime.ts'
@@ -39,10 +41,14 @@ export default {
             const path = new URL(request.url).pathname
             try {
               if (path === SENTRY_TEST_PATH) return await sentryTest(request, runtime)
-              const gated = gatePublicApiRequest(request, templateConfig)
-              const localized = gateLocaleRequest(await gateAdminRequest(request, runtime))
-              const response =
-                gated ?? (await localizeRequest(localized, runtime, () => startHandler(localized)))
+              // 启用插件（plugins.node.gen.ts）的前置处理先于网关与 Start，返回 Response 即结束
+              let response =
+                (await runPluginFetch(nodePlugins, request)) ??
+                gatePublicApiRequest(request, templateConfig)
+              if (!response) {
+                const localized = gateLocaleRequest(await gateAdminRequest(request, runtime))
+                response = await localizeRequest(localized, runtime, () => startHandler(localized))
+              }
               const result = isPublicApiPath(path)
                 ? await normalizePublicApiNotFound(response)
                 : response

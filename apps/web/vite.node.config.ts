@@ -43,7 +43,7 @@ export default defineConfig({
   plugins: [
     ogImages(),
     pricingSnapshotPlugin(),
-    ...sitePlugins('server.node.ts'),
+    ...sitePlugins('server.node.ts', 'node'),
     nitro({
       preset: 'node_server',
       sourcemap: true,

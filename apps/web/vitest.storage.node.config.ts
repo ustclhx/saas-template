@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config'
+import { webAlias } from './scripts/web-alias.ts'
 
 if (
   !process.env.NODE_STORAGE_DATABASE_URL ||
@@ -8,6 +9,8 @@ if (
   throw new Error('Run scripts/test-node-storage.mjs for isolated storage resources')
 
 export default defineConfig({
+  // 插件代码经 @web/* 访问 web 核心模块
+  plugins: [webAlias()],
   test: {
     environment: 'node',
     include: [

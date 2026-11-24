@@ -80,9 +80,11 @@ jobs:
       - name: Build jobs
         env:
           APP_VERSION: ${{ env.DEPLOY_SHA }}
-        run: >-
-          pnpm --filter @saas/jobs exec wrangler deploy --env staging --dry-run
-          --outdir dist --var "APP_VERSION:$APP_VERSION"
+        # 先按 template.config.ts 生成插件注册文件（scripts/plugins，已 gitignore），jobs 入口导入它
+        run: |
+          node scripts/plugins/generate.mjs
+          pnpm --filter @saas/jobs exec wrangler deploy --env staging --dry-run \
+            --outdir dist --var "APP_VERSION:$APP_VERSION"
 
       - name: Build web
         env:

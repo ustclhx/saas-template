@@ -22,7 +22,20 @@
         "!$TURBO_ROOT$/apps/web/src/paraglide",
         "!$TURBO_ROOT$/apps/web/src/routeTree.gen.ts",
         "!$TURBO_ROOT$/packages/ui/node_modules",
-        "!$TURBO_ROOT$/packages/ui/.turbo"
+        "!$TURBO_ROOT$/packages/ui/.turbo",
+        // 启用插件的源码只经生成的注册文件（scripts/plugins）进入构建与类型检查
+        "$TURBO_ROOT$/plugins/**",
+        "!$TURBO_ROOT$/plugins/*/node_modules/**",
+        "$TURBO_ROOT$/scripts/plugins/**"
+      ]
+    },
+    "build": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        // 启用插件的源码只经生成的注册文件（scripts/plugins）进入构建与类型检查
+        "$TURBO_ROOT$/plugins/**",
+        "!$TURBO_ROOT$/plugins/*/node_modules/**",
+        "$TURBO_ROOT$/scripts/plugins/**"
       ]
     },
     "test": {

@@ -24,6 +24,10 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/template.config.ts",
         "$TURBO_ROOT$/tsconfig.base.json",
+        // 插件源码只经生成的注册文件进入构建，不在 apps 的默认输入内（docs/plugins.md）
+        "$TURBO_ROOT$/plugins/**",
+        "!$TURBO_ROOT$/plugins/*/node_modules/**",
+        "$TURBO_ROOT$/scripts/plugins/**",
         "!dist/**",
         "!.output/**",
         "!src/server/cloudflare/**",

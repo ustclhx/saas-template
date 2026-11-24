@@ -14,7 +14,9 @@ import {
 import { getToolName, isToolUIPart } from 'ai'
 import type { ReactNode } from 'react'
 import { m } from '../../paraglide/messages.js'
+import webPlugins from '../../plugins.gen.ts'
 import { templateConfig } from '../../server/template-config.ts'
+import { registerPluginToolRenderers } from '../plugins/extensions.ts'
 import {
   type ChatMessageStatus,
   type ChatUIMessage,
@@ -23,7 +25,12 @@ import {
   messageText,
 } from './conversation.ts'
 import { registerProjectToolRenderers } from './message-parts.project.tsx'
-import { resetToolRenderers, type ToolCallView, toolRenderer } from './tool-renderers.ts'
+import {
+  registerToolRenderer,
+  resetToolRenderers,
+  type ToolCallView,
+  toolRenderer,
+} from './tool-renderers.ts'
 
 /**
  * AI SDK `UIMessage` → `@saas/ui/chat` 组件的适配层（openspec add-ai-chat-components design D5）：
@@ -36,8 +43,9 @@ import { resetToolRenderers, type ToolCallView, toolRenderer } from './tool-rend
  * `packages/ui` 的对话组件不认识 AI SDK，换 SDK 版本只改本文件。
  */
 
-// 每次模块执行（含热更新）都从空注册表开始，再登记项目的工具
+// 每次模块执行（含热更新）都从空注册表开始，先登记启用插件的工具，再登记项目的工具（同名覆盖）
 resetToolRenderers()
+registerPluginToolRenderers(webPlugins, registerToolRenderer)
 registerProjectToolRenderers()
 
 export { registerToolRenderer, type ToolCallView, type ToolRenderer } from './tool-renderers.ts'

@@ -5,7 +5,11 @@
     "jsx": "react-jsx",
     "types": ["vite/client", "@cloudflare/workers-types"],
     // content-collections 的生成目录（vite.config.ts 中的插件配置同名别名）
-    "paths": { "content-collections": ["./.content-collections/generated"] }
+    // @web/*：插件代码访问 web 核心模块（scripts/web-alias.ts，Vite 同名别名）
+    "paths": {
+      "content-collections": ["./.content-collections/generated"],
+      "@web/*": ["./src/*"]
+    }
   },
   "include": ["src"]
 }

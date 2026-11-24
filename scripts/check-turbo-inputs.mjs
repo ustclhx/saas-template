@@ -216,7 +216,7 @@ export function readRepo(root = ROOT) {
         .filter(([, version]) => String(version).startsWith('workspace:'))
         .map(([name]) => name),
     )
-  const packages = ['apps', 'packages'].flatMap((group) =>
+  const packages = ['apps', 'packages', 'plugins'].flatMap((group) =>
     existsSync(join(root, group))
       ? readdirSync(join(root, group))
           .map((name) => `${group}/${name}`)

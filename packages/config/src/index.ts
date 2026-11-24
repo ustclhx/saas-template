@@ -29,6 +29,28 @@ export {
 export * from './media.ts'
 export { type NodeEnv, nodeEnvSchema, nodeEnvSchemaFor, nodeSecretNames } from './node-schema.ts'
 export {
+  definePlugin,
+  PLUGIN_BINDING_KINDS,
+  PLUGIN_BINDING_METHODS,
+  PLUGIN_ENTRY_KINDS,
+  PLUGIN_FEATURES,
+  PLUGIN_TARGETS,
+  type PluginBinding,
+  type PluginBindingKind,
+  type PluginCheckConfig,
+  PluginConfigError,
+  type PluginConfigSection,
+  type PluginEntryKind,
+  type PluginFeature,
+  type PluginManifest,
+  type PluginTarget,
+  pluginBindingsShape,
+  pluginManifestIssues,
+  pluginsForTarget,
+  type ResolvedPlugin,
+  resolvePlugins,
+} from './plugins.ts'
+export {
   type AiModality,
   type DefaultLocale,
   defaultBannedAnchors,

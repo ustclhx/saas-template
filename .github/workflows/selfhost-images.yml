@@ -14,10 +14,12 @@ on:
       - 'pnpm-workspace.yaml'
       - 'apps/*/package.json'
       - 'packages/*/package.json'
+      - 'plugins/*/package.json'
       - 'infra/local/initdb/**'
       - 'scripts/sentry-node-maps.mjs'
       - 'apps/*/scripts/build-node*.mjs'
       - 'apps/web/vite.node.config.ts'
+      - 'scripts/plugins/**'
       - '!**/*.md'
   push:
     branches: [main]
