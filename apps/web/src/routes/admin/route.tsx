@@ -3,7 +3,7 @@ import { createFileRoute, Link, Outlet, useRouterState } from '@tanstack/react-r
 import { useEffect, useState } from 'react'
 import { getAdminViewer } from '../../features/admin/admin.functions.ts'
 import { ADMIN_COPY } from '../../features/admin/copy.ts'
-import { getAdminNavGroups, loadAdminNavCounts } from '../../features/admin/nav.ts'
+import { getAdminNavGroups } from '../../features/admin/nav.ts'
 import { getStepUpStatus } from '../../features/admin/step-up/step-up.functions.ts'
 import {
   StepUpProvider,
@@ -23,10 +23,11 @@ import { templateConfig } from '../../server/template-config.ts'
 export const Route = createFileRoute('/admin')({
   beforeLoad: async () => ({ admin: await getAdminViewer() }),
   // 顶部验证状态、救援警示与导航计数；读取失败时降级为不显示，不影响后台页面
+  // loader 不在 TanStack 默认的按路由拆包范围内：导航计数经 import() 加载，避免插件 server fn 进入所有页面的入口包
   loader: async () => {
     const [stepUp, navCounts] = await Promise.all([
       getStepUpStatus().catch(() => null),
-      loadAdminNavCounts(),
+      import('../../features/admin/nav.ts').then(({ loadAdminNavCounts }) => loadAdminNavCounts()),
     ])
     return { stepUp, navCounts }
   },

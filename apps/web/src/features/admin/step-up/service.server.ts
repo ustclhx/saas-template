@@ -1,11 +1,13 @@
 import { createAdminStepUp, type StepUpVerified } from '@saas/auth'
 import { requireCapability } from '@saas/platform'
 import { log } from '@saas/shared/log'
+import { getRequest } from '@tanstack/react-start/server'
 import { createQueueAuthEmailSender, userLocaleByEmail } from '../../../server/auth-email.ts'
 import type { WebRuntime } from '../../../server/runtime.ts'
 import { templateConfig } from '../../../server/template-config.ts'
 import { enqueueOperations } from '../../notifications/operations.ts'
 import { stepUpRescueConfig } from './check.ts'
+import { stepUpEmailBrand, stepUpVerificationColumns } from './step-up.project.ts'
 
 // 后台重新验证服务的 web 装配（add-admin-step-up tasks 2.2 / 2.3）。只在 server function 的
 // handler 内引用：会把 @saas/db 与认证密钥配置带进来。
@@ -13,6 +15,7 @@ import { stepUpRescueConfig } from './check.ts'
 export async function createWebStepUp(runtime: WebRuntime) {
   // 与 Better Auth 2FA 插件用同一份密钥配置解密 two_factor 行
   const { secretConfig } = await runtime.auth.$context
+  const project = { db: runtime.db, request: getRequest() }
   return createAdminStepUp({
     db: runtime.db,
     secretConfig,
@@ -20,13 +23,18 @@ export async function createWebStepUp(runtime: WebRuntime) {
     rateLimiter: runtime.rateLimiter,
     clientIp: runtime.requestMeta.clientIp,
     rescue: stepUpRescueConfig(runtime.config),
-    sendEmail: (email) => {
+    verificationColumns: (userId) => stepUpVerificationColumns(userId, project),
+    sendEmail: async (email) => {
       // 与认证邮件的本地调试一致（server.ts）：开发环境打印邮件，e2e 夹具从日志取验证码；生产不写日志
       if (import.meta.env.DEV) console.log('[dev] auth email', email)
+      const brand = await stepUpEmailBrand(
+        { appName: templateConfig.app.name, appUrl: runtime.config.APP_URL },
+        project,
+      )
       return createQueueAuthEmailSender({
         queue: requireCapability(runtime.emailQueue, 'Email queue'),
-        appName: templateConfig.app.name,
-        appUrl: runtime.config.APP_URL,
+        appName: brand.appName,
+        appUrl: brand.appUrl,
         resolveLocale: userLocaleByEmail(runtime.db),
       })(email)
     },

@@ -55,8 +55,8 @@ export function ConfirmationPage({ data }: { data: Data }) {
     return (
       <AdminPage title={m.admin_confirm_page_title()} actions={back}>
         <div className={panelClass('default', 'justify-items-center p-8 text-center')}>
-          <p className="font-semibold text-lg">{m.admin_confirm_not_found_title()}</p>
-          <p className="text-muted-foreground text-sm">{m.admin_confirm_not_found_body()}</p>
+          <p className="font-semibold text-title">{m.admin_confirm_not_found_title()}</p>
+          <p className="text-muted-foreground text-body">{m.admin_confirm_not_found_body()}</p>
           <Button asChild variant="outline">
             <Link to="/admin/confirmations" search={{ offset: 0 }}>
               {m.admin_confirm_back_to_list()}
@@ -190,11 +190,11 @@ function ConfirmationDetail(props: {
       ) : null}
       <div className={panelClass()}>
         <div className="flex min-w-0 items-start gap-3">
-          <h3 className="min-w-0 flex-1 font-semibold text-base">{title}</h3>
+          <h3 className="min-w-0 flex-1 font-semibold text-title">{title}</h3>
           <Badge color={badge.color}>{badge.label}</Badge>
         </div>
         {/* 桌面：三列对照表；手机：逐行键值（设计稿 ConfirmMobile） */}
-        <table className="hidden w-full text-sm md:table">
+        <table className="hidden w-full text-body md:table">
           <thead>
             <tr className="border-b text-left text-muted-foreground">
               <th scope="col" className="py-2 pr-3 font-medium">
@@ -235,7 +235,7 @@ function ConfirmationDetail(props: {
             ))}
           </tbody>
         </table>
-        <dl className="grid text-sm md:hidden">
+        <dl className="grid text-body md:hidden">
           {rows.map((row) => (
             <div key={row.label} className="flex min-w-0 justify-between gap-3 border-t py-2">
               <dt className="shrink-0 text-muted-foreground">{row.label}</dt>
@@ -251,7 +251,7 @@ function ConfirmationDetail(props: {
             </div>
           ))}
         </dl>
-        <div className="flex flex-wrap gap-x-6 gap-y-1 text-muted-foreground text-sm">
+        <div className="flex flex-wrap gap-x-6 gap-y-1 text-muted-foreground text-body">
           <span>
             {m.admin_confirm_meta_token({ name: record.token.name })}{' '}
             <span className="font-mono">{record.token.prefix}…</span>
@@ -263,7 +263,7 @@ function ConfirmationDetail(props: {
           <span className={cn('font-medium', open && 'text-foreground')}>{expiry}</span>
         </div>
         {open && !props.isOwner ? (
-          <p role="note" className="rounded-md bg-muted p-3 text-sm">
+          <p role="note" className="rounded-md bg-muted p-3 text-body">
             {props.requestedByEmail
               ? m.admin_confirm_not_owner({ email: props.requestedByEmail })
               : m.admin_confirm_not_owner_unknown()}
@@ -271,7 +271,7 @@ function ConfirmationDetail(props: {
         ) : null}
         {open || running ? <div className="hidden justify-end gap-2 md:flex">{actions}</div> : null}
         {decided ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground text-body">
             <span>{decided}</span>
             {record.status === 'done' && isRefund ? (
               <Link
@@ -294,12 +294,12 @@ function ConfirmationDetail(props: {
           </div>
         ) : null}
         {message ? (
-          <p role="alert" className="font-medium text-destructive text-sm">
+          <p role="alert" className="font-medium text-destructive text-body">
             {message}
           </p>
         ) : null}
       </div>
-      <p className="text-muted-foreground text-sm">{m.admin_confirm_footnote()}</p>
+      <p className="text-muted-foreground text-body">{m.admin_confirm_footnote()}</p>
       {open || running ? (
         <div className="-mx-4 sm:-mx-6 sticky bottom-0 flex flex-col-reverse gap-2 border-t bg-card p-4 md:hidden">
           {actions}

@@ -156,6 +156,19 @@ describe('首页包检查', () => {
     ])
   })
 
+  it('水合闭包中出现 DataTable 时报出，静态闭包之外的懒加载分包不算', () => {
+    const root = fixture({
+      'index.html': '<script type="module" src="/assets/entry.js"></script>',
+      'assets/entry.js': 'import("./routes.js");',
+      'assets/routes.js': 'import"./table.js";const lazy=()=>import("./page.js");',
+      'assets/table.js': '(0,Q.jsxs)(`div`,{"data-slot":`data-table`,className:r(`flex`)})',
+      'assets/page.js': 'const x={"data-slot":"data-table"};',
+    })
+    expect(checkHomeBundle(root).hydrationViolations).toEqual([
+      { asset: '/assets/table.js', marker: 'DataTable' },
+    ])
+  })
+
   it('加载器内联脚本中的入口路径也计入首页闭包', () => {
     const root = fixture({
       'index.html':

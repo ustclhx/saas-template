@@ -8,7 +8,7 @@ export function ApiTokensError({ onRetry }: { onRetry: () => void }) {
     <AdminPage title={m.admin_mcp_title()} className="max-w-5xl">
       <div role="alert" className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3">
         <CircleAlert aria-hidden="true" className="size-4 shrink-0 text-destructive" />
-        <span className="flex-1 text-sm">{m.admin_mcp_load_failed()}</span>
+        <span className="flex-1 text-body">{m.admin_mcp_load_failed()}</span>
         <Button type="button" variant="outline" size="sm" onClick={onRetry}>
           {m.admin_mcp_retry()}
         </Button>

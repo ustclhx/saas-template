@@ -111,6 +111,11 @@ const projectOwnedFiles = [
     guidance:
       'put template 404 and error page changes in apps/web/src/features/marketing/not-found.tsx',
   },
+  {
+    path: 'apps/web/src/features/admin/step-up/step-up.project.ts',
+    guidance:
+      'put template step-up wiring in apps/web/src/features/admin/step-up/service.server.ts',
+  },
 ]
 
 function git(cwd, ...args) {

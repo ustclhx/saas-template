@@ -2,11 +2,8 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { adminListSearch } from '@web/features/admin/list.ts'
 import { m } from '@web/paraglide/messages.js'
 import { listAdminConfirmations } from '../../src/web/confirmations.functions.ts'
-import {
-  ConfirmationsError,
-  ConfirmationsPage,
-  ConfirmationsSkeleton,
-} from '../../src/web/confirmations-page.tsx'
+import { ConfirmationsError, ConfirmationsPage } from '../../src/web/confirmations-page.tsx'
+import { ConfirmationsSkeleton } from '../../src/web/confirmations-skeleton.tsx'
 
 // 后台待确认列表（openspec add-admin-step-up 任务 4.3）：守卫沿用 /admin 布局与 adminMiddleware
 export const Route = createFileRoute('/admin/confirmations')({
