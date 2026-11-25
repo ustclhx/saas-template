@@ -195,7 +195,8 @@
 ## 插件与 Agent
 
 - [ ] `add-plugin-system`（进行中）。引入构建期插件机制，将现有图片与视频任务迁入 `media` 插件，更新项目生成器与模板同步。阶段验收包括关闭媒体后的产物检查，以及开启媒体时的 staging 图片与视频回归。见 [插件系统 change](../openspec/changes/add-plugin-system/proposal.md)。
-- [ ] `add-ai-agents`（进行中）。Cloudflare `agents` 插件的租户鉴权、多步工具、确认、恢复计费和界面已合并。删除和保留期、媒体异步工具、本地端到端、生成器与真实模型 staging 的验收状态见任务清单。[Agent 任务](../openspec/changes/add-ai-agents/tasks.md)
+- [x] `add-ai-agents`（2026-11-25 归档）。Cloudflare `agents` 插件：租户鉴权、多步工具、确认、恢复计费、删除与保留期、媒体异步工具和界面；本地端到端、生成器与真实模型（DeepSeek 官方源）staging 均已验收。[Agent change](../openspec/changes/archive/2026-11-25-add-ai-agents/proposal.md)
+- [x] `add-admin-mcp`（2026-11-25 归档）。衍生项目需求 R8 管理员 MCP（API 令牌、远程端点、读后台与写运行时设置 / 模型、via=mcp 审计、dryRun）与 R9 功能模型沿用；本地与 staging 均已验收。见 [Admin MCP](./admin-mcp.md)。
 - [ ] 生图站（待提案）。基于 `media` 插件交付图片生成产品功能，按需接入 Agent 工具。
 - [ ] 视频站（待提案）。基于 `media` 插件交付视频生成产品功能，按需接入 Agent 工具。
 
