@@ -449,11 +449,17 @@ export function lintMigrations(base, cwd = process.cwd()) {
 }
 
 /**
- * 项目自有文件自创建提交之后不得修改或删除；尚未创建（早期版本）时不检查。
- * 传入 `changeBase`（PR 的基准提交）时，创建提交尚不在基准中的文件属于本次变更新增，
- * 合并前可以继续修改（squash 合并后整体成为创建提交）。
+ * 项目自有文件随模板版本交付后不得修改或删除：template-sync 只在首次交付时写入，之后的改动到不了衍生项目。
+ * 尚未创建（早期版本）时不检查。`releaseBase` 为上一个已发布版本的提交：创建提交不在其中的文件
+ * 还没有交付给任何衍生项目，发版前可以继续修改。
+ * 传入 `changeBase`（PR 的基准提交）时，创建提交尚不在基准中的文件属于本次变更新增，同样可以修改。
  */
-export function brandFileErrors(target = 'HEAD', cwd = process.cwd(), changeBase = undefined) {
+export function brandFileErrors(
+  target = 'HEAD',
+  cwd = process.cwd(),
+  changeBase = undefined,
+  releaseBase = undefined,
+) {
   return projectOwnedFiles.flatMap(({ path, guidance }) => {
     const created = git(cwd, 'log', '--diff-filter=A', '--format=%H', target, '--', path)
       .split('\n')
@@ -461,6 +467,7 @@ export function brandFileErrors(target = 'HEAD', cwd = process.cwd(), changeBase
       .at(-1)
     if (!created) return []
     if (changeBase && !ancestor(created, changeBase, cwd)) return []
+    if (releaseBase && !ancestor(created, releaseBase, cwd)) return []
     const changed = git(cwd, 'diff', '--name-only', created, target, '--', path)
     return changed
       ? [`${path}: project-owned file must stay as created in ${created.slice(0, 12)}; ${guidance}`]
@@ -789,7 +796,9 @@ export function checkRelease(version, cwd = process.cwd()) {
   errors.push(...immutableMigrations(range.base, range.target, cwd, published))
   // CI 在 PR 中设置 CHANGE_BASE（template-release-checks.yml），本地发版检查不设
   const { CHANGE_BASE: changeBase } = process.env
-  errors.push(...brandFileErrors(range.target, cwd, changeBase || undefined))
+  // 区间起点只有是已发布版本时才算交付边界；首个版本的起点 v0.1.3 不是模板版本
+  const releaseBase = published.length > 0 ? range.base : undefined
+  errors.push(...brandFileErrors(range.target, cwd, changeBase || undefined, releaseBase))
   errors.push(...projectEvalsErrors(range.target, cwd))
   const index = readFileSync(join(cwd, 'docs/upgrades/README.md'), 'utf8')
   const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
