@@ -246,6 +246,22 @@ export async function submitMediaOnce(
         { output: null },
         and(eq(aiTask.id, task.id), eq(aiTask.status, 'queued')),
       )
+      // 明确拒绝且非限流（如 401 密钥失效、400 参数错误）：重试不会成功，带原错误码直接终止。
+      // 普通异常跨 Workflow step 只保留 name/message，须经 NonRetryableError 携带 code 才能写入任务。
+      const httpStatus =
+        typeof error === 'object' && error !== null && 'httpStatus' in error
+          ? error.httpStatus
+          : undefined
+      if (
+        error instanceof AppError &&
+        typeof httpStatus === 'number' &&
+        httpStatus >= 400 &&
+        httpStatus < 500 &&
+        httpStatus !== 429
+      ) {
+        log.warn('ai.media.submit_rejected', { taskId: task.id, errorCode: error.code, httpStatus })
+        throw Object.assign(new NonRetryableError(error.message), { code: error.code })
+      }
       throw error
     }
     if (!provider.capabilities.idempotentSubmit) {
