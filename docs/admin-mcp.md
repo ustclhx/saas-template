@@ -46,7 +46,7 @@ claude mcp add --transport http --scope local admin-mcp https://app.example.com/
 | `workspaces.list` | `admin:read` | `{ offset?, limit?, q?, status? }`。按名称、slug、ID 或状态（`active`、`deleted`）筛选空间。 |
 | `orders.list` | `admin:read` | `{ offset?, limit?, workspaceId? }`。查询后台的一次性购买订单，需启用计费。 |
 | `credits.ledger` | `admin:read` | `{ offset?, limit?, workspaceId }`。读取指定空间的积分流水，需启用积分。 |
-| `audit.list` | `admin:read` | `{ offset?, limit?, actor?, workspaceId?, action?, from?, to? }`。查询审计日志。 |
+| `audit.list` | `admin:read` | `{ offset?, limit?, actor?, workspaceId?, action?, from?, to? }`。查询审计日志。只对 `log.meta` 脱敏，项目在行上附加的字段（如多站点的 `site`）原样返回。 |
 | `metrics.summary` | `admin:read` | `{ from?, to? }`。读取后台业务指标汇总，默认最近七个完整 UTC 日。 |
 | `settings.set` | `admin:write` | `{ key, value, dryRun? }`。校验并保存登记的设置，返回新旧值。密钥值在结果中脱敏。 |
 | `models.update` | `admin:write` | `{ key, enabled?, paramsSchema?, pricing?, dryRun? }`。修改已有模型，至少提供一个可修改字段。参数 schema 和定价分别传入完整 JSON 对象，结果包含各字段的新旧值。需启用计费。 |
