@@ -12,9 +12,9 @@
 
 ## 2. MCP 工具说明守卫（worker B，Codex：改动集中、模式明确）
 
-- [ ] 2.1 `defineAdminTool` 增加按输入 schema 键类型强制的必填 `params` 说明映射，生成 inputSchema 时写入属性 `description`；为现有 14 个工具补全参数说明并检查工具描述完整；`mcp.ts` 导出 `adminTools` 供运行时与测试共用。〔本地〕`pnpm typecheck` 通过；删去任一参数说明时 typecheck 失败（在 PR 中说明已手动验证）
-- [ ] 2.2 守卫测试：工具描述 ≥20 字符、每个参数说明非空、`readOnlyHint` 与 scope 一致；解析 `docs/admin-mcp.md` 工具表核对名称、scope、参数名与可选性；`apps/web/test/admin-mcp.test.ts` 增加 `tools/list` 返回参数说明的断言。〔本地〕
-- [ ] 2.3 文档：`docs/admin-mcp.md` 校正工具表（如有差异）；`docs/plugins.md` 与 AGENTS.md 加规则：新增或改动 MCP 工具能力，同一 PR 更新工具与参数说明及文档。〔本地〕`pnpm check` 通过
+- [x] 2.1 `defineAdminTool` 增加按输入 schema 键类型强制的必填 `params` 说明映射，生成 inputSchema 时写入属性 `description`；为现有 14 个工具补全参数说明并检查工具描述完整；`mcp.ts` 导出 `adminTools` 供运行时与测试共用。〔本地〕`pnpm typecheck` 通过；删去任一参数说明时 typecheck 失败（在 PR 中说明已手动验证）
+- [x] 2.2 守卫测试：工具描述 ≥20 字符、每个参数说明非空、`readOnlyHint` 与 scope 一致；解析 `docs/admin-mcp.md` 工具表核对名称、scope、参数名与可选性；`apps/web/test/admin-mcp.test.ts` 增加 `tools/list` 返回参数说明的断言。〔本地〕
+- [x] 2.3 文档：`docs/admin-mcp.md` 校正工具表（如有差异）；`docs/plugins.md` 与 AGENTS.md 加规则：新增或改动 MCP 工具能力，同一 PR 更新工具与参数说明及文档。〔本地〕`pnpm check` 通过
 
 ## 3. 第三方登记表（worker C，Claude：需逐项查官方文档与判断证据）
 
