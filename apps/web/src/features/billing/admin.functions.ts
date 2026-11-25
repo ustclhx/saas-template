@@ -20,6 +20,7 @@ import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import { withAdminAction, withDelegatedAdminAction } from '../admin/action.server.ts'
 import { adminMiddleware } from '../admin/admin.functions.ts'
+import { rethrowStepUpRequired } from '../admin/step-up/client.ts'
 import { enqueueServerAnalytics } from '../analytics/server.ts'
 import {
   listAdminPayments,
@@ -44,6 +45,8 @@ async function safe(action: () => Promise<string>) {
   } catch (error) {
     // 写事务内发现管理员已失效：与守卫一样返回 404，不当作业务失败
     if (isNotFound(error)) throw error
+    // 需要重新验证：原样抛出，交给后台调用包装弹出验证（add-admin-step-up 决策 10）
+    rethrowStepUpRequired(error)
     if (error instanceof AppError && error.status === 503) setResponseStatus(503)
     return {
       ok: false as const,

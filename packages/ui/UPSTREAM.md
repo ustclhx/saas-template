@@ -58,6 +58,7 @@
 | `src/components/message-feedback.tsx` | 无（模板新增，tasks 8.6） | — | 点赞 / 点踩（再次点击撤销）、点踩展开文字反馈与可选原因、「修改反馈」再次编辑；乐观更新，`onChange` reject 时回滚；文案经 `labels` 传入；图标直接从 lucide-react 导入（不进 UiRoot 默认图标表） |
 | `src/components/embedded-chat.tsx` | 无（模板新增，tasks 8.6） | — | `inline`（≥ md 正文卡片）/ `panel`（≥ md 右侧非模态面板）两种变体，< md 均为悬浮按钮 + 模态底部抽屉（radix-ui `Dialog`，`modal` 随视口切换、打开期间冻结；断点经 `useSyncExternalStore` 读取）；`[data-escape-scope]` 内的 Esc 不关闭；`m as motion` + `MotionFeatures`，减少动态效果时只淡入淡出；没有悬浮按钮的受控用法关闭后把焦点还给打开前的元素 |
 | `src/components/insufficient-credits-dialog.tsx` | 无（模板新增，tasks 8.6） | — | 基于 `dialog.tsx`；无 Trigger 的受控用法关闭后把焦点还给打开前的元素；数值显示经 `labels.credits(n)` 由调用方格式化 |
+| `src/components/input-otp.tsx` | 无（Fluid 没有验证码输入，参照 shadcn `input-otp` 结构补缺；openspec add-admin-step-up） | 2026-11 | 不引入 `input-otp` 依赖：一个透明的真实 `<input>`（`autocomplete="one-time-code"`、数字键盘、粘贴时过滤非法字符并截断）覆盖在展示格上，只有一个可读名称；格子 48×44、`--chat-fill` 底色（深色下 `--secondary` 与卡片同色），当前位置 2px 正文色描边兼作焦点指示，`aria-invalid` 时全部格子为 `--destructive` 描边；`onComplete` 在填满时调用 |
 | `src/components/credit-estimate.tsx` | 无（模板新增，tasks 8.6） | — | 预计消耗与余额的单行说明，`estimate={null}` 为估算中占位，`insufficient` 时危险色 |
 | `src/components/locked-feature.tsx` | 无（模板新增，tasks 8.6） | — | 会员锁定态卡片；被锁预览 `inert`，并在捕获阶段拦下点击只调用 `onUpgrade` |
 | `src/components/daily-claim-notice.tsx` | 无（模板新增，tasks 8.6） | — | 每日领取提示（available / pending / claimed / error），`compact` 为手机顶部样式 |

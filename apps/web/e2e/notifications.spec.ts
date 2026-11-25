@@ -4,7 +4,7 @@ import { createDb } from '@saas/db'
 import { loadEnv } from 'vite'
 import templateConfig from '../../../template.config.ts'
 import { writeNotification } from '../src/features/notifications/service.ts'
-import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
+import { fixtureDb, grantStepUp, register, simulateClientIp } from './fixtures.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 // 选择器不依赖界面语言（zh 单语言的生成副本里同样成立）：铃铛与角标用 test id，弹层用 role，
@@ -182,6 +182,8 @@ test('后台保存运营通知密钥后只显示配置状态，不回显明文',
     await stubTurnstile(page)
     await register(page, email)
     await sql`update "user" set role='admin' where email=${email}`
+    const [admin] = await sql`select id from "user" where email=${email}`
+    if (admin) await grantStepUp(sql, admin.id)
     await page.goto('/admin/settings')
     const form = page.getByRole('form', { name: 'Operations notifications' })
     await form.getByLabel('Telegram bot token', { exact: true }).fill(token)

@@ -26,6 +26,8 @@ import {
 } from '@saas/ui'
 import { CircleAlert, Copy, KeyRound, Plus } from '@saas/ui/icons'
 import { useRouter } from '@tanstack/react-router'
+import { isStepUpCancelled } from '@web/features/admin/step-up/client.ts'
+import { useStepUpCall } from '@web/features/admin/step-up/step-up-provider.tsx'
 import { AdminPage } from '@web/features/admin/ui.tsx'
 import { m } from '@web/paraglide/messages.js'
 import { getLocale } from '@web/paraglide/runtime.js'
@@ -475,6 +477,8 @@ function CreateTokenDialog({
   const [days, setDays] = useState(() => defaultTerm(terms))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 创建令牌为敏感操作（产生长期管理员凭据）：未重新验证时当场弹窗
+  const createToken = useStepUpCall(createAdminApiTokenFn, { action: m.admin_mcp_create_title() })
 
   // 每次打开都从默认值开始，避免沿用上一次的输入
   useEffect(() => {
@@ -490,7 +494,9 @@ function CreateTokenDialog({
     setBusy(true)
     setError(null)
     try {
-      const result = await createAdminApiTokenFn({ data: { name: name.trim(), write, days } })
+      const result = await createToken({ data: { name: name.trim(), write, days } })
+      // 取消验证：令牌未创建，对话框与已填写的名称、权限保留
+      if (isStepUpCancelled(result)) return
       onCreated({ ...result, days })
     } catch {
       setError(m.admin_mcp_create_failed())

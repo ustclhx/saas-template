@@ -3,6 +3,7 @@ import { adminStepUp, type Database } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { and, eq, gt } from 'drizzle-orm'
 import { type AdminActionRef, requiresStepUp } from '../actions.registry.ts'
+import { STEP_UP_REQUIRED_MESSAGE } from './client.ts'
 
 /**
  * 敏感后台操作的重新验证检查（openspec add-admin-step-up design.md 决策 2、4）。
@@ -13,24 +14,6 @@ import { type AdminActionRef, requiresStepUp } from '../actions.registry.ts'
  */
 
 export const STEP_UP_REQUIRED = 'STEP_UP_REQUIRED'
-
-/**
- * 重新验证的强制开关。验证方式（第 2 组）与弹窗（第 4 组）上线前保持关闭，避免管理员被锁在
- * 敏感操作之外：关闭时 assertStepUp 直接放行，登记表、类型约束与守卫扫描照常生效。
- * 第 4 组 4.2 完成时改为 true，并删除本开关与 overrideStepUpEnforcedForTesting。
- */
-export const STEP_UP_ENFORCED = false
-
-let enforcedOverride: boolean | undefined
-
-/** 仅供测试：强制开启（或关闭）检查以覆盖拒绝与放行；传 undefined 恢复为 STEP_UP_ENFORCED */
-export function overrideStepUpEnforcedForTesting(value: boolean | undefined) {
-  enforcedOverride = value
-}
-
-function stepUpEnforced(): boolean {
-  return enforcedOverride ?? STEP_UP_ENFORCED
-}
 
 /** 后台请求的当前会话；MCP 等无会话的调用为空，敏感动作因此一律被拒 */
 export interface AdminSessionRef {
@@ -59,7 +42,7 @@ export async function hasValidStepUp(
 
 export function stepUpRequiredError(methods: readonly StepUpMethod[] = []) {
   const details = { methods: [...methods] }
-  return new AppError(STEP_UP_REQUIRED, 'Re-verify your identity to continue', {
+  return new AppError(STEP_UP_REQUIRED, STEP_UP_REQUIRED_MESSAGE, {
     status: 403,
     details,
     publicDetails: details,
@@ -96,9 +79,8 @@ export async function assertStepUp(
   },
   ref: AdminActionRef,
 ): Promise<void> {
-  // 关闭时也先判定：未登记的动作名在运行时同样报错
+  // 未登记的动作名在判定时报错
   if (!(await requiresStepUp(ref, { db: context.db }))) return
-  if (!stepUpEnforced()) return
   const session = context.session
   // 会话必须属于执行操作的管理员；模拟会话等身份不一致时同样拒绝。
   if (session && session.userId === context.admin.id && (await hasValidStepUp(context.db, session)))

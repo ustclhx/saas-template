@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { expect, test } from '@playwright/test'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import { newId } from '@saas/shared'
-import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
+import { fixtureDb, grantStepUp, register, simulateClientIp } from './fixtures.ts'
 import { chooseOption } from './select.ts'
 import { stubTurnstile } from './turnstile.ts'
 import { workersAiSkipReason } from './workers-ai.ts'
@@ -36,6 +36,7 @@ test('saved media parameter schemas drive submit fields, defaults and validation
       where u.email=${email} and o.slug=${slug}`
     if (!actor) throw new Error('Missing admin workspace fixture')
     await sql`update "user" set role='admin' where id=${actor.user_id}`
+    await grantStepUp(sql, actor.user_id)
     await sql`insert into plan (id,key,name,type,credits,features,sort,active)
       values (${planId},${key},'E2E schema','subscription',0,
         ${sql.json({ ...DEFAULT_FREE_FEATURES, models: [key] })},1000,false)`

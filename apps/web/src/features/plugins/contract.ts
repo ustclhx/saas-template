@@ -22,6 +22,8 @@ export interface AdminNavEntry {
   /** 按请求语言取文案 */
   label: () => string
   order?: number
+  /** 导航项上的待处理数量（如待确认操作）；后台布局加载时读取，失败或为 0 时不显示 */
+  count?: () => Promise<number>
 }
 
 /** web 入口（两目标共用，含客户端）：导航、后台菜单与对话消息部件渲染器 */

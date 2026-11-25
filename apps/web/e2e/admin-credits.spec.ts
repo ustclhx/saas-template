@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { expect, test } from '@playwright/test'
-import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
+import { fixtureDb, grantStepUp, register, simulateClientIp } from './fixtures.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 test('管理员通过统一导航补发、收回指定批次，账务页保留空间筛选', async ({ page }) => {
@@ -15,6 +15,7 @@ test('管理员通过统一导航补发、收回指定批次，账务页保留�
       await sql`select organization_id as id from member where user_id=${account?.id} and role='owner' limit 1`
     if (!account || !workspace) throw new Error('Missing account fixture')
     await sql`update "user" set role='admin' where id=${account.id}`
+    await grantStepUp(sql, account.id)
     await page.goto(`/admin/credits?workspaceId=${workspace.id}`)
     await expect(page.getByRole('heading', { name: 'Credit adjustments' })).toBeVisible()
     await expect

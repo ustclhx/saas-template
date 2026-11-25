@@ -2,7 +2,11 @@ import { creditGrant, organization } from '@saas/db'
 import { AppError, newId } from '@saas/shared'
 import type { AdminTransaction } from '@web/features/admin/action.ts'
 import { ConfirmationFailedError, STALE_TARGET } from '@web/features/admin/confirmations/service.ts'
-import { adjustAdminCredits, creditAdjustmentInput } from '@web/features/admin/credits.ts'
+import {
+  adjustAdminCredits,
+  adminCreditBalance,
+  creditAdjustmentInput,
+} from '@web/features/admin/credits.ts'
 import { requireFeature } from '@web/server/feature-gates.ts'
 import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
@@ -63,6 +67,7 @@ async function findGrant(
       remaining: creditGrant.remaining,
       status: creditGrant.status,
       source: creditGrant.source,
+      expiresAt: creditGrant.expiresAt,
     })
     // biome-ignore lint/plugin: Platform-admin credit adjustment reads the batch of the explicitly resolved workspace.
     .from(creditGrant)
@@ -76,6 +81,9 @@ async function resolveAdjustment(tx: AdminTransaction, value: Input) {
   requireFeature('credits')
   const workspace = await findWorkspace(tx, value.workspace)
   if (!workspace) throw new AppError('WORKSPACE_NOT_FOUND', 'Workspace not found', { status: 404 })
+  // 发起时的可用余额，只作展示：确认页以打开时的实时余额计算「当前 → 执行后」并注明发起时余额；
+  // 执行不比对余额（调整是增量，余额随扣费变化属正常）
+  const balance = await adminCreditBalance(tx, workspace.id)
   if (value.kind === 'grant') {
     const amount = value.amount ?? 0
     const expires = value.expiresAt ? `, expiring ${value.expiresAt}` : ''
@@ -90,6 +98,7 @@ async function resolveAdjustment(tx: AdminTransaction, value: Input) {
         amount,
         expiresAt: value.expiresAt ?? null,
         reason: value.reason,
+        balance: { before: balance, after: balance + amount },
       },
     }
   }
@@ -97,6 +106,8 @@ async function resolveAdjustment(tx: AdminTransaction, value: Input) {
   if (!grant) throw new AppError('GRANT_NOT_FOUND', 'Credit batch not found', { status: 404 })
   if (grant.status !== 'active')
     throw new AppError('GRANT_NOT_ACTIVE', 'Credit batch is not active', { status: 409 })
+  // 已过期的批次不计入可用余额，收回它不改变余额
+  const counted = grant.expiresAt === null || grant.expiresAt.getTime() > Date.now()
   return {
     workspace,
     grant,
@@ -105,8 +116,9 @@ async function resolveAdjustment(tx: AdminTransaction, value: Input) {
       kind: 'credits',
       operation: 'revoke',
       workspace,
-      grant,
+      grant: { id: grant.id, amount: grant.amount, remaining: grant.remaining },
       reason: value.reason,
+      balance: { before: balance, after: counted ? balance - grant.remaining : balance },
     },
   }
 }

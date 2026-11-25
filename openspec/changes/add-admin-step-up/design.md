@@ -159,7 +159,7 @@
 ### 9. 第一批 MCP 敏感工具（D1，使用者 2026-11-25 确认）
 | 工具 | 输入（AI 侧） | 解析与快照 | 执行复用 |
 |---|---|---|---|
-| `credits.adjust` | `{ workspace（ID 或 slug）, kind: grant, amount, expiresAt?, reason }` 或 `{ workspace, kind: revoke, grantId, reason }` | 空间 ID 与名称、批次剩余、生成 `adjustmentId` | `adjustAdminCredits` |
+| `credits.adjust` | `{ workspace（ID 或 slug）, kind: grant, amount, expiresAt?, reason }` 或 `{ workspace, kind: revoke, grantId, reason }` | 空间 ID 与名称、发起时可用余额（只作展示，执行不比对，见决策 11 实现备注）、批次剩余、生成 `adjustmentId` | `adjustAdminCredits` |
 | `refunds.review` | `{ requestId, decision, approvedAmount?, reviewNote? }` | 申请状态、付款金额与币种、对应批次已用 / 剩余 | `reviewRefundRequest`（驳回也走确认：保持一致，且驳回会发邮件给用户） |
 | `settings.set`（密钥项） | 不变 | 现值是否已设置 | `writeRuntimeSetting` |
 | `models.update`（定价改动） | 不变 | 现定价 | 抽出的模型保存 |
@@ -172,6 +172,16 @@
 重试安全：检查在任何副作用之前（决策 2），被拒的请求没有写入；积分调整本就带幂等 `adjustmentId`。
 
 ### 11. 设计稿（协调者负责 ui-design 第 3–5 步，本 change 不出稿）
+
+实现备注（第 4 组，2026-11-26）：
+- `useStepUpCall` 与 `StepUpProvider` 在 `apps/web/src/features/admin/step-up/step-up-provider.tsx`，弹窗在 `step-up-dialog.tsx`；后台布局加载器读取 `getStepUpStatus`（顶部状态与救援警示，失败时不显示）与插件导航计数。弹窗期间并发的第二个敏感调用合并到同一次验证。
+- **浏览器拿不到错误码**：TanStack Start 1.168 把 Server Function 抛出的错误按 `$TSR/Error` 序列化，只保留 `message`（e2e 抓包核对，2026-11-26），`code` 与 `publicDetails.methods` 不会到达浏览器。浏览器端按固定消息 `STEP_UP_REQUIRED_MESSAGE`（`step-up/client.ts`，与 `check.ts` 共用常量）识别，可用方式在弹窗打开时经 `getStepUpStatus` 读取。服务端与测试仍按 `code` 识别。若以后需要把 AppError 的 code 带到浏览器，可在 `createStart` 注册序列化适配器（影响全部 Server Function，另议）。
+- 把业务错误包装为 `{ ok: false, error }` 的入口（积分调整、退款与回调重放、模型保存、套餐模型）在 catch 中先 `rethrowStepUpRequired`；守卫测试改为只接受抛出的 `STEP_UP_REQUIRED`（或 HTTP 403），包装后的返回值视为未拦截。
+- `call-sites.scan.test.ts` 静态确认：处理敏感动作的 POST Server Function 都已列入，界面只经 `useStepUpCall` 调用它们。
+- 确认页与列表放在 admin-mcp 插件（`plugins/admin-mcp/routes/admin/`），读取类 Server Function 与确认 / 拒绝同在 `confirmations.functions.ts`；插件后台菜单项新增可选 `count`。
+- 与设计稿的差异见 PR 描述（现有后台布局没有顶部标题栏：已验证状态放在正文右上，手机端沿用现有内联导航；Fluid Tabs 为紧凑分段而非等宽）。
+- **积分调整的余额展示**（协调者决定，2026-11-26）：积分调整不以余额变化阻断——调整是增量，且有幂等 `adjustmentId`。`credits.adjust` 创建待确认时记录发起时可用余额（未过期有效批次剩余之和）为 `display.balance = { before, after }`，只作展示。确认页（含手机版）对待确认记录按**打开页面时读取的实时余额**显示「积分余额 当前 → 执行后」（实时余额加本次变化量），另起一行注明发起时余额；已结束的记录只显示发起时的快照。执行不比对余额，收回批次仍比对批次剩余与状态（决策 9）。设置、模型、退款维持严格快照校验（`STALE_TARGET`）。加入余额快照之前创建的记录显示增加量。
+
 
 已确认（2026-11-25）：见 `docs/design-system/prototypes/README.md` 中「后台敏感操作验证弹窗 StepUpDialog」「后台确认 AI 发起的操作 /admin/confirm/$id」「后台待确认列表 /admin/confirmations」三行，副本在 `docs/design-system/prototypes/admin-step-up/`。组件变更提议：`@saas/ui` 无 InputOTP 时按 `packages/ui/UPSTREAM.md` 接入（随画布确认）。实现与验收以副本为准。
 

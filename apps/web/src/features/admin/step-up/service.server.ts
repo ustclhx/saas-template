@@ -20,13 +20,16 @@ export async function createWebStepUp(runtime: WebRuntime) {
     rateLimiter: runtime.rateLimiter,
     clientIp: runtime.requestMeta.clientIp,
     rescue: stepUpRescueConfig(runtime.config),
-    sendEmail: (email) =>
-      createQueueAuthEmailSender({
+    sendEmail: (email) => {
+      // 与认证邮件的本地调试一致（server.ts）：开发环境打印邮件，e2e 夹具从日志取验证码；生产不写日志
+      if (import.meta.env.DEV) console.log('[dev] auth email', email)
+      return createQueueAuthEmailSender({
         queue: requireCapability(runtime.emailQueue, 'Email queue'),
         appName: templateConfig.app.name,
         appUrl: runtime.config.APP_URL,
         resolveLocale: userLocaleByEmail(runtime.db),
-      })(email),
+      })(email)
+    },
   })
 }
 

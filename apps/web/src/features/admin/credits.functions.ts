@@ -9,6 +9,7 @@ import { adminAction } from './action.server.ts'
 import { adminMiddleware } from './admin.functions.ts'
 import { adjustAdminCredits, creditAdjustmentInput } from './credits.ts'
 import { ADMIN_PAGE_SIZE } from './list.ts'
+import { rethrowStepUpRequired } from './step-up/client.ts'
 
 export const getAdminCredits = createServerFn({ method: 'GET' })
   .middleware([withCredits, adminMiddleware])
@@ -48,6 +49,7 @@ export const adjustCredits = createServerFn({ method: 'POST' })
       )(input)
       return { ok: true as const, ...result }
     } catch (error) {
+      rethrowStepUpRequired(error)
       if (!(error instanceof AppError) && !(error instanceof CreditsError)) throw error
       return { ok: false as const, error: error.code }
     }

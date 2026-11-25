@@ -6,6 +6,8 @@ import { getAdminFeatureModels } from '../../features/admin/feature-models.funct
 import { FeatureModelsForm } from '../../features/admin/feature-models-form.tsx'
 import { getAdminSettings, saveAdminSettings } from '../../features/admin/settings.functions.ts'
 import { OperationsSettingsForm } from '../../features/admin/settings-operations-form.tsx'
+import { isStepUpCancelled } from '../../features/admin/step-up/client.ts'
+import { useStepUpCall } from '../../features/admin/step-up/step-up-provider.tsx'
 import { AdminPage, Field, panelClass } from '../../features/admin/ui.tsx'
 import { m } from '../../paraglide/messages.js'
 
@@ -39,13 +41,15 @@ function Settings() {
   const [message, setMessage] = useState('')
   const [hydrated, setHydrated] = useState(false)
   useEffect(() => setHydrated(true), [])
+  // 改动密钥类设置时为敏感操作（setting.update 按输入判定）
+  const save = useStepUpCall(saveAdminSettings, { action: m.admin_settings() })
 
   async function submit(event: FormEvent) {
     event.preventDefault()
     setBusy(true)
     setMessage('')
     try {
-      const result = await saveAdminSettings({
+      const result = await save({
         data: {
           signupEnabled,
           dailyAmount: Number(dailyAmount),
@@ -63,6 +67,7 @@ function Settings() {
           },
         },
       })
+      if (isStepUpCancelled(result)) return
       setMessage(
         result.ok
           ? m.admin_saved_changes_apply_within_about_60_seconds()

@@ -66,8 +66,7 @@ type AdminTool<Schema extends z.ZodObject> = {
       readonly scope: 'admin:write'
       /**
        * 本次写入对应的后台动作（与后台同名，见 actions.registry.ts），按已校验的输入给出。
-       * 强制开关（STEP_UP_ENFORCED）打开后，敏感判定命中的无会话 MCP 调用被拒（STEP_UP_REQUIRED）；
-       * 改为待确认由第 3 组实现。
+       * 敏感判定命中时不执行，转为待确认记录（needs_owner_confirm），由管理员在后台确认后执行。
        */
       adminAction(input: z.output<Schema>): AdminActionRef
       run: ToolHandler<Schema, AdminToolContext & AdminActionScope & { dryRun: boolean }>

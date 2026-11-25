@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { expect, test } from '@playwright/test'
-import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
+import { fixtureDb, grantStepUp, register, simulateClientIp } from './fixtures.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 test('runtime settings are hidden from non-admins', async ({ page }) => {
@@ -22,6 +22,7 @@ test('admin saves runtime settings, audits changes and displays a plain text ann
     const [account] = await sql`select id from "user" where email=${email}`
     if (!account) throw new Error('Missing account fixture')
     await sql`update "user" set role='admin' where id=${account.id}`
+    await grantStepUp(sql, account.id)
     await page.goto('/admin/settings')
     await expect(page.getByRole('heading', { name: 'Runtime settings' })).toBeVisible()
     const form = page.getByRole('form', { name: 'Runtime settings' })
@@ -44,7 +45,14 @@ test('admin saves runtime settings, audits changes and displays a plain text ann
     const audits =
       await sql`select meta from audit_log where action='setting.updated' and actor_user_id=${account.id} and target_id='auth.signupEnabled'`
     expect(audits).toEqual([
-      { meta: { key: 'auth.signupEnabled', oldValue: original.signup, newValue: false } },
+      {
+        meta: {
+          key: 'auth.signupEnabled',
+          oldValue: original.signup,
+          newValue: false,
+          changes: { oldValue: original.signup, newValue: false },
+        },
+      },
     ])
     await page.goto('/login')
     const banner = page.getByRole('status', { name: 'Site announcement' })

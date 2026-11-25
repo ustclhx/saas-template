@@ -7,6 +7,8 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../../features/admin/list.ts'
+import { isStepUpCancelled } from '../../../features/admin/step-up/client.ts'
+import { useStepUpCall } from '../../../features/admin/step-up/step-up-provider.tsx'
 import { AdminPage, adminTableLabels, panelClass } from '../../../features/admin/ui.tsx'
 import {
   getAdminPlans,
@@ -103,11 +105,14 @@ function PlanEditor({ plan, models }: { plan: Data['rows'][number]; models: Data
     })),
     ...historical.map((key) => ({ key, label: m.admin_historical_model_missing({ key: key }) })),
   ]
+  // 套餐模型权益变更为敏感操作：当场验证，已勾选的模型保留
+  const saveModels = useStepUpCall(saveAdminPlanModels, { action: m.admin_plan({ key: plan.key }) })
   async function save() {
     setBusy(true)
     setMessage('')
     try {
-      const result = await saveAdminPlanModels({ data: { id: plan.id, models: selected } })
+      const result = await saveModels({ data: { id: plan.id, models: selected } })
+      if (isStepUpCancelled(result)) return
       if (!result.ok) {
         setMessage(result.error)
         return

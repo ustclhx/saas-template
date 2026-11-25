@@ -23,6 +23,8 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../features/admin/list.ts'
+import { isStepUpCancelled } from '../../features/admin/step-up/client.ts'
+import { useStepUpCall } from '../../features/admin/step-up/step-up-provider.tsx'
 import {
   AdminPage,
   adminTableLabels,
@@ -59,11 +61,18 @@ function Credits() {
   // 确认框：open 与目标分开保存，关闭后目标保留到退场动画结束，说明文字不会在淡出时变空
   const [revokeOpen, setRevokeOpen] = useState(false)
   const [revokeTarget, setRevokeTarget] = useState<CreditBatch | null>(null)
+  // 积分调整为敏感操作：未重新验证时当场弹窗，通过后用同一份参数（含 adjustmentId）继续
+  const adjust = useStepUpCall(adjustCredits, { action: m.admin_credit_adjustments() })
   async function submit(input: Parameters<typeof adjustCredits>[0]['data']) {
     setPending(input)
     setBusy(true)
     try {
-      const result = await adjustCredits({ data: input })
+      const result = await adjust({ data: input })
+      if (isStepUpCancelled(result)) {
+        // 取消验证：请求未执行，表单内容保留，可直接再次提交
+        setPending(null)
+        return
+      }
       if (result.ok) {
         setMessage(
           result.replayed ? m.admin_adjustment_already_applied() : m.admin_adjustment_applied(),

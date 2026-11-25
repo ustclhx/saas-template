@@ -67,22 +67,27 @@ export async function offlineProviderTransport(
       await reply(route, await action(requestData(route)))
       return
     }
-    const response = await route.fetch()
-    expect(response.headers()['x-tss-serialized']).toBe('true')
-    const envelope = serializer.fromCrossJSON(await response.json(), { refs: new Map() })
-    const result = envelope.result
-    if (result && typeof result === 'object' && 'catalog' in result) {
-      const catalog = result.catalog as { providers: { id: string; available: boolean }[] }
-      for (const provider of catalog.providers)
-        if (provider.id === 'stripe') provider.available = true
-    }
-    if (result && typeof result === 'object' && 'rows' in result)
-      for (const row of result.rows as { provider: string; providerAvailable: boolean }[])
-        if (row.provider === 'stripe') row.providerAvailable = true
-    await route.fulfill({
-      status: response.status(),
-      headers: { 'content-type': 'application/json', 'x-tss-serialized': 'true' },
-      body: JSON.stringify(await serializer.toCrossJSONAsync(envelope, { refs: new Map() })),
-    })
+    await fulfillWithStripeAvailable(route)
+  })
+}
+
+/** Real authenticated GET with only the Stripe readiness flags flipped to available. */
+export async function fulfillWithStripeAvailable(route: Route) {
+  const response = await route.fetch()
+  expect(response.headers()['x-tss-serialized']).toBe('true')
+  const envelope = serializer.fromCrossJSON(await response.json(), { refs: new Map() })
+  const result = envelope.result
+  if (result && typeof result === 'object' && 'catalog' in result) {
+    const catalog = result.catalog as { providers: { id: string; available: boolean }[] }
+    for (const provider of catalog.providers)
+      if (provider.id === 'stripe') provider.available = true
+  }
+  if (result && typeof result === 'object' && 'rows' in result)
+    for (const row of result.rows as { provider: string; providerAvailable: boolean }[])
+      if (row.provider === 'stripe') row.providerAvailable = true
+  await route.fulfill({
+    status: response.status(),
+    headers: { 'content-type': 'application/json', 'x-tss-serialized': 'true' },
+    body: JSON.stringify(await serializer.toCrossJSONAsync(envelope, { refs: new Map() })),
   })
 }

@@ -2,6 +2,8 @@ import { Button, Checkbox, Input, Label } from '@saas/ui'
 import { type FormEvent, useEffect, useState } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { getOperationsSettings, saveOperationsSettings } from './settings-operations.functions.ts'
+import { isStepUpCancelled } from './step-up/client.ts'
+import { useStepUpCall } from './step-up/step-up-provider.tsx'
 import { Field, panelClass } from './ui.tsx'
 
 export function OperationsSettingsForm() {
@@ -21,11 +23,13 @@ export function OperationsSettingsForm() {
       })
       .catch(() => setMessage(m.admin_operations_settings_unavailable()))
   }, [])
+  // 运营通知令牌等全部为密钥类设置：敏感操作，未重新验证时当场弹窗，填写的令牌保留
+  const save = useStepUpCall(saveOperationsSettings, { action: m.admin_operations_notifications() })
   async function submit(event: FormEvent) {
     event.preventDefault()
     setBusy(true)
     try {
-      await saveOperationsSettings({
+      const result = await save({
         data: {
           telegramChatId: chatId,
           ...(clearToken ? { telegramBotToken: null } : token ? { telegramBotToken: token } : {}),
@@ -36,6 +40,7 @@ export function OperationsSettingsForm() {
               : {}),
         },
       })
+      if (isStepUpCancelled(result)) return
       setToken('')
       setWebhook('')
       setClearToken(false)

@@ -1,5 +1,6 @@
 import { MODEL_CACHE_KEY } from '@saas/ai'
 import { parseAuthEnv } from '@saas/auth'
+import { grant } from '@saas/credits'
 import {
   adminApiToken,
   adminPendingAction,
@@ -47,6 +48,7 @@ vi.mock('../src/server/runtime.ts', () => ({
 
 import {
   confirmAdminConfirmation,
+  getAdminConfirmation,
   rejectAdminConfirmation,
 } from '../../../plugins/admin-mcp/src/web/confirmations.functions.ts'
 import { respondToAdminMcp } from '../../../plugins/admin-mcp/src/web/mcp.ts'
@@ -61,10 +63,8 @@ import {
   getPendingAction,
   MAX_PENDING_PER_TOKEN,
 } from '../src/features/admin/confirmations/service.ts'
-import {
-  overrideStepUpEnforcedForTesting,
-  STEP_UP_REQUIRED,
-} from '../src/features/admin/step-up/check.ts'
+import { adminCreditBalance } from '../src/features/admin/credits.ts'
+import { STEP_UP_REQUIRED } from '../src/features/admin/step-up/check.ts'
 import { templateConfig } from '../src/server/template-config.ts'
 
 const APP_URL = 'https://admin-confirm.example.test'
@@ -165,6 +165,11 @@ const confirm = (context: Context, id: string) =>
     context,
     data: { id },
   })
+const view = (context: Context, id: string) =>
+  (getAdminConfirmation as unknown as (input: unknown) => Promise<Record<string, unknown>>)({
+    context,
+    data: { id },
+  })
 const reject = (context: Context, id: string) =>
   (rejectAdminConfirmation as unknown as (input: unknown) => Promise<FnResult>)({
     context,
@@ -191,7 +196,6 @@ async function requestGrant(token: string, workspace: string, amount = 100) {
 }
 
 beforeAll(async () => {
-  overrideStepUpEnforcedForTesting(true)
   runtimeRef.current = {
     config: { ...parseAuthEnv(runtimeConfig, templateConfig), PAYMENT_MODE: 'test' },
     db,
@@ -205,7 +209,6 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  overrideStepUpEnforcedForTesting(undefined)
   await db.delete(setting).where(eq(setting.key, SECRET_KEY))
   if (originalSecret !== undefined)
     await db.insert(setting).values({ key: SECRET_KEY, value: originalSecret })
@@ -443,6 +446,43 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'] || !templateConfig.credits.
       expect((await audits(admin.id)).map(({ action }) => action)).toContain(
         'admin.confirmation.failed',
       )
+    })
+
+    it('积分调整不以余额变化阻断：发起后余额变化仍确认成功，确认页按实时余额展示，审计正确', async () => {
+      const admin = await createAdmin()
+      const { token, metadata } = await issue(admin.id)
+      const workspace = await createWorkspace()
+      const seed = (amount: number) =>
+        grant(db, { workspaceId: workspace.id, source: 'admin', sourceRef: newId(), amount })
+      await seed(40)
+      const id = await requestGrant(token, workspace.id)
+      // 发起时余额快照只作注明
+      expect((await record(id))?.display).toMatchObject({ balance: { before: 40, after: 140 } })
+      // 发起后余额变化（另一笔发放）：确认页按打开时的实时余额计算「当前 → 执行后」
+      await seed(5)
+      const page = await view(admin.verified, id)
+      expect(page).toMatchObject({ found: true, liveBalance: 45 })
+      expect(await confirm(admin.verified, id)).toMatchObject({ ok: true, status: 'done' })
+      expect(await adminCreditBalance(db, workspace.id)).toBe(145)
+      expect(
+        (await grants(workspace.id)).map(({ amount }) => amount).sort((a, b) => a - b),
+      ).toEqual([5, 40, 100])
+      const [adjusted] = await db
+        .select()
+        .from(auditLog)
+        .where(and(eq(auditLog.action, 'credits.adjust'), eq(auditLog.workspaceId, workspace.id)))
+      expect(adjusted).toMatchObject({
+        actorUserId: admin.id,
+        meta: {
+          via: 'mcp',
+          tokenId: metadata.id,
+          confirmationId: id,
+          confirmedBy: admin.id,
+          input: { kind: 'grant', amount: 100, workspaceId: workspace.id },
+        },
+      })
+      // 已结束的记录不再读实时余额
+      expect(await view(admin.verified, id)).toMatchObject({ liveBalance: null })
     })
   },
 )

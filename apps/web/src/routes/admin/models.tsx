@@ -17,6 +17,8 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../features/admin/list.ts'
+import { isStepUpCancelled, type StepUpCancelled } from '../../features/admin/step-up/client.ts'
+import { useStepUpCall } from '../../features/admin/step-up/step-up-provider.tsx'
 import { AdminPage, adminTableLabels } from '../../features/admin/ui.tsx'
 import {
   CHARGE_ON_VALUES,
@@ -387,12 +389,19 @@ function ModelEditor({
     onChange: (event: { target: { value: string } }) => set({ [name]: event.target.value }),
   })
 
+  // 新建模型或改动定价时为敏感操作（ai.model_save 按输入判定）：当场验证，表单草稿保留
+  const saveModel = useStepUpCall(saveAdminModel, {
+    action: model ? m.admin_model_title({ key: model.key }) : m.admin_new_model(),
+  })
   async function act(
-    action: () => Promise<{ ok: true } | { ok: false; error: string; message?: string }>,
+    action: () => Promise<
+      { ok: true } | { ok: false; error: string; message?: string } | StepUpCancelled
+    >,
   ) {
     setBusy(true)
     try {
       const result = await action()
+      if (isStepUpCancelled(result)) return
       if (result.ok) {
         setMessage(m.admin_saved())
         if (!model) setDraft(newDraft(defaults))
@@ -422,7 +431,7 @@ function ModelEditor({
   function save() {
     if (!validateParamsSchema(draft.kind, draft.paramsSchema)) return
     return act(() =>
-      saveAdminModel({
+      saveModel({
         data: {
           ...(model ? { id: model.id } : {}),
           key: draft.key,
