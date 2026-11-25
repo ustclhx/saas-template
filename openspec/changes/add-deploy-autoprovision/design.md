@@ -196,11 +196,11 @@ Workers Builds 不作为支持的入口，`docs/07-infrastructure.md` 中写明�
 
 - [前缀或 Worker 名被改，约定名称随之改变，staging 悄悄新建一组空资源] → 优先使用已固定 ID；plan 输出每项的来源，`--apply` 新建资源时在流水线摘要中醒目列出；生产默认不创建。
 - [两个项目在同一账号中前缀相同，约定名称冲突，误用对方资源] → 生成器已经用项目名做前缀。plan 对「按名称找到但当前 Worker 尚未绑定」的资源给出提示；这种情况无法自动判定归属，在文档中说明不要让两个项目用同名前缀。
-- [CI 令牌权限从部署扩大到创建资源] → staging 和 production 用同一个令牌时，生产 job 理论上也能创建资源，仅靠脚本中的 production 开关防护。文档建议生产令牌只授予读取权限，需要创建时由维护者用本地令牌执行。见待拍板 3。
+- [CI 令牌权限从部署扩大到创建资源] → staging 和 production 用同一个令牌时，生产 job 理论上也能创建资源，已拍板按环境拆分：production 令牌只读，需要创建时由维护者用本地令牌执行（使用者 2026-11-25 确认）。
 - [Wrangler 的隐藏参数或自动创建行为在升级后改变] → 部署配置中不再有省略 ID 的绑定，即使参数失效，Wrangler 也没有可以自动创建的对象。任务 2.3 在当前版本实测并记录。
 - [创建了一半失败] → 每一步都能重复执行，下次运行沿用已建资源；不提供自动删除，避免误删。
 - [Hyperdrive 连接串泄漏] → 只从环境变量读取，放进 API 请求体，不打印。错误输出只保留状态码与 Cloudflare 错误码。测试中断言输出不含连接串。
-- [模板 `env.production` 留着失效 ID] → 失效 ID 会被视为已固定，在 plan 和 `--verify` 中报「不存在」。是否改为占位值见待拍板 4。
+- [模板 `env.production` 留着失效 ID] → 失效 ID 会被视为已固定，在 plan 和 `--verify` 中报「不存在」。已拍板改为占位值（使用者 2026-11-25 确认，任务 1.5）。
 
 ## Migration Plan
 
@@ -215,14 +215,16 @@ Workers Builds 不作为支持的入口，`docs/07-infrastructure.md` 中写明�
    - 依赖自动解析的新项目，需要把 plan 输出的 ID 填回 `wrangler.jsonc`；plan 会打印可直接粘贴的 ID 清单。
    - 已创建的资源不删除。
 
-## 待拍板事项（附推荐）
+## 已拍板事项（使用者 2026-11-25 确认）
 
-1. **生产是否允许 CI 自动创建资源**。推荐：不允许。CI 只做 plan，缺资源就失败，由维护者本地 `--apply --allow-production` 一次性补齐。
-2. **Hyperdrive 是否支持脚本创建**。推荐：提供 `--create-hyperdrive`，只在本地手动使用，连接串经环境变量传入；CI 不启用。
-3. **CI 令牌权限拆分**。推荐：staging environment 的令牌加 KV / R2 / Queues 写权限，production environment 的令牌只授予读取权限（当前两个环境各有 `CLOUDFLARE_API_TOKEN` secret，可以分开）。
-4. **模板自身 `env.production` 的失效 ID**。推荐：改为占位值，使模板与新项目处于同一状态，也让生产 plan 能真实演练「缺资源即失败」。模板目前没有生产部署计划，没有风险。
-5. **限流号段算法**。推荐：项目名哈希映射到 `10000–999999` 内的 100 号段；模板保持 1001–1015。备选：生成器参数 `--ratelimit-base`，由使用者手填。
-6. **命令名称**。推荐：`pnpm deploy:resources --env <env> [--apply] [--verify] [--allow-production] [--create-hyperdrive]`，脚本放在 `scripts/deploy/resources.mjs`。
+以下 6 项全部按推荐方案执行（使用者 2026-11-25 确认）：
+
+1. **生产不允许 CI 自动创建资源**：production 流水线只做 plan，缺资源即失败；维护者在本地用 `--apply --allow-production` 一次性补齐。
+2. **Hyperdrive 支持脚本创建**：提供 `--create-hyperdrive`，只在本地手动使用，连接串经 `HYPERDRIVE_APP_URL` 环境变量传入；CI 不启用。
+3. **CI 令牌按环境拆分权限**：staging environment 的 `CLOUDFLARE_API_TOKEN` 增加 KV / R2 / Queues 写权限与 Hyperdrive 读权限；production environment 的令牌只授予读取权限。
+4. **模板自身 `env.production` 的失效 ID 改为占位值**：web 与 jobs 的 KV、Hyperdrive ID 改为生成器占位格式，由任务 1.5 执行。
+5. **限流号段**：按项目名哈希映射到 `10000–999999` 内的 100 号段；模板保持 1001–1015。
+6. **命令名称**：`pnpm deploy:resources --env <env> [--apply] [--verify] [--allow-production] [--create-hyperdrive]`，脚本为 `scripts/deploy/resources.mjs`。
 
 ## Open Questions
 
