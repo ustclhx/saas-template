@@ -14,7 +14,7 @@
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test -c playwright.smoke.config.ts",
     "test:e2e:stripe": "playwright test -c playwright.stripe.config.ts",
-    "build:node": "vite build --config vite.node.config.ts && node scripts/build-node-bootstrap.mjs",
+    "build:node": "vite build --config vite.node.config.ts && node scripts/build-node-bootstrap.mjs && node scripts/check-node-requires.mjs",
     "start:node": "node .output/server/index.mjs",
     "test:node": "node ../../scripts/plugins/generate.mjs && node scripts/test-node.mjs",
     "test:node:production": "node ../../scripts/plugins/generate.mjs && vitest run --config vitest.production.node.config.ts",

@@ -40,6 +40,14 @@ export default defineConfig({
   envDir: false,
   build: { sourcemap: 'hidden' },
   define: { __APP_VERSION__: JSON.stringify(version) },
+  environments: {
+    // SSR service 只打包 web 根解析不到的依赖（如 @saas/ui 引入的 lucide-react 走 node 条件的 CJS 版、
+    // use-sync-external-store），react 等根依赖保持外置。默认的 require polyfill 会把这些 CJS 里的
+    // require('react') 变成 createRequire 运行时调用，Nitro 第二遍看不到它，另行打包的 react 与运行时
+    // 从 node_modules 加载的 react 成为两个实例，SSR 时 hooks dispatcher 为 null。
+    // 保留裸 require 交给第二遍 rolldown 解析，使所有引用汇合到同一份 react。
+    ssr: { build: { rolldownOptions: { output: { polyfillRequire: false } } } },
+  },
   plugins: [
     ogImages(),
     pricingSnapshotPlugin(),
