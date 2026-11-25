@@ -60,6 +60,11 @@ config/db 不反向依赖 platform。业务包之间允许依赖，检查器没�
 - 新增或改动会删除数据、销毁积分、调用外部写或批量发送的后台任务（含插件 cron 与 Durable Object alarm 等非 cron 入口），
   必须声明每轮上限、最早到期优先的顺序与时间防护（`@saas/shared/bulk-job`），并在 [批量任务登记表](docs/bulk-jobs.md) 登记；
   非 cron 入口同时加入 `apps/jobs/src/bulk-job-registry.ts` 的 `NON_CRON_BULK_JOBS`。
+- 访客不会因后台问题看不到公开页面：公开页面的可用性不依赖后台配置、后台专用绑定、插件路由或数据库，需要数据的部分降级显示；预渲染页在环境校验失败时仍返回，插件绑定缺失只让该插件入口 503。见 `public-site-availability` 规范。
+- 第三方集成登记在 [第三方登记表](docs/third-party.md)，新增第三方 SDK 依赖须同时加登记行与
+  `scripts/third-party-deps.json` 映射（`pnpm check` 检查）。能经 API 或 CLI 查询第三方状态时，提供查询方式而不是教手工步骤。
+- 写或改第三方操作说明前先查官方文档，在说明旁注明出处链接与核对日期，并同步登记表的「上次核对」。
+- 真账号中看到的数据（账号 ID、余额、域名配置、部分密钥、截图）不进本仓库，写入 `EVIDENCE_DIR` 对应的私有证据库，仓库只引用。
 
 ## 常用命令
 

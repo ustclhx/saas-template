@@ -11,6 +11,7 @@ export const Route = createFileRoute('/api/health')({
           database: () => runtime.db,
           version: __APP_VERSION__,
           ...(runtime.health && { dependencies: runtime.health }),
+          ...(runtime.pluginStatus && { plugins: runtime.pluginStatus }),
         })
       },
     },

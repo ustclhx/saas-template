@@ -11,6 +11,11 @@ export interface HealthOptions {
   version: string
   timeoutMs?: number
   dependencies?: { cache(): Promise<void>; tasks: TaskHealth }
+  /**
+   * 启用插件的可用状态（Cloudflare 按插件校验绑定）；只作展示，不改变整体状态码：
+   * 插件不可用只影响该插件入口（public-site-availability），漏配由部署前检查拦截。
+   */
+  plugins?: Readonly<Record<string, 'up' | 'unavailable'>>
 }
 
 export type HealthBody =
@@ -19,11 +24,13 @@ export type HealthBody =
       version: string
       db: { status: 'up'; latencyMs: number }
       jobs: { lastCronAt: string | null }
+      plugins?: Readonly<Record<string, 'up' | 'unavailable'>>
     }
   | {
       status: 'error'
       version: string
       db: { status: 'down' }
+      plugins?: Readonly<Record<string, 'up' | 'unavailable'>>
     }
 
 class ProbeTimeoutError extends Error {
@@ -42,8 +49,10 @@ export async function healthResponse({
   version,
   timeoutMs = HEALTH_DB_TIMEOUT_MS,
   dependencies,
+  plugins,
 }: HealthOptions): Promise<Response> {
   const headers = { 'cache-control': 'no-store' }
+  const pluginBody = plugins && Object.keys(plugins).length > 0 ? { plugins: { ...plugins } } : {}
   if (dependencies) {
     const [databaseResult, cacheResult, queueResult, schedulerResult] = await Promise.allSettled([
       withTimeout(
@@ -85,6 +94,7 @@ export async function healthResponse({
         queue,
         scheduler,
         jobs: { lastCronAt },
+        ...pluginBody,
       },
       { status: ready ? 200 : 503, headers },
     )
@@ -97,11 +107,12 @@ export async function healthResponse({
       version,
       db: { status: 'up', latencyMs },
       jobs: { lastCronAt },
+      ...pluginBody,
     }
     return Response.json(body, { headers })
   } catch (error) {
     log.error('health.db_down', { reason: describe(error) })
-    const body: HealthBody = { status: 'error', version, db: { status: 'down' } }
+    const body: HealthBody = { status: 'error', version, db: { status: 'down' }, ...pluginBody }
     return Response.json(body, { status: 503, headers })
   }
 }

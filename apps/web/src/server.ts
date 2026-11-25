@@ -1,5 +1,6 @@
 // Worker 入口（wrangler.jsonc 的 main）。
-// 在交给 TanStack Start 处理之前校验环境变量与绑定，缺失或非法时任何请求都返回 500。
+// 命中的预渲染静态资源直接返回；其余请求在交给 TanStack Start 处理之前校验环境变量与核心绑定，
+// 缺失或非法时返回 500。启用插件声明的绑定按插件单独校验，缺失只让该插件入口返回 503（env.ts）。
 // /admin/** 的请求先经角色守卫，非 admin 与不存在的页面得到相同的 404（features/admin/gate.ts）。
 // 之后由 Paraglide 按 URL 前缀 / Cookie 确定本次请求的语言（features/i18n/routing.ts）。
 // 每个请求先建立日志上下文（新生成的 UUIDv7 请求 ID，附 Cloudflare 的 cf-ray 便于对照平台日志），
@@ -42,7 +43,8 @@ import { withSecurityNonce } from './security-context.server.ts'
 import { withSecurityHeaders, withStaticSecurityHeaders } from './security-headers.ts'
 import { createWebAuth } from './server/auth.ts'
 import { createQueueAuthEmailSender, userLocaleByEmail } from './server/auth-email.ts'
-import { checkEnv, webEnvSchema } from './server/cloudflare/env.ts'
+import { staticAsset } from './server/cloudflare/assets.ts'
+import { checkEnv, pluginBindingStatus, webEnvSchema } from './server/cloudflare/env.ts'
 import { captureServerError, instrumentWeb, sentryEnabled } from './server/cloudflare/sentry.ts'
 import { getWebRuntime, type WebRuntime, withWebRuntime } from './server/runtime.ts'
 import { SENTRY_TEST_PATH, sentryTest } from './server/sentry-test.ts'
@@ -92,22 +94,13 @@ export default {
       withLogContext(context, async () => {
         try {
           const invalid = checkEnv(env)
-          // WebSocket 升级（agents 插件的 /agents/*）不查静态资源：本地 dev 中 ASSETS 是 Vite 的 Node 服务，
-          // 收到升级请求会让 miniflare 断言失败并退出 dev 进程
-          const upgrade = request.headers.get('upgrade')?.toLowerCase() === 'websocket'
-          if (
-            !invalid &&
-            !upgrade &&
-            (request.method === 'GET' || request.method === 'HEAD') &&
-            env.ASSETS
-          ) {
-            const asset = await env.ASSETS.fetch(request)
-            if (asset.status !== 404) {
-              const response = await withStaticSecurityHeaders(asset, security)
-              response.headers.set('x-request-id', context.requestId)
-              return response
-            }
-            await asset.body?.cancel()
+          // 公开页面优先（public-site-availability）：环境校验失败时仍先返回命中的预渲染静态资源，
+          // 静态 HTML 不使用运行时绑定；只有动态请求因校验失败返回 500。
+          const asset = await staticAsset(request, env.ASSETS)
+          if (asset) {
+            const response = await withStaticSecurityHeaders(asset, security)
+            response.headers.set('x-request-id', context.requestId)
+            return response
           }
           const response =
             invalid ??
@@ -281,6 +274,7 @@ function createCloudflareWebRuntime(
             ),
         }
       : { available: false },
+    pluginStatus: pluginBindingStatus(env),
     // 分享卡片的数据中心级缓存；写入放进 waitUntil，不阻塞本次响应。
     shareCardCache: {
       available: true,

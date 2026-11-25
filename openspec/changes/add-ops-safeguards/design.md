@@ -190,6 +190,12 @@ Cloudflare：R2 写/删在 `packages/storage/src/cloudflare/{index,media,share-c
 4. **兜底错误界面**：根路由增加 errorComponent，复用现有 404 页的导航布局与 `@saas/ui` 组件，文案进 messages；分享页使用同一界面。这是缺陷修复，沿用现有页面样式，不需要新设计稿。
 5. **测试**：环境缺失插件绑定时预渲染首页 200、动态公开页正常、插件路由 503；已登录访客 `/_serverFn/` 请求在数据库抛错时不报错；根 loader 在 runtime 的 db/auth 抛错时仍然 resolve；`getAnnouncement` / `getSafeImpersonation` 的异常分支；admin 门禁对 `/administrator`、`/admin-x`、`/zh/admin` 的负例。
 
+实施记录（第 5 组，2026-11-25）：
+- 第 2 条的部署前检查：仓库已有 `scripts/check-plugins.mjs`（`pnpm check` 的一步）逐环境（顶层、`env.staging`、`env.production` 及其他 env）核对启用插件声明的 web / jobs 绑定名与种类，缺失即失败并指出环境与绑定名；没有在 `check-wrangler-envs.mjs` 中重复实现，只在 `scripts/check-plugins.test.mjs` 补了插件专用限流绑定在 production 缺失的用例。
+- 运行时：`server/cloudflare/env.ts` 的 `pluginBindingStatus` 按插件校验清单绑定（同一 env 在 isolate 内只校验与记日志一次），结果作为 `WebRuntime.pluginStatus` 注入；入口用 `pluginUnavailable(runtime, id)` 检查（admin-mcp 在方法检查后、读令牌前返回 503；agents 的 `/agents/*` 前置处理返回 503；media 沿用 `ai.workflow` 能力不可用时的 503）。`/api/health` 增加 `plugins` 字段，只作展示，不改变整体状态码（插件不可用不等于站点不可用，避免触发整站告警）。
+- 第 3 条：降级覆盖所有读取账号语言的请求（含应用区页面），应用区页面随后由自身数据读取报错并显示兜底错误界面。
+- 第 4 条：根路由的 errorComponent 会替换整个根组件，所以另包一层 `RootDocument`；子路由用路由器的 `defaultErrorComponent`。分享页在渲染前的查找失败时不再直接返回 500 文本，而是继续渲染错误界面（`cache-control: no-store`），页面数据读取不重复查库。
+
 ## Risks / Trade-offs
 
 - [上限过低导致积压] → 上限按 reduced profile 吞吐估算；`job.cap_reached` 日志可见，必要时调常量。积压只是延迟删除，不影响正确性。

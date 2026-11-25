@@ -1,3 +1,5 @@
+import { AppError } from '@saas/shared'
+import { log } from '@saas/shared/log'
 import { getRequest } from '@tanstack/react-start/server'
 import { getLocale } from '../../paraglide/runtime.js'
 import { getWebRuntime } from '../../server/runtime.ts'
@@ -10,6 +12,8 @@ import { resolveRequestShareCardSite } from './site.ts'
 
 /** 文档请求在渲染前已查找过的结果；SSR 内调用的 server function 复用它，避免重复消耗限流配额。 */
 const documentLookups = new WeakMap<Request, ShareLookup>()
+/** 渲染前查找失败（数据库不可达等）的文档请求：页面直接渲染兜底错误界面，不再重复查库。 */
+const failedLookups = new WeakSet<Request>()
 
 /** 分享页边缘缓存上限 5 分钟；有效分享不超过剩余有效期，到期后边缘不再返回旧页面。 */
 export const SHARE_PAGE_MAX_AGE = 300
@@ -37,11 +41,24 @@ export async function handleSharePageRequest<N>({
   params: { type?: string; token?: string }
   next: () => N | Promise<N>
 }): Promise<Awaited<N> | Response> {
-  const result = await lookupShare(shareLookupDeps(), {
-    type: params.type ?? '',
-    token: params.token ?? '',
-    page: true,
-  })
+  let result: ShareLookup
+  try {
+    result = await lookupShare(shareLookupDeps(), {
+      type: params.type ?? '',
+      token: params.token ?? '',
+      page: true,
+    })
+  } catch (error) {
+    // 公开页面优先（public-site-availability）：交给页面渲染带导航的错误界面，而不是整页 500 文本；
+    // 错误页不进边缘缓存。
+    log.error('share_page.lookup_failed', { error })
+    failedLookups.add(request)
+    const ctx = await next()
+    const response = (ctx as { response?: Response } | undefined)?.response
+    response?.headers.set('cache-control', 'no-store')
+    response?.headers.set('x-robots-tag', 'noindex')
+    return ctx
+  }
   if (result.status === 'rate-limited')
     return new Response('Too many requests. Please try again in a minute.\n', {
       status: 429,
@@ -67,6 +84,8 @@ export async function loadSharePage(input: {
   token: string
 }): Promise<SharePageView> {
   const request = getRequest()
+  if (failedLookups.has(request))
+    throw new AppError('SHARE_UNAVAILABLE', 'Share page is unavailable', { status: 503 })
   const result =
     documentLookups.get(request) ?? (await lookupShare(shareLookupDeps(), { ...input, page: true }))
   if (result.status !== 'ok') return { status: result.status }

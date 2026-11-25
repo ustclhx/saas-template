@@ -25,6 +25,7 @@
 | [seo-internal-linking.md](./seo-internal-linking.md) | 站内链接规范：页面层级与主词字段、面包屑与内链区块、链接图检查规则、配置与 report／enforce 切换 |
 | [bulk-jobs.md](./bulk-jobs.md) | 定时删除与群发任务登记表：每轮上限、处理顺序、时间防护、运维告警与守卫测试 |
 | [share-cards.md](./share-cards.md) | 运行时分享卡片与通用分享页：注册、项目分享表、到期、失效、缓存、限流、部署要求 |
+| [third-party.md](./third-party.md) | 第三方登记表：自动查询、人工步骤、代码位置、官方出处、上次核对与验证方式；SDK 依赖登记守卫 |
 | [analytics.md](./analytics.md) | 埋点字典、首触归因、自建 Plausible 开关与发布串扰门禁 |
 | [requirements/analytics-plausible-geo.md](./requirements/analytics-plausible-geo.md) | 需求：埋点 / 自建 Plausible / SEO·GEO 骨架（P0–P2，含 staging 串扰门禁） |
 
