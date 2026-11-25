@@ -1,13 +1,23 @@
 import { aiAgentTurn, aiConversation, type Database, scoped } from '@saas/db'
 import { AppError } from '@saas/shared'
+import {
+  BULK_JOB_TIME_FLOOR,
+  type BulkJobGuardReason,
+  checkBulkJobTime,
+  cutoffBefore,
+} from '@saas/shared/bulk-job'
 import { log } from '@saas/shared/log'
-import { and, eq, lt, notExists, type SQL } from 'drizzle-orm'
+import { and, eq, gte, lt, notExists, type SQL, sql } from 'drizzle-orm'
 
 // agent 对话的删除、自清理与保留期（openspec add-ai-agents 决策 7，任务 7.1–7.3），与 Agents SDK 无关。
 // 清理与枚举以 PG 对话表为唯一依据；实例清理经 AgentInstanceCleaner（web 内的 Durable Object 绑定）
 // 发起，失败不回滚 PG：实例自己的 alarm 发现对话已不存在时自清理。
 
 const DAY_MS = 86_400_000
+/** 保留期最小值（add-ops-safeguards D3）：低于 1 天视为误配，不删除 */
+export const AGENT_RETENTION_MIN_MS = DAY_MS
+/** 防护未通过时的重查间隔 */
+export const GUARD_RECHECK_MS = 6 * 3_600_000
 /** 空闲检查的最长间隔：未开启保留期时每个实例最多每 30 天查一次 PG（Neon 成本基线） */
 export const LIFECYCLE_CHECK_MAX_DAYS = 30
 /** 超出保留期但仍有 running 轮次时，下次检查的间隔 */
@@ -45,6 +55,13 @@ export type LifecycleReview =
   /** 超出保留期，已按用户删除对话的语义删除 PG 行：清空实例 */
   | { readonly action: 'expired' }
   | { readonly action: 'reschedule'; readonly at: Date; readonly reason: 'active' | 'running' }
+  /** 时间防护未通过（时钟偏差、保留期误配或 updatedAt 越界）：不删除，稍后重查并由调用方告警 */
+  | {
+      readonly action: 'reschedule'
+      readonly at: Date
+      readonly reason: 'guard'
+      readonly tripped: BulkJobGuardReason
+    }
 
 /**
  * 实例 alarm 到期时的检查（7.2 自清理兜底、7.3 保留期）。未设置 `retentionDays` 时只检查对话是否存在；
@@ -69,14 +86,38 @@ export async function reviewAgentConversation(
   const [row] = await tenant
     .select(aiConversation, {
       where: own,
-      fields: { archived: aiConversation.archived, updatedAt: aiConversation.updatedAt },
+      fields: {
+        archived: aiConversation.archived,
+        updatedAt: aiConversation.updatedAt,
+        dbNow: sql<Date>`now()`.mapWith((value: string | Date) => new Date(value)),
+      },
     })
     .limit(1)
   if (!row) return { action: 'purge', reason: 'missing' }
   if (row.archived) return { action: 'purge', reason: 'archived' }
   const { retentionDays } = input
   if (retentionDays !== undefined) {
-    const cutoff = new Date(now.getTime() - retentionDays * DAY_MS)
+    // 以数据库时钟为基准（与写入 updatedAt 的时钟一致）；保留期误配、时钟偏差或行时间越界时宁可不删
+    const cutoff = cutoffBefore(row.dbNow, retentionDays * DAY_MS)
+    const verdict = checkBulkJobTime({
+      appNow: now,
+      dbNow: row.dbNow,
+      cutoffs: [{ at: cutoff, minRetentionMs: AGENT_RETENTION_MIN_MS }],
+    })
+    const tripped = !verdict.ok
+      ? verdict.reason
+      : row.updatedAt < BULK_JOB_TIME_FLOOR || row.updatedAt > row.dbNow
+        ? 'rows-out-of-range'
+        : undefined
+    if (tripped) {
+      log.error('job.guard_tripped', { job: 'agents-retention', reason: tripped })
+      return {
+        action: 'reschedule',
+        at: new Date(now.getTime() + GUARD_RECHECK_MS),
+        reason: 'guard',
+        tripped,
+      }
+    }
     if (row.updatedAt < cutoff) {
       const expired = await tenant
         .update(
@@ -85,6 +126,7 @@ export async function reviewAgentConversation(
           and(
             own,
             eq(aiConversation.archived, false),
+            gte(aiConversation.updatedAt, BULK_JOB_TIME_FLOOR),
             lt(aiConversation.updatedAt, cutoff),
             notExists(
               db

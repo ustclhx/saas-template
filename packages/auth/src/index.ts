@@ -1,9 +1,13 @@
 export {
+  AI_PURGE_BATCH_SIZE,
+  AI_PURGE_MAX_BATCHES,
+  PERSONAL_SHARE_CARDS_WORKSPACE_CAP,
   purgeDeletedPersonalWorkspaceShareCards,
   purgeDeletedUserAiContent,
 } from './ai-content-cleanup.ts'
 export { type Auth, type CreateAuthDeps, createAuth } from './auth.ts'
 export {
+  DELETION_CLEANUP_CAP,
   DELETION_CLEANUP_PREFIX,
   type DeletionContext,
   type DeletionStep,
@@ -35,6 +39,7 @@ export { SESSION_COOKIE_CACHE_MAX_AGE } from './session.ts'
 export type { ResolveMaxSeats } from './team-workspaces.ts'
 export {
   cleanupExpiredWorkspaces,
+  EXPIRED_WORKSPACE_CAP,
   restoreWorkspace,
   WORKSPACE_RETENTION_DAYS,
   workspaceLifecyclePlugin,

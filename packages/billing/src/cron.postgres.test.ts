@@ -491,6 +491,191 @@ describe('billing cron on isolated PostgreSQL', () => {
         .sort(),
     )
   })
+  it('hold sweep caps each round, settles the earliest expiry first and never settles a 1970 expiry', async () => {
+    await grant(db, { workspaceId: ws, source: 'admin', sourceRef: id(), amount: 100 })
+    const reserve = (expiresAt: Date) =>
+      hold(db, {
+        workspaceId: ws,
+        userId: uid,
+        amount: 1,
+        refType: 'ai_message',
+        refId: id(),
+        expiresAt,
+      })
+    const later = await reserve(new Date(now.getTime() - 1000))
+    const earliest = await reserve(new Date(now.getTime() - 3000))
+    const middle = await reserve(new Date(now.getTime() - 2000))
+    const corrupted = await reserve(new Date(now.getTime() - 4000))
+    await db
+      .update(creditHold)
+      .set({ expiresAt: new Date(0) })
+      .where(eq(creditHold.id, corrupted.id))
+    disposers.push(
+      registerHoldSweeper('ai_message', async ({ db, tx, hold: h }) => {
+        await release(db, { workspaceId: h.workspaceId, holdId: h.id }, tx)
+      }),
+    )
+    const status = async () =>
+      Object.fromEntries(
+        (await db.select().from(creditHold).where(eq(creditHold.workspaceId, ws))).map((row) => [
+          row.id,
+          row.status,
+        ]),
+      )
+    const first = await runHoldSweep(db, now, { cap: 2 })
+    expect(first.guard).toMatchObject({ processed: 2, capReached: true })
+    expect(first.guard?.tripped).toContainEqual(
+      expect.objectContaining({ reason: 'rows-out-of-range' }),
+    )
+    expect(await status()).toMatchObject({
+      [earliest.id]: 'released',
+      [middle.id]: 'released',
+      [later.id]: 'held',
+      [corrupted.id]: 'held',
+    })
+    await runHoldSweep(db, now, { cap: 2 })
+    expect(await status()).toMatchObject({ [later.id]: 'released', [corrupted.id]: 'held' })
+    // 应用时钟偏差超过 5 分钟：整轮不执行
+    expect((await runHoldSweep(db, new Date(now.getTime() + 600_000))).guard?.tripped).toEqual([
+      { reason: 'clock-skew' },
+    ])
+  })
+  it('subscription reconciliation caps PayPal cancellations per round, earliest period end first', async () => {
+    await db.update(planPrice).set({ provider: 'paypal' }).where(eq(planPrice.id, price))
+    const earlier = new Date(now.getTime() - 2000)
+    const later = new Date(now.getTime() - 1000)
+    await db
+      .update(subscription)
+      .set({
+        provider: 'paypal',
+        status: 'canceled',
+        cancelAtPeriodEnd: true,
+        currentPeriodEnd: later,
+      })
+      .where(eq(subscription.id, sid))
+    const second = id()
+    await db.insert(subscription).values({
+      id: second,
+      workspaceId: ws,
+      planId: pid,
+      planPriceId: price,
+      provider: 'paypal',
+      providerSubscriptionId: second,
+      status: 'canceled',
+      cancelAtPeriodEnd: true,
+      currentPeriodStart: start,
+      currentPeriodEnd: earlier,
+      lastEventAt: start,
+    })
+    const cancelled = new Set<string>()
+    const snapshot = (subscriptionId: string): SubscriptionSnapshot => ({
+      providerSubscriptionId: subscriptionId,
+      providerCustomerId: null,
+      providerPriceId: price,
+      status: cancelled.has(subscriptionId) ? 'canceled' : 'paused',
+      remoteStatus: cancelled.has(subscriptionId) ? 'CANCELLED' : 'SUSPENDED',
+      currentPeriodStart: start,
+      currentPeriodEnd: subscriptionId === second ? earlier : later,
+      cancelAtPeriodEnd: false,
+      canceledAt: null,
+      trialEnd: null,
+      pastDueSince: null,
+      metadata: null,
+      raw: {},
+    })
+    const cancelSubscription = vi.fn(async (subscriptionId: string) => {
+      cancelled.add(subscriptionId)
+    })
+    const provider = {
+      id: 'paypal',
+      getSubscription: vi.fn(async (subscriptionId: string) => snapshot(subscriptionId)),
+      cancelSubscription,
+    } as unknown as PaymentProvider
+    const first = await runSubscriptionReconciliation(
+      db,
+      { paypal: provider },
+      { now: () => now, cap: 1 },
+    )
+    expect(first.guard).toMatchObject({ processed: 1, capReached: true })
+    expect(cancelSubscription.mock.calls.map(([subscriptionId]) => subscriptionId)).toEqual([
+      second,
+    ])
+    await runSubscriptionReconciliation(db, { paypal: provider }, { now: () => now, cap: 1 })
+    expect(cancelSubscription.mock.calls.map(([subscriptionId]) => subscriptionId)).toEqual([
+      second,
+      sid,
+    ])
+  })
+  it('credit expiration skips grants whose expiry is before the floor and reports them', async () => {
+    const corrupted = await grant(db, {
+      workspaceId: ws,
+      source: 'admin',
+      sourceRef: id(),
+      amount: 5,
+    })
+    const due = await grant(db, { workspaceId: ws, source: 'admin', sourceRef: id(), amount: 5 })
+    await db
+      .update(creditGrant)
+      .set({ expiresAt: new Date(0) })
+      .where(eq(creditGrant.id, corrupted.id))
+    await db
+      .update(creditGrant)
+      .set({ expiresAt: new Date(now.getTime() - 1000) })
+      .where(eq(creditGrant.id, due.id))
+    const result = await runCreditExpiration(db, now, { cap: 1 })
+    expect(result.guard).toMatchObject({ processed: 1, capReached: true })
+    expect(result.guard?.tripped).toContainEqual(
+      expect.objectContaining({ reason: 'rows-out-of-range' }),
+    )
+    const statuses = Object.fromEntries(
+      (await db.select().from(creditGrant).where(eq(creditGrant.workspaceId, ws))).map((row) => [
+        row.id,
+        row.status,
+      ]),
+    )
+    expect(statuses).toMatchObject({ [corrupted.id]: 'active', [due.id]: 'expired' })
+  })
+  it('refund contact cleanup: retention 0 skips the round, the cap clears the oldest first, 1970 rows are kept', async () => {
+    const rows = [
+      new Date(now.getTime() - 40 * 86_400_000),
+      new Date(now.getTime() - 35 * 86_400_000),
+      new Date(0),
+    ].map((at) => ({
+      id: id(),
+      workspaceId: ws,
+      userId: uid,
+      paymentId: paid,
+      reason: 'test',
+      status: 'refunded' as const,
+      reviewedAt: at,
+      updatedAt: at,
+      contactEmail: 'private@example.test',
+    }))
+    await db.insert(refundRequest).values(rows)
+    const contacts = async () =>
+      Object.fromEntries(
+        (await db.select().from(refundRequest).where(eq(refundRequest.workspaceId, ws))).map(
+          (row) => [row.id, row.contactEmail],
+        ),
+      )
+    expect(await clearResolvedRefundContacts(db, now, { retentionDays: 0 })).toEqual({
+      cleared: 0,
+      guard: { processed: 0, capReached: false, tripped: [{ reason: 'retention-too-short' }] },
+    })
+    const [oldest, older, corrupted] = rows.map((row) => row.id) as [string, string, string]
+    const first = await clearResolvedRefundContacts(db, now, { cap: 1 })
+    expect(first).toMatchObject({ cleared: 1, guard: { capReached: true } })
+    expect(first.guard.tripped).toContainEqual(
+      expect.objectContaining({ reason: 'rows-out-of-range' }),
+    )
+    expect(await contacts()).toMatchObject({
+      [oldest]: null,
+      [older]: 'private@example.test',
+      [corrupted]: 'private@example.test',
+    })
+    await clearResolvedRefundContacts(db, now)
+    expect(await contacts()).toMatchObject({ [older]: null, [corrupted]: 'private@example.test' })
+  })
   it('invariant mismatch is audited and observable', async () => {
     await grant(db, { workspaceId: ws, source: 'admin', sourceRef: id(), amount: 10 })
     await db.insert(creditLedger).values({ workspaceId: ws, type: 'adjust', delta: 1 })

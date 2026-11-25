@@ -39,11 +39,26 @@ import { registerPluginHoldSweepers } from '../src/plugins/register.ts'
 const daily = vi.fn()
 const heartbeat = vi.fn()
 const queue = vi.fn()
+const purge = vi.fn()
+const send = vi.fn()
+const none = { kind: 'none', reason: '测试任务' } as const
 const plugins: JobsPluginModule[] = [
   {
     crons: [
-      { id: 'a-daily', group: 'daily', run: daily },
-      { id: 'a-heartbeat', group: 'heartbeat', run: heartbeat },
+      { id: 'a-daily', group: 'daily', safety: none, run: daily },
+      { id: 'a-heartbeat', group: 'heartbeat', safety: none, run: heartbeat },
+      {
+        id: 'a-purge',
+        group: 'ten-minute',
+        safety: {
+          kind: 'delete',
+          cap: 10,
+          capUnit: '条',
+          order: 'expires_at 升序',
+          timeGuard: '下限与数据库时钟',
+        },
+        run: purge,
+      },
     ],
     queues: [{ name: 'agents', handle: queue }],
   },
@@ -52,6 +67,7 @@ const context = {
   db: { business: () => ({}) },
   files: { available: false },
   observer: logJobObserver,
+  eventsQueue: { send, sendBatch: vi.fn() },
   plugins,
 } as unknown as JobsContext
 
@@ -71,6 +87,31 @@ it('插件定时任务与同组核心任务一起运行，不影响其他触发�
   await runJobsSchedule('*/5 * * * *', at, context)
   expect(mocks.heartbeat).toHaveBeenCalledOnce()
   expect(heartbeat).toHaveBeenCalledOnce()
+})
+
+it('插件删除任务的防护结果按任务 + 原因 + UTC 日上报，到达上限记警告', async () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  purge.mockResolvedValue({
+    guard: {
+      processed: 10,
+      capReached: true,
+      tripped: [{ reason: 'rows-out-of-range', count: 3 }],
+    },
+  })
+  const at = new Date('2026-11-24T03:10:00Z')
+  await runJobsSchedule('*/10 * * * *', at, context, { skipUnavailableFiles: true })
+  await runJobsSchedule('*/10 * * * *', at, context, { skipUnavailableFiles: true })
+  expect(purge).toHaveBeenCalledTimes(2)
+  const events = send.mock.calls.map(([body]) => body.operations[0])
+  expect(events).toHaveLength(2)
+  // 两次运行的 sourceId 相同，运维通知消费者按审计标记只投递一次
+  expect(new Set(events.map((event) => event.sourceId)).size).toBe(1)
+  expect(events[0]).toMatchObject({
+    event: 'ops.bulk_job.guard_tripped',
+    sourceId: expect.stringMatching(/^bulk_job:a-purge:rows-out-of-range:\d{4}-\d{2}-\d{2}$/),
+    count: 3,
+  })
+  expect(warn.mock.calls.flat().join('\n')).toContain('job.cap_reached')
 })
 
 it('插件任务失败时核心任务仍完成，本次触发记为失败', async () => {

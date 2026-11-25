@@ -423,6 +423,35 @@ describe.skipIf(!enabled)('实例 alarm：孤儿清理与保留期（7.2、7.3�
   })
 })
 
+describe.skipIf(!enabled)('保留期时间防护（add-ops-safeguards 1.4）', () => {
+  it.each([
+    ['保留期被设为 0', { retentionDays: 0 }, 'retention-too-short'],
+    ['保留期为小数且不足 1 天', { retentionDays: 0.5 }, 'retention-too-short'],
+    ['应用时钟比数据库快 10 分钟', { nowOffsetMs: 10 * 60_000 }, 'clock-skew'],
+    ['updatedAt 被写成 1970', { updatedAt: new Date(0) }, 'rows-out-of-range'],
+  ] as const)('%s：不删除，稍后重查并报告原因', async (_, input, tripped) => {
+    const alice = await member('alice')
+    const now = new Date()
+    const id = await conversation(alice, {
+      updatedAt: 'updatedAt' in input ? input.updatedAt : new Date(now.getTime() - 400 * DAY_MS),
+    })
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const review = await reviewAgentConversation(db, {
+        workspaceId: alice.workspaceId,
+        conversationId: id,
+        retentionDays: 'retentionDays' in input ? input.retentionDays : 90,
+        now: new Date(now.getTime() + ('nowOffsetMs' in input ? input.nowOffsetMs : 0)),
+      })
+      expect(review).toMatchObject({ action: 'reschedule', reason: 'guard', tripped })
+      expect(await conversationRow(id)).toEqual({ archived: false })
+      expect(error.mock.calls.flat().join('\n')).toContain('job.guard_tripped')
+    } finally {
+      error.mockRestore()
+    }
+  })
+})
+
 describe.skipIf(!enabled || !templateConfig.plugins.media || !templateConfig.ai.video)(
   '异步媒体工具（8.1、8.2）',
   () => {

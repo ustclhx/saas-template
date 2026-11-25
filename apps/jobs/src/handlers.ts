@@ -24,6 +24,8 @@ import {
   type BillingScheduleFeatures,
   runBillingSchedule,
 } from './billing.ts'
+import { CORE_TASK_GROUP_JOBS, type CoreJobId } from './bulk-job-registry.ts'
+import { runBulkJob } from './bulk-jobs.ts'
 import { runDeletionCleanup } from './cron/deletion-cleanup.ts'
 import { runFilesCleanup } from './cron/files-cleanup.ts'
 import { HEARTBEAT_CRON, runHeartbeat } from './cron/heartbeat.ts'
@@ -90,7 +92,7 @@ export interface JobsScheduleOptions {
 }
 
 // 触发器映射到原有逻辑任务组；降低 staging 唤醒频率不改变任务组内部语义。
-const CRON_TASK_GROUPS = {
+export const CRON_TASK_GROUPS = {
   default: new Map<string, readonly [string, ...string[]]>([
     [HEARTBEAT_CRON, [HEARTBEAT_CRON]],
     [WORKSPACE_CLEANUP_CRON, [WORKSPACE_CLEANUP_CRON]],
@@ -173,7 +175,7 @@ async function runSchedule(
 }
 
 /** 插件定时任务所挂的触发器 */
-const PLUGIN_CRON_GROUPS = new Map<string, PluginCronGroup>([
+export const PLUGIN_CRON_GROUPS = new Map<string, PluginCronGroup>([
   [HEARTBEAT_CRON, 'heartbeat'],
   [BILLING_RETRY_CRON, 'ten-minute'],
   [WORKSPACE_CLEANUP_CRON, 'daily'],
@@ -192,7 +194,13 @@ async function runJobsTaskGroup(
   const results = await Promise.allSettled([
     runCoreTaskGroup(cron, scheduledAt, context, options),
     ...tasks.map((task) =>
-      withLogContext({ pluginTask: task.id }, () => task.run(context, scheduledAt)),
+      withLogContext({ pluginTask: task.id }, () =>
+        runBulkJob(
+          { id: task.id, safety: task.safety, run: () => task.run(context, scheduledAt) },
+          undefined,
+          context.eventsQueue,
+        ),
+      ),
     ),
   ])
   const failed = results.filter((result) => result.status === 'rejected')
@@ -203,54 +211,62 @@ async function runJobsTaskGroup(
     )
 }
 
+interface CoreRun {
+  cron: string
+  scheduledAt: Date
+  context: JobsContext
+  options: JobsScheduleOptions
+}
+
+/** 每个登记的核心任务都必须有执行入口（类型保证与 bulk-job-registry.ts 的 CORE_JOBS 一一对应） */
+const CORE_RUNNERS: Record<CoreJobId, (run: CoreRun) => Promise<unknown>> = {
+  'deletion-cleanup': ({ context }) => runDeletionCleanup(context),
+  heartbeat: ({ context }) => runHeartbeat(context),
+  billing: async ({ cron, context, options }) => {
+    const enabled = !options.features || options.features.billing || options.features.credits
+    if (enabled) return runBillingSchedule(cron, context, options.features)
+  },
+  'files-cleanup': async ({ context, options }) => {
+    if (options.skipUnavailableFiles && !context.files.available) return
+    return runFilesCleanup(context)
+  },
+  'workspace-maintenance': ({ context }) => runWorkspaceCleanup(context),
+  'metrics-daily': ({ context, scheduledAt }) => runMetricsDaily(context, scheduledAt.getTime()),
+}
+
+/** 多任务组：组内任务独立执行，任一失败仍等待其余完成，并让本次 Cron 标记为失败 */
+const PARALLEL_GROUP_ERRORS: Readonly<Record<string, string>> = {
+  [BILLING_RETRY_CRON]: 'Ten-minute maintenance cron failed',
+  // METRICS_DAILY_CRON 与 WORKSPACE_CLEANUP_CRON 是同一个触发器
+  [WORKSPACE_CLEANUP_CRON]: 'Daily maintenance cron failed',
+}
+
 async function runCoreTaskGroup(
   cron: string,
   scheduledAt: Date,
   context: JobsContext,
   options: JobsScheduleOptions,
 ) {
-  const billingEnabled = !options.features || options.features.billing || options.features.credits
-  switch (cron) {
-    case BILLING_HOURLY_CRON:
-    case BILLING_DAILY_CRON:
-      if (billingEnabled) return runBillingSchedule(cron, context, options.features)
-      return
-    case BILLING_RETRY_CRON: {
-      // 文件清理与计费补偿独立执行；任何一项失败仍将本次 Cron 标记为失败。
-      const results = await Promise.allSettled([
-        ...(billingEnabled ? [runBillingSchedule(cron, context, options.features)] : []),
-        ...(options.skipUnavailableFiles && !context.files.available
-          ? []
-          : [runFilesCleanup(context)]),
-      ])
-      const failed = results.filter((result) => result.status === 'rejected')
-      if (failed.length)
-        throw new AggregateError(
-          failed.map((result) => result.reason),
-          'Ten-minute maintenance cron failed',
-        )
-      return
-    }
-    // METRICS_DAILY_CRON 与 WORKSPACE_CLEANUP_CRON 是同一个触发器：两项任务独立执行，
-    // 任一失败不影响另一项，但仍让本次 Cron 标记为失败。
-    case WORKSPACE_CLEANUP_CRON: {
-      const results = await Promise.allSettled([
-        runWorkspaceCleanup(context),
-        runMetricsDaily(context, scheduledAt.getTime()),
-      ])
-      const failed = results.filter((result) => result.status === 'rejected')
-      if (failed.length)
-        throw new AggregateError(
-          failed.map((result) => result.reason),
-          'Daily maintenance cron failed',
-        )
-      return
-    }
-    case HEARTBEAT_CRON:
-      if (options.heartbeat) return options.heartbeat({ scheduledAt })
-      await runDeletionCleanup(context)
-      return runHeartbeat(context)
-    default:
-      throw new Error(`Unknown cron: ${cron}`)
+  const jobs = CORE_TASK_GROUP_JOBS[cron]
+  if (!jobs) throw new Error(`Unknown cron: ${cron}`)
+  const run: CoreRun = { cron, scheduledAt, context, options }
+  if (cron === HEARTBEAT_CRON) {
+    // Node 以自己的心跳实现（含凭据清理）替换整组
+    if (options.heartbeat) return options.heartbeat({ scheduledAt })
+    // 凭据清理失败时不记录心跳，与原有语义一致
+    for (const job of jobs) await CORE_RUNNERS[job](run)
+    return
   }
+  const [single] = jobs
+  if (jobs.length === 1 && single) {
+    await CORE_RUNNERS[single](run)
+    return
+  }
+  const results = await Promise.allSettled(jobs.map((job) => CORE_RUNNERS[job](run)))
+  const failed = results.filter((result) => result.status === 'rejected')
+  if (failed.length)
+    throw new AggregateError(
+      failed.map((result) => result.reason),
+      PARALLEL_GROUP_ERRORS[cron] ?? `Cron ${cron} failed`,
+    )
 }

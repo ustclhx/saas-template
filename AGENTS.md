@@ -57,6 +57,9 @@ config/db 不反向依赖 platform。业务包之间允许依赖，检查器没�
 - 只修改任务所需内容；复用现有实现与测试，为核心行为和真实回归风险增加精简用例。
 - 修改 `.github/workflows/`、`.github/actions/` 或 Turbo 配置前阅读 [CI 规范](docs/ci.md)：合并前必须通过的检查、CI 模式、缓存输入与并发规则以该文档为准。
 - 新增或改动 MCP 工具能力时，同一 PR 更新工具与参数说明及[管理员 MCP 工具表](docs/admin-mcp.md#工具与权限)。
+- 新增或改动会删除数据、销毁积分、调用外部写或批量发送的后台任务（含插件 cron 与 Durable Object alarm 等非 cron 入口），
+  必须声明每轮上限、最早到期优先的顺序与时间防护（`@saas/shared/bulk-job`），并在 [批量任务登记表](docs/bulk-jobs.md) 登记；
+  非 cron 入口同时加入 `apps/jobs/src/bulk-job-registry.ts` 的 `NON_CRON_BULK_JOBS`。
 
 ## 常用命令
 

@@ -1,5 +1,5 @@
 import { creditGrant, creditLedger, payment } from '@saas/db'
-import { and, eq, lte, type SQL, sql } from 'drizzle-orm'
+import { and, eq, gte, lte, type SQL, sql } from 'drizzle-orm'
 import {
   CreditsError,
   type CreditsExecutor,
@@ -47,11 +47,21 @@ export async function expireWorkspaceCredits(
   workspaceId: string,
   tx?: CreditsTransaction,
   now?: Date,
+  /** 定时任务传入时间下限：早于它的到期时间视为写坏的数据，不过期（add-ops-safeguards D3） */
+  notBefore?: Date,
 ) {
   if (now && !Number.isFinite(now.getTime())) throw new Error('Invalid credit expiration time')
+  if (notBefore && !Number.isFinite(notBefore.getTime()))
+    throw new Error('Invalid credit expiration floor')
+  const due = lte(creditGrant.expiresAt, now ?? sql`now()`)
   return withCreditsTransaction(db, tx, async (tx) => {
     await lockWorkspaceCredits(tx, workspaceId)
-    return cancelGrants(tx, workspaceId, 'expired', lte(creditGrant.expiresAt, now ?? sql`now()`))
+    return cancelGrants(
+      tx,
+      workspaceId,
+      'expired',
+      notBefore ? (and(due, gte(creditGrant.expiresAt, notBefore)) as SQL) : due,
+    )
   })
 }
 

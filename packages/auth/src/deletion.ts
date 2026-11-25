@@ -1,6 +1,12 @@
 import type { Database } from '@saas/db'
 import type { KeyValueStore } from '@saas/platform'
 import { AppError, newId, normalizeSignupEmail } from '@saas/shared'
+import {
+  BULK_JOB_TIME_FLOOR,
+  bulkJobOutcome,
+  bulkJobSkipped,
+  checkBulkJobTime,
+} from '@saas/shared/bulk-job'
 import { log } from '@saas/shared/log'
 import type { BetterAuthPlugin } from 'better-auth'
 import { APIError, createAuthEndpoint } from 'better-auth/api'
@@ -108,18 +114,50 @@ async function runCleanup(
   await db.$client`delete from verification where id=${id} and identifier=${DELETION_CLEANUP_PREFIX + id}`
   return true
 }
-/** Retry only reserved manifests. No KV/network operations occur inside a DB transaction. */
-export async function retryDeletionCleanup(db: Database, kv: Pick<KeyValueStore, 'delete'>) {
-  await db.$client`delete from verification where identifier like ${`${DELETION_CLEANUP_PREFIX}%`} and expires_at<=now()`
+/** 每轮最多处理的清单数（过期删除与重试合计，add-ops-safeguards D2） */
+export const DELETION_CLEANUP_CAP = 200
+
+/**
+ * Retry only reserved manifests. No KV/network operations occur inside a DB transaction.
+ * 每轮最多 200 个清单，按 expires_at 升序：先删除已过期清单，再重试未过期清单。
+ * 应用与数据库时钟偏差超过 5 分钟时不执行；expires_at 早于下限的清单不删除并告警。
+ */
+export async function retryDeletionCleanup(
+  db: Database,
+  kv: Pick<KeyValueStore, 'delete'>,
+  { now = new Date() }: { now?: Date } = {},
+) {
+  const reserved = `${DELETION_CLEANUP_PREFIX}%`
+  const floor = BULK_JOB_TIME_FLOOR.toISOString()
+  const [probe] = await db.$client<{ db_now: Date; out_of_range: number }[]>`
+    select now() as db_now, (select count(*) from verification
+      where identifier like ${reserved} and expires_at<${floor})::int as out_of_range`
+  const dbNow = new Date(probe?.db_now ?? Number.NaN)
+  const verdict = checkBulkJobTime({ appNow: now, dbNow })
+  if (!verdict.ok) return { completed: 0, failed: 0, guard: bulkJobSkipped(verdict.reason) }
+  const expired = await db.$client<{ id: string }[]>`
+    delete from verification where id in (select id from verification
+      where identifier like ${reserved} and expires_at>=${floor} and expires_at<=now()
+      order by expires_at, id limit ${DELETION_CLEANUP_CAP})
+    returning id`
   const rows = await db.$client<{ id: string; value: string }[]>`
-    select id,value from verification where identifier like ${`${DELETION_CLEANUP_PREFIX}%`} and expires_at>now()`
+    select id,value from verification where identifier like ${reserved} and expires_at>now()
+    order by expires_at, id limit ${DELETION_CLEANUP_CAP - expired.length}`
   let completed = 0
   let failed = 0
   for (const row of rows) {
     if (await runCleanup(db, kv, row.id, JSON.parse(row.value))) completed++
     else failed++
   }
-  return { completed, failed }
+  return {
+    completed,
+    failed,
+    guard: bulkJobOutcome({
+      processed: expired.length + rows.length,
+      cap: DELETION_CLEANUP_CAP,
+      outOfRange: probe?.out_of_range ?? 0,
+    }),
+  }
 }
 async function finishCleanup(
   db: Database,

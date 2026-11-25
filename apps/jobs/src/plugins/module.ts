@@ -5,6 +5,7 @@
 import type { HoldSweepHandler, registerHoldSweeper } from '@saas/billing'
 import type { TemplateConfig } from '@saas/config'
 import type { QueueBatch } from '@saas/platform'
+import type { BulkJobOutcome, BulkJobSafety } from '@saas/shared/bulk-job'
 import type { JobsContext } from '../handlers.ts'
 
 /**
@@ -16,7 +17,14 @@ export type PluginCronGroup = 'heartbeat' | 'ten-minute' | 'daily'
 export interface PluginCronTask {
   readonly id: string
   readonly group: PluginCronGroup
-  run(context: JobsContext, scheduledAt: Date): Promise<void>
+  /**
+   * 必填（openspec add-ops-safeguards）：会删除数据、销毁积分、调用外部写或批量发送时声明每轮上限、
+   * 处理顺序与时间防护，并在 docs/bulk-jobs.md 登记；否则写 `{ kind: 'none', reason }`。
+   */
+  readonly safety: BulkJobSafety
+  /** 返回 `{ guard }` 时由 jobs 记录到达上限与防护告警（见 @saas/shared/bulk-job） */
+  // biome-ignore lint/suspicious/noConfusingVoidType: 不涉及防护结果的任务沿用无返回值写法。
+  run(context: JobsContext, scheduledAt: Date): Promise<void | { guard?: BulkJobOutcome }>
 }
 
 /**

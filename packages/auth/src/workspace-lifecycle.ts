@@ -1,6 +1,13 @@
 import { templateConfigDefaults } from '@saas/config'
 import type { Database } from '@saas/db'
 import { AppError, newId } from '@saas/shared'
+import {
+  BULK_JOB_TIME_FLOOR,
+  bulkJobOutcome,
+  bulkJobSkipped,
+  checkBulkJobTime,
+  cutoffBefore,
+} from '@saas/shared/bulk-job'
 import { log } from '@saas/shared/log'
 import type { BetterAuthPlugin } from 'better-auth'
 import { APIError, createAuthEndpoint } from 'better-auth/api'
@@ -16,6 +23,10 @@ import {
 import { type AuthContextSource, requireFreshSession } from './fresh-session.ts'
 
 export const WORKSPACE_RETENTION_DAYS = 30
+/** 过期空间清理每轮最多处理的空间数（add-ops-safeguards D2），同时限制通知与邀请的删除量 */
+export const EXPIRED_WORKSPACE_CAP = 20
+/** 保留期常量被误改时的最小值：低于 1 天整轮不执行 */
+const WORKSPACE_MIN_RETENTION_MS = 86_400_000
 const deletionMeta = z.object({ originalOwnerUserIds: z.array(z.uuid()) })
 type Transaction = Parameters<Parameters<Database['$client']['begin']>[1]>[0]
 function refuse(code: string, message: string, status = 403): never {
@@ -106,23 +117,52 @@ export async function cleanupExpiredWorkspaces(
     batchSize = AI_PURGE_BATCH_SIZE,
     maxBatches = AI_PURGE_MAX_BATCHES,
     cleanupShareCards,
+    now = new Date(),
+    retentionDays = WORKSPACE_RETENTION_DAYS,
+    workspaceCap = EXPIRED_WORKSPACE_CAP,
   }: {
     batchSize?: number
     maxBatches?: number
     cleanupShareCards?: CleanupWorkspaceShareCards
+    /** 应用时钟，只与数据库时钟对照 */
+    now?: Date
+    /** 仅供测试替换保留期常量，验证误配时整轮不执行 */
+    retentionDays?: number
+    workspaceCap?: number
   } = {},
 ) {
+  const floor = BULK_JOB_TIME_FLOOR.toISOString()
+  const [probe] = await db.$client<{ db_now: Date; out_of_range: number }[]>`
+    select now() as db_now, (select count(*) from organization o
+      where o.deleted_at<${floor})::int as out_of_range`
+  const dbNow = new Date(probe?.db_now ?? Number.NaN)
+  const cutoff = cutoffBefore(dbNow, retentionDays * 86_400_000)
+  const verdict = checkBulkJobTime({
+    appNow: now,
+    dbNow,
+    cutoffs: [{ at: cutoff, minRetentionMs: WORKSPACE_MIN_RETENTION_MS }],
+  })
+  if (!verdict.ok)
+    return {
+      cleaned: 0,
+      failed: 0,
+      ai: { ...emptyAiPurge(), remaining: false },
+      guard: bulkJobSkipped(verdict.reason),
+    }
+  const before = cutoff.toISOString()
   const candidates = await db.$client<{ id: string }[]>`select o.id from organization o
-    where o.deleted_at<=now()-(${WORKSPACE_RETENTION_DAYS} * interval '1 day')
+    where o.deleted_at>=${floor} and o.deleted_at<=${before}
       and (not exists(select 1 from audit_log l where l.workspace_id=o.id and l.action='workspace.cleanup.completed')
         or exists(select 1 from ai_conversation c where c.workspace_id=o.id)
         or exists(select 1 from ai_task t where t.workspace_id=o.id))
-    order by o.id`
+    order by o.deleted_at, o.id
+    limit ${workspaceCap}`
   let cleaned = 0
   let failed = 0
   let batches = 0
   let remaining = false
   const ai = emptyAiPurge()
+  const lock = (sql: Transaction, workspaceId: string) => lockExpired(sql, workspaceId, before)
   for (const workspace of candidates) {
     try {
       // 存储失效失败时不写 completed；即使没有 AI 内容，下一轮仍会发现该空间。
@@ -136,7 +176,7 @@ export async function cleanupExpiredWorkspaces(
         batches++
         // 每批重新加空间锁并确认仍已到期，与 restoreWorkspace 串行。
         const batch = await db.$client.begin(async (sql) =>
-          (await lockExpired(sql, workspace.id))
+          (await lock(sql, workspace.id))
             ? purgeAiBatch(sql, { workspaceId: workspace.id }, batchSize)
             : emptyAiPurge(),
         )
@@ -145,7 +185,7 @@ export async function cleanupExpiredWorkspaces(
       }
       if (!remaining) {
         const completed = await db.$client.begin(async (sql) => {
-          if (!(await lockExpired(sql, workspace.id))) return false
+          if (!(await lock(sql, workspace.id))) return false
           const deletion = await latestDeletion(sql, workspace.id)
           if (!deletion || (await alreadyCleaned(sql, workspace.id, deletion.id))) return false
           await sql`delete from notification where workspace_id=${workspace.id}`
@@ -162,13 +202,24 @@ export async function cleanupExpiredWorkspaces(
       log.error('workspace.cleanup.failed', { workspaceId: workspace.id })
     }
   }
-  return { cleaned, failed, ai: { ...ai, remaining } }
+  return {
+    cleaned,
+    failed,
+    ai: { ...ai, remaining },
+    guard: bulkJobOutcome({
+      processed: candidates.length,
+      cap: workspaceCap,
+      capReached: remaining || candidates.length >= workspaceCap,
+      outOfRange: probe?.out_of_range ?? 0,
+    }),
+  }
 }
 
-async function lockExpired(sql: Transaction, workspaceId: string) {
+/** 截止时间由本轮以数据库时钟算出并经过防护检查；删除时间早于下限的空间不视为到期 */
+async function lockExpired(sql: Transaction, workspaceId: string, before: string) {
   await sql`select pg_advisory_xact_lock(hashtextextended(${`ws:${workspaceId}`},0))`
   const [expired] = await sql`select id from organization where id=${workspaceId}
-    and deleted_at<=now()-(${WORKSPACE_RETENTION_DAYS} * interval '1 day') for update`
+    and deleted_at>=${BULK_JOB_TIME_FLOOR.toISOString()} and deleted_at<=${before} for update`
   return Boolean(expired)
 }
 

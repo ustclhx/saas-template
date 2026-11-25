@@ -2,6 +2,7 @@ import { AIChatAgent, type OnChatMessageOptions } from '@cloudflare/ai-chat'
 import { DEFAULT_TOKENS_PER_CHAR, type Pricing } from '@saas/ai'
 import { aiAgentTurn, scoped } from '@saas/db'
 import { AppError, toErrorResponse } from '@saas/shared'
+import { utcDay } from '@saas/shared/bulk-job'
 import { log } from '@saas/shared/log'
 import { captureException } from '@sentry/cloudflare'
 import { eq } from 'drizzle-orm'
@@ -259,6 +260,7 @@ export class AgentConversation extends AIChatAgent<Cloudflare.Env> {
       retentionDays,
     })
     if (review.action === 'reschedule') {
+      if (review.reason === 'guard') await this.alertRetentionGuard(review.tripped)
       await this.ensureLifecycleCheck(review.at)
       return
     }
@@ -267,6 +269,28 @@ export class AgentConversation extends AIChatAgent<Cloudflare.Env> {
       reason: review.action === 'expired' ? 'retention' : review.reason,
     })
     await this.destroy()
+  }
+
+  /**
+   * 保留期时间防护未通过时经运维通知告警（add-ops-safeguards D3）；sourceId 按任务 + 原因 + UTC 日去重，
+   * 多个实例同日触发只投递一次。队列不可用时只留日志，不影响 alarm 顺延。
+   */
+  private async alertRetentionGuard(reason: string) {
+    const queue = (this.env as { EVENTS_QUEUE?: { send(body: unknown): Promise<unknown> } })
+      .EVENTS_QUEUE
+    try {
+      await queue?.send({
+        v: 1,
+        operations: [
+          {
+            event: 'ops.bulk_job.guard_tripped',
+            sourceId: `bulk_job:agents-retention:${reason}:${utcDay(new Date())}`,
+          },
+        ],
+      })
+    } catch {
+      log.warn('operations.enqueue_failed', { event: 'ops.bulk_job.guard_tripped' })
+    }
   }
 
   /** 异步任务轮询 alarm（8.2）：仍有待完成任务时按退避再次安排 */

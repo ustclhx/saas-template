@@ -1,14 +1,22 @@
-import { type Capability, type DatabaseAccess, requireCapability } from '@saas/platform'
+import {
+  type Capability,
+  type DatabaseAccess,
+  type QueueProducer,
+  requireCapability,
+} from '@saas/platform'
 import { log } from '@saas/shared/log'
 import { cleanupFiles } from '@saas/storage'
+import { reportBulkJob } from '../bulk-jobs.ts'
 
 /** 与现有十分钟 Cron 共用触发器，文件清理不依赖计费任务的执行结果。 */
 export async function runFilesCleanup(context: {
   db: DatabaseAccess
   files: Capability<{ delete(key: string | string[]): Promise<void> }>
+  eventsQueue?: QueueProducer<unknown>
 }) {
   const files = requireCapability(context.files, 'files')
-  const result = await cleanupFiles(context.db.business(), files)
+  const { guard, ...result } = await cleanupFiles(context.db.business(), files)
   log.info('cron.files-cleanup', result)
+  await reportBulkJob('files-cleanup', guard, context.eventsQueue)
   if (result.failed > 0) throw new Error('File object cleanup failed; retry next cron')
 }
