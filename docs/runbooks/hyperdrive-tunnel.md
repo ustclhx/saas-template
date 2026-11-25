@@ -12,7 +12,7 @@ Worker（*.workers.dev）→ Hyperdrive → Workers VPC 服务（TCP）→ Tunne
 
 不需要域名、DNS 记录、Access 应用或 Service Token。背景与取舍见 `docs/07-infrastructure.md` §0、§2。
 
-## 旧链路保留资源（账号 `170a06d37ad50396b19943eb6b77a21d`）
+## 旧链路保留资源（账号 `<CF_ACCOUNT_ID>`）
 
 | 资源 | 名称 | ID |
 |---|---|---|
@@ -81,7 +81,7 @@ W tunnel create saas-template-local          # 记下输出的 Tunnel ID
 取运行令牌写入 `infra/local/.env`（已被 `.gitignore` 忽略，不要提交、不要打印到日志）：
 
 ```bash
-ACCOUNT_ID=170a06d37ad50396b19943eb6b77a21d
+ACCOUNT_ID=<CF_ACCOUNT_ID>
 TUNNEL_ID=<上一步的 ID>
 OAUTH=$(grep oauth_token ~/Library/Preferences/.wrangler/config/default.toml | cut -d'"' -f2)
 TOKEN=$(curl -s -H "Authorization: Bearer $OAUTH" \

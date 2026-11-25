@@ -145,6 +145,9 @@
 重试安全：检查在任何副作用之前（决策 2），被拒的请求没有写入；积分调整本就带幂等 `adjustmentId`。
 
 ### 11. 设计稿（协调者负责 ui-design 第 3–5 步，本 change 不出稿）
+
+已确认（2026-11-25）：见 `docs/design-system/prototypes/README.md` 中「后台敏感操作验证弹窗 StepUpDialog」「后台确认 AI 发起的操作 /admin/confirm/$id」「后台待确认列表 /admin/confirmations」三行，副本在 `docs/design-system/prototypes/admin-step-up/`。组件变更提议：`@saas/ui` 无 InputOTP 时按 `packages/ui/UPSTREAM.md` 接入（随画布确认）。实现与验收以副本为准。
+
 | 页面 / 交互 | 需覆盖的状态 |
 |---|---|
 | 验证弹窗 `StepUpDialog` | 方式选择（TOTP / 备用码 / 邮箱验证码 / 密码，按账号可用项显示）；验证码已发送与重发冷却；输入错误与剩余次数；锁定（显示解锁时间）；提交中；成功后自动继续；无可用方式时的应急说明；救援方式提示；手机端底部面板 |

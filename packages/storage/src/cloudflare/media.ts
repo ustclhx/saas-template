@@ -2,6 +2,7 @@ import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import type { MediaCopyLimits, MediaCopyOutput, MediaOutputCopier } from '../media.ts'
 import { allowedUrl, checkSize } from '../media-validation.ts'
+import { withR2Retry } from './retry.ts'
 
 const PART_BYTES = 5 * 1024 * 1024
 type MediaBucket = Pick<R2Bucket, 'put' | 'createMultipartUpload'>
@@ -27,7 +28,10 @@ async function copyOutput(
     const body = output.body
     if (body instanceof Uint8Array) {
       checkSize(body.byteLength, limits.maxFileBytes)
-      await bucket.put(key, body, { httpMetadata: { contentType: output.mime } })
+      // 内存字节可重放，适配层重试；下方流式写入不可重放，由外层工作流步骤重试整段下载。
+      await withR2Retry('put', () =>
+        bucket.put(key, body, { httpMetadata: { contentType: output.mime } }),
+      )
       return { mime: output.mime, size: body.byteLength }
     }
     response = new Response(body, { headers: { 'Content-Type': output.mime } })

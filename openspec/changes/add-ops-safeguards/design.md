@@ -140,7 +140,7 @@ Cloudflare：R2 写/删在 `packages/storage/src/cloudflare/{index,media,share-c
 
 纯函数 `retryTransient(operation, { classify, delaysMs })` 放在 `packages/shared`；分类器按目标放在各自适配层。
 
-**Cloudflare R2**（[错误码](https://developers.cloudflare.com/r2/api/error-codes/)，2026-11-25）：Workers 绑定抛出异常，错误码出现在 `message` 末尾（具体格式 **待核实**，实施时以 staging 探针或文档示例确认，分类器同时识别 `(1xxxx)` 与 S3 码名）。
+**Cloudflare R2**（[错误码](https://developers.cloudflare.com/r2/api/error-codes/)，2026-11-25）：Workers 绑定抛出异常，错误码出现在 `message` 末尾，分类器同时识别 `(1xxxx)` 与 S3 码名。**已核实（2026-11-25）**：错误码页原文「The error code is included at the end of the `message` property」，示例 `put: Your metadata headers exceed the maximum allowed metadata size. (10012)`；本地 workerd（miniflare 5.20261001）实测绑定抛出普通 `Error`、无 `code` / `action` 属性，message 为 `<操作>: <说明> (<码>)`（如 10012、10037）。
 
 | 码 | 名称 | 处理 | 出处原文要点 |
 |---|---|---|---|
@@ -163,7 +163,7 @@ Cloudflare：R2 写/删在 `packages/storage/src/cloudflare/{index,media,share-c
 
 单次调用最多 1 + 3 + 2 = 6 次尝试，最坏总等待约 5.5 s（临时类 ≤1.95 s + 同键限流类 ≤3.5 s）；请求路径能接受这个上限，因为同键限流在正常使用中很少出现，且失败比等待更糟（如会话写入失败导致登录失败）。后台任务使用同一参数（队列与 Workflow 已有更长的外层重试）。删除幂等，可直接重试；写入只在请求体可重放（`string` / `ArrayBuffer` / `Uint8Array` / `Blob`）时重试，`ReadableStream` 请求体不在适配层重试，交给外层（Workflow 步骤）重试整段下载。耗尽或不可重试时抛出 `AppError('STORAGE_UNAVAILABLE', 503)`（R2）或沿用 `CACHE_UNAVAILABLE`（KV），日志记录错误类别、错误码与各类尝试次数，不记录键中的用户数据。同键限流耗尽时日志单独标记，便于发现热点键的设计问题。
 
-**Node**：S3 客户端显式设置 `maxAttempts: 3`、`retryMode: 'standard'`（SDK 默认值与可重试错误集合以 [AWS SDK 重试文档](https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html) 为准，**待核实**），不叠加 `retryTransient`，避免 9 次放大。Redis 缓存维持快速失败（连接级故障重试会拖住请求，现有 503 语义已被 `cache-rate-limit` 规范依赖）。
+**Node**：S3 客户端显式设置 `maxAttempts: 3`、`retryMode: 'standard'`（**已核实（2026-11-25）**：[AWS SDK 重试文档](https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html) 默认 `standard`、max attempts 3，原文「A max attempts value of `3` means the SDK makes one initial request and up to two retries」；standard 模式重试 InternalError、I/O 失败、无可识别错误码的 500/502/503/504 及 SlowDown 等限流错误。已安装 `@smithy/core` 3.35 的 `DEFAULT_MAX_ATTEMPTS=3`、`DEFAULT_RETRY_MODE=standard` 一致；显式设置是为了不受主机 `AWS_MAX_ATTEMPTS` / `AWS_RETRY_MODE` 影响），不叠加 `retryTransient`，避免 9 次放大。Redis 缓存维持快速失败（连接级故障重试会拖住请求，现有 503 语义已被 `cache-rate-limit` 规范依赖）。
 
 备选：放到 `packages/storage` 调用方逐处包装。放弃：调用点十余个，适配层一处覆盖且两目标语义清晰。
 
@@ -176,6 +176,12 @@ Cloudflare：R2 写/删在 `packages/storage/src/cloudflare/{index,media,share-c
 3. **语言中间件降级**：`/_serverFn/` 请求读会话遇到非 401/403 错误时按「无账号语言」处理并记警告日志，不再抛出；同时把 `docs/platform-capabilities.md` 的描述改为与实现一致。
 4. **兜底错误界面**：根路由增加 errorComponent，复用现有 404 页的导航布局与 `@saas/ui` 组件，文案进 messages；分享页使用同一界面。这是缺陷修复，沿用现有页面样式，不需要新设计稿。
 5. **测试**：环境缺失插件绑定时预渲染首页 200、动态公开页正常、插件路由 503；已登录访客 `/_serverFn/` 请求在数据库抛错时不报错；根 loader 在 runtime 的 db/auth 抛错时仍然 resolve；`getAnnouncement` / `getSafeImpersonation` 的异常分支；admin 门禁对 `/administrator`、`/admin-x`、`/zh/admin` 的负例。
+
+实施记录（第 5 组，2026-11-25）：
+- 第 2 条的部署前检查：仓库已有 `scripts/check-plugins.mjs`（`pnpm check` 的一步）逐环境（顶层、`env.staging`、`env.production` 及其他 env）核对启用插件声明的 web / jobs 绑定名与种类，缺失即失败并指出环境与绑定名；没有在 `check-wrangler-envs.mjs` 中重复实现，只在 `scripts/check-plugins.test.mjs` 补了插件专用限流绑定在 production 缺失的用例。
+- 运行时：`server/cloudflare/env.ts` 的 `pluginBindingStatus` 按插件校验清单绑定（同一 env 在 isolate 内只校验与记日志一次），结果作为 `WebRuntime.pluginStatus` 注入；入口用 `pluginUnavailable(runtime, id)` 检查（admin-mcp 在方法检查后、读令牌前返回 503；agents 的 `/agents/*` 前置处理返回 503；media 沿用 `ai.workflow` 能力不可用时的 503）。`/api/health` 增加 `plugins` 字段，只作展示，不改变整体状态码（插件不可用不等于站点不可用，避免触发整站告警）。
+- 第 3 条：降级覆盖所有读取账号语言的请求（含应用区页面），应用区页面随后由自身数据读取报错并显示兜底错误界面。
+- 第 4 条：根路由的 errorComponent 会替换整个根组件，所以另包一层 `RootDocument`；子路由用路由器的 `defaultErrorComponent`。分享页在渲染前的查找失败时不再直接返回 500 文本，而是继续渲染错误界面（`cache-control: no-store`），页面数据读取不重复查库。
 
 ## Risks / Trade-offs
 
@@ -205,4 +211,4 @@ Cloudflare：R2 写/删在 `packages/storage/src/cloudflare/{index,media,share-c
 ## Open Questions
 
 - Workers 每次调用的子请求上限（决定文件清理对象上限是否需要更低）：实施第 1 组时查 [Workers 限制](https://developers.cloudflare.com/workers/platform/limits/) 并在 `docs/bulk-jobs.md` 注明，不改变方案。
-- R2 绑定错误消息中错误码的确切格式：实施第 4 组时确认，只影响分类器的匹配写法。
+- ~~R2 绑定错误消息中错误码的确切格式~~：已确认为 message 末尾 `(码)`，见 D6（2026-11-25）。

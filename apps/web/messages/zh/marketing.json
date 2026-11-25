@@ -85,5 +85,8 @@
   "marketing_guides_faq": "常见问题",
   "marketing_not_found_title": "页面不存在",
   "marketing_not_found_body": "这个页面不存在或已移动。",
-  "marketing_not_found_home": "返回首页"
+  "marketing_not_found_home": "返回首页",
+  "marketing_error_title": "出了点问题",
+  "marketing_error_body": "页面暂时无法加载，请稍后重试。",
+  "marketing_error_retry": "重试"
 }

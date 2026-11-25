@@ -13,7 +13,7 @@
 | staging 探活 | HTTP 200，`status=ok`、`db.status=up`；SHA `3220611c66c644ed83d97c5c2b9921ac4c111195`；`jobs.lastCronAt=2026-10-09T07:50:36.634Z` | SHA 与本 worktree HEAD 一致；两 Worker version 待查询，不沿用旧发布版本 |
 | Neon 查询目标 | `current_database()=saas_staging`、`current_user=readonly` | 从受保护 `.env.staging-neon` source 后，仅经 Docker psql SELECT 核对；未直接写业务数据 |
 | Sandbox OAuth | `/v1/oauth2/token` HTTP 200 | 从主 checkout 受保护 `.env.local` source；token 仅在进程内用于 PayPal API，不保存或输出；本机 OAuth 不代表 staging KV 命中 |
-| 当前 App webhook | `/v1/notifications/webhooks` HTTP 200；ID `2Y038131HD900422W`；地址为 `https://web-staging.saas-jobs.workers.dev/api/billing/webhooks/paypal`；12 项订阅事件与 runbook §3 一致 | 本地 `.env.local` 未提供 `PAYPAL_WEBHOOK_ID`；这不能推断 staging secret 缺失或错误，须由真实回调验证 |
+| 当前 App webhook | `/v1/notifications/webhooks` HTTP 200；ID `<paypal-resource-5>`；地址为 `https://web-staging.saas-jobs.workers.dev/api/billing/webhooks/paypal`；12 项订阅事件与 runbook §3 一致 | 本地 `.env.local` 未提供 `PAYPAL_WEBHOOK_ID`；这不能推断 staging secret 缺失或错误，须由真实回调验证 |
 | 当前 App 事件列表 | `2026-10-09T07:55:14.012573Z` 起执行 `/v1/notifications/webhooks-events?page_size=100`，`events=[]`、`count=0` | 此次查询未指定日期范围；仅说明默认查询窗口没有事件，不声明历史全部为空 |
 | staging CACHE | `2026-10-09T07:55:46.583492Z`，远端 KV key list 中 `paypal:oauth:v1:sandbox:` 前缀计数为 0 | 未读取 token 值；尚无本轮 staging token 缓存成功证据，需交易请求后复查 |
 | 买家账号入口 | Developer Dashboard `/dashboard/accounts` 跳转至 `www.paypal.com/signin` 的真实账号登录页 | 按通用规则交用户亲自登录；尚未获取或使用个人沙箱测试买家 |

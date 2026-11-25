@@ -1,4 +1,5 @@
 import { AppError } from '@saas/shared'
+import { log } from '@saas/shared/log'
 import { baseLocale, cookieName, isLocale, type Locale } from '../../paraglide/runtime.js'
 import { paraglideMiddleware } from '../../paraglide/server.js'
 import type { WebRuntime } from '../../server/runtime.ts'
@@ -45,7 +46,12 @@ export function localizeRequest(
         })
         locale = isLocale(fresh.user.locale) ? fresh.user.locale : baseLocale
       } catch (error) {
-        if (!(error instanceof AppError && [401, 403].includes(error.status))) throw error
+        // 未登录（401/403）按 URL / Cookie 规则；其余错误（数据库不可达等）同样降级为无账号语言，
+        // 不能让已登录访客在公开页之间导航时的 server function 失败（public-site-availability）。
+        if (!(error instanceof AppError && [401, 403].includes(error.status)))
+          log.warn('i18n.account_locale_read_failed', {
+            code: error instanceof AppError ? error.code : undefined,
+          })
       }
     }
     const headers = new Headers(request.headers)

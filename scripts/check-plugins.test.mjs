@@ -87,6 +87,25 @@ test('逐环境报告 web 和 jobs 缺失或类型错误的绑定', async (t) =>
   ])
 })
 
+test('只供插件使用的限流绑定在任一环境缺失时报告（public-site-availability：运行时只让该插件 503）', async (t) => {
+  const limited = {
+    id: 'limited',
+    targets: ['cloudflare'],
+    bindings: { web: [{ name: 'RL_PLUGIN', kind: 'rate_limit' }] },
+  }
+  const { web, check } = fixture(t, {
+    manifests: [sample, limited],
+    plugins: { sample: {}, limited: {} },
+  })
+  const ratelimit = { name: 'RL_PLUGIN', namespace_id: '1001', simple: { limit: 10, period: 60 } }
+  web.ratelimits = [ratelimit]
+  web.env.staging.ratelimits = [{ ...ratelimit, namespace_id: '1002' }]
+
+  assert.deepEqual(await check(), [
+    'apps/web/wrangler.jsonc env.production: plugin limited binding RL_PLUGIN is missing (expected rate_limit)',
+  ])
+})
+
 test('报告可选绑定的种类错误及类绑定引用了不同的类', async (t) => {
   const { web, check } = fixture(t)
   web.env.staging.kv_namespaces = [{ binding: 'AI' }]
