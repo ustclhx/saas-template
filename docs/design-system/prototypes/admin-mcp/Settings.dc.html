@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>运行时设置·功能模型</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:none}a:hover{text-decoration:underline;text-underline-offset:3px}
+.r{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;height:1000px;display:flex;overflow:hidden;position:relative}
+button,input{font:inherit;color:inherit;margin:0}
+button{cursor:pointer;border:0;background:none;padding:0}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.cap{font-size:12px;line-height:16px}
+.sub{font-size:14px;line-height:20px;font-weight:600}
+.ttl{font-size:20px;line-height:28px;font-weight:600}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border-radius:8px;font-size:14px;line-height:20px;font-weight:500;white-space:nowrap}
+.hv:hover{background:rgba(128,128,128,0.1);text-decoration:none}
+.sb{width:232px;padding:12px;display:flex;flex-direction:column;gap:12px;flex-shrink:0}
+.grp{font-size:12px;line-height:16px;font-weight:500;padding:0 8px;margin:8px 0 4px}
+.nav{display:flex;align-items:center;gap:8px;height:32px;border-radius:8px;padding:0 8px}
+.badge{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:9999px;font-size:12px;line-height:16px;font-weight:500;white-space:nowrap}
+.main{flex:1;min-width:0;margin:8px 8px 8px 0;border-radius:12px;display:flex;flex-direction:column;overflow:auto}
+.wrap{max-width:64rem;width:100%;margin:0 auto;padding:32px;display:flex;flex-direction:column;gap:20px}
+.panel{display:grid;gap:16px;border-radius:8px;padding:20px}
+.fm{display:grid;grid-template-columns:minmax(0,1.1fr) 280px minmax(0,1.2fr);gap:16px;align-items:center;padding:12px 0}
+.sel{height:36px;padding:0 12px;border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;text-align:left}
+.opt{display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border-radius:6px;text-align:left;width:100%}
+svg{flex-shrink:0}
+sc-if,sc-for{display:contents}
+</style>
+</helmet>
+<div class="r" style="background:{{t.bg}};color:{{t.fg}}">
+  <aside class="sb" aria-label="后台导航">
+    <div class="row" style="height:32px;gap:8px;padding-left:4px">
+      <span class="row" style="justify-content:center;width:24px;height:24px;border-radius:6px;background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></span>
+      <span class="sub">后台管理</span>
+    </div>
+    <nav class="col" aria-label="后台" style="gap:2px;flex:1">
+      <a href="#" class="nav hv" style="color:{{t.mfg}}">概览</a>
+      <span class="grp" style="color:{{t.mfg}}">AI</span>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}">模型</a>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}">反馈</a>
+      <span class="grp" style="color:{{t.mfg}}">运营</span>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}">指标</a>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}">审计日志</a>
+      <a href="#" class="nav" aria-current="page" style="background:{{t.active}};font-weight:500">设置</a>
+      <a href="Main.dc.html" class="nav hv" style="color:{{t.mfg}}">API 令牌</a>
+    </nav>
+  </aside>
+
+  <main class="main" style="background:{{t.panel}};box-shadow:{{t.sh2}}">
+    <div class="wrap">
+      <div class="row" style="gap:12px">
+        <div class="col" style="flex:1;gap:2px">
+          <h1 class="ttl" style="margin:0">运行时设置</h1>
+          <p style="margin:0;color:{{t.mfg}}">保存后约 60 秒内全站生效，修改前后的值记入审计日志。</p>
+        </div>
+        <button type="button" class="btn hv" aria-label="{{themeLabel}}" onClick="{{toggleTheme}}" style="width:36px;padding:0;color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+      </div>
+
+      <div class="panel" style="background:{{t.card}};box-shadow:inset 0 0 0 1px {{t.border}}">
+        <div class="row" style="gap:8px;color:{{t.mfg}}"><span class="sub" style="color:{{t.fg}};flex:1">注册、公告与每日赠送</span><span class="cap">现有设置项，本次不改动</span></div>
+        <div class="row" style="gap:12px"><span style="height:12px;width:30%;border-radius:4px;background:{{t.active}}"></span><span style="height:12px;width:22%;border-radius:4px;background:{{t.active}}"></span></div>
+      </div>
+
+      <section aria-labelledby="fm-t" class="panel" style="background:{{t.card}};box-shadow:inset 0 0 0 1px {{t.border}};gap:4px">
+        <div class="col" style="gap:4px;padding-bottom:8px">
+          <h2 id="fm-t" class="sub" style="margin:0">功能模型</h2>
+          <p class="cap" style="margin:0;color:{{t.mfg}}">项目登记的功能各自选择模型。未选择、或所选模型已停用时，按登记的沿用顺序使用其他功能选择的模型；套餐的模型权限仍按原规则检查。</p>
+        </div>
+        <div class="fm cap" style="padding:6px 0;color:{{t.mfg}};font-weight:500;border-bottom:1px solid {{t.border}}"><span>功能</span><span>模型</span><span>当前实际使用</span></div>
+        <sc-for list="{{features}}" as="f" hint-placeholder-count="4">
+          <div class="fm" style="{{f.sep}}">
+            <div class="col" style="gap:2px;min-width:0">
+              <div class="row" style="gap:8px"><span style="font-weight:500">{{f.label}}</span><span class="badge" style="background:{{t.secondary}};color:{{t.mfg}}">{{f.kind}}</span></div>
+              <span class="mono" style="color:{{t.mfg}}">{{f.id}}{{f.inheritNote}}</span>
+            </div>
+            <div style="position:relative">
+              <button type="button" class="sel" aria-haspopup="listbox" aria-expanded="{{f.open}}" aria-label="{{f.label}} 的模型" onClick="{{f.toggle}}" style="box-shadow:inset 0 0 0 1px {{f.ring}};color:{{f.selColor}}">{{f.choice}}<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.mfg}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button>
+              <sc-if value="{{f.open}}" hint-placeholder-val="{{false}}">
+                <div role="listbox" aria-label="{{f.label}} 的模型" class="col" style="position:absolute;top:40px;left:0;right:0;z-index:2;padding:4px;border-radius:8px;background:{{t.card}};box-shadow:{{t.sh5}}">
+                  <button type="button" role="option" aria-selected="false" class="opt hv" style="color:{{t.mfg}}">未选择（按沿用顺序）</button>
+                  <sc-for list="{{f.options}}" as="o" hint-placeholder-count="3">
+                    <button type="button" role="option" aria-selected="{{o.on}}" class="opt hv" style="{{o.style}}"><span style="flex:1">{{o.name}}</span><span class="mono" style="color:{{t.mfg}}">{{o.key}}</span></button>
+                  </sc-for>
+                  <span class="cap" style="padding:6px 8px;color:{{t.mfg}}">只列出同种类、已启用的模型</span>
+                </div>
+              </sc-if>
+            </div>
+            <div class="row" style="gap:8px;min-width:0;color:{{f.resColor}}">
+              <span aria-hidden="true" style="width:8px;height:8px;border-radius:9999px;background:{{f.dot}}"></span>
+              <span class="col" style="gap:2px;min-width:0"><span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{f.resolved}}</span><span class="cap" style="color:{{f.srcColor}}">{{f.source}}</span></span>
+            </div>
+          </div>
+        </sc-for>
+      </section>
+
+      <div class="row" style="gap:12px;justify-content:flex-end">
+        <span class="cap" style="color:{{t.mfg}}">也可以通过 Admin MCP 的 settings.set 修改，同样记入审计。</span>
+        <button type="button" class="btn" style="background:{{t.primary}};color:{{t.pfg}}">保存</button>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"state":{"editor":"enum","options":["normal","select-open","model-disabled","unset"],"default":"normal"},"$preview":{"width":1440,"height":1000}}'>
+function uiTokens(dark) {
+  var t = dark ? {
+    s: ['#171717', '#1e1e1e', '#252525'], fg: '#f5f5f5', mfg: '#b0b0b0', primary: '#f5f5f5', pfg: '#171717',
+    destructive: '#fca5a5', warn: '#fcd34d', ok: '#86efac', border: 'rgba(245,245,245,0.12)', active: 'rgba(255,255,255,0.1)', overlay: 'rgba(0,0,0,0.6)'
+  } : {
+    s: ['#fafafa', '#fcfcfc', '#ffffff'], fg: '#171717', mfg: '#6b6b6b', primary: '#171717', pfg: '#fafafa',
+    destructive: '#b91c1c', warn: '#a16207', ok: '#15803d', border: 'rgba(23,23,23,0.12)', active: 'rgba(0,0,0,0.07)', overlay: 'rgba(0,0,0,0.4)'
+  };
+  t.bg = t.s[0]; t.panel = t.s[1]; t.card = t.s[2];
+  t.secondary = dark ? '#252525' : '#f4f4f5';
+  t.sh2 = dark ? 'inset 0 0 0 1px rgba(255,255,255,0.02), 0 1px 1px -0.5px rgba(0,0,0,0.18)' : '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06)';
+  t.sh5 = dark ? '0 0 0 1px rgba(255,255,255,0.08), 0 6px 12px -4px rgba(0,0,0,0.4)' : '0 0 0 1px rgba(0,0,0,0.06), 0 6px 12px -4px rgba(0,0,0,0.12)';
+  return t;
+}
+class Component extends DCLogic {
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var pd = !!this.props.dark;
+    var dark = st.od && st.od.base === pd ? st.od.val : pd;
+    var t = uiTokens(dark);
+    var mode = this.props.state || 'normal';
+    var openId = st.op && st.op.base === mode ? st.op.val : (mode === 'select-open' ? 'report.detail' : '');
+    var textModels = [['DeepSeek Flash', 'acceptance-deepseek-token'], ['通用模型', 'general-text'], ['长文模型', 'long-text']];
+    var imageModels = [['快速出图', 'workers-flux'], ['高清出图', 'fal-flux-pro']];
+    var detailDisabled = mode === 'model-disabled';
+    var unset = mode === 'unset';
+    var feats = [
+      { id: 'report.summary', label: '报告摘要', kind: '文本', choice: unset ? null : '通用模型', key: 'general-text', resolved: unset ? '未配置' : '通用模型', source: unset ? '该功能当前不可用，请选择模型' : '显式选择', state: unset ? 'bad' : 'ok', models: textModels },
+      { id: 'report.detail', label: '报告详情', kind: '文本', inherit: 'report.summary', choice: detailDisabled ? '长文模型（已停用）' : null, key: detailDisabled ? 'long-text' : '', resolved: unset ? '未配置' : '通用模型', source: unset ? '沿用的 report.summary 也未选择' : (detailDisabled ? '所选模型已停用，沿用自 report.summary' : '未选择，沿用自 report.summary'), state: unset ? 'bad' : (detailDisabled ? 'warn' : 'inh'), models: textModels },
+      { id: 'cover.image', label: '封面图', kind: '图片', choice: '高清出图', key: 'fal-flux-pro', resolved: '高清出图', source: '显式选择', state: 'ok', models: imageModels },
+      { id: 'cover.thumbnail', label: '缩略图', kind: '图片', inherit: 'cover.image', choice: '快速出图', key: 'workers-flux', resolved: '快速出图', source: '显式选择（沿用顺序未使用）', state: 'ok', models: imageModels }
+    ];
+    var features = feats.map(function (f, i) {
+      var open = openId === f.id;
+      var dot = f.state === 'ok' ? t.ok : f.state === 'inh' ? t.mfg : f.state === 'warn' ? t.warn : t.destructive;
+      return {
+        id: f.id, label: f.label, kind: f.kind, open: open,
+        inheritNote: f.inherit ? ' · 沿用 ' + f.inherit : '',
+        choice: f.choice || '未选择',
+        selColor: f.choice ? t.fg : t.mfg,
+        ring: f.state === 'warn' ? t.warn : t.border,
+        resolved: f.resolved, source: f.source, dot: dot,
+        resColor: f.state === 'bad' ? t.destructive : t.fg,
+        srcColor: f.state === 'warn' ? t.warn : f.state === 'bad' ? t.destructive : t.mfg,
+        sep: i ? 'border-top:1px solid ' + t.border : '',
+        options: f.models.map(function (m) { var on = m[1] === f.key; return { name: m[0], key: m[1], on: on, style: on ? 'background:' + t.active + ';font-weight:500' : '' }; }),
+        toggle: function () { self.setState({ op: { base: mode, val: open ? '' : f.id } }); }
+      };
+    });
+    return {
+      t: t, features: features,
+      themeLabel: dark ? '切换到浅色' : '切换到深色',
+      toggleTheme: function () { self.setState({ od: { base: pd, val: !dark } }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

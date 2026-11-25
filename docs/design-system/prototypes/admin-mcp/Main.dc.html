@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>API 令牌</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:none}a:hover{text-decoration:underline;text-underline-offset:3px}
+.r{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;height:900px;display:flex;overflow:hidden;position:relative}
+button,input{font:inherit;color:inherit;margin:0}
+button{cursor:pointer;border:0;background:none;padding:0}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.cap{font-size:12px;line-height:16px}
+.sub{font-size:14px;line-height:20px;font-weight:600}
+.ttl{font-size:20px;line-height:28px;font-weight:600}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border-radius:8px;font-size:14px;line-height:20px;font-weight:500;white-space:nowrap}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;flex-shrink:0}
+.hv:hover{background:rgba(128,128,128,0.1);text-decoration:none}
+.sb{width:232px;padding:12px;display:flex;flex-direction:column;gap:12px;flex-shrink:0}
+.grp{font-size:12px;line-height:16px;font-weight:500;padding:0 8px;margin:8px 0 4px}
+.nav{display:flex;align-items:center;gap:8px;height:32px;border-radius:8px;padding:0 8px}
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:9999px;font-size:12px;line-height:16px;font-weight:500;white-space:nowrap}
+.main{flex:1;min-width:0;margin:8px 8px 8px 0;border-radius:12px;display:flex;flex-direction:column;overflow:auto}
+.wrap{max-width:64rem;width:100%;margin:0 auto;padding:32px;display:flex;flex-direction:column;gap:20px}
+.item{display:grid;grid-template-columns:1.4fr 150px 150px 150px 120px 72px;align-items:center;gap:16px;min-height:56px;padding:8px 12px 8px 16px}
+.inp{height:36px;padding:0 12px;border-radius:8px;display:flex;align-items:center;width:100%}
+.seg{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 12px;border-radius:6px;font-weight:500;flex:1}
+.chk{width:16px;height:16px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.sk{border-radius:6px;animation:sk 1.6s ease-in-out infinite}
+@keyframes sk{0%,100%{opacity:1}50%{opacity:0.5}}
+svg{flex-shrink:0}
+sc-if,sc-for{display:contents}
+</style>
+</helmet>
+<div class="r" style="background:{{t.bg}};color:{{t.fg}}">
+  <aside class="sb" aria-label="后台导航">
+    <div class="row" style="height:32px;gap:8px;padding-left:4px">
+      <span class="row" style="justify-content:center;width:24px;height:24px;border-radius:6px;background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></span>
+      <span class="sub">后台管理</span>
+    </div>
+    <nav class="col" aria-label="后台" style="gap:2px;flex:1">
+      <a href="#" class="nav hv" style="color:{{t.mfg}}">概览</a>
+      <span class="grp" style="color:{{t.mfg}}">用户</span>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}">用户</a>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}">空间</a>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}">积分</a>
+      <span class="grp" style="color:{{t.mfg}}">AI</span>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}">模型</a>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}">反馈</a>
+      <span class="grp" style="color:{{t.mfg}}">运营</span>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}">指标</a>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}">审计日志</a>
+      <a href="Settings.dc.html" class="nav hv" style="color:{{t.mfg}}">设置</a>
+      <a href="#" class="nav" aria-current="page" style="background:{{t.active}};font-weight:500">API 令牌</a>
+    </nav>
+  </aside>
+
+  <main class="main" style="background:{{t.panel}};box-shadow:{{t.sh2}}">
+    <div class="wrap">
+      <div class="row" style="gap:12px;align-items:flex-start">
+        <div class="col" style="flex:1;gap:2px">
+          <h1 class="ttl" style="margin:0">API 令牌</h1>
+          <p style="margin:0;color:{{t.mfg}}">供 MCP 客户端（如 Claude Code）以你的管理员身份读取后台、修改运行时设置与 AI 模型。令牌只属于你，完整值只在创建时显示一次。</p>
+        </div>
+        <button type="button" class="btn hv" aria-label="{{themeLabel}}" onClick="{{toggleTheme}}" style="width:36px;padding:0;color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+        <button type="button" class="btn" onClick="{{openCreate}}" style="background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>创建令牌</button>
+      </div>
+
+      <div class="row" style="gap:16px;padding:16px;border-radius:12px;background:{{t.card}};box-shadow:inset 0 0 0 1px {{t.border}}">
+        <div class="col" style="flex:1;gap:4px;min-width:0">
+          <span class="cap" style="color:{{t.mfg}};font-weight:500">MCP 端点</span>
+          <span class="mono" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">https://app.example.com/api/admin/mcp</span>
+          <span class="cap" style="color:{{t.mfg}}">无会话 HTTP 传输；请求头 Authorization: Bearer &lt;令牌&gt;。每次调用都会写入审计日志。</span>
+        </div>
+        <button type="button" class="btn hv" style="height:32px;box-shadow:inset 0 0 0 1px {{t.border}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>复制地址</button>
+        <a href="#" class="btn hv" style="height:32px;box-shadow:inset 0 0 0 1px {{t.border}}">配置说明</a>
+      </div>
+
+      <sc-if value="{{s.list}}" hint-placeholder-val="{{true}}">
+        <div class="col" style="border-radius:12px;background:{{t.card}};box-shadow:inset 0 0 0 1px {{t.border}};overflow:hidden">
+          <div class="item cap" style="min-height:36px;color:{{t.mfg}};font-weight:500;border-bottom:1px solid {{t.border}}"><span>名称</span><span>前缀</span><span>权限</span><span>过期</span><span>最近使用</span><span></span></div>
+          <sc-for list="{{rows}}" as="row" hint-placeholder-count="4">
+            <div class="item" style="{{row.sep}};color:{{row.color}}">
+              <span class="col" style="gap:2px;min-width:0"><span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{row.name}}</span><span class="cap" style="color:{{row.stateColor}}">{{row.state}}</span></span>
+              <span class="mono" style="color:{{t.mfg}}">{{row.prefix}}</span>
+              <span class="row" style="gap:4px;flex-wrap:wrap"><span class="badge" style="background:{{t.secondary}};color:{{t.mfg}}">读取</span><sc-if value="{{row.write}}" hint-placeholder-val="{{true}}"><span class="badge" style="background:{{t.warnBg}};color:{{t.warn}}">写入</span></sc-if></span>
+              <span class="col" style="gap:2px"><span>{{row.expires}}</span><span class="cap" style="color:{{row.expColor}}">{{row.left}}</span></span>
+              <span style="color:{{t.mfg}}">{{row.used}}</span>
+              <span class="row" style="justify-content:flex-end"><sc-if value="{{row.active}}" hint-placeholder-val="{{true}}"><button type="button" class="btn hv" onClick="{{row.revoke}}" style="height:32px;padding:0 12px;color:{{t.destructive}}">吊销</button></sc-if></span>
+            </div>
+          </sc-for>
+        </div>
+        <p class="cap" style="margin:0;color:{{t.mfg}}">令牌所属账号被降为普通用户或被封禁后，其令牌立即失效。已吊销与已过期的令牌保留 30 天后从列表移除。</p>
+      </sc-if>
+
+      <sc-if value="{{s.loading}}" hint-placeholder-val="{{false}}">
+        <div class="col" style="gap:12px;padding:16px;border-radius:12px;box-shadow:inset 0 0 0 1px {{t.border}}">
+          <span class="sk" style="height:16px;width:40%;background:{{t.active}}"></span>
+          <span class="sk" style="height:16px;width:65%;background:{{t.active}}"></span>
+          <span class="sk" style="height:16px;width:52%;background:{{t.active}}"></span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{s.empty}}" hint-placeholder-val="{{false}}">
+        <div class="col" style="align-items:center;text-align:center;gap:10px;padding:64px 24px;border-radius:12px;box-shadow:inset 0 0 0 1px {{t.border}}">
+          <span class="row" aria-hidden="true" style="justify-content:center;width:40px;height:40px;border-radius:9999px;background:{{t.secondary}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"></circle><path d="m10.7 12.3 9.3-9.3M17 6l3 3M14 9l2 2"></path></svg></span>
+          <h2 class="sub" style="margin:4px 0 0">还没有 API 令牌</h2>
+          <p style="margin:0;color:{{t.mfg}};max-width:28rem">创建令牌后，在 Claude Code 等 MCP 客户端中添加上面的端点，即可让 agent 读取后台并配置模型与设置。</p>
+          <button type="button" class="btn" onClick="{{openCreate}}" style="margin-top:8px;background:{{t.primary}};color:{{t.pfg}}">创建令牌</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{s.error}}" hint-placeholder-val="{{false}}">
+        <div role="alert" class="row" style="gap:12px;padding:12px 16px;border-radius:10px;border:1px solid {{t.border}};background:{{t.card}}">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{t.destructive}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
+          <span style="flex:1">令牌列表加载失败，请刷新页面重试。</span>
+          <button type="button" class="btn hv" style="height:32px;box-shadow:inset 0 0 0 1px {{t.border}}">重试</button>
+        </div>
+      </sc-if>
+    </div>
+  </main>
+
+  <sc-if value="{{d.create}}" hint-placeholder-val="{{false}}">
+    <div class="row" style="position:absolute;inset:0;justify-content:center;background:{{t.overlay}}">
+      <div role="dialog" aria-modal="true" aria-labelledby="ct-t" class="col" style="width:520px;gap:20px;padding:24px;border-radius:12px;background:{{t.card}};box-shadow:{{t.sh5}}">
+        <div class="col" style="gap:4px">
+          <h2 id="ct-t" class="sub" style="margin:0;font-size:16px;line-height:22px">创建 API 令牌</h2>
+          <p class="cap" style="margin:0;color:{{t.mfg}}">令牌以你的管理员身份调用 MCP 工具，权限按下方勾选限定。</p>
+        </div>
+        <div class="col" style="gap:6px">
+          <label for="ct-name" class="cap" style="font-weight:500">名称</label>
+          <input id="ct-name" class="inp" value="Claude Code · 工作笔记本" style="border:0;box-shadow:inset 0 0 0 1px {{t.border}};background:transparent">
+        </div>
+        <fieldset class="col" style="gap:10px;border:0;padding:0;margin:0">
+          <legend class="cap" style="font-weight:500;margin-bottom:8px">权限</legend>
+          <label class="row" style="gap:10px;align-items:flex-start;color:{{t.mfg}}"><span class="chk" style="margin-top:2px;background:{{t.mfg}};color:{{t.pfg}}"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></span><span class="col" style="gap:2px"><span style="font-weight:500;color:{{t.fg}}">读取（必选）</span><span class="cap">设置、模型、用户、订单、积分流水、审计与指标，字段与后台页面一致</span></span></label>
+          <button type="button" role="checkbox" aria-checked="{{writeOn}}" onClick="{{toggleWrite}}" class="row" style="gap:10px;align-items:flex-start;text-align:left"><span class="chk" style="margin-top:2px;{{writeBox}}"><sc-if value="{{writeOn}}" hint-placeholder-val="{{true}}"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></sc-if></span><span class="col" style="gap:2px"><span style="font-weight:500">写入</span><span class="cap" style="color:{{t.mfg}}">修改运行时设置与 AI 模型（支持先预览再写入）。不能退款、调整积分或删除用户</span></span></button>
+        </fieldset>
+        <div class="col" style="gap:6px">
+          <span id="ct-exp" class="cap" style="font-weight:500">有效期</span>
+          <div role="radiogroup" aria-labelledby="ct-exp" class="row" style="gap:4px;padding:2px;border-radius:8px;background:{{t.secondary}}">
+            <sc-for list="{{terms}}" as="term" hint-placeholder-count="4">
+              <button type="button" role="radio" aria-checked="{{term.on}}" class="seg" onClick="{{term.pick}}" style="{{term.style}}">{{term.label}}</button>
+            </sc-for>
+          </div>
+          <span class="cap" style="color:{{t.mfg}}">到期日 {{expiryText}}。最长 365 天，到期后需重新创建。</span>
+        </div>
+        <div class="row" style="gap:8px;justify-content:flex-end">
+          <button type="button" class="btn hv" onClick="{{closeAll}}" style="box-shadow:inset 0 0 0 1px {{t.border}}">取消</button>
+          <button type="button" class="btn" onClick="{{showCreated}}" style="background:{{t.primary}};color:{{t.pfg}}">创建</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{d.created}}" hint-placeholder-val="{{false}}">
+    <div class="row" style="position:absolute;inset:0;justify-content:center;background:{{t.overlay}}">
+      <div role="dialog" aria-modal="true" aria-labelledby="cd-t" class="col" style="width:600px;gap:16px;padding:24px;border-radius:12px;background:{{t.card}};box-shadow:{{t.sh5}}">
+        <div class="col" style="gap:4px">
+          <h2 id="cd-t" class="sub" style="margin:0;font-size:16px;line-height:22px">令牌已创建</h2>
+          <p class="cap" style="margin:0;color:{{t.mfg}}">Claude Code · 工作笔记本 · 读取与写入 · 90 天</p>
+        </div>
+        <div role="status" class="row" style="gap:10px;padding:10px 12px;border-radius:8px;background:{{t.warnBg}};color:{{t.warn}}">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"></path><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg>
+          <span>完整令牌只显示这一次。关闭后无法再次查看，请立即复制并保存到钥匙串或密码管理器。</span>
+        </div>
+        <div class="col" style="gap:6px">
+          <span class="cap" style="font-weight:500">令牌</span>
+          <div class="row" style="gap:8px">
+            <code class="inp mono" style="flex:1;background:{{t.secondary}};overflow:hidden;white-space:nowrap">xat_3f9a1c7e_Q2xhdWRlQ29kZVNhbXBsZVRva2VuMTIzNDU2</code>
+            <button type="button" class="btn" style="background:{{t.primary}};color:{{t.pfg}}">复制令牌</button>
+          </div>
+        </div>
+        <div class="col" style="gap:6px">
+          <span class="cap" style="font-weight:500">在 Claude Code 中添加</span>
+          <div class="row" style="gap:8px;align-items:flex-start">
+            <code class="mono" style="flex:1;padding:10px 12px;border-radius:8px;background:{{t.secondary}};white-space:pre-wrap;word-break:break-all;line-height:20px">claude mcp add --transport http saas-admin https://app.example.com/api/admin/mcp --header "Authorization: Bearer xat_3f9a1c7e_…"</code>
+            <button type="button" class="btn hv" style="box-shadow:inset 0 0 0 1px {{t.border}}">复制命令</button>
+          </div>
+        </div>
+        <div class="row" style="justify-content:flex-end">
+          <button type="button" class="btn hv" onClick="{{closeAll}}" style="box-shadow:inset 0 0 0 1px {{t.border}}">我已保存，关闭</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{d.revoke}}" hint-placeholder-val="{{false}}">
+    <div class="row" style="position:absolute;inset:0;justify-content:center;background:{{t.overlay}}">
+      <div role="alertdialog" aria-modal="true" aria-labelledby="rv-t" aria-describedby="rv-d" class="col" style="width:440px;gap:16px;padding:24px;border-radius:12px;background:{{t.card}};box-shadow:{{t.sh5}}">
+        <h2 id="rv-t" class="sub" style="margin:0;font-size:16px;line-height:22px">吊销「Claude Code · 工作笔记本」？</h2>
+        <p id="rv-d" style="margin:0;color:{{t.mfg}}">使用该令牌的 MCP 客户端会立即失去访问，此操作不能撤销。吊销会记录到审计日志。</p>
+        <div class="row" style="gap:8px;justify-content:flex-end">
+          <button type="button" class="btn hv" onClick="{{closeAll}}" style="box-shadow:inset 0 0 0 1px {{t.border}}">取消</button>
+          <button type="button" class="btn" onClick="{{closeAll}}" style="background:{{t.destructive}};color:{{t.dfg}}">吊销令牌</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"state":{"editor":"enum","options":["normal","create","created","revoke","empty","loading","error"],"default":"normal"},"$preview":{"width":1440,"height":900}}'>
+function uiTokens(dark) {
+  var t = dark ? {
+    s: ['#171717', '#1e1e1e', '#252525'], fg: '#f5f5f5', mfg: '#b0b0b0', primary: '#f5f5f5', pfg: '#171717',
+    destructive: '#fca5a5', dfg: '#171717', warn: '#fcd34d', warnBg: 'rgba(252,211,77,0.12)', border: 'rgba(245,245,245,0.12)', active: 'rgba(255,255,255,0.1)', overlay: 'rgba(0,0,0,0.6)', faded: '#8a8a8a'
+  } : {
+    s: ['#fafafa', '#fcfcfc', '#ffffff'], fg: '#171717', mfg: '#6b6b6b', primary: '#171717', pfg: '#fafafa',
+    destructive: '#b91c1c', dfg: '#ffffff', warn: '#a16207', warnBg: 'rgba(234,179,8,0.12)', border: 'rgba(23,23,23,0.12)', active: 'rgba(0,0,0,0.07)', overlay: 'rgba(0,0,0,0.4)', faded: '#737373'
+  };
+  t.bg = t.s[0]; t.panel = t.s[1]; t.card = t.s[2];
+  t.secondary = dark ? '#252525' : '#f4f4f5';
+  t.sh2 = dark ? 'inset 0 0 0 1px rgba(255,255,255,0.02), 0 1px 1px -0.5px rgba(0,0,0,0.18)' : '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06)';
+  t.sh5 = dark ? '0 0 0 1px rgba(255,255,255,0.08), 0 6px 12px -4px rgba(0,0,0,0.4)' : '0 0 0 1px rgba(0,0,0,0.06), 0 6px 12px -4px rgba(0,0,0,0.12)';
+  return t;
+}
+class Component extends DCLogic {
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var pd = !!this.props.dark;
+    var dark = st.od && st.od.base === pd ? st.od.val : pd;
+    var t = uiTokens(dark);
+    var mode = this.props.state || 'normal';
+    var dlg = st.dl && st.dl.base === mode ? st.dl.val : (mode === 'create' || mode === 'created' || mode === 'revoke' ? mode : '');
+    var writeOn = st.w === undefined ? true : st.w;
+    var term = st.term || 90;
+    var expiry = { 30: '2026-12-25', 90: '2027-02-23', 180: '2027-05-24', 365: '2027-11-25' }[term];
+    var data = [
+      { name: 'Claude Code · 工作笔记本', state: '使用中', prefix: 'xat_3f9a1c7e', write: true, expires: '2027-02-23', left: '剩 90 天', used: '5 分钟前', active: true },
+      { name: '发版检查（只读）', state: '使用中', prefix: 'xat_81d04b2a', write: false, expires: '2026-12-10', left: '剩 15 天，即将过期', warn: true, used: '昨天', active: true },
+      { name: '旧笔记本', state: '已吊销 · 11 月 20 日', prefix: 'xat_0c55e913', write: true, expires: '2027-01-02', left: '', used: '11 月 19 日', active: false },
+      { name: '临时排查', state: '已过期', prefix: 'xat_9b2f7d40', write: false, expires: '2026-11-18', left: '', used: '11 月 17 日', active: false }
+    ];
+    var rows = data.map(function (d, i) {
+      return {
+        name: d.name, state: d.state, prefix: d.prefix + '…', write: d.write, expires: d.expires, left: d.left, used: d.used, active: d.active,
+        stateColor: d.active ? t.mfg : t.faded,
+        expColor: d.warn ? t.warn : t.mfg,
+        color: d.active ? t.fg : t.faded,
+        sep: i ? 'border-top:1px solid ' + t.border : '',
+        revoke: function () { self.setState({ dl: { base: mode, val: 'revoke' } }); }
+      };
+    });
+    var terms = [30, 90, 180, 365].map(function (n) {
+      var on = n === term;
+      return { label: n + ' 天', on: on, style: on ? 'background:' + t.card + ';box-shadow:' + t.sh2 : 'color:' + t.mfg, pick: function () { self.setState({ term: n }); } };
+    });
+    return {
+      t: t, rows: rows, terms: terms, expiryText: expiry, writeOn: writeOn,
+      writeBox: writeOn ? 'background:' + t.primary + ';color:' + t.pfg : 'box-shadow:inset 0 0 0 1px ' + t.mfg,
+      s: { list: mode !== 'empty' && mode !== 'loading' && mode !== 'error', empty: mode === 'empty', loading: mode === 'loading', error: mode === 'error' },
+      d: { create: dlg === 'create', created: dlg === 'created', revoke: dlg === 'revoke' },
+      themeLabel: dark ? '切换到浅色' : '切换到深色',
+      toggleTheme: function () { self.setState({ od: { base: pd, val: !dark } }); },
+      toggleWrite: function () { self.setState({ w: !writeOn }); },
+      openCreate: function () { self.setState({ dl: { base: mode, val: 'create' } }); },
+      showCreated: function () { self.setState({ dl: { base: mode, val: 'created' } }); },
+      closeAll: function () { self.setState({ dl: { base: mode, val: '' } }); }
+    };
+  }
+}
+</script>
+</body>
+</html>
