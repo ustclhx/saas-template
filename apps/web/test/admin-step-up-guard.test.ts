@@ -50,7 +50,10 @@ import { handleAuthRequest } from '../src/features/admin/impersonation-http.ts'
 import { saveAdminSettings } from '../src/features/admin/settings.functions.ts'
 import { readRuntimeSettings, writeRuntimeSetting } from '../src/features/admin/settings.ts'
 import { saveOperationsSettings } from '../src/features/admin/settings-operations.functions.ts'
-import { STEP_UP_REQUIRED } from '../src/features/admin/step-up/check.ts'
+import {
+  overrideStepUpEnforcedForTesting,
+  STEP_UP_REQUIRED,
+} from '../src/features/admin/step-up/check.ts'
 import { saveAdminModel } from '../src/features/ai/admin-models.functions.ts'
 import {
   completeAdminRefund,
@@ -389,6 +392,8 @@ const guardCases: Record<string, GuardCase> = {
 }
 
 beforeAll(async () => {
+  // 强制开关上线前默认关闭（STEP_UP_ENFORCED），守卫测试强制开启以覆盖拒绝与放行
+  overrideStepUpEnforcedForTesting(true)
   runtimeRef.current = createRuntime()
   admin = await signUp('admin')
   context = {
@@ -408,6 +413,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
+  overrideStepUpEnforcedForTesting(undefined)
   const users = await db.$client<
     { id: string }[]
   >`select id from "user" where email like ${`%@${domain}`}`

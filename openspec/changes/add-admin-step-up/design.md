@@ -76,7 +76,7 @@
 实现备注（第 1 组，2026-11-25）：
 - 包装接受 `AdminActionRef`：始终 / 从不敏感的动作直接写名称；按输入判定的动作（`setting.update`、`ai.model_save`、`billing.refund_review`）必须写成 `{ name, input }`，否则类型检查失败，运行时缺少输入按敏感处理。判定函数签名为 `(input, { db }) => boolean | Promise<boolean>`。
 - `defineAdminActions(owner, group)` 多一个插件 ID 参数：不同 owner 的键重复即抛错，同一 owner 重新加载（开发热更新）覆盖自己的登记；返回带品牌的动作名供包装使用。admin-mcp 登记 `admin.api_token.create` / `revoke`、只写调用审计的 `admin.mcp.call` 与写工具预览 `admin.mcp.dry_run`（均为 never，后两者不在上表）。
-- MCP 写工具在定义中声明 `adminAction(input)`，与后台同名：`settings.set` → `setting.update`、`models.update` → `ai.model_save`。第 3 组接入待确认前，命中敏感判定的 MCP 调用（无会话）返回 `STEP_UP_REQUIRED`。
+- MCP 写工具在定义中声明 `adminAction(input)`，与后台同名：`settings.set` → `setting.update`、`models.update` → `ai.model_save`。强制开关打开后、第 3 组接入待确认前，命中敏感判定的 MCP 调用（无会话）返回 `STEP_UP_REQUIRED`；开关关闭期间行为不变。
 - 原有动作名统一为上表：`ai.model_set_enabled` → `ai.model_toggle`、`ai.feedback.view_conversation` → `ai.feedback.view`、`billing.refund_notification_retry_requested` → `billing.refund_email_retry`、`observability.sentry-test` → `observability.sentry_test`、MCP 的 `mcp.<tool>` → 后台同名动作（审计 action 不变）。
 - 检查在 `apps/web/src/features/admin/step-up/check.ts`（`assertStepUp`、`hasValidStepUp`）；拒绝前先确认仍是有效管理员，已降级时得到 404 而非要求验证。`details.methods` 由第 2 组补齐。
 
@@ -86,6 +86,8 @@
 1. 表驱动集成测试遍历登记表中 `stepUp !== 'never'` 的每个动作，用有效管理员会话、无验证记录调用其 Server Function（条件项用使其为敏感的输入），断言 403 `STEP_UP_REQUIRED` 且数据库与审计不变；再写入验证记录后断言成功。
 2. 遍历 `'never'` 项断言无验证也能执行。
 3. 静态扫描 `apps/web/src`、`plugins/*/src` 中对上述包装的调用，确认每个调用点的动作名都在登记表中、登记表中每个键至少有一个调用点（防止改名漂移）。
+
+强制开关（协调者审阅第 1 组时要求，2026-11-25）：`step-up/check.ts` 导出单一常量 `STEP_UP_ENFORCED`，验证方式（第 2 组）与弹窗（第 4 组）上线前为 `false`，此时 `assertStepUp` 在判定之后直接放行——登记表、类型约束、未登记名称的运行时报错与守卫扫描照常生效，后台与 MCP 写入保持现有行为，不会把管理员锁在敏感操作外。守卫测试经 `overrideStepUpEnforcedForTesting(true)` 强制开启，继续覆盖拒绝与放行。第 4 组 4.2 完成时改为 `true` 并删除开关与测试注入函数。
 
 ### 3. 验证方式与优先级（按账号已有手段取最强，不允许降级）
 | 账号状态 | 可用方式 |
