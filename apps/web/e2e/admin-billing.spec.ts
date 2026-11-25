@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 import { capture, grant, hold } from '@saas/credits'
 import { createDb } from '@saas/db'
 import { readLocalEnv } from '@saas/db/worktree-env'
-import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
+import { fixtureDb, grantStepUp, register, simulateClientIp } from './fixtures.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 test('billing administration hides data from unauthenticated visitors', async ({ page }) => {
@@ -30,6 +30,7 @@ test('fresh platform admin can list and reject without payment credentials', asy
       await sql`select organization_id as id from member where user_id=${account?.id} and role='owner' limit 1`
     if (!account || !workspace) throw new Error('Missing account fixture')
     await sql`update "user" set role='admin' where id=${account.id}`
+    await grantStepUp(sql, account.id)
     const purchase = randomUUID()
     const payment = randomUUID()
     await sql`insert into plan(id,key,name,type,credits,features) values(${plan},${plan},'Admin fixture','credit_pack',100,'{"models":[],"maxConcurrentTasks":1,"maxSeats":1,"storageGb":1,"publicApi":false,"priorityQueue":false,"watermark":true}'::jsonb)`

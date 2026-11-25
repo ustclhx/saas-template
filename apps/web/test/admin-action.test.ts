@@ -3,7 +3,7 @@ import { defineTemplateConfig } from '@saas/config'
 import { adminStepUp, auditLog, type createDb, setting } from '@saas/db'
 import { newId } from '@saas/shared'
 import { eq } from 'drizzle-orm'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import {
   ADMIN_ACTION_UNAUDITED,
   AdminAccessRevokedError,
@@ -12,7 +12,6 @@ import {
 } from '../src/features/admin/action.ts'
 import { defineAdminActions } from '../src/features/admin/actions.registry.ts'
 import { requireAdmin } from '../src/features/admin/guard.ts'
-import { overrideStepUpEnforcedForTesting } from '../src/features/admin/step-up/check.ts'
 import { createAdminTestDb } from './admin-test-resources.ts'
 
 // add-admin-console tasks.md 1.1：adminAction 包装。
@@ -209,10 +208,6 @@ describe('adminAction', () => {
 
 // add-admin-step-up tasks.md 1.2：敏感动作在事务前检查当前会话的重新验证。
 describe('adminAction step-up', () => {
-  // 强制开关上线前默认关闭；这里强制开启以覆盖拒绝与放行，最后一例验证关闭时的放行
-  beforeAll(() => overrideStepUpEnforcedForTesting(true))
-  afterAll(() => overrideStepUpEnforcedForTesting(undefined))
-
   const minutes = (n: number) => new Date(Date.now() + n * 60_000)
   const grant = (
     db: ReturnType<typeof createDb>,
@@ -293,20 +288,11 @@ describe('adminAction step-up', () => {
     ).rejects.toMatchObject({ code: 'STEP_UP_REQUIRED' })
   })
 
-  it('强制开关关闭时敏感动作直接放行，未登记的名称仍报错', async () => {
+  it('未登记的动作名在判定时报错', async () => {
     const s = setup()
     const admin = await freshAdmin(s)
-    overrideStepUpEnforcedForTesting(false)
-    try {
-      const key = settingKey()
-      expect(
-        await runAdminAction({ db: s.db, admin }, actions['test.sensitive'], writeSetting(key)),
-      ).toBe(key)
-      await expect(
-        runAdminAction({ db: s.db, admin }, 'nope' as 'credits.adjust', writeSetting(settingKey())),
-      ).rejects.toThrow('Unregistered admin action')
-    } finally {
-      overrideStepUpEnforcedForTesting(true)
-    }
+    await expect(
+      runAdminAction({ db: s.db, admin }, 'nope' as 'credits.adjust', writeSetting(settingKey())),
+    ).rejects.toThrow('Unregistered admin action')
   })
 })

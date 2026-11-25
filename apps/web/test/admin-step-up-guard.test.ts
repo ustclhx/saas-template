@@ -51,10 +51,7 @@ import { handleAuthRequest } from '../src/features/admin/impersonation-http.ts'
 import { saveAdminSettings } from '../src/features/admin/settings.functions.ts'
 import { readRuntimeSettings, writeRuntimeSetting } from '../src/features/admin/settings.ts'
 import { saveOperationsSettings } from '../src/features/admin/settings-operations.functions.ts'
-import {
-  overrideStepUpEnforcedForTesting,
-  STEP_UP_REQUIRED,
-} from '../src/features/admin/step-up/check.ts'
+import { STEP_UP_REQUIRED } from '../src/features/admin/step-up/check.ts'
 import { saveAdminModel } from '../src/features/ai/admin-models.functions.ts'
 import {
   completeAdminRefund,
@@ -149,14 +146,15 @@ const settle = (run: () => Promise<unknown>): Promise<Outcome> =>
     (value) => ({ ok: true, value }),
     (error: unknown) => ({ ok: false, error }),
   )
-const STEP_UP_MESSAGE = 'Re-verify your identity to continue'
-/** 入口可能抛出 AppError，也可能把错误码或消息包装为 `{ ok: false, error }` 返回 */
+/**
+ * Server Function 入口必须把 STEP_UP_REQUIRED 原样抛出（AppError），不能包装成 `{ ok: false }` 返回：
+ * 后台界面的 useStepUpCall 只在抛出时弹出验证（add-admin-step-up 4.2）。HTTP 入口为 403。
+ */
 function stepUpRejected(outcome: Outcome) {
   if (!outcome.ok)
     return outcome.error instanceof AppError && outcome.error.code === STEP_UP_REQUIRED
-  const value = outcome.value as { ok?: boolean; error?: unknown } | Response
-  if (value instanceof Response) return value.status === 403
-  return value?.ok === false && [STEP_UP_REQUIRED, STEP_UP_MESSAGE].includes(String(value.error))
+  const value = outcome.value
+  return value instanceof Response && value.status === 403
 }
 
 let admin: Awaited<ReturnType<typeof signUp>>
@@ -393,8 +391,6 @@ const guardCases: Record<string, GuardCase> = {
 }
 
 beforeAll(async () => {
-  // 强制开关上线前默认关闭（STEP_UP_ENFORCED），守卫测试强制开启以覆盖拒绝与放行
-  overrideStepUpEnforcedForTesting(true)
   runtimeRef.current = createRuntime()
   admin = await signUp('admin')
   context = {
@@ -414,7 +410,6 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  overrideStepUpEnforcedForTesting(undefined)
   const users = await db.$client<
     { id: string }[]
   >`select id from "user" where email like ${`%@${domain}`}`

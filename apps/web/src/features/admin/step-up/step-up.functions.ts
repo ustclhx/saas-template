@@ -3,13 +3,12 @@ import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 import { getWebRuntime } from '../../../server/runtime.ts'
 import { adminMiddleware } from '../admin.functions.ts'
-import { STEP_UP_ENFORCED } from './check.ts'
 import { createWebStepUp, notifyRescue } from './service.server.ts'
 
 // 后台重新验证的 Server Functions（add-admin-step-up tasks 2.2，design.md 决策 3–5、10）。
 // 均经 adminMiddleware（requireAdmin：实时会话、非模拟、平台管理员），只作用于当前会话；
 // 不创建、不替换会话。预期内的失败（验证码错误、锁定、冷却等）以 `{ ok: false }` 返回，
-// 由验证弹窗（第 4 组）展示；其他错误照常抛出。
+// 由验证弹窗（step-up-dialog.tsx）展示；其他错误照常抛出。
 
 const stepUpMethod = z.enum(['totp', 'backup_code', 'email_otp', 'password', 'rescue'])
 
@@ -46,7 +45,6 @@ export const getStepUpStatus = createServerFn({ method: 'GET' })
     const service = await createWebStepUp(getWebRuntime())
     const status = await service.status(sessionOf(context))
     return {
-      enforced: STEP_UP_ENFORCED,
       verified: status.verified && {
         method: status.verified.method,
         expiresAt: status.verified.expiresAt.toISOString(),

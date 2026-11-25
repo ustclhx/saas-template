@@ -173,6 +173,15 @@
 
 ### 11. 设计稿（协调者负责 ui-design 第 3–5 步，本 change 不出稿）
 
+实现备注（第 4 组，2026-11-26）：
+- `useStepUpCall` 与 `StepUpProvider` 在 `apps/web/src/features/admin/step-up/step-up-provider.tsx`，弹窗在 `step-up-dialog.tsx`；后台布局加载器读取 `getStepUpStatus`（顶部状态与救援警示，失败时不显示）与插件导航计数。弹窗期间并发的第二个敏感调用合并到同一次验证。
+- **浏览器拿不到错误码**：TanStack Start 1.168 把 Server Function 抛出的错误按 `$TSR/Error` 序列化，只保留 `message`（e2e 抓包核对，2026-11-26），`code` 与 `publicDetails.methods` 不会到达浏览器。浏览器端按固定消息 `STEP_UP_REQUIRED_MESSAGE`（`step-up/client.ts`，与 `check.ts` 共用常量）识别，可用方式在弹窗打开时经 `getStepUpStatus` 读取。服务端与测试仍按 `code` 识别。若以后需要把 AppError 的 code 带到浏览器，可在 `createStart` 注册序列化适配器（影响全部 Server Function，另议）。
+- 把业务错误包装为 `{ ok: false, error }` 的入口（积分调整、退款与回调重放、模型保存、套餐模型）在 catch 中先 `rethrowStepUpRequired`；守卫测试改为只接受抛出的 `STEP_UP_REQUIRED`（或 HTTP 403），包装后的返回值视为未拦截。
+- `call-sites.scan.test.ts` 静态确认：处理敏感动作的 POST Server Function 都已列入，界面只经 `useStepUpCall` 调用它们。
+- 确认页与列表放在 admin-mcp 插件（`plugins/admin-mcp/routes/admin/`），读取类 Server Function 与确认 / 拒绝同在 `confirmations.functions.ts`；插件后台菜单项新增可选 `count`。
+- 与设计稿的差异见 PR 描述（现有后台布局没有顶部标题栏：已验证状态放在正文右上，手机端沿用现有内联导航；Fluid Tabs 为紧凑分段而非等宽；积分调整显示增加量而不是余额前后值，`display` 中没有余额快照）。
+
+
 已确认（2026-11-25）：见 `docs/design-system/prototypes/README.md` 中「后台敏感操作验证弹窗 StepUpDialog」「后台确认 AI 发起的操作 /admin/confirm/$id」「后台待确认列表 /admin/confirmations」三行，副本在 `docs/design-system/prototypes/admin-step-up/`。组件变更提议：`@saas/ui` 无 InputOTP 时按 `packages/ui/UPSTREAM.md` 接入（随画布确认）。实现与验收以副本为准。
 
 | 页面 / 交互 | 需覆盖的状态 |

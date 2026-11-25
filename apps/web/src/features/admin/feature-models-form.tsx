@@ -4,6 +4,8 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { m } from '../../paraglide/messages.js'
 import { saveAdminFeatureModels } from './feature-models.functions.ts'
 import type { AdminFeatureModel } from './feature-models.ts'
+import { isStepUpCancelled } from './step-up/client.ts'
+import { useStepUpCall } from './step-up/step-up-provider.tsx'
 import { panelClass } from './ui.tsx'
 
 // 运行时设置页的「功能模型」分组（设计稿 admin-mcp/Settings.dc.html、SettingsMobile.dc.html）。
@@ -68,6 +70,8 @@ export function FeatureModelsForm({ items }: { items: readonly AdminFeatureModel
   // biome-ignore lint/correctness/useExhaustiveDependencies: items 变化时整体重置
   useEffect(() => setValues(initial()), [items])
 
+  // 与设置页同一动作（setting.update）：改动密钥类设置时要求重新验证
+  const save = useStepUpCall(saveAdminFeatureModels, { action: m.admin_feature_models() })
   if (items.length === 0) return null
 
   async function submit(event: FormEvent) {
@@ -75,7 +79,8 @@ export function FeatureModelsForm({ items }: { items: readonly AdminFeatureModel
     setBusy(true)
     setMessage('')
     try {
-      const result = await saveAdminFeatureModels({ data: { values } })
+      const result = await save({ data: { values } })
+      if (isStepUpCancelled(result)) return
       setMessage(
         result.ok
           ? m.admin_saved_changes_apply_within_about_60_seconds()

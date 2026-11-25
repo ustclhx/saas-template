@@ -61,10 +61,7 @@ import {
   getPendingAction,
   MAX_PENDING_PER_TOKEN,
 } from '../src/features/admin/confirmations/service.ts'
-import {
-  overrideStepUpEnforcedForTesting,
-  STEP_UP_REQUIRED,
-} from '../src/features/admin/step-up/check.ts'
+import { STEP_UP_REQUIRED } from '../src/features/admin/step-up/check.ts'
 import { templateConfig } from '../src/server/template-config.ts'
 
 const APP_URL = 'https://admin-confirm.example.test'
@@ -191,7 +188,6 @@ async function requestGrant(token: string, workspace: string, amount = 100) {
 }
 
 beforeAll(async () => {
-  overrideStepUpEnforcedForTesting(true)
   runtimeRef.current = {
     config: { ...parseAuthEnv(runtimeConfig, templateConfig), PAYMENT_MODE: 'test' },
     db,
@@ -205,7 +201,6 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  overrideStepUpEnforcedForTesting(undefined)
   await db.delete(setting).where(eq(setting.key, SECRET_KEY))
   if (originalSecret !== undefined)
     await db.insert(setting).values({ key: SECRET_KEY, value: originalSecret })

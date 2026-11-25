@@ -7,6 +7,8 @@ import {
   filtersToSearch,
   offsetOfPage,
 } from '../../../features/admin/list.ts'
+import { isStepUpCancelled } from '../../../features/admin/step-up/client.ts'
+import { useStepUpCall } from '../../../features/admin/step-up/step-up-provider.tsx'
 import { AdminPage, adminTableLabels } from '../../../features/admin/ui.tsx'
 import { getAdminWebhooks, replayAdminWebhook } from '../../../features/billing/admin.functions.ts'
 import { m } from '../../../paraglide/messages.js'
@@ -28,10 +30,13 @@ function Webhooks() {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  // 回调重放可能发放付款积分，为敏感操作：未重新验证时当场弹窗
+  const replayCall = useStepUpCall(replayAdminWebhook, { action: m.admin_webhook_events() })
   async function replay(id: string) {
     setBusy(true)
     try {
-      const result = await replayAdminWebhook({ data: { webhookEventId: id } })
+      const result = await replayCall({ data: { webhookEventId: id } })
+      if (isStepUpCancelled(result)) return
       setMessage(result.ok ? result.status : m.admin_replay_unavailable({ error: result.error }))
       await router.invalidate()
     } catch {

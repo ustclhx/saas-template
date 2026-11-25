@@ -156,6 +156,7 @@ export {
   withForm,
 } from './components/form.tsx'
 export { Input, type InputProps } from './components/input.tsx'
+export { InputOTP, type InputOTPProps } from './components/input-otp.tsx'
 export {
   InsufficientCreditsDialog,
   type InsufficientCreditsDialogProps,

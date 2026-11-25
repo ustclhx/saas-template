@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { expect, test } from '@playwright/test'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
-import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
+import { fixtureDb, grantStepUp, register, simulateClientIp } from './fixtures.ts'
 import { stubTurnstile } from './turnstile.ts'
 
 test('admin can save model selections, retain historical keys and explicitly remove them', async ({
@@ -24,6 +24,7 @@ test('admin can save model selections, retain historical keys and explicitly rem
     const [account] = await sql`select id from "user" where email=${email}`
     if (!account) throw new Error('Missing account fixture')
     await sql`update "user" set role='admin' where id=${account.id}`
+    await grantStepUp(sql, account.id)
     await sql`insert into ai_model(id,key,kind,provider,provider_model_id,pricing,enabled) values(${modelId},${modelKey},'text','openai','fixture','{"mode":"token","inputPer1k":1,"outputPer1k":1,"minCharge":1}'::jsonb,false)`
     await sql`insert into plan(id,key,name,type,credits,features,active) values(${planId},${key},'Model access fixture','credit_pack',100,${sql.json(features)},false)`
     await page.goto(`/admin/billing/plans?q=${key}`)

@@ -2,6 +2,8 @@ import { Button, Checkbox, DetailList, Input, Label } from '@saas/ui'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { ADMIN_COPY } from '../../../features/admin/copy.ts'
+import { isStepUpCancelled } from '../../../features/admin/step-up/client.ts'
+import { useStepUpCall } from '../../../features/admin/step-up/step-up-provider.tsx'
 import {
   AdminPage,
   AdminSection,
@@ -32,14 +34,25 @@ function UserDetail() {
   useEffect(() => setReady(true), [])
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  // 封禁 / 解封与模拟登录为敏感操作：未重新验证时当场弹窗，通过后用原参数继续（add-admin-step-up 4.2）
+  const impersonateCall = useStepUpCall(startAdminImpersonation, {
+    action: m.admin_impersonate_user(),
+  })
+  const banCall = useStepUpCall(setAdminUserBan, {
+    action: data.user.banned ? m.admin_unban_user() : m.admin_ban_user(),
+  })
   async function action(impersonate = false) {
     setBusy(true)
     try {
       if (impersonate) {
-        await startAdminImpersonation({ data: { userId: data.user.id } })
+        const result = await impersonateCall({ data: { userId: data.user.id } })
+        if (isStepUpCancelled(result)) return
         window.location.assign('/app')
       } else {
-        await setAdminUserBan({ data: { userId: data.user.id, banned: !data.user.banned, reason } })
+        const result = await banCall({
+          data: { userId: data.user.id, banned: !data.user.banned, reason },
+        })
+        if (isStepUpCancelled(result)) return
         setMessage(data.user.banned ? m.admin_user_unbanned() : m.admin_user_banned())
         setConfirm(false)
         setReason('')

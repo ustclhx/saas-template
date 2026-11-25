@@ -105,7 +105,9 @@
 **检查点**：包装在开启事务、产生任何副作用之前调用 `assertStepUp`（`features/admin/step-up/check.ts`）：
 敏感且当前会话没有未过期的 `admin_step_up` 记录时抛 403 `STEP_UP_REQUIRED`，`details.methods` 列出该账号可用的方式。
 MCP 等无会话的调用一律不能以「无会话」绕过（AI 发起的敏感操作改走管理员确认，见 [管理员 MCP](./admin-mcp.md)）。
-上线过渡期 `STEP_UP_ENFORCED` 为 `false`（只判定不拦截），验证弹窗上线后打开。
+后台界面的写操作调用点统一经 `useStepUpCall`（`features/admin/step-up/step-up-provider.tsx`）：收到
+`STEP_UP_REQUIRED` 时在后台布局根部弹出验证（`StepUpDialog`），通过后用同一份参数重试一次，取消时返回
+`STEP_UP_CANCELLED` 且表单保持原样。新增后台写操作的界面入口时同样经它调用，否则管理员在该入口只会看到失败。
 
 **验证方式与优先级**（`packages/auth/src/admin-step-up.ts`，按账号已有手段取最强者，不允许降级）：
 

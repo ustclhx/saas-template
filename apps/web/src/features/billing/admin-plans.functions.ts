@@ -3,6 +3,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { withBilling } from '../../server/feature-gates.ts'
 import { withAdminAction } from '../admin/action.server.ts'
 import { adminMiddleware } from '../admin/admin.functions.ts'
+import { rethrowStepUpRequired } from '../admin/step-up/client.ts'
 import { listAdminPlans, updateAdminPlanModels } from './admin-plans.ts'
 import { adminPlanModelsInput, adminPlansListInput } from './admin-plans-input.ts'
 
@@ -21,6 +22,7 @@ export const saveAdminPlanModels = createServerFn({ method: 'POST' })
       )
       return { ok: true as const, id }
     } catch (error) {
+      rethrowStepUpRequired(error)
       if (error instanceof AppError) return { ok: false as const, error: error.message }
       throw error
     }

@@ -141,3 +141,23 @@ export const getAdminNavGroups = () =>
 
 /** 扁平导航（概览页快捷入口等复用） */
 export const getAdminNav = () => getAdminNavGroups().flatMap((group) => group.items)
+
+/**
+ * 插件导航项的待处理数量，键为路由路径。只在后台布局加载器中调用；单项读取失败时省略该项，
+ * 不影响导航与页面（数量只是提示）。
+ */
+export async function loadAdminNavCounts(): Promise<Record<string, number>> {
+  const entries = webPlugins
+    .flatMap(({ entry }) => entry.adminNav ?? [])
+    .filter((item) => item.count !== undefined)
+  const counts = await Promise.all(
+    entries.map(async (item) => {
+      try {
+        return [item.to, (await item.count?.()) ?? 0] as const
+      } catch {
+        return [item.to, 0] as const
+      }
+    }),
+  )
+  return Object.fromEntries(counts.filter(([, count]) => count > 0))
+}

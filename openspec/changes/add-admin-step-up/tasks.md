@@ -32,9 +32,9 @@
 
 ## 4. 界面（Worker D，依赖 0.1 设计稿确认与第 2、3 组合并）
 
-- [ ] 4.1 按已确认设计稿实现 `StepUpDialog` 与 `useStepUpCall`（`STEP_UP_REQUIRED` 时弹窗，通过后用原参数重试一次，取消时返回取消状态）；后台顶部验证剩余时间与救援警示条；文案进 `apps/web/messages/<locale>/admin-step-up.json`。组件测试覆盖：重试使用同一参数、取消后表单内容保留、各方式表单。验收：组件测试与 `pnpm check`（含 UI 规范检查）〔本地〕
-- [ ] 4.2 后台所有写操作调用点改用 `useStepUpCall`（用户封禁 / 模拟登录、积分调整、退款审核与手动退款、回调重放、设置与运营设置、模型保存、套餐模型、令牌创建）。完成后打开 `STEP_UP_ENFORCED`（`apps/web/src/features/admin/step-up/check.ts` 改为 true）并移除该开关与 `overrideStepUpEnforcedForTesting`，守卫测试改为直接覆盖。Playwright：填写部分退款金额 → 弹窗验证（邮箱验证码从本地邮件捕获取得）→ 自动提交且金额正确。验收〔本地〕
-- [ ] 4.3 确认页 `/admin/confirm/$id` 与待确认列表 `/admin/confirmations`（DataTable + `features/admin/list.ts`）、导航计数；覆盖设计稿全部状态（待确认、执行中、完成、失败、拒绝、过期、非发起人、不存在）。Playwright：MCP 客户端发起积分调整 → 打开链接 → 验证 → 确认 → 余额变化且 `confirmations.get` 为 done。验收〔本地〕
+- [x] 4.1 按已确认设计稿实现 `StepUpDialog` 与 `useStepUpCall`（`STEP_UP_REQUIRED` 时弹窗，通过后用原参数重试一次，取消时返回取消状态）；后台顶部验证剩余时间与救援警示条；文案进 `apps/web/messages/<locale>/admin-step-up.json`。组件测试覆盖：重试使用同一参数、取消后表单内容保留、各方式表单。验收：组件测试与 `pnpm check`（含 UI 规范检查）〔本地〕
+- [x] 4.2 后台所有写操作调用点改用 `useStepUpCall`（用户封禁 / 模拟登录、积分调整、退款审核与手动退款、回调重放、设置与运营设置、模型保存、套餐模型、令牌创建）。完成后打开 `STEP_UP_ENFORCED`（`apps/web/src/features/admin/step-up/check.ts` 改为 true）并移除该开关与 `overrideStepUpEnforcedForTesting`，守卫测试改为直接覆盖。Playwright：填写部分退款金额 → 弹窗验证（邮箱验证码从本地邮件捕获取得）→ 自动提交且金额正确。验收〔本地〕
+- [x] 4.3 确认页 `/admin/confirm/$id` 与待确认列表 `/admin/confirmations`（DataTable + `features/admin/list.ts`）、导航计数；覆盖设计稿全部状态（待确认、执行中、完成、失败、拒绝、过期、非发起人、不存在）。Playwright：MCP 客户端发起积分调整 → 打开链接 → 验证 → 确认 → 余额变化且 `confirmations.get` 为 done。验收〔本地〕
 
 ## 5. 本地整体验收（协调者或 Worker D）
 

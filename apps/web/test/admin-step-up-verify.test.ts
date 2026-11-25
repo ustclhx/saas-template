@@ -31,7 +31,6 @@ vi.mock('../src/features/admin/admin.functions.ts', () => ({ adminMiddleware: {}
 vi.mock('../src/server/runtime.ts', () => ({ getWebRuntime: () => runtimeRef.current }))
 
 import { type AdminActionContext, runAdminAction } from '../src/features/admin/action.ts'
-import { overrideStepUpEnforcedForTesting } from '../src/features/admin/step-up/check.ts'
 import {
   getStepUpStatus,
   sendStepUpCode,
@@ -124,7 +123,6 @@ const call = <T>(fn: unknown, context: AdminActionContext, data?: unknown) =>
   (fn as Fn)({ context, data }) as Promise<T>
 
 interface Status {
-  enforced: boolean
   verified: { method: string; expiresAt: string } | null
   methods: string[]
   rescueMode: boolean
@@ -144,7 +142,6 @@ beforeAll(() => {
 })
 
 afterAll(async () => {
-  overrideStepUpEnforcedForTesting(undefined)
   const users = await db.$client<
     { id: string }[]
   >`select id from "user" where email like ${`%@${domain}`}`
@@ -172,7 +169,6 @@ describe('step-up server functions', () => {
     const admin = await signUpAdmin()
     const before = await call<Status>(getStepUpStatus, admin.context)
     expect(before).toMatchObject({
-      enforced: false,
       verified: null,
       methods: ['email_otp', 'password'],
       rescueMode: false,
@@ -232,26 +228,21 @@ describe('step-up server functions', () => {
 
   it('lists the available methods when a sensitive action is refused', async () => {
     runtimeRef.current = createRuntime()
-    overrideStepUpEnforcedForTesting(true)
-    try {
-      const admin = await signUpAdmin()
-      const error = await runAdminAction(admin.context, 'credits.adjust', async () => 'ran').catch(
-        (e: unknown) => e,
-      )
-      expect(error).toBeInstanceOf(AppError)
-      expect((error as AppError).toJSON()).toMatchObject({
-        error: { code: 'STEP_UP_REQUIRED', details: { methods: ['email_otp', 'password'] } },
-      })
-      // MCP 等无会话的调用没有可在此完成的方式
-      const noSession = await runAdminAction(
-        { ...admin.context, session: null },
-        'credits.adjust',
-        async () => 'ran',
-      ).catch((e: unknown) => e)
-      expect((noSession as AppError).publicDetails).toEqual({ methods: [] })
-    } finally {
-      overrideStepUpEnforcedForTesting(undefined)
-    }
+    const admin = await signUpAdmin()
+    const error = await runAdminAction(admin.context, 'credits.adjust', async () => 'ran').catch(
+      (e: unknown) => e,
+    )
+    expect(error).toBeInstanceOf(AppError)
+    expect((error as AppError).toJSON()).toMatchObject({
+      error: { code: 'STEP_UP_REQUIRED', details: { methods: ['email_otp', 'password'] } },
+    })
+    // MCP 等无会话的调用没有可在此完成的方式
+    const noSession = await runAdminAction(
+      { ...admin.context, session: null },
+      'credits.adjust',
+      async () => 'ran',
+    ).catch((e: unknown) => e)
+    expect((noSession as AppError).publicDetails).toEqual({ methods: [] })
   })
 })
 

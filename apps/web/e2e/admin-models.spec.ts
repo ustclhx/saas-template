@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { expect, type Route, test } from '@playwright/test'
-import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
+import { fixtureDb, grantStepUp, register, simulateClientIp } from './fixtures.ts'
 import { chooseOption } from './select.ts'
 import { stubTurnstile } from './turnstile.ts'
 
@@ -20,6 +20,7 @@ test('platform admin can create, edit, disable and enable a model', async ({ pag
     const [account] = await sql`select id from "user" where email=${email}`
     if (!account) throw new Error('Missing account fixture')
     await sql`update "user" set role='admin' where id=${account.id}`
+    await grantStepUp(sql, account.id)
 
     await page.goto('/admin/models')
     await expect(page.getByRole('heading', { name: 'AI models' })).toBeVisible()

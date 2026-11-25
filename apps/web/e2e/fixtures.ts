@@ -130,6 +130,34 @@ export async function emailLink(email: string, type = 'verify-email') {
   return link
 }
 
+/**
+ * Marks every current session of an admin as re-verified (admin_step_up), for specs that exercise
+ * sensitive admin actions but not the step-up dialog itself (admin-step-up.spec.ts covers that).
+ */
+export async function grantStepUp(sql: Database['$client'], userId: string) {
+  await sql`insert into admin_step_up (session_id, user_id, method, verified_at, expires_at)
+    select id, user_id, 'password', now(), now() + interval '60 minutes' from session where user_id=${userId}
+    on conflict (session_id) do update set verified_at=excluded.verified_at, expires_at=excluded.expires_at`
+}
+
+/** Admin step-up email code from the local-development email logger. */
+export async function stepUpCode(email: string, after = 0) {
+  let code = ''
+  await expect
+    .poll(() => {
+      const message = authEmails()
+        .slice(after)
+        .findLast((entry) => entry.includes(email) && entry.includes('admin-step-up-code'))
+      code = message?.match(/otp: ['"](\d{6})['"]/)?.[1] ?? ''
+      return code
+    })
+    .not.toBe('')
+  return code
+}
+
+/** Number of logged auth emails so far; pass to stepUpCode to ignore earlier codes. */
+export const authEmailCount = () => authEmails().length
+
 export async function emailCode(email: string) {
   let code = ''
   await expect

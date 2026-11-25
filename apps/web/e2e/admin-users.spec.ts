@@ -3,7 +3,7 @@ import { expect, type Page, test } from '@playwright/test'
 import { capture, grant, hold } from '@saas/credits'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import { actionDb, actor } from './billing-actions-helper.ts'
-import { fixtureDb, register, simulateClientIp } from './fixtures.ts'
+import { fixtureDb, grantStepUp, register, simulateClientIp } from './fixtures.ts'
 import { chooseOption } from './select.ts'
 import { stubTurnstile } from './turnstile.ts'
 
@@ -40,6 +40,7 @@ async function makeAdmin(page: Page) {
   const sql = fixtureDb()
   try {
     await sql`update "user" set role='admin' where id=${identity.userId}`
+    await grantStepUp(sql, identity.userId)
   } finally {
     await sql.end()
   }
