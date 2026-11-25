@@ -76,8 +76,9 @@ CLI 参数，键排序、列表去重保序，不包含输出目录）和 `migra
 有未提交改动时也标记 `clean=false`，这种来源不能作为可信同步基准。
 用已生成副本再次生成时，会重新记录当前源状态，不继承旧记录。
 同一源与参数的生成文件列表、内容和权限保持一致；普通文件为 0644、可执行文件和目录为 0755。
-Hyperdrive / KV 的部署 ID 重置为互不相同的占位值，AI Gateway / R2 账号标识清空，所有环境都需配置新资源；
-Rate Limiting 的 RL_AUTH / RL_AI / RL_API / RL_SHARE_CARD 命名空间需独立分配。Queue 名会同步到 jobs 消费者与测试。
+Hyperdrive / KV 的部署 ID 使用可识别的占位值，AI Gateway / R2 账号标识保持为空，由部署资源解析补齐。
+生成器根据项目名分配限流号段，在 web 与 jobs 的顶层、staging 和 production 配置中为每个限流绑定分配不同的 ID。
+Queue 名会同步到 jobs 消费者与测试。
 FILES 桶按项目改名，R2_FILES_BUCKET 与绑定保持一致；文本模式也保留文件清理 Cron 所需的 FILES 桶。
 清单按 AI、支付、OAuth 与 Turnstile 开关列出资源与密钥，并按启用的插件列出所需绑定与密钥。
 生成器按插件清单移除未启用插件在 Wrangler 顶层、staging 与 production 的绑定。
@@ -85,14 +86,6 @@ FILES 桶按项目改名，R2_FILES_BUCKET 与绑定保持一致；文本模式�
 关闭 `media` 时会移除它声明的 Workflow 和 Workers AI 绑定，清单也省略媒体服务商与媒体 R2 S3 密钥。
 所有插件源码都随副本保留。日后启停插件时，更新 `template.config.ts` 的 `plugins` 键和部署绑定，再重新构建。
 密钥模板只包含空值，APP_URL 使用公开默认地址，来自固定的变量名清单；脚本不读取本地真值生成模板。
-
-PROJECT_SETUP.md 分别列出 Worker 配置与 GitHub staging environment secrets。
-SENTRY_DSN 需要分别写入 web / jobs，SENTRY_ENVIRONMENT 设为 staging、production 或临时验收专用 smoke；
-CI 的 SENTRY_AUTH_TOKEN / SENTRY_ORG / SENTRY_PROJECT 仅用于 source map 上传。
-APP_VERSION 与 Sentry release 使用同一个完整提交 SHA，CI 已负责注入；手动部署参考
-[Sentry runbook](runbooks/sentry.md)。线上 secrets 需要通过 Wrangler 分别写入两个 Worker，
-本地 .dev.vars 不会随部署上传。将 .github/workflows/deploy-staging.yml 中的 STAGING_URL
-占位地址改为新环境实际可访问的 URL，并核对 staging APP_URL、邮件发件配置与数据库迁移凭据。
 
 selfhost 副本复用 `deploy/selfhost/compose.yaml`、配置示例及仓库已有发布/运维材料。
 `--image-namespace` 为不含标签的 OCI namespace，默认 `ghcr.io/configure-owner/<项目名称>`，
@@ -136,7 +129,8 @@ backups/backup-data/、releases/release-state/、state/.state/ 等运行目录�
 完整副本验证使用 `pnpm test:create-project:verify`，需要已合并的 `media` 和 `agents` 插件。
 矩阵覆盖 Cloudflare 显式选择 `--plugins agents`（保留默认 AI 开关）、Cloudflare 仅关闭计费（自动关闭 AI 与两个插件，保留积分）、selfhost 默认，以及从默认 selfhost 副本
 再次生成的全关组合（计费、积分、营销、i18n、AI 与插件）。四个副本逐文件检查模板原名称与排除目录，
-安装依赖并运行 check、typecheck、单元测试和各自部署目标的构建。Cloudflare 关闭计费的副本验证
+安装依赖并运行 check、typecheck、单元测试和各自部署目标的构建。两个 Cloudflare 副本验证无凭据的 staging plan
+报告缺凭据并退出 1，已跟踪文件无变化。Cloudflare 关闭计费的副本验证
 web 的 `agents` Durable Object 绑定与迁移条目已移除。全关 selfhost 副本还运行 Cloudflare web 构建，
 两个关闭 AI 的副本都检查构建产物中已移除媒体和 `agents` 的执行代码。selfhost 默认副本也检查 Node 产物已排除 `agents`。矩阵还验证 `--target selfhost --plugins agents` 被拒绝。验收结束后清理临时目录。
 独立只读 `selfhost-features.yml` 从真实源生成全关副本、构建镜像并在空卷 Compose 启动，
@@ -168,8 +162,50 @@ AI 关闭且积分模块可按需保留。仅清空支付 Provider 列表时 bil
 `BOOTSTRAP_ADMIN_EMAILS` 不放在 wrangler vars 中；现有部署流水线只部署 Worker，
 不写入或替换此 secret。staging 配置与部署验收由协调者合并后执行。
 
-Neon staging 使用 TLS 直连与两个 Hyperdrive，不需要 Tunnel / Workers VPC 或自建库备份；
-实际部署顺序为迁移 → seed → jobs → web，再登录后台创建模型及配置套餐模型权限。
+## Cloudflare 部署
+
+1. 在项目根目录先运行只读计划。将目标账号的 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID` 提供给当前进程。
+
+   ```sh
+   pnpm deploy:resources --env staging
+   ```
+
+   plan 列出各绑定的来源、期望名称与缺项。KV 按 Worker 的项目名前缀和环境后缀命名，例如 `acme-cache-staging`；
+   R2 桶和队列（含死信队列）沿用配置中的名称。同一账号下每个项目使用不同前缀，确认按名称找到的资源归属后再部署。
+   全部资源就绪时 plan 写出两份 Git 忽略的 `apps/*/wrangler.deploy.json`。缺凭据或缺资源时退出 1。
+
+2. 按 `PROJECT_SETUP.md` 准备 plan 列出的两个 Hyperdrive 配置，使用数据库 app 账号连接串，分别关闭和开启缓存。
+   Neon staging 使用 TLS 直连。可按计划中的名称在控制台创建，或由维护者在本地提供 `HYPERDRIVE_APP_URL`，
+   使用有 `Hyperdrive Write` 及下列资源写权限的令牌运行 `pnpm deploy:resources --env staging --apply --create-hyperdrive`。
+   此命令也会创建缺失的 KV、R2 桶和队列。
+   在各环境填写 `APP_URL`、自定义域名的 `routes`，以及所选功能需要的 `TURNSTILE_SITE_KEY` 和 `AI_GATEWAY_ID`。
+   [Hyperdrive](https://developers.cloudflare.com/hyperdrive/get-started/) ·
+   [Hyperdrive 创建权限](https://developers.cloudflare.com/api/resources/hyperdrive/subresources/configs/methods/create/) ·
+   [自定义域名](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/) ·
+   [Turnstile](https://developers.cloudflare.com/turnstile/get-started/) ·
+   [AI Gateway](https://developers.cloudflare.com/ai-gateway/get-started/)（2026-11-26 核对）
+
+3. 在 GitHub `staging` environment 配置项目的部署和迁移凭据。需要自动创建资源时，解析使用的令牌需有
+   `Workers KV Storage Write`、`Workers R2 Storage Write`、`Queues Write` 和 `Hyperdrive Read`。
+   设置 `.github/workflows/deploy-staging.yml` 的 `STAGING_URL`，并核对 staging 的 `APP_URL`。
+   按 `PROJECT_SETUP.md` 分别配置 web 和 jobs 的 Worker secrets、`SENTRY_DSN` 与发件设置。
+   CI 将完整提交 SHA 用于 `APP_VERSION` 和 Sentry release，Sentry 上传凭据仅用于 source map。 [Sentry runbook](runbooks/sentry.md)
+   [KV 创建权限](https://developers.cloudflare.com/api/resources/kv/subresources/namespaces/methods/create/) ·
+   [R2 创建权限](https://developers.cloudflare.com/api/resources/r2/subresources/buckets/methods/create/) ·
+   [Queues 创建权限](https://developers.cloudflare.com/api/resources/queues/methods/create/) ·
+   [Hyperdrive 读取权限](https://developers.cloudflare.com/api/resources/hyperdrive/subresources/configs/methods/list/)（2026-11-26 核对）
+
+4. 保留 `wrangler.jsonc` 的占位 ID，由 staging 流水线在迁移前运行 `pnpm deploy:resources --env staging --apply`，
+   创建 plan 中仍缺的 KV、R2 桶和队列。资源解析通过后应用迁移并发布 jobs、web。
+   首次部署的数据库迁移完成后，按启用功能运行 seed 并配置后台模型授权。
+
+production 流水线在构建前用只读资源权限执行 `pnpm deploy:resources --env production`。
+如需补齐生产资源，由维护者在本地核对计划后运行 `pnpm deploy:resources --env production --apply --allow-production`。
+完整流程见 [基础设施文档](07-infrastructure.md) §5。
+
+限流 ID 使用 `10000–999999` 中以项目名哈希选出的连续 100 个整数。
+同一 Cloudflare 账号内的项目仍可能选中同一号段。部署前可按 `PROJECT_SETUP.md` 登记并核对各项目的号段。
+[Cloudflare Rate Limiting](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)（2026-11-26 核对）
 
 上线前按 [成本基线](runbooks/production-neon.md#4-项目设置与预算) 配置：Neon 0.25–1 CU、production reduced Cron、扫描路径 WAF 规则，且不做高频健康轮询。
 

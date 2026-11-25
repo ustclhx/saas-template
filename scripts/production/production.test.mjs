@@ -34,6 +34,7 @@ test('production drift, staging reuse and forbidden vars are reported', () => {
   const config = wrangler('web')
   const production = config.env.production
   production.kv_namespaces = []
+  config.env.staging.hyperdrive[0].id = 'f'.repeat(32)
   production.hyperdrive[0].id = config.env.staging.hyperdrive[0].id
   production.queues.producers[0].queue = 'email-staging'
   production.vars.PAYMENT_MODE = 'live'
@@ -53,6 +54,7 @@ test('generator placeholder ids shared by staging and production are not staging
   config.env.production.kv_namespaces[0].id = placeholder
   assert.deepEqual(checkEnvs('web', config), [])
   // 真实 ID 复用仍然报告
+  config.env.staging.hyperdrive[0].id = 'f'.repeat(32)
   config.env.production.hyperdrive[0].id = config.env.staging.hyperdrive[0].id
   assert.ok(checkEnvs('web', config).some((line) => line.includes('reuses staging resource id')))
 })

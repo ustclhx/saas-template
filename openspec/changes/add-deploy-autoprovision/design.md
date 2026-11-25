@@ -177,6 +177,17 @@ KV 与 Hyperdrive 按「环境 + 绑定名」合并解析：同一环境里 web 
   模板自身沿用 1001–1015 不变。
 - **账号 ID vars**：`R2_ACCOUNT_ID`、`AI_GATEWAY_ACCOUNT_ID` 为空时，用 `CLOUDFLARE_ACCOUNT_ID` 补齐，已有值不覆盖。`AI_GATEWAY_ID`、`TURNSTILE_SITE_KEY`、`routes` 与 `APP_URL` 仍由项目填写，plan 中把空值列为缺项。
 
+W3 文档复核（2026-11-26）：Cloudflare 将限流命名空间定义为账号内由开发者分配的整数，同一命名空间可在 Worker 间共享。
+生成器取项目名 SHA-256 的前四字节，将其映射到 9,900 个连续 100 号的区段之一。
+同日复核了上表 KV、R2、Queues 与 Hyperdrive API 的列出和创建权限，以及构建期选择 Cloudflare 环境的方式。
+需项目配置的外部资源按各自官方指南核对。
+[限流绑定](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) ·
+[Hyperdrive](https://developers.cloudflare.com/hyperdrive/get-started/) ·
+[自定义域名](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/) ·
+[Turnstile](https://developers.cloudflare.com/turnstile/get-started/) ·
+[AI Gateway](https://developers.cloudflare.com/ai-gateway/get-started/) ·
+[Vite 插件环境配置](https://developers.cloudflare.com/workers/vite-plugin/reference/cloudflare-environments/)。
+
 ### 8. 流水线位置与生产默认不创建
 
 - staging：在 release-policy 检查与 `pnpm install` 之后、迁移之前，运行 `deploy:resources --env staging --apply`。

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { constants, existsSync } from 'node:fs'
 import {
   access,
@@ -16,6 +17,7 @@ import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } fr
 import { createInterface } from 'node:readline/promises'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
+import { isPlaceholderId } from './deploy/resources-lib.mjs'
 import { loadProjectPlugins, prunePluginBindings } from './plugins/project-plugins.mjs'
 import { configCall, staticCollection } from './plugins/static-config.mjs'
 import { parseJsonc } from './production/check-wrangler-envs.mjs'
@@ -24,6 +26,7 @@ import { projectOwnedPaths } from './template-sync/merge.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const wranglerResourceId = /("id"\s*:\s*")([a-f0-9]{32})"/g
+const rateLimitBlockSize = 100
 const featureNames = ['publicApi', 'blog', 'docs', 'waitlist', 'newsletter', 'guides']
 const aiNames = ['text', 'image', 'video']
 const mediaProviderNames = ['fal', 'workers-ai']
@@ -85,6 +88,9 @@ const templateOnly = new Set([
   'scripts/selfhost-features-routes.mjs',
   'scripts/create-project.test.mjs',
   'scripts/create-project.verify.test.mjs',
+  // 这两份验收引用模板自己的 Worker 名称和已固定的 ID。
+  'scripts/deploy/resources-lib.test.mjs',
+  'scripts/deploy/resources.test.mjs',
   'scripts/template-base.test.mjs',
   'scripts/template-sync.test.mjs',
   'scripts/template-sync/infer.test.mjs',
@@ -165,6 +171,7 @@ function omit(path) {
   return (
     parts.some((part) => excluded.has(part)) ||
     path === '.template-base.json' ||
+    /^apps\/(?:web|jobs)\/wrangler\.deploy\.json$/.test(path) ||
     templateOnly.has(path) ||
     templateOnlyDirectories.some(
       (directory) => path === directory || path.startsWith(`${directory}/`),
@@ -519,6 +526,39 @@ function stagingUrl(options) {
   return `https://staging.${new URL(options.url).hostname}`
 }
 
+function rateLimitBlockStart(name) {
+  const hash = createHash('sha256').update(name).digest().readUInt32BE()
+  return 10_000 + (hash % 9_900) * rateLimitBlockSize
+}
+
+function assignRateLimitIds(source, nextId) {
+  const edits = []
+  const members = staticCollection(source).members
+  const env = members.find(({ key }) => key === 'env')
+  const scopes = [
+    members,
+    ...(env
+      ? staticCollection(source, env.valueStart).members.map(
+          ({ valueStart }) => staticCollection(source, valueStart).members,
+        )
+      : []),
+  ]
+  for (const scope of scopes) {
+    const limits = scope.find(({ key }) => key === 'ratelimits')
+    if (!limits) continue
+    for (const { valueStart } of staticCollection(source, limits.valueStart).members) {
+      const id = staticCollection(source, valueStart).members.find(
+        ({ key }) => key === 'namespace_id',
+      )
+      if (id) edits.push({ start: id.valueStart, end: id.end, value: JSON.stringify(nextId()) })
+    }
+  }
+  for (const { start, end, value } of edits.sort((a, b) => b.start - a.start)) {
+    source = source.slice(0, start) + value + source.slice(end)
+  }
+  return source
+}
+
 // 仅在配置语义位置改 Worker / Queue 名；资源 ID 清空，避免新项目复用模板的 staging / production。
 function wranglerConfig(source, options, app) {
   let result = source
@@ -698,6 +738,12 @@ export function setupChecklist(options) {
 }
 
 function cloudflareChecklist(options) {
+  const automaticResources = [
+    `KV：按绑定名查找或创建，例如 \`CACHE\` 对应 \`${options.name}-cache-staging\``,
+    `R2：查找或创建 \`FILES\` 绑定的私有桶，例如 \`${options.name}-files-staging\``,
+    'Queues：按配置名称查找或创建邮件、事件与死信队列',
+    'R2_ACCOUNT_ID 与 AI_GATEWAY_ACCOUNT_ID 为空时由 CLOUDFLARE_ACCOUNT_ID 补齐',
+  ]
   const resources = [
     'Postgres（app / migrator / readonly 账号；Neon TLS 直连或自建库的 Tunnel / Workers VPC）',
     ...(options.billingEnabled
@@ -706,12 +752,9 @@ function cloudflareChecklist(options) {
         ]
       : []),
     `Workers：${options.name}-web、${options.name}-jobs（staging 使用 -staging 后缀）`,
-    'Hyperdrive：HYPERDRIVE（关缓存）/ HYPERDRIVE_CACHED（开缓存），替换所有环境的 id',
-    'KV：CACHE，替换所有环境的 id；Rate Limiting：RL_AUTH / RL_AI / RL_API / RL_SHARE_CARD，分配独立 namespace_id',
-    `Queues：${options.name}-email、${options.name}-events（staging 使用 -staging 后缀）`,
+    'Hyperdrive：提供数据库 app 账号连接串，为 HYPERDRIVE（关缓存）和 HYPERDRIVE_CACHED（开缓存）准备计划列出的配置',
     'Resend：验证发件域名；本地 EMAIL_TRANSPORT=log 不需要凭据',
-    '域名 / DNS 与 Cloudflare 部署账号；CI 的 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID',
-    `R2：FILES 私有桶 ${options.name}-files（staging 使用 -staging 后缀）；文本模式也保留文件清理 Cron 所需绑定`,
+    '域名 / DNS 与 Cloudflare 部署账号。核对 APP_URL、routes 和 CI 的 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID',
     'Sentry：为 web / jobs 配置 DSN；CI 上传 source map 并使用部署提交 SHA 作为 release',
   ]
   if (options.analytics === 'plausible') resources.push(...plausibleChecklist(options))
@@ -739,7 +782,7 @@ function cloudflareChecklist(options) {
     secrets.push(`${provider.toUpperCase()}_CLIENT_ID`, `${provider.toUpperCase()}_CLIENT_SECRET`)
   }
   if (options.turnstile) {
-    resources.push('Turnstile 站点')
+    resources.push('Turnstile 站点与 TURNSTILE_SITE_KEY')
     secrets.push('TURNSTILE_SECRET_KEY')
     vars.push('TURNSTILE_SITE_KEY')
   }
@@ -754,7 +797,7 @@ function cloudflareChecklist(options) {
   if (options.ai.includes('text')) {
     // 服务商密钥默认存于 AI Gateway BYOK；放 Worker 的 OPENAI/ANTHROPIC/GOOGLE/DEEPSEEK_API_KEY 为可选。
     resources.push(
-      'AI Gateway（开启鉴权，在 Provider Keys 保存所用文本服务商的密钥）；后台登记模型与价格',
+      'AI Gateway 与 AI_GATEWAY_ID（开启鉴权，在 Provider Keys 保存所用文本服务商的密钥）；后台登记模型与价格',
     )
     secrets.push('AI_GATEWAY_TOKEN')
     vars.push('AI_GATEWAY_ACCOUNT_ID', 'AI_GATEWAY_ID')
@@ -771,7 +814,7 @@ function cloudflareChecklist(options) {
     }
     vars.push('R2_ACCOUNT_ID', 'R2_FILES_BUCKET')
   }
-  return { resources, secrets, vars, ciSecrets }
+  return { automaticResources, resources, secrets, vars, ciSecrets }
 }
 
 async function replacements(source, packageName, options, app) {
@@ -890,7 +933,7 @@ export async function postprocessProject(target, { source = root, reference = ta
     const numbered = text.replace(wranglerResourceId, (match, prefix, id) => {
       const placeholder = (resourceIndex++).toString(16).padStart(32, '0')
       // 兼容旧副本的全零 ID 与顺序编号。推断时要保留已配置的真实资源。
-      return /^0{24}/.test(id) ? `${prefix}${placeholder}"` : match
+      return isPlaceholderId(id) ? `${prefix}${placeholder}"` : match
     })
     if (numbered !== text) await writeFile(path, numbered)
   }
@@ -929,6 +972,8 @@ export async function createProject(input, source = root) {
   }
   const manifest = JSON.parse(await readFile(join(sourcePath, 'package.json'), 'utf8'))
   const replace = await replacements(sourcePath, manifest.name, options, appValues(config))
+  const blockStart = rateLimitBlockStart(options.name)
+  let nextNamespaceId = blockStart
   await mkdir(target)
   await chmod(target, 0o755)
   async function copy(folder = '') {
@@ -988,6 +1033,12 @@ export async function createProject(input, source = root) {
           if (path === 'template.config.ts') text = templateConfig(text, options)
           if (/^apps\/(web|jobs)\/wrangler.jsonc$/.test(path)) {
             text = wranglerConfig(text, options, path.split('/')[1])
+            // web 和 jobs 共用同一个号段，停用插件的绑定已移除。
+            text = assignRateLimitIds(text, () => {
+              if (nextNamespaceId === blockStart + rateLimitBlockSize)
+                throw new Error('项目限流绑定超出 100 个 namespace_id 的号段')
+              return String(nextNamespaceId++)
+            })
           }
           // 消费者与测试 fixture 使用同一组队列名，避免改 manifest 后消息全部进入未知队列分支。
           if (
@@ -1154,7 +1205,26 @@ export async function createProject(input, source = root) {
   for (const app of ['web', 'jobs']) {
     await writeGenerated(`apps/${app}/.dev.vars.example`, example)
   }
-  let report = `# ${options.name} 初始化清单\n\n## 基础设施与账号\n\n${checklist.resources.map((s) => `- [ ] ${s}`).join('\n')}\n\n## Worker Secrets\n\n${checklist.secrets.map((s) => (s === 'BOOTSTRAP_ADMIN_EMAILS' ? '- BOOTSTRAP_ADMIN_EMAILS（可选，仅 web：逗号分隔邮箱名单；已验证且未封禁才提升，空值禁用）' : `- ${s}`)).join('\n')}\n\n## 非敏感 Worker Vars\n\n${checklist.vars.map((s) => `- ${s}`).join('\n')}\n\n## GitHub staging environment Secrets（不写入 Worker）\n\n${checklist.ciSecrets.map((s) => `- ${s}`).join('\n')}\n\n所有部署资源 ID 为占位值，部署前逐项配置；参考 docs/07-infrastructure.md。\nAI Gateway / R2 账号标识已清空；配置所选功能使用的新资源。\n将 .github/workflows/deploy-staging.yml 的 STAGING_URL 占位值改为实际可访问的 staging URL，并核对该环境的 APP_URL。\nSENTRY_DSN 分别写入 web 与 jobs secrets；SENTRY_ENVIRONMENT 设为 staging、production 或临时验收专用 smoke。\nAPP_VERSION 使用同一个完整提交 SHA，CI 已负责注入并上传 source map；手动部署按 docs/runbooks/sentry.md 操作。\n复制 apps/web 与 apps/jobs 的 .dev.vars.example 后填写，本地密钥不提交；线上 secrets 需分别写入 Worker。\n自检只运行单元测试，集成测试需独立数据库与迁移配置；上线前另做 staging 验收。\n\n## 首次运行\n\n1. 迁移后运行 pnpm billing:seed，首次 free 的 models=[]。\n2. 为 web 配置可选 Worker secret BOOTSTRAP_ADMIN_EMAILS（本地填 apps/web/.dev.vars，逗号分隔、忽略大小写与两侧空白），名单内账号必须先验证邮箱且未封禁。\n3. 用名单账号登录；Google OAuth 返回已验证邮箱可直接提升，邮箱密码账号在账号设置验证后提升，已有账号重新登录也会检查。\n4. 在 /admin/models 创建模型，再到 /admin/billing/plans 为有效套餐（新用户通常为 free）多选模型 key 或 * 并保存；仅建模型或发积分仍不足以授权。\n5. models 在下一次请求生效；历史 key 会警告并保留，其他权益及价格不改。重跑 seed 保留已有 models，其他示例配置仍按 seed 更新。\n\n移除名单不会自动撤销既有管理员；需要撤权时先移除名单，再由运维显式修改数据库中的平台角色（当前后台不提供角色修改入口），否则下次登录会再次提升。\n线上通过 wrangler secret put BOOTSTRAP_ADMIN_EMAILS --env staging 在 web Worker 配置；本地 .dev.vars 不上传。部署流水线不写入或替换此 secret；不要在模板、PR 或日志中保存真实邮箱。\n`
+  const cloudflareResources = checklist.automaticResources
+    ? `## 基础设施与账号
+
+### 自动解析
+
+${checklist.automaticResources.map((item) => `- ${item}`).join('\n')}
+
+在项目根目录运行只读计划：
+
+    pnpm deploy:resources --env staging
+
+在当前进程环境提供 CLOUDFLARE_API_TOKEN 与 CLOUDFLARE_ACCOUNT_ID。plan 列出资源来源和缺项，资源齐全时生成部署配置。保留 wrangler.jsonc 中的占位 ID，staging 发布流水线会创建缺失的 KV、R2 桶和队列。
+
+生成器为本项目的限流绑定分配 ${blockStart}–${blockStart + rateLimitBlockSize - 1} 号段。同一 Cloudflare 账号部署多个项目时，核对号段是否重叠。
+
+### 需要提供
+
+${checklist.resources.map((item) => `- [ ] ${item}`).join('\n')}`
+    : ''
+  let report = `# ${options.name} 初始化清单\n\n${cloudflareResources}\n\n## Worker Secrets\n\n${checklist.secrets.map((s) => (s === 'BOOTSTRAP_ADMIN_EMAILS' ? '- BOOTSTRAP_ADMIN_EMAILS（可选，仅 web：逗号分隔邮箱名单；已验证且未封禁才提升，空值禁用）' : `- ${s}`)).join('\n')}\n\n## 非敏感 Worker Vars\n\n${checklist.vars.map((s) => `- ${s}`).join('\n')}\n\n## GitHub staging environment Secrets（不写入 Worker）\n\n${checklist.ciSecrets.map((s) => `- ${s}`).join('\n')}\n\n部署资源与令牌权限见 docs/create-project.md 的 Cloudflare 部署章节。\n将 .github/workflows/deploy-staging.yml 的 STAGING_URL 占位值改为实际可访问的 staging URL，并核对该环境的 APP_URL。\nSENTRY_DSN 分别写入 web 与 jobs secrets；SENTRY_ENVIRONMENT 设为 staging、production 或临时验收专用 smoke。\nAPP_VERSION 使用同一个完整提交 SHA，CI 已负责注入并上传 source map；手动部署按 docs/runbooks/sentry.md 操作。\n复制 apps/web 与 apps/jobs 的 .dev.vars.example 后填写，本地密钥不提交；线上 secrets 需分别写入 Worker。\n自检只运行单元测试，集成测试需独立数据库与迁移配置；上线前另做 staging 验收。\n\n## 首次运行\n\n1. 迁移后运行 pnpm billing:seed，首次 free 的 models=[]。\n2. 为 web 配置可选 Worker secret BOOTSTRAP_ADMIN_EMAILS（本地填 apps/web/.dev.vars，逗号分隔、忽略大小写与两侧空白），名单内账号必须先验证邮箱且未封禁。\n3. 用名单账号登录；Google OAuth 返回已验证邮箱可直接提升，邮箱密码账号在账号设置验证后提升，已有账号重新登录也会检查。\n4. 在 /admin/models 创建模型，再到 /admin/billing/plans 为有效套餐（新用户通常为 free）多选模型 key 或 * 并保存；仅建模型或发积分仍不足以授权。\n5. models 在下一次请求生效；历史 key 会警告并保留，其他权益及价格不改。重跑 seed 保留已有 models，其他示例配置仍按 seed 更新。\n\n移除名单不会自动撤销既有管理员；需要撤权时先移除名单，再由运维显式修改数据库中的平台角色（当前后台不提供角色修改入口），否则下次登录会再次提升。\n线上通过 wrangler secret put BOOTSTRAP_ADMIN_EMAILS --env staging 在 web Worker 配置；本地 .dev.vars 不上传。部署流水线不写入或替换此 secret；不要在模板、PR 或日志中保存真实邮箱。\n`
   if (!options.billingEnabled) {
     report = report
       .replace(
