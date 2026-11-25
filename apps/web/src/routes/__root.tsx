@@ -5,10 +5,10 @@ import { getAnnouncement } from '../features/admin/settings-announcement.functio
 import { AnnouncementBanner } from '../features/admin/settings-announcement-banner.tsx'
 import { ProductAnalytics } from '../features/analytics/analytics.tsx'
 import { analyticsHeadScripts } from '../features/analytics/head.ts'
+import { RootError, RootNotFound } from '../features/app-shell/root-fallbacks.project.tsx'
 import { isAppAreaPath } from '../features/i18n/app-area.ts'
 import { LanguageAssist } from '../features/i18n/language-assist.tsx'
 import { LanguageControls } from '../features/i18n/language-controls.tsx'
-import { ErrorPage } from '../features/marketing/not-found.tsx'
 import { privateMeta } from '../features/seo/metadata.ts'
 import {
   getPlausibleSite,
@@ -58,6 +58,8 @@ export const Route = createRootRoute({
     ],
   }),
   component: RootComponent,
+  // 404 与错误界面由项目自有的 root-fallbacks.project.tsx 提供，template-sync 更新本文件时不替换项目组件
+  notFoundComponent: RootNotFound,
   errorComponent: RootErrorComponent,
 })
 
@@ -73,7 +75,7 @@ function RootErrorComponent() {
   })
   return (
     <RootDocument floatingControls htmlAttributes={htmlAttributes ?? {}}>
-      <ErrorPage />
+      <RootError />
     </RootDocument>
   )
 }

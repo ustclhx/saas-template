@@ -73,6 +73,37 @@ saas-template/
 
 平台能力的具体 API、CF 装配和 B 交接见 [平台能力与交接](platform-capabilities.md)。
 
+### 项目自有扩展文件
+
+模板只创建一次的文件（文件名多带 `.project.`）属于衍生项目：模板之后不再修改（`scripts/template-release.mjs`
+的 `projectOwnedFiles` 检查），生成器与 template-sync 都不覆盖项目已有的版本（`scripts/template-sync/merge.mjs`
+的 `projectOwnedPaths`）。项目在这些文件里接管模板行为，template-sync 更新引用它们的模板文件时不会产生冲突。
+各领域的文件见对应文档（分享卡片、设计规范、SEO 内链、运行时设置、功能模型等），请求入口与兜底页面相关的两个如下。
+
+**项目闸门** `apps/web/src/server/project-gate.ts`：Cloudflare Worker 入口（`server.ts`）对每个请求先调用
+`gateProjectRequest(request, { env, envValid })`，再查预渲染静态资源，最后才是环境校验结果、插件前置处理、
+公开 API / 后台 / 语言闸门与 TanStack Start。环境校验失败时同样先调用它。返回值：
+
+| 返回 | 行为 |
+|---|---|
+| `Response` | 直接返回，不再查静态资源与运行时；按静态响应补安全头（HTML 按内联脚本哈希补 CSP）与请求 ID |
+| `Request` | 只用于查找静态资源的改写请求（如多站点按 Host 把 `/about` 改为 `/sites/b/about`）；未命中时动态流程仍用原始请求 |
+| `undefined` | 不处理，沿用模板流程（默认实现） |
+
+适合放必须早于静态页生效的规则：多站点按 Host 选预渲染目录、不属于本站的语言前缀返回 404、默认语言前缀 301
+到无前缀、站点专属 favicon。钩子运行在环境校验与运行时之前，只能使用 `env` 中的静态绑定（如 `ASSETS`），
+不能查库或读会话。插件的 `worker.fetch` 晚于静态资源，不能承担这类规则。
+
+同一文件导出 `staticFirst`（默认 `true`）：命中的预渲染静态资源先于环境校验返回，配置故障时公开页仍可访问
+（`public-site-availability`）。改为 `false` 时沿用 0.9.0 及以前的行为：环境校验失败时所有请求（含静态页）返回 500，
+校验通过后静态资源仍先于 TanStack Start 返回。两种取值下钩子都先执行。Node 自托管入口不经过该钩子。
+
+**根 404 与错误界面** `apps/web/src/features/app-shell/root-fallbacks.project.tsx`：导出 `RootNotFound` 与
+`RootError`，默认是模板的 `NotFoundPage` / `ErrorPage`（`features/marketing/not-found.tsx`）。根路由
+（`routes/__root.tsx` 的 `notFoundComponent`、`errorComponent`）与路由器默认的 `defaultNotFoundComponent`、
+`defaultErrorComponent`（`router.tsx`）都从这里取，分享页等未自带错误界面的路由同样使用。项目换成品牌页面时只改
+这两个导出，不改 `__root.tsx`。错误界面不显示错误详情，并给出回到站内的链接。
+
 ## 2. 为什么拆 `apps/jobs`
 
 - Workflow 类必须由某个 Worker 导出；与 TanStack Start 的入口混在一起会增加耦合。已实测：web 经 `script_name` 绑定 jobs 中定义的 Workflow，创建实例、查询状态、`sendEvent` 均可用（Phase 0 任务 4.5、7.2）。

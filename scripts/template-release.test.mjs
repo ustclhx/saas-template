@@ -422,6 +422,16 @@ for (const [file, initial, modifiedContent] of [
     'export const featureModels = {}\n',
     "export const featureModels = { reports: { kind: 'text' } }\n",
   ],
+  [
+    'apps/web/src/server/project-gate.ts',
+    'export const staticFirst = true\n',
+    'export const staticFirst = false\n',
+  ],
+  [
+    'apps/web/src/features/app-shell/root-fallbacks.project.tsx',
+    "export { ErrorPage as RootError } from '../marketing/not-found.tsx'\n",
+    "export { BrandError as RootError } from '../brand/error.tsx'\n",
+  ],
 ]) {
   test(`check accepts ${file} left as created inside the release`, (t) => {
     const { cwd } = repo(t)

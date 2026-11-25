@@ -4,5 +4,11 @@
     "types": ["node", "vite/client"]
   },
   "include": ["src"],
-  "exclude": ["src/env.d.ts", "src/server.ts", "src/server/cloudflare", "src/plugins.worker.gen.ts"]
+  "exclude": [
+    "src/env.d.ts",
+    "src/server.ts",
+    "src/server/cloudflare",
+    "src/server/project-gate.ts",
+    "src/plugins.worker.gen.ts"
+  ]
 }

@@ -102,6 +102,15 @@ const projectOwnedFiles = [
     path: 'packages/ai/src/feature-models.project.ts',
     guidance: 'put template feature model changes outside the project-owned extension',
   },
+  {
+    path: 'apps/web/src/server/project-gate.ts',
+    guidance: 'put template request handling in apps/web/src/server/cloudflare/assets.ts',
+  },
+  {
+    path: 'apps/web/src/features/app-shell/root-fallbacks.project.tsx',
+    guidance:
+      'put template 404 and error page changes in apps/web/src/features/marketing/not-found.tsx',
+  },
 ]
 
 function git(cwd, ...args) {

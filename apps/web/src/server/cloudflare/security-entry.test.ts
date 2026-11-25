@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   checkEnv: vi.fn(),
   start: vi.fn(),
   capture: vi.fn(),
+  projectGate: vi.fn(),
   meta: { requestId: 'server-generated-request-id', clientIp: '198.51.100.1' },
 }))
 vi.mock('@tanstack/react-start/server', () => ({
@@ -13,6 +14,7 @@ vi.mock('@tanstack/react-start/server', () => ({
 }))
 vi.mock('@saas/platform/cloudflare', () => ({ createCloudflareRequestMetadata: () => mocks.meta }))
 vi.mock('../../server/cloudflare/env.ts', () => ({ checkEnv: mocks.checkEnv }))
+vi.mock('../project-gate.ts', () => ({ staticFirst: true, gateProjectRequest: mocks.projectGate }))
 vi.mock('../../server/cloudflare/sentry.ts', () => ({
   instrumentWeb: (handler: unknown) => handler,
   captureServerError: mocks.capture,
@@ -104,4 +106,24 @@ describe.each(['cloudflare', 'node'] as const)('%s 响应入口安全头', (targ
       expect(await response.text()).not.toContain('private failure')
     },
   )
+})
+
+describe('Cloudflare 入口的项目闸门', () => {
+  it('环境校验失败时钩子仍先执行，其响应按静态响应补安全头', async () => {
+    mocks.checkEnv.mockReturnValue(new Response('Internal Server Error', { status: 500 }))
+    mocks.projectGate.mockReturnValue(Response.redirect('https://example.test/about', 301))
+    const response = await cloudflare.fetch(
+      new Request('https://example.test/zh/about') as Parameters<typeof cloudflare.fetch>[0],
+      {} as Cloudflare.Env,
+      {} as ExecutionContext,
+    )
+    expect(response.status).toBe(301)
+    expect(response.headers.get('location')).toBe('https://example.test/about')
+    expect(mocks.projectGate).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.objectContaining({ envValid: false }),
+    )
+    assertHeaders(response, true)
+    expect(mocks.start).not.toHaveBeenCalled()
+  })
 })
