@@ -82,9 +82,9 @@ Cloudflare：R2 写/删在 `packages/storage/src/cloudflare/{index,media,share-c
 
 上限是代码常量（不做运行时设置，避免又一个可被误配的入口）；到达上限时剩余留到下一轮，记录 `job.cap_reached` 警告日志（含任务 id 与本轮处理数）。候选一律按「最早到期」排序（`expires_at` / `deleted_at` / `created_at` 升序，再按 id），保证积压时不会饿死最老的记录。
 
-推荐值（**待拍板 Q1**），按 reduced profile（每 30 分钟 / 每天一次）估算吞吐：
+上限值（Q1，使用者 2026-11-25 确认按本表），按 reduced profile（每 30 分钟 / 每天一次）估算吞吐：
 
-| 任务 | 推荐上限 | 依据 |
+| 任务 | 上限 | 依据 |
 |---|---|---|
 | 1 删号凭据 | 200 个清单/轮 | 每清单若干 KV 删除；心跳组 48 轮/天 ≈ 9600/天 |
 | 2 文件清理 | 20 个空间/轮，且 500 个对象/轮（先到为准） | R2 `delete()` 单次最多 1000 个键（[Workers API](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/)，2026-11-25）；每次调用计一个子请求，Workers 每次调用子请求上限 **待核实**；48 轮/天 ≈ 24000 对象/天 |
@@ -132,7 +132,7 @@ Cloudflare：R2 写/删在 `packages/storage/src/cloudflare/{index,media,share-c
 
 守卫测试（`scripts/check-third-party.test.mjs` 或放入现有 docs 测试）：每行列数完整、验证方式取值合法、日期格式合法、官方出处为 `https://` 链接或 `待核实`；并维护「SDK 依赖 → 登记行」映射（如 `stripe`、`@ai-sdk/*`、`@aws-sdk/*`、`@sentry/*`、`@fal-ai/*`、`posthog-*`），任何 workspace `package.json` 新增匹配监视模式的依赖而没有映射时失败。
 
-规则写入 AGENTS.md（三条，见 proposal），其中「真账号数据不进仓库」与现有私有证据库规则衔接：账号 ID、余额、域名配置截图、部分密钥等写入 `EVIDENCE_DIR`，仓库只引用。盘点中发现现有 runbook 已含真实沙箱账号 ID（见 Q4）。
+规则写入 AGENTS.md（三条，见 proposal），其中「真账号数据不进仓库」与现有私有证据库规则衔接：账号 ID、余额、域名配置截图、部分密钥等写入 `EVIDENCE_DIR`，仓库只引用。盘点中发现现有 runbook 已含真实沙箱账号 ID：按 Q4（使用者 2026-11-25 确认）在回填登记表时替换为占位符，原值只保留在私有证据库，不改写 git 历史。
 
 ### D6 存储重试
 
@@ -145,14 +145,21 @@ Cloudflare：R2 写/删在 `packages/storage/src/cloudflare/{index,media,share-c
 | 10001 | InternalError 500 | 重试 | 「Retry the request」 |
 | 10043 | ServiceUnavailable 503 | 重试 | 「Retry with exponential backoff」 |
 | 10054 | ClientDisconnect 400 | 重试 | 「Check network connectivity and retry」 |
-| 10058 | TooManyRequests 429（同键 1 次/秒） | **不重试**（Q3） | [R2 限制](https://developers.cloudflare.com/r2/platform/limits/)：同键并发写超过 1 次/秒返回 429 |
+| 10058 | TooManyRequests 429（同键 1 次/秒） | **按同键限流单独重试**（Q3） | [R2 限制](https://developers.cloudflare.com/r2/platform/limits/)：同键并发写超过 1 次/秒返回 429；[错误码](https://developers.cloudflare.com/r2/api/error-codes/)：检查是否有多个客户端写同一键 |
 | 其余（NoSuchKey、PreconditionFailed、EntityTooLarge、鉴权、桶错误等） | 4xx | 不重试 | — |
 
 另按 [Workers 错误](https://developers.cloudflare.com/workers/observability/errors/)（2026-11-25）对「Network connection lost」重试（文档：「Catch a fetch or binding invocation and retry it」）。
 
-**Cloudflare KV**（[写入](https://developers.cloudflare.com/kv/api/write-key-value-pairs/)、[限制](https://developers.cloudflare.com/kv/platform/limits/)，2026-11-25）：同键 1 秒内多次写入抛出 `KV PUT failed: 429 Too Many Requests`；官方建议对该错误做指数退避重试（示例从 1 秒起）。本 change 按使用者范围把它归为不可重试（Q3）；对「Network connection lost」与 5xx/内部错误重试。
+**Cloudflare KV**（[写入](https://developers.cloudflare.com/kv/api/write-key-value-pairs/)、[限制](https://developers.cloudflare.com/kv/platform/limits/)，2026-11-25）：同键 1 秒内多次写入抛出 `KV PUT failed: 429 Too Many Requests`；官方原文「we recommend implementing a retry logic, with exponential backoff」，示例从 1000 ms 起每次翻倍。按 Q3（使用者 2026-11-25 确认：遵循官方文档），该错误归入同键限流类单独重试；「Network connection lost」与 5xx/内部错误归入临时错误类重试。
 
-**参数**：总共最多 3 次尝试，等待 100 ms、300 ms，各加 ±50% 抖动，最坏总等待 < 0.5 s，适合请求路径。后台任务使用同一参数（队列与 Workflow 已有更长的外层重试）。删除幂等，可直接重试；写入只在请求体可重放（`string` / `ArrayBuffer` / `Uint8Array` / `Blob`）时重试，`ReadableStream` 请求体不在适配层重试，交给外层（Workflow 步骤）重试整段下载。耗尽或不可重试时抛出 `AppError('STORAGE_UNAVAILABLE', 503)`（R2）或沿用 `CACHE_UNAVAILABLE`（KV），日志记录错误码与尝试次数，不记录键中的用户数据。
+**参数**：两类错误分别计数（Q3，使用者 2026-11-25 确认）。
+
+| 类别 | 适用 | 最多重试 | 等待 | 依据 |
+|---|---|---|---|---|
+| 临时错误 | R2 10001 / 10043 / 10054、KV 与 R2 的「Network connection lost」、内部错误 | 3 次 | 100、300、900 ms，各 ±50% 抖动 | R2 错误码页「Retry with exponential backoff」；Workers 错误页（均 2026-11-25） |
+| 同键限流 | R2 10058、KV `KV PUT failed: 429 Too Many Requests` | 2 次（少于临时错误） | 1000、2000 ms，各加 0–250 ms 抖动 | 同键 1 次/秒限制（[R2 限制](https://developers.cloudflare.com/r2/platform/limits/)、[KV 限制](https://developers.cloudflare.com/kv/platform/limits/)）；KV 写入页的指数退避建议与 1000 ms 起始值（2026-11-25） |
+
+单次调用最多 1 + 3 + 2 = 6 次尝试，最坏总等待约 5.5 s（临时类 ≤1.95 s + 同键限流类 ≤3.5 s）；请求路径能接受这个上限，因为同键限流在正常使用中很少出现，且失败比等待更糟（如会话写入失败导致登录失败）。后台任务使用同一参数（队列与 Workflow 已有更长的外层重试）。删除幂等，可直接重试；写入只在请求体可重放（`string` / `ArrayBuffer` / `Uint8Array` / `Blob`）时重试，`ReadableStream` 请求体不在适配层重试，交给外层（Workflow 步骤）重试整段下载。耗尽或不可重试时抛出 `AppError('STORAGE_UNAVAILABLE', 503)`（R2）或沿用 `CACHE_UNAVAILABLE`（KV），日志记录错误类别、错误码与各类尝试次数，不记录键中的用户数据。同键限流耗尽时日志单独标记，便于发现热点键的设计问题。
 
 **Node**：S3 客户端显式设置 `maxAttempts: 3`、`retryMode: 'standard'`（SDK 默认值与可重试错误集合以 [AWS SDK 重试文档](https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html) 为准，**待核实**），不叠加 `retryTransient`，避免 9 次放大。Redis 缓存维持快速失败（连接级故障重试会拖住请求，现有 503 语义已被 `cache-rate-limit` 规范依赖）。
 
@@ -163,18 +170,18 @@ Cloudflare：R2 写/删在 `packages/storage/src/cloudflare/{index,media,share-c
 规则：公开页面（营销、定价、博客、文档、法律、指南、问答、分享页的外壳）的可用性不得依赖后台配置、后台专用绑定、插件后台路由或数据库可用；需要数据的部分降级显示。
 
 1. **预渲染页不受环境校验影响**：`server.ts` 在 `checkEnv` 失败时仍先查静态资源，命中则返回（静态 HTML 不使用运行时绑定；安全头的输入已做格式校验）。动态请求仍按现状 fail-closed 返回 500，并记录缺失项。
-2. **插件绑定不拖垮整站**：插件清单声明的绑定缺失时，只让该插件的路由返回 503（附日志与 `/api/health` 中的插件状态），不再进入全站 `checkEnv`。部署前由 `scripts/production/check-wrangler-envs.mjs` 校验每个启用插件声明的绑定在各环境的 wrangler 配置中都已声明，缺失即 `pnpm check` 失败，把问题挡在部署前（Q2）。
+2. **插件绑定不拖垮整站**：插件清单声明的绑定缺失时，只让该插件的路由返回 503（附日志与 `/api/health` 中的插件状态），不再进入全站 `checkEnv`。部署前由 `scripts/production/check-wrangler-envs.mjs` 校验每个启用插件声明的绑定在各环境的 wrangler 配置中都已声明，缺失即 `pnpm check` 失败，把问题挡在部署前（Q2，使用者 2026-11-25 确认）。
 3. **语言中间件降级**：`/_serverFn/` 请求读会话遇到非 401/403 错误时按「无账号语言」处理并记警告日志，不再抛出；同时把 `docs/platform-capabilities.md` 的描述改为与实现一致。
 4. **兜底错误界面**：根路由增加 errorComponent，复用现有 404 页的导航布局与 `@saas/ui` 组件，文案进 messages；分享页使用同一界面。这是缺陷修复，沿用现有页面样式，不需要新设计稿。
 5. **测试**：环境缺失插件绑定时预渲染首页 200、动态公开页正常、插件路由 503；已登录访客 `/_serverFn/` 请求在数据库抛错时不报错；根 loader 在 runtime 的 db/auth 抛错时仍然 resolve；`getAnnouncement` / `getSafeImpersonation` 的异常分支；admin 门禁对 `/administrator`、`/admin-x`、`/zh/admin` 的负例。
 
 ## Risks / Trade-offs
 
-- [上限过低导致积压] → 推荐值按 reduced profile 吞吐估算；`job.cap_reached` 日志可见，必要时调常量。积压只是延迟删除，不影响正确性。
+- [上限过低导致积压] → 上限按 reduced profile 吞吐估算；`job.cap_reached` 日志可见，必要时调常量。积压只是延迟删除，不影响正确性。
 - [DB 时钟取值增加查询] → 在已有的候选查询中一并取 `now()`，不新增往返，也不新增 cron 或轮询。
 - [行时间区间过滤让坏数据永远不被清理] → 区间外行数会触发告警，由人工处理；这是有意为之的「宁可不删」。
 - [插件绑定改为非整站必需后，漏配到线上才发现] → 部署前 `check-wrangler-envs` 硬校验；运行时插件路由 503 与健康检查可见。
-- [KV/R2 429 不重试导致偶发写入失败] → 列为 Q3；失败带明确错误码，便于后续决定是否在后台路径加 ≥1 s 的单次重试。
+- [同键限流重试拉长请求（最坏约 5.5 s）] → 只对该错误类别生效、次数少于临时错误；耗尽时日志单独标记，频繁出现说明有热点键，应改设计而不是加大重试。
 - [R2 错误消息格式不确定] → 分类器同时识别数字码和名称；无法识别的错误一律不重试（保守）。
 - [插件 cron 类型新增必填字段] → 模板内置插件无 cron，不受影响；衍生项目自有插件升级时补字段，升级说明列出。
 
@@ -182,16 +189,16 @@ Cloudflare：R2 写/删在 `packages/storage/src/cloudflare/{index,media,share-c
 
 无数据迁移。各组独立合并；第 1 组的 `defineBulkJob` 框架先合并，再改造各任务。上线后观察 staging 一周的 `job.cap_reached` 与 `ops.bulk_job.guard_tripped` 日志。回滚：任一组可单独 revert，不涉及 schema。升级说明（`docs/upgrades/`）记录插件 cron 的 `safety` 字段与插件绑定语义变化。
 
-## 待使用者拍板
+## 拍板结果（使用者 2026-11-25 确认）
 
-| # | 事项 | 选项 | 推荐 |
-|---|---|---|---|
-| Q1 | 每轮上限数值 | 按 D2 表 / 自定 | 按 D2 表；上线一周后按日志调整 |
-| Q2 | 插件绑定缺失的处理 | (a) 维持整站 500；(b) 只让该插件 503，部署前硬校验；(c) 仅后台专用绑定（如 `RL_ADMIN_MCP`）标为可选 | (b)：插件绑定都不服务公开页，部署前校验能更早发现 |
-| Q3 | 同键写入过快（R2 10058 / KV 429） | (a) 不重试（范围原定）；(b) 按 KV 官方建议对后台路径做一次 ≥1 s 的重试 | (a)：请求路径等 1 s 代价高，同键冲突多为设计问题，失败码清晰即可；后续按日志再议 |
-| Q4 | 现有文档中的真实沙箱账号 ID 等真账号数据 | (a) 本 change 回填登记表时一并替换为占位符；(b) 只约束今后 | (a)：仓库公开，改动小；不改写 git 历史 |
-| Q5 | 时间下限 | `2024-01-01T00:00:00Z` / 其他 | `2024-01-01`：早于模板与衍生项目的任何真实数据 |
-| Q6 | 告警渠道 | 现有运维通知（Telegram/Discord）/ 仅日志 | 现有运维通知，按任务 + UTC 日去重 |
+| # | 事项 | 结论 |
+|---|---|---|
+| Q1 | 每轮上限数值 | 按 D2 表；上线一周后按日志调整 |
+| Q2 | 插件绑定缺失的处理 | 只让该插件路由返回 503，部署前由 `check-wrangler-envs` 硬校验（D7 第 2 条） |
+| Q3 | 同键写入过快（R2 10058 / KV 429） | 遵循官方文档：按指数退避有限次重试，与其他临时错误分开计数、次数更少（D6 参数表） |
+| Q4 | 现有文档中的真账号数据 | 回填登记表时替换为占位符，原值留在私有证据库，不改写 git 历史 |
+| Q5 | 时间下限 | `2024-01-01T00:00:00Z` |
+| Q6 | 告警渠道 | 现有运维通知（Telegram/Discord），按任务 + UTC 日去重 |
 
 ## Open Questions
 

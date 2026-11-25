@@ -1,6 +1,6 @@
 # Tasks: add-ops-safeguards
 
-分组即 worker 划分。第 1–5 组彼此独立，可同时开始；1.2 之后的子任务依赖 1.1 合并。共享文件：`AGENTS.md` 每组只在「编码与配置」末尾追加自己的一条规则（冲突时按行合并）；`docs/plugins.md` 只由第 2 组与第 5 组修改不同小节。验收方式标注：〔本地〕〔staging〕〔外部凭据〕。拍板事项见 design.md「待使用者拍板」，实施按推荐方案，使用者另有决定时以决定为准。
+分组即 worker 划分。第 1–5 组彼此独立，可同时开始；1.2 之后的子任务依赖 1.1 合并。共享文件：`AGENTS.md` 每组只在「编码与配置」末尾追加自己的一条规则（冲突时按行合并）；`docs/plugins.md` 只由第 2 组与第 5 组修改不同小节。验收方式标注：〔本地〕〔staging〕〔外部凭据〕。拍板结果见 design.md「拍板结果（使用者 2026-11-25 确认）」，实施以其为准。
 
 ## 1. 定时删除与群发防护（worker A，Claude：跨包且涉及删除语义）
 
@@ -19,15 +19,15 @@
 ## 3. 第三方登记表（worker C，Claude：需逐项查官方文档与判断证据）
 
 - [ ] 3.1 新建 `docs/third-party.md`：按 design D5 的覆盖行回填，每行的出处链接当场打开核对并写日期；证据只来自仓库文档、runbook 与已归档 change，不确定的标「未核对」；表下列「可改为自动查询」清单。〔本地〕人工审阅
-- [ ] 3.2 按 Q4 决定处理现有文档中的真账号数据（推荐：替换为占位符，证据库保留原值）；`docs/README.md` 加入口。〔本地〕
+- [ ] 3.2 按 Q4 结论把现有文档中的真账号数据替换为占位符（原值写入私有证据库，不改写 git 历史）；`docs/README.md` 加入口。〔本地〕
 - [ ] 3.3 守卫测试：表格列完整、验证方式取值、日期格式、出处为 https 或「待核实」；「SDK 依赖 → 登记行」映射与受监视模式，新增未映射依赖时失败。接入 `pnpm test` 或 `pnpm check`。〔本地〕
 - [ ] 3.4 AGENTS.md 三条规则：能查询状态就不教步骤；写第三方操作前查官方文档并注明出处与日期；真账号数据不进仓库（衔接私有证据库）。〔本地〕`pnpm check` 通过
 
 ## 4. 存储临时错误重试（worker D，Claude：错误分类需要谨慎）
 
-- [ ] 4.1 `packages/shared` 新增 `retryTransient`（最多 3 次、100/300 ms、±50% 抖动、可注入延时用于测试）；单元测试覆盖成功、可重试后成功、不可重试立即失败、耗尽。〔本地〕
-- [ ] 4.2 R2 分类器与接入：`packages/storage/src/cloudflare/{index,media,share-cards}.ts` 的 put/delete 经重试，按 design D6 的错误码表分类（同时识别数字码与名称，未识别不重试）；流式请求体不重试；耗尽返回 `STORAGE_UNAVAILABLE`（503）。先在本地 `wrangler dev` 或文档中确认绑定错误消息格式并记录到 design。单元测试用构造错误覆盖每个码。〔本地〕
-- [ ] 4.3 KV 接入：`packages/platform/src/cloudflare/index.ts` 的 put/delete 对网络中断与内部错误重试，429 不重试，耗尽返回 `CACHE_UNAVAILABLE`。单元测试。〔本地〕
+- [ ] 4.1 `packages/shared` 新增 `retryTransient`：分类器返回「临时」「同键限流」「不可重试」，两类分别计数（临时最多 3 次重试，100/300/900 ms ±50% 抖动；同键限流最多 2 次，1000/2000 ms + 0–250 ms 抖动），延时可注入用于测试；单元测试覆盖成功、各类重试后成功、不可重试立即失败、两类各自耗尽、两类交替出现时互不消耗次数。〔本地〕
+- [ ] 4.2 R2 分类器与接入：`packages/storage/src/cloudflare/{index,media,share-cards}.ts` 的 put/delete 经重试，按 design D6 的错误码表分类（10058 归同键限流类；同时识别数字码与名称，未识别不重试）；流式请求体不重试；耗尽返回 `STORAGE_UNAVAILABLE`（503）。先在本地 `wrangler dev` 或文档中确认绑定错误消息格式并记录到 design。单元测试用构造错误覆盖每个码。〔本地〕
+- [ ] 4.3 KV 接入：`packages/platform/src/cloudflare/index.ts` 的 put/delete 对网络中断与内部错误按临时类重试，`KV PUT failed: 429 Too Many Requests` 按同键限流类重试，耗尽返回 `CACHE_UNAVAILABLE`。单元测试覆盖两类。〔本地〕
 - [ ] 4.4 Node：`packages/storage/src/node/client.ts` 显式设置 `maxAttempts: 3`、`retryMode: 'standard'`，查 AWS SDK 官方重试文档写出处与日期；Redis 缓存保持现状并在 `docs/platform-capabilities.md` 写明两目标的重试语义与出处。〔本地〕`pnpm test` 通过
 
 ## 5. 公开页面优先（worker E，Claude：涉及请求入口与界面）
