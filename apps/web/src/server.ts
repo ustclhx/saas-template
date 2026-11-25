@@ -1,6 +1,7 @@
 // Worker 入口（wrangler.jsonc 的 main）。
-// 命中的预渲染静态资源直接返回；其余请求在交给 TanStack Start 处理之前校验环境变量与核心绑定，
-// 缺失或非法时返回 500。启用插件声明的绑定按插件单独校验，缺失只让该插件入口返回 503（env.ts）。
+// 每个请求先经项目闸门（server/project-gate.ts，项目自有），再查预渲染静态资源，命中直接返回；
+// 其余请求在交给 TanStack Start 处理之前校验环境变量与核心绑定，缺失或非法时返回 500。
+// 启用插件声明的绑定按插件单独校验，缺失只让该插件入口返回 503（env.ts）。
 // /admin/** 的请求先经角色守卫，非 admin 与不存在的页面得到相同的 404（features/admin/gate.ts）。
 // 之后由 Paraglide 按 URL 前缀 / Cookie 确定本次请求的语言（features/i18n/routing.ts）。
 // 每个请求先建立日志上下文（新生成的 UUIDv7 请求 ID，附 Cloudflare 的 cf-ray 便于对照平台日志），
@@ -43,7 +44,7 @@ import { withSecurityNonce } from './security-context.server.ts'
 import { withSecurityHeaders, withStaticSecurityHeaders } from './security-headers.ts'
 import { createWebAuth } from './server/auth.ts'
 import { createQueueAuthEmailSender, userLocaleByEmail } from './server/auth-email.ts'
-import { staticAsset } from './server/cloudflare/assets.ts'
+import { responseBeforeRuntime } from './server/cloudflare/assets.ts'
 import { checkEnv, pluginBindingStatus, webEnvSchema } from './server/cloudflare/env.ts'
 import { captureServerError, instrumentWeb, sentryEnabled } from './server/cloudflare/sentry.ts'
 import { getWebRuntime, type WebRuntime, withWebRuntime } from './server/runtime.ts'
@@ -94,9 +95,9 @@ export default {
       withLogContext(context, async () => {
         try {
           const invalid = checkEnv(env)
-          // 公开页面优先（public-site-availability）：环境校验失败时仍先返回命中的预渲染静态资源，
-          // 静态 HTML 不使用运行时绑定；只有动态请求因校验失败返回 500。
-          const asset = await staticAsset(request, env.ASSETS)
+          // 公开页面优先（public-site-availability）：项目闸门与命中的预渲染静态资源先于环境校验结果返回，
+          // 静态 HTML 不使用运行时绑定；只有动态请求因校验失败返回 500。项目可用 staticFirst 关闭。
+          const asset = await responseBeforeRuntime(request, { env, envValid: !invalid })
           if (asset) {
             const response = await withStaticSecurityHeaders(asset, security)
             response.headers.set('x-request-id', context.requestId)

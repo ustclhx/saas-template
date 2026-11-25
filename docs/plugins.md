@@ -38,7 +38,7 @@ plugins/<id>/
 | 入口 | 扩展点 |
 |---|---|
 | `web` | `appNav` 增加应用区导航（侧栏与顶栏布局共用），同 id 依模板、插件、项目的次序覆盖。`adminNav` 向现有后台分组追加条目，组内按 `order` 排序。`toolRenderers` 注册对话工具卡片，项目可覆盖。 |
-| `worker` | `fetch(request, env, ctx)` 在网关与 TanStack Start 之前运行。返回 `Response` 即结束，返回 `undefined` 继续请求链。 |
+| `worker` | `fetch(request, env, ctx)` 在网关与 TanStack Start 之前运行。返回 `Response` 即结束，返回 `undefined` 继续请求链。它晚于预渲染静态资源与环境校验，静态页命中时不会调用；必须早于静态页生效的项目规则写在[项目闸门](02-project-structure.md#项目自有扩展文件)。 |
 | `jobs` | `queues` 按基础队列名注册处理器，Cloudflare 同时匹配 `-staging` 和 `-production` 后缀。`crons` 使用已有 `heartbeat`、`ten-minute`、`daily` 分组，每个任务必须声明 `safety`：会删除、销毁积分、外部写或群发时写明每轮上限、顺序与时间防护并登记到 [批量任务登记表](bulk-jobs.md)，否则写 `{ kind: 'none', reason }`。`holdSweepers` 按预扣来源注册清理器。 |
 | `webNode` | Node Web 的 `fetch(request)`，采用同样的请求链约定。 |
 | `jobsNode` | 共用 jobs 的队列、Cron 与清理器。`registerWorkflows` 装配 Node 持久任务，可以返回内部 HTTP 路由与停机时停止接收的回调。 |

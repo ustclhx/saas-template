@@ -24,6 +24,8 @@ export const projectOwnedPaths = new Set([
   'apps/web/src/features/seo/pages.project.ts',
   'packages/db/src/settings.project.ts',
   'packages/ai/src/feature-models.project.ts',
+  'apps/web/src/server/project-gate.ts',
+  'apps/web/src/features/app-shell/root-fallbacks.project.tsx',
   'plugins/agents/src/agents.project.ts',
   'plugins/agents/src/tools.project.ts',
 ])
