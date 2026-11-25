@@ -57,6 +57,8 @@ plugins/<id>/
 
 1. 在 `template.config.ts` 的 `plugins` 中加入插件 id 与配置，例如 `plugins: { example: {} }`。同时启用其 `requires` 声明的插件和模板开关。
 2. Cloudflare 部署时，按清单在对应的 `apps/web/wrangler.jsonc` 或 `apps/jobs/wrangler.jsonc` 顶层、`env.staging`、`env.production` 分别补齐所需绑定。绑定名与种类须一致，环境资源名与 ID 按各自部署填写。跨 Worker 的 Durable Object 或 Workflow 绑定指向实际导出类的 Worker。配置所需密钥后重新构建并部署。Node 使用插件自己的 Node 入口校验运行时配置。
+
+   运行时，web 不把插件绑定并入全站环境校验：某个启用插件的必需绑定缺失或形状不对时，只有该插件的入口返回 503（如 admin-mcp 的 `/api/admin/mcp`、agents 的 `/agents/*`；media 经 `ai.workflow` 能力报告不可用），公开页面和其他插件照常，`/api/health` 的 `plugins` 字段列出各插件状态，日志记 `plugin.bindings_invalid`（只含插件 id 与绑定名）。漏配由部署前的 `pnpm check`（`scripts/check-plugins.mjs`）按环境拦截。新插件的入口须用 `pluginUnavailable(runtime, '<id>')` 自行检查，不要依赖全站校验。
 3. 停用时，删除 `plugins` 中的键，调整依赖该插件的开关和其他插件，移除专属的 Wrangler 绑定并保留仍在使用的共享绑定。重新构建与部署后，插件路由返回 404，构建产物移除该插件的入口和文案。
 
 Cloudflare 使用声明了 `cloudflare` 的插件。`pnpm build:node` 只打包启用且支持 `node` 的插件，并提示已排除的仅 Cloudflare 插件。使用生成器创建 selfhost 项目时，只能选择支持 `node` 的插件。启停和目标筛选在构建时生效。数据库表与迁移统一由 `packages/db` 管理。

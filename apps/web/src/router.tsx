@@ -1,7 +1,7 @@
 import { createRouter } from '@tanstack/react-router'
 import { createIsomorphicFn } from '@tanstack/react-start'
 import { localeRewrite } from './features/i18n/routing.ts'
-import { NotFoundPage } from './features/marketing/not-found.tsx'
+import { ErrorPage, NotFoundPage } from './features/marketing/not-found.tsx'
 import { routeTree } from './routeTree.gen'
 import { securityNonce } from './security-context.server.ts'
 import { templateConfig } from './server/template-config.ts'
@@ -28,6 +28,8 @@ export function getRouter() {
     ...(nonce ? { ssr: { nonce } } : {}),
     scrollRestoration: true,
     defaultNotFoundComponent: NotFoundPage,
+    // 子路由的未处理错误渲染在根布局的 Outlet 中；根路由自身的错误见 __root.tsx 的 errorComponent
+    defaultErrorComponent: ErrorPage,
     rewrite: localeRewrite,
   })
 }

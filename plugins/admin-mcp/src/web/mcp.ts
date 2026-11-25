@@ -2,7 +2,7 @@ import { Server, WebStandardStreamableHTTPServerTransport } from '@modelcontextp
 import { isAiFaultInjectionEnabled } from '@saas/config'
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
-import type { WebRuntime } from '@web/server/runtime.ts'
+import { pluginUnavailable, type WebRuntime } from '@web/server/runtime.ts'
 import { markAdminApiTokenUsed, verifyAdminApiToken } from './tokens.ts'
 import { businessTools } from './tools/business.ts'
 import { type AdminToolContext, rejectUnknownAdminTool } from './tools/define.ts'
@@ -55,7 +55,10 @@ async function dispatch(request: Request, ctx: AdminToolContext) {
   }
 }
 
-type McpRuntime = Pick<WebRuntime, 'db' | 'cache' | 'rateLimiter' | 'requestMeta' | 'ai'> & {
+type McpRuntime = Pick<
+  WebRuntime,
+  'db' | 'cache' | 'rateLimiter' | 'requestMeta' | 'ai' | 'pluginStatus'
+> & {
   readonly config: Pick<WebRuntime['config'], 'APP_URL'>
 }
 
@@ -66,6 +69,8 @@ export async function respondToAdminMcp(
   if (request.method !== 'POST') return mcpError(405, 'Method not allowed', { Allow: 'POST' })
   try {
     const runtime = getRuntime()
+    // 限流绑定 RL_ADMIN_MCP 缺失时只有本端点不可用，公开页面照常（public-site-availability）
+    if (pluginUnavailable(runtime, 'admin-mcp')) return mcpError(503, 'Service unavailable')
     // CLI 可以省略 Origin。浏览器来源以部署配置为准，避免使用请求中的 Host 自证。
     const origin = request.headers.get('origin')
     if (origin !== null && origin !== new URL(runtime.config.APP_URL).origin)

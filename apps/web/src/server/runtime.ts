@@ -71,6 +71,11 @@ export interface WebRuntime {
   /** 分享卡片渲染器加载函数：目标入口用动态 import() 提供，首页与其他路由不加载 satori / resvg。 */
   readonly shareCardRenderer?: Capability<() => Promise<ShareCardRenderer>>
   readonly shareCardCache?: Capability<ShareCardEdgeCache>
+  /**
+   * 声明了 Cloudflare 绑定的启用插件的可用状态（server/cloudflare/env.ts 的 pluginBindingStatus）。
+   * `unavailable` 时该插件入口返回 503，公开页面不受影响；Node 不装配，视为全部可用。
+   */
+  readonly pluginStatus?: Readonly<Record<string, 'up' | 'unavailable'>>
   /** 后台认证写入需借用事务 facade 与延后提交的缓存。 */
   createAuth(db: Database, cache?: KeyValueStore): Auth
   handleAuthRequest(request: Request): Promise<Response>
@@ -87,4 +92,9 @@ export function getWebRuntime(): WebRuntime {
   if (!runtime)
     throw new AppError('RUNTIME_UNAVAILABLE', 'Request runtime is unavailable', { status: 503 })
   return runtime
+}
+
+/** 插件入口的可用性检查：只有目标入口明确报告 unavailable 时才拒绝。 */
+export function pluginUnavailable(runtime: Pick<WebRuntime, 'pluginStatus'>, id: string): boolean {
+  return runtime.pluginStatus?.[id] === 'unavailable'
 }

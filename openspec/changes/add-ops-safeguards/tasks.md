@@ -32,12 +32,12 @@
 
 ## 5. 公开页面优先（worker E，Claude：涉及请求入口与界面）
 
-- [ ] 5.1 `apps/web/src/server.ts`：环境校验失败时仍先返回命中的预渲染静态资源；`env.test.ts` 增加「认证密钥缺失时预渲染首页 200、动态请求 500」。〔本地〕
-- [ ] 5.2 插件绑定缺失只让该插件路由返回 503（admin-mcp、agents、media 的入口各自检查），健康检查体现插件状态；`scripts/production/check-wrangler-envs.mjs` 校验启用插件声明的绑定在各环境都已声明。测试：缺 `RL_ADMIN_MCP` 时公开页正常、`/api/admin/mcp` 503；检查脚本对缺失绑定报错。`docs/plugins.md` 更新绑定语义。〔本地〕
-- [ ] 5.3 `features/i18n/request.server.ts`：`/_serverFn/` 请求读会话的非 401/403 错误降级为无账号语言并记警告；`request.test.ts` 增加数据库抛错用例；更正 `docs/platform-capabilities.md` 中语言处理的描述。〔本地〕
-- [ ] 5.4 根路由兜底 errorComponent（复用 404 页导航布局与 `@saas/ui`，文案进 messages），分享页使用同一界面；组件测试与 `pnpm check`（含 UI 规范检查）通过。〔本地〕
-- [ ] 5.5 补测试：根 loader 在 runtime 的 db/auth 抛错时 resolve；`getAnnouncement`（无效值、KV 非 JSON、KV put 失败、无 runtime）与 `getSafeImpersonation` 异常分支；admin 门禁 `/administrator`、`/admin-x`、`/zh/admin` 负例。AGENTS.md 加规则：访客不会因后台问题看不到公开页面。〔本地〕`pnpm test` 通过
-- [ ] 5.6 本地端到端：停掉本 worktree 的数据库后，已登录访客从首页导航到博客、文档、法律页正常，分享页显示错误界面；证据写入 `EVIDENCE_DIR`。〔本地〕
+- [x] 5.1 `apps/web/src/server.ts`：环境校验失败时仍先返回命中的预渲染静态资源；`env.test.ts` 增加「认证密钥缺失时预渲染首页 200、动态请求 500」。〔本地〕
+- [x] 5.2 插件绑定缺失只让该插件路由返回 503（admin-mcp、agents、media 的入口各自检查），健康检查体现插件状态；`scripts/production/check-wrangler-envs.mjs` 校验启用插件声明的绑定在各环境都已声明。测试：缺 `RL_ADMIN_MCP` 时公开页正常、`/api/admin/mcp` 503；检查脚本对缺失绑定报错。`docs/plugins.md` 更新绑定语义。〔本地〕
+- [x] 5.3 `features/i18n/request.server.ts`：`/_serverFn/` 请求读会话的非 401/403 错误降级为无账号语言并记警告；`request.test.ts` 增加数据库抛错用例；更正 `docs/platform-capabilities.md` 中语言处理的描述。〔本地〕
+- [x] 5.4 根路由兜底 errorComponent（复用 404 页导航布局与 `@saas/ui`，文案进 messages），分享页使用同一界面；组件测试与 `pnpm check`（含 UI 规范检查）通过。〔本地〕
+- [x] 5.5 补测试：根 loader 在 runtime 的 db/auth 抛错时 resolve；`getAnnouncement`（无效值、KV 非 JSON、KV put 失败、无 runtime）与 `getSafeImpersonation` 异常分支；admin 门禁 `/administrator`、`/admin-x`、`/zh/admin` 负例。AGENTS.md 加规则：访客不会因后台问题看不到公开页面。〔本地〕`pnpm test` 通过
+- [x] 5.6 本地端到端：停掉本 worktree 的数据库后，已登录访客从首页导航到博客、文档、法律页正常，分享页显示错误界面；证据写入 `EVIDENCE_DIR`。〔本地〕
 
 ## 6. 部署与外部验收（协调者，全部合并后）
 

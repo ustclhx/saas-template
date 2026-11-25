@@ -85,5 +85,8 @@
   "marketing_guides_faq": "Frequently asked questions",
   "marketing_not_found_title": "Page not found",
   "marketing_not_found_body": "This page doesn't exist or has moved.",
-  "marketing_not_found_home": "Back to home"
+  "marketing_not_found_home": "Back to home",
+  "marketing_error_title": "Something went wrong",
+  "marketing_error_body": "We could not load this page. Please try again in a moment.",
+  "marketing_error_retry": "Try again"
 }

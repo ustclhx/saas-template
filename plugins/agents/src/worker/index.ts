@@ -2,7 +2,7 @@ import { env as workerEnv } from 'cloudflare:workers'
 import { log } from '@saas/shared/log'
 import { instrumentAgentWithSentry } from '@sentry/cloudflare'
 import { sentryEnabled, sentryOptions } from '@web/server/cloudflare/sentry.ts'
-import { getWebRuntime } from '@web/server/runtime.ts'
+import { getWebRuntime, pluginUnavailable } from '@web/server/runtime.ts'
 import { routeAgentRequest } from 'agents'
 import { registerAgentDeletionSteps } from '../core/deletion.ts'
 import { agentInstanceCleaner, setAgentInstanceCleaner } from '../instances.ts'
@@ -53,6 +53,9 @@ export default {
     if (!new URL(request.url).pathname.startsWith(PREFIX)) return undefined
     const agentsEnv = env as unknown as AgentsEnv
     const runtime = getWebRuntime()
+    // AGENT_CONVERSATION 缺失时只有对话连接不可用，公开页面照常（public-site-availability）
+    if (pluginUnavailable(runtime, 'agents'))
+      return new Response('Service unavailable', { status: 503 })
     const authorize = (req: Request, route: { name: string }) =>
       authorizeAgentRequest(req, route.name, { db: runtime.db, auth: runtime.auth })
     // routeAgentRequest 会把 env 中所有 Durable Object 绑定按 kebab-case 名暴露为 /agents/<binding>/…，
