@@ -69,8 +69,8 @@ template-sync 与生成器把 `settings.project.ts` 加入项目自有文件列�
 - 后台设置页新增「功能模型」分组：每个功能一个模型下拉（只列同种类已启用模型，含「未选择」），旁边显示解析结果与来源；保存走现有运行时设置保存与审计。登记表为空时不显示分组。
 - xuanxue 采纳时把 `READING_MODEL_INHERIT` 改为登记表，`readings/config.ts` 调用 `resolveFeatureModel`。
 
-### 8. 界面需要设计确认
-令牌管理页（新页面）与设置页功能模型分组（布局改动）先经 `ui-design` 出画布并取得使用者确认，登记原型索引后再实现。
+### 8. 界面设计（已确认）
+令牌管理页与设置页功能模型分组的设计稿已于 2026-11-25 取得使用者确认，见 `docs/design-system/prototypes/README.md` 中「后台 API 令牌」「后台运行时设置·功能模型分组」两行，副本在 `docs/design-system/prototypes/admin-mcp/`。随画布确认的细节：已吊销与已过期令牌在列表中置灰保留 30 天后不再显示（数据行保留，供审计关联）；设置页提示也可经 MCP `settings.set` 修改。
 
 ## Risks / Trade-offs
 

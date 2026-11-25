@@ -26,6 +26,8 @@
 | 公开页内链区块：面包屑、系列上一篇／下一篇、相关文章、同组列表、hub 分页（博客 / 文档 / 答案页 / 法律页） | https://claude.ai/artifact/NSHAVaDkrvs6og9n4Q6zVp | 2026-11-19 | 「canvas确认没问题，开发吧」 | seo-internal-linking/Main.dc.html、seo-internal-linking/Mobile.dc.html、seo-internal-linking/Hub.dc.html、seo-internal-linking/States.dc.html | seo-internal-linking（新组件 Breadcrumb、Pagination、LinkCard、LinkList 已同意）；已接受偏离：分页隔一页不省略、分页悬停底色、卡片悬停下划线、手机系列卡片 chevron（使用者 2026-11-19 确认） |
 | Agent 列表与新建 /app/$slug/agents（桌面表格 + 新建弹窗；手机列表 + 底部面板；空、加载、失败态） | https://claude.ai/artifact/BQ3ghnRCniapqrXTpcrfY2 | 2026-11-24 | 「agent page design 确认，开始开发吧」 | agents/List.dc.html、agents/ListMobile.dc.html | add-ai-agents（无新组件；只列支持工具调用且套餐可用的模型） |
 | Agent 对话页 /app/$slug/agents/$conversationId（工具调用卡片四态、确认卡片、本轮步数与积分、积分不足提示、空 / 加载态、手机端） | https://claude.ai/artifact/BQ3ghnRCniapqrXTpcrfY2 | 2026-11-24 | 「agent page design 确认，开始开发吧」 | agents/Main.dc.html、agents/Mobile.dc.html | add-ai-agents（工具卡片与确认卡片为消息部件渲染器中的新渲染器，用现有 Card / Button / Badge 组合；状态色用 --success / --warning / --destructive） |
+| 后台 API 令牌 /admin/api-tokens（端点卡片、令牌表格、创建弹窗含权限与有效期、一次性显示令牌与 Claude Code 命令、吊销确认、空 / 加载 / 失败态；手机卡片列表 + 底部面板） | https://claude.ai/artifact/Tbg7CRYsoy5Kj1gw7FxV7U | 2026-11-25 | 「确认canvas」 | admin-mcp/Main.dc.html、admin-mcp/TokensMobile.dc.html | add-admin-mcp（无新组件；已吊销与已过期令牌置灰保留 30 天后从列表移除，使用者随画布确认） |
+| 后台运行时设置·功能模型分组 /admin/settings（功能、种类与沿用顺序、同种类模型下拉、实际使用模型与来源：显式 / 沿用 / 所选已停用 / 未配置；无登记时隐藏；手机卡片） | https://claude.ai/artifact/Tbg7CRYsoy5Kj1gw7FxV7U | 2026-11-25 | 「确认canvas」 | admin-mcp/Settings.dc.html、admin-mcp/SettingsMobile.dc.html | add-admin-mcp（无新组件；状态点色用 --success / --warning / --destructive） |
 
 副本格式：`ui-review/` 保存画布确认版本的画板源码（`*.dc.html`）与画布索引 `canvas.json`。源码依赖画布运行时，
 不能脱离 claude.ai 直接渲染，但完整包含布局、token 取值、文案与各状态分支（`state` / `dark` tweak），

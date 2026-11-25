@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>API 令牌（手机）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:none}
+.r{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;width:390px;height:844px;display:flex;flex-direction:column;overflow:hidden;position:relative}
+button{font:inherit;color:inherit;margin:0;cursor:pointer;border:0;background:none;padding:0}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.cap{font-size:12px;line-height:16px}
+.sub{font-size:14px;line-height:20px;font-weight:600}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:44px;padding:0 16px;border-radius:8px;font-weight:500;white-space:nowrap}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:8px;flex-shrink:0}
+.badge{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:9999px;font-size:12px;line-height:16px;font-weight:500}
+svg{flex-shrink:0}
+sc-if,sc-for{display:contents}
+</style>
+</helmet>
+<div class="r" style="background:{{t.panel}};color:{{t.fg}}">
+  <header class="row" style="height:56px;padding:0 6px;gap:4px;border-bottom:1px solid {{t.border}}">
+    <button type="button" class="ib" aria-label="打开后台导航"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"></path></svg></button>
+    <h1 class="sub" style="margin:0;flex:1;font-size:16px">API 令牌</h1>
+    <button type="button" class="ib" aria-label="创建令牌" onClick="{{openCreated}}"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></button>
+  </header>
+  <div class="col" style="flex:1;overflow:auto;padding:16px;gap:12px">
+    <p class="cap" style="margin:0;color:{{t.mfg}}">供 MCP 客户端以你的管理员身份读写后台。完整令牌只在创建时显示一次。</p>
+    <div class="col" style="gap:4px;padding:12px;border-radius:10px;background:{{t.card}};box-shadow:inset 0 0 0 1px {{t.border}}">
+      <span class="cap" style="color:{{t.mfg}};font-weight:500">MCP 端点</span>
+      <div class="row" style="gap:8px"><span class="mono" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">https://app.example.com/api/admin/mcp</span><button type="button" class="ib" aria-label="复制端点地址" style="width:36px;height:36px;color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg></button></div>
+    </div>
+    <sc-for list="{{rows}}" as="row" hint-placeholder-count="3">
+      <div class="col" style="gap:8px;padding:12px;border-radius:10px;background:{{t.card}};box-shadow:inset 0 0 0 1px {{t.border}};color:{{row.color}}">
+        <div class="row" style="gap:8px"><span style="flex:1;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{row.name}}</span><sc-if value="{{row.active}}" hint-placeholder-val="{{true}}"><button type="button" class="btn" style="height:36px;padding:0 10px;color:{{t.destructive}}">吊销</button></sc-if><sc-if value="{{row.inactive}}" hint-placeholder-val="{{false}}"><span class="cap">{{row.state}}</span></sc-if></div>
+        <div class="row" style="gap:6px;flex-wrap:wrap"><span class="mono cap" style="color:{{t.mfg}}">{{row.prefix}}</span><span class="badge" style="background:{{t.secondary}};color:{{t.mfg}}">读取</span><sc-if value="{{row.write}}" hint-placeholder-val="{{true}}"><span class="badge" style="background:{{t.warnBg}};color:{{t.warn}}">写入</span></sc-if></div>
+        <span class="cap" style="color:{{row.expColor}}">{{row.meta}}</span>
+      </div>
+    </sc-for>
+  </div>
+
+  <sc-if value="{{created}}" hint-placeholder-val="{{false}}">
+    <div class="col" style="position:absolute;inset:0;justify-content:flex-end;background:{{t.overlay}}">
+      <div role="dialog" aria-modal="true" aria-labelledby="m-t" class="col" style="gap:14px;padding:20px 16px 24px;border-radius:16px 16px 0 0;background:{{t.card}}">
+        <span aria-hidden="true" style="align-self:center;width:36px;height:4px;border-radius:2px;background:{{t.border}}"></span>
+        <h2 id="m-t" class="sub" style="margin:0;font-size:16px">令牌已创建</h2>
+        <div role="status" class="cap" style="padding:10px 12px;border-radius:8px;background:{{t.warnBg}};color:{{t.warn}}">完整令牌只显示这一次，关闭后无法再次查看。请立即复制并保存。</div>
+        <code class="mono" style="padding:10px 12px;border-radius:8px;background:{{t.secondary}};word-break:break-all">xat_3f9a1c7e_Q2xhdWRlQ29kZVNhbXBsZVRva2VuMTIzNDU2</code>
+        <button type="button" class="btn" style="background:{{t.primary}};color:{{t.pfg}}">复制令牌</button>
+        <button type="button" class="btn" style="box-shadow:inset 0 0 0 1px {{t.border}}">复制 Claude Code 添加命令</button>
+        <button type="button" class="btn" onClick="{{close}}" style="color:{{t.mfg}}">我已保存，关闭</button>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"state":{"editor":"enum","options":["normal","created"],"default":"normal"},"$preview":{"width":390,"height":844}}'>
+function uiTokens(dark) {
+  var t = dark ? {
+    s: ['#171717', '#1e1e1e', '#252525'], fg: '#f5f5f5', mfg: '#b0b0b0', primary: '#f5f5f5', pfg: '#171717',
+    destructive: '#fca5a5', warn: '#fcd34d', warnBg: 'rgba(252,211,77,0.12)', border: 'rgba(245,245,245,0.12)', overlay: 'rgba(0,0,0,0.6)', faded: '#8a8a8a'
+  } : {
+    s: ['#fafafa', '#fcfcfc', '#ffffff'], fg: '#171717', mfg: '#6b6b6b', primary: '#171717', pfg: '#fafafa',
+    destructive: '#b91c1c', warn: '#a16207', warnBg: 'rgba(234,179,8,0.12)', border: 'rgba(23,23,23,0.12)', overlay: 'rgba(0,0,0,0.4)', faded: '#737373'
+  };
+  t.bg = t.s[0]; t.panel = t.s[1]; t.card = t.s[2];
+  t.secondary = dark ? '#252525' : '#f4f4f5';
+  return t;
+}
+class Component extends DCLogic {
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var t = uiTokens(!!this.props.dark);
+    var mode = this.props.state || 'normal';
+    var created = st.c && st.c.base === mode ? st.c.val : mode === 'created';
+    var data = [
+      { name: 'Claude Code · 工作笔记本', prefix: 'xat_3f9a1c7e…', write: true, meta: '2027-02-23 过期 · 5 分钟前使用', active: true },
+      { name: '发版检查（只读）', prefix: 'xat_81d04b2a…', write: false, meta: '剩 15 天，即将过期 · 昨天使用', active: true, warn: true },
+      { name: '旧笔记本', prefix: 'xat_0c55e913…', write: true, meta: '11 月 20 日吊销', active: false, state: '已吊销' }
+    ];
+    var rows = data.map(function (d) {
+      return { name: d.name, prefix: d.prefix, write: d.write, meta: d.meta, active: d.active, inactive: !d.active, state: d.state, color: d.active ? t.fg : t.faded, expColor: d.warn ? t.warn : t.mfg };
+    });
+    return {
+      t: t, rows: rows, created: created,
+      openCreated: function () { self.setState({ c: { base: mode, val: true } }); },
+      close: function () { self.setState({ c: { base: mode, val: false } }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

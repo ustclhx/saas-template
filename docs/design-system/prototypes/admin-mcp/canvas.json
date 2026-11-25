@@ -1,0 +1,62 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-25T05:30:00Z"
+  },
+  "title": "Admin MCP 令牌与功能模型",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "API 令牌 /admin/api-tokens（桌面；Tweaks 切换状态与深色）",
+      "is_interactive": true
+    },
+    "TokensMobile.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "API 令牌·390px（Tweaks 切换状态与深色）",
+      "is_interactive": true
+    },
+    "Settings.dc.html": {
+      "x": 0,
+      "y": 1140,
+      "w": 1440,
+      "h": 1000,
+      "title": "设置页·功能模型分组 /admin/settings（桌面；Tweaks 切换状态与深色）",
+      "is_interactive": true
+    },
+    "SettingsMobile.dc.html": {
+      "x": 1520,
+      "y": 1140,
+      "w": 390,
+      "h": 844,
+      "title": "设置页·功能模型·390px",
+      "is_interactive": true
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "TokensMobile.dc.html",
+    "Settings.dc.html",
+    "SettingsMobile.dc.html"
+  ],
+  "notes": {
+    "n1": {
+      "x": 0,
+      "y": -300,
+      "text": "Admin MCP：令牌管理与功能模型",
+      "kind": "title1",
+      "maxW": 1910
+    }
+  },
+  "designSystems": []
+}
