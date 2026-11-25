@@ -12,13 +12,13 @@ P2 离线基线：PR #24 / `458fafdef81cf30cc41516eec15fc4d1e7122725`，2026-10-
 - 测试空间 `u-4py7aicz` 购买前余额 1,000、预扣与欠款为 0，仅有既存 Stripe 付款，无 PayPal 付款或订阅。
 - $10 / 1,000 积分包 checkout 首次失败的日志为 `billing.action_failed`，request ID `01a1295e-fbb0-764f-8174-bd95253c87e2`。`loadToken` 调用 `options.fetch(...)` 触发 Workers `Illegal invocation`，不是该请求 CPU 超限。transport 改为局部解构 `fetch`，OAuth 与业务 API 均使用普通函数调用。
 - 回归用例先复现相同异常，修复后 billing 170 项测试、包 typecheck、定向 Biome、Web staging 构建及 jobs staging dry-run 通过。按 jobs → web 手动发布；jobs version `aeb85b7a-95ec-408c-b6b6-1b468a90f56a`，web version `05c6cc84-e25f-43f8-bcba-b409ae0f1d84`。健康检查为 `ok`、`db.up`，应用版本 `c51c26a-paypal-fetch-fix`：这是 `c51c26a` 加本地未提交修复的明确标记，不代表 main 已包含修复；后续 main 自动发布前应先纳入此修复。
-- 已从更新后的 billing 页面创建 Sandbox 积分包订单 `2A672877DY6250409`。Chrome 扩展浮层关闭后继续原订单，使用既有 personal 买家登录，成功到达 USD 10.00 付款确认页，已选择 PayPal 测试余额，最终按钮为“完成购物”。按用户要求停在该按钮前交接，未批准付款；capture、回调验签与积分入账仍待验收，不能据此完成 3.3、10.4、11.1。继续时检查此订单及回跳结果，避免盲目重复创建订单。
+- 已从更新后的 billing 页面创建 Sandbox 积分包订单 `<paypal-resource-6>`。Chrome 扩展浮层关闭后继续原订单，使用既有 personal 买家登录，成功到达 USD 10.00 付款确认页，已选择 PayPal 测试余额，最终按钮为“完成购物”。按用户要求停在该按钮前交接，未批准付款；capture、回调验签与积分入账仍待验收，不能据此完成 3.3、10.4、11.1。继续时检查此订单及回跳结果，避免盲目重复创建订单。
 
 以下保留早期联通与部署记录；最新 PayPal 进度以上述记录为准。
 
 后续用户已批准上述沙箱订单，但应用确认失败。05:45 UTC 只读核验：PayPal 订单 `APPROVED`、capture 数 0，本地 purchase 为 pending，PayPal payment 与该订单关联 webhook 均为 0，余额仍为原 Stripe 的 1,000。staging 被 main `04fb16c47cf3d0bcbe2f89bbe7c79f217ba6d131` 的自动发布覆盖；实时回调日志在旧 bundle 中再次报 `Illegal invocation`（request ID `01a1297f-2839-7468-a593-5535a2da4e14`）。已再次按 jobs → web 恢复修复：jobs version `70cdcbc4-b25c-4958-aba7-13ff8fb67a39`，web version `db95e7a0-7c2a-4e5b-a87b-576b919bb04d`，健康检查 `ok` / `db.up`，应用版本 `04fb16c-paypal-fetch-fix`。用户授权后，修复已提交为 `a6566d1` 并创建草稿 [PR #82](https://github.com/ustclhx/saas-template/pull/82)，尚未合并；在合入 main 前，自动部署仍可能覆盖临时修复。
 
-05:51 UTC 复核：用户再次确认后，原订单和唯一 Capture `821243239P5069342` 均为 `COMPLETED`，金额 USD 10.00。本地对应 1 条 paid purchase、1 条 succeeded payment、1 条 1,000 积分 grant 和 1 条 +1,000 ledger；余额由 1,000 增至 2,000，与账本及有效批次余额一致。`CHECKOUT.ORDER.APPROVED` 与 `PAYMENT.CAPTURE.COMPLETED` 均为 processed、attempts=1、error=null，capture 完成时间 05:50:09 UTC，完成回调处理时间 05:50:30.848 UTC。只读证据见 PayPal 积分包 capture（私有证据库 `saas-template-evidence:p2-paypal/credit-pack-capture-2026-10-11.json`）。这证明本次实际沙箱积分包购买、验签与唯一入账通过；没有主动重投事件，订阅、续费、取消/恢复、退款和重复回调矩阵仍待验收，3.3、10.4、11.1 不提前勾选。
+05:51 UTC 复核：用户再次确认后，原订单和唯一 Capture `<paypal-resource-7>` 均为 `COMPLETED`，金额 USD 10.00。本地对应 1 条 paid purchase、1 条 succeeded payment、1 条 1,000 积分 grant 和 1 条 +1,000 ledger；余额由 1,000 增至 2,000，与账本及有效批次余额一致。`CHECKOUT.ORDER.APPROVED` 与 `PAYMENT.CAPTURE.COMPLETED` 均为 processed、attempts=1、error=null，capture 完成时间 05:50:09 UTC，完成回调处理时间 05:50:30.848 UTC。只读证据见 PayPal 积分包 capture（私有证据库 `saas-template-evidence:p2-paypal/credit-pack-capture-2026-10-11.json`）。这证明本次实际沙箱积分包购买、验签与唯一入账通过；没有主动重投事件，订阅、续费、取消/恢复、退款和重复回调矩阵仍待验收，3.3、10.4、11.1 不提前勾选。
 
 2026-10-05 本机旧 staging 历史记录：已应用 0002–0007（累计 8 条迁移），seed 为 4 套餐、10 报价且当时全部 inactive；`events-staging` 已有 1 producer / 1 consumer。发布版本：jobs `91bdd92a-1ffd-4fc8-9672-ecec303045f0`，web `6c9cf30a-05fa-4e28-8ab4-976424fee830`；健康检查、定价页和未配置支付时 503 已核验。上述 inactive 与缺少凭据均为历史状态。
 
@@ -101,7 +101,7 @@ charge.dispute.created
 复制该 endpoint 的 signing secret 到运行时，完成一笔真实测试卡交易后检查投递状态、HTTP 200 和数据库 `processed`，同时核对实际 `api_version`。原始请求体与 `Stripe-Signature` 用于 Web Crypto 验签，不能先重排 JSON。Stripe 官方说明版本、重复事件及重投规则见 [Webhooks](https://docs.stripe.com/webhooks)。另在同一测试环境启用 Customer Portal，账单页打开门户并返回应用也须实测。
 
 <!-- template-only:start -->
-2026-10-09 UTC，Stripe CLI 发起 Test `invoice.paid`，经真实 endpoint 投递到线上 staging。Neon `webhook_event` 中 `evt_1UOUaIL3UTpBAoXoYmdX1ucI` 为 `api_version = 2026-09-30.endive`、`status = ignored`、`attempts = 1`、`processed_at = 2026-10-09T03:35:02.565Z`。真实验签通过，事件无订阅，未触发业务动作或发积分；Neon 任务 5.3 通过。该 CLI 事件不能替代真实测试卡结账、购买任务 9.1 或 P2 3.2 / 10.1 / 11.1。
+2026-10-09 UTC，Stripe CLI 发起 Test `invoice.paid`，经真实 endpoint 投递到线上 staging。Neon `webhook_event` 中 `<stripe-evt-10>` 为 `api_version = 2026-09-30.endive`、`status = ignored`、`attempts = 1`、`processed_at = 2026-10-09T03:35:02.565Z`。真实验签通过，事件无订阅，未触发业务动作或发积分；Neon 任务 5.3 通过。该 CLI 事件不能替代真实测试卡结账、购买任务 9.1 或 P2 3.2 / 10.1 / 11.1。
 <!-- template-only:end -->
 
 ### PayPal
@@ -198,13 +198,13 @@ Stripe Checkout 首次返回 `BILLING_UNAVAILABLE`，Workbench 400 确认账户�
 
 历史 Managed Payments 补正后约 2026-10-09 04:58 UTC 再次按 jobs → web 手动部署完整代码版本 `ab9dc21274291a82a22da67aaa776c6a779dafef`，jobs Worker version `172b231b-7ef3-43f0-b677-aafba97c282e`、web `1c4273f4-420e-453c-96e0-fe950447372c`。部署时间仅据脱敏部署日志/文件时间推断，不作为精确时间戳；`2026-10-09T04:59:01.440Z` 健康检查为 200、status ok、db.up、完整 SHA 匹配，`lastCronAt = 2026-10-09T04:55:31.328Z`；随后心跳推进至 `2026-10-09T05:00:53.721Z`。
 
-已在明确的 Stripe Sandbox 中用官方 `4242` 测试卡购买一次 $10 积分包，空间 `u-4py7aicz` 的 UI 余额从 0 增至 1000。`checkout.session.completed` 事件 `evt_1UOVuiL3UTpBAoXom7S1Ate2` 在 `2026-10-09T05:00:14.299Z` 验签处理成功，API 版本为 `2026-09-30.endive`、`status = processed`、`attempts = 1`；付款 `01a11f08-8359-71e9-813e-64beae2501f9` 关联 `pi_3UOVugL3UTpBAoXo0hPVnZJQ`，`one_time / succeeded / 1000 USD`（最小货币单位）。唯一积分批次 `01a11f08-83f6-750c-b841-c10649a02cdd` 为 `purchase`、`amount = remaining = 1000`，`source_ref` 与 `payment_id` 均匹配该付款。
+已在明确的 Stripe Sandbox 中用官方 `4242` 测试卡购买一次 $10 积分包，空间 `u-4py7aicz` 的 UI 余额从 0 增至 1000。`checkout.session.completed` 事件 `<stripe-evt-11>` 在 `2026-10-09T05:00:14.299Z` 验签处理成功，API 版本为 `2026-09-30.endive`、`status = processed`、`attempts = 1`；付款 `01a11f08-8359-71e9-813e-64beae2501f9` 关联 `<stripe-pi-10>`，`one_time / succeeded / 1000 USD`（最小货币单位）。唯一积分批次 `01a11f08-83f6-750c-b841-c10649a02cdd` 为 `purchase`、`amount = remaining = 1000`，`source_ref` 与 `payment_id` 均匹配该付款。
 
 已修复的重投诊断历史：Workbench 原始投递为 200，`05:00:46` 与 `05:01:03` UTC 两次手动投递均为 500；`05:03:19` UTC 的第三次重投在 live tail 中报 `billing.webhook_failed` / `Webhook delivery association mismatch`。当时 `assertAssociation` 比较完整 event payload，已存与重投的顶层 `pending_webhooks` 从 3 变为 1，导致关联检查失败；三次失败均未重复入账。用户已授权最小修复，提交 `433e737b517733553537cfdb7ed9bb9fad6dbe4e` 仅在 Stripe 已存事件与入站事件的关联比较中忽略顶层 `pending_webhooks`；当前投递原始字节的签名验证、业务 payload 及 PayPal 比较仍严格校验。真实 worktree PG 管线回归由 RED 转为 GREEN（10 passed）；根目录六项检查全部退出 0，`typecheck` 13/13、`test` 22/22（802 passed、2 个既有 skip，其中 billing 247 passed）、`build` 2/2。日志为 `/tmp/cloud-staging-neon-duplicate-{check,check-deps,check-singletons,typecheck,test,build}.log`。
 
 历史去重补正后已按 jobs → web 手动部署完整代码 `433e737b517733553537cfdb7ed9bb9fad6dbe4e`，jobs Worker version `e60c6ed2-0f59-4bf8-b245-98e018096bd6`、web `5bfb1235-9cf6-4558-9b88-802938dcfb05`。部署精确时间未留证；`2026-10-09T05:11:05.853Z` 健康观测为 200、status ok、db.up、完整 SHA 匹配，`jobs.lastCronAt` 从 `2026-10-09T05:00:53.721Z` 推进至 `2026-10-09T05:10:39.639Z`。该历史提交的 [CI run 37887162498](https://github.com/ustclhx/saas-template/actions/runs/37887162498) 已全部通过，head SHA 为上述完整 `433e737b517733553537cfdb7ed9bb9fad6dbe4e`；CI 通过不代替首次 main 自动发布验收。
 
-修复部署后，使用受保护的测试 key 经 Stripe CLI 重投同一原始购买事件 `evt_1UOVuiL3UTpBAoXom7S1Ate2`；Stripe Workbench 的 `2026-10-09T05:11:10Z` Manual retry 明确返回 200 OK。重投后 readonly 核对付款、积分批次、事件与初始快照完全 deepEqual：各一条，付款仍为 `one_time / succeeded / 1000 USD`（最小货币单位），唯一 `purchase` 批次 `amount = remaining = 1000` 且关联原付款，事件仍 `processed / attempts = 1 / processed_at = 2026-10-09T05:00:14.299Z`；UI 余额仍为 1000。小额测试积分包购买、同事件去重及 Cron 心跳三项均通过，Neon 任务 9.1 已完成，Neon change 最终为 28/29，仅24 小时观察（9.2）保持未完成。
+修复部署后，使用受保护的测试 key 经 Stripe CLI 重投同一原始购买事件 `<stripe-evt-11>`；Stripe Workbench 的 `2026-10-09T05:11:10Z` Manual retry 明确返回 200 OK。重投后 readonly 核对付款、积分批次、事件与初始快照完全 deepEqual：各一条，付款仍为 `one_time / succeeded / 1000 USD`（最小货币单位），唯一 `purchase` 批次 `amount = remaining = 1000` 且关联原付款，事件仍 `processed / attempts = 1 / processed_at = 2026-10-09T05:00:14.299Z`；UI 余额仍为 1000。小额测试积分包购买、同事件去重及 Cron 心跳三项均通过，Neon 任务 9.1 已完成，Neon change 最终为 28/29，仅24 小时观察（9.2）保持未完成。
 
 验收汇总为 `/tmp/cloud-staging-neon-purchase-acceptance.json`，只读前后快照为 `/tmp/cloud-staging-neon-payment-before-resend.json`、`/tmp/cloud-staging-neon-payment-result.json`，CLI 重投提交记录为 `/tmp/cloud-staging-neon-stripe-resend-result.json`，当时健康记录为 `/tmp/cloud-staging-neon-final-health.json`。CLI 退出 0 仅证明提交成功；endpoint 200 由 Workbench 独立观测确认。以上证据仅含公开 ID 与测试数据。
 
@@ -294,9 +294,9 @@ WHERE workspace_id = :'workspace_id' AND remaining < 0;
 
 | 场景 | 本轮状态 |
 |---|---|
-| 积分包批准、capture、验签、唯一入账 | 已通过，订单 `2A672877DY6250409`，Capture `821243239P5069342`，余额 1,000 → 2,000，见 §1 |
+| 积分包批准、capture、验签、唯一入账 | 已通过，订单 `<paypal-resource-6>`，Capture `<paypal-resource-7>`，余额 1,000 → 2,000，见 §1 |
 | 同一付款完成事件两次重投 | 两次 resend 均 202；第二次实际接收 HTTP 200，原付款/批次/流水不变、余额仍 2,000。第一次监听目标错误，缺少 HTTP 结果；补做一次被自动审批拒绝，待用户授权。尚不计完整通过，见 证据（私有证据库 `saas-template-evidence:p2-paypal/credit-pack-duplicate-2026-10-11.json`） |
-| Pro 月付首付 | 真实 $19 首付成功，Sale `7WT17462SJ5165744`，唯一 initial 付款/1,000 积分批次/流水，余额 2,000 → 3,000；付款周期与平台下次账单时间存在差异，待修复，见 §10 |
+| Pro 月付首付 | 真实 $19 首付成功，Sale `<paypal-resource-8>`，唯一 initial 付款/1,000 积分批次/流水，余额 2,000 → 3,000；付款周期与平台下次账单时间存在差异，待修复，见 §10 |
 | 年付首付、首月发放 | 待独立工作区验收 |
 | 取消/恢复、权益保留、旧事件迟到 | 当前月付取消/恢复及其回调已通过，权益保留且付款/积分不变；旧事件迟到与恢复后自然续费仍待验收，见 §10 |
 | 换套餐重叠期、至多一条会续费 | 待独立工作区验收 |
@@ -308,11 +308,11 @@ WHERE workspace_id = :'workspace_id' AND remaining < 0;
 
 安全复用的年付测试账户已只读确认有 credential、无付款/订阅且未封禁，workspace `u-99iringc`；其登录信息沿用既有 E2E fixture，不写入本记录。当前 owner 为普通用户，不因完整验收请求自动提升权限。
 
-2026-10-11 07:18 UTC 补记：用户重新从默认 `stripe` 入口进入 `cs_test_` 结账，页面显示“沙盒”，未提交银行卡付款。切换 `paypal` 后发现 staging 已自动发布至 `6eca0f6`，PR #82 尚未合并，线上再次缺少 fetch 修复。基于该最新主线保留现有修复重新构建，170 个 billing 测试通过；按 jobs → web 恢复部署，jobs version `55567eec-0a5c-4312-95c5-b7581cced1e1`、web version `028d635e-1029-4308-bf5c-2216634e4cc4`。Health 为 `6eca0f6-paypal-fetch-fix` / ok / db up。浏览器已从 PayPal 入口成功跳转 `www.sandbox.paypal.com`，待批准 subscription `I-H2LE38AW7EU4`；买家会话过期，停在既有测试买家登录页，未批准订阅。Developer 后台因重定向真实 PayPal 登录域名被自动审批拒绝，未继续访问。此记录不算月付首付通过；后续主线发布仍可能覆盖未合并的修复。
+2026-10-11 07:18 UTC 补记：用户重新从默认 `stripe` 入口进入 `cs_test_` 结账，页面显示“沙盒”，未提交银行卡付款。切换 `paypal` 后发现 staging 已自动发布至 `6eca0f6`，PR #82 尚未合并，线上再次缺少 fetch 修复。基于该最新主线保留现有修复重新构建，170 个 billing 测试通过；按 jobs → web 恢复部署，jobs version `55567eec-0a5c-4312-95c5-b7581cced1e1`、web version `028d635e-1029-4308-bf5c-2216634e4cc4`。Health 为 `6eca0f6-paypal-fetch-fix` / ok / db up。浏览器已从 PayPal 入口成功跳转 `www.sandbox.paypal.com`，待批准 subscription `<paypal-subscription-3>`；买家会话过期，停在既有测试买家登录页，未批准订阅。Developer 后台因重定向真实 PayPal 登录域名被自动审批拒绝，未继续访问。此记录不算月付首付通过；后续主线发布仍可能覆盖未合并的修复。
 
 ## 10. PayPal 月付首付与取消/恢复（2026-10-11）
 
-用户随后登录 Sandbox 并批准 subscription `I-H2LE38AW7EU4`。07:21:54–58 UTC 只读核验：远端 ACTIVE、首付 Sale `7WT17462SJ5165744` COMPLETED / USD 19；本地唯一 `initial/succeeded` 付款、唯一 subscription 积分批次及 +1,000 流水，余额 3,000，held/debt 均 0。ACTIVATED 与 SALE 回调均 processed；ACTIVATED 经两次处理后成功，不能声称未出现重试。
+用户随后登录 Sandbox 并批准 subscription `<paypal-subscription-3>`。07:21:54–58 UTC 只读核验：远端 ACTIVE、首付 Sale `<paypal-resource-8>` COMPLETED / USD 19；本地唯一 `initial/succeeded` 付款、唯一 subscription 积分批次及 +1,000 流水，余额 3,000，held/debt 均 0。ACTIVATED 与 SALE 回调均 processed；ACTIVATED 经两次处理后成功，不能声称未出现重试。
 
 通过账单 UI 周期末取消后，远端 SUSPENDED、本地 canceled / cancel_at_period_end=true；SUSPENDED 回调处理完成后仍保留 Pro 权益、已付周期与余额。随后 UI 恢复，远端 ACTIVE、本地 active / false，恢复 ACTIVATED 回调 processed。三个阶段的 payments、grants、ledger 逐字段一致，对账差额均为 0。订阅最终保持 ACTIVE，下一账单时间 `2026-11-11T10:00:00Z`；尚未验收到期终止、自然续费或旧事件迟到。
 

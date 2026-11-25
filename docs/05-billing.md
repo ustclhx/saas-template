@@ -140,11 +140,11 @@ type NormalizedEvent =
 
 ### PayPal 补充实测（2026-10-18，Asia/Taipei）
 
-通过应用 Checkout 新建 Pro 月付 USD 19.00（`I-PE4VWXLXB1XP`）和 Team 年付 USD 490.00（`I-TKG3FMFU9BEN`）。两笔首付均为 `PAYMENT.SALE.COMPLETED`，各关联唯一付款与首月积分批次（1000 / 5000），年付未一次发放全年积分。首付周期分别为 `2026-10-18T06:06:16Z → 2026-11-18T10:00:00Z` 与 `2026-10-18T06:09:14Z → 2027-10-18T10:00:00Z`，仍以真实 `start_time / next_billing_time` 为边界，不能从扣款时间推算。
+通过应用 Checkout 新建 Pro 月付 USD 19.00（`<paypal-subscription-1>`）和 Team 年付 USD 490.00（`<paypal-subscription-2>`）。两笔首付均为 `PAYMENT.SALE.COMPLETED`，各关联唯一付款与首月积分批次（1000 / 5000），年付未一次发放全年积分。首付周期分别为 `2026-10-18T06:06:16Z → 2026-11-18T10:00:00Z` 与 `2026-10-18T06:09:14Z → 2027-10-18T10:00:00Z`，仍以真实 `start_time / next_billing_time` 为边界，不能从扣款时间推算。
 
 月付经应用取消后远端 SUSPENDED、本地 canceled / cancel_at_period_end=true，已付权益保留；恢复后远端 ACTIVE，账务未变。应用换套餐流程先取消旧月付续费，再由买家批准年付，重叠期有效权益为 Team，只有年付继续续费。随后也取消新年付续费，两笔均为 SUSPENDED，避免后续测试扣款。
 
-仅退款本轮新建付款：月付 Sale `71D187337X5761003` 部分退款 USD 4.00，Refund `95R03124HK508535V`；年付 Sale `5ST08785RL1551152` 全额退款 USD 490.00，Refund `6JW466111B6808810`。两次 POST Refund 返回 201/completed，GET Refund 返回 200/completed。真实 `PAYMENT.SALE.REFUNDED` 的 `resource.id` 是 Refund ID，`sale_id` 才是原 Sale；金额为 `amount.total/currency`，状态小写 `completed`。本次 v1 响应另有顶层 `total_refunded_amount.value/currency`，不能套用 v2 的 `seller_payable_breakdown` 累计 Capture 语义；现有映射保留 `refundedAmount=null`，由账务按唯一退款 ID 累加。
+仅退款本轮新建付款：月付 Sale `<paypal-resource-1>` 部分退款 USD 4.00，Refund `<paypal-resource-2>`；年付 Sale `<paypal-resource-3>` 全额退款 USD 490.00，Refund `<paypal-resource-4>`。两次 POST Refund 返回 201/completed，GET Refund 返回 200/completed。真实 `PAYMENT.SALE.REFUNDED` 的 `resource.id` 是 Refund ID，`sale_id` 才是原 Sale；金额为 `amount.total/currency`，状态小写 `completed`。本次 v1 响应另有顶层 `total_refunded_amount.value/currency`，不能套用 v2 的 `seller_payable_breakdown` 累计 Capture 语义；现有映射保留 `refundedAmount=null`，由账务按唯一退款 ID 累加。
 
 月付退款后按比例保留 `floor(1000 × 1500 / 1900)=789` 积分，回收 211；年付全额退款回收其 5000。余额从原 90 经首付变为 6090，再为 5879、879；各阶段无负批次、重复付款或重复积分来源，对账差额为 0。既有验收付款、订阅与待审退款未变。
 
