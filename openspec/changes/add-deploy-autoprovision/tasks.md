@@ -22,9 +22,9 @@
 
 ## 3. 生成器与升级说明（W3，依赖 1）
 
-- [ ] 3.1 `scripts/create-project.mjs`：限流 `namespace_id` 按项目名哈希分号段（design 决策 7），模板保留 1001–1015；保留占位 ID；`PROJECT_SETUP.md` 资源段改为「自动解析 / 需要提供」两部分，并给出 plan 命令。验证：`pnpm test:create-project` 覆盖两个项目号段不重叠、重复生成结果相同、项目内无重复（`check-wrangler-envs` 通过），清单文案快照更新。〔本地〕
-- [ ] 3.2 `docs/create-project.md` 的部署章节改为先运行 plan、再在 staging 流水线中 apply；起草下一版本的升级说明（`docs/upgrades/_template.md` 格式，草稿放在本 change 目录 `upgrade-notes-draft.md`，由协调者发版时并入），写明「不要删除已填 ID」、工作流合并、令牌权限与回滚。验证：`pnpm check` 通过，草稿涵盖 design 迁移计划的全部要点。〔本地〕
-- [ ] 3.3 `pnpm test:create-project:verify`：真实副本改名后运行 `pnpm deploy:resources --env staging`，无凭据时应输出缺凭据的计划并以非零退出，且不修改已跟踪文件。验证：该测试通过。〔本地〕
+- [x] 3.1 `scripts/create-project.mjs`：限流 `namespace_id` 按项目名哈希分号段（design 决策 7），模板保留 1001–1015；保留占位 ID；`PROJECT_SETUP.md` 资源段改为「自动解析 / 需要提供」两部分，并给出 plan 命令。验证：`pnpm test:create-project` 覆盖两个项目号段不重叠、重复生成结果相同、项目内无重复（`check-wrangler-envs` 通过），清单文案快照更新。〔本地〕
+- [x] 3.2 `docs/create-project.md` 的部署章节改为先运行 plan、再在 staging 流水线中 apply；起草下一版本的升级说明（`docs/upgrades/_template.md` 格式，草稿放在本 change 目录 `upgrade-notes-draft.md`，由协调者发版时并入），写明「不要删除已填 ID」、工作流合并、令牌权限与回滚。验证：`pnpm check` 通过，草稿涵盖 design 迁移计划的全部要点。〔本地〕
+- [x] 3.3 `pnpm test:create-project:verify`：真实副本改名后运行 `pnpm deploy:resources --env staging`，无凭据时应输出缺凭据的计划并以非零退出，且不修改已跟踪文件。验证：该测试通过。〔本地〕
 
 ## 4. 集成检查（协调者，依赖 2、3）
 

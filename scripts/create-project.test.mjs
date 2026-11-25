@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url'
 import * as ts from 'typescript/unstable/ast'
 import { createVirtualFileSystem } from 'typescript/unstable/fs'
 import { API } from 'typescript/unstable/sync'
+import { PLACEHOLDER_ID } from './deploy/resources-lib.mjs'
 import { checkEnvs, parseJsonc } from './production/check-wrangler-envs.mjs'
 import { themeNames } from './template-base.mjs'
 
@@ -646,8 +647,10 @@ generatorTest('真实模板同源同参数在不同输出、umask 和环境下�
   }
 })
 
-generatorTest('模板专用同步测试与发布材料可选，副本保留运行脚本', async (t) => {
+generatorTest('模板专用测试与发布材料可选，副本保留运行脚本', async (t) => {
   const excluded = [
+    'scripts/deploy/resources-lib.test.mjs',
+    'scripts/deploy/resources.test.mjs',
     'scripts/template-base.test.mjs',
     'scripts/template-sync.test.mjs',
     'scripts/template-sync/infer.test.mjs',
@@ -658,6 +661,9 @@ generatorTest('模板专用同步测试与发布材料可选，副本保留运�
     '.github/workflows/template-release-checks.yml',
   ]
   const runtime = [
+    'scripts/deploy/resources.mjs',
+    'scripts/deploy/resources-lib.mjs',
+    'scripts/deploy/cloudflare-api.test.mjs',
     'scripts/template-base.mjs',
     'scripts/template-sync.mjs',
     'scripts/template-sync/infer.mjs',
@@ -768,6 +774,8 @@ generatorTest('生成副本改名与配置，排除各级密钥、链接和产�
     'apps/jobs/.env.production',
     'node_modules/secret',
     '.wrangler/state/data',
+    'apps/web/wrangler.deploy.json',
+    'apps/jobs/wrangler.deploy.json',
     'apps/web/dist/out',
     '.turbo/cache',
     'coverage/out',
@@ -844,10 +852,10 @@ generatorTest('生成副本改名与配置，排除各级密钥、链接和产�
   for (const key of ['R2_ACCOUNT_ID', 'AI_GATEWAY_ACCOUNT_ID', 'AI_GATEWAY_ID']) {
     assert.equal(wrangler.env.staging.vars[key], '')
   }
-  assert.match(result.report, /R2：FILES 私有桶 acme-files/)
+  assert.match(result.report, /R2：查找或创建 `FILES` 绑定的私有桶，例如 `acme-files-staging`/)
   assert.match(result.report, /SENTRY_DSN/)
   assert.match(result.report, /SENTRY_AUTH_TOKEN/)
-  assert.match(result.report, /RL_API/)
+  assert.match(result.report, /生成器为本项目的限流绑定分配 \d+–\d+ 号段/)
   assert.match(result.report, /BOOTSTRAP_ADMIN_EMAILS（可选，仅 web/)
   assert.match(result.report, /已验证且未封禁才提升/)
   assert.match(result.report, /移除名单不会自动撤销/)
@@ -1598,6 +1606,74 @@ generatorTest('selfhost 继承发布和运维材料，排除真值，并再次�
     /default: ghcr.io\/second-owner\/second/,
   )
   assert.match(next.report, /second-selfhost|second-owner\/second/)
+})
+
+generatorTest('Cloudflare 生成副本使用稳定且独立的限流号段与资源清单', async (t) => {
+  const temp = await mkdtemp(join(tmpdir(), 'bootstrap-resources-'))
+  t.after(() => rm(temp, { recursive: true, force: true }))
+  const blocks = []
+  const assignments = []
+  for (const [name, folder] of [
+    ['acme', 'first'],
+    ['globex', 'second'],
+    ['acme', 'repeat'],
+  ]) {
+    const { target, report } = await createProject({
+      name,
+      domain: `${name}.example`,
+      output: join(temp, folder),
+    })
+    const ids = []
+    for (const app of ['web', 'jobs']) {
+      const config = parseJsonc(await readFile(join(target, `apps/${app}/wrangler.jsonc`), 'utf8'))
+      assert.deepEqual(checkEnvs(app, config), [])
+      for (const scope of [config, config.env.staging, config.env.production]) {
+        ids.push(...(scope.ratelimits ?? []).map(({ namespace_id }) => namespace_id))
+        for (const resource of [...(scope.kv_namespaces ?? []), ...(scope.hyperdrive ?? [])]) {
+          assert.match(resource.id, PLACEHOLDER_ID)
+        }
+      }
+    }
+    assert.equal(ids.length, 15)
+    assert.equal(new Set(ids).size, ids.length)
+    const block = Math.floor(Number(ids[0]) / 100) * 100
+    assert.ok(block >= 10_000 && block <= 999_900)
+    assert.deepEqual(
+      ids,
+      Array.from({ length: ids.length }, (_, index) => String(block + index)),
+    )
+    blocks.push(block)
+    assignments.push(ids)
+
+    if (folder === 'first') {
+      const setup = await readFile(join(target, 'PROJECT_SETUP.md'), 'utf8')
+      assert.equal(setup, report)
+      assert.equal(
+        setup.split('### 自动解析\n\n')[1]?.split('\n\n### 需要提供')[0],
+        [
+          '- KV：按绑定名查找或创建，例如 `CACHE` 对应 `acme-cache-staging`',
+          '- R2：查找或创建 `FILES` 绑定的私有桶，例如 `acme-files-staging`',
+          '- Queues：按配置名称查找或创建邮件、事件与死信队列',
+          '- R2_ACCOUNT_ID 与 AI_GATEWAY_ACCOUNT_ID 为空时由 CLOUDFLARE_ACCOUNT_ID 补齐',
+          '',
+          '在项目根目录运行只读计划：',
+          '',
+          '    pnpm deploy:resources --env staging',
+          '',
+          '在当前进程环境提供 CLOUDFLARE_API_TOKEN 与 CLOUDFLARE_ACCOUNT_ID。plan 列出资源来源和缺项，资源齐全时生成部署配置。保留 wrangler.jsonc 中的占位 ID，staging 发布流水线会创建缺失的 KV、R2 桶和队列。',
+          '',
+          `生成器为本项目的限流绑定分配 ${block}–${block + 99} 号段。同一 Cloudflare 账号部署多个项目时，核对号段是否重叠。`,
+        ].join('\n'),
+      )
+      const required = setup.split('### 需要提供\n\n')[1]?.split('\n\n## Worker Secrets')[0]
+      assert.match(required, /Hyperdrive：提供数据库 app 账号连接串/)
+      assert.match(required, /域名 \/ DNS/)
+      assert.match(required, /Turnstile 站点与 TURNSTILE_SITE_KEY/)
+      assert.match(required, /AI Gateway 与 AI_GATEWAY_ID/)
+    }
+  }
+  assert.notEqual(blocks[0], blocks[1])
+  assert.deepEqual(assignments[0], assignments[2])
 })
 
 generatorTest('Plausible 一站一 site，staging 不沿用生产域名，长期词站可关闭', async (t) => {

@@ -325,6 +325,28 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
       execFileSync('git', ['init', '--quiet'], gitOptions)
       try {
         execFileSync('git', ['add', '--all'], gitOptions)
+        if (cloudflareBuild) {
+          const before = execFileSync('git', ['write-tree'], {
+            ...gitOptions,
+            encoding: 'utf8',
+          }).trim()
+          const env = { ...process.env }
+          delete env.CLOUDFLARE_API_TOKEN
+          delete env.CLOUDFLARE_ACCOUNT_ID
+          const plan = spawnSync('pnpm', ['deploy:resources', '--env', 'staging'], {
+            cwd: result.target,
+            env,
+            encoding: 'utf8',
+          })
+          if (plan.error) throw plan.error
+          assert.equal(plan.status, 1, `${plan.stdout}${plan.stderr}`)
+          assert.match(plan.stdout, /资源解析计划：env\.staging（模式：plan）/)
+          assert.ok(plan.stdout.includes(`${name}-cache-staging`), plan.stdout)
+          assert.match(plan.stdout, /待查找（缺少凭据）/)
+          assert.match(plan.stderr, /缺少 CLOUDFLARE_API_TOKEN 或 CLOUDFLARE_ACCOUNT_ID/)
+          execFileSync('git', ['diff', '--exit-code', before], gitOptions)
+          console.log('已验证无凭据的 staging 计划退出 1，已跟踪文件无变化')
+        }
         verifyProject(result.target, { nodeBuild, cloudflareBuild, webBuild })
       } finally {
         await rm(join(result.target, '.git'), { recursive: true, force: true })
