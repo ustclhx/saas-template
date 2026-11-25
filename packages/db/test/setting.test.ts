@@ -2,7 +2,13 @@ import { env } from 'cloudflare:workers'
 import { newId } from '@saas/shared'
 import { eq, sql } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { createDb, dbSettingStore, getSetting, setting } from '../src/index.ts'
+import {
+  createDb,
+  dbSettingStore,
+  getSetting,
+  resolveStoredSetting,
+  setting,
+} from '../src/index.ts'
 
 // 在 workerd 中经 Hyperdrive 绑定（localConnectionString → 本地 PG，app 账号）读写 setting 表。
 describe('setting 表（Hyperdrive → 本地 Postgres）', () => {
@@ -78,7 +84,7 @@ describe('setting 表（Hyperdrive → 本地 Postgres）', () => {
     }
   })
 
-  it('保留 JSON 字符串类型，拒绝将字符串 true 当成邮箱验证开关', async () => {
+  it('保留 JSON 字符串类型，字符串 true 不当成邮箱验证开关而回落默认值', async () => {
     const db = open()
     const key = 'credits.dailyRequireVerifiedEmail'
     const [original] = await db
@@ -90,7 +96,10 @@ describe('setting 表（Hyperdrive → 本地 Postgres）', () => {
         .insert(setting)
         .values({ key, value: 'true' })
         .onConflictDoUpdate({ target: setting.key, set: { value: 'true' } })
-      await expect(getSetting({ store: dbSettingStore(db) }, key)).rejects.toThrow(RangeError)
+      const stored = await dbSettingStore(db).find(key)
+      expect(stored).toBe('true')
+      expect(resolveStoredSetting(key, stored)).toEqual({ value: true, source: 'fallback' })
+      expect(await getSetting({ store: dbSettingStore(db) }, key)).toBe(true)
     } finally {
       if (original)
         await db.update(setting).set({ value: original.value }).where(eq(setting.key, key))

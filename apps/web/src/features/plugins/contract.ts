@@ -1,12 +1,11 @@
 // web 侧插件扩展点（openspec add-plugin-system 决策 5）。插件入口模块的 default 导出符合下面的接口，
 // 由 scripts/plugins/generate.mjs 生成的 plugins*.gen.ts 汇总；核心只从生成文件读取，不直接导入插件。
 // 只开放这些扩展点，不够用时再按需新增并记录在 docs/plugins.md。Cloudflare Worker 入口的约定见
-// server/cloudflare/plugins.ts（含 Cloudflare 类型，不进入目标中立的类型检查）。
+// server/cloudflare/plugins.ts（含 Cloudflare 类型，不进入目标中立的类型检查），Node 入口的约定见
+// node/plugins.ts（只供 Node 目标引用，本文件不依赖 Node 配置类型）。
 import type { AgentToolContext, AgentToolContribution } from '@saas/ai'
-import type { NodeEnv } from '@saas/config'
 import type { Database } from '@saas/db'
 import type { RateLimiter } from '@saas/platform'
-import type { Storage } from '@saas/storage'
 import type { FileRoutesByTo } from '../../routeTree.gen.ts'
 import type { WebAiRuntime } from '../../server/runtime.ts'
 import type { ToolRenderer } from '../ai/tool-renderers.ts'
@@ -40,16 +39,6 @@ export type PluginFetch<Args extends unknown[]> = (
   ...args: Args
 ) => Response | undefined | Promise<Response | undefined>
 
-/** Node（selfhost）web 入口 */
-export interface WebNodePluginModule {
-  fetch?: PluginFetch<[]>
-  createAiWorkflow?: (options: {
-    env: NodeEnv
-    jobsUrl: string
-    storage: Storage | undefined
-  }) => WebAiRuntime['workflow']
-}
-
 export interface WebPluginRegistration {
   readonly id: string
   readonly entry: WebPluginModule
@@ -78,8 +67,4 @@ export interface WebAgentToolRegistration {
     readonly default: WebPluginModule
     readonly agentTools?: AgentToolContribution<PluginAgentToolContext>
   }
-}
-export interface WebNodePluginRegistration {
-  readonly id: string
-  readonly entry: WebNodePluginModule
 }

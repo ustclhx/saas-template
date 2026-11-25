@@ -135,6 +135,7 @@
   "admin_saved_changes_apply_within_about_60_seconds": "Saved. Changes apply within about 60 seconds.",
   "admin_save_failed": "Save failed.",
   "admin_save_unavailable_enter_valid_domains_no_email_addresses": "Save unavailable. Enter valid domains (no email addresses or URLs) and retry.",
+  "admin_settings_using_defaults": "Stored values for {keys} no longer match the current rules, so defaults are in use. Saving this form replaces them with the values shown.",
   "admin_runtime_settings": "Runtime settings",
   "admin_registration_enabled": "Registration enabled",
   "admin_when_registration_is_closed_only_valid_waitlist_invitations": "When registration is closed, only valid waitlist invitations can admit new users if waitlist is enabled.",

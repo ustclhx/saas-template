@@ -188,7 +188,7 @@ export default defineTemplateConfig({
 
 ### 运行时设置定义
 
-模板设置由 `packages/db/src/settings.ts` 的 `templateSettings` 定义。新增项目设置时，在该目录下项目自有的 `settings.project.ts` 默认导出中登记，template-sync 会保留该文件。每项提供 Zod `schema`、通过该 schema 的 `default` 和 `description`，运营通知令牌等需脱敏的设置另标记 `secret: true`。登记时重复键和无效默认值会报错。
+模板设置由 `packages/db/src/settings.ts` 的 `templateSettings` 定义。新增项目设置时，在该目录下项目自有的 `settings.project.ts` 默认导出中登记，template-sync 会保留该文件。每项提供 Zod `schema`、通过该 schema 的 `default` 和 `description`，运营通知令牌等需脱敏的设置另标记 `secret: true`。登记时重复键和无效默认值会报错。后台与 MCP 写入按 schema 严格校验；收紧 schema 后，数据库中不再合规的旧值在读取时回落默认值，并记录 `runtime_setting.invalid_stored_value` 告警（只含键名）。后台设置页会提示这些键，MCP `settings.get` 返回 `source: 'fallback'`。重新保存合法值即可消除。
 
 ```ts
 import { z } from 'zod'

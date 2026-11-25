@@ -245,6 +245,13 @@ export function i18nMessages({
     {
       name: 'saas:i18n-messages',
       api: { compile: () => compile(options) },
+      // vite dev 的依赖扫描早于 Paraglide 插件在 buildStart 中的编译。冷启动（CI、新 worktree）时
+      // src/paraglide 尚不存在，扫描因 @web/paraglide/... 等导入解析失败而跳过预打包，之后按请求
+      // 逐个发现依赖并反复重载，启动可能逼近 e2e webServer 的超时。缺少生成目录时先编译一次。
+      async config(_config, { command }) {
+        if (command === 'serve' && !existsSync(join(options.outdir, 'runtime.js')))
+          await compile(options)
+      },
       buildStart() {
         // client 与 ssr 两个环境各触发一次 buildStart，只报告一次
         if (reported) return

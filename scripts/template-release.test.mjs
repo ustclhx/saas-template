@@ -495,8 +495,12 @@ test('check lets main keep editing a project-owned file until it is released', (
   releaseDoc(cwd, { version: '0.2.2', previous: '0.2.1' })
   commit(cwd)
   succeeds(cli(cwd, 'check', '--version', '0.2.2'))
-  // 交付之后再改仍然拒绝
+  // 交付前的修改已随 0.2.2 交付：下一版本不改它时通过
   tag(cwd, 'template-v0.2.2')
+  releaseDoc(cwd, { version: '0.2.3', previous: '0.2.2' })
+  commit(cwd)
+  succeeds(cli(cwd, 'check', '--version', '0.2.3'))
+  // 交付之后再改仍然拒绝
   put(cwd, file, "export const agents = ['assistant', 'writer']\n")
   releaseDoc(cwd, { version: '0.2.3', previous: '0.2.2' })
   commit(cwd)

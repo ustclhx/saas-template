@@ -45,7 +45,7 @@ plugins/<id>/
 
 插件可在 `web` 入口具名导出 `agentTools` 数组或返回数组的同步函数，使用 `@saas/ai` 的 `defineAgentTool` 定义工具。工具依赖服务端模块时，用 `createServerOnlyFn(() => tools)` 导出同步函数，将工具实现模块仅引用在函数体内。启用 `agents` 后，Cloudflare Worker 启动时汇总工具，名称须与所有已启用插件和项目工具中的名称互不重复。有副作用的工具须声明 `needsApproval`，用 `ctx.idempotencyKey` 在业务写入边界去重，并在重放时返回已有结果。工具在对话实例（Durable Object）中执行，不在 web 请求运行时内：数据库用 `ctx.db`，Worker 绑定与变量、插件提供的 AI 任务工作流和限流器取自 `ctx.services`（类型 `AgentToolServices`，见 Web 契约）。提交长任务的工具立即返回 `@saas/ai` 的 `pendingTaskOutput(taskId)`；对话实例按 taskId 轮询 `ai_task`，终态时把该工具调用的输出改写为结果，不自动续轮。
 
-接口定义见 [Web](../apps/web/src/features/plugins/contract.ts)、[Cloudflare Web Worker](../apps/web/src/server/cloudflare/plugins.ts)、[jobs](../apps/jobs/src/plugins/contract.ts) 与 [Node jobs](../apps/jobs/src/node/plugins.ts)。
+接口定义见 [Web](../apps/web/src/features/plugins/contract.ts)、[Cloudflare Web Worker](../apps/web/src/server/cloudflare/plugins.ts)、[Node Web](../apps/web/src/node/plugins.ts)、[jobs](../apps/jobs/src/plugins/contract.ts) 与 [Node jobs](../apps/jobs/src/node/plugins.ts)。
 
 ## 依赖边界
 
@@ -62,6 +62,8 @@ plugins/<id>/
 3. 停用时，删除 `plugins` 中的键，调整依赖该插件的开关和其他插件，移除专属的 Wrangler 绑定并保留仍在使用的共享绑定。重新构建与部署后，插件路由返回 404，构建产物移除该插件的入口和文案。
 
 Cloudflare 使用声明了 `cloudflare` 的插件。`pnpm build:node` 只打包启用且支持 `node` 的插件，并提示已排除的仅 Cloudflare 插件。使用生成器创建 selfhost 项目时，只能选择支持 `node` 的插件。启停和目标筛选在构建时生效。数据库表与迁移统一由 `packages/db` 管理。
+
+只部署 Cloudflare 的项目可以删除 Node 入口。删除 `apps/web/src/node/plugins.ts` 或 `apps/jobs/src/node/plugins.ts` 后，插件生成器不再写出该侧的 `*.node.gen.*`，并移除之前生成的旧文件。两目标共用的契约不引用 Node 配置类型。
 
 ## 内置插件
 

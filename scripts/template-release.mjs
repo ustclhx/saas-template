@@ -451,7 +451,7 @@ export function lintMigrations(base, cwd = process.cwd()) {
 /**
  * 项目自有文件随模板版本交付后不得修改或删除：template-sync 只在首次交付时写入，之后的改动到不了衍生项目。
  * 尚未创建（早期版本）时不检查。`releaseBase` 为上一个已发布版本的提交：创建提交不在其中的文件
- * 还没有交付给任何衍生项目，发版前可以继续修改。
+ * 还没有交付给任何衍生项目，发版前可以继续修改；已交付的文件与该版本中的内容比较，交付前的修改不算。
  * 传入 `changeBase`（PR 的基准提交）时，创建提交尚不在基准中的文件属于本次变更新增，同样可以修改。
  */
 export function brandFileErrors(
@@ -468,7 +468,9 @@ export function brandFileErrors(
     if (!created) return []
     if (changeBase && !ancestor(created, changeBase, cwd)) return []
     if (releaseBase && !ancestor(created, releaseBase, cwd)) return []
-    const changed = git(cwd, 'diff', '--name-only', created, target, '--', path)
+    // 已交付的文件以上一发布版本中的内容为准：交付前的修改已随该版本到达衍生项目
+    const delivered = releaseBase ?? created
+    const changed = git(cwd, 'diff', '--name-only', delivered, target, '--', path)
     return changed
       ? [`${path}: project-owned file must stay as created in ${created.slice(0, 12)}; ${guidance}`]
       : []

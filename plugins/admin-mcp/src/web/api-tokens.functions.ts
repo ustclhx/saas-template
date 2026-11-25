@@ -3,34 +3,21 @@ import { log } from '@saas/shared/log'
 import { createServerFn } from '@tanstack/react-start'
 import { adminAction } from '@web/features/admin/action.server.ts'
 import { adminMiddleware } from '@web/features/admin/admin.functions.ts'
-import { getWebRuntime } from '@web/server/runtime.ts'
 import { templateConfig } from '@web/server/template-config.ts'
 import { z } from 'zod'
 import { adminMcpConfigSchema } from '../config.ts'
 import { TOKEN_NAME_MAX, tokenTerms } from './api-tokens.ts'
-import { createAdminApiToken, listAdminApiTokens, revokeAdminApiToken } from './tokens.ts'
+import { createAdminApiToken, revokeAdminApiToken } from './tokens.ts'
 
-// 后台 API 令牌页（openspec add-admin-mcp 任务 5.2）。只操作当前管理员自己的令牌；
-// 创建与吊销经 adminAction 在同一事务写审计，meta 不含令牌值与哈希。完整令牌只出现在创建响应中。
+// 后台 API 令牌页的创建与吊销（openspec add-admin-mcp 任务 5.2）。只操作当前管理员自己的令牌；
+// 经 adminAction 在同一事务写审计，meta 不含令牌值与哈希。完整令牌只出现在创建响应中。
+// 列表读取在 api-tokens-list.functions.ts：路由 loader 只导入它，输入 schema 与写入函数不进入入口包。
 
 const DAY_MS = 86_400_000
 
 function maxTokenDays() {
   return adminMcpConfigSchema.parse(templateConfig.plugins['admin-mcp'] ?? {}).maxTokenDays
 }
-
-export const getAdminApiTokens = createServerFn({ method: 'GET' })
-  .middleware([adminMiddleware])
-  .handler(async ({ context }) => {
-    const tokens = await listAdminApiTokens(context.db, context.admin.id)
-    return {
-      tokens,
-      endpoint: new URL('/api/admin/mcp', getWebRuntime().config.APP_URL).toString(),
-      terms: tokenTerms(maxTokenDays()),
-      // 相对时间以服务端时间为准，SSR 与水合输出一致
-      now: new Date(),
-    }
-  })
 
 const createInput = z.object({
   name: z.string().trim().min(1).max(TOKEN_NAME_MAX),

@@ -14,7 +14,6 @@ import {
   BillingError,
   BillingPageTitle,
   BillingSection,
-  BillingSkeleton,
   billingSections,
   CreditBalance,
   defaultProvider,
@@ -29,6 +28,7 @@ import {
   SubscriptionStatusBadge,
   subscriptionStatus,
 } from '../../../features/billing/billing-sections.tsx'
+import { BillingSkeleton } from '../../../features/billing/billing-skeleton.tsx'
 import {
   checkoutCustomer,
   getCustomerBilling,

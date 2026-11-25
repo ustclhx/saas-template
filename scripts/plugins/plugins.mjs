@@ -1,7 +1,7 @@
 // 构建期插件注册（openspec add-plugin-system 决策 3）：读取 template.config.ts 的 `plugins` 段与
 // plugins/<id>/plugin.ts 清单，校验后生成注册文件（均已 gitignore）。核心只从这些生成文件进入插件，
 // 未启用插件不在任何导入链上，因此不进入 web（Worker / Node）与 jobs 的构建产物。
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { pluginsForTarget, resolvePlugins } from '@saas/config'
@@ -17,6 +17,15 @@ export const GENERATED_FILES = {
   stylesNode: 'apps/web/src/styles/plugins.node.gen.css',
   jobs: 'apps/jobs/src/plugins.gen.ts',
   jobsNode: 'apps/jobs/src/plugins.node.gen.ts',
+}
+
+/**
+ * Node 注册文件的类型来源（相对仓库根）。只部署 Cloudflare 的项目删除 Node 入口（含这两个文件）后，
+ * 不再生成对应的 *.node.gen.*，避免生成文件引用已删除的 Node 入口与 `@scope/config/node` 等导出。
+ */
+export const NODE_PLUGIN_CONTRACTS = {
+  web: 'apps/web/src/node/plugins.ts',
+  jobs: 'apps/jobs/src/node/plugins.ts',
 }
 
 /**
@@ -113,7 +122,10 @@ function registry(
   { typeFrom, reexport = false, agentToolEntries, agentsWorker },
 ) {
   const lines = [HEADER]
-  lines.push(`import type { ${lists.map((list) => list.type).join(', ')} } from '${typeFrom}'`)
+  // 列表可声明自己的 typeFrom（如 Node 入口类型），其余从共用契约导入
+  const typeSources = Map.groupBy(lists, (list) => list.typeFrom ?? typeFrom)
+  for (const [source, sourced] of typeSources)
+    lines.push(`import type { ${sourced.map((list) => list.type).join(', ')} } from '${source}'`)
   for (const list of lists)
     for (const { manifest, dir } of plugins)
       if (manifest.entries?.[list.kind])
@@ -184,7 +196,8 @@ function styles(root, generated, plugins) {
 
 /**
  * 生成文件内容（相对路径 → 内容）。Cloudflare 文件含全部启用插件（插件都支持 Cloudflare 时）；
- * *.node.gen.* 只含 targets 包含 node 的插件，Node 构建经 NODE_WEB_ALIASES 只读取它们。
+ * *.node.gen.* 只含 targets 包含 node 的插件，Node 构建经 NODE_WEB_ALIASES 只读取它们；
+ * 项目没有对应的 Node 入口契约（NODE_PLUGIN_CONTRACTS）时不生成该侧的 Node 文件。
  */
 export function renderPluginFiles(root, plugins) {
   const node = pluginsForTarget(plugins, 'node').included
@@ -197,7 +210,7 @@ export function renderPluginFiles(root, plugins) {
   const agentToolEntries = agentsWorker
     ? cloudflare.filter(({ manifest }) => manifest.id !== 'agents' && manifest.entries?.web)
     : undefined
-  return {
+  const files = {
     [GENERATED_FILES.web]: registry(
       root,
       GENERATED_FILES.web,
@@ -212,19 +225,7 @@ export function renderPluginFiles(root, plugins) {
       [{ name: 'plugins', kind: 'worker', type: 'WorkerPluginRegistration', bindings: 'web' }],
       { typeFrom: './server/cloudflare/plugins.ts', reexport: true, agentsWorker },
     ),
-    // default 导出与 plugins.gen.ts 同形（Node 构建的别名目标），nodePlugins 为 webNode 入口
-    [GENERATED_FILES.webNode]: registry(
-      root,
-      GENERATED_FILES.webNode,
-      node,
-      [
-        { name: 'plugins', kind: 'web', type: 'WebPluginRegistration' },
-        { name: 'nodePlugins', kind: 'webNode', type: 'WebNodePluginRegistration' },
-      ],
-      web,
-    ),
     [GENERATED_FILES.styles]: styles(root, GENERATED_FILES.styles, cloudflare),
-    [GENERATED_FILES.stylesNode]: styles(root, GENERATED_FILES.stylesNode, node),
     [GENERATED_FILES.jobs]: registry(
       root,
       GENERATED_FILES.jobs,
@@ -232,14 +233,39 @@ export function renderPluginFiles(root, plugins) {
       [{ name: 'plugins', kind: 'jobs', type: 'JobsPluginRegistration', bindings: 'jobs' }],
       { ...jobs, reexport: true },
     ),
-    [GENERATED_FILES.jobsNode]: registry(
-      root,
-      GENERATED_FILES.jobsNode,
-      node,
-      [{ name: 'plugins', kind: 'jobsNode', type: 'JobsNodePluginRegistration' }],
-      { typeFrom: './node/plugins.ts' },
-    ),
   }
+  if (existsSync(join(root, NODE_PLUGIN_CONTRACTS.web))) {
+    Object.assign(files, {
+      // default 导出与 plugins.gen.ts 同形（Node 构建的别名目标），nodePlugins 为 webNode 入口
+      [GENERATED_FILES.webNode]: registry(
+        root,
+        GENERATED_FILES.webNode,
+        node,
+        [
+          { name: 'plugins', kind: 'web', type: 'WebPluginRegistration' },
+          {
+            name: 'nodePlugins',
+            kind: 'webNode',
+            type: 'WebNodePluginRegistration',
+            typeFrom: './node/plugins.ts',
+          },
+        ],
+        web,
+      ),
+      [GENERATED_FILES.stylesNode]: styles(root, GENERATED_FILES.stylesNode, node),
+    })
+  }
+  if (existsSync(join(root, NODE_PLUGIN_CONTRACTS.jobs)))
+    Object.assign(files, {
+      [GENERATED_FILES.jobsNode]: registry(
+        root,
+        GENERATED_FILES.jobsNode,
+        node,
+        [{ name: 'plugins', kind: 'jobsNode', type: 'JobsNodePluginRegistration' }],
+        { typeFrom: './node/plugins.ts' },
+      ),
+    })
+  return files
 }
 
 /**
@@ -297,7 +323,11 @@ export async function generatePlugins({
   const excluded = pluginsForTarget(plugins, 'node').excluded
   for (const { manifest } of excluded)
     notify(`[plugins] 插件 ${manifest.id} 仅支持 Cloudflare，selfhost（Node）构建已排除`)
-  if (write)
+  if (write) {
     for (const [path, content] of Object.entries(files)) writeIfChanged(join(root, path), content)
+    // 删除 Node 入口后，移除之前生成、已不再生成的 Node 注册文件
+    for (const path of Object.values(GENERATED_FILES))
+      if (!(path in files)) rmSync(join(root, path), { force: true })
+  }
   return { plugins, files, excluded }
 }

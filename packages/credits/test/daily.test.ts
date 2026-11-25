@@ -258,8 +258,8 @@ describe('daily credits on PostgreSQL', () => {
     await expect(claim(id)).rejects.toMatchObject({ code: 'PERSONAL_WORKSPACE_REQUIRED' })
   })
 
-  it('rejects invalid persisted settings and blacklists before writing grants', async () => {
-    const id = await account()
+  it('falls back to defaults for persisted settings that no longer match their schema', async () => {
+    // 项目收紧 schema 后的遗留值：按代码默认值领取（10 积分、每月 10 天、7 天有效），不中断领取
     for (const [key, value] of [
       ['credits.dailyAmount', 0],
       ['credits.dailyAmount', '10'],
@@ -267,12 +267,23 @@ describe('daily credits on PostgreSQL', () => {
       ['credits.dailyMaxDaysPerMonth', 32],
       ['credits.dailyExpiryDays', 1.5],
       ['credits.dailyRequireVerifiedEmail', 'true'],
-      [SIGNUP_BONUS_DOMAIN_BLACKLIST_KEY, null],
     ] as const) {
+      const id = await account()
       await configure(key, value)
-      await expect(claim(id)).rejects.toThrow()
+      expect(await claim(id)).toMatchObject({
+        status: 'granted',
+        credits: 10,
+        maxDaysPerMonth: 10,
+        expiresAt: '2026-11-08T12:34:56.000Z',
+      })
       await db.delete(setting).where(eq(setting.key, key))
     }
+  })
+
+  it('rejects an invalid persisted blacklist before writing grants', async () => {
+    const id = await account()
+    await configure(SIGNUP_BONUS_DOMAIN_BLACKLIST_KEY, null)
+    await expect(claim(id)).rejects.toThrow()
     expect(await db.select().from(creditDailyClaim).where(eq(creditDailyClaim.userId, id))).toEqual(
       [],
     )

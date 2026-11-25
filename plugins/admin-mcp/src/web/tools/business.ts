@@ -1,5 +1,3 @@
-import { getSettingDefinition, type JsonValue } from '@saas/db'
-import { isSensitiveKey, REDACTED } from '@saas/shared'
 import { auditSearchSchema, listAuditLogs } from '@web/features/admin/audit.ts'
 import { ADMIN_MAX_OFFSET, ADMIN_PAGE_SIZE } from '@web/features/admin/list.ts'
 import { metricsSearchSchema, readAdminMetrics } from '@web/features/admin/metrics.ts'
@@ -11,6 +9,7 @@ import {
 import { listAdminPurchases } from '@web/features/billing/admin-data.ts'
 import { requireFeature } from '@web/server/feature-gates.ts'
 import { z } from 'zod'
+import { auditRows } from './audit.ts'
 import { defineAdminTool, pagingDescriptions, toolResult } from './define.ts'
 
 const page = z.object({
@@ -77,27 +76,6 @@ const creditsLedger = defineAdminTool({
   },
 })
 
-// 历史审计可能把设置值记在通用 oldValue/newValue 字段下，需结合设置定义脱敏。
-function redactAuditMeta(meta: JsonValue, secretSetting: boolean, depth = 0): JsonValue {
-  if (depth >= 8) return '[Truncated]'
-  if (Array.isArray(meta))
-    return meta.map((item) => redactAuditMeta(item, secretSetting, depth + 1))
-  if (meta === null || typeof meta !== 'object') return meta
-  const secret =
-    secretSetting ||
-    (typeof meta.key === 'string' && getSettingDefinition(meta.key)?.secret === true)
-  return Object.fromEntries(
-    Object.entries(meta).map(([key, value]) => {
-      const hide =
-        isSensitiveKey(key) ||
-        key.toLowerCase().replace(/[-_]/g, '') === 'tokenhash' ||
-        getSettingDefinition(key)?.secret ||
-        (secret && (key === 'oldValue' || key === 'newValue' || key === 'value'))
-      return [key, hide ? REDACTED : redactAuditMeta(value, secret, depth + 1)]
-    }),
-  )
-}
-
 const auditList = defineAdminTool({
   name: 'audit.list',
   scope: 'admin:read',
@@ -113,16 +91,7 @@ const auditList = defineAdminTool({
   },
   run: async ({ db }, input) => {
     const { rows, hasMore } = await listAuditLogs(db, input)
-    return toolResult({
-      rows: rows.map(({ log, actorEmail }) => {
-        const secret =
-          log.targetType === 'setting' &&
-          log.targetId !== null &&
-          getSettingDefinition(log.targetId)?.secret === true
-        return { actorEmail, log: { ...log, meta: redactAuditMeta(log.meta, secret) } }
-      }),
-      hasMore,
-    })
+    return toolResult({ rows: auditRows(rows), hasMore })
   },
 })
 

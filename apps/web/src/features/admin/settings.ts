@@ -3,9 +3,8 @@ import {
   aiModel,
   type Database,
   dbSettingStore,
-  getSetting,
   getSettingDefinition,
-  getSettingValue,
+  resolveStoredSetting,
   type SettingKey,
   type SettingValues,
   setting,
@@ -29,35 +28,27 @@ export const RUNTIME_SETTING_KEYS = [
 
 export async function readRuntimeSettings(db: Database) {
   // 后台表单直接读事实来源，避免用旧缓存覆盖刚保存的设置。
-  const ctx = { store: dbSettingStore(db) }
-  const [
-    signupEnabled,
-    announcement,
-    signupBonusDomainBlacklist,
-    freeFailures,
-    dailyAmount,
-    dailyMaxDaysPerMonth,
-    dailyExpiryDays,
-    dailyRequireVerifiedEmail,
-  ] = await Promise.all([
-    getSetting(ctx, 'auth.signupEnabled'),
-    getSetting(ctx, 'site.announcement'),
-    getSetting(ctx, 'billing.signupBonusDomainBlacklist'),
-    getSetting(ctx, 'ai.freeFailures'),
-    getSetting(ctx, 'credits.dailyAmount'),
-    getSetting(ctx, 'credits.dailyMaxDaysPerMonth'),
-    getSetting(ctx, 'credits.dailyExpiryDays'),
-    getSetting(ctx, 'credits.dailyRequireVerifiedEmail'),
-  ])
+  const store = dbSettingStore(db)
+  const resolved = new Map(
+    await Promise.all(
+      RUNTIME_SETTING_KEYS.map(
+        async (key) => [key, resolveStoredSetting(key, await store.find(key))] as const,
+      ),
+    ),
+  )
+  const value = <K extends (typeof RUNTIME_SETTING_KEYS)[number]>(key: K) =>
+    resolved.get(key)?.value as SettingValues[K]
   return {
-    signupEnabled,
-    announcement,
-    signupBonusDomainBlacklist,
-    freeFailures,
-    dailyAmount,
-    dailyMaxDaysPerMonth,
-    dailyExpiryDays,
-    dailyRequireVerifiedEmail,
+    signupEnabled: value('auth.signupEnabled'),
+    announcement: value('site.announcement'),
+    signupBonusDomainBlacklist: value('billing.signupBonusDomainBlacklist'),
+    freeFailures: value('ai.freeFailures'),
+    dailyAmount: value('credits.dailyAmount'),
+    dailyMaxDaysPerMonth: value('credits.dailyMaxDaysPerMonth'),
+    dailyExpiryDays: value('credits.dailyExpiryDays'),
+    dailyRequireVerifiedEmail: value('credits.dailyRequireVerifiedEmail'),
+    /** 已存值不符合当前定义、正在使用默认值的键；保存表单即以合法值覆盖 */
+    fallbackKeys: RUNTIME_SETTING_KEYS.filter((key) => resolved.get(key)?.source === 'fallback'),
   }
 }
 
@@ -69,9 +60,8 @@ function requireSettingDefinition(key: string) {
 
 export async function readRuntimeSetting(db: Database, key: string) {
   const definition = requireSettingDefinition(key)
-  const stored = await dbSettingStore(db).find(key)
-  const value = await getSettingValue({ store: { find: async () => stored } }, key)
-  return { definition, value, source: stored === undefined ? 'default' : 'database' }
+  const { value, source } = resolveStoredSetting(key, await dbSettingStore(db).find(key))
+  return { definition, value, source }
 }
 
 /** 业务写入与前后值审计同事务；锁覆盖缺失行，首次保存也不会丢失并发修改的旧值。 */
