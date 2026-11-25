@@ -28,11 +28,16 @@ export {
   type WorkspaceTableWithId,
   workspaceColumnOf,
 } from './scoped.ts'
+export { defineSetting, type SettingDefinition } from './setting-definition.ts'
 export {
   type DailyCreditSettingKey,
   dbSettingStore,
   getSetting,
+  getSettingDefinition,
+  getSettingValue,
   isValidDailyCreditSetting,
+  listSettingDefinitions,
+  registerSettingDefinitions,
   SETTING_CACHE_TTL_SECONDS,
   type SettingCache,
   type SettingKey,
@@ -40,4 +45,6 @@ export {
   type SettingsContext,
   type SettingValues,
   settingDefaults,
+  templateSettings,
+  validateSettingValue,
 } from './settings.ts'

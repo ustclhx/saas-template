@@ -6,6 +6,7 @@ import {
   type SettingValues,
   setting,
   settingDefaults,
+  validateSettingValue,
 } from '@saas/db'
 import { eq, sql } from 'drizzle-orm'
 import type { AdminActionScope } from './action.ts'
@@ -71,14 +72,16 @@ export async function writeRuntimeSettings(
     'credits.dailyExpiryDays': input.dailyExpiryDays,
     'credits.dailyRequireVerifiedEmail': input.dailyRequireVerifiedEmail,
   }
-  for (const key of RUNTIME_SETTING_KEYS) {
+  const validated = RUNTIME_SETTING_KEYS.map(
+    (key) => [key, validateSettingValue(key, values[key])] as const,
+  )
+  for (const [key, value] of validated) {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`setting:${key}`}, 0))`)
     const [before] = await tx
       .select({ value: setting.value })
       .from(setting)
       .where(eq(setting.key, key))
       .for('update')
-    const value = values[key]
     await tx
       .insert(setting)
       .values({ key, value })

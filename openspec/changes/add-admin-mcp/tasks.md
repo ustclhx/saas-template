@@ -4,9 +4,9 @@
 
 ## 2. 设置定义化与功能模型（R9）
 
-- [ ] 2.1 `packages/db/src/settings.ts` 改为定义表：`defineSetting`（zod schema、默认值、说明、`secret`）、模板设置项定义、从定义推导 `SettingValues`；`credits.daily*` 边界迁入 schema；新增项目自有 `settings.project.ts`（默认空表）并合并、启动时检查键名重复；读取按 schema 校验。`getSetting` 签名不变。后台 `writeRuntimeSettings` 改为按定义校验。现有设置与后台设置测试全部通过，新增定义校验、项目设置项与重复键单元测试
-- [ ] 2.2 `packages/ai` 功能模型：项目自有 `feature-models.project.ts`（默认空表）、`defineFeatureModels`、按功能生成 `ai.model.<feature>` 设置定义并经 `settings.project.ts` 展开注入、登记校验（未登记、跨种类、自引用）、`resolveFeatureModel`（显式 → 按沿用顺序 → 未配置，不递归，模型须存在、启用、同种类）。单元与集成测试覆盖显式、沿用、显式模型被停用后沿用、未配置
-- [ ] 2.3 生成器与 template-sync：`settings.project.ts`、`feature-models.project.ts` 加入项目自有文件列表；`pnpm test:create-project` 通过
+- [x] 2.1 `packages/db/src/settings.ts` 改为定义表：`defineSetting`（zod schema、默认值、说明、`secret`）、模板设置项定义、从定义推导 `SettingValues`；`credits.daily*` 边界迁入 schema；新增项目自有 `settings.project.ts`（默认空表）并合并、启动时检查键名重复；读取按 schema 校验。`getSetting` 签名不变。后台 `writeRuntimeSettings` 改为按定义校验。现有设置与后台设置测试全部通过，新增定义校验、项目设置项与重复键单元测试
+- [x] 2.2 `packages/ai` 功能模型：项目自有 `feature-models.project.ts`（默认空表）、`defineFeatureModels`、按功能生成 `ai.model.<feature>` 设置定义并经 `settings.project.ts` 展开注入、登记校验（未登记、跨种类、自引用）、`resolveFeatureModel`（显式 → 按沿用顺序 → 未配置，不递归，模型须存在、启用、同种类）。单元与集成测试覆盖显式、沿用、显式模型被停用后沿用、未配置
+- [x] 2.3 生成器与 template-sync：`settings.project.ts`、`feature-models.project.ts` 加入项目自有文件列表；`pnpm test:create-project` 通过
 
 ## 3. 令牌与端点（R8）
 

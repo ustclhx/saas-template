@@ -5,6 +5,8 @@ import {
   type SettingKey,
   setting,
   settingDefaults,
+  templateSettings,
+  validateSettingValue,
 } from '@saas/db'
 import { redact } from '@saas/shared'
 import { eq, sql } from 'drizzle-orm'
@@ -17,33 +19,15 @@ export const OPERATIONS_SETTING_KEYS = [
   'operations.discordWebhookUrl',
 ] as const satisfies readonly SettingKey[]
 
-// 远程地址限制在服务商域名，后台输入不成为 SSRF 出口。
 export const operationsSettingsInput = z.object({
-  telegramBotToken: z
-    .string()
-    .regex(/^\d+:[A-Za-z0-9_-]{20,200}$/)
+  // 保留表单协议：省略表示不修改，null 表示清除。
+  telegramBotToken: templateSettings['operations.telegramBotToken'].schema
+    .refine((value) => value !== '')
     .nullable()
     .optional(),
-  telegramChatId: z
-    .string()
-    .trim()
-    .max(100)
-    .refine((v) => v === '' || /^-?\d+$|^@[A-Za-z0-9_]+$/.test(v)),
-  discordWebhookUrl: z
-    .url()
-    .refine((v) => {
-      const url = new URL(v)
-      return (
-        url.protocol === 'https:' &&
-        ['discord.com', 'discordapp.com'].includes(url.hostname) &&
-        !url.port &&
-        !url.username &&
-        !url.password &&
-        !url.search &&
-        !url.hash &&
-        /^\/api\/webhooks\/\d+\/[A-Za-z0-9_-]+$/.test(url.pathname)
-      )
-    })
+  telegramChatId: templateSettings['operations.telegramChatId'].schema,
+  discordWebhookUrl: templateSettings['operations.discordWebhookUrl'].schema
+    .refine((value) => value !== '')
     .nullable()
     .optional(),
 })
@@ -74,7 +58,7 @@ export async function writeOperationsSettings(
   }
   for (const key of OPERATIONS_SETTING_KEYS) {
     if (values[key] === undefined) continue // 空表单保留已配置密钥；null 显式清除。
-    const value = values[key] ?? ''
+    const value = validateSettingValue(key, values[key] ?? '')
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`setting:${key}`}, 0))`)
     const [before] = await tx
       .select({ value: setting.value })

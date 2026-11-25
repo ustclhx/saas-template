@@ -5,6 +5,8 @@ import { defineTemplateConfig } from '@saas/config'
 import {
   auditLog,
   createDb,
+  dbSettingStore,
+  getSetting,
   member,
   organization,
   payment,
@@ -21,6 +23,7 @@ import { newId } from '@saas/shared'
 import { withLogContext } from '@saas/shared/log'
 import { eq, inArray } from 'drizzle-orm'
 import { expect, it, vi } from 'vitest'
+import { readOperationsChannels } from '../../jobs/src/notifications/operations.ts'
 import { handleBillingBatch } from '../../jobs/src/queues/billing.ts'
 import { runAdminAction } from '../src/features/admin/action.ts'
 import {
@@ -30,6 +33,28 @@ import {
   writeOperationsSettings,
 } from '../src/features/admin/settings-operations.ts'
 import { enqueueRefundOperations } from '../src/features/notifications/operations.ts'
+
+it('将历史 JSONB 数字 chat ID 读取为 Telegram 通知和后台所用的字符串', async () => {
+  const db = createDb(env.HYPERDRIVE)
+  const store = dbSettingStore(db)
+  const key = 'operations.telegramChatId'
+  const original = await store.find(key)
+  const numericChatId = -1001234567890
+  try {
+    await db
+      .insert(setting)
+      .values({ key, value: numericChatId })
+      .onConflictDoUpdate({ target: setting.key, set: { value: numericChatId } })
+
+    expect(await store.find(key)).toBe(numericChatId)
+    expect(await getSetting({ store }, key)).toBe('-1001234567890')
+    expect(await readOperationsChannels(db)).toMatchObject({ telegramChatId: '-1001234567890' })
+    expect(await readOperationsSettings(db)).toMatchObject({ telegramChatId: '-1001234567890' })
+  } finally {
+    if (original === undefined) await db.delete(setting).where(eq(setting.key, key))
+    else await db.update(setting).set({ value: original }).where(eq(setting.key, key))
+  }
+})
 
 it('退款已提交成功，Telegram HTTP 超时只让消息重试，重投成功且日志与审计不泄密', async () => {
   const db = createDb(env.HYPERDRIVE)
