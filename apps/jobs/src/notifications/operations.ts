@@ -10,10 +10,13 @@ export interface OperationsEvent {
     | 'webhook.failed'
     | 'reconciliation.failed'
     | 'queue.dead_letter'
+    | 'ops.bulk_job.guard_tripped'
   sourceId: string
   workspaceId?: string
   amount?: number
   currency?: string
+  /** 批量任务防护告警的计数（区间外行数等）；不含用户数据 */
+  count?: number
 }
 export interface OperationsQueueMessage {
   v: 1
@@ -27,6 +30,7 @@ const events = new Set([
   'webhook.failed',
   'reconciliation.failed',
   'queue.dead_letter',
+  'ops.bulk_job.guard_tripped',
 ])
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -54,7 +58,8 @@ export function parseOperationsMessage(value: unknown) {
         (typeof e.workspaceId !== 'string' || !uuid.test(e.workspaceId))) ||
       (e.amount !== undefined && (!Number.isSafeInteger(e.amount) || (e.amount as number) < 0)) ||
       (e.currency !== undefined &&
-        (typeof e.currency !== 'string' || !/^[A-Za-z]{3}$/.test(e.currency)))
+        (typeof e.currency !== 'string' || !/^[A-Za-z]{3}$/.test(e.currency))) ||
+      (e.count !== undefined && (!Number.isSafeInteger(e.count) || (e.count as number) < 0))
     )
       return null
     operations.push({
@@ -63,6 +68,7 @@ export function parseOperationsMessage(value: unknown) {
       ...(e.workspaceId === undefined ? {} : { workspaceId: e.workspaceId as string }),
       ...(e.amount === undefined ? {} : { amount: e.amount as number }),
       ...(e.currency === undefined ? {} : { currency: e.currency as string }),
+      ...(e.count === undefined ? {} : { count: e.count as number }),
     })
   }
   const requestId =
@@ -94,6 +100,7 @@ const labels = {
   'webhook.failed': 'Webhook processing failed',
   'reconciliation.failed': 'Reconciliation failed',
   'queue.dead_letter': 'Events queue dead letter',
+  'ops.bulk_job.guard_tripped': 'Bulk job guard tripped; nothing unsafe was deleted or sent',
 }
 
 /** 网络异常只暴露渠道和状态；异常文本可能带含 token 的请求 URL，不能透传。 */
@@ -110,6 +117,7 @@ export async function sendOperationsChannel(
     ...(event.amount !== undefined
       ? [`Amount: ${event.amount} ${event.currency ?? ''} (minor units)`]
       : []),
+    ...(event.count !== undefined ? [`Count: ${event.count}`] : []),
   ].join('\n')
   const url =
     channel === 'telegram'

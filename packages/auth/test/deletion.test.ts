@@ -366,9 +366,9 @@ describe('atomic deletion in workerd', () => {
     // Simulate a newer cached value. Retry must never delete this reusable email key.
     await env.CACHE.put(`auth:verification:${row?.identifier}`, JSON.stringify(row))
     fail = false
-    expect(await retryDeletionCleanup(a.db, kv)).toEqual({ completed: 1, failed: 0 })
+    expect(await retryDeletionCleanup(a.db, kv)).toMatchObject({ completed: 1, failed: 0 })
     expect(await env.CACHE.get(`auth:verification:${row?.identifier}`)).not.toBeNull()
-    expect(await retryDeletionCleanup(a.db, kv)).toEqual({ completed: 0, failed: 0 })
+    expect(await retryDeletionCleanup(a.db, kv)).toMatchObject({ completed: 0, failed: 0 })
     if (replacement?.type === 'otp')
       expect(
         (await a.post('/sign-in/email-otp', { email: owner.email, otp: replacement.otp })).status,

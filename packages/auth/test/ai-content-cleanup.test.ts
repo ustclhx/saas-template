@@ -4,7 +4,12 @@ import {
   purgeDeletedPersonalWorkspaceShareCards,
   purgeDeletedUserAiContent,
 } from '../src/ai-content-cleanup.ts'
-import { deleteAccount, deleteTeamWorkspace } from '../src/deletion.ts'
+import {
+  DELETION_CLEANUP_PREFIX,
+  deleteAccount,
+  deleteTeamWorkspace,
+  retryDeletionCleanup,
+} from '../src/deletion.ts'
 import { cleanupExpiredWorkspaces } from '../src/workspace-lifecycle.ts'
 import { cookieHeader, setup, signUpBody, testUsers } from './helpers.ts'
 
@@ -460,5 +465,91 @@ describe('AI content deletion in workerd', () => {
       expect.arrayContaining(['workspace.member_invited', 'account.deleted']),
     )
     expect(JSON.stringify(audits).toLowerCase()).not.toContain(target.email.toLowerCase())
+  })
+})
+
+describe('cleanup safeguards (add-ops-safeguards 1.2)', () => {
+  const completed = (a: App, workspaceId: string) => a.db
+    .$client`select id from audit_log where workspace_id=${workspaceId}
+      and action='workspace.cleanup.completed'`
+
+  it('expired workspaces: retention replaced by 0 skips the round; a 1970 deletion time is never cleaned and is reported', async () => {
+    const a = app()
+    const owner = await actor(a, 'guard-team')
+    const corrupted = await team(a, [{ id: owner.id, role: 'owner' }])
+    const expired = await team(a, [{ id: owner.id, role: 'owner' }])
+    for (const workspaceId of [corrupted, expired])
+      await deleteTeamWorkspace({ ...owner.options, workspaceId })
+    await a.db
+      .$client`update organization set deleted_at='1970-01-01T00:00:00Z' where id=${corrupted}`
+    await a.db
+      .$client`update organization set deleted_at=now()-interval '31 days' where id=${expired}`
+    expect(await cleanupExpiredWorkspaces(a.db, { retentionDays: 0 })).toMatchObject({
+      cleaned: 0,
+      guard: { processed: 0, tripped: [{ reason: 'retention-too-short' }] },
+    })
+    expect(await completed(a, expired)).toHaveLength(0)
+    const result = await cleanupExpiredWorkspaces(a.db)
+    expect(result.guard.tripped).toContainEqual(
+      expect.objectContaining({ reason: 'rows-out-of-range' }),
+    )
+    expect(await completed(a, expired)).toHaveLength(1)
+    expect(await completed(a, corrupted)).toHaveLength(0)
+    await a.db.$client`update organization set deleted_at=now() where id=${corrupted}`
+  })
+
+  it('expired workspaces: caps spaces per round and handles the earliest deletion first', async () => {
+    const a = app()
+    const owner = await actor(a, 'guard-cap')
+    const older = await team(a, [{ id: owner.id, role: 'owner' }])
+    const newer = await team(a, [{ id: owner.id, role: 'owner' }])
+    for (const workspaceId of [newer, older])
+      await deleteTeamWorkspace({ ...owner.options, workspaceId })
+    // 早于其他测试数据的删除时间，确保本例的两个空间排在最前
+    await a.db.$client`update organization set deleted_at='2024-01-02T00:00:00Z' where id=${older}`
+    await a.db.$client`update organization set deleted_at='2024-01-03T00:00:00Z' where id=${newer}`
+    const first = await cleanupExpiredWorkspaces(a.db, { workspaceCap: 1 })
+    expect(first.guard).toMatchObject({ processed: 1, capReached: true })
+    expect(await completed(a, older)).toHaveLength(1)
+    expect(await completed(a, newer)).toHaveLength(0)
+    await cleanupExpiredWorkspaces(a.db, { workspaceCap: 1 })
+    expect(await completed(a, newer)).toHaveLength(1)
+  })
+
+  it('personal share cards: a deletion time outside the floor..now range is skipped and reported', async () => {
+    const a = app()
+    const target = await actor(a, 'guard-share')
+    deletedIds.push(target.id)
+    await deleteAccount(target.options)
+    await a.db
+      .$client`update organization set deleted_at='1970-01-01T00:00:00Z' where id=${target.id}`
+    const cleanupShareCards = vi.fn(async (_workspaceId: string) => {})
+    const result = await purgeDeletedPersonalWorkspaceShareCards(a.db, cleanupShareCards)
+    expect(cleanupShareCards).not.toHaveBeenCalledWith(target.id)
+    expect(result.guard?.tripped).toContainEqual(
+      expect.objectContaining({ reason: 'rows-out-of-range' }),
+    )
+    await a.db.$client`update organization set deleted_at=now() where id=${target.id}`
+  })
+
+  it('deletion credential manifests: an expiry before the floor is kept and reported; clock skew skips the round', async () => {
+    const a = app()
+    const id = newId()
+    await a.db
+      .$client`insert into verification (id,identifier,value,expires_at,created_at,updated_at)
+      values (${id},${DELETION_CLEANUP_PREFIX + id},'[]','1970-01-01T00:00:00Z',now(),now())`
+    try {
+      const kv = { delete: vi.fn(async () => {}) }
+      expect(
+        await retryDeletionCleanup(a.db, kv, { now: new Date(Date.now() + 600_000) }),
+      ).toMatchObject({ completed: 0, failed: 0, guard: { tripped: [{ reason: 'clock-skew' }] } })
+      const result = await retryDeletionCleanup(a.db, kv)
+      expect(result.guard.tripped).toContainEqual(
+        expect.objectContaining({ reason: 'rows-out-of-range' }),
+      )
+      expect(await a.db.$client`select id from verification where id=${id}`).toHaveLength(1)
+    } finally {
+      await a.db.$client`delete from verification where id=${id}`
+    }
   })
 })

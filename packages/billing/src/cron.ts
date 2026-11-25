@@ -6,6 +6,7 @@ import {
 } from '@saas/credits'
 import {
   auditLog,
+  bulkJobFloorSql,
   type CreditHold,
   creditGrant,
   creditHold,
@@ -14,10 +15,19 @@ import {
   payment,
   plan,
   planPrice,
+  probeBulkJob,
   refundRequest,
   subscription,
 } from '@saas/db'
-import { and, eq, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm'
+import {
+  BULK_JOB_TIME_FLOOR,
+  type BulkJobOutcome,
+  bulkJobOutcome,
+  bulkJobSkipped,
+  checkBulkJobTime,
+  cutoffBefore,
+} from '@saas/shared/bulk-job'
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, lte, min, or, sql } from 'drizzle-orm'
 import { billingErrorMessage } from './errors.ts'
 import {
   applyBillingEvent,
@@ -38,11 +48,24 @@ export interface CronFailure {
 export interface CronOptions {
   /** Called after a durable audit entry; callback failures propagate to the scheduler. */
   alert?: (failure: CronFailure) => void | Promise<void>
+  /** 仅供测试缩小每轮上限；生产使用下方常量 */
+  cap?: number
 }
 export interface CronResult {
   processed: number
   failures: CronFailure[]
+  /** 删除 / 销毁 / 外部写任务的防护结果（add-ops-safeguards），由 jobs 记录日志并告警 */
+  guard?: BulkJobOutcome
 }
+
+/** 每轮上限（add-ops-safeguards D2，使用者 2026-11-25 确认）；超出部分留到下一轮 */
+export const CREDIT_EXPIRATION_CAP = 200
+export const HOLD_SWEEP_CAP = 500
+export const SUBSCRIPTION_CANCEL_CAP = 50
+export const REFUND_CONTACT_CLEANUP_CAP = 500
+/** 退款联系邮箱的保留期与最小保留期 */
+export const REFUND_CONTACT_RETENTION_DAYS = 30
+const REFUND_CONTACT_MIN_RETENTION_MS = 86_400_000
 async function failed(
   db: Database,
   result: CronResult,
@@ -63,28 +86,51 @@ async function failed(
   await options.alert?.(failure)
 }
 
-/** Expire even fully reserved grants; allocations settle through the credits API later. */
+/**
+ * Expire even fully reserved grants; allocations settle through the credits API later.
+ * 每轮最多 200 个空间，按最早到期批次排序；以数据库时钟为基准，到期时间早于下限的批次不处理并告警。
+ */
 export async function runCreditExpiration(
   db: Database,
   now = new Date(),
   options: CronOptions = {},
 ): Promise<CronResult> {
+  const { dbNow, outOfRange } = await probeBulkJob(
+    db,
+    sql`select count(*) from ${creditGrant} where ${creditGrant.status}='active' and ${creditGrant.expiresAt}<${bulkJobFloorSql}`,
+  )
+  const verdict = checkBulkJobTime({ appNow: now, dbNow })
+  if (!verdict.ok) return { processed: 0, failures: [], guard: bulkJobSkipped(verdict.reason) }
   const workspaces = await db
-    .selectDistinct({ workspaceId: creditGrant.workspaceId })
+    .select({ workspaceId: creditGrant.workspaceId })
     .from(creditGrant)
-    .where(and(eq(creditGrant.status, 'active'), lte(creditGrant.expiresAt, now)))
+    .where(
+      and(
+        eq(creditGrant.status, 'active'),
+        gte(creditGrant.expiresAt, BULK_JOB_TIME_FLOOR),
+        lte(creditGrant.expiresAt, dbNow),
+      ),
+    )
+    .groupBy(creditGrant.workspaceId)
+    .orderBy(asc(min(creditGrant.expiresAt)), asc(creditGrant.workspaceId))
+    .limit(options.cap ?? CREDIT_EXPIRATION_CAP)
   const result: CronResult = { processed: 0, failures: [] }
   for (const { workspaceId } of workspaces) {
     try {
       await db.transaction(async (tx) => {
         await lockWorkspaceBilling(tx, workspaceId)
-        await expireWorkspaceCredits(db, workspaceId, tx, now)
+        await expireWorkspaceCredits(db, workspaceId, tx, dbNow, BULK_JOB_TIME_FLOOR)
       })
       result.processed++
     } catch (error) {
       await failed(db, result, options, 'expiration', workspaceId, workspaceId, error)
     }
   }
+  result.guard = bulkJobOutcome({
+    processed: workspaces.length,
+    cap: options.cap ?? CREDIT_EXPIRATION_CAP,
+    outOfRange,
+  })
   return result
 }
 
@@ -200,16 +246,31 @@ export function registerHoldSweeper(refType: CreditHold['refType'], handler: Hol
   }
 }
 
-/** DB-only business handlers own settlement; no AI-specific policies are installed here. */
+/**
+ * DB-only business handlers own settlement; no AI-specific policies are installed here.
+ * 每轮最多 500 条，按 expires_at 升序；以数据库时钟为基准，到期时间早于下限的预扣不结算并告警。
+ */
 export async function runHoldSweep(
   db: Database,
   now = new Date(),
   options: CronOptions = {},
 ): Promise<CronResult> {
+  const { dbNow, outOfRange } = await probeBulkJob(
+    db,
+    sql`select count(*) from ${creditHold} where ${creditHold.status}='held' and ${creditHold.expiresAt}<${bulkJobFloorSql}`,
+  )
+  const verdict = checkBulkJobTime({ appNow: now, dbNow })
+  if (!verdict.ok) return { processed: 0, failures: [], guard: bulkJobSkipped(verdict.reason) }
+  const inRange = and(
+    gte(creditHold.expiresAt, BULK_JOB_TIME_FLOOR),
+    lte(creditHold.expiresAt, dbNow),
+  )
   const holds = await db
     .select()
     .from(creditHold)
-    .where(and(eq(creditHold.status, 'held'), lte(creditHold.expiresAt, now)))
+    .where(and(eq(creditHold.status, 'held'), inRange))
+    .orderBy(asc(creditHold.expiresAt), asc(creditHold.id))
+    .limit(options.cap ?? HOLD_SWEEP_CAP)
   const result: CronResult = { processed: 0, failures: [] }
   for (const candidate of holds) {
     try {
@@ -224,13 +285,13 @@ export async function runHoldSweep(
               eq(creditHold.id, candidate.id),
               eq(creditHold.workspaceId, candidate.workspaceId),
               eq(creditHold.status, 'held'),
-              lte(creditHold.expiresAt, now),
+              inRange,
             ),
           )
         if (!active) return false
         const handler = holdSweepers.get(active.refType)
         if (!handler) throw new Error(`No hold sweeper registered: ${active.refType}`)
-        await handler({ db, tx, hold: active, now })
+        await handler({ db, tx, hold: active, now: dbNow })
         return true
       })
       if (handled) result.processed++
@@ -238,15 +299,34 @@ export async function runHoldSweep(
       await failed(db, result, options, 'hold_sweep', candidate.workspaceId, candidate.id, error)
     }
   }
+  result.guard = bulkJobOutcome({
+    processed: holds.length,
+    cap: options.cap ?? HOLD_SWEEP_CAP,
+    outOfRange,
+  })
   return result
 }
 
-/** Fetch remote state outside transactions; normalization cannot synthesize payments. */
+/**
+ * Fetch remote state outside transactions; normalization cannot synthesize payments.
+ * 只读同步不受限；PayPal 到期取消（外部写）每轮最多 50 次，按 current_period_end 升序。
+ * 时钟偏差超过 5 分钟时本轮只同步不取消；到期时间早于下限的订阅不取消并告警。
+ */
 export async function runSubscriptionReconciliation(
   db: Database,
   providers: BillingProviders,
   options: CronOptions & { now?: () => Date } = {},
 ): Promise<CronResult> {
+  const clock = options.now ?? (() => new Date())
+  const elapsedCancel = and(
+    eq(subscription.provider, 'paypal'),
+    eq(subscription.cancelAtPeriodEnd, true),
+  )
+  const { dbNow, outOfRange } = await probeBulkJob(
+    db,
+    sql`select count(*) from ${subscription} where ${elapsedCancel} and ${subscription.currentPeriodEnd}<${bulkJobFloorSql}`,
+  )
+  const verdict = checkBulkJobTime({ appNow: clock(), dbNow })
   const rows = await db
     .select()
     .from(subscription)
@@ -256,7 +336,10 @@ export async function runSubscriptionReconciliation(
         and(eq(subscription.status, 'canceled'), eq(subscription.cancelAtPeriodEnd, true)),
       ),
     )
+    .orderBy(sql`${subscription.currentPeriodEnd} asc nulls last`, asc(subscription.id))
   const result: CronResult = { processed: 0, failures: [] }
+  let cancels = 0
+  let capReached = false
   for (const row of rows) {
     try {
       const provider = providers[row.provider]
@@ -264,7 +347,6 @@ export async function runSubscriptionReconciliation(
         throw new Error('Missing or wrong billing provider')
       const [current] = await db.select().from(subscription).where(eq(subscription.id, row.id))
       if (!current) continue
-      const clock = options.now ?? (() => new Date())
       const fetchSnapshot = async () => {
         const remote = await provider.getSubscription(current.providerSubscriptionId)
         if (remote.providerSubscriptionId !== current.providerSubscriptionId)
@@ -275,15 +357,23 @@ export async function runSubscriptionReconciliation(
       // PayPal 终止后本地仍保留 cancelAtPeriodEnd=true，行会被再次选中；
       // 先读远端状态，已终止（CANCELLED/EXPIRED）时不再 cancel，保证幂等
       if (
+        verdict.ok &&
         current.provider === 'paypal' &&
         current.cancelAtPeriodEnd &&
         current.currentPeriodEnd &&
-        current.currentPeriodEnd <= clock() &&
+        current.currentPeriodEnd.getTime() >= BULK_JOB_TIME_FLOOR.getTime() &&
+        current.currentPeriodEnd <= dbNow &&
         snapshot.status !== 'canceled' &&
         snapshot.status !== 'expired'
       ) {
-        await provider.cancelSubscription(current.providerSubscriptionId, { atPeriodEnd: false })
-        snapshot = await fetchSnapshot()
+        if (cancels >= (options.cap ?? SUBSCRIPTION_CANCEL_CAP)) {
+          // 超出上限的取消留到下一轮；本轮仍按远端快照同步本地状态
+          capReached = true
+        } else {
+          cancels++
+          await provider.cancelSubscription(current.providerSubscriptionId, { atPeriodEnd: false })
+          snapshot = await fetchSnapshot()
+        }
       }
       const now = clock()
       const event: NormalizedEvent = {
@@ -308,6 +398,13 @@ export async function runSubscriptionReconciliation(
       )
     }
   }
+  result.guard = bulkJobOutcome({
+    processed: cancels,
+    cap: options.cap ?? SUBSCRIPTION_CANCEL_CAP,
+    capReached,
+    tripped: verdict.ok ? [] : [{ reason: verdict.reason }],
+    outOfRange,
+  })
   return result
 }
 
@@ -333,27 +430,58 @@ export async function runCreditReconciliation(
   return result
 }
 
-/** Approval is not resolution: refunded uses updatedAt (completion), rejected uses review time. */
-export async function clearResolvedRefundContacts(db: Database, now = new Date()) {
-  const cutoff = new Date(now.getTime() - 30 * 86_400_000)
+/**
+ * Approval is not resolution: refunded uses updatedAt (completion), rejected uses review time.
+ * 每轮最多 500 条，按完成时间升序；截止时间以数据库时钟为准，完成时间早于下限的行不清空并告警。
+ */
+export async function clearResolvedRefundContacts(
+  db: Database,
+  now = new Date(),
+  {
+    retentionDays = REFUND_CONTACT_RETENTION_DAYS,
+    cap = REFUND_CONTACT_CLEANUP_CAP,
+  }: { retentionDays?: number; cap?: number } = {},
+) {
+  const resolvedAt = sql`case when ${refundRequest.status}='rejected'
+    then coalesce(${refundRequest.reviewedAt}, ${refundRequest.updatedAt}) else ${refundRequest.updatedAt} end`
+  const resolved = and(
+    isNotNull(refundRequest.contactEmail),
+    inArray(refundRequest.status, ['rejected', 'refunded']),
+  )
+  const { dbNow, outOfRange } = await probeBulkJob(
+    db,
+    sql`select count(*) from ${refundRequest} where ${resolved} and ${resolvedAt}<${bulkJobFloorSql}`,
+  )
+  const cutoff = cutoffBefore(dbNow, retentionDays * 86_400_000)
+  const verdict = checkBulkJobTime({
+    appNow: now,
+    dbNow,
+    cutoffs: [{ at: cutoff, minRetentionMs: REFUND_CONTACT_MIN_RETENTION_MS }],
+  })
+  if (!verdict.ok) return { cleared: 0, guard: bulkJobSkipped(verdict.reason) }
+  const candidates = db
+    .select({ id: refundRequest.id })
+    .from(refundRequest)
+    .where(
+      and(
+        resolved,
+        sql`${resolvedAt} >= ${bulkJobFloorSql}`,
+        sql`${resolvedAt} < ${cutoff.toISOString()}::timestamptz`,
+      ),
+    )
+    .orderBy(asc(resolvedAt), asc(refundRequest.id))
+    .limit(cap)
   const cleared = await db
     .update(refundRequest)
     .set({ contactEmail: null })
-    .where(
-      and(
-        isNotNull(refundRequest.contactEmail),
-        or(
-          and(
-            eq(refundRequest.status, 'rejected'),
-            lt(
-              sql`coalesce(${refundRequest.reviewedAt}, ${refundRequest.updatedAt})`,
-              sql`${cutoff.toISOString()}::timestamptz`,
-            ),
-          ),
-          and(eq(refundRequest.status, 'refunded'), lt(refundRequest.updatedAt, cutoff)),
-        ),
-      ),
-    )
+    .where(and(inArray(refundRequest.id, candidates), isNotNull(refundRequest.contactEmail)))
     .returning({ id: refundRequest.id })
-  return { cleared: cleared.length }
+  return {
+    cleared: cleared.length,
+    guard: bulkJobOutcome({
+      processed: cleared.length,
+      cap,
+      outOfRange,
+    }),
+  }
 }

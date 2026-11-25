@@ -87,7 +87,7 @@ Cloudflare：R2 写/删在 `packages/storage/src/cloudflare/{index,media,share-c
 | 任务 | 上限 | 依据 |
 |---|---|---|
 | 1 删号凭据 | 200 个清单/轮 | 每清单若干 KV 删除；心跳组 48 轮/天 ≈ 9600/天 |
-| 2 文件清理 | 20 个空间/轮，且 500 个对象/轮（先到为准） | R2 `delete()` 单次最多 1000 个键（[Workers API](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/)，2026-11-25）；每次调用计一个子请求，Workers 每次调用子请求上限 **待核实**；48 轮/天 ≈ 24000 对象/天 |
+| 2 文件清理 | 20 个空间/轮，且 500 个对象/轮（先到为准） | R2 `delete()` 单次最多 1000 个键（[Workers API](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/)，2026-11-25）；每次调用计一个子请求；Workers 每次调用子请求上限 Free 50、Paid 10,000，另列「internal services」Free 1,000 / Paid 默认 10,000（[Workers limits](https://developers.cloudflare.com/workers/platform/limits/)，2026-11-25 核实），500 个对象不超出；48 轮/天 ≈ 24000 对象/天 |
 | 3a 分享卡 | 20 个空间/轮 | 与删号路径现有的 20 一致 |
 | 3b 过期空间 | 20 个空间/轮；AI 内容沿用 500×200 | 每天一次；同时限制通知与邀请删除量 |
 | 4 积分过期 | 200 个空间/轮 | 每小时一次 ≈ 4800/天 |
@@ -112,6 +112,19 @@ Cloudflare：R2 写/删在 `packages/storage/src/cloudflare/{index,media,share-c
 - 告警走现有运维通知（EVENTS_QUEUE → `notifications/operations.ts`），新增事件类型 `ops.bulk_job.guard_tripped`，载荷只含任务 id、原因与计数，不含用户数据。
 
 备选：只做整轮检查。放弃：单行时间被写坏（迁移错误、导入数据）时整轮检查发现不了。
+
+### D1–D3 实施记录（第 1 组，2026-11-25）
+
+与上文方案的差异与补充，均不改变规范要求：
+
+- **探测查询**：数据库时钟与区间外行数用一条语句取得（`@saas/db` 的 `probeBulkJob`：`select now(), (<计数子查询>)`），每个任务每轮多一次往返，而不是并入候选查询；理由是候选为空时仍需告警区间外行。只在已有的定时任务中执行，不新增调度，不影响缩容到零。
+- **核心任务登记**：`apps/jobs/src/bulk-job-registry.ts` 的 `CORE_JOBS` / `CORE_TASK_GROUP_JOBS` 决定每个触发器运行哪些核心任务（`handlers.ts` 按它执行，类型保证每个登记任务都有执行入口）；计费子任务在 `billing.ts` 的 `BILLING_JOBS`。注册表里的上限写成数字（单元测试会整体 mock 各 package），守卫测试再与 package 常量核对。
+- **守卫测试文件名**：`apps/jobs/test/bulk-jobs.guard.unit.test.ts`。它要读取 `docs/bulk-jobs.md` 与 `wrangler.jsonc`，放在 node 单元测试项目中（集成项目运行在 workerd，无法读取文件）。
+- **租约类任务**（`compensation`、`refund_notifications`）：没有按应用时钟计算的删除截止时间（补偿租约使用注入时钟做围栏），因此只做行时间区间（`[下限, 数据库 now()]`）过滤与区间外告警，不做时钟偏差检查。
+- **订阅对账**：时钟偏差超过 5 分钟时本轮只按远端快照同步、不调用取消（同步本身不是破坏性操作）。
+- **对账告警**：明细 sourceId 为 `reconciliation:<UTC 日>:<序号 1–10>`、汇总为 `…:summary`，保证同一天最多 10 + 1 条，重跑与重放命中相同 sourceId 由运维通知消费者跳过。
+- **agents 保留期**：Durable Object 中经 `EVENTS_QUEUE` 发送 `ops.bulk_job.guard_tripped`；防护未通过时 6 小时后重查。
+- **Node 清理（#12）**：`cleanupNodeQueues` 每轮最多检查 1000 个终态批次（`finished_at` 升序、不早于下限），`cleanupNodeWorkflowEvents` 每轮最多 1000 个 workflow；仍未接入调度。
 
 ### D4 MCP 说明：定义时由类型强制
 
@@ -210,5 +223,5 @@ Cloudflare：R2 写/删在 `packages/storage/src/cloudflare/{index,media,share-c
 
 ## Open Questions
 
-- Workers 每次调用的子请求上限（决定文件清理对象上限是否需要更低）：实施第 1 组时查 [Workers 限制](https://developers.cloudflare.com/workers/platform/limits/) 并在 `docs/bulk-jobs.md` 注明，不改变方案。
+- ~~Workers 每次调用的子请求上限~~：已核实（2026-11-25，[Workers limits](https://developers.cloudflare.com/workers/platform/limits/)）：「A subrequest is any request a Worker makes using the Fetch API or to Cloudflare services like R2, KV, or D1.」每次调用 Free 50 / Paid 10,000，internal services Free 1,000 / Paid 默认 10,000；每次调用最多 6 个连接同时等待响应头。文件清理每轮 ≤500 个 R2 删除，上限不变，已写入 `docs/bulk-jobs.md`。
 - ~~R2 绑定错误消息中错误码的确切格式~~：已确认为 message 末尾 `(码)`，见 D6（2026-11-25）。

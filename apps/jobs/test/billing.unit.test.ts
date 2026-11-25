@@ -57,6 +57,8 @@ import {
   BILLING_RETRY_CRON,
   createBillingContext,
   postprocessBillingDelivery,
+  RECONCILIATION_ALERT_CAP,
+  reconciliationAlerts,
   recoverBillingDeliveries,
   runBillingSchedule,
 } from '../src/billing.ts'
@@ -373,3 +375,54 @@ it.each(['workspace', 'metrics'] as const)(
     expect(metrics).toHaveBeenCalledOnce()
   },
 )
+
+it('对账告警每轮最多 10 条明细与 1 条汇总，sourceId 只含 UTC 日与序号，当天重跑不产生新键', async () => {
+  const send = vi.fn().mockResolvedValue(undefined)
+  const queue = { send, sendBatch: vi.fn() }
+  const now = new Date('2026-11-25T04:00:00Z')
+  const run = async () => {
+    const alerts = reconciliationAlerts(queue, now)
+    for (let index = 0; index < 300; index++) await alerts.alert({ workspaceId: id })
+    await alerts.flush()
+  }
+  await run()
+  const first = send.mock.calls.map(([body]) => body.operations[0])
+  expect(first).toHaveLength(RECONCILIATION_ALERT_CAP + 1)
+  expect(first.at(-1)).toEqual({
+    event: 'reconciliation.failed',
+    sourceId: 'reconciliation:2026-11-25:summary',
+    count: 300,
+  })
+  expect(first[0]).toEqual({
+    event: 'reconciliation.failed',
+    sourceId: 'reconciliation:2026-11-25:1',
+    workspaceId: id,
+  })
+  send.mockClear()
+  await run()
+  const rerun = send.mock.calls.map(([body]) => body.operations[0].sourceId)
+  expect(rerun).toEqual(first.map((event) => event.sourceId))
+})
+
+it('计费子任务的防护结果被上报：区间外行数触发去重告警', async () => {
+  const send = vi.fn().mockResolvedValue(undefined)
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  mocks.expiration.mockResolvedValueOnce({
+    processed: 0,
+    failures: [],
+    guard: {
+      processed: 0,
+      capReached: false,
+      tripped: [{ reason: 'rows-out-of-range', count: 2 }],
+    },
+  })
+  await runBillingSchedule(BILLING_HOURLY_CRON, {
+    ...env,
+    eventsQueue: { send, sendBatch: vi.fn() },
+  })
+  expect(send.mock.calls[0]?.[0].operations[0]).toMatchObject({
+    event: 'ops.bulk_job.guard_tripped',
+    sourceId: expect.stringMatching(/^bulk_job:credit_expiration:rows-out-of-range:/),
+    count: 2,
+  })
+})

@@ -2,11 +2,14 @@ import {
   auditLog,
   type BillingCompensation,
   billingCompensation,
+  bulkJobFloorSql,
   type Database,
   payment,
+  probeBulkJob,
   subscription,
 } from '@saas/db'
-import { and, asc, eq, isNull, lte, or, sql } from 'drizzle-orm'
+import { BULK_JOB_TIME_FLOOR, bulkJobOutcome } from '@saas/shared/bulk-job'
+import { and, asc, eq, gte, isNull, lte, or, sql } from 'drizzle-orm'
 import { billingErrorMessage } from './errors.ts'
 import {
   type BillingProviders,
@@ -150,7 +153,13 @@ async function recordLosingReceipt(db: Database, job: BillingCompensation) {
   })
 }
 
-/** Bounded leases and fenced checkpoints; all provider calls run after the claim transaction commits. */
+/** 每轮默认领取的补偿任务数（add-ops-safeguards 登记的上限） */
+export const COMPENSATION_LIMIT = 25
+
+/**
+ * Bounded leases and fenced checkpoints; all provider calls run after the claim transaction commits.
+ * 只领取 created_at 在时间下限与数据库当前时间之间的任务；区间外的任务保留并告警（不调用外部取消）。
+ */
 export async function runPendingCompensations(options: {
   db: Database
   providers: BillingProviders
@@ -159,7 +168,7 @@ export async function runPendingCompensations(options: {
   now?: () => Date
 }) {
   const { db, providers } = options
-  const limit = options.limit ?? 25
+  const limit = options.limit ?? COMPENSATION_LIMIT
   const leaseMs = options.leaseMs ?? 300_000
   if (
     !Number.isInteger(limit) ||
@@ -171,20 +180,30 @@ export async function runPendingCompensations(options: {
   )
     throw new Error('Invalid compensation lease or batch limit')
   const now = options.now?.() ?? new Date()
+  const claimable = or(
+    eq(billingCompensation.status, 'pending'),
+    and(
+      eq(billingCompensation.status, 'processing'),
+      or(isNull(billingCompensation.leaseUntil), lte(billingCompensation.leaseUntil, now)),
+    ),
+  )
+  // 租约使用注入的应用时钟做围栏；行时间区间以数据库时钟为准
+  const { outOfRange } = await probeBulkJob(
+    db,
+    sql`select count(*) from ${billingCompensation} where ${claimable} and (${billingCompensation.createdAt}<${bulkJobFloorSql} or ${billingCompensation.createdAt}>now())`,
+  )
   const jobs = await db.transaction(async (tx) => {
     const pending = await tx
       .select()
       .from(billingCompensation)
       .where(
-        or(
-          eq(billingCompensation.status, 'pending'),
-          and(
-            eq(billingCompensation.status, 'processing'),
-            or(isNull(billingCompensation.leaseUntil), lte(billingCompensation.leaseUntil, now)),
-          ),
+        and(
+          claimable,
+          gte(billingCompensation.createdAt, BULK_JOB_TIME_FLOOR),
+          lte(billingCompensation.createdAt, sql`now()`),
         ),
       )
-      .orderBy(asc(billingCompensation.createdAt))
+      .orderBy(asc(billingCompensation.createdAt), asc(billingCompensation.id))
       .limit(limit)
       .for('update', { skipLocked: true })
     const claimed: BillingCompensation[] = []
@@ -329,5 +348,10 @@ export async function runPendingCompensations(options: {
       failed++
     }
   }
-  return { claimed: jobs.length, completed, failed }
+  return {
+    claimed: jobs.length,
+    completed,
+    failed,
+    guard: bulkJobOutcome({ processed: jobs.length, cap: limit, outOfRange }),
+  }
 }

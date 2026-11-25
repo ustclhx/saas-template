@@ -1,10 +1,16 @@
 import { DBOS } from '@dbos-inc/dbos-sdk'
 import { type Database, jobBatch, jobDeadLetter, jobMessage, jobQueue, jobStart } from '@saas/db'
 import { AppError } from '@saas/shared'
+import { BULK_JOB_TIME_FLOOR } from '@saas/shared/bulk-job'
 import { log } from '@saas/shared/log'
-import { and, eq, inArray, isNull, lte, notExists } from 'drizzle-orm'
+import { and, asc, eq, gte, inArray, isNull, lte, notExists } from 'drizzle-orm'
 
 const minimumRetentionMs = 60 * 60 * 1_000
+/**
+ * 每轮最多检查的终态批次（add-ops-safeguards D2 #12，目前未接入调度，接入时生效）；
+ * 按 finished_at 升序，finished_at 早于时间下限的批次不删除。
+ */
+export const NODE_QUEUE_CLEANUP_BATCH_CAP = 1000
 const terminalBatchStates = ['completed', 'failed']
 const terminalMessageStates = ['acked', 'dead']
 const terminalWorkflowStates = ['SUCCESS', 'ERROR', 'MAX_RECOVERY_ATTEMPTS_EXCEEDED', 'CANCELLED']
@@ -74,7 +80,9 @@ export async function cleanupNodeQueues(
     batchesRetained: 0,
   }
   const queues = await db.select({ name: jobQueue.name }).from(jobQueue)
+  let remaining = NODE_QUEUE_CLEANUP_BATCH_CAP
   for (const queue of queues) {
+    if (remaining <= 0) break
     await db.transaction(async (tx) => {
       // 与 claim/start 使用同一队列锁，清理不能改变正在计算的滑动启动额度。
       const [current] = await tx
@@ -93,10 +101,14 @@ export async function cleanupNodeQueues(
           and(
             eq(jobBatch.queue, queue.name),
             inArray(jobBatch.state, terminalBatchStates),
+            gte(jobBatch.finishedAt, BULK_JOB_TIME_FLOOR),
             lte(jobBatch.finishedAt, minimumCutoff),
           ),
         )
+        .orderBy(asc(jobBatch.finishedAt), asc(jobBatch.id))
+        .limit(remaining)
         .for('update')
+      remaining -= batches.length
       const cleanupMessages = async (batchId: string | null) => {
         const matchingBatch =
           batchId === null ? isNull(jobMessage.batchId) : eq(jobMessage.batchId, batchId)

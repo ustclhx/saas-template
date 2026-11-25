@@ -4,11 +4,11 @@
 
 ## 1. 定时删除与群发防护（worker A，Claude：跨包且涉及删除语义）
 
-- [ ] 1.1 框架：`packages/shared` 新增时间防护纯函数（下限 `2024-01-01T00:00:00Z`、未来、最小保留期、应用与 DB 时钟偏差 5 分钟）与 `defineBulkJob` 声明类型；`apps/jobs` 新增 `ops.bulk_job.guard_tripped` 运维事件（按任务 + UTC 日去重）与 `job.cap_reached` 日志；插件 `PluginCronTask` 增加必填 `safety` 字段；`runBillingSchedule` 改为遍历定义数组。单元测试覆盖 0、负数、1970、未来、时钟偏差五种截止时间。〔本地〕`pnpm typecheck`、`pnpm test --filter @saas/shared --filter @saas/jobs` 通过
-- [ ] 1.2 存储与账号清理：文件清理（#2，空间与对象双上限、按到期时间排序、行时间区间过滤）、删号凭据（#1）、分享卡（#3a）、过期空间（#3b，含通知与邀请删除的空间上限）、已删用户 AI 内容（#3c 维持现有批量上限，补时间防护）。集成测试：超过上限时分轮处理且最早到期先处理；单行删除时间为 1970 时不删除并告警一次；保留期常量被测试替换为 0 时整轮不执行。〔本地〕相关包集成测试通过（需隔离测试库）
-- [ ] 1.3 计费任务：积分过期（#4）、预扣结算（#5）、订阅对账取消（#8）、退款联系邮箱清理（#10）加上限与时间防护；退款邮件（#6）与补偿（#7）补时间防护并登记现有上限；对账告警（#9）每轮最多 10 条明细 + 1 条汇总，`sourceId` 改为任务 + UTC 日期。`packages/billing` postgres 测试覆盖上限、排序与告警去重。〔本地〕
-- [ ] 1.4 agents 保留期（#11）用同一时间防护（`retentionDays` 最小 1 天、`updatedAt` 区间）；Node 队列清理（#12）声明上限并登记为「未调度」。`apps/web/test/agents-lifecycle.test.ts` 增加异常时间用例。〔本地〕
-- [ ] 1.5 `docs/bulk-jobs.md` 登记表（任务、触发、动作、每轮上限、时间防护、代码位置；备份保留列现状）；查 Workers 子请求上限并写明出处与日期；守卫测试 `apps/jobs/test/bulk-jobs.guard.test.ts`：枚举核心任务组、计费子任务、生成的插件 cron 与已知非 cron 入口，与登记表双向一致；各环境 wrangler `crons` 与 `CRON_TASK_GROUPS` 一致。AGENTS.md 加规则：新增删除或群发任务必须声明上限与时间防护并登记。升级说明草稿记录插件 cron 的 `safety` 字段。〔本地〕`pnpm check`、`pnpm test` 通过
+- [x] 1.1 框架：`packages/shared` 新增时间防护纯函数（下限 `2024-01-01T00:00:00Z`、未来、最小保留期、应用与 DB 时钟偏差 5 分钟）与 `defineBulkJob` 声明类型；`apps/jobs` 新增 `ops.bulk_job.guard_tripped` 运维事件（按任务 + UTC 日去重）与 `job.cap_reached` 日志；插件 `PluginCronTask` 增加必填 `safety` 字段；`runBillingSchedule` 改为遍历定义数组。单元测试覆盖 0、负数、1970、未来、时钟偏差五种截止时间。〔本地〕`pnpm typecheck`、`pnpm test --filter @saas/shared --filter @saas/jobs` 通过
+- [x] 1.2 存储与账号清理：文件清理（#2，空间与对象双上限、按到期时间排序、行时间区间过滤）、删号凭据（#1）、分享卡（#3a）、过期空间（#3b，含通知与邀请删除的空间上限）、已删用户 AI 内容（#3c 维持现有批量上限，补时间防护）。集成测试：超过上限时分轮处理且最早到期先处理；单行删除时间为 1970 时不删除并告警一次；保留期常量被测试替换为 0 时整轮不执行。〔本地〕相关包集成测试通过（需隔离测试库）
+- [x] 1.3 计费任务：积分过期（#4）、预扣结算（#5）、订阅对账取消（#8）、退款联系邮箱清理（#10）加上限与时间防护；退款邮件（#6）与补偿（#7）补时间防护并登记现有上限；对账告警（#9）每轮最多 10 条明细 + 1 条汇总，`sourceId` 改为任务 + UTC 日期。`packages/billing` postgres 测试覆盖上限、排序与告警去重。〔本地〕
+- [x] 1.4 agents 保留期（#11）用同一时间防护（`retentionDays` 最小 1 天、`updatedAt` 区间）；Node 队列清理（#12）声明上限并登记为「未调度」。`apps/web/test/agents-lifecycle.test.ts` 增加异常时间用例。〔本地〕
+- [x] 1.5 `docs/bulk-jobs.md` 登记表（任务、触发、动作、每轮上限、时间防护、代码位置；备份保留列现状）；查 Workers 子请求上限并写明出处与日期；守卫测试 `apps/jobs/test/bulk-jobs.guard.test.ts`：枚举核心任务组、计费子任务、生成的插件 cron 与已知非 cron 入口，与登记表双向一致；各环境 wrangler `crons` 与 `CRON_TASK_GROUPS` 一致。AGENTS.md 加规则：新增删除或群发任务必须声明上限与时间防护并登记。升级说明草稿记录插件 cron 的 `safety` 字段。〔本地〕`pnpm check`、`pnpm test` 通过
 
 ## 2. MCP 工具说明守卫（worker B，Codex：改动集中、模式明确）
 

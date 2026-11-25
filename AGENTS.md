@@ -57,6 +57,9 @@ config/db 不反向依赖 platform。业务包之间允许依赖，检查器没�
 - 只修改任务所需内容；复用现有实现与测试，为核心行为和真实回归风险增加精简用例。
 - 修改 `.github/workflows/`、`.github/actions/` 或 Turbo 配置前阅读 [CI 规范](docs/ci.md)：合并前必须通过的检查、CI 模式、缓存输入与并发规则以该文档为准。
 - 新增或改动 MCP 工具能力时，同一 PR 更新工具与参数说明及[管理员 MCP 工具表](docs/admin-mcp.md#工具与权限)。
+- 新增或改动会删除数据、销毁积分、调用外部写或批量发送的后台任务（含插件 cron 与 Durable Object alarm 等非 cron 入口），
+  必须声明每轮上限、最早到期优先的顺序与时间防护（`@saas/shared/bulk-job`），并在 [批量任务登记表](docs/bulk-jobs.md) 登记；
+  非 cron 入口同时加入 `apps/jobs/src/bulk-job-registry.ts` 的 `NON_CRON_BULK_JOBS`。
 - 访客不会因后台问题看不到公开页面：公开页面的可用性不依赖后台配置、后台专用绑定、插件路由或数据库，需要数据的部分降级显示；预渲染页在环境校验失败时仍返回，插件绑定缺失只让该插件入口 503。见 `public-site-availability` 规范。
 - 第三方集成登记在 [第三方登记表](docs/third-party.md)，新增第三方 SDK 依赖须同时加登记行与
   `scripts/third-party-deps.json` 映射（`pnpm check` 检查）。能经 API 或 CLI 查询第三方状态时，提供查询方式而不是教手工步骤。

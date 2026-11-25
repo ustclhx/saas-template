@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./analytics": "./src/analytics.ts",
+    "./bulk-job": "./src/bulk-job.ts",
     "./fx": "./src/fx.ts",
     "./log": "./src/log.ts"
   },

@@ -136,6 +136,8 @@ export async function waitForNodeWorkflowEvent(
   }
 }
 
+export const NODE_WORKFLOW_EVENT_CLEANUP_CAP = 1000
+
 /** 清理只涉及自有事件/wait日志，绝不删除 native journal、消息或第三方表。 */
 export async function cleanupNodeWorkflowEvents(
   db: Database,
@@ -153,7 +155,11 @@ export async function cleanupNodeWorkflowEvents(
   const waits = await db
     .selectDistinct({ workflowId: jobWorkflowWait.workflowId })
     .from(jobWorkflowWait)
-  for (const workflowId of new Set([...ids, ...waits].map((row) => row.workflowId))) {
+  // 每轮最多检查 1000 个 workflow（add-ops-safeguards #12，目前未接入调度），其余留到下一轮
+  const candidates = [...new Set([...ids, ...waits].map((row) => row.workflowId))]
+    .sort()
+    .slice(0, NODE_WORKFLOW_EVENT_CLEANUP_CAP)
+  for (const workflowId of candidates) {
     await db.transaction(async (tx) => {
       // 缺失 native 归属也不能作为删除依据。人工 resume 与清理须运维互斥。
       const native = await tx.execute<{ status: string; updated_at: number; name: string }>(

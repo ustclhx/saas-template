@@ -2,6 +2,7 @@
 
 import { registerHoldSweeper } from '@saas/billing'
 import type { TemplateConfig } from '@saas/config'
+import { defineBulkJob } from '@saas/shared/bulk-job'
 import type { JobsPluginModule, PluginCronGroup, PluginCronTask } from './module.ts'
 
 /** 登记插件的积分预扣清理器；返回注销函数（停机与测试用） */
@@ -27,6 +28,11 @@ export function pluginCronTasks(
   return (plugins ?? [])
     .flatMap((plugin) => plugin.crons ?? [])
     .filter((task) => task.group === group)
+    .map((task) => {
+      // 运行前再校验一次防护声明（上限为正整数、说明非空），误配的插件任务不会执行
+      defineBulkJob({ id: task.id, safety: task.safety, run: async () => undefined })
+      return task
+    })
 }
 
 /** 启用插件声明的基础队列名（Node 逐个注册到持久队列） */

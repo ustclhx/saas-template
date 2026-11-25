@@ -192,7 +192,10 @@ describe('file cleanup', () => {
       .set({ deletedAt: new Date(now.getTime() - 31 * 86_400_000) })
       .where(eq(organization.id, otherWs))
     const expired = await fixture({ workspaceId: otherWs })
-    expect(await cleanupFiles(db, storageEnv.FILES, { now })).toEqual({ deleted: 2, failed: 0 })
+    expect(await cleanupFiles(db, storageEnv.FILES, { now })).toMatchObject({
+      deleted: 2,
+      failed: 0,
+    })
     for (const row of [old, expired]) {
       expect(await storageEnv.FILES.head(row.r2Key)).toBeNull()
       expect(await db.select().from(file).where(eq(file.id, row.id))).toHaveLength(0)
@@ -203,10 +206,95 @@ describe('file cleanup', () => {
   it('keeps the database retry anchor when R2 deletion fails and succeeds on the next run', async () => {
     const row = await fixture({ status: 'pending', createdAt: new Date(Date.now() - 3_600_001) })
     const fail = { delete: vi.fn().mockRejectedValue(new Error('object delete failed')) }
-    expect(await cleanupFiles(db, fail)).toEqual({ deleted: 0, failed: 1 })
+    expect(await cleanupFiles(db, fail)).toMatchObject({ deleted: 0, failed: 1 })
     expect(await scoped(db, ws).findById(file, row.id)).toBeDefined()
     expect(await storageEnv.FILES.head(row.r2Key)).not.toBeNull()
-    expect(await cleanupFiles(db, storageEnv.FILES)).toEqual({ deleted: 1, failed: 0 })
+    expect(await cleanupFiles(db, storageEnv.FILES)).toMatchObject({ deleted: 1, failed: 0 })
     expect(await storageEnv.FILES.head(row.r2Key)).toBeNull()
+  })
+})
+
+describe('file cleanup safeguards (add-ops-safeguards 1.2)', () => {
+  const extra: string[] = []
+  async function deletedWorkspace(deletedAt: Date) {
+    const id = newId()
+    extra.push(id)
+    await db.insert(organization).values({ id, name: 'Expired', slug: id, deletedAt })
+    return id
+  }
+  const exists = async (row: { id: string }) =>
+    (await db.select({ id: file.id }).from(file).where(eq(file.id, row.id))).length > 0
+  afterEach(async () => {
+    await db.delete(file).where(inArray(file.workspaceId, extra))
+    await db.delete(organization).where(inArray(organization.id, extra))
+    extra.length = 0
+  })
+
+  it('caps workspaces and objects per round, oldest due first, leaving the rest for later rounds', async () => {
+    const oldest = await deletedWorkspace(new Date('2024-02-01T00:00:00Z'))
+    const middle = await deletedWorkspace(new Date('2024-03-01T00:00:00Z'))
+    const newest = await deletedWorkspace(new Date('2024-04-01T00:00:00Z'))
+    const files = {
+      oldest: [await fixture({ workspaceId: oldest }), await fixture({ workspaceId: oldest })],
+      middle: [await fixture({ workspaceId: middle })],
+      newest: [await fixture({ workspaceId: newest })],
+    }
+    const warn = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      // 每轮 2 个空间：最早到期的两个空间先处理
+      const first = await cleanupFiles(db, storageEnv.FILES, { workspaceCap: 2 })
+      expect(first.guard).toMatchObject({ capReached: true, tripped: [] })
+      for (const row of [...files.oldest, ...files.middle]) expect(await exists(row)).toBe(false)
+      for (const row of files.newest) expect(await exists(row)).toBe(true)
+      await cleanupFiles(db, storageEnv.FILES, { workspaceCap: 2 })
+      for (const row of files.newest) expect(await exists(row)).toBe(false)
+      // 对象上限：一个空间 3 个文件、每轮 2 个对象
+      const big = await deletedWorkspace(new Date('2024-02-15T00:00:00Z'))
+      const rows = [
+        await fixture({ workspaceId: big, createdAt: new Date('2025-01-01T00:00:00Z') }),
+        await fixture({ workspaceId: big, createdAt: new Date('2025-01-02T00:00:00Z') }),
+        await fixture({ workspaceId: big, createdAt: new Date('2025-01-03T00:00:00Z') }),
+      ]
+      const capped = await cleanupFiles(db, storageEnv.FILES, { objectCap: 2 })
+      expect(capped).toMatchObject({ deleted: 2, guard: { processed: 2, capReached: true } })
+      expect(await Promise.all(rows.map(exists))).toEqual([false, false, true])
+      await cleanupFiles(db, storageEnv.FILES, { objectCap: 2 })
+      expect(await exists(rows[2] as { id: string })).toBe(false)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('never deletes files of a workspace whose deletion time is before the floor and reports the rows', async () => {
+    const corrupted = await deletedWorkspace(new Date(0))
+    const normal = await deletedWorkspace(new Date('2024-05-01T00:00:00Z'))
+    const kept = await fixture({ workspaceId: corrupted })
+    const removed = await fixture({ workspaceId: normal })
+    const result = await cleanupFiles(db, storageEnv.FILES)
+    expect(result.guard.tripped).toContainEqual({ reason: 'rows-out-of-range', count: 1 })
+    expect(await exists(kept)).toBe(true)
+    expect(await storageEnv.FILES.head(kept.r2Key)).not.toBeNull()
+    expect(await exists(removed)).toBe(false)
+  })
+
+  it.each([
+    ['workspace retention replaced by 0', { workspaceRetentionDays: 0 }, 'retention-too-short'],
+    ['pending retention replaced by 0', { pendingRetentionMs: 0 }, 'retention-too-short'],
+    ['seconds mistaken for milliseconds', { workspaceRetentionDays: 1e7 }, 'cutoff-before-floor'],
+    ['app clock 10 minutes ahead', { now: new Date(Date.now() + 600_000) }, 'clock-skew'],
+  ] as const)('skips the whole round when %s', async (_, options, reason) => {
+    const expired = await deletedWorkspace(new Date('2024-05-01T00:00:00Z'))
+    const rows = [
+      await fixture({ workspaceId: expired }),
+      await fixture({ status: 'pending', createdAt: new Date(Date.now() - 2 * 3_600_000) }),
+    ]
+    const bucket = { delete: vi.fn() }
+    expect(await cleanupFiles(db, bucket, options)).toEqual({
+      deleted: 0,
+      failed: 0,
+      guard: { processed: 0, capReached: false, tripped: [{ reason }] },
+    })
+    expect(bucket.delete).not.toHaveBeenCalled()
+    for (const row of rows) expect(await exists(row)).toBe(true)
   })
 })

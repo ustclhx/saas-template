@@ -1,3 +1,4 @@
+export { bulkJobFloorSql, probeBulkJob } from './bulk-job.ts'
 export {
   createDb,
   type Database,
