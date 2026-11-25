@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isPlaceholderId } from '../deploy/resources-lib.mjs'
 
 /**
  * add-cloud-production-neon 2.1：web / jobs 的 env.production 与 env.staging 绑定名集合一致，
@@ -118,7 +119,10 @@ export function checkEnvs(app, config) {
     problems.push(`${app}: production is missing binding ${name}`)
   for (const name of b.filter((item) => !a.includes(item)))
     problems.push(`${app}: production has extra binding ${name}`)
-  const stagingIds = new Set(strings(staging).filter((value) => /^[a-f0-9]{32}$/.test(value)))
+  // 生成器占位 ID 不是真实资源，按共享判定排除（add-deploy-autoprovision 1.2，design 决策 3）。
+  const stagingIds = new Set(
+    strings(staging).filter((value) => /^[a-f0-9]{32}$/.test(value) && !isPlaceholderId(value)),
+  )
   // 账号 ID 在两个环境中合法相同（R2 / Gateway 账号）
   for (const value of strings(staging.vars ?? {})) stagingIds.delete(value)
   for (const value of strings(production)) {
