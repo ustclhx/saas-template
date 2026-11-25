@@ -121,7 +121,8 @@
         "crons": ["*/30 * * * *", "0 3 * * *", "0 * * * *", "0 4 * * *"]
       }
     },
-    // add-cloud-production-neon 2.1：生产资源与 staging 一一对应（production runbook §8.B）。
+    // add-cloud-production-neon 2.1：生产绑定与 staging 一一对应（production runbook §8.B）。
+    // 模板生产资源已于 2026-10-18 拆除（docs/07 §0）：KV 与 Hyperdrive 为占位 ID，由 pnpm deploy:resources 解析。
     // 无真实用户期间用 reduced Cron，开放支付前显式改回 default（成本基线见 production-neon §4）；不设 PAYMENT_MODE / AI_FAULT_INJECTION。
     "production": {
       "name": "jobs-production",
@@ -137,10 +138,10 @@
       },
       "ai": { "binding": "AI" },
       "r2_buckets": [{ "binding": "FILES", "bucket_name": "files-production" }],
-      "kv_namespaces": [{ "binding": "CACHE", "id": "76d4f2b69b1a45db8fe1c0a66eaf9b34" }],
+      "kv_namespaces": [{ "binding": "CACHE", "id": "00000000000000000000000000000003" }],
       "hyperdrive": [
-        { "binding": "HYPERDRIVE", "id": "0519ee8f8e5b4f0f95ecd9d425c58a36" },
-        { "binding": "HYPERDRIVE_CACHED", "id": "3deaa579109549f9a06f12b6c8d4aae6" }
+        { "binding": "HYPERDRIVE", "id": "00000000000000000000000000000004" },
+        { "binding": "HYPERDRIVE_CACHED", "id": "00000000000000000000000000000005" }
       ],
       "workflows": [
         {

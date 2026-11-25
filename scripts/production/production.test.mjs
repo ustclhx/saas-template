@@ -46,6 +46,17 @@ test('production drift, staging reuse and forbidden vars are reported', () => {
   assert.ok(problems.includes('web: production must not set UI_PREVIEW'))
 })
 
+test('generator placeholder ids shared by staging and production are not staging reuse', () => {
+  const config = wrangler('web')
+  const placeholder = `${'0'.repeat(24)}00000003`
+  config.env.staging.kv_namespaces[0].id = placeholder
+  config.env.production.kv_namespaces[0].id = placeholder
+  assert.deepEqual(checkEnvs('web', config), [])
+  // 真实 ID 复用仍然报告
+  config.env.production.hyperdrive[0].id = config.env.staging.hyperdrive[0].id
+  assert.ok(checkEnvs('web', config).some((line) => line.includes('reuses staging resource id')))
+})
+
 test('web declares RL_SHARE_CARD in every environment with its own namespace', () => {
   for (const environment of ['top-level', 'staging', 'production']) {
     const config = wrangler('web')

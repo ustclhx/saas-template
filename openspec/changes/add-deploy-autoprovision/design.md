@@ -41,8 +41,8 @@
 | 配置内引用环境变量 | 未找到官方支持（待核实，按不支持设计） | — |
 | Workers Builds | 部署命令可改为 package.json 脚本；构建变量运行时不可见；Worker 名须与连接的 Worker 一致（Builds 用环境变量覆盖名称）；自动创建会执行但 ID 不写回 | [文档] [Builds configuration](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)、[troubleshoot](https://developers.cloudflare.com/workers/ci-cd/builds/troubleshoot/) |
 | 查找命令的输出 | `kv namespace list` 总是输出 JSON；`d1 list`、`workflows list`、`r2 bucket info` 有 `--json`；`r2 bucket list`、`queues list`、`queues info`、`hyperdrive list` 没有 JSON 输出（4.146.0 `--help`） | [源码] / 本地 `--help` |
-| REST 列表过滤 | KV 列表无标题过滤（分页 ≤1000）；R2 有 `name_contains`；Queues 文档只有分页（≤500）；Hyperdrive 只有分页 | [文档] [KV list](https://developers.cloudflare.com/api/resources/kv/subresources/namespaces/methods/list/)、[R2 list](https://developers.cloudflare.com/api/resources/r2/subresources/buckets/methods/list/)、[Queues list](https://developers.cloudflare.com/api/resources/queues/methods/list/)、[Hyperdrive list](https://developers.cloudflare.com/api/resources/hyperdrive/subresources/configs/methods/list/) |
-| 令牌权限 | KV 创建需 Workers KV Storage Write；Queues 需 Queues Write 与 Workers Scripts Write 或 Workers Admin；R2（Workers R2 Storage Write）与 Hyperdrive（Hyperdrive Write）的名称**待核实**，实施时在 API 页面确认 | [文档] 各 API 页面 |
+| REST 列表过滤与分页 | KV 列表无标题过滤（page / per_page ≤1000，`result` 为数组，字段 `id` / `title`）；R2 有 `name_contains`，按 `result_info.cursor` 翻页（`result.buckets[].name`，桶无单独 ID）；Queues 只有分页（≤500，`queue_id` / `queue_name`）；Hyperdrive 只有分页（≤100，`id` / `name`）。Hyperdrive 创建体为 `name`、`origin`（`scheme`、`host`、`port`、`database`、`user`、`password`）与 `caching`（`disabled`，或 `max_age` 1–3600，默认 60）（2026-11-25 核对） | [文档] [KV list](https://developers.cloudflare.com/api/resources/kv/subresources/namespaces/methods/list/)、[R2 list](https://developers.cloudflare.com/api/resources/r2/subresources/buckets/methods/list/)、[Queues list](https://developers.cloudflare.com/api/resources/queues/methods/list/)、[Hyperdrive list](https://developers.cloudflare.com/api/resources/hyperdrive/subresources/configs/methods/list/) |
+| 令牌权限 | 列表取最小读取权限：Workers KV Storage Read、Workers R2 Storage Read、Queues Read、Hyperdrive Read；创建：Workers KV Storage Write、Workers R2 Storage Write、Queues Write（或 Workers Scripts Write / Workers Admin）、Hyperdrive Write（任务 1.3 于 2026-11-25 在各 API 页面的 Token permissions 核对） | [文档] [KV list](https://developers.cloudflare.com/api/resources/kv/subresources/namespaces/methods/list/)、[KV create](https://developers.cloudflare.com/api/resources/kv/subresources/namespaces/methods/create/)、[R2 list](https://developers.cloudflare.com/api/resources/r2/subresources/buckets/methods/list/)、[R2 create](https://developers.cloudflare.com/api/resources/r2/subresources/buckets/methods/create/)、[Queues list](https://developers.cloudflare.com/api/resources/queues/methods/list/)、[Queues create](https://developers.cloudflare.com/api/resources/queues/methods/create/)、[Hyperdrive list](https://developers.cloudflare.com/api/resources/hyperdrive/subresources/configs/methods/list/)、[Hyperdrive create](https://developers.cloudflare.com/api/resources/hyperdrive/subresources/configs/methods/create/) |
 | 版本记录 | `wrangler deploy --tag` / `--message`；`version_metadata` 绑定暴露 `id`、`tag`、`timestamp` | [文档] [Workers commands](https://developers.cloudflare.com/workers/wrangler/commands/workers/)、[Version metadata](https://developers.cloudflare.com/workers/runtime-apis/bindings/version-metadata/) |
 
 ## Goals / Non-Goals
@@ -105,6 +105,11 @@ KV 与 Hyperdrive 按「环境 + 绑定名」合并解析：同一环境里 web 
 已固定的 ID 默认不调用 API。加 `--verify` 时才核对这些 ID 在账号中存在，并报告名称与约定不一致的项，只提示，不改动。
 这样已有衍生项目升级后，CI 令牌不需要新增任何权限。
 
+实施补充（任务 1.4，2026-11-25）：R2 桶与队列没有 ID，无法逐项判定「已固定」。规则为：目标环境中 web 与 jobs 的全部 KV、Hyperdrive 都已固定时，
+该环境视为已有项目，R2 与队列按配置名称沿用，不调用 API（plan 中标为「已固定（按配置名称，未调用 API）」）；只要有一个占位值，R2 与队列也按名称查找，
+缺失时在允许创建的模式下创建。`--verify` 时全部核对。这样模板 staging 与已有衍生项目的解析仍是零 API 调用（任务 5.1），新项目的桶和队列也能自动创建。
+同一共享绑定只有一侧固定 ID、另一侧为占位时，两边都使用固定的 ID；两侧固定 ID 不同则失败。
+
 ### 4. 部署配置的位置与接入方式
 
 解析结果写入 `apps/<app>/wrangler.deploy.json`（已 gitignore）。内容是完整的配置对象，保留 env 结构和全部字段，只填好目标环境的 ID 与可补齐的账号 vars。
@@ -140,6 +145,7 @@ KV 与 Hyperdrive 按「环境 + 绑定名」合并解析：同一环境里 web 
 | `--create-hyperdrive` | 从 `HYPERDRIVE_APP_URL` 环境变量读取 app 账号连接串，通过 API 创建两个 Hyperdrive（关缓存，以及开缓存 `max_age=60`） | 维护者手动执行 |
 
 创建顺序：KV → R2 → 死信队列 → 其他队列 → Hyperdrive。每创建一项后重新查询确认，任一步失败立即停止，已创建的资源保留，下次运行会沿用。
+每次运行开始时先删除上一次生成的 `apps/*/wrangler.deploy.json`，失败时不留下过期的部署配置；成功时只写这两个文件。退出码：0 已写出部署配置，1 解析失败或仍有缺项，2 参数错误。
 同名资源多于一个时失败并列出各自 ID（KV 标题在账号内唯一，R2 / 队列名称也唯一，这个分支主要用于 Hyperdrive）。
 
 ### 7. 不能自动创建的资源
@@ -229,5 +235,5 @@ Workers Builds 不作为支持的入口，`docs/07-infrastructure.md` 中写明�
 ## Open Questions
 
 - `dead_letter_queue` 指向的队列不存在时，Wrangler 是否报错（待核实）。本设计无论如何都先创建死信队列，结论不影响方案。
-- R2 与 Hyperdrive 创建所需的令牌权限名称（待核实）。实施时在 API 页面确认后写入文档，不影响方案。
+- ~~R2 与 Hyperdrive 创建所需的令牌权限名称~~：已于 2026-11-25 在 API 页面确认（Workers R2 Storage Write、Hyperdrive Write），见上表。
 - 能否复用 `wrangler login` 的 OAuth 登录态调用 REST API（待核实）。本设计不依赖它。

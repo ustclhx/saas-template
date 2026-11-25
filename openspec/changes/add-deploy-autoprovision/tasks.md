@@ -7,11 +7,11 @@
 
 ## 1. 解析核心（W1）
 
-- [ ] 1.1 新建 `scripts/deploy/resources-lib.mjs`，提供纯逻辑：占位判定（缺失或 `^0{24}[0-9a-f]{8}$`）、由 web Worker 名推出前缀与后缀、按约定命名（design 决策 2）、按「环境 + 绑定名」合并 web 与 jobs 的同名绑定、两边固定 ID 不一致时报错、把解析结果写入完整配置对象（保留 env 结构与其他字段，账号 vars 只填空值）、遍历全部 KV / R2 / 队列（含 `dead_letter_queue`）/ Hyperdrive 配置段而不写死绑定名。验证：`node --test scripts/deploy/resources-lib.test.mjs` 覆盖模板配置、生成器占位配置、插件新增 KV、ID 冲突、production 段。〔本地〕
-- [ ] 1.2 `scripts/production/check-wrangler-envs.mjs` 改用 1.1 的占位判定，原有规则不变。验证：`node --test scripts/production/*.test.mjs` 与 `pnpm check` 通过，新增一个占位 ID 不触发「生产复用 staging ID」的用例。〔本地〕
-- [ ] 1.3 新建 `scripts/deploy/cloudflare-api.mjs`：基于 `fetch` 实现 KV、R2、Queues、Hyperdrive 的列表（遍历全部分页）与创建；错误只保留 HTTP 状态和 Cloudflare 错误码，403 转成「缺少某类权限」的提示；Hyperdrive 创建从环境变量读取连接串并放进请求体。验证：用注入的假 `fetch` 做 Node test，覆盖分页、同名多条、403、Hyperdrive 输出与错误中不含连接串。〔本地〕
-- [ ] 1.4 新建 `scripts/deploy/resources.mjs` 与根脚本 `deploy:resources`，实现 design 决策 6 的模式（默认 plan、`--apply`、`--allow-production`、`--create-hyperdrive`、`--verify`），按 KV → R2 → 死信队列 → 队列 → Hyperdrive 的顺序创建，每创建一项重新查询确认；输出可读计划和可粘贴的 ID 清单；`apps/*/wrangler.deploy.json` 加入 `.gitignore`。验证：假 API 的端到端 Node test 覆盖首次创建、中断后重跑不重复创建、production 无开关时不创建、Hyperdrive 缺失失败、全部固定时零 API 调用、运行后 `git status` 无已跟踪文件变化；测试加入 `pnpm check` 的 `node --test` 列表。〔本地〕
-- [ ] 1.5 按已拍板事项 4（使用者 2026-11-25 确认），把模板自身 `apps/web/wrangler.jsonc` 与 `apps/jobs/wrangler.jsonc` 中 `env.production` 已失效的 KV、Hyperdrive ID 改为生成器占位格式（web 与 jobs 同一绑定使用同一占位值），并删去说明这些资源仍在用的注释；`env.staging` 不动。验证：`pnpm check`（`check-wrangler-envs`、`check-plugins`）通过，`pnpm deploy:resources --env production` 在假 API 下把这些绑定报为「待创建」且不创建。〔本地〕
+- [x] 1.1 新建 `scripts/deploy/resources-lib.mjs`，提供纯逻辑：占位判定（缺失或 `^0{24}[0-9a-f]{8}$`）、由 web Worker 名推出前缀与后缀、按约定命名（design 决策 2）、按「环境 + 绑定名」合并 web 与 jobs 的同名绑定、两边固定 ID 不一致时报错、把解析结果写入完整配置对象（保留 env 结构与其他字段，账号 vars 只填空值）、遍历全部 KV / R2 / 队列（含 `dead_letter_queue`）/ Hyperdrive 配置段而不写死绑定名。验证：`node --test scripts/deploy/resources-lib.test.mjs` 覆盖模板配置、生成器占位配置、插件新增 KV、ID 冲突、production 段。〔本地〕
+- [x] 1.2 `scripts/production/check-wrangler-envs.mjs` 改用 1.1 的占位判定，原有规则不变。验证：`node --test scripts/production/*.test.mjs` 与 `pnpm check` 通过，新增一个占位 ID 不触发「生产复用 staging ID」的用例。〔本地〕
+- [x] 1.3 新建 `scripts/deploy/cloudflare-api.mjs`：基于 `fetch` 实现 KV、R2、Queues、Hyperdrive 的列表（遍历全部分页）与创建；错误只保留 HTTP 状态和 Cloudflare 错误码，403 转成「缺少某类权限」的提示；Hyperdrive 创建从环境变量读取连接串并放进请求体。验证：用注入的假 `fetch` 做 Node test，覆盖分页、同名多条、403、Hyperdrive 输出与错误中不含连接串。〔本地〕
+- [x] 1.4 新建 `scripts/deploy/resources.mjs` 与根脚本 `deploy:resources`，实现 design 决策 6 的模式（默认 plan、`--apply`、`--allow-production`、`--create-hyperdrive`、`--verify`），按 KV → R2 → 死信队列 → 队列 → Hyperdrive 的顺序创建，每创建一项重新查询确认；输出可读计划和可粘贴的 ID 清单；`apps/*/wrangler.deploy.json` 加入 `.gitignore`。验证：假 API 的端到端 Node test 覆盖首次创建、中断后重跑不重复创建、production 无开关时不创建、Hyperdrive 缺失失败、全部固定时零 API 调用、运行后 `git status` 无已跟踪文件变化；测试加入 `pnpm check` 的 `node --test` 列表。〔本地〕
+- [x] 1.5 按已拍板事项 4（使用者 2026-11-25 确认），把模板自身 `apps/web/wrangler.jsonc` 与 `apps/jobs/wrangler.jsonc` 中 `env.production` 已失效的 KV、Hyperdrive ID 改为生成器占位格式（web 与 jobs 同一绑定使用同一占位值），并删去说明这些资源仍在用的注释；`env.staging` 不动。验证：`pnpm check`（`check-wrangler-envs`、`check-plugins`）通过，`pnpm deploy:resources --env production` 在假 API 下把这些绑定报为「待创建」且不创建。〔本地〕
 
 ## 2. 构建与流水线接入（W2，依赖 1）
 
