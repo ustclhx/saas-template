@@ -668,6 +668,13 @@ test('sync delivers project-owned extensions once and skips later template chang
   const initialFeatureModels = 'export const featureModels = {}\n'
   const customSettings = "export const projectSettings = { 'reports.enabled': true }\n"
   const customFeatureModels = "export const featureModels = { reports: { kind: 'text' } }\n"
+  // 应用区导航、项目闸门与根兜底页：与发版检查的 projectOwnedFiles 一致
+  const owned = [
+    'apps/web/src/features/app-shell/nav.project.ts',
+    'apps/web/src/server/project-gate.ts',
+    'apps/web/src/features/app-shell/root-fallbacks.project.tsx',
+  ]
+  const ownedFiles = (content) => Object.fromEntries(owned.map((path) => [path, content]))
   await template.commit(
     {
       [registration]: 'export const registration = 1\n',
@@ -681,6 +688,7 @@ test('sync delivers project-owned extensions once and skips later template chang
       [seoPages]: 'export const projectPages = () => []\n',
       [settings]: initialSettings,
       [featureModels]: initialFeatureModels,
+      ...ownedFiles('// template v1\n'),
     },
     'share card extensions',
     'template-v0.2.0',
@@ -697,6 +705,7 @@ test('sync delivers project-owned extensions once and skips later template chang
   assert.ok(first.report.applied.includes(seoPages))
   assert.equal(await readFile(join(project.dir, settings), 'utf8'), initialSettings)
   assert.equal(await readFile(join(project.dir, featureModels), 'utf8'), initialFeatureModels)
+  for (const path of owned) assert.ok(first.report.applied.includes(path), path)
   git(project.dir, 'switch', '--quiet', 'main')
   git(project.dir, 'merge', '--quiet', '--ff-only', first.branch)
   await project.change({
@@ -711,6 +720,7 @@ test('sync delivers project-owned extensions once and skips later template chang
     [seoPages]: "export const projectPages = () => [{ path: '/tarot' }]\n",
     [settings]: customSettings,
     [featureModels]: customFeatureModels,
+    ...ownedFiles('// project version\n'),
   })
   await template.commit(
     {
@@ -725,6 +735,7 @@ test('sync delivers project-owned extensions once and skips later template chang
       [seoPages]: 'export const projectPages = () => [] // template v2\n',
       [settings]: 'export const projectSettings = {} // template v2\n',
       [featureModels]: 'export const featureModels = {} // template v2\n',
+      ...ownedFiles('// template v2\n'),
     },
     'template extension changes',
     'template-v0.3.0',
@@ -754,6 +765,8 @@ test('sync delivers project-owned extensions once and skips later template chang
   )
   assert.equal(await readFile(join(project.dir, settings), 'utf8'), customSettings)
   assert.equal(await readFile(join(project.dir, featureModels), 'utf8'), customFeatureModels)
+  for (const path of owned)
+    assert.equal(await readFile(join(project.dir, path), 'utf8'), '// project version\n', path)
 })
 
 test('sync ignores new generator formatting and placeholder numbering while applying template edits', async (t) => {
