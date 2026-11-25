@@ -39,13 +39,22 @@ jobs:
 
           const semver = '(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?'
           const notePath = new RegExp(`^docs/upgrades/(${semver})\\.md$`)
-          // 禁用重命名识别以同时校验旧路径；删除版本说明也必须失败，不能被过滤掉。
+          // 禁用重命名识别以同时校验旧路径；删除已发布版本的说明必须失败，不能被过滤掉。
           const files = execFileSync('git', [
             'diff', '--no-renames', '--name-only', '-z', process.env.CHANGE_BASE,
             'HEAD', '--', 'docs/upgrades/',
           ], { encoding: 'utf8' }).split('\0').filter(Boolean)
+          const exists = (file) => {
+            try { execFileSync('git', ['cat-file', '-e', `HEAD:${file}`], { stdio: 'ignore' }); return true }
+            catch { return false }
+          }
+          const released = (version) => execFileSync('git', [
+            'ls-remote', '--tags', 'origin', `refs/tags/template-v${version}`,
+          ], { encoding: 'utf8' }).trim() !== ''
           for (const file of new Set(files)) {
             const match = notePath.exec(file)
+            // 未发布版本（无 template-v 标签）的说明草稿可以删除或改名；已发布版本的说明删除仍然失败。
+            if (match && !exists(file) && !released(match[1])) continue
             if (match) {
               execFileSync(process.execPath, [
                 'scripts/template-release.mjs', 'check', '--version', match[1],
