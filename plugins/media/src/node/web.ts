@@ -1,4 +1,4 @@
-import type { WebNodePluginModule } from '@web/features/plugins/contract.ts'
+import type { WebNodePluginModule } from '@web/node/plugins.ts'
 import { templateConfig } from '@web/server/template-config.ts'
 import { createNodeMediaWorkflowClient } from './web-workflow.ts'
 

@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
@@ -8,6 +16,7 @@ import {
   GENERATED_FILES,
   generatePlugins,
   loadPluginManifests,
+  NODE_PLUGIN_CONTRACTS,
   pluginMessageDirs,
   pluginRouteConfig,
   renderPluginFiles,
@@ -58,10 +67,18 @@ function writePlugin(manifest) {
   return dir
 }
 
+function writeNodeContracts(dir) {
+  for (const path of Object.values(NODE_PLUGIN_CONTRACTS)) {
+    mkdirSync(join(dir, path, '..'), { recursive: true })
+    writeFileSync(join(dir, path), '')
+  }
+}
+
 before(() => {
   root = mkdtempSync(join(tmpdir(), 'saas-plugins-'))
   writePlugin(both)
   writePlugin(cfOnly)
+  writeNodeContracts(root)
 })
 after(() => rmSync(root, { recursive: true, force: true }))
 
@@ -120,6 +137,11 @@ test('启用：生成文件导入启用插件入口，Worker / jobs 原样导出
     /export const nodePlugins[^\n]*\n {2}\{ id: 'both', entry: bothWebNode \}/,
   )
   assert.match(files[GENERATED_FILES.jobsNode], /\{ id: 'both', entry: bothJobsNode \}/)
+  // Node 入口类型来自 node/plugins.ts，共用契约不含 Node 配置类型
+  assert.match(
+    files[GENERATED_FILES.webNode],
+    /import type \{ WebPluginRegistration \} from '\.\/features\/plugins\/contract\.ts'\nimport type \{ WebNodePluginRegistration \} from '\.\/node\/plugins\.ts'/,
+  )
   assert.deepEqual(
     excluded.map(({ manifest }) => manifest.id),
     ['cf-only'],
@@ -214,4 +236,66 @@ test('配置错误与清单路径缺失时失败并指出插件', async () => {
     () => resolveEnabledPlugins(config({ 'cf-only': {} }), missing),
     /plugin cf-only: entries\.web src\/missing\.ts does not exist/,
   )
+})
+
+test('项目删除 Node 入口（只部署 Cloudflare）时不生成 Node 注册文件，并移除旧的生成文件', async () => {
+  const cfRoot = mkdtempSync(join(tmpdir(), 'saas-plugins-cf-'))
+  try {
+    for (const manifest of [both, cfOnly]) {
+      const dir = join(cfRoot, 'plugins', manifest.id)
+      mkdirSync(dir, { recursive: true })
+      for (const path of Object.values(manifest.entries ?? {})) {
+        mkdirSync(join(dir, path, '..'), { recursive: true })
+        writeFileSync(join(dir, path), '')
+      }
+      if (manifest.routes) {
+        mkdirSync(join(dir, manifest.routes.dir), { recursive: true })
+        mkdirSync(join(dir, manifest.messages, 'en'), { recursive: true })
+      }
+      writeFileSync(join(dir, 'plugin.ts'), `export default ${JSON.stringify(manifest)}\n`)
+    }
+    // 之前生成过的 Node 注册文件（同步模板前留下）应被移除
+    for (const path of [
+      GENERATED_FILES.webNode,
+      GENERATED_FILES.stylesNode,
+      GENERATED_FILES.jobsNode,
+    ]) {
+      mkdirSync(join(cfRoot, path, '..'), { recursive: true })
+      writeFileSync(join(cfRoot, path), 'stale')
+    }
+    const { files } = await generatePlugins({
+      root: cfRoot,
+      config: config({ both: {}, 'cf-only': {} }),
+      loaded: await loadPluginManifests(cfRoot),
+      notify: () => {},
+    })
+    assert.deepEqual(
+      Object.keys(files).sort(),
+      [
+        GENERATED_FILES.jobs,
+        GENERATED_FILES.styles,
+        GENERATED_FILES.web,
+        GENERATED_FILES.worker,
+      ].sort(),
+    )
+    for (const path of [
+      GENERATED_FILES.webNode,
+      GENERATED_FILES.stylesNode,
+      GENERATED_FILES.jobsNode,
+    ])
+      assert.ok(!existsSync(join(cfRoot, path)), path)
+    for (const content of Object.values(files)) assert.doesNotMatch(content, /node\/plugins/)
+
+    // 只保留 jobs 的 Node 入口时只生成 jobs 侧的 Node 注册文件
+    mkdirSync(join(cfRoot, 'apps/jobs/src/node'), { recursive: true })
+    writeFileSync(join(cfRoot, NODE_PLUGIN_CONTRACTS.jobs), '')
+    const jobsOnly = renderPluginFiles(
+      cfRoot,
+      resolveEnabledPlugins(config({ both: {} }), await loadPluginManifests(cfRoot)),
+    )
+    assert.ok(GENERATED_FILES.jobsNode in jobsOnly)
+    assert.ok(!(GENERATED_FILES.webNode in jobsOnly))
+  } finally {
+    rmSync(cfRoot, { recursive: true, force: true })
+  }
 })
