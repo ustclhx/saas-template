@@ -38,6 +38,7 @@ const templatePropsSchemas = {
     purpose: z.enum(['sign-in', 'email-verification', 'forget-password']),
     expiresInMinutes: minutes,
   }),
+  'admin-step-up-code': z.object({ otp: z.string().regex(/^\d{6}$/), expiresInMinutes: minutes }),
   'magic-link': z.object({ url, expiresInMinutes: minutes }),
   'reset-password': z.object({ url, expiresInMinutes: minutes }),
   'workspace-invitation': z.object({

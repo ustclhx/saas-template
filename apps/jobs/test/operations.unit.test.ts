@@ -12,12 +12,13 @@ vi.mock('../src/notifications/operations.ts', async (original) => ({
   deliverOperations: deliver,
 }))
 afterEach(() => vi.restoreAllMocks())
-it('accepts all four event types but rejects malformed envelopes and drops unrecognized private fields', () => {
+it('accepts the plain event types but rejects malformed envelopes and drops unrecognized private fields', () => {
   for (const event of [
     'payment.succeeded',
     'refund.requested',
     'webhook.failed',
     'reconciliation.failed',
+    'admin.step_up.rescue',
   ]) {
     expect(
       parseOperationsMessage({

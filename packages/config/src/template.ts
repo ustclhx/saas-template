@@ -302,6 +302,14 @@ export interface TemplateConfig<L extends string = string> {
     /** 可申请退款的付款时间范围；退款需人工审核，默认不主动退 */
     readonly refundWindowDays: number
   }
+  /** 后台（openspec add-admin-step-up） */
+  readonly admin: {
+    /**
+     * 敏感后台操作重新验证的有效期（分钟，1–60，默认 10）：自验证起计算、不随使用延长。
+     * 只做模板配置、不做运行时设置，避免被盗会话把它调大。
+     */
+    readonly stepUpMinutes: number
+  }
   readonly credits: {
     readonly enabled: boolean
     /** 真实登录用户访问 App 时领取每日积分，默认关闭。 */
@@ -413,6 +421,7 @@ export interface TemplateConfigInput<L extends string = DefaultLocale> {
     overage?: Partial<Section<'billing'>['overage']>
   }
   credits?: Partial<Section<'credits'>>
+  admin?: Partial<Section<'admin'>>
   shareCards?: Partial<Section<'shareCards'>>
   marketing?: {
     enabled?: boolean
@@ -466,6 +475,7 @@ export const templateConfigDefaults = {
     refundWindowDays: 30,
   },
   credits: { enabled: true, dailyEnabled: false },
+  admin: { stepUpMinutes: 10 },
   shareCards: { defaultTtlDays: 90 },
   marketing: {
     enabled: true,
@@ -715,6 +725,7 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
       overage: { ...d.billing.overage, ...input.billing?.overage },
     },
     credits: { ...d.credits, ...input.credits },
+    admin: { ...d.admin, ...input.admin },
     shareCards: { ...d.shareCards, ...input.shareCards },
     marketing: {
       enabled: input.marketing?.enabled ?? d.marketing.enabled,
@@ -752,6 +763,9 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
   }
 
   // 配置文件可能由 JS 或生成器写入，运行时再校验一次取值
+  const stepUpMinutes = config.admin.stepUpMinutes
+  if (!Number.isInteger(stepUpMinutes) || stepUpMinutes < 1 || stepUpMinutes > 60)
+    throw new RangeError('template config: admin.stepUpMinutes must be an integer from 1 to 60')
   if (!['hide', 'fallback'].includes(config.i18n.untranslated))
     throw new RangeError("template config: i18n.untranslated must be 'hide' or 'fallback'")
   if (typeof config.i18n.rememberHomeLocale !== 'boolean')

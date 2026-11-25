@@ -1,0 +1,14 @@
+Acme
+
+
+Confirm a sensitive admin action
+
+Hi Ada,
+
+Someone signed in as you in the Acme admin console is about to perform a sensitive action. Enter the code below to confirm it is you. It expires in 10 minutes and works only in the browser session that requested it.
+
+730215
+
+----------------------------------------
+
+Never share this code. If you did not request it, someone may be using your admin session: sign out of all sessions and change your password.

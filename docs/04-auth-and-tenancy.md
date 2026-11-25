@@ -88,6 +88,70 @@
 
 权限判断统一在 `packages/entitlements` 的 `can(ctx, action)` 中实现，同时考虑：空间角色、套餐权益、空间状态（是否欠费/被封）。
 
+### 后台重新验证（step-up）
+
+会话 Cookie 被盗用时，持有者不应能直接执行退款、积分调整、封禁、模拟登录、创建管理员令牌或改密钥设置。
+因此敏感后台操作要求**当前会话**在最近 `admin.stepUpMinutes` 分钟内（`template.config.ts`，默认 10，
+1–60）重新验证过一次。设计见 openspec change `add-admin-step-up`（design.md 决策 1–5）。
+
+**敏感清单的登记方式**：全部后台写操作的动作名登记在 `apps/web/src/features/admin/actions.registry.ts`，
+每项声明 `stepUp`：`'always'`、`'never'`，或按已校验输入判定的函数（如 `setting.update` 只在密钥项实际改变时敏感、
+`ai.model_save` 只在新建或定价变化时敏感、`billing.refund_review` 只在通过时敏感）。插件用
+`defineAdminActions(owner, group)` 追加登记，键重复即报错。`adminAction` / `withAdminAction` /
+`withDelegatedAdminAction` 与原生管理员入口只接受登记过的动作名，未登记即类型检查失败；
+守卫测试（`apps/web/test/admin-step-up-guard.test.ts`）逐项确认敏感入口未验证时被拒、`never` 项不受影响，
+并静态扫描调用点与登记表双向一致。
+
+**检查点**：包装在开启事务、产生任何副作用之前调用 `assertStepUp`（`features/admin/step-up/check.ts`）：
+敏感且当前会话没有未过期的 `admin_step_up` 记录时抛 403 `STEP_UP_REQUIRED`，`details.methods` 列出该账号可用的方式。
+MCP 等无会话的调用一律不能以「无会话」绕过（AI 发起的敏感操作改走管理员确认，见 [管理员 MCP](./admin-mcp.md)）。
+上线过渡期 `STEP_UP_ENFORCED` 为 `false`（只判定不拦截），验证弹窗上线后打开。
+
+**验证方式与优先级**（`packages/auth/src/admin-step-up.ts`，按账号已有手段取最强者，不允许降级）：
+
+| 账号状态 | 可用方式 |
+|---|---|
+| 已开启两步验证 | TOTP 或备用码（备用码用后即消耗）；密码与邮箱验证码被拒 |
+| 未开启两步验证、邮箱已验证 | 邮箱验证码；有密码另可用密码 |
+| 救援开关开启且邮箱在 `BOOTSTRAP_ADMIN_EMAILS` 内 | 常规方式没有邮箱验证码的账号额外可用救援验证码（方式记为 `rescue`） |
+
+- 全部方式在当前会话内完成：不创建、不替换会话，也不写 Cookie。
+- 邮箱验证码自建（不复用 emailOTP 插件）：6 位、10 分钟、最多 3 次、只能用一次、只对申请它的会话有效；
+  存 `verification` 表（identifier `admin-step-up:<sessionId>`，只存加盐 SHA-256），60 秒内不重发；
+  邮件模板 `admin-step-up-code`，经 EMAIL_QUEUE 发往数据库中已验证的邮箱。
+- 同一 TOTP 时间窗的验证码在同一账号的所有会话中只接受一次（记录在 `admin_step_up.last_totp_step`）。
+- 限流与锁定：发码与校验经 RL_AUTH 按 IP 与账号限流；连续失败 5 次（5 分钟窗口）锁定该账号的重新验证 15 分钟，
+  写审计 `admin.step_up.locked`。成功写审计 `admin.step_up.verified`（方式与来源 IP）。
+- 验证状态：表 `admin_step_up` 按会话一行，有效期自验证起计算、不随使用延长；会话退出、被吊销时级联删除。
+  换浏览器（另一个会话）需重新验证。
+- 入口：`features/admin/step-up/step-up.functions.ts` 的 `getStepUpStatus`、`sendStepUpCode`、`verifyStepUp`，均经 `requireAdmin`。
+- 应急：丢失验证器与备用码时按 [救援 runbook](./runbooks/admin-step-up-rescue.md) 开启 `ADMIN_STEP_UP_RESCUE`；
+  每次救援验证写审计并发运营通知 `admin.step_up.rescue`，后台持续显示警示条，问题解决后删除开关。
+
+**Better Auth 核对结论**（better-auth 1.7.7 安装包源码，核对日期 2026-11-25）：
+
+- `session.freshAge` 只看会话创建时间，恢复「新鲜」只能重新登录（产生新会话），不适合做 step-up。
+  出处：[Session Management](https://www.better-auth.com/docs/concepts/session-management)。
+- emailOTP 的用途是固定枚举、magicLink 与社交登录校验即新建会话，都不能用于「只验证」。
+  出处：[Email OTP](https://www.better-auth.com/docs/plugins/email-otp)、[Magic Link](https://www.better-auth.com/docs/plugins/magic-link)。
+- 2FA 插件已登录分支（`dist/plugins/two-factor/verify-two-factor.mjs`）不计失败、不锁定；`/two-factor/verify-totp`
+  不返回命中的时间窗，且在绑定未完成时会新建会话并删除旧会话（`dist/plugins/two-factor/totp/index.mjs`）。
+  因此 step-up 不调用这些端点，而是用 `better-auth/crypto` 的 `symmetricDecrypt` / `symmetricEncrypt` 与
+  `auth.$context.secretConfig` 直接读写 `two_factor` 行，算法同插件默认值（HOTP-SHA1、6 位、30 秒、窗口 ±1，
+  备用码 `encrypted` 存储），由 `packages/auth/test/admin-step-up.test.ts` 经插件真实接口绑定 2FA 后锁定兼容性。
+  出处：[Two-Factor Authentication](https://www.better-auth.com/docs/plugins/2fa)、同窗重放 [issue #10387](https://github.com/better-auth/better-auth/issues/10387)。
+- 密码校验使用本模板的 `passwordHasher.verify`（`packages/auth/src/password.ts`，兼容 Better Auth 默认 scrypt），
+  直接比对 `account`（`provider_id = 'credential'`）的哈希，不经 Better Auth 端点。
+
+**新增后台动作时的要求**：
+
+1. 在 `actions.registry.ts`（插件在自己的清单中经 `defineAdminActions`）登记动作名、`stepUp` 与理由；
+   涉及资金、他人身份或访问、长期凭据、密钥、套餐权益的写操作登记为敏感，按输入判定时写清条件。
+2. 写入口用 `adminAction` / `withAdminAction` / `withDelegatedAdminAction` 并传登记的动作名（按输入判定的写成 `{ name, input }`），
+   不要绕过包装直接写库。
+3. 在守卫测试的用例表中为新的敏感入口加一行（静态扫描会提示缺失）。
+4. 后台界面的调用经统一的 step-up 调用包装（验证后用原参数重试一次），表单内容不丢失。
+
 ## 3. 多租户：「个人空间」模型
 
 ### 核心规则

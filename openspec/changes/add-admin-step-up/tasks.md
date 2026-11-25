@@ -17,10 +17,10 @@
 
 ## 2. 验证方式与应急（Worker B，依赖第 1 组合并）
 
-- [ ] 2.1 `packages/auth` 新增 step-up 服务（不创建、不替换会话）：可用方式计算（2FA → TOTP / 备用码；否则邮箱验证码，有密码另加密码；救援见 2.3）；TOTP 与备用码走 Better Auth 已登录分支校验，并记录 `last_totp_step` 拒绝同窗重放；密码走 `verifyPassword`；邮箱验证码自建（6 位、10 分钟、3 次、`verification` 表 identifier `admin-step-up:<sessionId>`、只存哈希、原子消费）；`RL_AUTH` 按 IP 与账号限流，连续失败锁定 15 分钟并写 `admin.step_up.locked`；成功 upsert `admin_step_up` 并写 `admin.step_up.verified`。集成测试覆盖：会话 ID 不变、开启 2FA 时密码与验证码被拒、备用码只能用一次、跨会话验证码无效、同窗 TOTP 第二次被拒、锁定、过期（伪造时间）。验收〔本地〕
-- [ ] 2.2 模板配置 `admin.stepUpMinutes`（默认 10，1–60，`packages/config` schema 与默认值）；`packages/email` 新增「后台操作验证码」模板与多语言文案；web Server Functions：`getStepUpStatus`（剩余时间、可用方式、是否救援）、`sendStepUpCode`、`verifyStepUp`，均经 `requireAdmin`。验收：单元与集成测试、`pnpm typecheck`〔本地〕
-- [ ] 2.3 应急救援：密钥 `ADMIN_STEP_UP_RESCUE`（Cloudflare 与 Node 环境 schema 可选项，`.dev.vars.example` 占位）；开启时 `BOOTSTRAP_ADMIN_EMAILS` 名单内的管理员额外可用邮箱验证码，方式记 `rescue`，写审计并投递新运营事件 `admin.step_up.rescue`（jobs 运营通知接受该事件）。集成测试覆盖名单内 / 名单外 / 未开启三种情况；新增 runbook `docs/runbooks/admin-step-up-rescue.md`（备用码 → 救援开关 → 引导名单新增邮箱，以及关闭步骤）。验收〔本地〕
-- [ ] 2.4 文档：`docs/04-auth-and-tenancy.md` 新增「后台重新验证」一节（敏感清单的登记方式、方式优先级、有效期、Better Auth 核对结论与出处、新增后台动作时的要求）；`security-scan` 技能清单加入「新增后台写操作须登记动作名」。验收：`pnpm check` 通过〔本地〕
+- [x] 2.1 `packages/auth` 新增 step-up 服务（不创建、不替换会话）：可用方式计算（2FA → TOTP / 备用码；否则邮箱验证码，有密码另加密码；救援见 2.3）；TOTP 与备用码走 Better Auth 已登录分支校验，并记录 `last_totp_step` 拒绝同窗重放；密码走 `verifyPassword`；邮箱验证码自建（6 位、10 分钟、3 次、`verification` 表 identifier `admin-step-up:<sessionId>`、只存哈希、原子消费）；`RL_AUTH` 按 IP 与账号限流，连续失败锁定 15 分钟并写 `admin.step_up.locked`；成功 upsert `admin_step_up` 并写 `admin.step_up.verified`。集成测试覆盖：会话 ID 不变、开启 2FA 时密码与验证码被拒、备用码只能用一次、跨会话验证码无效、同窗 TOTP 第二次被拒、锁定、过期（伪造时间）。验收〔本地〕
+- [x] 2.2 模板配置 `admin.stepUpMinutes`（默认 10，1–60，`packages/config` schema 与默认值）；`packages/email` 新增「后台操作验证码」模板与多语言文案；web Server Functions：`getStepUpStatus`（剩余时间、可用方式、是否救援）、`sendStepUpCode`、`verifyStepUp`，均经 `requireAdmin`。验收：单元与集成测试、`pnpm typecheck`〔本地〕
+- [x] 2.3 应急救援：密钥 `ADMIN_STEP_UP_RESCUE`（Cloudflare 与 Node 环境 schema 可选项，`.dev.vars.example` 占位）；开启时 `BOOTSTRAP_ADMIN_EMAILS` 名单内的管理员额外可用邮箱验证码，方式记 `rescue`，写审计并投递新运营事件 `admin.step_up.rescue`（jobs 运营通知接受该事件）。集成测试覆盖名单内 / 名单外 / 未开启三种情况；新增 runbook `docs/runbooks/admin-step-up-rescue.md`（备用码 → 救援开关 → 引导名单新增邮箱，以及关闭步骤）。验收〔本地〕
+- [x] 2.4 文档：`docs/04-auth-and-tenancy.md` 新增「后台重新验证」一节（敏感清单的登记方式、方式优先级、有效期、Better Auth 核对结论与出处、新增后台动作时的要求）；`security-scan` 技能清单加入「新增后台写操作须登记动作名」。验收：`pnpm check` 通过〔本地〕
 
 ## 3. MCP 待确认后端（Worker C，依赖第 1 组合并，可与第 2 组并行）
 
