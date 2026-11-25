@@ -29,5 +29,5 @@
 ## 6. 文档、技能与验收
 
 - [x] 6.1 文档：`docs/` 新增 admin MCP 一节（创建令牌、`claude mcp add --transport http <url>/api/admin/mcp --header "Authorization: Bearer …"`、工具清单与 scope、dryRun、审计查看、令牌保管）；`docs/plugins.md` 登记插件；运行时设置文档说明定义表与项目设置项；功能模型用法；新增技能「新功能上线时由 agent 配置模型并验证」（`.agents/skills` 与 `.claude/skills` 字节一致）；`security-scan` 清单加入管理员令牌与 MCP 端点
-- [ ] 6.2 本地验收：用 Claude Code（或 `@modelcontextprotocol/client` 脚本）连本地 dev 完成 tools/list → `settings.get` → `settings.set` dryRun → 写入 → 读回，并在后台审计页看到记录；生成器 `--plugins` 去掉 admin-mcp 的副本不含端点与依赖。证据写入 `EVIDENCE_DIR`
+- [x] 6.2 本地验收：用 Claude Code（或 `@modelcontextprotocol/client` 脚本）连本地 dev 完成 tools/list → `settings.get` → `settings.set` dryRun → 写入 → 读回，并在后台审计页看到记录；生成器 `--plugins` 去掉 admin-mcp 的副本不含端点与依赖。证据写入 `EVIDENCE_DIR`
 - [ ] 6.3 staging 验收：管理员在 staging 创建令牌，经 MCP 读设置与模型、对一个无害设置项 dryRun 与写入并还原，确认审计；吊销后调用返回 401。证据写入私有证据库。需要 staging 管理员登录，未执行时在 PR 中标为未完成验收
