@@ -30,7 +30,7 @@ export const APPS = ['web', 'jobs']
 export const DEPLOY_CONFIG = 'wrangler.deploy.json'
 
 const USAGE =
-  '用法：pnpm deploy:resources --env <staging|production> [--apply] [--allow-production] [--create-hyperdrive] [--verify]'
+  '用法：pnpm deploy:resources --env <staging|production> [--apply] [--allow-production] [--create-hyperdrive] [--verify] [--root <仓库根>]'
 const KIND_LABELS = { kv: 'KV', r2: 'R2', queue: '队列', hyperdrive: 'Hyperdrive' }
 const STATUS_LABELS = {
   fixed: '已固定',
@@ -45,6 +45,7 @@ const STATUS_LABELS = {
 export function parseArgs(argv) {
   const options = {
     env: undefined,
+    root: undefined,
     apply: false,
     allowProduction: false,
     createHyperdrive: false,
@@ -61,11 +62,16 @@ export function parseArgs(argv) {
     if (arg === '--') continue
     if (arg === '--env') options.env = argv[++i]
     else if (arg.startsWith('--env=')) options.env = arg.slice('--env='.length)
+    // 发布流水线用 main 上的解析脚本处理目标提交（含回滚到旧 tag），以 --root 指向目标 checkout
+    else if (arg === '--root') options.root = argv[++i] ?? ''
+    else if (arg.startsWith('--root=')) options.root = arg.slice('--root='.length)
     else if (flags[arg]) options[flags[arg]] = true
     else throw new ResourceConfigError(`未知参数 ${arg}\n${USAGE}`)
   }
   if (!options.env || options.env.startsWith('--'))
     throw new ResourceConfigError(`缺少 --env\n${USAGE}`)
+  if (options.root !== undefined && (!options.root || options.root.startsWith('--')))
+    throw new ResourceConfigError(`--root 需要目录\n${USAGE}`)
   if (options.createHyperdrive && !options.apply)
     throw new ResourceConfigError('--create-hyperdrive 需要同时传 --apply')
   return options
@@ -118,7 +124,7 @@ function idList(environment, resources) {
 }
 
 /**
- * 运行解析。依赖全部注入：`root` 为仓库根，`env` 为进程环境，`fetch` 为 HTTP 实现，
+ * 运行解析。依赖全部注入：`root` 为仓库根（参数 `--root` 优先），`env` 为进程环境，`fetch` 为 HTTP 实现，
  * `log` / `error` 为输出。返回退出码：0 成功并写出部署配置，1 解析失败或仍有缺项，2 用法错误。
  */
 export async function run({
@@ -137,12 +143,13 @@ export async function run({
     return 2
   }
   const environment = options.env
+  const base = options.root ? resolve(options.root) : root
   const isProduction = environment === 'production'
   const mayCreate = options.apply && (!isProduction || options.allowProduction)
   const mode = mayCreate ? 'apply' : options.apply ? 'plan（production 未开启创建）' : 'plan'
 
   // 先删除上一次生成的部署配置：本次失败时不留下可能过期的文件
-  for (const app of APPS) rmSync(join(root, 'apps', app, DEPLOY_CONFIG), { force: true })
+  for (const app of APPS) rmSync(join(base, 'apps', app, DEPLOY_CONFIG), { force: true })
 
   let configs
   let collected
@@ -150,7 +157,7 @@ export async function run({
     configs = Object.fromEntries(
       APPS.map((app) => [
         app,
-        parseJsonc(readFileSync(join(root, 'apps', app, 'wrangler.jsonc'), 'utf8')),
+        parseJsonc(readFileSync(join(base, 'apps', app, 'wrangler.jsonc'), 'utf8')),
       ]),
     )
     collected = collectResources(configs, environment)
@@ -335,7 +342,7 @@ export async function run({
     const deploy = applyResolution(configs[app], app, environment, resources, {
       accountId: env.CLOUDFLARE_ACCOUNT_ID,
     })
-    writeFileSync(join(root, 'apps', app, DEPLOY_CONFIG), `${JSON.stringify(deploy, null, 2)}\n`)
+    writeFileSync(join(base, 'apps', app, DEPLOY_CONFIG), `${JSON.stringify(deploy, null, 2)}\n`)
   }
   log(`\n已写出 ${APPS.map((app) => `apps/${app}/${DEPLOY_CONFIG}`).join('、')}。ID 清单：`)
   for (const line of idList(environment, resources)) log(line)

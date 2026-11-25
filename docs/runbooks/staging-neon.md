@@ -176,7 +176,7 @@ AI Gateway `saas-staging` 与 R2 桶 `files-staging` 已创建。Gateway 鉴权�
 
 GitHub environment `staging` 需要 CLOUDFLARE_API_TOKEN、CLOUDFLARE_ACCOUNT_ID、STAGING_MIGRATION_DATABASE_URL。先只读验证 token 归属与资源权限，再配置并核对名称。CI token 权限按当前 workflow 使用的资源确定；参考权限为 Workers Scripts 编辑，Workers KV / Queues / Hyperdrive / Account Settings 读取；Workflows API 使用 Workers Scripts 权限；以当前平台控制台与部署操作所需权限为准。token 从控制台 Copy 后经剪贴板 stdin 写 `gh secret set`，立即清空；迁移 URL 只从忽略文件 stdin 传入。用 `gh secret list --env staging` 仅核对名称。
 
-`deploy-staging.yml` 跟随 main 成功 CI，检出该次 head_sha；手动运行也限 main。environment 限制 secrets，PR CI 不引用它们。`staging-deploy` 串行且不取消：迁移 → jobs → web（完整 SHA）→ 3 分钟版本探活 → staging Chromium 冒烟。先把 workflow 的 `STAGING_URL` 与两个 Worker 的 `APP_URL` 改为本项目可访问 URL，核对所选功能的 secrets 与绑定。获准手动重发：
+`deploy-staging.yml` 跟随 main 成功 CI，检出该次 head_sha；手动运行也限 main。environment 限制 secrets，PR CI 不引用它们。`staging-deploy` 串行且不取消：解析部署资源（`--apply`，见 `docs/07-infrastructure.md` §0）→ 迁移 → jobs → web（完整 SHA）→ 3 分钟版本探活 → staging Chromium 冒烟。先把 workflow 的 `STAGING_URL` 与两个 Worker 的 `APP_URL` 改为本项目可访问 URL，核对所选功能的 secrets 与绑定。获准手动重发：
 
 ```sh
 gh workflow run deploy-staging.yml --ref main

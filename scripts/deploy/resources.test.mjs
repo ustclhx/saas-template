@@ -62,6 +62,21 @@ test('arguments: --env is required and --create-hyperdrive needs --apply', () =>
   assert.throws(() => parseArgs(['--env', 'staging', '--create-hyperdrive']), /--apply/)
 })
 
+test('--root points the release-tools copy at the target checkout', async () => {
+  assert.equal(parseArgs(['--env', 'staging', '--root=/x']).root, '/x')
+  assert.throws(() => parseArgs(['--env', 'staging', '--root']), /--root/)
+  const target = repo()
+  const tools = mkdtempSync(join(tmpdir(), 'deploy-resources-tools-'))
+  const result = await exec(tools, ['--env', 'staging', '--root', target.root], { env: {} })
+  assert.equal(result.code, 0, result.all)
+  assert.equal(
+    deployConfig(target.root, 'jobs').env.staging.kv_namespaces[0].id,
+    'f4d49b7c082b4f01ae20335683d3a21b',
+  )
+  assert.equal(existsSync(join(tools, 'apps')), false)
+  assert.equal(target.status(), '')
+})
+
 test('fully pinned template staging makes no API call and needs no credentials', async () => {
   const { root, status } = repo()
   const result = await exec(root, ['--env', 'staging'], { env: {} })

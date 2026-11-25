@@ -228,7 +228,7 @@ wrangler 无法创建 API token（无对应命令，OAuth 可选范围不含 API
 
 仓库变量 `RELEASE_PHASE` 仅取 `testing` 或 `live`，未设置按 `live`。测试阶段可以绕过 CI；正式上线后只有紧急修复可绕过。CI 必须是本仓库 `main` 分支上同一完整 SHA 的成功 `CI` push 运行，PR 检查不算。生产始终要求目标 tag 的提交在 main 历史上、已成功发布 staging，并经 `production` environment 审批；这些条件不能绕过。
 
-正常发布：对已验证的提交推送 `v*` tag。批准后依次构建 jobs/web、上传 source map、迁移、部署 jobs、部署 web、校验 `/api/health` 完整 SHA，最后执行只读 Playwright 冒烟。两个构建产物保留在同一 job，构建失败不会触及数据库。live 阶段缺少 `SENTRY_DSN` 或 source map 上传配置会在迁移前失败；testing 只发 warning 并写摘要。GitHub production DSN 用于发布门禁，web/jobs 的运行时 `SENTRY_DSN` secrets 也必须分别配置，发布门禁不代替实际事件验收。
+正常发布：对已验证的提交推送 `v*` tag。批准后先只读解析部署资源（缺资源即失败、不创建，见 `docs/07-infrastructure.md` §0），再依次构建 jobs/web、上传 source map、迁移、部署 jobs、部署 web、校验 `/api/health` 完整 SHA，最后执行只读 Playwright 冒烟。两个构建产物保留在同一 job，构建失败不会触及数据库。live 阶段缺少 `SENTRY_DSN` 或 source map 上传配置会在迁移前失败；testing 只发 warning 并写摘要。GitHub production DSN 用于发布门禁，web/jobs 的运行时 `SENTRY_DSN` secrets 也必须分别配置，发布门禁不代替实际事件验收。
 
 手动操作从 **main 的当前工作流** 运行并指定目标 tag，避免旧 tag 自带的旧工作流缺少新检查。`production` environment 的 deployment branches/tags 需同时允许 `main` 与 `v*`，保留必需审批人。维护者应先确认目标 tag 与摘要中的解析 SHA 一致。
 

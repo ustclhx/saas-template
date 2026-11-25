@@ -15,10 +15,10 @@
 
 ## 2. 构建与流水线接入（W2，依赖 1）
 
-- [ ] 2.1 `apps/web/vite.config.ts` 读取 `WRANGLER_DEPLOY_CONFIG`，作为 `cloudflare()` 的 `configPath`，未设置时行为不变。验证：设置该变量指向含不同 KV ID 的配置后执行 `CLOUDFLARE_ENV=staging pnpm --filter @saas/web build`，`dist/server/wrangler.json` 中是新 ID；不设置时产物与改动前相同；`pnpm check`（含 `check-turbo-inputs`）通过。〔本地〕
-- [ ] 2.2 `deploy-staging.yml`：在迁移前加「Resolve deployment resources」步骤（`--env staging --apply`，只注入 `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`）；jobs 的构建与部署命令加 `--config wrangler.deploy.json`；web 构建设 `WRANGLER_DEPLOY_CONFIG`。`deploy-production.yml` 同样改动，但解析只做 plan，放在构建前，不传 `--apply`（已拍板事项 1，使用者 2026-11-25 确认）。修改前先读 `docs/ci.md`，concurrency 与步骤顺序符合 §4、§6。验证：用本地 `act` 不可行时，以 `--dry-run` 跑通相同命令序列，并在 PR 中贴出命令与退出码。〔本地〕
-- [ ] 2.3 实测 wrangler 4.146.0 的 `--no-x-provision` / `--no-x-auto-create` 是否被接受，在部署配置含全部 ID 时是否改变行为；结论写入 design 决策 1 的「验证结果」，可用就加到两个工作流的部署命令上。同时决定是否加 `--message <SHA>`（决策 10）。验证：`wrangler deploy --dry-run` 带参数时退出 0，结果记录进 design。〔本地〕
-- [ ] 2.4 更新 `.agents/skills/deploy-cloudflare/SKILL.md`（预检改用 `pnpm deploy:resources` 的 plan，资源表中 KV / R2 / Queues 改为由命令创建，Hyperdrive 写清两种做法，其中 `--create-hyperdrive` 仅限本地手动使用）与 `docs/07-infrastructure.md`（§0 / §4 / §5：解析步骤、命名约定、按环境拆分的令牌权限（staging 可写、production 只读，已拍板事项 3）、Workers Builds 差异、回滚方式，附 design 中的官方出处和核对日期）。验证：`pnpm check`（含 `agent-skills` 测试）通过，文档中的命令能按写法执行 plan。〔本地〕
+- [x] 2.1 `apps/web/vite.config.ts` 读取 `WRANGLER_DEPLOY_CONFIG`，作为 `cloudflare()` 的 `configPath`，未设置时行为不变。验证：设置该变量指向含不同 KV ID 的配置后执行 `CLOUDFLARE_ENV=staging pnpm --filter @saas/web build`，`dist/server/wrangler.json` 中是新 ID；不设置时产物与改动前相同；`pnpm check`（含 `check-turbo-inputs`）通过。〔本地〕
+- [x] 2.2 `deploy-staging.yml`：在迁移前加「Resolve deployment resources」步骤（`--env staging --apply`，只注入 `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`）；jobs 的构建与部署命令加 `--config wrangler.deploy.json`；web 构建设 `WRANGLER_DEPLOY_CONFIG`。`deploy-production.yml` 同样改动，但解析只做 plan，放在构建前，不传 `--apply`（已拍板事项 1，使用者 2026-11-25 确认）。修改前先读 `docs/ci.md`，concurrency 与步骤顺序符合 §4、§6。验证：用本地 `act` 不可行时，以 `--dry-run` 跑通相同命令序列，并在 PR 中贴出命令与退出码。〔本地〕
+- [x] 2.3 实测 wrangler 4.146.0 的 `--no-x-provision` / `--no-x-auto-create` 是否被接受，在部署配置含全部 ID 时是否改变行为；结论写入 design 决策 1 的「验证结果」，可用就加到两个工作流的部署命令上。同时决定是否加 `--message <SHA>`（决策 10）。验证：`wrangler deploy --dry-run` 带参数时退出 0，结果记录进 design。〔本地〕
+- [x] 2.4 更新 `.agents/skills/deploy-cloudflare/SKILL.md`（预检改用 `pnpm deploy:resources` 的 plan，资源表中 KV / R2 / Queues 改为由命令创建，Hyperdrive 写清两种做法，其中 `--create-hyperdrive` 仅限本地手动使用）与 `docs/07-infrastructure.md`（§0 / §4 / §5：解析步骤、命名约定、按环境拆分的令牌权限（staging 可写、production 只读，已拍板事项 3）、Workers Builds 差异、回滚方式，附 design 中的官方出处和核对日期）。验证：`pnpm check`（含 `agent-skills` 测试）通过，文档中的命令能按写法执行 plan。〔本地〕
 
 ## 3. 生成器与升级说明（W3，依赖 1）
 
