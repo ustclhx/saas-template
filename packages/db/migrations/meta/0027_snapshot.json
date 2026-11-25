@@ -1,5 +1,5 @@
 {
-  "id": "e2a3f585-f1fb-4bea-8bc5-001da7d99cc9",
+  "id": "04455f41-e4c6-408d-ac47-6b97a4fb5540",
   "prevId": "362883ef-eb54-4cf7-9af5-e42b1cf550d5",
   "version": "7",
   "dialect": "postgresql",
@@ -5644,7 +5644,7 @@
         },
         "last_totp_step": {
           "name": "last_totp_step",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         }

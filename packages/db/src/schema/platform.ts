@@ -1,8 +1,8 @@
 import { newId } from '@saas/shared'
 import {
+  bigint,
   customType,
   index,
-  integer,
   jsonb,
   pgTable,
   text,
@@ -91,7 +91,7 @@ export const adminStepUp = pgTable(
     verifiedAt: timestamp('verified_at', { withTimezone: true }).notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     // 最近一次被接受的 TOTP 时间窗编号，同一时间窗内的验证码只接受一次
-    lastTotpStep: integer('last_totp_step'),
+    lastTotpStep: bigint('last_totp_step', { mode: 'number' }),
   },
   (t) => [index('admin_step_up_user_id_idx').on(t.userId)],
 )

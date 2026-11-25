@@ -25,7 +25,7 @@ CREATE TABLE "admin_step_up" (
 	"method" text NOT NULL,
 	"verified_at" timestamp with time zone NOT NULL,
 	"expires_at" timestamp with time zone NOT NULL,
-	"last_totp_step" integer
+	"last_totp_step" bigint
 );
 --> statement-breakpoint
 ALTER TABLE "admin_pending_action" ADD CONSTRAINT "admin_pending_action_token_id_admin_api_token_id_fk" FOREIGN KEY ("token_id") REFERENCES "public"."admin_api_token"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
