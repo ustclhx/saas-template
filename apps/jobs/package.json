@@ -24,6 +24,7 @@
     "@saas/email": "workspace:*",
     "@saas/entitlements": "workspace:*",
     "@saas/platform": "workspace:*",
+    "@saas/plugin-admin-mcp": "workspace:*",
     "@saas/plugin-agents": "workspace:*",
     "@saas/plugin-media": "workspace:*",
     "@saas/shared": "workspace:*",

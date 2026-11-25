@@ -1,6 +1,6 @@
 ## 1. 技术验证
 
-- [ ] 1.1 spike：在 `plugins/admin-mcp` 中用精确锁定的 `@modelcontextprotocol/server`（与锁文件中 client/core 同版本）实现无会话、仅 POST、JSON 响应的最小端点（一个 `ping` 类只读工具），经插件路由挂到 `/api/admin/mcp`；验证 Cloudflare（`wrangler dev` 与 `pnpm build`）与 Node（`pnpm build:node` 后运行）均可用，记录 web 产物体积增量；用 `@modelcontextprotocol/client` 完成 initialize → tools/list → tools/call。不可用时改为手写最小 JSON-RPC。结论写进 design.md「验证结果」
+- [x] 1.1 spike：在 `plugins/admin-mcp` 中用精确锁定的 `@modelcontextprotocol/server`（与锁文件中 client/core 同版本）实现无会话、仅 POST、JSON 响应的最小端点（一个 `ping` 类只读工具），经插件路由挂到 `/api/admin/mcp`；验证 Cloudflare（`wrangler dev` 与 `pnpm build`）与 Node（`pnpm build:node` 后运行）均可用，记录 web 产物体积增量；用 `@modelcontextprotocol/client` 完成 initialize → tools/list → tools/call。不可用时改为手写最小 JSON-RPC。结论写进 design.md「验证结果」
 
 ## 2. 设置定义化与功能模型（R9）
 
@@ -10,10 +10,10 @@
 
 ## 3. 令牌与端点（R8）
 
-- [ ] 3.1 迁移 `0026_admin_api_token`：表、`token_hash` 唯一索引、`user_id` 索引、删号级联；`docs/03-data-model.md` 更新。本地 PG 应用通过
-- [ ] 3.2 `plugins/admin-mcp` 清单（targets cloudflare + node，配置段可选 `rateLimitPerMinute` 默认 120、`maxTokenDays` 默认 365）；模板 `template.config.ts` 启用；限流策略 `admin-mcp` 接入两目标的 rateLimiter（Cloudflare 绑定按插件清单声明，各环境 wrangler 补齐）；`pnpm check` 通过
-- [ ] 3.3 令牌服务：创建（随机值、前缀、哈希、scope、过期时间上限）、按用户列出、吊销、校验（哈希 → 未吊销未过期 → 实时管理员且未封禁，与 `action.ts` 共用判定函数）、`last_used_at` 节流更新。单元与集成测试覆盖过期、吊销、降级、封禁、错误令牌均为 401
-- [ ] 3.4 端点：鉴权、限流（429）、请求体上限（413）、GET/DELETE 405、`no-store` 与 `noindex` 头、错误映射（不含堆栈与密钥）、每请求新建 MCP server。集成测试用 `@modelcontextprotocol/client` 走完整协议
+- [x] 3.1 迁移 `0026_admin_api_token`：表、`token_hash` 唯一索引、`user_id` 索引、删号级联；`docs/03-data-model.md` 更新。本地 PG 应用通过
+- [x] 3.2 `plugins/admin-mcp` 清单（targets cloudflare + node，配置段可选 `rateLimitPerMinute` 默认 120、`maxTokenDays` 默认 365）；模板 `template.config.ts` 启用；限流策略 `admin-mcp` 接入两目标的 rateLimiter（Cloudflare 绑定按插件清单声明，各环境 wrangler 补齐）；`pnpm check` 通过
+- [x] 3.3 令牌服务：创建（随机值、前缀、哈希、scope、过期时间上限）、按用户列出、吊销、校验（哈希 → 未吊销未过期 → 实时管理员且未封禁，与 `action.ts` 共用判定函数）、`last_used_at` 节流更新。单元与集成测试覆盖过期、吊销、降级、封禁、错误令牌均为 401
+- [x] 3.4 端点：鉴权、限流（429）、请求体上限（413）、GET/DELETE 405、`no-store` 与 `noindex` 头、错误映射（不含堆栈与密钥）、每请求新建 MCP server。集成测试用 `@modelcontextprotocol/client` 走完整协议
 
 ## 4. 工具（R8）
 

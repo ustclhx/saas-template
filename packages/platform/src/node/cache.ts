@@ -13,6 +13,7 @@ export const defaultNodeRateLimitPolicies: NodeRateLimitPolicies = {
   ai: { limit: 20, periodSeconds: 60 },
   api: { limit: 60, periodSeconds: 60 },
   shareCard: { limit: 30, periodSeconds: 60 },
+  'admin-mcp': { limit: 120, periodSeconds: 60 },
 }
 
 const fixedWindow = `

@@ -31,6 +31,7 @@ function completeEnv() {
     EMAIL_QUEUE: { send: fn },
     CACHE: { get: fn, put: fn, delete: fn },
     RL_AUTH: { limit: fn },
+    RL_ADMIN_MCP: { limit: fn },
     RL_AI: { limit: fn },
     APP_URL: 'http://localhost:3000',
     BETTER_AUTH_SECRET: 'x'.repeat(32),

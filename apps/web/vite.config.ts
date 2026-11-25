@@ -50,6 +50,7 @@ for (const binding of ['HYPERDRIVE', 'HYPERDRIVE_CACHED']) {
 export default defineConfig(({ command }) => {
   // 本地 dev 时把根目录 .env.local 的五项测试支付配置同步到 .dev.vars 管理区块（#26）
   if (command === 'serve') syncLocalPaymentEnv(new URL('./', import.meta.url))
+  const adminMcpLimit = templateConfig.plugins['admin-mcp']?.rateLimitPerMinute
   return {
     build: {
       sourcemap: 'hidden',
@@ -70,16 +71,19 @@ export default defineConfig(({ command }) => {
         // Workers AI 无本地模拟；开发与预览禁用远程绑定，避免启动时要求登录或真实推理。
         remoteBindings: false,
         inspectorPort,
-        // 本地开发时 Better Auth 的 baseURL 跟随实际端口（worktree 各不相同）；构建产物沿用 wrangler.jsonc
-        ...((command === 'serve' || process.env.APP_URL) && {
-          config: {
-            vars: {
-              APP_URL: process.env.APP_URL ?? `http://localhost:${port}`,
-              // 组件预览页开关可由环境变量覆盖（smoke e2e 设为 false，断言未开启时 /dev/ui 返回 404）
-              ...(process.env.UI_PREVIEW !== undefined && { UI_PREVIEW: process.env.UI_PREVIEW }),
-            },
-          },
-        }),
+        config: (config) => {
+          // 本地开发时 Better Auth 的 baseURL 跟随 worktree 端口。
+          if (command === 'serve' || process.env.APP_URL) {
+            config.vars.APP_URL = process.env.APP_URL ?? `http://localhost:${port}`
+            // smoke e2e 设为 false，断言未开启时 /dev/ui 返回 404。
+            if (process.env.UI_PREVIEW !== undefined)
+              config.vars.UI_PREVIEW = process.env.UI_PREVIEW
+          }
+          // 原地更新生效环境的绑定，避免 Vite 插件合并数组时追加重复绑定。
+          const adminMcpBinding = config.ratelimits.find(({ name }) => name === 'RL_ADMIN_MCP')
+          if (adminMcpBinding && typeof adminMcpLimit === 'number')
+            adminMcpBinding.simple.limit = adminMcpLimit
+        },
       }),
       // 没有 .dev.vars 时（CI）预渲染用的 preview 改用 .dev.vars.example 的假值通过启动校验
       prerenderEnvFallback(),

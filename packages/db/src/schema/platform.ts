@@ -1,5 +1,5 @@
 import { newId } from '@saas/shared'
-import { index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import { user } from './auth.ts'
 import { organization } from './tenancy.ts'
 
@@ -20,6 +20,32 @@ export const setting = pgTable('setting', {
 
 export type Setting = typeof setting.$inferSelect
 export type NewSetting = typeof setting.$inferInsert
+
+/** 平台管理员的 MCP 个人访问令牌，只保存哈希和用于展示的前缀。 */
+export const adminApiToken = pgTable(
+  'admin_api_token',
+  {
+    id: uuid('id').primaryKey().$defaultFn(newId),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    prefix: text('prefix').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    scopes: text('scopes').array().notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('admin_api_token_token_hash_idx').on(t.tokenHash),
+    index('admin_api_token_user_id_idx').on(t.userId),
+  ],
+)
+
+export type AdminApiToken = typeof adminApiToken.$inferSelect
+export type NewAdminApiToken = typeof adminApiToken.$inferInsert
 
 /**
  * 审计日志（docs/03-data-model.md §6）：管理员操作、计费关键变更、成员变更。

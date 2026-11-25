@@ -90,7 +90,14 @@ export async function createNodeWebProcess(
   const db = createDb(env.DATABASE_URL, { max: env.DB_POOL_MAX })
   let cache: Awaited<ReturnType<typeof createNodeCache>>
   try {
-    cache = await createNodeCache({ url: env.VALKEY_URL, namespace: env.CACHE_NAMESPACE })
+    const adminMcpLimit = templateConfig.plugins['admin-mcp']?.rateLimitPerMinute
+    cache = await createNodeCache({
+      url: env.VALKEY_URL,
+      namespace: env.CACHE_NAMESPACE,
+      ...(typeof adminMcpLimit === 'number' && {
+        policies: { 'admin-mcp': { limit: adminMcpLimit, periodSeconds: 60 } },
+      }),
+    })
   } catch (error) {
     await db.close()
     throw error

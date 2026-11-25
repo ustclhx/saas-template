@@ -1,0 +1,23 @@
+{
+  "name": "@saas/plugin-admin-mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./plugin": "./plugin.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.4.0",
+    "@saas/config": "workspace:*",
+    "@saas/db": "workspace:*",
+    "@saas/platform": "workspace:*",
+    "@saas/shared": "workspace:*",
+    "@tanstack/react-router": "^1.170.41",
+    "drizzle-orm": "^0.45.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "vitest": "^4.1.11"
+  }
+}
