@@ -384,7 +384,7 @@ function StepUpForm(props: StepUpDialogProps & { readonly desktop: boolean }) {
       ) : null}
       {showInputs && isCode ? (
         <div className="grid min-w-0 gap-2.5">
-          <span id={codeLabelId} className="font-medium text-muted-foreground text-sm">
+          <span id={codeLabelId} className="font-medium text-muted-foreground text-body">
             {method === 'totp'
               ? m.admin_step_up_code_label_totp()
               : m.admin_step_up_code_label_email()}
@@ -401,7 +401,7 @@ function StepUpForm(props: StepUpDialogProps & { readonly desktop: boolean }) {
             {...(props.desktop ? {} : { containerClassName: 'w-full justify-between' })}
           />
           {method !== undefined && EMAIL_METHODS.has(method) ? (
-            <div className="flex min-w-0 items-center gap-2 text-muted-foreground text-sm">
+            <div className="flex min-w-0 items-center gap-2 text-muted-foreground text-body">
               <span className="min-w-0 flex-1">{emailHint}</span>
               <Button
                 type="button"
@@ -420,7 +420,7 @@ function StepUpForm(props: StepUpDialogProps & { readonly desktop: boolean }) {
               </Button>
             </div>
           ) : (
-            <span className="text-muted-foreground text-sm">{m.admin_step_up_totp_hint()}</span>
+            <span className="text-muted-foreground text-body">{m.admin_step_up_totp_hint()}</span>
           )}
         </div>
       ) : null}
@@ -446,22 +446,22 @@ function StepUpForm(props: StepUpDialogProps & { readonly desktop: boolean }) {
             autoFocus
           />
           {method === 'backup_code' ? (
-            <span className="text-muted-foreground text-sm">{m.admin_step_up_backup_hint()}</span>
+            <span className="text-muted-foreground text-body">{m.admin_step_up_backup_hint()}</span>
           ) : null}
         </div>
       ) : null}
       {status === null && !loadFailed && !props.continuing && props.methods.length === 0 ? (
-        <p role="status" className="text-muted-foreground text-sm">
+        <p role="status" className="text-muted-foreground text-body">
           {m.admin_step_up_loading()}
         </p>
       ) : null}
       {loadFailed && status === null && !props.continuing ? (
-        <p role="alert" className="font-medium text-destructive text-sm">
+        <p role="alert" className="font-medium text-destructive text-body">
           {m.admin_step_up_error_failed()}
         </p>
       ) : null}
       {error && !locked ? (
-        <p role="alert" className="font-medium text-destructive text-sm">
+        <p role="alert" className="font-medium text-destructive text-body">
           {error}
         </p>
       ) : null}

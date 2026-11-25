@@ -27,6 +27,7 @@ export const projectOwnedPaths = new Set([
   'apps/web/src/features/app-shell/nav.project.ts',
   'apps/web/src/server/project-gate.ts',
   'apps/web/src/features/app-shell/root-fallbacks.project.tsx',
+  'apps/web/src/features/admin/step-up/step-up.project.ts',
   'plugins/agents/src/agents.project.ts',
   'plugins/agents/src/tools.project.ts',
 ])

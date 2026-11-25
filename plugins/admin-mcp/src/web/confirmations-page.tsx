@@ -122,10 +122,10 @@ export function ConfirmationsPage({
           {view === 'pending' ? (
             <>
               <p className="font-semibold">{m.admin_confirm_empty_title()}</p>
-              <p className="text-muted-foreground text-sm">{m.admin_confirm_empty_body()}</p>
+              <p className="text-muted-foreground text-body">{m.admin_confirm_empty_body()}</p>
             </>
           ) : (
-            <p className="text-muted-foreground text-sm">{m.admin_confirm_history_empty()}</p>
+            <p className="text-muted-foreground text-body">{m.admin_confirm_history_empty()}</p>
           )}
         </div>
       ) : (
@@ -152,10 +152,10 @@ export function ConfirmationsPage({
                   >
                     <span className="font-medium">{confirmationTitle(row)}</span>
                     <span className="flex flex-wrap items-center gap-1.5">
-                      <span className="font-mono text-muted-foreground text-sm">{row.tool}</span>
+                      <span className="font-mono text-muted-foreground text-body">{row.tool}</span>
                       <Badge color={status.color}>{status.label}</Badge>
                     </span>
-                    <span className="text-muted-foreground text-sm">
+                    <span className="text-muted-foreground text-body">
                       {row.token.name} · {formatDateTime(row.createdAt)}
                     </span>
                   </Link>
@@ -170,24 +170,6 @@ export function ConfirmationsPage({
 }
 
 /** 加载中：桌面骨架行、手机骨架卡片（设计稿 loading 状态） */
-export function ConfirmationsSkeleton() {
-  return (
-    <AdminPage
-      title={m.admin_confirm_list_title()}
-      description={m.admin_confirm_list_description()}
-    >
-      <div className="grid gap-3" aria-busy="true">
-        {[0, 1, 2].map((key) => (
-          <div key={key} className={panelClass('default', 'gap-2')}>
-            <div className="h-4 w-3/5 animate-pulse rounded bg-muted motion-reduce:animate-none" />
-            <div className="h-4 w-2/5 animate-pulse rounded bg-muted motion-reduce:animate-none" />
-          </div>
-        ))}
-      </div>
-    </AdminPage>
-  )
-}
-
 export function ConfirmationsError({ onRetry }: { onRetry: () => void }) {
   return (
     <AdminPage
@@ -196,7 +178,7 @@ export function ConfirmationsError({ onRetry }: { onRetry: () => void }) {
     >
       <div role="alert" className={panelClass('default', 'justify-items-center p-10 text-center')}>
         <p className="font-semibold">{m.admin_confirm_load_failed()}</p>
-        <p className="text-muted-foreground text-sm">{m.admin_confirm_load_failed_body()}</p>
+        <p className="text-muted-foreground text-body">{m.admin_confirm_load_failed_body()}</p>
         <Button type="button" variant="outline" onClick={onRetry}>
           {m.admin_confirm_retry()}
         </Button>

@@ -357,6 +357,7 @@ generatorTest(
       'apps/web/src/features/app-shell/nav.project.ts',
       'apps/web/src/server/project-gate.ts',
       'apps/web/src/features/app-shell/root-fallbacks.project.tsx',
+      'apps/web/src/features/admin/step-up/step-up.project.ts',
     ]
     for (const path of extensions) await f.file(path, extension)
     const fonts = 'apps/web/src/features/theme/fonts.project.ts'

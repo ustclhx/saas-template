@@ -9,7 +9,13 @@ export function checkHomeBundle(clientDir: string): {
   hydration: string[]
   hydrationGzipBytes: number
   zodSources: string[]
+  hydrationViolations: { asset: string; marker: string }[]
 }
+export const HYDRATION_PATTERNS: readonly { marker: string; pattern: RegExp }[]
+export function hydrationViolations(
+  clientDir: string,
+  files: readonly string[],
+): { asset: string; marker: string }[]
 export function entryScripts(html: string): string[]
 export function entryDynamicImports(clientDir: string, entries: readonly string[]): string[]
 export function decodeMappings(mappings: string): [number, number][]

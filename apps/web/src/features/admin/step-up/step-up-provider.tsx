@@ -216,7 +216,7 @@ export function StepUpRescueBanner() {
   return (
     <div
       role="alert"
-      className="border-destructive/30 border-b bg-destructive/10 px-4 py-2 font-medium text-destructive text-sm sm:px-6"
+      className="border-destructive/30 border-b bg-destructive/10 px-4 py-2 font-medium text-destructive text-body sm:px-6"
     >
       <span className="hidden md:inline">{m.admin_step_up_rescue_banner()}</span>
       <span className="md:hidden">{m.admin_step_up_rescue_banner_short()}</span>

@@ -131,7 +131,7 @@ export function ApiTokensPage({ data }: { data: ApiTokensData }) {
         onCopy={() => void copy('endpoint', data.endpoint)}
       />
       {failed ? (
-        <p role="alert" className="text-destructive text-sm">
+        <p role="alert" className="text-destructive text-body">
           {m.admin_mcp_copy_failed()}
         </p>
       ) : null}
@@ -141,7 +141,7 @@ export function ApiTokensPage({ data }: { data: ApiTokensData }) {
         <>
           <TokenTable tokens={tokens} now={data.now} disabled={!ready} onRevoke={setRevokeTarget} />
           <TokenCards tokens={tokens} now={data.now} disabled={!ready} onRevoke={setRevokeTarget} />
-          <p className="text-muted-foreground text-xs">{m.admin_mcp_footnote()}</p>
+          <p className="text-muted-foreground text-caption">{m.admin_mcp_footnote()}</p>
         </>
       )}
       <CreateTokenDialog
@@ -188,9 +188,11 @@ function EndpointCard({
   return (
     <div className="flex min-w-0 items-center gap-4 rounded-xl bg-card p-3 inset-ring inset-ring-border md:p-4">
       <div className="grid min-w-0 flex-1 gap-1">
-        <span className="font-medium text-muted-foreground text-xs">{m.admin_mcp_endpoint()}</span>
-        <span className="truncate font-mono text-sm">{endpoint}</span>
-        <span className="hidden text-muted-foreground text-xs md:block">
+        <span className="font-medium text-muted-foreground text-caption">
+          {m.admin_mcp_endpoint()}
+        </span>
+        <span className="truncate font-mono text-body">{endpoint}</span>
+        <span className="hidden text-muted-foreground text-caption md:block">
           {m.admin_mcp_endpoint_hint()}
         </span>
       </div>
@@ -251,8 +253,8 @@ interface ListProps {
 function TokenTable({ tokens, now, disabled, onRevoke }: ListProps) {
   return (
     <div className="hidden overflow-hidden rounded-xl bg-card inset-ring inset-ring-border md:block">
-      <table className="w-full text-sm" aria-label={m.admin_mcp_list_label()}>
-        <thead className="text-left text-muted-foreground text-xs">
+      <table className="w-full text-body" aria-label={m.admin_mcp_list_label()}>
+        <thead className="text-left text-muted-foreground text-caption">
           <tr className="border-b">
             <th className="py-2.5 pr-4 pl-4 font-medium">{m.admin_mcp_col_name()}</th>
             <th className="w-36 py-2.5 pr-4 font-medium">{m.admin_mcp_col_prefix()}</th>
@@ -275,7 +277,7 @@ function TokenTable({ tokens, now, disabled, onRevoke }: ListProps) {
               >
                 <td className="max-w-0 py-2 pr-4 pl-4">
                   <span className="block truncate font-medium">{token.name}</span>
-                  <span className="block text-muted-foreground text-xs">
+                  <span className="block text-muted-foreground text-caption">
                     {state.kind === 'active'
                       ? m.admin_mcp_state_active()
                       : state.kind === 'revoked'
@@ -292,7 +294,7 @@ function TokenTable({ tokens, now, disabled, onRevoke }: ListProps) {
                   {state.kind === 'active' ? (
                     <span
                       className={cn(
-                        'block text-xs',
+                        'block text-caption',
                         state.expiring ? 'text-warning' : 'text-muted-foreground',
                       )}
                     >
@@ -368,7 +370,7 @@ function TokenCards({ tokens, now, disabled, onRevoke }: ListProps) {
                   {m.admin_mcp_revoke()}
                 </Button>
               ) : (
-                <span className="text-xs">
+                <span className="text-caption">
                   {state.kind === 'revoked'
                     ? m.admin_mcp_state_revoked_short()
                     : m.admin_mcp_state_expired()}
@@ -376,12 +378,12 @@ function TokenCards({ tokens, now, disabled, onRevoke }: ListProps) {
               )}
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="font-mono text-muted-foreground text-xs">{`${token.prefix}…`}</span>
+              <span className="font-mono text-muted-foreground text-caption">{`${token.prefix}…`}</span>
               <ScopeBadges scopes={token.scopes} />
             </div>
             <span
               className={cn(
-                'text-xs',
+                'text-caption',
                 state.kind === 'active' && state.expiring
                   ? 'text-warning'
                   : 'text-muted-foreground',
@@ -405,8 +407,8 @@ function EmptyTokens({ action }: { action: ReactNode }) {
       >
         <KeyRound className="size-4.5" />
       </span>
-      <h3 className="mt-1 font-semibold text-sm">{m.admin_mcp_empty_title()}</h3>
-      <p className="max-w-md text-muted-foreground text-sm">{m.admin_mcp_empty_body()}</p>
+      <h3 className="mt-1 font-semibold text-body">{m.admin_mcp_empty_title()}</h3>
+      <p className="max-w-md text-muted-foreground text-body">{m.admin_mcp_empty_body()}</p>
       <div className="mt-2">{action}</div>
     </div>
   )
@@ -550,12 +552,12 @@ function CreateTokenDialog({
         />
       </div>
       <fieldset className="grid gap-2.5">
-        <legend className="mb-2 font-medium text-sm">{m.admin_mcp_scopes()}</legend>
+        <legend className="mb-2 font-medium text-body">{m.admin_mcp_scopes()}</legend>
         <Label htmlFor={`${id}-read`} className="items-start font-normal">
           <Checkbox id={`${id}-read`} checked disabled className="mt-0.5" />
           <span className="grid gap-0.5">
             <span className="font-medium">{m.admin_mcp_scope_read_title()}</span>
-            <span className="text-muted-foreground text-xs">
+            <span className="text-muted-foreground text-caption">
               {m.admin_mcp_scope_read_description()}
             </span>
           </span>
@@ -569,14 +571,14 @@ function CreateTokenDialog({
           />
           <span className="grid gap-0.5">
             <span className="font-medium">{m.admin_mcp_scope_write()}</span>
-            <span className="text-muted-foreground text-xs">
+            <span className="text-muted-foreground text-caption">
               {m.admin_mcp_scope_write_description()}
             </span>
           </span>
         </Label>
       </fieldset>
       <fieldset className="grid min-w-0 gap-1.5">
-        <legend className="mb-1.5 font-medium text-sm">{m.admin_mcp_term()}</legend>
+        <legend className="mb-1.5 font-medium text-body">{m.admin_mcp_term()}</legend>
         <div className="flex gap-1 rounded-lg bg-secondary p-0.5">
           {terms.map((term) => (
             <button
@@ -585,7 +587,7 @@ function CreateTokenDialog({
               aria-pressed={term === days}
               onClick={() => setDays(term)}
               className={cn(
-                'h-8 flex-1 whitespace-nowrap rounded-md px-1.5 font-medium sm:px-3 text-sm outline-none transition-colors',
+                'h-8 flex-1 whitespace-nowrap rounded-md px-1.5 font-medium sm:px-3 text-body outline-none transition-colors',
                 'focus-visible:outline-2 focus-visible:outline-(--focus-ring) focus-visible:outline-offset-2',
                 term === days
                   ? 'bg-card shadow-surface-2'
@@ -596,12 +598,12 @@ function CreateTokenDialog({
             </button>
           ))}
         </div>
-        <span className="text-muted-foreground text-xs">
+        <span className="text-muted-foreground text-caption">
           {m.admin_mcp_term_hint({ date: expiryDate(days, now), max })}
         </span>
       </fieldset>
       {error ? (
-        <p role="alert" className="text-destructive text-sm">
+        <p role="alert" className="text-destructive text-body">
           {error}
         </p>
       ) : null}
@@ -656,15 +658,15 @@ function CreatedTokenDialog({
     >
       <div
         role="status"
-        className="flex gap-2.5 rounded-lg bg-warning/10 px-3 py-2.5 text-sm text-warning"
+        className="flex gap-2.5 rounded-lg bg-warning/10 px-3 py-2.5 text-body text-warning"
       >
         <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
         <span>{desktop ? m.admin_mcp_created_warning() : m.admin_mcp_created_warning_short()}</span>
       </div>
       <div className="grid gap-1.5">
-        <span className="font-medium text-sm">{m.admin_mcp_token()}</span>
+        <span className="font-medium text-body">{m.admin_mcp_token()}</span>
         <div className="flex min-w-0 flex-col gap-2 md:flex-row">
-          <code className="min-w-0 flex-1 break-all rounded-lg bg-secondary px-3 py-2 font-mono text-sm">
+          <code className="min-w-0 flex-1 break-all rounded-lg bg-secondary px-3 py-2 font-mono text-body">
             {token}
           </code>
           <Button type="button" onClick={() => void onCopy('token', token)}>
@@ -673,9 +675,9 @@ function CreatedTokenDialog({
         </div>
       </div>
       <div className="grid gap-1.5">
-        <span className="hidden font-medium text-sm md:block">{m.admin_mcp_command()}</span>
+        <span className="hidden font-medium text-body md:block">{m.admin_mcp_command()}</span>
         <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-start">
-          <code className="hidden min-w-0 flex-1 whitespace-pre-wrap break-all rounded-lg bg-secondary px-3 py-2.5 font-mono text-sm md:block">
+          <code className="hidden min-w-0 flex-1 whitespace-pre-wrap break-all rounded-lg bg-secondary px-3 py-2.5 font-mono text-body md:block">
             {claudeCommand(server, endpoint, maskToken(token))}
           </code>
           <Button type="button" variant="outline" onClick={() => void onCopy('command', command)}>
@@ -740,7 +742,7 @@ function RevokeTokenDialog({
           <AlertDialogDescription>{m.admin_mcp_revoke_body()}</AlertDialogDescription>
         </AlertDialogHeader>
         {error ? (
-          <p role="alert" className="text-destructive text-sm">
+          <p role="alert" className="text-destructive text-body">
             {error}
           </p>
         ) : null}

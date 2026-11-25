@@ -78,7 +78,7 @@ saas-template/
 模板只创建一次的文件（文件名多带 `.project.`）属于衍生项目：模板之后不再修改（`scripts/template-release.mjs`
 的 `projectOwnedFiles` 检查），生成器与 template-sync 都不覆盖项目已有的版本（`scripts/template-sync/merge.mjs`
 的 `projectOwnedPaths`）。项目在这些文件里接管模板行为，template-sync 更新引用它们的模板文件时不会产生冲突。
-各领域的文件见对应文档（分享卡片、设计规范、SEO 内链、运行时设置、功能模型等），请求入口与兜底页面相关的两个如下。
+各领域的文件见对应文档（分享卡片、设计规范、SEO 内链、运行时设置、功能模型等），请求入口、兜底页面与后台重新验证相关的三个如下。
 
 **项目闸门** `apps/web/src/server/project-gate.ts`：Cloudflare Worker 入口（`server.ts`）对每个请求先调用
 `gateProjectRequest(request, { env, envValid })`，再查预渲染静态资源，最后才是环境校验结果、插件前置处理、
@@ -103,6 +103,11 @@ saas-template/
 （`routes/__root.tsx` 的 `notFoundComponent`、`errorComponent`）与路由器默认的 `defaultNotFoundComponent`、
 `defaultErrorComponent`（`router.tsx`）都从这里取，分享页等未自带错误界面的路由同样使用。项目换成品牌页面时只改
 这两个导出，不改 `__root.tsx`。错误界面不显示错误详情，并给出回到站内的链接。
+
+**后台重新验证** `apps/web/src/features/admin/step-up/step-up.project.ts`：`stepUpVerificationColumns(userId, { db, request })`
+返回写 `verification` 表时追加的列（项目给该表加了必填列时使用，例如多站点的 `site`；模板列优先，不会被覆盖），
+每次发码或校验在事务前调用一次；`stepUpEmailBrand(defaults, { db, request })` 返回验证码邮件的应用名与站点地址，
+默认取模板配置与 `APP_URL`。两者只在后台 server function 内调用。
 
 ## 2. 为什么拆 `apps/jobs`
 

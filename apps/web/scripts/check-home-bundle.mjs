@@ -40,6 +40,26 @@ export const RENDERER_MARKERS = [
   'NotoSansSC-Regular',
 ]
 
+/**
+ * 水合闭包中不应出现的后台代码（0.10.1）：DataTable 只用于后台与列表页，应随路由组件分包加载。
+ * TanStack 默认只拆 component / errorComponent / notFoundComponent，路由的 loader 与 pendingComponent
+ * 留在路由树里随入口水合，它们静态导入的列表页会把 DataTable 带进所有页面。
+ */
+export const HYDRATION_PATTERNS = [
+  { marker: 'DataTable', pattern: /["']?data-slot["']?\s*:\s*[`"']data-table[`"']/ },
+]
+
+/** 在水合闭包中查找 HYDRATION_PATTERNS */
+export function hydrationViolations(clientDir, files) {
+  const violations = []
+  for (const asset of files) {
+    const text = readFileSync(join(clientDir, asset), 'utf8')
+    for (const { marker, pattern } of HYDRATION_PATTERNS)
+      if (pattern.test(text)) violations.push({ asset, marker })
+  }
+  return violations
+}
+
 // 静态导入的 WASM、Data 模块与字体文件（渲染器随包的部分）
 const BINARY_IMPORT =
   /\b(?:import|export)\s*(?:[\w$*{}\s,]*?\bfrom\s*)?["']([^"']+\.(?:wasm|bin|woff2?|otf|ttf))["']/g
@@ -220,6 +240,7 @@ export function checkHomeBundle(clientDir) {
     files,
     hydration,
     hydrationGzipBytes: zod.gzipBytes,
+    hydrationViolations: hydrationViolations(clientDir, hydration),
     zodSources: zod.violations.length
       ? zodSources(
           clientDir,
@@ -278,6 +299,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     hydration,
     hydrationGzipBytes,
     zodSources: zodFrom,
+    hydrationViolations: heavy,
   } = checkHomeBundle(clientDir)
   // 唯一调用方是 `pnpm build`（Cloudflare 构建，必有 dist/server）；缺少服务端产物时失败，避免静默跳过
   const server = existsSync(join(serverDir, 'index.js')) ? checkServerHomeBundle(serverDir) : null
@@ -302,6 +324,16 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     for (const { asset, marker } of zod) console.warn(`  - 客户端 ${asset} 含 "${marker}"`)
     zodHint()
   } else if (zod.length > 0) zodHint()
+  // 与 zod 相同：只有设置了首页包预算时判失败，避免衍生项目升级模板时因既有页面结构构建失败
+  if (heavy.length > 0) {
+    const report = budget === null ? console.warn : console.error
+    report(
+      `首页包检查${budget === null ? '警告' : '失败'}：水合闭包（所有页面都会下载）中出现了后台列表代码。` +
+        '路由的 loader 与 pendingComponent 不会按路由拆包：loader 里的重模块改用 import()，骨架组件放在不导入列表页的单独文件',
+    )
+    for (const { asset, marker } of heavy) report(`  - 客户端 ${asset} 含 ${marker}`)
+    if (budget !== null) process.exitCode = 1
+  }
   if (overBudget) {
     console.error(`首页包检查失败：${overBudget}`)
     process.exitCode = 1
