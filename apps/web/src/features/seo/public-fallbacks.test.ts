@@ -1,3 +1,4 @@
+import { resetInvalidSettingWarnings } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -58,13 +59,19 @@ describe('公告读取降级（public-site-availability「运行时设置值损�
     await expect(getAnnouncement()).resolves.toBe('Maintenance tonight')
   })
 
+  it('数据库中的值不符合 schema 时回落默认值（无公告）并记只含键名的警告', async () => {
+    // 运行时设置读取遇到不合规的旧值时回落默认值，不再抛错（runtime-config「运行时设置定义」）
+    resetInvalidSettingWarnings()
+    state.stored = { not: 'a string' }
+    await expect(getAnnouncement()).resolves.toBe('')
+    expect(log.warn).toHaveBeenCalledWith('runtime_setting.invalid_stored_value', {
+      key: 'site.announcement',
+      scope: 'global',
+      fallback: 'default',
+    })
+  })
+
   it.each([
-    [
-      '数据库中的值不符合 schema',
-      () => {
-        state.stored = { not: 'a string' }
-      },
-    ],
     [
       'KV 缓存不是 JSON',
       () => {
