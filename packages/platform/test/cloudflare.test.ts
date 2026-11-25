@@ -3,6 +3,7 @@ import type { WorkflowStep as CloudflareStep } from 'cloudflare:workers'
 import { NonRetryableError as CloudflareNonRetryableError } from 'cloudflare:workflows'
 import { describe, expect, it, vi } from 'vitest'
 import {
+  classifyKvError,
   cloudflareTransactionalEnqueue,
   createCloudflareBackgroundTasks,
   createCloudflareKv,
@@ -223,6 +224,76 @@ describe('Cloudflare capability adapters', () => {
     expect(await kv.get('platform-json')).toBe('{"enabled":true}')
     await kv.delete('platform-json')
     expect(await kv.get('platform-json')).toBeNull()
+  })
+
+  it('classifies KV write failures into transient, same-key and non-retryable', () => {
+    expect(classifyKvError(new Error('KV PUT failed: 429 Too Many Requests'))).toEqual({
+      category: 'sameKeyRateLimit',
+      code: '429',
+    })
+    expect(classifyKvError(new Error('KV DELETE failed: 503 Service Unavailable'))).toEqual({
+      category: 'transient',
+      code: '503',
+    })
+    expect(classifyKvError(new Error('Network connection lost.'))).toEqual({
+      category: 'transient',
+      code: 'network',
+    })
+    expect(classifyKvError(new Error('internal error; reference = x'))).toMatchObject({
+      category: 'transient',
+    })
+    expect(
+      classifyKvError(new Error('KV PUT failed: 414 UTF-8 encoded length exceeds 512')),
+    ).toEqual({ category: 'fatal', code: '414' })
+    expect(classifyKvError(new TypeError('Invalid expiration_ttl'))).toEqual({ category: 'fatal' })
+  })
+
+  it('retries KV writes per category and maps exhaustion to CACHE_UNAVAILABLE', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const sleeps: number[] = []
+      const retry = { sleep: async (ms: number) => void sleeps.push(ms), random: () => 0 }
+      const errors = [
+        new Error('Network connection lost.'),
+        new Error('KV PUT failed: 429 Too Many Requests'),
+      ]
+      const put = vi.fn(async () => {
+        const error = errors.shift()
+        if (error) throw error
+      })
+      const kv = createCloudflareKv({ put } as unknown as KVNamespace, retry)
+      await kv.put('session', 'value')
+      expect(put).toHaveBeenCalledTimes(3)
+      expect(sleeps).toEqual([50, 1000])
+
+      const limited = vi.fn(async () => {
+        throw new Error('KV PUT failed: 429 Too Many Requests')
+      })
+      await expect(
+        createCloudflareKv({ put: limited } as unknown as KVNamespace, retry).put('hot', 'v'),
+      ).rejects.toMatchObject({ code: 'CACHE_UNAVAILABLE', status: 503 })
+      expect(limited).toHaveBeenCalledTimes(3)
+      expect(String(warn.mock.calls.at(-1)?.[0])).toContain('cache.kv.same_key_rate_limited')
+
+      const down = vi.fn(async () => {
+        throw new Error('KV DELETE failed: 500 Internal Server Error')
+      })
+      await expect(
+        createCloudflareKv({ delete: down } as unknown as KVNamespace, retry).delete('k'),
+      ).rejects.toMatchObject({ code: 'CACHE_UNAVAILABLE' })
+      expect(down).toHaveBeenCalledTimes(4)
+
+      const invalid = new TypeError('Invalid expiration_ttl')
+      const bad = vi.fn(async () => {
+        throw invalid
+      })
+      await expect(
+        createCloudflareKv({ put: bad } as unknown as KVNamespace, retry).put('k', 'v'),
+      ).rejects.toBe(invalid)
+      expect(bad).toHaveBeenCalledTimes(1)
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   it('routes policy bindings and lifecycle calls through the current request context', async () => {

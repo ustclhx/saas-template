@@ -25,10 +25,10 @@
 
 ## 4. 存储临时错误重试（worker D，Claude：错误分类需要谨慎）
 
-- [ ] 4.1 `packages/shared` 新增 `retryTransient`：分类器返回「临时」「同键限流」「不可重试」，两类分别计数（临时最多 3 次重试，100/300/900 ms ±50% 抖动；同键限流最多 2 次，1000/2000 ms + 0–250 ms 抖动），延时可注入用于测试；单元测试覆盖成功、各类重试后成功、不可重试立即失败、两类各自耗尽、两类交替出现时互不消耗次数。〔本地〕
-- [ ] 4.2 R2 分类器与接入：`packages/storage/src/cloudflare/{index,media,share-cards}.ts` 的 put/delete 经重试，按 design D6 的错误码表分类（10058 归同键限流类；同时识别数字码与名称，未识别不重试）；流式请求体不重试；耗尽返回 `STORAGE_UNAVAILABLE`（503）。先在本地 `wrangler dev` 或文档中确认绑定错误消息格式并记录到 design。单元测试用构造错误覆盖每个码。〔本地〕
-- [ ] 4.3 KV 接入：`packages/platform/src/cloudflare/index.ts` 的 put/delete 对网络中断与内部错误按临时类重试，`KV PUT failed: 429 Too Many Requests` 按同键限流类重试，耗尽返回 `CACHE_UNAVAILABLE`。单元测试覆盖两类。〔本地〕
-- [ ] 4.4 Node：`packages/storage/src/node/client.ts` 显式设置 `maxAttempts: 3`、`retryMode: 'standard'`，查 AWS SDK 官方重试文档写出处与日期；Redis 缓存保持现状并在 `docs/platform-capabilities.md` 写明两目标的重试语义与出处。〔本地〕`pnpm test` 通过
+- [x] 4.1 `packages/shared` 新增 `retryTransient`：分类器返回「临时」「同键限流」「不可重试」，两类分别计数（临时最多 3 次重试，100/300/900 ms ±50% 抖动；同键限流最多 2 次，1000/2000 ms + 0–250 ms 抖动），延时可注入用于测试；单元测试覆盖成功、各类重试后成功、不可重试立即失败、两类各自耗尽、两类交替出现时互不消耗次数。〔本地〕
+- [x] 4.2 R2 分类器与接入：`packages/storage/src/cloudflare/{index,media,share-cards}.ts` 的 put/delete 经重试，按 design D6 的错误码表分类（10058 归同键限流类；同时识别数字码与名称，未识别不重试）；流式请求体不重试；耗尽返回 `STORAGE_UNAVAILABLE`（503）。先在本地 `wrangler dev` 或文档中确认绑定错误消息格式并记录到 design。单元测试用构造错误覆盖每个码。〔本地〕
+- [x] 4.3 KV 接入：`packages/platform/src/cloudflare/index.ts` 的 put/delete 对网络中断与内部错误按临时类重试，`KV PUT failed: 429 Too Many Requests` 按同键限流类重试，耗尽返回 `CACHE_UNAVAILABLE`。单元测试覆盖两类。〔本地〕
+- [x] 4.4 Node：`packages/storage/src/node/client.ts` 显式设置 `maxAttempts: 3`、`retryMode: 'standard'`，查 AWS SDK 官方重试文档写出处与日期；Redis 缓存保持现状并在 `docs/platform-capabilities.md` 写明两目标的重试语义与出处。〔本地〕`pnpm test` 通过
 
 ## 5. 公开页面优先（worker E，Claude：涉及请求入口与界面）
 

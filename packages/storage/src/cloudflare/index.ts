@@ -1,9 +1,17 @@
 import type { Storage } from '../storage.ts'
 import { presignDownload, presignUpload, type StorageEnv } from './presign.ts'
+import { withR2Retry } from './retry.ts'
 import { createCloudflareShareCardObjects } from './share-cards.ts'
 
 export { createCloudflareMediaCopier } from './media.ts'
 export * from './presign.ts'
+
+/** 只需删除能力的入口（jobs 清理）使用；与 Storage.delete 同一重试语义。 */
+export function createCloudflareObjectDeleter(
+  bucket: Pick<R2Bucket, 'delete'>,
+): Pick<Storage, 'delete'> {
+  return { delete: (key) => withR2Retry('delete', () => bucket.delete(key)) }
+}
 
 /** 保留 binding receiver，仅将对象元数据转换为业务需要的字段。 */
 export function createCloudflareStorage(env: StorageEnv): Storage {
@@ -13,7 +21,7 @@ export function createCloudflareStorage(env: StorageEnv): Storage {
       const object = await env.FILES.head(key)
       return object ? { size: object.size, mime: object.httpMetadata?.contentType ?? null } : null
     },
-    delete: (key) => env.FILES.delete(key),
+    delete: (key) => withR2Retry('delete', () => env.FILES.delete(key)),
     presignUpload: (key, mime) => presignUpload(env, key, mime),
     presignDownload: (key, attachment) => presignDownload(env, key, attachment),
   }
