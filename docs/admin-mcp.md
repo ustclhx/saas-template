@@ -32,7 +32,7 @@ claude mcp add --transport http --scope local admin-mcp https://app.example.com/
 
 ## 工具与权限
 
-调用前用 `tools/list` 获取当前部署的输入 schema。下表中的 `?` 表示可选参数。分页工具支持 `offset` 和 `limit`，默认从 0 开始取 50 条，每页最多 50 条。日期筛选使用 UTC `YYYY-MM-DD`，包含两端。工具调用被拒时查看 MCP 结果中的错误码，例如 `INSUFFICIENT_SCOPE`。
+调用前用 `tools/list` 获取当前部署的输入 schema 和各参数的说明。下表中的 `?` 表示可选参数。分页工具支持 `offset` 和 `limit`，默认从 0 开始取 50 条，每页最多 50 条。日期筛选使用 UTC `YYYY-MM-DD`，包含两端。工具调用被拒时查看 MCP 结果中的错误码，例如 `INSUFFICIENT_SCOPE`。
 
 | 工具 | Scope | 参数与用途 |
 |---|---|---|

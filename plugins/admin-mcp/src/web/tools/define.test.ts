@@ -23,8 +23,9 @@ it('只读令牌调用写工具时，拒绝执行并以所属管理员记录脱�
   const tool = defineAdminTool({
     name: 'settings.set',
     scope: 'admin:write',
-    description: 'Save a setting',
+    description: 'Save a registered runtime setting.',
     input: z.object({ key: z.string(), value: z.unknown() }),
+    params: { key: 'Registered setting key.', value: 'New value for the setting.' },
     run,
   }).register(ctx)
 

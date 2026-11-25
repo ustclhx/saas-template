@@ -13,6 +13,8 @@ import { settingTools } from './tools/settings.ts'
 const maxRequestBodySize = 256 * 1024
 const responseHeaders = { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' }
 
+export const adminTools = [pingTool, ...settingTools, ...modelTools, ...businessTools] as const
+
 function mcpError(status: number, message: string, headers?: Record<string, string>) {
   return Response.json(
     { jsonrpc: '2.0', id: null, error: { code: status >= 500 ? -32603 : -32000, message } },
@@ -30,9 +32,7 @@ async function dispatch(request: Request, ctx: AdminToolContext) {
     { name: 'admin-mcp', version: '1.0.0' },
     { capabilities: { tools: {} } },
   )
-  const tools = [pingTool, ...settingTools, ...modelTools, ...businessTools].map((tool) =>
-    tool.register(ctx),
-  )
+  const tools = adminTools.map((tool) => tool.register(ctx))
   const byName = new Map(tools.map((tool) => [tool.spec.name, tool]))
   server.setRequestHandler('tools/list', () => ({ tools: tools.map((tool) => tool.spec) }))
   server.setRequestHandler('tools/call', async ({ params }) => {

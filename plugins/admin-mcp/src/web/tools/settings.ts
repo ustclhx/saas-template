@@ -6,7 +6,7 @@ import {
   writeRuntimeSetting,
 } from '@web/features/admin/settings.ts'
 import { z } from 'zod'
-import { defineAdminTool, toolResult } from './define.ts'
+import { defineAdminTool, dryRunDescription, toolResult } from './define.ts'
 
 const keyInput = z.string().min(1)
 
@@ -33,8 +33,9 @@ async function getSetting(db: Database, key: string) {
 const settingsList = defineAdminTool({
   name: 'settings.list',
   scope: 'admin:read',
-  description: 'List runtime settings, their input schemas, and values or secret presence',
+  description: 'List runtime settings with their input schemas, values, and secret status.',
   input: z.object({}),
+  params: {},
   async run({ db }) {
     const settings = await Promise.all(
       listSettingDefinitions().map(({ key }) => getSetting(db, key)),
@@ -46,8 +47,9 @@ const settingsList = defineAdminTool({
 const settingsGet = defineAdminTool({
   name: 'settings.get',
   scope: 'admin:read',
-  description: 'Read a runtime setting and its source, or whether a secret is set',
+  description: 'Read a runtime setting and its source, or check whether a secret is set.',
   input: z.object({ key: keyInput }),
+  params: { key: 'Registered runtime setting key from settings.list.' },
   async run({ db }, { key }) {
     return toolResult(await getSetting(db, key))
   },
@@ -56,8 +58,13 @@ const settingsGet = defineAdminTool({
 const settingsSet = defineAdminTool({
   name: 'settings.set',
   scope: 'admin:write',
-  description: 'Preview or save a registered runtime setting',
+  description: 'Preview or save a registered runtime setting.',
   input: z.strictObject({ key: keyInput, value: z.unknown(), dryRun: z.boolean().optional() }),
+  params: {
+    key: 'Registered runtime setting key from settings.list.',
+    value: 'New JSON value matching the input schema for this setting.',
+    dryRun: dryRunDescription,
+  },
   async run(ctx, { key, value }) {
     const changes = await writeRuntimeSetting(ctx, key, value, ctx.dryRun)
     return toolResult({ key, ...changes, dryRun: ctx.dryRun })
@@ -68,8 +75,10 @@ const settingsSet = defineAdminTool({
 const featureModelsList = defineAdminTool({
   name: 'features.models',
   scope: 'admin:read',
-  description: 'List feature model selections and their explicit, inherited, or unset resolution',
+  description:
+    'List feature model selections and show whether each is explicit, inherited, or unset.',
   input: z.object({}),
+  params: {},
   async run({ db }) {
     const store = dbSettingStore(db)
     const features = await Promise.all(

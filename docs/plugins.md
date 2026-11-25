@@ -73,6 +73,8 @@ Cloudflare 使用声明了 `cloudflare` 的插件。`pnpm build:node` 只打包�
 
 `admin-mcp` 使用 `packages/db` 的 `admin_api_token` 表，启用时应用数据库迁移。Cloudflare web 各环境需配置 `RL_ADMIN_MCP` 限流绑定，默认每分钟 120 次，额度按各环境的绑定配置。Node 用 `plugins['admin-mcp'].rateLimitPerMinute` 调整额度。令牌有效期上限由 `plugins['admin-mcp'].maxTokenDays` 设置，默认 365 天。停用并重新部署后，管理页和 MCP 端点返回 404。[插件清单](../plugins/admin-mcp/plugin.ts)
 
+新增或改动 MCP 工具能力时，同一 PR 更新工具的英文 `description`、`params` 中每个输入参数的说明，以及[管理员 MCP 工具表](./admin-mcp.md#工具与权限)中的工具名、scope 和参数。无参数的工具声明 `params: {}`。
+
 ## 新增插件与验证
 
 1. 新建 `plugins/<id>/package.json` 和 `plugin.ts`，声明入口、配置、绑定及所需依赖。在 `apps/web/package.json` 与 `apps/jobs/package.json` 声明该插件的 `workspace:*` 依赖，运行 `pnpm install` 更新锁文件。

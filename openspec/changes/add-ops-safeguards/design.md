@@ -115,12 +115,14 @@ Cloudflare：R2 写/删在 `packages/storage/src/cloudflare/{index,media,share-c
 
 ### D4 MCP 说明：定义时由类型强制
 
-`defineAdminTool` 增加必填 `params` 映射，类型为「输入 schema 每个键 → 非空字符串」，由 TypeScript 在 typecheck 时强制每个参数都有说明；生成 inputSchema 时写入对应属性的 `description`。复用的后台 schema（`auditSearchSchema` 等）不需要修改，也不把英文说明带进后台页面代码。工具 `description` 保持英文（客户端可见），并要求至少一句完整说明。
+`defineAdminTool` 增加必填 `params` 映射。TypeScript 要求输入 schema 的每个键都有字符串说明，守卫测试确认说明非空。生成 inputSchema 时将说明写入对应属性的 `description`。复用的后台 schema（`auditSearchSchema` 等）无需改动。客户端可见的工具 `description` 使用英文，至少一句完整说明。
 
 `mcp.ts` 中的工具数组导出为 `adminTools`，运行时与测试共用同一来源。守卫测试：
 1. 枚举 `adminTools` 生成的 spec：工具描述去空白后不少于 20 字符；inputSchema 每个属性都有非空 `description`；`readOnlyHint` 与 scope 一致。
 2. 解析 `docs/admin-mcp.md`「工具与权限」表：工具名集合、scope 与注册结果一致；参数列表 `{ a, b? }` 与 inputSchema 的属性名及 `required` 一致（有默认值的参数在 input 方向为可选，文档写 `?`）。
 3. 现有集成测试（`apps/web/test/admin-mcp.test.ts`）增加一条 `tools/list` 断言参数说明经协议返回。
+
+2026-11-25 核对了协议和转换接口。`tools/list` 的参数说明位于 `inputSchema.properties.<参数名>.description`，参数是否必填按对象的 `required` 数组判断。沿用 Zod 的 `io: 'input'` 生成调用方 schema，再补说明。[MCP Tools 规范](https://modelcontextprotocol.io/specification/2025-11-25/server/tools) · [Zod JSON Schema](https://zod.dev/json-schema) · [JSON Schema 对象参考](https://json-schema.org/understanding-json-schema/reference/object#required)
 
 备选：在 zod schema 上逐个 `.describe()`。放弃：漏写时只能等测试发现，且会改动后台共享 schema。
 
