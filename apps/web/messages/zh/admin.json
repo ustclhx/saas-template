@@ -292,6 +292,7 @@
   "admin_name_slug_or_id": "名称、路径标识或 ID",
   "admin_all": "全部",
   "admin_admin": "管理后台",
+  "admin_loading_page": "正在加载页面…",
   "admin_signed_in_as": "当前登录",
   "admin_back_to_app": "返回应用",
   "admin_sign_out": "退出登录",

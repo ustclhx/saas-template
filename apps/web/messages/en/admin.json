@@ -292,6 +292,7 @@
   "admin_name_slug_or_id": "Name, slug or ID",
   "admin_all": "All",
   "admin_admin": "Admin",
+  "admin_loading_page": "Loading page…",
   "admin_signed_in_as": "Signed in as",
   "admin_back_to_app": "Back to app",
   "admin_sign_out": "Sign out",

@@ -257,6 +257,151 @@ test('--branch refuses an invalid name or an unrelated current branch during pre
   assert.equal((await readBaseRecord(project.dir)).commit, template.first)
 })
 
+test('--branch advances a completed sync on the same branch and leaves main untouched', async (t) => {
+  const template = await fakeTemplate(t)
+  const project = await fakeProject(t, template)
+  const main = git(project.dir, 'rev-parse', 'main')
+  const first = await template.commit(
+    { 'first.txt': 'first update\n' },
+    'sync one',
+    'template-v0.9.0',
+  )
+  const next = await template.commit({ 'next.txt': 'next update\n' }, 'sync two', 'template-v0.9.1')
+  const last = await template.commit(
+    { 'last.txt': 'last update\n' },
+    'sync three',
+    'template-v0.9.2',
+  )
+  const options = {
+    project: project.dir,
+    template: template.dir,
+    runner: stubRunner().runner,
+    log: quiet,
+  }
+  const synced = await runSync({ ...options, to: first })
+  assert.equal(synced.status, 'synced')
+  const branch = synced.branch
+  // 旧工具只给自定义同步分支记录区间，默认分支可以从名称与提交历史还原。
+  git(project.dir, 'config', '--local', '--unset', `branch.${branch}.template-sync`)
+  const advanced = await runSync({ ...options, branch, to: next })
+  assert.equal(advanced.status, 'synced')
+  assert.equal(advanced.report.base.commit, first)
+  assert.equal(advanced.report.resumed, false)
+  assert.equal(await readFile(join(project.dir, 'next.txt'), 'utf8'), 'next update\n')
+  const failed = await runSync({
+    ...options,
+    branch,
+    to: last,
+    runner: stubRunner({ fail: ['pnpm build'] }).runner,
+  })
+  assert.equal(failed.status, 'failed')
+  const resumed = await runSync({ ...options, branch, to: last })
+  assert.equal(resumed.status, 'synced')
+  assert.equal(resumed.report.resumed, true)
+  assert.equal((await readBaseRecord(project.dir)).commit, last)
+  assert.equal(git(project.dir, 'rev-parse', 'main'), main)
+  assert.deepEqual(await branches(project.dir), ['main', branch])
+})
+
+test('--branch checks commits outside main and accepts a sync tip already merged into main', async (t) => {
+  const template = await fakeTemplate(t)
+  const project = await fakeProject(t, template)
+  git(project.dir, 'switch', '--quiet', '--create', 'unrelated')
+  await project.change({ 'local.txt': 'feature content\n' }, 'unrelated change')
+  const first = await template.commit(
+    { 'first.txt': 'first update\n' },
+    'sync one',
+    'template-v0.9.0',
+  )
+  const next = await template.commit({ 'next.txt': 'next update\n' }, 'sync two', 'template-v0.9.1')
+  const options = {
+    project: project.dir,
+    template: template.dir,
+    branch: 'upgrade/template',
+    runner: stubRunner().runner,
+    log: quiet,
+  }
+  assert.equal((await runSync({ ...options, to: first })).status, 'synced')
+  const head = git(project.dir, 'rev-parse', 'HEAD')
+  await assert.rejects(
+    runSync({ ...options, to: next }),
+    (error) => error instanceof PreflightError && /含有不属于模板同步的提交/.test(error.message),
+  )
+  assert.equal(git(project.dir, 'rev-parse', 'HEAD'), head)
+  assert.equal(git(project.dir, 'status', '--porcelain'), '')
+  assert.equal((await readBaseRecord(project.dir)).commit, first)
+
+  git(project.dir, 'switch', '--quiet', 'main')
+  git(project.dir, 'merge', '--quiet', '--ff-only', options.branch)
+  git(project.dir, 'switch', '--quiet', options.branch)
+  assert.equal((await runSync({ ...options, to: next })).status, 'synced')
+  assert.equal(git(project.dir, 'rev-parse', 'main'), head)
+
+  const last = await template.commit(
+    { 'last.txt': 'last update\n' },
+    'sync three',
+    'template-v0.9.2',
+  )
+  await project.change({ 'tip.txt': 'unrelated tip\n' }, 'unrelated tip')
+  await assert.rejects(
+    runSync({ ...options, to: last }),
+    (error) => error instanceof PreflightError && /含有不属于模板同步的提交/.test(error.message),
+  )
+})
+
+test('--branch uses origin/main as a baseline when the local main is stale or missing', async (t) => {
+  const template = await fakeTemplate(t)
+  const project = await fakeProject(t, template)
+  git(project.dir, 'switch', '--quiet', '--create', 'merged-remotely')
+  await project.change({ 'local.txt': 'project content\n' }, 'project change')
+  const first = await template.commit({ 'first.txt': 'one\n' }, 'sync one', 'template-v0.9.0')
+  const next = await template.commit({ 'next.txt': 'two\n' }, 'sync two', 'template-v0.9.1')
+  const last = await template.commit({ 'last.txt': 'three\n' }, 'sync three', 'template-v0.9.2')
+  const options = {
+    project: project.dir,
+    template: template.dir,
+    branch: 'upgrade/template',
+    runner: stubRunner().runner,
+    log: quiet,
+  }
+  assert.equal((await runSync({ ...options, to: first })).status, 'synced')
+  const head = git(project.dir, 'rev-parse', 'HEAD')
+  git(project.dir, 'update-ref', 'refs/remotes/origin/main', head)
+  assert.equal((await runSync({ ...options, to: next })).status, 'synced')
+  git(project.dir, 'branch', '--move', 'main', 'stale-main')
+  assert.equal((await runSync({ ...options, to: last })).status, 'synced')
+  assert.equal(git(project.dir, 'rev-parse', 'refs/remotes/origin/main'), head)
+})
+
+test('--branch refuses the completed target and older targets without changing the branch', async (t) => {
+  const template = await fakeTemplate(t)
+  const project = await fakeProject(t, template)
+  const target = await template.commit(
+    { 'first.txt': 'first update\n' },
+    'sync one',
+    'template-v0.9.0',
+  )
+  const options = {
+    project: project.dir,
+    template: template.dir,
+    branch: 'upgrade/template',
+    runner: stubRunner().runner,
+    log: quiet,
+  }
+  assert.equal((await runSync({ ...options, to: target })).status, 'synced')
+  const head = git(project.dir, 'rev-parse', 'HEAD')
+  for (const to of [target, template.first]) {
+    await assert.rejects(
+      runSync({ ...options, to }),
+      (error) =>
+        error instanceof PreflightError && /目标必须晚于已同步的模板基准/.test(error.message),
+    )
+  }
+  assert.equal(git(project.dir, 'rev-parse', 'HEAD'), head)
+  assert.equal(git(project.dir, 'status', '--porcelain'), '')
+  assert.equal((await readBaseRecord(project.dir)).commit, target)
+})
+
 test('already up to date reports no update and leaves the project untouched', async (t) => {
   const template = await fakeTemplate(t)
   const project = await fakeProject(t, template)
