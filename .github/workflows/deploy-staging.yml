@@ -72,6 +72,15 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # 按约定名称解析或创建 KV / R2 / 队列，写出 apps/*/wrangler.deploy.json（add-deploy-autoprovision）。
+      # 失败时不迁移、不部署；已固定 ID 的环境零 API 调用。只注入 Cloudflare 凭据，不接触数据库连接串。
+      # 解析脚本取自 main 的发布工具，以 --root 指向目标提交（与迁移脚本一致）。
+      - name: Resolve deployment resources
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node "$RELEASE_TOOLS/../deploy/resources.mjs" --env staging --apply --root "$GITHUB_WORKSPACE"
+
       - name: Migrate staging database
         env:
           MIGRATION_DATABASE_URL: ${{ secrets.STAGING_MIGRATION_DATABASE_URL }}
@@ -83,12 +92,14 @@ jobs:
         # 先按 template.config.ts 生成插件注册文件（scripts/plugins，已 gitignore），jobs 入口导入它
         run: |
           node scripts/plugins/generate.mjs
-          pnpm --filter @saas/jobs exec wrangler deploy --env staging --dry-run \
-            --outdir dist --var "APP_VERSION:$APP_VERSION"
+          pnpm --filter @saas/jobs exec wrangler deploy --config wrangler.deploy.json --env staging \
+            --dry-run --no-x-provision --outdir dist --var "APP_VERSION:$APP_VERSION"
 
       - name: Build web
         env:
           CLOUDFLARE_ENV: staging
+          # 相对 apps/web；vite.config.ts 把它作为 Cloudflare 插件的 configPath
+          WRANGLER_DEPLOY_CONFIG: wrangler.deploy.json
           APP_VERSION: ${{ env.DEPLOY_SHA }}
           # 预渲染只需本地 Hyperdrive 能启动；快照按既有设计降级为示例数据。
           # 使用不可达的本地占位连接，绝不指向真实数据库。
@@ -120,16 +131,20 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           APP_VERSION: ${{ env.DEPLOY_SHA }}
         # 上传注入 debug ID 后的文件；不得从源码重新 bundle。
+        # --no-x-provision：资源已由解析步骤确定，关闭 Wrangler 自动创建（design 决策 1）。
         run: >-
-          pnpm --filter @saas/jobs exec wrangler deploy dist/index.js --env staging
-          --no-bundle --var "APP_VERSION:$APP_VERSION"
+          pnpm --filter @saas/jobs exec wrangler deploy dist/index.js --config wrangler.deploy.json
+          --env staging --no-bundle --no-x-provision --var "APP_VERSION:$APP_VERSION"
+          --message "$APP_VERSION"
 
       - name: Deploy built web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         # Vite 产物配置已选择 staging 并带 assets / no_bundle；部署不再运行 Vite。
-        run: pnpm --filter @saas/web exec wrangler deploy --config dist/server/wrangler.json --no-bundle
+        run: >-
+          pnpm --filter @saas/web exec wrangler deploy --config dist/server/wrangler.json
+          --no-bundle --no-x-provision --message "$DEPLOY_SHA"
 
       - name: Confirm deployment health and version
         run: node scripts/staging/wait-healthy.mjs "$STAGING_URL/api/health" "$DEPLOY_SHA"

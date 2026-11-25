@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { cloudflare } from '@cloudflare/vite-plugin'
 import { defineConfig, loadEnv } from 'vite'
@@ -33,6 +34,13 @@ const appVersion = (() => {
     return pkg.version
   }
 })()
+
+// 部署流水线先运行 `pnpm deploy:resources` 写出已填好资源 ID 的 wrangler.deploy.json，
+// 再经此变量让 Cloudflare 插件读取它（add-deploy-autoprovision 决策 4）；相对路径按 apps/web 解析。
+// 未设置时沿用插件默认查找的 wrangler.jsonc，本地开发与 CI 构建不变。
+const deployConfigPath = process.env.WRANGLER_DEPLOY_CONFIG
+  ? resolve(fileURLToPath(new URL('./', import.meta.url)), process.env.WRANGLER_DEPLOY_CONFIG)
+  : undefined
 
 // Orca worktree 的端口写在仓库根目录的 .env.worktree（docs/09-parallel-plan.md §2）；
 // 文件不存在时（主 checkout）使用默认端口。
@@ -68,6 +76,7 @@ export default defineConfig(({ command }) => {
       // SSR 由 workerd 执行：Cloudflare 插件接管 Vite 的 ssr 环境
       cloudflare({
         viteEnvironment: { name: 'ssr' },
+        ...(deployConfigPath ? { configPath: deployConfigPath } : {}),
         // Workers AI 无本地模拟；开发与预览禁用远程绑定，避免启动时要求登录或真实推理。
         remoteBindings: false,
         inspectorPort,

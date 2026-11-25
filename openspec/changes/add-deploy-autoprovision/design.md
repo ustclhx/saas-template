@@ -80,6 +80,20 @@
 部署命令加 `--no-x-provision`（必要时还有 `--no-x-auto-create`）。这两个参数是隐藏的实验参数，任务 2.3 先在 4.146.0 实测确认参数名与效果；
 参数被移除时，由于部署配置中已不含省略 ID 的绑定，结果也一样，只是少了一层保险。
 
+**验证结果（任务 2.3，2026-11-26，wrangler 4.146.0）**：
+
+- 参数名：`experimental-provision`（别名 `x-provision`）与 `experimental-auto-create`（别名 `x-auto-create`），均为隐藏布尔参数、默认 `true` [源码]。
+  `wrangler deploy --dry-run` 分别带 `--no-x-provision`、`--no-x-auto-create`、两者同时、`--no-x-provision --message <SHA>` 时都退出 0；
+  jobs 的 dry-run 产物 `index.js` 与不带参数时逐字节相同（只有 README 时间戳与 source map 的 `sourceRoot` 不同）。
+- 效果 [源码]：`--no-x-provision` 让部署跳过整个自动创建流程（不读取 Worker 现有绑定设置，不对 KV / R2 / D1 / 队列等做「找不到就建」），
+  同时 Wrangler 改为在部署前检查**全部** producer 与 consumer 队列存在，缺失即报 `Queue "<名称>" does not exist` 并失败；
+  开启时 producer 队列缺失会被自动创建。部署配置含全部 ID 且资源都存在时，两种情况下上传的内容与绑定相同，行为差别只在资源缺失时：关闭后失败，而不是悄悄新建。
+- `--no-x-auto-create` 只在自动创建流程内部读取（决定新建还是交互选择），关闭 `x-provision` 后不再起作用，因此**不加**。
+- 修正上段「参数被移除时结果也一样」：Wrangler 的参数解析是严格的，未知参数直接报 `Unknown arguments` 并以 1 退出（已实测）。
+  所以 jobs 构建步骤的 `wrangler deploy --dry-run` 也带 `--no-x-provision`：将来升级 Wrangler 后参数若被移除，会在构建阶段、迁移之前失败，而不是在部署阶段。
+  届时去掉该参数即可，部署配置中已没有可自动创建的对象。
+- 结论：两个工作流的 jobs 构建（dry-run）与 jobs、web 部署命令都加 `--no-x-provision`。
+
 ### 2. 命名约定：沿用现有前缀与环境后缀
 
 现有队列、桶的名称格式是「项目前缀 + 资源基名 + 环境后缀」（模板为 `email-staging`，衍生项目为 `acme-email-staging`）。
@@ -120,6 +134,11 @@ KV 与 Hyperdrive 按「环境 + 绑定名」合并解析：同一环境里 web 
   Vite 插件按 `CLOUDFLARE_ENV` 展开后输出 `dist/server/wrangler.json`，部署命令保持不变。
 
 不采用两种备选方案：
+
+实施补充（任务 2.2，2026-11-26）：流水线以 `node "$RELEASE_TOOLS/../deploy/resources.mjs" --env <env> --root "$GITHUB_WORKSPACE"` 运行解析，
+即使用 main 上的发布工具副本（与 `migrate.mjs`、`release-policy.mjs` 相同的做法），以新增的 `--root` 参数指向被部署提交的 checkout。
+原因：生产回滚由 main 的工作流部署旧 tag，本 change 之前的 tag 里没有 `scripts/deploy/`，直接 `pnpm deploy:resources` 会让回滚失败。
+解析脚本只依赖 Node 内置模块，不受目标提交依赖版本影响；旧 tag 的 `vite.config.ts` 不读 `WRANGLER_DEPLOY_CONFIG`，web 仍按其 `wrangler.jsonc` 构建，与改动前一致。
 
 - 在 CI 中原地改写 `wrangler.jsonc`。checkout 虽是临时的，但本地运行会弄脏工作树，而且与 spec「不修改已提交配置」冲突。
 - 使用 `.wrangler/deploy/config.json` 重定向。它要求目标配置不含 environments，并且 Vite 插件构建时也会写这个文件，两者会冲突。
@@ -181,6 +200,9 @@ Workers Builds 不作为支持的入口，`docs/07-infrastructure.md` 中写明�
 ### 10. 代码版本
 
 沿用现有 `APP_VERSION` 机制，不新增。可选：在部署命令上加 `--message <SHA>`，让 Cloudflare 控制台的部署记录也能看到提交号（任务 2.3 一并处理，不改变版本门）。
+
+任务 2.3 决定（2026-11-26）：**加**。`--message` 是 `wrangler deploy` 的公开参数（`--help` 可见，[Workers commands](https://developers.cloudflare.com/workers/wrangler/commands/workers/)），
+jobs 与 web 的部署命令都带 `--message <完整 SHA>`，dry-run 实测退出 0。不用 `--tag`，版本确认仍以 `/api/health` 为准。
 不引入 `version_metadata` 绑定，因为 `/api/health` 已经承担版本确认。
 
 ### 11. 与现有检查、生成器、同步的关系
@@ -203,7 +225,7 @@ Workers Builds 不作为支持的入口，`docs/07-infrastructure.md` 中写明�
 - [前缀或 Worker 名被改，约定名称随之改变，staging 悄悄新建一组空资源] → 优先使用已固定 ID；plan 输出每项的来源，`--apply` 新建资源时在流水线摘要中醒目列出；生产默认不创建。
 - [两个项目在同一账号中前缀相同，约定名称冲突，误用对方资源] → 生成器已经用项目名做前缀。plan 对「按名称找到但当前 Worker 尚未绑定」的资源给出提示；这种情况无法自动判定归属，在文档中说明不要让两个项目用同名前缀。
 - [CI 令牌权限从部署扩大到创建资源] → staging 和 production 用同一个令牌时，生产 job 理论上也能创建资源，已拍板按环境拆分：production 令牌只读，需要创建时由维护者用本地令牌执行（使用者 2026-11-25 确认）。
-- [Wrangler 的隐藏参数或自动创建行为在升级后改变] → 部署配置中不再有省略 ID 的绑定，即使参数失效，Wrangler 也没有可以自动创建的对象。任务 2.3 在当前版本实测并记录。
+- [Wrangler 的隐藏参数或自动创建行为在升级后改变] → 部署配置中不再有省略 ID 的绑定，即使参数失效，Wrangler 也没有可以自动创建的对象。任务 2.3 已实测（见决策 1 验证结果）：参数被移除时 Wrangler 会以未知参数报错，jobs 构建步骤带同一参数，因此在迁移前失败。
 - [创建了一半失败] → 每一步都能重复执行，下次运行沿用已建资源；不提供自动删除，避免误删。
 - [Hyperdrive 连接串泄漏] → 只从环境变量读取，放进 API 请求体，不打印。错误输出只保留状态码与 Cloudflare 错误码。测试中断言输出不含连接串。
 - [模板 `env.production` 留着失效 ID] → 失效 ID 会被视为已固定，在 plan 和 `--verify` 中报「不存在」。已拍板改为占位值（使用者 2026-11-25 确认，任务 1.5）。
