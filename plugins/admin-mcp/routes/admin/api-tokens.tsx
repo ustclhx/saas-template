@@ -1,6 +1,6 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { m } from '@web/paraglide/messages.js'
-import { getAdminApiTokens } from '../../src/web/api-tokens.functions.ts'
+import { getAdminApiTokens } from '../../src/web/api-tokens-list.functions.ts'
 import { ApiTokensPage } from '../../src/web/api-tokens-page.tsx'
 import { ApiTokensError, ApiTokensSkeleton } from '../../src/web/api-tokens-states.tsx'
 
