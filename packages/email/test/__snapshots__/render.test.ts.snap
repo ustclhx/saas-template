@@ -1,5 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`templates (en) > 'admin-step-up-code' > subject 1`] = `"730215 is your Acme admin verification code"`;
+
 exports[`templates (en) > 'magic-link' > subject 1`] = `"Sign in to Acme"`;
 
 exports[`templates (en) > 'otp' > subject 1`] = `"482913 is your Acme verification code"`;
@@ -9,6 +11,8 @@ exports[`templates (en) > 'reset-password' > subject 1`] = `"Reset your Acme pas
 exports[`templates (en) > 'verify-email' > subject 1`] = `"Verify your email for Acme"`;
 
 exports[`templates (en) > 'workspace-invitation' > subject 1`] = `"Grace invited you to join Research Lab on Acme"`;
+
+exports[`templates (zh) > 'admin-step-up-code' > subject 1`] = `"730215 是你的 Acme 后台操作验证码"`;
 
 exports[`templates (zh) > 'magic-link' > subject 1`] = `"登录 Acme"`;
 

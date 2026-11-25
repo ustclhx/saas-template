@@ -91,6 +91,8 @@ const nodeEnvBaseSchema = /* @__PURE__ */ (() =>
       .transform((value) => value === 'true')
       .optional(),
     BOOTSTRAP_ADMIN_EMAILS: z.string().optional(),
+    // 后台重新验证的救援开关，只在应急时设置（docs/runbooks/admin-step-up-rescue.md）
+    ADMIN_STEP_UP_RESCUE: z.string().optional(),
     GOOGLE_CLIENT_ID: z.string().optional(),
     GOOGLE_CLIENT_SECRET: secret.optional(),
     GITHUB_CLIENT_ID: z.string().optional(),

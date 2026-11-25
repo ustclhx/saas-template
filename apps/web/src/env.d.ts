@@ -49,6 +49,8 @@ declare namespace Cloudflare {
     BETTER_AUTH_SECRET?: string
     /** 可选首次管理员邮箱名单；仅已验证且未封禁账号会被提升 */
     BOOTSTRAP_ADMIN_EMAILS?: string
+    /** 后台重新验证的救援开关：`1` 时引导名单内的管理员可用邮箱验证码（docs/runbooks/admin-step-up-rescue.md） */
+    ADMIN_STEP_UP_RESCUE?: string
     TURNSTILE_SECRET_KEY?: string
     GOOGLE_CLIENT_ID?: string
     GOOGLE_CLIENT_SECRET?: string

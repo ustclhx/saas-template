@@ -363,6 +363,15 @@ describe('defineTemplateConfig', () => {
     })
   })
 
+  it('defaults admin step-up to 10 minutes and accepts only 1 to 60', () => {
+    expect(defineTemplateConfig({ app }).admin.stepUpMinutes).toBe(10)
+    expect(defineTemplateConfig({ app, admin: { stepUpMinutes: 60 } }).admin.stepUpMinutes).toBe(60)
+    for (const stepUpMinutes of [0, 61, 1.5])
+      expect(() => defineTemplateConfig({ app, admin: { stepUpMinutes } })).toThrow(
+        /admin\.stepUpMinutes/,
+      )
+  })
+
   it('replaces arrays instead of merging them', () => {
     const config = defineTemplateConfig({
       app,

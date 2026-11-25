@@ -42,10 +42,10 @@
 | 机制 | 结论 | 出处 |
 |---|---|---|
 | `session.freshAge` | 只判断 `session.createdAt` 距今是否小于 freshAge（默认 1 天）；`updateAge` 刷新不重置；内置只用于 `/list-sessions`、`/unlink-account` 与无密码的 `/delete-user`；admin 插件端点不检查。恢复「新鲜」只能重新登录（产生新会话） | [Session Management · Session Freshness](https://www.better-auth.com/docs/concepts/session-management)；端点范围由安装包源码核对，文档未列出 |
-| twoFactor 已登录时校验 | `/two-factor/verify-totp`、`verify-backup-code`（`disableSession` 选项）在已有会话时直接校验、不新建会话；次数限制与锁定只在登录流程生效，需自行限流；备用码成功即消耗；同一时间窗内 TOTP 可重复使用 | [Two-Factor Authentication](https://www.better-auth.com/docs/plugins/2fa)；已登录分支由源码核对；[issue #10387](https://github.com/better-auth/better-auth/issues/10387) |
+| twoFactor 已登录时校验 | `/two-factor/verify-totp`、`verify-backup-code`（`disableSession` 选项）在已有会话时直接校验；次数限制与锁定只在登录流程生效（已登录分支的 `beginAttempt` 为空实现），需自行限流；备用码成功即消耗；同一时间窗内 TOTP 可重复使用。**补充（第 2 组复核）**：`verify-totp` 不返回命中的时间窗；`twoFactor.verified !== true` 且用户未开启时，已登录分支会新建会话并删除旧会话 | [Two-Factor Authentication](https://www.better-auth.com/docs/plugins/2fa)；已登录分支由源码 `dist/plugins/two-factor/verify-two-factor.mjs`、`totp/index.mjs`、`backup-codes/index.mjs` 核对（2026-11-25）；[issue #10387](https://github.com/better-auth/better-auth/issues/10387) |
 | emailOTP 类型 | 只有 `sign-in`、`email-verification`、`forget-password`（源码另有 `change-email`），类型为固定枚举，不能自定义用途；默认 300 秒、3 次 | [Email OTP](https://www.better-auth.com/docs/plugins/email-otp) |
 | magicLink / 社交登录 | 校验即创建新会话并写 Cookie，无「仅重新验证」模式；Google 只支持静态 `prompt`（`select_account` 等），不支持按请求 `max_age` | [Magic Link](https://www.better-auth.com/docs/plugins/magic-link)、[Google](https://www.better-auth.com/docs/authentication/google)；`max_age` / `auth_time` **待核实** |
-| 密码校验 | 服务端 `verifyPassword`（`sensitiveSessionMiddleware`，不改会话） | 源码核对；文档条目 **待核实** |
+| 密码校验 | 服务端 `verifyPassword`（`sensitiveSessionMiddleware`，不改会话）。step-up 不经该端点：直接用模板的 `passwordHasher.verify`（`packages/auth/src/password.ts`，兼容 Better Auth 默认 scrypt）比对 `account`（`provider_id='credential'`）的哈希 | 源码核对（2026-11-25）；step-up 不依赖该端点，文档条目不再需要 |
 | Passkey | `@better-auth/passkey`：`/passkey/verify-authentication` 总是新建会话；`authentication.afterVerification` 钩子在建会话前执行，可借抛错实现「只验证」，但需自行比对凭据所属用户，且默认 `requireUserVerification: false` | [Passkey](https://www.better-auth.com/docs/plugins/passkey)；[issue #8071](https://github.com/better-auth/better-auth/issues/8071) |
 | admin 插件 | `impersonate-user`、`ban-user` 等均不检查新鲜度；模拟会话默认 1 小时 | [Admin](https://www.better-auth.com/docs/plugins/admin) |
 | 会话自定义字段 | `additionalFields` 可加字段，`/update-session` 允许客户端写未标记 `input: false` 的字段；Cookie 缓存与二级存储不包含自定义字段 | [Session Management](https://www.better-auth.com/docs/concepts/session-management) |
@@ -78,7 +78,7 @@
 - `defineAdminActions(owner, group)` 多一个插件 ID 参数：不同 owner 的键重复即抛错，同一 owner 重新加载（开发热更新）覆盖自己的登记；返回带品牌的动作名供包装使用。admin-mcp 登记 `admin.api_token.create` / `revoke`、只写调用审计的 `admin.mcp.call` 与写工具预览 `admin.mcp.dry_run`（均为 never，后两者不在上表）。
 - MCP 写工具在定义中声明 `adminAction(input)`，与后台同名：`settings.set` → `setting.update`、`models.update` → `ai.model_save`。强制开关打开后、第 3 组接入待确认前，命中敏感判定的 MCP 调用（无会话）返回 `STEP_UP_REQUIRED`；开关关闭期间行为不变。
 - 原有动作名统一为上表：`ai.model_set_enabled` → `ai.model_toggle`、`ai.feedback.view_conversation` → `ai.feedback.view`、`billing.refund_notification_retry_requested` → `billing.refund_email_retry`、`observability.sentry-test` → `observability.sentry_test`、MCP 的 `mcp.<tool>` → 后台同名动作（审计 action 不变）。
-- 检查在 `apps/web/src/features/admin/step-up/check.ts`（`assertStepUp`、`hasValidStepUp`）；拒绝前先确认仍是有效管理员，已降级时得到 404 而非要求验证。`details.methods` 由第 2 组补齐。
+- 检查在 `apps/web/src/features/admin/step-up/check.ts`（`assertStepUp`、`hasValidStepUp`）；拒绝前先确认仍是有效管理员，已降级时得到 404 而非要求验证。`details.methods`（同时写入 `publicDetails`，随错误体返回客户端）由第 2 组补齐：有会话时为该账号当前可用方式，无会话（MCP）时为空数组。
 
 ### 2. 检查点：在写事务之前、所有副作用之前
 包装在开启事务前调用 `assertStepUp(context, name, input)`：判定为敏感且当前会话没有未过期的验证记录时抛 `AppError('STEP_UP_REQUIRED', { status: 403, details: { methods } })`。`AdminActionContext` 增加 `session: { id, userId }`（来自 `requireFreshSession`）与可选 `confirmation`（只由确认执行路径设置，见决策 8）。MCP 调用没有会话，`settings.set` / `models.update` 等命中敏感判定时由工具框架转为待确认（决策 6），永远不会以「无会话」绕过。
@@ -103,6 +103,15 @@
 - **重新走 OAuth**：不采用——会新建会话、Google 不支持按请求 `max_age`（待核实），且邮箱验证码已覆盖 OAuth 用户。
 - **Passkey**：不在本次实现。登记方式枚举中预留 `passkey`，优先级高于 TOTP；将来接入时用 `afterVerification` 钩子抛错实现「只验证」，并校验凭据所属用户与 `userVerification: 'required'`（见核对表）。
 - 「不允许降级」：开启 2FA 的账号即使有密码也不能用密码或邮箱验证码 step-up（救援除外），否则 2FA 形同虚设。
+
+实现备注（第 2 组，2026-11-25）：
+- 服务在 `packages/auth/src/admin-step-up.ts`（`createAdminStepUp`），web 装配在 `apps/web/src/features/admin/step-up/service.server.ts`，入口为 `step-up.functions.ts` 的 `getStepUpStatus` / `sendStepUpCode` / `verifyStepUp`（预期内失败以 `{ ok: false, error, details }` 返回，供第 4 组弹窗展示）。
+- **TOTP 与备用码不调用插件端点**（与上文「调用 Better Auth 已登录分支」不同，原因见核对表补充）：端点不返回命中时间窗，无法做同窗防重放；且绑定未完成时会替换会话。改为用 `better-auth/crypto` 的 `symmetricDecrypt` / `symmetricEncrypt` 与 `auth.$context.secretConfig` 直接读写 `two_factor` 行，算法与插件默认值一致（HOTP-SHA1、6 位、30 秒、窗口 ±1；备用码 `encrypted` JSON，成功即移除并在行锁内写回）。集成测试经插件真实 `/two-factor/enable` 与 `/two-factor/verify-totp` 完成绑定，再用本模块校验 TOTP 与备用码，锁定兼容性。只有 `two_factor.verified` 不为 false 的行才算开启。
+- 同窗防重放按**账号**而非会话：比较该用户所有 `admin_step_up.last_totp_step` 的最大值，命中时间窗不大于它即拒绝；换用其他方式验证时保留已记录的时间窗。
+- 失败计数与锁定存 `verification` 表（identifier `admin-step-up-lock:<userId>`，值为 JSON 计数与解锁时间），不新增 schema；同一账号的发码与校验在 `pg_advisory_xact_lock` 内串行。失败写入先提交、再把失败转为错误返回，避免回滚抹掉计数。RL_AUTH 键为 `stepup:ip:<ip>` 与 `stepup:<userId>`。
+- 邮箱验证码值格式 `<已尝试次数>:<email_otp|rescue>:<SHA-256(sessionId:code)>`；救援码与普通码互不通用。重发冷却 60 秒，重发即作废旧码。
+- 救援方式只加给「常规方式中没有邮箱验证码」的名单内账号（即开启了 2FA 的账号）；未开 2FA 的账号本就可用邮箱验证码，不重复提供。救援开关取值 `1` / `true` 为开启。
+- 运营事件 `admin.step_up.rescue` 的 `sourceId` 为该次验证审计的 ID，web 在验证提交后投递，jobs 运营通知按事件去重发送。
 
 ### 4. 验证状态：服务端表 `admin_step_up`，绑定会话、10 分钟绝对有效期
 字段：`session_id`（PK，FK `session.id` 级联删除）、`user_id`、`method`（`totp` | `backup_code` | `email_otp` | `password` | `rescue` | 预留 `passkey`）、`verified_at`、`expires_at`（= verified_at + 10 分钟，不随使用滑动）、`last_totp_step`。每次成功验证 upsert 一行并写审计 `admin.step_up.verified`（meta：method、ip）；连续失败达到锁定写 `admin.step_up.locked`。检查时与 `requireFreshSession` 同一查询链读库，不走缓存。会话被吊销、退出、封禁时级联删除，验证随之失效。

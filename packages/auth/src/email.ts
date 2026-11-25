@@ -14,6 +14,13 @@ export type AuthEmail =
       readonly purpose: 'sign-in' | 'email-verification' | 'forget-password' | 'change-email'
     }
   | {
+      /** 后台敏感操作的重新验证码（admin-step-up.ts），只发往已验证邮箱 */
+      readonly type: 'admin-step-up-code'
+      readonly to: string
+      readonly otp: string
+      readonly expiresInMinutes: number
+    }
+  | {
       readonly type: 'invitation'
       readonly to: string
       readonly invitationId: string

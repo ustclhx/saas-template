@@ -111,6 +111,11 @@ export function toTemplate(email: AuthEmail, appUrl: string): TemplateMessage {
           expiresInMinutes: AUTH_EMAIL_EXPIRY.otpMinutes,
         },
       }
+    case 'admin-step-up-code':
+      return {
+        template: 'admin-step-up-code',
+        props: { otp: email.otp, expiresInMinutes: email.expiresInMinutes },
+      }
     case 'invitation': {
       // 与自定义团队后端支持的角色一致；未知角色不发邀请邮件
       if (email.role !== 'owner' && email.role !== 'admin' && email.role !== 'member') {

@@ -7,6 +7,11 @@ export interface AuthEnv {
   readonly APP_URL?: string | undefined
   /** 已验证邮箱的首次管理员名单；逗号分隔，空值禁用 */
   readonly BOOTSTRAP_ADMIN_EMAILS?: string | undefined
+  /**
+   * 后台重新验证的救援开关（docs/runbooks/admin-step-up-rescue.md）：`1` 时引导名单内的管理员
+   * 可改用邮箱验证码完成重新验证。只在应急时设置，问题解决后删除。
+   */
+  readonly ADMIN_STEP_UP_RESCUE?: string | undefined
   readonly GOOGLE_CLIENT_ID?: string | undefined
   readonly GOOGLE_CLIENT_SECRET?: string | undefined
   readonly GITHUB_CLIENT_ID?: string | undefined
@@ -30,6 +35,7 @@ export function parseAuthEnv(env: AuthEnv, config: TemplateConfig) {
     BETTER_AUTH_SECRET: z.string().min(32),
     APP_URL: z.url(),
     BOOTSTRAP_ADMIN_EMAILS: z.string().optional(),
+    ADMIN_STEP_UP_RESCUE: z.string().optional(),
     GOOGLE_CLIENT_ID: oauth.has('google') ? secret : optional,
     GOOGLE_CLIENT_SECRET: oauth.has('google') ? secret : optional,
     GITHUB_CLIENT_ID: oauth.has('github') ? secret : optional,

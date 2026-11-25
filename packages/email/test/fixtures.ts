@@ -20,6 +20,11 @@ export const fixtures: readonly Fixture<EmailTemplateName>[] = [
     props: { otp: '482913', purpose: 'sign-in', expiresInMinutes: 5 },
   },
   {
+    template: 'admin-step-up-code',
+    props: { otp: '730215', expiresInMinutes: 10 },
+    recipientName: 'Ada',
+  },
+  {
     template: 'magic-link',
     props: {
       url: 'https://acme.test/api/auth/magic-link/verify?token=tok_magic',
