@@ -475,13 +475,32 @@ test('check lets a change keep editing a project-owned file it adds (CHANGE_BASE
     encoding: 'utf8',
   })
   succeeds(inChange)
-  // 创建提交已在基准中（文件已发布到 main）时仍然拒绝修改
+  // 创建提交已在基准中，但还没有随版本交付：仍可修改
   const afterMerge = spawnSync(process.execPath, [script, 'check', '--version', '0.2.1'], {
     cwd,
     env: { ...env, CHANGE_BASE: added },
     encoding: 'utf8',
   })
-  fails(afterMerge)
+  succeeds(afterMerge)
+})
+
+test('check lets main keep editing a project-owned file until it is released', (t) => {
+  const { cwd } = repo(t)
+  const file = 'plugins/agents/src/agents.project.ts'
+  tag(cwd, 'template-v0.2.1')
+  put(cwd, file, 'export const agents = []\n')
+  commit(cwd, 'feat: add project-owned file')
+  put(cwd, file, "export const agents = ['assistant']\n")
+  commit(cwd, 'feat: edit it before the release')
+  releaseDoc(cwd, { version: '0.2.2', previous: '0.2.1' })
+  commit(cwd)
+  succeeds(cli(cwd, 'check', '--version', '0.2.2'))
+  // 交付之后再改仍然拒绝
+  tag(cwd, 'template-v0.2.2')
+  put(cwd, file, "export const agents = ['assistant', 'writer']\n")
+  releaseDoc(cwd, { version: '0.2.3', previous: '0.2.2' })
+  commit(cwd)
+  fails(cli(cwd, 'check', '--version', '0.2.3'))
 })
 
 test('check accepts the evals package example but rejects tracked files under root evals/', (t) => {
