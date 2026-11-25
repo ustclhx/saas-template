@@ -6,7 +6,7 @@
 
 - 验收日期：2026-10-09 UTC；目标 `https://web-staging.saas-jobs.workers.dev`。
 - 初始健康版本：`3220611c66c644ed83d97c5c2b9921ac4c111195`。修复 #67 / #70 合并后，先确认 main CI [37921394348](https://github.com/ustclhx/saas-template/actions/runs/37921394348) 与自动发布 [37922073771](https://github.com/ustclhx/saas-template/actions/runs/37922073771) 成功，且 `/api/health.version` 等于完整 `a978a4d6e2ed0cbc041f376c5591ce033cf929ae`，再于 11:12 UTC 开始本轮重验；`status=ok`、`db.status=up`，jobs Cron 心跳推进。开测前的匹配来自当时终端读取；保存的 `post-fixes-health.json` 是重验期间再次采集的健康快照，不能单独证明开测前时间顺序。
-- Stripe Sandbox account：`acct_1UMwpCL3UTpBAoXo`；endpoint：`we_1UO7wML3UTpBAoXo3N6XlJhF`；所有录制事件 `livemode=false`。
+- Stripe Sandbox account：`<STRIPE_SANDBOX_ACCOUNT_ID>`；endpoint：`<stripe-we-1>`；所有录制事件 `livemode=false`。
 - 代码及真实 endpoint snapshot 版本：`2026-09-30.endive`，SDK `stripe@23.0.0`。账号 Events GET 返回 `2026-08-26.dahlia`，即使请求使用 endive；因此没有把 Events GET 的版本字段改写成 webhook 版本。
 - 账务核对只使用 Neon staging readonly 角色；购买、取消与退款通过应用或 Stripe 测试平台产生，未直接写 staging 数据库。密钥通过指定环境文件加载，未保存在夹具、日志或 PR。
 
@@ -24,20 +24,20 @@
 
 | 场景 | 真实结果 | 账务与证据 |
 | --- | --- | --- |
-| Pro 月付首付 | 已通过，原有真实 Checkout e2e 1 passed | workspace `01a11fa8-08da-71f1-9c8d-a0ab10568800`；invoice `in_1UOYdeL3UTpBAoXoBFsFpO0W` → PaymentIntent `pi_3UOYdfL3UTpBAoXo1TssRKHa`；1900 USD 最小单位，首月 1000 积分；event `evt_1UOYdhL3UTpBAoXoDzgAEbGZ` processed。 |
-| Pro 年付首付 | 已通过，新真实 e2e | workspace `01a11fac-af11-72da-ad52-0869ceb1c9c9`；PaymentIntent `pi_3UOYieL3UTpBAoXo13iyAy3V`；19000 USD 最小单位，仅发首月 1000 积分；invoice event `evt_1UOYihL3UTpBAoXoPA5QUWq3` processed；对账成立、无负批次。 |
-| 积分包付款 | 已通过 | workspace `01a11fad-54ef-74b1-bb49-26232712dfa4`；PaymentIntent `pi_3UOYjIL3UTpBAoXo1gvunegg`；1000 USD 最小单位，purchase paid，1000 积分；`evt_1UOYjKL3UTpBAoXo6nn8x7at` processed。另一个新用户的退款申请已通过，见下行。 |
-| 月付 Test Clock 续费 | 修复发布后重验通过 | clock `clock_1UOYeQL3UTpBAoXoq2VlSbJ7`；invoice `in_1UOYeuL3UTpBAoXoFow1TDQx` → PaymentIntent `pi_3UOYf0L3UTpBAoXo0tcelvaV`；`evt_1UOYf4L3UTpBAoXoqVeBpjfd` 原先投递 500（`Subscription grant month is not due`），事务未产生付款或积分；修复 PR [#67](https://github.com/ustclhx/saas-template/pull/67) 先红后绿并已合并。11:12:18 UTC 恢复投递 200，入账 renewal / 1900 与唯一 1000 积分批次；余额/ledger=2000。随后两次 200 且全部账务不变。 |
+| Pro 月付首付 | 已通过，原有真实 Checkout e2e 1 passed | workspace `01a11fa8-08da-71f1-9c8d-a0ab10568800`；invoice `<stripe-in-1>` → PaymentIntent `<stripe-pi-1>`；1900 USD 最小单位，首月 1000 积分；event `<stripe-evt-1>` processed。 |
+| Pro 年付首付 | 已通过，新真实 e2e | workspace `01a11fac-af11-72da-ad52-0869ceb1c9c9`；PaymentIntent `<stripe-pi-2>`；19000 USD 最小单位，仅发首月 1000 积分；invoice event `<stripe-evt-2>` processed；对账成立、无负批次。 |
+| 积分包付款 | 已通过 | workspace `01a11fad-54ef-74b1-bb49-26232712dfa4`；PaymentIntent `<stripe-pi-3>`；1000 USD 最小单位，purchase paid，1000 积分；`<stripe-evt-3>` processed。另一个新用户的退款申请已通过，见下行。 |
+| 月付 Test Clock 续费 | 修复发布后重验通过 | clock `<stripe-clock-1>`；invoice `<stripe-in-2>` → PaymentIntent `<stripe-pi-4>`；`<stripe-evt-4>` 原先投递 500（`Subscription grant month is not due`），事务未产生付款或积分；修复 PR [#67](https://github.com/ustclhx/saas-template/pull/67) 先红后绿并已合并。11:12:18 UTC 恢复投递 200，入账 renewal / 1900 与唯一 1000 积分批次；余额/ledger=2000。随后两次 200 且全部账务不变。 |
 | 用户申请退款 | 已通过，退款申请为 pending | workspace `01a11fbe-9660-75a3-8bcd-8a217b9a626c`；退款表单等待父页面已就绪控件后提交成功（47.7 秒）；付款、积分和 ledger 与提交前相同；尚未执行管理员审核。 |
 | Customer Portal | 已通过，打开并返回应用 | workspace `01a11fc0-e265-74aa-b17a-cd6058f2fd49`；配置为测试模式 default Portal，启用发票历史、付款方式更新和周期末取消；实际打开 Portal 再返回账单页（50.1 秒），账务不变。 |
-| 平台部分退款 | 修复发布后重验通过 | refund `re_3UOYjIL3UTpBAoXo1qqwZkZA`，400 USD 最小单位；`evt_3UOYjIL3UTpBAoXo1KA14f1c` 真实 endive `charge.refunded` 不含 `refunds`，被标为 ignored；08:07:29 UTC 只读核对仍无退款记录或积分撤销。修复 PR [#70](https://github.com/ustclhx/saas-template/pull/70) 已合并。旧 ignored 事件是终态，未声称重投可重跑；11:13:30 UTC 在同一付款新建 200 退款 `re_3UOYjIL3UTpBAoXo1O6Tc6or`，真实 event `evt_3UOYjIL3UTpBAoXo1APsl6Oi` 经认证退款列表补回 400+200 两身份，累计 600、partially_refunded，全部剩余 1000 积分撤销。余额/ledger=0；两次重投均 200、金额与撤销流水不再增加。 |
+| 平台部分退款 | 修复发布后重验通过 | refund `<stripe-re-1>`，400 USD 最小单位；`<stripe-evt-5>` 真实 endive `charge.refunded` 不含 `refunds`，被标为 ignored；08:07:29 UTC 只读核对仍无退款记录或积分撤销。修复 PR [#70](https://github.com/ustclhx/saas-template/pull/70) 已合并。旧 ignored 事件是终态，未声称重投可重跑；11:13:30 UTC 在同一付款新建 200 退款 `<stripe-re-2>`，真实 event `<stripe-evt-6>` 经认证退款列表补回 400+200 两身份，累计 600、partially_refunded，全部剩余 1000 积分撤销。余额/ledger=0；两次重投均 200、金额与撤销流水不再增加。 |
 | 取消/恢复 | 原用例串行重验通过（56.5 秒） | 先前 08:20:56.735 UTC 操作成功但 5 秒内 Resume 不存在；未改变生产代码、刷新页面或放宽断言，本轮取消 true、恢复 false，原付款周期、积分批次、ledger 均保持不变。两次带诊断 wrapper 的取消 probe 也通过，但 wrapper 会改变时序，不能据此认定原失败原因；普通原用例的重验才计为通过。随后独立 Test Clock 真实续费 1900，见下行。 |
-| 升级/降级与实际续费 | 已通过 | workspace `01a11fcd-0b52-75db-bad6-3276f1fa0918`，Pro 首付 1900；升级 Team 后 `pi_3UOZH2L3UTpBAoXo04TeSJAo` 为 adjustment / succeeded / 3000 USD 最小单位，Team 权益立即显示，仍只有初付的 1000 积分，ledger 不增加。降级 schedule `sub_sched_1UOZHFL3UTpBAoXoNT1sOZA4` 保留当前 Team，第二阶段在 `1794213309` 切换 Pro；两阶段 proration none、end_behavior release；预约时付款/积分/ledger 不变。11:16 UTC 平台推进过周期末，订阅实际 price 切回 Pro，`in_1UObn0L3UTpBAoXociLtCGbI` 为 paid / subscription_cycle / 1900，`pi_3UObn3L3UTpBAoXo17Ou3tME` renewal 且只增 1000 积分，余额/ledger=2000。 |
+| 升级/降级与实际续费 | 已通过 | workspace `01a11fcd-0b52-75db-bad6-3276f1fa0918`，Pro 首付 1900；升级 Team 后 `<stripe-pi-5>` 为 adjustment / succeeded / 3000 USD 最小单位，Team 权益立即显示，仍只有初付的 1000 积分，ledger 不增加。降级 schedule `sub_sched_1UOZHFL3UTpBAoXoNT1sOZA4` 保留当前 Team，第二阶段在 `1794213309` 切换 Pro；两阶段 proration none、end_behavior release；预约时付款/积分/ledger 不变。11:16 UTC 平台推进过周期末，订阅实际 price 切回 Pro，`<stripe-in-3>` 为 paid / subscription_cycle / 1900，`<stripe-pi-6>` renewal 且只增 1000 积分，余额/ledger=2000。 |
 | 换套餐重叠期 | 单场景重验通过（约 1.1 分钟） | Pro 周期末取消后新购买 Team，两个订阅均保留已付周期，Pro cancel true、Team cancel false；仅 Team 会续费，当前权益 Team，两个真实初付分别发 1000、5000 积分，余额/ledger=6000、held=debt=0。此前矩阵在初始 Checkout 前停于 `Something went wrong!`；保留失败及 CPU 超限证据，重验未改变断言。 |
-| 首付重复投递 | 已通过，平台两次 HTTP 200，账务不变 | `evt_1UOYdhL3UTpBAoXoDzgAEbGZ` 两次 CLI resend 被平台接受；Workbench 显示 08:20:05、08:20:06 UTC 两次手动重试均 200 OK，原投递为 07:54:52 UTC 200 OK。08:23:20 UTC 只读核对前后付款、订阅、退款、grant、ledger 完全相同；ledger=expected=1000，负批次 0。 |
-| 年付 Test Clock 续费 | 已通过 | clock `clock_1UOYzzL3UTpBAoXoMAu8qO78` 推进到 `1823075995`；真实 invoice `in_1UObkvL3UTpBAoXobV0VR57D` → PI `pi_3UObkxL3UTpBAoXo0sXqeehl`，19000 / renewal / succeeded；event `evt_1UObl2L3UTpBAoXoIhWrCL6T` processed，仅发新周期首月 1000，余额/ledger=2000。两次重投 200 且账务不变。 |
-| 恢复后续费 | 已通过 | workspace `01a11fca-f8b5-71ac-91cb-2e556301a8e5`；clock 推进到 `1794220373`，cancel false / active；invoice `in_1UObltL3UTpBAoXoqApKqHfU` → PI `pi_3UOblwL3UTpBAoXo1HK8kMdS`，1900 / renewal，event `evt_1UObm1L3UTpBAoXoS3GRbNMi` processed / HTTP 200，新增唯一 1000，余额/ledger=2000。 |
-| 平台全额退款 | 已通过 | 使用没有退款申请的独立积分包 workspace `01a11fbb-3dbe-7372-94d7-9d180ead531d`；PI `pi_3UOYxzL3UTpBAoXo0kFoYJrn` 真实退款 `re_3UOYxzL3UTpBAoXo07mx1Eox` 1000，event `evt_3UOYxzL3UTpBAoXo0y6M4huF` processed / HTTP 200，付款 refunded / refunded_amount=1000、唯一退款、批次 revoked / remaining=0。余额/ledger=0，两次重投 200 且账务不变。 |
+| 首付重复投递 | 已通过，平台两次 HTTP 200，账务不变 | `<stripe-evt-1>` 两次 CLI resend 被平台接受；Workbench 显示 08:20:05、08:20:06 UTC 两次手动重试均 200 OK，原投递为 07:54:52 UTC 200 OK。08:23:20 UTC 只读核对前后付款、订阅、退款、grant、ledger 完全相同；ledger=expected=1000，负批次 0。 |
+| 年付 Test Clock 续费 | 已通过 | clock `<stripe-clock-2>` 推进到 `1823075995`；真实 invoice `<stripe-in-4>` → PI `<stripe-pi-7>`，19000 / renewal / succeeded；event `<stripe-evt-7>` processed，仅发新周期首月 1000，余额/ledger=2000。两次重投 200 且账务不变。 |
+| 恢复后续费 | 已通过 | workspace `01a11fca-f8b5-71ac-91cb-2e556301a8e5`；clock 推进到 `1794220373`，cancel false / active；invoice `<stripe-in-5>` → PI `<stripe-pi-8>`，1900 / renewal，event `<stripe-evt-8>` processed / HTTP 200，新增唯一 1000，余额/ledger=2000。 |
+| 平台全额退款 | 已通过 | 使用没有退款申请的独立积分包 workspace `01a11fbb-3dbe-7372-94d7-9d180ead531d`；PI `<stripe-pi-9>` 真实退款 `<stripe-re-3>` 1000，event `<stripe-evt-9>` processed / HTTP 200，付款 refunded / refunded_amount=1000、唯一退款、批次 revoked / remaining=0。余额/ledger=0，两次重投 200 且账务不变。 |
 
 ## 平台时钟与应用时间
 
@@ -53,10 +53,10 @@ Workbench 独立只读核验目标 staging endpoint（UTC）：
 
 | event / 场景 | 原投递或恢复 | 两次手动重投 |
 | --- | --- | --- |
-| `evt_1UOYf4L3UTpBAoXoqVeBpjfd` 月续费 | 11:12:18 / 200（之前 07:56、08:57 为真实 500） | 11:12:29、11:12:30 / 200 |
-| `evt_1UObl2L3UTpBAoXoIhWrCL6T` 年续费 | 11:14:38 / 200 | 11:15:22、11:15:23 / 200 |
-| `evt_3UOYjIL3UTpBAoXo1APsl6Oi` 部分退款 | 11:13:33 / 200 | 11:14:19、11:14:20 / 200 |
-| `evt_3UOYxzL3UTpBAoXo0y6M4huF` 全额退款 | 11:17:02 / 200 | 11:17:23、11:17:26 / 200 |
+| `<stripe-evt-4>` 月续费 | 11:12:18 / 200（之前 07:56、08:57 为真实 500） | 11:12:29、11:12:30 / 200 |
+| `<stripe-evt-7>` 年续费 | 11:14:38 / 200 | 11:15:22、11:15:23 / 200 |
+| `<stripe-evt-6>` 部分退款 | 11:13:33 / 200 | 11:14:19、11:14:20 / 200 |
+| `<stripe-evt-9>` 全额退款 | 11:17:02 / 200 | 11:17:23、11:17:26 / 200 |
 
 CLI 请求时间与接受结果在 `*-resend-requests.jsonl`，不能单独证明 HTTP 200；上述状态来自 Workbench 可见投递历史，整理为 `post-fixes-platform-deliveries.json`。各 `*-duplicate-comparison.json` 对应完整白名单快照，逐字段比较 subscriptions、payments、payment_refunds、refund_requests、grants、ledger 与对账数值全部相等。每个场景 ledger=active remaining+held−debt；新历史快照只含汇总 expected，不倒填 held/debt。11:24 UTC 另行只读采集 `post-fixes-reconciliation.json`，独立核对六个空间 available、held=debt=0 及身份唯一性：无负批次、重复 PaymentIntent、退款身份或积分来源。年/月续费 ledger=2000，退款 ledger=0。
 

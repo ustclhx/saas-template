@@ -26,11 +26,11 @@ neonctl projects create --org-id "${NEON_ORG_ID:?选择本项目组织}" --name 
 
 | 项 | 值 |
 |---|---|
-| 组织 | `Haixin`（`org-ancient-mountain-81615147`），计划 **Launch**（用户 2026-10-15 升级） |
-| 项目 | `saas-production`（`super-resonance-99115167`），独立于 staging 项目 `saas-staging` |
+| 组织 | `<组织名>`（`<NEON_ORG_ID>`），计划 **Launch**（用户 2026-10-15 升级） |
+| 项目 | `saas-production`（`<NEON_PRODUCTION_PROJECT_ID>`），独立于 staging 项目 `saas-staging` |
 | 区域 / 版本 | `aws-us-west-2`（用户选定，与 staging 一致，沿用已验证的 Hyperdrive 锁探针结论）/ Postgres 17 |
 | 默认分支 | `main`（`br-cold-morning-ar2z16iw`）；staging 默认分支名为 `production`，两者不要混淆 |
-| 读写 endpoint | `ep-morning-resonance-arum7105`（非 pooled 主机名，不带 `-pooler`） |
+| 读写 endpoint | `<NEON_PRODUCTION_ENDPOINT>`（非 pooled 主机名，不带 `-pooler`） |
 | 数据库 | `saas_production`，owner `migrator`；创建时默认 owner 为 `neondb_owner` |
 | PITR 保留 | 7 天（创建时默认 1 天），见 §4 |
 | 计算 | autoscaling 0.25–1 CU（创建时默认固定 1 CU），`suspend_timeout_seconds = 0`（平台默认 5 分钟缩容），见 §4 |
@@ -38,7 +38,7 @@ neonctl projects create --org-id "${NEON_ORG_ID:?选择本项目组织}" --name 
 创建命令（`--no-secrets` 不在输出中打印密码）：
 
 ```sh
-neonctl projects create --org-id org-ancient-mountain-81615147 --name saas-production \
+neonctl projects create --org-id <NEON_ORG_ID> --name saas-production \
   --region-id aws-us-west-2 --pg-version 17 --database saas_production --role neondb_owner \
   --no-secrets --output json
 ```
@@ -55,7 +55,7 @@ neonctl projects create --org-id org-ancient-mountain-81615147 --name saas-produ
 ## 1a. 生产域名（任务 1.2，2026-10-15）
 
 - 用户选定 production web 域名 **`app.ezarouter.cc`**；staging 保持 `web-staging.saas-jobs.workers.dev`，不绑定自定义域名。
-- Zone `ezarouter.cc`（`c6b12cacca002dc21f9b24370d4a5bd7`）在本 Cloudflare 账号 `170a06d3…` 下，`active`，Free Website 计划；NS 为 Cloudflare（`bingo` / `damien`）。apex 已在使用（Cloudflare 代理），不改动 apex 及其他记录。
+- Zone `ezarouter.cc`（`<CF_ZONE_ID>`）在本 Cloudflare 账号 `<CF_ACCOUNT_ID>` 下，`active`，Free Website 计划；NS 为 Cloudflare（`<分配的 NS>`）。apex 已在使用（Cloudflare 代理），不改动 apex 及其他记录。
 - `app.ezarouter.cc` 公共 DNS（DoH `cloudflare-dns.com`）查询 A/AAAA/CNAME 均为 NXDOMAIN，未被占用。本机经代理的普通 `dig` 返回 `198.18.x.x`（fake-ip），不能作为依据。
 - 绑定方式：web Worker `env.production` 的 Workers 自定义域名（`routes` 中 `custom_domain: true`），由 Cloudflare 自动建 DNS 记录与证书；存在同名 DNS 记录时绑定失败而不会覆盖。
 - 权限：本机 wrangler OAuth 有 `zone (read)`、`workers_routes (write)`、`ssl_certs (write)`，无 DNS 读取权限（DNS records API 返回 Authentication error），实际绑定在 2.1 / 3.3 首次部署时验证。CI 使用的生产 Cloudflare API token（任务 1.4）须对 Zone `ezarouter.cc` 具备 Workers Routes 编辑权限，不能直接沿用只含账号级权限的 staging token。
@@ -172,7 +172,7 @@ age-keygen -y "$HOME/.config/saas-template/production-backup.agekey"
 
 | 项 | 值 |
 |---|---|
-| 桶 | `saas-production-backups`（账号 `170a06d3…`，2026-10-15T08:57Z 创建），r2.dev 公开访问关闭 |
+| 桶 | `saas-production-backups`（账号 `<CF_ACCOUNT_ID>`，2026-10-15T08:57Z 创建），r2.dev 公开访问关闭 |
 | Bucket Lock | `retain-30d`：全部前缀，对象写入后 30 天内不可删除或覆盖 |
 | 生命周期 | `expire-35d`：全部前缀，35 天后过期（晚于锁定期，避免删除失败）；未完成分片 1 天后中止。另有平台默认规则：未完成分片 7 天后中止 |
 
