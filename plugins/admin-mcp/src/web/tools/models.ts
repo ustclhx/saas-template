@@ -5,7 +5,7 @@ import { adminModelKey, adminModelKinds } from '@web/features/ai/admin-models.sc
 import { listAdminModels, updateAdminModelByKey } from '@web/features/ai/admin-models.ts'
 import { requireFeature } from '@web/server/feature-gates.ts'
 import { z } from 'zod'
-import { defineAdminTool, toolResult } from './define.ts'
+import { defineAdminTool, dryRunDescription, pagingDescriptions, toolResult } from './define.ts'
 
 const list = defineAdminTool({
   name: 'models.list',
@@ -17,6 +17,12 @@ const list = defineAdminTool({
     kind: z.enum(adminModelKinds).optional(),
     order: z.enum(['sort', 'sort_desc', 'key', 'key_desc']).optional(),
   }),
+  params: {
+    ...pagingDescriptions,
+    kind: 'Filter by model kind (text, image, or video).',
+    order:
+      'Sort by configured order (sort or sort_desc) or by model key (key or key_desc). Defaults to sort.',
+  },
   async run({ db }, { kind, order, ...paging }) {
     requireFeature('billing')
     return toolResult(
@@ -42,6 +48,13 @@ const update = defineAdminTool({
         enabled !== undefined || pricing !== undefined || paramsSchema !== undefined,
       'Supply at least one of enabled, pricing, or paramsSchema.',
     ),
+  params: {
+    key: 'Existing model key from models.list.',
+    enabled: 'Set to true to enable the model or false to disable it.',
+    pricing: 'Complete replacement pricing object for this model.',
+    paramsSchema: 'Complete replacement parameter schema as a JSON object.',
+    dryRun: dryRunDescription,
+  },
   async run(ctx, { key, enabled, pricing, paramsSchema }) {
     requireFeature('billing')
     try {

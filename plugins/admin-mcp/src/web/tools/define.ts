@@ -10,6 +10,7 @@ import {
   type AdminAuditEntry,
   runAdminAction,
 } from '@web/features/admin/action.ts'
+import { ADMIN_PAGE_SIZE } from '@web/features/admin/list.ts'
 import { z } from 'zod'
 import type { AdminTokenScope } from '../tokens.ts'
 
@@ -23,6 +24,14 @@ export interface AdminToolContext extends AdminActionContext {
 
 type ToolSuccess = CallToolResult & { isError?: false }
 
+export const pagingDescriptions = {
+  offset: 'Number of matching records to skip. Defaults to 0.',
+  limit: `Maximum number of records to return. Defaults to ${ADMIN_PAGE_SIZE}, the page limit.`,
+}
+
+export const dryRunDescription =
+  'Set to true to preview and validate the change without saving. Defaults to false.'
+
 type ToolHandler<Schema extends z.ZodObject, Context> = (
   ctx: Context,
   input: z.output<Schema>,
@@ -32,6 +41,7 @@ type AdminTool<Schema extends z.ZodObject> = {
   readonly name: string
   readonly description: string
   readonly input: Schema
+  readonly params: { readonly [Key in keyof NoInfer<Schema>['shape']]: string }
 } & (
   | { readonly scope: 'admin:read'; run: ToolHandler<Schema, AdminToolContext> }
   | {
@@ -42,14 +52,32 @@ type AdminTool<Schema extends z.ZodObject> = {
 )
 
 export function defineAdminTool<Schema extends z.ZodObject>(tool: AdminTool<Schema>) {
+  // 在导出的对象上写说明，避免改动后台页面复用的 Zod schema。
+  const inputSchema = z.toJSONSchema(tool.input, { io: 'input' })
+  const properties = inputSchema.properties
+  if (properties) {
+    for (const [key, property] of Object.entries(properties)) {
+      const schema = typeof property === 'object' ? property : property ? {} : { not: {} }
+      const param = key as keyof Schema['shape']
+      properties[key] = {
+        ...schema,
+        description: tool.params[param],
+      }
+    }
+  }
+
   const spec: Tool = {
     name: tool.name,
     description: tool.description,
-    // Zod 保证 ZodObject 导出 JSON 对象 schema，SDK 的类型要求显式声明根类型。
-    inputSchema: z.toJSONSchema(tool.input, { io: 'input' }) as Tool['inputSchema'],
+    // ZodObject 生成对象 schema，SDK 的类型要求显式声明根类型。
+    inputSchema: inputSchema as Tool['inputSchema'],
     annotations: { readOnlyHint: tool.scope === 'admin:read' },
   }
-  return { register: (ctx: AdminToolContext) => registerAdminTool(ctx, tool, spec) }
+  return {
+    spec,
+    scope: tool.scope,
+    register: (ctx: AdminToolContext) => registerAdminTool(ctx, tool, spec),
+  }
 }
 
 export function toolResult(data: Record<string, unknown>): ToolSuccess {

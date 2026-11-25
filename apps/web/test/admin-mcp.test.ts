@@ -158,6 +158,9 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
       expect(tools).toContainEqual(
         expect.objectContaining({ name: 'ping', annotations: { readOnlyHint: true } }),
       )
+      expect(tools.find(({ name }) => name === 'settings.get')).toMatchObject({
+        inputSchema: { properties: { key: { description: expect.stringMatching(/\S/) } } },
+      })
       expect(
         tools.filter((tool) => tool.annotations?.readOnlyHint === false).map(({ name }) => name),
       ).toEqual(['settings.set', 'models.update'])
