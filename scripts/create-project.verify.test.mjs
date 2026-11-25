@@ -71,7 +71,7 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
       label: 'Cloudflare 关闭计费',
       locale: 'en',
       'billing-enabled': 'false',
-      expectedPlugins: [],
+      expectedPlugins: ['admin-mcp'],
     },
     {
       id: 'selfhost',
@@ -80,7 +80,7 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
       locale: 'zh',
       theme: 'blue',
       name: 'product-resources',
-      expectedPlugins: ['media'],
+      expectedPlugins: ['admin-mcp', 'media'],
     },
     {
       id: 'minimal',
@@ -181,6 +181,8 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
         'multi-tenant': false,
         name,
         oauth: ['google', 'github'],
+        // 显式传入 --plugins 时记录到基准参数，省略时按模板默认插件
+        ...(scenario.plugins === undefined ? {} : { plugins: expectedPlugins }),
         'support-email': `support@${name}.example`,
         target: scenario.target ?? 'cloudflare',
         theme: scenario.theme ?? 'neutral',
@@ -294,7 +296,9 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
         assert.ok(existsSync(join(result.target, `plugins/${pluginId}/plugin.ts`)))
       }
       assert.deepEqual(result.options.plugins, expectedPlugins)
-      if (id === 'cf') assert.deepEqual(result.options.defaultPlugins, expectedPlugins)
+      // 显式 --plugins 时默认插件仍按模板与依赖筛选（含 admin-mcp），只有所选插件进入副本
+      if (id === 'cf')
+        assert.deepEqual(result.options.defaultPlugins, ['admin-mcp', ...expectedPlugins])
       for (const app of ['web', 'jobs']) {
         const wrangler = parseJsonc(
           await readFile(join(result.target, `apps/${app}/wrangler.jsonc`), 'utf8'),

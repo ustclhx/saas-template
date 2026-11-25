@@ -102,7 +102,15 @@ describe('ApiTokensPage', () => {
     expect(rows[1]?.textContent).not.toContain(m.admin_mcp_scope_write())
     expect(rows[2]?.textContent).toContain(m.admin_mcp_state_revoked({ date: '2026-11-20' }))
     expect(rows[3]?.textContent).toContain(m.admin_mcp_state_expired())
-    expect(within(table).getAllByRole('button', { name: /^Revoke / })).toHaveLength(2)
+    // 文案从 messages 取：生成副本的默认语言可能不是英文
+    const revokable = ['Claude Code', 'Release check'].map((name) =>
+      m.admin_mcp_revoke_label({ name }),
+    )
+    expect(
+      within(table)
+        .getAllByRole('button')
+        .filter((button) => revokable.includes(button.getAttribute('aria-label') ?? '')),
+    ).toHaveLength(2)
     // 只显示前缀，不出现完整令牌
     expect(table.textContent).toContain('xat_3f9a1c7e…')
     expect(screen.getByText(ENDPOINT)).toBeTruthy()
@@ -126,7 +134,9 @@ describe('ApiTokensPage', () => {
     fireEvent.change(within(dialog).getByLabelText(m.admin_mcp_name()), {
       target: { value: '  CI  ' },
     })
-    fireEvent.click(within(dialog).getByRole('checkbox', { name: /Write/ }))
+    fireEvent.click(
+      within(dialog).getByRole('checkbox', { name: new RegExp(m.admin_mcp_scope_write()) }),
+    )
     fireEvent.click(
       within(dialog).getByRole('button', { name: m.admin_mcp_term_days({ days: 30 }) }),
     )
@@ -152,7 +162,11 @@ describe('ApiTokensPage', () => {
   it('吊销需确认，确认后调用吊销接口并刷新列表', async () => {
     api.revokeAdminApiTokenFn.mockResolvedValue({ ok: true })
     render(<ApiTokensPage data={data([token({})])} />)
-    fireEvent.click(screen.getAllByRole('button', { name: 'Revoke Claude Code' })[0] as Element)
+    fireEvent.click(
+      screen.getAllByRole('button', {
+        name: m.admin_mcp_revoke_label({ name: 'Claude Code' }),
+      })[0] as Element,
+    )
     const dialog = await screen.findByRole('alertdialog')
     expect(api.revokeAdminApiTokenFn).not.toHaveBeenCalled()
     await act(async () => {
