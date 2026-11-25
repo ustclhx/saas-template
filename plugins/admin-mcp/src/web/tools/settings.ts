@@ -13,7 +13,8 @@ const keyInput = z.string().min(1)
 async function getSetting(db: Database, key: string) {
   const { definition, value, source } = await readRuntimeSetting(db, key)
   const { description, secret } = definition
-  const metadata = { key, description, secret }
+  // source 为 fallback 时表中的值不符合当前定义，读取方正在使用默认值；只报来源，不回显密钥
+  const metadata = { key, description, secret, source }
   if (secret) return { ...metadata, isSet: value != null && value !== '' }
 
   const feature = key.startsWith('ai.model.') ? key.slice('ai.model.'.length) : ''
@@ -25,7 +26,6 @@ async function getSetting(db: Database, key: string) {
     jsonSchema: definition.jsonSchema,
     value,
     defaultValue: definition.default,
-    source,
     resolution,
   }
 }
@@ -46,7 +46,8 @@ const settingsList = defineAdminTool({
 const settingsGet = defineAdminTool({
   name: 'settings.get',
   scope: 'admin:read',
-  description: 'Read a runtime setting and its source, or whether a secret is set',
+  description:
+    'Read a runtime setting and its source (database, default, or fallback when the stored value no longer matches the schema and the default is used), or whether a secret is set',
   input: z.object({ key: keyInput }),
   async run({ db }, { key }) {
     return toolResult(await getSetting(db, key))

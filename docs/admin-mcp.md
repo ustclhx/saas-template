@@ -38,7 +38,7 @@ claude mcp add --transport http --scope local admin-mcp https://app.example.com/
 |---|---|---|
 | `ping` | `admin:read` | `{}`。验证工具调用，返回 `pong`。 |
 | `settings.list` | `admin:read` | `{}`。列出登记的运行时设置及其值，密钥项显示设置状态。 |
-| `settings.get` | `admin:read` | `{ key }`。读取设置值与定义，功能模型项在 `resolution` 中返回解析结果。密钥项用 `isSet` 表示是否已设置。 |
+| `settings.get` | `admin:read` | `{ key }`。读取设置值与定义，功能模型项在 `resolution` 中返回解析结果。密钥项用 `isSet` 表示是否已设置。`source` 为 `database`、`default` 或 `fallback`；`fallback` 表示已存值不符合当前定义，正在使用默认值。 |
 | `features.models` | `admin:read` | `{}`。列出功能模型的种类、沿用顺序和解析结果。 |
 | `models.list` | `admin:read` | `{ offset?, limit?, kind?, order? }`。查询后台模型目录及启用状态、参数和定价。排序可用 `sort`、`sort_desc`、`key`、`key_desc`。需启用计费。 |
 | `users.search` | `admin:read` | `{ offset?, limit?, q? }`。按邮箱、姓名或 ID 搜索用户。 |

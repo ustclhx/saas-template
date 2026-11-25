@@ -1,5 +1,5 @@
 import { defineTemplateConfig } from '@saas/config'
-import { auditLog, dbSettingStore, getSetting, setting, user } from '@saas/db'
+import { auditLog, dbSettingStore, getSetting, setting, settingDefaults, user } from '@saas/db'
 import { newId } from '@saas/shared'
 import { eq, inArray } from 'drizzle-orm'
 import { expect, it } from 'vitest'
@@ -117,6 +117,13 @@ it('保存设置后清除旧 KV 值，拒绝未受邀注册，并审计每项的
         meta: { key, oldValue: oldValues[index], newValue: newValues[index] },
       })
     }
+    expect((await readRuntimeSettings(db)).fallbackKeys).toEqual([])
+    // 项目收紧 schema 后的遗留值：读取回落默认值并标出该键，不抛错
+    await db.update(setting).set({ value: 0 }).where(eq(setting.key, 'credits.dailyAmount'))
+    expect(await readRuntimeSettings(db)).toMatchObject({
+      dailyAmount: settingDefaults['credits.dailyAmount'],
+      fallbackKeys: ['credits.dailyAmount'],
+    })
   } finally {
     await db.delete(setting).where(inArray(setting.key, [...RUNTIME_SETTING_KEYS]))
     if (original.length) await db.insert(setting).values(original)

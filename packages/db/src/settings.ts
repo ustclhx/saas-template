@@ -1,4 +1,5 @@
 import { AppError } from '@saas/shared'
+import { log } from '@saas/shared/log'
 import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Database } from './client.ts'
@@ -227,22 +228,58 @@ export async function getSetting<K extends SettingKey>(
 
 /** 供按字符串键读取的调用方使用，包括运行时注册的功能模型设置。 */
 export async function getSettingValue(ctx: SettingsContext, key: string): Promise<unknown> {
-  const definition = definitions.get(key)
-  if (!definition) throw new RangeError(`Unknown runtime setting: ${key}`)
+  if (!definitions.has(key)) throw new RangeError(`Unknown runtime setting: ${key}`)
   const cached = await ctx.cache?.get(cacheKey(key))
   if (cached != null) {
-    return resolve(definition, (JSON.parse(cached) as { v?: unknown }).v)
+    return resolveStoredSetting(key, (JSON.parse(cached) as { v?: unknown }).v).value
   }
   const value = await ctx.store.find(key)
-  const resolved = resolve(definition, value)
+  const resolved = resolveStoredSetting(key, value)
   await ctx.cache?.put(cacheKey(key), JSON.stringify(value === undefined ? {} : { v: value }), {
     expirationTtl: SETTING_CACHE_TTL_SECONDS,
   })
-  return resolved
+  return resolved.value
 }
 
-function resolve(definition: NamedSettingDefinition, value: unknown): unknown {
-  const result = definition.schema.safeParse(value === undefined ? definition.default : value)
-  if (!result.success) throw new RangeError(`Invalid runtime setting: ${definition.key}`)
-  return result.data
+/**
+ * 设置值的来源：`database` 为表中合法的值，`default` 为表中缺失，
+ * `fallback` 为表中的值不符合当前定义（如项目收紧了 schema）而改用代码默认值。
+ */
+export type SettingSource = 'database' | 'default' | 'fallback'
+
+// 同一 isolate / 进程内每个键只告警一次，避免缓存命中的每次读取都刷日志
+const warnedInvalidKeys = new Set<string>()
+
+/**
+ * 读取边界：把已存值（`undefined` 表示缺失）解析为可用值。已存值不符合当前定义时回落默认值并记
+ * 结构化告警，只记键名不记值（密钥项也走这里）；写入路径仍用 validateSettingValue 严格拒绝。
+ */
+export function resolveStoredSetting(
+  key: string,
+  stored: unknown,
+): { value: unknown; source: SettingSource } {
+  const definition = definitions.get(key)
+  if (!definition) throw new RangeError(`Unknown runtime setting: ${key}`)
+  if (stored !== undefined) {
+    const result = definition.schema.safeParse(stored)
+    if (result.success) return { value: result.data, source: 'database' }
+    if (!warnedInvalidKeys.has(key)) {
+      warnedInvalidKeys.add(key)
+      log.warn('runtime_setting.invalid_stored_value', {
+        key,
+        scope: 'global',
+        fallback: 'default',
+      })
+    }
+  }
+  // 默认值在登记时已通过校验
+  return {
+    value: definition.schema.parse(definition.default),
+    source: stored === undefined ? 'default' : 'fallback',
+  }
+}
+
+/** 测试用：重置「每键只告警一次」的记录。 */
+export function resetInvalidSettingWarnings() {
+  warnedInvalidKeys.clear()
 }

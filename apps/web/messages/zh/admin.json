@@ -135,6 +135,7 @@
   "admin_saved_changes_apply_within_about_60_seconds": "已保存，更改将在约 60 秒内生效。",
   "admin_save_failed": "保存失败。",
   "admin_save_unavailable_enter_valid_domains_no_email_addresses": "无法保存，请输入有效域名（不含邮箱地址或网址）后重试。",
+  "admin_settings_using_defaults": "{keys} 的已存值不符合当前规则，正在使用默认值。保存本表单会以当前显示的值覆盖。",
   "admin_runtime_settings": "运行时设置",
   "admin_registration_enabled": "开放注册",
   "admin_when_registration_is_closed_only_valid_waitlist_invitations": "关闭注册后，若已启用候补名单，仅持有效候补邀请的新用户可以注册。",

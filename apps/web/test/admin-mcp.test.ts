@@ -7,6 +7,7 @@ import {
   getSettingValue,
   type NewAiModel,
   setting,
+  settingDefaults,
   user,
 } from '@saas/db'
 import type { RateLimiter } from '@saas/platform'
@@ -261,6 +262,7 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
         key,
         description: expect.any(String),
         secret: true,
+        source: 'database',
         isSet: true,
       })
       const list = await client.callTool({ name: 'settings.list' })
@@ -282,7 +284,7 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
     }
   })
 
-  it('读取遗留错误设置时只返回固定内部错误并记录失败', async () => {
+  it('遗留值不符合定义时读工具返回默认值并标记 fallback，不回显已存值', async () => {
     const { db, connect, createAdmin } = setup()
     const adminId = await createAdmin()
     const { token } = await issueToken(db, adminId)
@@ -296,13 +298,16 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
         .values({ key, value })
         .onConflictDoUpdate({ target: setting.key, set: { value } })
       const result = await client.callTool({ name: 'settings.get', arguments: { key } })
-      expect(result).toMatchObject({
-        isError: true,
-        structuredContent: { error: { code: 'INTERNAL_ERROR', message: 'Tool execution failed' } },
+      expect(result.isError).toBeFalsy()
+      expect(result.structuredContent).toMatchObject({
+        key,
+        value: settingDefaults[key],
+        defaultValue: settingDefaults[key],
+        source: 'fallback',
       })
       expect(JSON.stringify(result)).not.toContain('internal fixture')
       expect(await actorAudits(db, adminId)).toMatchObject([
-        { action: 'admin.mcp.call', meta: { tool: 'settings.get', result: 'INTERNAL_ERROR' } },
+        { action: 'admin.mcp.call', meta: { tool: 'settings.get', result: 'ok' } },
       ])
     } finally {
       await db.delete(setting).where(eq(setting.key, key))
