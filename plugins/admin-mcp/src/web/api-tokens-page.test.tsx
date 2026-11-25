@@ -21,8 +21,10 @@ vi.mock('./api-tokens.functions.ts', () => ({
   revokeAdminApiTokenFn: api.revokeAdminApiTokenFn,
 }))
 vi.mock('@tanstack/react-router', () => ({ useRouter: () => ({ invalidate: api.invalidate }) }))
+// 生成器会把应用名改成项目名；期望的 MCP 服务名由这里的名称推导，不写死
+const APP_NAME = vi.hoisted(() => 'MyApp')
 vi.mock('@web/server/template-config.ts', () => ({
-  templateConfig: { app: { name: 'MyApp' }, plugins: { 'admin-mcp': {} } },
+  templateConfig: { app: { name: APP_NAME }, plugins: { 'admin-mcp': {} } },
 }))
 
 const now = new Date('2026-11-25T00:00:00Z')
@@ -143,7 +145,7 @@ describe('ApiTokensPage', () => {
       fireEvent.click(within(created).getByRole('button', { name: m.admin_mcp_copy_command() }))
     })
     expect(api.writeText).toHaveBeenCalledWith(
-      `claude mcp add --transport http myapp-admin ${ENDPOINT} --header "Authorization: Bearer ${TOKEN}"`,
+      `claude mcp add --transport http ${APP_NAME.toLowerCase()}-admin ${ENDPOINT} --header "Authorization: Bearer ${TOKEN}"`,
     )
   })
 
