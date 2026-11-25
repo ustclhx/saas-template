@@ -11,23 +11,29 @@ const workspace = { id: 'ws', name: 'Lin Studio', slug: 'lin' }
 beforeEach(() => overwriteGetLocale(() => baseLocale))
 
 describe('确认页表格：现值 → 执行后', () => {
-  it('积分增加显示发起时余额与执行后余额', () => {
-    const rows = confirmationRows(
-      view({
-        kind: 'credits',
-        operation: 'grant',
-        workspace,
-        amount: 500,
-        expiresAt: null,
-        reason: 'Outage',
-        balance: { before: 1200, after: 1700 },
-      }),
-    )
-    expect(rows.find((row) => row.label === 'Credit balance')).toMatchObject({
-      current: '1,200',
-      after: '1,700',
+  it('待确认的积分增加按实时余额计算「当前 → 执行后」，并注明发起时余额', () => {
+    const grant = view({
+      kind: 'credits',
+      operation: 'grant',
+      workspace,
+      amount: 500,
+      expiresAt: null,
+      reason: 'Outage',
+      balance: { before: 1200, after: 1700 },
     })
-    expect(rows.some((row) => row.label === 'Credits')).toBe(false)
+    const live = confirmationRows(grant, { liveBalance: 1250 })
+    expect(live.find((row) => row.label === 'Credit balance')).toMatchObject({
+      current: '1,250',
+      after: '1,750',
+    })
+    expect(live.find((row) => row.label === 'Balance at request')).toMatchObject({
+      after: '1,200',
+    })
+    expect(live.some((row) => row.label === 'Credits')).toBe(false)
+    // 已结束（无实时余额）：显示发起时的快照
+    expect(confirmationRows(grant).find((row) => row.label === 'Balance at request')).toMatchObject(
+      { current: '1,200', after: '1,700' },
+    )
   })
 
   it('收回批次同时显示批次剩余与余额；没有余额快照的旧记录退回增加量', () => {
@@ -41,11 +47,24 @@ describe('确认页表格：现值 → 执行后', () => {
         balance: { before: 160, after: 100 },
       }),
     )
+    expect(
+      confirmationRows(
+        view({
+          kind: 'credits',
+          operation: 'revoke',
+          workspace,
+          grant: { id: 'g1', amount: 100, remaining: 60 },
+          reason: 'Mistake',
+          balance: { before: 160, after: 100 },
+        }),
+        { liveBalance: 150 },
+      ).find((row) => row.label === 'Credit balance'),
+    ).toMatchObject({ current: '150', after: '90' })
     expect(revoke.find((row) => row.label === 'Batch remaining')).toMatchObject({
       current: '60 / 100',
       after: '0 / 100',
     })
-    expect(revoke.find((row) => row.label === 'Credit balance')).toMatchObject({
+    expect(revoke.find((row) => row.label === 'Balance at request')).toMatchObject({
       current: '160',
       after: '100',
     })

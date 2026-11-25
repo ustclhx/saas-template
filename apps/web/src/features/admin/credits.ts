@@ -1,5 +1,5 @@
-import { getCreditBalance, grant, lockWorkspaceCredits, revokeGrant } from '@saas/credits'
-import { auditLog, organization } from '@saas/db'
+import { getCreditBalance, grant, revokeGrant } from '@saas/credits'
+import { auditLog, type Database, organization } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { and, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -25,16 +25,14 @@ export const creditAdjustmentInput = z.discriminatedUnion('kind', [
 
 /** 调整 ID 锁跨空间串行化重试；原始审计绑定参数，失败时积分与审计一起回滚。 */
 /**
- * 空间当前可用积分（未过期的有效批次剩余之和），供 MCP 积分调整的确认快照与执行前比对。
- * `lock` 时先取空间积分锁，读取到提交之间余额不会被其他扣费或发放改变。
+ * 空间当前可用积分（未过期的有效批次剩余之和）：MCP 积分调整的发起时快照与确认页的实时余额。
+ * 只用于展示，执行不以余额变化阻断（调整是增量，且有幂等 adjustmentId）。
  */
 export async function adminCreditBalance(
-  tx: AdminTransaction,
+  db: Database | AdminTransaction,
   workspaceId: string,
-  lock = false,
 ): Promise<number> {
-  if (lock) await lockWorkspaceCredits(tx, workspaceId)
-  return (await getCreditBalance(tx, workspaceId, tx)).available
+  return (await getCreditBalance(db, workspaceId)).available
 }
 
 export async function adjustAdminCredits(

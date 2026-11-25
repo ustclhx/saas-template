@@ -73,6 +73,7 @@ export function ConfirmationPage({ data }: { data: Data }) {
         isOwner={data.isOwner}
         requestedByEmail={data.requestedByEmail}
         decidedByEmail={data.decidedByEmail}
+        liveBalance={data.liveBalance}
       />
     </AdminPage>
   )
@@ -84,6 +85,7 @@ function ConfirmationDetail(props: {
   isOwner: boolean
   requestedByEmail: string | null
   decidedByEmail: string | null
+  liveBalance: number | null
 }) {
   const { record, now } = props
   const router = useRouter()
@@ -103,7 +105,7 @@ function ConfirmationDetail(props: {
     ? { label: m.admin_confirm_status_running(), color: 'gray' as const }
     : status
   const banner = confirmationBanner(record, now)
-  const rows = confirmationRows(record)
+  const rows = confirmationRows(record, { liveBalance: props.liveBalance })
   const display = record.display
   const isRefund =
     typeof display === 'object' &&

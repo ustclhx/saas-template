@@ -44,6 +44,7 @@
   "admin_confirm_row_tool": "工具",
   "admin_confirm_row_workspace": "空间",
   "admin_confirm_row_balance": "积分余额",
+  "admin_confirm_row_balance_at_request": "发起时余额",
   "admin_confirm_row_amount": "积分",
   "admin_confirm_row_expires": "积分到期",
   "admin_confirm_row_never": "不过期",

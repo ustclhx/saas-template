@@ -81,7 +81,8 @@ async function resolveAdjustment(tx: AdminTransaction, value: Input) {
   requireFeature('credits')
   const workspace = await findWorkspace(tx, value.workspace)
   if (!workspace) throw new AppError('WORKSPACE_NOT_FOUND', 'Workspace not found', { status: 404 })
-  // 发起时的可用余额：确认页显示「当前 → 执行后」，执行前在积分锁内比对（快照，决策 7）
+  // 发起时的可用余额，只作展示：确认页以打开时的实时余额计算「当前 → 执行后」并注明发起时余额；
+  // 执行不比对余额（调整是增量，余额随扣费变化属正常）
   const balance = await adminCreditBalance(tx, workspace.id)
   if (value.kind === 'grant') {
     const amount = value.amount ?? 0
@@ -99,7 +100,6 @@ async function resolveAdjustment(tx: AdminTransaction, value: Input) {
         reason: value.reason,
         balance: { before: balance, after: balance + amount },
       },
-      balance,
     }
   }
   const grant = await findGrant(tx, workspace.id, value.grantId ?? '', false)
@@ -120,15 +120,12 @@ async function resolveAdjustment(tx: AdminTransaction, value: Input) {
       reason: value.reason,
       balance: { before: balance, after: counted ? balance - grant.remaining : balance },
     },
-    balance,
   }
 }
 
 const payloadSchema = z.object({
   adjustment: creditAdjustmentInput,
   grant: z.object({ remaining: z.number(), status: z.string() }).nullable(),
-  // 发起时的可用余额；本字段加入前创建的记录没有它，执行时不比对余额
-  balance: z.number().optional(),
 })
 
 export const creditsAdjust = defineAdminTool({
@@ -153,7 +150,7 @@ export const creditsAdjust = defineAdminTool({
     return toolResult({ dryRun: true, summary, display })
   },
   async confirm(ctx, value) {
-    const { workspace, grant, summary, display, balance } = await resolveAdjustment(ctx.tx, value)
+    const { workspace, grant, summary, display } = await resolveAdjustment(ctx.tx, value)
     // 确认时生成调整 ID：重复确认请求由 adjustAdminCredits 按 ID 幂等处理
     const adjustmentId = newId()
     const adjustment =
@@ -179,7 +176,6 @@ export const creditsAdjust = defineAdminTool({
       payload: {
         adjustment,
         grant: grant ? { remaining: grant.remaining, status: grant.status } : null,
-        balance,
       },
     }
   },
@@ -187,16 +183,7 @@ export const creditsAdjust = defineAdminTool({
     kind: 'transaction',
     async run(scope, { record }) {
       requireFeature('credits')
-      const { adjustment, grant, balance } = payloadSchema.parse(record.payload)
-      // 余额在发起后变化（扣费、发放、过期或他人调整）：确认页展示的前后值已不准确，不执行
-      if (
-        balance !== undefined &&
-        (await adminCreditBalance(scope.tx, adjustment.workspaceId, true)) !== balance
-      )
-        throw new ConfirmationFailedError(
-          STALE_TARGET,
-          'The workspace credit balance changed after the request',
-        )
+      const { adjustment, grant } = payloadSchema.parse(record.payload)
       if (adjustment.kind === 'revoke') {
         const current = await findGrant(scope.tx, adjustment.workspaceId, adjustment.grantId, true)
         if (!current || current.remaining !== grant?.remaining || current.status !== grant.status)

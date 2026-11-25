@@ -44,6 +44,7 @@
   "admin_confirm_row_tool": "Tool",
   "admin_confirm_row_workspace": "Workspace",
   "admin_confirm_row_balance": "Credit balance",
+  "admin_confirm_row_balance_at_request": "Balance at request",
   "admin_confirm_row_amount": "Credits",
   "admin_confirm_row_expires": "Credits expire",
   "admin_confirm_row_never": "Never",

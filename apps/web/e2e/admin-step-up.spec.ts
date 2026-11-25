@@ -190,7 +190,7 @@ test('MCP 发起积分调整：打开确认链接、验证后确认，余额变�
       page.getByText(`Grant 77 credits to workspace ${admin.workspace.name}`),
     ).toBeVisible()
     await expect(page.getByRole('cell', { name: reason })).toBeVisible()
-    // 发起时余额 → 执行后余额（新注册空间余额为 0；注册赠送积分关闭时同样为 0）
+    // 打开确认页时的实时余额 → 执行后余额
     const balanceRow = page.getByRole('row', { name: /^Credit balance/ })
     const [{ before }] =
       (await sql`select coalesce(sum(remaining),0)::int as before from credit_grant
@@ -201,6 +201,10 @@ test('MCP 发起积分调整：打开确认链接、验证后确认，余额变�
       before.toLocaleString('en-US'),
       (before + 77).toLocaleString('en-US'),
     ])
+    // 发起时余额另起一行注明（本例发起后余额未变）
+    await expect(
+      page.getByRole('row', { name: /^Balance at request/ }).getByRole('cell'),
+    ).toHaveText([before.toLocaleString('en-US')])
     await hydrated(page)
     await page.getByRole('button', { name: 'Confirm and run' }).click()
 

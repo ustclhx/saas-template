@@ -48,6 +48,7 @@ vi.mock('../src/server/runtime.ts', () => ({
 
 import {
   confirmAdminConfirmation,
+  getAdminConfirmation,
   rejectAdminConfirmation,
 } from '../../../plugins/admin-mcp/src/web/confirmations.functions.ts'
 import { respondToAdminMcp } from '../../../plugins/admin-mcp/src/web/mcp.ts'
@@ -62,6 +63,7 @@ import {
   getPendingAction,
   MAX_PENDING_PER_TOKEN,
 } from '../src/features/admin/confirmations/service.ts'
+import { adminCreditBalance } from '../src/features/admin/credits.ts'
 import { STEP_UP_REQUIRED } from '../src/features/admin/step-up/check.ts'
 import { templateConfig } from '../src/server/template-config.ts'
 
@@ -160,6 +162,11 @@ type FnResult =
     }
 const confirm = (context: Context, id: string) =>
   (confirmAdminConfirmation as unknown as (input: unknown) => Promise<FnResult>)({
+    context,
+    data: { id },
+  })
+const view = (context: Context, id: string) =>
+  (getAdminConfirmation as unknown as (input: unknown) => Promise<Record<string, unknown>>)({
     context,
     data: { id },
   })
@@ -441,31 +448,41 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'] || !templateConfig.credits.
       )
     })
 
-    it('确认页显示发起时余额与执行后余额；余额在发起后变化时以 STALE_TARGET 失败，不执行', async () => {
+    it('积分调整不以余额变化阻断：发起后余额变化仍确认成功，确认页按实时余额展示，审计正确', async () => {
       const admin = await createAdmin()
-      const { token } = await issue(admin.id)
+      const { token, metadata } = await issue(admin.id)
       const workspace = await createWorkspace()
       const seed = (amount: number) =>
         grant(db, { workspaceId: workspace.id, source: 'admin', sourceRef: newId(), amount })
       await seed(40)
       const id = await requestGrant(token, workspace.id)
+      // 发起时余额快照只作注明
       expect((await record(id))?.display).toMatchObject({ balance: { before: 40, after: 140 } })
-      // 发起后余额变化（例如另一笔发放或扣费）：确认页展示的前后值已不准确
+      // 发起后余额变化（另一笔发放）：确认页按打开时的实时余额计算「当前 → 执行后」
       await seed(5)
-      expect(await confirm(admin.verified, id)).toMatchObject({
-        ok: true,
-        status: 'failed',
-        result: { code: 'STALE_TARGET' },
+      const page = await view(admin.verified, id)
+      expect(page).toMatchObject({ found: true, liveBalance: 45 })
+      expect(await confirm(admin.verified, id)).toMatchObject({ ok: true, status: 'done' })
+      expect(await adminCreditBalance(db, workspace.id)).toBe(145)
+      expect(
+        (await grants(workspace.id)).map(({ amount }) => amount).sort((a, b) => a - b),
+      ).toEqual([5, 40, 100])
+      const [adjusted] = await db
+        .select()
+        .from(auditLog)
+        .where(and(eq(auditLog.action, 'credits.adjust'), eq(auditLog.workspaceId, workspace.id)))
+      expect(adjusted).toMatchObject({
+        actorUserId: admin.id,
+        meta: {
+          via: 'mcp',
+          tokenId: metadata.id,
+          confirmationId: id,
+          confirmedBy: admin.id,
+          input: { kind: 'grant', amount: 100, workspaceId: workspace.id },
+        },
       })
-      expect((await grants(workspace.id)).map(({ amount }) => amount).sort()).toEqual(
-        [40, 5].sort(),
-      )
-
-      // 余额未变时照常执行
-      const next = await requestGrant(token, workspace.id, 10)
-      expect((await record(next))?.display).toMatchObject({ balance: { before: 45, after: 55 } })
-      expect(await confirm(admin.verified, next)).toMatchObject({ ok: true, status: 'done' })
-      expect(await grants(workspace.id)).toHaveLength(3)
+      // 已结束的记录不再读实时余额
+      expect(await view(admin.verified, id)).toMatchObject({ liveBalance: null })
     })
   },
 )

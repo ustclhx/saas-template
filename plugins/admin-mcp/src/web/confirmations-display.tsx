@@ -89,8 +89,14 @@ function compact(value: Json | undefined): string {
   return text.length > 240 ? `${text.slice(0, 240)}…` : text
 }
 
-/** 确认页「项目 / 当前值 / 执行后」表格 */
-export function confirmationRows(record: AdminConfirmationView): ConfirmationRow[] {
+/**
+ * 确认页「项目 / 当前值 / 执行后」表格。`liveBalance` 为打开确认页时读取的空间实时余额
+ * （仅待确认的积分调整）：余额行按它加上本次调整量计算，另起一行注明发起时余额。
+ */
+export function confirmationRows(
+  record: AdminConfirmationView,
+  options: { readonly liveBalance?: number | null } = {},
+): ConfirmationRow[] {
   const display = obj(record.display)
   const rows: ConfirmationRow[] = [
     { label: m.admin_confirm_row_tool(), after: record.tool, mono: true },
@@ -98,18 +104,34 @@ export function confirmationRows(record: AdminConfirmationView): ConfirmationRow
   switch (str(display.kind)) {
     case 'credits': {
       rows.push({ label: m.admin_confirm_row_workspace(), after: workspaceLabel(display) })
-      // 发起时的可用余额快照与执行后余额（设计稿「积分余额 1,200 → 1,700」）；执行时余额已变化则不执行
+      // 积分余额「当前 → 执行后」（设计稿「积分余额 1,200 → 1,700」）。调整是增量、不以余额变化阻断：
+      // 待确认时用实时余额加本次变化量，并注明发起时余额；已结束的记录显示发起时的快照。
       const balance = obj(display.balance)
       const before = num(balance.before)
       const after = num(balance.after)
-      const balanceRow: ConfirmationRow | undefined =
+      const live = options.liveBalance ?? undefined
+      const balanceRows: ConfirmationRow[] =
         before === undefined || after === undefined
-          ? undefined
-          : {
-              label: m.admin_confirm_row_balance(),
-              current: formatCredits(before),
-              after: formatCredits(after),
-            }
+          ? []
+          : live === undefined
+            ? [
+                {
+                  label: m.admin_confirm_row_balance_at_request(),
+                  current: formatCredits(before),
+                  after: formatCredits(after),
+                },
+              ]
+            : [
+                {
+                  label: m.admin_confirm_row_balance(),
+                  current: formatCredits(live),
+                  after: formatCredits(live + after - before),
+                },
+                {
+                  label: m.admin_confirm_row_balance_at_request(),
+                  after: formatCredits(before),
+                },
+              ]
       if (str(display.operation) === 'revoke') {
         const grant = obj(display.grant)
         rows.push(
@@ -120,19 +142,18 @@ export function confirmationRows(record: AdminConfirmationView): ConfirmationRow
             after: `0 / ${formatCredits(num(grant.amount) ?? 0)}`,
           },
         )
-        if (balanceRow) rows.push(balanceRow)
+        rows.push(...balanceRows)
       } else {
-        rows.push(
-          // 加入余额快照之前创建的记录只有增加量
-          balanceRow ?? {
+        // 没有余额快照的记录（加入快照之前创建）只显示增加量
+        if (balanceRows.length === 0)
+          rows.push({
             label: m.admin_confirm_row_amount(),
             after: `+${formatCredits(num(display.amount) ?? 0)}`,
-          },
-          {
-            label: m.admin_confirm_row_expires(),
-            after: str(display.expiresAt) ?? m.admin_confirm_row_never(),
-          },
-        )
+          })
+        rows.push(...balanceRows, {
+          label: m.admin_confirm_row_expires(),
+          after: str(display.expiresAt) ?? m.admin_confirm_row_never(),
+        })
       }
       rows.push({ label: m.admin_confirm_row_reason(), after: str(display.reason) ?? '—' })
       break

@@ -12,6 +12,7 @@ import {
   listPendingActions,
   rejectPendingActionAndDropSecret,
 } from '@web/features/admin/confirmations/service.ts'
+import { adminCreditBalance } from '@web/features/admin/credits.ts'
 import { ADMIN_MAX_OFFSET, ADMIN_PAGE_SIZE } from '@web/features/admin/list.ts'
 import { STEP_UP_REQUIRED } from '@web/features/admin/step-up/check.ts'
 import { getWebRuntime } from '@web/server/runtime.ts'
@@ -107,6 +108,17 @@ function serializable(view: View) {
 
 export type AdminConfirmationView = ReturnType<typeof serializable>
 
+async function liveCreditBalance(
+  db: Parameters<typeof adminCreditBalance>[0],
+  view: View,
+): Promise<number | null> {
+  const display = view.display as { kind?: unknown; workspace?: { id?: unknown } } | null
+  const workspaceId = display?.workspace?.id
+  if (view.status !== 'pending' || display?.kind !== 'credits' || typeof workspaceId !== 'string')
+    return null
+  return adminCreditBalance(db, workspaceId)
+}
+
 export const getAdminConfirmation = createServerFn({ method: 'GET' })
   .middleware([adminMiddleware])
   .inputValidator(z.object({ id: z.string().max(64) }))
@@ -124,6 +136,8 @@ export const getAdminConfirmation = createServerFn({ method: 'GET' })
       .where(inArray(user.id, ids))
     const emailOf = (id: string | null) => people.find((row) => row.id === id)?.email ?? null
     return {
+      // 待确认的积分调整：确认页按打开时的实时余额计算「当前 → 执行后」（发起时余额只作注明）
+      liveBalance: await liveCreditBalance(context.db, view),
       found: true as const,
       now,
       record: serializable(view),
