@@ -202,6 +202,10 @@ interface AccountFacts {
   readonly hasPassword: boolean
 }
 
+/** 已完成绑定的 2FA 行（`verified` 不为 false），与可用方式计算、插件登录判断一致 */
+const activeTwoFactor = (userId: string) =>
+  and(eq(twoFactor.userId, userId), sql`${twoFactor.verified} is not false`)
+
 async function accountFacts(db: Executor, userId: string): Promise<AccountFacts | null> {
   const [row] = await db
     .select({
@@ -523,7 +527,9 @@ export function createAdminStepUp(deps: AdminStepUpDeps) {
     const [row] = await tx
       .select({ secret: twoFactor.secret })
       .from(twoFactor)
-      .where(eq(twoFactor.userId, session.userId))
+      .where(activeTwoFactor(session.userId))
+      // 行锁让同一账号并发的 TOTP 校验串行：后到者读到前者写入的 last_totp_step
+      .for('update')
       .limit(1)
     if (!row) return fail(tx, session, 'totp')
     const secret = await symmetricDecrypt({ key: deps.secretConfig, data: row.secret })
@@ -551,7 +557,7 @@ export function createAdminStepUp(deps: AdminStepUpDeps) {
     const [row] = await tx
       .select({ id: twoFactor.id, backupCodes: twoFactor.backupCodes })
       .from(twoFactor)
-      .where(eq(twoFactor.userId, session.userId))
+      .where(activeTwoFactor(session.userId))
       .for('update')
       .limit(1)
     if (!row) return fail(tx, session, 'backup_code')

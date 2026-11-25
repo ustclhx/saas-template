@@ -336,6 +336,43 @@ describe('admin step-up: two-factor accounts', () => {
   })
 })
 
+describe('admin step-up: concurrent and unfinished two-factor', () => {
+  it('accepts a TOTP code submitted concurrently by two sessions only once', async () => {
+    const a = await account('concurrent')
+    const other = await signIn(a.email)
+    const { secret } = await enableTwoFactor(a.userId)
+    const { stepUp } = await service()
+    const code = await hotp(secret, totpStep(new Date()))
+    const results = await Promise.allSettled([
+      stepUp.verify(a.session, { method: 'totp', code }),
+      stepUp.verify(other, { method: 'totp', code }),
+    ])
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+    const [failed] = results.filter((r) => r.status === 'rejected')
+    expect((failed as PromiseRejectedResult).reason).toMatchObject({
+      code: 'STEP_UP_INVALID',
+      publicDetails: { reason: 'replayed' },
+    })
+  })
+
+  it('ignores a two-factor row whose enrollment is unfinished', async () => {
+    const a = await account('unfinished')
+    const { secret } = await enableTwoFactor(a.userId)
+    await sql`update two_factor set verified = false where user_id = ${a.userId}`
+    const { stepUp } = await service()
+    expect((await stepUp.options(a.session)).methods).toEqual(['email_otp', 'password'])
+    const code = await hotp(secret, totpStep(new Date()))
+    expect((await rejected(stepUp.verify(a.session, { method: 'totp', code }))).code).toBe(
+      'STEP_UP_METHOD_UNAVAILABLE',
+    )
+    expect(
+      (await rejected(stepUp.verify(a.session, { method: 'backup_code', code: 'aaaaa-11111' })))
+        .code,
+    ).toBe('STEP_UP_METHOD_UNAVAILABLE')
+    expect(await stepUpRow(a.session.id)).toBeUndefined()
+  })
+})
+
 describe('admin step-up: rescue', () => {
   it('lets a listed two-factor admin verify by email code as rescue', async () => {
     const a = await account('rescue-listed')
