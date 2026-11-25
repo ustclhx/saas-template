@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers'
 import {
   createTaskMediaProvider,
+  FalProviderError,
   initialMediaFaultProof,
   type MediaAcceptanceFault,
   type MediaAcceptanceFaultProof,
@@ -610,6 +611,41 @@ it('Workers AI 8007 keeps its safe code and summary through the Cloudflare step 
     errorMessage: 'Workers AI image generation failed (AiError 8007)',
   })
   expect(actual.files).toEqual([])
+  await refunded(f)
+})
+
+it('fal 明确拒绝（401）经 Cloudflare step 适配器不重试并保留原错误码', async () => {
+  const f = await fixture()
+  const fake = provider()
+  fake.submit.mockRejectedValue(
+    new FalProviderError('FAL_HTTP_ERROR', 'fal.ai HTTP request failed (401)', 401, 'rejected'),
+  )
+  const h = harness(fake)
+  // 模拟 CF 引擎：NonRetryableError 不再重试，回调异常经 RPC 复制后只剩 name/message。
+  const engine = {
+    async do(_name: string, configOrCallback: unknown, maybeCallback?: () => Promise<unknown>) {
+      const callback = (maybeCallback ?? configOrCallback) as () => Promise<unknown>
+      const limit = maybeCallback
+        ? ((configOrCallback as { retries?: { limit: number } }).retries?.limit ?? 0)
+        : 0
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await callback()
+        } catch (error) {
+          const { name, message } = error as Error
+          if (name === 'NonRetryableError' || attempt >= limit)
+            throw Object.assign(new Error(message), { name })
+        }
+      }
+    },
+  }
+  await runMediaTask(f.taskId, createCloudflareWorkflowStep(engine as never), h.deps)
+  expect(fake.submit).toHaveBeenCalledTimes(1)
+  expect((await state(f)).task).toMatchObject({
+    status: 'failed',
+    errorCode: 'FAL_HTTP_ERROR',
+    providerJobId: null,
+  })
   await refunded(f)
 })
 
