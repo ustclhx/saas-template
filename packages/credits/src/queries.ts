@@ -155,11 +155,16 @@ export async function getCreditBatches(
 export async function getCreditLedger(
   db: CreditsExecutor,
   workspaceId: string,
-  input: CreditPageInput & { userId?: string } = {},
+  input: CreditPageInput & { userId?: string; offset?: number } = {},
   tx?: CreditsTransaction,
 ) {
   const limit = validatePage(input)
-  const cursor = input.cursor
+  const { cursor, offset = 0 } = input
+  if (!Number.isSafeInteger(offset) || offset < 0 || (cursor && offset !== 0)) {
+    throw new RangeError(
+      'Credit ledger offset must be a non-negative integer and cannot be combined with a cursor',
+    )
+  }
   const rows = await (tx ?? db)
     .select({
       item: creditLedger,
@@ -183,6 +188,7 @@ export async function getCreditLedger(
     )
     .orderBy(desc(creditLedger.createdAt), desc(creditLedger.id))
     .limit(limit + 1)
+    .offset(offset)
   const page = rows.slice(0, limit)
   const last = page.at(-1)
   return {

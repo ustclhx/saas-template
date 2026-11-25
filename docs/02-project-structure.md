@@ -86,12 +86,12 @@ saas-template/
 | 层 | 位置 | 内容 | 修改方式 |
 |---|---|---|---|
 | 密钥 | 线上 Wrangler secrets；本地支付 `.env.local`、认证 app `.dev.vars` | API Key、Webhook secret、Auth secret | 本地按模板填写；线上 `wrangler secret put` |
-| 运行时设置 | 数据库 `setting` 表（KV 缓存） | 可在后台修改的项：模型定价、公告、注册开关 | 管理后台 |
+| 运行时设置 | 数据库 `setting` 表（KV 缓存） | 公告、注册开关、功能所用模型 | 管理后台或 Admin MCP |
 | 模板配置 | `template.config.ts`（代码） | 功能开关与产品形态 | 改代码、重新部署 |
 
 本地支付统一使用仓库根目录 `.env.example` / `.env.local`；Web、Jobs 与 billing seed/sync 共用 `STRIPE_SECRET_KEY`、`STRIPE_WEBHOOK_SECRET`、`PAYPAL_CLIENT_ID`、`PAYPAL_CLIENT_SECRET`、`PAYPAL_WEBHOOK_ID`，进程环境优先。本地 dev 入口只把这五项同步到对应 app 已忽略的 `.dev.vars` 管理区块，保留认证配置；其他认证/未来 AI 密钥不由这套支付入口加载。`.env.worktree` 继续负责 Orca 数据库与端口，不写支付密钥。线上不读取本机 `.env.local`，仍需分别配置 Worker secrets。步骤与本地预览构建边界见 [07 §4](./07-infrastructure.md#4-环境变量与绑定清单)。
 
-归属原则：泄露有风险的放密钥；需要不发版就能改的放运行时设置；决定代码路径和产品形态的（是否多租户、启用哪些登录方式）放模板配置。运行时设置在代码里必须有默认值，`setting` 表中缺失时回退到默认值，而不是去读另外两层。
+将 Provider、部署和认证凭据放密钥层，将需随运营调整的选项放运行时设置，将决定代码路径和产品形态的开关放模板配置。
 
 整体模块开关也属于模板配置：`billing.enabled`、`credits.enabled`、
 `marketing.enabled`、`i18n.enabled` 默认均为 `true`。支付 provider 列表为空只隐藏支付渠道，
@@ -185,6 +185,27 @@ export default defineTemplateConfig({
 `pill` / `sharp` 使用固定圆角；卡片、输入框等其余组件仍按 `--radius` 渲染，随组件接入（tasks 4.x）逐步统一。
 
 环境变量用 Zod 在启动时校验（`packages/config/env.ts`），缺失即报错，避免线上才发现。
+
+### 运行时设置定义
+
+模板设置由 `packages/db/src/settings.ts` 的 `templateSettings` 定义。新增项目设置时，在该目录下项目自有的 `settings.project.ts` 默认导出中登记，template-sync 会保留该文件。每项提供 Zod `schema`、通过该 schema 的 `default` 和 `description`，运营通知令牌等需脱敏的设置另标记 `secret: true`。登记时重复键和无效默认值会报错。
+
+```ts
+import { z } from 'zod'
+import { defineSetting } from './setting-definition.ts'
+
+export default {
+  'project.summaryMaxChars': defineSetting({
+    schema: z.number().int().min(1).max(10_000),
+    default: 1000,
+    description: '站内摘要最多保留的字符数',
+  }),
+}
+```
+
+服务端用 `getSetting(ctx, 'project.summaryMaxChars')` 获取推导类型后的值。需要按字符串读取动态注册的键时，用 `getSettingValue(ctx, key)`。当数据库中缺少该项时返回定义中的默认值，已有值不符合 schema 时抛错。后台和 MCP 保存时也使用该定义验证，schema 需同时接受会保存到数据库的规范化值。MCP 可列出并写入登记项，读取密钥项时仅显示设置状态。[管理员 MCP](admin-mcp.md#工具与权限)
+
+功能模型键 `ai.model.<feature>` 由 AI 包根据功能登记自动生成。项目直接登记功能及沿用顺序，即可在后台选择模型。[功能模型](06-ai.md#功能模型)
 
 ## 4. 编码约定
 

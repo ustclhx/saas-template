@@ -910,6 +910,9 @@ importers:
       '@modelcontextprotocol/server':
         specifier: 2.4.0
         version: 2.4.0
+      '@saas/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@saas/config':
         specifier: workspace:*
         version: link:../../packages/config

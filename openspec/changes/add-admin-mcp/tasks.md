@@ -17,9 +17,9 @@
 
 ## 4. 工具（R8）
 
-- [ ] 4.1 工具框架：`defineAdminTool`（name、scope、zod 输入、run）、scope 检查、参数摘要脱敏、读工具与被拒调用写 `admin.mcp.call` 审计、写工具经 `runAdminAction` 并合并 `meta.via/tokenId/tool`、`dryRun` 不落库。单元测试覆盖只读令牌调写工具被拒且有审计、脱敏
-- [ ] 4.2 设置与模型工具：`settings.list` / `settings.get`（密钥项只返回是否已设置；功能模型项附解析来源）、`settings.set`（定义校验、清缓存、返回新旧值、dryRun）、`models.list`（无密钥字段）、`models.update`（把后台模型校验与保存从 `admin-models.functions.ts` 抽到可复用模块，后台改为调用它）、`features.models`。集成测试：`settings.set` 写功能模型后 `resolveFeatureModel` 立即变化（清缓存）、审计含 via=mcp 与新旧值；`models.update` 停用模型后依赖它的功能解析回退
-- [ ] 4.3 只读业务工具：`users.search` / `users.get`、`workspaces.list`、`orders.list`、`credits.ledger`、`audit.list`、`metrics.summary`，复用后台查询与字段投影（必要时把查询从 `*.functions.ts` 抽出，后台改为调用抽出的函数），分页 offset/limit ≤ 50。集成测试确认字段与后台一致、跨空间数据按后台规则展示
+- [x] 4.1 工具框架：`defineAdminTool`（name、scope、zod 输入、run）、scope 检查、参数摘要脱敏、读工具与被拒调用写 `admin.mcp.call` 审计、写工具经 `runAdminAction` 并合并 `meta.via/tokenId/tool`、`dryRun` 不落库。单元测试覆盖只读令牌调写工具被拒且有审计、脱敏
+- [x] 4.2 设置与模型工具：`settings.list` / `settings.get`（密钥项只返回是否已设置；功能模型项附解析来源）、`settings.set`（定义校验、清缓存、返回新旧值、dryRun）、`models.list`（无密钥字段）、`models.update`（把后台模型校验与保存从 `admin-models.functions.ts` 抽到可复用模块，后台改为调用它）、`features.models`。集成测试：`settings.set` 写功能模型后 `resolveFeatureModel` 立即变化（清缓存）、审计含 via=mcp 与新旧值；`models.update` 停用模型后依赖它的功能解析回退
+- [x] 4.3 只读业务工具：`users.search` / `users.get`、`workspaces.list`、`orders.list`、`credits.ledger`、`audit.list`、`metrics.summary`，复用后台查询与字段投影（必要时把查询从 `*.functions.ts` 抽出，后台改为调用抽出的函数），分页 offset/limit ≤ 50。集成测试确认字段与后台一致、跨空间数据按后台规则展示
 
 ## 5. 界面（先设计确认）
 
@@ -28,6 +28,6 @@
 
 ## 6. 文档、技能与验收
 
-- [ ] 6.1 文档：`docs/` 新增 admin MCP 一节（创建令牌、`claude mcp add --transport http <url>/api/admin/mcp --header "Authorization: Bearer …"`、工具清单与 scope、dryRun、审计查看、令牌保管）；`docs/plugins.md` 登记插件；运行时设置文档说明定义表与项目设置项；功能模型用法；新增技能「新功能上线时由 agent 配置模型并验证」（`.agents/skills` 与 `.claude/skills` 字节一致）；`security-scan` 清单加入管理员令牌与 MCP 端点
+- [x] 6.1 文档：`docs/` 新增 admin MCP 一节（创建令牌、`claude mcp add --transport http <url>/api/admin/mcp --header "Authorization: Bearer …"`、工具清单与 scope、dryRun、审计查看、令牌保管）；`docs/plugins.md` 登记插件；运行时设置文档说明定义表与项目设置项；功能模型用法；新增技能「新功能上线时由 agent 配置模型并验证」（`.agents/skills` 与 `.claude/skills` 字节一致）；`security-scan` 清单加入管理员令牌与 MCP 端点
 - [ ] 6.2 本地验收：用 Claude Code（或 `@modelcontextprotocol/client` 脚本）连本地 dev 完成 tools/list → `settings.get` → `settings.set` dryRun → 写入 → 读回，并在后台审计页看到记录；生成器 `--plugins` 去掉 admin-mcp 的副本不含端点与依赖。证据写入 `EVIDENCE_DIR`
 - [ ] 6.3 staging 验收：管理员在 staging 创建令牌，经 MCP 读设置与模型、对一个无害设置项 dryRun 与写入并还原，确认审计；吊销后调用返回 401。证据写入私有证据库。需要 staging 管理员登录，未执行时在 PR 中标为未完成验收

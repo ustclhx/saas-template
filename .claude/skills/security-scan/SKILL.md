@@ -61,6 +61,7 @@ rules = {
         r'|AKIA[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{30,})\b'
     ),
     'credential-url': re.compile(r"""\b(?:postgres(?:ql)?|https?)://[^\s/:"'`]+:[^\s/@"'`]+@"""),
+    'admin-mcp-token': re.compile(r'(?<![A-Za-z0-9_-])xat_[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])'),
     'literal-secret': re.compile(
         r'''(?ix)\b(?:[a-z0-9_]*(?:api_key|secret|password|access_token)[a-z0-9_]*)
         ["']?\s*[:=]\s*["']([A-Za-z0-9_./+=-]{16,})["']'''
@@ -112,6 +113,7 @@ PY
 | 边界 | 核查重点与现有入口 |
 |---|---|
 | 身份与租户 | `apps/web/src/server/auth.ts`、`workspace-context.ts`；会话/可信 workspace、角色与资源归属检查在服务端，租户查询复用 `packages/db/src/scoped.ts`。后台写入复用 `features/admin/action.ts` / `action.server.ts` 的 adminAction，列表沿用 admin/list.ts。客户端隐藏按钮不能替代权限。 |
+| 管理员令牌与 MCP | 顺着 `plugins/admin-mcp/routes/api/admin/mcp.ts` 检查个人令牌只存哈希、完整值仅创建时显示、列表及吊销限本人、鉴权逐请求核验过期/吊销/管理员角色/封禁。检查 Origin 校验、每令牌限流、请求体上限、响应禁缓存与工具 scope。写工具复用 adminAction，预览只写审计，实际写入与审计共用事务。核对调用审计、返回值、错误与日志中的密钥脱敏。[管理员 MCP](../../../docs/admin-mcp.md) |
 | Agent 工具与实例 | 从 `plugins/agents/src/worker/index.ts` 跟踪 WebSocket 与 HTTP（含 `get-messages`），核对两条路径均校验会话、对话所有者与成员资格，并在转发前剥离客户端全部 `x-saas-*` 头、以服务端身份重建三项可信头。实例逐请求比对身份与归属。工具采用 `ctx` 提供的身份、请求级 DB 与 `scoped`，检查角色和资源归属，副作用经确认并以 `ctx.idempotencyKey` 在写入边界去重。检查模块级和闭包内的 DB、缓存及可变状态，租户数据仅限请求上下文、实例字段或实例存储。见 `docs/06-ai.md` §8。 |
 | 输入与注入 | Server Functions / HTTP 入参使用共享 schema；SQL 参数化，排序/字段由白名单决定；正文/HTML 与 URL 各走可信内容或既有校验链路；命令参数使用结构化参数或正确 shell 引用。检查 `dangerouslySetInnerHTML` 和动态 SQL 的来源。 |
 | Webhook | `apps/web/src/features/billing/webhook-http.ts`、`packages/billing/src/`、`apps/web/src/routes/api/webhooks/media/$provider.ts`；先原始体验签，投递去重，事务处理业务，异步副作用；媒体先落库再唤醒。重放不能再次发积分，网络失败不能被吞成成功。 |

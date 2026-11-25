@@ -1,4 +1,4 @@
-import { getCreditBatches, getCreditLedger } from '@saas/credits'
+import { getCreditBatches } from '@saas/credits'
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
@@ -8,7 +8,11 @@ import { getWebRuntime } from '../../server/runtime.ts'
 import { templateConfig } from '../../server/template-config.ts'
 import { adminMiddleware } from './admin.functions.ts'
 import { executeAdminWorkspaceRestore } from './workspaces.server.ts'
-import { adminWorkspaceDetail, listAdminWorkspaces } from './workspaces.ts'
+import {
+  adminWorkspaceDetail,
+  getAdminWorkspaceCreditLedger,
+  listAdminWorkspaces,
+} from './workspaces.ts'
 
 export const getAdminWorkspaces = createServerFn({ method: 'GET' })
   .middleware([adminMiddleware])
@@ -40,7 +44,7 @@ export const getAdminWorkspaceCredits = createServerFn({ method: 'GET' })
   .handler(({ context, data }) =>
     data.kind === 'batches'
       ? getCreditBatches(context.db, data.id, { cursor: data.cursor })
-      : getCreditLedger(context.db, data.id, { cursor: data.cursor }),
+      : getAdminWorkspaceCreditLedger(context.db, data.id, { cursor: data.cursor }),
   )
 
 export const restoreAdminWorkspace = createServerFn({ method: 'POST' })

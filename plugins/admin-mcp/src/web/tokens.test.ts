@@ -8,15 +8,16 @@ vi.mock('@web/server/template-config.ts', () => ({
 const day = 86_400_000
 
 it.each([
+  { name: 'a'.repeat(101) },
   { scopes: ['admin:write'] as const },
   { scopes: ['admin:read', 'admin:read'] as const },
   { expiresAt: new Date(Date.now() - day) },
   { expiresAt: new Date(Date.now() + 31 * day) },
-])('拒绝不符合令牌 scope 或有效期限制的创建输入 %#', async (invalid) => {
+])('拒绝不符合令牌名称、scope 或有效期限制的创建输入 %#', async (invalid) => {
   const db = { insert: vi.fn() }
   await expect(
     createAdminApiToken(db, 'admin-id', {
-      name: 'MCP',
+      name: invalid.name ?? 'MCP',
       scopes: [...(invalid.scopes ?? ['admin:read'])],
       expiresAt: invalid.expiresAt,
     }),
