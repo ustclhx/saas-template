@@ -6,6 +6,7 @@ import { templateConfig } from '@web/server/template-config.ts'
 import { and, desc, eq, gt, gte, isNull, lte, or } from 'drizzle-orm'
 import { z } from 'zod'
 import { adminMcpConfigSchema } from '../config.ts'
+import { TOKEN_NAME_MAX } from './api-tokens.ts'
 
 const DAY_MS = 86_400_000
 const TOUCH_INTERVAL_MS = 60_000
@@ -17,7 +18,7 @@ const tokenScopes = z
 export type AdminTokenScope = z.output<typeof tokenScopes>[number]
 
 const tokenInput = z.object({
-  name: z.string().trim().min(1).max(100),
+  name: z.string().trim().min(1).max(TOKEN_NAME_MAX),
   scopes: tokenScopes,
   expiresAt: z.date().optional(),
 })
