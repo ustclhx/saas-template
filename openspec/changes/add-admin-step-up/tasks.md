@@ -10,10 +10,10 @@
 
 ## 1. 动作登记表与守卫骨架（Worker A，先行）
 
-- [ ] 1.1 新增 `apps/web/src/features/admin/actions.registry.ts`：按 design.md「入口清单」登记全部后台动作名与 `stepUp`（`always` / `never` / 输入判定函数）、理由；导出 `AdminActionName` 类型与插件追加登记的 `defineAdminActions()`（键重复即抛错）。单元测试覆盖重复键、`setting.update` 只在密钥项实际改变时为敏感、`ai.model_save` 只在新建或定价变化时为敏感、`billing.refund_review` 只在通过时为敏感。验收：`pnpm --filter @saas/web test` 相关用例通过〔本地〕
-- [ ] 1.2 `action.ts` / `action.server.ts`：`runAdminAction`、`adminAction`、`withAdminAction` 的 `name` 改为 `AdminActionName`；`runDelegatedAdminAction` / `withDelegatedAdminAction` 新增必填 `name`；`AdminActionContext` 增加 `session` 与可选 `confirmation`；事务前调用 `assertStepUp`（本组先实现为读 `admin_step_up` 表的检查，验证方式由第 2 组补齐）。把全部调用点（含 `impersonation.server.ts` 的 `executeAdminAuthAction`、`executeAdminWorkspaceRestore`、`plugins/admin-mcp` 的令牌函数、`server/sentry-test.ts`）改为登记表动作名。验收：`pnpm typecheck` 通过，现有后台测试全部通过〔本地〕
-- [ ] 1.3 schema：`packages/db/src/schema/platform.ts` 新增 `admin_step_up`（session_id PK 级联、user_id、method、verified_at、expires_at、last_totp_step）与 `admin_pending_action`（design.md 决策 7 全部字段，`(requested_by, status)` 与 `(token_id, status)` 索引）；`docs/03-data-model.md` 补两表。用 `drizzle-kit push` 同步本 worktree 库，不提交迁移 SQL。验收：`pnpm --filter @saas/db test` 通过〔本地〕
-- [ ] 1.4 守卫测试：表驱动集成测试遍历登记表的敏感项，无验证记录调用对应 Server Function 断言 403 `STEP_UP_REQUIRED` 且业务表与审计不变，插入有效 `admin_step_up` 后断言成功；遍历 `never` 项断言无需验证；静态扫描确认调用点与登记表双向一致（每个调用点的动作名已登记、每个登记键至少一个调用点）。验收：集成测试在隔离测试库通过〔本地〕
+- [x] 1.1 新增 `apps/web/src/features/admin/actions.registry.ts`：按 design.md「入口清单」登记全部后台动作名与 `stepUp`（`always` / `never` / 输入判定函数）、理由；导出 `AdminActionName` 类型与插件追加登记的 `defineAdminActions()`（键重复即抛错）。单元测试覆盖重复键、`setting.update` 只在密钥项实际改变时为敏感、`ai.model_save` 只在新建或定价变化时为敏感、`billing.refund_review` 只在通过时为敏感。验收：`pnpm --filter @saas/web test` 相关用例通过〔本地〕
+- [x] 1.2 `action.ts` / `action.server.ts`：`runAdminAction`、`adminAction`、`withAdminAction` 的 `name` 改为 `AdminActionName`；`runDelegatedAdminAction` / `withDelegatedAdminAction` 新增必填 `name`；`AdminActionContext` 增加 `session` 与可选 `confirmation`；事务前调用 `assertStepUp`（本组先实现为读 `admin_step_up` 表的检查，验证方式由第 2 组补齐）。把全部调用点（含 `impersonation.server.ts` 的 `executeAdminAuthAction`、`executeAdminWorkspaceRestore`、`plugins/admin-mcp` 的令牌函数、`server/sentry-test.ts`）改为登记表动作名。验收：`pnpm typecheck` 通过，现有后台测试全部通过〔本地〕
+- [x] 1.3 schema：`packages/db/src/schema/platform.ts` 新增 `admin_step_up`（session_id PK 级联、user_id、method、verified_at、expires_at、last_totp_step）与 `admin_pending_action`（design.md 决策 7 全部字段，`(requested_by, status)` 与 `(token_id, status)` 索引）；`docs/03-data-model.md` 补两表。用 `drizzle-kit push` 同步本 worktree 库，不提交迁移 SQL。验收：`pnpm --filter @saas/db test` 通过〔本地〕
+- [x] 1.4 守卫测试：表驱动集成测试遍历登记表的敏感项，无验证记录调用对应 Server Function 断言 403 `STEP_UP_REQUIRED` 且业务表与审计不变，插入有效 `admin_step_up` 后断言成功；遍历 `never` 项断言无需验证；静态扫描确认调用点与登记表双向一致（每个调用点的动作名已登记、每个登记键至少一个调用点）。验收：集成测试在隔离测试库通过〔本地〕
 
 ## 2. 验证方式与应急（Worker B，依赖第 1 组合并）
 

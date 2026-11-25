@@ -15,7 +15,15 @@ export const adminMiddleware = createMiddleware({ type: 'function' }).server(asy
   const headers = getRequest().headers
   const admin = await requireAdmin({ auth, db, headers }).catch(rethrowNotFound)
   // IP 只使用入口完成信任校验后的请求元数据。
-  return next({ context: { admin: admin.user, db, ip: runtime.requestMeta.clientIp } })
+  return next({
+    context: {
+      admin: admin.user,
+      db,
+      ip: runtime.requestMeta.clientIp,
+      // 敏感动作按此会话检查重新验证（add-admin-step-up 决策 2）
+      session: { id: admin.session.id, userId: admin.user.id },
+    },
+  })
 })
 
 function rethrowNotFound(error: unknown): never {

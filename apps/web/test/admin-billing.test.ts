@@ -11,6 +11,7 @@ import {
   listAdminWebhooks,
 } from '../src/features/billing/admin-data.ts'
 import { createAdminTestDb } from './admin-test-resources.ts'
+import { deleteStepUpSessions, type StepUpSession, stepUpSession } from './step-up-fixtures.ts'
 
 const db = createAdminTestDb()
 const migrator = createAdminTestDb('migrator')
@@ -18,11 +19,17 @@ const adminId = newId()
 const spaces = [newId(), newId()]
 const plans: string[] = []
 const webhookIds: string[] = []
-const context = { db, admin: { id: adminId }, ip: '203.0.113.7' }
+const context = {
+  db,
+  admin: { id: adminId },
+  ip: '203.0.113.7',
+  session: undefined as StepUpSession | undefined,
+}
 let initialized = false
 async function fixture() {
   if (initialized) return
   await db.$client`insert into "user"(id,name,email,role) values(${adminId},'Admin',${`${adminId}@admin-billing.example`},'admin')`
+  context.session = await stepUpSession(db, adminId)
   for (const ws of spaces) {
     await db.$client`insert into organization(id,name,slug) values(${ws},'Admin billing',${ws})`
     const plan = newId(),
@@ -74,6 +81,7 @@ afterAll(async () => {
   if (webhookIds.length)
     await db.$client`delete from webhook_event where id in ${db.$client(webhookIds)}`
   await db.$client`delete from organization where id in ${db.$client(spaces)}`
+  await deleteStepUpSessions(db)
   await db.$client`delete from "user" where id=${adminId}`
   await Promise.all([db.$client.end(), migrator.$client.end()])
 })

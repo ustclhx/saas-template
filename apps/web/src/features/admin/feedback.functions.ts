@@ -36,7 +36,5 @@ export const getAdminFeedbackConversation = createServerFn({ method: 'POST' })
   .middleware([adminMiddleware])
   .validator(z.strictObject({ id: z.uuid() }))
   .handler(
-    adminAction('ai.feedback.view_conversation', ({ data, ...scope }) =>
-      readSharedConversation(scope, data.id),
-    ),
+    adminAction('ai.feedback.view', ({ data, ...scope }) => readSharedConversation(scope, data.id)),
   )

@@ -86,6 +86,11 @@ async function actor(role = 'user') {
   expect(response.status).toBe(200)
   const body = (await response.json()) as { user: { id: string } }
   await db.$client`update "user" set role=${role} where id=${body.user.id}`
+  // 管理员夹具的会话视为已重新验证（add-admin-step-up）；未验证的拒绝由守卫测试覆盖。
+  if (role === 'admin')
+    await db.$client`insert into admin_step_up(session_id,user_id,method,verified_at,expires_at)
+      select id, user_id, 'password', now(), now() + interval '10 minutes'
+      from session where user_id=${body.user.id}`
   return {
     id: body.user.id,
     email,

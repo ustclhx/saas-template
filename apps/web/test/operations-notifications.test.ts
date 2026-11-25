@@ -33,6 +33,7 @@ import {
   writeOperationsSettings,
 } from '../src/features/admin/settings-operations.ts'
 import { enqueueRefundOperations } from '../src/features/notifications/operations.ts'
+import { deleteStepUpSessions, stepUpSession } from './step-up-fixtures.ts'
 
 it('将历史 JSONB 数字 chat ID 读取为 Telegram 通知和后台所用的字符串', async () => {
   const db = createDb(env.HYPERDRIVE)
@@ -79,6 +80,7 @@ it('退款已提交成功，Telegram HTTP 超时只让消息重试，重投成�
     await db
       .insert(user)
       .values({ id: uid, name: 'Ops test', email: `${uid}@ops.test`, role: 'admin' })
+    const session = await stepUpSession(db, uid)
     await db.insert(organization).values({ id: ws, name: 'Ops test', slug: ws })
     await db.insert(member).values({ id: newId(), userId: uid, organizationId: ws, role: 'owner' })
     await db.insert(plan).values({
@@ -124,7 +126,7 @@ it('退款已提交成功，Telegram HTTP 超时只让消息重试，重投成�
       discordWebhookUrl: webhook,
     })
     await runAdminAction(
-      { db, admin: { id: uid }, ip: null },
+      { db, admin: { id: uid }, ip: null, session },
       'setting.operations.update',
       (scope) => writeOperationsSettings(scope, input),
     )
@@ -135,7 +137,7 @@ it('退款已提交成功，Telegram HTTP 超时只让消息重试，重投成�
     })
     // 省略输入不会覆盖密钥；后台读接口始终只返回配置状态。
     await runAdminAction(
-      { db, admin: { id: uid }, ip: null },
+      { db, admin: { id: uid }, ip: null, session },
       'setting.operations.update',
       (scope) => writeOperationsSettings(scope, { telegramChatId: '-123' }),
     )
@@ -242,7 +244,7 @@ it('退款已提交成功，Telegram HTTP 超时只让消息重试，重投成�
     expect(visible).not.toContain('private@ops.test')
     expect(visible).toContain('ops-request-123')
     await runAdminAction(
-      { db, admin: { id: uid }, ip: null },
+      { db, admin: { id: uid }, ip: null, session },
       'setting.operations.update',
       (scope) =>
         writeOperationsSettings(scope, {
@@ -269,6 +271,7 @@ it('退款已提交成功，Telegram HTTP 超时只让消息重试，重投成�
     await db.delete(plan).where(eq(plan.id, planId))
     await scoped(db, ws).delete(member, undefined)
     await db.delete(organization).where(eq(organization.id, ws))
+    await deleteStepUpSessions(db)
     await db.delete(user).where(eq(user.id, uid))
   }
 }, 15000)

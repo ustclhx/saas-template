@@ -11,6 +11,7 @@ import { requireAdmin } from '../src/features/admin/guard.ts'
 import { listAdminPlans, updateAdminPlanModels } from '../src/features/billing/admin-plans.ts'
 import { adminPlanModelsInput } from '../src/features/billing/admin-plans-input.ts'
 import { createAdminTestDb } from './admin-test-resources.ts'
+import { deleteStepUpSessions, type StepUpSession, stepUpSession } from './step-up-fixtures.ts'
 
 const db = createAdminTestDb()
 const migrator = createAdminTestDb('migrator')
@@ -28,7 +29,12 @@ const features = {
   maxSeats: 9,
   custom: { preserved: true },
 }
-const context = { db, admin: { id: adminId }, ip: '203.0.113.7' }
+const context = {
+  db,
+  admin: { id: adminId },
+  ip: '203.0.113.7',
+  session: undefined as StepUpSession | undefined,
+}
 const update = (models: string[], actor = context) =>
   runAdminAction(actor, 'admin.plan.models.update', (scope) =>
     updateAdminPlanModels(scope, { id: planId, models }),
@@ -38,6 +44,7 @@ const audits = () => db.select().from(auditLog).where(eq(auditLog.targetId, plan
 
 beforeAll(async () => {
   await db.$client`insert into "user"(id,name,email,role) values(${adminId},'Admin',${`${adminId}@plan-test.example`},'admin'),(${memberId},'Member',${`${memberId}@plan-test.example`},'user')`
+  context.session = await stepUpSession(db, adminId)
   await db.$client`insert into organization(id,name,slug) values(${workspaceId},'Plan fixture',${workspaceId})`
   await db.$client`insert into plan(id,key,name,type,credits,features,active) values(${planId},${planKey},'Plan fixture','subscription',100,${JSON.stringify(features)}::jsonb,false)`
   await db.$client`insert into plan_price(id,plan_id,provider,provider_price_id,interval,amount,currency) values(${priceId},${planId},'stripe',${priceId},'month',1234,'usd')`
@@ -54,6 +61,7 @@ afterAll(async () => {
   await db.$client`delete from plan where id=${planId}`
   await db.$client`delete from ai_model where id in ${db.$client(modelIds)}`
   await db.$client`delete from organization where id=${workspaceId}`
+  await deleteStepUpSessions(db)
   await db.$client`delete from "user" where id in ${db.$client([adminId, memberId])}`
   await Promise.all([db.$client.end(), migrator.$client.end()])
 })

@@ -9,7 +9,7 @@ export function executeAdminWorkspaceRestore(
   context: AdminActionContext,
   options: { runtime: WebRuntime; headers: Headers; workspaceId: string },
 ) {
-  return withDelegatedAdminAction(context, (db) =>
+  return withDelegatedAdminAction(context, 'workspace.restore', (db) =>
     restoreWorkspace({
       db,
       auth: options.runtime.createAuth(db),

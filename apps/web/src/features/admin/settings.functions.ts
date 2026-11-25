@@ -3,7 +3,12 @@ import { createServerFn } from '@tanstack/react-start'
 import { getWebRuntime } from '../../server/runtime.ts'
 import { withAdminAction } from './action.server.ts'
 import { adminMiddleware } from './admin.functions.ts'
-import { invalidateRuntimeSettings, readRuntimeSettings, writeRuntimeSettings } from './settings.ts'
+import {
+  invalidateRuntimeSettings,
+  readRuntimeSettings,
+  runtimeSettingEntries,
+  writeRuntimeSettings,
+} from './settings.ts'
 import { runtimeSettingsInput } from './settings-schema.ts'
 
 export const getAdminSettings = createServerFn({ method: 'GET' })
@@ -14,7 +19,11 @@ export const saveAdminSettings = createServerFn({ method: 'POST' })
   .middleware([adminMiddleware])
   .inputValidator(runtimeSettingsInput)
   .handler(async ({ context, data }) => {
-    await withAdminAction(context, 'setting.update', (scope) => writeRuntimeSettings(scope, data))
+    await withAdminAction(
+      context,
+      { name: 'setting.update', input: { entries: runtimeSettingEntries(data) } },
+      (scope) => writeRuntimeSettings(scope, data),
+    )
     try {
       await invalidateRuntimeSettings(getWebRuntime().cache)
     } catch (error) {

@@ -50,7 +50,7 @@ it('外站与非管理员不能触发异常或审计', async () => {
 })
 
 it('管理员触发前提交审计，未启用时不抛测试异常', async () => {
-  mocks.admin.mockResolvedValue({ user: { id: 'admin-1' } })
+  mocks.admin.mockResolvedValue({ user: { id: 'admin-1' }, session: { id: 'session-1' } })
   mocks.enabled = false
   expect((await sentryTest(request(), runtime)).status).toBe(503)
   expect(mocks.audit).not.toHaveBeenCalled()
@@ -58,7 +58,12 @@ it('管理员触发前提交审计，未启用时不抛测试异常', async () =
   await expect(sentryTest(request(), runtime)).rejects.toThrow(
     'Sentry verification: web worker test exception',
   )
-  expect(mocks.action).toHaveBeenCalledWith(expect.objectContaining({ ip: 'trusted-peer' }))
+  expect(mocks.action).toHaveBeenCalledWith(
+    expect.objectContaining({
+      ip: 'trusted-peer',
+      session: { id: 'session-1', userId: 'admin-1' },
+    }),
+  )
   expect(mocks.audit).toHaveBeenCalledWith({
     action: 'observability.sentry-test',
     targetType: 'observability',

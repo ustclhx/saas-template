@@ -79,8 +79,10 @@ export const saveAdminModel = createServerFn({ method: 'POST' })
   .inputValidator(adminModelInput.extend({ id: z.uuid().optional() }))
   .handler(({ context, data }) =>
     safe(() =>
-      withAdminAction(context, 'ai.model_save', (scope) =>
-        saveAdminModelRecord(scope, data, modelRuntimeCapabilities()),
+      withAdminAction(
+        context,
+        { name: 'ai.model_save', input: { id: data.id, pricing: data.pricing } },
+        (scope) => saveAdminModelRecord(scope, data, modelRuntimeCapabilities()),
       ),
     ),
   )
@@ -90,7 +92,7 @@ export const setAdminModelEnabled = createServerFn({ method: 'POST' })
   .inputValidator(z.object({ id: z.uuid(), enabled: z.boolean() }))
   .handler(({ context, data }) =>
     safe(() =>
-      withAdminAction(context, 'ai.model_set_enabled', (scope) =>
+      withAdminAction(context, 'ai.model_toggle', (scope) =>
         setAdminModelRecordEnabled(scope, data, modelRuntimeCapabilities()),
       ),
     ),

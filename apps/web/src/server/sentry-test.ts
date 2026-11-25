@@ -21,8 +21,13 @@ export async function sentryTest(request: Request, runtime: WebRuntime): Promise
   if (!runtime.observability?.enabled) return new Response('Sentry disabled', { status: 503 })
   setLogContext({ userId: fresh.user.id })
   await withAdminAction(
-    { db, admin: fresh.user, ip: runtime.requestMeta.clientIp },
-    'observability.sentry-test',
+    {
+      db,
+      admin: fresh.user,
+      ip: runtime.requestMeta.clientIp,
+      session: { id: fresh.session.id, userId: fresh.user.id },
+    },
+    'observability.sentry_test',
     async ({ audit }) => {
       await audit({ action: 'observability.sentry-test', targetType: 'observability' })
     },

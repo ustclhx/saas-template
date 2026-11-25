@@ -10,8 +10,10 @@ import {
   type AdminAuditEntry,
   runAdminAction,
 } from '@web/features/admin/action.ts'
+import type { AdminActionRef } from '@web/features/admin/actions.registry.ts'
 import { ADMIN_PAGE_SIZE } from '@web/features/admin/list.ts'
 import { z } from 'zod'
+import { adminMcpActions } from '../actions.ts'
 import type { AdminTokenScope } from '../tokens.ts'
 
 export interface AdminToolContext extends AdminActionContext {
@@ -46,6 +48,11 @@ type AdminTool<Schema extends z.ZodObject> = {
   | { readonly scope: 'admin:read'; run: ToolHandler<Schema, AdminToolContext> }
   | {
       readonly scope: 'admin:write'
+      /**
+       * 本次写入对应的后台动作（与后台同名，见 actions.registry.ts），按已校验的输入给出。
+       * 敏感判定命中时，无会话的 MCP 调用被拒（STEP_UP_REQUIRED）；改为待确认由第 3 组实现。
+       */
+      adminAction(input: z.output<Schema>): AdminActionRef
       run: ToolHandler<Schema, AdminToolContext & AdminActionScope & { dryRun: boolean }>
       afterCommit?(ctx: AdminToolContext, input: z.output<Schema>): Promise<void>
     }
@@ -147,7 +154,9 @@ async function finishCall(
   code: string,
 ) {
   try {
-    await runAdminAction(ctx, 'admin.mcp.call', ({ audit }) => audit(callAuditEntry(meta, code)))
+    await runAdminAction(ctx, adminMcpActions['admin.mcp.call'], ({ audit }) =>
+      audit(callAuditEntry(meta, code)),
+    )
     return result
   } catch (error) {
     // 审计失败时禁止返回数据，日志不记录数据库异常内容。
@@ -195,7 +204,9 @@ export function registerAdminTool<Schema extends z.ZodObject>(
           const result = await tool.run(ctx, parsed.data)
           return finishCall(ctx, meta, result, 'ok')
         }
-        const result = await runAdminAction(ctx, `mcp.${tool.name}`, async (scope) => {
+        // 预览只校验不保存，不要求重新验证；正式写入按工具声明的后台动作判定
+        const action = dryRun ? adminMcpActions['admin.mcp.dry_run'] : tool.adminAction(parsed.data)
+        const result = await runAdminAction(ctx, action, async (scope) => {
           const preview = await tool.run(
             {
               ...ctx,

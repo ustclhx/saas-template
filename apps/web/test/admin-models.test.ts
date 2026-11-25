@@ -4,6 +4,7 @@ import { newId } from '@saas/shared'
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { adminCache, cacheValues, createAdminTestDb } from './admin-test-resources.ts'
+import { deleteStepUpSessions, type StepUpSession, stepUpSession } from './step-up-fixtures.ts'
 
 // 只替换 Server Function 传输与请求环境；业务 handler、adminAction 与数据库保持真实。
 const runtime = vi.hoisted(() => ({ env: {} as Record<string, string> }))
@@ -36,7 +37,12 @@ const db = createAdminTestDb()
 const migrator = createAdminTestDb('migrator')
 const adminId = newId()
 const runId = newId().slice(-8)
-const context = { db, admin: { id: adminId }, ip: '203.0.113.7' }
+const context = {
+  db,
+  admin: { id: adminId },
+  ip: '203.0.113.7',
+  session: undefined as StepUpSession | undefined,
+}
 const faultSchema = { 'x-acceptance-fault': { mode: 'chat-before-stream' } }
 type Result = { ok: true; id: string } | { ok: false; error: string }
 const call = (action: unknown, data: unknown): Promise<Result> =>
@@ -77,6 +83,7 @@ async function hash(schema: unknown) {
 
 beforeAll(async () => {
   await db.$client`insert into "user"(id,name,email,role) values(${adminId},'Admin',${`${adminId}@admin-model-test.example`},'admin')`
+  context.session = await stepUpSession(db, adminId)
 })
 beforeEach(() => {
   runtime.env = { SENTRY_ENVIRONMENT: 'staging', AI_FAULT_INJECTION: 'enabled' }
@@ -85,6 +92,7 @@ beforeEach(() => {
 afterAll(async () => {
   await migrator.$client`delete from audit_log where actor_user_id=${adminId}`
   if (modelIds.length) await db.$client`delete from ai_model where id in ${db.$client(modelIds)}`
+  await deleteStepUpSessions(db)
   await db.$client`delete from "user" where id=${adminId}`
   cacheValues.delete(MODEL_CACHE_KEY)
   await Promise.all([db.$client.end(), migrator.$client.end()])

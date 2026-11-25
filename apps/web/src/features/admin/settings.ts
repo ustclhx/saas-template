@@ -122,7 +122,8 @@ export async function writeRuntimeSetting(
   return changes
 }
 
-export async function writeRuntimeSettings(scope: AdminActionScope, input: RuntimeSettingsInput) {
+/** 后台设置表单对应的设置项（键与新值），写入与 step-up 判定共用 */
+export function runtimeSettingEntries(input: RuntimeSettingsInput) {
   const values: Pick<SettingValues, (typeof RUNTIME_SETTING_KEYS)[number]> = {
     'auth.signupEnabled': input.signupEnabled,
     'site.announcement': input.announcement,
@@ -133,7 +134,12 @@ export async function writeRuntimeSettings(scope: AdminActionScope, input: Runti
     'credits.dailyExpiryDays': input.dailyExpiryDays,
     'credits.dailyRequireVerifiedEmail': input.dailyRequireVerifiedEmail,
   }
-  for (const key of RUNTIME_SETTING_KEYS) await writeRuntimeSetting(scope, key, values[key])
+  return RUNTIME_SETTING_KEYS.map((key) => [key, values[key]] as const)
+}
+
+export async function writeRuntimeSettings(scope: AdminActionScope, input: RuntimeSettingsInput) {
+  for (const [key, value] of runtimeSettingEntries(input))
+    await writeRuntimeSetting(scope, key, value)
 }
 
 /** 只在事务提交后删除；失败时保留已提交值并向调用方报告，KV TTL 仍限制陈旧时间。 */

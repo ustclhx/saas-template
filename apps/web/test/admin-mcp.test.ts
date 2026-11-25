@@ -256,15 +256,17 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
       const preview = await call('settings.set', { value: secret, dryRun: true })
       expect(preview.structuredContent).toMatchObject({ key, ...changes, dryRun: true })
       expect(await dbSettingStore(db).find(key)).toEqual(original?.value)
+      // add-admin-step-up：改动密钥项是敏感动作，MCP 调用没有会话，不会直接写入
+      // （第 3 组改为返回 needs_owner_confirm，由管理员在后台确认）。
       const saved = await call('settings.set', { value: secret })
-      expect(saved.structuredContent).toMatchObject({ key, ...changes, dryRun: false })
-      expect(await dbSettingStore(db).find(key)).toBe(secret)
+      expectToolError(saved, 'STEP_UP_REQUIRED')
+      expect(await dbSettingStore(db).find(key)).toEqual(original?.value)
       const read = await call('settings.get', {})
       expect(read.structuredContent).toEqual({
         key,
         description: expect.any(String),
         secret: true,
-        isSet: true,
+        isSet: Boolean(original?.value),
       })
       const list = await client.callTool({ name: 'settings.list' })
       expect(list.structuredContent).toMatchObject({
@@ -272,9 +274,13 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
       })
       const audits = await actorAudits(db, adminId)
       expect(audits).toHaveLength(4)
+      expect(audits[0]).toMatchObject({
+        action: 'admin.mcp.call',
+        meta: { tool: 'settings.set', params: { key, value: '[redacted]' }, dryRun: true },
+      })
       expect(audits[1]).toMatchObject({
-        action: 'setting.updated',
-        meta: { via: 'mcp', params: { key, value: '[redacted]' }, changes, result: 'ok' },
+        action: 'admin.mcp.call',
+        meta: { via: 'mcp', params: { key, value: '[redacted]' }, result: 'STEP_UP_REQUIRED' },
       })
       expect(JSON.stringify({ preview, saved, read, list, audits })).not.toContain(secret)
     } finally {
@@ -334,8 +340,9 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
           pricing,
           sort: 1_000_000,
         })
+        // 预览不要求重新验证，仍复用后台的定价校验
         expectToolError(
-          await update({ pricing: { mode: 'per_call', credits: 1 } }),
+          await update({ pricing: { mode: 'per_call', credits: 1 }, dryRun: true }),
           'MISSING_TOKEN_LIMITS',
         )
         expectToolError(
@@ -343,12 +350,15 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
           'PARAMS_SCHEMA_INVALID',
         )
         const paramsSchema = { 'x-text': { thinking: true } }
+        // add-admin-step-up：改定价是敏感动作，无会话的 MCP 调用不会直接写入；
+        // 原样提交现定价、只改参数不敏感。
         const newPricing = { ...pricing, inputPer1k: 2 }
-        const saved = await update({ pricing: newPricing, paramsSchema })
+        expectToolError(await update({ pricing: newPricing, paramsSchema }), 'STEP_UP_REQUIRED')
+        const saved = await update({ pricing, paramsSchema })
         expect(saved.structuredContent).toMatchObject({
           key,
           changes: {
-            pricing: { before: pricing, after: newPricing },
+            pricing: { before: pricing, after: pricing },
             paramsSchema: { before: null, after: paramsSchema },
           },
         })
@@ -357,16 +367,14 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
           arguments: { kind: 'text', order: 'sort_desc' },
         })
         expect(list.structuredContent).toMatchObject({
-          models: expect.arrayContaining([
-            expect.objectContaining({ key, pricing: newPricing, paramsSchema }),
-          ]),
+          models: expect.arrayContaining([expect.objectContaining({ key, pricing, paramsSchema })]),
         })
         expect(
           (await actorAudits(db, adminId)).find(({ action }) => action === 'ai.model_updated'),
         ).toMatchObject({
           meta: {
             changes: {
-              pricing: { before: pricing, after: newPricing },
+              pricing: { before: pricing, after: pricing },
               paramsSchema: { before: null, after: expect.stringMatching(/^[0-9a-f]{64}$/) },
             },
             params: { key },

@@ -65,6 +65,7 @@ const settingsSet = defineAdminTool({
     value: 'New JSON value matching the input schema for this setting.',
     dryRun: dryRunDescription,
   },
+  adminAction: ({ key, value }) => ({ name: 'setting.update', input: { entries: [[key, value]] } }),
   async run(ctx, { key, value }) {
     const changes = await writeRuntimeSetting(ctx, key, value, ctx.dryRun)
     return toolResult({ key, ...changes, dryRun: ctx.dryRun })

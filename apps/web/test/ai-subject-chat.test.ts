@@ -805,10 +805,8 @@ describe('message feedback', () => {
         >`select id from ai_message_feedback where message_id=${messageId}`
       )[0]?.id as string
     const view = (id: string) =>
-      runAdminAction(
-        { db, admin: { id: admin.userId } },
-        'ai.feedback.view_conversation',
-        (adminScope) => readSharedConversation(adminScope, id),
+      runAdminAction({ db, admin: { id: admin.userId } }, 'ai.feedback.view', (adminScope) =>
+        readSharedConversation(adminScope, id),
       )
     const viewAudits = async (id: string) =>
       sql<{ action: string; workspace_id: string; meta: unknown }[]>`
@@ -923,10 +921,8 @@ describe('message feedback', () => {
     const admin = await member('share-parts-admin')
     await sql`update "user" set role='admin' where id=${admin.userId}`
     const view = () =>
-      runAdminAction(
-        { db, admin: { id: admin.userId } },
-        'ai.feedback.view_conversation',
-        (adminScope) => readSharedConversation(adminScope, id),
+      runAdminAction({ db, admin: { id: admin.userId } }, 'ai.feedback.view', (adminScope) =>
+        readSharedConversation(adminScope, id),
       )
     const shared = await view()
     expect(shared.messages.at(-1)).toMatchObject({

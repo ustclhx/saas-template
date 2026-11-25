@@ -73,6 +73,12 @@
 `apps/web/src/features/admin/actions.registry.ts`（无运行时依赖，可被测试与插件导入）导出 `adminActions`：键为动作名，值为 `{ stepUp: 'always' | 'never' | ((input) => boolean), reason }`。`runAdminAction` / `adminAction` / `withAdminAction` / `runDelegatedAdminAction`（新增必填 `name` 参数）与 `executeAdminAuthAction`、`executeAdminWorkspaceRestore` 的 `name` 类型改为 `AdminActionName`（登记表键的联合类型），新增入口未登记即类型检查失败。插件（admin-mcp 等）通过 `defineAdminActions()` 在自己的清单中追加登记，键名重复启动即报错（同设置定义的处理方式）。
 条件判定的输入取已通过 zod 校验的参数；`setting.update` 的判定按设置定义的 `secret` 标记并与数据库现值比较，未改动的密钥项（表单原样提交）不算敏感。
 备选：按路由路径登记——Server Function 的 URL 不稳定且一个函数可能承载多种动作，否决。
+实现备注（第 1 组，2026-11-25）：
+- 包装接受 `AdminActionRef`：始终 / 从不敏感的动作直接写名称；按输入判定的动作（`setting.update`、`ai.model_save`、`billing.refund_review`）必须写成 `{ name, input }`，否则类型检查失败，运行时缺少输入按敏感处理。判定函数签名为 `(input, { db }) => boolean | Promise<boolean>`。
+- `defineAdminActions(owner, group)` 多一个插件 ID 参数：不同 owner 的键重复即抛错，同一 owner 重新加载（开发热更新）覆盖自己的登记；返回带品牌的动作名供包装使用。admin-mcp 登记 `admin.api_token.create` / `revoke`、只写调用审计的 `admin.mcp.call` 与写工具预览 `admin.mcp.dry_run`（均为 never，后两者不在上表）。
+- MCP 写工具在定义中声明 `adminAction(input)`，与后台同名：`settings.set` → `setting.update`、`models.update` → `ai.model_save`。第 3 组接入待确认前，命中敏感判定的 MCP 调用（无会话）返回 `STEP_UP_REQUIRED`。
+- 原有动作名统一为上表：`ai.model_set_enabled` → `ai.model_toggle`、`ai.feedback.view_conversation` → `ai.feedback.view`、`billing.refund_notification_retry_requested` → `billing.refund_email_retry`、`observability.sentry-test` → `observability.sentry_test`、MCP 的 `mcp.<tool>` → 后台同名动作（审计 action 不变）。
+- 检查在 `apps/web/src/features/admin/step-up/check.ts`（`assertStepUp`、`hasValidStepUp`）；拒绝前先确认仍是有效管理员，已降级时得到 404 而非要求验证。`details.methods` 由第 2 组补齐。
 
 ### 2. 检查点：在写事务之前、所有副作用之前
 包装在开启事务前调用 `assertStepUp(context, name, input)`：判定为敏感且当前会话没有未过期的验证记录时抛 `AppError('STEP_UP_REQUIRED', { status: 403, details: { methods } })`。`AdminActionContext` 增加 `session: { id, userId }`（来自 `requireFreshSession`）与可选 `confirmation`（只由确认执行路径设置，见决策 8）。MCP 调用没有会话，`settings.set` / `models.update` 等命中敏感判定时由工具框架转为待确认（决策 6），永远不会以「无会话」绕过。

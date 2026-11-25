@@ -22,9 +22,13 @@ export const saveAdminFeatureModels = createServerFn({ method: 'POST' })
     const entries = await changedFeatureModelEntries(context.db, data.values)
     if (entries.length === 0) return { ok: true as const }
     // 与 MCP settings.set 同一写入路径：定义校验、模型种类检查、加锁、新旧值与同事务审计
-    await withAdminAction(context, 'setting.update', async (scope) => {
-      for (const [key, value] of entries) await writeRuntimeSetting(scope, key, value)
-    })
+    await withAdminAction(
+      context,
+      { name: 'setting.update', input: { entries } },
+      async (scope) => {
+        for (const [key, value] of entries) await writeRuntimeSetting(scope, key, value)
+      },
+    )
     try {
       await invalidateRuntimeSettings(
         getWebRuntime().cache,
