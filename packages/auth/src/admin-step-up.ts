@@ -312,12 +312,27 @@ async function lockAccount(tx: Tx, userId: string) {
   )
 }
 
+type VerificationInsert = typeof verification.$inferInsert
+/** 模板自己写入的 verification 列；项目新增的必填列由 verificationColumns 补齐 */
+type VerificationTemplateRow = Pick<
+  VerificationInsert,
+  'id' | 'identifier' | 'value' | 'expiresAt'
+> &
+  Partial<Pick<VerificationInsert, 'createdAt' | 'updatedAt'>>
+
 export function createAdminStepUp(deps: AdminStepUpDeps) {
   // 本次调用的项目附加列，以会话引用为键在内部函数间传递（不改公开的 StepUpSessionRef）
   const extraColumns = new WeakMap<StepUpSessionRef, Record<string, unknown>>()
   async function prepareColumns(session: StepUpSessionRef) {
     if (deps.verificationColumns)
       extraColumns.set(session, await deps.verificationColumns(session.userId))
+  }
+  /**
+   * 模板写入的列加上项目附加列。附加列的类型来自项目钩子，项目给表加了必填列（如 site）时
+   * 模板这里无法静态证明它们存在，因此在这一处断言为完整的插入类型，调用处不必再断言。
+   */
+  function verificationRow(session: StepUpSessionRef, row: VerificationTemplateRow) {
+    return { ...extraColumns.get(session), ...row } as VerificationInsert
   }
   const { db } = deps
   const now = () => deps.now?.() ?? new Date()
@@ -413,13 +428,15 @@ export function createAdminStepUp(deps: AdminStepUpDeps) {
         .where(eq(verification.id, row.id))
     } else {
       await tx.delete(verification).where(eq(verification.identifier, identifier))
-      await tx.insert(verification).values({
-        ...extraColumns.get(session),
-        id: newId(),
-        identifier,
-        value,
-        expiresAt: lockedUntil ?? new Date(at.getTime() + STEP_UP_FAILURE_WINDOW_MINUTES * 60_000),
-      })
+      await tx.insert(verification).values(
+        verificationRow(session, {
+          id: newId(),
+          identifier,
+          value,
+          expiresAt:
+            lockedUntil ?? new Date(at.getTime() + STEP_UP_FAILURE_WINDOW_MINUTES * 60_000),
+        }),
+      )
     }
     if (!lockedUntil) return null
     await tx.insert(auditLog).values({
@@ -646,15 +663,16 @@ export function createAdminStepUp(deps: AdminStepUpDeps) {
           })
         await tx.delete(verification).where(eq(verification.identifier, identifier))
         const expiresAt = new Date(at.getTime() + STEP_UP_CODE_MINUTES * 60_000)
-        await tx.insert(verification).values({
-          ...extraColumns.get(session),
-          id: newId(),
-          identifier,
-          value: `0:${method}:${await hashCode(session.id, code)}`,
-          expiresAt,
-          createdAt: at,
-          updatedAt: at,
-        })
+        await tx.insert(verification).values(
+          verificationRow(session, {
+            id: newId(),
+            identifier,
+            value: `0:${method}:${await hashCode(session.id, code)}`,
+            expiresAt,
+            createdAt: at,
+            updatedAt: at,
+          }),
+        )
         return { to: facts.email, expiresAt }
       })
       await deps.sendEmail({

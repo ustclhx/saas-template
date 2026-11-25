@@ -111,6 +111,64 @@ function baselineAt(project, revision) {
   }
 }
 
+/** 同步轮次起点（每轮应用模板变更前的 HEAD），按分支记录在本地 Git 配置中 */
+const roundKey = (branch) => `branch.${branch}.template-sync-start`
+
+function roundStarts(project, branch) {
+  const starts = gitRaw(project, ['config', '--local', '--get-all', roundKey(branch)])
+  return new Set(starts.status === 0 ? starts.stdout.split('\n').filter(Boolean) : [])
+}
+
+/** 只改 `.template-base.json`、单亲的「更新模板基准」提交 */
+function isBaselineCommit(project, [commit, parent, subject], target) {
+  return (
+    Boolean(parent) &&
+    !parent.includes(' ') &&
+    subject === baselineSubject(target) &&
+    git(project, ['diff-tree', '--no-commit-id', '--name-only', '-r', commit]) ===
+      '.template-base.json'
+  )
+}
+
+/**
+ * 有轮次起点记录时的核对：main 之外的提交按轮次划分，每轮以基准提交结尾，
+ * 轮内（起点之后、基准提交之前）允许解决冲突、修复验证失败等非工具提交，不允许合并提交；
+ * 第一轮起点之前与最后一个基准提交之后都不能有其他提交。没有记录时返回 null，沿用严格核对。
+ */
+function hasOnlySyncRounds(project, branch, target, priorBase) {
+  const starts = roundStarts(project, branch)
+  if (!starts.size) return null
+  const anchors = ['refs/heads/main', 'refs/remotes/origin/main'].flatMap((ref) => {
+    const mergeBase = gitRaw(project, ['merge-base', ref, 'HEAD'])
+    return mergeBase.status === 0 ? [mergeBase.stdout.trim()] : []
+  })
+  if (!anchors.length) return false
+  const outside = git(project, ['log', '--format=%H%x00%P%x00%s', 'HEAD', '--not', ...anchors])
+  // 同步尾已合入 main：交给严格核对处理（只看分支尾提交）
+  if (!outside) return null
+  const commits = outside.split('\n').map((entry) => entry.split('\0'))
+  let index = 0
+  let expected = target
+  while (index < commits.length) {
+    const tip = commits[index]
+    if (!isBaselineCommit(project, tip, expected)) return false
+    const base = baselineAt(project, tip[1])
+    if (!base || base === expected || (index === 0 && priorBase && base !== priorBase)) return false
+    index++
+    while (index < commits.length && !starts.has(commits[index][0])) {
+      if (!commits[index][1] || commits[index][1].includes(' ')) return false
+      index++
+    }
+    if (index === commits.length) {
+      // 本轮起点在 main 上：最早一个 main 之外提交的父提交必须是记录的起点
+      const oldest = commits.at(-1)
+      return starts.has(oldest[1])
+    }
+    expected = base
+  }
+  return true
+}
+
 function hasOnlySyncCommits(project, target, priorBase) {
   const anchors = ['refs/heads/main', 'refs/remotes/origin/main'].flatMap((ref) => {
     const mergeBase = gitRaw(project, ['merge-base', ref, 'HEAD'])
@@ -235,7 +293,11 @@ export async function runSync(options) {
       current !== 'main' &&
       (previous ? previousRange?.[2] === base : current === syncBranchName(base))
     if (advance) {
-      if (!hasOnlySyncCommits(project, base, previousRange?.[1])) {
+      const rounds = hasOnlySyncRounds(project, current, base, previousRange?.[1])
+      if (
+        rounds === false ||
+        (rounds === null && !hasOnlySyncCommits(project, base, previousRange?.[1]))
+      ) {
         throw new PreflightError(
           `分支 ${current} 含有不属于模板同步的提交，或无法核对与 main 的同步历史；请切回 main 并指定新的 --branch`,
         )
@@ -405,7 +467,18 @@ export async function runSync(options) {
 
     report.retained = retainedDeletions(project, changes)
     if (!resumed) {
-      if (!onBranch) git(project, ['switch', '--quiet', '--create', branch])
+      if (!onBranch) {
+        git(project, ['switch', '--quiet', '--create', branch])
+        // 同名分支删除后重建时清掉旧记录
+        gitRaw(project, ['config', '--local', '--unset-all', roundKey(branch)])
+      }
+      git(project, [
+        'config',
+        '--local',
+        '--add',
+        roundKey(branch),
+        git(project, ['rev-parse', 'HEAD']),
+      ])
       Object.assign(report, applyTemplateChanges(project, changes))
       git(project, ['config', '--local', syncKey, syncRange])
       if (report.conflicts.length) {

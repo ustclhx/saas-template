@@ -905,6 +905,20 @@ test('conflicts keep markers and resume on the custom sync branch after resoluti
   assert.equal(await readFile(join(project.dir, 'docs/guide.md'), 'utf8'), resolved)
   assert.equal(existsSync(join(project.dir, 'packages/db/migrations/0001_tpl_feature.sql')), true)
   assert.equal((await readBaseRecord(project.dir)).commit, target)
+
+  // 解决过冲突的同步完成后，同一分支可以续同步到更晚的目标（轮内的解决冲突提交不算外来提交）
+  const advanced = await runSync({ ...options, to: next })
+  assert.equal(advanced.status, 'synced')
+  assert.equal(advanced.report.base.commit, target)
+  assert.equal(await readFile(join(project.dir, 'src/app.ts'), 'utf8'), "export const app = 'v3'\n")
+  assert.equal((await readBaseRecord(project.dir)).commit, next)
+  // 基准提交之后的外来提交仍然拒绝
+  await project.change({ 'tip.txt': 'unrelated tip\n' }, 'unrelated tip')
+  const later = await template.commit({ 'later.txt': 'later\n' }, 'later update')
+  await assert.rejects(
+    runSync({ ...options, to: later }),
+    (error) => error instanceof PreflightError && /含有不属于模板同步的提交/.test(error.message),
+  )
 })
 
 test('a file the template deleted is kept and listed, even when the project never changed it', async (t) => {
