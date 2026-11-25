@@ -90,3 +90,24 @@ template-sync 与生成器把 `settings.project.ts` 加入项目自有文件列�
 ## Open Questions
 
 - 无阻塞问题。限流额度（120 次/分钟）与令牌最长有效期（365 天）为默认取值，可在 review 时调整。
+
+## 验证结果
+
+2026-11-25 本地 spike 使用精确锁定的 `@modelcontextprotocol/server`、`client` 和 `core` 2.4.0。保留 SDK 的 Web 标准传输，禁用会话、启用 JSON 响应，每次 POST 新建 server 和 transport。路由由 TanStack Start 插件挂到根。
+
+- Cloudflare：`pnpm build` 通过，再以 `wrangler dev --local --config dist/server/wrangler.json` 启动 web 产物。
+- Node：`pnpm build:node` 通过，以隔离 Postgres 和 Valkey 启动 web 的 `.output/server/index.mjs`。
+- 两目标都以 SDK 客户端验证 `initialize → tools/list → tools/call`、协议 `ping` 和工具 `ping`。请求响应为 HTTP 200 JSON，初始化通知为 HTTP 202，未返回 `Mcp-Session-Id`。独立 GET 与 DELETE 都返回 405。
+
+下表比较同一基线代码有无 spike 插件时的 web JavaScript 产物，含 Node 打包依赖，排除 sourcemap 与非 JavaScript 文件。gzip 列为逐文件压缩后的字节数之和。
+
+| 产物 | 原始字节增量 | gzip 字节增量 |
+|---|---:|---:|
+| Cloudflare `dist/server` | +443,403 | +106,720 |
+| Cloudflare `dist/client` | −2,282 | −442 |
+| Node `.output/server` | +724,413 | +162,390 |
+| Node `.output/public` | +15 | −61 |
+
+接入鉴权后，两目标的本地 HTTP 验证覆盖错误令牌、过期、吊销、降级和封禁，均得到 401。默认每令牌 120 次和覆盖为 8 次均已实测，下一次请求返回 429，另一个令牌仍可调用。带超限 `Content-Length` 的请求在两目标均返回 413。无声明长度的流式请求在 workerd 的 Vite Preview 和 Node 上也返回 413。Wrangler 本地代理在该流式用例中报告连接中断。
+
+Cloudflare 沿用原生限流绑定，线上限流效果留待 staging 验收。[Cloudflare 限流文档](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) · [上游问题](https://github.com/cloudflare/developer-platform/issues/123)

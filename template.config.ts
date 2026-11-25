@@ -128,6 +128,7 @@ export default defineTemplateConfig({
     defaultPricingMode: { text: 'token', image: 'per_call', video: 'per_call' },
   },
   plugins: {
+    'admin-mcp': {},
     media: { providers: ['fal', 'workers-ai'] }, // Workers AI 使用 AI 绑定，无外部密钥
     // agent 对话（仅 Cloudflare；需要 web wrangler 的 AGENT_CONVERSATION 绑定）
     agents: {

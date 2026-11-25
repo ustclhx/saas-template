@@ -50,7 +50,9 @@ export class AdminAccessRevokedError extends Error {
   }
 }
 
-function isActiveAdmin(row: Pick<User, 'role' | 'banned' | 'banExpires'> | undefined): boolean {
+export function isActiveAdmin(
+  row: Pick<User, 'role' | 'banned' | 'banExpires'> | undefined,
+): boolean {
   if (!row || !isPlatformAdmin(row.role)) return false
   // 与 requireFreshSession 一致：banExpires 为空表示永久封禁
   return !(row.banned === true && (row.banExpires === null || row.banExpires > new Date()))

@@ -61,12 +61,14 @@ export function createCloudflareRateLimiter(bindings: {
   RL_AI?: RateLimit
   RL_API?: RateLimit
   RL_SHARE_CARD?: RateLimit
+  RL_ADMIN_MCP?: RateLimit
 }): RateLimiter {
   const policies = {
     auth: bindings.RL_AUTH,
     ai: bindings.RL_AI,
     api: bindings.RL_API,
     shareCard: bindings.RL_SHARE_CARD,
+    'admin-mcp': bindings.RL_ADMIN_MCP,
   }
   return {
     limit(policy, key) {

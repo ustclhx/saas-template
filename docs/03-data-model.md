@@ -1,6 +1,6 @@
 # 03 · 数据模型
 
-约定：所有表含 `created_at timestamptz default now()`、`updated_at timestamptz`（下文省略）；主键 `id uuid`（UUIDv7，应用层生成）；金额为整数 cents；积分为整数。`ws` = `workspace_id → organization.id`。
+约定：表通常含 `created_at timestamptz default now()`、`updated_at timestamptz`（下文省略）；主键 `id uuid`（UUIDv7，应用层生成）；金额为整数 cents；积分为整数。`ws` = `workspace_id → organization.id`。
 
 ## 1. 认证（Better Auth 管理）
 
@@ -86,6 +86,7 @@ credit_ledger (只增不改的流水)
 |---|---|---|
 | `notification` | id, user_id, ws null, type, title, body, link, read_at | 站内通知 |
 | `audit_log` | id, actor_user_id, ws null, action, target_type, target_id, ip, meta jsonb, created_at | 管理员操作、计费关键变更、成员变更 |
+| `admin_api_token` | id, user_id, name, prefix, token_hash, scopes text[], expires_at, last_used_at null, revoked_at null, created_at | 管理员 MCP 个人令牌。`prefix` 用于展示，`token_hash` 保存 SHA-256 十六进制摘要。`scopes` 包含 `admin:read`，可附加 `admin:write`。过期时间必填。 |
 | `setting` | key (pk), value jsonb, updated_by | 运行时可改设置，KV 缓存 |
 | `waitlist` | id, email (unique), source, created_at | 可选 |
 
@@ -95,9 +96,10 @@ credit_ledger (只增不改的流水)
 
 - 所有带 `ws` 的表：`(ws, id desc)` 复合索引。UUIDv7 本身按时间有序，按 id 排序即按创建时间排序，列表分页用 id 做游标，不需要再单独建 `created_at` 索引。
 - 幂等唯一键：`webhook_event(provider, provider_event_id)`、`credit_grant(source, source_ref)`、`payment(provider, provider_payment_id)`。
+- `admin_api_token` 按 `token_hash` 建唯一索引以校验令牌，按 `user_id` 建索引以列出个人令牌。
 - 订阅：`unique (ws) where status in ('trialing','active','past_due','paused') and cancel_at_period_end = false`（部分唯一索引），保证同一空间只有一个「会续费的」订阅；已设置周期末取消的旧订阅不计入，允许换套餐 / 换支付平台时新旧订阅短暂重叠（见 05-billing §6）。Stripe Customer Portal 以 `cancel_at`（≤ 当前周期末）表达的周期末取消同样写为 `cancel_at_period_end=true`（见 05-billing「Stripe 实现要点」）。
 - 删除策略：
-  - `organization` 与 `user` **只软删 / 匿名化，从不物理删除**，因此所有外键统一使用 `on delete restrict`（作为防误删的保险），不使用 `cascade`。
+  - 业务上对 `organization` 做软删，对 `user` 做匿名化并永久封禁。大部分外键使用 `on delete restrict` 防止误删。`admin_api_token.user_id` 使用 `on delete cascade`，数据库物理删除 `user` 时同步清除令牌。业务删号后，MCP 鉴权读取用户的封禁状态并拒绝令牌。
   - 软删后的数据清理由 Cron 执行（jobs 每日 03:00 UTC 的 `workspace-cleanup` 与十分钟一次的 `files-cleanup`）：
     - **空间保留期**：空间软删 30 天后，`notification`、`invitation` 在首次清理时删除并写入 `workspace.cleanup.completed` 审计；`ai_message` → `ai_conversation` → `ai_task` 按外键顺序分批物理删除（每批一个事务，单批 500 行、单轮最多 200 批，剩余的下一轮继续）；`file` 及其 R2 对象由 `files-cleanup` 删除。
     - **删号**：删号事务内匿名化账号，并删除该用户的 `notification`，以及 `newsletter_subscriber`、`waitlist` 中该邮箱（原值小写与 `normalizeSignupEmail` 规范化值）的记录，均在邮箱被替换为占位值之前完成。该用户在团队空间中的 `ai_conversation`、`ai_message`、`ai_task` 不放进删号事务，由同一个 `workspace-cleanup` 按已删除用户（邮箱为 `deleted+<id>@invalid`）分批删除，日常数据量下在 24 小时内完成删除；个人空间随账号软删，走上面的保留期规则。团队空间中该用户的产出文件属于空间共享资产，保留，只把 `file.source_task_id` 置空。
