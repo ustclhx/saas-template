@@ -517,6 +517,12 @@ test('sync delivers project-owned extensions once and skips later template chang
   const html = 'apps/web/src/features/theme/html-attributes.ts'
   const webFonts = 'apps/web/src/features/theme/fonts.project.ts'
   const seoPages = 'apps/web/src/features/seo/pages.project.ts'
+  const settings = 'packages/db/src/settings.project.ts'
+  const featureModels = 'packages/ai/src/feature-models.project.ts'
+  const initialSettings = 'export const projectSettings = {}\n'
+  const initialFeatureModels = 'export const featureModels = {}\n'
+  const customSettings = "export const projectSettings = { 'reports.enabled': true }\n"
+  const customFeatureModels = "export const featureModels = { reports: { kind: 'text' } }\n"
   await template.commit(
     {
       [registration]: 'export const registration = 1\n',
@@ -528,6 +534,8 @@ test('sync delivers project-owned extensions once and skips later template chang
       [html]: 'export const attributes = {}\n',
       [webFonts]: "import type { FontPreload } from '@old-scope/ui/fonts'\n",
       [seoPages]: 'export const projectPages = () => []\n',
+      [settings]: initialSettings,
+      [featureModels]: initialFeatureModels,
     },
     'share card extensions',
     'template-v0.2.0',
@@ -542,6 +550,8 @@ test('sync delivers project-owned extensions once and skips later template chang
   assert.ok(first.report.applied.includes(html))
   assert.ok(first.report.applied.includes(webFonts))
   assert.ok(first.report.applied.includes(seoPages))
+  assert.equal(await readFile(join(project.dir, settings), 'utf8'), initialSettings)
+  assert.equal(await readFile(join(project.dir, featureModels), 'utf8'), initialFeatureModels)
   git(project.dir, 'switch', '--quiet', 'main')
   git(project.dir, 'merge', '--quiet', '--ff-only', first.branch)
   await project.change({
@@ -554,6 +564,8 @@ test('sync delivers project-owned extensions once and skips later template chang
     [html]: "export const attributes = { 'data-site': 'acme' }\n",
     [webFonts]: "export const preloads = ['project.woff2']\n",
     [seoPages]: "export const projectPages = () => [{ path: '/tarot' }]\n",
+    [settings]: customSettings,
+    [featureModels]: customFeatureModels,
   })
   await template.commit(
     {
@@ -566,6 +578,8 @@ test('sync delivers project-owned extensions once and skips later template chang
       [html]: "export const attributes = { 'data-site': 'template' }\n",
       [webFonts]: "import type { FontPreload } from '@saas/ui/fonts'\n",
       [seoPages]: 'export const projectPages = () => [] // template v2\n',
+      [settings]: 'export const projectSettings = {} // template v2\n',
+      [featureModels]: 'export const featureModels = {} // template v2\n',
     },
     'template extension changes',
     'template-v0.3.0',
@@ -593,6 +607,8 @@ test('sync delivers project-owned extensions once and skips later template chang
     await readFile(join(project.dir, seoPages), 'utf8'),
     "export const projectPages = () => [{ path: '/tarot' }]\n",
   )
+  assert.equal(await readFile(join(project.dir, settings), 'utf8'), customSettings)
+  assert.equal(await readFile(join(project.dir, featureModels), 'utf8'), customFeatureModels)
 })
 
 test('sync ignores new generator formatting and placeholder numbering while applying template edits', async (t) => {

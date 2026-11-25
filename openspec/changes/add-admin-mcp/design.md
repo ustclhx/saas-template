@@ -63,9 +63,9 @@ template-sync 与生成器把 `settings.project.ts` 加入项目自有文件列�
 
 ### 7. 功能模型：`packages/ai` 的登记与解析
 - 项目自有 `packages/ai/src/feature-models.project.ts` 用 `defineFeatureModels({ '<feature>': { kind, inherit?: [...] } })` 登记；模板默认空表。
-- 每个功能对应设置键 `ai.model.<feature>`（string，默认 `''`），由 `packages/ai` 在导入时生成定义，经 `packages/db` 的项目设置合并入口注入（db 不依赖 ai：由 ai 导出定义，`settings.project.ts` 中展开 `...featureModelSettings`，模板默认文件已包含这行）。
+- 每个功能对应设置键 `ai.model.<feature>`（string，默认 `''`）。`@saas/ai` 加载时生成并导出 `featureModelSettings`，通过 `@saas/db` 的 `registerSettingDefinitions` 合并至同一设置注册表，并复用重复键检查。`settings.project.ts` 只登记项目自己的设置。工具与后台功能模型分组从 `@saas/ai` 导入 `featureModels` 或 `resolveFeatureModel`，该入口会在查询设置定义前完成注册。按字符串读取动态设置用 `getSettingValue`，静态设置继续用类型化的 `getSetting`。
 - `resolveFeatureModel(db, settingsCtx, feature)`：读显式设置 → 模型存在、启用且种类匹配则返回 `{ modelKey, source: 'explicit' }`；否则按 `inherit` 顺序读各功能的显式设置，取第一个可用的，返回 `{ modelKey, source: 'inherited', from }`；否则 `{ modelKey: null, source: 'unset' }`。不递归。套餐权限仍由调用方原有检查负责。
-- 登记校验（单元测试 + 启动检查）：`inherit` 只引用已登记、同种类的功能，无自引用。
+- 登记校验（单元测试 + 启动检查）：`inherit` 只引用已登记、同种类的功能，沿用关系不能成环。
 - 后台设置页新增「功能模型」分组：每个功能一个模型下拉（只列同种类已启用模型，含「未选择」），旁边显示解析结果与来源；保存走现有运行时设置保存与审计。登记表为空时不显示分组。
 - xuanxue 采纳时把 `READING_MODEL_INHERIT` 改为登记表，`readings/config.ts` 调用 `resolveFeatureModel`。
 

@@ -25,7 +25,8 @@ const fixture = vi.hoisted(() => ({
 vi.mock('@saas/storage/node', () => ({
   createNodeStorage: () => ({ delete: fixture.storageDelete }),
 }))
-vi.mock('@saas/db', () => ({
+vi.mock('@saas/db', async (original) => ({
+  ...(await original<typeof import('@saas/db')>()),
   createDb: fixture.createDb,
   pingDatabase: fixture.pingDb,
 }))

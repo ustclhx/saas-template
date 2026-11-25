@@ -22,6 +22,8 @@ export const projectOwnedPaths = new Set([
   'apps/web/src/features/theme/fonts.project.ts',
   'apps/web/scripts/critical-css.project.mjs',
   'apps/web/src/features/seo/pages.project.ts',
+  'packages/db/src/settings.project.ts',
+  'packages/ai/src/feature-models.project.ts',
   'plugins/agents/src/agents.project.ts',
   'plugins/agents/src/tools.project.ts',
 ])

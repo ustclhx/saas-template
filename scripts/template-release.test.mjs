@@ -412,6 +412,16 @@ for (const [file, initial, modifiedContent] of [
     '// 项目导航条目\nexport {}\n',
     "import './nav.ts'\nexport {}\n",
   ],
+  [
+    'packages/db/src/settings.project.ts',
+    'export const projectSettings = {}\n',
+    "export const projectSettings = { 'reports.enabled': true }\n",
+  ],
+  [
+    'packages/ai/src/feature-models.project.ts',
+    'export const featureModels = {}\n',
+    "export const featureModels = { reports: { kind: 'text' } }\n",
+  ],
 ]) {
   test(`check accepts ${file} left as created inside the release`, (t) => {
     const { cwd } = repo(t)

@@ -94,6 +94,14 @@ const projectOwnedFiles = [
     guidance:
       'register template navigation items in apps/web/src/features/app-shell/nav.default.ts',
   },
+  {
+    path: 'packages/db/src/settings.project.ts',
+    guidance: 'put template setting definitions in packages/db/src/settings.ts',
+  },
+  {
+    path: 'packages/ai/src/feature-models.project.ts',
+    guidance: 'put template feature model changes outside the project-owned extension',
+  },
 ]
 
 function git(cwd, ...args) {
