@@ -172,7 +172,6 @@ const reject = (context: Context, id: string) =>
   })
 
 const grants = (workspaceId: string) =>
-  // biome-ignore lint/plugin: Test assertion reads the fixture workspace's batches.
   db.select().from(creditGrant).where(eq(creditGrant.workspaceId, workspaceId))
 const audits = (adminId: string) =>
   db.select().from(auditLog).where(eq(auditLog.actorUserId, adminId)).orderBy(auditLog.id)
@@ -462,12 +461,12 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('密钥参数与目标快�
       display: { key: SECRET_KEY, after: { isSet: true, last4: value.slice(-4) } },
     })
     expect(JSON.stringify(await record(id))).not.toContain(value)
-    expect(cacheValues.has(confirmationKeyName(id))).toBe(true)
+    expect(await adminCache.get(confirmationKeyName(id))).toEqual(expect.any(String))
 
     expect(await confirm(admin.verified, id)).toMatchObject({ ok: true, status: 'done' })
     expect(await dbSettingStore(db).find(SECRET_KEY)).toBe(value)
     expect((await record(id))?.secretCiphertext).toBeNull()
-    expect(cacheValues.has(confirmationKeyName(id))).toBe(false)
+    expect(await adminCache.get(confirmationKeyName(id))).toBeNull()
     const trail = await audits(admin.id)
     expect(trail.find(({ action }) => action === 'setting.updated')).toMatchObject({
       meta: { via: 'mcp', confirmationId: id, oldValue: '[redacted]', newValue: '[redacted]' },
@@ -484,7 +483,9 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('密钥参数与目标快�
       value: `654321:${newId().replaceAll('-', '')}`,
     })
     const id = response.structuredContent.confirmationId
-    cacheValues.delete(confirmationKeyName(id))
+    // 经缓存实现本身删除（Node 目标为真实 Valkey，cacheValues 只是镜像），模拟数据密钥到期
+    await adminCache.delete(confirmationKeyName(id))
+    expect(await adminCache.get(confirmationKeyName(id))).toBeNull()
     expect(await confirm(admin.verified, id)).toMatchObject({
       ok: true,
       status: 'failed',
