@@ -79,11 +79,13 @@ export const templateSettings = {
     secret: true,
   }),
   'operations.telegramChatId': defineSetting({
-    schema: z
-      .string()
-      .trim()
-      .max(100)
-      .regex(/^(?:-?\d+|@[A-Za-z0-9_]+)?$/),
+    schema: z.union([z.string(), z.number().int().transform(String)]).pipe(
+      z
+        .string()
+        .trim()
+        .max(100)
+        .regex(/^(?:-?\d+|@[A-Za-z0-9_]+)?$/),
+    ),
     default: '',
     description: '接收运营通知的 Telegram 对话 ID',
   }),

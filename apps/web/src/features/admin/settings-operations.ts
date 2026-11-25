@@ -39,9 +39,10 @@ export async function readOperationsSettings(db: Database) {
     getSetting(ctx, 'operations.telegramChatId'),
     getSetting(ctx, 'operations.discordWebhookUrl'),
   ])
+  // jsonb 驱动可能把数字形式的字符串再次解析成 number；chat ID 的对外契约仍为字符串。
   return {
     telegramConfigured: Boolean(token),
-    telegramChatId,
+    telegramChatId: String(telegramChatId),
     discordConfigured: Boolean(webhook),
   }
 }
