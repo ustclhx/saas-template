@@ -1,7 +1,7 @@
 # fx-rates Specification
 
 ## Purpose
-TBD - created by archiving change add-fx-rates. Update Purpose after archive.
+以 USD 为基准提供各货币参考汇率：优先使用缓存，服务商不可用时回退到调用方提供的参考值并标记来源，供当地货币参考价展示使用。
 
 ## Requirements
 
