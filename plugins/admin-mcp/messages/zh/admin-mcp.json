@@ -37,7 +37,6 @@
   "admin_mcp_empty_body": "创建令牌后，在 Claude Code 等 MCP 客户端中添加上面的端点，即可让 agent 读取后台并配置模型与设置。",
   "admin_mcp_load_failed": "令牌列表加载失败，请刷新页面重试。",
   "admin_mcp_retry": "重试",
-  "admin_mcp_loading": "正在加载令牌",
   "admin_mcp_create_title": "创建 API 令牌",
   "admin_mcp_create_description": "令牌以你的管理员身份调用 MCP 工具，权限按下方勾选限定。",
   "admin_mcp_name": "名称",

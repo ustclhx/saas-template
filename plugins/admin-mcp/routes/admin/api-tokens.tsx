@@ -2,7 +2,7 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { m } from '@web/paraglide/messages.js'
 import { getAdminApiTokens } from '../../src/web/api-tokens-list.functions.ts'
 import { ApiTokensPage } from '../../src/web/api-tokens-page.tsx'
-import { ApiTokensError, ApiTokensSkeleton } from '../../src/web/api-tokens-states.tsx'
+import { ApiTokensError } from '../../src/web/api-tokens-states.tsx'
 
 // 后台 API 令牌页：守卫沿用 /admin 布局与 adminMiddleware，非管理员与其他后台页面一样 404
 export const Route = createFileRoute('/admin/api-tokens')({
@@ -10,7 +10,6 @@ export const Route = createFileRoute('/admin/api-tokens')({
   staleTime: 0,
   head: () => ({ meta: [{ title: m.admin_mcp_title() }] }),
   component: TokensRoute,
-  pendingComponent: ApiTokensSkeleton,
   errorComponent: TokensError,
 })
 

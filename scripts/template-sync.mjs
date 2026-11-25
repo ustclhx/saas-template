@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import { postprocessProject } from './create-project.mjs'
 import { readBaseRecord, serializeBaseRecord } from './template-base.mjs'
-import { listReleases } from './template-release.mjs'
+import { compareVersions, listReleases } from './template-release.mjs'
 import { cloneTemplate, generateAt, resolveCommit } from './template-sync/generate.mjs'
 import { git, gitRaw } from './template-sync/git.mjs'
 import { inferCommand } from './template-sync/infer.mjs'
@@ -96,6 +96,72 @@ export function trailerArgs(trailers = []) {
   return trailers.flatMap((trailer) => ['--trailer', trailer])
 }
 
+const applySubject = (base, target) =>
+  `chore(template-sync): 采纳模板 ${shortSha(base)}..${shortSha(target)}`
+const baselineSubject = (target) => `chore(template-sync): 更新模板基准到 ${shortSha(target)}`
+
+function baselineAt(project, revision) {
+  const file = gitRaw(project, ['show', `${revision}:.template-base.json`])
+  if (file.status !== 0) return null
+  try {
+    const commit = JSON.parse(file.stdout)?.commit
+    return typeof commit === 'string' && /^[a-f0-9]{40}$/.test(commit) ? commit : null
+  } catch {
+    return null
+  }
+}
+
+function hasOnlySyncCommits(project, target, priorBase) {
+  const anchors = ['refs/heads/main', 'refs/remotes/origin/main'].flatMap((ref) => {
+    const mergeBase = gitRaw(project, ['merge-base', ref, 'HEAD'])
+    return mergeBase.status === 0 ? [mergeBase.stdout.trim()] : []
+  })
+  if (!anchors.length) return false
+  // 验证已合入 main 的分支尾提交，或核对分叉后每轮的基准提交和可选的内容提交。
+  const logArgs = ['log', '--format=%H%x00%P%x00%s']
+  const outsideMain = git(project, [...logArgs, 'HEAD', '--not', ...anchors])
+  const commits = (outsideMain || git(project, [...logArgs, '-1', 'HEAD']))
+    .split('\n')
+    .map((entry) => entry.split('\0'))
+  for (let index = 0; index < commits.length; index++) {
+    const [commit, parent, subject] = commits[index]
+    if (
+      !parent ||
+      parent.includes(' ') ||
+      subject !== baselineSubject(target) ||
+      git(project, ['diff-tree', '--no-commit-id', '--name-only', '-r', commit]) !==
+        '.template-base.json'
+    ) {
+      return false
+    }
+    const base = baselineAt(project, parent)
+    if (!base || base === target || (index === 0 && priorBase && base !== priorBase)) return false
+    const apply = commits[index + 1]
+    if (apply?.[2] === applySubject(base, target)) {
+      const [applyCommit, applyParent] = apply
+      if (
+        applyCommit !== parent ||
+        !applyParent ||
+        applyParent.includes(' ') ||
+        gitRaw(project, [
+          'diff-tree',
+          '--quiet',
+          '-r',
+          applyParent,
+          applyCommit,
+          '--',
+          '.template-base.json',
+        ]).status !== 0
+      ) {
+        return false
+      }
+      index++
+    }
+    target = base
+  }
+  return true
+}
+
 /**
  * Sync a derived project to a template commit on a local sync branch.
  * Preflight failures throw PreflightError before any branch or file change.
@@ -152,17 +218,50 @@ export async function runSync(options) {
     const fallback = !options.to && !releases.length
     const ref = options.to ?? releases.at(-1)?.tag ?? 'HEAD'
     const requested = resolveCommit(clone, ref)
-    let target = requested
-    if (!target) throw new PreflightError(`模板中不存在目标 ${ref}`)
+    if (!requested) throw new PreflightError(`模板中不存在目标 ${ref}`)
+    const current = git(project, ['branch', '--show-current'])
+    const previous = current
+      ? gitRaw(project, [
+          'config',
+          '--local',
+          '--get',
+          `branch.${current}.template-sync`,
+        ]).stdout.trim()
+      : ''
+    const previousRange = previous.match(/^([a-f0-9]{40})\.\.([a-f0-9]{40})$/)
+    // 旧工具只记录自定义分支的同步区间。默认分支用目标命名，仍需核对提交历史。
+    const advance =
+      options.branch === current &&
+      current !== 'main' &&
+      (previous ? previousRange?.[2] === base : current === syncBranchName(base))
+    if (advance) {
+      if (!hasOnlySyncCommits(project, base, previousRange?.[1])) {
+        throw new PreflightError(
+          `分支 ${current} 含有不属于模板同步的提交，或无法核对与 main 的同步历史；请切回 main 并指定新的 --branch`,
+        )
+      }
+      const requestedVersion = releases.findLast((release) => release.commit === requested)?.version
+      if (
+        requested === base ||
+        gitRaw(clone.dir, ['merge-base', '--is-ancestor', base, requested]).status !== 0 ||
+        (record.version &&
+          requestedVersion &&
+          compareVersions(requestedVersion, record.version) <= 0)
+      ) {
+        throw new PreflightError(
+          `分支 ${current} 的目标必须晚于已同步的模板基准 ${record.version ?? shortSha(base)}：${ref}`,
+        )
+      }
+    }
     const upgrades = planUpgrades({
       cwd: clone.dir,
       base,
-      target,
+      target: requested,
       params: record.params,
       repository: record.repository,
       confirmed: options.confirmDeployed ?? [],
     })
-    target = upgrades.target
+    const target = upgrades.target
     const notes = [
       ...(fallback ? ['没有 template-v* 发布版本，默认目标回退到 HEAD（目标未发布）'] : []),
       ...(upgrades.boundary
@@ -187,7 +286,7 @@ export async function runSync(options) {
           commit: target,
           version: releases.findLast((release) => release.commit === target)?.version ?? null,
         },
-        branch: git(project, ['branch', '--show-current']),
+        branch: current,
         resumed: false,
         applied: [],
         conflicts: [],
@@ -217,22 +316,21 @@ export async function runSync(options) {
     const defaultBranch = syncBranchName(target)
     const branch = options.branch ?? defaultBranch
     const branchRef = `refs/heads/${branch}`
-    const current = gitRaw(project, ['symbolic-ref', '--quiet', 'HEAD']).stdout.replace(
-      /\r?\n$/,
-      '',
-    )
-    const resumed = current === branchRef
+    const onBranch = current === branch
+    const resumed = onBranch && !advance
     const syncKey = `branch.${branch}.template-sync`
     const syncRange = `${base}..${target}`
     if (resumed) {
       // 自定义分支名不含目标 SHA，恢复时须确认该分支已合并本次区间的文件变更。
-      const previous = gitRaw(project, ['config', '--local', '--get', syncKey]).stdout.trim()
       if ((previous || branch !== defaultBranch) && previous !== syncRange) {
         throw new PreflightError(
           `分支 ${branch} 没有匹配的同步记录；请在同步分支使用原目标，或切回原分支并指定新的 --branch`,
         )
       }
-    } else if (gitRaw(project, ['show-ref', '--verify', '--quiet', branchRef]).status === 0) {
+    } else if (
+      !onBranch &&
+      gitRaw(project, ['show-ref', '--verify', '--quiet', branchRef]).status === 0
+    ) {
       throw new PreflightError(`同步分支 ${branch} 已存在；切换到该分支继续，或删除后重新同步`)
     }
 
@@ -307,9 +405,9 @@ export async function runSync(options) {
 
     report.retained = retainedDeletions(project, changes)
     if (!resumed) {
-      git(project, ['switch', '--quiet', '--create', branch])
+      if (!onBranch) git(project, ['switch', '--quiet', '--create', branch])
       Object.assign(report, applyTemplateChanges(project, changes))
-      if (branch !== defaultBranch) git(project, ['config', '--local', syncKey, syncRange])
+      git(project, ['config', '--local', syncKey, syncRange])
       if (report.conflicts.length) {
         report.checks.push({
           name: '依赖安装与验证',
@@ -405,7 +503,7 @@ export async function runSync(options) {
         '--no-verify',
         ...trailerArgs(options.trailers),
         '-m',
-        `chore(template-sync): 采纳模板 ${shortSha(base)}..${shortSha(target)}`,
+        applySubject(base, target),
       ])
     }
 
@@ -480,7 +578,7 @@ export async function runSync(options) {
       '--no-verify',
       ...trailerArgs(options.trailers),
       '-m',
-      `chore(template-sync): 更新模板基准到 ${shortSha(target)}`,
+      baselineSubject(target),
     ])
     report.baseUpdated = true
     return finish('synced')
@@ -496,7 +594,7 @@ const usage = `用法：node scripts/template-sync.mjs <命令> [参数]
   sync --project <路径> [--to <ref>] [--branch <名称>] [--template <URL|路径>] [--report <文件>]
        [--confirm-deployed <已部署版本>]... [--skip-migration <模板迁移 tag>]... [--verify-db <空库 URL>] [--skip-verify]
        [--trailer "<键>: <值>"]...（追加到同步提交，如 Co-Authored-By）
-       --branch 指定创建或继续的本地同步分支，默认 template-sync/<目标短 SHA>。
+       --branch 指定本地同步分支，默认 template-sync/<目标短 SHA>。留在已完成的同步分支上显式指定该分支可同步到更晚的目标。
   infer-base --project <路径> [--template <URL|路径>] [--since <YYYY-MM-DD>] [--until <YYYY-MM-DD>]
              [--generation-commit <完整 SHA>] [--param key=value]... [--threshold <行数，默认 50>]
              [--write <候选完整 SHA> [--force]]

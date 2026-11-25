@@ -37,7 +37,6 @@
   "admin_mcp_empty_body": "Create a token, then add the endpoint above in an MCP client such as Claude Code to let an agent read the admin console and configure models and settings.",
   "admin_mcp_load_failed": "Could not load tokens. Reload the page to try again.",
   "admin_mcp_retry": "Retry",
-  "admin_mcp_loading": "Loading tokens",
   "admin_mcp_create_title": "Create API token",
   "admin_mcp_create_description": "The token calls MCP tools as you, limited to the scopes selected below.",
   "admin_mcp_name": "Name",

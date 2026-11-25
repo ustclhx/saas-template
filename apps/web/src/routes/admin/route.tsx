@@ -1,5 +1,5 @@
 import { Button, Separator } from '@saas/ui'
-import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
+import { createFileRoute, Link, Outlet, useRouterState } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { getAdminViewer } from '../../features/admin/admin.functions.ts'
 import { ADMIN_COPY } from '../../features/admin/copy.ts'
@@ -8,6 +8,7 @@ import { signOut as signOutClient } from '../../features/auth/auth-client.ts'
 import { LanguageControls } from '../../features/i18n/language-controls.tsx'
 import { useSignedInHint } from '../../features/i18n/signed-in.ts'
 import { ThemeToggle } from '../../features/theme/theme-toggle.tsx'
+import { m } from '../../paraglide/messages.js'
 import { templateConfig } from '../../server/template-config.ts'
 
 // 后台布局：守卫在 server function 中执行（requireFreshSession + admin 角色），
@@ -22,6 +23,7 @@ export const Route = createFileRoute('/admin')({
 function AdminLayout() {
   useSignedInHint()
   const { admin } = Route.useRouteContext()
+  const isLoading = useRouterState({ select: (state) => state.isLoading })
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
       {/* 外层随正文拉伸提供整列背景与分隔线，内层在桌面端吸顶，底部控件始终可见 */}
@@ -71,6 +73,11 @@ function AdminLayout() {
         </aside>
       </div>
       <main className="min-w-0 flex-1 p-4 sm:p-6">
+        {isLoading && (
+          <p role="status" className="mb-4 text-muted-foreground text-sm">
+            {m.admin_loading_page()}
+          </p>
+        )}
         <Outlet />
       </main>
     </div>
