@@ -117,7 +117,7 @@ manifest 与 lockfile 仅增加 platform workspace 依赖。共享入口及后�
 
 `WebRuntime.files` 注入 `Capability<Storage>`，`publicDb` 为惰性的公开读 facade。文件 HTTP 与 RPC 在副作用前检查文件能力，媒体提交 POST 也先检查存储，Node 在 C 之前明确返回 503，无任务/预扣。Cloudflare storage 工厂在 web/jobs entry 装配；R2/FixedLengthStream 细节仅由 `@saas/storage/cloudflare` 导出。C 的 `Storage`/`MediaOutputCopier` 接口见 [storage README](../packages/storage/README.md)，本批验证及 Node 生产预渲染的组 5 边界见 [验收说明](runbooks/selfhost-a4-storage.md)。
 
-公开定价读取接受借用的 Database，不终止进程池；构建快照由脚本关闭自有池。公开页沿用数据库不可达降级，语言处理仅在账号区域读取 auth/db。growth 限流使用请求 runtime 的可信 IP 与 auth policy，发信依赖缺失时在业务写入前拒绝。
+公开定价读取接受借用的 Database，不终止进程池；构建快照由脚本关闭自有池。公开页沿用数据库不可达降级。语言处理在账号区域与 `/_serverFn/` 请求（来源页不是公开页时）读取会话以取账号语言；读取失败（数据库不可达等，401/403 以外的错误）时按无账号语言继续并记 `i18n.account_locale_read_failed` 警告，不让请求失败。growth 限流使用请求 runtime 的可信 IP 与 auth policy，发信依赖缺失时在业务写入前拒绝。
 
 ## C：Node 存储、邮件与观测接线
 

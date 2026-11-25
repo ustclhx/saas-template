@@ -167,3 +167,27 @@ it('Node 卡住的消费者探测在超时后降为 down，仍返回其余依赖
     scheduler: { status: 'up', lastCronAt },
   })
 })
+
+it('插件状态只作展示：某插件不可用时仍按依赖结果返回 200 并列出各插件状态', async () => {
+  const response = await healthResponse({
+    database: () => ({}) as Database,
+    version: 'build-sha',
+    plugins: { 'admin-mcp': 'unavailable', media: 'up' },
+  })
+  expect(response.status).toBe(200)
+  expect(await response.json()).toMatchObject({
+    status: 'ok',
+    plugins: { 'admin-mcp': 'unavailable', media: 'up' },
+  })
+  const down = await healthResponse({
+    database: () => {
+      throw new Error('down')
+    },
+    version: 'build-sha',
+    plugins: { 'admin-mcp': 'up' },
+  })
+  expect(down.status).toBe(503)
+  expect(await down.json()).toMatchObject({ plugins: { 'admin-mcp': 'up' } })
+  const none = await healthResponse({ database: () => ({}) as Database, version: 'v', plugins: {} })
+  expect(await none.json()).not.toHaveProperty('plugins')
+})

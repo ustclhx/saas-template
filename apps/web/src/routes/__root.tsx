@@ -8,6 +8,7 @@ import { analyticsHeadScripts } from '../features/analytics/head.ts'
 import { isAppAreaPath } from '../features/i18n/app-area.ts'
 import { LanguageAssist } from '../features/i18n/language-assist.tsx'
 import { LanguageControls } from '../features/i18n/language-controls.tsx'
+import { ErrorPage } from '../features/marketing/not-found.tsx'
 import { privateMeta } from '../features/seo/metadata.ts'
 import {
   getPlausibleSite,
@@ -57,7 +58,25 @@ export const Route = createRootRoute({
     ],
   }),
   component: RootComponent,
+  errorComponent: RootErrorComponent,
 })
+
+/**
+ * 根路由自身出错时（beforeLoad / loader / 渲染）会替换整个 RootComponent，这里补上 HTML 外壳，
+ * 仍显示带站点导航的错误界面而不是框架默认错误页（public-site-availability）。
+ */
+function RootErrorComponent() {
+  const htmlAttributes = useRouterState({
+    select: (state) =>
+      (state.matches[0]?.context as { htmlAttributes?: Record<string, string> } | undefined)
+        ?.htmlAttributes,
+  })
+  return (
+    <RootDocument floatingControls htmlAttributes={htmlAttributes ?? {}}>
+      <ErrorPage />
+    </RootDocument>
+  )
+}
 
 function RootComponent() {
   const { impersonation, announcement } = Route.useLoaderData()
