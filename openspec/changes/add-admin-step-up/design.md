@@ -26,7 +26,7 @@
 | `setAdminModelEnabled` / `copyAdminModel` | `ai.model_toggle` / `ai.model_copy` | 否 | 复制件默认停用、启停可逆 |
 | `saveAdminPlanModels` | `admin.plan.models.update` | 是 | 套餐权益变更 |
 | `createAdminApiTokenFn` | `admin.api_token.create` | 是 | 产生长期管理员凭据 |
-| `revokeAdminApiTokenFn` | `admin.api_token.revoke` | 否（待拍板 D3） | 降权，越快越好 |
+| `revokeAdminApiTokenFn` | `admin.api_token.revoke` | 否（D3，已确认） | 降权，越快越好 |
 | `restoreAdminWorkspace`（+ 原生 `/admin/restore-workspace`） | `workspace.restore` | 否 | 只恢复原 owner，30 天内可逆 |
 | `inviteAdminWaitlist` | `waitlist.invite` | 否 | 只发邀请 |
 | `deleteAdminFeedback` / `getAdminFeedbackConversation` | `ai.feedback.delete` / `ai.feedback.view` | 否 | 日常运营 |
@@ -98,7 +98,7 @@
 
 ### 4. 验证状态：服务端表 `admin_step_up`，绑定会话、10 分钟绝对有效期
 字段：`session_id`（PK，FK `session.id` 级联删除）、`user_id`、`method`（`totp` | `backup_code` | `email_otp` | `password` | `rescue` | 预留 `passkey`）、`verified_at`、`expires_at`（= verified_at + 10 分钟，不随使用滑动）、`last_totp_step`。每次成功验证 upsert 一行并写审计 `admin.step_up.verified`（meta：method、ip）；连续失败达到锁定写 `admin.step_up.locked`。检查时与 `requireFreshSession` 同一查询链读库，不走缓存。会话被吊销、退出、封禁时级联删除，验证随之失效。
-备选：签名 Cookie（无需写库，但无法服务端吊销、无法在审计中关联，且要另管 Cookie 路径与 SameSite）；会话自定义字段（Better Auth 允许客户端经 `/update-session` 写未标记字段，且缓存层不含自定义字段，容易误用）。推荐表方案，列为 D2。
+备选：签名 Cookie（无需写库，但无法服务端吊销、无法在审计中关联，且要另管 Cookie 路径与 SameSite）；会话自定义字段（Better Auth 允许客户端经 `/update-session` 写未标记字段，且缓存层不含自定义字段，容易误用）。采用表方案（D2，使用者 2026-11-25 确认）。
 有效期 10 分钟为默认值，可经模板配置 `admin.stepUpMinutes`（1–60）调整；不做运行时设置，避免被盗会话把它调大。
 
 ### 5. 应急：救援开关 + 引导名单
@@ -120,16 +120,16 @@
 ### 7. 待确认记录：`admin_pending_action`
 字段：`id`（UUIDv7）、`tool`、`action`（登记表动作名）、`token_id`、`requested_by`（令牌所属管理员）、`summary`（服务端生成的人类可读说明）、`payload`（jsonb，解析后的执行参数，不含密钥）、`display`（jsonb，确认页展示的结构化内容：目标对象名称与 ID、新旧值，密钥只显示是否设置与末 4 位）、`secret_ciphertext`（bytea，可空）、`status`（`pending` | `running` | `done` | `failed` | `rejected` | `expired`）、`result`（jsonb，≤ 2 KB，不含密钥）、`decided_by`、`decided_at`、`expires_at`（创建 + 30 分钟）、`created_at`。
 - **解析在创建时完成**：工具的 `confirm(ctx, args)` 钩子把 AI 传入的文本（邮箱、slug、模型键）解析为 ID，读出现值作为快照写入 `payload` / `display`；确认时只用 `payload`，不再解析 AI 原始输入。执行时比对快照（如设置现值、模型现定价、退款申请状态），已被他人改动则 `failed: STALE_TARGET`，避免覆盖。
-- **密钥参数**：值用 AES-GCM 加密存 `secret_ciphertext`，每条记录随机生成数据密钥，存在平台缓存（KV / Valkey）中，TTL = 剩余有效期。到期时缓存自动失效，密文即不可解；执行、拒绝、失败时同事务置空密文并在提交后删除缓存键。这样「过期立即不可恢复」不依赖定时任务。备选（D5）：密文与密钥都存数据库、靠读取时惰性清空——过期到下一次读取之间密文仍可解。
+- **密钥参数**：值用 AES-GCM 加密存 `secret_ciphertext`，每条记录随机生成数据密钥，存在平台缓存（KV / Valkey）中，TTL = 剩余有效期。到期时缓存自动失效，密文即不可解；执行、拒绝、失败时同事务置空密文并在提交后删除缓存键。这样「过期立即不可恢复」不依赖定时任务。未采用的备选：密文与密钥都存数据库、靠读取时惰性清空——过期到下一次读取之间密文仍可解（D5，使用者 2026-11-25 确认采用前者）。
 - **过期**：读取、列表、确认时惰性把过期的 `pending` 改为 `expired` 并清空密文；残留行由现有每日清理任务（03:00 UTC）顺带处理，删除 30 天前的终态记录。不新增定时任务（Neon 成本基线）。
 - **只执行一次**：确认执行用 `update admin_pending_action set status='running', decided_by=$admin, decided_at=now() where id=$1 and status='pending' and expires_at > now() returning *`，只有返回一行才继续；拒绝用同样的条件更新改为 `rejected`。纯数据库动作（积分调整、设置、模型）的「抢占 + 业务写入 + 审计 + 置 done」在同一事务完成，失败回滚即回到 `pending`，不会卡在 `running`。需要提交后调用外部服务的动作（退款通过）：抢占与退款决策同事务提交，随后的支付平台调用沿用现有退款流程的确认 / 重试状态；记录写入 `done` 并在 `result` 中给出退款申请 ID，提示到退款页核对最终结果。
 - **复核令牌**：抢占后、执行前，在同一事务重新读取 `token_id` 对应令牌：已吊销、已过期或所属管理员已失效时置 `failed: TOKEN_REVOKED`，不执行。
-- **谁能确认**：只有发起令牌所属的管理员能确认执行（推荐，D4）；其他管理员可查看与拒绝。确认动作本身是登记表中的敏感动作，需 step-up。
+- **谁能确认**：只有发起令牌所属的管理员能确认执行（D4，使用者 2026-11-25 确认）；其他管理员可查看与拒绝。确认动作本身是登记表中的敏感动作，需 step-up。
 
 ### 8. 「已确认」标志只来自服务端
 工具定义增加 `execute(ctx, payload)`，其 `ctx.confirmation`（`{ id, confirmedBy, stepUpMethod }`）只由确认执行路径构造；MCP 分发器调用工具时该字段恒为 `undefined`，工具的 zod 输入 schema 中不存在任何「已确认」参数（测试断言 AI 传入额外字段被拒绝或忽略）。`runAdminAction` 对敏感动作的放行条件是「当前会话有有效 step-up」或「`context.confirmation` 存在且其 `id` 对应的记录在本事务中刚被本人抢占」。业务审计 meta 合并 `via: 'mcp'`、`tokenId`、`tool`、`confirmationId`、`confirmedBy`、`stepUpMethod`；另有 `admin.confirmation.requested`（创建时，actor 为令牌所属管理员）与 `admin.confirmation.rejected`。
 
-### 9. 第一批 MCP 敏感工具（推荐，D1）
+### 9. 第一批 MCP 敏感工具（D1，使用者 2026-11-25 确认）
 | 工具 | 输入（AI 侧） | 解析与快照 | 执行复用 |
 |---|---|---|---|
 | `credits.adjust` | `{ workspace（ID 或 slug）, kind: grant, amount, expiresAt?, reason }` 或 `{ workspace, kind: revoke, grantId, reason }` | 空间 ID 与名称、批次剩余、生成 `adjustmentId` | `adjustAdminCredits` |
@@ -157,7 +157,7 @@
 ## Risks / Trade-offs
 
 - [每次敏感操作多一次验证，打扰管理员] → 10 分钟内只验证一次；日常操作不受影响；条件型判定（只有改密钥 / 定价才算敏感）减少误伤。
-- [管理员未开 2FA 时，邮箱被攻破即可 step-up] → 与「邮箱可重置密码」同级风险，文档建议管理员开启 2FA；是否强制留待后续（D6）。
+- [管理员未开 2FA 时，邮箱被攻破即可 step-up] → 与「邮箱可重置密码」同级风险，文档建议管理员开启 2FA；本次不强制（D6 已确认），留待后续。
 - [TOTP 同窗口可重放（上游 issue）] → 记录最后使用的时间窗，同窗口第二次拒绝。
 - [Better Auth 内部分支随版本变化] → 已登录 2FA 校验与 `verifyPassword` 用法由集成测试锁定；升级 better-auth 时这些测试会先失败。
 - [退款通过后的支付平台调用失败] → 沿用现有退款流程的确认与重试；确认页结果引导到退款页核对。
@@ -172,12 +172,14 @@
 3. 升级说明：衍生项目自有的后台写操作需要在登记表中声明动作名（类型检查会指出），MCP 客户端需处理 `needs_owner_confirm`。
 4. 回滚：回退代码即可，两张表保留无害。
 
-## Open Questions（需要使用者拍板，附推荐）
+## 已拍板事项（使用者 2026-11-25 确认：D1–D7 全部按推荐）
 
-- **D1 第一批 MCP 敏感工具**：推荐 `credits.adjust`、`refunds.review`，并把 `settings.set`（密钥项）与 `models.update`（定价）改为确认执行；不开放封禁、模拟登录、建令牌。
-- **D2 验证状态存储**：推荐服务端表 `admin_step_up`（可吊销、可审计）；备选签名 Cookie。
-- **D3 吊销 API 令牌是否要 step-up**：推荐不要（降权动作，泄露时越快吊销越好）；创建令牌要。
-- **D4 谁能确认 AI 发起的操作**：推荐只有发起令牌的所属管理员能确认，其他管理员可拒绝。
-- **D5 待确认记录中的密钥参数**：推荐「密文在库、数据密钥在缓存并设 TTL」，过期即不可解；备选全部在库、惰性清空。
-- **D6 是否强制管理员开启 2FA**：推荐本次不强制，只在后台提示；passkey 另开 change。
-- **D7 有效期**：推荐 step-up 10 分钟、待确认 30 分钟，前者可由模板配置调整。
+- **D1 第一批 MCP 敏感工具**：`credits.adjust`、`refunds.review`，并把 `settings.set`（密钥项）与 `models.update`（定价）改为确认执行；不开放封禁、模拟登录、建令牌。
+- **D2 验证状态存储**：服务端表 `admin_step_up`（可吊销、可审计），不用签名 Cookie。
+- **D3 吊销 API 令牌**：不需要 step-up（降权动作，泄露时越快吊销越好）；创建令牌需要。
+- **D4 谁能确认 AI 发起的操作**：只有发起令牌的所属管理员能确认，其他管理员可查看与拒绝。
+- **D5 待确认记录中的密钥参数**：密文在库、数据密钥在缓存并设 TTL，过期即不可解。
+- **D6 2FA 与 passkey**：本次不强制管理员开启 2FA，只在后台提示；passkey 另开 change（已预留方式枚举）。
+- **D7 有效期**：step-up 10 分钟（模板配置 `admin.stepUpMinutes` 可在 1–60 分钟内调整），待确认 30 分钟。
+
+无其他阻塞问题。设计稿由协调者另行产出（tasks 0.1）。

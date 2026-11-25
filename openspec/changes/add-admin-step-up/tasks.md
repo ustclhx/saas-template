@@ -1,6 +1,6 @@
 # Tasks
 
-实施排在 add-ops-safeguards 之后。任务按 design.md 的推荐取值编写（D1–D7）；使用者拍板与推荐不同时，先由协调者修订本文件再派发。
+实施排在 add-ops-safeguards 之后。任务按 design.md「已拍板事项」D1–D7 编写（使用者 2026-11-25 确认，全部按推荐）。
 并行分组：第 1 组先行（单 worker）；第 2、3 组在第 1 组合并后并行；第 4 组等设计稿确认（第 0 组）且第 2、3 组合并；第 5 组收尾。schema 只改 `packages/db/src/schema/platform.ts`，不提交迁移 SQL（docs/09 §3），迁移由协调者合并后生成。
 验收标记：〔本地〕本地 PG 与 dev 即可；〔staging〕需要 staging 管理员登录与真实邮件；〔外部凭据〕需要使用者提供或在场。
 
