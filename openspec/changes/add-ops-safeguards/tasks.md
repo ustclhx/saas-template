@@ -43,5 +43,5 @@
 
 - [ ] 6.1 staging 部署后观察一周：jobs 日志中各任务的处理数、`job.cap_reached`、`ops.bulk_job.guard_tripped` 无异常，运维通知渠道未被刷屏；证据写入私有证据库。〔staging〕
 - [ ] 6.2 staging 用 Claude Code 连接 admin MCP，`tools/list` 显示每个参数的说明。需要 staging 管理员令牌。〔staging〕〔外部凭据〕
-- [ ] 6.3 staging 公开页冒烟：首页、博客、定价、文档 200；admin MCP 端点在绑定齐全时正常。〔staging〕
+- [x] 6.3 staging 公开页冒烟：首页、博客、定价、文档 200；admin MCP 端点在绑定齐全时正常。〔staging〕（2026-11-25 协调者执行：staging 首页、/zh、博客、定价、指南、/legal/privacy、/legal/terms 均 200，admin MCP 无令牌 401）
 - [ ] 6.4 第三方登记表中标「真账号」的行，若本次回填改变了结论，由使用者用对应账号复核。〔外部凭据〕

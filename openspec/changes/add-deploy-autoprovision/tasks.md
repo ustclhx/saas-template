@@ -28,12 +28,12 @@
 
 ## 4. 集成检查（协调者，依赖 2、3）
 
-- [ ] 4.1 在 main 合并后的工作树执行 `pnpm check`、`pnpm typecheck`、`pnpm test:create-project`、`openspec validate add-deploy-autoprovision --strict`，全部通过；核对 tasks 勾选与 design 中的验证结果已更新。〔本地〕
+- [x] 4.1 在 main 合并后的工作树执行 `pnpm check`、`pnpm typecheck`、`pnpm test:create-project`、`openspec validate add-deploy-autoprovision --strict`，全部通过；核对 tasks 勾选与 design 中的验证结果已更新。〔本地〕（协调者在 main 上执行：check / typecheck / test:create-project / validate --strict 通过）
 
 ## 5. 部署与外部凭据验收（单列，不提前勾选）
 
 - [ ] 5.0 在 GitHub `staging` environment 的 `CLOUDFLARE_API_TOKEN` 上加 KV / R2 / Queues 写权限与 Hyperdrive 读权限；`production` environment 的令牌保持只读（已拍板事项 3）。由使用者在 Cloudflare 控制台调整令牌，协调者用 plan 核对权限是否足够。〔凭据〕
-- [ ] 5.1 模板 staging（ID 已固定）：合并后 main 的 Deploy staging 成功，解析步骤零 API 调用，健康检查返回完整 SHA，冒烟通过。〔staging〕
+- [x] 5.1 模板 staging（ID 已固定）：合并后 main 的 Deploy staging 成功，解析步骤零 API 调用，健康检查返回完整 SHA，冒烟通过。〔staging〕（协调者核对：staging 部署解析步骤全部「已固定」、零 API 调用，健康检查返回完整 SHA）
 - [ ] 5.2 用临时测试前缀（如 `aptest-…-staging`）在模板账号做一次新项目演练：plan 报缺 → `--apply` 创建 KV / R2 / 队列 → 再次 `--apply` 不重复创建 → 缺 Hyperdrive 时失败并提示 → `--create-hyperdrive` 用测试库创建 → 部署成功并通过健康检查。证据写入 `EVIDENCE_DIR`，演练结束后按清单删除临时资源（删除前向使用者确认）。〔凭据〕
 - [ ] 5.3 使用 production 只读令牌运行 `deploy:resources --env production`：缺资源时失败、不创建；令牌缺权限时给出明确提示。〔凭据〕
 - [ ] 5.4 选一个衍生项目（如 xuanxue）在其同步分支上验证升级：不改 `wrangler.jsonc`，staging 部署行为不变。〔凭据〕
