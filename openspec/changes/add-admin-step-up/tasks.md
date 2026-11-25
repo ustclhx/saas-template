@@ -6,7 +6,7 @@
 
 ## 0. 设计稿（协调者，实现 UI 的前置）
 
-- [ ] 0.1 协调者按 `ui-design` 第 3–5 步产出 design.md 决策 11 所列页面与状态的设计稿（验证弹窗、确认页 `/admin/confirm/$id`、待确认列表与导航计数、后台顶部验证状态与救援警示条，含手机端），取得使用者本人确认并登记到 `docs/design-system/prototypes/README.md`，副本放 `docs/design-system/prototypes/admin-step-up/`。验收：索引有对应行且副本文件存在〔外部凭据：使用者确认〕
+- [x] 0.1 协调者按 `ui-design` 第 3–5 步产出 design.md 决策 11 所列页面与状态的设计稿（验证弹窗、确认页 `/admin/confirm/$id`、待确认列表与导航计数、后台顶部验证状态与救援警示条，含手机端），取得使用者本人确认并登记到 `docs/design-system/prototypes/README.md`，副本放 `docs/design-system/prototypes/admin-step-up/`。验收：索引有对应行且副本文件存在〔外部凭据：使用者确认〕
 
 ## 1. 动作登记表与守卫骨架（Worker A，先行）
 
