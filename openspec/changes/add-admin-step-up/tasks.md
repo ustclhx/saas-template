@@ -38,7 +38,7 @@
 
 ## 5. 本地整体验收（协调者或 Worker D）
 
-- [ ] 5.1 本地 dev 端到端：被盗会话模拟（未验证会话调用敏感 Server Function 被拒）、四种验证方式各一次、救援开关、MCP 四个敏感工具各走一次确认或拒绝、过期链接；`pnpm check`、`pnpm typecheck`、`pnpm check:deps`、`pnpm test`、`pnpm build` 通过；证据写入 `EVIDENCE_DIR`〔本地〕
+- [x] 5.1 本地 dev 端到端：被盗会话模拟（未验证会话调用敏感 Server Function 被拒）、四种验证方式各一次、救援开关、MCP 四个敏感工具各走一次确认或拒绝、过期链接；`pnpm check`、`pnpm typecheck`、`pnpm check:deps`、`pnpm test`、`pnpm build` 通过；证据写入 `EVIDENCE_DIR`〔本地〕（2026-11-26 协调者：Playwright 端到端 4/4，另 `pnpm --filter @saas/web test:node` 通过；证据 `saas-template-evidence:add-admin-step-up/5.1-local/`）
 
 ## 6. 部署与外部验收（不提前勾选）
 
