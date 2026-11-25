@@ -20,6 +20,7 @@ const { AI_PURGE_MAX_BATCHES, DELETION_CLEANUP_CAP, EXPIRED_WORKSPACE_CAP } = aw
 )
 const { PERSONAL_SHARE_CARDS_WORKSPACE_CAP } = await import('@saas/auth')
 const { FILES_CLEANUP_OBJECT_CAP, FILES_CLEANUP_WORKSPACE_CAP } = await import('@saas/storage')
+const { ADMIN_PENDING_ACTION_CLEANUP_CAP } = await import('@saas/db')
 const { AGENT_RETENTION_MIN_MS } = await import('../../../plugins/agents/src/core/lifecycle.ts')
 const { BILLING_JOBS } = await import('../src/billing.ts')
 const { CORE_JOBS, CORE_TASK_GROUP_JOBS, NON_CRON_BULK_JOBS } = await import(
@@ -128,6 +129,7 @@ describe('bulk job registry guard', () => {
     expect(cap('personal-share-cards-cleanup')).toBe(PERSONAL_SHARE_CARDS_WORKSPACE_CAP)
     expect(cap('workspace-cleanup')).toBe(EXPIRED_WORKSPACE_CAP)
     expect(cap('deleted-user-ai-cleanup')).toBe(AI_PURGE_MAX_BATCHES)
+    expect(cap('admin-confirmations-cleanup')).toBe(ADMIN_PENDING_ACTION_CLEANUP_CAP)
     // jobs 不允许依赖 platform 的 node 适配器入口（check:deps），这里读源码中的常量
     const nodeCap = /NODE_QUEUE_CLEANUP_BATCH_CAP = (\d+)/.exec(
       read('packages/platform/src/node/job-maintenance.ts'),

@@ -83,6 +83,16 @@ export const CORE_JOBS = {
       },
     ],
   },
+  'admin-confirmations-cleanup': {
+    id: 'admin-confirmations-cleanup',
+    safety: {
+      kind: 'delete',
+      cap: 500,
+      capUnit: '条待确认记录（到期置为过期与删除终态记录合计）',
+      order: '到期记录按 expires_at 升序，终态记录按结束时间升序，再按 ID',
+      timeGuard: `截止时间 = 数据库时钟 − 30 天（最小保留期 1 天），${SKEW}；结束时间早于下限的记录不删除并告警`,
+    },
+  },
   'metrics-daily': {
     id: 'metrics-daily',
     safety: { kind: 'none', reason: '只汇总前一日指标并覆盖写 metrics_daily' },
@@ -95,7 +105,7 @@ export type CoreJobId = keyof typeof CORE_JOBS
 export const CORE_TASK_GROUP_JOBS: Readonly<Record<string, readonly CoreJobId[]>> = {
   '*/5 * * * *': ['deletion-cleanup', 'heartbeat'],
   '*/10 * * * *': ['billing', 'files-cleanup'],
-  '0 3 * * *': ['workspace-maintenance', 'metrics-daily'],
+  '0 3 * * *': ['workspace-maintenance', 'admin-confirmations-cleanup', 'metrics-daily'],
   '0 * * * *': ['billing'],
   '0 4 * * *': ['billing'],
 }

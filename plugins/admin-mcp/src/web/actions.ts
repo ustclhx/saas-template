@@ -9,4 +9,8 @@ export const adminMcpActions = defineAdminActions('admin-mcp', {
   'admin.api_token.revoke': { stepUp: 'never', reason: '降权动作，泄露时越快吊销越好（D3）' },
   'admin.mcp.call': { stepUp: 'never', reason: '只写调用审计，不改业务数据' },
   'admin.mcp.dry_run': { stepUp: 'never', reason: '写工具的预览，只校验不保存' },
+  'admin.confirmation.request': {
+    stepUp: 'never',
+    reason: '只创建待确认记录，执行仍需管理员重新验证后确认（admin.confirmation.confirm）',
+  },
 })

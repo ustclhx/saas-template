@@ -32,12 +32,6 @@ const WRAPPER_FILES = new Set([
  * `satisfies Record<…, …AdminActionName>` 的映射表。
  */
 const DYNAMIC_CALL_SITES = new Set(['apps/web/src/features/admin/impersonation.server.ts'])
-/** 已登记、入口由后续任务实现（add-admin-step-up 第 3 组：确认页 Server Function） */
-const RESERVED_WITHOUT_CALL_SITE = new Set([
-  'admin.confirmation.confirm',
-  'admin.confirmation.reject',
-])
-
 function sourceFiles(dir: string): string[] {
   const absolute = join(ROOT, dir)
   try {
@@ -208,6 +202,6 @@ describe('后台动作调用点与登记表双向一致', () => {
   it('每个登记键至少有一个调用点', () => {
     const used = new Set([...calls.flatMap((call) => call.names), ...sourced])
     const unused = [...registered].filter((name) => !used.has(name))
-    expect(unused.sort()).toEqual([...RESERVED_WITHOUT_CALL_SITE].sort())
+    expect(unused).toEqual([])
   })
 })

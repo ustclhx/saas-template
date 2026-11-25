@@ -137,6 +137,16 @@
 ### 8. 「已确认」标志只来自服务端
 工具定义增加 `execute(ctx, payload)`，其 `ctx.confirmation`（`{ id, confirmedBy, stepUpMethod }`）只由确认执行路径构造；MCP 分发器调用工具时该字段恒为 `undefined`，工具的 zod 输入 schema 中不存在任何「已确认」参数（测试断言 AI 传入额外字段被拒绝或忽略）。`runAdminAction` 对敏感动作的放行条件是「当前会话有有效 step-up」或「`context.confirmation` 存在且其 `id` 对应的记录在本事务中刚被本人抢占」。业务审计 meta 合并 `via: 'mcp'`、`tokenId`、`tool`、`confirmationId`、`confirmedBy`、`stepUpMethod`；另有 `admin.confirmation.requested`（创建时，actor 为令牌所属管理员）与 `admin.confirmation.rejected`。
 
+实现备注（第 3 组，2026-11-25）：
+- 服务在 `apps/web/src/features/admin/confirmations/`（`service.ts` 创建 / 读取 / 列表 / 计数 / 确认 / 拒绝，`secret.ts` 加密）；确认与拒绝的 Server Function 放在 `plugins/admin-mcp/src/web/confirmations.functions.ts`：执行器来自插件的工具定义，依赖方向只能是插件 → web。读取类 Server Function（确认页、列表、导航计数）由第 4 组在同处补齐，直接调用 `getPendingAction` / `listPendingActions` / `countPendingActions`。
+- 工具定义：`confirm(ctx, input)` 在 `admin.confirmation.request`（插件登记，never）事务内运行并返回 `{ summary, display, payload, secret? }`；`execute(env)` 返回执行器，`kind: 'transaction'`（抢占、业务、审计、置 done 同事务）或 `kind: 'delegated'`（业务自管事务，在其决策事务内调用一次 `decide(tx)`）。`alwaysConfirm` 用于判定不敏感但仍需确认的调用（`refunds.review` 驳回）。写工具拒绝 schema 未声明的参数。
+- 「已确认」不经 `runAdminAction` 放行：确认路径只以 `admin.confirmation.confirm`（会话 step-up）进入一次包装，工具执行器直接拿到该事务的 scope，执行信息（`confirmation`、`auditMeta`）由服务端构造，因此 `assertStepUp` 无需识别确认上下文。`stepUpMethod` 读取当前会话的 `admin_step_up.method`，强制开关关闭期间无记录时记为 `none`。
+- 失败语义：抢占前的拒绝（不存在 404、非发起人 403、已过期 / 已处理 409、未重新验证）不改记录；令牌失效、目标已变化、密钥不可解与业务校验错误（AppError 4xx）回滚业务后另起事务把记录置为 `failed`；其他异常回滚，记录保持 `pending` 可重试。`running` 不会被提交。退款决策提交后的支付平台或邮件失败不改变 `done`，结果附 `followUpError`。
+- 不存在的记录同样先经过 step-up 检查再返回不存在，未验证的会话无法探测记录。
+- 快照：设置存现值的 SHA-256 指纹（不存密钥原值）并在执行时以同一把咨询锁比对；模型存启用、定价与参数的指纹；积分收回存批次剩余与状态；退款存申请状态与付款已退金额。
+- 摘要（`summary`）用英文，与 MCP 工具说明一致；确认页按 `display` 结构化内容本地化展示。
+- `@saas/billing` 的 `reviewRefundRequest` 增加可选 `inDecision` 与 `auditMeta`；插件经 `apps/web/src/features/billing/admin-refunds.server.ts` 的 `reviewAdminRefundRequest` 调用，不新增对 `@saas/billing` 的依赖。
+
 ### 9. 第一批 MCP 敏感工具（D1，使用者 2026-11-25 确认）
 | 工具 | 输入（AI 侧） | 解析与快照 | 执行复用 |
 |---|---|---|---|

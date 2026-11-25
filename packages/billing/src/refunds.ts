@@ -266,12 +266,23 @@ export async function reviewRefundRequest(
     decision: 'approve' | 'reject'
     approvedAmount?: number
     reviewNote?: string
+    /** 合并进决策审计 meta 的来源信息（如经 MCP 发起、管理员确认的待确认记录） */
+    auditMeta?: Record<string, string | number | null>
+    /**
+     * 在决策事务内、锁定申请与付款之后调用；抛错即整笔决策回滚。
+     * 后台确认 AI 发起的审核时用它在同一事务内抢占待确认记录并比对快照。
+     */
+    inDecision?: (
+      tx: WebhookTransaction,
+      locked: { request: RefundRequest; paid: Payment },
+    ) => Promise<void>
   },
 ): Promise<RefundRequest> {
   const note = text(input.reviewNote ?? '', 'Review note', input.decision === 'reject')
   const saved = await options.db.transaction(async (tx) => {
     await admin(tx, input.userId)
     const { request, paid } = await lockedRequest(tx, input.requestId)
+    await input.inDecision?.(tx, { request, paid })
     const status = input.decision === 'approve' ? 'approved' : 'rejected'
     if (request.status !== 'pending') {
       if (
@@ -321,7 +332,7 @@ export async function reviewRefundRequest(
       updated,
       input.userId,
       `billing.refund_${status}`,
-      { oldStatus: request.status, newStatus: status },
+      { ...input.auditMeta, oldStatus: request.status, newStatus: status },
       input.ip ?? null,
     )
     return { request: updated, paid }

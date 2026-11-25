@@ -1,10 +1,24 @@
 import { featureModels, resolveFeatureModel } from '@saas/ai'
-import { type Database, dbSettingStore, listSettingDefinitions } from '@saas/db'
+import {
+  type Database,
+  dbSettingStore,
+  getSettingDefinition,
+  listSettingDefinitions,
+  setting,
+  validateSettingValue,
+} from '@saas/db'
+import type { AdminTransaction } from '@web/features/admin/action.ts'
+import {
+  ConfirmationFailedError,
+  fingerprint,
+  STALE_TARGET,
+} from '@web/features/admin/confirmations/service.ts'
 import {
   invalidateRuntimeSettings,
   readRuntimeSetting,
   writeRuntimeSetting,
 } from '@web/features/admin/settings.ts'
+import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { defineAdminTool, dryRunDescription, toolResult } from './define.ts'
 
@@ -56,6 +70,24 @@ const settingsGet = defineAdminTool({
   },
 })
 
+/** 写入前的现值（未存值时为默认值），与 writeRuntimeSetting 的读取方式一致 */
+async function storedSettingValue(tx: AdminTransaction, key: string) {
+  const [row] = await tx
+    .select({ value: sql<unknown>`${setting.value}` })
+    .from(setting)
+    .where(eq(setting.key, key))
+  return row === undefined ? getSettingDefinition(key)?.default : row.value
+}
+
+const isSet = (value: unknown) => value != null && value !== ''
+
+/** 确认页只显示密钥的末 4 位，且只在值足够长时显示 */
+function lastFour(value: unknown) {
+  return typeof value === 'string' && value.length >= 12 ? value.slice(-4) : undefined
+}
+
+const secretSettingPayload = z.object({ key: z.string(), current: z.string() })
+
 const settingsSet = defineAdminTool({
   name: 'settings.set',
   scope: 'admin:write',
@@ -72,6 +104,43 @@ const settingsSet = defineAdminTool({
     return toolResult({ key, ...changes, dryRun: ctx.dryRun })
   },
   afterCommit: ({ cache }, { key }) => invalidateRuntimeSettings(cache, [key]),
+  // 只有改动密钥类设置时才走确认（setting.update 的判定），值加密保存，不进 payload / display
+  async confirm(ctx, { key, value }) {
+    const { definition } = await readRuntimeSetting(ctx.db, key)
+    await writeRuntimeSetting(ctx, key, value, true)
+    const next = validateSettingValue(key, value)
+    const current = await storedSettingValue(ctx.tx, key)
+    const suffix = lastFour(next)
+    return {
+      summary: `Update secret setting ${key}`,
+      display: {
+        kind: 'setting',
+        key,
+        description: definition.description,
+        secret: true,
+        before: { isSet: isSet(current) },
+        after: { isSet: isSet(next), ...(suffix && { last4: suffix }) },
+      },
+      payload: { key, current: await fingerprint(current) },
+      secret: next,
+    }
+  },
+  execute: (env) => ({
+    kind: 'transaction',
+    async run(scope, { record, secret }) {
+      const { key, current } = secretSettingPayload.parse(record.payload)
+      // 与 writeRuntimeSetting 同一把锁：比对快照与写入之间不会插入其他保存
+      await scope.tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${`setting:${key}`}, 0))`,
+      )
+      if ((await fingerprint(await storedSettingValue(scope.tx, key))) !== current)
+        throw new ConfirmationFailedError(STALE_TARGET, 'The setting changed after the request')
+      const changes = await writeRuntimeSetting(scope, key, secret)
+      return { key, ...changes }
+    },
+    afterCommit: ({ record }) =>
+      invalidateRuntimeSettings(env.cache, [secretSettingPayload.parse(record.payload).key]),
+  }),
 })
 
 const featureModelsList = defineAdminTool({

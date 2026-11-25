@@ -37,6 +37,9 @@ vi.mock('../src/cron/workspace-cleanup.ts', () => ({
   runWorkspaceCleanup: mocks.workspace,
 }))
 vi.mock('../src/cron/metrics-daily.ts', () => ({ runMetricsDaily: mocks.metrics }))
+vi.mock('../src/cron/admin-confirmations-cleanup.ts', () => ({
+  runAdminConfirmationsCleanup: vi.fn(),
+}))
 
 import { holdSweepers } from '../../../plugins/media/src/jobs/hold-sweep.ts'
 import templateConfig from '../../../template.config.ts'

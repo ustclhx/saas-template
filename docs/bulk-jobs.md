@@ -34,6 +34,7 @@ staging / production 的 `CRON_PROFILE=reduced` 合并为 `*/30`；「十分钟�
 | `personal-share-cards-cleanup` | 每日 03:00 | 删号后个人空间的分享卡 R2 list + delete | 20 个空间 | 无保留期；偏差 ≤5 分钟；`deleted_at` 不在下限与基准之间的空间不处理并告警 | `packages/auth/src/ai-content-cleanup.ts` |
 | `workspace-cleanup` | 每日 03:00 | 过期空间的分享卡、AI 内容（每批 500 行、≤200 批）、通知与邀请 | 20 个空间 | 截止 = 数据库时钟 − 30 天（最小 1 天）；偏差 ≤5 分钟；`deleted_at` 早于下限的空间不清理并告警 | `packages/auth/src/workspace-lifecycle.ts` |
 | `deleted-user-ai-cleanup` | 每日 03:00 | 已删号用户在团队空间中的 AI 内容 | 200 批（每批 ≤500 行） | 按身份删除无截止时间；偏差 ≤5 分钟；一天内仍在生成的行以数据库时钟跳过 | `packages/auth/src/ai-content-cleanup.ts` |
+| `admin-confirmations-cleanup` | 每日 03:00 | 到期的待确认记录（admin MCP 发起）置为过期并清空密文，删除 30 天前结束的终态记录 | 500 条待确认记录（两步合计） | 截止 = 数据库时钟 − 30 天（最小 1 天）；偏差 ≤5 分钟；结束时间早于下限的记录不删除并告警 | `packages/db/src/admin-pending-actions.ts` |
 | `credit_expiration` | 每小时 | 积分批次置过期并记账 | 200 个空间 | 偏差 ≤5 分钟；`expires_at` 早于下限的批次不过期并告警 | `packages/billing/src/cron.ts` |
 | `hold_sweep` | 十分钟组 | 超时预扣交给登记的结算器 | 500 条预扣 | 偏差 ≤5 分钟；`expires_at` 早于下限的预扣不结算并告警 | `packages/billing/src/cron.ts` |
 | `compensation` | 十分钟组 | 调支付平台取消订阅 / 退款 | 25 个补偿任务 | 只领取 `created_at` 在下限与数据库当前时间之间的任务；区间外保留并告警；租约沿用应用时钟围栏 | `packages/billing/src/compensation.ts` |
