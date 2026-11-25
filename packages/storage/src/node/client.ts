@@ -20,6 +20,12 @@ export function createS3Client(config: S3StorageConfig) {
       accessKeyId: config.accessKeyId,
       secretAccessKey: config.secretAccessKey,
     },
+    // 存储临时错误只由 SDK 重试一层（不叠加 retryTransient，避免 3×3 放大）。显式固定为官方默认的
+    // standard 模式与 3 次总尝试（含首次），不受主机 AWS_MAX_ATTEMPTS / AWS_RETRY_MODE 影响。
+    // 出处：https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html （2026-11-25）；
+    // 已安装 @smithy/core 3.35 的 DEFAULT_MAX_ATTEMPTS=3、DEFAULT_RETRY_MODE=standard 与之一致。
+    maxAttempts: 3,
+    retryMode: 'standard',
     // 避免 SDK 自动附加浏览器未知的 checksum 头及兼容端点不支持的 trailer。
     requestChecksumCalculation: 'WHEN_REQUIRED',
     responseChecksumValidation: 'WHEN_REQUIRED',

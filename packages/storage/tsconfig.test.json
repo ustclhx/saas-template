@@ -6,6 +6,7 @@
   "include": ["test"],
   "exclude": [
     "test/node-import.unit.test.ts",
+    "test/node-s3-retry.unit.test.ts",
     "test/node-contracts.ts",
     "test/node-s3",
     "test/node-media",

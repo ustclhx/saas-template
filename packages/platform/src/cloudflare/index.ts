@@ -1,6 +1,13 @@
 import { createDb, type HyperdriveBinding } from '@saas/db'
-import { AppError } from '@saas/shared'
-import { newRequestId } from '@saas/shared/log'
+import {
+  AppError,
+  isRetryGiveUpError,
+  isWorkersTransientMessage,
+  type RetryClassification,
+  type RetryTransientOptions,
+  retryTransient,
+} from '@saas/shared'
+import { log, newRequestId } from '@saas/shared/log'
 import type {
   BackgroundTasks,
   ConfigScalar,
@@ -36,7 +43,59 @@ export function createCloudflareDatabase(bindings: {
   }
 }
 
-export function createCloudflareKv(binding: KVNamespace): KeyValueStore {
+/**
+ * KV 写入/删除错误分类。同键 1 秒内多次写入抛出 `KV PUT failed: 429 Too Many Requests`，官方建议指数退避重试
+ * （https://developers.cloudflare.com/kv/api/write-key-value-pairs/ 、
+ * https://developers.cloudflare.com/kv/platform/limits/ ，2026-11-25）；5xx、网络中断与内部错误按临时错误重试；
+ * 其余（参数错误等 4xx、无法识别）不重试。
+ */
+export function classifyKvError(error: unknown): RetryClassification {
+  const message = error instanceof Error ? error.message : typeof error === 'string' ? error : ''
+  const status = /^KV \w+ failed: (\d{3})\b/.exec(message)?.[1]
+  if (status === '429') return { category: 'sameKeyRateLimit', code: status }
+  if (status?.startsWith('5')) return { category: 'transient', code: status }
+  if (status) return { category: 'fatal', code: status }
+  if (isWorkersTransientMessage(message)) return { category: 'transient', code: 'network' }
+  return { category: 'fatal' }
+}
+
+async function withKvRetry(
+  operation: 'put' | 'delete',
+  run: () => Promise<void>,
+  options: Pick<RetryTransientOptions, 'sleep' | 'random'>,
+) {
+  try {
+    await retryTransient(run, {
+      ...options,
+      classify: classifyKvError,
+      onRetry: (info) => log.warn('cache.kv.retry', { operation, ...info }),
+    })
+  } catch (error) {
+    if (!isRetryGiveUpError(error)) throw error
+    // 参数错误等不可重试的错误保持原样，便于调用方定位；只有重试耗尽映射为 503。
+    if (error.reason === 'non_retryable') throw error.cause
+    const fields = {
+      operation,
+      category: error.category,
+      code: error.code,
+      transientRetries: error.retries.transient,
+      sameKeyRetries: error.retries.sameKeyRateLimit,
+    }
+    log.warn(
+      error.category === 'sameKeyRateLimit'
+        ? 'cache.kv.same_key_rate_limited'
+        : 'cache.kv.unavailable',
+      fields,
+    )
+    throw new AppError('CACHE_UNAVAILABLE', 'Cache is unavailable', { status: 503 })
+  }
+}
+
+/** `retry` 仅供测试注入等待与抖动；值均为字符串，可安全重放。 */
+export function createCloudflareKv(
+  binding: KVNamespace,
+  retry: Pick<RetryTransientOptions, 'sleep' | 'random'> = {},
+): KeyValueStore {
   function get(key: string): Promise<string | null>
   function get<T>(key: string, type: 'json'): Promise<T | null>
   function get<T>(key: string, type?: 'json'): Promise<T | string | null> {
@@ -45,14 +104,19 @@ export function createCloudflareKv(binding: KVNamespace): KeyValueStore {
   return {
     get,
     put: (key, value, options) =>
-      binding.put(
-        key,
-        value,
-        options?.expirationTtl === undefined
-          ? undefined
-          : { expirationTtl: Math.max(60, options.expirationTtl) },
+      withKvRetry(
+        'put',
+        () =>
+          binding.put(
+            key,
+            value,
+            options?.expirationTtl === undefined
+              ? undefined
+              : { expirationTtl: Math.max(60, options.expirationTtl) },
+          ),
+        retry,
       ),
-    delete: (key) => binding.delete(key),
+    delete: (key) => withKvRetry('delete', () => binding.delete(key), retry),
   }
 }
 

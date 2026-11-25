@@ -6,6 +6,7 @@
   "include": [
     "vitest.config.ts",
     "test/node-import.unit.test.ts",
+    "test/node-s3-retry.unit.test.ts",
     "test/node-contracts.ts",
     "src/node",
     "vitest.node-s3.config.ts",

@@ -9,7 +9,7 @@ import {
   createCloudflareQueueBatch,
 } from '@saas/platform/cloudflare'
 import { newRequestId, withLogContext } from '@saas/shared/log'
-import { createCloudflareStorage } from '@saas/storage/cloudflare'
+import { createCloudflareObjectDeleter, createCloudflareStorage } from '@saas/storage/cloudflare'
 import { withSentry } from '@sentry/cloudflare'
 import templateConfig from '../../../template.config.ts'
 import { registerAiHoldSweepers } from './ai.ts'
@@ -80,7 +80,7 @@ function createJobsContext(env: Cloudflare.Env, queue?: string): JobsContext {
     }),
     emailTransport: emailTransportConfig(valid),
     ...(shareCards && { shareCards }),
-    files: { available: true, value: { delete: (key) => env.FILES.delete(key) } },
+    files: { available: true, value: createCloudflareObjectDeleter(env.FILES) },
     observer: cloudflareJobObserver,
     billingEnabled: features.billing,
     analytics: serverAnalyticsTarget(env),

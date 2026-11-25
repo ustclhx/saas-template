@@ -135,3 +135,25 @@ Node 早期 ESM 入口在加载应用前初始化唯一进程 observer。web 在
 之间显式传递身份与受信任 AppError 摘要；每请求与后台成员使用独立 scope，不存全局身份。
 正常停机在 A 的业务排空/资源关闭后只使用剩余 deadline 关闭监控，监控失败不改业务退出结果。
 source maps、上传入口和未完成外部验收见 [共享接线验收](runbooks/selfhost-c-wire.md)。
+
+## 存储与缓存的临时错误重试
+
+两目标各只有一层重试，调用方不再自行包装（`add-ops-safeguards` D6）。
+
+| 目标 | 操作 | 重试 | 耗尽或失败 |
+| --- | --- | --- | --- |
+| Cloudflare R2 | `Storage.delete`、jobs 的 `createCloudflareObjectDeleter`、`shareCards.put/delete`、媒体内存字节写入 | `@saas/shared` 的 `retryTransient`：临时错误（10001 / 10043 / 10054、「Network connection lost」、`internal error`）最多 3 次，100/300/900 ms ±50%；同键限流 10058 最多 2 次，1000/2000 ms + 0–250 ms；两类分别计数 | 统一 `STORAGE_UNAVAILABLE`（503），不带原始错误；日志 `storage.r2.unavailable` / `storage.r2.same_key_rate_limited` 记录类别、错误码与两类次数，不含对象键 |
+| Cloudflare R2 | 媒体流式写入（`FixedLengthStream`）与分片上传 | 不在适配层重试（请求体不可重放） | 原错误抛给外层 Workflow 步骤，重试整段下载与写入 |
+| Cloudflare KV | `KeyValueStore.put/delete` | 5xx、网络中断、内部错误按临时错误；`KV PUT failed: 429 Too Many Requests` 按同键限流；参数与次数同上 | 耗尽返回 `CACHE_UNAVAILABLE`（503），日志 `cache.kv.unavailable` / `cache.kv.same_key_rate_limited`；参数错误等不可重试的错误原样抛出 |
+| Node S3 | 全部对象操作 | SDK 自身 `retryMode: 'standard'`、`maxAttempts: 3`（含首次），显式设置，不受 `AWS_MAX_ATTEMPTS` / `AWS_RETRY_MODE` 影响 | 现有 `storageError`（502），不叠加 `retryTransient` |
+| Node Redis 缓存 | 全部命令 | 不重试（`maxRetriesPerRequest: 0`），快速失败 | `CACHE_UNAVAILABLE`（503），语义见 [Node 适配](platform-node-adapters.md) |
+
+R2 绑定抛出普通 `Error`，错误码在 message 末尾，如 `put: ... (10012)`；分类器同时识别 `code` / `name`
+属性中的数字码与 S3 码名，无法识别的错误不重试。读取（get/head/list）不在本范围。
+
+出处（均 2026-11-25 核对）：
+[R2 错误码](https://developers.cloudflare.com/r2/api/error-codes/)（「The error code is included at the end of the message property」，各码处理建议）、
+[R2 限制](https://developers.cloudflare.com/r2/platform/limits/)（同键并发写 1 次/秒，超出返回 429）、
+[KV 写入](https://developers.cloudflare.com/kv/api/write-key-value-pairs/)（429 报文与「implementing a retry logic, with exponential backoff」，示例从 1000 ms 起）、
+[Workers 错误](https://developers.cloudflare.com/workers/observability/errors/)（「Catch a fetch or binding invocation and retry it」）、
+[AWS SDK 重试](https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html)（默认 standard、max attempts 3 含首次请求）。
