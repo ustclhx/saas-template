@@ -1,15 +1,12 @@
 import {
   createBillingEventHandler,
   createCompensationFailureHandler,
-  createPaymentRuntime,
   markManualRefund,
-  notifyRefundRequest,
-  type RefundServiceOptions,
   replayWebhook,
   retryRefundNotification,
   reviewRefundRequest,
 } from '@saas/billing'
-import { type Database, refundRequest, webhookEvent } from '@saas/db'
+import { refundRequest, webhookEvent } from '@saas/db'
 import { requireCapability } from '@saas/platform'
 import { AppError } from '@saas/shared'
 import { withRequestId } from '@saas/shared/log'
@@ -24,7 +21,6 @@ import { templateConfig } from '../../server/template-config.ts'
 import { withAdminAction, withDelegatedAdminAction } from '../admin/action.server.ts'
 import { adminMiddleware } from '../admin/admin.functions.ts'
 import { enqueueServerAnalytics } from '../analytics/server.ts'
-
 import {
   listAdminPayments,
   listAdminPurchases,
@@ -32,45 +28,16 @@ import {
   listAdminSubscriptions,
   listAdminWebhooks,
 } from './admin-data.ts'
+import {
+  adminRefundOptions as refundOptions,
+  adminPaymentRuntime as runtime,
+} from './admin-refunds.server.ts'
 
 const page = z.object({
   offset: z.number().int().min(0).max(100_000).default(0),
   workspaceId: z.uuid().optional(),
 })
 const request = z.object({ requestId: z.uuid() })
-function runtime(db: Database) {
-  try {
-    return createPaymentRuntime(getWebRuntime().config, templateConfig.billing.providers, {
-      cache: getWebRuntime().cache,
-      db,
-    })
-  } catch (error) {
-    if (error instanceof AppError && error.status === 503) setResponseStatus(503)
-    throw error
-  }
-}
-function refundOptions(db: Database): RefundServiceOptions {
-  const queue = requireCapability(getWebRuntime().emailQueue, 'Email queue')
-  return {
-    db,
-    providers: runtime(db).providers,
-    config: templateConfig.billing,
-    notify: (notification) =>
-      notifyRefundRequest(
-        {
-          db,
-          queue: {
-            send: async (message) => {
-              await queue.send(withRequestId(message))
-            },
-          },
-          appName: templateConfig.app.name,
-          supportEmail: templateConfig.app.supportEmail,
-        },
-        notification,
-      ),
-  }
-}
 async function safe(action: () => Promise<string>) {
   try {
     return { ok: true as const, status: await action() }

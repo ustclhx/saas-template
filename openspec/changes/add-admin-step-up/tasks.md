@@ -24,11 +24,11 @@
 
 ## 3. MCP 待确认后端（Worker C，依赖第 1 组合并，可与第 2 组并行）
 
-- [ ] 3.1 待确认服务（`apps/web/src/features/admin/confirmations/`）：创建（每令牌最多 20 条 pending）、按 ID 读取并惰性过期、列表、条件抢占确认 / 拒绝、令牌复核、终态写 `result`；密钥参数 AES-GCM 加密，数据密钥存平台缓存（TTL = 剩余有效期），终态同事务置空密文并在提交后删缓存键。集成测试覆盖：并发双确认只执行一次、确认与拒绝竞争、过期后不可确认、吊销令牌后确认失败、缓存键过期后密文不可解、目标快照变化时 `STALE_TARGET`。验收〔本地〕
-- [ ] 3.2 admin-mcp 工具框架：`defineAdminTool` 增加 `confirm(ctx, args)`（解析 ID、生成 `summary` / `display` / `payload`、快照）与 `execute(ctx, payload)`；分发器按登记表判定敏感后创建待确认并返回 `needs_owner_confirm`；`ctx.confirmation` 只由确认执行路径构造，工具输入 schema 为 strict、附加 `confirmed` 等字段被拒。审计 `admin.confirmation.requested`，执行审计合并 `via`、`tokenId`、`tool`、`confirmationId`、`confirmedBy`、`stepUpMethod`。单元测试覆盖伪造确认字段与 dryRun 不建记录。验收〔本地〕
-- [ ] 3.3 工具：`settings.set`（密钥项走确认）、`models.update`（定价改动走确认）改造；新增 `credits.adjust`（复用 `adjustAdminCredits`，确认时生成 `adjustmentId`）、`refunds.review`（复用 `reviewRefundRequest`，通过与驳回都走确认）、只读 `confirmations.get`（只能查同一管理员令牌发起的记录）。集成测试用 `@modelcontextprotocol/client` 走「调用 → needs_owner_confirm → 服务端确认 → confirmations.get 为 done」全流程，并确认业务审计字段。验收〔本地〕
-- [ ] 3.4 确认 / 拒绝 Server Functions（动作名 `admin.confirmation.confirm` 敏感、`admin.confirmation.reject` 非敏感）：只有发起令牌所属管理员可确认；纯数据库动作在抢占事务内执行；退款通过沿用现有提交后支付平台调用。每日清理任务（03:00 UTC，`apps/jobs`）顺带把过期 pending 置为 expired 并删除 30 天前的终态记录，不新增 cron。验收：集成测试与 `pnpm --filter @saas/jobs test`〔本地〕
-- [ ] 3.5 文档：`docs/admin-mcp.md` 工具表与「需要管理员确认的操作」一节（返回格式、给 agent 的处理建议、查询结果、审计查看）；升级说明登记 BREAKING（密钥设置与定价改为确认执行，衍生项目后台写操作需登记动作名）。验收：`pnpm check` 通过〔本地〕
+- [x] 3.1 待确认服务（`apps/web/src/features/admin/confirmations/`）：创建（每令牌最多 20 条 pending）、按 ID 读取并惰性过期、列表、条件抢占确认 / 拒绝、令牌复核、终态写 `result`；密钥参数 AES-GCM 加密，数据密钥存平台缓存（TTL = 剩余有效期），终态同事务置空密文并在提交后删缓存键。集成测试覆盖：并发双确认只执行一次、确认与拒绝竞争、过期后不可确认、吊销令牌后确认失败、缓存键过期后密文不可解、目标快照变化时 `STALE_TARGET`。验收〔本地〕
+- [x] 3.2 admin-mcp 工具框架：`defineAdminTool` 增加 `confirm(ctx, args)`（解析 ID、生成 `summary` / `display` / `payload`、快照）与 `execute(ctx, payload)`；分发器按登记表判定敏感后创建待确认并返回 `needs_owner_confirm`；`ctx.confirmation` 只由确认执行路径构造，工具输入 schema 为 strict、附加 `confirmed` 等字段被拒。审计 `admin.confirmation.requested`，执行审计合并 `via`、`tokenId`、`tool`、`confirmationId`、`confirmedBy`、`stepUpMethod`。单元测试覆盖伪造确认字段与 dryRun 不建记录。验收〔本地〕
+- [x] 3.3 工具：`settings.set`（密钥项走确认）、`models.update`（定价改动走确认）改造；新增 `credits.adjust`（复用 `adjustAdminCredits`，确认时生成 `adjustmentId`）、`refunds.review`（复用 `reviewRefundRequest`，通过与驳回都走确认）、只读 `confirmations.get`（只能查同一管理员令牌发起的记录）。集成测试用 `@modelcontextprotocol/client` 走「调用 → needs_owner_confirm → 服务端确认 → confirmations.get 为 done」全流程，并确认业务审计字段。验收〔本地〕
+- [x] 3.4 确认 / 拒绝 Server Functions（动作名 `admin.confirmation.confirm` 敏感、`admin.confirmation.reject` 非敏感）：只有发起令牌所属管理员可确认；纯数据库动作在抢占事务内执行；退款通过沿用现有提交后支付平台调用。每日清理任务（03:00 UTC，`apps/jobs`）顺带把过期 pending 置为 expired 并删除 30 天前的终态记录，不新增 cron。验收：集成测试与 `pnpm --filter @saas/jobs test`〔本地〕
+- [x] 3.5 文档：`docs/admin-mcp.md` 工具表与「需要管理员确认的操作」一节（返回格式、给 agent 的处理建议、查询结果、审计查看）；升级说明登记 BREAKING（密钥设置与定价改为确认执行，衍生项目后台写操作需登记动作名）。验收：`pnpm check` 通过〔本地〕
 
 ## 4. 界面（Worker D，依赖 0.1 设计稿确认与第 2、3 组合并）
 

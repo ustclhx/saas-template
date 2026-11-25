@@ -25,6 +25,9 @@ vi.mock('../src/cron/heartbeat.ts', () => ({
   runHeartbeat: mocks.heartbeat,
 }))
 vi.mock('../src/cron/metrics-daily.ts', () => ({ runMetricsDaily: mocks.metrics }))
+vi.mock('../src/cron/admin-confirmations-cleanup.ts', () => ({
+  runAdminConfirmationsCleanup: vi.fn(),
+}))
 vi.mock('../src/cron/workspace-cleanup.ts', () => ({
   WORKSPACE_CLEANUP_CRON: '0 3 * * *',
   runWorkspaceCleanup: mocks.workspace,

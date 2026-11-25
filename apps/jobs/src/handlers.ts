@@ -26,6 +26,7 @@ import {
 } from './billing.ts'
 import { CORE_TASK_GROUP_JOBS, type CoreJobId } from './bulk-job-registry.ts'
 import { runBulkJob } from './bulk-jobs.ts'
+import { runAdminConfirmationsCleanup } from './cron/admin-confirmations-cleanup.ts'
 import { runDeletionCleanup } from './cron/deletion-cleanup.ts'
 import { runFilesCleanup } from './cron/files-cleanup.ts'
 import { HEARTBEAT_CRON, runHeartbeat } from './cron/heartbeat.ts'
@@ -231,6 +232,7 @@ const CORE_RUNNERS: Record<CoreJobId, (run: CoreRun) => Promise<unknown>> = {
     return runFilesCleanup(context)
   },
   'workspace-maintenance': ({ context }) => runWorkspaceCleanup(context),
+  'admin-confirmations-cleanup': ({ context }) => runAdminConfirmationsCleanup(context),
   'metrics-daily': ({ context, scheduledAt }) => runMetricsDaily(context, scheduledAt.getTime()),
 }
 

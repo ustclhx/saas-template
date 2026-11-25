@@ -1,6 +1,7 @@
 import { MODEL_CACHE_KEY, resolveFeatureModel } from '@saas/ai'
 import {
   adminApiToken,
+  adminPendingAction,
   aiModel,
   auditLog,
   dbSettingStore,
@@ -141,6 +142,8 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
       const tools = (await client.listTools()).tools
       expect(tools.map(({ name }) => name).sort()).toEqual([
         'audit.list',
+        'confirmations.get',
+        'credits.adjust',
         'credits.ledger',
         'features.models',
         'metrics.summary',
@@ -148,6 +151,7 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
         'models.update',
         'orders.list',
         'ping',
+        'refunds.review',
         'settings.get',
         'settings.list',
         'settings.set',
@@ -163,7 +167,7 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
       })
       expect(
         tools.filter((tool) => tool.annotations?.readOnlyHint === false).map(({ name }) => name),
-      ).toEqual(['settings.set', 'models.update'])
+      ).toEqual(['settings.set', 'models.update', 'credits.adjust', 'refunds.review'])
       expect(await client.callTool({ name: 'ping', arguments: {} })).toEqual({
         content: [{ type: 'text', text: 'pong' }],
       })
@@ -257,17 +261,17 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
       const preview = await call('settings.set', { value: secret, dryRun: true })
       expect(preview.structuredContent).toMatchObject({ key, ...changes, dryRun: true })
       expect(await dbSettingStore(db).find(key)).toEqual(original?.value)
+      // 写密钥类设置改为经管理员确认（add-admin-step-up 决策 6）：设置不变，返回确认链接
       const saved = await call('settings.set', { value: secret })
-      expect(saved.structuredContent).toMatchObject({ key, ...changes, dryRun: false })
-      expect(await dbSettingStore(db).find(key)).toBe(secret)
-      const read = await call('settings.get', {})
-      expect(read.structuredContent).toEqual({
-        key,
-        description: expect.any(String),
-        secret: true,
-        source: 'database',
-        isSet: true,
+      expect(saved.structuredContent).toMatchObject({
+        status: 'needs_owner_confirm',
+        confirmationId: expect.any(String),
+        confirmUrl: expect.stringMatching(/^https:\/\/mcp\.example\.test\/admin\/confirm\//),
       })
+      expect(await dbSettingStore(db).find(key)).toEqual(original?.value)
+      const read = await call('settings.get', {})
+      expect(read.structuredContent).toMatchObject({ key, secret: true })
+      expect(read.structuredContent).not.toHaveProperty('value')
       const list = await client.callTool({ name: 'settings.list' })
       expect(list.structuredContent).toMatchObject({
         settings: expect.arrayContaining([read.structuredContent]),
@@ -275,10 +279,17 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
       const audits = await actorAudits(db, adminId)
       expect(audits).toHaveLength(4)
       expect(audits[1]).toMatchObject({
-        action: 'setting.updated',
-        meta: { via: 'mcp', params: { key, value: '[redacted]' }, changes, result: 'ok' },
+        action: 'admin.confirmation.requested',
+        meta: { via: 'mcp', tool: 'settings.set', params: { key, value: '[redacted]' } },
       })
-      expect(JSON.stringify({ preview, saved, read, list, audits })).not.toContain(secret)
+      const [pendingRow] = await db
+        .select()
+        .from(adminPendingAction)
+        .where(eq(adminPendingAction.requestedBy, adminId))
+      expect(pendingRow?.secretCiphertext).toBeInstanceOf(Uint8Array)
+      expect(JSON.stringify({ preview, saved, read, list, audits, pendingRow })).not.toContain(
+        secret,
+      )
     } finally {
       await db.delete(setting).where(eq(setting.key, key))
       if (original) await db.insert(setting).values(original)
@@ -349,14 +360,23 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
         )
         const paramsSchema = { 'x-text': { thinking: true } }
         const newPricing = { ...pricing, inputPer1k: 2 }
-        const saved = await update({ pricing: newPricing, paramsSchema })
+        // 定价改动改为经管理员确认：模型不变，返回确认链接（确认流程见 admin-confirmations.test.ts）
+        expect((await update({ pricing: newPricing })).structuredContent).toMatchObject({
+          status: 'needs_owner_confirm',
+          summary: `Update model ${key}: pricing`,
+        })
+        const [unchanged] = await db.select().from(aiModel).where(eq(aiModel.key, key))
+        expect(unchanged?.pricing).toEqual(pricing)
+        // 只改参数或定价不变时直接写入
+        const saved = await update({ pricing, paramsSchema })
         expect(saved.structuredContent).toMatchObject({
           key,
           changes: {
-            pricing: { before: pricing, after: newPricing },
+            pricing: { before: pricing, after: pricing },
             paramsSchema: { before: null, after: paramsSchema },
           },
         })
+        await db.update(aiModel).set({ pricing: newPricing }).where(eq(aiModel.key, key))
         const list = await client.callTool({
           name: 'models.list',
           arguments: { kind: 'text', order: 'sort_desc' },
@@ -371,7 +391,7 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
         ).toMatchObject({
           meta: {
             changes: {
-              pricing: { before: pricing, after: newPricing },
+              pricing: { before: pricing, after: pricing },
               paramsSchema: { before: null, after: expect.stringMatching(/^[0-9a-f]{64}$/) },
             },
             params: { key },

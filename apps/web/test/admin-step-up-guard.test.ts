@@ -37,6 +37,7 @@ vi.mock('../src/features/admin/admin.functions.ts', () => ({ adminMiddleware: {}
 vi.mock('../src/server/runtime.ts', () => ({ getWebRuntime: () => runtimeRef.current }))
 
 import { createAdminApiTokenFn } from '../../../plugins/admin-mcp/src/web/api-tokens.functions.ts'
+import { confirmAdminConfirmation } from '../../../plugins/admin-mcp/src/web/confirmations.functions.ts'
 import { type AdminActionContext, runAdminAction } from '../src/features/admin/action.ts'
 import {
   getAdminActionDefinition,
@@ -380,14 +381,14 @@ const guardCases: Record<string, GuardCase> = {
       expect(outcome).toMatchObject({ ok: true, value: { token: expect.any(String) } }),
   },
   'admin.confirmation.confirm': {
-    // 确认页 Server Function 由第 3 组实现，届时替换为真实入口
-    entry: 'runAdminAction（确认执行入口待第 3 组实现）',
-    run: () =>
-      runAdminAction(context, 'admin.confirmation.confirm', ({ audit }) =>
-        audit({ action: 'test.step_up_guard', targetType: 'test' }),
-      ),
-    state: async () => null,
-    allowed: (outcome) => expect(outcome.ok).toBe(true),
+    entry: 'confirmAdminConfirmation（admin-mcp 插件，确认页「确认执行」）',
+    // 不存在的记录：通过守卫后以业务结果「不存在」结束
+    run: () => call(confirmAdminConfirmation, { id: newId() }),
+    state: async () =>
+      (
+        await db.$client`select count(*)::int as n from admin_pending_action where requested_by=${admin.id}`
+      )[0],
+    allowed: reachedBusiness('CONFIRMATION_NOT_FOUND'),
   },
 }
 
