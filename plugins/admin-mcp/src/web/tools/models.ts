@@ -55,6 +55,7 @@ const update = defineAdminTool({
     paramsSchema: 'Complete replacement parameter schema as a JSON object.',
     dryRun: dryRunDescription,
   },
+  adminAction: ({ key, pricing }) => ({ name: 'ai.model_save', input: { key, pricing } }),
   async run(ctx, { key, enabled, pricing, paramsSchema }) {
     requireFeature('billing')
     try {

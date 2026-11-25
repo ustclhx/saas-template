@@ -26,6 +26,10 @@ it('只读令牌调用写工具时，拒绝执行并以所属管理员记录脱�
     description: 'Save a registered runtime setting.',
     input: z.object({ key: z.string(), value: z.unknown() }),
     params: { key: 'Registered setting key.', value: 'New value for the setting.' },
+    adminAction: ({ key, value }) => ({
+      name: 'setting.update',
+      input: { entries: [[key, value]] },
+    }),
     run,
   }).register(ctx)
 

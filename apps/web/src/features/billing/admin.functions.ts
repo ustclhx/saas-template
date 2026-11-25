@@ -217,6 +217,7 @@ export const reviewAdminRefund = createServerFn({ method: 'POST' })
     safe(async () =>
       withDelegatedAdminAction(
         context,
+        { name: 'billing.refund_review', input: { decision: data.decision } },
         async (db) =>
           (
             await reviewRefundRequest(refundOptions(db), {
@@ -244,6 +245,7 @@ export const completeAdminRefund = createServerFn({ method: 'POST' })
     safe(async () =>
       withDelegatedAdminAction(
         context,
+        'billing.refund_manual',
         async (db) =>
           (
             await markManualRefund(refundOptions(db), {
@@ -261,28 +263,24 @@ export const retryAdminRefundEmail = createServerFn({ method: 'POST' })
   .inputValidator(request)
   .handler(({ context, data }) =>
     safe(async () =>
-      withDelegatedAdminAction(context, async (db) => {
+      withDelegatedAdminAction(context, 'billing.refund_email_retry', async (db) => {
         const options = refundOptions(db)
-        await withAdminAction(
-          context,
-          'billing.refund_notification_retry_requested',
-          async ({ tx, audit }) => {
-            const [request] = await tx
-              .select()
-              // biome-ignore lint/plugin: 实时管理员守卫已通过，按退款申请 ID 获取明确空间再记录重试审计。
-              .from(refundRequest)
-              .where(eq(refundRequest.id, data.requestId))
-            if (!request)
-              throw new AppError('NOT_FOUND', 'Refund request unavailable', { status: 404 })
-            await audit({
-              workspaceId: request.workspaceId,
-              action: 'billing.refund_notification_retry_requested',
-              targetType: 'refund_request',
-              targetId: request.id,
-              meta: { status: request.status },
-            })
-          },
-        )
+        await withAdminAction(context, 'billing.refund_email_retry', async ({ tx, audit }) => {
+          const [request] = await tx
+            .select()
+            // biome-ignore lint/plugin: 实时管理员守卫已通过，按退款申请 ID 获取明确空间再记录重试审计。
+            .from(refundRequest)
+            .where(eq(refundRequest.id, data.requestId))
+          if (!request)
+            throw new AppError('NOT_FOUND', 'Refund request unavailable', { status: 404 })
+          await audit({
+            workspaceId: request.workspaceId,
+            action: 'billing.refund_notification_retry_requested',
+            targetType: 'refund_request',
+            targetId: request.id,
+            meta: { status: request.status },
+          })
+        })
         await retryRefundNotification(options, { ...data, userId: context.admin.id })
         return 'Email queued or already delivered'
       }),

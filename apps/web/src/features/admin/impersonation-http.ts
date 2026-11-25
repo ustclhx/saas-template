@@ -35,7 +35,12 @@ export async function handleAuthRequest(request: Request, runtime: WebRuntime) {
           throw new AppError('INVALID_INPUT', 'Valid workspace ID is required', { status: 400 })
         return Response.json(
           await executeAdminWorkspaceRestore(
-            { db, admin: fresh.user, ip: runtime.requestMeta.clientIp },
+            {
+              db,
+              admin: fresh.user,
+              ip: runtime.requestMeta.clientIp,
+              session: { id: fresh.session.id, userId: fresh.user.id },
+            },
             { runtime, headers: request.headers, workspaceId: input.data.workspaceId },
           ),
         )

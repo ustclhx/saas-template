@@ -1,7 +1,9 @@
 import { auditLog, type Database, type NewAuditLog, type User, user } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { eq } from 'drizzle-orm'
+import type { AdminActionRef } from './actions.registry.ts'
 import { isPlatformAdmin } from './guard.ts'
+import { type AdminSessionRef, assertStepUp, STEP_UP_REQUIRED } from './step-up/check.ts'
 
 /**
  * 后台写操作的统一包装（add-admin-console design.md 决策 1，tasks.md 1.1）。
@@ -14,6 +16,9 @@ import { isPlatformAdmin } from './guard.ts'
  *
  * 业务函数自己管理事务、并在其决策事务内写审计的操作（如 @saas/billing 的退款审核：
  * 决策先提交再调用支付平台）用 `runDelegatedAdminAction`，包装只做实时角色校验。
+ *
+ * 动作名必须在 `actions.registry.ts` 登记（add-admin-step-up 决策 1）；登记为敏感的动作在开启
+ * 事务之前检查当前会话的重新验证（决策 2），未验证时以 `STEP_UP_REQUIRED` 拒绝，不产生任何写入。
  */
 
 export type AdminTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
@@ -23,6 +28,22 @@ export interface AdminActionContext {
   readonly admin: Pick<User, 'id'>
   /** 来源 IP（由目标入口完成代理信任校验） */
   readonly ip?: string | null
+  /**
+   * 当前后台会话（来自 requireFreshSession），用于检查重新验证。
+   * MCP 等无会话的调用不设置；此时敏感动作一律被拒，不会以「无会话」绕过。
+   */
+  readonly session?: AdminSessionRef | null | undefined
+  /**
+   * 由服务端确认执行路径构造的确认信息（决策 8，第 3 组实现）。
+   * 目前只声明类型、不放行：敏感动作仍要求会话已重新验证。
+   */
+  readonly confirmation?: AdminActionConfirmation
+}
+
+export interface AdminActionConfirmation {
+  readonly id: string
+  readonly confirmedBy: string
+  readonly stepUpMethod: string
 }
 
 /** 审计记录中由 handler 决定的部分；操作人与来源 IP 由包装填入 */
@@ -67,11 +88,28 @@ async function assertActiveAdmin(db: Database | AdminTransaction, userId: string
   if (!isActiveAdmin(row)) throw new AdminAccessRevokedError()
 }
 
+function actionName(action: AdminActionRef): string {
+  return typeof action === 'string' ? action : action.name
+}
+
+/** 拒绝前先确认仍是有效管理员：已降级或被封禁时与其他入口一样得到 404，而不是要求验证。 */
+async function checkStepUp(context: AdminActionContext, action: AdminActionRef) {
+  try {
+    await assertStepUp(context, action)
+  } catch (error) {
+    if (error instanceof AppError && error.code === STEP_UP_REQUIRED)
+      await assertActiveAdmin(context.db, context.admin.id, false)
+    throw error
+  }
+}
+
 export async function runAdminAction<T>(
   context: AdminActionContext,
-  name: string,
+  action: AdminActionRef,
   handler: (scope: AdminActionScope) => Promise<T>,
 ): Promise<T> {
+  const name = actionName(action)
+  await checkStepUp(context, action)
   return context.db.transaction(async (tx) => {
     await assertActiveAdmin(tx, context.admin.id, true)
     let audited = false
@@ -98,8 +136,10 @@ export async function runAdminAction<T>(
 
 export async function runDelegatedAdminAction<T>(
   context: AdminActionContext,
+  action: AdminActionRef,
   handler: (db: Database) => Promise<T>,
 ): Promise<T> {
   await assertActiveAdmin(context.db, context.admin.id, false)
+  await checkStepUp(context, action)
   return handler(context.db)
 }

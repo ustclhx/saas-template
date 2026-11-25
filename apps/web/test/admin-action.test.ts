@@ -1,20 +1,32 @@
 import { createAuth } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
-import { auditLog, type createDb, setting } from '@saas/db'
+import { adminStepUp, auditLog, type createDb, setting } from '@saas/db'
 import { newId } from '@saas/shared'
 import { eq } from 'drizzle-orm'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   ADMIN_ACTION_UNAUDITED,
   AdminAccessRevokedError,
   runAdminAction,
   runDelegatedAdminAction,
 } from '../src/features/admin/action.ts'
+import { defineAdminActions } from '../src/features/admin/actions.registry.ts'
 import { requireAdmin } from '../src/features/admin/guard.ts'
+import { overrideStepUpEnforcedForTesting } from '../src/features/admin/step-up/check.ts'
 import { createAdminTestDb } from './admin-test-resources.ts'
 
 // add-admin-console tasks.md 1.1：adminAction 包装。
 // 「旧会话」= 请求开始时守卫已放行（模拟 adminMiddleware），随后角色被撤销 / 用户被封禁。
+
+const actions = defineAdminActions('admin-action-test', {
+  'test.write': { stepUp: 'never', reason: '测试用日常写入' },
+  'test.unaudited': { stepUp: 'never', reason: '测试用' },
+  'test.sensitive': { stepUp: 'always', reason: '测试用敏感写入' },
+  'test.conditional': {
+    stepUp: (input: { sensitive: boolean }) => input.sensitive,
+    reason: '测试用条件判定',
+  },
+})
 
 const APP_URL = 'http://localhost:3000'
 const PASSWORD = 'correct-horse-battery-staple'
@@ -61,7 +73,7 @@ async function freshAdmin(s: ReturnType<typeof setup>) {
       .join('; '),
   })
   const fresh = await requireAdmin({ auth: s.auth, db: s.db, headers })
-  return { id: fresh.user.id, headers }
+  return { id: fresh.user.id, headers, session: { id: fresh.session.id, userId: fresh.user.id } }
 }
 
 const settingKey = () => `${SETTING_PREFIX}.${newId()}`
@@ -91,6 +103,7 @@ afterAll(async () => {
   // audit_log 对 app 只追加，审计行由 migrator 清理
   await createAdminTestDb('migrator')
     .$client`delete from audit_log where actor_user_id in ${sql(ids)}`
+  await sql`delete from admin_step_up where user_id in ${sql(ids)}`
   await sql`delete from session where user_id in ${sql(ids)}`
   await sql`delete from account where user_id in ${sql(ids)}`
   await sql`delete from member where user_id in ${sql(ids)}`
@@ -105,7 +118,7 @@ describe('adminAction', () => {
     const key = settingKey()
     const result = await runAdminAction(
       { db: s.db, admin, ip: '203.0.113.7' },
-      'test.write',
+      actions['test.write'],
       writeSetting(key),
     )
     expect(result).toBe(key)
@@ -131,10 +144,10 @@ describe('adminAction', () => {
     ).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 })
     const key = settingKey()
     await expect(
-      runAdminAction({ db: s.db, admin }, 'test.write', writeSetting(key)),
+      runAdminAction({ db: s.db, admin }, actions['test.write'], writeSetting(key)),
     ).rejects.toBeInstanceOf(AdminAccessRevokedError)
     await expect(
-      runDelegatedAdminAction({ db: s.db, admin }, async () => 'called'),
+      runDelegatedAdminAction({ db: s.db, admin }, actions['test.write'], async () => 'called'),
     ).rejects.toBeInstanceOf(AdminAccessRevokedError)
     expect(await settings(s.db, key)).toEqual([])
     expect(await audits(s.db, key)).toEqual([])
@@ -146,7 +159,7 @@ describe('adminAction', () => {
     await s.db.$client`update "user" set banned = true where id = ${admin.id}`
     const key = settingKey()
     await expect(
-      runAdminAction({ db: s.db, admin }, 'test.write', writeSetting(key)),
+      runAdminAction({ db: s.db, admin }, actions['test.write'], writeSetting(key)),
     ).rejects.toBeInstanceOf(AdminAccessRevokedError)
     expect(await audits(s.db, key)).toEqual([])
   })
@@ -158,7 +171,7 @@ describe('adminAction', () => {
     await expect(
       runAdminAction(
         { db: s.db, admin },
-        'test.write',
+        actions['test.write'],
         writeSetting(key, () => {
           throw new Error('provider exploded')
         }),
@@ -173,7 +186,7 @@ describe('adminAction', () => {
     const admin = await freshAdmin(s)
     const key = settingKey()
     await expect(
-      runAdminAction({ db: s.db, admin }, 'test.unaudited', async ({ tx }) => {
+      runAdminAction({ db: s.db, admin }, actions['test.unaudited'], async ({ tx }) => {
         await tx.insert(setting).values({ key, value: { on: true } })
       }),
     ).rejects.toMatchObject({ code: ADMIN_ACTION_UNAUDITED })
@@ -183,7 +196,117 @@ describe('adminAction', () => {
   it('委托模式只做实时角色校验，由业务函数自行写入', async () => {
     const s = setup()
     const admin = await freshAdmin(s)
-    expect(await runDelegatedAdminAction({ db: s.db, admin }, async () => 'called')).toBe('called')
+    expect(
+      await runDelegatedAdminAction(
+        { db: s.db, admin },
+        actions['test.write'],
+        async () => 'called',
+      ),
+    ).toBe('called')
     expect(await s.db.select().from(auditLog).where(eq(auditLog.actorUserId, admin.id))).toEqual([])
+  })
+})
+
+// add-admin-step-up tasks.md 1.2：敏感动作在事务前检查当前会话的重新验证。
+describe('adminAction step-up', () => {
+  // 强制开关上线前默认关闭；这里强制开启以覆盖拒绝与放行，最后一例验证关闭时的放行
+  beforeAll(() => overrideStepUpEnforcedForTesting(true))
+  afterAll(() => overrideStepUpEnforcedForTesting(undefined))
+
+  const minutes = (n: number) => new Date(Date.now() + n * 60_000)
+  const grant = (
+    db: ReturnType<typeof createDb>,
+    session: { id: string; userId: string },
+    expiresAt = minutes(10),
+  ) =>
+    db
+      .insert(adminStepUp)
+      .values({
+        sessionId: session.id,
+        userId: session.userId,
+        method: 'password',
+        verifiedAt: new Date(),
+        expiresAt,
+      })
+      .onConflictDoUpdate({ target: adminStepUp.sessionId, set: { expiresAt } })
+
+  it('未重新验证时拒绝敏感动作，业务表与审计都不变；验证后同一调用成功', async () => {
+    const s = setup()
+    const admin = await freshAdmin(s)
+    const key = settingKey()
+    const context = { db: s.db, admin, session: admin.session }
+    await expect(
+      runAdminAction(context, actions['test.sensitive'], writeSetting(key)),
+    ).rejects.toMatchObject({ code: 'STEP_UP_REQUIRED', status: 403 })
+    await expect(
+      runDelegatedAdminAction(context, actions['test.sensitive'], async () => 'called'),
+    ).rejects.toMatchObject({ code: 'STEP_UP_REQUIRED' })
+    expect(await settings(s.db, key)).toEqual([])
+    expect(await audits(s.db, key)).toEqual([])
+
+    await grant(s.db, admin.session)
+    expect(await runAdminAction(context, actions['test.sensitive'], writeSetting(key))).toBe(key)
+    expect(
+      await runDelegatedAdminAction(context, actions['test.sensitive'], async () => 'ok'),
+    ).toBe('ok')
+  })
+
+  it('过期、属于其他会话或无会话（MCP）的验证不放行', async () => {
+    const s = setup()
+    const admin = await freshAdmin(s)
+    const other = await freshAdmin(s)
+    await grant(s.db, admin.session, minutes(-1))
+    await grant(s.db, other.session)
+    const run = (session: { id: string; userId: string } | undefined) =>
+      runAdminAction(
+        { db: s.db, admin, session },
+        actions['test.sensitive'],
+        writeSetting(settingKey()),
+      )
+    await expect(run(admin.session)).rejects.toMatchObject({ code: 'STEP_UP_REQUIRED' })
+    // 他人的已验证会话不能代替本人
+    await expect(run(other.session)).rejects.toMatchObject({ code: 'STEP_UP_REQUIRED' })
+    await expect(run(undefined)).rejects.toMatchObject({ code: 'STEP_UP_REQUIRED' })
+  })
+
+  it('条件动作按输入判定；缺少输入按敏感处理', async () => {
+    const s = setup()
+    const admin = await freshAdmin(s)
+    const context = { db: s.db, admin, session: admin.session }
+    const conditional = actions['test.conditional']
+    expect(
+      await runAdminAction(
+        context,
+        { name: conditional, input: { sensitive: false } },
+        writeSetting(settingKey()),
+      ),
+    ).toBeTruthy()
+    await expect(
+      runAdminAction(
+        context,
+        { name: conditional, input: { sensitive: true } },
+        writeSetting(settingKey()),
+      ),
+    ).rejects.toMatchObject({ code: 'STEP_UP_REQUIRED' })
+    await expect(
+      runAdminAction(context, conditional, writeSetting(settingKey())),
+    ).rejects.toMatchObject({ code: 'STEP_UP_REQUIRED' })
+  })
+
+  it('强制开关关闭时敏感动作直接放行，未登记的名称仍报错', async () => {
+    const s = setup()
+    const admin = await freshAdmin(s)
+    overrideStepUpEnforcedForTesting(false)
+    try {
+      const key = settingKey()
+      expect(
+        await runAdminAction({ db: s.db, admin }, actions['test.sensitive'], writeSetting(key)),
+      ).toBe(key)
+      await expect(
+        runAdminAction({ db: s.db, admin }, 'nope' as 'credits.adjust', writeSetting(settingKey())),
+      ).rejects.toThrow('Unregistered admin action')
+    } finally {
+      overrideStepUpEnforcedForTesting(true)
+    }
   })
 })

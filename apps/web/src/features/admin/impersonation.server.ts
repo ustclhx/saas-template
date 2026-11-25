@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { WebRuntime } from '../../server/runtime.ts'
 import { withAdminAction } from './action.server.ts'
+import type { TemplateAdminActionName } from './actions.registry.ts'
 import { isPlatformAdmin, requireAdmin } from './guard.ts'
 import { assertRealSession } from './impersonation.ts'
 
@@ -53,6 +54,20 @@ function stagedCache(cache: KeyValueStore) {
   }
 }
 
+/** 原生 admin 插件入口对应的后台动作名（add-admin-step-up 入口清单） */
+const AUTH_ACTIONS = {
+  '/admin/ban-user': 'user.ban',
+  '/admin/unban-user': 'user.unban',
+  '/admin/impersonate-user': 'user.impersonate',
+  '/admin/stop-impersonating': 'user.impersonate.stop',
+} as const satisfies Record<string, TemplateAdminActionName>
+
+function authActionName(path: string) {
+  if (!Object.hasOwn(AUTH_ACTIONS, path))
+    throw new AppError('NOT_FOUND', 'Not Found', { status: 404 })
+  return AUTH_ACTIONS[path as keyof typeof AUTH_ACTIONS]
+}
+
 /** 原生 admin 插件的会话 / 用户写入使用同一 Drizzle 事务，审计失败则一并回滚。 */
 export async function executeAdminAuthAction(options: {
   db: Database
@@ -62,6 +77,7 @@ export async function executeAdminAuthAction(options: {
   body?: unknown
 }) {
   const { db, headers, path, runtime } = options
+  const action = authActionName(path)
   const createAuth = (database: Database, cache?: KeyValueStore) =>
     runtime.createAuth(database, cache)
   const ip = runtime.requestMeta.clientIp
@@ -81,8 +97,9 @@ export async function executeAdminAuthAction(options: {
   const input = stopping ? { userId: fresh.user.id, reason: '' } : bodySchema(options.body)
   const cache = stagedCache(sourceCache)
   const response = await withAdminAction(
-    { db, admin: { id: adminId }, ip },
-    path,
+    // 结束模拟时只有被模拟用户的会话；该动作从不要求重新验证。
+    { db, admin: { id: adminId }, ip, session: { id: fresh.session.id, userId: fresh.user.id } },
+    action,
     async ({ tx, audit }) => {
       const [current] = await tx
         .select()

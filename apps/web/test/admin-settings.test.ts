@@ -8,6 +8,7 @@ import {
   invalidateRuntimeSettings,
   RUNTIME_SETTING_KEYS,
   readRuntimeSettings,
+  runtimeSettingEntries,
   writeRuntimeSettings,
 } from '../src/features/admin/settings.ts'
 import { runtimeSettingsInput } from '../src/features/admin/settings-schema.ts'
@@ -56,8 +57,10 @@ it('保存设置后清除旧 KV 值，拒绝未受邀注册，并审计每项的
       signupBonusDomainBlacklist: [' Mailinator.com. ', 'mailinator.com', 'temp-mail.test'],
       freeFailures: { count: 5, windowSeconds: 1800 },
     })
-    await runAdminAction({ db, admin, ip: '203.0.113.14' }, 'setting.update', (scope) =>
-      writeRuntimeSettings(scope, input),
+    await runAdminAction(
+      { db, admin, ip: '203.0.113.14' },
+      { name: 'setting.update', input: { entries: runtimeSettingEntries(input) } },
+      (scope) => writeRuntimeSettings(scope, input),
     )
     expect(await getSetting(ctx, 'auth.signupEnabled')).toBe(true)
     await invalidateRuntimeSettings(cache)

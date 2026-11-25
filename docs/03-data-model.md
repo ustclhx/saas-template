@@ -87,6 +87,8 @@ credit_ledger (只增不改的流水)
 | `notification` | id, user_id, ws null, type, title, body, link, read_at | 站内通知 |
 | `audit_log` | id, actor_user_id, ws null, action, target_type, target_id, ip, meta jsonb, created_at | 管理员操作、计费关键变更、成员变更 |
 | `admin_api_token` | id, user_id, name, prefix, token_hash, scopes text[], expires_at, last_used_at null, revoked_at null, created_at | 管理员 MCP 个人令牌。`prefix` 用于展示，`token_hash` 保存 SHA-256 十六进制摘要。`scopes` 包含 `admin:read`，可附加 `admin:write`。过期时间必填。 |
+| `admin_step_up` | session_id (pk, fk session 级联), user_id, method, verified_at, expires_at, last_totp_step null | 管理员会话的敏感操作重新验证状态（[后台重新验证](../openspec/changes/add-admin-step-up/design.md)）。每个会话一行，成功验证即覆盖；`expires_at` 为绝对时间，不随使用延长。`method` 取 `totp`、`backup_code`、`email_otp`、`password`、`rescue`，`passkey` 为预留值。`last_totp_step` 记录最近接受的 TOTP 时间窗，拒绝同窗重放。 |
+| `admin_pending_action` | id, tool, action, token_id, requested_by, summary, payload jsonb, display jsonb, secret_ciphertext bytea null, status, result jsonb null, decided_by null, decided_at null, expires_at, created_at | AI（admin MCP）发起、等待管理员确认的敏感操作。`action` 为后台动作登记表中的动作名；`payload` 为创建时解析好的执行参数（不含密钥），`display` 为确认页展示内容；密钥参数只以密文存于 `secret_ciphertext`，数据密钥在平台缓存中随有效期失效，终态即清空。`status`：`pending`、`running`、`done`、`failed`、`rejected`、`expired`。有效期 30 分钟。 |
 | `setting` | key (pk), value jsonb, updated_by | 运行时可改设置，KV 缓存 |
 | `waitlist` | id, email (unique), source, created_at | 可选 |
 
@@ -97,6 +99,7 @@ credit_ledger (只增不改的流水)
 - 所有带 `ws` 的表：`(ws, id desc)` 复合索引。UUIDv7 本身按时间有序，按 id 排序即按创建时间排序，列表分页用 id 做游标，不需要再单独建 `created_at` 索引。
 - 幂等唯一键：`webhook_event(provider, provider_event_id)`、`credit_grant(source, source_ref)`、`payment(provider, provider_payment_id)`。
 - `admin_api_token` 按 `token_hash` 建唯一索引以校验令牌，按 `user_id` 建索引以列出个人令牌。
+- `admin_step_up` 以 `session_id` 为主键并级联删除：会话退出或被吊销时验证同时失效。`admin_pending_action` 按 `(requested_by, status)` 与 `(token_id, status)` 建索引，用于待确认列表与每令牌待确认数量上限。
 - 订阅：`unique (ws) where status in ('trialing','active','past_due','paused') and cancel_at_period_end = false`（部分唯一索引），保证同一空间只有一个「会续费的」订阅；已设置周期末取消的旧订阅不计入，允许换套餐 / 换支付平台时新旧订阅短暂重叠（见 05-billing §6）。Stripe Customer Portal 以 `cancel_at`（≤ 当前周期末）表达的周期末取消同样写为 `cancel_at_period_end=true`（见 05-billing「Stripe 实现要点」）。
 - 删除策略：
   - 业务上对 `organization` 做软删，对 `user` 做匿名化并永久封禁。大部分外键使用 `on delete restrict` 防止误删。`admin_api_token.user_id` 使用 `on delete cascade`，数据库物理删除 `user` 时同步清除令牌。业务删号后，MCP 鉴权读取用户的封禁状态并拒绝令牌。
