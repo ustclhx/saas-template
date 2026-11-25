@@ -1,11 +1,11 @@
 import { auditLog, type Database, type JsonValue, user } from '@saas/db'
 import { and, desc, eq, gte, lt, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { ADMIN_PAGE_SIZE } from './list.ts'
+import { ADMIN_MAX_OFFSET, ADMIN_PAGE_SIZE } from './list.ts'
 
 export const auditSearchSchema = z
   .object({
-    offset: z.number().int().min(0).max(100_000),
+    offset: z.number().int().min(0).max(ADMIN_MAX_OFFSET).default(0),
     actor: z.string().max(200).optional(),
     workspaceId: z.uuid().optional(),
     action: z.string().max(200).optional(),
@@ -18,8 +18,9 @@ export const auditSearchSchema = z
 export type AuditSearch = z.infer<typeof auditSearchSchema>
 
 /** 操作人可用 ID / 邮箱查询；模拟期间也匹配实际管理员 ID。 */
-export async function listAuditLogs(db: Database, input: AuditSearch) {
+export async function listAuditLogs(db: Database, input: AuditSearch & { limit?: number }) {
   const data = auditSearchSchema.parse(input)
+  const limit = input.limit ?? ADMIN_PAGE_SIZE
   const where = and(
     data.actor
       ? or(
@@ -43,11 +44,11 @@ export async function listAuditLogs(db: Database, input: AuditSearch) {
     .where(where)
     .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
     .offset(data.offset)
-    .limit(ADMIN_PAGE_SIZE + 1)
+    .limit(limit + 1)
   return {
     rows: rows
-      .slice(0, ADMIN_PAGE_SIZE)
+      .slice(0, limit)
       .map((row) => ({ ...row, log: { ...row.log, meta: row.log.meta as JsonValue } })),
-    hasMore: rows.length > ADMIN_PAGE_SIZE,
+    hasMore: rows.length > limit,
   }
 }

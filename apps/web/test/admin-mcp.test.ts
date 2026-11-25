@@ -1,7 +1,17 @@
-import { adminApiToken, user } from '@saas/db'
+import { MODEL_CACHE_KEY, resolveFeatureModel } from '@saas/ai'
+import {
+  adminApiToken,
+  aiModel,
+  auditLog,
+  dbSettingStore,
+  getSettingValue,
+  type NewAiModel,
+  setting,
+  user,
+} from '@saas/db'
 import type { RateLimiter } from '@saas/platform'
 import { newId } from '@saas/shared'
-import { eq, like } from 'drizzle-orm'
+import { eq, inArray, like } from 'drizzle-orm'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import { respondToAdminMcp } from '../../../plugins/admin-mcp/src/web/mcp.ts'
 import {
@@ -11,7 +21,14 @@ import {
 } from '../../../plugins/admin-mcp/src/web/tokens.ts'
 import { connectAdminMcpTestClient } from '../../../plugins/admin-mcp/test/client.ts'
 import { templateConfig } from '../src/server/template-config.ts'
-import { adminCache, createAdminTestDb } from './admin-test-resources.ts'
+import { adminCache, cacheValues, createAdminTestDb } from './admin-test-resources.ts'
+
+vi.mock('../../../packages/ai/src/feature-models.project.ts', () => ({
+  default: {
+    'admin-mcp-primary': { kind: 'text', inherit: ['admin-mcp-fallback'] },
+    'admin-mcp-fallback': { kind: 'text' },
+  },
+}))
 
 const dayMs = 86_400_000
 const bodyLimit = 256 * 1024
@@ -44,11 +61,24 @@ function setup() {
     await db.insert(user).values({ id, role: 'admin', name: 'MCP admin', email: `${id}@${domain}` })
     return id
   }
-  return { db, handle, post, limit, createAdmin }
+  function connect(token: string) {
+    return connectAdminMcpTestClient(url, token, (input, init) => handle(new Request(input, init)))
+  }
+  return { db, connect, handle, post, limit, createAdmin }
 }
 
-const issueToken = (db: ReturnType<typeof createAdminTestDb>, adminId: string) =>
-  createAdminApiToken(db, adminId, { name: 'CLI', scopes: ['admin:read'] })
+const issueToken = (db: ReturnType<typeof createAdminTestDb>, adminId: string, write = false) =>
+  createAdminApiToken(db, adminId, {
+    name: 'CLI',
+    scopes: write ? ['admin:read', 'admin:write'] : ['admin:read'],
+  })
+
+const actorAudits = (db: ReturnType<typeof createAdminTestDb>, actorUserId: string) =>
+  db.select().from(auditLog).where(eq(auditLog.actorUserId, actorUserId)).orderBy(auditLog.id)
+
+function expectToolError(result: unknown, code: string) {
+  expect(result).toMatchObject({ isError: true, structuredContent: { error: { code } } })
+}
 
 function expectResponseHeaders(response: Response) {
   expect(response.headers.get('cache-control')).toBe('no-store')
@@ -69,9 +99,27 @@ async function expectUnauthorized(response: Response) {
 
 describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
   afterAll(async () => {
-    await createAdminTestDb()
-      .delete(user)
+    const db = createAdminTestDb()
+    const migrator = createAdminTestDb('migrator')
+    const admins = await db
+      .select({ id: user.id })
+      .from(user)
       .where(like(user.email, `%@${domain}`))
+    if (admins.length) {
+      await migrator.delete(auditLog).where(
+        inArray(
+          auditLog.actorUserId,
+          admins.map(({ id }) => id),
+        ),
+      )
+      await db.delete(user).where(
+        inArray(
+          user.id,
+          admins.map(({ id }) => id),
+        ),
+      )
+    }
+    await Promise.all([db.$client.end(), migrator.$client.end()])
   })
 
   it('用 SDK 完成 initialize、tools/list、tools/call 和协议 ping', async () => {
@@ -89,9 +137,29 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
     })
     try {
       expect(client.getServerVersion()).toMatchObject({ name: 'admin-mcp' })
-      expect((await client.listTools()).tools).toEqual([
-        expect.objectContaining({ name: 'ping', annotations: { readOnlyHint: true } }),
+      const tools = (await client.listTools()).tools
+      expect(tools.map(({ name }) => name).sort()).toEqual([
+        'audit.list',
+        'credits.ledger',
+        'features.models',
+        'metrics.summary',
+        'models.list',
+        'models.update',
+        'orders.list',
+        'ping',
+        'settings.get',
+        'settings.list',
+        'settings.set',
+        'users.get',
+        'users.search',
+        'workspaces.list',
       ])
+      expect(tools).toContainEqual(
+        expect.objectContaining({ name: 'ping', annotations: { readOnlyHint: true } }),
+      )
+      expect(
+        tools.filter((tool) => tool.annotations?.readOnlyHint === false).map(({ name }) => name),
+      ).toEqual(['settings.set', 'models.update'])
       expect(await client.callTool({ name: 'ping', arguments: {} })).toEqual({
         content: [{ type: 'text', text: 'pong' }],
       })
@@ -101,6 +169,327 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
       await client.close()
     }
   })
+
+  it('只读、scope 拒绝、输入错误和执行错误各写一条脱敏调用审计', async () => {
+    const { db, connect, createAdmin } = setup()
+    const adminId = await createAdmin()
+    const read = await issueToken(db, adminId)
+    const write = await issueToken(db, adminId, true)
+    const reader = await connect(read.token)
+    const writer = await connect(write.token)
+    const key = 'operations.telegramBotToken'
+    const secret = '123456:abcdefghijklmnopqrstuvwxyz'
+    const initial = await dbSettingStore(db).find(key)
+    const invalid = 'x'.repeat(201)
+    try {
+      expectToolError(
+        await reader.callTool({ name: 'settings.set', arguments: { key, value: secret } }),
+        'INSUFFICIENT_SCOPE',
+      )
+      expectToolError(
+        await writer.callTool({
+          name: 'settings.set',
+          arguments: { key, value: secret, dryRun: 1 },
+        }),
+        'INVALID_TOOL_ARGUMENTS',
+      )
+      expectToolError(
+        await writer.callTool({
+          name: 'settings.set',
+          arguments: { key: 'credits.dailyAmount', value: invalid },
+        }),
+        'INVALID_SETTING_VALUE',
+      )
+      expectToolError(
+        await reader.callTool({ name: 'settings.get', arguments: { key: 'unregistered.setting' } }),
+        'UNKNOWN_SETTING',
+      )
+      expectToolError(await reader.callTool({ name: 'unregistered.tool' }), 'UNKNOWN_TOOL')
+      await reader.callTool({ name: 'settings.get', arguments: { key } })
+      expect(await dbSettingStore(db).find(key)).toEqual(initial)
+
+      const audits = await actorAudits(db, adminId)
+      expect(audits.map(({ action, meta }) => ({ action, meta }))).toEqual(
+        [
+          [read.metadata.id, 'settings.set', { key, value: '[redacted]' }, 'INSUFFICIENT_SCOPE'],
+          [
+            write.metadata.id,
+            'settings.set',
+            { key, value: '[redacted]', dryRun: 1 },
+            'INVALID_TOOL_ARGUMENTS',
+          ],
+          [
+            write.metadata.id,
+            'settings.set',
+            { key: 'credits.dailyAmount', value: invalid.slice(0, 200) },
+            'INVALID_SETTING_VALUE',
+          ],
+          [read.metadata.id, 'settings.get', { key: 'unregistered.setting' }, 'UNKNOWN_SETTING'],
+          [read.metadata.id, 'unregistered.tool', {}, 'UNKNOWN_TOOL'],
+          [read.metadata.id, 'settings.get', { key }, 'ok'],
+        ].map(([tokenId, tool, params, result]) => ({
+          action: 'admin.mcp.call',
+          meta: { via: 'mcp', tokenId, tool, params, result },
+        })),
+      )
+      expect(JSON.stringify(audits)).not.toContain(secret)
+    } finally {
+      await Promise.all([reader.close(), writer.close()])
+    }
+  })
+
+  it('密钥设置读工具仅返回存在性，写入与预览的新旧值也脱敏', async () => {
+    const { db, connect, createAdmin } = setup()
+    const adminId = await createAdmin()
+    const { token } = await issueToken(db, adminId, true)
+    const client = await connect(token)
+    const key = 'operations.telegramBotToken'
+    const secret = '123456:abcdefghijklmnopqrstuvwxyz'
+    const [original] = await db.select().from(setting).where(eq(setting.key, key))
+    const call = (name: string, args: Record<string, unknown>) =>
+      client.callTool({ name, arguments: { key, ...args } })
+    try {
+      const changes = { oldValue: '[redacted]', newValue: '[redacted]' }
+      const preview = await call('settings.set', { value: secret, dryRun: true })
+      expect(preview.structuredContent).toMatchObject({ key, ...changes, dryRun: true })
+      expect(await dbSettingStore(db).find(key)).toEqual(original?.value)
+      const saved = await call('settings.set', { value: secret })
+      expect(saved.structuredContent).toMatchObject({ key, ...changes, dryRun: false })
+      expect(await dbSettingStore(db).find(key)).toBe(secret)
+      const read = await call('settings.get', {})
+      expect(read.structuredContent).toEqual({
+        key,
+        description: expect.any(String),
+        secret: true,
+        isSet: true,
+      })
+      const list = await client.callTool({ name: 'settings.list' })
+      expect(list.structuredContent).toMatchObject({
+        settings: expect.arrayContaining([read.structuredContent]),
+      })
+      const audits = await actorAudits(db, adminId)
+      expect(audits).toHaveLength(4)
+      expect(audits[1]).toMatchObject({
+        action: 'setting.updated',
+        meta: { via: 'mcp', params: { key, value: '[redacted]' }, changes, result: 'ok' },
+      })
+      expect(JSON.stringify({ preview, saved, read, list, audits })).not.toContain(secret)
+    } finally {
+      await db.delete(setting).where(eq(setting.key, key))
+      if (original) await db.insert(setting).values(original)
+      cacheValues.delete(`setting:${key}`)
+      await client.close()
+    }
+  })
+
+  it('读取遗留错误设置时只返回固定内部错误并记录失败', async () => {
+    const { db, connect, createAdmin } = setup()
+    const adminId = await createAdmin()
+    const { token } = await issueToken(db, adminId)
+    const client = await connect(token)
+    const key = 'site.announcement'
+    const [original] = await db.select().from(setting).where(eq(setting.key, key))
+    try {
+      const value = { text: 'internal fixture' }
+      await db
+        .insert(setting)
+        .values({ key, value })
+        .onConflictDoUpdate({ target: setting.key, set: { value } })
+      const result = await client.callTool({ name: 'settings.get', arguments: { key } })
+      expect(result).toMatchObject({
+        isError: true,
+        structuredContent: { error: { code: 'INTERNAL_ERROR', message: 'Tool execution failed' } },
+      })
+      expect(JSON.stringify(result)).not.toContain('internal fixture')
+      expect(await actorAudits(db, adminId)).toMatchObject([
+        { action: 'admin.mcp.call', meta: { tool: 'settings.get', result: 'INTERNAL_ERROR' } },
+      ])
+    } finally {
+      await db.delete(setting).where(eq(setting.key, key))
+      if (original) await db.insert(setting).values(original)
+      await client.close()
+    }
+  })
+
+  it.skipIf(!templateConfig.billing.enabled)(
+    '模型定价与参数复用后台校验，通过后按更新字段审计',
+    async () => {
+      const { db, connect, createAdmin } = setup()
+      const adminId = await createAdmin()
+      const { token } = await issueToken(db, adminId, true)
+      const client = await connect(token)
+      const key = `mcp-${newId()}`
+      const pricing = { mode: 'token', inputPer1k: 1, outputPer1k: 1, minCharge: 1 } as const
+      const update = (args: Record<string, unknown>) =>
+        client.callTool({ name: 'models.update', arguments: { key, ...args } })
+      try {
+        await db.insert(aiModel).values({
+          key,
+          kind: 'text',
+          provider: 'test',
+          providerModelId: key,
+          pricing,
+          sort: 1_000_000,
+        })
+        expectToolError(
+          await update({ pricing: { mode: 'per_call', credits: 1 } }),
+          'MISSING_TOKEN_LIMITS',
+        )
+        expectToolError(
+          await update({ paramsSchema: { 'x-text': { tokensPerChar: -1 } } }),
+          'PARAMS_SCHEMA_INVALID',
+        )
+        const paramsSchema = { 'x-text': { thinking: true } }
+        const newPricing = { ...pricing, inputPer1k: 2 }
+        const saved = await update({ pricing: newPricing, paramsSchema })
+        expect(saved.structuredContent).toMatchObject({
+          key,
+          changes: {
+            pricing: { before: pricing, after: newPricing },
+            paramsSchema: { before: null, after: paramsSchema },
+          },
+        })
+        const list = await client.callTool({
+          name: 'models.list',
+          arguments: { kind: 'text', order: 'sort_desc' },
+        })
+        expect(list.structuredContent).toMatchObject({
+          models: expect.arrayContaining([
+            expect.objectContaining({ key, pricing: newPricing, paramsSchema }),
+          ]),
+        })
+        expect(
+          (await actorAudits(db, adminId)).find(({ action }) => action === 'ai.model_updated'),
+        ).toMatchObject({
+          meta: {
+            changes: {
+              pricing: { before: pricing, after: newPricing },
+              paramsSchema: { before: null, after: expect.stringMatching(/^[0-9a-f]{64}$/) },
+            },
+            params: { key },
+          },
+        })
+      } finally {
+        await db.delete(aiModel).where(eq(aiModel.key, key))
+        await client.close()
+      }
+    },
+  )
+
+  it.skipIf(!templateConfig.billing.enabled)(
+    '设置功能模型后即时清除缓存，预览停用不落库，实际停用后立即沿用',
+    async () => {
+      const { db, connect, createAdmin } = setup()
+      const adminId = await createAdmin()
+      const { token, metadata } = await issueToken(db, adminId, true)
+      const client = await connect(token)
+      const feature = 'admin-mcp-primary'
+      const key = `ai.model.${feature}`
+      const fallbackKey = 'ai.model.admin-mcp-fallback'
+      const modelKey = `mcp-${newId()}`
+      const fallback = `mcp-${newId()}`
+      const wrongKind = `mcp-${newId()}`
+      const settingsCtx = { store: dbSettingStore(db), cache: adminCache }
+      const call = (name: string, args: Record<string, unknown> = {}) =>
+        client.callTool({ name, arguments: args })
+      try {
+        await db.insert(aiModel).values(
+          [modelKey, fallback, wrongKind].map<NewAiModel>((model) => ({
+            key: model,
+            kind: model === wrongKind ? 'image' : 'text',
+            provider: 'test',
+            providerModelId: model,
+            pricing: { mode: 'token', inputPer1k: 1, outputPer1k: 1, minCharge: 1 },
+            enabled: true,
+          })),
+        )
+        await db.insert(setting).values({ key: fallbackKey, value: fallback })
+        const inherited = { modelKey: fallback, source: 'inherited', from: 'admin-mcp-fallback' }
+        expect(await resolveFeatureModel(db, settingsCtx, feature)).toEqual(inherited)
+        expect((await call('settings.get', { key })).structuredContent).toMatchObject({
+          key,
+          source: 'default',
+          defaultValue: '',
+          value: '',
+          resolution: inherited,
+        })
+        for (const value of [wrongKind, 'unregistered-model']) {
+          expectToolError(await call('settings.set', { key, value }), 'INVALID_SETTING_VALUE')
+        }
+
+        const changes = { oldValue: '', newValue: modelKey }
+        const preview = await call('settings.set', { key, value: modelKey, dryRun: true })
+        expect(preview.structuredContent).toMatchObject({ key, ...changes, dryRun: true })
+        expect(await dbSettingStore(db).find(key)).toBeUndefined()
+        expect(cacheValues.has(`setting:${key}`)).toBe(true)
+        const saved = await call('settings.set', { key, value: modelKey })
+        expect(saved.structuredContent).toMatchObject({ key, ...changes, dryRun: false })
+        expect(cacheValues.has(`setting:${key}`)).toBe(false)
+        const explicit = { modelKey, source: 'explicit' }
+        expect(await getSettingValue(settingsCtx, key)).toBe(modelKey)
+        expect(await resolveFeatureModel(db, settingsCtx, feature)).toEqual(explicit)
+        expect((await call('features.models')).structuredContent).toMatchObject({
+          features: expect.arrayContaining([
+            { feature, kind: 'text', inherit: ['admin-mcp-fallback'], resolution: explicit },
+          ]),
+        })
+
+        cacheValues.set(MODEL_CACHE_KEY, 'unchanged')
+        const modelChanges = { enabled: { before: true, after: false } }
+        expect(
+          (await call('models.update', { key: modelKey, enabled: false, dryRun: true }))
+            .structuredContent,
+        ).toMatchObject({ key: modelKey, changes: modelChanges, dryRun: true })
+        expect(cacheValues.get(MODEL_CACHE_KEY)).toBe('unchanged')
+        expect(await resolveFeatureModel(db, settingsCtx, feature)).toEqual(explicit)
+        expect(
+          (await call('models.update', { key: modelKey, enabled: false })).structuredContent,
+        ).toMatchObject({ key: modelKey, changes: modelChanges, dryRun: false })
+        expect(cacheValues.has(MODEL_CACHE_KEY)).toBe(false)
+        expect(await resolveFeatureModel(db, settingsCtx, feature)).toEqual(inherited)
+        expect((await call('settings.get', { key })).structuredContent).toMatchObject({
+          key,
+          source: 'database',
+          value: modelKey,
+          resolution: inherited,
+        })
+        const audits = await actorAudits(db, adminId)
+        expect(audits.filter(({ action }) => action !== 'admin.mcp.call')).toMatchObject([
+          {
+            action: 'setting.updated',
+            targetId: key,
+            meta: { via: 'mcp', tokenId: metadata.id, tool: 'settings.set', changes, result: 'ok' },
+          },
+          {
+            action: 'ai.model_disabled',
+            meta: {
+              via: 'mcp',
+              tokenId: metadata.id,
+              tool: 'models.update',
+              changes: modelChanges,
+              result: 'ok',
+            },
+          },
+        ])
+        expect(
+          audits.filter(
+            ({ meta }) =>
+              meta && typeof meta === 'object' && 'dryRun' in meta && meta.dryRun === true,
+          ),
+        ).toMatchObject([
+          { action: 'admin.mcp.call', meta: { tool: 'settings.set', result: 'ok' } },
+          { action: 'admin.mcp.call', meta: { tool: 'models.update', result: 'ok' } },
+        ])
+      } finally {
+        await db.delete(setting).where(inArray(setting.key, [key, fallbackKey]))
+        await db.delete(aiModel).where(inArray(aiModel.key, [modelKey, fallback, wrongKind]))
+        cacheValues.delete(`setting:${key}`)
+        cacheValues.delete(`setting:${fallbackKey}`)
+        cacheValues.delete(MODEL_CACHE_KEY)
+        await client.close()
+      }
+    },
+  )
 
   it('创建显示明文一次，列表只返回元数据，其他管理员无法吊销', async () => {
     const { db, createAdmin } = setup()

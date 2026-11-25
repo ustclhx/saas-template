@@ -252,7 +252,7 @@ node /tmp/template/scripts/template-sync.mjs infer-base --project . --write <候
 
 ## Agent Skills
 
-项目内提供 10 个技能，Codex 使用 `.agents/skills/`，Claude 使用 `.claude/skills/`。
+Codex 使用项目内的 `.agents/skills/`，Claude 使用 `.claude/skills/`。
 在项目根按技能名发起请求，例如 Codex `$quick-start`、Claude `/quick-start`；
 也可直接要求 agent 阅读对应 `SKILL.md` 执行。生成副本会一起继承技能并改写包 scope。
 
@@ -265,6 +265,7 @@ node /tmp/template/scripts/template-sync.mjs infer-base --project . --write <候
 | [new-module](../.agents/skills/new-module/SKILL.md) | 复用现有表与领域模块，租户服务、鉴权入口、运行时设置与积分边界 |
 | [new-static-page](../.agents/skills/new-static-page/SKILL.md) | 多语言营销/法务 MDX 或静态路由、SEO、sitemap 与预渲染 |
 | [add-ai-model](../.agents/skills/add-ai-model/SKILL.md) | 后台模型编辑器、参数 schema/定价/套餐授权；必要时新增 Provider |
+| [configure-feature-model](../.agents/skills/configure-feature-model/SKILL.md) | 为上线功能经 Admin MCP 配置模型、核对解析来源并验收 |
 | [security-scan](../.agents/skills/security-scan/SKILL.md) | 工程检查、敏感路径与凭据扫描、鉴权/注入/账本等 diff 审查 |
 | [template-sync](../.agents/skills/template-sync/SKILL.md) | 衍生项目采纳模板更新：版本区间与升级说明预检、本地分支三方合并、迁移移植与验证、基准推断、UI 截图对比 |
 | [ui-design](../.agents/skills/ui-design/SKILL.md) | 是否需要设计稿的判断、衍生项目视觉方向（brand.css / 多站点）、Design 画布状态矩阵与确认、离线副本与 OpenSpec 记录 |
@@ -283,7 +284,7 @@ quick-start 的生成/安装/typecheck/unit 与本地/外部验收分开报告�
 新技能两份逐字节一致，不用符号链接（生成器不复制符号链接）。提交前核对：
 
 ```sh
-for skill in quick-start deploy-cloudflare deploy-selfhost new-page new-module new-static-page add-ai-model security-scan template-sync ui-design; do
+for skill in quick-start deploy-cloudflare deploy-selfhost new-page new-module new-static-page add-ai-model configure-feature-model security-scan template-sync ui-design; do
   cmp ".agents/skills/$skill/SKILL.md" ".claude/skills/$skill/SKILL.md" || exit 1
 done
 ```

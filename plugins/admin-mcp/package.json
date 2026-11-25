@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.4.0",
+    "@saas/ai": "workspace:*",
     "@saas/config": "workspace:*",
     "@saas/db": "workspace:*",
     "@saas/platform": "workspace:*",

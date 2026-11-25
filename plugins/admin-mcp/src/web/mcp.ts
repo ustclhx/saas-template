@@ -1,10 +1,14 @@
-import { McpServer, WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server'
+import { Server, WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server'
+import { isAiFaultInjectionEnabled } from '@saas/config'
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import type { WebRuntime } from '@web/server/runtime.ts'
 import { markAdminApiTokenUsed, verifyAdminApiToken } from './tokens.ts'
-import { type AdminToolContext, registerAdminTool } from './tools/define.ts'
+import { businessTools } from './tools/business.ts'
+import { type AdminToolContext, rejectUnknownAdminTool } from './tools/define.ts'
+import { modelTools } from './tools/models.ts'
 import { pingTool } from './tools/ping.ts'
+import { settingTools } from './tools/settings.ts'
 
 const maxRequestBodySize = 256 * 1024
 const responseHeaders = { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' }
@@ -21,13 +25,28 @@ function unauthorized() {
 }
 
 async function dispatch(request: Request, ctx: AdminToolContext) {
-  const server = new McpServer({ name: 'admin-mcp', version: '1.0.0' })
+  // 先接管 tools/call，再做工具级校验，才能记录 SDK 默认会提前拒绝的调用。
+  const server = new Server(
+    { name: 'admin-mcp', version: '1.0.0' },
+    { capabilities: { tools: {} } },
+  )
+  const tools = [pingTool, ...settingTools, ...modelTools, ...businessTools].map((tool) =>
+    tool.register(ctx),
+  )
+  const byName = new Map(tools.map((tool) => [tool.spec.name, tool]))
+  server.setRequestHandler('tools/list', () => ({ tools: tools.map((tool) => tool.spec) }))
+  server.setRequestHandler('tools/call', async ({ params }) => {
+    const tool = byName.get(params.name)
+    const result = tool
+      ? await tool.call(params.arguments ?? {})
+      : await rejectUnknownAdminTool(ctx, params.name)
+    return server.projectCallToolResult(result, undefined)
+  })
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
     maxRequestBodySize,
   })
-  registerAdminTool(server, ctx, pingTool)
   try {
     await server.connect(transport)
     return await transport.handleRequest(request)
@@ -36,7 +55,7 @@ async function dispatch(request: Request, ctx: AdminToolContext) {
   }
 }
 
-type McpRuntime = Pick<WebRuntime, 'db' | 'cache' | 'rateLimiter' | 'requestMeta'> & {
+type McpRuntime = Pick<WebRuntime, 'db' | 'cache' | 'rateLimiter' | 'requestMeta' | 'ai'> & {
   readonly config: Pick<WebRuntime['config'], 'APP_URL'>
 }
 
@@ -67,6 +86,11 @@ export async function respondToAdminMcp(
       token: { id: token.id, scopes: token.scopes },
       cache,
       requestMetadata: requestMeta,
+      ip: requestMeta.clientIp,
+      workersAiAvailable: runtime.ai?.available === true && runtime.ai.value.workersAi.available,
+      aiFaultInjectionEnabled: isAiFaultInjectionEnabled(
+        runtime.ai?.available === true ? runtime.ai.value.config : {},
+      ),
     })
     if (response.ok) {
       // 工具可能已提交业务写入，辅助使用时间写入失败时仍返回工具结果。

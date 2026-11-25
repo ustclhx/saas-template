@@ -17,7 +17,7 @@ const tokenScopes = z
 export type AdminTokenScope = z.output<typeof tokenScopes>[number]
 
 const tokenInput = z.object({
-  name: z.string().trim().min(1),
+  name: z.string().trim().min(1).max(100),
   scopes: tokenScopes,
   expiresAt: z.date().optional(),
 })

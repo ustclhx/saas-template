@@ -14,9 +14,9 @@ export interface BillingListInput {
   offset: number
   workspaceId?: string | undefined
 }
-const pageResult = <T>(rows: T[]) => ({
-  rows: rows.slice(0, ADMIN_PAGE_SIZE),
-  hasMore: rows.length > ADMIN_PAGE_SIZE,
+const pageResult = <T>(rows: T[], limit = ADMIN_PAGE_SIZE) => ({
+  rows: rows.slice(0, limit),
+  hasMore: rows.length > limit,
 })
 
 export async function listAdminPayments(db: Database, data: BillingListInput) {
@@ -58,7 +58,11 @@ export async function listAdminSubscriptions(db: Database, data: BillingListInpu
     .offset(data.offset)
   return pageResult(rows)
 }
-export async function listAdminPurchases(db: Database, data: BillingListInput) {
+export async function listAdminPurchases(
+  db: Database,
+  data: BillingListInput & { limit?: number },
+) {
+  const limit = data.limit ?? ADMIN_PAGE_SIZE
   const rows = await db
     .select({
       id: purchase.id,
@@ -73,9 +77,9 @@ export async function listAdminPurchases(db: Database, data: BillingListInput) {
     .from(purchase)
     .where(data.workspaceId ? eq(purchase.workspaceId, data.workspaceId) : undefined)
     .orderBy(desc(purchase.createdAt), desc(purchase.id))
-    .limit(ADMIN_PAGE_SIZE + 1)
+    .limit(limit + 1)
     .offset(data.offset)
-  return pageResult(rows)
+  return pageResult(rows, limit)
 }
 
 /** 回调表没有空间列：按已验证载荷中的结账元数据或本地账务的平台 ID 关联，筛选先于分页。 */

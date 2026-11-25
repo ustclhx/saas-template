@@ -16,6 +16,7 @@
 | [04-auth-and-tenancy.md](./04-auth-and-tenancy.md) | 认证、平台角色、可选多租户（Workspace） |
 | [05-billing.md](./05-billing.md) | 支付抽象（Stripe / PayPal / 未来 MoR）、订阅、积分、权益 |
 | [06-ai.md](./06-ai.md) | 文本 / 图片 / 视频生成、任务模型、Provider 适配、计费结算 |
+| [admin-mcp.md](./admin-mcp.md) | 管理员令牌、MCP 客户端配置、工具权限、预览写入与审计 |
 | [07-infrastructure.md](./07-infrastructure.md) | 自建 Postgres、Hyperdrive + Tunnel、备份、环境、部署、CI |
 | [08-roadmap.md](./08-roadmap.md) | 分阶段开发计划与验收标准、待决事项 |
 | [09-parallel-plan.md](./09-parallel-plan.md) | 用 Orca 并行开发：worktree 隔离、共享文件规则、并行波次与合并流程 |

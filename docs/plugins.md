@@ -67,8 +67,11 @@ Cloudflare 使用声明了 `cloudflare` 的插件。`pnpm build:node` 只打包�
 |---|---|---|
 | `media` | Cloudflare、Node | 图片和视频任务，依赖 `billing` 与 `credits`。[媒体任务](./06-ai.md#4-图片--视频异步任务) |
 | `agents` | Cloudflare | 持久对话、多步工具和人工确认，依赖 `billing` 与 `credits`。web 提供 `AGENT_CONVERSATION` SQLite Durable Object，jobs 复用现有清理 Cron 处理 PG 预扣。[Agent 对话](./06-ai.md#8-agent-对话pluginsagents) |
+| `admin-mcp` | Cloudflare、Node | 平台管理员个人令牌、MCP 后台数据读取及设置与模型更新。模板默认启用。[管理员 MCP](./admin-mcp.md) |
 
 生成 Cloudflare 项目时可用 `--plugins agents` 选择 Agent。web 的 `AGENT_CONVERSATION` 绑定指向同一 Worker 内的 `AgentConversation`，并用 `agents-v1` SQLite 类迁移。jobs 沿用先部署的顺序。`plugins.agents` 可配置 `maxSteps`、`maxTurnCredits`、`maxPersistedMessages`、`retentionDays` 与 `defaultAgent`。详见 [插件清单](../plugins/agents/plugin.ts) 与 [配置 schema](../plugins/agents/src/config.ts)。
+
+`admin-mcp` 使用 `packages/db` 的 `admin_api_token` 表，启用时应用数据库迁移。Cloudflare web 各环境需配置 `RL_ADMIN_MCP` 限流绑定，默认每分钟 120 次，额度按各环境的绑定配置。Node 用 `plugins['admin-mcp'].rateLimitPerMinute` 调整额度。令牌有效期上限由 `plugins['admin-mcp'].maxTokenDays` 设置，默认 365 天。停用并重新部署后，管理页和 MCP 端点返回 404。[插件清单](../plugins/admin-mcp/plugin.ts)
 
 ## 新增插件与验证
 

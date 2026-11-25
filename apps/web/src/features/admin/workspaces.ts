@@ -1,5 +1,10 @@
 import type { TemplateConfig } from '@saas/config'
-import { getCreditBalance, getCreditBatches, getCreditLedger } from '@saas/credits'
+import {
+  type CreditPageInput,
+  getCreditBalance,
+  getCreditBatches,
+  getCreditLedger,
+} from '@saas/credits'
 import { type Database, member, organization, plan, scoped, subscription, user } from '@saas/db'
 import { getEntitlements } from '@saas/entitlements'
 import { AppError } from '@saas/shared'
@@ -9,11 +14,18 @@ import { ADMIN_PAGE_SIZE, adminListSearch } from './list.ts'
 
 export async function listAdminWorkspaces(
   db: Database,
-  input: { offset?: number; q?: string | undefined; status?: string | undefined },
+  input: { offset?: number; limit?: number; q?: string | undefined; status?: string | undefined },
 ) {
   const { offset, q, status } = adminListSearch(['q', 'status'])(input)
+  const limit = input.limit ?? ADMIN_PAGE_SIZE
   const rows = await db
-    .select()
+    .select({
+      id: organization.id,
+      name: organization.name,
+      slug: organization.slug,
+      isPersonal: organization.isPersonal,
+      deletedAt: organization.deletedAt,
+    })
     .from(organization)
     .where(
       and(
@@ -33,8 +45,20 @@ export async function listAdminWorkspaces(
     )
     .orderBy(desc(organization.createdAt), desc(organization.id))
     .offset(offset)
-    .limit(ADMIN_PAGE_SIZE + 1)
-  return { rows: rows.slice(0, ADMIN_PAGE_SIZE), hasMore: rows.length > ADMIN_PAGE_SIZE }
+    .limit(limit + 1)
+  return { rows: rows.slice(0, limit), hasMore: rows.length > limit }
+}
+
+export async function getAdminWorkspaceCreditLedger(
+  db: Database,
+  workspaceId: string,
+  input?: CreditPageInput & { offset?: number },
+) {
+  const { items, nextCursor } = await getCreditLedger(db, workspaceId, input)
+  return {
+    items: items.map(({ id, createdAt, type, delta }) => ({ id, createdAt, type, delta })),
+    nextCursor,
+  }
 }
 
 export async function adminWorkspaceDetail(
@@ -65,7 +89,9 @@ export async function adminWorkspaceDetail(
   const [balance, batches, ledger, entitlements] = await Promise.all([
     config.credits.enabled ? getCreditBalance(db, id) : null,
     config.credits.enabled ? getCreditBatches(db, id) : { items: [], nextCursor: null },
-    config.credits.enabled ? getCreditLedger(db, id) : { items: [], nextCursor: null },
+    config.credits.enabled
+      ? getAdminWorkspaceCreditLedger(db, id)
+      : { items: [], nextCursor: null },
     config.billing.enabled ? getEntitlements(db, id, { pastDueGraceDays }) : null,
   ])
   return { workspace, members, subscriptions, balance, batches, ledger, entitlements }
