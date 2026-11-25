@@ -1,5 +1,6 @@
 import { MODEL_CACHE_KEY } from '@saas/ai'
 import { parseAuthEnv } from '@saas/auth'
+import { grant } from '@saas/credits'
 import {
   adminApiToken,
   adminPendingAction,
@@ -438,6 +439,33 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'] || !templateConfig.credits.
       expect((await audits(admin.id)).map(({ action }) => action)).toContain(
         'admin.confirmation.failed',
       )
+    })
+
+    it('确认页显示发起时余额与执行后余额；余额在发起后变化时以 STALE_TARGET 失败，不执行', async () => {
+      const admin = await createAdmin()
+      const { token } = await issue(admin.id)
+      const workspace = await createWorkspace()
+      const seed = (amount: number) =>
+        grant(db, { workspaceId: workspace.id, source: 'admin', sourceRef: newId(), amount })
+      await seed(40)
+      const id = await requestGrant(token, workspace.id)
+      expect((await record(id))?.display).toMatchObject({ balance: { before: 40, after: 140 } })
+      // 发起后余额变化（例如另一笔发放或扣费）：确认页展示的前后值已不准确
+      await seed(5)
+      expect(await confirm(admin.verified, id)).toMatchObject({
+        ok: true,
+        status: 'failed',
+        result: { code: 'STALE_TARGET' },
+      })
+      expect((await grants(workspace.id)).map(({ amount }) => amount).sort()).toEqual(
+        [40, 5].sort(),
+      )
+
+      // 余额未变时照常执行
+      const next = await requestGrant(token, workspace.id, 10)
+      expect((await record(next))?.display).toMatchObject({ balance: { before: 45, after: 55 } })
+      expect(await confirm(admin.verified, next)).toMatchObject({ ok: true, status: 'done' })
+      expect(await grants(workspace.id)).toHaveLength(3)
     })
   },
 )

@@ -97,7 +97,7 @@ claude mcp add --transport http --scope local admin-mcp https://app.example.com/
 1. 收到 `needs_owner_confirm` 时，把 `summary` 与 `confirmUrl` 原样交给令牌所属管理员，说明需要其在后台确认；**在确认前不要把操作视为已完成**，也不要重复调用（每次调用都会新建一条记录）。
 2. 管理员处理后，用 `confirmations.get` 查询：
    - `done`：已执行，`result` 给出执行结果（如 `adjustmentId`、退款申请 ID 与状态、设置或模型的新旧值）。退款通过后的支付平台处理沿用现有退款流程，最终状态以后台退款页为准。
-   - `failed`：未执行，`result.code` 说明原因：`TOKEN_REVOKED`（发起令牌已吊销、过期或所属管理员已失效）、`STALE_TARGET`（确认前目标已被他人修改）、`SECRET_UNAVAILABLE`（密钥参数已不可解）或业务校验错误码。按需读取现值后重新发起。
+   - `failed`：未执行，`result.code` 说明原因：`TOKEN_REVOKED`（发起令牌已吊销、过期或所属管理员已失效）、`STALE_TARGET`（确认前目标已变化：设置或模型被他人修改、退款申请状态变化，`credits.adjust` 为空间可用余额与发起时不同）、`SECRET_UNAVAILABLE`（密钥参数已不可解）或业务校验错误码。按需读取现值后重新发起。
    - `rejected`：管理员拒绝，不要自动重试。
    - `expired`：30 分钟内无人处理，如仍需要则重新发起。
    - `pending`：仍在等待，不要轮询过频。

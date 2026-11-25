@@ -159,7 +159,7 @@
 ### 9. 第一批 MCP 敏感工具（D1，使用者 2026-11-25 确认）
 | 工具 | 输入（AI 侧） | 解析与快照 | 执行复用 |
 |---|---|---|---|
-| `credits.adjust` | `{ workspace（ID 或 slug）, kind: grant, amount, expiresAt?, reason }` 或 `{ workspace, kind: revoke, grantId, reason }` | 空间 ID 与名称、批次剩余、生成 `adjustmentId` | `adjustAdminCredits` |
+| `credits.adjust` | `{ workspace（ID 或 slug）, kind: grant, amount, expiresAt?, reason }` 或 `{ workspace, kind: revoke, grantId, reason }` | 空间 ID 与名称、可用余额（发起时快照，见决策 11 实现备注）、批次剩余、生成 `adjustmentId` | `adjustAdminCredits` |
 | `refunds.review` | `{ requestId, decision, approvedAmount?, reviewNote? }` | 申请状态、付款金额与币种、对应批次已用 / 剩余 | `reviewRefundRequest`（驳回也走确认：保持一致，且驳回会发邮件给用户） |
 | `settings.set`（密钥项） | 不变 | 现值是否已设置 | `writeRuntimeSetting` |
 | `models.update`（定价改动） | 不变 | 现定价 | 抽出的模型保存 |
@@ -179,7 +179,8 @@
 - 把业务错误包装为 `{ ok: false, error }` 的入口（积分调整、退款与回调重放、模型保存、套餐模型）在 catch 中先 `rethrowStepUpRequired`；守卫测试改为只接受抛出的 `STEP_UP_REQUIRED`（或 HTTP 403），包装后的返回值视为未拦截。
 - `call-sites.scan.test.ts` 静态确认：处理敏感动作的 POST Server Function 都已列入，界面只经 `useStepUpCall` 调用它们。
 - 确认页与列表放在 admin-mcp 插件（`plugins/admin-mcp/routes/admin/`），读取类 Server Function 与确认 / 拒绝同在 `confirmations.functions.ts`；插件后台菜单项新增可选 `count`。
-- 与设计稿的差异见 PR 描述（现有后台布局没有顶部标题栏：已验证状态放在正文右上，手机端沿用现有内联导航；Fluid Tabs 为紧凑分段而非等宽；积分调整显示增加量而不是余额前后值，`display` 中没有余额快照）。
+- 与设计稿的差异见 PR 描述（现有后台布局没有顶部标题栏：已验证状态放在正文右上，手机端沿用现有内联导航；Fluid Tabs 为紧凑分段而非等宽）。
+- **积分调整的余额快照**（协调者审阅要求，2026-11-26）：`credits.adjust` 在创建待确认时读取空间可用余额（未过期有效批次剩余之和），`display.balance` 为 `{ before, after }`，`payload.balance` 为快照；确认页与手机版显示「积分余额 当前 → 执行后」。执行时在空间积分锁内重读，余额与快照不同即 `STALE_TARGET` 不执行（收回批次另外仍比对批次剩余与状态）。决策 9 的快照只列了「批次剩余」，未规定余额，故按审阅要求补充。代价：有持续扣费的空间在等待确认期间余额会变，确认会以「目标已变化」失败，需让 AI 重新发起。加入本字段之前创建的记录没有快照，执行时不比对余额、确认页退回显示增加量。
 
 
 已确认（2026-11-25）：见 `docs/design-system/prototypes/README.md` 中「后台敏感操作验证弹窗 StepUpDialog」「后台确认 AI 发起的操作 /admin/confirm/$id」「后台待确认列表 /admin/confirmations」三行，副本在 `docs/design-system/prototypes/admin-step-up/`。组件变更提议：`@saas/ui` 无 InputOTP 时按 `packages/ui/UPSTREAM.md` 接入（随画布确认）。实现与验收以副本为准。

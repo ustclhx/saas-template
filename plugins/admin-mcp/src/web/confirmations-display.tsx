@@ -98,6 +98,18 @@ export function confirmationRows(record: AdminConfirmationView): ConfirmationRow
   switch (str(display.kind)) {
     case 'credits': {
       rows.push({ label: m.admin_confirm_row_workspace(), after: workspaceLabel(display) })
+      // 发起时的可用余额快照与执行后余额（设计稿「积分余额 1,200 → 1,700」）；执行时余额已变化则不执行
+      const balance = obj(display.balance)
+      const before = num(balance.before)
+      const after = num(balance.after)
+      const balanceRow: ConfirmationRow | undefined =
+        before === undefined || after === undefined
+          ? undefined
+          : {
+              label: m.admin_confirm_row_balance(),
+              current: formatCredits(before),
+              after: formatCredits(after),
+            }
       if (str(display.operation) === 'revoke') {
         const grant = obj(display.grant)
         rows.push(
@@ -108,9 +120,11 @@ export function confirmationRows(record: AdminConfirmationView): ConfirmationRow
             after: `0 / ${formatCredits(num(grant.amount) ?? 0)}`,
           },
         )
+        if (balanceRow) rows.push(balanceRow)
       } else {
         rows.push(
-          {
+          // 加入余额快照之前创建的记录只有增加量
+          balanceRow ?? {
             label: m.admin_confirm_row_amount(),
             after: `+${formatCredits(num(display.amount) ?? 0)}`,
           },
