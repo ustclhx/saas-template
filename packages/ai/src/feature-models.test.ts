@@ -37,6 +37,7 @@ it('解析显式和顺序沿用，跳过停用、异种和不存在的模型，�
     return {
       id: key,
       key,
+      displayName: null,
       kind,
       provider: 'test',
       providerModelId: key,

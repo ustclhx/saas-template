@@ -37,7 +37,7 @@ plugins/<id>/
 
 | 入口 | 扩展点 |
 |---|---|
-| `web` | `appNav` 增加应用区导航（侧栏与顶栏布局共用），同 id 依模板、插件、项目的次序覆盖。`adminNav` 向现有后台分组追加条目，组内按 `order` 排序；可选 `count` 在后台布局加载时读取，大于 0 时在条目旁显示数量（读取失败不显示）。`toolRenderers` 注册对话工具卡片，项目可覆盖。 |
+| `web` | `appNav` 增加应用区导航（侧栏与顶栏布局共用），同 id 依模板、插件、项目的次序覆盖。`adminNav` 向现有后台分组追加条目，组内按 `order` 排序；可选 `count` 在后台布局加载时读取，大于 0 时在条目旁显示数量（读取失败不显示）。`toolRenderers` 注册对话工具卡片，项目可覆盖。`sitemaps` 声明插件提供的站点地图根路径，由 `robots.txt` 输出完整网址。 |
 | `worker` | `fetch(request, env, ctx)` 在网关与 TanStack Start 之前运行。返回 `Response` 即结束，返回 `undefined` 继续请求链。它晚于预渲染静态资源与环境校验，静态页命中时不会调用；必须早于静态页生效的项目规则写在[项目闸门](02-project-structure.md#项目自有扩展文件)。 |
 | `jobs` | `queues` 按基础队列名注册处理器，Cloudflare 同时匹配 `-staging` 和 `-production` 后缀。`crons` 使用已有 `heartbeat`、`ten-minute`、`daily` 分组，每个任务必须声明 `safety`：会删除、销毁积分、外部写或群发时写明每轮上限、顺序与时间防护并登记到 [批量任务登记表](bulk-jobs.md)，否则写 `{ kind: 'none', reason }`。`holdSweepers` 按预扣来源注册清理器。 |
 | `webNode` | Node Web 的 `fetch(request)`，采用同样的请求链约定。 |
@@ -70,10 +70,13 @@ Cloudflare 使用声明了 `cloudflare` 的插件。`pnpm build:node` 只打包�
 | 插件 | 部署目标 | 功能与依赖 |
 |---|---|---|
 | `media` | Cloudflare、Node | 图片和视频任务，依赖 `billing` 与 `credits`。[媒体任务](./06-ai.md#4-图片--视频异步任务) |
+| `studio` | Cloudflare、Node | 图片和视频创作与公开画廊的插件骨架，依赖 `media`、`billing` 与 `credits`。模板默认启用。 |
 | `agents` | Cloudflare | 持久对话、多步工具和人工确认，依赖 `billing` 与 `credits`。web 提供 `AGENT_CONVERSATION` SQLite Durable Object，jobs 复用现有清理 Cron 处理 PG 预扣。[Agent 对话](./06-ai.md#8-agent-对话pluginsagents) |
 | `admin-mcp` | Cloudflare、Node | 平台管理员个人令牌、MCP 后台数据读取及设置与模型更新。模板默认启用。[管理员 MCP](./admin-mcp.md) |
 
 生成 Cloudflare 项目时可用 `--plugins agents` 选择 Agent。web 的 `AGENT_CONVERSATION` 绑定指向同一 Worker 内的 `AgentConversation`，并用 `agents-v1` SQLite 类迁移。jobs 沿用先部署的顺序。`plugins.agents` 可配置 `maxSteps`、`maxTurnCredits`、`maxPersistedMessages`、`retentionDays` 与 `defaultAgent`。详见 [插件清单](../plugins/agents/plugin.ts) 与 [配置 schema](../plugins/agents/src/config.ts)。
+
+`plugins.studio.kinds` 默认包含 `image` 与 `video`，对应模板 AI 开关也须开启才可使用该模式。`publishDailyLimit`（每用户每日发布上限）、`reportHideThreshold`（自动隐藏的举报数阈值）和 `galleryPageSize`（画廊每页条数）分别默认为 20、3 和 24，均须为正整数。启用 Studio 后，应用区的媒体导航只保留任务列表入口。[插件清单](../plugins/studio/plugin.ts) · [配置 schema](../plugins/studio/src/config.ts)
 
 `admin-mcp` 使用 `packages/db` 的 `admin_api_token` 表，启用时应用数据库迁移。Cloudflare web 各环境需配置 `RL_ADMIN_MCP` 限流绑定，默认每分钟 120 次，额度按各环境的绑定配置。Node 用 `plugins['admin-mcp'].rateLimitPerMinute` 调整额度。令牌有效期上限由 `plugins['admin-mcp'].maxTokenDays` 设置，默认 365 天。停用并重新部署后，管理页和 MCP 端点返回 404。[插件清单](../plugins/admin-mcp/plugin.ts)
 

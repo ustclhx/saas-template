@@ -37,7 +37,7 @@ export function MediaSubmitPage({
             <SelectContent>
               {page.models.map((model, index) => (
                 <SelectItem key={model.key} index={index} value={model.key}>
-                  {model.key} · {model.kind === 'image' ? m.media_image() : m.media_video()}
+                  {model.displayName} · {model.kind === 'image' ? m.media_image() : m.media_video()}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -61,6 +61,7 @@ studio 不替换 media 的通用提交页与任务页：它们仍服务公开 AP
 - 删除：用户删除作品 = 事务内删 `studio_work`（举报级联）、软删 `file` 并按现有存储删除流程删 R2 对象；
   删号 / 删空间：`registerDeletionStep` 注册 studio 步骤，在 `file` / `ai_task` 清理之前删本空间 `studio_work`（级联举报），幂等。
 - `ai_model.display_name text null`（迁移 + 后台模型编辑器字段 + MCP `models.list` 返回、`models.update` 可写）。
+- 2026-11-26 核对 PostgreSQL 17 文档：`RESTRICT` 拒绝删除仍被引用的行，`CASCADE` 随作品删除举报，精选索引仅收录匹配谓词的行。[外键约束](https://www.postgresql.org/docs/17/ddl-constraints.html#DDL-CONSTRAINTS-FK)、[部分索引](https://www.postgresql.org/docs/17/indexes-partial.html)
 
 ### 3. 创作页复用 media 提交
 
@@ -92,6 +93,7 @@ studio 的 Server Function `submitStudio({ mode, modelKey, prompt, presetId?, pa
   旧地址只在作品页曾公开期间被引用，属于可接受窗口；下架违法内容时文档要求配置清除凭据。
 - Node 目标：无 Cache API，同一处理器只设置相同的 Cache-Control，交给 Caddy / CDN；Range 由存储适配器的范围读取支持（自托管 S3 兼容 `GetObject` Range）。
 - 备选：独立公开桶 + 自定义域名（性能最好但需新建桶、域名与清理流程，使用者未选）；继续用 `publicToken` 302 签名地址（无法缓存、每次查库，否决）。
+- 2026-11-26 核对 Cloudflare 文档：回填完整 200 响应时保留 `Content-Length`，命中查找保留请求的 `Range` 头，使 `cache.match()` 能返回 206。R2 `get` 支持按偏移、长度或后缀读取。`cache.delete()` 只作用于当前数据中心；按 URL 全局清除应使用实际缓存 URL，Cloudflare 不支持按 URL 清除 Worker 自定义缓存键。[Cache API](https://developers.cloudflare.com/workers/runtime-apis/cache/)、[R2 Workers API](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/#ranged-reads)、[缓存清除行为](https://developers.cloudflare.com/workers/reference/how-the-cache-works/)、[Purge API](https://developers.cloudflare.com/api/resources/cache/methods/purge/)
 
 ### 6. 公开页缓存与降级
 
@@ -131,6 +133,7 @@ public/* --用户取消发布--> private（moderation 保留；重新发布时 a
 ### 10. 插件附加站点地图
 
 插件 `web` 契约增加 `sitemaps?: readonly string[]`；`robots()` 接收已启用插件的地址并逐行输出 `Sitemap:`。
+2026-11-26 核对 Google 的 robots 文档：可声明多条 `Sitemap:`，每条使用含协议和主机的完整网址。[robots.txt 规则](https://developers.google.com/crawling/docs/robots-txt/robots-txt-spec#sitemap)
 `/sitemap-gallery.xml` 列出本站点 `approved` 作品（按 `published_at` 倒序，单文件上限 50,000 条；超过时分页为 `/sitemap-gallery-<n>.xml`），含 `lastmod`。
 主站点地图不变，两者地址不重叠（画廊列表页 `/gallery` 本身放主站点地图：经 studio 的 `web` 契约提供静态公开页条目，由 `getPublicPages` 合并；若契约暂不支持则放画廊站点地图首条）。
 

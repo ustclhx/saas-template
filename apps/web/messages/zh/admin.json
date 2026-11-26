@@ -75,6 +75,8 @@
   "admin_disabled_models_are_hidden_from_model_pickers_and": "已禁用的模型不会显示在模型选择器中，也无法被调用。价格调整适用于保存后发起的调用。",
   "admin_new_model": "新建模型",
   "admin_key": "标识",
+  "admin_model_display_name": "显示名（可选）",
+  "admin_model_display_name_too_long": "显示名最多 {max} 个字符。",
   "admin_type": "类型",
   "admin_provider": "服务商",
   "admin_pricing": "定价",

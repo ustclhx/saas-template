@@ -80,7 +80,7 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
       locale: 'zh',
       theme: 'blue',
       name: 'product-resources',
-      expectedPlugins: ['admin-mcp', 'media'],
+      expectedPlugins: ['admin-mcp', 'media', 'studio'],
     },
     {
       id: 'minimal',
@@ -292,13 +292,13 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
         )
         assert.doesNotMatch(result.report, /billing:seed|STRIPE_SECRET|PAYPAL_CLIENT/)
       }
-      for (const pluginId of ['media', 'agents']) {
+      for (const pluginId of ['media', 'agents', 'studio']) {
         assert.ok(existsSync(join(result.target, `plugins/${pluginId}/plugin.ts`)))
       }
       assert.deepEqual(result.options.plugins, expectedPlugins)
-      // 显式 --plugins 时默认插件仍按模板与依赖筛选（含 admin-mcp），只有所选插件进入副本
+      // 显式 --plugins 覆盖模板默认插件，图片或视频照常启用 media。
       if (id === 'cf')
-        assert.deepEqual(result.options.defaultPlugins, ['admin-mcp', ...expectedPlugins])
+        assert.deepEqual(result.options.defaultPlugins, ['admin-mcp', ...expectedPlugins, 'studio'])
       for (const app of ['web', 'jobs']) {
         const wrangler = parseJsonc(
           await readFile(join(result.target, `apps/${app}/wrangler.jsonc`), 'utf8'),
@@ -352,6 +352,7 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
         await rm(join(result.target, '.git'), { recursive: true, force: true })
       }
       const excludedMarkers = []
+      if (!expectedPlugins.includes('studio')) excludedMarkers.push('/sitemap-gallery.xml')
       if (!expectedPlugins.includes('media')) {
         excludedMarkers.push(
           'AiMediaWorkflow',

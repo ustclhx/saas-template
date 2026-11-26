@@ -12,9 +12,12 @@ import { adminModelKinds } from './admin-models.schema.ts'
 
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json }
 type Model = typeof aiModel.$inferSelect
-type ModelSettings = Pick<Model, 'enabled' | 'pricing' | 'paramsSchema'>
-type ModelPatch = { [Field in keyof ModelSettings]?: ModelSettings[Field] | undefined }
-type ModelSaveInput = Omit<ModelInput, 'paramsSchema'> & { paramsSchema: string | null }
+type ModelSettings = Pick<Model, 'displayName' | 'enabled' | 'pricing' | 'paramsSchema'>
+type ModelPatch = Partial<ModelSettings>
+type ModelSaveInput = Omit<ModelInput, 'paramsSchema'> & {
+  displayName?: string | null | undefined
+  paramsSchema: string | null
+}
 
 interface ModelRuntimeCapabilities {
   readonly workersAiAvailable: boolean
@@ -38,6 +41,7 @@ export async function listAdminModels(
     .select({
       id: aiModel.id,
       key: aiModel.key,
+      displayName: aiModel.displayName,
       kind: aiModel.kind,
       provider: aiModel.provider,
       providerModelId: aiModel.providerModelId,
@@ -132,6 +136,9 @@ function modelChanges(
   fields: ModelPatch = after,
 ) {
   return {
+    ...(fields.displayName !== undefined && {
+      displayName: { before: before?.displayName ?? null, after: after.displayName },
+    }),
     ...(fields.enabled !== undefined && {
       enabled: { before: before?.enabled ?? null, after: after.enabled },
     }),
@@ -197,7 +204,10 @@ export async function saveAdminModelRecord(
   input: ModelSaveInput & { id?: string | undefined },
   capabilities: ModelRuntimeCapabilities,
 ) {
-  const values = validatedModelValues(input, capabilities)
+  const values = {
+    ...validatedModelValues(input, capabilities),
+    displayName: input.displayName === undefined ? undefined : input.displayName || null,
+  }
   // 锁住旧行，保证并发编辑时审计中的旧值是本次实际覆盖的值。
   const before = input.id ? await readModel(tx, eq(aiModel.id, input.id), 'update') : undefined
   const [saved] = input.id
@@ -222,6 +232,7 @@ export async function setAdminModelRecordEnabled(
 
 interface ModelUpdateInput {
   readonly key: string
+  readonly displayName?: string | null | undefined
   readonly enabled?: boolean | undefined
   readonly pricing?: unknown
   readonly paramsSchema?: string | undefined
@@ -235,37 +246,40 @@ export async function updateAdminModelByKey(
   dryRun: boolean,
 ) {
   const before = await readModel(tx, eq(aiModel.key, input.key), dryRun ? null : 'update')
-  if (
-    input.enabled !== undefined &&
-    input.pricing === undefined &&
-    input.paramsSchema === undefined
-  ) {
+  const values: ModelPatch = {}
+  if (input.displayName !== undefined) values.displayName = input.displayName || null
+  if (input.pricing !== undefined || input.paramsSchema !== undefined) {
+    const validated = validatedModelValues(
+      {
+        ...before,
+        tags: before.minPlanFeatures,
+        enabled: input.enabled ?? before.enabled,
+        pricing: input.pricing === undefined ? before.pricing : input.pricing,
+        paramsSchema:
+          input.paramsSchema ??
+          (before.paramsSchema === null ? null : JSON.stringify(before.paramsSchema)),
+      },
+      capabilities,
+    )
+    if (input.pricing !== undefined) values.pricing = validated.pricing
+    if (input.paramsSchema !== undefined) values.paramsSchema = validated.paramsSchema
+  } else if (input.enabled !== undefined) {
     validateEnabled(before, input.enabled, capabilities)
-    const values = { enabled: input.enabled }
-    const after = dryRun ? { ...before, ...values } : await updateModel(tx, before.id, values)
-    if (!dryRun) await auditModelEnabled(audit, before, after)
-    return { id: before.id, key: before.key, changes: modelChanges(before, after, values), dryRun }
   }
-
-  const validated = validatedModelValues(
-    {
-      ...before,
-      tags: before.minPlanFeatures,
-      enabled: input.enabled ?? before.enabled,
-      pricing: input.pricing === undefined ? before.pricing : input.pricing,
-      paramsSchema:
-        input.paramsSchema ??
-        (before.paramsSchema === null ? null : JSON.stringify(before.paramsSchema)),
-    },
-    capabilities,
-  )
-  const values = {
-    ...(input.enabled !== undefined && { enabled: validated.enabled }),
-    ...(input.pricing !== undefined && { pricing: validated.pricing }),
-    ...(input.paramsSchema !== undefined && { paramsSchema: validated.paramsSchema }),
-  }
+  if (input.enabled !== undefined) values.enabled = input.enabled
   const after = dryRun ? { ...before, ...values } : await updateModel(tx, before.id, values)
-  if (!dryRun) await auditSavedModel(audit, before, after, values)
+  if (!dryRun) {
+    if (
+      values.enabled !== undefined &&
+      values.displayName === undefined &&
+      values.pricing === undefined &&
+      values.paramsSchema === undefined
+    ) {
+      await auditModelEnabled(audit, before, after)
+    } else {
+      await auditSavedModel(audit, before, after, values)
+    }
+  }
   return { id: before.id, key: before.key, changes: modelChanges(before, after, values), dryRun }
 }
 
@@ -300,7 +314,7 @@ export async function copyAdminModelRecord(
   })
   const [saved] = await tx
     .insert(aiModel)
-    .values({ ...values, paramsSchema })
+    .values({ ...values, displayName: source.displayName, paramsSchema })
     .returning()
   if (!saved) throw modelNotFound()
   const hashes = await paramsSchemaHashes(source, saved)

@@ -229,6 +229,9 @@ importers:
       '@saas/plugin-media':
         specifier: workspace:*
         version: link:../../plugins/media
+      '@saas/plugin-studio':
+        specifier: workspace:*
+        version: link:../../plugins/studio
       '@saas/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -326,6 +329,9 @@ importers:
       '@saas/plugin-media':
         specifier: workspace:*
         version: link:../../plugins/media
+      '@saas/plugin-studio':
+        specifier: workspace:*
+        version: link:../../plugins/studio
       '@saas/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -1114,6 +1120,19 @@ importers:
       react-dom:
         specifier: ^19.3.0
         version: 19.3.0(react@19.3.0)
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.20.5)(happy-dom@20.14.5)(vite@8.3.2(@types/node@22.20.5)(esbuild@0.28.2))
+
+  plugins/studio:
+    dependencies:
+      '@saas/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+    devDependencies:
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.20.5)(happy-dom@20.14.5)(vite@8.3.2(@types/node@22.20.5)(esbuild@0.28.2))

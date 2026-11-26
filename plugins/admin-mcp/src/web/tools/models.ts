@@ -8,7 +8,12 @@ import {
   STALE_TARGET,
 } from '@web/features/admin/confirmations/service.ts'
 import { ADMIN_MAX_OFFSET, ADMIN_PAGE_SIZE } from '@web/features/admin/list.ts'
-import { adminModelKey, adminModelKinds } from '@web/features/ai/admin-models.schema.ts'
+import {
+  adminModelDisplayName,
+  adminModelKey,
+  adminModelKinds,
+  MODEL_DISPLAY_NAME_MAX_LENGTH,
+} from '@web/features/ai/admin-models.schema.ts'
 import { listAdminModels, updateAdminModelByKey } from '@web/features/ai/admin-models.ts'
 import { requireFeature } from '@web/server/feature-gates.ts'
 import { eq } from 'drizzle-orm'
@@ -18,7 +23,7 @@ import { defineAdminTool, dryRunDescription, pagingDescriptions, toolResult } fr
 const list = defineAdminTool({
   name: 'models.list',
   scope: 'admin:read',
-  description: 'List AI models with their status, parameters, and pricing.',
+  description: 'List AI models with their display names, status, parameters, and pricing.',
   input: z.strictObject({
     offset: z.number().int().min(0).max(ADMIN_MAX_OFFSET).default(0),
     limit: z.number().int().min(1).max(ADMIN_PAGE_SIZE).default(ADMIN_PAGE_SIZE),
@@ -41,6 +46,7 @@ const list = defineAdminTool({
 
 interface ModelUpdate {
   readonly key: string
+  readonly displayName?: string | null | undefined
   readonly enabled?: boolean | undefined
   readonly pricing?: Record<string, unknown> | undefined
   readonly paramsSchema?: Record<string, unknown> | undefined
@@ -50,7 +56,7 @@ interface ModelUpdate {
 async function applyModelUpdate(
   scope: AdminActionScope,
   capabilities: { workersAiAvailable: boolean; aiFaultInjectionEnabled: boolean },
-  { key, enabled, pricing, paramsSchema }: ModelUpdate,
+  { key, displayName, enabled, pricing, paramsSchema }: ModelUpdate,
   dryRun: boolean,
 ) {
   try {
@@ -58,6 +64,7 @@ async function applyModelUpdate(
       scope,
       {
         key,
+        displayName,
         enabled,
         pricing,
         paramsSchema: paramsSchema === undefined ? undefined : JSON.stringify(paramsSchema),
@@ -79,14 +86,19 @@ async function applyModelUpdate(
   }
 }
 
-/** 确认时比对的模型快照：启用状态、定价与参数 */
-async function modelSnapshot(scope: Pick<AdminActionScope, 'tx'>, key: string, lock: boolean) {
+/** 写入显示名时才纳入快照，保留已生成的确认记录。 */
+async function modelSnapshot(
+  scope: Pick<AdminActionScope, 'tx'>,
+  { key, displayName }: ModelUpdate,
+  lock: boolean,
+) {
   const query = scope.tx
     .select({
       id: aiModel.id,
       enabled: aiModel.enabled,
       pricing: aiModel.pricing,
       paramsSchema: aiModel.paramsSchema,
+      ...(displayName !== undefined && { displayName: aiModel.displayName }),
     })
     .from(aiModel)
     .where(eq(aiModel.key, key))
@@ -98,6 +110,7 @@ async function modelSnapshot(scope: Pick<AdminActionScope, 'tx'>, key: string, l
 
 const modelPayload = z.object({
   key: z.string(),
+  displayName: adminModelDisplayName.optional(),
   enabled: z.boolean().optional(),
   pricing: z.record(z.string(), z.unknown()).optional(),
   paramsSchema: z.record(z.string(), z.unknown()).optional(),
@@ -107,22 +120,28 @@ const modelPayload = z.object({
 const update = defineAdminTool({
   name: 'models.update',
   scope: 'admin:write',
-  description: 'Update an existing model by key. Supply enabled, pricing, or paramsSchema.',
+  description:
+    'Update an existing model by key. Supply displayName, enabled, pricing, or paramsSchema.',
   input: z
     .strictObject({
       key: adminModelKey,
+      displayName: adminModelDisplayName.optional(),
       enabled: z.boolean().optional(),
       pricing: z.record(z.string(), z.unknown()).optional(),
       paramsSchema: z.record(z.string(), z.unknown()).optional(),
       dryRun: z.boolean().optional(),
     })
     .refine(
-      ({ enabled, pricing, paramsSchema }) =>
-        enabled !== undefined || pricing !== undefined || paramsSchema !== undefined,
-      'Supply at least one of enabled, pricing, or paramsSchema.',
+      ({ displayName, enabled, pricing, paramsSchema }) =>
+        displayName !== undefined ||
+        enabled !== undefined ||
+        pricing !== undefined ||
+        paramsSchema !== undefined,
+      'Supply at least one of displayName, enabled, pricing, or paramsSchema.',
     ),
   params: {
     key: 'Existing model key from models.list.',
+    displayName: `Display name, up to ${MODEL_DISPLAY_NAME_MAX_LENGTH} characters. Use null or an empty string to clear it. Omit to retain the existing name.`,
     enabled: 'Set to true to enable the model or false to disable it.',
     pricing: 'Complete replacement pricing object for this model.',
     paramsSchema: 'Complete replacement parameter schema as a JSON object.',
@@ -134,11 +153,11 @@ const update = defineAdminTool({
     return toolResult(await applyModelUpdate(ctx, ctx, input, ctx.dryRun))
   },
   afterCommit: ({ cache }) => invalidateModelCache(cache),
-  // 只有改动定价时才走确认（ai.model_save 的判定）；启停与参数单独修改照常直接写入
+  // 只有改动定价时才走确认（ai.model_save 的判定）。
   async confirm(ctx, { dryRun: _dryRun, ...input }) {
     requireFeature('billing')
     const preview = await applyModelUpdate(ctx, ctx, input, true)
-    const { id, fingerprint: snapshot } = await modelSnapshot(ctx, input.key, false)
+    const { id, fingerprint: snapshot } = await modelSnapshot(ctx, input, false)
     return {
       summary: `Update model ${input.key}: ${Object.keys(preview.changes).join(', ')}`,
       display: { kind: 'model', id, key: input.key, changes: preview.changes },
@@ -150,7 +169,7 @@ const update = defineAdminTool({
     async run(scope, { record }) {
       requireFeature('billing')
       const { snapshot, ...input } = modelPayload.parse(record.payload)
-      if ((await modelSnapshot(scope, input.key, true)).fingerprint !== snapshot)
+      if ((await modelSnapshot(scope, input, true)).fingerprint !== snapshot)
         throw new ConfirmationFailedError(STALE_TARGET, 'The model changed after the request')
       const { changes } = await applyModelUpdate(scope, env, input, false)
       return { key: input.key, changes }

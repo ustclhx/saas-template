@@ -2,11 +2,11 @@
 
 ## 1. 数据、插件骨架与契约（P0）
 
-- [ ] 1.1 迁移：`studio_work`、`studio_report` 表与索引（design 决策 2，含 `moderation_before_hide`），`ai_model.display_name`；Drizzle schema 与 `docs/03-data-model.md` 更新。验收：本地 PG 应用迁移，`pnpm --filter @saas/db test` 与 `pnpm typecheck` 通过
-- [ ] 1.2 `plugins/studio` 骨架：清单（requires media + billing/credits，targets cloudflare/node，配置段 schema 与默认值）、web / worker / webNode 入口、messages 目录、vitest 配置；启用模式解析函数（`kinds` ∩ 模板 AI 开关）；模板 `template.config.ts` 启用 studio；`docs/plugins.md` 内置插件表登记。验收：插件单元测试覆盖配置解析与模式求交，`pnpm check`、`pnpm typecheck`、`pnpm build` 通过
-- [ ] 1.3 模型显示名：后台模型编辑器字段与校验（≤60 字符，可空）、`models.list` 返回与 `models.update` 可写、`docs/admin-mcp.md` 工具表与 `docs/06-ai.md` 更新；面向用户的模型列表查询返回 `displayName ?? key`。验收：后台组件测试、MCP 工具单测
-- [ ] 1.4 插件 web 契约增加 `sitemaps`，`robots()` 输出已启用插件的附加站点地图；生成器测试确认未启用插件时不出现。验收：`crawlers` 单测与 `pnpm test:create-project`
-- [ ] 1.5 启用 studio 时隐藏 media 的「生成」导航项（任务列表保留）。验收：导航单测覆盖启用 / 未启用
+- [x] 1.1 迁移：`studio_work`、`studio_report` 表与索引（design 决策 2，含 `moderation_before_hide`），`ai_model.display_name`；Drizzle schema 与 `docs/03-data-model.md` 更新。验收：本地 PG 应用迁移，`pnpm --filter @saas/db test` 与 `pnpm typecheck` 通过
+- [x] 1.2 `plugins/studio` 骨架：清单（requires media + billing/credits，targets cloudflare/node，配置段 schema 与默认值）、web / worker / webNode 入口、messages 目录、vitest 配置；启用模式解析函数（`kinds` ∩ 模板 AI 开关）；模板 `template.config.ts` 启用 studio；`docs/plugins.md` 内置插件表登记。验收：插件单元测试覆盖配置解析与模式求交，`pnpm check`、`pnpm typecheck`、`pnpm build` 通过
+- [x] 1.3 模型显示名：后台模型编辑器字段与校验（≤60 字符，可空）、`models.list` 返回与 `models.update` 可写、`docs/admin-mcp.md` 工具表与 `docs/06-ai.md` 更新；面向用户的模型列表查询返回 `displayName ?? key`。验收：后台组件测试、MCP 工具单测
+- [x] 1.4 插件 web 契约增加 `sitemaps`，`robots()` 输出已启用插件的附加站点地图；生成器测试确认未启用插件时不出现。验收：`crawlers` 单测与 `pnpm test:create-project`
+- [x] 1.5 启用 studio 时隐藏 media 的「生成」导航项（任务列表保留）。验收：导航单测覆盖启用 / 未启用
 
 ## 2. 创作提交（P0，依赖 1）
 

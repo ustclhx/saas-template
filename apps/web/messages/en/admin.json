@@ -75,6 +75,8 @@
   "admin_disabled_models_are_hidden_from_model_pickers_and": "Disabled models are hidden from model pickers and calls to them are rejected. Price changes apply to calls started after saving.",
   "admin_new_model": "New model",
   "admin_key": "Key",
+  "admin_model_display_name": "Display name (optional)",
+  "admin_model_display_name_too_long": "Display name must be {max} characters or fewer.",
   "admin_type": "Type",
   "admin_provider": "Provider",
   "admin_pricing": "Pricing",

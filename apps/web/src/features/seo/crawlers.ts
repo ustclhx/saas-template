@@ -58,13 +58,16 @@ export function llmsTxt(pages: readonly SeoPage[], appUrl: string): string {
   return [`# ${templateConfig.app.name}`, '', '## Pages', '', ...links, ''].join('\n')
 }
 
-export function robots(appUrl: string): string {
+export function robots(appUrl: string, sitemaps: readonly string[] = []): string {
   const prefixes = [
     '',
     ...(templateConfig.i18n.enabled
       ? templateConfig.i18n.locales.map((locale) => `/${localePrefix(locale)}`)
       : []),
   ]
+  const sitemapUrls = new Set(
+    ['/sitemap.xml', ...sitemaps].map((path) => absoluteUrl(appUrl, path)),
+  )
   return [
     'User-agent: *',
     ...prefixes.flatMap((prefix) =>
@@ -73,7 +76,7 @@ export function robots(appUrl: string): string {
     // 社交平台抓取器需要读取分享页与卡片图片；是否收录由响应的 noindex 决定。
     'Allow: /share-card/',
     ...prefixes.map((prefix) => `Allow: ${prefix}/s/`),
-    `Sitemap: ${absoluteUrl(appUrl, '/sitemap.xml')}`,
+    ...Array.from(sitemapUrls, (url) => `Sitemap: ${url}`),
     '',
   ].join('\n')
 }

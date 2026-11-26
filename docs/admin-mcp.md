@@ -40,7 +40,7 @@ claude mcp add --transport http --scope local admin-mcp https://app.example.com/
 | `settings.list` | `admin:read` | `{}`。列出登记的运行时设置及其值，密钥项显示设置状态。 |
 | `settings.get` | `admin:read` | `{ key }`。读取设置值与定义，功能模型项在 `resolution` 中返回解析结果。密钥项用 `isSet` 表示是否已设置。`source` 为 `database`、`default` 或 `fallback`；`fallback` 表示已存值不符合当前定义，正在使用默认值。 |
 | `features.models` | `admin:read` | `{}`。列出功能模型的种类、沿用顺序和解析结果。 |
-| `models.list` | `admin:read` | `{ offset?, limit?, kind?, order? }`。查询后台模型目录及启用状态、参数和定价。排序可用 `sort`、`sort_desc`、`key`、`key_desc`。需启用计费。 |
+| `models.list` | `admin:read` | `{ offset?, limit?, kind?, order? }`。查询后台模型目录及显示名 `displayName`（未设置时为 `null`）、启用状态、参数和定价。排序可用 `sort`、`sort_desc`、`key`、`key_desc`。需启用计费。 |
 | `users.search` | `admin:read` | `{ offset?, limit?, q? }`。按邮箱、姓名或 ID 搜索用户。 |
 | `users.get` | `admin:read` | `{ id }`。读取单个用户及其空间、登录方式。 |
 | `workspaces.list` | `admin:read` | `{ offset?, limit?, q?, status? }`。按名称、slug、ID 或状态（`active`、`deleted`）筛选空间。 |
@@ -50,7 +50,7 @@ claude mcp add --transport http --scope local admin-mcp https://app.example.com/
 | `metrics.summary` | `admin:read` | `{ from?, to? }`。读取后台业务指标汇总，默认最近七个完整 UTC 日。 |
 | `confirmations.get` | `admin:read` | `{ id }`。查询需要管理员确认的操作的状态（`pending`、`done`、`failed`、`rejected`、`expired`）、摘要与结果。只能查询同一管理员的令牌发起的记录，不返回执行参数与密钥。 |
 | `settings.set` | `admin:write` | `{ key, value, dryRun? }`。校验并保存登记的设置，返回新旧值。密钥值在结果中脱敏。**改动密钥类设置时返回 `needs_owner_confirm`，经管理员确认后才写入。** |
-| `models.update` | `admin:write` | `{ key, enabled?, paramsSchema?, pricing?, dryRun? }`。修改已有模型，至少提供一个可修改字段。参数 schema 和定价分别传入完整 JSON 对象，结果包含各字段的新旧值。**定价改变时返回 `needs_owner_confirm`，经管理员确认后才写入**；只改启停或参数直接写入。需启用计费。 |
+| `models.update` | `admin:write` | `{ key, displayName?, enabled?, paramsSchema?, pricing?, dryRun? }`。修改已有模型，至少提供一个可修改字段。显示名去掉首尾空白后最多 60 个字符，传空字符串或 `null` 清除，省略则保留现值。参数 schema 和定价分别传入完整 JSON 对象，结果包含各字段的新旧值。**定价改变时返回 `needs_owner_confirm`，经管理员确认后才写入**。只改显示名、启停或参数时直接写入。需启用计费。 |
 | `credits.adjust` | `admin:write` | `{ workspace, kind, amount?, expiresAt?, grantId?, reason, dryRun? }`。为空间增加积分（`kind: "grant"`，需 `amount`，`expiresAt` 为可选 ISO 时间）或收回一个有效批次的剩余积分（`kind: "revoke"`，需 `grantId`）。`workspace` 为空间 ID 或 slug。始终经管理员确认后执行。需启用积分。 |
 | `refunds.review` | `admin:write` | `{ requestId, decision, approvedAmount?, reviewNote?, dryRun? }`。审核待处理的退款申请：`approve`（`approvedAmount` 缺省为剩余可退金额，最小货币单位）或 `reject`（需 `reviewNote`，会通知用户）。通过与驳回都经管理员确认后执行。需启用计费。 |
 

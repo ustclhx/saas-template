@@ -338,6 +338,7 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
       const { token } = await issueToken(db, adminId, true)
       const client = await connect(token)
       const key = `mcp-${newId()}`
+      const displayName = 'MCP 测试模型'
       const pricing = { mode: 'token', inputPer1k: 1, outputPer1k: 1, minCharge: 1 } as const
       const update = (args: Record<string, unknown>) =>
         client.callTool({ name: 'models.update', arguments: { key, ...args } })
@@ -367,6 +368,10 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
         })
         const [unchanged] = await db.select().from(aiModel).where(eq(aiModel.key, key))
         expect(unchanged?.pricing).toEqual(pricing)
+        expect((await update({ displayName })).structuredContent).toMatchObject({
+          key,
+          changes: { displayName: { before: null, after: displayName } },
+        })
         // 只改参数或定价不变时直接写入
         const saved = await update({ pricing, paramsSchema })
         expect(saved.structuredContent).toMatchObject({
@@ -383,20 +388,31 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
         })
         expect(list.structuredContent).toMatchObject({
           models: expect.arrayContaining([
-            expect.objectContaining({ key, pricing: newPricing, paramsSchema }),
+            expect.objectContaining({ key, displayName, pricing: newPricing, paramsSchema }),
           ]),
         })
         expect(
-          (await actorAudits(db, adminId)).find(({ action }) => action === 'ai.model_updated'),
-        ).toMatchObject({
-          meta: {
-            changes: {
-              pricing: { before: pricing, after: pricing },
-              paramsSchema: { before: null, after: expect.stringMatching(/^[0-9a-f]{64}$/) },
-            },
-            params: { key },
+          (await actorAudits(db, adminId)).filter(({ action }) => action === 'ai.model_updated'),
+        ).toMatchObject([
+          {
+            meta: { changes: { displayName: { before: null, after: displayName } } },
           },
+          {
+            meta: {
+              changes: {
+                pricing: { before: pricing, after: pricing },
+                paramsSchema: { before: null, after: expect.stringMatching(/^[0-9a-f]{64}$/) },
+              },
+              params: { key },
+            },
+          },
+        ])
+        expect((await update({ displayName: null })).structuredContent).toMatchObject({
+          key,
+          changes: { displayName: { before: displayName, after: null } },
         })
+        const [cleared] = await db.select().from(aiModel).where(eq(aiModel.key, key))
+        expect(cleared?.displayName).toBeNull()
       } finally {
         await db.delete(aiModel).where(eq(aiModel.key, key))
         await client.close()

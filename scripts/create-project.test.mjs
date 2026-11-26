@@ -1379,6 +1379,38 @@ generatorTest('显式空插件列表覆盖模板默认插件并写入模板基�
   assert.deepEqual((await readBase(result.target)).params.plugins, [])
 })
 
+generatorTest('显式选择 studio 时保留 media，清空插件选择时移除 studio 配置', async (t) => {
+  for (const [requested, target, expected] of [
+    ['studio', 'selfhost', ['media', 'studio']],
+    ['', 'cloudflare', ['media']],
+  ]) {
+    const f = await fixture(t)
+    const sourceConfig = await readFile(join(f.source, 'template.config.ts'), 'utf8')
+    await f.file(
+      'template.config.ts',
+      sourceConfig.replace('plugins: { media:', 'plugins: { studio: {}, media:'),
+    )
+    await f.file(
+      'plugins/studio/plugin.ts',
+      `export default definePlugin({
+        id: 'studio', targets: ['cloudflare', 'node'],
+        requires: { plugins: ['media'], features: ['billing', 'credits'] },
+      })`,
+    )
+    const result = await createProject(
+      { ...f.input, ai: 'image', plugins: requested, target },
+      f.source,
+    )
+    const config = await readFile(join(result.target, 'template.config.ts'), 'utf8')
+    assert.deepEqual(result.options.plugins, expected)
+    assert.deepEqual(
+      (await readBase(result.target)).params.plugins,
+      requested === 'studio' ? undefined : expected,
+    )
+    assert.equal(config.includes('"studio": {}'), requested === 'studio')
+  }
+})
+
 generatorTest('文件桶签名白名单与生成项目的桶名一致，备份桶名不受影响', async (t) => {
   const f = await fixture(t)
   await f.file(
