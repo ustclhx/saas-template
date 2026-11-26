@@ -212,7 +212,7 @@ export function registerAdminTool<Schema extends z.ZodObject>(
               expiresAt: created.expiresAt.toISOString(),
               summary: created.summary,
               message:
-                'This action requires an administrator to confirm it in the admin console before it runs. Share the link with the token owner and do not treat the action as done until confirmations.get reports status done.',
+                'This action requires an administrator to confirm it in the admin console before it runs. Share the link with the token owner: it must be opened while signed in to the admin account that owns this token; other accounts cannot confirm it, and non-admin accounts see a not-found page. Do not treat the action as done until confirmations.get reports status done.',
             })
           }
         }

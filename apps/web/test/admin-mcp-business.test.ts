@@ -128,6 +128,7 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP 只读业�
     if (insertedMetrics) await migrator.delete(metricsDaily).where(eq(metricsDaily.day, date))
     const sql = db.$client
     await sql`delete from credit_ledger where workspace_id in (${active}, ${deleted})`
+    await sql`delete from credit_grant where workspace_id in (${active}, ${deleted})`
     await sql`delete from purchase where workspace_id in (${active}, ${deleted})`
     await sql`delete from plan_price where id=${priceId}`
     await sql`delete from plan where id=${planId}`
@@ -234,7 +235,31 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP 只读业�
         createdAt: at.toISOString(),
         type: 'grant',
         delta: 1,
+        grantId: null,
       })
+
+      // 批次列表同样按空间隔离，并可按状态筛选；收回时的 grantId 取自这里
+      const grantIds = { active: newId(), revoked: newId(), other: newId() }
+      for (const [id, workspaceId, status] of [
+        [grantIds.active, active, 'active'],
+        [grantIds.revoked, active, 'revoked'],
+        [grantIds.other, deleted, 'active'],
+      ] as const) {
+        await sql`insert into credit_grant(id,workspace_id,source,source_ref,amount,remaining,status)
+        values(${id},${workspaceId},'admin',${`${fixture}-${id}`},10,${status === 'active' ? 7 : 0},${status})`
+      }
+      expect(await call('credits.grants', { workspaceId: active })).toMatchObject({
+        rows: expect.arrayContaining([
+          expect.objectContaining({ id: grantIds.active, amount: 10, remaining: 7 }),
+          expect.objectContaining({ id: grantIds.revoked, status: 'revoked' }),
+        ]),
+        hasMore: false,
+      })
+      const activeOnly = (await call('credits.grants', {
+        workspaceId: active,
+        status: 'active',
+      })) as { rows: { id: string }[] }
+      expect(activeOnly.rows.map(({ id }) => id)).toEqual([grantIds.active])
     },
   )
 
