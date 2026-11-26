@@ -49,6 +49,14 @@ const projectOwnedFiles = [
     guidance: 'put template agent tools outside the project-owned extension',
   },
   {
+    path: 'plugins/studio/src/studio.project.ts',
+    guidance: 'put template Studio preset behavior outside the project-owned extension',
+  },
+  {
+    path: 'plugins/studio/src/moderation.project.ts',
+    guidance: 'put template Studio moderation behavior outside the project-owned extension',
+  },
+  {
     path: 'apps/web/src/features/share-cards/share-cards.project.ts',
     guidance: 'put template share card registration outside the project-owned extension',
   },

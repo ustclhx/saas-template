@@ -1126,6 +1126,9 @@ importers:
 
   plugins/studio:
     dependencies:
+      '@saas/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@saas/auth':
         specifier: workspace:*
         version: link:../../packages/auth
@@ -1135,12 +1138,18 @@ importers:
       '@saas/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@saas/plugin-media':
+        specifier: workspace:*
+        version: link:../media
       '@saas/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@saas/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      '@tanstack/react-start':
+        specifier: ^1.168.60
+        version: 1.168.60(crossws@0.4.15)(esbuild@0.28.2)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(rolldown@1.2.12)(supports-color@10.2.2)(vite@8.3.2(@types/node@22.20.5)(esbuild@0.28.2))
       drizzle-orm:
         specifier: ^0.45.3
         version: 0.45.3(@cloudflare/workers-types@5.20261002.1)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.6)(pg@8.20.0)(postgres@3.4.9)

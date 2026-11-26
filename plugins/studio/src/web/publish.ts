@@ -11,7 +11,11 @@ import { log } from '@saas/shared/log'
 import { and, count, eq, gte, lt, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { DEFAULT_PUBLISH_DAILY_LIMIT } from '../config.ts'
-import type { StudioKind } from '../kinds.ts'
+import {
+  checkPublish as projectCheckPublish,
+  type StudioPublishCheckInput,
+  type StudioPublishCheckResult,
+} from '../moderation.project.ts'
 import { type InvalidateStudioWork, invalidateStudioWork } from './work-invalidation.ts'
 import {
   assertStudioWritable,
@@ -23,20 +27,8 @@ import {
   type StudioWorkspace,
 } from './works.ts'
 
+export type { StudioPublishCheckInput, StudioPublishCheckResult } from '../moderation.project.ts'
 export type { StudioWorkMutation } from './works.ts'
-
-export interface StudioPublishCheckInput {
-  readonly title: string
-  readonly prompt: string | null
-  readonly kind: StudioKind
-  readonly modelKey: string
-  readonly workspaceId: string
-}
-
-export type StudioPublishCheckResult =
-  | { action: 'allow' }
-  | { action: 'review' }
-  | { action: 'reject'; reason: string }
 
 export type CheckStudioPublish = (
   input: StudioPublishCheckInput,
@@ -92,9 +84,8 @@ async function findWork(tenant: Scoped, fileId: string, lock = false) {
 
 async function runPublishCheck(
   input: StudioPublishCheckInput,
-  checkPublish?: CheckStudioPublish,
+  checkPublish: CheckStudioPublish = projectCheckPublish,
 ): Promise<StudioPublishCheckResult> {
-  if (!checkPublish) return { action: 'allow' }
   try {
     return await checkPublish(input)
   } catch (error) {

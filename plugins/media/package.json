@@ -3,6 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./parameter-form": "./src/web/ai-media/parameter-form.tsx",
+    "./submit.server": "./src/web/submit.server.ts"
+  },
   "dependencies": {
     "@saas/ai": "workspace:*",
     "@saas/auth": "workspace:*",

@@ -30,6 +30,8 @@ export const projectOwnedPaths = new Set([
   'apps/web/src/features/admin/step-up/step-up.project.ts',
   'plugins/agents/src/agents.project.ts',
   'plugins/agents/src/tools.project.ts',
+  'plugins/studio/src/studio.project.ts',
+  'plugins/studio/src/moderation.project.ts',
 ])
 export const baseRef = 'refs/template-sync/base'
 export const targetRef = 'refs/template-sync/target'

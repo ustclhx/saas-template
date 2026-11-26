@@ -1,7 +1,8 @@
 import { scoped, studioPublication, studioWork } from '@saas/db'
 import { eq } from 'drizzle-orm'
-import { afterAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { STUDIO_KINDS } from '../src/kinds.ts'
+import * as moderationProject from '../src/moderation.project.ts'
 import { getPublicWorkMedia } from '../src/web/public-works.ts'
 import { publishStudioWork, unpublishStudioWork } from '../src/web/publish.ts'
 import {
@@ -33,7 +34,11 @@ async function fixture(userId?: string) {
 }
 
 describe('Studio 发布状态', () => {
-  it('默认放行、快照只用原始提示词，重复发表不重复扣额度', async () => {
+  it('默认调用项目审核钩子，只使用原始提示词，重复发表不重复扣额度', async () => {
+    const projectCheck = vi.spyOn(moderationProject, 'checkPublish')
+    onTestFinished(() => {
+      projectCheck.mockRestore()
+    })
     const context = await fixture()
     const source = await seedStudioOutput(db, context.workspace, {
       kind: 'video',
@@ -47,6 +52,13 @@ describe('Studio 发布状态', () => {
       showPrompt: true,
     }
     const work = await publishStudioWork(db, input, { dailyLimit: 1 })
+    expect(projectCheck).toHaveBeenCalledExactlyOnceWith({
+      title: 'Café 片段',
+      prompt: '原始提示词',
+      kind: 'video',
+      modelKey: 'studio-fixture-video',
+      workspaceId: context.workspaceId,
+    })
     expect(work).toMatchObject({
       userId: context.actor.userId,
       taskId: source.taskId,
@@ -64,6 +76,7 @@ describe('Studio 发布状态', () => {
     const checkPublish = vi.fn(() => ({ action: 'allow' as const }))
     expect(await publishStudioWork(db, input, { dailyLimit: 1, checkPublish })).toEqual(work)
     expect(checkPublish).not.toHaveBeenCalled()
+    expect(projectCheck).toHaveBeenCalledTimes(1)
   })
 
   it('先查发布内容，拒绝理由透出且不占额度', async () => {
