@@ -16,21 +16,20 @@ function studioDeletionStep(
         kind === 'account'
           ? sql`w.workspace_id = ${context.actorUserId} or w.user_id = ${context.actorUserId} or t.user_id = ${context.actorUserId}`
           : sql`w.workspace_id in ${sql([...context.workspaceIds])}`
-      const files = await sql<{ id: string }[]>`
-        select f.id from file f
+      const candidates = await sql<{ id: string }[]>`
+        select w.id from file f
         join studio_work w on w.file_id = f.id and w.workspace_id = f.workspace_id
         join ai_task t on t.id = w.task_id and t.workspace_id = w.workspace_id
         where ${scope}
         order by f.id for update of f`
-      if (files.length) {
+      if (candidates.length) {
         // 单参数支持作品很多的空间；连接关闭类型发现，由 PostgreSQL 解析 UUID 数组。
-        const fileIds = sql`string_to_array(${files.map((row) => row.id).join(',')}, ',')::uuid[]`
+        const ids = sql`string_to_array(${candidates.map((row) => row.id).join(',')}, ',')::uuid[]`
+        // 更新同时锁定作品，返回更新前的版本以失效旧地址。
         const works = await sql<DeletedWork[]>`
-          select id, slug, site, version from studio_work
-          where file_id = any(${fileIds}) order by file_id for update`
+          update studio_work set version = version + 1 where id = any(${ids})
+          returning id, slug, site, version - 1 as version`
         if (works.length) {
-          const ids = sql`string_to_array(${works.map((work) => work.id).join(',')}, ',')::uuid[]`
-          await sql`update studio_work set version = version + 1 where id = any(${ids})`
           await sql`delete from studio_work where id = any(${ids})`
           pending.set(context, works)
         }

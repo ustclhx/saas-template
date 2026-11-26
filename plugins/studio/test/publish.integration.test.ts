@@ -116,18 +116,24 @@ describe('Studio 发布状态', () => {
     })
   })
 
-  it('撤回后旧版本失效，重新发布保留审核、站点和 slug；下架后拒绝重新发布', async () => {
+  it('停用的视频模式仍可撤回，重新发布未修改的作品保留审核、站点和 slug', async () => {
     const context = await fixture()
-    const source = await seedStudioOutput(db, context.workspace)
+    const source = await seedStudioOutput(db, context.workspace, { kind: 'video' })
     const site = `studio-${context.workspaceId}`
     const input = { ...context, ...source, site, title: 'Original', showPrompt: false }
+    const withdrawal = {
+      workspaceId: context.workspaceId,
+      actor: context.actor,
+      fileId: source.fileId,
+      kinds: ['image'] as const,
+    }
     const invalidate = vi.fn()
     const work = await publishStudioWork(db, input)
     const tenant = scoped(db, context.workspaceId)
     await tenant.updateById(studioWork, work.id, { moderation: 'approved' })
     const media = { site, kinds: STUDIO_KINDS, workId: work.id, version: 1 }
     expect(await getPublicWorkMedia(db, media)).toMatchObject({ r2Key: source.r2Key })
-    await expect(unpublishStudioWork(db, input, { invalidate })).resolves.toMatchObject({
+    await expect(unpublishStudioWork(db, withdrawal, { invalidate })).resolves.toMatchObject({
       visibility: 'private',
       moderation: 'approved',
       version: 2,
@@ -139,31 +145,97 @@ describe('Studio 发布状态', () => {
       version: 1,
     })
     expect(await getPublicWorkMedia(db, media)).toBeNull()
-    await unpublishStudioWork(db, input, { invalidate })
+    await unpublishStudioWork(db, withdrawal, { invalidate })
     expect(invalidate).toHaveBeenCalledTimes(1)
 
     const restored = await publishStudioWork(
       db,
-      { ...input, site: 'another', title: 'Renamed' },
+      { ...input, site: 'another', title: '  Original  ' },
       {
         checkPublish: () => ({ action: 'allow' }),
       },
     )
     expect(restored).toMatchObject({
       slug: work.slug,
-      title: 'Renamed',
+      title: 'Original',
       site,
       moderation: 'approved',
     })
     expect(await getPublicWorkMedia(db, media)).toBeNull()
     expect(await getPublicWorkMedia(db, { ...media, version: 2 })).not.toBeNull()
+  })
 
-    await tenant.updateById(studioWork, work.id, { moderation: 'removed', removalReason: '侵权' })
-    await unpublishStudioWork(db, input)
-    await expect(publishStudioWork(db, input)).rejects.toMatchObject({
+  it.each([
+    ['标题', { title: 'Renamed' }],
+    ['提示词可见性', { showPrompt: true }],
+  ])('重新发布已通过的私有作品时修改%s会重新进入待审核', async (_field, change) => {
+    const context = await fixture()
+    const { fileId } = await seedStudioOutput(db, context.workspace)
+    const input = { ...context, fileId, title: 'Original', showPrompt: false }
+    const work = await publishStudioWork(db, input)
+    await scoped(db, context.workspaceId).updateById(studioWork, work.id, {
+      moderation: 'approved',
+    })
+    const privateWork = await unpublishStudioWork(db, input)
+    await expect(publishStudioWork(db, { ...input, ...change })).resolves.toMatchObject({
+      ...change,
+      slug: work.slug,
+      visibility: 'public',
+      moderation: 'pending',
+      moderationBeforeHide: null,
+      version: privateWork.version,
+    })
+  })
+
+  it('已通过的私有作品重新发布转人工时，记录原审核状态并递增版本', async () => {
+    const context = await fixture()
+    const { fileId } = await seedStudioOutput(db, context.workspace)
+    const input = { ...context, fileId, title: 'Review again', showPrompt: false }
+    const work = await publishStudioWork(db, input)
+    await scoped(db, context.workspaceId).updateById(studioWork, work.id, {
+      moderation: 'approved',
+    })
+    const privateWork = await unpublishStudioWork(db, input)
+    const invalidate = vi.fn()
+    await expect(
+      publishStudioWork(db, input, {
+        checkPublish: () => ({ action: 'review' }),
+        invalidate,
+      }),
+    ).resolves.toMatchObject({
+      visibility: 'public',
+      moderation: 'hidden',
+      moderationBeforeHide: 'approved',
+      version: privateWork.version + 1,
+    })
+    expect(invalidate).toHaveBeenCalledExactlyOnceWith({
+      id: work.id,
+      slug: work.slug,
+      site: work.site,
+      version: privateWork.version,
+    })
+  })
+
+  it('已下架作品的取消发布与重新发布均返回 409，状态和版本保持不变', async () => {
+    const context = await fixture()
+    const { fileId } = await seedStudioOutput(db, context.workspace)
+    const input = { ...context, fileId, title: 'Removed', showPrompt: false }
+    const work = await publishStudioWork(db, input)
+    const tenant = scoped(db, context.workspaceId)
+    const removed = await tenant.updateById(studioWork, work.id, {
+      moderation: 'removed',
+      removalReason: '侵权',
+    })
+    const error = {
+      status: 409,
       code: 'STUDIO_WORK_REMOVED',
       message: '侵权',
-    })
+    }
+    const invalidate = vi.fn()
+    await expect(unpublishStudioWork(db, input, { invalidate })).rejects.toMatchObject(error)
+    await expect(publishStudioWork(db, input, { invalidate })).rejects.toMatchObject(error)
+    expect(await tenant.findById(studioWork, work.id)).toEqual(removed)
+    expect(invalidate).not.toHaveBeenCalled()
   })
 
   it('同一用户跨空间并发只获得一次额度，删除或撤回不会归还当天额度，UTC 日切重置', async () => {

@@ -11,7 +11,7 @@ import {
 } from '@saas/db'
 import { newId } from '@saas/shared'
 import { eq, sql, TransactionRollbackError } from 'drizzle-orm'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { STUDIO_KINDS } from '../src/kinds.ts'
 import {
   getPublicWorkBySlug,
@@ -170,6 +170,37 @@ describe('Studio 公开作品查询', () => {
       expect(await getPublicWorkBySlug(tx, details)).toMatchObject({ id: work.id })
     }))
 
+  it('账号删除后即使解除封禁，作品仍不可公开读取或举报', () =>
+    withFixture(async (tx) => {
+      const author = await createAuthor(tx)
+      const work = await createWork(tx, author, { moderation: 'approved' })
+      const queryScope = scope(author.site)
+      const details = { ...queryScope, slug: work.slug }
+      const request = { ...queryScope, workId: work.id }
+
+      await tx
+        .update(user)
+        .set({ email: `deleted+${newId()}@invalid`, banned: false })
+        .where(eq(user.id, author.userId))
+      expect(await getPublicWorkBySlug(tx, details)).toMatchObject({ id: work.id })
+
+      await tx
+        .update(user)
+        .set({ email: `deleted+${author.userId}@invalid`, banned: false })
+        .where(eq(user.id, author.userId))
+      expect(await listPublicWorks(tx, { ...queryScope, pageSize: 4 })).toMatchObject({ works: [] })
+      expect(await getPublicWorkBySlug(tx, details)).toBeNull()
+      expect(await getPublicWorkMedia(tx, { ...request, version: 1 })).toBeNull()
+      expect(await getPublicWorkForReport(tx, request)).toBeNull()
+      expect(
+        await listRelatedPublicWorks(tx, { ...queryScope, kind: 'image', workId: newId() }),
+      ).toEqual([])
+      expect(await listPublicSitemapWorks(tx, { ...queryScope, page: 1 })).toEqual({
+        works: [],
+        hasNextPage: false,
+      })
+    }))
+
   it('隐藏、下架、取消发布、软删文件或空间的作品均不可读取或举报', () =>
     withFixture(async (tx) => {
       const author = await createAuthor(tx)
@@ -282,6 +313,9 @@ describe('Studio 公开作品查询', () => {
         works: [{ slug: first.slug, lastmod: expect.any(Date) }],
         hasNextPage: false,
       })
+      await expect(listPublicSitemapWorks(tx, { ...queryScope, page: 2 })).rejects.toMatchObject({
+        status: 404,
+      })
     }))
 
   it('数字页和游标的顺序一致，保留发布时间的微秒和相同时间的 id 排序', () =>
@@ -316,8 +350,41 @@ describe('Studio 公开作品查询', () => {
       const last = await listPublicWorks(tx, { ...paging, cursor: nextByCursor.nextCursor })
       expect(last.works.map(({ id }) => id)).toEqual([lastId])
       expect(last.nextCursor).toBeNull()
-      await expect(listPublicWorks(tx, { ...paging, page: 51 })).rejects.toMatchObject({
+      await expect(listPublicWorks(tx, { ...paging, page: 4 })).rejects.toMatchObject({
         status: 404,
       })
     }))
+
+  it('画廊数字页到达上限后仍可使用游标浏览', () =>
+    withFixture(async (tx) => {
+      const author = await createAuthor(tx)
+      for (let count = 0; count < 51; count++) await createWork(tx, author)
+
+      const paging = { ...scope(author.site), pageSize: 1 }
+      const lastNumbered = await listPublicWorks(tx, { ...paging, page: 50 })
+      expect(lastNumbered.works).toHaveLength(1)
+      expect(lastNumbered.nextPage).toBeNull()
+      if (!lastNumbered.nextCursor) throw new Error('缺少数字页之后的游标')
+      const continuation = await listPublicWorks(tx, { ...paging, cursor: lastNumbered.nextCursor })
+      expect(continuation.works).toHaveLength(1)
+      expect(continuation.nextCursor).toBeNull()
+    }))
+
+  it('超过画廊或站点地图数字页上限时直接返回 404', async () => {
+    const database = {
+      select: vi.fn(() => {
+        throw new Error('不应读取数据库')
+      }),
+    }
+    const queryScope = scope('studio-page-bounds')
+    await expect(
+      listPublicWorks(database, { ...queryScope, page: 51, pageSize: 1 }),
+    ).rejects.toMatchObject({ status: 404 })
+    await expect(
+      listPublicSitemapWorks(database, { ...queryScope, page: 11 }),
+    ).rejects.toMatchObject({
+      status: 404,
+    })
+    expect(database.select).not.toHaveBeenCalled()
+  })
 })

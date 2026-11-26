@@ -32,6 +32,12 @@ export interface StudioWorkActor {
   workspaceReadOnly: boolean
 }
 
+export interface StudioWorkMutation {
+  workspaceId: string
+  fileId: string
+  actor: StudioWorkActor
+}
+
 export function assertStudioWritable(actor: StudioWorkActor) {
   if (actor.workspaceReadOnly || !['owner', 'admin', 'member'].includes(actor.role))
     throw new AppError('WORKSPACE_READ_ONLY', 'Workspace writes are disabled', { status: 403 })
@@ -68,13 +74,13 @@ export async function lockStudioWorkspace(
   return tenant
 }
 
-export function studioOutputTaskJoin(tenant: Scoped, kinds: readonly StudioKind[]) {
+export function studioOutputTaskJoin(tenant: Scoped, kinds?: readonly StudioKind[]) {
   return tenant.filter(
     aiTask,
     and(
       eq(aiTask.id, file.sourceTaskId),
       eq(aiTask.status, 'succeeded'),
-      inArray(aiTask.kind, kinds),
+      kinds === undefined ? undefined : inArray(aiTask.kind, kinds),
     ),
   )
 }

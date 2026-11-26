@@ -19,9 +19,11 @@ import {
   lockStudioWorkspace,
   readStudioOutput,
   type StudioTransaction,
-  type StudioWorkActor,
+  type StudioWorkMutation,
   type StudioWorkspace,
 } from './works.ts'
+
+export type { StudioWorkMutation } from './works.ts'
 
 export interface StudioPublishCheckInput {
   readonly title: string
@@ -40,12 +42,7 @@ export type CheckStudioPublish = (
   input: StudioPublishCheckInput,
 ) => StudioPublishCheckResult | Promise<StudioPublishCheckResult>
 
-export interface StudioWorkMutation extends StudioWorkspace {
-  fileId: string
-  actor: StudioWorkActor
-}
-
-export interface PublishStudioWorkInput extends StudioWorkMutation {
+export interface PublishStudioWorkInput extends StudioWorkMutation, StudioWorkspace {
   /** 由服务端站点解析提供，单站点使用默认键。 */
   site?: string
   title: string
@@ -200,7 +197,11 @@ export async function publishStudioWork(
 
     const publishedAt = await reservePublication(tx, actor.userId, options)
     const priorModeration = current?.moderation ?? 'pending'
-    const moderation = checked.action === 'review' ? 'hidden' : priorModeration
+    const needsApproval =
+      current?.moderation === 'approved' &&
+      (current.title !== title || current.showPrompt !== input.showPrompt)
+    const moderation =
+      checked.action === 'review' ? 'hidden' : needsApproval ? 'pending' : priorModeration
     const moderationBeforeHide =
       priorModeration === 'hidden'
         ? (current?.moderationBeforeHide ?? 'pending')
@@ -261,15 +262,12 @@ export async function unpublishStudioWork(
   input: StudioWorkMutation,
   options: { invalidate?: InvalidateStudioWork } = {},
 ) {
-  const { actor, workspaceId, kinds, fileId } = input
+  const { actor, workspaceId, fileId } = input
   assertStudioWritable(actor)
+  if (!z.uuid().safeParse(fileId).success) throw notFound()
   const result = await db.transaction(async (tx) => {
     const tenant = await lockStudioWorkspace(tx, workspaceId, actor)
-    await readStudioOutput(tenant, fileId, kinds, true)
-    const [current] = await tenant
-      .select(studioWork, { where: eq(studioWork.fileId, fileId) })
-      .limit(1)
-      .for('update')
+    const current = await findWork(tenant, fileId, true)
     if (!current) throw notFound()
     if (current.visibility === 'private') return { work: current }
     const work = await tenant.updateById(studioWork, current.id, {

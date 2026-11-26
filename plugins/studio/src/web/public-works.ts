@@ -12,6 +12,8 @@ const gallerySort = z.enum(['latest', 'featured'])
 const galleryCursor = z.tuple([gallerySort, z.iso.datetime({ precision: 6 }), z.uuid()])
 const LAST_NUMBERED_GALLERY_PAGE = 50
 const SITEMAP_PAGE_SIZE = 50_000
+// 每站最多收录 50 万件作品，并限制公开查询的最大偏移。
+const LAST_SITEMAP_PAGE = 10
 
 /** 与 studioWork、file、user、organization 的连接使用。所有公开读取都按请求站点重新判定。 */
 export function publicWorkPredicate({ site, kinds }: PublicWorkScope) {
@@ -22,6 +24,8 @@ export function publicWorkPredicate({ site, kinds }: PublicWorkScope) {
     inArray(studioWork.moderation, ['pending', 'approved']),
     // 与会话鉴权一致，只有未过期的封禁生效。
     sql`not (${user.banned} is true and (${user.banExpires} is null or ${user.banExpires} > now()))`,
+    // 账号删除后的匿名化标记独立于可被管理员变更的封禁状态。
+    ne(user.email, sql`'deleted+' || ${user.id}::text || '@invalid'`),
     isNull(organization.deletedAt),
     eq(file.workspaceId, studioWork.workspaceId),
     eq(file.sourceTaskId, studioWork.taskId),
@@ -105,6 +109,8 @@ export async function listPublicWorks(
     .limit(pageSize + 1)
     .offset(offset)
 
+  if (page > 1 && rows.length === 0) throw notFound()
+
   const hasNextPage = rows.length > pageSize
   const works = rows.slice(0, pageSize).map(({ cursorAt, ...work }) => work)
   const last = hasNextPage ? rows[pageSize - 1] : undefined
@@ -154,15 +160,21 @@ export async function listPublicSitemapWorks(
   db: QueryDatabase,
   input: PublicWorkScope & { page: number },
 ) {
-  const offset = (input.page - 1) * SITEMAP_PAGE_SIZE
-  if (!Number.isInteger(input.page) || offset < 0 || !Number.isSafeInteger(offset)) throw notFound()
+  const { page } = input
+  if (!Number.isInteger(page) || page < 1 || page > LAST_SITEMAP_PAGE) throw notFound()
 
   const rows = await selectWorks(db, { slug: studioWork.slug, lastmod: studioWork.updatedAt })
     .where(and(publicWorkPredicate(input), eq(studioWork.moderation, 'approved')))
     .orderBy(desc(studioWork.publishedAt), desc(studioWork.id))
     .limit(SITEMAP_PAGE_SIZE + 1)
-    .offset(offset)
-  return { works: rows.slice(0, SITEMAP_PAGE_SIZE), hasNextPage: rows.length > SITEMAP_PAGE_SIZE }
+    .offset((page - 1) * SITEMAP_PAGE_SIZE)
+
+  if (page > 1 && rows.length === 0) throw notFound()
+
+  return {
+    works: rows.slice(0, SITEMAP_PAGE_SIZE),
+    hasNextPage: page < LAST_SITEMAP_PAGE && rows.length > SITEMAP_PAGE_SIZE,
+  }
 }
 
 export async function getPublicWorkMedia(

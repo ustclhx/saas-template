@@ -7,15 +7,14 @@ import { type InvalidateStudioWork, invalidateStudioWork } from './work-invalida
 import {
   assertStudioWritable,
   lockStudioWorkspace,
-  type StudioWorkActor,
-  type StudioWorkspace,
+  type StudioWorkMutation,
   studioOutputTaskJoin,
 } from './works.ts'
 
 export async function deleteStudioWork(
   db: Database,
   storage: Pick<Storage, 'delete'>,
-  input: StudioWorkspace & { fileId: string; actor: StudioWorkActor },
+  input: StudioWorkMutation,
   options: { invalidate?: InvalidateStudioWork } = {},
 ): Promise<{ deleted: true }> {
   assertStudioWritable(input.actor)
@@ -33,7 +32,7 @@ export async function deleteStudioWork(
           eq(file.status, 'ready'),
         ) as SQL,
       })
-      .innerJoin(aiTask, studioOutputTaskJoin(tenant, input.kinds))
+      .innerJoin(aiTask, studioOutputTaskJoin(tenant))
       .for('update', { of: file })
     if (!output) throw notFound()
 
@@ -53,7 +52,7 @@ export async function deleteStudioWork(
       await tenant.update(studioWork, { version: sql`${studioWork.version} + 1` }, where)
       await tenant.delete(studioWork, where)
     }
-    if (!output.deletedAt) await tenant.updateById(file, output.id, { deletedAt: new Date() })
+    if (!output.deletedAt) await tenant.updateById(file, output.id, { deletedAt: sql`now()` })
     return { output, publication }
   })
 

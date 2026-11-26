@@ -32,8 +32,8 @@ staging / production 的 `CRON_PROFILE=reduced` 合并为 `*/30`；「十分钟�
 | `deletion-cleanup` | 心跳组 | 删除过期的删号凭据清单，重试未过期清单对应的 KV 键删除 | 200 个清单（过期删除与重试合计） | 数据库时钟基准、偏差 ≤5 分钟；`expires_at` 早于下限的清单保留并告警 | `packages/auth/src/deletion.ts` |
 | `files-cleanup` | 十分钟组 | 删除 R2 对象与 `file` 行：未确认上传、过期空间文件、废弃或已删除的 AI 产出 | 500 个对象，且 ≤20 个空间（先到为准） | 未确认上传保留 1 小时（最小 10 分钟）、空间保留 30 天（最小 1 天）；仍关联作品的文件暂缓，创建 / 删除时间早于下限或废弃时间在未来的不删除并告警 | `packages/storage/src/cleanup.ts` |
 | `personal-share-cards-cleanup` | 每日 03:00 | 删号后个人空间的分享卡 R2 list + delete | 20 个空间 | 无保留期；偏差 ≤5 分钟；`deleted_at` 不在下限与基准之间的空间不处理并告警 | `packages/auth/src/ai-content-cleanup.ts` |
-| `workspace-cleanup` | 每日 03:00 | 过期空间的分享卡、AI 内容（每批 500 行、≤200 批）、通知与邀请；删除媒体任务前清理其作品及举报 | 20 个空间 | 截止 = 数据库时钟 − 30 天（最小 1 天）；偏差 ≤5 分钟；`deleted_at` 早于下限的空间不清理并告警 | `packages/auth/src/workspace-lifecycle.ts` |
-| `deleted-user-ai-cleanup` | 每日 03:00 | 已删号用户在团队空间中的 AI 内容，包括待删除媒体任务仍关联的作品及举报 | 200 批（每批 ≤500 行） | 按身份删除无截止时间；偏差 ≤5 分钟；一天内仍在生成的行以数据库时钟跳过 | `packages/auth/src/ai-content-cleanup.ts` |
+| `workspace-cleanup` | 每日 03:00 | 过期空间的分享卡、消息、轮次、对话、媒体任务（各类每批 ≤500 行、≤200 批）、通知与邀请；作品及举报按每批 ≤500 个待删媒体任务的输出清理 | 20 个空间 | 截止 = 数据库时钟 − 30 天（最小 1 天）；偏差 ≤5 分钟；`deleted_at` 早于下限的空间不清理并告警 | `packages/auth/src/workspace-lifecycle.ts` |
+| `deleted-user-ai-cleanup` | 每日 03:00 | 已删号用户在团队空间中的消息、轮次、对话和媒体任务；清理每批 ≤500 个待删媒体任务的输出对应的作品，另按作品 ID 清理 ≤500 条由该用户发布的作品，举报随作品删除 | 200 批（消息、轮次、对话、媒体任务各每批 ≤500 行） | 按身份删除无截止时间；偏差 ≤5 分钟；一天内仍在生成的行以数据库时钟跳过 | `packages/auth/src/ai-content-cleanup.ts` |
 | `admin-confirmations-cleanup` | 每日 03:00 | 到期的待确认记录（admin MCP 发起）置为过期并清空密文，删除 30 天前结束的终态记录 | 500 条待确认记录（两步合计） | 截止 = 数据库时钟 − 30 天（最小 1 天）；偏差 ≤5 分钟；结束时间早于下限的记录不删除并告警 | `packages/db/src/admin-pending-actions.ts` |
 | `credit_expiration` | 每小时 | 积分批次置过期并记账 | 200 个空间 | 偏差 ≤5 分钟；`expires_at` 早于下限的批次不过期并告警 | `packages/billing/src/cron.ts` |
 | `hold_sweep` | 十分钟组 | 超时预扣交给登记的结算器 | 500 条预扣 | 偏差 ≤5 分钟；`expires_at` 早于下限的预扣不结算并告警 | `packages/billing/src/cron.ts` |

@@ -1,5 +1,10 @@
 import { createHmac } from 'node:crypto'
-import { cleanupExpiredWorkspaces, deleteAccount, deleteTeamWorkspace } from '@saas/auth'
+import {
+  cleanupExpiredWorkspaces,
+  deleteAccount,
+  deleteTeamWorkspace,
+  purgeDeletedUserAiContent,
+} from '@saas/auth'
 import {
   createDb,
   member,
@@ -117,7 +122,7 @@ describe('Studio 作品删除', () => {
     const storage = { delete: remove }
     const invalidate = vi.fn()
     const actor = { userId: own.userId, role: 'owner', workspaceReadOnly: false }
-    const input = { workspaceId: own.workspaceId, actor, fileId, kinds }
+    const input = { workspaceId: own.workspaceId, actor, fileId }
     await expect(
       deleteStudioWork(db, storage, {
         ...input,
@@ -156,7 +161,7 @@ describe('Studio 作品删除', () => {
     expect(retried?.deletedAt).toEqual(tombstone?.deletedAt)
   })
 
-  it('真实删号与删空间入口先删除作品和举报，输出继续按保留策略处理', async () => {
+  it('删号与删空间重复执行清理步骤时，作品仅失效一次并保留输出', async () => {
     const actor = await workspace({ isPersonal: true })
     const team = await workspace()
     await scoped(db, team.workspaceId).insert(member, {
@@ -174,6 +179,7 @@ describe('Studio 作品删除', () => {
     await db.insert(studioPublication).values({ userId: actor.userId, publishedAt: new Date() })
     const invalidate = vi.fn()
     onTestFinished(registerStudioDeletionSteps(invalidate))
+    onTestFinished(registerStudioDeletionSteps(invalidate))
 
     await expect(deleteAccount(await authOptions(actor.userId))).resolves.toEqual({ deleted: true })
     for (const { work, fileId } of [personalWork, byActor, onActorTask]) {
@@ -183,6 +189,7 @@ describe('Studio 作品删除', () => {
       expect(output).toMatchObject({ deletedAt: null })
       expect(invalidate).toHaveBeenCalledWith(work)
     }
+    expect(invalidate).toHaveBeenCalledTimes(3)
     expect(await workRow(unaffected.work.id)).toBeDefined()
     expect(
       await db.query.studioPublication.findMany({
@@ -195,11 +202,49 @@ describe('Studio 作品删除', () => {
     ).resolves.toEqual({ deleted: true })
     expect(await workRow(unaffected.work.id)).toBeUndefined()
     expect(await reports(unaffected.work.id)).toEqual([])
+    expect(invalidate).toHaveBeenCalledTimes(4)
     expect(invalidate).toHaveBeenLastCalledWith(unaffected.work)
     const output = await db.query.file.findFirst({
       where: (f, { eq }) => eq(f.id, unaffected.fileId),
     })
     expect(output).toMatchObject({ deletedAt: null, sourceTaskId: unaffected.taskId })
+  })
+
+  it('未注册插件且删号用户没有团队任务时，按作者分批清理其作品和举报', async () => {
+    const actor = await workspace({ isPersonal: true })
+    const team = await workspace()
+    await scoped(db, team.workspaceId).insert(member, {
+      id: newId(),
+      userId: actor.userId,
+      role: 'member',
+    })
+    const earlier = await publishedOutput(team, actor.userId)
+    const later = await publishedOutput(team, actor.userId)
+    const unaffected = await publishedOutput(team)
+
+    await expect(deleteAccount(await authOptions(actor.userId))).resolves.toEqual({ deleted: true })
+    expect(await workRow(earlier.work.id)).toBeDefined()
+    expect(await workRow(later.work.id)).toBeDefined()
+    await expect(
+      purgeDeletedUserAiContent(db, { batchSize: 1, maxBatches: 1 }),
+    ).resolves.toMatchObject({
+      tasks: 0,
+      remaining: true,
+    })
+    expect(await workRow(earlier.work.id)).toBeUndefined()
+    expect(await workRow(later.work.id)).toBeDefined()
+
+    await expect(purgeDeletedUserAiContent(db, { batchSize: 1 })).resolves.toMatchObject({
+      tasks: 0,
+      remaining: false,
+    })
+    expect(await workRow(later.work.id)).toBeUndefined()
+    for (const { work, fileId, taskId } of [earlier, later]) {
+      expect(await reports(work.id)).toEqual([])
+      const output = await db.query.file.findFirst({ where: (f, { eq }) => eq(f.id, fileId) })
+      expect(output).toMatchObject({ deletedAt: null, sourceTaskId: taskId })
+    }
+    expect(await workRow(unaffected.work.id)).toBeDefined()
   })
 
   it('未注册插件时保留期清理仍按作品、任务、对象顺序解除引用', async () => {
