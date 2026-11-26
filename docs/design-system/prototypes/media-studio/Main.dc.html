@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>创作页（桌面）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:none}a:hover{text-decoration:underline;text-underline-offset:3px}
+.r{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;width:1440px;height:900px;display:flex;overflow:hidden;position:relative}
+button,input,textarea{font:inherit;color:inherit;margin:0}
+button{cursor:pointer;border:0;background:none;padding:0}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.cap{font-size:12px;line-height:16px}
+.sub{font-size:14px;line-height:20px;font-weight:600}
+.ttl{font-size:20px;line-height:28px;font-weight:600}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border-radius:8px;font-size:14px;line-height:20px;font-weight:500;white-space:nowrap}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;flex-shrink:0}
+.hv:hover{background:rgba(128,128,128,0.1);text-decoration:none}
+.sb{width:248px;padding:12px;display:flex;flex-direction:column;gap:16px;flex-shrink:0}
+.grp{font-size:12px;line-height:16px;font-weight:500;padding:0 8px;margin-bottom:4px}
+.nav{display:flex;align-items:center;gap:8px;height:32px;border-radius:8px;padding:0 8px}
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:9999px;font-size:12px;line-height:16px;font-weight:500;white-space:nowrap}
+.main{flex:1;min-width:0;margin:8px 8px 8px 0;border-radius:12px;display:flex;overflow:hidden}
+.lbl{font-size:12px;line-height:16px;font-weight:500}
+.fld{display:flex;align-items:center;height:36px;padding:0 12px;border-radius:8px;gap:8px}
+.chip{display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:9999px;font-size:12px;font-weight:500}
+.ph{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;border-radius:10px}
+.sk{border-radius:10px;animation:sk 1.6s ease-in-out infinite}
+@keyframes sk{0%,100%{opacity:1}50%{opacity:0.5}}
+svg{flex-shrink:0}
+sc-if,sc-for{display:contents}
+</style>
+</helmet>
+<div class="r" style="background:{{t.bg}};color:{{t.fg}}">
+  <aside class="sb" aria-label="主导航">
+    <div class="row" style="height:32px;gap:8px;padding-left:4px">
+      <span class="row" style="justify-content:center;width:24px;height:24px;border-radius:6px;background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span>
+      <span class="sub">SaaS 模板</span>
+    </div>
+    <nav class="col" aria-label="工作区" style="gap:2px;flex:1">
+      <span class="grp" style="color:{{t.mfg}}">工具</span>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>工作台</a>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>对话</a>
+      <a href="#" class="nav" aria-current="page" style="background:{{t.active}};font-weight:500"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 17v4M17 19h4"></path></svg>创作</a>
+      <span class="grp" style="color:{{t.mfg}};margin-top:12px">内容</span>
+      <a href="Works.dc.html" class="nav hv" style="color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>我的作品</a>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"></path></svg>任务</a>
+    </nav>
+    <div class="col" style="gap:6px;padding:10px 12px;border-radius:10px;background:{{t.secondary}}">
+      <span class="cap" style="color:{{t.mfg}}">积分余额</span>
+      <span class="sub">{{balance}}</span>
+    </div>
+  </aside>
+
+  <main class="main" style="background:{{t.panel}};box-shadow:{{t.sh2}}">
+    <section class="col" aria-label="生成设置" style="width:400px;flex-shrink:0;padding:24px;gap:18px;border-right:1px solid {{t.border}};overflow:hidden">
+      <div class="col" style="gap:2px">
+        <h1 class="ttl" style="margin:0">创作</h1>
+        <p style="margin:0;color:{{t.mfg}}">用一句描述生成图片或视频，满意的作品可以发布到画廊。</p>
+      </div>
+      <div class="row" role="tablist" aria-label="创作模式" style="padding:3px;border-radius:9px;background:{{t.secondary}};gap:2px">
+        <button type="button" role="tab" aria-selected="{{imgSel}}" class="btn" style="flex:1;height:30px;background:{{tabImgBg}};box-shadow:{{tabImgSh}};color:{{tabImgFg}}">图片</button>
+        <button type="button" role="tab" aria-selected="{{vidSel}}" class="btn" style="flex:1;height:30px;background:{{tabVidBg}};box-shadow:{{tabVidSh}};color:{{tabVidFg}}">视频</button>
+      </div>
+      <div class="col" style="gap:6px">
+        <label class="lbl" for="prompt">提示词</label>
+        <textarea id="prompt" rows="4" style="resize:none;padding:10px 12px;border-radius:8px;border:0;box-shadow:inset 0 0 0 1px {{t.border}};background:{{t.card}};outline:none">{{prompt}}</textarea>
+        <span class="cap" style="color:{{t.mfg}};align-self:flex-end">{{promptLen}} / 2000</span>
+      </div>
+      <div class="col" style="gap:6px">
+        <span class="lbl">模型</span>
+        <button type="button" class="fld" aria-haspopup="listbox" style="background:{{t.card}};box-shadow:inset 0 0 0 1px {{t.border}};justify-content:space-between"><span>{{model}}</span><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:{{t.mfg}}"><path d="m6 9 6 6 6-6"></path></svg></button>
+      </div>
+      <sc-if value="{{video}}" hint-placeholder-val="{{false}}">
+        <div class="col" style="gap:6px">
+          <span class="lbl">参考图（以图生视频必填）</span>
+          <div class="row" style="gap:10px;padding:8px;border-radius:10px;box-shadow:inset 0 0 0 1px {{t.border}};background:{{t.card}}">
+            <span class="ph" style="width:56px;height:56px;background:{{t.secondary}};color:{{t.mfg}}"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path></svg></span>
+            <span class="col" style="flex:1;min-width:0"><span style="font-weight:500">lakeside.png</span><span class="cap" style="color:{{t.mfg}}">1024 × 1024 · 1.2 MB</span></span>
+            <button type="button" class="btn hv" style="height:32px;padding:0 10px;color:{{t.mfg}}">更换</button>
+          </div>
+        </div>
+      </sc-if>
+      <div class="col" style="gap:6px">
+        <span class="lbl">风格预设</span>
+        <div class="row" style="gap:6px;flex-wrap:wrap">
+          <sc-for list="{{presets}}" as="p" hint-placeholder-count="4">
+            <button type="button" class="chip" aria-pressed="{{p.on}}" style="background:{{p.bg}};color:{{p.fg}};box-shadow:inset 0 0 0 1px {{t.border}}">{{p.label}}</button>
+          </sc-for>
+        </div>
+      </div>
+      <div class="col" style="gap:10px;padding-top:4px;border-top:1px solid {{t.border}}">
+        <button type="button" class="row" aria-expanded="true" style="justify-content:space-between;height:32px"><span class="lbl">更多设置</span><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:{{t.mfg}}"><path d="m18 15-6-6-6 6"></path></svg></button>
+        <div class="row" style="gap:10px">
+          <sc-for list="{{opts}}" as="o" hint-placeholder-count="3">
+            <div class="col" style="gap:4px;flex:1;min-width:0">
+              <span class="cap" style="color:{{t.mfg}}">{{o.label}}</span>
+              <button type="button" class="fld" aria-haspopup="listbox" style="height:32px;background:{{t.card}};box-shadow:inset 0 0 0 1px {{t.border}};justify-content:space-between"><span>{{o.value}}</span><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:{{t.mfg}}"><path d="m6 9 6 6 6-6"></path></svg></button>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div class="col" style="gap:8px;margin-top:auto">
+        <sc-if value="{{insufficient}}" hint-placeholder-val="{{false}}">
+          <div class="row" role="alert" style="gap:8px;padding:10px 12px;border-radius:8px;background:{{t.dangerBg}};color:{{t.destructive}}">
+            <span style="flex:1">余额不足：本次需要 {{cost}} 积分，当前 {{balance}}。</span>
+            <a href="#" style="font-weight:600;text-decoration:underline">充值</a>
+          </div>
+        </sc-if>
+        <div class="row" style="gap:12px">
+          <span class="cap" style="flex:1;color:{{t.mfg}}">预计消耗 <strong style="color:{{t.fg}}">{{cost}}</strong> 积分，失败不扣</span>
+          <button type="button" class="btn" disabled="{{genDisabled}}" style="background:{{t.primary}};color:{{t.pfg}};opacity:{{genOpacity}}">{{genLabel}}</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="col" aria-label="生成结果" style="flex:1;min-width:0;padding:24px;gap:16px;overflow:hidden">
+      <div class="row" style="gap:8px"><h2 class="sub" style="margin:0;flex:1">本次结果</h2><sc-if value="{{done}}" hint-placeholder-val="{{false}}"><span class="cap" style="color:{{t.mfg}}">{{doneMeta}}</span></sc-if></div>
+
+      <sc-if value="{{empty}}" hint-placeholder-val="{{true}}">
+        <div class="col" style="flex:1;align-items:center;justify-content:center;text-align:center;gap:10px;border-radius:12px;box-shadow:inset 0 0 0 1px {{t.border}}">
+          <span class="row" aria-hidden="true" style="justify-content:center;width:40px;height:40px;border-radius:9999px;background:{{t.secondary}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span>
+          <span class="sub">还没有生成内容</span>
+          <span style="color:{{t.mfg}};max-width:24rem">在左侧写下想要的画面，点「生成」。结果会出现在这里，也会保存到我的作品。</span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{running}}" hint-placeholder-val="{{false}}">
+        <div class="col" style="flex:1;gap:12px">
+          <div class="row" style="gap:12px;flex:1">
+            <div class="sk" style="flex:1;height:100%;background:{{t.active}}"></div>
+            <div class="sk" style="flex:1;height:100%;background:{{t.active}}"></div>
+          </div>
+          <div class="row" role="status" style="gap:8px;color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.6"></path></svg>{{runningText}}<button type="button" class="btn hv" style="height:28px;padding:0 10px;margin-left:auto;color:{{t.mfg}}">取消</button></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{doneImage}}" hint-placeholder-val="{{false}}">
+        <div class="row" style="gap:12px;flex:1;min-height:0">
+          <sc-for list="{{results}}" as="res" hint-placeholder-count="2">
+            <figure class="col" style="flex:1;margin:0;gap:8px;min-width:0">
+              <div class="ph" style="flex:1;background:{{res.tint}};color:{{t.mfg}}"><svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path></svg><span class="cap">示例图</span></div>
+              <figcaption class="row" style="gap:6px"><button type="button" class="btn" style="height:32px;padding:0 12px;background:{{t.primary}};color:{{t.pfg}}">发布到画廊</button><button type="button" class="btn hv" style="height:32px;padding:0 12px;box-shadow:inset 0 0 0 1px {{t.border}}">下载</button><button type="button" class="ib hv" aria-label="更多操作" style="margin-left:auto;color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle><circle cx="19" cy="12" r="1.5"></circle></svg></button></figcaption>
+            </figure>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{doneVideo}}" hint-placeholder-val="{{false}}">
+        <figure class="col" style="flex:1;margin:0;gap:8px;min-height:0">
+          <div class="col" style="flex:1;border-radius:10px;overflow:hidden;background:{{t.secondary}}">
+            <div class="ph" style="flex:1;border-radius:0;color:{{t.mfg}}"><svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m10 8 6 4-6 4z"></path></svg><span class="cap">示例视频 · 5 秒</span></div>
+            <div class="row" style="gap:10px;height:40px;padding:0 12px;border-top:1px solid {{t.border}}">
+              <button type="button" class="ib hv" aria-label="播放"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"></path></svg></button>
+              <span class="cap" style="color:{{t.mfg}}">0:00 / 0:05</span>
+              <span style="flex:1;height:4px;border-radius:9999px;background:{{t.active}}"></span>
+              <button type="button" class="ib hv" aria-label="静音"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4zM22 9l-6 6M16 9l6 6"></path></svg></button>
+              <button type="button" class="ib hv" aria-label="全屏"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"></path></svg></button>
+            </div>
+          </div>
+          <figcaption class="row" style="gap:6px"><button type="button" class="btn" style="height:32px;padding:0 12px;background:{{t.primary}};color:{{t.pfg}}">发布到画廊</button><button type="button" class="btn hv" style="height:32px;padding:0 12px;box-shadow:inset 0 0 0 1px {{t.border}}">下载</button></figcaption>
+        </figure>
+      </sc-if>
+
+      <div class="col" style="gap:10px;flex-shrink:0">
+        <div class="row"><h2 class="sub" style="margin:0;flex:1">最近作品</h2><a href="Works.dc.html" class="cap" style="color:{{t.mfg}}">查看全部</a></div>
+        <div class="row" style="gap:10px">
+          <sc-for list="{{recent}}" as="w" hint-placeholder-count="6">
+            <a href="#" class="ph" aria-label="{{w.label}}" style="flex:1;height:96px;background:{{w.tint}};color:{{t.mfg}};position:relative">
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path></svg>
+              <sc-if value="{{w.pub}}" hint-placeholder-val="{{false}}"><span class="badge" style="position:absolute;left:6px;top:6px;background:{{t.okBg}};color:{{t.ok}}">已公开</span></sc-if>
+            </a>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"state":{"editor":"enum","options":["empty","running","done","insufficient","video"],"default":"done"},"$preview":{"width":1440,"height":900}}'>
+function uiTokens(dark) {
+  var t = dark ? {
+    s: ['#171717', '#1e1e1e', '#252525'], fg: '#f5f5f5', mfg: '#b0b0b0', primary: '#f5f5f5', pfg: '#171717',
+    destructive: '#fca5a5', dangerBg: 'rgba(252,165,165,0.12)', ok: '#86efac', okBg: 'rgba(134,239,172,0.12)', warn: '#fcd34d', warnBg: 'rgba(252,211,77,0.12)',
+    border: 'rgba(245,245,245,0.12)', active: 'rgba(255,255,255,0.1)', overlay: 'rgba(0,0,0,0.6)'
+  } : {
+    s: ['#fafafa', '#fcfcfc', '#ffffff'], fg: '#171717', mfg: '#6b6b6b', primary: '#171717', pfg: '#fafafa',
+    destructive: '#b91c1c', dangerBg: 'rgba(185,28,28,0.08)', ok: '#15803d', okBg: 'rgba(21,128,61,0.1)', warn: '#a16207', warnBg: 'rgba(234,179,8,0.12)',
+    border: 'rgba(23,23,23,0.12)', active: 'rgba(0,0,0,0.07)', overlay: 'rgba(0,0,0,0.4)'
+  };
+  t.bg = t.s[0]; t.panel = t.s[1]; t.card = t.s[2];
+  t.secondary = dark ? '#252525' : '#f4f4f5';
+  t.sh2 = dark ? 'inset 0 0 0 1px rgba(255,255,255,0.02), 0 1px 1px -0.5px rgba(0,0,0,0.18)' : '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06)';
+  t.sh5 = dark ? '0 0 0 1px rgba(255,255,255,0.08), 0 6px 12px -4px rgba(0,0,0,0.4)' : '0 0 0 1px rgba(0,0,0,0.06), 0 6px 12px -4px rgba(0,0,0,0.12)';
+  t.tints = dark ? ['#2a2a2a', '#303030', '#262626', '#2d2d2d'] : ['#ececee', '#e4e4e7', '#f0f0f1', '#e8e8ea'];
+  return t;
+}
+class Component extends DCLogic {
+  renderVals() {
+    var t = uiTokens(!!this.props.dark);
+    var s = this.props.state || 'done';
+    var video = s === 'video';
+    var prompt = video ? '湖面上的薄雾慢慢散开，镜头缓缓推进' : '清晨的山间木屋，薄雾，柔和的光线';
+    var sel = function (on) { return { bg: on ? t.card : 'transparent', sh: on ? t.sh2 : 'none', fg: on ? t.fg : t.mfg }; };
+    var a = sel(!video), b = sel(video);
+    var presetNames = video ? ['电影感', '慢动作', '航拍'] : ['水彩', '胶片', '插画', '3D 渲染'];
+    return {
+      t: t,
+      video: video,
+      imgSel: video ? 'false' : 'true', vidSel: video ? 'true' : 'false',
+      tabImgBg: a.bg, tabImgSh: a.sh, tabImgFg: a.fg, tabVidBg: b.bg, tabVidSh: b.sh, tabVidFg: b.fg,
+      prompt: s === 'empty' ? '' : prompt,
+      promptLen: s === 'empty' ? 0 : prompt.length,
+      model: video ? 'Wan 2.2 图生视频' : 'FLUX 快速',
+      presets: presetNames.map(function (n, i) { var on = i === 0 && s !== 'empty'; return { label: n, on: on ? 'true' : 'false', bg: on ? t.primary : t.card, fg: on ? t.pfg : t.fg }; }),
+      opts: video ? [{ label: '时长', value: '5 秒' }, { label: '分辨率', value: '720p' }, { label: '画面比例', value: '16:9' }] : [{ label: '画面比例', value: '1:1' }, { label: '张数', value: '2' }, { label: '随机种子', value: '自动' }],
+      cost: video ? 40 : 8,
+      balance: s === 'insufficient' ? '5' : '1,240',
+      insufficient: s === 'insufficient',
+      genDisabled: s === 'running' || s === 'insufficient' || s === 'empty',
+      genOpacity: (s === 'running' || s === 'insufficient' || s === 'empty') ? 0.5 : 1,
+      genLabel: s === 'running' ? '生成中…' : '生成',
+      empty: s === 'empty' || s === 'insufficient',
+      running: s === 'running',
+      runningText: '正在生成，通常需要 10–30 秒。可以离开页面，完成后保存在我的作品。',
+      done: s === 'done' || video,
+      doneImage: s === 'done',
+      doneVideo: video,
+      doneMeta: video ? '1280 × 720 · 5 秒 · 消耗 40 积分' : '1024 × 1024 · 2 张 · 消耗 8 积分',
+      results: [{ tint: t.tints[0] }, { tint: t.tints[1] }],
+      recent: [0, 1, 2, 3, 4, 5].map(function (i) { return { label: '作品 ' + (i + 1), tint: t.tints[i % 4], pub: i === 1 || i === 4 }; })
+    };
+  }
+}
+</script>
+</body>
+</html>
