@@ -40,6 +40,36 @@ export function authClient() {
   return client
 }
 
+const RENEWED_KEY = 'saas:session-renewed'
+/** 续期检查间隔：Better Auth 的 updateAge 为 1 天，半天检查一次即可保证活跃用户每天续上 */
+const RENEW_INTERVAL_MS = 12 * 60 * 60 * 1000
+
+/**
+ * 应用读会话走 requireFreshSession（直接查库、不写回），不会触发 Better Auth 的滚动续期。
+ * 已登录页面挂载时按间隔调用一次 get-session（跳过 Cookie 缓存），由 Better Auth 在到达 updateAge 时
+ * 延长数据库、KV 与浏览器 Cookie 的有效期。失败只是本次不续期，不影响页面。
+ */
+export function renewSession(now = Date.now()): void {
+  let last = 0
+  try {
+    last = Number(window.localStorage.getItem(RENEWED_KEY)) || 0
+  } catch {
+    // 存储不可用时每次挂载都检查；get-session 未到 updateAge 时不写库
+  }
+  if (now - last < RENEW_INTERVAL_MS) return
+  void authClient()
+    .getSession({ query: { disableCookieCache: true } })
+    .then(({ data }) => {
+      if (!data) return
+      try {
+        window.localStorage.setItem(RENEWED_KEY, String(now))
+      } catch {
+        // 同上
+      }
+    })
+    .catch(() => {})
+}
+
 /** 登录成功后的去处；/app 再重定向到当前空间（docs/04-auth-and-tenancy.md §3） */
 export const AFTER_SIGN_IN_PATH = '/app'
 
@@ -70,5 +100,10 @@ export function goToApp() {
  */
 export function signOut() {
   forgetSignedIn()
+  try {
+    window.localStorage.removeItem(RENEWED_KEY)
+  } catch {
+    // 存储不可用
+  }
   return authClient().signOut()
 }

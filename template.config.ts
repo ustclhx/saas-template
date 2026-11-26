@@ -21,6 +21,7 @@ export default defineTemplateConfig({
     oauth: ['google', 'github'],
     twoFactor: false,
     turnstile: true,
+    sessionDays: 30, // 登录保持天数：期间内访问过就自动续期；登录页同期标出上次使用的登录方式
   },
   billing: {
     enabled: true, // 计费依赖积分；关闭计费时同时关闭 AI

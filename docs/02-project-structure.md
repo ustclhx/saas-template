@@ -192,6 +192,7 @@ export default defineTemplateConfig({
     oauth: ['google', 'github'],
     twoFactor: false,
     turnstile: true,
+    sessionDays: 30,              // 登录保持天数：期间内访问过就自动续期；登录页同期标出上次使用的登录方式
   },
   billing: {
     providers: ['stripe', 'paypal'],   // 结账页展示顺序

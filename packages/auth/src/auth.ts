@@ -8,7 +8,14 @@ import { log } from '@saas/shared/log'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError } from 'better-auth/api'
-import { admin, emailOTP, magicLink, organization, twoFactor } from 'better-auth/plugins'
+import {
+  admin,
+  emailOTP,
+  lastLoginMethod,
+  magicLink,
+  organization,
+  twoFactor,
+} from 'better-auth/plugins'
 import { accountSettings, userSettingsFields } from './account-settings.ts'
 import { adminBootstrap } from './admin-bootstrap.ts'
 import type { CleanupWorkspaceShareCards } from './ai-content-cleanup.ts'
@@ -84,7 +91,7 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
     secret: vars.BETTER_AUTH_SECRET,
     database: drizzleAdapter(db, { provider: 'pg', schema }),
     // 会话三层：Cookie 缓存 → KV → 数据库（session.ts）
-    ...sessionStorageOptions(deps.cache),
+    ...sessionStorageOptions(deps.cache, config.auth.sessionDays),
     advanced: {
       ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },
       // 主键统一为 UUIDv7（design.md 决策 2），列类型为 uuid
@@ -186,6 +193,8 @@ export function createAuth(env: AuthEnv, db: Database, deps: CreateAuthDeps) {
       }),
       // 敏感接口按数据库实时校验会话与封禁（fresh-session.ts）
       freshSessionGuard(db),
+      // 记住上次登录方式（只存方式名，不存邮箱），登录页据此标出「上次使用」并默认选中
+      lastLoginMethod({ maxAge: config.auth.sessionDays * 24 * 60 * 60 }),
       deletionPlugin(
         db,
         deps.cache,

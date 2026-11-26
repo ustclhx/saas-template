@@ -14,6 +14,8 @@ import type { BetterAuthOptions, SecondaryStorage } from 'better-auth'
 /** Cookie 缓存时长（秒）：5 分钟 */
 export const SESSION_COOKIE_CACHE_MAX_AGE = 5 * 60
 
+const SECONDS_PER_DAY = 24 * 60 * 60
+
 const KEY_PREFIX = 'auth:'
 
 /**
@@ -44,9 +46,12 @@ export function kvSecondaryStorage(kv: KeyValueStore): SecondaryStorage {
 }
 
 /** `createAuth` 中与会话存储相关的选项；没有 KV 绑定时只用 Cookie 缓存 + 数据库。 */
-export function sessionStorageOptions(kv: KeyValueStore | undefined) {
+export function sessionStorageOptions(kv: KeyValueStore | undefined, sessionDays: number) {
   return {
     session: {
+      // 滚动续期：会话剩余不足 expiresIn - updateAge 时，下一次访问把有效期延长回 sessionDays
+      expiresIn: sessionDays * SECONDS_PER_DAY,
+      updateAge: SECONDS_PER_DAY,
       cookieCache: { enabled: true, maxAge: SESSION_COOKIE_CACHE_MAX_AGE },
       storeSessionInDatabase: true,
     },
