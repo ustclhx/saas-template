@@ -16,7 +16,11 @@ import {
   type StudioPublishCheckInput,
   type StudioPublishCheckResult,
 } from '../moderation.project.ts'
-import { type InvalidateStudioWork, invalidateStudioWork } from './work-invalidation.ts'
+import {
+  type InvalidateStudioWork,
+  invalidateStudioMedia,
+  invalidateStudioWork,
+} from './work-invalidation.ts'
 import {
   assertStudioWritable,
   DEFAULT_STUDIO_SITE,
@@ -267,6 +271,7 @@ export async function unpublishStudioWork(
     })
     return { work, invalidate: current }
   })
-  if (result.invalidate) await invalidateStudioWork(result.invalidate, options.invalidate)
+  if (result.invalidate)
+    await invalidateStudioWork(result.invalidate, options.invalidate ?? invalidateStudioMedia)
   return result.work
 }

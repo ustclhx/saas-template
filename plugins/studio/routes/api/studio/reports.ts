@@ -7,6 +7,7 @@ import { studioConfigSchema } from '../../../src/config.ts'
 import { enabledStudioKinds } from '../../../src/kinds.ts'
 import { resolveStudioSite } from '../../../src/site.ts'
 import { handleStudioReport } from '../../../src/web/reports-http.ts'
+import { invalidateStudioMedia } from '../../../src/web/work-invalidation.ts'
 
 const { reportHideThreshold, sites } = studioConfigSchema.parse(templateConfig.plugins.studio)
 const kinds = enabledStudioKinds(templateConfig)
@@ -23,6 +24,7 @@ export const Route = createFileRoute('/api/studio/reports')({
           kinds,
           unavailable: pluginUnavailable(runtime, 'studio'),
           hideThreshold: reportHideThreshold,
+          invalidate: invalidateStudioMedia,
           clientIp: runtime.requestMeta.clientIp,
           secret: runtime.config.BETTER_AUTH_SECRET,
           turnstileSecret:

@@ -1,3 +1,4 @@
+import { Readable } from 'node:stream'
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -50,6 +51,52 @@ export function createNodeStorage(config: S3StorageConfig): Storage {
           throw error
         }
       }),
+    async read(key, range) {
+      validateKey(key)
+      const client = createS3Client(config)
+      try {
+        const object = await client.send(
+          new GetObjectCommand({
+            Bucket: config.bucket,
+            Key: key,
+            ...(range ? { Range: `bytes=${range.offset}-${range.offset + range.length - 1}` } : {}),
+          }),
+        )
+        if (
+          !(object.Body instanceof Readable) ||
+          !object.ETag ||
+          object.ContentLength === undefined
+        ) {
+          throw new Error('Incomplete S3 object response')
+        }
+        // Node 22 的默认策略按块计数，显式按字节限制缓冲区。
+        const reader = Readable.toWeb(object.Body, {
+          strategy: new ByteLengthQueuingStrategy({
+            highWaterMark: object.Body.readableHighWaterMark,
+          }),
+        }).getReader()
+        // SDK 请求在收到响应头时已返回，连接须等源流读完、取消或错误后再释放。
+        const releaseClient = () => client.destroy()
+        void reader.closed.then(releaseClient, releaseClient)
+        const body = new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            try {
+              const chunk = await reader.read()
+              if (chunk.done) controller.close()
+              else controller.enqueue(chunk.value)
+            } catch {
+              controller.error(storageError('STORAGE_READ_FAILED'))
+            }
+          },
+          cancel: () => reader.cancel(),
+        })
+        return { body, etag: object.ETag, size: object.ContentLength }
+      } catch (error) {
+        client.destroy()
+        if (isMissing(error)) return null
+        throw storageError('STORAGE_READ_FAILED')
+      }
+    },
     delete: (key) =>
       operation(key, 'STORAGE_DELETE_FAILED', async (client) => {
         await client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: key }))

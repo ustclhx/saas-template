@@ -1,5 +1,6 @@
 import { auditLog, type StudioWork, scoped, studioReport, studioWork, user } from '@saas/db'
 import { moderateAdminStudioWork } from '@saas/plugin-studio/moderation'
+import { setStudioMediaInvalidator } from '@saas/plugin-studio/work-invalidation'
 import { newId } from '@saas/shared'
 import { and, eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -170,13 +171,14 @@ describe.skipIf(!templateConfig.plugins.studio)('Studio 后台审核', () => {
     await expect(audits(id)).resolves.toEqual([])
 
     const invalidate = vi.fn()
-    await expect(
-      moderateStudioWork(
-        context,
-        { workId: id, action: 'remove', reason: ' copyright ' },
-        invalidate,
-      ),
-    ).resolves.toMatchObject({ moderation: 'removed', removalReason: 'copyright', version: 2 })
+    setStudioMediaInvalidator(invalidate)
+    try {
+      await expect(
+        moderate({ workId: id, action: 'remove', reason: ' copyright ' }),
+      ).resolves.toMatchObject({ moderation: 'removed', removalReason: 'copyright', version: 2 })
+    } finally {
+      setStudioMediaInvalidator(() => {})
+    }
     expect(invalidate).toHaveBeenCalledExactlyOnceWith({ id, site, slug, version: 1 })
     await expect(getPublicWorkBySlug(db, { site, slug, kinds: ['image'] })).resolves.toBeNull()
     await expect(

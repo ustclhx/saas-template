@@ -6,6 +6,7 @@ import { requireFileStorage } from '@web/features/files/runtime.ts'
 import { getWebRuntime, pluginUnavailable } from '@web/server/runtime.ts'
 import { z } from 'zod'
 import { studioModerationSchema, studioReviewQueueSchema } from './moderation-input.ts'
+import { invalidateStudioMedia } from './work-invalidation.ts'
 
 function studioRuntime() {
   const runtime = getWebRuntime()
@@ -47,5 +48,5 @@ export const moderateAdminStudioWork = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     studioRuntime()
     const { moderateStudioWork } = await import('./moderation.server.ts')
-    return moderateStudioWork(context, data)
+    return moderateStudioWork(context, data, invalidateStudioMedia)
   })
