@@ -10,7 +10,7 @@ import {
   studioModerationSchema,
   studioReviewQueueSchema,
 } from './moderation-input.ts'
-import { invalidateStudioMedia } from './work-invalidation.ts'
+import { invalidateStudioMedia, invalidateStudioMediaMany } from './work-invalidation.ts'
 
 function studioRuntime() {
   const runtime = getWebRuntime()
@@ -64,5 +64,5 @@ export const moderateAdminStudioWorks = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     studioRuntime()
     const { moderateStudioWorks } = await import('./moderation.server.ts')
-    return moderateStudioWorks(context, data, invalidateStudioMedia)
+    return moderateStudioWorks(context, data, invalidateStudioMediaMany)
   })

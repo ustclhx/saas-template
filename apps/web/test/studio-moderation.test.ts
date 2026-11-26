@@ -6,6 +6,7 @@ import { and, eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   moderateStudioWork,
+  moderateStudioWorks,
   studioAdminActionName,
 } from '../../../plugins/studio/src/web/moderation.server.ts'
 import {
@@ -291,12 +292,23 @@ describe.skipIf(!templateConfig.plugins.studio)('Studio 后台审核', () => {
     const second = await seedWork()
     const removed = await seedWork({ moderation: 'removed' })
     const missing = newId()
-    await expect(
-      moderateBatch({
+    // 缓存失效在循环结束后一次处理，只含已提交的件
+    const invalidateMany = vi.fn()
+    setStudioMediaInvalidator(Object.assign(vi.fn(), { many: invalidateMany }))
+    let results: unknown
+    try {
+      results = await moderateBatch({
         action: 'approve',
         workIds: [first.id, removed.id, missing, second.id, first.id],
-      }),
-    ).resolves.toEqual([
+      })
+    } finally {
+      setStudioMediaInvalidator(() => {})
+    }
+    expect(invalidateMany).toHaveBeenCalledExactlyOnceWith([
+      { id: first.id, site, slug: first.slug, version: 1 },
+      { id: second.id, site, slug: second.slug, version: 1 },
+    ])
+    expect(results).toEqual([
       { workId: first.id, ok: true, moderation: 'approved' },
       { workId: removed.id, ok: false, code: 'STUDIO_MODERATION_CONFLICT' },
       { workId: missing, ok: false, code: 'NOT_FOUND' },
@@ -320,14 +332,30 @@ describe.skipIf(!templateConfig.plugins.studio)('Studio 后台审核', () => {
       await expect(moderateBatch(data)).rejects.toMatchObject({ name: 'ZodError' })
   })
 
-  it('批量下架写入原因，说明只进审计', async () => {
+  it('管理员权限失效时批量停止，其余件标为权限失效且不写入', async () => {
+    const a = await seedWork()
+    const b = await seedWork()
+    await expect(
+      moderateStudioWorks(
+        { db, admin: { id: author.userId } },
+        { action: 'approve', workIds: [a.id, b.id] },
+      ),
+    ).resolves.toEqual([
+      { workId: a.id, ok: false, code: 'ADMIN_ACCESS_REVOKED' },
+      { workId: b.id, ok: false, code: 'ADMIN_ACCESS_REVOKED' },
+    ])
+    await expect(getWork(a.id)).resolves.toMatchObject({ moderation: 'pending' })
+    await expect(getWork(b.id)).resolves.toMatchObject({ moderation: 'pending' })
+  })
+
+  it('批量下架写入原因码（也接受自由文本），说明只进审计', async () => {
     const a = await seedWork({ moderation: 'approved' })
     const b = await seedWork()
     await expect(
       moderateBatch({
         action: 'remove',
         workIds: [a.id, b.id],
-        reason: '侵权',
+        reason: 'copyright',
         note: '权利人来信',
       }),
     ).resolves.toEqual([
@@ -337,13 +365,18 @@ describe.skipIf(!templateConfig.plugins.studio)('Studio 后台审核', () => {
     for (const work of [a, b]) {
       await expect(getWork(work.id)).resolves.toMatchObject({
         moderation: 'removed',
-        removalReason: '侵权',
+        removalReason: 'copyright',
         version: 2,
       })
       expect(await audits(work.id)).toMatchObject([
-        { action: 'studio.work.remove', meta: { reason: '侵权', note: '权利人来信' } },
+        { action: 'studio.work.remove', meta: { reason: 'copyright', note: '权利人来信' } },
       ])
     }
+    const c = await seedWork()
+    await expect(
+      moderateBatch({ action: 'remove', workIds: [c.id], reason: '仿冒品牌' }),
+    ).resolves.toEqual([{ workId: c.id, ok: true, moderation: 'removed' }])
+    await expect(getWork(c.id)).resolves.toMatchObject({ removalReason: '仿冒品牌' })
   })
 
   it('分栏数量：待审核、被举报与已隐藏；列表行带媒体版本', async () => {

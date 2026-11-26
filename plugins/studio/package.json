@@ -8,6 +8,7 @@
     "./moderation-input": "./src/web/moderation-input.ts",
     "./moderation-queue.server": "./src/web/moderation-queue.server.ts",
     "./moderation.server": "./src/web/moderation.server.ts",
+    "./removal-reason": "./src/web/removal-reason.ts",
     "./work-invalidation": "./src/web/work-invalidation.ts"
   },
   "scripts": {

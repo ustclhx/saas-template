@@ -60,12 +60,12 @@
   "studio_admin_remove_reason": "Reason (required)",
   "studio_admin_remove_reason_placeholder": "Choose a reason",
   "studio_admin_remove_note": "Note (kept in the audit log; the author sees only the reason)",
-  "studio_admin_removal_copyright": "Copyright infringement",
-  "studio_admin_removal_sexual": "Sexual content",
-  "studio_admin_removal_violence": "Violent content",
-  "studio_admin_removal_hate": "Hate speech",
-  "studio_admin_removal_spam": "Spam",
-  "studio_admin_removal_other": "Other violation",
+  "studio_removal_reason_copyright": "Copyright infringement",
+  "studio_removal_reason_sexual": "Sexual content",
+  "studio_removal_reason_violence": "Violent content",
+  "studio_removal_reason_hate": "Hate speech",
+  "studio_removal_reason_spam": "Spam",
+  "studio_removal_reason_other": "Other violation",
   "studio_admin_cancel": "Cancel",
   "studio_admin_remove_confirm": "Remove",
   "studio_admin_done_approve": "Approved",
@@ -85,5 +85,7 @@
   "studio_admin_close": "Close",
   "studio_admin_load_failed": "Couldn't load the review queue",
   "studio_admin_load_failed_body": "Try again in a moment.",
-  "studio_admin_retry": "Retry"
+  "studio_admin_retry": "Retry",
+  "studio_admin_remove_other": "Other reason (shown to the author; optional)",
+  "studio_admin_error_revoked": "Your admin access was revoked; the rest were not processed"
 }

@@ -60,12 +60,12 @@
   "studio_admin_remove_reason": "原因（必填）",
   "studio_admin_remove_reason_placeholder": "选择原因",
   "studio_admin_remove_note": "说明（写入审计，作者可见原因分类）",
-  "studio_admin_removal_copyright": "侵权",
-  "studio_admin_removal_sexual": "色情内容",
-  "studio_admin_removal_violence": "暴力内容",
-  "studio_admin_removal_hate": "仇恨言论",
-  "studio_admin_removal_spam": "垃圾信息",
-  "studio_admin_removal_other": "其他违规",
+  "studio_removal_reason_copyright": "侵权",
+  "studio_removal_reason_sexual": "色情内容",
+  "studio_removal_reason_violence": "暴力内容",
+  "studio_removal_reason_hate": "仇恨言论",
+  "studio_removal_reason_spam": "垃圾信息",
+  "studio_removal_reason_other": "其他违规",
   "studio_admin_cancel": "取消",
   "studio_admin_remove_confirm": "下架",
   "studio_admin_done_approve": "已通过",
@@ -85,5 +85,7 @@
   "studio_admin_close": "关闭",
   "studio_admin_load_failed": "审核列表加载失败",
   "studio_admin_load_failed_body": "请稍后重试。",
-  "studio_admin_retry": "重试"
+  "studio_admin_retry": "重试",
+  "studio_admin_remove_other": "其他原因（作者可见，可留空）",
+  "studio_admin_error_revoked": "你的管理员权限已失效，未继续处理"
 }

@@ -172,7 +172,9 @@ describe('AdminStudioPage', () => {
     expect((confirm as HTMLButtonElement).disabled).toBe(true)
 
     fireEvent.click(within(dialog).getByRole('combobox'))
-    fireEvent.click(await screen.findByRole('option', { name: m.studio_admin_removal_copyright() }))
+    fireEvent.click(
+      await screen.findByRole('option', { name: m.studio_removal_reason_copyright() }),
+    )
     fireEvent.change(within(dialog).getByLabelText(m.studio_admin_remove_note()), {
       target: { value: '  Rights holder letter  ' },
     })
@@ -183,7 +185,7 @@ describe('AdminStudioPage', () => {
         data: {
           workId: ID(1),
           action: 'remove',
-          reason: m.studio_admin_removal_copyright(),
+          reason: 'copyright',
           note: 'Rights holder letter',
         },
       }),
@@ -240,7 +242,7 @@ describe('AdminStudioPage', () => {
       name: m.studio_admin_remove_bulk_title({ count: 1 }),
     })
     fireEvent.click(within(dialog).getByRole('combobox'))
-    fireEvent.click(await screen.findByRole('option', { name: m.studio_admin_removal_spam() }))
+    fireEvent.click(await screen.findByRole('option', { name: m.studio_removal_reason_spam() }))
     const confirm = await within(dialog).findByRole('button', {
       name: m.studio_admin_remove_confirm(),
     })
@@ -248,19 +250,21 @@ describe('AdminStudioPage', () => {
     fireEvent.click(confirm)
     await waitFor(() =>
       expect(api.moderateAdminStudioWorks).toHaveBeenCalledWith({
-        data: { action: 'remove', reason: m.studio_admin_removal_spam(), workIds: [ID(1)] },
+        data: { action: 'remove', reason: 'spam', workIds: [ID(1)] },
       }),
     )
   })
 
   it('已下架栏：显示下架原因与恢复，没有复选框；空栏显示对应空态', () => {
-    const removed = row({ moderation: 'removed', removalReason: 'Copyright' })
+    const removed = row({ moderation: 'removed', removalReason: 'copyright' })
     const { unmount } = render(
       <AdminStudioPage data={data([removed])} queue="removed" offset={0} />,
     )
     expect(within(table()).queryAllByRole('checkbox')).toEqual([])
     expect(
-      within(table()).getByText(m.studio_admin_removed_reason({ reason: 'Copyright' })),
+      within(table()).getByText(
+        m.studio_admin_removed_reason({ reason: m.studio_removal_reason_copyright() }),
+      ),
     ).toBeTruthy()
     expect(within(table()).getByRole('button', { name: m.studio_admin_restore() })).toBeTruthy()
     expect(within(table()).queryByRole('button', { name: m.studio_admin_remove() })).toBeNull()
@@ -270,5 +274,68 @@ describe('AdminStudioPage', () => {
     expect(screen.queryByRole('table')).toBeNull()
     expect(screen.getByText(m.studio_admin_empty_pending_title())).toBeTruthy()
     expect(screen.getByText(m.studio_admin_empty_pending_body())).toBeTruthy()
+  })
+
+  it('「其他」可填作者可见的文字；单件操作后移出选择；预览换作品时不残留上一件媒体', async () => {
+    const rows = [row({ id: ID(1), title: 'First' }), row({ id: ID(2), title: 'Second' })]
+    render(<AdminStudioPage data={data(rows)} queue="pending" offset={0} />)
+    fireEvent.click(
+      within(table()).getByRole('checkbox', {
+        name: m.studio_admin_select_row({ title: 'First' }),
+      }),
+    )
+    const first = within(table()).getAllByRole('row')[1] as HTMLElement
+    fireEvent.click(within(first).getByRole('button', { name: m.studio_admin_approve() }))
+    await waitFor(() => expect(api.invalidate).toHaveBeenCalled())
+    expect(screen.queryByText(m.studio_admin_selected({ count: 1 }))).toBeNull()
+
+    fireEvent.click(within(first).getByRole('button', { name: m.studio_admin_remove() }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('combobox'))
+    fireEvent.click(await screen.findByRole('option', { name: m.studio_removal_reason_other() }))
+    const other = await within(dialog).findByLabelText(m.studio_admin_remove_other())
+    fireEvent.change(other, { target: { value: ' Fake brand ' } })
+    const confirm = await within(dialog).findByRole('button', {
+      name: m.studio_admin_remove_confirm(),
+    })
+    await waitFor(() => expect((confirm as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(confirm)
+    await waitFor(() =>
+      expect(api.moderateAdminStudioWork).toHaveBeenLastCalledWith({
+        data: { workId: ID(1), action: 'remove', reason: 'Fake brand' },
+      }),
+    )
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+    // 第二件为隐藏作品：签名地址返回前只显示加载中，不出现上一件的图片
+    cleanup()
+    const hidden = row({ id: ID(2), title: 'Second', moderation: 'hidden' })
+    render(
+      <AdminStudioPage
+        data={data([rows[0] as StudioReviewRow, hidden])}
+        queue="reported"
+        offset={0}
+      />,
+    )
+    fireEvent.click(
+      within(table()).getByRole('button', { name: m.studio_admin_preview({ title: 'First' }) }),
+    )
+    let dlg = await screen.findByRole('dialog')
+    expect(within(dlg).getByRole('img').getAttribute('src')).toBe(`/media/w/${ID(1)}/2`)
+    fireEvent.click(within(dlg).getByRole('button', { name: m.studio_admin_close() }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    api.getAdminStudioWorkPreview.mockReturnValue(new Promise(() => {}))
+    fireEvent.click(
+      within(table()).getByRole('button', { name: m.studio_admin_preview({ title: 'Second' }) }),
+    )
+    dlg = await screen.findByRole('dialog')
+    expect(within(dlg).queryByRole('img')).toBeNull()
+    expect(within(dlg).getByRole('status').textContent).toBe(m.studio_admin_preview_loading())
+  })
+
+  it('下架原因读取时翻译原因码，自由文本原样显示', async () => {
+    const { studioRemovalReasonLabel } = await import('./removal-reason.ts')
+    expect(studioRemovalReasonLabel('hate')).toBe(m.studio_removal_reason_hate())
+    expect(studioRemovalReasonLabel('Fake brand')).toBe('Fake brand')
   })
 })

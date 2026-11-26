@@ -9,6 +9,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Input,
   Label,
   Select,
   SelectContent,
@@ -23,7 +24,7 @@ import { useNavigate, useRouter } from '@tanstack/react-router'
 import { adminListPage, offsetOfPage } from '@web/features/admin/list.ts'
 import { AdminPage, adminTableLabels, formatDateTime, panelClass } from '@web/features/admin/ui.tsx'
 import { m } from '@web/paraglide/messages.js'
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { STUDIO_REVIEW_QUEUES, type StudioReviewQueue } from './admin-studio-queues.ts'
 import { studioMediaPath } from './media-url.ts'
 import {
@@ -32,6 +33,11 @@ import {
   moderateAdminStudioWork,
   moderateAdminStudioWorks,
 } from './moderation.functions.ts'
+import {
+  STUDIO_REMOVAL_REASONS,
+  type StudioRemovalReason,
+  studioRemovalReasonLabel,
+} from './removal-reason.ts'
 
 /**
  * 后台作品审核 `/admin/studio`（add-media-studio 任务 7.2 / 7.3，设计稿
@@ -42,18 +48,6 @@ import {
 export type StudioReviewData = Awaited<ReturnType<typeof listAdminStudioWorks>>
 export type StudioReviewRow = StudioReviewData['rows'][number]
 type SingleAction = 'approve' | 'restore' | 'feature' | 'unfeature'
-
-const REMOVAL_REASONS = ['copyright', 'sexual', 'violence', 'hate', 'spam', 'other'] as const
-type RemovalReason = (typeof REMOVAL_REASONS)[number]
-
-const removalLabel: Record<RemovalReason, () => string> = {
-  copyright: m.studio_admin_removal_copyright,
-  sexual: m.studio_admin_removal_sexual,
-  violence: m.studio_admin_removal_violence,
-  hate: m.studio_admin_removal_hate,
-  spam: m.studio_admin_removal_spam,
-  other: m.studio_admin_removal_other,
-}
 
 const reportReasonLabel: Record<string, () => string> = {
   sexual: m.studio_admin_report_reason_sexual,
@@ -100,6 +94,7 @@ const doneLabel: Record<SingleAction | 'remove', () => string> = {
 export function studioErrorMessage(code: string | undefined) {
   if (code === 'STUDIO_MODERATION_CONFLICT') return m.studio_admin_error_conflict()
   if (code === 'NOT_FOUND') return m.studio_admin_error_not_found()
+  if (code === 'ADMIN_ACCESS_REVOKED') return m.studio_admin_error_revoked()
   return m.studio_admin_failed()
 }
 
@@ -156,8 +151,24 @@ export function AdminStudioPage({
 }) {
   const navigate = useNavigate()
   const router = useRouter()
-  const [selected, setSelected] = useState<Set<string>>(() => new Set())
-  const [rowErrors, setRowErrors] = useState<ReadonlyMap<string, string>>(() => new Map())
+  const [selectedIds, setSelected] = useState<Set<string>>(() => new Set())
+  const [rowErrorsAll, setRowErrors] = useState<ReadonlyMap<string, string>>(() => new Map())
+  // 选择与逐行失败只保留当前列表中仍存在的作品（处理后离开本栏的行自然移除）
+  const present = useMemo(() => new Set(data.rows.map((row) => row.id)), [data.rows])
+  const selected = useMemo(
+    () => new Set([...selectedIds].filter((id) => present.has(id))),
+    [selectedIds, present],
+  )
+  const rowErrors = useMemo(
+    () => new Map([...rowErrorsAll].filter(([id]) => present.has(id))),
+    [rowErrorsAll, present],
+  )
+  const dropSelected = (id: string) =>
+    setSelected((current) => {
+      const next = new Set(current)
+      next.delete(id)
+      return next
+    })
   const [busy, setBusy] = useState<string | null>(null)
   const [removeTarget, setRemoveTarget] = useState<RemoveTarget | null>(null)
   const [preview, setPreview] = useState<StudioReviewRow | null>(null)
@@ -175,12 +186,13 @@ export function AdminStudioPage({
     setBusy(row.id)
     try {
       await moderateAdminStudioWork({ data: { workId: row.id, action } })
+      dropSelected(row.id)
       toast.success(doneLabel[action]())
-      await router.invalidate()
     } catch (error) {
       toast.error(studioErrorMessage(errorCode(error)))
     } finally {
       setBusy(null)
+      await router.invalidate()
     }
   }
 
@@ -204,11 +216,12 @@ export function AdminStudioPage({
             failed: failed.length,
           }),
         )
-      await router.invalidate()
     } catch (error) {
+      // 整批请求失败（网络或权限）：保留选择，刷新列表以反映已提交的件
       toast.error(studioErrorMessage(errorCode(error)))
     } finally {
       setBusy(null)
+      await router.invalidate()
     }
   }
 
@@ -226,13 +239,14 @@ export function AdminStudioPage({
       await moderateAdminStudioWork({
         data: { workId: target.row.id, action: 'remove', reason, ...extra },
       })
+      dropSelected(target.row.id)
       toast.success(doneLabel.remove())
       setRemoveTarget(null)
-      await router.invalidate()
     } catch (error) {
       toast.error(studioErrorMessage(errorCode(error)))
     } finally {
       setBusy(null)
+      await router.invalidate()
     }
   }
 
@@ -262,7 +276,9 @@ export function AdminStudioPage({
             <span className="truncate text-caption text-muted-foreground">{row.prompt ?? '—'}</span>
             {row.moderation === 'removed' && row.removalReason ? (
               <span className="text-caption text-muted-foreground">
-                {m.studio_admin_removed_reason({ reason: row.removalReason })}
+                {m.studio_admin_removed_reason({
+                  reason: studioRemovalReasonLabel(row.removalReason),
+                })}
               </span>
             ) : null}
             {error !== undefined ? (
@@ -525,18 +541,32 @@ function Thumbnail({ row, onOpen }: { row: StudioReviewRow; onOpen: () => void }
 
 type PreviewState = { state: 'loading' } | { state: 'ready'; url: string } | { state: 'failed' }
 
-/** 预览：公开作品直接用公开地址；隐藏、下架作品经后台鉴权临时签名（响应 private, no-store） */
+/** 预览对话框：关闭后保留最后一件作品的内容播放退场动画；内容按作品 id 重新挂载，不会闪出上一件的媒体 */
 function PreviewDialog({ row, onClose }: { row: StudioReviewRow | null; onClose: () => void }) {
-  const [media, setMedia] = useState<PreviewState>({ state: 'loading' })
-  useEffect(() => {
-    if (!row) return
+  const [shown, setShown] = useState(row)
+  if (row && row !== shown) setShown(row)
+  return (
+    <Dialog open={row !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent size="xl" closeLabel={m.studio_admin_close()}>
+        <DialogHeader>
+          <DialogTitle>{shown ? m.studio_admin_preview({ title: shown.title }) : ''}</DialogTitle>
+          <DialogDescription>{shown?.prompt ?? '—'}</DialogDescription>
+        </DialogHeader>
+        {shown ? <PreviewMedia key={shown.id} row={shown} /> : null}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** 公开作品直接用公开地址；隐藏、下架作品经后台鉴权临时签名（响应 private, no-store） */
+function PreviewMedia({ row }: { row: StudioReviewRow }) {
+  const [media, setMedia] = useState<PreviewState>(() => {
     const src = publicMediaSrc(row)
-    if (src) {
-      setMedia({ state: 'ready', url: src })
-      return
-    }
+    return src ? { state: 'ready', url: src } : { state: 'loading' }
+  })
+  useEffect(() => {
+    if (publicMediaSrc(row)) return
     let active = true
-    setMedia({ state: 'loading' })
     getAdminStudioWorkPreview({ data: { workId: row.id } })
       .then((result) => active && setMedia({ state: 'ready', url: result.url }))
       .catch(() => active && setMedia({ state: 'failed' }))
@@ -544,31 +574,22 @@ function PreviewDialog({ row, onClose }: { row: StudioReviewRow | null; onClose:
       active = false
     }
   }, [row])
-
   return (
-    <Dialog open={row !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent size="xl" closeLabel={m.studio_admin_close()}>
-        <DialogHeader>
-          <DialogTitle>{row ? m.studio_admin_preview({ title: row.title }) : ''}</DialogTitle>
-          <DialogDescription>{row?.prompt ?? '—'}</DialogDescription>
-        </DialogHeader>
-        <div className="flex min-h-48 items-center justify-center overflow-hidden rounded-lg bg-muted">
-          {media.state === 'ready' && row ? (
-            row.kind === 'video' ? (
-              <video src={media.url} controls muted className="max-h-96 w-full object-contain" />
-            ) : (
-              <img src={media.url} alt={row.title} className="max-h-96 w-full object-contain" />
-            )
-          ) : (
-            <p role="status" className="text-body text-muted-foreground">
-              {media.state === 'failed'
-                ? m.studio_admin_preview_failed()
-                : m.studio_admin_preview_loading()}
-            </p>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+    <div className="flex min-h-48 items-center justify-center overflow-hidden rounded-lg bg-muted">
+      {media.state === 'ready' ? (
+        row.kind === 'video' ? (
+          <video src={media.url} controls muted className="max-h-96 w-full object-contain" />
+        ) : (
+          <img src={media.url} alt={row.title} className="max-h-96 w-full object-contain" />
+        )
+      ) : (
+        <p role="status" className="text-body text-muted-foreground">
+          {media.state === 'failed'
+            ? m.studio_admin_preview_failed()
+            : m.studio_admin_preview_loading()}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -585,14 +606,18 @@ function RemoveDialog({
   onConfirm: (reason: string, note: string) => void
 }) {
   const id = useId()
-  const [reason, setReason] = useState<RemovalReason | ''>('')
+  const [reason, setReason] = useState<StudioRemovalReason | ''>('')
+  const [other, setOther] = useState('')
   const [note, setNote] = useState('')
   // 每次打开从空白开始，不沿用上一次的原因
   useEffect(() => {
     if (!target) return
     setReason('')
+    setOther('')
     setNote('')
   }, [target])
+  // 存原因码，读取时按作者的语言翻译；「其他」可填作者可见的文字，留空时存原因码 other
+  const storedReason = reason === 'other' ? other.trim() || 'other' : reason
   const title =
     target?.kind === 'bulk'
       ? m.studio_admin_remove_bulk_title({ count: target.ids.length })
@@ -615,23 +640,34 @@ function RemoveDialog({
           <Label htmlFor={`${id}-reason`}>{m.studio_admin_remove_reason()}</Label>
           <Select
             value={reason}
-            onValueChange={(value) => setReason(value as RemovalReason)}
+            onValueChange={(value) => setReason(value as StudioRemovalReason)}
             required
           >
             <SelectTrigger
               id={`${id}-reason`}
               placeholder={m.studio_admin_remove_reason_placeholder()}
-              valueLabel={reason ? removalLabel[reason]() : undefined}
+              valueLabel={reason ? studioRemovalReasonLabel(reason) : undefined}
             />
             <SelectContent>
-              {REMOVAL_REASONS.map((value, index) => (
+              {STUDIO_REMOVAL_REASONS.map((value, index) => (
                 <SelectItem key={value} index={index} value={value}>
-                  {removalLabel[value]()}
+                  {studioRemovalReasonLabel(value)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
+        {reason === 'other' ? (
+          <div className="grid gap-1.5">
+            <Label htmlFor={`${id}-other`}>{m.studio_admin_remove_other()}</Label>
+            <Input
+              id={`${id}-other`}
+              maxLength={200}
+              value={other}
+              onChange={(event) => setOther(event.target.value)}
+            />
+          </div>
+        ) : null}
         <div className="grid gap-1.5">
           <Label htmlFor={`${id}-note`}>{m.studio_admin_remove_note()}</Label>
           <Textarea
@@ -651,7 +687,7 @@ function RemoveDialog({
             variant="destructive"
             loading={busy}
             disabled={!reason}
-            onClick={() => reason && onConfirm(removalLabel[reason](), note.trim())}
+            onClick={() => storedReason && onConfirm(storedReason, note.trim())}
           >
             {m.studio_admin_remove_confirm()}
           </Button>

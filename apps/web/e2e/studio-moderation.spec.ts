@@ -167,14 +167,15 @@ test('举报隐藏后恢复、下架原因与批量通过', async ({ page }) => 
     const authorWorks = await listStudioWorks(db, { workspaceId: author.workspaceId, kinds: KINDS })
     expect(authorWorks.works.find((work) => work.work?.id === removeId)?.work).toMatchObject({
       moderation: 'removed',
-      removalReason: 'Copyright infringement',
+      // 存原因码，作者与后台读取时按语言翻译（studioRemovalReasonLabel）
+      removalReason: 'copyright',
     })
     const [removalAudit] = await db
       .select()
       .from(auditLog)
       .where(and(eq(auditLog.targetId, removeId), eq(auditLog.action, 'studio.work.remove')))
     expect(removalAudit?.meta).toMatchObject({
-      reason: 'Copyright infringement',
+      reason: 'copyright',
       note: 'Rights holder letter',
     })
 
