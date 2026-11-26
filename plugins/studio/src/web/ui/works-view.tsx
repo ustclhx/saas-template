@@ -110,7 +110,12 @@ export function StudioWorksView({
       update(item.fileId, (work) =>
         filters.visibility === 'public'
           ? null
-          : { ...work, work: work.work && { ...work.work, visibility: 'private' } },
+          : {
+              ...work,
+              // 公开地址随取消发布失效，预览改回空间文件接口
+              url: work.downloadUrl,
+              work: work.work && { ...work.work, visibility: 'private' },
+            },
       )
       setNotice({ kind: 'status', text: m.studio_unpublished() })
     } catch {
@@ -447,7 +452,7 @@ function WorkCard({
       : state === 'private'
         ? { label: m.studio_publish(), action: onPublish }
         : { label: m.studio_unpublish(), action: onUnpublish }
-  const download = `${item.url}&download=1`
+  const download = `${item.downloadUrl}&download=1`
   return (
     <article
       className="flex flex-col overflow-hidden rounded-xl border border-border bg-card"

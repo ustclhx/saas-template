@@ -48,6 +48,7 @@ function item(
     duration: null,
     createdAt: '2026-11-26T01:00:00.000Z',
     url: `/api/files/${fileId}?workspaceId=${WS}`,
+    downloadUrl: `/api/files/${fileId}?workspaceId=${WS}`,
     work,
     ...values,
   }
@@ -122,14 +123,20 @@ describe('我的作品', () => {
   it('筛选按钮回调新的筛选条件，只有一种模式时不显示类型筛选', () => {
     const onFiltersChange = vi.fn()
     const view = render(
-      <StudioWorksView page={page()} filters={{ kind: 'image' }} onFiltersChange={onFiltersChange} />,
+      <StudioWorksView
+        page={page()}
+        filters={{ kind: 'image' }}
+        onFiltersChange={onFiltersChange}
+      />,
     )
     const visibility = screen.getByRole('group', { name: m.studio_filter_visibility() })
     fireEvent.click(within(visibility).getByRole('button', { name: m.studio_filter_public() }))
     expect(onFiltersChange).toHaveBeenCalledWith({ kind: 'image', visibility: 'public' })
     const kind = screen.getByRole('group', { name: m.studio_filter_kind() })
     expect(
-      within(kind).getByRole('button', { name: m.studio_mode_image() }).getAttribute('aria-pressed'),
+      within(kind)
+        .getByRole('button', { name: m.studio_mode_image() })
+        .getAttribute('aria-pressed'),
     ).toBe('true')
     view.unmount()
     render(
@@ -183,9 +190,7 @@ describe('我的作品', () => {
     expect(fns.unpublishStudioWorkFn).toHaveBeenCalledWith({
       data: { slug: 'ws', fileId: item(3).fileId },
     })
-    expect(within(card).getByTestId('studio-work-state').textContent).toBe(
-      m.studio_state_private(),
-    )
+    expect(within(card).getByTestId('studio-work-state').textContent).toBe(m.studio_state_private())
   })
 
   it('发布对话框：默认标题取提示词，发布后更新徽标与额度；超出上限时显示上限与重置时间', async () => {

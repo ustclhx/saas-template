@@ -150,9 +150,9 @@ describe('创作页', () => {
     )
     const alert = screen.getByRole('alert')
     expect(alert.textContent).toContain(m.studio_insufficient({ cost: 4, balance: 2 }))
-    expect(within(alert).getByRole('link', { name: m.studio_recharge() }).getAttribute('href')).toBe(
-      '/app/$slug/billing#credit-packs',
-    )
+    expect(
+      within(alert).getByRole('link', { name: m.studio_recharge() }).getAttribute('href'),
+    ).toBe('/app/$slug/billing#credit-packs')
     expect(generate().hasAttribute('disabled')).toBe(true)
   })
 
@@ -204,7 +204,9 @@ describe('创作页', () => {
   it('以图生视频缺少参考图时不提交并指出原因（选择参考图的提交见 e2e）', async () => {
     fns.submitStudio.mockResolvedValue({ ok: true, taskId: TASK, status: 'queued' })
     fns.getMediaTask.mockReturnValue(new Promise(() => {}))
-    render(<StudioView page={page()} recent={null} search={{ mode: 'video', prompt: '镜头推进' }} />)
+    render(
+      <StudioView page={page()} recent={null} search={{ mode: 'video', prompt: '镜头推进' }} />,
+    )
     await act(async () => {
       fireEvent.click(generate())
     })

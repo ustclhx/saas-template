@@ -378,7 +378,9 @@ export function StudioView({
                         : m.studio_prompt_placeholder_video()
                     }
                     aria-invalid={(errors[PROMPT_FIELD]?.length ?? 0) > 0 || undefined}
-                    aria-describedby={errors[PROMPT_FIELD]?.length ? `${promptId}-error` : undefined}
+                    aria-describedby={
+                      errors[PROMPT_FIELD]?.length ? `${promptId}-error` : undefined
+                    }
                     onChange={(event) => {
                       setPrompt(event.target.value)
                       setErrors((current) => ({ ...current, [PROMPT_FIELD]: [] }))

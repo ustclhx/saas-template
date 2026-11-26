@@ -36,9 +36,11 @@ const PREVIEW_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height
 test.beforeEach(async ({ page }) => {
   await simulateClientIp(page)
   await stubTurnstile(page)
-  await page.route('**/api/files/**', (route) =>
-    route.fulfill({ contentType: 'image/svg+xml', body: PREVIEW_SVG }),
-  )
+  // 空间文件接口与公开媒体地址都返回占位图（本地 R2 没有对应对象）
+  for (const pattern of ['**/api/files/**', '**/media/w/**'])
+    await page.route(pattern, (route) =>
+      route.fulfill({ contentType: 'image/svg+xml', body: PREVIEW_SVG }),
+    )
 })
 
 test.afterEach(async ({ page }, info) => {
@@ -192,7 +194,7 @@ async function fakeProvider(page: Page, workspace: { workspaceId: string; userId
         provider,provider_request_key,started_at,deadline_at)
         values (${task.taskId},${workspace.workspaceId},${workspace.userId},${kind},
           ${String(data.modelKey)},${sql.json({ mode: 'per_call', credits: kind === 'image' ? 4 : 20 })},
-          'running',${sql.json({ params: { ...(data.params as object), prompt: data.prompt }, userPrompt: data.prompt })},
+          'running',${sql.json({ params: { ...(data.params as Record<string, string>), prompt: String(data.prompt) }, userPrompt: String(data.prompt) })},
           'fal',${task.taskId},now(),now()+interval '2 hours')`
     } finally {
       await sql.end()

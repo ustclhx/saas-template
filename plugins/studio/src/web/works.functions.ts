@@ -1,7 +1,7 @@
 import { notFound } from '@saas/db'
 import { AppError } from '@saas/shared'
 import { createServerFn } from '@tanstack/react-start'
-import { setResponseStatus } from '@tanstack/react-start/server'
+import { getRequest, setResponseStatus } from '@tanstack/react-start/server'
 import { requireFileStorage } from '@web/features/files/runtime.ts'
 import { withWorkspace } from '@web/server/middleware.ts'
 import { getWebRuntime, pluginUnavailable } from '@web/server/runtime.ts'
@@ -9,6 +9,8 @@ import { templateConfig } from '@web/server/template-config.ts'
 import { z } from 'zod'
 import { studioConfigSchema } from '../config.ts'
 import { enabledStudioKinds, STUDIO_KINDS } from '../kinds.ts'
+import { resolveStudioSite } from '../site.ts'
+import { studioMediaPath } from './media-url.ts'
 import { getStudioPublishQuota, publishStudioWork, unpublishStudioWork } from './publish.ts'
 import { listStudioWorks, type StudioWorkActor } from './works.ts'
 import { deleteStudioWork } from './works-delete.server.ts'
@@ -43,6 +45,15 @@ function actorOf(context: StudioWorkspaceContext): StudioWorkActor {
   }
 }
 
+function siteOf(sites: Parameters<typeof resolveStudioSite>[2]) {
+  const site = resolveStudioSite(
+    new URL(getRequest().url).origin,
+    getWebRuntime().config.APP_URL,
+    sites,
+  )
+  return site ? { site: site.key } : {}
+}
+
 export function canWriteStudio(actor: StudioWorkActor) {
   return !actor.workspaceReadOnly && ['owner', 'admin', 'member'].includes(actor.role)
 }
@@ -52,9 +63,7 @@ export function studioFileUrl(workspaceId: string, fileId: string) {
   return `/api/files/${encodeURIComponent(fileId)}?${new URLSearchParams({ workspaceId })}`
 }
 
-type ListedWork = NonNullable<
-  Awaited<ReturnType<typeof listStudioWorks>>['works'][number]['work']
->
+type ListedWork = NonNullable<Awaited<ReturnType<typeof listStudioWorks>>['works'][number]['work']>
 
 /** 左连接的列在类型上可空；有作品行时这些非空列一定有值。 */
 function publishedWork(work: ListedWork) {
@@ -104,13 +113,22 @@ export const getStudioWorks = createServerFn({ method: 'GET' })
         readOnly: context.workspaceReadOnly,
         quota,
         nextCursor: page.nextCursor,
-        works: page.works.map(({ work, createdAt, ...output }) => ({
-          ...output,
-          createdAt: createdAt.toISOString(),
-          url: studioFileUrl(context.workspace.id, output.fileId),
+        works: page.works.map(({ work: row, createdAt, ...output }) => {
           // 左连接没有作品行时各列为 null：统一为「未发布」。
-          work: work?.id ? publishedWork(work) : null,
-        })),
+          const work = row?.id ? publishedWork(row) : null
+          const download = studioFileUrl(context.workspace.id, output.fileId)
+          const visible =
+            work?.visibility === 'public' &&
+            (work.moderation === 'pending' || work.moderation === 'approved')
+          return {
+            ...output,
+            createdAt: createdAt.toISOString(),
+            // 公开中的作品预览走可缓存的公开媒体地址；其余走需要会话的空间文件接口。
+            url: visible ? studioMediaPath(work.id, work.version) : download,
+            downloadUrl: download,
+            work,
+          }
+        }),
       }
     } catch (error) {
       if (error instanceof AppError) setResponseStatus(error.status)
@@ -167,6 +185,8 @@ export const publishStudioWorkFn = createServerFn({ method: 'POST' })
           fileId: data.fileId,
           title: data.title,
           showPrompt: data.showPrompt,
+          // 多站点项目按请求所在站点冻结作品的站点键；无法识别时用默认站点。
+          ...siteOf(config.sites),
         },
         { dailyLimit: config.publishDailyLimit },
       )
