@@ -1,5 +1,13 @@
 import { WORKSPACE_RETENTION_DAYS } from '@saas/auth'
-import { bulkJobFloorSql, type Database, file, organization, probeBulkJob, scoped } from '@saas/db'
+import {
+  bulkJobFloorSql,
+  type Database,
+  file,
+  organization,
+  probeBulkJob,
+  scoped,
+  studioWork,
+} from '@saas/db'
 import {
   BULK_JOB_TIME_FLOOR,
   type BulkJobOutcome,
@@ -9,7 +17,7 @@ import {
   cutoffBefore,
 } from '@saas/shared/bulk-job'
 import { log } from '@saas/shared/log'
-import { and, asc, eq, gte, isNotNull, lt, lte, type SQL, sql } from 'drizzle-orm'
+import { and, asc, eq, gte, isNotNull, lt, lte, notExists, type SQL, sql } from 'drizzle-orm'
 import type { Storage } from './storage.ts'
 
 const PENDING_RETENTION_MS = 60 * 60 * 1000
@@ -72,9 +80,11 @@ export async function cleanupFiles(
   // 到期时刻：未确认上传 = 创建 + 1 小时；过期空间 = 删除 + 保留期；废弃产出 = 标记删除时。
   const workspaces = await db.$client<{ workspace_id: string }[]>`
     select f.workspace_id from file f join organization o on o.id=f.workspace_id
-    where (f.status='pending' and f.created_at>=${floor} and f.created_at<${pending})
+    where not exists(select 1 from studio_work w where w.file_id=f.id) and (
+      (f.status='pending' and f.created_at>=${floor} and f.created_at<${pending})
       or (o.deleted_at>=${floor} and o.deleted_at<=${retained})
       or (f.purpose='ai_output' and f.status='ready' and f.deleted_at>=${floor} and f.deleted_at<=${now})
+    )
     group by f.workspace_id
     order by min(case
       when o.deleted_at>=${floor} and o.deleted_at<=${retained} then o.deleted_at+${workspaceRetentionMs}*interval '1 millisecond'
@@ -85,6 +95,10 @@ export async function cleanupFiles(
   let failed = 0
   let attempted = 0
   const remaining = () => objectCap - attempted
+  // 过期空间的作品由删空间钩子或 AI 清理先处理，关联仍在时不能先删除底层对象。
+  const noStudioWork = notExists(
+    db.select({ id: studioWork.id }).from(studioWork).where(eq(studioWork.fileId, file.id)),
+  )
   for (const { workspace_id: workspaceId } of workspaces) {
     if (remaining() <= 0) break
     const tenant = scoped(db, workspaceId)
@@ -92,6 +106,7 @@ export async function cleanupFiles(
     const abandoned = await tenant
       .select(file, {
         where: and(
+          noStudioWork,
           eq(file.purpose, 'ai_output'),
           eq(file.status, 'ready'),
           gte(file.deletedAt, BULK_JOB_TIME_FLOOR),
@@ -135,15 +150,14 @@ export async function cleanupFiles(
       const files = await tenant
         .select(file, {
           fields: { id: file.id, r2Key: file.r2Key },
-          ...(expired
-            ? {}
-            : {
-                where: and(
-                  eq(file.status, 'pending'),
-                  gte(file.createdAt, BULK_JOB_TIME_FLOOR),
-                  lt(file.createdAt, pendingBefore),
-                ) as SQL,
-              }),
+          where: expired
+            ? noStudioWork
+            : (and(
+                noStudioWork,
+                eq(file.status, 'pending'),
+                gte(file.createdAt, BULK_JOB_TIME_FLOOR),
+                lt(file.createdAt, pendingBefore),
+              ) as SQL),
         })
         .orderBy(asc(file.createdAt), asc(file.id))
         .limit(limit)

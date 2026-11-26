@@ -1,7 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2023", "DOM"]
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"]
   },
   // Web、Worker 与 Node 入口由 apps/web 的类型检查覆盖。
   "include": ["plugin.ts", "src/config.ts", "src/kinds.ts", "test"]

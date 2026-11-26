@@ -58,10 +58,13 @@ studio 不替换 media 的通用提交页与任务页：它们仍服务公开 AP
 - 公开判定统一为一个 SQL 谓词 `visibility = 'public' and moderation in ('pending','approved') and 作者未封禁 and 文件未删除`，
   画廊、作品页、媒体路由与站点地图共用（`approved` 另用于收录判断）。
 - 作者封禁：查询时连接 `user.banned`，不改作品行，解除封禁自动恢复。
-- 删除：用户删除作品 = 事务内删 `studio_work`（举报级联）、软删 `file` 并按现有存储删除流程删 R2 对象；
-  删号 / 删空间：`registerDeletionStep` 注册 studio 步骤，在 `file` / `ai_task` 清理之前删本空间 `studio_work`（级联举报），幂等。
+- 删除：事务内递增版本、删 `studio_work`（举报级联）并软删 `file`；提交后失效旧地址并调用现有存储适配器删除 R2 对象。
+  对象删除失败时，现有文件清理任务按软删记录重试。
+- 删号 / 删空间：`registerDeletionStep` 在删除事务中先清理作品与举报。删号清理个人空间的作品、本人发布的作品及本人任务关联的作品。
+  删空间时，底层产出仍走原有保留期，空间恢复后可重新发布。插件停用时，既有 AI 清理先删除待清理任务的作品，文件清理暂缓删除仍被作品引用的文件。
 - `ai_model.display_name text null`（迁移 + 后台模型编辑器字段 + MCP `models.list` 返回、`models.update` 可写）。
 - 2026-11-26 核对 PostgreSQL 17 文档：`RESTRICT` 拒绝删除仍被引用的行，`CASCADE` 随作品删除举报，精选索引仅收录匹配谓词的行。[外键约束](https://www.postgresql.org/docs/17/ddl-constraints.html#DDL-CONSTRAINTS-FK)、[部分索引](https://www.postgresql.org/docs/17/indexes-partial.html)
+- 2026-11-26 核对 Cloudflare：R2 `delete` 成功后，随后的直接对象读取全局可见删除结果。已缓存的 HTTP 响应仍按决策 5 失效。[Workers API](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/#bucket-method-definitions)、[R2 一致性](https://developers.cloudflare.com/r2/reference/consistency/)
 
 ### 3. 创作页复用 media 提交
 
@@ -114,8 +117,12 @@ public/pending|approved --举报达阈值--> public/hidden --恢复--> 原状态
 public/* --用户取消发布--> private（moderation 保留；重新发布时 approved 保持 approved，hidden/removed 规则不变）
 ```
 
-`hidden` 前的状态存 `moderation_before_hide`（小列）以支持恢复。每日发布上限按 `published_at` 在用户当天（UTC）计数，事务内检查。
+`hidden` 前的状态存 `moderation_before_hide`（小列）以支持恢复。每日上限在写入作品的同一事务中按 `studio_publication(user_id, published_at)` 统计 UTC 当天的成功发布，跨空间共用。
+撤回和删除消耗过的额度保留到日切；重新发布计作新的一次，已经公开的请求重放返回现有作品。用户下一次成功发布时清理自己的过期记录，删号清除全部记录。
+首次发布冻结站点键、发布者、提示词和 slug。重新发布可改标题与提示词可见性。标题去首尾空白后最多 120 字符。
 发布前检查：`plugins/studio/src/moderation.project.ts` 导出 `checkPublish({ title, prompt, kind, modelKey, workspaceId })` → `allow | review | reject(reason)`，项目自有、默认 `allow`，异常按 `review`。
+2026-11-26 核对 PostgreSQL 17：事务级 advisory lock 在事务结束时释放；`READ COMMITTED` 的后续计数语句能看到前一事务已提交的额度。
+复合 B-tree 索引用用户等值与时间范围缩小扫描。[锁行为](https://www.postgresql.org/docs/17/explicit-locking.html#ADVISORY-LOCKS)、[隔离级别](https://www.postgresql.org/docs/17/transaction-iso.html#XACT-READ-COMMITTED)、[复合索引](https://www.postgresql.org/docs/17/indexes-multicolumn.html)
 
 ### 8. 后台审核
 

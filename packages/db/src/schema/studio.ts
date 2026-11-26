@@ -95,6 +95,19 @@ export const studioWork = pgTable(
   ],
 )
 
+/** 用户当天的发布次数。作品删除后仍保留该次额度，下一次发布时清除过期记录。 */
+export const studioPublication = pgTable(
+  'studio_publication',
+  {
+    id: uuid('id').primaryKey().$defaultFn(newId),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    publishedAt: timestamp('published_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [index('studio_publication_user_published_idx').on(t.userId, t.publishedAt)],
+)
+
 export const STUDIO_REPORT_REASONS = [
   'sexual',
   'violence',

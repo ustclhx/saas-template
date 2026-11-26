@@ -112,7 +112,7 @@ export function addAiPurge(total: AiPurgeResult, batch: AiPurgeResult) {
 }
 
 /**
- * 删除一批 AI 内容，按外键顺序：评分 → 消息 → agent 轮次 → 无消息与轮次的对话 → 媒体任务。
+ * 删除一批 AI 内容，按外键顺序：评分 → 消息 → agent 轮次 → 无消息与轮次的对话 → 作品与举报 → 媒体任务。
  * 仍有 held 预扣，或一天内仍在生成（streaming / queued / running）的行跳过，等兜底处理器结算后下一轮再删；
  * 预扣、积分流水等财务记录不删，它们只以 ref_id 文本指向这些行。
  * 团队空间中的产出文件属于空间共享资产，只解除 source_task_id 引用、不删文件。
@@ -167,6 +167,17 @@ export async function purgeAiBatch(
     order by t.id limit ${limit} for update of t skip locked`
   const taskIds = tasks.map((task) => task.id)
   if (taskIds.length) {
+    // 插件停用时不会执行删号 / 删空间钩子；在同一批次内先解除作品的 restrict 外键。
+    // 与作品服务共用文件 → 作品锁序，之后才解除文件对任务的引用。
+    const studioFiles = await sql<{ id: string }[]>`
+      select f.id from studio_work w join file f on f.id=w.file_id
+      where w.task_id in ${sql(taskIds)} order by f.id for update of f`
+    if (studioFiles.length) {
+      const fileIds = studioFiles.map((row) => row.id)
+      await sql`select id from studio_work where file_id in ${sql(fileIds)} order by file_id for update`
+      await sql`update studio_work set version=version+1 where file_id in ${sql(fileIds)}`
+      await sql`delete from studio_work where file_id in ${sql(fileIds)}`
+    }
     await sql`update file set source_task_id=null,updated_at=now() where source_task_id in ${sql(taskIds)}`
     await sql`delete from ai_task where id in ${sql(taskIds)}`
   }
