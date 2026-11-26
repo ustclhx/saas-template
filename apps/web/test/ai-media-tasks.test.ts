@@ -16,7 +16,7 @@ import {
 import { createAuth } from '@saas/auth'
 import { defineTemplateConfig } from '@saas/config'
 import { getCreditBalance, grant, hold } from '@saas/credits'
-import { aiModel, aiTask, createDb, file, member as membership, scoped } from '@saas/db'
+import { aiModel, aiTask, createDb, creditHold, file, member as membership, scoped } from '@saas/db'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import { createCloudflareRateLimiter, createCloudflareWorkflow } from '@saas/platform/cloudflare'
 import { AppError, newId } from '@saas/shared'
@@ -31,7 +31,11 @@ import {
   type MediaHttpDeps,
   submitWorkspaceMedia,
 } from '../../../plugins/media/src/web/media-tasks.ts'
+import { enabledStudioKinds } from '../../../plugins/studio/src/kinds.ts'
+import type { submitStudio } from '../../../plugins/studio/src/web/submit.functions.ts'
+import { submitStudioCreation } from '../../../plugins/studio/src/web/submit.server.ts'
 import { templateConfig } from '../src/server/template-config.ts'
+import { resolveDefaultWorkspace } from '../src/server/workspace-context.ts'
 
 const APP_URL = 'http://localhost:3000'
 const SECRET = 'fixture-media-webhook-secret'
@@ -78,10 +82,23 @@ async function account(name: string) {
   await grant(db, { workspaceId: user.id, source: 'admin', sourceRef: newId(), amount: 100 })
   return { userId: user.id, workspaceId: user.id, cookie }
 }
+const modelParamsSchema = {
+  type: 'object',
+  required: ['prompt'],
+  properties: {
+    prompt: { type: 'string', minLength: 1 },
+    num_images: { type: 'integer', minimum: 1, maximum: 2, default: 1 },
+  },
+}
+
 async function model(
   extra: Record<string, unknown> = {},
   provider = 'fal',
   kind: 'image' | 'video' = 'image',
+  paramsSchema: Record<string, unknown> = {
+    ...modelParamsSchema,
+    properties: { ...modelParamsSchema.properties, ...extra },
+  },
 ) {
   const key = `${MODEL_PREFIX}${newId()}`
   await db.insert(aiModel).values({
@@ -90,15 +107,7 @@ async function model(
     provider,
     providerModelId: provider === 'workers-ai' ? WORKERS_AI_IMAGE_MODEL : 'fal-ai/fixture',
     pricing: { mode: 'per_call', credits: 3 },
-    paramsSchema: {
-      type: 'object',
-      required: ['prompt'],
-      properties: {
-        prompt: { type: 'string', minLength: 1 },
-        num_images: { type: 'integer', minimum: 1, maximum: 2, default: 1 },
-        ...extra,
-      },
-    },
+    paramsSchema,
   })
   return key
 }
@@ -1173,5 +1182,190 @@ describe.skipIf(!templateConfig.plugins.media)('媒体取消计费、不确定�
     expect(await response.json()).toMatchObject({ error: { code: 'STORAGE_QUOTA_EXCEEDED' } })
     expect(await scoped(db, who.workspaceId).count(aiTask)).toBe(0)
     expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 100, held: 0 })
+  })
+})
+
+type StudioSubmitData = Parameters<typeof submitStudio>[0]['data']
+
+const studioModes = enabledStudioKinds(templateConfig)
+const studioMode = studioModes[0] ?? 'image'
+
+describe.skipIf(!templateConfig.plugins.media || studioModes.length === 0)('Studio 提交', () => {
+  async function studioSubmission(
+    who: Awaited<ReturnType<typeof account>>,
+    modelKey: string,
+    mode = studioMode,
+  ) {
+    const resolved = await resolveDefaultWorkspace(db, { id: who.userId }, who.workspaceId)
+    if (!resolved) throw new Error('Studio test workspace is unavailable')
+    const { deps } = dependencies()
+    const data: StudioSubmitData = {
+      slug: resolved.workspace.slug,
+      mode,
+      modelKey,
+      prompt: '山间小屋',
+      params: {},
+    }
+    const workspace = { ...resolved, workspaceReadOnly: false }
+    const options = {
+      config: templateConfig,
+      presets: [],
+      mediaDeps: () => ({
+        ...deps,
+        callbackOrigin: APP_URL,
+      }),
+    }
+    return { data, workspace, options }
+  }
+
+  async function expectNoMediaReservation(workspaceId: string) {
+    expect(await scoped(db, workspaceId).count(aiTask)).toBe(0)
+    expect(
+      await sql`select id from credit_hold where workspace_id=${workspaceId} and ref_type='ai_task'`,
+    ).toHaveLength(0)
+  }
+
+  it('创建媒体任务并预扣积分，保留不含预设的原始提示词', async () => {
+    const who = await account('studio-submit')
+    const modelKey = await model({}, 'fal', studioMode)
+    const { data, workspace, options } = await studioSubmission(who, modelKey)
+    const prompt = '  山间小屋  '
+    const preset = { id: 'watercolor', name: '水彩', mode: studioMode, text: '水彩画风' }
+    const { taskId, status } = await submitStudioCreation(
+      { ...data, prompt, presetId: preset.id },
+      workspace,
+      { ...options, presets: [preset] },
+    )
+    expect(status).toBe('queued')
+    const tenant = scoped(db, who.workspaceId)
+    const task = await tenant.findById(aiTask, taskId)
+    expect(task).toMatchObject({
+      modelKey,
+      kind: studioMode,
+      status: 'queued',
+      input: { params: { prompt: `${prompt}\n${preset.text}` }, userPrompt: prompt },
+    })
+    expect(await tenant.select(creditHold)).toMatchObject([
+      { id: task.holdId, refType: 'ai_task', refId: taskId, status: 'held', amount: 3 },
+    ])
+    expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 97, held: 3 })
+  })
+
+  it('未启用的模式返回 404', async () => {
+    const who = await account('studio-disabled-mode')
+    const { data, workspace, options } = await studioSubmission(
+      who,
+      await model({}, 'fal', studioMode),
+    )
+    const disabledMode = studioMode === 'image' ? 'video' : 'image'
+    const config = {
+      ...templateConfig,
+      plugins: { ...templateConfig.plugins, studio: { kinds: [studioMode] } },
+    }
+    await expect(
+      submitStudioCreation({ ...data, mode: disabledMode }, workspace, { ...options, config }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 })
+    await expectNoMediaReservation(who.workspaceId)
+  })
+
+  it('拒绝有效 schema 中缺少提示词字段的模型', async () => {
+    const who = await account('studio-no-prompt-model')
+    const modelKey = await model({}, 'fal', studioMode, {
+      type: 'object',
+      properties: { seed: { type: 'integer' } },
+    })
+    const { data, workspace, options } = await studioSubmission(who, modelKey)
+    await expect(submitStudioCreation(data, workspace, options)).rejects.toMatchObject({
+      code: 'MODEL_UNAVAILABLE',
+      status: 404,
+    })
+    await expectNoMediaReservation(who.workspaceId)
+  })
+
+  it('指出缺少参考图的字段，并拒绝其他空间或非图片文件', async () => {
+    const who = await account('studio-reference')
+    const mode = studioModes.includes('video') ? 'video' : studioMode
+    const modelKey = await model({}, 'fal', mode, {
+      ...modelParamsSchema,
+      required: ['prompt', 'source'],
+      properties: {
+        ...modelParamsSchema.properties,
+        source: { type: 'string', format: 'file' },
+      },
+    })
+    const { data, workspace, options } = await studioSubmission(who, modelKey, mode)
+    await expect(submitStudioCreation(data, workspace, options)).rejects.toMatchObject({
+      code: 'STUDIO_REFERENCE_REQUIRED',
+      status: 400,
+      publicDetails: { field: 'source' },
+    })
+
+    const other = await account('studio-other-reference')
+    const id = newId()
+    await scoped(db, other.workspaceId).insert(file, {
+      id,
+      userId: other.userId,
+      purpose: 'upload',
+      status: 'ready',
+      r2Key: `ws/${other.workspaceId}/${id}`,
+      mime: 'image/png',
+      size: 100,
+    })
+    await expect(
+      submitStudioCreation({ ...data, params: { source: id } }, workspace, options),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 })
+
+    const videoId = newId()
+    await scoped(db, who.workspaceId).insert(file, {
+      id: videoId,
+      userId: who.userId,
+      purpose: 'upload',
+      status: 'ready',
+      r2Key: `ws/${who.workspaceId}/${videoId}`,
+      mime: 'video/mp4',
+      size: 100,
+    })
+    await expect(
+      submitStudioCreation({ ...data, params: { source: videoId } }, workspace, options),
+    ).rejects.toMatchObject({
+      code: 'STUDIO_REFERENCE_INVALID',
+      status: 400,
+      publicDetails: { field: 'source' },
+    })
+    await expectNoMediaReservation(who.workspaceId)
+  })
+
+  it('余额不足返回 402 并回滚任务与预扣', async () => {
+    const who = await account('studio-insufficient-credits')
+    await hold(db, {
+      workspaceId: who.workspaceId,
+      userId: who.userId,
+      amount: 98,
+      refType: 'ai_message',
+      refId: newId(),
+    })
+    const { data, workspace, options } = await studioSubmission(
+      who,
+      await model({}, 'fal', studioMode),
+    )
+    await expect(submitStudioCreation(data, workspace, options)).rejects.toMatchObject({
+      code: 'INSUFFICIENT_CREDITS',
+      status: 402,
+      publicDetails: { estimatedCredits: 3, availableCredits: 2 },
+    })
+    await expectNoMediaReservation(who.workspaceId)
+    expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 2, held: 98 })
+  })
+
+  it('拒绝只读空间成员提交', async () => {
+    const who = await account('studio-read-only')
+    const { data, workspace, options } = await studioSubmission(
+      who,
+      await model({}, 'fal', studioMode),
+    )
+    await expect(
+      submitStudioCreation(data, { ...workspace, workspaceReadOnly: true }, options),
+    ).rejects.toMatchObject({ code: 'WORKSPACE_READ_ONLY', status: 403 })
+    await expectNoMediaReservation(who.workspaceId)
   })
 })

@@ -1,7 +1,7 @@
 import type { TemplateConfig } from '@saas/config'
 
 export const STUDIO_KINDS = ['image', 'video'] as const
-type StudioKind = (typeof STUDIO_KINDS)[number]
+export type StudioKind = (typeof STUDIO_KINDS)[number]
 
 type StudioTemplateConfig = {
   readonly plugins: TemplateConfig<string>['plugins']

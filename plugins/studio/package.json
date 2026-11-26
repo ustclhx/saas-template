@@ -8,7 +8,11 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@saas/ai": "workspace:*",
     "@saas/config": "workspace:*",
+    "@saas/plugin-media": "workspace:*",
+    "@saas/shared": "workspace:*",
+    "@tanstack/react-start": "^1.168.60",
     "zod": "^4.6.5"
   },
   "devDependencies": {

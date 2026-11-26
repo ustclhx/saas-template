@@ -78,7 +78,7 @@ saas-template/
 模板只创建一次的文件（文件名多带 `.project.`）属于衍生项目：模板之后不再修改（`scripts/template-release.mjs`
 的 `projectOwnedFiles` 检查），生成器与 template-sync 都不覆盖项目已有的版本（`scripts/template-sync/merge.mjs`
 的 `projectOwnedPaths`）。项目在这些文件里接管模板行为，template-sync 更新引用它们的模板文件时不会产生冲突。
-各领域的文件见对应文档（分享卡片、设计规范、SEO 内链、运行时设置、功能模型等），请求入口、兜底页面与后台重新验证相关的三个如下。
+各领域的文件见对应文档（分享卡片、设计规范、SEO 内链、运行时设置、功能模型等）。以下列出请求入口、兜底页面、后台重新验证和 Studio 的扩展。
 
 **项目闸门** `apps/web/src/server/project-gate.ts`：Cloudflare Worker 入口（`server.ts`）对每个请求先调用
 `gateProjectRequest(request, { env, envValid })`，再查预渲染静态资源，最后才是环境校验结果、插件前置处理、
@@ -108,6 +108,12 @@ saas-template/
 返回写 `verification` 表时追加的列（项目给该表加了必填列时使用，例如多站点的 `site`；模板列优先，不会被覆盖），
 每次发码或校验在事务前调用一次；`stepUpEmailBrand(defaults, { db, request })` 返回验证码邮件的应用名与站点地址，
 默认取模板配置与 `APP_URL`。两者只在后台 server function 内调用。
+
+**Studio 创作预设与发布检查** `plugins/studio/src/studio.project.ts` 导出 `studioPromptPresets`，默认空数组。
+项目可按 `id`、`name`、`mode`（图片或视频）与 `text` 定义附加到用户提示词的预设。
+`plugins/studio/src/moderation.project.ts` 导出异步 `checkPublish({ title, prompt, kind, modelKey, workspaceId })`，
+默认返回 `{ action: 'allow' }`。项目也可返回 `{ action: 'review' }` 转人工复核，或返回
+`{ action: 'reject', reason }` 拒绝发布。旧任务没有提示词时，`prompt` 为 `null`。
 
 ## 2. 为什么拆 `apps/jobs`
 
