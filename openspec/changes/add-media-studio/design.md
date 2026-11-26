@@ -160,6 +160,8 @@ studio 提供 `studio.works.list`（read：按分栏、站点、分页）与 `st
 画廊（桌面 / 手机、筛选、空态、错误态）、作品页（图片 / 视频、待审核提示仅作者可见、举报对话框）、后台审核页。
 使用者确认后登记原型索引，再实现第 4 组以后的界面任务。
 
+**已确认**（2026-11-26）：见[原型索引](../../../docs/design-system/prototypes/README.md)「创作页」「我的作品」「公开画廊」「作品页」「后台作品审核」五行，副本在 `docs/design-system/prototypes/media-studio/`。组件变更：`@saas/ui` 新增 Collapsible（更多设置）与 RadioGroup（举报原因），DataTable 增加行选择（后台批量操作）。
+
 ## Risks / Trade-offs
 
 - [边缘缓存的旧副本在其他机房最长 1 天] → 版本化地址使新页面不再引用旧地址；违法内容下架时配置 `CF_PURGE_TOKEN` 主动清除，文档写明。

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>公开画廊（桌面）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:none}a:hover{text-decoration:underline;text-underline-offset:3px}
+.r{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;width:1440px;height:900px;display:flex;flex-direction:column;overflow:hidden}
+button{font:inherit;color:inherit;margin:0;cursor:pointer;border:0;background:none;padding:0}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.cap{font-size:12px;line-height:16px}
+.sub{font-size:14px;line-height:20px;font-weight:600}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border-radius:8px;font-weight:500;white-space:nowrap}
+.seg{display:flex;padding:3px;border-radius:9px;gap:2px}
+.segb{height:30px;padding:0 14px;border-radius:7px;font-size:13px;font-weight:500;display:inline-flex;align-items:center}
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500}
+.ph{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;border-radius:12px;position:relative}
+.wrap{max-width:1200px;width:100%;margin:0 auto;padding:0 32px}
+.masonry{column-count:4;column-gap:16px}
+.card{break-inside:avoid;margin-bottom:16px;display:block}
+.pg{display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:36px;padding:0 10px;border-radius:8px}
+svg{flex-shrink:0}
+sc-if,sc-for{display:contents}
+</style>
+</helmet>
+<div class="r" style="background:{{t.bg}};color:{{t.fg}}">
+  <header style="border-bottom:1px solid {{t.border}};background:{{t.panel}}">
+    <div class="wrap row" style="height:64px;gap:24px">
+      <a href="#" class="row sub" style="gap:8px"><span class="row" style="justify-content:center;width:24px;height:24px;border-radius:6px;background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span>SaaS 模板</a>
+      <nav class="row" aria-label="主导航" style="gap:20px;flex:1;color:{{t.mfg}}"><a href="#">功能</a><a href="#">定价</a><a href="#" aria-current="page" style="color:{{t.fg}};font-weight:500">画廊</a><a href="#">博客</a></nav>
+      <a href="#" class="btn" style="box-shadow:inset 0 0 0 1px {{t.border}};text-decoration:none">登录</a>
+      <a href="#" class="btn" style="background:{{t.primary}};color:{{t.pfg}};text-decoration:none">免费开始创作</a>
+    </div>
+  </header>
+  <main class="col" style="flex:1;overflow:hidden;padding-top:32px;gap:20px">
+    <div class="wrap col" style="gap:16px">
+      <div class="col" style="gap:6px">
+        <h1 style="margin:0;font-size:30px;line-height:36px;font-weight:600">作品画廊</h1>
+        <p style="margin:0;color:{{t.mfg}}">用户用 AI 生成并公开分享的图片和视频。看到喜欢的，可以一键做同款。</p>
+      </div>
+      <sc-if value="{{showFilters}}" hint-placeholder-val="{{true}}">
+        <div class="row" style="gap:12px">
+          <nav class="seg" aria-label="类型" style="background:{{t.secondary}}">
+            <a href="#" class="segb" aria-current="page" style="background:{{t.card}};box-shadow:{{t.sh2}};text-decoration:none">全部</a>
+            <a href="#" class="segb" style="color:{{t.mfg}};text-decoration:none">图片</a>
+            <a href="#" class="segb" style="color:{{t.mfg}};text-decoration:none">视频</a>
+          </nav>
+          <nav class="seg" aria-label="排序" style="background:{{t.secondary}};margin-left:auto">
+            <a href="#" class="segb" aria-current="page" style="background:{{t.card}};box-shadow:{{t.sh2}};text-decoration:none">最新</a>
+            <a href="#" class="segb" style="color:{{t.mfg}};text-decoration:none">精选</a>
+          </nav>
+        </div>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{normal}}" hint-placeholder-val="{{true}}">
+      <div class="wrap" style="flex:1;overflow:hidden">
+        <div class="masonry">
+          <sc-for list="{{cards}}" as="c" hint-placeholder-count="12">
+            <a href="Work.dc.html" class="card" aria-label="{{c.title}}" style="text-decoration:none">
+              <div class="ph" style="height:{{c.h}}px;background:{{c.tint}};color:{{t.mfg}}">
+                <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{c.icon}}"></path></svg>
+                <span class="cap">{{c.kindLabel}}</span>
+                <sc-if value="{{c.dur}}" hint-placeholder-val="{{false}}"><span class="badge" style="position:absolute;right:8px;bottom:8px;background:{{t.overlay}};color:#ffffff"><svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"></path></svg>{{c.dur}}</span></sc-if>
+                <sc-if value="{{c.featured}}" hint-placeholder-val="{{false}}"><span class="badge" style="position:absolute;left:8px;top:8px;background:{{t.card}};color:{{t.fg}}">精选</span></sc-if>
+              </div>
+              <span class="cap" style="display:block;padding:6px 2px 0;color:{{t.mfg}};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{c.title}}</span>
+            </a>
+          </sc-for>
+        </div>
+      </div>
+      <nav class="wrap row" aria-label="分页" style="gap:6px;justify-content:center;padding-bottom:20px">
+        <a href="#" class="pg" aria-disabled="true" style="color:{{t.mfg}};opacity:0.5;text-decoration:none">上一页</a>
+        <a href="#" class="pg" aria-current="page" style="background:{{t.primary}};color:{{t.pfg}};text-decoration:none">1</a>
+        <a href="#" class="pg" style="text-decoration:none">2</a>
+        <a href="#" class="pg" style="text-decoration:none">3</a>
+        <a href="#" class="pg" style="text-decoration:none">下一页</a>
+      </nav>
+    </sc-if>
+
+    <sc-if value="{{empty}}" hint-placeholder-val="{{false}}">
+      <div class="wrap">
+        <div class="col" style="align-items:center;text-align:center;gap:10px;padding:96px 24px;border-radius:12px;box-shadow:inset 0 0 0 1px {{t.border}}">
+          <span class="sub">画廊里还没有作品</span>
+          <span style="color:{{t.mfg}};max-width:26rem">成为第一个分享作品的人：生成后在「我的作品」里点发布。</span>
+          <a href="#" class="btn" style="margin-top:8px;background:{{t.primary}};color:{{t.pfg}};text-decoration:none">开始创作</a>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{error}}" hint-placeholder-val="{{false}}">
+      <div class="wrap">
+        <div class="col" role="alert" style="align-items:center;text-align:center;gap:10px;padding:96px 24px;border-radius:12px;box-shadow:inset 0 0 0 1px {{t.border}}">
+          <span class="sub">画廊暂时打不开</span>
+          <span style="color:{{t.mfg}};max-width:28rem">服务正在恢复，请稍后刷新。你也可以先看看其他页面。</span>
+          <div class="row" style="gap:8px;margin-top:8px"><a href="#" class="btn" style="box-shadow:inset 0 0 0 1px {{t.border}};text-decoration:none">返回首页</a><a href="#" class="btn" style="background:{{t.primary}};color:{{t.pfg}};text-decoration:none">刷新</a></div>
+        </div>
+      </div>
+    </sc-if>
+  </main>
+  <footer style="border-top:1px solid {{t.border}};background:{{t.panel}}">
+    <div class="wrap row cap" style="height:52px;gap:20px;color:{{t.mfg}}"><span style="flex:1">© 2026 SaaS 模板</span><a href="#">画廊</a><a href="#">隐私政策</a><a href="#">服务条款</a></div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"state":{"editor":"enum","options":["normal","empty","error"],"default":"normal"},"$preview":{"width":1440,"height":900}}'>
+function uiTokens(dark) {
+  var t = dark ? {
+    s: ['#171717', '#1e1e1e', '#252525'], fg: '#f5f5f5', mfg: '#b0b0b0', primary: '#f5f5f5', pfg: '#171717',
+    border: 'rgba(245,245,245,0.12)', active: 'rgba(255,255,255,0.1)', overlay: 'rgba(0,0,0,0.6)'
+  } : {
+    s: ['#fafafa', '#fcfcfc', '#ffffff'], fg: '#171717', mfg: '#6b6b6b', primary: '#171717', pfg: '#fafafa',
+    border: 'rgba(23,23,23,0.12)', active: 'rgba(0,0,0,0.07)', overlay: 'rgba(0,0,0,0.6)'
+  };
+  t.bg = t.s[0]; t.panel = t.s[1]; t.card = t.s[2];
+  t.secondary = dark ? '#252525' : '#f4f4f5';
+  t.sh2 = dark ? 'inset 0 0 0 1px rgba(255,255,255,0.02), 0 1px 1px -0.5px rgba(0,0,0,0.18)' : '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06)';
+  t.tints = dark ? ['#2a2a2a', '#303030', '#262626', '#2d2d2d'] : ['#ececee', '#e4e4e7', '#f0f0f1', '#e8e8ea'];
+  return t;
+}
+var IMG = 'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M21 15l-5-5L5 21';
+var VID = 'M2 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2zM22 8l-4 3v2l4 3z';
+class Component extends DCLogic {
+  renderVals() {
+    var t = uiTokens(!!this.props.dark);
+    var s = this.props.state || 'normal';
+    var titles = ['清晨的山间木屋', '雾中的湖面', '城市夜景水彩', '海边的灯塔', '樱花小路', '极光下的帐篷', '雨后的街角', '复古列车', '沙漠里的星空', '森林小径', '雪山日出', '港口黄昏'];
+    var hs = [240, 180, 300, 200, 260, 170, 220, 280, 190, 250, 210, 230];
+    return {
+      t: t,
+      showFilters: s !== 'error',
+      normal: s === 'normal', empty: s === 'empty', error: s === 'error',
+      cards: titles.map(function (n, i) { var v = i === 1 || i === 4 || i === 9; return { title: n, h: hs[i], tint: t.tints[i % 4], icon: v ? VID : IMG, kindLabel: v ? '示例视频' : '示例图', dur: v ? '0:05' : '', featured: i === 0 || i === 7 }; })
+    };
+  }
+}
+</script>
+</body>
+</html>

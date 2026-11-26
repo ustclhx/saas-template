@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>我的作品（桌面）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+a{color:inherit;text-decoration:none}a:hover{text-decoration:underline;text-underline-offset:3px}
+.r{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;width:1440px;height:900px;display:flex;overflow:hidden;position:relative}
+button,input{font:inherit;color:inherit;margin:0}
+button{cursor:pointer;border:0;background:none;padding:0}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.cap{font-size:12px;line-height:16px}
+.sub{font-size:14px;line-height:20px;font-weight:600}
+.ttl{font-size:20px;line-height:28px;font-weight:600}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border-radius:8px;font-weight:500;white-space:nowrap}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;flex-shrink:0}
+.hv:hover{background:rgba(128,128,128,0.1);text-decoration:none}
+.sb{width:248px;padding:12px;display:flex;flex-direction:column;gap:16px;flex-shrink:0}
+.grp{font-size:12px;line-height:16px;font-weight:500;padding:0 8px;margin-bottom:4px}
+.nav{display:flex;align-items:center;gap:8px;height:32px;border-radius:8px;padding:0 8px}
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:9999px;font-size:12px;line-height:16px;font-weight:500;white-space:nowrap}
+.main{flex:1;min-width:0;margin:8px 8px 8px 0;border-radius:12px;display:flex;flex-direction:column;overflow:hidden}
+.seg{display:flex;padding:3px;border-radius:9px;gap:2px}
+.segb{height:28px;padding:0 12px;border-radius:7px;font-size:13px;font-weight:500}
+.ph{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px}
+.ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.lbl{font-size:12px;line-height:16px;font-weight:500}
+svg{flex-shrink:0}
+sc-if,sc-for{display:contents}
+</style>
+</helmet>
+<div class="r" style="background:{{t.bg}};color:{{t.fg}}">
+  <aside class="sb" aria-label="主导航">
+    <div class="row" style="height:32px;gap:8px;padding-left:4px">
+      <span class="row" style="justify-content:center;width:24px;height:24px;border-radius:6px;background:{{t.primary}};color:{{t.pfg}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span>
+      <span class="sub">SaaS 模板</span>
+    </div>
+    <nav class="col" aria-label="工作区" style="gap:2px;flex:1">
+      <span class="grp" style="color:{{t.mfg}}">工具</span>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}">工作台</a>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}">对话</a>
+      <a href="Main.dc.html" class="nav hv" style="color:{{t.mfg}}">创作</a>
+      <span class="grp" style="color:{{t.mfg}};margin-top:12px">内容</span>
+      <a href="#" class="nav" aria-current="page" style="background:{{t.active}};font-weight:500">我的作品</a>
+      <a href="#" class="nav hv" style="color:{{t.mfg}}">任务</a>
+    </nav>
+  </aside>
+  <main class="main" style="background:{{t.panel}};box-shadow:{{t.sh2}}">
+    <div class="col" style="padding:28px 32px 0;gap:16px">
+      <div class="row" style="gap:12px">
+        <div class="col" style="flex:1;gap:2px">
+          <h1 class="ttl" style="margin:0">我的作品</h1>
+          <p style="margin:0;color:{{t.mfg}}">本空间生成的图片和视频。发布后会出现在公开画廊。</p>
+        </div>
+        <a href="Main.dc.html" class="btn" style="background:{{t.primary}};color:{{t.pfg}};text-decoration:none">去创作</a>
+      </div>
+      <sc-if value="{{readOnly}}" hint-placeholder-val="{{false}}">
+        <div class="row" role="note" style="gap:8px;padding:10px 12px;border-radius:8px;background:{{t.secondary}};color:{{t.mfg}}">你在这个空间是只读成员，可以查看作品，不能发布、取消发布或删除。</div>
+      </sc-if>
+      <div class="row" style="gap:12px">
+        <div class="seg" role="group" aria-label="类型" style="background:{{t.secondary}}">
+          <button type="button" class="segb" aria-pressed="true" style="background:{{t.card}};box-shadow:{{t.sh2}}">全部</button>
+          <button type="button" class="segb" aria-pressed="false" style="color:{{t.mfg}}">图片</button>
+          <button type="button" class="segb" aria-pressed="false" style="color:{{t.mfg}}">视频</button>
+        </div>
+        <div class="seg" role="group" aria-label="公开状态" style="background:{{t.secondary}}">
+          <button type="button" class="segb" aria-pressed="true" style="background:{{t.card}};box-shadow:{{t.sh2}}">全部</button>
+          <button type="button" class="segb" aria-pressed="false" style="color:{{t.mfg}}">未公开</button>
+          <button type="button" class="segb" aria-pressed="false" style="color:{{t.mfg}}">已公开</button>
+        </div>
+        <span class="cap" style="margin-left:auto;color:{{t.mfg}}">今日还可发布 17 / 20 次</span>
+      </div>
+    </div>
+
+    <sc-if value="{{hasWorks}}" hint-placeholder-val="{{true}}">
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;padding:20px 32px 32px;overflow:hidden">
+        <sc-for list="{{works}}" as="w" hint-placeholder-count="8">
+          <article class="col" style="border-radius:12px;overflow:hidden;background:{{t.card}};box-shadow:inset 0 0 0 1px {{t.border}}">
+            <div class="ph" style="height:180px;background:{{w.tint}};color:{{t.mfg}};position:relative">
+              <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{w.icon}}"></path></svg>
+              <span class="cap">{{w.kindLabel}}</span>
+              <span class="badge" style="position:absolute;left:8px;top:8px;background:{{w.bBg}};color:{{w.bFg}}">{{w.badge}}</span>
+              <sc-if value="{{w.dur}}" hint-placeholder-val="{{false}}"><span class="badge" style="position:absolute;right:8px;bottom:8px;background:{{t.overlay}};color:#ffffff">{{w.dur}}</span></sc-if>
+            </div>
+            <div class="col" style="padding:10px 12px;gap:8px">
+              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{w.title}}</span>
+              <div class="row" style="gap:6px">
+                <span class="cap" style="flex:1;color:{{t.mfg}}">{{w.time}}</span>
+                <sc-if value="{{w.canAct}}" hint-placeholder-val="{{true}}">
+                  <button type="button" class="btn hv" style="height:28px;padding:0 10px;font-size:12px;box-shadow:inset 0 0 0 1px {{t.border}}">{{w.action}}</button>
+                  <button type="button" class="ib hv" aria-label="更多操作：{{w.title}}" style="width:28px;height:28px;color:{{t.mfg}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle><circle cx="19" cy="12" r="1.5"></circle></svg></button>
+                </sc-if>
+              </div>
+            </div>
+          </article>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{empty}}" hint-placeholder-val="{{false}}">
+      <div class="col" style="margin:20px 32px;align-items:center;text-align:center;gap:10px;padding:96px 24px;border-radius:12px;box-shadow:inset 0 0 0 1px {{t.border}}">
+        <span class="sub">还没有作品</span>
+        <span style="color:{{t.mfg}};max-width:26rem">生成成功的图片和视频会自动出现在这里。</span>
+        <a href="Main.dc.html" class="btn" style="margin-top:8px;background:{{t.primary}};color:{{t.pfg}};text-decoration:none">开始创作</a>
+      </div>
+    </sc-if>
+  </main>
+
+  <sc-if value="{{publish}}" hint-placeholder-val="{{false}}">
+    <div class="ov" style="background:{{t.overlay}}">
+      <div class="col" role="dialog" aria-modal="true" aria-labelledby="pubT" style="width:480px;border-radius:14px;background:{{t.card}};box-shadow:{{t.sh5}};padding:24px;gap:16px">
+        <div class="col" style="gap:4px"><h2 id="pubT" class="sub" style="margin:0;font-size:16px">发布到画廊</h2><p style="margin:0;color:{{t.mfg}}">发布后立即出现在画廊，审核通过后才会被搜索引擎收录。可以随时取消发布。</p></div>
+        <div class="row" style="gap:12px">
+          <div class="ph" style="width:96px;height:96px;border-radius:10px;background:{{tint0}};color:{{t.mfg}}"><span class="cap">示例图</span></div>
+          <div class="col" style="flex:1;gap:6px">
+            <label class="lbl" for="pt">标题</label>
+            <input id="pt" value="清晨的山间木屋" style="height:36px;padding:0 12px;border-radius:8px;border:0;box-shadow:inset 0 0 0 1px {{t.border}};background:{{t.card}};outline:none">
+            <span class="cap" style="color:{{t.mfg}}">最多 80 个字符，显示在作品页和分享卡片上。</span>
+          </div>
+        </div>
+        <div class="row" style="gap:12px;padding:12px;border-radius:10px;background:{{t.secondary}}">
+          <div class="col" style="flex:1"><span style="font-weight:500">公开提示词</span><span class="cap" style="color:{{t.mfg}}">访客可以看到并用它「做同款」。</span></div>
+          <button type="button" role="switch" aria-checked="true" aria-label="公开提示词" style="width:36px;height:20px;border-radius:9999px;background:{{t.primary}};position:relative"><span style="position:absolute;right:2px;top:2px;width:16px;height:16px;border-radius:9999px;background:{{t.pfg}}"></span></button>
+        </div>
+        <div class="row" style="gap:8px">
+          <span class="cap" style="flex:1;color:{{t.mfg}}">今日还可发布 17 / 20 次</span>
+          <button type="button" class="btn hv" style="box-shadow:inset 0 0 0 1px {{t.border}}">取消</button>
+          <button type="button" class="btn" style="background:{{t.primary}};color:{{t.pfg}}">发布</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{del}}" hint-placeholder-val="{{false}}">
+    <div class="ov" style="background:{{t.overlay}}">
+      <div class="col" role="alertdialog" aria-modal="true" aria-labelledby="delT" style="width:420px;border-radius:14px;background:{{t.card}};box-shadow:{{t.sh5}};padding:24px;gap:12px">
+        <h2 id="delT" class="sub" style="margin:0;font-size:16px">删除这个作品？</h2>
+        <p style="margin:0;color:{{t.mfg}}">作品文件会被删除，已公开的作品页和分享链接会立即失效。此操作无法撤销。</p>
+        <div class="row" style="gap:8px;justify-content:flex-end;margin-top:8px">
+          <button type="button" class="btn hv" style="box-shadow:inset 0 0 0 1px {{t.border}}">取消</button>
+          <button type="button" class="btn" style="background:{{t.destructive}};color:{{t.pfg}}">删除</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"state":{"editor":"enum","options":["normal","empty","publishDialog","deleteConfirm","readOnly"],"default":"normal"},"$preview":{"width":1440,"height":900}}'>
+function uiTokens(dark) {
+  var t = dark ? {
+    s: ['#171717', '#1e1e1e', '#252525'], fg: '#f5f5f5', mfg: '#b0b0b0', primary: '#f5f5f5', pfg: '#171717',
+    destructive: '#fca5a5', dangerBg: 'rgba(252,165,165,0.12)', ok: '#86efac', okBg: 'rgba(134,239,172,0.12)', warn: '#fcd34d', warnBg: 'rgba(252,211,77,0.12)',
+    border: 'rgba(245,245,245,0.12)', active: 'rgba(255,255,255,0.1)', overlay: 'rgba(0,0,0,0.6)'
+  } : {
+    s: ['#fafafa', '#fcfcfc', '#ffffff'], fg: '#171717', mfg: '#6b6b6b', primary: '#171717', pfg: '#fafafa',
+    destructive: '#b91c1c', dangerBg: 'rgba(185,28,28,0.08)', ok: '#15803d', okBg: 'rgba(21,128,61,0.1)', warn: '#a16207', warnBg: 'rgba(234,179,8,0.12)',
+    border: 'rgba(23,23,23,0.12)', active: 'rgba(0,0,0,0.07)', overlay: 'rgba(0,0,0,0.4)'
+  };
+  t.bg = t.s[0]; t.panel = t.s[1]; t.card = t.s[2];
+  t.secondary = dark ? '#252525' : '#f4f4f5';
+  t.sh2 = dark ? 'inset 0 0 0 1px rgba(255,255,255,0.02), 0 1px 1px -0.5px rgba(0,0,0,0.18)' : '0 0 0 1px rgba(0,0,0,0.06), 0 1px 1px -0.5px rgba(0,0,0,0.06)';
+  t.sh5 = dark ? '0 0 0 1px rgba(255,255,255,0.08), 0 6px 12px -4px rgba(0,0,0,0.4)' : '0 0 0 1px rgba(0,0,0,0.06), 0 6px 12px -4px rgba(0,0,0,0.12)';
+  t.tints = dark ? ['#2a2a2a', '#303030', '#262626', '#2d2d2d'] : ['#ececee', '#e4e4e7', '#f0f0f1', '#e8e8ea'];
+  return t;
+}
+var IMG = 'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M21 15l-5-5L5 21';
+var VID = 'M2 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2zM22 8l-4 3v2l4 3z';
+class Component extends DCLogic {
+  renderVals() {
+    var t = uiTokens(!!this.props.dark);
+    var s = this.props.state || 'normal';
+    var ro = s === 'readOnly';
+    var st = {
+      priv: ['未公开', t.secondary, t.mfg, '发布'],
+      pend: ['待审核', t.warnBg, t.warn, '取消发布'],
+      pub: ['已公开', t.okBg, t.ok, '取消发布'],
+      hid: ['已隐藏', t.warnBg, t.warn, '取消发布'],
+      rem: ['已下架：侵权', t.dangerBg, t.destructive, '']
+    };
+    var rows = [
+      ['清晨的山间木屋', 'pub', 0, '', '11-26 09:12'],
+      ['雾中的湖面', 'pend', 1, '0:05', '11-26 08:40'],
+      ['城市夜景水彩', 'priv', 0, '', '11-25 21:03'],
+      ['海边的灯塔', 'priv', 0, '', '11-25 20:18'],
+      ['猫咪在窗台打盹', 'hid', 0, '', '11-25 14:55'],
+      ['樱花小路', 'pub', 1, '0:04', '11-24 10:30'],
+      ['复古海报风格咖啡馆', 'rem', 0, '', '11-23 16:20'],
+      ['极光下的帐篷', 'priv', 0, '', '11-23 09:02']
+    ];
+    return {
+      t: t,
+      tint0: t.tints[0],
+      readOnly: ro,
+      hasWorks: s !== 'empty',
+      empty: s === 'empty',
+      publish: s === 'publishDialog',
+      del: s === 'deleteConfirm',
+      works: rows.map(function (r, i) {
+        var m = st[r[1]];
+        return { title: r[0], badge: m[0], bBg: m[1], bFg: m[2], action: m[3], canAct: !ro && !!m[3], tint: t.tints[i % 4], icon: r[2] ? VID : IMG, kindLabel: r[2] ? '示例视频' : '示例图', dur: r[3], time: r[4] };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>
