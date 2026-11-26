@@ -1,6 +1,7 @@
 import type { BadgeColor } from '@saas/ui'
 import { m } from '@web/paraglide/messages.js'
 import { getLocale } from '@web/paraglide/runtime.js'
+import { studioRemovalReasonLabel } from '../removal-reason.ts'
 
 /** 作品在「我的作品」中的状态：未发布与已取消发布都算未公开；已下架优先于可见性。 */
 export type StudioWorkState = 'private' | 'pending' | 'approved' | 'hidden' | 'removed'
@@ -35,7 +36,7 @@ export function studioWorkBadge(work: StudioWorkStatus | null): {
     case 'removed':
       return {
         label: work?.removalReason
-          ? m.studio_state_removed_reason({ reason: work.removalReason })
+          ? m.studio_state_removed_reason({ reason: studioRemovalReasonLabel(work.removalReason) })
           : m.studio_state_removed(),
         color: 'red',
       }

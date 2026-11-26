@@ -1,15 +1,17 @@
 import { auditLog, type StudioWork, scoped, studioReport, studioWork, user } from '@saas/db'
-import { moderateAdminStudioWork } from '@saas/plugin-studio/moderation'
+import { moderateAdminStudioWork, moderateAdminStudioWorks } from '@saas/plugin-studio/moderation'
 import { setStudioMediaInvalidator } from '@saas/plugin-studio/work-invalidation'
 import { newId } from '@saas/shared'
 import { and, eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   moderateStudioWork,
+  moderateStudioWorks,
   studioAdminActionName,
 } from '../../../plugins/studio/src/web/moderation.server.ts'
 import {
   countStudioReviewQueue,
+  countStudioReviewTabs,
   getStudioReviewMedia,
   listStudioReviewQueue,
 } from '../../../plugins/studio/src/web/moderation-queue.server.ts'
@@ -53,6 +55,13 @@ const migrator = createAdminTestDb('migrator')
 const adminId = newId()
 const site = `studio-review-${newId()}`
 const context = { db, admin: { id: adminId } }
+const moderateBatch = (data: unknown) =>
+  (
+    moderateAdminStudioWorks as (input: {
+      context: typeof context
+      data: unknown
+    }) => Promise<unknown>
+  )({ context, data })
 const moderate = (data: unknown) =>
   (
     moderateAdminStudioWork as (input: {
@@ -276,6 +285,118 @@ describe.skipIf(!templateConfig.plugins.studio)('Studio 后台审核', () => {
       mime: 'image/webp',
     })
     expect(presignDownload).toHaveBeenCalledExactlyOnceWith(removed.r2Key)
+  })
+
+  it('批量通过逐件独立提交与审计，部分失败按件返回（tasks 7.3）', async () => {
+    const first = await seedWork()
+    const second = await seedWork()
+    const removed = await seedWork({ moderation: 'removed' })
+    const missing = newId()
+    // 缓存失效在循环结束后一次处理，只含已提交的件
+    const invalidateMany = vi.fn()
+    setStudioMediaInvalidator(Object.assign(vi.fn(), { many: invalidateMany }))
+    let results: unknown
+    try {
+      results = await moderateBatch({
+        action: 'approve',
+        workIds: [first.id, removed.id, missing, second.id, first.id],
+      })
+    } finally {
+      setStudioMediaInvalidator(() => {})
+    }
+    expect(invalidateMany).toHaveBeenCalledExactlyOnceWith([
+      { id: first.id, site, slug: first.slug, version: 1 },
+      { id: second.id, site, slug: second.slug, version: 1 },
+    ])
+    expect(results).toEqual([
+      { workId: first.id, ok: true, moderation: 'approved' },
+      { workId: removed.id, ok: false, code: 'STUDIO_MODERATION_CONFLICT' },
+      { workId: missing, ok: false, code: 'NOT_FOUND' },
+      { workId: second.id, ok: true, moderation: 'approved' },
+    ])
+    await expect(getWork(first.id)).resolves.toMatchObject({ moderation: 'approved' })
+    await expect(getWork(second.id)).resolves.toMatchObject({ moderation: 'approved' })
+    await expect(getWork(removed.id)).resolves.toMatchObject({ moderation: 'removed' })
+    // 每件一条审计；失败件不写审计
+    expect(await audits(first.id)).toMatchObject([{ action: 'studio.work.approve' }])
+    expect(await audits(second.id)).toMatchObject([{ action: 'studio.work.approve' }])
+    await expect(audits(removed.id)).resolves.toEqual([])
+
+    // 超过 50 件、空列表或缺少下架原因由入口校验拒绝，不产生任何写入
+    const many = Array.from({ length: 51 }, () => newId())
+    for (const data of [
+      { action: 'approve', workIds: many },
+      { action: 'approve', workIds: [] },
+      { action: 'remove', workIds: [first.id] },
+    ])
+      await expect(moderateBatch(data)).rejects.toMatchObject({ name: 'ZodError' })
+  })
+
+  it('管理员权限失效时批量停止，其余件标为权限失效且不写入', async () => {
+    const a = await seedWork()
+    const b = await seedWork()
+    await expect(
+      moderateStudioWorks(
+        { db, admin: { id: author.userId } },
+        { action: 'approve', workIds: [a.id, b.id] },
+      ),
+    ).resolves.toEqual([
+      { workId: a.id, ok: false, code: 'ADMIN_ACCESS_REVOKED' },
+      { workId: b.id, ok: false, code: 'ADMIN_ACCESS_REVOKED' },
+    ])
+    await expect(getWork(a.id)).resolves.toMatchObject({ moderation: 'pending' })
+    await expect(getWork(b.id)).resolves.toMatchObject({ moderation: 'pending' })
+  })
+
+  it('批量下架写入原因码（也接受自由文本），说明只进审计', async () => {
+    const a = await seedWork({ moderation: 'approved' })
+    const b = await seedWork()
+    await expect(
+      moderateBatch({
+        action: 'remove',
+        workIds: [a.id, b.id],
+        reason: 'copyright',
+        note: '权利人来信',
+      }),
+    ).resolves.toEqual([
+      { workId: a.id, ok: true, moderation: 'removed' },
+      { workId: b.id, ok: true, moderation: 'removed' },
+    ])
+    for (const work of [a, b]) {
+      await expect(getWork(work.id)).resolves.toMatchObject({
+        moderation: 'removed',
+        removalReason: 'copyright',
+        version: 2,
+      })
+      expect(await audits(work.id)).toMatchObject([
+        { action: 'studio.work.remove', meta: { reason: 'copyright', note: '权利人来信' } },
+      ])
+    }
+    const c = await seedWork()
+    await expect(
+      moderateBatch({ action: 'remove', workIds: [c.id], reason: '仿冒品牌' }),
+    ).resolves.toEqual([{ workId: c.id, ok: true, moderation: 'removed' }])
+    await expect(getWork(c.id)).resolves.toMatchObject({ removalReason: '仿冒品牌' })
+  })
+
+  it('分栏数量：待审核、被举报与已隐藏；列表行带媒体版本', async () => {
+    const before = await countStudioReviewTabs(db)
+    const pending = await seedWork()
+    const reported = await seedWork({ moderation: 'approved', reportCount: 1 })
+    await db
+      .insert(studioReport)
+      .values({ workId: reported.id, reporterKey: `ip:${newId()}`, reason: 'spam' })
+    await seedWork({ moderation: 'hidden' })
+    await expect(countStudioReviewTabs(db)).resolves.toEqual({
+      pending: before.pending + 1,
+      reported: before.reported + 1,
+      hidden: before.hidden + 1,
+    })
+    await expect(
+      listStudioReviewQueue(db, { site, queue: 'pending' }).then(({ rows }) =>
+        rows.find(({ id }) => id === pending.id),
+      ),
+    ).resolves.toMatchObject({ version: 1 })
   })
 
   it('管理员事务会拒绝被撤销的角色，不变更状态或写审计', async () => {

@@ -1,11 +1,24 @@
 import { notFound, type StudioWork, scoped, studioReport, studioWork } from '@saas/db'
 import { AppError } from '@saas/shared'
+import { log } from '@saas/shared/log'
+import { isNotFound } from '@tanstack/react-router'
 import { adminAction } from '@web/features/admin/action.server.ts'
 import type { AdminActionContext, AdminActionScope } from '@web/features/admin/action.ts'
 import { defineAdminActions } from '@web/features/admin/actions.registry.ts'
 import { and, eq, isNull } from 'drizzle-orm'
-import { type StudioModerationInput, studioModerationSchema } from './moderation-input.ts'
-import { type InvalidateStudioWork, invalidateStudioWork } from './work-invalidation.ts'
+import {
+  type StudioBatchModerationInput,
+  type StudioModerationInput,
+  studioBatchModerationSchema,
+  studioModerationSchema,
+} from './moderation-input.ts'
+import {
+  type InvalidateStudioWork,
+  type InvalidateStudioWorks,
+  invalidateStudioWork,
+  invalidateStudioWorks,
+  type StudioWorkAddress,
+} from './work-invalidation.ts'
 
 export const studioAdminActions = defineAdminActions('studio', {
   'studio.work.approve': { stepUp: 'never', reason: '日常内容审核' },
@@ -107,7 +120,10 @@ export async function applyStudioModeration(
     meta: {
       moderationBefore: before.moderation,
       moderationAfter: work.moderation,
-      ...(data.action === 'remove' && { reason: data.reason }),
+      ...(data.action === 'remove' && {
+        reason: data.reason,
+        ...(data.note && { note: data.note }),
+      }),
       ...((data.action === 'feature' || data.action === 'unfeature') && {
         featured: work.featuredAt !== null,
       }),
@@ -145,4 +161,54 @@ export async function moderateStudioWork(
   const result = await actions[data.action]({ context, data })
   if (result.invalidate) await invalidateStudioWork(result.invalidate, invalidate)
   return result.work
+}
+
+export type StudioBatchResult =
+  | { readonly workId: string; readonly ok: true; readonly moderation: StudioWork['moderation'] }
+  | { readonly workId: string; readonly ok: false; readonly code: string }
+
+/** 管理员权限在批量途中失效：当前件与其余件以此码返回，不再继续 */
+export const STUDIO_BATCH_ADMIN_REVOKED = 'ADMIN_ACCESS_REVOKED'
+
+/**
+ * 批量通过 / 下架（tasks 7.3）：逐件一个 adminAction 事务与审计，某件失败不回滚其他件，
+ * 每件的结果都返回（已提交的件始终出现在结果中）。缓存失效在循环结束后一次处理。
+ * adminAction 发现管理员已失效时抛出路由 notFound（与单件 404 的 AppError 不同），此时停止处理。
+ */
+export async function moderateStudioWorks(
+  context: AdminActionContext,
+  input: StudioBatchModerationInput,
+  invalidateMany?: InvalidateStudioWorks,
+): Promise<StudioBatchResult[]> {
+  const data = studioBatchModerationSchema.parse(input)
+  const results: StudioBatchResult[] = []
+  const addresses: StudioWorkAddress[] = []
+  const ids = [...new Set(data.workIds)]
+  for (const [index, workId] of ids.entries()) {
+    const item: StudioModerationInput =
+      data.action === 'remove'
+        ? { workId, action: 'remove', reason: data.reason, ...(data.note && { note: data.note }) }
+        : { workId, action: 'approve' }
+    try {
+      const result = await actions[item.action]({ context, data: item })
+      if (result.invalidate) addresses.push(result.invalidate)
+      results.push({ workId, ok: true, moderation: result.work.moderation })
+    } catch (error) {
+      if (isNotFound(error)) {
+        for (const rest of ids.slice(index))
+          results.push({ workId: rest, ok: false, code: STUDIO_BATCH_ADMIN_REVOKED })
+        break
+      }
+      const code = error instanceof AppError ? error.code : 'INTERNAL'
+      if (!(error instanceof AppError && error.expose && error.status < 500))
+        log.error('studio.moderation.batch_item_failed', {
+          workId,
+          code,
+          errorName: error instanceof Error ? error.name : typeof error,
+        })
+      results.push({ workId, ok: false, code })
+    }
+  }
+  await invalidateStudioWorks(addresses, invalidateMany)
+  return results
 }
