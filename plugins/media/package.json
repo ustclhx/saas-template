@@ -4,8 +4,12 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./client": "./src/web/ai-media/client.ts",
     "./parameter-form": "./src/web/ai-media/parameter-form.tsx",
-    "./submit.server": "./src/web/submit.server.ts"
+    "./polling": "./src/web/ai-media/polling.ts",
+    "./schema": "./src/web/ai-media/schema.ts",
+    "./submit.server": "./src/web/submit.server.ts",
+    "./tasks-client": "./src/web/ai-media/tasks-client.ts"
   },
   "dependencies": {
     "@saas/ai": "workspace:*",

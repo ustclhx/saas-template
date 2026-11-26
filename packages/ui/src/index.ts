@@ -34,6 +34,14 @@ export {
 } from './components/card.tsx'
 export { Checkbox, type CheckboxProps } from './components/checkbox.tsx'
 export {
+  Collapsible,
+  CollapsibleContent,
+  type CollapsibleContentProps,
+  type CollapsibleProps,
+  CollapsibleTrigger,
+  type CollapsibleTriggerProps,
+} from './components/collapsible.tsx'
+export {
   Combobox,
   ComboboxChips,
   type ComboboxChipsProps,

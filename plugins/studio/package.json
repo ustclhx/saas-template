@@ -19,6 +19,7 @@
     "@saas/ai": "workspace:*",
     "@saas/auth": "workspace:*",
     "@saas/config": "workspace:*",
+    "@saas/credits": "workspace:*",
     "@saas/db": "workspace:*",
     "@saas/plugin-media": "workspace:*",
     "@saas/shared": "workspace:*",

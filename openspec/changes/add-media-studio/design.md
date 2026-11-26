@@ -84,6 +84,7 @@ studio 的 Server Function `submitStudio({ mode, modelKey, prompt, presetId?, pa
 - 画廊 `/gallery`（`?kind=image|video`、`?sort=featured`、`?page=n`）；作品页 `/gallery/$slug`。画廊数值页最多 50 页，后续用游标。空白首页可访问，超出实际页数的后续页返回 404。
 - `slug = <ascii 化标题，最多 60 字符>-<作品 id 的 base36 后 8 位>`，标题无 ASCII 字符时只用后缀；标题改动不改 slug。
 - 路由按插件 `routes` 挂载在根；多站点项目中按请求站点过滤 `site`，非本站作品返回 404。
+- 发布时的站点键按发布请求的 origin 冻结，只能取 `plugins.studio.sites` 中已配置的站点键，未配置的主机记为默认站点；「我的作品」中公开作品的预览用该站点的绝对媒体地址，站点地址无法解析时回退到需要会话的空间文件接口。Node 部署在反向代理之后时，必须由代理传入可信的 Host（不透传客户端任意 Host），否则站点解析不可信。
 - 公开页是 SSR 页面（不预渲染），`pageHead` 输出 title / description / canonical / OG；作品页 JSON-LD 为 `ImageObject` 或 `VideoObject`；
   作品页 `noindex` 当且仅当 `moderation != approved`；画廊带筛选参数的地址 canonical 指向不带参数的第一页，`?page=n` 自身 canonical。
 - seo-internal-linking：画廊与作品页是数据库页面，不进入构建期链接图；作品页内链（返回画廊、相关作品）在页面内满足规范，

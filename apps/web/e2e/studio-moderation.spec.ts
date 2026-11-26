@@ -58,6 +58,7 @@ test('举报隐藏后恢复、下架原因与批量通过', async ({ page }) => 
   const db = createDb(sql)
   const tag = randomUUID().slice(0, 8)
   const author = await seedStudioWorkspace(db)
+  let adminWorkspace: { workspaceId: string; userId: string; slug: string } | undefined
   try {
     // 管理员：注册后提升为平台管理员
     const email = `studio-admin-${randomUUID()}@example.com`
@@ -67,20 +68,30 @@ test('举报隐藏后恢复、下架原因与批量通过', async ({ page }) => 
     const [admin] = await sql`select id from "user" where email=${email}`
     if (!admin) throw new Error('Missing admin fixture')
     await sql`update "user" set role='admin' where id=${admin.id}`
+    // 被下架的作品放在管理员自己的个人空间：随后以作者身份在「我的作品」查看下架原因
+    const [own] = await sql`select o.id, o.slug from member m join organization o
+      on o.id=m.organization_id where m.user_id=${admin.id} and m.role='owner' limit 1`
+    if (!own) throw new Error('Missing admin workspace')
+    adminWorkspace = {
+      workspaceId: String(own.id),
+      userId: String(admin.id),
+      slug: String(own.slug),
+    }
 
     // 作者的公开作品：已通过且已有两个不同举报人的未处理举报；其余三件待审核（发布时间最早，排在待审核栏首页）
     const tenant = scoped(db, author.workspaceId)
     async function seedWork(
       title: string,
       overrides: Partial<typeof studioWork.$inferInsert> = {},
+      owner: { workspaceId: string; userId: string } = author,
     ) {
-      const output = await seedStudioOutput(db, author)
+      const output = await seedStudioOutput(db, owner)
       const id = randomUUID()
-      await tenant.insert(studioWork, {
+      await scoped(db, owner.workspaceId).insert(studioWork, {
         id,
         fileId: output.fileId,
         taskId: output.taskId,
-        userId: author.userId,
+        userId: owner.userId,
         site: SITE,
         kind: 'image',
         modelKey: 'studio-fixture-image',
@@ -99,7 +110,7 @@ test('举报隐藏后恢复、下架原因与批量通过', async ({ page }) => 
     ])
     const early = (minute: number) => new Date(Date.UTC(2000, 0, 1, 0, minute))
     const removeTitle = `Retro poster ${tag}`
-    const removeId = await seedWork(removeTitle, { publishedAt: early(0) })
+    const removeId = await seedWork(removeTitle, { publishedAt: early(0) }, adminWorkspace)
     const batchTitles = [`Night city ${tag}`, `Cat nap ${tag}`]
     const batchIds = [
       await seedWork(batchTitles[0] ?? '', { publishedAt: early(1) }),
@@ -164,7 +175,10 @@ test('举报隐藏后恢复、下架原因与批量通过', async ({ page }) => 
     await dialog.getByRole('button', { name: 'Remove', exact: true }).click()
     await expect(dialog).toHaveCount(0)
     await expect(rowOf(page, removeTitle)).toHaveCount(0)
-    const authorWorks = await listStudioWorks(db, { workspaceId: author.workspaceId, kinds: KINDS })
+    const authorWorks = await listStudioWorks(db, {
+      workspaceId: adminWorkspace.workspaceId,
+      kinds: KINDS,
+    })
     expect(authorWorks.works.find((work) => work.work?.id === removeId)?.work).toMatchObject({
       moderation: 'removed',
       // 存原因码，作者与后台读取时按语言翻译（studioRemovalReasonLabel）
@@ -213,10 +227,19 @@ test('举报隐藏后恢复、下架原因与批量通过', async ({ page }) => 
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true)
+
+    // 作者在「我的作品」看到按语言翻译的下架原因（studioRemovalReasonLabel）
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto(`/app/${adminWorkspace.slug}/studio/works`)
+    await expect(
+      page.getByTestId('studio-work-state').filter({ hasText: 'Removed: Copyright infringement' }),
+    ).toBeVisible()
+    await shoot(page, 'my-works-removed')
   } finally {
     await page.unrouteAll({ behavior: 'ignoreErrors' })
     // 审计行对 app 只追加且引用空间，空间与用户保留；只删作品，避免残留在其他用例的审核队列中
     await scoped(db, author.workspaceId).delete(studioWork, undefined)
+    if (adminWorkspace) await scoped(db, adminWorkspace.workspaceId).delete(studioWork, undefined)
     await sql.end()
   }
 })
