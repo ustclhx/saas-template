@@ -139,7 +139,7 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
         ),
       )
     }
-    await Promise.all([db.$client.end(), migrator.$client.end()])
+    await Promise.all([db.close(), migrator.close()])
   })
 
   it('用 SDK 完成 initialize、tools/list、tools/call 和协议 ping', async () => {
@@ -347,7 +347,7 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
       } finally {
         setStudioMediaInvalidator(() => {})
         await Promise.all([reader.close(), writer.close()])
-        await db.$client.end()
+        await db.close()
       }
     },
   )
