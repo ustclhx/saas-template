@@ -17,10 +17,17 @@ const invalidateMedia = createStudioWorkInvalidator({
   cache: { delete: (url) => edgeCache().delete(url) },
   purge: { token: CF_PURGE_TOKEN, zoneId: CF_ZONE_ID },
 })
-// 媒体地址之外同时删除本机房的作品页副本（画廊页面缓存，page-cache.ts）
-const invalidate: typeof invalidateMedia = async (work) => {
-  await Promise.all([invalidateMedia(work), deleteStudioWorkPageCache(edgeCache(), work)])
+// 媒体地址之外同时删除本机房的作品页副本（画廊页面缓存，page-cache.ts）；批量审核走 many
+const invalidateMany: typeof invalidateMedia.many = async (works) => {
+  await Promise.all([
+    invalidateMedia.many(works),
+    ...works.map((work) => deleteStudioWorkPageCache(edgeCache(), work)),
+  ])
 }
+const invalidate = Object.assign(
+  (work: Parameters<typeof invalidateMedia>[0]) => invalidateMany([work]),
+  { many: invalidateMany },
+) satisfies typeof invalidateMedia
 setStudioMediaInvalidator(invalidate)
 registerStudioDeletionSteps(invalidate)
 
