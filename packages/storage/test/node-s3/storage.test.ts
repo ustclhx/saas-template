@@ -1,3 +1,4 @@
+import { createServer } from 'node:http'
 import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -55,12 +56,21 @@ describe.each([true, false])('real S3 forcePathStyle=%s', (forcePathStyle) => {
     expect(get.status).toBe(200)
     expect(get.headers.get('content-disposition')).toBe('attachment')
     expect(await get.text()).toBe('original')
+    const full = await storage.read?.(objectKey)
+    if (!full) throw new Error('Expected a readable object')
+    expect(full).toMatchObject({ size: 8, etag: get.headers.get('etag') })
+    expect(await new Response(full.body).text()).toBe('original')
+    const partial = await storage.read?.(objectKey, { offset: 2, length: 3 })
+    if (!partial) throw new Error('Expected a readable object range')
+    expect(partial).toMatchObject({ size: 3, etag: full.etag })
+    expect(await new Response(partial.body).text()).toBe('igi')
     const anonymous = new URL(inline)
     anonymous.search = ''
     expect((await fixture.request(anonymous.href)).status).toBe(403)
     await storage.delete(objectKey)
     await storage.delete(objectKey)
     expect(await storage.head(objectKey)).toBeNull()
+    expect(await storage.read?.(objectKey)).toBeNull()
   })
 
   it('rejects replay and concurrent conditional PUT without changing original bytes', async () => {
@@ -92,6 +102,40 @@ describe.each([true, false])('real S3 forcePathStyle=%s', (forcePathStyle) => {
       winner,
     )
   })
+})
+
+it('keeps the S3 response alive while reading and disconnects on cancellation', async () => {
+  let disconnected = false
+  const server = createServer((_request, response) => {
+    response.on('close', () => {
+      disconnected = true
+    })
+    response.writeHead(200, { 'Content-Length': 65_536, ETag: '"stream"' })
+    // 只发送开头，取消之前连接须保持并允许调用方读到首块。
+    response.write('first')
+  })
+  server.setTimeout(2_000, (socket) => socket.destroy())
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  try {
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('Expected a local test listener')
+    const storage = createNodeStorage({
+      ...fixture.config,
+      endpoint: `http://127.0.0.1:${address.port}`,
+    })
+    const object = await storage.read?.(key('stream.png'))
+    if (!object) throw new Error('Expected a readable object')
+    const reader = object.body.getReader()
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe('first')
+    expect(disconnected).toBe(false)
+    await reader.cancel()
+    await expect.poll(() => disconnected, { timeout: 500 }).toBe(true)
+  } finally {
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve())
+      server.closeAllConnections()
+    })
+  }
 })
 
 it('propagates denied HEAD as a safe error rather than missing', async () => {
@@ -153,6 +197,7 @@ it('allows deterministic media keys and rejects traversal segments for every ope
       code: 'INVALID_FILE_KEY',
     })
     await expect(storage.head(invalid)).rejects.toMatchObject({ code: 'INVALID_FILE_KEY' })
+    await expect(storage.read?.(invalid)).rejects.toMatchObject({ code: 'INVALID_FILE_KEY' })
     await expect(storage.delete(invalid)).rejects.toMatchObject({ code: 'INVALID_FILE_KEY' })
   }
 })

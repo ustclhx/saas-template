@@ -156,6 +156,17 @@ describe('upload confirmation and quota', () => {
 })
 
 describe('file access and sharing', () => {
+  it('streams an object range with its returned length and HTTP ETag', async () => {
+    const row = await fixture({})
+    const partial = await storage.read?.(row.r2Key, { offset: 2, length: 3 })
+    if (!partial) throw new Error('Expected a readable object range')
+    expect(partial).toMatchObject({
+      size: 3,
+      etag: (await storageEnv.FILES.head(row.r2Key))?.httpEtag,
+    })
+    expect(await new Response(partial.body).text()).toBe('xtu')
+  })
+
   it('hides pending and cross-workspace files, permits ready downloads, and revokes a public token immediately', async () => {
     const row = await upload(2)
     await expect(

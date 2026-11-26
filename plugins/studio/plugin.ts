@@ -10,6 +10,8 @@ export default definePlugin({
     worker: 'src/worker/index.ts',
     webNode: 'src/node/web.ts',
   },
+  // 仅在启用跨机房清除时配置，缺失不影响插件可用性。
+  secrets: ['CF_PURGE_TOKEN', 'CF_ZONE_ID'],
   messages: 'messages',
   config: studioConfigSchema,
 })

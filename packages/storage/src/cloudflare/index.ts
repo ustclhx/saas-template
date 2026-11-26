@@ -21,6 +21,13 @@ export function createCloudflareStorage(env: StorageEnv): Storage {
       const object = await env.FILES.head(key)
       return object ? { size: object.size, mime: object.httpMetadata?.contentType ?? null } : null
     },
+    async read(key, range) {
+      const object = await env.FILES.get(key, range ? { range } : undefined)
+      if (!object) return null
+      const returnedRange = object.range
+      const length = returnedRange && 'length' in returnedRange ? returnedRange.length : undefined
+      return { body: object.body, etag: object.httpEtag, size: length ?? object.size }
+    },
     delete: (key) => withR2Retry('delete', () => env.FILES.delete(key)),
     presignUpload: (key, mime) => presignUpload(env, key, mime),
     presignDownload: (key, attachment) => presignDownload(env, key, attachment),
