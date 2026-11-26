@@ -1,0 +1,167 @@
+# Design
+
+## Context
+
+动机见 proposal.md。现状要点（2026-11-26 盘点）：
+
+- `plugins/media` 已有完整的私有生成链路：`submitWorkspaceMedia`（限流 → 事务内锁积分、权益、模型、参数校验、并发与存储检查 → 建 `ai_task` → 预扣 → Workflow），
+  输出持久化到私有 R2 桶 `FILES` 的 `ws/<ws>/ai/<taskId>/<index>`，`file` 行 `purpose = ai_output`、`sourceTaskId` 指向任务。
+  页面只有通用提交页 `/app/$slug/media/new` 与任务列表 / 详情；模型下拉显示原始 key。
+- 公开访问只有 `file.publicToken` 分享：`/api/files/shared/$token` 302 到 300 秒签名地址、`no-store`、无限流，不适合作为公开页素材。
+- 分享页 `/s/<type>/<token>` 按设计 noindex、不进站点地图，不能当 SEO 落地页。
+- 站点地图由 `getPublicPages()` 与 `projectPages()` 同步生成，没有数据库来源；robots 由 `features/seo/crawlers.ts` 生成。
+- 插件不能拥有表（表与迁移统一在 `packages/db`），admin-mcp 的工具是静态数组，插件不能注册。
+- 审核、举报、NSFW 检查都不存在；Turnstile 服务端校验在 `packages/auth/src/protection.ts`；原生限流绑定在生产不可靠（`docs/08-roadmap.md`）。
+- 删号 / 删空间清理通过 `registerDeletionStep` 与 jobs `workspace-cleanup`；`file` / `ai_task` 外键对空间为 `restrict`。
+- 公开页约束：public-site-availability（数据库不可达降级、插件绑定缺失只让该插件 503）、Neon 成本基线（无访客时可缩容到零、不为公开页轮询）。
+
+## Goals / Non-Goals
+
+**Goals:**
+
+- 衍生项目启用一个插件即可得到可上线的图片 / 视频生成站基础形态：创作、作品库、公开画廊、作品页、审核与举报。
+- 复用 media 的提交、计费、存储与 Workflow，不复制计费逻辑，不改变现有任务语义。
+- 公开页在零流量时不产生数据库访问，热点作品主要由边缘缓存承担。
+
+**Non-Goals:**
+
+- 点赞、评论、关注、作者主页、作品集、排行榜（后续按需求另提）。
+- 图片缩略图与格式转换（需要 Cloudflare Images 或额外处理管线）；首版直接输出原图，配合懒加载与 `sizes`。可选的 Image Resizing 放到风险缓解中，不在任务里实现。
+- 视频转码、封面抽帧；视频卡片用 `preload="metadata"` 显示首帧。
+- 自动 NSFW 分类模型：只提供发布前检查钩子，模板不内置分类。
+- 独立公开 R2 桶与自定义域名（使用者 2026-11-26 选择 Worker 路由方案）。
+- 多语言作品内容：作品是用户原文，作品页不做 hreflang 互链。
+
+## Decisions
+
+### 1. 一个 `studio` 插件，依赖 media
+
+`plugins/studio` 清单：`requires: { plugins: ['media'], features: ['billing','credits'] }`，`targets: ['cloudflare','node']`，
+配置段 `z.strictObject({ kinds?: ('image'|'video')[], publishDailyLimit?: number (默认 20), reportHideThreshold?: number (默认 3), galleryPageSize?: number (默认 24) })`。
+实际启用的模式 = `kinds`（默认两者）∩ `templateConfig.ai.image/video`。
+备选：两个插件 + 共享 gallery 包——多一层依赖与重复，使用者选择单插件。
+
+studio 不替换 media 的通用提交页与任务页：它们仍服务公开 API 用户与管理员调试；启用 studio 后 media 的「生成」导航项隐藏（media 的 `visible` 增加 `!plugins.studio` 判断），任务列表保留。
+
+### 2. 数据模型：作品只在发布时建行，「我的作品」是输出文件视图
+
+- 「我的作品」直接查询 `file`（`purpose = ai_output`、`deletedAt is null`、`sourceTaskId` 对应 `ai_task.status = succeeded`），左连接 `studio_work` 取公开状态。
+  不为每个输出预建行，避免与 media Workflow 耦合（media 不需要知道 studio）。
+- 新表 `studio_work`（`packages/db/src/schema/studio.ts`）：
+  `id` UUIDv7、`workspace_id`、`user_id`（发布者）、`file_id`（唯一，一个输出文件最多一个作品）、`task_id`、`kind`、`site`（发布时站点键，单站点为默认键）、
+  `slug`（唯一）、`title`、`prompt`（发布时快照，取任务输入中的用户提示词，不含预设文本）、`show_prompt`、`model_key`、`width` / `height` / `duration_ms`、
+  `visibility`（`public | private`）、`moderation`（`pending | approved | hidden | removed`）、`removal_reason`、`featured_at`、`version` int、
+  `report_count` int、`published_at`、`reviewed_at`、`reviewed_by`、时间戳。
+  索引：`(site, visibility, moderation, published_at desc)`、`(site, featured_at desc) where featured_at is not null`、`(workspace_id, id desc)`、`(moderation, published_at)`。
+- 新表 `studio_report`：`id`、`work_id`（cascade）、`reporter_key`（`u:<userId>` 或 `ip:<HMAC(ip, BETTER_AUTH_SECRET 派生键)>`）、`reason` 枚举（`sexual | violence | hate | copyright | spam | other`）、`note`（≤500）、
+  `resolved_at`、`resolution`、`created_at`；唯一 `(work_id, reporter_key)`。
+- 公开判定统一为一个 SQL 谓词 `visibility = 'public' and moderation in ('pending','approved') and 作者未封禁 and 文件未删除`，
+  画廊、作品页、媒体路由与站点地图共用（`approved` 另用于收录判断）。
+- 作者封禁：查询时连接 `user.banned`，不改作品行，解除封禁自动恢复。
+- 删除：用户删除作品 = 事务内删 `studio_work`（举报级联）、软删 `file` 并按现有存储删除流程删 R2 对象；
+  删号 / 删空间：`registerDeletionStep` 注册 studio 步骤，在 `file` / `ai_task` 清理之前删本空间 `studio_work`（级联举报），幂等。
+- `ai_model.display_name text null`（迁移 + 后台模型编辑器字段 + MCP `models.list` 返回、`models.update` 可写）。
+
+### 3. 创作页复用 media 提交
+
+media 插件导出 `submitWorkspaceMedia` 与参数表单组件给 studio（插件间依赖经 `@saas/plugin-media` 的显式导出入口；`requires.plugins` 保证同时启用）。
+studio 的 Server Function `submitStudio({ mode, modelKey, prompt, presetId?, params })`：
+校验模式启用 → 取模型 schema，要求有 `prompt` 字符串字段（没有的模型不出现在 studio 模型列表）→ 组合预设 → 调 `submitWorkspaceMedia`。
+页面结构：模式切换（图片 / 视频）、提示词主输入、模型选择（显示名）、参考图（schema 有 `format: file` 字段时显示）、预设、
+「更多设置」折叠区（参数表单去掉 prompt 与 file 字段）、预估积分与提交；下方为本次会话结果与最近作品条。
+轮询复用 media 的 `polling.ts`（页面隐藏时暂停）。提示词预设在项目自有 `plugins/studio/src/studio.project.ts`（登记为 template-sync 项目自有文件），默认空数组。
+
+### 4. 公开路由与 URL
+
+- 画廊 `/gallery`（`?kind=image|video`、`?sort=featured`、`?page=n`）；作品页 `/gallery/$slug`。
+- `slug = <ascii 化标题，最多 60 字符>-<作品 id 的 base36 后 8 位>`，标题无 ASCII 字符时只用后缀；标题改动不改 slug。
+- 路由按插件 `routes` 挂载在根；多站点项目中按请求站点过滤 `site`，非本站作品返回 404。
+- 公开页是 SSR 页面（不预渲染），`pageHead` 输出 title / description / canonical / OG；作品页 JSON-LD 为 `ImageObject` 或 `VideoObject`；
+  作品页 `noindex` 当且仅当 `moderation != approved`；画廊带筛选参数的地址 canonical 指向不带参数的第一页，`?page=n` 自身 canonical。
+- seo-internal-linking：画廊与作品页是数据库页面，不进入构建期链接图；作品页内链（返回画廊、相关作品）在页面内满足规范，
+  画廊入口加入页脚链接由项目决定（模板在 `site.config` 示例中注释说明）。
+
+### 5. 公开媒体：Worker 路由 + 版本化地址 + 边缘缓存
+
+- 地址 `/media/w/<workId>/<version>`。处理器挂在插件 `worker` 入口的 fetch 前置处理（静态资源之后、TanStack 之前），不进入 SSR。
+- 流程：先查 `caches.default`（键为规范化地址，不含 Range 头）；未命中则查库确认公开谓词与 `version` 一致 → `FILES.get(r2Key)` →
+  响应 `Cache-Control: public, max-age=3600, s-maxage=86400`、`ETag`、`Content-Type`、`Accept-Ranges: bytes`，`ctx.waitUntil(cache.put)`。
+  带 Range 的请求：缓存命中时由 `cache.match` 返回 206；未命中时直接 `FILES.get(key, { range })` 返回 206 并异步回填完整对象（对象 ≤ 100MB，与上传上限一致）。
+- 失效：取消发布 / 删除 / 下架 / 隐藏时 `version + 1`，并对旧地址执行本机房 `cache.delete`；
+  配置了 `CF_PURGE_TOKEN` 与 `CF_ZONE_ID`（可选密钥）时调用 Cloudflare 按 URL 清除。未配置时其他机房的旧副本最长 1 天后过期——
+  旧地址只在作品页曾公开期间被引用，属于可接受窗口；下架违法内容时文档要求配置清除凭据。
+- Node 目标：无 Cache API，同一处理器只设置相同的 Cache-Control，交给 Caddy / CDN；Range 由存储适配器的范围读取支持（自托管 S3 兼容 `GetObject` Range）。
+- 备选：独立公开桶 + 自定义域名（性能最好但需新建桶、域名与清理流程，使用者未选）；继续用 `publicToken` 302 签名地址（无法缓存、每次查库，否决）。
+
+### 6. 公开页缓存与降级
+
+- 画廊、作品页、`/sitemap-gallery.xml` 的响应由插件 worker 前置处理做边缘缓存：匿名请求（无会话 Cookie）按「地址 + 站点 + 部署版本」键缓存，
+  `s-maxage=300`（站点地图 3600）；有会话的请求不缓存（页头含用户菜单）。作品状态变化时对作品页本机房 `cache.delete`，其他机房 ≤ 5 分钟。
+- 数据库不可达：loader 捕获连接错误，渲染带站点导航的错误组件（`errorComponent` 复用公开页错误壳），状态 503 且不缓存。
+- 插件绑定缺失：`pluginUnavailable(runtime, 'studio')` 时这些地址返回 503，其他页面不受影响。
+- 无 Cron、无轮询；举报计数在写入时更新。
+
+### 7. 发布、审核状态机
+
+```
+(无作品行) --发布[检查放行]--> public/pending --管理员通过--> public/approved
+           --发布[检查转人工 或 检查异常]--> public/hidden
+           --发布[检查拒绝]--> 不建行，返回原因
+public/pending|approved --举报达阈值--> public/hidden --恢复--> 原状态（hidden 前若为 pending 则回 pending）
+任意 public/* --管理员下架(原因)--> removed（用户不可再发布、不可见）  --恢复--> pending
+public/* --用户取消发布--> private（moderation 保留；重新发布时 approved 保持 approved，hidden/removed 规则不变）
+```
+
+`hidden` 前的状态存 `moderation_before_hide`（小列）以支持恢复。每日发布上限按 `published_at` 在用户当天（UTC）计数，事务内检查。
+发布前检查：`plugins/studio/src/moderation.project.ts` 导出 `checkPublish({ title, prompt, kind, modelKey, workspaceId })` → `allow | review | reject(reason)`，项目自有、默认 `allow`，异常按 `review`。
+
+### 8. 后台审核
+
+- 路由 `/admin/studio`（插件 `routes/admin/studio.tsx`），DataTable + `features/admin/list.ts`，分栏：待审核（按 `published_at` 升序）、被举报（`report_count > 0 且有未处理举报`）、已隐藏、已下架。
+- 操作经 `adminAction`：`studio.work.approve`、`studio.work.remove`（必填原因）、`studio.work.restore`、`studio.work.feature`；用 `defineAdminActions('studio', …)` 登记 step-up 级别：
+  全部为 `never`（不涉及资金与账号，频繁操作；下架可恢复）。批量通过 / 下架（每次 ≤ 50）放 P1。
+- `adminNav`：分组 `operations`，`count` = 待审核 + 已隐藏数量（与 add-admin-step-up 的导航计数同一机制，按需 `import()` 加载，不进后台入口包闭包）。
+
+### 9. 举报
+
+`POST /api/studio/reports`：作品须公开可见；登录用户以 `u:<id>` 为键；未登录必须带 Turnstile token（复用 `packages/auth/src/protection.ts` 校验，未配置 Turnstile 时匿名举报关闭，只允许登录举报）。
+限流：`RL_SHARE_CARD` 同类的原生限流按 IP 10 次 / 分钟作为第一层；因原生绑定不可靠，第二层用唯一键去重 + 每作品每小时匿名举报上限（查询计数）兜底。
+插入成功（非重复）时事务内 `report_count + 1`，不同举报人数 ≥ 阈值且状态为 `pending|approved` 时转 `hidden` 并递增版本。
+
+### 10. 插件附加站点地图
+
+插件 `web` 契约增加 `sitemaps?: readonly string[]`；`robots()` 接收已启用插件的地址并逐行输出 `Sitemap:`。
+`/sitemap-gallery.xml` 列出本站点 `approved` 作品（按 `published_at` 倒序，单文件上限 50,000 条；超过时分页为 `/sitemap-gallery-<n>.xml`），含 `lastmod`。
+主站点地图不变，两者地址不重叠（画廊列表页 `/gallery` 本身放主站点地图：经 studio 的 `web` 契约提供静态公开页条目，由 `getPublicPages` 合并；若契约暂不支持则放画廊站点地图首条）。
+
+### 11. 管理员 MCP 插件工具（P2）
+
+admin-mcp 的 `adminTools` 改为「内置工具 + 已启用插件 `web` 入口导出的 `adminMcpTools`」，在生成的插件注册表中汇总，名称前缀校验在生成时失败。
+studio 提供 `studio.works.list`（read：按分栏、站点、分页）与 `studio.works.moderate`（write：approve / remove(reason) / restore / feature，`dryRun` 支持；不登记为敏感确认操作）。
+同 PR 更新 `docs/admin-mcp.md` 工具表。
+
+### 12. 设计稿
+
+一个 Design 画布覆盖：创作页（图片 / 视频、进行中、完成、余额不足、空态）、我的作品（网格、筛选、状态徽标、空态）、发布对话框、
+画廊（桌面 / 手机、筛选、空态、错误态）、作品页（图片 / 视频、待审核提示仅作者可见、举报对话框）、后台审核页。
+使用者确认后登记原型索引，再实现第 4 组以后的界面任务。
+
+## Risks / Trade-offs
+
+- [边缘缓存的旧副本在其他机房最长 1 天] → 版本化地址使新页面不再引用旧地址；违法内容下架时配置 `CF_PURGE_TOKEN` 主动清除，文档写明。
+- [原图直出导致画廊流量大、LCP 慢] → 懒加载、显式宽高防布局抖动、每页 24 条；后续可在 Cloudflare 开启 Image Resizing，用 `/cdn-cgi/image/width=…` 包装地址（单独提案）。
+- [先发后审期间不良内容公开可见] → noindex 不扩散到搜索引擎；举报阈值自动隐藏；发布前检查钩子；每日发布上限；封禁作者即时隐藏。
+- [匿名举报被滥用以隐藏他人作品] → Turnstile、按网络标识去重、每作品每小时匿名举报上限；隐藏后由管理员复核恢复。
+- [Workers 单请求内存与 100MB 视频] → 媒体路由流式返回 R2 body，不读入内存；回填缓存用 `tee()`。
+- [media 导出内部函数给 studio 造成耦合] → 只导出 `submitWorkspaceMedia`、模型查询与表单组件三处，加类型化入口与测试；media 不反向依赖 studio。
+- [画廊查询在库内增长后变慢] → 复合索引覆盖筛选与排序；分页用 `published_at, id` 游标（`?page=n` 映射为偏移上限 50 页，之后只提供「更早」游标链接）。
+
+## Migration Plan
+
+1. 迁移新增两张表与 `ai_model.display_name`（纯新增，可回滚为 drop）。
+2. 插件默认在模板启用；衍生项目经 template-sync 获得代码，但需在 `template.config.ts` 显式启用才生效（插件默认关闭语义不变）。
+3. 回滚：在配置中停用 studio 并重新部署即可下线所有页面与路由；已发布作品数据保留。
+
+## Open Questions
+
+- 画廊入口是否默认进页脚导航：由项目在启用后决定，不影响实现。
