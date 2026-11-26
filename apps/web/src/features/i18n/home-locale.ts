@@ -7,7 +7,7 @@ export const SIGNED_IN_KEY = 'saas:signed-in'
 /** 首页记住语言的标记：已登录用户在语言切换器中手动选择的语言 */
 export const HOME_LOCALE_KEY = 'saas:home-locale'
 /**
- * 登录信号的有效期：与 Better Auth 默认会话有效期（7 天，活跃时续期）一致；每次进入应用区刷新。
+ * 登录信号的有效期：固定 7 天，不长于默认会话保持期（auth.sessionDays，默认 30）；每次进入应用区刷新。
  * 会话在服务端被吊销或过期而本机没有退出时，信号最迟在此之后失效；期间最多误跳到所选语言首页，不涉及数据。
  */
 export const SIGNED_IN_TTL_MS = 7 * 24 * 60 * 60 * 1000

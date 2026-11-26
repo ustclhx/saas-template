@@ -148,4 +148,23 @@ describe('登录保持', () => {
     expect(method).toContain(`Max-Age=${45 * 86_400}`)
     expect(method).not.toContain(address)
   })
+
+  it('超过 updateAge 后 get-session（跳过 Cookie 缓存）把会话与 Cookie 有效期延长回 sessionDays', async () => {
+    const s = setup()
+    const address = users.email('renew')
+    expect((await s.post('/sign-up/email', signUpBody(address))).status).toBe(200)
+    const { cookie, token } = await signIn(s, address)
+    const expiresAt = async () =>
+      (await s.db.query.session.findFirst({ where: (t, { eq }) => eq(t.token, token) }))?.expiresAt
+    const before = await expiresAt()
+
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() })
+    vi.setSystemTime(Date.now() + 2 * 86_400_000)
+    const res = await s.get('/get-session?disableCookieCache=true', { cookie })
+    expect(res.status).toBe(200)
+    const after = await expiresAt()
+    expect((after?.getTime() ?? 0) - (before?.getTime() ?? 0)).toBeGreaterThan(86_400_000)
+    const renewed = res.headers.getSetCookie().find((c) => c.includes('session_token='))
+    expect(renewed).toContain(`Max-Age=${30 * 86_400}`)
+  })
 })

@@ -23,7 +23,8 @@ export function parseLastLoginMethod(cookieHeader: string | null): LastLoginMeth
   for (const part of cookieHeader.split(';')) {
     const [name, ...rest] = part.trim().split('=')
     if (name !== LAST_LOGIN_METHOD_COOKIE) continue
-    const value = decodeURIComponent(rest.join('='))
+    // 允许的方式名都不需要解码；不解码也避免畸形 % 序列抛错让登录页失败
+    const value = rest.join('=')
     return ['email', 'email-otp', 'magic-link', 'google', 'github'].includes(value)
       ? (value as LastLoginMethod)
       : null

@@ -24,7 +24,7 @@
 ### 跨运行时适配要点
 - 每个请求创建 `auth` 实例（`createAuth(env, db, deps)`），env 仅含标量配置；`deps.cache`、`deps.rateLimiter`、`deps.clientIp` 由可信入口注入。内部用本请求的 Drizzle facade（Drizzle adapter，provider `pg`）；Node facade 借用进程池，CF 使用请求客户端。
 - web 认证与空间入口通过 `getWebRuntime()` 获取认证、数据库和请求元数据；CF adapter 在 `apps/web/src/server.ts` 装配。Node 装配与持久邮件队列接入由后续任务负责。入口签名与其他模块迁移指引见 [平台能力与交接](platform-capabilities.md)。
-- **登录保持**（`template.config.ts` 的 `auth.sessionDays`，默认 30）：会话有效期为 `sessionDays` 天，同一浏览器期间内访问过就滚动续期（`updateAge` 1 天，即每天最多续一次），超过 `sessionDays` 天未访问才需重新登录。Better Auth `lastLoginMethod` 插件同期在 Cookie `better-auth.last_used_login_method` 中记住上次的登录方式（只存 `email`、`email-otp`、`magic-link`、`google`、`github` 等方式名，不存邮箱），登录页在服务端读取后给对应入口标出「上次使用」，邮箱类方式默认展开；退出登录后仍保留。管理员敏感操作仍按 `admin.stepUpMinutes` 要求重新验证。
+- **登录保持**（`template.config.ts` 的 `auth.sessionDays`，默认 30）：会话有效期为 `sessionDays` 天，同一浏览器期间内访问过就滚动续期（`updateAge` 1 天，即每天最多续一次）。应用读会话走 `requireFreshSession`（只查库不写回），续期由已登录页面挂载时的 `renewSession()`（`features/auth/auth-client.ts`，每 12 小时最多一次）调用 `get-session` 触发；超过 `sessionDays` 天未访问才需重新登录。Better Auth `lastLoginMethod` 插件同期在 Cookie `better-auth.last_used_login_method` 中记住上次的登录方式（只存 `email`、`email-otp`、`magic-link`、`google`、`github` 等方式名，不存邮箱），登录页在服务端读取后给对应入口标出「上次使用」，邮箱类方式默认展开；退出登录后仍保留。管理员敏感操作仍按 `admin.stepUpMinutes` 要求重新验证。
 - **会话读取的分层**（`packages/auth/src/session.ts`）：
   1. `session.cookieCache`（签名 Cookie，`maxAge` 5 分钟）：普通 Better Auth 会话读取可不读 KV、不查库；应用页面使用下述实时守卫。
   2. `secondaryStorage` 接 KV（绑定 `CACHE`，键前缀 `auth:`）：cookie 缓存过期后读 KV，减少跨地域查库；KV 未命中时回退查库。

@@ -52,6 +52,7 @@ describe('parseLastLoginMethod', () => {
     expect(parseLastLoginMethod('better-auth.last_used_login_method=email-otp')).toBe('email-otp')
     expect(parseLastLoginMethod('better-auth.last_used_login_method=%3Cscript%3E')).toBeNull()
     expect(parseLastLoginMethod('other=email')).toBeNull()
+    expect(parseLastLoginMethod('better-auth.last_used_login_method=%')).toBeNull()
     expect(parseLastLoginMethod(null)).toBeNull()
   })
 })
