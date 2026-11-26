@@ -3,6 +3,13 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./moderation": "./src/web/moderation.functions.ts",
+    "./moderation-input": "./src/web/moderation-input.ts",
+    "./moderation-queue.server": "./src/web/moderation-queue.server.ts",
+    "./moderation.server": "./src/web/moderation.server.ts",
+    "./work-invalidation": "./src/web/work-invalidation.ts"
+  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
