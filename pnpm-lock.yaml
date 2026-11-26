@@ -1135,6 +1135,9 @@ importers:
       '@saas/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@saas/credits':
+        specifier: workspace:*
+        version: link:../../packages/credits
       '@saas/db':
         specifier: workspace:*
         version: link:../../packages/db

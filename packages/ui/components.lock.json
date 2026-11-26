@@ -8,6 +8,7 @@
   "src/components/chat-markdown.tsx": "e3da4a5d09c8aee4c50a791d6d745e3ab69a6cb07185630bd355d6881ad4a64c",
   "src/components/chat-message.tsx": "f676062fa7f59fecc8f4ed7eaa7c75b42ebda609d42fbaad88cc4cfd01320704",
   "src/components/checkbox.tsx": "6fbfb51fed6dd5fe18565c068173a92fd12d702d396c7dc4fd8a0049ee60d066",
+  "src/components/collapsible.tsx": "e49042d36eaa972e128573b54f89d5780463ac29c0f863b46571563fb709a1e4",
   "src/components/combobox.tsx": "31692e7e893c90cd6365e738fd10e29c881b49fa2944fb572e15627a766a5417",
   "src/components/command-menu.tsx": "0ca02798703d0e97564a729c3c3c75798146d2c0551b5c2c23f962babf4d19fb",
   "src/components/credit-estimate.tsx": "a7407ca67bbbbdf53e2aa84b3cc049d418127f6c5e9eda1af9ef546ca2b30df9",
