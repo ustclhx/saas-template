@@ -18,6 +18,7 @@ const request = vi.hoisted(() => ({ headers: new Headers() }))
 const runtimeRef = vi.hoisted(() => ({ current: undefined as unknown }))
 vi.mock('@tanstack/react-start', () => ({
   createMiddleware: () => ({ server: () => ({}) }),
+  createServerOnlyFn: (fn: unknown) => fn,
   createServerFn: () => {
     const builder = {
       middleware: () => builder,

@@ -101,9 +101,9 @@ const settingsSet = defineAdminTool({
   adminAction: ({ key, value }) => ({ name: 'setting.update', input: { entries: [[key, value]] } }),
   async run(ctx, { key, value }) {
     const changes = await writeRuntimeSetting(ctx, key, value, ctx.dryRun)
+    ctx.afterCommit(() => invalidateRuntimeSettings(ctx.cache, [key]))
     return toolResult({ key, ...changes, dryRun: ctx.dryRun })
   },
-  afterCommit: ({ cache }, { key }) => invalidateRuntimeSettings(cache, [key]),
   // 只有改动密钥类设置时才走确认（setting.update 的判定），值加密保存，不进 payload / display
   async confirm(ctx, { key, value }) {
     const { definition } = await readRuntimeSetting(ctx.db, key)

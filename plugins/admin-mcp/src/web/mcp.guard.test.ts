@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { templateConfig } from '@web/server/template-config.ts'
 import { expect, it } from 'vitest'
 import { adminTools } from './mcp.ts'
 
@@ -43,9 +44,12 @@ it('文档工具表与 MCP 注册表的名称、scope、参数及可选性一致
   const documented = documentedTools()
   const registered = new Map(adminTools.map((tool) => [tool.spec.name, tool]))
   expect(registered.size, 'MCP 注册表含重复工具名').toBe(adminTools.length)
-  expect(documented.map(({ name }) => name).sort()).toEqual([...registered.keys()].sort())
+  const enabled = documented.filter(({ name }) =>
+    name.startsWith('studio.') ? Boolean(templateConfig.plugins.studio) : true,
+  )
+  expect(enabled.map(({ name }) => name).sort()).toEqual([...registered.keys()].sort())
 
-  for (const { name, scope, params } of documented) {
+  for (const { name, scope, params } of enabled) {
     const tool = registered.get(name)
     if (!tool) throw new Error(`MCP 注册表缺少工具 ${name}`)
 

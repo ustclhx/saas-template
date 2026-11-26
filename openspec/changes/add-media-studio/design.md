@@ -161,7 +161,9 @@ public/pending|approved|hidden --用户取消发布--> private（moderation 保�
 ### 11. 管理员 MCP 插件工具（P2）
 
 admin-mcp 的 `adminTools` 改为「内置工具 + 已启用插件 `web` 入口导出的 `adminMcpTools`」，在生成的插件注册表中汇总，名称前缀校验在生成时失败。
-studio 提供 `studio.works.list`（read：按分栏、站点、分页）与 `studio.works.moderate`（write：approve / remove(reason) / restore / feature，`dryRun` 支持；不登记为敏感确认操作）。
+studio 提供 `studio.works.list`（read：按分栏、站点、页码或游标）与 `studio.works.moderate`（write：approve / remove(reason) / restore / feature / unfeature，支持 `dryRun`，沿用后台的 `never` step-up 级别）。
+插件入口用 `createServerOnlyFn` 返回以工具名为键的对象字面量，生成器仅解析名称并校验前缀和重名。生成的 MCP 注册表只导入工具贡献者。工具调用与后台确认解析共用同一工具表，Studio 正式写入在审核事务提交后清除旧版本缓存。
+2026-11-26 核对官方文档。MCP 通过 `tools/list` 发现工具，名称在同一服务器内唯一，可含点号。TanStack Start 的 `createServerOnlyFn` 将实现限定在服务端，浏览器调用时抛错。[MCP 工具规范](https://modelcontextprotocol.io/specification/2025-11-25/server/tools#tool-names) · [TanStack Start 执行模型](https://tanstack.com/start/latest/docs/framework/react/guide/execution-model#server-only-execution)
 同 PR 更新 `docs/admin-mcp.md` 工具表。
 
 ### 12. 设计稿

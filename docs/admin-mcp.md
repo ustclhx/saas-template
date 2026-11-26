@@ -53,8 +53,10 @@ claude mcp add --transport http --scope local admin-mcp https://app.example.com/
 | `models.update` | `admin:write` | `{ key, displayName?, enabled?, paramsSchema?, pricing?, dryRun? }`。修改已有模型，至少提供一个可修改字段。显示名去掉首尾空白后最多 60 个字符，传空字符串或 `null` 清除，省略则保留现值。参数 schema 和定价分别传入完整 JSON 对象，结果包含各字段的新旧值。**定价改变时返回 `needs_owner_confirm`，经管理员确认后才写入**。只改显示名、启停或参数时直接写入。需启用计费。 |
 | `credits.adjust` | `admin:write` | `{ workspace, kind, amount?, expiresAt?, grantId?, reason, dryRun? }`。为空间增加积分（`kind: "grant"`，需 `amount`，`expiresAt` 为可选 ISO 时间）或收回一个有效批次的剩余积分（`kind: "revoke"`，需 `grantId`）。`workspace` 为空间 ID 或 slug。始终经管理员确认后执行。需启用积分。 |
 | `refunds.review` | `admin:write` | `{ requestId, decision, approvedAmount?, reviewNote?, dryRun? }`。审核待处理的退款申请：`approve`（`approvedAmount` 缺省为剩余可退金额，最小货币单位）或 `reject`（需 `reviewNote`，会通知用户）。通过与驳回都经管理员确认后执行。需启用计费。 |
+| `studio.works.list` | `admin:read` | `{ tab?, site?, page?, cursor? }`。读取 Studio 审核队列，含作品提示词、作者空间、审核状态和举报原因计数。`tab` 支持 `pending`（默认）、`reported`、`hidden`、`removed`。`site` 缺省时查看所有站点。`page` 从 1 开始，每页 50 条，也可保持同一 `tab` 与 `site` 并传入上次返回的 `nextCursor`。`page` 与 `cursor` 只能选一个。需启用 Studio。 |
+| `studio.works.moderate` | `admin:write` | `{ workId, action, reason?, dryRun? }`。按作品 UUID 执行 `approve`（通过）、`remove`（下架）、`restore`（恢复）、`feature`（精选）或 `unfeature`（取消精选）。`remove` 必传 `reason`，去掉首尾空白后须为 1–200 字符。`dryRun: true` 返回拟变更及审核后的版本。正式操作直接执行，采用后台相同的审核规则。需启用 Studio。 |
 
-写工具的能力限于表中的设置、模型、积分调整与退款审核。用户、空间、订单、积分流水、审计和指标工具提供只读访问。不提供封禁或删除用户、模拟登录、创建管理员令牌，以及退款审核以外的支付平台写操作。
+写工具可处理设置、模型、积分调整、退款审核及 Studio 作品审核。用户、空间、订单、积分流水、审计和指标工具提供只读访问。不提供封禁或删除用户、模拟登录、创建管理员令牌，以及退款审核以外的支付平台写操作。
 
 ### 预览、写入与读回
 
@@ -114,6 +116,8 @@ claude mcp add --transport http --scope local admin-mcp https://app.example.com/
 ### 查看审计
 
 在后台「审计日志」(`/admin/audit`) 按操作人和动作筛选。读工具、预览及被拒的工具调用使用 `admin.mcp.call`。设置写入使用 `setting.updated`，模型写入使用 `ai.model_updated`、`ai.model_enabled` 或 `ai.model_disabled`。展开「查看详情」核对令牌所属管理员、`via: "mcp"`、`tokenId`、工具名、脱敏参数摘要及结果。写入记录还包含与后台一致的变更前后值，模型参数 schema 以哈希摘要记录。
+
+Studio 审核成功写入对应的 `studio.work.approve`、`studio.work.remove`、`studio.work.restore`、`studio.work.feature` 或 `studio.work.unfeature` 审计。用作品 ID 查询目标，详情中的 `via: "mcp"` 和 `tokenId` 标明调用来源。
 
 需要确认的操作另有：
 
