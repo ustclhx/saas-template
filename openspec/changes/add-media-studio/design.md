@@ -92,15 +92,20 @@ studio 的 Server Function `submitStudio({ mode, modelKey, prompt, presetId?, pa
 ### 5. 公开媒体：Worker 路由 + 版本化地址 + 边缘缓存
 
 - 地址 `/media/w/<workId>/<version>`。处理器挂在插件 `worker` 入口的 fetch 前置处理（静态资源之后、TanStack 之前），不进入 SSR。
+- 单站点沿用 `APP_URL` 与 `default` 站点键。多站点用 `plugins.studio.sites` 声明站点键对应的规范来源，
+  请求来源决定站点键，读取与清除使用同一规范 URL。单站点的预览等别名可以直读，只有规范来源写入 Worker Cache API。
 - 流程：先查 `caches.default`（键为规范化地址，不含 Range 头）；未命中则查库确认公开谓词与 `version` 一致 → `FILES.get(r2Key)` →
   响应 `Cache-Control: public, max-age=3600, s-maxage=86400`、`ETag`、`Content-Type`、`Accept-Ranges: bytes`，`ctx.waitUntil(cache.put)`。
   带 Range 的请求：缓存命中时由 `cache.match` 返回 206；未命中时直接 `FILES.get(key, { range })` 返回 206 并异步回填完整对象（对象 ≤ 100MB，与上传上限一致）。
+  完整请求用 `tee()` 将同一对象流交给客户端和缓存。范围请求的完整对象回填使用独立的存储流。
+  2026-12-21 核对 Workers 的 `tee()` 对上游按较慢分支施加背压。[Workers ReadableStream](https://developers.cloudflare.com/workers/runtime-apis/streams/readablestream/#methods)
 - 失效：取消发布 / 删除 / 下架 / 隐藏时 `version + 1`，并对旧地址执行本机房 `cache.delete`；
   配置了 `CF_PURGE_TOKEN` 与 `CF_ZONE_ID`（可选密钥）时调用 Cloudflare 按 URL 清除。未配置时其他机房的旧副本最长 1 天后过期——
   旧地址只在作品页曾公开期间被引用，属于可接受窗口；下架违法内容时文档要求配置清除凭据。
 - Node 目标：无 Cache API，同一处理器只设置相同的 Cache-Control，交给 Caddy / CDN；Range 由存储适配器的范围读取支持（自托管 S3 兼容 `GetObject` Range）。
 - 备选：独立公开桶 + 自定义域名（性能最好但需新建桶、域名与清理流程，使用者未选）；继续用 `publicToken` 302 签名地址（无法缓存、每次查库，否决）。
 - 2026-11-26 核对 Cloudflare 文档：回填完整 200 响应时保留 `Content-Length`，命中查找保留请求的 `Range` 头，使 `cache.match()` 能返回 206。R2 `get` 支持按偏移、长度或后缀读取。`cache.delete()` 只作用于当前数据中心；按 URL 全局清除应使用实际缓存 URL，Cloudflare 不支持按 URL 清除 Worker 自定义缓存键。[Cache API](https://developers.cloudflare.com/workers/runtime-apis/cache/)、[R2 Workers API](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/#ranged-reads)、[缓存清除行为](https://developers.cloudflare.com/workers/reference/how-the-cache-works/)、[Purge API](https://developers.cloudflare.com/api/resources/cache/methods/purge/)
+- 2026-12-21 已核对官方文档。Worker 使用 `FixedLengthStream` 保留流式响应的 `Content-Length`。按 URL 清除使用带 `Cache Purge` 权限的 Zone 级 Bearer token，向 `POST /client/v4/zones/{zone_id}/purge_cache` 发送 JSON `{"files":["<完整规范 URL>"]}`，HTTP 成功且 `success: true` 表示请求已接受。自托管 S3 `GetObject` 接收单个 `Range`，返回实际片段的 `Content-Length` 与 ETag。[Workers Response](https://developers.cloudflare.com/workers/runtime-apis/response/#set-the-content-length-header)、[Cloudflare Purge API](https://developers.cloudflare.com/api/resources/cache/methods/purge/)、[S3 GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)
 
 ### 6. 公开页缓存与降级
 

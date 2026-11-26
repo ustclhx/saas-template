@@ -16,7 +16,7 @@ import { and, desc, eq, inArray, isNull, ne, or, type SQL, sql } from 'drizzle-o
 import { z } from 'zod'
 import type { StudioKind } from '../kinds.ts'
 
-export const DEFAULT_STUDIO_SITE = 'default'
+export { DEFAULT_STUDIO_SITE } from '../site.ts'
 
 export type StudioTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
 

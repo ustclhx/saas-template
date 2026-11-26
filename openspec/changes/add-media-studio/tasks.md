@@ -27,8 +27,8 @@
 
 ## 5. 公开媒体路由（P0，依赖 3）
 
-- [ ] 5.1 `/media/w/<workId>/<version>` 处理器（worker fetch 前置处理与 Node 等价实现）：公开谓词与版本校验、R2 流式返回、Range 206、ETag、Cache-Control、Cache API 回填；非公开 / 版本不符 404。单元测试覆盖命中、未命中、Range、旧版本
-- [ ] 5.2 失效：状态变化时本机房 `cache.delete`；可选 `CF_PURGE_TOKEN` / `CF_ZONE_ID` 按 URL 清除（第三方登记表与 `scripts/third-party-deps.json` 无新 SDK，仅登记 API 用法与官方文档链接）。单元测试用替身确认调用；`docs/06-ai.md` studio 章节写明缓存窗口与清除凭据
+- [x] 5.1 `/media/w/<workId>/<version>` 处理器（worker fetch 前置处理与 Node 等价实现）：公开谓词与版本校验、R2 流式返回、Range 206、ETag、Cache-Control、Cache API 回填；非公开 / 版本不符 404。单元测试覆盖命中、未命中、Range、旧版本
+- [x] 5.2 失效：状态变化时本机房 `cache.delete`；可选 `CF_PURGE_TOKEN` / `CF_ZONE_ID` 按 URL 清除（第三方登记表与 `scripts/third-party-deps.json` 无新 SDK，仅登记 API 用法与官方文档链接）。单元测试用替身确认调用；`docs/06-ai.md` studio 章节写明缓存窗口与清除凭据
 
 ## 6. 公开画廊与作品页（P0，依赖 3、4、5）
 

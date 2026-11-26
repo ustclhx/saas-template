@@ -7,4 +7,4 @@ export {
 export * from './files.ts'
 export * from './media.ts'
 export * from './share-cards.ts'
-export type { Storage } from './storage.ts'
+export type { Storage, StorageReadRange, StorageReadResult } from './storage.ts'
