@@ -1,4 +1,5 @@
 import {
+  type AvailableModel,
   createMediaFault,
   createTaskMediaProvider,
   dbModelStore,
@@ -165,6 +166,12 @@ export type WorkspaceMediaDeps = Omit<MediaHttpDeps, 'auth' | 'rateLimiter'> & {
   callbackOrigin: string
   /** API key 入口不提供此授权，即使 key 由平台管理员创建。 */
   faultAccess?: FaultAccessContext
+  /** 使用事务内解析出的模型处理调用方的参数，随后仍走媒体 schema 校验。 */
+  prepareParams?: (
+    model: AvailableModel,
+    params: Record<string, unknown>,
+  ) => Record<string, unknown>
+  validateInputFile?: (file: { mime: string }, field: string) => void
 }
 
 /** 幂等键查重的时间范围：agent 工具的重放发生在同一轮的恢复中，远小于此范围 */
@@ -193,7 +200,13 @@ async function findIdempotentTask(
  * 返回它，不再限流、预扣或启动工作流；查重在空间锁内完成，并发重放也只创建一个任务。
  */
 export async function submitWorkspaceMedia(
-  input: { modelKey: string; params: Record<string, unknown>; idempotencyKey?: string | undefined },
+  input: {
+    modelKey: string
+    params: Record<string, unknown>
+    idempotencyKey?: string | undefined
+    /** 服务端提供的原始用户提示词，与送给模型的参数分开保存。 */
+    userPrompt?: string
+  },
   resolved: ResolvedWorkspace,
   deps: WorkspaceMediaDeps,
 ): Promise<AiTask> {
@@ -244,7 +257,8 @@ export async function submitWorkspaceMedia(
       throw new AppError('MEDIA_PRICING_INVALID', 'Media model pricing is not supported', {
         status: 503,
       })
-    const validated = validateMediaParams(model.paramsSchema, input.params, model.kind)
+    const params = deps.prepareParams ? deps.prepareParams(model, input.params) : input.params
+    const validated = validateMediaParams(model.paramsSchema, params, model.kind)
     const acceptanceFault = createMediaFault(model, deps.faultAccess)
     if (acceptanceFault?.mode.startsWith('fal-')) {
       if (
@@ -274,6 +288,7 @@ export async function submitWorkspaceMedia(
       const uploaded = await tenant.findById(file, validated.params[name] as string)
       if (uploaded.status !== 'ready' || uploaded.deletedAt)
         throw new AppError('FILE_NOT_READY', 'Input file is not confirmed')
+      deps.validateInputFile?.(uploaded, name)
     }
     const taskId = newId()
     const amount = estimateCredits(model.pricing, {
@@ -293,6 +308,7 @@ export async function submitWorkspaceMedia(
         deadlineAt: new Date(Date.now() + (acceptanceFault?.deadlineMs ?? MEDIA_TASK_TTL_MS)),
         input: {
           ...validated,
+          ...(input.userPrompt === undefined ? {} : { userPrompt: input.userPrompt }),
           ...(idempotencyKey ? { idempotencyKey } : {}),
           providerModelId: model.providerModelId,
           storageBytes,

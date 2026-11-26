@@ -68,9 +68,13 @@ studio 不替换 media 的通用提交页与任务页：它们仍服务公开 AP
 media 插件导出 `submitWorkspaceMedia` 与参数表单组件给 studio（插件间依赖经 `@saas/plugin-media` 的显式导出入口；`requires.plugins` 保证同时启用）。
 studio 的 Server Function `submitStudio({ mode, modelKey, prompt, presetId?, params })`：
 校验模式启用 → 取模型 schema，要求有 `prompt` 字符串字段（没有的模型不出现在 studio 模型列表）→ 组合预设 → 调 `submitWorkspaceMedia`。
+提交事务以同一份模型配置校验模式与参数；参考图须是当前空间已确认、未删除的图片文件。选中的预设文本另起一行附加，
+合成后的文本进入 `ai_task.input.params.prompt`，原始用户文本独立保存为 `ai_task.input.userPrompt`，供发布时生成提示词快照。
 页面结构：模式切换（图片 / 视频）、提示词主输入、模型选择（显示名）、参考图（schema 有 `format: file` 字段时显示）、预设、
 「更多设置」折叠区（参数表单去掉 prompt 与 file 字段）、预估积分与提交；下方为本次会话结果与最近作品条。
 轮询复用 media 的 `polling.ts`（页面隐藏时暂停）。提示词预设在项目自有 `plugins/studio/src/studio.project.ts`（登记为 template-sync 项目自有文件），默认空数组。
+
+- 2026-11-26 核对官方文档：TanStack Start 在 Server Function 进入处理器前执行输入校验，客户端通过 RPC 调用。Cloudflare Workflow 的 `create({ id, params })` 可绑定任务 ID 与输入；R2 预签名 PUT 可签入 `Content-Type`。Studio 继续复用 Media 的工作流和上传确认链路。[TanStack Server Functions](https://tanstack.com/start/latest/docs/framework/react/guide/server-functions#parameters--validation)、[Cloudflare Workflows Workers API](https://developers.cloudflare.com/workflows/build/workers-api/#create)、[Cloudflare R2 预签名 URL](https://developers.cloudflare.com/r2/api/s3/presigned-urls/#best-practices)
 
 ### 4. 公开路由与 URL
 

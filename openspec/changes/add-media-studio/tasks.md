@@ -10,9 +10,9 @@
 
 ## 2. 创作提交（P0，依赖 1）
 
-- [ ] 2.1 media 插件显式导出 `submitWorkspaceMedia`、可用模型查询与参数表单组件（`@saas/plugin-media` 导出入口），media 不依赖 studio。验收：`pnpm check:deps`、media 现有测试通过
-- [ ] 2.2 `submitStudio` Server Function：模式启用校验、只接受 schema 含 `prompt` 字段的模型、预设组合（作品快照只记用户提示词）、参考图字段校验，调用 `submitWorkspaceMedia`。集成测试覆盖：正常提交与预扣、模式未启用 404、无 prompt 字段的模型被拒、缺参考图、余额不足、只读成员被拒
-- [ ] 2.3 `studio.project.ts` 提示词预设（默认空）与 `moderation.project.ts` 发布前检查（默认 allow），登记为 template-sync 项目自有文件（merge.mjs、template-release.mjs、create-project 测试清单）与 `docs/02-project-structure.md`。验收：template-sync 与 create-project 相关测试通过
+- [x] 2.1 media 插件显式导出 `submitWorkspaceMedia`、可用模型查询与参数表单组件（`@saas/plugin-media` 导出入口），media 不依赖 studio。验收：`pnpm check:deps`、media 现有测试通过
+- [x] 2.2 `submitStudio` Server Function：模式启用校验、只接受 schema 含 `prompt` 字段的模型、预设组合（作品快照只记用户提示词）、参考图字段校验，调用 `submitWorkspaceMedia`。集成测试覆盖：正常提交与预扣、模式未启用 404、无 prompt 字段的模型被拒、缺参考图、余额不足、只读成员被拒
+- [x] 2.3 `studio.project.ts` 提示词预设（默认空）与 `moderation.project.ts` 发布前检查（默认 allow），登记为 template-sync 项目自有文件（merge.mjs、template-release.mjs、create-project 测试清单）与 `docs/02-project-structure.md`。验收：template-sync 与 create-project 相关测试通过
 
 ## 3. 作品生命周期服务（P0，依赖 1）
 
