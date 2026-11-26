@@ -39,6 +39,8 @@ vi.mock('../src/server/runtime.ts', () => ({ getWebRuntime: () => runtimeRef.cur
 
 import { createAdminApiTokenFn } from '../../../plugins/admin-mcp/src/web/api-tokens.functions.ts'
 import { confirmAdminConfirmation } from '../../../plugins/admin-mcp/src/web/confirmations.functions.ts'
+// 在用例计时前装载真实工具表。确认入口仍会加载同一个模块并执行完整守卫。
+import '../../../plugins/admin-mcp/src/web/tools/index.ts'
 import { type AdminActionContext, runAdminAction } from '../src/features/admin/action.ts'
 import {
   getAdminActionDefinition,

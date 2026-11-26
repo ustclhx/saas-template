@@ -126,13 +126,14 @@ backups/backup-data/、releases/release-state/、state/.state/ 等运行目录�
 无论成功或失败均清理测试目录；不向源树注入测试密钥。
 
 <!-- template-only:start -->
-完整副本验证使用 `pnpm test:create-project:verify`，需要已合并的 `media` 和 `agents` 插件。
-矩阵覆盖 Cloudflare 显式选择 `--plugins agents`（保留默认 AI 开关）、Cloudflare 仅关闭计费（自动关闭 AI 与两个插件，保留积分）、selfhost 默认，以及从默认 selfhost 副本
-再次生成的全关组合（计费、积分、营销、i18n、AI 与插件）。四个副本逐文件检查模板原名称与排除目录，
-安装依赖并运行 check、typecheck、单元测试和各自部署目标的构建。两个 Cloudflare 副本验证无凭据的 staging plan
-报告缺凭据并退出 1，已跟踪文件无变化。Cloudflare 关闭计费的副本验证
-web 的 `agents` Durable Object 绑定与迁移条目已移除。全关 selfhost 副本还运行 Cloudflare web 构建，
-两个关闭 AI 的副本都检查构建产物中已移除媒体和 `agents` 的执行代码。selfhost 默认副本也检查 Node 产物已排除 `agents`。矩阵还验证 `--target selfhost --plugins agents` 被拒绝。验收结束后清理临时目录。
+完整副本验证使用 `pnpm test:create-project:verify`，覆盖五种配置：Cloudflare 显式选择 `--plugins studio` 或
+`--plugins agents`（均连带 `media`）、Cloudflare 仅关闭计费（自动关闭 AI，保留积分）、selfhost 默认插件，
+以及从 selfhost 副本再次生成的全关组合（计费、积分、营销、i18n、AI 与插件）。各副本检查模板原名称与排除目录，
+安装依赖并运行 check、typecheck、单元测试和部署目标的构建。Cloudflare 副本验证无凭据的 staging plan 报告缺凭据、
+退出 1 且保持已跟踪文件未变。selfhost 默认插件副本配置 `plugins.studio.kinds: ['image']`，验证图片创作与导航，
+并检查 Node 产物排除 `agents`。停用 Studio 的副本检查路由与产物中没有 Studio 入口和模块。关闭 AI 的副本检查媒体与
+`agents` 执行代码已移除，全关 selfhost 副本另运行 Cloudflare web 构建。矩阵还验证 `--target selfhost --plugins agents`
+被拒绝。验收结束后清理临时目录。
 独立只读 `selfhost-features.yml` 从真实源生成全关副本、构建镜像并在空卷 Compose 启动，
 实际验证 SSR/静态资源、登录/空间、关闭入口、成功 heartbeat 与完整 SHA。
 完整副本矩阵单独运行，避免日常边界测试重复安装完整依赖。

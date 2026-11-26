@@ -7,18 +7,118 @@ import { dirname, join, relative } from 'node:path'
 import { test } from 'node:test'
 import { scanArtifacts } from './plugins/check-artifacts.mjs'
 import { GENERATED_FILES } from './plugins/plugins.mjs'
+import { configCall, staticCollection } from './plugins/static-config.mjs'
 import { parseJsonc } from './production/check-wrangler-envs.mjs'
 
 const generatorSkip = existsSync(new URL('./create-project.mjs', import.meta.url))
   ? false
   : '衍生项目已移除 scripts/create-project.mjs，跳过真实生成副本验收'
-const { createProject, verifyProject } = generatorSkip ? {} : await import('./create-project.mjs')
+const { createProject, postprocessProject, verifyProject } = generatorSkip
+  ? {}
+  : await import('./create-project.mjs')
+
+const studioRoutes = [
+  '/app/$slug/studio/',
+  '/app/$slug/studio/works',
+  '/admin/studio',
+  '/gallery/',
+  '/gallery/$slug',
+  '/gallery/remix/$slug',
+  '/api/studio/reports',
+  '/sitemap-gallery.xml',
+  '/sitemap-gallery-{$page}.xml',
+]
+const imageStudioTest = 'apps/web/src/studio-generated.test.ts'
+
+async function configureImageStudio(target) {
+  const path = join(target, 'template.config.ts')
+  const source = await readFile(path, 'utf8')
+  const plugins = configCall(source, 'defineTemplateConfig').members.find(
+    ({ key }) => key === 'plugins',
+  )
+  const studio = staticCollection(source, plugins.valueStart).members.find(
+    ({ key }) => key === 'studio',
+  )
+  assert.ok(studio, 'selfhost 副本缺少 studio 配置')
+  await writeFile(
+    path,
+    `${source.slice(0, studio.valueStart)}{ kinds: ['image'] }${source.slice(studio.end)}`,
+  )
+
+  // 只在临时副本验证真实配置、插件导航和创作路由，无需数据库或模型服务。
+  await writeFile(
+    join(target, imageStudioTest),
+    `import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { expect, it } from 'vitest'
+import { Route as Studio } from '../../../plugins/studio/routes/app/$slug/studio/index.tsx'
+import { Route as Works } from '../../../plugins/studio/routes/app/$slug/studio/works.tsx'
+import { enabledStudioKinds } from '../../../plugins/studio/src/kinds.ts'
+import { StudioView } from '../../../plugins/studio/src/web/ui/studio-view.tsx'
+import { resolveAppNav } from './features/app-shell/registry.ts'
+import { m } from './paraglide/messages.js'
+import { templateConfig } from './server/template-config.ts'
+
+const kinds = enabledStudioKinds(templateConfig)
+
+it('只开放图片创作，保留 Studio 与媒体任务导航', () => {
+  expect(templateConfig.ai.video).toBe(true)
+  expect(kinds).toEqual(['image'])
+  const nav = resolveAppNav({ role: 'owner', readOnly: false, isPersonal: true }).flatMap(
+    ({ items }) => items.map(({ id }) => id),
+  )
+  expect(nav).toEqual(expect.arrayContaining(['studio', 'studio-works', 'media-tasks']))
+  expect(nav).not.toContain('media')
+
+  const { beforeLoad, validateSearch } = Studio.options
+  if (!beforeLoad || typeof validateSearch !== 'function')
+    throw new Error('Studio route guard missing')
+  const openStudio = (mode: string) =>
+    beforeLoad({ search: validateSearch({ mode }) } as Parameters<typeof beforeLoad>[0])
+  expect(() => openStudio('image')).not.toThrow()
+  expect(() => openStudio('video')).toThrow(expect.objectContaining({ isNotFound: true }))
+
+  const worksSearch = Works.options.validateSearch
+  if (typeof worksSearch !== 'function') throw new Error('Studio works search missing')
+  expect(worksSearch({ kind: 'image' })).toHaveProperty('kind', 'image')
+  expect(worksSearch({ kind: 'video' })).toHaveProperty('kind', undefined)
+})
+
+it('创作页 SSR 显示图片表单，无视频模式切换', () => {
+  const html = renderToStaticMarkup(createElement(StudioView, {
+    page: {
+      workspaceId: '01900000-0000-7000-8000-000000000001',
+      workspaceSlug: 'ws',
+      readOnly: false,
+      models: [{
+        key: 'image-model',
+        displayName: 'Image model',
+        kind: 'image',
+        pricing: { mode: 'per_call', credits: 4 },
+        paramsSchema: JSON.stringify({ type: 'object', properties: { prompt: { type: 'string' } } }),
+      }],
+      files: [],
+      kinds,
+      presets: [],
+      balance: { available: 100, debt: 0 },
+    },
+    recent: null,
+    search: {},
+  }))
+  expect(html).toContain(m.studio_prompt_placeholder_image())
+  expect(html).not.toContain('role="tablist"')
+  expect(html).not.toContain(m.studio_prompt_placeholder_video())
+})
+`,
+  )
+  await postprocessProject(target)
+}
 
 // 显式运行的端到端自检：真正安装与检查完整副本，避免日常边界测试反复安装依赖。
 test('真实副本通过 check、类型检查、单元测试和目标构建', {
   skip: generatorSkip,
 }, async (t) => {
-  for (const id of ['media', 'agents']) {
+  for (const id of ['media', 'agents', 'studio']) {
     assert.ok(
       existsSync(new URL(`../plugins/${id}/plugin.ts`, import.meta.url)),
       `验收需要已合并的 ${id} 插件`,
@@ -58,7 +158,14 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
     Date.now().toString(36),
   ].join('_')
   let selfhostSource
-  for (const { id, label, expectedPlugins, ...scenario } of [
+  for (const { id, label, expectedPlugins, imageStudio, ...scenario } of [
+    {
+      id: 'cf-studio',
+      label: 'Cloudflare 显式选择 --plugins studio',
+      locale: 'en',
+      plugins: 'studio',
+      expectedPlugins: ['media', 'studio'],
+    },
     {
       id: 'cf',
       label: 'Cloudflare 显式选择 --plugins agents',
@@ -75,11 +182,12 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
     },
     {
       id: 'selfhost',
-      label: 'selfhost 默认（blue 主题）',
+      label: 'selfhost 默认插件（Studio 仅图片、blue 主题）',
       target: 'selfhost',
       locale: 'zh',
       theme: 'blue',
       name: 'product-resources',
+      imageStudio: true,
       expectedPlugins: ['admin-mcp', 'media', 'studio'],
     },
     {
@@ -297,8 +405,8 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
       }
       assert.deepEqual(result.options.plugins, expectedPlugins)
       // 显式 --plugins 覆盖模板默认插件，图片或视频照常启用 media。
-      if (id === 'cf')
-        assert.deepEqual(result.options.defaultPlugins, ['admin-mcp', ...expectedPlugins, 'studio'])
+      if (scenario.plugins && cloudflareBuild)
+        assert.deepEqual(result.options.defaultPlugins, ['admin-mcp', 'agents', 'media', 'studio'])
       for (const app of ['web', 'jobs']) {
         const wrangler = parseJsonc(
           await readFile(join(result.target, `apps/${app}/wrangler.jsonc`), 'utf8'),
@@ -322,6 +430,7 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
       }
       // pnpm check 用 Git 索引枚举文件；保留无提交副本再次生成的测试条件。
       const gitOptions = { cwd: result.target }
+      if (imageStudio) await configureImageStudio(result.target)
       execFileSync('git', ['init', '--quiet'], gitOptions)
       try {
         execFileSync('git', ['add', '--all'], gitOptions)
@@ -350,9 +459,24 @@ test('真实副本通过 check、类型检查、单元测试和目标构建', {
         verifyProject(result.target, { nodeBuild, cloudflareBuild, webBuild })
       } finally {
         await rm(join(result.target, '.git'), { recursive: true, force: true })
+        if (imageStudio) await rm(join(result.target, imageStudioTest), { force: true })
+      }
+      const studioEnabled = expectedPlugins.includes('studio')
+      const routeTree = await readFile(join(result.target, 'apps/web/src/routeTree.gen.ts'), 'utf8')
+      for (const route of studioRoutes) {
+        assert.equal(routeTree.includes(`'${route}'`), studioEnabled, `Studio 路由 ${route}`)
       }
       const excludedMarkers = []
-      if (!expectedPlugins.includes('studio')) excludedMarkers.push('/sitemap-gallery.xml')
+      if (!studioEnabled) {
+        excludedMarkers.push(
+          ...studioRoutes,
+          'plugins/studio/',
+          'handleStudioMedia',
+          '/media/w/',
+          'studio.works.list',
+          'studio.works.moderate',
+        )
+      }
       if (!expectedPlugins.includes('media')) {
         excludedMarkers.push(
           'AiMediaWorkflow',

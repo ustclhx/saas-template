@@ -1,3 +1,4 @@
+import { templateConfig } from '@web/server/template-config.ts'
 import { describe, expect, it } from 'vitest'
 import { galleryHead, type WorkHeadInput, workHead } from './gallery-seo.ts'
 import {
@@ -7,6 +8,11 @@ import {
 } from './sitemap.server.ts'
 
 const appUrl = 'https://example.com'
+const { defaultLocale, enabled, locales } = templateConfig.i18n
+const galleryLocales = enabled ? locales : [defaultLocale]
+const otherLocale = galleryLocales.find((locale) => locale !== defaultLocale) ?? defaultLocale
+const galleryUrl = (locale: string, origin = appUrl) =>
+  `${origin}${locale === defaultLocale ? '' : `/${locale}`}/gallery`
 const canonical = (head: { links: readonly { rel: string; href: string }[] }) =>
   head.links.find((link) => link.rel === 'canonical')?.href
 const meta = (head: { meta: readonly Record<string, unknown>[] }, key: string) =>
@@ -15,21 +21,29 @@ const jsonLd = (head: { scripts: readonly { children: string }[] }) =>
   JSON.parse(head.scripts[0]?.children ?? '{}')
 
 describe('画廊 head', () => {
-  const head = (search: Parameters<typeof galleryHead>[0]['search'], locale = 'en') =>
-    galleryHead({ search, locale, appUrl, title: 'Gallery', description: 'd' })
+  const head = (
+    search: Parameters<typeof galleryHead>[0]['search'],
+    locale: string = defaultLocale,
+  ) => galleryHead({ search, locale, appUrl, title: 'Gallery', description: 'd' })
 
   it('无参数第一页 canonical 指向自身并输出 hreflang', () => {
-    const h = head({})
-    expect(canonical(h)).toBe('https://example.com/gallery')
-    expect(h.links.some((link) => link.rel === 'alternate')).toBe(true)
-    expect(canonical(head({}, 'zh'))).toBe('https://example.com/zh/gallery')
+    for (const locale of galleryLocales) {
+      const h = head({}, locale)
+      expect(canonical(h)).toBe(galleryUrl(locale))
+      for (const language of galleryLocales)
+        expect(h.links).toContainEqual({
+          rel: 'alternate',
+          hrefLang: language,
+          href: galleryUrl(language),
+        })
+    }
   })
 
   it('筛选地址指向无参数第一页，?page=n 指向自身且不输出 hreflang', () => {
-    expect(canonical(head({ kind: 'video', page: 2 }))).toBe('https://example.com/gallery')
+    expect(canonical(head({ kind: 'video', page: 2 }))).toBe(galleryUrl(defaultLocale))
     const paged = head({ page: 3 })
-    expect(canonical(paged)).toBe('https://example.com/gallery?page=3')
-    expect(meta(paged, 'og:url')).toBe('https://example.com/gallery?page=3')
+    expect(canonical(paged)).toBe(`${galleryUrl(defaultLocale)}?page=3`)
+    expect(meta(paged, 'og:url')).toBe(`${galleryUrl(defaultLocale)}?page=3`)
     expect(paged.links.some((link) => link.rel === 'alternate')).toBe(false)
   })
 })
@@ -50,7 +64,7 @@ describe('作品页 head', () => {
       moderation: 'approved',
       ...overrides,
     },
-    locale: 'zh',
+    locale: otherLocale,
     appUrl,
     description: 'desc',
   })
@@ -58,11 +72,9 @@ describe('作品页 head', () => {
   it('审核通过：无 noindex，canonical 为默认语言地址，分享图为作品本身，ImageObject', () => {
     const head = workHead(input())
     expect(meta(head, 'robots')).toBeUndefined()
-    expect(canonical(head)).toBe('https://example.com/gallery/misty-lake-abc12345')
+    expect(canonical(head)).toBe(`${appUrl}/gallery/misty-lake-abc12345`)
     expect(head.links.some((link) => link.rel === 'alternate')).toBe(false)
-    expect(meta(head, 'og:image')).toBe(
-      'https://example.com/media/w/0190a3f0-0000-7000-8000-000000000001/2',
-    )
+    expect(meta(head, 'og:image')).toBe(`${appUrl}/media/w/0190a3f0-0000-7000-8000-000000000001/2`)
     const data = jsonLd(head)
     expect(data['@type']).toBe('ImageObject')
     expect(data.contentUrl).toBe(meta(head, 'og:image'))
@@ -86,6 +98,7 @@ describe('作品页 head', () => {
 
 describe('多站点地址', () => {
   it('作品页的 canonical、og 与结构化数据使用作品所在站点的来源', () => {
+    const origin = 'https://east.example.com'
     const head = workHead({
       work: {
         id: '0190a3f0-0000-7000-8000-000000000001',
@@ -100,8 +113,8 @@ describe('多站点地址', () => {
         publishedAt: '2026-11-26T00:00:00.000Z',
         moderation: 'approved',
       },
-      locale: 'en',
-      appUrl: 'https://east.example.com',
+      locale: otherLocale,
+      appUrl: origin,
       description: 'd',
     })
     const urls = [
@@ -111,18 +124,18 @@ describe('多站点地址', () => {
       jsonLd(head).contentUrl,
       jsonLd(head).url,
     ]
-    for (const url of urls) expect(String(url)).toMatch(/^https:\/\/east\.example\.com\//)
+    for (const url of urls) expect(new URL(String(url)).origin).toBe(origin)
     expect(
       canonical(
         galleryHead({
           search: {},
-          locale: 'en',
-          appUrl: 'https://east.example.com',
+          locale: defaultLocale,
+          appUrl: origin,
           title: 't',
           description: 'd',
         }),
       ),
-    ).toBe('https://east.example.com/gallery')
+    ).toBe(galleryUrl(defaultLocale, origin))
   })
 })
 
@@ -134,19 +147,20 @@ describe('画廊站点地图', () => {
     expect(gallerySitemapShards(10_000_000)).toBe(10)
     const index = gallerySitemapIndexXml(appUrl, 2)
     expect(index).toContain('<sitemapindex')
-    expect(index).toContain('<loc>https://example.com/sitemap-gallery-1.xml</loc>')
-    expect(index).toContain('<loc>https://example.com/sitemap-gallery-2.xml</loc>')
+    expect(index).toContain(`<loc>${appUrl}/sitemap-gallery-1.xml</loc>`)
+    expect(index).toContain(`<loc>${appUrl}/sitemap-gallery-2.xml</loc>`)
   })
 
   it('第一片首条为各语言画廊列表页，作品带 lastmod；后续分片不含列表页', () => {
     const works = [{ slug: 'a-1', lastmod: new Date('2026-11-26T01:02:03Z') }]
+    const workLocation = `<loc>${appUrl}/gallery/a-1</loc>`
     const first = gallerySitemapXml({ origin: appUrl, page: 1, works })
-    expect(first.indexOf('<loc>https://example.com/gallery</loc>')).toBeLessThan(
-      first.indexOf('<loc>https://example.com/gallery/a-1</loc>'),
-    )
-    expect(first).toContain('<loc>https://example.com/zh/gallery</loc>')
-    expect(first).toContain('<lastmod>2026-11-26T01:02:03.000Z</lastmod>')
+    expect(first.match(/<loc>[^<]+<\/loc>/g)).toEqual([
+      ...galleryLocales.map((locale) => `<loc>${galleryUrl(locale)}</loc>`),
+      workLocation,
+    ])
+    expect(first).toContain(`${workLocation}<lastmod>2026-11-26T01:02:03.000Z</lastmod>`)
     const second = gallerySitemapXml({ origin: appUrl, page: 2, works })
-    expect(second).not.toContain('<loc>https://example.com/gallery</loc>')
+    expect(second.match(/<loc>[^<]+<\/loc>/g)).toEqual([workLocation])
   })
 })

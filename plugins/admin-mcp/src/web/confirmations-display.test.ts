@@ -1,3 +1,4 @@
+import { m } from '@web/paraglide/messages.js'
 import { baseLocale, overwriteGetLocale } from '@web/paraglide/runtime.js'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { AdminConfirmationView } from './confirmations.functions.ts'
@@ -22,18 +23,20 @@ describe('确认页表格：现值 → 执行后', () => {
       balance: { before: 1200, after: 1700 },
     })
     const live = confirmationRows(grant, { liveBalance: 1250 })
-    expect(live.find((row) => row.label === 'Credit balance')).toMatchObject({
+    expect(live.find((row) => row.label === m.admin_confirm_row_balance())).toMatchObject({
       current: '1,250',
       after: '1,750',
     })
-    expect(live.find((row) => row.label === 'Balance at request')).toMatchObject({
+    expect(
+      live.find((row) => row.label === m.admin_confirm_row_balance_at_request()),
+    ).toMatchObject({
       after: '1,200',
     })
-    expect(live.some((row) => row.label === 'Credits')).toBe(false)
+    expect(live.some((row) => row.label === m.admin_confirm_row_amount())).toBe(false)
     // 已结束（无实时余额）：显示发起时的快照
-    expect(confirmationRows(grant).find((row) => row.label === 'Balance at request')).toMatchObject(
-      { current: '1,200', after: '1,700' },
-    )
+    expect(
+      confirmationRows(grant).find((row) => row.label === m.admin_confirm_row_balance_at_request()),
+    ).toMatchObject({ current: '1,200', after: '1,700' })
   })
 
   it('收回批次同时显示批次剩余与余额；没有余额快照的旧记录退回增加量', () => {
@@ -58,20 +61,23 @@ describe('确认页表格：现值 → 执行后', () => {
           balance: { before: 160, after: 100 },
         }),
         { liveBalance: 150 },
-      ).find((row) => row.label === 'Credit balance'),
+      ).find((row) => row.label === m.admin_confirm_row_balance()),
     ).toMatchObject({ current: '150', after: '90' })
-    expect(revoke.find((row) => row.label === 'Batch remaining')).toMatchObject({
-      current: '60 / 100',
-      after: '0 / 100',
-    })
-    expect(revoke.find((row) => row.label === 'Balance at request')).toMatchObject({
-      current: '160',
-      after: '100',
-    })
+    expect(revoke.find((row) => row.label === m.admin_confirm_row_batch_remaining())).toMatchObject(
+      {
+        current: '60 / 100',
+        after: '0 / 100',
+      },
+    )
+    expect(
+      revoke.find((row) => row.label === m.admin_confirm_row_balance_at_request()),
+    ).toMatchObject({ current: '160', after: '100' })
     const legacy = confirmationRows(
       view({ kind: 'credits', operation: 'grant', workspace, amount: 7, reason: 'Old' }),
     )
-    expect(legacy.find((row) => row.label === 'Credits')).toMatchObject({ after: '+7' })
+    expect(legacy.find((row) => row.label === m.admin_confirm_row_amount())).toMatchObject({
+      after: '+7',
+    })
   })
 
   it('退款、密钥设置与模型定价同样显示现值与新值', () => {
@@ -92,7 +98,7 @@ describe('确认页表格：现值 → 执行后', () => {
         reviewNote: '',
       }),
     )
-    expect(refund.find((row) => row.label === 'Refunded')).toMatchObject({
+    expect(refund.find((row) => row.label === m.admin_confirm_row_refunded())).toMatchObject({
       current: '$2.00',
       after: '$5.00',
     })
@@ -104,9 +110,9 @@ describe('确认页表格：现值 → 执行后', () => {
         after: { isSet: true, last4: 'abcd' },
       }),
     )
-    expect(setting.find((row) => row.label === 'Value')).toMatchObject({
-      current: 'Not set',
-      after: 'Set (ends with abcd)',
+    expect(setting.find((row) => row.label === m.admin_confirm_row_value())).toMatchObject({
+      current: m.admin_confirm_value_unset(),
+      after: m.admin_confirm_value_set_suffix({ last4: 'abcd' }),
     })
     const model = confirmationRows(
       view({

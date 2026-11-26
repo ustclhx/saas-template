@@ -59,6 +59,6 @@
 
 ## 10. 集成与验收
 
-- [ ] 10.1 生成器验证：`--plugins studio`（含 media）的 CF 副本与 `--target selfhost` 副本通过 check、typecheck、test、build；未启用 studio 的副本产物不含 studio 代码；`kinds: ['image']` 的副本无视频入口
-- [ ] 10.2 文档收尾：`docs/06-ai.md` studio 章节（启用、模式、发布与审核流程、缓存与失效、项目自有钩子）、`docs/08-roadmap.md` 生图站 / 视频站状态、`docs/bulk-jobs.md` 确认无新增批量任务、升级说明 `docs/upgrades/<版本>.md`
+- [x] 10.1 生成器验证：`--plugins studio`（含 media）的 CF 副本与 `--target selfhost` 副本通过 check、typecheck、test、build；未启用 studio 的副本产物不含 studio 代码；`kinds: ['image']` 的副本无视频入口
+- [x] 10.2 文档收尾：`docs/06-ai.md` studio 章节（启用、模式、发布与审核流程、缓存与失效、项目自有钩子）、`docs/08-roadmap.md` 生图站 / 视频站状态、`docs/bulk-jobs.md` 确认无新增批量任务、升级说明 `docs/upgrades/<版本>.md`
 - [ ] 10.3 staging 验收（需 `FAL_KEY`，与 add-plugin-system 7.1 一同执行）：真实图片与视频生成 → 发布 → 画廊与作品页 → 媒体 Range 与边缘缓存命中（`cf-cache-status`）→ 取消发布失效 → 举报与后台审核；证据写入私有证据库。未执行时在 PR 中标为未完成验收

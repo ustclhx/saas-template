@@ -2,7 +2,9 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { m } from '../../../paraglide/messages.js'
 import { baseLocale, overwriteGetLocale } from '../../../paraglide/runtime.js'
+import { templateConfig } from '../../../server/template-config.ts'
 import { stepUpRequiredError } from './check.ts'
 import { isStepUpCancelled, stepUpRequiredMethods } from './client.ts'
 import {
@@ -81,7 +83,7 @@ function pickTab(tab: HTMLElement) {
 async function submitAmount(value: string) {
   fireEvent.change(screen.getByLabelText('Amount'), { target: { value } })
   fireEvent.click(screen.getByRole('button', { name: 'Adjust' }))
-  return screen.findByRole('dialog', { name: "Confirm it's you" })
+  return screen.findByRole('dialog', { name: m.admin_step_up_title() })
 }
 
 beforeEach(() => {
@@ -90,7 +92,10 @@ beforeEach(() => {
   api.send.mockReset()
   api.verify.mockReset()
 })
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 
 describe('stepUpRequiredMethods', () => {
   it('只识别 STEP_UP_REQUIRED，并过滤未知方式', () => {
@@ -128,10 +133,17 @@ describe('useStepUpCall', () => {
       .mockResolvedValue('applied')
     renderForm(action)
     const dialog = await submitAmount('500')
-    expect(dialog.textContent).toContain('“Credit adjustment” is a sensitive action.')
-    pickTab(await screen.findByRole('tab', { name: 'Password' }))
-    fireEvent.change(screen.getByLabelText('Account password'), { target: { value: 'secret' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Verify and continue' }))
+    expect(dialog.textContent).toContain(
+      m.admin_step_up_description({
+        action: 'Credit adjustment',
+        minutes: templateConfig.admin.stepUpMinutes,
+      }),
+    )
+    pickTab(await screen.findByRole('tab', { name: m.admin_step_up_method_password() }))
+    fireEvent.change(screen.getByLabelText(m.admin_step_up_password_label()), {
+      target: { value: 'secret' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: m.admin_step_up_submit() }))
     await waitFor(() => expect(screen.getByRole('status').textContent).toBe('applied'))
     expect(api.verify).toHaveBeenCalledWith({ data: { method: 'password', password: 'secret' } })
     expect(action).toHaveBeenCalledTimes(2)
@@ -146,7 +158,7 @@ describe('useStepUpCall', () => {
     const action = vi.fn().mockRejectedValue(required(['email_otp']))
     renderForm(action)
     await submitAmount('42')
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(screen.getByRole('button', { name: m.admin_step_up_cancel() }))
     await waitFor(() => expect(screen.getByRole('status').textContent).toBe('cancelled'))
     expect(action).toHaveBeenCalledTimes(1)
     expect(api.verify).not.toHaveBeenCalled()
@@ -183,7 +195,12 @@ describe('useStepUpCall', () => {
 
 describe('StepUpDialog 各方式表单', () => {
   it('两步验证账号：验证器 6 位输入，切换到备用码', async () => {
-    api.status.mockResolvedValue(status(['totp', 'backup_code']))
+    let resolveStatus!: (value: ReturnType<typeof status>) => void
+    api.status.mockReturnValue(
+      new Promise<ReturnType<typeof status>>((resolve) => {
+        resolveStatus = resolve
+      }),
+    )
     api.verify.mockResolvedValue({
       ok: false,
       error: 'STEP_UP_INVALID',
@@ -191,24 +208,23 @@ describe('StepUpDialog 各方式表单', () => {
     })
     renderForm(vi.fn().mockRejectedValue(required(['totp', 'backup_code'])))
     await submitAmount('1')
-    const code = screen.getByLabelText('6-digit code from your authenticator')
+    // 弹窗先打开，收到验证状态后才渲染验证码输入。
+    resolveStatus(status(['totp', 'backup_code']))
+    const code = await screen.findByLabelText(m.admin_step_up_code_label_totp())
     expect(code.getAttribute('autocomplete')).toBe('one-time-code')
     // 粘贴带空格的验证码：只保留数字
     fireEvent.change(code, { target: { value: '123 456' } })
     expect((code as HTMLInputElement).value).toBe('123456')
-    fireEvent.click(screen.getByRole('button', { name: 'Verify and continue' }))
-    expect(
-      await screen.findByText(
-        'That code was just used. Wait for your authenticator to show the next one.',
-      ),
-    ).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: m.admin_step_up_submit() }))
+    expect(await screen.findByText(m.admin_step_up_error_replayed())).toBeTruthy()
     expect(api.verify).toHaveBeenCalledWith({ data: { method: 'totp', code: '123456' } })
-    pickTab(screen.getByRole('tab', { name: 'Backup code' }))
-    expect(screen.getByLabelText('Backup code')).toBeTruthy()
-    expect(screen.getByText('Each backup code works once.')).toBeTruthy()
+    pickTab(screen.getByRole('tab', { name: m.admin_step_up_method_backup_code() }))
+    expect(await screen.findByLabelText(m.admin_step_up_backup_label())).toBeTruthy()
+    expect(screen.getByText(m.admin_step_up_backup_hint())).toBeTruthy()
   })
 
   it('邮箱验证码：发送后显示收件地址与重发倒计时，错误显示剩余次数', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-25T00:00:00Z'))
     api.status.mockResolvedValue(status(['email_otp', 'password']))
     const resendAt = new Date(Date.now() + 60_000).toISOString()
     api.send.mockResolvedValue({
@@ -225,15 +241,23 @@ describe('StepUpDialog 各方式表单', () => {
     })
     renderForm(vi.fn().mockRejectedValue(required(['email_otp', 'password'])))
     await submitAmount('1')
-    expect(await screen.findByText('The code will be sent to ad***@example.com')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Send code' }))
-    expect(await screen.findByText('Sent to ad***@example.com, valid for 10 minutes')).toBeTruthy()
+    expect(
+      await screen.findByText(m.admin_step_up_email_will_send({ email: 'ad***@example.com' })),
+    ).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: m.admin_step_up_send_code() }))
+    expect(
+      await screen.findByText(m.admin_step_up_email_sent({ email: 'ad***@example.com' })),
+    ).toBeTruthy()
     expect(api.send).toHaveBeenCalledWith({ data: { method: 'email_otp' } })
-    const resend = screen.getByRole('button', { name: /Resend in \d+s/ }) as HTMLButtonElement
+    const resend = screen.getByRole('button', {
+      name: m.admin_step_up_resend_in({ seconds: 60 }),
+    }) as HTMLButtonElement
     expect(resend.disabled).toBe(true)
-    fireEvent.change(screen.getByLabelText('Email code'), { target: { value: '654321' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Verify and continue' }))
-    expect(await screen.findByText('That code is incorrect. 2 attempts left.')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText(m.admin_step_up_code_label_email()), {
+      target: { value: '654321' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: m.admin_step_up_submit() }))
+    expect(await screen.findByText(m.admin_step_up_error_code_remaining({ count: 2 }))).toBeTruthy()
   })
 
   it('锁定时显示解锁时间并禁用提交', async () => {
@@ -244,10 +268,11 @@ describe('StepUpDialog 各方式表单', () => {
     )
     renderForm(vi.fn().mockRejectedValue(required(['email_otp', 'password'])))
     await submitAmount('1')
-    expect(await screen.findByText('Too many attempts, temporarily locked')).toBeTruthy()
+    expect(await screen.findByText(m.admin_step_up_locked_title())).toBeTruthy()
     expect(screen.queryByRole('tablist')).toBeNull()
     expect(
-      (screen.getByRole('button', { name: 'Verify and continue' }) as HTMLButtonElement).disabled,
+      (screen.getByRole('button', { name: m.admin_step_up_submit() }) as HTMLButtonElement)
+        .disabled,
     ).toBe(true)
   })
 
@@ -255,18 +280,18 @@ describe('StepUpDialog 各方式表单', () => {
     api.status.mockResolvedValue(status(['totp', 'backup_code', 'rescue'], { rescueMode: true }))
     renderForm(vi.fn().mockRejectedValue(required(['totp', 'backup_code', 'rescue'])))
     await submitAmount('1')
-    const rescue = await screen.findByRole('tab', { name: 'Email code (rescue)' })
+    const rescue = await screen.findByRole('tab', { name: m.admin_step_up_method_rescue() })
     expect(rescue.getAttribute('aria-selected')).toBe('true')
-    expect(screen.getByText(/Rescue mode: your email is on the bootstrap list/)).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Send code' }))
+    expect(screen.getByText(m.admin_step_up_rescue_note())).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: m.admin_step_up_send_code() }))
     await waitFor(() => expect(api.send).toHaveBeenCalledWith({ data: { method: 'rescue' } }))
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(screen.getByRole('button', { name: m.admin_step_up_cancel() }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
 
     api.status.mockResolvedValue(status([]))
     fireEvent.click(screen.getByRole('button', { name: 'Adjust' }))
-    expect(await screen.findByText('No verification method available')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Verify and continue' })).toBeNull()
+    expect(await screen.findByText(m.admin_step_up_none_title())).toBeTruthy()
+    expect(screen.queryByRole('button', { name: m.admin_step_up_submit() })).toBeNull()
   })
 })
 
@@ -279,8 +304,8 @@ describe('后台顶部状态', () => {
         <StepUpVerifiedChip />
       </StepUpProvider>,
     )
-    expect(await screen.findByText('Verified, 8 min left')).toBeTruthy()
-    expect(screen.getByRole('alert').textContent).toContain('Rescue mode is on')
+    expect(await screen.findByText(m.admin_step_up_verified_chip({ minutes: 8 }))).toBeTruthy()
+    expect(screen.getByRole('alert').textContent).toContain(m.admin_step_up_rescue_banner())
     unmount()
     render(
       <StepUpProvider status={{ verified: null, rescueMode: false }}>
@@ -289,6 +314,6 @@ describe('后台顶部状态', () => {
       </StepUpProvider>,
     )
     expect(screen.queryByRole('alert')).toBeNull()
-    expect(screen.queryByText(/Verified,/)).toBeNull()
+    expect(screen.queryByRole('status')).toBeNull()
   })
 })

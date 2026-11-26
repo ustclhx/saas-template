@@ -88,8 +88,12 @@ describe('画廊页面边缘缓存', () => {
     const first = await serve(rt, cache, new Request(`${APP_URL}/gallery?kind=video`), render)
     expect(first.headers.get('cache-control')).toBe('public, max-age=0, s-maxage=300')
     expect(await first.text()).toContain('nonce="nonce-1"')
-    expect([...cache.store.keys()]).toEqual([
-      expect.stringMatching(/^https:\/\/example\.com\/__studio-cache\/[^/]+\/gallery\?kind=video$/),
+    expect([...cache.store.keys()].map((key) => new URL(key))).toEqual([
+      expect.objectContaining({
+        origin: APP_URL,
+        pathname: expect.stringMatching(/^\/__studio-cache\/[^/]+\/gallery$/),
+        search: '?kind=video',
+      }),
     ])
     const second = await serve(
       rt,
@@ -121,8 +125,10 @@ describe('画廊页面边缘缓存', () => {
   it('请求主机不是站点规范来源（www 与裸域等）时不读写缓存', async () => {
     const cache = memoryCache()
     const render = vi.fn(() => page('n'))
-    await serve(runtime(), cache, new Request('https://www.example.com/gallery'), render)
-    await serve(runtime(), cache, new Request('https://www.example.com/gallery'), render)
+    const alias = new URL('/gallery', APP_URL)
+    alias.hostname = `www.${alias.hostname}`
+    await serve(runtime(), cache, new Request(alias), render)
+    await serve(runtime(), cache, new Request(alias), render)
     expect(render).toHaveBeenCalledTimes(2)
     expect(cache.store.size).toBe(0)
     // 规范来源上的同一地址单独缓存
