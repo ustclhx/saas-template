@@ -98,6 +98,37 @@ async function runPublishCheck(
   }
 }
 
+function utcDay(now: Date) {
+  const start = new Date(now)
+  start.setUTCHours(0, 0, 0, 0)
+  const end = new Date(start)
+  end.setUTCDate(end.getUTCDate() + 1)
+  return { start, end }
+}
+
+/** 页面展示「今日还可发布」：与发布同一口径（UTC 当天、跨空间按用户统计），只读不加锁。 */
+export async function getStudioPublishQuota(
+  db: Database,
+  userId: string,
+  limit = DEFAULT_PUBLISH_DAILY_LIMIT,
+) {
+  const [row] = await db.execute<{ now: Date }>(sql`select clock_timestamp() as now`)
+  if (!row) throw new Error('Database clock unavailable')
+  const { start, end } = utcDay(new Date(row.now))
+  const [total] = await db
+    .select({ total: count() })
+    .from(studioPublication)
+    .where(
+      and(
+        eq(studioPublication.userId, userId),
+        gte(studioPublication.publishedAt, start),
+        lt(studioPublication.publishedAt, end),
+      ),
+    )
+  const used = total?.total ?? 0
+  return { limit, remaining: Math.max(0, limit - used), resetsAt: end.toISOString() }
+}
+
 async function reservePublication(
   tx: StudioTransaction,
   userId: string,
@@ -112,10 +143,7 @@ async function reservePublication(
     (await tx.execute<{ now: Date }>(sql`select clock_timestamp() as now`))[0]?.now
   if (!now) throw new Error('Database clock unavailable')
   const publishedAt = new Date(now)
-  const start = new Date(publishedAt)
-  start.setUTCHours(0, 0, 0, 0)
-  const end = new Date(start)
-  end.setUTCDate(end.getUTCDate() + 1)
+  const { start, end } = utcDay(publishedAt)
   const limit = options.dailyLimit ?? DEFAULT_PUBLISH_DAILY_LIMIT
   const [total] = await tx
     .select({ total: count() })

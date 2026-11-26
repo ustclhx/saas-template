@@ -1,3 +1,4 @@
+import { getCreditBalance } from '@saas/credits'
 import {
   getFileMediaHttpDeps,
   getWorkspaceMediaSubmitOptions,
@@ -37,8 +38,11 @@ export const getStudioSubmitPage = createServerFn({ method: 'GET' })
       const options = await getWorkspaceMediaSubmitOptions(context, getRequest().headers, (model) =>
         modes.some((mode) => studioModelSchema(model, mode) !== null),
       )
+      // 创作页显示余额并在提交前提示余额不足；提交事务仍以服务端预扣为准。
+      const { available, debt } = await getCreditBalance(context.db, context.workspace.id)
       return {
         ...options,
+        balance: { available, debt },
         kinds,
         presets: studioPromptPresets.filter(({ mode }) => modes.includes(mode)),
         files: options.files.filter(({ mime }) => mime.startsWith('image/')),

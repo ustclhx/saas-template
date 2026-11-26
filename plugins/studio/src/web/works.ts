@@ -126,6 +126,9 @@ export async function listStudioWorks(db: Database, input: ListStudioWorksInput)
         kind: aiTask.kind,
         modelKey: aiTask.modelKey,
         modelDisplayName: sql<string>`coalesce(${aiModel.displayName}, ${aiTask.modelKey})`,
+        // 页面用作未发布作品的说明与发布标题默认值；与发布快照同样优先取用户原文（不含预设）。
+        prompt: sql<string | null>`coalesce(${aiTask.input}->>'userPrompt',
+          ${aiTask.input}->'params'->>'prompt')`,
         mime: file.mime,
         width: file.width,
         height: file.height,
