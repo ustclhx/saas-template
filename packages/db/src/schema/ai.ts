@@ -76,6 +76,7 @@ export const aiModel = pgTable(
   {
     id: uuid('id').primaryKey().$defaultFn(newId),
     key: text('key').notNull().unique(),
+    displayName: text('display_name'),
     kind: text('kind', { enum: ['text', 'image', 'video'] }).notNull(),
     provider: text('provider').notNull(),
     providerModelId: text('provider_model_id').notNull(),

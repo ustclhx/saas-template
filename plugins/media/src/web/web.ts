@@ -27,7 +27,7 @@ export default {
           to: '/app/$slug/media/new',
           order: 20,
           topbarOrder: 20,
-          visible: media,
+          visible: () => media() && !templateConfig.plugins.studio,
         },
       ],
     },

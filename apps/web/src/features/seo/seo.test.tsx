@@ -210,6 +210,21 @@ describe('公开页面 SEO（4.1–4.3）', () => {
       expect(robots(origin)).toContain(`Disallow: ${path}`)
   })
 
+  it('robots 逐行列出主站点地图和传入的插件站点地图，重复地址只出现一次', () => {
+    const sitemapRules = (paths?: readonly string[]) =>
+      robots(origin, paths)
+        .split('\n')
+        .filter((line) => line.startsWith('Sitemap:'))
+    expect(sitemapRules()).toEqual([`Sitemap: ${origin}/sitemap.xml`])
+    expect(
+      sitemapRules(['/sitemap-gallery.xml', '/sitemap-extra.xml', '/sitemap-gallery.xml']),
+    ).toEqual([
+      `Sitemap: ${origin}/sitemap.xml`,
+      `Sitemap: ${origin}/sitemap-gallery.xml`,
+      `Sitemap: ${origin}/sitemap-extra.xml`,
+    ])
+  })
+
   it('分享页与分享卡片：robots 放行，站点地图与 llms.txt 不收录', () => {
     const text = robots(origin)
     expect(text).toContain('Allow: /share-card/')

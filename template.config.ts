@@ -130,6 +130,7 @@ export default defineTemplateConfig({
   plugins: {
     'admin-mcp': {},
     media: { providers: ['fal', 'workers-ai'] }, // Workers AI 使用 AI 绑定，无外部密钥
+    studio: {},
     // agent 对话（仅 Cloudflare；需要 web wrangler 的 AGENT_CONVERSATION 绑定）
     agents: {
       maxSteps: 8, // 每轮最多步数，预扣 = 单步预算 × maxSteps

@@ -33,6 +33,7 @@ import {
   saveAdminModel,
   setAdminModelEnabled,
 } from '../../features/ai/admin-models.functions.ts'
+import { MODEL_DISPLAY_NAME_MAX_LENGTH } from '../../features/ai/admin-models.schema.ts'
 import { m } from '../../paraglide/messages.js'
 
 export const Route = createFileRoute('/admin/models')({
@@ -69,6 +70,7 @@ const ERRORS: Record<string, string> = {
 /** 表单状态：数值字段保留输入的字符串，提交时再转换 */
 interface Draft {
   key: string
+  displayName: string
   kind: Kind
   provider: string
   providerModelId: string
@@ -112,6 +114,7 @@ function pricingDraft(pricing: Record<string, unknown>) {
 function toDraft(model: ModelRow): Draft {
   return {
     key: model.key,
+    displayName: model.displayName ?? '',
     kind: model.kind,
     provider: model.provider,
     providerModelId: model.providerModelId,
@@ -127,6 +130,7 @@ function toDraft(model: ModelRow): Draft {
 function newDraft(defaults: Data['defaults'], kind: Kind = 'text'): Draft {
   return {
     key: '',
+    displayName: '',
     kind,
     provider: '',
     providerModelId: '',
@@ -429,12 +433,18 @@ function ModelEditor({
   }
 
   function save() {
+    const displayName = draft.displayName.trim()
+    if (displayName.length > MODEL_DISPLAY_NAME_MAX_LENGTH) {
+      setMessage(m.admin_model_display_name_too_long({ max: MODEL_DISPLAY_NAME_MAX_LENGTH }))
+      return
+    }
     if (!validateParamsSchema(draft.kind, draft.paramsSchema)) return
     return act(() =>
       saveModel({
         data: {
           ...(model ? { id: model.id } : {}),
           key: draft.key,
+          displayName: displayName || null,
           kind: draft.kind,
           provider: draft.provider,
           providerModelId: draft.providerModelId,
@@ -473,6 +483,13 @@ function ModelEditor({
         <legend className="mb-3 font-medium">{m.admin_model()}</legend>
         <label className="grid gap-2 text-sm font-medium" htmlFor={`${model?.id ?? 'new'}-key`}>
           {m.admin_key()} <Input required maxLength={64} {...field('key')} />
+        </label>
+        <label
+          className="grid gap-2 text-sm font-medium"
+          htmlFor={`${model?.id ?? 'new'}-displayName`}
+        >
+          {m.admin_model_display_name()}
+          <Input maxLength={MODEL_DISPLAY_NAME_MAX_LENGTH} {...field('displayName')} />
         </label>
         <div className="grid gap-2">
           <label className="font-medium text-sm" htmlFor={`${model?.id ?? 'new'}-kind`}>

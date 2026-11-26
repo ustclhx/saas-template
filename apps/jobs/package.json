@@ -27,6 +27,7 @@
     "@saas/plugin-admin-mcp": "workspace:*",
     "@saas/plugin-agents": "workspace:*",
     "@saas/plugin-media": "workspace:*",
+    "@saas/plugin-studio": "workspace:*",
     "@saas/shared": "workspace:*",
     "@saas/storage": "workspace:*",
     "@sentry/cloudflare": "^11.6.0",

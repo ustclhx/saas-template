@@ -1,6 +1,9 @@
 import { z } from 'zod'
 
 export const adminModelKinds = ['text', 'image', 'video'] as const
+export const MODEL_DISPLAY_NAME_MAX_LENGTH = 60
+
+export const adminModelDisplayName = z.string().trim().max(MODEL_DISPLAY_NAME_MAX_LENGTH).nullable()
 
 export const adminModelKey = z
   .string()
@@ -9,6 +12,7 @@ export const adminModelKey = z
 
 export const adminModelInput = z.object({
   key: adminModelKey,
+  displayName: adminModelDisplayName.optional(),
   kind: z.enum(adminModelKinds),
   provider: z.string().trim().min(1).max(64),
   providerModelId: z.string().trim().min(1).max(200),

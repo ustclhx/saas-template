@@ -148,6 +148,9 @@ test('地图发布过滤、robots 与 构建期 PNG 输出', async ({ request })
     expect(xml).not.toContain(path)
   const rules = await (await request.get('/robots.txt')).text()
   for (const path of ['/app', '/admin', '/api']) expect(rules).toContain(`Disallow: ${path}`)
+  expect(/^Sitemap: https?:\/\/[^/]+\/sitemap-gallery\.xml$/m.test(rules)).toBe(
+    Object.hasOwn(templateConfig.plugins, 'studio'),
+  )
   for (const path of ['/legal/terms', '/zh/legal/terms']) {
     const image = await request.get(
       `/og/${path.startsWith('/zh/') ? 'zh' : 'en'}${path.replace(/^\/zh/, '')}.png`,

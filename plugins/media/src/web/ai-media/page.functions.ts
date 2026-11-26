@@ -39,8 +39,9 @@ export const getMediaSubmitPage = createServerFn({ method: 'GET' })
           (model.kind === 'image' && templateConfig.ai.image) ||
           (model.kind === 'video' && templateConfig.ai.video),
       )
-      .map(({ key, kind, pricing, paramsSchema }) => ({
+      .map(({ key, displayName, kind, pricing, paramsSchema }) => ({
         key,
+        displayName,
         kind,
         pricing,
         // JSON 字符串保留完整 schema，同时满足 Server Function 的可序列化类型约束。

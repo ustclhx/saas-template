@@ -24,6 +24,7 @@ import { PricingError } from './pricing.ts'
 function row(overrides: Partial<AiModel> & Pick<AiModel, 'id' | 'key'>): AiModel {
   return {
     kind: 'text',
+    displayName: null,
     provider: 'openai',
     providerModelId: overrides.key,
     pricing: { mode: 'token', inputPer1k: 2, outputPer1k: 8 },
@@ -158,6 +159,25 @@ async function rejection(promise: Promise<unknown>): Promise<AppError> {
 }
 
 describe('listAvailableModels', () => {
+  it('展示已配置的显示名，未配置或旧缓存缺字段时回退到 key', async () => {
+    const { store } = memoryStore([
+      row({ id: 'm1', key: 'flux', displayName: 'FLUX 快速' }),
+      row({ id: 'm2', key: 'gpt-a' }),
+    ])
+    const { cache, data } = memoryCache()
+    const ctx = { store, cache }
+    const expected = [
+      { key: 'flux', displayName: 'FLUX 快速' },
+      { key: 'gpt-a', displayName: 'gpt-a' },
+    ]
+    expect(await listAvailableModels(ctx, plan(['flux', 'gpt-a']))).toMatchObject(expected)
+
+    const [named, unnamed] = JSON.parse(data.get(MODEL_CACHE_KEY) ?? '[]')
+    delete unnamed.displayName
+    data.set(MODEL_CACHE_KEY, JSON.stringify([named, unnamed]))
+    expect(await listAvailableModels(ctx, all)).toMatchObject(expected)
+  })
+
   it('完整注册表缓存每次按故障权限过滤，任一闸门缺失均隐藏且不影响正常模型', async () => {
     for (const adminFirst of [true, false]) {
       const { store, listCalls } = memoryStore([row({ id: 'normal', key: 'normal' }), faultRow()])

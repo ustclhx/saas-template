@@ -26,13 +26,15 @@ export interface AdminNavEntry {
   count?: () => Promise<number>
 }
 
-/** web 入口（两目标共用，含客户端）：导航、后台菜单与对话消息部件渲染器 */
+/** web 入口（两目标共用，含客户端）：导航、对话消息部件渲染器与附加站点地图 */
 export interface WebPluginModule {
   /** 应用区侧边栏条目；顶部布局（ui.appLayout: 'topbar'）也会渲染这些条目 */
   appNav?: readonly { group: AppNavGroupId; items: readonly AppNavItem[] }[]
   adminNav?: readonly AdminNavEntry[]
   /** 对话中工具调用卡片的显示名与详情，键为工具名；项目在 message-parts.project.tsx 中可覆盖 */
   toolRenderers?: Readonly<Record<string, ToolRenderer>>
+  /** 站点根路径下的附加站点地图，由 robots.txt 列出 */
+  sitemaps?: readonly string[]
 }
 
 /** fetch 前置处理：在 Start 处理之前依次调用，返回 Response 即结束；返回 undefined 交给下一个 */

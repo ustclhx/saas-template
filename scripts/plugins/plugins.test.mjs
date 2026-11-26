@@ -19,6 +19,7 @@ import {
   NODE_PLUGIN_CONTRACTS,
   pluginMessageDirs,
   pluginRouteConfig,
+  REPO_ROOT,
   renderPluginFiles,
   resolveEnabledPlugins,
 } from './plugins.mjs'
@@ -158,6 +159,28 @@ test('关闭：生成文件不含任何插件导入，注册列表为空', async
   for (const [path, content] of Object.entries(files)) {
     assert.doesNotMatch(content, /plugins\/(both|cf-only)/, path)
     if (path.endsWith('.ts')) assert.match(content, /= \[\]\n/, path)
+  }
+})
+
+test('Studio 启停控制 Cloudflare 与 Node 的注册入口和文案', async () => {
+  const loaded = await loadPluginManifests()
+  const options = { root, loaded, write: false }
+  const enabled = await generatePlugins({ ...options, config: config({ media: {}, studio: {} }) })
+  const disabled = await generatePlugins({ ...options, config: config({ media: {} }) })
+
+  assert.match(enabled.files[GENERATED_FILES.web], /id: 'studio', entry: studioWeb\b/)
+  assert.match(enabled.files[GENERATED_FILES.worker], /id: 'studio', entry: studioWorker\b/)
+  assert.match(enabled.files[GENERATED_FILES.webNode], /id: 'studio', entry: studioWeb\b/)
+  assert.match(enabled.files[GENERATED_FILES.webNode], /id: 'studio', entry: studioWebNode\b/)
+
+  for (const [path, content] of Object.entries(disabled.files)) {
+    assert.doesNotMatch(content, /plugins\/studio\b|id: 'studio'/, path)
+  }
+
+  const messages = join(REPO_ROOT, 'plugins/studio/messages')
+  for (const target of ['cloudflare', 'node']) {
+    assert.ok(pluginMessageDirs(enabled.plugins, target).includes(messages), target)
+    assert.ok(!pluginMessageDirs(disabled.plugins, target).includes(messages), target)
   }
 })
 

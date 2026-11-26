@@ -18,6 +18,7 @@ import { type AiModality, type Pricing, PricingError, parsePricing } from './pri
 export interface AvailableModel {
   readonly id: string
   readonly key: string
+  readonly displayName?: string | null
   readonly kind: AiModality
   readonly provider: string
   readonly providerModelId: string
@@ -102,6 +103,7 @@ function toAvailable(row: AiModel): AvailableModel | undefined {
   return {
     id: row.id,
     key: row.key,
+    displayName: row.displayName,
     kind: row.kind,
     provider: row.provider,
     providerModelId: row.providerModelId,
@@ -160,12 +162,14 @@ export async function listAvailableModels(
   ctx: ModelRegistryContext,
   entitlements: Entitlements,
   options: ModelAvailabilityOptions = {},
-): Promise<AvailableModel[]> {
+): Promise<(AvailableModel & { readonly displayName: string })[]> {
   const models = await listEnabledModels(ctx, options)
-  return models.filter(
-    (model) =>
-      (options.kind === undefined || model.kind === options.kind) && allowed(entitlements, model),
-  )
+  return models
+    .filter(
+      (model) =>
+        (options.kind === undefined || model.kind === options.kind) && allowed(entitlements, model),
+    )
+    .map((model) => ({ ...model, displayName: model.displayName ?? model.key }))
 }
 
 /**
