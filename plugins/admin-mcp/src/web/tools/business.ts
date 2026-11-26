@@ -4,6 +4,7 @@ import { metricsSearchSchema, readAdminMetrics } from '@web/features/admin/metri
 import { adminUserDetail, listAdminUsers } from '@web/features/admin/users.ts'
 import {
   getAdminWorkspaceCreditLedger,
+  listAdminWorkspaceCreditGrants,
   listAdminWorkspaces,
 } from '@web/features/admin/workspaces.ts'
 import { listAdminPurchases } from '@web/features/billing/admin-data.ts'
@@ -66,13 +67,34 @@ const ordersList = defineAdminTool({
 const creditsLedger = defineAdminTool({
   name: 'credits.ledger',
   scope: 'admin:read',
-  description: 'List credit ledger entries for a selected workspace.',
+  description:
+    'List credit ledger entries for a selected workspace. Each entry includes the grantId of the credit batch it belongs to, if any.',
   input: page.extend({ workspaceId: z.uuid() }),
   params: { ...pagingDescriptions, workspaceId: 'UUID of the workspace whose ledger to read.' },
   run: async ({ db }, { workspaceId, ...input }) => {
     requireFeature('credits')
     const { items, nextCursor } = await getAdminWorkspaceCreditLedger(db, workspaceId, input)
     return toolResult({ rows: items, hasMore: nextCursor !== null })
+  },
+})
+
+const creditsGrants = defineAdminTool({
+  name: 'credits.grants',
+  scope: 'admin:read',
+  description:
+    'List credit batches (grants) for a selected workspace with their remaining credits and status. Use the batch id as grantId when revoking with credits.adjust.',
+  input: page.extend({
+    workspaceId: z.uuid(),
+    status: z.enum(['active', 'expired', 'revoked']).optional(),
+  }),
+  params: {
+    ...pagingDescriptions,
+    workspaceId: 'UUID of the workspace whose credit batches to read.',
+    status: 'Filter batches by status (active, expired, or revoked).',
+  },
+  run: async ({ db }, { workspaceId, ...input }) => {
+    requireFeature('credits')
+    return toolResult(await listAdminWorkspaceCreditGrants(db, workspaceId, input))
   },
 })
 
@@ -125,6 +147,7 @@ export const businessTools = [
   workspacesList,
   ordersList,
   creditsLedger,
+  creditsGrants,
   auditList,
   metricsSummary,
 ] as const

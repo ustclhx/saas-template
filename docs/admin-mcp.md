@@ -45,7 +45,8 @@ claude mcp add --transport http --scope local admin-mcp https://app.example.com/
 | `users.get` | `admin:read` | `{ id }`。读取单个用户及其空间、登录方式。 |
 | `workspaces.list` | `admin:read` | `{ offset?, limit?, q?, status? }`。按名称、slug、ID 或状态（`active`、`deleted`）筛选空间。 |
 | `orders.list` | `admin:read` | `{ offset?, limit?, workspaceId? }`。查询后台的一次性购买订单，需启用计费。 |
-| `credits.ledger` | `admin:read` | `{ offset?, limit?, workspaceId }`。读取指定空间的积分流水，需启用积分。 |
+| `credits.ledger` | `admin:read` | `{ offset?, limit?, workspaceId }`。读取指定空间的积分流水，每条带所属批次的 `grantId`（无批次时为 null），需启用积分。 |
+| `credits.grants` | `admin:read` | `{ offset?, limit?, workspaceId, status? }`。读取指定空间的积分批次（来源、总额、剩余、状态、过期时间），`status` 可选 `active`/`expired`/`revoked`；`credits.adjust` 收回时的 `grantId` 取自这里。需启用积分。 |
 | `audit.list` | `admin:read` | `{ offset?, limit?, actor?, workspaceId?, action?, from?, to? }`。查询审计日志。只对 `log.meta` 脱敏，项目在行上附加的字段（如多站点的 `site`）原样返回。 |
 | `metrics.summary` | `admin:read` | `{ from?, to? }`。读取后台业务指标汇总，默认最近七个完整 UTC 日。 |
 | `confirmations.get` | `admin:read` | `{ id }`。查询需要管理员确认的操作的状态（`pending`、`done`、`failed`、`rejected`、`expired`）、摘要与结果。只能查询同一管理员的令牌发起的记录，不返回执行参数与密钥。 |
@@ -96,7 +97,7 @@ claude mcp add --transport http --scope local admin-mcp https://app.example.com/
 
 ### 给 agent 的处理建议
 
-1. 收到 `needs_owner_confirm` 时，把 `summary` 与 `confirmUrl` 原样交给令牌所属管理员，说明需要其在后台确认；**在确认前不要把操作视为已完成**，也不要重复调用（每次调用都会新建一条记录）。
+1. 收到 `needs_owner_confirm` 时，把 `summary` 与 `confirmUrl` 原样交给令牌所属管理员，说明需要其用该管理员账号登录后打开链接确认（非管理员账号打开只会看到 404，其他管理员只能查看与拒绝）；**在确认前不要把操作视为已完成**，也不要重复调用（每次调用都会新建一条记录）。
 2. 管理员处理后，用 `confirmations.get` 查询：
    - `done`：已执行，`result` 给出执行结果（如 `adjustmentId`、退款申请 ID 与状态、设置或模型的新旧值）。退款通过后的支付平台处理沿用现有退款流程，最终状态以后台退款页为准。
    - `failed`：未执行，`result.code` 说明原因：`TOKEN_REVOKED`（发起令牌已吊销、过期或所属管理员已失效）、`STALE_TARGET`（确认前目标已变化：设置或模型被他人修改、退款申请状态变化、`credits.adjust` 收回的批次剩余变化）、`SECRET_UNAVAILABLE`（密钥参数已不可解）或业务校验错误码。按需读取现值后重新发起。
