@@ -139,7 +139,7 @@ export const creditsAdjust = defineAdminTool({
     kind: 'grant to add credits, or revoke to cancel the remaining credits of a batch.',
     amount: 'Credits to grant (positive integer). Required for grant.',
     expiresAt: 'Optional ISO 8601 expiry for granted credits. Omit for credits that never expire.',
-    grantId: 'Credit batch ID to revoke (from credits.ledger). Required for revoke.',
+    grantId: 'Credit batch ID to revoke (from credits.grants). Required for revoke.',
     reason: 'Reason recorded in the audit log (1–2000 characters).',
     dryRun: dryRunDescription,
   },

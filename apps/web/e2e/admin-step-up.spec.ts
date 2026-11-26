@@ -167,6 +167,7 @@ test('MCP 发起积分调整：打开确认链接、验证后确认，余额变�
       reason,
     })
     expect(requested).toMatchObject({ status: 'needs_owner_confirm' })
+    expect(String(requested.message)).toContain('admin account that owns this token')
     const confirmationId = String(requested.confirmationId)
     const grants = () =>
       sql`select amount from credit_grant where workspace_id=${admin.workspace.id} and source='admin'`
@@ -228,6 +229,25 @@ test('MCP 发起积分调整：打开确认链接、验证后确认，余额变�
     ).toMatchObject({
       status: 'done',
     })
+    // 收回所需的批次 ID 可经只读工具查到：credits.grants 列出批次，流水带 grantId
+    const [{ id: grantId }] = (await sql`select id from credit_grant
+      where workspace_id=${admin.workspace.id} and source='admin'`) as unknown as [{ id: string }]
+    expect(
+      await mcpCall(request, token, 'credits.grants', {
+        workspaceId: admin.workspace.id,
+        status: 'active',
+      }),
+    ).toMatchObject({
+      rows: expect.arrayContaining([
+        expect.objectContaining({ id: grantId, amount: 77, remaining: 77, status: 'active' }),
+      ]),
+    })
+    const ledger = await mcpCall(request, token, 'credits.ledger', {
+      workspaceId: admin.workspace.id,
+    })
+    expect(ledger.rows).toEqual(
+      expect.arrayContaining([expect.objectContaining({ grantId, delta: 77 })]),
+    )
   } finally {
     await sql.end()
   }

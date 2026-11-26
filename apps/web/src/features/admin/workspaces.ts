@@ -5,7 +5,16 @@ import {
   getCreditBatches,
   getCreditLedger,
 } from '@saas/credits'
-import { type Database, member, organization, plan, scoped, subscription, user } from '@saas/db'
+import {
+  creditGrant,
+  type Database,
+  member,
+  organization,
+  plan,
+  scoped,
+  subscription,
+  user,
+} from '@saas/db'
 import { getEntitlements } from '@saas/entitlements'
 import { AppError } from '@saas/shared'
 import { and, desc, eq, ilike, isNotNull, isNull, or, sql } from 'drizzle-orm'
@@ -56,9 +65,40 @@ export async function getAdminWorkspaceCreditLedger(
 ) {
   const { items, nextCursor } = await getCreditLedger(db, workspaceId, input)
   return {
-    items: items.map(({ id, createdAt, type, delta }) => ({ id, createdAt, type, delta })),
+    items: items.map(({ id, createdAt, type, delta, grantId }) => ({
+      id,
+      createdAt,
+      type,
+      delta,
+      grantId,
+    })),
     nextCursor,
   }
+}
+
+// MCP credits.grants：列出空间的积分批次，供 credits.adjust 收回时取 grantId
+export async function listAdminWorkspaceCreditGrants(
+  db: Database,
+  workspaceId: string,
+  input: { offset: number; limit: number; status?: 'active' | 'expired' | 'revoked' | undefined },
+) {
+  const rows = await scoped(db, workspaceId)
+    .select(creditGrant, {
+      fields: {
+        id: creditGrant.id,
+        source: creditGrant.source,
+        amount: creditGrant.amount,
+        remaining: creditGrant.remaining,
+        status: creditGrant.status,
+        expiresAt: creditGrant.expiresAt,
+        createdAt: creditGrant.createdAt,
+      },
+      ...(input.status ? { where: eq(creditGrant.status, input.status) } : {}),
+    })
+    .orderBy(desc(creditGrant.createdAt), desc(creditGrant.id))
+    .offset(input.offset)
+    .limit(input.limit + 1)
+  return { rows: rows.slice(0, input.limit), hasMore: rows.length > input.limit }
 }
 
 export async function adminWorkspaceDetail(
