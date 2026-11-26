@@ -1,7 +1,9 @@
+import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { expect, type Page, type Route, test } from '@playwright/test'
+import { MODEL_CACHE_KEY } from '@saas/ai'
 import { grant } from '@saas/credits'
 import { createDb } from '@saas/db'
 import { readLocalEnv } from '@saas/db/worktree-env'
@@ -152,21 +154,37 @@ async function seedStudioModels(workspaceId: string) {
       } finally {
         await sql.end()
       }
+      clearStudioModelCache()
     },
   }
 }
 
-/** 模型注册表有 60 秒 KV 缓存：重载页面直到创作页列出本测试的模型。 */
+/** 直接写模型夹具后，清除本地 Vite Worker 使用的模型列表 KV 键。 */
+function clearStudioModelCache() {
+  execFileSync(
+    'pnpm',
+    [
+      'exec',
+      'wrangler',
+      'kv',
+      'key',
+      'delete',
+      MODEL_CACHE_KEY,
+      '--config',
+      'wrangler.jsonc',
+      '--binding',
+      'CACHE',
+      '--local',
+      '--persist-to',
+      '.wrangler/state',
+    ],
+    { cwd: new URL('../', import.meta.url), timeout: 15_000 },
+  )
+}
+
 async function openStudio(page: Page, path: string, modelName: string) {
-  await expect(async () => {
-    await page.goto(path)
-    await expect(page.getByRole('combobox', { name: 'Model', exact: true })).toBeVisible({
-      timeout: 2_000,
-    })
-    const trigger = page.getByRole('combobox', { name: 'Model', exact: true })
-    if (!(await trigger.textContent())?.includes(modelName)) await chooseOption(trigger, modelName)
-    await expect(trigger).toContainText(modelName, { timeout: 1_000 })
-  }).toPass({ timeout: 90_000, intervals: [2_000, 5_000] })
+  await page.goto(path)
+  await expect(page.getByRole('combobox', { name: 'Model', exact: true })).toContainText(modelName)
 }
 
 interface FakeTask {
@@ -291,6 +309,7 @@ test('creates an image, publishes it, then unpublishes and deletes it in My work
   await grantCredits(workspace.workspaceId, 100)
   const provider = await fakeProvider(page, workspace)
   try {
+    clearStudioModelCache()
     // 导航入口：创作在工具分组、我的作品在内容分组
     await page.goto(`/app/${workspace.slug}`)
     const nav = page.getByRole('navigation', { name: /./ }).first()
@@ -416,6 +435,10 @@ test('image-to-video needs a reference image and blocks submission without enoug
   test.setTimeout(240_000)
   await page.setViewportSize(VIEWPORTS.desktop)
   const workspace = await workspaceFixture(page)
+  const studioPath = `/app/${workspace.slug}/studio`
+  // 先用真实 loader 缓存旧目录，再写入本次测试的模型。
+  await page.goto(studioPath)
+  await expect(page.getByRole('region', { name: 'Generation settings' })).toBeVisible()
   const models = await seedStudioModels(workspace.workspaceId)
   const referenceId = newId()
   const sql = fixtureDb()
@@ -428,11 +451,12 @@ test('image-to-video needs a reference image and blocks submission without enoug
   }
   const provider = await fakeProvider(page, workspace)
   try {
+    clearStudioModelCache()
     // 做同款：地址预填模型与提示词，模式随模型切到视频
     const prompt = 'Mist slowly clears over a lake'
     await openStudio(
       page,
-      `/app/${workspace.slug}/studio?model=${models.video.key}&prompt=${encodeURIComponent(prompt)}`,
+      `${studioPath}?model=${models.video.key}&prompt=${encodeURIComponent(prompt)}`,
       models.video.name,
     )
     await expect(page.getByRole('tab', { name: 'Video' })).toHaveAttribute('aria-selected', 'true')

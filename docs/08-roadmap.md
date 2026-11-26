@@ -197,9 +197,10 @@
 - [ ] `add-plugin-system`（进行中）。引入构建期插件机制，将现有图片与视频任务迁入 `media` 插件，更新项目生成器与模板同步。阶段验收包括关闭媒体后的产物检查，以及开启媒体时的 staging 图片与视频回归。见 [插件系统 change](../openspec/changes/add-plugin-system/proposal.md)。
 - [x] `add-ai-agents`（2026-11-25 归档）。Cloudflare `agents` 插件：租户鉴权、多步工具、确认、恢复计费、删除与保留期、媒体异步工具和界面；本地端到端、生成器与真实模型（DeepSeek 官方源）staging 均已验收。[Agent change](../openspec/changes/archive/2026-11-25-add-ai-agents/proposal.md)
 - [x] `add-admin-mcp`（2026-11-25 归档）。衍生项目需求 R8 管理员 MCP（API 令牌、远程端点、读后台与写运行时设置 / 模型、via=mcp 审计、dryRun）与 R9 功能模型沿用；本地与 staging 均已验收。见 [Admin MCP](./admin-mcp.md)。
-- [ ] 生图站（待提案）。基于 `media` 插件交付图片生成产品功能，按需接入 Agent 工具。
-- [ ] 视频站（待提案）。基于 `media` 插件交付视频生成产品功能，按需接入 Agent 工具。
-  - 两个站提案时纳入（2026-11-25 参考外部建站引擎后记录）：公开作品页与图库按「内容版本 + 部署版本 + 路径」作边缘缓存键，发布或部署即换键，不做主动清缓存；公开图片放单独的公开 R2 桶并挂自定义域名，访客取图不经过 Worker，私有文件仍走现有 `FILES` 桶与签名下载。
+- [x] 生图站由 `studio` 的图片模式交付，支持文字提示和参考图。[Studio change](../openspec/changes/add-media-studio/proposal.md)
+- [x] 视频站由同一插件的视频模式交付，支持图生视频与分段播放。两种模式共用作品库、公开画廊、举报与审核。[Studio change](../openspec/changes/add-media-studio/proposal.md)
+  - 本版范围以外的功能包括点赞、评论、关注、作者主页、作品集、排行榜、图片缩略图与格式转换、视频转码与封面抽帧、内置 NSFW 分类、独立公开 R2 桶及其自定义域名、多语言作品内容。[设计范围](../openspec/changes/add-media-studio/design.md#goals--non-goals)
+  - staging 的真实媒体生成、发布、边缘缓存与审核验收进度见 [Studio 验收任务](../openspec/changes/add-media-studio/tasks.md#10-集成与验收)。
 
 ## 运维与安全加固（2026-11-25 规划）
 

@@ -78,13 +78,15 @@ studio 的 Server Function `submitStudio({ mode, modelKey, prompt, presetId?, pa
 轮询复用 media 的 `polling.ts`（页面隐藏时暂停）。提示词预设在项目自有 `plugins/studio/src/studio.project.ts`（登记为 template-sync 项目自有文件），默认空数组。
 
 - 2026-11-26 核对官方文档：TanStack Start 在 Server Function 进入处理器前执行输入校验，客户端通过 RPC 调用。Cloudflare Workflow 的 `create({ id, params })` 可绑定任务 ID 与输入；R2 预签名 PUT 可签入 `Content-Type`。Studio 继续复用 Media 的工作流和上传确认链路。[TanStack Server Functions](https://tanstack.com/start/latest/docs/framework/react/guide/server-functions#parameters--validation)、[Cloudflare Workflows Workers API](https://developers.cloudflare.com/workflows/build/workers-api/#create)、[Cloudflare R2 预签名 URL](https://developers.cloudflare.com/r2/api/s3/presigned-urls/#best-practices)
+- 2026-11-26 核对 Wrangler：`kv key delete --local` 只删除本地 KV 键，`--persist-to` 可与 Vite Worker 共用持久化目录。图生视频测试先预热旧模型列表，写入数据库夹具后只删除 `CACHE` 的模型列表键，覆盖已有缓存的场景。[Wrangler KV 命令](https://developers.cloudflare.com/workers/wrangler/commands/kv/#kv-key-delete) · [本地数据](https://developers.cloudflare.com/workers/local-development/local-data/)
 
 ### 4. 公开路由与 URL
 
 - 画廊 `/gallery`（`?kind=image|video`、`?sort=featured`、`?page=n`）；作品页 `/gallery/$slug`。画廊数值页最多 50 页，后续用游标。空白首页可访问，超出实际页数的后续页返回 404。
 - `slug = <ascii 化标题，最多 60 字符>-<作品 id 的 base36 后 8 位>`，标题无 ASCII 字符时只用后缀；标题改动不改 slug。
 - 路由按插件 `routes` 挂载在根；多站点项目中按请求站点过滤 `site`，非本站作品返回 404。
-- 发布时的站点键按发布请求的 origin 冻结，只能取 `plugins.studio.sites` 中已配置的站点键，未配置的主机记为默认站点；「我的作品」中公开作品的预览用该站点的绝对媒体地址，站点地址无法解析时回退到需要会话的空间文件接口。Node 部署在反向代理之后时，必须由代理传入可信的 Host（不透传客户端任意 Host），否则站点解析不可信。
+- 发布时按请求来源冻结站点键。单站点用默认站点键。配置 `plugins.studio.sites` 时，请求来源须匹配对应的站点定义或仍可用的默认站点。「我的作品」中公开作品的预览用该站点的绝对媒体地址，站点地址无法解析时回退到需要会话的空间文件接口。
+- 2026-11-26 核对 srvx：默认根据连接协议和收到的 Host 生成 `Request.url`，`trustProxy` 启用后可依据可信代理的转发头还原协议和主机。模板 Node HTTP 入口使用 srvx 的 URL，`TRUSTED_PROXY_CIDRS` 用于解析请求元数据。启用多站点时须核对入口看到的来源和 `sites` 配置一致。[srvx 代理设置](https://srvx.h3.dev/guide/options#trustproxy)
 - 公开页是 SSR 页面（不预渲染），`pageHead` 输出 title / description / canonical / OG；作品页 JSON-LD 为 `ImageObject` 或 `VideoObject`；
   作品页 `noindex` 当且仅当 `moderation != approved`；画廊带筛选参数的地址 canonical 指向不带参数的第一页，`?page=n` 自身 canonical。
 - seo-internal-linking：画廊与作品页是数据库页面，不进入构建期链接图；作品页内链（返回画廊、相关作品）在页面内满足规范，
@@ -99,14 +101,14 @@ studio 的 Server Function `submitStudio({ mode, modelKey, prompt, presetId?, pa
   响应 `Cache-Control: public, max-age=3600, s-maxage=86400`、`ETag`、`Content-Type`、`Accept-Ranges: bytes`，`ctx.waitUntil(cache.put)`。
   带 Range 的请求：缓存命中时由 `cache.match` 返回 206；未命中时直接 `FILES.get(key, { range })` 返回 206 并异步回填完整对象（对象 ≤ 100MB，与上传上限一致）。
   完整请求用 `tee()` 将同一对象流交给客户端和缓存。范围请求的完整对象回填使用独立的存储流。
-  2026-12-21 核对 Workers 的 `tee()` 对上游按较慢分支施加背压。[Workers ReadableStream](https://developers.cloudflare.com/workers/runtime-apis/streams/readablestream/#methods)
+  2026-11-26 核对 Workers 的 `tee()` 对上游按较慢分支施加背压，前提是源支持背压。[Workers ReadableStream](https://developers.cloudflare.com/workers/runtime-apis/streams/readablestream/#methods)
 - 失效：取消发布 / 删除 / 下架 / 隐藏时 `version + 1`，并对旧地址执行本机房 `cache.delete`；
   配置了 `CF_PURGE_TOKEN` 与 `CF_ZONE_ID`（可选密钥）时调用 Cloudflare 按 URL 清除。未配置时其他机房的旧副本最长 1 天后过期——
   旧地址只在作品页曾公开期间被引用，属于可接受窗口；下架违法内容时文档要求配置清除凭据。
 - Node 目标：无 Cache API，同一处理器只设置相同的 Cache-Control，交给 Caddy / CDN；Range 由存储适配器的范围读取支持（自托管 S3 兼容 `GetObject` Range）。
 - 备选：独立公开桶 + 自定义域名（性能最好但需新建桶、域名与清理流程，使用者未选）；继续用 `publicToken` 302 签名地址（无法缓存、每次查库，否决）。
 - 2026-11-26 核对 Cloudflare 文档：回填完整 200 响应时保留 `Content-Length`，命中查找保留请求的 `Range` 头，使 `cache.match()` 能返回 206。R2 `get` 支持按偏移、长度或后缀读取。`cache.delete()` 只作用于当前数据中心；按 URL 全局清除应使用实际缓存 URL，Cloudflare 不支持按 URL 清除 Worker 自定义缓存键。[Cache API](https://developers.cloudflare.com/workers/runtime-apis/cache/)、[R2 Workers API](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/#ranged-reads)、[缓存清除行为](https://developers.cloudflare.com/workers/reference/how-the-cache-works/)、[Purge API](https://developers.cloudflare.com/api/resources/cache/methods/purge/)
-- 2026-12-21 已核对官方文档。Worker 使用 `FixedLengthStream` 保留流式响应的 `Content-Length`。按 URL 清除使用带 `Cache Purge` 权限的 Zone 级 Bearer token，向 `POST /client/v4/zones/{zone_id}/purge_cache` 发送 JSON `{"files":["<完整规范 URL>"]}`，HTTP 成功且 `success: true` 表示请求已接受。自托管 S3 `GetObject` 接收单个 `Range`，返回实际片段的 `Content-Length` 与 ETag。[Workers Response](https://developers.cloudflare.com/workers/runtime-apis/response/#set-the-content-length-header)、[Cloudflare Purge API](https://developers.cloudflare.com/api/resources/cache/methods/purge/)、[S3 GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)
+- 2026-11-26 核对官方文档。Worker 使用 `FixedLengthStream` 保留流式响应的 `Content-Length`。按 URL 清除使用带 `Cache Purge` 权限的 Zone 级 Bearer token，向 `POST /client/v4/zones/{zone_id}/purge_cache` 发送 JSON `{"files":["<完整规范 URL>"]}`。HTTP 200 且 `success: true` 表示请求已接受，是否清除仍需重新访问旧地址验证。自托管 S3 `GetObject` 接收单个 `Range`，返回实际片段的 `Content-Length` 与 ETag。[Workers Response](https://developers.cloudflare.com/workers/runtime-apis/response/#set-the-content-length-header)、[Cloudflare Purge API](https://developers.cloudflare.com/api/resources/cache/methods/purge/)、[S3 GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)
 
 ### 6. 公开页缓存与降级
 
