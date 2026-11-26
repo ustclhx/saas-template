@@ -181,6 +181,7 @@
 - 确认页与列表放在 admin-mcp 插件（`plugins/admin-mcp/routes/admin/`），读取类 Server Function 与确认 / 拒绝同在 `confirmations.functions.ts`；插件后台菜单项新增可选 `count`。
 - 与设计稿的差异见 PR 描述（现有后台布局没有顶部标题栏：已验证状态放在正文右上，手机端沿用现有内联导航；Fluid Tabs 为紧凑分段而非等宽）。
 - **积分调整的余额展示**（协调者决定，2026-11-26）：积分调整不以余额变化阻断——调整是增量，且有幂等 `adjustmentId`。`credits.adjust` 创建待确认时记录发起时可用余额（未过期有效批次剩余之和）为 `display.balance = { before, after }`，只作展示。确认页（含手机版）对待确认记录按**打开页面时读取的实时余额**显示「积分余额 当前 → 执行后」（实时余额加本次变化量），另起一行注明发起时余额；已结束的记录只显示发起时的快照。执行不比对余额，收回批次仍比对批次剩余与状态（决策 9）。设置、模型、退款维持严格快照校验（`STALE_TARGET`）。加入余额快照之前创建的记录显示增加量。
+- **与设计稿的已接受偏离**（使用者 2026-11-26 确认六条，含执行时不校验余额变化）：见[原型索引](../../../docs/design-system/prototypes/README.md)中后台验证弹窗、确认页、待确认列表三行。
 
 
 已确认（2026-11-25）：见 `docs/design-system/prototypes/README.md` 中「后台敏感操作验证弹窗 StepUpDialog」「后台确认 AI 发起的操作 /admin/confirm/$id」「后台待确认列表 /admin/confirmations」三行，副本在 `docs/design-system/prototypes/admin-step-up/`。组件变更提议：`@saas/ui` 无 InputOTP 时按 `packages/ui/UPSTREAM.md` 接入（随画布确认）。实现与验收以副本为准。
