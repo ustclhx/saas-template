@@ -131,15 +131,20 @@ public/pending|approved|hidden --用户取消发布--> private（moderation 保�
 ### 8. 后台审核
 
 - 路由 `/admin/studio`（插件 `routes/admin/studio.tsx`），DataTable + `features/admin/list.ts`，分栏：待审核（按 `published_at` 升序）、被举报（`report_count > 0 且有未处理举报`）、已隐藏、已下架。
-- 操作经 `adminAction`：`studio.work.approve`、`studio.work.remove`（必填原因）、`studio.work.restore`、`studio.work.feature`；用 `defineAdminActions('studio', …)` 登记 step-up 级别：
+- 操作经 `adminAction`：`studio.work.approve`、`studio.work.remove`（必填原因 enum 或文本，最多 200 字符）、`studio.work.restore`、`studio.work.feature`、`studio.work.unfeature`；用 `defineAdminActions('studio', …)` 登记 step-up 级别：
   全部为 `never`（不涉及资金与账号，频繁操作；下架可恢复）。批量通过 / 下架（每次 ≤ 50）放 P1。
+- 恢复时将未处理举报标记为已处理，保留累计举报数与去重记录。举报原因按作品汇总累计与未处理数量。
+- 2026-11-26 核对 Cloudflare R2：预签名 GET 允许在签名有效期内读取单个对象。审核预览由后台鉴权后按需签名，响应设为 `private, no-store`。[R2 预签名 URL](https://developers.cloudflare.com/r2/api/s3/presigned-urls/)
 - `adminNav`：分组 `operations`，`count` = 待审核 + 已隐藏数量（与 add-admin-step-up 的导航计数同一机制，按需 `import()` 加载，不进后台入口包闭包）。
 
 ### 9. 举报
 
 `POST /api/studio/reports`：作品须公开可见；登录用户以 `u:<id>` 为键；未登录必须带 Turnstile token（复用 `packages/auth/src/protection.ts` 校验，未配置 Turnstile 时匿名举报关闭，只允许登录举报）。
-限流：`RL_SHARE_CARD` 同类的原生限流按 IP 10 次 / 分钟作为第一层；因原生绑定不可靠，第二层用唯一键去重 + 每作品每小时匿名举报上限（查询计数）兜底。
-插入成功（非重复）时事务内 `report_count + 1`，不同举报人数 ≥ 阈值且状态为 `pending|approved` 时转 `hidden` 并递增版本。
+举报入口与公开媒体共用请求站点解析：多站点按配置中的 origin 选站，作品查询再按站点过滤。触发隐藏的已收件举报可由原举报人重试，重试不写入或增加计数。
+限流：复用 `RL_AUTH` 的原生 10 次 / 分钟策略，举报使用独立键。第二层用唯一键去重，并在作品行锁内限制每作品最近 1 小时最多接受 10 条匿名举报。
+插入成功（非重复）时事务内 `report_count + 1`，不同举报人的未处理举报数 ≥ 阈值且状态为 `pending|approved` 时记录此前审核状态、转 `hidden` 并递增版本。事务提交后调用作品失效回调。
+- 2026-11-26 核对 Cloudflare：Turnstile token 必须经 Siteverify 校验，token 有效期 5 分钟且供单次校验使用。Workers 原生限流在各机房独立计数，按近似额度执行。[Turnstile server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/) · [Workers Rate Limiting](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)
+- 2026-11-26 核对 PostgreSQL 17：`FOR UPDATE` 串行化同一作品的举报与审核；默认 `READ COMMITTED` 下，取得行锁后的计数语句可见上一事务已提交的举报。[行锁](https://www.postgresql.org/docs/17/explicit-locking.html#LOCKING-ROWS) · [事务隔离](https://www.postgresql.org/docs/17/transaction-iso.html#XACT-READ-COMMITTED)
 
 ### 10. 插件附加站点地图
 

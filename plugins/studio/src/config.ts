@@ -8,4 +8,17 @@ export const studioConfigSchema = z.strictObject({
   publishDailyLimit: z.int().positive().default(DEFAULT_PUBLISH_DAILY_LIMIT),
   reportHideThreshold: z.int().positive().default(3),
   galleryPageSize: z.int().positive().default(24),
+  sites: z
+    .record(
+      z.string().min(1),
+      z.url({ protocol: /^https?$/ }).pipe(
+        z.string().refine((url) => new URL(url).origin === url, {
+          message: 'Use an origin without a path, query or trailing slash',
+        }),
+      ),
+    )
+    .refine((sites) => new Set(Object.values(sites)).size === Object.keys(sites).length, {
+      message: 'Each Studio site must have its own origin',
+    })
+    .optional(),
 })

@@ -3,6 +3,13 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./moderation": "./src/web/moderation.functions.ts",
+    "./moderation-input": "./src/web/moderation-input.ts",
+    "./moderation-queue.server": "./src/web/moderation-queue.server.ts",
+    "./moderation.server": "./src/web/moderation.server.ts",
+    "./work-invalidation": "./src/web/work-invalidation.ts"
+  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
@@ -15,6 +22,7 @@
     "@saas/plugin-media": "workspace:*",
     "@saas/shared": "workspace:*",
     "@saas/storage": "workspace:*",
+    "@tanstack/react-router": "^1.170.41",
     "@tanstack/react-start": "^1.168.60",
     "drizzle-orm": "^0.45.3",
     "zod": "^4.6.5"
