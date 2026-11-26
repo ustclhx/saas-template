@@ -28,6 +28,8 @@ export declare const GENERATED_FILES: {
   readonly web: string
   readonly worker: string
   readonly webNode: string
+  readonly adminMcp: string
+  readonly adminMcpNode: string
   readonly styles: string
   readonly stylesNode: string
   readonly jobs: string

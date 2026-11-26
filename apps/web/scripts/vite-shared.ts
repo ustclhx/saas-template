@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import contentCollections from '@content-collections/vite'
 import type { PluginTarget } from '@saas/config'
@@ -27,9 +27,10 @@ const templateConfigFile = fileURLToPath(new URL('../../../template.config.ts', 
 const { plugins: enabledPlugins } = await generatePlugins({ config: templateConfig })
 
 /**
- * Node 构建把两目标共用的 plugins.gen.ts / plugins.gen.css 解析为 Node 版本，排除仅 Cloudflare 的插件。
+ * Node 构建把两目标共用的注册文件解析为 Node 版本，排除仅 Cloudflare 的插件。
  */
 function nodePluginRegistry(): Plugin {
+  const filenames = Object.keys(NODE_WEB_ALIASES).map((path) => basename(path))
   const aliases = new Map(
     Object.entries(NODE_WEB_ALIASES).map(([from, to]) => [
       join(REPO_ROOT, from),
@@ -40,7 +41,7 @@ function nodePluginRegistry(): Plugin {
     name: 'saas:node-plugin-registry',
     enforce: 'pre',
     async resolveId(source, importer, options) {
-      if (!source.includes('plugins.gen.')) return null
+      if (!filenames.some((name) => source.includes(name))) return null
       const resolved = await this.resolve(source, importer, { ...options, skipSelf: true })
       const target = resolved && aliases.get(resolved.id)
       return target ?? null

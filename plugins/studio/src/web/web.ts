@@ -1,8 +1,10 @@
 import { LayoutGrid, Sparkles } from '@saas/ui/icons'
+import { createServerOnlyFn } from '@tanstack/react-start'
 import type { WebPluginModule } from '@web/features/plugins/contract.ts'
 import { m } from '@web/paraglide/messages.js'
 import { templateConfig } from '@web/server/template-config.ts'
 import { enabledStudioKinds } from '../kinds.ts'
+import { studioWorksList, studioWorksModerate } from './admin-mcp-tools.ts'
 
 // 没有启用的模式（插件配置与模板 AI 开关求交为空）时两个入口都不显示，页面同样返回 404。
 const studio = () => enabledStudioKinds(templateConfig).length > 0
@@ -55,3 +57,8 @@ export default {
     },
   ],
 } satisfies WebPluginModule
+
+export const adminMcpTools = createServerOnlyFn(() => ({
+  'studio.works.list': studioWorksList,
+  'studio.works.moderate': studioWorksModerate,
+}))

@@ -1,42 +1,28 @@
 import type { CallToolResult, Tool } from '@modelcontextprotocol/server'
 import { getSettingDefinition } from '@saas/db'
-import type { KeyValueStore, RequestMetadata } from '@saas/platform'
 import { AppError } from '@saas/shared'
 import { log } from '@saas/shared/log'
 import {
   AdminAccessRevokedError,
-  type AdminActionContext,
-  type AdminActionScope,
   type AdminAuditEntry,
   runAdminAction,
 } from '@web/features/admin/action.ts'
-import { type AdminActionRef, requiresStepUp } from '@web/features/admin/actions.registry.ts'
-import {
-  type ConfirmationExecutor,
-  type ConfirmationRequest,
-  createPendingAction,
-} from '@web/features/admin/confirmations/service.ts'
+import { requiresStepUp } from '@web/features/admin/actions.registry.ts'
+import { createPendingAction } from '@web/features/admin/confirmations/service.ts'
 import { ADMIN_PAGE_SIZE } from '@web/features/admin/list.ts'
+import {
+  type AdminToolContext,
+  type AdminToolDefinition,
+  toolResult,
+} from '@web/features/admin/mcp-tool.ts'
 import { z } from 'zod'
 import { adminMcpActions } from '../actions.ts'
-import type { AdminTokenScope } from '../tokens.ts'
 
-export interface AdminToolContext extends AdminActionContext {
-  readonly token: { readonly id: string; readonly scopes: readonly AdminTokenScope[] }
-  readonly cache: KeyValueStore
-  readonly requestMetadata: RequestMetadata
-  readonly workersAiAvailable: boolean
-  readonly aiFaultInjectionEnabled: boolean
-  /** 部署配置的应用地址，用于生成后台确认链接 */
-  readonly appUrl: string
-}
-
-/** 确认执行时可用的运行环境（由后台确认 Server Function 按 web 运行时构造） */
-export interface ToolExecutionEnv {
-  readonly cache: KeyValueStore
-  readonly workersAiAvailable: boolean
-  readonly aiFaultInjectionEnabled: boolean
-}
+export {
+  type AdminToolContext,
+  dryRunDescription,
+  toolResult,
+} from '@web/features/admin/mcp-tool.ts'
 
 export const NEEDS_OWNER_CONFIRM = 'needs_owner_confirm'
 
@@ -47,44 +33,9 @@ export const pagingDescriptions = {
   limit: `Maximum number of records to return. Defaults to ${ADMIN_PAGE_SIZE}, the page limit.`,
 }
 
-export const dryRunDescription =
-  'Set to true to preview and validate the change without saving. Defaults to false.'
-
-type ToolHandler<Schema extends z.ZodObject, Context> = (
-  ctx: Context,
-  input: z.output<Schema>,
-) => ToolSuccess | Promise<ToolSuccess>
-
-type AdminTool<Schema extends z.ZodObject> = {
+type AdminTool<Schema extends z.ZodObject> = AdminToolDefinition<Schema, ToolSuccess> & {
   readonly name: string
-  readonly description: string
-  readonly input: Schema
-  readonly params: { readonly [Key in keyof NoInfer<Schema>['shape']]: string }
-} & (
-  | { readonly scope: 'admin:read'; run: ToolHandler<Schema, AdminToolContext> }
-  | {
-      readonly scope: 'admin:write'
-      /**
-       * 本次写入对应的后台动作（与后台同名，见 actions.registry.ts），按已校验的输入给出。
-       * 敏感判定命中时不执行，转为待确认记录（needs_owner_confirm），由管理员在后台确认后执行。
-       */
-      adminAction(input: z.output<Schema>): AdminActionRef
-      run: ToolHandler<Schema, AdminToolContext & AdminActionScope & { dryRun: boolean }>
-      afterCommit?(ctx: AdminToolContext, input: z.output<Schema>): Promise<void>
-      /**
-       * 敏感判定命中（或 `alwaysConfirm`）时不执行 run，改为创建待确认记录（add-admin-step-up 决策 6、7）：
-       * 在事务内把 AI 传入的标识解析为 ID、读出现值快照，返回摘要、展示内容与执行参数。
-       */
-      confirm?(
-        ctx: AdminToolContext & AdminActionScope,
-        input: z.output<Schema>,
-      ): Promise<ConfirmationRequest>
-      /** 管理员确认后的执行器：只使用保存的执行参数，不再解析 AI 原始输入（决策 8） */
-      execute?(env: ToolExecutionEnv): ConfirmationExecutor
-      /** 不论敏感判定，非预览调用一律经管理员确认（如退款审核的驳回也会通知用户） */
-      alwaysConfirm?: boolean
-    }
-)
+}
 
 export function defineAdminTool<Schema extends z.ZodObject>(tool: AdminTool<Schema>) {
   // 在导出的对象上写说明，避免改动后台页面复用的 Zod schema。
@@ -116,10 +67,6 @@ export function defineAdminTool<Schema extends z.ZodObject>(tool: AdminTool<Sche
     execute: tool.scope === 'admin:write' ? tool.execute : undefined,
     register: (ctx: AdminToolContext) => registerAdminTool(ctx, tool, spec),
   }
-}
-
-export function toolResult(data: Record<string, unknown>): ToolSuccess {
-  return { structuredContent: data, content: [{ type: 'text', text: JSON.stringify(data) }] }
 }
 
 function toolError(code: string, message: string): CallToolResult {
@@ -271,12 +218,16 @@ export function registerAdminTool<Schema extends z.ZodObject>(
         }
         // 预览只校验不保存，不要求重新验证；正式写入按工具声明的后台动作判定
         const action = dryRun ? adminMcpActions['admin.mcp.dry_run'] : tool.adminAction(parsed.data)
+        const committed: (() => void | Promise<void>)[] = []
         const result = await runAdminAction(ctx, action, async (scope) => {
           const preview = await tool.run(
             {
               ...ctx,
               ...scope,
               dryRun,
+              afterCommit: (callback) => {
+                if (!dryRun) committed.push(callback)
+              },
               audit: (entry) =>
                 scope.audit({
                   ...entry,
@@ -292,9 +243,9 @@ export function registerAdminTool<Schema extends z.ZodObject>(
           if (dryRun) await scope.audit(callAuditEntry(meta, 'ok'))
           return preview
         })
-        if (!dryRun && tool.afterCommit) {
+        if (committed.length) {
           try {
-            await tool.afterCommit(ctx, parsed.data)
+            for (const callback of committed) await callback()
           } catch {
             // 事务及业务审计已经提交，调用方可据错误码区分缓存刷新失败。
             log.error('admin.mcp.cache_invalidation_failed', {

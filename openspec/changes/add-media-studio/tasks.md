@@ -54,8 +54,8 @@
 
 ## 9. 管理员 MCP 插件工具（P2，依赖 7）
 
-- [ ] 9.1 admin-mcp 插件工具注册：已启用插件 web 入口导出 `adminMcpTools` 汇总进工具表，前缀与重名生成时校验，scope / 审计 / dryRun 与内置一致。单测覆盖未启用不出现、重名失败
-- [ ] 9.2 studio 工具 `studio.works.list` 与 `studio.works.moderate`（dryRun），同 PR 更新 `docs/admin-mcp.md` 工具表。集成测试覆盖只读令牌被拒与审计 `via=mcp`
+- [x] 9.1 admin-mcp 插件工具注册：已启用插件 web 入口导出 `adminMcpTools` 汇总进工具表，前缀与重名生成时校验，scope / 审计 / dryRun 与内置一致。单测覆盖未启用不出现、重名失败
+- [x] 9.2 studio 工具 `studio.works.list` 与 `studio.works.moderate`（dryRun），同 PR 更新 `docs/admin-mcp.md` 工具表。集成测试覆盖只读令牌被拒与审计 `via=mcp`
 
 ## 10. 集成与验收
 

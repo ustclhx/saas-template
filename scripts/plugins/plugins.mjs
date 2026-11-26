@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { pluginsForTarget, resolvePlugins } from '@saas/config'
+import { adminMcpContributors } from './admin-mcp-tools.mjs'
 
 export const REPO_ROOT = resolve(import.meta.dirname, '../..')
 
@@ -13,6 +14,8 @@ export const GENERATED_FILES = {
   web: 'apps/web/src/plugins.gen.ts',
   worker: 'apps/web/src/plugins.worker.gen.ts',
   webNode: 'apps/web/src/plugins.node.gen.ts',
+  adminMcp: 'apps/web/src/plugins.admin-mcp.gen.ts',
+  adminMcpNode: 'apps/web/src/plugins.admin-mcp.node.gen.ts',
   styles: 'apps/web/src/styles/plugins.gen.css',
   stylesNode: 'apps/web/src/styles/plugins.node.gen.css',
   jobs: 'apps/jobs/src/plugins.gen.ts',
@@ -29,11 +32,12 @@ export const NODE_PLUGIN_CONTRACTS = {
 }
 
 /**
- * web 两目标共用的代码只导入 plugins.gen.ts 与 plugins.gen.css；Node 构建（vite.node.config.ts）
+ * web 两目标共用的代码只导入 Cloudflare 注册文件；Node 构建（vite.node.config.ts）
  * 把它们解析为 Node 版本，排除仅 Cloudflare 的插件。键与值均相对仓库根。
  */
 export const NODE_WEB_ALIASES = {
   [GENERATED_FILES.web]: GENERATED_FILES.webNode,
+  [GENERATED_FILES.adminMcp]: GENERATED_FILES.adminMcpNode,
   [GENERATED_FILES.styles]: GENERATED_FILES.stylesNode,
 }
 
@@ -181,6 +185,26 @@ function registry(
   return `${lines.join('\n')}\n`
 }
 
+/** MCP 只加载工具贡献者，后台确认和协议处理不依赖导航注册表。 */
+function adminMcpRegistry(root, generated, plugins, contributors) {
+  const lines = [HEADER, "import type { AdminMcpToolFactory } from './features/admin/mcp-tool.ts'"]
+  const entries = []
+  if (plugins.some(({ manifest }) => manifest.id === 'admin-mcp')) {
+    for (const { manifest, dir } of plugins) {
+      if (!contributors.has(manifest.id)) continue
+      const name = entryName(manifest.id, 'adminMcpTools')
+      lines.push(
+        `import { adminMcpTools as ${name} } from '${importPath(root, generated, dir, manifest.entries.web)}'`,
+      )
+      entries.push(name)
+    }
+  }
+  lines.push(
+    `\nexport const adminMcpToolPlugins: readonly (() => Readonly<Record<string, AdminMcpToolFactory>>)[] = [${entries.join(', ')}]`,
+  )
+  return `${lines.join('\n')}\n`
+}
+
 function styles(root, generated, plugins) {
   const lines = [
     '/* 由 scripts/plugins/generate.mjs 生成（已 gitignore）：启用插件的 Tailwind 扫描目录，只含 @source */',
@@ -204,6 +228,7 @@ export function renderPluginFiles(root, plugins) {
   const cloudflare = pluginsForTarget(plugins, 'cloudflare').included
   const web = { typeFrom: './features/plugins/contract.ts' }
   const jobs = { typeFrom: './plugins/contract.ts' }
+  const adminMcpIds = adminMcpContributors(root, plugins)
   const agentsWorker = cloudflare.find(
     ({ manifest }) => manifest.id === 'agents' && manifest.entries?.worker,
   )
@@ -217,6 +242,12 @@ export function renderPluginFiles(root, plugins) {
       cloudflare,
       [{ name: 'plugins', kind: 'web', type: 'WebPluginRegistration' }],
       { ...web, agentToolEntries },
+    ),
+    [GENERATED_FILES.adminMcp]: adminMcpRegistry(
+      root,
+      GENERATED_FILES.adminMcp,
+      cloudflare,
+      adminMcpIds,
     ),
     [GENERATED_FILES.worker]: registry(
       root,
@@ -251,6 +282,12 @@ export function renderPluginFiles(root, plugins) {
           },
         ],
         web,
+      ),
+      [GENERATED_FILES.adminMcpNode]: adminMcpRegistry(
+        root,
+        GENERATED_FILES.adminMcpNode,
+        node,
+        adminMcpIds,
       ),
       [GENERATED_FILES.stylesNode]: styles(root, GENERATED_FILES.stylesNode, node),
     })

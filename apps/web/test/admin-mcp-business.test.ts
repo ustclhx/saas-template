@@ -1,7 +1,7 @@
 import { account, auditLog, member, metricsDaily, organization, user } from '@saas/db'
 import { newId } from '@saas/shared'
 import { eq, inArray } from 'drizzle-orm'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { respondToAdminMcp } from '../../../plugins/admin-mcp/src/web/mcp.ts'
 import { createAdminApiToken } from '../../../plugins/admin-mcp/src/web/tokens.ts'
 import { connectAdminMcpTestClient } from '../../../plugins/admin-mcp/test/client.ts'
@@ -15,6 +15,11 @@ import {
 import { listAdminPurchases } from '../src/features/billing/admin-data.ts'
 import { templateConfig } from '../src/server/template-config.ts'
 import { adminCache, createAdminTestDb } from './admin-test-resources.ts'
+
+vi.mock('@tanstack/react-start', () => ({
+  createMiddleware: () => ({ server: () => ({}) }),
+  createServerOnlyFn: (fn: unknown) => fn,
+}))
 
 const fixture = newId()
 const adminId = newId()

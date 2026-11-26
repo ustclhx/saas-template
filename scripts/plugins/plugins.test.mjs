@@ -207,6 +207,65 @@ test('工具扩展点随 Cloudflare agents 启用，只在 Worker 启动时登�
   assert.doesNotMatch(withoutAgents[GENERATED_FILES.web], /agentToolPlugins/)
 })
 
+test('Studio MCP 工具只汇总到同时启用 Studio 与 admin-mcp 的 Web 目标', async () => {
+  const loaded = await loadPluginManifests()
+  for (const plugins of [
+    { media: {}, studio: {}, 'admin-mcp': {} },
+    { media: {}, 'admin-mcp': {} },
+    { media: {}, studio: {} },
+  ]) {
+    const { files } = await generatePlugins({ root, config: config(plugins), loaded, write: false })
+    for (const file of [GENERATED_FILES.adminMcp, GENERATED_FILES.adminMcpNode]) {
+      const pattern = /adminMcpToolPlugins: [^\n]+ = \[studioAdminMcpTools\]/
+      if (plugins.studio && plugins['admin-mcp']) assert.match(files[file], pattern)
+      else assert.doesNotMatch(files[file], /studioAdminMcpTools/)
+    }
+    for (const file of [GENERATED_FILES.web, GENERATED_FILES.webNode, GENERATED_FILES.worker]) {
+      assert.doesNotMatch(files[file], /adminMcpTools/)
+    }
+  }
+})
+
+test('生成时拒绝 MCP 工具前缀错误及与内置、同插件、其他插件的重名', async () => {
+  const fixture = mkdtempSync(join(tmpdir(), 'saas-plugins-admin-mcp-'))
+  try {
+    const builtin = join(fixture, 'plugins/admin-mcp/src/web/tools')
+    mkdirSync(builtin, { recursive: true })
+    writeFileSync(join(builtin, 'ping.ts'), "const ping = defineAdminTool({ name: 'ping' })")
+    const loaded = [both, cfOnly].map((manifest) => {
+      const slim = { id: manifest.id, targets: manifest.targets, entries: { web: 'web.ts' } }
+      const dir = join(fixture, slim.id)
+      mkdirSync(dir)
+      return { manifest: slim, dir }
+    })
+    const writeTools = ({ dir }, names) => {
+      const keys = names.map((name) => `${JSON.stringify(name)}: makeTool`).join(', ')
+      writeFileSync(
+        join(dir, 'web.ts'),
+        `export const adminMcpTools = createServerOnlyFn(() => ({ ${keys} }))`,
+      )
+    }
+    const options = {
+      root: fixture,
+      config: config({ both: {}, 'cf-only': {} }),
+      loaded,
+      write: false,
+    }
+    for (const [names, otherNames, error] of [
+      [['wrong.list'], [], /plugin both: admin MCP tool wrong\.list must start with both\./],
+      [['ping'], [], /Duplicate admin MCP tool ping.*built-in/],
+      [['both.list', 'both.list'], [], /Duplicate admin MCP tool both\.list/],
+      [['both.list'], ['both.list'], /Duplicate admin MCP tool both\.list.*cf-only and both/],
+    ]) {
+      writeTools(loaded[0], names)
+      writeTools(loaded[1], otherNames)
+      await assert.rejects(generatePlugins(options), error)
+    }
+  } finally {
+    rmSync(fixture, { recursive: true, force: true })
+  }
+})
+
 test('路由与文案按目标挂载：Node 不挂仅 Cloudflare 插件的路由与文案', async () => {
   const plugins = resolveEnabledPlugins(
     config({ both: {}, 'cf-only': {} }),
@@ -280,6 +339,7 @@ test('项目删除 Node 入口（只部署 Cloudflare）时不生成 Node 注册
     // 之前生成过的 Node 注册文件（同步模板前留下）应被移除
     for (const path of [
       GENERATED_FILES.webNode,
+      GENERATED_FILES.adminMcpNode,
       GENERATED_FILES.stylesNode,
       GENERATED_FILES.jobsNode,
     ]) {
@@ -295,6 +355,7 @@ test('项目删除 Node 入口（只部署 Cloudflare）时不生成 Node 注册
     assert.deepEqual(
       Object.keys(files).sort(),
       [
+        GENERATED_FILES.adminMcp,
         GENERATED_FILES.jobs,
         GENERATED_FILES.styles,
         GENERATED_FILES.web,
@@ -303,6 +364,7 @@ test('项目删除 Node 入口（只部署 Cloudflare）时不生成 Node 注册
     )
     for (const path of [
       GENERATED_FILES.webNode,
+      GENERATED_FILES.adminMcpNode,
       GENERATED_FILES.stylesNode,
       GENERATED_FILES.jobsNode,
     ])

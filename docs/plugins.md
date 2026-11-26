@@ -47,6 +47,8 @@ plugins/<id>/
 
 接口定义见 [Web](../apps/web/src/features/plugins/contract.ts)、[Cloudflare Web Worker](../apps/web/src/server/cloudflare/plugins.ts)、[Node Web](../apps/web/src/node/plugins.ts)、[jobs](../apps/jobs/src/plugins/contract.ts) 与 [Node jobs](../apps/jobs/src/node/plugins.ts)。
 
+插件可在 `web` 入口直接具名导出 `adminMcpTools = createServerOnlyFn(() => ({ 'example.tool': exampleTool }))`。对象键是 MCP 工具名，必须使用以插件 ID 和 `.` 开头的字符串字面量，且全局唯一。用 `@web/features/admin/mcp-tool.ts` 的 `definePluginAdminMcpTool` 定义工具，只在回调内引用工具实现。生成器按部署目标汇总启用插件的工具，`admin-mcp` 启用时才会注册。写工具使用 `adminAction` 指定已登记的后台动作，支持 `dryRun` 的业务实现只预览，缓存等副作用通过 `ctx.afterCommit` 在提交后运行。敏感操作须同时实现 `confirm` 与 `execute`，由同一注册表提供确认后的执行器。[Studio 工具示例](../plugins/studio/src/web/admin-mcp-tools.ts) · [管理员 MCP](./admin-mcp.md)
+
 ## 依赖边界
 
 - 核心的运行时代码与脚本经 `*.gen.ts` 接入插件。`apps/web/test`、`apps/jobs/test`、`apps/web/e2e` 可用包名或相对路径直接导入插件做集成验证。依赖插件的用例须检查 `template.config.ts` 的 `plugins`，并在插件未启用时跳过。

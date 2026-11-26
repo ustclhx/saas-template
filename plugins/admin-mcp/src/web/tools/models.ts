@@ -150,9 +150,10 @@ const update = defineAdminTool({
   adminAction: ({ key, pricing }) => ({ name: 'ai.model_save', input: { key, pricing } }),
   async run(ctx, { dryRun: _dryRun, ...input }) {
     requireFeature('billing')
-    return toolResult(await applyModelUpdate(ctx, ctx, input, ctx.dryRun))
+    const result = await applyModelUpdate(ctx, ctx, input, ctx.dryRun)
+    ctx.afterCommit(() => invalidateModelCache(ctx.cache))
+    return toolResult(result)
   },
-  afterCommit: ({ cache }) => invalidateModelCache(cache),
   // 只有改动定价时才走确认（ai.model_save 的判定）。
   async confirm(ctx, { dryRun: _dryRun, ...input }) {
     requireFeature('billing')

@@ -11,7 +11,7 @@ import type { Storage } from '@saas/storage'
 import { ADMIN_PAGE_SIZE } from '@web/features/admin/list.ts'
 import { and, asc, count, desc, eq, exists, gt, inArray, isNull, or, sql } from 'drizzle-orm'
 import type { z } from 'zod'
-import { studioReviewQueueSchema } from './moderation-input.ts'
+import { type studioReviewCursor, studioReviewQueueSchema } from './moderation-input.ts'
 
 const pendingReview = and(eq(studioWork.moderation, 'pending'), eq(studioWork.visibility, 'public'))
 const hiddenReview = eq(studioWork.moderation, 'hidden')
@@ -36,9 +36,14 @@ function queuePredicates(db: Database) {
 export async function listStudioReviewQueue(
   db: Database,
   input: z.input<typeof studioReviewQueueSchema>,
+  pagination?: { cursor: z.output<typeof studioReviewCursor> | undefined },
 ) {
   const { queue, offset, site } = studioReviewQueueSchema.parse(input)
   const predicates = queuePredicates(db)
+  const order = queue === 'pending' ? asc : desc
+  const position = sql`(${studioWork.publishedAt}, ${studioWork.id})`
+  const cursor = pagination?.cursor
+  const after = cursor && sql`(${cursor[1]}::timestamptz, ${cursor[2]}::uuid)`
 
   const page = await db
     .select({
@@ -61,17 +66,21 @@ export async function listStudioReviewQueue(
       reportCount: studioWork.reportCount,
       publishedAt: studioWork.publishedAt,
       reviewedAt: studioWork.reviewedAt,
+      // 数据库时间戳含微秒，用完整精度保证相邻作品可以连续翻页。
+      cursorAt: sql<string>`to_char(${studioWork.publishedAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
     })
     // biome-ignore lint/plugin: 平台管理员的审核队列可跨空间读取作品。
     .from(studioWork)
     .innerJoin(user, eq(user.id, studioWork.userId))
     .innerJoin(organization, eq(organization.id, studioWork.workspaceId))
-    .where(and(predicates[queue], site === undefined ? undefined : eq(studioWork.site, site)))
-    .orderBy(
-      ...(queue === 'pending'
-        ? [asc(studioWork.publishedAt), asc(studioWork.id)]
-        : [desc(studioWork.publishedAt), desc(studioWork.id)]),
+    .where(
+      and(
+        predicates[queue],
+        site === undefined ? undefined : eq(studioWork.site, site),
+        after && (queue === 'pending' ? sql`${position} > ${after}` : sql`${position} < ${after}`),
+      ),
     )
+    .orderBy(order(studioWork.publishedAt), order(studioWork.id))
     .offset(offset)
     .limit(ADMIN_PAGE_SIZE + 1)
 
@@ -101,12 +110,15 @@ export async function listStudioReviewQueue(
     reasonsByWork.set(workId, reasons)
   }
 
+  const hasMore = page.length > ADMIN_PAGE_SIZE
+  const last = hasMore ? rows.at(-1) : undefined
   return {
-    rows: rows.map((row) => ({
+    rows: rows.map(({ cursorAt: _, ...row }) => ({
       ...row,
       reportReasons: reasonsByWork.get(row.id) ?? [],
     })),
-    hasMore: page.length > ADMIN_PAGE_SIZE,
+    hasMore,
+    ...(pagination && { nextCursor: last ? `${queue}~${last.cursorAt}~${last.id}` : null }),
   }
 }
 
