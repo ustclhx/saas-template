@@ -5,6 +5,7 @@ export default definePlugin({
   id: 'studio',
   targets: ['cloudflare', 'node'],
   requires: { plugins: ['media'], features: ['billing', 'credits'] },
+  routes: { dir: 'routes', mount: '' },
   entries: {
     web: 'src/web/web.ts',
     worker: 'src/worker/index.ts',
