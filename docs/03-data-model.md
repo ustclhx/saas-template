@@ -81,6 +81,7 @@ credit_ledger (只增不改的流水)
 | `file` | id, ws, user_id, purpose(`upload`/`ai_output`/`avatar`/...), **status**(`pending`/`ready`), r2_key (unique), mime, size, width, height, duration, source_task_id null, public_token null (unique), deleted_at | R2 中对象的元数据；`pending` 为已签发上传 URL 但未确认，只有 `ready` 计入配额并可被引用；`public_token` 用于可选的公开分享 |
 | `studio_work` | id, workspace_id, user_id, file_id (unique), task_id, kind, site, slug (unique), title, prompt null, show_prompt, model_key, width/height/duration_ms null, visibility, moderation, moderation_before_hide null, removal_reason null, featured_at null, version, report_count, published_at, reviewed_at/reviewed_by null, created_at, updated_at | 首次发布时建行。`visibility` 为 `public` / `private`，`moderation` 为 `pending` / `approved` / `hidden` / `removed`。隐藏前的 `pending` 或 `approved` 存在 `moderation_before_hide`；`version` 初始为 1。空间、发布者、审核者、输出文件和任务外键均限制物理删除。 |
 | `studio_report` | id, work_id, reporter_key, reason, note null, resolved_at null, resolution null, created_at | 同一作品和举报键只能有一条记录。`reason` 为 `sexual` / `violence` / `hate` / `copyright` / `spam` / `other`，`note` 最多 500 字符。删除作品时级联清除举报。 |
+| `studio_publication` | id, user_id, published_at | 按 `(user_id, published_at)` 统计同一用户跨空间的 UTC 日内成功发布次数。作品删除或撤回时保留当天记录；用户下次发布时清掉往日记录，删号时清除其全部记录。 |
 
 ## 6. 平台通用
 

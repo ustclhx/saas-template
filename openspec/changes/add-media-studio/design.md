@@ -55,13 +55,16 @@ studio 不替换 media 的通用提交页与任务页：它们仍服务公开 AP
   索引：`(site, visibility, moderation, published_at desc)`、`(site, featured_at desc) where featured_at is not null`、`(workspace_id, id desc)`、`(moderation, published_at)`。
 - 新表 `studio_report`：`id`、`work_id`（cascade）、`reporter_key`（`u:<userId>` 或 `ip:<HMAC(ip, BETTER_AUTH_SECRET 派生键)>`）、`reason` 枚举（`sexual | violence | hate | copyright | spam | other`）、`note`（≤500）、
   `resolved_at`、`resolution`、`created_at`；唯一 `(work_id, reporter_key)`。
-- 公开判定统一为一个 SQL 谓词 `visibility = 'public' and moderation in ('pending','approved') and 作者未封禁 and 文件未删除`，
+- 公开判定统一为一个 SQL 谓词 `visibility = 'public' and moderation in ('pending','approved') and 作者未封禁且未删号 and 文件未删除`，
   画廊、作品页、媒体路由与站点地图共用（`approved` 另用于收录判断）。
 - 作者封禁：查询时连接 `user.banned`，不改作品行，解除封禁自动恢复。
-- 删除：用户删除作品 = 事务内删 `studio_work`（举报级联）、软删 `file` 并按现有存储删除流程删 R2 对象；
-  删号 / 删空间：`registerDeletionStep` 注册 studio 步骤，在 `file` / `ai_task` 清理之前删本空间 `studio_work`（级联举报），幂等。
+- 删除：事务内递增版本、删 `studio_work`（举报级联）并软删 `file`；提交后失效旧地址并调用现有存储适配器删除 R2 对象。
+  对象删除失败时，现有文件清理任务按软删记录重试。
+- 删号 / 删空间：`registerDeletionStep` 在删除事务中先清理作品与举报。删号清理个人空间的作品、本人发布的作品及本人任务关联的作品。
+  删空间时，底层产出仍走原有保留期，空间恢复后可重新发布。插件停用时，既有 AI 清理先删除待清理任务的作品，也按发布者清理已删号用户在团队空间发布的作品。文件清理暂缓删除仍被作品引用的文件。
 - `ai_model.display_name text null`（迁移 + 后台模型编辑器字段 + MCP `models.list` 返回、`models.update` 可写）。
 - 2026-11-26 核对 PostgreSQL 17 文档：`RESTRICT` 拒绝删除仍被引用的行，`CASCADE` 随作品删除举报，精选索引仅收录匹配谓词的行。[外键约束](https://www.postgresql.org/docs/17/ddl-constraints.html#DDL-CONSTRAINTS-FK)、[部分索引](https://www.postgresql.org/docs/17/indexes-partial.html)
+- 2026-11-26 核对 Cloudflare：R2 `delete` 成功后，随后的直接对象读取全局可见删除结果。已缓存的 HTTP 响应仍按决策 5 失效。[Workers API](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/#bucket-method-definitions)、[R2 一致性](https://developers.cloudflare.com/r2/reference/consistency/)
 
 ### 3. 创作页复用 media 提交
 
@@ -78,7 +81,7 @@ studio 的 Server Function `submitStudio({ mode, modelKey, prompt, presetId?, pa
 
 ### 4. 公开路由与 URL
 
-- 画廊 `/gallery`（`?kind=image|video`、`?sort=featured`、`?page=n`）；作品页 `/gallery/$slug`。
+- 画廊 `/gallery`（`?kind=image|video`、`?sort=featured`、`?page=n`）；作品页 `/gallery/$slug`。画廊数值页最多 50 页，后续用游标。空白首页可访问，超出实际页数的后续页返回 404。
 - `slug = <ascii 化标题，最多 60 字符>-<作品 id 的 base36 后 8 位>`，标题无 ASCII 字符时只用后缀；标题改动不改 slug。
 - 路由按插件 `routes` 挂载在根；多站点项目中按请求站点过滤 `site`，非本站作品返回 404。
 - 公开页是 SSR 页面（不预渲染），`pageHead` 输出 title / description / canonical / OG；作品页 JSON-LD 为 `ImageObject` 或 `VideoObject`；
@@ -114,12 +117,16 @@ studio 的 Server Function `submitStudio({ mode, modelKey, prompt, presetId?, pa
            --发布[检查转人工 或 检查异常]--> public/hidden
            --发布[检查拒绝]--> 不建行，返回原因
 public/pending|approved --举报达阈值--> public/hidden --恢复--> 原状态（hidden 前若为 pending 则回 pending）
-任意 public/* --管理员下架(原因)--> removed（用户不可再发布、不可见）  --恢复--> pending
-public/* --用户取消发布--> private（moderation 保留；重新发布时 approved 保持 approved，hidden/removed 规则不变）
+任意 public/* --管理员下架(原因)--> removed（用户不可再发布或取消发布、不可见）  --恢复--> pending
+public/pending|approved|hidden --用户取消发布--> private（moderation 保留）
 ```
 
-`hidden` 前的状态存 `moderation_before_hide`（小列）以支持恢复。每日发布上限按 `published_at` 在用户当天（UTC）计数，事务内检查。
+`hidden` 前的状态存 `moderation_before_hide`（小列）以支持恢复。每日上限在写入作品的同一事务中按 `studio_publication(user_id, published_at)` 统计 UTC 当天的成功发布，跨空间共用。
+撤回和删除消耗过的额度保留到日切；重新发布计作新的一次，已经公开的请求重放返回现有作品。用户下一次成功发布时清理自己的过期记录，删号清除全部记录。
+首次发布冻结站点键、发布者、提示词和 slug。重新发布时，已通过的私有作品在检查放行后仅当标题和提示词可见性均未变化才保留 `approved`，否则回到 `pending`。标题去首尾空白后最多 120 字符。
 发布前检查：`plugins/studio/src/moderation.project.ts` 导出 `checkPublish({ title, prompt, kind, modelKey, workspaceId })` → `allow | review | reject(reason)`，项目自有、默认 `allow`，异常按 `review`。
+2026-11-26 核对 PostgreSQL 17：事务级 advisory lock 在事务结束时释放；`READ COMMITTED` 的后续计数语句能看到前一事务已提交的额度。
+复合 B-tree 索引用用户等值与时间范围缩小扫描。[锁行为](https://www.postgresql.org/docs/17/explicit-locking.html#ADVISORY-LOCKS)、[隔离级别](https://www.postgresql.org/docs/17/transaction-iso.html#XACT-READ-COMMITTED)、[复合索引](https://www.postgresql.org/docs/17/indexes-multicolumn.html)
 
 ### 8. 后台审核
 
@@ -138,7 +145,7 @@ public/* --用户取消发布--> private（moderation 保留；重新发布时 a
 
 插件 `web` 契约增加 `sitemaps?: readonly string[]`；`robots()` 接收已启用插件的地址并逐行输出 `Sitemap:`。
 2026-11-26 核对 Google 的 robots 文档：可声明多条 `Sitemap:`，每条使用含协议和主机的完整网址。[robots.txt 规则](https://developers.google.com/crawling/docs/robots-txt/robots-txt-spec#sitemap)
-`/sitemap-gallery.xml` 列出本站点 `approved` 作品（按 `published_at` 倒序，单文件上限 50,000 条；超过时分页为 `/sitemap-gallery-<n>.xml`），含 `lastmod`。
+`/sitemap-gallery.xml` 列出本站点 `approved` 作品（按 `published_at` 倒序，单文件上限 50,000 条；超过时分页为 `/sitemap-gallery-<n>.xml`，最多 10 片），含 `lastmod`。空的第一片可访问，超出实际分片数的后续页返回 404。
 主站点地图不变，两者地址不重叠（画廊列表页 `/gallery` 本身放主站点地图：经 studio 的 `web` 契约提供静态公开页条目，由 `getPublicPages` 合并；若契约暂不支持则放画廊站点地图首条）。
 
 ### 11. 管理员 MCP 插件工具（P2）

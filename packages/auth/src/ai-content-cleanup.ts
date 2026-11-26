@@ -112,7 +112,7 @@ export function addAiPurge(total: AiPurgeResult, batch: AiPurgeResult) {
 }
 
 /**
- * 删除一批 AI 内容，按外键顺序：评分 → 消息 → agent 轮次 → 无消息与轮次的对话 → 媒体任务。
+ * 删除一批 AI 内容，按外键顺序：评分 → 消息 → agent 轮次 → 无消息与轮次的对话 → 作品与举报 → 媒体任务。
  * 仍有 held 预扣，或一天内仍在生成（streaming / queued / running）的行跳过，等兜底处理器结算后下一轮再删；
  * 预扣、积分流水等财务记录不删，它们只以 ref_id 文本指向这些行。
  * 团队空间中的产出文件属于空间共享资产，只解除 source_task_id 引用、不删文件。
@@ -121,7 +121,7 @@ export async function purgeAiBatch(
   sql: Transaction,
   scope: Scope,
   limit = AI_PURGE_BATCH_SIZE,
-): Promise<AiPurgeResult> {
+): Promise<AiPurgeResult & { authoredWorks: number }> {
   const byWorkspace = 'workspaceId' in scope
   const conversationScope = byWorkspace
     ? sql`c.workspace_id=${scope.workspaceId}`
@@ -166,6 +166,27 @@ export async function purgeAiBatch(
         and (h.id=t.hold_id or (h.ref_type='ai_task' and h.ref_id=t.id)))
     order by t.id limit ${limit} for update of t skip locked`
   const taskIds = tasks.map((task) => task.id)
+  const authoredWorks = byWorkspace
+    ? []
+    : await sql<{ id: string }[]>`
+      select w.id from studio_work w join organization o on o.id=w.workspace_id
+      where w.user_id=${scope.userId} and not o.is_personal order by w.id limit ${limit}`
+  if (taskIds.length || authoredWorks.length) {
+    // 插件停用时先清理待删除任务的作品，也分批清理删号用户在团队空间发布的作品。
+    // 两组作品一起按文件 ID 加锁，遵循文件 → 作品的锁序，之后才解除文件对任务的引用。
+    const taskWorks = taskIds.length ? sql`w.task_id in ${sql(taskIds)}` : sql`false`
+    const authorWorks = authoredWorks.length
+      ? sql`w.id in ${sql(authoredWorks.map((work) => work.id))}`
+      : sql`false`
+    const studioWorks = await sql<{ id: string }[]>`
+      select w.id from studio_work w join file f on f.id=w.file_id
+      where ${taskWorks} or ${authorWorks} order by f.id for update of f`
+    if (studioWorks.length) {
+      const workIds = studioWorks.map((row) => row.id)
+      await sql`update studio_work set version=version+1 where id in ${sql(workIds)}`
+      await sql`delete from studio_work where id in ${sql(workIds)}`
+    }
+  }
   if (taskIds.length) {
     await sql`update file set source_task_id=null,updated_at=now() where source_task_id in ${sql(taskIds)}`
     await sql`delete from ai_task where id in ${sql(taskIds)}`
@@ -174,11 +195,12 @@ export async function purgeAiBatch(
     messages: messages.length,
     conversations: conversations.length,
     tasks: taskIds.length,
+    authoredWorks: authoredWorks.length,
   }
 }
 
 /**
- * 删号后团队空间中该用户的对话、消息与媒体任务（个人空间走保留期清理）。
+ * 删号后清理该用户在团队空间的对话、消息、媒体任务和发布的作品（个人空间走保留期清理）。
  * 按已删除用户扫描，每批一个事务，批次总数有上限，剩余的留给下一轮。
  */
 export async function purgeDeletedUserAiContent(
@@ -201,7 +223,9 @@ export async function purgeDeletedUserAiContent(
       exists(select 1 from ai_conversation c join organization o on o.id=c.workspace_id
         where c.user_id=u.id and not o.is_personal)
       or exists(select 1 from ai_task t join organization o on o.id=t.workspace_id
-        where t.user_id=u.id and not o.is_personal))
+        where t.user_id=u.id and not o.is_personal)
+      or exists(select 1 from studio_work w join organization o on o.id=w.workspace_id
+        where w.user_id=u.id and not o.is_personal))
     order by u.id`
   const total = emptyAiPurge()
   let batches = 0
@@ -216,7 +240,10 @@ export async function purgeDeletedUserAiContent(
       const batch = await db.$client.begin((sql) => purgeAiBatch(sql, { userId: id }, batchSize))
       addAiPurge(total, batch)
       // 一批不满说明该用户剩下的都是被跳过的行（held 预扣或仍在生成）。
-      if (Math.max(batch.messages, batch.conversations, batch.tasks) < batchSize) break
+      if (
+        Math.max(batch.messages, batch.conversations, batch.tasks, batch.authoredWorks) < batchSize
+      )
+        break
     }
     if (remaining) break
   }
