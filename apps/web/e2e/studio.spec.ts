@@ -298,7 +298,10 @@ test('creates an image, publishes it, then unpublishes and deletes it in My work
     await expect(nav.getByRole('link', { name: 'My works', exact: true })).toBeVisible()
 
     await openStudio(page, `/app/${workspace.slug}/studio`, models.image.name)
-    await expect(page.getByTestId('studio-balance')).toHaveText('Balance 100')
+    await expect(page.getByTestId('studio-balance')).toHaveText('Balance 100', {
+      // 余额经 AppShellBar 放进顶部条，水合后才出现
+      timeout: 15_000,
+    })
     await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeDisabled()
     await shoot(page, 'studio-empty')
 
@@ -446,7 +449,10 @@ test('image-to-video needs a reference image and blocks submission without enoug
 
     await grantCredits(workspace.workspaceId, 100)
     await page.reload()
-    await expect(page.getByTestId('studio-balance')).toHaveText('Balance 100')
+    await expect(page.getByTestId('studio-balance')).toHaveText('Balance 100', {
+      // 余额经 AppShellBar 放进顶部条，水合后才出现
+      timeout: 15_000,
+    })
     await expect(page.getByText('Reference image (required for image-to-video)')).toBeVisible()
     await chooseOption(
       page.getByRole('combobox', { name: 'Reference image (required for image-to-video)' }),
