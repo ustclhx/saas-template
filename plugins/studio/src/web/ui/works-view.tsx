@@ -306,11 +306,12 @@ export function StudioWorksView({
                     id: published.id,
                     slug: published.slug,
                     title: published.title,
+                    site: published.site,
                     visibility: published.visibility,
                     moderation: published.moderation,
                     removalReason: null,
-                    showPrompt: work.work?.showPrompt ?? true,
-                    version: work.work?.version ?? 1,
+                    showPrompt: published.showPrompt,
+                    version: published.version,
                   },
                 },
           )
@@ -483,16 +484,15 @@ function WorkCard({
       <div className="grid gap-2 py-1 pr-1 pl-2.5 md:px-3 md:py-2.5">
         <div className="flex min-w-0 items-center gap-1">
           <span className="min-w-0 flex-1 truncate max-md:text-caption">{title}</span>
-          {canWrite ? (
-            <WorkMenu
-              className="md:hidden"
-              label={m.studio_work_actions({ title })}
-              primary={primary}
-              download={download}
-              busy={busy}
-              onDelete={onDelete}
-            />
-          ) : null}
+          {/* 手机：可写成员有完整操作；只读成员只有下载 */}
+          <WorkMenu
+            className="md:hidden"
+            label={m.studio_work_actions({ title })}
+            primary={canWrite ? primary : null}
+            download={download}
+            busy={busy}
+            onDelete={canWrite ? onDelete : null}
+          />
         </div>
         <div className="flex items-center gap-1.5 max-md:hidden">
           <time
@@ -546,7 +546,8 @@ function WorkMenu({
   primary: { label: string; action: () => void } | null
   download: string
   busy: boolean
-  onDelete: () => void
+  /** null 时不提供删除（只读成员） */
+  onDelete: (() => void) | null
   className?: string
 }) {
   let index = 0
@@ -565,7 +566,9 @@ function WorkMenu({
             <MenuItem index={index++} label={primary.label} onSelect={primary.action} />
           ) : null}
           <MenuItem index={index++} label={m.studio_download()} render={<a href={download} />} />
-          <MenuItem index={index++} label={m.studio_delete()} onSelect={onDelete} />
+          {onDelete ? (
+            <MenuItem index={index++} label={m.studio_delete()} onSelect={onDelete} />
+          ) : null}
         </DropdownContent>
       </DropdownMenu>
     </span>

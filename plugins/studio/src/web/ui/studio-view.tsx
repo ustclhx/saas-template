@@ -52,7 +52,8 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { StudioKind } from '../../kinds.ts'
 import type { getStudioSubmitPage } from '../submit.functions.ts'
 import { submitStudio } from '../submit.functions.ts'
-import { type StudioWorksPage, studioFileUrl } from '../works.functions.ts'
+import { studioFileUrl } from '../work-urls.ts'
+import type { StudioWorksPage } from '../works.functions.ts'
 import { type PublishedWork, type PublishTarget, PublishWorkDialog } from './publish-dialog.tsx'
 import { formatBytes, studioWorkBadge } from './work-state.ts'
 import { WorkMedia } from './works-view.tsx'
@@ -110,6 +111,10 @@ type Run = {
   taskId: string
   mode: StudioKind
   credits: number | undefined
+  /** 提交时的提示词：发布标题默认取它，而不是之后又改过的输入框 */
+  prompt: string
+  /** 已确认取消：在轮询读到终态前也不再显示取消按钮 */
+  cancelRequested?: boolean
   task: MediaTask | null
 } | null
 
@@ -206,9 +211,10 @@ export function StudioView({
 
   // 轮询复用 media 的退避与「页面隐藏时暂停」；终态后停止。
   const taskId = run?.taskId
+  const poll = useRef<{ refresh: () => void } | null>(null)
   useEffect(() => {
     if (!taskId) return
-    const poll = pollMediaTask({
+    const handle = pollMediaTask({
       load: (signal) => getMediaTask(page.workspaceId, taskId, signal),
       onTask: (task) => {
         setRun((current) => (current?.taskId === task.id ? { ...current, task } : current))
@@ -216,7 +222,11 @@ export function StudioView({
       },
       onError: () => setError(m.studio_error_poll()),
     })
-    return () => poll.stop()
+    poll.current = handle
+    return () => {
+      handle.stop()
+      if (poll.current === handle) poll.current = null
+    }
   }, [taskId, page.workspaceId])
 
   function changeParam(name: string, value: string | number | boolean | undefined) {
@@ -285,7 +295,7 @@ export function StudioView({
         },
       })
       if (result.ok) {
-        setRun({ taskId: result.taskId, mode, credits: estimate, task: null })
+        setRun({ taskId: result.taskId, mode, credits: estimate, prompt, task: null })
         return
       }
       const { code, details } = result.error
@@ -529,8 +539,20 @@ export function StudioView({
           published={published}
           canPublish={!page.readOnly}
           onPublish={setPublishTarget}
-          prompt={prompt}
           onRetryError={setError}
+          onCanceled={(status) => {
+            // 乐观更新为已取消并立即重新读取，取消按钮不会再次出现
+            setRun((current) =>
+              current
+                ? {
+                    ...current,
+                    cancelRequested: true,
+                    task: current.task && { ...current.task, status, canCancel: false },
+                  }
+                : current,
+            )
+            poll.current?.refresh()
+          }}
         />
         {recent && recent.works.length > 0 ? (
           <div className="grid gap-2.5 max-md:hidden">
@@ -772,8 +794,8 @@ function Results({
   published,
   canPublish,
   onPublish,
-  prompt,
   onRetryError,
+  onCanceled,
 }: {
   slug: string
   workspaceId: string
@@ -781,8 +803,8 @@ function Results({
   published: Record<string, PublishedWork>
   canPublish: boolean
   onPublish: (target: PublishTarget) => void
-  prompt: string
   onRetryError: (message: string | null) => void
+  onCanceled: (status: MediaTask['status']) => void
 }) {
   const [cancelPreview, setCancelPreview] = useState<MediaCancelPreview | null>(null)
   const [canceling, setCanceling] = useState(false)
@@ -818,7 +840,8 @@ function Results({
     if (!run) return
     setCanceling(true)
     try {
-      await cancelMediaTask(workspaceId, run.taskId)
+      const result = await cancelMediaTask(workspaceId, run.taskId)
+      onCanceled(result.status)
     } catch {
       onRetryError(m.studio_error_cancel())
     } finally {
@@ -860,7 +883,7 @@ function Results({
             <p role="status" className="flex-1 max-md:text-caption">
               {m.studio_running()}
             </p>
-            {task?.canCancel !== false ? (
+            {task?.canCancel !== false && !run?.cancelRequested ? (
               <Button
                 type="button"
                 size="compact"
@@ -928,7 +951,7 @@ function Results({
                           fileId: file.id,
                           kind: run?.mode ?? 'image',
                           url: file.downloadUrl,
-                          prompt,
+                          prompt: run?.prompt ?? null,
                         })
                       }
                     >

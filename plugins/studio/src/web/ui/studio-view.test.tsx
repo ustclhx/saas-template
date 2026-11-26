@@ -8,17 +8,15 @@ import { StudioView } from './studio-view.tsx'
 const fns = vi.hoisted(() => ({
   submitStudio: vi.fn(),
   getMediaTask: vi.fn(),
-}))
-vi.mock('../submit.functions.ts', () => ({ submitStudio: fns.submitStudio }))
-vi.mock('../works.functions.ts', () => ({
-  publishStudioWorkFn: vi.fn(),
-  studioFileUrl: (workspaceId: string, fileId: string) =>
-    `/api/files/${fileId}?workspaceId=${workspaceId}`,
-}))
-vi.mock('@saas/plugin-media/tasks-client', () => ({
-  getMediaTask: fns.getMediaTask,
   previewMediaCancel: vi.fn(),
   cancelMediaTask: vi.fn(),
+}))
+vi.mock('../submit.functions.ts', () => ({ submitStudio: fns.submitStudio }))
+vi.mock('../works.functions.ts', () => ({ publishStudioWorkFn: vi.fn() }))
+vi.mock('@saas/plugin-media/tasks-client', () => ({
+  getMediaTask: fns.getMediaTask,
+  previewMediaCancel: fns.previewMediaCancel,
+  cancelMediaTask: fns.cancelMediaTask,
 }))
 vi.mock('@web/features/analytics/track.ts', () => ({ trackEvent: vi.fn() }))
 vi.mock('@tanstack/react-router', () => ({
@@ -99,8 +97,7 @@ function page(values: Partial<StudioSubmitPage> = {}): StudioSubmitPage {
 const generate = () => screen.getByRole('button', { name: m.studio_generate() })
 
 beforeEach(() => {
-  fns.submitStudio.mockReset()
-  fns.getMediaTask.mockReset()
+  for (const fn of Object.values(fns)) fn.mockReset()
 })
 afterEach(() => cleanup())
 
@@ -232,5 +229,75 @@ describe('创作页', () => {
         m.studio_insufficient({ cost: 8, balance: 3 }),
       ),
     )
+  })
+  it('确认取消后立即隐藏取消按钮并重新读取任务', async () => {
+    fns.submitStudio.mockResolvedValue({ ok: true, taskId: TASK, status: 'queued' })
+    const running = { id: TASK, status: 'running', creditsCharged: 0, canCancel: true, files: [] }
+    fns.getMediaTask.mockResolvedValue(running)
+    fns.previewMediaCancel.mockResolvedValue({
+      taskId: TASK,
+      cancelable: true,
+      started: false,
+      charged: false,
+      credits: 0,
+      freeStartedRemaining: 1,
+    })
+    fns.cancelMediaTask.mockResolvedValue({
+      taskId: TASK,
+      status: 'canceled',
+      cancellationPending: false,
+      cancelBilling: 'free_unstarted',
+      creditsCharged: 0,
+    })
+    render(<StudioView page={page()} recent={null} search={{ prompt: '山间木屋' }} />)
+    await act(async () => {
+      fireEvent.click(generate())
+    })
+    await waitFor(() => expect(fns.getMediaTask).toHaveBeenCalledTimes(1))
+    const reads = fns.getMediaTask.mock.calls.length
+    fns.getMediaTask.mockResolvedValue({ ...running, status: 'canceled', canCancel: false })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: m.studio_cancel() }))
+    })
+    const dialog = await screen.findByRole('alertdialog')
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: m.studio_cancel_confirm() }))
+    })
+    expect(fns.cancelMediaTask).toHaveBeenCalledWith(WS, TASK)
+    await waitFor(() => expect(screen.getByText(m.studio_canceled_title())).toBeTruthy())
+    expect(screen.queryByRole('button', { name: m.studio_cancel() })).toBeNull()
+    expect(fns.getMediaTask.mock.calls.length).toBeGreaterThan(reads)
+  })
+
+  it('结果的发布标题默认取提交时的提示词，而不是之后改过的输入框', async () => {
+    fns.submitStudio.mockResolvedValue({ ok: true, taskId: TASK, status: 'queued' })
+    fns.getMediaTask.mockResolvedValue({
+      id: TASK,
+      status: 'succeeded',
+      creditsCharged: 4,
+      canCancel: false,
+      files: [
+        {
+          id: OUTPUT,
+          mime: 'image/png',
+          size: 10,
+          width: 1,
+          height: 1,
+          duration: null,
+          downloadUrl: `/api/files/${OUTPUT}?workspaceId=${WS}`,
+        },
+      ],
+    })
+    render(<StudioView page={page()} recent={null} search={{ prompt: '山间木屋' }} />)
+    await act(async () => {
+      fireEvent.click(generate())
+    })
+    await screen.findByRole('img', { name: m.studio_result_label({ index: 1 }) })
+    fireEvent.change(screen.getByLabelText(m.studio_prompt()), { target: { value: '海边灯塔' } })
+    fireEvent.click(screen.getByRole('button', { name: m.studio_publish_to_gallery() }))
+    const dialog = await screen.findByRole('dialog', { name: m.studio_publish_title() })
+    expect(
+      (within(dialog).getByLabelText(m.studio_publish_field_title()) as HTMLInputElement).value,
+    ).toBe('山间木屋')
   })
 })

@@ -10,8 +10,8 @@ import { z } from 'zod'
 import { studioConfigSchema } from '../config.ts'
 import { enabledStudioKinds, STUDIO_KINDS } from '../kinds.ts'
 import { resolveStudioSite } from '../site.ts'
-import { studioMediaPath } from './media-url.ts'
 import { getStudioPublishQuota, publishStudioWork, unpublishStudioWork } from './publish.ts'
+import { canWriteStudio, studioFileUrl, studioWorkPreviewUrl } from './work-urls.ts'
 import { listStudioWorks, type StudioWorkActor } from './works.ts'
 import { deleteStudioWork } from './works-delete.server.ts'
 
@@ -54,15 +54,6 @@ function siteOf(sites: Parameters<typeof resolveStudioSite>[2]) {
   return site ? { site: site.key } : {}
 }
 
-export function canWriteStudio(actor: StudioWorkActor) {
-  return !actor.workspaceReadOnly && ['owner', 'admin', 'member'].includes(actor.role)
-}
-
-/** 页面预览与下载走现有的空间文件接口（会话鉴权、短时签名地址）。 */
-export function studioFileUrl(workspaceId: string, fileId: string) {
-  return `/api/files/${encodeURIComponent(fileId)}?${new URLSearchParams({ workspaceId })}`
-}
-
 type ListedWork = NonNullable<Awaited<ReturnType<typeof listStudioWorks>>['works'][number]['work']>
 
 /** 左连接的列在类型上可空；有作品行时这些非空列一定有值。 */
@@ -71,6 +62,7 @@ function publishedWork(work: ListedWork) {
     id: work.id as string,
     title: work.title as string,
     slug: work.slug as string,
+    site: work.site as string,
     visibility: work.visibility as 'public' | 'private',
     moderation: work.moderation as 'pending' | 'approved' | 'hidden' | 'removed',
     removalReason: work.removalReason,
@@ -117,14 +109,14 @@ export const getStudioWorks = createServerFn({ method: 'GET' })
           // 左连接没有作品行时各列为 null：统一为「未发布」。
           const work = row?.id ? publishedWork(row) : null
           const download = studioFileUrl(context.workspace.id, output.fileId)
-          const visible =
-            work?.visibility === 'public' &&
-            (work.moderation === 'pending' || work.moderation === 'approved')
           return {
             ...output,
             createdAt: createdAt.toISOString(),
-            // 公开中的作品预览走可缓存的公开媒体地址；其余走需要会话的空间文件接口。
-            url: visible ? studioMediaPath(work.id, work.version) : download,
+            // 公开中的作品预览走作品站点的公开媒体地址；其余走需要会话的空间文件接口。
+            url: studioWorkPreviewUrl(work, download, {
+              appUrl: getWebRuntime().config.APP_URL,
+              sites: config.sites,
+            }),
             downloadUrl: download,
             work,
           }
@@ -195,8 +187,11 @@ export const publishStudioWorkFn = createServerFn({ method: 'POST' })
           id: work.id,
           slug: work.slug,
           title: work.title,
+          site: work.site,
           visibility: work.visibility,
           moderation: work.moderation,
+          showPrompt: work.showPrompt,
+          version: work.version,
         },
       }
     }),

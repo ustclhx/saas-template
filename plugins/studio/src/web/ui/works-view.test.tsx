@@ -63,6 +63,7 @@ function published(
     id: '01900000-0000-7000-8000-000000000300',
     title: `作品 ${moderation}`,
     slug: `work-${moderation}`,
+    site: 'default',
     visibility,
     moderation,
     removalReason,
@@ -160,6 +161,26 @@ describe('我的作品', () => {
     expect(screen.queryByTestId('studio-works-quota')).toBeNull()
   })
 
+  it('只读成员在手机上仍可从作品操作菜单下载，菜单里没有发布与删除', async () => {
+    render(
+      <StudioWorksView
+        page={page({ canWrite: false, readOnly: true, works: [item(1)] })}
+        filters={{}}
+        onFiltersChange={() => {}}
+      />,
+    )
+    const trigger = screen.getByRole('button', {
+      name: m.studio_work_actions({ title: '提示词 1' }),
+    })
+    fireEvent.pointerDown(trigger, { button: 0, pointerType: 'mouse' })
+    fireEvent.click(trigger)
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(1)
+    expect(
+      within(menu).getByRole('menuitem', { name: m.studio_download() }).getAttribute('href'),
+    ).toBe(`${item(1).downloadUrl}&download=1`)
+  })
+
   it('空列表与筛选后为空显示不同说明，并提供创作入口', () => {
     const view = render(
       <StudioWorksView page={page({ works: [] })} filters={{}} onFiltersChange={() => {}} />,
@@ -209,8 +230,11 @@ describe('我的作品', () => {
           id: 'w1',
           slug: 'cabin-1',
           title: '山间木屋',
+          site: 'default',
           visibility: 'public',
           moderation: 'pending',
+          showPrompt: true,
+          version: 1,
         },
       })
     render(<StudioWorksView page={page()} filters={{}} onFiltersChange={() => {}} />)
@@ -241,5 +265,48 @@ describe('我的作品', () => {
     expect(screen.getByTestId('studio-works-quota').textContent).toBe(
       m.studio_publish_quota({ remaining: 16, limit: 20 }),
     )
+  })
+  it('重新发布时沿用服务端返回的提示词公开设置（用户隐藏过的不会默认公开）', async () => {
+    fns.publishStudioWorkFn.mockResolvedValue({
+      ok: true,
+      work: {
+        id: 'w1',
+        slug: 'cabin-1',
+        title: '山间木屋',
+        site: 'default',
+        visibility: 'public',
+        moderation: 'pending',
+        showPrompt: false,
+        version: 2,
+      },
+    })
+    fns.unpublishStudioWorkFn.mockResolvedValue({
+      ok: true,
+      work: { id: 'w1', visibility: 'private', moderation: 'pending' },
+    })
+    render(
+      <StudioWorksView page={page({ works: [item(1)] })} filters={{}} onFiltersChange={() => {}} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: m.studio_publish() }))
+    const dialog = await screen.findByRole('dialog', { name: m.studio_publish_title() })
+    fireEvent.click(within(dialog).getByRole('switch'))
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: m.studio_publish_submit() }))
+    })
+    expect(fns.publishStudioWorkFn).toHaveBeenLastCalledWith({
+      data: { slug: 'ws', fileId: item(1).fileId, title: '提示词 1', showPrompt: false },
+    })
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: m.studio_publish_title() })).toBeNull(),
+    )
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: m.studio_unpublish() }))
+    })
+    fireEvent.click(screen.getByRole('button', { name: m.studio_publish() }))
+    const again = await screen.findByRole('dialog', { name: m.studio_publish_title() })
+    expect(within(again).getByRole('switch').getAttribute('aria-checked')).toBe('false')
+    expect(
+      (within(again).getByLabelText(m.studio_publish_field_title()) as HTMLInputElement).value,
+    ).toBe('山间木屋')
   })
 })
