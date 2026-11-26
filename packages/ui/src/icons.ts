@@ -36,6 +36,7 @@ export {
   KeyRound,
   Languages,
   LayoutGrid,
+  Link2,
   Link2Off,
   ListChecks,
   LogOut,
