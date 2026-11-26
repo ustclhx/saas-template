@@ -277,6 +277,11 @@ export interface TemplateConfig<L extends string = string> {
     readonly oauth: readonly OAuthProvider[]
     readonly twoFactor: boolean
     readonly turnstile: boolean
+    /**
+     * 登录保持天数：同一浏览器在此期间内访问过就自动续期（每天最多续一次），超过此天数未访问才需重新登录。
+     * 登录页同期记住上次使用的登录方式。管理员敏感操作仍按 admin.stepUpMinutes 要求重新验证
+     */
+    readonly sessionDays: number
   }
   readonly billing: {
     readonly enabled: boolean
@@ -463,6 +468,7 @@ export const templateConfigDefaults = {
     oauth: ['google', 'github'],
     twoFactor: false,
     turnstile: true,
+    sessionDays: 30,
   },
   billing: {
     enabled: true,
@@ -766,6 +772,9 @@ export function defineTemplateConfig<const L extends string = DefaultLocale>(
   const stepUpMinutes = config.admin.stepUpMinutes
   if (!Number.isInteger(stepUpMinutes) || stepUpMinutes < 1 || stepUpMinutes > 60)
     throw new RangeError('template config: admin.stepUpMinutes must be an integer from 1 to 60')
+  const sessionDays = config.auth.sessionDays
+  if (!Number.isInteger(sessionDays) || sessionDays < 1 || sessionDays > 365)
+    throw new RangeError('template config: auth.sessionDays must be an integer from 1 to 365')
   if (!['hide', 'fallback'].includes(config.i18n.untranslated))
     throw new RangeError("template config: i18n.untranslated must be 'hide' or 'fallback'")
   if (typeof config.i18n.rememberHomeLocale !== 'boolean')

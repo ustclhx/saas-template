@@ -11,6 +11,26 @@ export interface AuthUiOptions {
   readonly turnstileSiteKey: string | null
 }
 
+/** 上次成功登录使用的方式（Better Auth lastLoginMethod 插件写入的 Cookie 值，只含方式名） */
+export type LastLoginMethod = 'email' | 'email-otp' | 'magic-link' | OAuthProvider
+
+/** Better Auth lastLoginMethod 插件的默认 Cookie 名；不带 __Secure- 前缀 */
+export const LAST_LOGIN_METHOD_COOKIE = 'better-auth.last_used_login_method'
+
+/** 只接受已知方式名；Cookie 可被用户改写，未知值按无记录处理 */
+export function parseLastLoginMethod(cookieHeader: string | null): LastLoginMethod | null {
+  if (!cookieHeader) return null
+  for (const part of cookieHeader.split(';')) {
+    const [name, ...rest] = part.trim().split('=')
+    if (name !== LAST_LOGIN_METHOD_COOKIE) continue
+    const value = decodeURIComponent(rest.join('='))
+    return ['email', 'email-otp', 'magic-link', 'google', 'github'].includes(value)
+      ? (value as LastLoginMethod)
+      : null
+  }
+  return null
+}
+
 export interface AuthUiEnv {
   readonly TURNSTILE_SITE_KEY?: string | undefined
   readonly GOOGLE_CLIENT_ID?: string | undefined

@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:workers'
+import { templateConfigDefaults } from '@saas/config'
 import { createDb } from '@saas/db'
 import { createCloudflareKv } from '@saas/platform/cloudflare'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -123,5 +124,28 @@ describe('会话三层', () => {
     expect(await sessionOf(s, victim.cookie)).toBeNull()
     // 未被吊销的会话不受影响
     expect((await sessionOf(s, other.cookie))?.session.token).toBe(other.token)
+  })
+})
+
+describe('登录保持', () => {
+  it('会话有效期取 auth.sessionDays，并记住上次登录方式（只存方式名）', async () => {
+    const s = setup({ config: { auth: { ...templateConfigDefaults.auth, sessionDays: 45 } } })
+    const address = users.email('remember')
+    expect((await s.post('/sign-up/email', signUpBody(address))).status).toBe(200)
+    const res = await s.post('/sign-in/email', { email: address, password: PASSWORD })
+    expect(res.status).toBe(200)
+    const { token } = (await res.json()) as { token: string }
+
+    const row = await s.db.query.session.findFirst({ where: (t, { eq }) => eq(t.token, token) })
+    const days = ((row?.expiresAt.getTime() ?? 0) - Date.now()) / 86_400_000
+    expect(days).toBeGreaterThan(44.9)
+    expect(days).toBeLessThanOrEqual(45)
+
+    const method = res.headers
+      .getSetCookie()
+      .find((c) => c.startsWith('better-auth.last_used_login_method='))
+    expect(method).toMatch(/^better-auth\.last_used_login_method=email;/)
+    expect(method).toContain(`Max-Age=${45 * 86_400}`)
+    expect(method).not.toContain(address)
   })
 })
