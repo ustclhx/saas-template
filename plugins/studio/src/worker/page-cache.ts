@@ -28,8 +28,10 @@ export async function studioPublicPagesFetch(
       headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' },
     })
   const site = studioPublicSite(url)
-  if (!site || !isCacheableRequest(request)) return undefined
+  // 只在站点规范来源上读写：其他主机名（www / 裸域、预览主机）的页面不与之共用缓存
+  if (!site || url.origin !== site.origin || !isCacheableRequest(request)) return undefined
   const key = pageCacheKey(url, site.origin)
+  if (!key) return undefined
   const cached = await cache.match(key)
   if (cached) return restoreCachedPage(cached, securityNonce())
   registerPageCachePut(runtime, (response) => ctx.waitUntil(cache.put(key, response)))

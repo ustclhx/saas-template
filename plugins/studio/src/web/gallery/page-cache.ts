@@ -6,6 +6,7 @@
 import { transferResponseBodyOwnership } from '@tanstack/react-start/server'
 import { securityNonce } from '@web/security-context.server.ts'
 import { templateConfig } from '@web/server/template-config.ts'
+import { galleryHref, parseGallerySearch } from './paths.ts'
 
 export type StudioPublicRoute = 'gallery' | 'work' | 'sitemap'
 
@@ -56,26 +57,47 @@ export function isCacheableRequest(request: Request): boolean {
 }
 
 /**
- * 缓存键：站点公开地址下保留路径中的「部署版本 + 原路径 + 查询」。站点由地址的 origin 区分，
- * 同一部署内同一站点的同一地址共用一份；作品状态变化时可按作品地址直接算出键。
+ * 缓存使用的规范化路径：画廊只保留规范化后的筛选参数（顺序固定、丢弃未知参数，如 utm），
+ * 作品页与站点地图忽略全部查询，带跟踪参数的分享链接与原地址共用一份，作品状态变化时的失效也能覆盖。
  */
-export function pageCacheKey(url: URL, siteOrigin: string, version = DEPLOY_VERSION): string {
-  return `${siteOrigin}/__studio-cache/${encodeURIComponent(version)}${url.pathname}${url.search}`
+export function normalizedCachePath(
+  url: URL,
+  locales: ReadonlySet<string> = localePrefixes,
+): string | undefined {
+  const route = studioPublicRoute(url.pathname, locales)
+  if (route !== 'gallery') return route ? url.pathname : undefined
+  const first = url.pathname.split('/')[1]
+  const prefix = first !== undefined && locales.has(first) ? `/${first}` : ''
+  return `${prefix}${galleryHref(parseGallerySearch(Object.fromEntries(url.searchParams)))}`
+}
+
+/**
+ * 缓存键：站点规范来源下保留路径中的「部署版本 + 规范化路径」。只有请求来源等于站点规范来源时才读写
+ * （前置处理判断），不同主机（www 与裸域、不同默认语言的站点）不会共用一份。
+ */
+export function pageCacheKey(
+  url: URL,
+  siteOrigin: string,
+  version = DEPLOY_VERSION,
+): string | undefined {
+  const path = normalizedCachePath(url)
+  return path && `${siteOrigin}/__studio-cache/${encodeURIComponent(version)}${path}`
 }
 
 /** 作品页在各语言前缀下的缓存键（状态变化时逐个删除本机房副本） */
 export function workPageCacheKeys(siteOrigin: string, slug: string, version = DEPLOY_VERSION) {
   const path = `/gallery/${encodeURIComponent(slug)}`
-  return ['', ...Array.from(localePrefixes, (prefix) => `/${prefix}`)].map((prefix) =>
-    pageCacheKey(new URL(`${prefix}${path}`, siteOrigin), siteOrigin, version),
+  return ['', ...Array.from(localePrefixes, (prefix) => `/${prefix}`)].flatMap(
+    (prefix) => pageCacheKey(new URL(`${prefix}${path}`, siteOrigin), siteOrigin, version) ?? [],
   )
 }
 
+/** 只有匿名的 200 / 404 进入共享缓存；其余状态（重定向、限流、错误）一律 no-store */
 export function cacheControl(
   route: StudioPublicRoute,
-  { anonymous, failed }: { anonymous: boolean; failed: boolean },
+  { anonymous, failed, status }: { anonymous: boolean; failed: boolean; status: number },
 ): string {
-  if (failed) return 'no-store'
+  if (failed || (status !== 200 && status !== 404)) return 'no-store'
   if (!anonymous) return 'private, no-store'
   const age = route === 'sitemap' ? SITEMAP_MAX_AGE : PUBLIC_PAGE_MAX_AGE
   return `public, max-age=0, s-maxage=${age}`
@@ -119,7 +141,7 @@ export function finishPublicResponse(input: {
   const anonymous = isCacheableRequest(request)
   const status = failed ? 503 : response.status
   const headers = new Headers(response.headers)
-  headers.set('cache-control', cacheControl(route, { anonymous, failed }))
+  headers.set('cache-control', cacheControl(route, { anonymous, failed, status }))
   if (failed) headers.set('retry-after', '30')
   const put = input.runtime ? takePageCachePut(input.runtime) : undefined
   const cacheable =

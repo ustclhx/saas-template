@@ -22,14 +22,15 @@ export const Route = createFileRoute('/gallery/')({
   },
   loaderDeps: ({ search }) => search,
   loader: ({ deps }) => getGalleryPage({ data: deps }),
-  head: ({ matches, match }) => {
+  head: ({ matches, match, loaderData }) => {
     if (match.status === 'error') return noindexHead(m.studio_gallery_error_title())
     const search = match.search
     const page = search.page ?? 1
     return galleryHead({
       search,
       locale: getLocale(),
-      appUrl: originFromMatches(matches),
+      // 多站点：绝对地址用作品所在站点的规范来源
+      appUrl: loaderData?.origin ?? originFromMatches(matches),
       title: page > 1 ? m.studio_gallery_page_title({ page }) : m.studio_gallery_title(),
       description: m.studio_gallery_intro(),
     })

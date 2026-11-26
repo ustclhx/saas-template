@@ -1,7 +1,8 @@
 // 公开画廊与作品页 e2e（openspec add-media-studio 6.5）：真实本地认证、数据库与 Worker 路由。
 // 媒体输出用测试替身：直接写入作品输出行，并把本地生成的 PNG / MP4 放进 Miniflare 的本地 R2；
 // 发布、取消发布调用插件的服务端函数，审核通过写数据库（后台审核由第 7 组提供）。
-// 边缘缓存会让同一匿名地址在 5 分钟内返回旧页；状态变化后的检查用带唯一查询的地址绕过缓存，
+// 边缘缓存会让同一匿名地址在 5 分钟内返回旧页（查询参数不影响缓存键）。状态变化后的检查在带无效会话
+// Cookie 的访客上下文中进行（服务端按未登录处理，但不读写共享缓存）；缓存命中用另一个纯匿名上下文验证。
 // 本机房失效的删除逻辑由单元测试覆盖（page-cache.flow.test.ts）。
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
@@ -204,11 +205,6 @@ async function setTheme(page: Page, theme: 'light' | 'dark') {
   await page.emulateMedia({ colorScheme: theme })
 }
 
-let bust = 0
-/** 绕过匿名边缘缓存的唯一查询（状态变化后检查最新结果） */
-const fresh = (path: string) =>
-  `${path}${path.includes('?') ? '&' : '?'}e2e=${Date.now()}-${++bust}`
-
 test.beforeEach(async ({ page }) => {
   await simulateClientIp(page)
   await stubTurnstile(page)
@@ -219,6 +215,15 @@ test('发布 → 画廊可见且 noindex → 审核通过 → 收录 → 取消�
   const ws = await workspaceFixture(page)
   const db = createDb({ connectionString: env.DATABASE_URL as string })
   const anon = await browser.newContext()
+  // 无效的会话 Cookie：服务端按访客渲染，但不读写共享缓存，状态变化后立即看到最新结果
+  await anon.addCookies([
+    {
+      name: 'better-auth.session_token',
+      value: 'e2e-cache-bypass',
+      url: new URL(page.url()).origin,
+    },
+  ])
+  const probe = await browser.newContext()
   const visitor = await anon.newPage()
   await stubTurnstile(visitor)
   try {
@@ -287,21 +292,24 @@ test('发布 → 画廊可见且 noindex → 审核通过 → 收录 → 取消�
     expect(target.moderation).toBe('pending')
 
     // 画廊可见；作品页可访问但 noindex，画廊站点地图不含它
-    await visitor.goto(fresh('/gallery'))
+    await visitor.goto('/gallery')
     await expect(visitor.getByRole('link', { name: target.title })).toBeVisible()
-    await visitor.goto(fresh(`/gallery/${target.slug}`))
+    await visitor.goto(`/gallery/${target.slug}`)
     await expect(visitor.getByRole('heading', { level: 1, name: target.title })).toBeVisible()
     await expect(visitor.locator('meta[name="robots"][content="noindex"]')).toHaveCount(1)
-    const pendingSitemap = await (await visitor.request.get(fresh('/sitemap-gallery.xml'))).text()
+    const pendingSitemap = await (await visitor.request.get('/sitemap-gallery.xml')).text()
     expect(pendingSitemap).toContain('/gallery</loc>')
     expect(pendingSitemap).not.toContain(target.slug)
 
     // 匿名请求第二次命中边缘缓存
-    const cachedPath = `/gallery/${target.slug}?e2e-cache=${randomUUID()}`
-    await visitor.request.get(cachedPath)
-    const second = await visitor.request.get(cachedPath)
+    // 纯匿名请求：第二次命中边缘缓存，带跟踪参数的地址命中同一份
+    await probe.request.get(`/gallery/${target.slug}`)
+    const second = await probe.request.get(`/gallery/${target.slug}?utm_source=e2e`)
     expect(second.headers()['x-studio-cache']).toBe('hit')
     expect(second.headers()['cache-control']).toBe('public, max-age=0, s-maxage=300')
+    expect((await visitor.request.get(`/gallery/${target.slug}`)).headers()['cache-control']).toBe(
+      'private, no-store',
+    )
 
     // 媒体地址可访问（第 5 组路由）
     const mediaPath = `/media/w/${target.id}/${target.version}`
@@ -314,7 +322,7 @@ test('发布 → 画廊可见且 noindex → 审核通过 → 收录 → 取消�
         reviewedAt: new Date(),
         ...(work.id === works[2]?.id && { featuredAt: new Date() }),
       })
-    await visitor.goto(fresh(`/gallery/${target.slug}`))
+    await visitor.goto(`/gallery/${target.slug}`)
     await expect(visitor.getByRole('heading', { level: 1, name: target.title })).toBeVisible()
     await expect(visitor.locator('meta[name="robots"]')).toHaveCount(0)
     await expect(visitor.locator('link[rel="canonical"]')).toHaveAttribute(
@@ -329,7 +337,7 @@ test('发布 → 画廊可见且 noindex → 审核通过 → 收录 → 取消�
       (await visitor.locator('script[type="application/ld+json"]').first().textContent()) ?? '{}',
     )
     expect(ld['@type']).toBe('ImageObject')
-    const approvedSitemap = await (await visitor.request.get(fresh('/sitemap-gallery.xml'))).text()
+    const approvedSitemap = await (await visitor.request.get('/sitemap-gallery.xml')).text()
     expect(approvedSitemap).toContain(`/gallery/${target.slug}</loc>`)
     // 主站点地图不含画廊地址（两者不重叠）
     expect(await (await visitor.request.get('/sitemap.xml')).text()).not.toContain('/gallery')
@@ -351,20 +359,20 @@ test('发布 → 画廊可见且 noindex → 审核通过 → 收录 → 取消�
         ['mobile', { width: 390, height: 844 }],
       ] as const) {
         await visitor.setViewportSize(viewport)
-        await visitor.goto(fresh('/gallery'))
+        await visitor.goto('/gallery')
         await expect(visitor.getByRole('link', { name: target.title })).toBeVisible()
         await visitor.waitForLoadState('networkidle')
         await noHorizontalScroll(visitor)
         await shoot(visitor, `gallery-${label}-${theme}`)
-        await visitor.goto(fresh(`/gallery/${target.slug}`))
+        await visitor.goto(`/gallery/${target.slug}`)
         await visitor.waitForLoadState('networkidle')
         await noHorizontalScroll(visitor)
         await shoot(visitor, `work-image-${label}-${theme}`)
-        await visitor.goto(fresh(`/gallery/${videoWork.slug}`))
+        await visitor.goto(`/gallery/${videoWork.slug}`)
         await visitor.waitForLoadState('networkidle')
         await noHorizontalScroll(visitor)
         await shoot(visitor, `work-video-${label}-${theme}`)
-        await visitor.goto(fresh(`/gallery/${works[1]?.slug}`))
+        await visitor.goto(`/gallery/${works[1]?.slug}`)
         await expect(visitor.getByText(/kept the prompt private/)).toBeVisible()
         await shoot(visitor, `work-prompt-hidden-${label}-${theme}`)
         await visitor.waitForLoadState('networkidle')
@@ -381,9 +389,9 @@ test('发布 → 画廊可见且 noindex → 审核通过 → 收录 → 取消�
         await noHorizontalScroll(visitor)
         await shoot(visitor, `work-report-${label}-${theme}`)
         await visitor.keyboard.press('Escape')
-        await visitor.goto(fresh('/gallery?kind=video'))
+        await visitor.goto('/gallery?kind=video')
         await shoot(visitor, `gallery-filtered-${label}-${theme}`)
-        await visitor.goto(fresh('/gallery?kind=video&sort=featured'))
+        await visitor.goto('/gallery?kind=video&sort=featured')
         await expect(visitor.getByText('No works match these filters')).toBeVisible()
         await shoot(visitor, `gallery-empty-filtered-${label}-${theme}`)
       }
@@ -396,7 +404,7 @@ test('发布 → 画廊可见且 noindex → 审核通过 → 收录 → 取消�
       fileId: fileIds[0] as string,
       actor: actor(ws),
     })
-    const gone = await visitor.request.get(fresh(`/gallery/${target.slug}`))
+    const gone = await visitor.request.get(`/gallery/${target.slug}`)
     expect(gone.status()).toBe(404)
     const extraFileId = await seedOutput(db, ws, {
       kind: 'image',
@@ -413,33 +421,34 @@ test('发布 → 画廊可见且 noindex → 审核通过 → 收录 → 取消�
       title: `Extra ${run}`,
       showPrompt: true,
     })
-    expect((await visitor.request.get(fresh(`/gallery/${extra.slug}`))).status()).toBe(200)
+    expect((await visitor.request.get(`/gallery/${extra.slug}`)).status()).toBe(200)
     await unpublishStudioWork(db, {
       workspaceId: ws.workspaceId,
       fileId: extraFileId,
       actor: actor(ws),
     })
-    expect((await visitor.request.get(fresh(`/gallery/${extra.slug}`))).status()).toBe(404)
+    expect((await visitor.request.get(`/gallery/${extra.slug}`)).status()).toBe(404)
     expect((await visitor.request.get(`/media/w/${extra.id}/${extra.version}`)).status()).toBe(404)
     await visitor.setViewportSize({ width: 1440, height: 900 })
     await setTheme(visitor, 'light')
-    await visitor.goto(fresh(`/gallery/${target.slug}`))
+    await visitor.goto(`/gallery/${target.slug}`)
     await expect(visitor.getByRole('heading', { name: "We can't find this work" })).toBeVisible()
     await shoot(visitor, 'work-not-found-desktop-light')
     await visitor.setViewportSize({ width: 390, height: 844 })
     await setTheme(visitor, 'dark')
-    await visitor.goto(fresh(`/gallery/${target.slug}`))
+    await visitor.goto(`/gallery/${target.slug}`)
     await noHorizontalScroll(visitor)
     await shoot(visitor, 'work-not-found-mobile-dark')
   } finally {
     await anon.close()
+    await probe.close()
     await db.$client.end()
   }
 })
 
 test('空画廊与越界页', async ({ page }) => {
   // 他站作品不可见：不属于当前站点的数据不出现在本站（单站点模板只验证越界页 404）
-  const response = await page.request.get(fresh('/gallery?page=49'))
+  const response = await page.request.get('/gallery?page=49')
   expect([200, 404]).toContain(response.status())
   expect((await page.request.get('/gallery?page=51')).status()).toBe(404)
   expect((await page.request.get('/sitemap-gallery-11.xml')).status()).toBe(404)

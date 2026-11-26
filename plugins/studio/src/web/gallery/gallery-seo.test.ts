@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { galleryHead, type WorkHeadInput, workHead } from './gallery-seo.ts'
-import { gallerySitemapXml } from './sitemap.server.ts'
+import {
+  gallerySitemapIndexXml,
+  gallerySitemapShards,
+  gallerySitemapXml,
+} from './sitemap.server.ts'
 
 const appUrl = 'https://example.com'
 const canonical = (head: { links: readonly { rel: string; href: string }[] }) =>
@@ -80,7 +84,60 @@ describe('作品页 head', () => {
   })
 })
 
+describe('多站点地址', () => {
+  it('作品页的 canonical、og 与结构化数据使用作品所在站点的来源', () => {
+    const head = workHead({
+      work: {
+        id: '0190a3f0-0000-7000-8000-000000000001',
+        slug: 'clip-abc12345',
+        version: 1,
+        title: 'Clip',
+        kind: 'video',
+        width: 640,
+        height: 360,
+        durationMs: 2_000,
+        displayName: 'Wan',
+        publishedAt: '2026-11-26T00:00:00.000Z',
+        moderation: 'approved',
+      },
+      locale: 'en',
+      appUrl: 'https://east.example.com',
+      description: 'd',
+    })
+    const urls = [
+      canonical(head),
+      meta(head, 'og:url'),
+      meta(head, 'og:video'),
+      jsonLd(head).contentUrl,
+      jsonLd(head).url,
+    ]
+    for (const url of urls) expect(String(url)).toMatch(/^https:\/\/east\.example\.com\//)
+    expect(
+      canonical(
+        galleryHead({
+          search: {},
+          locale: 'en',
+          appUrl: 'https://east.example.com',
+          title: 't',
+          description: 'd',
+        }),
+      ),
+    ).toBe('https://east.example.com/gallery')
+  })
+})
+
 describe('画廊站点地图', () => {
+  it('作品多于一片时根地址为索引，指向各分片', () => {
+    expect(gallerySitemapShards(0)).toBe(1)
+    expect(gallerySitemapShards(49_000)).toBe(1)
+    expect(gallerySitemapShards(49_001)).toBe(2)
+    expect(gallerySitemapShards(10_000_000)).toBe(10)
+    const index = gallerySitemapIndexXml(appUrl, 2)
+    expect(index).toContain('<sitemapindex')
+    expect(index).toContain('<loc>https://example.com/sitemap-gallery-1.xml</loc>')
+    expect(index).toContain('<loc>https://example.com/sitemap-gallery-2.xml</loc>')
+  })
+
   it('第一片首条为各语言画廊列表页，作品带 lastmod；后续分片不含列表页', () => {
     const works = [{ slug: 'a-1', lastmod: new Date('2026-11-26T01:02:03Z') }]
     const first = gallerySitemapXml({ origin: appUrl, page: 1, works })

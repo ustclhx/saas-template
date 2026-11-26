@@ -1,5 +1,4 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { originFromMatches } from '@web/features/seo/metadata.ts'
 import { m } from '@web/paraglide/messages.js'
 import { getLocale } from '@web/paraglide/runtime.js'
 import { getWorkPage } from '../../src/web/gallery/gallery.functions.ts'
@@ -32,13 +31,14 @@ export const Route = createFileRoute('/gallery/$slug')({
     },
   },
   loader: ({ params }) => getWorkPage({ data: { slug: params.slug } }),
-  head: ({ matches, match, loaderData }) => {
+  head: ({ match, loaderData }) => {
     if (match.status === 'error') return noindexHead(m.studio_work_error_title())
     if (!loaderData) return noindexHead(m.studio_work_not_found_title())
     return workHead({
       work: loaderData.work,
       locale: getLocale(),
-      appUrl: originFromMatches(matches),
+      // 多站点：canonical、og 与结构化数据用作品所在站点的规范来源
+      appUrl: loaderData.origin,
       description: workDescription(loaderData.work),
     })
   },

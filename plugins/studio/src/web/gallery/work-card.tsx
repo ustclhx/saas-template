@@ -15,7 +15,7 @@ export interface WorkCardData {
   height: number | null
   durationMs: number | null
   version: number
-  featured?: boolean
+  featuredAt?: string | null
 }
 
 /** 视频首帧：带 #t 片段让浏览器停在第一帧附近，preload="metadata" 不下载整段 */
@@ -81,7 +81,7 @@ export function WorkCard({ work, eager }: { work: WorkCardData; eager?: boolean 
             {duration}
           </span>
         )}
-        {work.featured && (
+        {work.featuredAt && (
           <Badge className="absolute top-2 left-2" color="gray">
             {m.studio_gallery_featured_badge()}
           </Badge>

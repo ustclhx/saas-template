@@ -118,6 +118,44 @@ describe('画廊页面边缘缓存', () => {
     expect(cache.store.size).toBe(0)
   })
 
+  it('请求主机不是站点规范来源（www 与裸域等）时不读写缓存', async () => {
+    const cache = memoryCache()
+    const render = vi.fn(() => page('n'))
+    await serve(runtime(), cache, new Request('https://www.example.com/gallery'), render)
+    await serve(runtime(), cache, new Request('https://www.example.com/gallery'), render)
+    expect(render).toHaveBeenCalledTimes(2)
+    expect(cache.store.size).toBe(0)
+    // 规范来源上的同一地址单独缓存
+    await serve(runtime(), cache, new Request(`${APP_URL}/gallery`), render)
+    expect(cache.store.size).toBe(1)
+  })
+
+  it('跟踪参数不影响命中：带 utm 的作品页链接命中原地址的副本', async () => {
+    const cache = memoryCache()
+    const render = vi.fn(() => page('n'))
+    await serve(runtime(), cache, new Request(`${APP_URL}/gallery/a-1`), render)
+    const hit = await serve(
+      runtime(),
+      cache,
+      new Request(`${APP_URL}/gallery/a-1?utm_source=share&ref=x`),
+      render,
+    )
+    expect(render).toHaveBeenCalledTimes(1)
+    expect(hit.headers.get('x-studio-cache')).toBe('hit')
+  })
+
+  it('非 200 / 404 的响应不进入缓存', async () => {
+    const cache = memoryCache()
+    const response = await serve(
+      runtime(),
+      cache,
+      new Request(`${APP_URL}/gallery`),
+      () => new Response(null, { status: 307, headers: { location: '/' } }),
+    )
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(cache.store.size).toBe(0)
+  })
+
   it('插件绑定缺失时画廊地址返回 503，其他地址不受影响', async () => {
     const rt = runtime({ pluginStatus: { studio: 'unavailable' } })
     const cache = memoryCache()

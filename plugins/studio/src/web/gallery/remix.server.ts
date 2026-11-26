@@ -43,6 +43,7 @@ export async function handleRemix(request: Request, slug: string): Promise<Respo
     session.user,
     session.session.activeOrganizationId,
   )
-  if (!workspace) return redirect(LOGIN_PATH)
+  // 已登录但没有可用空间：交给 /app 处理（补建个人空间或引导）
+  if (!workspace) return redirect('/app')
   return redirect(studioRemixHref(workspace.workspace.slug, target))
 }

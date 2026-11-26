@@ -30,7 +30,7 @@ function studioScope(request: Request) {
   // 多站点：只读本站作品；请求来源不属于任何站点时一律 404（他站作品不可见）
   const site = studioPublicSite(request.url)
   if (!site) throw new AppError('NOT_FOUND', 'Not found', { status: NOT_FOUND })
-  return { site: site.key, kinds }
+  return { site: site.key, kinds, origin: site.origin }
 }
 
 /** 404 原样抛出；其余错误记日志、标记本次请求失败，并以 503 交给页面的错误界面 */
@@ -45,6 +45,15 @@ async function guarded<T>(event: string, read: () => Promise<T>): Promise<T> {
   }
 }
 
+/** 日期转为 ISO 字符串，经 server function 序列化后服务端与浏览器一致 */
+function serializeCard<T extends { publishedAt: Date; featuredAt: Date | null }>(work: T) {
+  return {
+    ...work,
+    publishedAt: work.publishedAt.toISOString(),
+    featuredAt: work.featuredAt?.toISOString() ?? null,
+  }
+}
+
 function galleryPageSize() {
   return studioConfigSchema.parse(templateConfig.plugins.studio ?? {}).galleryPageSize
 }
@@ -52,7 +61,7 @@ function galleryPageSize() {
 export async function loadGalleryPage(search: GallerySearch) {
   const request = getRequest()
   return guarded('studio.gallery.load_failed', async () => {
-    const scope = studioScope(request)
+    const { origin, ...scope } = studioScope(request)
     // 未启用的类型筛选与不存在的页面一样返回 404
     if (search.kind && !scope.kinds.includes(search.kind))
       throw new AppError('NOT_FOUND', 'Not found', { status: NOT_FOUND })
@@ -66,12 +75,11 @@ export async function loadGalleryPage(search: GallerySearch) {
       ...(search.cursor && { cursor: search.cursor }),
     })
     return {
+      // 站点规范来源：canonical、og 与结构化数据中的绝对地址按作品所在站点输出
+      origin,
       kinds: scope.kinds as StudioKind[],
       page,
-      works: result.works.map((work) => ({
-        ...work,
-        publishedAt: work.publishedAt.toISOString(),
-      })),
+      works: result.works.map(serializeCard),
       nextPage: result.nextPage,
       nextCursor: result.nextCursor,
     }
@@ -97,7 +105,7 @@ async function viewerUserId(request: Request): Promise<string | undefined> {
 export async function loadWorkPage(slug: string) {
   const request = getRequest()
   return guarded('studio.work.load_failed', async () => {
-    const scope = studioScope(request)
+    const { origin, ...scope } = studioScope(request)
     const userId = await viewerUserId(request)
     const runtime = getWebRuntime()
     // 作品状态变化要尽快反映（取消发布、下架），详情不用带查询缓存的公开连接
@@ -112,16 +120,13 @@ export async function loadWorkPage(slug: string) {
       kind: work.kind,
       workId: work.id,
     })
-    return {
-      work: { ...work, publishedAt: work.publishedAt.toISOString() },
-      related: related.map((item) => ({ ...item, publishedAt: item.publishedAt.toISOString() })),
-    }
+    return { origin, work: serializeCard(work), related: related.map(serializeCard) }
   })
 }
 
 /** 做同款：只读公开作品的模型与公开的提示词 */
 export async function loadRemixTarget(request: Request, slug: string) {
-  const scope = studioScope(request)
+  const { origin: _origin, ...scope } = studioScope(request)
   const work = await getPublicWorkBySlug(getWebRuntime().db, { ...scope, slug })
   return work ? { modelKey: work.modelKey, prompt: work.prompt } : null
 }

@@ -34,31 +34,56 @@ describe('公开页缓存规则', () => {
     expect(hasSessionCookie('__Secure-better-auth.session_data=y')).toBe(true)
   })
 
-  it('缓存键包含站点地址、部署版本与原路径查询', () => {
-    const url = new URL('https://www.example.com/gallery?kind=video')
-    expect(pageCacheKey(url, 'https://example.com', 'abc')).toBe(
+  it('缓存键：站点来源 + 部署版本 + 规范化路径；画廊只保留规范化筛选，作品页忽略查询', () => {
+    const key = (url: string, version = 'abc') =>
+      pageCacheKey(new URL(url), 'https://example.com', version)
+    expect(key('https://example.com/gallery?kind=video')).toBe(
       'https://example.com/__studio-cache/abc/gallery?kind=video',
     )
-    expect(pageCacheKey(url, 'https://example.com', 'def')).not.toBe(
-      pageCacheKey(url, 'https://example.com', 'abc'),
+    // 参数顺序、未知参数（utm）与第一页的 page=1 不影响键
+    expect(key('https://example.com/gallery?utm_source=x&page=2&kind=video')).toBe(
+      'https://example.com/__studio-cache/abc/gallery?kind=video&page=2',
     )
+    expect(key('https://example.com/gallery/?page=1&utm_medium=y')).toBe(
+      'https://example.com/__studio-cache/abc/gallery',
+    )
+    expect(key('https://example.com/zh/gallery?sort=featured&kind=image')).toBe(
+      'https://example.com/__studio-cache/abc/zh/gallery?kind=image&sort=featured',
+    )
+    expect(key('https://example.com/gallery/a-b12?utm_source=x&ref=y')).toBe(
+      'https://example.com/__studio-cache/abc/gallery/a-b12',
+    )
+    expect(key('https://example.com/sitemap-gallery.xml?x=1')).toBe(
+      'https://example.com/__studio-cache/abc/sitemap-gallery.xml',
+    )
+    expect(key('https://example.com/gallery', 'def')).not.toBe(key('https://example.com/gallery'))
+    expect(key('https://example.com/pricing')).toBeUndefined()
+    // 失效覆盖带跟踪参数的作品页（同一个键）
     expect(workPageCacheKeys('https://example.com', 'a-b12', 'abc')).toEqual(
       expect.arrayContaining([
-        'https://example.com/__studio-cache/abc/gallery/a-b12',
-        'https://example.com/__studio-cache/abc/zh/gallery/a-b12',
+        key('https://example.com/gallery/a-b12?utm_source=x'),
+        key('https://example.com/zh/gallery/a-b12'),
       ]),
     )
   })
 
-  it('Cache-Control：匿名共享缓存 5 分钟（站点地图 1 小时），会话不缓存，错误 no-store', () => {
-    expect(cacheControl('work', { anonymous: true, failed: false })).toBe(
+  it('Cache-Control：只有匿名 200 / 404 共享缓存（站点地图 1 小时），会话不缓存，其余状态 no-store', () => {
+    const anonymous = { anonymous: true, failed: false }
+    expect(cacheControl('work', { ...anonymous, status: 200 })).toBe(
       'public, max-age=0, s-maxage=300',
     )
-    expect(cacheControl('sitemap', { anonymous: true, failed: false })).toBe(
+    expect(cacheControl('work', { ...anonymous, status: 404 })).toBe(
+      'public, max-age=0, s-maxage=300',
+    )
+    expect(cacheControl('sitemap', { ...anonymous, status: 200 })).toBe(
       'public, max-age=0, s-maxage=3600',
     )
-    expect(cacheControl('gallery', { anonymous: false, failed: false })).toBe('private, no-store')
-    expect(cacheControl('gallery', { anonymous: true, failed: true })).toBe('no-store')
+    for (const status of [301, 302, 429, 500, 503])
+      expect(cacheControl('gallery', { ...anonymous, status })).toBe('no-store')
+    expect(cacheControl('gallery', { anonymous: false, failed: false, status: 200 })).toBe(
+      'private, no-store',
+    )
+    expect(cacheControl('gallery', { anonymous: true, failed: true, status: 200 })).toBe('no-store')
   })
 })
 

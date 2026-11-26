@@ -54,6 +54,7 @@ const card = (overrides: Partial<GalleryPageData['works'][number]> = {}) => ({
   durationMs: null,
   version: 3,
   publishedAt: '2026-11-26T00:00:00.000Z',
+  featuredAt: null,
   ...overrides,
 })
 
@@ -126,6 +127,17 @@ describe('画廊页', () => {
     expect(
       within(pagination).getByText(m.studio_gallery_next()).closest('a')?.getAttribute('href'),
     ).toBe('/gallery?page=2')
+  })
+
+  it('最新列表中的精选作品显示精选角标', () => {
+    render(
+      <GalleryPage
+        data={gallery({ works: [card({ featuredAt: '2026-11-26T00:00:00.000Z' })] })}
+        search={{}}
+      />,
+    )
+    const link = screen.getByRole('link', { name: 'Misty lake' })
+    expect(within(link).getByText(m.studio_gallery_featured_badge())).toBeTruthy()
   })
 
   it('筛选后分页保留筛选；只启用一种类型时不显示类型筛选', () => {
@@ -238,6 +250,24 @@ describe('举报', () => {
     expect(JSON.parse(String(init.body))).toEqual({ workId: ID, reason: 'copyright', note: '抄袭' })
     expect((init.headers as Record<string, string>)['x-turnstile-token']).toBeUndefined()
     expect(await within(dialog).findByText(m.studio_report_success())).toBeTruthy()
+  })
+
+  it('打开时判定已登录、提交时会话已失效（TURNSTILE_FAILED）：改为显示人机验证', async () => {
+    api.context.mockResolvedValue({ signedIn: true, turnstileSiteKey: 'site-key' })
+    api.fetch.mockResolvedValue(
+      Response.json({ error: { code: 'TURNSTILE_FAILED' } }, { status: 403 }),
+    )
+    render(<WorkPage data={work()} />)
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: m.studio_work_report() })[0] as Element)
+    })
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).queryByTestId('turnstile')).toBeNull()
+    fireEvent.click(within(dialog).getByRole('radio', { name: m.studio_report_reason_spam() }))
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: m.studio_report_submit() }))
+    })
+    expect(await within(dialog).findByTestId('turnstile')).toBeTruthy()
   })
 
   it('未登录且未配置 Turnstile：提示登录后举报', async () => {

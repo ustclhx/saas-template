@@ -113,10 +113,13 @@ function ReportForm({
   workId,
   context,
   onClose,
+  onSessionLost,
 }: {
   workId: string
   context: StudioReportContext
   onClose: () => void
+  /** 打开时判定为已登录、提交时接口却要求人机验证（会话已失效）：按未登录重新渲染 */
+  onSessionLost: () => void
 }) {
   const legendId = useId()
   const noteId = useId()
@@ -145,6 +148,10 @@ function ReportForm({
         body: JSON.stringify({ workId, reason, ...(note.trim() && { note: note.trim() }) }),
       })
       const result = await reportOutcome(response)
+      if (result === 'turnstile' && context.signedIn) {
+        onSessionLost()
+        return
+      }
       setOutcome(result)
       if (result !== 'ok') turnstile.reset()
     } catch {
@@ -288,7 +295,13 @@ export function ReportDialog({
           </div>
         </>
       ) : (
-        <ReportForm workId={workId} context={context} onClose={close} />
+        <ReportForm
+          key={String(context.signedIn)}
+          workId={workId}
+          context={context}
+          onClose={close}
+          onSessionLost={() => setContext({ ...context, signedIn: false })}
+        />
       )}
     </Shell>
   )
