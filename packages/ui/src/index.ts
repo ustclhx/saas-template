@@ -105,6 +105,8 @@ export {
   type DataTableLabels,
   type DataTablePage,
   type DataTableProps,
+  type DataTableSelection,
+  type DataTableSelectionLabels,
   type DetailField,
   DetailList,
 } from './components/data-table.tsx'
@@ -230,6 +232,12 @@ export {
   PopoverTrigger,
   type PopoverTriggerProps,
 } from './components/popover.tsx'
+export {
+  RadioGroup,
+  type RadioGroupProps,
+  RadioItem,
+  type RadioItemProps,
+} from './components/radio-group.tsx'
 export { ScrollArea, type ScrollAreaProps, ScrollBar } from './components/scroll-area.tsx'
 export {
   Select,

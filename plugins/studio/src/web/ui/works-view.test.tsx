@@ -86,7 +86,7 @@ function page(values: Partial<StudioWorksPage> = {}): StudioWorksPage {
       item(2, published('pending')),
       item(3, published('approved')),
       item(4, published('hidden')),
-      item(5, published('removed', 'public', '侵权')),
+      item(5, published('removed', 'public', 'copyright')),
       item(6, null, { kind: 'video', mime: 'video/mp4', duration: 5 }),
     ],
     ...values,
@@ -107,7 +107,8 @@ describe('我的作品', () => {
       m.studio_state_pending(),
       m.studio_state_approved(),
       m.studio_state_hidden(),
-      m.studio_state_removed_reason({ reason: '侵权' }),
+      // 后台存原因码，作者侧按语言翻译（studioRemovalReasonLabel）
+      m.studio_state_removed_reason({ reason: m.studio_removal_reason_copyright() }),
       m.studio_state_private(),
     ])
     expect(screen.getByText('0:05')).toBeTruthy()

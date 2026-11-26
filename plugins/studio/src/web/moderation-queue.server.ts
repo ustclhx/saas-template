@@ -16,13 +16,8 @@ import { type studioReviewCursor, studioReviewQueueSchema } from './moderation-i
 const pendingReview = and(eq(studioWork.moderation, 'pending'), eq(studioWork.visibility, 'public'))
 const hiddenReview = eq(studioWork.moderation, 'hidden')
 
-export async function listStudioReviewQueue(
-  db: Database,
-  input: z.input<typeof studioReviewQueueSchema>,
-  pagination?: { cursor: z.output<typeof studioReviewCursor> | undefined },
-) {
-  const { queue, offset, site } = studioReviewQueueSchema.parse(input)
-  const predicates = {
+function queuePredicates(db: Database) {
+  return {
     pending: pendingReview,
     reported: and(
       gt(studioWork.reportCount, 0),
@@ -36,6 +31,15 @@ export async function listStudioReviewQueue(
     hidden: hiddenReview,
     removed: eq(studioWork.moderation, 'removed'),
   }
+}
+
+export async function listStudioReviewQueue(
+  db: Database,
+  input: z.input<typeof studioReviewQueueSchema>,
+  pagination?: { cursor: z.output<typeof studioReviewCursor> | undefined },
+) {
+  const { queue, offset, site } = studioReviewQueueSchema.parse(input)
+  const predicates = queuePredicates(db)
   const order = queue === 'pending' ? asc : desc
   const position = sql`(${studioWork.publishedAt}, ${studioWork.id})`
   const cursor = pagination?.cursor
@@ -58,6 +62,7 @@ export async function listStudioReviewQueue(
       moderation: studioWork.moderation,
       removalReason: studioWork.removalReason,
       featuredAt: studioWork.featuredAt,
+      version: studioWork.version,
       reportCount: studioWork.reportCount,
       publishedAt: studioWork.publishedAt,
       reviewedAt: studioWork.reviewedAt,
@@ -153,4 +158,19 @@ export async function getStudioReviewMedia(
     )
   if (!media) throw notFound()
   return { url: await storage.presignDownload(media.key), mime: media.mime }
+}
+
+/** 审核页分栏上的数量：待审核、被举报与已隐藏（已下架不显示数量，与设计稿一致） */
+export async function countStudioReviewTabs(db: Database) {
+  const predicates = queuePredicates(db)
+  const [row] = await db
+    .select({
+      pending: count(sql`case when ${predicates.pending} then 1 end`),
+      reported: count(sql`case when ${predicates.reported} then 1 end`),
+      hidden: count(sql`case when ${predicates.hidden} then 1 end`),
+    })
+    // biome-ignore lint/plugin: 平台管理员的审核分栏汇总跨空间作品。
+    .from(studioWork)
+    .where(or(predicates.pending, predicates.reported, predicates.hidden))
+  return { pending: row?.pending ?? 0, reported: row?.reported ?? 0, hidden: row?.hidden ?? 0 }
 }

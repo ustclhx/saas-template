@@ -267,6 +267,102 @@ describe('DataTable 单元格身份', () => {
   })
 })
 
+describe('DataTable 行选择（add-media-studio 4.1）', () => {
+  const selectionLabels = {
+    selectAll: 'Select all',
+    selectRow: (row: Person) => `Select ${row.name}`,
+    selected: (count: number) => `${count} selected`,
+    clear: 'Clear selection',
+  }
+
+  function Selectable(props: {
+    onBulk?: (ids: string[]) => void
+    canSelect?: (row: Person) => boolean
+  }) {
+    const [selected, setSelected] = useState<Set<string>>(new Set())
+    const rows = everyone.slice(0, 3)
+    return (
+      <DataTable
+        labels={labels}
+        label="People"
+        columns={columns}
+        rows={rows}
+        getRowId={(row) => row.id}
+        page={{ pageIndex: 0, pageSize: PAGE_SIZE, rowCount: 3 }}
+        onPageChange={() => {}}
+        selection={{
+          selected,
+          onSelectedChange: setSelected,
+          labels: selectionLabels,
+          ...(props.canSelect && { canSelect: props.canSelect }),
+          actions: (
+            <button type="button" onClick={() => props.onBulk?.([...selected])}>
+              Bulk approve
+            </button>
+          ),
+        }}
+      />
+    )
+  }
+
+  it('不传 selection 时没有复选框与操作栏', () => {
+    render(
+      <DataTable
+        labels={labels}
+        label="People"
+        columns={columns}
+        rows={everyone.slice(0, 2)}
+        getRowId={(row) => row.id}
+        page={{ pageIndex: 0, pageSize: PAGE_SIZE, rowCount: 2 }}
+        onPageChange={() => {}}
+      />,
+    )
+    expect(screen.queryAllByRole('checkbox')).toEqual([])
+    expect(screen.getAllByRole('columnheader')).toHaveLength(2)
+  })
+
+  it('勾选行后出现已选数量与批量操作，表头部分选中后可全选，清空后操作栏消失', () => {
+    const onBulk = vi.fn()
+    render(<Selectable onBulk={onBulk} />)
+    const table = screen.getByRole('table', { name: 'People' })
+    expect(screen.queryByRole('button', { name: 'Bulk approve' })).toBeNull()
+
+    fireEvent.click(within(table).getByRole('checkbox', { name: 'Select Person 2' }))
+    expect(screen.getByText('1 selected')).toBeTruthy()
+    const all = within(table).getByRole('checkbox', { name: 'Select all' })
+    expect(all.getAttribute('data-state')).toBe('indeterminate')
+    expect(
+      within(table).getByRole('checkbox', { name: 'Select Person 2' }).closest('tr'),
+    ).toHaveProperty('dataset.selected', '')
+
+    fireEvent.click(all)
+    expect(all.getAttribute('data-state')).toBe('checked')
+    expect(screen.getByText('3 selected')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk approve' }))
+    expect(onBulk).toHaveBeenCalledWith(['p2', 'p1', 'p3'])
+
+    fireEvent.click(all)
+    expect(screen.queryByText(/selected$/)).toBeNull()
+
+    fireEvent.click(within(table).getByRole('checkbox', { name: 'Select Person 1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }))
+    expect(screen.queryByRole('button', { name: 'Bulk approve' })).toBeNull()
+    expect(
+      within(table).getByRole('checkbox', { name: 'Select Person 1' }).getAttribute('data-state'),
+    ).toBe('unchecked')
+  })
+
+  it('canSelect 为 false 的行没有复选框，也不参与全选', () => {
+    const onBulk = vi.fn()
+    render(<Selectable onBulk={onBulk} canSelect={(row) => row.role === 'user'} />)
+    const table = screen.getByRole('table', { name: 'People' })
+    expect(within(table).queryByRole('checkbox', { name: 'Select Person 1' })).toBeNull()
+    fireEvent.click(within(table).getByRole('checkbox', { name: 'Select all' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk approve' }))
+    expect(onBulk).toHaveBeenCalledWith(['p2', 'p3'])
+  })
+})
+
 describe('DetailList', () => {
   it('按顺序渲染字段，空值显示占位符', () => {
     render(

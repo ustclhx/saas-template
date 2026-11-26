@@ -14,7 +14,7 @@ import {
   studioReviewQueueSchema,
 } from './moderation-input.ts'
 import { listStudioReviewQueue } from './moderation-queue.server.ts'
-import { invalidateStudioMedia } from './work-invalidation.ts'
+import { invalidateStudioMediaMany } from './work-invalidation.ts'
 
 const maxPage = ADMIN_MAX_OFFSET / ADMIN_PAGE_SIZE + 1
 
@@ -71,7 +71,7 @@ export const studioWorksModerate = definePluginAdminMcpTool({
   async run(ctx, { dryRun: _, ...input }) {
     const data = studioModerationSchema.parse(input)
     const { work, invalidate } = await applyStudioModeration(ctx, data, { dryRun: ctx.dryRun })
-    if (invalidate) ctx.afterCommit(() => invalidateStudioMedia(invalidate))
+    if (invalidate) ctx.afterCommit(() => invalidateStudioMediaMany([invalidate]))
     return toolResult({ work, dryRun: ctx.dryRun })
   },
 })

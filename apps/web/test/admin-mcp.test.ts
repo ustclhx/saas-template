@@ -15,7 +15,10 @@ import {
   user,
 } from '@saas/db'
 import type { RateLimiter } from '@saas/platform'
-import { setStudioMediaInvalidator } from '@saas/plugin-studio/work-invalidation'
+import {
+  type InvalidateStudioWorks,
+  setStudioMediaInvalidator,
+} from '@saas/plugin-studio/work-invalidation'
 import { newId } from '@saas/shared'
 import { eq, inArray, like } from 'drizzle-orm'
 import { afterAll, describe, expect, it, vi } from 'vitest'
@@ -220,11 +223,11 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
       const tenant = scoped(db, author.workspaceId)
       const getWork = () => tenant.findById(studioWork, id)
       let committedModeration: string | undefined
-      const invalidated = vi.fn<Parameters<typeof setStudioMediaInvalidator>[0]>(async () => {
+      const invalidated = vi.fn<InvalidateStudioWorks>(async () => {
         const work = await getWork()
         committedModeration = work?.moderation
       })
-      setStudioMediaInvalidator(invalidated)
+      setStudioMediaInvalidator(Object.assign(() => {}, { many: invalidated }))
 
       try {
         const { fileId, taskId } = await seedStudioOutput(db, author)
@@ -325,7 +328,7 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
           reviewedBy: adminId,
           version: 2,
         })
-        expect(invalidated).toHaveBeenCalledExactlyOnceWith({ id, site, slug, version: 1 })
+        expect(invalidated).toHaveBeenCalledExactlyOnceWith([{ id, site, slug, version: 1 }])
         expect(committedModeration).toBe('removed')
         expect(
           (await actorAudits(db, adminId)).filter(({ targetId }) => targetId === id),

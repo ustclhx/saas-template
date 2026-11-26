@@ -249,7 +249,7 @@ grep -nE '^export' packages/ui/src/index.ts
     **阅读器之外的页面框架（侧边栏、悬浮控件）需自行加 `print:hidden`**，外层滚动容器在打印时应取消固定高度与 `overflow`，
     否则只打印可见部分。
 
-已接入：Button、Input、Textarea、Select、Combobox、Checkbox、Switch、Badge、Tooltip、Tabs、Dropdown（菜单）、Collapsible、
+已接入：Button、Input、Textarea、Select、Combobox、Checkbox、RadioGroup、Switch、Badge、Tooltip、Tabs、Dropdown（菜单）、Collapsible、
 Command Menu、Dialog、AlertDialog、Popover、Sheet、Toast、Sidebar、Card、Alert、Separator、Label、ScrollArea、DataTable、Form、
 Breadcrumb、Pagination、LinkCard（含 LinkCardGrid、SeriesNav）、LinkList（公开页内链，见下文）；Reader 系列经 `@saas/ui/reader` 子路径；
 业务界面组件（8.6）见 [6.1](#61-业务界面组件)；LanguagePrompt、LanguageMenu（multilingual-seo）。
@@ -603,7 +603,7 @@ const copy = pending?.action === 'transfer'
 | 模式 | 组成 | 状态 |
 |---|---|---|
 | 工作台 | 侧边栏（分组由项目注册、可折叠、手机抽屉、底部升级与账户入口），与顶部布局经 `ui.appLayout` 二选一 | 现有（tasks 8.3），见下文 |
-| 后台列表 | `DataTable` + `adminListSearch` / `adminListPage`，筛选改变回第一页 | 现有 |
+| 后台列表 | `DataTable` + `adminListSearch` / `adminListPage`，筛选改变回第一页；批量操作传 `selection`（复选框列、表头全选本页、「已选 N 项」操作栏，选择状态由调用方持有，文案经 `labels` 传入） | 现有；行选择 add-media-studio（后台作品审核） |
 | 表单 | `useAppForm` + 字段组件，提交按钮 `SubmitButton`，错误用 `FieldErrors` | 现有 |
 | 长文阅读 | `Reader`：安全 Markdown、自动目录、吸顶高亮、阅读进度、打印样式与导出 PDF（`registerPdfExporter` 扩展点），见 §4 | 已提供（tasks 8.4），预览 `/dev/ui#reader` 与整页 `/dev/ui/reader?state=ready\|empty\|loading\|error` |
 | 营销区块 | 数据背书（未配置不渲染）、三步流程、编号产品矩阵、悬浮 AI 入口 | `apps/web/src/features/marketing/sections/`（`Stats`、`Steps`、`ProductMatrix`）与 `ai-entry.tsx`，内容来自 `template.config.ts` 的 `marketing` 段；入口叠在浮动主题切换上方，页脚内容盒距页面底部 136px；`/dev/ui#marketing` 预览 |

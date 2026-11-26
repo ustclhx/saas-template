@@ -11,9 +11,10 @@ type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0]
 const gallerySort = z.enum(['latest', 'featured'])
 const galleryCursor = z.tuple([gallerySort, z.iso.datetime({ precision: 6 }), z.uuid()])
 const LAST_NUMBERED_GALLERY_PAGE = 50
-const SITEMAP_PAGE_SIZE = 50_000
-// 每站最多收录 50 万件作品，并限制公开查询的最大偏移。
-const LAST_SITEMAP_PAGE = 10
+// 单个站点地图文件上限 5 万条；第一片还要放各语言的画廊列表页，作品每片留出余量。
+export const SITEMAP_PAGE_SIZE = 49_000
+// 每站最多收录 49 万件作品，并限制公开查询的最大偏移。
+export const LAST_SITEMAP_PAGE = 10
 
 /** 与 studioWork、file、user、organization 的连接使用。所有公开读取都按请求站点重新判定。 */
 export function publicWorkPredicate({ site, kinds }: PublicWorkScope) {
@@ -56,6 +57,7 @@ const cardFields = {
   durationMs: studioWork.durationMs,
   version: studioWork.version,
   publishedAt: studioWork.publishedAt,
+  featuredAt: studioWork.featuredAt,
 }
 
 export async function listPublicWorks(
@@ -175,6 +177,14 @@ export async function listPublicSitemapWorks(
     works: rows.slice(0, SITEMAP_PAGE_SIZE),
     hasNextPage: page < LAST_SITEMAP_PAGE && rows.length > SITEMAP_PAGE_SIZE,
   }
+}
+
+/** 本站审核通过的作品数（画廊站点地图据此决定是否输出站点地图索引） */
+export async function countPublicSitemapWorks(db: QueryDatabase, input: PublicWorkScope) {
+  const [row] = await selectWorks(db, { count: sql<number>`count(*)::int` }).where(
+    and(publicWorkPredicate(input), eq(studioWork.moderation, 'approved')),
+  )
+  return row?.count ?? 0
 }
 
 export async function getPublicWorkMedia(
