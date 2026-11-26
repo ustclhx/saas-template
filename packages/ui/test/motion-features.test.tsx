@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   ChatMessage,
@@ -21,6 +22,8 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
+  RadioGroup,
+  RadioItem,
   Select,
   SelectContent,
   SelectItem,
@@ -117,6 +120,24 @@ describe('m.* 都在 MotionFeatures 之下（动画会推进）', () => {
         expect(path?.getAttribute('stroke-dasharray')).toMatch(/^1(px)? /)
       }
     })
+  })
+
+  it('RadioGroup 选中后圆点弹出', async () => {
+    function Reasons() {
+      const [value, setValue] = useState('a')
+      return (
+        <RadioGroup aria-label="原因" value={value} onValueChange={setValue}>
+          <RadioItem index={0} value="a" label="甲" />
+          <RadioItem index={1} value="b" label="乙" />
+        </RadioGroup>
+      )
+    }
+    render(<Reasons />)
+    const row = screen.getByRole('radio', { name: '乙' })
+    fireEvent.click(row)
+    const dot = row.querySelector('[data-slot="radio-group-dot"]') as HTMLElement
+    expect(dot.style.opacity).not.toBe('1')
+    await waitForAnimation(() => expect(dot.style.opacity).toBe('1'))
   })
 
   it('对话组件：ChatMessage 入场、ThinkingSteps 与 ToolCall 展开、InputMessage 图标', async () => {

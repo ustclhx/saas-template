@@ -249,7 +249,7 @@ grep -nE '^export' packages/ui/src/index.ts
     **阅读器之外的页面框架（侧边栏、悬浮控件）需自行加 `print:hidden`**，外层滚动容器在打印时应取消固定高度与 `overflow`，
     否则只打印可见部分。
 
-已接入：Button、Input、Textarea、Select、Combobox、Checkbox、Switch、Badge、Tooltip、Tabs、Dropdown（菜单）、
+已接入：Button、Input、Textarea、Select、Combobox、Checkbox、RadioGroup、Switch、Badge、Tooltip、Tabs、Dropdown（菜单）、
 Command Menu、Dialog、AlertDialog、Popover、Sheet、Toast、Sidebar、Card、Alert、Separator、Label、ScrollArea、DataTable、Form、
 Breadcrumb、Pagination、LinkCard（含 LinkCardGrid、SeriesNav）、LinkList（公开页内链，见下文）；Reader 系列经 `@saas/ui/reader` 子路径；
 业务界面组件（8.6）见 [6.1](#61-业务界面组件)；LanguagePrompt、LanguageMenu（multilingual-seo）。
