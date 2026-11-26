@@ -105,6 +105,8 @@ export {
   type DataTableLabels,
   type DataTablePage,
   type DataTableProps,
+  type DataTableSelection,
+  type DataTableSelectionLabels,
   type DetailField,
   DetailList,
 } from './components/data-table.tsx'

@@ -1,7 +1,12 @@
 import { type DeletionContext, type DeletionTransaction, registerDeletionStep } from '@saas/auth'
 import { log } from '@saas/shared/log'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createStudioWorkInvalidator } from '../src/web/work-invalidation.ts'
+import {
+  createStudioWorkInvalidator,
+  invalidateStudioMediaMany,
+  PURGE_FILES_PER_REQUEST,
+  setStudioMediaInvalidator,
+} from '../src/web/work-invalidation.ts'
 import { registerStudioDeletionSteps } from '../src/web/works-delete-cleanup.ts'
 
 vi.mock('@saas/auth', () => ({ registerDeletionStep: vi.fn(() => () => {}) }))
@@ -20,6 +25,43 @@ const originForSite = () => origin
 afterEach(() => vi.restoreAllMocks())
 
 describe('Studio 作品缓存失效', () => {
+  it('批量失效：本地逐个删除，Cloudflare 按每次 100 个 URL 分片清除', async () => {
+    const cache = { delete: vi.fn().mockResolvedValue(true) }
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockImplementation(async () => Response.json({ success: true }))
+    const invalidate = createStudioWorkInvalidator({ originForSite, cache, purge, fetch })
+    const works = Array.from({ length: PURGE_FILES_PER_REQUEST + 5 }, (_, i) => ({
+      ...work,
+      id: `0196a7e1-e2d0-7000-8000-${String(i).padStart(12, '0')}`,
+    }))
+
+    await invalidate.many(works)
+
+    expect(cache.delete).toHaveBeenCalledTimes(works.length)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    const sizes = await Promise.all(
+      fetch.mock.calls.map(async ([input = '', init]) => {
+        const body = (await new Request(input, init).json()) as { files: string[] }
+        return body.files.length
+      }),
+    )
+    expect(sizes).toEqual([PURGE_FILES_PER_REQUEST, 5])
+  })
+
+  it('批量入口在只装配单件回调时逐件调用，回调失败只记日志', async () => {
+    const warning = vi.spyOn(log, 'warn').mockImplementation(() => {})
+    const single = vi.fn().mockRejectedValueOnce(new Error('boom')).mockResolvedValue(undefined)
+    setStudioMediaInvalidator(single)
+    try {
+      await invalidateStudioMediaMany([work, { ...work, version: 4 }])
+    } finally {
+      setStudioMediaInvalidator(() => {})
+    }
+    expect(single).toHaveBeenCalledTimes(2)
+    expect(warning).toHaveBeenCalledWith('studio.work.invalidate_failed', expect.any(Object))
+  })
+
   it('按站点的版本化媒体 URL 清除本地缓存和 Cloudflare 缓存', async () => {
     const warning = vi.spyOn(log, 'warn').mockImplementation(() => {})
     const resolveOrigin = vi.fn().mockReturnValue(`${origin}/`)
