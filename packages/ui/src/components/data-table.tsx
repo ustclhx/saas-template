@@ -10,6 +10,7 @@ import { type FormEvent, type ReactNode, useId, useMemo } from 'react'
 import { useSize } from '../lib/size-context.tsx'
 import { cn } from '../lib/utils.ts'
 import { Button } from './button.tsx'
+import { Checkbox } from './checkbox.tsx'
 import { Input } from './input.tsx'
 import { Label } from './label.tsx'
 import { Select, SelectContent, SelectItem, SelectTrigger } from './select.tsx'
@@ -26,6 +27,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from './select.tsx'
  * 外观吸收 Fluid table / input 的样式（openspec add-ui-design-system tasks 4.2）：表头用 `bg-hover` 底、
  * 行悬停 `bg-hover`，字号与单元格高度跟随 density（`UiRoot`），筛选控件与 Input / Select 同一套边框与焦点环。
  * 公开 API 不变。
+ *
+ * 行选择（add-media-studio 4.1 确认的组件变更）：传 `selection` 时首列为复选框，表头复选框全选 / 取消本页
+ * （部分选中显示短横），有选中行时表格上方出现「已选 N 项」操作栏，批量按钮由调用方经 `actions` 传入。
+ * 选择状态由调用方持有（受控），换页或筛选后是否保留由调用方决定；不传 `selection` 时外观与行为不变。
  */
 
 const features = tableFeatures({ rowPaginationFeature })
@@ -67,6 +72,28 @@ export interface DataTableLabels {
   readonly pagination: string
 }
 
+export interface DataTableSelectionLabels<TRow> {
+  /** 表头复选框的可读名称（全选本页） */
+  readonly selectAll: string
+  /** 行复选框的可读名称，如「选择：<标题>」 */
+  readonly selectRow: (row: TRow) => string
+  /** 操作栏上的已选数量，如「已选 3 项」 */
+  readonly selected: (count: number) => string
+  /** 操作栏上清空选择的按钮 */
+  readonly clear: string
+}
+
+export interface DataTableSelection<TRow> {
+  /** 已选行 id（与 `getRowId` 一致） */
+  readonly selected: ReadonlySet<string>
+  readonly onSelectedChange: (selected: Set<string>) => void
+  /** 操作栏中的批量操作按钮，只在有选中行时显示 */
+  readonly actions?: ReactNode
+  /** 返回 false 的行不显示复选框、也不参与全选 */
+  readonly canSelect?: (row: TRow) => boolean
+  readonly labels: DataTableSelectionLabels<TRow>
+}
+
 export interface DataTableProps<TRow extends RowData> {
   /** 表格的无障碍名称 */
   readonly label: string
@@ -81,6 +108,8 @@ export interface DataTableProps<TRow extends RowData> {
   readonly onFiltersChange?: (values: Record<string, string>) => void
   /** 全部可读文案，必须由应用按语言传入（tasks 4.2：组件不带英文默认值） */
   readonly labels: DataTableLabels
+  /** 可选的行选择与批量操作栏；不传时没有复选框列 */
+  readonly selection?: DataTableSelection<TRow>
   readonly className?: string
 }
 
@@ -126,6 +155,29 @@ export function DataTable<TRow extends RowData>(props: DataTableProps<TRow>) {
   const compact = size.variant === 'compact'
   // 单元格内边距跟随尺寸阶梯：一行 = 正文行高 + 上下内边距，default 约 36px、compact 约 28px（Fluid table）
   const cellPadding = compact ? 'px-2.5 py-1' : 'px-3 py-2'
+  const selection = props.selection
+  const selectable = selection
+    ? props.rows.filter((row) => selection.canSelect?.(row) ?? true).map((row) => getRowId(row))
+    : []
+  const selectedOnPage = selection ? selectable.filter((id) => selection.selected.has(id)) : []
+  const allSelected = selectable.length > 0 && selectedOnPage.length === selectable.length
+  function toggleAll(checked: boolean) {
+    if (!selection) return
+    const next = new Set(selection.selected)
+    for (const id of selectable) {
+      if (checked) next.add(id)
+      else next.delete(id)
+    }
+    selection.onSelectedChange(next)
+  }
+  function toggleRow(id: string, checked: boolean) {
+    if (!selection) return
+    const next = new Set(selection.selected)
+    if (checked) next.add(id)
+    else next.delete(id)
+    selection.onSelectedChange(next)
+  }
+  const selectCell = cn('w-10 align-middle', cellPadding)
 
   return (
     <div data-slot="data-table" className={cn('flex flex-col gap-3', props.className)}>
@@ -139,12 +191,46 @@ export function DataTable<TRow extends RowData>(props: DataTableProps<TRow>) {
           onChange={props.onFiltersChange}
         />
       ) : null}
+      {selection && selection.selected.size > 0 ? (
+        <div
+          data-slot="data-table-selection-bar"
+          className={cn(
+            'flex flex-wrap items-center gap-2.5 rounded-lg bg-secondary px-3 py-2',
+            size.type.body,
+          )}
+        >
+          <span role="status" className="flex-1 font-medium">
+            {selection.labels.selected(selection.selected.size)}
+          </span>
+          {selection.actions}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => selection.onSelectedChange(new Set())}
+          >
+            {selection.labels.clear}
+          </Button>
+        </div>
+      ) : null}
       <div className="overflow-x-auto rounded-xl border">
         <table aria-label={props.label} className={cn('w-full caption-bottom', size.type.body)}>
           {/* 模板改动（tasks 4.4 余项）：表头底色由 bg-muted/50 改为 Fluid 交互 token bg-hover */}
           <thead className="bg-hover">
             {table.getHeaderGroups().map((group) => (
               <tr key={group.id} className="border-b">
+                {selection ? (
+                  <th scope="col" className={selectCell}>
+                    <Checkbox
+                      aria-label={selection.labels.selectAll}
+                      checked={allSelected}
+                      indeterminate={selectedOnPage.length > 0 && !allSelected}
+                      disabled={selectable.length === 0}
+                      onCheckedChange={toggleAll}
+                      className="align-middle"
+                    />
+                  </th>
+                ) : null}
                 {group.headers.map((header) => (
                   <th
                     key={header.id}
@@ -164,30 +250,53 @@ export function DataTable<TRow extends RowData>(props: DataTableProps<TRow>) {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={specs.length} className="h-16 px-3 text-center text-muted-foreground">
+                <td
+                  colSpan={specs.length + (selection ? 1 : 0)}
+                  className="h-16 px-3 text-center text-muted-foreground"
+                >
                   {labels.empty}
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
-                <tr
-                  key={row.id}
-                  className="border-b transition-colors duration-80 last:border-0 hover:bg-hover"
-                >
-                  {row.getAllCells().map((cell) => (
-                    <td
-                      key={cell.id}
-                      className={cn(
-                        'align-middle',
-                        cellPadding,
-                        specById.get(cell.column.id)?.className,
-                      )}
-                    >
-                      {specById.get(cell.column.id)?.cell(row.original)}
-                    </td>
-                  ))}
-                </tr>
-              ))
+              rows.map((row) => {
+                const isSelected = selection?.selected.has(row.id) ?? false
+                const canSelect = selection?.canSelect?.(row.original) ?? true
+                return (
+                  <tr
+                    key={row.id}
+                    data-selected={isSelected ? '' : undefined}
+                    className={cn(
+                      'border-b transition-colors duration-80 last:border-0 hover:bg-hover',
+                      isSelected && 'bg-secondary',
+                    )}
+                  >
+                    {selection ? (
+                      <td className={selectCell}>
+                        {canSelect ? (
+                          <Checkbox
+                            aria-label={selection.labels.selectRow(row.original)}
+                            checked={isSelected}
+                            onCheckedChange={(checked) => toggleRow(row.id, checked)}
+                            className="align-middle"
+                          />
+                        ) : null}
+                      </td>
+                    ) : null}
+                    {row.getAllCells().map((cell) => (
+                      <td
+                        key={cell.id}
+                        className={cn(
+                          'align-middle',
+                          cellPadding,
+                          specById.get(cell.column.id)?.className,
+                        )}
+                      >
+                        {specById.get(cell.column.id)?.cell(row.original)}
+                      </td>
+                    ))}
+                  </tr>
+                )
+              })
             )}
           </tbody>
         </table>

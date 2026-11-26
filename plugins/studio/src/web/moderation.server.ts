@@ -1,10 +1,16 @@
 import { notFound, type StudioWork, scoped, studioReport, studioWork } from '@saas/db'
 import { AppError } from '@saas/shared'
+import { log } from '@saas/shared/log'
 import { adminAction } from '@web/features/admin/action.server.ts'
 import type { AdminActionContext, AdminActionScope } from '@web/features/admin/action.ts'
 import { defineAdminActions } from '@web/features/admin/actions.registry.ts'
 import { and, eq, isNull } from 'drizzle-orm'
-import { type StudioModerationInput, studioModerationSchema } from './moderation-input.ts'
+import {
+  type StudioBatchModerationInput,
+  type StudioModerationInput,
+  studioBatchModerationSchema,
+  studioModerationSchema,
+} from './moderation-input.ts'
 import { type InvalidateStudioWork, invalidateStudioWork } from './work-invalidation.ts'
 
 export const studioAdminActions = defineAdminActions('studio', {
@@ -107,7 +113,10 @@ export async function applyStudioModeration(
     meta: {
       moderationBefore: before.moderation,
       moderationAfter: work.moderation,
-      ...(data.action === 'remove' && { reason: data.reason }),
+      ...(data.action === 'remove' && {
+        reason: data.reason,
+        ...(data.note && { note: data.note }),
+      }),
       ...((data.action === 'feature' || data.action === 'unfeature') && {
         featured: work.featuredAt !== null,
       }),
@@ -145,4 +154,40 @@ export async function moderateStudioWork(
   const result = await actions[data.action]({ context, data })
   if (result.invalidate) await invalidateStudioWork(result.invalidate, invalidate)
   return result.work
+}
+
+export type StudioBatchResult =
+  | { readonly workId: string; readonly ok: true; readonly moderation: StudioWork['moderation'] }
+  | { readonly workId: string; readonly ok: false; readonly code: string }
+
+/**
+ * 批量通过 / 下架（tasks 7.3）：逐件调用单件审核，各自一个 adminAction 事务与审计，
+ * 某件失败不回滚其他件，结果按件返回。管理员权限在途中失效（路由 notFound）时中止。
+ */
+export async function moderateStudioWorks(
+  context: AdminActionContext,
+  input: StudioBatchModerationInput,
+  invalidate?: InvalidateStudioWork,
+): Promise<StudioBatchResult[]> {
+  const data = studioBatchModerationSchema.parse(input)
+  const results: StudioBatchResult[] = []
+  for (const workId of new Set(data.workIds)) {
+    const item: StudioModerationInput =
+      data.action === 'remove'
+        ? { workId, action: 'remove', reason: data.reason, ...(data.note && { note: data.note }) }
+        : { workId, action: 'approve' }
+    try {
+      const work = await moderateStudioWork(context, item, invalidate)
+      results.push({ workId, ok: true, moderation: work.moderation })
+    } catch (error) {
+      if (error instanceof AppError && error.expose && error.status < 500) {
+        results.push({ workId, ok: false, code: error.code })
+        continue
+      }
+      if (!(error instanceof AppError)) throw error
+      log.error('studio.moderation.batch_item_failed', { workId, code: error.code })
+      results.push({ workId, ok: false, code: error.code })
+    }
+  }
+  return results
 }
