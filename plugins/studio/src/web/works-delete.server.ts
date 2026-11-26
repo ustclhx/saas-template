@@ -3,7 +3,11 @@ import { AppError } from '@saas/shared'
 import type { Storage } from '@saas/storage'
 import { and, eq, type SQL, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { type InvalidateStudioWork, invalidateStudioWork } from './work-invalidation.ts'
+import {
+  type InvalidateStudioWork,
+  invalidateStudioMedia,
+  invalidateStudioWork,
+} from './work-invalidation.ts'
 import {
   assertStudioWritable,
   lockStudioWorkspace,
@@ -56,7 +60,8 @@ export async function deleteStudioWork(
     return { output, publication }
   })
 
-  if (publication) await invalidateStudioWork(publication, options.invalidate)
+  if (publication)
+    await invalidateStudioWork(publication, options.invalidate ?? invalidateStudioMedia)
   try {
     await storage.delete(output.r2Key)
   } catch (cause) {
