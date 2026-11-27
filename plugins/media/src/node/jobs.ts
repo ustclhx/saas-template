@@ -14,7 +14,10 @@ function registerWorkflows({
   storage,
 }: {
   readonly engine: Parameters<typeof createNodeWorkflow>[0]['engine']
-  readonly config: Pick<NodeEnv, 'APP_URL' | 'FAL_KEY' | 'MEDIA_WEBHOOK_SECRET'>
+  readonly config: Pick<
+    NodeEnv,
+    'APP_URL' | 'FAL_KEY' | 'MEDIA_WEBHOOK_SECRET' | 'KIE_API_KEY' | 'KIE_WEBHOOK_SECRET'
+  >
   readonly template: TemplateConfig
   readonly observer: JobObserver
   readonly storage: NodeStorageConfig | undefined
@@ -27,7 +30,13 @@ function registerWorkflows({
           name: 'ai-media-v1',
           handler: createNodeMediaHandler(engine.database, {
             storage,
-            providerEnv: { ...(config.FAL_KEY === undefined ? {} : { FAL_KEY: config.FAL_KEY }) },
+            providerEnv: {
+              ...(config.FAL_KEY === undefined ? {} : { FAL_KEY: config.FAL_KEY }),
+              ...(config.KIE_API_KEY === undefined ? {} : { KIE_API_KEY: config.KIE_API_KEY }),
+              ...(config.KIE_WEBHOOK_SECRET === undefined
+                ? {}
+                : { KIE_WEBHOOK_SECRET: config.KIE_WEBHOOK_SECRET }),
+            },
             callbackOrigin: config.APP_URL,
             callbackSecret: secret,
             template,

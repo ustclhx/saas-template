@@ -309,6 +309,10 @@ function createCloudflareWebRuntime(
           ...(env.MEDIA_WEBHOOK_SECRET === undefined
             ? {}
             : { MEDIA_WEBHOOK_SECRET: env.MEDIA_WEBHOOK_SECRET }),
+          ...(env.KIE_API_KEY === undefined ? {} : { KIE_API_KEY: env.KIE_API_KEY }),
+          ...(env.KIE_WEBHOOK_SECRET === undefined
+            ? {}
+            : { KIE_WEBHOOK_SECRET: env.KIE_WEBHOOK_SECRET }),
         },
         workersAi: workersAi
           ? { available: true, value: { run: (model, params) => workersAi.run(model, params) } }

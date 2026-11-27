@@ -100,4 +100,5 @@
 ## Open Questions
 
 - kie 回调签名的确切格式与产出域名、Replicate 产出域名：实施时按官方文档与真实回包核对，不影响方案。
+  - kie 已按文档核对（2026-11-27，任务 4.1）：`base64(HMAC-SHA256(taskId + "." + X-Webhook-Timestamp))`，密钥为设置页的 webhookHmacKey，存为 `KIE_WEBHOOK_SECRET`；签名不覆盖正文，回调只作通知、结果以 recordInfo 为准；产出主机取文档示例 `tempfile.aiquickdraw.com`、`file.aiquickdraw.com`、`static.aiquickdraw.com`，待 8.2 真实回包确认。
 - 首批登记哪些主备模型对：使用者取得密钥后一起确定。
