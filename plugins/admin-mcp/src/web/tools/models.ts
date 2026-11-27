@@ -1,4 +1,9 @@
-import { invalidateModelCache, PricingError } from '@saas/ai'
+import {
+  invalidateModelCache,
+  MAX_MODEL_FALLBACKS,
+  MODEL_FALLBACK_INVALID,
+  PricingError,
+} from '@saas/ai'
 import { aiModel } from '@saas/db'
 import { AppError } from '@saas/shared'
 import type { AdminActionScope } from '@web/features/admin/action.ts'
@@ -10,6 +15,7 @@ import {
 import { ADMIN_MAX_OFFSET, ADMIN_PAGE_SIZE } from '@web/features/admin/list.ts'
 import {
   adminModelDisplayName,
+  adminModelFallbacks,
   adminModelKey,
   adminModelKinds,
   MODEL_DISPLAY_NAME_MAX_LENGTH,
@@ -23,7 +29,8 @@ import { defineAdminTool, dryRunDescription, pagingDescriptions, toolResult } fr
 const list = defineAdminTool({
   name: 'models.list',
   scope: 'admin:read',
-  description: 'List AI models with their display names, status, parameters, and pricing.',
+  description:
+    'List AI models with their display names, status, parameters, pricing, and ordered fallback models.',
   input: z.strictObject({
     offset: z.number().int().min(0).max(ADMIN_MAX_OFFSET).default(0),
     limit: z.number().int().min(1).max(ADMIN_PAGE_SIZE).default(ADMIN_PAGE_SIZE),
@@ -50,13 +57,16 @@ interface ModelUpdate {
   readonly enabled?: boolean | undefined
   readonly pricing?: Record<string, unknown> | undefined
   readonly paramsSchema?: Record<string, unknown> | undefined
+  readonly fallbacks?: readonly FallbackInput[] | undefined
 }
+
+type FallbackInput = { modelKey: string; paramMap?: Record<string, string> | undefined }
 
 /** 复用后台模型保存的校验；对外只暴露稳定的错误码与固定消息 */
 async function applyModelUpdate(
   scope: AdminActionScope,
   capabilities: { workersAiAvailable: boolean; aiFaultInjectionEnabled: boolean },
-  { key, displayName, enabled, pricing, paramsSchema }: ModelUpdate,
+  { key, displayName, enabled, pricing, paramsSchema, fallbacks }: ModelUpdate,
   dryRun: boolean,
 ) {
   try {
@@ -68,6 +78,7 @@ async function applyModelUpdate(
         enabled,
         pricing,
         paramsSchema: paramsSchema === undefined ? undefined : JSON.stringify(paramsSchema),
+        fallbacks,
       },
       capabilities,
       dryRun,
@@ -79,6 +90,8 @@ async function applyModelUpdate(
     if (error instanceof AppError && error.code === 'ACCEPTANCE_FAULT_INVALID') {
       throw new AppError(error.code, 'Invalid model configuration', { status: 400 })
     }
+    // 备用链错误只含模型 key 与参数名，保留原因便于调用方修正（与后台表单一致）。
+    if (error instanceof AppError && error.code === MODEL_FALLBACK_INVALID) throw error
     if (error instanceof AppError && error.expose && error.status < 500) {
       throw new AppError(error.code, 'Model update failed', { status: error.status })
     }
@@ -86,10 +99,10 @@ async function applyModelUpdate(
   }
 }
 
-/** 写入显示名时才纳入快照，保留已生成的确认记录。 */
+/** 写入显示名或备用链时才纳入快照，保留已生成的确认记录。 */
 async function modelSnapshot(
   scope: Pick<AdminActionScope, 'tx'>,
-  { key, displayName }: ModelUpdate,
+  { key, displayName, fallbacks }: ModelUpdate,
   lock: boolean,
 ) {
   const query = scope.tx
@@ -99,6 +112,7 @@ async function modelSnapshot(
       pricing: aiModel.pricing,
       paramsSchema: aiModel.paramsSchema,
       ...(displayName !== undefined && { displayName: aiModel.displayName }),
+      ...(fallbacks !== undefined && { fallbacks: aiModel.fallbacks }),
     })
     .from(aiModel)
     .where(eq(aiModel.key, key))
@@ -114,6 +128,7 @@ const modelPayload = z.object({
   enabled: z.boolean().optional(),
   pricing: z.record(z.string(), z.unknown()).optional(),
   paramsSchema: z.record(z.string(), z.unknown()).optional(),
+  fallbacks: adminModelFallbacks.optional(),
   snapshot: z.string(),
 })
 
@@ -121,7 +136,7 @@ const update = defineAdminTool({
   name: 'models.update',
   scope: 'admin:write',
   description:
-    'Update an existing model by key. Supply displayName, enabled, pricing, or paramsSchema.',
+    'Update an existing model by key. Supply displayName, enabled, pricing, paramsSchema, or fallbacks.',
   input: z
     .strictObject({
       key: adminModelKey,
@@ -129,22 +144,26 @@ const update = defineAdminTool({
       enabled: z.boolean().optional(),
       pricing: z.record(z.string(), z.unknown()).optional(),
       paramsSchema: z.record(z.string(), z.unknown()).optional(),
+      fallbacks: adminModelFallbacks.optional(),
       dryRun: z.boolean().optional(),
     })
     .refine(
-      ({ displayName, enabled, pricing, paramsSchema }) =>
+      ({ displayName, enabled, pricing, paramsSchema, fallbacks }) =>
         displayName !== undefined ||
         enabled !== undefined ||
         pricing !== undefined ||
-        paramsSchema !== undefined,
-      'Supply at least one of displayName, enabled, pricing, or paramsSchema.',
+        paramsSchema !== undefined ||
+        fallbacks !== undefined,
+      'Supply at least one of displayName, enabled, pricing, paramsSchema, or fallbacks.',
     ),
   params: {
     key: 'Existing model key from models.list.',
     displayName: `Display name, up to ${MODEL_DISPLAY_NAME_MAX_LENGTH} characters. Use null or an empty string to clear it. Omit to retain the existing name.`,
     enabled: 'Set to true to enable the model or false to disable it.',
     pricing: 'Complete replacement pricing object for this model.',
-    paramsSchema: 'Complete replacement parameter schema as a JSON object.',
+    paramsSchema:
+      'Complete replacement parameter schema as a JSON object. Existing fallbacks are re-validated against it.',
+    fallbacks: `Complete replacement ordered list of up to ${MAX_MODEL_FALLBACKS} fallback models, each { modelKey, paramMap? }. A fallback must be another registered model of the same kind on a provider different from the primary and the other fallbacks; for text models with tool calls it must also support tool calls. paramMap (media models only) renames primary parameters to fallback parameters, e.g. { "image_size": "size" }; every primary parameter must be accepted by the fallback after mapping. Use [] to clear. Validation errors name the incompatible model and parameter.`,
     dryRun: dryRunDescription,
   },
   adminAction: ({ key, pricing }) => ({ name: 'ai.model_save', input: { key, pricing } }),

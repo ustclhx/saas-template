@@ -27,6 +27,10 @@ description: 在本模板配置文本、图片或视频模型的参数、定价�
 - `pricing` 由 `packages/ai/src/pricing.ts` 校验：token、per_call、per_unit。按次文本必填 `limits.maxInputTokens` 和 `limits.maxOutputTokens`；按单位媒体需要真实可获得的 image/second 用量，不能把任务运行时间当作视频秒数。积分计算向上取整，复用现有预算与定价快照。
 - 模型 key 或标签（数据库 `min_plan_features`）必须匹配套餐 `features.models` 的授权；核对 `/admin/billing/plans` 与 `packages/entitlements/src/index.ts`。启用模型不等于所有用户可用；提交还检查空间权益、积分余额、并发和限流。通过既有 billing/credits 流程解决授权与余额，不直接改账本。
 
+- 备用模型（主备）：在后台模型编辑页「备用模型」或 Admin MCP `models.update` 的 `fallbacks` 中，按顺序为模型指定至多 2 个同类型、服务商与主模型及彼此不同的已登记模型；备用可保持停用、无需套餐授权，用户只看到并按主模型付费。主模型尚未产出内容时服务商侧失败（未配置、限流、5xx、鉴权）才切换，参数、内容审核和结果不确定不切换。规则见 `openspec/specs/ai-model-registry/spec.md`「备用模型配置」与 `ai-media-tasks` / `ai-text-runtime` 规格（change `add-media-provider-fallback` 归档前见其 design 与 specs）。
+- 参数映射：媒体备用字段名不同时声明 `paramMap`（主字段 → 备用字段，如 `image_size → size`），未列出的字段同名透传。保存校验（`packages/ai/src/models.ts` 的 `validateModelFallbacks`，后台与 MCP 共用）要求主 schema 每个字段映射后被备用接受（类型一致、枚举为子集、范围被覆盖）、备用必填项有来源、计量字段（`num_images` / `duration`）一一对应；文本主模型开启「支持工具调用」时备用也必须开启，文本不支持映射。拒绝信息 `MODEL_FALLBACK_INVALID` 指出模型 key 与字段，按提示改映射或换备用；不要为通过校验而删减主模型参数。
+- 保存校验只比对类型与取值，无法发现同名参数语义不同（时长单位、分辨率档位、风格差异）。每一对主备都要按 §5 用真实生成各验收一次。
+
 先保存停用记录，复核 schema、价格和目标 Provider 配置后启用。保存服务会做管理员校验、审计并调用 `packages/ai/src/models.ts` 的缓存失效；列表存在缓存，提交前会直接读库复核。已提交调用继续用自己的参数与定价快照。
 
 完成标准：schema/定价保存校验通过；允许与不允许的套餐、目标能力和余额条件都已列明。
@@ -74,8 +78,11 @@ git diff --check
 
 验收 Agent 模型时，先核对开关保存后的模型可选性，再用同一出口验证一次工具调用及续步。未执行真实工具调用时记录待验收。
 
+验收主备时，对每一对主模型与备用模型各做一次真实生成（调用已获授权、使用测试空间）：先用与主模型相同的输入（按 `paramMap` 改名）直接调用备用模型生成一次（例如在 staging 临时启用备用并授权给测试空间，验收后恢复原状态），确认产出与主模型同等的规格（图片张数与尺寸、视频时长与分辨率）；再在 staging 用故障注入（`ai-fault-injection` 的服务商限流或可切换作业失败、文本 `before-stream`）让主模型失败，核对任务尝试记录 / 对话实际模型显示已切换、用户按主模型定价结算、全部失败时全额退回。每对的结果与证据写入 `EVIDENCE_DIR`，未验收的主备对在交付中列为待验收，不要只凭保存校验通过就视为可用。
+
 - `PARAMS_SCHEMA_INVALID`：检查 JSON 对象、x-text 类型/未知键或媒体平面 schema，按具体模型模板修正。
 - `MISSING_TOKEN_LIMITS`：补齐按次文本的两项 token 上限。
+- `MODEL_FALLBACK_INVALID`：按信息中的模型 key 与字段修正备用选择或 `paramMap`；同服务商、自身、不同类型和超过 2 个备用都会被拒绝。
 - `MODEL_UNAVAILABLE` / `UPGRADE_REQUIRED`：检查启用、目标能力、pricing 与套餐 key/标签。
 - `AI_PROVIDER_NOT_CONFIGURED` / 能力不可用：报告缺少的配置名称/能力；补配置后重验，保留未验收状态。
 - 余额不足：通过既有积分流程准备测试空间；有失败产出时按现有退款规则核对账本，避免额外扣费或伪造成功。

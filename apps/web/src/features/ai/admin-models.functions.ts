@@ -14,6 +14,7 @@ import { availableMediaProviders } from './admin-model-provider.ts'
 import { adminModelInput, adminModelKey, adminModelKinds } from './admin-models.schema.ts'
 import {
   copyAdminModelRecord,
+  listAdminFallbackOptions,
   listAdminModels,
   saveAdminModelRecord,
   setAdminModelRecordEnabled,
@@ -62,10 +63,14 @@ export const getAdminModels = createServerFn({ method: 'GET' })
   )
   .handler(async ({ context, data }) => {
     const search = adminListSearch(['kind', 'order'])(data)
-    const result = await listAdminModels(context.db, { ...search, limit: ADMIN_PAGE_SIZE })
+    const [result, fallbackOptions] = await Promise.all([
+      listAdminModels(context.db, { ...search, limit: ADMIN_PAGE_SIZE }),
+      listAdminFallbackOptions(context.db),
+    ])
     const modes = templateConfig.ai.defaultPricingMode
     return {
       ...result,
+      fallbackOptions,
       mediaProviders: availableMediaProviders(
         getMediaProviders(templateConfig),
         modelRuntimeCapabilities().workersAiAvailable,

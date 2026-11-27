@@ -516,6 +516,8 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
       const { token } = await issueToken(db, adminId, true)
       const client = await connect(token)
       const key = `mcp-${newId()}`
+      const fallbackKey = `mcp-${newId()}`
+      const sameProviderKey = `mcp-${newId()}`
       const displayName = 'MCP 测试模型'
       const pricing = { mode: 'token', inputPer1k: 1, outputPer1k: 1, minCharge: 1 } as const
       const update = (args: Record<string, unknown>) =>
@@ -591,8 +593,41 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
         })
         const [cleared] = await db.select().from(aiModel).where(eq(aiModel.key, key))
         expect(cleared?.displayName).toBeNull()
+
+        // 备用模型：与后台共用校验，拒绝原因保留模型 key；list 返回链
+        await db.insert(aiModel).values(
+          [
+            [fallbackKey, 'other-provider'],
+            [sameProviderKey, 'test'],
+          ].map(([model, provider]) => ({
+            key: model as string,
+            kind: 'text' as const,
+            provider: provider as string,
+            providerModelId: model as string,
+            pricing,
+          })),
+        )
+        const sameProvider = await update({ fallbacks: [{ modelKey: sameProviderKey }] })
+        expectToolError(sameProvider, 'MODEL_FALLBACK_INVALID')
+        expect(JSON.stringify(sameProvider)).toContain(sameProviderKey)
+        const fallbacks = [{ modelKey: fallbackKey }]
+        expect((await update({ fallbacks, dryRun: true })).structuredContent).toMatchObject({
+          changes: { fallbacks: { before: [], after: fallbacks } },
+          dryRun: true,
+        })
+        expect((await update({ fallbacks })).structuredContent).toMatchObject({
+          key,
+          changes: { fallbacks: { before: [], after: fallbacks } },
+        })
+        const withFallbacks = await client.callTool({
+          name: 'models.list',
+          arguments: { kind: 'text', order: 'sort_desc' },
+        })
+        expect(withFallbacks.structuredContent).toMatchObject({
+          models: expect.arrayContaining([expect.objectContaining({ key, fallbacks })]),
+        })
       } finally {
-        await db.delete(aiModel).where(eq(aiModel.key, key))
+        await db.delete(aiModel).where(inArray(aiModel.key, [key, fallbackKey, sameProviderKey]))
         await client.close()
       }
     },

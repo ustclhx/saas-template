@@ -306,3 +306,127 @@ describe('后台故障模型配置边界', () => {
     expect(await call(setAdminModelEnabled, { id, enabled: true })).toEqual({ ok: true, id })
   })
 })
+
+describe('备用模型配置（与 Admin MCP 共用校验）', () => {
+  const imageSchema = (fields: Record<string, unknown>) => ({
+    type: 'object',
+    properties: {
+      prompt: { type: 'string' },
+      num_images: { type: 'integer', minimum: 1, maximum: 4 },
+      ...fields,
+    },
+    required: ['prompt'],
+  })
+  const primarySchema = imageSchema({
+    image_size: { type: 'string', enum: ['square', 'landscape'] },
+    aspect_ratio: { type: 'string', enum: ['1:1', '21:9'] },
+  })
+  const fixtureKeys: string[] = []
+  async function insertModel(key: string, values: Partial<typeof aiModel.$inferInsert>) {
+    fixtureKeys.push(key)
+    await db.insert(aiModel).values({
+      key,
+      kind: 'image',
+      provider: 'replicate',
+      providerModelId: key,
+      pricing: { mode: 'per_call', credits: 1 },
+      enabled: false,
+      ...values,
+    })
+  }
+  afterAll(async () => {
+    if (fixtureKeys.length)
+      await db.$client`delete from ai_model where key in ${db.$client(fixtureKeys)}`
+  })
+
+  it('媒体：参数不兼容拒绝并指出字段；声明映射后保存，省略 fallbacks 保留现有链', async () => {
+    const strict = `fb-strict-${runId}`
+    const renamed = `fb-renamed-${runId}`
+    const sameProvider = `fb-fal-${runId}`
+    await insertModel(strict, {
+      paramsSchema: imageSchema({
+        image_size: { type: 'string', enum: ['square', 'landscape'] },
+        aspect_ratio: { type: 'string', enum: ['1:1'] },
+      }),
+    })
+    await insertModel(renamed, {
+      provider: 'kie',
+      paramsSchema: imageSchema({
+        size: { type: 'string', enum: ['square', 'landscape', 'portrait'] },
+        aspect_ratio: { type: 'string', enum: ['1:1', '21:9'] },
+      }),
+    })
+    await insertModel(sameProvider, { provider: 'fal', paramsSchema: primarySchema })
+    const data = input({
+      key: `fb-primary-${runId}`,
+      kind: 'image',
+      provider: 'fal',
+      providerModelId: 'fal-ai/fixture',
+      pricing: { mode: 'per_call', credits: 1 },
+      paramsSchema: JSON.stringify(primarySchema),
+    })
+    const before = (await audits()).length
+    const rejected = await call(saveAdminModel, { ...data, fallbacks: [{ modelKey: strict }] })
+    expect(rejected).toMatchObject({
+      ok: false,
+      error: 'MODEL_FALLBACK_INVALID',
+      message: expect.stringContaining('aspect_ratio'),
+    })
+    expect(await db.select().from(aiModel).where(eq(aiModel.key, data.key))).toEqual([])
+    expect((await audits()).length).toBe(before)
+    for (const fallbacks of [
+      [{ modelKey: sameProvider }],
+      [{ modelKey: data.key }],
+      [{ modelKey: renamed }],
+      [
+        { modelKey: renamed, paramMap: { image_size: 'size' } },
+        { modelKey: strict },
+        { modelKey: 'x' },
+      ],
+    ])
+      expect(await call(saveAdminModel, { ...data, fallbacks })).toMatchObject({
+        ok: false,
+        error: 'MODEL_FALLBACK_INVALID',
+      })
+
+    const chain = [{ modelKey: renamed, paramMap: { image_size: 'size' } }]
+    const id = await create({ ...data, fallbacks: chain })
+    expect(await row(id)).toMatchObject({ fallbacks: chain })
+    const [created] = (await audits()).filter((entry) => entry.targetId === id)
+    expect(created?.meta).toMatchObject({ changes: { fallbacks: { before: null, after: chain } } })
+
+    // 旧客户端不传 fallbacks：保留现有链（并按新配置重新校验）
+    expect(await call(saveAdminModel, { ...data, id, sort: 5 })).toEqual({ ok: true, id })
+    expect(await row(id)).toMatchObject({ fallbacks: chain, sort: 5 })
+    expect(await call(saveAdminModel, { ...data, id, fallbacks: [] })).toEqual({ ok: true, id })
+    expect(await row(id)).toMatchObject({ fallbacks: [] })
+  })
+
+  it('文本：主模型支持工具调用时，备用缺少工具能力被拒绝', async () => {
+    const noTools = `fb-notools-${runId}`
+    const tools = `fb-tools-${runId}`
+    const textPricing = { mode: 'token' as const, inputPer1k: 1, outputPer1k: 1, minCharge: 1 }
+    await insertModel(noTools, { kind: 'text', provider: 'openai', pricing: textPricing })
+    await insertModel(tools, {
+      kind: 'text',
+      provider: 'anthropic',
+      pricing: textPricing,
+      supportsTools: true,
+    })
+    const data = input({
+      key: `fb-text-${runId}`,
+      provider: 'deepseek',
+      paramsSchema: '{}',
+      supportsTools: true,
+    })
+    expect(
+      await call(saveAdminModel, { ...data, fallbacks: [{ modelKey: noTools }] }),
+    ).toMatchObject({
+      ok: false,
+      error: 'MODEL_FALLBACK_INVALID',
+      message: expect.stringContaining('tool'),
+    })
+    const id = await create({ ...data, fallbacks: [{ modelKey: tools }] })
+    expect(await row(id)).toMatchObject({ fallbacks: [{ modelKey: tools }] })
+  })
+})
