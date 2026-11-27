@@ -533,7 +533,7 @@ describe('defineTemplateConfig types', () => {
       // @ts-expect-error 未定义的计费方式
       defineTemplateConfig({ app, ai: { defaultPricingMode: { video: 'per_minute' } } }),
       // @ts-expect-error 未支持的媒体服务商
-      defineTemplateConfig({ app, plugins: { media: { providers: ['replicate'] } } }),
+      defineTemplateConfig({ app, plugins: { media: { providers: ['kie-unknown'] } } }),
       // @ts-expect-error 未知的 OAuth 登录方式
       defineTemplateConfig({ app, auth: { oauth: ['google', 'facebook'] } }),
       // @ts-expect-error 未知的支付方式

@@ -2,6 +2,7 @@ import { AppError } from '@saas/shared'
 import { createFalMediaProvider } from './fal.ts'
 import { createKieMediaProvider, isKieUnifiedModel, KIE_OUTPUT_HOSTS } from './kie.ts'
 import type { TaskMediaProvider } from './provider.ts'
+import { createReplicateMediaProvider, REPLICATE_OUTPUT_HOSTS } from './replicate.ts'
 import { createWorkersAiMediaProvider, type WorkersAiBinding } from './workers-ai.ts'
 
 export interface MediaProviderEnv {
@@ -11,6 +12,8 @@ export interface MediaProviderEnv {
   readonly KIE_API_KEY?: string
   /** kie 设置页的 webhookHmacKey，用于回调验签。 */
   readonly KIE_WEBHOOK_SECRET?: string
+  readonly REPLICATE_API_TOKEN?: string
+  readonly REPLICATE_WEBHOOK_SECRET?: string
 }
 
 export interface MediaProviderDefinition {
@@ -33,6 +36,23 @@ export const mediaProviderDefinitions: readonly MediaProviderDefinition[] = [
     create(env, { modelId }) {
       if (!env.FAL_KEY) throw unavailable()
       return createFalMediaProvider({ apiKey: env.FAL_KEY, modelId, fetch: globalThis.fetch })
+    },
+  },
+  {
+    id: 'replicate',
+    synchronous: false,
+    supportedKinds: ['image', 'video'],
+    outputHosts: REPLICATE_OUTPUT_HOSTS,
+    // 回调必须验签，缺少 webhook 密钥时不能安全接收结果，两者都有才算已配置。
+    isConfigured: (env) => Boolean(env.REPLICATE_API_TOKEN && env.REPLICATE_WEBHOOK_SECRET),
+    create(env, { modelId }) {
+      if (!env.REPLICATE_API_TOKEN || !env.REPLICATE_WEBHOOK_SECRET) throw unavailable()
+      return createReplicateMediaProvider({
+        apiToken: env.REPLICATE_API_TOKEN,
+        webhookSecret: env.REPLICATE_WEBHOOK_SECRET,
+        modelId,
+        fetch: globalThis.fetch,
+      })
     },
   },
   {

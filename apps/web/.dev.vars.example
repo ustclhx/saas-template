@@ -27,3 +27,9 @@ R2_SECRET_ACCESS_KEY=
 # KIE_API_KEY 来自 https://kie.ai/api-key；KIE_WEBHOOK_SECRET 是 https://kie.ai/settings 生成的 webhookHmacKey。
 # KIE_API_KEY=
 # KIE_WEBHOOK_SECRET=
+# 可选媒体服务商 Replicate（template.config.ts 的 plugins.media.providers 加入 replicate 后才使用）；
+# 两项都配置才算已配置，jobs 需配置相同值。见 docs/06-ai.md「媒体服务商」。
+# API token：Replicate 账号 Settings > API tokens
+# REPLICATE_API_TOKEN=
+# 默认 webhook 签名密钥（whsec_ 开头）：GET https://api.replicate.com/v1/webhooks/default/secret 取得
+# REPLICATE_WEBHOOK_SECRET=
