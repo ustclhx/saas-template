@@ -120,4 +120,31 @@ describe('media acceptance fault wrapper', () => {
     proof.mockRejectedValueOnce(new Error('proof unavailable'))
     await expect(wrapped.getStatus('real-job')).rejects.toThrow('proof unavailable')
   })
+
+  it('fal-rate-limited rejects with a switchable 429 without calling fal', async () => {
+    const { wrapped, original, proof } = asyncWrapper('fal-rate-limited')
+    await expect(wrapped.submit(input)).rejects.toMatchObject({
+      code: 'FAL_RATE_LIMITED',
+      kind: 'rate_limited',
+      httpStatus: 429,
+      submissionOutcome: 'rejected',
+    })
+    expect(original.submit).not.toHaveBeenCalled()
+    expect(proof).toHaveBeenCalledWith({
+      injected: true,
+      injectedAt: new Date(1_000).toISOString(),
+      realProviderCalled: false,
+    })
+  })
+
+  it('fal-failover-job-failed keeps the callback URL and reports a provider-side failure', async () => {
+    const { wrapped, original } = asyncWrapper('fal-failover-job-failed')
+    await wrapped.submit(input)
+    expect(original.submit.mock.calls[0]?.[0]).toHaveProperty('webhookUrl', input.webhookUrl)
+    expect(await wrapped.getStatus('real-job')).toEqual({
+      status: 'failed',
+      error: expect.objectContaining({ code: 'FAL_GENERATION_FAILED', kind: 'provider_error' }),
+    })
+    expect(original.getStatus).toHaveBeenCalledWith('real-job')
+  })
 })

@@ -15,6 +15,9 @@ const acceptanceFaultSchema = z
       'fal-submit-response-lost',
       'fal-provider-error',
       'fal-timeout',
+      // 媒体切换验收（add-media-provider-fallback 5.5）：只影响首个尝试，备用模型照常执行。
+      'fal-rate-limited',
+      'fal-failover-job-failed',
       'chat-before-stream',
       'chat-mid-stream',
     ]),

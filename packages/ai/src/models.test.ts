@@ -94,7 +94,7 @@ function faultRow(mode: AcceptanceFaultMode = 'chat-before-stream'): AiModel {
 }
 
 describe('parseAcceptanceFault', () => {
-  it('只接受与指定 Provider、种类和模型配对的九个模式', () => {
+  it('只接受与指定 Provider、种类和模型配对的十一个模式', () => {
     const modes: AcceptanceFaultMode[] = [
       'workers-error',
       'workers-timeout',
@@ -103,6 +103,8 @@ describe('parseAcceptanceFault', () => {
       'fal-submit-response-lost',
       'fal-provider-error',
       'fal-timeout',
+      'fal-rate-limited',
+      'fal-failover-job-failed',
       'chat-before-stream',
       'chat-mid-stream',
     ]

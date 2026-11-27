@@ -207,18 +207,20 @@ test('工具扩展点随 Cloudflare agents 启用，只在 Worker 启动时登�
   assert.doesNotMatch(withoutAgents[GENERATED_FILES.web], /agentToolPlugins/)
 })
 
-test('Studio MCP 工具只汇总到同时启用 Studio 与 admin-mcp 的 Web 目标', async () => {
+test('Media 与 Studio 的 MCP 工具只汇总到同时启用该插件与 admin-mcp 的 Web 目标', async () => {
   const loaded = await loadPluginManifests()
-  for (const plugins of [
-    { media: {}, studio: {}, 'admin-mcp': {} },
-    { media: {}, 'admin-mcp': {} },
-    { media: {}, studio: {} },
+  for (const [plugins, expected] of [
+    [{ media: {}, studio: {}, 'admin-mcp': {} }, '[mediaAdminMcpTools, studioAdminMcpTools]'],
+    [{ media: {}, 'admin-mcp': {} }, '[mediaAdminMcpTools]'],
+    [{ media: {}, studio: {} }, null],
   ]) {
     const { files } = await generatePlugins({ root, config: config(plugins), loaded, write: false })
     for (const file of [GENERATED_FILES.adminMcp, GENERATED_FILES.adminMcpNode]) {
-      const pattern = /adminMcpToolPlugins: [^\n]+ = \[studioAdminMcpTools\]/
-      if (plugins.studio && plugins['admin-mcp']) assert.match(files[file], pattern)
-      else assert.doesNotMatch(files[file], /studioAdminMcpTools/)
+      if (expected)
+        assert.ok(
+          files[file].includes(`adminMcpToolPlugins: `) && files[file].includes(`= ${expected}\n`),
+        )
+      else assert.doesNotMatch(files[file], /AdminMcpTools/)
     }
     for (const file of [GENERATED_FILES.web, GENERATED_FILES.webNode, GENERATED_FILES.worker]) {
       assert.doesNotMatch(files[file], /adminMcpTools/)

@@ -3,6 +3,7 @@ import { createServerOnlyFn } from '@tanstack/react-start'
 import type { WebPluginModule } from '@web/features/plugins/contract.ts'
 import { m } from '@web/paraglide/messages.js'
 import { templateConfig } from '@web/server/template-config.ts'
+import { mediaTask } from './admin-mcp-tools.ts'
 import { mediaAgentTools } from './agent-tools.ts'
 
 const media = () => templateConfig.ai.image || templateConfig.ai.video
@@ -14,6 +15,11 @@ const media = () => templateConfig.ai.image || templateConfig.ai.video
 export const agentTools = createServerOnlyFn(() =>
   templateConfig.plugins.agents ? mediaAgentTools() : [],
 )
+
+/** 管理员 MCP 工具（docs/admin-mcp.md）：只读的任务尝试记录。 */
+export const adminMcpTools = createServerOnlyFn(() => ({
+  'media.task': mediaTask,
+}))
 
 export default {
   appNav: [
