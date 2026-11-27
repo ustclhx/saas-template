@@ -1,5 +1,6 @@
 export * from './budget.ts'
 export * from './capabilities.ts'
+export * from './fallback.ts'
 export * from './fault.ts'
 export * from './model.ts'
 export * from './prompt.ts'
