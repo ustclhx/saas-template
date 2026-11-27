@@ -3,6 +3,7 @@ import {
   createTaskMediaProvider,
   getMediaOutputHosts,
   type MediaRuntimeEnv,
+  mediaAttemptRequest,
   readMediaTaskInput,
 } from '@saas/ai'
 import { getMediaProviders, MEDIA_MAX_FILE_BYTES, MEDIA_OUTPUT_MIME_TYPES } from '@saas/config'
@@ -63,7 +64,8 @@ class AiMediaWorkflowBase extends WorkflowEntrypoint<MediaWorkflowEnv, AiMediaPa
             provider: (task) =>
               createTaskMediaProvider(this.env, task, getMediaProviders(templateConfig)),
             params: async (task) => {
-              const input = readMediaTaskInput(task)
+              // 当前尝试的参数：切换后为备用模型按 paramMap 改名并校验过的副本。
+              const input = mediaAttemptRequest(task)
               const params = { ...input.params }
               for (const name of input.fileParams) {
                 params[name] = await getFileDownload(db, createCloudflareStorage(this.env), {

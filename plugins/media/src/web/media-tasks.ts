@@ -1,5 +1,6 @@
 import {
   type AvailableModel,
+  attemptsWithJobId,
   createMediaFault,
   createTaskMediaProvider,
   dbModelStore,
@@ -12,11 +13,18 @@ import {
   isSyncMediaProvider,
   MEDIA_HOLD_SWEEP_BUFFER_MS,
   MEDIA_TASK_TTL_MS,
+  type MediaFailoverCandidate,
+  type MediaFailoverSnapshot,
   type MediaProviderEnv,
   type MediaWebhook,
+  mapFallbackParams,
+  mediaAttemptAt,
+  mediaAttemptIndex,
   mediaTaskFullCredits,
+  parseMediaCallbackAttempt,
   readMediaFault,
   requireAvailableModel,
+  resolveModelCandidates,
   settleMediaTask,
   type TaskMediaProvider,
   validateMediaParams,
@@ -78,23 +86,119 @@ function taskProvider(deps: MediaHttpDeps | WorkspaceMediaDeps, task: AiTask): T
     : createTaskMediaProvider(deps.env, task, getMediaProviders(templateConfig))
 }
 
-function requireSubmissionProvider(providerId: string, kind: string, deps: WorkspaceMediaDeps) {
+/** 服务商不可用于提交时返回对应错误：未启用、不支持该类型、未配置凭据或缺少回调密钥。 */
+function submissionProviderProblem(
+  providerId: string,
+  kind: string,
+  deps: WorkspaceMediaDeps,
+): AppError | null {
   const definition = getMediaProviderDefinition(providerId)
   if (
     !definition ||
     !getMediaProviders(templateConfig).some((id) => id === providerId) ||
     !definition.supportedKinds.some((supported) => supported === kind)
   )
-    throw new AppError('MODEL_UNAVAILABLE', 'Media provider is not enabled', { status: 404 })
+    return new AppError('MODEL_UNAVAILABLE', 'Media provider is not enabled', { status: 404 })
   // 测试与自托管调用可注入 Provider；生产入口始终按真实密钥 / 绑定检查。
   if (!deps.providerFactory && !definition.isConfigured(deps.env))
-    throw new AppError('AI_PROVIDER_NOT_CONFIGURED', 'Media provider is not configured', {
+    return new AppError('AI_PROVIDER_NOT_CONFIGURED', 'Media provider is not configured', {
       status: 503,
     })
   if (!definition.synchronous && !deps.env.MEDIA_WEBHOOK_SECRET)
-    throw new AppError('MEDIA_WEBHOOK_NOT_CONFIGURED', 'Media callback is not configured', {
+    return new AppError('MEDIA_WEBHOOK_NOT_CONFIGURED', 'Media callback is not configured', {
       status: 503,
     })
+  return null
+}
+
+function requireSubmissionProvider(providerId: string, kind: string, deps: WorkspaceMediaDeps) {
+  const problem = submissionProviderProblem(providerId, kind, deps)
+  if (problem) throw problem
+}
+
+/**
+ * 受理时的候选（add-media-provider-fallback D5）：按 `[主, ...备用]` 过滤出已启用且已配置的服务商；
+ * 备用参数按 paramMap 改名后用其自身 schema 校验，不通过视为不可用。全部不可用时抛出主模型的原错误。
+ * 验收故障任务的首个尝试必须是主模型本身。
+ */
+async function chooseMediaCandidates(
+  tx: Database,
+  model: AvailableModel & { kind: 'image' | 'video' },
+  validated: ReturnType<typeof validateMediaParams>,
+  deps: WorkspaceMediaDeps,
+  faultTask: boolean,
+) {
+  const usable: MediaFailoverCandidate[] = []
+  const skipped: MediaFailoverSnapshot['skipped'] = []
+  let primaryProblem: AppError | null = null
+  for (const candidate of await resolveModelCandidates({ store: dbModelStore(tx) }, model)) {
+    const primary = candidate.key === model.key
+    const problem = submissionProviderProblem(candidate.provider, candidate.kind, deps)
+    if (problem) {
+      if (primary) {
+        if (faultTask) throw problem
+        primaryProblem = problem
+      }
+      skipped.push({
+        modelKey: candidate.key,
+        provider: candidate.provider,
+        failure: { kind: 'unavailable', code: problem.code },
+      })
+      continue
+    }
+    // 首版只在异步服务商之间切换：同步服务商（workers-ai）不作为备用。
+    if (!primary && getMediaProviderDefinition(candidate.provider)?.synchronous) {
+      skipped.push({
+        modelKey: candidate.key,
+        provider: candidate.provider,
+        failure: { kind: 'unavailable', code: 'synchronous_provider' },
+      })
+      continue
+    }
+    let request = validated
+    if (!primary) {
+      try {
+        request = validateMediaParams(
+          candidate.paramsSchema,
+          mapFallbackParams(validated.params, candidate.paramMap),
+          model.kind,
+        )
+      } catch (error) {
+        if (!(error instanceof AppError)) throw error
+        skipped.push({
+          modelKey: candidate.key,
+          provider: candidate.provider,
+          failure: { kind: 'rejected_input', code: error.code },
+        })
+        continue
+      }
+      // 备用按自身计量字段（含默认值）可能多生成：数量超过主模型上限的备用不可用，用户只按主模型数量结算。
+      if (request.unitsLimit > validated.unitsLimit) {
+        skipped.push({
+          modelKey: candidate.key,
+          provider: candidate.provider,
+          failure: { kind: 'rejected_input', code: 'units_mismatch' },
+        })
+        continue
+      }
+    }
+    usable.push({
+      modelKey: candidate.key,
+      provider: candidate.provider,
+      providerModelId: candidate.providerModelId,
+      params: request.params,
+      fileParams: request.fileParams,
+    })
+  }
+  const initial = usable[0]
+  if (!initial)
+    throw (
+      primaryProblem ?? new AppError('MODEL_UNAVAILABLE', 'Model is not available', { status: 404 })
+    )
+  return {
+    initial,
+    failover: usable.length > 1 || skipped.length > 0 ? { candidates: usable, skipped } : undefined,
+  }
 }
 
 async function response(action: () => Promise<Response>) {
@@ -229,7 +333,8 @@ export async function submitWorkspaceMedia(
     where: (model, { eq }) => eq(model.key, input.modelKey),
   })
   if (!modelRow) throw new AppError('MODEL_UNAVAILABLE', 'Model is not available', { status: 404 })
-  requireSubmissionProvider(modelRow.provider, modelRow.kind, deps)
+  // 无备用时在加锁前快速拒绝；有备用时由事务内的候选筛选决定。
+  if (!modelRow.fallbacks?.length) requireSubmissionProvider(modelRow.provider, modelRow.kind, deps)
   const submitted = await deps.db.transaction(async (tx) => {
     // 与 billing 回收器统一为 ws → credits → task，防止锁顺序反转。
     await tx.execute(
@@ -252,7 +357,7 @@ export async function submitWorkspaceMedia(
     )
     if (model.kind === 'text' || !templateConfig.ai[model.kind])
       throw new AppError('MODEL_UNAVAILABLE', 'Model is not available', { status: 404 })
-    requireSubmissionProvider(model.provider, model.kind, deps)
+    const mediaModel = { ...model, kind: model.kind }
     if (model.pricing.mode === 'token')
       throw new AppError('MEDIA_PRICING_INVALID', 'Media model pricing is not supported', {
         status: 503,
@@ -269,6 +374,13 @@ export async function submitWorkspaceMedia(
       validated.params = { ...validated.params, image_size: 'square', num_images: 1 }
       validated.unitsLimit = 1
     }
+    const { initial, failover } = await chooseMediaCandidates(
+      tx as unknown as Database,
+      mediaModel,
+      validated,
+      deps,
+      Boolean(acceptanceFault),
+    )
     const tenant = scoped(tx, resolved.workspace.id)
     const [workspace] = await tx
       .select({ id: organization.id })
@@ -301,16 +413,26 @@ export async function submitWorkspaceMedia(
         userId: resolved.member.userId,
         kind: model.kind,
         modelKey: model.key,
-        provider: model.provider,
+        // provider / providerModelId 表示当前尝试；定价快照、unitsLimit 与 input.params 始终取主模型。
+        provider: initial.provider,
         pricing: model.pricing,
         providerRequestKey: taskId,
+        providerAttempts: [
+          {
+            provider: initial.provider,
+            modelKey: initial.modelKey,
+            providerModelId: initial.providerModelId,
+            at: new Date().toISOString(),
+          },
+        ],
         workflowInstanceId: taskId,
         deadlineAt: new Date(Date.now() + (acceptanceFault?.deadlineMs ?? MEDIA_TASK_TTL_MS)),
         input: {
           ...validated,
           ...(input.userPrompt === undefined ? {} : { userPrompt: input.userPrompt }),
           ...(idempotencyKey ? { idempotencyKey } : {}),
-          providerModelId: model.providerModelId,
+          providerModelId: initial.providerModelId,
+          ...(failover ? { failover } : {}),
           storageBytes,
           callbackOrigin,
           ...(acceptanceFault
@@ -323,6 +445,13 @@ export async function submitWorkspaceMedia(
       })
       .returning()
     if (!created) throw new Error('Media task insert returned no row')
+    if (initial.modelKey !== model.key)
+      log.info('ai.media.failover', {
+        taskId,
+        from: `${model.provider}:${model.key}`,
+        to: `${initial.provider}:${initial.modelKey}`,
+        kind: failover?.skipped[0]?.failure.kind ?? 'unavailable',
+      })
     const reservation = await hold(tx, {
       workspaceId: resolved.workspace.id,
       userId: resolved.member.userId,
@@ -614,26 +743,52 @@ export function handleMediaWebhook(
     const url = new URL(request.url)
     const taskId = url.searchParams.get('task')
     if (!taskId || !z.uuid().safeParse(taskId).success) throw invalid()
+    const attempt = parseMediaCallbackAttempt(url.searchParams.get('attempt'))
+    if (attempt === null) throw invalid()
     if (!deps.env.MEDIA_WEBHOOK_SECRET)
       throw new AppError('MEDIA_WEBHOOK_NOT_CONFIGURED', 'Media callback is not configured', {
         status: 503,
       })
+    // 签名覆盖任务与尝试序号；没有序号的旧地址按序号 0 校验。
     if (
       !(await verifyMediaCallbackSignature(
         deps.env.MEDIA_WEBHOOK_SECRET,
         taskId,
         url.searchParams.get('sig') ?? '',
+        attempt,
       ))
     )
       throw new AppError('MEDIA_WEBHOOK_INVALID', 'Invalid media callback signature')
     // 已验任务专属签名后，先定位空间，再让 scoped 执行所有业务写入。
     // biome-ignore lint/plugin: 任务专属 HMAC 已通过，仅按其 taskId 定位租户，后续业务访问全部 scoped。
     const located = await deps.db.query.aiTask.findFirst({ where: eq(aiTask.id, taskId) })
-    if (!located || located.provider !== providerId) throw notFound()
-    const provider = taskProvider(deps, located)
+    if (!located) throw notFound()
+    // 按序号取该尝试的服务商与模型验签，而不是任务当前的服务商（D4）。
+    const record = mediaAttemptAt(located, attempt)
+    if (!record || record.provider !== providerId) throw notFound()
+    const current = attempt === mediaAttemptIndex(located)
+    const attemptTask: AiTask = {
+      ...located,
+      provider: record.provider,
+      input: { ...located.input, providerModelId: record.providerModelId },
+    }
+    let provider: TaskMediaProvider
+    try {
+      provider = taskProvider(deps, attemptTask)
+    } catch (error) {
+      // 旧尝试的服务商可能已停用；其回调不会改变任务，直接 200 避免服务商重试。
+      if (current) throw error
+      log.info('ai.media.callback_stale_attempt', { taskId, attempt, verified: false })
+      return Response.json({ ok: true })
+    }
     if (isSyncMediaProvider(provider)) throw notFound()
     const payload: MediaWebhook = await provider.parseWebhook(request, await request.text())
-    const fault = readMediaFault(located)
+    if (!current) {
+      log.info('ai.media.callback_stale_attempt', { taskId, attempt, verified: true })
+      return Response.json({ ok: true })
+    }
+    // 验收故障只作用于首个尝试；切换后的备用尝试按普通回调处理。
+    const fault = attempt === 0 ? readMediaFault(located) : undefined
     // 故障失败/轮询模式只接收验签证据，不能被真实成功回调抢先恢复成功。
     if (fault && fault.mode !== 'fal-callback-early') return Response.json({ ok: true })
     const accepted = await deps.db.transaction(async (tx) => {
@@ -649,6 +804,11 @@ export function handleMediaWebhook(
         log.info('ai.media.callback_after_terminal', { taskId, status: task.status })
         return false
       }
+      // 验签后任务可能已切换到下一尝试；锁内复核，旧尝试的结果一律忽略。
+      if (mediaAttemptIndex(task) !== attempt) {
+        log.info('ai.media.callback_stale_attempt', { taskId, attempt, verified: true })
+        return false
+      }
       if (task.providerJobId && task.providerJobId !== payload.jobId)
         throw new AppError('MEDIA_WEBHOOK_INVALID', 'Callback does not match the task job')
       // 不确定提交没有作业 ID：任务 HMAC 与服务商签名均已通过，采用回调中的作业 ID（D3）。
@@ -660,7 +820,14 @@ export function handleMediaWebhook(
         aiTask,
         {
           callbackPayload: payload,
-          ...(adopt ? { providerJobId: payload.jobId, errorCode: null, errorMessage: null } : {}),
+          ...(adopt
+            ? {
+                providerJobId: payload.jobId,
+                providerAttempts: attemptsWithJobId(task, payload.jobId),
+                errorCode: null,
+                errorMessage: null,
+              }
+            : {}),
           ...(fault && !task.callbackPayload
             ? {
                 input: sql`${aiTask.input} || jsonb_build_object('acceptanceFaultProof', coalesce(${aiTask.input}->'acceptanceFaultProof', '{}'::jsonb) || jsonb_build_object('callbackStoredAt', now()))`,
@@ -678,7 +845,8 @@ export function handleMediaWebhook(
           await requireCapability(deps.workflow, 'Media workflow').get(located.workflowInstanceId)
         ).sendEvent({
           type: MEDIA_DONE_EVENT,
-          payload: { taskId },
+          // 带尝试序号：Workflow 忽略旧尝试残留的唤醒事件。
+          payload: { taskId, attempt },
         })
     } catch {
       log.warn('ai.media.callback_event_failed', { taskId })

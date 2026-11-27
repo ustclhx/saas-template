@@ -42,10 +42,23 @@ export function wrapMediaFaultProvider(
     id: provider.id,
     capabilities: provider.capabilities,
     async submit(input) {
+      if (fault.mode === 'fal-rate-limited') {
+        // 不调用真实服务商：模拟 fal 明确拒绝的 429，runner 据此切到备用模型。
+        await deps.proof({ ...injected(), realProviderCalled: false })
+        throw new FalProviderError(
+          'FAL_RATE_LIMITED',
+          'Injected fal.ai rate limit',
+          429,
+          'rejected',
+        )
+      }
       await deps.proof({ realProviderCalled: true })
       const { webhookUrl: _webhookUrl, ...withoutWebhook } = input
       const result = await provider.submit(
-        fault.mode === 'fal-callback-early' ? input : withoutWebhook,
+        // 切换验收保留回调地址：真实作业的晚到回调属于旧尝试，用于验证它被忽略。
+        fault.mode === 'fal-callback-early' || fault.mode === 'fal-failover-job-failed'
+          ? input
+          : withoutWebhook,
       )
       await deps.proof({ realRequestId: result.jobId })
       if (fault.mode === 'fal-submit-response-lost') {
@@ -68,6 +81,18 @@ export function wrapMediaFaultProvider(
         return {
           status: 'failed',
           error: { code: 'FAL_GENERATION_FAILED', message: 'Injected fal.ai generation failure' },
+        }
+      }
+      if (fault.mode === 'fal-failover-job-failed') {
+        // 真实作业照常生成，它晚到的成功回调用于验证旧尝试的回调被忽略。
+        await deps.proof(injected())
+        return {
+          status: 'failed',
+          error: {
+            code: 'FAL_GENERATION_FAILED',
+            message: 'Injected fal.ai provider-side failure',
+            kind: 'provider_error',
+          },
         }
       }
       if (fault.mode === 'fal-timeout') {

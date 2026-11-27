@@ -2,6 +2,7 @@ import {
   createTaskMediaProvider,
   getMediaOutputHosts,
   type MediaProviderEnv,
+  mediaAttemptRequest,
   readMediaTaskInput,
 } from '@saas/ai'
 import {
@@ -51,7 +52,8 @@ export function createNodeMediaRunnerDeps(
     provider: (task) =>
       createTaskMediaProvider(options.providerEnv, task, getMediaProviders(template)),
     params: async (task) => {
-      const input = readMediaTaskInput(task)
+      // 当前尝试的参数：切换后为备用模型按 paramMap 改名并校验过的副本。
+      const input = mediaAttemptRequest(task)
       const params = { ...input.params }
       for (const name of input.fileParams) {
         params[name] = await getFileDownload(db, storage, {

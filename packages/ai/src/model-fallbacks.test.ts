@@ -426,3 +426,39 @@ describe('备用模型不影响用户可见性与价格', () => {
     expect(await keys()).toEqual(['agent-primary', 'no-tools', 'with-tools'])
   })
 })
+
+describe('计量字段', () => {
+  it('备用 schema 有计量字段而主模型没有时拒绝：备用可能按自身默认值多生成', () => {
+    const primary: FallbackModelRef = {
+      ...seedreamFal,
+      key: 'single-image-fal',
+      paramsSchema: mediaSchema({ aspect_ratio: { type: 'string', enum: ['1:1'] } }),
+    }
+    expectFallbackError(
+      () =>
+        assertModelFallbacks(
+          primary,
+          [{ modelKey: seedreamReplicate.key }],
+          models(seedreamReplicate),
+        ),
+      /units parameter must map to num_images/,
+    )
+    // 计量字段改名到其他字段同样拒绝。
+    expectFallbackError(
+      () =>
+        assertModelFallbacks(
+          seedreamFal,
+          [{ modelKey: seedreamReplicate.key, paramMap: { num_images: 'count' } }],
+          models({
+            ...seedreamReplicate,
+            paramsSchema: mediaSchema({
+              aspect_ratio: { type: 'string', enum: ['1:1', '16:9', '9:16'] },
+              count: { type: 'integer', minimum: 1, maximum: 4 },
+              num_images: { type: 'integer', minimum: 1, maximum: 4 },
+            }),
+          }),
+        ),
+      /units parameter must map to num_images/,
+    )
+  })
+})

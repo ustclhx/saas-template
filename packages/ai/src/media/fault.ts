@@ -19,6 +19,8 @@ const modes = z.enum([
   'fal-submit-response-lost',
   'fal-provider-error',
   'fal-timeout',
+  'fal-rate-limited',
+  'fal-failover-job-failed',
 ])
 
 const faultSnapshot = z.strictObject({
@@ -48,13 +50,25 @@ export interface MediaAcceptanceFaultProof {
   }
 }
 
+/** 切换验收模式：首个尝试注入可切换的失败，由备用模型完成任务。 */
+export const MEDIA_FAILOVER_FAULT_MODES: readonly MediaFaultMode[] = [
+  'fal-rate-limited',
+  'fal-failover-job-failed',
+]
+
 /** 时间策略只能由版本化代码产生，调用者与后台元数据都不能调整。 */
 export function mediaFaultPolicy(mode: MediaFaultMode): MediaAcceptanceFault {
   return {
     mode,
     policyVersion: 1,
     authorizedAdmin: true,
-    deadlineMs: mode === 'workers-timeout' || mode === 'fal-timeout' ? 60_000 : 20 * 60_000,
+    // 切换要求距硬超时至少 20 分钟，切换验收的期限须留出备用生成的时间。
+    deadlineMs:
+      mode === 'workers-timeout' || mode === 'fal-timeout'
+        ? 60_000
+        : MEDIA_FAILOVER_FAULT_MODES.includes(mode)
+          ? 45 * 60_000
+          : 20 * 60_000,
     initialWaitMs: mode.startsWith('fal-') ? 5_000 : 0,
     barrierMs: mode === 'fal-callback-early' ? 10 * 60_000 : 0,
   }
@@ -88,18 +102,23 @@ export function parseMediaFaultSnapshot(value: unknown): MediaAcceptanceFault {
 }
 
 /** 已接受任务只读取冻结配置；专用 key 缺快照也不能回退成普通 Provider。 */
-export function readMediaFault(task: Pick<AiTask, 'input' | 'modelKey' | 'kind' | 'provider'>) {
+export function readMediaFault(
+  task: Pick<AiTask, 'input' | 'modelKey' | 'kind' | 'provider'> &
+    Partial<Pick<AiTask, 'providerAttempts'>>,
+) {
   if (!Object.hasOwn(task.input, 'acceptanceFault')) {
     if (task.modelKey.startsWith('acceptance-fault-')) throw invalid()
     return undefined
   }
   const parsed = parseMediaFaultSnapshot(task.input.acceptanceFault)
+  // 故障只作用于首个尝试（总是主模型）；切换后当前服务商已变，按首个尝试核对配对。
+  const first = Array.isArray(task.providerAttempts) ? task.providerAttempts[0] : undefined
   try {
     parseAcceptanceFault({
       key: task.modelKey,
       kind: task.kind,
-      provider: task.provider,
-      providerModelId: String(task.input.providerModelId ?? ''),
+      provider: first?.provider ?? task.provider,
+      providerModelId: String(first?.providerModelId ?? task.input.providerModelId ?? ''),
       paramsSchema: { 'x-acceptance-fault': { mode: parsed.mode } },
     })
   } catch (error) {

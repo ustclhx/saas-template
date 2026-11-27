@@ -3,6 +3,7 @@ import {
   adminApiToken,
   adminPendingAction,
   aiModel,
+  aiTask,
   auditLog,
   dbSettingStore,
   getSettingValue,
@@ -168,6 +169,7 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
         'credits.grants',
         'credits.ledger',
         'features.models',
+        ...(templateConfig.plugins.media ? ['media.task'] : []),
         'metrics.summary',
         'models.list',
         'models.update',
@@ -206,6 +208,95 @@ describe.skipIf(!templateConfig.plugins['admin-mcp'])('管理员 MCP', () => {
       await client.close()
     }
   })
+
+  it.skipIf(!templateConfig.plugins.media)(
+    'media.task 返回主模型、当前服务商与尝试记录，不含参数与提示词',
+    async () => {
+      const { db, createAdmin, connect } = setup()
+      const reader = await connect((await issueToken(db, await createAdmin())).token)
+      const owner = await seedStudioWorkspace(db)
+      studioWorkspaceIds.push(owner.workspaceId)
+      const taskId = newId()
+      const at = new Date().toISOString()
+      await scoped(db, owner.workspaceId).insert(aiTask, {
+        id: taskId,
+        userId: owner.userId,
+        kind: 'image',
+        modelKey: 'primary-image',
+        pricing: { mode: 'per_call', credits: 3 },
+        status: 'succeeded',
+        provider: 'replicate',
+        providerJobId: 'replicate-job',
+        providerRequestKey: `${taskId}:a1`,
+        deadlineAt: new Date(Date.now() + 3600_000),
+        input: {
+          params: { prompt: 'Secret prompt text' },
+          userPrompt: 'Secret prompt text',
+          providerModelId: 'owner/backup',
+          failover: {
+            candidates: [],
+            skipped: [
+              {
+                modelKey: 'kie-image',
+                provider: 'kie',
+                failure: { kind: 'unavailable', code: 'AI_PROVIDER_NOT_CONFIGURED' },
+              },
+            ],
+          },
+        },
+        providerAttempts: [
+          {
+            provider: 'fal',
+            modelKey: 'primary-image',
+            providerModelId: 'fal-ai/primary',
+            jobId: 'fal-job',
+            failure: { kind: 'rate_limited', code: 'FAL_RATE_LIMITED' },
+            at,
+          },
+          {
+            provider: 'replicate',
+            modelKey: 'backup-image',
+            providerModelId: 'owner/backup',
+            jobId: 'replicate-job',
+            at,
+          },
+        ],
+      })
+      const result = await reader.callTool({
+        name: 'media.task',
+        arguments: { workspaceId: owner.workspaceId, taskId },
+      })
+      expect(result.structuredContent).toMatchObject({
+        task: {
+          id: taskId,
+          status: 'succeeded',
+          modelKey: 'primary-image',
+          provider: 'replicate',
+          providerModelId: 'owner/backup',
+          providerAttempts: [
+            {
+              provider: 'fal',
+              modelKey: 'primary-image',
+              jobId: 'fal-job',
+              failure: { kind: 'rate_limited', code: 'FAL_RATE_LIMITED' },
+            },
+            { provider: 'replicate', modelKey: 'backup-image', failure: null },
+          ],
+          skippedCandidates: [{ modelKey: 'kie-image', provider: 'kie' }],
+        },
+      })
+      expect(JSON.stringify(result)).not.toMatch(/Secret prompt/)
+      // 任务不属于该空间时按不存在处理。
+      expectToolError(
+        await reader.callTool({
+          name: 'media.task',
+          arguments: { workspaceId: newId(), taskId },
+        }),
+        'NOT_FOUND',
+      )
+      await reader.close()
+    },
+  )
 
   it.skipIf(!templateConfig.plugins.studio)(
     'Studio 审核工具使用真实令牌校验、预览和事务审计',

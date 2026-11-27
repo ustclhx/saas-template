@@ -1369,3 +1369,262 @@ describe.skipIf(!templateConfig.plugins.media || studioModes.length === 0)('Stud
     await expectNoMediaReservation(who.workspaceId)
   })
 })
+
+// add-media-provider-fallback 5.1 / 5.3：受理时的候选筛选与回调归属。
+describe.skipIf(!templateConfig.plugins.media)('media provider failover', () => {
+  async function withProviders<T>(providers: string[], run: () => Promise<T>): Promise<T> {
+    const media = templateConfig.plugins.media
+    if (!media) throw new Error('The media plugin must be enabled')
+    const enabled = media.providers
+    Object.defineProperty(media, 'providers', { value: providers, configurable: true })
+    try {
+      return await run()
+    } finally {
+      Object.defineProperty(media, 'providers', { value: enabled, configurable: true })
+    }
+  }
+  /** 主模型（fal，3 积分）+ Replicate 备用（9 积分，prompt 改名为 text）。 */
+  async function chain(backupSchema?: Record<string, unknown>) {
+    const primary = await model()
+    const backup = await model(
+      {},
+      'replicate',
+      'image',
+      backupSchema ?? {
+        type: 'object',
+        required: ['text'],
+        properties: {
+          text: { type: 'string', minLength: 1 },
+          num_images: { type: 'integer', minimum: 1, maximum: 4 },
+        },
+      },
+    )
+    // 备用更贵且已停用：仍可作为备用执行，用户只看到并支付主模型。
+    await sql`update ai_model set pricing=${JSON.stringify({ mode: 'per_call', credits: 9 })}::jsonb,
+      enabled=false where key=${backup}`
+    await sql`update ai_model set fallbacks=${JSON.stringify([{ modelKey: backup, paramMap: { prompt: 'text' } }])}::jsonb
+      where key=${primary}`
+    return { primary, backup }
+  }
+  const replicateEnv = {
+    MEDIA_WEBHOOK_SECRET: SECRET,
+    REPLICATE_API_TOKEN: 'fixture-only',
+    REPLICATE_WEBHOOK_SECRET: 'fixture-only',
+  }
+
+  it('主服务商未配置：直接由已配置的备用执行，定价快照、参数上限与预扣仍取主模型', async () => {
+    const who = await account('failover-unconfigured')
+    const { primary, backup } = await chain()
+    const { deps } = dependencies()
+    const { providerFactory: _factory, ...realDeps } = deps
+    realDeps.env = replicateEnv
+    const taskId = await withProviders(['fal', 'replicate'], () =>
+      submitted(who, primary, realDeps),
+    )
+    const task = await scoped(db, who.workspaceId).findById(aiTask, taskId)
+    expect(task).toMatchObject({
+      modelKey: primary,
+      provider: 'replicate',
+      providerRequestKey: taskId,
+      pricing: { mode: 'per_call', credits: 3 },
+    })
+    expect(task.providerAttempts).toEqual([
+      {
+        provider: 'replicate',
+        modelKey: backup,
+        providerModelId: 'fal-ai/fixture',
+        at: expect.any(String),
+      },
+    ])
+    expect(task.input).toMatchObject({
+      params: { prompt: 'fixture', num_images: 1 },
+      unitsLimit: 1,
+      failover: {
+        candidates: [
+          { modelKey: backup, provider: 'replicate', params: { text: 'fixture', num_images: 1 } },
+        ],
+        skipped: [
+          {
+            modelKey: primary,
+            provider: 'fal',
+            failure: { kind: 'unavailable', code: 'AI_PROVIDER_NOT_CONFIGURED' },
+          },
+        ],
+      },
+    })
+    expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 97, held: 3 })
+  })
+
+  it('备用按自身计量默认值会超过主模型数量时跳过（units_mismatch），主模型照常受理', async () => {
+    const who = await account('failover-units')
+    const { primary, backup } = await chain({
+      type: 'object',
+      required: ['text'],
+      properties: {
+        text: { type: 'string', minLength: 1 },
+        count: { type: 'integer', minimum: 1, maximum: 4, default: 4 },
+        num_images: { type: 'integer', minimum: 1, maximum: 4 },
+      },
+      'x-media': { unitsParam: 'count' },
+    })
+    const { deps } = dependencies()
+    const taskId = await withProviders(['fal', 'replicate'], () => submitted(who, primary, deps))
+    const task = await scoped(db, who.workspaceId).findById(aiTask, taskId)
+    expect(task.provider).toBe('fal')
+    expect(task.input).toMatchObject({
+      unitsLimit: 1,
+      failover: {
+        candidates: [{ modelKey: primary }],
+        skipped: [
+          {
+            modelKey: backup,
+            provider: 'replicate',
+            failure: { kind: 'rejected_input', code: 'units_mismatch' },
+          },
+        ],
+      },
+    })
+    expect((task.input.failover as { candidates: unknown[] }).candidates).toHaveLength(1)
+  })
+
+  it('同步服务商不作为备用：受理时跳过并记 synchronous_provider', async () => {
+    const who = await account('failover-sync')
+    const primary = await model()
+    const backup = await model({}, 'workers-ai')
+    await sql`update ai_model set fallbacks=${JSON.stringify([{ modelKey: backup }])}::jsonb
+      where key=${primary}`
+    const { deps } = dependencies()
+    const taskId = await submitted(who, primary, deps)
+    const task = await scoped(db, who.workspaceId).findById(aiTask, taskId)
+    expect(task.provider).toBe('fal')
+    expect(task.input.failover).toMatchObject({
+      candidates: [{ modelKey: primary }],
+      skipped: [
+        {
+          modelKey: backup,
+          provider: 'workers-ai',
+          failure: { kind: 'unavailable', code: 'synchronous_provider' },
+        },
+      ],
+    })
+  })
+
+  it('所有候选都未配置或参数不兼容时按现有规则拒绝，不建任务也不预扣', async () => {
+    const who = await account('failover-none')
+    const { deps } = dependencies()
+    const { providerFactory: _factory, ...realDeps } = deps
+    realDeps.env = { MEDIA_WEBHOOK_SECRET: SECRET }
+    const unconfigured = await chain()
+    const response = await withProviders(['fal', 'replicate'], () =>
+      submit(who, unconfigured.primary, realDeps),
+    )
+    expect(response.status).toBe(503)
+    expect(await response.json()).toMatchObject({ error: { code: 'AI_PROVIDER_NOT_CONFIGURED' } })
+    // 备用已配置但改名后的参数不满足其 schema（缺必填字段），视为不可用。
+    realDeps.env = replicateEnv
+    const incompatible = await chain({
+      type: 'object',
+      required: ['text', 'seed'],
+      properties: { text: { type: 'string' }, seed: { type: 'integer' } },
+    })
+    expect(
+      (await withProviders(['fal', 'replicate'], () => submit(who, incompatible.primary, realDeps)))
+        .status,
+    ).toBe(503)
+    expect(await scoped(db, who.workspaceId).count(aiTask)).toBe(0)
+    expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 100, held: 0 })
+  })
+
+  /** 已从 fal（序号 0）切换到 Replicate（序号 1）的任务；按序号选服务商验签。 */
+  async function switchedTask(options: { invalidReplicateSignature?: boolean } = {}) {
+    const who = await account('failover-callback')
+    const { primary, backup } = await chain()
+    const parsed: string[] = []
+    const fake = (id: string): MediaProvider => ({
+      id,
+      capabilities: { idempotentSubmit: false },
+      submit: async () => ({ jobId: 'unused' }),
+      getStatus: async () => ({ status: 'queued' }),
+      parseWebhook: async () => {
+        parsed.push(id)
+        if (id === 'replicate' && options.invalidReplicateSignature)
+          throw new AppError('MEDIA_WEBHOOK_INVALID', 'Invalid provider signature')
+        return {
+          jobId: `${id}-job`,
+          result: { outputs: [{ url: 'https://v3.fal.media/output.png', mime: 'image/png' }] },
+        }
+      },
+    })
+    const state = dependencies()
+    state.deps.providerFactory = (_env, task) => fake(task.provider)
+    const taskId = await submitted(who, primary, state.deps)
+    await scoped(db, who.workspaceId).updateById(aiTask, taskId, {
+      provider: 'replicate',
+      providerJobId: 'replicate-job',
+      providerRequestKey: `${taskId}:a1`,
+      status: 'running',
+      providerAttempts: [
+        {
+          provider: 'fal',
+          modelKey: primary,
+          providerModelId: 'fal-ai/fixture',
+          jobId: 'fal-job',
+          failure: { kind: 'rate_limited', code: 'FAL_RATE_LIMITED' },
+          at: new Date().toISOString(),
+        },
+        {
+          provider: 'replicate',
+          modelKey: backup,
+          providerModelId: 'fal-ai/fixture',
+          jobId: 'replicate-job',
+          at: new Date().toISOString(),
+        },
+      ],
+    })
+    const post = async (provider: string, attempt: number, url?: string) =>
+      handleMediaWebhook(
+        new Request(
+          url ?? (await mediaCallbackUrl(APP_URL, SECRET, { id: taskId, provider, attempt })),
+          { method: 'POST', body: '{}' },
+        ),
+        provider,
+        state.deps,
+      )
+    return { who, taskId, parsed, post, state }
+  }
+
+  it('旧作业的晚到回调：fal 验签后 200 忽略，任务只采用当前 Replicate 作业的结果', async () => {
+    const { who, taskId, parsed, post, state } = await switchedTask()
+    // 旧格式地址（无序号）即序号 0，属于已切走的 fal 尝试。
+    expect((await post('fal', 0)).status).toBe(200)
+    expect(parsed).toEqual(['fal'])
+    let task = await scoped(db, who.workspaceId).findById(aiTask, taskId)
+    expect(task.callbackPayload).toBeNull()
+    expect(state.counts().events).toBe(0)
+    // 序号与路径中的服务商不符：拒绝，不验签。
+    expect((await post('replicate', 0)).status).toBe(404)
+    expect((await post('fal', 1)).status).toBe(404)
+    expect(parsed).toEqual(['fal'])
+    expect((await post('replicate', 1)).status).toBe(200)
+    task = await scoped(db, who.workspaceId).findById(aiTask, taskId)
+    expect(task.callbackPayload).toMatchObject({ jobId: 'replicate-job' })
+    expect(parsed).toEqual(['fal', 'replicate'])
+  })
+
+  it('伪造服务商签名或篡改尝试序号：返回 4xx，任务不变', async () => {
+    const { who, taskId, post, parsed } = await switchedTask({ invalidReplicateSignature: true })
+    expect((await post('replicate', 1)).status).toBe(400)
+    expect(parsed).toEqual(['replicate'])
+    // 用序号 0 的任务签名冒充序号 1：任务签名不成立，不进入服务商验签。
+    const legacy = new URL(
+      await mediaCallbackUrl(APP_URL, SECRET, { id: taskId, provider: 'replicate' }),
+    )
+    legacy.searchParams.set('attempt', '1')
+    expect((await post('replicate', 1, legacy.toString())).status).toBe(400)
+    legacy.searchParams.set('attempt', '01')
+    expect((await post('replicate', 1, legacy.toString())).status).toBe(400)
+    expect(parsed).toEqual(['replicate'])
+    const task = await scoped(db, who.workspaceId).findById(aiTask, taskId)
+    expect(task).toMatchObject({ callbackPayload: null, status: 'running' })
+  })
+})

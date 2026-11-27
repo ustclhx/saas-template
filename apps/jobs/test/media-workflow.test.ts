@@ -8,7 +8,11 @@ import {
   type MediaProvider,
   type MediaResult,
   type MediaStatus,
+  mediaAttemptRequest,
+  mediaFaultPolicy,
+  ReplicateProviderError,
   settleMediaTask,
+  switchMediaTaskAttempt,
   type TaskMediaProvider,
   updateMediaFaultProof,
 } from '@saas/ai'
@@ -16,7 +20,7 @@ import { getCreditBalance, grant, hold } from '@saas/credits'
 import { type AiPricingJson, aiTask, createDb, member, organization, scoped, user } from '@saas/db'
 import { NonRetryableError, type WorkflowStep } from '@saas/platform'
 import { createCloudflareWorkflowStep } from '@saas/platform/cloudflare'
-import { MEDIA_DONE_EVENT } from '@saas/shared'
+import { AppError, MEDIA_DONE_EVENT } from '@saas/shared'
 import { persistMediaOutputs } from '@saas/storage'
 import { createCloudflareMediaCopier, createCloudflareStorage } from '@saas/storage/cloudflare'
 import { afterAll, expect, it, vi } from 'vitest'
@@ -107,6 +111,10 @@ function harness(
     onWait?: () => Promise<void>
     onSleep?: (duration: number, now: number) => number | Promise<void>
     start?: number
+    /** 首次运行已记录的步骤结果：模拟 Workflow 重放时直接返回缓存值。 */
+    cached?: Record<string, unknown>
+    /** 按步骤名投递的事件 payload；返回 undefined 时等待超时。 */
+    events?: (name: string) => Promise<unknown> | unknown
   } = {},
 ) {
   let now = options.start ?? Date.now()
@@ -139,6 +147,7 @@ function harness(
   const step = {
     async do(name: string, configOrCallback: unknown, maybeCallback?: () => Promise<unknown>) {
       names.push(name)
+      if (options.cached && Object.hasOwn(options.cached, name)) return options.cached[name]
       const callback = (maybeCallback ?? configOrCallback) as () => Promise<unknown>
       const config = maybeCallback
         ? (configOrCallback as { retries?: { limit: number } })
@@ -156,7 +165,13 @@ function harness(
         }
       }
     },
-    async waitForEvent(_name: string, config: { type: string; timeoutMs: number }) {
+    async waitForEvent(name: string, config: { type: string; timeoutMs: number }) {
+      names.push(name)
+      const payload = await options.events?.(name)
+      if (payload !== undefined) {
+        now += 1_000
+        return { type: config.type, payload, timestamp: new Date(now) }
+      }
       waits.push(config)
       now += config.timeoutMs
       await options.onWait?.()
@@ -980,4 +995,388 @@ it('an invalid frozen fault policy is rejected before provider construction and 
   expect(fake.submit).not.toHaveBeenCalled()
   expect((await state(f)).task.errorCode).toBe('MEDIA_INPUT_INVALID')
   await refunded(f)
+})
+
+// add-media-provider-fallback 5.2 / 5.4 / 5.5：Runner 中的服务商切换。
+async function withFailover(
+  f: Awaited<ReturnType<typeof fixture>>,
+  options: { deadlineInMs?: number; primary?: { provider: string; providerModelId: string } } = {},
+) {
+  const tenant = scoped(db, f.workspaceId)
+  const task = await tenant.findById(aiTask, f.taskId)
+  const primary = options.primary ?? { provider: 'fake', providerModelId: 'fake/image' }
+  const input = task.input as { params: Record<string, unknown> }
+  await tenant.updateById(aiTask, f.taskId, {
+    ...primary,
+    input: {
+      ...task.input,
+      providerModelId: primary.providerModelId,
+      failover: {
+        candidates: [
+          { modelKey: task.modelKey, ...primary, params: input.params, fileParams: [] },
+          {
+            modelKey: 'backup-image',
+            provider: 'backup',
+            providerModelId: 'backup/image',
+            params: { count: input.params.num_images },
+            fileParams: [],
+          },
+        ],
+        skipped: [],
+      },
+    },
+    providerAttempts: [{ modelKey: task.modelKey, ...primary, at: new Date().toISOString() }],
+    ...(options.deadlineInMs === undefined
+      ? {}
+      : { deadlineAt: new Date(Date.now() + options.deadlineInMs) }),
+  })
+}
+
+/** 按任务当前服务商取 Provider，参数取当前尝试（备用为改名后的副本）。 */
+function failoverHarness(
+  primary: TaskMediaProvider,
+  backup: TaskMediaProvider,
+  options: Parameters<typeof harness>[1] = {},
+) {
+  const h = harness(primary, options)
+  h.deps.provider = (task) => (task.provider === 'backup' ? backup : primary)
+  h.deps.params = async (task) => mediaAttemptRequest(task).params
+  return h
+}
+
+const rateLimited = () => new FalProviderError('FAL_RATE_LIMITED', 'Rate limited', 429, 'rejected')
+
+async function attempts(f: Awaited<ReturnType<typeof fixture>>) {
+  return (await scoped(db, f.workspaceId).findById(aiTask, f.taskId)).providerAttempts
+}
+
+it('主服务商限流：切到备用重新提交并成功，新请求键与带序号的回调地址，按主模型快照结算', async () => {
+  const f = await fixture()
+  await withFailover(f)
+  const primary = provider()
+  primary.submit.mockRejectedValue(rateLimited())
+  const backup = { ...provider(), id: 'backup' }
+  backup.submit.mockResolvedValue({ jobId: 'backup-job' })
+  const h = failoverHarness(primary, backup, {
+    replay: ['failover-a0', 'submit-a1', 'persist-a1', 'settle-and-notify-a1'],
+  })
+  const logged = vi.spyOn(console, 'log')
+  expect(await runMediaTask(f.taskId, h.step, h.deps)).toEqual({
+    taskId: f.taskId,
+    status: 'succeeded',
+  })
+  // 限流不在同一服务商重试，直接切换。
+  expect(primary.submit).toHaveBeenCalledTimes(1)
+  expect(backup.submit).toHaveBeenCalledTimes(1)
+  const submitted = backup.submit.mock.calls[0]?.[0]
+  expect(submitted).toMatchObject({
+    modelId: 'backup/image',
+    params: { count: 5 },
+    idempotencyKey: `${f.taskId}:a1`,
+  })
+  expect(new URL(submitted?.webhookUrl ?? '').searchParams.get('attempt')).toBe('1')
+  expect(backup.getStatus).toHaveBeenCalledWith('backup-job')
+  expect(h.names).toEqual(
+    expect.arrayContaining(['submit', 'failover-a0', 'submit-a1', 'poll-0-a1', 'persist-a1']),
+  )
+  // 备用模型的价格不参与结算：仍按主模型的 15 积分快照扣费一次。
+  await succeeded(f)
+  const task = (await state(f)).task
+  expect(task).toMatchObject({
+    provider: 'backup',
+    providerJobId: 'backup-job',
+    providerRequestKey: `${f.taskId}:a1`,
+    input: { params: { num_images: 5 }, providerModelId: 'backup/image' },
+  })
+  expect(task.providerAttempts).toEqual([
+    expect.objectContaining({
+      provider: 'fake',
+      failure: { kind: 'rate_limited', code: 'FAL_RATE_LIMITED' },
+    }),
+    expect.objectContaining({ provider: 'backup', modelKey: 'backup-image', jobId: 'backup-job' }),
+  ])
+  const failover = logged.mock.calls
+    .map(([line]) => String(line))
+    .find((line) => line.includes('ai.media.failover'))
+  expect(JSON.parse(failover ?? '{}')).toMatchObject({
+    event: 'ai.media.failover',
+    taskId: f.taskId,
+    from: 'fake:frozen-image',
+    to: 'backup:backup-image',
+    kind: 'rate_limited',
+  })
+  expect(failover).not.toMatch(/num_images|count/)
+  logged.mockRestore()
+})
+
+it('作业以服务商侧原因失败：切到备用并成功；运行时服务商未配置的尝试同样切换', async () => {
+  for (const cause of ['job-failed', 'unconfigured'] as const) {
+    const f = await fixture()
+    await withFailover(f)
+    const primary = provider()
+    primary.getStatus.mockResolvedValue({
+      status: 'failed',
+      error: { code: 'FAL_GENERATION_FAILED', message: 'Upstream failure' },
+    })
+    const backup = { ...provider(), id: 'backup' }
+    const h = failoverHarness(primary, backup)
+    if (cause === 'unconfigured')
+      h.deps.provider = (task) => {
+        if (task.provider === 'backup') return backup
+        throw new AppError('AI_PROVIDER_NOT_CONFIGURED', 'Media provider is not configured', {
+          status: 503,
+        })
+      }
+    await runMediaTask(f.taskId, h.step, h.deps)
+    expect(primary.submit).toHaveBeenCalledTimes(cause === 'job-failed' ? 1 : 0)
+    expect(backup.submit).toHaveBeenCalledTimes(1)
+    await succeeded(f)
+    expect((await attempts(f))[0]?.failure).toEqual(
+      cause === 'job-failed'
+        ? { kind: 'provider_error', code: 'FAL_GENERATION_FAILED' }
+        : { kind: 'unavailable', code: 'AI_PROVIDER_NOT_CONFIGURED' },
+    )
+  }
+})
+
+it('内容审核拒绝不切换：任务失败并全额退回，备用服务商不被调用', async () => {
+  const f = await fixture()
+  await withFailover(f)
+  const primary = provider()
+  primary.getStatus.mockResolvedValue({
+    status: 'failed',
+    error: { code: 'FAL_CONTENT_POLICY', message: 'Blocked', kind: 'content_policy' },
+  })
+  const backup = { ...provider(), id: 'backup' }
+  const h = failoverHarness(primary, backup)
+  await runMediaTask(f.taskId, h.step, h.deps)
+  expect(backup.submit).not.toHaveBeenCalled()
+  await refunded(f)
+  expect((await state(f)).task.errorCode).toBe('FAL_CONTENT_POLICY')
+  expect((await attempts(f)).map(({ failure }) => failure)).toEqual([
+    { kind: 'content_policy', code: 'FAL_CONTENT_POLICY' },
+  ])
+})
+
+it.each([
+  ['fal 5xx', () => new FalProviderError('FAL_HTTP_ERROR', 'Bad gateway', 502, 'ambiguous')],
+  [
+    'Replicate 5xx',
+    () =>
+      new ReplicateProviderError('provider_error', 'REPLICATE_HTTP_ERROR', 'Bad gateway', {
+        httpStatus: 502,
+        submissionOutcome: 'ambiguous',
+      }),
+  ],
+])('%s 提交结果不确定：走提交确认中，不重提也不切换', async (_name, error) => {
+  const f = await fixture()
+  await withFailover(f)
+  const primary = provider()
+  primary.submit.mockRejectedValue(error())
+  const backup = { ...provider(), id: 'backup' }
+  const h = failoverHarness(primary, backup)
+  await runMediaTask(f.taskId, h.step, h.deps)
+  expect(primary.submit).toHaveBeenCalledTimes(1)
+  expect(backup.submit).not.toHaveBeenCalled()
+  await refunded(f)
+  expect((await state(f)).task.errorCode).toBe('MEDIA_SUBMISSION_UNCERTAIN')
+})
+
+it('备用全部失败：全额退回，失败原因记录最后一次错误，每次尝试都有失败分类', async () => {
+  const f = await fixture()
+  await withFailover(f)
+  const primary = provider()
+  primary.submit.mockRejectedValue(rateLimited())
+  const backup = { ...provider(), id: 'backup' }
+  backup.getStatus.mockResolvedValue({
+    status: 'failed',
+    error: { code: 'REPLICATE_PREDICTION_FAILED', message: 'Prediction failed' },
+  })
+  const h = failoverHarness(primary, backup)
+  await runMediaTask(f.taskId, h.step, h.deps)
+  await refunded(f)
+  expect((await state(f)).task).toMatchObject({
+    errorCode: 'REPLICATE_PREDICTION_FAILED',
+    errorMessage: 'Prediction failed',
+  })
+  expect((await attempts(f)).map(({ provider, failure }) => ({ provider, failure }))).toEqual([
+    { provider: 'fake', failure: { kind: 'rate_limited', code: 'FAL_RATE_LIMITED' } },
+    {
+      provider: 'backup',
+      failure: { kind: 'provider_error', code: 'REPLICATE_PREDICTION_FAILED' },
+    },
+  ])
+})
+
+it('距硬超时不足 20 分钟不切换：按原规则在同一服务商重试后失败退款', async () => {
+  const f = await fixture()
+  await withFailover(f, { deadlineInMs: 15 * 60_000 })
+  const primary = provider()
+  primary.submit.mockRejectedValue(rateLimited())
+  const backup = { ...provider(), id: 'backup' }
+  const h = failoverHarness(primary, backup)
+  await runMediaTask(f.taskId, h.step, h.deps)
+  expect(backup.submit).not.toHaveBeenCalled()
+  expect(primary.submit).toHaveBeenCalledTimes(4)
+  await refunded(f)
+  expect((await state(f)).task.errorCode).toBe('FAL_RATE_LIMITED')
+})
+
+it.each(['fal-rate-limited', 'fal-failover-job-failed'] as const)(
+  '故障注入 %s 只影响首个尝试，备用模型完成任务',
+  async (mode) => {
+    const f = await fixture()
+    const start = Date.now()
+    const fault = mediaFaultPolicy(mode)
+    const tenant = scoped(db, f.workspaceId)
+    const task = await tenant.findById(aiTask, f.taskId)
+    await tenant.updateById(aiTask, f.taskId, {
+      modelKey: `acceptance-fault-${mode}`,
+      input: {
+        ...task.input,
+        params: { image_size: 'square', num_images: 1 },
+        unitsLimit: 1,
+        acceptanceFault: { ...fault },
+        acceptanceFaultProof: { ...initialMediaFaultProof(fault) },
+      },
+      deadlineAt: new Date(start + fault.deadlineMs),
+    })
+    await withFailover(f, { primary: { provider: 'fal', providerModelId: 'fal-ai/flux/schnell' } })
+    const primary = faultProvider()
+    const backup = { ...provider(), id: 'backup' }
+    const h = failoverHarness(primary, backup, { start })
+    h.deps.provider = (current) => (current.provider === 'backup' ? backup : primary)
+    enableFaults(h)
+    await runMediaTask(f.taskId, h.step, h.deps)
+    expect(primary.submit).toHaveBeenCalledTimes(mode === 'fal-rate-limited' ? 0 : 1)
+    if (mode === 'fal-failover-job-failed')
+      // 真实作业保留回调地址（序号 0），晚到回调会被识别为旧尝试。
+      expect(primary.submit.mock.calls[0]?.[0].webhookUrl).not.toContain('attempt=')
+    expect(backup.submit).toHaveBeenCalledTimes(1)
+    expect(backup.submit.mock.calls[0]?.[0].webhookUrl).toContain('attempt=1')
+    expect(await faultProof(f)).toMatchObject({ mode, injected: true })
+    await succeeded(f)
+  },
+)
+
+/** 首次运行时缓存的 load-task 结果：提交前的任务快照。 */
+async function loadTaskSnapshot(f: Awaited<ReturnType<typeof fixture>>) {
+  return JSON.stringify(await scoped(db, f.workspaceId).findById(aiTask, f.taskId))
+}
+
+it.each(['submitted', 'uncertain'] as const)(
+  '重放时主服务商凭据被移除：首个尝试已%s，不切换、不向备用重复提交',
+  async (stage) => {
+    const f = await fixture()
+    await withFailover(f)
+    const snapshot = await loadTaskSnapshot(f)
+    // 首次运行已向 fal 提交（或提交确认中），之后运维移除了 FAL_KEY，Workflow 重放。
+    await scoped(db, f.workspaceId).updateById(aiTask, f.taskId, {
+      status: 'running',
+      output: { submissionAttempted: true },
+      ...(stage === 'submitted'
+        ? { providerJobId: 'job-fixture' }
+        : { errorCode: 'MEDIA_SUBMISSION_UNCERTAIN' }),
+    })
+    const backup = { ...provider(), id: 'backup' }
+    const h = failoverHarness(provider(), backup, { cached: { 'load-task': snapshot } })
+    h.deps.provider = (task) => {
+      if (task.provider === 'backup') return backup
+      throw new AppError('AI_PROVIDER_NOT_CONFIGURED', 'Media provider is not configured', {
+        status: 503,
+      })
+    }
+    await runMediaTask(f.taskId, h.step, h.deps)
+    expect(backup.submit).not.toHaveBeenCalled()
+    const { task } = await state(f)
+    expect(task).toMatchObject({ status: 'failed', provider: 'fake' })
+    expect(task.errorCode).toBe('AI_PROVIDER_NOT_CONFIGURED')
+    expect(task.providerAttempts).toHaveLength(1)
+  },
+)
+
+it('重放时数据库已切到备用：按数据库当前尝试继续，不再向主服务商提交', async () => {
+  const f = await fixture()
+  await withFailover(f)
+  const snapshot = await loadTaskSnapshot(f)
+  // 首次运行：主服务商不可用而切到备用，备用已受理；之后主服务商凭据恢复，Workflow 重放。
+  const switched = await switchMediaTaskAttempt(
+    db,
+    { workspaceId: f.workspaceId, id: f.taskId },
+    {
+      attempt: 0,
+      failure: { kind: 'unavailable', code: 'AI_PROVIDER_NOT_CONFIGURED' },
+      now: Date.now(),
+    },
+  )
+  expect(switched.status).toBe('switched')
+  await scoped(db, f.workspaceId).updateById(aiTask, f.taskId, {
+    status: 'running',
+    providerJobId: 'backup-job',
+    output: { submissionAttempted: true },
+  })
+  const primary = provider()
+  const backup = { ...provider(), id: 'backup' }
+  const h = failoverHarness(primary, backup, { cached: { 'load-task': snapshot } })
+  await runMediaTask(f.taskId, h.step, h.deps)
+  expect(primary.submit).not.toHaveBeenCalled()
+  expect(primary.getStatus).not.toHaveBeenCalled()
+  expect(backup.submit).not.toHaveBeenCalled()
+  expect(backup.getStatus).toHaveBeenCalledWith('backup-job')
+  expect(h.names).not.toContain('submit')
+  expect(h.names).toContain('submit-a1')
+  await succeeded(f)
+})
+
+it('旧尝试残留的唤醒事件不结束当前尝试的等待：提交确认中仍等到本尝试的回调', async () => {
+  const f = await fixture()
+  await withFailover(f)
+  const primary = provider()
+  primary.submit.mockRejectedValue(rateLimited())
+  const backup = { ...provider(), id: 'backup' }
+  backup.submit.mockRejectedValue(
+    new ReplicateProviderError('provider_error', 'REPLICATE_HTTP_ERROR', 'Bad gateway', {
+      httpStatus: 502,
+      submissionOutcome: 'ambiguous',
+    }),
+  )
+  const h = failoverHarness(primary, backup, {
+    events: async (name) => {
+      // 首轮收到序号 0 的残留事件；下一轮本尝试的回调才到达。
+      if (name === 'wait-uncertain-callback-a1') return { taskId: f.taskId, attempt: 0 }
+      if (name === 'wait-uncertain-callback-1-a1') {
+        await scoped(db, f.workspaceId).updateById(aiTask, f.taskId, {
+          callbackPayload: { jobId: 'backup-job', result },
+        })
+        return { taskId: f.taskId, attempt: 1 }
+      }
+      return undefined
+    },
+  })
+  await runMediaTask(f.taskId, h.step, h.deps)
+  expect(h.names).toEqual(
+    expect.arrayContaining(['wait-uncertain-callback-a1', 'wait-uncertain-callback-1-a1']),
+  )
+  expect(backup.submit).toHaveBeenCalledTimes(1)
+  await succeeded(f)
+  expect((await state(f)).task.providerJobId).toBe('backup-job')
+})
+
+it('旧尝试残留事件到达时，回调等待按原定截止时间继续，随后照常轮询', async () => {
+  const f = await fixture()
+  await withFailover(f)
+  const primary = provider()
+  primary.submit.mockRejectedValue(rateLimited())
+  const backup = { ...provider(), id: 'backup' }
+  const h = failoverHarness(primary, backup, {
+    events: (name) =>
+      name === 'wait-media-done-a1' ? { taskId: f.taskId, attempt: 0 } : undefined,
+  })
+  await runMediaTask(f.taskId, h.step, h.deps)
+  // 首轮被残留事件唤醒后继续等待余下的 15 分钟，而不是立即轮询。
+  expect(h.names).toEqual(expect.arrayContaining(['wait-media-done-a1', 'wait-media-done-1-a1']))
+  const resumed = h.waits.at(-1)?.timeoutMs ?? 0
+  expect(resumed).toBeGreaterThan(14 * 60_000)
+  expect(resumed).toBeLessThan(15 * 60_000)
+  await succeeded(f)
 })
