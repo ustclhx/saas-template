@@ -19,6 +19,7 @@ const model: AvailableModel = {
   tags: [],
   paramsSchema: null,
   sort: 0,
+  fallbacks: [],
 }
 
 afterEach(() => vi.unstubAllGlobals())

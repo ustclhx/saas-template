@@ -2,8 +2,11 @@ import type { PricingMode } from '@saas/config'
 import { type AiModel, aiModel, type Database, type NewAiModel } from '@saas/db'
 import { can, type Entitlements, requireEntitlement } from '@saas/entitlements'
 import { AppError } from '@saas/shared'
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { z } from 'zod'
+import { MAX_MODEL_FALLBACKS, type ModelFallback } from './failover/fallbacks.ts'
 import { ACCEPTANCE_FAULT_INVALID, type FaultAccessContext, parseAcceptanceFault } from './fault.ts'
+import { type MediaProperty, type MediaSchema, parseMediaSchema } from './media/params.ts'
 import { type AiModality, type Pricing, PricingError, parsePricing } from './pricing.ts'
 
 /**
@@ -27,6 +30,8 @@ export interface AvailableModel {
   readonly tags: readonly string[]
   readonly paramsSchema: Record<string, unknown> | null
   readonly sort: number
+  /** 有序备用模型（add-media-provider-fallback D2）；只供服务端切换，不影响可见性与价格。 */
+  readonly fallbacks: readonly ModelFallback[]
 }
 
 /** 读取模型的来源，生产中为数据库（`dbModelStore`），测试中可替换 */
@@ -35,6 +40,8 @@ export interface ModelStore {
   listEnabled(): Promise<AiModel[]>
   /** 按 id 取已启用模型；不存在或已停用返回 `undefined` */
   findEnabled(id: string): Promise<AiModel | undefined>
+  /** 按 key 取模型（不论是否启用），供备用链解析；顺序不限 */
+  findByKeys(keys: readonly string[]): Promise<AiModel[]>
 }
 
 /** 模型列表缓存，生产中由 KV 实现（`KVNamespace` 结构兼容） */
@@ -86,6 +93,13 @@ export function dbModelStore(db: Database): ModelStore {
         .limit(1)
       return rows[0]
     },
+    async findByKeys(keys) {
+      if (keys.length === 0) return []
+      return db
+        .select()
+        .from(aiModel)
+        .where(inArray(aiModel.key, [...keys]))
+    },
   }
 }
 
@@ -111,6 +125,7 @@ function toAvailable(row: AiModel): AvailableModel | undefined {
     tags: row.minPlanFeatures,
     paramsSchema: row.paramsSchema ?? null,
     sort: row.sort,
+    fallbacks: row.fallbacks ?? [],
   }
 }
 
@@ -138,8 +153,11 @@ export async function listEnabledModels(
   const cache = requiresTools ? undefined : ctx.cache
   const cached = await cache?.get(MODEL_CACHE_KEY)
   if (cached != null)
-    return (JSON.parse(cached) as AvailableModel[]).filter(
-      (model) => providerAvailable(ctx, model.provider) && faultAvailable(ctx, model),
+    return (
+      (JSON.parse(cached) as AvailableModel[])
+        .filter((model) => providerAvailable(ctx, model.provider) && faultAvailable(ctx, model))
+        // 升级前写入的缓存没有 fallbacks 字段，60 秒 TTL 内按空链处理。
+        .map((model) => ({ ...model, fallbacks: model.fallbacks ?? [] }))
     )
   const models = (await ctx.store.listEnabled()).flatMap((row) => {
     if (requiresTools && !supportsToolCalls(row)) return []
@@ -263,4 +281,339 @@ export function modelValues(input: ModelInput) {
     supportsTools: input.kind === 'text' ? input.supportsTools : false,
     sort: input.sort,
   } satisfies Partial<NewAiModel>
+}
+
+// ---------------------------------------------------------------------------
+// 备用模型链（add-media-provider-fallback 决策 D2，specs/ai-model-registry「备用模型配置」）
+// ---------------------------------------------------------------------------
+
+export const MODEL_FALLBACK_INVALID = 'MODEL_FALLBACK_INVALID'
+
+/** 保存校验所需的模型字段；后台与 Admin MCP 传入数据库行即可。 */
+export type FallbackModelRef = Pick<
+  AiModel,
+  'key' | 'kind' | 'provider' | 'supportsTools' | 'paramsSchema'
+>
+
+const fallbackShape = z
+  .array(
+    z
+      .object({
+        modelKey: z.string().trim().min(1),
+        paramMap: z.record(z.string().trim().min(1), z.string().trim().min(1)).optional(),
+      })
+      .strict(),
+  )
+  .max(MAX_MODEL_FALLBACKS)
+
+function fallbackError(message: string, details: Record<string, unknown> = {}) {
+  // 信息只含模型 key 与字段名，可原样展示给管理员。
+  return new AppError(MODEL_FALLBACK_INVALID, message, {
+    status: 400,
+    details,
+    publicDetails: details,
+  })
+}
+
+/** 校验备用链的 JSON 形态（≤ MAX_MODEL_FALLBACKS、key 非空、paramMap 为字符串映射），去掉空映射。 */
+export function parseModelFallbacks(value: unknown): ModelFallback[] {
+  if (Array.isArray(value) && value.length > MAX_MODEL_FALLBACKS)
+    throw fallbackError(`At most ${MAX_MODEL_FALLBACKS} fallback models are allowed`)
+  const parsed = fallbackShape.safeParse(value ?? [])
+  if (!parsed.success)
+    throw fallbackError('Fallback models must be a list of { modelKey, paramMap }')
+  return parsed.data.map(({ modelKey, paramMap }) =>
+    paramMap && Object.keys(paramMap).length > 0 ? { modelKey, paramMap } : { modelKey },
+  )
+}
+
+/** 按备用的 paramMap 把主模型参数改名；未列出的字段同名透传。 */
+export function mapFallbackParams<T>(
+  params: Readonly<Record<string, T>>,
+  paramMap: Readonly<Record<string, string>> | undefined,
+): Record<string, T> {
+  if (!paramMap) return { ...params }
+  return Object.fromEntries(
+    Object.entries(params).map(([name, value]) => [paramMap[name] ?? name, value]),
+  )
+}
+
+const emptyMediaSchema: MediaSchema = { type: 'object', properties: {}, required: [] }
+
+function mediaSchemaOf(model: FallbackModelRef): MediaSchema {
+  if (model.paramsSchema === null) return emptyMediaSchema
+  try {
+    return parseMediaSchema(model.paramsSchema)
+  } catch {
+    throw fallbackError(`Model ${model.key} has an unsupported parameter schema`, {
+      modelKey: model.key,
+    })
+  }
+}
+
+const defaultUnitsParam = (kind: 'image' | 'video') =>
+  kind === 'image' ? 'num_images' : 'duration'
+
+/** 字段可取值的数值下界与上界；枚举按取值计算，exclusive 视为同值的开区间。 */
+function numericBounds(field: MediaProperty) {
+  const values = field.enum?.filter((value): value is number => typeof value === 'number')
+  if (values?.length)
+    return {
+      min: { value: Math.min(...values), exclusive: false },
+      max: { value: Math.max(...values), exclusive: false },
+    }
+  const min =
+    field.exclusiveMinimum !== undefined
+      ? { value: field.exclusiveMinimum, exclusive: true }
+      : field.minimum !== undefined
+        ? { value: field.minimum, exclusive: false }
+        : undefined
+  const max =
+    field.exclusiveMaximum !== undefined
+      ? { value: field.exclusiveMaximum, exclusive: true }
+      : field.maximum !== undefined
+        ? { value: field.maximum, exclusive: false }
+        : undefined
+  return { min, max }
+}
+
+type Bound = { value: number; exclusive: boolean } | undefined
+
+/** 备用下界覆盖主模型下界：备用无下界，或主模型下界不低于备用下界。 */
+function lowerCovered(primary: Bound, fallback: Bound): boolean {
+  if (!fallback) return true
+  if (!primary) return false
+  if (primary.value !== fallback.value) return primary.value > fallback.value
+  return primary.exclusive || !fallback.exclusive
+}
+
+function upperCovered(primary: Bound, fallback: Bound): boolean {
+  if (!fallback) return true
+  if (!primary) return false
+  if (primary.value !== fallback.value) return primary.value < fallback.value
+  return primary.exclusive || !fallback.exclusive
+}
+
+/** 返回主字段经映射后不能被备用字段接受的原因；兼容时返回 undefined。 */
+function fieldIncompatibility(primary: MediaProperty, fallback: MediaProperty): string | undefined {
+  const typeOk =
+    primary.type === fallback.type || (primary.type === 'integer' && fallback.type === 'number')
+  if (!typeOk) return `type ${primary.type} is not accepted as ${fallback.type}`
+  if ((primary.format ?? null) !== (fallback.format ?? null)) return 'format differs'
+  if (fallback.enum) {
+    if (!primary.enum) return 'fallback only accepts a fixed set of values'
+    const missing = primary.enum.filter((value) => !fallback.enum?.includes(value))
+    if (missing.length) return `values ${missing.map(String).join(', ')} are not accepted`
+  }
+  if (primary.type === 'number' || primary.type === 'integer') {
+    const p = numericBounds(primary)
+    const f = numericBounds(fallback)
+    if (!lowerCovered(p.min, f.min) || !upperCovered(p.max, f.max))
+      return 'numeric range is not covered by the fallback'
+    if (
+      fallback.multipleOf !== undefined &&
+      (primary.multipleOf === undefined ||
+        !Number.isInteger(primary.multipleOf / fallback.multipleOf)) &&
+      !primary.enum?.every((value) => Number.isInteger(Number(value) / (fallback.multipleOf ?? 1)))
+    )
+      return 'multipleOf is not compatible'
+  }
+  if (primary.type === 'string') {
+    if (
+      fallback.maxLength !== undefined &&
+      (primary.maxLength === undefined || primary.maxLength > fallback.maxLength) &&
+      !primary.enum?.every((value) => String(value).length <= (fallback.maxLength ?? 0))
+    )
+      return 'maxLength is not covered by the fallback'
+    if (
+      fallback.minLength !== undefined &&
+      (primary.minLength ?? 0) < fallback.minLength &&
+      !primary.enum?.every((value) => String(value).length >= (fallback.minLength ?? 0))
+    )
+      return 'minLength is not covered by the fallback'
+    if (fallback.pattern !== undefined && fallback.pattern !== primary.pattern && !primary.enum)
+      return 'pattern differs'
+  }
+  return undefined
+}
+
+/** 媒体模型：主 schema 每个字段经 paramMap 映射后都必须被备用 schema 接受。 */
+function assertMediaParamsCompatible(
+  primary: FallbackModelRef & { kind: 'image' | 'video' },
+  fallback: FallbackModelRef,
+  paramMap: Readonly<Record<string, string>> | undefined,
+) {
+  const primarySchema = mediaSchemaOf(primary)
+  const fallbackSchema = mediaSchemaOf(fallback)
+  const fail = (field: string, reason: string) =>
+    fallbackError(`Fallback ${fallback.key} is incompatible on parameter ${field}: ${reason}`, {
+      modelKey: fallback.key,
+      field,
+    })
+  const targets = new Map<string, string>()
+  for (const source of Object.keys(paramMap ?? {}))
+    if (!Object.hasOwn(primarySchema.properties, source))
+      throw fail(source, 'not a parameter of the primary model')
+  for (const [name, field] of Object.entries(primarySchema.properties)) {
+    const target = paramMap?.[name] ?? name
+    const other = targets.get(target)
+    if (other !== undefined) throw fail(name, `maps to ${target} together with ${other}`)
+    targets.set(target, name)
+    const fallbackField = fallbackSchema.properties[target]
+    if (!fallbackField) throw fail(name, `fallback has no parameter ${target}`)
+    const reason = fieldIncompatibility(field, fallbackField)
+    if (reason) throw fail(name, reason)
+  }
+  // 备用必填但主模型可能不提供的字段：提交时会被备用拒绝。
+  const primaryRequired = new Set(primarySchema.required)
+  for (const required of fallbackSchema.required) {
+    const source = targets.get(required)
+    if (
+      source === undefined ||
+      (!primaryRequired.has(source) && primarySchema.properties[source]?.default === undefined)
+    )
+      throw fail(source ?? required, `fallback requires ${required}`)
+  }
+  // 计量字段必须对应，否则备用按不同数量生成而用户按主模型数量结算。
+  const primaryUnits = primarySchema['x-media']?.unitsParam ?? defaultUnitsParam(primary.kind)
+  const fallbackUnits = fallbackSchema['x-media']?.unitsParam ?? defaultUnitsParam(primary.kind)
+  const mappedUnits = Object.hasOwn(primarySchema.properties, primaryUnits)
+    ? (paramMap?.[primaryUnits] ?? primaryUnits)
+    : undefined
+  if (Object.hasOwn(fallbackSchema.properties, fallbackUnits) && mappedUnits !== fallbackUnits)
+    throw fail(primaryUnits, `units parameter must map to ${fallbackUnits}`)
+}
+
+/**
+ * 校验备用链（后台与 Admin MCP 共用）：同类型、不含自身、服务商与主模型及彼此互不相同、
+ * ≤ MAX_MODEL_FALLBACKS、引用的 key 已登记；媒体按 paramMap 映射后逐字段兼容；
+ * 文本主模型支持工具调用时备用也必须支持。`models` 为按 key 取到的备用模型行。
+ */
+export function assertModelFallbacks(
+  primary: FallbackModelRef,
+  fallbacks: readonly ModelFallback[],
+  models: ReadonlyMap<string, FallbackModelRef>,
+): void {
+  if (fallbacks.length > MAX_MODEL_FALLBACKS)
+    throw fallbackError(`At most ${MAX_MODEL_FALLBACKS} fallback models are allowed`)
+  const providers = new Set([primary.provider])
+  for (const { modelKey, paramMap } of fallbacks) {
+    if (modelKey === primary.key)
+      throw fallbackError('A model cannot be its own fallback', { modelKey })
+    const fallback = models.get(modelKey)
+    if (!fallback) throw fallbackError(`Fallback model ${modelKey} does not exist`, { modelKey })
+    if (fallback.kind !== primary.kind)
+      throw fallbackError(`Fallback ${modelKey} must be a ${primary.kind} model`, { modelKey })
+    if (providers.has(fallback.provider))
+      throw fallbackError(
+        `Fallback ${modelKey} must use a different provider than the primary model and other fallbacks`,
+        { modelKey, provider: fallback.provider },
+      )
+    providers.add(fallback.provider)
+    if (primary.kind === 'text') {
+      if (paramMap && Object.keys(paramMap).length > 0)
+        throw fallbackError('Parameter mapping is only supported for media models', { modelKey })
+      if (primary.supportsTools && !fallback.supportsTools)
+        throw fallbackError(`Fallback ${modelKey} does not support tool calls`, {
+          modelKey,
+          field: 'supportsTools',
+        })
+    } else {
+      assertMediaParamsCompatible({ ...primary, kind: primary.kind }, fallback, paramMap)
+    }
+  }
+}
+
+type DatabaseOrTransaction = Database | Parameters<Parameters<Database['transaction']>[0]>[0]
+
+/**
+ * 保存前校验：解析形态、读取被引用的模型并调用 `assertModelFallbacks`，返回规范化后的链。
+ * 在保存事务内调用，避免校验与写入之间被引用模型被删除。
+ */
+export async function validateModelFallbacks(
+  db: DatabaseOrTransaction,
+  primary: FallbackModelRef,
+  value: unknown,
+): Promise<ModelFallback[]> {
+  const fallbacks = parseModelFallbacks(value)
+  const keys = [...new Set(fallbacks.map(({ modelKey }) => modelKey))]
+  const rows = keys.length
+    ? await db
+        .select({
+          key: aiModel.key,
+          kind: aiModel.kind,
+          provider: aiModel.provider,
+          supportsTools: aiModel.supportsTools,
+          paramsSchema: aiModel.paramsSchema,
+        })
+        .from(aiModel)
+        .where(inArray(aiModel.key, keys))
+    : []
+  assertModelFallbacks(primary, fallbacks, new Map(rows.map((row) => [row.key, row])))
+  return fallbacks
+}
+
+/** 从所有引用 `key` 的备用链中移除它；须与删除模型在同一事务内执行。返回受影响的模型 key。 */
+export async function removeModelFromFallbacks(
+  db: DatabaseOrTransaction,
+  key: string,
+): Promise<string[]> {
+  const rows = await db
+    .update(aiModel)
+    .set({
+      fallbacks: sql`coalesce((select jsonb_agg(entry order by ordinality) from jsonb_array_elements(${aiModel.fallbacks}) with ordinality as item(entry, ordinality) where entry->>'modelKey' <> ${key}), '[]'::jsonb)`,
+    })
+    .where(sql`${aiModel.fallbacks} @> ${JSON.stringify([{ modelKey: key }])}::jsonb`)
+    .returning({ key: aiModel.key })
+  return rows.map((row) => row.key)
+}
+
+/**
+ * 删除模型并在同一事务内从所有备用链中移除它（spec「删除被引用的备用模型」）。
+ * 可传数据库或外层事务。
+ */
+export async function deleteModelByKey(
+  db: DatabaseOrTransaction,
+  key: string,
+): Promise<{ deleted: boolean; detachedFrom: string[] }> {
+  const run = async (tx: DatabaseOrTransaction) => {
+    const detachedFrom = await removeModelFromFallbacks(tx, key)
+    const deleted = await tx
+      .delete(aiModel)
+      .where(eq(aiModel.key, key))
+      .returning({ id: aiModel.id })
+    return { deleted: deleted.length > 0, detachedFrom }
+  }
+  // 外层已是事务时 drizzle 以 savepoint 嵌套，仍与外层一起提交或回滚。
+  return (db as Database).transaction(run)
+}
+
+/** 备用链中的一个执行候选：带上该备用的参数改名映射（主模型为 undefined）。 */
+export interface ModelCandidate extends AvailableModel {
+  readonly paramMap?: Readonly<Record<string, string>> | undefined
+}
+
+/**
+ * 运行时候选（供媒体切换与文本备用包装使用）：按顺序返回 `[主, ...备用]`。
+ * 备用即使已停用或不在套餐可见列表中也返回（spec「备用模型不影响用户可见性与价格」）；
+ * 已删除、类型不符或计费配置不合法的备用跳过。服务商是否已配置由调用方按运行环境判断。
+ * 计费始终使用主模型（第一个候选）的 `pricing`。
+ */
+export async function resolveModelCandidates(
+  ctx: Pick<ModelRegistryContext, 'store'>,
+  primary: AvailableModel,
+): Promise<ModelCandidate[]> {
+  const fallbacks = primary.fallbacks.slice(0, MAX_MODEL_FALLBACKS)
+  if (fallbacks.length === 0) return [primary]
+  const rows = await ctx.store.findByKeys(fallbacks.map(({ modelKey }) => modelKey))
+  const byKey = new Map(rows.map((row) => [row.key, row]))
+  const candidates: ModelCandidate[] = [primary]
+  for (const { modelKey, paramMap } of fallbacks) {
+    const row = byKey.get(modelKey)
+    if (!row || row.kind !== primary.kind || row.key === primary.key) continue
+    const model = toAvailable(row)
+    if (!model || parseAcceptanceFault(model) !== undefined) continue
+    candidates.push(paramMap ? { ...model, paramMap } : model)
+  }
+  return candidates
 }

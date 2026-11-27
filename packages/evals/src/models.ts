@@ -55,6 +55,7 @@ export function availableModel(key: string, spec: ModelSpec): AvailableModel {
     tags: [],
     paramsSchema: null,
     sort: 0,
+    fallbacks: [],
   }
 }
 

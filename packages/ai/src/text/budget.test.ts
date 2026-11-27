@@ -231,6 +231,7 @@ describe('默认模型工厂', () => {
       tags: [],
       paramsSchema: null,
       sort: 0,
+      fallbacks: [],
     }
     expectAppError(() => defaultLanguageModelFactory(model, {}), AI_PROVIDER_NOT_CONFIGURED, 503)
   })

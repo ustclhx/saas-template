@@ -81,6 +81,7 @@ describe('single reply stream', () => {
         tags: [],
         paramsSchema: {},
         sort: 0,
+        fallbacks: [],
       }
       const model = defaultLanguageModelFactory(registered, {
         AI_TEXT_EGRESS: 'direct',

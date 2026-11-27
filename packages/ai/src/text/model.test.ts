@@ -51,6 +51,7 @@ function model(provider: string): AvailableModel {
     tags: [],
     paramsSchema: null,
     sort: 0,
+    fallbacks: [],
   }
 }
 

@@ -2,13 +2,13 @@
 
 ## 1. 数据与模型登记
 
-- [ ] 1.1 迁移：`ai_model.fallbacks`、`ai_task.provider_attempts`（jsonb，默认 `[]`）；`pnpm --filter @saas/db db:migrate` 在隔离库通过，schema 快照提交
-- [ ] 1.2 `packages/ai/src/models.ts` 增加备用链解析与保存校验（同类型、不含自身、服务商互不相同、≤2、paramMap 后 schema 兼容），删除模型时从引用链移除；单测覆盖规格「备用模型配置」全部场景
-- [ ] 1.3 备用模型不进入用户模型列表、权益与预计消耗；单测覆盖「备用模型对用户隐藏」
+- [x] 1.1 迁移：`ai_model.fallbacks`、`ai_task.provider_attempts`（jsonb，默认 `[]`）；`pnpm --filter @saas/db db:migrate` 在隔离库通过，schema 快照提交
+- [x] 1.2 `packages/ai/src/models.ts` 增加备用链解析与保存校验（同类型、不含自身、服务商互不相同、≤2、paramMap 后 schema 兼容），删除模型时从引用链移除；单测覆盖规格「备用模型配置」全部场景
+- [x] 1.3 备用模型不进入用户模型列表、权益与预计消耗；单测覆盖「备用模型对用户隐藏」
 
 ## 2. 错误分类
 
-- [ ] 2.1 新增 `MediaFailure` 分类与可切换判定，fal 适配器映射现有错误（HTTP 状态、`error_type`）；`fal.test.ts` 补每类样例并通过
+- [x] 2.1 新增 `MediaFailure` 分类与可切换判定，fal 适配器映射现有错误（HTTP 状态、`error_type`）；`fal.test.ts` 补每类样例并通过
 
 ## 3. Replicate 服务商
 

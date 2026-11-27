@@ -31,6 +31,30 @@ const timestamps = {
  */
 export type AiPricingJson = { mode: 'per_call' | 'token' | 'per_unit' } & Record<string, unknown>
 
+/**
+ * 备用模型链的 JSON 形态（add-media-provider-fallback 决策 D2），与 `@saas/ai` 的 `ModelFallback` 结构一致；
+ * db 层不依赖 @saas/ai，保存前一律经 `validateModelFallbacks` 校验。
+ */
+export interface AiModelFallbackJson {
+  modelKey: string
+  /** 主模型字段 → 备用模型字段；未列出的字段同名透传。 */
+  paramMap?: Record<string, string>
+}
+
+/**
+ * 媒体任务的一次服务商尝试（add-media-provider-fallback 决策 D4）。
+ * `failure.kind` 取 `@saas/ai` 的 `FailureKind`；不记录参数与提示词。
+ */
+export interface AiProviderAttemptJson {
+  provider: string
+  modelKey: string
+  providerModelId: string
+  jobId?: string
+  failure?: { kind: string; code?: string }
+  /** ISO 时间 */
+  at: string
+}
+
 /** 文本输出用量已包含 reasoning；absorbed 为平台承担的废弃 attempt 用量。 */
 export interface AiTextUsage {
   inputTokens: number
@@ -84,6 +108,8 @@ export const aiModel = pgTable(
     minPlanFeatures: jsonb('min_plan_features').$type<string[]>().notNull().default([]),
     paramsSchema: jsonb('params_schema').$type<Record<string, unknown>>(),
     supportsTools: boolean('supports_tools').notNull().default(false),
+    /** 有序备用模型（以 key 引用），至多 MAX_MODEL_FALLBACKS 个；只在服务端切换时使用。 */
+    fallbacks: jsonb('fallbacks').$type<AiModelFallbackJson[]>().notNull().default([]),
     enabled: boolean('enabled').notNull().default(true),
     sort: integer('sort').notNull().default(0),
     ...timestamps,
@@ -287,6 +313,11 @@ export const aiTask = pgTable(
     provider: text('provider').notNull(),
     providerJobId: text('provider_job_id'),
     providerRequestKey: text('provider_request_key').notNull(),
+    /** 每次服务商尝试的记录；`provider` / `provider_job_id` 始终表示当前尝试。 */
+    providerAttempts: jsonb('provider_attempts')
+      .$type<AiProviderAttemptJson[]>()
+      .notNull()
+      .default([]),
     callbackPayload: jsonb('callback_payload').$type<Record<string, unknown>>(),
     workflowInstanceId: text('workflow_instance_id'),
     holdId: uuid('hold_id').references(() => creditHold.id, { onDelete: 'restrict' }),

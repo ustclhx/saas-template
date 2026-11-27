@@ -1,6 +1,7 @@
 import { AppError } from '@saas/shared'
 import { z } from 'zod'
-import type { MediaProvider, MediaResult, MediaStatus } from './provider.ts'
+import { type FailureKind, failureKindFromStatus, ProviderFailure } from '../failover/failure.ts'
+import type { MediaError, MediaProvider, MediaResult, MediaStatus } from './provider.ts'
 
 const QUEUE_ORIGIN = 'https://queue.fal.run'
 const JWKS_URL = 'https://rest.fal.ai/.well-known/jwks.json'
@@ -40,11 +41,132 @@ const jwksSchema = z.object({
 
 export type FalSubmissionOutcome = 'ambiguous' | 'rejected'
 
+/*
+ * fal 失败分类（add-media-provider-fallback 决策 D3）。错误类型取值出自官方文档，核对日期 2026-11-27：
+ * https://fal.ai/docs/model-apis/errors （模型级 detail[].type 与请求级 error_type / X-Fal-Error-Type）
+ * https://fal.ai/docs/model-apis/model-endpoints/queue （COMPLETED 状态的 error / error_type）
+ * https://fal.ai/docs/model-apis/model-endpoints/webhooks （status=ERROR 的 error 与 payload.detail）
+ */
+
+/** 内容审核：fal 自身或合作方的安全过滤拒绝，无单独的 NSFW 类型。 */
+const FAL_CONTENT_POLICY_TYPES: ReadonlySet<string> = new Set(['content_policy_violation'])
+
+/** 服务端与基础设施错误（文档中 500 / 502 / 503 / 504），换服务商可能成功。 */
+const FAL_PROVIDER_ERROR_TYPES: ReadonlySet<string> = new Set([
+  'internal_server_error',
+  'generation_timeout',
+  'downstream_service_error',
+  'downstream_service_unavailable',
+  'request_timeout',
+  'startup_timeout',
+  'runner_scheduling_failure',
+  'runner_connection_timeout',
+  'runner_disconnected',
+  'runner_connection_refused',
+  'runner_connection_error',
+  'runner_incomplete_response',
+  'runner_server_error',
+  'internal_error',
+])
+
+/** 请求本身的问题（文档中 400 / 422，不可重试）；换服务商同样会失败或产出不同语义。 */
+const FAL_REJECTED_INPUT_TYPES: ReadonlySet<string> = new Set([
+  'bad_request',
+  'no_media_generated',
+  'value_error',
+  'input_value_error',
+  'missing',
+  'image_too_small',
+  'image_too_large',
+  'image_load_error',
+  'file_download_error',
+  'face_detection_error',
+  'file_too_large',
+  'greater_than',
+  'greater_than_equal',
+  'less_than',
+  'less_than_equal',
+  'multiple_of',
+  'sequence_too_short',
+  'sequence_too_long',
+  'one_of',
+  'feature_not_supported',
+  'invalid_archive',
+  'archive_file_count_below_minimum',
+  'archive_file_count_exceeds_maximum',
+  'audio_duration_too_long',
+  'audio_duration_too_short',
+  'unsupported_audio_format',
+  'unsupported_image_format',
+  'unsupported_video_format',
+  'video_duration_too_long',
+  'video_duration_too_short',
+])
+
+/**
+ * 按 fal 错误类型分类；旧格式带点号后缀（如 `value_error.missing`）取前缀。
+ * 未知类型按 provider_error（决策 D3「未知错误按 provider_error」）。
+ */
+export function falErrorTypeKind(type: string): FailureKind {
+  const base = type.split('.')[0] ?? type
+  if (FAL_CONTENT_POLICY_TYPES.has(base)) return 'content_policy'
+  if (FAL_REJECTED_INPUT_TYPES.has(base)) return 'rejected_input'
+  if (FAL_PROVIDER_ERROR_TYPES.has(base)) return 'provider_error'
+  return 'provider_error'
+}
+
+/**
+ * HTTP 请求失败的分类：可能已受理的提交一律 ambiguous（不切换，避免重复生成）；
+ * 其余按状态码：429 限流、401/403 鉴权、5xx 与网络异常服务端错误、400/422 等请求被拒。
+ */
+function falRequestKind(
+  httpStatus: number | undefined,
+  submissionOutcome: FalSubmissionOutcome | undefined,
+): FailureKind {
+  if (submissionOutcome === 'ambiguous') return 'ambiguous'
+  return failureKindFromStatus(httpStatus)
+}
+
+const detailSchema = z.object({
+  detail: z.array(z.object({ type: z.string().min(1) }).loose()).min(1),
+})
+
+/** 生成失败（队列状态或回调）的分类：优先 error_type，其次 payload.detail[].type，再次错误文本中的状态码。 */
+function falJobErrorKind(
+  errorType: string | null | undefined,
+  payload: unknown,
+  error?: string | null,
+) {
+  const types = [
+    ...(errorType ? [errorType] : []),
+    ...(detailSchema.safeParse(payload).data?.detail.map((item) => item.type) ?? []),
+  ]
+  const kinds = types.map(falErrorTypeKind)
+  // 多个类型并存时取最不该切换的：内容审核优先于参数错误，再到服务端错误。
+  for (const kind of ['content_policy', 'rejected_input', 'provider_error'] as const)
+    if (kinds.includes(kind)) return kind
+  const status = /status code:?\s*(\d{3})/i.exec(error ?? '')?.[1]
+  return status ? failureKindFromStatus(Number(status)) : 'provider_error'
+}
+
+function falJobError(
+  errorType: string | null | undefined,
+  message: string,
+  payload?: unknown,
+): MediaError {
+  return {
+    code: errorType ?? 'FAL_GENERATION_FAILED',
+    message,
+    kind: falJobErrorKind(errorType, payload, message),
+  }
+}
+
 /**
  * 不附带上游响应或网络错误，避免把请求参数与密钥泄露给客户端或日志。
  * causeName 只保留底层异常的类名（如 TypeError / TimeoutError），用于定位传输失败原因。
+ * `kind` 为失败分类（ProviderFailure），供媒体切换判断。
  */
-export class FalProviderError extends AppError {
+export class FalProviderError extends ProviderFailure {
   readonly httpStatus: number | undefined
   readonly submissionOutcome: FalSubmissionOutcome | undefined
   readonly causeName: string | undefined
@@ -56,7 +178,7 @@ export class FalProviderError extends AppError {
     submissionOutcome?: FalSubmissionOutcome,
     causeName?: string,
   ) {
-    super(code, message, { status: 502 })
+    super(falRequestKind(httpStatus, submissionOutcome), code, message, { status: 502 })
     this.httpStatus = httpStatus
     this.submissionOutcome = submissionOutcome
     this.causeName = causeName
@@ -275,10 +397,7 @@ export function createFalMediaProvider(options: FalMediaProviderOptions): MediaP
       if (status.status === 'IN_QUEUE') return { status: 'queued' }
       if (status.status === 'IN_PROGRESS') return { status: 'running' }
       if (status.error)
-        return {
-          status: 'failed',
-          error: { code: status.error_type ?? 'FAL_GENERATION_FAILED', message: status.error },
-        }
+        return { status: 'failed', error: falJobError(status.error_type, status.error) }
       return { status: 'succeeded', result: mediaResult(await json(await request(path, 'GET'))) }
     },
     async cancel(jobId) {
@@ -328,10 +447,11 @@ export function createFalMediaProvider(options: FalMediaProviderOptions): MediaP
       if (payload.status === 'ERROR') {
         return {
           jobId: payload.request_id,
-          error: {
-            code: payload.error_type ?? 'FAL_GENERATION_FAILED',
-            message: payload.error ?? 'fal.ai generation failed',
-          },
+          error: falJobError(
+            payload.error_type,
+            payload.error ?? 'fal.ai generation failed',
+            payload.payload,
+          ),
         }
       }
       // 序列化失败的回调仍经验签，交给调用方轮询，不把缺失结果当作生成失败。

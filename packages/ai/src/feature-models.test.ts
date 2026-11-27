@@ -46,6 +46,7 @@ it('解析显式和顺序沿用，跳过停用、异种和不存在的模型，�
       minPlanFeatures: [],
       paramsSchema: null,
       supportsTools: false,
+      fallbacks: [],
       sort: 0,
       createdAt: new Date(0),
       updatedAt: new Date(0),
@@ -58,6 +59,7 @@ it('解析显式和顺序沿用，跳过停用、异种和不存在的模型，�
   vi.mocked(dbModelStore).mockReturnValue({
     listEnabled: async () => rows.filter(({ enabled }) => enabled),
     findEnabled: async () => undefined,
+    findByKeys: async () => [],
   })
   const values: Record<string, string> = { 'ai.model.tertiary': 'third' }
   const settingsCtx = { store: { find: async (key: string) => values[key] } }
