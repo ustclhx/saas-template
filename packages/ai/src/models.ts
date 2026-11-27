@@ -598,10 +598,12 @@ export interface ModelCandidate extends AvailableModel {
  * 备用即使已停用或不在套餐可见列表中也返回（spec「备用模型不影响用户可见性与价格」）；
  * 已删除、类型不符或计费配置不合法的备用跳过。服务商是否已配置由调用方按运行环境判断。
  * 计费始终使用主模型（第一个候选）的 `pricing`。
+ * `requiresTools`（agent）时再跳过当前不支持工具调用的备用：保存时已校验，但管理员之后可能关掉备用的工具标记。
  */
 export async function resolveModelCandidates(
   ctx: Pick<ModelRegistryContext, 'store'>,
   primary: AvailableModel,
+  { requiresTools }: Pick<ModelAvailabilityOptions, 'requiresTools'> = {},
 ): Promise<ModelCandidate[]> {
   const fallbacks = primary.fallbacks.slice(0, MAX_MODEL_FALLBACKS)
   if (fallbacks.length === 0) return [primary]
@@ -611,6 +613,7 @@ export async function resolveModelCandidates(
   for (const { modelKey, paramMap } of fallbacks) {
     const row = byKey.get(modelKey)
     if (!row || row.kind !== primary.kind || row.key === primary.key) continue
+    if (requiresTools && !supportsToolCalls(row)) continue
     const model = toAvailable(row)
     if (!model || parseAcceptanceFault(model) !== undefined) continue
     candidates.push(paramMap ? { ...model, paramMap } : model)

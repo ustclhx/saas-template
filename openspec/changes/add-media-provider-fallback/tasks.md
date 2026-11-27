@@ -46,5 +46,5 @@
 
 - [ ] 8.1 使用者确认后写入 `REPLICATE_API_TOKEN`、`REPLICATE_WEBHOOK_SECRET`、`KIE_API_KEY` 等 Wrangler secrets，启用两服务商，登记首批主备模型对
 - [ ] 8.2 真实生成：Replicate 与 kie 各一张图、一段视频，验证回调验签、转存与结算；证据写入 `EVIDENCE_DIR`
-- [ ] 8.3 故障注入触发 fal 限流与作业失败，验证切换到 Replicate、再切到 kie、全部失败退款与旧回调忽略；文本对话与 agent 各注入一次主模型限流验证切换；证据写入 `EVIDENCE_DIR`
+- [ ] 8.3 故障注入触发 fal 限流与作业失败，验证切换到 Replicate、再切到 kie、全部失败退款与旧回调忽略；文本对话注入一次主模型限流验证切换（`chat-before-stream` 故障模型配备用）；agent 不加故障注入，改用真实配置模拟：staging 上让 agent 主模型指向未配置密钥的服务商，触发 `unavailable` 切换；证据写入 `EVIDENCE_DIR`
 - [ ] 8.4 升级说明 `docs/upgrades/<版本>.md`（非破坏、新 secrets、默认关闭）并按发版流程打 tag

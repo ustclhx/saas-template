@@ -203,10 +203,10 @@ export async function runAgentTurn(
   const tags = { turnId: turn.turnId, conversationId: identity.conversationId }
   // 备用链（add-media-provider-fallback D7）：每一步各自在无输出前切换，计费与上限仍按主模型（turn.pricing）。
   // 候选解析失败只退回主模型，不让已预扣的轮次卡在 running。
-  const candidates = await resolveModelCandidates(
-    { store: dbModelStore(deps.db) },
-    turn.model,
-  ).catch((error: unknown) => {
+  // agent 需要工具调用：跳过保存后被关掉工具标记的备用
+  const candidates = await resolveModelCandidates({ store: dbModelStore(deps.db) }, turn.model, {
+    requiresTools: true,
+  }).catch((error: unknown) => {
     log.error('agents.turn.fallbacks_failed', { ...tags, errorCode: errorCodeOf(error) })
     return [turn.model]
   })

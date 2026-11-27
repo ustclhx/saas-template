@@ -402,4 +402,27 @@ describe('备用模型不影响用户可见性与价格', () => {
     const lone = { ...primary, fallbacks: [] }
     expect(await resolveModelCandidates({ store }, lone)).toEqual([lone])
   })
+
+  it('agent（requiresTools）跳过保存后被关掉工具标记的备用，顺序不变', async () => {
+    const store = memoryStore([
+      row({
+        id: 'p',
+        key: 'agent-primary',
+        kind: 'text',
+        provider: 'openai',
+        supportsTools: true,
+        fallbacks: [{ modelKey: 'no-tools' }, { modelKey: 'with-tools' }],
+      }),
+      row({ id: 'n', key: 'no-tools', kind: 'text', provider: 'anthropic', supportsTools: false }),
+      row({ id: 'w', key: 'with-tools', kind: 'text', provider: 'google', supportsTools: true }),
+    ])
+    const primary = await requireAvailableModel({ store }, plan(['*']), 'p', {
+      requiresTools: true,
+    })
+    const keys = async (options?: { requiresTools?: boolean }) =>
+      (await resolveModelCandidates({ store }, primary, options)).map(({ key }) => key)
+    expect(await keys({ requiresTools: true })).toEqual(['agent-primary', 'with-tools'])
+    // 对话不要求工具：两个备用都保留
+    expect(await keys()).toEqual(['agent-primary', 'no-tools', 'with-tools'])
+  })
 })
