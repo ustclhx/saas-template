@@ -146,6 +146,15 @@ async function chooseMediaCandidates(
       })
       continue
     }
+    // 首版只在异步服务商之间切换：同步服务商（workers-ai）不作为备用。
+    if (!primary && getMediaProviderDefinition(candidate.provider)?.synchronous) {
+      skipped.push({
+        modelKey: candidate.key,
+        provider: candidate.provider,
+        failure: { kind: 'unavailable', code: 'synchronous_provider' },
+      })
+      continue
+    }
     let request = validated
     if (!primary) {
       try {
@@ -160,6 +169,15 @@ async function chooseMediaCandidates(
           modelKey: candidate.key,
           provider: candidate.provider,
           failure: { kind: 'rejected_input', code: error.code },
+        })
+        continue
+      }
+      // 备用按自身计量字段（含默认值）可能多生成：数量超过主模型上限的备用不可用，用户只按主模型数量结算。
+      if (request.unitsLimit > validated.unitsLimit) {
+        skipped.push({
+          modelKey: candidate.key,
+          provider: candidate.provider,
+          failure: { kind: 'rejected_input', code: 'units_mismatch' },
         })
         continue
       }
@@ -827,7 +845,8 @@ export function handleMediaWebhook(
           await requireCapability(deps.workflow, 'Media workflow').get(located.workflowInstanceId)
         ).sendEvent({
           type: MEDIA_DONE_EVENT,
-          payload: { taskId },
+          // 带尝试序号：Workflow 忽略旧尝试残留的唤醒事件。
+          payload: { taskId, attempt },
         })
     } catch {
       log.warn('ai.media.callback_event_failed', { taskId })

@@ -13,7 +13,6 @@ import {
   mediaAttemptIndex,
   mediaAttemptRequest,
   mediaCallbackUrl,
-  nextMediaCandidate,
   readMediaFailover,
   readMediaFault,
   readMediaTaskInput,
@@ -487,7 +486,7 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
     const result = await step.do(
       `failover-a${attempt}`,
       async (): Promise<
-        { status: 'switched'; task: string } | { status: 'exhausted' | 'stopped' }
+        { status: 'switched'; task: string } | { status: 'exhausted' | 'refused' | 'stopped' }
       > => {
         if (!(await active())) return { status: 'stopped' }
         const switched = await switchMediaTaskAttempt(deps.db, task, {
@@ -508,6 +507,33 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
     attempt = mediaAttemptIndex(current)
     return true
   }
+  /**
+   * 等待当前尝试的回调事件。事件只带任务与尝试序号；旧尝试残留的事件不结束等待，而是按持久步骤算出的
+   * 原定截止时间继续等待（步骤名带轮次计数，重放确定）。没有备用的任务只有序号 0，与升级前相同只等一次。
+   */
+  const waitAttemptEvent = async (name: string, timeoutMs: number) => {
+    if (!hasChain()) {
+      await step
+        .waitForEvent(named(name), { type: MEDIA_DONE_EVENT, timeoutMs: Math.max(1, timeoutMs) })
+        .catch(() => null)
+      return
+    }
+    const until = await step.do(named(`${name}-until`), async () => now() + Math.max(1, timeoutMs))
+    for (let round = 0; ; round++) {
+      const remaining = until - now()
+      if (round > 0 && remaining <= 0) return
+      const event = await step
+        .waitForEvent<{ taskId?: string; attempt?: number }>(
+          named(round === 0 ? name : `${name}-${round}`),
+          { type: MEDIA_DONE_EVENT, timeoutMs: Math.max(1, remaining) },
+        )
+        .catch(() => null)
+      if (!event) return
+      const eventAttempt = typeof event.payload?.attempt === 'number' ? event.payload.attempt : 0
+      if (eventAttempt === attempt) return
+      log.info('ai.media.stale_event', { taskId, attempt, eventAttempt })
+    }
+  }
   // 配置了备用的任务进入切换步骤（记录本次失败，并在步骤内判断能否切换）；没有备用的任务步骤与升级前一致。
   const hasChain = () => readMediaFailover(current) !== undefined
   try {
@@ -518,24 +544,41 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
     // 持久步骤可能直接返回缓存，外围自检也必须执行，避免晚到重放继续业务步骤。
     if (!(await active())) return stopped()
     while (true) {
-      const af = attemptFault()
-      let original: TaskMediaProvider
-      try {
-        original = deps.provider(current)
-      } catch (error) {
-        // 尚未提交的尝试遇到服务商停用或缺凭据：按 unavailable 切换。
-        if (
-          providerUnavailable(error) &&
-          !current.providerJobId &&
-          !current.output?.submissionAttempted &&
-          nextMediaCandidate(current) !== undefined
-        ) {
-          if (!(await failOver({ kind: 'unavailable', code: (error as AppError).code }, error)))
+      if (hasChain()) {
+        // 当前尝试与服务商可用性以数据库为准，并在持久步骤内判定：load-task 快照在重放时永远是
+        // 提交前的状态，不能据它决定用哪家服务商、能否切换（避免已提交的作业被重复提交）。
+        const resolved = await step.do(
+          named('resolve-attempt'),
+          async (): Promise<
+            { stopped: true } | { stopped: false; task: string; unavailable: string | null }
+          > => {
+            if (!(await active())) return { stopped: true }
+            const fresh = await scoped(deps.db, task.workspaceId).findById(aiTask, task.id)
+            let unavailable: string | null = null
+            try {
+              deps.provider(fresh)
+            } catch (error) {
+              if (!providerUnavailable(error)) throw error
+              unavailable = (error as AppError).code
+            }
+            return { stopped: false, task: JSON.stringify(fresh), unavailable }
+          },
+        )
+        if (!('task' in resolved)) return stopped()
+        current = JSON.parse(resolved.task) as AiTask
+        attempt = mediaAttemptIndex(current)
+        if (resolved.unavailable) {
+          const error = new AppError(resolved.unavailable, 'Media provider is not available', {
+            status: 503,
+          })
+          // 切换步骤在锁内再核对：该尝试已提交或提交确认中时拒绝切换。
+          if (!(await failOver({ kind: 'unavailable', code: resolved.unavailable }, error)))
             return stopped()
           continue
         }
-        throw error
       }
+      const af = attemptFault()
+      const original = deps.provider(current)
       const provider = af ? wrapMediaFaultProvider(original, af, { proof, now }) : original
       if (af?.mode === 'workers-timeout') {
         await step.do('fault-stalled', async () => {
@@ -644,12 +687,7 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
         }
         let adopted = await step.do(named('uncertain-check-callback'), adopt)
         if (!adopted && now() < waitUntil) {
-          await step
-            .waitForEvent(named('wait-uncertain-callback'), {
-              type: MEDIA_DONE_EVENT,
-              timeoutMs: Math.max(1, waitUntil - now()),
-            })
-            .catch(() => null)
+          await waitAttemptEvent('wait-uncertain-callback', waitUntil - now())
           if (!(await active())) return stopped()
           adopted = await step.do(named('uncertain-recheck-callback'), adopt)
         }
@@ -699,12 +737,10 @@ export async function runMediaTask(taskId: string, step: WorkflowStep, deps: Med
       if (!callback?.result && !callback?.error) {
         if (!(await active())) return stopped()
         if (!callback)
-          await step
-            .waitForEvent(named('wait-media-done'), {
-              type: MEDIA_DONE_EVENT,
-              timeoutMs: Math.max(1, Math.min(af?.initialWaitMs ?? 15 * 60_000, deadline - now())),
-            })
-            .catch(() => null)
+          await waitAttemptEvent(
+            'wait-media-done',
+            Math.min(af?.initialWaitMs ?? 15 * 60_000, deadline - now()),
+          )
         if (!(await active())) return stopped()
         callback = await step.do(named('recheck-callback'), checkCallback)
       }

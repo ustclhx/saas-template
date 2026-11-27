@@ -1455,6 +1455,60 @@ describe.skipIf(!templateConfig.plugins.media)('media provider failover', () => 
     expect(await getCreditBalance(db, who.workspaceId)).toMatchObject({ available: 97, held: 3 })
   })
 
+  it('备用按自身计量默认值会超过主模型数量时跳过（units_mismatch），主模型照常受理', async () => {
+    const who = await account('failover-units')
+    const { primary, backup } = await chain({
+      type: 'object',
+      required: ['text'],
+      properties: {
+        text: { type: 'string', minLength: 1 },
+        count: { type: 'integer', minimum: 1, maximum: 4, default: 4 },
+        num_images: { type: 'integer', minimum: 1, maximum: 4 },
+      },
+      'x-media': { unitsParam: 'count' },
+    })
+    const { deps } = dependencies()
+    const taskId = await withProviders(['fal', 'replicate'], () => submitted(who, primary, deps))
+    const task = await scoped(db, who.workspaceId).findById(aiTask, taskId)
+    expect(task.provider).toBe('fal')
+    expect(task.input).toMatchObject({
+      unitsLimit: 1,
+      failover: {
+        candidates: [{ modelKey: primary }],
+        skipped: [
+          {
+            modelKey: backup,
+            provider: 'replicate',
+            failure: { kind: 'rejected_input', code: 'units_mismatch' },
+          },
+        ],
+      },
+    })
+    expect((task.input.failover as { candidates: unknown[] }).candidates).toHaveLength(1)
+  })
+
+  it('同步服务商不作为备用：受理时跳过并记 synchronous_provider', async () => {
+    const who = await account('failover-sync')
+    const primary = await model()
+    const backup = await model({}, 'workers-ai')
+    await sql`update ai_model set fallbacks=${JSON.stringify([{ modelKey: backup }])}::jsonb
+      where key=${primary}`
+    const { deps } = dependencies()
+    const taskId = await submitted(who, primary, deps)
+    const task = await scoped(db, who.workspaceId).findById(aiTask, taskId)
+    expect(task.provider).toBe('fal')
+    expect(task.input.failover).toMatchObject({
+      candidates: [{ modelKey: primary }],
+      skipped: [
+        {
+          modelKey: backup,
+          provider: 'workers-ai',
+          failure: { kind: 'unavailable', code: 'synchronous_provider' },
+        },
+      ],
+    })
+  })
+
   it('所有候选都未配置或参数不兼容时按现有规则拒绝，不建任务也不预扣', async () => {
     const who = await account('failover-none')
     const { deps } = dependencies()

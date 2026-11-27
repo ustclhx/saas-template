@@ -19,6 +19,9 @@ import { readMediaTaskInput } from './input.ts'
 /** 距硬超时不足此时长时不再切换：新作业来不及完成，只会多花费服务商成本。 */
 export const MEDIA_FAILOVER_MIN_REMAINING_MS = 20 * 60_000
 
+/** 「提交确认中」标记，与 media-runner 的 UNCERTAIN 相同。 */
+const MEDIA_SUBMISSION_UNCERTAIN = 'MEDIA_SUBMISSION_UNCERTAIN'
+
 const candidateSchema = z.object({
   modelKey: z.string().min(1),
   provider: z.string().min(1),
@@ -143,6 +146,8 @@ export function attemptsWithJobId(
 export type MediaSwitchResult =
   | { status: 'switched'; task: AiTask }
   | { status: 'exhausted' }
+  /** 上报的失败与数据库中的尝试状态不一致（如 unavailable 但该尝试已提交），拒绝切换。 */
+  | { status: 'refused' }
   | { status: 'stopped' }
 
 const terminal = (task: AiTask) => ['succeeded', 'failed', 'canceled'].includes(task.status)
@@ -167,6 +172,21 @@ export function switchMediaTaskAttempt(
     if (terminal(task)) return { status: 'stopped' }
     const current = mediaAttemptIndex(task)
     if (current > input.attempt) return { status: 'switched', task }
+    // 「服务商不可用」只适用于从未提交的尝试：已有作业、已尝试提交或提交确认中时，原作业可能仍在生成，
+    // 切换会重复生成；由调用方按原错误失败。
+    if (
+      input.failure.kind === 'unavailable' &&
+      (task.providerJobId ||
+        task.output?.submissionAttempted ||
+        task.errorCode === MEDIA_SUBMISSION_UNCERTAIN)
+    ) {
+      log.warn('ai.media.failover_refused', {
+        taskId: task.id,
+        attempt: current,
+        kind: input.failure.kind,
+      })
+      return { status: 'refused' }
+    }
     const at = new Date(input.now).toISOString()
     const attempts = attemptsOf(task).length
       ? attemptsOf(task)
