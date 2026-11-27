@@ -1,3 +1,5 @@
+import type { FailureKind } from '../failover/failure.ts'
+
 export interface MediaResult {
   outputs: {
     url: string
@@ -13,6 +15,8 @@ export interface MediaResult {
 export interface MediaError {
   code: string
   message: string
+  /** 失败分类，决定能否切换到备用模型；缺省按 provider_error 处理。 */
+  kind?: FailureKind
 }
 
 export type MediaStatus =
