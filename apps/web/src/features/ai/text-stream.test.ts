@@ -1,4 +1,8 @@
-import { type AvailableModel, defaultLanguageModelFactory } from '@saas/ai'
+import {
+  type AvailableModel,
+  createTextCandidateChain,
+  defaultLanguageModelFactory,
+} from '@saas/ai'
 import { AppError } from '@saas/shared'
 import {
   type LanguageModel,
@@ -33,7 +37,6 @@ function start(
     model,
     provider: 'deepseek',
     messages: [{ role: 'user', content: 'hello' }],
-    thinking: true,
     continuation: true,
     displayReasoning: true,
     inputTokens: 10,
@@ -83,13 +86,19 @@ describe('single reply stream', () => {
         sort: 0,
         fallbacks: [],
       }
-      const model = defaultLanguageModelFactory(registered, {
-        AI_TEXT_EGRESS: 'direct',
-        DEEPSEEK_API_KEY: 'fixture-key',
-        OPENAI_BASE_URL: 'https://provider.example/v1',
-        OPENAI_API_KEY: 'fixture-key',
+      // 思考参数由备用链按候选 provider 下发（createTextCandidateChain）
+      const chain = createTextCandidateChain({
+        candidates: [registered],
+        create: (candidate) =>
+          defaultLanguageModelFactory(candidate, {
+            AI_TEXT_EGRESS: 'direct',
+            DEEPSEEK_API_KEY: 'fixture-key',
+            OPENAI_BASE_URL: 'https://provider.example/v1',
+            OPENAI_API_KEY: 'fixture-key',
+          }),
+        thinking,
       })
-      const result = start(model, { provider, thinking })
+      const result = start(chain.model, { provider })
       expect(await result.done).toMatchObject({ text: 'answer', status: 'completed' })
       if (expected) expect(body).toMatchObject({ thinking: { type: expected } })
       else expect(body).not.toHaveProperty('thinking')

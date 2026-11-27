@@ -119,6 +119,12 @@ function ConversationDialog({ view, onClose }: { view: ConversationView | null; 
                       ? m.admin_feedback_role_user()
                       : m.admin_feedback_role_assistant()}
                     {message.rated ? ` · ${m.admin_feedback_rated_reply()}` : ''}
+                    {message.servedModelKey
+                      ? ` · ${m.admin_feedback_served_model({
+                          served: message.servedModelKey,
+                          primary: message.modelKey ?? '—',
+                        })}`
+                      : ''}
                   </span>
                   <p className="whitespace-pre-wrap break-words">{message.text || '—'}</p>
                 </li>

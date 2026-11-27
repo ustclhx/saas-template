@@ -6,7 +6,7 @@ import { type AiPricingJson, aiMessage, aiModel } from '@saas/db'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import type { KeyValueStore } from '@saas/platform'
 import { AppError, newId } from '@saas/shared'
-import { simulateReadableStream } from 'ai'
+import { APICallError, simulateReadableStream } from 'ai'
 import { MockLanguageModelV4 } from 'ai/test'
 import { eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -839,6 +839,10 @@ describe('message feedback', () => {
       )[0]?.shared_at ?? null
     const sharedAt = await sharedAtOf()
     expect(sharedAt).not.toBeNull()
+    // 被评回复由备用模型生成（文本备用记入检查点）：共享视图显示实际模型与主模型
+    await sql`update ai_message set usage_checkpoint =
+      coalesce(usage_checkpoint, '{}'::jsonb) || '{"servedModelKeys":["backup-model"]}'::jsonb
+      where id=${third}`
     const shared = await view(id)
     expect(shared.messages.map((message) => [message.role, message.text, message.rated])).toEqual([
       ['user', 'QUESTION-2', false],
@@ -846,6 +850,13 @@ describe('message feedback', () => {
       ['user', 'QUESTION-3', false],
       ['assistant', 'ANSWER-3', true],
     ])
+    expect(shared.messages.map((message) => message.servedModelKey)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      'backup-model',
+    ])
+    expect(shared.messages.at(-1)?.modelKey).toBe(model.key)
     expect(JSON.stringify(shared)).not.toContain(CONTEXT_BODY)
     const audits = await viewAudits(id)
     expect(audits).toEqual([
@@ -1074,6 +1085,56 @@ describe('follow-up questions', () => {
     const holds = await sql<{ status: string; ref_id: string }[]>`
       select status, ref_id from credit_hold where workspace_id=${owner.workspaceId} order by id desc limit 1`
     expect(holds).toEqual([{ status: 'captured', ref_id: messageId }])
+  })
+
+  it('falls back when the primary model is rate limited; charges the primary price and applies thinking per candidate', async () => {
+    const { owner, messageId } = await setupReply(1000)
+    const primary = await textModel({ mode: 'token', inputPer1k: 10, outputPer1k: 10 })
+    const backup = await textModel({ mode: 'token', inputPer1k: 1000, outputPer1k: 1000 })
+    await db
+      .update(aiModel)
+      .set({ provider: 'deepseek', enabled: false })
+      .where(eq(aiModel.id, backup.id))
+    await db
+      .update(aiModel)
+      .set({ fallbacks: [{ modelKey: backup.key }] })
+      .where(eq(aiModel.id, primary.id))
+    const limited = new MockLanguageModelV4({
+      doGenerate: async () => {
+        throw new APICallError({
+          message: 'rate limited',
+          url: 'https://provider.example/v1/chat',
+          requestBodyValues: {},
+          statusCode: 429,
+          isRetryable: false,
+        })
+      },
+    })
+    const fallback = generateModel('["One?", "Two?"]')
+    const before = (await getCreditBalance(db, owner.workspaceId)).available
+    const result = await generateFollowUps(
+      {
+        db,
+        cache: memoryKv(),
+        env: {},
+        workersAi: false,
+        entitlements,
+        languageModelFactory: (candidate) => (candidate.key === backup.key ? fallback : limited),
+        config: config({ charge: true, count: 2, modelKey: primary.key }),
+        overage: { maxRatio: 0, maxCredits: 0, dailyBudgetPerWorkspace: 0 },
+      },
+      { workspaceId: owner.workspaceId, userId: owner.userId },
+      messageId,
+    )
+    expect(result).toEqual({ questions: ['One?', 'Two?'] })
+    expect(limited.doGenerateCalls).toHaveLength(1)
+    // 主模型（mock）不可控 thinking，不下发；备用 deepseek 按自身 provider 显式关闭
+    expect(limited.doGenerateCalls[0]?.providerOptions).toBeUndefined()
+    expect(fallback.doGenerateCalls[0]?.providerOptions).toMatchObject({
+      deepseek: { thinking: { type: 'disabled' } },
+    })
+    // 100 输入 + 20 输出 token 按主模型每千 10 积分 → 2；按备用单价会是 120
+    expect(before - (await getCreditBalance(db, owner.workspaceId)).available).toBe(2)
   })
 
   const chargeDeps = (languageModelFactory: () => MockLanguageModelV4) => ({

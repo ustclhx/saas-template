@@ -1,4 +1,5 @@
 export * from './budget.ts'
+export * from './candidates.ts'
 export * from './capabilities.ts'
 export * from './fallback.ts'
 export * from './fault.ts'

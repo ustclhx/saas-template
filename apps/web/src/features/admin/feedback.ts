@@ -188,6 +188,13 @@ export interface SharedConversationMessage {
   readonly text: string
   /** 是否为被评的回复 */
   readonly rated: boolean
+  /**
+   * 文本备用（add-media-provider-fallback D7）：助手消息由备用模型生成时为实际模型 key，与主模型相同或未知时省略。
+   * 取自 `usage_checkpoint.servedModelKeys`，只在与主模型不同时写入。
+   */
+  readonly servedModelKey?: string
+  /** 有 servedModelKey 时一并给出主模型 key，便于对照 */
+  readonly modelKey?: string
 }
 
 const notFound = () => new AppError('NOT_FOUND', 'Not found', { status: 404 })
@@ -225,6 +232,8 @@ export async function readSharedConversation(scope: AdminActionScope, id: string
     role: aiMessage.role,
     parts: aiMessage.parts,
     conversationId: aiMessage.conversationId,
+    modelKey: aiMessage.modelKey,
+    servedModelKey: sql<string | null>`${aiMessage.usageCheckpoint}->'servedModelKeys'->>0`,
   }
   const [rated] = await tenant
     .select(aiMessage, {
@@ -264,6 +273,9 @@ export async function readSharedConversation(scope: AdminActionScope, id: string
     role: row.role === 'user' ? 'user' : 'assistant',
     text: scrubSecrets(messageText(Array.isArray(row.parts) ? row.parts : [])),
     rated: row.id === rated.id,
+    ...(row.role === 'assistant' && row.servedModelKey && row.servedModelKey !== row.modelKey
+      ? { servedModelKey: row.servedModelKey, ...(row.modelKey ? { modelKey: row.modelKey } : {}) }
+      : {}),
   }))
   await scope.audit({
     action: 'ai.feedback.view_conversation',

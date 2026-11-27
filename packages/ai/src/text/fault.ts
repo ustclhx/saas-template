@@ -3,6 +3,7 @@ import { type AiUsageCheckpoint, aiMessage, type Database, scoped } from '@saas/
 import { AppError } from '@saas/shared'
 import { type LanguageModel, wrapLanguageModel } from 'ai'
 import { and, eq, type SQL, sql } from 'drizzle-orm'
+import { ProviderFailure } from '../failover/failure.ts'
 import { estimateTextTokens } from './budget.ts'
 import { getTextProviderCapabilities } from './capabilities.ts'
 
@@ -13,6 +14,19 @@ export const TEXT_FAULT_MAX_OUTPUT_TOKENS = 1024
 
 const faultError = () =>
   new AppError('ACCEPTANCE_FAULT_INJECTED', 'Acceptance text stream interrupted', { status: 503 })
+
+/**
+ * 流前注入模拟主服务商限流（add-media-provider-fallback D8）：属可切换分类，主模型配置了备用时
+ * 由备用链改用备用模型，用于 staging 验收切换路径；未配置备用时与原先一样失败并全额释放。
+ * 故障包装只套在主候选上，备用模型照常调用。
+ */
+const beforeStreamFaultError = () =>
+  new ProviderFailure(
+    'rate_limited',
+    'ACCEPTANCE_FAULT_INJECTED',
+    'Acceptance text stream interrupted',
+    { status: 503 },
+  )
 
 /** 只替换证明子树；普通用量检查点和最终结算都会保留它。 */
 export async function writeTextFaultProof(
@@ -80,7 +94,7 @@ export function wrapTextFaultModel(
         }
         if (mode === 'chat-before-stream') {
           await save({ ...proof, injected: true, injectedAt: new Date().toISOString() })
-          throw faultError()
+          throw beforeStreamFaultError()
         }
         await save(proof)
         // 证明写入可能经历数据库往返；真实调用前重新检查在途闸门。

@@ -1,4 +1,9 @@
-import type { AvailableModel } from '@saas/ai'
+import {
+  type AvailableModel,
+  createTextCandidateChain,
+  dbModelStore,
+  resolveModelCandidates,
+} from '@saas/ai'
 import { log } from '@saas/shared/log'
 import {
   convertToModelMessages,
@@ -196,8 +201,26 @@ export async function runAgentTurn(
   let checkpoints: Promise<unknown> = Promise.resolve()
 
   const tags = { turnId: turn.turnId, conversationId: identity.conversationId }
+  // 备用链（add-media-provider-fallback D7）：每一步各自在无输出前切换，计费与上限仍按主模型（turn.pricing）。
+  // 候选解析失败只退回主模型，不让已预扣的轮次卡在 running。
+  const candidates = await resolveModelCandidates(
+    { store: dbModelStore(deps.db) },
+    turn.model,
+  ).catch((error: unknown) => {
+    log.error('agents.turn.fallbacks_failed', { ...tags, errorCode: errorCodeOf(error) })
+    return [turn.model]
+  })
+  const servedKeys: string[] = []
+  const chain = createTextCandidateChain({
+    candidates,
+    create: (candidate) => deps.languageModel(candidate),
+    logContext: tags,
+    onSelected: (key) => {
+      if (!servedKeys.includes(key)) servedKeys.push(key)
+    },
+  })
   const result = streamText({
-    model: deps.languageModel(turn.model),
+    model: chain.model,
     system: turn.system,
     messages: await convertToModelMessages(messages),
     tools: input.tools({ agentId: turn.agentId, turnId: turn.turnId, signal }),
@@ -276,6 +299,9 @@ export async function runAgentTurn(
             turnId: turn.turnId,
             delta,
             toolCalls,
+            servedModelKeys: servedKeys.some((key) => key !== turn.model.key)
+              ? [...servedKeys]
+              : undefined,
           })
           // 轮次已被清理器结算：停止生成，结束时的结算因预扣已结算而跳过
           if (!running) controller.abort('settled')

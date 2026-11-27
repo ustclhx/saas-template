@@ -78,6 +78,11 @@ export interface AiUsageCheckpoint extends AiTextUsage {
    * 放在检查点 JSON 中、各写入以 `||` 合并保留，避免为一个短期查找键新增列与迁移。
    */
   clientRequestId?: string
+  /**
+   * 文本备用（add-media-provider-fallback 决策 D7）：实际生成输出的模型 key，只在与主模型（`model_key`）
+   * 不同时写入；agent 轮次按首次使用的顺序累积多步用到的全部模型。与 clientRequestId 一样以 `||` 合并保留，不新增列。
+   */
+  servedModelKeys?: string[]
   /** 验收包装器的最小执行证明；不包含提示词或输出正文。 */
   acceptanceFaultProof?: {
     mode: 'chat-before-stream' | 'chat-mid-stream'

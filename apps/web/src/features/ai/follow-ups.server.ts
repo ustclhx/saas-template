@@ -1,15 +1,15 @@
 import {
   actualCredits,
   aiMessageOrder,
+  createTextCandidateChain,
   dbModelStore,
   defaultLanguageModelFactory,
   estimateCredits,
   estimateInputTokens,
-  getTextProviderCapabilities,
   type LanguageModelFactory,
   listAvailableModels,
   messageText,
-  resolveTextThinking,
+  resolveModelCandidates,
   type TextModelEnv,
   textModelConfig,
 } from '@saas/ai'
@@ -118,8 +118,7 @@ export async function generateFollowUps(
   if (config.charge && model.pricing.mode !== 'token') return { questions: [] }
 
   const prompt = await followUpPrompt(deps.db, scope.workspaceId, message, config.count)
-  const { tokensPerChar, thinking } = textModelConfig(model)
-  const followUpThinking = resolveTextThinking(model.provider, thinking, false)
+  const { tokensPerChar } = textModelConfig(model)
   const inputTokens = estimateInputTokens(
     prompt.map((m) => ({ text: m.content })),
     tokensPerChar,
@@ -158,20 +157,21 @@ export async function generateFollowUps(
 
   let questions: string[]
   try {
-    const languageModel = (deps.languageModelFactory ?? defaultLanguageModelFactory)(
-      model,
-      deps.env,
-    )
+    // 备用链（add-media-provider-fallback D7）：主模型无输出前的服务商侧失败改用备用，计费仍按主模型。
+    // 推荐问题是短输出：各候选按自己的 Provider 显式关闭 thinking，避免 reasoning 耗尽 256 token 的输出预算
+    const factory = deps.languageModelFactory ?? defaultLanguageModelFactory
+    const chain = createTextCandidateChain({
+      candidates: await resolveModelCandidates({ store: dbModelStore(deps.db) }, model),
+      create: (candidate) => factory(candidate, deps.env),
+      thinking: false,
+      logContext: { conversationId: message.conversationId, messageId: message.id },
+    })
     const result = await generateText({
-      model: languageModel,
+      model: chain.model,
       // 与聊天流一致：对象上下文以首条 system 消息传入
       allowSystemInMessages: true,
       messages: prompt,
       maxOutputTokens: MAX_OUTPUT_TOKENS,
-      // 推荐问题是短输出：Provider 可控时显式关闭 thinking，避免 reasoning 耗尽 256 token 的输出预算
-      ...(followUpThinking === undefined
-        ? {}
-        : getTextProviderCapabilities(model.provider).applyThinking({}, followUpThinking)),
     })
     questions = parseQuestions(result.text, config.count)
     if (holdId) {

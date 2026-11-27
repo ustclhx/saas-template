@@ -475,9 +475,25 @@ export async function writeTurnCheckpoint(
     turnId: string
     delta: Partial<TurnUsage>
     toolCalls?: readonly ToolCallRecord[]
+    /**
+     * 文本备用（add-media-provider-fallback D7）：本轮各步实际使用的模型 key，只在含主模型以外的模型时传入；
+     * 与已记录的值按首次出现顺序合并去重（续轮复用同一轮次）。
+     */
+    servedModelKeys?: readonly string[] | undefined
   },
 ): Promise<boolean> {
   const { delta } = input
+  const served = input.servedModelKeys?.length
+    ? sql` || jsonb_build_object('servedModelKeys', (
+        select jsonb_agg(k order by o) from (
+          select k, min(o) as o
+          from jsonb_array_elements_text(
+            coalesce(${aiAgentTurn.usageCheckpoint}->'servedModelKeys', '[]'::jsonb) || ${JSON.stringify(input.servedModelKeys)}::jsonb
+          ) with ordinality as t(k, o)
+          group by k
+        ) as merged
+      ))`
+    : sql``
   const add = (key: keyof TurnUsage, value: number | undefined) =>
     sql`coalesce((${aiAgentTurn.usageCheckpoint}->>${key})::bigint, 0) + ${Math.max(0, Math.floor(value ?? 0))}`
   const checkpoint = sql`coalesce(${aiAgentTurn.usageCheckpoint}, '{}'::jsonb) || jsonb_build_object(
@@ -492,7 +508,7 @@ export async function writeTurnCheckpoint(
     },
     'estimated', coalesce((${aiAgentTurn.usageCheckpoint}->>'estimated')::boolean, false) or ${delta.estimated === true},
     'at', ${new Date().toISOString()}::text
-  )`
+  )${served}`
   const rows = await scoped(db, input.workspaceId)
     .update(
       aiAgentTurn,
