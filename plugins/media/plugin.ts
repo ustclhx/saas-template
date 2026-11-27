@@ -21,7 +21,7 @@ export default definePlugin({
     jobsNode: 'src/node/jobs.ts',
   },
   bindings: { web: [workflow, workersAi], jobs: [workflow, workersAi] },
-  secrets: ['FAL_KEY', 'MEDIA_WEBHOOK_SECRET'],
+  secrets: ['FAL_KEY', 'MEDIA_WEBHOOK_SECRET', 'REPLICATE_API_TOKEN', 'REPLICATE_WEBHOOK_SECRET'],
   messages: 'messages',
   config: z.strictObject({ providers: z.array(z.enum(MEDIA_PROVIDER_IDS)).optional() }),
 })

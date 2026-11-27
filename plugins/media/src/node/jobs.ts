@@ -16,7 +16,13 @@ function registerWorkflows({
   readonly engine: Parameters<typeof createNodeWorkflow>[0]['engine']
   readonly config: Pick<
     NodeEnv,
-    'APP_URL' | 'FAL_KEY' | 'MEDIA_WEBHOOK_SECRET' | 'KIE_API_KEY' | 'KIE_WEBHOOK_SECRET'
+    | 'APP_URL'
+    | 'FAL_KEY'
+    | 'MEDIA_WEBHOOK_SECRET'
+    | 'KIE_API_KEY'
+    | 'KIE_WEBHOOK_SECRET'
+    | 'REPLICATE_API_TOKEN'
+    | 'REPLICATE_WEBHOOK_SECRET'
   >
   readonly template: TemplateConfig
   readonly observer: JobObserver
@@ -36,6 +42,12 @@ function registerWorkflows({
               ...(config.KIE_WEBHOOK_SECRET === undefined
                 ? {}
                 : { KIE_WEBHOOK_SECRET: config.KIE_WEBHOOK_SECRET }),
+              ...(config.REPLICATE_API_TOKEN === undefined
+                ? {}
+                : { REPLICATE_API_TOKEN: config.REPLICATE_API_TOKEN }),
+              ...(config.REPLICATE_WEBHOOK_SECRET === undefined
+                ? {}
+                : { REPLICATE_WEBHOOK_SECRET: config.REPLICATE_WEBHOOK_SECRET }),
             },
             callbackOrigin: config.APP_URL,
             callbackSecret: secret,

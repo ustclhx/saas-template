@@ -69,9 +69,9 @@ async function fixture(t) {
     const workersAi = { name: 'AI', kind: 'ai', optional: true } as const
     export default definePlugin({
       id: 'media', targets: ['cloudflare', 'node'],
-      config: z.object({ providers: z.array(z.enum(['fal', 'workers-ai'])) }),
+      config: z.object({ providers: z.array(z.enum(['fal', 'workers-ai', 'replicate'])) }),
       bindings: { web: [workflow, workersAi], jobs: [workflow, workersAi] },
-      secrets: ['FAL_KEY', 'MEDIA_WEBHOOK_SECRET'],
+      secrets: ['FAL_KEY', 'MEDIA_WEBHOOK_SECRET', 'REPLICATE_API_TOKEN', 'REPLICATE_WEBHOOK_SECRET'],
     })`,
   )
   for (const app of ['web', 'jobs']) {
@@ -1148,7 +1148,7 @@ generatorTest('拒绝覆盖、源树递归复制、非法名称和无效功能�
   assert.match(result.stderr, /非交互模式/)
 })
 
-for (const providers of ['fal', 'workers-ai', '']) {
+for (const providers of ['fal', 'workers-ai', 'replicate', '']) {
   generatorTest(`媒体服务商 ${providers || 'empty'} 的配置、密钥和所有环境绑定一致`, async (t) => {
     const f = await fixture(t)
     const result = await createProject({ ...f.input, 'media-providers': providers }, f.source)
@@ -1157,7 +1157,13 @@ for (const providers of ['fal', 'workers-ai', '']) {
     assert.ok(config.includes(`plugins: { "media": { providers: ${JSON.stringify(list)} } }`))
     const example = await readFile(join(result.target, '.dev.vars.example'), 'utf8')
     assert.equal(example.includes('FAL_KEY='), list.includes('fal'))
-    assert.equal(example.includes('MEDIA_WEBHOOK_SECRET='), list.includes('fal'))
+    assert.equal(
+      example.includes('MEDIA_WEBHOOK_SECRET='),
+      list.includes('fal') || list.includes('replicate'),
+    )
+    for (const name of ['REPLICATE_API_TOKEN=', 'REPLICATE_WEBHOOK_SECRET='])
+      assert.equal(example.includes(name), list.includes('replicate'))
+    assert.equal(result.report.includes('Replicate 账号'), list.includes('replicate'))
     assert.equal(result.report.includes('fal.ai 账号'), list.includes('fal'))
     assert.equal(result.report.includes('Workers AI：'), list.includes('workers-ai'))
     assert.doesNotMatch(example, /(?:^|\n)AI=/)

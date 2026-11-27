@@ -1,0 +1,36 @@
+{
+  "source": {
+    "prediction": "https://replicate.com/docs/reference/http#predictions.get（2026-11-27 核对；字段与 ID、urls 取自官方示例，output 按「files are HTTPS URLs served by replicate.delivery」改为图片 / 视频 URL，路径为占位）",
+    "webhookVector": "https://github.com/standard-webhooks/standard-webhooks/blob/main/libraries/javascript/src/webhook.test.ts「sign function works」（Replicate 验签文档示例头部的首个签名与之相同）"
+  },
+  "prediction": {
+    "id": "gm3qorzdhgbfurvjtvhg6dckhu",
+    "model": "black-forest-labs/flux-schnell",
+    "version": "hidden",
+    "input": { "prompt": "a red square" },
+    "logs": "",
+    "output": ["https://replicate.delivery/xezq/fixture/out-0.webp"],
+    "data_removed": false,
+    "error": null,
+    "status": "succeeded",
+    "source": "api",
+    "created_at": "2023-09-08T16:19:34.765994Z",
+    "started_at": "2023-09-08T16:19:34.779176Z",
+    "completed_at": "2023-09-08T16:19:34.791859Z",
+    "metrics": { "predict_time": 0.012683, "total_time": 0.025865 },
+    "urls": {
+      "web": "https://replicate.com/p/gm3qorzdhgbfurvjtvhg6dckhu",
+      "get": "https://api.replicate.com/v1/predictions/gm3qorzdhgbfurvjtvhg6dckhu",
+      "cancel": "https://api.replicate.com/v1/predictions/gm3qorzdhgbfurvjtvhg6dckhu/cancel"
+    }
+  },
+  "throttled": { "detail": "Request was throttled. Expected available in 1 second." },
+  "webhookVector": {
+    "secret": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+    "id": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+    "timestamp": 1614265330,
+    "payload": "{\"test\": 2432232314}",
+    "signature": "v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE=",
+    "tamperedSignature": "v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OA="
+  }
+}

@@ -122,6 +122,12 @@ const nodeEnvBaseSchema = /* @__PURE__ */ (() =>
     MEDIA_WEBHOOK_SECRET: z.string().min(32).optional(),
     KIE_API_KEY: secret.optional(),
     KIE_WEBHOOK_SECRET: secret.optional(),
+    REPLICATE_API_TOKEN: secret.optional(),
+    // Standard Webhooks 密钥格式：whsec_ 前缀加 base64
+    REPLICATE_WEBHOOK_SECRET: z
+      .string()
+      .regex(/^whsec_[A-Za-z0-9+/]+={0,2}$/)
+      .optional(),
     AI_GATEWAY_ACCOUNT_ID: z.string().optional(),
     AI_GATEWAY_ID: z.string().optional(),
     AI_GATEWAY_TOKEN: secret.optional(),
@@ -201,6 +207,8 @@ export const nodeSecretNames = [
   'MEDIA_WEBHOOK_SECRET',
   'KIE_API_KEY',
   'KIE_WEBHOOK_SECRET',
+  'REPLICATE_API_TOKEN',
+  'REPLICATE_WEBHOOK_SECRET',
   'AI_GATEWAY_TOKEN',
   'RESEND_API_KEY',
   'S3_ACCESS_KEY_ID',

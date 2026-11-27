@@ -28,4 +28,24 @@ describe('媒体服务商注册表', () => {
     expect(isSyncMediaProvider(sync)).toBe(true)
     expect(getMediaOutputHosts('workers-ai')).toEqual([])
   })
+  it('Replicate 两个密钥都有才算已配置，产出白名单为精确主机', () => {
+    const env = { REPLICATE_API_TOKEN: 'fixture', REPLICATE_WEBHOOK_SECRET: 'whsec_Zml4dHVyZQ==' }
+    expect(() =>
+      requireMediaProviderDefinition('replicate', { REPLICATE_API_TOKEN: 'fixture' }),
+    ).toThrow('not configured')
+    expect(() =>
+      requireMediaProviderDefinition('replicate', {
+        REPLICATE_WEBHOOK_SECRET: 'whsec_Zml4dHVyZQ==',
+      }),
+    ).toThrow('not configured')
+    expect(() => requireMediaProviderDefinition('replicate', env, ['fal', 'workers-ai'])).toThrow(
+      'not enabled',
+    )
+    const replicate = requireMediaProviderDefinition('replicate', env).create(env, {
+      modelId: 'black-forest-labs/flux-schnell',
+    })
+    expect(isSyncMediaProvider(replicate)).toBe(false)
+    expect(replicate.capabilities.idempotentSubmit).toBe(false)
+    expect(getMediaOutputHosts('replicate')).toEqual(['replicate.delivery'])
+  })
 })

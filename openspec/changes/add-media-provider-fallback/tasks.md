@@ -12,9 +12,9 @@
 
 ## 3. Replicate 服务商
 
-- [ ] 3.1 `packages/ai/src/media/replicate.ts`：提交、查询、取消、Standard Webhooks 验签（含时间戳窗口）、产出解析与错误分类；用官方文档样例做夹具，单测通过
-- [ ] 3.2 登记到 `mediaProviderDefinitions`（`REPLICATE_API_TOKEN`、`REPLICATE_WEBHOOK_SECRET`，产出域名精确白名单），环境校验与 `.dev.vars.example` 同步；`registry.test.ts` 通过
-- [ ] 3.3 `docs/third-party.md` 登记行（官方文档链接与核对日期）、`docs/06-ai.md` 服务商章节；`pnpm check` 通过
+- [x] 3.1 `packages/ai/src/media/replicate.ts`：提交、查询、取消、Standard Webhooks 验签（含时间戳窗口）、产出解析与错误分类；用官方文档样例做夹具，单测通过
+- [x] 3.2 登记到 `mediaProviderDefinitions`（`REPLICATE_API_TOKEN`、`REPLICATE_WEBHOOK_SECRET`，产出域名精确白名单），环境校验与 `.dev.vars.example` 同步；`registry.test.ts` 通过
+- [x] 3.3 `docs/third-party.md` 登记行（官方文档链接与核对日期）、`docs/06-ai.md` 服务商章节；`pnpm check` 通过
 
 ## 4. kie.ai 服务商
 

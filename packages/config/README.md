@@ -31,7 +31,7 @@ const config = loadNodeEnv({ templateConfig })
 
 默认读取运行目录的 `.env`；只有默认文件不存在可以省略。`dotenvPath` 指定路径时不可读会失败，`dotenvPath:false` 禁用文件读取。使用 Node 原生 dotenv 解析器，不执行 shell source。进程环境优先于 dotenv，包括显式空字符串；不会修改 process.env。schema 丢弃无关变量及 `_FILE` 路径。
 
-`nodeSecretNames` 明确声明支持 `_FILE` 的密钥：DATABASE_URL、VALKEY_URL、BETTER_AUTH_SECRET、OAuth client secrets、TURNSTILE_SECRET_KEY、Stripe key/webhook secret、PAYPAL_CLIENT_SECRET、OPENAI_API_KEY、ANTHROPIC_API_KEY、GOOGLE_API_KEY、DEEPSEEK_API_KEY、FAL_KEY、AI_GATEWAY_TOKEN、RESEND_API_KEY。未知 `NAME_FILE` 不触发文件读取。直接值与文件路径在两层合并后同时存在即冲突（空直接值也算）；文件缺失、不可读或空内容启动失败。只去掉一个末尾 LF/CRLF，不 trim 密钥空格或多余换行。错误只含字段名，不含路径、取值或原始文件错误。
+`nodeSecretNames` 明确声明支持 `_FILE` 的密钥：DATABASE_URL、VALKEY_URL、BETTER_AUTH_SECRET、OAuth client secrets、TURNSTILE_SECRET_KEY、Stripe key/webhook secret、PAYPAL_CLIENT_SECRET、OPENAI_API_KEY、ANTHROPIC_API_KEY、GOOGLE_API_KEY、DEEPSEEK_API_KEY、FAL_KEY、REPLICATE_API_TOKEN、REPLICATE_WEBHOOK_SECRET、AI_GATEWAY_TOKEN、RESEND_API_KEY。未知 `NAME_FILE` 不触发文件读取。直接值与文件路径在两层合并后同时存在即冲突（空直接值也算）；文件缺失、不可读或空内容启动失败。只去掉一个末尾 LF/CRLF，不 trim 密钥空格或多余换行。错误只含字段名，不含路径、取值或原始文件错误。
 
 传入 `templateConfig` 时，仅启用的 OAuth/Turnstile 要求对应凭据；关闭 Turnstile 不要求 site key/secret。Resend 通道沿用现有 withEmailEnv 规则。支付模式保留字符串并交给支付入口 resolvePaymentMode 校验；支付/AI/Sentry 凭据缺失不阻断公开页或普通认证，现有业务工厂继续负责不可用判定与同进程一次的变量名告警。可选密钥若通过文件提供，其文件错误仍是部署错误。
 

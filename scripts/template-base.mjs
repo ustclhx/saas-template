@@ -9,7 +9,7 @@ const lists = {
   ai: ['text', 'image', 'video'],
   billing: ['stripe', 'paypal'],
   features: ['publicApi', 'blog', 'docs', 'waitlist', 'newsletter', 'guides'],
-  'media-providers': ['fal', 'workers-ai'],
+  'media-providers': ['fal', 'workers-ai', 'replicate'],
   oauth: ['google', 'github'],
 }
 const switches = [

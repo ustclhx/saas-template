@@ -54,3 +54,13 @@ quick tunnel 无需账号配置、不创建持久 Tunnel 资源，进程退出�
 `kie.documented.json` 只来自 kie.ai 官方文档样例（2026-11-27 核对，出处写在文件的 `_source` 字段），没有真实账号录制；`param` 正文已省略。
 文档示例回调的签名无法用未知密钥复现，离线测试用临时测试密钥按[验签文档](https://docs.kie.ai/common-api/webhook-verification)的算法重新签名，
 不能称为 kie 原签名。真实生成与回调核对见 add-media-provider-fallback 任务 8.2。
+
+# Replicate 夹具来源
+
+`replicate.documented.json` 只来自官方文档，未调用真实 API（2026-11-27 核对）：
+
+- `prediction`：[HTTP API「Get a prediction」](https://replicate.com/docs/reference/http#predictions.get) 的示例对象（ID、时间、metrics、urls 原样），`output` 按同页「文件以 `replicate.delivery` 提供的 HTTPS URL 表示」改为占位图片地址；回调正文与查询响应相同（[接收 webhook](https://replicate.com/docs/topics/webhooks/receive-webhook)）。
+- `throttled`：同页 429 示例正文。
+- `webhookVector`：Standard Webhooks 官方库测试向量（[webhook.test.ts](https://github.com/standard-webhooks/standard-webhooks/blob/main/libraries/javascript/src/webhook.test.ts)）；[Replicate 验签文档](https://replicate.com/docs/topics/webhooks/verify-webhook)示例头部的第一个签名与其相同。
+
+真实回包（产出子域名、内容审核失败文本）在 staging 验收 8.2 录制后补充。

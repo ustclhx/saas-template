@@ -29,8 +29,14 @@ const wranglerResourceId = /("id"\s*:\s*")([a-f0-9]{32})"/g
 const rateLimitBlockSize = 100
 const featureNames = ['publicApi', 'blog', 'docs', 'waitlist', 'newsletter', 'guides']
 const aiNames = ['text', 'image', 'video']
-const mediaProviderNames = ['fal', 'workers-ai']
-const falSecrets = ['FAL_KEY', 'MEDIA_WEBHOOK_SECRET']
+const mediaProviderNames = ['fal', 'workers-ai', 'replicate']
+// 媒体插件密钥按所选服务商裁剪；回调 HMAC 密钥供所有异步服务商共用。
+const mediaProviderSecrets = {
+  FAL_KEY: ['fal'],
+  REPLICATE_API_TOKEN: ['replicate'],
+  REPLICATE_WEBHOOK_SECRET: ['replicate'],
+  MEDIA_WEBHOOK_SECRET: ['fal', 'replicate'],
+}
 const excluded = new Set([
   '.git',
   'node_modules',
@@ -633,8 +639,8 @@ function pluginChecklist(options) {
     secrets: (manifest.secrets ?? []).filter(
       (name) =>
         manifest.id !== 'media' ||
-        !falSecrets.includes(name) ||
-        options.mediaProviders.includes('fal'),
+        !mediaProviderSecrets[name] ||
+        mediaProviderSecrets[name].some((provider) => options.mediaProviders.includes(provider)),
     ),
   }))
 }
@@ -809,6 +815,8 @@ function cloudflareChecklist(options) {
     )
     secrets.push('R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY')
     if (options.mediaProviders.includes('fal')) resources.push('fal.ai 账号与回调地址')
+    if (options.mediaProviders.includes('replicate'))
+      resources.push('Replicate 账号、API token 与默认 webhook 签名密钥')
     if (options.mediaProviders.includes('workers-ai')) {
       resources.push('Workers AI：web 与 jobs 的 AI 绑定（含 staging），无需服务商密钥')
     }
@@ -1319,7 +1327,7 @@ export function verifyProject(
   }
 }
 
-const help = `用法：pnpm create-project [参数]\n无参数时交互输入；非交互必须提供 --name 与 --domain。\n  --name acme --domain acme.example --target cloudflare|selfhost --output /tmp/acme\n  --image-namespace ghcr.io/owner/acme（selfhost，默认 ghcr.io/configure-owner/acme）\n  --locale en|zh --support-email support@acme.example\n  --theme ${themeNames.join('|')}（默认 neutral）\n  --analytics plausible|off（默认 plausible；长期词站可 off）--plausible-domain acme --plausible-host https://plausible.example\n  --ai text,image,video --features blog,docs,waitlist,newsletter,publicApi\n  --plugins studio,agents（省略时按目标和依赖筛选模板默认插件；图片或视频自动启用 media）\n  --media-providers fal,workers-ai\n  --billing stripe,paypal --billing-enabled true|false --credits-enabled true|false\n  --marketing true|false --i18n true|false --oauth google,github\n  --turnstile true|false --multi-tenant true|false\n旧 --target <path> 已迁移至 --output <path>；部署目标默认 cloudflare。\n列表参数传空字符串可关闭全部。启用计费时默认全开 AI，关闭计费时默认关闭 AI。\n默认 billing / oauth 列表全开，features=blog。\n生成后使用 Biome 格式化并整理 import。默认安装依赖并运行 typecheck 与单元测试；--skip-check 只跳过安装与自检。\n  --help 显示帮助\n`
+const help = `用法：pnpm create-project [参数]\n无参数时交互输入；非交互必须提供 --name 与 --domain。\n  --name acme --domain acme.example --target cloudflare|selfhost --output /tmp/acme\n  --image-namespace ghcr.io/owner/acme（selfhost，默认 ghcr.io/configure-owner/acme）\n  --locale en|zh --support-email support@acme.example\n  --theme ${themeNames.join('|')}（默认 neutral）\n  --analytics plausible|off（默认 plausible；长期词站可 off）--plausible-domain acme --plausible-host https://plausible.example\n  --ai text,image,video --features blog,docs,waitlist,newsletter,publicApi\n  --plugins studio,agents（省略时按目标和依赖筛选模板默认插件；图片或视频自动启用 media）\n  --media-providers fal,workers-ai,replicate（默认 fal,workers-ai）\n  --billing stripe,paypal --billing-enabled true|false --credits-enabled true|false\n  --marketing true|false --i18n true|false --oauth google,github\n  --turnstile true|false --multi-tenant true|false\n旧 --target <path> 已迁移至 --output <path>；部署目标默认 cloudflare。\n列表参数传空字符串可关闭全部。启用计费时默认全开 AI，关闭计费时默认关闭 AI。\n默认 billing / oauth 列表全开，features=blog。\n生成后使用 Biome 格式化并整理 import。默认安装依赖并运行 typecheck 与单元测试；--skip-check 只跳过安装与自检。\n  --help 显示帮助\n`
 
 export async function main() {
   const { values } = parseArgs({
