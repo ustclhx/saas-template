@@ -31,7 +31,7 @@
 
 ## 6. 文本备用
 
-- [ ] 6.1 `packages/ai/src/text/fallback.ts`：`fallbackLanguageModel` 包装（doGenerate / doStream、首个内容分片前可切换、惰性构造并跳过未配置服务商、`onFallback`）；单测覆盖连接期错误、流内首分片错误、首分片后错误透传、全部失败
+- [x] 6.1 `packages/ai/src/text/fallback.ts`：`fallbackLanguageModel` 包装（doGenerate / doStream、首个内容分片前可切换、惰性构造并跳过未配置服务商、`onFallback`）；单测覆盖连接期错误、流内首分片错误、首分片后错误透传、全部失败
 - [ ] 6.2 对话与后续问题经备用链构造模型，实际模型 key 记入消息元数据，计费仍按主模型；集成测试覆盖规格「文本备用模型切换」的对话场景与「备用模型单价更高」
 - [ ] 6.3 agent 运行器经备用链构造模型，实际模型记入轮次；`plugins/agents` 测试覆盖「agent 中途某一步」
 - [ ] 6.4 `ai.text.failover` 日志与 `before-stream` 故障注入可切换错误；`docs/06-ai.md` 文本章节说明备用机制；相关测试通过
