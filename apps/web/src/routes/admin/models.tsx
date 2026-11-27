@@ -21,6 +21,12 @@ import { isStepUpCancelled, type StepUpCancelled } from '../../features/admin/st
 import { useStepUpCall } from '../../features/admin/step-up/step-up-provider.tsx'
 import { AdminPage, adminTableLabels } from '../../features/admin/ui.tsx'
 import {
+  type FallbackDraft,
+  FallbacksEditor,
+  fallbackDrafts,
+  fallbacksPayload,
+} from '../../features/ai/admin-model-fallbacks.tsx'
+import {
   CHARGE_ON_VALUES,
   DEFAULT_CHARGE_ON,
   PARAMS_SCHEMA_TEMPLATES,
@@ -79,6 +85,7 @@ interface Draft {
   sort: string
   enabled: boolean
   supportsTools: boolean
+  fallbacks: FallbackDraft[]
   mode: Mode
   credits: string
   chargeOn: string
@@ -123,6 +130,7 @@ function toDraft(model: ModelRow): Draft {
     sort: String(model.sort),
     enabled: model.enabled,
     supportsTools: model.supportsTools,
+    fallbacks: fallbackDrafts(model.fallbacks),
     ...pricingDraft(model.pricing),
   }
 }
@@ -139,6 +147,7 @@ function newDraft(defaults: Data['defaults'], kind: Kind = 'text'): Draft {
     sort: '0',
     enabled: true,
     supportsTools: false,
+    fallbacks: [],
     ...pricingDraft(defaults[kind] as Record<string, unknown>),
   }
 }
@@ -261,7 +270,7 @@ function ParamsSchemaEditor({
 
 function Models() {
   const data = Route.useLoaderData()
-  const { models, defaults, mediaProviders } = data
+  const { models, defaults, mediaProviders, fallbackOptions } = data
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
   // 新建表单很长，默认收起；按钮在水合前禁用，避免 SSR 阶段点击无效
@@ -347,6 +356,7 @@ function Models() {
           initial={newDraft(defaults)}
           defaults={defaults}
           mediaProviders={mediaProviders}
+          fallbackOptions={fallbackOptions}
         />
       )}
       {models.map((model) => (
@@ -356,6 +366,7 @@ function Models() {
           initial={toDraft(model)}
           defaults={defaults}
           mediaProviders={mediaProviders}
+          fallbackOptions={fallbackOptions}
         />
       ))}
     </AdminPage>
@@ -367,11 +378,13 @@ function ModelEditor({
   initial,
   defaults,
   mediaProviders,
+  fallbackOptions,
 }: {
   model?: ModelRow
   initial: Draft
   defaults: Data['defaults']
   mediaProviders: Data['mediaProviders']
+  fallbackOptions: Data['fallbackOptions']
 }) {
   const router = useRouter()
   const [draft, setDraft] = useState(initial)
@@ -439,6 +452,11 @@ function ModelEditor({
       return
     }
     if (!validateParamsSchema(draft.kind, draft.paramsSchema)) return
+    const fallbacks = fallbacksPayload(draft.kind, draft.fallbacks)
+    if (!fallbacks) {
+      setMessage(m.admin_fallback_model_required())
+      return
+    }
     return act(() =>
       saveModel({
         data: {
@@ -453,6 +471,7 @@ function ModelEditor({
           tags: draft.tags.split(','),
           enabled: draft.enabled,
           supportsTools: draft.kind === 'text' && draft.supportsTools,
+          fallbacks,
           sort: Number(draft.sort) || 0,
         },
       }),
@@ -505,6 +524,8 @@ function ModelEditor({
                 ...current,
                 kind,
                 provider: kind === 'text' ? '' : (mediaProviders[0] ?? ''),
+                // 备用必须与主模型同类型，换类型后原有选择全部失效
+                fallbacks: [],
                 ...pricingDraft(defaults[kind] as Record<string, unknown>),
               }))
             }}
@@ -605,6 +626,16 @@ function ModelEditor({
           onTemplate={setMessage}
         />
       </fieldset>
+      <FallbacksEditor
+        idPrefix={model?.id ?? 'new'}
+        kind={draft.kind}
+        modelKey={draft.key.trim()}
+        provider={draft.provider.trim()}
+        options={fallbackOptions}
+        value={draft.fallbacks}
+        disabled={disabled}
+        onChange={(fallbacks) => set({ fallbacks })}
+      />
       <fieldset disabled={disabled} className="grid gap-4 sm:grid-cols-2">
         <legend className="mb-3 font-medium">{m.admin_pricing()}</legend>
         <div className="grid gap-2">

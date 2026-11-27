@@ -1,4 +1,10 @@
-import { type ModelInput, modelValues, parseAcceptanceFault } from '@saas/ai'
+import {
+  type ModelFallback,
+  type ModelInput,
+  modelValues,
+  parseAcceptanceFault,
+  validateModelFallbacks,
+} from '@saas/ai'
 import { getMediaProviders } from '@saas/config'
 import { aiModel, type Database } from '@saas/db'
 import { AppError } from '@saas/shared'
@@ -12,11 +18,16 @@ import { adminModelKinds } from './admin-models.schema.ts'
 
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json }
 type Model = typeof aiModel.$inferSelect
-type ModelSettings = Pick<Model, 'displayName' | 'enabled' | 'pricing' | 'paramsSchema'>
+type ModelSettings = Pick<
+  Model,
+  'displayName' | 'enabled' | 'pricing' | 'paramsSchema' | 'fallbacks'
+>
 type ModelPatch = Partial<ModelSettings>
 type ModelSaveInput = Omit<ModelInput, 'paramsSchema'> & {
   displayName?: string | null | undefined
   paramsSchema: string | null
+  /** 有序备用模型；省略时保留现有链（新建为空）并按新配置重新校验。 */
+  fallbacks?: unknown
 }
 
 interface ModelRuntimeCapabilities {
@@ -50,6 +61,7 @@ export async function listAdminModels(
       tags: aiModel.minPlanFeatures,
       enabled: aiModel.enabled,
       supportsTools: aiModel.supportsTools,
+      fallbacks: aiModel.fallbacks,
       sort: aiModel.sort,
     })
     .from(aiModel)
@@ -65,6 +77,34 @@ export async function listAdminModels(
       paramsSchema: row.paramsSchema as { [key: string]: Json } | null,
     })),
   }
+}
+
+/** 备用模型下拉的候选上限；模型目录通常只有几十个。 */
+const FALLBACK_OPTION_LIMIT = 500
+
+/** 备用模型下拉需要全部模型（不受列表分页影响），只取筛选所需字段。 */
+export async function listAdminFallbackOptions(db: Database) {
+  return db
+    .select({
+      key: aiModel.key,
+      displayName: aiModel.displayName,
+      kind: aiModel.kind,
+      provider: aiModel.provider,
+      enabled: aiModel.enabled,
+    })
+    .from(aiModel)
+    .orderBy(asc(aiModel.kind), asc(aiModel.sort), asc(aiModel.key))
+    .limit(FALLBACK_OPTION_LIMIT)
+}
+
+/** 与 Admin MCP 共用 @saas/ai 的保存校验；省略时沿用现有链，改了参数或服务商也要重新校验。 */
+function fallbacksFor(
+  tx: AdminTransaction,
+  primary: Pick<Model, 'key' | 'kind' | 'provider' | 'supportsTools' | 'paramsSchema'>,
+  value: unknown,
+  existing: readonly ModelFallback[] | undefined,
+) {
+  return validateModelFallbacks(tx, primary, value === undefined ? (existing ?? []) : value)
 }
 
 function assertAdminFaultConfig(
@@ -148,6 +188,9 @@ function modelChanges(
     ...(fields.paramsSchema !== undefined && {
       paramsSchema: { before: before?.paramsSchema ?? null, after: after.paramsSchema },
     }),
+    ...(fields.fallbacks !== undefined && {
+      fallbacks: { before: before?.fallbacks ?? null, after: after.fallbacks },
+    }),
   }
 }
 
@@ -204,12 +247,19 @@ export async function saveAdminModelRecord(
   input: ModelSaveInput & { id?: string | undefined },
   capabilities: ModelRuntimeCapabilities,
 ) {
-  const values = {
-    ...validatedModelValues(input, capabilities),
-    displayName: input.displayName === undefined ? undefined : input.displayName || null,
-  }
+  const validated = validatedModelValues(input, capabilities)
   // 锁住旧行，保证并发编辑时审计中的旧值是本次实际覆盖的值。
   const before = input.id ? await readModel(tx, eq(aiModel.id, input.id), 'update') : undefined
+  const values = {
+    ...validated,
+    displayName: input.displayName === undefined ? undefined : input.displayName || null,
+    fallbacks: await fallbacksFor(
+      tx,
+      { ...validated, supportsTools: validated.supportsTools ?? false },
+      input.fallbacks,
+      before?.fallbacks,
+    ),
+  }
   const [saved] = input.id
     ? await tx.update(aiModel).set(values).where(eq(aiModel.id, input.id)).returning()
     : await tx.insert(aiModel).values(values).returning()
@@ -236,6 +286,7 @@ interface ModelUpdateInput {
   readonly enabled?: boolean | undefined
   readonly pricing?: unknown
   readonly paramsSchema?: string | undefined
+  readonly fallbacks?: unknown
 }
 
 /** 更新现有模型的运行时配置。调用方负责在已校验的管理员事务中执行。 */
@@ -267,13 +318,23 @@ export async function updateAdminModelByKey(
     validateEnabled(before, input.enabled, capabilities)
   }
   if (input.enabled !== undefined) values.enabled = input.enabled
+  if (input.fallbacks !== undefined || values.paramsSchema !== undefined) {
+    const fallbacks = await fallbacksFor(
+      tx,
+      { ...before, paramsSchema: values.paramsSchema ?? before.paramsSchema },
+      input.fallbacks,
+      before.fallbacks,
+    )
+    if (input.fallbacks !== undefined) values.fallbacks = fallbacks
+  }
   const after = dryRun ? { ...before, ...values } : await updateModel(tx, before.id, values)
   if (!dryRun) {
     if (
       values.enabled !== undefined &&
       values.displayName === undefined &&
       values.pricing === undefined &&
-      values.paramsSchema === undefined
+      values.paramsSchema === undefined &&
+      values.fallbacks === undefined
     ) {
       await auditModelEnabled(audit, before, after)
     } else {

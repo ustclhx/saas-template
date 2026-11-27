@@ -345,5 +345,20 @@
   "admin_ai_free_failure_count": "每个空间的 AI 免费失败次数",
   "admin_ai_free_failure_count_description": "对话回复没有可见正文就失败时，窗口内前这么多次全额退回预扣；之后按最后一次上游尝试的用量结算（不超过预扣）。填 0 表示每次都结算。",
   "admin_ai_free_failure_window_minutes": "免费失败计数窗口（分钟）",
-  "admin_ai_free_failure_window_description": "统计免费失败次数的滚动窗口，默认 60 分钟。"
+  "admin_ai_free_failure_window_description": "统计免费失败次数的滚动窗口，默认 60 分钟。",
+  "admin_fallback_models": "备用模型",
+  "admin_fallback_models_hint": "仅在主模型的服务商出错且尚未产出内容时按顺序改用。用户仍只看到并按本模型付费。最多选 {max} 个同类型、其他服务商的模型。",
+  "admin_fallback_n": "备用 {n}",
+  "admin_choose_fallback_model": "选择备用模型",
+  "admin_no_fallback_candidates": "暂无其他服务商的同类型（{kind}）模型可选。",
+  "admin_add_fallback_model": "添加备用模型",
+  "admin_move_fallback_up": "上移",
+  "admin_remove_fallback": "移除",
+  "admin_fallback_param_map": "参数映射（可选）",
+  "admin_fallback_param_map_hint": "把主模型参数改名为备用模型的字段名；未列出的参数同名传递。",
+  "admin_fallback_primary_param": "主模型参数",
+  "admin_fallback_target_param": "备用模型参数",
+  "admin_add_param_mapping": "添加映射",
+  "admin_remove_param_mapping": "删除映射",
+  "admin_fallback_model_required": "请为每个备用选择模型，或删除空行。"
 }

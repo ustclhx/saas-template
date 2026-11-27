@@ -38,9 +38,9 @@
 
 ## 7. 后台与 Admin MCP
 
-- [ ] 7.1 模型编辑页「备用模型」有序列表与参数映射，任务详情显示尝试记录，对话消息与 agent 轮次显示实际模型；`pnpm typecheck`、组件测试与 e2e 冒烟通过
-- [ ] 7.2 Admin MCP `models.create` / `models.update` / `models.get` 支持 `fallbacks`（与后台共用校验），同 PR 更新参数说明与 `docs/admin-mcp.md`；`admin-mcp.test.ts` 通过
-- [ ] 7.3 `add-ai-model` 与 `configure-feature-model` 技能补充主备配置与逐对真实生成验收步骤（`.agents` 与 `.claude` 副本 `cmp` 一致）
+- [x] 7.1 模型编辑页「备用模型」有序列表与参数映射，任务详情显示尝试记录，对话消息与 agent 轮次显示实际模型；`pnpm typecheck`、组件测试与 e2e 冒烟通过
+- [x] 7.2 Admin MCP `models.create` / `models.update` / `models.get` 支持 `fallbacks`（与后台共用校验），同 PR 更新参数说明与 `docs/admin-mcp.md`；`admin-mcp.test.ts` 通过
+- [x] 7.3 `add-ai-model` 与 `configure-feature-model` 技能补充主备配置与逐对真实生成验收步骤（`.agents` 与 `.claude` 副本 `cmp` 一致）
 
 ## 8. Staging 验收（需使用者提供密钥）
 
