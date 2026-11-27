@@ -1,0 +1,114 @@
+{
+  "_source": "kie.ai 官方文档样例，2026-11-27 核对：createTask 响应与成功 / 失败回调取自 https://docs.kie.ai/market/seedream/4-5-text-to-image ，recordInfo 取自 https://docs.kie.ai/market/common/get-task-detail ，视频 resultJson 取自 https://docs.kie.ai/market/kling 的 Kling 4.0 Reference To Video 示例，回调头取自 https://docs.kie.ai/common-api/webhook-verification 。param 字段已省略正文。",
+  "submit": { "code": 200, "msg": "success", "data": { "taskId": "task_seedream_1765166238716" } },
+  "recordSuccess": {
+    "code": 200,
+    "msg": "success",
+    "data": {
+      "taskId": "23f9f748b6ab725118c312fe44966846",
+      "model": "seedream/4.5-text-to-image",
+      "state": "success",
+      "param": "{}",
+      "resultJson": "{\"resultUrls\":[\"https://tempfile.aiquickdraw.com/p/23f9f748b6ab725118c312fe44966846_1_1786415056_7121.jpg\"]}",
+      "failCode": "",
+      "failMsg": "",
+      "costTime": 30,
+      "completeTime": 1786415057000,
+      "createTime": 1786415009000,
+      "updateTime": 1786415057000,
+      "creditsConsumed": 6.5
+    }
+  },
+  "recordVideoSuccess": {
+    "code": 200,
+    "msg": "success",
+    "data": {
+      "taskId": "1f0176644624b187c7f6add97986875d",
+      "model": "kling-4.0/reference-to-video",
+      "state": "success",
+      "param": "{}",
+      "resultJson": "{\"resultUrls\":[\"https://tempfile.aiquickdraw.com/k/1f0176644624b187c7f6add97986875d_1_1792669217_8488.mp4\"]}",
+      "failCode": null,
+      "failMsg": null,
+      "costTime": 120,
+      "completeTime": 1792669217000,
+      "createTime": 1792669097000,
+      "creditsConsumed": 55
+    }
+  },
+  "recordGenerating": {
+    "code": 200,
+    "msg": "success",
+    "data": {
+      "taskId": "23f9f748b6ab725118c312fe44966846",
+      "model": "seedream/4.5-text-to-image",
+      "state": "generating",
+      "param": "{}",
+      "resultJson": "",
+      "failCode": "",
+      "failMsg": "",
+      "costTime": 0,
+      "createTime": 1786415009000,
+      "progress": 45
+    }
+  },
+  "recordFail": {
+    "code": 200,
+    "msg": "success",
+    "data": {
+      "taskId": "23f9f748b6ab725118c312fe44966846",
+      "model": "seedream/4.5-text-to-image",
+      "state": "fail",
+      "param": "{}",
+      "resultJson": null,
+      "failCode": "500",
+      "failMsg": "<error detail>",
+      "costTime": 30,
+      "completeTime": 1786415057000,
+      "createTime": 1786415009000,
+      "creditsConsumed": 0
+    }
+  },
+  "recordNotFound": { "code": 422, "msg": "recordInfo is null", "data": null },
+  "unauthorized": { "code": 401, "msg": "You do not have access permissions" },
+  "rateLimited": { "code": 429, "msg": "Rate limit exceeded" },
+  "serverError": {
+    "code": 500,
+    "msg": "Server Error - An unexpected error occurred while processing the request",
+    "data": null
+  },
+  "callbackSuccess": {
+    "code": 200,
+    "msg": "Playground task completed successfully.",
+    "data": {
+      "taskId": "23f9f748b6ab725118c312fe44966846",
+      "model": "seedream/4.5-text-to-image",
+      "state": "success",
+      "param": "{}",
+      "resultJson": "{\"resultUrls\":[\"https://tempfile.aiquickdraw.com/p/23f9f748b6ab725118c312fe44966846_1_1786415056_7121.jpg\"]}",
+      "completeTime": 1786415057000,
+      "createTime": 1786415009000,
+      "costTime": 30,
+      "creditsConsumed": 6.5,
+      "updateTime": 1786415057000
+    }
+  },
+  "callbackFailure": {
+    "code": 501,
+    "msg": "Playground task failed.",
+    "data": {
+      "taskId": "23f9f748b6ab725118c312fe44966846",
+      "model": "seedream/4.5-text-to-image",
+      "state": "fail",
+      "param": "{}",
+      "failCode": "500",
+      "failMsg": "<error detail>",
+      "completeTime": 1786415057000,
+      "createTime": 1786415009000,
+      "costTime": 30,
+      "creditsConsumed": 0,
+      "updateTime": 1786415057000
+    }
+  },
+  "callbackHeaders": { "X-Webhook-Timestamp": "1769670760" }
+}

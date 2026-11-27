@@ -22,3 +22,8 @@ GITHUB_CLIENT_SECRET=fake-github-client-secret
 R2_ACCOUNT_ID=
 R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
+
+# 可选媒体服务商 kie.ai（默认不启用，见 docs/06-ai.md）：在 template.config.ts 的 media.providers 加入 kie 后填写。
+# KIE_API_KEY 来自 https://kie.ai/api-key；KIE_WEBHOOK_SECRET 是 https://kie.ai/settings 生成的 webhookHmacKey。
+# KIE_API_KEY=
+# KIE_WEBHOOK_SECRET=

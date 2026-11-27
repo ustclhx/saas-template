@@ -18,8 +18,8 @@
 
 ## 4. kie.ai 服务商
 
-- [ ] 4.1 `packages/ai/src/media/kie.ts`：统一任务接口提交与查询、回调验签、产出解析与错误分类；不支持的模型登记时拒绝；单测通过
-- [ ] 4.2 登记到 `mediaProviderDefinitions`（`KIE_API_KEY` 与回调验签密钥），产出域名白名单；第三方登记表与 `docs/06-ai.md` 写明条款风险与建议用途；`pnpm check` 通过
+- [x] 4.1 `packages/ai/src/media/kie.ts`：统一任务接口提交与查询、回调验签、产出解析与错误分类；不支持的模型登记时拒绝；单测通过
+- [x] 4.2 登记到 `mediaProviderDefinitions`（`KIE_API_KEY` 与回调验签密钥），产出域名白名单；第三方登记表与 `docs/06-ai.md` 写明条款风险与建议用途；`pnpm check` 通过
 
 ## 5. 自动切换
 
