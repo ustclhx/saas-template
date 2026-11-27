@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
-import { createFalMediaProvider, FalProviderError } from './fal.ts'
+import { canFailover, failureKindOf } from '../failover/failure.ts'
+import { createFalMediaProvider, FalProviderError, falErrorTypeKind } from './fal.ts'
 import fixtures from './fixtures/fal.documented.json'
 import recordedJwks from './fixtures/fal.jwks.recorded.json'
 import recorded from './fixtures/fal.recorded.json'
@@ -102,7 +103,11 @@ describe('fal queue（真实录制与未录制分支的文档补充）', () => {
     const { provider, fetch } = setup([fixtures.failed])
     expect(await provider.getStatus(jobId)).toEqual({
       status: 'failed',
-      error: { code: 'internal_server_error', message: 'Generation failed' },
+      error: {
+        code: 'internal_server_error',
+        message: 'Generation failed',
+        kind: 'provider_error',
+      },
     })
     expect(fetch).toHaveBeenCalledTimes(1)
   })
@@ -151,6 +156,91 @@ describe('fal queue（真实录制与未录制分支的文档补充）', () => {
     await expect(provider.getStatus('../other')).rejects.toMatchObject({ code: 'FAL_INVALID_JOB' })
     await expect(provider.submit({ ...input, modelId: 'fal-ai/other' })).rejects.toMatchObject({
       code: 'FAL_INVALID_MODEL',
+    })
+  })
+})
+
+describe('fal 失败分类（add-media-provider-fallback D3）', () => {
+  it.each([
+    [429, 'rate_limited'],
+    [401, 'auth'],
+    [403, 'auth'],
+    [400, 'rejected_input'],
+    [422, 'rejected_input'],
+  ] as const)('提交被明确拒绝：HTTP %i → %s', async (status, kind) => {
+    const { provider, fetch } = setup([])
+    fetch.mockResolvedValueOnce(response({}, status))
+    const error = await provider.submit(input).catch((error: unknown) => error)
+    expect(error).toBeInstanceOf(FalProviderError)
+    expect(error).toMatchObject({ kind, submissionOutcome: 'rejected' })
+    expect(failureKindOf(error)).toBe(kind)
+  })
+
+  it('可能已受理的提交（5xx、超时、网络中断、无效回包）一律 ambiguous，不切换', async () => {
+    for (const status of [500, 503, 408]) {
+      const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValueOnce(response({}, status))
+      const fal = createFalMediaProvider({ apiKey: 'test-placeholder', modelId, fetch })
+      const error = await fal.submit(input).catch((error: unknown) => error)
+      expect(error).toMatchObject({ kind: 'ambiguous', submissionOutcome: 'ambiguous' })
+      expect(canFailover(failureKindOf(error))).toBe(false)
+    }
+    const lost = vi.fn<typeof globalThis.fetch>().mockRejectedValueOnce(new TypeError('x'))
+    const error = await createFalMediaProvider({ apiKey: 'k', modelId, fetch: lost })
+      .submit(input)
+      .catch((error: unknown) => error)
+    expect(failureKindOf(error)).toBe('ambiguous')
+    const { provider } = setup([{}])
+    await expect(provider.submit(input)).rejects.toMatchObject({ kind: 'ambiguous' })
+  })
+
+  it('查询请求的 5xx 与网络异常为 provider_error，429 为 rate_limited', async () => {
+    const { provider, fetch } = setup([])
+    fetch.mockResolvedValueOnce(response({}, 502))
+    await expect(provider.getStatus(jobId)).rejects.toMatchObject({ kind: 'provider_error' })
+    fetch.mockRejectedValueOnce(new TypeError('fetch failed'))
+    await expect(provider.getStatus(jobId)).rejects.toMatchObject({ kind: 'provider_error' })
+    fetch.mockResolvedValueOnce(response({}, 429))
+    await expect(provider.getStatus(jobId)).rejects.toMatchObject({ kind: 'rate_limited' })
+  })
+
+  it('未配置密钥归为 unavailable', async () => {
+    const fal = createFalMediaProvider({ apiKey: '', modelId, fetch: vi.fn() })
+    expect(failureKindOf(await fal.submit(input).catch((error: unknown) => error))).toBe(
+      'unavailable',
+    )
+  })
+
+  it.each([
+    ['content_policy_violation', 'content_policy'],
+    ['internal_server_error', 'provider_error'],
+    ['generation_timeout', 'provider_error'],
+    ['downstream_service_unavailable', 'provider_error'],
+    ['runner_scheduling_failure', 'provider_error'],
+    ['request_timeout', 'provider_error'],
+    ['no_media_generated', 'rejected_input'],
+    ['image_too_large', 'rejected_input'],
+    ['file_download_error', 'rejected_input'],
+    ['value_error.missing', 'rejected_input'],
+    ['some_future_type', 'provider_error'],
+  ] as const)('文档中的 error_type %s → %s', (type, kind) => {
+    expect(falErrorTypeKind(type)).toBe(kind)
+  })
+
+  it('队列状态的失败带 kind：内容审核不切换，服务端错误可切换', async () => {
+    const { provider } = setup([
+      { ...fixtures.failed, error: 'flagged', error_type: 'content_policy_violation' },
+      { ...fixtures.failed, error: 'boom', error_type: 'downstream_service_error' },
+      { ...fixtures.failed, error: 'no type', error_type: null },
+    ])
+    expect(await provider.getStatus(jobId)).toEqual({
+      status: 'failed',
+      error: { code: 'content_policy_violation', message: 'flagged', kind: 'content_policy' },
+    })
+    expect(await provider.getStatus(jobId)).toMatchObject({
+      error: { code: 'downstream_service_error', kind: 'provider_error' },
+    })
+    expect(await provider.getStatus(jobId)).toMatchObject({
+      error: { code: 'FAL_GENERATION_FAILED', kind: 'provider_error' },
     })
   })
 })
@@ -214,7 +304,11 @@ describe('fal webhook Ed25519 协议（本地临时签名）', () => {
     const failure = await signed(fixtures.webhookError, 'attempt-fixture')
     expect(await provider.parseWebhook(failure.req, failure.body)).toEqual({
       jobId,
-      error: { code: 'FAL_GENERATION_FAILED', message: fixtures.webhookError.error },
+      error: {
+        code: 'FAL_GENERATION_FAILED',
+        message: fixtures.webhookError.error,
+        kind: 'rejected_input',
+      },
     })
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(fetch.mock.calls[0]).toEqual([
@@ -222,6 +316,43 @@ describe('fal webhook Ed25519 协议（本地临时签名）', () => {
       expect.objectContaining({ redirect: 'manual' }),
     ])
     expect(new Headers(fetch.mock.calls[0]?.[1]?.headers).has('authorization')).toBe(false)
+  })
+
+  it('失败回调按 error_type、payload.detail[].type 或状态码分类', async () => {
+    const { provider } = setup([jwks])
+    const moderated = await signed({
+      ...fixtures.webhookError,
+      payload: {
+        detail: [
+          {
+            loc: ['body', 'prompt'],
+            msg: 'flagged',
+            type: 'content_policy_violation',
+            categories: ['sexual'],
+          },
+        ],
+      },
+    })
+    expect(await provider.parseWebhook(moderated.req, moderated.body)).toMatchObject({
+      error: { kind: 'content_policy' },
+    })
+    const typed = await signed({
+      ...fixtures.webhookError,
+      error: 'Runner failed',
+      error_type: 'runner_server_error',
+      payload: null,
+    })
+    expect(await provider.parseWebhook(typed.req, typed.body)).toMatchObject({
+      error: { code: 'runner_server_error', kind: 'provider_error' },
+    })
+    const untyped = await signed({
+      ...fixtures.webhookError,
+      error: 'Invalid status code: 503',
+      payload: null,
+    })
+    expect(await provider.parseWebhook(untyped.req, untyped.body)).toMatchObject({
+      error: { code: 'FAL_GENERATION_FAILED', kind: 'provider_error' },
+    })
   })
 
   it('payload_error 返回需轮询的已验签通知', async () => {

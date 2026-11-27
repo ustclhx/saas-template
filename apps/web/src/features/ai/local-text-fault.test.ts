@@ -14,6 +14,7 @@ const model: AvailableModel = {
   tags: [],
   paramsSchema: {},
   sort: 0,
+  fallbacks: [],
 }
 
 describe('本地文本验收上游', () => {

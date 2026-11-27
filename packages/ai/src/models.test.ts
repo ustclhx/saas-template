@@ -32,6 +32,7 @@ function row(overrides: Partial<AiModel> & Pick<AiModel, 'id' | 'key'>): AiModel
     paramsSchema: null,
     enabled: true,
     supportsTools: false,
+    fallbacks: [],
     sort: 0,
     createdAt: new Date(0),
     updatedAt: new Date(0),
@@ -49,6 +50,9 @@ function memoryStore(rows: AiModel[]) {
     },
     async findEnabled(id) {
       return rows.find((r) => r.id === id && r.enabled)
+    },
+    async findByKeys(keys) {
+      return rows.filter((r) => keys.includes(r.key))
     },
   }
   return { store, rows, listCalls: () => listCalls }
