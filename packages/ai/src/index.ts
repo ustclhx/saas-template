@@ -1,4 +1,5 @@
 export * from './agents/tool.ts'
+export * from './failover/index.ts'
 export * from './fault.ts'
 export * from './feature-model-definition.ts'
 export * from './feature-models.ts'
