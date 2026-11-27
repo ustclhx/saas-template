@@ -20,8 +20,8 @@ import {
 } from '@saas/db'
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import type { BackgroundTasks, RateLimiter } from '@saas/platform'
-import { newId } from '@saas/shared'
-import { simulateReadableStream } from 'ai'
+import { AppError, newId } from '@saas/shared'
+import { APICallError, simulateReadableStream } from 'ai'
 import { MockLanguageModelV4 } from 'ai/test'
 import { eq } from 'drizzle-orm'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -2203,6 +2203,294 @@ export function registerAiChatSuite(
           credits: 5,
         },
         hold: { status: 'captured', captured_amount: 5 },
+      })
+    })
+  })
+
+  describe('文本备用模型切换（add-media-provider-fallback 6.2、6.4）', () => {
+    const callPricing = (credits: number) => ({
+      mode: 'per_call' as const,
+      credits,
+      limits: { maxInputTokens: 4000, maxOutputTokens: 1000 },
+    })
+    const apiError = (statusCode: number) =>
+      new APICallError({
+        message: `upstream ${statusCode}`,
+        url: 'https://provider.example/v1/chat',
+        requestBodyValues: {},
+        statusCode,
+      })
+    const throwing = (error: unknown) =>
+      new MockLanguageModelV4({
+        doStream: async () => {
+          throw error
+        },
+      })
+    const keyOf = (id: string) => `${MODEL_KEY_PREFIX}${id}`
+    type StreamPart =
+      Awaited<ReturnType<MockLanguageModelV4['doStream']>>['stream'] extends ReadableStream<infer T>
+        ? T
+        : never
+
+    /** 主模型 + 一个其他服务商的备用（停用，用户不可见），返回两者 id 与 key */
+    async function withFallback(
+      primaryPricing: AiPricingJson,
+      fallbackPricing: AiPricingJson,
+      primaryText?: Record<string, unknown>,
+    ) {
+      const primaryId = await textModel(primaryPricing, 1000)
+      const fallbackId = await textModel(fallbackPricing, 1000)
+      await db
+        .update(aiModel)
+        .set({ provider: 'backup-provider', enabled: false })
+        .where(eq(aiModel.id, fallbackId))
+      await db
+        .update(aiModel)
+        .set({
+          fallbacks: [{ modelKey: keyOf(fallbackId) }],
+          ...(primaryText ? { provider: 'deepseek', paramsSchema: { 'x-text': primaryText } } : {}),
+        })
+        .where(eq(aiModel.id, primaryId))
+      return { primaryId, primaryKey: keyOf(primaryId), fallbackKey: keyOf(fallbackId) }
+    }
+
+    const byKey =
+      (models: Record<string, MockLanguageModelV4 | (() => never)>): LanguageModelFactory =>
+      (candidate) => {
+        const model = models[candidate.key]
+        if (!model) throw new Error(`unexpected candidate ${candidate.key}`)
+        return typeof model === 'function' ? model() : model
+      }
+
+    it('主模型限流：备用模型生成回复，用户只看到一次回复；按主模型价格结算并记录实际模型', async () => {
+      const me = await member('fallback-rate-limited', 100)
+      // 备用模型单价是主模型的 10 倍
+      const { primaryId, primaryKey, fallbackKey } = await withFallback(
+        callPricing(3),
+        callPricing(30),
+      )
+      const primary = throwing(apiError(429))
+      const fallback = mockModel('Answer from the fallback model.', { input: 20, output: 7 })
+      const { response, stream } = await send(
+        me,
+        { modelId: primaryId, text: 'hi' },
+        { factory: byKey({ [primaryKey]: primary, [fallbackKey]: fallback }) },
+      )
+      expect(response.status).toBe(200)
+      expect(streamedText(stream)).toBe('Answer from the fallback model.')
+      // 切换发生在链内：没有对用户可见的重试，主模型只调用一次
+      expect(stream).not.toContain('data-retry')
+      expect(primary.doStreamCalls).toHaveLength(1)
+      expect(fallback.doStreamCalls).toHaveLength(1)
+      const conversationId = response.headers.get('x-conversation-id') as string
+      const assistants = await sql`select id from ai_message
+        where conversation_id = ${conversationId} and role = 'assistant'`
+      expect(assistants).toHaveLength(1)
+      const { message, hold: reservation } = await assistantMessage(conversationId)
+      expect(message).toMatchObject({
+        status: 'completed',
+        parts: [{ type: 'text', text: 'Answer from the fallback model.' }],
+        credits: 3,
+        pricing: callPricing(3),
+        usage_checkpoint: { servedModelKeys: [fallbackKey] },
+      })
+      const [row] = await sql<{ model_key: string }[]>`
+        select model_key from ai_message where id = ${message.id}`
+      expect(row?.model_key).toBe(primaryKey)
+      expect(reservation).toMatchObject({ status: 'captured', amount: 3, captured_amount: 3 })
+      expect(await consumeLedger(me.workspaceId)).toEqual([{ delta: -3 }])
+      await assertInvariant(me.workspaceId)
+    })
+
+    it('主模型服务商未配置：直接改用备用；全部未配置仍在预扣前返回 503', async () => {
+      const me = await member('fallback-unconfigured', 100)
+      const { primaryId, primaryKey, fallbackKey } = await withFallback(
+        callPricing(3),
+        callPricing(3),
+      )
+      const notConfigured = () => {
+        throw new AppError('AI_PROVIDER_NOT_CONFIGURED', 'not configured', { status: 503 })
+      }
+      const fallback = mockModel('fallback', { input: 1, output: 1 })
+      const ok = await send(
+        me,
+        { modelId: primaryId, text: 'hi' },
+        { factory: byKey({ [primaryKey]: notConfigured, [fallbackKey]: fallback }) },
+      )
+      expect(streamedText(ok.stream)).toBe('fallback')
+      expect(
+        await assistantMessage(ok.response.headers.get('x-conversation-id') as string),
+      ).toMatchObject({
+        message: { status: 'completed', usage_checkpoint: { servedModelKeys: [fallbackKey] } },
+      })
+
+      const other = await member('fallback-none-configured', 100)
+      const rejected = await send(
+        other,
+        { modelId: primaryId, text: 'hi' },
+        { factory: byKey({ [primaryKey]: notConfigured, [fallbackKey]: notConfigured }) },
+      )
+      expect(rejected.response.status).toBe(503)
+      expect(
+        await sql`select 1 from credit_hold where workspace_id = ${other.workspaceId}`,
+      ).toHaveLength(0)
+    })
+
+    it('已开始输出后出错：不切换备用，按原规则在主模型上续写', async () => {
+      const me = await member('fallback-after-output', 100)
+      const { primaryId, primaryKey, fallbackKey } = await withFallback(
+        callPricing(3),
+        callPricing(3),
+        { maxOutputTokens: 1000, continuation: 'native' },
+      )
+      let attempt = 0
+      const primary = new MockLanguageModelV4({
+        doStream: async () => {
+          attempt++
+          const chunks: StreamPart[] =
+            attempt === 1
+              ? [
+                  { type: 'text-start' as const, id: 't' },
+                  { type: 'text-delta' as const, id: 't', delta: 'first ' },
+                  { type: 'error' as const, error: apiError(503) },
+                ]
+              : [
+                  { type: 'text-start' as const, id: 't' },
+                  { type: 'text-delta' as const, id: 't', delta: 'second' },
+                  { type: 'text-end' as const, id: 't' },
+                  USAGE_FINISH(10, 10),
+                ]
+          return {
+            stream: simulateReadableStream({ chunks, initialDelayInMs: 0, chunkDelayInMs: 0 }),
+          }
+        },
+      })
+      const fallback = mockModel('should not be used', { input: 1, output: 1 })
+      const { response, stream } = await send(
+        me,
+        { modelId: primaryId, text: 'hi' },
+        { factory: byKey({ [primaryKey]: primary, [fallbackKey]: fallback }) },
+      )
+      expect(streamedText(stream)).toBe('first second')
+      expect(primary.doStreamCalls).toHaveLength(2)
+      expect(primary.doStreamCalls[1]?.prompt.at(-1)).toMatchObject({
+        role: 'assistant',
+        providerOptions: { deepseek: { prefix: true } },
+      })
+      expect(fallback.doStreamCalls).toHaveLength(0)
+      const { message } = await assistantMessage(
+        response.headers.get('x-conversation-id') as string,
+      )
+      expect(message).toMatchObject({ status: 'completed', credits: 3 })
+      expect(message.usage_checkpoint?.servedModelKeys).toBeUndefined()
+    })
+
+    it('全部候选失败：整条链失败后才进入同模型重试，最终失败并全额退回预扣', async () => {
+      const me = await member('fallback-all-failed', 100)
+      const { primaryId, primaryKey, fallbackKey } = await withFallback(
+        callPricing(3),
+        callPricing(3),
+      )
+      const primary = throwing(apiError(503))
+      const fallback = throwing(apiError(429))
+      const { response, stream } = await send(
+        me,
+        { modelId: primaryId, text: 'hi' },
+        { factory: byKey({ [primaryKey]: primary, [fallbackKey]: fallback }) },
+      )
+      // 首次 + 两次重试，每次都先试主模型再试备用
+      expect(primary.doStreamCalls).toHaveLength(3)
+      expect(fallback.doStreamCalls).toHaveLength(3)
+      expect(stream).toContain('data-retry')
+      expect(
+        await assistantMessage(response.headers.get('x-conversation-id') as string),
+      ).toMatchObject({
+        message: { status: 'failed', parts: [], credits: 0 },
+        hold: { status: 'released' },
+      })
+      expect(await getCreditBalance(db, me.workspaceId)).toMatchObject({ available: 100, held: 0 })
+    })
+
+    it('请求本身被拒（4xx）不切换备用', async () => {
+      const me = await member('fallback-rejected-input', 100)
+      const { primaryId, primaryKey, fallbackKey } = await withFallback(
+        callPricing(3),
+        callPricing(3),
+      )
+      const primary = throwing(apiError(400))
+      const fallback = mockModel('should not be used', { input: 1, output: 1 })
+      const { response } = await send(
+        me,
+        { modelId: primaryId, text: 'hi' },
+        { factory: byKey({ [primaryKey]: primary, [fallbackKey]: fallback }) },
+      )
+      expect(fallback.doStreamCalls).toHaveLength(0)
+      expect(
+        await assistantMessage(response.headers.get('x-conversation-id') as string),
+      ).toMatchObject({ message: { status: 'failed' }, hold: { status: 'released' } })
+    })
+
+    it('before-stream 故障注入只作用于主候选：配置备用时切换到备用并完成', async () => {
+      const me = await member('fallback-fault', 100)
+      await sql`update "user" set role='admin' where id=${me.userId}`
+      const context = await auth.$context
+      const tokenName = context.authCookies.sessionToken.name
+      const admin = {
+        ...me,
+        cookie: me.cookie
+          .split('; ')
+          .filter((cookie) => cookie.startsWith(`${tokenName}=`))
+          .join('; '),
+      }
+      const fallbackId = await textModel(callPricing(3), 1000)
+      await db
+        .update(aiModel)
+        .set({ provider: 'backup-provider' })
+        .where(eq(aiModel.id, fallbackId))
+      const faultId = newId()
+      const faultKey = `${FAULT_KEY_PREFIX}${faultId}`
+      await db.insert(aiModel).values({
+        id: faultId,
+        key: faultKey,
+        kind: 'text',
+        provider: 'deepseek',
+        providerModelId: 'deepseek-flash',
+        pricing: callPricing(3),
+        paramsSchema: {
+          'x-acceptance-fault': { mode: 'chat-before-stream' },
+          'x-text': { maxOutputTokens: 4096 },
+        },
+        fallbacks: [{ modelKey: keyOf(fallbackId) }],
+      })
+      const primary = mockModel('never reached', { input: 1, output: 1 })
+      const fallback = mockModel('served by fallback', { input: 10, output: 5 })
+      const { response, stream } = await send(
+        admin,
+        { modelId: faultId, text: 'hi' },
+        {
+          factory: byKey({ [faultKey]: primary, [keyOf(fallbackId)]: fallback }),
+          env: { AI_FAULT_INJECTION: 'enabled', SENTRY_ENVIRONMENT: 'staging' },
+        },
+      )
+      expect(streamedText(stream)).toBe('served by fallback')
+      expect(primary.doStreamCalls).toHaveLength(0)
+      expect(fallback.doStreamCalls).toHaveLength(1)
+      expect(
+        await assistantMessage(response.headers.get('x-conversation-id') as string),
+      ).toMatchObject({
+        message: {
+          status: 'completed',
+          credits: 3,
+          usage_checkpoint: {
+            servedModelKeys: [keyOf(fallbackId)],
+            acceptanceFaultProof: {
+              mode: 'chat-before-stream',
+              phase: 'before-stream',
+              injected: true,
+              realProviderCalled: false,
+            },
+          },
+        },
       })
     })
   })

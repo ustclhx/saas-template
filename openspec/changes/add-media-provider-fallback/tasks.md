@@ -32,9 +32,9 @@
 ## 6. 文本备用
 
 - [x] 6.1 `packages/ai/src/text/fallback.ts`：`fallbackLanguageModel` 包装（doGenerate / doStream、首个内容分片前可切换、惰性构造并跳过未配置服务商、`onFallback`）；单测覆盖连接期错误、流内首分片错误、首分片后错误透传、全部失败
-- [ ] 6.2 对话与后续问题经备用链构造模型，实际模型 key 记入消息元数据，计费仍按主模型；集成测试覆盖规格「文本备用模型切换」的对话场景与「备用模型单价更高」
-- [ ] 6.3 agent 运行器经备用链构造模型，实际模型记入轮次；`plugins/agents` 测试覆盖「agent 中途某一步」
-- [ ] 6.4 `ai.text.failover` 日志与 `before-stream` 故障注入可切换错误；`docs/06-ai.md` 文本章节说明备用机制；相关测试通过
+- [x] 6.2 对话与后续问题经备用链构造模型，实际模型 key 记入消息元数据，计费仍按主模型；集成测试覆盖规格「文本备用模型切换」的对话场景与「备用模型单价更高」
+- [x] 6.3 agent 运行器经备用链构造模型，实际模型记入轮次；`plugins/agents` 测试覆盖「agent 中途某一步」
+- [x] 6.4 `ai.text.failover` 日志与 `before-stream` 故障注入可切换错误；`docs/06-ai.md` 文本章节说明备用机制；相关测试通过
 
 ## 7. 后台与 Admin MCP
 
@@ -46,5 +46,5 @@
 
 - [ ] 8.1 使用者确认后写入 `REPLICATE_API_TOKEN`、`REPLICATE_WEBHOOK_SECRET`、`KIE_API_KEY` 等 Wrangler secrets，启用两服务商，登记首批主备模型对
 - [ ] 8.2 真实生成：Replicate 与 kie 各一张图、一段视频，验证回调验签、转存与结算；证据写入 `EVIDENCE_DIR`
-- [ ] 8.3 故障注入触发 fal 限流与作业失败，验证切换到 Replicate、再切到 kie、全部失败退款与旧回调忽略；文本对话与 agent 各注入一次主模型限流验证切换；证据写入 `EVIDENCE_DIR`
+- [ ] 8.3 故障注入触发 fal 限流与作业失败，验证切换到 Replicate、再切到 kie、全部失败退款与旧回调忽略；文本对话注入一次主模型限流验证切换（`chat-before-stream` 故障模型配备用）；agent 不加故障注入，改用真实配置模拟：staging 上让 agent 主模型指向未配置密钥的服务商，触发 `unavailable` 切换；证据写入 `EVIDENCE_DIR`
 - [ ] 8.4 升级说明 `docs/upgrades/<版本>.md`（非破坏、新 secrets、默认关闭）并按发版流程打 tag

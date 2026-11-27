@@ -1,4 +1,8 @@
-import { estimateTextTokens, getTextProviderCapabilities } from '@saas/ai'
+import {
+  estimateTextTokens,
+  getTextProviderCapabilities,
+  type SelectedTextCandidate,
+} from '@saas/ai'
 import { AppError } from '@saas/shared'
 import {
   APICallError,
@@ -77,13 +81,23 @@ function retryable(error: unknown): boolean {
   )
 }
 
-/** 单回复共享预扣、正文与 UI 消息；SDK 的每次调用都禁用内置重试。 */
+/**
+ * 单回复共享预扣、正文与 UI 消息；SDK 的每次调用都禁用内置重试。
+ * 思考参数由模型自身下发（备用链按各候选 provider 处理，见 `createTextCandidateChain`）。
+ */
 export function createChatStream(options: {
+  /** 通常为备用链包装后的模型：无输出的失败在链内切换，整条链失败后才进入下面的同模型重试 */
   model: LanguageModel
+  /** 主模型的 provider；尚无实际候选时按它取能力 */
   provider: string
   messages: ModelMessage[]
-  thinking: boolean | undefined
+  /** 主模型是否允许原生续写 */
   continuation: boolean
+  /**
+   * 已有输出后实际生成的候选（备用链 `selected()`）：续写固定在它上面，不再走备用链，
+   * 续写能力与前缀格式按它的 provider 取（design D7「已开始输出后不切换」）。
+   */
+  selected?: () => SelectedTextCandidate | undefined
   displayReasoning: boolean
   inputTokens: number
   tokensPerChar: number
@@ -130,7 +144,9 @@ export function createChatStream(options: {
   }
   armHeartbeat()
   const done = (async () => {
-    const capabilities = getTextProviderCapabilities(options.provider)
+    // 产生输出的候选一经确定即固定：续写与能力都以它为准
+    let pinned: SelectedTextCandidate | undefined
+    const capabilitiesNow = () => getTextProviderCapabilities(pinned?.provider ?? options.provider)
     const signal = options.controller.signal
     const absorbed: Usage = { inputTokens: 0, outputTokens: 0, reasoningTokens: 0 }
     const total: Usage = { inputTokens: 0, outputTokens: 0, reasoningTokens: 0 }
@@ -184,8 +200,7 @@ export function createChatStream(options: {
         reasoning: options.displayReasoning ? reasoning : '',
         absorbed: { ...absorbed },
       })
-      const params =
-        options.thinking === undefined ? {} : capabilities.applyThinking({}, options.thinking)
+      const capabilities = capabilitiesNow()
       // 每次尝试独立中止：超时只打断本次上游请求，用户停止经合并信号同样生效。
       // 心跳不经过这里，不会推迟上游超时。
       const attemptController = new AbortController()
@@ -216,8 +231,7 @@ export function createChatStream(options: {
       })
       armIdle()
       const response = streamText({
-        ...params,
-        model: options.model,
+        model: prefix && pinned ? pinned.model : options.model,
         maxRetries: 0,
         allowSystemInMessages: true,
         messages:
@@ -288,6 +302,7 @@ export function createChatStream(options: {
       total.outputTokens += measured.outputTokens
       total.reasoningTokens += measured.reasoningTokens
       const completeUsage = usage?.inputTokens !== undefined && usage.outputTokens !== undefined
+      if (attemptText && !pinned) pinned = options.selected?.()
       if (attemptText || prefix || signal.aborted) {
         inputTokens = measured.inputTokens
         outputTokens += measured.outputTokens
@@ -329,9 +344,10 @@ export function createChatStream(options: {
         })
         await options.retryDelay(delay, signal)
       } else {
+        const continuable = pinned ? pinned.continuation : options.continuation
         if (
-          !options.continuation ||
-          !capabilities.continuation ||
+          !continuable ||
+          !capabilitiesNow().continuation ||
           continuation >= 2 ||
           !retryable(lastError)
         )

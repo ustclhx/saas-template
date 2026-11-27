@@ -33,7 +33,6 @@ describe('streaming chat completions', () => {
       model,
       provider: 'deepseek',
       messages: [{ role: 'user', content: 'hello' }],
-      thinking: true,
       continuation: false,
       displayReasoning: false,
       inputTokens: 10,

@@ -13,6 +13,7 @@ import {
 import { DEFAULT_FREE_FEATURES } from '@saas/entitlements'
 import { AppError, newId } from '@saas/shared'
 import {
+  APICallError,
   type LanguageModel,
   parseJsonEventStream,
   readUIMessageStream,
@@ -937,6 +938,123 @@ describe.skipIf(!enabled)('审阅修复（B1–B5）', () => {
       (e: unknown) => e,
     )
     expect((error as AppError).code).toBe('AGENT_TURN_LIMIT')
+  })
+})
+
+describe.skipIf(!enabled)('文本备用模型（add-media-provider-fallback 6.3、6.4）', () => {
+  type Part =
+    Awaited<
+      ReturnType<Extract<LanguageModel, { specificationVersion: 'v4' }>['doStream']>
+    >['stream'] extends ReadableStream<infer T>
+      ? T
+      : never
+  const finish = (reason: 'tool-calls' | 'stop'): Part => ({
+    type: 'finish',
+    usage: {
+      inputTokens: { total: 100, noCache: 100, cacheRead: undefined, cacheWrite: undefined },
+      outputTokens: { total: 10, text: 10, reasoning: undefined },
+    },
+    finishReason: { unified: reason, raw: reason },
+  })
+  const toolStep = (): Part[] => [
+    { type: 'stream-start', warnings: [] },
+    { type: 'tool-call', toolCallId: `call-${newId()}`, toolName: 'current_time', input: '{}' },
+    finish('tool-calls'),
+  ]
+  const textStep = (text: string): Part[] => [
+    { type: 'stream-start', warnings: [] },
+    { type: 'text-start', id: 't' },
+    { type: 'text-delta', id: 't', delta: text },
+    { type: 'text-end', id: 't' },
+    finish('stop'),
+  ]
+  /** 按调用序号返回分片；返回 Error 时在建立连接阶段抛出 */
+  function scripted(name: string, steps: (call: number) => Part[] | Error) {
+    let calls = 0
+    const model: LanguageModel = {
+      specificationVersion: 'v4',
+      provider: name,
+      modelId: name,
+      supportedUrls: {},
+      doGenerate: () => Promise.reject(new Error('unused')),
+      doStream: async () => {
+        calls += 1
+        const script = steps(calls)
+        if (script instanceof Error) throw script
+        return {
+          stream: new ReadableStream<Part>({
+            start(controller) {
+              for (const part of script) controller.enqueue(part)
+              controller.close()
+            },
+          }),
+        }
+      },
+    }
+    return { model, calls: () => calls }
+  }
+
+  it('agent 第 3 步主模型 5xx 且无输出：该步改由备用执行，后续步骤继续；按主模型计费并记录实际模型', async () => {
+    const owner = await member('agent-fallback', 100)
+    const primaryKey = await model()
+    // 备用模型停用（用户不可见）且单价是主模型的 100 倍：计费仍按主模型
+    const fallbackKey = await model({
+      pricing: { mode: 'token', inputPer1k: 1000, outputPer1k: 1000 },
+    })
+    await db
+      .update(aiModel)
+      .set({ provider: 'backup-provider', enabled: false })
+      .where(eq(aiModel.key, fallbackKey))
+    await db
+      .update(aiModel)
+      .set({ fallbacks: [{ modelKey: fallbackKey }] })
+      .where(eq(aiModel.key, primaryKey))
+    const upstream503 = new APICallError({
+      message: 'upstream 503',
+      url: 'https://provider.example/v1/chat',
+      requestBodyValues: {},
+      statusCode: 503,
+    })
+    const primary = scripted('primary', (call) =>
+      call <= 2 ? toolStep() : call === 3 ? upstream503 : textStep('done'),
+    )
+    const fallback = scripted('fallback', () => toolStep())
+    const warn = vi.spyOn(console, 'warn')
+    const id = await conversation(owner, primaryKey)
+    const { run } = await start(owner, id, [userMessage('please use a tool')], {
+      deps: deps({
+        languageModel: (candidate) =>
+          candidate.key === fallbackKey ? fallback.model : primary.model,
+      }),
+    })
+    const reply = await readReply(run.response)
+    const outcome = await run.done
+    expect(outcome.status).toBe('completed')
+    expect(reply.parts.filter((part) => part.type === 'tool-current_time')).toHaveLength(3)
+    expect(reply.parts.at(-1)).toMatchObject({ type: 'text', text: 'done' })
+    expect(primary.calls()).toBe(4)
+    expect(fallback.calls()).toBe(1)
+    // 四步各 100/10：440 token × 0.01 = 4.4 → 5 积分（按主模型单价）
+    expect(outcome.usage).toMatchObject({ inputTokens: 400, outputTokens: 40, steps: 4 })
+    expect(outcome.credits).toBe(5)
+    const [turn] = await sql<
+      { model_key: string; usage_checkpoint: { servedModelKeys?: string[] } }[]
+    >`select model_key, usage_checkpoint from ai_agent_turn where conversation_id = ${id}`
+    expect(turn?.model_key).toBe(primaryKey)
+    expect(turn?.usage_checkpoint.servedModelKeys).toEqual([primaryKey, fallbackKey])
+    const failovers = warn.mock.calls
+      .map(([line]) => JSON.parse(String(line)) as Record<string, unknown>)
+      .filter((line) => line.event === 'ai.text.failover')
+    expect(failovers).toEqual([
+      expect.objectContaining({
+        turnId: run.turn.turnId,
+        conversationId: id,
+        from: primaryKey,
+        to: fallbackKey,
+        kind: 'provider_error',
+      }),
+    ])
+    warn.mockRestore()
   })
 })
 

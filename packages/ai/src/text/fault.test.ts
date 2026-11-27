@@ -52,8 +52,10 @@ function fixture(chunks: StreamPart[], mode: TextFaultMode = 'chat-mid-stream', 
 describe('文本故障 doStream 包装', () => {
   it('流前实际注入后才记录证明且不调用上游', async () => {
     const f = fixture([], 'chat-before-stream')
+    // 可切换分类（模拟主服务商限流），配置了备用时由备用链改用备用模型
     await expect(f.model.doStream({ prompt: [] })).rejects.toMatchObject({
       code: 'ACCEPTANCE_FAULT_INJECTED',
+      kind: 'rate_limited',
     })
     expect(f.upstream.doStreamCalls).toHaveLength(0)
     expect(f.proofs).toEqual([

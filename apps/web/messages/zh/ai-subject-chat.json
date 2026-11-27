@@ -54,6 +54,7 @@
   "admin_feedback_role_user": "用户",
   "admin_feedback_role_assistant": "助手",
   "admin_feedback_rated_reply": "被评的回复",
+  "admin_feedback_served_model": "实际模型 {served}（主模型 {primary}）",
   "admin_feedback_close": "关闭",
   "admin_feedback_message_id": "消息 ID",
   "admin_feedback_actions": "操作",

@@ -3,6 +3,7 @@ import {
   CHAT_HOLD_TTL_MS,
   type CheckpointScheduleOptions,
   checkpointSchedule,
+  createTextCandidateChain,
   dbModelStore,
   defaultLanguageModelFactory,
   estimateInputTokens,
@@ -14,7 +15,7 @@ import {
   parseAcceptanceFault,
   planTextBudget,
   requireAvailableModel,
-  resolveTextThinking,
+  resolveModelCandidates,
   settleChatMessage,
   settleFromCheckpoint,
   settleInterruptedChatMessage,
@@ -252,8 +253,6 @@ export async function startWorkspaceChat(
   )
     throw new AppError('RATE_LIMITED', 'Too many requests, please try again later', { status: 429 })
 
-  const languageModel = (deps.languageModelFactory ?? defaultLanguageModelFactory)(model, deps.env)
-
   // 3. 对话与历史：只读创建者自己的对话。首条 system 消息是建对话时写入的对象上下文
   // （add-subject-chat），作为固定前缀放在提示词最前，截断时保留
   let conversationId = input.conversationId
@@ -290,12 +289,7 @@ export async function startWorkspaceChat(
     })
   }
   const userText = input.message.parts.map((part) => part.text).join('')
-  const {
-    tokensPerChar,
-    maxOutputTokens: modelMaxOutput,
-    thinking,
-    continuation,
-  } = textModelConfig(model)
+  const { tokensPerChar, maxOutputTokens: modelMaxOutput, continuation } = textModelConfig(model)
   let prompt: { role: 'system' | 'user' | 'assistant'; text: string }[] = context.prompt ?? [
     ...history,
     { role: 'user' as const, text: userText },
@@ -330,15 +324,37 @@ export async function startWorkspaceChat(
   const userMessageId = newId()
   const assistantId = newId()
   const holdDeadline = Date.now() + CHAT_HOLD_TTL_MS
-  const streamModel = faultMode
-    ? wrapTextFaultModel(languageModel, {
-        mode: faultMode,
-        env: deps.env,
-        tokensPerChar,
-        writeProof: (proof) =>
-          writeTextFaultProof(db, { workspaceId, messageId: assistantId, proof }),
-      })
-    : languageModel
+  // 备用链（add-media-provider-fallback D7）：每个候选经原工厂构造，故障注入只包装主候选；
+  // 定价快照、预扣与 token 上限仍按主模型。
+  const factory = deps.languageModelFactory ?? defaultLanguageModelFactory
+  // 会话 id 在下面的事务中才确定，日志字段在切换发生时读取
+  const failoverLog: Record<string, string> = { messageId: assistantId }
+  const chain = createTextCandidateChain({
+    candidates: await resolveModelCandidates({ store: dbModelStore(db) }, model),
+    create: (candidate, index) => {
+      const built = factory(candidate, deps.env)
+      return index === 0 && faultMode
+        ? wrapTextFaultModel(built, {
+            mode: faultMode,
+            env: deps.env,
+            tokensPerChar,
+            writeProof: (proof) =>
+              writeTextFaultProof(db, { workspaceId, messageId: assistantId, proof }),
+          })
+        : built
+    },
+    // 模型显式 thinking=false 时下发关闭形式，而不是省略（默认推理的模型会把输出预算耗在 reasoning 上）；
+    // 每个候选按自己的 provider 与配置解析
+    thinking: input.thinking ?? textConfig.thinking.default === 'on',
+    logContext: failoverLog,
+  })
+  // 所有候选的服务商都未配置时在预扣前拒绝
+  chain.ensureAvailable()
+  /** 实际生成的模型与主模型不同时记入检查点，供后台查看 */
+  const servedModelKeys = () => {
+    const key = chain.selected()?.key
+    return key && key !== model.key ? [key] : undefined
+  }
   const holdId = await db.transaction(async (tx) => {
     const t = scoped(tx, workspaceId)
     if (conversationId === undefined) {
@@ -402,6 +418,7 @@ export async function startWorkspaceChat(
     conversationId: conversationId as string,
     messageId: assistantId,
   }
+  failoverLog.conversationId = metadata.conversationId
 
   // 6. 流式调用；结算与客户端连接解耦
   const overage = deps.overage ?? templateConfig.billing.overage
@@ -412,7 +429,7 @@ export async function startWorkspaceChat(
   let schedule = checkpointSchedule(deps.checkpoint)
   let checkpoints: Promise<unknown> = Promise.resolve()
   const result = createChatStream({
-    model: streamModel,
+    model: chain.model,
     provider: model.provider,
     messages: prompt.map((message, index) =>
       index === 0 && prefix
@@ -424,13 +441,12 @@ export async function startWorkspaceChat(
           }
         : { role: message.role, content: message.text },
     ),
-    // 模型显式 thinking=false 时下发关闭形式，而不是省略（默认推理的模型会把输出预算耗在 reasoning 上）
-    thinking: resolveTextThinking(
-      model.provider,
-      thinking,
-      input.thinking ?? textConfig.thinking.default === 'on',
-    ),
     continuation: continuation === 'native' && !faultMode,
+    // 故障注入的回复不续写，固定候选时同样关闭
+    selected: () => {
+      const selected = chain.selected()
+      return selected && faultMode ? { ...selected, continuation: false } : selected
+    },
     displayReasoning: textConfig.reasoning.display,
     inputTokens,
     tokensPerChar,
@@ -455,6 +471,7 @@ export async function startWorkspaceChat(
             ...snapshot,
             reasoning: textConfig.reasoning.display ? snapshot.reasoning : '',
             failedReplyRefund: textConfig.failedReplyRefund,
+            servedModelKeys: servedModelKeys(),
           })
           if (!streaming) controller.abort('settled')
         } catch (error) {
@@ -480,6 +497,7 @@ export async function startWorkspaceChat(
         lastAttempt: outcome.lastAttempt,
         usageSource: outcome.usageSource,
         failedReplyRefund: textConfig.failedReplyRefund,
+        servedModelKeys: servedModelKeys(),
       }
       try {
         if (outcome.status === 'completed') await settleChatMessage(db, usage)

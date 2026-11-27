@@ -62,6 +62,8 @@ interface TextUsageInput extends AiTextUsage {
   /** 仅展示 reasoning 时传入；不传即不保存。 */
   readonly reasoning?: string
   readonly failedReplyRefund?: FailedReplyRefund
+  /** 实际生成的模型与主模型不同时传入（文本备用）；不传即保留已记录的值 */
+  readonly servedModelKeys?: readonly string[] | undefined
 }
 
 function usageCheckpoint(input: TextUsageInput, at = new Date()): AiUsageCheckpoint {
@@ -75,6 +77,7 @@ function usageCheckpoint(input: TextUsageInput, at = new Date()): AiUsageCheckpo
     ...(input.failedReplyRefund === undefined
       ? {}
       : { failedReplyRefund: input.failedReplyRefund }),
+    ...(input.servedModelKeys?.length ? { servedModelKeys: [...input.servedModelKeys] } : {}),
     at: at.toISOString(),
   }
 }
